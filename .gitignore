@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+
+# Data & local state
+*.sqlite
+*.db
+data/snapshots/
+*.parquet
+
+# IDE / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# Local tool state
+*.tsbuildinfo
+.claude/settings.local.json

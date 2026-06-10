@@ -1,0 +1,29 @@
+/* Tailwind CSS v4 entry point. Theme tokens for the dark trading-app look. */
+@import "tailwindcss";
+
+@theme {
+  /* Brand accent used for active tabs, highlights and charts. */
+  --color-accent-400: #38bdf8;
+  --color-accent-500: #0ea5e9;
+  --color-accent-600: #0284c7;
+
+  /* Surface palette: deep slate background with subtle elevation steps. */
+  --color-surface-950: #090d14;
+  --color-surface-900: #0e131c;
+  --color-surface-800: #161d2a;
+  --color-surface-700: #1f2937;
+
+  --font-sans: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+}
+
+/* Global defaults: dark canvas, crisp text rendering. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface-950 text-slate-200 antialiased;
+}

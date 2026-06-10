@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "volfit"
+version = "0.1.0"
+description = "Implied volatility fitter with graph-based smile extrapolation"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+]
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[tool.setuptools.packages.find]
+include = ["volfit*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

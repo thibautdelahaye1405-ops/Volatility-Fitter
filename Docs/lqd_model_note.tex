@@ -1,0 +1,894 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{booktabs,longtable,array}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{microtype}
+\usepackage{float}
+\usepackage{setspace}
+\setstretch{1.05}
+\allowdisplaybreaks
+\hypersetup{colorlinks=true,linkcolor=black,citecolor=black,urlcolor=black}
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{remark}{Remark}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\1}{\mathbf{1}}
+\newcommand{\PhiN}{\Phi}
+\newcommand{\phin}{\varphi}
+\newcommand{\eps}{\varepsilon}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator{\expit}{expit}
+\DeclareMathOperator{\diag}{diag}
+\title{A Log-Quantile-Density Parametrization for Arbitrage-Free Equity Smiles\\\large Technical note on the LQD model}
+\author{Prepared for equity derivatives modelling}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note develops a slice and surface parametrization of equity implied volatility smiles based on the log quantile density of the risk-neutral log-forward return.  For one expiry, let $X=\log(S_T/F_T)$ under the $T$-forward measure, let $Q(u)$ be its quantile, and let $q(u)=\partial_u Q(u)$ be its quantile density.  The proposed LQD slice models
+\[
+\ell(u)=\log q(u)=-\log u-\log(1-u)+(1-u)L+uR+\sum_{n=2}^{N}a_nP_n(1-2u),
+\qquad u\in(0,1),
+\]
+where $P_n$ are Legendre polynomials.  The minimal practical specification $N=6$ has seven parameters.  Positivity of $q$ makes the quantile increasing, hence defines a non-negative risk-neutral density and eliminates butterfly arbitrage by construction after one scalar martingale normalization.  The logarithmic endpoint terms imply exponential left and right tails for log-returns; the right endpoint coefficient must satisfy one explicit integrability condition, and the resulting implied-variance wing slopes automatically fall inside Lee's moment bounds.  The note gives the full coefficient formulas, pricing equations, tail derivations, calibration algorithm, ATM orthogonalization with actual level/skew/curvature coordinates, and a sequential calendar-arbitrage construction based on integrated quantile constraints.  Two numerical tests are included: a seven-parameter fit to a realistic SPX-like SVI-JW smile and a higher-order fit to a bimodal ``double-hat'' event distribution.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Purpose and modelling choice}
+
+The market smile is usually parametrized directly as implied volatility, total variance, or option price.  A direct volatility parametrization is easy to quote, but non-negativity of the risk-neutral density is then a nonlinear global condition.  The LQD model reverses the construction.  It first parametrizes a risk-neutral distribution through its quantile density and then obtains option prices and implied volatilities by integration.  The central design objective is:
+\begin{quote}
+A calibrated slice should be a smooth, flexible smile, but every admissible parameter vector should already correspond to a genuine probability law for the terminal forward return.
+\end{quote}
+
+The modelling object is the log-forward return
+\begin{equation}
+    X_T=\log\left(\frac{S_T}{F_T}\right),
+\end{equation}
+where $F_T$ is the forward price for expiry $T$.  Discounting and deterministic carry are suppressed by working with normalized undiscounted prices.  Thus the normalized call price at log-moneyness $k=\log(K/F_T)$ is
+\begin{equation}
+    C_T(k)=\E^{T}\left[(e^{X_T}-e^k)^+\right],
+    \qquad \E^T[e^{X_T}]=1.    \label{eq:call_def}
+\end{equation}
+The second condition is the martingale condition in forward units.  All formulas below are for one expiry unless the maturity argument is displayed.
+
+The LQD acronym means ``log quantile density''.  If $F_X$ is the distribution function of $X$ and
+\begin{equation}
+    Q(u)=F_X^{-1}(u),\qquad 0<u<1,
+\end{equation}
+then the quantile density is
+\begin{equation}
+    q(u)=Q'(u)=\frac{1}{f_X(Q(u))}
+\end{equation}
+whenever a density $f_X$ exists.  Modelling $\ell=\log q$ guarantees $q>0$.  Therefore $Q$ is strictly increasing and the recovered density is non-negative.  This is the structural reason that a one-expiry LQD smile is free of butterfly arbitrage.
+
+The proposed basis is deliberately not a generic polynomial basis.  It is
+\begin{equation}
+\boxed{
+\ell(u)= -\log u-\log(1-u)+(1-u)L+uR+\sum_{n=2}^{N}a_n P_n(1-2u).
+} \label{eq:lqd_main}
+\end{equation}
+The terms $-\log u$ and $-\log(1-u)$ create logarithmic quantile tails.  Equivalently, log-returns have exponential tails, giving linear implied-total-variance wings compatible with Lee's moment formula.  The two parameters $L$ and $R$ anchor the left and right endpoint scales, while the Legendre modes determine the body of the distribution.  The smallest production version used in this note is $N=6$, giving the seven parameters
+\begin{equation}
+   (L,R,a_2,a_3,a_4,a_5,a_6).
+\end{equation}
+Higher $N$ adds body-shape modes without changing the no-butterfly-arbitrage mechanism.
+
+\section{Static arbitrage and quantile construction}
+
+\subsection{Normalized prices and the Breeden-Litzenberger condition}
+
+Let $Y=e^X=S_T/F_T$.  The normalized call as a function of normalized strike $y=e^k$ is
+\begin{equation}
+    \widetilde C(y)=\E[(Y-y)^+],\qquad y>0.
+\end{equation}
+A static no-butterfly slice requires $\widetilde C$ to be decreasing and convex in $y$, with limits
+\begin{equation}
+    \widetilde C(0)=1,\qquad \lim_{y\to\infty}\widetilde C(y)=0.
+\end{equation}
+If $Y$ has density $f_Y$, then
+\begin{equation}
+    \frac{\partial \widetilde C}{\partial y}(y)=-(1-F_Y(y)),
+    \qquad
+    \frac{\partial^2 \widetilde C}{\partial y^2}(y)=f_Y(y)\ge 0. \label{eq:BL}
+\end{equation}
+Conversely, a sufficiently regular call curve satisfying the standard boundary conditions and convexity defines a non-negative density through the second derivative.
+
+The quantile construction directly defines such a density.  Given a strictly increasing quantile $Q$ for $X$, the quantile of $Y=e^X$ is
+\begin{equation}
+    Q_Y(u)=e^{Q(u)}.
+\end{equation}
+If $\int_0^1e^{Q(u)}\dd u=1$, then $Y$ has mean one.  For $k\in\R$ define $u_k$ by
+\begin{equation}
+    Q(u_k)=k. \label{eq:uk_def}
+\end{equation}
+Then
+\begin{align}
+    C(k)&=\int_{u_k}^{1}\left(e^{Q(u)}-e^k\right)\dd u, \label{eq:call_quantile}\\
+    P(k)&=\int_{0}^{u_k}\left(e^k-e^{Q(u)}\right)\dd u. \label{eq:put_quantile}
+\end{align}
+Put-call parity follows by subtracting the two equations and using $\int_0^1e^{Q(u)}\dd u=1$:
+\begin{equation}
+    C(k)-P(k)=1-e^k.
+\end{equation}
+
+\begin{proposition}[No butterfly arbitrage of one LQD slice]
+Assume $q(u)=e^{\ell(u)}>0$ on $(0,1)$ and that the martingale integral $\int_0^1e^{Q(u)}\dd u$ is finite.  After the scalar normalization of $Q$ that makes the integral equal to one, the call prices defined by \eqref{eq:call_quantile} are generated by a probability distribution on $Y>0$ with mean one.  Hence the slice is free of butterfly arbitrage.
+\end{proposition}
+
+\begin{proof}
+Since $q>0$, the quantile $Q$ is strictly increasing and defines a probability distribution for $X$.  The transformed variable $Y=e^X$ is positive.  The scalar shift imposed below enforces $\E[Y]=1$.  The call price is the expectation of $(Y-e^k)^+$ under this distribution, so monotonicity and convexity in strike follow from \eqref{eq:BL}.  No separate density-positivity inequality needs to be checked.
+\end{proof}
+
+\subsection{Logit coordinate and stable integration}
+
+The singular endpoint terms in \eqref{eq:lqd_main} are easier to handle after the logit change of variable
+\begin{equation}
+    z=\log\frac{u}{1-u},\qquad u=\Lambda(z)=\frac{1}{1+e^{-z}}.
+\end{equation}
+Write
+\begin{equation}
+    g(u)=(1-u)L+uR+\sum_{n=2}^{N}a_nP_n(1-2u). \label{eq:g_def}
+\end{equation}
+Then
+\begin{equation}
+    q(u)=\frac{e^{g(u)}}{u(1-u)},
+    \qquad
+    \frac{\dd Q}{\dd z}=\frac{\dd Q}{\dd u}\frac{\dd u}{\dd z}=q(u)u(1-u)=e^{g(\Lambda(z))}. \label{eq:q_logit}
+\end{equation}
+Thus all singularities disappear in $z$; the quantile is obtained by integrating a smooth positive function on the real line:
+\begin{equation}
+    \overline Q(z)=\int_0^z e^{g(\Lambda(s))}\dd s. \label{eq:qbar}
+\end{equation}
+The lower integration point $0$ is only an anchor.  A scalar shift $\mu$ enforces the martingale constraint:
+\begin{equation}
+    Q(z)=\mu+\overline Q(z), \qquad
+    \mu=-\log\left(\int_{-\infty}^{\infty} e^{\overline Q(z)}\Lambda(z)(1-\Lambda(z))\dd z\right). \label{eq:mu_norm}
+\end{equation}
+Equation \eqref{eq:mu_norm} is the only normalization.  It does not change $q$, tail shape, or density positivity.
+
+In logit coordinates the call formula becomes particularly convenient.  Let $z_k$ solve $Q(z_k)=k$ and $u_k=\Lambda(z_k)$.  Define the upper asset-share integral
+\begin{equation}
+    A(z)=\int_z^{\infty}e^{Q(s)}\Lambda(s)(1-\Lambda(s))\dd s. \label{eq:asset_share}
+\end{equation}
+Since $1-u_k=\int_{z_k}^{\infty}\Lambda(s)(1-\Lambda(s))\dd s$, the call price is
+\begin{equation}
+    C(k)=A(z_k)-e^k(1-u_k). \label{eq:call_logit}
+\end{equation}
+This is the pricing formula used in the numerical examples.  A single quadrature grid gives $Q(z)$ and the cumulative tail integral $A(z)$; all strikes are priced by monotone interpolation.
+
+\section{Basis functions and exact coefficients}
+
+\subsection{Legendre basis on the quantile unit interval}
+
+Let
+\begin{equation}
+    x=1-2u\in(-1,1).
+\end{equation}
+The Legendre polynomials $P_n(x)$ satisfy
+\begin{equation}
+    \int_{-1}^{1}P_m(x)P_n(x)\dd x=\frac{2}{2n+1}\1_{m=n}.
+\end{equation}
+Therefore
+\begin{equation}
+    \int_0^1P_m(1-2u)P_n(1-2u)\dd u=\frac{1}{2n+1}\1_{m=n}. \label{eq:leg_orth}
+\end{equation}
+This gives a well-conditioned global basis for the smooth part of the log quantile density.  The first two degrees are represented by $L$ and $R$ because
+\begin{equation}
+    (1-u)L+uR=\frac{L+R}{2}+\frac{L-R}{2}(1-2u). \label{eq:LR_P0P1}
+\end{equation}
+Thus the seven-parameter $N=6$ LQD model spans the same polynomial space as $P_0,\ldots,P_6$, but the endpoint interpretation of the first two coordinates is preserved.
+
+The actual polynomials used in the minimal model are
+\begin{align}
+P_2(1-2u)&=6u^2-6u+1,\label{eq:P2}\\
+P_3(1-2u)&=-20u^3+30u^2-12u+1,\label{eq:P3}\\
+P_4(1-2u)&=70u^4-140u^3+90u^2-20u+1,\label{eq:P4}\\
+P_5(1-2u)&=-252u^5+630u^4-560u^3+210u^2-30u+1,\label{eq:P5}\\
+P_6(1-2u)&=924u^6-2772u^5+3150u^4-1680u^3+420u^2-42u+1.\label{eq:P6}
+\end{align}
+The general recursion can be used for higher orders:
+\begin{equation}
+    (n+1)P_{n+1}(x)=(2n+1)xP_n(x)-nP_{n-1}(x),
+    \qquad P_0(x)=1,
+    \quad P_1(x)=x. \label{eq:leg_recursion}
+\end{equation}
+
+\subsection{Endpoint scales}
+
+The endpoint values of $g$ determine the log-return tail scales.  Since $P_n(1)=1$ and $P_n(-1)=(-1)^n$,
+\begin{align}
+    A_L&:=e^{g(0)}=\exp\left(L+\sum_{n=2}^{N}a_n\right), \label{eq:AL}\\
+    A_R&:=e^{g(1)}=\exp\left(R+\sum_{n=2}^{N}(-1)^n a_n\right). \label{eq:AR}
+\end{align}
+These are not optional diagnostics.  They are the tail slopes of the quantile in logit coordinate:
+\begin{align}
+    Q(z)&=\mu+A_L z+O(1),\qquad z\to-\infty,\label{eq:left_quant_tail}\\
+    Q(z)&=\mu+A_R z+O(1),\qquad z\to+\infty.\label{eq:right_quant_tail}
+\end{align}
+The right integrability condition for a finite forward is
+\begin{equation}
+    \boxed{A_R<1.} \label{eq:AR_condition}
+\end{equation}
+Indeed, as $z\to+\infty$, $\Lambda(z)(1-\Lambda(z))\sim e^{-z}$ and $e^{Q(z)}\sim C e^{A_Rz}$; the martingale integral converges on the right if and only if $A_R<1$.  On the left, $e^{Q(z)}\Lambda(z)(1-\Lambda(z))\sim C e^{(A_L+1)z}$, which is integrable for every $A_L>0$.
+
+\section{Tail asymptotics and Lee moment boundaries}
+
+\subsection{Log-return moments}
+
+The tail form \eqref{eq:left_quant_tail}--\eqref{eq:right_quant_tail} implies exponential log-return tails.  For large positive $x$, $z\sim x/A_R$ and $1-u\sim e^{-z}$, so
+\begin{equation}
+    \Q(X>x)\asymp \exp\left(-\frac{x}{A_R}\right),\qquad x\to+\infty. \label{eq:right_survival}
+\end{equation}
+For large negative $x$, $u\sim e^z$ and $z\sim x/A_L$, so
+\begin{equation}
+    \Q(X<x)\asymp \exp\left(\frac{x}{A_L}\right),\qquad x\to-\infty. \label{eq:left_survival}
+\end{equation}
+Consequently the moment generating function of $X$ has critical strip
+\begin{equation}
+    \E[e^{rX}]<\infty
+    \quad\Longleftrightarrow\quad
+    -\frac{1}{A_L}<r<\frac{1}{A_R}, \label{eq:mgf_strip}
+\end{equation}
+up to endpoint qualifications that do not affect Lee limsup slopes.  Since $Y=e^X$ has mean one, the positive stock moments relevant for the call wing are
+\begin{equation}
+    \E[Y^{1+p}]<\infty
+    \quad\Longleftrightarrow\quad
+    1+p<\frac{1}{A_R}.
+\end{equation}
+Therefore
+\begin{equation}
+    p^*_R=\sup\{p\ge0:\E[Y^{1+p}]<\infty\}=\frac{1}{A_R}-1,\qquad A_R<1.\label{eq:pstar}
+\end{equation}
+For the put wing,
+\begin{equation}
+    q^*_L=\sup\{q\ge0:\E[Y^{-q}]<\infty\}=\frac{1}{A_L}.\label{eq:qstar}
+\end{equation}
+
+\subsection{Lee wing slopes}
+
+Let $w(k,T)=\sigma_{\mathrm{BS}}^2(k,T)T$ be total implied variance.  Lee's moment formula gives the right and left asymptotic total-variance slopes
+\begin{equation}
+    \beta_R=\limsup_{k\to+\infty}\frac{w(k,T)}{k},
+    \qquad
+    \beta_L=\limsup_{k\to-\infty}\frac{w(k,T)}{|k|},
+\end{equation}
+as functions of $p_R^*$ and $q_L^*$:
+\begin{equation}
+    \beta=\psi(p),\qquad
+    \psi(p)=2-4\left(\sqrt{p^2+p}-p\right),\qquad p\in[0,\infty]. \label{eq:lee_psi}
+\end{equation}
+Equivalently,
+\begin{equation}
+    \frac{1}{2\beta}+\frac{\beta}{8}-\frac12=p,
+    \qquad 0<\beta\le 2. \label{eq:lee_inverse}
+\end{equation}
+Combining \eqref{eq:pstar}, \eqref{eq:qstar}, and \eqref{eq:lee_psi}, an LQD slice has
+\begin{align}
+    \beta_L&=\psi\left(\frac{1}{A_L}\right), \label{eq:betaL}\\
+    \beta_R&=\psi\left(\frac{1}{A_R}-1\right),\qquad A_R<1.\label{eq:betaR}
+\end{align}
+Thus the endpoint coefficients do not merely regularize extrapolation: they identify the moment critical exponents and the Lee-consistent wing slopes.  A calibration may either fit $L$ and $R$ freely subject to $A_R<1$, or impose explicit wing priors by constraining $A_L$ and $A_R$ through \eqref{eq:AL}--\eqref{eq:AR}.
+
+\section{Option pricing and implied-volatility recovery}
+
+\subsection{Black formula in total variance}
+
+The normalized Black call with log-moneyness $k$ and total variance $w$ is
+\begin{equation}
+    B(k,w)=\PhiN(d_+)-e^k\PhiN(d_-),\qquad
+    d_+=-\frac{k}{\sqrt w}+\frac{\sqrt w}{2},
+    \quad d_-=d_+-\sqrt w. \label{eq:black}
+\end{equation}
+The implied total variance $w(k,T)$ generated by the LQD slice is the unique solution of
+\begin{equation}
+    B(k,w(k,T))=C_T(k).\label{eq:impw}
+\end{equation}
+For numerical stability the calibration objective should usually be expressed in price units divided by Black vega, not in raw price units.  If quoted volatility is $\sigma_i$ at strike $k_i$ and expiry $T$, the target total variance is $w_i=\sigma_i^2T$ and a natural residual is
+\begin{equation}
+    r_i(\theta)=\frac{C^{\mathrm{LQD}}(k_i;\theta)-B(k_i,w_i)}{\partial_\sigma B(k_i,\sigma_i^2T)+\eta},\qquad
+    \partial_\sigma B=\phin(d_+)\sqrt T,\label{eq:vega_resid}
+\end{equation}
+with a small floor $\eta$ in far wings.  This approximates a volatility error while preserving the no-arbitrage price construction during optimization.
+
+\subsection{Efficient quadrature}
+
+On a finite grid $z_j\in[-Z,Z]$, compute
+\begin{align}
+    u_j&=\Lambda(z_j),\\
+    h_j&=e^{g(u_j)},\\
+    \overline Q_j&\approx\int_0^{z_j}h(s)\dd s,\\
+    \mu&=-\log\left(\int_{-Z}^{Z}e^{\overline Q(z)}\Lambda(z)(1-\Lambda(z))\dd z+\text{tail corrections}\right),\\
+    A_j&\approx\int_{z_j}^{Z}e^{Q(z)}\Lambda(z)(1-\Lambda(z))\dd z+\text{right tail correction}.
+\end{align}
+The endpoint corrections are analytic from \eqref{eq:left_quant_tail}--\eqref{eq:right_quant_tail}.  At the right endpoint,
+\begin{equation}
+    \int_Z^\infty e^{Q(z)}\Lambda(z)(1-\Lambda(z))\dd z
+    \approx \frac{e^{Q(Z)-Z}}{1-A_R}.\label{eq:right_tail_corr}
+\end{equation}
+At the left endpoint,
+\begin{equation}
+    \int_{-\infty}^{-Z} e^{Q(z)}\Lambda(z)(1-\Lambda(z))\dd z
+    \approx \frac{e^{Q(-Z)-Z}}{1+A_L}.\label{eq:left_tail_corr}
+\end{equation}
+For equity smiles with Lee slopes far below the model-free upper bound, $A_L$ and $A_R$ are typically small and $Z\in[30,50]$ is more than sufficient in double precision.
+
+\section{ATM level, skew, curvature and orthogonalization}
+
+\subsection{Exact ATM functionals from the quantile}
+
+Traders often want the first coordinates of a smile model to be actual ATM level, skew, and curvature rather than abstract basis coefficients.  The LQD basis can be orthogonalized around a reference slice so that the first three coordinates are precisely these quantities, at least locally and, with a small nonlinear solve, exactly.
+
+Let $u_0$ solve $Q(u_0)=0$, i.e. the CDF point corresponding to forward ATM strike.  Define
+\begin{equation}
+    c_0=C(0)=\int_{u_0}^{1}(e^{Q(u)}-1)\dd u,
+    \qquad
+    q_0=q(u_0),
+    \qquad
+    f_0=f_X(0)=\frac{1}{q_0}.\label{eq:atm_price_quantities}
+\end{equation}
+The first two log-strike derivatives of the market call at $k=0$ are
+\begin{align}
+    C'(0)&=-(1-u_0),\label{eq:C1}\\
+    C''(0)&=f_0-(1-u_0).\label{eq:C2}
+\end{align}
+Equation \eqref{eq:C2} is the log-strike derivative, not the strike derivative.  It follows from $C'(k)=-e^k(1-F_X(k))$.
+
+Let $w_0=w(0)$ be the implied total variance solving
+\begin{equation}
+    B(0,w_0)=c_0,
+    \qquad B(0,w)=2\PhiN\left(\frac{\sqrt w}{2}\right)-1.\label{eq:w0_atm}
+\end{equation}
+Set
+\begin{equation}
+    a=\frac{\sqrt{w_0}}{2},\qquad n=\phin(a),\qquad N=\PhiN(a).
+\end{equation}
+The required Black derivatives at $k=0$ are
+\begin{align}
+    B_k&=-(1-N),\label{eq:Bk}\\
+    B_w&=\frac{n}{2\sqrt{w_0}},\label{eq:Bw}\\
+    B_{kk}&=-(1-N)+\frac{n}{\sqrt{w_0}},\label{eq:Bkk}\\
+    B_{kw}&=\frac{n}{4\sqrt{w_0}},\label{eq:Bkw}\\
+    B_{ww}&=-\frac{n}{4w_0^{3/2}}-\frac{n}{16\sqrt{w_0}}.\label{eq:Bww}
+\end{align}
+Differentiating the identity $B(k,w(k))=C(k)$ gives
+\begin{align}
+    w_1:=w'(0)&=\frac{C'(0)-B_k}{B_w},\label{eq:w1}\\
+    w_2:=w''(0)&=\frac{C''(0)-B_{kk}-2B_{kw}w_1-B_{ww}w_1^2}{B_w}.\label{eq:w2}
+\end{align}
+The actual ATM volatility, volatility skew, and volatility curvature are
+\begin{align}
+    \sigma_0&=\sqrt{\frac{w_0}{T}},\label{eq:sigma0}\\
+    s_0&=\left.\frac{\partial\sigma_{\mathrm{BS}}}{\partial k}\right|_{k=0}=\frac{w_1}{2\sqrt{T w_0}},\label{eq:skew0}\\
+    \kappa_0&=\left.\frac{\partial^2\sigma_{\mathrm{BS}}}{\partial k^2}\right|_{k=0}
+    =\frac{w_2}{2\sqrt{T w_0}}-\frac{w_1^2}{4\sqrt T\,w_0^{3/2}}.\label{eq:curv0}
+\end{align}
+These equations are exact for every LQD slice and require no finite differencing of implied volatility.
+
+\subsection{Linear orthogonalization}
+
+Let $\theta\in\R^d$ denote the LQD coefficient vector, $d=N+1$, and define the three ATM functionals
+\begin{equation}
+    H(\theta)=\begin{pmatrix}w_0(\theta)\\ s_0(\theta)\\ \kappa_0(\theta)\end{pmatrix}.
+\end{equation}
+At a reference parameter vector $\theta^*$, compute the Jacobian
+\begin{equation}
+    J=\left.\frac{\partial H}{\partial\theta}\right|_{\theta^*}\in\R^{3\times d}.\label{eq:atm_jacobian}
+\end{equation}
+The derivatives can be obtained analytically by differentiating the quadrature, or robustly by centered finite differences because $d$ is small.  For a perturbation $\delta\theta$,
+\begin{equation}
+    H(\theta^*+\delta\theta)=H(\theta^*)+J\delta\theta+O(\|\delta\theta\|^2).
+\end{equation}
+Assume $J$ has rank three.  The minimum-norm coefficient perturbation that produces a desired first-order ATM change $\delta h\in\R^3$ is
+\begin{equation}
+    \delta\theta_{\mathrm{ATM}}=J^\top(JJ^\top)^{-1}\delta h.\label{eq:atm_pinv}
+\end{equation}
+The orthogonal projector onto directions that leave the three ATM quantities unchanged to first order is
+\begin{equation}
+    \Pi_\perp=I_d-J^\top(JJ^\top)^{-1}J.\label{eq:projector}
+\end{equation}
+Starting with raw high-order directions $e_4,\ldots,e_d$, set
+\begin{equation}
+    \widetilde v_j=\Pi_\perp e_j,
+\end{equation}
+then run a QR factorization on the nonzero projected vectors.  This gives directions $v_4,\ldots,v_d$ satisfying
+\begin{equation}
+    Jv_j=0,
+    \qquad j=4,\ldots,d.
+\end{equation}
+A locally ATM-orthogonal parametrization is therefore
+\begin{equation}
+    \theta=\theta^*+J^\top(JJ^\top)^{-1}\begin{pmatrix}\Delta w_0\\ \Delta s_0\\ \Delta\kappa_0\end{pmatrix}
+    +\sum_{j=4}^{d}\xi_jv_j. \label{eq:ortho_param}
+\end{equation}
+The first three coordinates are actual ATM directions and the remaining coordinates are shape modes that do not move ATM level, skew, or curvature to first order.
+
+\subsection{Exact ATM coordinates by the implicit function theorem}
+
+For larger moves, \eqref{eq:ortho_param} can be made exact.  Split the coefficient vector into three primary coordinates $\alpha\in\R^3$ and shape coordinates $\xi\in\R^{d-3}$:
+\begin{equation}
+    \theta=\theta^*+U\alpha+V\xi,
+\end{equation}
+where $U=J^\top(JJ^\top)^{-1}$ and the columns of $V$ span $\ker J$.  Given target ATM values $h^{\mathrm{target}}=(w_0^{\mathrm{target}},s_0^{\mathrm{target}},\kappa_0^{\mathrm{target}})$ and shape coordinates $\xi$, solve
+\begin{equation}
+    H(\theta^*+U\alpha+V\xi)=h^{\mathrm{target}}\label{eq:implicit_atm}
+\end{equation}
+for $\alpha$ by a three-dimensional Newton method.  The implicit function theorem applies whenever the $3\times3$ Jacobian $\partial(H\circ\theta)/\partial\alpha$ is nonsingular.  In practice it is well-conditioned if the reference slice is not degenerate and the three chosen primary directions are not almost collinear in ATM space.
+
+This construction is useful in production because it separates tasks.  Traders can move ATM level, skew, and curvature directly; the optimizer can use the remaining LQD modes to fit wings, shoulders, and event convexity while preserving the quoted ATM handles.
+
+\section{Calibration of one expiry}
+
+\subsection{Objective function}
+
+Given quotes $(k_i,\sigma_i,\omega_i)$ for one maturity, with weights $\omega_i$ and total variances $w_i=T\sigma_i^2$, minimize
+\begin{equation}
+    \min_\theta\; \sum_i \omega_i
+    \left(\frac{C^{\mathrm{LQD}}(k_i;\theta)-B(k_i,w_i)}{\partial_\sigma B(k_i,w_i)+\eta}\right)^2
+    +\lambda\sum_{n=4}^{N} n^{2r}a_n^2.\label{eq:calib_objective}
+\end{equation}
+The regularizer is optional.  It suppresses high-order oscillations in sparse markets.  The hard admissibility condition is
+\begin{equation}
+    A_R(\theta)<1-\eps_R,\label{eq:right_admissible}
+\end{equation}
+for a small numerical buffer $\eps_R>0$.  A soft prior may also be applied to $A_L$ and $A_R$ if the desk has stable wing-slope estimates.
+
+The key difference from direct volatility fits is that no density-positivity penalty appears in \eqref{eq:calib_objective}.  Positivity is structural.  Any optimizer iterate satisfying \eqref{eq:right_admissible} defines a probability law with finite forward expectation after normalization.
+
+\subsection{Initialization}
+
+Three robust initialization methods are useful.
+
+\paragraph{Logistic base.}  Set all $a_n=0$ and $L=R=\log s$, giving $\dd Q/\dd z=s$.  The log-return is logistic up to martingale shift.  Match $s$ to ATM variance by the approximation $\operatorname{Var}(X)\approx\pi^2s^2/3$.
+
+\paragraph{Wing-aware base.}  Estimate left and right Lee slopes from an existing extrapolator.  Convert slopes to critical exponents using \eqref{eq:lee_inverse}, then to $A_L,A_R$ using \eqref{eq:betaL}--\eqref{eq:betaR}.  Set $L=\log A_L$, $R=\log A_R$, and initialize the body coefficients at zero.
+
+\paragraph{Quantile-density projection.}  If an arbitrage-free price curve or a trusted density is already available, compute its quantile $Q(u)$ and density $f_X(Q(u))$.  Then
+\begin{equation}
+    g(u)=\log q(u)+\log u+\log(1-u),
+    \qquad q(u)=\frac{1}{f_X(Q(u))}.
+\end{equation}
+Project $g$ onto the columns $(1-u),u,P_2(1-2u),\ldots,P_N(1-2u)$ by least squares.  This is the initialization used for the double-hat example.
+
+\section{SVI-JW benchmark example}
+
+\subsection{Target smile}
+
+The benchmark target is a realistic SPX-like six-month smile generated from SVI-JW parameters.  The raw SVI total variance is
+\begin{equation}
+    w_{\mathrm{SVI}}(k)=a+b\left\{\rho(k-m)+\sqrt{(k-m)^2+\sigma^2}\right\}.\label{eq:raw_svi}
+\end{equation}
+The SVI-JW parameters used here are
+\begin{equation}
+\begin{array}{c|ccccc}
+T & v & \psi & p & c & \widetilde v\\ \hline
+0.50 & 0.0425 & -0.2500 & 0.7500 & 0.2500 & 0.0340
+\end{array}
+\end{equation}
+The conversion to raw SVI gives
+\begin{equation}
+\begin{array}{c|ccccc}
+ & a & b & \rho & m & \sigma\\ \hline
+\text{raw SVI} & 0.0106250000 & 0.0728868987 & -0.5000000000 & 0.0583095189 & 0.1009950494.
+\end{array}
+\end{equation}
+These parameters imply an ATM volatility close to $20.6\%$ and a pronounced equity-index put skew.
+
+\subsection{Seven-parameter LQD fit}
+
+The seven-parameter $N=6$ LQD fit over $k\in[-0.35,0.30]$ gives
+\begin{equation}
+\label{eq:svi_lqd_coeffs}
+\begin{gathered}
+\begin{array}{c|rrrr}
+ & L & R & a_2 & a_3\\ \hline
+\theta & -1.87350162 & -3.09113957 & 0.38052207 & -0.04814625
+\end{array}\\[4pt]
+\begin{array}{c|rrr}
+ & a_4 & a_5 & a_6\\ \hline
+\theta & -0.00684433 & 0.00560282 & 0.00216176
+\end{array}
+\end{gathered}
+\end{equation}
+The endpoint diagnostics are
+\begin{equation}
+    A_L=0.21433704,
+    \qquad A_R=0.06906158,
+    \qquad \mu=0.02069448.
+\end{equation}
+The corresponding Lee slopes are
+\begin{equation}
+    \beta_L=\psi(1/A_L)=0.09702292,
+    \qquad
+    \beta_R=\psi(1/A_R-1)=0.03577726.
+\end{equation}
+For comparison, the raw SVI wing slopes are $b(1-\rho)=0.10933035$ on the left and $b(1+\rho)=0.03644345$ on the right.  The agreement is not imposed directly; it is obtained through the fit and the endpoint basis.
+
+The maximum absolute implied-volatility error on the grid is about $1.2$ volatility basis points, and the root-mean-square error is about $0.8$ volatility basis points.  Figure \ref{fig:svi_fit} shows the fitted smile and Figure \ref{fig:svi_error} shows the residuals.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/svi_fit.pdf}
+\caption{SPX-like SVI-JW target and seven-parameter LQD fit.}
+\label{fig:svi_fit}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/svi_error.pdf}
+\caption{SVI-JW example: LQD implied-volatility error in volatility basis points.}
+\label{fig:svi_error}
+\end{figure}
+
+The fitted LQD smile is not guaranteed to reproduce SVI outside the calibration interval; it produces its own Lee-consistent extrapolation through $A_L$ and $A_R$.  This is desirable in production: the extrapolation is a property of the fitted distribution, not an unrelated tail patch.
+
+\section{Bimodal event or ``double-hat'' example}
+
+\subsection{Target distribution}
+
+Ahead of a scheduled macro, litigation, election, or earnings-type event, the terminal risk-neutral density may become bimodal.  A direct low-order volatility parametrization often struggles with this because the implied-volatility smile can be high near ATM, depressed in intermediate wings, and then supported again by tail insurance.  The LQD model can represent such shapes because a multimodal density corresponds to a quantile density $q(u)$ with multiple local maxima and minima; positivity of $q$ is unaffected.
+
+The target example is a mixture of two normal log-return components over $T=30/365$:
+\begin{equation}
+    X=\begin{cases}
+       m_1+0.05 Z, & \text{probability }1/2,\\
+       m_2+0.05 Z, & \text{probability }1/2,
+    \end{cases}
+    \qquad Z\sim N(0,1),
+\end{equation}
+with martingale shift chosen so that $\E[e^X]=1$.  Starting from pre-shift centers $-10\%$ and $+9\%$, the normalized means are
+\begin{equation}
+    m_1=-0.10075573,
+    \qquad
+    m_2= 0.08924427.
+\end{equation}
+The target call price has the closed form
+\begin{equation}
+    C(k)=\sum_{i=1}^{2}w_i\left[
+e^{m_i+s_i^2/2}\PhiN\left(\frac{m_i+s_i^2-k}{s_i}\right)
+-e^k\PhiN\left(\frac{m_i-k}{s_i}\right)\right],\label{eq:mix_call}
+\end{equation}
+where $w_1=w_2=1/2$ and $s_1=s_2=0.05$.
+
+\subsection{LQD fit with higher modes}
+
+A thirteen-parameter LQD specification with $N=12$ is used.  The fitted coefficients are
+\begin{equation}
+\label{eq:dh_lqd_coeffs}
+\begin{gathered}
+\begin{array}{c|rrrrr}
+ & L & R & a_2 & a_3 & a_4\\ \hline
+\theta & -2.95878524 & -2.96084492 & -1.13861892 & -0.00127725 & 0.46596301
+\end{array}\\[4pt]
+\begin{array}{c|rrrr}
+ & a_5 & a_6 & a_7 & a_8\\ \hline
+\theta & 0.00265138 & -0.55916861 & -0.00622975 & 0.40038700
+\end{array}\\[4pt]
+\begin{array}{c|rrrr}
+ & a_9 & a_{10} & a_{11} & a_{12}\\ \hline
+\theta & -0.00664862 & -0.39218679 & 0.02292111 & -0.00832500
+\end{array}
+\end{gathered}
+\end{equation}
+The endpoint diagnostics are
+\begin{equation}
+    A_L=0.01530895,
+    \qquad A_R=0.01493256,
+    \qquad \mu=-0.00583082.
+\end{equation}
+The target ATM annualized implied volatility is about $41.9\%$.  The LQD fit over $k\in[-0.25,0.25]$ has maximum absolute implied-volatility error about $11.0$ volatility basis points and root-mean-square error about $4.5$ volatility basis points.  Figures \ref{fig:dh_fit} and \ref{fig:dh_density} show that the model captures both the option smile and the two-hump density.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/doublehat_fit.pdf}
+\caption{Bimodal double-hat event smile and $N=12$ LQD fit.}
+\label{fig:dh_fit}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/doublehat_density.pdf}
+\caption{Target and LQD risk-neutral log-return densities for the double-hat example.}
+\label{fig:dh_density}
+\end{figure}
+
+The density fit is intentionally shown, not only the volatility fit.  The structural positivity of the density remains automatic even when higher Legendre modes create the two hats.  In a sparse market one would add regularization or use the ATM-orthogonal coordinates of Section 6 to prevent unnecessary oscillatory modes.
+
+\section{Constructing a full surface without calendar arbitrage}
+
+\subsection{Calendar arbitrage as convex order}
+
+For a set of expiries $T_1<\cdots<T_M$, suppose all prices are normalized by their forwards so that each maturity has $\E[Y_T]=1$.  Absence of calendar-spread arbitrage at fixed log-forward moneyness requires
+\begin{equation}
+    C_{T_i}(k)\le C_{T_j}(k),
+    \qquad T_i<T_j,
+    \qquad k\in\R.\label{eq:calendar_calls}
+\end{equation}
+Equivalently, the distributions of $Y_{T_i}$ are increasing in convex order.  In quantile terms, for equal means, $Y_{T_i}\le_{cx}Y_{T_j}$ if and only if
+\begin{equation}
+    \int_\alpha^1 Q_{Y,T_i}(u)\dd u
+    \le
+    \int_\alpha^1 Q_{Y,T_j}(u)\dd u,
+    \qquad \alpha\in[0,1],\label{eq:upper_quantile_order}
+\end{equation}
+with equality at $\alpha=0$ because both means are one.  Since $Q_Y(u)=e^{Q_X(u)}$, the LQD calendar constraints are
+\begin{equation}
+\boxed{
+    G_i(\alpha):=\int_\alpha^1 e^{Q_i(u)}\dd u
+    \le
+    G_j(\alpha):=\int_\alpha^1 e^{Q_j(u)}\dd u,
+    \qquad \forall \alpha\in[0,1],\ T_i<T_j.
+}\label{eq:lqd_calendar}
+\end{equation}
+This is the integral constraint referred to in the prompt.  It is often better conditioned than imposing a dense grid of call-price inequalities because it works directly with the quantile representation and does not require inverting $Q$ at every strike during constraint evaluation.
+
+\subsection{Sequential nearest-to-farthest fitting}
+
+A practical surface construction is:
+\begin{enumerate}[leftmargin=2.2em]
+\item Fit the nearest expiry with the one-slice objective \eqref{eq:calib_objective} and the right-tail condition $A_R<1-\eps_R$.
+\item For expiry $T_i$, $i>1$, fit the LQD slice to quotes at $T_i$ subject to
+\begin{equation}
+    G_i(\alpha_m)\ge G_{i-1}(\alpha_m)-\tau_m,
+    \qquad m=1,\ldots,M_\alpha,\label{eq:grid_calendar}
+\end{equation}
+where $\alpha_m$ is a dense quantile grid and $\tau_m\ge0$ is a tiny numerical tolerance.
+\item If quotes are noisy, introduce non-negative slacks $s_m$ and penalize $\sum_m\lambda_m s_m^2$:
+\begin{equation}
+    G_i(\alpha_m)+s_m\ge G_{i-1}(\alpha_m),
+    \qquad s_m\ge0.\label{eq:slack_calendar}
+\end{equation}
+The slacks identify calendar inconsistencies in the input data.
+\item After all listed expiries are fitted, interpolate the integrated upper-quantile curves $G_T(\alpha)$ monotonically in $T$, or interpolate the option prices directly under the same monotonicity constraint.
+\end{enumerate}
+
+The continuum constraint \eqref{eq:lqd_calendar} is exact.  The grid version \eqref{eq:grid_calendar} is an approximation whose accuracy depends on $M_\alpha$ and on the smoothness of $Q_i$.  In production, a grid that is uniform in logit coordinate $z$ is preferable to a grid uniform in $u$, because it allocates more points to the tails that control wings.
+
+\subsection{Relation to total variance monotonicity}
+
+A common rule of thumb is to require $w(k,T)$ to be nondecreasing in $T$ for each fixed log-moneyness $k$.  Under deterministic proportional carry this is equivalent to call-price monotonicity because the Black price is increasing in total variance.  The quantile condition \eqref{eq:lqd_calendar} is stronger as an implementation primitive: it does not rely on implied-volatility inversion and it remains meaningful in far wings where implied-vol numerical conditioning is poor.  Once \eqref{eq:lqd_calendar} holds, the corresponding normalized call prices are nondecreasing for every strike, and therefore the implied total variance is nondecreasing wherever it is defined.
+
+\section{Implementation details and risk controls}
+
+\subsection{Parameter constraints}
+
+The core hard constraints are minimal:
+\begin{align}
+    A_R(\theta)&<1-\eps_R,\label{eq:hard1}\\
+    |a_n|&\le A_n^{\max}\quad\text{if the optimizer needs box stabilization.}\label{eq:hard2}
+\end{align}
+No constraint on $A_L$ is needed for the forward moment, but desk-level wing policies may impose bounds on $\beta_L$ and hence on $A_L$.  Through \eqref{eq:betaL}, a maximum left Lee slope is equivalent to a minimum reciprocal moment critical exponent.
+
+\subsection{Interpolation and extrapolation across strikes}
+
+The LQD model is not an interpolator in implied-volatility space.  Once calibrated, the full strike continuum is obtained from the quantile distribution.  Far-wing extrapolation follows from the endpoint scales $A_L$ and $A_R$.  In particular,
+\begin{equation}
+    \sigma_{\mathrm{BS}}(k,T)\sim\sqrt{\frac{\beta_R k}{T}},\qquad k\to+\infty,
+\end{equation}
+with $\beta_R$ from \eqref{eq:betaR}; similarly on the left with $|k|$ and $\beta_L$.
+
+\subsection{Choice of order $N$}
+
+The seven-parameter version $N=6$ is appropriate for standard equity-index smiles.  It has enough flexibility for level, skew, curvature, left and right shoulders, and wing asymmetry.  Event smiles may need higher order because bimodality is a statement about the density, not merely about smile curvature.  The double-hat example used $N=12$.  A practical rule is:
+\begin{equation}
+    N=6\text{ for ordinary index/equity slices},
+    \qquad N=8\text{--}14\text{ for scheduled-event slices},
+\end{equation}
+with regularization increasing in $n$ and with ATM orthogonalization to avoid moving trader handles unintentionally.
+
+\subsection{Diagnostics}
+
+The following diagnostics should be reported for every fitted slice:
+\begin{enumerate}[leftmargin=2.2em]
+\item $A_L$, $A_R$, and the implied Lee slopes $\beta_L$, $\beta_R$.
+\item The martingale shift $\mu$ and a numerical check that $\int_0^1e^{Q(u)}\dd u=1$.
+\item ATM $w_0$, volatility skew $s_0$, and curvature $\kappa_0$ from \eqref{eq:sigma0}--\eqref{eq:curv0}.
+\item Price residuals divided by vega, plus implied-vol residuals at quoted strikes.
+\item Calendar residuals $G_i(\alpha_m)-G_{i-1}(\alpha_m)$ for surfaces.
+\end{enumerate}
+
+\section{Limitations}
+
+The LQD construction eliminates butterfly arbitrage by construction, but it does not by itself eliminate calendar arbitrage across independently fitted expiries.  Calendar monotonicity must be imposed by the integrated quantile constraints in Section 10 or by an equivalent call-price monotonicity method.  Second, very high Legendre orders can fit noise and create unnecessary density oscillations.  This is not an arbitrage problem, but it is a model-risk problem; use regularization, bid-ask weighting, and event-specific priors.  Third, the model assumes continuous distributions on $(0,\infty)$ for the forward price.  Equity jump-to-default can be approximated by a very heavy left tail, but a true atom at zero would require adding a mass point outside the continuous quantile-density component.
+
+\section{Conclusion}
+
+The LQD smile model parametrizes the log quantile density rather than implied volatility.  This changes the calibration problem from ``fit a curve and then test whether it is a density'' to ``fit within the space of densities and then read off implied volatility.''  The specific basis
+\begin{equation}
+    -\log u-\log(1-u)+(1-u)L+uR+\sum_{n=2}^{N}a_nP_n(1-2u)
+\end{equation}
+combines three useful properties: positivity of the quantile density, Lee-consistent wings, and an orthogonal polynomial body.  The seven-parameter $N=6$ version fits a realistic SPX-like SVI-JW smile to near plotting accuracy while producing an arbitrage-free density.  Higher-order versions can represent scheduled-event bimodality.  For surfaces, sequential fitting with integrated upper-quantile constraints gives a direct route to calendar-arbitrage-free construction.
+
+\appendix
+\newpage
+\section{Appendix A: derivation of the SVI-JW conversion used in the example}
+
+The SVI-JW parameters used in the numerical section are related to raw SVI by
+\begin{align}
+    w_0&=vT,\label{eq:jw_w0}\\
+    b&=\frac{\sqrt{w_0}}{2}(p+c),\label{eq:jw_b}\\
+    \rho&=\frac{c-p}{c+p},\label{eq:jw_rho}\\
+    \psi&=\frac{b}{2\sqrt{w_0}}\left(\rho-\frac{m}{\sqrt{m^2+\sigma^2}}\right),\label{eq:jw_psi}\\
+    \widetilde vT&=a+b\sigma\sqrt{1-\rho^2}.\label{eq:jw_vmin}
+\end{align}
+Let
+\begin{equation}
+    \chi=\frac{m}{\sqrt{m^2+\sigma^2}}=\rho-\frac{2\psi\sqrt{w_0}}{b}
+    =\rho-\frac{4\psi}{p+c}.\label{eq:chi}
+\end{equation}
+Then
+\begin{equation}
+    m=\frac{\chi\sigma}{\sqrt{1-\chi^2}},
+    \qquad
+    \sqrt{m^2+\sigma^2}=\frac{\sigma}{\sqrt{1-\chi^2}}.
+\end{equation}
+The raw SVI ATM total variance satisfies
+\begin{equation}
+    w_0=a+b\left(-\rho m+\sqrt{m^2+\sigma^2}\right).
+\end{equation}
+Subtracting \eqref{eq:jw_vmin} gives
+\begin{equation}
+    w_0-\widetilde vT
+    =b\sigma\left(
+    \frac{1-\rho\chi}{\sqrt{1-\chi^2}}-\sqrt{1-\rho^2}
+    \right).\label{eq:sigma_solve}
+\end{equation}
+Therefore
+\begin{equation}
+    \sigma=\frac{w_0-\widetilde vT}{b\left((1-\rho\chi)/\sqrt{1-\chi^2}-\sqrt{1-\rho^2}\right)},
+    \qquad
+    m=\frac{\chi\sigma}{\sqrt{1-\chi^2}},
+\end{equation}
+then
+\begin{equation}
+    a=\widetilde vT-b\sigma\sqrt{1-\rho^2}.
+\end{equation}
+For the chosen example this gives the raw parameters reported in Section 8.
+
+\section{Appendix B: analytic variation of the quantile}
+
+Let $b_j(u)$ denote any LQD basis function in $g$; for example $b_L(u)=1-u$, $b_R(u)=u$, and $b_{a_n}(u)=P_n(1-2u)$.  Since
+\begin{equation}
+    \frac{\dd \overline Q}{\dd z}=e^{g(\Lambda(z))},
+\end{equation}
+we have for a coefficient perturbation $\theta_j$
+\begin{equation}
+    \frac{\partial \overline Q(z)}{\partial\theta_j}
+    =\int_0^z e^{g(\Lambda(s))}b_j(\Lambda(s))\dd s.\label{eq:dQbar}
+\end{equation}
+The martingale shift is
+\begin{equation}
+    \mu=-\log M,
+    \qquad
+    M=\int_{-\infty}^{\infty}e^{\overline Q(z)}\Lambda(z)(1-\Lambda(z))\dd z.
+\end{equation}
+Therefore
+\begin{equation}
+    \frac{\partial\mu}{\partial\theta_j}
+    =-\frac{1}{M}\int_{-\infty}^{\infty}e^{\overline Q(z)}
+      \frac{\partial\overline Q(z)}{\partial\theta_j}
+      \Lambda(z)(1-\Lambda(z))\dd z.\label{eq:dmu}
+\end{equation}
+The normalized quantile derivative is
+\begin{equation}
+    \frac{\partial Q(z)}{\partial\theta_j}
+    =\frac{\partial\mu}{\partial\theta_j}
+    +\frac{\partial\overline Q(z)}{\partial\theta_j}.\label{eq:dQ}
+\end{equation}
+Equations \eqref{eq:dQbar}--\eqref{eq:dQ} are enough to compute analytic gradients of prices and of the ATM functionals.  For instance, the variation of the ATM CDF point $z_0$ satisfying $Q(z_0)=0$ is
+\begin{equation}
+    \frac{\partial z_0}{\partial\theta_j}
+    =-\frac{\partial_{\theta_j}Q(z_0)}{\partial_zQ(z_0)}
+    =-\frac{\partial_{\theta_j}Q(z_0)}{e^{g(\Lambda(z_0))}}.
+\end{equation}
+The corresponding variation of $u_0=\Lambda(z_0)$ is
+\begin{equation}
+    \frac{\partial u_0}{\partial\theta_j}=u_0(1-u_0)\frac{\partial z_0}{\partial\theta_j}.
+\end{equation}
+These identities can be used to populate the Jacobian $J$ in \eqref{eq:atm_jacobian}.  In most implementations finite differences are simpler and sufficiently stable because the quadrature is deterministic and the number of parameters is modest.
+
+\section{Appendix C: pseudo-code for one-slice calibration}
+
+\begin{enumerate}[leftmargin=2.4em]
+\item Choose order $N$, strike grid $k_i$, target total variances $w_i$, and weights $\omega_i$.
+\item Initialize $\theta=(L,R,a_2,\ldots,a_N)$ by a logistic base, wing-aware base, or quantile projection.
+\item For a trial $\theta$, compute $A_R$ from \eqref{eq:AR}.  Reject or penalize if $A_R\ge1-\eps_R$.
+\item On a logit grid $z_j$, compute $u_j=\Lambda(z_j)$, $g_j$, $h_j=e^{g_j}$, and cumulative quantile values $\overline Q_j$.
+\item Compute the martingale shift $\mu$ using \eqref{eq:mu_norm}; set $Q_j=\mu+\overline Q_j$.
+\item Compute the upper asset-share tail integral $A_j$ in \eqref{eq:asset_share} by reverse cumulative quadrature.
+\item For each strike $k_i$, solve $Q(z_i)=k_i$ by monotone interpolation and price via \eqref{eq:call_logit}.
+\item Return residuals \eqref{eq:vega_resid} plus regularization.
+\item Optimize with a smooth least-squares method.  Since every feasible iterate is arbitrage-free in strike, intermediate fits can be inspected safely.
+\item Report fitted coefficients, $A_L,A_R$, Lee slopes, ATM handles, fit errors, and, for surfaces, calendar residuals.
+\end{enumerate}
+
+\section{Appendix D: coefficient tables from the numerical experiments}
+
+\begin{longtable}{lr}
+\caption{Seven-parameter LQD fit to the SPX-like SVI-JW slice.}\label{tab:svi_coeffs}\\
+\toprule
+Parameter & Value\\
+\midrule
+$L$ & -1.87350162\\
+$R$ & -3.09113957\\
+$a_2$ & 0.38052207\\
+$a_3$ & -0.04814625\\
+$a_4$ & -0.00684433\\
+$a_5$ & 0.00560282\\
+$a_6$ & 0.00216176\\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{lr}
+\caption{Thirteen-parameter LQD fit to the double-hat event slice.}\label{tab:dh_coeffs}\\
+\toprule
+Parameter & Value\\
+\midrule
+$L$ & -2.95878524\\
+$R$ & -2.96084492\\
+$a_2$ & -1.13861892\\
+$a_3$ & -0.00127725\\
+$a_4$ & 0.46596301\\
+$a_5$ & 0.00265138\\
+$a_6$ & -0.55916861\\
+$a_7$ & -0.00622975\\
+$a_8$ & 0.40038700\\
+$a_9$ & -0.00664862\\
+$a_{10}$ & -0.39218679\\
+$a_{11}$ & 0.02292111\\
+$a_{12}$ & -0.00832500\\
+\bottomrule
+\end{longtable}
+
+\begin{thebibliography}{9}
+
+\bibitem{BlackScholes1973}
+F. Black and M. Scholes.
+The pricing of options and corporate liabilities.
+\emph{Journal of Political Economy}, 81(3):637--654, 1973.
+
+\bibitem{BreedenLitzenberger1978}
+D. T. Breeden and R. H. Litzenberger.
+Prices of state-contingent claims implicit in option prices.
+\emph{Journal of Business}, 51(4):621--651, 1978.
+
+\bibitem{Gatheral2006}
+J. Gatheral.
+\emph{The Volatility Surface: A Practitioner's Guide}.
+Wiley, 2006.
+
+\bibitem{GatheralJacquier2014}
+J. Gatheral and A. Jacquier.
+Arbitrage-free SVI volatility surfaces.
+\emph{Quantitative Finance}, 14(1):59--71, 2014.
+
+\bibitem{Lee2004}
+R. W. Lee.
+The moment formula for implied volatility at extreme strikes.
+\emph{Mathematical Finance}, 14(3):469--480, 2004.
+
+\bibitem{HardyLittlewoodPolya}
+G. H. Hardy, J. E. Littlewood, and G. Polya.
+\emph{Inequalities}.
+Cambridge University Press, 1934.
+
+\bibitem{Strassen1965}
+V. Strassen.
+The existence of probability measures with given marginals.
+\emph{Annals of Mathematical Statistics}, 36(2):423--439, 1965.
+
+\end{thebibliography}
+
+\end{document}
