@@ -1,0 +1,92 @@
+"""Implied forwards via put-call parity regression.
+
+Design intent (ROADMAP Phase 3, decision recorded there): forwards are
+implied *robustly from quotes* before any model is fitted — explicit
+dividend curves come later as a fallback.  For each expiry, parity gives
+
+    C(K) - P(K) = D (F - K),
+
+linear in K.  Regressing y = C_mid - P_mid on K by least squares,
+
+    y = a + b K   with   a = D F,  b = -D
+    =>  D = -b,   F = a / D,
+
+which uses every paired strike at once and averages out quote noise.  The
+residual RMS of the regression is reported as a quality diagnostic; expiries
+with fewer than three paired strikes (or a non-positive implied discount)
+are skipped — too little data to trust a two-parameter fit.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import date
+
+import numpy as np
+
+from volfit.data.types import ChainSnapshot
+
+#: Minimum number of strikes with both call and put mids for a valid fit.
+MIN_PAIRED_STRIKES = 3
+
+
+@dataclass(frozen=True)
+class ImpliedForward:
+    """Parity-implied forward and discount factor for one expiry."""
+
+    expiry: date
+    forward: float
+    discount: float
+    n_strikes: int
+    residual_rms: float
+
+
+def implied_forward(snapshot: ChainSnapshot, expiry: date) -> ImpliedForward | None:
+    """Imply the forward for one expiry, or None if the data is insufficient.
+
+    Only strikes carrying *both* a usable call mid and put mid enter the
+    regression; one-sided or crossed quotes are excluded via `OptionQuote.mid`.
+    """
+    call_mids: dict[float, float] = {}
+    put_mids: dict[float, float] = {}
+    for quote in snapshot.quotes_for(expiry):
+        mid = quote.mid
+        if mid is None:
+            continue
+        side = call_mids if quote.call_put == "C" else put_mids
+        side[quote.strike] = mid
+
+    paired = sorted(set(call_mids) & set(put_mids))
+    if len(paired) < MIN_PAIRED_STRIKES:
+        return None
+
+    strikes = np.array(paired)
+    y = np.array([call_mids[s] - put_mids[s] for s in paired])
+
+    # Least squares y = a + b K; D = -b, F = a / D.
+    design = np.column_stack([np.ones_like(strikes), strikes])
+    (a, b), *_ = np.linalg.lstsq(design, y, rcond=None)
+    discount = -float(b)
+    if discount <= 0.0:
+        return None  # nonsensical fit (e.g. corrupt quotes)
+    forward = float(a) / discount
+
+    residuals = y - (a + b * strikes)
+    rms = float(np.sqrt(np.mean(residuals * residuals)))
+    return ImpliedForward(
+        expiry=expiry,
+        forward=forward,
+        discount=discount,
+        n_strikes=len(paired),
+        residual_rms=rms,
+    )
+
+
+def implied_forwards(snapshot: ChainSnapshot) -> dict[date, ImpliedForward]:
+    """Imply forwards for every expiry in the chain that has enough pairs."""
+    out: dict[date, ImpliedForward] = {}
+    for expiry in snapshot.expiries():
+        result = implied_forward(snapshot, expiry)
+        if result is not None:
+            out[expiry] = result
+    return out

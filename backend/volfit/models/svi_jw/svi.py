@@ -29,6 +29,10 @@ class RawSVI:
     def implied_vol(self, k: np.ndarray | float, t: float) -> np.ndarray:
         return np.sqrt(self.total_variance(k) / t)
 
+    def implied_w(self, k: np.ndarray | float) -> np.ndarray:
+        """SmileModel interface alias for total variance."""
+        return self.total_variance(k)
+
     def wing_slopes(self) -> tuple[float, float]:
         """Asymptotic total-variance slopes (left, right) = b(1 -+ rho)."""
         return self.b * (1.0 - self.rho), self.b * (1.0 + self.rho)

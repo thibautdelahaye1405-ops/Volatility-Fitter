@@ -1,0 +1,82 @@
+"""Universe selection: which tickers and expiries the user is working on.
+
+Design intent (ROADMAP Phase 3): the user picks a subset of the tickers and
+expiries the providers can serve; that choice is persisted so a session can
+be re-opened (and a 20-ticker snapshot command can iterate over it).  A
+universe is deliberately *declarative* — a ticker list plus an expiry window
+in days — and is resolved against live chains at fetch time, so it stays
+valid as expiries roll.
+
+Persistence reuses the `universes(name PK, config_json)` table of the
+VolStore schema (volfit.data.store): the dataclass serializes to JSON, which
+keeps this module free of any SQL beyond three one-liners.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import date
+
+from volfit.data.store import VolStore
+
+
+@dataclass(frozen=True)
+class Universe:
+    """A named selection of tickers and an expiry window.
+
+    `min_days`/`max_days` bound the time-to-expiry (in calendar days from the
+    as-of date) of the smiles included in the universe; the defaults keep
+    everything from tomorrow out to ten years.
+    """
+
+    name: str
+    tickers: tuple[str, ...]
+    min_days: int = 1
+    max_days: int = 3650
+
+    def filter_expiries(self, expiries: list[date], asof: date) -> list[date]:
+        """Expiries within the universe's [min_days, max_days] window, sorted."""
+        return sorted(
+            e for e in expiries if self.min_days <= (e - asof).days <= self.max_days
+        )
+
+    def to_config(self) -> dict:
+        """JSON-ready representation (inverse of `from_config`)."""
+        return {
+            "tickers": list(self.tickers),
+            "min_days": self.min_days,
+            "max_days": self.max_days,
+        }
+
+    @staticmethod
+    def from_config(name: str, config: dict) -> "Universe":
+        return Universe(
+            name=name,
+            tickers=tuple(config["tickers"]),
+            min_days=int(config["min_days"]),
+            max_days=int(config["max_days"]),
+        )
+
+
+def save_universe(store: VolStore, universe: Universe) -> None:
+    """Persist (insert or replace) a universe under its name."""
+    store.conn.execute(
+        "INSERT INTO universes (name, config_json) VALUES (?, ?) "
+        "ON CONFLICT(name) DO UPDATE SET config_json = excluded.config_json",
+        (universe.name, json.dumps(universe.to_config())),
+    )
+    store.conn.commit()
+
+
+def load_universe(store: VolStore, name: str) -> Universe | None:
+    """Load one universe by name, or None if absent."""
+    row = store.conn.execute(
+        "SELECT config_json FROM universes WHERE name = ?", (name,)
+    ).fetchone()
+    return Universe.from_config(name, json.loads(row[0])) if row else None
+
+
+def list_universes(store: VolStore) -> list[str]:
+    """Names of all stored universes, sorted."""
+    return [r[0] for r in store.conn.execute("SELECT name FROM universes ORDER BY name")]

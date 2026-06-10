@@ -55,18 +55,29 @@ def _residuals(
     inv_vega: np.ndarray,
     sqrt_weights: np.ndarray,
     reg: np.ndarray,
+    cal_idx: np.ndarray | None,
+    cal_floor: np.ndarray | None,
+    cal_weight: float,
 ) -> np.ndarray:
-    """Stacked fit + regularization + barrier residuals for one trial theta."""
+    """Stacked fit + regularization + calendar + barrier residuals."""
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
+    n_cal = 0 if cal_idx is None else cal_idx.size
     try:
         slice_ = build_slice(params)
         fit = sqrt_weights * (slice_.call_price(k) - target_price) * inv_vega
+        # Soft calendar slack (note eq. slack_calendar): penalize the later
+        # expiry's integrated upper-quantile curve dropping below the floor.
+        if n_cal:
+            cal = np.sqrt(cal_weight) * np.maximum(cal_floor - slice_.a_z[cal_idx], 0.0)
+        else:
+            cal = np.empty(0)
     except ValueError:
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(k.size, 10.0 + a_right)
+        cal = np.zeros(n_cal)
     barrier = np.log1p(np.exp(_BARRIER_SCALE * (a_right - _BARRIER_CENTER)))
-    return np.concatenate((fit, reg * theta[2:], [barrier]))
+    return np.concatenate((fit, reg * theta[2:], cal, [barrier]))
 
 
 def calibrate_slice(
@@ -78,11 +89,18 @@ def calibrate_slice(
     reg_lambda: float = 0.0,
     reg_power: float = 1.0,
     init: LQDParams | None = None,
+    calendar_indices: np.ndarray | None = None,
+    calendar_floor: np.ndarray | None = None,
+    calendar_weight: float = 1e6,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
     ``reg_lambda``/``reg_power`` implement the high-order damping
     lam * n^{2r} a_n^2; the first Legendre mode a_2..a_3 is left free.
+
+    ``calendar_indices``/``calendar_floor`` (from volfit.calib.calendar) make
+    this slice respect G(alpha) >= floor against the previous expiry; the
+    quadratic slack weight ``calendar_weight`` follows eq. (slack_calendar).
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -105,7 +123,16 @@ def calibrate_slice(
     result = least_squares(
         _residuals,
         init.to_vector(),
-        args=(k, target_price, inv_vega, sqrt_weights, reg),
+        args=(
+            k,
+            target_price,
+            inv_vega,
+            sqrt_weights,
+            reg,
+            calendar_indices,
+            calendar_floor,
+            calendar_weight,
+        ),
         method="trf",
         xtol=1e-15,
         ftol=1e-15,
