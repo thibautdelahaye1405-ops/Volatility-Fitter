@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-10 (resume here)
 
-**Done & verified (74 pytest tests green, `git log --oneline` tells the story):**
+**Done & verified (89 pytest tests green, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - Phase 2 complete **except the local-vol grid model**; calendar constraint =
@@ -21,17 +21,24 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   smile-universe round trip works (graph posterior on (atm_vol, skew, curv)
   handles → exact arbitrage-free LQD smiles + credible bands); 1k nodes < 1 s.
   Matrix-free/Hutchinson large-N path deferred to Phase 9.
-- Phase 6 partial: SmileViewer has a real pure-SVG interactive chart on mock
-  data shaped like the future API payload (`frontend/src/lib/mockData.ts`).
-- Phase 8 core: SSR scenario engine (`volfit/dynamics/ssr.py`), backend only.
+- Phase 5 core: FastAPI backend live (`volfit/api`): /universe, /smiles
+  (3 fit modes, prior save), /fit/surface (POST + WebSocket per-expiry
+  progress), /graph/solve (12-node universe), /scenario/ssr. Quote prep with
+  parity normalization + 4-sd wing filter (`api/quotes.py`). Run it:
+  `.venv\Scripts\python backend\serve.py` (port 8000, CORS for Vite).
+- Phase 6 partial: SmileViewer wired to the live API (`state/useSmile.ts`):
+  universe-driven selectors, fit-mode refetch, LIVE/MOCK badge, graceful
+  fallback to `mockData.ts` when the backend is offline.
+- Phase 8 core: SSR scenario engine (`volfit/dynamics/ssr.py`), backend +
+  /scenario/ssr endpoint (frontend regime selector still TODO).
 
 **Next up (in order):**
-1. **Phase 5 API** — deps NOW INSTALLED (fastapi 0.136, uvicorn, httpx;
-   volfit is pip-installed editable). Build `volfit/api`: /universe, /quotes,
-   /fit (WS progress), /graph, /scenario; then wire SmileViewer to live fits
-   (swap `getMockSmile()` for `api.get`).
+1. Phase 5 remainder: fit-session model (edited quote sets, undo/redo,
+   instant refit endpoint for quote select/erase/amend), process-pool for
+   parallel slice fits.
 2. Local-vol grid model (last Phase 2 item — gate behind arbitrage diagnostics).
-3. Graph Viewer frontend (Phase 7) and Term-Structure view (Phase 6 remainder).
+3. Graph Viewer frontend (Phase 7) and Term-Structure view (Phase 6 remainder);
+   wire TopBar's hardcoded "Backend offline" dot to useSmile's source flag.
 4. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
 5. CI + perf benchmarks (Phase 0 leftover + Phase 9).
 
@@ -139,7 +146,7 @@ since other models are standard.
 
 - [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests). `yahoo.py` / `bloomberg.py` / `massive.py` still TODO.
 - [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic). Discrete-dividend model later.
-- [ ] Quote prep: mid/bid/ask, haircut bid-ask mode, outlier filters, vega/spread-based weights ω_i. (mid/spread on `OptionQuote`; rest TODO)
+- [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
 - [x] Universe dataclass + persistence; provider-driven enumeration UI flow TODO.
 
@@ -165,10 +172,10 @@ coordinate is propagated as its own graph signal `z = x¹ − x⁰`.
 
 ## Phase 5 — Backend API (weeks 9–11)
 
-- [ ] Routers: `/universe`, `/quotes`, `/fit` (slice & surface, async with WebSocket progress), `/prior` (save/load), `/graph` (build, weights, solve), `/scenario` (vol-spot dynamics).
+- [x] Routers: `/universe`, `/smiles/{ticker}/{expiry}` (fit_mode=mid/bidask/haircut, prior save), `/fit/surface` (POST + WS per-expiry progress), `/graph/solve`, `/scenario/ssr`. (per-quote edit endpoints pending fit-session work)
 - [ ] Fit session model: prior fit + current fit + edited quote set per smile, undo/redo.
-- [ ] Var-swap level computation per slice (from LQD density — exact integral).
-- [ ] Performance: process-pool for parallel slice fits across expiries/assets; cache quadrature grids.
+- [x] Var-swap level computation per slice (exact integral; in `SmileDiagnostics.varSwapVol`).
+- [ ] Performance: process-pool for parallel slice fits across expiries/assets; cache quadrature grids. (in-process fit cache exists; pool TODO)
 
 **Exit criteria:** full fit-edit-refit loop driveable from HTTP/WS; OpenAPI schema published for frontend codegen.
 
@@ -176,7 +183,7 @@ coordinate is propagated as its own graph signal `z = x¹ − x⁰`.
 
 Professional, commercial, sleek (dark theme default, dense layouts, keyboard-first).
 
-- [x] Smile chart (pure SVG, zero deps, on mock data): prior vs current vs bid/ask I-beams, log-moneyness axis (fixed-strike mode designed in via `axisMode` prop), strike-range brush, crosshair readout. Live-data wiring pending Phase 5.
+- [x] Smile chart (pure SVG, zero deps): prior vs current vs bid/ask I-beams, log-moneyness axis (fixed-strike mode designed in via `axisMode` prop), strike-range brush, crosshair readout. **Wired to live fits** via `useSmile` (universe selectors, fit-mode refetch, mock fallback when backend offline).
 - [ ] Quote interaction: click to select/erase/amend calibration points; fit-to-bid-ask / mid / haircut toggle; instant refit on edit (< 100 ms perceived).
 - [ ] Quantile-function & LQD density chart: prior vs current.
 - [ ] Term-structure view: vol and total variance vs T, calendar in real time **and** event-dilated time; event markers editable.
