@@ -1,0 +1,170 @@
+// Built-in mock smile data for the Smile Viewer while the backend is offline.
+//
+// The shape of `SmileData` mirrors what the FastAPI backend will eventually
+// return, so swapping this module for a real call is a one-liner in the view:
+//   const smile = await api.get<SmileData>("/smiles/SPX/2026-12-18");
+
+/** A single point of a continuous model curve in (log-moneyness, vol) space. */
+export interface SmilePoint {
+  /** Log-moneyness k = ln(K / F). */
+  k: number;
+  /** Black-Scholes implied volatility (decimal, e.g. 0.206 = 20.6%). */
+  vol: number;
+}
+
+/** A discrete market quote expressed as a bid/ask band of implied vols. */
+export interface QuoteBand {
+  k: number;
+  bid: number;
+  ask: number;
+  mid: number;
+}
+
+/** Headline diagnostics displayed next to the chart. */
+export interface SmileDiagnostics {
+  atmVol: number;
+  skew: number;
+  curvature: number;
+  /** Left / right asymptotic total-variance slopes of the SVI wings. */
+  aLeft: number;
+  aRight: number;
+  /** Lee moment-formula slope bounds implied by the wings. */
+  leeLeft: number;
+  leeRight: number;
+  varSwapVol: number;
+}
+
+/** Everything the Smile Viewer needs for one (underlying, expiry) node. */
+export interface SmileData {
+  ticker: string;
+  expiry: string;
+  /** Year-fraction to expiry. */
+  T: number;
+  /** Forward level, used when rendering in fixed-strike axis mode. */
+  forward: number;
+  model: SmilePoint[];
+  prior: SmilePoint[];
+  quotes: QuoteBand[];
+  /** Full k extent of the data (brush bounds). */
+  kMin: number;
+  kMax: number;
+  diagnostics: SmileDiagnostics;
+}
+
+/* ------------------------------------------------------------------ */
+/* Raw-SVI model                                                       */
+/* ------------------------------------------------------------------ */
+
+/** Raw SVI parameterisation of total implied variance w(k). */
+interface SviParams {
+  a: number;
+  b: number;
+  rho: number;
+  m: number;
+  sigma: number;
+}
+
+/** Realistic SPX-like 6-month smile (raw SVI in total-variance space). */
+const SVI: SviParams = {
+  a: 0.010625,
+  b: 0.0728869,
+  rho: -0.5,
+  m: 0.0583095,
+  sigma: 0.100995,
+};
+
+const T = 0.5;
+const K_MIN = -0.4;
+const K_MAX = 0.35;
+
+/** Raw-SVI total variance: w(k) = a + b (rho (k-m) + sqrt((k-m)^2 + sigma^2)). */
+function sviTotalVariance(p: SviParams, k: number): number {
+  const x = k - p.m;
+  return p.a + p.b * (p.rho * x + Math.sqrt(x * x + p.sigma * p.sigma));
+}
+
+/** Implied vol from total variance: sigma(k) = sqrt(w(k) / T). */
+function sviVol(p: SviParams, k: number, t: number): number {
+  return Math.sqrt(sviTotalVariance(p, k) / t);
+}
+
+/* ------------------------------------------------------------------ */
+/* Deterministic pseudo-randomness (seeded LCG, no Math.random)        */
+/* ------------------------------------------------------------------ */
+
+/** Numerical-Recipes LCG returning uniforms in [0, 1). Fully deterministic. */
+function makeLcg(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Mock data generation                                                */
+/* ------------------------------------------------------------------ */
+
+/** Sample a curve on a dense uniform k grid. */
+function sampleCurve(
+  n: number,
+  volOf: (k: number) => number,
+): SmilePoint[] {
+  const points: SmilePoint[] = [];
+  for (let i = 0; i < n; i++) {
+    const k = K_MIN + ((K_MAX - K_MIN) * i) / (n - 1);
+    points.push({ k, vol: volOf(k) });
+  }
+  return points;
+}
+
+/** Generate ~25 discrete quotes with wing-widening spreads and LCG jitter. */
+function generateQuotes(count: number, seed: number): QuoteBand[] {
+  const rand = makeLcg(seed);
+  const quotes: QuoteBand[] = [];
+  // Slightly inset strike range so wing quotes stay inside the chart.
+  const lo = K_MIN + 0.02;
+  const hi = K_MAX - 0.03;
+
+  for (let i = 0; i < count; i++) {
+    // Evenly spaced strikes with a small deterministic placement jitter.
+    const base = lo + ((hi - lo) * i) / (count - 1);
+    const k = base + (rand() - 0.5) * 0.008;
+
+    // Mid quotes scatter around the model, more noisily in the wings.
+    const wing = 1 + 4 * k * k;
+    const mid = sviVol(SVI, k, T) + (rand() - 0.5) * 0.0016 * wing;
+
+    // Half-spread: ~0.3 vol pt at the money, widening quadratically in wings.
+    const half = (0.0015 + 0.02 * k * k) * (0.85 + 0.3 * rand());
+    quotes.push({ k, bid: mid - half, ask: mid + half, mid });
+  }
+  return quotes;
+}
+
+/** Build the full mock smile payload (memoise at call site; it is pure). */
+export function getMockSmile(): SmileData {
+  const volOf = (k: number) => sviVol(SVI, k, T);
+  return {
+    ticker: "SPX",
+    expiry: "2026-12-18",
+    T,
+    forward: 6150,
+    model: sampleCurve(161, volOf),
+    // Prior fit: same shape shifted down by 0.8 vol pt for visual comparison.
+    prior: sampleCurve(161, (k) => volOf(k) - 0.008),
+    quotes: generateQuotes(25, 20260610),
+    kMin: K_MIN,
+    kMax: K_MAX,
+    diagnostics: {
+      atmVol: 0.206,
+      skew: -0.355,
+      curvature: 1.64,
+      aLeft: 0.214,
+      aRight: 0.069,
+      leeLeft: 0.097,
+      leeRight: 0.036,
+      varSwapVol: 0.212,
+    },
+  };
+}
