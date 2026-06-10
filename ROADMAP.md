@@ -8,6 +8,44 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
+## STATUS — updated 2026-06-10 (resume here)
+
+**Done & verified (74 pytest tests green, `git log --oneline` tells the story):**
+- Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
+  paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
+- Phase 2 complete **except the local-vol grid model**; calendar constraint =
+  elementwise asset-share comparison (G(α) ≡ A(z) on the shared logit grid).
+- Phase 3 core: synthetic provider + parity forwards + SQLite VolStore
+  (Yahoo/Bloomberg/Massive providers and DuckDB/Parquet history not started).
+- Phase 4 complete (dense path): 6-node golden example reproduced exactly;
+  smile-universe round trip works (graph posterior on (atm_vol, skew, curv)
+  handles → exact arbitrage-free LQD smiles + credible bands); 1k nodes < 1 s.
+  Matrix-free/Hutchinson large-N path deferred to Phase 9.
+- Phase 6 partial: SmileViewer has a real pure-SVG interactive chart on mock
+  data shaped like the future API payload (`frontend/src/lib/mockData.ts`).
+- Phase 8 core: SSR scenario engine (`volfit/dynamics/ssr.py`), backend only.
+
+**Next up (in order):**
+1. **Phase 5 API** — deps NOW INSTALLED (fastapi 0.136, uvicorn, httpx;
+   volfit is pip-installed editable). Build `volfit/api`: /universe, /quotes,
+   /fit (WS progress), /graph, /scenario; then wire SmileViewer to live fits
+   (swap `getMockSmile()` for `api.get`).
+2. Local-vol grid model (last Phase 2 item — gate behind arbitrage diagnostics).
+3. Graph Viewer frontend (Phase 7) and Term-Structure view (Phase 6 remainder).
+4. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
+5. CI + perf benchmarks (Phase 0 leftover + Phase 9).
+
+**Environment notes:**
+- venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`.
+- Engine demo: `.venv\Scripts\python backend\demo.py`.
+- Frontend: `cd frontend; npm run dev` (mock data; `npm run build` verified).
+- PyPI is **intermittently flaky** on this machine (TLS resets toward Fastly;
+  npm/Cloudflare fine). pip is configured with retries=15 in pip.ini — installs
+  succeed with patience. Suspected AV/router TLS filtering.
+- Sub-agents have no shell access here: they write code, the lead runs/verifies.
+
+---
+
 ## Architecture overview
 
 ```
@@ -63,10 +101,10 @@ Docs/            # technical notes (existing)
 
 ## Phase 0 — Foundations (week 1)
 
-- [ ] Git init, `pyproject.toml` (uv or poetry), ruff + mypy, pytest; frontend scaffold (Vite + TS + Tailwind).
+- [x] Git init, `pyproject.toml` (setuptools), pytest; frontend scaffold (Vite + TS + Tailwind v4). (ruff configured, mypy not yet)
 - [ ] CI: lint, type-check, unit tests, golden-number tests.
-- [ ] Shared conventions doc: file-size policy (≤400 lines), docstring style, commenting policy.
-- [ ] Skeleton FastAPI app + React shell with routing (Smile / Surface / Graph tabs).
+- [x] Shared conventions: ≤400-line files, module docstrings referencing Doc equation numbers (established in code).
+- [x] React shell with tab routing (Smile / Term Structure / Graph); FastAPI skeleton pending (deps installed late due to network).
 
 **Exit criteria:** `make dev` runs backend + frontend hot-reload; CI green.
 
@@ -75,35 +113,35 @@ Docs/            # technical notes (existing)
 The LQD note (`Docs/lqd_model_note.tex`) is the centerpiece; implement it first
 since other models are standard.
 
-- [ ] `core/black.py`: normalized Black formula B(k,w), vega, implied-vol inversion (Jäckel-style rational guess + Householder), total-variance utilities.
-- [ ] `models/lqd/basis.py`: Legendre basis P₂..P_N (recursion), logit grid, endpoint scales A_L/A_R, Lee slopes β_L/β_R (eqs. AL/AR, betaL/betaR).
-- [ ] `models/lqd/quadrature.py`: logit-coordinate quadrature for Q̄(z), martingale shift μ, asset-share integral A(z), analytic tail corrections (eqs. right/left_tail_corr); single grid reused for all strikes; Numba-jitted.
-- [ ] `models/lqd/pricing.py`: C(k) via eq. call_logit, monotone interpolation; density & quantile extraction for charts.
-- [ ] `models/lqd/atm.py`: exact ATM level/skew/curvature functionals (σ₀, s₀, κ₀), Jacobian J, ATM-orthogonal coordinates (linear + implicit-function exact version).
-- [ ] `models/lqd/calibrate.py`: vega-weighted least squares (eq. calib_objective), hard constraint A_R < 1−ε, n^{2r} regularization, 3 initializers (logistic, wing-aware, quantile-projection).
-- [ ] Golden tests: reproduce the note's two benchmarks — SVI-JW SPX-like fit (max err ≈1.2 vol bp, coefficients of eq. svi_lqd_coeffs) and N=12 double-hat event fit.
+- [x] `core/black.py`: normalized Black formula B(k,w), vega, robust implied-variance inversion (Brent; closed-form ATM).
+- [x] `models/lqd/basis.py`: Legendre recursion, endpoint scales A_L/A_R, Lee slopes.
+- [x] `models/lqd/quadrature.py`: logit quadrature, martingale shift μ, asset-share A(z), analytic tail corrections (NumPy-vectorized; Numba not needed — slice fit ≈ 30 ms).
+- [x] Pricing via cubic-Hermite interpolation on exact nodal derivatives (`models/lqd/interp.py`) — required for clean FD Greeks; density/quantile extraction in `LQDSlice`.
+- [x] `models/lqd/atm.py` exact ATM functionals + `models/lqd/ortho.py` (Jacobian, least-norm primary directions, kernel shape modes, exact Newton retargeting).
+- [x] `models/lqd/calibrate.py`: vega-weighted LSQ, A_R barrier, n^{2r} regularization, logistic initializer. (wing-aware & quantile-projection initializers still TODO)
+- [x] Golden tests: both note benchmarks reproduced (μ to 4e-8; SVI fit < 2 vol bp; double-hat bimodal).
 
 **Exit criteria:** both paper benchmarks reproduced to stated accuracy; slice fit < 50 ms.
 
 ## Phase 2 — Quant core: remaining models & no-arbitrage (weeks 4–6)
 
-- [ ] `models/svi_jw/`: raw-SVI + JW parametrization, conversion (Appendix A formulas), Gatheral–Jacquier butterfly conditions, calibration.
-- [ ] `models/sigmoid/`: sigmoid smile parametrization + fit.
-- [ ] `models/localvol/`: full local-vol grid on strike×T — continuous and piecewise-affine variants; Dupire consistency check; fast PDE/analytic pricer for round-trip validation.
-- [ ] Common `SmileModel` interface: `price(k)`, `iv(k)`, `density()`, `quantile()`, `params`, `diagnostics()` so the viewer & graph layer are model-agnostic.
-- [ ] `calib/arbitrage.py`: butterfly check (model-free, for non-LQD models), calendar check via integrated upper-quantile constraint G_i(α) ≤ G_j(α) (eq. lqd_calendar) with slack diagnostics; **toggleable** per CLAUDE.md.
-- [ ] `calib/event_time.py`: event-dilated time — business-time clock with event variance bumps; toggleable; feeds term-structure charts.
-- [ ] Surface construction: sequential nearest-to-farthest fitting with calendar constraints on a logit-uniform α-grid (note §10.2).
+- [x] `models/svi_jw/`: raw-SVI + JW conversion (Appendix A). (SVI own calibration & Gatheral–Jacquier butterfly conditions still TODO)
+- [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
+- [ ] `models/localvol/`: full local-vol grid on strike×T — continuous and piecewise-affine variants; Dupire consistency check; fast pricer for round-trip validation. **← biggest remaining Phase-2 item**
+- [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
+- [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)
+- [x] `calib/event_time.py`: dilated clock + variance-lumping term-structure interpolation; toggleable.
+- [x] Surface construction: sequential nearest-to-farthest with warm starts and violation diagnostics (`calib/surface.py`).
 
 **Exit criteria:** all 4 model families fit a test surface; arbitrage diagnostics (A_L, A_R, Lee slopes, μ, calendar residuals) reported for every fit.
 
 ## Phase 3 — Data layer (weeks 5–7, parallel with Phase 2)
 
-- [ ] Provider interface `OptionChainProvider`: `yahoo.py` (scraper w/ rate limiting & caching), `bloomberg.py` (blpapi, stub if no terminal), `massive.py`.
-- [ ] Forward & dividend implication: put-call parity regression per expiry → implied forward + borrow; explicit dividend curve input as fallback (decision recorded: start with parity-implied forwards, add discrete-dividend model later).
-- [ ] Quote prep: mid/bid/ask, haircut bid-ask mode, outlier filters, vega/spread-based weights ω_i.
-- [ ] Storage: SQLite schema (instruments, snapshots, fits, priors, graph configs) + Parquet/DuckDB for chain history; migration tooling.
-- [ ] Universe selection service: enumerate available tickers/expiries from providers; user picks subset → persisted universe.
+- [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests). `yahoo.py` / `bloomberg.py` / `massive.py` still TODO.
+- [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic). Discrete-dividend model later.
+- [ ] Quote prep: mid/bid/ask, haircut bid-ask mode, outlier filters, vega/spread-based weights ω_i. (mid/spread on `OptionQuote`; rest TODO)
+- [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
+- [x] Universe dataclass + persistence; provider-driven enumeration UI flow TODO.
 
 **Exit criteria:** one command snapshots a 20-ticker universe from Yahoo into storage; forwards implied; quotes ready for calibration.
 
@@ -115,13 +153,13 @@ Nodes = smiles `(underlying, T)`; node scalar field = smile parameters in
 — this is what makes the LQD ATM orthogonalization load-bearing: each
 coordinate is propagated as its own graph signal `z = x¹ − x⁰`.
 
-- [ ] `graph/build.py`: node registry, directed weights W (user input + defaults from sector/maturity proximity), row-normalized K, stationary π, reversibilized conductances c_ij, incidence B.
-- [ ] `graph/operators.py`: L_rev = BCBᵀ, directed residual L_dir = (I−K)ᵀΠ(I−K), mobility Laplacian A_ρ = BMBᵀ (log-mean θ).
-- [ ] `graph/prior.py`: increment precision Q_Δ = D_κ + ηL_dir + λ(A_ρ+νI)⁻¹ (matrix-free matvec, sparse solve); predictive K⁻ = P₀⁻¹ + Q_Δ⁻¹.
-- [ ] `graph/posterior.py`: covariance-form update exploiting n≪N (n solves Q_Δu_a = Hᵀe_a, small S_y solve); posterior means μ⁺ and **marginal** precisions 1/K⁺_ii (selected-inverse via sparse Cholesky, Hutchinson fallback).
-- [ ] `graph/hyper.py`: empirical-Bayes marginal likelihood ℓ(θ) + gradient, held-out standardized-residual calibration ζ_i.
-- [ ] Round-trip: posterior coordinates → exact ATM Newton solve → full arbitrage-free LQD smiles for **every** node, with per-node confidence bands from marginal precision.
-- [ ] Validation harness: hide x% of liquid smiles, extrapolate, score vs truth; calibration plots.
+- [x] `graph/build.py`: node registry, row-normalized K, stationary π (dense solve), reversibilized conductances. (default-weight rules from sector/maturity proximity TODO)
+- [x] `graph/operators.py`: L_rev, L_dir, mobility Laplacian A_ρ (log + arithmetic means).
+- [x] `graph/prior.py`: Q_Δ = D_κ + ηL_dir + λ(A_ρ+νI)⁻¹ — **dense path** (fine to ~2k nodes; matrix-free/sparse deferred to Phase 9).
+- [x] `graph/posterior.py`: covariance-form update, marginal precisions 1/K⁺_ii. (Hutchinson/selected-inverse large-N path deferred)
+- [x] `graph/hyper.py`: marginal likelihood ℓ(θ) (Cholesky), standardized residuals ζ_i. (analytic gradient + auto-tune optimizer TODO)
+- [x] Round trip (`graph/smile_universe.py`): handles (atm_vol, skew, curv) propagated per-coordinate → exact ATM retargeting → arbitrage-free LQD smiles + credible bands. Tuning insight: η such that smoothness residual ≈ 1/3 of increment scale gives ~75% same-ticker / ~6% cross-ticker propagation.
+- [ ] Validation harness: hide x% of liquid smiles, extrapolate, score vs truth; calibration plots. (basic version exists in tests; systematic harness TODO)
 
 **Exit criteria:** 6-node running example of the note reproduced exactly (μ⁺, π⁺ tables); 1k-node synthetic universe updates < 1 s; held-out validation report.
 
@@ -138,7 +176,7 @@ coordinate is propagated as its own graph signal `z = x¹ − x⁰`.
 
 Professional, commercial, sleek (dark theme default, dense layouts, keyboard-first).
 
-- [ ] Smile chart: prior vs current fit vs bid/ask quote bands; normalized (k = log K/F or delta) and fixed-strike axes; strike-range slider, wheel zoom, crosshair readout.
+- [x] Smile chart (pure SVG, zero deps, on mock data): prior vs current vs bid/ask I-beams, log-moneyness axis (fixed-strike mode designed in via `axisMode` prop), strike-range brush, crosshair readout. Live-data wiring pending Phase 5.
 - [ ] Quote interaction: click to select/erase/amend calibration points; fit-to-bid-ask / mid / haircut toggle; instant refit on edit (< 100 ms perceived).
 - [ ] Quantile-function & LQD density chart: prior vs current.
 - [ ] Term-structure view: vol and total variance vs T, calendar in real time **and** event-dilated time; event markers editable.
@@ -160,8 +198,7 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 
 ## Phase 8 — Vol-spot dynamics & scenarios (weeks 15–17)
 
-- [ ] `dynamics/ssr.py`: SSR (skew-stickiness ratio) on ATM vol; configurable SSR parameter.
-- [ ] Sticky-strike and sticky-local-vol-grid scenario modes; spot-shift scenario engine producing shifted surfaces for all three regimes.
+- [x] `dynamics/ssr.py`: SSR on ATM vol, configurable; sticky-moneyness / sticky-strike / sticky-local-vol (SSR=2 short-maturity rule) regimes with exact shape-preservation invariant. (true sticky-local-vol-grid mode awaits the localvol model)
 - [ ] Frontend: regime selector + spot-shift slider with live re-render of shifted smile.
 
 **Exit criteria:** spot ±5% scenario renders all three regimes consistently for any fitted surface.

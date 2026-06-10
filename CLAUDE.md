@@ -51,3 +51,22 @@ Comment codebase clearly and cleanly, so it can be read by human or other agents
 Compute time should be optimized ; calculations should be lightning-fast
 UX should be professional, commercial, super sleek
 Lead and Spawn multiple sub-specialized sub-agents
+
+**********************
+
+Development state & how to resume :
+
+READ ROADMAP.md FIRST — its "STATUS" section at the top says exactly what is
+done, what is next (in priority order), and all environment caveats.
+When the user says "continue implementing the roadmap", work down that
+STATUS "Next up" list, keeping the same conventions already in the code:
+golden tests against the Docs/ notes, module docstrings citing equation
+numbers, files <= 400 lines, commit after each green test batch.
+
+Key commands (Windows, repo root):
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (74 green as of 2026-06-10)
+- Demo:     .venv\Scripts\python backend\demo.py
+- Frontend: cd frontend ; npm run dev   (build verified; mock data until API exists)
+- volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx installed.
+- PyPI is intermittently flaky here (TLS resets; pip.ini has retries=15 — just retry).
+- Sub-agents have no shell access: they write code; the lead agent runs and verifies.
