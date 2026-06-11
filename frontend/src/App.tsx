@@ -34,7 +34,11 @@ export default function App() {
         <main className="flex-1 overflow-auto">
           {activeTab === "smile" && <SmileViewer />}
           {activeTab === "term" && <TermStructureViewer />}
-          {activeTab === "graph" && <GraphViewer />}
+          {activeTab === "graph" && (
+            // Drill-in: GraphViewer points the shared smile session at a
+            // node, then asks the shell to switch to the Smile workspace.
+            <GraphViewer onNavigateToSmile={() => setActiveTab("smile")} />
+          )}
         </main>
       </div>
     </SmileSessionProvider>

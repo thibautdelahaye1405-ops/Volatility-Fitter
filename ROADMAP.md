@@ -10,11 +10,14 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-10 (resume here)
 
-**Done & verified (97 pytest tests green, `git log --oneline` tells the story):**
+**Done & verified (107 pytest tests green, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
-- Phase 2 complete **except the local-vol grid model**; calendar constraint =
-  elementwise asset-share comparison (G(α) ≡ A(z) on the shared logit grid).
+- **Phase 2 complete**: calendar constraint = elementwise asset-share
+  comparison; local-vol grid model done (`models/localvol/`): bilinear/pw_t
+  grid, Crank–Nicolson Dupire forward PDE pricer (adaptive 7.5-sd mesh,
+  <0.5 vol bp flat round trip in ~20 ms), Dupire extraction with butterfly
+  gating, no-arb diagnostics. Not yet exposed via the API.
 - Phase 3 core: synthetic provider + parity forwards + SQLite VolStore
   (Yahoo/Bloomberg/Massive providers and DuckDB/Parquet history not started).
 - Phase 4 complete (dense path): 6-node golden example reproduced exactly;
@@ -36,12 +39,22 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   Quote interaction done: click-select quotes, Del exclude/restore, arrow-key
   mid amend (Shift = coarse), Ctrl+Z/Y undo/redo, excluded quotes dimmed,
   amended mids amber (drag-to-amend not implemented; keyboard-first per spec).
+- Phase 7 core: Graph Viewer live (`views/GraphViewer.tsx` + `useGraph.ts` +
+  `GraphChart.tsx`): SVG lattice (tickers × expiries, calendar/cross edges),
+  click to light nodes, per-node dAtmVol inputs, η slider, solve via
+  /graph/solve (+ new GET /graph/nodes baseline endpoint), shift coloring +
+  sd halos + tooltips, double-click drills into the Smile tab. Verified in
+  headless Edge (screenshots: 2 observed → 10 extrapolated, sane decay).
 - Phase 8 core: SSR scenario engine (`volfit/dynamics/ssr.py`), backend +
   /scenario/ssr endpoint (frontend regime selector still TODO).
+- API slice fits use gentle high-order damping (REG_LAMBDA=1e-6 in
+  `api/service.py`) — without it, slices left with ~7 quotes after the wing
+  filter interpolate exactly with wild handles (GAMMA 1M fitted skew +0.78).
 
 **Next up (in order):**
-1. Local-vol grid model (last Phase 2 item — gate behind arbitrage diagnostics).
-2. Graph Viewer frontend (Phase 7) and Term-Structure view (Phase 6 remainder).
+1. Term-Structure view (Phase 6 remainder) + scenario/regime selector in the
+   SmileViewer (Phase 8 frontend); quantile/density chart; prior management UI.
+2. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode.
 3. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
 4. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
@@ -139,7 +152,7 @@ since other models are standard.
 
 - [x] `models/svi_jw/`: raw-SVI + JW conversion (Appendix A). (SVI own calibration & Gatheral–Jacquier butterfly conditions still TODO)
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
-- [ ] `models/localvol/`: full local-vol grid on strike×T — continuous and piecewise-affine variants; Dupire consistency check; fast pricer for round-trip validation. **← biggest remaining Phase-2 item**
+- [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
 - [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
 - [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)
 - [x] `calib/event_time.py`: dilated clock + variance-lumping term-structure interpolation; toggleable.
@@ -200,11 +213,11 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 
 ## Phase 7 — Graph Viewer frontend (weeks 13–16)
 
-- [ ] Graph visualization: force-directed / clustered layout (underlyings grouped, expiries ordered radially); WebGL for large graphs; pan/zoom.
-- [ ] Node states: **lit** (observed at t=1) vs **dark** (to be extrapolated); selection by click, lasso, ticker/expiry filters.
-- [ ] Edge-weight input: matrix editor + bulk rules (same-ticker adjacent-expiry weight, sector weight, custom CSV upload).
-- [ ] Solver panel: κ, η, λ, ν sliders with live re-solve; empirical-Bayes "auto-tune" button; convergence/calibration readout.
-- [ ] Result overlay: posterior mean shifts as node color, marginal precision as halo/size; click node → jump to its smile in Smile Viewer with confidence bands.
+- [x] Graph visualization: structured SVG lattice (ticker columns × expiry rows, calendar + cross-ticker edges) — chosen over force-directed for legibility at current scale; WebGL/pan-zoom deferred to large-universe work.
+- [x] Node states: **lit** (observed) vs **dark** (extrapolated), toggled by click, with per-node dAtmVol inputs. (lasso + ticker/expiry filters TODO)
+- [ ] Edge-weight input: matrix editor + bulk rules (same-ticker adjacent-expiry weight, sector weight, custom CSV upload). (weights currently fixed server-side: 10 calendar / 2 cross)
+- [ ] Solver panel: κ, η, λ, ν sliders with live re-solve; empirical-Bayes "auto-tune" button; convergence/calibration readout. (η reach slider done; rest TODO)
+- [x] Result overlay: posterior shift as diverging node color, marginal sd as halo size/fade, hover tooltip with base→post + credible band; double-click → jump to that smile in the Smile Viewer.
 
 **Exit criteria:** end-to-end demo — observe 5 smiles, light them, solve, watch 200 dark smiles update with uncertainty, drill into any one.
 

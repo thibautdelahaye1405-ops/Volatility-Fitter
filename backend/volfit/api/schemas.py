@@ -172,6 +172,23 @@ class GraphSolveResponse(BaseModel):
     nodes: list[GraphNodeResult]
 
 
+class GraphNodeInfo(BaseModel):
+    """Baseline (pre-solve) fitted handles of one universe node."""
+
+    ticker: str
+    expiry: str
+    t: float
+    atmVol: float
+    skew: float
+    curvature: float
+
+
+class GraphNodesResponse(BaseModel):
+    """The full smile universe with baseline handles (Graph Viewer lattice)."""
+
+    nodes: list[GraphNodeInfo]
+
+
 # ------------------------------------------------------------------ scenario
 class ScenarioRequest(BaseModel):
     """SSR scenario: shift one smile for a spot move under a dynamics regime.

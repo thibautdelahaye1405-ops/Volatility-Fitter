@@ -40,6 +40,22 @@ def solved(client, universe):
     return expiry_6m, nodes
 
 
+# -- graph nodes (baseline lattice) ------------------------------------------
+
+
+def test_graph_nodes_serves_baseline_lattice(client, universe):
+    nodes = client.get("/graph/nodes").json()["nodes"]
+    assert len(nodes) == 12  # 3 tickers x 4 expiries
+    by_name = {(n["ticker"], n["expiry"]): n for n in nodes}
+    for ticker, ladder in universe["expiries"].items():
+        for rung in ladder:
+            node = by_name[(ticker, rung["expiry"])]
+            assert node["t"] == pytest.approx(rung["t"])
+            assert 0.15 < node["atmVol"] < 0.30
+            assert node["skew"] < 0  # equity-like synthetic smiles
+            assert np.isfinite(node["curvature"])
+
+
 # -- graph solve -------------------------------------------------------------
 
 

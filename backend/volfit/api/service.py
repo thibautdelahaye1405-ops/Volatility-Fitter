@@ -52,6 +52,14 @@ from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
 N_MODEL_POINTS = 161
 K_PAD = 0.02
 
+#: High-order Legendre damping for every API slice fit (lam * n^{2r} a_n^2).
+#: Short-dated slices can have as few quotes as LQD parameters after the wing
+#: filter — unregularized they interpolate exactly with wild ATM handles
+#: (observed: a 7-quote 1M slice fitting skew +0.78, curvature -40). 1e-6
+#: costs only bp-level fit error on liquid slices and restores sane shapes.
+REG_LAMBDA = 1e-6
+REG_POWER = 1.0
+
 #: Graph weights: strong calendar chain within a ticker, weaker cross-ticker
 #: edges at equal expiry (regime validated in tests/test_smile_universe.py).
 SAME_TICKER_WEIGHT = 10.0
@@ -104,7 +112,9 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     k, w, weights = edited_fit_inputs(
         state, ticker, iso, prepared, fit_weights(prepared, fit_mode)
     )
-    result = calibrate_slice(k, w, t=prepared.t, weights=weights)
+    result = calibrate_slice(
+        k, w, t=prepared.t, weights=weights, reg_lambda=REG_LAMBDA, reg_power=REG_POWER
+    )
     record = FitRecord(prepared=prepared, result=result)
     state.store_fit(key, record)
     return record
@@ -219,6 +229,8 @@ def fit_surface_slice(
         w,
         t=prepared.t,
         weights=weights,
+        reg_lambda=REG_LAMBDA,
+        reg_power=REG_POWER,
         init=prev.params if prev is not None else None,
         calendar_indices=cal_idx,
         calendar_floor=cal_floor,
