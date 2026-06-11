@@ -18,6 +18,12 @@ export interface QuoteBand {
   bid: number;
   ask: number;
   mid: number;
+  /** Stable quote identity, preserved across refits (unlike array position). */
+  index: number;
+  /** True when the quote is excluded from the calibration. */
+  excluded: boolean;
+  /** True when the mid has been manually amended by the user. */
+  amended: boolean;
 }
 
 /** Headline diagnostics displayed next to the chart. */
@@ -48,6 +54,9 @@ export interface SmileData {
   /** Full k extent of the data (brush bounds). */
   kMin: number;
   kMax: number;
+  /** Whether the backend fit session has edits to undo / redo. */
+  canUndo: boolean;
+  canRedo: boolean;
   diagnostics: SmileDiagnostics;
 }
 
@@ -137,7 +146,15 @@ function generateQuotes(count: number, seed: number): QuoteBand[] {
 
     // Half-spread: ~0.3 vol pt at the money, widening quadratically in wings.
     const half = (0.0015 + 0.02 * k * k) * (0.85 + 0.3 * rand());
-    quotes.push({ k, bid: mid - half, ask: mid + half, mid });
+    quotes.push({
+      k,
+      bid: mid - half,
+      ask: mid + half,
+      mid,
+      index: i,
+      excluded: false,
+      amended: false,
+    });
   }
   return quotes;
 }
@@ -156,6 +173,9 @@ export function getMockSmile(): SmileData {
     quotes: generateQuotes(25, 20260610),
     kMin: K_MIN,
     kMax: K_MAX,
+    // No fit session in mock mode, so there is never anything to undo.
+    canUndo: false,
+    canRedo: false,
     diagnostics: {
       atmVol: 0.206,
       skew: -0.355,

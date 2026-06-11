@@ -1,5 +1,6 @@
-// Top navigation bar: product branding plus workspace tabs.
+// Top navigation bar: product branding, workspace tabs, backend status.
 import type { TabDef, TabId } from "../App";
+import { useSmileSession } from "../state/smileSession";
 
 interface TopBarProps {
   tabs: TabDef[];
@@ -8,6 +9,16 @@ interface TopBarProps {
 }
 
 export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
+  const { source, loading } = useSmileSession();
+
+  // Connectivity readout: pulsing while the first payload is in flight,
+  // then green for the live backend or amber for the built-in mock fallback.
+  const status = loading
+    ? { dot: "animate-pulse bg-slate-500", label: "Connecting…" }
+    : source === "live"
+      ? { dot: "bg-emerald-500", label: "Live · :8000" }
+      : { dot: "bg-amber-400", label: "Mock data" };
+
   return (
     <header className="flex h-14 shrink-0 items-center gap-8 border-b border-slate-800 bg-surface-900 px-6">
       {/* Brand mark */}
@@ -46,10 +57,10 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
         })}
       </nav>
 
-      {/* Right-side status placeholder (backend connectivity, user, etc.) */}
-      <div className="ml-auto flex items-center gap-2 text-xs text-slate-500">
-        <span className="h-1.5 w-1.5 rounded-full bg-slate-600" />
-        Backend offline
+      {/* Right-side status: live backend connectivity */}
+      <div className="ml-auto flex items-center gap-2 text-xs text-slate-400">
+        <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+        {status.label}
       </div>
     </header>
   );

@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-10 (resume here)
 
-**Done & verified (89 pytest tests green, `git log --oneline` tells the story):**
+**Done & verified (97 pytest tests green, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - Phase 2 complete **except the local-vol grid model**; calendar constraint =
@@ -26,21 +26,26 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   progress), /graph/solve (12-node universe), /scenario/ssr. Quote prep with
   parity normalization + 4-sd wing filter (`api/quotes.py`). Run it:
   `.venv\Scripts\python backend\serve.py` (port 8000, CORS for Vite).
-- Phase 6 partial: SmileViewer wired to the live API (`state/useSmile.ts`):
-  universe-driven selectors, fit-mode refetch, LIVE/MOCK badge, graceful
-  fallback to `mockData.ts` when the backend is offline.
+- Phase 5 fit sessions: per-(ticker, expiry) quote edits (exclude/include/
+  amend/reset) with bounded undo/redo (`api/session.py`), instant refit via
+  POST /smiles/{t}/{e}/edits|undo|redo; edits shared across fit modes via a
+  version-stamped fit-cache key.
+- Phase 6 partial: SmileViewer wired to the live API (`state/useSmile.ts` +
+  `state/smileSession.tsx` context): universe-driven selectors, fit-mode
+  refetch, mock fallback when offline, TopBar live/mock/connecting status.
+  Quote interaction done: click-select quotes, Del exclude/restore, arrow-key
+  mid amend (Shift = coarse), Ctrl+Z/Y undo/redo, excluded quotes dimmed,
+  amended mids amber (drag-to-amend not implemented; keyboard-first per spec).
 - Phase 8 core: SSR scenario engine (`volfit/dynamics/ssr.py`), backend +
   /scenario/ssr endpoint (frontend regime selector still TODO).
 
 **Next up (in order):**
-1. Phase 5 remainder: fit-session model (edited quote sets, undo/redo,
-   instant refit endpoint for quote select/erase/amend), process-pool for
-   parallel slice fits.
-2. Local-vol grid model (last Phase 2 item — gate behind arbitrage diagnostics).
-3. Graph Viewer frontend (Phase 7) and Term-Structure view (Phase 6 remainder);
-   wire TopBar's hardcoded "Backend offline" dot to useSmile's source flag.
-4. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
-5. CI + perf benchmarks (Phase 0 leftover + Phase 9).
+1. Local-vol grid model (last Phase 2 item — gate behind arbitrage diagnostics).
+2. Graph Viewer frontend (Phase 7) and Term-Structure view (Phase 6 remainder).
+3. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
+4. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+   parallel slice fits deferred here (single fit ~30 ms, instant-refit
+   target already met).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`.
@@ -172,8 +177,8 @@ coordinate is propagated as its own graph signal `z = x¹ − x⁰`.
 
 ## Phase 5 — Backend API (weeks 9–11)
 
-- [x] Routers: `/universe`, `/smiles/{ticker}/{expiry}` (fit_mode=mid/bidask/haircut, prior save), `/fit/surface` (POST + WS per-expiry progress), `/graph/solve`, `/scenario/ssr`. (per-quote edit endpoints pending fit-session work)
-- [ ] Fit session model: prior fit + current fit + edited quote set per smile, undo/redo.
+- [x] Routers: `/universe`, `/smiles/{ticker}/{expiry}` (fit_mode=mid/bidask/haircut, prior save), `/fit/surface` (POST + WS per-expiry progress), `/graph/solve`, `/scenario/ssr`, `/smiles/{t}/{e}/edits|undo|redo`.
+- [x] Fit session model: edited quote set per smile (exclude/include/amend/reset), bounded undo/redo, version-stamped fit cache (`api/session.py`).
 - [x] Var-swap level computation per slice (exact integral; in `SmileDiagnostics.varSwapVol`).
 - [ ] Performance: process-pool for parallel slice fits across expiries/assets; cache quadrature grids. (in-process fit cache exists; pool TODO)
 
@@ -184,7 +189,7 @@ coordinate is propagated as its own graph signal `z = x¹ − x⁰`.
 Professional, commercial, sleek (dark theme default, dense layouts, keyboard-first).
 
 - [x] Smile chart (pure SVG, zero deps): prior vs current vs bid/ask I-beams, log-moneyness axis (fixed-strike mode designed in via `axisMode` prop), strike-range brush, crosshair readout. **Wired to live fits** via `useSmile` (universe selectors, fit-mode refetch, mock fallback when backend offline).
-- [ ] Quote interaction: click to select/erase/amend calibration points; fit-to-bid-ask / mid / haircut toggle; instant refit on edit (< 100 ms perceived).
+- [x] Quote interaction: click to select, Del to exclude/restore, arrow-key mid amend, Ctrl+Z/Y undo/redo; fit-to-bid-ask / mid / haircut toggle; instant refit on edit (~30 ms server-side). (drag-to-amend TODO if wanted)
 - [ ] Quantile-function & LQD density chart: prior vs current.
 - [ ] Term-structure view: vol and total variance vs T, calendar in real time **and** event-dilated time; event markers editable.
 - [ ] Diagnostics panel: A_L/A_R, Lee slopes, ATM handles (w₀, s₀, κ₀ — directly editable, mapped through exact ATM coordinates), var-swap level, calendar residuals.

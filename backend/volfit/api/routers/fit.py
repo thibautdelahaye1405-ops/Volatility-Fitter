@@ -50,13 +50,21 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
         fitted = []
         for index, (iso, prepared, weights) in enumerate(plan):
             result = await anyio.to_thread.run_sync(
-                service.fit_surface_slice, prepared, weights, prev, body.enforceCalendar
+                service.fit_surface_slice,
+                state,
+                body.ticker,
+                iso,
+                prepared,
+                weights,
+                prev,
+                body.enforceCalendar,
             )
             residuals.append(
                 0.0 if prev is None else calendar_violation(prev.slice, result.slice)
             )
             state.store_fit(
-                (body.ticker, iso, body.fitMode), FitRecord(prepared=prepared, result=result)
+                service.fit_key(state, body.ticker, iso, body.fitMode),
+                FitRecord(prepared=prepared, result=result),
             )
             fitted.append((iso, result))
             await websocket.send_json(

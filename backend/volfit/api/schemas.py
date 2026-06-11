@@ -30,12 +30,21 @@ class SmilePoint(BaseModel):
 
 
 class QuoteBand(BaseModel):
-    """One market quote as a bid/ask band of implied vols at log-moneyness k."""
+    """One market quote as a bid/ask band of implied vols at log-moneyness k.
+
+    ``index`` is the quote's position in the prepared array — stable for the
+    session and the key used by quote edits. ``excluded`` quotes are dropped
+    from calibration but still listed (the UI dims them); ``amended`` flags a
+    user-overridden mid (bid/ask stay the original market band).
+    """
 
     k: float
     bid: float
     ask: float
     mid: float
+    index: int
+    excluded: bool
+    amended: bool
 
 
 class SmileDiagnostics(BaseModel):
@@ -64,6 +73,8 @@ class SmileData(BaseModel):
     kMin: float
     kMax: float
     diagnostics: SmileDiagnostics
+    canUndo: bool  # quote-edit session undo/redo availability
+    canRedo: bool  # (both False when the node has no edit session yet)
 
 
 # ------------------------------------------------------------------ universe
@@ -86,6 +97,21 @@ class PriorSavedResponse(BaseModel):
     """Acknowledgement of a prior-curve save."""
 
     saved: bool = True
+
+
+# --------------------------------------------------------------- quote edits
+class QuoteEditRequest(BaseModel):
+    """One quote-set edit on a smile node (fit-session model).
+
+    ``exclude``/``include`` require ``index``; ``amend`` requires ``index``
+    and ``mid`` (the replacement mid *implied vol*, e.g. 0.21); ``reset``
+    clears every edit. Semantic validation (range, missing fields, the
+    minimum-quote guard) lives in volfit.api.session.EditSession.apply.
+    """
+
+    action: Literal["exclude", "include", "amend", "reset"]
+    index: int | None = None
+    mid: float | None = None
 
 
 # --------------------------------------------------------------- surface fit

@@ -1,9 +1,10 @@
 """Per-application state and caches behind the volfit API (ROADMAP Phase 5).
 
 Everything heavy is computed at most once: chain snapshots, parity-implied
-forwards, per-(ticker, expiry, fit-mode) slice calibrations, saved prior
-curves and the lazily-built graph smile universe. The synthetic provider is
-deterministic, so caches never need invalidation. A single lock guards the
+forwards, per-(ticker, expiry, fit-mode, session-version) slice calibrations,
+saved prior curves and the lazily-built graph smile universe. The synthetic
+provider is deterministic and quote edits bump their session's version (a new
+cache key), so caches never need invalidation. A single lock guards the
 mutable dicts because WebSocket surface fits run on worker threads; the
 universe build happens outside that lock (it re-enters the fit cache) and is
 idempotent, so a rare double build is harmless.
@@ -17,6 +18,7 @@ from datetime import date
 
 from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import SmilePoint
+from volfit.api.session import EditSession
 from volfit.data.forwards import ImpliedForward, implied_forwards
 from volfit.data.provider import SyntheticProvider
 from volfit.data.types import ChainSnapshot
@@ -46,8 +48,9 @@ class AppState:
         self.provider = SyntheticProvider(reference_date=reference_date)
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
-        self._fits: dict[tuple[str, str, str], FitRecord] = {}
+        self._fits: dict[tuple[str, str, str, int], FitRecord] = {}
         self._priors: dict[tuple[str, str], list[SmilePoint]] = {}
+        self._sessions: dict[tuple[str, str], EditSession] = {}
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
         self._lock = threading.Lock()
 
@@ -84,13 +87,27 @@ class AppState:
         return (expiry - self.reference_date).days / DAYS_PER_YEAR
 
     # ------------------------------------------------------------- fit cache
-    def get_fit(self, key: tuple[str, str, str]) -> FitRecord | None:
+    def get_fit(self, key: tuple[str, str, str, int]) -> FitRecord | None:
+        """Cached fit for (ticker, expiry-ISO, fit-mode, session-version)."""
         with self._lock:
             return self._fits.get(key)
 
-    def store_fit(self, key: tuple[str, str, str], record: FitRecord) -> None:
+    def store_fit(self, key: tuple[str, str, str, int], record: FitRecord) -> None:
         with self._lock:
             self._fits[key] = record
+
+    # --------------------------------------------------------- edit sessions
+    def session(self, key: tuple[str, str]) -> EditSession:
+        """The node's edit session, created on first use (lock-guarded)."""
+        with self._lock:
+            if key not in self._sessions:
+                self._sessions[key] = EditSession()
+            return self._sessions[key]
+
+    def session_if_exists(self, key: tuple[str, str]) -> EditSession | None:
+        """The node's edit session if one was ever created, else None."""
+        with self._lock:
+            return self._sessions.get(key)
 
     # ----------------------------------------------------------------- priors
     def get_prior(self, key: tuple[str, str]) -> list[SmilePoint] | None:

@@ -30,6 +30,7 @@ from datetime import date
 
 import numpy as np
 
+from volfit.api.session import QuoteEdit
 from volfit.core.black import implied_total_variance
 from volfit.data.forwards import ImpliedForward
 from volfit.data.types import ChainSnapshot
@@ -128,3 +129,26 @@ def fit_weights(prepared: PreparedQuotes, fit_mode: str) -> np.ndarray | None:
         spread = HAIRCUT_SHRINK * spread
     weights = 1.0 / np.maximum(spread, SPREAD_FLOOR) ** 2
     return weights / weights.mean()
+
+
+def apply_edits(
+    prepared: PreparedQuotes, edits: dict[int, QuoteEdit], weights: np.ndarray | None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """(k, w_mid, weights) calibration inputs after a session's quote edits.
+
+    Excluded quotes are masked out; amended quotes get w = mid_iv^2 * t.
+    `prepared` itself is untouched: the payload keeps showing every quote and
+    the display grid stays on the full prepared k range while editing.
+    Weights for "bidask"/"haircut" keep using the original market spread
+    (amend only moves the mid level); they are just masked along with k.
+    """
+    if not edits:
+        return prepared.k, prepared.w_mid, weights
+    w = prepared.w_mid.copy()
+    keep = np.ones(prepared.k.size, dtype=bool)
+    for index, edit in edits.items():
+        if edit.amended_iv is not None:
+            w[index] = edit.amended_iv**2 * prepared.t
+        if edit.excluded:
+            keep[index] = False
+    return prepared.k[keep], w[keep], None if weights is None else weights[keep]

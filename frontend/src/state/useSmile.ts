@@ -1,16 +1,20 @@
 // Data-loading hook for the Smile Viewer.
 //
-// Talks to the FastAPI backend (GET /universe, GET /smiles/{ticker}/{expiry})
-// and falls back to the built-in mock smile when the backend is unreachable,
-// so `npm run dev` keeps working standalone. The consuming view only sees a
-// uniform { smile, universe, source, ... } surface.
+// Talks to the FastAPI backend (GET /universe, GET /smiles/{ticker}/{expiry},
+// POST /smiles/{ticker}/{expiry}/edits|undo|redo) and falls back to the
+// built-in mock smile when the backend is unreachable, so `npm run dev`
+// keeps working standalone. The consuming view only sees a uniform
+// { smile, universe, source, ... } surface.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "./api";
+import { api, ApiError } from "./api";
 import { getMockSmile } from "../lib/mockData";
 import type { SmileData } from "../lib/mockData";
 
 /** Quote-fitting objective, passed to the backend as `fit_mode`. */
 export type FitMode = "mid" | "bidask" | "haircut";
+
+/** Quote-level edit verbs accepted by POST /smiles/{ticker}/{expiry}/edits. */
+export type EditAction = "exclude" | "include" | "amend" | "reset";
 
 /** One expiry rung of a ticker's listed ladder. */
 export interface UniverseExpiry {
@@ -45,6 +49,29 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Short message for a failed quote edit. FastAPI 422/404 payloads carry a
+ * `detail` field; surface that verbatim, otherwise fall back to the status.
+ */
+function editMessageOf(err: unknown): string {
+  if (err instanceof ApiError) {
+    try {
+      const parsed: unknown = JSON.parse(err.body);
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        typeof (parsed as { detail?: unknown }).detail === "string"
+      ) {
+        return (parsed as { detail: string }).detail;
+      }
+    } catch {
+      // Non-JSON error body: fall through to the generic message.
+    }
+    return `Edit rejected (HTTP ${err.status})`;
+  }
+  return messageOf(err);
+}
+
 /** Everything `useSmile` exposes to the view. */
 export interface UseSmileResult {
   /** Currently displayed smile, or null before the first load completes. */
@@ -56,12 +83,18 @@ export interface UseSmileResult {
   /** True while a newer smile is in flight and the previous one still shows. */
   refreshing: boolean;
   error: string | null;
+  /** Last quote-edit failure (e.g. 422 invalid edit), cleared on success. */
+  editError: string | null;
   ticker: string;
   expiry: string;
   fitMode: FitMode;
   setTicker: (ticker: string) => void;
   setExpiry: (expiry: string) => void;
   setFitMode: (mode: FitMode) => void;
+  /** Apply a quote edit (exclude/include/amend/reset) and refit. */
+  applyEdit: (action: EditAction, index?: number, mid?: number) => Promise<void>;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
 }
 
 export function useSmile(): UseSmileResult {
@@ -74,6 +107,7 @@ export function useSmile(): UseSmileResult {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   // Whether any smile has been displayed yet (read inside effects without
   // adding `smile` to dependency arrays, which would cause refetch loops).
@@ -139,6 +173,7 @@ export function useSmile(): UseSmileResult {
         setSmile(data);
         hasSmileRef.current = true;
         setError(null);
+        setEditError(null); // fresh node / refit: stale edit errors are moot
         setLoading(false);
         setRefreshing(false);
       })
@@ -165,6 +200,40 @@ export function useSmile(): UseSmileResult {
     [universe],
   );
 
+  // Shared POST helper for edits / undo / redo: the backend refits and
+  // returns the updated smile, which replaces the current one. On failure
+  // the current smile stays on screen and only `editError` is surfaced.
+  // All edit endpoints are no-ops in mock mode (there is no fit session).
+  const postEdit = useCallback(
+    async (suffix: "edits" | "undo" | "redo", body?: unknown): Promise<void> => {
+      if (source !== "live" || ticker === "" || expiry === "") return;
+      setRefreshing(true);
+      try {
+        const data = await api.post<SmileData>(
+          `/smiles/${ticker}/${expiry}/${suffix}`,
+          { params: { fit_mode: fitMode }, body },
+        );
+        setSmile(data);
+        hasSmileRef.current = true;
+        setEditError(null);
+      } catch (err: unknown) {
+        setEditError(editMessageOf(err));
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [source, ticker, expiry, fitMode],
+  );
+
+  const applyEdit = useCallback(
+    (action: EditAction, index?: number, mid?: number) =>
+      // undefined index/mid are dropped by JSON.stringify, as the API expects.
+      postEdit("edits", { action, index, mid }),
+    [postEdit],
+  );
+  const undo = useCallback(() => postEdit("undo"), [postEdit]);
+  const redo = useCallback(() => postEdit("redo"), [postEdit]);
+
   return {
     smile,
     universe,
@@ -172,11 +241,15 @@ export function useSmile(): UseSmileResult {
     loading,
     refreshing,
     error,
+    editError,
     ticker,
     expiry,
     fitMode,
     setTicker,
     setExpiry: setExpiryState,
     setFitMode,
+    applyEdit,
+    undo,
+    redo,
   };
 }

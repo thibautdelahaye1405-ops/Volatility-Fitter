@@ -1,9 +1,12 @@
 // Smile workspace: per-expiry implied volatility smile fitting and editing.
-// Data comes from the FastAPI backend via the useSmile hook, which falls
-// back to the built-in mock payload whenever the backend is unreachable.
-import { useState } from "react";
+// Data comes from the shared smile session (FastAPI backend with a built-in
+// mock fallback). Quotes can be selected on the chart and edited — exclude /
+// amend mid / undo / redo — via the toolbar or keyboard; each edit posts to
+// the backend fit session and the returned refit replaces the smile.
+import { useEffect, useState } from "react";
 import SmileChart from "../components/SmileChart";
-import { useSmile } from "../state/useSmile";
+import QuoteToolbar from "../components/QuoteToolbar";
+import { useSmileSession } from "../state/smileSession";
 import type { FitMode } from "../state/useSmile";
 import { formatPct } from "../lib/chartScale";
 
@@ -27,18 +30,25 @@ export default function SmileViewer() {
     loading,
     refreshing,
     error,
+    editError,
     ticker,
     expiry,
     fitMode,
     setTicker,
     setExpiry,
     setFitMode,
-  } = useSmile();
+    applyEdit,
+    undo,
+    redo,
+  } = useSmileSession();
 
   const [kWindow, setKWindow] = useState<[number, number]>([0, 1]);
+  // Selected quote, referenced by its stable `index` field (not array
+  // position) so the selection keeps its identity across refits.
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
-  // Reset the brush to the full extent whenever a *different* node loads
-  // (ticker/expiry change). Refits of the same node keep the user's window.
+  // Reset the brush and selection whenever a *different* node loads
+  // (ticker/expiry change). Refits of the same node keep both.
   // State is adjusted during render (not in an effect) so the chart never
   // paints a frame with the previous node's window.
   const smileKey = smile ? `${smile.ticker}|${smile.expiry}` : "";
@@ -46,7 +56,69 @@ export default function SmileViewer() {
   if (smile && smileKey !== prevSmileKey) {
     setPrevSmileKey(smileKey);
     setKWindow([smile.kMin, smile.kMax]);
+    setSelectedIndex(null);
   }
+
+  // Resolve the selection against the current quote list; a refit that
+  // drops the quote simply yields no selection.
+  const selectedQuote =
+    smile !== null && selectedIndex !== null
+      ? (smile.quotes.find((q) => q.index === selectedIndex) ?? null)
+      : null;
+  const hasEdits =
+    smile !== null && smile.quotes.some((q) => q.excluded || q.amended);
+  const live = source === "live";
+
+  /** Toggle exclusion of the selected quote (Exclude/Restore button, Del). */
+  const toggleExclude = () => {
+    if (selectedQuote === null) return;
+    void applyEdit(
+      selectedQuote.excluded ? "include" : "exclude",
+      selectedQuote.index,
+    );
+  };
+
+  // Global keyboard shortcuts. Registered on window so the chart needs no
+  // focus; events originating from form controls are left alone.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = e.target instanceof HTMLElement ? e.target.tagName : "";
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.key === "Escape") {
+        setSelectedIndex(null);
+        return;
+      }
+      if (source !== "live") return; // edits require the live backend
+      if (e.ctrlKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) void redo();
+        else void undo();
+        return;
+      }
+      if (e.ctrlKey && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        void redo();
+        return;
+      }
+      // Remaining shortcuts act on the selected quote of the current smile.
+      const quote =
+        smile !== null && selectedIndex !== null
+          ? smile.quotes.find((q) => q.index === selectedIndex)
+          : undefined;
+      if (quote === undefined) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        void applyEdit(quote.excluded ? "include" : "exclude", quote.index);
+      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        // Nudge the mid IV from its CURRENT value: ±0.1 vol pt, ×5 w/ Shift.
+        const step = (e.shiftKey ? 0.005 : 0.001) * (e.key === "ArrowUp" ? 1 : -1);
+        void applyEdit("amend", quote.index, quote.mid + step);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [smile, selectedIndex, source, applyEdit, undo, redo]);
 
   // Expiry ladder of the currently selected ticker (drives the select).
   const ladder = universe?.expiries[ticker] ?? [];
@@ -129,7 +201,7 @@ export default function SmileViewer() {
       <div className="flex min-h-0 flex-1 gap-4">
         {/* Chart card */}
         <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
-          <div className="mb-2 flex shrink-0 items-baseline gap-2">
+          <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
               {smile ? `${smile.ticker} · ${smile.expiry}` : "Smile"}
             </h2>
@@ -154,6 +226,25 @@ export default function SmileViewer() {
                 {error}
               </span>
             )}
+            {/* Quote-editing toolbar (+ last rejected-edit message) */}
+            <div className="ml-auto flex items-center gap-2">
+              {editError !== null && (
+                <span className="max-w-56 truncate text-[10px] text-amber-400">
+                  {editError}
+                </span>
+              )}
+              <QuoteToolbar
+                selectedQuote={selectedQuote}
+                canUndo={smile?.canUndo ?? false}
+                canRedo={smile?.canRedo ?? false}
+                canReset={hasEdits}
+                live={live}
+                onToggleExclude={toggleExclude}
+                onUndo={() => void undo()}
+                onRedo={() => void redo()}
+                onReset={() => void applyEdit("reset")}
+              />
+            </div>
           </div>
           <div
             className={[
@@ -175,9 +266,15 @@ export default function SmileViewer() {
                 fullRange={[smile.kMin, smile.kMax]}
                 axisMode="logmoneyness"
                 forward={smile.forward}
+                selectedIndex={selectedIndex}
+                onQuoteSelect={setSelectedIndex}
               />
             )}
           </div>
+          {/* Interaction hint */}
+          <p className="mt-1 shrink-0 text-[10px] text-slate-600">
+            Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo
+          </p>
         </div>
 
         {/* Diagnostics panel */}

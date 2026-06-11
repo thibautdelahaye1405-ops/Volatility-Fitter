@@ -28,6 +28,10 @@ interface SmileChartProps {
   axisMode?: StrikeAxisMode;
   /** Forward level, required to label the axis in fixed-strike mode. */
   forward?: number;
+  /** Stable `index` of the highlighted quote, or null for no selection. */
+  selectedIndex?: number | null;
+  /** Quote click handler; called with null on background clicks. */
+  onQuoteSelect?: (index: number | null) => void;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -76,6 +80,8 @@ export default function SmileChart({
   fullRange,
   axisMode = "logmoneyness",
   forward,
+  selectedIndex = null,
+  onQuoteSelect,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -178,6 +184,7 @@ export default function SmileChart({
             className="absolute inset-0 cursor-crosshair"
             onMouseMove={onMouseMove}
             onMouseLeave={() => setHoverK(null)}
+            onClick={() => onQuoteSelect?.(null)}
           >
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Gridlines */}
@@ -210,20 +217,61 @@ export default function SmileChart({
                 </text>
               ))}
 
-              {/* Quote bands: I-beam bid/ask bars with a mid tick */}
-              {visibleQuotes.map((q, i) => {
+              {/* Quote bands: I-beam bid/ask bars with a mid tick.
+                  States: excluded -> dimmed beam + small × at the mid;
+                  amended -> amber, longer mid tick; selected -> accent
+                  stroke + soft glow circle. Each quote also gets an
+                  invisible click target for selection. */}
+              {visibleQuotes.map((q) => {
                 const x = xScale.map(xValue(q.k));
                 const yb = yScale.map(q.bid);
                 const ya = yScale.map(q.ask);
                 const ym = yScale.map(q.mid);
                 const cap = 3.5;
+                const selected = selectedIndex !== null && q.index === selectedIndex;
+                const beamStroke = selected
+                  ? "var(--color-accent-400)"
+                  : "rgb(148 163 184 / 0.55)";
+                const midStroke = q.amended
+                  ? "rgb(251 191 36 / 0.95)"
+                  : selected
+                    ? "var(--color-accent-400)"
+                    : "rgb(226 232 240 / 0.9)";
+                const midHalf = q.amended ? 4 : 2.5;
                 return (
-                  <g key={i} stroke="rgb(148 163 184 / 0.55)" strokeWidth={1}>
-                    <line x1={x} x2={x} y1={yb} y2={ya} />
-                    <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
-                    <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
-                    <line x1={x - 2.5} x2={x + 2.5} y1={ym} y2={ym}
-                      stroke="rgb(226 232 240 / 0.9)" strokeWidth={1.5} />
+                  <g key={q.index}>
+                    {selected && (
+                      <circle cx={x} cy={ym} r={7}
+                        fill="var(--color-accent-400)" opacity={0.18} />
+                    )}
+                    <g stroke={beamStroke} strokeWidth={1}
+                      opacity={q.excluded ? 0.25 : 1}>
+                      <line x1={x} x2={x} y1={yb} y2={ya} />
+                      <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
+                      <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
+                      <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym}
+                        stroke={midStroke} strokeWidth={1.5} />
+                    </g>
+                    {q.excluded && (
+                      <g stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}>
+                        <line x1={x - 3} x2={x + 3} y1={ym - 3} y2={ym + 3} />
+                        <line x1={x - 3} x2={x + 3} y1={ym + 3} y2={ym - 3} />
+                      </g>
+                    )}
+                    {onQuoteSelect && (
+                      <rect
+                        x={x - 6}
+                        y={Math.min(ya, yb) - 8}
+                        width={12}
+                        height={Math.abs(yb - ya) + 16}
+                        fill="transparent"
+                        className="cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onQuoteSelect(q.index);
+                        }}
+                      />
+                    )}
                   </g>
                 );
               })}

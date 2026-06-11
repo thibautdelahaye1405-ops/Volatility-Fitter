@@ -7,6 +7,10 @@ without HTTP. The surface fit is decomposed into `surface_inputs` +
 (warm start from the previous slice, calendar floor from
 volfit.calib.calendar) — so the WebSocket route can emit a progress event
 between expiries while the POST route reuses the same steps synchronously.
+Quote-edit sessions (volfit.api.session) plug in at two seams: fit-cache
+keys carry the session version (`fit_key`) and calibration inputs are
+rewritten by `edited_fit_inputs`; the edit/undo/redo entry points live in
+volfit.api.edits to keep this module under the file-size policy.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ import itertools
 
 import numpy as np
 
-from volfit.api.quotes import PreparedQuotes, fit_weights, prepare_quotes
+from volfit.api.quotes import PreparedQuotes, apply_edits, fit_weights, prepare_quotes
 from volfit.api.schemas import (
     GraphNodeResult,
     GraphObservation,
@@ -61,11 +65,35 @@ GRAPH_PRIOR_HYPER = ((0.03, 2.0e4), (0.05, 7.0e3), (0.5, 70.0))
 GRAPH_PRECISION = np.array([1.0e6, 1.0e6, 1.0e4])
 
 
+# --------------------------------------------------------- fit-session edits
+def session_version(state: AppState, ticker: str, iso: str) -> int:
+    """Current quote-edit session version of a node, 0 when none exists."""
+    session = state.session_if_exists((ticker, iso))
+    return 0 if session is None else session.version
+
+
+def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple[str, str, str, int]:
+    """Fit-cache key: (ticker, canonical ISO, mode, session version) — every
+    quote edit bumps the version, so edited nodes refit without eviction."""
+    return (ticker, iso, fit_mode, session_version(state, ticker, iso))
+
+
+def edited_fit_inputs(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, weights: np.ndarray | None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+    """Calibration inputs after the node's quote edits (quotes.apply_edits):
+    excluded strikes masked out, amended mids re-leveled to w = mid_iv^2 t."""
+    session = state.session_if_exists((ticker, iso))
+    return apply_edits(prepared, {} if session is None else session.edits, weights)
+
+
 # ------------------------------------------------------------- slice fitting
 def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
-    """Return the cached slice fit for (ticker, expiry, mode), fitting once."""
+    """Return the cached slice fit for (ticker, expiry, mode), fitting once
+    per quote-edit session version (edits change the calibration inputs)."""
     expiry = state.resolve_expiry(ticker, expiry_iso)
-    key = (ticker, expiry.isoformat(), fit_mode)  # canonical ISO cache key
+    iso = expiry.isoformat()  # canonical ISO cache/session key
+    key = fit_key(state, ticker, iso, fit_mode)
     record = state.get_fit(key)
     if record is not None:
         return record
@@ -73,9 +101,10 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     snapshot = state.snapshot(ticker)
     forward = state.forwards(ticker)[expiry]
     prepared = prepare_quotes(snapshot, expiry, forward, state.year_fraction(expiry))
-    result = calibrate_slice(
-        prepared.k, prepared.w_mid, t=prepared.t, weights=fit_weights(prepared, fit_mode)
+    k, w, weights = edited_fit_inputs(
+        state, ticker, iso, prepared, fit_weights(prepared, fit_mode)
     )
+    result = calibrate_slice(k, w, t=prepared.t, weights=weights)
     record = FitRecord(prepared=prepared, result=result)
     state.store_fit(key, record)
     return record
@@ -95,6 +124,8 @@ def model_curve(record: FitRecord) -> list[SmilePoint]:
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
     """Assemble the full SmileData payload for one (ticker, expiry) node."""
     record = fit_or_get(state, ticker, expiry_iso, fit_mode)
+    iso = state.resolve_expiry(ticker, expiry_iso).isoformat()  # session key
+    session = state.session_if_exists((ticker, iso))
     prepared, slice_ = record.prepared, record.result.slice
     model = model_curve(record)
 
@@ -114,10 +145,25 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         leeRight=lee_right,
         varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.t)),
     )
-    quotes = [
-        QuoteBand(k=float(k), bid=float(b), ask=float(a), mid=float(m))
-        for k, b, a, m in zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
-    ]
+    # Every prepared quote is listed (excluded ones dimmed by the UI); an
+    # amended quote shows its overridden mid, bid/ask stay the market band.
+    quotes = []
+    for i, (k, b, a, m) in enumerate(
+        zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
+    ):
+        edit = session.edits.get(i) if session is not None else None
+        amended = edit is not None and edit.amended_iv is not None
+        quotes.append(
+            QuoteBand(
+                k=float(k),
+                bid=float(b),
+                ask=float(a),
+                mid=edit.amended_iv if amended else float(m),
+                index=i,
+                excluded=edit is not None and edit.excluded,
+                amended=amended,
+            )
+        )
     return SmileData(
         ticker=ticker,
         expiry=expiry_iso,
@@ -129,6 +175,8 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         kMin=model[0].k,
         kMax=model[-1].k,
         diagnostics=diagnostics,
+        canUndo=session.can_undo if session is not None else False,
+        canRedo=session.can_redo if session is not None else False,
     )
 
 
@@ -147,18 +195,28 @@ def surface_inputs(
 
 
 def fit_surface_slice(
+    state: AppState,
+    ticker: str,
+    iso: str,
     prepared: PreparedQuotes,
     weights: np.ndarray | None,
     prev: CalibrationResult | None,
     enforce_calendar: bool,
 ) -> CalibrationResult:
-    """One step of the calibrate_surface loop: warm start + calendar floor."""
+    """One step of the calibrate_surface loop: warm start + calendar floor.
+
+    Quote-edit sessions apply here too (state/ticker/iso resolve them), so a
+    surface fit honours the user's excluded/amended quotes on every expiry.
+    The calendar floor indexes the quadrature grid, not the quote array, so
+    masking quotes leaves the constraint untouched.
+    """
     cal_idx = cal_floor = None
     if enforce_calendar and prev is not None:
         cal_idx, cal_floor = calendar_floor(prev.slice)
+    k, w, weights = edited_fit_inputs(state, ticker, iso, prepared, weights)
     return calibrate_slice(
-        prepared.k,
-        prepared.w_mid,
+        k,
+        w,
         t=prepared.t,
         weights=weights,
         init=prev.params if prev is not None else None,
@@ -202,9 +260,10 @@ def fit_surface(
     residuals: list[float] = []
     fitted: list[tuple[str, CalibrationResult]] = []
     for index, (iso, prepared, weights) in enumerate(plan):
-        result = fit_surface_slice(prepared, weights, prev, enforce_calendar)
+        result = fit_surface_slice(state, ticker, iso, prepared, weights, prev, enforce_calendar)
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
-        state.store_fit((ticker, iso, fit_mode), FitRecord(prepared=prepared, result=result))
+        record = FitRecord(prepared=prepared, result=result)
+        state.store_fit(fit_key(state, ticker, iso, fit_mode), record)
         fitted.append((iso, result))
         if progress is not None:
             progress(iso, index, len(plan), result.max_iv_error * 1e4)
@@ -218,7 +277,10 @@ def ensure_universe(state: AppState) -> SmileUniverse:
 
     Node names are (ticker, expiry-ISO). The build is deterministic and the
     underlying slice fits are themselves cached, so a concurrent double build
-    only costs time, never consistency.
+    only costs time, never consistency. Slice fits flow through fit_or_get,
+    so quote edits made *before* the first graph solve shape the universe
+    naturally; the universe is built once and not invalidated by later edits
+    (acceptable: graph handles are slow-moving levels, not live fit state).
     """
     if state.universe is not None:
         return state.universe
