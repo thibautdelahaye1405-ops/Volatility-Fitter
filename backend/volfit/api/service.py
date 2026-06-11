@@ -139,8 +139,8 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     prepared, slice_ = record.prepared, record.result.slice
     model = model_curve(record)
 
-    # Saved prior if one exists, else the prior defaults to the current fit.
-    prior = state.get_prior((ticker, expiry_iso)) or list(model)
+    saved = state.get_prior((ticker, expiry_iso))  # saved prior, else current fit
+    prior = list(saved.curve) if saved is not None else list(model)
 
     handles = atm_handles(slice_, prepared.t)
     a_left, a_right = endpoint_scales(record.result.params)

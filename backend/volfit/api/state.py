@@ -2,7 +2,8 @@
 
 Everything heavy is computed at most once: chain snapshots, parity-implied
 forwards, per-(ticker, expiry, fit-mode, session-version) slice calibrations,
-saved prior curves and the lazily-built graph smile universe. The synthetic
+saved priors (display curve + fitted LQD params, so prior densities can be
+rebuilt) and the lazily-built graph smile universe. The synthetic
 provider is deterministic and quote edits bump their session's version (a new
 cache key), so caches never need invalidation. A single lock guards the
 mutable dicts because WebSocket surface fits run on worker threads; the
@@ -22,6 +23,7 @@ from volfit.api.session import EditSession
 from volfit.data.forwards import ImpliedForward, implied_forwards
 from volfit.data.provider import SyntheticProvider
 from volfit.data.types import ChainSnapshot
+from volfit.models.lqd.basis import LQDParams
 from volfit.models.lqd.calibrate import CalibrationResult
 
 #: Year-fraction day count used across the API (ACT/365 fixed).
@@ -40,6 +42,17 @@ class FitRecord:
     result: CalibrationResult
 
 
+@dataclass(frozen=True)
+class PriorRecord:
+    """A saved prior: the display curve the Smile Viewer charts plus the
+    fitted LQD parameters (and expiry year fraction) that produced it, so
+    the prior's density/quantile function can be rebuilt via build_slice."""
+
+    curve: list[SmilePoint]
+    params: LQDParams
+    t: float
+
+
 class AppState:
     """Provider handle plus all caches; one instance per FastAPI app."""
 
@@ -49,7 +62,7 @@ class AppState:
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fits: dict[tuple[str, str, str, int], FitRecord] = {}
-        self._priors: dict[tuple[str, str], list[SmilePoint]] = {}
+        self._priors: dict[tuple[str, str], PriorRecord] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
         self._lock = threading.Lock()
@@ -110,13 +123,13 @@ class AppState:
             return self._sessions.get(key)
 
     # ----------------------------------------------------------------- priors
-    def get_prior(self, key: tuple[str, str]) -> list[SmilePoint] | None:
+    def get_prior(self, key: tuple[str, str]) -> PriorRecord | None:
         with self._lock:
             return self._priors.get(key)
 
-    def save_prior(self, key: tuple[str, str], curve: list[SmilePoint]) -> None:
+    def save_prior(self, key: tuple[str, str], record: PriorRecord) -> None:
         with self._lock:
-            self._priors[key] = list(curve)
+            self._priors[key] = record
 
     # --------------------------------------------------------------- universe
     @property

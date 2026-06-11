@@ -5,7 +5,8 @@ frontend/src/lib/mockData.ts: `SmilePoint`, `QuoteBand`, `SmileDiagnostics`
 and `SmileData` must serialize to exactly the camelCase shapes the React
 Smile Viewer already consumes, so swapping its mock module for live API
 calls is a one-line change. Request/response models for the surface fit,
-graph solver and SSR scenario endpoints follow the same convention.
+graph solver, SSR scenario, term-structure and density endpoints follow the
+same convention.
 """
 
 from __future__ import annotations
@@ -212,3 +213,74 @@ class ScenarioResponse(BaseModel):
     shiftedVol: list[float]
     ssr: float
     regime: str
+
+
+# ------------------------------------------------------------ term structure
+class EventSpec(BaseModel):
+    """One scheduled event of the dilated clock: ``weight`` years of extra
+    diffusion time lumped at year-fraction ``time`` (volfit.calib.event_time).
+    Pydantic enforces time > 0 and weight >= 0, so bad specs are 422s."""
+
+    time: float = Field(gt=0)
+    weight: float = Field(ge=0)
+    label: str = ""
+
+
+class TermStructureRequest(BaseModel):
+    """ATM term structure of one ticker under an optional event calendar."""
+
+    fitMode: FitMode = "mid"
+    events: list[EventSpec] = Field(default_factory=list)
+    eventsEnabled: bool = True
+
+
+class TermPoint(BaseModel):
+    """One fitted expiry on the term structure (calendar and dilated time)."""
+
+    expiry: str  # ISO date
+    t: float  # calendar year fraction
+    tau: float  # event-dilated time tau(t)
+    atmVol: float  # exact ATM handle sigma_0 (same fit as GET /smiles)
+    w0: float  # ATM total implied variance
+    varSwapVol: float  # sqrt(var-swap strike / t)
+    maxIvErrorBp: float
+
+
+class TermCurve(BaseModel):
+    """Dense ATM total-variance curve, linear in event-dilated time."""
+
+    t: list[float]
+    tau: list[float]
+    w: list[float]
+    vol: list[float]  # sqrt(w / t)
+
+
+class TermStructureResponse(BaseModel):
+    """Per-expiry points plus the dense interpolated curve, nearest first."""
+
+    ticker: str
+    points: list[TermPoint]
+    curve: TermCurve
+    calendarViolations: int  # adjacent expiry pairs with w0 strictly falling
+
+
+# ------------------------------------------------------------------- density
+class DistributionArrays(BaseModel):
+    """Risk-neutral log-return density and quantile function of one slice.
+
+    (x, density) chart f_X on x = Q(z); (u, quantile) chart Q(u). All four
+    arrays live on the same trimmed/strided quadrature grid, so they share
+    one length and align point-for-point.
+    """
+
+    x: list[float]
+    density: list[float]
+    u: list[float]
+    quantile: list[float]
+
+
+class DensityResponse(BaseModel):
+    """Current fit's distribution plus the saved prior's (null if unsaved)."""
+
+    current: DistributionArrays
+    prior: DistributionArrays | None = None

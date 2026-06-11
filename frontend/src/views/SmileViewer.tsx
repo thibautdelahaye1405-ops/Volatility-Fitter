@@ -3,9 +3,14 @@
 // mock fallback). Quotes can be selected on the chart and edited — exclude /
 // amend mid / undo / redo — via the toolbar or keyboard; each edit posts to
 // the backend fit session and the returned refit replaces the smile.
-import { useEffect, useState } from "react";
+// The chart card also offers fitted Density / Quantile views, and the
+// diagnostics aside hosts the SSR "Spot scenario" overlay panel.
+import { useEffect, useRef, useState } from "react";
 import SmileChart from "../components/SmileChart";
-import QuoteToolbar from "../components/QuoteToolbar";
+import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
+import DistributionChart from "../components/DistributionChart";
+import ScenarioPanel from "../components/ScenarioPanel";
+import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
 import type { FitMode } from "../state/useSmile";
 import { formatPct } from "../lib/chartScale";
@@ -16,11 +21,25 @@ const FIT_MODES: { id: FitMode; label: string }[] = [
   { id: "haircut", label: "Haircut" },
 ];
 
+/** Chart-card content: the smile itself or a fitted-distribution view. */
+type ChartView = "smile" | "density" | "quantile";
+
+const CHART_VIEWS: { id: ChartView; label: string }[] = [
+  { id: "smile", label: "Smile" },
+  { id: "density", label: "Density" },
+  { id: "quantile", label: "Quantile" },
+];
+
 /** Shared styling for the header selectors. */
 const selectClass =
   "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
   "font-medium text-slate-200 outline-none hover:border-slate-600 " +
   "focus:border-accent-500";
+
+/** Centered placeholder for the chart-card body states. */
+const chartMessage = (text: string) => (
+  <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
+);
 
 export default function SmileViewer() {
   const {
@@ -40,12 +59,25 @@ export default function SmileViewer() {
     applyEdit,
     undo,
     redo,
+    savePrior,
+    scenario,
+    setScenario,
+    scenarioCurve,
+    scenarioSsr,
+    distribution,
+    distributionLoading,
+    loadDistribution,
   } = useSmileSession();
 
   const [kWindow, setKWindow] = useState<[number, number]>([0, 1]);
   // Selected quote, referenced by its stable `index` field (not array
   // position) so the selection keeps its identity across refits.
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  // Chart-card view (smile / density / quantile).
+  const [view, setView] = useState<ChartView>("smile");
+  // Transient "Saved ✓" confirmation on the Save-prior button.
+  const [savedFlash, setSavedFlash] = useState(false);
+  const flashTimer = useRef<number | null>(null);
 
   // Reset the brush and selection whenever a *different* node loads
   // (ticker/expiry change). Refits of the same node keep both.
@@ -76,6 +108,25 @@ export default function SmileViewer() {
       selectedQuote.excluded ? "include" : "exclude",
       selectedQuote.index,
     );
+  };
+
+  /** Switch the chart-card view; arm the distribution fetcher lazily. */
+  const switchView = (next: ChartView) => {
+    setView(next);
+    if (next !== "smile") loadDistribution();
+  };
+
+  /** Persist the current fit as the prior; flash a brief confirmation. */
+  const onSavePrior = () => {
+    void savePrior()
+      .then(() => {
+        setSavedFlash(true);
+        if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
+        flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1500);
+      })
+      .catch(() => {
+        // Failure is already surfaced through the session's editError.
+      });
   };
 
   // Global keyboard shortcuts. Registered on window so the chart needs no
@@ -136,6 +187,24 @@ export default function SmileViewer() {
       ]
     : [];
 
+  /** Chart-card body for the Density / Quantile views (live backend only).
+   *  A stale distribution keeps showing (dimmed via `refreshing`) while a
+   *  replacement is in flight, mirroring how the smile itself behaves. */
+  const distributionBody = (kind: "density" | "quantile") => {
+    if (!live) return chartMessage("Distribution views require the live backend.");
+    if (distribution !== null) {
+      return (
+        <DistributionChart
+          kind={kind}
+          current={distribution.current}
+          prior={distribution.prior}
+        />
+      );
+    }
+    if (distributionLoading) return chartMessage("Loading distribution…");
+    return chartMessage("Distribution unavailable for this node.");
+  };
+
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       {/* Header: universe selectors + fit-mode control */}
@@ -175,25 +244,7 @@ export default function SmileViewer() {
         {/* Fit-mode segmented control */}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs text-slate-500">Fit to</span>
-          <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
-            {FIT_MODES.map((mode) => {
-              const active = mode.id === fitMode;
-              return (
-                <button
-                  key={mode.id}
-                  onClick={() => setFitMode(mode.id)}
-                  className={[
-                    "px-3 py-1.5 text-xs font-medium transition-colors",
-                    active
-                      ? "bg-accent-600/25 text-accent-400"
-                      : "text-slate-400 hover:text-slate-200",
-                  ].join(" ")}
-                >
-                  {mode.label}
-                </button>
-              );
-            })}
-          </div>
+          <SegmentedControl options={FIT_MODES} value={fitMode} onChange={setFitMode} />
         </div>
       </div>
 
@@ -217,9 +268,18 @@ export default function SmileViewer() {
             >
               {source === "live" ? "LIVE" : "MOCK"}
             </span>
-            <span className="font-mono text-[11px] text-slate-500">
-              log-moneyness k = ln(K/F)
-            </span>
+            {/* View toggle: smile vs fitted-distribution charts */}
+            <SegmentedControl
+              options={CHART_VIEWS}
+              value={view}
+              onChange={switchView}
+              size="xs"
+            />
+            {view === "smile" && (
+              <span className="font-mono text-[11px] text-slate-500">
+                k = ln(K/F)
+              </span>
+            )}
             {/* Surface refetch errors without unmounting the chart */}
             {error !== null && source === "live" && (
               <span className="truncate text-[10px] text-amber-400/80">
@@ -244,6 +304,18 @@ export default function SmileViewer() {
                 onRedo={() => void redo()}
                 onReset={() => void applyEdit("reset")}
               />
+              <button
+                className={toolbarButtonClass}
+                disabled={!live}
+                title={
+                  live
+                    ? "Persist the current fit as the prior curve"
+                    : "requires live backend"
+                }
+                onClick={onSavePrior}
+              >
+                {savedFlash ? "Saved ✓" : "Save prior"}
+              </button>
             </div>
           </div>
           <div
@@ -253,14 +325,13 @@ export default function SmileViewer() {
             ].join(" ")}
           >
             {loading || smile === null ? (
-              <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                Loading universe…
-              </div>
-            ) : (
+              chartMessage("Loading universe…")
+            ) : view === "smile" ? (
               <SmileChart
                 model={smile.model}
                 prior={smile.prior}
                 quotes={smile.quotes}
+                scenario={scenarioCurve}
                 kWindow={kWindow}
                 onKWindowChange={setKWindow}
                 fullRange={[smile.kMin, smile.kMax]}
@@ -269,16 +340,20 @@ export default function SmileViewer() {
                 selectedIndex={selectedIndex}
                 onQuoteSelect={setSelectedIndex}
               />
+            ) : (
+              distributionBody(view)
             )}
           </div>
           {/* Interaction hint */}
           <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-            Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo
+            {view === "smile"
+              ? "Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo"
+              : "Risk-neutral distribution implied by the current fit"}
           </p>
         </div>
 
         {/* Diagnostics panel */}
-        <aside className="w-72 shrink-0 rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
+        <aside className="w-72 shrink-0 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
           <h3 className="mb-1 text-sm font-semibold text-slate-100">
             Fit diagnostics
           </h3>
@@ -300,6 +375,23 @@ export default function SmileViewer() {
               </div>
             ))}
           </dl>
+
+          {/* Spot scenario: drives the SSR overlay on the smile chart */}
+          <div className="mt-4 border-t border-slate-800 pt-4">
+            <ScenarioPanel
+              scenario={scenario}
+              onScenarioChange={setScenario}
+              scenarioCurve={scenarioCurve}
+              ssr={scenarioSsr}
+              model={smile?.model ?? null}
+              disabled={!live || view !== "smile"}
+              disabledReason={
+                !live
+                  ? "requires live backend"
+                  : "scenario overlay applies to the Smile view"
+              }
+            />
+          </div>
         </aside>
       </div>
     </div>

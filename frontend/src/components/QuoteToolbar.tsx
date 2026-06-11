@@ -18,8 +18,9 @@ interface QuoteToolbarProps {
   onReset: () => void;
 }
 
-/** Small bordered buttons, matching the fit-mode segmented control. */
-const buttonClass =
+/** Small bordered buttons, matching the fit-mode segmented control.
+ *  Exported so siblings of this toolbar (e.g. Save prior) match exactly. */
+export const toolbarButtonClass =
   "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] " +
   "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
@@ -40,7 +41,7 @@ export default function QuoteToolbar({
   return (
     <div className="flex items-center gap-1.5">
       <button
-        className={buttonClass}
+        className={toolbarButtonClass}
         disabled={!live || selectedQuote === null}
         title={offlineTitle}
         onClick={onToggleExclude}
@@ -48,7 +49,7 @@ export default function QuoteToolbar({
         {selectedQuote?.excluded ? "Restore" : "Exclude"}
       </button>
       <button
-        className={buttonClass}
+        className={toolbarButtonClass}
         disabled={!live || !canUndo}
         title={offlineTitle}
         onClick={onUndo}
@@ -56,7 +57,7 @@ export default function QuoteToolbar({
         Undo
       </button>
       <button
-        className={buttonClass}
+        className={toolbarButtonClass}
         disabled={!live || !canRedo}
         title={offlineTitle}
         onClick={onRedo}
@@ -64,7 +65,7 @@ export default function QuoteToolbar({
         Redo
       </button>
       <button
-        className={buttonClass}
+        className={toolbarButtonClass}
         disabled={!live || !canReset}
         title={offlineTitle}
         onClick={onReset}

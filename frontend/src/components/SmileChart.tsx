@@ -32,6 +32,8 @@ interface SmileChartProps {
   selectedIndex?: number | null;
   /** Quote click handler; called with null on background clicks. */
   onQuoteSelect?: (index: number | null) => void;
+  /** SSR scenario overlay (shifted smile); drawn dotted amber when set. */
+  scenario?: SmilePoint[] | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -82,6 +84,7 @@ export default function SmileChart({
   forward,
   selectedIndex = null,
   onQuoteSelect,
+  scenario = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -107,6 +110,7 @@ export default function SmileChart({
     let yMax = -Infinity;
     for (const p of model) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const p of prior) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
+    for (const p of scenario ?? []) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const q of quotes) if (inWindow(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
@@ -114,7 +118,7 @@ export default function SmileChart({
       xScale: linearScale([xValue(kLo), xValue(kHi)], [0, plotW]),
       yScale: linearScale([yMin - pad, yMax + pad], [plotH, 0]),
     };
-  }, [model, prior, quotes, kLo, kHi, plotW, plotH, xValue]);
+  }, [model, prior, scenario, quotes, kLo, kHi, plotW, plotH, xValue]);
 
   /** Build an SVG path for a curve, clipped to the visible window. */
   const pathOf = (curve: SmilePoint[]): string => {
@@ -129,6 +133,7 @@ export default function SmileChart({
   };
   const modelPath = useMemo(() => pathOf(model), [model, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const priorPath = useMemo(() => pathOf(prior), [prior, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const xTicks = niceTicks(xScale.domain[0], xScale.domain[1], 8);
   const yTicks = niceTicks(yScale.domain[0], yScale.domain[1], 6);
@@ -169,6 +174,11 @@ export default function SmileChart({
         <span className="flex items-center gap-1.5">
           <span className="h-0 w-5 border-t-2 border-dashed border-slate-500" /> Prior
         </span>
+        {scenarioPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0 w-5 border-t-2 border-dotted border-amber-400" /> SSR scenario
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="font-mono text-slate-500">⊺</span> Bid/Ask quotes
         </span>
@@ -279,6 +289,12 @@ export default function SmileChart({
               {/* Prior fit: dashed slate */}
               <path d={priorPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
                 strokeWidth={1.5} strokeDasharray="5 4" />
+
+              {/* SSR scenario overlay: dotted amber, above prior, below fit */}
+              {scenarioPath !== "" && (
+                <path d={scenarioPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
+                  strokeWidth={1.5} strokeDasharray="2 3" />
+              )}
 
               {/* Current model fit: accent */}
               <path d={modelPath} fill="none" stroke="var(--color-accent-400)"

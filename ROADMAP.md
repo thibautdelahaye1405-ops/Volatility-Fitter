@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-10 (resume here)
 
-**Done & verified (107 pytest tests green, `git log --oneline` tells the story):**
+**Done & verified (113 pytest tests green, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -45,20 +45,27 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   /graph/solve (+ new GET /graph/nodes baseline endpoint), shift coloring +
   sd halos + tooltips, double-click drills into the Smile tab. Verified in
   headless Edge (screenshots: 2 observed → 10 extrapolated, sane decay).
-- Phase 8 core: SSR scenario engine (`volfit/dynamics/ssr.py`), backend +
-  /scenario/ssr endpoint (frontend regime selector still TODO).
+- Phase 6 near-complete: Term-Structure view live (POST /term + `useTerm` +
+  `TermChart`: vol & variance vs T, real/event-dilated clock toggle, editable
+  event markers, expiry ladder table); density & quantile chart views
+  (GET /smiles/{t}/{e}/density + `DistributionChart`, prior overlay once
+  saved); Save-prior button (priors now store LQDParams via `PriorRecord`).
+- Phase 8 complete: SSR scenario engine + frontend regime selector
+  (Mny/Strike/LV) with spot-return slider and dotted overlay on the smile
+  chart. (true sticky-local-vol-grid mode still awaits localvol API wiring)
 - API slice fits use gentle high-order damping (REG_LAMBDA=1e-6 in
   `api/service.py`) — without it, slices left with ~7 quotes after the wing
   filter interpolate exactly with wild handles (GAMMA 1M fitted skew +0.78).
 
 **Next up (in order):**
-1. Term-Structure view (Phase 6 remainder) + scenario/regime selector in the
-   SmileViewer (Phase 8 frontend); quantile/density chart; prior management UI.
-2. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode.
-3. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
-4. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+1. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
+2. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode;
+   hyperparameter panel (model choice, N, penalties, toggles — Phase 6 left-over).
+3. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
+4. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+   lambda, nu, auto-tune), lasso selection.
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`.
@@ -203,10 +210,10 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 
 - [x] Smile chart (pure SVG, zero deps): prior vs current vs bid/ask I-beams, log-moneyness axis (fixed-strike mode designed in via `axisMode` prop), strike-range brush, crosshair readout. **Wired to live fits** via `useSmile` (universe selectors, fit-mode refetch, mock fallback when backend offline).
 - [x] Quote interaction: click to select, Del to exclude/restore, arrow-key mid amend, Ctrl+Z/Y undo/redo; fit-to-bid-ask / mid / haircut toggle; instant refit on edit (~30 ms server-side). (drag-to-amend TODO if wanted)
-- [ ] Quantile-function & LQD density chart: prior vs current.
-- [ ] Term-structure view: vol and total variance vs T, calendar in real time **and** event-dilated time; event markers editable.
-- [ ] Diagnostics panel: A_L/A_R, Lee slopes, ATM handles (w₀, s₀, κ₀ — directly editable, mapped through exact ATM coordinates), var-swap level, calendar residuals.
-- [ ] Prior management: save current fit as prior, load, diff.
+- [x] Quantile-function & LQD density chart: prior vs current (`DistributionChart`, GET /smiles/{t}/{e}/density).
+- [x] Term-structure view: vol and total variance vs T, calendar in real time **and** event-dilated time; event markers editable (POST /term).
+- [ ] Diagnostics panel: A_L/A_R, Lee slopes, var-swap level shown; directly *editable* ATM handles (w₀, s₀, κ₀ via exact retargeting) TODO.
+- [x] Prior management: save current fit as prior (button + PriorRecord with params); load/diff UI TODO.
 - [ ] Hyperparameter panel: model choice, N, penalty coefficients, arbitrage/event toggles.
 
 **Exit criteria:** trader workflow demo — load universe, inspect smile, drag ATM skew, erase a bad quote, refit, save prior — all fluid.
@@ -224,7 +231,7 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 ## Phase 8 — Vol-spot dynamics & scenarios (weeks 15–17)
 
 - [x] `dynamics/ssr.py`: SSR on ATM vol, configurable; sticky-moneyness / sticky-strike / sticky-local-vol (SSR=2 short-maturity rule) regimes with exact shape-preservation invariant. (true sticky-local-vol-grid mode awaits the localvol model)
-- [ ] Frontend: regime selector + spot-shift slider with live re-render of shifted smile.
+- [x] Frontend: regime selector + spot-shift slider with live re-render of shifted smile (ScenarioPanel + dotted overlay).
 
 **Exit criteria:** spot ±5% scenario renders all three regimes consistently for any fitted surface.
 

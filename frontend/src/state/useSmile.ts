@@ -8,7 +8,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { getMockSmile } from "../lib/mockData";
-import type { SmileData } from "../lib/mockData";
+import type { SmileData, SmilePoint } from "../lib/mockData";
+import { useDistribution, useScenarioCurve } from "./useScenario";
+import type { DistributionData, ScenarioState } from "./useScenario";
 
 /** Quote-fitting objective, passed to the backend as `fit_mode`. */
 export type FitMode = "mid" | "bidask" | "haircut";
@@ -95,6 +97,22 @@ export interface UseSmileResult {
   applyEdit: (action: EditAction, index?: number, mid?: number) => Promise<void>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
+  /** Persist the current fit as the prior, then refetch the smile.
+   *  No-op in mock mode; rejects (after surfacing editError) on failure. */
+  savePrior: () => Promise<void>;
+  /** Spot-scenario inputs (regime + spot return) driving the SSR overlay. */
+  scenario: ScenarioState;
+  setScenario: (next: ScenarioState) => void;
+  /** Shifted smile under the scenario; null when the slider sits at 0,
+   *  in mock mode, or when the scenario fetch failed. */
+  scenarioCurve: SmilePoint[] | null;
+  /** Skew-stickiness ratio reported by the scenario engine, or null. */
+  scenarioSsr: number | null;
+  /** Risk-neutral density/quantile of the current node (lazy; live only). */
+  distribution: DistributionData | null;
+  distributionLoading: boolean;
+  /** Arm the distribution fetcher (first switch to a Density view). */
+  loadDistribution: () => void;
 }
 
 export function useSmile(): UseSmileResult {
@@ -108,6 +126,14 @@ export function useSmile(): UseSmileResult {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  // Bumped after POST /prior so the regular smile effect refetches and the
+  // updated `prior` curve flows through the normal load path.
+  const [reloadNonce, setReloadNonce] = useState(0);
+  // Spot-scenario inputs; the derived overlay lives in useScenarioCurve.
+  const [scenario, setScenario] = useState<ScenarioState>({
+    spotReturn: 0,
+    regime: "sticky_moneyness",
+  });
 
   // Whether any smile has been displayed yet (read inside effects without
   // adding `smile` to dependency arrays, which would cause refetch loops).
@@ -157,7 +183,8 @@ export function useSmile(): UseSmileResult {
     return () => controller.abort();
   }, [fallBackToMock]);
 
-  // (Re)load the smile whenever the live selection or fit mode changes.
+  // (Re)load the smile whenever the live selection or fit mode changes
+  // (or savePrior bumps reloadNonce after persisting a new prior).
   // Stale in-flight requests are aborted; the previous smile keeps showing
   // behind a `refreshing` flag until the replacement arrives.
   useEffect(() => {
@@ -189,7 +216,7 @@ export function useSmile(): UseSmileResult {
         setRefreshing(false);
       });
     return () => controller.abort();
-  }, [source, ticker, expiry, fitMode, fallBackToMock]);
+  }, [source, ticker, expiry, fitMode, reloadNonce, fallBackToMock]);
 
   /** Select a ticker and jump to its mid-ladder expiry. */
   const setTicker = useCallback(
@@ -234,6 +261,32 @@ export function useSmile(): UseSmileResult {
   const undo = useCallback(() => postEdit("undo"), [postEdit]);
   const redo = useCallback(() => postEdit("redo"), [postEdit]);
 
+  /** Persist the current fit as the prior, then refetch through the regular
+   *  smile effect (so `prior` updates atomically with the full payload). */
+  const savePrior = useCallback(async (): Promise<void> => {
+    if (source !== "live" || ticker === "" || expiry === "") return; // mock: no-op
+    try {
+      await api.post<{ saved: boolean }>(`/smiles/${ticker}/${expiry}/prior`);
+    } catch (err: unknown) {
+      setEditError(editMessageOf(err));
+      throw err; // lets the caller skip its "Saved" confirmation
+    }
+    setEditError(null);
+    setReloadNonce((n) => n + 1);
+  }, [source, ticker, expiry]);
+
+  // Derived side-channels: SSR scenario overlay + lazy distribution views.
+  const live = source === "live";
+  const { scenarioCurve, scenarioSsr } = useScenarioCurve(
+    live,
+    ticker,
+    expiry,
+    fitMode,
+    scenario,
+  );
+  const { distribution, distributionLoading, loadDistribution } =
+    useDistribution(live, ticker, expiry, fitMode, smile);
+
   return {
     smile,
     universe,
@@ -251,5 +304,13 @@ export function useSmile(): UseSmileResult {
     applyEdit,
     undo,
     redo,
+    savePrior,
+    scenario,
+    setScenario,
+    scenarioCurve,
+    scenarioSsr,
+    distribution,
+    distributionLoading,
+    loadDistribution,
   };
 }
