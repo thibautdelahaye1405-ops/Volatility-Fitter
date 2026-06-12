@@ -98,7 +98,7 @@ def localvol_record(state: AppState, ticker: str, fit_mode: str):
 
     isos = [e.isoformat() for e in sorted(state.forwards(ticker))]
     versions = tuple(service.session_version(state, ticker, iso) for iso in isos)
-    key = (ticker, fit_mode, versions)
+    key = (ticker, fit_mode, versions, state.settings_version)
     cache = getattr(state, _CACHE_ATTR, None)
     if cache is None:
         cache = {}

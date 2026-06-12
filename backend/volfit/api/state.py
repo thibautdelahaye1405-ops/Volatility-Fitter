@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from volfit.api.quotes import PreparedQuotes
-from volfit.api.schemas import SmilePoint
+from volfit.api.schemas import FitSettings, SmilePoint
 from volfit.api.session import EditSession
 from volfit.data.forwards import ImpliedForward, implied_forwards
 from volfit.data.provider import OptionChainProvider, SyntheticProvider
@@ -64,7 +64,9 @@ class AppState:
         self.provider = provider or SyntheticProvider(reference_date=reference_date)
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
-        self._fits: dict[tuple[str, str, str, int], FitRecord] = {}
+        self._fit_settings = FitSettings()
+        self._settings_version = 0  # bumped on change; part of fit-cache keys
+        self._fits: dict[tuple, FitRecord] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
@@ -102,13 +104,33 @@ class AppState:
         """t = days to expiry / 365 (matches the provider's expiry ladder)."""
         return (expiry - self.reference_date).days / DAYS_PER_YEAR
 
+    # ---------------------------------------------------------- fit settings
+    @property
+    def settings_version(self) -> int:
+        """Monotone counter folded into fit keys; bumps on settings change."""
+        with self._lock:
+            return self._settings_version
+
+    def fit_settings(self) -> FitSettings:
+        with self._lock:
+            return self._fit_settings
+
+    def set_fit_settings(self, settings: FitSettings) -> FitSettings:
+        """Apply new hyperparameters; identical settings don't bump the
+        version, so a redundant PUT never invalidates warm fit caches."""
+        with self._lock:
+            if settings != self._fit_settings:
+                self._fit_settings = settings
+                self._settings_version += 1
+            return self._fit_settings
+
     # ------------------------------------------------------------- fit cache
-    def get_fit(self, key: tuple[str, str, str, int]) -> FitRecord | None:
-        """Cached fit for (ticker, expiry-ISO, fit-mode, session-version)."""
+    def get_fit(self, key: tuple) -> FitRecord | None:
+        """Cached fit, keyed (ticker, ISO, mode, session-v, settings-v)."""
         with self._lock:
             return self._fits.get(key)
 
-    def store_fit(self, key: tuple[str, str, str, int], record: FitRecord) -> None:
+    def store_fit(self, key: tuple, record: FitRecord) -> None:
         with self._lock:
             self._fits[key] = record
 

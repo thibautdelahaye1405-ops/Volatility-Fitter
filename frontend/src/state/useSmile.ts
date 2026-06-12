@@ -100,6 +100,9 @@ export interface UseSmileResult {
   /** Persist the current fit as the prior, then refetch the smile.
    *  No-op in mock mode; rejects (after surfacing editError) on failure. */
   savePrior: () => Promise<void>;
+  /** Force a refetch of the current smile through the regular load path
+   *  (used after server-side state changes, e.g. PUT /settings/fit). */
+  reload: () => void;
   /** Spot-scenario inputs (regime + spot return) driving the SSR overlay. */
   scenario: ScenarioState;
   setScenario: (next: ScenarioState) => void;
@@ -275,6 +278,9 @@ export function useSmile(): UseSmileResult {
     setReloadNonce((n) => n + 1);
   }, [source, ticker, expiry]);
 
+  /** Refetch the current node through the regular smile effect. */
+  const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
+
   // Derived side-channels: SSR scenario overlay + lazy distribution views.
   const live = source === "live";
   const { scenarioCurve, scenarioSsr } = useScenarioCurve(
@@ -305,6 +311,7 @@ export function useSmile(): UseSmileResult {
     undo,
     redo,
     savePrior,
+    reload,
     scenario,
     setScenario,
     scenarioCurve,

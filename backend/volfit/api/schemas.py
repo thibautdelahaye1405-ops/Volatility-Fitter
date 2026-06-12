@@ -22,6 +22,23 @@ from volfit.dynamics.ssr import Regime
 FitMode = Literal["mid", "bidask", "haircut"]
 
 
+# ------------------------------------------------------------- fit settings
+class FitSettings(BaseModel):
+    """Global slice-fit hyperparameters (the Smile Viewer's panel).
+
+    PUT /settings/fit applies them to every subsequent fit: the settings
+    version is folded into the fit-cache key, so all views (smile, term,
+    density, local-vol) refit consistently — no per-endpoint threading.
+    ``model`` is forward-looking: only the LQD engine is calibratable
+    through the API today (SVI-JW/sigmoid calibration is roadmap Phase 2).
+    """
+
+    model: Literal["lqd"] = "lqd"
+    nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
+    regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
+    regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}
+
+
 # ------------------------------------------------------------- smile payload
 class SmilePoint(BaseModel):
     """One point of a continuous model curve in (log-moneyness, vol) space."""

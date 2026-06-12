@@ -10,6 +10,7 @@ import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
 import ScenarioPanel from "../components/ScenarioPanel";
+import HyperparamPanel from "../components/HyperparamPanel";
 import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
 import type { FitMode } from "../state/useSmile";
@@ -60,6 +61,7 @@ export default function SmileViewer() {
     undo,
     redo,
     savePrior,
+    reload,
     scenario,
     setScenario,
     scenarioCurve,
@@ -391,6 +393,11 @@ export default function SmileViewer() {
                   : "scenario overlay applies to the Smile view"
               }
             />
+          </div>
+
+          {/* Global fit hyperparameters (model, N, damping) */}
+          <div className="mt-4 border-t border-slate-800 pt-4">
+            <HyperparamPanel disabled={!live} onApplied={reload} />
           </div>
         </aside>
       </div>

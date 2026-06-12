@@ -57,6 +57,8 @@ K_PAD = 0.02
 #: filter — unregularized they interpolate exactly with wild ATM handles
 #: (observed: a 7-quote 1M slice fitting skew +0.78, curvature -40). 1e-6
 #: costs only bp-level fit error on liquid slices and restores sane shapes.
+#: These are now the *defaults* of schemas.FitSettings — the hyperparameter
+#: panel (PUT /settings/fit) overrides them per AppState.
 REG_LAMBDA = 1e-6
 REG_POWER = 1.0
 
@@ -80,10 +82,17 @@ def session_version(state: AppState, ticker: str, iso: str) -> int:
     return 0 if session is None else session.version
 
 
-def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple[str, str, str, int]:
-    """Fit-cache key: (ticker, canonical ISO, mode, session version) — every
-    quote edit bumps the version, so edited nodes refit without eviction."""
-    return (ticker, iso, fit_mode, session_version(state, ticker, iso))
+def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
+    """Fit-cache key: (ticker, canonical ISO, mode, session version, settings
+    version) — quote edits and hyperparameter changes both bump a version, so
+    affected nodes refit without cache eviction."""
+    return (
+        ticker,
+        iso,
+        fit_mode,
+        session_version(state, ticker, iso),
+        state.settings_version,
+    )
 
 
 def edited_fit_inputs(
@@ -112,8 +121,15 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     k, w, weights = edited_fit_inputs(
         state, ticker, iso, prepared, fit_weights(prepared, fit_mode)
     )
+    settings = state.fit_settings()
     result = calibrate_slice(
-        k, w, t=prepared.t, weights=weights, reg_lambda=REG_LAMBDA, reg_power=REG_POWER
+        k,
+        w,
+        t=prepared.t,
+        n_order=settings.nOrder,
+        weights=weights,
+        reg_lambda=settings.regLambda,
+        reg_power=settings.regPower,
     )
     record = FitRecord(prepared=prepared, result=result)
     state.store_fit(key, record)
@@ -224,13 +240,15 @@ def fit_surface_slice(
     if enforce_calendar and prev is not None:
         cal_idx, cal_floor = calendar_floor(prev.slice)
     k, w, weights = edited_fit_inputs(state, ticker, iso, prepared, weights)
+    settings = state.fit_settings()
     return calibrate_slice(
         k,
         w,
         t=prepared.t,
+        n_order=settings.nOrder,
         weights=weights,
-        reg_lambda=REG_LAMBDA,
-        reg_power=REG_POWER,
+        reg_lambda=settings.regLambda,
+        reg_power=settings.regPower,
         init=prev.params if prev is not None else None,
         calendar_indices=cal_idx,
         calendar_floor=cal_floor,
