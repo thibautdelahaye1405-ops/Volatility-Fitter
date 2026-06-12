@@ -62,17 +62,28 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   `api/service.py`) — without it, slices left with ~7 quotes after the wing
   filter interpolate exactly with wild handles (GAMMA 1M fitted skew +0.78).
 
-**Next up (in order):**
+**Next up (in order — items marked [REQ] were requested by the user on
+2026-06-12; details in the phase checklists below):**
 1. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode;
-   hyperparameter panel (model choice, N, penalties, toggles — Phase 6 left-over).
-2. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+   hyperparameter panel (model choice, N, penalties, toggles — Phase 6 left-over);
+   [REQ] align the localvol model with
+   `Docs/piecewise_affine_local_variance_calibration.tex` (golden tests vs the note).
+2. [REQ] Real-data realism block (Phase 3): dividends model selection
+   (continuous / discrete absolute / discrete proportional / mix), forward
+   mode choice (theoretical carry / parity-implied / manual override),
+   de-Americanization of single-name quotes; plus stale-quote/outlier filters
+   on parity pairs (a few live expiries show rms 2-30 from stale deep wings).
+3. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
+   modes (delta / fixed strike / %ATM / normalized / log-normalized); table
+   export (prices, IV) as save/download; expiries bulk selection by type
+   (monthly, quarterly, weekly, LEAPS) + universe-selection UI.
+4. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
+   timestamp + history query API (charting UI later).
+5. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
-3. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+6. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
    lambda, nu, auto-tune), lasso selection.
-4. Real-data quote prep hardening: stale-quote/outlier filters on parity
-   pairs (a few live expiries show rms 2-30 from stale deep wings),
-   universe-selection UI (pick tickers/expiries from the frontend).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`.
@@ -167,6 +178,8 @@ since other models are standard.
 - [x] `models/svi_jw/`: raw-SVI + JW conversion (Appendix A). (SVI own calibration & Gatheral–Jacquier butterfly conditions still TODO)
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
 - [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
+- [ ] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: align the grid model with the note's piecewise-affine local-variance calibration (direct calibration to quotes, not only Dupire extraction); golden tests against the note's numbers, same convention as the LQD/graph notes.
+- [ ] [REQ 2026-06-12] American-options handling, de-Americanization first: imply European-equivalent IVs from American quote prices (binomial or BAW early-exercise adjustment in `core/american.py`) so single-name chains (AAPL, ...) feed the fitter clean European vols; full pricer/Greeks surface only as a by-product, not a near-term goal.
 - [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
 - [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)
 - [x] `calib/event_time.py`: dilated clock + variance-lumping term-structure interpolation; toggleable.
@@ -177,10 +190,14 @@ since other models are standard.
 ## Phase 3 — Data layer (weeks 5–7, parallel with Phase 2)
 
 - [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests) + `yahoo.py` (yfinance, lazy import, injectable factory, sqrt-time expiry thinning). `bloomberg.py` / `massive.py` still TODO.
-- [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic). Discrete-dividend model later.
+- [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic).
+- [ ] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute, discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice); feeds the theoretical forward and the event/ex-date handling.
+- [ ] [REQ 2026-06-12] Forward fitting mode per expiry: **theoretical** (spot + carry from rate/dividend model), **parity-implied** (current default), or **manually adjusted** (user override in the UI, persisted with the fit session); diagnostics showing the three side by side.
+- [ ] [REQ 2026-06-12] Fit time-series scaffold: persist every calibration (params, ATM handles, diagnostics) keyed by snapshot timestamp — VolStore `fits` table already has the shape — plus history query API (`GET /history/{ticker}/{tenor}`); charting UI deferred.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
 - [x] Universe dataclass + persistence; provider-driven enumeration UI flow TODO.
+- [ ] [REQ 2026-06-12] Expiries bulk selection by type: classify listed expiries (daily, weekly, monthly = 3rd Friday, quarterly, LEAPS) in the provider/universe layer and let the user select by class (e.g. "monthlies ≤ 1y + quarterlies") instead of one by one; UI lives in the universe-selection flow.
 
 **Exit criteria:** one command snapshots a 20-ticker universe from Yahoo into storage; forwards implied; quotes ready for calibration.
 
@@ -222,6 +239,9 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 - [ ] Diagnostics panel: A_L/A_R, Lee slopes, var-swap level shown; directly *editable* ATM handles (w₀, s₀, κ₀ via exact retargeting) TODO.
 - [x] Prior management: save current fit as prior (button + PriorRecord with params); load/diff UI TODO.
 - [ ] Hyperparameter panel: model choice, N, penalty coefficients, arbitrage/event toggles.
+- [ ] [REQ 2026-06-12] Strike-axis modes on the smile chart: log-moneyness (current), **fixed strike** K, **%ATM** (K/F·100), **delta** (Black delta of the fitted vol at K), **normalized** (K−F)/(σ_ATM·F·√T), **log-normalized** ln(K/F)/(σ_ATM·√T) — extend `axisMode`; quotes, brush and crosshair must follow the active axis.
+- [ ] [REQ 2026-06-12] 3D vol-surface chart: σ(k, T) surface over the fitted expiry ladder (rotatable; start with SVG/canvas mesh — same zero-dep philosophy — WebGL only if needed).
+- [ ] [REQ 2026-06-12] Table export: quotes/prices/IV and fit tables viewable as a grid and exportable — copy, save, and CSV download (API endpoint streaming CSV + frontend download button).
 
 **Exit criteria:** trader workflow demo — load universe, inspect smile, drag ATM skew, erase a bad quote, refit, save prior — all fluid.
 
