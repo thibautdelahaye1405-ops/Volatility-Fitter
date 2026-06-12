@@ -18,12 +18,18 @@ export type FitMode = "mid" | "bidask" | "haircut";
 /** Quote-level edit verbs accepted by POST /smiles/{ticker}/{expiry}/edits. */
 export type EditAction = "exclude" | "include" | "amend" | "reset";
 
+/** Listing class of an expiry, driving the header's bulk filter chips. */
+export type ExpiryClass = "daily" | "weekly" | "monthly" | "quarterly" | "leaps";
+
 /** One expiry rung of a ticker's listed ladder. */
 export interface UniverseExpiry {
   /** ISO date "YYYY-MM-DD". */
   expiry: string;
   /** Year-fraction to expiry. */
   t: number;
+  /** Listing class (daily/weekly/monthly/quarterly/leaps); optional so a
+   *  payload from an older backend still type-checks at the boundary. */
+  expiryType?: ExpiryClass;
 }
 
 /** Response of GET /universe. */
@@ -151,7 +157,10 @@ export function useSmile(): UseSmileResult {
     setUniverse({
       asOf: "mock",
       tickers: [mock.ticker],
-      expiries: { [mock.ticker]: [{ expiry: mock.expiry, t: mock.T }] },
+      expiries: {
+        // 2026-12-18 is a third-Friday December listing: quarterly class.
+        [mock.ticker]: [{ expiry: mock.expiry, t: mock.T, expiryType: "quarterly" }],
+      },
     });
     setTickerState(mock.ticker);
     setExpiryState(mock.expiry);

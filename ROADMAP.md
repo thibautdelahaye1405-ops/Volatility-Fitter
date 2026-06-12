@@ -8,9 +8,9 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-12 PM (resume here)
+## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (177 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (186 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -113,28 +113,48 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     forward (r = -ln D/t, q = r - ln(F/S)/t). Golden round trip: CRR-priced
     American chain at known σ(k) recovered within 30 vol bp.
 
+- **[REQ done] Chart & UX block (2026-06-13)**:
+  * **Strike-axis modes** on the smile chart (`lib/axisModes.ts` +
+    SmileChart): k / fixed strike / %ATM / delta (numeric-bisection inverse,
+    "25Δ"-style ticks) / normalized / log-normalized — geometry stays in
+    k-space, only ticks/crosshair labels transform; selector in the chart
+    header.
+  * **3D vol-surface view** (`components/SurfaceChart.tsx`, zero-dep SVG:
+    painter-sorted quads, drag-to-rotate yaw, vol colormap + legend) fed by
+    GET /surface/{ticker} (`api/surface.py`: shared 61-pt union k grid over
+    the fitted ladder, cached slice fits).
+  * **Table export**: GET /smiles/{t}/{e}/table (JSON) + /table.csv
+    (attachment download; `api/table.py`, prices reconstructed via
+    normalized Black) and a Table chart-card view (`QuoteTable.tsx`) with
+    Copy-TSV / CSV-download.
+  * **Expiry classification** (`data/expiries.py`: leaps > quarterly >
+    monthly (3rd Friday) > weekly (Friday) > daily; `expiryType` on
+    /universe) + class filter chips next to the expiry selector (only
+    classes present render; auto-reselects when the current rung filters
+    out). Full universe-selection UI (pick tickers/expiries from the
+    provider) still TODO — the chips cover bulk selection within a ladder.
+  * SmileViewer split into UniverseHeader / SmileAside / useSmileShortcuts
+    to stay under the 400-line policy. All verified in headless Edge
+    (surface mesh, delta ticks, table grid, CSV Content-Disposition).
+
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
-   modes (delta / fixed strike / %ATM / normalized / log-normalized); table
-   export (prices, IV) as save/download; expiries bulk selection by type
-   (monthly, quarterly, weekly, LEAPS) + universe-selection UI.
-2. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
+1. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
    timestamp + history query API (charting UI later).
-3. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+2. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
-4. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+3. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
    lambda, nu, auto-tune), lasso selection.
-5. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
+4. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
    calibration, sigmoid, direct localvol-affine fit through the API).
-6. Realism leftovers (small): discrete-dividend ex-date handling in event
+5. Realism leftovers (small): discrete-dividend ex-date handling in event
    time; dividend-schedule editor UI (API supports discrete schedules, the
    ForwardPanel only exposes r and continuous q today).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (177 green as of 2026-06-12 PM; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
+  (186 green as of 2026-06-13; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
   `$env:VOLFIT_TICKERS='SPY,QQQ,AAPL'` first (yfinance installed).
@@ -255,7 +275,7 @@ since other models are standard.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
 - [x] Universe dataclass + persistence; provider-driven enumeration UI flow TODO.
-- [ ] [REQ 2026-06-12] Expiries bulk selection by type: classify listed expiries (daily, weekly, monthly = 3rd Friday, quarterly, LEAPS) in the provider/universe layer and let the user select by class (e.g. "monthlies ≤ 1y + quarterlies") instead of one by one; UI lives in the universe-selection flow.
+- [x] [REQ 2026-06-12] Expiries bulk selection by type: `data/expiries.py` classification (`expiryType` on /universe) + class filter chips in the Smile header. (Full provider-driven universe-selection UI still TODO.)
 
 **Exit criteria:** one command snapshots a 20-ticker universe from Yahoo into storage; forwards implied; quotes ready for calibration.
 
@@ -297,9 +317,9 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 - [ ] Diagnostics panel: A_L/A_R, Lee slopes, var-swap level shown; directly *editable* ATM handles (w₀, s₀, κ₀ via exact retargeting) TODO.
 - [x] Prior management: save current fit as prior (button + PriorRecord with params); load/diff UI TODO.
 - [ ] Hyperparameter panel: model choice, N, penalty coefficients, arbitrage/event toggles.
-- [ ] [REQ 2026-06-12] Strike-axis modes on the smile chart: log-moneyness (current), **fixed strike** K, **%ATM** (K/F·100), **delta** (Black delta of the fitted vol at K), **normalized** (K−F)/(σ_ATM·F·√T), **log-normalized** ln(K/F)/(σ_ATM·√T) — extend `axisMode`; quotes, brush and crosshair must follow the active axis.
-- [ ] [REQ 2026-06-12] 3D vol-surface chart: σ(k, T) surface over the fitted expiry ladder (rotatable; start with SVG/canvas mesh — same zero-dep philosophy — WebGL only if needed).
-- [ ] [REQ 2026-06-12] Table export: quotes/prices/IV and fit tables viewable as a grid and exportable — copy, save, and CSV download (API endpoint streaming CSV + frontend download button).
+- [x] [REQ 2026-06-12] Strike-axis modes on the smile chart: all six modes via `lib/axisModes.ts` (geometry stays in k-space; ticks/crosshair labels transform; delta inverted numerically).
+- [x] [REQ 2026-06-12] 3D vol-surface chart: `SurfaceChart.tsx` zero-dep SVG mesh (painter-sorted quads, drag-rotate, colormap) on GET /surface/{ticker}.
+- [x] [REQ 2026-06-12] Table export: GET /smiles/{t}/{e}/table + /table.csv attachment; QuoteTable grid view with Copy-TSV and CSV-download.
 
 **Exit criteria:** trader workflow demo — load universe, inspect smile, drag ATM skew, erase a bad quote, refit, save prior — all fluid.
 

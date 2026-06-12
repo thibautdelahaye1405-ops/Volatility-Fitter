@@ -106,10 +106,13 @@ class SmileData(BaseModel):
 
 # ------------------------------------------------------------------ universe
 class ExpiryInfo(BaseModel):
-    """One listed expiry of a ticker with its year fraction."""
+    """One listed expiry of a ticker with its year fraction and type tag
+    (daily/weekly/monthly/quarterly/leaps — volfit.data.expiries), the
+    handle for bulk expiry selection in the universe screen."""
 
     expiry: str
     t: float
+    expiryType: str
 
 
 class UniverseResponse(BaseModel):
@@ -158,6 +161,59 @@ class SurfaceFitResponse(BaseModel):
     calendarResiduals: list[float]  # max_alpha (G_near - G_far), 0 for first
     maxIvErrorBp: list[float]
     smiles: list[SmileData]
+
+
+# ---------------------------------------------------------------- 3D surface
+class SurfaceResponse(BaseModel):
+    """sigma(k, T) mesh for the 3D vol-surface chart (volfit.api.surface).
+
+    Every expiry's fitted slice is sampled on ONE shared log-moneyness grid
+    (the union of the per-expiry quoted ranges), so ``vol`` is a full
+    rectangular mesh: ``vol[i][j]`` is the implied vol of expiry i at k[j].
+    """
+
+    ticker: str
+    expiries: list[str]  # ISO dates, nearest first
+    t: list[float]  # year fractions, same order
+    k: list[float]  # shared log-moneyness grid (length N_SURFACE_POINTS)
+    vol: list[list[float]]  # one row per expiry, one column per k
+    atmVol: list[float]  # exact ATM handle per expiry (lqd.atm)
+    forward: list[float]  # active forward per expiry
+
+
+# --------------------------------------------------------------- quote table
+class TableRow(BaseModel):
+    """One prepared quote of a slice as a table/export row (volfit.api.table).
+
+    IVs are the displayed band (an amended quote shows its overridden mid);
+    prices are *discounted* OTM option prices reconstructed by Black at the
+    band IVs (puts by parity), in the same conventions as volfit.api.quotes.
+    """
+
+    index: int
+    strike: float
+    type: str  # "C"/"P" — the OTM side convention (call iff k >= 0)
+    k: float
+    bidIv: float
+    midIv: float
+    askIv: float
+    modelIv: float  # fitted vol at this k
+    bidPrice: float
+    midPrice: float
+    askPrice: float
+    excluded: bool
+    amended: bool
+
+
+class TableResponse(BaseModel):
+    """The full quote/price/IV table of one fitted (ticker, expiry) node."""
+
+    ticker: str
+    expiry: str
+    t: float
+    forward: float
+    discount: float
+    rows: list[TableRow]
 
 
 # --------------------------------------------------------------- graph solve

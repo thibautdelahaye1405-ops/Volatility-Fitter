@@ -64,7 +64,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (177 green as of 2026-06-12; +1 live test via $env:VOLFIT_LIVE="1")
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (186 green as of 2026-06-13; +1 live test via $env:VOLFIT_LIVE="1")
 - API:      .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)

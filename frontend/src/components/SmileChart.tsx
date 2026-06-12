@@ -1,20 +1,18 @@
 // Interactive implied-volatility smile chart. Hand-rolled SVG, no chart deps.
 // Controlled component: the visible strike window is owned by the parent and
 // edited through the RangeBrush rendered underneath the plot.
+//
+// All internal geometry (brush window, quote hit-testing, curve clipping)
+// lives in log-moneyness k = ln(K/F). The strike-axis display mode (strike,
+// %ATM, delta, normalized…) only changes how ticks are generated and how the
+// tick / crosshair labels read — see lib/axisModes.ts.
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { QuoteBand, SmilePoint } from "../lib/mockData";
-import {
-  clamp,
-  formatAxisNumber,
-  formatPct,
-  linearScale,
-  niceTicks,
-} from "../lib/chartScale";
+import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
+import { axisTicks, axisTransform, formatHoverValue } from "../lib/axisModes";
+import type { AxisContext, AxisMode } from "../lib/axisModes";
 import RangeBrush from "./RangeBrush";
-
-/** Strike axis rendering mode. 'strike' converts k to K = F * exp(k). */
-export type StrikeAxisMode = "logmoneyness" | "strike";
 
 interface SmileChartProps {
   model: SmilePoint[];
@@ -25,9 +23,14 @@ interface SmileChartProps {
   onKWindowChange: (next: [number, number]) => void;
   /** Full brushable k extent of the data. */
   fullRange: readonly [number, number];
-  axisMode?: StrikeAxisMode;
-  /** Forward level, required to label the axis in fixed-strike mode. */
+  /** Strike-axis display mode (labels only; geometry stays in k). */
+  axisMode?: AxisMode;
+  /** Forward level — strike / %ATM axis modes. */
   forward?: number;
+  /** Year-fraction to expiry — delta / normalized axis modes. */
+  t?: number;
+  /** ATM implied vol — normalized axis modes. */
+  atmVol?: number;
   /** Stable `index` of the highlighted quote, or null for no selection. */
   selectedIndex?: number | null;
   /** Quote click handler; called with null on background clicks. */
@@ -82,6 +85,8 @@ export default function SmileChart({
   fullRange,
   axisMode = "logmoneyness",
   forward,
+  t,
+  atmVol,
   selectedIndex = null,
   onQuoteSelect,
   scenario = null,
@@ -95,15 +100,23 @@ export default function SmileChart({
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
 
-  // Map k to the displayed x value (log-moneyness now, fixed strike later).
-  const xValue = useMemo(() => {
-    if (axisMode === "strike" && forward !== undefined) {
-      return (k: number) => forward * Math.exp(k);
-    }
-    return (k: number) => k;
-  }, [axisMode, forward]);
+  // Context for the axis-mode transforms (labels only, never geometry).
+  const axisCtx: AxisContext = useMemo(
+    () => ({
+      forward: forward ?? 1,
+      t: t ?? 0,
+      atmVol: atmVol ?? 0,
+      volAt: (kv: number) => volAt(model, kv),
+      kRange:
+        model.length > 1
+          ? ([model[0].k, model[model.length - 1].k] as const)
+          : fullRange,
+    }),
+    [forward, t, atmVol, model, fullRange],
+  );
 
-  // Scales over the *visible* window only; y auto-fits visible data + padding.
+  // Scales over the *visible* window only; x is always linear in k and the
+  // y domain auto-fits the visible data plus padding.
   const { xScale, yScale } = useMemo(() => {
     const inWindow = (k: number) => k >= kLo && k <= kHi;
     let yMin = Infinity;
@@ -115,17 +128,17 @@ export default function SmileChart({
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     return {
-      xScale: linearScale([xValue(kLo), xValue(kHi)], [0, plotW]),
+      xScale: linearScale([kLo, kHi], [0, plotW]),
       yScale: linearScale([yMin - pad, yMax + pad], [plotH, 0]),
     };
-  }, [model, prior, scenario, quotes, kLo, kHi, plotW, plotH, xValue]);
+  }, [model, prior, scenario, quotes, kLo, kHi, plotW, plotH]);
 
   /** Build an SVG path for a curve, clipped to the visible window. */
   const pathOf = (curve: SmilePoint[]): string => {
     let d = "";
     for (const p of curve) {
       if (p.k < kLo || p.k > kHi) continue;
-      const x = xScale.map(xValue(p.k));
+      const x = xScale.map(p.k);
       const y = yScale.map(p.vol);
       d += d === "" ? `M${x.toFixed(2)},${y.toFixed(2)}` : `L${x.toFixed(2)},${y.toFixed(2)}`;
     }
@@ -135,7 +148,11 @@ export default function SmileChart({
   const priorPath = useMemo(() => pathOf(prior), [prior, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const xTicks = niceTicks(xScale.domain[0], xScale.domain[1], 8);
+  // X ticks: nice values in display units, positioned at their k preimage.
+  const xTicks = useMemo(
+    () => axisTicks(axisMode, kLo, kHi, axisCtx, 6),
+    [axisMode, kLo, kHi, axisCtx],
+  );
   const yTicks = niceTicks(yScale.domain[0], yScale.domain[1], 6);
   const visibleQuotes = quotes.filter((q) => q.k >= kLo && q.k <= kHi);
 
@@ -147,19 +164,14 @@ export default function SmileChart({
     const rect = svg.getBoundingClientRect();
     const px = e.clientX - rect.left - MARGIN.left;
     if (px < 0 || px > plotW) { setHoverK(null); return; }
-    const xv = xScale.invert(px);
-    // Invert the axis transform back to k-space.
-    const k = axisMode === "strike" && forward !== undefined ? Math.log(xv / forward) : xv;
-    setHoverK(clamp(k, kLo, kHi));
+    setHoverK(clamp(xScale.invert(px), kLo, kHi));
   };
 
   const hoverVol = hoverK !== null ? volAt(model, hoverK) : null;
-  const hoverX = hoverK !== null ? xScale.map(xValue(hoverK)) : 0;
+  const hoverX = hoverK !== null ? xScale.map(hoverK) : 0;
   const hoverLabel =
     hoverK !== null && hoverVol !== null
-      ? axisMode === "strike" && forward !== undefined
-        ? `K ${formatAxisNumber(forward * Math.exp(hoverK))} · σ ${formatPct(hoverVol, 2)}`
-        : `k ${hoverK.toFixed(3)} · σ ${formatPct(hoverVol, 2)}`
+      ? `${formatHoverValue(axisMode, axisTransform(axisMode, hoverK, axisCtx))} · σ ${formatPct(hoverVol, 2)}`
       : null;
 
   /* ---------------- render ---------------- */
@@ -198,32 +210,32 @@ export default function SmileChart({
           >
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Gridlines */}
-              {yTicks.map((t) => (
-                <line key={`gy${t}`} x1={0} x2={plotW} y1={yScale.map(t)} y2={yScale.map(t)}
+              {yTicks.map((tv) => (
+                <line key={`gy${tv}`} x1={0} x2={plotW} y1={yScale.map(tv)} y2={yScale.map(tv)}
                   stroke="rgb(255 255 255 / 0.05)" />
               ))}
-              {xTicks.map((t) => (
-                <line key={`gx${t}`} x1={xScale.map(t)} x2={xScale.map(t)} y1={0} y2={plotH}
+              {xTicks.map((tick) => (
+                <line key={`gx${tick.k}`} x1={xScale.map(tick.k)} x2={xScale.map(tick.k)} y1={0} y2={plotH}
                   stroke="rgb(255 255 255 / 0.04)" />
               ))}
 
               {/* Zero log-moneyness (ATM forward) reference */}
               {kLo < 0 && kHi > 0 && (
-                <line x1={xScale.map(xValue(0))} x2={xScale.map(xValue(0))} y1={0} y2={plotH}
+                <line x1={xScale.map(0)} x2={xScale.map(0)} y1={0} y2={plotH}
                   stroke="rgb(148 163 184 / 0.25)" strokeDasharray="2 4" />
               )}
 
               {/* Axes labels */}
-              {yTicks.map((t) => (
-                <text key={`ly${t}`} x={-8} y={yScale.map(t)} dy="0.32em" textAnchor="end"
+              {yTicks.map((tv) => (
+                <text key={`ly${tv}`} x={-8} y={yScale.map(tv)} dy="0.32em" textAnchor="end"
                   className="fill-slate-500 font-mono text-[10px]">
-                  {formatPct(t)}
+                  {formatPct(tv)}
                 </text>
               ))}
-              {xTicks.map((t) => (
-                <text key={`lx${t}`} x={xScale.map(t)} y={plotH + 16} textAnchor="middle"
+              {xTicks.map((tick) => (
+                <text key={`lx${tick.k}`} x={xScale.map(tick.k)} y={plotH + 16} textAnchor="middle"
                   className="fill-slate-500 font-mono text-[10px]">
-                  {formatAxisNumber(t)}
+                  {tick.label}
                 </text>
               ))}
 
@@ -233,7 +245,7 @@ export default function SmileChart({
                   stroke + soft glow circle. Each quote also gets an
                   invisible click target for selection. */}
               {visibleQuotes.map((q) => {
-                const x = xScale.map(xValue(q.k));
+                const x = xScale.map(q.k);
                 const yb = yScale.map(q.bid);
                 const ya = yScale.map(q.ask);
                 const ym = yScale.map(q.mid);
