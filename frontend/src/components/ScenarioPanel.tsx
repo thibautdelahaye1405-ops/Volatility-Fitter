@@ -26,7 +26,12 @@ interface ScenarioPanelProps {
 const REGIMES: { id: Regime; label: string; title: string }[] = [
   { id: "sticky_moneyness", label: "Mny", title: "Sticky moneyness" },
   { id: "sticky_strike", label: "Strike", title: "Sticky strike" },
-  { id: "sticky_local_vol", label: "LV", title: "Sticky local-vol" },
+  { id: "sticky_local_vol", label: "LV", title: "Sticky local-vol (SSR = 2 rule)" },
+  {
+    id: "sticky_local_vol_grid",
+    label: "LV grid",
+    title: "Sticky local-vol grid (exact: fixed-strike grid, Dupire reprice)",
+  },
 ];
 
 /** Linear interpolation of a curve's vol at k (same as SmileChart's). */

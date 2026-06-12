@@ -215,6 +215,30 @@ class ScenarioResponse(BaseModel):
     regime: str
 
 
+# ------------------------------------------------------------------ local vol
+class LocalVolGridResponse(BaseModel):
+    """Extracted Dupire local-vol grid of a ticker plus no-arb diagnostics.
+
+    ``sigma[i][j]`` is the local vol of forward-variance bucket i (between
+    listed expiries, sampled at the bucket midpoint) at log-moneyness k[j];
+    ``minDensity``/``calendarViolation`` are the discrete PDE residuals of
+    volfit.models.localvol.model (scheme noise, gated by ``arbitrageFree``),
+    ``nNan``/``nClipped`` count extraction repairs (Dupire denominator <= 0,
+    variance floored).
+    """
+
+    ticker: str
+    expiries: list[str]
+    t: list[float]  # expiry year fractions (bucket right edges)
+    k: list[float]  # log-moneyness nodes
+    sigma: list[list[float]]  # local vols, one row per bucket
+    nNan: int
+    nClipped: int
+    minDensity: list[float]
+    calendarViolation: list[float]
+    arbitrageFree: bool
+
+
 # ------------------------------------------------------------ term structure
 class EventSpec(BaseModel):
     """One scheduled event of the dilated clock: ``weight`` years of extra

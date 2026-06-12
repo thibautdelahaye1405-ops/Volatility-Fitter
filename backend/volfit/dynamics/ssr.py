@@ -36,12 +36,18 @@ class Regime(str, Enum):
     STICKY_MONEYNESS = "sticky_moneyness"
     STICKY_STRIKE = "sticky_strike"
     STICKY_LOCAL_VOL = "sticky_local_vol"
+    #: Exact dynamics: hold the extracted local-vol *grid* fixed in absolute
+    #: strike and reprice through the Dupire PDE (volfit.api.localvol). The
+    #: SSR is an output there; the 2.0 below is only its short-maturity limit
+    #: for callers that resolve regimes to a number.
+    STICKY_LOCAL_VOL_GRID = "sticky_local_vol_grid"
 
 
 _REGIME_SSR = {
     Regime.STICKY_MONEYNESS: 0.0,
     Regime.STICKY_STRIKE: 1.0,
     Regime.STICKY_LOCAL_VOL: 2.0,
+    Regime.STICKY_LOCAL_VOL_GRID: 2.0,
 }
 
 

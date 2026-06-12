@@ -378,6 +378,12 @@ def solve_graph(state: AppState, request: GraphSolveRequest) -> GraphSolveRespon
 # ----------------------------------------------------------------- scenario
 def run_scenario(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
     """Shift one fitted smile for a spot move under the requested regime."""
+    if request.regime == Regime.STICKY_LOCAL_VOL_GRID:
+        # Exact dynamics: fixed-strike LV grid + Dupire reprice (api.localvol;
+        # imported lazily — that module reuses this one's slice-fit cache).
+        from volfit.api.localvol import scenario_sticky_grid
+
+        return scenario_sticky_grid(state, request)
     record = fit_or_get(state, request.ticker, request.expiry, request.fitMode)
     t, slice_ = record.prepared.t, record.result.slice
     grid = np.linspace(

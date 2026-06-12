@@ -13,8 +13,15 @@ import { api } from "./api";
 import type { FitMode } from "./useSmile";
 import type { SmileData, SmilePoint } from "../lib/mockData";
 
-/** Vol-spot dynamics regime understood by the SSR scenario engine. */
-export type Regime = "sticky_moneyness" | "sticky_strike" | "sticky_local_vol";
+/** Vol-spot dynamics regime understood by the SSR scenario engine.
+ *  "sticky_local_vol_grid" is the exact mode: the extracted local-vol grid is
+ *  held fixed in absolute strike and the smile re-priced through the Dupire
+ *  PDE (the others are SSR shape rules applied to the fitted slice). */
+export type Regime =
+  | "sticky_moneyness"
+  | "sticky_strike"
+  | "sticky_local_vol"
+  | "sticky_local_vol_grid";
 
 /** User-controlled scenario inputs (regime control + spot-return slider). */
 export interface ScenarioState {
