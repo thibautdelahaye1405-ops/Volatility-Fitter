@@ -74,6 +74,41 @@ def test_forward_skipped_with_too_few_pairs(chain):
     assert implied_forward(small, expiry) is None
 
 
+def test_parity_outlier_filter_drops_stale_pair(chain):
+    """One stale deep-wing pair must be trimmed, not tilt the forward."""
+    from dataclasses import replace
+
+    from volfit.data import implied_forward
+    from volfit.data.types import ChainSnapshot
+
+    expiry = chain.expiries()[1]
+    corrupted = []
+    poisoned_strike = None
+    for q in chain.quotes_for(expiry):
+        if poisoned_strike is None and q.call_put == "C":
+            poisoned_strike = q.strike  # stale call: mid off by ~5% of spot
+            q = replace(q, bid=q.bid + 0.05 * chain.spot, ask=q.ask + 0.05 * chain.spot)
+        elif q.strike == poisoned_strike:
+            pass  # keep the matching put honest so the pair is inconsistent
+        corrupted.append(q)
+    bad = ChainSnapshot(chain.ticker, chain.spot, chain.timestamp, corrupted)
+
+    clean = implied_forward(chain, expiry)
+    robust = implied_forward(bad, expiry)
+    assert robust is not None and clean is not None
+    assert robust.n_outliers == 1
+    assert robust.n_strikes == clean.n_strikes - 1
+    # Forward agrees with the uncorrupted chain's to ~0.01% …
+    assert robust.forward == pytest.approx(clean.forward, rel=1e-4)
+    # … and the residual rms stays at clean-chain noise level.
+    assert robust.residual_rms < 10 * clean.residual_rms + 1e-9
+
+
+def test_parity_filter_never_trims_clean_chain(chain):
+    for fwd in implied_forwards(chain).values():
+        assert fwd.n_outliers == 0
+
+
 # -- SQLite store ------------------------------------------------------------
 
 
