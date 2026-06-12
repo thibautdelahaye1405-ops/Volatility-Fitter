@@ -7,6 +7,19 @@ noise instead of assuming it away (roadmap risk #4: gate the model behind
 diagnostics).
 """
 
+from volfit.models.localvol.affine import (
+    AffinePDESolution,
+    AffineVarianceSurface,
+    solve_affine_dupire,
+)
+from volfit.models.localvol.affine_calib import (
+    AffineCalibration,
+    OptionQuote,
+    VarSwapQuote,
+    calibrate_affine,
+    varswap_const,
+    varswap_weights,
+)
 from volfit.models.localvol.dupire import (
     ExtractionResult,
     dupire_local_variance,
@@ -21,13 +34,22 @@ from volfit.models.localvol.model import (
 from volfit.models.localvol.pde import PDESolution, solve_dupire
 
 __all__ = [
+    "AffineCalibration",
+    "AffinePDESolution",
+    "AffineVarianceSurface",
     "ExtractionResult",
     "LocalVolDiagnostics",
     "LocalVolGrid",
     "LocalVolModel",
     "LocalVolSlice",
+    "OptionQuote",
     "PDESolution",
+    "VarSwapQuote",
+    "calibrate_affine",
     "dupire_local_variance",
     "extract_grid",
+    "solve_affine_dupire",
     "solve_dupire",
+    "varswap_const",
+    "varswap_weights",
 ]
