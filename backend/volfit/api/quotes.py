@@ -88,6 +88,8 @@ def prepare_quotes(
             (k, quote.bid * scale + shift, quote.mid * scale + shift, quote.ask * scale + shift)
         )
 
+    if not rows:  # real providers can serve one-sided-only expiries
+        raise ValueError(f"no two-sided OTM quotes for expiry {expiry.isoformat()}")
     rows.sort(key=lambda r: r[0])
     k_arr, c_bid, c_mid, c_ask = (np.array(col) for col in zip(*rows))
 
@@ -96,6 +98,8 @@ def prepare_quotes(
     w_ask = implied_total_variance(k_arr, c_ask)
 
     keep = np.isfinite(w_bid) & np.isfinite(w_mid) & np.isfinite(w_ask)
+    if not keep.any():
+        raise ValueError(f"no quotes inside static bounds for {expiry.isoformat()}")
     # Wing filter: estimate ATM total variance from the surviving mids, then
     # drop strikes more than Z_MAX standard deviations from the forward.
     w_atm = float(np.interp(0.0, k_arr[keep], w_mid[keep]))

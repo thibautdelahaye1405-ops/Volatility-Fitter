@@ -3,9 +3,10 @@
 Everything heavy is computed at most once: chain snapshots, parity-implied
 forwards, per-(ticker, expiry, fit-mode, session-version) slice calibrations,
 saved priors (display curve + fitted LQD params, so prior densities can be
-rebuilt) and the lazily-built graph smile universe. The synthetic
-provider is deterministic and quote edits bump their session's version (a new
-cache key), so caches never need invalidation. A single lock guards the
+rebuilt) and the lazily-built graph smile universe. Chains are fetched once
+per process (live providers included — a snapshot is one observation) and
+quote edits bump their session's version (a new cache key), so caches never
+need invalidation. A single lock guards the
 mutable dicts because WebSocket surface fits run on worker threads; the
 universe build happens outside that lock (it re-enters the fit cache) and is
 idempotent, so a rare double build is harmless.
@@ -21,7 +22,7 @@ from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import SmilePoint
 from volfit.api.session import EditSession
 from volfit.data.forwards import ImpliedForward, implied_forwards
-from volfit.data.provider import SyntheticProvider
+from volfit.data.provider import OptionChainProvider, SyntheticProvider
 from volfit.data.types import ChainSnapshot
 from volfit.models.lqd.basis import LQDParams
 from volfit.models.lqd.calibrate import CalibrationResult
@@ -56,9 +57,11 @@ class PriorRecord:
 class AppState:
     """Provider handle plus all caches; one instance per FastAPI app."""
 
-    def __init__(self, reference_date: date) -> None:
+    def __init__(
+        self, reference_date: date, provider: OptionChainProvider | None = None
+    ) -> None:
         self.reference_date = reference_date
-        self.provider = SyntheticProvider(reference_date=reference_date)
+        self.provider = provider or SyntheticProvider(reference_date=reference_date)
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fits: dict[tuple[str, str, str, int], FitRecord] = {}

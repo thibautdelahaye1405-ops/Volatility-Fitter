@@ -1,9 +1,11 @@
 """volfit FastAPI application factory (ROADMAP Phase 5).
 
-`create_app(reference_date)` wires AppState (provider + caches) onto
-`app.state.volfit` and includes the thin routers; tests pin the reference
-date for determinism while the module-level `app` (used by uvicorn / serve.py)
-defaults to today. CORS is open to the Vite dev server only.
+`create_app(reference_date, provider)` wires AppState (provider + caches)
+onto `app.state.volfit` and includes the thin routers; tests pin the
+reference date for determinism while the module-level `app` (used by
+uvicorn) defaults to today + synthetic data. serve.py builds its own app to
+select a live provider from the environment. CORS is open to the Vite dev
+server only.
 """
 
 from __future__ import annotations
@@ -15,15 +17,23 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from volfit.api.routers import ALL_ROUTERS
 from volfit.api.state import AppState
+from volfit.data.provider import OptionChainProvider
 
 #: Vite dev-server origins allowed to call the API from the browser.
 CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
-def create_app(reference_date: date | None = None) -> FastAPI:
-    """Build the API app around one AppState instance."""
+def create_app(
+    reference_date: date | None = None,
+    provider: OptionChainProvider | None = None,
+) -> FastAPI:
+    """Build the API app around one AppState instance.
+
+    `provider=None` keeps the offline SyntheticProvider default; pass a
+    YahooProvider (or any OptionChainProvider) to serve live data.
+    """
     app = FastAPI(title="volfit")
-    app.state.volfit = AppState(reference_date or date.today())
+    app.state.volfit = AppState(reference_date or date.today(), provider=provider)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,

@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-10 (resume here)
 
-**Done & verified (113 pytest tests green, `git log --oneline` tells the story):**
+**Done & verified (125 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -18,8 +18,13 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   grid, Crank–Nicolson Dupire forward PDE pricer (adaptive 7.5-sd mesh,
   <0.5 vol bp flat round trip in ~20 ms), Dupire extraction with butterfly
   gating, no-arb diagnostics. Not yet exposed via the API.
-- Phase 3 core: synthetic provider + parity forwards + SQLite VolStore
-  (Yahoo/Bloomberg/Massive providers and DuckDB/Parquet history not started).
+- Phase 3 near-complete (M3 reached): synthetic + **Yahoo provider**
+  (`data/yahoo.py`, yfinance, sqrt-time expiry thinning, 0-bid→None mapping),
+  parity forwards, SQLite VolStore, snapshot CLI (`backend/snapshot.py`).
+  Live-verified 2026-06-12: SPY/QQQ/AAPL chains fitted end-to-end in the UI
+  (SPY 5.5M: ATM 17.2%, skew -0.41; clean monotone variance term structure).
+  Run live: `$env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'`
+  before serve.py. (Bloomberg/Massive providers + DuckDB/Parquet history TODO)
 - Phase 4 complete (dense path): 6-node golden example reproduced exactly;
   smile-universe round trip works (graph posterior on (atm_vol, skew, curv)
   handles → exact arbitrage-free LQD smiles + credible bands); 1k nodes < 1 s.
@@ -58,14 +63,16 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   filter interpolate exactly with wild handles (GAMMA 1M fitted skew +0.78).
 
 **Next up (in order):**
-1. Yahoo provider + real snapshots (needs `yfinance` or stdlib scraping).
-2. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode;
+1. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode;
    hyperparameter panel (model choice, N, penalties, toggles — Phase 6 left-over).
-3. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+2. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
-4. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+3. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
    lambda, nu, auto-tune), lasso selection.
+4. Real-data quote prep hardening: stale-quote/outlier filters on parity
+   pairs (a few live expiries show rms 2-30 from stale deep wings),
+   universe-selection UI (pick tickers/expiries from the frontend).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`.
@@ -169,7 +176,7 @@ since other models are standard.
 
 ## Phase 3 — Data layer (weeks 5–7, parallel with Phase 2)
 
-- [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests). `yahoo.py` / `bloomberg.py` / `massive.py` still TODO.
+- [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests) + `yahoo.py` (yfinance, lazy import, injectable factory, sqrt-time expiry thinning). `bloomberg.py` / `massive.py` still TODO.
 - [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic). Discrete-dividend model later.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
