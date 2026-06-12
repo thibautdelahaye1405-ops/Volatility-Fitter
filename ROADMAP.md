@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-12 PM (resume here)
 
-**Done & verified (143 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (152 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -84,13 +84,22 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   the small-w Dupire denominator) — realized short-expiry SSR can sit well
   below the theoretical ~2; mid/long buckets land in 1.5-2.5.
 
+- **Realism block, part 1 done**: `core/american.py` (CRR binomial
+  American/European pricer + `deamericanize()` → European-equivalent IV by
+  Brent inversion; continuous-yield dividends only until the dividends model
+  lands) and the **stale parity-pair filter** in `data/forwards.py`
+  (iterative 4-robust-sigma MAD trim floored at 1bp of spot, `n_outliers`
+  reported). NOT yet wired into quote prep / providers — that wiring belongs
+  with the dividends + forward-mode work below.
+
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. [REQ] Real-data realism block (Phase 3): dividends model selection
-   (continuous / discrete absolute / discrete proportional / mix), forward
-   mode choice (theoretical carry / parity-implied / manual override),
-   de-Americanization of single-name quotes; plus stale-quote/outlier filters
-   on parity pairs (a few live expiries show rms 2-30 from stale deep wings).
+1. [REQ] Real-data realism block (Phase 3) remainder: dividends model
+   selection (continuous / discrete absolute / discrete proportional / mix),
+   forward mode choice (theoretical carry / parity-implied / manual
+   override), and wiring de-Americanization (`core/american.py`, done) into
+   single-name quote prep (needs a per-instrument exercise-style flag plus
+   rate/dividend inputs through `api/quotes.py`).
 2. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
    modes (delta / fixed strike / %ATM / normalized / log-normalized); table
    export (prices, IV) as save/download; expiries bulk selection by type
@@ -210,7 +219,7 @@ since other models are standard.
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
 - [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
 - [x] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: `models/localvol/affine.py` + `affine_calib.py`, golden tests vs every table of the note (Delaunay triangulation is the note's convention; lambda=50 roughness reproduces the calibrated nodal table).
-- [ ] [REQ 2026-06-12] American-options handling, de-Americanization first: imply European-equivalent IVs from American quote prices (binomial or BAW early-exercise adjustment in `core/american.py`) so single-name chains (AAPL, ...) feed the fitter clean European vols; full pricer/Greeks surface only as a by-product, not a near-term goal.
+- [x] [REQ 2026-06-12] American-options handling, de-Americanization first: `core/american.py` CRR binomial + `deamericanize()` (European-equivalent IV; continuous-yield divs). **Provider/quote-prep wiring still TODO** (exercise-style flag, r/q inputs).
 - [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
 - [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)
 - [x] `calib/event_time.py`: dilated clock + variance-lumping term-structure interpolation; toggleable.
