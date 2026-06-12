@@ -8,9 +8,9 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-12 (resume here)
+## STATUS — updated 2026-06-12 PM (resume here)
 
-**Done & verified (125 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (143 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -58,32 +58,52 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 - Phase 8 complete: SSR scenario engine + frontend regime selector
   (Mny/Strike/LV) with spot-return slider and dotted overlay on the smile
   chart. (true sticky-local-vol-grid mode still awaits localvol API wiring)
-- API slice fits use gentle high-order damping (REG_LAMBDA=1e-6 in
-  `api/service.py`) — without it, slices left with ~7 quotes after the wing
-  filter interpolate exactly with wild handles (GAMMA 1M fitted skew +0.78).
+- API slice fits use gentle high-order damping (default REG_LAMBDA=1e-6) —
+  without it, slices left with ~7 quotes after the wing filter interpolate
+  exactly with wild handles (GAMMA 1M fitted skew +0.78). Now user-tunable:
+  **fit-settings hyperparameters** (GET/PUT /settings/fit: nOrder, regLambda,
+  regPower) held on AppState with a settings version folded into every
+  fit-cache key; HyperparamPanel in the Smile Viewer aside drives it.
+- **[REQ done] Piecewise-affine local-variance calibration** per
+  `Docs/piecewise_affine_local_variance_calibration.tex`:
+  `models/localvol/affine.py` (P1 hat-function surface; **scipy Delaunay
+  triangulation reproduces the note's quote table to every published
+  decimal** — fixed-diagonal splits land ~2e-5 off; implicit-Euler forward
+  Dupire in normalized strike with analytic multi-RHS forward sensitivities)
+  + `affine_calib.py` (option + var-swap LSQ per eq. calibration_objective;
+  log-contract replication; second-difference roughness **lambda=50**
+  reproduces the note's calibrated nodal table to 1.5e-3 and all fit
+  metrics). 10 golden tests in tests/test_localvol_affine.py.
+- **Local-vol grid exposed via API** (`api/localvol.py`, GET /localvol/{t}):
+  pw_t forward-variance buckets extracted at bucket midpoints from the
+  fitted surface, session/settings-aware cache, no-arb diagnostics in the
+  payload. **Sticky-local-vol-grid SSR regime** (exact: grid fixed in
+  absolute strike, Dupire reprice, realized SSR reported; "LV grid" button
+  in ScenarioPanel). Caveat documented in api/localvol.py: the shortest
+  bucket's ATM slope is ill-conditioned (bp-level fit wiggles amplified by
+  the small-w Dupire denominator) — realized short-expiry SSR can sit well
+  below the theoretical ~2; mid/long buckets land in 1.5-2.5.
 
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. Expose the local-vol grid via the API + sticky-local-vol-grid SSR mode;
-   hyperparameter panel (model choice, N, penalties, toggles — Phase 6 left-over);
-   [REQ] align the localvol model with
-   `Docs/piecewise_affine_local_variance_calibration.tex` (golden tests vs the note).
-2. [REQ] Real-data realism block (Phase 3): dividends model selection
+1. [REQ] Real-data realism block (Phase 3): dividends model selection
    (continuous / discrete absolute / discrete proportional / mix), forward
    mode choice (theoretical carry / parity-implied / manual override),
    de-Americanization of single-name quotes; plus stale-quote/outlier filters
    on parity pairs (a few live expiries show rms 2-30 from stale deep wings).
-3. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
+2. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
    modes (delta / fixed strike / %ATM / normalized / log-normalized); table
    export (prices, IV) as save/download; expiries bulk selection by type
    (monthly, quarterly, weekly, LEAPS) + universe-selection UI.
-4. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
+3. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
    timestamp + history query API (charting UI later).
-5. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+4. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
-6. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+5. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
    lambda, nu, auto-tune), lasso selection.
+6. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
+   calibration, sigmoid, direct localvol-affine fit through the API).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
@@ -189,7 +209,7 @@ since other models are standard.
 - [x] `models/svi_jw/`: raw-SVI + JW conversion (Appendix A). (SVI own calibration & Gatheral–Jacquier butterfly conditions still TODO)
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
 - [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
-- [ ] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: align the grid model with the note's piecewise-affine local-variance calibration (direct calibration to quotes, not only Dupire extraction); golden tests against the note's numbers, same convention as the LQD/graph notes.
+- [x] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: `models/localvol/affine.py` + `affine_calib.py`, golden tests vs every table of the note (Delaunay triangulation is the note's convention; lambda=50 roughness reproduces the calibrated nodal table).
 - [ ] [REQ 2026-06-12] American-options handling, de-Americanization first: imply European-equivalent IVs from American quote prices (binomial or BAW early-exercise adjustment in `core/american.py`) so single-name chains (AAPL, ...) feed the fitter clean European vols; full pricer/Greeks surface only as a by-product, not a near-term goal.
 - [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
 - [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)

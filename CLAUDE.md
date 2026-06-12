@@ -1,4 +1,4 @@
-Volatility Fitter
+﻿Volatility Fitter
 
 The goal is to create a impplied volatility fitter, like https://voladynamics.com/products/vola-fitter but with an additional feature : extrapolate sparse observations to the full universe of smiles, across expiries and assets. The idea for this extrapolation is to propoagate the signal through a graph, which nodes are smile (underlying, T). 
 
@@ -56,7 +56,7 @@ Lead and Spawn multiple sub-specialized sub-agents
 
 Development state & how to resume :
 
-READ ROADMAP.md FIRST — its "STATUS" section at the top says exactly what is
+READ ROADMAP.md FIRST â€” its "STATUS" section at the top says exactly what is
 done, what is next (in priority order), and all environment caveats.
 When the user says "continue implementing the roadmap", work down that
 STATUS "Next up" list, keeping the same conventions already in the code:
@@ -64,14 +64,14 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (125 green as of 2026-06-12; +1 live test via $env:VOLFIT_LIVE="1")
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (143 green as of 2026-06-12; +1 live test via $env:VOLFIT_LIVE="1")
 - API:      .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
 - volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance installed.
-- PyPI is intermittently flaky here (TLS resets; pip.ini has retries=15 — just retry).
+- PyPI is intermittently flaky here (TLS resets; pip.ini has retries=15 â€” just retry).
 - Sub-agents have no shell access: they write code; the lead agent runs and verifies.
 - UI smoke tests: npm i --no-save puppeteer-core (frontend), drive headless Edge
   ('C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe') + screenshots.
