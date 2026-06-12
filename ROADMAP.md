@@ -8,7 +8,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-10 (resume here)
+## STATUS — updated 2026-06-12 (resume here)
 
 **Done & verified (125 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
@@ -86,13 +86,24 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
    lambda, nu, auto-tune), lasso selection.
 
 **Environment notes:**
-- venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`.
+- venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
+  (125 green as of 2026-06-12; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
+- API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
+  Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
+  `$env:VOLFIT_TICKERS='SPY,QQQ,AAPL'` first (yfinance installed).
+- Snapshot CLI: `.venv\Scripts\python backend\snapshot.py SPY QQQ` → SQLite
+  (`backend/data/snapshots.sqlite`, gitignored) + parity-forward diagnostics.
+- Frontend: `cd frontend; npm run dev` — talks to :8000 when up, else mock
+  fallback with an amber MOCK badge; `npm run build` is the strict-TS gate.
 - Engine demo: `.venv\Scripts\python backend\demo.py`.
-- Frontend: `cd frontend; npm run dev` (mock data; `npm run build` verified).
 - PyPI is **intermittently flaky** on this machine (TLS resets toward Fastly;
   npm/Cloudflare fine). pip is configured with retries=15 in pip.ini — installs
   succeed with patience. Suspected AV/router TLS filtering.
 - Sub-agents have no shell access here: they write code, the lead runs/verifies.
+- UI smoke-testing recipe: `npm i --no-save puppeteer-core` in frontend, drive
+  headless Edge (`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`)
+  against the Vite dev server, screenshot and inspect; delete the throwaway
+  driver script afterwards.
 
 ---
 

@@ -70,6 +70,8 @@ Key commands (Windows, repo root):
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx installed.
+- volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance installed.
 - PyPI is intermittently flaky here (TLS resets; pip.ini has retries=15 — just retry).
 - Sub-agents have no shell access: they write code; the lead agent runs and verifies.
+- UI smoke tests: npm i --no-save puppeteer-core (frontend), drive headless Edge
+  ('C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe') + screenshots.

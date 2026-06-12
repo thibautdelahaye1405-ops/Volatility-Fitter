@@ -1,0 +1,1117 @@
+
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage{booktabs,longtable,array}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{fancyhdr}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  citecolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\setlength{\headheight}{14pt}
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{Piecewise-affine local variance calibration}
+\rhead{\thepage}
+
+\newtheorem{definition}{Definition}
+\newtheorem{proposition}{Proposition}
+\newtheorem{remark}{Remark}
+\newtheorem{lemma}{Lemma}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\1}{\mathbf{1}}
+\newcommand{\dd}{\,\mathrm{d}}
+\newcommand{\half}{\frac12}
+\newcommand{\vloc}{\nu}
+\newcommand{\Tmax}{T_{\max}}
+\newcommand{\xmin}{x_{\min}}
+\newcommand{\xmax}{x_{\max}}
+\newcommand{\argmin}{\operatorname*{arg\,min}}
+
+\title{\Large Calibration of Continuous Piecewise-Affine Local-Variance Surfaces\\[2mm]
+\large from Sparse Vanilla Option and Variance-Swap Quotes}
+\author{Technical note}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note describes a concrete calibration problem for local volatility: from a finite set
+of option quotes across strikes and expiries, and possibly variance-swap quotes, choose a
+continuous piecewise-affine local-variance surface on a triangulated time-moneyness grid.
+The chosen surface is the one whose prices, obtained by the forward Dupire partial
+differential equation, are closest to the quotes in a weighted least-squares sense. The
+construction is inspired by the Andreasen-Huge philosophy of fitting local variance
+directly through an implicit finite-difference pricing map, but the parameterization used
+here is a continuous $P_1$ finite-element surface on an arbitrary triangulation.
+The note derives the forward equation, the variance-swap identities, the discrete pricing
+operator, sensitivities, an adjoint gradient, and a complete numerical example.
+\end{abstract}
+
+\tableofcontents
+
+\section{Purpose and high-level idea}
+
+A market volatility surface is observed only at finitely many points:
+\[
+  \{(T_j,K_j,\Pi_j^{\mathrm{mkt}}):j=1,\ldots,M_{\mathrm{opt}}\},
+\]
+where $T_j$ is expiry, $K_j$ is strike, and $\Pi_j^{\mathrm{mkt}}$ is a call or put
+premium. There may also be variance-swap fair variance quotes
+\[
+  \{(S_q,V_q^{\mathrm{mkt}}):q=1,\ldots,M_{\mathrm{var}}\}.
+\]
+A smooth two-dimensional implied-volatility interpolation can look harmless while
+introducing calendar-spread or butterfly arbitrage. Instead of interpolating implied
+volatility, we fit a local variance function $\vloc(t,x)$ and price every quote through
+a no-arbitrage diffusion model.
+
+The method is:
+
+\begin{enumerate}[label=\textbf{Step \arabic*.},leftmargin=2.2cm]
+\item Convert all vanilla quotes to normalized forward call prices at normalized strike
+      $x=K/F(0,T)$.
+\item Choose a triangulation of a rectangle in $(t,x)$ whose number of vertices is of the
+      same order as the number of quotes.
+\item Parameterize the local variance by a continuous piecewise-affine function
+      \[
+        \vloc_\theta(t,x)=\sum_{\ell=1}^{m}\theta_\ell\phi_\ell(t,x),
+      \]
+      where $\phi_\ell$ are the usual hat functions of the triangulation.
+\item For each parameter vector $\theta$, solve the forward Dupire PDE
+      \[
+        \partial_T c(T,x)=\frac12\,\vloc_\theta(T,x)x^2\partial_{xx}c(T,x),
+        \qquad c(0,x)=(1-x)^+.
+      \]
+\item Minimize a weighted least-squares misfit to option quotes and variance-swap quotes,
+      usually with positivity bounds and a mild roughness penalty.
+\end{enumerate}
+
+The direct calibration problem is nonlinear because the PDE solution depends nonlinearly
+on $\theta$. It is nevertheless low-dimensional if $m$ is comparable to the quote count,
+and each pricing evaluation is cheap because the one-dimensional Dupire equation leads
+to tridiagonal linear systems.
+
+\section{Market normalization}
+
+\subsection{Deterministic rates and forwards}
+
+Let $S_t$ be the spot price under a risk-neutral measure with deterministic short rate
+$r(t)$ and deterministic dividend or foreign rate $q(t)$:
+\[
+  \frac{\dd S_t}{S_t}=(r(t)-q(t))\dd t+\sigma(t,S_t)\dd W_t.
+\]
+Let
+\[
+  D(0,T)=\exp\left(-\int_0^T r(s)\dd s\right),
+  \qquad
+  F(0,T)=S_0\exp\left(\int_0^T (r(s)-q(s))\dd s\right).
+\]
+Define the forward-normalized process
+\[
+  X_t=\frac{S_t}{F(0,t)}.
+\]
+Then $X_0=1$ and
+\[
+  \dd X_t=X_t\sqrt{\vloc(t,X_t)}\,\dd W_t,
+  \qquad
+  \vloc(t,x)=\sigma^2(t,F(0,t)x).
+\]
+Thus, after forward normalization, the model is a driftless martingale diffusion on
+$(0,\infty)$:
+\begin{equation}
+  \boxed{\dd X_t=X_t\sqrt{\vloc(t,X_t)}\,\dd W_t,\qquad X_0=1.}
+  \label{eq:forward_sde}
+\end{equation}
+
+\subsection{Normalized call prices}
+
+Let $C^{\mathrm{mkt}}(T,K)$ and $P^{\mathrm{mkt}}(T,K)$ be domestic-currency option
+prices at time $0$. The normalized forward call price is
+\[
+  c(T,x)=\frac{C(T,K)}{D(0,T)F(0,T)},\qquad x=\frac{K}{F(0,T)}.
+\]
+A put quote is converted to a call quote by put-call parity:
+\[
+  \frac{P(T,K)}{D(0,T)F(0,T)}=c(T,x)+x-1,
+  \qquad
+  c(T,x)=\frac{P(T,K)}{D(0,T)F(0,T)}+1-x.
+\]
+In the normalized variables, all vanilla call prices have the simple representation
+\begin{equation}
+  c(T,x)=\E[(X_T-x)^+].
+  \label{eq:normalized_call_def}
+\end{equation}
+The boundary values are
+\[
+  c(T,0)=\E[X_T]=1,\qquad \lim_{x\to\infty}c(T,x)=0,
+\]
+and the initial condition is
+\[
+  c(0,x)=(1-x)^+.
+\]
+
+\section{Forward Dupire equation}
+
+\subsection{Derivation from the forward density}
+
+Assume first that $X_T$ has a smooth density $p(T,\cdot)$ and that integrations by parts
+are justified. The density of the diffusion \eqref{eq:forward_sde} satisfies the forward
+Kolmogorov equation
+\begin{equation}
+  \partial_T p(T,y)
+  =\frac12\,\partial_{yy}\!\left(\vloc(T,y)y^2p(T,y)\right),
+  \qquad p(0,y)=\delta_1(y).
+  \label{eq:density_pde}
+\end{equation}
+From \eqref{eq:normalized_call_def},
+\[
+  c(T,x)=\int_x^\infty (y-x)p(T,y)\dd y.
+\]
+Differentiating with respect to strike gives
+\[
+  \partial_x c(T,x)=-\int_x^\infty p(T,y)\dd y,
+  \qquad
+  \partial_{xx}c(T,x)=p(T,x).
+\]
+Differentiating with respect to maturity and using \eqref{eq:density_pde},
+\begin{align*}
+  \partial_T c(T,x)
+  &=\int_x^\infty (y-x)\partial_Tp(T,y)\dd y\\
+  &=\frac12\int_x^\infty (y-x)
+     \partial_{yy}\!\left(\vloc(T,y)y^2p(T,y)\right)\dd y\\
+  &=\frac12\,\vloc(T,x)x^2p(T,x).
+\end{align*}
+Therefore
+\begin{equation}
+  \boxed{
+  \partial_T c(T,x)=\frac12\,\vloc(T,x)x^2\partial_{xx}c(T,x),
+  \qquad c(0,x)=(1-x)^+.
+  }
+  \label{eq:forward_dupire_normalized}
+\end{equation}
+
+This is the forward Dupire equation in normalized strike. The familiar local-variance
+formula follows formally:
+\begin{equation}
+  \vloc(T,x)=\frac{2\,\partial_Tc(T,x)}{x^2\partial_{xx}c(T,x)}
+  \qquad
+  \text{where } \partial_{xx}c(T,x)>0.
+  \label{eq:dupire_formula_normalized}
+\end{equation}
+The present calibration does not estimate the derivatives in
+\eqref{eq:dupire_formula_normalized} from sparse data. Instead, it parameterizes
+$\vloc$ and prices through \eqref{eq:forward_dupire_normalized}.
+
+\subsection{Unnormalized form}
+
+For reference, if $C(T,K)$ is the domestic discounted call price and rates/dividends are
+deterministic, then
+\begin{equation}
+  \partial_T C
+  =-q(T)C-(r(T)-q(T))K\partial_K C
+    +\frac12\,\sigma^2(T,K)K^2\partial_{KK}C.
+  \label{eq:dupire_unnormalized}
+\end{equation}
+The normalized equation \eqref{eq:forward_dupire_normalized} is usually preferable
+numerically because it removes deterministic drift and discounting.
+
+\subsection{No-arbitrage interpretation}
+
+For a fixed maturity, call prices must be decreasing and convex in strike:
+\[
+  \partial_x c(T,x)\in[-1,0],
+  \qquad
+  \partial_{xx}c(T,x)\ge 0.
+\]
+Across maturities, normalized forward call prices should be nondecreasing:
+\[
+  \partial_T c(T,x)\ge 0.
+\]
+Equation \eqref{eq:forward_dupire_normalized} makes the last condition transparent:
+if $\vloc(T,x)\ge0$ and $\partial_{xx}c(T,x)\ge0$, then $\partial_Tc(T,x)\ge0$.
+At the continuous level, a positive local variance and the martingale diffusion
+construction produce arbitrage-free European prices. A finite-difference implementation
+should still monitor monotonicity and convexity, especially near boundaries and in wings.
+
+\section{Piecewise-affine local variance on a triangulation}
+
+\subsection{Triangulated parameter domain}
+
+Fix a computational domain
+\[
+  \mathcal D=[0,\Tmax]\times[0,\xmax].
+\]
+A triangulation $\mathcal T$ is a finite collection of non-overlapping triangles whose
+union is $\mathcal D$. Let the vertices be
+\[
+  z_\ell=(\tau_\ell,\xi_\ell),\qquad \ell=1,\ldots,m.
+\]
+The number $m$ is chosen to be of the same order as the number of available instruments.
+For instance, if there are $18$ instruments, a grid with $20$ to $30$ vertices is a
+reasonable first design.
+
+Let $\phi_\ell$ be the nodal hat function associated with vertex $z_\ell$:
+\[
+  \phi_\ell(z_j)=\1_{\ell=j},\qquad
+  \phi_\ell\text{ is affine on every triangle.}
+\]
+The $P_1$ finite-element space is
+\[
+  V_h=\{v:\mathcal D\to\R:\ v \text{ is continuous and affine on every triangle of }
+  \mathcal T\}.
+\]
+The local variance surface is parameterized as
+\begin{equation}
+  \vloc_\theta(t,x)=\sum_{\ell=1}^{m}\theta_\ell\phi_\ell(t,x),
+  \qquad \theta=(\theta_1,\ldots,\theta_m)^\top.
+  \label{eq:p1_lv}
+\end{equation}
+If
+\[
+  0<\underline v\le \theta_\ell\le \overline v<\infty
+  \qquad \text{for all }\ell,
+\]
+then $\underline v\le \vloc_\theta(t,x)\le\overline v$ everywhere on $\mathcal D$,
+because a point inside a triangle is represented by nonnegative barycentric coordinates.
+
+\subsection{Barycentric representation}
+
+Let $z=(t,x)$ lie in a triangle with vertices $z_a,z_b,z_c$. Its barycentric coordinates
+$(\lambda_a,\lambda_b,\lambda_c)$ are defined by
+\[
+  z=\lambda_a z_a+\lambda_b z_b+\lambda_c z_c,\qquad
+  \lambda_a+\lambda_b+\lambda_c=1.
+\]
+Inside the triangle,
+\[
+  \lambda_a,\lambda_b,\lambda_c\ge0,
+  \qquad
+  \vloc_\theta(z)
+  =\lambda_a\theta_a+\lambda_b\theta_b+\lambda_c\theta_c.
+\]
+Thus evaluation is cheap once each PDE grid point has been assigned to a triangle.
+
+\subsection{Design of the triangulation}
+
+A practical triangulation should include:
+
+\begin{itemize}[leftmargin=1.1cm]
+\item time vertices at or near important maturities;
+\item moneyness vertices near liquid strikes, especially around the money;
+\item left and right wing vertices for extrapolation;
+\item a boundary $x=\xmax$ far enough that calls struck at $\xmax$ are negligible.
+\end{itemize}
+
+The surface is local variance, not implied variance. It need not visually resemble the
+implied-volatility surface. Sparse data identify the local variance best in regions that
+are reached with nonnegligible probability before quoted expiries. Boundary vertices and
+far wings are therefore often controlled more by priors and regularization than by the
+quotes themselves.
+
+\section{Pricing map and finite-difference discretization}
+
+\subsection{Spatial grid}
+
+Let
+\[
+  0=x_0<x_1<\cdots<x_N=\xmax
+\]
+be a strike grid. Write $h_i=x_{i+1}-x_i$ and let $U_i^n$ approximate
+$c(t_n,x_i)$, where $0=t_0<t_1<\cdots<t_{N_t}=\Tmax$.
+
+For an interior point $x_i$, $1\le i\le N-1$, use the nonuniform central difference
+\begin{equation}
+  (D_{xx}U)_i
+  =
+  \frac{2}{h_{i-1}+h_i}
+  \left(
+    \frac{U_{i+1}-U_i}{h_i}
+    -
+    \frac{U_i-U_{i-1}}{h_{i-1}}
+  \right).
+  \label{eq:nonuniform_second_derivative}
+\end{equation}
+Define
+\[
+  a_i^-=\frac{x_i^2}{(h_{i-1}+h_i)h_{i-1}},
+  \qquad
+  a_i^+=\frac{x_i^2}{(h_{i-1}+h_i)h_i},
+  \qquad
+  a_i^0=-(a_i^-+a_i^+).
+\]
+Then
+\[
+  \frac12 x_i^2(D_{xx}U)_i
+  =
+  a_i^-U_{i-1}+a_i^0U_i+a_i^+U_{i+1}.
+\]
+With local variance value $\vloc_i^n=\vloc_\theta(t_n,x_i)$,
+\[
+  (A^n(\theta)U)_i
+  =
+  \vloc_i^n\left(a_i^-U_{i-1}+a_i^0U_i+a_i^+U_{i+1}\right).
+\]
+The matrix $A^n$ is tridiagonal on the interior unknowns.
+
+\subsection{Implicit Euler step}
+
+The boundary conditions are
+\[
+  U_0^n=1,\qquad U_N^n=0.
+\]
+The fully implicit step is
+\begin{equation}
+  \left(I-\Delta t_n A^{n+1}_{II}(\theta)\right)U_I^{n+1}
+  =
+  U_I^n+\Delta t_n b^{n+1}(\theta),
+  \label{eq:implicit_step}
+\end{equation}
+where $I$ denotes interior nodes and $b^{n+1}$ contains the known boundary contribution.
+For example, the first interior row receives
+\[
+  b^{n+1}_1=\vloc_\theta(t_{n+1},x_1)a_1^-\,U_0^{n+1}
+          =\vloc_\theta(t_{n+1},x_1)a_1^-.
+\]
+All other boundary terms are zero if $U_N^{n+1}=0$.
+
+The matrix
+\[
+  M_n(\theta)=I-\Delta t_n A^{n+1}_{II}(\theta)
+\]
+has positive diagonal entries, nonpositive off-diagonal entries, and is strictly
+diagonally dominant under the standard boundary treatment. It is therefore an
+$M$-matrix, so $M_n^{-1}\ge0$ componentwise. This is a useful stability and comparison
+property of the implicit scheme.
+
+\subsection{Observation operator}
+
+Let $R_j$ be the row vector that linearly interpolates grid values at strike $x_j$.
+If $T_j$ coincides with a time step $t_{n(j)}$, then the model quote is
+\[
+  P_j(\theta)=R_jU^{n(j)}(\theta).
+\]
+If it does not, one may either include $T_j$ in the time grid or interpolate between
+adjacent time levels. In calibration, it is usually best to force all quoted expiries to
+be time steps.
+
+\section{Variance swaps}
+
+\subsection{Expected realized variance}
+
+For the diffusion \eqref{eq:forward_sde}, the continuously sampled total variance over
+$[0,T]$ is
+\[
+  I(T)=\E\left[\int_0^T \vloc(t,X_t)\dd t\right].
+\]
+The annualized fair variance rate is
+\[
+  K_{\mathrm{var}}(T)=\frac{I(T)}{T}.
+\]
+A variance-swap market quote should therefore be compared either as a rate
+$K_{\mathrm{var}}$ or as total variance $I(T)=TK_{\mathrm{var}}(T)$. In least squares,
+total variance is often numerically convenient because it scales additively in time.
+
+\subsection{Log-contract identity}
+
+Ito's formula gives
+\[
+  \dd\log X_t
+  =
+  -\frac12\vloc(t,X_t)\dd t+\sqrt{\vloc(t,X_t)}\dd W_t.
+\]
+Taking expectations,
+\begin{equation}
+  I(T)
+  =
+  \E\left[\int_0^T\vloc(t,X_t)\dd t\right]
+  =
+  -2\,\E[\log X_T].
+  \label{eq:log_contract_identity}
+\end{equation}
+For any twice differentiable payoff $g$, the static replication formula around anchor
+$\kappa>0$ is
+\[
+  \E[g(X_T)]
+  =
+  g(\kappa)+g'(\kappa)(\E[X_T]-\kappa)
+  +\int_0^\kappa g''(k)P(T,k)\dd k
+  +\int_\kappa^\infty g''(k)C(T,k)\dd k,
+\]
+where $C(T,k)=\E[(X_T-k)^+]$ and $P(T,k)=\E[(k-X_T)^+]$.
+Taking $\kappa=1$, $\E[X_T]=1$, and $g(x)=-2\log x$ yields
+\begin{equation}
+  \boxed{
+  I(T)=2\int_0^1\frac{P(T,k)}{k^2}\dd k
+      +2\int_1^\infty\frac{C(T,k)}{k^2}\dd k.
+  }
+  \label{eq:variance_swap_static_replication}
+\end{equation}
+In a numerical implementation the integrals are truncated and the wings are extrapolated.
+If the truncation is material, the variance-swap quote is partly a statement about wing
+assumptions, not only about observed listed options.
+
+\subsection{Source PDE alternative}
+
+Instead of using \eqref{eq:variance_swap_static_replication}, define
+\[
+  g(t,x)=\E_{t,x}\left[\int_t^T\vloc(s,X_s)\dd s\right].
+\]
+Then $g$ satisfies the backward source PDE
+\begin{equation}
+  \partial_tg(t,x)+\frac12\vloc(t,x)x^2\partial_{xx}g(t,x)+\vloc(t,x)=0,
+  \qquad
+  g(T,x)=0.
+  \label{eq:variance_swap_source_pde}
+\end{equation}
+The model total variance is $I(T)=g(0,1)$. This PDE is useful when variance swaps are
+included but one does not want their value to depend on a numerical quadrature of the
+computed option surface.
+
+\section{Calibration objective}
+
+\subsection{Weighted least squares}
+
+Let $y_j$ be the normalized market call price of option quote $j$, and let
+$\eta_j>0$ be its price tolerance, typically derived from bid-ask width. Let
+$z_q$ be a total variance quote $S_qK_{\mathrm{var}}^{\mathrm{mkt}}(S_q)$ with tolerance
+$\zeta_q>0$. Let $P_j(\theta)$ be the model option price and $Z_q(\theta)$ the model
+total variance.
+
+The basic calibration problem is
+\begin{equation}
+  \boxed{
+  \theta^\star
+  =
+  \argmin_{\underline v\le\theta\le\overline v}
+  \left[
+  \frac12\sum_{j=1}^{M_{\mathrm{opt}}}
+    \left(\frac{P_j(\theta)-y_j}{\eta_j}\right)^2
+  +
+  \frac12\sum_{q=1}^{M_{\mathrm{var}}}
+    \left(\frac{Z_q(\theta)-z_q}{\zeta_q}\right)^2
+  +
+  \frac{\lambda}{2}\|L(\theta-\theta^{\mathrm{ref}})\|_2^2
+  \right].
+  }
+  \label{eq:calibration_objective}
+\end{equation}
+Here $L$ is optional. It may be a graph-gradient, a second-difference matrix, or a
+finite-element roughness matrix. The vector $\theta^{\mathrm{ref}}$ is a prior, often a
+flat variance or the previous day's calibrated surface.
+
+The phrase ``closest to the quotes'' is precisely defined by the choice of tolerances
+$\eta_j,\zeta_q$ and regularization. With bid and ask prices $b_j,a_j$, a common choice is
+\[
+  y_j=\frac{a_j+b_j}{2},
+  \qquad
+  \eta_j=\frac{a_j-b_j}{2}
+\]
+after normalization. If the bid-ask width is unrealistically small, a floor should be
+added.
+
+\subsection{Existence and uniqueness}
+
+If the feasible set
+\[
+  \Theta=\{\theta\in\R^m:\underline v\le\theta_\ell\le\overline v\}
+\]
+is compact and the finite-difference pricing map is continuous in $\theta$, then
+\eqref{eq:calibration_objective} has at least one minimizer. Uniqueness is not guaranteed.
+The inverse problem is usually underdetermined in wings and between maturities, and the
+objective is nonlinear. Regularization should therefore be viewed as part of the model
+selection rule, not merely as a numerical convenience.
+
+\subsection{Exact fit versus robust fit}
+
+Even if $m$ is close to the number of quotes, an exact fit may fail for several reasons:
+the quotes may contain arbitrage, bid-ask mid prices may not be mutually consistent, the
+triangulation may be too coarse, or boundary extrapolation may matter. In production, it
+is preferable to fit within bid-ask and keep a stable local-variance surface rather than
+to force exact interpolation of noisy mids.
+
+\section{Sensitivities and gradients}
+
+\subsection{Continuous sensitivity PDE}
+
+Let
+\[
+  s_\ell(T,x)=\frac{\partial c(T,x;\theta)}{\partial\theta_\ell}.
+\]
+Since
+\[
+  \vloc_\theta(t,x)=\sum_{\ell=1}^m\theta_\ell\phi_\ell(t,x),
+\]
+differentiating \eqref{eq:forward_dupire_normalized} gives
+\begin{equation}
+  \partial_T s_\ell
+  =
+  \frac12\vloc_\theta(T,x)x^2\partial_{xx}s_\ell
+  +
+  \frac12\phi_\ell(T,x)x^2\partial_{xx}c,
+  \qquad
+  s_\ell(0,x)=0.
+  \label{eq:sensitivity_pde}
+\end{equation}
+Thus each parameter sensitivity is the solution of the same parabolic operator with a
+source term proportional to the option gamma.
+
+For variance swaps computed through the source PDE \eqref{eq:variance_swap_source_pde},
+the sensitivity $h_\ell=\partial g/\partial\theta_\ell$ satisfies
+\begin{equation}
+  \partial_th_\ell
+  +\frac12\vloc_\theta x^2\partial_{xx}h_\ell
+  +\frac12\phi_\ell x^2\partial_{xx}g
+  +\phi_\ell=0,
+  \qquad h_\ell(T,x)=0.
+  \label{eq:var_sensitivity_pde}
+\end{equation}
+
+\subsection{Discrete forward sensitivities}
+
+Differentiate the implicit step
+\[
+  M_n(\theta)U^{n+1}=U^n+\Delta t_n b^{n+1}(\theta).
+\]
+Ignoring the notationally minor boundary derivative, the sensitivity matrix
+$S^n=\partial U^n/\partial\theta\in\R^{(N-1)\times m}$ satisfies
+\begin{equation}
+  M_n(\theta)S^{n+1}
+  =
+  S^n
+  +
+  \Delta t_n
+  \left(\frac{\partial A^{n+1}}{\partial\theta}U^{n+1}\right),
+  \qquad
+  S^0=0.
+  \label{eq:discrete_sensitivity}
+\end{equation}
+More explicitly, for parameter $\theta_\ell$ and row $i$,
+\[
+  \left[
+  \left(\frac{\partial A^{n+1}}{\partial\theta_\ell}\right)U^{n+1}
+  \right]_i
+  =
+  \phi_\ell(t_{n+1},x_i)
+  \left(a_i^-U_{i-1}^{n+1}+a_i^0U_i^{n+1}+a_i^+U_{i+1}^{n+1}\right).
+\]
+Since the same tridiagonal matrix $M_n$ is used for all $m$ sensitivities, all columns of
+$S^{n+1}$ can be solved simultaneously by a tridiagonal solve with multiple right-hand
+sides.
+
+\subsection{Discrete adjoint gradient}
+
+When $m$ is large, an adjoint is more efficient. Suppose the objective contributes a
+gradient $g^n=\partial\Phi/\partial U^n$ at each time step, including interpolation rows
+for quotes observed at $t_n$. Initialize adjoints $\bar U^n=g^n$. For
+$n=N_t-1,\ldots,0$:
+
+\[
+  \text{solve}\qquad M_n(\theta)^\top z^{n+1}=\bar U^{n+1},
+\]
+then update
+\begin{align}
+  \nabla_\theta\Phi
+  &\mathrel{+}=
+  \Delta t_n
+  \left[
+  z^{n+1\top}
+  \left(\frac{\partial A^{n+1}}{\partial\theta_1}U^{n+1}\right),
+  \ldots,
+  z^{n+1\top}
+  \left(\frac{\partial A^{n+1}}{\partial\theta_m}U^{n+1}\right)
+  \right]^\top,                                      \label{eq:adjoint_grad}\\
+  \bar U^n&\mathrel{+}=z^{n+1}.
+\end{align}
+Boundary derivative terms are added in the same manner. The adjoint requires one forward
+pricing run and one backward sweep, independent of $m$.
+
+\section{Algorithm}
+
+A robust implementation is as follows.
+
+\begin{enumerate}[label=\arabic*.,leftmargin=0.9cm]
+\item \textbf{Normalize market data.}
+      Convert all calls and puts to normalized forward calls. Convert variance-swap
+      rates to total variance.
+\item \textbf{Pre-clean quotes.}
+      Remove or deweight obviously crossed, stale, or arbitrage-inconsistent quotes.
+\item \textbf{Build triangulation.}
+      Choose vertices in $(t,x)$ and precompute barycentric weights
+      $\phi_\ell(t_n,x_i)$ at all PDE grid points.
+\item \textbf{Choose bounds and prior.}
+      For example, $\underline v=(1\%)^2$ and $\overline v=(200\%)^2$ in extreme equity
+      markets, or tighter product-specific values.
+\item \textbf{Price for a trial $\theta$.}
+      Solve \eqref{eq:implicit_step}; record $U^n$ at quote maturities.
+\item \textbf{Compute residuals.}
+      Apply interpolation rows for option quotes. Compute variance-swap model values by
+      either \eqref{eq:variance_swap_static_replication} or
+      \eqref{eq:variance_swap_source_pde}.
+\item \textbf{Compute derivatives.}
+      Use forward sensitivities if $m$ is small; use the adjoint if $m$ is large.
+\item \textbf{Optimize.}
+      Use a bound-constrained least-squares method or a smooth transformation such as
+      \[
+        \theta_\ell
+        =
+        \underline v+
+        \frac{\overline v-\underline v}{1+\exp(-\alpha_\ell)}.
+      \]
+\item \textbf{Validate.}
+      Check price residuals, implied-volatility residuals, call monotonicity,
+      convexity in strike, calendar monotonicity, and stability under small data
+      perturbations.
+\end{enumerate}
+
+\section{Detailed numerical example}
+
+This example uses normalized forwards, so $F(0,T)=1$ and $D(0,T)=1$. The quote strikes
+are therefore moneyness values.
+
+\subsection{Synthetic quote set}
+
+The synthetic local-variance surface is generated by sampling
+\begin{equation}
+  \vloc_\star(t,x)
+  =
+  0.032+0.006t+0.030(1-x)^2+0.012(1-x)
+  +0.004\sin(\pi t)\exp\!\left[-\left(\frac{x-1}{0.35}\right)^2\right]
+  \label{eq:example_true_surface}
+\end{equation}
+at the triangulation nodes and then using piecewise-affine interpolation. This gives a
+mild left skew and increasing term level.
+
+The finite set of option quotes is five strikes at three maturities. The following table
+shows normalized call prices and Black-Scholes implied volatilities.
+
+\begin{table}[h!]
+\centering
+\caption{Synthetic option quote set. Implied volatility is annualized and shown in percent.}
+\begin{tabular}{rrrr}
+\toprule
+$T$ & $x$ & call price & implied vol. (\%)\\
+\midrule
+0.25 & 0.80 & 0.200277 & 19.071\\
+0.25 & 0.90 & 0.105645 & 18.579\\
+0.25 & 1.00 & 0.036544 & 18.327\\
+0.25 & 1.10 & 0.007310 & 18.245\\
+0.25 & 1.20 & 0.000861 & 18.280\\
+0.50 & 0.80 & 0.202596 & 19.285\\
+0.50 & 0.90 & 0.115765 & 19.017\\
+0.50 & 1.00 & 0.053085 & 18.832\\
+0.50 & 1.10 & 0.019104 & 18.701\\
+0.50 & 1.20 & 0.005456 & 18.616\\
+1.00 & 0.80 & 0.211163 & 19.630\\
+1.00 & 0.90 & 0.133968 & 19.411\\
+1.00 & 1.00 & 0.076657 & 19.245\\
+1.00 & 1.10 & 0.039690 & 19.126\\
+1.00 & 1.20 & 0.018833 & 19.061\\
+\bottomrule
+\end{tabular}
+\label{tab:quote_set}
+\end{table}
+
+The variance-swap quotes are generated from the same model by the log-contract identity,
+with numerical integration on $x\in[0.01,2.20]$.
+
+\begin{table}[h!]
+\centering
+\caption{Synthetic variance-swap quotes. Rates are annualized variances, not volatilities.}
+\begin{tabular}{rr}
+\toprule
+$T$ & market variance rate\\
+\midrule
+0.25 & 0.033931\\
+0.50 & 0.035713\\
+1.00 & 0.037479\\
+\bottomrule
+\end{tabular}
+\label{tab:var_quotes}
+\end{table}
+
+\subsection{Triangulation and numerical grid}
+
+The local-variance triangulation has
+\[
+  \tau\in\{0,0.5,1.0\},\qquad
+  \xi\in\{0,0.70,0.90,1.00,1.10,1.30,2.20\}.
+\]
+Thus there are $m=21$ local-variance parameters. The number of instruments is
+$15+3=18$, so the local-variance grid has the same order of size as the quote set.
+
+The Dupire PDE is solved on
+\[
+  x_i=0.01i,\quad i=0,\ldots,220,
+  \qquad
+  t_n=0.005n,\quad n=0,\ldots,200.
+\]
+The calibration starts from the flat initial guess $\theta_\ell=0.04$ and uses bounds
+\[
+  0.005\le \theta_\ell\le0.20.
+\]
+The objective uses option price tolerance $2\times10^{-4}$, total variance tolerance
+$2\times10^{-4}$, and a mild second-difference roughness penalty.
+
+\subsection{Calibrated local-variance values}
+
+The calibrated nodal local variances are:
+
+\begin{table}[h!]
+\centering
+\caption{Calibrated nodal local variances $\theta_{\ell}$.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rrrrrrrr}
+\toprule
+$t\backslash x$ & 0.00 & 0.70 & 0.90 & 1.00 & 1.10 & 1.30 & 2.20\\
+\midrule
+0.00 & 0.04607 & 0.03973 & 0.03348 & 0.03198 & 0.03109 & 0.03429 & 0.04105\\
+0.50 & 0.05064 & 0.04220 & 0.04006 & 0.03905 & 0.03769 & 0.03613 & 0.04515\\
+1.00 & 0.05513 & 0.04675 & 0.03963 & 0.03813 & 0.03699 & 0.03755 & 0.04621\\
+\bottomrule
+\end{tabular}}
+\label{tab:calibrated_variances}
+\end{table}
+
+Equivalently, the calibrated nodal local volatilities, in percent, are:
+
+\begin{table}[h!]
+\centering
+\caption{Calibrated nodal local volatilities $100\sqrt{\theta_{\ell}}$.}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{rrrrrrrr}
+\toprule
+$t\backslash x$ & 0.00 & 0.70 & 0.90 & 1.00 & 1.10 & 1.30 & 2.20\\
+\midrule
+0.00 & 21.46 & 19.93 & 18.30 & 17.88 & 17.63 & 18.52 & 20.26\\
+0.50 & 22.50 & 20.54 & 20.01 & 19.76 & 19.41 & 19.01 & 21.25\\
+1.00 & 23.48 & 21.62 & 19.91 & 19.53 & 19.23 & 19.38 & 21.50\\
+\bottomrule
+\end{tabular}}
+\label{tab:calibrated_vols}
+\end{table}
+
+The far-left and far-right nodes are not tightly identified by the option quotes. Their
+values are influenced by the variance-swap quotes, the boundary conditions, and the
+smoothness penalty. This is typical: the wings of a local-variance surface are model
+selection choices unless liquid wing instruments are present.
+
+\subsection{Fit to options}
+
+The table below compares market and model normalized call prices. A price bp means
+$10^{-4}$ in normalized forward price. The last column is the implied-volatility error in
+basis points of volatility.
+
+\begin{longtable}{rrrrrr}
+\caption{Fit to option quotes.}\label{tab:fit_options}\\
+\toprule
+$T$ & $x$ & market call & model call & price error (bp) & vol error (bp)\\
+\midrule
+\endfirsthead
+\toprule
+$T$ & $x$ & market call & model call & price error (bp) & vol error (bp)\\
+\midrule
+\endhead
+0.25 & 0.80 & 0.200277 & 0.200282 & +0.050 & +4.30\\
+0.25 & 0.90 & 0.105645 & 0.105645 & -0.002 & -0.02\\
+0.25 & 1.00 & 0.036544 & 0.036544 & -0.003 & -0.02\\
+0.25 & 1.10 & 0.007310 & 0.007308 & -0.018 & -0.15\\
+0.25 & 1.20 & 0.000861 & 0.000867 & +0.054 & +1.79\\
+0.50 & 0.80 & 0.202596 & 0.202595 & -0.011 & -0.16\\
+0.50 & 0.90 & 0.115765 & 0.115763 & -0.014 & -0.07\\
+0.50 & 1.00 & 0.053085 & 0.053088 & +0.030 & +0.11\\
+0.50 & 1.10 & 0.019104 & 0.019099 & -0.048 & -0.21\\
+0.50 & 1.20 & 0.005456 & 0.005461 & +0.051 & +0.43\\
+1.00 & 0.80 & 0.211163 & 0.211185 & +0.225 & +1.21\\
+1.00 & 0.90 & 0.133968 & 0.133967 & -0.012 & -0.04\\
+1.00 & 1.00 & 0.076657 & 0.076666 & +0.086 & +0.22\\
+1.00 & 1.10 & 0.039690 & 0.039689 & -0.012 & -0.03\\
+1.00 & 1.20 & 0.018833 & 0.018846 & +0.125 & +0.45\\
+\bottomrule
+\end{longtable}
+
+The root-mean-square normalized price error is
+\[
+  7.56\times10^{-6},
+\]
+and the largest absolute normalized price error is
+\[
+  2.25\times10^{-5}.
+\]
+The root-mean-square implied-volatility error is $1.26$ volatility basis points.
+
+\subsection{Fit to variance swaps}
+
+\begin{table}[h!]
+\centering
+\caption{Fit to variance-swap quotes. Rate error is in variance basis points.}
+\begin{tabular}{rrrr}
+\toprule
+$T$ & market rate & model rate & rate error (bp)\\
+\midrule
+0.25 & 0.033931 & 0.033943 & +0.116\\
+0.50 & 0.035713 & 0.035710 & -0.029\\
+1.00 & 0.037479 & 0.037453 & -0.258\\
+\bottomrule
+\end{tabular}
+\label{tab:fit_var}
+\end{table}
+
+The variance swaps are matched to within roughly $0.3$ variance basis points in this
+example. Tightening the variance-swap tolerance would improve those rows at the possible
+expense of vanilla option fit or surface smoothness.
+
+\subsection{Interpretation}
+
+Several features are worth noting.
+
+\begin{enumerate}[leftmargin=0.9cm]
+\item The calibration does not interpolate implied volatility. The implied-volatility
+      smile is an output after the local-variance PDE has been solved.
+\item The local-variance surface is not uniquely determined in regions that the process
+      rarely visits. Regularization and bounds are economically meaningful inputs.
+\item Variance swaps are especially informative about the average variance level, because
+      they constrain $E[\int_0^T\vloc(t,X_t)\dd t]$ rather than a payoff localized around
+      one strike.
+\item The forward Dupire PDE turns a global surface-fitting problem into repeated
+      one-dimensional tridiagonal solves, so moderately sized calibrations are fast.
+\end{enumerate}
+
+\section{Implementation details and safeguards}
+
+\subsection{Choice of residual units}
+
+Normalizing all options by $D(0,T)F(0,T)$ keeps residuals dimensionless. A tolerance of
+$10^{-4}$ then means one basis point of forward price. Deep out-of-the-money options may
+require vega-weighted or implied-volatility residuals to avoid being dominated by tiny
+premiums. A robust production objective often combines price residuals for liquid options
+with floors in implied-volatility or vega units.
+
+\subsection{Arbitrage checks}
+
+Before calibration, check the input prices at each maturity:
+\[
+  c(T,x)\ge(1-x)^+,\qquad
+  c(T,x)\le1,\qquad
+  c \text{ decreasing and convex in }x.
+\]
+Across maturities, check
+\[
+  c(T_2,x)\ge c(T_1,x)\quad\text{for }T_2>T_1
+\]
+after interpolation to common strikes. If the raw quote set violates these inequalities,
+a local-volatility model cannot fit every mid exactly.
+
+After calibration, check the computed model prices on a dense grid, not only at quoted
+strikes. A finite-difference approximation can introduce small numerical violations even
+when the continuous model is arbitrage-free.
+
+\subsection{Boundary and wing treatment}
+
+The boundary $x=\xmax$ should be chosen so that calls at $\xmax$ are negligible at all
+calibrated maturities. The lower boundary $x=0$ is natural for calls because
+$c(T,0)=1$. Variance-swap replication is much more sensitive to wings because of the
+$k^{-2}$ weight in \eqref{eq:variance_swap_static_replication}. If variance swaps are
+used, wing extrapolation must be explicit and stable.
+
+\subsection{Regularization choices}
+
+Common choices of $L$ in \eqref{eq:calibration_objective} include:
+
+\[
+  \|L\theta\|^2
+  =
+  \sum_{\text{edges }(a,b)}w_{ab}(\theta_a-\theta_b)^2
+\]
+for graph-gradient smoothing, or second-difference penalties in time and moneyness:
+\[
+  \sum_{i,j}\left(\theta_{i,j-1}-2\theta_{i,j}+\theta_{i,j+1}\right)^2
+  +
+  \rho\sum_{i,j}\left(\theta_{i-1,j}-2\theta_{i,j}+\theta_{i+1,j}\right)^2.
+\]
+A prior penalty
+\[
+  \|\theta-\theta^{\mathrm{ref}}\|^2
+\]
+is useful for daily calibration stability. The prior may be yesterday's surface.
+
+\subsection{Parameter bounds}
+
+Bounds prevent pathological local variances. They also guarantee compactness of the
+feasible set and therefore existence of a minimizer. In practice the lower bound should
+be positive but small enough not to bias low-volatility products. The upper bound should
+be high enough not to bind in normal markets but low enough to prevent optimizer
+excursions in poorly identified wings.
+
+\section{Extensions}
+
+\subsection{Multiple underlyings or smiles sharing parameters}
+
+For a set of underlyings with related smiles, one can fit several local-variance surfaces
+with shared regularization or common factors. The pricing PDE remains one-dimensional for
+each underlying.
+
+\subsection{American or barrier instruments}
+
+The calibrated local variance can be used in backward pricing PDEs or Monte Carlo for
+path-dependent instruments. The finite set of European quotes fixes the marginal laws of
+$X_T$ only to the extent that they are fitted; path-dependent prices remain model
+dependent.
+
+\subsection{Alternative loss functions}
+
+Least squares is convenient but not mandatory. Robust losses, bid-ask constrained
+calibration, or maximum-likelihood-style objectives can be substituted:
+\[
+  b_j\le P_j(\theta)\le a_j
+\]
+for as many quotes as possible, plus a roughness minimization, is often more meaningful
+than exact matching of mids.
+
+\section{Conclusion}
+
+A continuous piecewise-affine local-variance surface on a triangulated grid gives a
+flexible but controlled way to fit sparse option and variance-swap quotes. The forward
+Dupire PDE provides the pricing map from local variance to European option prices, while
+the log-contract identity or a source PDE incorporates variance swaps. Positivity of the
+nodal variances gives positivity of the entire $P_1$ surface, and a fully implicit
+finite-difference method gives stable tridiagonal solves. The final calibration is a
+bound-constrained nonlinear least-squares problem whose regularization should be treated
+as part of the model specification.
+
+\appendix
+
+\section{Proof of the static replication identity}
+
+Let $g\in C^2((0,\infty))$ and choose an anchor $\kappa>0$. For any $x>0$,
+Taylor's formula with integral remainder can be written as
+\[
+  g(x)
+  =
+  g(\kappa)+g'(\kappa)(x-\kappa)
+  +\int_0^\kappa g''(k)(k-x)^+\dd k
+  +\int_\kappa^\infty g''(k)(x-k)^+\dd k.
+\]
+Taking expectations and using $\E[X_T]=1$ gives
+\[
+  \E[g(X_T)]
+  =
+  g(\kappa)+g'(\kappa)(1-\kappa)
+  +\int_0^\kappa g''(k)P(T,k)\dd k
+  +\int_\kappa^\infty g''(k)C(T,k)\dd k.
+\]
+With $\kappa=1$ and $g(x)=-2\log x$, $g(1)=g'(1)(1-1)=0$ and
+$g''(k)=2/k^2$, which gives \eqref{eq:variance_swap_static_replication}.
+
+\section{Why nodal positivity implies surface positivity}
+
+Let $z$ be in a triangle with vertices $z_a,z_b,z_c$. Then
+\[
+  z=\lambda_az_a+\lambda_bz_b+\lambda_cz_c,
+  \qquad
+  \lambda_a,\lambda_b,\lambda_c\ge0,\qquad
+  \lambda_a+\lambda_b+\lambda_c=1.
+\]
+For a $P_1$ function,
+\[
+  \vloc_\theta(z)=\lambda_a\theta_a+\lambda_b\theta_b+\lambda_c\theta_c.
+\]
+If every nodal value satisfies $\underline v\le \theta_\ell\le\overline v$, then
+\[
+  \underline v
+  =
+  (\lambda_a+\lambda_b+\lambda_c)\underline v
+  \le
+  \vloc_\theta(z)
+  \le
+  (\lambda_a+\lambda_b+\lambda_c)\overline v
+  =
+  \overline v.
+\]
+Thus positivity and upper bounds need only be imposed at vertices.
+
+\section{Minimal pseudocode}
+
+\begin{verbatim}
+Input:
+    normalized option quotes (T_j, x_j, y_j, eta_j)
+    total variance quotes (S_q, z_q, zeta_q)
+    triangulation nodes z_l and triangles
+    PDE grids {t_n}, {x_i}
+    bounds v_min, v_max
+
+Precompute:
+    barycentric weights Phi[n,i,l] = phi_l(t_n, x_i)
+    interpolation rows R_j for option strikes
+
+Objective(theta):
+    U = payoff (1 - x)^+
+    for n = 0,...,Nt-1:
+        v_i = sum_l theta_l Phi[n+1,i,l]
+        build tridiagonal M_n = I - dt A(v)
+        solve M_n U_new = U + boundary_terms
+        U = U_new
+        store U if t_{n+1} is a quote maturity
+
+    residuals = []
+    for each option quote j:
+        residuals.append((R_j U(T_j) - y_j)/eta_j)
+
+    for each variance quote q:
+        compute Z_q(theta) from log-contract quadrature
+        residuals.append((Z_q(theta) - z_q)/zeta_q)
+
+    residuals.extend( sqrt(lambda) * L(theta - theta_ref) )
+    return residuals
+
+Solve:
+    minimize 0.5 * ||Objective(theta)||^2
+    subject to v_min <= theta_l <= v_max
+\end{verbatim}
+
+\begin{thebibliography}{9}
+
+\bibitem{AndreasenHuge}
+J.~Andreasen and B.~N. Huge.
+\newblock Volatility interpolation.
+\newblock \emph{Risk}, March 2011. Earlier version available as SSRN working
+paper, 2010.
+
+\bibitem{Dupire}
+B.~Dupire.
+\newblock Pricing with a smile.
+\newblock \emph{Risk}, 7(1):18--20, 1994.
+
+\bibitem{BlackScholes}
+F.~Black and M.~Scholes.
+\newblock The pricing of options and corporate liabilities.
+\newblock \emph{Journal of Political Economy}, 81(3):637--654, 1973.
+
+\bibitem{Gatheral}
+J.~Gatheral.
+\newblock \emph{The Volatility Surface: A Practitioner's Guide}.
+\newblock Wiley, 2006.
+
+\bibitem{ContTankov}
+R.~Cont and P.~Tankov.
+\newblock \emph{Financial Modelling with Jump Processes}.
+\newblock Chapman and Hall/CRC, 2004.
+
+\end{thebibliography}
+
+\end{document}
