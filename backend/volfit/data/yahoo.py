@@ -86,6 +86,8 @@ class YahooProvider(OptionChainProvider):
     max_days     : drop expiries further out than this (and already-expired).
     ticker_factory : ``symbol -> Ticker``-like object; defaults to
         ``yfinance.Ticker`` (imported lazily), injectable for offline tests.
+    exercise_style : force "european" or "american" on every snapshot; None
+        (the default) applies the per-ticker heuristic of `_exercise_style`.
     """
 
     def __init__(
@@ -94,11 +96,21 @@ class YahooProvider(OptionChainProvider):
         max_expiries: int = 8,
         max_days: int = 550,
         ticker_factory: Callable[[str], object] | None = None,
+        exercise_style: str | None = None,
     ) -> None:
         self._tickers = list(tickers)
         self.max_expiries = max_expiries
         self.max_days = max_days
         self._ticker_factory = ticker_factory or _default_ticker_factory
+        self.exercise_style = exercise_style
+
+    def _exercise_style(self, ticker: str) -> str:
+        """Constructor override, else heuristic: Yahoo's '^'-prefixed symbols
+        are cash indices with European options (^SPX, ^VIX, ...); everything
+        else on the watchlist is a US-listed stock/ETF, hence American."""
+        if self.exercise_style is not None:
+            return self.exercise_style
+        return "european" if ticker.startswith("^") else "american"
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
@@ -223,4 +235,10 @@ class YahooProvider(OptionChainProvider):
             raise ValueError(
                 f"all {failures} expiries failed for {ticker!r}; see warnings"
             )
-        return ChainSnapshot(ticker=ticker, spot=spot, timestamp=timestamp, quotes=quotes)
+        return ChainSnapshot(
+            ticker=ticker,
+            spot=spot,
+            timestamp=timestamp,
+            quotes=quotes,
+            exercise_style=self._exercise_style(ticker),
+        )

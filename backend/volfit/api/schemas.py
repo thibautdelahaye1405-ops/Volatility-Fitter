@@ -15,6 +15,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+# Market-settings / forward-mode schemas live in schemas_market (file-size
+# policy) and are re-exported here so the API keeps one schema import surface.
+from volfit.api.schemas_market import (  # noqa: F401  (re-export)
+    DividendSpec,
+    ForwardEntry,
+    ForwardPolicy,
+    ForwardsResponse,
+    MarketSettings,
+)
 from volfit.dynamics.ssr import Regime
 
 #: Quote-weighting modes for slice calibration (product spec: fit to mid,

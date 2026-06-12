@@ -10,6 +10,7 @@ import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
 import ScenarioPanel from "../components/ScenarioPanel";
+import ForwardPanel from "../components/ForwardPanel";
 import HyperparamPanel from "../components/HyperparamPanel";
 import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
@@ -392,6 +393,16 @@ export default function SmileViewer() {
                   ? "requires live backend"
                   : "scenario overlay applies to the Smile view"
               }
+            />
+          </div>
+
+          {/* Per-expiry forward source: parity / theoretical / manual */}
+          <div className="mt-4 border-t border-slate-800 pt-4">
+            <ForwardPanel
+              disabled={!live}
+              ticker={ticker}
+              expiry={expiry}
+              onApplied={reload}
             />
           </div>
 

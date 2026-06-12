@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-12 PM (resume here)
 
-**Done & verified (152 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (177 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -86,37 +86,55 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 - **Realism block, part 1 done**: `core/american.py` (CRR binomial
   American/European pricer + `deamericanize()` → European-equivalent IV by
-  Brent inversion; continuous-yield dividends only until the dividends model
-  lands) and the **stale parity-pair filter** in `data/forwards.py`
+  Brent inversion) and the **stale parity-pair filter** in `data/forwards.py`
   (iterative 4-robust-sigma MAD trim floored at 1bp of spot, `n_outliers`
-  reported). NOT yet wired into quote prep / providers — that wiring belongs
-  with the dividends + forward-mode work below.
+  reported).
+- **[REQ done] Realism block, part 2 (complete)**:
+  * **Dividends model** (`data/dividends.py`): continuous yield / discrete
+    absolute (escrowed) / discrete proportional / mixed (cash near-dated
+    switching to proportional past `switch_years` — desk practice);
+    `theoretical_forward()` + `equivalent_yield()`, golden-tested.
+  * **Forward mode per expiry** (`api/market.py`, `routers/forwards.py`):
+    parity-implied (default) / theoretical (rate + dividend model, per-ticker
+    `MarketSettings` via GET/PUT /settings/market/{ticker}) / manual override
+    — GET /forwards/{ticker} shows all three side by side, PUT
+    /forwards/{t}/{e} sets the policy; a `forwards_version` on AppState is
+    folded into every fit-cache key so policy changes refit cleanly. Frontend
+    `ForwardPanel` in the Smile Viewer aside (mode segmented control, manual
+    input, carry r/q inputs); verified in headless Edge (manual override
+    89.56 vs parity 87.80 refits the smile end-to-end).
+  * **De-Americanization wired into quote prep** (`api/quotes.py`):
+    `ChainSnapshot.exercise_style` flag (Yahoo heuristic: `^`-prefixed
+    indices European, stocks/ETFs American; VolStore schema v2 persists it);
+    American mids inverted via vectorized-bisection `deamericanize_batch`
+    (one (n_quotes × steps) CRR sweep per iteration — chain-scale, ~50 ms vs
+    seconds scalar), early-exercise premium subtracted from bid/mid/ask alike
+    (spread preserved in price space); carry derived from the resolved
+    forward (r = -ln D/t, q = r - ln(F/S)/t). Golden round trip: CRR-priced
+    American chain at known σ(k) recovered within 30 vol bp.
 
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. [REQ] Real-data realism block (Phase 3) remainder: dividends model
-   selection (continuous / discrete absolute / discrete proportional / mix),
-   forward mode choice (theoretical carry / parity-implied / manual
-   override), and wiring de-Americanization (`core/american.py`, done) into
-   single-name quote prep (needs a per-instrument exercise-style flag plus
-   rate/dividend inputs through `api/quotes.py`).
-2. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
+1. [REQ] Chart & UX additions (Phase 6): 3D vol-surface chart; strike-axis
    modes (delta / fixed strike / %ATM / normalized / log-normalized); table
    export (prices, IV) as save/download; expiries bulk selection by type
    (monthly, quarterly, weekly, LEAPS) + universe-selection UI.
-3. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
+2. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
    timestamp + history query API (charting UI later).
-4. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+3. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
-5. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+4. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
    lambda, nu, auto-tune), lasso selection.
-6. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
+5. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
    calibration, sigmoid, direct localvol-affine fit through the API).
+6. Realism leftovers (small): discrete-dividend ex-date handling in event
+   time; dividend-schedule editor UI (API supports discrete schedules, the
+   ForwardPanel only exposes r and continuous q today).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (125 green as of 2026-06-12; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
+  (177 green as of 2026-06-12 PM; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
   `$env:VOLFIT_TICKERS='SPY,QQQ,AAPL'` first (yfinance installed).
@@ -219,7 +237,7 @@ since other models are standard.
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
 - [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
 - [x] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: `models/localvol/affine.py` + `affine_calib.py`, golden tests vs every table of the note (Delaunay triangulation is the note's convention; lambda=50 roughness reproduces the calibrated nodal table).
-- [x] [REQ 2026-06-12] American-options handling, de-Americanization first: `core/american.py` CRR binomial + `deamericanize()` (European-equivalent IV; continuous-yield divs). **Provider/quote-prep wiring still TODO** (exercise-style flag, r/q inputs).
+- [x] [REQ 2026-06-12] American-options handling, de-Americanization first: `core/american.py` CRR binomial + `deamericanize()` scalar and `deamericanize_batch()` (vectorized bisection, chain-scale). **Wired into quote prep**: `ChainSnapshot.exercise_style` flag (Yahoo heuristic + VolStore v2), EEP stripped from bid/mid/ask in `api/quotes.py`, carry from the resolved forward.
 - [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
 - [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)
 - [x] `calib/event_time.py`: dilated clock + variance-lumping term-structure interpolation; toggleable.
@@ -231,8 +249,8 @@ since other models are standard.
 
 - [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests) + `yahoo.py` (yfinance, lazy import, injectable factory, sqrt-time expiry thinning). `bloomberg.py` / `massive.py` still TODO.
 - [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic).
-- [ ] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute, discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice); feeds the theoretical forward and the event/ex-date handling.
-- [ ] [REQ 2026-06-12] Forward fitting mode per expiry: **theoretical** (spot + carry from rate/dividend model), **parity-implied** (current default), or **manually adjusted** (user override in the UI, persisted with the fit session); diagnostics showing the three side by side.
+- [x] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute (escrowed), discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice) — `data/dividends.py`, feeds the theoretical forward. (ex-date/event handling TODO with event time.)
+- [x] [REQ 2026-06-12] Forward fitting mode per expiry: **theoretical** (spot + carry from rate/dividend model), **parity-implied** (default), or **manually adjusted** (ForwardPanel UI override, held on AppState with a forwards version in fit keys); GET /forwards/{ticker} shows the three side by side.
 - [ ] [REQ 2026-06-12] Fit time-series scaffold: persist every calibration (params, ATM handles, diagnostics) keyed by snapshot timestamp — VolStore `fits` table already has the shape — plus history query API (`GET /history/{ticker}/{tenor}`); charting UI deferred.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.

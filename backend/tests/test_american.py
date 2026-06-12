@@ -12,12 +12,22 @@ Invariants:
    reduces to the plain Black implied vol.
 4. Unusable prices (below intrinsic, above static bounds) come back nan,
    matching core.black's convention.
+5. The batch path is the scalar path: binomial_price_batch matches
+   binomial_price to machine precision at equal depth, deamericanize_batch
+   matches the scalar root-finder, and unusable quotes go nan without
+   poisoning the rest of the batch.
 """
 
 import numpy as np
 import pytest
 
-from volfit.core.american import binomial_price, deamericanize
+from volfit.core.american import (
+    DEFAULT_BATCH_STEPS,
+    binomial_price,
+    binomial_price_batch,
+    deamericanize,
+    deamericanize_batch,
+)
 from volfit.core.black import black_call, implied_total_variance
 
 S, T, SIGMA, R, Q = 100.0, 0.75, 0.25, 0.04, 0.02
@@ -88,3 +98,92 @@ def test_unusable_prices_are_nan():
     assert np.isnan(deamericanize(False, 19.9, S, 120.0, T, R))  # below intrinsic
     assert np.isnan(deamericanize(True, 100.1, S, 90.0, T, R))  # above spot
     assert np.isnan(deamericanize(False, 120.1, S, 120.0, T, R))  # above strike
+
+
+# ------------------------------------------------------------- batch path
+
+# Mixed chain: deep/near wings, alternating call/put, vol from 18% to 55%.
+KS = np.array([70.0, 85.0, 95.0, 100.0, 105.0, 115.0, 130.0, 150.0])
+IS_CALL = np.array([True, False, True, False, True, False, True, False])
+SIGMAS = np.array([0.18, 0.22, 0.25, 0.28, 0.32, 0.38, 0.45, 0.55])
+RB, QB = 0.04, 0.01
+
+
+def scalar_prices(american: bool) -> np.ndarray:
+    return np.array(
+        [
+            binomial_price(
+                bool(IS_CALL[i]), S, float(KS[i]), T, float(SIGMAS[i]),
+                RB, QB, n_steps=DEFAULT_BATCH_STEPS, american=american,
+            )
+            for i in range(KS.size)
+        ]
+    )
+
+
+def test_batch_pricer_matches_scalar_european():
+    batch = binomial_price_batch(IS_CALL, S, KS, T, SIGMAS, RB, QB, american=False)
+    np.testing.assert_allclose(batch, scalar_prices(american=False), rtol=0.0, atol=1e-12)
+
+
+def test_batch_pricer_matches_scalar_american():
+    batch = binomial_price_batch(IS_CALL, S, KS, T, SIGMAS, RB, QB, american=True)
+    np.testing.assert_allclose(batch, scalar_prices(american=True), rtol=0.0, atol=1e-12)
+
+
+def test_batch_pricer_intrinsic_at_expiry_and_nan_on_bad_probability():
+    expired = binomial_price_batch(IS_CALL[:2], S, KS[:2], 0.0, SIGMAS[:2], RB, QB)
+    np.testing.assert_allclose(expired, [30.0, 0.0])  # call k=70, put k=85
+    # Near-zero sigma against the drift pushes the CRR probability out of
+    # (0,1): that quote goes nan, the healthy one in the same batch survives.
+    out = binomial_price_batch(
+        np.array([True, True]), S, np.array([100.0, 100.0]), T,
+        np.array([1e-5, 0.25]), RB, QB,
+    )
+    assert np.isnan(out[0]) and np.isfinite(out[1])
+
+
+def test_deamericanize_batch_matches_scalar():
+    prices = scalar_prices(american=True)
+    batch = deamericanize_batch(IS_CALL, prices, S, KS, T, RB, QB)
+    for i in range(KS.size):
+        scalar = deamericanize(
+            bool(IS_CALL[i]), float(prices[i]), S, float(KS[i]), T,
+            RB, QB, n_steps=DEFAULT_BATCH_STEPS,
+        )
+        assert batch[i] == pytest.approx(scalar, abs=2e-4), (IS_CALL[i], KS[i])
+
+
+def test_deamericanize_batch_round_trip():
+    prices = binomial_price_batch(IS_CALL, S, KS, T, SIGMAS, RB, QB)
+    recovered = deamericanize_batch(IS_CALL, prices, S, KS, T, RB, QB)
+    np.testing.assert_allclose(recovered, SIGMAS, rtol=0.0, atol=1e-6)
+
+
+def test_deamericanize_batch_nan_cases_do_not_poison_batch():
+    # With r=0, q=4% the near-zero-vol American put price is K - S e^{-qT}
+    # (its early-exercise floor): a quote below that floor has no vol.
+    r0, q0 = 0.0, 0.04
+    is_call = np.array([False, True, False, False, False])
+    strikes = np.array([120.0, 90.0, 150.0, 150.0, 100.0])
+    good = binomial_price(False, S, 100.0, T, 0.3, r0, q0, n_steps=DEFAULT_BATCH_STEPS)
+    prices = np.array(
+        [
+            19.9,  # put below intrinsic 20
+            100.1,  # call above spot
+            50.0,  # put exactly at intrinsic (strict bound)
+            51.0,  # put below its zero-vol floor 150 - 100 e^{-0.03} ~ 52.95
+            good,  # healthy quote sharing the batch
+        ]
+    )
+    out = deamericanize_batch(is_call, prices, S, strikes, T, r0, q0)
+    assert np.isnan(out[:4]).all()
+    assert out[4] == pytest.approx(0.3, abs=1e-6)
+    # The scalar agrees that each bad quote is unusable.
+    for i in range(4):
+        assert np.isnan(
+            deamericanize(
+                bool(is_call[i]), float(prices[i]), S, float(strikes[i]), T,
+                r0, q0, n_steps=DEFAULT_BATCH_STEPS,
+            )
+        ), i

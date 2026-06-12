@@ -67,12 +67,25 @@ class ChainSnapshot:
 
     The snapshot is the unit of persistence (one row in `snapshots`, many in
     `quotes`) and the unit of work for forward implication and calibration.
+
+    `exercise_style` records what the listed contracts are: "european" (cash
+    indices) or "american" (US single stocks / ETFs). American quotes carry
+    an early-exercise premium on top of their European value, so quote prep
+    (volfit.api.quotes) de-Americanizes them before European fitting.
     """
 
     ticker: str
     spot: float
     timestamp: datetime
     quotes: list[OptionQuote] = field(default_factory=list)
+    exercise_style: str = "european"  # "european" | "american"
+
+    def __post_init__(self) -> None:
+        if self.exercise_style not in ("european", "american"):
+            raise ValueError(
+                "exercise_style must be 'european' or 'american', "
+                f"got {self.exercise_style!r}"
+            )
 
     def expiries(self) -> list[date]:
         """Sorted unique expiries present in the chain."""

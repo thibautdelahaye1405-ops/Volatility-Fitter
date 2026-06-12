@@ -14,14 +14,16 @@ idempotent, so a rare double build is harmless.
 
 from __future__ import annotations
 
+import math
 import threading
 from dataclasses import dataclass
 from datetime import date
 
 from volfit.api.quotes import PreparedQuotes
-from volfit.api.schemas import FitSettings, SmilePoint
+from volfit.api.schemas import FitSettings, ForwardPolicy, MarketSettings, SmilePoint
 from volfit.api.session import EditSession
-from volfit.data.forwards import ImpliedForward, implied_forwards
+from volfit.data.dividends import Dividend, DividendModel, theoretical_forward
+from volfit.data.forwards import ImpliedForward, ResolvedForward, implied_forwards
 from volfit.data.provider import OptionChainProvider, SyntheticProvider
 from volfit.data.types import ChainSnapshot
 from volfit.models.lqd.basis import LQDParams
@@ -66,6 +68,9 @@ class AppState:
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fit_settings = FitSettings()
         self._settings_version = 0  # bumped on change; part of fit-cache keys
+        self._market_settings: dict[str, MarketSettings] = {}
+        self._forward_policies: dict[tuple[str, str], ForwardPolicy] = {}
+        self._forwards_version = 0  # bumped on change; part of fit-cache keys
         self._fits: dict[tuple, FitRecord] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
@@ -123,6 +128,91 @@ class AppState:
                 self._fit_settings = settings
                 self._settings_version += 1
             return self._fit_settings
+
+    # ------------------------------------ market settings and forward policy
+    @property
+    def forwards_version(self) -> int:
+        """Monotone counter folded into fit keys; bumps whenever a market
+        setting or forward policy changes (any ticker — forwards feed every
+        prepared-quote array, so a global bust is the simple safe choice)."""
+        with self._lock:
+            return self._forwards_version
+
+    def market_settings(self, ticker: str) -> MarketSettings:
+        """The ticker's rate/dividend settings (defaults when never set)."""
+        with self._lock:
+            return self._market_settings.get(ticker) or MarketSettings()
+
+    def set_market_settings(self, ticker: str, settings: MarketSettings) -> MarketSettings:
+        """Apply new market settings; identical settings don't bump the
+        forwards version, so a redundant PUT never invalidates warm fits."""
+        with self._lock:
+            if settings != self._market_settings.get(ticker, MarketSettings()):
+                self._market_settings[ticker] = settings
+                self._forwards_version += 1
+            return self._market_settings.get(ticker) or MarketSettings()
+
+    def forward_policy(self, ticker: str, expiry_iso: str) -> ForwardPolicy:
+        """The node's forward policy ("parity" default when never set)."""
+        with self._lock:
+            return self._forward_policies.get((ticker, expiry_iso)) or ForwardPolicy()
+
+    def set_forward_policy(
+        self, ticker: str, expiry_iso: str, policy: ForwardPolicy
+    ) -> ForwardPolicy:
+        """Store one node's forward policy; UnknownNodeError on bad nodes
+        (validated *before* storing), version bumped only on a real change."""
+        iso = self.resolve_expiry(ticker, expiry_iso).isoformat()  # may raise
+        with self._lock:
+            if policy != self._forward_policies.get((ticker, iso), ForwardPolicy()):
+                self._forward_policies[(ticker, iso)] = policy
+                self._forwards_version += 1
+            return self._forward_policies.get((ticker, iso)) or ForwardPolicy()
+
+    def dividend_model(self, ticker: str) -> DividendModel:
+        """The ticker's MarketSettings translated to a data-layer model."""
+        settings = self.market_settings(ticker)
+        return DividendModel(
+            mode=settings.dividendMode,
+            yield_=settings.dividendYield,
+            dividends=tuple(
+                Dividend(date.fromisoformat(d.exDate), d.amount)
+                for d in settings.dividends
+            ),
+            switch_years=settings.switchYears,
+        )
+
+    def theoretical_forward_for(self, ticker: str, expiry: date) -> tuple[float, float]:
+        """(forward, discount) from the dividend model and flat rate."""
+        spot = self.snapshot(ticker).spot
+        rate = self.market_settings(ticker).rate
+        t = self.year_fraction(expiry)
+        forward = theoretical_forward(
+            spot, rate, t, self.dividend_model(ticker), self.reference_date
+        )
+        return forward, math.exp(-rate * t)
+
+    def resolved_forward(self, ticker: str, expiry: date) -> ResolvedForward:
+        """The forward calibration uses for one expiry, per its policy.
+
+        "parity" reads the regression (always present: the expiry universe
+        is gated on parity fits, see resolve_expiry); "theoretical" prices
+        the dividend model; "manual" takes the user's forward with the
+        parity discount (falling back to exp(-rate t) defensively).
+        """
+        policy = self.forward_policy(ticker, expiry.isoformat())
+        parity = self.forwards(ticker).get(expiry)
+        if policy.mode == "theoretical":
+            forward, discount = self.theoretical_forward_for(ticker, expiry)
+            return ResolvedForward(expiry, forward, discount, "theoretical")
+        if policy.mode == "manual":
+            if parity is not None:
+                discount = parity.discount
+            else:
+                rate = self.market_settings(ticker).rate
+                discount = math.exp(-rate * self.year_fraction(expiry))
+            return ResolvedForward(expiry, float(policy.manualForward), discount, "manual")
+        return ResolvedForward(expiry, parity.forward, parity.discount, "parity")
 
     # ------------------------------------------------------------- fit cache
     def get_fit(self, key: tuple) -> FitRecord | None:

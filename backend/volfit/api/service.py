@@ -84,14 +84,16 @@ def session_version(state: AppState, ticker: str, iso: str) -> int:
 
 def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
     """Fit-cache key: (ticker, canonical ISO, mode, session version, settings
-    version) — quote edits and hyperparameter changes both bump a version, so
-    affected nodes refit without cache eviction."""
+    version, forwards version) — quote edits, hyperparameter changes and
+    forward-policy/market-settings changes each bump a version, so affected
+    nodes refit without cache eviction."""
     return (
         ticker,
         iso,
         fit_mode,
         session_version(state, ticker, iso),
         state.settings_version,
+        state.forwards_version,
     )
 
 
@@ -116,7 +118,7 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
         return record
 
     snapshot = state.snapshot(ticker)
-    forward = state.forwards(ticker)[expiry]
+    forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
     prepared = prepare_quotes(snapshot, expiry, forward, state.year_fraction(expiry))
     k, w, weights = edited_fit_inputs(
         state, ticker, iso, prepared, fit_weights(prepared, fit_mode)
@@ -212,10 +214,11 @@ def surface_inputs(
 ) -> list[tuple[str, PreparedQuotes, np.ndarray | None]]:
     """(expiry-ISO, prepared quotes, weights) per expiry, nearest first."""
     snapshot = state.snapshot(ticker)
-    forwards = state.forwards(ticker)
+    forwards = state.forwards(ticker)  # gates the expiry universe
     plan = []
     for expiry in sorted(forwards):
-        prepared = prepare_quotes(snapshot, expiry, forwards[expiry], state.year_fraction(expiry))
+        forward = state.resolved_forward(ticker, expiry)  # honours the policy
+        prepared = prepare_quotes(snapshot, expiry, forward, state.year_fraction(expiry))
         plan.append((expiry.isoformat(), prepared, fit_weights(prepared, fit_mode)))
     return plan
 

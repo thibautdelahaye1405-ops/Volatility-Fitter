@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import Literal
 
 import numpy as np
 
@@ -57,6 +58,27 @@ class ImpliedForward:
     n_strikes: int
     residual_rms: float
     n_outliers: int = 0  # parity pairs dropped by the stale-quote filter
+
+
+#: Where a fitting forward comes from ([REQ 2026-06-12] forward modes):
+#: the parity regression above, the dividend-model theoretical forward
+#: (volfit.data.dividends), or a user-entered manual override.
+ForwardSource = Literal["parity", "theoretical", "manual"]
+
+
+@dataclass(frozen=True)
+class ResolvedForward:
+    """The (forward, discount) pair calibration actually uses for one expiry.
+
+    Quote prep only needs `.forward`/`.discount`, so an `ImpliedForward` and
+    a `ResolvedForward` are interchangeable there; `source` records which
+    `ForwardSource` the per-expiry policy selected (diagnostics/UI).
+    """
+
+    expiry: date
+    forward: float
+    discount: float
+    source: str  # a ForwardSource value
 
 
 def implied_forward(snapshot: ChainSnapshot, expiry: date) -> ImpliedForward | None:

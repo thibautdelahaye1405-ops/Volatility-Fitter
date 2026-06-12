@@ -27,7 +27,9 @@ from pathlib import Path
 
 from volfit.data.types import ChainSnapshot, Instrument, OptionQuote
 
-SCHEMA_VERSION = 1
+#: v2 ([REQ 2026-06-12]): snapshots carry the contracts' exercise style so
+#: reloaded chains keep de-Americanizing exactly like freshly fetched ones.
+SCHEMA_VERSION = 2
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -36,10 +38,11 @@ CREATE TABLE IF NOT EXISTS instruments (
     currency TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS snapshots (
-    id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticker TEXT NOT NULL,
-    spot   REAL NOT NULL,
-    ts     TEXT NOT NULL
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker         TEXT NOT NULL,
+    spot           REAL NOT NULL,
+    ts             TEXT NOT NULL,
+    exercise_style TEXT NOT NULL DEFAULT 'european'
 );
 CREATE TABLE IF NOT EXISTS quotes (
     snapshot_id   INTEGER NOT NULL REFERENCES snapshots(id),
@@ -116,7 +119,11 @@ class VolStore:
     # -- lifecycle ---------------------------------------------------------
 
     def _ensure_schema(self) -> None:
-        """Create tables on a fresh file; refuse files from a newer schema."""
+        """Create/migrate tables on open; refuse files from a newer schema.
+
+        v1 -> v2: the `snapshots` table gains `exercise_style` (defaulting
+        old rows to 'european' — the only style v1 ever stored).
+        """
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
             raise RuntimeError(
@@ -124,6 +131,11 @@ class VolStore:
                 f"newer than supported {SCHEMA_VERSION}"
             )
         self.conn.executescript(_SCHEMA)
+        if version == 1:  # existing v1 file: CREATE IF NOT EXISTS didn't touch it
+            self.conn.execute(
+                "ALTER TABLE snapshots ADD COLUMN "
+                "exercise_style TEXT NOT NULL DEFAULT 'european'"
+            )
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
 
@@ -159,8 +171,14 @@ class VolStore:
     def save_snapshot(self, snapshot: ChainSnapshot) -> int:
         """Persist one chain snapshot; returns the new snapshot id."""
         cur = self.conn.execute(
-            "INSERT INTO snapshots (ticker, spot, ts) VALUES (?, ?, ?)",
-            (snapshot.ticker, snapshot.spot, snapshot.timestamp.isoformat()),
+            "INSERT INTO snapshots (ticker, spot, ts, exercise_style) "
+            "VALUES (?, ?, ?, ?)",
+            (
+                snapshot.ticker,
+                snapshot.spot,
+                snapshot.timestamp.isoformat(),
+                snapshot.exercise_style,
+            ),
         )
         snapshot_id = int(cur.lastrowid)
         self.conn.executemany(
@@ -187,11 +205,12 @@ class VolStore:
     def load_snapshot(self, snapshot_id: int) -> ChainSnapshot:
         """Reload a snapshot; raises KeyError if the id is unknown."""
         row = self.conn.execute(
-            "SELECT ticker, spot, ts FROM snapshots WHERE id = ?", (snapshot_id,)
+            "SELECT ticker, spot, ts, exercise_style FROM snapshots WHERE id = ?",
+            (snapshot_id,),
         ).fetchone()
         if row is None:
             raise KeyError(f"no snapshot with id {snapshot_id}")
-        ticker, spot, ts = row
+        ticker, spot, ts, exercise_style = row
         timestamp = datetime.fromisoformat(ts)
         quotes = [
             OptionQuote(
@@ -213,7 +232,13 @@ class VolStore:
                 (snapshot_id,),
             )
         ]
-        return ChainSnapshot(ticker=ticker, spot=spot, timestamp=timestamp, quotes=quotes)
+        return ChainSnapshot(
+            ticker=ticker,
+            spot=spot,
+            timestamp=timestamp,
+            quotes=quotes,
+            exercise_style=exercise_style,
+        )
 
     def latest_snapshot(self, ticker: str) -> ChainSnapshot | None:
         """Most recent snapshot for a ticker (by timestamp, then id), or None."""
