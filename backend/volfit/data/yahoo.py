@@ -35,8 +35,12 @@ import warnings
 from datetime import date, datetime, timezone
 from typing import Callable, Sequence
 
-from volfit.data.provider import OptionChainProvider
+from volfit.data.provider import OptionChainProvider, SymbolMatch
 from volfit.data.types import ChainSnapshot, OptionQuote
+
+#: Yahoo autocomplete endpoint and the option-bearing quote types we surface.
+_SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
+_SEARCH_TYPES = {"EQUITY", "ETF", "INDEX"}
 
 
 def _default_ticker_factory(symbol: str):
@@ -114,6 +118,44 @@ class YahooProvider(OptionChainProvider):
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
+
+    def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
+        """Yahoo autocomplete: free-text (symbol or company name) -> symbols.
+
+        Hits Yahoo's public search endpoint (httpx, lazy import) and keeps only
+        option-bearing quote types (equity/ETF/index). Any failure — no httpx,
+        network down, schema surprise — falls back to the base substring/echo
+        search so the picker keeps working offline.
+        """
+        q = query.strip()
+        if not q:
+            return []
+        try:
+            import httpx
+
+            response = httpx.get(
+                _SEARCH_URL,
+                params={"q": q, "quotesCount": limit, "newsCount": 0},
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=5.0,
+            )
+            quotes = response.json().get("quotes", [])
+        except Exception:
+            return super().search_symbols(query, limit)
+        out: list[SymbolMatch] = []
+        for item in quotes:
+            symbol = item.get("symbol")
+            if not symbol or item.get("quoteType") not in _SEARCH_TYPES:
+                continue
+            out.append(
+                SymbolMatch(
+                    symbol=symbol,
+                    name=item.get("shortname") or item.get("longname") or "",
+                    type=item.get("quoteType", ""),
+                    exchange=item.get("exchange", ""),
+                )
+            )
+        return out[:limit]
 
     # -- spot ----------------------------------------------------------------
 

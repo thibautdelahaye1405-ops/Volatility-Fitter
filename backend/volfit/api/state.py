@@ -83,6 +83,9 @@ class AppState:
         #: SQLite path for fit-history persistence (volfit.api.history);
         #: None (the default) keeps the API side-effect free.
         self.store_path = store_path
+        #: The curated universe (mutable): starts as the provider's watchlist,
+        #: the user adds/removes tickers via the universe-management API.
+        self._active_tickers: list[str] = list(self.provider.list_tickers())
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fit_settings = FitSettings()
@@ -96,11 +99,95 @@ class AppState:
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
         self._lock = threading.Lock()
 
+    # ------------------------------------------------------------ universe
+    def active_tickers(self) -> list[str]:
+        """The curated universe the API serves (a copy)."""
+        with self._lock:
+            return list(self._active_tickers)
+
+    def add_ticker(self, symbol: str) -> str:
+        """Add a ticker to the universe, validating it has fittable expiries.
+
+        Fetches the chain outside the lock (network); raises UnknownNodeError
+        if the symbol cannot be fetched or carries no parity-implyable expiry.
+        Idempotent. Pre-caches the snapshot/forwards and resets the graph
+        universe so it rebuilds over the new node set.
+        """
+        sym = symbol.strip().upper()
+        if not sym:
+            raise UnknownNodeError("empty ticker symbol")
+        with self._lock:
+            if sym in self._active_tickers:
+                return sym
+        try:
+            snap = self.provider.fetch_chain(sym)
+        except Exception as exc:  # bad symbol, no data, network — all 404 here
+            raise UnknownNodeError(f"could not add {sym!r}: {exc}") from None
+        fwds = implied_forwards(snap, self.reference_date)
+        if not fwds:
+            raise UnknownNodeError(f"{sym!r} has no usable option expiries")
+        with self._lock:
+            if sym not in self._active_tickers:
+                self._snapshots[sym] = snap
+                self._forwards[sym] = fwds
+                self._active_tickers.append(sym)
+                self._universe = None
+        return sym
+
+    def _drop_ticker_caches(self, sym: str) -> None:
+        """Forget every cache entry of a ticker (call under the lock)."""
+        self._snapshots.pop(sym, None)
+        self._forwards.pop(sym, None)
+        self._fits = {k: v for k, v in self._fits.items() if k[0] != sym}
+        self._sessions = {k: v for k, v in self._sessions.items() if k[0] != sym}
+        self._priors = {k: v for k, v in self._priors.items() if k[0] != sym}
+
+    def remove_ticker(self, symbol: str) -> None:
+        """Remove a ticker from the universe (never the last one)."""
+        sym = symbol.strip().upper()
+        with self._lock:
+            if sym not in self._active_tickers:
+                raise UnknownNodeError(f"unknown ticker {sym!r}")
+            if len(self._active_tickers) <= 1:
+                raise ValueError("cannot remove the last ticker in the universe")
+            self._active_tickers.remove(sym)
+            self._drop_ticker_caches(sym)
+            self._universe = None
+
+    def set_active_tickers(self, symbols: list[str]) -> list[str]:
+        """Replace the universe (loading a saved one); unfetchable symbols are
+        skipped. Raises ValueError if nothing usable survives."""
+        wanted = list(dict.fromkeys(s.strip().upper() for s in symbols if s.strip()))
+        validated: list[str] = []
+        for sym in wanted:
+            try:
+                with self._lock:
+                    have = sym in self._snapshots
+                if not have:
+                    snap = self.provider.fetch_chain(sym)
+                    fwds = implied_forwards(snap, self.reference_date)
+                    if not fwds:
+                        continue
+                    with self._lock:
+                        self._snapshots[sym] = snap
+                        self._forwards[sym] = fwds
+                validated.append(sym)
+            except Exception:
+                continue  # skip a ticker a saved universe can no longer fetch
+        if not validated:
+            raise ValueError("no usable tickers in the universe")
+        with self._lock:
+            self._active_tickers = validated
+            self._universe = None
+        return validated
+
     # ------------------------------------------------------------ market data
     def snapshot(self, ticker: str) -> ChainSnapshot:
-        """Fetch-once chain snapshot; UnknownNodeError for unknown tickers."""
-        if ticker not in self.provider.list_tickers():
-            raise UnknownNodeError(f"unknown ticker {ticker!r}")
+        """Fetch-once chain snapshot; UnknownNodeError for tickers not in the
+        active universe."""
+        with self._lock:
+            if ticker not in self._active_tickers:
+                raise UnknownNodeError(f"unknown ticker {ticker!r}")
         with self._lock:
             if ticker not in self._snapshots:
                 self._snapshots[ticker] = self.provider.fetch_chain(ticker)

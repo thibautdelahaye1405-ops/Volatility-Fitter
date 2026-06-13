@@ -7,10 +7,11 @@ import SmileViewer from "./views/SmileViewer";
 import TermStructureViewer from "./views/TermStructureViewer";
 import LocalVolViewer from "./views/LocalVolViewer";
 import GraphViewer from "./views/GraphViewer";
+import UniverseManager from "./views/UniverseManager";
 import { SmileSessionProvider } from "./state/smileSession";
 
 /** The top-level workspaces of the application. */
-export type TabId = "smile" | "term" | "localvol" | "graph";
+export type TabId = "smile" | "term" | "localvol" | "graph" | "universe";
 
 export interface TabDef {
   id: TabId;
@@ -22,6 +23,7 @@ export const TABS: TabDef[] = [
   { id: "term", label: "Term Structure" },
   { id: "localvol", label: "Local Vol" },
   { id: "graph", label: "Graph" },
+  { id: "universe", label: "Universe" },
 ];
 
 export default function App() {
@@ -37,6 +39,7 @@ export default function App() {
           {activeTab === "smile" && <SmileViewer />}
           {activeTab === "term" && <TermStructureViewer />}
           {activeTab === "localvol" && <LocalVolViewer />}
+          {activeTab === "universe" && <UniverseManager />}
           {activeTab === "graph" && (
             // Drill-in: GraphViewer points the shared smile session at a
             // node, then asks the shell to switch to the Smile workspace.

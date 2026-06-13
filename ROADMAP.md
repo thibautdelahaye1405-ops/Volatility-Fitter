@@ -10,7 +10,24 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (232 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (235 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-13] Universe-selection UI**: a dedicated "Universe" tab (5th
+  workspace) to curate the working set of underlyings. Backend: AppState now
+  holds a mutable active-ticker set (`add_ticker` validates by fetching the
+  chain + a parity forward, `remove_ticker` keeps >=1 and drops the ticker's
+  caches, `set_active_tickers` for loading a saved set); `snapshot()` gates on
+  the active set so dynamically-added symbols work. Symbol search
+  (`provider.search_symbols`: default substring+echo, **YahooProvider override
+  hits Yahoo's autocomplete** via httpx with offline fallback). New endpoints
+  (`api/universe_service.py` + router): GET /universe (active), GET
+  /universe/search, POST/DELETE /universe/tickers, and named universes wired to
+  the existing SQLite persistence (`data/universe.py`) — GET/POST/DELETE
+  /universes + POST /universe/load/{name} (no-op without VOLFIT_DB). Frontend:
+  `views/UniverseManager.tsx` + `state/useUniverse.ts` (debounced search,
+  add/remove, save/load/delete named) + `useSmile.refreshUniverse()` so edits
+  propagate to every workspace's selectors. 7 API tests; verified end-to-end in
+  headless Edge (search → add DELTA → save named universe).
 
 - **[2026-06-13] Discrete cash-dividend de-Americanization**: the proper cure
   for the residual ATM kink on dividend-straddling expiries (the continuous-
@@ -168,8 +185,9 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     monthly (3rd Friday) > weekly (Friday) > daily; `expiryType` on
     /universe) + class filter chips next to the expiry selector (only
     classes present render; auto-reselects when the current rung filters
-    out). Full universe-selection UI (pick tickers/expiries from the
-    provider) still TODO — the chips cover bulk selection within a ladder.
+    out). **Full universe-selection UI now done** (the Universe tab: provider
+    symbol search, add/remove, named universes); the chips still cover bulk
+    expiry selection within a ladder.
   * SmileViewer split into UniverseHeader / SmileAside / useSmileShortcuts
     to stay under the 400-line policy. All verified in headless Edge
     (surface mesh, delta ticks, table grid, CSV Content-Disposition).
@@ -275,20 +293,21 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     Edge (cash dividend → Term marker at t≈0.12y; editor shows the schedule).
 
 **Next up (in order — the [REQ] backlog is now fully cleared):**
-1. Full provider-driven **universe-selection UI** (pick tickers/expiries from
-   the provider; the expiry-class chips cover bulk selection within a ladder
-   today, but there is no add-ticker/add-expiry screen).
-2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
+1. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
    sets, provider-failure injection; UX polish (skeletons, error surfaces,
    layout persistence); Docker-compose packaging + user/API docs.
-3. Smaller leftovers scattered in the phase checklists: Bloomberg/Massive
+2. Smaller leftovers scattered in the phase checklists: Bloomberg/Massive
    providers + DuckDB/Parquet history; process-pool for parallel slice fits;
    editable ATM handles + prior load/diff UI; arbitrage/event toggles in the
    hyperparameter panel.
+3. Universe leftovers (small): per-ticker expiry-depth/window control (the
+   provider thins to ~8 sqrt-spaced rungs today; the class chips bulk-select
+   within a ladder); the saved-universe persistence stores only the ticker
+   list (the min/max-day window is defaulted).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (232 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (235 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
@@ -413,7 +432,9 @@ since other models are standard.
 - [x] [REQ 2026-06-12] Fit time-series scaffold: every calibration persists (params, ATM handles, diagnostics) keyed by snapshot timestamp into VolStore `fits` (`api/history.py`, opt-in via VOLFIT_DB) + GET /history/{ticker}/{tenorDays}; charting UI deferred.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
-- [x] Universe dataclass + persistence; provider-driven enumeration UI flow TODO.
+- [x] Universe dataclass + persistence, **now wired to the API and a dedicated
+  Universe tab** (add/remove tickers via provider symbol search, save/load named
+  universes). AppState holds the mutable active set.
 - [x] [REQ 2026-06-12] Expiries bulk selection by type: `data/expiries.py` classification (`expiryType` on /universe) + class filter chips in the Smile header. (Full provider-driven universe-selection UI still TODO.)
 
 **Exit criteria:** one command snapshots a 20-ticker universe from Yahoo into storage; forwards implied; quotes ready for calibration.

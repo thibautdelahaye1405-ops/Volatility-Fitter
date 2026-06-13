@@ -109,6 +109,9 @@ export interface UseSmileResult {
   /** Force a refetch of the current smile through the regular load path
    *  (used after server-side state changes, e.g. PUT /settings/fit). */
   reload: () => void;
+  /** Re-fetch the universe after add/remove/load-universe, keeping a valid
+   *  (ticker, expiry) selection; recovers from mock mode if the backend is up. */
+  refreshUniverse: () => Promise<void>;
   /** Spot-scenario inputs (regime + spot return) driving the SSR overlay. */
   scenario: ScenarioState;
   setScenario: (next: ScenarioState) => void;
@@ -290,6 +293,23 @@ export function useSmile(): UseSmileResult {
   /** Refetch the current node through the regular smile effect. */
   const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
 
+  /** Re-fetch the universe (after the Universe tab edits it) and keep the
+   *  selection valid: hold the current ticker/expiry when they survive, else
+   *  fall back to the first ticker / mid-ladder expiry. */
+  const refreshUniverse = useCallback(async (): Promise<void> => {
+    const u = await api.get<UniverseResponse>("/universe");
+    if (u.tickers.length === 0) return;
+    const keepTicker = ticker !== "" && u.tickers.includes(ticker) ? ticker : u.tickers[0];
+    const ladder = u.expiries[keepTicker] ?? [];
+    const keepExpiry = ladder.some((r) => r.expiry === expiry)
+      ? expiry
+      : midLadderExpiry(ladder);
+    setUniverse(u);
+    setSource("live");
+    setTickerState(keepTicker);
+    setExpiryState(keepExpiry);
+  }, [ticker, expiry]);
+
   // Derived side-channels: SSR scenario overlay + lazy distribution views.
   const live = source === "live";
   const { scenarioCurve, scenarioSsr } = useScenarioCurve(
@@ -321,6 +341,7 @@ export function useSmile(): UseSmileResult {
     redo,
     savePrior,
     reload,
+    refreshUniverse,
     scenario,
     setScenario,
     scenarioCurve,

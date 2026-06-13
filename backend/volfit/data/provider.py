@@ -18,12 +18,23 @@ from __future__ import annotations
 
 import abc
 import zlib
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
 import numpy as np
 
 from volfit.core.black import black_call
 from volfit.data.types import ChainSnapshot, OptionQuote
+
+
+@dataclass(frozen=True)
+class SymbolMatch:
+    """One symbol-search hit for the universe picker (symbol + display info)."""
+
+    symbol: str
+    name: str = ""
+    type: str = ""  # EQUITY / ETF / INDEX, provider-defined
+    exchange: str = ""
 
 # Synthetic expiry ladder: ~1M, 3M, 6M, 1Y from the reference date.
 _EXPIRY_DAYS = (30, 91, 182, 365)
@@ -43,6 +54,23 @@ class OptionChainProvider(abc.ABC):
     @abc.abstractmethod
     def fetch_chain(self, ticker: str) -> ChainSnapshot:
         """Fetch the full current option chain for one underlying."""
+
+    def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
+        """Resolve a free-text query (symbol or name) to candidate symbols.
+
+        Default: a substring match over ``list_tickers`` plus the raw query as
+        a candidate (providers that can quote any symbol, e.g. the synthetic
+        and Yahoo, can then add it directly). Live providers override this with
+        a real catalog search (see YahooProvider). Returns at most ``limit``.
+        """
+        q = query.strip().upper()
+        if not q:
+            return []
+        out = [SymbolMatch(symbol=t) for t in self.list_tickers() if q in t.upper()]
+        bare = q.lstrip("^").replace(".", "").replace("-", "")
+        if q not in {m.symbol for m in out} and bare.isalnum() and len(q) <= 6:
+            out.append(SymbolMatch(symbol=q))  # let any plausible symbol be added
+        return out[:limit]
 
 
 def _svi_total_variance(k: np.ndarray, t: float) -> np.ndarray:
