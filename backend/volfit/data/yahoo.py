@@ -35,6 +35,8 @@ import warnings
 from datetime import date, datetime, timezone
 from typing import Callable, Sequence
 
+from volfit.data.fieldmap import int_or_none as _int_or_none
+from volfit.data.fieldmap import price_or_none as _price_or_none
 from volfit.data.provider import OptionChainProvider, SymbolMatch
 from volfit.data.types import ChainSnapshot, OptionQuote
 
@@ -52,32 +54,6 @@ def _default_ticker_factory(symbol: str):
             "YahooProvider requires the 'yfinance' package: pip install yfinance"
         ) from exc
     return yfinance.Ticker(symbol)
-
-
-def _price_or_none(value) -> float | None:
-    """Map a Yahoo price field to float; <= 0 or NaN means 'no quote' -> None."""
-    if value is None:
-        return None
-    try:
-        x = float(value)
-    except (TypeError, ValueError):
-        return None
-    if math.isnan(x) or x <= 0.0:
-        return None
-    return x
-
-
-def _int_or_none(value) -> int | None:
-    """Map a Yahoo count field (volume, OI) to int; NaN/None -> None."""
-    if value is None:
-        return None
-    try:
-        x = float(value)
-    except (TypeError, ValueError):
-        return None
-    if math.isnan(x) or math.isinf(x):
-        return None
-    return int(x)
 
 
 class YahooProvider(OptionChainProvider):
@@ -118,6 +94,20 @@ class YahooProvider(OptionChainProvider):
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
+
+    def feed_status(self) -> tuple[str, str]:
+        """Amber when reachable (Yahoo option quotes are ~15-min delayed),
+        red when the watchlist's first ticker can't be reached."""
+        tickers = self.list_tickers()
+        if not tickers:
+            return ("red", "no tickers configured")
+        try:
+            expiries = self.available_expiries(tickers[0])
+        except Exception:
+            return ("red", "unreachable")
+        if not expiries:
+            return ("red", "no listed options")
+        return ("amber", "~15-min delayed")
 
     def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
         """Yahoo autocomplete: free-text (symbol or company name) -> symbols.
@@ -264,7 +254,12 @@ class YahooProvider(OptionChainProvider):
             )
         return quotes
 
-    def fetch_chain(self, ticker: str, expiries: list[date] | None = None) -> ChainSnapshot:
+    def fetch_chain(
+        self,
+        ticker: str,
+        expiries: list[date] | None = None,
+        as_of=None,  # Yahoo is live-only; historical chains aren't available
+    ) -> ChainSnapshot:
         """Fetch spot + the requested expiries (the universe selection), or the
         thinned ladder when none is given; skip (warn) failing expiries."""
         t = self._ticker_factory(ticker)

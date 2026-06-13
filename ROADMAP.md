@@ -10,7 +10,77 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (246 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (284 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-13] As-of (timestamp) selector under Data Source**: choose the
+  observation time — **Live / Real-time**, **Previous Close**, a provider **EOD
+  trading day** (~30 days), or a **captured intraday** snapshot replayed from the
+  store. Everything re-prices because it all flows through
+  `AppState.snapshot()`. Provider contract gained `AsOf` + `fetch_chain(as_of=)`
+  + `historical_modes()`/`available_history()` (`data/provider.py`, default
+  live-only). Bloomberg does eod/prev-close via `bdh` (`data/bloomberg_history.py`,
+  narwhals long `ticker/date/field/value`; ~30 trading-day list); Massive does
+  prev-close from the snapshot `day.close` (zero-spread); Yahoo/Synthetic
+  live-only. AppState `set_as_of` clears chain caches + routes live(+auto-capture
+  to VolStore, dedup ~60 s) / provider-EOD / captured-replay
+  (`store.snapshot_at`); `data/store.py` gained `list_snapshots`/`snapshot_at`/
+  `last_snapshot_ts`. `api/asof.py` + `routers/asof.py` (GET/POST /asof).
+  Frontend `state/useAsOf.ts` + a TopBar "As of" dropdown (amber when
+  historical). 7 new tests. Live-verified: Bloomberg eod 2026-06-11 fits a real
+  historical SPY smile (ATM 16.27%).
+
+- **[2026-06-13] In-app Data Source selector** (Yahoo / Bloomberg / Massive /
+  Synthetic) with a per-source status light (green=real-time, amber=delayed,
+  red=unavailable). `AppState` now holds a **provider registry** instead of one
+  provider (`self.provider` is a property over `_active_source`);
+  `set_active_source` switches at runtime — keeps the watchlist + custom expiry
+  picks, clears data caches, refetches on the new feed (auto selections
+  re-resolve lazily, custom picks intersect the new available list). Each
+  provider gains a cheap `feed_status()` probe (`data/provider.py` default +
+  yahoo/bloomberg/massive overrides; Massive's is two single-page GETs, never
+  full pagination). New `api/datasource.py` (concurrent probing + 30 s TTL
+  cache) + `routers/datasource.py` (GET /datasources, POST /datasource/{id}).
+  `serve.py` registers ALL sources and auto-picks the best-reachable active one
+  (bloomberg→yahoo→massive→synthetic; `VOLFIT_PROVIDER` forces one). Frontend
+  `state/useDataSources.ts` + a TopBar dropdown selector with status dots;
+  switching fires the session's refreshUniverse()+reload(). `restart.ps1` now
+  brings all sources up by default (flags only force the active one). 13 new
+  tests. Live-verified: lights = bloomberg green / yahoo amber / synthetic
+  green / massive amber, switch + 404 work end-to-end.
+
+- **[2026-06-13] Bloomberg + Massive market-data providers** (CLAUDE.md data
+  layer; ROADMAP Phase 3 + "Next up" #2). Both implement the
+  `OptionChainProvider` contract so the whole stack runs on them unchanged.
+  * **Bloomberg** (`data/bloomberg.py` + `data/bloomberg_parse.py`): via xbbg
+    against a live Terminal. `available_expiries` parses the OPT_CHAIN
+    descriptor strings (one cheap `bds`, no per-contract `bdp`); `fetch_chain`
+    bulk-`bdp`s only the selected expiries' contracts (liquid names list 1000s).
+    Reads xbbg's **narwhals long-format** frames column-wise (they lack
+    `index`/`itertuples`). Real `OPT_EXER_TYP` sets `exercise_style`.
+    `search_symbols` uses the blpapi `//blp/instruments` service so the Universe
+    picker resolves "Nvidia"/"NVDA" -> "NVDA US Equity" (Massive search hits
+    `/v3/reference/tickers`); the picker is source-aware via the active provider.
+    `dividend_schedule()` imports `DVD_HIST_ALL` (future-declared rows, else
+    projects the trailing quarterly cadence forward) → seeded into per-ticker
+    MarketSettings at startup (`serve._seed_bloomberg_dividends`).
+    Live-verified: SPY 13 expiries, 1026 quotes, spot+american+forwards+divs.
+  * **Massive** (`data/massive.py`): Massive.com = rebranded Polygon.io
+    (`api.massive.com`, Bearer auth, `/v3/...`). `available_expiries` via the
+    contracts reference; `fetch_chain` via the chain snapshot (last_quote
+    bid/ask + day OHLC + OI + underlying price); `NOT_AUTHORIZED` →
+    actionable `RuntimeError`. **The supplied key's tier DOES return snapshot
+    quotes + spot**, so Massive is a fully-working fitter source today
+    (live-verified: 32 expiries, spot 741.75, 291/366 usable mids).
+  * **Massive IV overlay** (`api/routers/massive_iv.py`, GET
+    /massive/iv/{ticker}): Massive's own American IV/greeks per contract as a
+    read-only comparison (entitled without quotes). Frontend toggle in the
+    Smile Viewer (`state/useMassiveIv.ts` + cyan OTM scatter on SmileChart).
+  * Wiring: `serve.py`/`snapshot.py`/`restart.ps1` gain `bloomberg`/`massive`
+    selection (`VOLFIT_PROVIDER`, `VOLFIT_MASSIVE_KEY`; `restart.ps1
+    -Bloomberg`/`-Massive`). Shared `data/fieldmap.py` (price/int coercion,
+    also adopted by yahoo). Optional `providers` extra in pyproject (xbbg,
+    blpapi, httpx, yfinance — not in CI). 16 new offline tests (injected
+    `blp_module` / `http_get`); both providers live-verified end-to-end.
 
 - **[2026-06-13] Per-ticker expiry-depth/window selection**: the Universe tab
   now picks each ticker's expiries from the FULL provider list. Provider
@@ -315,18 +385,23 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 1. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
    sets, provider-failure injection; UX polish (skeletons, error surfaces,
    layout persistence); Docker-compose packaging + user/API docs.
-2. Smaller leftovers scattered in the phase checklists: Bloomberg/Massive
-   providers + DuckDB/Parquet history; process-pool for parallel slice fits;
-   editable ATM handles + prior load/diff UI; arbitrage/event toggles in the
-   hyperparameter panel.
-3. Universe leftovers (small): Bloomberg/Massive providers would need their own
-   `available_expiries`; the expiry picker is per-ticker (no cross-ticker "apply
-   to all" yet).
+2. Smaller leftovers scattered in the phase checklists: DuckDB/Parquet history
+   (the columnar quote-snapshot store, deferred when the providers landed);
+   process-pool for parallel slice fits; editable ATM handles + prior load/diff
+   UI; arbitrage/event toggles in the hyperparameter panel.
+3. Universe leftovers (small): Bloomberg/Massive `available_expiries` now exist;
+   the expiry picker is still per-ticker (no cross-ticker "apply to all" yet).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (246 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (284 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
+- Data sources: `restart.ps1` registers ALL feeds and auto-picks the best
+  reachable as active; switch live via the TopBar **Data Source** selector
+  (status light per source). Force one active on launch with
+  `-Live`/`-Bloomberg`/`-Massive`/`-Synthetic`. Set `$env:VOLFIT_MASSIVE_KEY`
+  to light up Massive (else it shows Red; the rest still work). Bloomberg needs
+  an open Terminal (xbbg+blpapi are in .venv).
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
   `$env:VOLFIT_TICKERS='SPY,QQQ,AAPL'` first (yfinance installed).
@@ -443,7 +518,7 @@ since other models are standard.
 
 ## Phase 3 — Data layer (weeks 5–7, parallel with Phase 2)
 
-- [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests) + `yahoo.py` (yfinance, lazy import, injectable factory, sqrt-time expiry thinning). `bloomberg.py` / `massive.py` still TODO.
+- [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests) + `yahoo.py` (yfinance, lazy import, injectable factory, sqrt-time expiry thinning) + **`bloomberg.py`** (xbbg, OPT_CHAIN descriptor parse for cheap `available_expiries`, bulk `bdp` for the selected expiries, real `OPT_EXER_TYP` exercise style, `DVD_HIST_ALL` dividend import w/ forward projection) + **`massive.py`** (Massive/Polygon REST, contracts-reference expiries, chain snapshot quotes/greeks/IV, `NOT_AUTHORIZED` -> clear upgrade error, `iv_surface` overlay). Shared field coercion in `data/fieldmap.py`. Both live-verified.
 - [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic).
 - [x] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute (escrowed), discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice) — `data/dividends.py`, feeds the theoretical forward. **Discrete schedule editable in the UI** (DividendEditor in the ForwardPanel) and **ex-dates surfaced as markers in the Term view** (event-time clock).
 - [x] [REQ 2026-06-12] Forward fitting mode per expiry: **theoretical** (spot + carry from rate/dividend model), **parity-implied** (default), or **manually adjusted** (ForwardPanel UI override, held on AppState with a forwards version in fit keys); GET /forwards/{ticker} shows the three side by side.

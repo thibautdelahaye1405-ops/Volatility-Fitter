@@ -29,6 +29,16 @@ test = [
     "httpx>=0.27",
     "pandas>=2.0",
 ]
+# Live market-data providers (optional, not installed in CI). Massive needs
+# httpx; Bloomberg needs xbbg + blpapi + a running Terminal (blpapi ships on
+# Bloomberg's own index: pip install --index-url
+# https://blpapi.bloomberg.com/repository/releases/python/simple/ blpapi).
+providers = [
+    "httpx>=0.27",
+    "yfinance>=0.2",
+    "xbbg>=0.7",
+    "blpapi>=3.24",
+]
 
 [tool.setuptools.packages.find]
 include = ["volfit*"]

@@ -18,7 +18,7 @@ import math
 import os
 import threading
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 
 from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
@@ -31,8 +31,10 @@ from volfit.data.dividends import (
     theoretical_forward,
 )
 from volfit.api.state_universe import UniverseMixin, UnknownNodeError  # noqa: F401 (re-export)
+from volfit.data.expiry_select import default_selection
 from volfit.data.forwards import ImpliedForward, ResolvedForward, implied_forwards
-from volfit.data.provider import OptionChainProvider, SyntheticProvider
+from volfit.data.provider import AsOf, OptionChainProvider, SyntheticProvider
+from volfit.data.store import VolStore
 from volfit.data.types import ChainSnapshot
 from volfit.models.lqd.basis import LQDParams
 from volfit.models.lqd.calibrate import CalibrationResult
@@ -66,6 +68,22 @@ class PriorRecord:
     t: float
 
 
+@dataclass(frozen=True)
+class AsOfSelection:
+    """Which point in time the app serves chains as-of (global).
+
+    - ``"live"``       latest from the active provider (default);
+    - ``"prev_close"`` the provider's prior-session close;
+    - ``"eod"``        the provider's close for the trading day ``on``;
+    - ``"captured"``   replay the stored snapshot nearest at-or-before ``ts``
+                       (any provider, from the VolStore capture history).
+    """
+
+    mode: str = "live"
+    on: date | None = None  # eod
+    ts: datetime | None = None  # captured
+
+
 class AppState(UniverseMixin):
     """Provider handle plus all caches; one instance per FastAPI app.
 
@@ -79,9 +97,25 @@ class AppState(UniverseMixin):
         reference_date: date,
         provider: OptionChainProvider | None = None,
         store_path: str | os.PathLike | None = None,
+        providers: dict[str, OptionChainProvider] | None = None,
+        active_source: str | None = None,
     ) -> None:
         self.reference_date = reference_date
-        self.provider = provider or SyntheticProvider(reference_date=reference_date)
+        #: Available market-data sources keyed by id ("yahoo"/"bloomberg"/
+        #: "massive"/"synthetic"). `self.provider` is the *active* one; the Data
+        #: Source selector switches `_active_source` at runtime.
+        if providers:
+            self._providers = dict(providers)
+            self._active_source = active_source or next(iter(self._providers))
+        else:
+            one = provider or SyntheticProvider(reference_date=reference_date)
+            self._providers = {_source_id_of(one): one}
+            self._active_source = next(iter(self._providers))
+        #: Cached (monotonic_ts, (level, detail)) feed status per source.
+        self._status_cache: dict[str, tuple[float, tuple[str, str]]] = {}
+        #: Global as-of selection (live by default); historical/captured chains
+        #: flow through snapshot() exactly like live ones.
+        self._asof = AsOfSelection()
         #: SQLite path for fit-history persistence (volfit.api.history);
         #: None (the default) keeps the API side-effect free.
         self.store_path = store_path
@@ -107,6 +141,137 @@ class AppState(UniverseMixin):
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
         self._lock = threading.Lock()
 
+    # ------------------------------------------------------------ data sources
+    @property
+    def provider(self) -> OptionChainProvider:
+        """The currently active market-data provider."""
+        return self._providers[self._active_source]
+
+    @property
+    def active_source(self) -> str:
+        """Id of the active data source (e.g. "yahoo", "bloomberg")."""
+        return self._active_source
+
+    def source_ids(self) -> list[str]:
+        """All configured data-source ids, in registration order."""
+        return list(self._providers)
+
+    def source_statuses(self, refresh: bool = False) -> dict[str, tuple[str, str]]:
+        """Per-source (level, detail) feed status, cached with a short TTL."""
+        from volfit.api.datasource import probe_statuses
+
+        if refresh:
+            self._status_cache.clear()
+        return probe_statuses(self._providers, self._status_cache)
+
+    def set_active_source(self, source_id: str) -> str:
+        """Switch the active source: keep the watchlist + custom expiry picks,
+        clear all data caches, and refetch on the new feed (auto selections
+        re-resolve lazily; custom picks intersect the new available list)."""
+        if source_id not in self._providers:
+            raise UnknownNodeError(f"unknown data source {source_id!r}")
+        with self._lock:
+            if source_id == self._active_source:
+                return self._active_source
+            custom = {
+                t: list(self._selected[t])
+                for t, mode in self._selection_mode.items()
+                if mode == "custom" and t in self._selected
+            }
+            self._active_source = source_id
+            self._asof = AsOfSelection()  # a new feed starts live
+            self._available.clear()
+            self._selected.clear()
+            self._selection_mode.clear()
+            self._clear_chain_caches()
+        # Re-apply custom expiry picks against the new source (network, no lock).
+        for ticker, dates in custom.items():
+            try:
+                available = self.provider.available_expiries(ticker)
+            except Exception:
+                continue  # ticker unavailable on the new source; lazy path 404s
+            keep = [d for d in dates if d in set(available)]
+            chosen = keep or default_selection(available, self.reference_date)
+            with self._lock:
+                self._available[ticker] = available
+                self._selected[ticker] = chosen
+                self._selection_mode[ticker] = "custom" if keep else "auto"
+        return self._active_source
+
+    def _clear_chain_caches(self) -> None:
+        """Drop per-ticker chain-derived caches (call under the lock). Keeps the
+        watchlist + expiry selection; used on source switch and as-of change."""
+        self._snapshots.clear()
+        self._forwards.clear()
+        self._fits.clear()
+        self._sessions.clear()
+        self._universe = None
+
+    # ------------------------------------------------------------ as-of
+    @property
+    def as_of(self) -> AsOfSelection:
+        """The active global as-of selection."""
+        return self._asof
+
+    def set_as_of(self, selection: AsOfSelection) -> AsOfSelection:
+        """Set the as-of point; validate against the active provider, then drop
+        chain caches so the whole stack re-prices on the new observation."""
+        if selection.mode not in ("live", "prev_close", "eod", "captured"):
+            raise UnknownNodeError(f"unknown as-of mode {selection.mode!r}")
+        if selection.mode in ("prev_close", "eod"):
+            if selection.mode not in self.provider.historical_modes():
+                raise UnknownNodeError(
+                    f"{self._active_source!r} has no {selection.mode!r} history"
+                )
+            if selection.mode == "eod" and selection.on is None:
+                raise UnknownNodeError("eod as-of requires a date")
+        if selection.mode == "captured" and selection.ts is None:
+            raise UnknownNodeError("captured as-of requires a timestamp")
+        with self._lock:
+            if selection != self._asof:
+                self._asof = selection
+                self._clear_chain_caches()
+            return self._asof
+
+    def _fetch_asof(self, ticker: str, chosen: list[date]) -> ChainSnapshot:
+        """Fetch a chain for the current as-of: live (+capture) / provider EOD /
+        captured replay from the store."""
+        sel = self._asof
+        if sel.mode == "captured":
+            snap = self._load_captured(ticker, sel.ts)
+            if snap is None:
+                raise UnknownNodeError(
+                    f"no captured snapshot for {ticker!r} at {sel.ts}"
+                )
+            return snap
+        if sel.mode in ("prev_close", "eod"):
+            return self.provider.fetch_chain(
+                ticker, chosen, as_of=AsOf(mode=sel.mode, on=sel.on)
+            )
+        snap = self.provider.fetch_chain(ticker, chosen)  # live
+        self._persist_capture(snap)
+        return snap
+
+    def _load_captured(self, ticker: str, ts: datetime | None) -> ChainSnapshot | None:
+        if self.store_path is None or ts is None:
+            return None
+        with VolStore(self.store_path) as store:
+            return store.snapshot_at(ticker, ts)
+
+    def _persist_capture(self, snap: ChainSnapshot) -> None:
+        """Best-effort: save a live chain to the store for later replay, deduped
+        to one capture per ~60 s per ticker. Never fails a fetch."""
+        if self.store_path is None:
+            return
+        try:
+            with VolStore(self.store_path) as store:
+                last = store.last_snapshot_ts(snap.ticker)
+                if last is not None and abs((snap.timestamp - last).total_seconds()) < 60:
+                    return
+                store.save_snapshot(snap)
+        except Exception:
+            pass
+
     # ------------------------------------------------------------ market data
     def snapshot(self, ticker: str) -> ChainSnapshot:
         """Fetch-once chain snapshot of the ticker's SELECTED expiries;
@@ -117,7 +282,7 @@ class AppState(UniverseMixin):
             if ticker in self._snapshots:
                 return self._snapshots[ticker]
             chosen = list(self._selected[ticker])
-        snap = self.provider.fetch_chain(ticker, chosen)  # outside lock (network)
+        snap = self._fetch_asof(ticker, chosen)  # outside lock (network)
         with self._lock:
             self._snapshots.setdefault(ticker, snap)
             return self._snapshots[ticker]
@@ -314,3 +479,13 @@ class AppState(UniverseMixin):
     @universe.setter
     def universe(self, value) -> None:
         self._universe = value
+
+
+def _source_id_of(provider: OptionChainProvider) -> str:
+    """Stable data-source id for a provider instance (used when AppState is
+    built around a single provider, e.g. in tests)."""
+    name = type(provider).__name__.lower()
+    for sid in ("yahoo", "bloomberg", "massive", "synthetic"):
+        if sid in name:
+            return sid
+    return "synthetic"  # unknown/custom providers behave like the offline source

@@ -36,6 +36,22 @@ class SymbolMatch:
     type: str = ""  # EQUITY / ETF / INDEX, provider-defined
     exchange: str = ""
 
+
+@dataclass(frozen=True)
+class AsOf:
+    """Which point in time a chain is requested as-of.
+
+    - ``"live"``        the latest available chain (the default everywhere);
+    - ``"prev_close"``  the prior session's closing chain (provider EOD settle);
+    - ``"eod"``         the closing chain of the specific trading day ``on``.
+
+    Captured-snapshot replay (loading a stored intraday chain from the VolStore)
+    is handled by AppState, not the provider — providers only serve live + EOD.
+    """
+
+    mode: str = "live"  # "live" | "prev_close" | "eod"
+    on: date | None = None  # required when mode == "eod"
+
 # Synthetic expiry ladder: ~1M, 3M, 6M, 1Y from the reference date.
 _EXPIRY_DAYS = (30, 91, 182, 365)
 
@@ -52,17 +68,41 @@ class OptionChainProvider(abc.ABC):
         """Tickers this provider can serve option chains for."""
 
     @abc.abstractmethod
-    def fetch_chain(self, ticker: str, expiries: list[date] | None = None) -> ChainSnapshot:
+    def fetch_chain(
+        self,
+        ticker: str,
+        expiries: list[date] | None = None,
+        as_of: AsOf | None = None,
+    ) -> ChainSnapshot:
         """Fetch the option chain for one underlying.
 
         ``expiries`` restricts the fetch to those expiry dates (the universe's
         per-ticker selection); ``None`` fetches the provider's natural ladder.
+        ``as_of`` (None == live) selects a historical EOD chain — providers that
+        only do live ignore non-live requests; check ``historical_modes`` first.
         """
 
     @abc.abstractmethod
     def available_expiries(self, ticker: str) -> list[date]:
         """All expiries the provider can serve for a ticker, cheaply (no chain
         fetch) — the full list the universe picker chooses from."""
+
+    def historical_modes(self) -> set[str]:
+        """As-of modes this provider supports (default: live only)."""
+        return {"live"}
+
+    def available_history(self, ticker: str) -> list[date]:
+        """Past trading days this provider can serve an EOD chain for (default:
+        none). Newest last; the as-of picker offers these as 'day (close)'."""
+        return []
+
+    def feed_status(self) -> tuple[str, str]:
+        """Liveness of this source as ``(level, detail)`` for the Data Source
+        selector. ``level`` is "green" (real-time), "amber" (delayed) or "red"
+        (unavailable). The default reports an always-available offline source;
+        live providers override with a cheap probe.
+        """
+        return ("green", "available")
 
     def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
         """Resolve a free-text query (symbol or name) to candidate symbols.
@@ -135,13 +175,23 @@ class SyntheticProvider(OptionChainProvider):
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
 
+    def feed_status(self) -> tuple[str, str]:
+        """Always available — deterministic offline chains, no network."""
+        return ("green", "synthetic (offline)")
+
     def available_expiries(self, ticker: str) -> list[date]:
         """The synthetic ladder: ~1M, 3M, 6M, 1Y from the reference date."""
         return [self.reference_date + timedelta(days=d) for d in _EXPIRY_DAYS]
 
-    def fetch_chain(self, ticker: str, expiries: list[date] | None = None) -> ChainSnapshot:
+    def fetch_chain(
+        self,
+        ticker: str,
+        expiries: list[date] | None = None,
+        as_of: AsOf | None = None,
+    ) -> ChainSnapshot:
         """Build the synthetic chain: calls and puts on a strike grid per expiry
-        (the natural 4-expiry ladder, or just ``expiries`` when given)."""
+        (the natural 4-expiry ladder, or just ``expiries`` when given). The
+        synthetic source is live-only, so ``as_of`` is ignored."""
         tick_hash = zlib.crc32(ticker.encode("utf-8"))
         spot = 50.0 + (tick_hash % 4000) / 10.0  # deterministic spot in [50, 449.9]
         rng = np.random.RandomState((self._seed ^ tick_hash) & 0x7FFFFFFF)

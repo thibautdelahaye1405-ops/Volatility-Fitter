@@ -1,0 +1,403 @@
+"""Bloomberg option-chain provider via xbbg (ROADMAP Phase 3, real market data).
+
+Design intent: `BloombergProvider` implements the `OptionChainProvider`
+contract (volfit.data.provider) on top of the `xbbg` convenience wrapper around
+the Bloomberg Python API, so the rest of the stack — storage, forwards,
+de-Americanization, calibration, API — runs unchanged on Bloomberg data. It is
+the most complete live source: real bid/ask/last/volume/OI, spot, the genuine
+American/European exercise flag, and a dividend schedule for the discrete-
+dividend forward model.
+
+xbbg surface relied on (confirmed live against an open Terminal):
+- ``blp.bds(security, "OPT_CHAIN")`` -> one row per listed contract, descriptor
+  in a "Security Description" column ("SPY US 06/18/26 C245 Equity");
+- ``blp.bdp(securities, fields)`` -> long/tidy frame (ticker/field/value), all
+  values as strings — coerced via volfit.data.fieldmap;
+- ``blp.bds(security, "DVD_HIST_ALL")`` -> declared dividend rows (Ex-Date,
+  Dividend Amount, Dividend Frequency, Dividend Type) for dividend import.
+
+Robustness / conventions:
+- xbbg is imported *lazily* (only when a real call is made), so this module
+  imports fine without it; tests inject a fake ``blp_module`` and stay offline.
+- Frames are read column-wise (volfit.data.bloomberg_parse.columns) because the
+  xbbg narwhals frames lack ``index``/``itertuples``.
+- ``available_expiries`` parses the descriptor strings (cheap, one ``bds``,
+  no per-contract ``bdp``); ``fetch_chain`` only ``bdp``s the *selected*
+  expiries' contracts (the universe layer passes them), keeping liquid names
+  (thousands of contracts) fast.
+- Missing/zero price fields map to ``None`` (volfit.data.types convention).
+"""
+
+from __future__ import annotations
+
+import threading
+import warnings
+from datetime import date, datetime, timezone
+from typing import Sequence
+
+from volfit.data.bloomberg_parse import (
+    ParsedOption,
+    as_date,
+    columns,
+    normalize_security,
+    parse_descriptor,
+    pivot_bdp,
+    project_dividends,
+    records,
+)
+from volfit.data.bloomberg_history import available_history as _available_history
+from volfit.data.bloomberg_history import fetch_eod as _fetch_eod
+from volfit.data.dividends import Dividend
+from volfit.data.fieldmap import int_or_none, price_or_none
+from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
+from volfit.data.types import ChainSnapshot, OptionQuote
+
+#: Bloomberg security-search service (free-text symbol/name -> securities).
+_INSTRUMENTS_SERVICE = "//blp/instruments"
+
+#: Yellow-key suffixes that mark an already-complete Bloomberg security string.
+_YELLOW_KEYS = (" Equity", " Index", " Curncy", " Comdty", " Corp", " Govt")
+
+#: Per-contract fields pulled in the bulk bdp (strike/expiry/CP come from the
+#: descriptor, so only quote fields + the exercise flag are requested here).
+_QUOTE_FIELDS = ("BID", "ASK", "LAST_PRICE", "VOLUME", "OPEN_INT", "OPT_EXER_TYP")
+
+
+def _default_blp():
+    """Resolve ``xbbg.blp`` on first use; clear error if xbbg is not installed."""
+    try:
+        from xbbg import blp
+    except ImportError as exc:  # pragma: no cover - environment dependent
+        raise ImportError(
+            "BloombergProvider requires the 'xbbg' package (and a running "
+            "Bloomberg Terminal): pip install xbbg blpapi"
+        ) from exc
+    return blp
+
+
+class BloombergProvider(OptionChainProvider):
+    """Live option chains for a watchlist via Bloomberg (xbbg).
+
+    Parameters
+    ----------
+    tickers      : the watchlist; `list_tickers` returns exactly this list.
+    yellow_key   : suffix appended to bare tickers to form a Bloomberg security
+                   ("SPY" -> "SPY US Equity"). Tickers already carrying a yellow
+                   key (e.g. "SPX Index") are passed through untouched.
+    max_days     : drop expiries further out than this (and already-expired).
+    blp_module   : an object exposing ``bds(security, field)`` and
+                   ``bdp(securities, fields)`` like ``xbbg.blp``; defaults to the
+                   lazily-imported real module, injectable for offline tests.
+    """
+
+    def __init__(
+        self,
+        tickers: Sequence[str],
+        yellow_key: str = "US Equity",
+        max_days: int = 730,
+        blp_module: object | None = None,
+    ) -> None:
+        self._tickers = [t.strip().upper() for t in tickers]
+        self.yellow_key = yellow_key
+        self.max_days = max_days
+        self._blp = blp_module
+        self._chain_cache: dict[str, list[ParsedOption]] = {}
+        self._history_cache: dict[str, list[date]] = {}
+        #: Lazily-opened blpapi session for the instrument-search service, reused
+        #: across searches and guarded so concurrent searches serialize.
+        self._search_session = None
+        self._search_lock = threading.Lock()
+
+    # -- plumbing ------------------------------------------------------------
+
+    def _blp_module(self):
+        if self._blp is None:
+            self._blp = _default_blp()
+        return self._blp
+
+    def _security(self, ticker: str) -> str:
+        """Full Bloomberg security string for an underlying ticker."""
+        t = ticker.strip()
+        if any(t.endswith(yk) for yk in _YELLOW_KEYS):
+            return t
+        return f"{t} {self.yellow_key}"
+
+    def list_tickers(self) -> list[str]:
+        return list(self._tickers)
+
+    def feed_status(self) -> tuple[str, str]:
+        """Green when the Terminal answers a PX_LAST (real-time), red when xbbg
+        or the Terminal is unavailable."""
+        tickers = self.list_tickers()
+        if not tickers:
+            return ("red", "no tickers configured")
+        try:
+            security = self._security(tickers[0])
+            pivot = pivot_bdp(self._blp_module().bdp(security, "PX_LAST"))
+            spot = price_or_none(pivot.get(security, {}).get("PX_LAST"))
+        except Exception:
+            return ("red", "no Terminal / xbbg")
+        if spot is None:
+            return ("red", "no data")
+        return ("green", "real-time (Terminal)")
+
+    # -- symbol search -------------------------------------------------------
+
+    def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
+        """Free-text symbol/company search via Bloomberg's instruments service.
+
+        Resolves "Nvidia" or "NVDA" to Bloomberg securities like
+        "NVDA US Equity". Any failure (no blpapi, no Terminal, service down)
+        degrades to the base substring/echo search so the picker still works.
+        """
+        q = query.strip()
+        if not q:
+            return []
+        try:
+            import blpapi
+        except ImportError:
+            return super().search_symbols(query, limit)
+        with self._search_lock:
+            try:
+                return self._instrument_search(blpapi, q, limit)
+            except Exception:
+                if self._search_session is not None:  # drop a possibly-dead session
+                    try:
+                        self._search_session.stop()
+                    except Exception:
+                        pass
+                    self._search_session = None
+                return super().search_symbols(query, limit)
+
+    def _instrument_search(self, blpapi, query: str, limit: int) -> list[SymbolMatch]:
+        """One instrumentListRequest against //blp/instruments (call under lock)."""
+        if self._search_session is None:
+            options = blpapi.SessionOptions()
+            options.setServerHost("localhost")
+            options.setServerPort(8194)
+            session = blpapi.Session(options)
+            if not session.start() or not session.openService(_INSTRUMENTS_SERVICE):
+                raise RuntimeError("instrument search service unavailable")
+            self._search_session = session
+        service = self._search_session.getService(_INSTRUMENTS_SERVICE)
+        request = service.createRequest("instrumentListRequest")
+        request.set("query", query)
+        request.set("maxResults", max(1, limit))
+        try:
+            request.set("yellowKeyFilter", "YK_FILTER_EQTY")  # equities/ETFs
+        except Exception:
+            pass  # older API without the filter: take all yellow keys
+        self._search_session.sendRequest(request)
+
+        matches: list[SymbolMatch] = []
+        while True:
+            event = self._search_session.nextEvent(5000)
+            for message in event:
+                if not message.hasElement("results"):
+                    continue
+                results = message.getElement("results")
+                for i in range(results.numValues()):
+                    row = results.getValueAsElement(i)
+                    if not row.hasElement("security"):
+                        continue
+                    security = normalize_security(row.getElementAsString("security"))
+                    description = (
+                        row.getElementAsString("description")
+                        if row.hasElement("description")
+                        else ""
+                    )
+                    matches.append(
+                        SymbolMatch(symbol=security, name=description, type="EQUITY")
+                    )
+            if event.eventType() == blpapi.Event.RESPONSE:
+                break
+        return matches[:limit]
+
+    # -- chain enumeration (cheap, descriptor-only) --------------------------
+
+    def _chain(self, ticker: str) -> list[ParsedOption]:
+        """Parsed OPT_CHAIN contracts for a ticker (cached; one ``bds`` call)."""
+        key = ticker.upper()
+        if key in self._chain_cache:
+            return self._chain_cache[key]
+        blp = self._blp_module()
+        frame = blp.bds(self._security(ticker), "OPT_CHAIN")
+        cols = columns(frame)
+        # The descriptor column is "Security Description"; fall back to the last
+        # non-metadata column if a future xbbg names it differently.
+        desc_col = "Security Description"
+        if desc_col not in cols:
+            extras = [c for c in cols if c not in ("ticker", "field")]
+            desc_col = extras[-1] if extras else ""
+        descriptors = cols.get(desc_col, [])
+        parsed = [p for p in (parse_descriptor(str(d)) for d in descriptors) if p]
+        self._chain_cache[key] = parsed
+        return parsed
+
+    def available_expiries(self, ticker: str) -> list[date]:
+        """All listed expiries inside (0, max_days], parsed from the descriptors."""
+        today = date.today()
+        return sorted(
+            {
+                p.expiry
+                for p in self._chain(ticker)
+                if 0 < (p.expiry - today).days <= self.max_days
+            }
+        )
+
+    # -- as-of history -------------------------------------------------------
+
+    def historical_modes(self) -> set[str]:
+        """Bloomberg serves live, prior-close and any past trading day (EOD)."""
+        return {"live", "prev_close", "eod"}
+
+    def available_history(self, ticker: str) -> list[date]:
+        """Last ~30 trading days the Terminal can serve an EOD chain for (cached)."""
+        key = ticker.upper()
+        if key not in self._history_cache:
+            self._history_cache[key] = _available_history(
+                self._blp_module(), self._security(ticker)
+            )
+        return list(self._history_cache[key])
+
+    # -- spot ----------------------------------------------------------------
+
+    def _spot(self, ticker: str) -> float:
+        """Last price (PX_LAST) for the underlying; ValueError if unavailable."""
+        blp = self._blp_module()
+        security = self._security(ticker)
+        pivot = pivot_bdp(blp.bdp(security, "PX_LAST"))
+        value = price_or_none(pivot.get(security, {}).get("PX_LAST"))
+        if value is None:
+            raise ValueError(f"could not determine spot price for {ticker!r}")
+        return value
+
+    # -- chain ---------------------------------------------------------------
+
+    def _select_contracts(
+        self, ticker: str, expiries: list[date] | None
+    ) -> list[ParsedOption]:
+        """Parsed contracts for the requested expiries (or all within max_days)."""
+        today = date.today()
+        parsed = self._chain(ticker)
+        if expiries is None:
+            wanted = {
+                p.expiry for p in parsed if 0 < (p.expiry - today).days <= self.max_days
+            }
+        else:
+            wanted = set(expiries)
+        contracts = [p for p in parsed if p.expiry in wanted]
+        if not contracts:
+            raise ValueError(
+                f"no listed options for {ticker!r} within the requested expiries"
+            )
+        return contracts
+
+    def fetch_chain(
+        self,
+        ticker: str,
+        expiries: list[date] | None = None,
+        as_of: AsOf | None = None,
+    ) -> ChainSnapshot:
+        """Live (None/`live`) NBBO chain, or a historical EOD chain for a past
+        trading day (`eod`) / the prior close (`prev_close`)."""
+        contracts = self._select_contracts(ticker, expiries)
+        if as_of is not None and as_of.mode != "live":
+            on = as_of.on if as_of.mode == "eod" else self._latest_history(ticker)
+            if on is None:
+                raise ValueError(f"no historical close available for {ticker!r}")
+            style = "european" if self._security(ticker).endswith(" Index") else "american"
+            return _fetch_eod(
+                self._blp_module(), ticker, self._security(ticker), contracts, on, style
+            )
+        return self._fetch_live(ticker, contracts)
+
+    def _latest_history(self, ticker: str) -> date | None:
+        """Most recent trading day available for EOD (for prev_close)."""
+        history = self.available_history(ticker)
+        return history[-1] if history else None
+
+    def _fetch_live(self, ticker: str, contracts: list[ParsedOption]) -> ChainSnapshot:
+        """The current NBBO chain for the given contracts (one bulk bdp)."""
+        spot = self._spot(ticker)
+        blp = self._blp_module()
+        pivot = pivot_bdp(blp.bdp([p.security for p in contracts], list(_QUOTE_FIELDS)))
+        timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+
+        quotes: list[OptionQuote] = []
+        styles: list[str] = []
+        for contract in contracts:
+            fields = pivot.get(contract.security, {})
+            style = str(fields.get("OPT_EXER_TYP", "")).strip().lower()
+            if style in ("american", "european"):
+                styles.append(style)
+            quotes.append(
+                OptionQuote(
+                    ticker=ticker,
+                    expiry=contract.expiry,
+                    strike=contract.strike,
+                    call_put=contract.call_put,  # parsed from the descriptor
+                    bid=price_or_none(fields.get("BID")),
+                    ask=price_or_none(fields.get("ASK")),
+                    last=price_or_none(fields.get("LAST_PRICE")),
+                    volume=int_or_none(fields.get("VOLUME")),
+                    open_interest=int_or_none(fields.get("OPEN_INT")),
+                    timestamp=timestamp,
+                )
+            )
+        return ChainSnapshot(
+            ticker=ticker,
+            spot=spot,
+            timestamp=timestamp,
+            quotes=quotes,
+            exercise_style=_resolve_style(styles),
+        )
+
+    # -- dividends (provider-specific capability, not part of the contract) --
+
+    def dividend_schedule(
+        self, ticker: str, reference_date: date | None = None
+    ) -> tuple[Dividend, ...]:
+        """Forward cash-dividend schedule for the de-Am / forward model.
+
+        Prefers future-declared rows from DVD_HIST_ALL; if none are listed (the
+        common case — issuers declare one quarter out), projects the trailing
+        cadence forward across the option horizon. Best-effort: any failure
+        (no entitlement, no Terminal, schema surprise) warns and returns ``()``,
+        so the caller falls back to the continuous-yield forward unchanged.
+        """
+        reference = reference_date or date.today()
+        blp = self._blp_module()
+        try:
+            frame = blp.bds(self._security(ticker), "DVD_HIST_ALL")
+            rows = records(frame)
+        except Exception as exc:  # no entitlement / Terminal / schema change
+            warnings.warn(f"{ticker}: dividend fetch failed: {exc}", stacklevel=2)
+            return ()
+
+        history: list[tuple[date, float, str]] = []
+        for row in rows:
+            div_type = str(row.get("Dividend Type", "")).strip().lower()
+            if div_type and div_type != "income":
+                continue  # skip specials / capital-gains distributions
+            ex_date = as_date(row.get("Ex-Date"))
+            amount = price_or_none(row.get("Dividend Amount"))
+            if ex_date is None or amount is None:
+                continue
+            history.append((ex_date, amount, str(row.get("Dividend Frequency", ""))))
+
+        future = sorted(
+            (d, a)
+            for (d, a, _) in history
+            if 0 < (d - reference).days <= self.max_days
+        )
+        if future:
+            return tuple(Dividend(ex_date=d, amount=a) for d, a in future)
+        return project_dividends(history, reference, self.max_days)
+
+
+def _resolve_style(styles: list[str]) -> str:
+    """Majority exercise style across a chain (default american for equities)."""
+    if not styles:
+        return "american"
+    return "european" if styles.count("european") > styles.count("american") else "american"

@@ -18,6 +18,7 @@ import SmileAside from "../components/SmileAside";
 import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
+import { useMassiveIv } from "../state/useMassiveIv";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 
@@ -75,6 +76,8 @@ export default function SmileViewer() {
   const [view, setView] = useState<ChartView>("smile");
   // Strike-axis display mode of the smile chart (labels only).
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
+  // Read-only Massive-IV comparison overlay toggle (Massive provider only).
+  const [showMassiveIv, setShowMassiveIv] = useState(false);
   // Transient "Saved ✓" confirmation on the Save-prior button.
   const [savedFlash, setSavedFlash] = useState(false);
   const flashTimer = useRef<number | null>(null);
@@ -100,6 +103,16 @@ export default function SmileViewer() {
   const hasEdits =
     smile !== null && smile.quotes.some((q) => q.excluded || q.amended);
   const live = source === "live";
+
+  // Read-only Massive-IV comparison overlay for the current node (null unless
+  // the toggle is on, the smile view is active, and the provider is Massive).
+  const massiveIvCurve = useMassiveIv(
+    live,
+    ticker,
+    expiry,
+    smile?.forward ?? 0,
+    showMassiveIv && view === "smile",
+  );
 
   // Global keyboard shortcuts (Esc, Del, ↑↓ amend, Ctrl+Z/Y).
   useSmileShortcuts({ smile, source, selectedIndex, setSelectedIndex, applyEdit, undo, redo });
@@ -161,6 +174,7 @@ export default function SmileViewer() {
             prior={smile.prior}
             quotes={smile.quotes}
             scenario={scenarioCurve}
+            massiveIv={massiveIvCurve}
             kWindow={kWindow}
             onKWindowChange={setKWindow}
             fullRange={[smile.kMin, smile.kMax]}
@@ -231,6 +245,22 @@ export default function SmileViewer() {
                   </option>
                 ))}
               </select>
+            )}
+            {/* Read-only Massive-IV overlay toggle (no-op unless the backend
+                runs the Massive provider; the dots simply won't appear). */}
+            {view === "smile" && live && (
+              <button
+                className={[
+                  "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                  showMassiveIv
+                    ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+                    : "border-slate-700 text-slate-400 hover:text-slate-200",
+                ].join(" ")}
+                title="Overlay Massive's own implied vols (read-only comparison)"
+                onClick={() => setShowMassiveIv((v) => !v)}
+              >
+                Massive IV
+              </button>
             )}
             {/* Surface refetch errors without unmounting the chart */}
             {error !== null && source === "live" && (

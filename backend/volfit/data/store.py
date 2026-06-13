@@ -248,6 +248,44 @@ class VolStore:
         ).fetchone()
         return self.load_snapshot(int(row[0])) if row else None
 
+    def list_snapshots(
+        self, tickers: list[str] | None = None
+    ) -> list[tuple[str, int, datetime]]:
+        """(ticker, id, timestamp) for stored snapshots, newest first.
+
+        Restricted to ``tickers`` when given (the active universe). Backs the
+        as-of picker's 'captured intraday' list.
+        """
+        sql = "SELECT ticker, id, ts FROM snapshots"
+        args: list = []
+        if tickers:
+            placeholders = ", ".join("?" * len(tickers))
+            sql += f" WHERE ticker IN ({placeholders})"
+            args = list(tickers)
+        sql += " ORDER BY ts DESC, id DESC"
+        return [
+            (ticker, int(sid), datetime.fromisoformat(ts))
+            for ticker, sid, ts in self.conn.execute(sql, args)
+        ]
+
+    def snapshot_at(self, ticker: str, ts: datetime) -> ChainSnapshot | None:
+        """The ticker's snapshot nearest at-or-before ``ts`` (None if none)."""
+        row = self.conn.execute(
+            "SELECT id FROM snapshots WHERE ticker = ? AND ts <= ? "
+            "ORDER BY ts DESC, id DESC LIMIT 1",
+            (ticker, ts.isoformat()),
+        ).fetchone()
+        return self.load_snapshot(int(row[0])) if row else None
+
+    def last_snapshot_ts(self, ticker: str) -> datetime | None:
+        """Timestamp of the ticker's most recent snapshot, or None (for capture
+        dedup without loading the whole chain)."""
+        row = self.conn.execute(
+            "SELECT ts FROM snapshots WHERE ticker = ? ORDER BY ts DESC, id DESC LIMIT 1",
+            (ticker,),
+        ).fetchone()
+        return datetime.fromisoformat(row[0]) if row else None
+
     # -- fits and priors ---------------------------------------------------
 
     def save_fit(

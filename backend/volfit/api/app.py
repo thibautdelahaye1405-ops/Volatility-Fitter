@@ -28,17 +28,25 @@ def create_app(
     reference_date: date | None = None,
     provider: OptionChainProvider | None = None,
     store_path: str | os.PathLike | None = None,
+    providers: dict[str, OptionChainProvider] | None = None,
+    active_source: str | None = None,
 ) -> FastAPI:
     """Build the API app around one AppState instance.
 
     `provider=None` keeps the offline SyntheticProvider default; pass a
-    YahooProvider (or any OptionChainProvider) to serve live data.
-    `store_path` (an SQLite file) opts in to fit-history persistence
-    (volfit.api.history); None keeps the app side-effect free.
+    YahooProvider (or any OptionChainProvider) to serve live data. Pass
+    `providers` (a {id: provider} registry) + `active_source` for the in-app
+    Data Source selector (serve.py does this). `store_path` (an SQLite file)
+    opts in to fit-history persistence (volfit.api.history); None keeps the
+    app side-effect free.
     """
     app = FastAPI(title="volfit")
     app.state.volfit = AppState(
-        reference_date or date.today(), provider=provider, store_path=store_path
+        reference_date or date.today(),
+        provider=provider,
+        store_path=store_path,
+        providers=providers,
+        active_source=active_source,
     )
     app.add_middleware(
         CORSMiddleware,

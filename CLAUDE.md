@@ -64,10 +64,13 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (246 green as of 2026-06-13, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
-- Run app:  .\restart.ps1 -Live   (kills :8000/:5173, starts backend [Yahoo] +
-            Vite, sets VOLFIT_DB=backend\data\volfit.sqlite so named universes /
-            fit history persist; -NoDb to disable, omit -Live for synthetic)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (284 green as of 2026-06-13, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
+            ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
+            the best-reachable active one; switch live via the TopBar Data
+            Source selector. Force one active: -Live/-Bloomberg/-Massive/
+            -Synthetic. Set $env:VOLFIT_MASSIVE_KEY to light up Massive. Sets
+            VOLFIT_DB so named universes / fit history persist; -NoDb disables.)
 - API only: .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)

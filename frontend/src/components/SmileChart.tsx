@@ -37,6 +37,8 @@ interface SmileChartProps {
   onQuoteSelect?: (index: number | null) => void;
   /** SSR scenario overlay (shifted smile); drawn dotted amber when set. */
   scenario?: SmilePoint[] | null;
+  /** Massive provider's IV points (read-only comparison); cyan dots when set. */
+  massiveIv?: SmilePoint[] | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -90,6 +92,7 @@ export default function SmileChart({
   selectedIndex = null,
   onQuoteSelect,
   scenario = null,
+  massiveIv = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -189,6 +192,11 @@ export default function SmileChart({
         {scenarioPath !== "" && (
           <span className="flex items-center gap-1.5">
             <span className="h-0 w-5 border-t-2 border-dotted border-amber-400" /> SSR scenario
+          </span>
+        )}
+        {massiveIv && massiveIv.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> Massive IV
           </span>
         )}
         <span className="flex items-center gap-1.5">
@@ -307,6 +315,18 @@ export default function SmileChart({
                 <path d={scenarioPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
                   strokeWidth={1.5} strokeDasharray="2 3" />
               )}
+
+              {/* Massive IV overlay: read-only cyan dots (OTM wing), clipped
+                  to the visible window and the auto-fitted y-domain so an
+                  occasional far-wing outlier never rescales the main fit. */}
+              {(massiveIv ?? []).map((p, i) => {
+                if (p.k < kLo || p.k > kHi) return null;
+                if (p.vol < yScale.domain[0] || p.vol > yScale.domain[1]) return null;
+                return (
+                  <circle key={`miv${i}`} cx={xScale.map(p.k)} cy={yScale.map(p.vol)}
+                    r={2} fill="rgb(34 211 238 / 0.85)" pointerEvents="none" />
+                );
+              })}
 
               {/* Current model fit: accent */}
               <path d={modelPath} fill="none" stroke="var(--color-accent-400)"

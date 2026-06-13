@@ -28,6 +28,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+import os
+
 from volfit.data import VolStore, implied_forwards
 from volfit.data.provider import OptionChainProvider, SyntheticProvider
 from volfit.data.yahoo import YahooProvider
@@ -40,6 +42,17 @@ def build_provider(name: str, tickers: list[str], max_expiries: int) -> OptionCh
     """Construct the requested provider over the CLI ticker list."""
     if name == "yahoo":
         return YahooProvider(tickers, max_expiries=max_expiries)
+    if name == "bloomberg":
+        from volfit.data.bloomberg import BloombergProvider
+
+        return BloombergProvider(tickers)
+    if name == "massive":
+        from volfit.data.massive import MassiveProvider
+
+        key = os.environ.get("VOLFIT_MASSIVE_KEY", "").strip()
+        if not key:
+            raise SystemExit("--provider massive requires VOLFIT_MASSIVE_KEY")
+        return MassiveProvider(tickers, api_key=key)
     return SyntheticProvider(reference_date=date.today(), tickers=tuple(tickers))
 
 
@@ -72,8 +85,10 @@ def main(argv: list[str] | None = None) -> int:
         "--db", default=str(DEFAULT_DB), help=f"SQLite path (default {DEFAULT_DB})"
     )
     parser.add_argument(
-        "--provider", choices=("yahoo", "synthetic"), default="yahoo",
-        help="market-data source (default yahoo; synthetic is offline)",
+        "--provider", choices=("yahoo", "synthetic", "bloomberg", "massive"),
+        default="yahoo",
+        help="market-data source (default yahoo; synthetic is offline; "
+        "massive needs VOLFIT_MASSIVE_KEY)",
     )
     parser.add_argument(
         "--max-expiries", type=int, default=8,
