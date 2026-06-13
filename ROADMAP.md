@@ -10,7 +10,24 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (224 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (228 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[bugfix 2026-06-13] American parity-forward ATM kink**: put-call parity is
+  an equality only for European options, so a forward implied from raw American
+  C - P is biased (~40 bp), and quote prep then de-Americanized OTM puts/calls
+  under that biased carry in opposite directions → a visible IV jump at the
+  money (reproduced flat-vol: 93 vol bp; live SPY: 22-308 bp per expiry). Fix in
+  `data/forwards.py`: when a reference date is supplied for an American snapshot,
+  de-bias **only the forward** (iterating the carry q via de-Americanized
+  European-equivalent mids to the fixed point that reconciles the two OTM sides)
+  while **holding the discount at its raw parity value** — re-implying the
+  discount (the fragile regression slope) drifted to absurd rates on short-dated
+  / dividend chains and shifted the IV level through 1/(D F). Threaded
+  `reference_date` through `implied_forwards` (api/state, snapshot.py); coarse
+  near-ATM de-Am keeps it ~0.1 s/expiry (cached). Live SPY now joins smoothly
+  across ATM with sane discounts. Discrete-dividend chains can keep a small
+  residual kink (continuous-yield tree) — discrete-div de-Am is future work.
+  4 golden tests (tests/test_forward_debias.py).
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -251,7 +268,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (224 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (228 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and

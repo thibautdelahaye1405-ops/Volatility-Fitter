@@ -47,7 +47,9 @@ def snapshot_ticker(store: VolStore, provider: OptionChainProvider, ticker: str)
     """Fetch, persist and report one ticker (exceptions propagate to main)."""
     chain = provider.fetch_chain(ticker)
     snapshot_id = store.save_snapshot(chain)
-    forwards = implied_forwards(chain)
+    # Reference the observation date so American chains are de-biased (parity
+    # from de-Americanized mids; data.forwards). European chains are identical.
+    forwards = implied_forwards(chain, chain.timestamp.date())
     print(
         f"{ticker}: spot {chain.spot:.2f}, {len(chain.quotes)} quotes, "
         f"{len(chain.expiries())} expiries -> snapshot #{snapshot_id}"

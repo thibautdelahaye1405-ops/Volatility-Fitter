@@ -106,7 +106,9 @@ class AppState:
         snapshot = self.snapshot(ticker)
         with self._lock:
             if ticker not in self._forwards:
-                self._forwards[ticker] = implied_forwards(snapshot)
+                # Pass the reference date so American chains are de-biased
+                # (parity from de-Americanized mids; see data.forwards).
+                self._forwards[ticker] = implied_forwards(snapshot, self.reference_date)
             return self._forwards[ticker]
 
     def resolve_expiry(self, ticker: str, expiry_iso: str) -> date:

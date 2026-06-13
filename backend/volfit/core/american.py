@@ -209,6 +209,7 @@ def deamericanize_batch(
     r: float = 0.0,
     q: float = 0.0,
     n_steps: int = DEFAULT_BATCH_STEPS,
+    bisections: int = BATCH_BISECTIONS,
 ) -> np.ndarray:
     """De-Americanize a whole chain at once via vectorized bisection.
 
@@ -218,8 +219,11 @@ def deamericanize_batch(
     quotes. Screens mirror the scalar: static bounds first, then the CRR
     drift floor ``lo`` — quotes priced below the near-zero-vol model price
     (e.g. a deep-ITM put at its early-exercise floor) and quotes never
-    bracketed by SIGMA_HI come back nan. BATCH_BISECTIONS halvings of a
-    <= SIGMA_HI bracket land within ~2e-13 of the root.
+    bracketed by SIGMA_HI come back nan. ``bisections`` halvings of a
+    <= SIGMA_HI bracket leave ~SIGMA_HI/2^bisections of sigma uncertainty
+    (the default lands within ~2e-13; callers that only need a few bp of vol,
+    e.g. the forward de-bias, pass a smaller count to trade precision for
+    speed).
     """
     is_call = np.asarray(is_call, dtype=bool)
     prices = np.asarray(prices, dtype=float)
@@ -256,7 +260,7 @@ def deamericanize_batch(
         pending &= ~over
 
     # Bisect the whole batch in lockstep (one tree sweep per iteration).
-    for _ in range(BATCH_BISECTIONS):
+    for _ in range(bisections):
         mid = 0.5 * (lo_arr + hi_arr)
         go_up = price_at(mid) < px  # root above mid (nan -> False, harmless)
         lo_arr = np.where(go_up, mid, lo_arr)
