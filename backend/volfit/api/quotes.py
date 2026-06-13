@@ -95,16 +95,27 @@ def _early_exercise_premiums(
     f: float,
     d: float,
     t: float,
+    cash_dividends: tuple[np.ndarray, np.ndarray, float] | None = None,
 ) -> tuple[np.ndarray, int]:
     """Per-quote EEP implied by de-Americanizing the mids (see module doc).
 
     Returns (eep array, number of quotes successfully de-Americanized); the
     EEP is 0 wherever the tree inversion fails (nan sigma), so those quotes
-    pass through unadjusted.
+    pass through unadjusted. With ``cash_dividends`` (ex-times, scaled amounts,
+    rate) the de-Am uses a discrete escrowed CASH schedule and physical rate
+    instead of the flat carry — modelling the real ex-date early-exercise
+    asymmetry that the continuous-yield approximation smears into an ATM kink.
     """
-    r = -float(np.log(d)) / t
-    q = r - float(np.log(f / spot)) / t
-    sigma = deamericanize_batch(is_call, mids, spot, strikes, t, r, q)
+    if cash_dividends is not None:
+        div_t, div_a, r = cash_dividends  # discrete cash + physical rate, q = 0
+        q = 0.0
+    else:
+        r = -float(np.log(d)) / t
+        q = r - float(np.log(f / spot)) / t
+        div_t = div_a = None
+    sigma = deamericanize_batch(
+        is_call, mids, spot, strikes, t, r, q, div_times=div_t, div_amounts=div_a
+    )
     eep = np.zeros_like(mids)
     ok = np.isfinite(sigma)
     if ok.any():
@@ -121,8 +132,14 @@ def prepare_quotes(
     expiry: date,
     forward: ResolvedForward | ImpliedForward,
     t: float,
+    cash_dividends: tuple[np.ndarray, np.ndarray, float] | None = None,
 ) -> PreparedQuotes:
-    """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs."""
+    """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs.
+
+    ``cash_dividends`` (ex-times, scaled amounts, rate) routes American de-
+    Americanization through a discrete escrowed CASH schedule (volfit.api.state
+    builds it forward-consistently); None keeps the continuous-yield carry.
+    """
     f, d = forward.forward, forward.discount
     scale = 1.0 / (d * f)
 
@@ -151,7 +168,7 @@ def prepare_quotes(
     n_deam = 0
     if snapshot.exercise_style == "american" and t > 0.0:
         eep, n_deam = _early_exercise_premiums(
-            snapshot.spot, is_call, strikes, k_arr, mid, f, d, t
+            snapshot.spot, is_call, strikes, k_arr, mid, f, d, t, cash_dividends
         )
         bid, mid, ask = bid - eep, mid - eep, ask - eep
 

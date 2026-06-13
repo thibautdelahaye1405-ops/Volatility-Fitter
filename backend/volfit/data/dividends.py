@@ -133,6 +133,58 @@ def theoretical_forward(
     return (spot - pv_cash) * float(np.exp(rate * t)) * factor
 
 
+#: Cap on the dividend rescaling factor (a sanity net: if the model forecast
+#: is tiny relative to the forward-implied dividend, don't inflate it absurdly).
+_MAX_DIV_SCALE = 5.0
+
+
+def forward_consistent_cash_schedule(
+    spot: float,
+    forward: float,
+    rate: float,
+    t: float,
+    model: DividendModel,
+    reference_date: date,
+    max_scale: float = _MAX_DIV_SCALE,
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Discrete CASH dividends (ex year-fractions, amounts) for de-Americanizing.
+
+    Used to de-Americanize an American chain with the real dividend TIMING
+    (which drives the call/put early-exercise asymmetry, hence the ATM smile
+    kink near an ex-date) while staying consistent with the resolved forward.
+    The ex-dates come from ``model``; the amounts are scaled by
+
+        alpha = (S - F e^{-r t}) / sum_i D_i e^{-r tau_i}
+
+    so the escrowed-tree forward (S - PV) e^{r t} reproduces ``forward`` exactly
+    — the amounts bend to the market while the timing stays the user's forecast.
+
+    ``rate`` is the (physical) continuously-compounded rate the de-Am tree uses;
+    it must exceed the dividend-implied carry for ``alpha`` to be positive
+    (i.e. F < S e^{r t}). Returns None — so the caller keeps the continuous-yield
+    de-Am — when the mode carries no cash leg, there is no cash dividend inside
+    (0, t], or ``alpha`` is non-physical (<= 0 or > ``max_scale``).
+    """
+    if model.mode not in ("discrete_absolute", "mixed") or t <= 0.0 or spot <= 0.0:
+        return None
+    cash: list[tuple[float, float]] = []
+    for div in model.dividends:
+        tau = (div.ex_date - reference_date).days / DAYS_PER_YEAR
+        if 0.0 < tau <= t and not (model.mode == "mixed" and tau > model.switch_years):
+            cash.append((tau, div.amount))  # mixed: only the near cash leg
+    if not cash:
+        return None
+    taus = np.array([c[0] for c in cash])
+    amounts = np.array([c[1] for c in cash])
+    pv_unit = float(np.sum(amounts * np.exp(-rate * taus)))
+    if pv_unit <= 0.0:
+        return None
+    alpha = (spot - forward * float(np.exp(-rate * t))) / pv_unit
+    if not 0.0 < alpha <= max_scale:
+        return None  # non-physical (rate too low for positive dividends), bail
+    return taus, alpha * amounts
+
+
 def equivalent_yield(spot: float, forward: float, rate: float, t: float) -> float:
     """Continuous yield q with F = S e^{(r - q) t}: q = r - ln(F/S) / t.
 

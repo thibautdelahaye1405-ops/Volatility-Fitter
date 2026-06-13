@@ -24,7 +24,12 @@ from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import FitSettings, ForwardPolicy, MarketSettings, SmilePoint
 from volfit.api.session import EditSession
-from volfit.data.dividends import Dividend, DividendModel, theoretical_forward
+from volfit.data.dividends import (
+    Dividend,
+    DividendModel,
+    forward_consistent_cash_schedule,
+    theoretical_forward,
+)
 from volfit.data.forwards import ImpliedForward, ResolvedForward, implied_forwards
 from volfit.data.provider import OptionChainProvider, SyntheticProvider
 from volfit.data.types import ChainSnapshot
@@ -207,6 +212,29 @@ class AppState:
             spot, rate, t, self.dividend_model(ticker), self.reference_date
         )
         return forward, math.exp(-rate * t)
+
+    def cash_dividend_schedule(self, ticker: str, expiry: date, forward: float):
+        """Forward-consistent discrete CASH schedule for de-Americanizing the
+        chain, or None to keep the continuous-yield de-Am (volfit.data.dividends).
+
+        Returns ``(ex_times, scaled_amounts, rate)``: the discrete-dividend tree
+        uses the ticker's physical ``rate`` and the schedule's ex-date timing,
+        the amounts scaled so the escrowed forward reproduces ``forward`` — so
+        the smile joins smoothly across a cash ex-date with no level shift.
+        """
+        rate = self.market_settings(ticker).rate
+        schedule = forward_consistent_cash_schedule(
+            self.snapshot(ticker).spot,
+            forward,
+            rate,
+            self.year_fraction(expiry),
+            self.dividend_model(ticker),
+            self.reference_date,
+        )
+        if schedule is None:
+            return None
+        times, amounts = schedule
+        return times, amounts, rate
 
     def resolved_forward(self, ticker: str, expiry: date) -> ResolvedForward:
         """The forward calibration uses for one expiry, per its policy.

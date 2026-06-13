@@ -108,7 +108,10 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
 
     snapshot = state.snapshot(ticker)
     forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
-    prepared = prepare_quotes(snapshot, expiry, forward, state.year_fraction(expiry))
+    cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
+    prepared = prepare_quotes(
+        snapshot, expiry, forward, state.year_fraction(expiry), cash_divs
+    )
     k, w, weights = edited_fit_inputs(
         state, ticker, iso, prepared, fit_weights(prepared, fit_mode)
     )
@@ -248,7 +251,10 @@ def surface_inputs(
     plan = []
     for expiry in sorted(forwards):
         forward = state.resolved_forward(ticker, expiry)  # honours the policy
-        prepared = prepare_quotes(snapshot, expiry, forward, state.year_fraction(expiry))
+        cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
+        prepared = prepare_quotes(
+            snapshot, expiry, forward, state.year_fraction(expiry), cash_divs
+        )
         plan.append((expiry.isoformat(), prepared, fit_weights(prepared, fit_mode)))
     return plan
 

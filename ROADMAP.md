@@ -10,7 +10,26 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (228 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (232 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-13] Discrete cash-dividend de-Americanization**: the proper cure
+  for the residual ATM kink on dividend-straddling expiries (the continuous-
+  yield de-Am smears a discrete cash dividend into an average yield and
+  mis-models the call/put early-exercise asymmetry near the ex-date). New
+  escrowed-Hull cash schedule in the CRR tree (`core/american.py`: `_escrow` +
+  `div_times`/`div_amounts` on `binomial_price`/`_batch`/`deamericanize`/
+  `_batch`; recombining, base lattice on S-PV, actual spot = lattice + remaining
+  dividend PV). Consistency: the tree uses the ticker's physical `rate` and the
+  schedule's ex-date timing, with cash amounts SCALED so the escrowed forward
+  reproduces the resolved forward exactly (`data/dividends.forward_consistent_
+  cash_schedule`, alpha=(S-F e^{-rt})/PV) — the IV level is untouched, only the
+  ex-date EEP asymmetry is corrected. Wired opt-in through quote prep
+  (`api/quotes.prepare_quotes` + state `cash_dividend_schedule`): activates when
+  the ticker has a discrete/mixed dividend mode with a cash leg in (0,t] and a
+  rate high enough to admit positive dividends (else falls back to continuous-q,
+  unchanged). Golden test: flat-vol American chain with a mid-period cash
+  dividend — continuous-q leaves a 62 vol-bp ATM kink, discrete de-Am brings it
+  to 1.5 bp and recovers the flat 20% smile (tests/test_discrete_deam.py).
 
 - **[bugfix 2026-06-13] American parity-forward ATM kink**: put-call parity is
   an equality only for European options, so a forward implied from raw American
@@ -26,7 +45,8 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   `reference_date` through `implied_forwards` (api/state, snapshot.py); coarse
   near-ATM de-Am keeps it ~0.1 s/expiry (cached). Live SPY now joins smoothly
   across ATM with sane discounts. Discrete-dividend chains can keep a small
-  residual kink (continuous-yield tree) — discrete-div de-Am is future work.
+  residual kink (continuous-yield tree); **now cured opt-in by discrete cash-
+  dividend de-Americanization — see the dated entry above**.
   4 golden tests (tests/test_forward_debias.py).
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
@@ -268,7 +288,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (228 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (232 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
