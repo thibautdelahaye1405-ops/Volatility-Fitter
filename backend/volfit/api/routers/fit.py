@@ -62,7 +62,10 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
             residuals.append(
                 0.0 if prev is None else calendar_violation(prev.slice, result.slice)
             )
-            record = FitRecord(prepared=prepared, result=result)
+            overlay = await anyio.to_thread.run_sync(
+                service.display_overlay, state, body.ticker, iso, prepared, weights
+            )
+            record = FitRecord(prepared=prepared, result=result, display=overlay)
             state.store_fit(
                 service.fit_key(state, body.ticker, iso, body.fitMode), record
             )

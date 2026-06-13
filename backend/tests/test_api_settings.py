@@ -91,6 +91,29 @@ def test_validation_bounds(client):
         {"nOrder": 99},
         {"regLambda": -1.0},
         {"regPower": 9.0},
-        {"model": "svi"},
+        {"model": "localvol"},  # not a calibratable smile family via the API
     ):
         assert client.put("/settings/fit", json=bad).status_code == 422
+
+
+def test_model_choice_refits_smile(client):
+    """Selecting SVI/sigmoid refits the displayed smile through the overlay
+    path (volfit.api.fit_models): the chart and diagnostics change but the
+    request still succeeds and returns a well-formed payload."""
+    universe = client.get("/universe").json()
+    ticker = universe["tickers"][0]
+    expiry = universe["expiries"][ticker][2]["expiry"]
+    base = client.get(f"/smiles/{ticker}/{expiry}").json()
+
+    for model in ("svi", "sigmoid"):
+        assert client.put("/settings/fit", json={"model": model}).json()["model"] == model
+        data = client.get(f"/smiles/{ticker}/{expiry}").json()
+        assert len(data["model"]) == len(base["model"])
+        assert data["diagnostics"]["atmVol"] > 0.0
+        # Overlay families have no A_L/A_R endpoint-scale concept.
+        assert data["diagnostics"]["aLeft"] == 0.0
+        assert data["diagnostics"]["aRight"] == 0.0
+        # The fitted curve differs from the LQD default somewhere on the grid.
+        lqd_vols = [p["vol"] for p in base["model"]]
+        new_vols = [p["vol"] for p in data["model"]]
+        assert any(abs(a - b) > 1e-6 for a, b in zip(lqd_vols, new_vols))

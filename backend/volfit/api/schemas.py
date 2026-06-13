@@ -43,11 +43,15 @@ class FitSettings(BaseModel):
     PUT /settings/fit applies them to every subsequent fit: the settings
     version is folded into the fit-cache key, so all views (smile, term,
     density, local-vol) refit consistently — no per-endpoint threading.
-    ``model`` is forward-looking: only the LQD engine is calibratable
-    through the API today (SVI-JW/sigmoid calibration is roadmap Phase 2).
+    ``model`` chooses the smile family the Smile Viewer charts: "lqd" (the
+    arbitrage-free quantile-density default, also the analytic backbone), or
+    the "svi" / "sigmoid" overlays (volfit.api.fit_models) calibrated to the
+    same quotes. ``nOrder``/``regLambda``/``regPower`` only affect LQD; the
+    overlay families ignore them. LQD is always fitted under the hood, so the
+    density, term-structure, local-vol and graph views stay LQD-based.
     """
 
-    model: Literal["lqd"] = "lqd"
+    model: Literal["lqd", "svi", "sigmoid"] = "lqd"
     nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
     regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
     regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}

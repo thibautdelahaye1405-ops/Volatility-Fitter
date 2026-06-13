@@ -21,9 +21,8 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api.schemas import SurfaceResponse
-from volfit.api.service import K_PAD, fit_or_get
+from volfit.api.service import K_PAD, displayed_atm_vol, displayed_slice, fit_or_get
 from volfit.api.state import AppState
-from volfit.models.lqd.atm import atm_handles
 
 #: Shared k-grid density: 61 points is plenty for a smooth 3D mesh while
 #: keeping the payload (n_expiries x 61 floats) chart-light.
@@ -44,9 +43,9 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
     vol: list[list[float]] = []
     atm: list[float] = []
     for record in records:
-        t, slice_ = record.prepared.t, record.result.slice
-        vol.append(np.sqrt(slice_.implied_w(grid) / t).tolist())
-        atm.append(atm_handles(slice_, t).sigma0)  # exact ATM handle
+        t = record.prepared.t
+        vol.append(np.sqrt(displayed_slice(record).implied_w(grid) / t).tolist())
+        atm.append(displayed_atm_vol(record))  # exact ATM (LQD) or numeric (overlay)
 
     return SurfaceResponse(
         ticker=ticker,

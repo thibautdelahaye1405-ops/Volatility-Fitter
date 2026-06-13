@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (203 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (215 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -185,17 +185,36 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     headless Edge (lasso lit all 12 nodes, solve propagated, auto-tune adopted
     η=10×).
 
+- **Model choice in the hyperparameter panel (2026-06-13)**: the Smile
+  Viewer can now fit the displayed smile with **LQD** (default, arbitrage-free
+  quantile density + the analytic backbone), **SVI** (raw-SVI own calibration,
+  new `models/svi_jw/calibrate.py`: reparametrized LM fit, data-driven init,
+  soft Lee-wing + min-variance no-arb penalties; recovers the note's SPX
+  benchmark to machine precision — 7 golden tests) or **sigmoid** (existing
+  `calibrate_sigmoid`). LQD is *always* fitted under the hood; a non-LQD choice
+  attaches a `DisplayFit` overlay (`api/fit_models.py`) read by the smile
+  chart, diagnostics, quote table, 3D surface and SSR scenario, while density,
+  term-structure, local-vol and the graph universe stay LQD-based (they need
+  the exact LQD coordinates). Overlay diagnostics (ATM handles, var-swap by
+  log-contract replication, Lee wing slopes) come from the new model-agnostic
+  `models/diagnostics.py` (matches the LQD closed forms on an LQD slice — 4
+  tests); A_L/A_R report 0 (no endpoint-scale analogue off LQD). FitSettings
+  `model` is now `lqd|svi|sigmoid`; the LQD-only N/damping knobs grey out off
+  LQD in HyperparamPanel. Frontend strict-TS build green.
+
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
-   calibration, sigmoid, direct localvol-affine fit through the API).
+1. Direct **local-vol-affine fit through the API** (the remaining model-choice
+   sub-item): affine is a surface-level (x-grid × t-grid) calibration, not a
+   per-slice fit like LQD/SVI/sigmoid, so it needs its own surface endpoint
+   rather than the FitSettings.model overlay path used above.
 2. Realism leftovers (small): discrete-dividend ex-date handling in event
    time; dividend-schedule editor UI (API supports discrete schedules, the
    ForwardPanel only exposes r and continuous q today).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (203 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (215 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
@@ -296,7 +315,10 @@ since other models are standard.
 
 ## Phase 2 — Quant core: remaining models & no-arbitrage (weeks 4–6)
 
-- [x] `models/svi_jw/`: raw-SVI + JW conversion (Appendix A). (SVI own calibration & Gatheral–Jacquier butterfly conditions still TODO)
+- [x] `models/svi_jw/`: raw-SVI + JW conversion (Appendix A) + **own
+  calibration** (`calibrate.py`: reparametrized LM, data-driven init, soft Lee
+  wing-slope & min-variance penalties; recovers the benchmark to machine
+  precision). (full Gatheral–Jacquier butterfly conditions still TODO)
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
 - [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
 - [x] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: `models/localvol/affine.py` + `affine_calib.py`, golden tests vs every table of the note (Delaunay triangulation is the note's convention; lambda=50 roughness reproduces the calibrated nodal table).
@@ -359,7 +381,9 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 - [x] Term-structure view: vol and total variance vs T, calendar in real time **and** event-dilated time; event markers editable (POST /term).
 - [ ] Diagnostics panel: A_L/A_R, Lee slopes, var-swap level shown; directly *editable* ATM handles (w₀, s₀, κ₀ via exact retargeting) TODO.
 - [x] Prior management: save current fit as prior (button + PriorRecord with params); load/diff UI TODO.
-- [ ] Hyperparameter panel: model choice, N, penalty coefficients, arbitrage/event toggles.
+- [x] Hyperparameter panel: **model choice** (LQD/SVI/sigmoid overlays, the
+  N/damping knobs grey out off LQD), Legendre N, penalty coefficients.
+  (arbitrage/event toggles in the panel still TODO)
 - [x] [REQ 2026-06-12] Strike-axis modes on the smile chart: all six modes via `lib/axisModes.ts` (geometry stays in k-space; ticks/crosshair labels transform; delta inverted numerically).
 - [x] [REQ 2026-06-12] 3D vol-surface chart: `SurfaceChart.tsx` zero-dep SVG mesh (painter-sorted quads, drag-rotate, colormap) on GET /surface/{ticker}.
 - [x] [REQ 2026-06-12] Table export: GET /smiles/{t}/{e}/table + /table.csv attachment; QuoteTable grid view with Copy-TSV and CSV-download.

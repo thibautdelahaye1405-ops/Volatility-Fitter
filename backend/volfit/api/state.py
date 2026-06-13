@@ -20,6 +20,7 @@ import threading
 from dataclasses import dataclass
 from datetime import date
 
+from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import FitSettings, ForwardPolicy, MarketSettings, SmilePoint
 from volfit.api.session import EditSession
@@ -40,10 +41,16 @@ class UnknownNodeError(KeyError):
 
 @dataclass(frozen=True)
 class FitRecord:
-    """One cached slice calibration plus the inputs it was fitted to."""
+    """One cached slice calibration plus the inputs it was fitted to.
+
+    ``result`` is always the LQD fit (the analytic backbone). ``display`` is
+    the chosen non-LQD overlay fit when the hyperparameter panel selects
+    SVI/sigmoid (volfit.api.fit_models); None means the LQD fit is displayed.
+    """
 
     prepared: PreparedQuotes
     result: CalibrationResult
+    display: DisplayFit | None = None
 
 
 @dataclass(frozen=True)

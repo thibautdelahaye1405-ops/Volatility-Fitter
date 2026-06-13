@@ -26,7 +26,7 @@ import math
 import numpy as np
 
 from volfit.api.schemas import TableResponse, TableRow
-from volfit.api.service import fit_or_get
+from volfit.api.service import displayed_slice, fit_or_get
 from volfit.api.state import AppState
 from volfit.core.black import black_call
 
@@ -52,7 +52,7 @@ def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     session = state.session_if_exists((ticker, iso))
     prepared = record.prepared
     t, forward, discount = prepared.t, prepared.forward, prepared.discount
-    model_iv = np.sqrt(record.result.slice.implied_w(prepared.k) / t)
+    model_iv = np.sqrt(displayed_slice(record).implied_w(prepared.k) / t)
 
     rows: list[TableRow] = []
     for i, (k, bid, mid, ask) in enumerate(

@@ -18,6 +18,7 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api import history
+from volfit.api.fit_models import build_display_fit
 from volfit.api.quotes import PreparedQuotes, apply_edits, fit_weights, prepare_quotes
 from volfit.api.schemas import (
     QuoteBand,
@@ -82,6 +83,18 @@ def edited_fit_inputs(
     return apply_edits(prepared, {} if session is None else session.edits, weights)
 
 
+def display_overlay(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, weights: np.ndarray | None
+):
+    """The non-LQD display overlay for a node (None for LQD), fit to the same
+    edited quotes the LQD calibration uses — keeps surface and smile in sync."""
+    model = state.fit_settings().model
+    if model == "lqd":
+        return None
+    k, w, edited_weights = edited_fit_inputs(state, ticker, iso, prepared, weights)
+    return build_display_fit(model, k, w, prepared.t, edited_weights)
+
+
 # ------------------------------------------------------------- slice fitting
 def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
     """Return the cached slice fit for (ticker, expiry, mode), fitting once
@@ -109,20 +122,45 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
         reg_lambda=settings.regLambda,
         reg_power=settings.regPower,
     )
-    record = FitRecord(prepared=prepared, result=result)
+    # LQD is always fitted (the analytic backbone); a non-LQD model choice
+    # adds a display overlay on the same edited quotes (volfit.api.fit_models).
+    display = build_display_fit(settings.model, k, w, prepared.t, weights)
+    record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
     return record
 
 
+# ---------------------------------------------- displayed-fit accessors
+# The Smile Viewer's chart, diagnostics, table, surface and scenario read the
+# chosen model: the non-LQD display overlay when present, else the LQD fit.
+def displayed_slice(record: FitRecord):
+    """The SmileModel the Smile Viewer charts (overlay model or LQD)."""
+    return record.display.slice if record.display is not None else record.result.slice
+
+
+def displayed_atm_vol(record: FitRecord) -> float:
+    """ATM vol of the displayed fit (numeric for an overlay, exact for LQD)."""
+    if record.display is not None:
+        return record.display.handles.atm_vol
+    return atm_handles(record.result.slice, record.prepared.t).sigma0
+
+
+def displayed_skew(record: FitRecord) -> float:
+    """ATM skew of the displayed fit (numeric for an overlay, exact for LQD)."""
+    if record.display is not None:
+        return record.display.handles.skew
+    return atm_handles(record.result.slice, record.prepared.t).skew
+
+
 def model_curve(record: FitRecord) -> list[SmilePoint]:
-    """Sample the fitted slice's IV curve on the padded display grid."""
+    """Sample the displayed slice's IV curve on the padded display grid."""
     grid = np.linspace(
         float(record.prepared.k.min()) - K_PAD,
         float(record.prepared.k.max()) + K_PAD,
         N_MODEL_POINTS,
     )
-    vols = np.sqrt(record.result.slice.implied_w(grid) / record.prepared.t)
+    vols = np.sqrt(displayed_slice(record).implied_w(grid) / record.prepared.t)
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
 
@@ -137,19 +175,34 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     saved = state.get_prior((ticker, expiry_iso))  # saved prior, else current fit
     prior = list(saved.curve) if saved is not None else list(model)
 
-    handles = atm_handles(slice_, prepared.t)
-    a_left, a_right = endpoint_scales(record.result.params)
-    lee_left, lee_right = lee_slopes(record.result.params)
-    diagnostics = SmileDiagnostics(
-        atmVol=handles.sigma0,
-        skew=handles.skew,
-        curvature=handles.curvature,
-        aLeft=a_left,
-        aRight=a_right,
-        leeLeft=lee_left,
-        leeRight=lee_right,
-        varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.t)),
-    )
+    if record.display is not None:
+        # Non-LQD overlay: numeric ATM handles, var-swap and Lee wing slopes;
+        # A_L/A_R are LQD endpoint-scale constructs with no analogue here.
+        d = record.display
+        diagnostics = SmileDiagnostics(
+            atmVol=d.handles.atm_vol,
+            skew=d.handles.skew,
+            curvature=d.handles.curvature,
+            aLeft=0.0,
+            aRight=0.0,
+            leeLeft=d.lee_left,
+            leeRight=d.lee_right,
+            varSwapVol=float(np.sqrt(d.var_swap_w / prepared.t)),
+        )
+    else:
+        handles = atm_handles(slice_, prepared.t)
+        a_left, a_right = endpoint_scales(record.result.params)
+        lee_left, lee_right = lee_slopes(record.result.params)
+        diagnostics = SmileDiagnostics(
+            atmVol=handles.sigma0,
+            skew=handles.skew,
+            curvature=handles.curvature,
+            aLeft=a_left,
+            aRight=a_right,
+            leeLeft=lee_left,
+            leeRight=lee_right,
+            varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.t)),
+        )
     # Every prepared quote is listed (excluded ones dimmed by the UI); an
     # amended quote shows its overridden mid, bid/ask stay the market band.
     quotes = []
@@ -272,7 +325,8 @@ def fit_surface(
     for index, (iso, prepared, weights) in enumerate(plan):
         result = fit_surface_slice(state, ticker, iso, prepared, weights, prev, enforce_calendar)
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
-        record = FitRecord(prepared=prepared, result=result)
+        overlay = display_overlay(state, ticker, iso, prepared, weights)
+        record = FitRecord(prepared=prepared, result=result, display=overlay)
         state.store_fit(fit_key(state, ticker, iso, fit_mode), record)
         history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
         fitted.append((iso, result))
@@ -292,7 +346,7 @@ def run_scenario(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
 
         return scenario_sticky_grid(state, request)
     record = fit_or_get(state, request.ticker, request.expiry, request.fitMode)
-    t, slice_ = record.prepared.t, record.result.slice
+    t, slice_ = record.prepared.t, displayed_slice(record)
     grid = np.linspace(
         float(record.prepared.k.min()) - K_PAD,
         float(record.prepared.k.max()) + K_PAD,
@@ -303,7 +357,7 @@ def run_scenario(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
         return np.sqrt(slice_.implied_w(k) / t)
 
     base = vol_curve(grid)
-    skew = atm_handles(slice_, t).skew
+    skew = displayed_skew(record)
     shifted = shifted_smile(grid, vol_curve, skew, request.spotReturn, request.regime)
     regime = request.regime
     return ScenarioResponse(
