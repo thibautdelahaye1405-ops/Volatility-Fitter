@@ -15,8 +15,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-# Market-settings / forward-mode schemas live in schemas_market (file-size
-# policy) and are re-exported here so the API keeps one schema import surface.
+# Market-settings / forward-mode and fit-history schemas live in their own
+# modules (file-size policy) and are re-exported here so the API keeps one
+# schema import surface.
+from volfit.api.schemas_history import (  # noqa: F401  (re-export)
+    HistoryPoint,
+    HistoryResponse,
+)
 from volfit.api.schemas_market import (  # noqa: F401  (re-export)
     DividendSpec,
     ForwardEntry,

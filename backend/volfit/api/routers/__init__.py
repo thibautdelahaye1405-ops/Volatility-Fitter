@@ -4,6 +4,7 @@ from volfit.api.routers.edits import router as edits_router
 from volfit.api.routers.fit import router as fit_router
 from volfit.api.routers.forwards import router as forwards_router
 from volfit.api.routers.graph import router as graph_router
+from volfit.api.routers.history import router as history_router
 from volfit.api.routers.localvol import router as localvol_router
 from volfit.api.routers.scenario import router as scenario_router
 from volfit.api.routers.settings import router as settings_router
@@ -20,6 +21,7 @@ ALL_ROUTERS = (
     fit_router,
     forwards_router,
     graph_router,
+    history_router,
     localvol_router,
     scenario_router,
     settings_router,
@@ -33,6 +35,7 @@ __all__ = [
     "fit_router",
     "forwards_router",
     "graph_router",
+    "history_router",
     "localvol_router",
     "scenario_router",
     "settings_router",

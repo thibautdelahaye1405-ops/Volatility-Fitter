@@ -17,7 +17,7 @@ from __future__ import annotations
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 
-from volfit.api import service
+from volfit.api import history, service
 from volfit.api.schemas import SurfaceFitRequest, SurfaceFitResponse
 from volfit.api.state import FitRecord, UnknownNodeError
 from volfit.calib.calendar import calendar_violation
@@ -62,10 +62,12 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
             residuals.append(
                 0.0 if prev is None else calendar_violation(prev.slice, result.slice)
             )
+            record = FitRecord(prepared=prepared, result=result)
             state.store_fit(
-                service.fit_key(state, body.ticker, iso, body.fitMode),
-                FitRecord(prepared=prepared, result=result),
+                service.fit_key(state, body.ticker, iso, body.fitMode), record
             )
+            # Time-series scaffold: WS-driven fits persist like POST/GET ones.
+            history.persist_fit(state, body.ticker, iso, body.fitMode, record)
             fitted.append((iso, result))
             await websocket.send_json(
                 {

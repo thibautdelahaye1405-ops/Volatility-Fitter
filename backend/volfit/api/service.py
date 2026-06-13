@@ -19,6 +19,7 @@ import itertools
 
 import numpy as np
 
+from volfit.api import history
 from volfit.api.quotes import PreparedQuotes, apply_edits, fit_weights, prepare_quotes
 from volfit.api.schemas import (
     GraphNodeResult,
@@ -135,6 +136,7 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     )
     record = FitRecord(prepared=prepared, result=result)
     state.store_fit(key, record)
+    history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
     return record
 
 
@@ -297,6 +299,7 @@ def fit_surface(
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
         record = FitRecord(prepared=prepared, result=result)
         state.store_fit(fit_key(state, ticker, iso, fit_mode), record)
+        history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
         fitted.append((iso, result))
         if progress is not None:
             progress(iso, index, len(plan), result.max_iv_error * 1e4)

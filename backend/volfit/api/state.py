@@ -15,6 +15,7 @@ idempotent, so a rare double build is harmless.
 from __future__ import annotations
 
 import math
+import os
 import threading
 from dataclasses import dataclass
 from datetime import date
@@ -60,10 +61,16 @@ class AppState:
     """Provider handle plus all caches; one instance per FastAPI app."""
 
     def __init__(
-        self, reference_date: date, provider: OptionChainProvider | None = None
+        self,
+        reference_date: date,
+        provider: OptionChainProvider | None = None,
+        store_path: str | os.PathLike | None = None,
     ) -> None:
         self.reference_date = reference_date
         self.provider = provider or SyntheticProvider(reference_date=reference_date)
+        #: SQLite path for fit-history persistence (volfit.api.history);
+        #: None (the default) keeps the API side-effect free.
+        self.store_path = store_path
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fit_settings = FitSettings()

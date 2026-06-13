@@ -10,6 +10,7 @@ server only.
 
 from __future__ import annotations
 
+import os
 from datetime import date
 
 from fastapi import FastAPI
@@ -26,14 +27,19 @@ CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 def create_app(
     reference_date: date | None = None,
     provider: OptionChainProvider | None = None,
+    store_path: str | os.PathLike | None = None,
 ) -> FastAPI:
     """Build the API app around one AppState instance.
 
     `provider=None` keeps the offline SyntheticProvider default; pass a
     YahooProvider (or any OptionChainProvider) to serve live data.
+    `store_path` (an SQLite file) opts in to fit-history persistence
+    (volfit.api.history); None keeps the app side-effect free.
     """
     app = FastAPI(title="volfit")
-    app.state.volfit = AppState(reference_date or date.today(), provider=provider)
+    app.state.volfit = AppState(
+        reference_date or date.today(), provider=provider, store_path=store_path
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,

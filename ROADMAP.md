@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (186 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (192 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -137,24 +137,32 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     to stay under the 400-line policy. All verified in headless Edge
     (surface mesh, delta ticks, table grid, CSV Content-Disposition).
 
+- **[REQ done] Fit time-series scaffold (2026-06-13)**: every calibrated
+  slice (POST/GET/WS paths alike) persists into the VolStore `fits` table
+  keyed by SNAPSHOT timestamp (`api/history.py`: fresh WAL connection per
+  write for thread safety, dedupe on (ticker, expiry, ts, fitMode),
+  exception-safe — persistence can never fail a fit; opt-in via env
+  `VOLFIT_DB=path`, off by default). Query: GET /history/{ticker}/{tenorDays}
+  ?fit_mode= — per snapshot picks the expiry nearest the tenor, returns
+  {ts, expiry, t, atmVol, skew, curvature, varSwapVol, maxIvErrorBp,
+  forward} ascending. Charting UI deferred.
+
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. [REQ] Time-series scaffold (Phase 3): persist every fit keyed by snapshot
-   timestamp + history query API (charting UI later).
-2. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
+1. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
    parallel slice fits deferred here (single fit ~30 ms, instant-refit
    target already met).
-3. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
+2. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
    lambda, nu, auto-tune), lasso selection.
-4. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
+3. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
    calibration, sigmoid, direct localvol-affine fit through the API).
-5. Realism leftovers (small): discrete-dividend ex-date handling in event
+4. Realism leftovers (small): discrete-dividend ex-date handling in event
    time; dividend-schedule editor UI (API supports discrete schedules, the
    ForwardPanel only exposes r and continuous q today).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (186 green as of 2026-06-13; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
+  (192 green as of 2026-06-13; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
   `$env:VOLFIT_TICKERS='SPY,QQQ,AAPL'` first (yfinance installed).
@@ -271,7 +279,7 @@ since other models are standard.
 - [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic).
 - [x] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute (escrowed), discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice) — `data/dividends.py`, feeds the theoretical forward. (ex-date/event handling TODO with event time.)
 - [x] [REQ 2026-06-12] Forward fitting mode per expiry: **theoretical** (spot + carry from rate/dividend model), **parity-implied** (default), or **manually adjusted** (ForwardPanel UI override, held on AppState with a forwards version in fit keys); GET /forwards/{ticker} shows the three side by side.
-- [ ] [REQ 2026-06-12] Fit time-series scaffold: persist every calibration (params, ATM handles, diagnostics) keyed by snapshot timestamp — VolStore `fits` table already has the shape — plus history query API (`GET /history/{ticker}/{tenor}`); charting UI deferred.
+- [x] [REQ 2026-06-12] Fit time-series scaffold: every calibration persists (params, ATM handles, diagnostics) keyed by snapshot timestamp into VolStore `fits` (`api/history.py`, opt-in via VOLFIT_DB) + GET /history/{ticker}/{tenorDays}; charting UI deferred.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)
 - [x] Storage: SQLite `VolStore` (instruments, snapshots, quotes, fits, priors, universes; WAL, versioned schema). Parquet/DuckDB history TODO.
 - [x] Universe dataclass + persistence; provider-driven enumeration UI flow TODO.
