@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (192 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (203 pytest tests green + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -147,22 +147,56 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   {ts, expiry, t, atmVol, skew, curvature, varSwapVol, maxIvErrorBp,
   forward} ascending. Charting UI deferred.
 
+- **[REQ done] CI + perf benchmarks (2026-06-13)**:
+  * **GitHub Actions** (`.github/workflows/ci.yml`): three jobs — `backend`
+    (py3.11/3.12 matrix: `ruff check .` + `pytest -m "not live and not perf"`),
+    `perf` (single 3.11 runner: `pytest -m perf -s`), `frontend`
+    (`npm ci` + `npm run build` strict-TS gate). Per-branch `concurrency`
+    cancels superseded runs; pip + npm caches keyed on lockfiles.
+  * **Perf budget suite** (`tests/test_perf.py`, `@pytest.mark.perf`): a
+    `BUDGET_MS` table enforced by warmup-then-median timing of the four hot
+    paths — LQD slice fit (~95 ms local), 1k-node graph update (~700 ms),
+    local-vol CN forward solve (~20 ms), ~80-quote de-Am batch (~630 ms);
+    budgets sit ~2.5-3.5x above local medians for slow-runner headroom.
+  * Registered `perf`/`live` pytest markers + a `test` extra (httpx, pandas)
+    in pyproject; tagged the live Yahoo test `@pytest.mark.live`; cleaned the
+    6 pre-existing ruff findings so lint gates clean. Generated
+    `frontend/package-lock.json` for reproducible `npm ci`.
+    (process-pool for parallel slice fits still deferred — single fit ~95 ms,
+    instant-refit target already met.)
+
+- **[REQ done] Graph Viewer remainder (2026-06-13)**:
+  * **Full solver panel**: GraphSolveRequest now carries the prior knobs —
+    kappaScale (local stiffness), etaScale (reach), lambdaScale (OT flux, 0 =
+    off, preserves the legacy regime), nu (source allowance) — plus
+    calendarWeight/crossWeight edge overrides. Wired in the new
+    `api/graph_service.py` (extracted from service.py to keep both under the
+    400-line policy): `_reweighted_universe` rebuilds only the cheap graph from
+    the cached handles when weights change; `_build_priors` applies the scales
+    per handle coordinate. SolverPanel.tsx (η/κ log sliders, λ slider, ν +
+    edge-weight inputs) drives it via useGraph; default solve unchanged.
+  * **Auto-tune η** (POST /graph/autotune, `autotune_graph`): leave-one-out
+    cross-validation over the lit observations across a geometric η grid,
+    minimizing held-out ATM-vol RMSE; returns the chosen η + scored grid
+    (rendered as bars in the panel, ≥2 lit nodes required).
+  * **Lasso selection** in GraphChart: drag a rectangle on the lattice
+    background to light every enclosed node (node groups stop mousedown so a
+    plain click still toggles). 7 new graph API tests; verified end-to-end in
+    headless Edge (lasso lit all 12 nodes, solve propagated, auto-tune adopted
+    η=10×).
+
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. CI + perf benchmarks (Phase 0 leftover + Phase 9); process-pool for
-   parallel slice fits deferred here (single fit ~30 ms, instant-refit
-   target already met).
-2. Graph Viewer remainder: edge-weight editor, full solver panel (kappa,
-   lambda, nu, auto-tune), lasso selection.
-3. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
+1. Model choice in the hyperparameter panel beyond LQD (SVI-JW own
    calibration, sigmoid, direct localvol-affine fit through the API).
-4. Realism leftovers (small): discrete-dividend ex-date handling in event
+2. Realism leftovers (small): discrete-dividend ex-date handling in event
    time; dividend-schedule editor UI (API supports discrete schedules, the
    ForwardPanel only exposes r and continuous q today).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (192 green as of 2026-06-13; opt-in live Yahoo test via `$env:VOLFIT_LIVE="1"`).
+  (203 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
   `$env:VOLFIT_TICKERS='SPY,QQQ,AAPL'` first (yfinance installed).
@@ -238,7 +272,8 @@ Docs/            # technical notes (existing)
 ## Phase 0 — Foundations (week 1)
 
 - [x] Git init, `pyproject.toml` (setuptools), pytest; frontend scaffold (Vite + TS + Tailwind v4). (ruff configured, mypy not yet)
-- [ ] CI: lint, type-check, unit tests, golden-number tests.
+- [x] CI: lint (ruff) + unit/golden tests + perf budgets + frontend build
+  (`.github/workflows/ci.yml`). Type-check (mypy) still TODO.
 - [x] Shared conventions: ≤400-line files, module docstrings referencing Doc equation numbers (established in code).
 - [x] React shell with tab routing (Smile / Term Structure / Graph); FastAPI skeleton pending (deps installed late due to network).
 
@@ -334,9 +369,9 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 ## Phase 7 — Graph Viewer frontend (weeks 13–16)
 
 - [x] Graph visualization: structured SVG lattice (ticker columns × expiry rows, calendar + cross-ticker edges) — chosen over force-directed for legibility at current scale; WebGL/pan-zoom deferred to large-universe work.
-- [x] Node states: **lit** (observed) vs **dark** (extrapolated), toggled by click, with per-node dAtmVol inputs. (lasso + ticker/expiry filters TODO)
-- [ ] Edge-weight input: matrix editor + bulk rules (same-ticker adjacent-expiry weight, sector weight, custom CSV upload). (weights currently fixed server-side: 10 calendar / 2 cross)
-- [ ] Solver panel: κ, η, λ, ν sliders with live re-solve; empirical-Bayes "auto-tune" button; convergence/calibration readout. (η reach slider done; rest TODO)
+- [x] Node states: **lit** (observed) vs **dark** (extrapolated), toggled by click or **lasso** (drag-rectangle lights all enclosed nodes), with per-node dAtmVol inputs. (ticker/expiry filters TODO)
+- [x] Edge-weight input: calendar (same-ticker) and cross-ticker weight overrides in SolverPanel (rebuild only the cheap graph, fits cached). (per-edge matrix editor + sector rules + CSV upload TODO)
+- [x] Solver panel: κ, η, λ, ν controls (SolverPanel.tsx) + leave-one-out "Auto-tune η" with a scored-grid readout. (live re-solve on every drag still manual via Solve; per-edge κ/λ TODO)
 - [x] Result overlay: posterior shift as diverging node color, marginal sd as halo size/fade, hover tooltip with base→post + credible band; double-click → jump to that smile in the Smile Viewer.
 
 **Exit criteria:** end-to-end demo — observe 5 smiles, light them, solve, watch 200 dark smiles update with uncertainty, drill into any one.
@@ -350,7 +385,7 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 
 ## Phase 9 — Hardening, performance & polish (weeks 17–20)
 
-- [ ] Perf pass: profile slice fit, surface fit, graph solve; Numba/JAX tuning; target budget table enforced in CI benchmarks.
+- [x] Perf pass: budget table (`tests/test_perf.py`) enforced in the CI `perf` job — slice fit, local-vol forward solve, 1k-node graph update, de-Am batch. (Profiling-driven Numba/JAX tuning not needed yet; all paths inside budget.)
 - [ ] Test depth: arbitrage invariants as property tests (every LQD iterate butterfly-free; calendar residuals ≤ τ), fuzzed quote sets, provider failure injection.
 - [ ] UX polish: loading/skeleton states, error surfaces, layout persistence, theming, onboarding tour.
 - [ ] Packaging: Docker compose (backend + frontend), one-line local install; user guide + API docs.

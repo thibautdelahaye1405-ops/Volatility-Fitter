@@ -15,17 +15,11 @@ volfit.api.edits to keep this module under the file-size policy.
 
 from __future__ import annotations
 
-import itertools
-
 import numpy as np
 
 from volfit.api import history
 from volfit.api.quotes import PreparedQuotes, apply_edits, fit_weights, prepare_quotes
 from volfit.api.schemas import (
-    GraphNodeResult,
-    GraphObservation,
-    GraphSolveRequest,
-    GraphSolveResponse,
     QuoteBand,
     ScenarioRequest,
     ScenarioResponse,
@@ -34,16 +28,9 @@ from volfit.api.schemas import (
     SmilePoint,
     SurfaceFitResponse,
 )
-from volfit.api.state import AppState, FitRecord, UnknownNodeError
+from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_floor, calendar_violation
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
-from volfit.graph import build_increment_prior
-from volfit.graph.smile_universe import (
-    SmileNode,
-    SmileUniverse,
-    build_universe,
-    propagate_handles,
-)
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
@@ -62,18 +49,6 @@ K_PAD = 0.02
 #: panel (PUT /settings/fit) overrides them per AppState.
 REG_LAMBDA = 1e-6
 REG_POWER = 1.0
-
-#: Graph weights: strong calendar chain within a ticker, weaker cross-ticker
-#: edges at equal expiry (regime validated in tests/test_smile_universe.py).
-SAME_TICKER_WEIGHT = 10.0
-CROSS_TICKER_WEIGHT = 2.0
-
-#: Per-handle increment hyperparameters (scale s, eta) with kappa = 1/s^2:
-#: ~3 vol pts level, looser skew/curvature — the demo.py regime.
-GRAPH_PRIOR_HYPER = ((0.03, 2.0e4), (0.05, 7.0e3), (0.5, 70.0))
-
-#: Baseline/observation precisions per handle coordinate.
-GRAPH_PRECISION = np.array([1.0e6, 1.0e6, 1.0e4])
 
 
 # --------------------------------------------------------- fit-session edits
@@ -305,98 +280,6 @@ def fit_surface(
             progress(iso, index, len(plan), result.max_iv_error * 1e4)
         prev = result
     return assemble_surface_response(state, ticker, fit_mode, fitted, residuals)
-
-
-# -------------------------------------------------------------- graph solve
-def ensure_universe(state: AppState) -> SmileUniverse:
-    """Build (once) the smile universe over all tickers x expiries, mid fits.
-
-    Node names are (ticker, expiry-ISO). The build is deterministic and the
-    underlying slice fits are themselves cached, so a concurrent double build
-    only costs time, never consistency. Slice fits flow through fit_or_get,
-    so quote edits made *before* the first graph solve shape the universe
-    naturally; the universe is built once and not invalidated by later edits
-    (acceptable: graph handles are slow-moving levels, not live fit state).
-    """
-    if state.universe is not None:
-        return state.universe
-
-    tickers = state.provider.list_tickers()
-    smiles: list[SmileNode] = []
-    weights: dict[tuple, float] = {}
-    ladders: dict[str, list[str]] = {}
-    for ticker in tickers:
-        isos = [e.isoformat() for e in sorted(state.forwards(ticker))]
-        ladders[ticker] = isos
-        for iso in isos:
-            record = fit_or_get(state, ticker, iso, "mid")
-            smiles.append(
-                SmileNode(name=(ticker, iso), t=record.prepared.t, params=record.result.params)
-            )
-        for near, far in zip(isos[:-1], isos[1:]):  # calendar chain
-            weights[((ticker, near), (ticker, far))] = SAME_TICKER_WEIGHT
-            weights[((ticker, far), (ticker, near))] = SAME_TICKER_WEIGHT
-    for a, b in itertools.combinations(tickers, 2):  # equal-expiry cross edges
-        for iso in sorted(set(ladders[a]) & set(ladders[b])):
-            weights[((a, iso), (b, iso))] = CROSS_TICKER_WEIGHT
-            weights[((b, iso), (a, iso))] = CROSS_TICKER_WEIGHT
-
-    universe = build_universe(smiles, weights)
-    state.universe = universe
-    return universe
-
-
-def _observed_handles(
-    universe: SmileUniverse, observations: list[GraphObservation]
-) -> dict[tuple, np.ndarray]:
-    """Map handle *shifts* to absolute observed handles, validating nodes."""
-    observed: dict[tuple, np.ndarray] = {}
-    for obs in observations:
-        name = (obs.ticker, obs.expiry)
-        try:
-            index = universe.node_index(name)
-        except KeyError:
-            raise UnknownNodeError(f"unknown node {name!r}") from None
-        observed[name] = universe.handles[index] + np.array([obs.dAtmVol, obs.dSkew, obs.dCurv])
-    return observed
-
-
-def solve_graph(state: AppState, request: GraphSolveRequest) -> GraphSolveResponse:
-    """Propagate sparse handle observations to every node of the universe."""
-    universe = ensure_universe(state)
-    priors = [
-        build_increment_prior(universe.graph, kappa=1.0 / s**2, eta=eta * request.etaScale)
-        for s, eta in GRAPH_PRIOR_HYPER
-    ]
-    observed = _observed_handles(universe, request.observations)
-    field = propagate_handles(
-        universe,
-        priors,
-        observed,
-        baseline_precision=GRAPH_PRECISION,
-        observation_precision=GRAPH_PRECISION,
-    )
-    band_lo, band_hi = field.atm_vol_band()
-
-    nodes = []
-    for j, smile in enumerate(universe.smiles):
-        ticker, expiry_iso = smile.name
-        base, post = float(universe.handles[j, 0]), float(field.mean[j, 0])
-        nodes.append(
-            GraphNodeResult(
-                ticker=ticker,
-                expiry=expiry_iso,
-                t=smile.t,
-                baseAtmVol=base,
-                postAtmVol=post,
-                shiftBp=(post - base) * 1e4,
-                sd=float(field.sd[j, 0]),
-                bandLo=float(band_lo[j]),
-                bandHi=float(band_hi[j]),
-                observed=smile.name in observed,
-            )
-        )
-    return GraphSolveResponse(nodes=nodes)
 
 
 # ----------------------------------------------------------------- scenario

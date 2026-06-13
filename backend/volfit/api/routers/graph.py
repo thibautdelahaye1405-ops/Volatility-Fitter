@@ -10,8 +10,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from volfit.api import service
+from volfit.api import graph_service
 from volfit.api.schemas import (
+    GraphAutotuneRequest,
+    GraphAutotuneResponse,
     GraphNodeInfo,
     GraphNodesResponse,
     GraphSolveRequest,
@@ -24,7 +26,7 @@ router = APIRouter()
 
 @router.get("/graph/nodes", response_model=GraphNodesResponse)
 def graph_nodes(request: Request) -> GraphNodesResponse:
-    universe = service.ensure_universe(request.app.state.volfit)
+    universe = graph_service.ensure_universe(request.app.state.volfit)
     nodes = [
         GraphNodeInfo(
             ticker=smile.name[0],
@@ -42,6 +44,14 @@ def graph_nodes(request: Request) -> GraphNodesResponse:
 @router.post("/graph/solve", response_model=GraphSolveResponse)
 def solve_graph(body: GraphSolveRequest, request: Request) -> GraphSolveResponse:
     try:
-        return service.solve_graph(request.app.state.volfit, body)
+        return graph_service.solve_graph(request.app.state.volfit, body)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.post("/graph/autotune", response_model=GraphAutotuneResponse)
+def autotune_graph(body: GraphAutotuneRequest, request: Request) -> GraphAutotuneResponse:
+    try:
+        return graph_service.autotune_graph(request.app.state.volfit, body)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None

@@ -59,6 +59,63 @@ interface GraphSolveResponse {
   nodes: GraphSolveNode[];
 }
 
+/**
+ * Tunable hyperparameters of the increment prior Q_Δ and the graph edges,
+ * mirroring the backend GraphSolverParams schema. Scales multiply the
+ * per-handle base regime; weights are null when the service defaults apply.
+ */
+export interface SolverParams {
+  /** Directed-smoothness reach η (propagation distance). */
+  etaScale: number;
+  /** Local precision κ (stiffness toward the baseline — higher = less spread). */
+  kappaScale: number;
+  /** Optimal-transport flux weight λ (0 disables the OT term). */
+  lambdaScale: number;
+  /** OT source/sink allowance ν (only used when λ > 0). */
+  nu: number;
+  /** Same-ticker calendar edge weight, or null for the service default (10). */
+  calendarWeight: number | null;
+  /** Cross-ticker equal-expiry edge weight, or null for the default (2). */
+  crossWeight: number | null;
+}
+
+/** One scored grid point of an auto-tune sweep. */
+export interface AutotuneCandidate {
+  etaScale: number;
+  rmseBp: number;
+}
+
+/** Response of POST /graph/autotune. */
+export interface AutotuneResult {
+  etaScale: number;
+  rmseBp: number;
+  candidates: AutotuneCandidate[];
+}
+
+/** Default solver regime: legacy behavior (OT off, service edge weights). */
+const DEFAULT_PARAMS: SolverParams = {
+  etaScale: 1,
+  kappaScale: 1,
+  lambdaScale: 0,
+  nu: 0.1,
+  calendarWeight: null,
+  crossWeight: null,
+};
+
+/** JSON body for a solver request: drops null edge weights so the backend
+ *  falls back to its defaults rather than receiving explicit nulls. */
+function paramsBody(params: SolverParams): Record<string, number> {
+  const body: Record<string, number> = {
+    etaScale: params.etaScale,
+    kappaScale: params.kappaScale,
+    lambdaScale: params.lambdaScale,
+    nu: params.nu,
+  };
+  if (params.calendarWeight !== null) body.calendarWeight = params.calendarWeight;
+  if (params.crossWeight !== null) body.crossWeight = params.crossWeight;
+  return body;
+}
+
 /** Canonical map key for a smile node. */
 export function nodeKey(ticker: string, expiry: string): string {
   return `${ticker}|${expiry}`;
@@ -88,11 +145,16 @@ export interface UseGraphResult {
   toggleLit: (key: string) => void;
   /** Update the dAtmVol observation of a lit node (decimal vol). */
   setShift: (key: string, dAtmVol: number) => void;
+  /** Light several dark nodes at once (lasso); already-lit keys keep value. */
+  lightMany: (keys: string[]) => void;
   /** Remove a node from the lit set. */
   unlight: (key: string) => void;
-  /** Propagation-reach multiplier η (log-scaled slider in the UI). */
-  etaScale: number;
-  setEtaScale: (v: number) => void;
+  /** Current solver hyperparameters. */
+  params: SolverParams;
+  /** Update one solver hyperparameter. */
+  setParam: <K extends keyof SolverParams>(key: K, value: SolverParams[K]) => void;
+  /** Reset all solver hyperparameters to the default regime. */
+  resetParams: () => void;
   /** POST the lit observations to /graph/solve; no-op with 0 lit nodes. */
   solve: () => Promise<void>;
   /** True while a solve is in flight. */
@@ -103,6 +165,14 @@ export interface UseGraphResult {
   results: Record<string, GraphSolveNode> | null;
   /** Drop the solve results (keeps the lit set). */
   clear: () => void;
+  /** LOO cross-validate η over the lit set; needs >= 2 lit nodes. */
+  autotune: () => Promise<void>;
+  /** True while an auto-tune sweep is in flight. */
+  autotuning: boolean;
+  /** Last auto-tune result (chosen η + scored grid), or null. */
+  autotuneResult: AutotuneResult | null;
+  /** Last auto-tune failure, cleared on the next attempt. */
+  autotuneError: string | null;
 }
 
 export function useGraph(): UseGraphResult {
@@ -113,12 +183,15 @@ export function useGraph(): UseGraphResult {
   const [loadAttempt, setLoadAttempt] = useState(0);
 
   const [lit, setLit] = useState<Record<string, number>>({});
-  const [etaScale, setEtaScale] = useState(1);
+  const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS);
   const [results, setResults] = useState<Record<string, GraphSolveNode> | null>(
     null,
   );
   const [solving, setSolving] = useState(false);
   const [solveError, setSolveError] = useState<string | null>(null);
+  const [autotuning, setAutotuning] = useState(false);
+  const [autotuneResult, setAutotuneResult] = useState<AutotuneResult | null>(null);
+  const [autotuneError, setAutotuneError] = useState<string | null>(null);
 
   // Load the baseline node handles once (and again on each Retry).
   useEffect(() => {
@@ -154,6 +227,15 @@ export function useGraph(): UseGraphResult {
     setLit((prev) => ({ ...prev, [key]: dAtmVol }));
   }, []);
 
+  const lightMany = useCallback((keys: string[]) => {
+    if (keys.length === 0) return;
+    setLit((prev) => {
+      const next = { ...prev };
+      for (const key of keys) if (!(key in next)) next[key] = DEFAULT_D_ATM_VOL;
+      return next;
+    });
+  }, []);
+
   const unlight = useCallback((key: string) => {
     setLit((prev) => {
       const next = { ...prev };
@@ -162,17 +244,33 @@ export function useGraph(): UseGraphResult {
     });
   }, []);
 
+  const setParam = useCallback(
+    <K extends keyof SolverParams>(key: K, value: SolverParams[K]) => {
+      setParams((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
+  const resetParams = useCallback(() => setParams(DEFAULT_PARAMS), []);
+
+  /** Lit set as the backend's observation list (absolute handle shifts). */
+  const observationList = useCallback(
+    () =>
+      Object.entries(lit).map(([key, dAtmVol]) => {
+        const [ticker = "", expiry = ""] = key.split("|");
+        return { ticker, expiry, dAtmVol };
+      }),
+    [lit],
+  );
+
   const solve = useCallback(async (): Promise<void> => {
-    const observations = Object.entries(lit).map(([key, dAtmVol]) => {
-      const [ticker = "", expiry = ""] = key.split("|");
-      return { ticker, expiry, dAtmVol };
-    });
+    const observations = observationList();
     if (observations.length === 0) return; // backend requires >= 1
     setSolving(true);
     setSolveError(null);
     try {
       const res = await api.post<GraphSolveResponse>("/graph/solve", {
-        body: { observations, etaScale },
+        body: { observations, ...paramsBody(params) },
       });
       const map: Record<string, GraphSolveNode> = {};
       for (const n of res.nodes) map[nodeKey(n.ticker, n.expiry)] = n;
@@ -182,7 +280,26 @@ export function useGraph(): UseGraphResult {
     } finally {
       setSolving(false);
     }
-  }, [lit, etaScale]);
+  }, [observationList, params]);
+
+  const autotune = useCallback(async (): Promise<void> => {
+    const observations = observationList();
+    if (observations.length < 2) return; // LOO needs >= 2 observations
+    setAutotuning(true);
+    setAutotuneError(null);
+    try {
+      const res = await api.post<AutotuneResult>("/graph/autotune", {
+        body: { observations, ...paramsBody(params) },
+      });
+      setAutotuneResult(res);
+      // Adopt the chosen reach so the next Solve uses it.
+      setParams((prev) => ({ ...prev, etaScale: res.etaScale }));
+    } catch (err: unknown) {
+      setAutotuneError(messageOf(err));
+    } finally {
+      setAutotuning(false);
+    }
+  }, [observationList, params]);
 
   const clear = useCallback(() => {
     setResults(null);
@@ -197,13 +314,19 @@ export function useGraph(): UseGraphResult {
     lit,
     toggleLit,
     setShift,
+    lightMany,
     unlight,
-    etaScale,
-    setEtaScale,
+    params,
+    setParam,
+    resetParams,
     solve,
     solving,
     solveError,
     results,
     clear,
+    autotune,
+    autotuning,
+    autotuneResult,
+    autotuneError,
   };
 }

@@ -12,7 +12,7 @@
 //                   posterior shift (bp), plus an outer halo whose radius /
 //                   fade encode the posterior sd (bigger + fainter = more
 //                   uncertain). Lit nodes keep the amber ring on top.
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { GraphNodeBase, GraphSolveNode } from "../state/useGraph";
 import { nodeKey } from "../state/useGraph";
 import { clamp, formatPct } from "../lib/chartScale";
@@ -25,8 +25,22 @@ interface GraphChartProps {
   results: Record<string, GraphSolveNode> | null;
   /** Single click: light/dim a node. */
   onToggle: (key: string) => void;
+  /** Lasso: light every node enclosed by a drag-rectangle on the background. */
+  onLasso: (keys: string[]) => void;
   /** Double click: drill into the node's smile. */
   onOpenSmile: (ticker: string, expiry: string) => void;
+}
+
+/** Drag distance (px) below which a background press counts as a click, not a
+ *  lasso — keeps an accidental 1–2px drag from selecting nothing/everything. */
+const LASSO_MIN_DRAG = 4;
+
+/** An in-progress lasso rectangle, in SVG user coordinates. */
+interface LassoBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 // Grid geometry. Written generically: any number of tickers / expiries;
@@ -67,10 +81,14 @@ export default function GraphChart({
   lit,
   results,
   onToggle,
+  onLasso,
   onOpenSmile,
 }: GraphChartProps) {
   /** Key of the hovered node, for the tooltip readout. */
   const [hoverKey, setHoverKey] = useState<string | null>(null);
+  /** Live lasso rectangle while dragging on the background, else null. */
+  const [lasso, setLasso] = useState<LassoBox | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Derive the lattice: ticker columns (order of first appearance) and
   // expiry rows (sorted by year-fraction), then pin every node to a cell.
@@ -127,6 +145,45 @@ export default function GraphChart({
   const hoverPos = hoverKey !== null ? layout.pos.get(hoverKey) : undefined;
   const hoverResult = hoverKey !== null ? results?.[hoverKey] : undefined;
 
+  /* ------------------------- lasso selection ------------------------- */
+  // The SVG box maps 1:1 to user units (width/height = intrinsic size, no
+  // viewBox), so a viewport delta from its bounding rect is an SVG coordinate.
+  const svgPoint = (e: React.MouseEvent): { x: number; y: number } => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    return rect ? { x: e.clientX - rect.left, y: e.clientY - rect.top } : { x: 0, y: 0 };
+  };
+
+  const startLasso = (e: React.MouseEvent) => {
+    if (e.button !== 0) return; // left button only; nodes stop propagation
+    const { x, y } = svgPoint(e);
+    setLasso({ x0: x, y0: y, x1: x, y1: y });
+  };
+
+  const moveLasso = (e: React.MouseEvent) => {
+    if (lasso === null) return;
+    const { x, y } = svgPoint(e);
+    setLasso((prev) => (prev ? { ...prev, x1: x, y1: y } : prev));
+  };
+
+  const endLasso = () => {
+    if (lasso === null) return;
+    const box = lasso;
+    setLasso(null);
+    if (Math.abs(box.x1 - box.x0) < LASSO_MIN_DRAG && Math.abs(box.y1 - box.y0) < LASSO_MIN_DRAG)
+      return; // a background click, not a drag-select
+    const loX = Math.min(box.x0, box.x1);
+    const hiX = Math.max(box.x0, box.x1);
+    const loY = Math.min(box.y0, box.y1);
+    const hiY = Math.max(box.y0, box.y1);
+    const keys = nodes
+      .map((n) => nodeKey(n.ticker, n.expiry))
+      .filter((key) => {
+        const p = layout.pos.get(key);
+        return p !== undefined && p.x >= loX && p.x <= hiX && p.y >= loY && p.y <= hiY;
+      });
+    if (keys.length > 0) onLasso(keys);
+  };
+
   return (
     // Scrollable viewport; the inner div is sized to the lattice so the
     // tooltip (absolute) tracks node coordinates even when scrolled.
@@ -135,7 +192,16 @@ export default function GraphChart({
         className="relative"
         style={{ width: layout.width, height: layout.height }}
       >
-        <svg width={layout.width} height={layout.height}>
+        <svg
+          ref={svgRef}
+          width={layout.width}
+          height={layout.height}
+          onMouseDown={startLasso}
+          onMouseMove={moveLasso}
+          onMouseUp={endLasso}
+          onMouseLeave={endLasso}
+          className={lasso ? "select-none" : undefined}
+        >
           {/* Column headers: one per ticker */}
           {layout.tickers.map((t, c) => (
             <text
@@ -229,6 +295,9 @@ export default function GraphChart({
               <g
                 key={key}
                 className="cursor-pointer"
+                // Stop the press from starting a background lasso so a plain
+                // click still toggles this node.
+                onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => onToggle(key)}
                 onDoubleClick={() => onOpenSmile(n.ticker, n.expiry)}
                 onMouseEnter={() => setHoverKey(key)}
@@ -268,6 +337,21 @@ export default function GraphChart({
               </g>
             );
           })}
+
+          {/* Live lasso rectangle (drawn above nodes, ignores pointer) */}
+          {lasso && (
+            <rect
+              x={Math.min(lasso.x0, lasso.x1)}
+              y={Math.min(lasso.y0, lasso.y1)}
+              width={Math.abs(lasso.x1 - lasso.x0)}
+              height={Math.abs(lasso.y1 - lasso.y0)}
+              fill="rgb(129 140 248 / 0.12)"
+              stroke="rgb(129 140 248 / 0.9)"
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              pointerEvents="none"
+            />
+          )}
         </svg>
 
         {/* Hover readout: posterior detail after a solve, baseline handles

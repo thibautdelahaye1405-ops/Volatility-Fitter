@@ -8,6 +8,7 @@
 // — there is deliberately no mock fallback for the solver.
 import { useMemo } from "react";
 import GraphChart from "../components/GraphChart";
+import SolverPanel from "../components/SolverPanel";
 import { useGraph } from "../state/useGraph";
 import { useSmileSession } from "../state/smileSession";
 
@@ -31,14 +32,20 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     lit,
     toggleLit,
     setShift,
+    lightMany,
     unlight,
-    etaScale,
-    setEtaScale,
+    params,
+    setParam,
+    resetParams,
     solve,
     solving,
     solveError,
     results,
     clear,
+    autotune,
+    autotuning,
+    autotuneResult,
+    autotuneError,
   } = useGraph();
   const { setTicker, setExpiry } = useSmileSession();
 
@@ -120,6 +127,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
               lit={lit}
               results={results}
               onToggle={toggleLit}
+              onLasso={lightMany}
               onOpenSmile={openSmile}
             />
           )}
@@ -127,7 +135,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
         {/* Interaction hint */}
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          Click to light/dim · double-click to open smile · Solve to propagate
+          Click to light/dim · drag to lasso · double-click to open smile · Solve to propagate
         </p>
       </div>
 
@@ -184,30 +192,22 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
               })}
             </div>
           )}
+
+          <SolverPanel
+            params={params}
+            setParam={setParam}
+            resetParams={resetParams}
+            litCount={litEntries.length}
+            autotune={() => void autotune()}
+            autotuning={autotuning}
+            autotuneResult={autotuneResult}
+            autotuneError={autotuneError}
+          />
         </div>
 
-        {/* Propagation reach η: log-scaled slider, 0.1× — 10× */}
+        {/* Solve / Clear (pinned below the scroll area) */}
         <div className="mt-3 border-t border-slate-800 pt-3">
-          <label className="block">
-            <span className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Propagation reach η</span>
-              <span className="font-mono text-slate-100">
-                {etaScale.toFixed(2)}×
-              </span>
-            </span>
-            <input
-              type="range"
-              min={-1}
-              max={1}
-              step={0.05}
-              value={Math.log10(etaScale)}
-              onChange={(e) => setEtaScale(10 ** Number(e.target.value))}
-              className="mt-1.5 w-full accent-accent-500"
-            />
-          </label>
-
-          {/* Solve / Clear */}
-          <div className="mt-3 flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <button
               disabled={litEntries.length === 0 || solving}
               onClick={() => void solve()}

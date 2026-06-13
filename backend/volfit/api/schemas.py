@@ -232,11 +232,31 @@ class GraphObservation(BaseModel):
     dCurv: float = 0.0
 
 
-class GraphSolveRequest(BaseModel):
+class GraphSolverParams(BaseModel):
+    """Tunable hyperparameters of the increment prior Q_Delta and the graph.
+
+    The three scales multiply the per-handle base regime (service.py
+    GRAPH_PRIOR_HYPER): ``etaScale`` the directed-smoothness weight eta,
+    ``kappaScale`` the local precision kappa (stiffness toward the baseline —
+    higher means less propagation), ``lambdaScale`` the optimal-transport flux
+    weight lambda (0 disables the OT term, preserving the legacy regime).
+    ``nu`` is the OT source/sink allowance, used only when lambdaScale > 0.
+    ``calendarWeight`` / ``crossWeight`` override the same-ticker and
+    cross-ticker edge weights; null keeps the service defaults.
+    """
+
+    etaScale: float = Field(default=1.0, ge=0.0)
+    kappaScale: float = Field(default=1.0, gt=0.0)
+    lambdaScale: float = Field(default=0.0, ge=0.0)
+    nu: float = Field(default=0.1, gt=0.0)
+    calendarWeight: float | None = Field(default=None, gt=0.0)
+    crossWeight: float | None = Field(default=None, gt=0.0)
+
+
+class GraphSolveRequest(GraphSolverParams):
     """Propagate sparse handle observations through the smile universe."""
 
     observations: list[GraphObservation] = Field(min_length=1)
-    etaScale: float = 1.0  # multiplies the directed-smoothness weight eta
 
 
 class GraphNodeResult(BaseModel):
@@ -258,6 +278,32 @@ class GraphSolveResponse(BaseModel):
     """Posterior field over every node of the smile universe."""
 
     nodes: list[GraphNodeResult]
+
+
+class GraphAutotuneRequest(GraphSolverParams):
+    """Pick the propagation reach etaScale by leave-one-out cross-validation.
+
+    Needs at least two observations (LOO holds one out at a time). The other
+    solver knobs are held fixed at the supplied values while eta is tuned;
+    ``etaScale`` on this request is ignored (it is the quantity being chosen).
+    """
+
+    observations: list[GraphObservation] = Field(min_length=2)
+
+
+class AutotuneCandidate(BaseModel):
+    """One grid point of the auto-tune sweep and its LOO error."""
+
+    etaScale: float
+    rmseBp: float  # RMS leave-one-out ATM-vol prediction error, basis points
+
+
+class GraphAutotuneResponse(BaseModel):
+    """Chosen etaScale (LOO-RMSE minimizer) plus the full scored grid."""
+
+    etaScale: float
+    rmseBp: float
+    candidates: list[AutotuneCandidate]
 
 
 class GraphNodeInfo(BaseModel):
