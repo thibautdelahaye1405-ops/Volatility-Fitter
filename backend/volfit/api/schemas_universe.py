@@ -38,3 +38,28 @@ class SavedUniversesResponse(BaseModel):
 
     names: list[str]
     storeEnabled: bool  # False when VOLFIT_DB is unset — save/load disabled
+
+
+class ExpiryOption(BaseModel):
+    """One selectable expiry of a ticker for the per-ticker expiry picker."""
+
+    expiry: str  # ISO date
+    t: float  # year fraction
+    days: int  # calendar days to expiry
+    bucket: str  # 0dte / weekly / monthly / quarterly / daily
+    selected: bool  # currently in the fitted ladder
+
+
+class ExpiryPickerResponse(BaseModel):
+    """A ticker's full available expiry list with current selection flags."""
+
+    ticker: str
+    asOf: str
+    mode: str  # "auto" (default rule) | "custom" (user picks)
+    expiries: list[ExpiryOption]
+
+
+class SetExpiriesRequest(BaseModel):
+    """Replace a ticker's selected expiries with these ISO dates."""
+
+    expiries: list[str]

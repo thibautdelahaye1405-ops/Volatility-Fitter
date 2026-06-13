@@ -98,7 +98,7 @@ class YahooProvider(OptionChainProvider):
         self,
         tickers: Sequence[str],
         max_expiries: int = 8,
-        max_days: int = 550,
+        max_days: int = 730,
         ticker_factory: Callable[[str], object] | None = None,
         exercise_style: str | None = None,
     ) -> None:
@@ -179,6 +179,21 @@ class YahooProvider(OptionChainProvider):
 
     # -- expiries ------------------------------------------------------------
 
+    def available_expiries(self, ticker: str) -> list[date]:
+        """All listed expiries inside (0, max_days], unthinned — the full list
+        the universe picker offers. One cheap ``Ticker.options`` call, no chains."""
+        t = self._ticker_factory(ticker)
+        today = date.today()
+        out: list[date] = []
+        for iso in tuple(getattr(t, "options", ()) or ()):
+            try:
+                expiry = date.fromisoformat(str(iso))
+            except ValueError:
+                continue
+            if 0 < (expiry - today).days <= self.max_days:
+                out.append(expiry)
+        return sorted(out)
+
     def _select_expiries(self, t, ticker: str) -> list[tuple[str, date]]:
         """Listed expiries inside (0, max_days], thinned to max_expiries.
 
@@ -249,17 +264,21 @@ class YahooProvider(OptionChainProvider):
             )
         return quotes
 
-    def fetch_chain(self, ticker: str) -> ChainSnapshot:
-        """Fetch spot + all selected expiries; skip (warn) failing expiries."""
+    def fetch_chain(self, ticker: str, expiries: list[date] | None = None) -> ChainSnapshot:
+        """Fetch spot + the requested expiries (the universe selection), or the
+        thinned ladder when none is given; skip (warn) failing expiries."""
         t = self._ticker_factory(ticker)
         spot = self._spot(t, ticker)
-        expiries = self._select_expiries(t, ticker)
+        if expiries is None:
+            chosen = self._select_expiries(t, ticker)  # legacy sqrt-thinned ladder
+        else:
+            chosen = [(e.isoformat(), e) for e in sorted(expiries)]
         # Naive UTC snapshot time (types.py convention: tz-naive, UTC clock).
         timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
 
         quotes: list[OptionQuote] = []
         failures = 0
-        for iso, expiry in expiries:
+        for iso, expiry in chosen:
             try:
                 chain = t.option_chain(iso)
                 quotes.extend(
@@ -273,7 +292,7 @@ class YahooProvider(OptionChainProvider):
                 warnings.warn(
                     f"{ticker}: skipping expiry {iso}: {exc}", stacklevel=2
                 )
-        if failures == len(expiries):
+        if chosen and failures == len(chosen):
             raise ValueError(
                 f"all {failures} expiries failed for {ticker!r}; see warnings"
             )

@@ -52,8 +52,17 @@ class OptionChainProvider(abc.ABC):
         """Tickers this provider can serve option chains for."""
 
     @abc.abstractmethod
-    def fetch_chain(self, ticker: str) -> ChainSnapshot:
-        """Fetch the full current option chain for one underlying."""
+    def fetch_chain(self, ticker: str, expiries: list[date] | None = None) -> ChainSnapshot:
+        """Fetch the option chain for one underlying.
+
+        ``expiries`` restricts the fetch to those expiry dates (the universe's
+        per-ticker selection); ``None`` fetches the provider's natural ladder.
+        """
+
+    @abc.abstractmethod
+    def available_expiries(self, ticker: str) -> list[date]:
+        """All expiries the provider can serve for a ticker, cheaply (no chain
+        fetch) — the full list the universe picker chooses from."""
 
     def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
         """Resolve a free-text query (symbol or name) to candidate symbols.
@@ -126,8 +135,13 @@ class SyntheticProvider(OptionChainProvider):
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
 
-    def fetch_chain(self, ticker: str) -> ChainSnapshot:
-        """Build the synthetic chain: 4 expiries, calls and puts on a strike grid."""
+    def available_expiries(self, ticker: str) -> list[date]:
+        """The synthetic ladder: ~1M, 3M, 6M, 1Y from the reference date."""
+        return [self.reference_date + timedelta(days=d) for d in _EXPIRY_DAYS]
+
+    def fetch_chain(self, ticker: str, expiries: list[date] | None = None) -> ChainSnapshot:
+        """Build the synthetic chain: calls and puts on a strike grid per expiry
+        (the natural 4-expiry ladder, or just ``expiries`` when given)."""
         tick_hash = zlib.crc32(ticker.encode("utf-8"))
         spot = 50.0 + (tick_hash % 4000) / 10.0  # deterministic spot in [50, 449.9]
         rng = np.random.RandomState((self._seed ^ tick_hash) & 0x7FFFFFFF)
@@ -140,10 +154,12 @@ class SyntheticProvider(OptionChainProvider):
             step,
         )
 
+        chosen = self.available_expiries(ticker) if expiries is None else list(expiries)
         quotes: list[OptionQuote] = []
-        for days in _EXPIRY_DAYS:
-            expiry = self.reference_date + timedelta(days=days)
-            t = days / 365.0
+        for expiry in chosen:
+            t = max((expiry - self.reference_date).days, 0) / 365.0
+            if t <= 0.0:
+                continue
             k = np.log(strikes / spot)
             w = _svi_total_variance(k, t)
 

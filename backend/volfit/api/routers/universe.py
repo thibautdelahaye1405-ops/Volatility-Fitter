@@ -15,7 +15,9 @@ from volfit.api import universe_service as svc
 from volfit.api.schemas import UniverseResponse
 from volfit.api.schemas_universe import (
     AddTickerRequest,
+    ExpiryPickerResponse,
     SavedUniversesResponse,
+    SetExpiriesRequest,
     SymbolSearchResponse,
 )
 from volfit.api.state import UnknownNodeError
@@ -55,6 +57,35 @@ def remove_ticker(symbol: str, request: Request) -> UniverseResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from None
     except ValueError as exc:  # removing the last ticker
         raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+# --------------------------------------------------------- expiry selection
+@router.get("/universe/{ticker}/expiries", response_model=ExpiryPickerResponse)
+def get_expiries(ticker: str, request: Request) -> ExpiryPickerResponse:
+    try:
+        return svc.expiry_picker(_state(request), ticker)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.put("/universe/{ticker}/expiries", response_model=ExpiryPickerResponse)
+def put_expiries(
+    ticker: str, body: SetExpiriesRequest, request: Request
+) -> ExpiryPickerResponse:
+    try:
+        return svc.set_expiries(_state(request), ticker, body.expiries)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+    except ValueError as exc:  # empty selection / malformed date
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
+@router.post("/universe/{ticker}/expiries/reset", response_model=ExpiryPickerResponse)
+def reset_expiries(ticker: str, request: Request) -> ExpiryPickerResponse:
+    try:
+        return svc.reset_expiries(_state(request), ticker)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 # --------------------------------------------------------- named universes

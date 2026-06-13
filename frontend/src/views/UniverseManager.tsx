@@ -7,6 +7,7 @@
 // update immediately. Live backend only (the universe lives on the server).
 import { useState } from "react";
 import { useUniverse } from "../state/useUniverse";
+import ExpiryPicker from "../components/ExpiryPicker";
 
 const card =
   "flex min-h-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30";
@@ -34,8 +35,10 @@ export default function UniverseManager() {
     saveUniverse,
     loadUniverse,
     deleteUniverse,
+    refreshUniverse,
   } = useUniverse();
   const [newName, setNewName] = useState("");
+  const [expanded, setExpanded] = useState<string | null>(null);
 
   if (source === "mock") {
     return (
@@ -126,20 +129,33 @@ export default function UniverseManager() {
               <div className="divide-y divide-slate-800/60">
                 {tickers.map((t) => {
                   const ladder = universe?.expiries[t] ?? [];
+                  const open = expanded === t;
                   return (
-                    <div key={t} className="flex items-center gap-2 py-1.5">
-                      <span className="w-24 font-mono text-xs font-medium text-slate-100">{t}</span>
-                      <span className="flex-1 text-[11px] text-slate-500">
-                        {ladder.length} expir{ladder.length === 1 ? "y" : "ies"}
-                      </span>
-                      <button
-                        className={smallBtn}
-                        disabled={tickers.length <= 1 || busy !== null}
-                        title={tickers.length <= 1 ? "the universe needs at least one ticker" : undefined}
-                        onClick={() => removeTicker(t)}
-                      >
-                        {busy === `remove:${t}` ? "Removing…" : "Remove"}
-                      </button>
+                    <div key={t} className="py-1.5">
+                      <div className="flex items-center gap-2">
+                        <button
+                          className="w-24 text-left font-mono text-xs font-medium text-slate-100 hover:text-accent-400"
+                          title="Edit this ticker's expiries"
+                          onClick={() => setExpanded(open ? null : t)}
+                        >
+                          {open ? "▾ " : "▸ "}
+                          {t}
+                        </button>
+                        <span className="flex-1 text-[11px] text-slate-500">
+                          {ladder.length} expir{ladder.length === 1 ? "y" : "ies"} selected
+                        </span>
+                        <button
+                          className={smallBtn}
+                          disabled={tickers.length <= 1 || busy !== null}
+                          title={
+                            tickers.length <= 1 ? "the universe needs at least one ticker" : undefined
+                          }
+                          onClick={() => removeTicker(t)}
+                        >
+                          {busy === `remove:${t}` ? "Removing…" : "Remove"}
+                        </button>
+                      </div>
+                      {open && <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
                     </div>
                   );
                 })}

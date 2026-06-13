@@ -10,7 +10,26 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (235 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (246 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-13] Per-ticker expiry-depth/window selection**: the Universe tab
+  now picks each ticker's expiries from the FULL provider list. Provider
+  exposes `available_expiries` (cheap — Yahoo `Ticker.options`, no chain fetch;
+  horizon raised to ~2Y) and `fetch_chain(ticker, expiries)` fetches only the
+  selected rungs. `data/expiry_select.py`: buckets (0dte / weekly = M/W/F /
+  monthly = 3rd Fri / quarterly / daily), the **default rule** (first 2 M/W/F
+  weeklies >=2 days + first 2 monthlies + quarterlies <=18M; sparse ladders
+  <=8 take all), and bulk-filter resolution. AppState gains per-ticker
+  available/selected/mode (auto vs custom), lazily applied to watchlist
+  tickers; selection changes re-fetch the chosen expiries (extracted to
+  `api/state_universe.UniverseMixin` to keep state.py <400). Endpoints: GET
+  /universe/{t}/expiries (full list + buckets + selected flags), PUT (set),
+  POST .../reset (default rule). Named universes now persist per-ticker
+  selection ("auto" re-resolves the rule, "custom" re-applies explicit picks).
+  Frontend `ExpiryPicker.tsx` in the Universe tab: bulk chips (0DTE/Weeklies/
+  Monthly/Quarterly/<=1Y/<=2Y/All) + per-expiry checkboxes + Reset; edits
+  refit every workspace via the shared session. 11 new tests; verified
+  end-to-end on live SPY (29 available -> 8 default-selected; picker + chips).
 
 - **[2026-06-13] Universe-selection UI**: a dedicated "Universe" tab (5th
   workspace) to curate the working set of underlyings. Backend: AppState now
@@ -300,14 +319,13 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
    providers + DuckDB/Parquet history; process-pool for parallel slice fits;
    editable ATM handles + prior load/diff UI; arbitrage/event toggles in the
    hyperparameter panel.
-3. Universe leftovers (small): per-ticker expiry-depth/window control (the
-   provider thins to ~8 sqrt-spaced rungs today; the class chips bulk-select
-   within a ladder); the saved-universe persistence stores only the ticker
-   list (the min/max-day window is defaulted).
+3. Universe leftovers (small): Bloomberg/Massive providers would need their own
+   `available_expiries`; the expiry picker is per-ticker (no cross-ticker "apply
+   to all" yet).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (235 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (246 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and

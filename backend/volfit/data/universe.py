@@ -15,7 +15,7 @@ keeps this module free of any SQL beyond three one-liners.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from volfit.data.store import VolStore
@@ -23,17 +23,21 @@ from volfit.data.store import VolStore
 
 @dataclass(frozen=True)
 class Universe:
-    """A named selection of tickers and an expiry window.
+    """A named selection of tickers, an expiry window, and per-ticker picks.
 
     `min_days`/`max_days` bound the time-to-expiry (in calendar days from the
     as-of date) of the smiles included in the universe; the defaults keep
-    everything from tomorrow out to ten years.
+    everything from tomorrow out to ten years. `selections` records each
+    ticker's expiry selection so it survives save/load: ``None`` means "auto"
+    (re-apply the default rule on load), a list of ISO dates means the user's
+    custom picks (re-applied where those dates still exist).
     """
 
     name: str
     tickers: tuple[str, ...]
     min_days: int = 1
     max_days: int = 3650
+    selections: dict[str, list[str] | None] = field(default_factory=dict)
 
     def filter_expiries(self, expiries: list[date], asof: date) -> list[date]:
         """Expiries within the universe's [min_days, max_days] window, sorted."""
@@ -47,6 +51,7 @@ class Universe:
             "tickers": list(self.tickers),
             "min_days": self.min_days,
             "max_days": self.max_days,
+            "selections": self.selections,
         }
 
     @staticmethod
@@ -56,6 +61,7 @@ class Universe:
             tickers=tuple(config["tickers"]),
             min_days=int(config["min_days"]),
             max_days=int(config["max_days"]),
+            selections=config.get("selections", {}),
         )
 
 

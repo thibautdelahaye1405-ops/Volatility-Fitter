@@ -160,5 +160,7 @@ export function useUniverse() {
     saveUniverse,
     loadUniverse,
     deleteUniverse,
+    /** Refit the session on a new ladder after a per-ticker expiry change. */
+    refreshUniverse,
   };
 }
