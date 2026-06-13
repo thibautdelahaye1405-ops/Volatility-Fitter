@@ -5,11 +5,12 @@ import { useState } from "react";
 import TopBar from "./components/TopBar";
 import SmileViewer from "./views/SmileViewer";
 import TermStructureViewer from "./views/TermStructureViewer";
+import LocalVolViewer from "./views/LocalVolViewer";
 import GraphViewer from "./views/GraphViewer";
 import { SmileSessionProvider } from "./state/smileSession";
 
-/** The three top-level workspaces of the application. */
-export type TabId = "smile" | "term" | "graph";
+/** The top-level workspaces of the application. */
+export type TabId = "smile" | "term" | "localvol" | "graph";
 
 export interface TabDef {
   id: TabId;
@@ -19,6 +20,7 @@ export interface TabDef {
 export const TABS: TabDef[] = [
   { id: "smile", label: "Smile" },
   { id: "term", label: "Term Structure" },
+  { id: "localvol", label: "Local Vol" },
   { id: "graph", label: "Graph" },
 ];
 
@@ -34,6 +36,7 @@ export default function App() {
         <main className="flex-1 overflow-auto">
           {activeTab === "smile" && <SmileViewer />}
           {activeTab === "term" && <TermStructureViewer />}
+          {activeTab === "localvol" && <LocalVolViewer />}
           {activeTab === "graph" && (
             // Drill-in: GraphViewer points the shared smile session at a
             // node, then asks the shell to switch to the Smile workspace.

@@ -1,5 +1,6 @@
 """Thin HTTP/WebSocket routers over volfit.api.service (ROADMAP Phase 5-6)."""
 
+from volfit.api.routers.affine import router as affine_router
 from volfit.api.routers.edits import router as edits_router
 from volfit.api.routers.fit import router as fit_router
 from volfit.api.routers.forwards import router as forwards_router
@@ -19,6 +20,7 @@ ALL_ROUTERS = (
     smiles_router,
     edits_router,
     fit_router,
+    affine_router,
     forwards_router,
     graph_router,
     history_router,
@@ -31,6 +33,7 @@ ALL_ROUTERS = (
 
 __all__ = [
     "ALL_ROUTERS",
+    "affine_router",
     "edits_router",
     "fit_router",
     "forwards_router",

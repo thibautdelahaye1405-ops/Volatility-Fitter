@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (215 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (221 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -202,19 +202,33 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   `model` is now `lqd|svi|sigmoid`; the LQD-only N/damping knobs grey out off
   LQD in HyperparamPanel. Frontend strict-TS build green.
 
+- **Direct local-vol-affine fit + Local Vol view (2026-06-13)**: the
+  model-choice bullet is now fully closed. `POST /fit/affine/{ticker}`
+  (`api/affine_fit.py` + `schemas_affine.py` + `routers/affine.py`) calibrates
+  the piecewise-affine local-VARIANCE surface of the Docs note straight to a
+  ticker's option quotes — gathers every expiry's edited quotes, converts mid
+  IVs to normalized forward call prices with vega-scaled tolerances, builds a
+  tensor vertex grid (0 + a spread of expiries × a strike grid incl. x=1) and
+  the fine PDE x/t grids (t hits every quoted expiry), runs
+  `calibrate_affine`, and reconstructs each expiry's arbitrage-free smile by
+  inverting the Dupire PDE call prices through Black. Distinct from
+  GET /localvol (Dupire *extraction* from the LQD fit). Cached per request
+  hyperparameters. New frontend **Local Vol tab** (`views/LocalVolViewer.tsx`
+  + `state/useAffine.ts` + `LocalVolHeatmap.tsx` nodal σ heatmap +
+  `LocalVolSmile.tsx` reconstructed-smile-vs-quotes chart): vertex-grid /
+  roughness controls, per-expiry fit + butterfly (min φ) diagnostics, arb-free
+  badge. 6 API tests; verified end-to-end in headless Edge (ALPHA: arb-free,
+  21 bp max error, 4×8 vertex heatmap, 0.5 s fit).
+
 **Next up (in order — items marked [REQ] were requested by the user on
 2026-06-12; details in the phase checklists below):**
-1. Direct **local-vol-affine fit through the API** (the remaining model-choice
-   sub-item): affine is a surface-level (x-grid × t-grid) calibration, not a
-   per-slice fit like LQD/SVI/sigmoid, so it needs its own surface endpoint
-   rather than the FitSettings.model overlay path used above.
-2. Realism leftovers (small): discrete-dividend ex-date handling in event
+1. Realism leftovers (small): discrete-dividend ex-date handling in event
    time; dividend-schedule editor UI (API supports discrete schedules, the
    ForwardPanel only exposes r and continuous q today).
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (215 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (221 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
@@ -320,8 +334,8 @@ since other models are standard.
   wing-slope & min-variance penalties; recovers the benchmark to machine
   precision). (full Gatheral–Jacquier butterfly conditions still TODO)
 - [x] `models/sigmoid/`: 4-param sigmoid curve + LM fit (round-trip exact).
-- [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. API exposure TODO.
-- [x] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: `models/localvol/affine.py` + `affine_calib.py`, golden tests vs every table of the note (Delaunay triangulation is the note's convention; lambda=50 roughness reproduces the calibrated nodal table).
+- [x] `models/localvol/`: bilinear (continuous piecewise-affine) and pw-const-in-t grid variants; CN Dupire forward PDE pricer (Rannacher startup, adaptive span); Dupire extraction with butterfly-gated denominator; round-trip + consistency tests. Exposed via the API (GET /localvol extraction + POST /fit/affine direct calibration) and the Local Vol view.
+- [x] [REQ 2026-06-12] Local-vol calibration per `Docs/piecewise_affine_local_variance_calibration.tex`: `models/localvol/affine.py` + `affine_calib.py`, golden tests vs every table of the note (Delaunay triangulation is the note's convention; lambda=50 roughness reproduces the calibrated nodal table). **Exposed via the API** (POST /fit/affine/{ticker}, `api/affine_fit.py`) and the **Local Vol frontend view** (direct surface fit + reconstructed arbitrage-free smiles + no-arb diagnostics).
 - [x] [REQ 2026-06-12] American-options handling, de-Americanization first: `core/american.py` CRR binomial + `deamericanize()` scalar and `deamericanize_batch()` (vectorized bisection, chain-scale). **Wired into quote prep**: `ChainSnapshot.exercise_style` flag (Yahoo heuristic + VolStore v2), EEP stripped from bid/mid/ask in `api/quotes.py`, carry from the resolved forward.
 - [x] Common `SmileModel` protocol (`models/base.py`): `implied_w(k)`, `implied_vol(k, t)` — satisfied by LQD/SVI/sigmoid. (richer `density()`/`diagnostics()` surface TBD)
 - [x] Calendar check via G_i(α) ≤ G_j(α): implemented as elementwise asset-share comparison on the shared logit grid (`calib/calendar.py`), soft-slack penalty in `calibrate_slice`, **toggleable**. (model-free butterfly check for non-LQD models TODO)
