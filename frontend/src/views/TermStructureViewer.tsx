@@ -173,6 +173,7 @@ export default function TermStructureViewer() {
                 events={events}
                 eventsEnabled={eventsEnabled}
                 axisClock={axisClock}
+                dividends={data.dividends}
               />
             )}
           </div>

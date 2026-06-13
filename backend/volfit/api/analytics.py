@@ -26,9 +26,12 @@ from __future__ import annotations
 
 import numpy as np
 
+from datetime import date
+
 from volfit.api.schemas import (
     DensityResponse,
     DistributionArrays,
+    DividendMarker,
     TermCurve,
     TermPoint,
     TermStructureRequest,
@@ -49,6 +52,37 @@ CURVE_T_PAD = 1.05
 #: (~99.8% of probability), then stride down to at most MAX_CHART_POINTS.
 U_TRIM = 1e-3
 MAX_CHART_POINTS = 241
+
+#: Dividend modes whose discrete ex-dates are surfaced as term-structure
+#: markers (the "continuous" yield has no dated cash flows to mark).
+_DISCRETE_DIV_MODES = ("discrete_absolute", "discrete_proportional", "mixed")
+
+
+def _dividend_markers(
+    state: AppState, ticker: str, clock: EventClock, t_max: float
+) -> list[DividendMarker]:
+    """Discrete ex-dates of the ticker inside (0, t_max], on both clocks.
+
+    Only the modes that actually use the discrete schedule contribute; the
+    forward already drops at each ex-date, so these are informational markers
+    (their dilated tau lets the chart place them under either clock mode).
+    """
+    market = state.market_settings(ticker)
+    if market.dividendMode not in _DISCRETE_DIV_MODES:
+        return []
+    markers: list[DividendMarker] = []
+    for spec in market.dividends:
+        dt = state.year_fraction(date.fromisoformat(spec.exDate))
+        if 0.0 < dt <= t_max:
+            markers.append(
+                DividendMarker(
+                    exDate=spec.exDate,
+                    t=dt,
+                    tau=float(clock.dilated_time(dt)),
+                    amount=spec.amount,
+                )
+            )
+    return sorted(markers, key=lambda m: m.t)
 
 
 # ------------------------------------------------------------ term structure
@@ -96,7 +130,8 @@ def term_structure(
 
     # Dense curve: w(T) linear in dilated time tau(T) — the whole point of
     # the event clock (flat forward variance per dilated-time unit).
-    t_grid = np.linspace(CURVE_T_MIN, CURVE_T_PAD * max(ts), CURVE_POINTS)
+    t_max = CURVE_T_PAD * max(ts)
+    t_grid = np.linspace(CURVE_T_MIN, t_max, CURVE_POINTS)
     w_grid = np.asarray(clock.interpolate_total_variance(t_grid, np.array(ts), np.array(w0s)))
     curve = TermCurve(
         t=t_grid.tolist(),
@@ -105,7 +140,11 @@ def term_structure(
         vol=np.sqrt(w_grid / t_grid).tolist(),
     )
     return TermStructureResponse(
-        ticker=ticker, points=points, curve=curve, calendarViolations=violations
+        ticker=ticker,
+        points=points,
+        curve=curve,
+        calendarViolations=violations,
+        dividends=_dividend_markers(state, ticker, clock, t_max),
     )
 
 

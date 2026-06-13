@@ -8,7 +8,13 @@
 // Hand-rolled SVG, no chart deps; conventions match SmileChart.
 import { useLayoutEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
-import type { ClockMode, TermCurve, TermEvent, TermPoint } from "../state/useTerm";
+import type {
+  ClockMode,
+  DividendMarker,
+  TermCurve,
+  TermEvent,
+  TermPoint,
+} from "../state/useTerm";
 import type { LinearScale } from "../lib/chartScale";
 import {
   clamp,
@@ -25,6 +31,8 @@ interface TermChartProps {
   events: TermEvent[];
   eventsEnabled: boolean;
   axisClock: ClockMode;
+  /** Discrete dividend ex-dates, drawn on both clocks. */
+  dividends: DividendMarker[];
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 44, left: 56 } as const;
@@ -71,6 +79,7 @@ export default function TermChart({
   events,
   eventsEnabled,
   axisClock,
+  dividends,
 }: TermChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -146,6 +155,12 @@ export default function TermChart({
           )
       : [];
 
+  // Dividend ex-dates: drawn on both clocks at their real-time (t) or
+  // dilated (τ) position, which the backend supplies for each marker.
+  const divMarks = dividends
+    .map((d) => ({ d, x: dilated ? d.tau : d.t }))
+    .filter((m) => m.x >= xLo && m.x <= xHi);
+
   /* ---------------- crosshair ---------------- */
 
   const onMouseMove = (e: ReactMouseEvent<SVGSVGElement>) => {
@@ -182,6 +197,11 @@ export default function TermChart({
         {eventMarks.length > 0 && (
           <span className="flex items-center gap-1.5">
             <span className="h-3 w-0 border-l border-dashed border-amber-400/70" /> Events
+          </span>
+        )}
+        {divMarks.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-0 border-l border-dashed border-emerald-400/70" /> Dividends
           </span>
         )}
       </div>
@@ -278,6 +298,21 @@ export default function TermChart({
                 className="fill-slate-500 font-mono text-[10px]">
                 {dilated ? "dilated maturity τ (years)" : "maturity (years)"}
               </text>
+
+              {/* Dividend ex-dates: emerald dashed verticals + cash label */}
+              {divMarks.map(({ d, x }) => {
+                const px = xScale.map(x);
+                return (
+                  <g key={`div-${d.exDate}`} pointerEvents="none">
+                    <line x1={px} x2={px} y1={0} y2={botY0 + botH}
+                      stroke="rgb(52 211 153 / 0.35)" strokeDasharray="2 4" />
+                    <text x={px + 4} y={botY0 + botH - 4}
+                      className="fill-emerald-400/70 font-mono text-[9px]">
+                      ${d.amount}
+                    </text>
+                  </g>
+                );
+              })}
 
               {/* Event markers: dashed verticals at the dilated positions */}
               {eventMarks.map(({ ev, x }) => {

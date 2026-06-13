@@ -53,12 +53,25 @@ export interface TermCurve {
   vol: number[];
 }
 
+/** One discrete dividend ex-date positioned on the maturity axis. */
+export interface DividendMarker {
+  exDate: string;
+  /** Ex-date year fraction (real-time axis). */
+  t: number;
+  /** Event-dilated position (dilated-time axis). */
+  tau: number;
+  /** Cash amount or proportional fraction, per the active dividend mode. */
+  amount: number;
+}
+
 /** Response of POST /term/{ticker}. */
 export interface TermResponse {
   ticker: string;
   points: TermPoint[];
   curve: TermCurve;
   calendarViolations: number;
+  /** Discrete ex-dates within the curve range (empty under continuous mode). */
+  dividends: DividendMarker[];
 }
 
 /** Maturity-axis clock: real calendar time vs event-dilated time. */

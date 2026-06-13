@@ -416,6 +416,21 @@ class TermCurve(BaseModel):
     vol: list[float]  # sqrt(w / t)
 
 
+class DividendMarker(BaseModel):
+    """One discrete dividend ex-date positioned on the term-structure axis.
+
+    Emitted only when the ticker's dividend mode uses the discrete schedule
+    (volfit.data.dividends): the forward already drops across each ex-date, so
+    these are drawn as informational markers on both the real-time (``t``) and
+    event-dilated (``tau``) maturity axes.
+    """
+
+    exDate: str  # ISO date
+    t: float  # ex-date year fraction
+    tau: float  # event-dilated position of the ex-date
+    amount: float  # cash amount or proportional fraction (per the active mode)
+
+
 class TermStructureResponse(BaseModel):
     """Per-expiry points plus the dense interpolated curve, nearest first."""
 
@@ -423,6 +438,7 @@ class TermStructureResponse(BaseModel):
     points: list[TermPoint]
     curve: TermCurve
     calendarViolations: int  # adjacent expiry pairs with w0 strictly falling
+    dividends: list[DividendMarker] = []  # discrete ex-dates within the range
 
 
 # ------------------------------------------------------------------- density

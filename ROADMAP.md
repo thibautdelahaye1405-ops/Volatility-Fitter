@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (221 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (224 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
 - Phase 0 scaffold (no CI yet), Phase 1 complete (LQD engine reproduces both
   paper benchmarks; ATM-orthogonal coordinates with exact Newton retargeting).
 - **Phase 2 complete**: calendar constraint = elementwise asset-share
@@ -220,15 +220,38 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   badge. 6 API tests; verified end-to-end in headless Edge (ALPHA: arb-free,
   21 bp max error, 4×8 vertex heatmap, 0.5 s fit).
 
-**Next up (in order — items marked [REQ] were requested by the user on
-2026-06-12; details in the phase checklists below):**
-1. Realism leftovers (small): discrete-dividend ex-date handling in event
-   time; dividend-schedule editor UI (API supports discrete schedules, the
-   ForwardPanel only exposes r and continuous q today).
+- **Realism leftovers done (2026-06-13)**: the last [REQ] bullet is closed.
+  * **Dividend ex-date markers in the Term view**: POST /term now returns a
+    `dividends` list (`DividendMarker`: exDate, real-time t, dilated tau,
+    amount) for the ticker's discrete schedule within the curve range, emitted
+    only under the discrete/mixed dividend modes (`api/analytics.py`
+    `_dividend_markers`). TermChart draws them as emerald dashed verticals with
+    a $amount label on both the real-time and event-dilated clocks (the
+    per-expiry forward already drops across each ex-date; these are
+    informational). 3 API tests.
+  * **Dividend-schedule editor**: new `DividendEditor.tsx` embedded in the
+    ForwardPanel — a mode picker (continuous / discrete cash / discrete
+    proportional / mixed), an editable (ex-date, amount) row list with
+    add/remove, and the mixed-mode switch horizon. ForwardPanel now PUTs the
+    full MarketSettings (mode + schedule + switchYears, not just r/q), so the
+    smile refits via the forwards version. Verified end-to-end in headless
+    Edge (cash dividend → Term marker at t≈0.12y; editor shows the schedule).
+
+**Next up (in order — the [REQ] backlog is now fully cleared):**
+1. Full provider-driven **universe-selection UI** (pick tickers/expiries from
+   the provider; the expiry-class chips cover bulk selection within a ladder
+   today, but there is no add-ticker/add-expiry screen).
+2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
+   sets, provider-failure injection; UX polish (skeletons, error surfaces,
+   layout persistence); Docker-compose packaging + user/API docs.
+3. Smaller leftovers scattered in the phase checklists: Bloomberg/Massive
+   providers + DuckDB/Parquet history; process-pool for parallel slice fits;
+   editable ATM handles + prior load/diff UI; arbitrage/event toggles in the
+   hyperparameter panel.
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (221 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (224 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - API server: `.venv\Scripts\python backend\serve.py` (uvicorn :8000, CORS for
   Vite). Live data: set `$env:VOLFIT_PROVIDER='yahoo'` and
@@ -348,7 +371,7 @@ since other models are standard.
 
 - [x] Provider interface `OptionChainProvider` + deterministic `SyntheticProvider` (offline dev/tests) + `yahoo.py` (yfinance, lazy import, injectable factory, sqrt-time expiry thinning). `bloomberg.py` / `massive.py` still TODO.
 - [x] Implied forwards by put-call parity regression (`data/forwards.py`, recovers F to <0.1% on synthetic).
-- [x] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute (escrowed), discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice) — `data/dividends.py`, feeds the theoretical forward. (ex-date/event handling TODO with event time.)
+- [x] [REQ 2026-06-12] Dividends model selection: continuous yield, discrete absolute (escrowed), discrete proportional, or mixed (absolute short-dated switching to proportional long-dated — standard desk practice) — `data/dividends.py`, feeds the theoretical forward. **Discrete schedule editable in the UI** (DividendEditor in the ForwardPanel) and **ex-dates surfaced as markers in the Term view** (event-time clock).
 - [x] [REQ 2026-06-12] Forward fitting mode per expiry: **theoretical** (spot + carry from rate/dividend model), **parity-implied** (default), or **manually adjusted** (ForwardPanel UI override, held on AppState with a forwards version in fit keys); GET /forwards/{ticker} shows the three side by side.
 - [x] [REQ 2026-06-12] Fit time-series scaffold: every calibration persists (params, ATM handles, diagnostics) keyed by snapshot timestamp into VolStore `fits` (`api/history.py`, opt-in via VOLFIT_DB) + GET /history/{ticker}/{tenorDays}; charting UI deferred.
 - [x] Quote prep: mid/bid/ask + haircut modes, spread-based weights, 4-sd wing filter (`volfit/api/quotes.py`). (per-quote liquidity haircuts and richer outlier rules TODO)

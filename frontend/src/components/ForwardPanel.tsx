@@ -10,9 +10,17 @@
 // triggers the session's reload() so the current smile refits.
 import { useEffect, useState } from "react";
 import { api } from "../state/api";
+import DividendEditor from "./DividendEditor";
 
 /** Forward source selector — mirror of the backend ForwardMode enum. */
 export type ForwardMode = "parity" | "theoretical" | "manual";
+
+/** Dividend model selector — mirror of the backend DividendMode. */
+export type DividendMode =
+  | "continuous"
+  | "discrete_absolute"
+  | "discrete_proportional"
+  | "mixed";
 
 /** One expiry's forward diagnostics (backend ForwardEntry schema). */
 export interface ForwardEntry {
@@ -49,10 +57,18 @@ export interface DividendItem {
 /** Per-ticker market/carry settings (GET/PUT /settings/market/{ticker}). */
 export interface MarketSettings {
   rate: number;
-  dividendMode: "continuous" | "discrete_absolute" | "discrete_proportional" | "mixed";
+  dividendMode: DividendMode;
   dividendYield: number;
   dividends: DividendItem[];
   switchYears: number;
+}
+
+/** Deep equality for a dividend schedule (order-sensitive, as stored). */
+function sameDividends(a: DividendItem[], b: DividendItem[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((d, i) => d.exDate === b[i].exDate && d.amount === b[i].amount)
+  );
 }
 
 const MODE_OPTIONS: { id: ForwardMode; label: string; title: string }[] = [
@@ -97,6 +113,10 @@ export default function ForwardPanel({
   const [draftManual, setDraftManual] = useState("");
   const [draftRate, setDraftRate] = useState("");
   const [draftQ, setDraftQ] = useState("");
+  // Dividend-model draft (mode + discrete schedule + mixed switch horizon).
+  const [draftDivMode, setDraftDivMode] = useState<DividendMode>("continuous");
+  const [draftDividends, setDraftDividends] = useState<DividendItem[]>([]);
+  const [draftSwitch, setDraftSwitch] = useState("1");
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,6 +128,9 @@ export default function ForwardPanel({
       setMarket(mkt);
       setDraftRate(String(mkt.rate));
       setDraftQ(String(mkt.dividendYield));
+      setDraftDivMode(mkt.dividendMode);
+      setDraftDividends(mkt.dividends);
+      setDraftSwitch(String(mkt.switchYears));
     }
     if (e !== null) {
       setDraftMode(e.mode);
@@ -138,24 +161,41 @@ export default function ForwardPanel({
   const manualValid = manualNum !== null && manualNum > 0;
   const rateNum = parseNum(draftRate);
   const qNum = parseNum(draftQ);
+  const switchNum = parseNum(draftSwitch);
 
-  const carryDirty =
+  const marketDirty =
     market !== null &&
     rateNum !== null &&
     qNum !== null &&
-    (rateNum !== market.rate || qNum !== market.dividendYield);
+    (rateNum !== market.rate ||
+      qNum !== market.dividendYield ||
+      draftDivMode !== market.dividendMode ||
+      !sameDividends(draftDividends, market.dividends) ||
+      (switchNum !== null && switchNum !== market.switchYears));
   const forwardDirty =
     entry !== null &&
     (draftMode !== entry.mode ||
       (draftMode === "manual" && manualValid && manualNum !== entry.manualForward));
-  const dirty = carryDirty || forwardDirty;
+  const dirty = marketDirty || forwardDirty;
 
+  // Dividend-schedule validation (kept ahead of the backend's 422s).
+  const divError =
+    draftDivMode === "mixed" && (switchNum === null || switchNum <= 0)
+      ? "switch horizon must be > 0"
+      : draftDivMode !== "continuous" && draftDividends.some((d) => d.exDate === "")
+        ? "every dividend needs an ex-date"
+        : draftDivMode === "discrete_proportional" &&
+            draftDividends.some((d) => d.amount < 0 || d.amount >= 1)
+          ? "proportional fraction must be in [0, 1)"
+          : draftDividends.some((d) => d.amount < 0)
+            ? "dividend amount must be >= 0"
+            : null;
   const inputError =
     rateNum === null || qNum === null
       ? "carry inputs must be numbers"
       : draftMode === "manual" && !manualValid
         ? "manual forward must be > 0"
-        : null;
+        : divError;
   const canApply = !disabled && !busy && dirty && inputError === null;
 
   /** Switch the draft mode; seed the manual field when first entered. */
@@ -172,14 +212,22 @@ export default function ForwardPanel({
     setBusy(true);
     setError(null);
     try {
-      if (carryDirty && market !== null && rateNum !== null && qNum !== null) {
-        // Preserve every other MarketSettings field as received.
+      if (marketDirty && market !== null && rateNum !== null && qNum !== null) {
         const mkt = await api.put<MarketSettings>(`/settings/market/${ticker}`, {
-          body: { ...market, rate: rateNum, dividendYield: qNum },
+          body: {
+            rate: rateNum,
+            dividendMode: draftDivMode,
+            dividendYield: qNum,
+            dividends: draftDividends,
+            switchYears: switchNum ?? market.switchYears,
+          },
         });
         setMarket(mkt);
         setDraftRate(String(mkt.rate));
         setDraftQ(String(mkt.dividendYield));
+        setDraftDivMode(mkt.dividendMode);
+        setDraftDividends(mkt.dividends);
+        setDraftSwitch(String(mkt.switchYears));
       }
       if (forwardDirty) {
         await api.put<ForwardEntry>(`/forwards/${ticker}/${expiry}`, {
@@ -311,7 +359,20 @@ export default function ForwardPanel({
           />
         </span>
       </div>
-      <p className="mb-3 text-[10px] text-slate-600">feeds Theo forward · de-Am carry</p>
+      <p className="mb-3 text-[10px] text-slate-600">
+        r always · q used in continuous mode · de-Am carry
+      </p>
+
+      {/* Dividend model: mode + discrete schedule (feeds the Theo forward) */}
+      <DividendEditor
+        disabled={disabled}
+        mode={draftDivMode}
+        onModeChange={setDraftDivMode}
+        dividends={draftDividends}
+        onDividendsChange={setDraftDividends}
+        switchYears={draftSwitch}
+        onSwitchYearsChange={setDraftSwitch}
+      />
 
       {/* Apply errors / validation hints */}
       {(error !== null || (inputError !== null && dirty)) && (
