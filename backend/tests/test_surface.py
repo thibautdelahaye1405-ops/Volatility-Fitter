@@ -1,7 +1,6 @@
 """Sequential surface fitting with the integrated-quantile calendar constraint."""
 
 import numpy as np
-import pytest
 
 from tests import benchmarks as bm
 from volfit.calib import ExpiryQuotes, calibrate_surface

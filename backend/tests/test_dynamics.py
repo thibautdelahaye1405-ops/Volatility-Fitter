@@ -29,7 +29,10 @@ def smile():
 )
 def test_atm_vol_moves_by_ssr_times_skew(smile, regime, ssr):
     slice_, handles = smile
-    curve = lambda k: slice_.implied_vol(k, bm.SVI_T)
+
+    def curve(k):
+        return slice_.implied_vol(k, bm.SVI_T)
+
     delta = np.log1p(SPOT_RETURN)
     new_atm = float(shifted_smile(np.array([0.0]), curve, handles.skew, SPOT_RETURN, regime)[0])
     expected = handles.sigma0 + ssr * handles.skew * delta
@@ -42,7 +45,10 @@ def test_shape_is_preserved_up_to_level(smile):
     smile equals the sticky-strike re-indexed curve plus a constant, so
     shifted(k) - sigma_old(k + delta) must be flat in k."""
     slice_, handles = smile
-    curve = lambda k: slice_.implied_vol(k, bm.SVI_T)
+
+    def curve(k):
+        return slice_.implied_vol(k, bm.SVI_T)
+
     k = np.linspace(-0.2, 0.2, 9)
     delta = np.log1p(SPOT_RETURN)
     for regime in (Regime.STICKY_MONEYNESS, Regime.STICKY_STRIKE, Regime.STICKY_LOCAL_VOL):

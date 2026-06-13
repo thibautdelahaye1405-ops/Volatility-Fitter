@@ -12,7 +12,6 @@ pipeline untouched (n_deamericanized == 0, machine-precision round trip).
 from datetime import date, datetime, timedelta
 
 import numpy as np
-import pytest
 
 from volfit.api.quotes import apply_edits, prepare_quotes
 from volfit.api.session import QuoteEdit

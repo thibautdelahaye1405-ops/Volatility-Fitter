@@ -164,18 +164,18 @@ def test_forward_sensitivities_match_finite_differences(true_surface, true_solut
     flat = true_surface.theta.ravel()
     rng = np.random.default_rng(7)
     for _ in range(3):
-        l = int(rng.integers(0, flat.size))
+        node = int(rng.integers(0, flat.size))
         t, x, _, _ = QUOTE_TABLE[int(rng.integers(0, len(QUOTE_TABLE)))]
         eps = 1e-6
         bumped = []
         for sign in (+1.0, -1.0):
             th = flat.copy()
-            th[l] += sign * eps
+            th[node] += sign * eps
             sol = solve_affine_dupire(true_surface.with_theta(th), X_GRID, T_GRID, [t])
             bumped.append(float(sol.price_at(0, x)))
         fd = (bumped[0] - bumped[1]) / (2.0 * eps)
-        analytic = float(true_solution.sens_at(idx[t], np.array([x]))[0, l])
-        assert analytic == pytest.approx(fd, abs=1e-7), (l, t, x)
+        analytic = float(true_solution.sens_at(idx[t], np.array([x]))[0, node])
+        assert analytic == pytest.approx(fd, abs=1e-7), (node, t, x)
 
 
 # ------------------------------------------------ 4. golden calibration

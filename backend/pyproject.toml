@@ -21,12 +21,24 @@ api = [
     "fastapi>=0.110",
     "uvicorn[standard]>=0.29",
 ]
+# Everything needed to run the full test suite (TestClient needs httpx; the
+# Yahoo provider tests build pandas frames). yfinance is only used by the
+# opt-in live test and is intentionally left out of the default CI install.
+test = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "pandas>=2.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["volfit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "perf: performance budget checks (timing-sensitive; see tests/test_perf.py)",
+    "live: hits a live network provider (opt-in via VOLFIT_LIVE=1)",
+]
 
 [tool.ruff]
 line-length = 100

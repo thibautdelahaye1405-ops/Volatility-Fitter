@@ -23,7 +23,7 @@ from volfit.graph.smile_universe import (
     reconstruct_smiles,
 )
 from volfit.models.lqd.atm import atm_handles
-from volfit.models.lqd.basis import LQDParams, endpoint_scales, lee_slopes
+from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import calibrate_slice
 from volfit.models.lqd.quadrature import build_slice
 from volfit.models.svi_jw import RawSVI

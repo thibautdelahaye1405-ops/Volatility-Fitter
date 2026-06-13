@@ -230,6 +230,7 @@ def test_create_app_honors_injected_provider():
 # -- live (manual) -----------------------------------------------------------------
 
 
+@pytest.mark.live
 @pytest.mark.skipif(
     not os.environ.get("VOLFIT_LIVE"), reason="set VOLFIT_LIVE=1 for live Yahoo test"
 )
