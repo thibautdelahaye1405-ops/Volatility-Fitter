@@ -11,6 +11,7 @@ import { useRef, useState } from "react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
+import TermPanel from "../components/TermPanel";
 import SurfaceChart from "../components/SurfaceChart";
 import QuoteTable from "../components/QuoteTable";
 import UniverseHeader, { selectClass } from "../components/UniverseHeader";
@@ -22,13 +23,15 @@ import { useMassiveIv } from "../state/useMassiveIv";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 
-/** Chart-card content: smile, fitted distributions, 3D surface or table. */
-type ChartView = "smile" | "density" | "logqd" | "surface" | "table";
+/** Chart-card content: smile, fitted distributions, term structure, 3D surface
+ *  or table. Term-Structure sits alongside Density (ROADMAP Phase 10). */
+type ChartView = "smile" | "density" | "logqd" | "term" | "surface" | "table";
 
 const CHART_VIEWS: { id: ChartView; label: string }[] = [
   { id: "smile", label: "Smile" },
   { id: "density", label: "Density" },
   { id: "logqd", label: "Log Q-density" },
+  { id: "term", label: "Term" },
   { id: "surface", label: "Surface" },
   { id: "table", label: "Table" },
 ];
@@ -38,6 +41,7 @@ const VIEW_HINTS: Record<ChartView, string> = {
   smile: "Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo",
   density: "Risk-neutral distribution implied by the current fit",
   logqd: "Log quantile density ℓ(u) = log q(u) of the current fit",
+  term: "ATM term structure across the expiry ladder · real / event-dilated clock",
   surface: "Drag to rotate · σ(k, T) across the expiry ladder",
   table: "Per-strike quotes vs the current fit · Copy / CSV in the footer",
 };
@@ -186,6 +190,10 @@ export default function SmileViewer() {
             onQuoteSelect={setSelectedIndex}
           />
         );
+      case "term":
+        return live
+          ? <TermPanel />
+          : chartMessage("Term-structure view requires the live backend.");
       case "surface":
         return live
           ? <SurfaceChart ticker={ticker} fitMode={fitMode} />
@@ -314,8 +322,9 @@ export default function SmileViewer() {
           </p>
         </div>
 
-        {/* Diagnostics aside: scenario / forward / hyperparameter panels */}
-        <SmileAside smileViewActive={view === "smile"} />
+        {/* Diagnostics aside: model / scenario panels. Hidden on the Term
+            sub-tab, which carries its own events / ladder controls column. */}
+        {view !== "term" && <SmileAside smileViewActive={view === "smile"} />}
       </div>
     </div>
   );

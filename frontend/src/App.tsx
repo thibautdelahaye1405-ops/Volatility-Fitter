@@ -3,15 +3,23 @@
 // session it mirrors) survives switching between workspace tabs.
 import { useState } from "react";
 import TopBar from "./components/TopBar";
+import PlaceholderCard from "./components/PlaceholderCard";
 import SmileViewer from "./views/SmileViewer";
-import TermStructureViewer from "./views/TermStructureViewer";
 import LocalVolViewer from "./views/LocalVolViewer";
 import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
 import { SmileSessionProvider } from "./state/smileSession";
 
-/** The top-level workspaces of the application. */
-export type TabId = "smile" | "term" | "localvol" | "graph" | "universe";
+/** The top-level workspaces of the application (ROADMAP Phase 10).
+ *  Parametric = the model-fit workspace (Smile / Density / Term / Surface /
+ *  Table sub-tabs); Term-Structure is now a Parametric sub-tab, not a top tab. */
+export type TabId =
+  | "parametric"
+  | "localvol"
+  | "forwards"
+  | "options"
+  | "graph"
+  | "universe";
 
 export interface TabDef {
   id: TabId;
@@ -19,15 +27,16 @@ export interface TabDef {
 }
 
 export const TABS: TabDef[] = [
-  { id: "smile", label: "Smile" },
-  { id: "term", label: "Term Structure" },
+  { id: "parametric", label: "Parametric" },
   { id: "localvol", label: "Local Vol" },
+  { id: "forwards", label: "Forwards" },
+  { id: "options", label: "Options" },
   { id: "graph", label: "Graph" },
   { id: "universe", label: "Universe" },
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("smile");
+  const [activeTab, setActiveTab] = useState<TabId>("parametric");
 
   return (
     <SmileSessionProvider>
@@ -36,14 +45,28 @@ export default function App() {
 
         {/* Main workspace area; each tab renders its dedicated view. */}
         <main className="flex-1 overflow-auto">
-          {activeTab === "smile" && <SmileViewer />}
-          {activeTab === "term" && <TermStructureViewer />}
+          {activeTab === "parametric" && <SmileViewer />}
           {activeTab === "localvol" && <LocalVolViewer />}
           {activeTab === "universe" && <UniverseManager />}
+          {activeTab === "forwards" && (
+            <PlaceholderCard title="Forwards">
+              Per-ticker forwards &amp; dividends tuning (parity / theoretical /
+              manual per expiry, carry and dividend schedule) — shared by the
+              Parametric and Local Vol workspaces. Landing next in Phase 10.
+            </PlaceholderCard>
+          )}
+          {activeTab === "options" && (
+            <PlaceholderCard title="Options">
+              Global meta-parameters &amp; calibration defaults: grid size,
+              variance-swaps, prior, events, LQD/Sigmoid defaults, penalty
+              strengths, weighting, fit mode, spot-vol dynamics and spot mode.
+              Landing next in Phase 10.
+            </PlaceholderCard>
+          )}
           {activeTab === "graph" && (
             // Drill-in: GraphViewer points the shared smile session at a
-            // node, then asks the shell to switch to the Smile workspace.
-            <GraphViewer onNavigateToSmile={() => setActiveTab("smile")} />
+            // node, then asks the shell to switch to the Parametric workspace.
+            <GraphViewer onNavigateToSmile={() => setActiveTab("parametric")} />
           )}
         </main>
       </div>
