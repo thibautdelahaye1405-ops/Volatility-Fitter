@@ -10,6 +10,8 @@
 import TermChart from "./TermChart";
 import { useTerm } from "../state/useTerm";
 import type { ClockMode } from "../state/useTerm";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import { formatPct } from "../lib/chartScale";
 
 const CLOCK_MODES: { id: ClockMode; label: string }[] = [
@@ -48,6 +50,7 @@ export default function TermPanel() {
     axisClock,
     setAxisClock,
   } = useTerm();
+  const { format } = useExpiryFormat();
 
   // Backend offline (and nothing loaded): centered retry message.
   if (error !== null && data === null) {
@@ -223,7 +226,9 @@ export default function TermPanel() {
               <tbody className="text-slate-300">
                 {(data?.points ?? []).map((p) => (
                   <tr key={p.expiry} className="border-t border-slate-800/60">
-                    <td className="py-1 text-left text-slate-400">{p.expiry}</td>
+                    <td className="py-1 text-left text-slate-400">
+                      {formatExpiry(p.expiry, p.t, format)}
+                    </td>
                     <td>{p.t.toFixed(2)}</td>
                     <td>{formatPct(p.atmVol)}</td>
                     <td>{formatPct(p.varSwapVol)}</td>

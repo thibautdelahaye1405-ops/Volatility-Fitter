@@ -10,6 +10,7 @@ import OptionsViewer from "./views/OptionsViewer";
 import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
 import { SmileSessionProvider } from "./state/smileSession";
+import { ExpiryFormatProvider } from "./state/expiryFormat";
 
 /** The top-level workspaces of the application (ROADMAP Phase 10).
  *  Parametric = the model-fit workspace (Smile / Density / Term / Surface /
@@ -40,6 +41,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("parametric");
 
   return (
+    <ExpiryFormatProvider>
     <SmileSessionProvider>
       <div className="flex h-full flex-col">
         <TopBar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
@@ -59,5 +61,6 @@ export default function App() {
         </main>
       </div>
     </SmileSessionProvider>
+    </ExpiryFormatProvider>
   );
 }

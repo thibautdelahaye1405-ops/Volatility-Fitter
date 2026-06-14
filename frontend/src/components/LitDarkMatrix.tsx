@@ -7,6 +7,8 @@
 // toggle it, or use the per-ticker bulk buttons. Live backend only.
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../state/api";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import type { UniverseResponse } from "../state/useSmile";
 
 interface LitNode {
@@ -27,6 +29,7 @@ interface Props {
 }
 
 export default function LitDarkMatrix({ universe }: Props) {
+  const { format } = useExpiryFormat();
   const [nodes, setNodes] = useState<LitNode[]>([]);
   const [error, setError] = useState<string | null>(null);
 
@@ -133,7 +136,8 @@ export default function LitDarkMatrix({ universe }: Props) {
             <div className="flex flex-wrap gap-1">
               {rows.map((n) => {
                 const t = tOf.get(`${n.ticker}|${n.expiry}`);
-                const label = t !== undefined ? `${t.toFixed(2)}y` : n.expiry.slice(5);
+                const label =
+                  t !== undefined ? formatExpiry(n.expiry, t, format) : n.expiry.slice(5);
                 return (
                   <button
                     key={n.expiry}

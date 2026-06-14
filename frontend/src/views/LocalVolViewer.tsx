@@ -20,8 +20,11 @@ import type { SurfaceMeshData } from "../components/SurfaceMesh";
 import DistributionChart from "../components/DistributionChart";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
+import ExpiryFormatToggle from "../components/ExpiryFormatToggle";
 import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import type { DistributionData } from "../state/useScenario";
 import type { TermResponse } from "../state/useTerm";
 
@@ -63,6 +66,7 @@ export default function LocalVolViewer() {
     data, loading, refreshing, error, reload, ticker, setTicker, tickers, params, setParams,
   } = useAffine();
 
+  const { format } = useExpiryFormat();
   const [view, setView] = useState<LvView>("smile");
   // Selected expiry for the per-expiry views, clamped to range.
   const [expiryIdx, setExpiryIdx] = useState(0);
@@ -159,6 +163,7 @@ export default function LocalVolViewer() {
         </label>
 
         <SegmentedControl options={LV_VIEWS} value={view} onChange={setView} size="xs" />
+        <ExpiryFormatToggle />
 
         {/* Per-expiry selector (smile / density / table) */}
         {PER_EXPIRY[view] && (
@@ -173,7 +178,7 @@ export default function LocalVolViewer() {
                 ].join(" ")}
                 title={s.expiry}
               >
-                {s.t.toFixed(2)}y
+                {formatExpiry(s.expiry, s.t, format)}
               </button>
             ))}
           </div>
@@ -201,7 +206,7 @@ export default function LocalVolViewer() {
           <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
               {ticker !== "" ? `${ticker} local vol` : "Local vol"}
-              {PER_EXPIRY[view] && smile ? ` · ${smile.expiry}` : ""}
+              {PER_EXPIRY[view] && smile ? ` · ${formatExpiry(smile.expiry, smile.t, format)}` : ""}
             </h2>
             {smile && PER_EXPIRY[view] && (
               <span className="font-mono text-[11px] text-slate-500">
@@ -265,7 +270,9 @@ export default function LocalVolViewer() {
                       i === expiryIdx ? "text-accent-400" : "hover:text-slate-100",
                     ].join(" ")}
                   >
-                    <td className="py-1 text-left text-slate-400">{s.expiry}</td>
+                    <td className="py-1 text-left text-slate-400">
+                      {formatExpiry(s.expiry, s.t, format)}
+                    </td>
                     <td>{s.t.toFixed(2)}</td>
                     <td>{s.maxIvErrorBp.toFixed(0)}</td>
                     <td>{(data?.minDensity[i] ?? 0).toFixed(2)}</td>

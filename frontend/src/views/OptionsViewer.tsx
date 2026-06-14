@@ -12,6 +12,8 @@ import HyperparamPanel from "../components/HyperparamPanel";
 import { useOptions } from "../state/useOptions";
 import type { DynamicsRegime } from "../state/useOptions";
 import { useSmileSession } from "../state/smileSession";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { EXPIRY_FORMATS, formatExpiry } from "../lib/expiryFormat";
 import type { FitMode } from "../state/useSmile";
 
 const FIT_MODES: { id: FitMode; label: string }[] = [
@@ -100,6 +102,7 @@ export default function OptionsViewer() {
   const { source, reload, fitMode, setFitMode } = useSmileSession();
   const live = source === "live";
   const { draft, patch, dirty, busy, flash, apply } = useOptions(live, reload);
+  const { format: expiryFormat, setFormat: setExpiryFormat } = useExpiryFormat();
 
   const sectionTitle = "mb-3 text-sm font-semibold text-slate-100";
   const rowLabel = "text-xs text-slate-400";
@@ -189,6 +192,35 @@ export default function OptionsViewer() {
                 onChange={(v) => patch({ gridRegLambda: v })} />
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Display: expiry-format default (instant-apply, persisted locally) */}
+      <div className={card}>
+        <div className="mb-2 flex items-center gap-2">
+          <h3 className="text-sm font-semibold text-slate-100">Display</h3>
+          <span className="text-[11px] text-slate-500">
+            Expiry format · applied across every view (also a ↻ toggle in the headers)
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {EXPIRY_FORMATS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setExpiryFormat(f.id)}
+              className={[
+                "rounded-md border px-2 py-1 font-mono text-[11px] transition-colors",
+                f.id === expiryFormat
+                  ? "border-accent-600/60 bg-accent-600/15 text-accent-400"
+                  : "border-slate-700 bg-surface-800 text-slate-400 hover:text-slate-200",
+              ].join(" ")}
+            >
+              {f.label}
+            </button>
+          ))}
+          <span className="ml-2 font-mono text-[11px] text-slate-500">
+            e.g. {formatExpiry("2026-12-18", 1.25, expiryFormat)}
+          </span>
         </div>
       </div>
 

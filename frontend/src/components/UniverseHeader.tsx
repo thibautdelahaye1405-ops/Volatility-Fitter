@@ -5,7 +5,10 @@
 // removed — expiry curation lives in the Universe tab).
 import { useMemo } from "react";
 import SegmentedControl from "./SegmentedControl";
+import ExpiryFormatToggle from "./ExpiryFormatToggle";
 import { useSmileSession } from "../state/smileSession";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import type { FitMode } from "../state/useSmile";
 
 const FIT_MODES: { id: FitMode; label: string }[] = [
@@ -23,6 +26,7 @@ export const selectClass =
 export default function UniverseHeader() {
   const { universe, ticker, expiry, fitMode, setTicker, setExpiry, setFitMode } =
     useSmileSession();
+  const { format } = useExpiryFormat();
 
   const ladder = useMemo(
     () => universe?.expiries[ticker] ?? [],
@@ -57,11 +61,14 @@ export default function UniverseHeader() {
         >
           {ladder.map((rung) => (
             <option key={rung.expiry} value={rung.expiry}>
-              {rung.expiry} (T={rung.t.toFixed(2)}y)
+              {formatExpiry(rung.expiry, rung.t, format)}
             </option>
           ))}
         </select>
       </label>
+
+      {/* Expiry-format quick toggle */}
+      <ExpiryFormatToggle />
 
       {/* Fit-mode segmented control */}
       <div className="ml-auto flex items-center gap-2">

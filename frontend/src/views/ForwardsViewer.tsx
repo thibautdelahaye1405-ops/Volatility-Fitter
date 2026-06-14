@@ -12,6 +12,8 @@ import { useCallback, useEffect, useState } from "react";
 import ForwardPanel from "../components/ForwardPanel";
 import type { ForwardsResponse } from "../components/ForwardPanel";
 import { useSmileSession } from "../state/smileSession";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import { api } from "../state/api";
 
 const selectClass =
@@ -24,6 +26,7 @@ const fmtFwd = (v: number | null | undefined): string =>
 
 export default function ForwardsViewer() {
   const { universe, ticker, setTicker, source, reload } = useSmileSession();
+  const { format } = useExpiryFormat();
   const live = source === "live";
   const tickers = universe?.tickers ?? [];
 
@@ -139,7 +142,9 @@ export default function ForwardsViewer() {
                       e.expiry === expiry ? "bg-accent-600/10 text-accent-300" : "text-slate-200",
                     ].join(" ")}
                   >
-                    <td className="px-2 py-1 text-left text-slate-400">{e.expiry}</td>
+                    <td className="px-2 py-1 text-left text-slate-400">
+                      {formatExpiry(e.expiry, e.t, format)}
+                    </td>
                     <td className="px-2 py-1 text-right">{e.t.toFixed(2)}</td>
                     <td className="px-2 py-1 text-right">{fmtFwd(e.parityForward)}</td>
                     <td className="px-2 py-1 text-right">{fmtFwd(e.theoForward)}</td>

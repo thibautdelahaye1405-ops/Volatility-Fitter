@@ -10,6 +10,8 @@ import { api } from "../state/api";
 import type { FitMode } from "../state/useSmile";
 import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
 import type { OverlaySeries } from "./OverlayCurvesChart";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 
 /** Response of GET /surface/{ticker} (backend SurfaceResponse). */
 interface SurfaceResponse {
@@ -30,6 +32,7 @@ interface Props {
 }
 
 export default function StackedVarianceChart({ ticker, fitMode }: Props) {
+  const { format } = useExpiryFormat();
   const [data, setData] = useState<SurfaceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +69,7 @@ export default function StackedVarianceChart({ ticker, fitMode }: Props) {
   const n = data.t.length;
   // w(k) = σ(k)² · T per expiry, on the shared k grid.
   const series: OverlaySeries[] = data.t.map((ti, i) => ({
-    label: `${ti.toFixed(2)}y`,
+    label: formatExpiry(data.expiries[i], ti, format),
     xs: data.k,
     ys: data.vol[i].map((v) => v * v * ti),
     color: maturityColor(n > 1 ? i / (n - 1) : 0),

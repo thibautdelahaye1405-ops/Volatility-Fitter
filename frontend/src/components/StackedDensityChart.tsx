@@ -10,6 +10,8 @@ import type { FitMode } from "../state/useSmile";
 import type { SmileData } from "../lib/mockData";
 import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
 import type { OverlaySeries } from "./OverlayCurvesChart";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 
 interface StackedItem {
   expiry: string;
@@ -34,6 +36,7 @@ interface Props {
 }
 
 export default function StackedDensityChart({ ticker, fitMode, smile }: Props) {
+  const { format } = useExpiryFormat();
   const [data, setData] = useState<StackedResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +72,7 @@ export default function StackedDensityChart({ ticker, fitMode, smile }: Props) {
 
   const n = data.expiries.length;
   const series: OverlaySeries[] = data.expiries.map((e, i) => ({
-    label: `${e.t.toFixed(2)}y`,
+    label: formatExpiry(e.expiry, e.t, format),
     xs: e.x,
     ys: e.density,
     color: maturityColor(n > 1 ? i / (n - 1) : 0),

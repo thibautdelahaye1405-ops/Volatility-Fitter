@@ -20,6 +20,8 @@ import UniverseHeader, { selectClass } from "../components/UniverseHeader";
 import SmileAside from "../components/SmileAside";
 import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
 import { useMassiveIv } from "../state/useMassiveIv";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
@@ -83,6 +85,7 @@ export default function SmileViewer() {
     distributionLoading,
     loadDistribution,
   } = useSmileSession();
+  const { format } = useExpiryFormat();
 
   const [kWindow, setKWindow] = useState<[number, number]>([0, 1]);
   // Selected quote, referenced by its stable `index` field (not array
@@ -239,7 +242,7 @@ export default function SmileViewer() {
         <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
           <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
-              {smile ? `${smile.ticker} · ${smile.expiry}` : "Smile"}
+              {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
             </h2>
             {/* Data-source badge: live backend vs built-in mock fallback */}
             <span
