@@ -15,6 +15,8 @@ import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
 import LocalVolTable from "../components/LocalVolTable";
 import type { AffineTableData } from "../components/LocalVolTable";
+import SurfaceMesh from "../components/SurfaceMesh";
+import type { SurfaceMeshData } from "../components/SurfaceMesh";
 import DistributionChart from "../components/DistributionChart";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
@@ -101,7 +103,7 @@ export default function LocalVolViewer() {
   const smile = data?.smiles[expiryIdx];
 
   // Reconstructed IV surface: resample every expiry's smile onto a shared
-  // log-moneyness grid (intersection range, no extrapolation) → IV heatmap.
+  // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh.
   const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
 
   /** Chart-card body for the active sub-tab. */
@@ -112,15 +114,7 @@ export default function LocalVolViewer() {
         return <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
       case "ivsurface":
         return ivSurface
-          ? (
-            <LocalVolHeatmap
-              tNodes={ivSurface.tNodes}
-              xNodes={ivSurface.xNodes}
-              localVol={ivSurface.iv}
-              legendLabel="σ_IV(t, x)"
-              cellLabel="cells"
-            />
-          )
+          ? <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" />
           : chartMessage("IV surface needs at least two overlapping expiries.");
       case "smile":
         return smile ? <LocalVolSmile smile={smile} /> : chartMessage("No smile");
@@ -314,10 +308,10 @@ function interpVol(model: { k: number; vol: number }[], k: number): number {
 
 /** Reconstructed IV surface from the per-expiry affine smiles: resample each on
  *  a shared log-moneyness grid (the intersection range, so no curve is
- *  extrapolated) and return it as a (t × K/F) matrix for the heatmap. */
+ *  extrapolated) and return it as a (T × k → σ) mesh for the 3D SurfaceMesh. */
 function buildIvSurface(
-  smiles: { t: number; model: { k: number; vol: number }[] }[],
-): { tNodes: number[]; xNodes: number[]; iv: number[][] } | null {
+  smiles: { expiry: string; t: number; model: { k: number; vol: number }[] }[],
+): SurfaceMeshData | null {
   const usable = smiles.filter((s) => s.model.length >= 2);
   if (usable.length < 2) return null;
   const kLo = Math.max(...usable.map((s) => s.model[0].k));
@@ -326,9 +320,10 @@ function buildIvSurface(
   const N = 41;
   const kGrid = Array.from({ length: N }, (_, j) => kLo + ((kHi - kLo) * j) / (N - 1));
   return {
-    tNodes: usable.map((s) => s.t),
-    xNodes: kGrid.map((k) => Math.exp(k)),
-    iv: usable.map((s) => kGrid.map((k) => interpVol(s.model, k))),
+    expiries: usable.map((s) => s.expiry),
+    t: usable.map((s) => s.t),
+    k: kGrid,
+    vol: usable.map((s) => kGrid.map((k) => interpVol(s.model, k))),
   };
 }
 
