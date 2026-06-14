@@ -67,6 +67,15 @@ class FitSettings(BaseModel):
     nCores: int = Field(2, ge=0, le=6)  # Multi-Core SIV hat count R (sigmoid only)
     haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
     weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights
+    # --- per-model optimization / penalty coefficients (Options exposes them
+    # all explicitly; every default equals the historical hardcoded constant, so
+    # a default fit is byte-identical to before they were tunable) ---
+    barrierCenter: float = Field(0.90, gt=0.0, lt=1.0)  # LQD A_R soft-barrier centre
+    barrierScale: float = Field(50.0, gt=0.0)  # LQD A_R soft-barrier steepness
+    sviPenaltyWeight: float = Field(1e3, ge=0.0)  # SVI no-arb soft-penalty weight
+    leeSlopeMax: float = Field(2.0, gt=0.0)  # SVI Lee wing-slope bound
+    sigmoidRidge: float = Field(1e-2, ge=0.0)  # Multi-Core SIV hat-amplitude ridge
+    midAnchorWeight: float = Field(0.05, ge=0.0)  # band-mode mid anchor (all models)
 
 
 # ----------------------------------------------------- options (meta) settings
@@ -107,8 +116,16 @@ class OptionsSettings(BaseModel):
     gridXNodes: int = Field(7, ge=3, le=15)
     gridTNodes: int = Field(4, ge=2, le=8)
     gridRegLambda: float = Field(1e-2, ge=0.0, le=1e4)
+    gridRegRho: float = Field(1.0, ge=0.0, le=10.0)  # affine time-vs-strike roughness
     # editable penalty strength (changes calibration output)
     calendarWeight: float = Field(1e6, ge=0.0)
+    # graph-solver prior defaults (the Graph SolverPanel seeds from these):
+    # kappa = prior strength (local precision toward baseline), eta = reach,
+    # lambda = OT flux weight (0 = off), nu = OT source allowance.
+    graphKappaScale: float = Field(1.0, gt=0.0)
+    graphEtaScale: float = Field(1.0, ge=0.0)
+    graphLambdaScale: float = Field(0.0, ge=0.0)
+    graphNu: float = Field(0.1, gt=0.0)
     # spot-vol dynamics defaults — the Parametric spot-scenario reads these
     # (the regime selector moved entirely to Options). "custom" uses ``ssr``.
     dynamicsRegime: Literal[

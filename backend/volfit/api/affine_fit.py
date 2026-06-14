@@ -221,6 +221,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         bounds=(request.varLo, request.varHi),
         reg_lambda=request.regLambda,
         reg_rho=request.regRho,
+        mid_anchor_weight=state.fit_settings().midAnchorWeight,
     )
 
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}

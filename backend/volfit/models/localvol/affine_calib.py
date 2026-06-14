@@ -186,6 +186,7 @@ def calibrate_affine(
     bounds: tuple[float, float] = (0.005, 0.20),
     reg_lambda: float = 1e-4,
     reg_rho: float = 1.0,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     theta_ref: np.ndarray | None = None,
     xtol: float = 1e-12,
     ftol: float = 1e-12,
@@ -216,7 +217,7 @@ def calibrate_affine(
     band_mode = bool(options) and options[0].price_lo is not None
     p_lo = np.array([o.price_lo for o in options]) if band_mode else None
     p_hi = np.array([o.price_hi for o in options]) if band_mode else None
-    sqrt_anchor = np.sqrt(MID_ANCHOR_WEIGHT)
+    sqrt_anchor = np.sqrt(mid_anchor_weight)
     n_evals = 0
     cache: dict[bytes, tuple] = {}
 

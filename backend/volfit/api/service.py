@@ -110,9 +110,7 @@ def display_overlay(
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
-    return build_display_fit(
-        settings.model, k, w, prepared.t, weights, n_cores=settings.nCores, band=band
-    )
+    return build_display_fit(settings.model, k, w, prepared.t, weights, settings, band=band)
 
 
 # ------------------------------------------------------------- slice fitting
@@ -145,12 +143,13 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
         reg_lambda=settings.regLambda,
         reg_power=settings.regPower,
         band=band,
+        barrier_center=settings.barrierCenter,
+        barrier_scale=settings.barrierScale,
+        mid_anchor_weight=settings.midAnchorWeight,
     )
     # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
     # a display overlay on the same edited quotes + band (volfit.api.fit_models).
-    display = build_display_fit(
-        settings.model, k, w, prepared.t, weights, n_cores=settings.nCores, band=band
-    )
+    display = build_display_fit(settings.model, k, w, prepared.t, weights, settings, band=band)
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
@@ -312,6 +311,9 @@ def fit_surface_slice(
         calendar_indices=cal_idx,
         calendar_floor=cal_floor,
         calendar_weight=state.options().calendarWeight,
+        barrier_center=settings.barrierCenter,
+        barrier_scale=settings.barrierScale,
+        mid_anchor_weight=settings.midAnchorWeight,
     )
 
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
-from volfit.calib.band import BandTarget, band_residuals
+from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
@@ -61,6 +61,9 @@ def _residuals(
     cal_weight: float,
     price_lo: np.ndarray | None,
     price_hi: np.ndarray | None,
+    barrier_center: float,
+    barrier_scale: float,
+    mid_anchor_weight: float,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
 
@@ -78,7 +81,10 @@ def _residuals(
         slice_ = build_slice(params)
         model_price = slice_.call_price(k)
         if band_mode:
-            fit = band_residuals(model_price, price_lo, price_hi, target_price, sqrt_weights * inv_vega)
+            fit = band_residuals(
+                model_price, price_lo, price_hi, target_price,
+                sqrt_weights * inv_vega, mid_anchor_weight,
+            )
         else:
             fit = sqrt_weights * (model_price - target_price) * inv_vega
         # Soft calendar slack (note eq. slack_calendar): penalize the later
@@ -91,7 +97,7 @@ def _residuals(
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
-    barrier = np.log1p(np.exp(_BARRIER_SCALE * (a_right - _BARRIER_CENTER)))
+    barrier = np.log1p(np.exp(barrier_scale * (a_right - barrier_center)))
     return np.concatenate((fit, reg * theta[2:], cal, [barrier]))
 
 
@@ -108,6 +114,9 @@ def calibrate_slice(
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
     band: BandTarget | None = None,
+    barrier_center: float = _BARRIER_CENTER,
+    barrier_scale: float = _BARRIER_SCALE,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
@@ -121,6 +130,10 @@ def calibrate_slice(
     ``band`` switches the data term to the bid-ask / haircut band objective
     (volfit.calib.band); the band's vol edges become call-price edges so the
     vega-normalized residual stays comparable to the mid fit. None keeps the mid.
+
+    ``barrier_center``/``barrier_scale`` shape the A_R soft barrier (eq.
+    right_admissible) and ``mid_anchor_weight`` the band's mid anchor — all
+    FitSettings coefficients, defaulting to the historical constants.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -160,6 +173,9 @@ def calibrate_slice(
             calendar_weight,
             price_lo,
             price_hi,
+            barrier_center,
+            barrier_scale,
+            mid_anchor_weight,
         ),
         method="trf",
         xtol=1e-15,

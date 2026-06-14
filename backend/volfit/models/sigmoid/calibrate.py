@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import least_squares
 
-from volfit.calib.band import BandTarget, band_residuals
+from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
 from volfit.models.sigmoid.kernels import hat, siv_base
 from volfit.models.sigmoid.sigmoid import HatCore, MultiCoreSiv
 
@@ -99,11 +99,14 @@ def _fit(
     sqrt_w: np.ndarray,
     n_cores: int,
     band: BandTarget | None = None,
+    ridge: float = _RIDGE,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
     The data term is the plain mid residual (``band is None``) or the bid-ask /
-    haircut band objective in vol space (volfit.calib.band).
+    haircut band objective in vol space (volfit.calib.band). ``ridge`` is the hat
+    amplitude penalty strength and ``mid_anchor_weight`` the band's mid anchor.
     """
 
     def residuals(theta: np.ndarray) -> np.ndarray:
@@ -111,10 +114,12 @@ def _fit(
         if band is None:
             res = sqrt_w * (model_vol - vol_quotes)
         else:
-            res = band_residuals(model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_w)
+            res = band_residuals(
+                model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_w, mid_anchor_weight
+            )
         if n_cores:
             alphas = theta[6::4][:n_cores]
-            res = np.concatenate([res, np.sqrt(_RIDGE) * alphas])
+            res = np.concatenate([res, np.sqrt(ridge) * alphas])
         return res
 
     theta0 = np.clip(theta0, lo, hi)
@@ -129,6 +134,8 @@ def calibrate_sigmoid(
     weights: np.ndarray | None = None,
     n_cores: int = 0,
     band: BandTarget | None = None,
+    ridge: float = _RIDGE,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -163,9 +170,15 @@ def calibrate_sigmoid(
         clo, chi = _core_bounds(z)
         lo = np.concatenate([base_lo, *([clo] * n_cores)])
         hi = np.concatenate([base_hi, *([chi] * n_cores)])
-        theta = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, band=band)
+        theta = _fit(
+            theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores,
+            band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
+        )
     else:
-        theta = _fit(base, base_lo, base_hi, z, vol_quotes, sqrt_w, 0, band=band)
+        theta = _fit(
+            base, base_lo, base_hi, z, vol_quotes, sqrt_w, 0,
+            band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
+        )
 
     cores = tuple(
         HatCore(

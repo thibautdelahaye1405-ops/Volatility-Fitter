@@ -53,6 +53,12 @@ def test_defaults(client):
         "nCores": 2,
         "haircut": 0.005,
         "weightScheme": "equal",
+        "barrierCenter": 0.90,
+        "barrierScale": 50.0,
+        "sviPenaltyWeight": 1e3,
+        "leeSlopeMax": 2.0,
+        "sigmoidRidge": 1e-2,
+        "midAnchorWeight": 0.05,
     }
 
 
@@ -91,6 +97,36 @@ def test_n_order_changes_fit(client):
     # two still differ measurably.
     assert rms_n4 != pytest.approx(rms_n6, abs=1e-12)
     assert rms_n4 > rms_n6 - 1e-9
+
+
+def test_penalty_coefficients_change_fits(client):
+    """The newly-exposed per-model coefficients reach the calibrators: changing
+    one visibly moves the displayed fit (ROADMAP: all coefficients in Options)."""
+    expiry = _expiry(client, 3)
+
+    # LQD A_R soft-barrier: a centre below the natural A_R makes the barrier
+    # bind and reshape the right wing (proves barrierCenter/Scale reach the
+    # LQD calibrator). The centre is chosen from the reported A_R so it binds.
+    a_right = client.get(f"/smiles/ALPHA/{expiry}").json()["diagnostics"]["aRight"]
+    base = _fit_rms_bp(client, expiry)
+    center = max(0.05, abs(a_right) * 0.6)
+    client.put("/settings/fit", json={"model": "lqd", "barrierCenter": center, "barrierScale": 150.0})
+    assert _fit_rms_bp(client, expiry) != pytest.approx(base, abs=1e-9)
+    client.put("/settings/fit", json={"model": "lqd", "barrierCenter": 0.9, "barrierScale": 50.0})
+
+    # SVI Lee wing bound: a very tight bound forces a different admissible slice.
+    client.put("/settings/fit", json={"model": "svi"})
+    svi_base = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
+    client.put("/settings/fit", json={"model": "svi", "leeSlopeMax": 0.01, "sviPenaltyWeight": 1e6})
+    svi_tight = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
+    assert any(abs(a - b) > 1e-6 for a, b in zip(svi_base, svi_tight))
+
+    # Sigmoid hat ridge: a heavy ridge shrinks the hats, changing the curve.
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 3, "sigmoidRidge": 1e-2})
+    sig_base = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 3, "sigmoidRidge": 1e3})
+    sig_ridged = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
+    assert any(abs(a - b) > 1e-6 for a, b in zip(sig_base, sig_ridged))
 
 
 def test_validation_bounds(client):

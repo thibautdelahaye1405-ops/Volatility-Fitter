@@ -71,23 +71,33 @@ def build_display_fit(
     w: np.ndarray,
     t: float,
     weights: np.ndarray | None,
-    n_cores: int = 0,
+    settings,
     band: BandTarget | None = None,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
 
-    ``n_cores`` is the Multi-Core SIV hat count R (sigmoid only; ignored by SVI).
-    ``band`` switches both overlay families to the bid-ask / haircut band
-    objective (volfit.calib.band); None keeps the mid fit.
+    ``settings`` is the FitSettings whose per-model coefficients (nCores, the SVI
+    penalty weight / Lee-slope bound, the sigmoid ridge, the band mid anchor)
+    drive the overlay calibration. ``band`` switches both overlay families to the
+    bid-ask / haircut band objective (volfit.calib.band); None keeps the mid fit.
     """
     if model not in OVERLAY_MODELS:
         return None
     if model == "svi":
-        cal = calibrate_svi(k, w, t, weights=weights, band=band)
+        cal = calibrate_svi(
+            k, w, t, weights=weights, band=band,
+            penalty_weight=settings.sviPenaltyWeight,
+            lee_slope_max=settings.leeSlopeMax,
+            mid_anchor_weight=settings.midAnchorWeight,
+        )
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
     else:  # sigmoid (Multi-Core SIV)
-        slice_ = calibrate_sigmoid(k, w, t, weights=weights, n_cores=n_cores, band=band)
+        slice_ = calibrate_sigmoid(
+            k, w, t, weights=weights, n_cores=settings.nCores, band=band,
+            ridge=settings.sigmoidRidge,
+            mid_anchor_weight=settings.midAnchorWeight,
+        )
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)
     return DisplayFit(

@@ -32,7 +32,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
-from volfit.calib.band import BandTarget, band_residuals
+from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
 from volfit.core.black import black_vega_sigma
 from volfit.models.svi_jw.svi import RawSVI
 
@@ -95,14 +95,14 @@ def _init_theta(k: np.ndarray, w: np.ndarray) -> np.ndarray:
     return np.array([a0, theta_b, float(np.arctanh(rho0)), m0, float(np.log(sigma0))])
 
 
-def _penalties(raw: RawSVI) -> np.ndarray:
+def _penalties(raw: RawSVI, penalty_weight: float, lee_slope_max: float) -> np.ndarray:
     """Soft no-arbitrage residuals (zero on an admissible slice)."""
     min_var = raw.a + raw.b * raw.sigma * np.sqrt(1.0 - raw.rho * raw.rho)
     wing = raw.b * (1.0 + abs(raw.rho))
-    return _PENALTY * np.array(
+    return penalty_weight * np.array(
         [
             max(-min_var, 0.0),  # minimum total variance must be >= 0
-            max(wing - _LEE_SLOPE_MAX, 0.0),  # Lee wing-slope bound
+            max(wing - lee_slope_max, 0.0),  # Lee wing-slope bound
         ]
     )
 
@@ -113,6 +113,9 @@ def calibrate_svi(
     t: float,
     weights: np.ndarray | None = None,
     band: BandTarget | None = None,
+    penalty_weight: float = _PENALTY,
+    lee_slope_max: float = _LEE_SLOPE_MAX,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -122,6 +125,10 @@ def calibrate_svi(
     vol residual, so pass vega^2 or liquidity weights to emphasise quotes.
     ``band`` switches the data term to the bid-ask / haircut band objective
     (volfit.calib.band) evaluated in vol space; None keeps the mid LSQ.
+
+    ``penalty_weight`` / ``lee_slope_max`` are the soft no-arbitrage coefficients
+    (FitSettings); ``mid_anchor_weight`` the band's mid anchor. All default to
+    the historical constants, so a default fit is byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -134,8 +141,10 @@ def calibrate_svi(
         if band is None:
             fit = sqrt_weights * (model_vol - vol_quotes)
         else:
-            fit = band_residuals(model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_weights)
-        return np.concatenate((fit, _penalties(raw)))
+            fit = band_residuals(
+                model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_weights, mid_anchor_weight
+            )
+        return np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
 
     theta0 = _init_theta(k, w_quotes)
     result = least_squares(residuals, theta0, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)

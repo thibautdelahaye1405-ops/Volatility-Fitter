@@ -96,15 +96,18 @@ def band_residuals(
     hi: np.ndarray,
     mid: np.ndarray,
     scale: np.ndarray | float = 1.0,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
 ) -> np.ndarray:
     """Stacked least-squares residuals for the band objective.
 
-    Returns ``[scale * violation, sqrt(MID_ANCHOR_WEIGHT) * scale * (model - mid)]``
+    Returns ``[scale * violation, sqrt(mid_anchor_weight) * scale * (model - mid)]``
     (length 2N for N quotes). ``scale`` is a per-quote multiplier in the model's
-    residual space (unit vol weights, or 1/vega price normalization). Squaring
-    and summing reproduces ``loss_i`` of the module docstring.
+    residual space (unit vol weights, or 1/vega price normalization).
+    ``mid_anchor_weight`` is the anchor strength relative to the band penalty
+    (the FitSettings coefficient; defaults to the historical MID_ANCHOR_WEIGHT).
+    Squaring and summing reproduces ``loss_i`` of the module docstring.
     """
     scale = np.asarray(scale, dtype=float)
     viol = scale * band_violation(model, lo, hi)
-    anchor = np.sqrt(MID_ANCHOR_WEIGHT) * scale * (model - mid)
+    anchor = np.sqrt(mid_anchor_weight) * scale * (model - mid)
     return np.concatenate([viol, anchor])
