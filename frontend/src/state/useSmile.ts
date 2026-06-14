@@ -10,7 +10,7 @@ import { api, ApiError } from "./api";
 import { getMockSmile } from "../lib/mockData";
 import type { SmileData, SmilePoint } from "../lib/mockData";
 import { useDistribution, useScenarioCurve } from "./useScenario";
-import type { DistributionData, ScenarioState } from "./useScenario";
+import type { DistributionData, Regime, ScenarioState } from "./useScenario";
 
 /** Quote-fitting objective, passed to the backend as `fit_mode`. */
 export type FitMode = "mid" | "bidask" | "haircut";
@@ -232,6 +232,29 @@ export function useSmile(): UseSmileResult {
       });
     return () => controller.abort();
   }, [source, ticker, expiry, fitMode, reloadNonce, fallBackToMock]);
+
+  // Source the spot-scenario dynamics regime from the Options workspace — the
+  // aside now carries only the spot slider (ROADMAP Phase 10 follow-up). A
+  // numeric SSR ("custom") flows straight through as the regime. Re-runs after
+  // Options is applied (its onApplied calls reload(), bumping reloadNonce), so a
+  // regime change there propagates without a manual refresh.
+  useEffect(() => {
+    if (source !== "live") return;
+    const controller = new AbortController();
+    api
+      .get<{ dynamicsRegime: string; ssr: number }>("/settings/options", {
+        signal: controller.signal,
+      })
+      .then((o) => {
+        const regime: Regime | number =
+          o.dynamicsRegime === "custom" ? o.ssr : (o.dynamicsRegime as Regime);
+        setScenario((s) => (s.regime === regime ? s : { ...s, regime }));
+      })
+      .catch(() => {
+        /* keep the current regime if Options is unreachable */
+      });
+    return () => controller.abort();
+  }, [source, reloadNonce]);
 
   /** Select a ticker and jump to its mid-ladder expiry. */
   const setTicker = useCallback(

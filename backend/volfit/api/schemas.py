@@ -109,8 +109,15 @@ class OptionsSettings(BaseModel):
     gridRegLambda: float = Field(1e-2, ge=0.0, le=1e4)
     # editable penalty strength (changes calibration output)
     calendarWeight: float = Field(1e6, ge=0.0)
-    # spot-vol dynamics seed defaults (the scenario panel reads these)
-    dynamicsRegime: Regime = Regime.STICKY_STRIKE
+    # spot-vol dynamics defaults — the Parametric spot-scenario reads these
+    # (the regime selector moved entirely to Options). "custom" uses ``ssr``.
+    dynamicsRegime: Literal[
+        "sticky_moneyness",
+        "sticky_strike",
+        "sticky_local_vol",
+        "sticky_local_vol_grid",
+        "custom",
+    ] = "sticky_strike"
     ssr: float = Field(2.0, ge=0.0)
     # stubbed this phase (UI state only; behaviour TODO)
     autoCalibrate: bool = True

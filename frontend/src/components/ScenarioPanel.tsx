@@ -1,10 +1,11 @@
-// "Spot scenario" panel for the Smile Viewer diagnostics aside. Drives the
-// SSR overlay on the smile chart: pick a vol-spot dynamics regime, dial a
-// hypothetical spot return, and the shifted smile (POST /scenario/ssr) is
-// drawn dotted amber by SmileChart. The readout line reports the engine's
-// skew-stickiness ratio and the resulting ATM vol shift.
+// "Spot scenario" panel for the Parametric aside. Drives the SSR overlay on
+// the smile chart: dial a hypothetical spot return and the shifted smile
+// (POST /scenario/ssr) is drawn dotted amber by SmileChart. The dynamics
+// regime now lives entirely in the Options workspace (ROADMAP Phase 10
+// follow-up); this panel shows it read-only and carries only the slider. The
+// readout reports the engine's skew-stickiness ratio and ATM vol shift.
 import { useMemo } from "react";
-import type { Regime, ScenarioState } from "../state/useScenario";
+import type { ScenarioState } from "../state/useScenario";
 import type { SmilePoint } from "../lib/mockData";
 
 interface ScenarioPanelProps {
@@ -22,17 +23,18 @@ interface ScenarioPanelProps {
   disabledReason?: string;
 }
 
-/** Compact regime labels; full names live in the hover tooltips. */
-const REGIMES: { id: Regime; label: string; title: string }[] = [
-  { id: "sticky_moneyness", label: "Mny", title: "Sticky moneyness" },
-  { id: "sticky_strike", label: "Strike", title: "Sticky strike" },
-  { id: "sticky_local_vol", label: "LV", title: "Sticky local-vol (SSR = 2 rule)" },
-  {
-    id: "sticky_local_vol_grid",
-    label: "LV grid",
-    title: "Sticky local-vol grid (exact: fixed-strike grid, Dupire reprice)",
-  },
-];
+/** Human label for the active regime (string id or numeric custom SSR). */
+function regimeLabel(regime: ScenarioState["regime"]): string {
+  if (typeof regime === "number") return `Custom SSR ${regime.toFixed(1)}`;
+  return (
+    {
+      sticky_moneyness: "Sticky moneyness",
+      sticky_strike: "Sticky strike",
+      sticky_local_vol: "Sticky local-vol",
+      sticky_local_vol_grid: "Sticky local-vol grid",
+    } as Record<string, string>
+  )[regime] ?? regime;
+}
 
 /** Linear interpolation of a curve's vol at k (same as SmileChart's). */
 function volAt(curve: SmilePoint[], k: number): number | null {
@@ -82,27 +84,12 @@ export default function ScenarioPanel({
         SSR-implied smile under a spot shock
       </p>
 
-      {/* Regime segmented control (mirrors the fit-mode control styling) */}
-      <div className="mb-3 flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
-        {REGIMES.map((r) => {
-          const active = r.id === scenario.regime;
-          return (
-            <button
-              key={r.id}
-              title={r.title}
-              disabled={disabled}
-              onClick={() => onScenarioChange({ ...scenario, regime: r.id })}
-              className={[
-                "flex-1 px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
-                active
-                  ? "bg-accent-600/25 text-accent-400"
-                  : "text-slate-400 enabled:hover:text-slate-200",
-              ].join(" ")}
-            >
-              {r.label}
-            </button>
-          );
-        })}
+      {/* Active dynamics regime — read-only; change it in the Options tab. */}
+      <div className="mb-3 flex items-center justify-between rounded-md border border-slate-800 bg-surface-800/60 px-2 py-1">
+        <span className="text-[11px] text-slate-500">Regime</span>
+        <span className="font-mono text-[11px] text-slate-300" title="Set in the Options workspace">
+          {regimeLabel(scenario.regime)}
+        </span>
       </div>
 
       {/* Spot-return slider with a live % readout (accent when active) */}

@@ -23,11 +23,13 @@ export type Regime =
   | "sticky_local_vol"
   | "sticky_local_vol_grid";
 
-/** User-controlled scenario inputs (regime control + spot-return slider). */
+/** Scenario inputs: the spot-return slider (live, in the aside) plus the
+ *  dynamics regime — the regime is now chosen in the Options workspace and a
+ *  number means a custom skew-stickiness ratio (ROADMAP Phase 10 follow-up). */
 export interface ScenarioState {
   /** Hypothetical spot return, e.g. -0.02 for a 2% sell-off. 0 = overlay off. */
   spotReturn: number;
-  regime: Regime;
+  regime: Regime | number;
 }
 
 /** Response of POST /scenario/ssr. */

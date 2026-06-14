@@ -21,9 +21,11 @@ const FIT_MODES: { id: FitMode; label: string }[] = [
 ];
 
 const REGIMES: { id: DynamicsRegime; label: string; title: string }[] = [
-  { id: "sticky_strike", label: "Sticky-strike", title: "Smile fixed in absolute strike" },
-  { id: "sticky_moneyness", label: "Sticky-delta", title: "Smile fixed in moneyness / delta" },
-  { id: "sticky_local_vol", label: "Sticky-LV", title: "Local-vol grid fixed (SSR≈2 short end)" },
+  { id: "sticky_moneyness", label: "Mny", title: "Sticky moneyness / delta" },
+  { id: "sticky_strike", label: "Strike", title: "Sticky strike (smile fixed in absolute strike)" },
+  { id: "sticky_local_vol", label: "LV", title: "Sticky local-vol (SSR = 2 short-end rule)" },
+  { id: "sticky_local_vol_grid", label: "LV grid", title: "Sticky local-vol grid (exact Dupire reprice)" },
+  { id: "custom", label: "SSR", title: "Custom skew-stickiness ratio (set below)" },
 ];
 
 /** Penalty catalogue: description + formula + which knob sets its strength. */
@@ -151,21 +153,29 @@ export default function OptionsViewer() {
           </div>
 
           <div className="border-t border-slate-800 pt-3">
-            <h3 className={sectionTitle}>Spot-vol dynamics (default)</h3>
+            <h3 className={sectionTitle}>Spot-vol dynamics</h3>
             <Segmented
               options={REGIMES} value={draft.dynamicsRegime} disabled={!live}
               onChange={(v) => patch({ dynamicsRegime: v })}
             />
             <div className="mt-2 flex items-center justify-between">
-              <span className={rowLabel} title="Skew-stickiness ratio for the custom regime">
+              <span
+                className={`${rowLabel} ${draft.dynamicsRegime === "custom" ? "" : "opacity-40"}`}
+                title="Custom skew-stickiness ratio (used when the regime is SSR)"
+              >
                 SSR value
               </span>
               <input
-                type="number" step={0.1} min={0} value={draft.ssr} disabled={!live}
+                type="number" step={0.1} min={0} value={draft.ssr}
+                disabled={!live || draft.dynamicsRegime !== "custom"}
                 onChange={(e) => patch({ ssr: Number(e.target.value) })}
                 className={numInput}
               />
             </div>
+            <p className="mt-1 text-[10px] text-slate-600">
+              Drives the Parametric spot-scenario overlay (its aside has the spot
+              slider only).
+            </p>
           </div>
 
           <div className="border-t border-slate-800 pt-3">

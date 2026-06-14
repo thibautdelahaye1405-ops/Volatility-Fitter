@@ -1,12 +1,11 @@
 // Diagnostics aside of the Parametric workspace, extracted from SmileViewer:
-// headline fit diagnostics plus the live per-node controls a trader flips
-// often — the smile model and the SSR spot-scenario (ROADMAP Phase 10 slimmed
-// it to these). The forward/dividend editor moved to the Forwards tab and the
-// full hyperparameters to the Options tab. Reads the shared smile session
-// directly; the only prop is whether the Smile chart view is active (the
-// scenario overlay is only drawn there).
+// headline fit diagnostics plus the SSR spot-scenario slider. The model
+// selector, forward/dividend editor and full hyperparameters all moved to the
+// Options / Forwards workspaces (ROADMAP Phase 10 + follow-up), leaving the
+// aside to diagnostics + the live spot scenario. Reads the shared smile
+// session directly; the only prop is whether the Smile chart view is active
+// (the scenario overlay is only drawn there).
 import ScenarioPanel from "./ScenarioPanel";
-import ModelPanel from "./ModelPanel";
 import { useSmileSession } from "../state/smileSession";
 import { formatPct } from "../lib/chartScale";
 
@@ -19,7 +18,6 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
   const {
     smile,
     source,
-    reload,
     scenario,
     setScenario,
     scenarioCurve,
@@ -64,11 +62,6 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
           </div>
         ))}
       </dl>
-
-      {/* Live model selector (full defaults live in the Options tab) */}
-      <div className="mt-4 border-t border-slate-800 pt-4">
-        <ModelPanel disabled={!live} onApplied={reload} />
-      </div>
 
       {/* Spot scenario: drives the SSR overlay on the smile chart */}
       <div className="mt-4 border-t border-slate-800 pt-4">

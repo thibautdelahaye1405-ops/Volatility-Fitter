@@ -56,7 +56,7 @@ def test_put_round_trip(client):
         "gridTNodes": 5,
         "gridRegLambda": 1.0,
         "calendarWeight": 5e5,
-        "dynamicsRegime": "sticky_moneyness",
+        "dynamicsRegime": "custom",
         "ssr": 1.5,
         "autoCalibrate": False,
         "spotMode": "realtime",

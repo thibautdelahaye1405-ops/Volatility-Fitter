@@ -7,8 +7,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 
-/** Spot-vol dynamics regime (mirror of the backend Regime enum). */
-export type DynamicsRegime = "sticky_moneyness" | "sticky_strike" | "sticky_local_vol";
+/** Spot-vol dynamics regime default (mirror of the backend literal).
+ *  "custom" applies the explicit ``ssr`` value; the others are named regimes. */
+export type DynamicsRegime =
+  | "sticky_moneyness"
+  | "sticky_strike"
+  | "sticky_local_vol"
+  | "sticky_local_vol_grid"
+  | "custom";
 /** Spot price mode (stubbed this phase). */
 export type SpotMode = "realtime" | "static";
 
