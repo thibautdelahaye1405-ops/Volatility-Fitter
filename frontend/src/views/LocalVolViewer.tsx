@@ -10,7 +10,7 @@
 //   Table    per-strike reconstructed IVs + prices (per expiry)
 // The derived Density / Term / Table views fetch sibling endpoints that reuse
 // the cached affine fit (useAffineView). Live backend only (no mock fallback).
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
 import LocalVolTable from "../components/LocalVolTable";
@@ -35,18 +35,21 @@ const buttonClass =
 const REG_LAMBDAS = [0, 1e-3, 1e-2, 1e-1, 1];
 const regLabel = (v: number) => (v === 0 ? "Off" : `1e${Math.round(Math.log10(v))}`);
 
-/** Chart-card sub-tabs, mirroring the Parametric workspace. */
-type LvView = "smile" | "density" | "term" | "surface" | "table";
+/** Chart-card sub-tabs, mirroring the Parametric workspace. "LV surface" is the
+ *  nodal local-vol heatmap; "IV surface" is the reconstructed implied-vol
+ *  surface (both heatmaps over t × strike). */
+type LvView = "smile" | "density" | "term" | "lvsurface" | "ivsurface" | "table";
 const LV_VIEWS: { id: LvView; label: string }[] = [
   { id: "smile", label: "Smile" },
   { id: "density", label: "Density" },
   { id: "term", label: "Term" },
-  { id: "surface", label: "Surface" },
+  { id: "lvsurface", label: "LV surface" },
+  { id: "ivsurface", label: "IV surface" },
   { id: "table", label: "Table" },
 ];
 /** Which sub-tabs are per-expiry (need the expiry selector). */
 const PER_EXPIRY: Record<LvView, boolean> = {
-  smile: true, density: true, table: true, term: false, surface: false,
+  smile: true, density: true, table: true, term: false, lvsurface: false, ivsurface: false,
 };
 
 const chartMessage = (text: string) => (
@@ -97,12 +100,28 @@ export default function LocalVolViewer() {
 
   const smile = data?.smiles[expiryIdx];
 
+  // Reconstructed IV surface: resample every expiry's smile onto a shared
+  // log-moneyness grid (intersection range, no extrapolation) → IV heatmap.
+  const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
+
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
     if (loading || data === null) return chartMessage("Calibrating local-vol surface…");
     switch (view) {
-      case "surface":
+      case "lvsurface":
         return <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
+      case "ivsurface":
+        return ivSurface
+          ? (
+            <LocalVolHeatmap
+              tNodes={ivSurface.tNodes}
+              xNodes={ivSurface.xNodes}
+              localVol={ivSurface.iv}
+              legendLabel="σ_IV(t, x)"
+              cellLabel="cells"
+            />
+          )
+          : chartMessage("IV surface needs at least two overlapping expiries.");
       case "smile":
         return smile ? <LocalVolSmile smile={smile} /> : chartMessage("No smile");
       case "density":
@@ -274,6 +293,43 @@ export default function LocalVolViewer() {
       </div>
     </div>
   );
+}
+
+/** Linear interpolation of a sorted (k, vol) curve at log-moneyness k. */
+function interpVol(model: { k: number; vol: number }[], k: number): number {
+  if (model.length === 0) return NaN;
+  if (k <= model[0].k) return model[0].vol;
+  const last = model[model.length - 1];
+  if (k >= last.k) return last.vol;
+  for (let i = 1; i < model.length; i++) {
+    if (k <= model[i].k) {
+      const a = model[i - 1];
+      const b = model[i];
+      const f = (k - a.k) / (b.k - a.k);
+      return a.vol + f * (b.vol - a.vol);
+    }
+  }
+  return last.vol;
+}
+
+/** Reconstructed IV surface from the per-expiry affine smiles: resample each on
+ *  a shared log-moneyness grid (the intersection range, so no curve is
+ *  extrapolated) and return it as a (t × K/F) matrix for the heatmap. */
+function buildIvSurface(
+  smiles: { t: number; model: { k: number; vol: number }[] }[],
+): { tNodes: number[]; xNodes: number[]; iv: number[][] } | null {
+  const usable = smiles.filter((s) => s.model.length >= 2);
+  if (usable.length < 2) return null;
+  const kLo = Math.max(...usable.map((s) => s.model[0].k));
+  const kHi = Math.min(...usable.map((s) => s.model[s.model.length - 1].k));
+  if (!(kHi > kLo)) return null;
+  const N = 41;
+  const kGrid = Array.from({ length: N }, (_, j) => kLo + ((kHi - kLo) * j) / (N - 1));
+  return {
+    tNodes: usable.map((s) => s.t),
+    xNodes: kGrid.map((k) => Math.exp(k)),
+    iv: usable.map((s) => kGrid.map((k) => interpVol(s.model, k))),
+  };
 }
 
 /** A labelled integer slider row for the vertex-grid controls. */

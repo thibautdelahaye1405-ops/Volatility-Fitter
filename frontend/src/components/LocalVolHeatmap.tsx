@@ -11,8 +11,13 @@ import { formatPct } from "../lib/chartScale";
 interface LocalVolHeatmapProps {
   tNodes: number[];
   xNodes: number[];
-  /** sqrt(nodal variance): localVol[i][j] at (tNodes[i], xNodes[j]). */
+  /** value[i][j] at (tNodes[i], xNodes[j]) — local vol, or reconstructed IV. */
   localVol: number[][];
+  /** Legend caption (defaults to the local-vol surface; the IV surface
+   *  sub-tab passes its own). */
+  legendLabel?: string;
+  /** Hover/legend count caption suffix (e.g. "vertices" vs "cells"). */
+  cellLabel?: string;
 }
 
 /** Colormap stops: blue → cyan → amber → red over the vol range. */
@@ -57,7 +62,13 @@ function useElementSize() {
 
 const MARGIN = { top: 8, right: 10, bottom: 26, left: 38 };
 
-export default function LocalVolHeatmap({ tNodes, xNodes, localVol }: LocalVolHeatmapProps) {
+export default function LocalVolHeatmap({
+  tNodes,
+  xNodes,
+  localVol,
+  legendLabel = "σ_loc(t, x)",
+  cellLabel = "vertices",
+}: LocalVolHeatmapProps) {
   const { ref, size } = useElementSize();
   const [hover, setHover] = useState<{ i: number; j: number } | null>(null);
 
@@ -81,7 +92,7 @@ export default function LocalVolHeatmap({ tNodes, xNodes, localVol }: LocalVolHe
     <div className="flex h-full min-h-0 flex-col">
       {/* Legend */}
       <div className="mb-1 flex shrink-0 items-center gap-3 px-1 text-[11px] text-slate-400">
-        <span className="font-mono text-slate-500">σ_loc(t, x)</span>
+        <span className="font-mono text-slate-500">{legendLabel}</span>
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
           {formatPct(vMin)}
           <span
@@ -94,7 +105,7 @@ export default function LocalVolHeatmap({ tNodes, xNodes, localVol }: LocalVolHe
           {formatPct(vMax)}
         </span>
         <span className="text-[10px] text-slate-500">
-          {nT}×{nX} vertices
+          {nT}×{nX} {cellLabel}
         </span>
         <span className="ml-auto font-mono text-[10px] text-slate-300">
           {hover
