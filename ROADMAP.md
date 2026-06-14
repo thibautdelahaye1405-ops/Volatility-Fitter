@@ -10,7 +10,47 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (321 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (326 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-14] Phase 10 — workspace restructuring (tabs, Forwards & Options)**:
+  top tabs are now **Parametric · Local Vol · Forwards · Options · Graph ·
+  Universe** (Smile → Parametric; Term-Structure is no longer a top tab).
+  * **Parametric**: Term-Structure embedded as a chart sub-tab next to Density
+    (`components/TermPanel.tsx`, reuses useTerm + TermChart; aside hidden on it);
+    the standalone `TermStructureViewer` is retired. The aside is slimmed to its
+    live per-node controls — new `ModelPanel` (smile-family selector that PUTs
+    the *full* FitSettings so other fields survive) + ScenarioPanel.
+  * **Local Vol**: Parametric-style sub-tabs Smile / Density / Term / Surface
+    (heatmap) / Table, every view DERIVED from the calibrated affine LV surface.
+    Backend `api/affine_views.py` reconstructs them from the cached fit (wrap
+    each reconstructed (k,vol) smile in an interpolating SmileModel, reuse the
+    Breeden-Litzenberger density / log-contract var-swap / Black-price pipeline);
+    `POST /fit/affine/{ticker}/{density,term,table}` share the AffineFitRequest
+    body → same cache key. Frontend `state/useAffineView.ts` (only the active
+    sub-tab fetches) + presentational `LocalVolTable`.
+  * **Forwards** tab (`views/ForwardsViewer.tsx`): per-ticker forwards table
+    across the ladder (parity/theo/manual/active) + the per-expiry ForwardPanel
+    reused verbatim; edits refit both Parametric & Local Vol via the forwards
+    version. (ForwardPanel left the aside.)
+  * **Options** tab (`views/OptionsViewer.tsx` + `state/useOptions.ts`): new
+    global `OptionsSettings` (GET/PUT /settings/options on AppState; options
+    version folded into the fit-cache key, bumped only by the calibration-
+    affecting `calendarWeight`). Hybrid meta page: calibration defaults (reuses
+    HyperparamPanel + fit-mode), engine toggles (arb-fix / events / var-swap /
+    auto-load-prior), spot-vol dynamics default (regime + SSR), local-vol grid
+    defaults, the **penalty catalogue** (descriptions + formulas verified
+    against the calibrators, editable `calendarWeight`), and the stubbed
+    workflow toggles (auto-on-demand calibration, real-time/static spot).
+  * **Wiring (per the "wire cheap / stub new" decision)**: `calendarWeight`
+    fully affects surface slice fits (threaded into calibrate_slice, tested);
+    `useAffine` seeds the LV grid from Options (untouched-only) and `useTerm`
+    seeds the events default. The remaining toggles (enforceCalendar,
+    varSwapEnabled, dynamicsRegime/ssr, autoLoadPrior) are persisted global
+    defaults surfaced in the UI — deeper per-view consumption is the Phase 10
+    follow-up; auto-calibrate + spot mode stay stubbed. 10 new backend tests
+    (`test_api_options.py` ×6, `test_api_affine_views.py` ×4); strict-TS build
+    green; new endpoints live-verified on uvicorn (synthetic ALPHA: options
+    round-trip, /term 4 points, /density 169 pts, /table 14 rows, F 87.80).
 
 - **[2026-06-14] "Quantile" chart replaced by the log quantile density**: the
   Smile Viewer's distribution tab now plots the LQD model's own backbone,
@@ -486,25 +526,20 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     smile refits via the forwards version. Verified end-to-end in headless
     Edge (cash dividend → Term marker at t≈0.12y; editor shows the schedule).
 
-**Next up (in order — the [REQ] backlog is now fully cleared):**
-1. **Phase 10 — Workspace restructuring: tabs, Forwards & Options** (see the
-   dedicated Phase 10 section below; requested 2026-06-14). Rename Smile →
-   **Parametric**; embed Term-Structure as a sub-tab next to Density; give
-   **Local Vol** the same model-aware sub-tabs (every view derived from the
-   calibrated affine LV surface); add a dedicated **Forwards** tab (forwards +
-   dividends, shared by Parametric and Local Vol) and a meta/defaults
-   **Options** tab (grid-size, var-swap, prior, events, LQD/Sigmoid defaults,
-   penalty catalogue, weighting, fit-mode/haircut, spot-vol dynamics, spot
-   mode, auto-calibration, arb-fix). The Parametric aside keeps only the live
-   per-node controls (model, fit-mode, scenario).
+**Next up (in order):**
+1. Phase 10 follow-ups (the tab restructure shipped; see the dated STATUS entry
+   and the Phase 10 section): deepen the "wire cheap" toggles whose backend
+   defaults are stored + surfaced but not yet consumed everywhere — scenario
+   auto-seed from `dynamicsRegime`/`ssr`, `enforceCalendar` on the per-view
+   paths, `varSwapEnabled` hiding the var-swap rows, `autoLoadPrior`; then the
+   two stubs (auto-on-demand calibration trigger, real-time spot streaming).
 2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
    sets, provider-failure injection; UX polish (skeletons, error surfaces,
    layout persistence); Docker-compose packaging + user/API docs.
 3. Smaller leftovers scattered in the phase checklists: DuckDB/Parquet history
    (the columnar quote-snapshot store, deferred when the providers landed);
    process-pool for parallel slice fits; editable ATM handles + prior load/diff
-   UI. (The arbitrage/event toggles formerly listed here are now part of the
-   Phase 10 Options tab.)
+   UI.
 4. Universe leftovers (small): Bloomberg/Massive `available_expiries` now exist;
    the expiry picker is still per-ticker (no cross-ticker "apply to all" yet).
 
@@ -720,7 +755,13 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 
 ---
 
-## Phase 10 — Workspace restructuring: tabs, Forwards & Options (NEXT, requested 2026-06-14)
+## Phase 10 — Workspace restructuring: tabs, Forwards & Options (SHIPPED 2026-06-14)
+
+> Shipped — see the dated STATUS entry at the top for what landed. The checklist
+> below is the original plan; the only deferred items are the deeper "wire
+> cheap" consumers (scenario auto-seed, enforceCalendar/varSwap per-view,
+> autoLoadPrior) and the two stubs, now tracked as Phase 10 follow-ups in
+> "Next up".
 
 Reorganize the top-level tabs and consolidate the global / meta controls into a
 single **Options** workspace, so the per-workspace asides only carry the live
