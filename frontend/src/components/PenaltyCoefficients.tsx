@@ -1,13 +1,18 @@
 // Per-model optimization / penalty coefficients (ROADMAP: expose every
-// calibration coefficient explicitly in Options). Edits the FitSettings draft
-// owned by HyperparamPanel; model-specific groups grey out when their family
-// isn't the active model (the coefficient still applies once selected). Each
-// default equals the historical hardcoded constant.
+// calibration coefficient explicitly in Options). Edits the lifted FitSettings
+// draft via a partial-patch callback; model-specific groups grey out when their
+// family isn't the active model (the coefficient still applies once selected).
+// Each default equals the historical hardcoded constant.
+//
+// `group` selects which coefficients render so the Options tab can place the
+// model-relevant penalties under "Model & hyperparameters" and the band
+// mid-anchor (a calibration choice) under "Calibration".
 import type { FitModel, FitSettings } from "./HyperparamPanel";
 
 interface Props {
+  group: "model" | "calibration";
   draft: FitSettings;
-  onChange: (next: FitSettings) => void;
+  onChange: (p: Partial<FitSettings>) => void;
   disabled: boolean;
 }
 
@@ -17,9 +22,7 @@ const numInput =
   "font-mono text-[11px] text-slate-200 outline-none hover:border-slate-600 " +
   "focus:border-accent-500 disabled:cursor-not-allowed";
 
-export default function PenaltyCoefficients({ draft, onChange, disabled }: Props) {
-  const set = (patch: Partial<FitSettings>) => onChange({ ...draft, ...patch });
-
+export default function PenaltyCoefficients({ group, draft, onChange, disabled }: Props) {
   /** One numeric coefficient row, greyed when its model isn't active. */
   const Row = (
     label: string,
@@ -40,13 +43,23 @@ export default function PenaltyCoefficients({ draft, onChange, disabled }: Props
           min={0}
           value={draft[field] as number}
           disabled={off}
-          onChange={(e) => set({ [field]: Number(e.target.value) } as Partial<FitSettings>)}
+          onChange={(e) => onChange({ [field]: Number(e.target.value) } as Partial<FitSettings>)}
           className={numInput}
         />
       </div>
     );
   };
 
+  if (group === "calibration") {
+    // Band mid anchor applies to every model in the band fit modes.
+    return (
+      <div className="mb-1">
+        {Row("Band mid anchor", "Mid-anchor weight in bid-ask / haircut modes (all models)", "midAnchorWeight", 0.01)}
+      </div>
+    );
+  }
+
+  // group === "model": the per-family penalty / barrier coefficients.
   return (
     <div className="mb-3 border-t border-slate-800 pt-3">
       <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
@@ -63,9 +76,6 @@ export default function PenaltyCoefficients({ draft, onChange, disabled }: Props
 
       {/* Sigmoid */}
       {Row("SIV hat ridge", "Multi-Core SIV hat-amplitude ridge penalty", "sigmoidRidge", 0.01, "sigmoid")}
-
-      {/* All models (band modes) */}
-      {Row("Band mid anchor", "Mid-anchor weight in bid-ask / haircut modes (all models)", "midAnchorWeight", 0.01)}
     </div>
   );
 }

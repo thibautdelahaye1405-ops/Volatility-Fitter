@@ -1,4 +1,10 @@
-/* Tailwind CSS v4 entry point. Theme tokens for the dark trading-app look. */
+/* Tailwind CSS v4 entry point + runtime theming.
+ *
+ * Tailwind v4 compiles colour utilities to `var(--color-<name>)`, so the whole
+ * palette can be re-skinned at runtime by overriding those CSS variables under a
+ * `[data-theme]` scope on <html> — no per-component class migration required.
+ * The View tab (state/viewSettings.tsx) sets `data-theme` plus the brightness /
+ * contrast filter knobs below. */
 @import "tailwindcss";
 
 @theme {
@@ -17,7 +23,86 @@
   --font-mono: "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
 }
 
-/* Global defaults: dark canvas, crisp text rendering. */
+/* ---------------------------------------------------------------------------
+ * Colour schemes. The default (and explicit `dark`) lifts the dim text tiers a
+ * touch versus the Tailwind defaults — the old palette read as "too dimmed".
+ * Each scheme only overrides variables; every utility class flips for free.
+ * ------------------------------------------------------------------------- */
+:root,
+[data-theme="dark"] {
+  /* Brighter labels / hints / muted text than stock slate. */
+  --color-slate-400: oklch(75% 0.04 256.788);
+  --color-slate-500: oklch(63% 0.046 257.417);
+  --color-slate-600: oklch(51% 0.043 257.281);
+}
+
+/* High-contrast dark: near-black canvas, maximally bright text. */
+[data-theme="contrast"] {
+  --color-surface-950: #000000;
+  --color-surface-900: #06080d;
+  --color-surface-800: #0d1117;
+  --color-surface-700: #161b22;
+
+  --color-slate-100: #ffffff;
+  --color-slate-200: #f1f5f9;
+  --color-slate-300: #e2e8f0;
+  --color-slate-400: #cbd5e1;
+  --color-slate-500: #aebccd;
+  --color-slate-600: #94a3b8;
+  --color-slate-700: #3a4456;
+  --color-slate-800: #2a3142;
+
+  --color-accent-400: #56c7ff;
+  --color-accent-500: #38bdf8;
+  --color-accent-600: #0ea5e9;
+}
+
+/* Warm dark: warmer surfaces and an amber accent for long sessions. */
+[data-theme="warm"] {
+  --color-surface-950: #0f0d0a;
+  --color-surface-900: #17130d;
+  --color-surface-800: #221c14;
+  --color-surface-700: #2e2619;
+
+  --color-slate-100: #faf6ee;
+  --color-slate-200: #ece3d4;
+  --color-slate-300: #d8ccb8;
+  --color-slate-400: #b3a78f;
+  --color-slate-500: #968b73;
+  --color-slate-600: #7c715b;
+  --color-slate-700: #463a26;
+  --color-slate-800: #322a1c;
+
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+}
+
+/* Light: invert the surface scale to a paper canvas and the slate scale to dark
+ * ink. `surface-800` (panels) becomes white so cards pop on the grey body. */
+[data-theme="light"] {
+  --color-surface-950: #f7f9fc; /* body */
+  --color-surface-900: #eef2f7; /* main bg */
+  --color-surface-800: #ffffff; /* panels / cards */
+  --color-surface-700: #e2e8f0; /* hover / elevated */
+
+  --color-slate-100: #0b1220; /* headings */
+  --color-slate-200: #1e293b; /* body text */
+  --color-slate-300: #334155;
+  --color-slate-400: #52617a; /* labels */
+  --color-slate-500: #6b7a93; /* hints */
+  --color-slate-600: #8c99ad; /* muted */
+  --color-slate-700: #cbd5e1; /* borders / elevated bg */
+  --color-slate-800: #e2e8f0; /* dividers / dropdown bg */
+
+  --color-accent-400: #0369a1;
+  --color-accent-500: #0284c7;
+  --color-accent-600: #075985;
+
+  color-scheme: light;
+}
+
+/* Global defaults: themed canvas, crisp text rendering. */
 html,
 body,
 #root {
@@ -26,4 +111,10 @@ body,
 
 body {
   @apply bg-surface-950 text-slate-200 antialiased;
+}
+
+/* User-tunable contrast / brightness (View tab). Applied to the app root so the
+ * full-screen click-away overlays (position:fixed inset-0) still cover it. */
+#root {
+  filter: brightness(var(--ui-brightness, 1)) contrast(var(--ui-contrast, 1));
 }

@@ -5,9 +5,12 @@
 // front and shaded with a blue→cyan→amber→red colormap. Extracted from
 // SurfaceChart so both the Parametric vol surface (fetched) and the Local Vol
 // reconstructed-IV surface (built client-side) share one renderer.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { formatPct } from "../lib/chartScale";
+import { clamp, formatPct } from "../lib/chartScale";
+import { timeAxisValue } from "../lib/timeAxis";
+import type { TimeAxisMode } from "../lib/timeAxis";
+import RangeBrush from "./RangeBrush";
 
 /** Mesh data: one vol row per expiry over a shared log-moneyness grid k. */
 export interface SurfaceMeshData {
@@ -78,38 +81,68 @@ interface SurfaceMeshProps {
 
 export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
+  const svgRef = useRef<SVGSVGElement | null>(null);
   /** Yaw around the vertical (value) axis, radians; drag to rotate. */
   const [yaw, setYaw] = useState(-0.55);
+  /** Scene zoom factor (scroll to zoom the projected surface). */
+  const [zoomF, setZoomF] = useState(1);
+  /** Maturity-axis scaling: √T (default, the natural diffusive scale) or T. */
+  const [timeMode, setTimeMode] = useState<TimeAxisMode>("sqrt");
+  /** Coarse strike (k) window; null = full extent. */
+  const [kWindow, setKWindow] = useState<[number, number] | null>(null);
   const drag = useRef<{ startX: number; startYaw: number } | null>(null);
 
-  // Normalize the grid into scene coordinates: x = k in [-1, 1],
-  // y = sqrt(T) in [-1, 1], z = value in [0, Z_HEIGHT].
+  // Wheel zoom (native, non-passive so preventDefault works).
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setZoomF((f) => clamp(f * (e.deltaY < 0 ? 1.1 : 1 / 1.1), 0.3, 6));
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const fullK: [number, number] = data.k.length
+    ? [data.k[0], data.k[data.k.length - 1]]
+    : [-1, 1];
+  const [kLo, kHi] = kWindow ?? fullK;
+
+  // Normalize the grid into scene coordinates: x = k (within the brushed window)
+  // in [-1, 1], y = T or √T in [-1, 1], z = value in [0, Z_HEIGHT].
   const mesh = useMemo(() => {
     const { k, t, vol } = data;
     if (k.length < 2 || t.length < 2 || vol.length !== t.length) return null;
-    const stride = Math.max(1, Math.ceil(k.length / MAX_COLS));
+    // Columns inside the brushed k-window, strided down for rendering.
+    const inWin: number[] = [];
+    for (let j = 0; j < k.length; j++) if (k[j] >= kLo && k[j] <= kHi) inWin.push(j);
+    if (inWin.length < 2) return null;
+    const stride = Math.max(1, Math.ceil(inWin.length / MAX_COLS));
     const cols: number[] = [];
-    for (let j = 0; j < k.length; j += stride) cols.push(j);
-    if (cols[cols.length - 1] !== k.length - 1) cols.push(k.length - 1);
-    const kMin = k[0];
-    const kMax = k[k.length - 1];
-    const sMin = Math.sqrt(t[0]);
-    const sMax = Math.sqrt(t[t.length - 1]);
+    for (let c = 0; c < inWin.length; c += stride) cols.push(inWin[c]);
+    if (cols[cols.length - 1] !== inWin[inWin.length - 1]) cols.push(inWin[inWin.length - 1]);
+    const kMin = k[cols[0]];
+    const kMax = k[cols[cols.length - 1]];
+    const sval = (tt: number) => timeAxisValue(tt, timeMode);
+    const sMin = sval(t[0]);
+    const sMax = sval(t[t.length - 1]);
+    // Colour scale adapts to the visible (windowed) cells.
     let vMin = Infinity;
     let vMax = -Infinity;
-    for (const row of vol)
-      for (const v of row) { vMin = Math.min(vMin, v); vMax = Math.max(vMax, v); }
+    for (let i = 0; i < t.length; i++)
+      for (const j of cols) { vMin = Math.min(vMin, vol[i][j]); vMax = Math.max(vMax, vol[i][j]); }
     const vSpan = vMax - vMin || 1;
     const rows = t.map((ti, i) =>
       cols.map((j) => ({
         x: kMax > kMin ? (2 * (k[j] - kMin)) / (kMax - kMin) - 1 : 0,
-        y: sMax > sMin ? (2 * (Math.sqrt(ti) - sMin)) / (sMax - sMin) - 1 : 0,
+        y: sMax > sMin ? (2 * (sval(ti) - sMin)) / (sMax - sMin) - 1 : 0,
         z: ((vol[i][j] - vMin) / vSpan) * Z_HEIGHT,
         vol: vol[i][j],
       })),
     );
     return { rows, vMin, vMax, kMin, kMax, tMin: t[0], tMax: t[t.length - 1] };
-  }, [data]);
+  }, [data, kLo, kHi, timeMode]);
 
   const scene = useMemo(() => {
     const plotW = size.width;
@@ -139,7 +172,7 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
       xMin = Math.min(xMin, c.sx); xMax = Math.max(xMax, c.sx);
       yMin = Math.min(yMin, c.sy); yMax = Math.max(yMax, c.sy);
     }
-    const scale = 0.88 * Math.min(plotW / (xMax - xMin || 1), plotH / (yMax - yMin || 1));
+    const scale = 0.88 * zoomF * Math.min(plotW / (xMax - xMin || 1), plotH / (yMax - yMin || 1));
     const ox = plotW / 2 - (scale * (xMin + xMax)) / 2;
     const oy = plotH / 2 - (scale * (yMin + yMax)) / 2;
     const X = (p: { sx: number }) => ox + p.sx * scale;
@@ -170,7 +203,7 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
       { x: X(corners[3]), y: Y(corners[3]) + 14, text: `T ${mesh.tMax.toFixed(2)}y` },
     ];
     return { quads, frame, labels };
-  }, [mesh, yaw, size]);
+  }, [mesh, yaw, size, zoomF]);
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -205,7 +238,25 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
         <span className="text-[10px] text-slate-500">
           {data.expiries.length} expiries · {data.k.length} strikes
         </span>
-        <span className="ml-auto text-[10px] text-slate-600">drag to rotate</span>
+        <div className="ml-auto flex items-center gap-2">
+          {/* Maturity-axis scaling toggle */}
+          <div className="flex overflow-hidden rounded border border-slate-700">
+            {(["linear", "sqrt"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setTimeMode(m)}
+                title={m === "sqrt" ? "√T axis" : "Linear T axis"}
+                className={[
+                  "px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+                  timeMode === m ? "bg-accent-600/25 text-accent-400" : "text-slate-400 hover:text-slate-200",
+                ].join(" ")}
+              >
+                {m === "sqrt" ? "√T" : "T"}
+              </button>
+            ))}
+          </div>
+          <span className="text-[10px] text-slate-600">drag · scroll · dbl-click</span>
+        </div>
       </div>
 
       {/* Plot area */}
@@ -214,6 +265,7 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
           message("Surface needs at least two expiries.")
         ) : scene === null ? null : (
           <svg
+            ref={svgRef}
             width={size.width}
             height={size.height}
             className="absolute inset-0 cursor-grab active:cursor-grabbing"
@@ -222,6 +274,7 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerLeave={onPointerUp}
+            onDoubleClick={() => { setZoomF(1); setYaw(-0.55); }}
           >
             <polygon points={scene.frame} fill="none" stroke="rgb(148 163 184 / 0.25)" strokeDasharray="3 4" />
             {scene.quads.map((q, i) => (
@@ -236,6 +289,19 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
           </svg>
         )}
       </div>
+
+      {/* Coarse strike (k) window — shrink the displayed strike axis. */}
+      {data.k.length > 1 && (
+        <div className="mt-2 shrink-0 px-1">
+          <RangeBrush
+            min={fullK[0]}
+            max={fullK[1]}
+            value={[kLo, kHi]}
+            onChange={setKWindow}
+            format={(v) => v.toFixed(2)}
+          />
+        </div>
+      )}
     </div>
   );
 }

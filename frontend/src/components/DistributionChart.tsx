@@ -5,10 +5,11 @@
 // bowl that diverges at the tails, so its y-axis is capped at LOGQD_YMAX.
 // Hand-rolled SVG following the SmileChart conventions (grid, crosshair, hover
 // badge) minus the brush — the backend's full grid is always shown.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { DistributionCurve } from "../state/useScenario";
 import { clamp, formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
+import { useZoom } from "../lib/useZoom";
 
 /** Default y-axis cap for the log quantile density (its tails diverge to +inf). */
 const LOGQD_YMAX = 2.5;
@@ -79,6 +80,9 @@ export default function DistributionChart({
 }: DistributionChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const clipId = useId();
+  const zoom = useZoom();
+  const drag = useRef<{ x: number; y: number } | null>(null);
   /** Hover position in x-domain units, or null when outside the plot. */
   const [hoverXv, setHoverXv] = useState<number | null>(null);
 
@@ -114,11 +118,13 @@ export default function DistributionChart({
       yHi = LOGQD_YMAX;
       if (yHi <= yLo) yHi = yLo + 1; // degenerate guard
     }
+    const [vxLo, vxHi] = zoom.viewX([xMin, xMax]);
+    const [vyLo, vyHi] = zoom.viewY([yLo, yHi]);
     return {
-      xScale: linearScale([xMin, xMax], [0, plotW]),
-      yScale: linearScale([yLo, yHi], [plotH, 0]),
+      xScale: linearScale([vxLo, vxHi], [0, plotW]),
+      yScale: linearScale([vyLo, vyHi], [plotH, 0]),
     };
-  }, [cur, pri, kind, plotW, plotH]);
+  }, [cur, pri, kind, plotW, plotH, zoom]);
 
   /** Build an SVG polyline path for a series. */
   const pathOf = (s: Series): string => {
@@ -146,15 +152,47 @@ export default function DistributionChart({
   const xTicks = niceTicks(xScale.domain[0], xScale.domain[1], 8);
   const yTicks = niceTicks(yScale.domain[0], yScale.domain[1], 6);
 
-  /* ---------------- crosshair ---------------- */
+  /* ---------------- wheel zoom + hover + drag-pan ---------------- */
 
-  const onMouseMove = (e: ReactMouseEvent<SVGSVGElement>) => {
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      if (plotW <= 0 || plotH <= 0) return;
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const fx = clamp((e.clientX - rect.left - MARGIN.left) / plotW, 0, 1);
+      const fy = clamp((e.clientY - rect.top - MARGIN.top) / plotH, 0, 1);
+      const axis = e.shiftKey ? "x" : e.altKey ? "y" : "both";
+      zoom.zoomAt(fx, fy, e.deltaY, axis);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [zoom, plotW, plotH]);
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const px = e.clientX - rect.left - MARGIN.left;
-    if (px < 0 || px > plotW) { setHoverXv(null); return; }
-    setHoverXv(clamp(xScale.invert(px), xScale.domain[0], xScale.domain[1]));
+    if (px < 0 || px > plotW) setHoverXv(null);
+    else setHoverXv(clamp(xScale.invert(px), xScale.domain[0], xScale.domain[1]));
+    const d = drag.current;
+    if (d && plotW > 0 && plotH > 0) {
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) {
+        zoom.panBy(dx / plotW, dy / plotH, "both");
+        drag.current = { x: e.clientX, y: e.clientY };
+      }
+    }
+  };
+  const onPointerLeave = () => {
+    setHoverXv(null);
+    drag.current = null;
   };
 
   const hoverYv = hoverXv !== null ? interpAt(cur.xs, cur.ys, hoverXv) : null;
@@ -192,15 +230,18 @@ export default function DistributionChart({
             ref={svgRef}
             width={size.width}
             height={size.height}
-            className="absolute inset-0 cursor-crosshair"
-            onMouseMove={onMouseMove}
-            onMouseLeave={() => setHoverXv(null)}
+            className="absolute inset-0 cursor-crosshair touch-none select-none"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerLeave}
+            onPointerLeave={onPointerLeave}
+            onDoubleClick={zoom.reset}
           >
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Clip data paths to the plot box (the log quantile density's
                   tails diverge past the capped y-axis). */}
               <defs>
-                <clipPath id="dist-clip">
+                <clipPath id={clipId}>
                   <rect x={0} y={0} width={plotW} height={plotH} />
                 </clipPath>
               </defs>
@@ -241,18 +282,18 @@ export default function DistributionChart({
               {/* Density only: soft fill under the current pdf */}
               {curArea !== "" && (
                 <path d={curArea} fill="var(--color-accent-400)" opacity={0.07}
-                  clipPath="url(#dist-clip)" />
+                  clipPath="url(#${clipId})" />
               )}
 
               {/* Prior: dashed slate */}
               {priPath !== "" && (
                 <path d={priPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
-                  strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#dist-clip)" />
+                  strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#${clipId})" />
               )}
 
               {/* Current fit: accent */}
               <path d={curPath} fill="none" stroke="var(--color-accent-400)"
-                strokeWidth={2} strokeLinejoin="round" clipPath="url(#dist-clip)" />
+                strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
 
               {/* Crosshair: vertical guide + marker on the current curve */}
               {hoverXv !== null && hoverYv !== null && (
@@ -260,8 +301,8 @@ export default function DistributionChart({
                   <line x1={hoverPx} x2={hoverPx} y1={0} y2={plotH}
                     stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
                   <circle cx={hoverPx} cy={yScale.map(hoverYv)} r={3.5}
-                    fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5}
-                    clipPath="url(#dist-clip)" />
+                    fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5}
+                    clipPath="url(#${clipId})" />
                 </g>
               )}
             </g>

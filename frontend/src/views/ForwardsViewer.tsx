@@ -10,6 +10,7 @@
 // Live backend only (GET /forwards/{ticker}); offline shows a retry card.
 import { useCallback, useEffect, useState } from "react";
 import ForwardPanel from "../components/ForwardPanel";
+import ForwardCurveChart from "../components/ForwardCurveChart";
 import type { ForwardsResponse } from "../components/ForwardPanel";
 import { useSmileSession } from "../state/smileSession";
 import { useExpiryFormat } from "../state/expiryFormat";
@@ -109,11 +110,25 @@ export default function ForwardsViewer() {
         )}
       </div>
 
+      {/* Forward-curve chart with dividend markers + click-to-add manual divs */}
+      {data && data.entries.length > 0 && (
+        <div className="h-64 shrink-0 rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+          <ForwardCurveChart
+            ticker={ticker}
+            disabled={!live}
+            entries={data.entries}
+            spot={data.spot}
+            refreshKey={nonce}
+            onApplied={onApplied}
+          />
+        </div>
+      )}
+
       {/* Body: forwards table + per-expiry ForwardPanel */}
       <div className="flex min-h-0 flex-1 gap-4">
         <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
           <h2 className="mb-2 shrink-0 text-sm font-semibold text-slate-100">
-            Forward curve · click a row to edit its policy
+            Forward ladder · click a row to edit its policy
           </h2>
           <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-800">
             <table className="w-full border-collapse font-mono text-[11px] leading-tight">

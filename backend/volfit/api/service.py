@@ -58,9 +58,10 @@ from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
 
-#: Model-curve sampling: 161 points, padded 0.02 beyond the quoted k range
-#: (matches the frontend mock's grid density).
-N_MODEL_POINTS = 161
+#: Model-curve sampling: points over the extended (≥[-1,1]) display grid; denser
+#: than before to keep ATM resolution across the wider range. K_PAD pads the
+#: OBSERVED range used for the brush extent / default window.
+N_MODEL_POINTS = 241
 K_PAD = 0.02
 
 #: High-order Legendre damping defaults (lam * n^{2r} a_n^2); short-dated slices
@@ -380,14 +381,28 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     return transport_record(state, ticker, iso, record)
 
 
+def fill_nonfinite(vols: np.ndarray) -> np.ndarray:
+    """Edge-extend any non-finite vols (the model is undefined at the extreme
+    wings) so the curve/mesh stays a clean finite array — a NaN would serialize
+    to JSON null and break the chart's numeric arrays."""
+    out = np.asarray(vols, dtype=float)
+    bad = ~np.isfinite(out)
+    if bad.any():
+        good = np.where(~bad)[0]
+        out[bad] = np.interp(np.where(bad)[0], good, out[good]) if good.size else 0.0
+    return out
+
+
 def model_curve(record: FitRecord) -> list[SmilePoint]:
-    """Sample the displayed slice's IV curve on the padded display grid."""
-    grid = np.linspace(
-        float(record.prepared.k.min()) - K_PAD,
-        float(record.prepared.k.max()) + K_PAD,
-        N_MODEL_POINTS,
-    )
-    vols = np.sqrt(displayed_slice(record).implied_w(grid) / record.prepared.tau)
+    """Sample the displayed slice's IV curve, extended to at least k ∈ [-1, 1] so
+    the model wings are drawn well beyond the observed quotes. The smile's brush
+    still defaults to the observed range (SmileData.kMin/kMax); zooming or panning
+    out reveals the extension."""
+    k_lo = min(-1.0, float(record.prepared.k.min()) - K_PAD)
+    k_hi = max(1.0, float(record.prepared.k.max()) + K_PAD)
+    grid = np.linspace(k_lo, k_hi, N_MODEL_POINTS)
+    w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
+    vols = fill_nonfinite(np.sqrt(w / record.prepared.tau))
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
 
@@ -496,8 +511,10 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         model=model,
         prior=prior,
         quotes=quotes,
-        kMin=model[0].k,
-        kMax=model[-1].k,
+        # Brush extent / default window stay the OBSERVED range, even though the
+        # model curve above is sampled out to ±1 (revealed by zoom / pan).
+        kMin=float(prepared.k.min()) - K_PAD,
+        kMax=float(prepared.k.max()) + K_PAD,
         diagnostics=diagnostics,
         varSwap=varswap_info(state, ticker, iso, record),
         canUndo=session.can_undo if session is not None else False,

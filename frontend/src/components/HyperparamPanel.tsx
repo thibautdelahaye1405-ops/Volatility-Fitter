@@ -1,22 +1,22 @@
-// "Hyperparameters" panel for the Smile Viewer diagnostics aside.
+// Controlled, group-aware FitSettings controls for the Options tab.
 //
 // Edits the backend's global fit settings (GET/PUT /settings/fit): vol-surface
-// model, LQD Legendre order N, the high-order damping lambda * n^{2r}, and the
-// Multi-Core SIV hat count R (the "sigmoid" family's slider).
-// Settings are app-global on the server — a changed PUT bumps the fit-cache
-// version so every view refits — and the panel triggers a refetch of the
-// current smile via the session's reload() once the PUT lands.
-import { useEffect, useState } from "react";
-import { api } from "../state/api";
+// model, LQD Legendre order N, the high-order damping lambda * n^{2r}, the
+// Multi-Core SIV hat count R, the haircut band-shrink, the quote-weighting
+// scheme and the per-model penalty coefficients. The draft + Apply live in
+// useFitSettings (lifted), so these controls render across two themed Options
+// cards sharing one draft: group="model" (model + hyperparameters + model
+// penalties) and group="calibration" (haircut, weighting, band mid anchor).
+import type { ReactNode } from "react";
 import PenaltyCoefficients from "./PenaltyCoefficients";
 
 /** The smile families calibratable through PUT /settings/fit. */
 export type FitModel = "lqd" | "svi" | "sigmoid";
 
-/** Mirror of the backend FitSettings schema (volfit/api/schemas.py). */
 /** Per-quote weighting scheme (a third may be added later). */
 export type WeightScheme = "equal" | "tv_density";
 
+/** Mirror of the backend FitSettings schema (volfit/api/schemas.py). */
 export interface FitSettings {
   model: FitModel;
   nOrder: number;
@@ -34,7 +34,7 @@ export interface FitSettings {
   midAnchorWeight: number;
 }
 
-const DEFAULTS: FitSettings = {
+export const FIT_DEFAULTS: FitSettings = {
   model: "lqd",
   nOrder: 6,
   regLambda: 1e-6,
@@ -52,8 +52,7 @@ const DEFAULTS: FitSettings = {
 
 /** Model choices. LQD is the arbitrage-free default and the analytic backbone
  *  (density/term/graph/local-vol stay LQD-based); SVI and sigmoid fit the
- *  displayed smile as overlays. The local-vol grid is viewed via the LV-grid
- *  scenario; a direct slice fit through the API is still TODO. */
+ *  displayed smile as overlays. */
 const MODELS: { id: string; label: string; title: string; enabled: boolean }[] = [
   { id: "lqd", label: "LQD", title: "Logistic-quantile density slices (arbitrage-free)", enabled: true },
   { id: "svi", label: "SVI", title: "Raw SVI own calibration (Gatheral)", enabled: true },
@@ -82,87 +81,101 @@ function lambdaLabel(value: number): string {
 }
 
 interface HyperparamPanelProps {
+  /** Which themed group of controls to render. */
+  group: "model" | "calibration";
+  draft: FitSettings;
+  patch: (p: Partial<FitSettings>) => void;
   /** Greyed out in mock mode (settings live on the backend). */
   disabled: boolean;
-  /** Refetch the current smile after settings were applied server-side. */
-  onApplied: () => void;
 }
 
-export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanelProps) {
-  // `saved` mirrors the backend; `draft` is the panel state being edited.
-  const [saved, setSaved] = useState<FitSettings>(DEFAULTS);
-  const [draft, setDraft] = useState<FitSettings>(DEFAULTS);
-  const [busy, setBusy] = useState(false);
-  const [flash, setFlash] = useState(false);
+const rowLabel = "text-xs text-slate-400";
+const selectClass =
+  "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono " +
+  "text-[11px] text-slate-200 outline-none hover:border-slate-600 " +
+  "focus:border-accent-500 disabled:cursor-not-allowed";
 
-  // Load the server's current settings once the backend is reachable.
-  useEffect(() => {
-    if (disabled) return;
-    const controller = new AbortController();
-    api
-      .get<FitSettings>("/settings/fit", { signal: controller.signal })
-      .then((s) => {
-        setSaved(s);
-        setDraft(s);
-      })
-      .catch(() => {
-        /* keep defaults; the Apply PUT will surface real failures */
-      });
-    return () => controller.abort();
-  }, [disabled]);
-
-  const dirty = (Object.keys(draft) as (keyof FitSettings)[]).some(
-    (k) => draft[k] !== saved[k],
-  );
-
+export default function HyperparamPanel({ group, draft, patch, disabled }: HyperparamPanelProps) {
   // The Legendre order and high-order damping are LQD-only knobs; the SVI and
   // sigmoid overlays ignore them, so the controls are disabled off-LQD.
   const lqdOnly = disabled || draft.model !== "lqd";
   // The Multi-Core SIV hat count only drives the "sigmoid" family.
   const sigmoidOnly = disabled || draft.model !== "sigmoid";
 
-  const apply = () => {
-    if (!dirty || busy) return;
-    setBusy(true);
-    api
-      .put<FitSettings>("/settings/fit", { body: draft })
-      .then((s) => {
-        setSaved(s);
-        setDraft(s);
-        setFlash(true);
-        setTimeout(() => setFlash(false), 1200);
-        onApplied();
-      })
-      .catch(() => {
-        /* leave the draft dirty so the user can retry */
-      })
-      .finally(() => setBusy(false));
-  };
-
-  const rowLabel = "text-xs text-slate-400";
-  const selectClass =
-    "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono " +
-    "text-[11px] text-slate-200 outline-none hover:border-slate-600 " +
-    "focus:border-accent-500 disabled:cursor-not-allowed";
-
-  return (
+  const wrap = (children: ReactNode) => (
     <section
       className={disabled ? "opacity-40" : ""}
       title={disabled ? "requires live backend" : undefined}
     >
-      <h3 className="mb-1 text-sm font-semibold text-slate-100">Hyperparameters</h3>
-      <p className="mb-3 text-[11px] text-slate-500">
-        Global fit settings · every view refits
-      </p>
+      {children}
+    </section>
+  );
 
-      {/* Model segmented control (only LQD is calibratable today) */}
+  if (group === "calibration") {
+    return wrap(
+      <>
+        {/* Haircut: band shrink (in vol points) used by the haircut fit mode. */}
+        <div className="mb-3 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="Haircut fit mode: shrink each band side toward mid by this many vol points"
+          >
+            Haircut (vol pts)
+          </span>
+          <select
+            value={draft.haircut}
+            disabled={disabled}
+            onChange={(e) => patch({ haircut: Number(e.target.value) })}
+            className={selectClass}
+          >
+            {HAIRCUTS.map((v) => (
+              <option key={v} value={v}>
+                {(v * 100).toFixed(2).replace(/0$/, "")}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Quote weighting scheme (applies to every model and fit mode). */}
+        <div className="mb-3">
+          <span className={`${rowLabel} mb-1 block`}>Quote weighting</span>
+          <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
+            {WEIGHT_SCHEMES.map((s) => (
+              <button
+                key={s.id}
+                title={s.title}
+                disabled={disabled}
+                onClick={() => patch({ weightScheme: s.id })}
+                className={[
+                  "flex-1 px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
+                  s.id === draft.weightScheme
+                    ? "bg-accent-600/25 text-accent-400"
+                    : "text-slate-400 enabled:hover:text-slate-200",
+                ].join(" ")}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Band mid anchor (all models, band fit modes). */}
+        <PenaltyCoefficients group="calibration" draft={draft} onChange={patch} disabled={disabled} />
+      </>,
+    );
+  }
+
+  // group === "model"
+  return wrap(
+    <>
+      {/* Model segmented control */}
       <div className="mb-3 flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
         {MODELS.map((m) => (
           <button
             key={m.id}
             title={m.title}
             disabled={disabled || !m.enabled}
-            onClick={() => setDraft({ ...draft, model: m.id as FitModel })}
+            onClick={() => patch({ model: m.id as FitModel })}
             className={[
               "flex-1 px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
               m.id === draft.model
@@ -191,7 +204,7 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
           step={1}
           value={draft.nOrder}
           disabled={lqdOnly}
-          onChange={(e) => setDraft({ ...draft, nOrder: Number(e.target.value) })}
+          onChange={(e) => patch({ nOrder: Number(e.target.value) })}
           className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
           style={{ accentColor: "var(--color-accent-500)" }}
         />
@@ -205,7 +218,7 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
             <select
               value={draft.regLambda}
               disabled={lqdOnly}
-              onChange={(e) => setDraft({ ...draft, regLambda: Number(e.target.value) })}
+              onChange={(e) => patch({ regLambda: Number(e.target.value) })}
               className={selectClass}
             >
               {LAMBDAS.map((v) => (
@@ -217,7 +230,7 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
             <select
               value={draft.regPower}
               disabled={lqdOnly}
-              onChange={(e) => setDraft({ ...draft, regPower: Number(e.target.value) })}
+              onChange={(e) => patch({ regPower: Number(e.target.value) })}
               className={selectClass}
             >
               {POWERS.map((v) => (
@@ -245,74 +258,14 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
           step={1}
           value={draft.nCores}
           disabled={sigmoidOnly}
-          onChange={(e) => setDraft({ ...draft, nCores: Number(e.target.value) })}
+          onChange={(e) => patch({ nCores: Number(e.target.value) })}
           className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
           style={{ accentColor: "var(--color-accent-500)" }}
         />
       </div>
 
-      {/* Haircut: band shrink (in vol points) used by the haircut fit mode. */}
-      <div className="mb-3 flex items-center justify-between">
-        <span
-          className={rowLabel}
-          title="Haircut fit mode: shrink each band side toward mid by this many vol points"
-        >
-          Haircut (vol pts)
-        </span>
-        <select
-          value={draft.haircut}
-          disabled={disabled}
-          onChange={(e) => setDraft({ ...draft, haircut: Number(e.target.value) })}
-          className={selectClass}
-        >
-          {HAIRCUTS.map((v) => (
-            <option key={v} value={v}>
-              {(v * 100).toFixed(2).replace(/0$/, "")}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Quote weighting scheme (applies to every model and fit mode). */}
-      <div className="mb-3">
-        <span className={`${rowLabel} mb-1 block`}>Quote weighting</span>
-        <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
-          {WEIGHT_SCHEMES.map((s) => (
-            <button
-              key={s.id}
-              title={s.title}
-              disabled={disabled}
-              onClick={() => setDraft({ ...draft, weightScheme: s.id })}
-              className={[
-                "flex-1 px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
-                s.id === draft.weightScheme
-                  ? "bg-accent-600/25 text-accent-400"
-                  : "text-slate-400 enabled:hover:text-slate-200",
-              ].join(" ")}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Per-model optimization / penalty coefficients (all explicit) */}
-      <PenaltyCoefficients draft={draft} onChange={setDraft} disabled={disabled} />
-
-      <button
-        onClick={apply}
-        disabled={disabled || !dirty || busy}
-        className={[
-          "w-full rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors",
-          flash
-            ? "border-emerald-600/60 bg-emerald-600/15 text-emerald-400"
-            : dirty && !disabled
-              ? "border-accent-600/60 bg-accent-600/15 text-accent-400 hover:bg-accent-600/25"
-              : "cursor-not-allowed border-slate-700 text-slate-600",
-        ].join(" ")}
-      >
-        {flash ? "Applied ✓" : busy ? "Refitting…" : "Apply & refit"}
-      </button>
-    </section>
+      {/* Per-model optimization / penalty coefficients. */}
+      <PenaltyCoefficients group="model" draft={draft} onChange={patch} disabled={disabled} />
+    </>,
   );
 }

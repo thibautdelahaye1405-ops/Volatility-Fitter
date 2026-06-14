@@ -12,6 +12,57 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Done & verified (409 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
 
+- **[2026-06-14] UX/viewer batch — theming, layout, zoom, true-coordinate axis,
+  Forwards chart**:
+  * **View tab + full theming** (7th top tab): a `state/viewSettings.tsx`
+    provider (localStorage) drives `data-theme` on `<html>` + a CSS
+    contrast/brightness filter on `#root`. Tailwind v4 compiles colour utilities
+    to `var(--color-*)`, so `index.css` re-skins the whole palette per
+    `[data-theme]` scope with **no per-component migration** — four schemes
+    **Dark / Light / High-contrast / Warm** (dark's dim text tiers lifted to fix
+    "too dimmed"). New `views/ViewSettingsViewer.tsx` (scheme picker + contrast /
+    brightness sliders + expiry format + live preview). Chart hardcoded hexes
+    routed through tokens so charts flip too. Light mode verified end-to-end.
+  * **Options tab reorganized by theme** (`OptionsViewer` 307 lines): Model &
+    hyperparameters (model + N/damping/cores, model penalties, the local-vol
+    grid) · Calibration (fit target, haircut, quote weighting, band mid anchor,
+    var-swap weight, normalize events, calendar weight, calibration penalties,
+    graph prior) · Workflow & engine features · Spot-vol dynamics. FitSettings
+    lifted into `state/useFitSettings.ts` so its controls span two cards sharing
+    one draft; `HyperparamPanel`/`PenaltyCoefficients` are now controlled +
+    group-aware; one **Apply** bar commits both `/settings/fit` + `/settings/options`.
+    Shared controls extracted to `components/OptionsControls.tsx`.
+  * **Calibration gauge** in TopBar `WorkflowControls` (progress bar + current
+    item label while a job runs). **As-of dropdown split into date → time** for
+    captured snapshots, **weekday-only** (no weekend captures). **Local-Vol
+    expiry selector → dropdown** (parity with Parametric). **Universe tab**:
+    Active set and Lit/Dark matrix side by side.
+  * **Zoom on every chart** (`lib/useZoom.ts`: base-relative wheel-zoom +
+    drag-pan + dbl-click/⌂ reset, zoom-out beyond data): Smile (x+y, x beyond
+    data), Stacked densities (x), Stacked IV (x+y), 3D Surface (scene scale),
+    LocalVol Smile, Density / Log-Q-density. The Smile brush is kept as the
+    coarse control.
+  * **Smile true-coordinate x-axis** (`SmileChart` rewrite): geometry is plotted
+    in the SELECTED coordinate (ln(K/F) / strike / %ATM / Δ / normalized), so the
+    smile genuinely reshapes when switching (delta runs high→low) — no longer a
+    fixed log axis. `axisModes.axisDisplayTicks` ticks the display domain.
+  * **Curves drawn to k ∈ [-1, 1]** (`service.model_curve` 241 pts, `surface`
+    81 pts extended to ±1; brush/default `kMin/kMax` stay the OBSERVED range, so
+    zoom/pan out reveals the wings). New `service.fill_nonfinite` keeps the
+    extreme-wing arrays finite (NaN would serialize to JSON null). 4 grid tests
+    updated to the new semantics.
+  * **T / √T toggle** on `TermChart`, the Forwards chart, and `SurfaceMesh`
+    (`lib/timeAxis.ts`); **Surface coarse k-brush** (shrinks the strike axis,
+    Parametric + LV IV-surface).
+  * **Forwards-curve chart** (`components/ForwardCurveChart.tsx`): active-forward
+    curve + dashed dividend ex-date verticals (amount labels), click-to-add a
+    dividend, slider/numeric to set the amount, Apply (PUT `/settings/market`;
+    continuous tickers switch to discrete cash so manual divs bite). Verified
+    live on a throwaway synthetic backend.
+  * Hardened `chartScale.niceTicks` against a sub-ULP step on flat domains
+    (was an "Invalid array length" infinite-push crash). No new backend tests
+    (existing grid tests updated); frontend strict-TS build green.
+
 - **[2026-06-14] Local-Vol (affine) workspace overhaul**: (1) the vertex grid +
   roughness (λ, ρ) are now GLOBAL hyperparameters in Options only (the LV
   workspace's own sliders are gone); the affine fit reads them directly and they

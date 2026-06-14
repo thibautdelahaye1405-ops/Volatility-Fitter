@@ -33,6 +33,31 @@ function fmtTs(ts: string): string {
   return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** Local date part "2026-06-13" of an ISO timestamp (for the date selector). */
+function tsDate(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts.slice(0, 10);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** Local time part "10:05" of an ISO timestamp (for the time selector). */
+function fmtTime(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** True for Mon-Fri (markets are closed at the weekend, so weekend captures —
+ *  e.g. "yesterday" on a Sunday — are never offered as as-of dates). */
+function isWeekday(ymd: string): boolean {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return true;
+  const day = new Date(y, m - 1, d).getDay();
+  return day !== 0 && day !== 6;
+}
+
 /** Row styling for the as-of dropdown (highlight the active selection). */
 const asofRowClass = (active: boolean): string =>
   [
@@ -63,8 +88,25 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
   const { asof, busy: asofBusy, setAsOf } = useAsOf(live, active, onSwitched);
   const [open, setOpen] = useState(false);
   const [asofOpen, setAsofOpen] = useState(false);
+  // Which captured *date* is expanded in the as-of picker (null = derive a default).
+  const [capturedDate, setCapturedDate] = useState<string | null>(null);
 
   const activeSource = sources.find((s) => s.id === active);
+
+  // Captured intraday snapshots split into date -> times, so a prior day's
+  // snapshot is reachable (item 4). asof.captured is newest-first.
+  const capturedDates = asof
+    ? Array.from(new Set(asof.captured.map(tsDate))).filter(isWeekday)
+    : [];
+  const selectedCapDate =
+    capturedDate && capturedDates.includes(capturedDate)
+      ? capturedDate
+      : asof?.mode === "captured" && asof.ts
+        ? tsDate(asof.ts)
+        : (capturedDates[0] ?? null);
+  const capturedTimes = asof
+    ? asof.captured.filter((ts) => tsDate(ts) === selectedCapDate)
+    : [];
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-8 border-b border-slate-800 bg-surface-900 px-6">
@@ -227,20 +269,43 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
                       </button>
                     )}
                     {asof.captured.length > 0 && (
-                      <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
-                        Captured
-                      </div>
+                      <>
+                        <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
+                          Captured · date
+                        </div>
+                        {/* Date selector (reach a prior day's snapshots). */}
+                        <div className="flex flex-wrap gap-1 px-3 pb-1.5">
+                          {capturedDates.map((d) => (
+                            <button
+                              key={`capd-${d}`}
+                              onClick={() => setCapturedDate(d)}
+                              className={[
+                                "rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                                d === selectedCapDate
+                                  ? "border-accent-600/60 bg-accent-600/15 text-accent-400"
+                                  : "border-slate-700 text-slate-400 hover:text-slate-200",
+                              ].join(" ")}
+                            >
+                              {d}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="px-3 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
+                          Time
+                        </div>
+                        {/* Times within the selected captured date. */}
+                        {capturedTimes.map((ts) => (
+                          <button
+                            key={`cap-${ts}`}
+                            onClick={() => { setAsofOpen(false); void setAsOf({ mode: "captured", ts }); }}
+                            className={asofRowClass(asof.mode === "captured" && asof.ts === ts)}
+                          >
+                            <span className="flex-1 font-mono">{fmtTime(ts)}</span>
+                            <span className="text-[10px] text-slate-500">captured</span>
+                          </button>
+                        ))}
+                      </>
                     )}
-                    {asof.captured.map((ts) => (
-                      <button
-                        key={`cap-${ts}`}
-                        onClick={() => { setAsofOpen(false); void setAsOf({ mode: "captured", ts }); }}
-                        className={asofRowClass(asof.mode === "captured" && asof.ts === ts)}
-                      >
-                        <span className="flex-1 font-mono">{fmtTs(ts)}</span>
-                        <span className="text-[10px] text-slate-500">captured</span>
-                      </button>
-                    ))}
                     {asof.historyDates.length > 0 && (
                       <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
                         End of day

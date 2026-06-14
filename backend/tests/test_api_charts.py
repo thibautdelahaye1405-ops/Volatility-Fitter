@@ -105,7 +105,9 @@ def test_surface_mesh_shape_and_levels(client, universe):
     for row in vol:
         assert len(row) == k.size  # full rectangular mesh
         v = np.array(row)
-        assert np.all(np.isfinite(v)) and np.all((v > 0.05) & (v < 1.0))
+        # Grid now extends to ±1; deep wings can exceed 1.0 vol, so only require
+        # finite + positive across the full row (tight bound checked at ATM).
+        assert np.all(np.isfinite(v)) and np.all(v > 0.01)
 
     # The mesh column nearest k = 0 must sit on the exact ATM handle.
     j0 = int(np.argmin(np.abs(k)))

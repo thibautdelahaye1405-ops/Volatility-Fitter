@@ -1,29 +1,31 @@
 // Interactive implied-volatility smile chart. Hand-rolled SVG, no chart deps.
-// Controlled component: the visible strike window is owned by the parent and
-// edited through the RangeBrush rendered underneath the plot.
 //
-// All internal geometry (brush window, quote hit-testing, curve clipping)
-// lives in log-moneyness k = ln(K/F). The strike-axis display mode (strike,
-// %ATM, delta, normalized…) only changes how ticks are generated and how the
-// tick / crosshair labels read — see lib/axisModes.ts.
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { MouseEvent as ReactMouseEvent } from "react";
+// Geometry is plotted in the SELECTED strike-axis coordinate (k = ln(K/F),
+// strike, %ATM, delta, normalized…), so switching the mode genuinely reshapes
+// the smile — the x-axis follows the chosen coordinate strictly, not a fixed
+// log axis (every mode is a monotone map of k; delta runs high→low). The coarse
+// strike window is owned by the parent via the RangeBrush; on top of that, the
+// chart supports wheel-zoom (x by default, +Shift = x only, +Alt = y only),
+// drag-to-pan and double-click / ⌂ reset — and zoom-out reveals beyond the data.
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type { QuoteBand, SmilePoint } from "../lib/mockData";
 import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
-import { axisTicks, axisTransform, formatHoverValue } from "../lib/axisModes";
+import { axisDisplayTicks, axisInvert, axisTransform, formatHoverValue } from "../lib/axisModes";
 import type { AxisContext, AxisMode } from "../lib/axisModes";
+import { useZoom } from "../lib/useZoom";
 import RangeBrush from "./RangeBrush";
 
 interface SmileChartProps {
   model: SmilePoint[];
   prior: SmilePoint[];
   quotes: QuoteBand[];
-  /** Visible log-moneyness window [lo, hi] (controlled). */
+  /** Visible log-moneyness window [lo, hi] (controlled, the coarse brush). */
   kWindow: readonly [number, number];
   onKWindowChange: (next: [number, number]) => void;
   /** Full brushable k extent of the data. */
   fullRange: readonly [number, number];
-  /** Strike-axis display mode (labels only; geometry stays in k). */
+  /** Strike-axis display coordinate (geometry plotted in these units). */
   axisMode?: AxisMode;
   /** Forward level — strike / %ATM axis modes. */
   forward?: number;
@@ -37,10 +39,7 @@ interface SmileChartProps {
   onQuoteSelect?: (index: number | null) => void;
   /** SSR scenario overlay (shifted smile); drawn dotted amber when set. */
   scenario?: SmilePoint[] | null;
-  /** Pre-transport calibration (the anchor smile); drawn dimmed when a spot
-   *  move is active, so the transport vs the original fit is visible. Each curve
-   *  is in its OWN log-moneyness, so sticky-strike shows a lateral shift and
-   *  sticky-moneyness shows the two curves coincide. */
+  /** Pre-transport calibration (the anchor smile); drawn dimmed when set. */
   anchorCurve?: SmilePoint[] | null;
   /** Massive provider's IV points (read-only comparison); cyan dots when set. */
   massiveIv?: SmilePoint[] | null;
@@ -78,8 +77,8 @@ function volAt(curve: SmilePoint[], k: number): number | null {
     const p1 = curve[i];
     if (k <= p1.k) {
       const p0 = curve[i - 1];
-      const t = (k - p0.k) / (p1.k - p0.k);
-      return p0.vol + t * (p1.vol - p0.vol);
+      const tt = (k - p0.k) / (p1.k - p0.k);
+      return p0.vol + tt * (p1.vol - p0.vol);
     }
   }
   return last.vol;
@@ -105,14 +104,18 @@ export default function SmileChart({
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const clipId = useId();
+  const zoom = useZoom();
   /** Hover position in k-space, or null when the pointer is outside. */
   const [hoverK, setHoverK] = useState<number | null>(null);
+  /** Active drag-pan: last pointer px and whether it has moved past a click. */
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
   const [kLo, kHi] = kWindow;
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
 
-  // Context for the axis-mode transforms (labels only, never geometry).
+  // Context for the axis-mode transforms.
   const axisCtx: AxisContext = useMemo(
     () => ({
       forward: forward ?? 1,
@@ -127,32 +130,43 @@ export default function SmileChart({
     [forward, t, atmVol, model, fullRange],
   );
 
-  // Scales over the *visible* window only; x is always linear in k and the
-  // y domain auto-fits the visible data plus padding.
-  const { xScale, yScale } = useMemo(() => {
-    const inWindow = (k: number) => k >= kLo && k <= kHi;
+  /** Map k -> the selected display coordinate. */
+  const tx = useMemo(() => (k: number) => axisTransform(axisMode, k, axisCtx), [axisMode, axisCtx]);
+
+  // Scales: x in display units (base = brushed window mapped through tx, then
+  // zoomed); y auto-fits the data visible inside the x view, then zoomed.
+  const { xScale, yScale, xView } = useMemo(() => {
+    const baseX: [number, number] = [tx(kLo), tx(kHi)];
+    const view = zoom.viewX(baseX);
+    const xs = linearScale(view, [0, plotW]);
+    const vMin = Math.min(view[0], view[1]);
+    const vMax = Math.max(view[0], view[1]);
+    const inView = (k: number) => {
+      const X = tx(k);
+      return X >= vMin && X <= vMax;
+    };
     let yMin = Infinity;
     let yMax = -Infinity;
-    for (const p of model) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
-    for (const p of prior) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
-    for (const p of scenario ?? []) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
-    for (const p of anchorCurve ?? []) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
-    for (const q of quotes) if (inWindow(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
+    const scan = (pts: SmilePoint[]) => {
+      for (const p of pts) if (inView(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
+    };
+    scan(model);
+    scan(prior);
+    if (scenario) scan(scenario);
+    if (anchorCurve) scan(anchorCurve);
+    for (const q of quotes) if (inView(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (varSwapLevel !== null) { yMin = Math.min(yMin, varSwapLevel); yMax = Math.max(yMax, varSwapLevel); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
-    return {
-      xScale: linearScale([kLo, kHi], [0, plotW]),
-      yScale: linearScale([yMin - pad, yMax + pad], [plotH, 0]),
-    };
-  }, [model, prior, scenario, anchorCurve, quotes, varSwapLevel, kLo, kHi, plotW, plotH]);
+    const yView = zoom.viewY([yMin - pad, yMax + pad]);
+    return { xScale: xs, yScale: linearScale(yView, [plotH, 0]), xView: view };
+  }, [model, prior, scenario, anchorCurve, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
 
-  /** Build an SVG path for a curve, clipped to the visible window. */
+  /** Build an SVG path for a curve in display coordinates (clip handles overflow). */
   const pathOf = (curve: SmilePoint[]): string => {
     let d = "";
     for (const p of curve) {
-      if (p.k < kLo || p.k > kHi) continue;
-      const x = xScale.map(p.k);
+      const x = xScale.map(tx(p.k));
       const y = yScale.map(p.vol);
       d += d === "" ? `M${x.toFixed(2)},${y.toFixed(2)}` : `L${x.toFixed(2)},${y.toFixed(2)}`;
     }
@@ -163,27 +177,76 @@ export default function SmileChart({
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const anchorPath = useMemo(() => (anchorCurve ? pathOf(anchorCurve) : ""), [anchorCurve, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // X ticks: nice values in display units, positioned at their k preimage.
+  // X ticks: nice values in display units, placed directly on the display scale.
   const xTicks = useMemo(
-    () => axisTicks(axisMode, kLo, kHi, axisCtx, 6),
-    [axisMode, kLo, kHi, axisCtx],
+    () => axisDisplayTicks(axisMode, xView[0], xView[1], 6).map((d) => ({ x: xScale.map(d.value), label: d.label })),
+    [axisMode, xView, xScale],
   );
   const yTicks = niceTicks(yScale.domain[0], yScale.domain[1], 6);
-  const visibleQuotes = quotes.filter((q) => q.k >= kLo && q.k <= kHi);
+  const zeroX = useMemo(() => {
+    const X0 = axisTransform(axisMode, 0, axisCtx);
+    const lo = Math.min(xView[0], xView[1]);
+    const hi = Math.max(xView[0], xView[1]);
+    return X0 >= lo && X0 <= hi ? xScale.map(X0) : null;
+  }, [axisMode, axisCtx, xView, xScale]);
 
-  /* ---------------- crosshair ---------------- */
+  /* ---------------- wheel zoom (native, non-passive) ---------------- */
 
-  const onMouseMove = (e: ReactMouseEvent<SVGSVGElement>) => {
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      if (plotW <= 0 || plotH <= 0) return;
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const fx = clamp((e.clientX - rect.left - MARGIN.left) / plotW, 0, 1);
+      const fy = clamp((e.clientY - rect.top - MARGIN.top) / plotH, 0, 1);
+      const axis = e.shiftKey ? "x" : e.altKey ? "y" : "both";
+      zoom.zoomAt(fx, fy, e.deltaY, axis);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [zoom, plotW, plotH]);
+
+  /* ---------------- hover + drag-pan ---------------- */
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    drag.current = { x: e.clientX, y: e.clientY, moved: false };
+  };
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const px = e.clientX - rect.left - MARGIN.left;
-    if (px < 0 || px > plotW) { setHoverK(null); return; }
-    setHoverK(clamp(xScale.invert(px), kLo, kHi));
+    // Hover readout.
+    if (px < 0 || px > plotW) setHoverK(null);
+    else {
+      const k = axisInvert(axisMode, xScale.invert(px), axisCtx);
+      setHoverK(k !== null && Number.isFinite(k) ? k : null);
+    }
+    // Drag-pan.
+    const d = drag.current;
+    if (d && plotW > 0 && plotH > 0) {
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) {
+        zoom.panBy(dx / plotW, dy / plotH, "both");
+        drag.current = { x: e.clientX, y: e.clientY, moved: true };
+      }
+    }
+  };
+  const onPointerUp = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (d && !d.moved) onQuoteSelect?.(null); // a plain click clears selection
+  };
+  const onPointerLeave = () => {
+    setHoverK(null);
+    drag.current = null;
   };
 
   const hoverVol = hoverK !== null ? volAt(model, hoverK) : null;
-  const hoverX = hoverK !== null ? xScale.map(hoverK) : 0;
+  const hoverX = hoverK !== null ? xScale.map(tx(hoverK)) : 0;
   const hoverLabel =
     hoverK !== null && hoverVol !== null
       ? `${formatHoverValue(axisMode, axisTransform(axisMode, hoverK, axisCtx))} · σ ${formatPct(hoverVol, 2)}`
@@ -216,9 +279,7 @@ export default function SmileChart({
             <span className="h-0 w-5 border-t-2 border-dashed border-teal-400" /> Var-swap
           </span>
         )}
-        <span className="flex items-center gap-1.5">
-          <span className="font-mono text-slate-500">⊺</span> Bid/Ask quotes
-        </span>
+        <span className="ml-auto text-[10px] text-slate-600">scroll: zoom · drag: pan · dbl-click: reset</span>
       </div>
 
       {/* Plot area (measured for responsive SVG) */}
@@ -228,41 +289,34 @@ export default function SmileChart({
             ref={svgRef}
             width={size.width}
             height={size.height}
-            className="absolute inset-0 cursor-crosshair"
-            onMouseMove={onMouseMove}
-            onMouseLeave={() => setHoverK(null)}
-            onClick={() => onQuoteSelect?.(null)}
+            className="absolute inset-0 cursor-crosshair touch-none select-none"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerLeave={onPointerLeave}
+            onDoubleClick={zoom.reset}
           >
+            <defs>
+              <clipPath id={clipId}>
+                <rect x={0} y={0} width={plotW} height={plotH} />
+              </clipPath>
+            </defs>
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {/* Gridlines */}
               {yTicks.map((tv) => (
                 <line key={`gy${tv}`} x1={0} x2={plotW} y1={yScale.map(tv)} y2={yScale.map(tv)}
                   stroke="rgb(255 255 255 / 0.05)" />
               ))}
-              {xTicks.map((tick) => (
-                <line key={`gx${tick.k}`} x1={xScale.map(tick.k)} x2={xScale.map(tick.k)} y1={0} y2={plotH}
+              {xTicks.map((tick, i) => (
+                <line key={`gx${i}`} x1={tick.x} x2={tick.x} y1={0} y2={plotH}
                   stroke="rgb(255 255 255 / 0.04)" />
               ))}
 
               {/* Zero log-moneyness (ATM forward) reference */}
-              {kLo < 0 && kHi > 0 && (
-                <line x1={xScale.map(0)} x2={xScale.map(0)} y1={0} y2={plotH}
+              {zeroX !== null && (
+                <line x1={zeroX} x2={zeroX} y1={0} y2={plotH}
                   stroke="rgb(148 163 184 / 0.25)" strokeDasharray="2 4" />
               )}
-
-              {/* Variance-swap quote: horizontal teal line at the quoted vol */}
-              {varSwapLevel !== null &&
-                varSwapLevel >= yScale.domain[0] &&
-                varSwapLevel <= yScale.domain[1] && (
-                  <g pointerEvents="none">
-                    <line x1={0} x2={plotW} y1={yScale.map(varSwapLevel)} y2={yScale.map(varSwapLevel)}
-                      stroke="rgb(45 212 191 / 0.85)" strokeWidth={1.5} strokeDasharray="6 4" />
-                    <text x={plotW - 2} y={yScale.map(varSwapLevel) - 3} textAnchor="end"
-                      className="fill-teal-300 font-mono text-[10px]">
-                      VS {formatPct(varSwapLevel, 2)}
-                    </text>
-                  </g>
-                )}
 
               {/* Axes labels */}
               {yTicks.map((tv) => (
@@ -271,114 +325,120 @@ export default function SmileChart({
                   {formatPct(tv)}
                 </text>
               ))}
-              {xTicks.map((tick) => (
-                <text key={`lx${tick.k}`} x={xScale.map(tick.k)} y={plotH + 16} textAnchor="middle"
+              {xTicks.map((tick, i) => (
+                <text key={`lx${i}`} x={tick.x} y={plotH + 16} textAnchor="middle"
                   className="fill-slate-500 font-mono text-[10px]">
                   {tick.label}
                 </text>
               ))}
 
-              {/* Quote bands: I-beam bid/ask bars with a mid tick.
-                  States: excluded -> dimmed beam + small × at the mid;
-                  amended -> amber, longer mid tick; selected -> accent
-                  stroke + soft glow circle. Each quote also gets an
-                  invisible click target for selection. */}
-              {visibleQuotes.map((q) => {
-                const x = xScale.map(q.k);
-                const yb = yScale.map(q.bid);
-                const ya = yScale.map(q.ask);
-                const ym = yScale.map(q.mid);
-                const cap = 3.5;
-                const selected = selectedIndex !== null && q.index === selectedIndex;
-                const beamStroke = selected
-                  ? "var(--color-accent-400)"
-                  : "rgb(148 163 184 / 0.55)";
-                const midStroke = q.amended
-                  ? "rgb(251 191 36 / 0.95)"
-                  : selected
-                    ? "var(--color-accent-400)"
-                    : "rgb(226 232 240 / 0.9)";
-                const midHalf = q.amended ? 4 : 2.5;
-                return (
-                  <g key={q.index}>
-                    {selected && (
-                      <circle cx={x} cy={ym} r={7}
-                        fill="var(--color-accent-400)" opacity={0.18} />
-                    )}
-                    <g stroke={beamStroke} strokeWidth={1}
-                      opacity={q.excluded ? 0.25 : 1}>
-                      <line x1={x} x2={x} y1={yb} y2={ya} />
-                      <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
-                      <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
-                      <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym}
-                        stroke={midStroke} strokeWidth={1.5} />
+              {/* Clipped plot geometry */}
+              <g clipPath={`url(#${clipId})`}>
+                {/* Variance-swap quote: horizontal teal line at the quoted vol */}
+                {varSwapLevel !== null &&
+                  varSwapLevel >= yScale.domain[0] &&
+                  varSwapLevel <= yScale.domain[1] && (
+                    <g pointerEvents="none">
+                      <line x1={0} x2={plotW} y1={yScale.map(varSwapLevel)} y2={yScale.map(varSwapLevel)}
+                        stroke="rgb(45 212 191 / 0.85)" strokeWidth={1.5} strokeDasharray="6 4" />
+                      <text x={plotW - 2} y={yScale.map(varSwapLevel) - 3} textAnchor="end"
+                        className="fill-teal-300 font-mono text-[10px]">
+                        VS {formatPct(varSwapLevel, 2)}
+                      </text>
                     </g>
-                    {q.excluded && (
-                      <g stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}>
-                        <line x1={x - 3} x2={x + 3} y1={ym - 3} y2={ym + 3} />
-                        <line x1={x - 3} x2={x + 3} y1={ym + 3} y2={ym - 3} />
+                  )}
+
+                {/* Quote bands: I-beam bid/ask bars with a mid tick. */}
+                {quotes.map((q) => {
+                  const x = xScale.map(tx(q.k));
+                  if (x < -20 || x > plotW + 20) return null;
+                  const yb = yScale.map(q.bid);
+                  const ya = yScale.map(q.ask);
+                  const ym = yScale.map(q.mid);
+                  const cap = 3.5;
+                  const selected = selectedIndex !== null && q.index === selectedIndex;
+                  const beamStroke = selected ? "var(--color-accent-400)" : "rgb(148 163 184 / 0.55)";
+                  const midStroke = q.amended
+                    ? "rgb(251 191 36 / 0.95)"
+                    : selected
+                      ? "var(--color-accent-400)"
+                      : "rgb(226 232 240 / 0.9)";
+                  const midHalf = q.amended ? 4 : 2.5;
+                  return (
+                    <g key={q.index}>
+                      {selected && <circle cx={x} cy={ym} r={7} fill="var(--color-accent-400)" opacity={0.18} />}
+                      <g stroke={beamStroke} strokeWidth={1} opacity={q.excluded ? 0.25 : 1}>
+                        <line x1={x} x2={x} y1={yb} y2={ya} />
+                        <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
+                        <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
+                        <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym} stroke={midStroke} strokeWidth={1.5} />
                       </g>
-                    )}
-                    {onQuoteSelect && (
-                      <rect
-                        x={x - 6}
-                        y={Math.min(ya, yb) - 8}
-                        width={12}
-                        height={Math.abs(yb - ya) + 16}
-                        fill="transparent"
-                        className="cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onQuoteSelect(q.index);
-                        }}
-                      />
-                    )}
+                      {q.excluded && (
+                        <g stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}>
+                          <line x1={x - 3} x2={x + 3} y1={ym - 3} y2={ym + 3} />
+                          <line x1={x - 3} x2={x + 3} y1={ym + 3} y2={ym - 3} />
+                        </g>
+                      )}
+                      {onQuoteSelect && (
+                        <rect
+                          x={x - 6}
+                          y={Math.min(ya, yb) - 8}
+                          width={12}
+                          height={Math.abs(yb - ya) + 16}
+                          fill="transparent"
+                          className="cursor-pointer"
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onQuoteSelect(q.index);
+                          }}
+                        />
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Prior fit: dashed slate */}
+                <path d={priorPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
+                  strokeWidth={1.5} strokeDasharray="5 4" />
+
+                {/* SSR scenario overlay: dotted amber */}
+                {scenarioPath !== "" && (
+                  <path d={scenarioPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
+                    strokeWidth={1.5} strokeDasharray="2 3" />
+                )}
+
+                {/* Pre-transport calibration (anchor smile): dimmed accent */}
+                {anchorPath !== "" && (
+                  <path d={anchorPath} fill="none" stroke="var(--color-accent-400)"
+                    strokeOpacity={0.32} strokeWidth={1.5} strokeLinejoin="round" />
+                )}
+
+                {/* Massive IV overlay: read-only cyan dots */}
+                {(massiveIv ?? []).map((p, i) => {
+                  if (p.vol < yScale.domain[0] || p.vol > yScale.domain[1]) return null;
+                  const x = xScale.map(tx(p.k));
+                  if (x < 0 || x > plotW) return null;
+                  return (
+                    <circle key={`miv${i}`} cx={x} cy={yScale.map(p.vol)}
+                      r={2} fill="rgb(34 211 238 / 0.85)" pointerEvents="none" />
+                  );
+                })}
+
+                {/* Current model fit: accent */}
+                <path d={modelPath} fill="none" stroke="var(--color-accent-400)"
+                  strokeWidth={2} strokeLinejoin="round" />
+
+                {/* Crosshair */}
+                {hoverK !== null && hoverVol !== null && (
+                  <g pointerEvents="none">
+                    <line x1={hoverX} x2={hoverX} y1={0} y2={plotH}
+                      stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                    <circle cx={hoverX} cy={yScale.map(hoverVol)} r={3.5}
+                      fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5} />
                   </g>
-                );
-              })}
-
-              {/* Prior fit: dashed slate */}
-              <path d={priorPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
-                strokeWidth={1.5} strokeDasharray="5 4" />
-
-              {/* SSR scenario overlay: dotted amber, above prior, below fit */}
-              {scenarioPath !== "" && (
-                <path d={scenarioPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
-                  strokeWidth={1.5} strokeDasharray="2 3" />
-              )}
-
-              {/* Pre-transport calibration (anchor smile): dimmed accent, drawn
-                  just under the transported fit so the spot move is visible. */}
-              {anchorPath !== "" && (
-                <path d={anchorPath} fill="none" stroke="var(--color-accent-400)"
-                  strokeOpacity={0.32} strokeWidth={1.5} strokeLinejoin="round" />
-              )}
-
-              {/* Massive IV overlay: read-only cyan dots (OTM wing), clipped
-                  to the visible window and the auto-fitted y-domain so an
-                  occasional far-wing outlier never rescales the main fit. */}
-              {(massiveIv ?? []).map((p, i) => {
-                if (p.k < kLo || p.k > kHi) return null;
-                if (p.vol < yScale.domain[0] || p.vol > yScale.domain[1]) return null;
-                return (
-                  <circle key={`miv${i}`} cx={xScale.map(p.k)} cy={yScale.map(p.vol)}
-                    r={2} fill="rgb(34 211 238 / 0.85)" pointerEvents="none" />
-                );
-              })}
-
-              {/* Current model fit: accent */}
-              <path d={modelPath} fill="none" stroke="var(--color-accent-400)"
-                strokeWidth={2} strokeLinejoin="round" />
-
-              {/* Crosshair: vertical guide + marker on the model curve */}
-              {hoverK !== null && hoverVol !== null && (
-                <g pointerEvents="none">
-                  <line x1={hoverX} x2={hoverX} y1={0} y2={plotH}
-                    stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
-                  <circle cx={hoverX} cy={yScale.map(hoverVol)} r={3.5}
-                    fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5} />
-                </g>
-              )}
+                )}
+              </g>
             </g>
           </svg>
         )}
@@ -389,9 +449,20 @@ export default function SmileChart({
             {hoverLabel}
           </div>
         )}
+
+        {/* Reset-zoom affordance */}
+        {zoom.zoomed && (
+          <button
+            onClick={zoom.reset}
+            title="Reset zoom (or double-click the chart)"
+            className="absolute bottom-1 right-2 rounded-md border border-slate-700 bg-surface-800/95 px-2 py-0.5 text-[10px] text-slate-300 shadow hover:text-slate-100"
+          >
+            ⌂ reset
+          </button>
+        )}
       </div>
 
-      {/* Strike-window brush */}
+      {/* Strike-window brush (coarse, in log-moneyness k) */}
       <div className="mt-2 shrink-0 px-1">
         <RangeBrush
           min={fullRange[0]}

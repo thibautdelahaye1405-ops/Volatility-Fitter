@@ -67,10 +67,15 @@ Docs/      Technical notes (LaTeX)
   weighting, haircut, SIV cores, penalty strengths, the A_R barrier, the SVI
   no-arb penalty + Lee bound, the SIV ridge, the band mid-anchor, the local-vol
   roughness, and the graph prior strength) are global, explicit settings.
-- **UI** — six workspaces (TopBar Data Source + As-of selectors, global
-  expiry-format toggle, and workflow controls: **Fetch spots** / **Fetch Options
-  Quotes** (or an auto-fetch countdown) / **Calibrate** with live progress + a
-  stale-node badge):
+- **UI** — seven workspaces (TopBar Data Source + As-of selectors [the captured
+  snapshot picker splits date → time, weekdays only], global expiry-format
+  toggle, and workflow controls: **Fetch spots** / **Fetch Options Quotes** (or
+  an auto-fetch countdown) / **Calibrate** with a live progress gauge + a
+  stale-node badge). All charts support wheel-zoom / drag-pan / double-click
+  reset (x beyond the observed quotes; y where it helps); the Smile plots
+  geometry in the *selected* strike coordinate (ln(K/F) / strike / %ATM / Δ /
+  normalized), so the shape itself changes with the axis; time-axis charts toggle
+  T / √T:
   - **Parametric** — live fits, quote editing, var-swap quotes (add/slide/exclude
     + undo/redo), a **Spot-move panel** (slider transports the surface with no
     recalibration; the previous fit is drawn dimmed; Calibrate re-anchors) +
@@ -82,17 +87,25 @@ Docs/      Technical notes (LaTeX)
     same event clock; grid + roughness set in Options; density from the PDE
     prices; STALE badge), sub-tabs Smile / Density / Term / LV-surface heatmap /
     3D IV-surface / Table.
-  - **Forwards** — per-ticker forwards table (parity / theoretical / manual) +
-    dividend-schedule editor, shared by both fit workspaces.
+  - **Forwards** — a forward-curve chart (active forward vs maturity, T / √T,
+    dividend ex-date verticals; click to add a dividend, slider to set its
+    amount), the per-ticker forwards table (parity / theoretical / manual) and
+    the dividend-schedule editor, shared by both fit workspaces.
   - **Options** — every global meta-parameter and calibration/optimization
-    coefficient (defaults, penalty catalogue with formulas, var-swap weight %,
-    event clock + normalization toggle, dynamics regime + SSR, the local-vol
-    vertex grid + roughness with an **Optimal size** button, spot/options fetch
-    modes + intervals, auto-calibrate, graph prior, display format).
+    coefficient, grouped by theme: **Model & hyperparameters** (model + order /
+    damping / SIV cores, model penalties, the local-vol vertex grid + roughness
+    with an **Optimal size** button), **Calibration** (fit target, haircut, quote
+    weighting, band mid anchor, var-swap weight %, event-clock normalization,
+    calendar weight, calibration penalties, graph prior), **Workflow & engine
+    features** (arb-fix / events / var-swaps / auto-load-prior + the
+    calibration/fetch triggers) and **Spot-vol dynamics**. One Apply commits both
+    the fit and options settings.
   - **Graph** — light/dim nodes (shared with Universe), solver panel (κ/η/λ/ν,
     auto-tune η, lasso), posterior shift + uncertainty overlay.
-  - **Universe** — provider symbol search, per-ticker expiry selection, a
-    lit/dark node matrix, and named universes.
+  - **Universe** — provider symbol search, per-ticker expiry selection, and a
+    lit/dark node matrix beside the active set, plus named universes.
+  - **View** — display preferences (colour scheme: Dark / Light / High-contrast /
+    Warm, contrast + brightness, expiry-label format), client-side + persisted.
 
 ## Run everything (Windows, from repo root)
 

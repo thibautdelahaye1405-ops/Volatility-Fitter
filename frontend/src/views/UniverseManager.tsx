@@ -74,98 +74,101 @@ export default function UniverseManager() {
         )}
       </div>
 
+      {/* Search / add (full-width, stays visible at top) */}
+      <div className={`${card} shrink-0`}>
+        <h2 className="mb-2 text-sm font-semibold text-slate-100">Add underlying</h2>
+        <input
+          className={inputClass}
+          placeholder="Search symbol or company name (e.g. AAPL, Microsoft)…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+        <div className="mt-2 max-h-56 overflow-y-auto">
+          {searching && <p className="px-1 py-2 text-[11px] text-slate-500">Searching…</p>}
+          {!searching && query.trim() !== "" && results.length === 0 && (
+            <p className="px-1 py-2 text-[11px] text-slate-500">No matches.</p>
+          )}
+          <div className="divide-y divide-slate-800/60">
+            {results.map((m) => {
+              const present = inUniverse.has(m.symbol);
+              return (
+                <div key={m.symbol} className="flex items-center gap-2 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <span className="font-mono text-xs font-medium text-slate-100">
+                      {m.symbol}
+                    </span>
+                    {m.name && (
+                      <span className="ml-2 truncate text-[11px] text-slate-500">{m.name}</span>
+                    )}
+                  </div>
+                  {(m.type || m.exchange) && (
+                    <span className="shrink-0 text-[10px] text-slate-600">
+                      {[m.type, m.exchange].filter(Boolean).join(" · ")}
+                    </span>
+                  )}
+                  <button
+                    className={smallBtn}
+                    disabled={present || busy !== null}
+                    onClick={() => addTicker(m.symbol)}
+                  >
+                    {present ? "Added" : busy === `add:${m.symbol}` ? "Adding…" : "Add"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Main area: Active universe | Lit/Dark side by side, + Saved aside */}
       <div className="flex min-h-0 flex-1 gap-4">
-        {/* Add + active universe */}
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {/* Search / add */}
-          <div className={`${card} shrink-0`}>
-            <h2 className="mb-2 text-sm font-semibold text-slate-100">Add underlying</h2>
-            <input
-              className={inputClass}
-              placeholder="Search symbol or company name (e.g. AAPL, Microsoft)…"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <div className="mt-2 max-h-56 overflow-y-auto">
-              {searching && <p className="px-1 py-2 text-[11px] text-slate-500">Searching…</p>}
-              {!searching && query.trim() !== "" && results.length === 0 && (
-                <p className="px-1 py-2 text-[11px] text-slate-500">No matches.</p>
-              )}
-              <div className="divide-y divide-slate-800/60">
-                {results.map((m) => {
-                  const present = inUniverse.has(m.symbol);
-                  return (
-                    <div key={m.symbol} className="flex items-center gap-2 py-1.5">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-mono text-xs font-medium text-slate-100">
-                          {m.symbol}
-                        </span>
-                        {m.name && (
-                          <span className="ml-2 truncate text-[11px] text-slate-500">{m.name}</span>
-                        )}
-                      </div>
-                      {(m.type || m.exchange) && (
-                        <span className="shrink-0 text-[10px] text-slate-600">
-                          {[m.type, m.exchange].filter(Boolean).join(" · ")}
-                        </span>
-                      )}
+        {/* Active universe (left column) */}
+        <div className={`${card} min-h-0 flex-1`}>
+          <h2 className="mb-2 shrink-0 text-sm font-semibold text-slate-100">Active universe</h2>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="divide-y divide-slate-800/60">
+              {tickers.map((t) => {
+                const ladder = universe?.expiries[t] ?? [];
+                const open = expanded === t;
+                return (
+                  <div key={t} className="py-1.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="w-24 text-left font-mono text-xs font-medium text-slate-100 hover:text-accent-400"
+                        title="Edit this ticker's expiries"
+                        onClick={() => setExpanded(open ? null : t)}
+                      >
+                        {open ? "▾ " : "▸ "}
+                        {t}
+                      </button>
+                      <span className="flex-1 text-[11px] text-slate-500">
+                        {ladder.length} expir{ladder.length === 1 ? "y" : "ies"} selected
+                      </span>
                       <button
                         className={smallBtn}
-                        disabled={present || busy !== null}
-                        onClick={() => addTicker(m.symbol)}
+                        disabled={tickers.length <= 1 || busy !== null}
+                        title={
+                          tickers.length <= 1 ? "the universe needs at least one ticker" : undefined
+                        }
+                        onClick={() => removeTicker(t)}
                       >
-                        {present ? "Added" : busy === `add:${m.symbol}` ? "Adding…" : "Add"}
+                        {busy === `remove:${t}` ? "Removing…" : "Remove"}
                       </button>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Active universe */}
-          <div className={`${card} min-h-0 flex-1`}>
-            <h2 className="mb-2 shrink-0 text-sm font-semibold text-slate-100">Active universe</h2>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="divide-y divide-slate-800/60">
-                {tickers.map((t) => {
-                  const ladder = universe?.expiries[t] ?? [];
-                  const open = expanded === t;
-                  return (
-                    <div key={t} className="py-1.5">
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="w-24 text-left font-mono text-xs font-medium text-slate-100 hover:text-accent-400"
-                          title="Edit this ticker's expiries"
-                          onClick={() => setExpanded(open ? null : t)}
-                        >
-                          {open ? "▾ " : "▸ "}
-                          {t}
-                        </button>
-                        <span className="flex-1 text-[11px] text-slate-500">
-                          {ladder.length} expir{ladder.length === 1 ? "y" : "ies"} selected
-                        </span>
-                        <button
-                          className={smallBtn}
-                          disabled={tickers.length <= 1 || busy !== null}
-                          title={
-                            tickers.length <= 1 ? "the universe needs at least one ticker" : undefined
-                          }
-                          onClick={() => removeTicker(t)}
-                        >
-                          {busy === `remove:${t}` ? "Removing…" : "Remove"}
-                        </button>
-                      </div>
-                      {open && <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
-                    </div>
-                  );
-                })}
-              </div>
+                    {open && <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        {/* Saved universes */}
+        {/* Lit/dark node designation (right column, shared with the Graph tab) */}
+        <div className={`${card} min-h-0 flex-1`}>
+          <LitDarkMatrix universe={universe ?? null} />
+        </div>
+
+        {/* Saved universes (narrow aside) */}
         <aside className={`${card} w-72 shrink-0`}>
           <h2 className="mb-1 text-sm font-semibold text-slate-100">Saved universes</h2>
           {!saved.storeEnabled ? (
@@ -224,11 +227,6 @@ export default function UniverseManager() {
             </>
           )}
         </aside>
-      </div>
-
-      {/* Lit/dark node designation (shared with the Graph tab) */}
-      <div className={`${card} max-h-56 shrink-0`}>
-        <LitDarkMatrix universe={universe ?? null} />
       </div>
     </div>
   );

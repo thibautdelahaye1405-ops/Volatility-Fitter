@@ -174,6 +174,32 @@ export function axisTicks(
   return ticks;
 }
 
+/** One display-space tick: value in display units + its label. */
+export interface DisplayTick {
+  value: number;
+  label: string;
+}
+
+/**
+ * Nice ticks directly in display units, for charts that plot geometry in the
+ * display coordinate (so the smile shape itself changes with the mode). Pass the
+ * visible display-domain extent; delta ticks land on 10Δ/25Δ-style values.
+ */
+export function axisDisplayTicks(
+  mode: AxisMode,
+  lo: number,
+  hi: number,
+  target = 6,
+): DisplayTick[] {
+  const a = Math.min(lo, hi);
+  const b = Math.max(lo, hi);
+  const values =
+    mode === "delta"
+      ? niceTicks(a * 100, b * 100, target).map((v) => v / 100)
+      : niceTicks(a, b, target);
+  return values.map((v) => ({ value: v, label: tickLabel(mode, v) }));
+}
+
 /** Crosshair readout for a display value, e.g. "K 6150.00" or "25Δ". */
 export function formatHoverValue(mode: AxisMode, v: number): string {
   switch (mode) {

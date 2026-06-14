@@ -23,6 +23,8 @@ import {
   linearScale,
   niceTicks,
 } from "../lib/chartScale";
+import { timeAxisValue } from "../lib/timeAxis";
+import type { TimeAxisMode } from "../lib/timeAxis";
 
 interface TermChartProps {
   points: TermPoint[];
@@ -91,6 +93,8 @@ export default function TermChart({
   const svgRef = useRef<SVGSVGElement | null>(null);
   /** Hover position in x-domain units (t or τ), or null when outside. */
   const [hover, setHover] = useState<number | null>(null);
+  /** Maturity-axis scaling: linear T or √T. */
+  const [timeMode, setTimeMode] = useState<TimeAxisMode>("linear");
 
   const dilated = axisClock === "dilated";
   const curveX = dilated ? curve.tau : curve.t;
@@ -153,7 +157,12 @@ export default function TermChart({
   if (!Number.isFinite(wHi)) { wLo = 0; wHi = 1; }
   const wPad = Math.max(1e-6, (wHi - wLo) * 0.1);
 
-  const xScale = linearScale([xLo, xHi], [0, plotW]);
+  // Maturity axis honours the T / √T toggle: positions go through xpos, labels
+  // stay in years. xPosScale maps positions to pixels; X maps a t/τ value.
+  const xpos = (v: number) => timeAxisValue(v, timeMode);
+  const xposInv = (pos: number) => (timeMode === "sqrt" ? pos * pos : pos);
+  const xPosScale = linearScale([xpos(xLo), xpos(xHi)], [0, plotW]);
+  const X = (v: number) => xPosScale.map(xpos(v));
   const volScale = linearScale([vLo - vPad, vHi + vPad], [topH, 0]);
   const wScale = linearScale([wLo - wPad, wHi + wPad], [botH, 0]);
 
@@ -162,7 +171,7 @@ export default function TermChart({
     let d = "";
     const n = Math.min(xs.length, ys.length);
     for (let i = 0; i < n; i++) {
-      d += `${d === "" ? "M" : "L"}${xScale.map(xs[i]).toFixed(2)},${y.map(ys[i]).toFixed(2)}`;
+      d += `${d === "" ? "M" : "L"}${X(xs[i]).toFixed(2)},${y.map(ys[i]).toFixed(2)}`;
     }
     return d;
   };
@@ -173,8 +182,8 @@ export default function TermChart({
   let wPath = "";
   fwdSegments.forEach((seg, i) => {
     const y = wScale.map(seg.level).toFixed(2);
-    const xa = xScale.map(seg.x0).toFixed(2);
-    const xb = xScale.map(seg.x1).toFixed(2);
+    const xa = X(seg.x0).toFixed(2);
+    const xb = X(seg.x1).toFixed(2);
     wPath += `${i === 0 ? "M" : "L"}${xa},${y}L${xb},${y}`;
   });
   const vsPath = pathOf(sorted.map(xOf), sorted.map((p) => p.varSwapVol), volScale);
@@ -207,12 +216,12 @@ export default function TermChart({
     if (!svg) return;
     const px = e.clientX - svg.getBoundingClientRect().left - MARGIN.left;
     if (px < 0 || px > plotW) { setHover(null); return; }
-    setHover(clamp(xScale.invert(px), xLo, xHi));
+    setHover(clamp(xposInv(xPosScale.invert(px)), xLo, xHi));
   };
 
   const hoverVol = hover !== null ? interp(curveX, curve.vol, hover) : null;
   const hoverFwd = hover !== null ? fwdAt(hover) : null;
-  const hoverPx = hover !== null ? xScale.map(hover) : 0;
+  const hoverPx = hover !== null ? X(hover) : 0;
   const hoverLabel =
     hover !== null && hoverVol !== null && hoverFwd !== null
       ? `${dilated ? "τ" : "t"} ${hover.toFixed(2)}y · σ ${formatPct(hoverVol, 2)} · fwd var ${hoverFwd.toFixed(4)}`
@@ -248,6 +257,22 @@ export default function TermChart({
             <span className="h-3 w-0 border-l border-dashed border-emerald-400/70" /> Dividends
           </span>
         )}
+        {/* Maturity-axis scaling toggle: linear T vs √T */}
+        <div className="ml-auto flex overflow-hidden rounded border border-slate-700">
+          {(["linear", "sqrt"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setTimeMode(m)}
+              title={m === "sqrt" ? "√T axis (ATM vol ~ linear in √T)" : "Linear maturity axis"}
+              className={[
+                "px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+                timeMode === m ? "bg-accent-600/25 text-accent-400" : "text-slate-400 hover:text-slate-200",
+              ].join(" ")}
+            >
+              {m === "sqrt" ? "√T" : "T"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Plot area (measured for responsive SVG) */}
@@ -269,7 +294,7 @@ export default function TermChart({
                     stroke="rgb(255 255 255 / 0.05)" />
                 ))}
                 {xTicks.map((t) => (
-                  <line key={`gxv${t}`} x1={xScale.map(t)} x2={xScale.map(t)} y1={0} y2={topH}
+                  <line key={`gxv${t}`} x1={X(t)} x2={X(t)} y1={0} y2={topH}
                     stroke="rgb(255 255 255 / 0.04)" />
                 ))}
                 {volTicks.map((t) => (
@@ -285,7 +310,7 @@ export default function TermChart({
                 {/* Var-swap vols: faint connecting line + diamond markers */}
                 <path d={vsPath} fill="none" stroke="rgb(56 189 248 / 0.3)" strokeWidth={1} />
                 {sorted.map((p) => {
-                  const x = xScale.map(xOf(p));
+                  const x = X(xOf(p));
                   const y = volScale.map(p.varSwapVol);
                   return (
                     <path key={`vs-${p.expiry}`}
@@ -300,7 +325,7 @@ export default function TermChart({
                   p.varSwapQuote == null ? null : (
                     <circle
                       key={`vsq-${p.expiry}`}
-                      cx={xScale.map(xOf(p))}
+                      cx={X(xOf(p))}
                       cy={volScale.map(p.varSwapQuote)}
                       r={5}
                       fill="none"
@@ -320,13 +345,13 @@ export default function TermChart({
                   return (
                     <g key={`atm-${p.expiry}`}>
                       {sel && (
-                        <circle cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)} r={7}
+                        <circle cx={X(xOf(p))} cy={volScale.map(p.atmVol)} r={7}
                           fill="var(--color-accent-400)" opacity={0.18} />
                       )}
-                      <circle cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)}
-                        r={3} fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1} />
+                      <circle cx={X(xOf(p))} cy={volScale.map(p.atmVol)}
+                        r={3} fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1} />
                       {onSelectExpiry && (
-                        <circle cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)} r={9}
+                        <circle cx={X(xOf(p))} cy={volScale.map(p.atmVol)} r={9}
                           fill="transparent" className="cursor-pointer"
                           onClick={() => onSelectExpiry(p.expiry)} />
                       )}
@@ -342,7 +367,7 @@ export default function TermChart({
                     stroke="rgb(255 255 255 / 0.05)" />
                 ))}
                 {xTicks.map((t) => (
-                  <line key={`gxw${t}`} x1={xScale.map(t)} x2={xScale.map(t)} y1={0} y2={botH}
+                  <line key={`gxw${t}`} x1={X(t)} x2={X(t)} y1={0} y2={botH}
                     stroke="rgb(255 255 255 / 0.04)" />
                 ))}
                 {wTicks.map((t) => (
@@ -365,26 +390,27 @@ export default function TermChart({
                 <path d={wPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
                 {fwdSegments.map((seg) => (
-                  <circle key={`fw-${seg.x1}`} cx={xScale.map(seg.x1)} cy={wScale.map(seg.level)}
-                    r={3} fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1} />
+                  <circle key={`fw-${seg.x1}`} cx={X(seg.x1)} cy={wScale.map(seg.level)}
+                    r={3} fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1} />
                 ))}
               </g>
 
               {/* Shared x-axis labels + title (under the bottom panel) */}
               {xTicks.map((t) => (
-                <text key={`lx${t}`} x={xScale.map(t)} y={botY0 + botH + 16} textAnchor="middle"
+                <text key={`lx${t}`} x={X(t)} y={botY0 + botH + 16} textAnchor="middle"
                   className="fill-slate-500 font-mono text-[10px]">
                   {formatAxisNumber(t)}
                 </text>
               ))}
               <text x={plotW / 2} y={botY0 + botH + 32} textAnchor="middle"
                 className="fill-slate-500 font-mono text-[10px]">
-                {dilated ? "dilated maturity τ (years)" : "maturity (years)"}
+                {dilated ? "dilated maturity τ" : "maturity"}
+                {timeMode === "sqrt" ? " · √T axis" : ""} (years)
               </text>
 
               {/* Dividend ex-dates: emerald dashed verticals + cash label */}
               {divMarks.map(({ d, x }) => {
-                const px = xScale.map(x);
+                const px = X(x);
                 return (
                   <g key={`div-${d.exDate}`} pointerEvents="none">
                     <line x1={px} x2={px} y1={0} y2={botY0 + botH}
@@ -399,7 +425,7 @@ export default function TermChart({
 
               {/* Event markers: dashed verticals at the dilated positions */}
               {eventMarks.map(({ ev, x }) => {
-                const px = xScale.map(x);
+                const px = X(x);
                 return (
                   <g key={ev.id} pointerEvents="none">
                     <line x1={px} x2={px} y1={0} y2={botY0 + botH}
@@ -417,9 +443,9 @@ export default function TermChart({
                   <line x1={hoverPx} x2={hoverPx} y1={0} y2={botY0 + botH}
                     stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
                   <circle cx={hoverPx} cy={volScale.map(hoverVol)} r={3.5}
-                    fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5} />
+                    fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5} />
                   <circle cx={hoverPx} cy={botY0 + wScale.map(hoverFwd)} r={3.5}
-                    fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5} />
+                    fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5} />
                 </g>
               )}
             </g>

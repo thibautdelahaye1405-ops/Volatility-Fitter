@@ -277,7 +277,7 @@ export default function GraphChart({
             if (!p) return null;
             const isLit = key in lit;
             const result = results?.[key];
-            const fill = result ? shiftColor(result.shiftBp, maxAbsShift) : "#1f2937";
+            const fill = result ? shiftColor(result.shiftBp, maxAbsShift) : "var(--color-surface-700)";
             // Uncertainty halo: radius grows and fades with the posterior sd
             // (normalised by the solve's max sd, extra radius <= HALO_MAX).
             const sdFrac = result && maxSd > 0 ? clamp(result.sd / maxSd, 0, 1) : 0;

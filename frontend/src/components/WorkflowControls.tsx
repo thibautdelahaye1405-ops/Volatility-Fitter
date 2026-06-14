@@ -75,6 +75,27 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
             ? `Calibrate (${stale})`
             : "Calibrate"}
       </button>
+
+      {/* Compact calibration progress gauge (only while a job is running) */}
+      {running && (
+        <div className="flex flex-col gap-0.5">
+          <div className="h-1 w-16 overflow-hidden rounded-full bg-surface-700">
+            <div
+              className="h-full rounded-full bg-accent-500 transition-all"
+              style={{
+                width: `${
+                  (calib?.total ?? 0) > 0
+                    ? ((calib?.done ?? 0) / (calib?.total ?? 1)) * 100
+                    : 0
+                }%`,
+              }}
+            />
+          </div>
+          <span className="max-w-16 truncate font-mono text-[10px] text-slate-400">
+            {calib?.current || "…"}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

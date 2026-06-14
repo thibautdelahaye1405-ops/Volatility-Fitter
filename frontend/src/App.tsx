@@ -9,8 +9,10 @@ import ForwardsViewer from "./views/ForwardsViewer";
 import OptionsViewer from "./views/OptionsViewer";
 import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
+import ViewSettingsViewer from "./views/ViewSettingsViewer";
 import { SmileSessionProvider } from "./state/smileSession";
 import { ExpiryFormatProvider } from "./state/expiryFormat";
+import { ViewSettingsProvider } from "./state/viewSettings";
 
 /** The top-level workspaces of the application (ROADMAP Phase 10).
  *  Parametric = the model-fit workspace (Smile / Density / Term / Surface /
@@ -21,7 +23,8 @@ export type TabId =
   | "forwards"
   | "options"
   | "graph"
-  | "universe";
+  | "universe"
+  | "view";
 
 export interface TabDef {
   id: TabId;
@@ -35,12 +38,14 @@ export const TABS: TabDef[] = [
   { id: "options", label: "Options" },
   { id: "graph", label: "Graph" },
   { id: "universe", label: "Universe" },
+  { id: "view", label: "View" },
 ];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("parametric");
 
   return (
+    <ViewSettingsProvider>
     <ExpiryFormatProvider>
     <SmileSessionProvider>
       <div className="flex h-full flex-col">
@@ -53,6 +58,7 @@ export default function App() {
           {activeTab === "universe" && <UniverseManager />}
           {activeTab === "forwards" && <ForwardsViewer />}
           {activeTab === "options" && <OptionsViewer />}
+          {activeTab === "view" && <ViewSettingsViewer />}
           {activeTab === "graph" && (
             // Drill-in: GraphViewer points the shared smile session at a
             // node, then asks the shell to switch to the Parametric workspace.
@@ -62,5 +68,6 @@ export default function App() {
       </div>
     </SmileSessionProvider>
     </ExpiryFormatProvider>
+    </ViewSettingsProvider>
   );
 }

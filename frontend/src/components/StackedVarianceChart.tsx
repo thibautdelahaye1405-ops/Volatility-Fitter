@@ -83,6 +83,7 @@ export default function StackedVarianceChart({ ticker, fitMode, reloadKey = 0 }:
       xLabel="k = log(K / F)"
       yLabel="total variance w = σ²·T"
       zeroBaseline
+      zoomY
     />
   );
 }

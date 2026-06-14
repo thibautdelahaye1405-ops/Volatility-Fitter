@@ -213,7 +213,7 @@ def test_sticky_strike_realizes_the_skew(client, universe):
     data = scenario(client, expiry, "sticky_strike")
     assert data["ssr"] == 1.0
     assert data["regime"] == "sticky_strike"
-    assert len(data["k"]) == len(data["baseVol"]) == len(data["shiftedVol"]) == 161
+    assert len(data["k"]) == len(data["baseVol"]) == len(data["shiftedVol"]) == 241
 
     # SSR = 1: d sigma_atm = skew * d ln F (negative skew, spot up -> vol down).
     expected = skew * np.log1p(0.01)

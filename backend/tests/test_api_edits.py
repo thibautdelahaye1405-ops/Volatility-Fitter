@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from volfit.api import create_app
 
 REF_DATE = date(2026, 6, 10)
-N_MODEL_POINTS = 161
+N_MODEL_POINTS = 241
 TICKER = "GAMMA"
 
 

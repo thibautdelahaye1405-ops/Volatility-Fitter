@@ -34,6 +34,10 @@ export function linearScale(
  */
 export function niceTicks(min: number, max: number, target = 6): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) return [];
+  // A span that is negligible versus the magnitude (e.g. a flat curve) would
+  // give a sub-ULP step where `v += step` never advances — an infinite push
+  // loop that overflows the array ("Invalid array length"). Treat as a point.
+  if (Math.abs(max - min) <= Math.abs(max) * 1e-9) return [min];
   const rawStep = (max - min) / Math.max(1, target);
   const power = Math.pow(10, Math.floor(Math.log10(rawStep)));
   const candidates = [1, 2, 2.5, 5, 10];
@@ -44,9 +48,11 @@ export function niceTicks(min: number, max: number, target = 6): number[] {
       break;
     }
   }
+  if (!(step > 0)) return [min];
   const ticks: number[] = [];
   const first = Math.ceil(min / step) * step;
-  for (let v = first; v <= max + step * 1e-9; v += step) {
+  // The length cap is a final backstop against any residual float pathology.
+  for (let v = first; v <= max + step * 1e-9 && ticks.length < 1000; v += step) {
     // Snap to the step grid to avoid 0.30000000000000004-style labels.
     ticks.push(Number((Math.round(v / step) * step).toPrecision(12)));
   }

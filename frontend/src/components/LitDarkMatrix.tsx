@@ -112,7 +112,7 @@ export default function LitDarkMatrix({ universe }: Props) {
   }
 
   return (
-    <div className="flex min-h-0 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-1 flex shrink-0 items-center gap-2">
         <h2 className="text-sm font-semibold text-slate-100">Lit / dark nodes</h2>
         <span className="text-[11px] text-slate-500">

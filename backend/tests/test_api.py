@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from volfit.api import create_app
 
 REF_DATE = date(2026, 6, 10)
-N_MODEL_POINTS = 161
+N_MODEL_POINTS = 241
 
 
 @pytest.fixture(scope="module")
@@ -66,8 +66,13 @@ def test_smile_payload_sanity(client, universe):
     assert len(model) == N_MODEL_POINTS
     vols = np.array([p["vol"] for p in model])
     ks = np.array([p["k"] for p in model])
-    assert np.all(np.isfinite(vols)) and np.all((vols > 0.05) & (vols < 0.6))
-    assert data["kMin"] == model[0]["k"] and data["kMax"] == model[-1]["k"]
+    assert np.all(np.isfinite(vols))
+    # The model curve extends to at least k in [-1, 1] (wings drawn beyond the
+    # quotes); the brush extent (kMin/kMax) stays the narrower observed range.
+    assert model[0]["k"] <= -1.0 + 1e-9 and model[-1]["k"] >= 1.0 - 1e-9
+    assert data["kMin"] >= model[0]["k"] and data["kMax"] <= model[-1]["k"]
+    obs = (ks >= data["kMin"]) & (ks <= data["kMax"])
+    assert np.all((vols[obs] > 0.05) & (vols[obs] < 0.6))
 
     quotes = data["quotes"]
     assert len(quotes) >= 10

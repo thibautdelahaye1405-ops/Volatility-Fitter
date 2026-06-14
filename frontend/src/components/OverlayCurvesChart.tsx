@@ -2,11 +2,13 @@
 //
 // Backs the Parametric "Stacked densities" and "Stacked IV" views: every
 // selected expiry is one curve on shared axes, colour-graded near→far by
-// maturity, so the eye reads positivity (densities ≥ 0) or non-crossing
-// (total-variance curves) directly. Hand-rolled SVG following the SmileChart /
-// DistributionChart conventions (grid, axes, legend); no chart deps.
-import { useLayoutEffect, useRef, useState } from "react";
-import { formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
+// maturity. Hand-rolled SVG following the SmileChart conventions; no chart deps.
+// Supports wheel-zoom (x by default; +Shift x-only / +Alt y-only when zoomY),
+// drag-pan and double-click / ⌂ reset — zoom-out reveals beyond the data.
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
+import { clamp, formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
+import { useZoom } from "../lib/useZoom";
 
 /** One plottable curve. */
 export interface OverlaySeries {
@@ -23,6 +25,8 @@ interface OverlayCurvesChartProps {
   yLabel: string;
   /** Draw a y = 0 baseline (used by the density view to anchor positivity). */
   zeroBaseline?: boolean;
+  /** Allow zooming the y-axis too (Stacked IV); otherwise wheel zooms x only. */
+  zoomY?: boolean;
 }
 
 const MARGIN = { top: 14, right: 16, bottom: 34, left: 56 } as const;
@@ -63,8 +67,50 @@ export default function OverlayCurvesChart({
   xLabel,
   yLabel,
   zeroBaseline = false,
+  zoomY = false,
 }: OverlayCurvesChartProps) {
   const { ref, size } = useElementSize();
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const drag = useRef<{ x: number; y: number } | null>(null);
+  const clipId = useId();
+  const zoom = useZoom();
+
+  const innerW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
+  const innerH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
+
+  // Wheel zoom (native, non-passive so preventDefault works).
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const onWheel = (e: WheelEvent) => {
+      if (innerW <= 0 || innerH <= 0) return;
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      const fx = clamp((e.clientX - rect.left - MARGIN.left) / innerW, 0, 1);
+      const fy = clamp((e.clientY - rect.top - MARGIN.top) / innerH, 0, 1);
+      const axis = !zoomY ? "x" : e.shiftKey ? "x" : e.altKey ? "y" : "both";
+      zoom.zoomAt(fx, fy, e.deltaY, axis);
+    };
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
+  }, [zoom, innerW, innerH, zoomY]);
+
+  const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const d = drag.current;
+    if (!d || innerW <= 0 || innerH <= 0) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) {
+      zoom.panBy(dx / innerW, dy / innerH, zoomY ? "both" : "x");
+      drag.current = { x: e.clientX, y: e.clientY };
+    }
+  };
+  const onPointerUp = () => {
+    drag.current = null;
+  };
 
   if (series.length === 0) {
     return (
@@ -76,21 +122,22 @@ export default function OverlayCurvesChart({
     );
   }
 
-  const innerW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
-  const innerH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
-
   const xd = domain(series, (s) => s.xs);
   const yd0 = domain(series, (s) => s.ys);
   // Pad the y-domain a touch; include 0 when a baseline is requested.
-  const ydLo = zeroBaseline ? Math.min(0, yd0?.lo ?? 0) : (yd0?.lo ?? 0);
-  const ydHi = (yd0?.hi ?? 1) * 1.04;
+  const baseYLo = zeroBaseline ? Math.min(0, yd0?.lo ?? 0) : (yd0?.lo ?? 0);
+  const baseYHi = (yd0?.hi ?? 1) * 1.04;
 
   const ready = size.width > 0 && size.height > 0 && xd !== null && yd0 !== null;
-  const xScale = linearScale([xd?.lo ?? 0, xd?.hi ?? 1], [0, innerW]);
-  const yScale = linearScale([ydLo, ydHi], [innerH, 0]);
 
-  const xTicks = ready ? niceTicks(xd!.lo, xd!.hi, 6) : [];
-  const yTicks = ready ? niceTicks(ydLo, ydHi, 5) : [];
+  // Apply zoom to the base domains.
+  const [vxLo, vxHi] = zoom.viewX([xd?.lo ?? 0, xd?.hi ?? 1]);
+  const [vyLo, vyHi] = zoom.viewY([baseYLo, baseYHi]);
+  const xScale = linearScale([vxLo, vxHi], [0, innerW]);
+  const yScale = linearScale([vyLo, vyHi], [innerH, 0]);
+
+  const xTicks = ready ? niceTicks(Math.min(vxLo, vxHi), Math.max(vxLo, vxHi), 6) : [];
+  const yTicks = ready ? niceTicks(Math.min(vyLo, vyHi), Math.max(vyLo, vyHi), 5) : [];
 
   const pathOf = (s: OverlaySeries): string => {
     let d = "";
@@ -111,16 +158,31 @@ export default function OverlayCurvesChart({
   };
 
   return (
-    <div ref={ref} className="h-full w-full">
+    <div ref={ref} className="relative h-full w-full">
       {ready && (
-        <svg width={size.width} height={size.height} className="block">
+        <svg
+          ref={svgRef}
+          width={size.width}
+          height={size.height}
+          className="block touch-none select-none"
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerLeave={onPointerUp}
+          onDoubleClick={zoom.reset}
+        >
+          <defs>
+            <clipPath id={clipId}>
+              <rect x={0} y={0} width={innerW} height={innerH} />
+            </clipPath>
+          </defs>
           <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
             {/* Y grid + labels */}
             {yTicks.map((t) => {
               const y = yScale.map(t);
               return (
                 <g key={`y${t}`}>
-                  <line x1={0} x2={innerW} y1={y} y2={y} stroke="#1f2937" strokeWidth={1} />
+                  <line x1={0} x2={innerW} y1={y} y2={y} stroke="var(--color-surface-700)" strokeWidth={1} />
                   <text x={-8} y={y} dy="0.32em" textAnchor="end" className="fill-slate-500 text-[10px]">
                     {formatAxisNumber(t)}
                   </text>
@@ -132,22 +194,24 @@ export default function OverlayCurvesChart({
               const x = xScale.map(t);
               return (
                 <g key={`x${t}`}>
-                  <line x1={x} x2={x} y1={0} y2={innerH} stroke="#1f2937" strokeWidth={1} />
+                  <line x1={x} x2={x} y1={0} y2={innerH} stroke="var(--color-surface-700)" strokeWidth={1} />
                   <text x={x} y={innerH + 18} textAnchor="middle" className="fill-slate-500 text-[10px]">
                     {formatAxisNumber(t)}
                   </text>
                 </g>
               );
             })}
-            {/* Zero baseline (densities) */}
-            {zeroBaseline && ydLo < 0 === false && (
-              <line x1={0} x2={innerW} y1={yScale.map(0)} y2={yScale.map(0)} stroke="#334155" strokeWidth={1} />
-            )}
 
-            {/* Curves, near→far */}
-            {series.map((s) => (
-              <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color} strokeWidth={1.5} opacity={0.9} />
-            ))}
+            <g clipPath={`url(#${clipId})`}>
+              {/* Zero baseline (densities) */}
+              {zeroBaseline && (
+                <line x1={0} x2={innerW} y1={yScale.map(0)} y2={yScale.map(0)} stroke="var(--color-slate-700)" strokeWidth={1} />
+              )}
+              {/* Curves, near→far */}
+              {series.map((s) => (
+                <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color} strokeWidth={1.5} opacity={0.9} />
+              ))}
+            </g>
 
             {/* Axis labels */}
             <text x={innerW} y={innerH + 30} textAnchor="end" className="fill-slate-600 text-[10px]">
@@ -170,6 +234,16 @@ export default function OverlayCurvesChart({
             </g>
           </g>
         </svg>
+      )}
+
+      {zoom.zoomed && (
+        <button
+          onClick={zoom.reset}
+          title="Reset zoom (or double-click)"
+          className="absolute bottom-1 right-2 rounded-md border border-slate-700 bg-surface-800/95 px-2 py-0.5 text-[10px] text-slate-300 shadow hover:text-slate-100"
+        >
+          ⌂ reset
+        </button>
       )}
     </div>
   );

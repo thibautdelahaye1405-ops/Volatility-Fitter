@@ -196,21 +196,24 @@ export default function LocalVolViewer() {
 
         {/* Per-expiry selector (smile / density / table) */}
         {PER_EXPIRY[view] && (
-          <div className="flex max-w-full flex-wrap gap-1">
-            {(data?.smiles ?? []).map((s, i) => (
-              <button
-                key={s.expiry}
-                onClick={() => setExpiryIdx(i)}
-                className={[
-                  "rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors",
-                  i === expiryIdx ? "bg-accent-600/25 text-accent-400" : "text-slate-500 hover:text-slate-300",
-                ].join(" ")}
-                title={s.expiry}
-              >
-                {formatExpiry(s.expiry, s.t, format)}
-              </button>
-            ))}
-          </div>
+          <label className="flex items-center gap-2 text-xs text-slate-500">
+            Expiry
+            <select
+              className={selectClass}
+              value={data?.smiles[expiryIdx]?.expiry ?? ""}
+              onChange={(e) => {
+                const i = (data?.smiles ?? []).findIndex((s) => s.expiry === e.target.value);
+                if (i >= 0) setExpiryIdx(i);
+              }}
+              disabled={(data?.smiles ?? []).length === 0}
+            >
+              {(data?.smiles ?? []).map((s) => (
+                <option key={s.expiry} value={s.expiry}>
+                  {formatExpiry(s.expiry, s.t, format)}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
 
         {data && (

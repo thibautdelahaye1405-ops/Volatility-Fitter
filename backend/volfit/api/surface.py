@@ -22,12 +22,12 @@ import numpy as np
 
 from volfit.api.displayed import displayed_atm_vol, displayed_slice
 from volfit.api.schemas import SurfaceResponse
-from volfit.api.service import K_PAD, fit_or_get
+from volfit.api.service import K_PAD, fill_nonfinite, fit_or_get
 from volfit.api.state import AppState
 
-#: Shared k-grid density: 61 points is plenty for a smooth 3D mesh while
-#: keeping the payload (n_expiries x 61 floats) chart-light.
-N_SURFACE_POINTS = 61
+#: Shared k-grid density for the 3D mesh / Stacked-IV overlay. Denser now that
+#: the grid is extended to ±1 (the surface's own coarse brush shrinks the view).
+N_SURFACE_POINTS = 81
 
 
 def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceResponse:
@@ -36,16 +36,19 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
     isos = [expiry.isoformat() for expiry in sorted(forwards)]
     records = [fit_or_get(state, ticker, iso, fit_mode) for iso in isos]
 
-    # Union k range across expiries, padded like the per-smile display grid.
-    k_lo = min(float(r.prepared.k.min()) for r in records) - K_PAD
-    k_hi = max(float(r.prepared.k.max()) for r in records) + K_PAD
+    # Union k range across expiries, extended to at least ±1 so the surface /
+    # Stacked-IV wings are drawn beyond the observed quotes (the surface's coarse
+    # k-brush defaults to the full range and shrinks it).
+    k_lo = min(-1.0, min(float(r.prepared.k.min()) for r in records) - K_PAD)
+    k_hi = max(1.0, max(float(r.prepared.k.max()) for r in records) + K_PAD)
     grid = np.linspace(k_lo, k_hi, N_SURFACE_POINTS)
 
     vol: list[list[float]] = []
     atm: list[float] = []
     for record in records:
         t = record.prepared.t
-        vol.append(np.sqrt(displayed_slice(record).implied_w(grid) / t).tolist())
+        w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
+        vol.append(fill_nonfinite(np.sqrt(w / t)).tolist())
         atm.append(displayed_atm_vol(record))  # exact ATM (LQD) or numeric (overlay)
 
     return SurfaceResponse(
