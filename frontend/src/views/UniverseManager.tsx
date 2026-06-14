@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useUniverse } from "../state/useUniverse";
 import ExpiryPicker from "../components/ExpiryPicker";
+import LitDarkMatrix from "../components/LitDarkMatrix";
 
 const card =
   "flex min-h-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30";
@@ -223,6 +224,11 @@ export default function UniverseManager() {
             </>
           )}
         </aside>
+      </div>
+
+      {/* Lit/dark node designation (shared with the Graph tab) */}
+      <div className={`${card} max-h-56 shrink-0`}>
+        <LitDarkMatrix universe={universe ?? null} />
       </div>
     </div>
   );

@@ -18,7 +18,7 @@
 // and solve results are reset when the user switches workspace tabs.
 // Hoisting it into SmileSessionProvider would preserve them across tabs;
 // deliberately deferred to keep the provider single-purpose.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 
 /** Baseline fitted handles of one smile node (GET /graph/nodes). */
@@ -30,6 +30,8 @@ export interface GraphNodeBase {
   atmVol: number;
   skew: number;
   curvature: number;
+  /** Lit/dark designation (shared with the Universe tab); lit = observed. */
+  lit: boolean;
 }
 
 /** Response of GET /graph/nodes. */
@@ -121,12 +123,27 @@ export function nodeKey(ticker: string, expiry: string): string {
   return `${ticker}|${expiry}`;
 }
 
-/** Default observation when a node is first lit: +1.0 vol pt on ATM. */
+/** Default observation when a node is first lit by a click: +1.0 vol pt on ATM
+ *  (so the propagation is immediately visible). The lit set seeded from the
+ *  shared designation starts at 0 (observed anchors, no perturbation). */
 const DEFAULT_D_ATM_VOL = 0.01;
 
 /** Human-readable message from an unknown thrown value. */
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** Persist a node's lit/dark designation to the backend (fire-and-forget, so a
+ *  transient failure never blocks the local graph interaction). Keeps the
+ *  Universe and Graph tabs in sync (ROADMAP Phase 10 follow-up). */
+function persistLit(key: string, lit: boolean): void {
+  const [ticker = "", expiry = ""] = key.split("|");
+  if (ticker === "" || expiry === "") return;
+  void api
+    .put(`/universe/lit/${ticker}/${encodeURIComponent(expiry)}`, { body: { lit } })
+    .catch(() => {
+      /* designation is best-effort; the local lit set already updated */
+    });
 }
 
 /** Everything `useGraph` exposes to the Graph Viewer. */
@@ -193,6 +210,10 @@ export function useGraph(): UseGraphResult {
   const [autotuneResult, setAutotuneResult] = useState<AutotuneResult | null>(null);
   const [autotuneError, setAutotuneError] = useState<string | null>(null);
 
+  // Seed the lit (observed) set from the shared designation exactly once, on
+  // the first successful node load; subsequent Retries keep the user's edits.
+  const seededRef = useRef(false);
+
   // Load the baseline node handles once (and again on each Retry).
   useEffect(() => {
     const controller = new AbortController();
@@ -202,6 +223,14 @@ export function useGraph(): UseGraphResult {
       .get<GraphNodesResponse>("/graph/nodes", { signal: controller.signal })
       .then((res) => {
         setNodes(res.nodes);
+        if (!seededRef.current) {
+          seededRef.current = true;
+          // Lit-designated nodes become observed anchors (shift 0); dark ones
+          // are extrapolation targets (absent from the observed set).
+          const seed: Record<string, number> = {};
+          for (const n of res.nodes) if (n.lit) seed[nodeKey(n.ticker, n.expiry)] = 0;
+          setLit(seed);
+        }
         setLoading(false);
       })
       .catch((err: unknown) => {
@@ -217,8 +246,13 @@ export function useGraph(): UseGraphResult {
   const toggleLit = useCallback((key: string) => {
     setLit((prev) => {
       const next = { ...prev };
-      if (key in next) delete next[key];
-      else next[key] = DEFAULT_D_ATM_VOL;
+      if (key in next) {
+        delete next[key];
+        persistLit(key, false);
+      } else {
+        next[key] = DEFAULT_D_ATM_VOL;
+        persistLit(key, true);
+      }
       return next;
     });
   }, []);
@@ -231,7 +265,12 @@ export function useGraph(): UseGraphResult {
     if (keys.length === 0) return;
     setLit((prev) => {
       const next = { ...prev };
-      for (const key of keys) if (!(key in next)) next[key] = DEFAULT_D_ATM_VOL;
+      for (const key of keys) {
+        if (!(key in next)) {
+          next[key] = DEFAULT_D_ATM_VOL;
+          persistLit(key, true);
+        }
+      }
       return next;
     });
   }, []);
@@ -240,6 +279,7 @@ export function useGraph(): UseGraphResult {
     setLit((prev) => {
       const next = { ...prev };
       delete next[key];
+      persistLit(key, false);
       return next;
     });
   }, []);
