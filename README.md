@@ -36,15 +36,30 @@ Docs/      Technical notes (LaTeX)
   snapshot CLI.
 - **API** (FastAPI on :8000): universe + data-source/as-of switching, slice/
   surface fits (WebSocket progress), quote edit sessions with undo/redo, priors,
-  density / log-quantile-density, term structure with event-dilated clock, graph
-  solve, SSR scenarios. Model choice, weighting scheme, haircut and SIV-cores are
-  global fit hyperparameters; every smile-derived view follows the chosen model.
-- **UI**: Smile viewer (live fits, quote editing, scenario + Massive-IV overlays,
-  density / log-quantile-density views, weighted RMS-error + diagnostics,
-  hyperparameter panel), Local-Vol viewer, Term-Structure viewer (editable
-  event markers), Graph viewer (light nodes, solve, uncertainty overlay),
-  Universe manager (provider symbol search, named universes); TopBar Data Source
-  + As-of selectors.
+  density / log-quantile-density / stacked densities, term structure with
+  event-dilated clock, local-vol surface fit (+ derived density/term/table),
+  per-node lit/dark designation, graph solve, SSR scenarios. Every smile-derived
+  view follows the chosen model; **all** fit/optimization coefficients (model,
+  weighting, haircut, SIV cores, penalty strengths, the A_R barrier, the SVI
+  no-arb penalty + Lee bound, the SIV ridge, the band mid-anchor, the local-vol
+  roughness, and the graph prior strength) are global, explicit settings.
+- **UI** — six workspaces (TopBar Data Source + As-of selectors, global
+  expiry-format toggle):
+  - **Parametric** — live fits, quote editing, scenario (spot slider) + Massive-IV
+    overlays; chart sub-tabs Smile / Stacked densities (no-butterfly check) /
+    Log-Q-density / Term / 3D Surface / Stacked IV (total variance, no-calendar
+    check) / Table.
+  - **Local Vol** — direct piecewise-affine surface fit, sub-tabs Smile / Density
+    / Term / LV-surface heatmap / 3D IV-surface / Table.
+  - **Forwards** — per-ticker forwards table (parity / theoretical / manual) +
+    dividend-schedule editor, shared by both fit workspaces.
+  - **Options** — every global meta-parameter and calibration/optimization
+    coefficient (defaults, penalty catalogue with formulas, dynamics regime + SSR,
+    grid defaults, graph prior, display format).
+  - **Graph** — light/dim nodes (shared with Universe), solver panel (κ/η/λ/ν,
+    auto-tune η, lasso), posterior shift + uncertainty overlay.
+  - **Universe** — provider symbol search, per-ticker expiry selection, a
+    lit/dark node matrix, and named universes.
 
 ## Run everything (Windows, from repo root)
 
@@ -64,7 +79,7 @@ fit history (VOLFIT_DB). Force a specific source active on launch with
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e backend[dev]   # PyPI can be flaky here: just retry
-cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 321 green
+cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 334 green
 $env:VOLFIT_LIVE="1"; ..\.venv\Scripts\python -m pytest tests\test_yahoo.py -k live  # opt-in live test
 ```
 

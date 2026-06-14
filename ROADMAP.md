@@ -601,7 +601,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (284 green as of 2026-06-13, incl. 4 perf-budget tests; opt-in live Yahoo
+  (334 green as of 2026-06-14, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - Data sources: `restart.ps1` registers ALL feeds and auto-picks the best
   reachable as active; switch live via the TopBar **Data Source** selector
