@@ -1,23 +1,12 @@
 // Data + interaction state for the Graph Viewer.
 //
-// Talks to the FastAPI graph endpoints:
-//   GET  /graph/nodes — baseline fitted handles (ATM vol, skew, curvature)
-//                       for every (ticker, expiry) node of the universe.
-//                       Fitted on demand server-side, so the first call can
-//                       take about a second.
-//   POST /graph/solve — propagates the lit-node observations through the
-//                       smile graph (OT-Bayesian solver) and returns
-//                       posterior ATM-vol shifts and uncertainty bands for
-//                       every node.
-//
-// Unlike the smile session there is NO mock fallback here: the solver only
-// makes sense against the live backend, so a failed load surfaces an error
-// and the view renders a retry card instead of synthetic data.
-//
-// NOTE: this hook is mounted by the GraphViewer view itself, so lit nodes
-// and solve results are reset when the user switches workspace tabs.
-// Hoisting it into SmileSessionProvider would preserve them across tabs;
-// deliberately deferred to keep the provider single-purpose.
+// GET /graph/nodes returns the baseline fitted handles (ATM vol/skew/curvature)
+// for every (ticker, expiry) node (fitted on demand, so the first call is slow);
+// POST /graph/solve propagates the lit-node observations through the OT-Bayesian
+// smile graph and returns posterior ATM-vol shifts + uncertainty bands. Live
+// backend only (no mock fallback). The hook is mounted by the GraphViewer view,
+// so lit nodes / results reset on a workspace-tab switch (and re-seed from the
+// shared lit designation + Options graph-prior defaults).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 
@@ -104,6 +93,26 @@ const DEFAULT_PARAMS: SolverParams = {
   crossWeight: null,
 };
 
+/** Options graph-prior defaults that seed the solver panel. */
+interface GraphPriorDefaults {
+  graphKappaScale: number;
+  graphEtaScale: number;
+  graphLambdaScale: number;
+  graphNu: number;
+}
+
+/** Apply the Options graph-prior defaults to untouched solver params. */
+function seedSolverParams(p: SolverParams, o: GraphPriorDefaults): SolverParams {
+  const untouched =
+    p.kappaScale === DEFAULT_PARAMS.kappaScale &&
+    p.etaScale === DEFAULT_PARAMS.etaScale &&
+    p.lambdaScale === DEFAULT_PARAMS.lambdaScale &&
+    p.nu === DEFAULT_PARAMS.nu;
+  return untouched
+    ? { ...p, kappaScale: o.graphKappaScale, etaScale: o.graphEtaScale, lambdaScale: o.graphLambdaScale, nu: o.graphNu }
+    : p;
+}
+
 /** JSON body for a solver request: drops null edge weights so the backend
  *  falls back to its defaults rather than receiving explicit nulls. */
 function paramsBody(params: SolverParams): Record<string, number> {
@@ -123,9 +132,8 @@ export function nodeKey(ticker: string, expiry: string): string {
   return `${ticker}|${expiry}`;
 }
 
-/** Default observation when a node is first lit by a click: +1.0 vol pt on ATM
- *  (so the propagation is immediately visible). The lit set seeded from the
- *  shared designation starts at 0 (observed anchors, no perturbation). */
+/** Click-to-light default: +1.0 vol pt (visible propagation); designation-
+ *  seeded lit nodes start at 0 (observed anchors, no perturbation). */
 const DEFAULT_D_ATM_VOL = 0.01;
 
 /** Human-readable message from an unknown thrown value. */
@@ -133,9 +141,8 @@ function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Persist a node's lit/dark designation to the backend (fire-and-forget, so a
- *  transient failure never blocks the local graph interaction). Keeps the
- *  Universe and Graph tabs in sync (ROADMAP Phase 10 follow-up). */
+/** Persist a node's lit/dark designation (fire-and-forget; keeps Universe and
+ *  Graph in sync). */
 function persistLit(key: string, lit: boolean): void {
   const [ticker = "", expiry = ""] = key.split("|");
   if (ticker === "" || expiry === "") return;
@@ -213,6 +220,21 @@ export function useGraph(): UseGraphResult {
   // Seed the lit (observed) set from the shared designation exactly once, on
   // the first successful node load; subsequent Retries keep the user's edits.
   const seededRef = useRef(false);
+
+  // Seed the solver hyperparameters from the Options graph-prior defaults once
+  // (κ prior strength / η reach / λ OT flux / ν); edge weights stay at the
+  // service defaults. Best-effort — failures keep DEFAULT_PARAMS.
+  const paramsSeededRef = useRef(false);
+  useEffect(() => {
+    if (paramsSeededRef.current) return;
+    const controller = new AbortController();
+    api
+      .get<GraphPriorDefaults>("/settings/options", { signal: controller.signal })
+      .then((o) => setParams((p) => seedSolverParams(p, o)))
+      .catch(() => undefined)
+      .finally(() => (paramsSeededRef.current = true));
+    return () => controller.abort();
+  }, []);
 
   // Load the baseline node handles once (and again on each Retry).
   useEffect(() => {

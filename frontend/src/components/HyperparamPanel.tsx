@@ -8,6 +8,7 @@
 // current smile via the session's reload() once the PUT lands.
 import { useEffect, useState } from "react";
 import { api } from "../state/api";
+import PenaltyCoefficients from "./PenaltyCoefficients";
 
 /** The smile families calibratable through PUT /settings/fit. */
 export type FitModel = "lqd" | "svi" | "sigmoid";
@@ -24,6 +25,13 @@ export interface FitSettings {
   nCores: number;
   haircut: number;
   weightScheme: WeightScheme;
+  // per-model optimization / penalty coefficients (Options exposes them all)
+  barrierCenter: number;
+  barrierScale: number;
+  sviPenaltyWeight: number;
+  leeSlopeMax: number;
+  sigmoidRidge: number;
+  midAnchorWeight: number;
 }
 
 const DEFAULTS: FitSettings = {
@@ -34,6 +42,12 @@ const DEFAULTS: FitSettings = {
   nCores: 2,
   haircut: 0.005,
   weightScheme: "equal",
+  barrierCenter: 0.9,
+  barrierScale: 50.0,
+  sviPenaltyWeight: 1e3,
+  leeSlopeMax: 2.0,
+  sigmoidRidge: 1e-2,
+  midAnchorWeight: 0.05,
 };
 
 /** Model choices. LQD is the arbitrage-free default and the analytic backbone
@@ -97,14 +111,9 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
     return () => controller.abort();
   }, [disabled]);
 
-  const dirty =
-    draft.model !== saved.model ||
-    draft.nOrder !== saved.nOrder ||
-    draft.regLambda !== saved.regLambda ||
-    draft.regPower !== saved.regPower ||
-    draft.nCores !== saved.nCores ||
-    draft.haircut !== saved.haircut ||
-    draft.weightScheme !== saved.weightScheme;
+  const dirty = (Object.keys(draft) as (keyof FitSettings)[]).some(
+    (k) => draft[k] !== saved[k],
+  );
 
   // The Legendre order and high-order damping are LQD-only knobs; the SVI and
   // sigmoid overlays ignore them, so the controls are disabled off-LQD.
@@ -286,6 +295,9 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
           ))}
         </div>
       </div>
+
+      {/* Per-model optimization / penalty coefficients (all explicit) */}
+      <PenaltyCoefficients draft={draft} onChange={setDraft} disabled={disabled} />
 
       <button
         onClick={apply}

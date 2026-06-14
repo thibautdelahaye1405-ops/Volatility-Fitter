@@ -190,7 +190,26 @@ export default function OptionsViewer() {
                 onChange={(v) => patch({ gridTNodes: v })} />
               <NumberRow label="Roughness λ" value={draft.gridRegLambda} step={0.001} disabled={!live}
                 onChange={(v) => patch({ gridRegLambda: v })} />
+              <NumberRow label="Roughness ρ (t vs x)" value={draft.gridRegRho} step={0.1} disabled={!live}
+                onChange={(v) => patch({ gridRegRho: v })} />
             </div>
+          </div>
+
+          <div className="border-t border-slate-800 pt-3">
+            <h3 className={sectionTitle}>Graph prior (defaults)</h3>
+            <div className="space-y-2">
+              <NumberRow label="κ prior strength" value={draft.graphKappaScale} step={0.1} disabled={!live}
+                onChange={(v) => patch({ graphKappaScale: v })} />
+              <NumberRow label="η reach" value={draft.graphEtaScale} step={0.1} disabled={!live}
+                onChange={(v) => patch({ graphEtaScale: v })} />
+              <NumberRow label="λ OT flux (0 = off)" value={draft.graphLambdaScale} step={0.1} disabled={!live}
+                onChange={(v) => patch({ graphLambdaScale: v })} />
+              <NumberRow label="ν OT source" value={draft.graphNu} step={0.05} disabled={!live}
+                onChange={(v) => patch({ graphNu: v })} />
+            </div>
+            <p className="mt-1 text-[10px] text-slate-600">
+              Seed the Graph Viewer's solver panel (κ = stiffness toward the baseline).
+            </p>
           </div>
         </div>
       </div>

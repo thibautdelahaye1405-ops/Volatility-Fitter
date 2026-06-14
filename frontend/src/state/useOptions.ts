@@ -27,7 +27,12 @@ export interface OptionsSettings {
   gridXNodes: number;
   gridTNodes: number;
   gridRegLambda: number;
+  gridRegRho: number;
   calendarWeight: number;
+  graphKappaScale: number;
+  graphEtaScale: number;
+  graphLambdaScale: number;
+  graphNu: number;
   dynamicsRegime: DynamicsRegime;
   ssr: number;
   autoCalibrate: boolean;
@@ -42,7 +47,12 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   gridXNodes: 7,
   gridTNodes: 4,
   gridRegLambda: 1e-2,
+  gridRegRho: 1.0,
   calendarWeight: 1e6,
+  graphKappaScale: 1.0,
+  graphEtaScale: 1.0,
+  graphLambdaScale: 0.0,
+  graphNu: 0.1,
   dynamicsRegime: "sticky_strike",
   ssr: 2.0,
   autoCalibrate: true,

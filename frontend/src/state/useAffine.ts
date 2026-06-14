@@ -65,6 +65,7 @@ export interface AffineParams {
   nXNodes: number;
   nTNodes: number;
   regLambda: number;
+  regRho: number;
   varLo: number;
   varHi: number;
 }
@@ -73,6 +74,7 @@ export const DEFAULT_PARAMS: AffineParams = {
   nXNodes: 7,
   nTNodes: 4,
   regLambda: 1e-2,
+  regRho: 1.0,
   varLo: 0.0025,
   varHi: 0.36,
 };
@@ -135,17 +137,26 @@ export function useAffine(): UseAffineResult {
     if (seededRef.current) return;
     const controller = new AbortController();
     api
-      .get<{ gridXNodes: number; gridTNodes: number; gridRegLambda: number }>(
-        "/settings/options",
-        { signal: controller.signal },
-      )
+      .get<{
+        gridXNodes: number;
+        gridTNodes: number;
+        gridRegLambda: number;
+        gridRegRho: number;
+      }>("/settings/options", { signal: controller.signal })
       .then((o) => {
         seededRef.current = true;
         setParamsState((p) =>
           p.nXNodes === DEFAULT_PARAMS.nXNodes &&
           p.nTNodes === DEFAULT_PARAMS.nTNodes &&
-          p.regLambda === DEFAULT_PARAMS.regLambda
-            ? { ...p, nXNodes: o.gridXNodes, nTNodes: o.gridTNodes, regLambda: o.gridRegLambda }
+          p.regLambda === DEFAULT_PARAMS.regLambda &&
+          p.regRho === DEFAULT_PARAMS.regRho
+            ? {
+                ...p,
+                nXNodes: o.gridXNodes,
+                nTNodes: o.gridTNodes,
+                regLambda: o.gridRegLambda,
+                regRho: o.gridRegRho,
+              }
             : p,
         );
       })
