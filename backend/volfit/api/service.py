@@ -62,8 +62,9 @@ def session_version(state: AppState, ticker: str, iso: str) -> int:
 
 def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
     """Fit-cache key: (ticker, canonical ISO, mode, session version, settings
-    version, forwards version) — edits, hyperparameter and forward/market
-    changes each bump a version, so affected nodes refit without eviction."""
+    version, forwards version, options version) — edits, hyperparameter,
+    forward/market and calendar-penalty changes each bump a version, so affected
+    nodes refit without eviction."""
     return (
         ticker,
         iso,
@@ -71,6 +72,7 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
         session_version(state, ticker, iso),
         state.settings_version,
         state.forwards_version,
+        state.options_version,
     )
 
 
@@ -309,6 +311,7 @@ def fit_surface_slice(
         band=band,
         calendar_indices=cal_idx,
         calendar_floor=cal_floor,
+        calendar_weight=state.options().calendarWeight,
     )
 
 

@@ -69,6 +69,54 @@ class FitSettings(BaseModel):
     weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights
 
 
+# ----------------------------------------------------- options (meta) settings
+class OptionsSettings(BaseModel):
+    """Global meta / UX settings and engine defaults — the Options workspace
+    (ROADMAP Phase 10). Distinct from FitSettings (the live per-fit knobs): these
+    are app-wide toggles, penalty strengths and seed-defaults the other
+    workspaces read.
+
+    Wired to real engine behaviour this phase:
+      * ``calendarWeight`` — the quadratic calendar-slack penalty weight folded
+        into surface slice fits (volfit.models.lqd.calibrate, eq. slack_calendar);
+        the only field that changes calibration output, so it (alone) bumps the
+        options version in the fit-cache key.
+      * ``enforceCalendar`` — global default for the calendar-arbitrage fix the
+        surface fit applies (SurfaceFitRequest seeds from it).
+      * ``eventsEnabled`` — global default for event-time dilation (term view).
+      * ``varSwapEnabled`` — whether the var-swap level is surfaced.
+      * ``dynamicsRegime`` / ``ssr`` — seed defaults for the spot-vol scenario.
+      * ``gridXNodes`` / ``gridTNodes`` / ``gridRegLambda`` — default vertex grid
+        and roughness of the local-vol-affine fit (AffineFitRequest seeds them).
+      * ``autoLoadPrior`` — seed the saved prior as the fit prior on node load.
+
+    Stubbed this phase (persisted UI state only; behaviour is a documented TODO):
+      * ``autoCalibrate`` — auto-refit on every quote edit (True, today's
+        behaviour) vs a manual "Calibrate" trigger gating refits.
+      * ``spotMode`` — stream live spot and re-price ("realtime") vs freeze spot
+        at load ("static"); pairs with the existing As-of selector.
+    """
+
+    # arbitrage / events / var-swap (wired as global defaults)
+    enforceCalendar: bool = True
+    eventsEnabled: bool = True
+    varSwapEnabled: bool = True
+    # prior default
+    autoLoadPrior: bool = False
+    # local-vol-affine vertex grid + roughness defaults
+    gridXNodes: int = Field(7, ge=3, le=15)
+    gridTNodes: int = Field(4, ge=2, le=8)
+    gridRegLambda: float = Field(1e-2, ge=0.0, le=1e4)
+    # editable penalty strength (changes calibration output)
+    calendarWeight: float = Field(1e6, ge=0.0)
+    # spot-vol dynamics seed defaults (the scenario panel reads these)
+    dynamicsRegime: Regime = Regime.STICKY_STRIKE
+    ssr: float = Field(2.0, ge=0.0)
+    # stubbed this phase (UI state only; behaviour TODO)
+    autoCalibrate: bool = True
+    spotMode: Literal["realtime", "static"] = "static"
+
+
 # ------------------------------------------------------------- smile payload
 class SmilePoint(BaseModel):
     """One point of a continuous model curve in (log-moneyness, vol) space."""

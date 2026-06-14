@@ -487,14 +487,25 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     Edge (cash dividend → Term marker at t≈0.12y; editor shows the schedule).
 
 **Next up (in order — the [REQ] backlog is now fully cleared):**
-1. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
+1. **Phase 10 — Workspace restructuring: tabs, Forwards & Options** (see the
+   dedicated Phase 10 section below; requested 2026-06-14). Rename Smile →
+   **Parametric**; embed Term-Structure as a sub-tab next to Density; give
+   **Local Vol** the same model-aware sub-tabs (every view derived from the
+   calibrated affine LV surface); add a dedicated **Forwards** tab (forwards +
+   dividends, shared by Parametric and Local Vol) and a meta/defaults
+   **Options** tab (grid-size, var-swap, prior, events, LQD/Sigmoid defaults,
+   penalty catalogue, weighting, fit-mode/haircut, spot-vol dynamics, spot
+   mode, auto-calibration, arb-fix). The Parametric aside keeps only the live
+   per-node controls (model, fit-mode, scenario).
+2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
    sets, provider-failure injection; UX polish (skeletons, error surfaces,
    layout persistence); Docker-compose packaging + user/API docs.
-2. Smaller leftovers scattered in the phase checklists: DuckDB/Parquet history
+3. Smaller leftovers scattered in the phase checklists: DuckDB/Parquet history
    (the columnar quote-snapshot store, deferred when the providers landed);
    process-pool for parallel slice fits; editable ATM handles + prior load/diff
-   UI; arbitrage/event toggles in the hyperparameter panel.
-3. Universe leftovers (small): Bloomberg/Massive `available_expiries` now exist;
+   UI. (The arbitrage/event toggles formerly listed here are now part of the
+   Phase 10 Options tab.)
+4. Universe leftovers (small): Bloomberg/Massive `available_expiries` now exist;
    the expiry picker is still per-ticker (no cross-ticker "apply to all" yet).
 
 **Environment notes:**
@@ -706,6 +717,168 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 - [ ] Test depth: arbitrage invariants as property tests (every LQD iterate butterfly-free; calendar residuals ≤ τ), fuzzed quote sets, provider failure injection.
 - [ ] UX polish: loading/skeleton states, error surfaces, layout persistence, theming, onboarding tour.
 - [ ] Packaging: Docker compose (backend + frontend), one-line local install; user guide + API docs.
+
+---
+
+## Phase 10 — Workspace restructuring: tabs, Forwards & Options (NEXT, requested 2026-06-14)
+
+Reorganize the top-level tabs and consolidate the global / meta controls into a
+single **Options** workspace, so the per-workspace asides only carry the live
+controls a trader touches per node. No new quant math — this is an
+information-architecture + settings-plumbing phase that surfaces engine switches
+that already exist (and stubs the two that do not yet).
+
+**Decisions locked in the 2026-06-14 planning Q&A (do not re-litigate):**
+- **Options is hybrid**: it holds meta/UX + *defaults* + the penalty catalogue.
+  The Parametric aside keeps only the live per-node controls (model, fit-mode,
+  scenario). The Forward / Dividend panels *leave* the aside for a dedicated
+  Forwards tab.
+- **Wiring scope = "wire cheap, stub new."** Wire the toggles that map to an
+  existing engine switch now (calendar/arb-fix, event-time dilation, var-swap,
+  quote weighting, fit-mode + haircut, dynamics regime + SSR, all defaults).
+  **Stub** the genuinely new ones as persisted UI state with a clear TODO:
+  *auto-on-demand calibration* and *real-time spot streaming*.
+- **auto-on-demand calibration** = a toggle between auto-refit on every edit
+  (default ON, today's behavior) and a manual **Calibrate** button that gates
+  refits (OFF). **Real-time / static spot** = stream live spot and re-price
+  (real-time) vs freeze spot at load (static); pairs with the existing As-of
+  selector. Both are stubbed this phase (UI + persisted flag; behavior TODO).
+- **Local Vol sub-tabs mirror Parametric**, every view derived from the
+  calibrated piecewise-affine LV surface (new backend derivations).
+- **sticky-delta** maps to the existing `sticky_moneyness` regime (delta-space ≈
+  moneyness-space); the UI labels it "sticky-delta", the `Regime` enum is
+  unchanged (`sticky_moneyness` | `sticky_strike` | `sticky_local_vol`).
+
+**Top-level tabs (before → after):**
+```
+before:  Smile · Term Structure · Local Vol · Graph · Universe
+after:   Parametric · Local Vol · Forwards · Options · Graph · Universe
+```
+Term Structure ceases to be a top tab (it becomes a Parametric/Local-Vol
+sub-tab). `App.tsx` `TabId`/`TABS` updated; `TopBar` unchanged structurally.
+
+### 10A — Parametric workspace (rename Smile → Parametric, embed Term)
+- [ ] Rename the tab **label** to "Parametric" (`App.tsx`). Keep the `smile`
+  route id and `SmileViewer` component to minimize churn (or rename to
+  `parametric` if cheap — label is what the user sees).
+- [ ] Chart-card sub-tabs become **Smile · Density · Log Q-density · Term ·
+  Surface · Table** — i.e. embed Term-Structure *alongside Density*. Add a
+  `term` case to `ChartView` + `VIEW_HINTS` in `SmileViewer.tsx`; render
+  `TermChart` (existing) in the chart body for the current ticker.
+- [ ] Move the Term-Structure controls (event markers + real-time/dilated-clock
+  toggle + expiry ladder table from `TermStructureViewer.tsx`) into a compact
+  **TermControls** aside panel shown only when the Term sub-tab is active
+  (mirrors how the strike-axis `select` shows only for the Smile view). The
+  global Events ON/OFF *default* lives in Options; live per-session event
+  editing stays here.
+- [ ] Retire the standalone `TermStructureViewer.tsx` top-level view (its parts
+  are reused: `TermChart` in the sub-tab, the controls in TermControls).
+- [ ] Slim the aside (`SmileAside.tsx`) to **diagnostics + live model/fit-mode +
+  scenario** only; remove `ForwardPanel` (→ Forwards tab) and the
+  defaults-y knobs of `HyperparamPanel` (→ Options). Keep a minimal live
+  model + fit-mode selector seeded from the Options defaults.
+
+### 10B — Local Vol workspace (model-aware sub-tabs, derived from the LV surface)
+- [ ] Add Parametric-style chart-card sub-tabs to `LocalVolViewer.tsx`:
+  **Smile (reconstructed) · Density · Term · Surface (heatmap) · Table**, every
+  view derived from the calibrated piecewise-affine local-vol surface (the
+  existing `POST /fit/affine/{ticker}` result), not from the LQD backbone.
+- [ ] Backend derivations from the cached affine fit (each ≤ 400 lines, new
+  helpers next to `api/affine_fit.py`):
+  - **Density**: Breeden–Litzenberger on the reconstructed arbitrage-free call
+    prices per expiry (reuse `models/diagnostics.numeric_density` on the
+    reconstructed slice).
+  - **Term**: ATM vol / total variance / var-swap per expiry from the
+    reconstructed smiles (same shape as `POST /term`).
+  - **Table**: per-strike reconstructed prices/IVs (same shape as
+    `GET /smiles/{t}/{e}/table`).
+  Expose either as fields on the affine response or sibling GET endpoints that
+  read the per-request affine cache; keep the response under the size policy.
+- [ ] Frontend: reuse `DistributionChart` / `TermChart` / `QuoteTable` against
+  the LV-derived payloads; the heatmap stays the "Surface" sub-tab.
+
+### 10C — Forwards tab (new top-level, shared by Parametric + Local Vol)
+- [ ] New `views/ForwardsViewer.tsx`: a per-ticker **forwards table** across all
+  listed expiries (`GET /forwards/{ticker}` already returns every entry) — one
+  row per expiry with the parity / theo / active columns and an inline
+  mode selector + manual override (`PUT /forwards/{t}/{e}`), plus the
+  ticker-level **carry (r/q)** and **dividend schedule** editor (reuse
+  `DividendEditor`; `PUT /settings/market/{ticker}`).
+- [ ] No engine change: both Parametric and Local Vol already read the active
+  forward through the `forwards_version` fit-cache key, so edits here refit both
+  workspaces automatically. Removing `ForwardPanel` from the aside is pure UI
+  relocation.
+
+### 10D — Options tab (new top-level: meta + defaults + penalties)
+A preferences workspace (`views/OptionsViewer.tsx`, split into section
+components to stay ≤ 400 lines). Sections:
+
+1. **Calibration defaults** — seed every new fit/ticker/session:
+   - Vol-surface model default (LQD / SVI / Sigmoid).
+   - LQD: Legendre order N, damping λ + power r.
+   - Sigmoid: SIV cores R + the MC-SIV defaults.
+   - "Default parameters for LQD and Sigmoid" (initial-guess / bounds presets).
+   - Quote weighting scheme (equal | tv_density).
+   - Fit mode (Mid / Bid-Ask / Haircut) + Haircut value.
+   - Local-vol **grid-size default** (nXNodes, nTNodes) + roughness λ.
+   - **Prior default** (auto-load the saved prior as the fit prior on node load,
+     on/off + behavior).
+2. **Penalty catalogue** — each row: description + coefficient knob + formula +
+   source module (formulas verified against the code 2026-06-14):
+
+   | Penalty | Coefficient (knob) | Penalty term | Module |
+   |---|---|---|---|
+   | LQD high-order damping | `regLambda` λ, `regPower` r | λ · n^{2r} · a_n² (n ≥ 4; modes a₂,a₃ free) | `models/lqd/calibrate.py` |
+   | Calendar slack (arb-fix) | `calendar_weight` (1e6) | w · Σ max(floor − Gᵢ(α), 0)² | `calib/calendar.py`, `lqd/calibrate.py` |
+   | SVI min-variance | `_PENALTY_WEIGHT` P | P · max(−(a + bσ√(1−ρ²)), 0)² | `models/svi_jw/calibrate.py` |
+   | SVI Lee wing | `_PENALTY_WEIGHT` P | P · max(b(1+|ρ|) − 2, 0)² | `models/svi_jw/calibrate.py` |
+   | Band hinge + mid anchor | `haircut` h, `MID_ANCHOR_WEIGHT` (0.05) | max(model−ask,0)² + max(bid−model,0)² + 0.05·(model−mid)² | `calib/band.py` |
+   | Affine LV roughness | `regLambda` (note λ=50) | √λ · L(θ − θ_ref), L = 2nd diff in (t, x) | `models/localvol/affine_calib.py` |
+   | Sigmoid amplitude ridge | `_RIDGE` | ridge · Σ α_r² (hat amplitudes) | `models/sigmoid/calibrate.py` |
+
+   Editable where a coefficient is a real knob (λ, r, haircut, calendar_weight,
+   roughness); the others render formula + description read-only.
+3. **Toggles — wired this phase** (map to existing engine switches):
+   - **Arbitrage fix** ON/OFF → `enforceCalendar` (promote the per-request
+     `SurfaceFitRequest.enforceCalendar` to a global default on `AppState`).
+   - **Events** ON/OFF default → `eventsEnabled` (promote from
+     `TermStructureRequest.eventsEnabled`).
+   - **Variance-Swaps** ON/OFF → compute/show the var-swap level + column.
+   - **Spot-Vol dynamics** default → regime (sticky-strike / sticky-delta /
+     sticky-LV) + **SSR value** (feeds the Scenario panel's default).
+4. **Toggles — stubbed this phase** (persisted UI state + behavior TODO):
+   - **Auto-on-demand calibration**: auto-refit on edit (ON, current) vs manual
+     **Calibrate** button (OFF). Persist the flag; gating behavior is TODO.
+   - **Real-time / static spot prices**: stream live spot + re-price vs freeze
+     at load. Persist the flag; streaming behavior is TODO (pairs with As-of).
+
+### Backend — global settings plumbing
+- [ ] New global **app/meta settings** on `AppState` (extend `FitSettings` or add
+  a sibling `OptionsSettings` schema; keep schema files ≤ 400 lines) covering:
+  model/N/damping/haircut/weighting (already in `FitSettings`) + grid-size
+  default, var-swap on/off, prior default, events default, arb-fix default,
+  dynamics regime + SSR default, spot mode (stub), auto-calibration (stub).
+- [ ] `GET/PUT /settings/options` (or extend `GET/PUT /settings/fit`); fold the
+  fit-affecting fields into the existing **fit-cache version** so every view
+  refits consistently (same pattern as `settings_version` / `forwards_version`).
+- [ ] Thread the promoted globals (`enforceCalendar`, `eventsEnabled`, var-swap,
+  regime/SSR, grid-size) into the surface/term/affine/scenario call sites as the
+  *default*, with any live per-node control still overriding.
+
+### Tests & exit criteria
+- [ ] Backend: settings round-trip + cache-version bump tests; LV-derived
+  density/term/table golden tests (match the Parametric-shape payloads on an
+  arbitrage-free affine fit); arb-fix/events/var-swap default propagation tests.
+- [ ] Frontend: strict-TS build green; the six top tabs render; Parametric shows
+  the Term sub-tab next to Density; Local Vol shows the five derived sub-tabs;
+  Forwards edits refit both workspaces; Options persists and refits.
+- [ ] Headless-Edge smoke: rename verified (Parametric), Term embedded, Forwards
+  table edits a forward end-to-end, Options toggles persist across reload.
+- **Exit:** tabs reorganized to Parametric · Local Vol · Forwards · Options ·
+  Graph · Universe; Term embedded; Local Vol mirrors Parametric off the LV
+  surface; Forwards & dividends live in one shared tab; Options drives all
+  defaults/penalties/toggles (two stubbed) with a single global settings round
+  trip; all tests green; files ≤ 400 lines.
 
 ---
 

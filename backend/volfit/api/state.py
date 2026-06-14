@@ -22,7 +22,13 @@ from datetime import date, datetime
 
 from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
-from volfit.api.schemas import FitSettings, ForwardPolicy, MarketSettings, SmilePoint
+from volfit.api.schemas import (
+    FitSettings,
+    ForwardPolicy,
+    MarketSettings,
+    OptionsSettings,
+    SmilePoint,
+)
 from volfit.api.session import EditSession
 from volfit.data.dividends import (
     Dividend,
@@ -132,6 +138,9 @@ class AppState(UniverseMixin):
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fit_settings = FitSettings()
         self._settings_version = 0  # bumped on change; part of fit-cache keys
+        #: Global meta / UX settings + engine defaults (the Options workspace).
+        self._options = OptionsSettings()
+        self._options_version = 0  # bumped only when a fit-affecting field changes
         self._market_settings: dict[str, MarketSettings] = {}
         self._forward_policies: dict[tuple[str, str], ForwardPolicy] = {}
         self._forwards_version = 0  # bumped on change; part of fit-cache keys
@@ -330,6 +339,30 @@ class AppState(UniverseMixin):
                 self._fit_settings = settings
                 self._settings_version += 1
             return self._fit_settings
+
+    # ----------------------------------------------------- options (meta) settings
+    @property
+    def options_version(self) -> int:
+        """Monotone counter folded into fit keys; bumps only when a
+        fit-affecting Options field (calendarWeight) changes, so toggling a
+        pure-UI option (spot mode, auto-calibrate) never busts warm fits."""
+        with self._lock:
+            return self._options_version
+
+    def options(self) -> OptionsSettings:
+        with self._lock:
+            return self._options
+
+    def set_options(self, options: OptionsSettings) -> OptionsSettings:
+        """Apply new meta settings. Only ``calendarWeight`` changes calibration
+        output, so it alone bumps the options version; the rest are global
+        defaults / display toggles read live and need no cache invalidation."""
+        with self._lock:
+            if options != self._options:
+                if options.calendarWeight != self._options.calendarWeight:
+                    self._options_version += 1
+                self._options = options
+            return self._options
 
     # ------------------------------------ market settings and forward policy
     @property
