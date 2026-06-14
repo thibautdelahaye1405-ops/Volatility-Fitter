@@ -11,12 +11,14 @@ server only.
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from datetime import date
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from volfit.api.routers import ALL_ROUTERS
+from volfit.api.scheduler import Scheduler
 from volfit.api.state import AppState
 from volfit.data.provider import OptionChainProvider
 
@@ -30,6 +32,7 @@ def create_app(
     store_path: str | os.PathLike | None = None,
     providers: dict[str, OptionChainProvider] | None = None,
     active_source: str | None = None,
+    enable_scheduler: bool = False,
 ) -> FastAPI:
     """Build the API app around one AppState instance.
 
@@ -40,14 +43,29 @@ def create_app(
     opts in to fit-history persistence (volfit.api.history); None keeps the
     app side-effect free.
     """
-    app = FastAPI(title="volfit")
-    app.state.volfit = AppState(
+    state = AppState(
         reference_date or date.today(),
         provider=provider,
         store_path=store_path,
         providers=providers,
         active_source=active_source,
     )
+    #: Timed spot/options fetch scheduler — created always (so /scheduler reports
+    #: the modes) but the thread runs only when enabled (serve.py turns it on;
+    #: the test app and offline mode never fetch in the background).
+    state.scheduler = Scheduler(state)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        if enable_scheduler:
+            state.scheduler.start()
+        try:
+            yield
+        finally:
+            state.scheduler.stop()
+
+    app = FastAPI(title="volfit", lifespan=lifespan)
+    app.state.volfit = state
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,

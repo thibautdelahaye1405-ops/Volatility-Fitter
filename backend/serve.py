@@ -82,7 +82,10 @@ def build_app():
     forced = os.environ.get("VOLFIT_PROVIDER", "").strip().lower()
     active = _pick_active(providers, forced)
     store_path = os.environ.get("VOLFIT_DB") or None  # opt-in fit history
-    app = create_app(providers=providers, active_source=active, store_path=store_path)
+    app = create_app(
+        providers=providers, active_source=active, store_path=store_path,
+        enable_scheduler=True,  # the live server runs the timed spot/options fetcher
+    )
     if active == "bloomberg":
         _seed_bloomberg_dividends(app.state.volfit, providers["bloomberg"])
     live = app.state.volfit.provider.list_tickers()

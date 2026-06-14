@@ -103,14 +103,17 @@ def _find_smile(response, expiry: str) -> AffineSmile:
 def affine_density(
     state: AppState, ticker: str, expiry: str, request: AffineFitRequest
 ) -> DensityResponse:
-    """Risk-neutral density of one expiry's reconstructed LV smile.
+    """Risk-neutral density of one expiry of the LV surface.
 
-    Mirrors the Parametric Density view (analytics._distribution_model); the LV
-    surface carries no saved prior, so ``prior`` is always None.
+    Uses the density taken straight from the Dupire PDE call prices (d2C/dx2,
+    smooth and non-negative — ``affine_fit._price_density``), carried on the
+    reconstructed smile. Falls back to the implied-vol Breeden-Litzenberger
+    density only if that is absent (older cached payloads). The LV surface carries
+    no saved prior, so ``prior`` is always None.
     """
     response = _affine_response(state, ticker, request)
     smile = _find_smile(response, expiry)
-    current = _distribution_model(_recon_slice(smile))
+    current = smile.density if smile.density is not None else _distribution_model(_recon_slice(smile))
     return DensityResponse(current=current, prior=None)
 
 

@@ -11,6 +11,8 @@ import { getMockSmile } from "../lib/mockData";
 import type { SmileData, SmilePoint } from "../lib/mockData";
 import { useDistribution, useScenarioCurve } from "./useScenario";
 import type { DistributionData, Regime, ScenarioState } from "./useScenario";
+import { useSpot } from "./useSpot";
+import type { SpotState } from "./useSpot";
 
 /** Quote-fitting objective, passed to the backend as `fit_mode`. */
 export type FitMode = "mid" | "bidask" | "haircut";
@@ -132,6 +134,21 @@ export interface UseSmileResult {
   distributionLoading: boolean;
   /** Arm the distribution fetcher (first switch to a Density view). */
   loadDistribution: () => void;
+  /** Fast spot-move: the active per-ticker shift (proportional return). */
+  spotReturn: number;
+  /** Backend spot state (anchor/shifted spot, dynamics regime + SSR). */
+  spotState: SpotState | null;
+  /** Bumps on every applied spot move / calibration / fetch; view hooks fold it
+   *  into their fetch deps so one bump re-pulls every workspace's views. */
+  spotVersion: number;
+  /** Force every workspace to re-pull its (transported / recalibrated) views. */
+  refreshViews: () => void;
+  /** Options spot mode: "static" (manual slider) or "realtime" (backend poll). */
+  spotMode: "static" | "realtime";
+  /** Move the spot (no recalibration): transports smile / term / LV grid. */
+  setSpotReturn: (r: number) => void;
+  /** Re-anchor: clear the shift and recalibrate at the live spot. */
+  recalibrate: () => Promise<void>;
 }
 
 export function useSmile(): UseSmileResult {
@@ -153,6 +170,25 @@ export function useSmile(): UseSmileResult {
     spotReturn: 0,
     regime: "sticky_moneyness",
   });
+
+  /** Refetch the current node through the regular smile effect. */
+  const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
+  const live = source === "live";
+
+  // One refresh counter folded into every workspace's fetchers (smile / term /
+  // affine / surface). Bumped on a transported spot move, after a calibration,
+  // or a backend fetch — the no-recal way to re-pull all the views at once.
+  const [viewVersion, setViewVersion] = useState(0);
+  const refreshViews = useCallback(() => setViewVersion((n) => n + 1), []);
+  const spotVersion = viewVersion; // kept name: the version the fetchers depend on
+
+  // Manual spot-move slider state (the backend scheduler owns real-time polling).
+  const { spotReturn, spotState, setSpotReturn, recalibrate } = useSpot(
+    live,
+    ticker,
+    refreshViews,
+  );
+  const [spotMode, setSpotMode] = useState<"static" | "realtime">("static");
 
   // Whether any smile has been displayed yet (read inside effects without
   // adding `smile` to dependency arrays, which would cause refetch loops).
@@ -238,7 +274,8 @@ export function useSmile(): UseSmileResult {
         setRefreshing(false);
       });
     return () => controller.abort();
-  }, [source, ticker, expiry, fitMode, reloadNonce, fallBackToMock]);
+    // spotVersion: a spot move transports the smile; refetch via the same path.
+  }, [source, ticker, expiry, fitMode, reloadNonce, spotVersion, fallBackToMock]);
 
   // Source the spot-scenario dynamics regime from the Options workspace — the
   // aside now carries only the spot slider (ROADMAP Phase 10 follow-up). A
@@ -249,13 +286,15 @@ export function useSmile(): UseSmileResult {
     if (source !== "live") return;
     const controller = new AbortController();
     api
-      .get<{ dynamicsRegime: string; ssr: number }>("/settings/options", {
-        signal: controller.signal,
-      })
+      .get<{ dynamicsRegime: string; ssr: number; spotMode: "static" | "realtime" }>(
+        "/settings/options",
+        { signal: controller.signal },
+      )
       .then((o) => {
         const regime: Regime | number =
           o.dynamicsRegime === "custom" ? o.ssr : (o.dynamicsRegime as Regime);
         setScenario((s) => (s.regime === regime ? s : { ...s, regime }));
+        setSpotMode(o.spotMode);
       })
       .catch(() => {
         /* keep the current regime if Options is unreachable */
@@ -351,9 +390,6 @@ export function useSmile(): UseSmileResult {
     setReloadNonce((n) => n + 1);
   }, [source, ticker, expiry]);
 
-  /** Refetch the current node through the regular smile effect. */
-  const reload = useCallback(() => setReloadNonce((n) => n + 1), []);
-
   /** Re-fetch the universe (after the Universe tab edits it) and keep the
    *  selection valid: hold the current ticker/expiry when they survive, else
    *  fall back to the first ticker / mid-ladder expiry. */
@@ -372,7 +408,6 @@ export function useSmile(): UseSmileResult {
   }, [ticker, expiry]);
 
   // Derived side-channels: SSR scenario overlay + lazy distribution views.
-  const live = source === "live";
   const { scenarioCurve, scenarioSsr } = useScenarioCurve(
     live,
     ticker,
@@ -413,5 +448,12 @@ export function useSmile(): UseSmileResult {
     distribution,
     distributionLoading,
     loadDistribution,
+    spotReturn,
+    spotState,
+    spotVersion,
+    refreshViews,
+    spotMode,
+    setSpotReturn,
+    recalibrate,
   };
 }

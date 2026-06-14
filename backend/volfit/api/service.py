@@ -11,10 +11,14 @@ redo entry points live in volfit.api.edits.
 
 from __future__ import annotations
 
+import math
+from dataclasses import replace
+from datetime import date
+
 import numpy as np
 
 from volfit.api import history
-from volfit.api.fit_models import build_display_fit
+from volfit.api.fit_models import DisplayFit, _max_iv_error, build_display_fit
 from volfit.api.quotes import (
     PreparedQuotes,
     apply_band_edits,
@@ -31,14 +35,25 @@ from volfit.api.schemas import (
     SurfaceFitResponse,
     VarSwapInfo,
 )
-from volfit.api.displayed import displayed_skew, displayed_slice, displayed_var_swap_w
+from volfit.api.displayed import (
+    displayed_atm_vol,
+    displayed_skew,
+    displayed_slice,
+    displayed_var_swap_w,
+)
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_floor, calendar_violation
 from volfit.calib.varswap import VarSwapTarget
 from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
-from volfit.models.diagnostics import weighted_rms_vol
+from volfit.dynamics.transport import TransportedSlice
+from volfit.models.diagnostics import (
+    numeric_handles,
+    numeric_lee_slopes,
+    numeric_var_swap_w,
+    weighted_rms_vol,
+)
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
@@ -85,6 +100,7 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
         state.settings_version,
         state.forwards_version,
         state.options_version,
+        state.data_version(ticker),  # fresh options fetch -> stale / refit
     )
 
 
@@ -169,17 +185,22 @@ def display_overlay(
 
 
 # ------------------------------------------------------------- slice fitting
-def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
-    """Return the cached slice fit for (ticker, expiry, mode), fitting once
-    per quote-edit session version (edits change the calibration inputs)."""
+def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+    """Calibrate one slice and mark the node CALIBRATED at the current key/spot.
+
+    The anchor a spot move is transported from. Cached in ``_fits`` by the full
+    fit key; the calibrated pointer (``set_calibrated_ptr``) records that this key
+    is the displayed one, so a later input change goes *stale* (frozen) under
+    autoCalibrate OFF until the next explicit Calibrate re-points here."""
     expiry = state.resolve_expiry(ticker, expiry_iso)
     iso = expiry.isoformat()  # canonical ISO cache/session key
     key = fit_key(state, ticker, iso, fit_mode)
-    record = state.get_fit(key)
-    if record is not None:
-        return record
-
     snapshot = state.snapshot(ticker)
+    cached = state.get_fit(key)
+    if cached is not None:
+        state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
+        return cached
+
     forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
     cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
     t_cal = state.year_fraction(expiry)
@@ -211,8 +232,152 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     )
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
+    state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
     return record
+
+
+# --------------------------------------------------- fast spot-move transport
+#: Dividend modes whose forward shifts ADDITIVELY with spot (discrete cash legs:
+#: Delta F_T = Delta S * e^{r t}); the rest scale multiplicatively (F ~ S).
+_CASH_DIV_MODES = ("discrete_absolute", "mixed")
+
+
+def spot_forward_shift(
+    state: AppState, ticker: str, expiry: date, f0: float, discount: float, t: float
+) -> tuple[float, float]:
+    """(F_T^1, h_T) for the active spot shift: the new forward and its log-ratio.
+
+    Per Docs/spot_move_vol_surface_note_updated.tex, ``h`` must come from the
+    forward, not the raw spot ratio. Continuous-yield / proportional dividends
+    give the multiplicative ``F_T^1 = F_T^0 (1 + shift)``; discrete CASH dividends
+    give the additive ``Delta F_T = Delta S e^{r t}`` (so ``h_T`` differs per
+    expiry). Returns ``(f0, 0.0)`` when no shift is active. Shared by the
+    parametric slice transport and the affine LV-surface transport.
+    """
+    shift = state.spot_shift(ticker)
+    if shift == 0.0 or f0 <= 0.0:
+        return f0, 0.0
+    spot0 = float(state.anchor_spot(ticker))  # the CALIBRATION spot, not live snapshot
+    ds = spot0 * shift
+    mode = state.market_settings(ticker).dividendMode
+    cash = mode in _CASH_DIV_MODES and any(
+        0.0 < state.year_fraction(date.fromisoformat(d.exDate)) <= t
+        for d in state.market_settings(ticker).dividends
+    )
+    if cash and t > 0.0 and 0.0 < discount <= 1.0:
+        r = -math.log(discount) / t
+        f1 = f0 + ds * math.exp(r * t)
+    else:
+        f1 = f0 * (1.0 + shift)
+    h = math.log(f1 / f0) if f1 > 0.0 else 0.0
+    return f1, h
+
+
+def _spot_transport_forward(state: AppState, ticker: str, expiry: date, prepared) -> tuple[float, float]:
+    """(F_T^1, h_T) for a prepared slice — thin wrapper over spot_forward_shift."""
+    return spot_forward_shift(
+        state, ticker, expiry, float(prepared.forward), float(prepared.discount), float(prepared.t)
+    )
+
+
+def _transported_display(slice_: TransportedSlice, prepared) -> DisplayFit:
+    """A DisplayFit overlay wrapping a transported slice, so every view reads the
+    moved smile through the standard displayed-fit path (numeric diagnostics)."""
+    k, w, tau = prepared.k, prepared.w_mid, prepared.tau
+    lee_left, lee_right = numeric_lee_slopes(slice_)
+    return DisplayFit(
+        model="transport",
+        slice=slice_,
+        handles=numeric_handles(slice_, tau),
+        var_swap_w=numeric_var_swap_w(slice_),
+        lee_left=lee_left,
+        lee_right=lee_right,
+        max_iv_error=_max_iv_error(slice_, k, w, tau),
+    )
+
+
+def transport_record(state: AppState, ticker: str, iso: str, record: FitRecord) -> FitRecord:
+    """Transport an anchor fit for the ticker's active spot shift (no refit).
+
+    Returns ``record`` unchanged when no shift is active. Otherwise the displayed
+    smile is moved per the Options dynamics regime (volfit.dynamics.transport):
+    the new forward F^1 and re-indexed quotes (fixed strikes -> new moneyness
+    k - h) go on the prepared inputs, and the transported slice is attached as a
+    DisplayFit so the chart, diagnostics, surface, term, density, var-swap and the
+    Dupire local-vol extraction all follow it. ``result`` (the LQD anchor) is kept
+    intact so the graph universe still reads exact LQD coordinates.
+    """
+    shift = state.spot_shift(ticker)
+    if shift == 0.0:
+        return record
+    expiry = date.fromisoformat(iso)
+    f1, h = _spot_transport_forward(state, ticker, expiry, record.prepared)
+    if h == 0.0:
+        return record
+    regime = state.dynamics_regime()
+    base = displayed_slice(record)  # the anchor's displayed model (LQD or overlay)
+    tau = record.prepared.tau
+    moved = TransportedSlice(
+        base, h, regime,
+        sigma0=displayed_atm_vol(record), kappa=displayed_skew(record), tau=tau,
+    )
+    new_prepared = replace(record.prepared, forward=f1, k=record.prepared.k - h)
+    return FitRecord(
+        prepared=new_prepared,
+        result=record.result,
+        display=_transported_display(moved, new_prepared),
+    )
+
+
+def node_dirty(state: AppState, ticker: str, iso: str, fit_mode: str) -> bool:
+    """Whether a node's displayed fit is STALE: it has been calibrated before, but
+    the current inputs (quotes, settings, forwards, events, fresh data) have
+    drifted from the calibrated key. False when never calibrated (it will
+    bootstrap) or up to date."""
+    ptr = state.get_calibrated_ptr(ticker, iso, fit_mode)
+    if ptr is None:
+        return False
+    return ptr[0] != fit_key(state, ticker, iso, fit_mode)
+
+
+def calibrate_node(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+    """Explicitly (re)calibrate one node at the live snapshot spot, re-anchoring
+    it: the transient spot shift is cleared so the fit uses the spot synchronous
+    to the fetched options chain, and the calibrated pointer moves to now."""
+    iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
+    state.set_spot_shift(ticker, 0.0)  # re-anchor: calibrate at the chain's spot
+    return _compute_fit(state, ticker, iso, fit_mode)
+
+
+def displayed_base(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+    """The calibrated record to display, BEFORE the spot-move transport.
+
+    Calibration is trigger-gated (ROADMAP workflow): never calibrated yet ->
+    bootstrap one fit; autoCalibrate ON and inputs changed -> refit; otherwise the
+    FROZEN calibrated fit (``node_dirty`` reports staleness), recomputed only on an
+    explicit Calibrate (``calibrate_node``). This is also the "previous
+    calibration" the Smile Viewer overlays dimmed under a transported smile.
+    """
+    iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
+    ptr = state.get_calibrated_ptr(ticker, iso, fit_mode)
+    key = fit_key(state, ticker, iso, fit_mode)
+    if ptr is None or (state.options().autoCalibrate and ptr[0] != key):
+        return _compute_fit(state, ticker, iso, fit_mode)
+    record = state.get_fit(ptr[0])
+    if record is None:  # pointer outlived its cache entry (defensive)
+        record = _compute_fit(state, ticker, iso, fit_mode)
+    return record
+
+
+def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+    """Displayed slice fit for (ticker, expiry, mode): the calibrated anchor
+    (``displayed_base``) with the no-recal spot-move transport applied on top."""
+    record = displayed_base(state, ticker, expiry_iso, fit_mode)
+    if state.spot_shift(ticker) == 0.0:
+        return record
+    iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
+    return transport_record(state, ticker, iso, record)
 
 
 def model_curve(record: FitRecord) -> list[SmilePoint]:
@@ -266,6 +431,14 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
 
     saved = state.get_prior((ticker, expiry_iso))  # saved prior, else current fit
     prior = list(saved.curve) if saved is not None else list(model)
+
+    # While a spot move is active, also expose the pre-transport calibration so
+    # the viewer overlays it dimmed (the original fit vs the transported smile).
+    anchor_model = (
+        model_curve(displayed_base(state, ticker, iso, fit_mode))
+        if state.spot_shift(ticker) != 0.0
+        else None
+    )
 
     if record.display is not None:
         # Non-LQD overlay: numeric handles/var-swap/Lee; A_L/A_R have no analogue.
@@ -329,6 +502,8 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         varSwap=varswap_info(state, ticker, iso, record),
         canUndo=session.can_undo if session is not None else False,
         canRedo=session.can_redo if session is not None else False,
+        stale=node_dirty(state, ticker, iso, fit_mode),
+        anchorModel=anchor_model,
     )
 
 
@@ -429,6 +604,7 @@ def fit_surface(
     each expiry fit (the WebSocket route runs this loop itself instead, so
     its progress events can be awaited between slices).
     """
+    state.set_spot_shift(ticker, 0.0)  # re-anchor: fit at the chain's own spot
     plan = surface_inputs(state, ticker, fit_mode)
     prev: CalibrationResult | None = None
     residuals: list[float] = []
@@ -440,7 +616,10 @@ def fit_surface(
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
         overlay = display_overlay(state, ticker, iso, prepared, fit_mode)
         record = FitRecord(prepared=prepared, result=result, display=overlay)
-        state.store_fit(fit_key(state, ticker, iso, fit_mode), record)
+        key = fit_key(state, ticker, iso, fit_mode)
+        state.store_fit(key, record)
+        # A surface fit IS a calibration: re-point the node so it is up to date.
+        state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
         history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
         fitted.append((iso, result))
         if progress is not None:

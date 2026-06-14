@@ -6,7 +6,7 @@ smile observations to a full universe of smiles (across expiries and assets).
 - Roadmap & current status: see [ROADMAP.md](ROADMAP.md) (STATUS section at the top)
 - Technical notes: see [Docs/](Docs/) (LQD smile model, Multi-Core SIV,
   OT-Bayesian graph extrapolation, piecewise-affine local-variance calibration,
-  time-value density quote weights)
+  time-value density quote weights, fast spot-move surface updates)
 
 ## Layout
 
@@ -24,6 +24,20 @@ Docs/      Technical notes (LaTeX)
   surface fits; exact ATM handles; SSR spot-scenario engine. Per-quote weighting
   schemes (equal / time-value density), mid / bid-ask-band / haircut-band fit
   objectives, and a weighted RMS fit-error diagnostic — all model-agnostic.
+- **Fast spot-move transport** (`Docs/spot_move_vol_surface_note_updated.tex`): a
+  spot change refreshes the calibrated smile / term-structure / LV-grid
+  *analytically* (no recalibration) — total-variance horizontal transport
+  `w₁ᴿ(k)=w₀(k+R·h_T)`, the exact sticky-local-vol `ℓ_T` displacement, and the
+  LV-grid node rule `Kᵢ¹=Kᵢ⁰e^{(1−R/2)h_t}`, with `h_T` from forwards. Both the
+  original and the transported smile are drawn, so the regime (sticky-strike =
+  lateral shift, sticky-moneyness = coincident) is visible at a glance.
+- **Trigger-gated calibration workflow**: calibration is decoupled from input
+  changes. With Auto-calibrate ON, lit nodes (and each ticker's LV surface) refit
+  in a **background job with progress**; OFF freezes the last fit and flags it
+  STALE until an explicit **Calibrate**. Spot updates (manual or a backend
+  scheduler in real-time mode) only transport; option-chain fetches (on-demand or
+  every X min) re-anchor. Priors point to the latest saved prior, else a
+  previous-close fit seeded on demand.
   **Variance-swap quotes** add a calibration penalty pulling the model's fair
   var-swap to a quoted level (shared across Parametric & Local Vol). An
   **event-weighted variance clock** (events add day-weights; optional 1Y-budget
@@ -44,27 +58,37 @@ Docs/      Technical notes (LaTeX)
   quote sessions, priors, density / log-quantile-density / stacked densities, term
   structure on the event-weighted variance clock (shared per-ticker event
   calendar + auto-calibration), local-vol surface fit (+ derived
-  density/term/table), per-node lit/dark designation, graph solve, SSR scenarios. Every smile-derived
+  density/term/table, density taken from the Dupire PDE prices so it stays smooth
+  and non-negative), per-node lit/dark designation, graph solve, SSR scenarios,
+  fast spot-move transport (`/spot`), and the calibration/fetch workflow
+  (`/fetch/spots`, `/fetch/options`, `/calibrate`, `/calibration/status`,
+  `/scheduler`). Every smile-derived
   view follows the chosen model; **all** fit/optimization coefficients (model,
   weighting, haircut, SIV cores, penalty strengths, the A_R barrier, the SVI
   no-arb penalty + Lee bound, the SIV ridge, the band mid-anchor, the local-vol
   roughness, and the graph prior strength) are global, explicit settings.
 - **UI** — six workspaces (TopBar Data Source + As-of selectors, global
-  expiry-format toggle):
+  expiry-format toggle, and workflow controls: **Fetch spots** / **Fetch Options
+  Quotes** (or an auto-fetch countdown) / **Calibrate** with live progress + a
+  stale-node badge):
   - **Parametric** — live fits, quote editing, var-swap quotes (add/slide/exclude
-    + undo/redo), scenario (spot slider) + Massive-IV overlays; chart sub-tabs
+    + undo/redo), a **Spot-move panel** (slider transports the surface with no
+    recalibration; the previous fit is drawn dimmed; Calibrate re-anchors) +
+    Massive-IV overlays; a STALE badge when inputs drift; chart sub-tabs
     Smile / Stacked densities (no-butterfly check) / Log-Q-density / Term (forward
     variance + editable & auto-calibratable event calendar) / 3D Surface /
     Stacked IV (total variance, no-calendar check) / Table.
   - **Local Vol** — direct piecewise-affine surface fit (var-swap quotes + the
-    same event clock), sub-tabs Smile / Density / Term / LV-surface heatmap /
+    same event clock; grid + roughness set in Options; density from the PDE
+    prices; STALE badge), sub-tabs Smile / Density / Term / LV-surface heatmap /
     3D IV-surface / Table.
   - **Forwards** — per-ticker forwards table (parity / theoretical / manual) +
     dividend-schedule editor, shared by both fit workspaces.
   - **Options** — every global meta-parameter and calibration/optimization
     coefficient (defaults, penalty catalogue with formulas, var-swap weight %,
-    event clock + normalization toggle, dynamics regime + SSR, grid defaults,
-    graph prior, display format).
+    event clock + normalization toggle, dynamics regime + SSR, the local-vol
+    vertex grid + roughness with an **Optimal size** button, spot/options fetch
+    modes + intervals, auto-calibrate, graph prior, display format).
   - **Graph** — light/dim nodes (shared with Universe), solver panel (κ/η/λ/ν,
     auto-tune η, lasso), posterior shift + uncertainty overlay.
   - **Universe** — provider symbol search, per-ticker expiry selection, a
@@ -88,7 +112,7 @@ fit history (VOLFIT_DB). Force a specific source active on launch with
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e backend[dev]   # PyPI can be flaky here: just retry
-cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 363 green
+cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 409 green
 $env:VOLFIT_LIVE="1"; ..\.venv\Scripts\python -m pytest tests\test_yahoo.py -k live  # opt-in live test
 ```
 

@@ -41,6 +41,7 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
     state = websocket.app.state.volfit
     try:
         body = SurfaceFitRequest.model_validate(await websocket.receive_json())
+        state.set_spot_shift(body.ticker, 0.0)  # re-anchor: fit at the chain's spot
         plan = await anyio.to_thread.run_sync(
             service.surface_inputs, state, body.ticker, body.fitMode
         )
@@ -66,8 +67,11 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
                 service.display_overlay, state, body.ticker, iso, prepared, body.fitMode
             )
             record = FitRecord(prepared=prepared, result=result, display=overlay)
-            state.store_fit(
-                service.fit_key(state, body.ticker, iso, body.fitMode), record
+            key = service.fit_key(state, body.ticker, iso, body.fitMode)
+            state.store_fit(key, record)
+            # A surface fit IS a calibration: re-point the node so it's up to date.
+            state.set_calibrated_ptr(
+                body.ticker, iso, body.fitMode, key, float(state.snapshot(body.ticker).spot)
             )
             # Time-series scaffold: WS-driven fits persist like POST/GET ones.
             history.persist_fit(state, body.ticker, iso, body.fitMode, record)

@@ -5,24 +5,20 @@
 // aside to diagnostics + the live spot scenario. Reads the shared smile
 // session directly; the only prop is whether the Smile chart view is active
 // (the scenario overlay is only drawn there).
-import ScenarioPanel from "./ScenarioPanel";
+import SpotPanel from "./SpotPanel";
 import VarSwapPanel from "./VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
 import { formatPct } from "../lib/chartScale";
 
-interface SmileAsideProps {
-  /** True while the chart card shows the Smile view (scenario overlay host). */
-  smileViewActive: boolean;
-}
-
-export default function SmileAside({ smileViewActive }: SmileAsideProps) {
+export default function SmileAside() {
   const {
     smile,
     source,
-    scenario,
-    setScenario,
-    scenarioCurve,
-    scenarioSsr,
+    spotReturn,
+    spotState,
+    spotMode,
+    setSpotReturn,
+    recalibrate,
     applyVarSwap,
     undoVarSwap,
     redoVarSwap,
@@ -84,20 +80,17 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
         </div>
       )}
 
-      {/* Spot scenario: drives the SSR overlay on the smile chart */}
+      {/* Spot move: the slider transports the live surface (no recalibration);
+          Calibrate re-anchors. Applies across every workspace, not just Smile. */}
       <div className="mt-4 border-t border-slate-800 pt-4">
-        <ScenarioPanel
-          scenario={scenario}
-          onScenarioChange={setScenario}
-          scenarioCurve={scenarioCurve}
-          ssr={scenarioSsr}
-          model={smile?.model ?? null}
-          disabled={!live || !smileViewActive}
-          disabledReason={
-            !live
-              ? "requires live backend"
-              : "scenario overlay applies to the Smile view"
-          }
+        <SpotPanel
+          spotReturn={spotReturn}
+          spotState={spotState}
+          spotMode={spotMode}
+          onSpotReturn={setSpotReturn}
+          onCalibrate={() => void recalibrate()}
+          disabled={!live}
+          disabledReason={!live ? "requires live backend" : undefined}
         />
       </div>
     </aside>

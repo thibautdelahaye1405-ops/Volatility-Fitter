@@ -83,27 +83,64 @@ def test_affine_fit_is_cached(client):
     assert first == second
 
 
-def test_affine_fit_honours_request_params(client):
-    """A coarser vertex grid yields a smaller nodal table."""
+def test_affine_grid_follows_options(client):
+    """The vertex grid is an Options hyperparameter now: a larger gridXNodes
+    yields a bigger nodal table after an (explicit) recalibration. The affine
+    read path is frozen — calibration runs on demand (Calibrate)."""
     ticker = _ticker(client)
-    fine = client.post(f"/fit/affine/{ticker}", json={"nXNodes": 9}).json()
-    coarse = client.post(f"/fit/affine/{ticker}", json={"nXNodes": 4}).json()
+    opts = client.get("/settings/options").json()
+    client.put("/settings/options", json={**opts, "gridXNodes": 11})
+    client.post(f"/calibrate/{ticker}")  # rebuild the LV surface at the new grid
+    fine = client.post(f"/fit/affine/{ticker}", json={}).json()
+    client.put("/settings/options", json={**opts, "gridXNodes": 4})
+    client.post(f"/calibrate/{ticker}")
+    coarse = client.post(f"/fit/affine/{ticker}", json={}).json()
     assert len(fine["xNodes"]) > len(coarse["xNodes"])
+
+
+def test_affine_optimal_size(client):
+    """The optimal-size endpoint sizes the grid to the observed quotes."""
+    ticker = _ticker(client)
+    o = client.get(f"/fit/affine/{ticker}/optimal-size").json()
+    assert o["nExpiries"] >= 2 and o["nQuotes"] > 0
+    assert o["gridXNodes"] >= 3
+    assert o["gridTNodes"] == 0  # auto: one time vertex per observed expiry
 
 
 @pytest.mark.parametrize("mode", ["bidask", "haircut"])
 def test_affine_fit_band_modes(client, mode):
-    """The band fit modes run end-to-end and stay arbitrage-free; the band
-    objective changes the surface vs the mid fit."""
+    """The band fit modes calibrate end-to-end and stay arbitrage-free; the band
+    objective changes the surface vs the mid fit. Driven through the force-
+    calibrate path (the read path is frozen — calibration is a trigger now)."""
+    from volfit.api.affine_fit import calibrate_affine_surface
+    from volfit.api.schemas_affine import AffineFitRequest
+
     ticker = _ticker(client)
-    mid = client.post(f"/fit/affine/{ticker}", json={"fitMode": "mid"}).json()
-    band = client.post(f"/fit/affine/{ticker}", json={"fitMode": mode}).json()
-    assert band["arbitrageFree"] is True and band["calendarViolations"] == 0
-    assert len(band["smiles"]) == len(mid["smiles"])
-    # The band objective gives a different (cleaner) surface than the mid LSQ.
-    flat_mid = [v for row in mid["localVol"] for v in row]
-    flat_band = [v for row in band["localVol"] for v in row]
+    state = client.app.state.volfit
+    mid = calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode="mid"))
+    band = calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode=mode))
+    assert band.arbitrageFree is True and band.calendarViolations == 0
+    assert len(band.smiles) == len(mid.smiles)
+    flat_mid = [v for row in mid.localVol for v in row]
+    flat_band = [v for row in band.localVol for v in row]
     assert any(abs(a - b) > 1e-6 for a, b in zip(flat_mid, flat_band))
+
+
+def test_affine_density_is_clean_no_interior_zeros(client):
+    """The LV density (from the Dupire PDE prices, d2C/dx2) is smooth and strictly
+    positive across the central mass — no the short-dated interior zeros the
+    implied-vol Breeden-Litzenberger formula produced."""
+    ticker = _ticker(client)
+    data = client.post(f"/fit/affine/{ticker}", json={}).json()
+    short = data["smiles"][0]["expiry"]  # shortest expiry, the worst case
+    dens = client.post(f"/fit/affine/{ticker}/density?expiry={short}", json={}).json()
+    pdf = dens["current"]["density"]
+    assert len(pdf) > 5
+    assert all(p > 0.0 for p in pdf)  # no clamped-to-zero interior points
+    # Integrates to ~1 over its log-return grid.
+    xs = dens["current"]["x"]
+    area = sum(0.5 * (pdf[i] + pdf[i - 1]) * (xs[i] - xs[i - 1]) for i in range(1, len(xs)))
+    assert area == pytest.approx(1.0, abs=0.05)
 
 
 def test_affine_fit_unknown_ticker(client):
@@ -112,5 +149,8 @@ def test_affine_fit_unknown_ticker(client):
 
 def test_affine_fit_validation(client):
     ticker = _ticker(client)
-    # nXNodes below the schema floor is a 422.
-    assert client.post(f"/fit/affine/{ticker}", json={"nXNodes": 1}).status_code == 422
+    # The grid lives in Options now: a strike-node count below the floor is a 422.
+    opts = client.get("/settings/options").json()
+    assert client.put("/settings/options", json={**opts, "gridXNodes": 1}).status_code == 422
+    # The per-request nodal-variance bound is still validated too.
+    assert client.post(f"/fit/affine/{ticker}", json={"varLo": -1.0}).status_code == 422

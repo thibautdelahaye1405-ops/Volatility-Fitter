@@ -1,0 +1,80 @@
+// TopBar workflow controls: Fetch spots · Fetch Options Quotes · Calibrate.
+//
+// Mirrors the backend trigger model (useWorkflow):
+//  * Fetch spots       — greyed "Real-time Spots" when spotMode = realtime
+//                        (the scheduler polls), else a manual button.
+//  * Fetch Options     — a greyed countdown to the next auto fetch when
+//                        optionsFetchMode = auto, else a manual button.
+//  * Calibrate         — background-calibrates all lit nodes; shows progress
+//                        while running and a stale-node badge when work is due.
+import type { UseWorkflowResult } from "../state/useWorkflow";
+
+/** "75" -> "1:15" (seconds -> m:ss for the auto-fetch countdown). */
+function fmtCountdown(seconds: number): string {
+  const s = Math.max(0, Math.round(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+const BTN =
+  "rounded-md border px-2.5 py-1 font-medium transition-colors disabled:cursor-not-allowed";
+const ACTIVE = "border-slate-700 bg-surface-800 text-slate-200 hover:border-slate-600";
+const MUTED = "border-slate-800 bg-surface-900 text-slate-500";
+
+export default function WorkflowControls({ workflow }: { workflow: UseWorkflowResult }) {
+  const { calib, sched, busy, fetchSpots, fetchOptions, calibrate } = workflow;
+  const realtimeSpots = sched?.spotMode === "realtime";
+  const autoOptions = sched?.optionsFetchMode === "auto";
+  const running = calib?.running ?? false;
+  const stale = calib?.staleNodes ?? 0;
+
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      {/* Fetch spots */}
+      <button
+        onClick={() => void fetchSpots()}
+        disabled={realtimeSpots || busy}
+        title={realtimeSpots ? "Spots stream in real time (set in Options)" : "Fetch live spots now"}
+        className={`${BTN} ${realtimeSpots ? MUTED : ACTIVE}`}
+      >
+        {realtimeSpots ? "Real-time Spots" : "Fetch spots"}
+      </button>
+
+      {/* Fetch options quotes (countdown when auto) */}
+      <button
+        onClick={() => void fetchOptions()}
+        disabled={autoOptions || busy}
+        title={
+          autoOptions
+            ? "Options auto-refresh on a timer (set in Options)"
+            : "Fetch fresh option quotes now"
+        }
+        className={`${BTN} ${autoOptions ? MUTED : ACTIVE}`}
+      >
+        {autoOptions
+          ? `Options in ${fmtCountdown(sched?.secondsToNextOptions ?? 0)}`
+          : "Fetch Options Quotes"}
+      </button>
+
+      {/* Calibrate all lit nodes (background, with progress + stale badge) */}
+      <button
+        onClick={() => void calibrate()}
+        disabled={running || busy}
+        title="Calibrate all lit nodes"
+        className={[
+          BTN,
+          running
+            ? MUTED
+            : stale > 0
+              ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
+              : ACTIVE,
+        ].join(" ")}
+      >
+        {running
+          ? `Calibrating ${calib?.done ?? 0}/${calib?.total ?? 0}`
+          : stale > 0
+            ? `Calibrate (${stale})`
+            : "Calibrate"}
+      </button>
+    </div>
+  );
+}

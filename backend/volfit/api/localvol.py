@@ -105,7 +105,19 @@ def localvol_record(state: AppState, ticker: str, fit_mode: str):
 
     isos = [e.isoformat() for e in sorted(state.forwards(ticker))]
     versions = tuple(service.session_version(state, ticker, iso) for iso in isos)
-    key = (ticker, fit_mode, versions, state.settings_version)
+    # spot_version: a spot move transports the slice fits, so re-extract the grid.
+    # data_version: a fresh options fetch + recalibration changes the fits.
+    key = (
+        ticker,
+        fit_mode,
+        versions,
+        state.settings_version,
+        state.forwards_version,
+        state.events_version,
+        state.options_version,
+        state.spot_version,
+        state.data_version(ticker),
+    )
     cache = getattr(state, _CACHE_ATTR, None)
     if cache is None:
         cache = {}

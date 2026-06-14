@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from volfit.api.schemas import QuoteBand, SmilePoint, VarSwapInfo
+from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
 from volfit.calib.weights import resolve_weights
@@ -69,19 +69,53 @@ def _pick_spread(values: np.ndarray, n: int) -> np.ndarray:
 
 
 def _vertex_grid(
-    expiries: np.ndarray, k_lo: float, k_hi: float, n_t: int, n_x: int
+    expiries: np.ndarray, x_lo_vertex: float, k_hi: float, n_t_cap: int, n_x: int
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Tensor vertex set: 0 + a spread of expiries, by strikes incl. x = 1."""
-    t_nodes = np.unique(np.concatenate([[0.0], _pick_spread(expiries, n_t - 1)]))
-    x_lo, x_hi = float(np.exp(k_lo)), float(np.exp(k_hi))
-    x_nodes = np.unique(np.concatenate([np.linspace(x_lo, x_hi, n_x), [1.0]]))
+    """Tensor vertex set (note convention): time vertices at the OBSERVED expiries
+    (0 + each), strikes from ``x_lo_vertex`` to the top observed strike incl. x = 1.
+
+    ``n_t_cap`` <= 0 places one time vertex per observed expiry (the recommended
+    data-driven default); > 0 subsamples the expiries to that many. ``x_lo_vertex``
+    is the lowest strike vertex, placed by the caller strictly between the lowest
+    and second-lowest observed strike so no vertex sits below the data.
+    """
+    if n_t_cap and n_t_cap >= 1:
+        picked = _pick_spread(expiries, max(1, n_t_cap - 1))
+    else:
+        picked = expiries  # auto: one vertex per observed expiry
+    t_nodes = np.unique(np.concatenate([[0.0], picked]))
+    x_hi = float(np.exp(k_hi))
+    x_nodes = np.unique(np.concatenate([np.linspace(x_lo_vertex, x_hi, n_x), [1.0]]))
     return t_nodes, x_nodes
 
 
+def _lowest_vertex_x(rows) -> tuple[float, float]:
+    """(x_lo_vertex, k_hi) for the strike grid: the lowest strike vertex sits
+    strictly between the lowest and second-lowest OBSERVED normalized strike
+    x = K/F (across all expiries), so no vertex lies below the data and the
+    lowest quote anchors the flat boundary below it (the user's grid rule)."""
+    all_k = np.sort(np.concatenate([k for _, _, k, _, _, _ in rows]))
+    k_hi = float(all_k[-1])
+    x_obs = np.unique(np.exp(all_k))
+    x_lo1 = float(x_obs[0])
+    x_lo2 = float(x_obs[1]) if x_obs.size >= 2 else x_lo1 * 1.01
+    return 0.5 * (x_lo1 + x_lo2), k_hi
+
+
 def _pde_grids(expiries: np.ndarray, k_hi: float) -> tuple[np.ndarray, np.ndarray]:
-    """Fine PDE strike grid (from 0) and time grid hitting every expiry."""
+    """Fine PDE strike grid (from 0) and time grid hitting every expiry.
+
+    The strike grid is a UNIFORM lattice of step ``_X_DX`` from 0, so the
+    var-swap anchor ``x = 1`` is always exactly a node (1.0 = 100 * 0.01) — the
+    log-contract replication (affine_calib.varswap_weights) rejects a grid that
+    misses it. ``np.linspace(0, x_max, ...)`` to an arbitrary ``x_max`` (e.g. a
+    real ticker's wide strike range, > the 2.5 floor and off the 0.01 lattice)
+    would land x = 1 between nodes and 422 every fit; the synthetic range floors
+    at 2.5 which aligns, which is why this only bit live data.
+    """
     x_max = max(float(np.exp(k_hi)) * _X_HI_PAD, _X_MAX_MIN)
-    x_grid = np.linspace(0.0, x_max, int(round(x_max / _X_DX)) + 1)
+    n = int(np.ceil(round(x_max / _X_DX, 6)))  # steps to cover x_max
+    x_grid = _X_DX * np.arange(n + 1)  # 0, dx, 2dx, ... ; 1.0 = node 100
     t_pts = [0.0]
     prev = 0.0
     for e in expiries:
@@ -229,6 +263,51 @@ def _model_varswap_vol(solution, i_exp: int, t: float, x_grid: np.ndarray) -> fl
     return float(np.sqrt(max(w_vs, 0.0) / t))
 
 
+#: Density chart sizing: keep the central probability mass, strided to <= this.
+_DENSITY_U_TRIM = 1e-3
+_DENSITY_MAX_POINTS = 241
+
+
+def _price_density(solution, i_exp: int) -> DistributionArrays:
+    """Risk-neutral density of one expiry, straight from the Dupire call prices.
+
+    Breeden-Litzenberger: the density of y = S_T/F is f_y(x) = d2C/dx2 of the
+    undiscounted normalized call C(x), x = K/F (the affine PDE solves for C on a
+    uniform x grid). This is smooth and >= 0 by construction (the arb-free PDE
+    surface is convex in strike), so it avoids the implied-vol Breeden-
+    Litzenberger formula's small-w blow-up that clamps the short-dated density to
+    zero. Mapped to the log-return X = log(S_T/F) the chart uses:
+    f_X(k) = f_y(e^k) e^k, on k = log(x). Trimmed to the central mass + strided.
+    """
+    x = np.asarray(solution.x_grid, dtype=float)
+    c = np.asarray(solution.prices[i_exp], dtype=float)
+    dx = float(x[1] - x[0])  # uniform grid (see _pde_grids)
+    d2 = np.zeros_like(c)
+    d2[1:-1] = (c[2:] - 2.0 * c[1:-1] + c[:-2]) / (dx * dx)
+    f_y = np.maximum(d2, 0.0)
+
+    pos = x > 1e-6  # log-return needs x > 0 (x = 0 is the C(.,0) = 1 boundary)
+    k = np.log(x[pos])
+    f_x = f_y[pos] * x[pos]  # density of X = log(S/F): f_X(k) = f_y(e^k) e^k
+    area = float(np.trapezoid(f_x, k))
+    if area > 0.0:
+        f_x = f_x / area
+    cdf = np.concatenate([[0.0], np.cumsum(0.5 * (f_x[1:] + f_x[:-1]) * np.diff(k))])
+    cdf = np.clip(cdf, 0.0, 1.0)
+
+    keep = np.flatnonzero((cdf >= _DENSITY_U_TRIM) & (cdf <= 1.0 - _DENSITY_U_TRIM))
+    if keep.size == 0:
+        keep = np.arange(k.size)
+    stride = max(1, -(-keep.size // _DENSITY_MAX_POINTS))
+    idx = keep[::stride]
+    return DistributionArrays(
+        x=k[idx].tolist(),
+        density=f_x[idx].tolist(),
+        u=cdf[idx].tolist(),
+        quantile=k[idx].tolist(),
+    )
+
+
 def _reconstruct_smile(solution, i_exp: int, t: float, k_lo: float, k_hi: float):
     """Reconstructed IV curve: Dupire PDE call prices inverted through Black."""
     grid = np.linspace(k_lo - _K_PAD, k_hi + _K_PAD, _N_SMILE)
@@ -269,11 +348,11 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     rows = _gather(state, ticker, request.fitMode)
     if len(rows) < 2:
         raise ValueError("affine surface fit needs at least two expiries with quotes")
+    opts = state.options()  # grid size + roughness are global hyperparameters now
     expiries = np.array([t for _, t, _, _, _, _ in rows])
-    k_lo = min(float(k.min()) for _, _, k, _, _, _ in rows)
-    k_hi = max(float(k.max()) for _, _, k, _, _, _ in rows)
+    x_lo_vertex, k_hi = _lowest_vertex_x(rows)
 
-    t_nodes, x_nodes = _vertex_grid(expiries, k_lo, k_hi, request.nTNodes, request.nXNodes)
+    t_nodes, x_nodes = _vertex_grid(expiries, x_lo_vertex, k_hi, opts.gridTNodes, opts.gridXNodes)
     x_grid, t_grid = _pde_grids(expiries, k_hi)
 
     options = _option_quotes(rows, state.fit_settings().weightScheme)
@@ -292,8 +371,8 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         varswaps=varswaps,
         varswap_k_lo=_VARSWAP_K_LO,
         bounds=(request.varLo, request.varHi),
-        reg_lambda=request.regLambda,
-        reg_rho=request.regRho,
+        reg_lambda=opts.gridRegLambda,
+        reg_rho=opts.gridRegRho,
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
     )
 
@@ -315,6 +394,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
                 quotes=_quote_bands(state, ticker, iso, prepared),
                 varSwap=_affine_varswap_info(state, ticker, iso, model_vs_vol),
                 maxIvErrorBp=float(errs.max()) if errs.size else 0.0,
+                density=_price_density(cal.solution, i_exp),
             )
         )
 
@@ -338,30 +418,118 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     )
 
 
-def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitResponse:
-    """Cached entry point for POST /fit/affine/{ticker}."""
+#: Upper bound on total affine vertices (gridXNodes * #expiries) for the
+#: "Optimal size" suggestion: the calibration's cost scales with the vertex
+#: count (the multi-RHS Dupire sensitivities), so ~#quotes vertices would be
+#: minutes-slow. This keeps the suggested grid calibratable in seconds; the
+#: user can still set a larger grid by hand (it runs in the background job).
+_OPTIMAL_MAX_VERTICES = 160
+
+
+def optimal_grid_size(state: AppState, ticker: str, fit_mode: str = "mid"):
+    """Suggested grid size ~ the observed quote count (the 'Optimal size' button).
+
+    Time vertices auto (one per observed expiry); strike vertices ~ the average
+    quotes per expiry, so total vertices approximate the total observed quotes —
+    capped at ``_OPTIMAL_MAX_VERTICES`` so the heavy affine LSQ stays tractable.
+    """
+    from volfit.api.schemas_affine import OptimalGridSize
+
+    rows = _gather(state, ticker, fit_mode)  # raises UnknownNodeError on bad ticker
+    n_exp = len(rows)
+    n_quotes = sum(int(k.size) for _, _, k, _, _, _ in rows)
+    if not n_exp:
+        return OptimalGridSize(
+            gridXNodes=state.options().gridXNodes, gridTNodes=0, nQuotes=0, nExpiries=0
+        )
+    target = round(n_quotes / n_exp)  # avg quotes per expiry
+    cap = max(3, _OPTIMAL_MAX_VERTICES // (n_exp + 1))  # +1: the t = 0 vertex row
+    n_x = int(max(3, min(target, cap, 60)))
+    return OptimalGridSize(gridXNodes=n_x, gridTNodes=0, nQuotes=n_quotes, nExpiries=n_exp)
+
+
+def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple:
+    """Affine surface cache key (no spot shift — that is transported on read).
+
+    Includes the Options vertex grid + roughness (the single source of truth) so a
+    grid change re-fits; the rest mirrors the slice fit key (quote/var-swap/event/
+    settings/forward/options/data versions)."""
     from volfit.api import service
 
     isos = [e.isoformat() for e in sorted(state.forwards(ticker))]  # raises if unknown
     versions = tuple(service.session_version(state, ticker, iso) for iso in isos)
     vs_versions = tuple(service.varswap_version(state, ticker, iso) for iso in isos)
-    key = (
+    opts = state.options()
+    return (
         ticker,
         request.fitMode,
         versions,
         vs_versions,
-        state.events_version,  # event calendar drives the variance clock
+        state.events_version,
         state.settings_version,
         state.forwards_version,
-        state.options_version,  # var-swap + event-clock toggles live here
+        state.options_version,
+        state.data_version(ticker),
+        opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         request.model_dump_json(),
     )
+
+
+def _cache(state: AppState) -> dict:
     cache = getattr(state, _CACHE_ATTR, None)
     if cache is None:
         cache = {}
         setattr(state, _CACHE_ATTR, cache)
-    hit = cache.get(key)
-    if hit is None:
+    return cache
+
+
+def affine_dirty(state: AppState, ticker: str, request: AffineFitRequest) -> bool:
+    """Whether the ticker's LV surface is STALE (calibrated before, inputs drifted)."""
+    ptr = state.get_affine_ptr(ticker)
+    return ptr is not None and ptr != affine_key(state, ticker, request)
+
+
+def calibrate_affine_surface(
+    state: AppState, ticker: str, request: AffineFitRequest
+) -> AffineFitResponse:
+    """Force-(re)calibrate the LV surface and mark it calibrated (the explicit
+    Calibrate / background job path), regardless of autoCalibrate."""
+    key = affine_key(state, ticker, request)
+    hit = _fit(state, ticker, request)
+    _cache(state)[key] = hit
+    state.set_affine_ptr(ticker, key)
+    return hit
+
+
+def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitResponse:
+    """Displayed LV surface for the Local-Vol workspace, served FROZEN.
+
+    The affine least-squares is heavy (it scales with the vertex count), so the
+    read path NEVER recalibrates synchronously — that would freeze the LV tab.
+    The (re)calibration runs in the background Calibrate job (or fetch-driven
+    auto-calibrate), exactly like the user's workflow; here we only:
+
+    * bootstrap ONCE if the ticker has never been calibrated (so the first open
+      shows a surface), then
+    * serve the frozen calibrated surface, with ``stale`` flagging that the inputs
+      (quotes / grid / data) have drifted since — press Calibrate to rebuild.
+
+    A spot move is transported on read (affine_transport), no refit.
+    """
+    key = affine_key(state, ticker, request)
+    ptr = state.get_affine_ptr(ticker)
+    cache = _cache(state)
+    if ptr is None:  # one-time bootstrap so the LV view is never empty
         hit = _fit(state, ticker, request)
         cache[key] = hit
-    return hit
+        state.set_affine_ptr(ticker, key)
+    else:
+        hit = cache.get(ptr)
+        if hit is None:  # pointer outlived its cache entry (defensive)
+            hit = _fit(state, ticker, request)
+            cache[key] = hit
+            state.set_affine_ptr(ticker, key)
+    stale = state.get_affine_ptr(ticker) != key
+    from volfit.api.affine_transport import transport_affine_response
+
+    return transport_affine_response(state, ticker, hit).model_copy(update={"stale": stale})

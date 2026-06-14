@@ -15,8 +15,10 @@ export type DynamicsRegime =
   | "sticky_local_vol"
   | "sticky_local_vol_grid"
   | "custom";
-/** Spot price mode (stubbed this phase). */
+/** Spot price mode: "realtime" = backend polls live spots; "static" = on-demand. */
 export type SpotMode = "realtime" | "static";
+/** Options-chain fetch mode: "auto" = scheduler timer; "on_demand" = button only. */
+export type OptionsFetchMode = "auto" | "on_demand";
 
 /** Mirror of the backend OptionsSettings schema (volfit/api/schemas.py). */
 export interface OptionsSettings {
@@ -39,6 +41,9 @@ export interface OptionsSettings {
   ssr: number;
   autoCalibrate: boolean;
   spotMode: SpotMode;
+  spotPollSeconds: number;
+  optionsFetchMode: OptionsFetchMode;
+  optionsFetchMinutes: number;
 }
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
@@ -49,7 +54,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   varSwapWeightPct: 10.0,
   autoLoadPrior: false,
   gridXNodes: 7,
-  gridTNodes: 4,
+  gridTNodes: 0,
   gridRegLambda: 1e-2,
   gridRegRho: 1.0,
   calendarWeight: 1e6,
@@ -61,6 +66,9 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   ssr: 2.0,
   autoCalibrate: true,
   spotMode: "static",
+  spotPollSeconds: 5.0,
+  optionsFetchMode: "on_demand",
+  optionsFetchMinutes: 5.0,
 };
 
 export interface UseOptionsResult {

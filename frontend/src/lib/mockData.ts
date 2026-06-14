@@ -77,6 +77,13 @@ export interface SmileData {
   diagnostics: SmileDiagnostics;
   /** Variance-swap quote + model level for this node. */
   varSwap: VarSwapInfo;
+  /** Inputs drifted since the last calibration — the displayed fit is frozen
+   *  (stale) until an explicit Calibrate. Optional for older payloads / mock. */
+  stale?: boolean;
+  /** Pre-transport calibration curve, present only while a spot move is active,
+   *  so the chart can overlay the original fit (dimmed) under the transported
+   *  smile. None/undefined when no spot move. */
+  anchorModel?: SmilePoint[] | null;
 }
 
 /* ------------------------------------------------------------------ */

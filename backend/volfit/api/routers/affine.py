@@ -14,10 +14,10 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from volfit.api.affine_fit import affine_payload
+from volfit.api.affine_fit import affine_payload, optimal_grid_size
 from volfit.api.affine_views import affine_density, affine_table, affine_term
 from volfit.api.schemas import DensityResponse, TableResponse, TermStructureResponse
-from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse
+from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, OptimalGridSize
 from volfit.api.state import UnknownNodeError
 
 router = APIRouter()
@@ -25,6 +25,14 @@ router = APIRouter()
 
 def _body(body: AffineFitRequest | None) -> AffineFitRequest:
     return body or AffineFitRequest()
+
+
+@router.get("/fit/affine/{ticker}/optimal-size", response_model=OptimalGridSize)
+def affine_optimal_size(ticker: str, request: Request) -> OptimalGridSize:
+    try:
+        return optimal_grid_size(request.app.state.volfit, ticker)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.post("/fit/affine/{ticker}", response_model=AffineFitResponse)

@@ -9,6 +9,7 @@
 // dynamics, calendar penalty); two are stubbed this phase (auto-calibrate,
 // spot mode) and labelled as such.
 import HyperparamPanel from "../components/HyperparamPanel";
+import { api } from "../state/api";
 import { useOptions } from "../state/useOptions";
 import type { DynamicsRegime } from "../state/useOptions";
 import { useSmileSession } from "../state/smileSession";
@@ -99,7 +100,7 @@ function Segmented<T extends string>({
 }
 
 export default function OptionsViewer() {
-  const { source, reload, fitMode, setFitMode } = useSmileSession();
+  const { source, reload, fitMode, setFitMode, ticker } = useSmileSession();
   const live = source === "live";
   const { draft, patch, dirty, busy, flash, apply } = useOptions(live, reload);
   const { format: expiryFormat, setFormat: setExpiryFormat } = useExpiryFormat();
@@ -202,17 +203,37 @@ export default function OptionsViewer() {
           </div>
 
           <div className="border-t border-slate-800 pt-3">
-            <h3 className={sectionTitle}>Local-vol grid defaults</h3>
+            <h3 className={sectionTitle}>Local-vol grid</h3>
             <div className="space-y-2">
               <NumberRow label="Strike nodes" value={draft.gridXNodes} step={1} disabled={!live}
                 onChange={(v) => patch({ gridXNodes: v })} />
-              <NumberRow label="Time nodes" value={draft.gridTNodes} step={1} disabled={!live}
+              <NumberRow label="Time nodes (0 = per expiry)" value={draft.gridTNodes} step={1} disabled={!live}
                 onChange={(v) => patch({ gridTNodes: v })} />
               <NumberRow label="Roughness λ" value={draft.gridRegLambda} step={0.001} disabled={!live}
                 onChange={(v) => patch({ gridRegLambda: v })} />
               <NumberRow label="Roughness ρ (t vs x)" value={draft.gridRegRho} step={0.1} disabled={!live}
                 onChange={(v) => patch({ gridRegRho: v })} />
             </div>
+            <button
+              type="button"
+              disabled={!live || ticker === ""}
+              title={`Size the grid to ${ticker || "the ticker"}'s observed quotes`}
+              onClick={() => {
+                api
+                  .get<{ gridXNodes: number; gridTNodes: number }>(
+                    `/fit/affine/${ticker}/optimal-size`,
+                  )
+                  .then((o) => patch({ gridXNodes: o.gridXNodes, gridTNodes: o.gridTNodes }))
+                  .catch(() => {});
+              }}
+              className="mt-2 w-full rounded-md border border-accent-500/40 bg-accent-500/10 px-2 py-1 text-[11px] font-semibold text-accent-300 transition hover:bg-accent-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Optimal size (≈ # quotes)
+            </button>
+            <p className="mt-1 text-[10px] text-slate-500">
+              Time vertices default to the observed expiries; the lowest strike vertex
+              sits just above the lowest observed strike. Used by the Local-Vol surface.
+            </p>
           </div>
 
           <div className="border-t border-slate-800 pt-3">
@@ -298,18 +319,13 @@ export default function OptionsViewer() {
         </div>
       </div>
 
-      {/* Workflow (stubbed this phase) */}
+      {/* Calibration & data-fetch workflow (wired: the trigger model) */}
       <div className={card}>
-        <div className="mb-2 flex items-center gap-2">
-          <h3 className="text-sm font-semibold text-slate-100">Workflow</h3>
-          <span className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-slate-500">
-            preview · not yet wired
-          </span>
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <h3 className={`${sectionTitle} mb-2`}>Calibration &amp; data workflow</h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Toggle
-            label="Auto-on-demand calibration"
-            hint="On: refit on every quote edit. Off: refit only on a manual Calibrate button (TODO)."
+            label="Auto-calibrate"
+            hint="On: lit nodes refit automatically after a fetch / on any change. Off: nodes go STALE until you press Calibrate (top bar)."
             checked={draft.autoCalibrate} disabled={!live}
             onChange={(v) => patch({ autoCalibrate: v })}
           />
@@ -317,14 +333,45 @@ export default function OptionsViewer() {
             <span className={`${rowLabel} mb-1 block`}>Spot prices</span>
             <Segmented
               options={[
-                { id: "static", label: "Static", title: "Freeze spot at load (pairs with As-of)" },
-                { id: "realtime", label: "Real-time", title: "Stream live spot & re-price (TODO)" },
+                { id: "static", label: "On-demand", title: "Fetch spots only via the 'Fetch spots' button" },
+                { id: "realtime", label: "Real-time", title: "The scheduler polls live spots and transports the surface" },
               ]}
               value={draft.spotMode} disabled={!live}
               onChange={(v) => patch({ spotMode: v })}
             />
+            {draft.spotMode === "realtime" && (
+              <div className="mt-2">
+                <NumberRow
+                  label="Poll every (s)" value={draft.spotPollSeconds} step={1}
+                  disabled={!live} onChange={(v) => patch({ spotPollSeconds: v })}
+                />
+              </div>
+            )}
+          </div>
+          <div>
+            <span className={`${rowLabel} mb-1 block`}>Options quotes</span>
+            <Segmented
+              options={[
+                { id: "on_demand", label: "On-demand", title: "Fetch chains only via the 'Fetch Options Quotes' button" },
+                { id: "auto", label: "Auto", title: "The scheduler refetches chains on a timer (then auto-calibrates if enabled)" },
+              ]}
+              value={draft.optionsFetchMode} disabled={!live}
+              onChange={(v) => patch({ optionsFetchMode: v })}
+            />
+            {draft.optionsFetchMode === "auto" && (
+              <div className="mt-2">
+                <NumberRow
+                  label="Fetch every (min)" value={draft.optionsFetchMinutes} step={1}
+                  disabled={!live} onChange={(v) => patch({ optionsFetchMinutes: v })}
+                />
+              </div>
+            )}
           </div>
         </div>
+        <p className="mt-3 text-[11px] text-slate-500">
+          A spot move transports the surface (no recalibration); fetching fresh option
+          quotes (or any change with Auto-calibrate off) marks lit nodes STALE until Calibrate.
+        </p>
       </div>
 
       {/* Sticky Apply bar for the OptionsSettings draft */}

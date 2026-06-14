@@ -9,6 +9,8 @@ import { useDataSources } from "../state/useDataSources";
 import type { SourceStatus } from "../state/useDataSources";
 import { useAsOf } from "../state/useAsOf";
 import type { AsOfState } from "../state/useAsOf";
+import { useWorkflow } from "../state/useWorkflow";
+import WorkflowControls from "./WorkflowControls";
 
 interface TopBarProps {
   tabs: TabDef[];
@@ -47,8 +49,9 @@ function asofLabel(a: AsOfState): string {
 }
 
 export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
-  const { source, loading, refreshUniverse, reload } = useSmileSession();
+  const { source, loading, refreshUniverse, reload, refreshViews } = useSmileSession();
   const live = source === "live";
+  const workflow = useWorkflow(live, refreshViews);
 
   // After a source switch, refetch the universe (keeps the selection valid)
   // and reload the current smile so every workspace reflects the new feed.
@@ -114,6 +117,9 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
           </span>
         ) : (
           <>
+          {/* Calibration / data-fetch workflow controls */}
+          <WorkflowControls workflow={workflow} />
+
           <div className="relative">
             <button
               onClick={() => setOpen((v) => !v)}

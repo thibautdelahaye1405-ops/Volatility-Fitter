@@ -84,6 +84,7 @@ export default function SmileViewer() {
     distribution,
     distributionLoading,
     loadDistribution,
+    spotVersion,
   } = useSmileSession();
   const { format } = useExpiryFormat();
 
@@ -194,6 +195,7 @@ export default function SmileViewer() {
             prior={smile.prior}
             quotes={smile.quotes}
             scenario={scenarioCurve}
+            anchorCurve={smile.anchorModel ?? null}
             massiveIv={massiveIvCurve}
             kWindow={kWindow}
             onKWindowChange={setKWindow}
@@ -221,11 +223,11 @@ export default function SmileViewer() {
           : chartMessage("Term-structure view requires the live backend.");
       case "surface":
         return live
-          ? <SurfaceChart ticker={ticker} fitMode={fitMode} />
+          ? <SurfaceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} />
           : chartMessage("Surface view requires the live backend.");
       case "stackedvar":
         return live
-          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} />
+          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} />
           : chartMessage("Stacked IV requires the live backend.");
       case "table":
         return live
@@ -259,6 +261,15 @@ export default function SmileViewer() {
             >
               {source === "live" ? "LIVE" : "MOCK"}
             </span>
+            {/* Stale badge: inputs changed since the last calibration */}
+            {smile?.stale && (
+              <span
+                title="Inputs changed since the last calibration — press Calibrate (top bar) to refit"
+                className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-amber-400"
+              >
+                STALE
+              </span>
+            )}
             {/* View toggle: smile / distributions / surface / table */}
             <SegmentedControl
               options={CHART_VIEWS}
@@ -351,7 +362,7 @@ export default function SmileViewer() {
 
         {/* Diagnostics aside: model / scenario panels. Hidden on the Term
             sub-tab, which carries its own events / ladder controls column. */}
-        {view !== "term" && <SmileAside smileViewActive={view === "smile"} />}
+        {view !== "term" && <SmileAside />}
       </div>
     </div>
   );

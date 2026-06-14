@@ -187,8 +187,7 @@ def test_affine_fit_carries_and_honours_varswap(client):
     """The Local-Vol (affine) surface fit reports the shared var-swap quote per
     expiry and its penalty moves the reconstructed var-swap toward a high quote."""
     ticker = client.get("/universe").json()["tickers"][0]
-    body = {"nXNodes": 5, "nTNodes": 3}
-    base = client.post(f"/fit/affine/{ticker}", json=body).json()
+    base = client.post(f"/fit/affine/{ticker}", json={}).json()
     sm0 = base["smiles"][1]
     assert sm0["varSwap"]["level"] is None and sm0["varSwap"]["modelVol"] > 0.0
 
@@ -196,7 +195,8 @@ def test_affine_fit_carries_and_honours_varswap(client):
     quote = sm0["varSwap"]["modelVol"] + 0.06
     client.post(f"/smiles/{ticker}/{expiry}/varswap", json={"action": "set", "level": quote})
 
-    pen = client.post(f"/fit/affine/{ticker}", json=body).json()
+    client.post(f"/calibrate/{ticker}")  # LV is trigger-gated: rebuild after the edit
+    pen = client.post(f"/fit/affine/{ticker}", json={}).json()
     sm1 = next(s for s in pen["smiles"] if s["expiry"] == expiry)
     assert sm1["varSwap"]["level"] == pytest.approx(quote)
     assert sm1["varSwap"]["modelVol"] > sm0["varSwap"]["modelVol"]

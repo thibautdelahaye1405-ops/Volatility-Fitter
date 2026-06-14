@@ -187,7 +187,8 @@ export function useEvents(ticker: string): TermEvent[] {
 
 export function useTerm(): UseTermResult {
   // Underlying selection is shared with the Smile tab via the session.
-  const { universe, ticker, setTicker, reload: reloadSmile } = useSmileSession();
+  const { universe, ticker, setTicker, reload: reloadSmile, spotVersion } =
+    useSmileSession();
 
   const [data, setData] = useState<TermResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -320,7 +321,8 @@ export function useTerm(): UseTermResult {
         setRefreshing(false);
       });
     return () => controller.abort();
-  }, [ticker, debouncedEvents, eventsEnabled, attempt]);
+    // spotVersion: a spot move transports the term curve (no recalibration).
+  }, [ticker, debouncedEvents, eventsEnabled, attempt, spotVersion]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 

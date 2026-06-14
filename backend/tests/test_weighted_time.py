@@ -99,13 +99,13 @@ def test_normalization_keeps_one_year_vol(client):
 def test_localvol_iv_drops_with_event(client):
     """Consistency: the Local-Vol (affine) reconstructed smile drops too."""
     tk = client.get("/universe").json()["tickers"][0]
-    body = {"nXNodes": 5, "nTNodes": 3}
-    base = client.post(f"/fit/affine/{tk}", json=body).json()
+    base = client.post(f"/fit/affine/{tk}", json={}).json()
     sm0 = base["smiles"][1]
     atm0 = next(p.get("vol") for p in sm0["model"] if abs(p["k"]) < 0.05)
 
     client.put(f"/events/{tk}", json={"events": [{"time": 0.005, "weight": 30.0, "label": "e"}]})
-    pen = client.post(f"/fit/affine/{tk}", json=body).json()
+    client.post(f"/calibrate/{tk}")  # LV is trigger-gated: rebuild after the event edit
+    pen = client.post(f"/fit/affine/{tk}", json={}).json()
     sm1 = next(s for s in pen["smiles"] if s["expiry"] == sm0["expiry"])
     atm1 = next(p.get("vol") for p in sm1["model"] if abs(p["k"]) < 0.05)
     assert atm1 < atm0

@@ -39,9 +39,6 @@ const buttonClass =
   "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
 
-/** Log-spaced roughness presets (Off = pure data fit). */
-const REG_LAMBDAS = [0, 1e-3, 1e-2, 1e-1, 1];
-const regLabel = (v: number) => (v === 0 ? "Off" : `1e${Math.round(Math.log10(v))}`);
 
 /** Chart-card sub-tabs, mirroring the Parametric workspace. "LV surface" is the
  *  nodal local-vol heatmap; "IV surface" is the reconstructed implied-vol
@@ -66,12 +63,16 @@ const chartMessage = (text: string) => (
 
 export default function LocalVolViewer() {
   const {
-    data, loading, refreshing, error, reload, ticker, setTicker, tickers, params, setParams,
+    data, loading, refreshing, error, reload, ticker, setTicker, tickers,
     varSwapEnabled, varSwapNonce, applyVarSwap, undoVarSwap, redoVarSwap,
   } = useAffine();
 
-  const { source } = useSmileSession();
+  const { source, spotVersion } = useSmileSession();
   const live = source === "live";
+  // Spot moves transport the cached surface; fold into the derived-view key so
+  // density / term / table refetch alongside the surface (which depends on it
+  // via useAffine). Combined with varSwapNonce into one reloadKey.
+  const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
   const [view, setView] = useState<LvView>("smile");
   // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
@@ -88,11 +89,11 @@ export default function LocalVolViewer() {
 
   // Derived views reuse the cached affine fit; only the active one fetches.
   const density = useAffineView<DistributionData>(
-    "density", ticker, params, expiry, view === "density", varSwapNonce,
+    "density", ticker, expiry, view === "density", lvReloadKey,
   );
-  const term = useAffineView<TermResponse>("term", ticker, params, null, view === "term", varSwapNonce);
+  const term = useAffineView<TermResponse>("term", ticker, null, view === "term", lvReloadKey);
   const table = useAffineView<AffineTableData>(
-    "table", ticker, params, expiry, view === "table", varSwapNonce,
+    "table", ticker, expiry, view === "table", lvReloadKey,
   );
 
   if (error !== null && data === null) {
@@ -214,6 +215,14 @@ export default function LocalVolViewer() {
 
         {data && (
           <span className="ml-auto flex items-center gap-3 font-mono text-[11px] text-slate-500">
+            {data.stale && (
+              <span
+                title="Inputs changed since the last LV calibration — press Calibrate (top bar)"
+                className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-semibold tracking-wider text-amber-400"
+              >
+                STALE
+              </span>
+            )}
             <span
               className={
                 data.arbitrageFree
@@ -255,25 +264,12 @@ export default function LocalVolViewer() {
         {/* Controls + diagnostics aside */}
         <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
           <div>
-            <h3 className="mb-2 text-sm font-semibold text-slate-100">Vertex grid</h3>
-            <SliderRow label="Strike nodes" value={params.nXNodes} min={3} max={13} step={1}
-              onChange={(v) => setParams({ nXNodes: v })} />
-            <SliderRow label="Time nodes" value={params.nTNodes} min={2} max={8} step={1}
-              onChange={(v) => setParams({ nTNodes: v })} />
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-xs text-slate-400" title="Second-difference roughness penalty">
-                Roughness λ
-              </span>
-              <select
-                value={params.regLambda}
-                onChange={(e) => setParams({ regLambda: Number(e.target.value) })}
-                className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[11px] text-slate-200 outline-none hover:border-slate-600 focus:border-accent-500"
-              >
-                {REG_LAMBDAS.map((v) => (
-                  <option key={v} value={v}>{regLabel(v)}</option>
-                ))}
-              </select>
-            </div>
+            <h3 className="mb-1 text-sm font-semibold text-slate-100">Vertex grid</h3>
+            <p className="text-[11px] text-slate-500">
+              Grid size (strike/time nodes) &amp; roughness λ, ρ are global
+              hyperparameters — set them in the <span className="text-slate-300">Options</span> tab
+              (with an "Optimal size" button). Time vertices default to the observed expiries.
+            </p>
           </div>
 
           {/* Var-swap quote for the selected expiry (Options-gated, shared
@@ -381,25 +377,3 @@ function buildIvSurface(
   };
 }
 
-/** A labelled integer slider row for the vertex-grid controls. */
-function SliderRow({
-  label, value, min, max, step, onChange,
-}: {
-  label: string; value: number; min: number; max: number; step: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="mb-1">
-      <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-400">{label}</span>
-        <span className="font-mono text-xs font-medium text-slate-100">{value}</span>
-      </div>
-      <input
-        type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full cursor-pointer"
-        style={{ accentColor: "var(--color-accent-500)" }}
-      />
-    </div>
-  );
-}

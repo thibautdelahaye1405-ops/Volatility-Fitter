@@ -127,9 +127,12 @@ class OptionsSettings(BaseModel):
     varSwapWeightPct: float = Field(10.0, ge=0.0, le=1000.0)
     # prior default
     autoLoadPrior: bool = False
-    # local-vol-affine vertex grid + roughness defaults
-    gridXNodes: int = Field(7, ge=3, le=15)
-    gridTNodes: int = Field(4, ge=2, le=8)
+    # local-vol-affine vertex grid + roughness (the single source of truth: the
+    # affine fit reads these directly; the Local-Vol workspace has no own knobs).
+    gridXNodes: int = Field(7, ge=3, le=200)  # strike vertices (much larger max now)
+    #: Time vertices: 0 = auto (one vertex per OBSERVED expiry, recommended);
+    #: > 0 caps/subsamples the expiries to that many. Default auto.
+    gridTNodes: int = Field(0, ge=0, le=120)
     gridRegLambda: float = Field(1e-2, ge=0.0, le=1e4)
     gridRegRho: float = Field(1.0, ge=0.0, le=10.0)  # affine time-vs-strike roughness
     # editable penalty strength (changes calibration output)
@@ -151,9 +154,20 @@ class OptionsSettings(BaseModel):
         "custom",
     ] = "sticky_strike"
     ssr: float = Field(2.0, ge=0.0)
-    # stubbed this phase (UI state only; behaviour TODO)
+    # ---- calibration / data-fetch workflow (the trigger model) ----
+    #: After options are fetched: ON = calibrate all lit nodes in the background;
+    #: OFF = leave nodes stale until the user presses Calibrate. Also gates whether
+    #: a quote edit / parameter change refits (ON) or just marks stale (OFF).
     autoCalibrate: bool = True
+    #: Spot updates: "realtime" = the backend scheduler polls the provider spot
+    #: every ``spotPollSeconds`` and transports the surface; "static" = on-demand
+    #: only (the "Fetch spots" button).
     spotMode: Literal["realtime", "static"] = "static"
+    spotPollSeconds: float = Field(5.0, gt=0.0, le=3600.0)
+    #: Options chains: "auto" = the scheduler refetches every
+    #: ``optionsFetchMinutes``; "on_demand" = only the "Fetch Options Quotes" button.
+    optionsFetchMode: Literal["auto", "on_demand"] = "on_demand"
+    optionsFetchMinutes: float = Field(5.0, gt=0.0, le=1440.0)
 
 
 # ------------------------------------------------------------- smile payload
@@ -230,6 +244,12 @@ class SmileData(BaseModel):
     varSwap: VarSwapInfo  # variance-swap quote + model level for this node
     canUndo: bool  # quote-edit session undo/redo availability
     canRedo: bool  # (both False when the node has no edit session yet)
+    stale: bool = False  # inputs drifted since the last calibration (needs Calibrate)
+    #: The pre-transport calibration curve, set only while a spot move is active,
+    #: so the viewer can overlay the original fit (dimmed) under the transported
+    #: smile. Each curve is in its own log-moneyness (sticky-strike => a lateral
+    #: shift; sticky-moneyness => the two coincide). None when no spot move.
+    anchorModel: list[SmilePoint] | None = None
 
 
 # ------------------------------------------------------------------ universe
@@ -482,6 +502,82 @@ class ScenarioResponse(BaseModel):
     shiftedVol: list[float]
     ssr: float
     regime: str
+
+
+# ------------------------------------------------------- fast spot-move state
+class SpotShiftRequest(BaseModel):
+    """Set a ticker's hypothetical/live spot move (no recalibration).
+
+    ``spotReturn`` is the proportional move vs the anchor spot the fits were
+    calibrated at (e.g. 0.02 for +2%); 0 returns to the anchor. The whole
+    surface (smile, term, LV grid) is transported analytically on the next read
+    via volfit.dynamics.transport — calibration only happens on an explicit
+    "Calibrate" (POST /spot/{ticker}/calibrate).
+    """
+
+    spotReturn: float = 0.0
+
+
+class SpotState(BaseModel):
+    """The active spot-move state of a ticker (the no-recal transport view)."""
+
+    ticker: str
+    anchorSpot: float  # spot the cached fits were calibrated at
+    spotReturn: float  # active proportional shift (0 = anchored)
+    shiftedSpot: float  # anchorSpot * (1 + spotReturn)
+    regime: str  # active vol-spot dynamics regime label
+    regimeSsr: float  # its skew-stickiness ratio (transport strength R)
+
+
+class LiveSpot(BaseModel):
+    """A real-time spot probe versus the anchor (for spotMode='realtime')."""
+
+    ticker: str
+    anchorSpot: float
+    liveSpot: float
+    spotReturn: float  # implied liveSpot / anchorSpot - 1
+
+
+# ------------------------------------------------------ calibration workflow
+class CalibrationStatus(BaseModel):
+    """State of the background calibration job + stale-node accounting."""
+
+    running: bool
+    total: int  # nodes in the current/last job
+    done: int  # nodes calibrated so far
+    current: str  # "TICKER EXPIRY" in flight, "" when idle
+    error: str  # last per-node error (the job never aborts on one bad node)
+    cancelled: bool
+    litNodes: int  # total lit (calibratable) nodes in the universe
+    staleNodes: int  # lit nodes whose displayed fit has drifted from its last fit
+    spotVersion: int  # global spot-move counter (bumps on any transported move)
+
+
+class FetchRequest(BaseModel):
+    """Optional ticker subset for a fetch / calibrate action (None = all active)."""
+
+    tickers: list[str] | None = None
+
+
+class FetchResult(BaseModel):
+    """Outcome of a spots / options fetch action."""
+
+    tickers: list[str]  # tickers actually fetched
+    spots: dict[str, float]  # ticker -> spot (live for spots, chain for options)
+    calibrationStarted: bool  # whether auto-calibrate kicked off a background job
+
+
+class SchedulerStatus(BaseModel):
+    """Backend scheduler state for the TopBar fetch controls."""
+
+    running: bool  # the scheduler thread is alive
+    spotMode: str  # "realtime" | "static"
+    optionsFetchMode: str  # "auto" | "on_demand"
+    autoCalibrate: bool
+    #: Seconds to the next auto options fetch / spot poll, or -1 when that mode
+    #: is on-demand/static (so the UI shows a button instead of a countdown).
+    secondsToNextOptions: float
+    secondsToNextSpot: float
 
 
 # ------------------------------------------------------------------ local vol

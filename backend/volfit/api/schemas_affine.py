@@ -15,27 +15,33 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from volfit.api.schemas import FitMode, QuoteBand, SmilePoint, VarSwapInfo
+from volfit.api.schemas import DistributionArrays, FitMode, QuoteBand, SmilePoint, VarSwapInfo
 
 
 class AffineFitRequest(BaseModel):
-    """Vertex grid and regularization of the affine surface calibration.
-
-    The vertex set is a tensor grid: ``nTNodes`` times (0 plus a spread of the
-    listed expiries) by ``nXNodes`` normalized strikes x = K/F spanning the
-    quoted range (the ATM node x = 1 is always included). ``regLambda`` weights
-    the second-difference roughness penalty, ``regRho`` its time-vs-strike
-    balance; ``varLo``/``varHi`` bound the nodal local variances (vol bounds
-    sqrt of these). Defaults give a fast, gently smoothed live fit.
-    """
+    """Affine surface fit request. The vertex grid + roughness are NO LONGER on
+    the request: they are global hyperparameters in OptionsSettings (gridXNodes /
+    gridTNodes / gridRegLambda / gridRegRho), the single source of truth read by
+    the fit (volfit.api.affine_fit). Only the fit mode and the nodal-variance
+    bounds remain per-request. ``varLo``/``varHi`` bound the nodal local variances
+    (vol bounds sqrt of these)."""
 
     fitMode: FitMode = "mid"
-    nXNodes: int = Field(7, ge=3, le=15)
-    nTNodes: int = Field(4, ge=2, le=8)
-    regLambda: float = Field(1e-2, ge=0.0, le=1e4)
-    regRho: float = Field(1.0, ge=0.0, le=10.0)
     varLo: float = Field(0.0025, gt=0.0, le=0.1)  # vol floor 5%
     varHi: float = Field(0.36, gt=0.0, le=4.0)  # vol cap 60%
+
+
+class OptimalGridSize(BaseModel):
+    """Suggested vertex-grid size for a ticker's observed quotes.
+
+    ``gridTNodes = 0`` means one time vertex per observed expiry (auto); the
+    strike count is ~ the average quotes per expiry, so total vertices
+    (gridXNodes * #expiries) approximates the total observed quotes."""
+
+    gridXNodes: int
+    gridTNodes: int  # 0 = auto (one per observed expiry)
+    nQuotes: int
+    nExpiries: int
 
 
 class AffineSmile(BaseModel):
@@ -48,6 +54,11 @@ class AffineSmile(BaseModel):
     quotes: list[QuoteBand]  # the calibrated quote band at each strike
     varSwap: VarSwapInfo  # var-swap quote (shared with Parametric) + model level
     maxIvErrorBp: float  # worst |model - quote mid| IV over the quotes, bp
+    #: Risk-neutral density from the Dupire PDE call prices directly (d2C/dx2),
+    #: which is smooth and non-negative by construction — far cleaner than the
+    #: Breeden-Litzenberger-via-implied-vol density (which clamps to 0 at short
+    #: maturities). Powers the Local-Vol Density sub-tab.
+    density: DistributionArrays | None = None
 
 
 class AffineFitResponse(BaseModel):
@@ -67,3 +78,4 @@ class AffineFitResponse(BaseModel):
     arbitrageFree: bool
     nEvals: int  # calibration PDE solves
     message: str  # optimizer termination message
+    stale: bool = False  # inputs drifted since the last LV calibration (needs Calibrate)

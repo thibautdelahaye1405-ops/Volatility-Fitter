@@ -8,9 +8,95 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-13 (resume here)
+## STATUS — updated 2026-06-14 (resume here)
 
-**Done & verified (363 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (409 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-14] Local-Vol (affine) workspace overhaul**: (1) the vertex grid +
+  roughness (λ, ρ) are now GLOBAL hyperparameters in Options only (the LV
+  workspace's own sliders are gone); the affine fit reads them directly and they
+  are in its cache key. Strike-node max raised to 200; **time vertices default to
+  the observed expiries** (`gridTNodes = 0` = auto, one per expiry; > 0 caps).
+  (2) An **"Optimal size"** button (Options) sizes the grid to the observed quotes
+  (`GET /fit/affine/{t}/optimal-size`: strike nodes ≈ avg quotes/expiry, capped to
+  ~160 total vertices so the heavy LSQ stays tractable). (3) The lowest strike
+  vertex is placed strictly **between the lowest and 2nd-lowest observed strike**
+  (no vertex below the data) — `_lowest_vertex_x`. (4) **LV joins the trigger
+  model**: a per-ticker affine calibrated-pointer freezes the surface and reports
+  `stale` (a STALE chip in the LV header) until Calibrate; the read path
+  (`affine_payload`) NEVER recalibrates synchronously (the affine LSQ scales with
+  vertex count — SPY ~minute) — it bootstraps once then serves frozen. The global
+  background **Calibrate job now includes each lit ticker's LV surface** as
+  labelled work items (`"TICKER · LV surface"`) so progress covers them
+  (`workflow.calibrate_all`, jobs take `(label, thunk)` items); fetch-options
+  auto-calibrate rebuilds them too. `calibrate_affine_surface` is the force path.
+  Frontend: `useAffine`/`useAffineView` drop the grid params (POST `{fitMode}`
+  only). 5 tests updated for the trigger model + new affine-grid/optimal-size
+  tests; live-verified on SPY (optimal-size 977 quotes/8 expiries → capped grid,
+  arb-free fit).
+
+- **[2026-06-14] Trigger-gated calibration workflow** (what calibrates, on what,
+  when): calibration is now decoupled from input changes. **Stale model** — each
+  node carries a CALIBRATED pointer (the fit-key + spot it was last calibrated at)
+  on AppState; `service.fit_or_get` bootstraps one fit, then with
+  `Options.autoCalibrate` ON refits on any input change (old behaviour) and OFF
+  *freezes* the last fit, reporting `SmileData.stale=True` until an explicit
+  Calibrate (`node_dirty`/`calibrate_node`; a per-ticker `data_version` in the fit
+  key bumps on a fresh options fetch). The spot-move transport anchors on the
+  *calibration* spot (`anchor_spot`), not the live snapshot. **Actions**
+  (`api/workflow.py` + `routers/workflow.py`): `POST /fetch/spots` (probe live spot
+  → transport, no refit), `POST /fetch/options` (refetch chains + auto-calibrate
+  when enabled), `POST /calibrate` (BACKGROUND job over all lit nodes via
+  `api/jobs.CalibrationJobs`, `GET /calibration/status` for progress + lit/stale
+  counts), `POST /calibrate/{ticker}[/{expiry}]` (sync), `POST /priors/seed`
+  (explicit prev-close → calibrate → save). **Backend scheduler**
+  (`api/scheduler.py`, opt-in `create_app(enable_scheduler=True)`; serve.py turns
+  it on): a daemon thread polls live spots every `spotPollSeconds` when
+  `spotMode=realtime` and refetches chains every `optionsFetchMinutes` when
+  `optionsFetchMode=auto` (then auto-calibrates if enabled); `GET /scheduler` gives
+  modes + countdowns. New OptionsSettings fields `spotPollSeconds`,
+  `optionsFetchMode`, `optionsFetchMinutes` (autoCalibrate/spotMode now wired, not
+  stubbed). **Frontend**: `state/useWorkflow.ts` (polls status, edge-reloads all
+  views on job-completion / backend RT spot move) drives TopBar `WorkflowControls`
+  (Fetch spots / Real-time Spots · Fetch Options Quotes / auto-countdown ·
+  Calibrate with progress + stale-count badge); a STALE chip on the Parametric
+  header; a "Calibration & data workflow" Options card; `useSmile` owns a single
+  view-refresh counter (`spotVersion`/`refreshViews`) threaded into every
+  workspace's fetchers; `useSpot` slimmed to the manual slider (backend owns RT).
+  13 new tests (stale model, workflow endpoints, scheduler ticks); live-verified
+  over HTTP (stale↔calibrate↔fetch cycle, scheduler thread running).
+
+- **[2026-06-14] Fast spot-move transport (no recalibration)** per
+  `Docs/spot_move_vol_surface_note_updated.tex`: a spot change — the user sliding
+  the spot level OR a real-time spot tick — refreshes the calibrated smile / term
+  / LV-grid **analytically**, never refitting (full recalibration only on the
+  explicit Calibrate button). New `volfit/dynamics/transport.py`: the SSR
+  horizontal total-variance transport `w₁ᴿ(k)=w₀(k+R·h_T)` (recovers
+  sticky-moneyness/strike exactly at R=0/1), the exact sticky-local-vol `ℓ_T(k,h)`
+  displacement (R=2 double-skew), an optional finite-move ATM re-anchor, and the
+  LV-grid node rule `Kᵢ¹=Kᵢ⁰e^{(1−R/2)h_t}` (`TransportedSlice` SmileModel +
+  `transport_grid_logk/strikes`). `h_T` comes from the FORWARD per the note
+  (multiplicative under continuous yield, additive `ΔF=ΔS·e^{rt}` under discrete
+  cash divs, so h differs per expiry). Integration: AppState holds a per-ticker
+  spot SHIFT + `spot_version` (NOT in the slice fit-cache key — the anchor stays
+  warm and is transported on read); `service.fit_or_get` wraps the cached
+  `_anchor_fit` with `transport_record` (new forward, quotes re-indexed to new
+  moneyness k−h, transported slice as a DisplayFit so EVERY view — smile, term,
+  surface, density, var-swap, table, and the Dupire `/localvol` extraction —
+  follows). The affine Local-Vol surface transports at the `affine_payload`
+  boundary (`affine_transport.py`: per-expiry smile transport + grid relabel),
+  `spot_version` busting the two derived caches. New endpoints
+  `GET/PUT /spot/{ticker}`, `POST /spot/{ticker}/calibrate` (re-anchor: clear
+  shift + drop chain caches + refit at live spot), `GET /spot/{ticker}/live`
+  (provider spot re-probe for RT polling; cheap Yahoo override). Frontend:
+  `state/useSpot.ts` (debounced PUT, RT poll when Options.spotMode='realtime',
+  `spotVersion` folded into every workspace's fetchers), the aside "Spot scenario"
+  slider repurposed into a live `SpotPanel` (slider moves the surface +
+  anchor→shifted readout + regime·R + Calibrate button). 25 new tests
+  (engine golden + service integration + API); live-verified over HTTP
+  (synthetic +3%: fwd ×1.03, ATM 21.87%→21.73%, LV grid recenters, calibrate
+  restores). The graph universe deliberately still reads the un-transported LQD
+  anchor.
 
 - **[2026-06-14] Auto-calibrate Events (Term)**: a horizon drop-list (an expiry T)
   plus a Calibrate button solve — all at once — one candidate event before each

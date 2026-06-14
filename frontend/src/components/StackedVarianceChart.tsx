@@ -29,9 +29,11 @@ const message = (text: string) => (
 interface Props {
   ticker: string;
   fitMode: FitMode;
+  /** Bumps to force a refetch (e.g. a spot move transports the surface). */
+  reloadKey?: number;
 }
 
-export default function StackedVarianceChart({ ticker, fitMode }: Props) {
+export default function StackedVarianceChart({ ticker, fitMode, reloadKey = 0 }: Props) {
   const { format } = useExpiryFormat();
   const [data, setData] = useState<SurfaceResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ export default function StackedVarianceChart({ ticker, fitMode }: Props) {
         setError(err instanceof Error ? err.message : String(err));
       });
     return () => controller.abort();
-  }, [ticker, fitMode]);
+  }, [ticker, fitMode, reloadKey]);
 
   if (data === null) {
     return loading

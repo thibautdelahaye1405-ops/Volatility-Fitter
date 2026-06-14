@@ -87,6 +87,15 @@ class OptionChainProvider(abc.ABC):
         """All expiries the provider can serve for a ticker, cheaply (no chain
         fetch) — the full list the universe picker chooses from."""
 
+    def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
+        """Current spot of the underlying, for real-time spot polling.
+
+        The default re-reads ``fetch_chain``'s spot (correct for every provider,
+        though not the cheapest); live providers with a lightweight quote feed
+        override this. Synthetic chains are static, so polling reports no move.
+        """
+        return float(self.fetch_chain(ticker, expiries).spot)
+
     def historical_modes(self) -> set[str]:
         """As-of modes this provider supports (default: live only)."""
         return {"live"}

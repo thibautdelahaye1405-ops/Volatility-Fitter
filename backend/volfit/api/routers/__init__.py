@@ -14,10 +14,12 @@ from volfit.api.routers.massive_iv import router as massive_iv_router
 from volfit.api.routers.scenario import router as scenario_router
 from volfit.api.routers.settings import router as settings_router
 from volfit.api.routers.smiles import router as smiles_router
+from volfit.api.routers.spot import router as spot_router
 from volfit.api.routers.surface import router as surface_router
 from volfit.api.routers.term import router as term_router
 from volfit.api.routers.universe import router as universe_router
 from volfit.api.routers.varswap import router as varswap_router
+from volfit.api.routers.workflow import router as workflow_router
 
 #: Routers in include order for create_app.
 ALL_ROUTERS = (
@@ -36,9 +38,11 @@ ALL_ROUTERS = (
     massive_iv_router,
     scenario_router,
     settings_router,
+    spot_router,
     surface_router,
     term_router,
     varswap_router,
+    workflow_router,
 )
 
 __all__ = [
@@ -57,8 +61,10 @@ __all__ = [
     "scenario_router",
     "settings_router",
     "smiles_router",
+    "spot_router",
     "surface_router",
     "term_router",
     "universe_router",
     "varswap_router",
+    "workflow_router",
 ]

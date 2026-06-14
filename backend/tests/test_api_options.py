@@ -38,7 +38,7 @@ def test_defaults(client):
         "varSwapWeightPct": 10.0,
         "autoLoadPrior": False,
         "gridXNodes": 7,
-        "gridTNodes": 4,
+        "gridTNodes": 0,
         "gridRegLambda": 1e-2,
         "gridRegRho": 1.0,
         "calendarWeight": 1e6,
@@ -50,6 +50,9 @@ def test_defaults(client):
         "ssr": 2.0,
         "autoCalibrate": True,
         "spotMode": "static",
+        "spotPollSeconds": 5.0,
+        "optionsFetchMode": "on_demand",
+        "optionsFetchMinutes": 5.0,
     }
 
 
@@ -74,6 +77,9 @@ def test_put_round_trip(client):
         "ssr": 1.5,
         "autoCalibrate": False,
         "spotMode": "realtime",
+        "spotPollSeconds": 10.0,
+        "optionsFetchMode": "auto",
+        "optionsFetchMinutes": 15.0,
     }
     assert client.put("/settings/options", json=body).status_code == 200
     assert client.get("/settings/options").json() == body
@@ -81,9 +87,9 @@ def test_put_round_trip(client):
 
 def test_validation_bounds(client):
     for bad in (
-        {"gridXNodes": 2},  # vertex grid is in [3, 15]
-        {"gridXNodes": 99},
-        {"gridTNodes": 1},  # in [2, 8]
+        {"gridXNodes": 2},  # strike vertices are in [3, 200]
+        {"gridXNodes": 999},
+        {"gridTNodes": -1},  # in [0, 120] (0 = auto)
         {"gridRegLambda": -1.0},  # >= 0
         {"calendarWeight": -1.0},  # >= 0
         {"ssr": -0.1},  # >= 0

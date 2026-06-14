@@ -37,6 +37,11 @@ interface SmileChartProps {
   onQuoteSelect?: (index: number | null) => void;
   /** SSR scenario overlay (shifted smile); drawn dotted amber when set. */
   scenario?: SmilePoint[] | null;
+  /** Pre-transport calibration (the anchor smile); drawn dimmed when a spot
+   *  move is active, so the transport vs the original fit is visible. Each curve
+   *  is in its OWN log-moneyness, so sticky-strike shows a lateral shift and
+   *  sticky-moneyness shows the two curves coincide. */
+  anchorCurve?: SmilePoint[] | null;
   /** Massive provider's IV points (read-only comparison); cyan dots when set. */
   massiveIv?: SmilePoint[] | null;
   /** Active var-swap quote vol — drawn as a horizontal teal line when set. */
@@ -94,6 +99,7 @@ export default function SmileChart({
   selectedIndex = null,
   onQuoteSelect,
   scenario = null,
+  anchorCurve = null,
   massiveIv = null,
   varSwapLevel = null,
 }: SmileChartProps) {
@@ -130,6 +136,7 @@ export default function SmileChart({
     for (const p of model) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const p of prior) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const p of scenario ?? []) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
+    for (const p of anchorCurve ?? []) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const q of quotes) if (inWindow(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (varSwapLevel !== null) { yMin = Math.min(yMin, varSwapLevel); yMax = Math.max(yMax, varSwapLevel); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
@@ -138,7 +145,7 @@ export default function SmileChart({
       xScale: linearScale([kLo, kHi], [0, plotW]),
       yScale: linearScale([yMin - pad, yMax + pad], [plotH, 0]),
     };
-  }, [model, prior, scenario, quotes, varSwapLevel, kLo, kHi, plotW, plotH]);
+  }, [model, prior, scenario, anchorCurve, quotes, varSwapLevel, kLo, kHi, plotW, plotH]);
 
   /** Build an SVG path for a curve, clipped to the visible window. */
   const pathOf = (curve: SmilePoint[]): string => {
@@ -154,6 +161,7 @@ export default function SmileChart({
   const modelPath = useMemo(() => pathOf(model), [model, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const priorPath = useMemo(() => pathOf(prior), [prior, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const anchorPath = useMemo(() => (anchorCurve ? pathOf(anchorCurve) : ""), [anchorCurve, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // X ticks: nice values in display units, positioned at their k preimage.
   const xTicks = useMemo(
@@ -337,6 +345,13 @@ export default function SmileChart({
               {scenarioPath !== "" && (
                 <path d={scenarioPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
                   strokeWidth={1.5} strokeDasharray="2 3" />
+              )}
+
+              {/* Pre-transport calibration (anchor smile): dimmed accent, drawn
+                  just under the transported fit so the spot move is visible. */}
+              {anchorPath !== "" && (
+                <path d={anchorPath} fill="none" stroke="var(--color-accent-400)"
+                  strokeOpacity={0.32} strokeWidth={1.5} strokeLinejoin="round" />
               )}
 
               {/* Massive IV overlay: read-only cyan dots (OTM wing), clipped

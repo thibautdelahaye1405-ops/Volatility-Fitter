@@ -18,13 +18,15 @@ interface SurfaceResponse extends SurfaceMeshData {
 interface SurfaceChartProps {
   ticker: string;
   fitMode: FitMode;
+  /** Bumps to force a refetch (e.g. a spot move transports the surface). */
+  reloadKey?: number;
 }
 
 const message = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
 );
 
-export default function SurfaceChart({ ticker, fitMode }: SurfaceChartProps) {
+export default function SurfaceChart({ ticker, fitMode, reloadKey = 0 }: SurfaceChartProps) {
   const [data, setData] = useState<SurfaceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +52,7 @@ export default function SurfaceChart({ ticker, fitMode }: SurfaceChartProps) {
         setError(err instanceof Error ? err.message : String(err));
       });
     return () => controller.abort();
-  }, [ticker, fitMode]);
+  }, [ticker, fitMode, reloadKey]);
 
   if (data === null) {
     return loading

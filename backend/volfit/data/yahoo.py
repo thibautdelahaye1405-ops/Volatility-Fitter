@@ -254,6 +254,11 @@ class YahooProvider(OptionChainProvider):
             )
         return quotes
 
+    def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
+        """Lightweight spot for real-time polling: fast_info only, no chain
+        fetch (overrides the base contract's full re-fetch)."""
+        return self._spot(self._ticker_factory(ticker), ticker)
+
     def fetch_chain(
         self,
         ticker: str,

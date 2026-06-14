@@ -152,6 +152,34 @@ class AppState(UniverseMixin):
         self._events_version = 0  # bumped on any event-calendar change
         self._forward_policies: dict[tuple[str, str], ForwardPolicy] = {}
         self._forwards_version = 0  # bumped on change; part of fit-cache keys
+        #: Per-ticker hypothetical/live spot SHIFT (proportional return vs the
+        #: spot the fits were calibrated at, ``_anchor_spot``). Drives the fast
+        #: no-recal spot-move transport (volfit.dynamics.transport): the
+        #: calibrated anchor smile/surface/LV-grid is transported analytically,
+        #: never refitted. NOT in the fit-cache key (the anchor fit stays warm and
+        #: is transported on top); ``_spot_version`` busts only the DERIVED grid
+        #: caches (localvol extraction, affine surface) whose own keys would
+        #: otherwise go stale.
+        self._spot_shift: dict[str, float] = {}
+        self._spot_version = 0
+        #: Per-ticker market-DATA version: bumped when a fresh options chain is
+        #: fetched ("Fetch Options Quotes" / the scheduler). Folded into the fit
+        #: key so a refetch marks every node stale (and auto-calibration refits).
+        self._data_version: dict[str, int] = {}
+        #: Per-(ticker, ISO, mode) CALIBRATED pointer: the fit-key + spot a node
+        #: was last *calibrated* at. With autoCalibrate OFF the displayed fit is
+        #: frozen at this pointer (stale when the current key drifts) until an
+        #: explicit Calibrate; with it ON the node re-fits on any input change.
+        self._calibrated: dict[tuple[str, str, str], tuple[tuple, float]] = {}
+        #: Per-ticker spot the node fits were calibrated at — the spot-move
+        #: transport anchors here (NOT the live snapshot spot, which a refetch
+        #: moves while the calibration stays frozen).
+        self._anchor_spot: dict[str, float] = {}
+        #: Per-ticker CALIBRATED affine (Local-Vol) surface pointer: the affine
+        #: cache key the surface was last calibrated at. Same freeze/stale model
+        #: as the parametric nodes — autoCalibrate OFF keeps the LV surface frozen
+        #: until an explicit Calibrate.
+        self._affine_calibrated: dict[str, tuple] = {}
         self._fits: dict[tuple, FitRecord] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
@@ -162,6 +190,14 @@ class AppState(UniverseMixin):
         #: Lit = an observed source for the graph solver, dark = extrapolated.
         self._dark_nodes: set[tuple[str, str]] = set()
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
+        #: Background calibration job manager (the global "Calibrate" action and
+        #: the scheduler's auto-calibrate both run through this).
+        from volfit.api.jobs import CalibrationJobs
+
+        self.calibration_jobs = CalibrationJobs()
+        #: Timed-fetch scheduler (volfit.api.scheduler); attached by create_app,
+        #: None when AppState is built directly (tests / offline scripts).
+        self.scheduler = None
         self._lock = threading.Lock()
 
     # ------------------------------------------------------------ data sources
@@ -227,6 +263,9 @@ class AppState(UniverseMixin):
         self._snapshots.clear()
         self._forwards.clear()
         self._fits.clear()
+        self._calibrated.clear()
+        self._anchor_spot.clear()
+        self._affine_calibrated.clear()
         self._sessions.clear()
         self._varswap_sessions.clear()
         self._universe = None
@@ -386,6 +425,135 @@ class AppState(UniverseMixin):
                     self._options_version += 1
                 self._options = options
             return self._options
+
+    def dynamics_regime(self) -> str | float:
+        """The active vol-spot dynamics regime for spot-move transport.
+
+        Reads OptionsSettings.dynamicsRegime; "custom" resolves to the numeric
+        ``ssr`` so volfit.dynamics handles it as a custom skew-stickiness ratio.
+        """
+        with self._lock:
+            options = self._options
+        if options.dynamicsRegime == "custom":
+            return float(options.ssr)
+        return options.dynamicsRegime
+
+    # ------------------------------------------------------------- spot shift
+    @property
+    def spot_version(self) -> int:
+        """Monotone counter bumped on any spot-shift change; folded into the
+        DERIVED grid caches (localvol extraction / affine surface) so a spot
+        move re-transports them. Deliberately NOT in the slice fit-cache key —
+        the anchor fit is transported on read, never re-fitted."""
+        with self._lock:
+            return self._spot_version
+
+    def spot_shift(self, ticker: str) -> float:
+        """The ticker's active spot shift (proportional return; 0 = anchored)."""
+        with self._lock:
+            return self._spot_shift.get(ticker, 0.0)
+
+    def set_spot_shift(self, ticker: str, shift: float) -> float:
+        """Set the ticker's hypothetical/live spot shift; bump the spot version
+        only on a real change so a redundant set never busts derived caches."""
+        with self._lock:
+            if float(shift) != self._spot_shift.get(ticker, 0.0):
+                self._spot_shift[ticker] = float(shift)
+                self._spot_version += 1
+            return self._spot_shift.get(ticker, 0.0)
+
+    # --------------------------------------------------- data / calibration state
+    def data_version(self, ticker: str) -> int:
+        """The ticker's market-data version (bumps on a fresh options fetch)."""
+        with self._lock:
+            return self._data_version.get(ticker, 0)
+
+    def bump_data_version(self, ticker: str) -> int:
+        """Mark a ticker's option data as freshly fetched (every node goes stale)."""
+        with self._lock:
+            self._data_version[ticker] = self._data_version.get(ticker, 0) + 1
+            return self._data_version[ticker]
+
+    def refresh_chain(self, ticker: str) -> float:
+        """Fetch a fresh options chain for a ticker ("Fetch Options Quotes").
+
+        Drops the cached snapshot + forwards and bumps the data version (so every
+        node goes stale / auto-refits), then re-fetches the chain (network) so the
+        new quotes are warm for the next calibration. The calibrated pointers and
+        spot shift are left untouched — the displayed fit stays frozen until an
+        explicit Calibrate re-anchors it at the new chain's spot. Returns the new
+        spot."""
+        self._require_active(ticker)
+        with self._lock:
+            self._snapshots.pop(ticker, None)
+            self._forwards.pop(ticker, None)
+            self._data_version[ticker] = self._data_version.get(ticker, 0) + 1
+        return float(self.snapshot(ticker).spot)  # warm the new chain (outside lock)
+
+    def get_calibrated_ptr(self, ticker: str, iso: str, mode: str) -> tuple | None:
+        """The (fit-key, cal-spot) a node was last calibrated at, or None."""
+        with self._lock:
+            return self._calibrated.get((ticker, iso, mode))
+
+    def set_calibrated_ptr(self, ticker: str, iso: str, mode: str, key: tuple, spot: float) -> None:
+        """Record that a node is now calibrated at ``key`` (spot ``spot``)."""
+        with self._lock:
+            self._calibrated[(ticker, iso, mode)] = (key, float(spot))
+            self._anchor_spot[ticker] = float(spot)
+
+    def anchor_spot(self, ticker: str) -> float:
+        """Spot the ticker's fits were calibrated at; the live snapshot spot when
+        nothing has been calibrated yet (the spot-move transport anchors here)."""
+        with self._lock:
+            anchor = self._anchor_spot.get(ticker)
+        return anchor if anchor is not None else float(self.snapshot(ticker).spot)
+
+    def get_affine_ptr(self, ticker: str) -> tuple | None:
+        """The affine cache key the ticker's LV surface was last calibrated at."""
+        with self._lock:
+            return self._affine_calibrated.get(ticker)
+
+    def set_affine_ptr(self, ticker: str, key: tuple) -> None:
+        """Record that the ticker's LV surface is now calibrated at ``key``."""
+        with self._lock:
+            self._affine_calibrated[ticker] = key
+
+    def recalibrate(self, ticker: str) -> None:
+        """Re-anchor a ticker: clear its hypothetical spot shift and drop its
+        chain-derived caches so the next fit refetches the live snapshot and
+        recalibrates at the current spot (the explicit "Calibrate" action)."""
+        with self._lock:
+            if self._spot_shift.pop(ticker, 0.0) != 0.0:
+                self._spot_version += 1
+            self._snapshots.pop(ticker, None)
+            self._forwards.pop(ticker, None)
+            self._fits = {k: v for k, v in self._fits.items() if k[0] != ticker}
+            self._calibrated = {k: v for k, v in self._calibrated.items() if k[0] != ticker}
+            self._anchor_spot.pop(ticker, None)
+            self._affine_calibrated.pop(ticker, None)
+            # Sessions (user quote/var-swap edits) are intentionally kept.
+            cache = getattr(self, "_localvol_cache", None)
+            if cache is not None:
+                for key in [k for k in cache if k[0] == ticker]:
+                    cache.pop(key, None)
+            cache = getattr(self, "_affine_cache", None)
+            if cache is not None:
+                for key in [k for k in cache if k[0] == ticker]:
+                    cache.pop(key, None)
+            self._universe = None  # graph universe re-derives from fresh fits
+
+    def live_spot(self, ticker: str) -> float:
+        """Re-probe the active provider's current spot WITHOUT touching the
+        cached snapshot (real-time spot polling). Falls back to the cached
+        snapshot spot when the provider has no cheap spot probe."""
+        self._require_active(ticker)
+        self._ensure_selection(ticker)
+        with self._lock:
+            chosen = list(self._selected.get(ticker, []))
+        try:
+            return float(self.provider.spot(ticker, chosen))
+        except Exception:
+            return float(self.snapshot(ticker).spot)
 
     # ------------------------------------ market settings and forward policy
     @property

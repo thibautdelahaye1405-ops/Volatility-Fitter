@@ -65,29 +65,9 @@ export interface AffineFitResponse {
   arbitrageFree: boolean;
   nEvals: number;
   message: string;
+  /** Inputs drifted since the last LV calibration — frozen until Calibrate. */
+  stale?: boolean;
 }
-
-/** View-local vertex-grid + regularization controls (mirror AffineFitRequest). */
-export interface AffineParams {
-  nXNodes: number;
-  nTNodes: number;
-  regLambda: number;
-  regRho: number;
-  varLo: number;
-  varHi: number;
-}
-
-export const DEFAULT_PARAMS: AffineParams = {
-  nXNodes: 7,
-  nTNodes: 4,
-  regLambda: 1e-2,
-  regRho: 1.0,
-  varLo: 0.0025,
-  varHi: 0.36,
-};
-
-/** Collapse rapid control edits into one refit per pause. */
-const PARAM_DEBOUNCE_MS = 350;
 
 /** Human-readable message from a thrown value (FastAPI `detail` when present). */
 function messageOf(err: unknown): string {
@@ -117,8 +97,6 @@ export interface UseAffineResult {
   ticker: string;
   setTicker: (ticker: string) => void;
   tickers: string[];
-  params: AffineParams;
-  setParams: (patch: Partial<AffineParams>) => void;
   /** Whether var-swap quoting is enabled (OptionsSettings.varSwapEnabled). */
   varSwapEnabled: boolean;
   /** Bumped on every var-swap edit; feed to useAffineView so the derived
@@ -132,7 +110,8 @@ export interface UseAffineResult {
 }
 
 export function useAffine(): UseAffineResult {
-  const { universe, ticker, setTicker, reload: reloadSmile } = useSmileSession();
+  const { universe, ticker, setTicker, reload: reloadSmile, spotVersion } =
+    useSmileSession();
   const [varSwapEnabled, setVarSwapEnabled] = useState(true);
   const [varSwapNonce, setVarSwapNonce] = useState(0);
 
@@ -142,59 +121,25 @@ export function useAffine(): UseAffineResult {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
 
-  const [params, setParamsState] = useState<AffineParams>(DEFAULT_PARAMS);
-  const setParams = useCallback(
-    (patch: Partial<AffineParams>) => setParamsState((p) => ({ ...p, ...patch })),
-    [],
-  );
-
-  // Seed the vertex grid + roughness from the Options defaults once, but only
-  // while the controls are still untouched (equal to DEFAULT_PARAMS), so a user
-  // edit is never clobbered by a late-arriving seed (ROADMAP Phase 10).
+  // The vertex grid + roughness are global hyperparameters (Options); the fit
+  // reads them on the backend. We only track varSwapEnabled for the UI here.
   const seededRef = useRef(false);
   useEffect(() => {
     if (seededRef.current) return;
     const controller = new AbortController();
     api
-      .get<{
-        gridXNodes: number;
-        gridTNodes: number;
-        gridRegLambda: number;
-        gridRegRho: number;
-        varSwapEnabled: boolean;
-      }>("/settings/options", { signal: controller.signal })
+      .get<{ varSwapEnabled: boolean }>("/settings/options", { signal: controller.signal })
       .then((o) => {
         seededRef.current = true;
         setVarSwapEnabled(o.varSwapEnabled);
-        setParamsState((p) =>
-          p.nXNodes === DEFAULT_PARAMS.nXNodes &&
-          p.nTNodes === DEFAULT_PARAMS.nTNodes &&
-          p.regLambda === DEFAULT_PARAMS.regLambda &&
-          p.regRho === DEFAULT_PARAMS.regRho
-            ? {
-                ...p,
-                nXNodes: o.gridXNodes,
-                nTNodes: o.gridTNodes,
-                regLambda: o.gridRegLambda,
-                regRho: o.gridRegRho,
-              }
-            : p,
-        );
       })
       .catch(() => {
-        seededRef.current = true; // offline / mock: keep DEFAULT_PARAMS
+        seededRef.current = true;
       });
     return () => controller.abort();
   }, []);
 
   const hasDataRef = useRef(false);
-
-  // Debounce the params so slider drags collapse into one refit.
-  const [debounced, setDebounced] = useState<AffineParams>(params);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(params), PARAM_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [params]);
 
   useEffect(() => {
     if (ticker === "") return; // session universe still loading
@@ -204,7 +149,7 @@ export function useAffine(): UseAffineResult {
     setError(null);
     api
       .post<AffineFitResponse>(`/fit/affine/${ticker}`, {
-        body: { fitMode: "mid", ...debounced },
+        body: { fitMode: "mid" },
         signal: controller.signal,
       })
       .then((res) => {
@@ -220,7 +165,8 @@ export function useAffine(): UseAffineResult {
         setRefreshing(false);
       });
     return () => controller.abort();
-  }, [ticker, debounced, attempt]);
+    // spotVersion bumps on a spot move / calibration / Options change -> refetch.
+  }, [ticker, attempt, spotVersion]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
@@ -265,8 +211,6 @@ export function useAffine(): UseAffineResult {
     ticker,
     setTicker,
     tickers: universe?.tickers ?? [],
-    params,
-    setParams,
     varSwapEnabled,
     varSwapNonce,
     applyVarSwap,
