@@ -3,10 +3,10 @@
 // session it mirrors) survives switching between workspace tabs.
 import { useState } from "react";
 import TopBar from "./components/TopBar";
-import PlaceholderCard from "./components/PlaceholderCard";
 import SmileViewer from "./views/SmileViewer";
 import LocalVolViewer from "./views/LocalVolViewer";
 import ForwardsViewer from "./views/ForwardsViewer";
+import OptionsViewer from "./views/OptionsViewer";
 import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
 import { SmileSessionProvider } from "./state/smileSession";
@@ -50,14 +50,7 @@ export default function App() {
           {activeTab === "localvol" && <LocalVolViewer />}
           {activeTab === "universe" && <UniverseManager />}
           {activeTab === "forwards" && <ForwardsViewer />}
-          {activeTab === "options" && (
-            <PlaceholderCard title="Options">
-              Global meta-parameters &amp; calibration defaults: grid size,
-              variance-swaps, prior, events, LQD/Sigmoid defaults, penalty
-              strengths, weighting, fit mode, spot-vol dynamics and spot mode.
-              Landing next in Phase 10.
-            </PlaceholderCard>
-          )}
+          {activeTab === "options" && <OptionsViewer />}
           {activeTab === "graph" && (
             // Drill-in: GraphViewer points the shared smile session at a
             // node, then asks the shell to switch to the Parametric workspace.

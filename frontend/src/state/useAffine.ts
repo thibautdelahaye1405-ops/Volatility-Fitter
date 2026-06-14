@@ -127,6 +127,34 @@ export function useAffine(): UseAffineResult {
     [],
   );
 
+  // Seed the vertex grid + roughness from the Options defaults once, but only
+  // while the controls are still untouched (equal to DEFAULT_PARAMS), so a user
+  // edit is never clobbered by a late-arriving seed (ROADMAP Phase 10).
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (seededRef.current) return;
+    const controller = new AbortController();
+    api
+      .get<{ gridXNodes: number; gridTNodes: number; gridRegLambda: number }>(
+        "/settings/options",
+        { signal: controller.signal },
+      )
+      .then((o) => {
+        seededRef.current = true;
+        setParamsState((p) =>
+          p.nXNodes === DEFAULT_PARAMS.nXNodes &&
+          p.nTNodes === DEFAULT_PARAMS.nTNodes &&
+          p.regLambda === DEFAULT_PARAMS.regLambda
+            ? { ...p, nXNodes: o.gridXNodes, nTNodes: o.gridTNodes, regLambda: o.gridRegLambda }
+            : p,
+        );
+      })
+      .catch(() => {
+        seededRef.current = true; // offline / mock: keep DEFAULT_PARAMS
+      });
+    return () => controller.abort();
+  }, []);
+
   const hasDataRef = useRef(false);
 
   // Debounce the params so slider drags collapse into one refit.

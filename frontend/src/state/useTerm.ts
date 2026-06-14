@@ -148,6 +148,23 @@ export function useTerm(): UseTermResult {
   const [eventsEnabled, setEventsEnabled] = useState(true);
   const [axisClock, setAxisClock] = useState<ClockMode>("real");
 
+  // Seed the events-enabled default from the Options settings once (Phase 10).
+  const eventsSeededRef = useRef(false);
+  useEffect(() => {
+    if (eventsSeededRef.current) return;
+    const controller = new AbortController();
+    api
+      .get<{ eventsEnabled: boolean }>("/settings/options", { signal: controller.signal })
+      .then((o) => {
+        eventsSeededRef.current = true;
+        setEventsEnabled(o.eventsEnabled);
+      })
+      .catch(() => {
+        eventsSeededRef.current = true; // offline / mock: keep the default
+      });
+    return () => controller.abort();
+  }, []);
+
   // Whether any payload has been shown yet (read inside the load effect
   // without adding `data` to its dependency array).
   const hasDataRef = useRef(false);

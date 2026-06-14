@@ -1,11 +1,12 @@
-// Diagnostics aside of the Smile workspace, extracted from SmileViewer:
-// headline fit diagnostics plus the SSR spot-scenario, per-expiry forward
-// and global hyperparameter panels. Reads the shared smile session directly;
-// the only prop is whether the Smile chart view is active (the scenario
-// overlay is only drawn there).
+// Diagnostics aside of the Parametric workspace, extracted from SmileViewer:
+// headline fit diagnostics plus the live per-node controls a trader flips
+// often — the smile model and the SSR spot-scenario (ROADMAP Phase 10 slimmed
+// it to these). The forward/dividend editor moved to the Forwards tab and the
+// full hyperparameters to the Options tab. Reads the shared smile session
+// directly; the only prop is whether the Smile chart view is active (the
+// scenario overlay is only drawn there).
 import ScenarioPanel from "./ScenarioPanel";
-import ForwardPanel from "./ForwardPanel";
-import HyperparamPanel from "./HyperparamPanel";
+import ModelPanel from "./ModelPanel";
 import { useSmileSession } from "../state/smileSession";
 import { formatPct } from "../lib/chartScale";
 
@@ -18,8 +19,6 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
   const {
     smile,
     source,
-    ticker,
-    expiry,
     reload,
     scenario,
     setScenario,
@@ -66,6 +65,11 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
         ))}
       </dl>
 
+      {/* Live model selector (full defaults live in the Options tab) */}
+      <div className="mt-4 border-t border-slate-800 pt-4">
+        <ModelPanel disabled={!live} onApplied={reload} />
+      </div>
+
       {/* Spot scenario: drives the SSR overlay on the smile chart */}
       <div className="mt-4 border-t border-slate-800 pt-4">
         <ScenarioPanel
@@ -81,21 +85,6 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
               : "scenario overlay applies to the Smile view"
           }
         />
-      </div>
-
-      {/* Per-expiry forward source: parity / theoretical / manual */}
-      <div className="mt-4 border-t border-slate-800 pt-4">
-        <ForwardPanel
-          disabled={!live}
-          ticker={ticker}
-          expiry={expiry}
-          onApplied={reload}
-        />
-      </div>
-
-      {/* Global fit hyperparameters (model, N, damping) */}
-      <div className="mt-4 border-t border-slate-800 pt-4">
-        <HyperparamPanel disabled={!live} onApplied={reload} />
       </div>
     </aside>
   );
