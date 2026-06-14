@@ -10,7 +10,21 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (333 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (334 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-14] All calibration/optimization coefficients exposed in Options**:
+  every previously-hardcoded calibration constant is now a tunable parameter
+  (each default = the historical constant, so default fits stay byte-identical
+  and all golden tests pass) and surfaced explicitly in the Options tab —
+  **LQD** A_R soft-barrier centre/scale, **SVI** no-arb penalty weight + Lee-slope
+  bound, **Multi-Core SIV** hat-amplitude ridge, the **band** mid-anchor weight
+  (threaded through `band_residuals` into LQD/SVI/sigmoid/affine), the **affine**
+  roughness ρ, and the **graph** prior strength κ + η/λ/ν. Added to FitSettings
+  (per-model, bumps the settings version) and OptionsSettings (graph-prior
+  defaults + gridRegRho). Frontend: a `PenaltyCoefficients` sub-panel (grouped by
+  model, greyed off-family) in HyperparamPanel + a "Graph prior (defaults)"
+  section in OptionsViewer; `useAffine`/`useGraph` seed ρ and κ/η/λ/ν from the
+  Options defaults. 1 new test (coefficients reach the calibrators).
 
 - **[2026-06-14] Phase 10 viewer refinements** (third request batch):
   * **Local Vol IV surface is now 3D** (not a heatmap): the 3D renderer was
