@@ -11,6 +11,8 @@ import { useRef, useState } from "react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
+import StackedDensityChart from "../components/StackedDensityChart";
+import StackedVarianceChart from "../components/StackedVarianceChart";
 import TermPanel from "../components/TermPanel";
 import SurfaceChart from "../components/SurfaceChart";
 import QuoteTable from "../components/QuoteTable";
@@ -23,26 +25,36 @@ import { useMassiveIv } from "../state/useMassiveIv";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 
-/** Chart-card content: smile, fitted distributions, term structure, 3D surface
- *  or table. Term-Structure sits alongside Density (ROADMAP Phase 10). */
-type ChartView = "smile" | "density" | "logqd" | "term" | "surface" | "table";
+/** Chart-card content. "Stacked densities" overlays every expiry's density
+ *  (no butterfly arb ⇔ all ≥ 0); "Stacked IV" overlays total variance w=σ²T
+ *  (no calendar arb ⇔ curves don't cross). ROADMAP Phase 10. */
+type ChartView =
+  | "smile"
+  | "stackeddensity"
+  | "logqd"
+  | "term"
+  | "surface"
+  | "stackedvar"
+  | "table";
 
 const CHART_VIEWS: { id: ChartView; label: string }[] = [
   { id: "smile", label: "Smile" },
-  { id: "density", label: "Density" },
+  { id: "stackeddensity", label: "Stacked densities" },
   { id: "logqd", label: "Log Q-density" },
   { id: "term", label: "Term" },
   { id: "surface", label: "Surface" },
+  { id: "stackedvar", label: "Stacked IV" },
   { id: "table", label: "Table" },
 ];
 
 /** Interaction hint shown under the chart card, per view. */
 const VIEW_HINTS: Record<ChartView, string> = {
   smile: "Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo",
-  density: "Risk-neutral distribution implied by the current fit",
+  stackeddensity: "All expiries' densities overlaid · staying ≥ 0 ⇒ no butterfly arbitrage",
   logqd: "Log quantile density ℓ(u) = log q(u) of the current fit",
   term: "ATM term structure across the expiry ladder · real / event-dilated clock",
   surface: "Drag to rotate · σ(k, T) across the expiry ladder",
+  stackedvar: "Total variance w=σ²·T per expiry · non-crossing ⇒ no calendar arbitrage",
   table: "Per-strike quotes vs the current fit · Copy / CSV in the footer",
 };
 
@@ -130,10 +142,11 @@ export default function SmileViewer() {
     );
   };
 
-  /** Switch the chart-card view; arm the distribution fetcher lazily. */
+  /** Switch the chart-card view; arm the single-node distribution fetcher
+   *  lazily (only the Log-Q-density view uses it now). */
   const switchView = (next: ChartView) => {
     setView(next);
-    if (next === "density" || next === "logqd") loadDistribution();
+    if (next === "logqd") loadDistribution();
   };
 
   /** Persist the current fit as the prior; flash a brief confirmation. */
@@ -190,6 +203,12 @@ export default function SmileViewer() {
             onQuoteSelect={setSelectedIndex}
           />
         );
+      case "stackeddensity":
+        return live
+          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} />
+          : chartMessage("Stacked densities require the live backend.");
+      case "logqd":
+        return distributionBody("logqd");
       case "term":
         return live
           ? <TermPanel />
@@ -198,12 +217,14 @@ export default function SmileViewer() {
         return live
           ? <SurfaceChart ticker={ticker} fitMode={fitMode} />
           : chartMessage("Surface view requires the live backend.");
+      case "stackedvar":
+        return live
+          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} />
+          : chartMessage("Stacked IV requires the live backend.");
       case "table":
         return live
           ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} />
           : chartMessage("Table view requires the live backend.");
-      default:
-        return distributionBody(view);
     }
   };
 

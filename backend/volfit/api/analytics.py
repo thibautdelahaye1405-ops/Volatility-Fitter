@@ -32,6 +32,8 @@ from volfit.api.schemas import (
     DensityResponse,
     DistributionArrays,
     DividendMarker,
+    StackedDensityItem,
+    StackedDensityResponse,
     TermCurve,
     TermPoint,
     TermStructureRequest,
@@ -215,3 +217,27 @@ def density_payload(state: AppState, ticker: str, expiry: str, fit_mode: str) ->
     saved = state.get_prior((ticker, expiry))
     prior = None if saved is None else _distribution(build_slice(saved.params))
     return DensityResponse(current=current, prior=prior)
+
+
+def stacked_densities(state: AppState, ticker: str, fit_mode: str) -> StackedDensityResponse:
+    """Risk-neutral density of every fitted expiry of a ticker, nearest first.
+
+    Each curve follows the chosen display model (LQD exact, else the SVI /
+    Multi-Core-SIV overlay's Breeden-Litzenberger density), the same per-node
+    pipeline as density_payload — so overlaying them shows every density stays
+    non-negative (no butterfly arbitrage on any slice).
+    """
+    forwards = state.forwards(ticker)  # raises UnknownNodeError when unknown
+    items: list[StackedDensityItem] = []
+    for expiry in sorted(forwards):
+        iso = expiry.isoformat()
+        record = fit_or_get(state, ticker, iso, fit_mode)
+        dist = (
+            _distribution_model(displayed_slice(record))
+            if record.display is not None
+            else _distribution(record.result.slice)
+        )
+        items.append(
+            StackedDensityItem(expiry=iso, t=record.prepared.t, x=dist.x, density=dist.density)
+        )
+    return StackedDensityResponse(ticker=ticker, expiries=items)

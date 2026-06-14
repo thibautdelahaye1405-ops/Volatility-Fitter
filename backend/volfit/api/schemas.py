@@ -529,3 +529,22 @@ class DensityResponse(BaseModel):
 
     current: DistributionArrays
     prior: DistributionArrays | None = None
+
+
+class StackedDensityItem(BaseModel):
+    """One expiry's risk-neutral density for the stacked-densities view: the
+    pdf f_X on the log-return grid x (the displayed model's own density)."""
+
+    expiry: str
+    t: float
+    x: list[float]
+    density: list[float]
+
+
+class StackedDensityResponse(BaseModel):
+    """Risk-neutral densities of every fitted expiry of a ticker, nearest first
+    (the Parametric 'Stacked densities' view — all curves overlaid show they
+    stay non-negative, i.e. no butterfly arbitrage)."""
+
+    ticker: str
+    expiries: list[StackedDensityItem]

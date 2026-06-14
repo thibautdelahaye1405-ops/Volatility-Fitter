@@ -22,11 +22,24 @@ from volfit.api.schemas import (
     FitMode,
     PriorSavedResponse,
     SmileData,
+    StackedDensityResponse,
     TableResponse,
 )
 from volfit.api.state import PriorRecord, UnknownNodeError
 
 router = APIRouter()
+
+
+# NOTE: declared before /smiles/{ticker}/{expiry} so "densities" is not captured
+# as an expiry path parameter (FastAPI matches routes in declaration order).
+@router.get("/smiles/{ticker}/densities", response_model=StackedDensityResponse)
+def get_stacked_densities(
+    ticker: str, request: Request, fit_mode: FitMode = "mid"
+) -> StackedDensityResponse:
+    try:
+        return analytics.stacked_densities(request.app.state.volfit, ticker, fit_mode)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.get("/smiles/{ticker}/{expiry}", response_model=SmileData)
