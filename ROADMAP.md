@@ -10,7 +10,112 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (284 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (321 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-14] "Quantile" chart replaced by the log quantile density**: the
+  Smile Viewer's distribution tab now plots the LQD model's own backbone,
+  ℓ(u) = log q(u) = −log f_X(Q(u)) = −log(pdf) vs u (Docs/lqd_model_note.tex eq
+  lqd_main), with the y-axis **capped at ymax = 2.5** (ℓ is a bowl that diverges
+  at the tails; the divergent tails are clipped to the plot box). Computed
+  frontend-side from the existing `density` array (so it follows the chosen
+  model, like density/quantile already do — no backend change). Tab renamed
+  Quantile → "Log Q-density" (`logqd` view), legend/hover/hint updated, SVG
+  clipPath added. Frontend strict-TS build green.
+
+- **[2026-06-13] Weighted RMS fit error in the diagnostics**: every calibrated
+  smile now reports its RMS vol error using the active weighting scheme —
+  `sqrt(sum u_i (sigma_model - sigma_mid)^2 / sum u_i)` over the edited quotes,
+  with u_i the equal/TV-density weights actually used by the fit (pure helper
+  `models.diagnostics.weighted_rms_vol`; `service.weighted_rms_error` gathers the
+  displayed slice + scheme weights). New `SmileDiagnostics.rmsError` (decimal
+  vol) shown as a "RMS error" % row in the Smile aside. 2 new tests.
+
+- **[2026-06-13] Time-value density quote weighting (all models, per maturity)**
+  per `Docs/iv_time_value_density_weights.tex`: new `volfit/calib/weights.py` —
+  `w_i = max(TV_i, eps) * s_i / s_bar` where TV_i is the OTM quote's time value
+  (its normalized forward option price, `otm_time_value`) and s_i is the 1-D
+  Voronoi cell width in log-moneyness, so the *aggregate* weight density follows
+  TV(x) with the strike oversampling divided out (dense regions down-, sparse
+  wings up-weighted; uniform grid → w_i = TV_i exactly). New FitSettings
+  `weightScheme` ("equal" = historical unit weights | "tv_density"; room for a
+  third) drives `resolve_weights(scheme, k, w)` — mean-normalized so the
+  data-vs-regularization balance is identical to equal weighting. Applies to
+  EVERY model and EVERY fit mode: SVI/Sigmoid/LQD multiply the (IV-space)
+  residual by sqrt(w), LV-affine folds sqrt(w) into the vega tolerance, and the
+  band objective scales its violation+anchor by it too. Computed on the *edited*
+  slice quotes (exclusions define the Voronoi cells, amends move TV). Refactor:
+  `fit_weights`/`fit_band` removed; `surface_inputs` returns (iso, prepared) and
+  weights/band are derived per slice at fit time. New "Quote weighting"
+  segmented control in HyperparamPanel. 9 new tests incl. the note's exact
+  5-quote golden example + uniform-grid benchmark + per-model effect.
+
+- **[2026-06-13] Term-structure & local-vol now follow the chosen model too**
+  (correcting an earlier overstatement that they "need" LQD): neither has a
+  structural LQD dependency. **Term-structure** only reports per-expiry ATM vol /
+  ATM total variance / var-swap — all model-agnostic and already computed for
+  overlays — so `analytics.term_structure` now reads them from the *displayed*
+  fit (bitwise-equal to GET /smiles' diagnostics for the same model).
+  **Local-vol** (`GET /localvol`) is a Dupire extraction that only uses the
+  `implied_w(k)` SmileModel interface, so it now extracts from the displayed
+  surface (`displayed_slice`); the SSR scenario uses the displayed skew. Caveat
+  documented: Dupire's denominator is ill-conditioned and assumes an arb-free
+  smooth input — LQD/SVI are arb-free by construction, the signed MC-SIV cores
+  can violate butterfly, in which case the extraction clips and the no-arb
+  diagnostics flag it. Only the **graph universe** genuinely stays LQD (it needs
+  exact ATM-orthogonal coordinates + Newton retargeting). Refactor: the
+  `displayed_*` accessors moved to `api/displayed.py` (service.py back to 379
+  lines); added `displayed_var_swap_w`/`displayed_max_iv_error`. 2 new tests.
+
+- **[2026-06-13] Density / Quantile views now follow the chosen model**: the
+  density chart was hard-wired to the LQD backbone (`record.result.slice`) even
+  when SVI/sigmoid was displayed. Added a model-agnostic Breeden-Litzenberger /
+  Durrleman-Gatheral density `numeric_density(slice_)` in `models/diagnostics.py`
+  (`p(k) = g(k)/sqrt(2πw) e^{-d_-^2/2}` from `implied_w(k)` alone, FD w'/w'',
+  pdf floored at 0 + renormalized for non-arb-free overlays). `density_payload`
+  now uses the displayed slice's own density for a non-LQD overlay (LQD keeps its
+  exact closed form; saved prior stays the LQD snapshot). Validated: integrates
+  to 1, matches the exact LQD pdf to <0.4% over the central mass, and exactly
+  reproduces the flat-smile Gaussian N(-a/2, a). 3 new tests. (Frontend already
+  labels the curve "Current fit" — no UI change.)
+
+- **[2026-06-13] Bid-ask / haircut band fitting objective for ALL models**:
+  the band fit modes no longer fit |mid - model|; they penalize the model
+  *leaving the quoted band* — `max(model-ask,0)^2 + max(bid-model,0)^2` — plus a
+  small `MID_ANCHOR_WEIGHT=0.05` |mid-model| anchor (new `volfit/calib/band.py`:
+  `resolve_band`/`band_residuals`). "haircut" tightens each side toward mid by a
+  tunable `haircut` (default 0.5 vol pts = 0.005, clamped never to cross mid:
+  `modified_bid=min(bid+h,mid)`, `modified_ask=max(mid,ask-h)`), replacing the
+  old HAIRCUT_SHRINK weight factor. The hinge is monotone so each model keeps
+  its native residual space: **SVI/Sigmoid** vol-space hinge, **LQD** vega-
+  normalized price hinge (band vols → call-price edges), **LV-affine** price
+  hinge with the analytic Jacobian preserved (subgradient 0 inside band;
+  `OptionQuote` gained `price_lo`/`price_hi`). Band-only weighting (no inverse-
+  spread on top — the band encodes the spread; `fit_weights` now returns unit).
+  "mid" mode is byte-identical (golden tests untouched). `haircut` added to
+  FitSettings + a "Haircut (vol pts)" control in HyperparamPanel; threaded
+  through fit_or_get / surface / WS / display-overlay / affine fit
+  (`apply_band_edits`/`edited_band`, aligned to quote edits). Fixed a latent
+  calib/__init__ import cycle (lazy `surface` via PEP 562). 13 new tests
+  (band core + per-model in-band/smoothing/outside-pull + LV band modes).
+
+- **[2026-06-13] Multi-Core SIV ("sigmoid") model rewrite** per
+  `Docs/Multi_Core_SIV_Technical_Note.tex`: the legacy 4-param monotone sigmoid
+  is replaced by `v_R(z) = v_SIV(z;theta) + sum_r alpha_r B_{c_r,h_r,kappa_r}(z)`
+  — a one-core SIV base (level/skew/convexity/asymmetric wings, 6 params) plus R
+  signed **zero-wing hat kernels** (eq B-def) that reshape the body for WW /
+  dual-hat smiles WITHOUT moving the Lee wing slopes (eq model-wing-preservation).
+  `models/sigmoid/kernels.py` (Phi primitive, base SIV, hat B + derivatives,
+  Durrleman/Gatheral g diagnostic), `sigmoid.py` (`MultiCoreSiv` SmileModel,
+  `SigmoidSmile` kept as alias), `calibrate.py` (base fit → greedy hat seeding on
+  residuals → bounded trf joint refine + amplitude ridge; cores capped so
+  6+4R ≤ N). **R is a slider** (`nCores` on FitSettings, 0–6, the analogue of the
+  LQD Legendre order) threaded through `build_display_fit`/service → a "SIV cores
+  R" range control in HyperparamPanel (active only for the sigmoid family).
+  Golden tests reproduce the note's Table 1 coefficients, RMSE (8.62e-4), feature
+  table, min v (0.03824) and min g (0.1553) to published precision; the slider
+  monotonically buys fit (WW smile: R=0 base 105 bp → R=3 0.4 bp). 14 sigmoid
+  tests + 2 settings tests; ruff + strict-TS build green.
+
 
 - **[2026-06-13] As-of (timestamp) selector under Data Source**: choose the
   observation time — **Live / Real-time**, **Previous Close**, a provider **EOD

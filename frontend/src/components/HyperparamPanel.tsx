@@ -1,7 +1,8 @@
 // "Hyperparameters" panel for the Smile Viewer diagnostics aside.
 //
 // Edits the backend's global fit settings (GET/PUT /settings/fit): vol-surface
-// model, LQD Legendre order N and the high-order damping lambda * n^{2r}.
+// model, LQD Legendre order N, the high-order damping lambda * n^{2r}, and the
+// Multi-Core SIV hat count R (the "sigmoid" family's slider).
 // Settings are app-global on the server — a changed PUT bumps the fit-cache
 // version so every view refits — and the panel triggers a refetch of the
 // current smile via the session's reload() once the PUT lands.
@@ -12,11 +13,17 @@ import { api } from "../state/api";
 export type FitModel = "lqd" | "svi" | "sigmoid";
 
 /** Mirror of the backend FitSettings schema (volfit/api/schemas.py). */
+/** Per-quote weighting scheme (a third may be added later). */
+export type WeightScheme = "equal" | "tv_density";
+
 export interface FitSettings {
   model: FitModel;
   nOrder: number;
   regLambda: number;
   regPower: number;
+  nCores: number;
+  haircut: number;
+  weightScheme: WeightScheme;
 }
 
 const DEFAULTS: FitSettings = {
@@ -24,6 +31,9 @@ const DEFAULTS: FitSettings = {
   nOrder: 6,
   regLambda: 1e-6,
   regPower: 1.0,
+  nCores: 2,
+  haircut: 0.005,
+  weightScheme: "equal",
 };
 
 /** Model choices. LQD is the arbitrage-free default and the analytic backbone
@@ -40,6 +50,18 @@ const MODELS: { id: string; label: string; title: string; enabled: boolean }[] =
 /** Damping presets: log-spaced lambda values, Off = exact interpolation. */
 const LAMBDAS = [0, 1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3];
 const POWERS = [0.5, 1.0, 1.5, 2.0];
+/** Haircut presets in absolute vol; labelled in vol points (0.5 = 0.005). */
+const HAIRCUTS = [0, 0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02];
+
+/** Per-quote weighting schemes (room for a third later). */
+const WEIGHT_SCHEMES: { id: WeightScheme; label: string; title: string }[] = [
+  { id: "equal", label: "Equal", title: "Unit weights — every quote's IV residual counts the same" },
+  {
+    id: "tv_density",
+    label: "TV density",
+    title: "Time-value density weights: economic time-value shape with strike oversampling divided out",
+  },
+];
 
 function lambdaLabel(value: number): string {
   return value === 0 ? "Off" : `1e${Math.round(Math.log10(value))}`;
@@ -79,11 +101,16 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
     draft.model !== saved.model ||
     draft.nOrder !== saved.nOrder ||
     draft.regLambda !== saved.regLambda ||
-    draft.regPower !== saved.regPower;
+    draft.regPower !== saved.regPower ||
+    draft.nCores !== saved.nCores ||
+    draft.haircut !== saved.haircut ||
+    draft.weightScheme !== saved.weightScheme;
 
   // The Legendre order and high-order damping are LQD-only knobs; the SVI and
   // sigmoid overlays ignore them, so the controls are disabled off-LQD.
   const lqdOnly = disabled || draft.model !== "lqd";
+  // The Multi-Core SIV hat count only drives the "sigmoid" family.
+  const sigmoidOnly = disabled || draft.model !== "sigmoid";
 
   const apply = () => {
     if (!dirty || busy) return;
@@ -191,6 +218,72 @@ export default function HyperparamPanel({ disabled, onApplied }: HyperparamPanel
               ))}
             </select>
           </span>
+        </div>
+      </div>
+
+      {/* Multi-Core SIV hat count R: active only for the sigmoid family. */}
+      <div className={sigmoidOnly && !disabled ? "opacity-40" : ""}>
+        <div className="mb-1 flex items-center justify-between">
+          <span className={rowLabel} title="Zero-wing hat kernels added to the SIV base (eq param-count)">
+            SIV cores R
+          </span>
+          <span className="font-mono text-xs font-medium text-slate-100">{draft.nCores}</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={6}
+          step={1}
+          value={draft.nCores}
+          disabled={sigmoidOnly}
+          onChange={(e) => setDraft({ ...draft, nCores: Number(e.target.value) })}
+          className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
+          style={{ accentColor: "var(--color-accent-500)" }}
+        />
+      </div>
+
+      {/* Haircut: band shrink (in vol points) used by the haircut fit mode. */}
+      <div className="mb-3 flex items-center justify-between">
+        <span
+          className={rowLabel}
+          title="Haircut fit mode: shrink each band side toward mid by this many vol points"
+        >
+          Haircut (vol pts)
+        </span>
+        <select
+          value={draft.haircut}
+          disabled={disabled}
+          onChange={(e) => setDraft({ ...draft, haircut: Number(e.target.value) })}
+          className={selectClass}
+        >
+          {HAIRCUTS.map((v) => (
+            <option key={v} value={v}>
+              {(v * 100).toFixed(2).replace(/0$/, "")}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Quote weighting scheme (applies to every model and fit mode). */}
+      <div className="mb-3">
+        <span className={`${rowLabel} mb-1 block`}>Quote weighting</span>
+        <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
+          {WEIGHT_SCHEMES.map((s) => (
+            <button
+              key={s.id}
+              title={s.title}
+              disabled={disabled}
+              onClick={() => setDraft({ ...draft, weightScheme: s.id })}
+              className={[
+                "flex-1 px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
+                s.id === draft.weightScheme
+                  ? "bg-accent-600/25 text-accent-400"
+                  : "text-slate-400 enabled:hover:text-slate-200",
+              ].join(" ")}
+            >
+              {s.label}
+            </button>
+          ))}
         </div>
       </div>
 

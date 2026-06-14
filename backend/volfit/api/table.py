@@ -25,8 +25,9 @@ import math
 
 import numpy as np
 
+from volfit.api.displayed import displayed_slice
 from volfit.api.schemas import TableResponse, TableRow
-from volfit.api.service import displayed_slice, fit_or_get
+from volfit.api.service import fit_or_get
 from volfit.api.state import AppState
 from volfit.core.black import black_call
 

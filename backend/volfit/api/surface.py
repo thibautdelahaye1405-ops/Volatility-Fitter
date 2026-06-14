@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import numpy as np
 
+from volfit.api.displayed import displayed_atm_vol, displayed_slice
 from volfit.api.schemas import SurfaceResponse
-from volfit.api.service import K_PAD, displayed_atm_vol, displayed_slice, fit_or_get
+from volfit.api.service import K_PAD, fit_or_get
 from volfit.api.state import AppState
 
 #: Shared k-grid density: 61 points is plenty for a smooth 3D mesh while

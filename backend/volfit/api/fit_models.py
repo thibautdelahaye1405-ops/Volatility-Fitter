@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from volfit.calib.band import BandTarget
 from volfit.models.base import SmileModel
 from volfit.models.diagnostics import (
     SliceHandles,
@@ -70,16 +71,23 @@ def build_display_fit(
     w: np.ndarray,
     t: float,
     weights: np.ndarray | None,
+    n_cores: int = 0,
+    band: BandTarget | None = None,
 ) -> DisplayFit | None:
-    """Fit the chosen overlay family; None for "lqd" (the dedicated path)."""
+    """Fit the chosen overlay family; None for "lqd" (the dedicated path).
+
+    ``n_cores`` is the Multi-Core SIV hat count R (sigmoid only; ignored by SVI).
+    ``band`` switches both overlay families to the bid-ask / haircut band
+    objective (volfit.calib.band); None keeps the mid fit.
+    """
     if model not in OVERLAY_MODELS:
         return None
     if model == "svi":
-        cal = calibrate_svi(k, w, t, weights=weights)
+        cal = calibrate_svi(k, w, t, weights=weights, band=band)
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
-    else:  # sigmoid
-        slice_ = calibrate_sigmoid(k, w, t, weights=weights)
+    else:  # sigmoid (Multi-Core SIV)
+        slice_ = calibrate_sigmoid(k, w, t, weights=weights, n_cores=n_cores, band=band)
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)
     return DisplayFit(

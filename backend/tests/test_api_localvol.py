@@ -98,5 +98,21 @@ def test_sticky_grid_scenario_realized_ssr(client, universe):
         assert 1.0 < scenario["ssr"] < 3.5, (expiry, scenario["ssr"])
 
 
+def test_extraction_follows_chosen_model(client):
+    """The Dupire grid is extracted from the displayed surface, so switching to
+    SVI re-extracts a different (still arbitrage-free) grid."""
+    lqd = client.get("/localvol/ALPHA").json()
+    try:
+        assert client.put("/settings/fit", json={"model": "svi"}).status_code == 200
+        svi = client.get("/localvol/ALPHA").json()
+        a = np.array(lqd["sigma"])
+        b = np.array(svi["sigma"])
+        assert a.shape == b.shape
+        assert np.max(np.abs(a - b)) > 1e-4  # extracted from a different surface
+        assert svi["arbitrageFree"] is True  # SVI is arbitrage-free too
+    finally:
+        client.put("/settings/fit", json={"model": "lqd"})
+
+
 def test_unknown_ticker_404(client):
     assert client.get("/localvol/NOPE").status_code == 404

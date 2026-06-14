@@ -18,6 +18,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
+from volfit.calib.band import BandTarget, band_residuals
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
@@ -58,14 +59,28 @@ def _residuals(
     cal_idx: np.ndarray | None,
     cal_floor: np.ndarray | None,
     cal_weight: float,
+    price_lo: np.ndarray | None,
+    price_hi: np.ndarray | None,
 ) -> np.ndarray:
-    """Stacked fit + regularization + calendar + barrier residuals."""
+    """Stacked fit + regularization + calendar + barrier residuals.
+
+    The data block is the mid price residual (``price_lo``/``price_hi`` None) or
+    the bid-ask / haircut band objective (volfit.calib.band) in vega-normalized
+    price space — the band edges are the call prices at the band vols, so the
+    monotone vega scaling keeps it ~ a vol-space band fit.
+    """
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
     n_cal = 0 if cal_idx is None else cal_idx.size
+    band_mode = price_lo is not None
+    n_fit = (2 * k.size) if band_mode else k.size
     try:
         slice_ = build_slice(params)
-        fit = sqrt_weights * (slice_.call_price(k) - target_price) * inv_vega
+        model_price = slice_.call_price(k)
+        if band_mode:
+            fit = band_residuals(model_price, price_lo, price_hi, target_price, sqrt_weights * inv_vega)
+        else:
+            fit = sqrt_weights * (model_price - target_price) * inv_vega
         # Soft calendar slack (note eq. slack_calendar): penalize the later
         # expiry's integrated upper-quantile curve dropping below the floor.
         if n_cal:
@@ -74,7 +89,7 @@ def _residuals(
             cal = np.empty(0)
     except ValueError:
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
-        fit = np.full(k.size, 10.0 + a_right)
+        fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
     barrier = np.log1p(np.exp(_BARRIER_SCALE * (a_right - _BARRIER_CENTER)))
     return np.concatenate((fit, reg * theta[2:], cal, [barrier]))
@@ -92,6 +107,7 @@ def calibrate_slice(
     calendar_indices: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    band: BandTarget | None = None,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
@@ -101,6 +117,10 @@ def calibrate_slice(
     ``calendar_indices``/``calendar_floor`` (from volfit.calib.calendar) make
     this slice respect G(alpha) >= floor against the previous expiry; the
     quadratic slack weight ``calendar_weight`` follows eq. (slack_calendar).
+
+    ``band`` switches the data term to the bid-ask / haircut band objective
+    (volfit.calib.band); the band's vol edges become call-price edges so the
+    vega-normalized residual stays comparable to the mid fit. None keeps the mid.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -111,6 +131,12 @@ def calibrate_slice(
     sigma = np.sqrt(w_quotes / t)
     inv_vega = 1.0 / (black_vega_sigma(k, sigma, t) + _VEGA_FLOOR)
     sqrt_weights = np.sqrt(weights)
+
+    # Band fit: precompute the call-price band edges from the vol band edges.
+    price_lo = price_hi = None
+    if band is not None:
+        price_lo = black_call(k, band.iv_lo**2 * t)
+        price_hi = black_call(k, band.iv_hi**2 * t)
 
     # Regularization vector aligned with theta[2:] = (a_2, ..., a_N).
     n_idx = np.arange(2, n_order + 1, dtype=float)
@@ -132,6 +158,8 @@ def calibrate_slice(
             calendar_indices,
             calendar_floor,
             calendar_weight,
+            price_lo,
+            price_hi,
         ),
         method="trf",
         xtol=1e-15,

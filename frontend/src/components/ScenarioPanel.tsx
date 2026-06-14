@@ -16,7 +16,7 @@ interface ScenarioPanelProps {
   ssr: number | null;
   /** Current model curve, for the client-side ATM-shift readout. */
   model: SmilePoint[] | null;
-  /** Greyed out in mock mode and on the Density / Quantile views. */
+  /** Greyed out in mock mode and on the Density / Log-Q-density views. */
   disabled: boolean;
   /** Tooltip explaining why the panel is greyed out. */
   disabledReason?: string;

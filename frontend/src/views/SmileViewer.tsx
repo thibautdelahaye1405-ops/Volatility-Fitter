@@ -4,7 +4,7 @@
 // expiry-class filtering; the aside (SmileAside) hosts diagnostics plus the
 // scenario / forward / hyperparameter panels. The chart card offers five
 // views — the editable Smile (with six strike-axis display modes), fitted
-// Density / Quantile, the 3D vol Surface and the quote Table (the last four
+// Density / Log-Q-density, the 3D vol Surface and the quote Table (the last four
 // require the live backend). Quote edits post to the backend fit session and
 // the returned refit replaces the smile; shortcuts live in useSmileShortcuts.
 import { useRef, useState } from "react";
@@ -23,12 +23,12 @@ import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 
 /** Chart-card content: smile, fitted distributions, 3D surface or table. */
-type ChartView = "smile" | "density" | "quantile" | "surface" | "table";
+type ChartView = "smile" | "density" | "logqd" | "surface" | "table";
 
 const CHART_VIEWS: { id: ChartView; label: string }[] = [
   { id: "smile", label: "Smile" },
   { id: "density", label: "Density" },
-  { id: "quantile", label: "Quantile" },
+  { id: "logqd", label: "Log Q-density" },
   { id: "surface", label: "Surface" },
   { id: "table", label: "Table" },
 ];
@@ -37,7 +37,7 @@ const CHART_VIEWS: { id: ChartView; label: string }[] = [
 const VIEW_HINTS: Record<ChartView, string> = {
   smile: "Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo",
   density: "Risk-neutral distribution implied by the current fit",
-  quantile: "Risk-neutral distribution implied by the current fit",
+  logqd: "Log quantile density ℓ(u) = log q(u) of the current fit",
   surface: "Drag to rotate · σ(k, T) across the expiry ladder",
   table: "Per-strike quotes vs the current fit · Copy / CSV in the footer",
 };
@@ -129,7 +129,7 @@ export default function SmileViewer() {
   /** Switch the chart-card view; arm the distribution fetcher lazily. */
   const switchView = (next: ChartView) => {
     setView(next);
-    if (next === "density" || next === "quantile") loadDistribution();
+    if (next === "density" || next === "logqd") loadDistribution();
   };
 
   /** Persist the current fit as the prior; flash a brief confirmation. */
@@ -145,10 +145,10 @@ export default function SmileViewer() {
       });
   };
 
-  /** Chart-card body for the Density / Quantile views (live backend only).
+  /** Chart-card body for the Density / Log-Q-density views (live backend only).
    *  A stale distribution keeps showing (dimmed via `refreshing`) while a
    *  replacement is in flight, mirroring how the smile itself behaves. */
-  const distributionBody = (kind: "density" | "quantile") => {
+  const distributionBody = (kind: "density" | "logqd") => {
     if (!live) return chartMessage("Distribution views require the live backend.");
     if (distribution !== null) {
       return (

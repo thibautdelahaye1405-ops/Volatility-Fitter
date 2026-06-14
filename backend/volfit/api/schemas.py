@@ -47,14 +47,26 @@ class FitSettings(BaseModel):
     arbitrage-free quantile-density default, also the analytic backbone), or
     the "svi" / "sigmoid" overlays (volfit.api.fit_models) calibrated to the
     same quotes. ``nOrder``/``regLambda``/``regPower`` only affect LQD; the
-    overlay families ignore them. LQD is always fitted under the hood, so the
-    density, term-structure, local-vol and graph views stay LQD-based.
+    overlay families ignore them. ``nCores`` is the number R of zero-wing hat
+    kernels of the Multi-Core SIV ("sigmoid") slice (the slider analogue of the
+    LQD Legendre order, eq param-count of the MC-SIV note); it only affects the
+    sigmoid family. LQD is always fitted under the hood, so the density,
+    term-structure, local-vol and graph views stay LQD-based. ``haircut`` is the
+    band tightening of the "haircut" fit mode in absolute vol (0.005 = 0.5 vol
+    points); it only affects fit_mode="haircut" (volfit.calib.band).
+    ``weightScheme`` chooses the per-quote calibration weights (volfit.calib.
+    weights): "equal" (unit weights, the historical scheme) or "tv_density"
+    (time-value density weights — economic time-value shape with the strike
+    oversampling divided out); it applies in every fit mode and to every model.
     """
 
     model: Literal["lqd", "svi", "sigmoid"] = "lqd"
     nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
     regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
     regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}
+    nCores: int = Field(2, ge=0, le=6)  # Multi-Core SIV hat count R (sigmoid only)
+    haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
+    weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights
 
 
 # ------------------------------------------------------------- smile payload
@@ -94,6 +106,7 @@ class SmileDiagnostics(BaseModel):
     leeLeft: float  # Lee wing slopes beta_L, beta_R (eqs. betaL, betaR)
     leeRight: float
     varSwapVol: float
+    rmsError: float  # weighted RMS vol error of the fit (decimal vol; UI shows %)
 
 
 class SmileData(BaseModel):

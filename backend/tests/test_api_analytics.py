@@ -133,6 +133,51 @@ def test_density_prior_save_then_diverge(client, universe):
     assert float(diff.max()) > 1e-3
 
 
+def test_term_structure_follows_chosen_model(client, universe):
+    """ATM vol / var-swap per expiry reflect the chosen display model, and stay
+    bitwise-equal to GET /smiles' diagnostics for that model."""
+    lqd = client.post("/term/ALPHA", json={"fitMode": "mid"}).json()
+    try:
+        assert client.put("/settings/fit", json={"model": "sigmoid"}).status_code == 200
+        term = client.post("/term/ALPHA", json={"fitMode": "mid"}).json()
+        # The term points changed (sigmoid ATM handles != LQD exact handles).
+        lqd_atm = [p["atmVol"] for p in lqd["points"]]
+        sig_atm = [p["atmVol"] for p in term["points"]]
+        assert any(abs(a - b) > 1e-6 for a, b in zip(lqd_atm, sig_atm))
+        # Each term point equals the smile payload's diagnostics for that model.
+        for p in term["points"]:
+            smile = client.get(f"/smiles/ALPHA/{p['expiry']}").json()
+            assert p["atmVol"] == pytest.approx(smile["diagnostics"]["atmVol"])
+            assert p["varSwapVol"] == pytest.approx(smile["diagnostics"]["varSwapVol"])
+    finally:
+        client.put("/settings/fit", json={"model": "lqd"})
+
+
+def test_density_follows_chosen_model(client, universe):
+    """The current density/quantile reflects the chosen display model, not the
+    LQD backbone (Breeden-Litzenberger density of the overlay's own w(k))."""
+    expiry = expiry_of(universe, "BETA", 2)
+    lqd = client.get(f"/smiles/BETA/{expiry}/density").json()["current"]
+    try:
+        for model in ("svi", "sigmoid"):
+            assert client.put("/settings/fit", json={"model": model}).status_code == 200
+            cur = client.get(f"/smiles/BETA/{expiry}/density").json()["current"]
+            x, d = np.array(cur["x"]), np.array(cur["density"])
+            u, q = np.array(cur["u"]), np.array(cur["quantile"])
+            # A valid distribution: aligned arrays, non-negative, integrates ~1,
+            # strictly increasing quantile (log-return), CDF strictly in (0, 1).
+            assert len(x) == len(d) == len(u) == len(q) <= 241
+            assert np.all(d >= 0)
+            assert abs(float(np.trapezoid(d, x)) - 1.0) < 0.05
+            assert np.all(np.diff(q) > 0)
+            assert np.all((u > 0) & (u < 1)) and np.all(np.diff(u) > 0)
+            # It is the overlay's density, not the LQD one: the curve differs.
+            d_on_lqd = np.interp(np.array(lqd["x"]), x, d)
+            assert float(np.max(np.abs(d_on_lqd - np.array(lqd["density"])))) > 1e-3
+    finally:
+        client.put("/settings/fit", json={"model": "lqd"})
+
+
 # -- prior record refactor guard ------------------------------------------------
 
 

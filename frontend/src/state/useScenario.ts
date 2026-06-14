@@ -5,8 +5,8 @@
 //    under a hypothetical spot return and a vol-spot dynamics regime
 //    (sticky moneyness / strike / local-vol), drawn as a chart overlay.
 //  - useDistribution — lazy GET /smiles/{ticker}/{expiry}/density: the
-//    risk-neutral pdf over log-returns and its quantile function, backing
-//    the Density / Quantile chart views.
+//    risk-neutral pdf over log-returns and its (log) quantile density, backing
+//    the Density / Log-Q-density chart views.
 // Both require the live backend: in mock mode they resolve to null.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
@@ -111,7 +111,7 @@ export function useScenarioCurve(
 }
 
 /* ------------------------------------------------------------------ */
-/* Risk-neutral distribution (Density / Quantile views)                */
+/* Risk-neutral distribution (Density / Log-Q-density views)            */
 /* ------------------------------------------------------------------ */
 
 /** One distribution payload: pdf on a log-return grid + quantile function. */

@@ -91,6 +91,21 @@ def test_affine_fit_honours_request_params(client):
     assert len(fine["xNodes"]) > len(coarse["xNodes"])
 
 
+@pytest.mark.parametrize("mode", ["bidask", "haircut"])
+def test_affine_fit_band_modes(client, mode):
+    """The band fit modes run end-to-end and stay arbitrage-free; the band
+    objective changes the surface vs the mid fit."""
+    ticker = _ticker(client)
+    mid = client.post(f"/fit/affine/{ticker}", json={"fitMode": "mid"}).json()
+    band = client.post(f"/fit/affine/{ticker}", json={"fitMode": mode}).json()
+    assert band["arbitrageFree"] is True and band["calendarViolations"] == 0
+    assert len(band["smiles"]) == len(mid["smiles"])
+    # The band objective gives a different (cleaner) surface than the mid LSQ.
+    flat_mid = [v for row in mid["localVol"] for v in row]
+    flat_band = [v for row in band["localVol"] for v in row]
+    assert any(abs(a - b) > 1e-6 for a, b in zip(flat_mid, flat_band))
+
+
 def test_affine_fit_unknown_ticker(client):
     assert client.post("/fit/affine/NOPE", json={}).status_code == 404
 

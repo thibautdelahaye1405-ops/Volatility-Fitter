@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.optimize import least_squares
 
+from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
 from volfit.models.localvol.affine import (
     AffinePDESolution,
     AffineVarianceSurface,
@@ -37,12 +38,20 @@ from volfit.models.localvol.affine import (
 
 @dataclass(frozen=True)
 class OptionQuote:
-    """One normalized forward call quote (T, x = K/F, price y, tolerance eta)."""
+    """One normalized forward call quote (T, x = K/F, price y, tolerance eta).
+
+    ``price_lo``/``price_hi`` are the call prices at the bid/ask (haircut-
+    adjusted) band vols; when both are set the calibration uses the bid-ask /
+    haircut band objective (volfit.calib.band) for this quote instead of the
+    plain mid residual (``price`` is then the soft anchor).
+    """
 
     t: float
     x: float
     price: float
     tol: float = 2e-4
+    price_lo: float | None = None
+    price_hi: float | None = None
 
 
 @dataclass(frozen=True)
@@ -203,8 +212,28 @@ def calibrate_affine(
     zeta = np.array([v.tol for v in varswaps])
     z_mkt = np.array([v.total_var for v in varswaps])
     y_mkt = np.array([o.price for o in options])
+    # Band fit: present iff the quotes carry call-price band edges.
+    band_mode = bool(options) and options[0].price_lo is not None
+    p_lo = np.array([o.price_lo for o in options]) if band_mode else None
+    p_hi = np.array([o.price_hi for o in options]) if band_mode else None
+    sqrt_anchor = np.sqrt(MID_ANCHOR_WEIGHT)
     n_evals = 0
     cache: dict[bytes, tuple] = {}
+
+    def _option_block(p: np.ndarray, jp: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Option residuals + Jacobian: mid LSQ, or the band objective.
+
+        The band block stacks the vega-normalized band violation and the soft
+        mid anchor (volfit.calib.band); its subgradient is 0 inside the band.
+        """
+        if not band_mode:
+            return (p - y_mkt) / eta, jp / eta[:, None]
+        viol = band_violation(p, p_lo, p_hi) / eta
+        anchor = sqrt_anchor * (p - y_mkt) / eta
+        sign = band_violation_sign(p, p_lo, p_hi)
+        j_viol = (sign / eta)[:, None] * jp
+        j_anchor = sqrt_anchor * jp / eta[:, None]
+        return np.concatenate([viol, anchor]), np.vstack([j_viol, j_anchor])
 
     def evaluate(theta: np.ndarray) -> tuple:
         nonlocal n_evals
@@ -216,10 +245,11 @@ def calibrate_affine(
         surf = surface0.with_theta(theta)
         sol = solve_affine_dupire(surf, x_grid, t_grid, expiries, sensitivities=True)
         p, z, jp, jz = _model_values(sol, options, varswaps, q_w, q_c, True)
+        res_opt, jac_opt = _option_block(p, jp)
         res = np.concatenate(
-            [(p - y_mkt) / eta, (z - z_mkt) / zeta, sqrt_lam * (l_rows @ (theta - ref))]
+            [res_opt, (z - z_mkt) / zeta, sqrt_lam * (l_rows @ (theta - ref))]
         )
-        jac = np.vstack([jp / eta[:, None], jz / zeta[:, None], sqrt_lam * l_rows])
+        jac = np.vstack([jac_opt, jz / zeta[:, None], sqrt_lam * l_rows])
         cache.clear()  # keep only the latest theta (fun + jac pairing)
         out = (res, jac, sol, p, z)
         cache[key] = out

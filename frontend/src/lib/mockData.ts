@@ -38,6 +38,8 @@ export interface SmileDiagnostics {
   leeLeft: number;
   leeRight: number;
   varSwapVol: number;
+  /** Weighted RMS vol error of the fit (decimal vol; rendered as a percentage). */
+  rmsError: number;
 }
 
 /** Everything the Smile Viewer needs for one (underlying, expiry) node. */
@@ -185,6 +187,7 @@ export function getMockSmile(): SmileData {
       leeLeft: 0.097,
       leeRight: 0.036,
       varSwapVol: 0.212,
+      rmsError: 0.0021,
     },
   };
 }

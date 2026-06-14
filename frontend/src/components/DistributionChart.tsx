@@ -1,15 +1,24 @@
 // Fitted risk-neutral distribution chart for the Smile Viewer: either the
-// density pdf(x) over log-returns x = ln(S_T / F), or the quantile function
-// Q(u) over probabilities u in [0, 1]. Hand-rolled SVG following the
-// SmileChart conventions (grid, crosshair, hover badge) minus the brush —
-// the backend's full grid is always shown.
+// density pdf(x) over log-returns x = ln(S_T / F), or the log quantile density
+// l(u) = log q(u) = -log f_X(Q(u)) over probabilities u in [0, 1] — the LQD
+// model's own backbone (Docs/lqd_model_note.tex). The log quantile density is a
+// bowl that diverges at the tails, so its y-axis is capped at LOGQD_YMAX.
+// Hand-rolled SVG following the SmileChart conventions (grid, crosshair, hover
+// badge) minus the brush — the backend's full grid is always shown.
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DistributionCurve } from "../state/useScenario";
 import { clamp, formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
 
+/** Default y-axis cap for the log quantile density (its tails diverge to +inf). */
+const LOGQD_YMAX = 2.5;
+/** Density floor so log q(u) = -log(pdf) stays finite in the far tails. */
+const PDF_FLOOR = 1e-9;
+
+type DistKind = "density" | "logqd";
+
 interface DistributionChartProps {
-  kind: "density" | "quantile";
+  kind: DistKind;
   current: DistributionCurve;
   /** Saved prior's distribution, drawn dashed for comparison (optional). */
   prior: DistributionCurve | null;
@@ -40,11 +49,12 @@ function useElementSize() {
   return { ref, size };
 }
 
-/** Pull the (xs, ys) series matching the requested view from a payload. */
-function seriesOf(curve: DistributionCurve, kind: "density" | "quantile"): Series {
+/** Pull the (xs, ys) series matching the requested view from a payload.
+ *  Log quantile density l(u) = log q(u) = -log f_X(Q(u)) = -log(pdf). */
+function seriesOf(curve: DistributionCurve, kind: DistKind): Series {
   return kind === "density"
     ? { xs: curve.x, ys: curve.density }
-    : { xs: curve.u, ys: curve.quantile };
+    : { xs: curve.u, ys: curve.density.map((d) => -Math.log(Math.max(d, PDF_FLOOR))) };
 }
 
 /** Linear interpolation of ys over an ascending xs grid at position x. */
@@ -81,8 +91,9 @@ export default function DistributionChart({
     [prior, kind],
   );
 
-  // Domains: density spans the union of the x grids with the pdf anchored
-  // at zero; quantile spans u in [0, 1] with a padded Q extent.
+  // Domains: density spans the union of the x grids with the pdf anchored at
+  // zero; the log quantile density spans u in [0, 1], anchored at its bowl
+  // bottom and CAPPED at LOGQD_YMAX (its tails diverge to +inf).
   const { xScale, yScale } = useMemo(() => {
     let xMin = Infinity, xMax = -Infinity;
     let yMin = Infinity, yMax = -Infinity;
@@ -91,12 +102,21 @@ export default function DistributionChart({
       for (const v of s.ys) { yMin = Math.min(yMin, v); yMax = Math.max(yMax, v); }
     }
     if (!Number.isFinite(xMin)) { xMin = 0; xMax = 1; yMin = 0; yMax = 1; }
-    if (kind === "quantile") { xMin = 0; xMax = 1; }
-    const pad = Math.max(1e-9, (yMax - yMin) * 0.08);
-    const yLo = kind === "density" ? 0 : yMin - pad; // pdf is anchored at 0
+    let yLo: number, yHi: number;
+    if (kind === "density") {
+      const pad = Math.max(1e-9, (yMax - yMin) * 0.08);
+      yLo = 0; // pdf anchored at zero
+      yHi = yMax + pad;
+    } else {
+      xMin = 0; xMax = 1;
+      const lo = Number.isFinite(yMin) ? yMin : 0;
+      yLo = lo - Math.max(0.03, 0.05 * (LOGQD_YMAX - lo));
+      yHi = LOGQD_YMAX;
+      if (yHi <= yLo) yHi = yLo + 1; // degenerate guard
+    }
     return {
       xScale: linearScale([xMin, xMax], [0, plotW]),
-      yScale: linearScale([yLo, yMax + pad], [plotH, 0]),
+      yScale: linearScale([yLo, yHi], [plotH, 0]),
     };
   }, [cur, pri, kind, plotW, plotH]);
 
@@ -143,7 +163,7 @@ export default function DistributionChart({
     hoverXv !== null && hoverYv !== null
       ? kind === "density"
         ? `x ${hoverXv.toFixed(3)} · pdf ${formatAxisNumber(hoverYv)}`
-        : `u ${hoverXv.toFixed(2)} · Q ${hoverYv.toFixed(3)}`
+        : `u ${hoverXv.toFixed(2)} · ℓ ${hoverYv.toFixed(3)}`
       : null;
 
   /* ---------------- render ---------------- */
@@ -161,7 +181,7 @@ export default function DistributionChart({
           </span>
         )}
         <span className="ml-auto font-mono text-slate-500">
-          {kind === "density" ? "pdf of x = ln(S_T / F)" : "Q(u): quantile of x"}
+          {kind === "density" ? "pdf of x = ln(S_T / F)" : "ℓ(u) = log quantile density"}
         </span>
       </div>
 
@@ -177,6 +197,13 @@ export default function DistributionChart({
             onMouseLeave={() => setHoverXv(null)}
           >
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+              {/* Clip data paths to the plot box (the log quantile density's
+                  tails diverge past the capped y-axis). */}
+              <defs>
+                <clipPath id="dist-clip">
+                  <rect x={0} y={0} width={plotW} height={plotH} />
+                </clipPath>
+              </defs>
               {/* Gridlines */}
               {yTicks.map((t) => (
                 <line key={`gy${t}`} x1={0} x2={plotW} y1={yScale.map(t)} y2={yScale.map(t)}
@@ -213,18 +240,19 @@ export default function DistributionChart({
 
               {/* Density only: soft fill under the current pdf */}
               {curArea !== "" && (
-                <path d={curArea} fill="var(--color-accent-400)" opacity={0.07} />
+                <path d={curArea} fill="var(--color-accent-400)" opacity={0.07}
+                  clipPath="url(#dist-clip)" />
               )}
 
               {/* Prior: dashed slate */}
               {priPath !== "" && (
                 <path d={priPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
-                  strokeWidth={1.5} strokeDasharray="5 4" />
+                  strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#dist-clip)" />
               )}
 
               {/* Current fit: accent */}
               <path d={curPath} fill="none" stroke="var(--color-accent-400)"
-                strokeWidth={2} strokeLinejoin="round" />
+                strokeWidth={2} strokeLinejoin="round" clipPath="url(#dist-clip)" />
 
               {/* Crosshair: vertical guide + marker on the current curve */}
               {hoverXv !== null && hoverYv !== null && (
@@ -232,7 +260,8 @@ export default function DistributionChart({
                   <line x1={hoverPx} x2={hoverPx} y1={0} y2={plotH}
                     stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
                   <circle cx={hoverPx} cy={yScale.map(hoverYv)} r={3.5}
-                    fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5} />
+                    fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5}
+                    clipPath="url(#dist-clip)" />
                 </g>
               )}
             </g>

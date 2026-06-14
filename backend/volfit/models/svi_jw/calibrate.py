@@ -32,6 +32,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
+from volfit.calib.band import BandTarget, band_residuals
 from volfit.core.black import black_vega_sigma
 from volfit.models.svi_jw.svi import RawSVI
 
@@ -111,6 +112,7 @@ def calibrate_svi(
     w_quotes: np.ndarray,
     t: float,
     weights: np.ndarray | None = None,
+    band: BandTarget | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -118,6 +120,8 @@ def calibrate_svi(
     expiry year fraction (only the vol/vega scaling depends on it). ``weights``
     are per-quote LSQ weights (defaults to unit); they multiply the squared
     vol residual, so pass vega^2 or liquidity weights to emphasise quotes.
+    ``band`` switches the data term to the bid-ask / haircut band objective
+    (volfit.calib.band) evaluated in vol space; None keeps the mid LSQ.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -127,7 +131,10 @@ def calibrate_svi(
     def residuals(theta: np.ndarray) -> np.ndarray:
         raw = _unpack(theta)
         model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)
-        fit = sqrt_weights * (model_vol - vol_quotes)
+        if band is None:
+            fit = sqrt_weights * (model_vol - vol_quotes)
+        else:
+            fit = band_residuals(model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_weights)
         return np.concatenate((fit, _penalties(raw)))
 
     theta0 = _init_theta(k, w_quotes)

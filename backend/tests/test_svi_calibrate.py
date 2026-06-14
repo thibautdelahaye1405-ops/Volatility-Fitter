@@ -39,8 +39,8 @@ def test_curve_reproduced_to_machine_precision():
 
 
 def test_fit_beats_sigmoid_on_benchmark():
-    """SVI is the true family here, so it fits far tighter than the 2-vol-pt
-    sigmoid marking curve (test_sigmoid.test_fits_svi_benchmark_reasonably)."""
+    """SVI is the true family here, so it fits to machine precision
+    (test_sigmoid.test_fits_svi_benchmark covers the Multi-Core SIV family)."""
     k, w = _quotes(bm.SVI_RAW, bm.SVI_T)
     fit = calibrate_svi(k, w, t=bm.SVI_T)
     assert fit.max_iv_error < 1e-4

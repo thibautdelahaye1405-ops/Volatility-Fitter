@@ -1,0 +1,182 @@
+\documentclass[9pt,a4paper]{extarticle}
+
+\usepackage[margin=0.55in]{geometry}
+\usepackage{amsmath,amssymb,booktabs}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{listings}
+\usepackage{titlesec}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2.5pt}
+\setlength{\abovedisplayskip}{4pt}
+\setlength{\belowdisplayskip}{4pt}
+\setlength{\abovedisplayshortskip}{3pt}
+\setlength{\belowdisplayshortskip}{3pt}
+\titlespacing*{\section}{0pt}{0.65em}{0.25em}
+\lstset{
+  language=Python,
+  basicstyle=\ttfamily\footnotesize,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  frame=single,
+  breaklines=true,
+  tabsize=4,
+  xleftmargin=0pt,
+  xrightmargin=0pt
+}
+
+\title{Fast Time-Value Density Weights for Implied-Volatility Fitting}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-2.6em}
+
+\section*{Objective}
+Let
+\[
+  x_i=\log(K_i/F)
+\]
+be normalized strike. Each quote is treated as at-the-money or out-of-the-money, so its observed option-price level is its time value, denoted $\mathrm{TV}_i>0$.
+
+The desired benchmark rule is: if quotes lie on the uniform grid
+\[
+  x_k=-2+\frac{4k}{n},\qquad k=0,\ldots,n,
+\]
+then each quote receives weight
+\[
+  w_k=\mathrm{TV}_k.
+\]
+For non-uniform market strikes, the objective is different from merely assigning $w_i=\mathrm{TV}_i$. If quotes are dense in one region and sparse elsewhere, raw time-value weights overweight the dense region simply because it has more observations. The desired aggregate distribution of weights over normalized-strike space should still have the shape of time value.
+
+Equivalently, the target continuous weighting measure is
+\[
+  d\mu(x)\propto \mathrm{TV}(x)\,dx.
+\]
+For a strike interval $A$, total fitting importance should therefore scale like
+\[
+  \mu(A)\propto \int_A \mathrm{TV}(x)\,dx.
+\]
+If the local quote density is $\rho(x)$, the naive weights $w_i=\mathrm{TV}_i$ instead approximate
+\[
+  \mathrm{TV}(x)\rho(x)\,dx,
+\]
+which mixes the desired economic weight with the accidental sampling density. Hence one should divide by local quote density:
+\[
+  w_i\propto \frac{\mathrm{TV}_i}{\rho(x_i)}.
+\]
+In one dimension, $1/\rho(x_i)$ is estimated by a local strike spacing.
+
+\section*{Weight construction}
+Sort the quotes by normalized strike:
+\[
+  x_1<x_2<\cdots<x_m.
+\]
+Define local cell widths
+\[
+  s_1=x_2-x_1,\qquad
+  s_i=\frac{x_{i+1}-x_{i-1}}{2}\quad(2\le i\le m-1),\qquad
+  s_m=x_m-x_{m-1}.
+\]
+This is a one-dimensional Voronoi-cell approximation. Let
+\[
+  \bar{s}=\frac{1}{m}\sum_{i=1}^m s_i.
+\]
+The proposed weight is
+\[
+  \boxed{w_i=\mathrm{TV}_i\frac{s_i}{\bar{s}}.}
+\]
+Dense regions have small $s_i$ and are downweighted; sparse regions have large $s_i$ and are upweighted. The normalization by $\bar{s}$ keeps the scale comparable to raw time-value weights and gives the exact benchmark property on uniform grids.
+
+In a least-squares fit with model parameters $\theta$, minimize
+\[
+  \min_\theta \sum_{i=1}^m w_i r_i(\theta)^2.
+\]
+For implied-volatility residuals,
+\[
+  r_i(\theta)=\sigma_{\mathrm{model}}(x_i;\theta)-\sigma_{\mathrm{obs},i}.
+\]
+If an optimizer expects ordinary residuals, pass $\sqrt{w_i}r_i(\theta)$.
+
+\section*{Uniform-grid check}
+On the grid $x_k=-2+4k/n$, every spacing is $h=4/n$. Therefore $s_k=h$ for all $k$, and $\bar{s}=h$. The rule reduces to
+\[
+  w_k=\mathrm{TV}_k\frac{h}{h}=\mathrm{TV}_k.
+\]
+Thus the non-uniform correction is inactive when quotes are already uniformly distributed in normalized-strike space.
+
+\section*{Example}
+Consider five quotes:
+\[
+  x=(-0.50,-0.10,0.00,0.05,0.80),\qquad
+  \mathrm{TV}=(0.10,0.40,0.50,0.45,0.08).
+\]
+The middle quotes are dense, while the right wing is sparse. The local spacings are
+\[
+  s=(0.40,0.25,0.075,0.40,0.75),\qquad \bar{s}=0.375.
+\]
+Hence the spacing multipliers are
+\[
+  \frac{s}{\bar{s}}\approx(1.067,0.667,0.200,1.067,2.000),
+\]
+and the final weights are
+\[
+  w\approx(0.107,0.267,0.100,0.480,0.160).
+\]
+The quote at $x=0$ has large time value but lies in a crowded region, so its individual weight is reduced. The isolated right-wing quote has low time value but represents a wider strike interval. Aggregated over strike bins, the weights follow a time-value-shaped density rather than the raw quote-count histogram.
+
+\section*{Python implementation}
+\begin{lstlisting}
+import numpy as np
+
+def tv_density_weights(x, tv, eps=1e-12, max_mult=None):
+    """Density-corrected time-value weights for IV fitting."""
+    x = np.asarray(x, dtype=float)
+    tv = np.asarray(tv, dtype=float)
+    if x.shape != tv.shape:
+        raise ValueError("x and tv must have the same shape")
+
+    order = np.argsort(x)
+    xs = x[order]
+    tvs = np.maximum(tv[order], eps)
+    m = len(xs)
+
+    if m == 0:
+        return np.array([], dtype=float)
+    if m == 1:
+        weights_sorted = np.array([tvs[0]], dtype=float)
+    else:
+        s = np.empty(m)
+        s[0] = xs[1] - xs[0]
+        s[-1] = xs[-1] - xs[-2]
+        if m > 2:
+            s[1:-1] = 0.5 * (xs[2:] - xs[:-2])
+        s = np.maximum(s, eps)
+
+        mult = s / np.mean(s)
+        if max_mult is not None:
+            mult = np.minimum(mult, max_mult)
+        weights_sorted = tvs * mult
+
+    weights = np.empty_like(weights_sorted)
+    weights[order] = weights_sorted
+    return weights
+
+# scipy.optimize.least_squares usage:
+# weights = tv_density_weights(x, tv, max_mult=10.0)
+# def residuals(theta):
+#     return np.sqrt(weights) * (model_iv(theta, x) - sigma_obs)
+\end{lstlisting}
+
+\section*{Practical notes}
+If several quotes have the same normalized strike, aggregate them first or split the strike-level weight among duplicates. Otherwise duplicate quotes mechanically overweight that strike. In production, use
+\[
+  w_i=\max(\mathrm{TV}_i,\varepsilon)\frac{s_i}{\bar{s}},
+\]
+and optionally cap $s_i/\bar{s}$, for example at $5$ or $10$, to prevent a single isolated far-wing quote from dominating the fit.
+
+\end{document}

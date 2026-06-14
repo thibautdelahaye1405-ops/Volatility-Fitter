@@ -37,10 +37,17 @@ from volfit.api.schemas import (
     TermStructureRequest,
     TermStructureResponse,
 )
+from volfit.api.displayed import (
+    displayed_atm_vol,
+    displayed_max_iv_error,
+    displayed_slice,
+    displayed_var_swap_w,
+)
 from volfit.api.service import fit_or_get
 from volfit.api.state import AppState
 from volfit.calib.event_time import Event, EventClock
-from volfit.models.lqd.atm import atm_handles
+from volfit.models.base import SmileModel
+from volfit.models.diagnostics import numeric_density
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
 
 #: Dense term-structure grid: 80 samples from 0.02y to 5% past the last expiry.
@@ -97,9 +104,10 @@ def term_structure(
 ) -> TermStructureResponse:
     """Per-expiry ATM/var-swap points plus the event-dilated dense curve.
 
-    Slice fits flow through fit_or_get with the request's fit mode, so the
-    points are exactly the cached fits GET /smiles serves (atmVol here is
-    bitwise-equal to that payload's diagnostics.atmVol).
+    Slice fits flow through fit_or_get with the request's fit mode, and every
+    point is read from the *displayed* fit (the chosen model's overlay when one
+    is active, else the LQD slice), so atmVol/varSwapVol here are bitwise-equal
+    to GET /smiles' diagnostics for the same model.
     """
     forwards = state.forwards(ticker)  # raises UnknownNodeError when unknown
     clock = _event_clock(request)
@@ -110,21 +118,22 @@ def term_structure(
     for expiry in sorted(forwards):
         iso = expiry.isoformat()
         record = fit_or_get(state, ticker, iso, request.fitMode)
-        t, slice_ = record.prepared.t, record.result.slice
-        handles = atm_handles(slice_, t)
+        t = record.prepared.t
+        atm_vol = displayed_atm_vol(record)
+        w0 = atm_vol * atm_vol * t  # ATM total variance of the displayed fit
         points.append(
             TermPoint(
                 expiry=iso,
                 t=t,
                 tau=float(clock.dilated_time(t)),
-                atmVol=handles.sigma0,
-                w0=handles.w0,
-                varSwapVol=float(np.sqrt(slice_.var_swap_strike() / t)),
-                maxIvErrorBp=record.result.max_iv_error * 1e4,
+                atmVol=atm_vol,
+                w0=w0,
+                varSwapVol=float(np.sqrt(displayed_var_swap_w(record) / t)),
+                maxIvErrorBp=displayed_max_iv_error(record) * 1e4,
             )
         )
         ts.append(t)
-        w0s.append(handles.w0)
+        w0s.append(w0)
 
     violations = sum(1 for near, far in zip(w0s, w0s[1:]) if far < near)
 
@@ -149,17 +158,22 @@ def term_structure(
 
 
 # ------------------------------------------------------------------- density
-def _distribution(slice_: LQDSlice) -> DistributionArrays:
-    """Density + quantile arrays of one slice, trimmed and chart-sized.
+def _trim(idx_mask: np.ndarray) -> np.ndarray:
+    """Central-mass indices strided down to at most MAX_CHART_POINTS."""
+    keep = np.flatnonzero(idx_mask)
+    stride = max(1, -(-keep.size // MAX_CHART_POINTS))  # ceil division
+    return keep[::stride]
 
-    LQDSlice.density() returns the pdf on x = Q(z); the quantile pairs
-    (u, Q) live on the same z grid, so a single central-mass mask + stride
-    keeps x/density and u/quantile aligned point-for-point.
+
+def _distribution(slice_: LQDSlice) -> DistributionArrays:
+    """Exact LQD density + quantile arrays, trimmed and chart-sized.
+
+    LQDSlice.density() returns the pdf on x = Q(z); the quantile pairs (u, Q)
+    live on the same z grid, so one central-mass mask + stride keeps x/density
+    and u/quantile aligned point-for-point.
     """
     x, pdf = slice_.density()
-    keep = np.flatnonzero((slice_.u >= U_TRIM) & (slice_.u <= 1.0 - U_TRIM))
-    stride = max(1, -(-keep.size // MAX_CHART_POINTS))  # ceil division
-    idx = keep[::stride]
+    idx = _trim((slice_.u >= U_TRIM) & (slice_.u <= 1.0 - U_TRIM))
     return DistributionArrays(
         x=x[idx].tolist(),
         density=pdf[idx].tolist(),
@@ -168,10 +182,36 @@ def _distribution(slice_: LQDSlice) -> DistributionArrays:
     )
 
 
+def _distribution_model(slice_: SmileModel) -> DistributionArrays:
+    """Model-agnostic density + quantile for a non-LQD overlay (SVI / sigmoid).
+
+    Breeden-Litzenberger via models.diagnostics.numeric_density: x = quantile =
+    log-return k, u = CDF, so the chart matches the LQD layout (the quantile
+    chart plots (u, k) = the inverse CDF). Trimmed to the central probability
+    mass like the LQD path.
+    """
+    k, pdf, cdf = numeric_density(slice_)
+    idx = _trim((cdf >= U_TRIM) & (cdf <= 1.0 - U_TRIM))
+    return DistributionArrays(
+        x=k[idx].tolist(),
+        density=pdf[idx].tolist(),
+        u=cdf[idx].tolist(),
+        quantile=k[idx].tolist(),
+    )
+
+
 def density_payload(state: AppState, ticker: str, expiry: str, fit_mode: str) -> DensityResponse:
-    """Current-fit distribution plus the saved prior's, when one exists."""
+    """Current-fit distribution plus the saved prior's, when one exists.
+
+    The current distribution follows the chosen display model (LQD exact, else
+    the SVI / Multi-Core-SIV overlay's own Breeden-Litzenberger density); the
+    saved prior is always the LQD snapshot that was stored.
+    """
     record = fit_or_get(state, ticker, expiry, fit_mode)
-    current = _distribution(record.result.slice)
+    if record.display is not None:
+        current = _distribution_model(displayed_slice(record))
+    else:
+        current = _distribution(record.result.slice)
     saved = state.get_prior((ticker, expiry))
     prior = None if saved is None else _distribution(build_slice(saved.params))
     return DensityResponse(current=current, prior=prior)

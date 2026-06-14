@@ -1,15 +1,22 @@
 """Local-vol service: surface extraction + sticky-local-vol-grid scenarios.
 
-Bridges the fitted LQD surface to the local-volatility grid model
+Bridges the fitted smile surface to the local-volatility grid model
 (volfit.models.localvol) for the API (ROADMAP Phase 2 "API exposure" and
-Phase 8 "true sticky-local-vol-grid mode"):
+Phase 8 "true sticky-local-vol-grid mode"). The Dupire extraction only needs
+total implied variance w(k, t), i.e. the SmileModel.implied_w interface, so it
+follows the *displayed* model (LQD by default, else the SVI / Multi-Core-SIV
+overlay) — there is no structural LQD dependency. Caveat: Dupire's denominator
+(small-w, second strike derivative) is ill-conditioned and assumes a smooth
+arbitrage-free input; LQD/SVI are arbitrage-free by construction, but the signed
+Multi-Core-SIV cores can violate butterfly, in which case the extraction clips
+the offending local variances and the no-arb diagnostics below flag it.
 
 - ``localvol_record``: fit every expiry of a ticker (through the same cached
   slice fits as GET /smiles, so quote edits apply), interpolate total
   implied variance linearly in t (w = 0 at t = 0), and extract a Dupire
   local-vol grid sampled at bucket midpoints — piecewise-constant forward-
   variance buckets between listed expiries ("pw_t"), the market convention.
-  Cached per (ticker, fit mode, per-expiry session versions).
+  Cached per (ticker, fit mode, per-expiry session versions, fit settings).
 - ``localvol_payload``: the grid + the model's no-arbitrage diagnostics
   (butterfly density minima, calendar residuals, repair counters).
 - ``scenario_sticky_grid``: the exact sticky-local-vol dynamics — hold
@@ -107,9 +114,12 @@ def localvol_record(state: AppState, ticker: str, fit_mode: str):
     if hit is not None:
         return hit
 
+    from volfit.api import service
+
     records = _surface_records(state, ticker, fit_mode)
     ts = np.array([rec.prepared.t for _, rec in records])
-    slices = [rec.result.slice for _, rec in records]
+    # Extract from the displayed model's surface (overlay when active, else LQD).
+    slices = [service.displayed_slice(rec) for _, rec in records]
     k_lo = min(float(rec.prepared.k.min()) for _, rec in records) - K_PAD
     k_hi = max(float(rec.prepared.k.max()) for _, rec in records) + K_PAD
     k_nodes = np.linspace(k_lo, k_hi, N_K_NODES)
@@ -154,7 +164,6 @@ def localvol_payload(state: AppState, ticker: str, fit_mode: str) -> LocalVolGri
 def scenario_sticky_grid(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
     """True sticky-local-vol-grid scenario: fixed-strike grid, PDE reprice."""
     from volfit.api import service
-    from volfit.models.lqd.atm import atm_handles
 
     record = service.fit_or_get(state, request.ticker, request.expiry, request.fitMode)
     t = record.prepared.t
@@ -183,8 +192,8 @@ def scenario_sticky_grid(state: AppState, request: ScenarioRequest) -> ScenarioR
                 interp=model.grid.interp,
             )
         )
-    # Realized SSR: d sigma_atm / d ln F over the fitted slice's ATM skew.
-    skew = atm_handles(record.result.slice, t).skew
+    # Realized SSR: d sigma_atm / d ln F over the displayed fit's ATM skew.
+    skew = service.displayed_skew(record)
     atm_base = float(np.interp(0.0, grid_k, base))
     atm_shift = float(np.interp(0.0, grid_k, shifted))
     ssr = (atm_shift - atm_base) / (skew * delta) if delta != 0.0 and skew != 0.0 else 2.0

@@ -45,7 +45,15 @@ def _fit_rms_bp(client, expiry: str) -> float:
 
 def test_defaults(client):
     settings = client.get("/settings/fit").json()
-    assert settings == {"model": "lqd", "nOrder": 6, "regLambda": 1e-6, "regPower": 1.0}
+    assert settings == {
+        "model": "lqd",
+        "nOrder": 6,
+        "regLambda": 1e-6,
+        "regPower": 1.0,
+        "nCores": 2,
+        "haircut": 0.005,
+        "weightScheme": "equal",
+    }
 
 
 def test_put_changes_subsequent_fits(client):
@@ -91,9 +99,40 @@ def test_validation_bounds(client):
         {"nOrder": 99},
         {"regLambda": -1.0},
         {"regPower": 9.0},
+        {"nCores": -1},  # Multi-Core SIV hat count is in [0, 6]
+        {"nCores": 7},
+        {"haircut": -0.001},  # haircut is in [0, 0.05] absolute vol
+        {"haircut": 0.1},
+        {"weightScheme": "inverse_spread"},  # not a known weighting scheme
         {"model": "localvol"},  # not a calibratable smile family via the API
     ):
         assert client.put("/settings/fit", json=bad).status_code == 422
+
+
+def test_weight_scheme_changes_fit(client):
+    """Switching to time-value density weighting refits the smile (the synthetic
+    chains are non-uniform in log-strike, so the density correction bites)."""
+    expiry = _expiry(client, 3)
+    base = client.get(f"/smiles/ALPHA/{expiry}").json()
+    assert client.put("/settings/fit", json={"weightScheme": "tv_density"}).status_code == 200
+    weighted = client.get(f"/smiles/ALPHA/{expiry}").json()
+    base_vols = [p["vol"] for p in base["model"]]
+    new_vols = [p["vol"] for p in weighted["model"]]
+    assert any(abs(a - b) > 1e-6 for a, b in zip(base_vols, new_vols))
+    client.put("/settings/fit", json={"weightScheme": "equal"})
+
+
+def test_n_cores_changes_sigmoid_fit(client):
+    """The Multi-Core SIV cores slider changes the displayed sigmoid smile."""
+    expiry = _expiry(client, 3)
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 0})
+    rms_base = _fit_rms_bp(client, expiry)
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 3})
+    rms_cored = _fit_rms_bp(client, expiry)
+    # Adding hats cannot make the in-sample fit worse; on a curved smile it
+    # changes the fitted curve measurably.
+    assert rms_cored != pytest.approx(rms_base, abs=1e-9)
+    assert rms_cored <= rms_base + 1e-6
 
 
 def test_model_choice_refits_smile(client):

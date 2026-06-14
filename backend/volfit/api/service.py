@@ -1,16 +1,12 @@
 """Pure service functions behind the volfit API routes (ROADMAP Phase 5).
 
 Each function takes the AppState explicitly and returns pydantic response
-models, so the routers stay one-line thin and everything here is testable
-without HTTP. The surface fit is decomposed into `surface_inputs` +
-`fit_surface_slice` — the exact loop body of volfit.calib.calibrate_surface
-(warm start from the previous slice, calendar floor from
-volfit.calib.calendar) — so the WebSocket route can emit a progress event
-between expiries while the POST route reuses the same steps synchronously.
-Quote-edit sessions (volfit.api.session) plug in at two seams: fit-cache
-keys carry the session version (`fit_key`) and calibration inputs are
-rewritten by `edited_fit_inputs`; the edit/undo/redo entry points live in
-volfit.api.edits to keep this module under the file-size policy.
+models, so routers stay thin and everything here is testable without HTTP. The
+surface fit is decomposed into `surface_inputs` + `fit_surface_slice` (the loop
+body of volfit.calib.calibrate_surface) so the WebSocket route can emit progress
+between expiries. Quote-edit sessions plug in at two seams: fit-cache keys carry
+the session version and inputs are rewritten by `edited_fit_inputs`; edit/undo/
+redo entry points live in volfit.api.edits.
 """
 
 from __future__ import annotations
@@ -19,7 +15,12 @@ import numpy as np
 
 from volfit.api import history
 from volfit.api.fit_models import build_display_fit
-from volfit.api.quotes import PreparedQuotes, apply_edits, fit_weights, prepare_quotes
+from volfit.api.quotes import (
+    PreparedQuotes,
+    apply_band_edits,
+    apply_edits,
+    prepare_quotes,
+)
 from volfit.api.schemas import (
     QuoteBand,
     ScenarioRequest,
@@ -29,9 +30,12 @@ from volfit.api.schemas import (
     SmilePoint,
     SurfaceFitResponse,
 )
+from volfit.api.displayed import displayed_skew, displayed_slice
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_floor, calendar_violation
+from volfit.calib.weights import resolve_weights
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
+from volfit.models.diagnostics import weighted_rms_vol
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
@@ -41,13 +45,10 @@ from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
 N_MODEL_POINTS = 161
 K_PAD = 0.02
 
-#: High-order Legendre damping for every API slice fit (lam * n^{2r} a_n^2).
-#: Short-dated slices can have as few quotes as LQD parameters after the wing
-#: filter — unregularized they interpolate exactly with wild ATM handles
-#: (observed: a 7-quote 1M slice fitting skew +0.78, curvature -40). 1e-6
-#: costs only bp-level fit error on liquid slices and restores sane shapes.
-#: These are now the *defaults* of schemas.FitSettings — the hyperparameter
-#: panel (PUT /settings/fit) overrides them per AppState.
+#: High-order Legendre damping defaults (lam * n^{2r} a_n^2); short-dated slices
+#: left with ~as few quotes as params after the wing filter interpolate with
+#: wild ATM handles unregularized. Now the defaults of schemas.FitSettings (the
+#: hyperparameter panel PUT /settings/fit overrides them per AppState).
 REG_LAMBDA = 1e-6
 REG_POWER = 1.0
 
@@ -61,9 +62,8 @@ def session_version(state: AppState, ticker: str, iso: str) -> int:
 
 def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
     """Fit-cache key: (ticker, canonical ISO, mode, session version, settings
-    version, forwards version) — quote edits, hyperparameter changes and
-    forward-policy/market-settings changes each bump a version, so affected
-    nodes refit without cache eviction."""
+    version, forwards version) — edits, hyperparameter and forward/market
+    changes each bump a version, so affected nodes refit without eviction."""
     return (
         ticker,
         iso,
@@ -77,22 +77,40 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
 def edited_fit_inputs(
     state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, weights: np.ndarray | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
-    """Calibration inputs after the node's quote edits (quotes.apply_edits):
-    excluded strikes masked out, amended mids re-leveled to w = mid_iv^2 t."""
+    """Calibration inputs after edits: excluded strikes masked, amended mids
+    re-leveled to w = mid_iv^2 t (quotes.apply_edits)."""
     session = state.session_if_exists((ticker, iso))
     return apply_edits(prepared, {} if session is None else session.edits, weights)
 
 
+def edited_band(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, fit_mode: str
+):
+    """Band target after quote edits (None for "mid"); aligned with
+    edited_fit_inputs. Haircut comes from fit settings (refits via version)."""
+    session = state.session_if_exists((ticker, iso))
+    edits = {} if session is None else session.edits
+    return apply_band_edits(prepared, edits, fit_mode, state.fit_settings().haircut)
+
+
 def display_overlay(
-    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, weights: np.ndarray | None
+    state: AppState,
+    ticker: str,
+    iso: str,
+    prepared: PreparedQuotes,
+    fit_mode: str,
 ):
     """The non-LQD display overlay for a node (None for LQD), fit to the same
-    edited quotes the LQD calibration uses — keeps surface and smile in sync."""
-    model = state.fit_settings().model
-    if model == "lqd":
+    edited quotes, band and weights the LQD calibration uses."""
+    settings = state.fit_settings()
+    if settings.model == "lqd":
         return None
-    k, w, edited_weights = edited_fit_inputs(state, ticker, iso, prepared, weights)
-    return build_display_fit(model, k, w, prepared.t, edited_weights)
+    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
+    weights = resolve_weights(settings.weightScheme, k, w)
+    band = edited_band(state, ticker, iso, prepared, fit_mode)
+    return build_display_fit(
+        settings.model, k, w, prepared.t, weights, n_cores=settings.nCores, band=band
+    )
 
 
 # ------------------------------------------------------------- slice fitting
@@ -112,10 +130,10 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     prepared = prepare_quotes(
         snapshot, expiry, forward, state.year_fraction(expiry), cash_divs
     )
-    k, w, weights = edited_fit_inputs(
-        state, ticker, iso, prepared, fit_weights(prepared, fit_mode)
-    )
+    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     settings = state.fit_settings()
+    weights = resolve_weights(settings.weightScheme, k, w)
+    band = edited_band(state, ticker, iso, prepared, fit_mode)
     result = calibrate_slice(
         k,
         w,
@@ -124,36 +142,17 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
         weights=weights,
         reg_lambda=settings.regLambda,
         reg_power=settings.regPower,
+        band=band,
     )
-    # LQD is always fitted (the analytic backbone); a non-LQD model choice
-    # adds a display overlay on the same edited quotes (volfit.api.fit_models).
-    display = build_display_fit(settings.model, k, w, prepared.t, weights)
+    # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
+    # a display overlay on the same edited quotes + band (volfit.api.fit_models).
+    display = build_display_fit(
+        settings.model, k, w, prepared.t, weights, n_cores=settings.nCores, band=band
+    )
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
     return record
-
-
-# ---------------------------------------------- displayed-fit accessors
-# The Smile Viewer's chart, diagnostics, table, surface and scenario read the
-# chosen model: the non-LQD display overlay when present, else the LQD fit.
-def displayed_slice(record: FitRecord):
-    """The SmileModel the Smile Viewer charts (overlay model or LQD)."""
-    return record.display.slice if record.display is not None else record.result.slice
-
-
-def displayed_atm_vol(record: FitRecord) -> float:
-    """ATM vol of the displayed fit (numeric for an overlay, exact for LQD)."""
-    if record.display is not None:
-        return record.display.handles.atm_vol
-    return atm_handles(record.result.slice, record.prepared.t).sigma0
-
-
-def displayed_skew(record: FitRecord) -> float:
-    """ATM skew of the displayed fit (numeric for an overlay, exact for LQD)."""
-    if record.display is not None:
-        return record.display.handles.skew
-    return atm_handles(record.result.slice, record.prepared.t).skew
 
 
 def model_curve(record: FitRecord) -> list[SmilePoint]:
@@ -167,6 +166,15 @@ def model_curve(record: FitRecord) -> list[SmilePoint]:
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
 
+def weighted_rms_error(state: AppState, ticker: str, iso: str, record: FitRecord) -> float:
+    """Weighted RMS vol error of the displayed fit vs the mid quotes, using the
+    SAME weights as the calibration (active weightScheme, over the edited set);
+    decimal vol (the UI renders it as a percentage)."""
+    k, w, _ = edited_fit_inputs(state, ticker, iso, record.prepared, None)
+    weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+    return weighted_rms_vol(displayed_slice(record), k, w, record.prepared.t, weights)
+
+
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
     """Assemble the full SmileData payload for one (ticker, expiry) node."""
     record = fit_or_get(state, ticker, expiry_iso, fit_mode)
@@ -174,13 +182,13 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     session = state.session_if_exists((ticker, iso))
     prepared, slice_ = record.prepared, record.result.slice
     model = model_curve(record)
+    rms_error = weighted_rms_error(state, ticker, iso, record)
 
     saved = state.get_prior((ticker, expiry_iso))  # saved prior, else current fit
     prior = list(saved.curve) if saved is not None else list(model)
 
     if record.display is not None:
-        # Non-LQD overlay: numeric ATM handles, var-swap and Lee wing slopes;
-        # A_L/A_R are LQD endpoint-scale constructs with no analogue here.
+        # Non-LQD overlay: numeric handles/var-swap/Lee; A_L/A_R have no analogue.
         d = record.display
         diagnostics = SmileDiagnostics(
             atmVol=d.handles.atm_vol,
@@ -191,6 +199,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             leeLeft=d.lee_left,
             leeRight=d.lee_right,
             varSwapVol=float(np.sqrt(d.var_swap_w / prepared.t)),
+            rmsError=rms_error,
         )
     else:
         handles = atm_handles(slice_, prepared.t)
@@ -205,9 +214,10 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             leeLeft=lee_left,
             leeRight=lee_right,
             varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.t)),
+            rmsError=rms_error,
         )
-    # Every prepared quote is listed (excluded ones dimmed by the UI); an
-    # amended quote shows its overridden mid, bid/ask stay the market band.
+    # Every prepared quote is listed (excluded dimmed by the UI); an amended
+    # quote shows its overridden mid, bid/ask stay the market band.
     quotes = []
     for i, (k, b, a, m) in enumerate(
         zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
@@ -244,8 +254,12 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
 # -------------------------------------------------------------- surface fit
 def surface_inputs(
     state: AppState, ticker: str, fit_mode: str
-) -> list[tuple[str, PreparedQuotes, np.ndarray | None]]:
-    """(expiry-ISO, prepared quotes, weights) per expiry, nearest first."""
+) -> list[tuple[str, PreparedQuotes]]:
+    """(expiry-ISO, prepared quotes) per expiry, nearest first.
+
+    Weights and band are derived per slice at fit time (they depend on the
+    edited quotes), so the plan only carries the prepared quotes.
+    """
     snapshot = state.snapshot(ticker)
     forwards = state.forwards(ticker)  # gates the expiry universe
     plan = []
@@ -255,7 +269,7 @@ def surface_inputs(
         prepared = prepare_quotes(
             snapshot, expiry, forward, state.year_fraction(expiry), cash_divs
         )
-        plan.append((expiry.isoformat(), prepared, fit_weights(prepared, fit_mode)))
+        plan.append((expiry.isoformat(), prepared))
     return plan
 
 
@@ -264,22 +278,25 @@ def fit_surface_slice(
     ticker: str,
     iso: str,
     prepared: PreparedQuotes,
-    weights: np.ndarray | None,
     prev: CalibrationResult | None,
     enforce_calendar: bool,
+    fit_mode: str = "mid",
 ) -> CalibrationResult:
     """One step of the calibrate_surface loop: warm start + calendar floor.
 
     Quote-edit sessions apply here too (state/ticker/iso resolve them), so a
-    surface fit honours the user's excluded/amended quotes on every expiry.
-    The calendar floor indexes the quadrature grid, not the quote array, so
-    masking quotes leaves the constraint untouched.
+    surface fit honours the user's excluded/amended quotes on every expiry. The
+    calendar floor indexes the quadrature grid, not the quote array, so masking
+    quotes leaves it untouched. ``fit_mode`` selects the band objective; the
+    weight scheme follows the fit settings (volfit.calib.weights).
     """
     cal_idx = cal_floor = None
     if enforce_calendar and prev is not None:
         cal_idx, cal_floor = calendar_floor(prev.slice)
-    k, w, weights = edited_fit_inputs(state, ticker, iso, prepared, weights)
+    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     settings = state.fit_settings()
+    weights = resolve_weights(settings.weightScheme, k, w)
+    band = edited_band(state, ticker, iso, prepared, fit_mode)
     return calibrate_slice(
         k,
         w,
@@ -289,6 +306,7 @@ def fit_surface_slice(
         reg_lambda=settings.regLambda,
         reg_power=settings.regPower,
         init=prev.params if prev is not None else None,
+        band=band,
         calendar_indices=cal_idx,
         calendar_floor=cal_floor,
     )
@@ -328,10 +346,12 @@ def fit_surface(
     prev: CalibrationResult | None = None
     residuals: list[float] = []
     fitted: list[tuple[str, CalibrationResult]] = []
-    for index, (iso, prepared, weights) in enumerate(plan):
-        result = fit_surface_slice(state, ticker, iso, prepared, weights, prev, enforce_calendar)
+    for index, (iso, prepared) in enumerate(plan):
+        result = fit_surface_slice(
+            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode
+        )
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
-        overlay = display_overlay(state, ticker, iso, prepared, weights)
+        overlay = display_overlay(state, ticker, iso, prepared, fit_mode)
         record = FitRecord(prepared=prepared, result=result, display=overlay)
         state.store_fit(fit_key(state, ticker, iso, fit_mode), record)
         history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises

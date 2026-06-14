@@ -91,6 +91,33 @@ def test_smile_payload_sanity(client, universe):
     assert diag["varSwapVol"] > diag["atmVol"] > 0  # skew makes var-swap rich
 
 
+def test_rms_error_reported_and_weighting_aware(client, universe):
+    """Each fit reports its weighted RMS vol error; equal weighting equals the
+    plain RMS of (model - mid) over the live quotes, and switching to the
+    TV-density scheme changes it."""
+    expiry = expiry_of(universe, "ALPHA", 2)
+    data = client.get(f"/smiles/ALPHA/{expiry}").json()
+    rms = data["diagnostics"]["rmsError"]
+    assert 0.0 <= rms < 0.05  # a sane fit is well under 5 vol points
+
+    # Under equal weighting it is the plain RMS vs mid of the live quotes.
+    ks = np.array([p["k"] for p in data["model"]])
+    vols = np.array([p["vol"] for p in data["model"]])
+    res = [
+        float(np.interp(q["k"], ks, vols)) - q["mid"]
+        for q in data["quotes"]
+        if not q["excluded"]
+    ]
+    assert rms == pytest.approx(float(np.sqrt(np.mean(np.square(res)))), abs=2e-4)
+
+    try:
+        client.put("/settings/fit", json={"weightScheme": "tv_density"})
+        rms_tv = client.get(f"/smiles/ALPHA/{expiry}").json()["diagnostics"]["rmsError"]
+        assert rms_tv != pytest.approx(rms, abs=1e-9)
+    finally:
+        client.put("/settings/fit", json={"weightScheme": "equal"})
+
+
 def test_all_fit_modes_return_smiles(client, universe):
     expiry = expiry_of(universe, "ALPHA", 1)
     for mode in ("mid", "bidask", "haircut"):

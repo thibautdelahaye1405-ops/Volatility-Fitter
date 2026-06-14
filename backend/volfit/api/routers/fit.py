@@ -48,22 +48,22 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
         prev = None
         residuals: list[float] = []
         fitted = []
-        for index, (iso, prepared, weights) in enumerate(plan):
+        for index, (iso, prepared) in enumerate(plan):
             result = await anyio.to_thread.run_sync(
                 service.fit_surface_slice,
                 state,
                 body.ticker,
                 iso,
                 prepared,
-                weights,
                 prev,
                 body.enforceCalendar,
+                body.fitMode,
             )
             residuals.append(
                 0.0 if prev is None else calendar_violation(prev.slice, result.slice)
             )
             overlay = await anyio.to_thread.run_sync(
-                service.display_overlay, state, body.ticker, iso, prepared, weights
+                service.display_overlay, state, body.ticker, iso, prepared, body.fitMode
             )
             record = FitRecord(prepared=prepared, result=result, display=overlay)
             state.store_fit(

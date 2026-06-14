@@ -38,6 +38,7 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
         { label: "Lee slope L", value: smile.diagnostics.leeLeft.toFixed(3) },
         { label: "Lee slope R", value: smile.diagnostics.leeRight.toFixed(3) },
         { label: "Var-swap vol", value: formatPct(smile.diagnostics.varSwapVol) },
+        { label: "RMS error", value: formatPct(smile.diagnostics.rmsError, 2) },
       ]
     : [];
 

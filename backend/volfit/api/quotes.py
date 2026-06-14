@@ -47,22 +47,16 @@ from datetime import date
 import numpy as np
 
 from volfit.api.session import QuoteEdit
+from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, resolve_band
 from volfit.core.american import deamericanize_batch
 from volfit.core.black import black_call, implied_total_variance
 from volfit.data.forwards import ImpliedForward, ResolvedForward
 from volfit.data.types import ChainSnapshot
 
-#: IV spread floor: protects the inverse-variance weights from locked quotes.
-SPREAD_FLOOR = 1e-4
-
 #: Wing cutoff in ATM standard deviations: quotes beyond this carry no vega
 #: (at 1M a 5 sd strike has vega ~1e-6 — its implied vol is pure noise; 4 sd
 #: matches the realistically quoted range and keeps every slice < 30 vol bp).
 Z_MAX = 4.0
-
-#: Initial haircut implementation: shrink the bid-ask band by this factor
-#: before weighting (a stand-in until per-quote liquidity haircuts exist).
-HAIRCUT_SHRINK = 0.5
 
 
 @dataclass(frozen=True)
@@ -198,25 +192,6 @@ def prepare_quotes(
     )
 
 
-def fit_weights(prepared: PreparedQuotes, fit_mode: str) -> np.ndarray | None:
-    """Per-quote calibration weights for the requested fit mode.
-
-    - "mid":     unit weights (None — calibrate_slice's default);
-    - "bidask":  inverse-variance in the quoted IV spread, mean-normalized
-                 so penalty coefficients keep their scale across modes;
-    - "haircut": same inverse-variance rule on a band shrunk by
-                 HAIRCUT_SHRINK (initial haircut implementation: the floor
-                 binds earlier on tight quotes, flattening ATM weights).
-    """
-    if fit_mode == "mid":
-        return None
-    spread = prepared.iv_ask - prepared.iv_bid
-    if fit_mode == "haircut":
-        spread = HAIRCUT_SHRINK * spread
-    weights = 1.0 / np.maximum(spread, SPREAD_FLOOR) ** 2
-    return weights / weights.mean()
-
-
 def apply_edits(
     prepared: PreparedQuotes, edits: dict[int, QuoteEdit], weights: np.ndarray | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -245,3 +220,32 @@ def apply_edits(
         if edit.excluded:
             keep[index] = False
     return prepared.k[keep], w[keep], None if weights is None else weights[keep]
+
+
+def apply_band_edits(
+    prepared: PreparedQuotes,
+    edits: dict[int, QuoteEdit],
+    fit_mode: str,
+    haircut: float = DEFAULT_HAIRCUT,
+) -> BandTarget | None:
+    """Band target aligned with ``apply_edits`` (same exclude/amend/keep mask).
+
+    Amended quotes move the mid (and hence the haircut band, which is built
+    around mid); the bid/ask edges stay the original market band. The keep mask
+    matches ``apply_edits`` exactly, so the band rows line up with (k, w).
+    Returns None for the "mid" mode (no band objective).
+    """
+    if fit_mode == "mid":
+        return None
+    iv_bid = prepared.iv_bid.copy()
+    iv_mid = prepared.iv_mid.copy()
+    iv_ask = prepared.iv_ask.copy()
+    keep = np.ones(prepared.k.size, dtype=bool)
+    for index, edit in edits.items():
+        if index >= prepared.k.size:
+            continue
+        if edit.amended_iv is not None:
+            iv_mid[index] = edit.amended_iv
+        if edit.excluded:
+            keep[index] = False
+    return resolve_band(iv_bid[keep], iv_mid[keep], iv_ask[keep], fit_mode, haircut)

@@ -29,6 +29,7 @@ import numpy as np
 from volfit.api.schemas import QuoteBand, SmilePoint
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
+from volfit.calib.weights import resolve_weights
 from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
 from volfit.models.localvol import (
     AffineVarianceSurface,
@@ -108,27 +109,52 @@ def _quote_bands(state: AppState, ticker: str, iso: str, prepared) -> list[Quote
 
 
 def _gather(state: AppState, ticker: str, fit_mode: str):
-    """Per-expiry (iso, t, edited k, edited w, prepared) nearest first."""
+    """Per-expiry (iso, t, edited k, edited w, prepared, band) nearest first.
+
+    ``band`` is the bid-ask / haircut band target aligned to the edited k
+    (None for "mid"), so the surface fit honours the chosen fit mode too.
+    """
     from volfit.api import service  # local import: service is heavy
 
     rows = []
-    for iso, prepared, weights in service.surface_inputs(state, ticker, fit_mode):
-        k, w, _ = service.edited_fit_inputs(state, ticker, iso, prepared, weights)
+    for iso, prepared in service.surface_inputs(state, ticker, fit_mode):
+        k, w, _ = service.edited_fit_inputs(state, ticker, iso, prepared, None)
         if k.size >= 2:  # a slice with <2 live quotes cannot constrain its smile
-            rows.append((iso, float(prepared.t), k, w, prepared))
+            band = service.edited_band(state, ticker, iso, prepared, fit_mode)
+            rows.append((iso, float(prepared.t), k, w, prepared, band))
     return rows
 
 
-def _option_quotes(rows) -> list[OptionQuote]:
-    """Normalized forward call quotes with vega-scaled tolerances."""
+def _option_quotes(rows, weight_scheme: str = "equal") -> list[OptionQuote]:
+    """Normalized forward call quotes with vega-scaled tolerances.
+
+    With a band (bid-ask / haircut mode) each quote also carries the call-price
+    band edges at the band vols, so calibrate_affine fits the band objective. The
+    quote weight scheme (volfit.calib.weights) is folded into the tolerance:
+    tol = vega * VOL_TOL / sqrt(w_i), so the squared residual carries w_i — the
+    same effect as multiplying every other model's residual by sqrt(w_i).
+    """
     options: list[OptionQuote] = []
-    for _, t, k, w, _ in rows:
+    for _, t, k, w, _, band in rows:
         vol = np.sqrt(np.maximum(w, 1e-12) / t)
         price = black_call(k, w)
         vega = np.maximum(black_vega_sigma(k, vol, t), _VEGA_FLOOR)
-        for ki, pi, vi in zip(k, price, vega):
+        qw = resolve_weights(weight_scheme, k, w)
+        scale = np.ones_like(k) if qw is None else np.sqrt(np.maximum(qw, 1e-12))
+        p_lo = p_hi = [None] * k.size
+        if band is not None:
+            p_lo = black_call(k, band.iv_lo**2 * t)
+            p_hi = black_call(k, band.iv_hi**2 * t)
+        for ki, pi, vi, si, lo, hi in zip(k, price, vega, scale, p_lo, p_hi):
             options.append(
-                OptionQuote(t=t, x=float(np.exp(ki)), price=float(pi), tol=float(vi * _VOL_TOL))
+                OptionQuote(
+                    t=t,
+                    x=float(np.exp(ki)),
+                    price=float(pi),
+                    tol=float(vi * _VOL_TOL / si),
+                    price_lo=None if lo is None else float(lo),
+                    price_hi=None if hi is None else float(hi),
+                )
             )
     return options
 
@@ -173,16 +199,16 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     rows = _gather(state, ticker, request.fitMode)
     if len(rows) < 2:
         raise ValueError("affine surface fit needs at least two expiries with quotes")
-    expiries = np.array([t for _, t, _, _, _ in rows])
-    k_lo = min(float(k.min()) for _, _, k, _, _ in rows)
-    k_hi = max(float(k.max()) for _, _, k, _, _ in rows)
+    expiries = np.array([t for _, t, _, _, _, _ in rows])
+    k_lo = min(float(k.min()) for _, _, k, _, _, _ in rows)
+    k_hi = max(float(k.max()) for _, _, k, _, _, _ in rows)
 
     t_nodes, x_nodes = _vertex_grid(expiries, k_lo, k_hi, request.nTNodes, request.nXNodes)
     x_grid, t_grid = _pde_grids(expiries, k_hi)
 
-    options = _option_quotes(rows)
+    options = _option_quotes(rows, state.fit_settings().weightScheme)
     # Flat initial guess: the median quoted local variance (= vol^2), clipped.
-    all_var = np.concatenate([np.maximum(w, 1e-12) / t for _, t, _, w, _ in rows])
+    all_var = np.concatenate([np.maximum(w, 1e-12) / t for _, t, _, w, _, _ in rows])
     var0 = float(np.clip(np.median(all_var), request.varLo, request.varHi))
     surface0 = AffineVarianceSurface(
         t_nodes=t_nodes, x_nodes=x_nodes, theta=np.full((t_nodes.size, x_nodes.size), var0)
@@ -200,7 +226,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
     smiles: list[AffineSmile] = []
     iv_bp_all: list[float] = []
-    for iso, t, k, w, prepared in rows:
+    for iso, t, k, w, prepared, _ in rows:
         i_exp = exp_index[t]
         klo, khi = float(k.min()), float(k.max())
         errs = _iv_error_bp(cal.solution, i_exp, t, k, w)
