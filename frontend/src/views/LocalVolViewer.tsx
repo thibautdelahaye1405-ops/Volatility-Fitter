@@ -1,15 +1,27 @@
 // Local Vol workspace: direct piecewise-affine local-variance surface fit.
 //
 // Calibrates the local-vol surface straight to the ticker's option quotes
-// (POST /fit/affine/{ticker}) and shows three things side by side: the nodal
-// local-vol heatmap, the per-expiry reconstructed arbitrage-free smiles vs
-// quotes, and the fit / no-arbitrage diagnostics with vertex-grid and
-// regularization controls. Live backend only (no mock fallback), like the
-// Term and Graph workspaces.
+// (POST /fit/affine/{ticker}) and presents Parametric-style sub-tabs, every
+// view DERIVED from that calibrated surface (ROADMAP Phase 10):
+//   Smile    reconstructed arbitrage-free smile vs quotes (per expiry)
+//   Density  Breeden-Litzenberger density of the reconstructed smile
+//   Term     ATM / var-swap term structure across the ladder
+//   Surface  the nodal local-vol heatmap
+//   Table    per-strike reconstructed IVs + prices (per expiry)
+// The derived Density / Term / Table views fetch sibling endpoints that reuse
+// the cached affine fit (useAffineView). Live backend only (no mock fallback).
 import { useEffect, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
+import LocalVolTable from "../components/LocalVolTable";
+import type { AffineTableData } from "../components/LocalVolTable";
+import DistributionChart from "../components/DistributionChart";
+import TermChart from "../components/TermChart";
+import SegmentedControl from "../components/SegmentedControl";
 import { useAffine } from "../state/useAffine";
+import { useAffineView } from "../state/useAffineView";
+import type { DistributionData } from "../state/useScenario";
+import type { TermResponse } from "../state/useTerm";
 
 const selectClass =
   "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
@@ -23,25 +35,46 @@ const buttonClass =
 const REG_LAMBDAS = [0, 1e-3, 1e-2, 1e-1, 1];
 const regLabel = (v: number) => (v === 0 ? "Off" : `1e${Math.round(Math.log10(v))}`);
 
+/** Chart-card sub-tabs, mirroring the Parametric workspace. */
+type LvView = "smile" | "density" | "term" | "surface" | "table";
+const LV_VIEWS: { id: LvView; label: string }[] = [
+  { id: "smile", label: "Smile" },
+  { id: "density", label: "Density" },
+  { id: "term", label: "Term" },
+  { id: "surface", label: "Surface" },
+  { id: "table", label: "Table" },
+];
+/** Which sub-tabs are per-expiry (need the expiry selector). */
+const PER_EXPIRY: Record<LvView, boolean> = {
+  smile: true, density: true, table: true, term: false, surface: false,
+};
+
+const chartMessage = (text: string) => (
+  <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
+);
+
 export default function LocalVolViewer() {
   const {
-    data,
-    loading,
-    refreshing,
-    error,
-    reload,
-    ticker,
-    setTicker,
-    tickers,
-    params,
-    setParams,
+    data, loading, refreshing, error, reload, ticker, setTicker, tickers, params, setParams,
   } = useAffine();
 
-  // Selected expiry for the reconstructed-smile chart, clamped to range.
+  const [view, setView] = useState<LvView>("smile");
+  // Selected expiry for the per-expiry views, clamped to range.
   const [expiryIdx, setExpiryIdx] = useState(0);
   useEffect(() => {
     if (data && expiryIdx >= data.smiles.length) setExpiryIdx(0);
   }, [data, expiryIdx]);
+
+  const expiry = data?.smiles[expiryIdx]?.expiry ?? null;
+
+  // Derived views reuse the cached affine fit; only the active one fetches.
+  const density = useAffineView<DistributionData>(
+    "density", ticker, params, expiry, view === "density",
+  );
+  const term = useAffineView<TermResponse>("term", ticker, params, null, view === "term");
+  const table = useAffineView<AffineTableData>(
+    "table", ticker, params, expiry, view === "table",
+  );
 
   if (error !== null && data === null) {
     return (
@@ -56,9 +89,7 @@ export default function LocalVolViewer() {
           <p className="mb-5 truncate text-[10px] text-amber-400/80" title={error}>
             {error}
           </p>
-          <button className={buttonClass} onClick={reload}>
-            Retry
-          </button>
+          <button className={buttonClass} onClick={reload}>Retry</button>
         </div>
       </div>
     );
@@ -66,9 +97,39 @@ export default function LocalVolViewer() {
 
   const smile = data?.smiles[expiryIdx];
 
+  /** Chart-card body for the active sub-tab. */
+  const chartBody = () => {
+    if (loading || data === null) return chartMessage("Calibrating local-vol surface…");
+    switch (view) {
+      case "surface":
+        return <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
+      case "smile":
+        return smile ? <LocalVolSmile smile={smile} /> : chartMessage("No smile");
+      case "density":
+        return density.data
+          ? <DistributionChart kind="density" current={density.data.current} prior={density.data.prior} />
+          : chartMessage(density.error ?? "Loading density…");
+      case "term":
+        return term.data
+          ? (
+            <TermChart
+              points={term.data.points}
+              curve={term.data.curve}
+              events={[]}
+              eventsEnabled={false}
+              axisClock="real"
+              dividends={term.data.dividends}
+            />
+          )
+          : chartMessage(term.error ?? "Loading term structure…");
+      case "table":
+        return table.data ? <LocalVolTable data={table.data} /> : chartMessage(table.error ?? "Loading table…");
+    }
+  };
+
   return (
     <div className="flex h-full flex-col gap-4 p-4">
-      {/* Header */}
+      {/* Header: ticker + sub-tab selector + expiry chips + arb badge */}
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs text-slate-500">
           Underlying
@@ -79,15 +140,32 @@ export default function LocalVolViewer() {
             disabled={tickers.length === 0}
           >
             {tickers.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
         </label>
-        <span className="text-[11px] text-slate-500">
-          direct piecewise-affine local-variance calibration
-        </span>
+
+        <SegmentedControl options={LV_VIEWS} value={view} onChange={setView} size="xs" />
+
+        {/* Per-expiry selector (smile / density / table) */}
+        {PER_EXPIRY[view] && (
+          <div className="flex max-w-full flex-wrap gap-1">
+            {(data?.smiles ?? []).map((s, i) => (
+              <button
+                key={s.expiry}
+                onClick={() => setExpiryIdx(i)}
+                className={[
+                  "rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                  i === expiryIdx ? "bg-accent-600/25 text-accent-400" : "text-slate-500 hover:text-slate-300",
+                ].join(" ")}
+                title={s.expiry}
+              >
+                {s.t.toFixed(2)}y
+              </button>
+            ))}
+          </div>
+        )}
+
         {data && (
           <span className="ml-auto flex items-center gap-3 font-mono text-[11px] text-slate-500">
             <span
@@ -104,72 +182,27 @@ export default function LocalVolViewer() {
         )}
       </div>
 
-      {/* Body */}
+      {/* Body: chart card + controls aside */}
       <div className="flex min-h-0 flex-1 gap-4">
-        {/* Heatmap + smile column */}
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          {/* Heatmap card */}
-          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
-            <h2 className="mb-2 shrink-0 text-sm font-semibold text-slate-100">
-              {ticker !== "" ? `${ticker} local-vol surface` : "Local-vol surface"}
+        <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+          <div className="mb-2 flex shrink-0 items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-100">
+              {ticker !== "" ? `${ticker} local vol` : "Local vol"}
+              {PER_EXPIRY[view] && smile ? ` · ${smile.expiry}` : ""}
             </h2>
-            <div
-              className={[
-                "min-h-0 flex-1 transition-opacity duration-200",
-                refreshing ? "opacity-60" : "opacity-100",
-              ].join(" ")}
-            >
-              {loading || data === null ? (
-                <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                  Calibrating local-vol surface…
-                </div>
-              ) : (
-                <LocalVolHeatmap
-                  tNodes={data.tNodes}
-                  xNodes={data.xNodes}
-                  localVol={data.localVol}
-                />
-              )}
-            </div>
+            {smile && PER_EXPIRY[view] && (
+              <span className="font-mono text-[11px] text-slate-500">
+                arbitrage-free · max err {smile.maxIvErrorBp.toFixed(0)} bp
+              </span>
+            )}
           </div>
-
-          {/* Reconstructed-smile card */}
-          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
-            <div className="mb-2 flex shrink-0 flex-wrap items-center gap-2">
-              <h2 className="text-sm font-semibold text-slate-100">Reconstructed smile</h2>
-              {smile && (
-                <span className="font-mono text-[11px] text-slate-500">
-                  arbitrage-free · max err {smile.maxIvErrorBp.toFixed(0)} bp
-                </span>
-              )}
-              {/* Expiry selector */}
-              <div className="ml-auto flex max-w-full flex-wrap gap-1">
-                {(data?.smiles ?? []).map((s, i) => (
-                  <button
-                    key={s.expiry}
-                    onClick={() => setExpiryIdx(i)}
-                    className={[
-                      "rounded px-1.5 py-0.5 font-mono text-[10px] transition-colors",
-                      i === expiryIdx
-                        ? "bg-accent-600/25 text-accent-400"
-                        : "text-slate-500 hover:text-slate-300",
-                    ].join(" ")}
-                    title={s.expiry}
-                  >
-                    {s.t.toFixed(2)}y
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="min-h-0 flex-1">
-              {smile ? (
-                <LocalVolSmile smile={smile} />
-              ) : (
-                <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                  {loading ? "Fitting…" : "No smile"}
-                </div>
-              )}
-            </div>
+          <div
+            className={[
+              "min-h-0 flex-1 transition-opacity duration-200",
+              refreshing ? "opacity-60" : "opacity-100",
+            ].join(" ")}
+          >
+            {chartBody()}
           </div>
         </div>
 
@@ -177,22 +210,10 @@ export default function LocalVolViewer() {
         <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
           <div>
             <h3 className="mb-2 text-sm font-semibold text-slate-100">Vertex grid</h3>
-            <SliderRow
-              label="Strike nodes"
-              value={params.nXNodes}
-              min={3}
-              max={13}
-              step={1}
-              onChange={(v) => setParams({ nXNodes: v })}
-            />
-            <SliderRow
-              label="Time nodes"
-              value={params.nTNodes}
-              min={2}
-              max={8}
-              step={1}
-              onChange={(v) => setParams({ nTNodes: v })}
-            />
+            <SliderRow label="Strike nodes" value={params.nXNodes} min={3} max={13} step={1}
+              onChange={(v) => setParams({ nXNodes: v })} />
+            <SliderRow label="Time nodes" value={params.nTNodes} min={2} max={8} step={1}
+              onChange={(v) => setParams({ nTNodes: v })} />
             <div className="mt-2 flex items-center justify-between">
               <span className="text-xs text-slate-400" title="Second-difference roughness penalty">
                 Roughness λ
@@ -203,9 +224,7 @@ export default function LocalVolViewer() {
                 className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[11px] text-slate-200 outline-none hover:border-slate-600 focus:border-accent-500"
               >
                 {REG_LAMBDAS.map((v) => (
-                  <option key={v} value={v}>
-                    {regLabel(v)}
-                  </option>
+                  <option key={v} value={v}>{regLabel(v)}</option>
                 ))}
               </select>
             </div>
@@ -259,18 +278,9 @@ export default function LocalVolViewer() {
 
 /** A labelled integer slider row for the vertex-grid controls. */
 function SliderRow({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
+  label, value, min, max, step, onChange,
 }: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
+  label: string; value: number; min: number; max: number; step: number;
   onChange: (v: number) => void;
 }) {
   return (
@@ -280,11 +290,7 @@ function SliderRow({
         <span className="font-mono text-xs font-medium text-slate-100">{value}</span>
       </div>
       <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
+        type="range" min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="w-full cursor-pointer"
         style={{ accentColor: "var(--color-accent-500)" }}
