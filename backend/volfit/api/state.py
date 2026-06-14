@@ -147,6 +147,9 @@ class AppState(UniverseMixin):
         self._fits: dict[tuple, FitRecord] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
+        #: Explicitly darkened (ticker, ISO) nodes; every node is LIT by default.
+        #: Lit = an observed source for the graph solver, dark = extrapolated.
+        self._dark_nodes: set[tuple[str, str]] = set()
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
         self._lock = threading.Lock()
 
@@ -503,6 +506,20 @@ class AppState(UniverseMixin):
     def save_prior(self, key: tuple[str, str], record: PriorRecord) -> None:
         with self._lock:
             self._priors[key] = record
+
+    # ------------------------------------------------------------- lit / dark
+    def node_lit(self, ticker: str, iso: str) -> bool:
+        """Whether a node is lit (observed); lit by default, dark when darkened."""
+        with self._lock:
+            return (ticker, iso) not in self._dark_nodes
+
+    def set_node_lit(self, ticker: str, iso: str, lit: bool) -> None:
+        """Mark a node lit (observed source) or dark (extrapolation target)."""
+        with self._lock:
+            if lit:
+                self._dark_nodes.discard((ticker, iso))
+            else:
+                self._dark_nodes.add((ticker, iso))
 
     # --------------------------------------------------------------- universe
     @property

@@ -16,8 +16,11 @@ from volfit.api.schemas import UniverseResponse
 from volfit.api.schemas_universe import (
     AddTickerRequest,
     ExpiryPickerResponse,
+    LitMapResponse,
+    LitNode,
     SavedUniversesResponse,
     SetExpiriesRequest,
+    SetLitRequest,
     SymbolSearchResponse,
 )
 from volfit.api.state import UnknownNodeError
@@ -84,6 +87,30 @@ def put_expiries(
 def reset_expiries(ticker: str, request: Request) -> ExpiryPickerResponse:
     try:
         return svc.reset_expiries(_state(request), ticker)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+# ------------------------------------------------------------- lit / dark
+@router.get("/universe/lit", response_model=LitMapResponse)
+def get_lit(request: Request) -> LitMapResponse:
+    return svc.lit_map(_state(request))
+
+
+@router.put("/universe/lit/{ticker}", response_model=LitMapResponse)
+def set_lit_ticker(ticker: str, body: SetLitRequest, request: Request) -> LitMapResponse:
+    try:
+        return svc.set_lit_ticker(_state(request), ticker, body.lit)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.put("/universe/lit/{ticker}/{expiry}", response_model=LitNode)
+def set_lit_node(
+    ticker: str, expiry: str, body: SetLitRequest, request: Request
+) -> LitNode:
+    try:
+        return svc.set_lit(_state(request), ticker, expiry, body.lit)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

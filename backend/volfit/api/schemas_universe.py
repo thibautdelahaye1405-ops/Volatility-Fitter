@@ -63,3 +63,25 @@ class SetExpiriesRequest(BaseModel):
     """Replace a ticker's selected expiries with these ISO dates."""
 
     expiries: list[str]
+
+
+# ------------------------------------------------------------- lit / dark
+class LitNode(BaseModel):
+    """One (ticker, expiry) node's lit/dark designation. Lit = an observed
+    source for the graph solver; dark = an extrapolation target."""
+
+    ticker: str
+    expiry: str  # ISO date
+    lit: bool
+
+
+class LitMapResponse(BaseModel):
+    """Lit/dark designation of every selected node of the universe."""
+
+    nodes: list[LitNode]
+
+
+class SetLitRequest(BaseModel):
+    """Set a node's (or a whole ticker's) lit/dark designation."""
+
+    lit: bool

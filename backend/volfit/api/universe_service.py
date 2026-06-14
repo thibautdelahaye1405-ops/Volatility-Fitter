@@ -15,6 +15,8 @@ from volfit.api.schemas import ExpiryInfo, UniverseResponse
 from volfit.api.schemas_universe import (
     ExpiryOption,
     ExpiryPickerResponse,
+    LitMapResponse,
+    LitNode,
     SavedUniversesResponse,
     SymbolMatch,
     SymbolSearchResponse,
@@ -105,6 +107,31 @@ def reset_expiries(state: AppState, ticker: str) -> ExpiryPickerResponse:
     """Re-apply the default selection rule to a ticker (auto mode)."""
     state.reset_expiries(ticker)
     return expiry_picker(state, ticker)
+
+
+# ------------------------------------------------------------- lit / dark
+def lit_map(state: AppState) -> LitMapResponse:
+    """Lit/dark designation of every selected node, nearest expiry first."""
+    nodes: list[LitNode] = []
+    for ticker in state.active_tickers():
+        for expiry in sorted(state.forwards(ticker)):
+            iso = expiry.isoformat()
+            nodes.append(LitNode(ticker=ticker, expiry=iso, lit=state.node_lit(ticker, iso)))
+    return LitMapResponse(nodes=nodes)
+
+
+def set_lit(state: AppState, ticker: str, expiry: str, lit: bool) -> LitNode:
+    """Set one node's lit/dark designation (validates the node first)."""
+    iso = state.resolve_expiry(ticker, expiry).isoformat()  # UnknownNodeError if bad
+    state.set_node_lit(ticker, iso, lit)
+    return LitNode(ticker=ticker, expiry=iso, lit=state.node_lit(ticker, iso))
+
+
+def set_lit_ticker(state: AppState, ticker: str, lit: bool) -> LitMapResponse:
+    """Set every selected expiry of a ticker lit/dark at once (bulk toggle)."""
+    for expiry in sorted(state.forwards(ticker)):  # UnknownNodeError if unknown
+        state.set_node_lit(ticker, expiry.isoformat(), lit)
+    return lit_map(state)
 
 
 # --------------------------------------------------------- named universes

@@ -387,6 +387,7 @@ class GraphNodeInfo(BaseModel):
     atmVol: float
     skew: float
     curvature: float
+    lit: bool = True  # lit/dark designation (volfit.api.state); lit by default
 
 
 class GraphNodesResponse(BaseModel):

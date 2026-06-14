@@ -26,7 +26,8 @@ router = APIRouter()
 
 @router.get("/graph/nodes", response_model=GraphNodesResponse)
 def graph_nodes(request: Request) -> GraphNodesResponse:
-    universe = graph_service.ensure_universe(request.app.state.volfit)
+    state = request.app.state.volfit
+    universe = graph_service.ensure_universe(state)
     nodes = [
         GraphNodeInfo(
             ticker=smile.name[0],
@@ -35,6 +36,7 @@ def graph_nodes(request: Request) -> GraphNodesResponse:
             atmVol=float(universe.handles[i, 0]),
             skew=float(universe.handles[i, 1]),
             curvature=float(universe.handles[i, 2]),
+            lit=state.node_lit(smile.name[0], smile.name[1]),
         )
         for i, smile in enumerate(universe.smiles)
     ]
