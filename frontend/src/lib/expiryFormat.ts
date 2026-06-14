@@ -8,13 +8,14 @@
 // their day (18Dec26).
 export type ExpiryFormat = "dmy" | "compact" | "years" | "months" | "monthsdays";
 
-/** Selector options, in cycle order; the label doubles as the menu text. */
+/** Selector options, in cycle order; the label is a placeholder showing the
+ *  shape of the rendered value (the menu/toggle text). */
 export const EXPIRY_FORMATS: { id: ExpiryFormat; label: string }[] = [
   { id: "dmy", label: "dd-mmm-yy" },
   { id: "compact", label: "(dd)mmmyy" },
-  { id: "years", label: "1.25y" },
-  { id: "months", label: "15.0m" },
-  { id: "monthsdays", label: "15m 0d" },
+  { id: "years", label: "x.xxY" },
+  { id: "months", label: "xx.xM" },
+  { id: "monthsdays", label: "yyM zD" },
 ];
 
 const MONTHS = [
@@ -40,13 +41,14 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Format one expiry given its ISO date and year-fraction t to maturity. */
 export function formatExpiry(iso: string, t: number, fmt: ExpiryFormat): string {
-  if (fmt === "years") return `${t.toFixed(2)}y`;
-  if (fmt === "months") return `${(t * 12).toFixed(1)}m`;
+  if (fmt === "years") return `${t.toFixed(2)}Y`;
+  if (fmt === "months") return `${(t * 12).toFixed(1)}M`;
   if (fmt === "monthsdays") {
     const totalM = t * 12;
     const m = Math.max(0, Math.floor(totalM));
     const days = Math.round((totalM - m) * 30.4375);
-    return `${m}m ${days}d`;
+    // Smart: under a month, show days only (e.g. 12D); else "15M 0D".
+    return m === 0 ? `${days}D` : `${m}M ${days}D`;
   }
   // Calendar formats need the date; fall back to the ISO string if unparseable.
   const p = parseIso(iso);
