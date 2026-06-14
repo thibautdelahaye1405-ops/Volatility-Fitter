@@ -6,6 +6,7 @@ import TopBar from "./components/TopBar";
 import PlaceholderCard from "./components/PlaceholderCard";
 import SmileViewer from "./views/SmileViewer";
 import LocalVolViewer from "./views/LocalVolViewer";
+import ForwardsViewer from "./views/ForwardsViewer";
 import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
 import { SmileSessionProvider } from "./state/smileSession";
@@ -48,13 +49,7 @@ export default function App() {
           {activeTab === "parametric" && <SmileViewer />}
           {activeTab === "localvol" && <LocalVolViewer />}
           {activeTab === "universe" && <UniverseManager />}
-          {activeTab === "forwards" && (
-            <PlaceholderCard title="Forwards">
-              Per-ticker forwards &amp; dividends tuning (parity / theoretical /
-              manual per expiry, carry and dividend schedule) — shared by the
-              Parametric and Local Vol workspaces. Landing next in Phase 10.
-            </PlaceholderCard>
-          )}
+          {activeTab === "forwards" && <ForwardsViewer />}
           {activeTab === "options" && (
             <PlaceholderCard title="Options">
               Global meta-parameters &amp; calibration defaults: grid size,
