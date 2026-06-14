@@ -12,6 +12,22 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Done & verified (333 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
 
+- **[2026-06-14] Phase 10 viewer refinements** (third request batch):
+  * **Local Vol IV surface is now 3D** (not a heatmap): the 3D renderer was
+    extracted from SurfaceChart into a presentational `SurfaceMesh`; SurfaceChart
+    is a thin fetching wrapper and the LV "IV surface" sub-tab builds a (T×k→σ_IV)
+    mesh from the reconstructed affine smiles and renders it through SurfaceMesh,
+    matching the Parametric Surface.
+  * **Global expiry-format toggle** (`lib/expiryFormat.formatExpiry`): five
+    formats — `dd-mmm-yy`, `(dd)mmmyy` (**smart-day**: the day is shown only on
+    non-3rd-Friday listings, so monthlies read "Dec26", weeklies "11Dec26"),
+    `1.25y`, `15.0m`, `15m 0d`. One global preference via a lightweight
+    `ExpiryFormatProvider` context (localStorage-persisted), a full selector in
+    the Options "Display" card + a ↻ cycle toggle in the Parametric/Local-Vol
+    headers, applied across the expiry dropdown, chart titles, Local-Vol
+    chips/diagnostics, Forwards & Term ladders, the lit/dark matrix and the
+    stacked-chart legends.
+
 - **[2026-06-14] Phase 10 viewer refinements** (second request batch):
   * **Aside/header slimmed**: the Parametric expiry-class chips (D/W/M/Q/All) are
     gone (the Expiry dropdown lists every selected expiry); the aside keeps only
