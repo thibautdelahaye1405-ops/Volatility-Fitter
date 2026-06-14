@@ -10,7 +10,35 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (326 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (333 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-14] Phase 10 viewer refinements** (second request batch):
+  * **Aside/header slimmed**: the Parametric expiry-class chips (D/W/M/Q/All) are
+    gone (the Expiry dropdown lists every selected expiry); the aside keeps only
+    diagnostics + the spot-scenario *slider* — the **dynamics regime moved
+    entirely to Options** (Mny / Strike / LV / LV-grid / custom-SSR; backend
+    `dynamicsRegime` widened to a string literal incl. `custom`), and the **model
+    selector moved to Options** too (ModelPanel retired). `useSmile` sources the
+    scenario regime from `/settings/options` and re-pulls it on reload, so an
+    Options change propagates.
+  * **Stacked views (Parametric)**: the single-node Density tab is replaced by
+    **Stacked densities** — every selected expiry's risk-neutral density overlaid
+    (all ≥ 0 ⇒ no butterfly arb), new `GET /smiles/{ticker}/densities`
+    (model-aware; declared before `/{expiry}`). A **Stacked IV** tab beside
+    Surface overlays **total variance** w(k)=σ²·T per expiry (the correct space:
+    non-crossing ⇔ no calendar arb), from the existing `/surface` mesh. New
+    zero-dep `OverlayCurvesChart` (maturity-graded).
+  * **Local Vol IV surface**: the Surface sub-tab is now **LV surface**; a new
+    **IV surface** sub-tab shows the reconstructed implied-vol heatmap (per-expiry
+    affine smiles resampled on a shared intersection grid). `LocalVolHeatmap`
+    generalized with a legend label.
+  * **Lit/dark nodes**: per-(ticker,expiry) lit/dark designation on AppState
+    (lit by default; lit = observed source, dark = extrapolation target),
+    `GET /universe/lit` + `PUT /universe/lit/{ticker}[/{expiry}]`, `GraphNodeInfo`
+    reports `lit`. New `LitDarkMatrix` in the Universe tab; `useGraph` seeds its
+    observed set from the designation on load and persists toggles back, so the
+    Universe and Graph tabs stay in sync. 11 new backend tests (options/custom,
+    stacked-densities, lit/dark); strict-TS build green; endpoints live-verified.
 
 - **[2026-06-14] Phase 10 — workspace restructuring (tabs, Forwards & Options)**:
   top tabs are now **Parametric · Local Vol · Forwards · Options · Graph ·
@@ -527,12 +555,10 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     Edge (cash dividend → Term marker at t≈0.12y; editor shows the schedule).
 
 **Next up (in order):**
-1. Phase 10 follow-ups (the tab restructure shipped; see the dated STATUS entry
-   and the Phase 10 section): deepen the "wire cheap" toggles whose backend
-   defaults are stored + surfaced but not yet consumed everywhere — scenario
-   auto-seed from `dynamicsRegime`/`ssr`, `enforceCalendar` on the per-view
-   paths, `varSwapEnabled` hiding the var-swap rows, `autoLoadPrior`; then the
-   two stubs (auto-on-demand calibration trigger, real-time spot streaming).
+1. Phase 10 follow-ups still open (scenario auto-seed from dynamicsRegime/ssr +
+   lit/dark now done): `enforceCalendar` on the per-view paths, `varSwapEnabled`
+   hiding the var-swap rows, `autoLoadPrior`; then the two stubs (auto-on-demand
+   calibration trigger, real-time spot streaming).
 2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
    sets, provider-failure injection; UX polish (skeletons, error surfaces,
    layout persistence); Docker-compose packaging + user/API docs.
