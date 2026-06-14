@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from volfit.api.schemas import FitMode, QuoteBand, SmilePoint
+from volfit.api.schemas import FitMode, QuoteBand, SmilePoint, VarSwapInfo
 
 
 class AffineFitRequest(BaseModel):
@@ -42,9 +42,11 @@ class AffineSmile(BaseModel):
     """One expiry's reconstructed arbitrage-free smile plus its quotes."""
 
     expiry: str  # ISO date
-    t: float  # year fraction
+    t: float  # CALENDAR year fraction (maturity axis)
+    tau: float = 0.0  # event-weighted variance years the smile is quoted in (= t with no events)
     model: list[SmilePoint]  # reconstructed IV curve (Dupire PDE -> Black inv)
     quotes: list[QuoteBand]  # the calibrated quote band at each strike
+    varSwap: VarSwapInfo  # var-swap quote (shared with Parametric) + model level
     maxIvErrorBp: float  # worst |model - quote mid| IV over the quotes, bp
 
 

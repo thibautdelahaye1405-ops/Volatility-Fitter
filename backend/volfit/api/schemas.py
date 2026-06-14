@@ -108,8 +108,23 @@ class OptionsSettings(BaseModel):
 
     # arbitrage / events / var-swap (wired as global defaults)
     enforceCalendar: bool = True
+    #: Master switch for the event-weighted variance clock (volfit.calib.
+    #: weighted_time): when on, the ticker's event calendar augments day-weights
+    #: so an event before an expiry lowers the working IV at fixed price. Now
+    #: affects calibration, so it bumps the options version.
     eventsEnabled: bool = True
+    #: Normalize the variance clock so the 1Y weight budget stays 365 (rescale
+    #: ALL days, events included): events redistribute variance within the year
+    #: and 1Y vols are unchanged. Off by default (cumulative weight > calendar
+    #: days). Affects calibration -> bumps the options version.
+    normalizeEvents: bool = False
     varSwapEnabled: bool = True
+    #: Var-swap penalty weight as a PERCENTAGE of the summed option-quote weights
+    #: of the same (asset, expiry) node (volfit.api.varswap.varswap_target): at
+    #: 100% an active var-swap quote weighs as much as all option quotes combined.
+    #: Changes calibration output, so it bumps the options version (set_options),
+    #: and only matters while ``varSwapEnabled`` is on.
+    varSwapWeightPct: float = Field(10.0, ge=0.0, le=1000.0)
     # prior default
     autoLoadPrior: bool = False
     # local-vol-affine vertex grid + roughness defaults
@@ -181,6 +196,24 @@ class SmileDiagnostics(BaseModel):
     rmsError: float  # weighted RMS vol error of the fit (decimal vol; UI shows %)
 
 
+class VarSwapInfo(BaseModel):
+    """Variance-swap quote state of a node (volfit.api.varswap_session).
+
+    ``level`` is the quoted var-swap *volatility* (None when no quote exists);
+    ``modelVol`` is the model's own fair var-swap vol (the diagnostics value, so
+    the UI can seed a new quote at the model level and show the gap). ``enabled``
+    mirrors OptionsSettings.varSwapEnabled so the frontend can gate the affordance
+    without a second fetch. ``canUndo``/``canRedo`` cover the SEPARATE var-swap
+    edit history (independent of the option-quote session)."""
+
+    level: float | None
+    excluded: bool
+    modelVol: float
+    enabled: bool
+    canUndo: bool
+    canRedo: bool
+
+
 class SmileData(BaseModel):
     """Everything the Smile Viewer needs for one (underlying, expiry) node."""
 
@@ -194,6 +227,7 @@ class SmileData(BaseModel):
     kMin: float
     kMax: float
     diagnostics: SmileDiagnostics
+    varSwap: VarSwapInfo  # variance-swap quote + model level for this node
     canUndo: bool  # quote-edit session undo/redo availability
     canRedo: bool  # (both False when the node has no edit session yet)
 
@@ -236,6 +270,18 @@ class QuoteEditRequest(BaseModel):
     action: Literal["exclude", "include", "amend", "reset"]
     index: int | None = None
     mid: float | None = None
+
+
+class VarSwapEditRequest(BaseModel):
+    """One variance-swap quote edit on a smile node (volfit.api.varswap_session).
+
+    ``set`` adds or adjusts the quote and requires a positive ``level`` (var-swap
+    *volatility*, e.g. 0.185); ``exclude``/``include`` toggle an existing quote in
+    or out of the fit; ``remove``/``reset`` delete it. Semantic validation lives
+    in VarSwapSession.apply (router maps ValueError to HTTP 422)."""
+
+    action: Literal["set", "exclude", "include", "remove", "reset"]
+    level: float | None = None
 
 
 # --------------------------------------------------------------- surface fit
@@ -473,6 +519,29 @@ class EventSpec(BaseModel):
     label: str = ""
 
 
+class EventCalendar(BaseModel):
+    """A ticker's persisted event calendar (GET/PUT /events/{ticker}).
+
+    The event list is shared per-ticker state so it survives Parametric tab
+    switches and ticker changes (volfit.api.state.AppState), instead of living
+    only in the Term sub-tab's view-local state."""
+
+    events: list[EventSpec] = Field(default_factory=list)
+
+
+class EventAutocalibrateRequest(BaseModel):
+    """Auto-calibrate the event calendar from the ATM term structure.
+
+    ``maxExpiry`` is the horizon: one candidate event is placed before each
+    expiry at or before it, and their day-weights are solved (all at once) so the
+    weighted forward variance up to the interval just past the horizon is as flat
+    and monotone-increasing as possible, with events as small and sparse as
+    possible (volfit.calib.event_autocalibrate). Replaces the existing calendar."""
+
+    maxExpiry: str  # ISO date: no events are added beyond this expiry
+    fitMode: FitMode = "mid"
+
+
 class TermStructureRequest(BaseModel):
     """ATM term structure of one ticker under an optional event calendar."""
 
@@ -489,7 +558,9 @@ class TermPoint(BaseModel):
     tau: float  # event-dilated time tau(t)
     atmVol: float  # exact ATM handle sigma_0 (same fit as GET /smiles)
     w0: float  # ATM total implied variance
-    varSwapVol: float  # sqrt(var-swap strike / t)
+    varSwapVol: float  # model fair var-swap vol = sqrt(var-swap strike / t)
+    varSwapQuote: float | None = None  # user-quoted var-swap vol (None if unset)
+    varSwapExcluded: bool = False  # quote present but excluded from the fit
     maxIvErrorBp: float
 
 

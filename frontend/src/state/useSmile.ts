@@ -18,6 +18,9 @@ export type FitMode = "mid" | "bidask" | "haircut";
 /** Quote-level edit verbs accepted by POST /smiles/{ticker}/{expiry}/edits. */
 export type EditAction = "exclude" | "include" | "amend" | "reset";
 
+/** Var-swap quote verbs accepted by POST .../varswap (volfit.api.varswap). */
+export type VarSwapAction = "set" | "exclude" | "include" | "remove" | "reset";
+
 /** Listing class of an expiry, driving the header's bulk filter chips. */
 export type ExpiryClass = "daily" | "weekly" | "monthly" | "quarterly" | "leaps";
 
@@ -103,6 +106,10 @@ export interface UseSmileResult {
   applyEdit: (action: EditAction, index?: number, mid?: number) => Promise<void>;
   undo: () => Promise<void>;
   redo: () => Promise<void>;
+  /** Apply a var-swap quote edit (set/exclude/include/remove/reset) and refit. */
+  applyVarSwap: (action: VarSwapAction, level?: number) => Promise<void>;
+  undoVarSwap: () => Promise<void>;
+  redoVarSwap: () => Promise<void>;
   /** Persist the current fit as the prior, then refetch the smile.
    *  No-op in mock mode; rejects (after surfacing editError) on failure. */
   savePrior: () => Promise<void>;
@@ -299,6 +306,37 @@ export function useSmile(): UseSmileResult {
   const undo = useCallback(() => postEdit("undo"), [postEdit]);
   const redo = useCallback(() => postEdit("redo"), [postEdit]);
 
+  // Var-swap quote edits: same instant-refit contract as quote edits, but the
+  // /varswap endpoints (shared with the Local Vol workspace). The returned
+  // refit (now carrying the var-swap penalty) replaces the current smile.
+  const postVarSwap = useCallback(
+    async (suffix: "varswap" | "varswap/undo" | "varswap/redo", body?: unknown): Promise<void> => {
+      if (source !== "live" || ticker === "" || expiry === "") return;
+      setRefreshing(true);
+      try {
+        const data = await api.post<SmileData>(
+          `/smiles/${ticker}/${expiry}/${suffix}`,
+          { params: { fit_mode: fitMode }, body },
+        );
+        setSmile(data);
+        hasSmileRef.current = true;
+        setEditError(null);
+      } catch (err: unknown) {
+        setEditError(editMessageOf(err));
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [source, ticker, expiry, fitMode],
+  );
+
+  const applyVarSwap = useCallback(
+    (action: VarSwapAction, level?: number) => postVarSwap("varswap", { action, level }),
+    [postVarSwap],
+  );
+  const undoVarSwap = useCallback(() => postVarSwap("varswap/undo"), [postVarSwap]);
+  const redoVarSwap = useCallback(() => postVarSwap("varswap/redo"), [postVarSwap]);
+
   /** Persist the current fit as the prior, then refetch through the regular
    *  smile effect (so `prior` updates atomically with the full payload). */
   const savePrior = useCallback(async (): Promise<void> => {
@@ -362,6 +400,9 @@ export function useSmile(): UseSmileResult {
     applyEdit,
     undo,
     redo,
+    applyVarSwap,
+    undoVarSwap,
+    redoVarSwap,
     savePrior,
     reload,
     refreshUniverse,

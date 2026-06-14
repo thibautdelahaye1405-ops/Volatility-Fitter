@@ -6,6 +6,7 @@
 // session directly; the only prop is whether the Smile chart view is active
 // (the scenario overlay is only drawn there).
 import ScenarioPanel from "./ScenarioPanel";
+import VarSwapPanel from "./VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
 import { formatPct } from "../lib/chartScale";
 
@@ -22,6 +23,9 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
     setScenario,
     scenarioCurve,
     scenarioSsr,
+    applyVarSwap,
+    undoVarSwap,
+    redoVarSwap,
   } = useSmileSession();
   const live = source === "live";
 
@@ -62,6 +66,23 @@ export default function SmileAside({ smileViewActive }: SmileAsideProps) {
           </div>
         ))}
       </dl>
+
+      {/* Variance-swap quote: adds a calibration penalty (Options-gated) */}
+      {smile?.varSwap.enabled && (
+        <div className="mt-4 border-t border-slate-800 pt-4">
+          <VarSwapPanel
+            info={smile.varSwap}
+            live={live}
+            onSet={(level) => void applyVarSwap("set", level)}
+            onExclude={() => void applyVarSwap("exclude")}
+            onInclude={() => void applyVarSwap("include")}
+            onRemove={() => void applyVarSwap("remove")}
+            onUndo={() => void undoVarSwap()}
+            onRedo={() => void redoVarSwap()}
+            onReset={() => void applyVarSwap("reset")}
+          />
+        </div>
+      )}
 
       {/* Spot scenario: drives the SSR overlay on the smile chart */}
       <div className="mt-4 border-t border-slate-800 pt-4">

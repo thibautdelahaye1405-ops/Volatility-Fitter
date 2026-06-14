@@ -33,7 +33,9 @@ def test_defaults(client):
     assert settings == {
         "enforceCalendar": True,
         "eventsEnabled": True,
+        "normalizeEvents": False,
         "varSwapEnabled": True,
+        "varSwapWeightPct": 10.0,
         "autoLoadPrior": False,
         "gridXNodes": 7,
         "gridTNodes": 4,
@@ -55,7 +57,9 @@ def test_put_round_trip(client):
     body = {
         "enforceCalendar": False,
         "eventsEnabled": False,
+        "normalizeEvents": True,
         "varSwapEnabled": False,
+        "varSwapWeightPct": 25.0,
         "autoLoadPrior": True,
         "gridXNodes": 9,
         "gridTNodes": 5,

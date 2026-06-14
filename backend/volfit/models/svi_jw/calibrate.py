@@ -33,6 +33,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_vega_sigma
 from volfit.models.svi_jw.svi import RawSVI
 
@@ -116,6 +117,7 @@ def calibrate_svi(
     penalty_weight: float = _PENALTY,
     lee_slope_max: float = _LEE_SLOPE_MAX,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    var_swap: VarSwapTarget | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -128,7 +130,9 @@ def calibrate_svi(
 
     ``penalty_weight`` / ``lee_slope_max`` are the soft no-arbitrage coefficients
     (FitSettings); ``mid_anchor_weight`` the band's mid anchor. All default to
-    the historical constants, so a default fit is byte-identical.
+    the historical constants, so a default fit is byte-identical. ``var_swap``
+    (volfit.calib.varswap) adds one vol-space penalty pulling the slice's fair
+    var-swap toward a quote; None keeps the objective unchanged.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -144,7 +148,10 @@ def calibrate_svi(
             fit = band_residuals(
                 model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_weights, mid_anchor_weight
             )
-        return np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
+        res = np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
+        if var_swap is not None:
+            res = np.concatenate((res, [varswap_residual(raw.total_variance, var_swap)]))
+        return res
 
     theta0 = _init_theta(k, w_quotes)
     result = least_squares(residuals, theta0, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)

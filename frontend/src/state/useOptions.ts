@@ -22,7 +22,9 @@ export type SpotMode = "realtime" | "static";
 export interface OptionsSettings {
   enforceCalendar: boolean;
   eventsEnabled: boolean;
+  normalizeEvents: boolean;
   varSwapEnabled: boolean;
+  varSwapWeightPct: number;
   autoLoadPrior: boolean;
   gridXNodes: number;
   gridTNodes: number;
@@ -42,7 +44,9 @@ export interface OptionsSettings {
 export const OPTIONS_DEFAULTS: OptionsSettings = {
   enforceCalendar: true,
   eventsEnabled: true,
+  normalizeEvents: false,
   varSwapEnabled: true,
+  varSwapWeightPct: 10.0,
   autoLoadPrior: false,
   gridXNodes: 7,
   gridTNodes: 4,

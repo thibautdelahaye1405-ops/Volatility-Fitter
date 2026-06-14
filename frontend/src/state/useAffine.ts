@@ -14,6 +14,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { useSmileSession } from "./smileSession";
+import type { VarSwapInfo } from "../lib/mockData";
+import type { VarSwapAction } from "./useSmile";
 
 /** One point of a reconstructed model curve. */
 export interface SmilePoint {
@@ -35,9 +37,14 @@ export interface QuoteBand {
 /** One expiry's reconstructed arbitrage-free smile plus its quotes. */
 export interface AffineSmile {
   expiry: string;
+  /** Calendar year fraction (maturity axis). */
   t: number;
+  /** Event-weighted variance years the smile is quoted in (= t with no events). */
+  tau?: number;
   model: SmilePoint[];
   quotes: QuoteBand[];
+  /** Var-swap quote (shared with the Parametric workspace) + model level. */
+  varSwap: VarSwapInfo;
   maxIvErrorBp: number;
 }
 
@@ -112,10 +119,22 @@ export interface UseAffineResult {
   tickers: string[];
   params: AffineParams;
   setParams: (patch: Partial<AffineParams>) => void;
+  /** Whether var-swap quoting is enabled (OptionsSettings.varSwapEnabled). */
+  varSwapEnabled: boolean;
+  /** Bumped on every var-swap edit; feed to useAffineView so the derived
+   *  (density/term/table) views refetch the recalibrated surface too. */
+  varSwapNonce: number;
+  /** Edit one expiry's var-swap quote (shared with Parametric), then refit the
+   *  surface, the derived views and the Parametric smile. */
+  applyVarSwap: (expiry: string, action: VarSwapAction, level?: number) => Promise<void>;
+  undoVarSwap: (expiry: string) => Promise<void>;
+  redoVarSwap: (expiry: string) => Promise<void>;
 }
 
 export function useAffine(): UseAffineResult {
-  const { universe, ticker, setTicker } = useSmileSession();
+  const { universe, ticker, setTicker, reload: reloadSmile } = useSmileSession();
+  const [varSwapEnabled, setVarSwapEnabled] = useState(true);
+  const [varSwapNonce, setVarSwapNonce] = useState(0);
 
   const [data, setData] = useState<AffineFitResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -142,9 +161,11 @@ export function useAffine(): UseAffineResult {
         gridTNodes: number;
         gridRegLambda: number;
         gridRegRho: number;
+        varSwapEnabled: boolean;
       }>("/settings/options", { signal: controller.signal })
       .then((o) => {
         seededRef.current = true;
+        setVarSwapEnabled(o.varSwapEnabled);
         setParamsState((p) =>
           p.nXNodes === DEFAULT_PARAMS.nXNodes &&
           p.nTNodes === DEFAULT_PARAMS.nTNodes &&
@@ -203,6 +224,38 @@ export function useAffine(): UseAffineResult {
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
+  // Var-swap quote edits (shared /varswap endpoints): after the POST, refit the
+  // affine surface (attempt) + bump the nonce so the derived views refetch, and
+  // refit the Parametric smile so both workspaces stay consistent.
+  const postVarSwap = useCallback(
+    async (expiry: string, suffix: string, body?: unknown): Promise<void> => {
+      if (ticker === "" || expiry === "") return;
+      try {
+        await api.post(`/smiles/${ticker}/${expiry}/${suffix}`, { body });
+      } catch {
+        /* surfaced indirectly via the next load */
+      }
+      setVarSwapNonce((n) => n + 1);
+      setAttempt((n) => n + 1);
+      reloadSmile();
+    },
+    [ticker, reloadSmile],
+  );
+
+  const applyVarSwap = useCallback(
+    (expiry: string, action: VarSwapAction, level?: number) =>
+      postVarSwap(expiry, "varswap", { action, level }),
+    [postVarSwap],
+  );
+  const undoVarSwap = useCallback(
+    (expiry: string) => postVarSwap(expiry, "varswap/undo"),
+    [postVarSwap],
+  );
+  const redoVarSwap = useCallback(
+    (expiry: string) => postVarSwap(expiry, "varswap/redo"),
+    [postVarSwap],
+  );
+
   return {
     data,
     loading,
@@ -214,5 +267,10 @@ export function useAffine(): UseAffineResult {
     tickers: universe?.tickers ?? [],
     params,
     setParams,
+    varSwapEnabled,
+    varSwapNonce,
+    applyVarSwap,
+    undoVarSwap,
+    redoVarSwap,
   };
 }

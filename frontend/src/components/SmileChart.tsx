@@ -39,6 +39,8 @@ interface SmileChartProps {
   scenario?: SmilePoint[] | null;
   /** Massive provider's IV points (read-only comparison); cyan dots when set. */
   massiveIv?: SmilePoint[] | null;
+  /** Active var-swap quote vol — drawn as a horizontal teal line when set. */
+  varSwapLevel?: number | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -93,6 +95,7 @@ export default function SmileChart({
   onQuoteSelect,
   scenario = null,
   massiveIv = null,
+  varSwapLevel = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -128,13 +131,14 @@ export default function SmileChart({
     for (const p of prior) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const p of scenario ?? []) if (inWindow(p.k)) { yMin = Math.min(yMin, p.vol); yMax = Math.max(yMax, p.vol); }
     for (const q of quotes) if (inWindow(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
+    if (varSwapLevel !== null) { yMin = Math.min(yMin, varSwapLevel); yMax = Math.max(yMax, varSwapLevel); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     return {
       xScale: linearScale([kLo, kHi], [0, plotW]),
       yScale: linearScale([yMin - pad, yMax + pad], [plotH, 0]),
     };
-  }, [model, prior, scenario, quotes, kLo, kHi, plotW, plotH]);
+  }, [model, prior, scenario, quotes, varSwapLevel, kLo, kHi, plotW, plotH]);
 
   /** Build an SVG path for a curve, clipped to the visible window. */
   const pathOf = (curve: SmilePoint[]): string => {
@@ -199,6 +203,11 @@ export default function SmileChart({
             <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> Massive IV
           </span>
         )}
+        {varSwapLevel !== null && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0 w-5 border-t-2 border-dashed border-teal-400" /> Var-swap
+          </span>
+        )}
         <span className="flex items-center gap-1.5">
           <span className="font-mono text-slate-500">⊺</span> Bid/Ask quotes
         </span>
@@ -232,6 +241,20 @@ export default function SmileChart({
                 <line x1={xScale.map(0)} x2={xScale.map(0)} y1={0} y2={plotH}
                   stroke="rgb(148 163 184 / 0.25)" strokeDasharray="2 4" />
               )}
+
+              {/* Variance-swap quote: horizontal teal line at the quoted vol */}
+              {varSwapLevel !== null &&
+                varSwapLevel >= yScale.domain[0] &&
+                varSwapLevel <= yScale.domain[1] && (
+                  <g pointerEvents="none">
+                    <line x1={0} x2={plotW} y1={yScale.map(varSwapLevel)} y2={yScale.map(varSwapLevel)}
+                      stroke="rgb(45 212 191 / 0.85)" strokeWidth={1.5} strokeDasharray="6 4" />
+                    <text x={plotW - 2} y={yScale.map(varSwapLevel) - 3} textAnchor="end"
+                      className="fill-teal-300 font-mono text-[10px]">
+                      VS {formatPct(varSwapLevel, 2)}
+                    </text>
+                  </g>
+                )}
 
               {/* Axes labels */}
               {yTicks.map((tv) => (

@@ -21,12 +21,15 @@ import DistributionChart from "../components/DistributionChart";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
 import ExpiryFormatToggle from "../components/ExpiryFormatToggle";
+import VarSwapPanel from "../components/VarSwapPanel";
+import { useSmileSession } from "../state/smileSession";
 import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
+import { useEvents } from "../state/useTerm";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import type { DistributionData } from "../state/useScenario";
-import type { TermResponse } from "../state/useTerm";
+import type { ClockMode, TermResponse } from "../state/useTerm";
 
 const selectClass =
   "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
@@ -64,10 +67,17 @@ const chartMessage = (text: string) => (
 export default function LocalVolViewer() {
   const {
     data, loading, refreshing, error, reload, ticker, setTicker, tickers, params, setParams,
+    varSwapEnabled, varSwapNonce, applyVarSwap, undoVarSwap, redoVarSwap,
   } = useAffine();
 
+  const { source } = useSmileSession();
+  const live = source === "live";
   const { format } = useExpiryFormat();
   const [view, setView] = useState<LvView>("smile");
+  // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
+  // + maturity-clock toggle, so event-time dilation is consistent in LV's Term.
+  const events = useEvents(ticker);
+  const [axisClock, setAxisClock] = useState<ClockMode>("real");
   // Selected expiry for the per-expiry views, clamped to range.
   const [expiryIdx, setExpiryIdx] = useState(0);
   useEffect(() => {
@@ -78,11 +88,11 @@ export default function LocalVolViewer() {
 
   // Derived views reuse the cached affine fit; only the active one fetches.
   const density = useAffineView<DistributionData>(
-    "density", ticker, params, expiry, view === "density",
+    "density", ticker, params, expiry, view === "density", varSwapNonce,
   );
-  const term = useAffineView<TermResponse>("term", ticker, params, null, view === "term");
+  const term = useAffineView<TermResponse>("term", ticker, params, null, view === "term", varSwapNonce);
   const table = useAffineView<AffineTableData>(
-    "table", ticker, params, expiry, view === "table",
+    "table", ticker, params, expiry, view === "table", varSwapNonce,
   );
 
   if (error !== null && data === null) {
@@ -132,10 +142,15 @@ export default function LocalVolViewer() {
             <TermChart
               points={term.data.points}
               curve={term.data.curve}
-              events={[]}
-              eventsEnabled={false}
-              axisClock="real"
+              events={events}
+              eventsEnabled={events.length > 0}
+              axisClock={axisClock}
               dividends={term.data.dividends}
+              selectedExpiry={smile?.expiry ?? null}
+              onSelectExpiry={(e) => {
+                const idx = data?.smiles.findIndex((s) => s.expiry === e) ?? -1;
+                if (idx >= 0) setExpiryIdx(idx);
+              }}
             />
           )
           : chartMessage(term.error ?? "Loading term structure…");
@@ -164,6 +179,19 @@ export default function LocalVolViewer() {
 
         <SegmentedControl options={LV_VIEWS} value={view} onChange={setView} size="xs" />
         <ExpiryFormatToggle />
+
+        {/* Maturity clock (Term sub-tab): real vs shared event-dilated time */}
+        {view === "term" && (
+          <SegmentedControl
+            options={[
+              { id: "real" as ClockMode, label: "Real time" },
+              { id: "dilated" as ClockMode, label: "Event-dilated" },
+            ]}
+            value={axisClock}
+            onChange={setAxisClock}
+            size="xs"
+          />
+        )}
 
         {/* Per-expiry selector (smile / density / table) */}
         {PER_EXPIRY[view] && (
@@ -247,6 +275,25 @@ export default function LocalVolViewer() {
               </select>
             </div>
           </div>
+
+          {/* Var-swap quote for the selected expiry (Options-gated, shared
+              with the Parametric workspace) */}
+          {varSwapEnabled && smile && (
+            <div className="border-t border-slate-800 pt-3">
+              <VarSwapPanel
+                info={smile.varSwap}
+                live={live}
+                subtitle={`Editing ${formatExpiry(smile.expiry, smile.t, format)}`}
+                onSet={(level) => void applyVarSwap(smile.expiry, "set", level)}
+                onExclude={() => void applyVarSwap(smile.expiry, "exclude")}
+                onInclude={() => void applyVarSwap(smile.expiry, "include")}
+                onRemove={() => void applyVarSwap(smile.expiry, "remove")}
+                onUndo={() => void undoVarSwap(smile.expiry)}
+                onRedo={() => void redoVarSwap(smile.expiry)}
+                onReset={() => void applyVarSwap(smile.expiry, "reset")}
+              />
+            </div>
+          )}
 
           {/* Per-expiry diagnostics */}
           <div className="border-t border-slate-800 pt-3">

@@ -47,7 +47,7 @@ from volfit.api.displayed import (
 )
 from volfit.api.service import fit_or_get
 from volfit.api.state import AppState
-from volfit.calib.event_time import Event, EventClock
+from volfit.calib.weighted_time import interp_total_variance, weighted_variance_years
 from volfit.models.base import SmileModel
 from volfit.models.diagnostics import numeric_density
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
@@ -67,14 +67,30 @@ MAX_CHART_POINTS = 241
 _DISCRETE_DIV_MODES = ("discrete_absolute", "discrete_proportional", "mixed")
 
 
+def _tau_of(state: AppState, ticker: str):
+    """A callable t_calendar -> tau (event-weighted variance years) for a ticker.
+
+    Uses the SAME source as every fit (volfit.api.service.variance_time): the
+    shared event calendar + OptionsSettings.eventsEnabled / normalizeEvents, so
+    the term curve, the dividend markers and the per-expiry points share one
+    clock. Reduces to the identity when the event clock is off or eventless.
+    """
+    options = state.options()
+    events = state.events(ticker)
+    if not options.eventsEnabled or not events:
+        return lambda t: t
+    pairs = [(e.time, e.weight) for e in events]
+    return lambda t: weighted_variance_years(t, pairs, normalize=options.normalizeEvents)
+
+
 def _dividend_markers(
-    state: AppState, ticker: str, clock: EventClock, t_max: float
+    state: AppState, ticker: str, tau_of, t_max: float
 ) -> list[DividendMarker]:
     """Discrete ex-dates of the ticker inside (0, t_max], on both clocks.
 
     Only the modes that actually use the discrete schedule contribute; the
     forward already drops at each ex-date, so these are informational markers
-    (their dilated tau lets the chart place them under either clock mode).
+    (their weighted tau lets the chart place them under either clock mode).
     """
     market = state.market_settings(ticker)
     if market.dividendMode not in _DISCRETE_DIV_MODES:
@@ -84,21 +100,9 @@ def _dividend_markers(
         dt = state.year_fraction(date.fromisoformat(spec.exDate))
         if 0.0 < dt <= t_max:
             markers.append(
-                DividendMarker(
-                    exDate=spec.exDate,
-                    t=dt,
-                    tau=float(clock.dilated_time(dt)),
-                    amount=spec.amount,
-                )
+                DividendMarker(exDate=spec.exDate, t=dt, tau=float(tau_of(dt)), amount=spec.amount)
             )
     return sorted(markers, key=lambda m: m.t)
-
-
-# ------------------------------------------------------------ term structure
-def _event_clock(request: TermStructureRequest) -> EventClock:
-    """The request's dilated clock (identity when disabled or eventless)."""
-    events = tuple(Event(time=e.time, weight=e.weight, label=e.label) for e in request.events)
-    return EventClock(events=events, enabled=request.eventsEnabled)
 
 
 def term_structure(
@@ -112,50 +116,58 @@ def term_structure(
     to GET /smiles' diagnostics for the same model.
     """
     forwards = state.forwards(ticker)  # raises UnknownNodeError when unknown
-    clock = _event_clock(request)
+    tau_of = _tau_of(state, ticker)
 
     points: list[TermPoint] = []
-    ts: list[float] = []
-    w0s: list[float] = []
+    ts: list[float] = []  # calendar maturities (the x-axis)
+    taus: list[float] = []  # event-weighted variance years (the dilated axis)
+    w0s: list[float] = []  # ATM total variance (calendar-invariant, from price)
     for expiry in sorted(forwards):
         iso = expiry.isoformat()
         record = fit_or_get(state, ticker, iso, request.fitMode)
         t = record.prepared.t
-        atm_vol = displayed_atm_vol(record)
-        w0 = atm_vol * atm_vol * t  # ATM total variance of the displayed fit
+        tau = record.prepared.tau
+        atm_vol = displayed_atm_vol(record)  # weighted vol = sqrt(w0 / tau)
+        w0 = atm_vol * atm_vol * tau  # ATM total variance (calendar-invariant)
+        vs_session = state.varswap_session_if_exists((ticker, iso))
         points.append(
             TermPoint(
                 expiry=iso,
                 t=t,
-                tau=float(clock.dilated_time(t)),
+                tau=tau,
                 atmVol=atm_vol,
                 w0=w0,
-                varSwapVol=float(np.sqrt(displayed_var_swap_w(record) / t)),
+                varSwapVol=float(np.sqrt(displayed_var_swap_w(record) / tau)),
+                varSwapQuote=None if vs_session is None else vs_session.state.level,
+                varSwapExcluded=bool(vs_session is not None and vs_session.state.excluded),
                 maxIvErrorBp=displayed_max_iv_error(record) * 1e4,
             )
         )
         ts.append(t)
+        taus.append(tau)
         w0s.append(w0)
 
     violations = sum(1 for near, far in zip(w0s, w0s[1:]) if far < near)
 
-    # Dense curve: w(T) linear in dilated time tau(T) — the whole point of
-    # the event clock (flat forward variance per dilated-time unit).
+    # Dense curve over the CALENDAR maturity grid; total variance w(T) accrues
+    # linearly in the WEIGHTED clock tau (flat forward variance per weighted-time
+    # unit between expiries), and the working vol is sqrt(w / tau).
     t_max = CURVE_T_PAD * max(ts)
     t_grid = np.linspace(CURVE_T_MIN, t_max, CURVE_POINTS)
-    w_grid = np.asarray(clock.interpolate_total_variance(t_grid, np.array(ts), np.array(w0s)))
+    tau_grid = np.array([tau_of(float(t)) for t in t_grid])
+    w_grid = interp_total_variance(tau_grid, np.array(taus), np.array(w0s))
     curve = TermCurve(
         t=t_grid.tolist(),
-        tau=np.asarray(clock.dilated_time(t_grid)).tolist(),
+        tau=tau_grid.tolist(),
         w=w_grid.tolist(),
-        vol=np.sqrt(w_grid / t_grid).tolist(),
+        vol=np.sqrt(np.maximum(w_grid, 0.0) / tau_grid).tolist(),
     )
     return TermStructureResponse(
         ticker=ticker,
         points=points,
         curve=curve,
         calendarViolations=violations,
-        dividends=_dividend_markers(state, ticker, clock, t_max),
+        dividends=_dividend_markers(state, ticker, tau_of, t_max),
     )
 
 

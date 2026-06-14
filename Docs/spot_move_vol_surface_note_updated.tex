@@ -1,0 +1,215 @@
+\documentclass[8pt]{extarticle}
+\usepackage[a4paper,margin=0.44in]{geometry}
+\usepackage{amsmath,amssymb,mathtools,booktabs,array}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage[compact]{titlesec}
+\titlespacing*{\section}{0pt}{4pt}{1pt}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1.4pt}
+\setlist[itemize]{leftmargin=1.1em,itemsep=0.5pt,topsep=1pt}
+\setlist[enumerate]{leftmargin=1.3em,itemsep=0.5pt,topsep=1pt}
+\newcommand{\sig}{\sigma}
+\newcommand{\w}{w}
+\newcommand{\ATM}{\mathrm{ATM}}
+\newcommand{\loc}{\mathrm{loc}}
+\newcommand{\str}{\mathrm{str}}
+\newcommand{\mon}{\mathrm{mon}}
+\newcommand{\LV}{\mathrm{LV}}
+\newcommand{\e}{\mathrm{e}}
+\newcommand{\eps}{\varepsilon}
+\begin{document}
+\begin{center}
+{\large\bfseries Fast Spot-Move Updates of an Implied-Volatility Surface}\vspace{1pt}
+
+{\small Sticky-strike, sticky-moneyness, Hagan sticky-local-vol, and SSR, including local-vol-grid rules}\vspace{1pt}
+\end{center}
+
+\textbf{Common coordinates.}
+For maturity $T$, let $F_T^0$ be the old forward and $F_T^1$ the new forward after the spot move. Define
+\[
+        h_T:=\log\frac{F_T^1}{F_T^0},\qquad
+        \Delta F_T:=F_T^1-F_T^0,\qquad
+        k:=\log\frac{K}{F_T^1} .
+\]
+Thus $k$ is the \emph{new} log-forward moneyness, while the same strike $K=F_T^1\e^k$ had old moneyness
+\[
+        k^0(k)=\log\frac{K}{F_T^0}=k+h_T .
+\]
+Let
+\[
+        \sig_0(T,k),\qquad \w_0(T,k):=T\sig_0^2(T,k),\qquad
+        \kappa_T:=\partial_k\sig_0(T,0),\qquad
+        g_T:=\partial_k\w_0(T,0)=2T\sig_0(T,0)\kappa_T .
+\]
+In production, transport/interpolate total variance $\w$ and then set $\sig=\sqrt{\w/T}$. For the local-vol grid, denote the old grid/interpolator by
+\[
+        L_0(t,K):=\sig_{\loc,0}(t,K),
+        \qquad h_t:=\log(F_t^1/F_t^0),\qquad \Delta F_t:=F_t^1-F_t^0.
+\]
+If rates, dividends, borrow, or discrete dividends are affected, all $h_t,h_T$ must be computed from forwards, not directly from the spot ratio.
+
+\section*{1. Sticky-strike}
+Sticky-strike means that the implied volatility attached to an absolute strike is unchanged:
+\[
+        \sig_1^{\str}(T,K)=\sig_0(T,K).
+\]
+In the new normalized coordinate $k$, the full-smile update is therefore
+\[
+        \boxed{\;\w_1^{\str}(T,k)=\w_0(T,k+h_T)\;},
+        \qquad
+        \sig_1^{\str}(T,k)=\sqrt{\w_0(T,k+h_T)/T} .
+\]
+Thus an upward spot/forward move, $h_T>0$, translates the old smile left when plotted against new log-moneyness. At the new ATM point,
+\[
+        \sig_{\ATM,1}^{\str}(T)=\sig_0(T,h_T)
+        =\sig_0(T,0)+\kappa_T h_T+O(h_T^2).
+\]
+For an equity-style negative skew, $\kappa_T<0$, spot up gives ATM volatility down; for a fixed strike $K$, volatility is unchanged by construction.
+
+\textit{Local-vol grid.} The exact Dupire local-vol grid consistent with a sticky-strike \emph{implied} surface is not obtained by merely keeping $L_0$ fixed; it would require recomputing local vol from the shifted option-price surface under the new forward. A fast no-recalibration proxy is the \emph{half-grid transport}
+\[
+        \boxed{\;L_1^{\str}(t,K)\approx L_0\bigl(t,K\e^{-h_t/2}\bigr)\;},
+        \qquad K_i^{1,\str}(t)=K_i^0(t)\e^{h_t/2} .
+\]
+It is the geometric midpoint between the fixed absolute-strike grid and the grid moving fully with the forward. The motivation is the Hagan/weak-skew rule: a local-vol grid shifted by a fraction $\beta$ of the forward move gives an ATM stickiness ratio $R\approx2(1-\beta)$; sticky-strike has $R=1$, hence $\beta=1/2$. Near ATM, the equivalent additive Hagan form is $K_i^{1,\str}\approx K_i^0+\tfrac12\Delta F_t$. Use the exact sticky-strike formula for vanilla IVs, and this half-grid rule only when a refreshed LV grid is needed cheaply.
+
+\section*{2. Sticky-moneyness / sticky-delta}
+Sticky-moneyness means that the smile is invariant as a function of log-forward moneyness:
+\[
+        \boxed{\;\w_1^{\mon}(T,k)=\w_0(T,k)\;},
+        \qquad
+        \sig_1^{\mon}(T,k)=\sig_0(T,k) .
+\]
+Consequently,
+\[
+        \sig_{\ATM,1}^{\mon}(T)=\sig_0(T,0),
+        \qquad
+        \Delta\sig_{\ATM}^{\mon}=0 .
+\]
+For a fixed strike with old moneyness $q=\log(K/F_T^0)$, the new moneyness is $q-h_T$, hence
+\[
+        \sig_1^{\mon}(T,K)=\sig_0(T,q-h_T).
+\]
+Sticky-delta is the same idea when the smile is parameterized by delta; the delta convention, forward, discounting, and premium adjustment must be consistent.
+
+\textit{Local-vol grid.} The LV grid is unchanged in normalized strike space $x=\log(K/F_t)$. Equivalently, in absolute strike coordinates,
+\[
+        \boxed{\;L_1^{\mon}(t,K)=L_0\bigl(t,K\e^{-h_t}\bigr)\;},
+        \qquad K_i^{1,\mon}(t)=K_i^0(t)\e^{h_t} .
+\]
+Thus every LV node is scaled by the same forward ratio at its local time. A grid stored directly in $x$ is simply reused; a grid stored in $K$ is relabelled by $K\mapsto K F_t^1/F_t^0$.
+
+\section*{3. Sticky-local-vol / sticky-tree: Hagan local-vol expansion}
+The exact sticky-local-vol rule is not an implied-volatility rule. It says: keep the calibrated local-volatility grid fixed in absolute strike/spot level,
+\[
+        \boxed{\;L_1^{\LV}(t,K)=L_0(t,K)\;},
+\]
+restart the pricing model from the new spot/forward, and re-invert vanilla prices to Black implied volatility. This is model-faithful, but it is not the fastest update if one only wants a refreshed vanilla surface.
+
+\textit{Local-vol grid.} This is the only one of the four rules for which the LV-grid prescription is exact and primitive: absolute grid points do not move,
+\[
+        K_i^{1,\LV}(t)=K_i^0(t).
+\]
+If the implementation stores local vol in normalized coordinates, do not keep those normalized nodes fixed. Instead preserve the absolute-strike interpolator; the normalized coordinate of a fixed node changes by $x^1=x^0-h_t$.
+
+The Hagan local-vol expansion gives the cheap implied-smile transform. After $F_T^0\mapsto F_T^1$, the new implied volatility at strike $K$ is approximated by the old implied volatility at the displaced strike
+\[
+        \boxed{\;\sig_1^{\LV}(T,K)\simeq \sig_0(T,K+\Delta F_T)\;} .
+\]
+Equivalently,
+\[
+        \boxed{\;\w_1^{\LV}(T,k)\simeq
+        \w_0\bigl(T,\ell_T(k,h_T)\bigr)\;},
+        \qquad
+        \ell_T(k,h_T):=\log\frac{F_T^1\e^k+\Delta F_T}{F_T^0}
+        =\log\{\e^{h_T}(\e^k+1)-1\}.
+\]
+Near ATM and for small moves,
+\[
+        \ell_T(k,h_T)=k+(1+\e^{-k})h_T+O(h_T^2),
+        \qquad
+        \ell_T(0,h_T)=2h_T+O(h_T^2),
+\]
+so
+\[
+        \w_1^{\LV}(T,k)\simeq \w_0(T,k+2h_T),
+        \qquad
+        \Delta\sig_{\ATM}^{\LV}=2\kappa_T h_T+O(h_T^2).
+\]
+The factor two is the usual local-vol ``double skew'' response: the fixed-strike implied vol moves with the old strike-slope, and the ATM strike itself also moves with the forward.
+
+\section*{4. Skew stickiness ratio (SSR)}
+The SSR parameter $R_T$ specifies the spot-driven ATM-volatility change in units of the implied skew:
+\[
+        \boxed{\;\partial_{\log F}\sig_{\ATM}(T)=R_T\kappa_T\;},
+        \qquad
+        \Delta\sig_{\ATM}(T)\approx R_T\kappa_T h_T .
+\]
+The canonical values are
+\[
+        R_T=0 \quad\hbox{sticky-moneyness},\qquad
+        R_T=1 \quad\hbox{sticky-strike},\qquad
+        R_T\simeq 2 \quad\hbox{sticky-local-vol near ATM}.
+\]
+The recommended production transform is total-variance horizontal transport,
+\[
+        \boxed{\;\widetilde\w_1^R(T,k)=\w_0(T,k+R_T h_T)\;} .
+\]
+This gives
+\[
+        \sqrt{\widetilde\w_1^R(T,0)/T}
+        =\sig_0(T,R_T h_T)
+        =\sig_0(T,0)+R_T\kappa_T h_T+O(h_T^2),
+\]
+and exactly recovers sticky-moneyness at $R_T=0$ and sticky-strike at $R_T=1$; $R_T=2$ matches the Hagan/local-vol ATM expansion.
+
+For finite moves, re-anchor the ATM total variance if an exact linear SSR target is required. Define
+\[
+        \sig_{\ATM}^{\star}(T):=\sig_0(T,0)+R_T\kappa_T h_T,
+        \qquad
+        \w_{\ATM}^{\star}(T):=T\bigl(\sig_{\ATM}^{\star}(T)\bigr)^2,
+\]
+and set
+\[
+        \boxed{\;\w_1^R(T,k)=\widetilde\w_1^R(T,k)
+        +\w_{\ATM}^{\star}(T)-\widetilde\w_1^R(T,0)\;} .
+\]
+Finally use $\sig_1^R(T,k)=\sqrt{\max(\w_1^R(T,k),\eps)/T}$. One may instead target $\w_0(T,0)+R_Tg_T h_T$ directly.
+
+\textit{Local-vol grid.} Yes: use a barycentric displacement between fixed absolute strike and ATM-relative strike, preferably in log-strike/geometric form. Put
+\[
+        \boxed{\;\beta_t:=1-\frac{R_t}{2}\;},
+        \qquad
+        \boxed{\;L_1^R(t,K)\approx L_0\bigl(t,K\e^{-\beta_t h_t}\bigr)\;} .
+\]
+Equivalently, for old LV node $K_i^0(t)$,
+\[
+        \boxed{\;K_i^{1,R}(t)=K_i^0(t)\e^{\beta_t h_t}\;},
+\]
+or, displaying the barycenter explicitly,
+\[
+        \log K_i^{1,R}
+        =\frac{R_t}{2}\log K_i^0
+        +\left(1-\frac{R_t}{2}\right)\log\bigl(K_i^0\e^{h_t}\bigr).
+\]
+Thus $R=0$ moves the grid fully with moneyness, $R=1$ gives the half-grid sticky-strike proxy, and $R=2$ leaves the LV grid fixed. The Hagan/additive version is $K_i^{1,R}\approx K_i^0+(1-R_t/2)\Delta F_t$. An arithmetic barycenter of strike levels is first-order equivalent for small $h_t$, but the log-barycenter preserves positivity and relative spacing and is more stable for production interpolation.
+
+\section*{Summary}
+\[
+\begin{array}{c|c|c|c}
+\toprule
+\text{Rule} & \text{Implied total-variance transform} & R_T & \text{LV grid node }K_i^1(t) \\
+\midrule
+\text{Sticky-moneyness} & \w_0(T,k) & 0 & K_i^0\e^{h_t} \\
+\text{Sticky-strike} & \w_0(T,k+h_T) & 1 & K_i^0\e^{h_t/2}\ \text{(proxy)} \\
+\text{Sticky-LV} & \w_0(T,\ell_T(k,h_T))\simeq\w_0(T,k+2h_T) & 2 & K_i^0 \\
+\text{SSR} & \w_0(T,k+R_T h_T)\ \text{+ optional ATM anchor} & R_T & K_i^0\e^{(1-R_t/2)h_t} \\
+\bottomrule
+\end{array}
+\]
+These transforms avoid recalibration for small spot moves and vanilla risk refreshes. For large moves, barrier/exotic risk, or surfaces close to arbitrage bounds, check calendar and butterfly arbitrage and repair or regenerate from the full pricing model if needed.
+
+\vspace{1pt}
+{\footnotesize\emph{References.} P. Hagan, D. Kumar, A. Lesniewski, and D. Woodward, ``Managing Smile Risk,'' Wilmott Magazine, 2002. L. Bergomi, ``Smile Dynamics IV,'' 2009, and \emph{Stochastic Volatility Modeling}, Chapman and Hall/CRC, 2015.}
+\end{document}

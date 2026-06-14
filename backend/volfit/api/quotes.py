@@ -69,15 +69,24 @@ class PreparedQuotes:
     (always 0 for European snapshots).
     """
 
-    t: float
+    t: float  # CALENDAR year fraction (maturity axis, discounting, de-Am, carry)
     forward: float
     discount: float
     k: np.ndarray
-    w_mid: np.ndarray  # total variance at mid, the calibration target
+    w_mid: np.ndarray  # total variance at mid (price-derived, clock-independent)
     iv_bid: np.ndarray
     iv_mid: np.ndarray
     iv_ask: np.ndarray
     n_deamericanized: int = 0
+    #: Event-WEIGHTED variance years (volfit.calib.weighted_time). The smile is
+    #: fit / quoted in this clock, so iv = sqrt(w / tau): adding an event before
+    #: the expiry raises tau and lowers every reported vol at fixed price.
+    #: Defaults to ``t`` (no events) so the calendar pipeline is byte-identical.
+    tau: float = 0.0
+
+    def __post_init__(self) -> None:
+        if self.tau <= 0.0:
+            object.__setattr__(self, "tau", self.t)
 
 
 def _early_exercise_premiums(
@@ -127,13 +136,20 @@ def prepare_quotes(
     forward: ResolvedForward | ImpliedForward,
     t: float,
     cash_dividends: tuple[np.ndarray, np.ndarray, float] | None = None,
+    tau: float | None = None,
 ) -> PreparedQuotes:
     """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs.
 
     ``cash_dividends`` (ex-times, scaled amounts, rate) routes American de-
     Americanization through a discrete escrowed CASH schedule (volfit.api.state
     builds it forward-consistently); None keeps the continuous-yield carry.
+
+    ``tau`` is the event-WEIGHTED variance years (volfit.calib.weighted_time);
+    None means the calendar clock (tau = t). Total variance ``w`` is inverted
+    from the price (clock-independent), so only the reported IV band uses tau:
+    iv = sqrt(w / tau). Calendar ``t`` still drives de-Americanization and carry.
     """
+    tv = t if tau is None or tau <= 0.0 else tau
     f, d = forward.forward, forward.discount
     scale = 1.0 / (d * f)
 
@@ -185,10 +201,11 @@ def prepare_quotes(
         discount=d,
         k=k_arr[keep],
         w_mid=w_mid[keep],
-        iv_bid=np.sqrt(w_bid[keep] / t),
-        iv_mid=np.sqrt(w_mid[keep] / t),
-        iv_ask=np.sqrt(w_ask[keep] / t),
+        iv_bid=np.sqrt(w_bid[keep] / tv),
+        iv_mid=np.sqrt(w_mid[keep] / tv),
+        iv_ask=np.sqrt(w_ask[keep] / tv),
         n_deamericanized=n_deam,
+        tau=tv,
     )
 
 
@@ -216,7 +233,9 @@ def apply_edits(
         if index >= prepared.k.size:
             continue  # stale index from a previous forward mode; see docstring
         if edit.amended_iv is not None:
-            w[index] = edit.amended_iv**2 * prepared.t
+            # The amended IV is in the displayed (weighted) clock, so the total
+            # variance uses tau — consistent with w_mid = iv_mid^2 * tau.
+            w[index] = edit.amended_iv**2 * prepared.tau
         if edit.excluded:
             keep[index] = False
     return prepared.k[keep], w[keep], None if weights is None else weights[keep]

@@ -22,17 +22,20 @@ def displayed_slice(record: FitRecord):
 
 
 def displayed_atm_vol(record: FitRecord) -> float:
-    """ATM vol of the displayed fit (numeric for an overlay, exact for LQD)."""
+    """ATM vol of the displayed fit (numeric for an overlay, exact for LQD).
+
+    Uses the event-weighted variance clock (prepared.tau), so the ATM vol drops
+    when an event sits before the expiry; tau == t when the event clock is off."""
     if record.display is not None:
         return record.display.handles.atm_vol
-    return atm_handles(record.result.slice, record.prepared.t).sigma0
+    return atm_handles(record.result.slice, record.prepared.tau).sigma0
 
 
 def displayed_skew(record: FitRecord) -> float:
     """ATM skew of the displayed fit (numeric for an overlay, exact for LQD)."""
     if record.display is not None:
         return record.display.handles.skew
-    return atm_handles(record.result.slice, record.prepared.t).skew
+    return atm_handles(record.result.slice, record.prepared.tau).skew
 
 
 def displayed_var_swap_w(record: FitRecord) -> float:

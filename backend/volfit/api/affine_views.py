@@ -36,6 +36,7 @@ from volfit.api.analytics import (
     CURVE_T_PAD,
     _distribution_model,
     _dividend_markers,
+    _tau_of,
 )
 from volfit.api.schemas import (
     DensityResponse,
@@ -48,7 +49,7 @@ from volfit.api.schemas import (
 from volfit.api.schemas_affine import AffineFitRequest, AffineSmile
 from volfit.api.state import AppState
 from volfit.api.table import _price
-from volfit.calib.event_time import EventClock
+from volfit.calib.weighted_time import interp_total_variance
 from volfit.models.diagnostics import numeric_var_swap_w
 
 
@@ -74,9 +75,14 @@ class _ReconSlice:
 
 
 def _recon_slice(smile: AffineSmile) -> _ReconSlice:
-    """Build the interpolating slice from a reconstructed smile's points."""
+    """Build the interpolating slice from a reconstructed smile's points.
+
+    The model vols are in the event-weighted clock (smile.tau), so total variance
+    is vol^2 * tau (= the calendar variance from the price); density and var-swap
+    replication then come out clock-invariant, like the Parametric path."""
+    tau = smile.tau if smile.tau > 0.0 else smile.t
     k = np.array([p.k for p in smile.model], dtype=float)
-    w = np.array([p.vol * p.vol * smile.t for p in smile.model], dtype=float)
+    w = np.array([p.vol * p.vol * tau for p in smile.model], dtype=float)
     return _ReconSlice(k, w)
 
 
@@ -115,54 +121,56 @@ def affine_term(
     """ATM / var-swap term structure of the reconstructed LV surface.
 
     Same shape as POST /term so the Local Vol workspace reuses TermChart. The
-    affine surface has no event clock, so the identity clock is used (dense
-    curve = flat forward variance between expiries); discrete dividend ex-dates
-    are still surfaced as informational markers, exactly like the LQD term.
+    event clock comes from the SHARED per-ticker event calendar (the same one
+    the Parametric Term edits), so event-time dilation is consistent across both
+    workspaces; with no events it reduces to the identity clock. Discrete
+    dividend ex-dates are still surfaced as informational markers.
     """
     response = _affine_response(state, ticker, request)
-    clock = EventClock(events=(), enabled=False)
+    tau_of = _tau_of(state, ticker)  # same weighted clock as the Parametric term
 
     points: list[TermPoint] = []
-    ts: list[float] = []
-    w0s: list[float] = []
+    ts: list[float] = []  # calendar maturities (axis)
+    taus: list[float] = []  # weighted variance years (dilated axis)
+    w0s: list[float] = []  # ATM total variance (calendar-invariant)
     for smile in response.smiles:
         recon = _recon_slice(smile)
-        t = smile.t
-        w0 = float(recon.implied_w(0.0))
-        atm_vol = float(np.sqrt(max(w0, 0.0) / t))
+        tau = smile.tau if smile.tau > 0.0 else smile.t
+        w0 = float(recon.implied_w(0.0))  # calendar variance (recon uses tau)
+        atm_vol = float(np.sqrt(max(w0, 0.0) / tau))
         points.append(
             TermPoint(
                 expiry=smile.expiry,
-                t=t,
-                tau=float(clock.dilated_time(t)),
+                t=smile.t,
+                tau=tau,
                 atmVol=atm_vol,
                 w0=w0,
-                varSwapVol=float(np.sqrt(numeric_var_swap_w(recon) / t)),
+                varSwapVol=float(np.sqrt(numeric_var_swap_w(recon) / tau)),
                 maxIvErrorBp=smile.maxIvErrorBp,
             )
         )
-        ts.append(t)
+        ts.append(smile.t)
+        taus.append(tau)
         w0s.append(w0)
 
     violations = sum(1 for near, far in zip(w0s, w0s[1:]) if far < near)
 
     t_max = CURVE_T_PAD * max(ts)
     t_grid = np.linspace(CURVE_T_MIN, t_max, CURVE_POINTS)
-    w_grid = np.asarray(
-        clock.interpolate_total_variance(t_grid, np.array(ts), np.array(w0s))
-    )
+    tau_grid = np.array([tau_of(float(t)) for t in t_grid])
+    w_grid = interp_total_variance(tau_grid, np.array(taus), np.array(w0s))
     curve = TermCurve(
         t=t_grid.tolist(),
-        tau=np.asarray(clock.dilated_time(t_grid)).tolist(),
+        tau=tau_grid.tolist(),
         w=w_grid.tolist(),
-        vol=np.sqrt(np.maximum(w_grid, 0.0) / t_grid).tolist(),
+        vol=np.sqrt(np.maximum(w_grid, 0.0) / tau_grid).tolist(),
     )
     return TermStructureResponse(
         ticker=ticker,
         points=points,
         curve=curve,
         calendarViolations=violations,
-        dividends=_dividend_markers(state, ticker, clock, t_max),
+        dividends=_dividend_markers(state, ticker, tau_of, t_max),
     )
 
 
@@ -181,10 +189,13 @@ def affine_table(
     expiry_date = date.fromisoformat(smile.expiry)
     forward = state.resolved_forward(ticker, expiry_date)
     fwd, discount, t = forward.forward, forward.discount, smile.t
+    # IVs/prices reconstruct in the weighted clock (tau); ``t`` (calendar) is the
+    # displayed maturity. recon total variance uses tau, so prices stay market.
+    tau = smile.tau if smile.tau > 0.0 else smile.t
 
     recon = _recon_slice(smile)
     ks = np.array([q.k for q in smile.quotes], dtype=float)
-    model_iv = recon.implied_vol(ks, t) if ks.size else np.zeros(0)
+    model_iv = recon.implied_vol(ks, tau) if ks.size else np.zeros(0)
 
     rows: list[TableRow] = []
     for i, q in enumerate(smile.quotes):
@@ -199,9 +210,9 @@ def affine_table(
                 midIv=q.mid,
                 askIv=q.ask,
                 modelIv=float(model_iv[i]),
-                bidPrice=_price(k, q.bid, t, fwd, discount),
-                midPrice=_price(k, q.mid, t, fwd, discount),
-                askPrice=_price(k, q.ask, t, fwd, discount),
+                bidPrice=_price(k, q.bid, tau, fwd, discount),
+                midPrice=_price(k, q.mid, tau, fwd, discount),
+                askPrice=_price(k, q.ask, tau, fwd, discount),
                 excluded=q.excluded,
                 amended=q.amended,
             )

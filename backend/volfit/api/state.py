@@ -23,6 +23,7 @@ from datetime import date, datetime
 from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import (
+    EventSpec,
     FitSettings,
     ForwardPolicy,
     MarketSettings,
@@ -30,6 +31,7 @@ from volfit.api.schemas import (
     SmilePoint,
 )
 from volfit.api.session import EditSession
+from volfit.api.varswap_session import VarSwapSession
 from volfit.data.dividends import (
     Dividend,
     DividendModel,
@@ -142,11 +144,20 @@ class AppState(UniverseMixin):
         self._options = OptionsSettings()
         self._options_version = 0  # bumped only when a fit-affecting field changes
         self._market_settings: dict[str, MarketSettings] = {}
+        #: Per-ticker event calendar (shared across workspaces). Events now drive
+        #: the event-weighted variance clock used by every fit (volfit.calib.
+        #: weighted_time), so a calendar change must refit: the events version is
+        #: folded into the fit-cache key.
+        self._events: dict[str, list[EventSpec]] = {}
+        self._events_version = 0  # bumped on any event-calendar change
         self._forward_policies: dict[tuple[str, str], ForwardPolicy] = {}
         self._forwards_version = 0  # bumped on change; part of fit-cache keys
         self._fits: dict[tuple, FitRecord] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
+        #: Per-node variance-swap quote sessions (one var-swap per node, shared
+        #: by the Parametric and Local-Vol fits; separate undo/redo history).
+        self._varswap_sessions: dict[tuple[str, str], VarSwapSession] = {}
         #: Explicitly darkened (ticker, ISO) nodes; every node is LIT by default.
         #: Lit = an observed source for the graph solver, dark = extrapolated.
         self._dark_nodes: set[tuple[str, str]] = set()
@@ -217,6 +228,7 @@ class AppState(UniverseMixin):
         self._forwards.clear()
         self._fits.clear()
         self._sessions.clear()
+        self._varswap_sessions.clear()
         self._universe = None
 
     # ------------------------------------------------------------ as-of
@@ -357,12 +369,20 @@ class AppState(UniverseMixin):
             return self._options
 
     def set_options(self, options: OptionsSettings) -> OptionsSettings:
-        """Apply new meta settings. Only ``calendarWeight`` changes calibration
-        output, so it alone bumps the options version; the rest are global
-        defaults / display toggles read live and need no cache invalidation."""
+        """Apply new meta settings. Calibration-affecting fields bump the options
+        version (``calendarWeight`` and the var-swap penalty knobs ``varSwapEnabled``
+        / ``varSwapWeightPct``); the rest are global defaults / display toggles read
+        live and need no cache invalidation."""
         with self._lock:
             if options != self._options:
-                if options.calendarWeight != self._options.calendarWeight:
+                affects_fit = (
+                    options.calendarWeight != self._options.calendarWeight
+                    or options.varSwapEnabled != self._options.varSwapEnabled
+                    or options.varSwapWeightPct != self._options.varSwapWeightPct
+                    or options.eventsEnabled != self._options.eventsEnabled
+                    or options.normalizeEvents != self._options.normalizeEvents
+                )
+                if affects_fit:
                     self._options_version += 1
                 self._options = options
             return self._options
@@ -406,6 +426,28 @@ class AppState(UniverseMixin):
                 self._forward_policies[(ticker, iso)] = policy
                 self._forwards_version += 1
             return self._forward_policies.get((ticker, iso)) or ForwardPolicy()
+
+    # ------------------------------------------------------ event calendar
+    @property
+    def events_version(self) -> int:
+        """Monotone counter folded into fit keys; bumps on calendar changes
+        (events drive the variance clock, so a change must refit)."""
+        with self._lock:
+            return self._events_version
+
+    def events(self, ticker: str) -> list[EventSpec]:
+        """The ticker's persisted event calendar (empty when never set)."""
+        with self._lock:
+            return list(self._events.get(ticker, []))
+
+    def set_events(self, ticker: str, events: list[EventSpec]) -> list[EventSpec]:
+        """Replace the ticker's event calendar; bump the version only on a real
+        change so a redundant PUT never invalidates warm fit caches."""
+        with self._lock:
+            if events != self._events.get(ticker, []):
+                self._events[ticker] = list(events)
+                self._events_version += 1
+            return list(self._events.get(ticker, []))
 
     def dividend_model(self, ticker: str) -> DividendModel:
         """The ticker's MarketSettings translated to a data-layer model."""
@@ -497,6 +539,19 @@ class AppState(UniverseMixin):
         """The node's edit session if one was ever created, else None."""
         with self._lock:
             return self._sessions.get(key)
+
+    # ------------------------------------------------- var-swap quote sessions
+    def varswap_session(self, key: tuple[str, str]) -> VarSwapSession:
+        """The node's var-swap session, created on first use (lock-guarded)."""
+        with self._lock:
+            if key not in self._varswap_sessions:
+                self._varswap_sessions[key] = VarSwapSession()
+            return self._varswap_sessions[key]
+
+    def varswap_session_if_exists(self, key: tuple[str, str]) -> VarSwapSession | None:
+        """The node's var-swap session if one was ever created, else None."""
+        with self._lock:
+            return self._varswap_sessions.get(key)
 
     # ----------------------------------------------------------------- priors
     def get_prior(self, key: tuple[str, str]) -> PriorRecord | None:

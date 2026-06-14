@@ -24,6 +24,11 @@ Docs/      Technical notes (LaTeX)
   surface fits; exact ATM handles; SSR spot-scenario engine. Per-quote weighting
   schemes (equal / time-value density), mid / bid-ask-band / haircut-band fit
   objectives, and a weighted RMS fit-error diagnostic — all model-agnostic.
+  **Variance-swap quotes** add a calibration penalty pulling the model's fair
+  var-swap to a quoted level (shared across Parametric & Local Vol). An
+  **event-weighted variance clock** (events add day-weights; optional 1Y-budget
+  normalization) re-prices every vol in event time, with **auto-calibration** of
+  the event calendar from the term structure.
 - **Graph extrapolation**: OT-Bayesian propagation of sparse ATM-handle
   observations across a (ticker, expiry) smile universe with credible bands.
 - **Data**: four interchangeable providers — deterministic **synthetic**
@@ -35,27 +40,31 @@ Docs/      Technical notes (LaTeX)
   Parity-implied + theoretical/manual forwards, dividend models, SQLite VolStore,
   snapshot CLI.
 - **API** (FastAPI on :8000): universe + data-source/as-of switching, slice/
-  surface fits (WebSocket progress), quote edit sessions with undo/redo, priors,
-  density / log-quantile-density / stacked densities, term structure with
-  event-dilated clock, local-vol surface fit (+ derived density/term/table),
-  per-node lit/dark designation, graph solve, SSR scenarios. Every smile-derived
+  surface fits (WebSocket progress), quote edit sessions with undo/redo, var-swap
+  quote sessions, priors, density / log-quantile-density / stacked densities, term
+  structure on the event-weighted variance clock (shared per-ticker event
+  calendar + auto-calibration), local-vol surface fit (+ derived
+  density/term/table), per-node lit/dark designation, graph solve, SSR scenarios. Every smile-derived
   view follows the chosen model; **all** fit/optimization coefficients (model,
   weighting, haircut, SIV cores, penalty strengths, the A_R barrier, the SVI
   no-arb penalty + Lee bound, the SIV ridge, the band mid-anchor, the local-vol
   roughness, and the graph prior strength) are global, explicit settings.
 - **UI** — six workspaces (TopBar Data Source + As-of selectors, global
   expiry-format toggle):
-  - **Parametric** — live fits, quote editing, scenario (spot slider) + Massive-IV
-    overlays; chart sub-tabs Smile / Stacked densities (no-butterfly check) /
-    Log-Q-density / Term / 3D Surface / Stacked IV (total variance, no-calendar
-    check) / Table.
-  - **Local Vol** — direct piecewise-affine surface fit, sub-tabs Smile / Density
-    / Term / LV-surface heatmap / 3D IV-surface / Table.
+  - **Parametric** — live fits, quote editing, var-swap quotes (add/slide/exclude
+    + undo/redo), scenario (spot slider) + Massive-IV overlays; chart sub-tabs
+    Smile / Stacked densities (no-butterfly check) / Log-Q-density / Term (forward
+    variance + editable & auto-calibratable event calendar) / 3D Surface /
+    Stacked IV (total variance, no-calendar check) / Table.
+  - **Local Vol** — direct piecewise-affine surface fit (var-swap quotes + the
+    same event clock), sub-tabs Smile / Density / Term / LV-surface heatmap /
+    3D IV-surface / Table.
   - **Forwards** — per-ticker forwards table (parity / theoretical / manual) +
     dividend-schedule editor, shared by both fit workspaces.
   - **Options** — every global meta-parameter and calibration/optimization
-    coefficient (defaults, penalty catalogue with formulas, dynamics regime + SSR,
-    grid defaults, graph prior, display format).
+    coefficient (defaults, penalty catalogue with formulas, var-swap weight %,
+    event clock + normalization toggle, dynamics regime + SSR, grid defaults,
+    graph prior, display format).
   - **Graph** — light/dim nodes (shared with Universe), solver panel (κ/η/λ/ν,
     auto-tune η, lasso), posterior shift + uncertainty overlay.
   - **Universe** — provider symbol search, per-ticker expiry selection, a
@@ -79,7 +88,7 @@ fit history (VOLFIT_DB). Force a specific source active on launch with
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e backend[dev]   # PyPI can be flaky here: just retry
-cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 334 green
+cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 363 green
 $env:VOLFIT_LIVE="1"; ..\.venv\Scripts\python -m pytest tests\test_yahoo.py -k live  # opt-in live test
 ```
 

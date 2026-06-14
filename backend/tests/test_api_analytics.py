@@ -67,21 +67,27 @@ def test_term_structure_no_events(client):
 
 
 def test_term_structure_event_dilation(client):
-    event = {"time": 0.3, "weight": 0.05, "label": "earnings"}
-    data = client.post("/term/ALPHA", json={"events": [event]}).json()
-
-    # tau jumps by the event weight at and after the event date only.
+    # The shared per-ticker calendar drives the clock; weight is EXTRA days, so
+    # 18.25 days = +0.05 weighted years added at and after the event date.
+    client.put("/events/ALPHA", json={"events": [{"time": 0.3, "weight": 18.25, "label": "e"}]})
+    data = client.post("/term/ALPHA", json={}).json()
     for p in data["points"]:
-        expected = p["t"] + (0.05 if p["t"] >= 0.3 else 0.0)
-        assert p["tau"] == pytest.approx(expected, abs=1e-12)
+        expected = p["t"] + (18.25 / 365.0 if p["t"] >= 0.3 else 0.0)
+        assert p["tau"] == pytest.approx(expected, abs=1e-9)
 
     # The dense curve stays a nondecreasing total variance through the jump.
     w = np.array(data["curve"]["w"])
-    assert np.all(np.diff(w) >= -1e-12)
+    assert np.all(np.diff(w) >= -1e-9)
 
-    # Disabled clock: identity again even with events supplied.
-    off = client.post("/term/ALPHA", json={"events": [event], "eventsEnabled": False}).json()
+    # Disabling the clock in Options collapses to the identity.
+    opts = client.get("/settings/options").json()
+    client.put("/settings/options", json={**opts, "eventsEnabled": False})
+    off = client.post("/term/ALPHA", json={}).json()
     assert all(p["tau"] == p["t"] for p in off["points"])
+
+    # Restore shared state for any later tests sharing this client.
+    client.put("/settings/options", json={**opts, "eventsEnabled": True})
+    client.put("/events/ALPHA", json={"events": []})
 
 
 def test_term_structure_validation(client):

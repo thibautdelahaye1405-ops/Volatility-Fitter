@@ -19,6 +19,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
@@ -64,19 +65,23 @@ def _residuals(
     barrier_center: float,
     barrier_scale: float,
     mid_anchor_weight: float,
+    var_swap: VarSwapTarget | None,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
 
     The data block is the mid price residual (``price_lo``/``price_hi`` None) or
     the bid-ask / haircut band objective (volfit.calib.band) in vega-normalized
     price space — the band edges are the call prices at the band vols, so the
-    monotone vega scaling keeps it ~ a vol-space band fit.
+    monotone vega scaling keeps it ~ a vol-space band fit. A ``var_swap`` target
+    adds one vol-space penalty pulling the slice's fair var-swap to the quote
+    (volfit.calib.varswap).
     """
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
     n_cal = 0 if cal_idx is None else cal_idx.size
     band_mode = price_lo is not None
     n_fit = (2 * k.size) if band_mode else k.size
+    vs = np.empty(0) if var_swap is None else np.zeros(1)
     try:
         slice_ = build_slice(params)
         model_price = slice_.call_price(k)
@@ -93,12 +98,17 @@ def _residuals(
             cal = np.sqrt(cal_weight) * np.maximum(cal_floor - slice_.a_z[cal_idx], 0.0)
         else:
             cal = np.empty(0)
+        if var_swap is not None:
+            # LQD's exact closed-form var-swap (note: var_swap_strike = -2 E[X])
+            # is cheap; the generic replication would re-solve implied_w on a
+            # grid every Jacobian column and make the fit minutes-slow.
+            vs = np.array([varswap_residual_w(slice_.var_swap_strike(), var_swap)])
     except ValueError:
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
     barrier = np.log1p(np.exp(barrier_scale * (a_right - barrier_center)))
-    return np.concatenate((fit, reg * theta[2:], cal, [barrier]))
+    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs))
 
 
 def calibrate_slice(
@@ -117,6 +127,7 @@ def calibrate_slice(
     barrier_center: float = _BARRIER_CENTER,
     barrier_scale: float = _BARRIER_SCALE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    var_swap: VarSwapTarget | None = None,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
@@ -134,6 +145,10 @@ def calibrate_slice(
     ``barrier_center``/``barrier_scale`` shape the A_R soft barrier (eq.
     right_admissible) and ``mid_anchor_weight`` the band's mid anchor — all
     FitSettings coefficients, defaulting to the historical constants.
+
+    ``var_swap`` (volfit.calib.varswap) adds a single soft penalty pulling the
+    slice's fair var-swap toward a quoted level; None (the default) leaves the
+    objective byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -176,6 +191,7 @@ def calibrate_slice(
             barrier_center,
             barrier_scale,
             mid_anchor_weight,
+            var_swap,
         ),
         method="trf",
         xtol=1e-15,

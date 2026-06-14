@@ -33,6 +33,10 @@ interface TermChartProps {
   axisClock: ClockMode;
   /** Discrete dividend ex-dates, drawn on both clocks. */
   dividends: DividendMarker[];
+  /** Expiry currently selected for var-swap editing (highlighted), or null. */
+  selectedExpiry?: string | null;
+  /** Select an expiry by clicking its ATM marker (var-swap editing). */
+  onSelectExpiry?: (expiry: string) => void;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 44, left: 56 } as const;
@@ -80,6 +84,8 @@ export default function TermChart({
   eventsEnabled,
   axisClock,
   dividends,
+  selectedExpiry = null,
+  onSelectExpiry,
 }: TermChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -110,20 +116,46 @@ export default function TermChart({
   for (const p of points) {
     vLo = Math.min(vLo, p.atmVol, p.varSwapVol);
     vHi = Math.max(vHi, p.atmVol, p.varSwapVol);
+    if (p.varSwapQuote != null) {
+      vLo = Math.min(vLo, p.varSwapQuote);
+      vHi = Math.max(vHi, p.varSwapQuote);
+    }
   }
   if (!Number.isFinite(vLo)) { vLo = 0; vHi = 1; }
   const vPad = Math.max(1e-4, (vHi - vLo) * 0.1);
 
-  let wLo = Infinity;
+  // Forward (annualized) variance between consecutive expiries: Δw / Δx on the
+  // active clock — the level of each [x_{k-1}, x_k] interval (the first runs
+  // from the origin). A negative level means total variance fell between two
+  // expiries, i.e. a calendar-arbitrage interval (drawn below the zero line).
+  const fwdSorted = [...points].sort((a, b) => xOf(a) - xOf(b));
+  const fwdSegments: { x0: number; x1: number; level: number }[] = [];
+  {
+    let prevX = 0;
+    let prevW = 0;
+    for (const p of fwdSorted) {
+      const x = xOf(p);
+      const dx = x - prevX;
+      fwdSegments.push({ x0: prevX, x1: x, level: dx > 1e-9 ? (p.w0 - prevW) / dx : 0 });
+      prevX = x;
+      prevW = p.w0;
+    }
+  }
+  /** Forward variance at x (piecewise-constant step lookup). */
+  const fwdAt = (x: number): number | null => {
+    for (const s of fwdSegments) if (x <= s.x1) return s.level;
+    return fwdSegments.length ? fwdSegments[fwdSegments.length - 1].level : null;
+  };
+
+  let wLo = 0;
   let wHi = -Infinity;
-  for (const w of curve.w) { wLo = Math.min(wLo, w); wHi = Math.max(wHi, w); }
-  for (const p of points) { wLo = Math.min(wLo, p.w0); wHi = Math.max(wHi, p.w0); }
-  if (!Number.isFinite(wLo)) { wLo = 0; wHi = 1; }
+  for (const s of fwdSegments) { wLo = Math.min(wLo, s.level); wHi = Math.max(wHi, s.level); }
+  if (!Number.isFinite(wHi)) { wLo = 0; wHi = 1; }
   const wPad = Math.max(1e-6, (wHi - wLo) * 0.1);
 
   const xScale = linearScale([xLo, xHi], [0, plotW]);
   const volScale = linearScale([vLo - vPad, vHi + vPad], [topH, 0]);
-  const wScale = linearScale([Math.max(0, wLo - wPad), wHi + wPad], [botH, 0]);
+  const wScale = linearScale([wLo - wPad, wHi + wPad], [botH, 0]);
 
   /** SVG path through (xs[i], ys[i]) in a panel's local coordinates. */
   const pathOf = (xs: number[], ys: number[], y: LinearScale): string => {
@@ -137,7 +169,14 @@ export default function TermChart({
 
   const sorted = [...points].sort((a, b) => xOf(a) - xOf(b));
   const volPath = pathOf(curveX, curve.vol, volScale);
-  const wPath = pathOf(curveX, curve.w, wScale);
+  // Step path of the forward-variance levels (vertical risers at each expiry).
+  let wPath = "";
+  fwdSegments.forEach((seg, i) => {
+    const y = wScale.map(seg.level).toFixed(2);
+    const xa = xScale.map(seg.x0).toFixed(2);
+    const xb = xScale.map(seg.x1).toFixed(2);
+    wPath += `${i === 0 ? "M" : "L"}${xa},${y}L${xb},${y}`;
+  });
   const vsPath = pathOf(sorted.map(xOf), sorted.map((p) => p.varSwapVol), volScale);
 
   const xTicks = niceTicks(xLo, xHi, 8);
@@ -172,11 +211,11 @@ export default function TermChart({
   };
 
   const hoverVol = hover !== null ? interp(curveX, curve.vol, hover) : null;
-  const hoverW = hover !== null ? interp(curveX, curve.w, hover) : null;
+  const hoverFwd = hover !== null ? fwdAt(hover) : null;
   const hoverPx = hover !== null ? xScale.map(hover) : 0;
   const hoverLabel =
-    hover !== null && hoverVol !== null && hoverW !== null
-      ? `${dilated ? "τ" : "t"} ${hover.toFixed(2)}y · σ ${formatPct(hoverVol, 2)} · w ${hoverW.toFixed(4)}`
+    hover !== null && hoverVol !== null && hoverFwd !== null
+      ? `${dilated ? "τ" : "t"} ${hover.toFixed(2)}y · σ ${formatPct(hoverVol, 2)} · fwd var ${hoverFwd.toFixed(4)}`
       : null;
 
   /* ---------------- render ---------------- */
@@ -186,14 +225,19 @@ export default function TermChart({
       {/* Legend */}
       <div className="mb-1 flex shrink-0 items-center gap-5 px-1 text-[11px] text-slate-400">
         <span className="flex items-center gap-1.5">
-          <span className="h-0.5 w-5 rounded bg-accent-400" /> Fit (vol / variance)
+          <span className="h-0.5 w-5 rounded bg-accent-400" /> Fit σ(T) · fwd variance
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-2 w-2 rounded-full bg-accent-400" /> Per-expiry ATM
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rotate-45 bg-sky-400/80" /> Var-swap
+          <span className="h-2 w-2 rotate-45 bg-sky-400/80" /> Var-swap (model)
         </span>
+        {points.some((p) => p.varSwapQuote != null) && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full border-2 border-teal-400" /> Var-swap quote
+          </span>
+        )}
         {eventMarks.length > 0 && (
           <span className="flex items-center gap-1.5">
             <span className="h-3 w-0 border-l border-dashed border-amber-400/70" /> Events
@@ -250,16 +294,48 @@ export default function TermChart({
                   );
                 })}
 
-                {/* Dense ATM-vol fit + per-expiry markers */}
+                {/* Var-swap QUOTES: hollow teal rings (excluded = dimmed),
+                    clickable to select the expiry for editing */}
+                {points.map((p) =>
+                  p.varSwapQuote == null ? null : (
+                    <circle
+                      key={`vsq-${p.expiry}`}
+                      cx={xScale.map(xOf(p))}
+                      cy={volScale.map(p.varSwapQuote)}
+                      r={5}
+                      fill="none"
+                      stroke="rgb(45 212 191 / 0.95)"
+                      strokeWidth={1.6}
+                      opacity={p.varSwapExcluded ? 0.35 : 1}
+                    />
+                  ),
+                )}
+
+                {/* Dense ATM-vol fit + per-expiry markers (clickable to select
+                    an expiry for var-swap editing) */}
                 <path d={volPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
-                {points.map((p) => (
-                  <circle key={`atm-${p.expiry}`} cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)}
-                    r={3} fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1} />
-                ))}
+                {points.map((p) => {
+                  const sel = selectedExpiry === p.expiry;
+                  return (
+                    <g key={`atm-${p.expiry}`}>
+                      {sel && (
+                        <circle cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)} r={7}
+                          fill="var(--color-accent-400)" opacity={0.18} />
+                      )}
+                      <circle cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)}
+                        r={3} fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1} />
+                      {onSelectExpiry && (
+                        <circle cx={xScale.map(xOf(p))} cy={volScale.map(p.atmVol)} r={9}
+                          fill="transparent" className="cursor-pointer"
+                          onClick={() => onSelectExpiry(p.expiry)} />
+                      )}
+                    </g>
+                  );
+                })}
               </g>
 
-              {/* ---- bottom panel: ATM total variance ---- */}
+              {/* ---- bottom panel: forward (annualized) variance ---- */}
               <g transform={`translate(0,${botY0})`}>
                 {wTicks.map((t) => (
                   <line key={`gw${t}`} x1={0} x2={plotW} y1={wScale.map(t)} y2={wScale.map(t)}
@@ -276,13 +352,20 @@ export default function TermChart({
                   </text>
                 ))}
                 <text x={4} y={11} className="fill-slate-600 font-mono text-[9px]">
-                  total variance w
+                  forward variance
                 </text>
 
+                {/* Zero reference (a forward variance below it is calendar arb) */}
+                {wScale.domain[0] < 0 && (
+                  <line x1={0} x2={plotW} y1={wScale.map(0)} y2={wScale.map(0)}
+                    stroke="rgb(248 113 113 / 0.35)" strokeDasharray="2 4" />
+                )}
+
+                {/* Forward-variance step + a marker at each interval's level */}
                 <path d={wPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
-                {points.map((p) => (
-                  <circle key={`w0-${p.expiry}`} cx={xScale.map(xOf(p))} cy={wScale.map(p.w0)}
+                {fwdSegments.map((seg) => (
+                  <circle key={`fw-${seg.x1}`} cx={xScale.map(seg.x1)} cy={wScale.map(seg.level)}
                     r={3} fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1} />
                 ))}
               </g>
@@ -329,13 +412,13 @@ export default function TermChart({
               })}
 
               {/* Crosshair: vertical guide + markers on both fit curves */}
-              {hover !== null && hoverVol !== null && hoverW !== null && (
+              {hover !== null && hoverVol !== null && hoverFwd !== null && (
                 <g pointerEvents="none">
                   <line x1={hoverPx} x2={hoverPx} y1={0} y2={botY0 + botH}
                     stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
                   <circle cx={hoverPx} cy={volScale.map(hoverVol)} r={3.5}
                     fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5} />
-                  <circle cx={hoverPx} cy={botY0 + wScale.map(hoverW)} r={3.5}
+                  <circle cx={hoverPx} cy={botY0 + wScale.map(hoverFwd)} r={3.5}
                     fill="var(--color-accent-400)" stroke="#0e131c" strokeWidth={1.5} />
                 </g>
               )}

@@ -52,6 +52,7 @@ export function useAffineView<T>(
   params: AffineParams,
   expiry: string | null,
   enabled: boolean,
+  reloadKey: number = 0,
 ): UseAffineViewResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
@@ -92,7 +93,7 @@ export function useAffineView<T>(
         setLoading(false);
       });
     return () => controller.abort();
-  }, [kind, ticker, debounced, expiry, enabled, needsExpiry]);
+  }, [kind, ticker, debounced, expiry, enabled, needsExpiry, reloadKey]);
 
   return { data, loading: loading && !hasDataRef.current, error };
 }

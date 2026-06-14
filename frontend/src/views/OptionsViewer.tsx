@@ -139,15 +139,35 @@ export default function OptionsViewer() {
               onChange={(v) => patch({ enforceCalendar: v })}
             />
             <Toggle
-              label="Events" hint="Event-time dilation default for the term structure"
+              label="Events" hint="Event-weighted variance clock: events add day-weights, so an event before an expiry lowers its IV"
               checked={draft.eventsEnabled} disabled={!live}
               onChange={(v) => patch({ eventsEnabled: v })}
             />
             <Toggle
-              label="Variance-swaps" hint="Compute & surface the var-swap fair-variance level"
+              label="Normalize events"
+              hint="Rescale all days so the 1Y weight budget stays 365 (1Y vols unchanged; events redistribute variance within the year)"
+              checked={draft.normalizeEvents} disabled={!live || !draft.eventsEnabled}
+              onChange={(v) => patch({ normalizeEvents: v })}
+            />
+            <Toggle
+              label="Variance-swaps" hint="Add var-swap quotes (Smile/Term/Table) with a calibration penalty"
               checked={draft.varSwapEnabled} disabled={!live}
               onChange={(v) => patch({ varSwapEnabled: v })}
             />
+            <div className="mt-2 flex items-center justify-between">
+              <span
+                className={`${rowLabel} ${draft.varSwapEnabled ? "" : "opacity-40"}`}
+                title="Var-swap penalty weight as a % of the summed option-quote weights of the same (asset, expiry) node — at 100% the var-swap weighs as much as all option quotes combined"
+              >
+                Var-swap weight (%)
+              </span>
+              <input
+                type="number" step={1} min={0} value={draft.varSwapWeightPct}
+                disabled={!live || !draft.varSwapEnabled}
+                onChange={(e) => patch({ varSwapWeightPct: Number(e.target.value) })}
+                className={numInput}
+              />
+            </div>
             <Toggle
               label="Auto-load prior" hint="Seed the saved prior as the fit prior when a node loads"
               checked={draft.autoLoadPrior} disabled={!live}

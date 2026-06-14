@@ -29,10 +29,13 @@ from volfit.api.schemas import (
     SmileDiagnostics,
     SmilePoint,
     SurfaceFitResponse,
+    VarSwapInfo,
 )
-from volfit.api.displayed import displayed_skew, displayed_slice
+from volfit.api.displayed import displayed_skew, displayed_slice, displayed_var_swap_w
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_floor, calendar_violation
+from volfit.calib.varswap import VarSwapTarget
+from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
 from volfit.models.diagnostics import weighted_rms_vol
@@ -60,20 +63,69 @@ def session_version(state: AppState, ticker: str, iso: str) -> int:
     return 0 if session is None else session.version
 
 
+def varswap_version(state: AppState, ticker: str, iso: str) -> int:
+    """Current var-swap quote session version of a node, 0 when none exists."""
+    session = state.varswap_session_if_exists((ticker, iso))
+    return 0 if session is None else session.version
+
+
 def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
-    """Fit-cache key: (ticker, canonical ISO, mode, session version, settings
-    version, forwards version, options version) — edits, hyperparameter,
-    forward/market and calendar-penalty changes each bump a version, so affected
-    nodes refit without eviction."""
+    """Fit-cache key: (ticker, canonical ISO, mode, session version, var-swap
+    version, events version, settings version, forwards version, options version)
+    — quote edits, var-swap edits, event-calendar edits, hyperparameter,
+    forward/market and calendar/var-swap-penalty/event-clock changes each bump a
+    version, so affected nodes refit without eviction."""
     return (
         ticker,
         iso,
         fit_mode,
         session_version(state, ticker, iso),
+        varswap_version(state, ticker, iso),
+        state.events_version,
         state.settings_version,
         state.forwards_version,
         state.options_version,
     )
+
+
+def variance_time(state: AppState, ticker: str, expiry, t_cal: float) -> float:
+    """Event-weighted variance years for a node (volfit.calib.weighted_time).
+
+    The smile is calibrated/quoted in this clock so an event before the expiry
+    lowers every reported vol at fixed price. Reduces to the calendar ``t_cal``
+    when the event clock is off (OptionsSettings.eventsEnabled) or the ticker has
+    no events. ``expiry`` is accepted for symmetry/future use; the clock depends
+    only on the calendar maturity and the ticker's shared event calendar."""
+    options = state.options()
+    if not options.eventsEnabled:
+        return t_cal
+    events = state.events(ticker)
+    if not events:
+        return t_cal
+    pairs = [(e.time, e.weight) for e in events]
+    return weighted_variance_years(t_cal, pairs, normalize=options.normalizeEvents)
+
+
+def varswap_target(
+    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, t: float
+) -> VarSwapTarget | None:
+    """The var-swap penalty target for a node, or None.
+
+    Active only when the feature is enabled (OptionsSettings.varSwapEnabled) and
+    the node has an active (non-excluded) var-swap quote. The penalty weight is
+    ``varSwapWeightPct`` percent of the summed option-quote weights of the node,
+    so the var-swap competes with the option quotes at the chosen relative
+    strength regardless of how many quotes the node has."""
+    options = state.options()
+    if not options.varSwapEnabled:
+        return None
+    session = state.varswap_session_if_exists((ticker, iso))
+    if session is None or not session.state.is_active:
+        return None
+    sum_w = float(np.sum(weights)) if weights is not None else float(k.size)
+    weight = (options.varSwapWeightPct / 100.0) * sum_w
+    level = float(session.state.level)
+    return VarSwapTarget(total_var=level * level * t, weight=weight, t=t)
 
 
 def edited_fit_inputs(
@@ -110,7 +162,10 @@ def display_overlay(
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
-    return build_display_fit(settings.model, k, w, prepared.t, weights, settings, band=band)
+    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    return build_display_fit(
+        settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs
+    )
 
 
 # ------------------------------------------------------------- slice fitting
@@ -127,17 +182,18 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
     snapshot = state.snapshot(ticker)
     forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
     cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-    prepared = prepare_quotes(
-        snapshot, expiry, forward, state.year_fraction(expiry), cash_divs
-    )
+    t_cal = state.year_fraction(expiry)
+    tau = variance_time(state, ticker, expiry, t_cal)
+    prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     settings = state.fit_settings()
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
+    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
     result = calibrate_slice(
         k,
         w,
-        t=prepared.t,
+        t=prepared.tau,
         n_order=settings.nOrder,
         weights=weights,
         reg_lambda=settings.regLambda,
@@ -146,10 +202,13 @@ def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> 
         barrier_center=settings.barrierCenter,
         barrier_scale=settings.barrierScale,
         mid_anchor_weight=settings.midAnchorWeight,
+        var_swap=vs,
     )
     # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
     # a display overlay on the same edited quotes + band (volfit.api.fit_models).
-    display = build_display_fit(settings.model, k, w, prepared.t, weights, settings, band=band)
+    display = build_display_fit(
+        settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs
+    )
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
@@ -163,7 +222,7 @@ def model_curve(record: FitRecord) -> list[SmilePoint]:
         float(record.prepared.k.max()) + K_PAD,
         N_MODEL_POINTS,
     )
-    vols = np.sqrt(displayed_slice(record).implied_w(grid) / record.prepared.t)
+    vols = np.sqrt(displayed_slice(record).implied_w(grid) / record.prepared.tau)
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
 
@@ -173,7 +232,27 @@ def weighted_rms_error(state: AppState, ticker: str, iso: str, record: FitRecord
     decimal vol (the UI renders it as a percentage)."""
     k, w, _ = edited_fit_inputs(state, ticker, iso, record.prepared, None)
     weights = resolve_weights(state.fit_settings().weightScheme, k, w)
-    return weighted_rms_vol(displayed_slice(record), k, w, record.prepared.t, weights)
+    return weighted_rms_vol(displayed_slice(record), k, w, record.prepared.tau, weights)
+
+
+def varswap_info(state: AppState, ticker: str, iso: str, record: FitRecord) -> VarSwapInfo:
+    """Var-swap quote state + the model's own fair var-swap vol for a node."""
+    session = state.varswap_session_if_exists((ticker, iso))
+    model_vol = float(np.sqrt(displayed_var_swap_w(record) / record.prepared.tau))
+    enabled = state.options().varSwapEnabled
+    if session is None:
+        return VarSwapInfo(
+            level=None, excluded=False, modelVol=model_vol,
+            enabled=enabled, canUndo=False, canRedo=False,
+        )
+    return VarSwapInfo(
+        level=session.state.level,
+        excluded=session.state.excluded,
+        modelVol=model_vol,
+        enabled=enabled,
+        canUndo=session.can_undo,
+        canRedo=session.can_redo,
+    )
 
 
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
@@ -199,11 +278,11 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             aRight=0.0,
             leeLeft=d.lee_left,
             leeRight=d.lee_right,
-            varSwapVol=float(np.sqrt(d.var_swap_w / prepared.t)),
+            varSwapVol=float(np.sqrt(d.var_swap_w / prepared.tau)),
             rmsError=rms_error,
         )
     else:
-        handles = atm_handles(slice_, prepared.t)
+        handles = atm_handles(slice_, prepared.tau)
         a_left, a_right = endpoint_scales(record.result.params)
         lee_left, lee_right = lee_slopes(record.result.params)
         diagnostics = SmileDiagnostics(
@@ -214,7 +293,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             aRight=a_right,
             leeLeft=lee_left,
             leeRight=lee_right,
-            varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.t)),
+            varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.tau)),
             rmsError=rms_error,
         )
     # Every prepared quote is listed (excluded dimmed by the UI); an amended
@@ -247,6 +326,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         kMin=model[0].k,
         kMax=model[-1].k,
         diagnostics=diagnostics,
+        varSwap=varswap_info(state, ticker, iso, record),
         canUndo=session.can_undo if session is not None else False,
         canRedo=session.can_redo if session is not None else False,
     )
@@ -267,9 +347,9 @@ def surface_inputs(
     for expiry in sorted(forwards):
         forward = state.resolved_forward(ticker, expiry)  # honours the policy
         cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-        prepared = prepare_quotes(
-            snapshot, expiry, forward, state.year_fraction(expiry), cash_divs
-        )
+        t_cal = state.year_fraction(expiry)
+        tau = variance_time(state, ticker, expiry, t_cal)
+        prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
         plan.append((expiry.isoformat(), prepared))
     return plan
 
@@ -298,10 +378,11 @@ def fit_surface_slice(
     settings = state.fit_settings()
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
+    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
     return calibrate_slice(
         k,
         w,
-        t=prepared.t,
+        t=prepared.tau,
         n_order=settings.nOrder,
         weights=weights,
         reg_lambda=settings.regLambda,
@@ -314,6 +395,7 @@ def fit_surface_slice(
         barrier_center=settings.barrierCenter,
         barrier_scale=settings.barrierScale,
         mid_anchor_weight=settings.midAnchorWeight,
+        var_swap=vs,
     )
 
 
@@ -377,7 +459,7 @@ def run_scenario(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
 
         return scenario_sticky_grid(state, request)
     record = fit_or_get(state, request.ticker, request.expiry, request.fitMode)
-    t, slice_ = record.prepared.t, displayed_slice(record)
+    t, slice_ = record.prepared.tau, displayed_slice(record)
     grid = np.linspace(
         float(record.prepared.k.min()) - K_PAD,
         float(record.prepared.k.max()) + K_PAD,

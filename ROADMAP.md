@@ -10,7 +10,61 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-13 (resume here)
 
-**Done & verified (334 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (363 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+
+- **[2026-06-14] Auto-calibrate Events (Term)**: a horizon drop-list (an expiry T)
+  plus a Calibrate button solve — all at once — one candidate event before each
+  expiry up to T so the event-time forward variance `Δw/Δτ` is as flat and
+  monotone-increasing as possible with events as small and sparse as possible
+  (`volfit/calib/event_autocalibrate`: bounded L-BFGS-B over per-interval extra
+  days, jaggedness + asymmetric non-monotonicity penalty + L1/ridge, tiny events
+  thresholded out, the first post-T interval anchors the tail). Events only move
+  the weighted clock, so the optimizer targets the *dilated* forward variance (the
+  real-time one is event-invariant). `POST /events/{ticker}/autocalibrate`
+  installs the result as the shared calendar. 4 tests.
+
+- **[2026-06-14] Event-weighted VARIANCE CLOCK**: events are now a real variance
+  clock (not just term interpolation). Each calendar day weighs 1; an event adds N
+  *extra equivalent days* to its day (`volfit/calib/weighted_time.py`); the smile
+  is calibrated/quoted in weighted years τ. Total variance is price-derived (clock-
+  invariant), so the working IV = √(w/τ) **drops when an event sits before the
+  expiry** (verified exact: ATM 0.2187→0.1980 = ×√(T/τ)) — quote bands, ATM,
+  var-swap, table, term and the Local-Vol reconstruction all follow. Dual clock:
+  calendar `t` still drives discounting / forwards / de-Americanization / the
+  maturity axis; `prepared.tau` drives every vol↔variance conversion. An Options
+  **Normalize events** toggle (default off) rescales all days so the 1Y weight
+  budget stays 365 — 1Y vols unchanged, events redistribute variance within the
+  year (verified). `eventsEnabled` is the master switch; the per-ticker calendar +
+  `eventsEnabled`/`normalizeEvents` are folded into the fit-cache keys. Event
+  weight is now *extra days* (was years); the Term editor labels it "days" and the
+  master on/off lives in Options (the local checkbox is gone). No events ⇒ τ = t,
+  byte-identical to before. 11 new tests.
+
+- **[2026-06-14] Variance-swap quotes (Smile · Term · Table, Parametric + Local
+  Vol)**: gated by the Options "Variance-swaps" toggle. A node carries at most one
+  var-swap quote (the var-swap is a single log-contract scalar per smile),
+  model-independent and SHARED across the Parametric (LQD/SVI/sigmoid) and
+  Local-Vol (affine) fits, with its OWN undo/redo/reset history separate from the
+  option-quote edits (`volfit/api/varswap_session.py` + AppState registry +
+  `varswap_version` in the fit-cache key). Adding a quote adds a soft calibration
+  penalty pulling the model's own fair var-swap toward the quote
+  (`volfit/calib/varswap.py`, vol-space residual `sqrt(u)·(σ_vs_model−σ_vs_quote)`):
+  threaded into all three parametric calibrators (scipy numerical Jacobian, so no
+  analytic gradient) and the affine surface fit (reusing its existing
+  `VarSwapQuote`). **Perf gotcha**: LQD's `implied_w` solves a per-point root, so
+  the generic replication made one fit ~158 s under the FD Jacobian — LQD now uses
+  its exact closed form `LQDSlice.var_swap_strike()` (≈0.7 s, vs 0.087 s
+  unpenalized); SVI/sigmoid keep the cheap arithmetic-curve replication. The
+  penalty weight is `OptionsSettings.varSwapWeightPct` (% of the node's summed
+  option-quote weights; default 10%), so the var-swap competes with the options at
+  a chosen relative strength regardless of quote count; `varSwapEnabled` /
+  `varSwapWeightPct` now bump the options version. New endpoints
+  `POST /smiles/{t}/{e}/varswap[/undo|/redo]` (shared by both workspaces). `SmileData`
+  /`AffineSmile` gain `varSwap: VarSwapInfo`; `TermPoint` gains the per-expiry
+  quote. Frontend: reusable `VarSwapPanel` (entry + slider + Exclude/Undo/Redo/Reset,
+  Options-gated), a horizontal teal line on the Smile & Local-Vol smile charts, a
+  Table footer row, and a Term overlay (hollow teal rings, click a rung to edit +
+  a per-expiry panel/ladder column). 10 new backend tests; strict-TS build green.
 
 - **[2026-06-14] All calibration/optimization coefficients exposed in Options**:
   every previously-hardcoded calibration constant is now a tunable parameter

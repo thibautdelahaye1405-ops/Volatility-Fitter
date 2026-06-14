@@ -188,6 +188,21 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
         </table>
       </div>
 
+      {/* Var-swap quote row (Options-gated): quoted level vs the model's own */}
+      {smile?.varSwap.enabled && (
+        <div className="mt-2 flex shrink-0 items-center gap-3 rounded-md border border-slate-800 bg-surface-950/40 px-2 py-1 font-mono text-[11px]">
+          <span className="text-slate-400">Variance swap</span>
+          <span className="text-teal-300">
+            quote{" "}
+            {smile.varSwap.level === null
+              ? "—"
+              : `${formatPct(smile.varSwap.level, 2)}${smile.varSwap.excluded ? " (excl)" : ""}`}
+          </span>
+          <span className="text-slate-500">model {formatPct(smile.varSwap.modelVol, 2)}</span>
+          <span className="text-slate-600">(edit in the aside)</span>
+        </div>
+      )}
+
       {/* Footer: node metadata + export actions */}
       <div className="mt-2 flex shrink-0 items-center gap-2">
         <span className="font-mono text-[10px] text-slate-500">

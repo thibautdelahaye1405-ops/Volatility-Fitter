@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from volfit.api.schemas import QuoteBand, SmilePoint
+from volfit.api.schemas import QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
 from volfit.calib.weights import resolve_weights
@@ -34,8 +34,14 @@ from volfit.core.black import black_call, black_vega_sigma, implied_total_varian
 from volfit.models.localvol import (
     AffineVarianceSurface,
     OptionQuote,
+    VarSwapQuote,
     calibrate_affine,
+    varswap_const,
+    varswap_weights,
 )
+
+#: Var-swap replication strike floor (matches calibrate_affine's default).
+_VARSWAP_K_LO = 0.01
 
 #: PDE strike step and OTM span (x = K/F); the note uses dx = 0.01 to x = 2.2.
 _X_DX = 0.01
@@ -121,7 +127,11 @@ def _gather(state: AppState, ticker: str, fit_mode: str):
         k, w, _ = service.edited_fit_inputs(state, ticker, iso, prepared, None)
         if k.size >= 2:  # a slice with <2 live quotes cannot constrain its smile
             band = service.edited_band(state, ticker, iso, prepared, fit_mode)
-            rows.append((iso, float(prepared.t), k, w, prepared, band))
+            # The diffusion time is the event-WEIGHTED variance years (prepared.tau);
+            # the calendar maturity (prepared.t) is kept for display only. The PDE
+            # marches and the smiles reconstruct in tau, so an event before an
+            # expiry lowers its reconstructed IVs, consistent with the Parametric fit.
+            rows.append((iso, float(prepared.tau), k, w, prepared, band))
     return rows
 
 
@@ -157,6 +167,66 @@ def _option_quotes(rows, weight_scheme: str = "equal") -> list[OptionQuote]:
                 )
             )
     return options
+
+
+def _varswap_quotes(state: AppState, ticker: str, rows, weight_scheme: str) -> list[VarSwapQuote]:
+    """Active var-swap quotes per expiry as affine VarSwapQuote targets.
+
+    Mirrors the parametric weighting (volfit.api.service.varswap_target): the
+    var-swap competes with the expiry's option quotes at ``varSwapWeightPct`` of
+    their summed weight. The affine objective measures the var-swap residual in
+    TOTAL variance ((z - z_mkt)/zeta), while the option residuals are in
+    vega-scaled price ((P - y)/tol) ~ vol error in units of VOL_TOL; equating the
+    two squared weightings gives zeta = 2 sigma_vs t VOL_TOL / sqrt(u_vs), with
+    u_vs = pct% * sum_i w_i (the same w_i that scale the option tolerances).
+    """
+    options = state.options()
+    if not options.varSwapEnabled or options.varSwapWeightPct <= 0.0:
+        return []
+    quotes: list[VarSwapQuote] = []
+    for iso, t, k, w, _, _ in rows:
+        session = state.varswap_session_if_exists((ticker, iso))
+        if session is None or not session.state.is_active:
+            continue
+        qw = resolve_weights(weight_scheme, k, w)
+        sum_w = float(np.sum(qw)) if qw is not None else float(k.size)
+        u_vs = (options.varSwapWeightPct / 100.0) * sum_w
+        if u_vs <= 0.0:
+            continue
+        sigma_vs = float(session.state.level)
+        zeta = 2.0 * sigma_vs * t * _VOL_TOL / np.sqrt(u_vs)
+        quotes.append(VarSwapQuote(t=t, total_var=sigma_vs * sigma_vs * t, tol=float(zeta)))
+    return quotes
+
+
+def _affine_varswap_info(
+    state: AppState, ticker: str, iso: str, model_vol: float
+) -> VarSwapInfo:
+    """VarSwapInfo for one Local-Vol expiry: the shared quote + the model level."""
+    session = state.varswap_session_if_exists((ticker, iso))
+    enabled = state.options().varSwapEnabled
+    if session is None:
+        return VarSwapInfo(
+            level=None, excluded=False, modelVol=model_vol,
+            enabled=enabled, canUndo=False, canRedo=False,
+        )
+    return VarSwapInfo(
+        level=session.state.level,
+        excluded=session.state.excluded,
+        modelVol=model_vol,
+        enabled=enabled,
+        canUndo=session.can_undo,
+        canRedo=session.can_redo,
+    )
+
+
+def _model_varswap_vol(solution, i_exp: int, t: float, x_grid: np.ndarray) -> float:
+    """Model fair var-swap vol of an expiry by log-contract replication on the
+    PDE grid (the same construction the affine var-swap residual uses)."""
+    q_w = varswap_weights(x_grid, _VARSWAP_K_LO)
+    q_c = varswap_const(x_grid, _VARSWAP_K_LO)
+    w_vs = float(q_w @ solution.prices[i_exp] + q_c)
+    return float(np.sqrt(max(w_vs, 0.0) / t))
 
 
 def _reconstruct_smile(solution, i_exp: int, t: float, k_lo: float, k_hi: float):
@@ -213,11 +283,14 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     surface0 = AffineVarianceSurface(
         t_nodes=t_nodes, x_nodes=x_nodes, theta=np.full((t_nodes.size, x_nodes.size), var0)
     )
+    varswaps = _varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme)
     cal = calibrate_affine(
         surface0,
         options,
         x_grid,
         t_grid,
+        varswaps=varswaps,
+        varswap_k_lo=_VARSWAP_K_LO,
         bounds=(request.varLo, request.varHi),
         reg_lambda=request.regLambda,
         reg_rho=request.regRho,
@@ -232,12 +305,15 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         klo, khi = float(k.min()), float(k.max())
         errs = _iv_error_bp(cal.solution, i_exp, t, k, w)
         iv_bp_all.extend(errs.tolist())
+        model_vs_vol = _model_varswap_vol(cal.solution, i_exp, t, x_grid)
         smiles.append(
             AffineSmile(
                 expiry=iso,
-                t=t,
+                t=prepared.t,  # calendar maturity (axis); t above is the tau clock
+                tau=t,
                 model=_reconstruct_smile(cal.solution, i_exp, t, klo, khi),
                 quotes=_quote_bands(state, ticker, iso, prepared),
+                varSwap=_affine_varswap_info(state, ticker, iso, model_vs_vol),
                 maxIvErrorBp=float(errs.max()) if errs.size else 0.0,
             )
         )
@@ -268,12 +344,16 @@ def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> A
 
     isos = [e.isoformat() for e in sorted(state.forwards(ticker))]  # raises if unknown
     versions = tuple(service.session_version(state, ticker, iso) for iso in isos)
+    vs_versions = tuple(service.varswap_version(state, ticker, iso) for iso in isos)
     key = (
         ticker,
         request.fitMode,
         versions,
+        vs_versions,
+        state.events_version,  # event calendar drives the variance clock
         state.settings_version,
         state.forwards_version,
+        state.options_version,  # var-swap + event-clock toggles live here
         request.model_dump_json(),
     )
     cache = getattr(state, _CACHE_ATTR, None)

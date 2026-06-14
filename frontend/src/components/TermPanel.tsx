@@ -7,12 +7,16 @@
 // markers and the expiry ladder, laid out as the chart card's body.
 //
 // Live backend only (POST /term/{ticker}); offline shows a retry message.
+import { useState } from "react";
 import TermChart from "./TermChart";
+import VarSwapPanel from "./VarSwapPanel";
 import { useTerm } from "../state/useTerm";
 import type { ClockMode } from "../state/useTerm";
+import { useSmileSession } from "../state/smileSession";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { formatPct } from "../lib/chartScale";
+import type { VarSwapInfo } from "../lib/mockData";
 
 const CLOCK_MODES: { id: ClockMode; label: string }[] = [
   { id: "real", label: "Real time" },
@@ -46,11 +50,49 @@ export default function TermPanel() {
     updateEvent,
     removeEvent,
     eventsEnabled,
-    setEventsEnabled,
     axisClock,
     setAxisClock,
+    autocalibrate,
+    varSwapEnabled,
+    applyVarSwap,
+    undoVarSwap,
+    redoVarSwap,
   } = useTerm();
+  const { source } = useSmileSession();
   const { format } = useExpiryFormat();
+  const live = source === "live";
+
+  // Selected expiry for var-swap editing (defaults to the first rung once data
+  // arrives). Var-swaps are a market fact per (asset, expiry).
+  const [selectedExpiry, setSelectedExpiry] = useState<string | null>(null);
+  const points = data?.points ?? [];
+
+  // Auto-calibrate horizon (defaults to the last expiry) + in-flight flag.
+  const [maxExpiry, setMaxExpiry] = useState("");
+  const [autoBusy, setAutoBusy] = useState(false);
+  const effMaxExpiry = maxExpiry || (points.length ? points[points.length - 1].expiry : "");
+  const runAutocalibrate = () => {
+    if (!effMaxExpiry) return;
+    setAutoBusy(true);
+    void autocalibrate(effMaxExpiry).finally(() => setAutoBusy(false));
+  };
+  const selected =
+    points.find((p) => p.expiry === selectedExpiry) ?? points[0] ?? null;
+
+  // Synthesize a VarSwapInfo for the selected rung from the term payload. Per-
+  // expiry undo/redo availability isn't in the term payload, so the buttons are
+  // always live (the backend no-ops on an empty stack).
+  const vsInfo: VarSwapInfo | null = selected
+    ? {
+        level: selected.varSwapQuote ?? null,
+        excluded: selected.varSwapExcluded ?? false,
+        modelVol: selected.varSwapVol,
+        enabled: varSwapEnabled,
+        canUndo: true,
+        canRedo: true,
+      }
+    : null;
+  const selExpiry = selected?.expiry ?? "";
 
   // Backend offline (and nothing loaded): centered retry message.
   if (error !== null && data === null) {
@@ -91,11 +133,13 @@ export default function TermPanel() {
               eventsEnabled={eventsEnabled}
               axisClock={axisClock}
               dividends={data.dividends}
+              selectedExpiry={varSwapEnabled ? selExpiry : null}
+              onSelectExpiry={varSwapEnabled ? setSelectedExpiry : undefined}
             />
           )}
         </div>
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          ATM vol σ(T) · total variance w(T) = σ²·T · events add diffusion time
+          ATM vol σ(T) · forward variance Δw/Δt between expiries · events add diffusion time
         </p>
       </div>
 
@@ -122,26 +166,27 @@ export default function TermPanel() {
           </div>
         </div>
 
-        {/* Events editor */}
+        {/* Events editor (shared per-ticker calendar; master on/off in Options) */}
         <div className="mb-1 flex items-center">
           <h3 className="text-sm font-semibold text-slate-100">Events</h3>
-          <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-[11px] text-slate-400">
-            <input
-              type="checkbox"
-              checked={eventsEnabled}
-              onChange={(e) => setEventsEnabled(e.target.checked)}
-              className="accent-accent-500"
-            />
-            Enabled
-          </label>
+          <span
+            className={[
+              "ml-auto rounded px-1.5 py-0.5 text-[10px]",
+              eventsEnabled ? "bg-accent-600/20 text-accent-400" : "bg-slate-700/40 text-slate-400",
+            ].join(" ")}
+            title="Master switch is in Options → Events"
+          >
+            {eventsEnabled ? "clock on" : "clock off (Options)"}
+          </span>
         </div>
         <p className="mb-2 text-[11px] text-slate-500">
-          Each event adds its weight (years of diffusion time) at its position.
+          Each event adds N extra equivalent days of variance to its day, so an
+          event before an expiry lowers that expiry's IV.
         </p>
-        <div className={eventsEnabled ? "" : "opacity-40"}>
+        <div>
           <div className="flex items-center gap-1.5 text-[9px] uppercase tracking-wider text-slate-600">
             <span className="w-14 text-right">t (y)</span>
-            <span className="w-14 text-right">weight</span>
+            <span className="w-14 text-right">days</span>
             <span className="flex-1">label</span>
             <span className="w-4" />
           </div>
@@ -168,10 +213,10 @@ export default function TermPanel() {
                     />
                     <input
                       type="number"
-                      step={0.01}
+                      step={1}
                       min={0}
                       defaultValue={ev.weight}
-                      title="Added diffusion time (years)"
+                      title="Extra equivalent days added to the event day"
                       onChange={(e) => {
                         const v = e.target.valueAsNumber;
                         if (Number.isFinite(v)) updateEvent(ev.id, { weight: v });
@@ -202,6 +247,61 @@ export default function TermPanel() {
           + Add event
         </button>
 
+        {/* Auto-calibrate: fit events from the term structure up to a horizon */}
+        <div className="mt-3 border-t border-slate-800 pt-3">
+          <h3 className="mb-1 text-sm font-semibold text-slate-100">Auto-calibrate events</h3>
+          <p className="mb-2 text-[11px] text-slate-500">
+            Places an event before each expiry up to the horizon so the event-time
+            forward variance is flat &amp; monotone with small, sparse events.
+          </p>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-slate-500">Horizon</span>
+            <select
+              value={effMaxExpiry}
+              disabled={!live || points.length === 0}
+              onChange={(e) => setMaxExpiry(e.target.value)}
+              className="min-w-0 flex-1 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
+            >
+              {points.map((p) => (
+                <option key={p.expiry} value={p.expiry}>
+                  {formatExpiry(p.expiry, p.t, format)}
+                </option>
+              ))}
+            </select>
+            <button
+              className={buttonClass}
+              disabled={!live || autoBusy || !effMaxExpiry}
+              onClick={runAutocalibrate}
+              title="Solve events that flatten the event-time forward variance up to the horizon"
+            >
+              {autoBusy ? "…" : "Calibrate"}
+            </button>
+          </div>
+          {!eventsEnabled && (
+            <p className="mt-1 text-[10px] text-amber-400/80">
+              Enable Events in Options to apply the calibrated clock.
+            </p>
+          )}
+        </div>
+
+        {/* Var-swap quote for the selected expiry (Options-gated) */}
+        {varSwapEnabled && vsInfo && (
+          <div className="mt-4 border-t border-slate-800 pt-3">
+            <VarSwapPanel
+              info={vsInfo}
+              live={live}
+              subtitle={`Editing ${formatExpiry(selExpiry, selected?.t ?? 0, format)} · click a point to switch`}
+              onSet={(level) => void applyVarSwap(selExpiry, "set", level)}
+              onExclude={() => void applyVarSwap(selExpiry, "exclude")}
+              onInclude={() => void applyVarSwap(selExpiry, "include")}
+              onRemove={() => void applyVarSwap(selExpiry, "remove")}
+              onUndo={() => void undoVarSwap(selExpiry)}
+              onRedo={() => void redoVarSwap(selExpiry)}
+              onReset={() => void applyVarSwap(selExpiry, "reset")}
+            />
+          </div>
+        )}
+
         {/* Expiry ladder */}
         <div className="mt-4 flex min-h-0 flex-1 flex-col border-t border-slate-800 pt-3">
           <h3 className="mb-2 text-sm font-semibold text-slate-100">Expiry ladder</h3>
@@ -220,18 +320,32 @@ export default function TermPanel() {
                   <th className="pb-1 font-normal">T</th>
                   <th className="pb-1 font-normal">ATM</th>
                   <th className="pb-1 font-normal">VS</th>
+                  {varSwapEnabled && <th className="pb-1 font-normal">quote</th>}
                   <th className="pb-1 font-normal">bp</th>
                 </tr>
               </thead>
               <tbody className="text-slate-300">
                 {(data?.points ?? []).map((p) => (
-                  <tr key={p.expiry} className="border-t border-slate-800/60">
+                  <tr
+                    key={p.expiry}
+                    onClick={varSwapEnabled ? () => setSelectedExpiry(p.expiry) : undefined}
+                    className={[
+                      "border-t border-slate-800/60",
+                      varSwapEnabled ? "cursor-pointer" : "",
+                      p.expiry === selExpiry && varSwapEnabled ? "text-accent-400" : "",
+                    ].join(" ")}
+                  >
                     <td className="py-1 text-left text-slate-400">
                       {formatExpiry(p.expiry, p.t, format)}
                     </td>
                     <td>{p.t.toFixed(2)}</td>
                     <td>{formatPct(p.atmVol)}</td>
                     <td>{formatPct(p.varSwapVol)}</td>
+                    {varSwapEnabled && (
+                      <td className={p.varSwapExcluded ? "text-slate-600" : "text-teal-300"}>
+                        {p.varSwapQuote == null ? "—" : formatPct(p.varSwapQuote)}
+                      </td>
+                    )}
                     <td>{p.maxIvErrorBp.toFixed(0)}</td>
                   </tr>
                 ))}

@@ -53,7 +53,11 @@ def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     session = state.session_if_exists((ticker, iso))
     prepared = record.prepared
     t, forward, discount = prepared.t, prepared.forward, prepared.discount
-    model_iv = np.sqrt(displayed_slice(record).implied_w(prepared.k) / t)
+    # IVs are in the event-weighted clock (prepared.tau): total variance is
+    # iv^2 * tau, so prices reconstructed at tau equal the real market prices,
+    # and the model IV is the weighted vol. ``t`` (calendar) stays the maturity.
+    tv = prepared.tau
+    model_iv = np.sqrt(displayed_slice(record).implied_w(prepared.k) / tv)
 
     rows: list[TableRow] = []
     for i, (k, bid, mid, ask) in enumerate(
@@ -73,9 +77,9 @@ def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
                 midIv=mid_iv,
                 askIv=float(ask),
                 modelIv=float(model_iv[i]),
-                bidPrice=_price(k, float(bid), t, forward, discount),
-                midPrice=_price(k, mid_iv, t, forward, discount),
-                askPrice=_price(k, float(ask), t, forward, discount),
+                bidPrice=_price(k, float(bid), tv, forward, discount),
+                midPrice=_price(k, mid_iv, tv, forward, discount),
+                askPrice=_price(k, float(ask), tv, forward, discount),
                 excluded=edit is not None and edit.excluded,
                 amended=amended,
             )

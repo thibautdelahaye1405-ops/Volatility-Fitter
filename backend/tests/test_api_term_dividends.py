@@ -72,10 +72,8 @@ def test_markers_follow_event_dilated_clock(client):
     ticker, _ = _ticker_and_last_expiry(client)
     ex = (REF_DATE + timedelta(days=60)).isoformat()  # ~0.164y
     _set_dividends(client, ticker, "discrete_absolute", [{"exDate": ex, "amount": 0.5}])
-    body = {
-        "fitMode": "mid",
-        "events": [{"time": 0.05, "weight": 0.1, "label": "E"}],
-        "eventsEnabled": True,
-    }
-    m = client.post(f"/term/{ticker}", json=body).json()["dividends"][0]
-    assert m["tau"] == pytest.approx(m["t"] + 0.1, abs=1e-9)  # event weight added
+    # The shared per-ticker calendar drives the clock; weight is EXTRA days, so
+    # 36.5 days = +0.1 weighted years added to the ex-date's tau.
+    client.put(f"/events/{ticker}", json={"events": [{"time": 0.05, "weight": 36.5, "label": "E"}]})
+    m = client.post(f"/term/{ticker}", json={"fitMode": "mid"}).json()["dividends"][0]
+    assert m["tau"] == pytest.approx(m["t"] + 36.5 / 365.0, abs=1e-9)

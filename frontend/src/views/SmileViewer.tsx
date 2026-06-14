@@ -204,6 +204,9 @@ export default function SmileViewer() {
             atmVol={smile.diagnostics.atmVol}
             selectedIndex={selectedIndex}
             onQuoteSelect={setSelectedIndex}
+            varSwapLevel={
+              smile.varSwap.enabled && !smile.varSwap.excluded ? smile.varSwap.level : null
+            }
           />
         );
       case "stackeddensity":

@@ -19,6 +19,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.models.sigmoid.kernels import hat, siv_base
 from volfit.models.sigmoid.sigmoid import HatCore, MultiCoreSiv
 
@@ -101,12 +102,18 @@ def _fit(
     band: BandTarget | None = None,
     ridge: float = _RIDGE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    var_swap: VarSwapTarget | None = None,
+    sigma_ref: float = 1.0,
+    t: float = 1.0,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
     The data term is the plain mid residual (``band is None``) or the bid-ask /
     haircut band objective in vol space (volfit.calib.band). ``ridge`` is the hat
-    amplitude penalty strength and ``mid_anchor_weight`` the band's mid anchor.
+    amplitude penalty strength and ``mid_anchor_weight`` the band's mid anchor. A
+    ``var_swap`` target adds one var-swap penalty (volfit.calib.varswap); it maps
+    the model back to log-moneyness via z = k / (sigma_ref sqrt(t)) so the
+    replication integrates over k. ``sigma_ref``/``t`` are only used then.
     """
 
     def residuals(theta: np.ndarray) -> np.ndarray:
@@ -120,6 +127,11 @@ def _fit(
         if n_cores:
             alphas = theta[6::4][:n_cores]
             res = np.concatenate([res, np.sqrt(ridge) * alphas])
+        if var_swap is not None:
+            def implied_w(kk: np.ndarray) -> np.ndarray:
+                zz = kk / (sigma_ref * np.sqrt(t))
+                return np.maximum(_eval_v(theta, zz, n_cores), _V_FLOOR) * t
+            res = np.concatenate([res, [varswap_residual(implied_w, var_swap)]])
         return res
 
     theta0 = np.clip(theta0, lo, hi)
@@ -136,6 +148,7 @@ def calibrate_sigmoid(
     band: BandTarget | None = None,
     ridge: float = _RIDGE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    var_swap: VarSwapTarget | None = None,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -173,11 +186,13 @@ def calibrate_sigmoid(
         theta = _fit(
             theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores,
             band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
+            var_swap=var_swap, sigma_ref=sigma_ref, t=t,
         )
     else:
         theta = _fit(
             base, base_lo, base_hi, z, vol_quotes, sqrt_w, 0,
             band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
+            var_swap=var_swap, sigma_ref=sigma_ref, t=t,
         )
 
     cores = tuple(

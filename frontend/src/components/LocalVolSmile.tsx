@@ -40,8 +40,12 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
   const vols = smile.model.map((p) => p.vol);
   const kMin = Math.min(...ks, ...smile.quotes.map((q) => q.k));
   const kMax = Math.max(...ks, ...smile.quotes.map((q) => q.k));
-  let vMin = Math.min(...vols, ...smile.quotes.map((q) => q.bid));
-  let vMax = Math.max(...vols, ...smile.quotes.map((q) => q.ask));
+  // Active var-swap quote level (drawn as a horizontal line; folded into the
+  // y-domain so it never sits off-chart).
+  const vsLevel =
+    smile.varSwap.enabled && !smile.varSwap.excluded ? smile.varSwap.level : null;
+  let vMin = Math.min(...vols, ...smile.quotes.map((q) => q.bid), ...(vsLevel !== null ? [vsLevel] : []));
+  let vMax = Math.max(...vols, ...smile.quotes.map((q) => q.ask), ...(vsLevel !== null ? [vsLevel] : []));
   const pad = (vMax - vMin) * 0.12 || 0.01;
   vMin -= pad;
   vMax += pad;
@@ -117,6 +121,18 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
               </g>
             );
           })}
+
+          {/* Variance-swap quote: horizontal teal line at the quoted vol */}
+          {vsLevel !== null && vsLevel >= vMin && vsLevel <= vMax && (
+            <g>
+              <line x1={MARGIN.left} x2={MARGIN.left + plotW} y1={y.map(vsLevel)} y2={y.map(vsLevel)}
+                stroke="rgb(45 212 191 / 0.85)" strokeWidth={1.5} strokeDasharray="6 4" />
+              <text x={MARGIN.left + plotW - 2} y={y.map(vsLevel) - 3} textAnchor="end"
+                className="fill-teal-300 font-mono text-[9px]">
+                VS {formatPct(vsLevel, 2)}
+              </text>
+            </g>
+          )}
 
           {/* Reconstructed model curve */}
           <path d={path} fill="none" stroke="rgb(56 189 248)" strokeWidth={1.75} />

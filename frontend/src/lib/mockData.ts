@@ -42,6 +42,21 @@ export interface SmileDiagnostics {
   rmsError: number;
 }
 
+/** Variance-swap quote state of a node (shared by Parametric & Local Vol). */
+export interface VarSwapInfo {
+  /** Quoted var-swap vol (decimal), or null when no quote exists. */
+  level: number | null;
+  /** Quote present but excluded from the calibration penalty. */
+  excluded: boolean;
+  /** The model's own fair var-swap vol (used to seed a new quote). */
+  modelVol: number;
+  /** Mirrors OptionsSettings.varSwapEnabled — gates the whole affordance. */
+  enabled: boolean;
+  /** Separate undo/redo history for var-swap edits (not the quote edits). */
+  canUndo: boolean;
+  canRedo: boolean;
+}
+
 /** Everything the Smile Viewer needs for one (underlying, expiry) node. */
 export interface SmileData {
   ticker: string;
@@ -60,6 +75,8 @@ export interface SmileData {
   canUndo: boolean;
   canRedo: boolean;
   diagnostics: SmileDiagnostics;
+  /** Variance-swap quote + model level for this node. */
+  varSwap: VarSwapInfo;
 }
 
 /* ------------------------------------------------------------------ */
@@ -188,6 +205,14 @@ export function getMockSmile(): SmileData {
       leeRight: 0.036,
       varSwapVol: 0.212,
       rmsError: 0.0021,
+    },
+    varSwap: {
+      level: null,
+      excluded: false,
+      modelVol: 0.212,
+      enabled: true,
+      canUndo: false,
+      canRedo: false,
     },
   };
 }
