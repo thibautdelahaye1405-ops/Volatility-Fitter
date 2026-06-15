@@ -74,12 +74,48 @@ if ($NoDb) {
     Write-Host "Persistence: $dbPath (named universes + fit history persist)"
 }
 
-Start-Process -FilePath (Join-Path $repo ".venv\Scripts\python.exe") `
-    -ArgumentList "backend\serve.py" -WorkingDirectory $repo
+# Capture backend stdout/stderr to log files. Without this the backend runs in a
+# window that closes the instant build_app() throws (a provider ctor, a hung
+# data-source probe, a bad import) — the error vanishes and "it just won't start".
+# With the logs, any startup failure is visible below and in backend\data\.
+$logDir = Join-Path $repo "backend\data"
+New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+$outLog = Join-Path $logDir "serve.out.log"
+$errLog = Join-Path $logDir "serve.err.log"
+$backend = Start-Process -FilePath (Join-Path $repo ".venv\Scripts\python.exe") `
+    -ArgumentList "backend\serve.py" -WorkingDirectory $repo `
+    -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
 
 # --- 3. Start the frontend (Vite on :5173) in its own window ---------------
 Start-Process -FilePath "powershell" `
     -ArgumentList "-NoExit", "-Command", "npm run dev" `
     -WorkingDirectory (Join-Path $repo "frontend")
 
+# --- 4. Wait for the backend to actually bind :8000 ------------------------
+# Auto-pick probes every data source before uvicorn binds, so give it a few
+# seconds; report the active source on success, or tail the log on failure.
+Write-Host "Waiting for backend on :8000 ..." -NoNewline
+$ready = $false
+for ($i = 0; $i -lt 30; $i++) {
+    if ($backend.HasExited) { break }
+    try {
+        $tcp = New-Object System.Net.Sockets.TcpClient
+        $tcp.Connect("127.0.0.1", 8000)
+        $tcp.Close()
+        $ready = $true
+        break
+    } catch {
+        Start-Sleep -Milliseconds 500
+        Write-Host "." -NoNewline
+    }
+}
+Write-Host ""
+if ($ready) {
+    $active = (Select-String -Path $outLog -Pattern "active=\S+" -ErrorAction SilentlyContinue |
+        Select-Object -Last 1).Line
+    Write-Host "Backend UP on http://localhost:8000  $active" -ForegroundColor Green
+} else {
+    Write-Host "Backend FAILED to bind :8000 - last lines of ${errLog}:" -ForegroundColor Red
+    Get-Content $errLog -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
+}
 Write-Host "Restarted: backend -> http://localhost:8000, frontend -> http://localhost:5173"

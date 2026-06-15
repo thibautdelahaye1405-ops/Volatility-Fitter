@@ -39,21 +39,21 @@ from volfit.data.bloomberg_parse import (
     ParsedOption,
     as_date,
     columns,
-    normalize_security,
     parse_descriptor,
     pivot_bdp,
     project_dividends,
+    quiet_xbbg_logs,
     records,
+    session_connected,
+    short_blp_reason,
 )
 from volfit.data.bloomberg_history import available_history as _available_history
 from volfit.data.bloomberg_history import fetch_eod as _fetch_eod
+from volfit.data.bloomberg_search import instrument_search
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import ChainSnapshot, OptionQuote
-
-#: Bloomberg security-search service (free-text symbol/name -> securities).
-_INSTRUMENTS_SERVICE = "//blp/instruments"
 
 #: Yellow-key suffixes that mark an already-complete Bloomberg security string.
 _YELLOW_KEYS = (" Equity", " Index", " Curncy", " Comdty", " Corp", " Govt")
@@ -72,6 +72,7 @@ def _default_blp():
             "BloombergProvider requires the 'xbbg' package (and a running "
             "Bloomberg Terminal): pip install xbbg blpapi"
         ) from exc
+    quiet_xbbg_logs()  # silence the pyo3 engine's per-failure WARN spam
     return blp
 
 
@@ -126,17 +127,33 @@ class BloombergProvider(OptionChainProvider):
         return list(self._tickers)
 
     def feed_status(self) -> tuple[str, str]:
-        """Green when the Terminal answers a PX_LAST (real-time), red when xbbg
-        or the Terminal is unavailable."""
+        """Liveness for the Data Source selector, with the three states the
+        pyo3 xbbg actually distinguishes:
+
+        - **green** — the Terminal answered a PX_LAST (real-time data flowing);
+        - **red "no Terminal"** — no blpapi session at all (xbbg not installed,
+          Terminal closed / not logged in);
+        - **red "<reason>"** — the session IS connected but Bloomberg refused the
+          probe (entitlement / *workflow review needed* / request limit). The
+          real responseError reason is surfaced so the user knows it is an
+          account-side gate to clear in the Terminal, NOT a broken install.
+        """
         tickers = self.list_tickers()
         if not tickers:
             return ("red", "no tickers configured")
         try:
-            security = self._security(tickers[0])
-            pivot = pivot_bdp(self._blp_module().bdp(security, "PX_LAST"))
+            blp = self._blp_module()
+        except ImportError:
+            return ("red", "xbbg not installed")
+        security = self._security(tickers[0])
+        try:
+            pivot = pivot_bdp(blp.bdp(security, "PX_LAST"))
             spot = price_or_none(pivot.get(security, {}).get("PX_LAST"))
-        except Exception:
-            return ("red", "no Terminal / xbbg")
+        except Exception as exc:
+            # Connected but refused -> show the real cause; else session is down.
+            if session_connected(blp):
+                return ("red", short_blp_reason(exc))
+            return ("red", "no Terminal")
         if spot is None:
             return ("red", "no data")
         return ("green", "real-time (Terminal)")
@@ -170,48 +187,9 @@ class BloombergProvider(OptionChainProvider):
                 return super().search_symbols(query, limit)
 
     def _instrument_search(self, blpapi, query: str, limit: int) -> list[SymbolMatch]:
-        """One instrumentListRequest against //blp/instruments (call under lock)."""
-        if self._search_session is None:
-            options = blpapi.SessionOptions()
-            options.setServerHost("localhost")
-            options.setServerPort(8194)
-            session = blpapi.Session(options)
-            if not session.start() or not session.openService(_INSTRUMENTS_SERVICE):
-                raise RuntimeError("instrument search service unavailable")
-            self._search_session = session
-        service = self._search_session.getService(_INSTRUMENTS_SERVICE)
-        request = service.createRequest("instrumentListRequest")
-        request.set("query", query)
-        request.set("maxResults", max(1, limit))
-        try:
-            request.set("yellowKeyFilter", "YK_FILTER_EQTY")  # equities/ETFs
-        except Exception:
-            pass  # older API without the filter: take all yellow keys
-        self._search_session.sendRequest(request)
-
-        matches: list[SymbolMatch] = []
-        while True:
-            event = self._search_session.nextEvent(5000)
-            for message in event:
-                if not message.hasElement("results"):
-                    continue
-                results = message.getElement("results")
-                for i in range(results.numValues()):
-                    row = results.getValueAsElement(i)
-                    if not row.hasElement("security"):
-                        continue
-                    security = normalize_security(row.getElementAsString("security"))
-                    description = (
-                        row.getElementAsString("description")
-                        if row.hasElement("description")
-                        else ""
-                    )
-                    matches.append(
-                        SymbolMatch(symbol=security, name=description, type="EQUITY")
-                    )
-            if event.eventType() == blpapi.Event.RESPONSE:
-                break
-        return matches[:limit]
+        """One instrumentListRequest against //blp/instruments (call under lock);
+        the body lives in bloomberg_search to keep this module under 400 lines."""
+        return instrument_search(self, blpapi, query, limit)
 
     # -- chain enumeration (cheap, descriptor-only) --------------------------
 

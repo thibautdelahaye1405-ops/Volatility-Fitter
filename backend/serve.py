@@ -59,19 +59,41 @@ def _build_providers() -> dict:
     }
 
 
+def _probe_level(provider, timeout: float = 4.0) -> str:
+    """``feed_status`` level for a provider, bounded so a slow or hanging probe
+    (e.g. a half-up Terminal, an unreachable HTTP feed) can never block startup.
+
+    Runs the probe on a daemon thread and gives up after ``timeout`` seconds,
+    treating a timeout or any error as "red" (unreachable) so the auto-pick
+    simply moves on to the next source. Importantly this runs BEFORE uvicorn
+    binds, so an unbounded probe would otherwise mean the server never comes up.
+    """
+    import threading
+
+    result = ["red"]
+
+    def _run() -> None:
+        try:
+            result[0] = provider.feed_status()[0]
+        except Exception:
+            result[0] = "red"
+
+    thread = threading.Thread(target=_run, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    return result[0] if not thread.is_alive() else "red"
+
+
 def _pick_active(providers: dict, forced: str) -> str:
     """The active source on launch: the forced one if valid, else the first
-    reachable source in preference order (its feed_status isn't Red)."""
+    reachable source in preference order (its feed_status isn't Red). Each probe
+    is time-bounded so no single source can stall the backend's startup."""
     if forced and forced in providers:
         return forced
     for sid in _AUTO_ORDER:
         if sid not in providers:
             continue
-        try:
-            level, _ = providers[sid].feed_status()
-        except Exception:
-            level = "red"
-        if level != "red":
+        if _probe_level(providers[sid]) != "red":
             return sid
     return "synthetic"
 

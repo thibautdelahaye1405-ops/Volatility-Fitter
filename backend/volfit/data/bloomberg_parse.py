@@ -28,6 +28,68 @@ from datetime import date
 
 from volfit.data.dividends import Dividend
 
+#: Bloomberg responseError ``subcategory`` -> short human reason for the Data
+#: Source light. These are account/entitlement states the *Terminal* must clear
+#: (no code change makes data flow), so we surface them verbatim-ish instead of
+#: the old catch-all "no Terminal / xbbg" which hid the real cause.
+_BLP_REASONS = {
+    "WORKFLOW_REVIEW_NEEDED": "workflow review needed",
+    "NOT_ENTITLED": "not entitled",
+    "NOT_AUTHORIZED": "not authorized",
+    "DAILY_LIMIT_REACHED": "daily request limit reached",
+    "MONTHLY_LIMIT_REACHED": "monthly request limit reached",
+    "RESPONSE_LIMIT_REACHED": "response limit reached",
+}
+
+#: subcategory=... token inside a Bloomberg responseError message.
+_SUBCATEGORY_RE = re.compile(r"subcategory=([A-Z_]+)")
+
+
+def quiet_xbbg_logs() -> None:
+    """Lower the pyo3 xbbg engine's tracing level so a *failed* Bloomberg
+    request (which it logs at WARN to stderr) does not spam the console and
+    read like a broken install. Best-effort: silently ignored on any xbbg build
+    without ``set_log_level`` (e.g. the classic pandas xbbg).
+    """
+    try:
+        import xbbg
+
+        xbbg.set_log_level("error")
+    except Exception:
+        pass
+
+
+def session_connected(blp) -> bool:
+    """Whether the xbbg/blpapi session is actually connected to a Terminal.
+
+    The pyo3 xbbg exposes ``is_connected()``; older builds and the test stub do
+    not, so missing/raising means "unknown" -> ``False``. Used to tell a real
+    *down* session apart from a *connected-but-refused* request (entitlement /
+    workflow review), which the Data Source light should report differently.
+    """
+    probe = getattr(blp, "is_connected", None)
+    if probe is None:
+        return False
+    try:
+        return bool(probe())
+    except Exception:
+        return False
+
+
+def short_blp_reason(exc: Exception) -> str:
+    """Concise, user-facing reason from a Bloomberg request error.
+
+    Maps a known responseError ``subcategory`` (e.g. WORKFLOW_REVIEW_NEEDED) to
+    plain English; otherwise returns a trimmed tail of the message. Keeps the
+    Data Source tooltip actionable ("workflow review needed") instead of generic.
+    """
+    text = str(exc)
+    match = _SUBCATEGORY_RE.search(text)
+    if match:
+        token = match.group(1)
+        return _BLP_REASONS.get(token, token.replace("_", " ").lower())
+    return text.strip().splitlines()[-1][:80] if text.strip() else "request failed"
+
 #: date + call/put + strike inside a descriptor, e.g. "06/18/26 C245" or "P500.5".
 _DESCRIPTOR_RE = re.compile(r"(\d{2})/(\d{2})/(\d{2})\s+([CP])([0-9]+(?:\.[0-9]+)?)")
 

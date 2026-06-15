@@ -28,6 +28,8 @@ from volfit.data.bloomberg_parse import (
     normalize_security,
     parse_descriptor,
     project_dividends,
+    session_connected,
+    short_blp_reason,
 )
 
 TODAY = date.today()
@@ -215,6 +217,63 @@ def test_dividend_schedule_best_effort_on_failure():
 
 def test_project_dividends_empty_history():
     assert project_dividends([], TODAY, 365) == ()
+
+
+# --------------------------------------------------------------- feed status
+
+#: A Bloomberg responseError exactly as the pyo3 xbbg raises when the session is
+#: up but the request is gated by an account-side workflow review.
+_WORKFLOW_ERROR = (
+    "Request failed on //blp/refdata::ReferenceDataRequest - Bloomberg "
+    "responseError: source=rsfrdsvc2; category=LIMIT; code=-4002; "
+    "subcategory=WORKFLOW_REVIEW_NEEDED; message=Workflow review needed."
+)
+
+
+class _RefusingBlp:
+    """xbbg stub whose data requests fail; ``connected`` toggles whether a
+    blpapi session exists (connected-but-refused vs. no-Terminal)."""
+
+    def __init__(self, connected: bool):
+        self._connected = connected
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def bdp(self, *_a, **_k):
+        raise RuntimeError(_WORKFLOW_ERROR)
+
+
+def test_feed_status_green_on_px_last():
+    provider, _ = _make_provider()  # FakeBlp serves PX_LAST 741.75 for SPY
+    assert provider.feed_status() == ("green", "real-time (Terminal)")
+
+
+def test_feed_status_connected_but_refused_surfaces_reason():
+    """Session up, request refused -> red with the real Bloomberg reason, not
+    the old misleading 'no Terminal / xbbg'."""
+    provider = BloombergProvider(["SPY"], blp_module=_RefusingBlp(connected=True))
+    level, detail = provider.feed_status()
+    assert level == "red"
+    assert detail == "workflow review needed"
+
+
+def test_feed_status_no_session_reports_no_terminal():
+    provider = BloombergProvider(["SPY"], blp_module=_RefusingBlp(connected=False))
+    assert provider.feed_status() == ("red", "no Terminal")
+
+
+def test_short_blp_reason_maps_subcategory():
+    assert short_blp_reason(RuntimeError(_WORKFLOW_ERROR)) == "workflow review needed"
+    assert short_blp_reason(RuntimeError("subcategory=NOT_ENTITLED;")) == "not entitled"
+    # Unknown subcategory -> humanized token; no subcategory -> trimmed message.
+    assert short_blp_reason(RuntimeError("subcategory=SOME_NEW_STATE;")) == "some new state"
+    assert short_blp_reason(RuntimeError("boom")) == "boom"
+
+
+def test_session_connected_guards_missing_probe():
+    assert session_connected(object()) is False  # stub without is_connected()
+    assert session_connected(_RefusingBlp(connected=True)) is True
 
 
 # --------------------------------------------------------------- symbol search
