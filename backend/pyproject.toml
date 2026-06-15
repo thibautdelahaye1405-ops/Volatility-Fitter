@@ -39,6 +39,12 @@ providers = [
     "xbbg>=0.7",
     "blpapi>=3.24",
 ]
+# Flat-file history (ROADMAP Tier 2): DuckDB (bundled httpfs) reads the
+# Massive/Polygon S3 aggregate flat files and caches them to local Parquet.
+# Optional + imported lazily, so the core runs without it (tests importorskip).
+flatfiles = [
+    "duckdb>=1.1",
+]
 
 [tool.setuptools.packages.find]
 include = ["volfit*"]

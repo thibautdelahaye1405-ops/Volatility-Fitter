@@ -10,7 +10,24 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (451 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (471 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Massive feed Tier 2 — flat-file history (backend, offline-tested;
+  live-verify pending the S3 key)**: the long-deferred columnar history.
+  `data/occ.py` parses OCC/OPRA option tickers (the flat files carry only the
+  `O:` symbol → strike/expiry/type). `data/flatfiles.py` `FlatFileStore` uses
+  DuckDB (+bundled httpfs) to read the gzipped daily aggregate CSV from the S3
+  bucket, filter to the watchlist roots, cache the day to local Parquet, and
+  reconstruct a `ChainSnapshot` at an instant (minute aggs = past intraday, day
+  aggs = official Close; zero-spread close, parity spot). It belongs to
+  `MassiveProvider` (`flat_store=`), so the as-of layer is untouched:
+  `historical_modes` gains `eod`, `available_history` lists ~20 recent weekdays,
+  and `fetch_chain(as_of=)` routes eod→day-aggs / past-day-intraday→minute-aggs
+  (today-intraday stays REST). serve.py `_flat_store()` builds it from env
+  (`VOLFIT_FLATFILES_KEY`/`_SECRET` +optional endpoint/bucket/prefix/cache); duckdb
+  is an optional `flatfiles` extra, imported lazily. 19 new offline tests (occ ×11,
+  flatfiles ×5 via a local gzip-CSV fixture duckdb reads for real, Massive wiring
+  ×3). See the priority-track Tier 2 entry for what live-verify still needs.
 
 - **[2026-06-15] Massive feed Tier 0+1 LIVE-VERIFIED + delayed-cluster WS
   fallback**: with the user's key, `massive_diag.py SPY` confirmed the REST feed
@@ -1072,14 +1089,31 @@ moment)` model so the fitter never sees the difference.
    **Remaining (optional) live-UI check:** drive the running app (Massive +
    Real-time) to confirm the throttled refit + resubscribe paths end-to-end in the
    scheduler thread (the engine paths are verified by the probe + tests).
-2. **[Tier 2 — flat-file history]** S3 flat files → DuckDB/Parquet local store
-   (the long-deferred columnar history). **Minute-aggregate** files first
-   (compact; one OHLC/contract/minute → reconstruct any historical intraday
-   chain at a target minute); **day-aggregate** files for the official Close.
-   Lazy download + cache per (date), filtered to the watchlist underlyings. Wire
-   into the as-of past-day moments (`_resolve_moment` already yields a target
-   instant; route past-day → flat-file store, today-intraday → REST aggregates).
-   Quote-level flat files only if true historical NBBO depth is needed (heavy).
+2. **[Tier 2 — flat-file history — BACKEND DONE 2026-06-15, live-verify pending
+   S3 creds]** S3 flat files → DuckDB/Parquet local store (the long-deferred
+   columnar history). Shipped:
+   * `volfit/data/occ.py` — OCC/OPRA option-symbol parse/format (the flat files
+     carry only the `O:` ticker, which encodes strike/expiry/type). 11 tests.
+   * `volfit/data/flatfiles.py` — `FlatFileStore`: DuckDB (+bundled `httpfs`)
+     reads the gzipped daily aggregate CSV straight from S3, filters to the
+     watchlist roots, caches the day to local **Parquet** (lazy, once per
+     date×product), and reconstructs a `ChainSnapshot` at a target instant —
+     **minute aggregates** for a past intraday moment, **day aggregates** for the
+     official Close — quoting `close` as a zero-spread bid=ask=close, spot by
+     parity. Injectable `source_uri` ⇒ offline tests run the real duckdb read of
+     a local gzip CSV fixture. 5 tests.
+   * Wiring: the store belongs to `MassiveProvider` (`flat_store=`), so the as-of
+     layer is unchanged — `historical_modes()` gains **`eod`**,
+     `available_history()` lists the last ~20 weekdays, and `fetch_chain(as_of=)`
+     routes `eod`→day-aggs and a **past-day** `intraday` instant→minute-aggs
+     (today-intraday still the REST `/v3/quotes` path). serve.py `_flat_store()`
+     builds it from env `VOLFIT_FLATFILES_KEY`/`_SECRET` (+ optional
+     `_ENDPOINT`/`_BUCKET`/`_PREFIX`/`_CACHE`); None without creds. 3 tests.
+   `duckdb` is an optional `flatfiles` extra, imported lazily (core runs without
+   it; tests `importorskip`). **NEXT (needs the user's S3 Access Key ID +
+   Secret):** confirm the endpoint/bucket layout by listing the bucket, then fetch
+   a recent day and reconstruct + fit a SPY chain at a past instant. Quote-level
+   flat files only if true historical NBBO depth is needed (heavy).
 3. **[Tier 3 — REST gap-fill]** Extend `_fetch_intraday` to aggregates for
    today's pre-connect intraday + single-contract lookups (the per-contract
    `/v3/quotes` path already exists).

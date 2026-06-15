@@ -276,6 +276,63 @@ def test_ws_urls_candidate_list_and_override():
     assert p2._ws_urls() == ["wss://delayed.polygon.io/options"]  # dedup, no dup fallback
 
 
+# ---------------------------------------- flat-file history (Tier 2) wiring
+
+def _flat_store_fixture(tmp_path):
+    """A FlatFileStore over a local gzip CSV fixture (no S3) — SPY front-expiry
+    closes implying spot 500 by parity."""
+    import gzip
+
+    pytest.importorskip("duckdb")  # the store reads via duckdb (optional dep)
+    from volfit.data.flatfiles import FlatFileStore, _to_ns
+
+    ts = date(2026, 6, 12)
+    ns = _to_ns(__import__("datetime").datetime(2026, 6, 12, 19, 55))
+    rows = [
+        ("O:SPY260616C00490000", 15, ns), ("O:SPY260616P00490000", 5, ns),
+        ("O:SPY260616C00500000", 8, ns), ("O:SPY260616P00500000", 8, ns),
+        ("O:SPY260616C00510000", 4, ns), ("O:SPY260616P00510000", 14, ns),
+    ]
+    path = tmp_path / f"{ts:%Y-%m-%d}.csv.gz"
+    with gzip.open(path, "wt", newline="") as fh:
+        fh.write("ticker,volume,open,close,high,low,window_start,transactions\n")
+        for tk, close, w in rows:
+            fh.write(f"{tk},10,{close},{close},{close},{close},{w},3\n")
+    return FlatFileStore(source_uri=lambda day, freq: str(path))
+
+
+def test_flat_store_adds_eod_and_history(tmp_path):
+    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path))
+    assert "eod" in p.historical_modes()  # flat store advertises per-day closes
+    hist = p.available_history("SPY")
+    assert len(hist) == 20 and all(d.weekday() < 5 for d in hist)  # weekdays, newest last
+    assert hist == sorted(hist)
+    # Without a store, eod is not offered.
+    assert "eod" not in MassiveProvider(["SPY"], api_key="k").historical_modes()
+
+
+def test_fetch_chain_eod_uses_flat_day_aggs(tmp_path):
+    from volfit.data.provider import AsOf
+
+    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path))
+    chain = p.fetch_chain("SPY", [date(2026, 6, 16)], as_of=AsOf(mode="eod", on=date(2026, 6, 12)))
+    assert chain.spot == pytest.approx(500.0, abs=1e-6)
+    assert len(chain.quotes) == 6 and chain.exercise_style == "american"
+    c500 = next(q for q in chain.quotes if q.strike == 500.0 and q.call_put == "C")
+    assert c500.bid == c500.ask == 8.0  # zero-spread close
+
+
+def test_fetch_chain_past_intraday_uses_flat_minute_aggs(tmp_path):
+    from datetime import datetime
+
+    from volfit.data.provider import AsOf
+
+    p = MassiveProvider(["SPY"], api_key="k", flat_store=_flat_store_fixture(tmp_path))
+    # A past instant routes to the flat store (no REST /v3/quotes needed).
+    chain = p.fetch_chain("SPY", None, as_of=AsOf(mode="intraday", ts=datetime(2026, 6, 12, 19, 55)))
+    assert chain.spot == pytest.approx(500.0, abs=1e-6) and len(chain.quotes) == 6
+
+
 def test_paginate_raises_on_not_authorized():
     pages = {
         "/v3/snapshot/options/SPY": {

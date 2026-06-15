@@ -60,9 +60,44 @@ def _build_providers() -> dict:
             tickers,
             api_key=os.environ.get("VOLFIT_MASSIVE_KEY", "").strip(),
             ws_url=(os.environ.get("VOLFIT_MASSIVE_WS_URL", "").strip() or None),
+            flat_store=_flat_store(),
         ),
         "synthetic": SyntheticProvider(reference_date=date.today(), tickers=tuple(tickers)),
     }
+
+
+def _flat_store():
+    """Build the Massive/Polygon flat-file history store from the environment
+    (ROADMAP Tier 2), or None when no S3 credentials are configured.
+
+    Env: ``VOLFIT_FLATFILES_KEY`` / ``VOLFIT_FLATFILES_SECRET`` (the S3 Access Key
+    ID + Secret for the flat-file bucket); optional ``VOLFIT_FLATFILES_ENDPOINT`` /
+    ``_BUCKET`` / ``_PREFIX`` overrides; ``VOLFIT_FLATFILES_CACHE`` for the local
+    Parquet day-cache (defaults under the OS temp dir, persisted across restarts)."""
+    import tempfile
+
+    from volfit.data.flatfiles import (
+        DEFAULT_BUCKET,
+        DEFAULT_ENDPOINT,
+        DEFAULT_PREFIX,
+        FlatFileStore,
+    )
+
+    key = os.environ.get("VOLFIT_FLATFILES_KEY", "").strip()
+    secret = os.environ.get("VOLFIT_FLATFILES_SECRET", "").strip()
+    if not (key and secret):
+        return None
+    cache = os.environ.get("VOLFIT_FLATFILES_CACHE", "").strip() or os.path.join(
+        tempfile.gettempdir(), "volfit_flatfiles"
+    )
+    return FlatFileStore(
+        access_key=key,
+        secret=secret,
+        endpoint=os.environ.get("VOLFIT_FLATFILES_ENDPOINT", "").strip() or DEFAULT_ENDPOINT,
+        bucket=os.environ.get("VOLFIT_FLATFILES_BUCKET", "").strip() or DEFAULT_BUCKET,
+        prefix=os.environ.get("VOLFIT_FLATFILES_PREFIX", "").strip() or DEFAULT_PREFIX,
+        cache_dir=cache,
+    )
 
 
 def _bounded(fn, timeout: float, default):

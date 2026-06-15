@@ -31,7 +31,7 @@ Robustness / conventions:
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Iterator, Sequence
 
 from volfit.core.black import black_call
@@ -81,6 +81,7 @@ class MassiveProvider(OptionChainProvider):
         http_get: Callable[[str, dict | None], dict] | None = None,
         iv_fallback: bool = True,
         ws_url: str | None = None,
+        flat_store=None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key
@@ -102,6 +103,12 @@ class MassiveProvider(OptionChainProvider):
         #: poll. Started/stopped via ``start_streaming``/``stop_streaming``.
         self._live_book = None
         self._ws = None
+        #: Optional flat-file history store (volfit.data.flatfiles, ROADMAP Tier
+        #: 2). When present + credentialed it serves the official daily Close
+        #: (day aggregates) for ANY recent trading day and reconstructs a chain at
+        #: a past INTRADAY instant (minute aggregates) — so the as-of past-day
+        #: moments work without the per-contract REST historical-quote path.
+        self.flat_store = flat_store
         #: Cache of the listed contracts per (ticker, frozenset(expiries)) so the
         #: WS read path (``_chain_from_book``) and the scheduler's per-tick
         #: resubscribe diff (``option_tickers``) don't re-paginate the contracts
@@ -224,9 +231,31 @@ class MassiveProvider(OptionChainProvider):
         )
 
     def historical_modes(self) -> set[str]:
-        """Live + Previous Close (the snapshot's day close); no per-day EOD list
-        (Polygon historical chains are per-contract daily bars — too heavy)."""
-        return {"live", "prev_close"}
+        """Live + Previous Close (the snapshot's day close). With a flat-file
+        history store, also per-day **EOD** (the official daily-aggregate close for
+        any recent trading day)."""
+        modes = {"live", "prev_close"}
+        if self._flat_ready():
+            modes.add("eod")
+        return modes
+
+    def available_history(self, ticker: str) -> list[date]:
+        """Recent trading days the flat-file store can serve an EOD close for
+        (newest last). Approximated as the last ~20 weekdays up to yesterday —
+        today's file isn't published until after the close, and a non-trading day
+        simply yields no bars (an empty chain) when fetched. Empty without a store."""
+        if not self._flat_ready():
+            return []
+        out: list[date] = []
+        day = date.today() - timedelta(days=1)
+        while len(out) < 20:
+            if day.weekday() < 5:
+                out.append(day)
+            day -= timedelta(days=1)
+        return list(reversed(out))
+
+    def _flat_ready(self) -> bool:
+        return bool(self.flat_store is not None and self.flat_store.available())
 
     def intraday_capable(self) -> bool:
         """Massive/Polygon can reconstruct a chain at a past INSTANT from the
@@ -351,7 +380,19 @@ class MassiveProvider(OptionChainProvider):
         (options-only); the STOCKS-snapshot fallback (a separate plan) is the last
         resort and only it can raise ``RuntimeError`` for entitlement.
         """
+        # Flat-file history (Tier 2): the official daily Close for any recent
+        # trading day, and a past INTRADAY instant — both reconstructed from the
+        # aggregate flat files rather than the heavy per-contract REST quotes.
+        if as_of is not None and as_of.mode == "eod" and as_of.on is not None and self._flat_ready():
+            flat = self._fetch_flat(ticker, expiries, datetime.combine(as_of.on, time(23, 59, 59)), "day")
+            if flat is None:
+                raise RuntimeError(f"Massive: no flat-file data for {as_of.on.isoformat()}")
+            return flat
         if as_of is not None and as_of.mode == "intraday" and as_of.ts is not None:
+            if as_of.ts.date() < date.today() and self._flat_ready():
+                flat = self._fetch_flat(ticker, expiries, as_of.ts, "minute")
+                if flat is not None:
+                    return flat  # else fall back to the per-contract REST quotes
             return self._fetch_intraday(ticker, expiries, as_of.ts)
         # Live + streaming: serve from the real-time WS book (no REST poll). Falls
         # through to a REST snapshot if the book hasn't warmed enough to imply a
@@ -517,6 +558,15 @@ class MassiveProvider(OptionChainProvider):
                 "for the stock snapshot, or use Bloomberg/Yahoo for spot."
             )
         return spot
+
+    def _fetch_flat(
+        self, ticker: str, expiries: list[date] | None, ts: datetime, frequency: str
+    ):
+        """Reconstruct the chain from the flat-file store (day/minute aggregates),
+        co-caching the whole watchlist from the same daily file. None on no data."""
+        return self.flat_store.chain_at(
+            ticker, expiries, ts, underlyings=self.list_tickers(), frequency=frequency
+        )
 
     # -- intraday replay (historical NBBO at an instant) ---------------------
 
