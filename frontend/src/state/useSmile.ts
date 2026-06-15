@@ -210,6 +210,7 @@ export function useSmile(): UseSmileResult {
     live,
     ticker,
     refreshViews,
+    spotVersion, // re-read the spot readout when the backend RT poll transports it
   );
   const [spotMode, setSpotMode] = useState<"static" | "realtime">("static");
 

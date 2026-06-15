@@ -38,13 +38,18 @@ export function useSpot(
   live: boolean,
   ticker: string,
   refreshViews: () => void,
+  refreshKey: number,
 ): UseSpotResult {
   const [spotReturn, setSpotReturnState] = useState(0);
   const [spotState, setSpotState] = useState<SpotState | null>(null);
   const putTimer = useRef<number | undefined>(undefined);
 
-  // Sync the displayed shift to the backend whenever the ticker changes (each
-  // ticker holds its own shift); mock mode shows no spot controls.
+  // Re-read the backend spot state whenever the ticker changes (each ticker holds
+  // its own shift) OR the shared view counter bumps — the BACKEND scheduler owns
+  // real-time spot polling and transports the surface, bumping `spotVersion` via
+  // useWorkflow; without `refreshKey` here the SpotPanel readout would stay frozen
+  // at mount and only refresh on a manual action / options fetch. Mock mode shows
+  // no spot controls.
   useEffect(() => {
     if (!live || ticker === "") {
       setSpotState(null);
@@ -60,7 +65,7 @@ export function useSpot(
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [live, ticker]);
+  }, [live, ticker, refreshKey]);
 
   const applyShift = useCallback(
     (r: number) => {
