@@ -10,7 +10,19 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (444 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (445 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] UI crash hardening (error boundary + null-safe diagnostics)**: a
+  per-view **ErrorBoundary** (`components/ErrorBoundary.tsx`, keyed by tab) so a
+  render crash shows a recoverable card + logs the stack instead of white-screening
+  the app. It pinpointed the real-time-spot crash: a **transported** slice is
+  finite near ATM but non-finite at the far wings (±6) where the numeric Lee-slope
+  / var-swap diagnostics evaluate it → NaN → JSON `null` → `null.toFixed()` crashed
+  `SmileAside`. Fixed both layers — backend `numeric_handles`/`numeric_lee_slopes`/
+  `numeric_var_swap_w`/`_max_iv_error` coerce non-finite → finite; frontend
+  `SmileAside` renders "—" for null/NaN and `formatPct` is null-safe. Massive spot
+  now resolves via the upgraded stock plan (`underlying_asset.price` / stocks
+  endpoint), with parity-forward as fallback.
 
 - **[2026-06-15] Massive real-time WebSocket live book (feed workflow phase 1)**:
   first tier of the Massive feed design (3 tiers: **WS live book** for RT · **S3
@@ -979,20 +991,47 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
     smile refits via the forwards version. Verified end-to-end in headless
     Edge (cash dividend → Term marker at t≈0.12y; editor shows the schedule).
 
-**Next up (in order):**
-1. Phase 10 follow-ups still open (scenario auto-seed from dynamicsRegime/ssr +
-   lit/dark now done): `enforceCalendar` on the per-view paths, `varSwapEnabled`
-   hiding the var-swap rows, `autoLoadPrior`; then the two stubs (auto-on-demand
-   calibration trigger, real-time spot streaming).
+**>>> MASSIVE FEED ROADMAP (the priority track — 3-tier source router) <<<**
+
+The design (agreed 2026-06-15): all three tiers sit behind the as-of `(day →
+moment)` model so the fitter never sees the difference.
+
+0. **[NEXT — verify] Confirm the live REST feed end-to-end.** Run
+   `backend/massive_diag.py SPY` with the (now stock-upgraded) key on both hosts;
+   confirm `underlying_asset.price` is populated and `fetch_chain` returns
+   two-sided quotes + a real spot. This unblocks live-verifying everything below.
+1. **[NEXT — Tier 1 finish] Live-verify the WebSocket live book** (shipped but
+   live-unverified): select Massive + Real-time and confirm the book fills and
+   `fetch_chain(live)` serves from it. Then add the **throttled full-refit loop**
+   (2–5s while streaming — a new scheduler branch recalibrating lit nodes, not
+   just the spot-transport poll), and **resubscribe on universe change** (today
+   the stream is torn down + restarted on source/mode change only). Cheaper live
+   read: `_chain_from_book` currently re-pulls the contracts reference each call —
+   cache the option-ticker list per (ticker, expiry set).
+2. **[Tier 2 — flat-file history]** S3 flat files → DuckDB/Parquet local store
+   (the long-deferred columnar history). **Minute-aggregate** files first
+   (compact; one OHLC/contract/minute → reconstruct any historical intraday
+   chain at a target minute); **day-aggregate** files for the official Close.
+   Lazy download + cache per (date), filtered to the watchlist underlyings. Wire
+   into the as-of past-day moments (`_resolve_moment` already yields a target
+   instant; route past-day → flat-file store, today-intraday → REST aggregates).
+   Quote-level flat files only if true historical NBBO depth is needed (heavy).
+3. **[Tier 3 — REST gap-fill]** Extend `_fetch_intraday` to aggregates for
+   today's pre-connect intraday + single-contract lookups (the per-contract
+   `/v3/quotes` path already exists).
+4. **Spot source**: now that the stock plan is live, prefer the real
+   `underlying_asset.price` / stocks spot; keep parity-forward as the fallback.
+   Consider streaming the underlying quote channel for a true live spot.
+
+**Then (general, in order):**
+1. Phase 10 follow-ups still open: `enforceCalendar` on the per-view paths,
+   `varSwapEnabled` hiding the var-swap rows, `autoLoadPrior`.
 2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
-   sets, provider-failure injection; UX polish (skeletons, error surfaces,
-   layout persistence); Docker-compose packaging + user/API docs.
-3. Smaller leftovers scattered in the phase checklists: DuckDB/Parquet history
-   (the columnar quote-snapshot store, deferred when the providers landed);
-   process-pool for parallel slice fits; editable ATM handles + prior load/diff
-   UI.
-4. Universe leftovers (small): Bloomberg/Massive `available_expiries` now exist;
-   the expiry picker is still per-ticker (no cross-ticker "apply to all" yet).
+   sets, provider-failure injection; UX polish (skeletons, layout persistence;
+   the error boundary + null-safe diagnostics now landed); Docker-compose
+   packaging + user/API docs.
+3. Smaller leftovers: process-pool for parallel slice fits; editable ATM handles
+   + prior load/diff UI; cross-ticker "apply expiries to all" in the picker.
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`

@@ -74,6 +74,8 @@ Key commands (Windows, repo root):
 - API only: .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
+- Massive diag: $env:VOLFIT_MASSIVE_KEY='...'; .venv\Scripts\python backend\massive_diag.py SPY
+            (probes api.massive.com + api.polygon.io, every call, to pinpoint a feed gate)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
 - volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance installed.
