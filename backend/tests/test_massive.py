@@ -364,6 +364,80 @@ def test_intraday_full_chain_fast_fails_without_flat_store():
     assert quote_calls["n"] == 0  # fast-failed before crawling any per-contract quote
 
 
+# ------------------------------------------- Tier 3: aggregate reconstruction
+
+def _aggs_http(target_ms):
+    """http_get over the contracts reference + /v2/aggs minute bars. Each contract
+    has a stale prior bar (close 99) and the real bar AT target_ms, so at-or-before
+    selection is exercised. SPY stock aggs give the historical spot (500)."""
+    closes = {  # SPY 490/500/510 C/P -> parity spot 500 (C-P = 500-K)
+        "O:SPY260616C00490000": 15.0, "O:SPY260616P00490000": 5.0,
+        "O:SPY260616C00500000": 8.0, "O:SPY260616P00500000": 8.0,
+        "O:SPY260616C00510000": 4.0, "O:SPY260616P00510000": 14.0,
+    }
+
+    def http_get(url, params):
+        if "/reference/options/contracts" in url:
+            results = [
+                {"ticker": tk, "expiration_date": "2026-06-16",
+                 "strike_price": float(tk[-8:]) / 1000.0,
+                 "contract_type": "call" if tk[-9] == "C" else "put",
+                 "exercise_style": "american"}
+                for tk in closes
+            ]
+            return {"status": "OK", "results": results}
+        if "/v2/aggs/ticker/" in url:
+            sym = url.split("/v2/aggs/ticker/")[1].split("/range")[0]
+            if sym == "SPY":
+                return {"status": "OK", "results": [
+                    {"t": target_ms - 60000, "c": 499.0, "v": 1},
+                    {"t": target_ms, "c": 500.0, "v": 2}]}
+            c = closes.get(sym)
+            if c is None:
+                return {"status": "OK", "results": []}
+            return {"status": "OK", "results": [
+                {"t": target_ms - 60000, "c": 99.0, "v": 1},  # stale prior bar
+                {"t": target_ms, "c": c, "v": 5}]}
+        raise AssertionError(f"unexpected url {url}")
+
+    return http_get
+
+
+def test_fetch_agg_chain_reconstructs_from_minute_aggregates():
+    from datetime import datetime
+
+    ts = datetime(2026, 6, 15, 19, 55)
+    target_ms = int(ts.replace(tzinfo=__import__("datetime").timezone.utc).timestamp() * 1000)
+    p = MassiveProvider(["SPY"], api_key="k", http_get=_aggs_http(target_ms))
+    chain = p._fetch_agg_chain("SPY", [date(2026, 6, 16)], ts)
+    assert chain.spot == pytest.approx(500.0)  # underlying minute-agg close
+    assert len(chain.quotes) == 6 and chain.exercise_style == "american"
+    c500 = next(q for q in chain.quotes if q.strike == 500.0 and q.call_put == "C")
+    assert c500.bid == c500.ask == 8.0  # the target-minute close, not the stale 99
+
+
+def test_today_intraday_routes_to_aggregates():
+    from datetime import datetime, time, timezone
+
+    from volfit.data.provider import AsOf
+
+    ts = datetime.combine(date.today(), time(15, 0))  # TODAY -> aggregate path
+    target_ms = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    p = MassiveProvider(["SPY"], api_key="k", http_get=_aggs_http(target_ms))
+    chain = p.fetch_chain("SPY", [date(2026, 6, 16)], as_of=AsOf(mode="intraday", ts=ts))
+    assert chain.spot == pytest.approx(500.0) and len(chain.quotes) == 6
+
+
+def test_historical_aggregate_single_contract():
+    from datetime import datetime, timezone
+
+    ts = datetime(2026, 6, 15, 19, 55)
+    target_ms = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1000)
+    p = MassiveProvider(["SPY"], api_key="k", http_get=_aggs_http(target_ms))
+    bar = p.historical_aggregate("O:SPY260616C00500000", ts)
+    assert bar is not None and bar["c"] == 8.0  # at-or-before target
+
+
 def test_paginate_raises_on_not_authorized():
     pages = {
         "/v3/snapshot/options/SPY": {

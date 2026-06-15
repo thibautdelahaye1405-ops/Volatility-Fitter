@@ -31,6 +31,7 @@ Robustness / conventions:
 from __future__ import annotations
 
 import math
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Callable, Iterator, Sequence
 
@@ -49,6 +50,12 @@ _SNAPSHOT_LIMIT = 250
 #: reconstruct before fast-failing — beyond a handful it's impractical (one
 #: sequential REST per contract); a full past-day chain must use the flat files.
 _INTRADAY_REST_MAX = 40
+
+#: Tier 3 aggregate reconstruction (``_fetch_agg_chain``): concurrent per-contract
+#: minute-aggregate fetches for TODAY's intraday (no flat file published yet), and
+#: a generous safety cap on the selection size (the user's expiry pick bounds it).
+_AGG_CONCURRENCY = 12
+_INTRADAY_AGG_MAX = 1500
 
 
 def _iso_date(value) -> date | None:
@@ -400,11 +407,18 @@ class MassiveProvider(OptionChainProvider):
                 raise RuntimeError(f"Massive: no flat-file data for {as_of.on.isoformat()}")
             return flat
         if as_of is not None and as_of.mode == "intraday" and as_of.ts is not None:
-            if as_of.ts.date() < date.today() and self._flat_ready():
+            past = as_of.ts.date() < date.today()
+            if past and self._flat_ready():
                 flat = self._fetch_flat(ticker, expiries, as_of.ts, "minute")
                 if flat is not None:
-                    return flat  # else fall back to the per-contract REST quotes
-            return self._fetch_intraday(ticker, expiries, as_of.ts)
+                    return flat  # else fall through to the aggregate reconstruction
+            elif past:
+                # No flat-file history configured: legacy per-contract NBBO path
+                # (capped — a full chain must use the flat files).
+                return self._fetch_intraday(ticker, expiries, as_of.ts)
+            # TODAY's intraday (no flat file published yet), or a past day whose
+            # flat file had no data: reconstruct from per-contract minute aggregates.
+            return self._fetch_agg_chain(ticker, expiries, as_of.ts)
         # Live + streaming: serve from the real-time WS book (no REST poll). Falls
         # through to a REST snapshot if the book hasn't warmed enough to imply a
         # forward yet (the first fetch after streaming starts).
@@ -583,6 +597,84 @@ class MassiveProvider(OptionChainProvider):
         underlyings = self._flat_universe or self.list_tickers()
         return self.flat_store.chain_at(
             ticker, expiries, ts, underlyings=underlyings, frequency=frequency
+        )
+
+    # -- Tier 3: aggregate reconstruction (today's intraday / single contract) --
+
+    def _agg_bar_le(self, symbol: str, day: date, target_ms: int) -> dict | None:
+        """The latest 1-minute aggregate bar at-or-before ``target_ms`` (ms epoch)
+        for ``symbol`` (an option ``O:…`` or a stock root) on ``day``. ``None`` if
+        the contract has no bar by then. Aggregates are close-based and entitled on
+        broader tiers than historical NBBO quotes."""
+        body = self._get(
+            f"{self.base_url}/v2/aggs/ticker/{symbol}/range/1/minute/"
+            f"{day.isoformat()}/{day.isoformat()}",
+            {"sort": "asc", "limit": 50000},
+        )
+        self._raise_if_unauthorized(body)
+        chosen: dict | None = None
+        for bar in body.get("results") or []:
+            t = bar.get("t")
+            if t is None:
+                continue
+            if t <= target_ms:
+                chosen = bar
+            else:
+                break  # results are ascending in time
+        return chosen
+
+    def historical_aggregate(self, contract: str, ts: datetime) -> dict | None:
+        """Single-contract historical lookup: the minute bar at-or-before ``ts``
+        for one option ticker (``O:…``). The light, per-contract Tier 3 path."""
+        target_ms = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1000)
+        return self._agg_bar_le(contract, ts.date(), target_ms)
+
+    def _fetch_agg_chain(
+        self, ticker: str, expiries: list[date] | None, ts: datetime
+    ) -> ChainSnapshot:
+        """Reconstruct the chain at instant ``ts`` from per-contract minute
+        AGGREGATES (close), fetched with bounded concurrency — the today-intraday
+        path (before the day's flat file is published) and the flat-empty fallback.
+        Spot is the underlying's own minute-aggregate close (parity as fallback)."""
+        day = ts.date()
+        target_ms = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1000)
+        contracts = self._intraday_contracts(ticker, expiries)
+        if len(contracts) > _INTRADAY_AGG_MAX:
+            raise RuntimeError(
+                f"Massive: {len(contracts)} contracts at a past instant exceeds the "
+                f"aggregate cap ({_INTRADAY_AGG_MAX}); narrow the expiry selection."
+            )
+
+        def _one(c: dict) -> tuple[dict, dict | None]:
+            return c, self._agg_bar_le(c["ticker"], day, target_ms)
+
+        quotes: list[OptionQuote] = []
+        styles: list[str] = []
+        with ThreadPoolExecutor(max_workers=_AGG_CONCURRENCY) as pool:
+            for c, bar in pool.map(_one, contracts):
+                close = price_or_none(bar.get("c")) if bar else None
+                if close is None:
+                    continue
+                quotes.append(
+                    OptionQuote(
+                        ticker=ticker.upper(), expiry=c["expiry"], strike=c["strike"],
+                        call_put=c["call_put"], bid=close, ask=close, last=close,
+                        volume=int_or_none(bar.get("v")), open_interest=None, timestamp=ts,
+                    )
+                )
+                if c["style"] in ("american", "european"):
+                    styles.append(c["style"])
+        stock = self._agg_bar_le(ticker.upper(), day, target_ms)
+        spot = price_or_none(stock.get("c")) if stock else None
+        if spot is None:
+            spot = self._spot_from_quotes(quotes)  # parity fallback
+        if spot is None:
+            raise RuntimeError(
+                f"Massive: no historical aggregate spot for {ticker!r} at {ts.isoformat()}"
+            )
+        return ChainSnapshot(
+            ticker=ticker.upper(), spot=spot, timestamp=ts, quotes=quotes,
+            exercise_style=_resolve_style(styles),
         )
 
     # -- intraday replay (historical NBBO at an instant) ---------------------
