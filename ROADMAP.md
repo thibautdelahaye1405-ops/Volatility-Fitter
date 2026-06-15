@@ -10,7 +10,20 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (471 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (477 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Massive feed Tier 3 — REST gap-fill (DONE, live-verified)**:
+  closes the 3-tier source router. `MassiveProvider.historical_aggregate()` =
+  single-contract minute-bar lookup via `/v2/aggs` (close-based; live-verified).
+  **Today's intraday serves the live REST snapshot** (the bulk, entitled
+  "now/pre-connect" chain) — a per-contract aggregate crawl over a full expiry
+  times out, and there's no whole-chain historical snapshot endpoint.
+  `_fetch_agg_chain` (bounded ThreadPool, per-contract try/except resilient)
+  remains the rare flat-empty past-day fallback. Routing: TODAY→live snapshot,
+  past-day→flat (Tier 2) / capped legacy NBBO when no flat. 3 new tests; ruff +
+  full suite green. Live: single-contract close 1.61 @14:00Z; today-intraday →
+  376 quotes / 297 two-sided / 1.7s. The Massive feed track (Tier 0/1/2/3) is
+  complete + verified.
 
 - **[2026-06-15] Massive feed Tier 2 — flat-file history (LIVE-VERIFIED)**: the
   long-deferred columnar history. **Verified end-to-end** with the user's S3 key
@@ -1124,9 +1137,17 @@ moment)` model so the fitter never sees the difference.
    reconstruct real SPY chains, full-pipeline EOD fit lands atmVol 15.6% / rms 35bp.
    Set `VOLFIT_FLATFILES_KEY`/`_SECRET` (+ `_ENDPOINT=files.massive.com`) to enable.
    Quote-level flat files only if true historical NBBO depth is needed (heavy).
-3. **[Tier 3 — REST gap-fill]** Extend `_fetch_intraday` to aggregates for
-   today's pre-connect intraday + single-contract lookups (the per-contract
-   `/v3/quotes` path already exists).
+3. **[Tier 3 — REST gap-fill — DONE + LIVE-VERIFIED 2026-06-15]** Closes the
+   3-tier router. `MassiveProvider.historical_aggregate(contract, ts)` does a
+   single-contract minute-bar lookup via `/v2/aggs` (close-based, broadly
+   entitled) — live-verified (O:SPY…C00755000 @14:00Z → close 1.61). **TODAY's
+   intraday serves the live REST snapshot** (the "now / pre-connect" chain) rather
+   than a per-contract crawl — the whole-chain historical snapshot isn't
+   bulk-available via REST, and a per-contract aggregate crawl over a full expiry
+   times out (verified). `_fetch_agg_chain` (bounded-concurrency, per-contract
+   try/except resilient) remains the rare flat-empty past-day fallback. Past days
+   use the flat files (Tier 2); past-day-without-flat keeps the capped legacy NBBO.
+   Live-verified: today-intraday → live snapshot (376 quotes, 297 two-sided, 1.7s).
 4. **Spot source**: now that the stock plan is live, prefer the real
    `underlying_asset.price` / stocks spot; keep parity-forward as the fallback.
    Consider streaming the underlying quote channel for a true live spot.

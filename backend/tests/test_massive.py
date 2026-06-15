@@ -416,16 +416,26 @@ def test_fetch_agg_chain_reconstructs_from_minute_aggregates():
     assert c500.bid == c500.ask == 8.0  # the target-minute close, not the stale 99
 
 
-def test_today_intraday_routes_to_aggregates():
-    from datetime import datetime, time, timezone
+def test_today_intraday_serves_live_snapshot():
+    """TODAY's intraday isn't bulk-reconstructable via REST, so it serves the live
+    snapshot (the 'now / pre-connect' chain), NOT a per-contract aggregate crawl."""
+    from datetime import datetime, time
 
     from volfit.data.provider import AsOf
 
-    ts = datetime.combine(date.today(), time(15, 0))  # TODAY -> aggregate path
-    target_ms = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1000)
-    p = MassiveProvider(["SPY"], api_key="k", http_get=_aggs_http(target_ms))
-    chain = p.fetch_chain("SPY", [date(2026, 6, 16)], as_of=AsOf(mode="intraday", ts=ts))
-    assert chain.spot == pytest.approx(500.0) and len(chain.quotes) == 6
+    def http_get(url, params):
+        if "/v3/snapshot/options/" in url:
+            return {"status": "OK", "results": [
+                _snap_result(740, 30, "call"), _snap_result(740, 30, "put"),
+                _snap_result(745, 30, "call"), _snap_result(745, 30, "put")]}
+        if "/v2/aggs/ticker/" in url:
+            raise AssertionError("today-intraday must not crawl per-contract aggregates")
+        return {"status": "OK", "results": []}
+
+    p = MassiveProvider(["SPY"], api_key="k", http_get=http_get)
+    ts = datetime.combine(date.today(), time(15, 0))  # TODAY
+    chain = p.fetch_chain("SPY", None, as_of=AsOf(mode="intraday", ts=ts))
+    assert chain.spot == 741.75 and chain.quotes  # from the live snapshot
 
 
 def test_historical_aggregate_single_contract():

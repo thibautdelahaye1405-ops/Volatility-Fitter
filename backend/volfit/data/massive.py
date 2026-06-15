@@ -407,18 +407,20 @@ class MassiveProvider(OptionChainProvider):
                 raise RuntimeError(f"Massive: no flat-file data for {as_of.on.isoformat()}")
             return flat
         if as_of is not None and as_of.mode == "intraday" and as_of.ts is not None:
-            past = as_of.ts.date() < date.today()
-            if past and self._flat_ready():
+            if as_of.ts.date() < date.today():  # a PAST day
+                if not self._flat_ready():
+                    # No flat-file history: legacy per-contract NBBO path (capped;
+                    # a full chain must use the flat files).
+                    return self._fetch_intraday(ticker, expiries, as_of.ts)
                 flat = self._fetch_flat(ticker, expiries, as_of.ts, "minute")
                 if flat is not None:
-                    return flat  # else fall through to the aggregate reconstruction
-            elif past:
-                # No flat-file history configured: legacy per-contract NBBO path
-                # (capped — a full chain must use the flat files).
-                return self._fetch_intraday(ticker, expiries, as_of.ts)
-            # TODAY's intraday (no flat file published yet), or a past day whose
-            # flat file had no data: reconstruct from per-contract minute aggregates.
-            return self._fetch_agg_chain(ticker, expiries, as_of.ts)
+                    return flat
+                # Flat configured but no data that day: aggregate fallback (resilient).
+                return self._fetch_agg_chain(ticker, expiries, as_of.ts)
+            # TODAY's intraday (pre-connect / a minute earlier today): the whole-chain
+            # historical snapshot isn't bulk-available via REST, so serve the live
+            # chain (the WS book if streaming, else the live REST snapshot below) —
+            # the right "now / pre-connect" behaviour. Falls through to the live path.
         # Live + streaming: serve from the real-time WS book (no REST poll). Falls
         # through to a REST snapshot if the book hasn't warmed enough to imply a
         # forward yet (the first fetch after streaming starts).
@@ -646,7 +648,10 @@ class MassiveProvider(OptionChainProvider):
             )
 
         def _one(c: dict) -> tuple[dict, dict | None]:
-            return c, self._agg_bar_le(c["ticker"], day, target_ms)
+            try:
+                return c, self._agg_bar_le(c["ticker"], day, target_ms)
+            except Exception:  # noqa: BLE001 — a slow/failed contract skips, never aborts
+                return c, None
 
         quotes: list[OptionQuote] = []
         styles: list[str] = []
