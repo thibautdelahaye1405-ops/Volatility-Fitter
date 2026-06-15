@@ -134,30 +134,47 @@ class UniverseMixin:
     def _ensure_selection(self, ticker: str) -> None:
         """Populate a ticker's available/selected expiries on first use — the
         initial watchlist tickers are not added through add_ticker, so they pick
-        up their default selection lazily here."""
+        up their default selection lazily here.
+
+        A *transient* provider miss (Yahoo throttling ``Ticker.options`` to an
+        empty tuple, a momentarily unreachable feed, or a raised error) must NOT
+        be frozen: caching an empty ladder here would leave that ticker showing
+        zero expiries for the whole process even after the feed recovers. So we
+        only cache a non-empty resolution and otherwise leave the ticker
+        unresolved, to be retried on the next access.
+        """
         with self._lock:
-            if ticker in self._available:
+            if self._available.get(ticker):  # already resolved with a real ladder
                 return
-        available = self.provider.available_expiries(ticker)  # network, no lock
+        try:
+            available = self.provider.available_expiries(ticker)  # network, no lock
+        except Exception:
+            available = []  # treat a provider error as a transient miss -> retry
+        if not available:
+            return  # leave unresolved so a later call re-probes the provider
         chosen = default_selection(available, self.reference_date)
         with self._lock:
-            self._available.setdefault(ticker, available)
-            self._selected.setdefault(ticker, chosen)
-            self._selection_mode.setdefault(ticker, "auto")
+            if self._available.get(ticker):  # another thread resolved it first
+                return
+            self._available[ticker] = available
+            self._selected[ticker] = chosen
+            self._selection_mode[ticker] = "auto"
 
     def available_expiries(self, ticker: str) -> list[date]:
-        """Every expiry the provider lists for the ticker (the picker's list)."""
+        """Every expiry the provider lists for the ticker (the picker's list);
+        empty when the feed hasn't resolved a ladder yet (transient miss)."""
         self._require_active(ticker)
         self._ensure_selection(ticker)
         with self._lock:
-            return list(self._available[ticker])
+            return list(self._available.get(ticker, []))
 
     def selected_expiries(self, ticker: str) -> list[date]:
-        """The expiries actually fetched and fitted for the ticker."""
+        """The expiries actually fetched and fitted for the ticker (empty until
+        the ladder resolves)."""
         self._require_active(ticker)
         self._ensure_selection(ticker)
         with self._lock:
-            return list(self._selected[ticker])
+            return list(self._selected.get(ticker, []))
 
     def selection_mode(self, ticker: str) -> str:
         """"auto" (default rule) or "custom" (user picks)."""

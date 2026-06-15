@@ -57,6 +57,20 @@ function midLadderExpiry(ladder: UniverseExpiry[]): string {
   return (ladder.length > 2 ? ladder[2] : ladder[0]).expiry;
 }
 
+/**
+ * First watchlist ticker whose ladder actually has expiries, or null if the
+ * whole universe is empty. A live feed (notably Yahoo, which throttles
+ * `Ticker.options`) can return an empty ladder for some names while others
+ * have data — keying off `tickers[0]` alone would then drop a perfectly
+ * connected backend into mock mode just because the first name came back bare.
+ */
+function firstPopulatedTicker(u: UniverseResponse): string | null {
+  for (const t of u.tickers) {
+    if ((u.expiries[t]?.length ?? 0) > 0) return t;
+  }
+  return null;
+}
+
 /** Human-readable message from an unknown thrown value. */
 function messageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -223,16 +237,17 @@ export function useSmile(): UseSmileResult {
     api
       .get<UniverseResponse>("/universe", { signal: controller.signal })
       .then((u) => {
-        const firstTicker = u.tickers[0];
-        const ladder = firstTicker ? (u.expiries[firstTicker] ?? []) : [];
-        if (!firstTicker || ladder.length === 0) {
+        // Pick the first ticker that actually has a ladder (some live names can
+        // come back empty while others have data); only truly empty -> mock.
+        const firstTicker = firstPopulatedTicker(u);
+        if (firstTicker === null) {
           fallBackToMock("Backend returned an empty universe");
           return;
         }
         setUniverse(u);
         setSource("live");
         setTickerState(firstTicker);
-        setExpiryState(midLadderExpiry(ladder));
+        setExpiryState(midLadderExpiry(u.expiries[firstTicker] ?? []));
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return; // unmounted, not an outage
@@ -396,7 +411,12 @@ export function useSmile(): UseSmileResult {
   const refreshUniverse = useCallback(async (): Promise<void> => {
     const u = await api.get<UniverseResponse>("/universe");
     if (u.tickers.length === 0) return;
-    const keepTicker = ticker !== "" && u.tickers.includes(ticker) ? ticker : u.tickers[0];
+    // Keep the current ticker only if it still has a ladder; otherwise jump to
+    // the first populated name (not blindly tickers[0], which may be empty).
+    const keepTicker =
+      ticker !== "" && (u.expiries[ticker]?.length ?? 0) > 0
+        ? ticker
+        : (firstPopulatedTicker(u) ?? u.tickers[0]);
     const ladder = u.expiries[keepTicker] ?? [];
     const keepExpiry = ladder.some((r) => r.expiry === expiry)
       ? expiry

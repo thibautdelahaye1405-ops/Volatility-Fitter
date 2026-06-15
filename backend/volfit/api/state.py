@@ -344,9 +344,24 @@ class AppState(UniverseMixin):
         with self._lock:
             if ticker in self._snapshots:
                 return self._snapshots[ticker]
-            chosen = list(self._selected[ticker])
+            chosen = list(self._selected.get(ticker, []))
+        if not chosen:
+            # Ladder hasn't resolved yet (transient feed miss): return an empty,
+            # uncached snapshot so the next access re-probes the provider rather
+            # than freezing a zero-expiry node for the whole process.
+            return ChainSnapshot(
+                ticker=ticker,
+                spot=0.0,
+                timestamp=datetime.combine(self.reference_date, datetime.min.time()),
+                quotes=[],
+            )
         snap = self._fetch_asof(ticker, chosen)  # outside lock (network)
         with self._lock:
+            # Never freeze an empty result: an unresolved ladder (transient feed
+            # miss) or a chain that came back with no quotes must be retried on
+            # the next access, not cached for the life of the process.
+            if not snap.quotes:
+                return snap
             self._snapshots.setdefault(ticker, snap)
             return self._snapshots[ticker]
 
@@ -354,11 +369,17 @@ class AppState(UniverseMixin):
         """Parity-implied forwards per expiry, cached per ticker."""
         snapshot = self.snapshot(ticker)
         with self._lock:
-            if ticker not in self._forwards:
-                # Pass the reference date so American chains are de-biased
-                # (parity from de-Americanized mids; see data.forwards).
-                self._forwards[ticker] = implied_forwards(snapshot, self.reference_date)
-            return self._forwards[ticker]
+            cached = self._forwards.get(ticker)
+            if cached:
+                return cached
+            # Pass the reference date so American chains are de-biased
+            # (parity from de-Americanized mids; see data.forwards).
+            fwds = implied_forwards(snapshot, self.reference_date)
+            # Don't cache an empty result (unresolved ladder / empty chain): a
+            # transient feed miss must be retried on the next access, not frozen.
+            if fwds:
+                self._forwards[ticker] = fwds
+            return fwds
 
     def resolve_expiry(self, ticker: str, expiry_iso: str) -> date:
         """Parse and validate an ISO expiry against the ticker's ladder."""

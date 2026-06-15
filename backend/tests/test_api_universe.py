@@ -32,10 +32,37 @@ class RichProvider(SyntheticProvider):
         return _rich_ladder(self.reference_date)
 
 
+class FlakyProvider(SyntheticProvider):
+    """Empty ladder on the FIRST available_expiries call per ticker (a transient
+    throttle, e.g. Yahoo rate-limiting Ticker.options), then the real ladder —
+    models a feed that recovers after the watchlist's first probe."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._probed: set[str] = set()
+
+    def available_expiries(self, ticker: str):
+        if ticker not in self._probed:
+            self._probed.add(ticker)
+            return []  # transient miss on first probe
+        return super().available_expiries(ticker)
+
+
 @pytest.fixture()
 def client():
     with TestClient(create_app(reference_date=REF)) as c:
         yield c
+
+
+def test_transient_empty_ladder_is_not_frozen():
+    """A feed hiccup that empties a ticker's ladder at startup must not freeze
+    it: once the feed recovers, the next /universe call repopulates it."""
+    app = create_app(reference_date=REF, provider=FlakyProvider(reference_date=REF))
+    with TestClient(app) as c:
+        first = c.get("/universe").json()
+        assert first["expiries"]["ALPHA"] == []  # throttled, but no crash/mock
+        second = c.get("/universe").json()
+        assert len(second["expiries"]["ALPHA"]) == 4  # recovered, not frozen empty
 
 
 @pytest.fixture()
