@@ -179,6 +179,54 @@ class AffinePDESolution:
         return (1.0 - wgt)[:, None] * s[j] + wgt[:, None] * s[j + 1]
 
 
+@dataclass(frozen=True)
+class DupireSteps:
+    """Theta-INDEPENDENT per-step data for the forward Dupire march.
+
+    The hat-basis weights ``phi`` at each new time level depend only on the
+    vertex set, the triangulation and the strike/time grids — never on the nodal
+    values — so a calibration that solves the PDE for hundreds of trial thetas
+    can build these once and reuse them every evaluation (see calibrate_affine).
+
+    ``active_k[n]`` is the number of leading sensitivity columns that can be
+    non-zero after step ``n``. A vertex's sensitivity column stays exactly zero
+    until the march reaches the support of its hat, and the time vertices
+    activate in increasing order, so the live columns are always a prefix
+    ``[0:active_k]``; solving only that prefix is bit-for-bit identical to the
+    full multi-RHS solve while skipping the structurally-zero tail.
+    """
+
+    interior_x: np.ndarray  # x[1:-1], the PDE interior nodes
+    phi: list  # phi[n] = hat weights (n_interior x m) at level t[n+1]
+    active_k: np.ndarray  # active_k[n] = live sensitivity-column count after step n
+
+
+def precompute_dupire_steps(
+    surface: AffineVarianceSurface, x_grid: np.ndarray, t_grid: np.ndarray
+) -> DupireSteps:
+    """Build the theta-independent per-step basis + active-column schedule.
+
+    ``active_k`` is the running maximum of "highest non-zero basis column + 1"
+    over the steps so far — derived from the actual basis sparsity, so it stays
+    correct for every interpolation mode (delaunay/triangle/bilinear).
+    """
+    x = np.asarray(x_grid, dtype=float)
+    t = np.asarray(t_grid, dtype=float)
+    interior = x[1:-1]
+    m = surface.n_params
+    phi: list = []
+    active_k = np.empty(t.size - 1, dtype=int)
+    running_max = -1
+    for n in range(t.size - 1):
+        ph = surface.basis(interior, float(t[n + 1]))
+        phi.append(ph)
+        touched = np.flatnonzero(np.any(ph != 0.0, axis=0))
+        if touched.size:
+            running_max = max(running_max, int(touched[-1]))
+        active_k[n] = min(running_max + 1, m)
+    return DupireSteps(interior_x=interior, phi=phi, active_k=active_k)
+
+
 def solve_affine_dupire(
     surface: AffineVarianceSurface,
     x_grid: np.ndarray,
@@ -186,6 +234,7 @@ def solve_affine_dupire(
     expiries,
     *,
     sensitivities: bool = False,
+    steps: DupireSteps | None = None,
 ) -> AffinePDESolution:
     """Fully implicit Euler march of eq. (implicit_step) on the given grids.
 
@@ -196,11 +245,20 @@ def solve_affine_dupire(
     full dU/dtheta is propagated per eq. (discrete_sensitivity); the source
     term uses the just-solved U^{n+1} including its boundary values, which
     folds the boundary derivative b^{n+1} contribution in for free.
+
+    ``steps`` supplies precomputed theta-independent per-step basis weights and
+    the active-column schedule (precompute_dupire_steps); a calibration reuses
+    one ``DupireSteps`` across every trial theta. When omitted it is built here,
+    so a standalone solve is unchanged. The sensitivity solve is restricted to
+    the live column prefix ``[:active_k]`` — the tail columns are provably zero,
+    so the result is bit-for-bit identical to solving all m columns.
     """
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
     if t[0] != 0.0 or np.any(np.diff(t) <= 0):
         raise ValueError("t_grid must start at 0 and increase strictly")
+    if steps is None:
+        steps = precompute_dupire_steps(surface, x, t)
     exps = np.array(sorted({float(e) for e in expiries}))
     pos = np.searchsorted(t, exps)
     if np.any(pos >= t.size) or not np.allclose(t[pos], exps, rtol=0.0, atol=1e-12):
@@ -223,9 +281,11 @@ def solve_affine_dupire(
     if 0 in want:  # expiry 0 is not allowed by searchsorted above (t[0]=0 < exps)
         raise ValueError("expiries must be positive")
 
+    phis = steps.phi
+    active_k = steps.active_k
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
-        phi = surface.basis(x[1:-1], float(t[n + 1]))  # hat weights at new level
+        phi = phis[n]  # theta-independent hat weights at the new level (cached)
         nu = phi @ surface.theta.ravel()
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
 
@@ -237,15 +297,16 @@ def solve_affine_dupire(
         rhs = u[1:-1].copy()
         rhs[0] += dt * lo[0] * 1.0  # boundary U_0 = 1 (b^{n+1} of the note)
         if sensitivities:
-            # Solve U and all m sensitivity columns against one factorization:
-            # the sensitivity source needs U^{n+1}, which equals the first
-            # solved column because the source enters the RHS additively.
             sol_u = solve_banded((1, 1), ab.copy(), rhs, check_finite=False)
             u_new = np.concatenate(([1.0], sol_u, [0.0]))
             # Source G[i, l] = phi_l(t_{n+1}, x_i) * (a- U_{i-1} + a0 U_i + a+ U_{i+1}).
+            # Only the first ``k`` sensitivity columns can be non-zero so far
+            # (the rest stay at their zero initialization); solving the prefix
+            # against the single step factorization is identical but cheaper.
+            k = int(active_k[n])
             au = a_m * u_new[:-2] + a_0 * u_new[1:-1] + a_p * u_new[2:]
-            rhs_s = sens[1:-1] + dt * phi * au[:, None]
-            sens[1:-1] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+            rhs_s = sens[1:-1, :k] + dt * phi[:, :k] * au[:, None]
+            sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
             u = u_new
         else:
             sol_u = solve_banded(

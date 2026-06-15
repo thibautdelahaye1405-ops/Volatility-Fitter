@@ -42,7 +42,7 @@ from volfit.api.displayed import (
     displayed_var_swap_w,
 )
 from volfit.api.state import AppState, FitRecord
-from volfit.calib.calendar import calendar_floor, calendar_violation
+from volfit.calib.calendar import calendar_floor_targets, calendar_violation
 from volfit.calib.varswap import VarSwapTarget
 from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
@@ -559,13 +559,13 @@ def fit_surface_slice(
 
     Quote-edit sessions apply here too (state/ticker/iso resolve them), so a
     surface fit honours the user's excluded/amended quotes on every expiry. The
-    calendar floor indexes the quadrature grid, not the quote array, so masking
-    quotes leaves it untouched. ``fit_mode`` selects the band objective; the
-    weight scheme follows the fit settings (volfit.calib.weights).
+    calendar floor is keyed on quadrature z-values, not the quote array, so
+    masking quotes leaves it untouched. ``fit_mode`` selects the band objective;
+    the weight scheme follows the fit settings (volfit.calib.weights).
     """
-    cal_idx = cal_floor = None
+    cal_z = cal_floor = None
     if enforce_calendar and prev is not None:
-        cal_idx, cal_floor = calendar_floor(prev.slice)
+        cal_z, cal_floor = calendar_floor_targets(prev.slice)
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     settings = state.fit_settings()
     weights = resolve_weights(settings.weightScheme, k, w)
@@ -581,7 +581,7 @@ def fit_surface_slice(
         reg_power=settings.regPower,
         init=prev.params if prev is not None else None,
         band=band,
-        calendar_indices=cal_idx,
+        calendar_z=cal_z,
         calendar_floor=cal_floor,
         calendar_weight=state.options().calendarWeight,
         barrier_center=settings.barrierCenter,

@@ -51,3 +51,18 @@ def calendar_floor(near: LQDSlice, stride: int = CAL_STRIDE, tol: float = 0.0) -
     the later slice must satisfy a_z[idx] >= floor (eq. grid_calendar)."""
     idx = calendar_grid_indices(near.a_z.size, stride)
     return idx, near.a_z[idx] - tol
+
+
+def calendar_floor_targets(
+    near: LQDSlice, stride: int = CAL_STRIDE, tol: float = 0.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """Calendar floor as (z-values, floor) for fitting the *next* expiry.
+
+    Identical information to ``calendar_floor`` but keyed on the constraint
+    z-*coordinates* rather than grid indices, so the next slice can enforce
+    A(z) >= floor by Hermite-evaluating its own curve at those z — valid even
+    when it is calibrated on a coarser optimization grid than ``near``. On the
+    native grid the two forms are bit-for-bit equivalent (Hermite at a node).
+    """
+    idx = calendar_grid_indices(near.a_z.size, stride)
+    return near.z[idx], near.a_z[idx] - tol

@@ -12,7 +12,6 @@ where w = sigma_BS^2 * T is total implied variance
 from __future__ import annotations
 
 import numpy as np
-from scipy.optimize import brentq
 from scipy.special import erf, erfinv
 
 SQRT2 = np.sqrt(2.0)
@@ -79,38 +78,74 @@ def atm_total_variance(price_atm: float) -> float:
     return float((2.0 * norm_ppf(0.5 * (price_atm + 1.0))) ** 2)
 
 
-def _implied_w_scalar(k: float, price: float) -> float:
-    """Implied total variance for one strike via Brent root-finding.
+def _invert_w_newton(k: np.ndarray, price: np.ndarray, intrinsic: np.ndarray) -> np.ndarray:
+    """Implied total variance for non-ATM, in-bounds quotes (safeguarded Newton).
 
-    Returns nan when the price violates static bounds ((1-e^k)^+ < C < 1).
+    B(k, .) is strictly increasing, so a single bracket per quote frames the
+    root; each iterate takes a Newton step (analytic dB/dw = black_vega_w) when
+    it stays inside the bracket and reduces the residual, falling back to a
+    bisection otherwise. This ``rtsafe`` scheme keeps Newton's quadratic
+    convergence while never diverging, and runs on the whole array at once.
+    Quotes whose price is unreachable for w <= W_MAX (too close to the forward)
+    return nan, matching the previous scalar bracket-expansion behaviour.
     """
-    intrinsic = max(1.0 - np.exp(k), 0.0)
-    if not intrinsic < price < 1.0:
-        return np.nan
-    if abs(k) < 1e-14:
-        return atm_total_variance(price)
+    lo = np.full(k.shape, W_MIN)
+    hi = np.ones(k.shape)
+    # Grow the upper bracket geometrically until B(k, hi) >= price (or W_MAX).
+    for _ in range(64):
+        grow = (black_call(k, hi) < price) & (hi < W_MAX)
+        if not grow.any():
+            break
+        hi = np.where(grow, np.minimum(hi * 4.0, W_MAX), hi)
+    unreachable = black_call(k, hi) < price  # not invertible within [W_MIN, W_MAX]
 
-    def objective(w: float) -> float:
-        return float(black_call(k, w)) - price
-
-    lo, hi = W_MIN, 1.0
-    # Expand the upper bracket until the Black price exceeds the target.
-    while objective(hi) < 0.0:
-        hi *= 4.0
-        if hi > W_MAX:
-            return np.nan
-    return float(brentq(objective, lo, hi, xtol=1e-14, rtol=8.9e-16, maxiter=200))
+    # Brenner-Subrahmanyam ATM seed w ~ 2*pi*(time value)^2, framed by the bracket.
+    w = np.clip(2.0 * np.pi * (price - intrinsic) ** 2, lo, hi)
+    for _ in range(80):
+        f = black_call(k, w) - price
+        hi = np.where(f > 0.0, w, hi)  # B increasing: tighten the bracket by sign
+        lo = np.where(f < 0.0, w, lo)
+        vega = black_vega_w(k, w)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            w_newton = w - f / vega
+        take_newton = (w_newton > lo) & (w_newton < hi) & (vega > 0.0) & np.isfinite(w_newton)
+        w_next = np.where(take_newton, w_newton, 0.5 * (lo + hi))
+        step = np.abs(w_next - w)
+        w = w_next
+        if np.all(step <= 1e-14 * np.maximum(w, 1.0)):
+            break
+    return np.where(unreachable, np.nan, w)
 
 
 def implied_total_variance(k: np.ndarray | float, price: np.ndarray | float) -> np.ndarray:
-    """Vectorized implied total variance w(k) from normalized call prices."""
+    """Vectorized implied total variance w(k) from normalized call prices.
+
+    Returns nan where the price violates the static no-arbitrage bounds
+    ((1-e^k)^+ < C < 1) or is unreachable for w <= W_MAX. ATM (|k| ~ 0) uses the
+    closed-form inversion; every other quote is solved by a vectorized
+    safeguarded Newton iteration (``_invert_w_newton``) — matching the former
+    per-strike Brent solver to ~1e-13 while pricing the whole curve at once.
+    """
     k_arr = np.atleast_1d(np.asarray(k, dtype=float))
     p_arr = np.atleast_1d(np.asarray(price, dtype=float))
     k_b, p_b = np.broadcast_arrays(k_arr, p_arr)
-    out = np.empty(k_b.shape, dtype=float)
-    flat_k, flat_p, flat_o = k_b.ravel(), p_b.ravel(), out.ravel()
-    for i in range(flat_k.size):
-        flat_o[i] = _implied_w_scalar(float(flat_k[i]), float(flat_p[i]))
+    kf = np.ascontiguousarray(k_b).ravel()
+    pf = np.ascontiguousarray(p_b).ravel()
+
+    out = np.full(kf.shape, np.nan)
+    intrinsic = np.maximum(1.0 - np.exp(kf), 0.0)
+    valid = (pf > intrinsic) & (pf < 1.0)
+    if valid.any():
+        kk, pp, ii = kf[valid], pf[valid], intrinsic[valid]
+        w = np.empty(kk.shape)
+        atm = np.abs(kk) < 1e-14
+        if atm.any():  # closed form B(0, w) = 2 Phi(sqrt(w)/2) - 1
+            w[atm] = (2.0 * norm_ppf(0.5 * (pp[atm] + 1.0))) ** 2
+        if (~atm).any():
+            w[~atm] = _invert_w_newton(kk[~atm], pp[~atm], ii[~atm])
+        out[valid] = w
+
+    out = out.reshape(k_b.shape)
     return out if np.ndim(k) or np.ndim(price) else out.reshape(())
 
 

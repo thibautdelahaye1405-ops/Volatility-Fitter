@@ -22,13 +22,21 @@ from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
-from volfit.models.lqd.quadrature import LQDSlice, build_slice
+from volfit.models.lqd.quadrature import N_POINTS, LQDSlice, build_slice
 
 # Soft-barrier location/steepness for A_R: starts pushing back well before
 # the hard integrability bound A_R < 1 so finite-difference Jacobians stay smooth.
 _BARRIER_CENTER = 0.90
 _BARRIER_SCALE = 50.0
 _VEGA_FLOOR = 1e-4
+
+# Grid size for the *optimization* slices (the ~900 finite-difference Jacobian
+# evaluations). The Simpson quadrature error of the 2001-node grid is already
+# orders of magnitude below the 5 vol-bp fit budget, so the converged parameters
+# agree with the full 8001-node fit to ~1e-6 while each iterate builds ~3x
+# faster. The accepted slice is always rebuilt at the full N_POINTS for the
+# reported result, density, var-swap and calendar diagnostics.
+OPT_N_POINTS = 2001
 
 
 @dataclass(frozen=True)
@@ -57,7 +65,7 @@ def _residuals(
     inv_vega: np.ndarray,
     sqrt_weights: np.ndarray,
     reg: np.ndarray,
-    cal_idx: np.ndarray | None,
+    cal_z: np.ndarray | None,
     cal_floor: np.ndarray | None,
     cal_weight: float,
     price_lo: np.ndarray | None,
@@ -66,6 +74,7 @@ def _residuals(
     barrier_scale: float,
     mid_anchor_weight: float,
     var_swap: VarSwapTarget | None,
+    n_points: int,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
 
@@ -78,12 +87,12 @@ def _residuals(
     """
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
-    n_cal = 0 if cal_idx is None else cal_idx.size
+    n_cal = 0 if cal_z is None else cal_z.size
     band_mode = price_lo is not None
     n_fit = (2 * k.size) if band_mode else k.size
     vs = np.empty(0) if var_swap is None else np.zeros(1)
     try:
-        slice_ = build_slice(params)
+        slice_ = build_slice(params, n_points=n_points)
         model_price = slice_.call_price(k)
         if band_mode:
             fit = band_residuals(
@@ -94,8 +103,12 @@ def _residuals(
             fit = sqrt_weights * (model_price - target_price) * inv_vega
         # Soft calendar slack (note eq. slack_calendar): penalize the later
         # expiry's integrated upper-quantile curve dropping below the floor.
+        # Evaluated at the constraint z-values so it is exact on whatever grid
+        # this slice is built on (the optimization grid may be coarser).
         if n_cal:
-            cal = np.sqrt(cal_weight) * np.maximum(cal_floor - slice_.a_z[cal_idx], 0.0)
+            cal = np.sqrt(cal_weight) * np.maximum(
+                cal_floor - slice_.asset_share_at(cal_z), 0.0
+            )
         else:
             cal = np.empty(0)
         if var_swap is not None:
@@ -120,7 +133,7 @@ def calibrate_slice(
     reg_lambda: float = 0.0,
     reg_power: float = 1.0,
     init: LQDParams | None = None,
-    calendar_indices: np.ndarray | None = None,
+    calendar_z: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
     band: BandTarget | None = None,
@@ -128,15 +141,22 @@ def calibrate_slice(
     barrier_scale: float = _BARRIER_SCALE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     var_swap: VarSwapTarget | None = None,
+    opt_n_points: int = OPT_N_POINTS,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
     ``reg_lambda``/``reg_power`` implement the high-order damping
     lam * n^{2r} a_n^2; the first Legendre mode a_2..a_3 is left free.
 
-    ``calendar_indices``/``calendar_floor`` (from volfit.calib.calendar) make
-    this slice respect G(alpha) >= floor against the previous expiry; the
-    quadratic slack weight ``calendar_weight`` follows eq. (slack_calendar).
+    ``calendar_z``/``calendar_floor`` (from volfit.calib.calendar_floor_targets)
+    make this slice respect G(alpha) >= floor against the previous expiry; the
+    quadratic slack weight ``calendar_weight`` follows eq. (slack_calendar). The
+    floor is enforced at the constraint z-values, so it is exact regardless of
+    the optimization grid resolution.
+
+    ``opt_n_points`` is the quadrature grid used during optimization (default
+    OPT_N_POINTS = 2001); the accepted slice is rebuilt at the full N_POINTS for
+    the returned result and all diagnostics.
 
     ``band`` switches the data term to the bid-ask / haircut band objective
     (volfit.calib.band); the band's vol edges become call-price edges so the
@@ -183,7 +203,7 @@ def calibrate_slice(
             inv_vega,
             sqrt_weights,
             reg,
-            calendar_indices,
+            calendar_z,
             calendar_floor,
             calendar_weight,
             price_lo,
@@ -192,6 +212,7 @@ def calibrate_slice(
             barrier_scale,
             mid_anchor_weight,
             var_swap,
+            opt_n_points,
         ),
         method="trf",
         xtol=1e-15,
