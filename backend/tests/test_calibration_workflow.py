@@ -65,22 +65,29 @@ def test_options_fetch_marks_stale_when_auto_off():
     assert service.smile_payload(state, TICKER, iso, "mid").stale is True
 
 
-def test_stream_refit_refetches_and_calibrates_ignoring_autocal(monkeypatch):
-    """The streaming throttled refit refetches the chain (book read) AND calibrates
-    every cycle, independent of autoCalibrate (realtime is the opt-in to it)."""
+def test_stream_refit_respects_autocalibrate(monkeypatch):
+    """The streaming throttled refit obeys autoCalibrate (the master switch for
+    unattended refits): ON refetches the book + recalibrates, OFF is a no-op."""
     from volfit.api import workflow
 
-    state = _state(auto=False)  # autoCalibrate OFF: stream_refit must still calibrate
     started = {"n": 0}
     monkeypatch.setattr(
         workflow,
         "calibrate_all",
         lambda s, fit_mode="mid": (started.__setitem__("n", started["n"] + 1) or True),
     )
-    v0 = state.data_version(TICKER)
-    out = workflow.stream_refit(state)
-    assert state.data_version(TICKER) == v0 + 1  # chain refetched
-    assert out is True and started["n"] == 1  # calibrated despite autoCalibrate off
+
+    # OFF: no refetch, no calibration.
+    off = _state(auto=False)
+    v0 = off.data_version(TICKER)
+    assert workflow.stream_refit(off) is False
+    assert off.data_version(TICKER) == v0 and started["n"] == 0
+
+    # ON: refetch the chain (book read) and calibrate all lit nodes.
+    on = _state(auto=True)
+    w0 = on.data_version(TICKER)
+    assert workflow.stream_refit(on) is True
+    assert on.data_version(TICKER) == w0 + 1 and started["n"] == 1
 
 
 def test_quote_edit_does_not_refit_when_auto_off():

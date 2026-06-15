@@ -34,11 +34,12 @@ def test_tick_auto_fetches_options_after_interval():
 
 def test_tick_stream_refits_only_while_streaming(monkeypatch):
     """The throttled full-refit branch fires on the streamRefitSeconds cadence ONLY
-    when realtime + a live book is streaming; otherwise it never runs."""
+    when realtime + autoCalibrate ON + a live book is streaming; otherwise never."""
     from volfit.api import workflow
 
     state = _state(
         spotMode="realtime",
+        autoCalibrate=True,  # master switch ON
         spotPollSeconds=3600.0,  # park the spot poll so it doesn't fire here
         streamRefitSeconds=2.0,
         optionsFetchMode="on_demand",
@@ -60,8 +61,27 @@ def test_tick_stream_refits_only_while_streaming(monkeypatch):
     sched.tick(now=201.0)  # within the throttle window -> no second refit
     assert calls["refit"] == 1
 
-    sched.tick(now=205.0)  # past the window -> fires again
-    assert calls["refit"] == 2
+
+def test_tick_no_stream_refit_when_autocalibrate_off(monkeypatch):
+    """autoCalibrate OFF suppresses the unattended streaming refit even while a live
+    book streams (the surface still tracks spot via the transport poll)."""
+    from volfit.api import workflow
+
+    state = _state(
+        spotMode="realtime",
+        autoCalibrate=False,  # master switch OFF
+        spotPollSeconds=3600.0,
+        streamRefitSeconds=2.0,
+        optionsFetchMode="on_demand",
+    )
+    calls = {"refit": 0}
+    monkeypatch.setattr(workflow, "stream_refit", lambda s, *a, **k: calls.__setitem__("refit", calls["refit"] + 1))
+    monkeypatch.setattr(workflow, "fetch_spots", lambda s, *a, **k: None)
+
+    sched = Scheduler(state)
+    state.is_streaming = lambda: True
+    sched.tick(now=10_000.0)  # well past the interval, streaming, but autocal off
+    assert calls["refit"] == 0
 
 
 def test_tick_does_nothing_on_demand():

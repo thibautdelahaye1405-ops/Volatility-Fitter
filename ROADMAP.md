@@ -43,12 +43,16 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   restarts the stream when a ticker/expiry edit changes it (was source/mode-change
   only); providers that can't report their subscription are never thrash-restarted.
   (3) **Throttled full-refit loop** — a new `Scheduler.tick` branch gated by
-  `AppState.is_streaming()` calls `workflow.stream_refit` every
-  `OptionsSettings.streamRefitSeconds` (default 5s, frontend type seeded) while a
-  live book streams: refetch chains from the book + recalibrate ALL lit nodes in
-  the background, independent of `autoCalibrate` (realtime spot mode is the opt-in).
-  Distinct from the minutes-cadence `optionsFetchMode=="auto"` REST refetch. 4 new
-  offline tests (cache hit/invalidate, sync_streaming resubscribe, scheduler
+  `AppState.is_streaming()` **AND `autoCalibrate`** calls `workflow.stream_refit`
+  every `OptionsSettings.streamRefitSeconds` (default 5s, frontend type seeded)
+  while a live book streams: refetch chains from the book + recalibrate ALL lit
+  nodes in the background. **`autoCalibrate` is the master switch for unattended
+  refits** — with it OFF the streaming loop is a no-op (the surface still tracks
+  spot via the transport poll; nodes stay frozen/stale until an explicit Calibrate),
+  matching `fetch_options`. [Corrected 2026-06-15: an earlier cut wrongly bypassed
+  `autoCalibrate`, so realtime kept recalibrating with the toggle off.] Distinct
+  from the minutes-cadence `optionsFetchMode=="auto"` REST refetch. 5 new offline
+  tests (cache hit/invalidate, sync_streaming resubscribe, scheduler
   refit-only-while-streaming, stream_refit refetch+calibrate). ruff + strict-TS
   build green. **Live-unverified** (no Massive key in this environment).
 
@@ -1058,11 +1062,13 @@ moment)` model so the fitter never sees the difference.
      source/mode-change only). Providers that can't report their subscription are
      never thrash-restarted.
    * **Throttled full-refit loop** while a live book streams: a new scheduler
-     branch (`Scheduler.tick`, gated by `AppState.is_streaming()`) calls
-     `workflow.stream_refit` every `OptionsSettings.streamRefitSeconds` (default
-     5s) — refetch chains from the book + recalibrate ALL lit nodes (background,
-     independent of `autoCalibrate`; realtime spot mode is the opt-in). Distinct
-     from the minutes-cadence `optionsFetchMode == "auto"` REST refetch.
+     branch (`Scheduler.tick`, gated by `AppState.is_streaming()` AND
+     `autoCalibrate`) calls `workflow.stream_refit` every
+     `OptionsSettings.streamRefitSeconds` (default 5s) — refetch chains from the
+     book + recalibrate ALL lit nodes (background). `autoCalibrate` is the master
+     switch: OFF ⇒ the loop is a no-op (surface still tracks spot via the transport
+     poll; nodes stay stale until explicit Calibrate). Distinct from the
+     minutes-cadence `optionsFetchMode == "auto"` REST refetch.
    **Remaining (optional) live-UI check:** drive the running app (Massive +
    Real-time) to confirm the throttled refit + resubscribe paths end-to-end in the
    scheduler thread (the engine paths are verified by the probe + tests).

@@ -189,11 +189,14 @@ def stream_refit(state: AppState, fit_mode: str = "mid") -> bool:
     """The streaming throttled refit: refetch each ticker's chain (served from the
     live WS book) and recalibrate ALL lit nodes in the background.
 
-    Distinct from ``fetch_options``: this fires only while a live book is streaming
-    and refits unconditionally (selecting realtime spot mode is itself the opt-in to
-    continuous recalibration — it does not consult ``autoCalibrate``). Returns False
-    if a calibration job is already running (the throttle then skips this cycle).
+    Gated by ``autoCalibrate`` — it is the master switch for unattended refits, so
+    with it OFF this is a no-op (the surface still tracks spot via the transport
+    poll; nodes stay frozen/stale until an explicit Calibrate), matching
+    ``fetch_options``. Returns False if disabled, nothing fetched, or a calibration
+    job is already running (the throttle then skips this cycle).
     """
+    if not state.options().autoCalibrate:
+        return False
     fetched = False
     for ticker in state.active_tickers():
         try:

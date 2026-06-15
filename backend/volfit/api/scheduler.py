@@ -74,8 +74,12 @@ class Scheduler:
             workflow.fetch_spots(self._state)
         # Throttled full refit while a live WS book is streaming (book-driven,
         # seconds cadence) — distinct from the minutes-cadence REST auto-fetch.
+        # Gated by autoCalibrate: it is the master switch for unattended refits, so
+        # with it OFF the surface only moves via the spot-transport poll above and
+        # nodes stay frozen/stale until an explicit Calibrate.
         if (
             opts.spotMode == "realtime"
+            and opts.autoCalibrate
             and now - self._last_refit >= opts.streamRefitSeconds
             and self._state.is_streaming()
         ):
