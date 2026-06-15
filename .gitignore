@@ -35,3 +35,8 @@ Thumbs.db
 # Local tool state
 *.tsbuildinfo
 .claude/settings.local.json
+
+# Local secrets / env (API keys, flat-file S3 creds) - never commit.
+# restart.ps1 dot-sources restart.local.ps1 if present; .example is the template.
+restart.local.ps1
+.env.local

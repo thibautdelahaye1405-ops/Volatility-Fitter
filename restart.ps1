@@ -36,6 +36,17 @@ param(
 $ErrorActionPreference = "Stop"
 $repo = $PSScriptRoot
 
+# --- 0. Local secrets / env (gitignored) -----------------------------------
+# restart.local.ps1 (NOT committed) sets API keys + flat-file S3 creds so they
+# persist across launches without re-exporting them each session. Copy
+# restart.local.ps1.example to restart.local.ps1 and fill in your keys. Values
+# already set in the shell win (the file's guards skip them).
+$localEnv = Join-Path $repo "restart.local.ps1"
+if (Test-Path $localEnv) {
+    Write-Host "Loading local env from restart.local.ps1"
+    . $localEnv
+}
+
 # --- 1. Kill anything on the dev ports -------------------------------------
 foreach ($port in 8000, 5173) {
     Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |

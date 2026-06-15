@@ -1,0 +1,20 @@
+# Local environment template for vol-fitter.
+#
+# Copy this file to  restart.local.ps1  (which is GITIGNORED) and fill in your
+# keys. restart.ps1 dot-sources restart.local.ps1 on every launch, so these
+# persist without re-exporting them each session. Values already set in the
+# shell win (the "-not" guards below skip them). ASCII only (PowerShell 5.1
+# reads .ps1 as ANSI).
+
+# Massive REST + WebSocket API key (Bearer token).
+if (-not $env:VOLFIT_MASSIVE_KEY)        { $env:VOLFIT_MASSIVE_KEY        = 'YOUR_MASSIVE_API_KEY' }
+
+# Massive options WebSocket cluster. This key is a DELAYED tier, so point the
+# live book straight at the delayed cluster (skips the ~6s real-time warmup).
+if (-not $env:VOLFIT_MASSIVE_WS_URL)     { $env:VOLFIT_MASSIVE_WS_URL     = 'wss://delayed.polygon.io/options' }
+
+# Flat-file history (Tier 2): S3 Access Key ID + Secret + host for the
+# flat-file bucket. Enables past-day Close + historical intraday chains.
+if (-not $env:VOLFIT_FLATFILES_KEY)      { $env:VOLFIT_FLATFILES_KEY      = 'YOUR_S3_ACCESS_KEY_ID' }
+if (-not $env:VOLFIT_FLATFILES_SECRET)   { $env:VOLFIT_FLATFILES_SECRET   = 'YOUR_S3_SECRET_ACCESS_KEY' }
+if (-not $env:VOLFIT_FLATFILES_ENDPOINT) { $env:VOLFIT_FLATFILES_ENDPOINT = 'files.massive.com' }
