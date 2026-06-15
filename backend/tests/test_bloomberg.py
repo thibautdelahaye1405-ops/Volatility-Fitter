@@ -63,6 +63,9 @@ class FakeBlp:
         self._dvd = dvd
         self.bdp_securities: list = []
 
+    def is_connected(self) -> bool:
+        return True  # a live Terminal session
+
     def bds(self, security, field, **_):
         if field == "OPT_CHAIN":
             return self._chain
@@ -240,27 +243,47 @@ class _RefusingBlp:
     def is_connected(self) -> bool:
         return self._connected
 
+    def bds(self, *_a, **_k):
+        raise RuntimeError(_WORKFLOW_ERROR)  # a fully-gated account refuses bds too
+
     def bdp(self, *_a, **_k):
         raise RuntimeError(_WORKFLOW_ERROR)
 
 
-def test_feed_status_green_on_px_last():
-    provider, _ = _make_provider()  # FakeBlp serves PX_LAST 741.75 for SPY
+def test_feed_status_green_when_connected_no_billable_probe():
+    """A connected session reads green WITHOUT issuing any billable bdp/bds — the
+    30 s status poll must never consume the Bloomberg daily quota (the bug that
+    drained the cap)."""
+    provider, blp = _make_provider()
     assert provider.feed_status() == ("green", "real-time (Terminal)")
+    assert blp.bdp_securities == []  # feed_status made NO reference-data request
 
 
-def test_feed_status_connected_but_refused_surfaces_reason():
-    """Session up, request refused -> red with the real Bloomberg reason, not
-    the old misleading 'no Terminal / xbbg'."""
+def test_feed_status_surfaces_refusal_from_last_fetch():
+    """The refusal reason is surfaced from the last ON-DEMAND fetch, not from a
+    status probe: a connected-but-ungated session reads green until a real fetch
+    is refused, then the light goes red with the real Bloomberg reason."""
     provider = BloombergProvider(["SPY"], blp_module=_RefusingBlp(connected=True))
-    level, detail = provider.feed_status()
-    assert level == "red"
-    assert detail == "workflow review needed"
+    # No fetch yet -> connected session reads green (and issued no probe).
+    assert provider.feed_status() == ("green", "real-time (Terminal)")
+    # An on-demand fetch is refused -> the reason is cached onto the light.
+    with pytest.raises(Exception):
+        provider.fetch_chain("SPY")
+    assert provider.feed_status() == ("red", "workflow review needed")
 
 
 def test_feed_status_no_session_reports_no_terminal():
     provider = BloombergProvider(["SPY"], blp_module=_RefusingBlp(connected=False))
     assert provider.feed_status() == ("red", "no Terminal")
+
+
+def test_successful_fetch_clears_cached_refusal():
+    """A later successful on-demand fetch clears a stale refusal so the light
+    recovers to green (e.g. once the daily cap resets)."""
+    provider, _ = _make_provider()
+    provider._last_error = "daily capacity reached"  # a stale refusal on the light
+    provider.fetch_chain("SPY")  # a successful on-demand fetch
+    assert provider.feed_status() == ("green", "real-time (Terminal)")
 
 
 def test_short_blp_reason_maps_subcategory():

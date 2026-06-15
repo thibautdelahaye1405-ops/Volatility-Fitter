@@ -16,30 +16,43 @@ function fmtCountdown(seconds: number): string {
 }
 
 const BTN =
-  "rounded-md border px-2.5 py-1 font-medium transition-colors disabled:cursor-not-allowed";
+  "relative overflow-hidden rounded-md border px-2.5 py-1 font-medium transition-colors disabled:cursor-not-allowed";
 const ACTIVE = "border-slate-700 bg-surface-800 text-slate-200 hover:border-slate-600";
 const MUTED = "border-slate-800 bg-surface-900 text-slate-500";
+const FETCHING = "border-accent-500/50 bg-accent-500/10 text-accent-300";
+
+/** Indeterminate "working" gauge overlaid on a fetch button while it runs. */
+function FetchingBar() {
+  return (
+    <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-accent-500/15">
+      <span className="volfit-indeterminate-fill bg-accent-400" />
+    </span>
+  );
+}
 
 export default function WorkflowControls({ workflow }: { workflow: UseWorkflowResult }) {
-  const { calib, sched, busy, fetchSpots, fetchOptions, calibrate } = workflow;
+  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate } = workflow;
   const realtimeSpots = sched?.spotMode === "realtime";
   const autoOptions = sched?.optionsFetchMode === "auto";
   const running = calib?.running ?? false;
   const stale = calib?.staleNodes ?? 0;
+  const fetchingSpots = pending === "spots";
+  const fetchingOptions = pending === "options";
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      {/* Fetch spots */}
+      {/* Fetch spots (indeterminate gauge while fetching) */}
       <button
         onClick={() => void fetchSpots()}
         disabled={realtimeSpots || busy}
         title={realtimeSpots ? "Spots stream in real time (set in Options)" : "Fetch live spots now"}
-        className={`${BTN} ${realtimeSpots ? MUTED : ACTIVE}`}
+        className={`${BTN} ${realtimeSpots ? MUTED : fetchingSpots ? FETCHING : ACTIVE}`}
       >
-        {realtimeSpots ? "Real-time Spots" : "Fetch spots"}
+        {realtimeSpots ? "Real-time Spots" : fetchingSpots ? "Fetching spots…" : "Fetch spots"}
+        {fetchingSpots && <FetchingBar />}
       </button>
 
-      {/* Fetch options quotes (countdown when auto) */}
+      {/* Fetch options quotes (countdown when auto, gauge while fetching) */}
       <button
         onClick={() => void fetchOptions()}
         disabled={autoOptions || busy}
@@ -48,11 +61,14 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
             ? "Options auto-refresh on a timer (set in Options)"
             : "Fetch fresh option quotes now"
         }
-        className={`${BTN} ${autoOptions ? MUTED : ACTIVE}`}
+        className={`${BTN} ${autoOptions ? MUTED : fetchingOptions ? FETCHING : ACTIVE}`}
       >
         {autoOptions
           ? `Options in ${fmtCountdown(sched?.secondsToNextOptions ?? 0)}`
-          : "Fetch Options Quotes"}
+          : fetchingOptions
+            ? "Fetching quotes…"
+            : "Fetch Options Quotes"}
+        {fetchingOptions && <FetchingBar />}
       </button>
 
       {/* Calibrate all lit nodes (background, with progress + stale badge) */}

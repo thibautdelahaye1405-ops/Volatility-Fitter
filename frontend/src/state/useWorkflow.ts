@@ -35,9 +35,14 @@ export interface SchedulerStatus {
 /** Status poll cadence (ms): drives progress + the auto-fetch countdown. */
 const POLL_MS = 1500;
 
+/** Which manual action is currently in flight (drives the per-button gauge). */
+export type WorkflowAction = "spots" | "options" | "calibrate";
+
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
   sched: SchedulerStatus | null;
+  /** The in-flight manual action, or null. (`busy` = pending !== null.) */
+  pending: WorkflowAction | null;
   busy: boolean;
   fetchSpots: () => Promise<void>;
   fetchOptions: () => Promise<void>;
@@ -47,7 +52,7 @@ export interface UseWorkflowResult {
 export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflowResult {
   const [calib, setCalib] = useState<CalibrationStatus | null>(null);
   const [sched, setSched] = useState<SchedulerStatus | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<WorkflowAction | null>(null);
   const wasRunning = useRef(false);
   const lastSpotVer = useRef<number | null>(null);
 
@@ -78,22 +83,22 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
   }, [live, poll]);
 
   const action = useCallback(
-    async (path: string, withBody: boolean) => {
-      setBusy(true);
+    async (key: WorkflowAction, path: string, withBody: boolean) => {
+      setPending(key);
       try {
         await api.post(path, withBody ? { body: {} } : undefined);
         refreshViews();
         await poll();
       } finally {
-        setBusy(false);
+        setPending(null);
       }
     },
     [refreshViews, poll],
   );
 
-  const fetchSpots = useCallback(() => action("/fetch/spots", true), [action]);
-  const fetchOptions = useCallback(() => action("/fetch/options", true), [action]);
-  const calibrate = useCallback(() => action("/calibrate", false), [action]);
+  const fetchSpots = useCallback(() => action("spots", "/fetch/spots", true), [action]);
+  const fetchOptions = useCallback(() => action("options", "/fetch/options", true), [action]);
+  const calibrate = useCallback(() => action("calibrate", "/calibrate", false), [action]);
 
-  return { calib, sched, busy, fetchSpots, fetchOptions, calibrate };
+  return { calib, sched, pending, busy: pending !== null, fetchSpots, fetchOptions, calibrate };
 }

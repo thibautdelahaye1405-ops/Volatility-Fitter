@@ -118,3 +118,19 @@ body {
 #root {
   filter: brightness(var(--ui-brightness, 1)) contrast(var(--ui-contrast, 1));
 }
+
+/* Indeterminate progress gauge: a bar of unknown duration (e.g. a Fetch
+ * spots / Fetch quotes request that has no per-item progress) slides a short
+ * fill back and forth to signal "working". Used by WorkflowControls. */
+@keyframes volfit-indeterminate {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+.volfit-indeterminate-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40%;
+  border-radius: inherit;
+  animation: volfit-indeterminate 1.1s ease-in-out infinite;
+}
