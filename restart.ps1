@@ -60,6 +60,11 @@ Write-Host "Backend: all sources registered; active = $forced ($env:VOLFIT_TICKE
 if (-not $env:VOLFIT_MASSIVE_KEY) {
     Write-Host "  (set `$env:VOLFIT_MASSIVE_KEY to light up Massive; it shows Red without one)"
 }
+if (-not $env:VOLFIT_FLATFILES_KEY) {
+    Write-Host "  (set `$env:VOLFIT_FLATFILES_KEY/`$env:VOLFIT_FLATFILES_SECRET +"
+    Write-Host "   `$env:VOLFIT_FLATFILES_ENDPOINT='files.massive.com' for Massive past-day"
+    Write-Host "   history — official Close + historical intraday via the flat files)"
+}
 
 # Persistence: serve.py reads VOLFIT_DB and opens that SQLite file for named
 # universes (save/load) and the fit-history series. Resolve to an absolute path

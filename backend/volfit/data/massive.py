@@ -45,6 +45,11 @@ DEFAULT_BASE_URL = "https://api.massive.com"
 #: Snapshot page size cap (Massive limits to 250).
 _SNAPSHOT_LIMIT = 250
 
+#: Max contracts the per-contract historical-quote path (``_fetch_intraday``) will
+#: reconstruct before fast-failing — beyond a handful it's impractical (one
+#: sequential REST per contract); a full past-day chain must use the flat files.
+_INTRADAY_REST_MAX = 40
+
 
 def _iso_date(value) -> date | None:
     """Parse an ISO 'YYYY-MM-DD' (possibly with a time suffix) to date."""
@@ -625,9 +630,23 @@ class MassiveProvider(OptionChainProvider):
         self, ticker: str, expiries: list[date] | None, ts: datetime
     ) -> ChainSnapshot:
         """Reconstruct the chain at instant ``ts`` from per-contract historical
-        NBBO quotes (Polygon ``/v3/quotes``; one request per selected contract)."""
+        NBBO quotes (Polygon ``/v3/quotes``; ONE request per selected contract).
+
+        This is a single-/few-contract path only — it does not scale to a whole
+        chain (hundreds of sequential REST calls would stall for minutes). For a
+        full historical chain the **flat-file store** (Tier 2) is the mechanism,
+        which ``fetch_chain`` prefers when configured; here we fast-fail past the
+        cap with an actionable error rather than crawl, so the app degrades to
+        "no data" instead of hanging."""
         ns = int(ts.replace(tzinfo=timezone.utc).timestamp() * 1_000_000_000)
         contracts = self._intraday_contracts(ticker, expiries)
+        if len(contracts) > _INTRADAY_REST_MAX:
+            raise RuntimeError(
+                f"Massive: reconstructing {len(contracts)} contracts at a past "
+                f"instant via per-contract REST is impractical — enable the "
+                f"flat-file history store (set VOLFIT_FLATFILES_KEY / "
+                f"VOLFIT_FLATFILES_SECRET) for past-day intraday chains."
+            )
         quotes: list[OptionQuote] = []
         styles: list[str] = []
         for c in contracts:

@@ -333,6 +333,37 @@ def test_fetch_chain_past_intraday_uses_flat_minute_aggs(tmp_path):
     assert chain.spot == pytest.approx(500.0, abs=1e-6) and len(chain.quotes) == 6
 
 
+def test_intraday_full_chain_fast_fails_without_flat_store():
+    """A past-instant reconstruction of a whole chain via per-contract REST must
+    NOT crawl hundreds of requests (the hang) — it fast-fails toward the flat-file
+    store. A small selection still uses the per-contract path (test_asof covers it)."""
+    from datetime import datetime
+
+    from volfit.data.provider import AsOf
+
+    quote_calls = {"n": 0}
+
+    def http_get(url, params):
+        if "/reference/options/contracts" in url:
+            results = [
+                {"ticker": f"O:SPY260918C{i:08d}", "expiration_date": "2026-09-18",
+                 "strike_price": float(i), "contract_type": "call",
+                 "exercise_style": "american"}
+                for i in range(100)  # 100 contracts > _INTRADAY_REST_MAX
+            ]
+            return {"results": results, "status": "OK"}
+        if "/v3/quotes/" in url:
+            quote_calls["n"] += 1
+            return {"results": [{"bid_price": 1.0, "ask_price": 1.2}], "status": "OK"}
+        raise AssertionError(f"unexpected url {url}")
+
+    p = MassiveProvider(["SPY"], api_key="k", http_get=http_get)  # no flat_store
+    with pytest.raises(RuntimeError, match="flat-file"):
+        p.fetch_chain("SPY", [date(2026, 9, 18)],
+                      as_of=AsOf(mode="intraday", ts=datetime(2026, 6, 12, 19, 45)))
+    assert quote_calls["n"] == 0  # fast-failed before crawling any per-contract quote
+
+
 def test_paginate_raises_on_not_authorized():
     pages = {
         "/v3/snapshot/options/SPY": {
