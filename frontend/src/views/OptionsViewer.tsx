@@ -18,6 +18,7 @@ import { api } from "../state/api";
 import { useOptions } from "../state/useOptions";
 import type { DynamicsRegime } from "../state/useOptions";
 import { useFitSettings } from "../state/useFitSettings";
+import { useSettingsDefaults } from "../state/useSettingsDefaults";
 import { useSmileSession } from "../state/smileSession";
 import type { FitMode } from "../state/useSmile";
 
@@ -46,16 +47,32 @@ const subTitle = "mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-
 export default function OptionsViewer() {
   const { source, reload, fitMode, setFitMode, ticker } = useSmileSession();
   const live = source === "live";
-  const { draft, patch, dirty, busy, flash, apply } = useOptions(live, reload);
+  const { draft, patch, dirty, busy, flash, apply, adopt } = useOptions(live, reload);
   const fit = useFitSettings(live, reload);
+  const defaults = useSettingsDefaults(live);
 
   // One Apply commits both backends (each is a no-op when its draft is clean).
   const anyDirty = dirty || fit.dirty;
-  const anyBusy = busy || fit.busy;
+  const anyBusy = busy || fit.busy || defaults.busy;
   const anyFlash = flash || fit.flash;
-  const applyAll = () => {
-    fit.apply();
-    apply();
+  const applyAll = () => Promise.all([fit.apply(), apply()]);
+
+  // "Save as default" first commits any pending edits (so the persisted snapshot
+  // matches what's on screen), then writes the live settings to the app store.
+  const saveAsDefault = async () => {
+    await applyAll();
+    await defaults.save();
+  };
+
+  // "Reset to defaults" reverts the live settings to the built-in code defaults
+  // (and clears the saved blob); adopt the returned values into both drafts.
+  const resetToDefaults = async () => {
+    const r = await defaults.reset();
+    if (r) {
+      fit.adopt(r.fit);
+      adopt(r.options);
+      reload();
+    }
   };
 
   const rowLabel = "text-xs text-slate-400";
@@ -282,16 +299,62 @@ export default function OptionsViewer() {
         </p>
       </div>
 
-      {/* Sticky Apply bar — commits FitSettings + OptionsSettings together. */}
+      {/* Sticky action bar — Apply commits the live settings; Save as default
+          persists them to the store so they survive a backend restart; Reset
+          reverts to the built-in defaults. */}
       <div className="sticky bottom-0 flex items-center gap-3 border-t border-slate-800 bg-surface-950/80 py-3 backdrop-blur">
         <span className="text-[11px] text-slate-500">
-          {anyDirty ? "Unsaved Options changes" : "Options saved"}
+          {anyDirty
+            ? "Unsaved Options changes"
+            : defaults.flash
+              ? "Saved as default ✓"
+              : defaults.hasSaved
+                ? "Persisted default set"
+                : "Options saved"}
         </span>
+
+        {/* Reset to the built-in defaults (also clears any saved default). */}
+        <button
+          onClick={resetToDefaults}
+          disabled={!live || anyBusy}
+          title="Revert all Options & Fit settings to the built-in defaults (clears any saved default)"
+          className={[
+            "ml-auto rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors",
+            live && !anyBusy
+              ? "border-slate-700 bg-surface-800 text-slate-300 hover:border-slate-600 hover:text-slate-100"
+              : "cursor-not-allowed border-slate-800 text-slate-600",
+          ].join(" ")}
+        >
+          Reset to defaults
+        </button>
+
+        {/* Persist the current settings as the startup default (needs a store). */}
+        <button
+          onClick={saveAsDefault}
+          disabled={!live || anyBusy || !defaults.storeEnabled}
+          title={
+            defaults.storeEnabled
+              ? "Save the current settings so they're restored on the next app restart"
+              : "Needs a configured store (VOLFIT_DB) to persist across restart"
+          }
+          className={[
+            "rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors",
+            defaults.flash
+              ? "border-emerald-600/60 bg-emerald-600/15 text-emerald-400"
+              : live && !anyBusy && defaults.storeEnabled
+                ? "border-slate-600 bg-surface-800 text-slate-200 hover:border-accent-600/60 hover:text-accent-300"
+                : "cursor-not-allowed border-slate-800 text-slate-600",
+          ].join(" ")}
+        >
+          {defaults.flash ? "Saved ✓" : "Save as default"}
+        </button>
+
+        {/* Apply the pending edits to the live backend settings. */}
         <button
           onClick={applyAll}
           disabled={!live || !anyDirty || anyBusy}
           className={[
-            "ml-auto rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors",
+            "rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors",
             anyFlash
               ? "border-emerald-600/60 bg-emerald-600/15 text-emerald-400"
               : anyDirty && live

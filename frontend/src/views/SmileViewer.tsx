@@ -186,7 +186,12 @@ export default function SmileViewer() {
 
   /** Chart-card body for the active view. */
   const chartBody = () => {
-    if (loading || smile === null) return chartMessage("Loading universe…");
+    if (smile === null) {
+      // Reachable backend, no smile yet: still loading -> "connecting"; retries
+      // exhausted with an error -> surface it (we stay live, never mock).
+      if (!loading && error !== null) return chartMessage(`Couldn't load this smile: ${error}`);
+      return chartMessage("Loading market data…");
+    }
     switch (view) {
       case "smile":
         return (

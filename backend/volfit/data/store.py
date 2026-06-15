@@ -29,7 +29,10 @@ from volfit.data.types import ChainSnapshot, Instrument, OptionQuote
 
 #: v2 ([REQ 2026-06-12]): snapshots carry the contracts' exercise style so
 #: reloaded chains keep de-Americanizing exactly like freshly fetched ones.
-SCHEMA_VERSION = 2
+#: v3 ([REQ 2026-06-15]): an `app_settings` key/value table persists the global
+#: Fit + Options defaults (the Options "Save as default" button), so a backend
+#: restart restores them instead of the code defaults.
+SCHEMA_VERSION = 3
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -78,6 +81,10 @@ CREATE TABLE IF NOT EXISTS universes (
     name        TEXT PRIMARY KEY,
     config_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS app_settings (
+    key        TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_snapshots_ticker_ts ON snapshots (ticker, ts);
 CREATE INDEX IF NOT EXISTS idx_quotes_snapshot      ON quotes (snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_fits_ticker_expiry   ON fits (ticker, expiry);
@@ -123,6 +130,9 @@ class VolStore:
 
         v1 -> v2: the `snapshots` table gains `exercise_style` (defaulting
         old rows to 'european' — the only style v1 ever stored).
+        v2 -> v3: the `app_settings` key/value table is added — no migration
+        beyond the `CREATE TABLE IF NOT EXISTS` in `_SCHEMA` (a brand-new table
+        carries no old rows to backfill).
         """
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
@@ -380,3 +390,26 @@ class VolStore:
                 )
             )
         return records
+
+    # -- app settings (key/value) -----------------------------------------
+
+    def save_setting(self, key: str, value: dict) -> None:
+        """Upsert one JSON-encoded setting (e.g. the saved Fit/Options defaults)."""
+        self.conn.execute(
+            "INSERT INTO app_settings (key, value_json) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json",
+            (key, json.dumps(value)),
+        )
+        self.conn.commit()
+
+    def load_setting(self, key: str) -> dict | None:
+        """Return the parsed setting for ``key``, or None if it was never saved."""
+        row = self.conn.execute(
+            "SELECT value_json FROM app_settings WHERE key = ?", (key,)
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def delete_setting(self, key: str) -> None:
+        """Remove a saved setting (no-op if absent)."""
+        self.conn.execute("DELETE FROM app_settings WHERE key = ?", (key,))
+        self.conn.commit()

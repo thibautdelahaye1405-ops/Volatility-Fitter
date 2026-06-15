@@ -4,7 +4,12 @@ import numpy as np
 import pytest
 
 from tests import benchmarks as bm
-from volfit.models.lqd.basis import endpoint_scales, lee_slopes, legendre_matrix
+from volfit.models.lqd.basis import (
+    LQDParams,
+    endpoint_scales,
+    lee_slopes,
+    legendre_matrix,
+)
 
 
 def test_legendre_recursion_matches_explicit_polynomials():
@@ -48,3 +53,16 @@ def test_svi_fit_lee_slopes_match_note():
     beta_l, beta_r = lee_slopes(bm.SVI_LQD_PARAMS)
     assert beta_l == pytest.approx(bm.SVI_LQD_BETA_LEFT, abs=2e-7)
     assert beta_r == pytest.approx(bm.SVI_LQD_BETA_RIGHT, abs=2e-7)
+
+
+def test_lee_slopes_handle_underflowed_endpoint_scales():
+    """A degenerate sparse-data fit can drive R/L extreme enough that A_R / A_L
+    underflow exp() to 0.0. lee_slopes must take the finite limit (psi(+inf)->0)
+    rather than raising ZeroDivisionError — which used to 500 the smile endpoint
+    and drop the UI to mock. (Regression: far-dated QQQ node, A_R = 0.)"""
+    # R = -1000 -> A_R = exp(-1000) underflows to exactly 0.0.
+    beta_l, beta_r = lee_slopes(LQDParams(L=0.0, R=-1000.0, a=np.zeros(5)))
+    assert np.isfinite(beta_l) and beta_r == 0.0
+    # L = -1000 -> A_L underflows to 0.0 too (the other wing).
+    beta_l2, beta_r2 = lee_slopes(LQDParams(L=-1000.0, R=0.5, a=np.zeros(5)))
+    assert beta_l2 == 0.0 and np.isfinite(beta_r2)

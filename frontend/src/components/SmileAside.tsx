@@ -10,6 +10,13 @@ import VarSwapPanel from "./VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
 import { formatPct } from "../lib/chartScale";
 
+/** Fixed-decimal string, or "—" for a null/NaN diagnostic (a degenerate or
+ *  transported fit can yield a non-finite value, which JSON-serializes to null —
+ *  a diagnostic readout must never crash on it). */
+function fixed(v: number | null | undefined, digits: number): string {
+  return v != null && Number.isFinite(v) ? v.toFixed(digits) : "—";
+}
+
 export default function SmileAside() {
   const {
     smile,
@@ -25,17 +32,18 @@ export default function SmileAside() {
   } = useSmileSession();
   const live = source === "live";
 
-  const diagnostics: { label: string; value: string }[] = smile
+  const d = smile?.diagnostics;
+  const diagnostics: { label: string; value: string }[] = d
     ? [
-        { label: "ATM vol", value: formatPct(smile.diagnostics.atmVol) },
-        { label: "Skew", value: smile.diagnostics.skew.toFixed(3) },
-        { label: "Curvature", value: smile.diagnostics.curvature.toFixed(2) },
-        { label: "A_L (left wing)", value: smile.diagnostics.aLeft.toFixed(3) },
-        { label: "A_R (right wing)", value: smile.diagnostics.aRight.toFixed(3) },
-        { label: "Lee slope L", value: smile.diagnostics.leeLeft.toFixed(3) },
-        { label: "Lee slope R", value: smile.diagnostics.leeRight.toFixed(3) },
-        { label: "Var-swap vol", value: formatPct(smile.diagnostics.varSwapVol) },
-        { label: "RMS error", value: formatPct(smile.diagnostics.rmsError, 2) },
+        { label: "ATM vol", value: formatPct(d.atmVol) },
+        { label: "Skew", value: fixed(d.skew, 3) },
+        { label: "Curvature", value: fixed(d.curvature, 2) },
+        { label: "A_L (left wing)", value: fixed(d.aLeft, 3) },
+        { label: "A_R (right wing)", value: fixed(d.aRight, 3) },
+        { label: "Lee slope L", value: fixed(d.leeLeft, 3) },
+        { label: "Lee slope R", value: fixed(d.leeRight, 3) },
+        { label: "Var-swap vol", value: formatPct(d.varSwapVol) },
+        { label: "RMS error", value: formatPct(d.rmsError, 2) },
       ]
     : [];
 

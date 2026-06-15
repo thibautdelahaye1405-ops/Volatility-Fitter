@@ -43,14 +43,21 @@ class AsOf:
 
     - ``"live"``        the latest available chain (the default everywhere);
     - ``"prev_close"``  the prior session's closing chain (provider EOD settle);
-    - ``"eod"``         the closing chain of the specific trading day ``on``.
+    - ``"eod"``         the closing chain of the specific trading day ``on``;
+    - ``"intraday"``    the chain at the specific UTC instant ``ts`` (provider
+                        historical intraday quotes — Massive/Polygon only; check
+                        ``intraday_capable``). Used by the as-of "latest snapshot"
+                        / "N min before close" moments when no captured snapshot
+                        exists for that day.
 
     Captured-snapshot replay (loading a stored intraday chain from the VolStore)
-    is handled by AppState, not the provider — providers only serve live + EOD.
+    is handled by AppState, not the provider; providers serve live + EOD + (where
+    supported) an intraday instant.
     """
 
-    mode: str = "live"  # "live" | "prev_close" | "eod"
+    mode: str = "live"  # "live" | "prev_close" | "eod" | "intraday"
     on: date | None = None  # required when mode == "eod"
+    ts: datetime | None = None  # required when mode == "intraday" (UTC-naive)
 
 # Synthetic expiry ladder: ~1M, 3M, 6M, 1Y from the reference date.
 _EXPIRY_DAYS = (30, 91, 182, 365)
@@ -104,6 +111,14 @@ class OptionChainProvider(abc.ABC):
         """Past trading days this provider can serve an EOD chain for (default:
         none). Newest last; the as-of picker offers these as 'day (close)'."""
         return []
+
+    def intraday_capable(self) -> bool:
+        """Whether the source can serve a chain at an arbitrary past INSTANT
+        (``AsOf(mode="intraday", ts=...)``) — historical intraday quotes. Default
+        False: most feeds only have live + EOD, so the as-of "latest" / "before
+        close" moments fall back to captured snapshots. Massive/Polygon overrides.
+        """
+        return False
 
     def feed_status(self) -> tuple[str, str]:
         """Liveness of this source as ``(level, detail)`` for the Data Source

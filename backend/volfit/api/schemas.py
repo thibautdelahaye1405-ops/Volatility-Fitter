@@ -170,6 +170,27 @@ class OptionsSettings(BaseModel):
     optionsFetchMinutes: float = Field(5.0, gt=0.0, le=1440.0)
 
 
+# --------------------------------------------------- persisted settings defaults
+class SettingsDefaultsStatus(BaseModel):
+    """Whether the Fit/Options "Save as default" persistence is available and used.
+
+    ``storeEnabled`` is False when no app store is configured (VOLFIT_DB unset /
+    restart.ps1 -NoDb) — the Options tab then disables its Save button.
+    ``hasSaved`` reports whether the user has saved defaults to the store.
+    """
+
+    storeEnabled: bool
+    hasSaved: bool
+
+
+class SettingsDefaultsReset(SettingsDefaultsStatus):
+    """Reset response: the status plus the reverted (code-default) settings, so
+    the Options drafts can re-sync without a second round-trip."""
+
+    fit: FitSettings
+    options: OptionsSettings
+
+
 # ------------------------------------------------------------- smile payload
 class SmilePoint(BaseModel):
     """One point of a continuous model curve in (log-moneyness, vol) space."""

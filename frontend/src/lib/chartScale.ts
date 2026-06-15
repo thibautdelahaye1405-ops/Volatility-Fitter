@@ -64,9 +64,10 @@ export function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
 }
 
-/** Format a decimal vol as a percentage label, e.g. 0.206 -> "20.6%". */
-export function formatPct(v: number, digits = 1): string {
-  return `${(v * 100).toFixed(digits)}%`;
+/** Format a decimal vol as a percentage label, e.g. 0.206 -> "20.6%"; "—" for a
+ *  null/NaN value (a degenerate fit can yield non-finite diagnostics). */
+export function formatPct(v: number | null | undefined, digits = 1): string {
+  return v != null && Number.isFinite(v) ? `${(v * 100).toFixed(digits)}%` : "—";
 }
 
 /** Compact numeric label for the strike axis (k or fixed strike). */

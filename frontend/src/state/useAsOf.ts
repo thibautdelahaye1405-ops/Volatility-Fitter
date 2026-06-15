@@ -1,32 +1,48 @@
-// As-of (timestamp) selector state: Live / Previous Close / a provider EOD
-// trading day / a captured intraday snapshot. Talks to GET /asof (capabilities +
-// current selection) and POST /asof (apply). Refetched when the active data
-// source changes, since each source supports different history.
+// As-of (timestamp) selector state — a two-level day -> moment pick.
+//
+// GET /asof returns the current selection plus the recent business days that have
+// data, each flagging whether a close / captured snapshots / an intraday fetch
+// are available. POST /asof applies either Live or a high-level moment
+// (`{mode:"moment", on, moment, offsetMinutes}`); the backend resolves the
+// concrete chain. Refetched when the active data source changes.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
 
-/** Current as-of selection + what the active source/store can offer. */
-export interface AsOfState {
-  mode: string; // "live" | "prev_close" | "eod" | "captured"
-  on: string | null; // ISO date for "eod"
-  ts: string | null; // ISO datetime for "captured"
-  supportedModes: string[];
-  prevCloseAvailable: boolean;
-  historyDates: string[]; // provider EOD trading days, newest first
-  captured: string[]; // captured intraday timestamps, newest first
+/** One selectable business day and what it can serve. */
+export interface AsOfDay {
+  date: string; // ISO date
+  isToday: boolean;
+  hasClose: boolean; // official close available
+  hasCaptures: boolean; // captured intraday snapshots exist
+  intraday: boolean; // provider can fetch an arbitrary instant this day
 }
 
-/** A selection to POST. */
-export interface AsOfSelection {
-  mode: string;
-  on?: string | null;
-  ts?: string | null;
+/** A within-day moment. */
+export type AsOfMoment = "close" | "latest" | "before_close";
+
+/** Current as-of selection + day-grouped capabilities. */
+export interface AsOfState {
+  mode: string; // "live" | "eod" | "prev_close" | "captured" | "intraday"
+  on: string | null;
+  ts: string | null;
+  day: string | null; // the dropdown day this resolved from
+  moment: AsOfMoment | null;
+  offset: number | null; // minutes-before-close for "before_close"
+  supportedModes: string[];
+  intradayCapable: boolean;
+  closeOffsets: number[]; // preset "minutes before close" choices
+  days: AsOfDay[]; // recent business days with data, newest first
 }
 
 export interface UseAsOfResult {
   asof: AsOfState | null;
   busy: boolean;
-  setAsOf: (selection: AsOfSelection) => Promise<void>;
+  /** Back to live real-time. */
+  setLive: () => Promise<void>;
+  /** The provider's prior-session settle (only when "prev_close" is supported). */
+  setPrevClose: () => Promise<void>;
+  /** Apply a (day, moment) pick; `offsetMinutes` only for "before_close". */
+  setMoment: (on: string, moment: AsOfMoment, offsetMinutes?: number) => Promise<void>;
 }
 
 export function useAsOf(
@@ -52,14 +68,11 @@ export function useAsOf(
     return () => controller.abort();
   }, [live, activeSource]);
 
-  const setAsOf = useCallback(
-    async (selection: AsOfSelection) => {
+  const post = useCallback(
+    async (body: Record<string, unknown>) => {
       setBusy(true);
       try {
-        const next = await api.post<AsOfState>("/asof", {
-          body: { mode: selection.mode, on: selection.on ?? null, ts: selection.ts ?? null },
-        });
-        setAsofState(next);
+        setAsofState(await api.post<AsOfState>("/asof", { body }));
         onChanged?.();
       } catch {
         /* switch failed: keep the current as-of */
@@ -70,5 +83,13 @@ export function useAsOf(
     [onChanged],
   );
 
-  return { asof, busy, setAsOf };
+  const setLive = useCallback(() => post({ mode: "live" }), [post]);
+  const setPrevClose = useCallback(() => post({ mode: "prev_close" }), [post]);
+  const setMoment = useCallback(
+    (on: string, moment: AsOfMoment, offsetMinutes?: number) =>
+      post({ mode: "moment", on, moment, offsetMinutes }),
+    [post],
+  );
+
+  return { asof, busy, setLive, setPrevClose, setMoment };
 }

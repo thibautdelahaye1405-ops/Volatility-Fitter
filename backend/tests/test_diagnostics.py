@@ -96,3 +96,24 @@ def test_numeric_density_flat_smile_is_lognormal():
     k, pdf, _ = numeric_density(flat)
     expected = np.exp(-0.5 * (k + a / 2.0) ** 2 / a) / np.sqrt(2.0 * np.pi * a)
     np.testing.assert_allclose(pdf, expected, atol=1e-3)
+
+
+class _WingNaNSlice:
+    """A slice that is finite near ATM but non-finite at the far wings — what a
+    transported/degenerate fit can produce, which used to emit NaN diagnostics
+    that JSON-serialize to null and crashed the aside."""
+
+    def implied_w(self, k):
+        k = np.asarray(k, dtype=float)
+        return np.where(np.abs(k) > 5.0, np.nan, 0.04 + 0.0 * k)
+
+
+def test_numeric_diagnostics_are_finite_on_nan_wings():
+    from volfit.models.diagnostics import numeric_var_swap_w
+
+    slice_ = _WingNaNSlice()
+    left, right = numeric_lee_slopes(slice_)
+    assert np.isfinite(left) and np.isfinite(right)  # wings at +-6 are NaN -> 0.0
+    h = numeric_handles(slice_, t=0.5)
+    assert np.isfinite(h.atm_vol) and np.isfinite(h.skew) and np.isfinite(h.curvature)
+    assert np.isfinite(numeric_var_swap_w(slice_))  # integral spans the NaN wings

@@ -20,6 +20,8 @@ Binds to 127.0.0.1:8000; the Vite frontend (localhost:5173) is CORS-allowed.
 """
 
 import os
+import threading
+import time
 
 import uvicorn
 
@@ -59,41 +61,72 @@ def _build_providers() -> dict:
     }
 
 
-def _probe_level(provider, timeout: float = 4.0) -> str:
-    """``feed_status`` level for a provider, bounded so a slow or hanging probe
-    (e.g. a half-up Terminal, an unreachable HTTP feed) can never block startup.
-
-    Runs the probe on a daemon thread and gives up after ``timeout`` seconds,
-    treating a timeout or any error as "red" (unreachable) so the auto-pick
-    simply moves on to the next source. Importantly this runs BEFORE uvicorn
-    binds, so an unbounded probe would otherwise mean the server never comes up.
-    """
-    import threading
-
-    result = ["red"]
+def _bounded(fn, timeout: float, default):
+    """Run ``fn`` on a daemon thread, returning its result or ``default`` if it
+    raises or exceeds ``timeout`` — so a slow/hanging provider probe can never
+    block startup (this all runs BEFORE uvicorn binds)."""
+    box = [default]
 
     def _run() -> None:
         try:
-            result[0] = provider.feed_status()[0]
+            box[0] = fn()
         except Exception:
-            result[0] = "red"
+            box[0] = default
 
     thread = threading.Thread(target=_run, daemon=True)
     thread.start()
     thread.join(timeout)
-    return result[0] if not thread.is_alive() else "red"
+    return box[0] if not thread.is_alive() else default
+
+
+def _probe_level(provider, timeout: float = 4.0) -> str:
+    """``feed_status`` level for a provider, bounded against a hanging probe."""
+    return _bounded(lambda: provider.feed_status()[0], timeout, "red")
+
+
+def _can_serve(provider, attempts: int = 3, gap: float = 1.2, timeout: float = 4.0) -> bool:
+    """Whether a source can actually RESOLVE a non-empty expiry ladder for its
+    first ticker — a startup-only data probe, so a connected-but-capped/gated feed
+    (Bloomberg at its daily reference-data limit) is skipped in favour of one that
+    truly serves. ``feed_status`` alone can't tell them apart now that it's a
+    cheap connectivity check (it must not burn the Bloomberg quota every poll).
+
+    Retries a few times with a short gap so a transient throttle — Yahoo
+    rate-limiting a fresh process — does not cause a false skip; a hard refusal
+    (a capped/gated feed) fails every attempt and is skipped. The probe shares the
+    provider instance the app uses, so a successful chain enumeration warms its
+    cache rather than costing an extra request.
+    """
+    tickers = provider.list_tickers()
+    if not tickers:
+        return False
+    for i in range(attempts):
+        if _bounded(lambda: bool(provider.available_expiries(tickers[0])), timeout, False):
+            return True
+        if i < attempts - 1:
+            time.sleep(gap)
+    return False
 
 
 def _pick_active(providers: dict, forced: str) -> str:
     """The active source on launch: the forced one if valid, else the first
-    reachable source in preference order (its feed_status isn't Red). Each probe
-    is time-bounded so no single source can stall the backend's startup."""
+    source in preference order that is reachable AND can actually serve data.
+
+    A connected feed that can't resolve a ladder (Bloomberg at its daily cap) is
+    skipped, so a restart lands on a source that works (typically Yahoo) instead
+    of an empty surface. Synthetic always serves and is the final fallback. Every
+    probe is time-bounded so no single source can stall startup.
+    """
     if forced and forced in providers:
         return forced
     for sid in _AUTO_ORDER:
         if sid not in providers:
             continue
-        if _probe_level(providers[sid]) != "red":
+        if sid == "synthetic":
+            return sid  # offline fallback always serves
+        if _probe_level(providers[sid]) == "red":
+            continue  # unreachable: skip fast (no data probe)
+        if _can_serve(providers[sid]):
             return sid
     return "synthetic"
 

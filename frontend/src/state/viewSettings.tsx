@@ -6,6 +6,12 @@
 // contrast/brightness drive the `--ui-contrast` / `--ui-brightness` filter knobs
 // on the same element. All three are applied imperatively so a reload restores
 // the look before React paints (see applyTheme).
+//
+// Persistence is EXPLICIT ([REQ 2026-06-15]): a change applies live (instant
+// preview) but is NOT written to localStorage until the View tab's "Save as
+// default" button calls saveDefault(). On load the saved default is restored;
+// unsaved tweaks are lost on reload. `dirty` (live != saved) drives the
+// Save/Reset bar, mirroring the Options tab.
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
@@ -73,18 +79,29 @@ interface ViewSettingsCtx extends ViewSettings {
   setScheme: (s: ColorScheme) => void;
   setContrast: (v: number) => void;
   setBrightness: (v: number) => void;
+  /** Revert the live look to the built-in defaults (does not persist). */
   reset: () => void;
+  /** Persist the current look as this device's default (the Save button). */
+  saveDefault: () => void;
+  /** Live settings differ from the saved default. */
+  dirty: boolean;
 }
 
 const Ctx = createContext<ViewSettingsCtx | null>(null);
 
+function eq(a: ViewSettings, b: ViewSettings): boolean {
+  return a.scheme === b.scheme && a.contrast === b.contrast && a.brightness === b.brightness;
+}
+
 export function ViewSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<ViewSettings>(loadInitial);
+  //: The persisted default — what a reload restores; only saveDefault() moves it.
+  const [saved, setSaved] = useState<ViewSettings>(loadInitial);
 
-  // Apply on mount and whenever any knob changes.
+  // Apply (live preview) on mount and whenever any knob changes — but do NOT
+  // persist here; persistence is explicit (saveDefault).
   useEffect(() => {
     applyTheme(settings);
-    persist(settings);
   }, [settings]);
 
   const setScheme = useCallback((scheme: ColorScheme) => setSettings((s) => ({ ...s, scheme })), []);
@@ -97,9 +114,17 @@ export function ViewSettingsProvider({ children }: { children: ReactNode }) {
     [],
   );
   const reset = useCallback(() => setSettings(DEFAULTS), []);
+  const saveDefault = useCallback(() => {
+    persist(settings);
+    setSaved(settings);
+  }, [settings]);
 
   return (
-    <Ctx.Provider value={{ ...settings, setScheme, setContrast, setBrightness, reset }}>{children}</Ctx.Provider>
+    <Ctx.Provider
+      value={{ ...settings, setScheme, setContrast, setBrightness, reset, saveDefault, dirty: !eq(settings, saved) }}
+    >
+      {children}
+    </Ctx.Provider>
   );
 }
 

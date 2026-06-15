@@ -77,7 +77,10 @@ export interface UseOptionsResult {
   dirty: boolean;
   busy: boolean;
   flash: boolean;
-  apply: () => void;
+  /** Commit the draft (PUT); resolves once saved (a no-op when not dirty). */
+  apply: () => Promise<void>;
+  /** Adopt a server-authoritative value (e.g. after a defaults reset). */
+  adopt: (s: OptionsSettings) => void;
   /** True until the backend's current settings have loaded. */
   loaded: boolean;
 }
@@ -114,10 +117,10 @@ export function useOptions(enabled: boolean, onApplied: () => void): UseOptionsR
     (k) => draft[k] !== saved[k],
   );
 
-  const apply = useCallback(() => {
-    if (!dirty || busy) return;
+  const apply = useCallback((): Promise<void> => {
+    if (!dirty || busy) return Promise.resolve();
     setBusy(true);
-    api
+    return api
       .put<OptionsSettings>("/settings/options", { body: draft })
       .then((s) => {
         setSaved(s);
@@ -132,5 +135,10 @@ export function useOptions(enabled: boolean, onApplied: () => void): UseOptionsR
       .finally(() => setBusy(false));
   }, [dirty, busy, draft, onApplied]);
 
-  return { draft, patch, dirty, busy, flash, apply, loaded };
+  const adopt = useCallback((s: OptionsSettings) => {
+    setSaved(s);
+    setDraft(s);
+  }, []);
+
+  return { draft, patch, dirty, busy, flash, apply, adopt, loaded };
 }

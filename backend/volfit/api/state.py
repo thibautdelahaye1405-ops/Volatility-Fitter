@@ -31,6 +31,12 @@ from volfit.api.schemas import (
     SmilePoint,
 )
 from volfit.api.session import EditSession
+from volfit.api.settings_persist import (
+    clear_defaults,
+    has_defaults,
+    load_defaults,
+    save_defaults,
+)
 from volfit.api.varswap_session import VarSwapSession
 from volfit.data.dividends import (
     Dividend,
@@ -49,6 +55,12 @@ from volfit.models.lqd.calibrate import CalibrationResult
 
 #: Year-fraction day count used across the API (ACT/365 fixed).
 DAYS_PER_YEAR = 365.0
+
+#: Sources whose live chains are NOT auto-captured to the VolStore. Massive and
+#: Bloomberg have their own history channels (flat files / Terminal), so saving a
+#: snapshot per fetch just bloats the store; intraday replay for them comes from
+#: those channels, not the auto-capture. Yahoo (no history feed) still captures.
+NO_AUTO_CAPTURE_SOURCES = frozenset({"massive", "bloomberg"})
 
 
 @dataclass(frozen=True)
@@ -84,12 +96,21 @@ class AsOfSelection:
     - ``"prev_close"`` the provider's prior-session close;
     - ``"eod"``        the provider's close for the trading day ``on``;
     - ``"captured"``   replay the stored snapshot nearest at-or-before ``ts``
-                       (any provider, from the VolStore capture history).
+                       (any provider, from the VolStore capture history);
+    - ``"intraday"``   the provider's chain at instant ``ts`` (Massive only).
+
+    ``day`` / ``moment`` / ``offset`` are display-only metadata recording the
+    high-level (date, moment) the as-of dropdown resolved this selection from
+    ("close" / "latest" / "before_close" N minutes), so the UI can label and
+    re-highlight the active pick. They never affect chain fetching.
     """
 
     mode: str = "live"
     on: date | None = None  # eod
-    ts: datetime | None = None  # captured
+    ts: datetime | None = None  # captured / intraday
+    day: date | None = None  # the dropdown day this resolved from
+    moment: str | None = None  # "close" | "latest" | "before_close"
+    offset: int | None = None  # minutes-before-close for "before_close"
 
 
 class AppState(UniverseMixin):
@@ -143,6 +164,13 @@ class AppState(UniverseMixin):
         #: Global meta / UX settings + engine defaults (the Options workspace).
         self._options = OptionsSettings()
         self._options_version = 0  # bumped only when a fit-affecting field changes
+        #: Restore the user's saved Fit/Options defaults (the Options "Save as
+        #: default" button) when a store is configured; code defaults otherwise.
+        saved_fit, saved_options = load_defaults(self.store_path)
+        if saved_fit is not None:
+            self._fit_settings = saved_fit
+        if saved_options is not None:
+            self._options = saved_options
         self._market_settings: dict[str, MarketSettings] = {}
         #: Per-ticker event calendar (shared across workspaces). Events now drive
         #: the event-weighted variance clock used by every fit (volfit.calib.
@@ -279,7 +307,7 @@ class AppState(UniverseMixin):
     def set_as_of(self, selection: AsOfSelection) -> AsOfSelection:
         """Set the as-of point; validate against the active provider, then drop
         chain caches so the whole stack re-prices on the new observation."""
-        if selection.mode not in ("live", "prev_close", "eod", "captured"):
+        if selection.mode not in ("live", "prev_close", "eod", "captured", "intraday"):
             raise UnknownNodeError(f"unknown as-of mode {selection.mode!r}")
         if selection.mode in ("prev_close", "eod"):
             if selection.mode not in self.provider.historical_modes():
@@ -290,6 +318,13 @@ class AppState(UniverseMixin):
                 raise UnknownNodeError("eod as-of requires a date")
         if selection.mode == "captured" and selection.ts is None:
             raise UnknownNodeError("captured as-of requires a timestamp")
+        if selection.mode == "intraday":
+            if not self.provider.intraday_capable():
+                raise UnknownNodeError(
+                    f"{self._active_source!r} cannot serve an intraday instant"
+                )
+            if selection.ts is None:
+                raise UnknownNodeError("intraday as-of requires a timestamp")
         with self._lock:
             if selection != self._asof:
                 self._asof = selection
@@ -311,6 +346,10 @@ class AppState(UniverseMixin):
             return self.provider.fetch_chain(
                 ticker, chosen, as_of=AsOf(mode=sel.mode, on=sel.on)
             )
+        if sel.mode == "intraday":
+            return self.provider.fetch_chain(
+                ticker, chosen, as_of=AsOf(mode="intraday", ts=sel.ts)
+            )
         snap = self.provider.fetch_chain(ticker, chosen)  # live
         self._persist_capture(snap)
         return snap
@@ -323,8 +362,10 @@ class AppState(UniverseMixin):
 
     def _persist_capture(self, snap: ChainSnapshot) -> None:
         """Best-effort: save a live chain to the store for later replay, deduped
-        to one capture per ~60 s per ticker. Never fails a fetch."""
-        if self.store_path is None:
+        to one capture per ~60 s per ticker. Never fails a fetch. Skipped for
+        sources with their own history channel (Massive flat files / Bloomberg
+        Terminal) — see ``NO_AUTO_CAPTURE_SOURCES``."""
+        if self.store_path is None or self._active_source in NO_AUTO_CAPTURE_SOURCES:
             return
         try:
             with VolStore(self.store_path) as store:
@@ -336,6 +377,16 @@ class AppState(UniverseMixin):
             pass
 
     # ------------------------------------------------------------ market data
+    def _empty_snapshot(self, ticker: str) -> ChainSnapshot:
+        """An empty, never-cached snapshot for a transient feed miss (unresolved
+        ladder or a failed/throttled provider fetch) — callers retry next time."""
+        return ChainSnapshot(
+            ticker=ticker,
+            spot=0.0,
+            timestamp=datetime.combine(self.reference_date, datetime.min.time()),
+            quotes=[],
+        )
+
     def snapshot(self, ticker: str) -> ChainSnapshot:
         """Fetch-once chain snapshot of the ticker's SELECTED expiries;
         UnknownNodeError for tickers not in the active universe."""
@@ -349,13 +400,19 @@ class AppState(UniverseMixin):
             # Ladder hasn't resolved yet (transient feed miss): return an empty,
             # uncached snapshot so the next access re-probes the provider rather
             # than freezing a zero-expiry node for the whole process.
-            return ChainSnapshot(
-                ticker=ticker,
-                spot=0.0,
-                timestamp=datetime.combine(self.reference_date, datetime.min.time()),
-                quotes=[],
-            )
-        snap = self._fetch_asof(ticker, chosen)  # outside lock (network)
+            return self._empty_snapshot(ticker)
+        try:
+            snap = self._fetch_asof(ticker, chosen)  # outside lock (network)
+        except UnknownNodeError:
+            raise  # genuine 404 (e.g. captured replay with no stored snapshot)
+        except Exception:
+            # The active provider could not return a chain — down, throttled, or
+            # at its daily cap (Bloomberg "daily capacity reached") even though it
+            # listed the ladder. Treat it as a transient miss exactly like an
+            # unresolved ladder: return an empty, UNCACHED snapshot so /universe
+            # and every downstream view degrade to "no data" instead of a 500,
+            # and the next access re-probes once the feed recovers.
+            return self._empty_snapshot(ticker)
         with self._lock:
             # Never freeze an empty result: an unresolved ladder (transient feed
             # miss) or a chain that came back with no quotes must be retried on
@@ -415,6 +472,34 @@ class AppState(UniverseMixin):
                 self._settings_version += 1
             return self._fit_settings
 
+    # ------------------------------------------------ real-time streaming (WS)
+    def sync_streaming(self) -> None:
+        """Start/stop each provider's real-time stream to match the active source
+        and spot mode. Idempotent and cheap (a no-op once in the right state), so
+        the scheduler can call it every tick. A provider streams iff it is the
+        active source, exposes ``start_streaming`` (Massive), and spotMode is
+        ``realtime``; any other streaming provider (e.g. after a source switch) is
+        stopped so it does not leak a background socket."""
+        with self._lock:
+            active, mode = self._active_source, self._options.spotMode
+            providers = dict(self._providers)
+        for sid, prov in providers.items():
+            if not hasattr(prov, "start_streaming"):
+                continue
+            streaming = prov.is_streaming()
+            want = sid == active and mode == "realtime"
+            if want and not streaming:
+                contracts: list[str] = []
+                for ticker in self.active_tickers():
+                    try:
+                        contracts += prov.option_tickers(ticker, self.selected_expiries(ticker))
+                    except Exception:  # noqa: BLE001 — a bad ticker never blocks streaming
+                        continue
+                if contracts:
+                    prov.start_streaming(contracts)
+            elif streaming and not want:
+                prov.stop_streaming()
+
     # ----------------------------------------------------- options (meta) settings
     @property
     def options_version(self) -> int:
@@ -446,6 +531,32 @@ class AppState(UniverseMixin):
                     self._options_version += 1
                 self._options = options
             return self._options
+
+    # -------------------------------------------- persisted settings defaults
+    def store_enabled(self) -> bool:
+        """Whether a persistence store is configured (VOLFIT_DB / -NoDb off)."""
+        return self.store_path is not None
+
+    def settings_defaults_saved(self) -> bool:
+        """Whether the user has saved Fit/Options defaults to the store."""
+        return has_defaults(self.store_path)
+
+    def save_settings_defaults(self) -> bool:
+        """Persist the CURRENT Fit + Options settings as the startup defaults
+        (the Options "Save as default" button). No-op without a store."""
+        with self._lock:
+            fit, options = self._fit_settings, self._options
+        return save_defaults(self.store_path, fit, options)
+
+    def reset_settings_defaults(self) -> tuple[FitSettings, OptionsSettings]:
+        """Drop any persisted defaults and revert the live Fit + Options settings
+        to the built-in code defaults (the "Reset to defaults" button). Routed
+        through set_*_settings so the fit/options versions bump and warm caches
+        invalidate exactly as a manual edit would."""
+        clear_defaults(self.store_path)
+        fit = self.set_fit_settings(FitSettings())
+        options = self.set_options(OptionsSettings())
+        return fit, options
 
     def dynamics_regime(self) -> str | float:
         """The active vol-spot dynamics regime for spot-move transport.

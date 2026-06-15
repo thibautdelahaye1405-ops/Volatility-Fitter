@@ -64,7 +64,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (419 green as of 2026-06-15, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (445 green as of 2026-06-15, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
             ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
             the best-reachable active one; switch live via the TopBar Data
@@ -74,6 +74,8 @@ Key commands (Windows, repo root):
 - API only: .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
+- Massive diag: $env:VOLFIT_MASSIVE_KEY='...'; .venv\Scripts\python backend\massive_diag.py SPY
+            (probes api.massive.com + api.polygon.io, every call, to pinpoint a feed gate)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
 - volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance installed.

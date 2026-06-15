@@ -108,6 +108,13 @@ class BloombergProvider(OptionChainProvider):
         #: across searches and guarded so concurrent searches serialize.
         self._search_session = None
         self._search_lock = threading.Lock()
+        #: Reason of the last *connected-but-refused* real request (entitlement /
+        #: workflow review / daily limit), or None after any success. Lets the
+        #: status light report a real account-side gate WITHOUT feed_status itself
+        #: issuing a billable probe on every poll (the 30 s Data Source refresh
+        #: must never burn the Bloomberg daily reference-data quota). Set by
+        #: ``_record`` from the on-demand fetch paths only.
+        self._last_error: str | None = None
 
     # -- plumbing ------------------------------------------------------------
 
@@ -126,17 +133,38 @@ class BloombergProvider(OptionChainProvider):
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
 
-    def feed_status(self) -> tuple[str, str]:
-        """Liveness for the Data Source selector, with the three states the
-        pyo3 xbbg actually distinguishes:
+    def _record(self, exc: Exception | None) -> None:
+        """Remember the outcome of a real (on-demand) Bloomberg request so the
+        status light can report a connected-but-refused account — entitlement,
+        *workflow review needed*, or *daily capacity reached* — without
+        feed_status issuing its own billable probe. Cleared on any success; a
+        *disconnected* failure is left to feed_status to report as "no Terminal".
+        """
+        if exc is None:
+            self._last_error = None
+        elif isinstance(exc, ValueError):
+            return  # our own "no contracts / no spot for this selection" — not a feed refusal
+        elif session_connected(self._blp_module()):
+            self._last_error = short_blp_reason(exc)
 
-        - **green** — the Terminal answered a PX_LAST (real-time data flowing);
-        - **red "no Terminal"** — no blpapi session at all (xbbg not installed,
-          Terminal closed / not logged in);
-        - **red "<reason>"** — the session IS connected but Bloomberg refused the
-          probe (entitlement / *workflow review needed* / request limit). The
-          real responseError reason is surfaced so the user knows it is an
-          account-side gate to clear in the Terminal, NOT a broken install.
+    def feed_status(self) -> tuple[str, str]:
+        """Liveness for the Data Source selector — a CHEAP, quota-free probe.
+
+        Routine status polling (the UI re-checks every 30 s) must never consume
+        the Bloomberg daily reference-data quota, so this issues NO ``bdp``/``bds``
+        request: it reads the blpapi session state (``is_connected()``) and the
+        cached outcome of the last real fetch. States:
+
+        - **red "no Terminal"** — no blpapi session (xbbg not installed, Terminal
+          closed / not logged in);
+        - **red "<reason>"** — the session is connected but the last on-demand
+          request was refused (entitlement / *workflow review needed* / daily
+          limit); the actual cause is surfaced so the user knows it is an
+          account-side gate, not a broken install;
+        - **green** — session connected and no outstanding refusal (real-time).
+
+        The real data-flow / entitlement state is established by the on-demand
+        fetches themselves (which call ``_record``), not by a status poll.
         """
         tickers = self.list_tickers()
         if not tickers:
@@ -145,17 +173,10 @@ class BloombergProvider(OptionChainProvider):
             blp = self._blp_module()
         except ImportError:
             return ("red", "xbbg not installed")
-        security = self._security(tickers[0])
-        try:
-            pivot = pivot_bdp(blp.bdp(security, "PX_LAST"))
-            spot = price_or_none(pivot.get(security, {}).get("PX_LAST"))
-        except Exception as exc:
-            # Connected but refused -> show the real cause; else session is down.
-            if session_connected(blp):
-                return ("red", short_blp_reason(exc))
+        if not session_connected(blp):
             return ("red", "no Terminal")
-        if spot is None:
-            return ("red", "no data")
+        if self._last_error is not None:
+            return ("red", self._last_error)
         return ("green", "real-time (Terminal)")
 
     # -- symbol search -------------------------------------------------------
@@ -278,17 +299,29 @@ class BloombergProvider(OptionChainProvider):
         as_of: AsOf | None = None,
     ) -> ChainSnapshot:
         """Live (None/`live`) NBBO chain, or a historical EOD chain for a past
-        trading day (`eod`) / the prior close (`prev_close`)."""
-        contracts = self._select_contracts(ticker, expiries)
-        if as_of is not None and as_of.mode != "live":
-            on = as_of.on if as_of.mode == "eod" else self._latest_history(ticker)
-            if on is None:
-                raise ValueError(f"no historical close available for {ticker!r}")
-            style = "european" if self._security(ticker).endswith(" Index") else "american"
-            return _fetch_eod(
-                self._blp_module(), ticker, self._security(ticker), contracts, on, style
-            )
-        return self._fetch_live(ticker, contracts)
+        trading day (`eod`) / the prior close (`prev_close`).
+
+        This is the on-demand fetch path, so its outcome drives the status light
+        (``_record``): a success clears any cached refusal, a connected-but-refused
+        failure (entitlement / daily limit) is remembered so the light can show it
+        without a separate billable probe."""
+        try:
+            contracts = self._select_contracts(ticker, expiries)
+            if as_of is not None and as_of.mode != "live":
+                on = as_of.on if as_of.mode == "eod" else self._latest_history(ticker)
+                if on is None:
+                    raise ValueError(f"no historical close available for {ticker!r}")
+                style = "european" if self._security(ticker).endswith(" Index") else "american"
+                snap = _fetch_eod(
+                    self._blp_module(), ticker, self._security(ticker), contracts, on, style
+                )
+            else:
+                snap = self._fetch_live(ticker, contracts)
+        except Exception as exc:
+            self._record(exc)
+            raise
+        self._record(None)
+        return snap
 
     def _latest_history(self, ticker: str) -> date | None:
         """Most recent trading day available for EOD (for prev_close)."""
