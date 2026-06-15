@@ -63,7 +63,7 @@ if (-not $env:VOLFIT_MASSIVE_KEY) {
 if (-not $env:VOLFIT_FLATFILES_KEY) {
     Write-Host "  (set `$env:VOLFIT_FLATFILES_KEY/`$env:VOLFIT_FLATFILES_SECRET +"
     Write-Host "   `$env:VOLFIT_FLATFILES_ENDPOINT='files.massive.com' for Massive past-day"
-    Write-Host "   history — official Close + historical intraday via the flat files)"
+    Write-Host "   history: official Close + historical intraday via the flat files)"
 }
 
 # Persistence: serve.py reads VOLFIT_DB and opens that SQLite file for named
