@@ -114,6 +114,12 @@ class MassiveProvider(OptionChainProvider):
         #: a past INTRADAY instant (minute aggregates) — so the as-of past-day
         #: moments work without the per-contract REST historical-quote path.
         self.flat_store = flat_store
+        #: The active universe to co-cache from each daily flat file. AppState sets
+        #: this (via ``set_flat_universe``) to the live active-ticker set, which can
+        #: include names added in the Universe tab beyond the static watchlist —
+        #: so the flat-file cache covers them and they aren't dropped on a past-day
+        #: switch. Falls back to ``list_tickers()`` when unset.
+        self._flat_universe: list[str] | None = None
         #: Cache of the listed contracts per (ticker, frozenset(expiries)) so the
         #: WS read path (``_chain_from_book``) and the scheduler's per-tick
         #: resubscribe diff (``option_tickers``) don't re-paginate the contracts
@@ -564,13 +570,19 @@ class MassiveProvider(OptionChainProvider):
             )
         return spot
 
+    def set_flat_universe(self, tickers: list[str]) -> None:
+        """Tell the provider the active universe to co-cache from each flat file
+        (AppState calls this with its active-ticker set before a historical fetch)."""
+        self._flat_universe = [t.strip().upper() for t in tickers]
+
     def _fetch_flat(
         self, ticker: str, expiries: list[date] | None, ts: datetime, frequency: str
     ):
         """Reconstruct the chain from the flat-file store (day/minute aggregates),
-        co-caching the whole watchlist from the same daily file. None on no data."""
+        co-caching the active universe from the same daily file. None on no data."""
+        underlyings = self._flat_universe or self.list_tickers()
         return self.flat_store.chain_at(
-            ticker, expiries, ts, underlyings=self.list_tickers(), frequency=frequency
+            ticker, expiries, ts, underlyings=underlyings, frequency=frequency
         )
 
     # -- intraday replay (historical NBBO at an instant) ---------------------

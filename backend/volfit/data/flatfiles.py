@@ -31,6 +31,7 @@ at a local fixture CSV, so the duckdb read + as-of window query run offline.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 from dataclasses import dataclass
@@ -162,15 +163,22 @@ class FlatFileStore:
             f"{day:%Y}/{day:%m}/{day:%Y-%m-%d}.csv.gz"
         )
 
-    def _cache_path(self, day: date, frequency: str) -> str | None:
+    def _cache_path(self, day: date, frequency: str, roots: list[str]) -> str | None:
+        """Per-day Parquet path, keyed ALSO by the root set: a different universe
+        (e.g. a ticker added in the Universe tab) gets its own cache file, so the
+        first-ticker-fetched can never freeze a watchlist subset and drop the
+        others (the cause of 'NVDA shows 0 expiries' on a past-day switch)."""
         if self.cache_dir is None:
             return None
-        return os.path.join(self.cache_dir, f"{self.prefix}_{frequency}_{day:%Y-%m-%d}.parquet")
+        tag = hashlib.sha1(",".join(sorted(roots)).encode()).hexdigest()[:10]
+        return os.path.join(
+            self.cache_dir, f"{self.prefix}_{frequency}_{day:%Y-%m-%d}_{tag}.parquet"
+        )
 
     def _ensure_cached(self, day: date, roots: list[str], frequency: str) -> str:
         """Materialize the day's watchlist-filtered bars to a local Parquet once;
         return the Parquet path (or the source URI when no cache dir is set)."""
-        cache = self._cache_path(day, frequency)
+        cache = self._cache_path(day, frequency, roots)
         if cache is None:
             return self._uri(day, frequency)
         if not os.path.exists(cache):

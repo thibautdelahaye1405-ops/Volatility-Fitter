@@ -335,6 +335,15 @@ class AppState(UniverseMixin):
         """Fetch a chain for the current as-of: live (+capture) / provider EOD /
         captured replay from the store."""
         sel = self._asof
+        # Tell a flat-file-backed provider the ACTIVE universe (not just its static
+        # watchlist) so the day's flat-file cache co-caches every active ticker —
+        # else a name added in the Universe tab is filtered out and shows 0 expiries.
+        hint = getattr(self.provider, "set_flat_universe", None)
+        if hint is not None:
+            try:
+                hint(self.active_tickers())
+            except Exception:  # noqa: BLE001 — never block a fetch on the hint
+                pass
         if sel.mode == "captured":
             snap = self._load_captured(ticker, sel.ts)
             if snap is None:

@@ -32,6 +32,13 @@ _ROWS = [
     ("O:SPY260616P00500000", 10, 8, 8, 9, 7, T2_NS, 3),
     ("O:SPY260616C00510000", 10, 4, 4, 5, 3, T2_NS, 3),
     ("O:SPY260616P00510000", 10, 14, 14, 15, 13, T2_NS, 3),
+    # NVDA front expiry, closes implying spot 100 by parity (C-P = 100-K).
+    ("O:NVDA260616C00095000", 10, 7, 7, 8, 6, T2_NS, 3),
+    ("O:NVDA260616P00095000", 10, 2, 2, 3, 1, T2_NS, 3),
+    ("O:NVDA260616C00100000", 10, 4, 4, 5, 3, T2_NS, 3),
+    ("O:NVDA260616P00100000", 10, 4, 4, 5, 3, T2_NS, 3),
+    ("O:NVDA260616C00105000", 10, 2, 2, 3, 1, T2_NS, 3),
+    ("O:NVDA260616P00105000", 10, 7, 7, 8, 6, T2_NS, 3),
     ("O:QQQ260616C00400000", 10, 7, 7, 8, 6, T2_NS, 3),  # off-watchlist: excluded
     ("garbage-row", 0, 0, 0, 0, 0, T2_NS, 0),  # unparseable: skipped
 ]
@@ -89,6 +96,28 @@ def test_local_parquet_cache_roundtrip(tmp_path):
     # Second call serves from the Parquet cache (still correct).
     again = store.chain_at("SPY", None, T2, underlyings=["SPY", "QQQ"])
     assert again is not None and len(again.quotes) == 6
+
+
+def test_ticker_outside_underlyings_still_resolves(tmp_path):
+    """Regression: a ticker NOT in the passed ``underlyings`` (e.g. a name added in
+    the Universe tab, absent from the provider's static watchlist) must still
+    reconstruct — the per-root cache key prevents the first ticker's cache from
+    freezing a subset and dropping the others."""
+    src = tmp_path / "2026-06-12.csv.gz"
+    with gzip.open(src, "wt", newline="") as fh:
+        fh.write(_HEADER)
+        for r in _ROWS:
+            fh.write(",".join(str(x) for x in r) + "\n")
+    store = FlatFileStore(
+        cache_dir=str(tmp_path / "cache"), source_uri=lambda day, freq: str(src)
+    )
+    # SPY fetched first with only itself as the co-cache set.
+    spy = store.chain_at("SPY", None, T2, underlyings=["SPY"])
+    assert spy is not None and spy.spot == pytest.approx(500.0, abs=1e-6)
+    # NVDA is NOT in underlyings, yet it resolves (its own root-keyed cache).
+    nvda = store.chain_at("NVDA", None, T2, underlyings=["SPY"])
+    assert nvda is not None and nvda.ticker == "NVDA"
+    assert len(nvda.quotes) == 6 and nvda.spot == pytest.approx(100.0, abs=1e-6)
 
 
 def test_split_endpoint_normalizes_scheme():
