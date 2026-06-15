@@ -91,6 +91,14 @@ def test_local_parquet_cache_roundtrip(tmp_path):
     assert again is not None and len(again.quotes) == 6
 
 
+def test_split_endpoint_normalizes_scheme():
+    from volfit.data.flatfiles import _split_endpoint
+
+    assert _split_endpoint("files.massive.com") == ("files.massive.com", True)
+    assert _split_endpoint("https://files.massive.com") == ("files.massive.com", True)
+    assert _split_endpoint("http://localhost:9000/") == ("localhost:9000", False)
+
+
 def test_available_requires_creds_or_source():
     assert FlatFileStore().available() is False
     assert FlatFileStore(access_key="k", secret="s").available() is True

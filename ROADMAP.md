@@ -12,8 +12,17 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Done & verified (471 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
 
-- **[2026-06-15] Massive feed Tier 2 — flat-file history (backend, offline-tested;
-  live-verify pending the S3 key)**: the long-deferred columnar history.
+- **[2026-06-15] Massive feed Tier 2 — flat-file history (LIVE-VERIFIED)**: the
+  long-deferred columnar history. **Verified end-to-end** with the user's S3 key
+  against `files.massive.com` (bucket `flatfiles`, prefix `us_options_opra`,
+  products `day_aggs_v1`/`minute_aggs_v1`, `…/YYYY/MM/YYYY-MM-DD.csv.gz`): day-aggs
+  rebuilt a 6,319-quote / 35-expiry SPY close chain (parity spot 741.56) in ~3s,
+  minute-aggs a 6,240-quote chain at 15:55 ET, and a full-pipeline fit of SPY
+  2026-07-17 as-of EOD 2026-06-12 gave atmVol 15.62% / skew −0.79 / rms 35bp. Two
+  real-S3 bugs fixed in the process: DuckDB only binds a `?` parameter in the LAST
+  statement of an execute (each `SET …=?` is now its own call), and the endpoint is
+  normalized to DuckDB's bare-host + `s3_use_ssl` form (`_split_endpoint`). Default
+  endpoint is now `files.massive.com`.
   `data/occ.py` parses OCC/OPRA option tickers (the flat files carry only the
   `O:` symbol → strike/expiry/type). `data/flatfiles.py` `FlatFileStore` uses
   DuckDB (+bundled httpfs) to read the gzipped daily aggregate CSV from the S3
@@ -1110,10 +1119,11 @@ moment)` model so the fitter never sees the difference.
      builds it from env `VOLFIT_FLATFILES_KEY`/`_SECRET` (+ optional
      `_ENDPOINT`/`_BUCKET`/`_PREFIX`/`_CACHE`); None without creds. 3 tests.
    `duckdb` is an optional `flatfiles` extra, imported lazily (core runs without
-   it; tests `importorskip`). **NEXT (needs the user's S3 Access Key ID +
-   Secret):** confirm the endpoint/bucket layout by listing the bucket, then fetch
-   a recent day and reconstruct + fit a SPY chain at a past instant. Quote-level
-   flat files only if true historical NBBO depth is needed (heavy).
+   it; tests `importorskip`). **LIVE-VERIFIED 2026-06-15** against `files.massive.com`
+   (see the dated STATUS entry): bucket/layout confirmed, day + minute aggs
+   reconstruct real SPY chains, full-pipeline EOD fit lands atmVol 15.6% / rms 35bp.
+   Set `VOLFIT_FLATFILES_KEY`/`_SECRET` (+ `_ENDPOINT=files.massive.com`) to enable.
+   Quote-level flat files only if true historical NBBO depth is needed (heavy).
 3. **[Tier 3 — REST gap-fill]** Extend `_fetch_intraday` to aggregates for
    today's pre-connect intraday + single-contract lookups (the per-contract
    `/v3/quotes` path already exists).

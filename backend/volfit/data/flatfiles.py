@@ -41,8 +41,10 @@ from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.occ import parse_option_symbol
 from volfit.data.types import ChainSnapshot, OptionQuote
 
-#: Default S3-compatible host + bucket (Polygon flat files; Massive inherits it).
-DEFAULT_ENDPOINT = "files.polygon.io"
+#: Default S3-compatible host + bucket. ``files.massive.com`` is the active
+#: Massive host (live-verified 2026-06-15); the legacy ``files.polygon.io`` serves
+#: the identical ``flatfiles`` bucket + layout. Override via VOLFIT_FLATFILES_*.
+DEFAULT_ENDPOINT = "files.massive.com"
 DEFAULT_BUCKET = "flatfiles"
 #: Options aggregates live under this prefix; products are the two aggregate sets.
 DEFAULT_PREFIX = "us_options_opra"
@@ -225,16 +227,27 @@ class FlatFileStore:
         con = duckdb.connect()
         con.execute("INSTALL httpfs; LOAD httpfs;")
         if not self._source_uri:  # real S3: set endpoint + credentials
-            con.execute(
-                "SET s3_endpoint=?; SET s3_region='us-east-1'; "
-                "SET s3_url_style='path'; SET s3_use_ssl=true;",
-                [self.endpoint],
-            )
-            con.execute(
-                "SET s3_access_key_id=?; SET s3_secret_access_key=?;",
-                [self.access_key, self.secret],
-            )
+            host, use_ssl = _split_endpoint(self.endpoint)
+            # DuckDB allows a bound parameter only in the LAST statement of an
+            # execute, so each parameterized SET is issued on its own.
+            con.execute("SET s3_region='us-east-1';")
+            con.execute("SET s3_url_style='path';")
+            con.execute(f"SET s3_use_ssl={'true' if use_ssl else 'false'};")
+            con.execute("SET s3_endpoint=?;", [host])
+            con.execute("SET s3_access_key_id=?;", [self.access_key])
+            con.execute("SET s3_secret_access_key=?;", [self.secret])
         return con
+
+
+def _split_endpoint(endpoint: str) -> tuple[str, bool]:
+    """Normalize a configured endpoint to DuckDB's (bare host, use_ssl) — it wants
+    the host without a scheme, with TLS toggled separately. Defaults to TLS on."""
+    ep = endpoint.strip()
+    if ep.startswith("http://"):
+        return ep[len("http://"):].rstrip("/"), False
+    if ep.startswith("https://"):
+        return ep[len("https://"):].rstrip("/"), True
+    return ep.rstrip("/"), True
 
 
 def _root_filter(column: str, roots: list[str]) -> str:
