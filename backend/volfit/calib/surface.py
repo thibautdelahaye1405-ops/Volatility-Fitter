@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from volfit.calib.calendar import calendar_floor, calendar_violation
+from volfit.calib.calendar import calendar_floor_targets, calendar_violation
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
 
 
@@ -66,9 +66,9 @@ def calibrate_surface(
 
     prev = None
     for slice_quotes in ordered:
-        cal_idx = cal_floor = None
+        cal_z = cal_floor = None
         if enforce_calendar and prev is not None:
-            cal_idx, cal_floor = calendar_floor(prev.slice)
+            cal_z, cal_floor = calendar_floor_targets(prev.slice)
         result = calibrate_slice(
             slice_quotes.k,
             slice_quotes.w,
@@ -78,7 +78,7 @@ def calibrate_surface(
             reg_lambda=reg_lambda,
             reg_power=reg_power,
             init=prev.params if prev is not None else None,
-            calendar_indices=cal_idx,
+            calendar_z=cal_z,
             calendar_floor=cal_floor,
             calendar_weight=calendar_weight,
         )

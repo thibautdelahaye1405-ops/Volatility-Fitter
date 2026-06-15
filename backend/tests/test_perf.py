@@ -37,7 +37,7 @@ pytestmark = pytest.mark.perf
 # sit ~2.5-3.5x above that to absorb slower shared CI runners without masking a
 # real algorithmic regression.
 BUDGET_MS = {
-    "lqd_slice_fit": 350.0,         # ~95 ms local; Phase-1 exit target < 50 ms (warm)
+    "lqd_slice_fit": 350.0,         # ~35 ms local (was ~95; grid/Simpson cache + 2001-node opt grid)
     "graph_update_1k": 2500.0,      # ~700 ms local; Phase-4 target < 1 s @ 1k nodes
     "localvol_forward": 250.0,      # ~20 ms local; CN Dupire forward, 2 expiries
     "deamericanize_chain": 1800.0,  # ~630 ms local; ~80-quote vectorized CRR de-Am
