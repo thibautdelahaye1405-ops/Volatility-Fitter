@@ -25,37 +25,15 @@ const STATUS_DOT: Record<SourceStatus, string> = {
   red: "bg-rose-500",
 };
 
-/** "2026-06-13T10:05:00" -> "06-13 10:05" (captured intraday label). */
-function fmtTs(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** Local date part "2026-06-13" of an ISO timestamp (for the date selector). */
-function tsDate(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts.slice(0, 10);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
-}
-
-/** Local time part "10:05" of an ISO timestamp (for the time selector). */
-function fmtTime(ts: string): string {
-  const d = new Date(ts);
-  if (Number.isNaN(d.getTime())) return ts;
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/** True for Mon-Fri (markets are closed at the weekend, so weekend captures —
- *  e.g. "yesterday" on a Sunday — are never offered as as-of dates). */
-function isWeekday(ymd: string): boolean {
+/** "2026-06-12" -> "Fri 12 Jun" (a day row); today gets a "Today · " prefix. */
+function fmtDay(ymd: string, isToday: boolean): string {
   const [y, m, d] = ymd.split("-").map(Number);
-  if (!y || !m || !d) return true;
-  const day = new Date(y, m - 1, d).getDay();
-  return day !== 0 && day !== 6;
+  if (!y || !m || !d) return ymd;
+  const wd = WEEKDAYS[new Date(y, m - 1, d).getDay()];
+  return `${isToday ? "Today · " : ""}${wd} ${d} ${MONTHS[m - 1]}`;
 }
 
 /** Row styling for the as-of dropdown (highlight the active selection). */
@@ -65,12 +43,41 @@ const asofRowClass = (active: boolean): string =>
     active ? "bg-accent-500/10 text-accent-300" : "text-slate-300 hover:bg-slate-700/40",
   ].join(" ");
 
+/** One within-day moment row in the as-of dropdown. */
+function AsofMomentRow({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={[
+        "flex w-full items-center gap-2 py-1 pl-6 pr-3 text-left text-[11px] transition-colors",
+        active ? "text-accent-300" : "text-slate-400 hover:bg-slate-700/40 hover:text-slate-200",
+      ].join(" ")}
+    >
+      <span className="flex-1">{label}</span>
+      {active && <span className="text-accent-400">✓</span>}
+    </button>
+  );
+}
+
 /** Short label for the current as-of selection (the button face). */
 function asofLabel(a: AsOfState): string {
+  if (a.mode === "live") return "Live";
   if (a.mode === "prev_close") return "Prev close";
-  if (a.mode === "eod") return `${a.on} close`;
-  if (a.mode === "captured" && a.ts) return fmtTs(a.ts);
-  return "Live";
+  if (a.day && a.moment) {
+    const [, m, d] = a.day.split("-");
+    const tag =
+      a.moment === "close" ? "Close" : a.moment === "latest" ? "latest" : `−${a.offset}m`;
+    return `${m}-${d} ${tag}`;
+  }
+  return "Historical";
 }
 
 export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
@@ -85,28 +92,19 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
   }, [refreshUniverse, reload]);
 
   const { sources, active, switching, switchSource } = useDataSources(live, onSwitched);
-  const { asof, busy: asofBusy, setAsOf } = useAsOf(live, active, onSwitched);
+  const { asof, busy: asofBusy, setLive, setPrevClose, setMoment } = useAsOf(live, active, onSwitched);
   const [open, setOpen] = useState(false);
   const [asofOpen, setAsofOpen] = useState(false);
-  // Which captured *date* is expanded in the as-of picker (null = derive a default).
-  const [capturedDate, setCapturedDate] = useState<string | null>(null);
+  // Which day is expanded into its moments (null = derive: the selected day, else
+  // the most recent day).
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
   const activeSource = sources.find((s) => s.id === active);
 
-  // Captured intraday snapshots split into date -> times, so a prior day's
-  // snapshot is reachable (item 4). asof.captured is newest-first.
-  const capturedDates = asof
-    ? Array.from(new Set(asof.captured.map(tsDate))).filter(isWeekday)
-    : [];
-  const selectedCapDate =
-    capturedDate && capturedDates.includes(capturedDate)
-      ? capturedDate
-      : asof?.mode === "captured" && asof.ts
-        ? tsDate(asof.ts)
-        : (capturedDates[0] ?? null);
-  const capturedTimes = asof
-    ? asof.captured.filter((ts) => tsDate(ts) === selectedCapDate)
-    : [];
+  const openDay =
+    expandedDay && asof?.days.some((d) => d.date === expandedDay)
+      ? expandedDay
+      : (asof?.day ?? asof?.days[0]?.date ?? null);
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-8 border-b border-slate-800 bg-surface-900 px-6">
@@ -253,74 +251,93 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
                     aria-hidden
                     onClick={() => setAsofOpen(false)}
                   />
-                  <div className="absolute right-0 z-20 mt-1 max-h-80 w-56 overflow-auto rounded-lg border border-slate-700 bg-surface-800 shadow-xl shadow-black/40">
+                  <div className="absolute right-0 z-20 mt-1 max-h-96 w-64 overflow-auto rounded-lg border border-slate-700 bg-surface-800 shadow-xl shadow-black/40">
+                    {/* Live (real-time) */}
                     <button
-                      onClick={() => { setAsofOpen(false); void setAsOf({ mode: "live" }); }}
+                      onClick={() => { setAsofOpen(false); void setLive(); }}
                       className={asofRowClass(asof.mode === "live")}
                     >
                       <span className="flex-1 font-medium">Live · Real-time</span>
                     </button>
-                    {asof.prevCloseAvailable && (
+
+                    {/* Previous Close — the provider's prior-session settle, when
+                        the source supports it (Bloomberg / Massive; Yahoo is
+                        live-only). */}
+                    {asof.supportedModes.includes("prev_close") && (
                       <button
-                        onClick={() => { setAsofOpen(false); void setAsOf({ mode: "prev_close" }); }}
+                        onClick={() => { setAsofOpen(false); void setPrevClose(); }}
                         className={asofRowClass(asof.mode === "prev_close")}
                       >
                         <span className="flex-1 font-medium">Previous Close</span>
                       </button>
                     )}
-                    {asof.captured.length > 0 && (
-                      <>
-                        <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
-                          Captured · date
-                        </div>
-                        {/* Date selector (reach a prior day's snapshots). */}
-                        <div className="flex flex-wrap gap-1 px-3 pb-1.5">
-                          {capturedDates.map((d) => (
-                            <button
-                              key={`capd-${d}`}
-                              onClick={() => setCapturedDate(d)}
-                              className={[
-                                "rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
-                                d === selectedCapDate
-                                  ? "border-accent-600/60 bg-accent-600/15 text-accent-400"
-                                  : "border-slate-700 text-slate-400 hover:text-slate-200",
-                              ].join(" ")}
-                            >
-                              {d}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="px-3 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
-                          Time
-                        </div>
-                        {/* Times within the selected captured date. */}
-                        {capturedTimes.map((ts) => (
-                          <button
-                            key={`cap-${ts}`}
-                            onClick={() => { setAsofOpen(false); void setAsOf({ mode: "captured", ts }); }}
-                            className={asofRowClass(asof.mode === "captured" && asof.ts === ts)}
-                          >
-                            <span className="flex-1 font-mono">{fmtTime(ts)}</span>
-                            <span className="text-[10px] text-slate-500">captured</span>
-                          </button>
-                        ))}
-                      </>
-                    )}
-                    {asof.historyDates.length > 0 && (
+
+                    {/* Day -> moment. Pick a day to expand its moments. */}
+                    {asof.days.length > 0 && (
                       <div className="px-3 pt-2 pb-1 text-[9px] uppercase tracking-wider text-slate-600">
-                        End of day
+                        Historical · pick a day
                       </div>
                     )}
-                    {asof.historyDates.map((d) => (
-                      <button
-                        key={`eod-${d}`}
-                        onClick={() => { setAsofOpen(false); void setAsOf({ mode: "eod", on: d }); }}
-                        className={asofRowClass(asof.mode === "eod" && asof.on === d)}
-                      >
-                        <span className="flex-1 font-mono">{d}</span>
-                        <span className="text-[10px] text-slate-500">close</span>
-                      </button>
-                    ))}
+                    {asof.days.length === 0 && !asof.supportedModes.includes("prev_close") && (
+                      <div className="px-3 py-2 text-[10px] leading-snug text-slate-500">
+                        This source serves <span className="text-slate-300">live data only</span>.
+                        Switch to Bloomberg or Massive for closes, or capture intraday
+                        snapshots to replay them here.
+                      </div>
+                    )}
+                    {asof.days.map((d) => {
+                      const isOpen = d.date === openDay;
+                      const isSelDay = asof.mode !== "live" && asof.day === d.date;
+                      const hasIntra = d.hasCaptures || d.intraday;
+                      return (
+                        <div key={`day-${d.date}`}>
+                          <button
+                            onClick={() => setExpandedDay(d.date)}
+                            className={[
+                              "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors",
+                              isSelDay
+                                ? "bg-accent-500/10 text-accent-300"
+                                : "text-slate-300 hover:bg-slate-700/40",
+                            ].join(" ")}
+                          >
+                            <span className="flex-1 font-medium">{fmtDay(d.date, d.isToday)}</span>
+                            <span className="text-[10px] text-slate-500">{isOpen ? "▾" : "▸"}</span>
+                          </button>
+                          {isOpen && (
+                            <div className="bg-surface-900/60 py-0.5">
+                              {d.hasClose && (
+                                <AsofMomentRow
+                                  label="Close (official)"
+                                  active={isSelDay && asof.moment === "close"}
+                                  onClick={() => { setAsofOpen(false); void setMoment(d.date, "close"); }}
+                                />
+                              )}
+                              {hasIntra && (
+                                <AsofMomentRow
+                                  label="Latest snapshot"
+                                  active={isSelDay && asof.moment === "latest"}
+                                  onClick={() => { setAsofOpen(false); void setMoment(d.date, "latest"); }}
+                                />
+                              )}
+                              {hasIntra &&
+                                asof.closeOffsets.map((n) => (
+                                  <AsofMomentRow
+                                    key={`off-${d.date}-${n}`}
+                                    label={`${n} min before close`}
+                                    active={
+                                      isSelDay && asof.moment === "before_close" && asof.offset === n
+                                    }
+                                    onClick={() => { setAsofOpen(false); void setMoment(d.date, "before_close", n); }}
+                                  />
+                                ))}
+                              {!d.hasClose && !hasIntra && (
+                                <div className="px-6 py-1.5 text-[10px] text-slate-600">No data</div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </>
               )}

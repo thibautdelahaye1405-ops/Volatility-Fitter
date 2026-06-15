@@ -48,10 +48,41 @@ class FlakyProvider(SyntheticProvider):
         return super().available_expiries(ticker)
 
 
+class CappedProvider(SyntheticProvider):
+    """Lists each ticker's ladder fine, but the CHAIN pull raises while a flag is
+    set — models a provider that resolves reference data yet hits its daily cap
+    on bulk quotes (Bloomberg "daily capacity reached"). Clearing the flag lets
+    it recover, like switching back to a healthy feed."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.capped = True
+
+    def fetch_chain(self, ticker, expiries=None, as_of=None):
+        if self.capped:
+            raise RuntimeError("daily capacity reached")
+        return super().fetch_chain(ticker, expiries, as_of=as_of)
+
+
 @pytest.fixture()
 def client():
     with TestClient(create_app(reference_date=REF)) as c:
         yield c
+
+
+def test_provider_chain_failure_degrades_not_500():
+    """A provider that lists ladders but fails the chain fetch (down / throttled /
+    daily cap) must NOT 500 /universe — it degrades to empty ladders, and once the
+    feed recovers the next call repopulates (no frozen-empty cache)."""
+    provider = CappedProvider(reference_date=REF)
+    with TestClient(create_app(reference_date=REF, provider=provider)) as c:
+        capped = c.get("/universe")
+        assert capped.status_code == 200  # graceful, no Internal Server Error
+        assert capped.json()["expiries"]["ALPHA"] == []  # no quotes -> empty ladder
+
+        provider.capped = False  # feed recovers (e.g. user switches source)
+        recovered = c.get("/universe").json()
+        assert len(recovered["expiries"]["ALPHA"]) == 4  # repopulates, not frozen
 
 
 def test_transient_empty_ladder_is_not_frozen():

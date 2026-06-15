@@ -8,13 +8,22 @@
   Options workspace, ROADMAP Phase 10). Only the calibration-affecting field
   (calendarWeight) bumps the options version; the rest are defaults / display
   toggles read live, so toggling them never invalidates warm fits.
+* ``/settings/defaults`` — persist the current Fit + Options settings to the app
+  store (the Options "Save as default" button), so a backend restart restores
+  them instead of the code defaults. GET reports availability, POST saves,
+  DELETE clears the saved blob and reverts the live settings to code defaults.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
-from volfit.api.schemas import FitSettings, OptionsSettings
+from volfit.api.schemas import (
+    FitSettings,
+    OptionsSettings,
+    SettingsDefaultsReset,
+    SettingsDefaultsStatus,
+)
 
 router = APIRouter()
 
@@ -37,3 +46,34 @@ def get_options_settings(request: Request) -> OptionsSettings:
 @router.put("/settings/options", response_model=OptionsSettings)
 def put_options_settings(body: OptionsSettings, request: Request) -> OptionsSettings:
     return request.app.state.volfit.set_options(body)
+
+
+@router.get("/settings/defaults", response_model=SettingsDefaultsStatus)
+def get_settings_defaults(request: Request) -> SettingsDefaultsStatus:
+    state = request.app.state.volfit
+    return SettingsDefaultsStatus(
+        storeEnabled=state.store_enabled(),
+        hasSaved=state.settings_defaults_saved(),
+    )
+
+
+@router.post("/settings/defaults", response_model=SettingsDefaultsStatus)
+def save_settings_defaults(request: Request) -> SettingsDefaultsStatus:
+    """Persist the current Fit + Options settings as the startup defaults."""
+    state = request.app.state.volfit
+    if not state.store_enabled():
+        raise HTTPException(
+            status_code=422, detail="settings store not configured (set VOLFIT_DB)"
+        )
+    state.save_settings_defaults()
+    return SettingsDefaultsStatus(storeEnabled=True, hasSaved=True)
+
+
+@router.delete("/settings/defaults", response_model=SettingsDefaultsReset)
+def reset_settings_defaults(request: Request) -> SettingsDefaultsReset:
+    """Clear saved defaults and revert live Fit + Options to code defaults."""
+    state = request.app.state.volfit
+    fit, options = state.reset_settings_defaults()
+    return SettingsDefaultsReset(
+        storeEnabled=state.store_enabled(), hasSaved=False, fit=fit, options=options
+    )

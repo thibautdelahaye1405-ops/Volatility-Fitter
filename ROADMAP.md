@@ -10,7 +10,156 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (419 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (436 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Massive fits on the base tier (IV fallback) + As-of Prev-Close
+  discoverability**:
+  * **Fit Massive from its IVs without the paid NBBO add-on.** When the live
+    snapshot has no two-sided `last_quote` (gated) but still carries Massive's
+    per-contract `implied_volatility` (entitled), `MassiveProvider.fetch_chain`
+    auto-falls-back to `_chain_from_iv`: each contract is priced from its IV with
+    `core.black.black_call` at forward = spot, DF = 1 (`_price_from_iv`, puts by
+    parity), quoted bid = ask = price and marked **european** (no de-Am of a clean
+    Black value). The fitter re-inverts those prices and recovers exactly Massive's
+    IV smile (exact at zero carry; a tiny shift otherwise) — verified end-to-end
+    (atmVol 0.2003 vs 0.20 input). Toggle `iv_fallback` (default on). Needs the
+    underlying price (present in the option snapshot) + ≥3 strikes paired call/put
+    (real chains have both). 2 tests. NB this fits *Massive's reported* IVs, not an
+    independent inversion.
+  * **As-of "Previous Close" explicit again**: the day→moment dropdown now shows a
+    top-level **Previous Close** row when the source supports `prev_close`
+    (Bloomberg/Massive), plus a "this source serves live data only" hint for
+    live-only sources (**Yahoo** — it has no option-chain history, so it never
+    offered closes; that was not a regression). `useAsOf` gained `setPrevClose`.
+
+- **[2026-06-15] As-of selector reworked to day → moment**: the As-of dropdown is
+  now a two-level pick — choose a recent business **day**, then a **moment** within
+  it: **Close** (official EOD), **Latest snapshot**, or **N min before close**
+  (preset 15/30/60). Backend (`api/asof.py`): `asof_payload` returns the recent
+  business days that have data, each flagging `hasClose` / `hasCaptures` /
+  `intraday`; `set_moment` + `_resolve_moment` map a (day, moment) to a concrete
+  selection — close→`eod`/`prev_close`, latest→newest capture, before_close→the
+  capture nearest at-or-before `market_close_utc(day) − N` (16:00 ET via zoneinfo,
+  DST-correct, with a fixed-offset fallback). `AsOfSelection` gained display
+  metadata (`day`/`moment`/`offset`); `AsOf` + state gained an `intraday` mode.
+  Intraday moments come from captured snapshots for Yahoo/Bloomberg; **Massive
+  fetches the instant from Polygon `/v3/quotes`** (`intraday_capable`,
+  `_fetch_intraday` — per-contract historical NBBO + underlying mid; offline-tested
+  via injected `http_get`). POST `/asof` accepts the new `{mode:"moment", on,
+  moment, offsetMinutes}` and still the legacy `{mode:"eod"|"captured"|…}`.
+  Frontend: `useAsOf` (days + `setLive`/`setPrevClose`/`setMoment`) and a TopBar
+  accordion (Live · **Previous Close** when the source supports it · then each day
+  expands to its available moments; a "live data only" hint when the source has no
+  closes — e.g. Yahoo). 6 new tests (resolution, DST close, Massive intraday).
+  Verified end-to-end over HTTP. NB historical/close moments need a provider that
+  serves them: **Yahoo is live-only** (no option-chain history), **Bloomberg** does
+  live+prev_close+eod (needs an open Terminal), **Massive** does prev_close + the
+  intraday fetch but its chain quotes need the paid NBBO entitlement (the contracts
+  reference that fills the expiry picker is free, so the picker can list expiries
+  the fitter then can't price → "0 selected").
+
+- **[2026-06-15] False "Mock Data" — the actual root cause + ROBUST fallback**:
+  the decisive trigger was a backend **500 on `/smiles`**, not a connectivity
+  problem. `models/lqd/basis.lee_slopes` did `1/A_R` where a degenerate
+  sparse-data fit (a far-dated QQQ node with the stale custom expiry picks carried
+  over from a source switch) drove `R≈-1000`, **underflowing `A_R = exp(R+…)` to
+  exactly 0.0** → `ZeroDivisionError` → `/smiles` 500. The universe loaded ("Live"
+  for a moment), then the first smile fetch 500'd and the old frontend dropped to
+  mock. Fix: `lee_slopes` guards the reciprocals and takes the finite limits
+  (`psi(1/A−…) → 0` as `A → 0`; verified live — the two far-dated QQQ nodes now
+  return 200). `test_lee_slopes_handle_underflowed_endpoint_scales`.
+  Plus the mock payload is now reserved for a genuinely UNREACHABLE backend; a
+  reachable backend with no data / a node-level error never trips it:
+  * **Smile fetch never mocks (`useSmile.ts`)**: a failed `/smiles` retries a few
+    times (chain may be warming) then, if still failing, stays LIVE and surfaces
+    the error in the chart ("Couldn't load this smile: …") — never the mock badge.
+  Three more layers (already this day):
+  * **Frontend never latches onto mock (`state/useSmile.ts`)**: the mount path
+    became a *retry loop*. `/universe` 200-but-all-ladders-empty (active provider
+    warming up / Yahoo throttling a fresh process / a momentarily capped feed) is
+    treated as "reachable, no data yet" — stay on the live source, show a
+    "Connecting to market data…" state, and re-poll every `UNIVERSE_RETRY_MS`
+    (2.5 s) until a ladder appears. Only a thrown request (connection refused)
+    falls to mock, and even then it keeps polling so a backend that comes up
+    reconnects automatically. The old code dropped to mock the instant the first
+    payload was empty and never re-checked — the root of the recurring restart
+    bug. (`sourceRef` lets the poll read the live source without restarting.)
+  * **Backend serves 200 under provider failure** (already landed earlier this
+    day): `AppState.snapshot()` degrades a raised provider fetch to an empty
+    uncached snapshot, so `/universe` never 500s.
+  * **Startup auto-pick lands on a source that SERVES** (`serve._pick_active` +
+    new `_can_serve`/`_bounded`): now that `feed_status` is a cheap connectivity
+    check (the Bloomberg quota fix), a connected-but-capped Bloomberg would read
+    green and be auto-picked → empty surface. `_pick_active` now additionally
+    verifies each non-synthetic candidate can resolve a non-empty ladder for its
+    first ticker (retried a few times to tolerate a transient Yahoo throttle; a
+    hard cap/gate fails every attempt and is skipped), falling through to the
+    next source and finally synthetic. The probe shares the app's provider
+    instance, so a successful enumeration warms its chain cache (no extra call).
+    4 tests (`test_serve_pick.py`).
+
+- **[2026-06-15] Bloomberg daily-cap drain + Fetch-button gauges**:
+  * **Status light no longer burns the Bloomberg quota.** The Data Source
+    selector polls `GET /datasources` every 30 s, and Bloomberg's `feed_status()`
+    was firing a real `bdp(PX_LAST)` on every probe → ~120 billable ref-data
+    hits/hour purely for the light, independent of the On-demand fetch settings —
+    that drained the daily cap. `feed_status()` is now a CHEAP, quota-free probe:
+    it reads the blpapi session (`session_connected()` / `is_connected()`, no data
+    request) and the cached outcome of the last *on-demand* fetch. New
+    `BloombergProvider._last_error` + `_record(exc)`: `fetch_chain` (the on-demand
+    path, covering the spot probe via `provider.spot`) records a connected-but-
+    refused reason (entitlement / *workflow review* / *daily capacity reached*) and
+    clears it on success; benign ValueErrors (no contracts/spot for a selection)
+    are ignored. So the light still shows a real account gate — established by an
+    actual fetch, never by a poll. 3 bloomberg tests updated/added (green w/o
+    billable probe, refusal surfaced from last fetch, success clears refusal).
+  * **Fetch buttons show an indeterminate gauge while fetching.** `useWorkflow`
+    now exposes `pending: "spots"|"options"|"calibrate"|null` (per-action, was a
+    shared `busy`); `WorkflowControls` overlays an animated indeterminate bar
+    (`@keyframes volfit-indeterminate` in index.css) + "Fetching spots…/quotes…"
+    label on the active button. Calibrate keeps its existing determinate
+    progress gauge (it's a real background job with done/total).
+
+- **[2026-06-15] False "Mock Data" round 2 — provider failing mid-session**: the
+  earlier fix (411e29c) stopped a *transient empty* ladder from freezing, but
+  `AppState.snapshot()` still let a *raised* provider `fetch_chain` error escape
+  unhandled → `/universe` 500 → frontend falls to mock. Hit in the wild when the
+  active source was **Bloomberg** and it went red ("daily capacity reached")
+  *after* startup auto-pick had selected it (`_AUTO_ORDER` prefers bloomberg;
+  the active source is never re-evaluated at runtime). Fix: `snapshot()` now
+  treats any provider fetch exception (UnknownNodeError excepted, still a 404)
+  as a transient miss → returns an empty, UNCACHED snapshot via new
+  `_empty_snapshot()` helper, so `/universe` and all downstream views degrade to
+  "no data" (HTTP 200) and re-probe once the feed recovers. Regression test
+  `test_provider_chain_failure_degrades_not_500` (CappedProvider). To get live
+  data back when a source is capped, switch the TopBar Data Source selector to a
+  reachable feed (Yahoo) — `POST /datasource/{id}` keeps the watchlist, clears
+  caches and re-resolves on the new feed.
+
+- **[2026-06-15] Save current selection as default (Options + View)**: both tabs
+  gained an explicit **"Save as default"** + **"Reset to defaults"** bar.
+  * **Options/Fit** persist to the app store (SQLite, VOLFIT_DB): new
+    `app_settings(key, value_json)` table (VolStore schema **v2 → v3**,
+    `save_setting`/`load_setting`/`delete_setting`); `volfit/api/settings_persist.py`
+    serializes the live `FitSettings` + `OptionsSettings` under keys
+    `fit_settings`/`options_settings` (best-effort: no store = no-op, stale blob
+    discarded). `AppState.__init__` restores them at startup (a backend restart
+    boots on the saved defaults, not code defaults); `save_settings_defaults` /
+    `reset_settings_defaults` / `settings_defaults_saved` / `store_enabled` on
+    AppState. Endpoints `GET/POST/DELETE /settings/defaults`
+    (`SettingsDefaultsStatus` / `SettingsDefaultsReset`) — POST 422s when no
+    store. Frontend: `state/useSettingsDefaults.ts`; `OptionsViewer` sticky bar
+    now Reset · Save as default · Apply (Save first applies pending edits then
+    persists; Reset adopts the reverted code-defaults into both drafts + reloads).
+    `useOptions`/`useFitSettings` `apply()` now returns a Promise + an `adopt()`
+    setter. 3 new API tests (`test_api_settings_defaults.py`): no-store disables
+    Save, save survives a fresh app on the same DB, reset clears + reverts.
+  * **View** stays localStorage but switched to the **explicit-save** model:
+    `viewSettings`/`expiryFormat` apply changes live (instant preview) but only
+    `saveDefault()` persists; both expose `dirty`. `ViewSettingsViewer` got the
+    same Save/Reset bar (covers scheme + contrast/brightness + expiry format);
+    the per-card Reset button was removed. NB the chart-header ↻ expiry cycle no
+    longer auto-persists — persistence is now via the View tab's Save button.
 
 - **[2026-06-15] Calibration compute speed-ups** (branch `perf/calibration-speedups`,
   all byte-identical or within golden tolerances):

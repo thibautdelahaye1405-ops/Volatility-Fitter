@@ -1,6 +1,7 @@
 // View tab: display / UX preferences that are purely client-side — colour
 // scheme, contrast, brightness and the expiry-label format. Kept separate from
 // the (quant-heavy) Options tab so the meta-parameters stay uncluttered.
+import { useState } from "react";
 import {
   BRIGHTNESS_RANGE,
   COLOR_SCHEMES,
@@ -49,16 +50,40 @@ function Slider({
 }
 
 export default function ViewSettingsViewer() {
-  const { scheme, contrast, brightness, setScheme, setContrast, setBrightness, reset } =
-    useViewSettings();
-  const { format, setFormat } = useExpiryFormat();
+  const {
+    scheme, contrast, brightness,
+    setScheme, setContrast, setBrightness,
+    reset, saveDefault, dirty,
+  } = useViewSettings();
+  const {
+    format, setFormat,
+    saveDefault: saveExpiry, dirty: expiryDirty,
+  } = useExpiryFormat();
+
+  const [flash, setFlash] = useState(false);
+  const anyDirty = dirty || expiryDirty;
+
+  // Save the whole View tab (look + expiry format) as this device's default.
+  const saveAll = () => {
+    saveDefault();
+    saveExpiry();
+    setFlash(true);
+    setTimeout(() => setFlash(false), 1200);
+  };
+
+  // Revert the look AND the expiry format to the built-in defaults (live only;
+  // press Save to make the reset stick across a reload).
+  const resetAll = () => {
+    reset();
+    setFormat("dmy");
+  };
 
   return (
     <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-y-auto p-4">
       {/* Colour scheme */}
       <div className={card}>
         <h3 className={sectionTitle}>Colour scheme</h3>
-        <p className={sectionHint}>Re-skins the whole app instantly; persisted on this device.</p>
+        <p className={sectionHint}>Re-skins the whole app instantly; "Save as default" persists it on this device.</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {COLOR_SCHEMES.map((s) => (
             <button
@@ -110,12 +135,6 @@ export default function ViewSettingsViewer() {
             onChange={setBrightness}
           />
         </div>
-        <button
-          onClick={reset}
-          className="mt-3 rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] text-slate-400 transition-colors hover:text-slate-200"
-        >
-          Reset to defaults
-        </button>
       </div>
 
       {/* Expiry label format (also surfaced in Options + the chart headers). */}
@@ -158,6 +177,36 @@ export default function ViewSettingsViewer() {
             </span>
           </div>
         </div>
+      </div>
+
+      {/* Sticky Save/Reset bar — mirrors the Options tab. Changes preview live;
+          Save persists the whole View tab (look + expiry format) on this device. */}
+      <div className="sticky bottom-0 mt-auto flex items-center gap-3 border-t border-slate-800 bg-surface-950/80 py-3 backdrop-blur">
+        <span className="text-[11px] text-slate-500">
+          {anyDirty ? "Unsaved view changes" : flash ? "Saved as default ✓" : "View saved"}
+        </span>
+        <button
+          onClick={resetAll}
+          title="Revert the scheme, contrast/brightness and expiry format to the built-in defaults"
+          className="ml-auto rounded-md border border-slate-700 bg-surface-800 px-3 py-1.5 text-[11px] font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
+        >
+          Reset to defaults
+        </button>
+        <button
+          onClick={saveAll}
+          disabled={!anyDirty && !flash}
+          title="Save the current view as this device's default (restored on the next app restart)"
+          className={[
+            "rounded-md border px-3 py-1.5 text-[11px] font-medium transition-colors",
+            flash
+              ? "border-emerald-600/60 bg-emerald-600/15 text-emerald-400"
+              : anyDirty
+                ? "border-accent-600/60 bg-accent-600/15 text-accent-400 hover:bg-accent-600/25"
+                : "cursor-not-allowed border-slate-700 text-slate-600",
+          ].join(" ")}
+        >
+          {flash ? "Saved ✓" : "Save as default"}
+        </button>
       </div>
     </div>
   );

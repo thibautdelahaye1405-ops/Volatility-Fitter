@@ -14,6 +14,15 @@ import type { DistributionData, Regime, ScenarioState } from "./useScenario";
 import { useSpot } from "./useSpot";
 import type { SpotState } from "./useSpot";
 
+/** How often to re-poll /universe while the backend is reachable but has no
+ *  data yet (provider warming up / throttled) or is unreachable — so the app
+ *  reconnects to live automatically instead of latching onto the mock payload. */
+const UNIVERSE_RETRY_MS = 2500;
+
+/** Max smile-fetch retries before giving up on a node (the backend is reachable,
+ *  so a persistent failure is a node-level error — surface it, never mock). */
+const SMILE_MAX_RETRIES = 4;
+
 /** Quote-fitting objective, passed to the backend as `fit_mode`. */
 export type FitMode = "mid" | "bidask" | "haircut";
 
@@ -207,6 +216,12 @@ export function useSmile(): UseSmileResult {
   // Whether any smile has been displayed yet (read inside effects without
   // adding `smile` to dependency arrays, which would cause refetch loops).
   const hasSmileRef = useRef(false);
+  // Latest `source`, readable inside the universe-poll closure without making it
+  // a dependency (which would restart the poll on every source flip).
+  const sourceRef = useRef(source);
+  useEffect(() => {
+    sourceRef.current = source;
+  }, [source]);
 
   /** Switch the whole hook to the deterministic mock payload. */
   const fallBackToMock = useCallback((reason: string) => {
@@ -230,67 +245,132 @@ export function useSmile(): UseSmileResult {
     setRefreshing(false);
   }, []);
 
-  // On mount: load the universe and pick an initial (ticker, expiry).
-  // Any failure (connection refused, non-2xx, empty payload) -> mock mode.
+  // On mount: load the universe and pick an initial (ticker, expiry), RETRYING
+  // until live data is available. The mock payload is reserved for a genuinely
+  // unreachable backend (so `npm run dev` works standalone) — it must NOT be
+  // triggered by a reachable backend that just hasn't resolved a ladder yet.
+  //
+  // Two distinct failure modes, handled differently so a restart self-heals:
+  //  * `/universe` returns 200 but every ladder is empty — the active provider
+  //    is warming up / throttling a fresh process (Yahoo rate-limits the first
+  //    burst) or temporarily capped. The backend IS reachable, so we stay on the
+  //    live source, show a "connecting" state, and re-poll until a ladder
+  //    appears. This is the bug behind the recurring false "Mock Data" on
+  //    restart: the old code latched onto mock the instant the first payload was
+  //    empty and never re-checked.
+  //  * the request itself throws (connection refused / network) — the backend is
+  //    down: fall back to mock for standalone dev, but keep polling so a backend
+  //    that comes up later reconnects to live automatically.
   useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
     const controller = new AbortController();
-    api
-      .get<UniverseResponse>("/universe", { signal: controller.signal })
-      .then((u) => {
-        // Pick the first ticker that actually has a ladder (some live names can
-        // come back empty while others have data); only truly empty -> mock.
-        const firstTicker = firstPopulatedTicker(u);
-        if (firstTicker === null) {
-          fallBackToMock("Backend returned an empty universe");
-          return;
-        }
-        setUniverse(u);
-        setSource("live");
-        setTickerState(firstTicker);
-        setExpiryState(midLadderExpiry(u.expiries[firstTicker] ?? []));
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return; // unmounted, not an outage
-        fallBackToMock(`Backend unreachable (${messageOf(err)})`);
-      });
-    return () => controller.abort();
+    const schedule = () => {
+      timer = window.setTimeout(attempt, UNIVERSE_RETRY_MS);
+    };
+
+    const attempt = () => {
+      api
+        .get<UniverseResponse>("/universe", { signal: controller.signal })
+        .then((u) => {
+          if (cancelled) return;
+          const firstTicker = firstPopulatedTicker(u);
+          if (firstTicker === null) {
+            // Reachable but no data yet: stay live, keep trying — never mock.
+            setUniverse(u);
+            setSource("live");
+            setError("Connecting to market data…");
+            setLoading(true);
+            schedule();
+            return;
+          }
+          setUniverse(u);
+          setSource("live");
+          setTickerState(firstTicker);
+          setExpiryState(midLadderExpiry(u.expiries[firstTicker] ?? []));
+          setError(null);
+          setLoading(false);
+          // Populated: stop polling; the smile effect now drives the load.
+        })
+        .catch((err: unknown) => {
+          if (cancelled || controller.signal.aborted) return;
+          // Backend unreachable: show mock once (dev standalone), keep retrying.
+          if (sourceRef.current !== "mock") {
+            fallBackToMock(`Backend unreachable (${messageOf(err)})`);
+          }
+          schedule();
+        });
+    };
+
+    attempt();
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [fallBackToMock]);
 
   // (Re)load the smile whenever the live selection or fit mode changes
   // (or savePrior bumps reloadNonce after persisting a new prior).
   // Stale in-flight requests are aborted; the previous smile keeps showing
   // behind a `refreshing` flag until the replacement arrives.
+  //
+  // A failure here NEVER falls back to mock: the universe already loaded, so the
+  // backend is reachable — a smile fetch can still fail transiently because the
+  // node's CHAIN quotes are warming up / throttled even though its expiry ladder
+  // resolved (Yahoo lists expiries before the quote pull recovers), or the fit
+  // is momentarily unavailable. We surface the error and RETRY until it resolves;
+  // mock is reserved exclusively for a genuinely unreachable backend (the
+  // universe poll above). This is the other half of the false-"Mock Data" fix:
+  // the app used to load the universe ("Live"), then drop to mock the instant the
+  // first smile fetch failed.
   useEffect(() => {
     if (source !== "live" || ticker === "" || expiry === "") return;
     const controller = new AbortController();
+    let timer: number | undefined;
+    let attempts = 0;
     if (hasSmileRef.current) setRefreshing(true);
-    api
-      .get<SmileData>(`/smiles/${ticker}/${expiry}`, {
-        params: { fit_mode: fitMode },
-        signal: controller.signal,
-      })
-      .then((data) => {
-        setSmile(data);
-        hasSmileRef.current = true;
-        setError(null);
-        setEditError(null); // fresh node / refit: stale edit errors are moot
-        setLoading(false);
-        setRefreshing(false);
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return; // superseded or unmounted
-        if (!hasSmileRef.current) {
-          // Nothing on screen yet: degrade to mock rather than a blank view.
-          fallBackToMock(`Smile fetch failed (${messageOf(err)})`);
-          return;
-        }
-        // Keep the previous smile; just surface the error.
-        setError(messageOf(err));
-        setRefreshing(false);
-      });
-    return () => controller.abort();
+
+    const load = () => {
+      api
+        .get<SmileData>(`/smiles/${ticker}/${expiry}`, {
+          params: { fit_mode: fitMode },
+          signal: controller.signal,
+        })
+        .then((data) => {
+          setSmile(data);
+          hasSmileRef.current = true;
+          setError(null);
+          setEditError(null); // fresh node / refit: stale edit errors are moot
+          setLoading(false);
+          setRefreshing(false);
+        })
+        .catch((err: unknown) => {
+          if (controller.signal.aborted) return; // superseded or unmounted
+          setError(messageOf(err));
+          if (hasSmileRef.current) {
+            // A smile already shows: keep it, just surface the refit error.
+            setRefreshing(false);
+          } else if (++attempts < SMILE_MAX_RETRIES) {
+            // Nothing on screen yet: the chain may still be warming — keep the
+            // live "connecting" state and retry (never drop to mock).
+            setLoading(true);
+            timer = window.setTimeout(load, UNIVERSE_RETRY_MS);
+          } else {
+            // Persistent node-level failure (a real fit/data error, not an
+            // outage): give up retrying, stay LIVE, and surface the error so the
+            // user can pick another node — but never show the false mock badge.
+            setLoading(false);
+          }
+        });
+    };
+    load();
+    return () => {
+      controller.abort();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
     // spotVersion: a spot move transports the smile; refetch via the same path.
-  }, [source, ticker, expiry, fitMode, reloadNonce, spotVersion, fallBackToMock]);
+  }, [source, ticker, expiry, fitMode, reloadNonce, spotVersion]);
 
   // Source the spot-scenario dynamics regime from the Options workspace — the
   // aside now carries only the spot slider (ROADMAP Phase 10 follow-up). A

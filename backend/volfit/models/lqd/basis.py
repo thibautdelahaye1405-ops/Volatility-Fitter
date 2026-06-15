@@ -89,8 +89,19 @@ def lee_slopes(params: LQDParams) -> tuple[float, float]:
     """Asymptotic total-variance wing slopes (beta_L, beta_R).
 
     beta_L = psi(1 / A_L), beta_R = psi(1 / A_R - 1)  (eqs. betaL, betaR).
+
+    A_L / A_R are exp(...) so mathematically > 0, but a degenerate sparse-data
+    fit (e.g. a far-dated node with few quotes) can drive the exponent extreme
+    enough to UNDERFLOW to 0.0. Guard the reciprocals so the slopes take their
+    finite limits — psi(1/A - ...) -> 0 as A -> 0 — instead of raising
+    ZeroDivisionError, which 500s the smile endpoint on an otherwise-usable fit.
     """
     a_l, a_r = endpoint_scales(params)
-    beta_l = float(lee_psi(1.0 / a_l))
-    beta_r = float(lee_psi(1.0 / a_r - 1.0)) if a_r < 1.0 else 2.0
+    beta_l = float(lee_psi(1.0 / a_l)) if a_l > 0.0 else 0.0
+    if a_r >= 1.0:
+        beta_r = 2.0
+    elif a_r > 0.0:
+        beta_r = float(lee_psi(1.0 / a_r - 1.0))
+    else:  # A_R underflowed to 0: psi(+inf) -> 0
+        beta_r = 0.0
     return beta_l, beta_r

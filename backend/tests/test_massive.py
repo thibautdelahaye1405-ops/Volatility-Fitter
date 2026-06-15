@@ -130,6 +130,69 @@ def test_fetch_chain_without_spot_raises_upgrade():
         provider.fetch_chain("SPY", [date.fromisoformat(_exp(30))])
 
 
+def test_iv_fallback_synthesizes_fittable_chain():
+    """NBBO gated but the snapshot still carries IV + underlying price: the chain
+    is synthesized from the IVs as zero-spread European quotes that re-invert to
+    exactly Massive's reported IV (the base-tier 'fit from IVs' path)."""
+    import math
+
+    from volfit.core.black import implied_vol
+
+    iv = 0.1834
+    days = 30
+    call = _snap_result(800, days, "call", quote=False, spot=True)  # OTM -> clean inversion
+    put = _snap_result(700, days, "put", quote=False, spot=True)
+    call["implied_volatility"] = put["implied_volatility"] = iv
+    pages = {"/v3/snapshot/options/SPY": {"results": [call, put], "status": "OK"}}
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages))
+
+    snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
+    assert snap.spot == 741.75
+    assert snap.exercise_style == "european"  # priced from Black, no de-Am
+    c = next(q for q in snap.quotes if q.call_put == "C")
+    assert c.bid == c.ask and c.bid > 0  # zero-spread synthetic quote
+    # Re-invert the OTM call price -> recovers Massive's IV.
+    t = days / 365.0
+    k = math.log(800 / 741.75)
+    recovered = float(implied_vol(k, c.bid / 741.75, t))
+    assert recovered == pytest.approx(iv, abs=1e-4)
+
+
+def test_iv_fallback_off_keeps_empty_quotes():
+    """With iv_fallback disabled, a gated chain returns untwo-sided quotes (the
+    old behaviour) rather than synthesizing from IV."""
+    res = _snap_result(800, 30, "call", quote=False, spot=True)
+    pages = {"/v3/snapshot/options/SPY": {"results": [res], "status": "OK"}}
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages), iv_fallback=False)
+    snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(30))])
+    assert snap.exercise_style == "american"
+    assert snap.quotes[0].bid is None and snap.quotes[0].ask is None
+
+
+def test_spot_from_parity_without_underlying_price():
+    """NBBO entitled but the option snapshot carries no underlying price (an
+    options-only plan): spot is derived from put-call parity on the chain, NOT the
+    separate stocks-snapshot endpoint (so 'Options Advanced' works without it)."""
+    days = 30
+    # forward = 100 (zero carry): C − P = F − K at each strike. Zero-spread quotes.
+    book = {95: (7.0, 2.0), 100: (4.0, 4.0), 105: (2.0, 7.0)}
+    results = []
+    for strike, (c, p) in book.items():
+        for cp, mid in (("call", c), ("put", p)):
+            results.append({
+                "details": {"contract_type": cp, "exercise_style": "american",
+                            "expiration_date": _exp(days), "strike_price": strike},
+                "day": {"close": mid}, "open_interest": 1,
+                "last_quote": {"bid": mid, "ask": mid},
+                "underlying_asset": {"ticker": "SPY"},  # NO price
+            })
+    pages = {"/v3/snapshot/options/SPY": {"results": results, "status": "OK"}}
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages))
+    snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
+    assert snap.spot == pytest.approx(100.0, abs=1e-6)  # parity forward, no stocks call
+    assert all(q.bid is not None for q in snap.quotes)
+
+
 def test_paginate_raises_on_not_authorized():
     pages = {
         "/v3/snapshot/options/SPY": {

@@ -14,7 +14,10 @@ export interface UseFitSettingsResult {
   dirty: boolean;
   busy: boolean;
   flash: boolean;
-  apply: () => void;
+  /** Commit the draft (PUT); resolves once saved (a no-op when not dirty). */
+  apply: () => Promise<void>;
+  /** Adopt a server-authoritative value (e.g. after a defaults reset). */
+  adopt: (s: FitSettings) => void;
   loaded: boolean;
 }
 
@@ -50,10 +53,10 @@ export function useFitSettings(enabled: boolean, onApplied: () => void): UseFitS
     (k) => draft[k] !== saved[k],
   );
 
-  const apply = useCallback(() => {
-    if (!dirty || busy) return;
+  const apply = useCallback((): Promise<void> => {
+    if (!dirty || busy) return Promise.resolve();
     setBusy(true);
-    api
+    return api
       .put<FitSettings>("/settings/fit", { body: draft })
       .then((s) => {
         setSaved(s);
@@ -68,5 +71,10 @@ export function useFitSettings(enabled: boolean, onApplied: () => void): UseFitS
       .finally(() => setBusy(false));
   }, [dirty, busy, draft, onApplied]);
 
-  return { draft, patch, dirty, busy, flash, apply, loaded };
+  const adopt = useCallback((s: FitSettings) => {
+    setSaved(s);
+    setDraft(s);
+  }, []);
+
+  return { draft, patch, dirty, busy, flash, apply, adopt, loaded };
 }
