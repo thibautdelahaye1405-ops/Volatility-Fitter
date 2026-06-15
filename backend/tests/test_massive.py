@@ -193,6 +193,45 @@ def test_spot_from_parity_without_underlying_price():
     assert all(q.bid is not None for q in snap.quotes)
 
 
+def test_fetch_chain_live_serves_from_ws_book():
+    """When a live book is attached, fetch_chain(live) builds the chain from the
+    streamed NBBO (no REST snapshot) and implies spot from parity."""
+    from volfit.data.massive_ws import LiveBook
+
+    days = 30
+    book_prices = {95: (7.0, 2.0), 100: (4.0, 4.0), 105: (2.0, 7.0)}  # forward 100
+    contracts = []
+    for strike in book_prices:
+        for cp in ("call", "put"):
+            contracts.append({
+                "ticker": f"O:SPY{strike}{cp[0].upper()}", "contract_type": cp,
+                "exercise_style": "american", "expiration_date": _exp(days),
+                "strike_price": strike, "underlying_ticker": "SPY",
+            })
+    pages = {"/v3/reference/options/contracts": {"results": contracts, "status": "OK"}}
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages))
+
+    book = LiveBook()
+    for strike, (c, p) in book_prices.items():
+        book.apply([
+            {"ev": "Q", "sym": f"O:SPY{strike}C", "bp": c, "ap": c + 0.2, "t": 1},
+            {"ev": "Q", "sym": f"O:SPY{strike}P", "bp": p, "ap": p + 0.2, "t": 1},
+        ])
+    provider._live_book = book  # what start_streaming() installs
+
+    snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
+    assert snap.spot == pytest.approx(100.0, abs=0.2)  # parity forward from the book
+    call100 = next(q for q in snap.quotes if q.strike == 100 and q.call_put == "C")
+    assert call100.bid == 4.0 and call100.ask == 4.2  # straight from the streamed book
+
+
+def test_ws_url_derives_from_host():
+    p = MassiveProvider(["SPY"], api_key="k")
+    assert p._ws_url() == "wss://socket.massive.com/options"
+    p2 = MassiveProvider(["SPY"], api_key="k", base_url="https://api.polygon.io")
+    assert p2._ws_url() == "wss://socket.polygon.io/options"
+
+
 def test_paginate_raises_on_not_authorized():
     pages = {
         "/v3/snapshot/options/SPY": {

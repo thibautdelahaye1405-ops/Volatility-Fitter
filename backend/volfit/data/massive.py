@@ -91,6 +91,11 @@ class MassiveProvider(OptionChainProvider):
         #: quotes from those IVs so the surface is still fittable. See
         #: ``_chain_from_iv``. Off => raise the usual entitlement error instead.
         self.iv_fallback = iv_fallback
+        #: Optional real-time NBBO book (volfit.data.massive_ws). When streaming,
+        #: ``fetch_chain(live)`` reads bid/ask from it instead of a REST snapshot
+        #: poll. Started/stopped via ``start_streaming``/``stop_streaming``.
+        self._live_book = None
+        self._ws = None
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
@@ -216,6 +221,87 @@ class MassiveProvider(OptionChainProvider):
         / "before close" moments work even with no captured snapshot. Needs a key."""
         return bool(self.api_key)
 
+    # -- real-time streaming (WebSocket live book) ---------------------------
+
+    def option_tickers(self, ticker: str, expiries: list[date] | None) -> list[str]:
+        """The Polygon option tickers (``O:…``) for a ticker's selected expiries —
+        what to subscribe to on the WebSocket."""
+        return [c["ticker"] for c in self._intraday_contracts(ticker, expiries)]
+
+    def _ws_url(self) -> str:
+        """Options-cluster WS endpoint derived from the REST host."""
+        host = self.base_url.split("://")[-1].rstrip("/").replace("api.", "socket.")
+        return f"wss://{host}/options"
+
+    def start_streaming(self, contracts: list[str]) -> None:
+        """Open the WebSocket and stream NBBO for ``contracts`` into a live book;
+        ``fetch_chain(live)`` then serves from it. Replaces any current stream."""
+        from volfit.data.massive_ws import LiveBook, MassiveWebSocket
+
+        self.stop_streaming()
+        self._live_book = LiveBook()
+        self._ws = MassiveWebSocket(
+            self.api_key, list(contracts), self._live_book, url=self._ws_url()
+        )
+        self._ws.start()
+
+    def stop_streaming(self) -> None:
+        """Tear down the WebSocket and drop the live book (back to REST live)."""
+        if self._ws is not None:
+            self._ws.stop()
+            self._ws = None
+        self._live_book = None
+
+    def is_streaming(self) -> bool:
+        return self._ws is not None and self._ws.is_running()
+
+    def _spot_from_quotes(self, quotes: list[OptionQuote]) -> float | None:
+        """Parity forward (spot proxy) from already-built two-sided quotes."""
+        by_exp: dict[date, dict[float, dict[str, float]]] = {}
+        for q in quotes:
+            if q.bid is None or q.ask is None or q.ask < q.bid:
+                continue
+            by_exp.setdefault(q.expiry, {}).setdefault(q.strike, {})[q.call_put] = 0.5 * (q.bid + q.ask)
+        return _parity_forward(by_exp)
+
+    def _chain_from_book(
+        self, ticker: str, expiries: list[date] | None
+    ) -> ChainSnapshot | None:
+        """Build the live chain from the streamed NBBO book for the selected
+        contracts. None until enough two-sided quotes are booked to imply a
+        forward (so the caller can REST-fetch the first frame)."""
+        contracts = self._intraday_contracts(ticker, expiries)
+        if not contracts:
+            return None
+        timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+        quotes: list[OptionQuote] = []
+        styles: list[str] = []
+        for c in contracts:
+            tick = self._live_book.quote(c["ticker"]) if self._live_book else None
+            quotes.append(
+                OptionQuote(
+                    ticker=ticker.upper(),
+                    expiry=c["expiry"],
+                    strike=c["strike"],
+                    call_put=c["call_put"],
+                    bid=tick.bid if tick else None,
+                    ask=tick.ask if tick else None,
+                    last=None,
+                    volume=None,
+                    open_interest=None,
+                    timestamp=timestamp,
+                )
+            )
+            if c["style"] in ("american", "european"):
+                styles.append(c["style"])
+        spot = self._spot_from_quotes(quotes)
+        if spot is None:
+            return None
+        return ChainSnapshot(
+            ticker=ticker.upper(), spot=spot, timestamp=timestamp,
+            quotes=quotes, exercise_style=_resolve_style(styles),
+        )
+
     def fetch_chain(
         self,
         ticker: str,
@@ -233,6 +319,13 @@ class MassiveProvider(OptionChainProvider):
         """
         if as_of is not None and as_of.mode == "intraday" and as_of.ts is not None:
             return self._fetch_intraday(ticker, expiries, as_of.ts)
+        # Live + streaming: serve from the real-time WS book (no REST poll). Falls
+        # through to a REST snapshot if the book hasn't warmed enough to imply a
+        # forward yet (the first fetch after streaming starts).
+        if (as_of is None or as_of.mode == "live") and self._live_book is not None:
+            chain = self._chain_from_book(ticker, expiries)
+            if chain is not None:
+                return chain
         prev_close = as_of is not None and as_of.mode == "prev_close"
         results = self._snapshot_results(ticker, expiries)
         timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
@@ -349,15 +442,9 @@ class MassiveProvider(OptionChainProvider):
         )
 
     def _spot_from_parity(self, results: list[dict]) -> float | None:
-        """Forward of the nearest expiry from put-call parity, used as a spot
-        proxy when the option snapshot carries no ``underlying_asset.price``.
-
-        This keeps an OPTIONS-only plan working without the separate STOCKS
-        snapshot entitlement: C(K) − P(K) = D·(F − K) over the paired strikes
-        gives the forward (≈ spot for the front expiry). None if <3 paired
-        strikes with two-sided quotes."""
-        import numpy as np
-
+        """Forward of the nearest expiry from put-call parity (a spot proxy when
+        the option snapshot carries no ``underlying_asset.price``), so an
+        OPTIONS-only plan works without the separate STOCKS-snapshot entitlement."""
         by_exp: dict[date, dict[float, dict[str, float]]] = {}
         for result in results:
             details = result.get("details") or {}
@@ -371,17 +458,7 @@ class MassiveProvider(OptionChainProvider):
             if bid is None or ask is None or ask < bid:
                 continue
             by_exp.setdefault(expiry, {}).setdefault(strike, {})[call_put] = 0.5 * (bid + ask)
-        for expiry in sorted(by_exp):
-            pairs = [(k, v["C"], v["P"]) for k, v in by_exp[expiry].items() if "C" in v and "P" in v]
-            if len(pairs) < 3:
-                continue
-            strikes = np.array([p[0] for p in pairs])
-            y = np.array([p[1] - p[2] for p in pairs])
-            (a, b), *_ = np.linalg.lstsq(np.column_stack([np.ones_like(strikes), strikes]), y, rcond=None)
-            discount = -float(b)
-            if discount > 0.0:
-                return float(a) / discount
-        return None
+        return _parity_forward(by_exp)
 
     def _spot(self, ticker: str) -> float:
         """Underlying last price via the STOCKS snapshot — a SEPARATE product from
@@ -578,6 +655,26 @@ def _resolve_style(styles: list[str]) -> str:
     if not styles:
         return "american"
     return "european" if styles.count("european") > styles.count("american") else "american"
+
+
+def _parity_forward(by_exp: dict[date, dict[float, dict[str, float]]]) -> float | None:
+    """Nearest-expiry forward from put-call parity ``C(K) − P(K) = D·(F − K)``.
+
+    ``by_exp`` maps expiry -> strike -> {"C": call_mid, "P": put_mid}. Regresses
+    the paired strikes of the front expiry with ≥3 pairs; None otherwise."""
+    import numpy as np
+
+    for expiry in sorted(by_exp):
+        pairs = [(k, v["C"], v["P"]) for k, v in by_exp[expiry].items() if "C" in v and "P" in v]
+        if len(pairs) < 3:
+            continue
+        strikes = np.array([p[0] for p in pairs])
+        y = np.array([p[1] - p[2] for p in pairs])
+        (a, b), *_ = np.linalg.lstsq(np.column_stack([np.ones_like(strikes), strikes]), y, rcond=None)
+        discount = -float(b)
+        if discount > 0.0:
+            return float(a) / discount
+    return None
 
 
 def _price_from_iv(

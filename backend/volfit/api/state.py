@@ -472,6 +472,34 @@ class AppState(UniverseMixin):
                 self._settings_version += 1
             return self._fit_settings
 
+    # ------------------------------------------------ real-time streaming (WS)
+    def sync_streaming(self) -> None:
+        """Start/stop each provider's real-time stream to match the active source
+        and spot mode. Idempotent and cheap (a no-op once in the right state), so
+        the scheduler can call it every tick. A provider streams iff it is the
+        active source, exposes ``start_streaming`` (Massive), and spotMode is
+        ``realtime``; any other streaming provider (e.g. after a source switch) is
+        stopped so it does not leak a background socket."""
+        with self._lock:
+            active, mode = self._active_source, self._options.spotMode
+            providers = dict(self._providers)
+        for sid, prov in providers.items():
+            if not hasattr(prov, "start_streaming"):
+                continue
+            streaming = prov.is_streaming()
+            want = sid == active and mode == "realtime"
+            if want and not streaming:
+                contracts: list[str] = []
+                for ticker in self.active_tickers():
+                    try:
+                        contracts += prov.option_tickers(ticker, self.selected_expiries(ticker))
+                    except Exception:  # noqa: BLE001 — a bad ticker never blocks streaming
+                        continue
+                if contracts:
+                    prov.start_streaming(contracts)
+            elif streaming and not want:
+                prov.stop_streaming()
+
     # ----------------------------------------------------- options (meta) settings
     @property
     def options_version(self) -> int:

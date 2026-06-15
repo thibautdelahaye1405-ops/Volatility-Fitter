@@ -62,6 +62,10 @@ class Scheduler:
         """One scheduler step (pure of the timer, so it is unit-testable)."""
         from volfit.api import workflow
 
+        # Keep the real-time WS stream (Massive) in sync with the active source +
+        # spot mode; cheap no-op when already correct.
+        self._state.sync_streaming()
+
         opts = self._state.options()
         if opts.spotMode == "realtime" and now - self._last_spot >= opts.spotPollSeconds:
             self._last_spot = now

@@ -10,7 +10,26 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (436 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (444 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Massive real-time WebSocket live book (feed workflow phase 1)**:
+  first tier of the Massive feed design (3 tiers: **WS live book** for RT · **S3
+  flat files** [minute/day aggregates → DuckDB/Parquet] for past days · **REST**
+  gap-fill). `volfit/data/massive_ws.py`: a pure thread-safe `LiveBook`
+  (`{O:ticker → bid/ask}`, parses Polygon `Q` events) + `MassiveWebSocket` — a
+  daemon thread running an asyncio client (`websockets` 16, already installed)
+  that connects to the options cluster, auths, subscribes to the active
+  universe's `Q.O:…` channels and folds quotes into the book; injectable
+  `connect` for offline tests; capped-backoff reconnect. `MassiveProvider`:
+  `start_streaming`/`stop_streaming`/`is_streaming`, `option_tickers`, and
+  `fetch_chain(live)` now serves from the book (`_chain_from_book`, spot via
+  parity) with a REST fallback until the book warms. `AppState.sync_streaming()`
+  (called each scheduler tick) starts the stream when Massive is active in
+  realtime mode and stops any orphaned stream on source/mode change. 7 tests
+  (book parsing, the asyncio session via a fake conn, book-served chain, ws-url,
+  sync_streaming). **Live-unverified** (needs the user's key); throttled full-
+  refit cadence + flat-file history are the next steps. The surface updates on
+  the existing realtime spot-poll (reads the book) between Calibrates.
 
 - **[2026-06-15] Massive fits on the base tier (IV fallback) + As-of Prev-Close
   discoverability**:
