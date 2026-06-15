@@ -131,9 +131,15 @@ export default function OptionsViewer() {
         <h3 className={sectionTitle}>Calibration</h3>
 
         <span className={`${rowLabel} mb-1 block`}>Fit target</span>
-        <Segmented options={FIT_MODES} value={fitMode} onChange={setFitMode} disabled={!live} />
+        <Segmented
+          options={FIT_MODES}
+          value={fitMode}
+          onChange={(v) => { setFitMode(v); patch({ fitMode: v }); }}
+          disabled={!live}
+        />
         <p className="mt-1 text-[10px] text-slate-600">
           Mid · Bid-Ask band · Haircut band (shrink set by Haircut below).
+          Persisted via Save as default.
         </p>
 
         {/* Haircut, quote weighting, band mid anchor (FitSettings). */}

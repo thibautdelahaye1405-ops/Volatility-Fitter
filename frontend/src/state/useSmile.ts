@@ -179,6 +179,7 @@ export function useSmile(): UseSmileResult {
   const [ticker, setTickerState] = useState("");
   const [expiry, setExpiryState] = useState("");
   const [fitMode, setFitMode] = useState<FitMode>("mid");
+  const fitModeSeeded = useRef(false); // seed fitMode from the saved default once
   const [smile, setSmile] = useState<SmileData | null>(null);
   const [source, setSource] = useState<SmileSource>("live");
   const [loading, setLoading] = useState(true);
@@ -382,7 +383,7 @@ export function useSmile(): UseSmileResult {
     if (source !== "live") return;
     const controller = new AbortController();
     api
-      .get<{ dynamicsRegime: string; ssr: number; spotMode: "static" | "realtime" }>(
+      .get<{ dynamicsRegime: string; ssr: number; spotMode: "static" | "realtime"; fitMode: FitMode }>(
         "/settings/options",
         { signal: controller.signal },
       )
@@ -391,6 +392,13 @@ export function useSmile(): UseSmileResult {
           o.dynamicsRegime === "custom" ? o.ssr : (o.dynamicsRegime as Regime);
         setScenario((s) => (s.regime === regime ? s : { ...s, regime }));
         setSpotMode(o.spotMode);
+        // Seed the live fit target from the persisted default ONCE on load (the
+        // Options "Fit target" control drives it live thereafter — re-seeding on
+        // every reload would clobber an in-session change).
+        if (!fitModeSeeded.current && o.fitMode) {
+          fitModeSeeded.current = true;
+          setFitMode(o.fitMode);
+        }
       })
       .catch(() => {
         /* keep the current regime if Options is unreachable */

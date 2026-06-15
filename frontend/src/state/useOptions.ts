@@ -6,6 +6,7 @@
 // PUTs it on Apply, and the caller refits the current smile afterwards.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import type { FitMode } from "./useSmile";
 
 /** Spot-vol dynamics regime default (mirror of the backend literal).
  *  "custom" applies the explicit ``ssr`` value; the others are named regimes. */
@@ -22,6 +23,8 @@ export type OptionsFetchMode = "auto" | "on_demand";
 
 /** Mirror of the backend OptionsSettings schema (volfit/api/schemas.py). */
 export interface OptionsSettings {
+  /** Default fit target (Mid / Bid-Ask / Haircut); seeds the session on load. */
+  fitMode: FitMode;
   enforceCalendar: boolean;
   eventsEnabled: boolean;
   normalizeEvents: boolean;
@@ -51,6 +54,7 @@ export interface OptionsSettings {
 }
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
+  fitMode: "mid",
   enforceCalendar: true,
   eventsEnabled: true,
   normalizeEvents: false,

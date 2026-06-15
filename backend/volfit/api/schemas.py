@@ -106,6 +106,12 @@ class OptionsSettings(BaseModel):
         at load ("static"); pairs with the existing As-of selector.
     """
 
+    #: Default fit target (Mid / Bid-Ask band / Haircut band). The live fit target
+    #: is a per-request param; this is the persisted DEFAULT the frontend seeds the
+    #: session from on load, so "Save as default" remembers it. Backend stores it
+    #: only (each fit still receives its mode per request), so it never bumps the
+    #: options version.
+    fitMode: FitMode = "mid"
     # arbitrage / events / var-swap (wired as global defaults)
     enforceCalendar: bool = True
     #: Master switch for the event-weighted variance clock (volfit.calib.

@@ -31,6 +31,7 @@ def client():
 def test_defaults(client):
     settings = client.get("/settings/options").json()
     assert settings == {
+        "fitMode": "mid",
         "enforceCalendar": True,
         "eventsEnabled": True,
         "normalizeEvents": False,
@@ -60,6 +61,7 @@ def test_defaults(client):
 
 def test_put_round_trip(client):
     body = {
+        "fitMode": "haircut",
         "enforceCalendar": False,
         "eventsEnabled": False,
         "normalizeEvents": True,
