@@ -63,7 +63,8 @@ def _max_iv_error(slice_: SmileModel, k: np.ndarray, w: np.ndarray, t: float) ->
         return 0.0
     model_vol = np.sqrt(np.maximum(slice_.implied_w(k), 1e-12) / t)
     quote_vol = np.sqrt(np.asarray(w, float) / t)
-    return float(np.max(np.abs(model_vol - quote_vol)))
+    err = float(np.max(np.abs(model_vol - quote_vol)))
+    return err if np.isfinite(err) else 0.0
 
 
 def build_display_fit(

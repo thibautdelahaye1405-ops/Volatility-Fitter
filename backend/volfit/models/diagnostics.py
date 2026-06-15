@@ -26,6 +26,13 @@ import numpy as np
 from volfit.core.black import black_call
 from volfit.models.base import SmileModel
 
+def _finite(x: float, default: float = 0.0) -> float:
+    """``x`` if finite, else ``default`` — keeps a degenerate/transported slice
+    (which can be non-finite at the far wings) from emitting NaN diagnostics that
+    JSON-serialize to null and break the UI."""
+    return float(x) if np.isfinite(x) else default
+
+
 #: Central-difference step in log-moneyness for the ATM handles.
 _ATM_H = 1e-3
 #: Replication grid for the var-swap integral; +-6 in k captures the OTM
@@ -55,7 +62,9 @@ def numeric_handles(slice_: SmileModel, t: float) -> SliceHandles:
     vol = np.sqrt(np.maximum(slice_.implied_w(ks), 1e-12) / t)
     skew = (vol[2] - vol[0]) / (2.0 * h)
     curvature = (vol[2] - 2.0 * vol[1] + vol[0]) / (h * h)
-    return SliceHandles(atm_vol=float(vol[1]), skew=float(skew), curvature=float(curvature))
+    return SliceHandles(
+        atm_vol=_finite(vol[1]), skew=_finite(skew), curvature=_finite(curvature)
+    )
 
 
 def numeric_var_swap_w(slice_: SmileModel) -> float:
@@ -71,7 +80,7 @@ def numeric_var_swap_w(slice_: SmileModel) -> float:
     integrand = call * np.exp(-k)
     put_side = k < 0.0
     integrand[put_side] += 1.0 - np.exp(-k[put_side])  # (e^k - 1) e^{-k}
-    return 2.0 * float(np.trapezoid(integrand, k))
+    return _finite(2.0 * float(np.trapezoid(integrand, k)))
 
 
 def weighted_rms_vol(
@@ -141,4 +150,4 @@ def numeric_lee_slopes(slice_: SmileModel) -> tuple[float, float]:
     w_l = float(slice_.implied_w(-edge + dk))
     right = (w_rr - w_r) / dk
     left = (w_ll - w_l) / dk  # dw/d(-k): positive when the left wing rises
-    return float(left), float(right)
+    return _finite(left), _finite(right)
