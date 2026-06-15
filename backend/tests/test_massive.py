@@ -264,6 +264,18 @@ def test_ws_url_derives_from_host():
     assert p2._ws_url() == "wss://socket.polygon.io/options"
 
 
+def test_ws_urls_candidate_list_and_override():
+    # Default: derived real-time cluster, with the delayed cluster auto-appended.
+    p = MassiveProvider(["SPY"], api_key="k")
+    assert p._ws_urls() == [
+        "wss://socket.massive.com/options",
+        "wss://delayed.polygon.io/options",
+    ]
+    # Explicit override becomes the primary; the delayed fallback still follows.
+    p2 = MassiveProvider(["SPY"], api_key="k", ws_url="wss://delayed.polygon.io/options")
+    assert p2._ws_urls() == ["wss://delayed.polygon.io/options"]  # dedup, no dup fallback
+
+
 def test_paginate_raises_on_not_authorized():
     pages = {
         "/v3/snapshot/options/SPY": {

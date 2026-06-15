@@ -88,6 +88,45 @@ def test_session_auths_subscribes_and_books_quotes():
     assert book.quote("O:SPY260918C00500000").ask == 10.2
 
 
+class SilentConn(FakeConn):
+    """Connects + (implicitly) auths but never yields a frame — the signature of a
+    cluster whose quote channels aren't entitled. Blocks past the quote grace."""
+
+    async def __aiter__(self):
+        await asyncio.sleep(0.5)  # longer than the test's quote_grace -> timeout
+        return
+        yield  # pragma: no cover (makes this an async generator)
+
+
+def test_consume_loop_advances_past_a_silent_cluster():
+    """The real-time cluster connects but streams nothing (gated); the client must
+    advance to the delayed candidate and book its quotes."""
+    streaming = FakeConn([
+        json.dumps([{"ev": "status", "status": "auth_success"}]),
+        json.dumps([{"ev": "Q", "sym": "O:SPY1", "bp": 1.0, "ap": 1.2, "t": 1}]),
+    ])
+    conns = [SilentConn([]), streaming]  # 1st candidate silent, 2nd streams
+    book = LiveBook()
+    ws = MassiveWebSocket(
+        "KEY",
+        ["O:SPY1"],
+        book,
+        urls=["wss://socket.massive.com/options", "wss://delayed.polygon.io/options"],
+        connect=lambda: conns.pop(0),
+        quote_grace=0.05,
+    )
+
+    async def drive():
+        # One sweep: silent session returns False (advances idx), then the streaming
+        # session books the quote. Stop the loop right after it locks on.
+        await ws._session(ws._urls[0])  # silent -> no data
+        assert book.size() == 0
+        got = await ws._session(ws._urls[1])  # streaming cluster
+        assert got is True and book.quote("O:SPY1").bid == 1.0
+
+    asyncio.run(drive())
+
+
 def test_sync_streaming_starts_and_stops_with_mode():
     """AppState.sync_streaming opens the stream for the active Massive source in
     realtime mode and tears it down when the mode/source no longer wants it."""

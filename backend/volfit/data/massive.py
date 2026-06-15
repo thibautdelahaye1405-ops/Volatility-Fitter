@@ -80,12 +80,18 @@ class MassiveProvider(OptionChainProvider):
         max_days: int = 730,
         http_get: Callable[[str, dict | None], dict] | None = None,
         iv_fallback: bool = True,
+        ws_url: str | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.max_days = max_days
         self._http_get = http_get
+        #: Optional explicit real-time WS cluster override (env
+        #: VOLFIT_MASSIVE_WS_URL via serve.py). When unset the cluster is derived
+        #: from the REST host, with the delayed cluster as an auto-fallback —
+        #: see ``_ws_urls``.
+        self._ws_url_override = ws_url
         #: When the live NBBO quotes are gated (base tier) but the snapshot still
         #: carries Massive's per-contract implied vol, synthesize zero-spread
         #: quotes from those IVs so the surface is still fittable. See
@@ -236,9 +242,25 @@ class MassiveProvider(OptionChainProvider):
         return [c["ticker"] for c in self._intraday_contracts(ticker, expiries)]
 
     def _ws_url(self) -> str:
-        """Options-cluster WS endpoint derived from the REST host."""
+        """Real-time options-cluster WS endpoint derived from the REST host."""
         host = self.base_url.split("://")[-1].rstrip("/").replace("api.", "socket.")
         return f"wss://{host}/options"
+
+    def _ws_urls(self) -> list[str]:
+        """Candidate WS clusters, tried in order by the live-book client.
+
+        Primary = the explicit override (``VOLFIT_MASSIVE_WS_URL``) or the
+        real-time cluster derived from the REST host. The **delayed** cluster
+        (``wss://delayed.polygon.io/options``) is appended as an auto-fallback:
+        a delayed-tier key connects + auths on the real-time cluster but is served
+        no quotes there, so the client advances to the delayed cluster (verified
+        2026-06-15 to stream live SPY NBBO on this plan)."""
+        primary = self._ws_url_override or self._ws_url()
+        candidates = [primary]
+        for fallback in ("wss://delayed.polygon.io/options",):
+            if fallback not in candidates:
+                candidates.append(fallback)
+        return candidates
 
     def start_streaming(self, contracts: list[str]) -> None:
         """Open the WebSocket and stream NBBO for ``contracts`` into a live book;
@@ -248,7 +270,7 @@ class MassiveProvider(OptionChainProvider):
         self.stop_streaming()
         self._live_book = LiveBook()
         self._ws = MassiveWebSocket(
-            self.api_key, list(contracts), self._live_book, url=self._ws_url()
+            self.api_key, list(contracts), self._live_book, urls=self._ws_urls()
         )
         self._ws.start()
 

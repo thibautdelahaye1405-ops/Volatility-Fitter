@@ -97,10 +97,17 @@ class MassiveWebSocket:
     contracts : option tickers to subscribe to (``"O:SPY…"``); the client
                 prefixes each with the quote channel ``Q.``.
     book      : the ``LiveBook`` to update.
-    url       : cluster endpoint (default options cluster).
-    connect   : optional ``() -> async-context-manager`` yielding a connection
-                with ``send(str)`` and async iteration over text frames —
-                injected by tests; defaults to ``websockets.connect``.
+    url/urls  : cluster endpoint(s). Pass a single ``url`` or a ``urls`` list of
+                CANDIDATE clusters tried in order — the client locks onto the
+                first that actually streams quotes and advances past any cluster
+                that connects + auths but stays SILENT (the signature of a feed
+                whose real-time quote channels aren't entitled; a delayed-tier key
+                is served on a ``delayed.*`` cluster instead).
+    connect   : optional ``(url) -> async-context-manager`` (or zero-arg) yielding
+                a connection with ``send(str)`` and async iteration over text
+                frames — injected by tests; defaults to ``websockets.connect``.
+    quote_grace : seconds to wait for the first quote on a freshly-connected
+                cluster before deciding it is silent and trying the next candidate.
     """
 
     def __init__(
@@ -109,15 +116,19 @@ class MassiveWebSocket:
         contracts: list[str],
         book: LiveBook,
         url: str = DEFAULT_WS_URL,
+        urls: list[str] | None = None,
         connect=None,
         max_backoff: float = 30.0,
+        quote_grace: float = 6.0,
     ) -> None:
         self._key = api_key
         self._contracts = list(contracts)
         self._book = book
-        self._url = url
+        self._urls = list(urls) if urls else [url]
+        self._idx = 0
         self._connect = connect
         self._max_backoff = max_backoff
+        self._quote_grace = quote_grace
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -149,35 +160,61 @@ class MassiveWebSocket:
             pass
 
     async def _consume_loop(self) -> None:
-        """Reconnect with capped exponential backoff until ``stop()``."""
+        """Reconnect until ``stop()``, rotating through the candidate clusters.
+
+        A session that streamed quotes keeps reconnecting to the SAME cluster on a
+        drop (``got`` True → idx unchanged). A silent/errored session advances to
+        the next candidate; once a full sweep finds nothing, back off (capped) so a
+        wholly-unentitled key doesn't busy-loop."""
         backoff = 1.0
         while not self._stop.is_set():
+            url = self._urls[self._idx]
             try:
-                await self._session()
-                backoff = 1.0  # a clean session ended (e.g. server close): retry fast
-            except Exception:  # noqa: BLE001 — drop/auth error: back off and retry
-                if self._stop.is_set():
-                    return
+                got = await self._session(url)
+            except Exception:  # noqa: BLE001 — drop/auth error: try the next cluster
+                got = False
+            if self._stop.is_set():
+                return
+            if got:
+                backoff = 1.0
+                continue  # working cluster: reconnect here on the next drop
+            self._idx = (self._idx + 1) % len(self._urls)
+            if self._idx == 0:  # swept every candidate without a quote: back off
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2.0, self._max_backoff)
 
-    async def _session(self) -> None:
-        """One connect → auth → subscribe → consume pass."""
-        connect = self._connect or self._default_connect
+    async def _session(self, url: str | None = None) -> bool:
+        """One connect → auth → subscribe → consume pass against ``url``. Returns
+        whether any quote arrived (so the loop can tell a serving cluster from a
+        silent one)."""
+        url = url or self._urls[self._idx]
+        connect = self._connect or (lambda: self._default_connect(url))
+        got_data = False
         async with connect() as conn:
             await conn.send(json.dumps({"action": "auth", "params": self._key}))
             if self._contracts:
                 params = ",".join(f"Q.{c}" for c in self._contracts)
                 await conn.send(json.dumps({"action": "subscribe", "params": params}))
-            async for raw in conn:
-                if self._stop.is_set():
-                    return
-                self._book.apply(_parse(raw))
+            aiter = conn.__aiter__()
+            while not self._stop.is_set():
+                try:
+                    raw = await asyncio.wait_for(aiter.__anext__(), timeout=self._quote_grace)
+                except asyncio.TimeoutError:
+                    if got_data:
+                        continue  # a quiet moment on a working cluster — keep waiting
+                    break  # silent since connect → this cluster isn't serving us
+                except (StopAsyncIteration, RuntimeError):
+                    break  # connection closed / iterator exhausted → reconnect
+                events = _parse(raw)
+                self._book.apply(events)
+                if any(ev.get("ev") == "Q" for ev in events):
+                    got_data = True
+        return got_data
 
-    def _default_connect(self):
+    def _default_connect(self, url: str):
         import websockets
 
-        return websockets.connect(self._url, max_size=None, ping_interval=20)
+        return websockets.connect(url, max_size=None, ping_interval=20)
 
 
 def _parse(raw) -> list[dict]:

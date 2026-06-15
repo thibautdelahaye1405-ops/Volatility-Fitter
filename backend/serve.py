@@ -56,7 +56,11 @@ def _build_providers() -> dict:
     return {
         "yahoo": YahooProvider(tickers),
         "bloomberg": BloombergProvider(tickers),
-        "massive": MassiveProvider(tickers, api_key=os.environ.get("VOLFIT_MASSIVE_KEY", "").strip()),
+        "massive": MassiveProvider(
+            tickers,
+            api_key=os.environ.get("VOLFIT_MASSIVE_KEY", "").strip(),
+            ws_url=(os.environ.get("VOLFIT_MASSIVE_WS_URL", "").strip() or None),
+        ),
         "synthetic": SyntheticProvider(reference_date=date.today(), tickers=tuple(tickers)),
     }
 

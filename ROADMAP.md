@@ -10,10 +10,29 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (449 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (451 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
 
-- **[2026-06-15] Massive feed Tier 1 finish (CODE — live-verify still pending a
-  key)**: the three remaining code sub-tasks of the WS live book. (1)
+- **[2026-06-15] Massive feed Tier 0+1 LIVE-VERIFIED + delayed-cluster WS
+  fallback**: with the user's key, `massive_diag.py SPY` confirmed the REST feed
+  end-to-end on both hosts (api.massive.com / api.polygon.io): contracts+snapshot
+  HTTP 200, two-sided NBBO (`fetch_chain` → 376 quotes / 308 two-sided),
+  `underlying_asset.price`=755.21, and the **stocks plan is entitled** (so the
+  IV-fallback isn't needed here). **WS finding:** the real-time cluster
+  `wss://socket.massive.com/options` connects+auths but is **silent** (no
+  subscribe-ack, no quotes) — this key is a **delayed** tier; the delayed cluster
+  `wss://delayed.polygon.io/options` auths, acks the subscribe, and streams live
+  SPY NBBO. So `MassiveWebSocket` now takes a **candidate URL list** and
+  auto-advances past a silent cluster (per-frame `quote_grace`, default 6s) to one
+  that streams — works for both real-time and delayed keys.
+  `MassiveProvider._ws_urls()` = `[override-or-derived primary,
+  wss://delayed.polygon.io/options]`; override via `VOLFIT_MASSIVE_WS_URL` (read by
+  serve.py) — **set it to the delayed URL on this key to skip the ~6s warmup on the
+  dead real-time cluster.** Live-verified: the book fills from the delayed cluster
+  and `fetch_chain(live)` serves REST while the book is cold. 2 more tests (candidate
+  list + silent-cluster advance).
+
+- **[2026-06-15] Massive feed Tier 1 finish (the three code sub-tasks of the WS
+  live book)**: (1)
   **Contract-listing cache** — `MassiveProvider._intraday_contracts` is cached per
   `(ticker, frozenset(expiries))` (`refresh_contracts()` invalidates), so the WS
   read path (`_chain_from_book`/`option_tickers`) and the per-tick resubscribe diff
@@ -1017,13 +1036,17 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 The design (agreed 2026-06-15): all three tiers sit behind the as-of `(day →
 moment)` model so the fitter never sees the difference.
 
-0. **[NEXT — verify] Confirm the live REST feed end-to-end.** Run
-   `backend/massive_diag.py SPY` with the (now stock-upgraded) key on both hosts;
-   confirm `underlying_asset.price` is populated and `fetch_chain` returns
-   two-sided quotes + a real spot. This unblocks live-verifying everything below.
-1. **[Tier 1 finish — CODE DONE 2026-06-15, live-verify still pending a key]**
-   The three code sub-tasks of the live book are shipped (449 tests green; all
-   offline-tested since I have no Massive key here):
+0. **[DONE — verified 2026-06-15] Live REST feed confirmed end-to-end.**
+   `massive_diag.py SPY` on both hosts: two-sided NBBO (376 quotes / 308
+   two-sided), `underlying_asset.price` populated, stocks plan entitled. See the
+   dated STATUS entry.
+1. **[Tier 1 finish — CODE DONE + LIVE-VERIFIED 2026-06-15]** The three code
+   sub-tasks of the live book are shipped (451 tests green), and the WS book is
+   live-verified — but only via the **delayed cluster** (`wss://delayed.polygon.io/
+   options`): the real-time cluster is silent on this (delayed-tier) key, so
+   `MassiveWebSocket` now auto-advances a candidate URL list to the cluster that
+   actually streams (`VOLFIT_MASSIVE_WS_URL` to override; set it to the delayed URL
+   here to skip the ~6s warmup). The three sub-tasks:
    * **Contract-listing cache** (`MassiveProvider._intraday_contracts` keyed by
      `(ticker, frozenset(expiries))`, `refresh_contracts()` to invalidate) — the
      WS read (`_chain_from_book`/`option_tickers`) and the per-tick resubscribe
@@ -1040,9 +1063,9 @@ moment)` model so the fitter never sees the difference.
      5s) — refetch chains from the book + recalibrate ALL lit nodes (background,
      independent of `autoCalibrate`; realtime spot mode is the opt-in). Distinct
      from the minutes-cadence `optionsFetchMode == "auto"` REST refetch.
-   **Still NEXT (needs the user's key):** select Massive + Real-time and confirm
-   the book fills, `fetch_chain(live)` serves from it, the refit loop recalibrates,
-   and resubscribe fires on a universe edit.
+   **Remaining (optional) live-UI check:** drive the running app (Massive +
+   Real-time) to confirm the throttled refit + resubscribe paths end-to-end in the
+   scheduler thread (the engine paths are verified by the probe + tests).
 2. **[Tier 2 — flat-file history]** S3 flat files → DuckDB/Parquet local store
    (the long-deferred columnar history). **Minute-aggregate** files first
    (compact; one OHLC/contract/minute → reconstruct any historical intraday
