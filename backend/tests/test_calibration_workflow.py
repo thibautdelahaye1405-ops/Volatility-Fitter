@@ -65,6 +65,29 @@ def test_options_fetch_marks_stale_when_auto_off():
     assert service.smile_payload(state, TICKER, iso, "mid").stale is True
 
 
+def test_calibrate_all_skips_lv_when_localvol_disabled(monkeypatch):
+    """localVolEnabled gates the LV (affine) work items; parametric nodes always
+    fit. Items carry the coarse phase used by the UI status."""
+    from volfit.api import workflow
+
+    state = _state(auto=True)
+    captured: dict = {}
+    monkeypatch.setattr(
+        state.calibration_jobs, "start",
+        lambda items: (captured.__setitem__("items", items) or True),
+    )
+
+    state.set_options(state.options().model_copy(update={"localVolEnabled": True}))
+    workflow.calibrate_all(state)
+    phases_on = {phase for _label, phase, _thunk in captured["items"]}
+    assert "Parametric" in phases_on and "LV" in phases_on
+
+    state.set_options(state.options().model_copy(update={"localVolEnabled": False}))
+    workflow.calibrate_all(state)
+    phases_off = {phase for _label, phase, _thunk in captured["items"]}
+    assert phases_off == {"Parametric"}  # LV items skipped when disabled
+
+
 def test_stream_refit_respects_autocalibrate(monkeypatch):
     """The streaming throttled refit obeys autoCalibrate (the master switch for
     unattended refits): ON refetches the book + recalibrates, OFF is a no-op."""

@@ -63,6 +63,7 @@ def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
         total=job.total,
         done=job.done,
         current=job.current,
+        phase=job.phase,
         error=job.error,
         cancelled=job.cancelled,
         litNodes=len(nodes),
@@ -80,6 +81,7 @@ def scheduler_status(state: AppState) -> SchedulerStatus:
         spotMode=opts.spotMode,
         optionsFetchMode=opts.optionsFetchMode,
         autoCalibrate=opts.autoCalibrate,
+        localVolEnabled=opts.localVolEnabled,
         secondsToNextOptions=sched.seconds_to_next_options() if sched is not None else -1.0,
         secondsToNextSpot=sched.seconds_to_next_spot() if sched is not None else -1.0,
     )
@@ -104,14 +106,18 @@ def _affine_thunk(state: AppState, ticker: str, fit_mode: str):
 
 
 def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
-    """Start a BACKGROUND calibration of every lit node AND each lit ticker's LV
-    (affine) surface, in succession. False if a job is already running."""
-    items: list[tuple[str, object]] = [
-        (f"{t} {iso}", (lambda t=t, iso=iso: service.calibrate_node(state, t, iso, fit_mode)))
+    """Start a BACKGROUND calibration of every lit node, then (when Local-Vol is
+    enabled) each lit ticker's LV (affine) surface. Items carry a coarse ``phase``
+    ("Parametric" | "LV") so the UI can show "Calibrating Parametric" then
+    "Calibrating LV". False if a job is already running."""
+    items: list[tuple[str, str, object]] = [
+        (f"{t} {iso}", "Parametric",
+         (lambda t=t, iso=iso: service.calibrate_node(state, t, iso, fit_mode)))
         for t, iso in lit_nodes(state)
     ]
-    for ticker in _lit_tickers(state):
-        items.append((f"{ticker} · LV surface", _affine_thunk(state, ticker, fit_mode)))
+    if state.options().localVolEnabled:
+        for ticker in _lit_tickers(state):
+            items.append((f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode)))
     return state.calibration_jobs.start(items)
 
 
@@ -129,7 +135,7 @@ def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int
     nodes = lit_nodes(state, [ticker])
     for t, iso in nodes:
         service.calibrate_node(state, t, iso, fit_mode)
-    if nodes:
+    if nodes and state.options().localVolEnabled:
         _affine_thunk(state, ticker, fit_mode)()  # also (re)build the LV surface
     return len(nodes)
 

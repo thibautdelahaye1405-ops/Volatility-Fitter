@@ -159,6 +159,11 @@ class OptionsSettings(BaseModel):
     #: OFF = leave nodes stale until the user presses Calibrate. Also gates whether
     #: a quote edit / parameter change refits (ON) or just marks stale (OFF).
     autoCalibrate: bool = True
+    #: Local-Vol (affine) calibration master switch. OFF = the background Calibrate
+    #: job skips every ticker's LV surface (only the parametric nodes fit, so test
+    #: cycles are fast) AND the Local Vol workspace tab is disabled. Pure
+    #: workflow/UI gate — does not affect parametric fits, so it never busts caches.
+    localVolEnabled: bool = True
     #: Spot updates: "realtime" = the backend scheduler polls the provider spot
     #: every ``spotPollSeconds`` and transports the surface; "static" = on-demand
     #: only (the "Fetch spots" button).
@@ -572,6 +577,7 @@ class CalibrationStatus(BaseModel):
     total: int  # nodes in the current/last job
     done: int  # nodes calibrated so far
     current: str  # "TICKER EXPIRY" in flight, "" when idle
+    phase: str = ""  # coarse phase of the in-flight item: "Parametric" | "LV"
     error: str  # last per-node error (the job never aborts on one bad node)
     cancelled: bool
     litNodes: int  # total lit (calibratable) nodes in the universe
@@ -600,6 +606,7 @@ class SchedulerStatus(BaseModel):
     spotMode: str  # "realtime" | "static"
     optionsFetchMode: str  # "auto" | "on_demand"
     autoCalibrate: bool
+    localVolEnabled: bool  # whether LV is calibrated + the Local Vol tab is usable
     #: Seconds to the next auto options fetch / spot poll, or -1 when that mode
     #: is on-demand/static (so the UI shows a button instead of a countdown).
     secondsToNextOptions: float

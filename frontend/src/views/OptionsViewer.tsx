@@ -227,6 +227,12 @@ export default function OptionsViewer() {
               checked={draft.autoCalibrate} disabled={!live}
               onChange={(v) => patch({ autoCalibrate: v })}
             />
+            <Toggle
+              label="Local-Vol calibration"
+              hint="On: Calibrate also fits each ticker's Local-Vol surface (slow); the Local Vol tab is available. Off: skip LV for fast test cycles and grey out the Local Vol tab."
+              checked={draft.localVolEnabled} disabled={!live}
+              onChange={(v) => patch({ localVolEnabled: v })}
+            />
             <div>
               <span className={`${rowLabel} mb-1 block`}>Spot prices</span>
               <Segmented

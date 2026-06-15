@@ -20,6 +20,8 @@ export interface CalibrationStatus {
   litNodes: number;
   staleNodes: number;
   spotVersion: number;
+  /** Coarse phase of the in-flight item: "Parametric" | "Local Vol" | "". */
+  phase: string;
 }
 
 /** Response of GET /scheduler. */
@@ -28,6 +30,7 @@ export interface SchedulerStatus {
   spotMode: "realtime" | "static";
   optionsFetchMode: "auto" | "on_demand";
   autoCalibrate: boolean;
+  localVolEnabled: boolean; // gates the Local Vol tab + LV calibration
   secondsToNextOptions: number; // -1 when on-demand
   secondsToNextSpot: number; // -1 when static
 }

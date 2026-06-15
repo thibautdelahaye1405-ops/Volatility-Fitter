@@ -25,6 +25,7 @@ class JobStatus:
     total: int = 0
     done: int = 0
     current: str = ""  # "TICKER EXPIRY" being calibrated, "" when idle
+    phase: str = ""  # coarse phase of the in-flight item ("Parametric" | "LV")
     error: str = ""  # last per-node error (calibration never aborts the job)
     cancelled: bool = False
 
@@ -46,12 +47,13 @@ class CalibrationJobs:
         with self._lock:
             return self._status.running
 
-    def start(self, items: list[tuple[str, Callable[[], None]]]) -> bool:
-        """Start a background job over labelled work items ``(label, thunk)``.
+    def start(self, items: list[tuple[str, str, Callable[[], None]]]) -> bool:
+        """Start a background job over labelled work items ``(label, phase, thunk)``.
 
         Each thunk calibrates one unit (a parametric node or a ticker's LV
-        surface); ``label`` shows in ``current``. Returns False (without starting)
-        if a job is already running.
+        surface); ``label`` shows in ``current`` and ``phase`` is the coarse stage
+        ("Parametric" | "Local Vol"). Returns False (without starting) if a job is
+        already running.
         """
         with self._lock:
             if self._status.running:
@@ -61,13 +63,14 @@ class CalibrationJobs:
 
         def run() -> None:
             try:
-                for label, thunk in items:
+                for label, phase, thunk in items:
                     if self._cancel.is_set():
                         with self._lock:
                             self._status.cancelled = True
                         break
                     with self._lock:
                         self._status.current = label
+                        self._status.phase = phase
                     try:
                         thunk()
                     except Exception as exc:  # one bad item never kills the run
@@ -79,6 +82,7 @@ class CalibrationJobs:
                 with self._lock:
                     self._status.running = False
                     self._status.current = ""
+                    self._status.phase = ""
 
         self._thread = threading.Thread(target=run, name="calib-job", daemon=True)
         self._thread.start()

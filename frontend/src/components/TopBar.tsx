@@ -2,7 +2,7 @@
 // selector (Yahoo / Bloomberg / Massive / Synthetic) with a status light each
 // (green = real-time, amber = delayed, red = unavailable). Switching the source
 // refetches the universe + smile on the new feed.
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { TabDef, TabId } from "../App";
 import { useSmileSession } from "../state/smileSession";
 import { useDataSources } from "../state/useDataSources";
@@ -84,6 +84,12 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
   const { source, loading, refreshUniverse, reload, refreshViews } = useSmileSession();
   const live = source === "live";
   const workflow = useWorkflow(live, refreshViews);
+  // Local-Vol master switch (polled on the scheduler status). When off, the
+  // Local Vol tab is disabled; bounce away if it's the active tab.
+  const localVolEnabled = workflow.sched?.localVolEnabled ?? true;
+  useEffect(() => {
+    if (!localVolEnabled && activeTab === "localvol") onSelect("parametric");
+  }, [localVolEnabled, activeTab, onSelect]);
 
   // After a source switch, refetch the universe (keeps the selection valid)
   // and reload the current smile so every workspace reflects the new feed.
@@ -122,20 +128,25 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
       <nav className="flex h-full items-stretch gap-1" aria-label="Workspaces">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
+          const disabled = tab.id === "localvol" && !localVolEnabled;
           return (
             <button
               key={tab.id}
-              onClick={() => onSelect(tab.id)}
+              onClick={() => { if (!disabled) onSelect(tab.id); }}
+              disabled={disabled}
               aria-current={isActive ? "page" : undefined}
+              title={disabled ? "Local-Vol calibration is disabled (enable it in Options)" : undefined}
               className={[
                 "relative px-4 text-sm font-medium transition-colors",
-                isActive
-                  ? "text-accent-400"
-                  : "text-slate-400 hover:text-slate-200",
+                disabled
+                  ? "cursor-not-allowed text-slate-600"
+                  : isActive
+                    ? "text-accent-400"
+                    : "text-slate-400 hover:text-slate-200",
               ].join(" ")}
             >
               {tab.label}
-              {isActive && (
+              {isActive && !disabled && (
                 <span className="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-accent-500" />
               )}
             </button>

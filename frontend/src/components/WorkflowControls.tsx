@@ -86,7 +86,7 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
         ].join(" ")}
       >
         {running
-          ? `Calibrating ${calib?.done ?? 0}/${calib?.total ?? 0}`
+          ? `Calibrating ${calib?.phase || "…"}`
           : stale > 0
             ? `Calibrate (${stale})`
             : "Calibrate"}

@@ -40,6 +40,8 @@ export interface OptionsSettings {
   dynamicsRegime: DynamicsRegime;
   ssr: number;
   autoCalibrate: boolean;
+  /** Master switch for Local-Vol (affine) calibration + the Local Vol tab. */
+  localVolEnabled: boolean;
   spotMode: SpotMode;
   spotPollSeconds: number;
   optionsFetchMode: OptionsFetchMode;
@@ -67,6 +69,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   dynamicsRegime: "sticky_strike",
   ssr: 2.0,
   autoCalibrate: true,
+  localVolEnabled: true,
   spotMode: "static",
   spotPollSeconds: 5.0,
   optionsFetchMode: "on_demand",
