@@ -3,6 +3,7 @@
 // session it mirrors) survives switching between workspace tabs.
 import { useState } from "react";
 import TopBar from "./components/TopBar";
+import ErrorBoundary from "./components/ErrorBoundary";
 import SmileViewer from "./views/SmileViewer";
 import LocalVolViewer from "./views/LocalVolViewer";
 import ForwardsViewer from "./views/ForwardsViewer";
@@ -51,19 +52,23 @@ export default function App() {
       <div className="flex h-full flex-col">
         <TopBar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
 
-        {/* Main workspace area; each tab renders its dedicated view. */}
+        {/* Main workspace area; each tab renders its dedicated view, wrapped in
+            an error boundary (keyed by tab) so a render crash in one view never
+            white-screens the whole app and the error stays visible. */}
         <main className="flex-1 overflow-auto">
-          {activeTab === "parametric" && <SmileViewer />}
-          {activeTab === "localvol" && <LocalVolViewer />}
-          {activeTab === "universe" && <UniverseManager />}
-          {activeTab === "forwards" && <ForwardsViewer />}
-          {activeTab === "options" && <OptionsViewer />}
-          {activeTab === "view" && <ViewSettingsViewer />}
-          {activeTab === "graph" && (
-            // Drill-in: GraphViewer points the shared smile session at a
-            // node, then asks the shell to switch to the Parametric workspace.
-            <GraphViewer onNavigateToSmile={() => setActiveTab("parametric")} />
-          )}
+          <ErrorBoundary key={activeTab} label={TABS.find((t) => t.id === activeTab)?.label}>
+            {activeTab === "parametric" && <SmileViewer />}
+            {activeTab === "localvol" && <LocalVolViewer />}
+            {activeTab === "universe" && <UniverseManager />}
+            {activeTab === "forwards" && <ForwardsViewer />}
+            {activeTab === "options" && <OptionsViewer />}
+            {activeTab === "view" && <ViewSettingsViewer />}
+            {activeTab === "graph" && (
+              // Drill-in: GraphViewer points the shared smile session at a
+              // node, then asks the shell to switch to the Parametric workspace.
+              <GraphViewer onNavigateToSmile={() => setActiveTab("parametric")} />
+            )}
+          </ErrorBoundary>
         </main>
       </div>
     </SmileSessionProvider>
