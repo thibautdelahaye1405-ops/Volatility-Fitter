@@ -10,6 +10,8 @@ diagnostics).
 from volfit.models.localvol.affine import (
     AffinePDESolution,
     AffineVarianceSurface,
+    DupireSteps,
+    precompute_dupire_steps,
     solve_affine_dupire,
 )
 from volfit.models.localvol.affine_calib import (
@@ -37,6 +39,7 @@ __all__ = [
     "AffineCalibration",
     "AffinePDESolution",
     "AffineVarianceSurface",
+    "DupireSteps",
     "ExtractionResult",
     "LocalVolDiagnostics",
     "LocalVolGrid",
@@ -48,6 +51,7 @@ __all__ = [
     "calibrate_affine",
     "dupire_local_variance",
     "extract_grid",
+    "precompute_dupire_steps",
     "solve_affine_dupire",
     "solve_dupire",
     "varswap_const",

@@ -32,6 +32,7 @@ from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_
 from volfit.models.localvol.affine import (
     AffinePDESolution,
     AffineVarianceSurface,
+    precompute_dupire_steps,
     solve_affine_dupire,
 )
 
@@ -220,6 +221,9 @@ def calibrate_affine(
     sqrt_anchor = np.sqrt(mid_anchor_weight)
     n_evals = 0
     cache: dict[bytes, tuple] = {}
+    # The hat basis and active-column schedule depend only on the vertex set and
+    # grids (not theta), so build them once and reuse for every trial theta.
+    steps = precompute_dupire_steps(surface0, x_grid, t_grid)
 
     def _option_block(p: np.ndarray, jp: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Option residuals + Jacobian: mid LSQ, or the band objective.
@@ -244,7 +248,9 @@ def calibrate_affine(
             return hit
         n_evals += 1
         surf = surface0.with_theta(theta)
-        sol = solve_affine_dupire(surf, x_grid, t_grid, expiries, sensitivities=True)
+        sol = solve_affine_dupire(
+            surf, x_grid, t_grid, expiries, sensitivities=True, steps=steps
+        )
         p, z, jp, jz = _model_values(sol, options, varswaps, q_w, q_c, True)
         res_opt, jac_opt = _option_block(p, jp)
         res = np.concatenate(
