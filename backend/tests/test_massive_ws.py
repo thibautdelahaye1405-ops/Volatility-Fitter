@@ -130,3 +130,54 @@ def test_sync_streaming_starts_and_stops_with_mode():
     state.set_options(opts.model_copy(update={"spotMode": "static"}))
     state.sync_streaming()  # mode off -> stream stops (no leaked socket)
     assert prov.streaming is False
+
+
+def test_sync_streaming_resubscribes_on_universe_change():
+    """A universe change (ticker added/removed, expiry edit) while streaming
+    restarts the WS on the new contract set; an unchanged universe does not."""
+    from datetime import date
+
+    from volfit.api.state import AppState
+    from volfit.data.provider import SyntheticProvider
+
+    class FakeStreaming(SyntheticProvider):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.subscribed: list[str] | None = None
+            self.streaming = False
+            self.starts = 0
+
+        def option_tickers(self, ticker, expiries):
+            return [f"O:{ticker}1", f"O:{ticker}2"]
+
+        def start_streaming(self, contracts):
+            self.subscribed = list(contracts)
+            self.streaming = True
+            self.starts += 1
+
+        def stop_streaming(self):
+            self.streaming = False
+            self.subscribed = None
+
+        def is_streaming(self):
+            return self.streaming
+
+        def streaming_contracts(self):
+            return set(self.subscribed) if self.subscribed else set()
+
+    ref = date(2026, 6, 15)
+    prov = FakeStreaming(reference_date=ref, tickers=("ALPHA", "BETA"))
+    state = AppState(ref, providers={"massive": prov}, active_source="massive")
+    state.set_options(state.options().model_copy(update={"spotMode": "realtime"}))
+
+    state.sync_streaming()  # initial start over ALPHA + BETA
+    assert prov.streaming is True and prov.starts == 1
+    assert set(prov.subscribed) == {"O:ALPHA1", "O:ALPHA2", "O:BETA1", "O:BETA2"}
+
+    state.sync_streaming()  # unchanged universe -> no restart
+    assert prov.starts == 1
+
+    state.remove_ticker("BETA")  # universe shrank
+    state.sync_streaming()  # -> resubscribe to ALPHA only
+    assert prov.starts == 2
+    assert set(prov.subscribed) == {"O:ALPHA1", "O:ALPHA2"}

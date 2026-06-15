@@ -53,6 +53,7 @@ def test_defaults(client):
         "spotPollSeconds": 5.0,
         "optionsFetchMode": "on_demand",
         "optionsFetchMinutes": 5.0,
+        "streamRefitSeconds": 5.0,
     }
 
 
@@ -80,6 +81,7 @@ def test_put_round_trip(client):
         "spotPollSeconds": 10.0,
         "optionsFetchMode": "auto",
         "optionsFetchMinutes": 15.0,
+        "streamRefitSeconds": 3.0,
     }
     assert client.put("/settings/options", json=body).status_code == 200
     assert client.get("/settings/options").json() == body

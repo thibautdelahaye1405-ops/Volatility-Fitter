@@ -96,6 +96,13 @@ class MassiveProvider(OptionChainProvider):
         #: poll. Started/stopped via ``start_streaming``/``stop_streaming``.
         self._live_book = None
         self._ws = None
+        #: Cache of the listed contracts per (ticker, frozenset(expiries)) so the
+        #: WS read path (``_chain_from_book``) and the scheduler's per-tick
+        #: resubscribe diff (``option_tickers``) don't re-paginate the contracts
+        #: reference every call. The listing is static intra-session for a fixed
+        #: (ticker, expiry set); cleared on ``refresh_contracts`` if a fresh pull
+        #: is wanted (e.g. a brand-new listing appears mid-session).
+        self._contracts_cache: dict[tuple[str, frozenset | None], list[dict]] = {}
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
@@ -254,6 +261,11 @@ class MassiveProvider(OptionChainProvider):
 
     def is_streaming(self) -> bool:
         return self._ws is not None and self._ws.is_running()
+
+    def streaming_contracts(self) -> set[str]:
+        """The contract set currently subscribed on the WS (empty if not streaming)
+        — lets the scheduler detect a universe change and resubscribe."""
+        return set(self._ws.contracts) if self._ws is not None else set()
 
     def _spot_from_quotes(self, quotes: list[OptionQuote]) -> float | None:
         """Parity forward (spot proxy) from already-built two-sided quotes."""
@@ -491,7 +503,12 @@ class MassiveProvider(OptionChainProvider):
     ) -> list[dict]:
         """Listed contracts (option ticker + strike/expiry/type/style) for the
         selected expiries, from the reference endpoint — the keys to query each
-        contract's historical quote by."""
+        contract's historical quote by. Cached per (ticker, expiry set) so the
+        live book read / resubscribe diff don't re-paginate every call."""
+        key = (ticker.upper(), frozenset(expiries) if expiries else None)
+        cached = self._contracts_cache.get(key)
+        if cached is not None:
+            return cached
         wanted = set(expiries) if expiries else None
         out: list[dict] = []
         params = {
@@ -514,7 +531,12 @@ class MassiveProvider(OptionChainProvider):
                 {"ticker": opt_ticker, "expiry": expiry, "strike": strike,
                  "call_put": call_put, "style": str(c.get("exercise_style", "")).lower()}
             )
+        self._contracts_cache[key] = out
         return out
+
+    def refresh_contracts(self) -> None:
+        """Drop the cached contract listings (force a fresh reference pull)."""
+        self._contracts_cache.clear()
 
     def _quote_le(self, option_ticker: str, ns: int) -> dict:
         """The most recent NBBO quote at-or-before ``ns`` (nanoseconds) for one

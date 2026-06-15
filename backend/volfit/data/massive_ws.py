@@ -136,6 +136,11 @@ class MassiveWebSocket:
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
 
+    @property
+    def contracts(self) -> list[str]:
+        """The contract set this client is subscribed to (for resubscribe diffing)."""
+        return list(self._contracts)
+
     # --------------------------------------------------------------- loop
     def _run(self) -> None:
         try:

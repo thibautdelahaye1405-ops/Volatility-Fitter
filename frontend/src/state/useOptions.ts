@@ -44,6 +44,8 @@ export interface OptionsSettings {
   spotPollSeconds: number;
   optionsFetchMode: OptionsFetchMode;
   optionsFetchMinutes: number;
+  /** Seconds between full refits while a live WS book streams (Massive realtime). */
+  streamRefitSeconds: number;
 }
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
@@ -69,6 +71,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   spotPollSeconds: 5.0,
   optionsFetchMode: "on_demand",
   optionsFetchMinutes: 5.0,
+  streamRefitSeconds: 5.0,
 };
 
 export interface UseOptionsResult {

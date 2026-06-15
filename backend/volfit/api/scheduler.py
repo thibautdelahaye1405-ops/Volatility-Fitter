@@ -33,6 +33,7 @@ class Scheduler:
         self._thread: threading.Thread | None = None
         self._last_spot = 0.0  # monotonic stamps of the last fired fetch
         self._last_options = 0.0
+        self._last_refit = 0.0  # last streaming full-refit cycle
 
     # ----------------------------------------------------------- lifecycle
     def start(self) -> None:
@@ -40,7 +41,8 @@ class Scheduler:
             return
         self._stop.clear()
         now = time.monotonic()
-        self._last_spot = self._last_options = now  # first fetch waits one interval
+        # first fetch of each kind waits one interval
+        self._last_spot = self._last_options = self._last_refit = now
         self._thread = threading.Thread(target=self._run, name="volfit-scheduler", daemon=True)
         self._thread.start()
 
@@ -70,6 +72,15 @@ class Scheduler:
         if opts.spotMode == "realtime" and now - self._last_spot >= opts.spotPollSeconds:
             self._last_spot = now
             workflow.fetch_spots(self._state)
+        # Throttled full refit while a live WS book is streaming (book-driven,
+        # seconds cadence) — distinct from the minutes-cadence REST auto-fetch.
+        if (
+            opts.spotMode == "realtime"
+            and now - self._last_refit >= opts.streamRefitSeconds
+            and self._state.is_streaming()
+        ):
+            self._last_refit = now
+            workflow.stream_refit(self._state)
         if (
             opts.optionsFetchMode == "auto"
             and now - self._last_options >= opts.optionsFetchMinutes * 60.0

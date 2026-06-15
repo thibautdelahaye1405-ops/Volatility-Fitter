@@ -185,6 +185,25 @@ def fetch_options(
     return FetchResult(tickers=fetched, spots=spots, calibrationStarted=started)
 
 
+def stream_refit(state: AppState, fit_mode: str = "mid") -> bool:
+    """The streaming throttled refit: refetch each ticker's chain (served from the
+    live WS book) and recalibrate ALL lit nodes in the background.
+
+    Distinct from ``fetch_options``: this fires only while a live book is streaming
+    and refits unconditionally (selecting realtime spot mode is itself the opt-in to
+    continuous recalibration — it does not consult ``autoCalibrate``). Returns False
+    if a calibration job is already running (the throttle then skips this cycle).
+    """
+    fetched = False
+    for ticker in state.active_tickers():
+        try:
+            state.refresh_chain(ticker)  # reads the live book under streaming
+            fetched = True
+        except Exception:
+            continue
+    return calibrate_all(state, fit_mode) if fetched else False
+
+
 # ------------------------------------------------------------------ priors
 def seed_priors(state: AppState, tickers: list[str] | None = None, fit_mode: str = "mid") -> int:
     """Explicitly seed previous-close priors for lit nodes lacking a saved one.

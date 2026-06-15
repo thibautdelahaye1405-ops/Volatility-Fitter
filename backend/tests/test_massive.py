@@ -69,6 +69,38 @@ def test_available_expiries_paginates_and_filters():
     assert expiries == sorted({date.fromisoformat(_exp(30)), date.fromisoformat(_exp(120))})
 
 
+# ------------------------------------------------- contract-listing cache
+
+def _ref_calls(fake: "FakeHttp") -> int:
+    return sum(1 for url, _ in fake.calls if "reference/options/contracts" in url)
+
+
+def test_option_tickers_caches_contract_listing():
+    """``option_tickers`` / ``_chain_from_book`` must not re-paginate the contracts
+    reference on every call (the WS read + per-tick resubscribe diff hammer it)."""
+    pages = {
+        "/v3/reference/options/contracts": {
+            "results": [_contract(500, 30, "call"), _contract(500, 30, "put")],
+            "status": "OK",
+        }
+    }
+    fake = FakeHttp(pages)
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=fake)
+    exps = [date.fromisoformat(_exp(30))]
+
+    a = provider.option_tickers("SPY", exps)
+    b = provider.option_tickers("SPY", exps)
+    assert a == b == ["O:SPY500C", "O:SPY500P"]
+    assert _ref_calls(fake) == 1  # second call served from cache
+
+    provider.option_tickers("SPY", None)  # a different (ticker, expiry set) key
+    assert _ref_calls(fake) == 2
+
+    provider.refresh_contracts()  # explicit invalidation re-pulls
+    provider.option_tickers("SPY", exps)
+    assert _ref_calls(fake) == 3
+
+
 # --------------------------------------------------------------- chain
 
 def _snap_result(strike, days, cp, *, quote=True, spot=True):

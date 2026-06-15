@@ -474,12 +474,16 @@ class AppState(UniverseMixin):
 
     # ------------------------------------------------ real-time streaming (WS)
     def sync_streaming(self) -> None:
-        """Start/stop each provider's real-time stream to match the active source
-        and spot mode. Idempotent and cheap (a no-op once in the right state), so
-        the scheduler can call it every tick. A provider streams iff it is the
-        active source, exposes ``start_streaming`` (Massive), and spotMode is
+        """Start/stop/resubscribe each provider's real-time stream to match the
+        active source, spot mode AND the current universe. Idempotent and cheap (a
+        no-op once in the right state, thanks to the provider's contract-listing
+        cache), so the scheduler can call it every tick. A provider streams iff it
+        is the active source, exposes ``start_streaming`` (Massive), and spotMode is
         ``realtime``; any other streaming provider (e.g. after a source switch) is
-        stopped so it does not leak a background socket."""
+        stopped so it does not leak a background socket. When the desired contract
+        set changes (a ticker added/removed or its expiry selection edited) the
+        stream is restarted on the new subscription (``start_streaming`` tears the
+        old one down first)."""
         with self._lock:
             active, mode = self._active_source, self._options.spotMode
             providers = dict(self._providers)
@@ -488,17 +492,39 @@ class AppState(UniverseMixin):
                 continue
             streaming = prov.is_streaming()
             want = sid == active and mode == "realtime"
-            if want and not streaming:
-                contracts: list[str] = []
-                for ticker in self.active_tickers():
-                    try:
-                        contracts += prov.option_tickers(ticker, self.selected_expiries(ticker))
-                    except Exception:  # noqa: BLE001 — a bad ticker never blocks streaming
-                        continue
-                if contracts:
-                    prov.start_streaming(contracts)
-            elif streaming and not want:
-                prov.stop_streaming()
+            if not want:
+                if streaming:
+                    prov.stop_streaming()  # source/mode no longer wants it
+                continue
+            desired = self._desired_stream_contracts(prov)
+            if not desired:
+                continue  # nothing fittable yet; leave any warm stream as-is
+            if not streaming:
+                prov.start_streaming(desired)
+            else:
+                # Resubscribe only if the provider can report its current
+                # subscription (else we can't diff and must not thrash-restart).
+                probe = getattr(prov, "streaming_contracts", None)
+                if probe is not None and set(desired) != set(probe()):
+                    prov.start_streaming(desired)  # universe changed -> resubscribe
+
+    def _desired_stream_contracts(self, prov) -> list[str]:
+        """The option tickers the active universe wants streamed (cheap once the
+        provider's contract listing is cached). A bad ticker never blocks the rest."""
+        contracts: list[str] = []
+        for ticker in self.active_tickers():
+            try:
+                contracts += prov.option_tickers(ticker, self.selected_expiries(ticker))
+            except Exception:  # noqa: BLE001 — a bad ticker never blocks streaming
+                continue
+        return contracts
+
+    def is_streaming(self) -> bool:
+        """Whether the active provider currently has a live real-time book (used by
+        the scheduler's throttled refit branch)."""
+        prov = self.provider
+        probe = getattr(prov, "is_streaming", None)
+        return bool(probe is not None and probe())
 
     # ----------------------------------------------------- options (meta) settings
     @property

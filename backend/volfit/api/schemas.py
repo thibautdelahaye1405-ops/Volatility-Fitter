@@ -168,6 +168,11 @@ class OptionsSettings(BaseModel):
     #: ``optionsFetchMinutes``; "on_demand" = only the "Fetch Options Quotes" button.
     optionsFetchMode: Literal["auto", "on_demand"] = "on_demand"
     optionsFetchMinutes: float = Field(5.0, gt=0.0, le=1440.0)
+    #: While a real-time WS book is streaming (Massive realtime), the scheduler
+    #: refetches the chain from the book and recalibrates all lit nodes every
+    #: ``streamRefitSeconds`` — a faster, book-driven loop distinct from the
+    #: minutes-cadence ``optionsFetchMode == "auto"`` REST refetch.
+    streamRefitSeconds: float = Field(5.0, gt=0.0, le=600.0)
 
 
 # --------------------------------------------------- persisted settings defaults

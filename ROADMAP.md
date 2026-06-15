@@ -10,7 +10,28 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (445 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (449 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Massive feed Tier 1 finish (CODE — live-verify still pending a
+  key)**: the three remaining code sub-tasks of the WS live book. (1)
+  **Contract-listing cache** — `MassiveProvider._intraday_contracts` is cached per
+  `(ticker, frozenset(expiries))` (`refresh_contracts()` invalidates), so the WS
+  read path (`_chain_from_book`/`option_tickers`) and the per-tick resubscribe diff
+  no longer re-paginate the contracts reference each call. (2) **Resubscribe on
+  universe change** — `AppState.sync_streaming` now diffs the desired contract set
+  (`_desired_stream_contracts`) against the provider's live subscription
+  (`MassiveProvider.streaming_contracts()` / `MassiveWebSocket.contracts`) and
+  restarts the stream when a ticker/expiry edit changes it (was source/mode-change
+  only); providers that can't report their subscription are never thrash-restarted.
+  (3) **Throttled full-refit loop** — a new `Scheduler.tick` branch gated by
+  `AppState.is_streaming()` calls `workflow.stream_refit` every
+  `OptionsSettings.streamRefitSeconds` (default 5s, frontend type seeded) while a
+  live book streams: refetch chains from the book + recalibrate ALL lit nodes in
+  the background, independent of `autoCalibrate` (realtime spot mode is the opt-in).
+  Distinct from the minutes-cadence `optionsFetchMode=="auto"` REST refetch. 4 new
+  offline tests (cache hit/invalidate, sync_streaming resubscribe, scheduler
+  refit-only-while-streaming, stream_refit refetch+calibrate). ruff + strict-TS
+  build green. **Live-unverified** (no Massive key in this environment).
 
 - **[2026-06-15] UI crash hardening (error boundary + null-safe diagnostics)**: a
   per-view **ErrorBoundary** (`components/ErrorBoundary.tsx`, keyed by tab) so a
@@ -1000,14 +1021,28 @@ moment)` model so the fitter never sees the difference.
    `backend/massive_diag.py SPY` with the (now stock-upgraded) key on both hosts;
    confirm `underlying_asset.price` is populated and `fetch_chain` returns
    two-sided quotes + a real spot. This unblocks live-verifying everything below.
-1. **[NEXT — Tier 1 finish] Live-verify the WebSocket live book** (shipped but
-   live-unverified): select Massive + Real-time and confirm the book fills and
-   `fetch_chain(live)` serves from it. Then add the **throttled full-refit loop**
-   (2–5s while streaming — a new scheduler branch recalibrating lit nodes, not
-   just the spot-transport poll), and **resubscribe on universe change** (today
-   the stream is torn down + restarted on source/mode change only). Cheaper live
-   read: `_chain_from_book` currently re-pulls the contracts reference each call —
-   cache the option-ticker list per (ticker, expiry set).
+1. **[Tier 1 finish — CODE DONE 2026-06-15, live-verify still pending a key]**
+   The three code sub-tasks of the live book are shipped (449 tests green; all
+   offline-tested since I have no Massive key here):
+   * **Contract-listing cache** (`MassiveProvider._intraday_contracts` keyed by
+     `(ticker, frozenset(expiries))`, `refresh_contracts()` to invalidate) — the
+     WS read (`_chain_from_book`/`option_tickers`) and the per-tick resubscribe
+     diff no longer re-paginate the contracts reference every call.
+   * **Resubscribe on universe change** (`AppState.sync_streaming` +
+     `_desired_stream_contracts` + `MassiveProvider.streaming_contracts()` /
+     `MassiveWebSocket.contracts`): a ticker added/removed or an expiry-selection
+     edit while streaming now restarts the WS on the new subscription (was
+     source/mode-change only). Providers that can't report their subscription are
+     never thrash-restarted.
+   * **Throttled full-refit loop** while a live book streams: a new scheduler
+     branch (`Scheduler.tick`, gated by `AppState.is_streaming()`) calls
+     `workflow.stream_refit` every `OptionsSettings.streamRefitSeconds` (default
+     5s) — refetch chains from the book + recalibrate ALL lit nodes (background,
+     independent of `autoCalibrate`; realtime spot mode is the opt-in). Distinct
+     from the minutes-cadence `optionsFetchMode == "auto"` REST refetch.
+   **Still NEXT (needs the user's key):** select Massive + Real-time and confirm
+   the book fills, `fetch_chain(live)` serves from it, the refit loop recalibrates,
+   and resubscribe fires on a universe edit.
 2. **[Tier 2 — flat-file history]** S3 flat files → DuckDB/Parquet local store
    (the long-deferred columnar history). **Minute-aggregate** files first
    (compact; one OHLC/contract/minute → reconstruct any historical intraday
