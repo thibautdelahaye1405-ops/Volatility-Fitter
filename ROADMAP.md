@@ -8,9 +8,45 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-14 (resume here)
+## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (409 pytest tests green incl. 4 perf + 1 live-optional, `git log --oneline` tells the story):**
+**Done & verified (419 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Calibration compute speed-ups** (branch `perf/calibration-speedups`,
+  all byte-identical or within golden tolerances):
+  * **LQD slice fit 96 → 35 ms (2.7x)** — the atom of every parametric
+    calibration (smile/surface/term/graph baseline all inherit it). (1) Cache
+    the parameter-independent quadrature grid and Legendre basis in
+    `models/lqd/quadrature.py` (`build_slice` runs ~900x/fit; it was recomputing
+    `linspace`/`expit` + the order-6 Legendre matrix every call) and pass `dx=`
+    (not `x=`) to `cumulative_simpson` (uniform fast path). (2) Optimize on a
+    2001-node grid (`OPT_N_POINTS`), rebuild the accepted slice at the full 8001
+    nodes for the result/diagnostics (converged params agree to ~1e-6). The
+    calendar constraint moved from grid-index- to z-VALUE-based (new
+    `LQDSlice.asset_share_at` Hermite eval + `calendar.calendar_floor_targets`),
+    bit-identical at native resolution and correct on the coarse grid; threaded
+    through `calibrate_surface` + `service.fit_surface_slice`.
+  * **Affine local-vol Dupire fit** (`models/localvol/affine.py`): hoisted the
+    theta-INDEPENDENT hat basis out of the per-eval solve (`precompute_dupire_steps`
+    / `DupireSteps`, reused across all trial thetas) and sliced the multi-RHS
+    sensitivity solve to its active (non-zero) column prefix (`active_k`, derived
+    from the real basis sparsity). ~1.15x at optimal-grid scale; PDE-solve 2.05x /
+    total fit ~1.6x at large grids (533 vertices). Sensitivity output diff exactly 0.0.
+  * **Vectorized `implied_total_variance`** (`core/black.py`): replaced the
+    per-strike `scipy.brentq` Python loop with one vectorized safeguarded Newton
+    (`rtsafe`, analytic `black_vega_w`, bisection fallback). ~39x on a 241-pt
+    curve render (27 → 0.7 ms); matches Brent to ~1e-13 with identical nan
+    behaviour. Speeds every smile/affine render, term overlay and `max_iv_error`
+    (full-suite wall-clock ~130s → 75s as a side effect). `brentq` no longer used
+    in black.py.
+  * **Parallelism (roadmap "parallelize slice fits") — measured & rejected.**
+    Threads are GIL-negative for both LQD (0.5x) and affine (0.75x) fits;
+    process-parallelism gives ~3.9x on LQD but is not worth the live-backend
+    integration risk (persistent pool, Windows spawn, large-object serialization,
+    cancellation) for a benefit that lands on the already-non-blocking background
+    Calibrate job. Coarse-grid-during-opt is viable for LQD but NOT affine
+    (it shifts the calibrated nodal variances 30x over the golden tolerance — the
+    LV surface is the product output). Kept sequential.
 
 - **[2026-06-14] UX/viewer batch — theming, layout, zoom, true-coordinate axis,
   Forwards chart**:

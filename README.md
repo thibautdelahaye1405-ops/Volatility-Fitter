@@ -125,7 +125,7 @@ fit history (VOLFIT_DB). Force a specific source active on launch with
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -e backend[dev]   # PyPI can be flaky here: just retry
-cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 409 green
+cd backend; ..\.venv\Scripts\python -m pytest tests -q   # 419 green
 $env:VOLFIT_LIVE="1"; ..\.venv\Scripts\python -m pytest tests\test_yahoo.py -k live  # opt-in live test
 ```
 
