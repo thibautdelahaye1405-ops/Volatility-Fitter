@@ -10,7 +10,28 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-15 (resume here)
 
-**Done & verified (477 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (478 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-15] Fit target persisted as an Options default**: the Fit target
+  (Mid / Bid-Ask / Haircut) was session-only (`useSmile.fitMode`), so "Save as
+  default" never captured it and it reverted to Mid on reload (making the Haircut
+  value, which only bites in haircut mode, look un-persisted too — it was always
+  on `FitSettings`). `OptionsSettings.fitMode` (default "mid") is now the persisted
+  default (stored only — each fit still gets its mode per request — so it never
+  bumps the options version); the session seeds it from `/settings/options` once
+  on load (ref-guarded so reloads don't clobber an in-session change), and the
+  Options "Fit target" control updates both the session and the OptionsSettings
+  draft so Apply / Save-as-default persist it.
+
+- **[2026-06-15] Local-Vol calibration master switch (Options)**: new
+  `OptionsSettings.localVolEnabled` (default on) to speed up test cycles. OFF ⇒ the
+  background Calibrate job skips every ticker's LV (affine) surface (only the
+  parametric nodes fit) AND the **Local Vol tab is greyed out / inaccessible** (it
+  bounces to Parametric if active when disabled; the flag rides on the polled
+  `SchedulerStatus`). Pure workflow/UI gate — does not touch parametric fits, so it
+  never busts caches. Calibration work items now carry a coarse `phase`, so the
+  Calibrate button shows **"Calibrating Parametric"** then **"Calibrating LV"**
+  (`jobs.start` items are `(label, phase, thunk)` 3-tuples).
 
 - **[2026-06-15] Massive feed Tier 3 — REST gap-fill (DONE, live-verified)**:
   closes the 3-tier source router. `MassiveProvider.historical_aggregate()` =

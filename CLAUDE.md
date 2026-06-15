@@ -64,13 +64,18 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (445 green as of 2026-06-15, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (478 green as of 2026-06-15, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
             ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
             the best-reachable active one; switch live via the TopBar Data
             Source selector. Force one active: -Live/-Bloomberg/-Massive/
             -Synthetic. Set $env:VOLFIT_MASSIVE_KEY to light up Massive. Sets
-            VOLFIT_DB so named universes / fit history persist; -NoDb disables.)
+            VOLFIT_DB so named universes / fit history persist; -NoDb disables.
+            Secrets/env persist via gitignored restart.local.ps1 [copy from
+            restart.local.ps1.example] — Massive API key, VOLFIT_MASSIVE_WS_URL
+            [delayed-tier keys: wss://delayed.polygon.io/options], and the
+            flat-file S3 creds VOLFIT_FLATFILES_KEY/_SECRET/_ENDPOINT
+            [files.massive.com] that light up Massive past-day history.)
 - API only: .venv\Scripts\python backend\serve.py   (uvicorn on :8000, CORS for Vite)
 - Live API: $env:VOLFIT_PROVIDER='yahoo'; $env:VOLFIT_TICKERS='SPY,QQQ,AAPL'; then serve.py
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
