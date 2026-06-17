@@ -76,6 +76,7 @@ def _residuals(
     mid_anchor_weight: float,
     var_swap: VarSwapTarget | None,
     prior_anchor: PriorAnchorTarget | None,
+    prior_var_swap: VarSwapTarget | None,
     n_points: int,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
@@ -95,6 +96,7 @@ def _residuals(
     n_fit = (2 * k.size) if band_mode else k.size
     vs = np.empty(0) if var_swap is None else np.zeros(1)
     pa = np.empty(0) if prior_anchor is None else np.zeros(n_prior)
+    pvs = np.empty(0) if prior_var_swap is None else np.zeros(1)
     try:
         slice_ = build_slice(params, n_points=n_points)
         model_price = slice_.call_price(k)
@@ -121,16 +123,21 @@ def _residuals(
             # grid every Jacobian column and make the fit minutes-slow.
             vs = np.array([varswap_residual_w(slice_.var_swap_strike(), var_swap)])
         if prior_anchor is not None:
-            # Soft anchor toward the saved prior in the quote-free wings (one extra
-            # call_price evaluation; vega-normalized like the data block).
+            # Soft data-gap anchor toward the (transported) prior at delta-locations
+            # (one extra call_price evaluation; vega-normalized like the data block).
             pa = prior_anchor_residuals(slice_.call_price(prior_anchor.k), prior_anchor)
+        if prior_var_swap is not None:
+            # Prior's var-swap level as a model-free total-variance moment (cheap
+            # closed form), scaled by how unobserved the smile is.
+            pvs = np.array([varswap_residual_w(slice_.var_swap_strike(), prior_var_swap)])
     except ValueError:
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
         pa = np.zeros(n_prior)
+        pvs = np.zeros(0 if prior_var_swap is None else 1)
     barrier = np.log1p(np.exp(barrier_scale * (a_right - barrier_center)))
-    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa))
+    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa, pvs))
 
 
 def calibrate_slice(
@@ -151,6 +158,7 @@ def calibrate_slice(
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     var_swap: VarSwapTarget | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
+    prior_var_swap: VarSwapTarget | None = None,
     opt_n_points: int = OPT_N_POINTS,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
@@ -180,9 +188,11 @@ def calibrate_slice(
     slice's fair var-swap toward a quoted level; None (the default) leaves the
     objective byte-identical.
 
-    ``prior_anchor`` (volfit.calib.prior) adds vega-normalized wing residuals
-    pulling the fit toward a saved prior where there are no quotes (the
-    autoLoadPrior feature); None (the default) leaves the objective byte-identical.
+    ``prior_anchor`` (volfit.calib.prior) adds vega-normalized residuals pulling
+    the fit toward a (transported) prior at delta-locations, weighted by the
+    data-gap precision (the autoLoadPrior feature); ``prior_var_swap`` adds the
+    prior's var-swap level as a companion total-variance moment. Both None (the
+    default) leave the objective byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -227,6 +237,7 @@ def calibrate_slice(
             mid_anchor_weight,
             var_swap,
             prior_anchor,
+            prior_var_swap,
             opt_n_points,
         ),
         method="trf",

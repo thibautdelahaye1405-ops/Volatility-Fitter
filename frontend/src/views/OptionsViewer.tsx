@@ -165,7 +165,7 @@ export default function OptionsViewer() {
         <div className="mt-1 flex items-center justify-between">
           <span
             className={`${rowLabel} ${draft.autoLoadPrior ? "" : "opacity-40"}`}
-            title="Prior-anchor penalty weight as a % of the summed option-quote weights of the node — pulls the fit toward the saved prior in the quote-free wings (Auto-load prior)"
+            title="Prior-anchor budget as a % of the summed option-quote weights of the node — distributed across delta-locations by the observed-vs-desired quote-density gap, pulling the fit toward the fetched prior where data is sparse (Auto-load prior)"
           >
             Prior-anchor weight (%)
           </span>
@@ -233,7 +233,7 @@ export default function OptionsViewer() {
           onChange={(v) => patch({ varSwapEnabled: v })}
         />
         <Toggle
-          label="Auto-load prior" hint="Anchor the fit to a node's saved prior in the quote-free wings (strength set by Prior-anchor weight in Calibration)"
+          label="Auto-load prior" hint="Anchor the fit to the fetched prior at delta-locations, weighted by where quotes are sparse (data-gap); fades where data is dense. Strength = Prior-anchor weight in Calibration"
           checked={draft.autoLoadPrior} disabled={!live}
           onChange={(v) => patch({ autoLoadPrior: v })}
         />

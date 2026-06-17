@@ -228,6 +228,10 @@ class AppState(UniverseMixin):
         #: The freshness-ladder source each active prior came from
         #: ("saved" | "15min" | "close"), for the Fetch status display.
         self._active_prior_source: dict[str, str] = {}
+        #: Per-ticker active-prior version, bumped whenever the active prior changes
+        #: (Fetch). Folded into the fit / affine cache keys so a fetched prior
+        #: re-anchors the calibration instead of serving a stale cached fit.
+        self._active_prior_version: dict[str, int] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
         #: Per-node variance-swap quote sessions (one var-swap per node, shared
         #: by the Parametric and Local-Vol fits; separate undo/redo history).
@@ -982,6 +986,12 @@ class AppState(UniverseMixin):
             else:
                 self._active_prior[ticker] = snapshot
             self._active_prior_source[ticker] = source
+            self._active_prior_version[ticker] = self._active_prior_version.get(ticker, 0) + 1
+
+    def active_prior_version(self, ticker: str) -> int:
+        """Per-ticker active-prior version (folded into fit / affine cache keys)."""
+        with self._lock:
+            return self._active_prior_version.get(ticker, 0)
 
     def active_prior(self, ticker: str) -> "PriorSurfaceSnapshot | None":
         """The active fetched prior for a ticker (the dotted overlay / anchor)."""

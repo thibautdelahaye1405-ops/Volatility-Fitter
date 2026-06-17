@@ -10,7 +10,26 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (496 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (498 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Prior framework Phase C — Bayesian data-gap anchor (DONE; the
+  framework R1–R5 is complete).** `volfit/calib/prior.py` rewritten: the anchor now
+  pulls the fit toward the **transported active prior** (R4: spot-consistent with
+  the live quotes) at **delta-locations** (10/25/40Δ puts+calls + ATM, placed from
+  the prior smile) plus a companion **var-swap** moment. Per-location precision =
+  the **data gap** `λ·max(ρ_desired − ρ_observed, 0)·Δx` — ρ_observed a Gaussian
+  KDE of the live quote log-moneyness, ρ_desired uniform or time-value (reuses
+  `FitSettings.weightScheme`) spread over the wider delta span — so dense-quote
+  zones ignore the prior and sparse wings lean on it; the var-swap weight fades
+  with the unmet-coverage fraction. Works for ALL models (vega-normalized price
+  residuals into `calibrate_slice` via `prior_anchor`/`prior_var_swap`) AND the LV
+  surface (extra `OptionQuote`s + `VarSwapQuote` in `affine_fit._prior_anchor_quotes`,
+  tol = vega·VOL_TOL/√precision). Gated by `autoLoadPrior` (λ = `priorAnchorWeightPct`).
+  A fetch bumps a new `active_prior_version` folded into `fit_key`/`affine_key` so a
+  fetched prior re-anchors instead of serving a stale cached fit. Byte-identical
+  when no active prior (golden tests intact). 9 prior-anchor tests (data-gap
+  concentrates in wings, mechanism pulls sparse wings to the prior, affine quotes
+  gated, cache-bust). Supersedes the Phase-10 near-wing autoLoadPrior anchor.
 
 - **[2026-06-17] Prior framework Phase B overlays — LocalVol + Term.** The dotted,
   spot-updated prior now also overlays the **LocalVol smile** (`AffineSmile.prior`/

@@ -44,7 +44,7 @@ from volfit.api.displayed import (
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_floor_targets, calendar_violation
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
-from volfit.calib.varswap import VarSwapTarget
+from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
 from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
@@ -58,7 +58,6 @@ from volfit.models.diagnostics import (
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
-from volfit.models.lqd.quadrature import build_slice
 
 #: Model-curve sampling: points over the extended (≥[-1,1]) display grid; denser
 #: than before to keep ATM resolution across the wider range. K_PAD pads the
@@ -104,6 +103,7 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
         state.forwards_version,
         state.options_version,
         state.data_version(ticker),  # fresh options fetch -> stale / refit
+        state.active_prior_version(ticker),  # a fetched prior re-anchors the fit
     )
 
 
@@ -147,27 +147,46 @@ def varswap_target(
     return VarSwapTarget(total_var=level * level * t, weight=weight, t=t)
 
 
-def prior_anchor_target(
-    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, tau: float
-) -> PriorAnchorTarget | None:
-    """The prior-anchor penalty target for a node, or None.
+def prior_anchor_targets(
+    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared
+) -> tuple[PriorAnchorTarget | None, VarSwapTarget | None]:
+    """The data-gap prior anchor + companion var-swap prior for a node, or (None, None).
 
-    Active only when ``autoLoadPrior`` is on and the node has a saved prior. The
-    prior's LQD params rebuild its smile (``build_slice(...).implied_w``); the
-    anchor pulls the fit toward that shape in the quote-free wings. The total
-    anchor weight is ``priorAnchorWeightPct`` percent of the summed option-quote
-    weights of the node (the same scaling as the var-swap penalty), spread across
-    the wing points, so the prior competes with the quotes at a chosen strength
-    regardless of quote count."""
+    Active only when ``autoLoadPrior`` is on AND a prior has been fetched (the
+    ACTIVE, spot-updated prior). The prior's LQD backbone is transported to the
+    node's current forward under the dynamics regime (so the anchor is spot-
+    consistent with the live quotes), then anchored at delta-locations with the
+    data-gap precision (volfit.calib.prior): dense-quote zones get ~0 weight, the
+    sparse wings lean on the prior. The total anchor budget is
+    ``priorAnchorWeightPct`` percent of the summed quote weights (like the var-swap
+    penalty). A companion var-swap prior pulls the overall level, scaled by how
+    unobserved the smile is (so it fades as the data fills in)."""
     options = state.options()
-    if not options.autoLoadPrior:
-        return None
-    prior = state.get_prior((ticker, iso))
-    if prior is None:
-        return None
+    if not options.autoLoadPrior or options.priorAnchorWeightPct <= 0.0:
+        return None, None
+    from volfit.api import prior_transport
+
+    node = prior_transport.prior_node(state.active_prior(ticker), iso)
+    if node is None:
+        return None, None
+    moved = prior_transport.transported_prior_slice(
+        node, float(prepared.forward), state.dynamics_regime()
+    )
     sum_w = float(np.sum(weights)) if weights is not None else float(k.size)
-    total_weight = (options.priorAnchorWeightPct / 100.0) * sum_w
-    return build_prior_anchor(build_slice(prior.params).implied_w, k, tau, total_weight)
+    budget = (options.priorAnchorWeightPct / 100.0) * sum_w
+    anchor, unmet = build_prior_anchor(
+        moved.implied_w, node.tau, k, prepared.tau, budget,
+        scheme=state.fit_settings().weightScheme,
+    )
+    prior_vs: VarSwapTarget | None = None
+    if budget > 0.0 and unmet > 0.0:
+        # Prior's fair var-swap (model-free replication on the transported curve),
+        # re-expressed at the current variance time; weight fades with coverage.
+        w_vs = varswap_total_variance(moved.implied_w) * (prepared.tau / node.tau)
+        prior_vs = VarSwapTarget(
+            total_var=float(w_vs), weight=budget * unmet, t=float(prepared.tau)
+        )
+    return anchor, prior_vs
 
 
 def edited_fit_inputs(
@@ -237,7 +256,7 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pa = prior_anchor_target(state, ticker, iso, k, weights, prepared.tau)
+    pa, pvs = prior_anchor_targets(state, ticker, iso, k, weights, prepared)
     result = calibrate_slice(
         k,
         w,
@@ -252,6 +271,7 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
         mid_anchor_weight=settings.midAnchorWeight,
         var_swap=vs,
         prior_anchor=pa,
+        prior_var_swap=pvs,
     )
     # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
     # a display overlay on the same edited quotes + band (volfit.api.fit_models).
@@ -623,7 +643,7 @@ def fit_surface_slice(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pa = prior_anchor_target(state, ticker, iso, k, weights, prepared.tau)
+    pa, pvs = prior_anchor_targets(state, ticker, iso, k, weights, prepared)
     return calibrate_slice(
         k,
         w,
@@ -642,6 +662,7 @@ def fit_surface_slice(
         mid_anchor_weight=settings.midAnchorWeight,
         var_swap=vs,
         prior_anchor=pa,
+        prior_var_swap=pvs,
     )
 
 

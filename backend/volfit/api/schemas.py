@@ -99,9 +99,10 @@ class OptionsSettings(BaseModel):
       * ``dynamicsRegime`` / ``ssr`` — seed defaults for the spot-vol scenario.
       * ``gridXNodes`` / ``gridTNodes`` / ``gridRegLambda`` — default vertex grid
         and roughness of the local-vol-affine fit (AffineFitRequest seeds them).
-      * ``autoLoadPrior`` — when on, a node's saved prior is fed into its
-        calibration as a soft prior-anchor penalty in the quote-free wings
-        (volfit.calib.prior), strength ``priorAnchorWeightPct``.
+      * ``autoLoadPrior`` — when on (and a prior has been fetched), the active
+        spot-updated prior anchors the calibration at delta-locations with a
+        data-gap precision (volfit.calib.prior): dense-quote zones ignore the
+        prior, sparse wings lean on it. Strength ``priorAnchorWeightPct``.
 
     Stubbed this phase (persisted UI state only; behaviour is a documented TODO):
       * ``autoCalibrate`` — auto-refit on every quote edit (True, today's
@@ -137,12 +138,12 @@ class OptionsSettings(BaseModel):
     varSwapWeightPct: float = Field(10.0, ge=0.0, le=1000.0)
     # prior default
     autoLoadPrior: bool = False
-    #: Prior-anchor penalty weight as a PERCENTAGE of the mean option-quote weight
-    #: of the node (volfit.calib.prior): each quote-free WING anchor point pulls the
-    #: fit toward the saved prior with this fraction of a typical quote's weight, so
-    #: where there are no quotes the calibration relaxes toward yesterday's shape.
-    #: Only bites while ``autoLoadPrior`` is on and a saved prior exists; changes
-    #: calibration output, so it bumps the options version (set_options).
+    #: Prior-anchor budget as a PERCENTAGE of the summed option-quote weights of the
+    #: node (like the var-swap penalty): the total weight given to the data-gap
+    #: prior anchor (volfit.calib.prior), distributed across the delta-locations in
+    #: proportion to the observed-vs-desired quote-density deficit. Only bites while
+    #: ``autoLoadPrior`` is on and a prior is active; changes calibration output, so
+    #: it bumps the options version (set_options).
     priorAnchorWeightPct: float = Field(50.0, ge=0.0, le=1000.0)
     # local-vol-affine vertex grid + roughness (the single source of truth: the
     # affine fit reads these directly; the Local-Vol workspace has no own knobs).

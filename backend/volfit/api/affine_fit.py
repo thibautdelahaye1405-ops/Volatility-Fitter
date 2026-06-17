@@ -343,6 +343,57 @@ def _diagnostics(solution, x_grid: np.ndarray) -> tuple[list[float], int, bool]:
     return min_density, calendar, arb_free
 
 
+def _prior_anchor_quotes(
+    state: AppState, ticker: str, rows
+) -> tuple[list[OptionQuote], list[VarSwapQuote]]:
+    """Extra anchor quotes pulling the LV surface toward the (transported) prior.
+
+    The same data-gap framework as the parametric anchor (volfit.calib.prior),
+    expressed as the affine fit's own currency: per expiry with an active-prior
+    node, the prior's LQD backbone is transported to the node's forward, anchored
+    at delta-locations whose weight follows the observed-vs-desired quote density,
+    and emitted as OptionQuotes (price = prior price, tol = vega·VOL_TOL/√weight —
+    higher weight ⇒ tighter) plus a companion var-swap quote scaled by how
+    unobserved the smile is. Empty unless ``autoLoadPrior`` is on and a prior is
+    active."""
+    opts = state.options()
+    if not opts.autoLoadPrior or opts.priorAnchorWeightPct <= 0.0:
+        return [], []
+    active = state.active_prior(ticker)
+    if active is None:
+        return [], []
+    from volfit.api import prior_transport
+    from volfit.calib.prior import build_prior_anchor
+    from volfit.calib.varswap import varswap_total_variance
+
+    regime = state.dynamics_regime()
+    scheme = state.fit_settings().weightScheme
+    extra_opts: list[OptionQuote] = []
+    extra_vs: list[VarSwapQuote] = []
+    for iso, tau, k, w, prepared, _band in rows:
+        node = prior_transport.prior_node(active, iso)
+        if node is None:
+            continue
+        moved = prior_transport.transported_prior_slice(node, float(prepared.forward), regime)
+        qw = resolve_weights(scheme, k, w)
+        sum_w = float(np.sum(qw)) if qw is not None else float(k.size)
+        budget = (opts.priorAnchorWeightPct / 100.0) * sum_w
+        target, unmet = build_prior_anchor(moved.implied_w, node.tau, k, tau, budget, scheme=scheme)
+        if target is not None:
+            tol = _VOL_TOL / (target.inv_vega * np.sqrt(np.maximum(target.weights, 1e-12)))
+            for kj, pj, tj in zip(target.k, target.target_price, tol):
+                extra_opts.append(
+                    OptionQuote(t=tau, x=float(np.exp(kj)), price=float(pj), tol=float(tj))
+                )
+        if budget > 0.0 and unmet > 0.0:
+            w_vs = varswap_total_variance(moved.implied_w) * (tau / node.tau)
+            u = budget * unmet
+            sigma_vs = float(np.sqrt(max(w_vs, 1e-12) / tau))
+            zeta = 2.0 * sigma_vs * tau * _VOL_TOL / np.sqrt(u)
+            extra_vs.append(VarSwapQuote(t=tau, total_var=float(w_vs), tol=float(zeta)))
+    return extra_opts, extra_vs
+
+
 def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitResponse:
     """Run the calibration and assemble the response (uncached inner step)."""
     rows = _gather(state, ticker, request.fitMode)
@@ -356,13 +407,15 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     x_grid, t_grid = _pde_grids(expiries, k_hi)
 
     options = _option_quotes(rows, state.fit_settings().weightScheme)
+    prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
+    options = options + prior_opts
     # Flat initial guess: the median quoted local variance (= vol^2), clipped.
     all_var = np.concatenate([np.maximum(w, 1e-12) / t for _, t, _, w, _, _ in rows])
     var0 = float(np.clip(np.median(all_var), request.varLo, request.varHi))
     surface0 = AffineVarianceSurface(
         t_nodes=t_nodes, x_nodes=x_nodes, theta=np.full((t_nodes.size, x_nodes.size), var0)
     )
-    varswaps = _varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme)
+    varswaps = _varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme) + prior_vs
     cal = calibrate_affine(
         surface0,
         options,
@@ -470,6 +523,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         state.forwards_version,
         state.options_version,
         state.data_version(ticker),
+        state.active_prior_version(ticker),  # a fetched prior re-anchors the LV fit
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         request.model_dump_json(),
     )
