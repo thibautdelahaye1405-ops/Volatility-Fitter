@@ -8,9 +8,27 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-16 (resume here)
+## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (487 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (492 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Prior framework Phase A — calibration snapshots + persistence +
+  Save-all (the first of a 3-phase build).** A *prior* is now a full, timestamped
+  `PriorSurfaceSnapshot` per ticker (`api/schemas_prior.py`): ref spot, per-expiry
+  forward/discount/τ, `MarketSettings` (rate + dividends), event calendar, per-node
+  `{displayed model id+params, LQD backbone vector, atmVol/skew}`, and the affine
+  **LV grid** (tNodes/xNodes/theta). Persisted to a new `prior_snapshots` SQLite
+  table (schema v3→v4, history kept); `AppState` gained a DB-backed snapshot cache
+  (`save_prior_snapshot`/`latest_prior_snapshot`). `api/priors.py` captures
+  (`capture_snapshot`/`save_all`/`prior_status`); `POST /priors/save-all` +
+  `GET /priors`; a TopBar **"Save priors"** button (`useWorkflow.savePriors`).
+  `dataTs` (market moment, for the Phase-B freshness ladder) is stored separately
+  from `savedTs`. The snapshot reproduces exact modelled prices (LQD backbone
+  vector rebuilds the identical slice) and survives a restart. 5 new tests
+  (`test_priors.py`). **Next: Phase B** = Fetch ladder (Saved→15min-before-prev-
+  close→prev-close) + transported dotted prior overlays under the dynamics regime;
+  **then Phase C** = the Bayesian data-gap anchor (delta-locations + var-swap,
+  precision ∝ (ρ_desired−ρ_observed)⁺, all models + LV).
 
 - **[2026-06-16] Phase 10 follow-up toggles wired (the three open Options
   switches)**: closes out the Phase 10 "stored-but-inert" controls.

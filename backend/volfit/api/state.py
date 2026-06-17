@@ -17,8 +17,10 @@ from __future__ import annotations
 import math
 import os
 import threading
+import warnings
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from volfit.api.fit_models import DisplayFit
 from volfit.api.quotes import PreparedQuotes
@@ -52,6 +54,9 @@ from volfit.data.store import VolStore
 from volfit.data.types import ChainSnapshot
 from volfit.models.lqd.basis import LQDParams
 from volfit.models.lqd.calibrate import CalibrationResult
+
+if TYPE_CHECKING:  # type-only: avoids a runtime import cycle with schemas_prior
+    from volfit.api.schemas_prior import PriorSurfaceSnapshot
 
 #: Year-fraction day count used across the API (ACT/365 fixed).
 DAYS_PER_YEAR = 365.0
@@ -210,6 +215,10 @@ class AppState(UniverseMixin):
         self._affine_calibrated: dict[str, tuple] = {}
         self._fits: dict[tuple, FitRecord] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
+        #: Latest full prior SURFACE snapshot per ticker (the prior framework).
+        #: DB-backed (VolStore.prior_snapshots, history kept); this is the warm
+        #: in-memory cache of the most recently saved one per ticker.
+        self._prior_snapshots: dict[str, "PriorSurfaceSnapshot"] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
         #: Per-node variance-swap quote sessions (one var-swap per node, shared
         #: by the Parametric and Local-Vol fits; separate undo/redo history).
@@ -550,9 +559,11 @@ class AppState(UniverseMixin):
 
     def set_options(self, options: OptionsSettings) -> OptionsSettings:
         """Apply new meta settings. Calibration-affecting fields bump the options
-        version (``calendarWeight`` and the var-swap penalty knobs ``varSwapEnabled``
-        / ``varSwapWeightPct``); the rest are global defaults / display toggles read
-        live and need no cache invalidation."""
+        version (``calendarWeight``, the var-swap penalty knobs ``varSwapEnabled``
+        / ``varSwapWeightPct``, the event clock, the calendar-coupling switch
+        ``enforceCalendar`` and the prior-anchor knobs ``autoLoadPrior`` /
+        ``priorAnchorWeightPct``); the rest are global defaults / display toggles
+        read live and need no cache invalidation."""
         with self._lock:
             if options != self._options:
                 affects_fit = (
@@ -561,6 +572,9 @@ class AppState(UniverseMixin):
                     or options.varSwapWeightPct != self._options.varSwapWeightPct
                     or options.eventsEnabled != self._options.eventsEnabled
                     or options.normalizeEvents != self._options.normalizeEvents
+                    or options.enforceCalendar != self._options.enforceCalendar
+                    or options.autoLoadPrior != self._options.autoLoadPrior
+                    or options.priorAnchorWeightPct != self._options.priorAnchorWeightPct
                 )
                 if affects_fit:
                     self._options_version += 1
@@ -896,6 +910,57 @@ class AppState(UniverseMixin):
     def save_prior(self, key: tuple[str, str], record: PriorRecord) -> None:
         with self._lock:
             self._priors[key] = record
+
+    # ----------------------------------------------- prior surface snapshots
+    def save_prior_snapshot(self, snapshot: "PriorSurfaceSnapshot") -> bool:
+        """Cache a ticker's latest prior snapshot and persist it (history kept).
+
+        Returns whether it was persisted to a store (False = in-memory only, so it
+        would not survive a restart). Persistence is best-effort and never raises."""
+        from datetime import datetime
+
+        with self._lock:
+            self._prior_snapshots[snapshot.ticker] = snapshot
+        if self.store_path is None:
+            return False
+        try:
+            from volfit.data.store import VolStore
+
+            with VolStore(self.store_path) as store:
+                store.save_prior_snapshot(
+                    snapshot.ticker,
+                    datetime.fromisoformat(snapshot.dataTs),
+                    datetime.fromisoformat(snapshot.savedTs),
+                    snapshot.model_dump(),
+                )
+            return True
+        except Exception as exc:  # noqa: BLE001 — persistence must never break a save
+            warnings.warn(f"prior-snapshot persist failed: {exc}")
+            return False
+
+    def latest_prior_snapshot(self, ticker: str) -> "PriorSurfaceSnapshot | None":
+        """The most recently saved prior snapshot for a ticker (cache, then store)."""
+        with self._lock:
+            cached = self._prior_snapshots.get(ticker)
+        if cached is not None:
+            return cached
+        if self.store_path is None:
+            return None
+        try:
+            from volfit.api.schemas_prior import PriorSurfaceSnapshot
+            from volfit.data.store import VolStore
+
+            with VolStore(self.store_path) as store:
+                doc = store.latest_prior_snapshot(ticker)
+        except Exception as exc:  # noqa: BLE001 — history is best-effort
+            warnings.warn(f"prior-snapshot load failed: {exc}")
+            return None
+        if doc is None:
+            return None
+        snap = PriorSurfaceSnapshot.model_validate(doc)
+        with self._lock:
+            self._prior_snapshots.setdefault(ticker, snap)
+        return snap
 
     # ------------------------------------------------------------- lit / dark
     def node_lit(self, ticker: str, iso: str) -> bool:

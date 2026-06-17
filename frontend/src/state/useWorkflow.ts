@@ -35,11 +35,24 @@ export interface SchedulerStatus {
   secondsToNextSpot: number; // -1 when static
 }
 
+/** Per-ticker saved-prior availability (GET /priors). */
+export interface PriorTickerStatus {
+  ticker: string;
+  dataTs: string | null;
+  savedTs: string | null;
+  asOfLabel: string | null;
+  nodeCount: number;
+  hasLvSurface: boolean;
+}
+export interface PriorStatus {
+  tickers: PriorTickerStatus[];
+}
+
 /** Status poll cadence (ms): drives progress + the auto-fetch countdown. */
 const POLL_MS = 1500;
 
 /** Which manual action is currently in flight (drives the per-button gauge). */
-export type WorkflowAction = "spots" | "options" | "calibrate";
+export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors";
 
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
@@ -50,14 +63,27 @@ export interface UseWorkflowResult {
   fetchSpots: () => Promise<void>;
   fetchOptions: () => Promise<void>;
   calibrate: () => Promise<void>;
+  /** Saved-prior availability across the active universe (null until first poll). */
+  priors: PriorStatus | null;
+  /** Snapshot every ticker's current calibration as a prior (POST /priors/save-all). */
+  savePriors: () => Promise<void>;
 }
 
 export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflowResult {
   const [calib, setCalib] = useState<CalibrationStatus | null>(null);
   const [sched, setSched] = useState<SchedulerStatus | null>(null);
   const [pending, setPending] = useState<WorkflowAction | null>(null);
+  const [priors, setPriors] = useState<PriorStatus | null>(null);
   const wasRunning = useRef(false);
   const lastSpotVer = useRef<number | null>(null);
+
+  const refreshPriors = useCallback(async () => {
+    try {
+      setPriors(await api.get<PriorStatus>("/priors"));
+    } catch {
+      /* backend unreachable: leave the last status */
+    }
+  }, []);
 
   const poll = useCallback(async () => {
     try {
@@ -81,9 +107,10 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
   useEffect(() => {
     if (!live) return;
     void poll();
+    void refreshPriors(); // saved-prior availability (not in the hot poll loop)
     const id = window.setInterval(() => void poll(), POLL_MS);
     return () => window.clearInterval(id);
-  }, [live, poll]);
+  }, [live, poll, refreshPriors]);
 
   const action = useCallback(
     async (key: WorkflowAction, path: string, withBody: boolean) => {
@@ -103,5 +130,18 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
   const fetchOptions = useCallback(() => action("options", "/fetch/options", true), [action]);
   const calibrate = useCallback(() => action("calibrate", "/calibrate", false), [action]);
 
-  return { calib, sched, pending, busy: pending !== null, fetchSpots, fetchOptions, calibrate };
+  const savePriors = useCallback(async () => {
+    setPending("savePriors");
+    try {
+      await api.post("/priors/save-all");
+      await refreshPriors();
+    } finally {
+      setPending(null);
+    }
+  }, [refreshPriors]);
+
+  return {
+    calib, sched, pending, busy: pending !== null,
+    fetchSpots, fetchOptions, calibrate, priors, savePriors,
+  };
 }

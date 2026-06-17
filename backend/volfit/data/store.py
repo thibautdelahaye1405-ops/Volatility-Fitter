@@ -32,7 +32,7 @@ from volfit.data.types import ChainSnapshot, Instrument, OptionQuote
 #: v3 ([REQ 2026-06-15]): an `app_settings` key/value table persists the global
 #: Fit + Options defaults (the Options "Save as default" button), so a backend
 #: restart restores them instead of the code defaults.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -77,6 +77,13 @@ CREATE TABLE IF NOT EXISTS priors (
     diagnostics_json TEXT,
     label            TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS prior_snapshots (
+    id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker    TEXT NOT NULL,
+    data_ts   TEXT NOT NULL,
+    saved_ts  TEXT NOT NULL,
+    doc_json  TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS universes (
     name        TEXT PRIMARY KEY,
     config_json TEXT NOT NULL
@@ -89,6 +96,8 @@ CREATE INDEX IF NOT EXISTS idx_snapshots_ticker_ts ON snapshots (ticker, ts);
 CREATE INDEX IF NOT EXISTS idx_quotes_snapshot      ON quotes (snapshot_id);
 CREATE INDEX IF NOT EXISTS idx_fits_ticker_expiry   ON fits (ticker, expiry);
 CREATE INDEX IF NOT EXISTS idx_priors_ticker_expiry ON priors (ticker, expiry);
+CREATE INDEX IF NOT EXISTS idx_prior_snapshots_ticker
+    ON prior_snapshots (ticker, data_ts);
 """
 
 
@@ -133,6 +142,9 @@ class VolStore:
         v2 -> v3: the `app_settings` key/value table is added — no migration
         beyond the `CREATE TABLE IF NOT EXISTS` in `_SCHEMA` (a brand-new table
         carries no old rows to backfill).
+        v3 -> v4: the `prior_snapshots` table is added (full calibration
+        snapshots for the prior framework) — again a brand-new table, so the
+        `CREATE TABLE IF NOT EXISTS` is the whole migration.
         """
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
@@ -332,6 +344,45 @@ class VolStore:
         self, ticker: str, expiry: date | None = None, label: str | None = None
     ) -> list[FitRecord]:
         return self._load_records("priors", ticker, expiry, label=label)
+
+    # -- prior snapshots (full calibration snapshots for the prior framework) --
+
+    def save_prior_snapshot(
+        self, ticker: str, data_ts: datetime, saved_ts: datetime, doc: dict
+    ) -> int:
+        """Persist one full prior surface snapshot (JSON document); returns its id.
+
+        ``data_ts`` is the market moment the calibration reflects (what the fetch
+        freshness ladder compares against the previous close); ``saved_ts`` is the
+        wall-clock save time. History is kept — each save is a new row."""
+        cur = self.conn.execute(
+            "INSERT INTO prior_snapshots (ticker, data_ts, saved_ts, doc_json) "
+            "VALUES (?, ?, ?, ?)",
+            [ticker, data_ts.isoformat(), saved_ts.isoformat(), json.dumps(doc)],
+        )
+        self.conn.commit()
+        return int(cur.lastrowid)
+
+    def latest_prior_snapshot(self, ticker: str) -> dict | None:
+        """The most recently SAVED prior snapshot document for a ticker, or None."""
+        row = self.conn.execute(
+            "SELECT doc_json FROM prior_snapshots WHERE ticker = ? "
+            "ORDER BY saved_ts DESC, id DESC LIMIT 1",
+            [ticker],
+        ).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def list_prior_snapshots(self, ticker: str) -> list[tuple[int, datetime, datetime]]:
+        """(id, data_ts, saved_ts) of a ticker's snapshots, newest save first."""
+        rows = self.conn.execute(
+            "SELECT id, data_ts, saved_ts FROM prior_snapshots WHERE ticker = ? "
+            "ORDER BY saved_ts DESC, id DESC",
+            [ticker],
+        ).fetchall()
+        return [
+            (int(i), datetime.fromisoformat(d), datetime.fromisoformat(s))
+            for i, d, s in rows
+        ]
 
     def _save_record(
         self,

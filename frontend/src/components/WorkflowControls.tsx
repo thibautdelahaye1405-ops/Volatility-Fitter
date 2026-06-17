@@ -31,13 +31,16 @@ function FetchingBar() {
 }
 
 export default function WorkflowControls({ workflow }: { workflow: UseWorkflowResult }) {
-  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate } = workflow;
+  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate, priors, savePriors } =
+    workflow;
   const realtimeSpots = sched?.spotMode === "realtime";
   const autoOptions = sched?.optionsFetchMode === "auto";
   const running = calib?.running ?? false;
   const stale = calib?.staleNodes ?? 0;
   const fetchingSpots = pending === "spots";
   const fetchingOptions = pending === "options";
+  const savingPriors = pending === "savePriors";
+  const savedTickers = priors?.tickers.filter((t) => t.nodeCount > 0).length ?? 0;
 
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -90,6 +93,21 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
           : stale > 0
             ? `Calibrate (${stale})`
             : "Calibrate"}
+      </button>
+
+      {/* Save all current calibrations as priors (a full surface snapshot each) */}
+      <button
+        onClick={() => void savePriors()}
+        disabled={busy}
+        title={
+          savedTickers > 0
+            ? `Save all current calibrations as priors (${savedTickers} ticker(s) saved)`
+            : "Save all current calibrations as priors"
+        }
+        className={`${BTN} ${savingPriors ? FETCHING : ACTIVE}`}
+      >
+        {savingPriors ? "Saving priors…" : "Save priors"}
+        {savingPriors && <FetchingBar />}
       </button>
 
       {/* Compact calibration progress gauge (only while a job is running) */}
