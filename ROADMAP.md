@@ -10,7 +10,23 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (492 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (495 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Prior framework Phase B (core) — fetch freshness ladder +
+  transported dotted prior.** `POST /priors/fetch` (`priors.fetch_all`) resolves
+  each ticker's prior by the ladder: **(1)** latest SAVED snapshot if its `dataTs`
+  is posterior to the previous close, else **(2)** recalibrate on-the-fly from the
+  **15-min-before-previous-close** chain, else **(3)** the actual previous close
+  (on-the-fly branch mirrors `workflow.seed_priors`' as-of toggle). The result is
+  the ticker's ACTIVE prior (`AppState.set_active_prior`/`active_prior`, not cleared
+  by `_clear_chain_caches`). `prior_transport.py` rebuilds the prior's LQD backbone,
+  transports it to the current forward (`h_T = log(F_live/F_prior)`) under
+  `Options.dynamicsRegime` (`TransportedSlice`), and samples on the model k-grid —
+  this same helper feeds the Phase-C anchor. `smile_payload` now draws the active
+  prior as a **dotted teal, spot-updated** line (`SmileData.priorTransported`).
+  Frontend: a TopBar **"Fetch priors"** button + the dotted rendering. 3 new tests.
+  **Remaining in Phase B**: extend the dotted spot-updated overlay to the LocalVol
+  smile + Term (3D surface optional) — same `prior_transport` machinery.
 
 - **[2026-06-17] Prior framework Phase A — calibration snapshots + persistence +
   Save-all (the first of a 3-phase build).** A *prior* is now a full, timestamped

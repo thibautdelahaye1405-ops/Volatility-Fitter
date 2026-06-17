@@ -19,6 +19,9 @@ import RangeBrush from "./RangeBrush";
 interface SmileChartProps {
   model: SmilePoint[];
   prior: SmilePoint[];
+  /** True when `prior` is the active fetched prior (spot-updated): drawn as a
+   *  distinct dotted teal "spot-updated prior" line rather than the saved dash. */
+  priorTransported?: boolean;
   quotes: QuoteBand[];
   /** Visible log-moneyness window [lo, hi] (controlled, the coarse brush). */
   kWindow: readonly [number, number];
@@ -87,6 +90,7 @@ function volAt(curve: SmilePoint[], k: number): number | null {
 export default function SmileChart({
   model,
   prior,
+  priorTransported = false,
   quotes,
   kWindow,
   onKWindowChange,
@@ -398,9 +402,15 @@ export default function SmileChart({
                   );
                 })}
 
-                {/* Prior fit: dashed slate */}
-                <path d={priorPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
-                  strokeWidth={1.5} strokeDasharray="5 4" />
+                {/* Prior: saved = dashed slate; active fetched (spot-updated) =
+                    dotted teal so it reads as the live, transported prior. */}
+                <path
+                  d={priorPath}
+                  fill="none"
+                  stroke={priorTransported ? "rgb(45 212 191 / 0.95)" : "rgb(100 116 139 / 0.9)"}
+                  strokeWidth={1.5}
+                  strokeDasharray={priorTransported ? "2 3" : "5 4"}
+                />
 
                 {/* SSR scenario overlay: dotted amber */}
                 {scenarioPath !== "" && (

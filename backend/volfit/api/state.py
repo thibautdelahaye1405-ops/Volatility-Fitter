@@ -219,6 +219,15 @@ class AppState(UniverseMixin):
         #: DB-backed (VolStore.prior_snapshots, history kept); this is the warm
         #: in-memory cache of the most recently saved one per ticker.
         self._prior_snapshots: dict[str, "PriorSurfaceSnapshot"] = {}
+        #: The ACTIVE fetched prior per ticker (the freshness-ladder result of
+        #: "Fetch priors"): the snapshot the dotted spot-updated overlay draws and
+        #: the calibration anchor pulls toward. Deliberately NOT cleared by
+        #: ``_clear_chain_caches`` — fetching itself toggles the as-of, and the
+        #: active prior must survive that.
+        self._active_prior: dict[str, "PriorSurfaceSnapshot"] = {}
+        #: The freshness-ladder source each active prior came from
+        #: ("saved" | "15min" | "close"), for the Fetch status display.
+        self._active_prior_source: dict[str, str] = {}
         self._sessions: dict[tuple[str, str], EditSession] = {}
         #: Per-node variance-swap quote sessions (one var-swap per node, shared
         #: by the Parametric and Local-Vol fits; separate undo/redo history).
@@ -961,6 +970,28 @@ class AppState(UniverseMixin):
         with self._lock:
             self._prior_snapshots.setdefault(ticker, snap)
         return snap
+
+    def set_active_prior(
+        self, ticker: str, snapshot: "PriorSurfaceSnapshot | None", source: str
+    ) -> None:
+        """Set (or clear) the active fetched prior for a ticker + its ladder source
+        ("saved" | "15min" | "close" | "none")."""
+        with self._lock:
+            if snapshot is None:
+                self._active_prior.pop(ticker, None)
+            else:
+                self._active_prior[ticker] = snapshot
+            self._active_prior_source[ticker] = source
+
+    def active_prior(self, ticker: str) -> "PriorSurfaceSnapshot | None":
+        """The active fetched prior for a ticker (the dotted overlay / anchor)."""
+        with self._lock:
+            return self._active_prior.get(ticker)
+
+    def active_prior_source(self, ticker: str) -> str | None:
+        """Which freshness-ladder branch the active prior came from, or None."""
+        with self._lock:
+            return self._active_prior_source.get(ticker)
 
     # ------------------------------------------------------------- lit / dark
     def node_lit(self, ticker: str, iso: str) -> bool:

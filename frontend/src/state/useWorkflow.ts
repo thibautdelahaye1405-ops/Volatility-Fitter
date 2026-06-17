@@ -43,6 +43,9 @@ export interface PriorTickerStatus {
   asOfLabel: string | null;
   nodeCount: number;
   hasLvSurface: boolean;
+  /** The active fetched prior (after 'Fetch priors'): ladder source + its moment. */
+  activeSource: string | null; // "saved" | "15min" | "close" | null
+  activeDataTs: string | null;
 }
 export interface PriorStatus {
   tickers: PriorTickerStatus[];
@@ -52,7 +55,7 @@ export interface PriorStatus {
 const POLL_MS = 1500;
 
 /** Which manual action is currently in flight (drives the per-button gauge). */
-export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors";
+export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors" | "fetchPriors";
 
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
@@ -67,6 +70,8 @@ export interface UseWorkflowResult {
   priors: PriorStatus | null;
   /** Snapshot every ticker's current calibration as a prior (POST /priors/save-all). */
   savePriors: () => Promise<void>;
+  /** Resolve + activate each ticker's prior via the freshness ladder (POST /priors/fetch). */
+  fetchPriors: () => Promise<void>;
 }
 
 export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflowResult {
@@ -140,8 +145,19 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
     }
   }, [refreshPriors]);
 
+  const fetchPriors = useCallback(async () => {
+    setPending("fetchPriors");
+    try {
+      await api.post("/priors/fetch");
+      await refreshPriors();
+      refreshViews(); // the dotted, spot-updated prior overlays change on every view
+    } finally {
+      setPending(null);
+    }
+  }, [refreshPriors, refreshViews]);
+
   return {
     calib, sched, pending, busy: pending !== null,
-    fetchSpots, fetchOptions, calibrate, priors, savePriors,
+    fetchSpots, fetchOptions, calibrate, priors, savePriors, fetchPriors,
   };
 }

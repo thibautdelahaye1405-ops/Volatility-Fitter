@@ -59,14 +59,18 @@ class PriorSurfaceSnapshot(BaseModel):
 
 
 class PriorTickerStatus(BaseModel):
-    """Saved-prior availability summary for one ticker (GET /priors)."""
+    """Saved- and active-prior availability summary for one ticker (GET /priors)."""
 
     ticker: str
-    dataTs: str | None = None
+    dataTs: str | None = None  # latest SAVED snapshot's market moment
     savedTs: str | None = None
     asOfLabel: str | None = None
     nodeCount: int = 0
     hasLvSurface: bool = False
+    #: The ACTIVE (fetched) prior, if 'Fetch priors' has run: the freshness-ladder
+    #: branch it came from and the market moment it reflects.
+    activeSource: str | None = None  # "saved" | "15min" | "close" | None
+    activeDataTs: str | None = None
 
 
 class PriorStatus(BaseModel):
@@ -81,3 +85,18 @@ class PriorSaveResult(BaseModel):
     tickers: list[str]  # tickers whose surface was snapshotted
     nodes: int  # total nodes captured
     persisted: bool  # whether a store is configured (so it survives a restart)
+
+
+class PriorFetchTicker(BaseModel):
+    """Per-ticker outcome of the fetch freshness ladder."""
+
+    ticker: str
+    source: str  # "saved" | "15min" | "close" | "none"
+    dataTs: str | None = None  # the active prior's market moment (None if none found)
+    nodeCount: int = 0
+
+
+class PriorFetchResult(BaseModel):
+    """Outcome of POST /priors/fetch (the freshness ladder per ticker)."""
+
+    tickers: list[PriorFetchTicker]

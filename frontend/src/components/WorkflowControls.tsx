@@ -31,8 +31,8 @@ function FetchingBar() {
 }
 
 export default function WorkflowControls({ workflow }: { workflow: UseWorkflowResult }) {
-  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate, priors, savePriors } =
-    workflow;
+  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate, priors, savePriors,
+    fetchPriors } = workflow;
   const realtimeSpots = sched?.spotMode === "realtime";
   const autoOptions = sched?.optionsFetchMode === "auto";
   const running = calib?.running ?? false;
@@ -40,7 +40,9 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
   const fetchingSpots = pending === "spots";
   const fetchingOptions = pending === "options";
   const savingPriors = pending === "savePriors";
+  const fetchingPriors = pending === "fetchPriors";
   const savedTickers = priors?.tickers.filter((t) => t.nodeCount > 0).length ?? 0;
+  const activePriors = priors?.tickers.filter((t) => t.activeSource).length ?? 0;
 
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -108,6 +110,25 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
       >
         {savingPriors ? "Saving priors…" : "Save priors"}
         {savingPriors && <FetchingBar />}
+      </button>
+
+      {/* Fetch priors (freshness ladder) — activates the dotted spot-updated overlay */}
+      <button
+        onClick={() => void fetchPriors()}
+        disabled={busy || savedTickers === 0}
+        title={
+          savedTickers === 0
+            ? "Save priors first, then fetch to overlay them"
+            : activePriors > 0
+              ? `Fetch priors (${activePriors} active)`
+              : "Fetch priors (Saved → 15m-before-prev-close → prev-close)"
+        }
+        className={`${BTN} ${
+          savedTickers === 0 ? MUTED : fetchingPriors ? FETCHING : ACTIVE
+        }`}
+      >
+        {fetchingPriors ? "Fetching priors…" : "Fetch priors"}
+        {fetchingPriors && <FetchingBar />}
       </button>
 
       {/* Compact calibration progress gauge (only while a job is running) */}

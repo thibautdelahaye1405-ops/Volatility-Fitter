@@ -11,7 +11,7 @@ penalty are Phase B/C — this module only produces and stores the snapshots.
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import numpy as np
 
@@ -19,6 +19,8 @@ from volfit.api.displayed import displayed_atm_vol, displayed_skew
 from volfit.api.schemas_affine import AffineFitRequest
 from volfit.api.schemas_prior import (
     LvSurfaceSnapshot,
+    PriorFetchResult,
+    PriorFetchTicker,
     PriorNode,
     PriorSaveResult,
     PriorStatus,
@@ -166,21 +168,108 @@ def save_all(state: AppState, fit_mode: str = "mid") -> PriorSaveResult:
 
 
 def prior_status(state: AppState) -> PriorStatus:
-    """Saved-prior availability per active ticker (for the Fetch button)."""
+    """Saved- and active-prior availability per active ticker (for the buttons)."""
     out: list[PriorTickerStatus] = []
     for ticker in state.active_tickers():
         snap = state.latest_prior_snapshot(ticker)
-        if snap is None:
-            out.append(PriorTickerStatus(ticker=ticker))
+        active = state.active_prior(ticker)
+        status = PriorTickerStatus(
+            ticker=ticker,
+            activeSource=state.active_prior_source(ticker),
+            activeDataTs=active.dataTs if active is not None else None,
+        )
+        if snap is not None:
+            status.dataTs = snap.dataTs
+            status.savedTs = snap.savedTs
+            status.asOfLabel = snap.asOfLabel
+            status.nodeCount = len(snap.nodes)
+            status.hasLvSurface = snap.lvSurface is not None
+        out.append(status)
+    return PriorStatus(tickers=out)
+
+
+# --------------------------------------------------------------- fetch ladder
+def _prev_close_instant(state: AppState) -> tuple[datetime, date]:
+    """The previous-close instant (UTC-naive) + the session date it belongs to."""
+    from volfit.api import asof as asof_mod
+
+    history = asof_mod._history_dates(state)
+    prev_session = asof_mod._prev_session(history, state.reference_date)
+    return asof_mod.market_close_utc(prev_session), prev_session
+
+
+def _is_fresh(snapshot: PriorSurfaceSnapshot | None, prev_close: datetime) -> bool:
+    """Whether a saved snapshot is posterior to the previous close (ladder step 1)."""
+    if snapshot is None:
+        return False
+    try:
+        return datetime.fromisoformat(snapshot.dataTs) > prev_close
+    except ValueError:
+        return False
+
+
+def _recalibrate_at_prev_close(
+    state: AppState, ticker: str, prev_session, fit_mode: str
+) -> tuple[PriorSurfaceSnapshot | None, str]:
+    """Ladder steps 2-3: calibrate the ticker on-the-fly from the 15-min-before-
+    previous-close chain, falling back to the actual previous close.
+
+    Mirrors workflow.seed_priors: switch the as-of to the historical moment,
+    recalibrate the lit nodes there, snapshot, and restore the live as-of (the
+    restore re-clears the live chain caches, so the live surface re-bootstraps —
+    the accepted cost of an on-the-fly fetch). Returns (snapshot, source) or
+    (None, "none") when no historical moment is serveable."""
+    from volfit.api import asof as asof_mod, service, workflow
+
+    live = state.as_of
+    for moment, offset, label in (("before_close", 15, "15min"), ("close", None, "close")):
+        try:
+            selection = asof_mod._resolve_moment(state, prev_session, moment, offset)
+        except ValueError:
+            continue  # this moment is not serveable on the active provider
+        snap: PriorSurfaceSnapshot | None = None
+        try:
+            state.set_as_of(selection)
+            for t, iso in workflow.lit_nodes(state, [ticker]):
+                service.calibrate_node(state, t, iso, fit_mode)
+            snap = capture_snapshot(state, ticker, fit_mode)
+        except Exception:  # noqa: BLE001 — a provider gap falls through to the next step
+            snap = None
+        finally:
+            state.set_as_of(live)
+        if snap is not None:
+            state.save_prior_snapshot(snap)
+            return snap, label
+    return None, "none"
+
+
+def fetch_all(state: AppState, fit_mode: str = "mid") -> PriorFetchResult:
+    """Resolve each active ticker's prior via the freshness ladder and set it active.
+
+    Per ticker: (1) use the latest SAVED snapshot if it is posterior to the
+    previous close; else (2) calibrate on-the-fly from 15-min-before-previous-close;
+    else (3) the actual previous close. The resolved prior becomes the active
+    (dotted, spot-updated overlay + anchor) prior for the ticker."""
+    prev_close, prev_session = _prev_close_instant(state)
+    out: list[PriorFetchTicker] = []
+    for ticker in state.active_tickers():
+        latest = state.latest_prior_snapshot(ticker)
+        if _is_fresh(latest, prev_close):
+            state.set_active_prior(ticker, latest, "saved")
+            out.append(
+                PriorFetchTicker(
+                    ticker=ticker, source="saved", dataTs=latest.dataTs,
+                    nodeCount=len(latest.nodes),
+                )
+            )
             continue
+        snap, source = _recalibrate_at_prev_close(state, ticker, prev_session, fit_mode)
+        state.set_active_prior(ticker, snap, source)
         out.append(
-            PriorTickerStatus(
-                ticker=ticker,
-                dataTs=snap.dataTs,
-                savedTs=snap.savedTs,
-                asOfLabel=snap.asOfLabel,
-                nodeCount=len(snap.nodes),
-                hasLvSurface=snap.lvSurface is not None,
+            PriorFetchTicker(
+                ticker=ticker, source=source,
+                dataTs=snap.dataTs if snap is not None else None,
+                nodeCount=len(snap.nodes) if snap is not None else 0,
             )
         )
-    return PriorStatus(tickers=out)
+    return PriorFetchResult(tickers=out)

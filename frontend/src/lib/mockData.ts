@@ -67,6 +67,9 @@ export interface SmileData {
   forward: number;
   model: SmilePoint[];
   prior: SmilePoint[];
+  /** True when `prior` is the active fetched prior, spot-updated under the
+   *  dynamics regime (drawn as a dotted spot-updated prior). */
+  priorTransported: boolean;
   quotes: QuoteBand[];
   /** Full k extent of the data (brush bounds). */
   kMin: number;
@@ -196,6 +199,7 @@ export function getMockSmile(): SmileData {
     model: sampleCurve(161, volOf),
     // Prior fit: same shape shifted down by 0.8 vol pt for visual comparison.
     prior: sampleCurve(161, (k) => volOf(k) - 0.008),
+    priorTransported: false,
     quotes: generateQuotes(25, 20260610),
     kMin: K_MIN,
     kMax: K_MAX,

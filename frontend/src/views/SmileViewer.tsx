@@ -198,6 +198,7 @@ export default function SmileViewer() {
           <SmileChart
             model={smile.model}
             prior={smile.prior}
+            priorTransported={smile.priorTransported}
             quotes={smile.quotes}
             scenario={scenarioCurve}
             anchorCurve={smile.anchorModel ?? null}

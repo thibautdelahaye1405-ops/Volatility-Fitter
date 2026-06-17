@@ -442,6 +442,28 @@ def weighted_rms_error(state: AppState, ticker: str, iso: str, record: FitRecord
     return weighted_rms_vol(displayed_slice(record), k, w, record.prepared.tau, weights)
 
 
+def _prior_overlay(
+    state: AppState, ticker: str, iso: str, record: FitRecord, model: list[SmilePoint]
+) -> tuple[list[SmilePoint], bool]:
+    """The prior curve to overlay + whether it is the active fetched prior.
+
+    Precedence: the ACTIVE fetched prior (transported to the current forward under
+    the dynamics regime, drawn dotted) -> a saved per-node prior -> the current fit
+    (so the chart always carries a prior line). The transported prior is sampled on
+    the model curve's own k grid so the dotted line aligns with the smile."""
+    from volfit.api import prior_transport
+
+    node = prior_transport.prior_node(state.active_prior(ticker), iso)
+    if node is not None:
+        grid = np.array([p.k for p in model], dtype=float)
+        points = prior_transport.transported_prior_points(
+            node, float(record.prepared.forward), state.dynamics_regime(), grid
+        )
+        return points, True
+    saved = state.get_prior((ticker, iso))
+    return (list(saved.curve) if saved is not None else list(model)), False
+
+
 def varswap_info(state: AppState, ticker: str, iso: str, record: FitRecord) -> VarSwapInfo:
     """Var-swap quote state + the model's own fair var-swap vol for a node."""
     session = state.varswap_session_if_exists((ticker, iso))
@@ -471,8 +493,10 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     model = model_curve(record)
     rms_error = weighted_rms_error(state, ticker, iso, record)
 
-    saved = state.get_prior((ticker, expiry_iso))  # saved prior, else current fit
-    prior = list(saved.curve) if saved is not None else list(model)
+    # Prior overlay: prefer the ACTIVE fetched prior (dotted, spot-updated to the
+    # current forward under the dynamics regime); else a saved per-node prior; else
+    # the current fit (so the chart always has a "prior" line).
+    prior, prior_transported = _prior_overlay(state, ticker, iso, record, model)
 
     # While a spot move is active, also expose the pre-transport calibration so
     # the viewer overlays it dimmed (the original fit vs the transported smile).
@@ -537,6 +561,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         forward=prepared.forward,
         model=model,
         prior=prior,
+        priorTransported=prior_transported,
         quotes=quotes,
         # Brush extent / default window stay the OBSERVED range, even though the
         # model curve above is sampled out to ±1 (revealed by zoom / pan).

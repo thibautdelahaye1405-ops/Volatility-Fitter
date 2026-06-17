@@ -285,6 +285,10 @@ class SmileData(BaseModel):
     forward: float
     model: list[SmilePoint]
     prior: list[SmilePoint]
+    #: True when ``prior`` is the ACTIVE fetched prior, transported to the current
+    #: forward under the dynamics regime (drawn dotted as a spot-updated prior);
+    #: False when it is a saved per-node prior or the current fit fallback.
+    priorTransported: bool = False
     quotes: list[QuoteBand]
     kMin: float
     kMax: float

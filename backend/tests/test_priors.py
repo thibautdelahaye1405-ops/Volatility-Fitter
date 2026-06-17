@@ -109,3 +109,69 @@ def test_save_all_without_store_is_memory_only():
         assert result["persisted"] is False
         status = {t["ticker"]: t for t in c.get("/priors").json()["tickers"]}
         assert status[TICKER]["nodeCount"] >= 1  # cached in-memory this session
+
+
+# ----------------------------------------------------- Phase B: fetch + display
+def test_fetch_uses_fresh_saved_prior_and_marks_overlay(client):
+    """A prior saved this session (data moment after the previous close) is fresh,
+    so Fetch uses it directly and the smile overlay becomes the dotted, spot-updated
+    (transported) prior."""
+    iso = _first_iso(client)
+    client.get(f"/smiles/{TICKER}/{iso}")
+    client.post("/priors/save-all")
+
+    fetched = {t["ticker"]: t for t in client.post("/priors/fetch").json()["tickers"]}
+    assert fetched[TICKER]["source"] == "saved"
+    assert fetched[TICKER]["nodeCount"] >= 1
+
+    smile = client.get(f"/smiles/{TICKER}/{iso}").json()
+    assert smile["priorTransported"] is True
+    assert len(smile["prior"]) == len(smile["model"])  # sampled on the model grid
+
+
+def test_is_fresh_ladder_decision():
+    """The saved-vs-recalibrate decision keys on the data moment vs prev close."""
+    from datetime import datetime, timedelta
+
+    from volfit.api.priors import _is_fresh
+    from volfit.api.schemas_prior import PriorSurfaceSnapshot
+
+    prev_close = datetime(2026, 6, 9, 20, 0)  # ~16:00 ET prev session
+
+    def snap(dt: datetime) -> PriorSurfaceSnapshot:
+        return PriorSurfaceSnapshot(
+            ticker=TICKER, dataTs=dt.isoformat(), savedTs=dt.isoformat(),
+            asOfLabel="x", refSpot=100.0, market={}, nodes=[
+                # one minimal node so the model validates
+                {"expiry": "2026-07-10", "tCal": 0.1, "tau": 0.1, "forward": 100.0,
+                 "discount": 1.0, "model": "lqd", "lqd": [0.0, 0.0], "atmVol": 0.2, "skew": 0.0}
+            ],
+        )
+
+    assert _is_fresh(snap(prev_close + timedelta(hours=1)), prev_close) is True
+    assert _is_fresh(snap(prev_close - timedelta(hours=1)), prev_close) is False
+    assert _is_fresh(None, prev_close) is False
+
+
+def test_transported_prior_identity_and_shift():
+    """The transported prior curve is the prior shape at h=0 and shifts with the
+    forward (sticky-strike R=1: a higher forward lowers vol at fixed k for a skew)."""
+    import numpy as np
+
+    from volfit.api.prior_transport import prior_lqd_slice, transported_prior_points
+    from volfit.api.schemas_prior import PriorNode
+
+    state = AppState(REF_DATE)
+    iso = [e.isoformat() for e in sorted(state.forwards(TICKER))][1]
+    snap = priors.capture_snapshot(state, TICKER, "mid")
+    pnode: PriorNode = next(n for n in snap.nodes if n.expiry == iso)
+
+    grid = np.linspace(-0.2, 0.2, 11)
+    base = prior_lqd_slice(pnode)
+    # h = 0 (current forward == prior forward): identity, prior's own vols.
+    identity = transported_prior_points(pnode, pnode.forward, "sticky_moneyness", grid)
+    expect = np.sqrt(base.implied_w(grid) / pnode.tau)
+    assert np.allclose([p.vol for p in identity], expect)
+    # A forward move changes the curve (transport actually moved it).
+    moved = transported_prior_points(pnode, pnode.forward * 1.05, "sticky_strike", grid)
+    assert not np.allclose([p.vol for p in moved], expect)

@@ -14,7 +14,7 @@ from fastapi import APIRouter, Request
 
 from volfit.api import priors
 from volfit.api.schemas import FitMode
-from volfit.api.schemas_prior import PriorSaveResult, PriorStatus
+from volfit.api.schemas_prior import PriorFetchResult, PriorSaveResult, PriorStatus
 
 router = APIRouter()
 
@@ -22,6 +22,13 @@ router = APIRouter()
 @router.post("/priors/save-all", response_model=PriorSaveResult)
 def save_all_priors(request: Request, fitMode: FitMode = "mid") -> PriorSaveResult:
     return priors.save_all(request.app.state.volfit, fitMode)
+
+
+@router.post("/priors/fetch", response_model=PriorFetchResult)
+def fetch_priors(request: Request, fitMode: FitMode = "mid") -> PriorFetchResult:
+    """Resolve each ticker's prior via the freshness ladder (Saved -> 15-min-before
+    -previous-close -> previous-close) and set it active (the dotted overlay/anchor)."""
+    return priors.fetch_all(request.app.state.volfit, fitMode)
 
 
 @router.get("/priors", response_model=PriorStatus)
