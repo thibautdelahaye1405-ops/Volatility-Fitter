@@ -10,57 +10,36 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-### 🔴 TOP PRIORITY (next session) — Backend↔Frontend calibration sync consistency
+### ✅ RESOLVED (2026-06-17) — Backend↔Frontend calibration sync (was TOP PRIORITY)
 
-**Symptom (open, NOT resolved):** with **Auto-calibrate OFF + RT spot ON** (the
-user's historical-replay workflow on Massive data), after switching the fit model
-→ Apply → Calibrate, the Parametric smiles show **STALE instead of LIVE** and do
-**not** reflect the latest calibrated model — and it looks **random**: only by
-switching assets/expiries back and forth do some nodes eventually update to LIVE,
-and the node the Smile tab was on initially tends to stay STALE indefinitely.
+The fragile, edge-triggered refresh is replaced by a **level-triggered calibration
+epoch** — a real architectural fix, not another edge patch. `AppState._calib_epoch`
+is a monotonic counter bumped in `set_calibrated_ptr` ONLY when an already-calibrated
+node moves onto a new fit_key (a genuine recalibration that changes the displayed
+fit); a first-ever bootstrap or an identical re-point does NOT bump it (so no churn /
+no refetch loop under autoCalibrate ON). It is surfaced on `GET /calibration/status`
+(`CalibrationStatus.epoch`). `useWorkflow.poll` now compares the polled epoch to the
+last-seen value and `refreshViews()` whenever it advances — covering the explicit
+Calibrate button, auto-calibrate-on-fetch, the streaming refit, AND progressive
+per-node commits during a running job, for ALL mounted views regardless of which tab
+is open. This is immune to missed running→idle edges, fast single-node jobs, and
+background/scheduler calibrations. The old `wasRunning` edge is gone; `spotVersion`
+still drives pure-transport refreshes. End-to-end verified (TestClient, the user's
+exact autoCalibrate-OFF flow): Apply freezes the LQD fit (stale, epoch unchanged),
+Calibrate advances epoch 0→1, `/smiles` then reports `sigmoid` with `stale=false`.
+3 new tests in `test_calibration_workflow.py` (epoch advances only on real recal,
+no churn on repeated reads under autoCal ON, model-info reflects the displayed model).
 
-**What is NOT the cause (verified this session):**
-- The backend is correct — raw `GET /smiles/{t}/{e}` returns the right per-model
-  fit (SVI: aLeft=0; LQD-9: aLeft=0.226; distinct atmVol/skew/curvature). The
-  committed `FitSettings.model` is honoured by `_compute_fit` / `build_display_fit`.
-- It's not the Apply commit (the model commits; `GET /settings/fit` reflects it).
-- It's not data degeneracy (raw smiles differ per model).
-
-**Attempted fixes this session (helped but did NOT fully resolve for the user):**
-- `b512637` — `useWorkflow.calibrate`/`fetchOptions` now AWAIT job completion then
-  `refreshViews()` (was relying on the 1500ms poll catching the job's running→idle
-  EDGE, which a fast single-node fit slips between → the only refetch was a stale
-  pre-job one → node stuck STALE). Verified in-isolation (A_L flips 0.074→0.000).
-- `6b3219d` — brief "UPDATED" pill on the Parametric card on a same-node stale→fresh
-  edge (caveat: only fires if the tab observed STALE first; calibrating from another
-  tab won't flash).
-
-**Open threads to chase in a fresh session (the real fix is a clean sync model):**
-1. The `STALE` flag is `service.node_dirty` = (calibrated-pointer fit_key ≠ current
-   fit_key). `fit_key` folds MANY versions (session/varswap/events/settings/forwards/
-   options/data/**active_prior**). Under RT spot + the background scheduler
-   (`optionsFetchMode`, `stream_refit`), a version (esp. `data_version` on a chain
-   refetch, or `active_prior_version`) can bump AFTER `calibrate_all` ran, so nodes
-   legitimately re-go STALE — explaining the "random/keeps coming back" feel.
-   → Audit what bumps versions during an RT-spot/scheduler cycle vs the explicit
-   Calibrate, and whether Calibrate should re-point at the post-bump key.
-2. `useWorkflow.poll` still refreshes on a fragile running→idle EDGE for
-   BACKGROUND/scheduler calibrations (not just the explicit button) — same miss
-   class. Consider tracking job `done`/id and refreshing on any completion.
-3. The refetch only refreshes the CURRENTLY-MOUNTED node; cross-node consistency is
-   left to navigation. A global "calibration version" the views key off (refetch all
-   visible derived views on any completion) would be more robust.
-4. Confirm the user is actually running the committed frontend (the "UPDATED not
-   firing" suggested a stale build) — but treat that as secondary; design a sync
-   model that is correct regardless of timing rather than patching edges.
-5. Possible direction: a single monotonic **calibration epoch** on `AppState`
-   (bumped whenever any node is (re)calibrated) surfaced on `/calibration/status`;
-   the frontend refetches all mounted views whenever the epoch advances, and the
-   STALE flag is derived from the epoch rather than a multi-version key race.
+Shipped alongside: the Parametric **diagnostics aside now shows the displayed model
+family + hyperparameters** (LQD Legendre degree N, Multi-Core SIV effective core
+count R — capped by the quote budget, so faithful to what the chart draws; SVI-JW has
+none) via `SmileData.modelInfo` (`service.model_info`, read off the actual displayed
+slice so a frozen node names the model it was last calibrated with). A "Stale" pill
+sits next to the model label.
 
 ---
 
-**Done & verified (506 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (509 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
 
 - **[2026-06-17] Fix: Parametric panel not refetching after Calibrate (model switch
   looked inert).** With autoCalibrate OFF, switching model → Apply → Calibrate left

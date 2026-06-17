@@ -20,6 +20,10 @@ export interface CalibrationStatus {
   litNodes: number;
   staleNodes: number;
   spotVersion: number;
+  /** Monotonic calibration epoch: advances whenever a re-calibration changes an
+   *  already-calibrated node's displayed fit. The view layer refetches every
+   *  mounted view the moment it advances (level-triggered, race-free). */
+  epoch: number;
   /** Coarse phase of the in-flight item: "Parametric" | "Local Vol" | "". */
   phase: string;
 }
@@ -79,7 +83,12 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
   const [sched, setSched] = useState<SchedulerStatus | null>(null);
   const [pending, setPending] = useState<WorkflowAction | null>(null);
   const [priors, setPriors] = useState<PriorStatus | null>(null);
-  const wasRunning = useRef(false);
+  // Last-seen monotonic counters; a poll that observes either advance refetches
+  // every mounted view. Level-triggered (compare-to-last), so it is immune to
+  // missed running->idle edges, fast single-node jobs, background / scheduler
+  // calibrations, and which view happens to be open. null until the first poll
+  // establishes a baseline (so the very first poll never spuriously refetches).
+  const lastEpoch = useRef<number | null>(null);
   const lastSpotVer = useRef<number | null>(null);
 
   const refreshPriors = useCallback(async () => {
@@ -98,10 +107,15 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
       ]);
       setCalib(c);
       setSched(s);
-      if (wasRunning.current && !c.running) refreshViews(); // job finished
-      wasRunning.current = c.running;
+      // A (re)calibration changed a displayed fit somewhere — refetch all mounted
+      // views (covers the explicit Calibrate button, auto-calibrate on fetch, the
+      // streaming refit, and progressive per-node commits during a running job).
+      if (lastEpoch.current !== null && c.epoch !== lastEpoch.current) refreshViews();
+      lastEpoch.current = c.epoch;
+      // Pure spot transport (no recalibration) — the backend scheduler moved the
+      // surface under real-time spot; refetch so the transported curves follow.
       if (lastSpotVer.current !== null && c.spotVersion !== lastSpotVer.current) {
-        refreshViews(); // backend scheduler transported the surface (RT spot)
+        refreshViews();
       }
       lastSpotVer.current = c.spotVersion;
     } catch {
@@ -117,10 +131,11 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
     return () => window.clearInterval(id);
   }, [live, poll, refreshPriors]);
 
-  // Wait for the background calibration to finish, then refresh — the sampled
-  // poll only refreshes on a running->idle EDGE (poll line above), which a fast
-  // single-node fit can slip between, leaving the views showing the pre-calibration
-  // fit. Bounded; a short startup grace lets the job thread flip running=true first.
+  // Snappy path for the explicit buttons: wait for the background job to go idle,
+  // then refresh immediately rather than waiting up to one poll interval. This is
+  // pure UX latency — the epoch-level poll above is the correctness backstop, so a
+  // missed wait (fast job, backend blip) still self-heals on the next poll.
+  // Bounded; a short startup grace lets the job thread flip running=true first.
   const awaitCalibration = useCallback(async () => {
     for (let i = 0; i < 400; i++) {
       await new Promise((r) => setTimeout(r, 150));
@@ -139,12 +154,9 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
       setPending(key);
       try {
         await api.post(path, withBody ? { body: {} } : undefined);
-        if (awaitJob) {
-          await awaitCalibration(); // block until the background fit completes
-          wasRunning.current = false; // completion handled here, not via the edge
-        }
+        if (awaitJob) await awaitCalibration(); // block until the fit completes
+        await poll(); // resync status + advance the epoch/spot baselines
         refreshViews(); // refetch every view against the now-current fit
-        await poll();
       } finally {
         setPending(null);
       }

@@ -26,6 +26,8 @@ from volfit.api.quotes import (
     prepare_quotes,
 )
 from volfit.api.schemas import (
+    ModelInfo,
+    ModelParam,
     QuoteBand,
     ScenarioRequest,
     ScenarioResponse,
@@ -505,6 +507,30 @@ def varswap_info(state: AppState, ticker: str, iso: str, record: FitRecord) -> V
     )
 
 
+def model_info(record: FitRecord) -> ModelInfo:
+    """The model family + hyperparameters that produced the DISPLAYED fit.
+
+    Read off the actual displayed slice — LQD when there is no overlay (degree N
+    from the fitted Legendre params), else the overlay family (Multi-Core SIV
+    reports its fitted core count R; SVI-JW has no hyperparameter). This reflects
+    what is drawn even for a frozen/stale node, so the diagnostics panel always
+    names the model the chart actually shows, not the (possibly newer) settings."""
+    display = record.display
+    if display is None:  # the analytic LQD backbone is displayed
+        return ModelInfo(
+            id="lqd",
+            label="LQD",
+            params=[ModelParam(label="Degree N", value=str(record.result.params.order))],
+        )
+    if display.model == "sigmoid":
+        return ModelInfo(
+            id="sigmoid",
+            label="Multi-Core SIV",
+            params=[ModelParam(label="Cores R", value=str(len(display.slice.cores)))],
+        )
+    return ModelInfo(id="svi", label="SVI-JW")  # 5 raw params, no hyperparameter
+
+
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
     """Assemble the full SmileData payload for one (ticker, expiry) node."""
     record = fit_or_get(state, ticker, expiry_iso, fit_mode)
@@ -589,6 +615,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         kMin=float(prepared.k.min()) - K_PAD,
         kMax=float(prepared.k.max()) + K_PAD,
         diagnostics=diagnostics,
+        modelInfo=model_info(record),
         varSwap=varswap_info(state, ticker, iso, record),
         canUndo=session.can_undo if session is not None else False,
         canRedo=session.can_redo if session is not None else False,

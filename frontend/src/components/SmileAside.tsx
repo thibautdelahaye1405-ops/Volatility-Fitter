@@ -32,6 +32,7 @@ export default function SmileAside() {
   } = useSmileSession();
   const live = source === "live";
 
+  const info = smile?.modelInfo;
   const d = smile?.diagnostics;
   const diagnostics: { label: string; value: string }[] = d
     ? [
@@ -57,6 +58,38 @@ export default function SmileAside() {
           ? `Current calibration · ${smile.ticker} ${smile.expiry}`
           : "Awaiting data…"}
       </p>
+
+      {/* Displayed model family + hyperparameters (degree for LQD, cores for the
+          Multi-Core SIV sigmoid) — names the model the chart actually shows, even
+          for a frozen/stale node, so model/hyperparameter testing is legible. */}
+      {info && (
+        <div className="mb-4 rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] uppercase tracking-wide text-slate-500">
+              Model
+            </span>
+            <div className="flex items-center gap-1.5">
+              {smile?.stale && (
+                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-400">
+                  Stale
+                </span>
+              )}
+              <span className="font-mono text-xs font-semibold text-sky-300">
+                {info.label}
+              </span>
+            </div>
+          </div>
+          {info.params.map((p) => (
+            <div key={p.label} className="mt-1 flex items-center justify-between">
+              <span className="text-xs text-slate-400">{p.label}</span>
+              <span className="font-mono text-xs font-medium text-slate-100">
+                {p.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <dl className="divide-y divide-slate-800">
         {diagnostics.map((row) => (
           <div

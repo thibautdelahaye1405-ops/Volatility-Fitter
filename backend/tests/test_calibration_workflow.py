@@ -170,6 +170,62 @@ def test_stream_refit_respects_autocalibrate(monkeypatch):
     assert on.data_version(TICKER) == w0 + 1 and started["n"] == 1
 
 
+def test_calib_epoch_advances_only_on_real_recalibration():
+    """The calibration epoch advances ONLY when an already-calibrated node moves
+    onto a new fit (the level-triggered frontend-refetch signal): a first-ever
+    bootstrap does not advance it, a genuine recalibration does, and a re-point
+    that changes nothing (cache-hit Calibrate) does not."""
+    state = _state(auto=False)
+    iso = _iso(state)
+    e0 = state.calib_epoch
+    service.smile_payload(state, TICKER, iso, "mid")  # bootstrap: prev None, no bump
+    assert state.calib_epoch == e0
+
+    _bump_setting(state)  # node goes stale (key drifts)
+    service.calibrate_node(state, TICKER, iso, "mid")  # genuine recalibration
+    e1 = state.calib_epoch
+    assert e1 == e0 + 1
+
+    service.calibrate_node(state, TICKER, iso, "mid")  # nothing changed -> same key
+    assert state.calib_epoch == e1  # no spurious advance
+
+
+def test_calib_epoch_no_churn_on_repeated_reads_auto_on():
+    """Under autoCalibrate ON, repeated GETs of an unchanged node must NOT advance
+    the epoch — otherwise the frontend's epoch-refetch would loop forever."""
+    state = _state(auto=True)
+    iso = _iso(state)
+    service.smile_payload(state, TICKER, iso, "mid")  # bootstrap
+    e = state.calib_epoch
+    for _ in range(3):
+        service.smile_payload(state, TICKER, iso, "mid")  # no input change
+    assert state.calib_epoch == e
+
+
+def test_model_info_reflects_displayed_model():
+    """The diagnostics model info names the family + hyperparameters of the
+    DISPLAYED fit: LQD reports its Legendre degree; the Multi-Core SIV sigmoid
+    overlay reports its fitted core count."""
+    state = _state(auto=False)
+    iso = _iso(state)
+    s = service.smile_payload(state, TICKER, iso, "mid")
+    assert s.modelInfo.id == "lqd" and s.modelInfo.label == "LQD"
+    assert s.modelInfo.params[0].label == "Degree N"
+    assert int(s.modelInfo.params[0].value) >= 4  # the fitted LQD order
+
+    fs = state.fit_settings()
+    state.set_fit_settings(fs.model_copy(update={"model": "sigmoid", "nCores": 3}))
+    service.calibrate_node(state, TICKER, iso, "mid")
+    s2 = service.smile_payload(state, TICKER, iso, "mid")
+    assert s2.modelInfo.id == "sigmoid" and s2.modelInfo.label == "Multi-Core SIV"
+    assert s2.modelInfo.params[0].label == "Cores R"
+    # Reported R is the EFFECTIVE core count of the displayed slice (capped by the
+    # quote budget), so it is always faithful to what the chart draws.
+    rec = service.fit_or_get(state, TICKER, iso, "mid")
+    assert s2.modelInfo.params[0].value == str(len(rec.display.slice.cores))
+    assert int(s2.modelInfo.params[0].value) >= 1
+
+
 def test_quote_edit_does_not_refit_when_auto_off():
     """An exclude edit bumps the session version (=> stale) but must not refit."""
     from volfit.api import edits

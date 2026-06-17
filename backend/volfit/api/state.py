@@ -209,6 +209,13 @@ class AppState(UniverseMixin):
         #: frozen at this pointer (stale when the current key drifts) until an
         #: explicit Calibrate; with it ON the node re-fits on any input change.
         self._calibrated: dict[tuple[str, str, str], tuple[tuple, float]] = {}
+        #: Monotonic CALIBRATION EPOCH: bumped whenever an already-calibrated
+        #: node's displayed fit actually changes (a genuine re-calibration moves
+        #: its calibrated key). The frontend polls this and refetches every mounted
+        #: view the moment it advances — a level-triggered sync that is robust to
+        #: missed running->idle edges, fast single-node jobs, and background /
+        #: scheduler calibrations, regardless of which view is currently open.
+        self._calib_epoch = 0
         #: Per-ticker spot the node fits were calibrated at — the spot-move
         #: transport anchors here (NOT the live snapshot spot, which a refetch
         #: moves while the calibration stays frozen).
@@ -696,10 +703,27 @@ class AppState(UniverseMixin):
             return self._calibrated.get((ticker, iso, mode))
 
     def set_calibrated_ptr(self, ticker: str, iso: str, mode: str, key: tuple, spot: float) -> None:
-        """Record that a node is now calibrated at ``key`` (spot ``spot``)."""
+        """Record that a node is now calibrated at ``key`` (spot ``spot``).
+
+        Bumps the global calibration epoch when this is a genuine RE-calibration
+        that moves an already-calibrated node onto a new key — i.e. when the
+        displayed (frozen) fit changes and other mounted views must refetch. A
+        first-ever bootstrap (no prior pointer) or an identical re-point (same key,
+        e.g. a cache-hit Calibrate that changes nothing, or an autoCalibrate-ON GET
+        that re-fits to the same key) does NOT advance the epoch, so it never
+        churns the frontend or risks a refetch loop."""
         with self._lock:
+            prev = self._calibrated.get((ticker, iso, mode))
             self._calibrated[(ticker, iso, mode)] = (key, float(spot))
             self._anchor_spot[ticker] = float(spot)
+            if prev is not None and prev[0] != key:
+                self._calib_epoch += 1
+
+    @property
+    def calib_epoch(self) -> int:
+        """Monotonic counter of node re-calibrations that changed a displayed fit."""
+        with self._lock:
+            return self._calib_epoch
 
     def anchor_spot(self, ticker: str) -> float:
         """Spot the ticker's fits were calibrated at; the live snapshot spot when

@@ -271,6 +271,28 @@ class SmileDiagnostics(BaseModel):
     rmsError: float  # weighted RMS vol error of the fit (decimal vol; UI shows %)
 
 
+class ModelParam(BaseModel):
+    """One displayed model hyperparameter as a label/value pair (e.g. the LQD
+    Legendre degree, the Multi-Core SIV core count) — a presentational row in the
+    diagnostics panel, so its shape is uniform across families."""
+
+    label: str
+    value: str
+
+
+class ModelInfo(BaseModel):
+    """The model family + its hyperparameters that produced the DISPLAYED fit.
+
+    Derived from the actual displayed slice (not the live FitSettings), so a
+    frozen/stale node correctly reports the family + degree/cores it was last
+    calibrated with even after the settings have moved on. Surfaced in the
+    Parametric diagnostics aside to make model/hyperparameter testing legible."""
+
+    id: Literal["lqd", "svi", "sigmoid"]
+    label: str  # human family name ("LQD", "SVI-JW", "Multi-Core SIV")
+    params: list[ModelParam] = Field(default_factory=list)
+
+
 class VarSwapInfo(BaseModel):
     """Variance-swap quote state of a node (volfit.api.varswap_session).
 
@@ -306,6 +328,7 @@ class SmileData(BaseModel):
     kMin: float
     kMax: float
     diagnostics: SmileDiagnostics
+    modelInfo: ModelInfo  # displayed model family + hyperparameters (degree / cores)
     varSwap: VarSwapInfo  # variance-swap quote + model level for this node
     canUndo: bool  # quote-edit session undo/redo availability
     canRedo: bool  # (both False when the node has no edit session yet)
@@ -618,6 +641,11 @@ class CalibrationStatus(BaseModel):
     litNodes: int  # total lit (calibratable) nodes in the universe
     staleNodes: int  # lit nodes whose displayed fit has drifted from its last fit
     spotVersion: int  # global spot-move counter (bumps on any transported move)
+    #: Monotonic calibration epoch (AppState.calib_epoch): advances whenever a
+    #: re-calibration changes an already-calibrated node's displayed fit. The
+    #: frontend refetches every mounted view the moment it advances — a
+    #: level-triggered sync robust to missed job edges / background calibrations.
+    epoch: int
 
 
 class FetchRequest(BaseModel):

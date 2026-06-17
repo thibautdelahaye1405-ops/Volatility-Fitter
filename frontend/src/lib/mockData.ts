@@ -42,6 +42,20 @@ export interface SmileDiagnostics {
   rmsError: number;
 }
 
+/** One displayed-model hyperparameter as a label/value pair (LQD degree, cores). */
+export interface ModelParam {
+  label: string;
+  value: string;
+}
+
+/** The model family + hyperparameters that produced the displayed fit. */
+export interface ModelInfo {
+  id: "lqd" | "svi" | "sigmoid";
+  /** Human family name ("LQD", "SVI-JW", "Multi-Core SIV"). */
+  label: string;
+  params: ModelParam[];
+}
+
 /** Variance-swap quote state of a node (shared by Parametric & Local Vol). */
 export interface VarSwapInfo {
   /** Quoted var-swap vol (decimal), or null when no quote exists. */
@@ -78,6 +92,9 @@ export interface SmileData {
   canUndo: boolean;
   canRedo: boolean;
   diagnostics: SmileDiagnostics;
+  /** Displayed model family + hyperparameters (degree / cores). Optional for
+   *  older payloads; always present from the current backend. */
+  modelInfo?: ModelInfo;
   /** Variance-swap quote + model level for this node. */
   varSwap: VarSwapInfo;
   /** Inputs drifted since the last calibration — the displayed fit is frozen
@@ -217,6 +234,7 @@ export function getMockSmile(): SmileData {
       varSwapVol: 0.212,
       rmsError: 0.0021,
     },
+    modelInfo: { id: "lqd", label: "LQD", params: [{ label: "Degree N", value: "6" }] },
     varSwap: {
       level: null,
       excluded: false,

@@ -69,6 +69,7 @@ def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
         litNodes=len(nodes),
         staleNodes=_stale_count(state, nodes, fit_mode),
         spotVersion=state.spot_version,
+        epoch=state.calib_epoch,
     )
 
 
