@@ -399,9 +399,10 @@ class SurfaceResponse(BaseModel):
 
     ticker: str
     expiries: list[str]  # ISO dates, nearest first
-    t: list[float]  # year fractions, same order
+    t: list[float]  # CALENDAR year fractions, same order
+    tau: list[float]  # event-variance years the mesh is quoted in (= t with no events)
     k: list[float]  # shared log-moneyness grid (length N_SURFACE_POINTS)
-    vol: list[list[float]]  # one row per expiry, one column per k
+    vol: list[list[float]]  # one row per expiry, one column per k (sqrt(w / tau))
     atmVol: list[float]  # exact ATM handle per expiry (lqd.atm)
     forward: list[float]  # active forward per expiry
 

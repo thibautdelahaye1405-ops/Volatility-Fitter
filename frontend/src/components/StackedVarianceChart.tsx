@@ -18,8 +18,9 @@ interface SurfaceResponse {
   ticker: string;
   expiries: string[];
   t: number[];
+  tau: number[]; // event-variance years the mesh vols are quoted in (= t with no events)
   k: number[];
-  vol: number[][]; // one row per expiry, one column per k
+  vol: number[][]; // one row per expiry, one column per k (sqrt(w / tau))
 }
 
 const message = (text: string) => (
@@ -69,11 +70,12 @@ export default function StackedVarianceChart({ ticker, fitMode, reloadKey = 0 }:
   }
 
   const n = data.t.length;
-  // w(k) = σ(k)² · T per expiry, on the shared k grid.
+  // Total variance w(k) = σ(k)² · τ per expiry (σ is quoted in the event-variance
+  // clock τ, so this recovers the price-implied w; non-crossing ⟺ no calendar arb).
   const series: OverlaySeries[] = data.t.map((ti, i) => ({
     label: formatExpiry(data.expiries[i], ti, format),
     xs: data.k,
-    ys: data.vol[i].map((v) => v * v * ti),
+    ys: data.vol[i].map((v) => v * v * data.tau[i]),
     color: maturityColor(n > 1 ? i / (n - 1) : 0),
   }));
 

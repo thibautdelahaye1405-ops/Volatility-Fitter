@@ -10,7 +10,17 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (505 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (506 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Surface tab quoted in the event-variance clock (t→tau fix).**
+  `surface.py` built the 3D mesh as `sqrt(w / prepared.t)` (calendar) while the
+  Smile/Term use `sqrt(w / prepared.tau)` (event-variance), so with an event
+  calendar active the Surface tab's vols (and its own atmVol marker) disagreed with
+  the Smile. Now the mesh uses `tau`; `SurfaceResponse` exposes `tau`, and
+  `StackedVarianceChart` plots `sigma^2 * tau` (recovers the price total variance w,
+  non-crossing ⟺ no calendar arb). No-event case unchanged (tau==t). Model
+  consistency was already correct (every Parametric sub-tab uses `displayed_slice`/
+  `displayed_*`, never defaulting to LQD under an SVI/Sig overlay). 1 new test.
 
 - **[2026-06-17] Startup restores the last saved/loaded universe.** A new
   `last_universe` pointer in `app_settings` (set by `universe_service.save_current`

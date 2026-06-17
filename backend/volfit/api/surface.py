@@ -46,15 +46,19 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
     vol: list[list[float]] = []
     atm: list[float] = []
     for record in records:
-        t = record.prepared.t
+        # Quote the mesh in the event-variance clock (sqrt(w / tau)), exactly like
+        # the Smile / Term views — NOT calendar t — so all Parametric views agree
+        # when an event calendar dilates time (tau != t). Total variance w = sigma^2
+        # * tau is recovered by the Stacked-IV chart via the tau exposed below.
         w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
-        vol.append(fill_nonfinite(np.sqrt(w / t)).tolist())
+        vol.append(fill_nonfinite(np.sqrt(w / record.prepared.tau)).tolist())
         atm.append(displayed_atm_vol(record))  # exact ATM (LQD) or numeric (overlay)
 
     return SurfaceResponse(
         ticker=ticker,
         expiries=isos,
         t=[record.prepared.t for record in records],
+        tau=[record.prepared.tau for record in records],
         k=grid.tolist(),
         vol=vol,
         atmVol=atm,
