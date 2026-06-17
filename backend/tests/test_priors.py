@@ -153,6 +153,23 @@ def test_is_fresh_ladder_decision():
     assert _is_fresh(None, prev_close) is False
 
 
+def test_fetched_prior_overlays_localvol_and_term(client):
+    """After fetch, the LocalVol smile and the Term structure carry the dotted
+    spot-updated prior (same prior_transport machinery as the parametric smile)."""
+    iso = _first_iso(client)
+    client.get(f"/smiles/{TICKER}/{iso}")
+    client.post("/priors/save-all")
+    client.post("/priors/fetch")
+
+    lv = client.post(f"/fit/affine/{TICKER}", json={"fitMode": "mid"}).json()
+    smile0 = lv["smiles"][0]
+    assert smile0["priorTransported"] is True
+    assert len(smile0["prior"]) == len(smile0["model"])  # aligned to the LV smile grid
+
+    term = client.post(f"/term/{TICKER}", json={}).json()
+    assert all(p["priorVol"] is not None and p["priorVol"] > 0.0 for p in term["points"])
+
+
 def test_transported_prior_identity_and_shift():
     """The transported prior curve is the prior shape at h=0 and shifts with the
     forward (sticky-strike R=1: a higher forward lowers vol at fixed k for a skew)."""

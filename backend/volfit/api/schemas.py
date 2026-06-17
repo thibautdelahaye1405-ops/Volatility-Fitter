@@ -712,6 +712,9 @@ class TermPoint(BaseModel):
     varSwapQuote: float | None = None  # user-quoted var-swap vol (None if unset)
     varSwapExcluded: bool = False  # quote present but excluded from the fit
     maxIvErrorBp: float
+    #: Active fetched prior's ATM vol at this expiry, transported to the current
+    #: forward (dotted spot-updated prior term line); None when no active prior.
+    priorVol: float | None = None
 
 
 class TermCurve(BaseModel):

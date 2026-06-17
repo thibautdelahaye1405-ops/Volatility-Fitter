@@ -100,6 +100,11 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
     .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(p.k).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
     .join("");
 
+  // Active fetched prior, spot-updated (dotted teal), if present.
+  const priorPath = (smile.prior ?? [])
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(p.k).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
+    .join("");
+
   const ready = plotW > 0 && plotH > 0 && smile.model.length > 1;
 
   return (
@@ -191,6 +196,12 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
                   VS {formatPct(vsLevel, 2)}
                 </text>
               </g>
+            )}
+
+            {/* Active fetched prior (spot-updated): dotted teal */}
+            {priorPath !== "" && (
+              <path d={priorPath} fill="none" stroke="rgb(45 212 191 / 0.95)"
+                strokeWidth={1.5} strokeDasharray="2 3" />
             )}
 
             {/* Reconstructed model curve */}

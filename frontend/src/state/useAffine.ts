@@ -42,6 +42,9 @@ export interface AffineSmile {
   /** Event-weighted variance years the smile is quoted in (= t with no events). */
   tau?: number;
   model: SmilePoint[];
+  /** Active fetched prior, transported to the current forward (dotted overlay). */
+  prior?: SmilePoint[];
+  priorTransported?: boolean;
   quotes: QuoteBand[];
   /** Var-swap quote (shared with the Parametric workspace) + model level. */
   varSwap: VarSwapInfo;

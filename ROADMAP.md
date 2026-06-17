@@ -10,7 +10,16 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (495 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (496 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Prior framework Phase B overlays — LocalVol + Term.** The dotted,
+  spot-updated prior now also overlays the **LocalVol smile** (`AffineSmile.prior`/
+  `priorTransported`, attached post-cache/post-transport in `affine_payload` via
+  `affine_transport.attach_affine_priors`) and the **Term structure**
+  (`TermPoint.priorVol` = the prior's transported ATM vol per expiry, dotted teal
+  line in `TermChart`). Same `prior_transport` machinery as the parametric smile, so
+  all three workspaces show a consistent prior. Phase B is complete (3D surface mesh
+  overlay deferred as optional). 1 new test.
 
 - **[2026-06-17] Prior framework Phase B (core) — fetch freshness ladder +
   transported dotted prior.** `POST /priors/fetch` (`priors.fetch_all`) resolves
@@ -25,8 +34,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
   this same helper feeds the Phase-C anchor. `smile_payload` now draws the active
   prior as a **dotted teal, spot-updated** line (`SmileData.priorTransported`).
   Frontend: a TopBar **"Fetch priors"** button + the dotted rendering. 3 new tests.
-  **Remaining in Phase B**: extend the dotted spot-updated overlay to the LocalVol
-  smile + Term (3D surface optional) — same `prior_transport` machinery.
+  (LocalVol + Term overlays added in the follow-up entry above.)
 
 - **[2026-06-17] Prior framework Phase A — calibration snapshots + persistence +
   Save-all (the first of a 3-phase build).** A *prior* is now a full, timestamped

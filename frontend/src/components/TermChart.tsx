@@ -187,6 +187,13 @@ export default function TermChart({
     wPath += `${i === 0 ? "M" : "L"}${xa},${y}L${xb},${y}`;
   });
   const vsPath = pathOf(sorted.map(xOf), sorted.map((p) => p.varSwapVol), volScale);
+  // Active fetched prior's ATM term (dotted teal, spot-updated), where present.
+  const priorPts = sorted.filter((p) => p.priorVol != null);
+  const priorPath = pathOf(
+    priorPts.map(xOf),
+    priorPts.map((p) => p.priorVol as number),
+    volScale,
+  );
 
   const xTicks = niceTicks(xLo, xHi, 8);
   const volTicks = niceTicks(volScale.domain[0], volScale.domain[1], 5);
@@ -334,6 +341,12 @@ export default function TermChart({
                       opacity={p.varSwapExcluded ? 0.35 : 1}
                     />
                   ),
+                )}
+
+                {/* Active fetched prior's ATM term: dotted teal, spot-updated */}
+                {priorPath !== "" && (
+                  <path d={priorPath} fill="none" stroke="rgb(45 212 191 / 0.95)"
+                    strokeWidth={1.5} strokeDasharray="2 3" />
                 )}
 
                 {/* Dense ATM-vol fit + per-expiry markers (clickable to select

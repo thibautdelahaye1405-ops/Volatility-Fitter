@@ -117,6 +117,10 @@ def term_structure(
     """
     forwards = state.forwards(ticker)  # raises UnknownNodeError when unknown
     tau_of = _tau_of(state, ticker)
+    from volfit.api import prior_transport
+
+    active_prior = state.active_prior(ticker)
+    regime = state.dynamics_regime()
 
     points: list[TermPoint] = []
     ts: list[float] = []  # calendar maturities (the x-axis)
@@ -130,6 +134,14 @@ def term_structure(
         atm_vol = displayed_atm_vol(record)  # weighted vol = sqrt(w0 / tau)
         w0 = atm_vol * atm_vol * tau  # ATM total variance (calendar-invariant)
         vs_session = state.varswap_session_if_exists((ticker, iso))
+        # Active prior's ATM vol at this expiry, transported to the current forward.
+        prior_vol: float | None = None
+        prior_node = prior_transport.prior_node(active_prior, iso)
+        if prior_node is not None:
+            atm = prior_transport.transported_prior_points(
+                prior_node, float(record.prepared.forward), regime, np.array([0.0])
+            )
+            prior_vol = atm[0].vol if atm else None
         points.append(
             TermPoint(
                 expiry=iso,
@@ -141,6 +153,7 @@ def term_structure(
                 varSwapQuote=None if vs_session is None else vs_session.state.level,
                 varSwapExcluded=bool(vs_session is not None and vs_session.state.excluded),
                 maxIvErrorBp=displayed_max_iv_error(record) * 1e4,
+                priorVol=prior_vol,
             )
         )
         ts.append(t)

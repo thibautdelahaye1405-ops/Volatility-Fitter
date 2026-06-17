@@ -51,6 +51,10 @@ class AffineSmile(BaseModel):
     t: float  # CALENDAR year fraction (maturity axis)
     tau: float = 0.0  # event-weighted variance years the smile is quoted in (= t with no events)
     model: list[SmilePoint]  # reconstructed IV curve (Dupire PDE -> Black inv)
+    #: The active fetched prior, transported to the current forward and sampled on
+    #: this smile's k grid (dotted spot-updated overlay); empty when no active prior.
+    prior: list[SmilePoint] = []
+    priorTransported: bool = False
     quotes: list[QuoteBand]  # the calibrated quote band at each strike
     varSwap: VarSwapInfo  # var-swap quote (shared with Parametric) + model level
     maxIvErrorBp: float  # worst |model - quote mid| IV over the quotes, bp

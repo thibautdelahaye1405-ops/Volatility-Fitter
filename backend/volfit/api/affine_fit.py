@@ -530,6 +530,8 @@ def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> A
             cache[key] = hit
             state.set_affine_ptr(ticker, key)
     stale = state.get_affine_ptr(ticker) != key
-    from volfit.api.affine_transport import transport_affine_response
+    from volfit.api.affine_transport import attach_affine_priors, transport_affine_response
 
-    return transport_affine_response(state, ticker, hit).model_copy(update={"stale": stale})
+    moved = transport_affine_response(state, ticker, hit)
+    with_prior = attach_affine_priors(state, ticker, moved)
+    return with_prior.model_copy(update={"stale": stale})

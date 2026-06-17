@@ -50,6 +50,9 @@ export interface TermPoint {
   varSwapExcluded?: boolean;
   /** Worst absolute IV fit error across the expiry's quotes, in bp. */
   maxIvErrorBp: number;
+  /** Active fetched prior's ATM vol, transported to the current forward
+   *  (dotted spot-updated prior term line); null when no active prior. */
+  priorVol?: number | null;
 }
 
 /** Dense interpolated curve: variance is linear in the dilated clock. */

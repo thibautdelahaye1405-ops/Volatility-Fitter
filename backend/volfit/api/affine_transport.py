@@ -92,6 +92,39 @@ def _transport_smile(
     )
 
 
+def attach_affine_priors(
+    state: AppState, ticker: str, response: AffineFitResponse
+) -> AffineFitResponse:
+    """Overlay the active fetched prior (dotted, spot-updated) on each LV smile.
+
+    For every expiry with an active-prior node, the prior's LQD backbone is
+    transported to the smile's current forward under the dynamics regime and
+    sampled on the smile's own k grid (volfit.api.prior_transport) — the same
+    machinery as the parametric overlay, so the two workspaces show a consistent
+    prior. No active prior ⇒ the response is returned unchanged."""
+    active = state.active_prior(ticker)
+    if active is None:
+        return response
+    from volfit.api import prior_transport, service
+
+    regime = state.dynamics_regime()
+    smiles: list[AffineSmile] = []
+    for smile in response.smiles:
+        node = prior_transport.prior_node(active, smile.expiry)
+        if node is None:
+            smiles.append(smile)
+            continue
+        expiry = date.fromisoformat(smile.expiry)
+        fwd = state.resolved_forward(ticker, expiry)
+        f1, _h = service.spot_forward_shift(
+            state, ticker, expiry, float(fwd.forward), float(fwd.discount), float(smile.t)
+        )
+        grid = np.array([p.k for p in smile.model], dtype=float)
+        points = prior_transport.transported_prior_points(node, f1, regime, grid)
+        smiles.append(smile.model_copy(update={"prior": points, "priorTransported": True}))
+    return response.model_copy(update={"smiles": smiles})
+
+
 def transport_affine_response(
     state: AppState, ticker: str, response: AffineFitResponse
 ) -> AffineFitResponse:
