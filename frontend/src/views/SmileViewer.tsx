@@ -7,7 +7,7 @@
 // Density / Log-Q-density, the 3D vol Surface and the quote Table (the last four
 // require the live backend). Quote edits post to the backend fit session and
 // the returned refit replaces the smile; shortcuts live in useSmileShortcuts.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
@@ -102,6 +102,13 @@ export default function SmileViewer() {
   const [savedFlash, setSavedFlash] = useState(false);
   const flashTimer = useRef<number | null>(null);
 
+  // Brief "UPDATED" flash when the viewed node transitions stale -> fresh, i.e. a
+  // calibration just brought it up to date (so a model/setting change that refits
+  // is visibly confirmed). Keyed per node so switching expiries never flashes.
+  const [updatedFlash, setUpdatedFlash] = useState(false);
+  const updatedTimer = useRef<number | null>(null);
+  const staleRef = useRef<{ key: string; stale: boolean } | null>(null);
+
   // Reset the brush and selection whenever a *different* node loads
   // (ticker/expiry change). Refits of the same node keep both.
   // State is adjusted during render (not in an effect) so the chart never
@@ -113,6 +120,21 @@ export default function SmileViewer() {
     setKWindow([smile.kMin, smile.kMax]);
     setSelectedIndex(null);
   }
+
+  // Flash "UPDATED" only on a same-node stale -> fresh edge (a completed refit),
+  // never on initial load or an expiry switch.
+  const staleNow = smile?.stale ?? null;
+  useEffect(() => {
+    if (smile === null) return;
+    const prev = staleRef.current;
+    if (prev !== null && prev.key === smileKey && prev.stale && !smile.stale) {
+      setUpdatedFlash(true);
+      if (updatedTimer.current) window.clearTimeout(updatedTimer.current);
+      updatedTimer.current = window.setTimeout(() => setUpdatedFlash(false), 1100);
+    }
+    staleRef.current = { key: smileKey, stale: smile.stale ?? false };
+  }, [smileKey, staleNow]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { if (updatedTimer.current) window.clearTimeout(updatedTimer.current); }, []);
 
   // Resolve the selection against the current quote list; a refit that
   // drops the quote simply yields no selection.
@@ -249,8 +271,14 @@ export default function SmileViewer() {
 
       {/* Body: chart card + diagnostics panel */}
       <div className="flex min-h-0 flex-1 gap-4">
-        {/* Chart card */}
-        <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+        {/* Chart card (briefly ringed when a refit lands) */}
+        <div
+          className={[
+            "flex min-w-0 flex-1 flex-col rounded-xl border bg-surface-900 p-4 shadow-xl shadow-black/30",
+            "transition-colors duration-500",
+            updatedFlash ? "border-accent-500/70" : "border-slate-800",
+          ].join(" ")}
+        >
           <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
               {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
@@ -274,6 +302,12 @@ export default function SmileViewer() {
                 className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-amber-400"
               >
                 STALE
+              </span>
+            )}
+            {/* Transient confirmation that a completed refit just refreshed the fit */}
+            {updatedFlash && (
+              <span className="volfit-fade-in rounded border border-accent-500/50 bg-accent-500/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-accent-300">
+                UPDATED
               </span>
             )}
             {/* View toggle: smile / distributions / surface / table */}

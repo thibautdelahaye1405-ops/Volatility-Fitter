@@ -134,3 +134,13 @@ body {
   border-radius: inherit;
   animation: volfit-indeterminate 1.1s ease-in-out infinite;
 }
+
+/* Brief fade-in for transient confirmations (e.g. the Parametric "UPDATED" pill
+ * shown when a completed refit refreshes the fit). */
+@keyframes volfit-fade-in {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.volfit-fade-in {
+  animation: volfit-fade-in 0.18s ease-out;
+}
