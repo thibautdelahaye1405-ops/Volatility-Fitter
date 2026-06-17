@@ -12,6 +12,15 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Done & verified (506 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
 
+- **[2026-06-17] Local-Vol gains a "Stacked IV" sub-tab (Parametric parity).** The
+  LV workspace now overlays every reconstructed expiry's total variance
+  w(k)=σ²·τ on shared axes (built from the affine smiles' own `model` + `tau`,
+  reusing `OverlayCurvesChart`), non-crossing ⟺ no calendar arb — exactly the
+  Parametric "Stacked IV" view. Tab order: Smile · Density · Term · LV surface ·
+  IV surface · Stacked IV · Table. Frontend-only; verified in-app (screenshot:
+  4 nested non-crossing curves for ALPHA). Parametric's Stacked IV was already a
+  static, always-present sub-tab (confirmed).
+
 - **[2026-06-17] Surface tab quoted in the event-variance clock (t→tau fix).**
   `surface.py` built the 3D mesh as `sqrt(w / prepared.t)` (calendar) while the
   Smile/Term use `sqrt(w / prepared.tau)` (event-variance), so with an event

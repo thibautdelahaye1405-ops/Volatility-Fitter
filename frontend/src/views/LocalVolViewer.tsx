@@ -3,11 +3,13 @@
 // Calibrates the local-vol surface straight to the ticker's option quotes
 // (POST /fit/affine/{ticker}) and presents Parametric-style sub-tabs, every
 // view DERIVED from that calibrated surface (ROADMAP Phase 10):
-//   Smile    reconstructed arbitrage-free smile vs quotes (per expiry)
-//   Density  Breeden-Litzenberger density of the reconstructed smile
-//   Term     ATM / var-swap term structure across the ladder
-//   Surface  the nodal local-vol heatmap
-//   Table    per-strike reconstructed IVs + prices (per expiry)
+//   Smile      reconstructed arbitrage-free smile vs quotes (per expiry)
+//   Density    Breeden-Litzenberger density of the reconstructed smile
+//   Term       ATM / var-swap term structure across the ladder
+//   LV surface the nodal local-vol heatmap
+//   IV surface reconstructed implied-vol mesh over t × strike
+//   Stacked IV total variance w=σ²·τ per expiry (non-crossing ⇔ no calendar arb)
+//   Table      per-strike reconstructed IVs + prices (per expiry)
 // The derived Density / Term / Table views fetch sibling endpoints that reuse
 // the cached affine fit (useAffineView). Live backend only (no mock fallback).
 import { useEffect, useMemo, useState } from "react";
@@ -17,6 +19,8 @@ import LocalVolTable from "../components/LocalVolTable";
 import type { AffineTableData } from "../components/LocalVolTable";
 import SurfaceMesh from "../components/SurfaceMesh";
 import type { SurfaceMeshData } from "../components/SurfaceMesh";
+import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesChart";
+import type { OverlaySeries } from "../components/OverlayCurvesChart";
 import DistributionChart from "../components/DistributionChart";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
@@ -43,18 +47,21 @@ const buttonClass =
 /** Chart-card sub-tabs, mirroring the Parametric workspace. "LV surface" is the
  *  nodal local-vol heatmap; "IV surface" is the reconstructed implied-vol
  *  surface (both heatmaps over t × strike). */
-type LvView = "smile" | "density" | "term" | "lvsurface" | "ivsurface" | "table";
+type LvView =
+  | "smile" | "density" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table";
 const LV_VIEWS: { id: LvView; label: string }[] = [
   { id: "smile", label: "Smile" },
   { id: "density", label: "Density" },
   { id: "term", label: "Term" },
   { id: "lvsurface", label: "LV surface" },
   { id: "ivsurface", label: "IV surface" },
+  { id: "stackedvar", label: "Stacked IV" },
   { id: "table", label: "Table" },
 ];
 /** Which sub-tabs are per-expiry (need the expiry selector). */
 const PER_EXPIRY: Record<LvView, boolean> = {
-  smile: true, density: true, table: true, term: false, lvsurface: false, ivsurface: false,
+  smile: true, density: true, table: true,
+  term: false, lvsurface: false, ivsurface: false, stackedvar: false,
 };
 
 const chartMessage = (text: string) => (
@@ -121,6 +128,24 @@ export default function LocalVolViewer() {
   // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh.
   const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
 
+  // Stacked IV: every reconstructed expiry's total variance w(k) = σ(k)²·τ on
+  // shared axes (mirrors the Parametric workspace). σ is quoted in the event-
+  // variance clock τ, so this is the price total variance — non-crossing across
+  // expiries ⟺ no calendar arbitrage in the local-vol surface.
+  const stackedIv = useMemo<OverlaySeries[] | null>(() => {
+    if (!data || data.smiles.length === 0) return null;
+    const n = data.smiles.length;
+    return data.smiles.map((s, i) => {
+      const tau = s.tau && s.tau > 0 ? s.tau : s.t;
+      return {
+        label: formatExpiry(s.expiry, s.t, format),
+        xs: s.model.map((p) => p.k),
+        ys: s.model.map((p) => p.vol * p.vol * tau),
+        color: maturityColor(n > 1 ? i / (n - 1) : 0),
+      };
+    });
+  }, [data, format]);
+
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
     if (loading || data === null) return chartMessage("Calibrating local-vol surface…");
@@ -131,6 +156,18 @@ export default function LocalVolViewer() {
         return ivSurface
           ? <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" />
           : chartMessage("IV surface needs at least two overlapping expiries.");
+      case "stackedvar":
+        return stackedIv
+          ? (
+            <OverlayCurvesChart
+              series={stackedIv}
+              xLabel="k = log(K / F)"
+              yLabel="total variance w = σ²·τ"
+              zeroBaseline
+              zoomY
+            />
+          )
+          : chartMessage("Stacked IV needs at least one fitted expiry.");
       case "smile":
         return smile ? <LocalVolSmile smile={smile} /> : chartMessage("No smile");
       case "density":
