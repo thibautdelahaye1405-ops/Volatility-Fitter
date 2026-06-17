@@ -86,3 +86,25 @@ def load_universe(store: VolStore, name: str) -> Universe | None:
 def list_universes(store: VolStore) -> list[str]:
     """Names of all stored universes, sorted."""
     return [r[0] for r in store.conn.execute("SELECT name FROM universes ORDER BY name")]
+
+
+#: app_settings key tracking the active named universe (the last one saved or
+#: loaded), so a restart restores it as the default selection.
+_LAST_UNIVERSE_KEY = "last_universe"
+
+
+def set_last_universe(store: VolStore, name: str) -> None:
+    """Record ``name`` as the active named universe (restored on next startup)."""
+    store.save_setting(_LAST_UNIVERSE_KEY, {"name": name})
+
+
+def get_last_universe(store: VolStore) -> str | None:
+    """The active named universe to restore on startup, or None if unset."""
+    doc = store.load_setting(_LAST_UNIVERSE_KEY)
+    name = doc.get("name") if isinstance(doc, dict) else None
+    return name if isinstance(name, str) and name else None
+
+
+def clear_last_universe(store: VolStore) -> None:
+    """Forget the active named universe (e.g. when it is deleted)."""
+    store.delete_setting(_LAST_UNIVERSE_KEY)

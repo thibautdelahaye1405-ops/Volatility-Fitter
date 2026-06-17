@@ -27,9 +27,12 @@ from volfit.data.expiry_select import expiry_bucket
 from volfit.data.store import VolStore
 from volfit.data.universe import (
     Universe,
+    clear_last_universe,
+    get_last_universe,
     list_universes,
     load_universe,
     save_universe,
+    set_last_universe,
 )
 
 
@@ -164,6 +167,7 @@ def save_current(state: AppState, name: str) -> SavedUniversesResponse:
         save_universe(
             store, Universe(name=name.strip(), tickers=tuple(tickers), selections=selections)
         )
+        set_last_universe(store, name.strip())  # restore it as the default next startup
         return SavedUniversesResponse(names=list_universes(store), storeEnabled=True)
 
 
@@ -173,8 +177,9 @@ def load_saved(state: AppState, name: str) -> UniverseResponse:
         raise ValueError("fit-history store not configured (set VOLFIT_DB)")
     with VolStore(state.store_path) as store:
         universe = load_universe(store, name)
-    if universe is None:
-        raise UnknownNodeError(f"no saved universe named {name!r}")
+        if universe is None:
+            raise UnknownNodeError(f"no saved universe named {name!r}")
+        set_last_universe(store, name)  # the loaded universe is now the startup default
     state.set_active_tickers(list(universe.tickers))  # all start on the default rule
     for ticker, picks in (universe.selections or {}).items():
         if picks:  # custom: re-apply explicit picks where the dates still exist
@@ -192,4 +197,30 @@ def delete_saved(state: AppState, name: str) -> SavedUniversesResponse:
     with VolStore(state.store_path) as store:
         store.conn.execute("DELETE FROM universes WHERE name = ?", (name,))
         store.conn.commit()
+        if get_last_universe(store) == name:  # don't restore a deleted universe
+            clear_last_universe(store)
         return SavedUniversesResponse(names=list_universes(store), storeEnabled=True)
+
+
+def restore_last_universe(state: AppState) -> str | None:
+    """Apply the last saved/loaded universe at startup (best-effort, no fetch).
+
+    Sets the active tickers + custom expiry picks from the stored ``last_universe``
+    pointer so a restart resumes the user's universe instead of the provider's
+    default watchlist. Returns the restored name, or None when there is no store,
+    no pointer, or the named universe has since been deleted. Never raises."""
+    if state.store_path is None:
+        return None
+    try:
+        with VolStore(state.store_path) as store:
+            name = get_last_universe(store)
+            universe = load_universe(store, name) if name else None
+    except Exception:  # noqa: BLE001 — startup restore must never break boot
+        return None
+    if universe is None:
+        return None
+    try:
+        state.restore_universe(list(universe.tickers), universe.selections or {})
+    except Exception:  # noqa: BLE001
+        return None
+    return name

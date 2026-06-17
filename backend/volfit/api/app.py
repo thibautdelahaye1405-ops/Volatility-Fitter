@@ -50,6 +50,12 @@ def create_app(
         providers=providers,
         active_source=active_source,
     )
+    # Restore the last saved/loaded universe as the default selection (no fetch;
+    # tickers resolve lazily). Best-effort — a missing store/pointer keeps the
+    # provider's default watchlist.
+    from volfit.api import universe_service
+
+    universe_service.restore_last_universe(state)
     #: Timed spot/options fetch scheduler — created always (so /scheduler reports
     #: the modes) but the thread runs only when enabled (serve.py turns it on;
     #: the test app and offline mode never fetch in the background).

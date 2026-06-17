@@ -162,6 +162,11 @@ class AppState(UniverseMixin):
         self._available: dict[str, list[date]] = {}
         self._selected: dict[str, list[date]] = {}
         self._selection_mode: dict[str, str] = {}
+        #: Custom expiry picks of a restored saved universe, applied LAZILY on
+        #: first resolve (so startup stays network-free): once a ticker's ladder
+        #: loads, ``_ensure_selection`` intersects these with it instead of the
+        #: default rule. Empty in the normal (non-restored) start.
+        self._pending_selections: dict[str, list[date]] = {}
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
         self._fit_settings = FitSettings()

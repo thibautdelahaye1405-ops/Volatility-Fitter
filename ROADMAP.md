@@ -10,7 +10,18 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (500 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (505 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Startup restores the last saved/loaded universe.** A new
+  `last_universe` pointer in `app_settings` (set by `universe_service.save_current`
+  + `load_saved`, cleared by `delete_saved`) is read in `create_app` via
+  `universe_service.restore_last_universe`, which calls a new no-fetch
+  `AppState.restore_universe(tickers, selections)` — the active ticker list is set
+  directly (network-free, like the default watchlist) and any custom expiry picks
+  are stashed in `_pending_selections`, applied lazily in `_ensure_selection` once
+  each ladder resolves. Best-effort (missing store/pointer or a deleted universe ⇒
+  the provider's default watchlist). Frontend unchanged (`GET /universe` just
+  serves the restored set). 5 new tests.
 
 - **[2026-06-17] Prior anchor delta-set widened + tunable (follow-up to the
   in-app verification finding).** The default delta-locations were 10/25/40Δ

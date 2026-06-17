@@ -125,6 +125,33 @@ class UniverseMixin:
             self._universe = None
         return validated
 
+    def restore_universe(
+        self, tickers: list[str], selections: dict[str, list[str] | None] | None = None
+    ) -> None:
+        """Set the active ticker list (+ custom expiry picks) WITHOUT fetching.
+
+        Used at startup to restore the last saved universe as cheaply as the
+        default watchlist: the tickers resolve their ladders lazily on first use,
+        and any custom picks are stashed in ``_pending_selections`` for
+        ``_ensure_selection`` to apply once each ladder loads. Tickers a provider
+        can no longer serve simply resolve to no data (handled downstream), exactly
+        as an unreachable default-watchlist ticker would."""
+        wanted = list(dict.fromkeys(t.strip().upper() for t in tickers if t.strip()))
+        if not wanted:
+            return
+        with self._lock:
+            self._active_tickers = wanted
+            self._pending_selections = {}
+            for ticker, picks in (selections or {}).items():
+                sym = ticker.strip().upper()
+                if not picks:
+                    continue  # auto: the default rule applies lazily
+                try:
+                    self._pending_selections[sym] = [date.fromisoformat(s) for s in picks]
+                except (ValueError, TypeError):
+                    pass  # malformed pick -> fall back to auto for that ticker
+            self._universe = None
+
     def _require_active(self, ticker: str) -> None:
         with self._lock:
             if ticker not in self._active_tickers:
@@ -157,8 +184,16 @@ class UniverseMixin:
             if self._available.get(ticker):  # another thread resolved it first
                 return
             self._available[ticker] = available
-            self._selected[ticker] = chosen
-            self._selection_mode[ticker] = "auto"
+            # A restored universe's custom picks (intersected with the live ladder)
+            # take precedence over the default rule the first time it resolves.
+            pending = self._pending_selections.pop(ticker, None)
+            custom = [d for d in pending if d in available] if pending else []
+            if custom:
+                self._selected[ticker] = custom
+                self._selection_mode[ticker] = "custom"
+            else:
+                self._selected[ticker] = chosen
+                self._selection_mode[ticker] = "auto"
 
     def available_expiries(self, ticker: str) -> list[date]:
         """Every expiry the provider lists for the ticker (the picker's list);
