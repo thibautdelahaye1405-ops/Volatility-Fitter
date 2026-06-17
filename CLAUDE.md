@@ -64,7 +64,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (498 green as of 2026-06-17, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (500 green as of 2026-06-17, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
             ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
             the best-reachable active one; switch live via the TopBar Data

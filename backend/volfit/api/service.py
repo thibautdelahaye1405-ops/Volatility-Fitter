@@ -177,6 +177,7 @@ def prior_anchor_targets(
     anchor, unmet = build_prior_anchor(
         moved.implied_w, node.tau, k, prepared.tau, budget,
         scheme=state.fit_settings().weightScheme,
+        deltas=tuple(options.priorAnchorDeltas),
     )
     prior_vs: VarSwapTarget | None = None
     if budget > 0.0 and unmet > 0.0:

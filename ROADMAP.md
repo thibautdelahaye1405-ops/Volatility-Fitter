@@ -10,7 +10,19 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-**Done & verified (498 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (500 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-17] Prior anchor delta-set widened + tunable (follow-up to the
+  in-app verification finding).** The default delta-locations were 10/25/40Δ
+  (span ≈ ±0.16 for a 3M node) — narrower than wide chains, so the anchor never
+  reached the sparse wings. Now `DEFAULT_DELTAS = 2/5/10/25/40Δ` per side + ATM (11
+  anchors), with the **var-swap prior carrying the aggregate tail below ~2Δ** (where
+  the prior is only its own extrapolation and Black vega collapses). Added a vega-
+  normalizer cap (`MAX_INV_VEGA_RATIO = 25×` the most-liquid anchor) so a deep point
+  can't dominate. The delta set is now a tunable **`OptionsSettings.priorAnchorDeltas`**
+  (per-side forward deltas in (0,0.5); ATM always added; bumps the options version)
+  with an Options "Prior-anchor Δ (%, per side)" comma-list control. 3 new tests
+  (deeper reach, vega cap, default count).
 
 - **[2026-06-17] Prior framework Phase C — Bayesian data-gap anchor (DONE; the
   framework R1–R5 is complete).** `volfit/calib/prior.py` rewritten: the anchor now

@@ -34,10 +34,27 @@ def _prior_w():
 # --------------------------------------------------------------- module units
 def test_delta_strikes_span_puts_atm_calls_ascending():
     strikes = delta_anchor_strikes(_prior_w(), bm.SVI_T)
-    assert strikes.ndim == 1 and strikes.size == 7  # 10/25/40 per side + ATM
+    assert strikes.ndim == 1 and strikes.size == 11  # 2/5/10/25/40 per side + ATM
     assert np.all(np.diff(strikes) > 0)  # ascending
     assert strikes[0] < 0.0 < strikes[-1]  # deep put .. deep call
     assert abs(strikes[strikes.size // 2]) < 0.1  # middle anchor ~ ATM
+
+
+def test_deeper_deltas_reach_further_into_the_wings():
+    """A deeper delta set (2-delta) places anchors further out than a shallow one."""
+    shallow = delta_anchor_strikes(_prior_w(), bm.SVI_T, deltas=(0.25,))
+    deep = delta_anchor_strikes(_prior_w(), bm.SVI_T, deltas=(0.02, 0.25))
+    assert deep.min() < shallow.min() and deep.max() > shallow.max()
+
+
+def test_inv_vega_cap_bounds_tail_amplification():
+    """The deep-wing vega-normalizer is capped relative to the most-liquid anchor."""
+    from volfit.calib.prior import MAX_INV_VEGA_RATIO
+
+    k = np.linspace(-0.05, 0.05, 9)
+    target, _ = build_prior_anchor(_prior_w(), bm.SVI_T, k, bm.SVI_T, 5.0)
+    assert target is not None
+    assert target.inv_vega.max() <= MAX_INV_VEGA_RATIO * target.inv_vega.min() + 1e-6
 
 
 def test_build_prior_anchor_none_cases():

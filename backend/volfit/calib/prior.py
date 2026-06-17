@@ -45,10 +45,17 @@ _VEGA_FLOOR = 1e-4
 _W_FLOOR = 1e-12
 
 #: Per-side delta-locations the prior is anchored at (puts AND calls), plus ATM.
-#: 10/25/40-delta spans the smile from the wings to near the money.
-DEFAULT_DELTAS = (0.10, 0.25, 0.40)
+#: 2/5/10/25/40-delta spans from the deep-but-liquid wing to near the money; the
+#: var-swap prior carries the aggregate tail BELOW ~2-delta (where the prior is
+#: only its own extrapolation and Black vega collapses). Overridable per node via
+#: OptionsSettings.priorAnchorDeltas.
+DEFAULT_DELTAS = (0.02, 0.05, 0.10, 0.25, 0.40)
 #: Gaussian-kernel bandwidth (log-moneyness) for the observed-quote density.
 DEFAULT_BANDWIDTH = 0.06
+#: Cap on a wing anchor's vega-normalizer relative to the most-liquid (ATM-ish)
+#: anchor: deep in the tail Black vega -> 0, so 1/vega would otherwise explode and
+#: let one ultra-deep point dominate the fit. The cap bounds that amplification.
+MAX_INV_VEGA_RATIO = 25.0
 
 
 @dataclass(frozen=True)
@@ -178,6 +185,7 @@ def build_prior_anchor(
     target_price = black_call(anchors, w_target)
     sigma = np.sqrt(w_target / tau)
     inv_vega = 1.0 / (black_vega_sigma(anchors, sigma, tau) + _VEGA_FLOOR)
+    inv_vega = np.minimum(inv_vega, MAX_INV_VEGA_RATIO * float(inv_vega.min()))  # cap tail blow-up
     keep = weights > 0.0  # drop fully-satisfied anchors (zero weight)
     if not keep.any():
         return None, unmet_fraction

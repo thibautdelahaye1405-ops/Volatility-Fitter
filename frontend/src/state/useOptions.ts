@@ -33,6 +33,9 @@ export interface OptionsSettings {
   autoLoadPrior: boolean;
   /** Prior-anchor penalty weight as a % of summed quote weights (autoLoadPrior). */
   priorAnchorWeightPct: number;
+  /** Per-side delta-locations the prior anchor pins (forward deltas in (0,0.5));
+   *  ATM is always added, var-swap prior carries the tail below the smallest. */
+  priorAnchorDeltas: number[];
   gridXNodes: number;
   gridTNodes: number;
   gridRegLambda: number;
@@ -64,6 +67,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   varSwapWeightPct: 10.0,
   autoLoadPrior: false,
   priorAnchorWeightPct: 50.0,
+  priorAnchorDeltas: [0.02, 0.05, 0.1, 0.25, 0.4],
   gridXNodes: 7,
   gridTNodes: 0,
   gridRegLambda: 1e-2,

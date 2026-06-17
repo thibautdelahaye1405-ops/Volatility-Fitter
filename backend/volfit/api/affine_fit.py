@@ -378,7 +378,10 @@ def _prior_anchor_quotes(
         qw = resolve_weights(scheme, k, w)
         sum_w = float(np.sum(qw)) if qw is not None else float(k.size)
         budget = (opts.priorAnchorWeightPct / 100.0) * sum_w
-        target, unmet = build_prior_anchor(moved.implied_w, node.tau, k, tau, budget, scheme=scheme)
+        target, unmet = build_prior_anchor(
+            moved.implied_w, node.tau, k, tau, budget, scheme=scheme,
+            deltas=tuple(opts.priorAnchorDeltas),
+        )
         if target is not None:
             tol = _VOL_TOL / (target.inv_vega * np.sqrt(np.maximum(target.weights, 1e-12)))
             for kj, pj, tj in zip(target.k, target.target_price, tol):

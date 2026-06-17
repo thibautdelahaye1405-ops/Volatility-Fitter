@@ -12,6 +12,8 @@
 //
 // FitSettings (model/penalties/haircut/weighting) and OptionsSettings (the rest)
 // are two backend endpoints but share ONE sticky Apply bar here.
+import { useEffect, useRef, useState } from "react";
+
 import HyperparamPanel from "../components/HyperparamPanel";
 import { NumberRow, PenaltyTable, Segmented, Toggle } from "../components/OptionsControls";
 import { api } from "../state/api";
@@ -50,6 +52,30 @@ export default function OptionsViewer() {
   const { draft, patch, dirty, busy, flash, apply, adopt } = useOptions(live, reload);
   const fit = useFitSettings(live, reload);
   const defaults = useSettingsDefaults(live);
+
+  // Prior-anchor delta set, edited as a comma-separated %-per-side list (ATM is
+  // implicit). A local text buffer commits on blur so typing isn't reformatted
+  // mid-keystroke; it resyncs when the draft array changes from outside.
+  const fmtDeltas = (ds: number[]) => ds.map((d) => +(d * 100).toFixed(2)).join(", ");
+  const [deltaText, setDeltaText] = useState(() => fmtDeltas(draft.priorAnchorDeltas));
+  const deltaRef = useRef(draft.priorAnchorDeltas);
+  useEffect(() => {
+    if (draft.priorAnchorDeltas !== deltaRef.current) {
+      deltaRef.current = draft.priorAnchorDeltas;
+      setDeltaText(fmtDeltas(draft.priorAnchorDeltas));
+    }
+  }, [draft.priorAnchorDeltas]);
+  const commitDeltas = () => {
+    const parsed = deltaText
+      .split(/[,\s]+/)
+      .map(Number)
+      .filter((x) => Number.isFinite(x) && x > 0 && x < 50);
+    const ds = Array.from(new Set(parsed.map((x) => +(x / 100).toFixed(4)))).sort((a, b) => a - b);
+    const next = ds.length ? ds : draft.priorAnchorDeltas;
+    deltaRef.current = next;
+    setDeltaText(fmtDeltas(next));
+    patch({ priorAnchorDeltas: next });
+  };
 
   // One Apply commits both backends (each is a no-op when its draft is clean).
   const anyDirty = dirty || fit.dirty;
@@ -174,6 +200,24 @@ export default function OptionsViewer() {
             disabled={!live || !draft.autoLoadPrior}
             onChange={(e) => patch({ priorAnchorWeightPct: Number(e.target.value) })}
             className={numInput}
+          />
+        </div>
+        <div className="mt-1 flex items-center justify-between">
+          <span
+            className={`${rowLabel} ${draft.autoLoadPrior ? "" : "opacity-40"}`}
+            title="Per-side delta-locations the prior anchor pins (the wing shape), as a comma-separated list of deltas in %. ATM is always included; the var-swap prior carries the aggregate tail below the smallest delta."
+          >
+            Prior-anchor Δ (%, per side)
+          </span>
+          <input
+            type="text" value={deltaText}
+            disabled={!live || !draft.autoLoadPrior}
+            onChange={(e) => setDeltaText(e.target.value)}
+            onBlur={commitDeltas}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            }}
+            className={`${numInput} w-32 text-right`}
           />
         </div>
         <Toggle

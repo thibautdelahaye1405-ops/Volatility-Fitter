@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # Market-settings / forward-mode and fit-history schemas live in their own
 # modules (file-size policy) and are re-exported here so the API keeps one
@@ -145,6 +145,18 @@ class OptionsSettings(BaseModel):
     #: ``autoLoadPrior`` is on and a prior is active; changes calibration output, so
     #: it bumps the options version (set_options).
     priorAnchorWeightPct: float = Field(50.0, ge=0.0, le=1000.0)
+    #: Per-side delta-locations the prior anchor is placed at (the wing shape it
+    #: pins); ATM is always added, and the var-swap prior carries the aggregate tail
+    #: below the smallest delta. Each value is a forward Black delta in (0, 0.5).
+    priorAnchorDeltas: list[float] = Field(default=[0.02, 0.05, 0.10, 0.25, 0.40])
+
+    @field_validator("priorAnchorDeltas")
+    @classmethod
+    def _clean_deltas(cls, v: list[float]) -> list[float]:
+        """Keep deltas strictly in (0, 0.5), dedup + sort; fall back to the default
+        set if nothing valid is given (so the anchor always has placements)."""
+        cleaned = sorted({round(float(d), 4) for d in v if 0.0 < float(d) < 0.5})
+        return cleaned or [0.02, 0.05, 0.10, 0.25, 0.40]
     # local-vol-affine vertex grid + roughness (the single source of truth: the
     # affine fit reads these directly; the Local-Vol workspace has no own knobs).
     gridXNodes: int = Field(7, ge=3, le=200)  # strike vertices (much larger max now)

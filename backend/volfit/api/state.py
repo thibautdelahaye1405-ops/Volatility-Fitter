@@ -588,6 +588,7 @@ class AppState(UniverseMixin):
                     or options.enforceCalendar != self._options.enforceCalendar
                     or options.autoLoadPrior != self._options.autoLoadPrior
                     or options.priorAnchorWeightPct != self._options.priorAnchorWeightPct
+                    or options.priorAnchorDeltas != self._options.priorAnchorDeltas
                 )
                 if affects_fit:
                     self._options_version += 1
