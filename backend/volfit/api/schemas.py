@@ -90,14 +90,18 @@ class OptionsSettings(BaseModel):
         into surface slice fits (volfit.models.lqd.calibrate, eq. slack_calendar);
         the only field that changes calibration output, so it (alone) bumps the
         options version in the fit-cache key.
-      * ``enforceCalendar`` — global default for the calendar-arbitrage fix the
-        surface fit applies (SurfaceFitRequest seeds from it).
+      * ``enforceCalendar`` — calendar-arbitrage fix: when on, the background
+        Calibrate job (volfit.api.workflow.calibrate_all) couples each ticker's lit
+        expiries in ascending-T order, threading the previous slice as a convex-
+        order floor; the surface-fit endpoint also seeds its default from it.
       * ``eventsEnabled`` — global default for event-time dilation (term view).
       * ``varSwapEnabled`` — whether the var-swap level is surfaced.
       * ``dynamicsRegime`` / ``ssr`` — seed defaults for the spot-vol scenario.
       * ``gridXNodes`` / ``gridTNodes`` / ``gridRegLambda`` — default vertex grid
         and roughness of the local-vol-affine fit (AffineFitRequest seeds them).
-      * ``autoLoadPrior`` — seed the saved prior as the fit prior on node load.
+      * ``autoLoadPrior`` — when on, a node's saved prior is fed into its
+        calibration as a soft prior-anchor penalty in the quote-free wings
+        (volfit.calib.prior), strength ``priorAnchorWeightPct``.
 
     Stubbed this phase (persisted UI state only; behaviour is a documented TODO):
       * ``autoCalibrate`` — auto-refit on every quote edit (True, today's
@@ -133,6 +137,13 @@ class OptionsSettings(BaseModel):
     varSwapWeightPct: float = Field(10.0, ge=0.0, le=1000.0)
     # prior default
     autoLoadPrior: bool = False
+    #: Prior-anchor penalty weight as a PERCENTAGE of the mean option-quote weight
+    #: of the node (volfit.calib.prior): each quote-free WING anchor point pulls the
+    #: fit toward the saved prior with this fraction of a typical quote's weight, so
+    #: where there are no quotes the calibration relaxes toward yesterday's shape.
+    #: Only bites while ``autoLoadPrior`` is on and a saved prior exists; changes
+    #: calibration output, so it bumps the options version (set_options).
+    priorAnchorWeightPct: float = Field(50.0, ge=0.0, le=1000.0)
     # local-vol-affine vertex grid + roughness (the single source of truth: the
     # affine fit reads these directly; the Local-Vol workspace has no own knobs).
     gridXNodes: int = Field(7, ge=3, le=200)  # strike vertices (much larger max now)

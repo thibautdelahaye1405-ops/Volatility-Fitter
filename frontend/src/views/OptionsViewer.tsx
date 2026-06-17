@@ -162,6 +162,20 @@ export default function OptionsViewer() {
             className={numInput}
           />
         </div>
+        <div className="mt-1 flex items-center justify-between">
+          <span
+            className={`${rowLabel} ${draft.autoLoadPrior ? "" : "opacity-40"}`}
+            title="Prior-anchor penalty weight as a % of the summed option-quote weights of the node — pulls the fit toward the saved prior in the quote-free wings (Auto-load prior)"
+          >
+            Prior-anchor weight (%)
+          </span>
+          <input
+            type="number" step={1} min={0} value={draft.priorAnchorWeightPct}
+            disabled={!live || !draft.autoLoadPrior}
+            onChange={(e) => patch({ priorAnchorWeightPct: Number(e.target.value) })}
+            className={numInput}
+          />
+        </div>
         <Toggle
           label="Normalize events"
           hint="Rescale all days so the 1Y weight budget stays 365 (1Y vols unchanged; events redistribute variance within the year)"
@@ -204,7 +218,7 @@ export default function OptionsViewer() {
 
         <h4 className={`${subTitle} mt-0`}>Engine features</h4>
         <Toggle
-          label="Arbitrage fix" hint="Enforce the calendar (convex-order) constraint on surface fits"
+          label="Arbitrage fix" hint="Calendar-couple the Calibrate job: fit each ticker's expiries in order, enforcing the convex-order (no-calendar-arbitrage) floor"
           checked={draft.enforceCalendar} disabled={!live}
           onChange={(v) => patch({ enforceCalendar: v })}
         />
@@ -219,7 +233,7 @@ export default function OptionsViewer() {
           onChange={(v) => patch({ varSwapEnabled: v })}
         />
         <Toggle
-          label="Auto-load prior" hint="Seed the saved prior as the fit prior when a node loads"
+          label="Auto-load prior" hint="Anchor the fit to a node's saved prior in the quote-free wings (strength set by Prior-anchor weight in Calibration)"
           checked={draft.autoLoadPrior} disabled={!live}
           onChange={(v) => patch({ autoLoadPrior: v })}
         />

@@ -17,9 +17,9 @@ from __future__ import annotations
 import anyio.to_thread
 from fastapi import APIRouter, HTTPException, Request, WebSocket
 
-from volfit.api import history, service
+from volfit.api import service
 from volfit.api.schemas import SurfaceFitRequest, SurfaceFitResponse
-from volfit.api.state import FitRecord, UnknownNodeError
+from volfit.api.state import UnknownNodeError
 from volfit.calib.calendar import calendar_violation
 
 router = APIRouter()
@@ -50,8 +50,11 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
         residuals: list[float] = []
         fitted = []
         for index, (iso, prepared) in enumerate(plan):
-            result = await anyio.to_thread.run_sync(
-                service.fit_surface_slice,
+            # Calendar-couple + cache + re-point + persist in one worker-thread
+            # step (the shared service helper), so progress frames can be awaited
+            # between expiries.
+            record = await anyio.to_thread.run_sync(
+                service.fit_and_commit_slice,
                 state,
                 body.ticker,
                 iso,
@@ -60,21 +63,10 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
                 body.enforceCalendar,
                 body.fitMode,
             )
+            result = record.result
             residuals.append(
                 0.0 if prev is None else calendar_violation(prev.slice, result.slice)
             )
-            overlay = await anyio.to_thread.run_sync(
-                service.display_overlay, state, body.ticker, iso, prepared, body.fitMode
-            )
-            record = FitRecord(prepared=prepared, result=result, display=overlay)
-            key = service.fit_key(state, body.ticker, iso, body.fitMode)
-            state.store_fit(key, record)
-            # A surface fit IS a calibration: re-point the node so it's up to date.
-            state.set_calibrated_ptr(
-                body.ticker, iso, body.fitMode, key, float(state.snapshot(body.ticker).spot)
-            )
-            # Time-series scaffold: WS-driven fits persist like POST/GET ones.
-            history.persist_fit(state, body.ticker, iso, body.fitMode, record)
             fitted.append((iso, result))
             await websocket.send_json(
                 {

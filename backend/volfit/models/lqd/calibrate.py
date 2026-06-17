@@ -19,10 +19,11 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
-from volfit.models.lqd.quadrature import N_POINTS, LQDSlice, build_slice
+from volfit.models.lqd.quadrature import LQDSlice, build_slice
 
 # Soft-barrier location/steepness for A_R: starts pushing back well before
 # the hard integrability bound A_R < 1 so finite-difference Jacobians stay smooth.
@@ -74,6 +75,7 @@ def _residuals(
     barrier_scale: float,
     mid_anchor_weight: float,
     var_swap: VarSwapTarget | None,
+    prior_anchor: PriorAnchorTarget | None,
     n_points: int,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
@@ -88,9 +90,11 @@ def _residuals(
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
     n_cal = 0 if cal_z is None else cal_z.size
+    n_prior = 0 if prior_anchor is None else prior_anchor.k.size
     band_mode = price_lo is not None
     n_fit = (2 * k.size) if band_mode else k.size
     vs = np.empty(0) if var_swap is None else np.zeros(1)
+    pa = np.empty(0) if prior_anchor is None else np.zeros(n_prior)
     try:
         slice_ = build_slice(params, n_points=n_points)
         model_price = slice_.call_price(k)
@@ -116,12 +120,17 @@ def _residuals(
             # is cheap; the generic replication would re-solve implied_w on a
             # grid every Jacobian column and make the fit minutes-slow.
             vs = np.array([varswap_residual_w(slice_.var_swap_strike(), var_swap)])
+        if prior_anchor is not None:
+            # Soft anchor toward the saved prior in the quote-free wings (one extra
+            # call_price evaluation; vega-normalized like the data block).
+            pa = prior_anchor_residuals(slice_.call_price(prior_anchor.k), prior_anchor)
     except ValueError:
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
+        pa = np.zeros(n_prior)
     barrier = np.log1p(np.exp(barrier_scale * (a_right - barrier_center)))
-    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs))
+    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa))
 
 
 def calibrate_slice(
@@ -141,6 +150,7 @@ def calibrate_slice(
     barrier_scale: float = _BARRIER_SCALE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     var_swap: VarSwapTarget | None = None,
+    prior_anchor: PriorAnchorTarget | None = None,
     opt_n_points: int = OPT_N_POINTS,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
@@ -169,6 +179,10 @@ def calibrate_slice(
     ``var_swap`` (volfit.calib.varswap) adds a single soft penalty pulling the
     slice's fair var-swap toward a quoted level; None (the default) leaves the
     objective byte-identical.
+
+    ``prior_anchor`` (volfit.calib.prior) adds vega-normalized wing residuals
+    pulling the fit toward a saved prior where there are no quotes (the
+    autoLoadPrior feature); None (the default) leaves the objective byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -212,6 +226,7 @@ def calibrate_slice(
             barrier_scale,
             mid_anchor_weight,
             var_swap,
+            prior_anchor,
             opt_n_points,
         ),
         method="trf",

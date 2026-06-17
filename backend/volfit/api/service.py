@@ -43,6 +43,7 @@ from volfit.api.displayed import (
 )
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_floor_targets, calendar_violation
+from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
 from volfit.calib.varswap import VarSwapTarget
 from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
@@ -57,6 +58,7 @@ from volfit.models.diagnostics import (
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
+from volfit.models.lqd.quadrature import build_slice
 
 #: Model-curve sampling: points over the extended (≥[-1,1]) display grid; denser
 #: than before to keep ATM resolution across the wider range. K_PAD pads the
@@ -145,6 +147,29 @@ def varswap_target(
     return VarSwapTarget(total_var=level * level * t, weight=weight, t=t)
 
 
+def prior_anchor_target(
+    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, tau: float
+) -> PriorAnchorTarget | None:
+    """The prior-anchor penalty target for a node, or None.
+
+    Active only when ``autoLoadPrior`` is on and the node has a saved prior. The
+    prior's LQD params rebuild its smile (``build_slice(...).implied_w``); the
+    anchor pulls the fit toward that shape in the quote-free wings. The total
+    anchor weight is ``priorAnchorWeightPct`` percent of the summed option-quote
+    weights of the node (the same scaling as the var-swap penalty), spread across
+    the wing points, so the prior competes with the quotes at a chosen strength
+    regardless of quote count."""
+    options = state.options()
+    if not options.autoLoadPrior:
+        return None
+    prior = state.get_prior((ticker, iso))
+    if prior is None:
+        return None
+    sum_w = float(np.sum(weights)) if weights is not None else float(k.size)
+    total_weight = (options.priorAnchorWeightPct / 100.0) * sum_w
+    return build_prior_anchor(build_slice(prior.params).implied_w, k, tau, total_weight)
+
+
 def edited_fit_inputs(
     state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, weights: np.ndarray | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
@@ -212,6 +237,7 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    pa = prior_anchor_target(state, ticker, iso, k, weights, prepared.tau)
     result = calibrate_slice(
         k,
         w,
@@ -225,6 +251,7 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
         barrier_scale=settings.barrierScale,
         mid_anchor_weight=settings.midAnchorWeight,
         var_swap=vs,
+        prior_anchor=pa,
     )
     # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
     # a display overlay on the same edited quotes + band (volfit.api.fit_models).
@@ -571,6 +598,7 @@ def fit_surface_slice(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    pa = prior_anchor_target(state, ticker, iso, k, weights, prepared.tau)
     return calibrate_slice(
         k,
         w,
@@ -588,7 +616,37 @@ def fit_surface_slice(
         barrier_scale=settings.barrierScale,
         mid_anchor_weight=settings.midAnchorWeight,
         var_swap=vs,
+        prior_anchor=pa,
     )
+
+
+def fit_and_commit_slice(
+    state: AppState,
+    ticker: str,
+    iso: str,
+    prepared: PreparedQuotes,
+    prev: CalibrationResult | None,
+    enforce_calendar: bool,
+    fit_mode: str = "mid",
+) -> FitRecord:
+    """Calendar-coupled slice fit (``fit_surface_slice``) PLUS the calibration
+    bookkeeping: build the display overlay, cache the record under the canonical
+    key, re-point the calibrated pointer (a surface/coupled fit IS a calibration)
+    and persist it. Returns the committed FitRecord (its ``.result`` is the
+    ``prev`` to thread into the next, longer expiry).
+
+    Shared by the surface-fit endpoint (``fit_surface`` / the WS route) and the
+    calendar-coupled branch of the background Calibrate job, so the coupling
+    recipe lives in exactly one place.
+    """
+    result = fit_surface_slice(state, ticker, iso, prepared, prev, enforce_calendar, fit_mode)
+    overlay = display_overlay(state, ticker, iso, prepared, fit_mode)
+    record = FitRecord(prepared=prepared, result=result, display=overlay)
+    key = fit_key(state, ticker, iso, fit_mode)
+    state.store_fit(key, record)
+    state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
+    history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
+    return record
 
 
 def assemble_surface_response(
@@ -627,17 +685,11 @@ def fit_surface(
     residuals: list[float] = []
     fitted: list[tuple[str, CalibrationResult]] = []
     for index, (iso, prepared) in enumerate(plan):
-        result = fit_surface_slice(
+        record = fit_and_commit_slice(
             state, ticker, iso, prepared, prev, enforce_calendar, fit_mode
         )
+        result = record.result
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
-        overlay = display_overlay(state, ticker, iso, prepared, fit_mode)
-        record = FitRecord(prepared=prepared, result=result, display=overlay)
-        key = fit_key(state, ticker, iso, fit_mode)
-        state.store_fit(key, record)
-        # A surface fit IS a calibration: re-point the node so it is up to date.
-        state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
-        history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
         fitted.append((iso, result))
         if progress is not None:
             progress(iso, index, len(plan), result.max_iv_error * 1e4)

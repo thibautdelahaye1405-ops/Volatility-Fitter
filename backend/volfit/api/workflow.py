@@ -105,16 +105,85 @@ def _affine_thunk(state: AppState, ticker: str, fit_mode: str):
     return thunk
 
 
+def _parametric_node_item(state: AppState, ticker: str, iso: str, fit_mode: str):
+    """An INDEPENDENT (no calendar coupling) per-node calibration work item."""
+    return (
+        f"{ticker} {iso}",
+        "Parametric",
+        (lambda: service.calibrate_node(state, ticker, iso, fit_mode)),
+    )
+
+
+def _coupled_ticker_items(
+    state: AppState, ticker: str, isos: list[str], fit_mode: str
+) -> list[tuple[str, str, object]]:
+    """Per-expiry calibration items for one ticker that thread the previous
+    (shorter-T) expiry's slice as a calendar floor (enforceCalendar ON).
+
+    The items stay per-expiry so the progress display keeps node granularity, but
+    they share a context that — on first touch — re-anchors the ticker at its own
+    chain spot and builds the prepared-quote plan, then each item fits + commits
+    its slice (``service.fit_and_commit_slice``) and hands its result to the next,
+    longer expiry. ``isos`` must be ascending-T (``lit_nodes`` is nearest-first).
+
+    Caveat (documented follow-up): a later INDEPENDENT recompute of one node via
+    ``service._compute_fit`` (e.g. autoCalibrate ON + a single input change) has no
+    cross-expiry context, so the calendar coupling only holds until such a refit.
+    Under the default trigger-gated workflow the coupled fit stays frozen/displayed
+    until the next explicit Calibrate.
+    """
+    ctx: dict = {"plan": None, "prev": None}
+
+    def ensure_plan() -> dict:
+        if ctx["plan"] is None:
+            state.set_spot_shift(ticker, 0.0)  # re-anchor at the chain's own spot
+            want = set(isos)
+            ctx["plan"] = {
+                iso: prepared
+                for iso, prepared in service.surface_inputs(state, ticker, fit_mode)
+                if iso in want
+            }
+        return ctx["plan"]
+
+    def make(iso: str):
+        def thunk() -> None:
+            prepared = ensure_plan().get(iso)
+            if prepared is None:
+                return  # expiry left the chain between build and run
+            record = service.fit_and_commit_slice(
+                state, ticker, iso, prepared, ctx["prev"], True, fit_mode
+            )
+            ctx["prev"] = record.result
+
+        return thunk
+
+    return [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
+
+
+def _parametric_items(
+    state: AppState, nodes: list[tuple[str, str]], fit_mode: str
+) -> list[tuple[str, str, object]]:
+    """Parametric calibration items for a set of lit nodes: calendar-coupled
+    per-ticker chains when ``enforceCalendar`` is on, else independent per node."""
+    if not state.options().enforceCalendar:
+        return [_parametric_node_item(state, t, iso, fit_mode) for t, iso in nodes]
+    by_ticker: dict[str, list[str]] = {}
+    for t, iso in nodes:  # nodes are nearest-first, so each list is ascending-T
+        by_ticker.setdefault(t, []).append(iso)
+    items: list[tuple[str, str, object]] = []
+    for ticker, isos in by_ticker.items():
+        items.extend(_coupled_ticker_items(state, ticker, isos, fit_mode))
+    return items
+
+
 def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     """Start a BACKGROUND calibration of every lit node, then (when Local-Vol is
     enabled) each lit ticker's LV (affine) surface. Items carry a coarse ``phase``
     ("Parametric" | "LV") so the UI can show "Calibrating Parametric" then
-    "Calibrating LV". False if a job is already running."""
-    items: list[tuple[str, str, object]] = [
-        (f"{t} {iso}", "Parametric",
-         (lambda t=t, iso=iso: service.calibrate_node(state, t, iso, fit_mode)))
-        for t, iso in lit_nodes(state)
-    ]
+    "Calibrating LV". When ``enforceCalendar`` is on the parametric items are
+    calendar-coupled per ticker (``_coupled_ticker_items``); else they are
+    independent per node. False if a job is already running."""
+    items = _parametric_items(state, lit_nodes(state), fit_mode)
     if state.options().localVolEnabled:
         for ticker in _lit_tickers(state):
             items.append((f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode)))
@@ -131,10 +200,13 @@ def _lit_tickers(state: AppState) -> list[str]:
 
 
 def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int:
-    """Synchronously (re)calibrate one ticker's lit expiries + its LV surface."""
+    """Synchronously (re)calibrate one ticker's lit expiries + its LV surface.
+
+    Honours ``enforceCalendar`` (calendar-couples the expiries) by running the
+    same work items as the background path, just inline."""
     nodes = lit_nodes(state, [ticker])
-    for t, iso in nodes:
-        service.calibrate_node(state, t, iso, fit_mode)
+    for _, _, thunk in _parametric_items(state, nodes, fit_mode):
+        thunk()
     if nodes and state.options().localVolEnabled:
         _affine_thunk(state, ticker, fit_mode)()  # also (re)build the LV surface
     return len(nodes)

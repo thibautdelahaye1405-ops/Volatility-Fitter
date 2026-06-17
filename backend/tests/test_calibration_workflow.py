@@ -88,6 +88,63 @@ def test_calibrate_all_skips_lv_when_localvol_disabled(monkeypatch):
     assert phases_off == {"Parametric"}  # LV items skipped when disabled
 
 
+def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
+    """enforceCalendar ON: calibrate_all's parametric items are calendar-coupled
+    per ticker — each expiry but the first (ascending T) is fitted with the
+    previous, shorter expiry's slice threaded in as the convex-order floor. OFF:
+    the items are INDEPENDENT per node (the coupled helper is never used)."""
+    from volfit.api import workflow
+
+    seen: list[tuple[str, bool, bool]] = []  # (iso, prev_is_none, enforce)
+    real = service.fit_and_commit_slice
+
+    def spy(st, tk, iso, prepared, prev, enforce, fit_mode="mid"):
+        seen.append((iso, prev is None, enforce))
+        return real(st, tk, iso, prepared, prev, enforce, fit_mode)
+
+    monkeypatch.setattr(service, "fit_and_commit_slice", spy)
+
+    # ON: coupled. The first expiry has no prior slice; the rest are threaded.
+    state = _state(auto=False)
+    state.set_options(state.options().model_copy(update={"enforceCalendar": True}))
+    nodes = workflow.lit_nodes(state, [TICKER])
+    assert len(nodes) >= 2  # otherwise the coupling is vacuous
+    for _label, _phase, thunk in workflow._parametric_items(state, nodes, "mid"):
+        thunk()
+    assert len(seen) == len(nodes)
+    assert all(enforce for _iso, _none, enforce in seen)
+    assert seen[0][1] is True  # first expiry: prev is None
+    assert all(not none for _iso, none, _e in seen[1:])  # rest: prev threaded
+
+    # OFF: independent per-node — the coupled commit helper is never called.
+    seen.clear()
+    off = _state(auto=False)
+    off.set_options(off.options().model_copy(update={"enforceCalendar": False}))
+    for _label, _phase, thunk in workflow._parametric_items(
+        off, workflow.lit_nodes(off, [TICKER]), "mid"
+    ):
+        thunk()
+    assert seen == []
+
+
+def test_enforce_calendar_surface_is_arbitrage_free():
+    """Running the coupled parametric items yields a calendar-arbitrage-free
+    surface: no convex-order violation between consecutive lit expiries."""
+    from volfit.api import workflow
+    from volfit.calib.calendar import calendar_violation
+
+    state = _state(auto=False)
+    state.set_options(state.options().model_copy(update={"enforceCalendar": True}))
+    nodes = workflow.lit_nodes(state, [TICKER])
+    for _label, _phase, thunk in workflow._parametric_items(state, nodes, "mid"):
+        thunk()
+
+    isos = [iso for t, iso in nodes if t == TICKER]
+    slices = [service.fit_or_get(state, TICKER, iso, "mid").result.slice for iso in isos]
+    for prev, cur in zip(slices, slices[1:]):
+        assert calendar_violation(prev, cur) <= 1e-6
+
+
 def test_stream_refit_respects_autocalibrate(monkeypatch):
     """The streaming throttled refit obeys autoCalibrate (the master switch for
     unattended refits): ON refetches the book + recalibrates, OFF is a no-op."""

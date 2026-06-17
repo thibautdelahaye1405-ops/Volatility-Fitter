@@ -8,9 +8,49 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-15 (resume here)
+## STATUS — updated 2026-06-16 (resume here)
 
-**Done & verified (478 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (487 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-16] Phase 10 follow-up toggles wired (the three open Options
+  switches)**: closes out the Phase 10 "stored-but-inert" controls.
+  * **`enforceCalendar` now bites on the real calibration path.** It used to
+    affect only the (UI-orphaned) `/fit/surface` endpoint; the live Calibrate
+    button (`/calibrate` → `workflow.calibrate_all` → per-node `_compute_fit`)
+    fit each expiry independently. When the toggle is ON, `calibrate_all` /
+    `calibrate_ticker` now calendar-COUPLE each ticker's lit expiries: ascending-T,
+    threading the previous (shorter) slice as the convex-order floor, via the new
+    shared `service.fit_and_commit_slice` (which `fit_surface` + the WS route were
+    refactored onto, so the coupling recipe lives in ONE place). Items stay
+    per-expiry so progress keeps node granularity (`workflow._coupled_ticker_items`
+    shares a per-ticker ctx that re-anchors spot + builds the prepared plan on first
+    touch). OFF ⇒ independent per-node, as before. Caveat (documented follow-up): an
+    autoCalibrate-ON single-node recompute via `_compute_fit` has no cross-expiry
+    context, so coupling holds until such a refit; under the default trigger-gated
+    workflow the coupled fit stays displayed until the next Calibrate.
+  * **`autoLoadPrior` now feeds the saved prior into calibration** as a soft
+    prior-anchor penalty (`volfit/calib/prior.py`): vega-normalized call-price
+    residuals pulling the LQD fit toward the prior in the quote-free NEAR wings
+    (span 0.25 in log-moneyness; the deep tail is left to the A_L/A_R asymptotics,
+    where vega→0 would explode the normalizer). Anchored in total-variance shape
+    (same node ⇒ ~same time scale, no fragile rescale). Strength =
+    `priorAnchorWeightPct` (new OptionsSettings field, default 50%) as a % of the
+    node's summed quote weights, spread across the wing points. `prior_anchor=None`
+    (the default everywhere) leaves every calibrator byte-identical — golden tests
+    untouched. Built in `service.prior_anchor_target`, wired into both
+    `_compute_fit` and `fit_surface_slice`.
+  * **`varSwapEnabled` confirmed already fully wired** (both penalty paths gated,
+    every UI row keys off `VarSwapInfo.enabled`, covered by
+    `test_disabling_varswap_drops_the_penalty`) — no code change, just verified.
+  * Both new calibration-affecting fields (`enforceCalendar`, `autoLoadPrior`,
+    `priorAnchorWeightPct`) now bump the options version in `set_options` so the
+    fit cache invalidates. Frontend: `priorAnchorWeightPct` type + default + an
+    Options "Prior-anchor weight (%)" input (gated by Auto-load prior); refreshed
+    the Arbitrage-fix / Auto-load-prior hints. 9 new tests (2 calendar-coupling in
+    `test_calibration_workflow`, 7 in new `test_prior_anchor`). ruff + strict-TS
+    build green.
+
+**Done & verified (earlier — `git log --oneline` tells the story):**
 
 - **[2026-06-15] Fit target persisted as an Options default**: the Fit target
   (Mid / Bid-Ask / Haircut) was session-only (`useSmile.fitMode`), so "Save as
@@ -1174,8 +1214,10 @@ moment)` model so the fitter never sees the difference.
    Consider streaming the underlying quote channel for a true live spot.
 
 **Then (general, in order):**
-1. Phase 10 follow-ups still open: `enforceCalendar` on the per-view paths,
-   `varSwapEnabled` hiding the var-swap rows, `autoLoadPrior`.
+1. ~~Phase 10 follow-ups (`enforceCalendar` per-view, `varSwapEnabled` rows,
+   `autoLoadPrior`)~~ — DONE 2026-06-16 (see the dated STATUS entry). Remaining
+   smaller Phase 10 idea: a prior load/diff UI (the anchor exists; surfacing the
+   prior overlay + a "load prior" affordance per node is still open).
 2. Phase 9 hardening: arbitrage invariants as property tests, fuzzed quote
    sets, provider-failure injection; UX polish (skeletons, layout persistence;
    the error boundary + null-safe diagnostics now landed); Docker-compose
@@ -1185,7 +1227,7 @@ moment)` model so the fitter never sees the difference.
 
 **Environment notes:**
 - venv at repo root `.venv`; run tests: `cd backend; ..\.venv\Scripts\python -m pytest tests -q`
-  (334 green as of 2026-06-14, incl. 4 perf-budget tests; opt-in live Yahoo
+  (487 green as of 2026-06-16, incl. 4 perf-budget tests; opt-in live Yahoo
   test via `$env:VOLFIT_LIVE="1"`). Run only perf: `pytest -m perf -s`.
 - Data sources: `restart.ps1` registers ALL feeds and auto-picks the best
   reachable as active; switch live via the TopBar **Data Source** selector
@@ -1398,10 +1440,10 @@ Professional, commercial, sleek (dark theme default, dense layouts, keyboard-fir
 ## Phase 10 — Workspace restructuring: tabs, Forwards & Options (SHIPPED 2026-06-14)
 
 > Shipped — see the dated STATUS entry at the top for what landed. The checklist
-> below is the original plan; the only deferred items are the deeper "wire
-> cheap" consumers (scenario auto-seed, enforceCalendar/varSwap per-view,
-> autoLoadPrior) and the two stubs, now tracked as Phase 10 follow-ups in
-> "Next up".
+> below is the original plan. The deferred "wire cheap" consumers
+> (enforceCalendar/varSwap per-view, autoLoadPrior) were completed 2026-06-16
+> (dated STATUS entry). Still open: the scenario auto-seed and the two stubs
+> (autoCalibrate/spot), tracked as Phase 10 follow-ups in "Next up".
 
 Reorganize the top-level tabs and consolidate the global / meta controls into a
 single **Options** workspace, so the per-workspace asides only carry the live

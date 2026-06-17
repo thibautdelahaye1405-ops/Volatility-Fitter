@@ -31,6 +31,8 @@ export interface OptionsSettings {
   varSwapEnabled: boolean;
   varSwapWeightPct: number;
   autoLoadPrior: boolean;
+  /** Prior-anchor penalty weight as a % of summed quote weights (autoLoadPrior). */
+  priorAnchorWeightPct: number;
   gridXNodes: number;
   gridTNodes: number;
   gridRegLambda: number;
@@ -61,6 +63,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   varSwapEnabled: true,
   varSwapWeightPct: 10.0,
   autoLoadPrior: false,
+  priorAnchorWeightPct: 50.0,
   gridXNodes: 7,
   gridTNodes: 0,
   gridRegLambda: 1e-2,

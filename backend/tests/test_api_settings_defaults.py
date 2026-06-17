@@ -12,7 +12,6 @@ to the app store so a backend restart restores them. Invariants:
 
 from datetime import date
 
-import pytest
 from fastapi.testclient import TestClient
 
 from volfit.api import create_app
