@@ -117,23 +117,46 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
     return () => window.clearInterval(id);
   }, [live, poll, refreshPriors]);
 
+  // Wait for the background calibration to finish, then refresh — the sampled
+  // poll only refreshes on a running->idle EDGE (poll line above), which a fast
+  // single-node fit can slip between, leaving the views showing the pre-calibration
+  // fit. Bounded; a short startup grace lets the job thread flip running=true first.
+  const awaitCalibration = useCallback(async () => {
+    for (let i = 0; i < 400; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      try {
+        const c = await api.get<CalibrationStatus>("/calibration/status");
+        setCalib(c);
+        if (!c.running && i >= 2) return; // idle past the ~450ms startup grace
+      } catch {
+        return; // backend unreachable: stop waiting
+      }
+    }
+  }, []);
+
   const action = useCallback(
-    async (key: WorkflowAction, path: string, withBody: boolean) => {
+    async (key: WorkflowAction, path: string, withBody: boolean, awaitJob = false) => {
       setPending(key);
       try {
         await api.post(path, withBody ? { body: {} } : undefined);
-        refreshViews();
+        if (awaitJob) {
+          await awaitCalibration(); // block until the background fit completes
+          wasRunning.current = false; // completion handled here, not via the edge
+        }
+        refreshViews(); // refetch every view against the now-current fit
         await poll();
       } finally {
         setPending(null);
       }
     },
-    [refreshViews, poll],
+    [refreshViews, poll, awaitCalibration],
   );
 
+  // calibrate + fetchOptions start a background calibration job, so they await its
+  // completion before refreshing; fetchSpots is pure transport (nothing to await).
   const fetchSpots = useCallback(() => action("spots", "/fetch/spots", true), [action]);
-  const fetchOptions = useCallback(() => action("options", "/fetch/options", true), [action]);
-  const calibrate = useCallback(() => action("calibrate", "/calibrate", false), [action]);
+  const fetchOptions = useCallback(() => action("options", "/fetch/options", true, true), [action]);
+  const calibrate = useCallback(() => action("calibrate", "/calibrate", false, true), [action]);
 
   const savePriors = useCallback(async () => {
     setPending("savePriors");

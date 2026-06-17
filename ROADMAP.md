@@ -12,6 +12,18 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 **Done & verified (506 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
 
+- **[2026-06-17] Fix: Parametric panel not refetching after Calibrate (model switch
+  looked inert).** With autoCalibrate OFF, switching model → Apply → Calibrate left
+  the smile + diagnostics byte-identical: the only post-Calibrate refresh was
+  `useWorkflow.poll` catching the job's `running:true→false` EDGE (every 1500ms),
+  which a fast single-node fit finishes between — so the chart kept showing the
+  frozen pre-calibration fit. Fix: `calibrate` (and `fetchOptions`, which can
+  auto-calibrate) now `awaitCalibration()` — poll `/calibration/status` to idle
+  (bounded, with a startup grace) — THEN `refreshViews()`, guaranteeing the views
+  refetch the finished fit regardless of job speed. Backend was correct throughout
+  (raw `/smiles` already differed per model). Verified in-app: the A_L diagnostic
+  flips 0.074 (LQD) → 0.000 (SVI) on switch+Apply+Calibrate. Frontend-only.
+
 - **[2026-06-17] Local-Vol gains a "Stacked IV" sub-tab (Parametric parity).** The
   LV workspace now overlays every reconstructed expiry's total variance
   w(k)=σ²·τ on shared axes (built from the affine smiles' own `model` + `tau`,
