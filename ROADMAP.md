@@ -10,7 +10,7 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-17 (resume here)
 
-### ✅ RESOLVED (2026-06-17) — Backend↔Frontend calibration sync (was TOP PRIORITY)
+### ✅ RESOLVED (2026-06-17/18, user-confirmed in-app) — Backend↔Frontend calibration sync (was TOP PRIORITY)
 
 The fragile, edge-triggered refresh is replaced by a **level-triggered calibration
 epoch** — a real architectural fix, not another edge patch. `AppState._calib_epoch`
