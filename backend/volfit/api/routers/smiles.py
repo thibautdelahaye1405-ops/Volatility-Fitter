@@ -46,8 +46,10 @@ def get_stacked_densities(
 def get_smile(
     ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
 ) -> SmileData:
+    state = request.app.state.volfit
+    state.note_fit_mode(fit_mode)  # so Calibrate re-points the mode on screen
     try:
-        return service.smile_payload(request.app.state.volfit, ticker, expiry, fit_mode)
+        return service.smile_payload(state, ticker, expiry, fit_mode)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

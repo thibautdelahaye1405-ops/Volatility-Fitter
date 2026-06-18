@@ -216,6 +216,13 @@ class AppState(UniverseMixin):
         #: missed running->idle edges, fast single-node jobs, and background /
         #: scheduler calibrations, regardless of which view is currently open.
         self._calib_epoch = 0
+        #: The fit target ("mid" | "bidask" | "haircut") the user is currently
+        #: VIEWING — recorded on every smile fetch. The calibrated pointer is keyed
+        #: per (ticker, ISO, mode), so a Calibrate must re-point the SAME mode the
+        #: smile is shown in; this lets every calibration path (the button, the
+        #: scheduler, a bare POST) default to the mode actually on screen instead
+        #: of always "mid" (which left a bid-ask / haircut smile frozen forever).
+        self._last_fit_mode = "mid"
         #: Per-ticker spot the node fits were calibrated at — the spot-move
         #: transport anchors here (NOT the live snapshot spot, which a refetch
         #: moves while the calibration stays frozen).
@@ -724,6 +731,19 @@ class AppState(UniverseMixin):
         """Monotonic counter of node re-calibrations that changed a displayed fit."""
         with self._lock:
             return self._calib_epoch
+
+    @property
+    def last_fit_mode(self) -> str:
+        """The fit target the user is currently viewing (recorded on smile fetch)."""
+        with self._lock:
+            return self._last_fit_mode
+
+    def note_fit_mode(self, fit_mode: str) -> None:
+        """Record the fit target a smile was just fetched in, so calibration paths
+        that aren't handed an explicit mode (the scheduler, a bare POST /calibrate)
+        target the mode actually on screen rather than always defaulting to mid."""
+        with self._lock:
+            self._last_fit_mode = fit_mode
 
     def anchor_spot(self, ticker: str) -> float:
         """Spot the ticker's fits were calibrated at; the live snapshot spot when

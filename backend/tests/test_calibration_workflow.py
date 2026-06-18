@@ -226,6 +226,60 @@ def test_model_info_reflects_displayed_model():
     assert int(s2.modelInfo.params[0].value) >= 1
 
 
+def test_calibrate_repoints_the_viewed_fit_mode_not_just_mid():
+    """The calibrated pointer is per (ticker, iso, MODE). A node viewed in a
+    non-mid mode (bid-ask / haircut) must be re-pointed by a Calibrate run in THAT
+    mode — calibrating only "mid" left a viewed bid-ask smile frozen/STALE forever
+    (the never-visualized-updates-but-visualized-stuck symptom)."""
+    state = _state(auto=False)
+    iso = _iso(state)
+    mode = "bidask"
+    s0 = service.smile_payload(state, TICKER, iso, mode)  # visualize in bid-ask
+    assert s0.stale is False
+
+    _bump_setting(state)  # a hyperparameter change -> the bid-ask node goes stale
+    assert service.smile_payload(state, TICKER, iso, mode).stale is True
+
+    # Calibrating "mid" must NOT clear the bid-ask staleness (different pointer)...
+    service.calibrate_node(state, TICKER, iso, "mid")
+    assert service.smile_payload(state, TICKER, iso, mode).stale is True
+
+    # ...but calibrating the VIEWED mode does.
+    service.calibrate_node(state, TICKER, iso, mode)
+    assert service.smile_payload(state, TICKER, iso, mode).stale is False
+
+
+def test_workflow_calibrate_targets_last_viewed_mode_over_http():
+    """End-to-end: the backend records the last-viewed fit mode and a bare
+    POST /calibrate targets it, so a bid-ask smile clears STALE without the caller
+    having to know the mode (the scheduler / a bare button benefit too)."""
+    from datetime import date
+
+    from fastapi.testclient import TestClient
+
+    from volfit.api.app import create_app
+
+    client = TestClient(create_app(reference_date=date(2026, 6, 10)))
+    o = client.get("/settings/options").json()
+    o["autoCalibrate"] = False
+    client.put("/settings/options", json=o)
+
+    u = client.get("/universe").json()
+    tk = next(t for t in u["tickers"] if u["expiries"].get(t))
+    exp = u["expiries"][tk][1]["expiry"]
+
+    client.get(f"/smiles/{tk}/{exp}", params={"fit_mode": "haircut"})  # view in haircut
+    fs = client.get("/settings/fit").json()
+    fs["model"] = "svi"
+    client.put("/settings/fit", json=fs)  # model switch -> haircut node stale
+    assert client.get(f"/smiles/{tk}/{exp}", params={"fit_mode": "haircut"}).json()["stale"]
+
+    client.post("/calibrate")  # NO fit_mode -> resolves to the last-viewed (haircut)
+    client.app.state.volfit.calibration_jobs.join(timeout=30)  # background job
+    s = client.get(f"/smiles/{tk}/{exp}", params={"fit_mode": "haircut"}).json()
+    assert s["stale"] is False and s["modelInfo"]["id"] == "svi"
+
+
 def test_quote_edit_does_not_refit_when_auto_off():
     """An exclude edit bumps the session version (=> stale) but must not refit."""
     from volfit.api import edits

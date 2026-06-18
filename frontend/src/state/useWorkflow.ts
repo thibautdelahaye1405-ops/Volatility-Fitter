@@ -78,7 +78,11 @@ export interface UseWorkflowResult {
   fetchPriors: () => Promise<void>;
 }
 
-export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflowResult {
+export function useWorkflow(
+  live: boolean,
+  refreshViews: () => void,
+  fitMode: string,
+): UseWorkflowResult {
   const [calib, setCalib] = useState<CalibrationStatus | null>(null);
   const [sched, setSched] = useState<SchedulerStatus | null>(null);
   const [pending, setPending] = useState<WorkflowAction | null>(null);
@@ -102,7 +106,9 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
   const poll = useCallback(async () => {
     try {
       const [c, s] = await Promise.all([
-        api.get<CalibrationStatus>("/calibration/status"),
+        // Pass the viewed fit target so the stale accounting reports the SAME
+        // per-mode pointer the smile is shown in (mid vs bid-ask vs haircut).
+        api.get<CalibrationStatus>("/calibration/status", { params: { fit_mode: fitMode } }),
         api.get<SchedulerStatus>("/scheduler"),
       ]);
       setCalib(c);
@@ -121,7 +127,7 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
     } catch {
       /* backend unreachable: leave the last status */
     }
-  }, [refreshViews]);
+  }, [refreshViews, fitMode]);
 
   useEffect(() => {
     if (!live) return;
@@ -140,20 +146,25 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
     for (let i = 0; i < 400; i++) {
       await new Promise((r) => setTimeout(r, 150));
       try {
-        const c = await api.get<CalibrationStatus>("/calibration/status");
+        const c = await api.get<CalibrationStatus>("/calibration/status", {
+          params: { fit_mode: fitMode },
+        });
         setCalib(c);
         if (!c.running && i >= 2) return; // idle past the ~450ms startup grace
       } catch {
         return; // backend unreachable: stop waiting
       }
     }
-  }, []);
+  }, [fitMode]);
 
   const action = useCallback(
     async (key: WorkflowAction, path: string, withBody: boolean, awaitJob = false) => {
       setPending(key);
       try {
-        await api.post(path, withBody ? { body: {} } : undefined);
+        // fit_mode targets the mode the smile is VIEWED in, so Calibrate / the
+        // auto-fetch re-point the same per-mode calibrated pointer (otherwise a
+        // bid-ask / haircut smile stays frozen because only "mid" was calibrated).
+        await api.post(path, { params: { fit_mode: fitMode }, ...(withBody ? { body: {} } : {}) });
         if (awaitJob) await awaitCalibration(); // block until the fit completes
         await poll(); // resync status + advance the epoch/spot baselines
         refreshViews(); // refetch every view against the now-current fit
@@ -161,7 +172,7 @@ export function useWorkflow(live: boolean, refreshViews: () => void): UseWorkflo
         setPending(null);
       }
     },
-    [refreshViews, poll, awaitCalibration],
+    [refreshViews, poll, awaitCalibration, fitMode],
   );
 
   // calibrate + fetchOptions start a background calibration job, so they await its

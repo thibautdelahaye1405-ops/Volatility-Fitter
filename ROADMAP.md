@@ -30,6 +30,22 @@ Calibrate advances epoch 0→1, `/smiles` then reports `sigmoid` with `stale=fal
 3 new tests in `test_calibration_workflow.py` (epoch advances only on real recal,
 no churn on repeated reads under autoCal ON, model-info reflects the displayed model).
 
+**Follow-up (2026-06-18) — the per-mode calibrated-pointer leak (the residual
+"visualized smile stays stuck" bug).** After the epoch fix, a node viewed in a
+NON-mid fit target (bid-ask / haircut) still stayed frozen/STALE forever while
+never-visualized nodes updated fine. Root cause: the calibrated pointer is keyed by
+`(ticker, ISO, MODE)`, but EVERY calibrate/status/fetch endpoint hardcoded
+`fit_mode="mid"` (the function defaults) and the frontend `calibrate` sent no mode —
+so Calibrate re-pointed the "mid" pointer while the viewed "bidask"/"haircut" pointer
+was never touched. Fix: (1) the frontend `useWorkflow` now threads the VIEWED
+`fitMode` as `?fit_mode=` on `/calibration/status`, `/calibrate` and `/fetch/options`
+(TopBar passes `session.fitMode`); (2) the backend records the last-viewed mode
+(`AppState.last_fit_mode`, set on every `GET /smiles`) and the workflow endpoints
+resolve `fit_mode or state.last_fit_mode`, so even a bare `POST /calibrate`, the
+scheduler's auto-fetch and `stream_refit` target the mode actually on screen, not
+always mid. End-to-end verified (TestClient): a haircut smile goes stale on a model
+switch and a bare `/calibrate` clears it + shows the new model. 2 new tests.
+
 Shipped alongside: the Parametric **diagnostics aside now shows the displayed model
 family + hyperparameters** (LQD Legendre degree N, Multi-Core SIV effective core
 count R — capped by the quote budget, so faithful to what the chart draws; SVI-JW has
@@ -39,7 +55,7 @@ sits next to the model label.
 
 ---
 
-**Done & verified (509 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (511 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
 
 - **[2026-06-17] Fix: Parametric panel not refetching after Calibrate (model switch
   looked inert).** With autoCalibrate OFF, switching model → Apply → Calibrate left

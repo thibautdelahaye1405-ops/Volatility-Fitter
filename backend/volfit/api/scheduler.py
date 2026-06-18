@@ -84,13 +84,13 @@ class Scheduler:
             and self._state.is_streaming()
         ):
             self._last_refit = now
-            workflow.stream_refit(self._state)
+            workflow.stream_refit(self._state, self._state.last_fit_mode)
         if (
             opts.optionsFetchMode == "auto"
             and now - self._last_options >= opts.optionsFetchMinutes * 60.0
         ):
             self._last_options = now
-            workflow.fetch_options(self._state)
+            workflow.fetch_options(self._state, fit_mode=self._state.last_fit_mode)
 
     # ------------------------------------------------------------- status
     def seconds_to_next_options(self, now: float | None = None) -> float:

@@ -81,9 +81,9 @@ function asofLabel(a: AsOfState): string {
 }
 
 export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
-  const { source, loading, refreshUniverse, reload, refreshViews } = useSmileSession();
+  const { source, loading, refreshUniverse, reload, refreshViews, fitMode } = useSmileSession();
   const live = source === "live";
-  const workflow = useWorkflow(live, refreshViews);
+  const workflow = useWorkflow(live, refreshViews, fitMode);
   // Local-Vol master switch (polled on the scheduler status). When off, the
   // Local Vol tab is disabled; bounce away if it's the active tab.
   const localVolEnabled = workflow.sched?.localVolEnabled ?? true;

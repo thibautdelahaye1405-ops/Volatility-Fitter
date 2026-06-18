@@ -19,16 +19,29 @@ from volfit.api.schemas import (
     CalibrationStatus,
     FetchRequest,
     FetchResult,
+    FitMode,
     LiveSpot,
     SchedulerStatus,
 )
+from volfit.api.state import AppState
 
 router = APIRouter()
 
 
+def _mode(state: AppState, fit_mode: FitMode | None) -> str:
+    """Resolve the fit target for a calibration/status action: the explicit query
+    param when the caller (the frontend) supplies one, else the mode the user is
+    currently viewing (``AppState.last_fit_mode``). This keeps Calibrate, the
+    stale accounting and the auto-fetch all targeting the SAME per-mode calibrated
+    pointer the smile is displayed in — a bid-ask / haircut smile no longer stays
+    frozen because the work always re-pointed the "mid" pointer."""
+    return fit_mode if fit_mode is not None else state.last_fit_mode
+
+
 @router.get("/calibration/status", response_model=CalibrationStatus)
-def get_status(request: Request) -> CalibrationStatus:
-    return workflow.status(request.app.state.volfit)
+def get_status(request: Request, fit_mode: FitMode | None = None) -> CalibrationStatus:
+    state = request.app.state.volfit
+    return workflow.status(state, _mode(state, fit_mode))
 
 
 @router.get("/scheduler", response_model=SchedulerStatus)
@@ -37,31 +50,38 @@ def get_scheduler(request: Request) -> SchedulerStatus:
 
 
 @router.post("/calibrate/cancel", response_model=CalibrationStatus)
-def cancel(request: Request) -> CalibrationStatus:
+def cancel(request: Request, fit_mode: FitMode | None = None) -> CalibrationStatus:
     state = request.app.state.volfit
     state.calibration_jobs.cancel()
-    return workflow.status(state)
+    return workflow.status(state, _mode(state, fit_mode))
 
 
 @router.post("/calibrate", response_model=CalibrationStatus)
-def calibrate_all(request: Request) -> CalibrationStatus:
+def calibrate_all(request: Request, fit_mode: FitMode | None = None) -> CalibrationStatus:
     state = request.app.state.volfit
-    workflow.calibrate_all(state)  # False (already running) -> status reflects it
-    return workflow.status(state)
+    mode = _mode(state, fit_mode)
+    workflow.calibrate_all(state, mode)  # False (already running) -> status reflects it
+    return workflow.status(state, mode)
 
 
 @router.post("/calibrate/{ticker}/{expiry}", response_model=CalibrationStatus)
-def calibrate_one(ticker: str, expiry: str, request: Request) -> CalibrationStatus:
+def calibrate_one(
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode | None = None
+) -> CalibrationStatus:
     state = request.app.state.volfit
-    workflow.calibrate_one(state, ticker, expiry)
-    return workflow.status(state)
+    mode = _mode(state, fit_mode)
+    workflow.calibrate_one(state, ticker, expiry, mode)
+    return workflow.status(state, mode)
 
 
 @router.post("/calibrate/{ticker}", response_model=CalibrationStatus)
-def calibrate_ticker(ticker: str, request: Request) -> CalibrationStatus:
+def calibrate_ticker(
+    ticker: str, request: Request, fit_mode: FitMode | None = None
+) -> CalibrationStatus:
     state = request.app.state.volfit
-    workflow.calibrate_ticker(state, ticker)
-    return workflow.status(state)
+    mode = _mode(state, fit_mode)
+    workflow.calibrate_ticker(state, ticker, mode)
+    return workflow.status(state, mode)
 
 
 @router.post("/fetch/spots", response_model=dict[str, LiveSpot])
@@ -70,8 +90,11 @@ def fetch_spots(body: FetchRequest, request: Request) -> dict[str, LiveSpot]:
 
 
 @router.post("/fetch/options", response_model=FetchResult)
-def fetch_options(body: FetchRequest, request: Request) -> FetchResult:
-    return workflow.fetch_options(request.app.state.volfit, body.tickers)
+def fetch_options(
+    body: FetchRequest, request: Request, fit_mode: FitMode | None = None
+) -> FetchResult:
+    state = request.app.state.volfit
+    return workflow.fetch_options(state, body.tickers, _mode(state, fit_mode))
 
 
 @router.post("/priors/seed", response_model=dict[str, int])
