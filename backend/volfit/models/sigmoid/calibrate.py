@@ -105,6 +105,9 @@ def _fit(
     var_swap: VarSwapTarget | None = None,
     sigma_ref: float = 1.0,
     t: float = 1.0,
+    calendar_k: np.ndarray | None = None,
+    calendar_floor: np.ndarray | None = None,
+    calendar_weight: float = 1e6,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
@@ -114,7 +117,16 @@ def _fit(
     ``var_swap`` target adds one var-swap penalty (volfit.calib.varswap); it maps
     the model back to log-moneyness via z = k / (sigma_ref sqrt(t)) so the
     replication integrates over k. ``sigma_ref``/``t`` are only used then.
+
+    ``calendar_k``/``calendar_floor`` add the model-agnostic calendar hinge
+    against the previous, shorter expiry's total variance (see
+    volfit.calib.calendar.variance_floor_targets); both None leaves the fit
+    byte-identical. The grid k is mapped to z via the same sigma_ref/t scaling.
     """
+    cal_on = calendar_k is not None and calendar_floor is not None
+    cal_z = np.asarray(calendar_k, float) / (sigma_ref * np.sqrt(t)) if cal_on else None
+    cal_floor = np.asarray(calendar_floor, float) if cal_on else None
+    sqrt_cal = np.sqrt(calendar_weight)
 
     def residuals(theta: np.ndarray) -> np.ndarray:
         model_vol = np.sqrt(np.maximum(_eval_v(theta, z, n_cores), _V_FLOOR))
@@ -132,6 +144,10 @@ def _fit(
                 zz = kk / (sigma_ref * np.sqrt(t))
                 return np.maximum(_eval_v(theta, zz, n_cores), _V_FLOOR) * t
             res = np.concatenate([res, [varswap_residual(implied_w, var_swap)]])
+        if cal_on:
+            # No calendar arb: total variance w = v(z)*t must not drop below floor.
+            w_model = np.maximum(_eval_v(theta, cal_z, n_cores), _V_FLOOR) * t
+            res = np.concatenate([res, sqrt_cal * np.maximum(cal_floor - w_model, 0.0)])
         return res
 
     theta0 = np.clip(theta0, lo, hi)
@@ -149,6 +165,9 @@ def calibrate_sigmoid(
     ridge: float = _RIDGE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     var_swap: VarSwapTarget | None = None,
+    calendar_k: np.ndarray | None = None,
+    calendar_floor: np.ndarray | None = None,
+    calendar_weight: float = 1e6,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -159,6 +178,11 @@ def calibrate_sigmoid(
     ``band`` switches the final fit to the bid-ask / haircut band objective
     (volfit.calib.band); the base-seeding stage always fits mid so the hats are
     placed on meaningful residuals.
+
+    ``calendar_k``/``calendar_floor`` (volfit.calib.calendar.variance_floor_targets)
+    add the model-agnostic calendar hinge against the previous, shorter expiry —
+    applied only in the final refine stage (the base-seeding stage stays mid), so
+    both None leaves the fit byte-identical.
     """
     k = np.asarray(k, dtype=float)
     vol_quotes = np.sqrt(np.asarray(w_quotes, dtype=float) / t)
@@ -187,12 +211,16 @@ def calibrate_sigmoid(
             theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores,
             band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
             var_swap=var_swap, sigma_ref=sigma_ref, t=t,
+            calendar_k=calendar_k, calendar_floor=calendar_floor,
+            calendar_weight=calendar_weight,
         )
     else:
         theta = _fit(
             base, base_lo, base_hi, z, vol_quotes, sqrt_w, 0,
             band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
             var_swap=var_swap, sigma_ref=sigma_ref, t=t,
+            calendar_k=calendar_k, calendar_floor=calendar_floor,
+            calendar_weight=calendar_weight,
         )
 
     cores = tuple(

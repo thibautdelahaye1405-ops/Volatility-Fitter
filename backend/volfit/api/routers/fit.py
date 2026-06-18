@@ -47,12 +47,13 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
         )
 
         prev = None
+        prev_display = None
         residuals: list[float] = []
         fitted = []
         for index, (iso, prepared) in enumerate(plan):
             # Calendar-couple + cache + re-point + persist in one worker-thread
             # step (the shared service helper), so progress frames can be awaited
-            # between expiries.
+            # between expiries. ``prev_display`` carries the overlay's calendar floor.
             record = await anyio.to_thread.run_sync(
                 service.fit_and_commit_slice,
                 state,
@@ -62,6 +63,7 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
                 prev,
                 body.enforceCalendar,
                 body.fitMode,
+                prev_display,
             )
             result = record.result
             residuals.append(
@@ -78,6 +80,7 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
                 }
             )
             prev = result
+            prev_display = record.display
 
         response = service.assemble_surface_response(
             state, body.ticker, body.fitMode, fitted, residuals

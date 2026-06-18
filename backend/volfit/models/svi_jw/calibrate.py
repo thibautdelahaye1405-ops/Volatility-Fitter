@@ -118,6 +118,9 @@ def calibrate_svi(
     lee_slope_max: float = _LEE_SLOPE_MAX,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     var_swap: VarSwapTarget | None = None,
+    calendar_k: np.ndarray | None = None,
+    calendar_floor: np.ndarray | None = None,
+    calendar_weight: float = 1e6,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -133,11 +136,21 @@ def calibrate_svi(
     the historical constants, so a default fit is byte-identical. ``var_swap``
     (volfit.calib.varswap) adds one vol-space penalty pulling the slice's fair
     var-swap toward a quote; None keeps the objective unchanged.
+
+    ``calendar_k``/``calendar_floor`` (from volfit.calib.calendar.variance_floor_targets)
+    add the model-agnostic calendar constraint against the previous, shorter
+    expiry: a soft hinge ``sqrt(calendar_weight)*max(floor - w(k), 0)`` keeping
+    this slice's total variance at or above the nearer one (no calendar arb).
+    Both None (the default) leave the objective byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
     vol_quotes = np.sqrt(w_quotes / t)
     sqrt_weights = np.ones_like(k) if weights is None else np.sqrt(np.asarray(weights, float))
+    cal_on = calendar_k is not None and calendar_floor is not None
+    cal_k = np.asarray(calendar_k, float) if cal_on else None
+    cal_floor = np.asarray(calendar_floor, float) if cal_on else None
+    sqrt_cal = np.sqrt(calendar_weight)
 
     def residuals(theta: np.ndarray) -> np.ndarray:
         raw = _unpack(theta)
@@ -151,6 +164,10 @@ def calibrate_svi(
         res = np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
         if var_swap is not None:
             res = np.concatenate((res, [varswap_residual(raw.total_variance, var_swap)]))
+        if cal_on:
+            # No calendar arb: total variance must not drop below the nearer expiry.
+            cal = sqrt_cal * np.maximum(cal_floor - raw.total_variance(cal_k), 0.0)
+            res = np.concatenate((res, cal))
         return res
 
     theta0 = _init_theta(k, w_quotes)

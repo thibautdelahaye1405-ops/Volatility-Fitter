@@ -98,9 +98,9 @@ def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
     seen: list[tuple[str, bool, bool]] = []  # (iso, prev_is_none, enforce)
     real = service.fit_and_commit_slice
 
-    def spy(st, tk, iso, prepared, prev, enforce, fit_mode="mid"):
+    def spy(st, tk, iso, prepared, prev, enforce, fit_mode="mid", prev_display=None):
         seen.append((iso, prev is None, enforce))
-        return real(st, tk, iso, prepared, prev, enforce, fit_mode)
+        return real(st, tk, iso, prepared, prev, enforce, fit_mode, prev_display)
 
     monkeypatch.setattr(service, "fit_and_commit_slice", spy)
 
@@ -143,6 +143,36 @@ def test_enforce_calendar_surface_is_arbitrage_free():
     slices = [service.fit_or_get(state, TICKER, iso, "mid").result.slice for iso in isos]
     for prev, cur in zip(slices, slices[1:]):
         assert calendar_violation(prev, cur) <= 1e-6
+
+
+def test_enforce_calendar_threads_prev_overlay_for_non_lqd(monkeypatch):
+    """With a non-LQD model + enforceCalendar, the coupled path threads each
+    expiry's overlay into the next as the (model-agnostic) calendar floor: the
+    first slice has no prior overlay, the rest do, and all carry enforce=True.
+    This is the SVI/sigmoid analogue of the LQD prev-threading above."""
+    from volfit.api import workflow
+
+    state = _state(auto=False)
+    state.set_options(state.options().model_copy(update={"enforceCalendar": True}))
+    state.set_fit_settings(state.fit_settings().model_copy(update={"model": "svi"}))
+
+    seen: list[tuple[bool, bool]] = []  # (prev_display_is_none, enforce)
+    real = service.display_overlay
+
+    def spy(st, tk, iso, prepared, fit_mode, prev_display=None, enforce_calendar=False):
+        seen.append((prev_display is None, enforce_calendar))
+        return real(st, tk, iso, prepared, fit_mode, prev_display, enforce_calendar)
+
+    monkeypatch.setattr(service, "display_overlay", spy)
+
+    nodes = workflow.lit_nodes(state, [TICKER])
+    assert len(nodes) >= 2
+    for _label, _phase, thunk in workflow._parametric_items(state, nodes, "mid"):
+        thunk()
+    assert len(seen) == len(nodes)
+    assert all(enforce for _none, enforce in seen)
+    assert seen[0][0] is True  # first expiry: no prior overlay
+    assert all(not none for none, _e in seen[1:])  # rest: prev overlay threaded
 
 
 def test_stream_refit_respects_autocalibrate(monkeypatch):

@@ -133,7 +133,7 @@ def _coupled_ticker_items(
     Under the default trigger-gated workflow the coupled fit stays frozen/displayed
     until the next explicit Calibrate.
     """
-    ctx: dict = {"plan": None, "prev": None}
+    ctx: dict = {"plan": None, "prev": None, "prev_display": None}
 
     def ensure_plan() -> dict:
         if ctx["plan"] is None:
@@ -152,9 +152,11 @@ def _coupled_ticker_items(
             if prepared is None:
                 return  # expiry left the chain between build and run
             record = service.fit_and_commit_slice(
-                state, ticker, iso, prepared, ctx["prev"], True, fit_mode
+                state, ticker, iso, prepared, ctx["prev"], True, fit_mode,
+                ctx["prev_display"],
             )
             ctx["prev"] = record.result
+            ctx["prev_display"] = record.display  # overlay calendar floor for next-T
 
         return thunk
 

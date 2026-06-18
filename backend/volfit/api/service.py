@@ -44,7 +44,12 @@ from volfit.api.displayed import (
     displayed_var_swap_w,
 )
 from volfit.api.state import AppState, FitRecord
-from volfit.calib.calendar import calendar_floor_targets, calendar_violation
+from volfit.calib.calendar import (
+    calendar_floor_targets,
+    calendar_violation,
+    variance_floor_grid_from,
+    variance_floor_targets,
+)
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
 from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
 from volfit.calib.weighted_time import weighted_variance_years
@@ -217,9 +222,17 @@ def display_overlay(
     iso: str,
     prepared: PreparedQuotes,
     fit_mode: str,
+    prev_display: DisplayFit | None = None,
+    enforce_calendar: bool = False,
 ):
     """The non-LQD display overlay for a node (None for LQD), fit to the same
-    edited quotes, band and weights the LQD calibration uses."""
+    edited quotes, band and weights the LQD calibration uses.
+
+    ``prev_display`` is the previous (shorter-T) expiry's overlay, threaded by the
+    calendar-coupled surface loop; with ``enforce_calendar`` it supplies a
+    model-agnostic total-variance floor (volfit.calib.calendar) so the SVI /
+    sigmoid overlay respects calendar order just as the LQD backbone does. Both
+    omitted (the single-node path) leaves the overlay byte-identical."""
     settings = state.fit_settings()
     if settings.model == "lqd":
         return None
@@ -227,8 +240,15 @@ def display_overlay(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    cal_floor = None
+    if enforce_calendar and prev_display is not None:
+        # Confine the floor to THIS expiry's traded log-moneyness range: outside
+        # the quotes both slices are pure extrapolation and an SVI wing mismatch
+        # there is a phantom violation, not real calendar arb.
+        cal_floor = variance_floor_targets(prev_display.slice, variance_floor_grid_from(k))
     return build_display_fit(
-        settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs
+        settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs,
+        calendar_floor=cal_floor, calendar_weight=state.options().calendarWeight,
     )
 
 
@@ -702,19 +722,24 @@ def fit_and_commit_slice(
     prev: CalibrationResult | None,
     enforce_calendar: bool,
     fit_mode: str = "mid",
+    prev_display: DisplayFit | None = None,
 ) -> FitRecord:
     """Calendar-coupled slice fit (``fit_surface_slice``) PLUS the calibration
     bookkeeping: build the display overlay, cache the record under the canonical
     key, re-point the calibrated pointer (a surface/coupled fit IS a calibration)
     and persist it. Returns the committed FitRecord (its ``.result`` is the
-    ``prev`` to thread into the next, longer expiry).
+    ``prev`` to thread into the next, longer expiry, and ``.display`` the
+    ``prev_display`` for the overlay's calendar floor).
 
     Shared by the surface-fit endpoint (``fit_surface`` / the WS route) and the
     calendar-coupled branch of the background Calibrate job, so the coupling
-    recipe lives in exactly one place.
+    recipe lives in exactly one place. Both the LQD backbone (``fit_surface_slice``)
+    and the SVI/sigmoid overlay (``display_overlay``) honour ``enforce_calendar``.
     """
     result = fit_surface_slice(state, ticker, iso, prepared, prev, enforce_calendar, fit_mode)
-    overlay = display_overlay(state, ticker, iso, prepared, fit_mode)
+    overlay = display_overlay(
+        state, ticker, iso, prepared, fit_mode, prev_display, enforce_calendar
+    )
     record = FitRecord(prepared=prepared, result=result, display=overlay)
     key = fit_key(state, ticker, iso, fit_mode)
     state.store_fit(key, record)
@@ -756,11 +781,12 @@ def fit_surface(
     state.set_spot_shift(ticker, 0.0)  # re-anchor: fit at the chain's own spot
     plan = surface_inputs(state, ticker, fit_mode)
     prev: CalibrationResult | None = None
+    prev_display: DisplayFit | None = None
     residuals: list[float] = []
     fitted: list[tuple[str, CalibrationResult]] = []
     for index, (iso, prepared) in enumerate(plan):
         record = fit_and_commit_slice(
-            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode
+            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode, prev_display
         )
         result = record.result
         residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
@@ -768,6 +794,7 @@ def fit_surface(
         if progress is not None:
             progress(iso, index, len(plan), result.max_iv_error * 1e4)
         prev = result
+        prev_display = record.display
     return assemble_surface_response(state, ticker, fit_mode, fitted, residuals)
 
 

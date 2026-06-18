@@ -76,6 +76,8 @@ def build_display_fit(
     settings,
     band: BandTarget | None = None,
     var_swap: VarSwapTarget | None = None,
+    calendar_floor: tuple[np.ndarray, np.ndarray] | None = None,
+    calendar_weight: float = 1e6,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
 
@@ -85,9 +87,18 @@ def build_display_fit(
     bid-ask / haircut band objective (volfit.calib.band); None keeps the mid fit.
     ``var_swap`` (volfit.calib.varswap) adds the var-swap quote penalty to the
     overlay fit, matching the LQD path; None leaves the overlay unchanged.
+
+    ``calendar_floor`` is the ``(k_grid, w_floor)`` pair from
+    volfit.calib.calendar.variance_floor_targets (the previous, shorter expiry's
+    total variance); when present both overlay families gain the model-agnostic
+    calendar hinge with strength ``calendar_weight``. None leaves the fit
+    byte-identical (the LQD-only path passes None).
     """
     if model not in OVERLAY_MODELS:
         return None
+    cal_k = cal_floor = None
+    if calendar_floor is not None:
+        cal_k, cal_floor = calendar_floor
     if model == "svi":
         cal = calibrate_svi(
             k, w, t, weights=weights, band=band,
@@ -95,6 +106,7 @@ def build_display_fit(
             lee_slope_max=settings.leeSlopeMax,
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
+            calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
         )
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
@@ -104,6 +116,7 @@ def build_display_fit(
             ridge=settings.sigmoidRidge,
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
+            calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
         )
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)

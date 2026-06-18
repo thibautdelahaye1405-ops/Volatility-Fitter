@@ -55,7 +55,35 @@ sits next to the model label.
 
 ---
 
-**Done & verified (511 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (522 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-18] Calendar-arbitrage constraint made MODEL-AGNOSTIC (was LQD-only).**
+  The convex-order constraint lived only on the LQD backbone (`calib/calendar.py`
+  asset-share curve `A(z)`, threaded into `calibrate_slice`); the SVI and Multi-Core
+  SIV *display overlays* (`api/fit_models.build_display_fit`) were fit per-expiry with
+  ZERO calendar awareness, so `enforceCalendar` did nothing for them (worked well on
+  LQD, crossed freely on SVI/Sig). Now both overlay families enforce Gatheral's
+  equivalent surface condition — total variance non-decreasing in maturity at every
+  fixed k, `w_far(k) >= w_near(k)` — via a soft hinge `sqrt(calendarWeight)·max(floor −
+  w_model(k), 0)` (`calibrate_svi`/`calibrate_sigmoid` gained `calendar_k`/
+  `calendar_floor`/`calendar_weight`; sigmoid applies it only in the final refine
+  stage). The previous (shorter-T) overlay is threaded ascending-T as `prev_display`
+  through `service.display_overlay`/`fit_and_commit_slice`, the `fit_surface` loop, the
+  WS route, and the coupled Calibrate job (`workflow._coupled_ticker_items`). Gated by
+  the SAME `enforceCalendar` toggle + `calendarWeight` knob; byte-identical when OFF or
+  on the first expiry (golden tests intact). Same documented caveat as LQD: a
+  single-node `_compute_fit` has no cross-expiry context, so coupling holds until such
+  a refit. **Fix (same day):** the floor was first evaluated on the fixed wide grid
+  `k ∈ [-1, 1]`; SVI's linear wings make a steep short-dated slice extrapolate to far
+  higher wing variance than a flatter long-dated one, so `w_near(±1) > w_far(±1)` read
+  as a PHANTOM violation in a no-data region and (at weight 1e6) flattened the far SVI
+  fits — reported live on NVDA (sep-26) and SPY (jun-27). The floor is now confined to
+  the expiry's TRADED log-moneyness range (`calendar.variance_floor_grid_from(k)`, used
+  by `display_overlay`): calendar arb is only meaningful where prices are observable.
+  LQD/sigmoid math untouched. 11 new tests (`test_overlay_calendar.py` ×9 incl. the
+  wide-grid regression + byte-identical no-ops for both families; `test_calibration_
+  workflow.py` ×1 prev-overlay threading for non-LQD). Live re-verify of the NVDA/SPY
+  fits in-app still pending.
 
 - **[2026-06-17] Fix: Parametric panel not refetching after Calibrate (model switch
   looked inert).** With autoCalibrate OFF, switching model → Apply → Calibrate left
