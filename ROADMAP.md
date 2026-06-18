@@ -82,8 +82,9 @@ sits next to the model label.
   by `display_overlay`): calendar arb is only meaningful where prices are observable.
   LQD/sigmoid math untouched. 11 new tests (`test_overlay_calendar.py` ×9 incl. the
   wide-grid regression + byte-identical no-ops for both families; `test_calibration_
-  workflow.py` ×1 prev-overlay threading for non-LQD). Live re-verify of the NVDA/SPY
-  fits in-app still pending.
+  workflow.py` ×1 prev-overlay threading for non-LQD). **User-confirmed clean in-app
+  (2026-06-18): the NVDA sep-26 and SPY jun-27 SVI fits come back clean with
+  enforceCalendar ON.**
 
 - **[2026-06-17] Fix: Parametric panel not refetching after Calibrate (model switch
   looked inert).** With autoCalibrate OFF, switching model → Apply → Calibrate left
