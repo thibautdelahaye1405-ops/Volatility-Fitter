@@ -333,6 +333,9 @@ class SmileData(BaseModel):
     canUndo: bool  # quote-edit session undo/redo availability
     canRedo: bool  # (both False when the node has no edit session yet)
     stale: bool = False  # inputs drifted since the last calibration (needs Calibrate)
+    #: Whole-surface weighted RMS vol error of the ticker (all expiries pooled, the
+    #: same calibration-consistent basis as diagnostics.rmsError). Decimal vol.
+    surfaceRmsError: float = 0.0
     #: The pre-transport calibration curve, set only while a spot move is active,
     #: so the viewer can overlay the original fit (dimmed) under the transported
     #: smile. Each curve is in its own log-moneyness (sticky-strike => a lateral
@@ -628,6 +631,19 @@ class LiveSpot(BaseModel):
 
 
 # ------------------------------------------------------ calibration workflow
+class ActivityInfo(BaseModel):
+    """The fine-grained engine activity in flight (volfit.api.activity), narrated
+    to the bottom status bar. ``active`` false => the engine is idle."""
+
+    active: bool = False
+    stage: str = ""  # fetch | calibrate | localvol | term | density | surface
+    message: str = ""  # primary line, e.g. "Calibrating SPY 2026-07-17 (LQD)"
+    detail: str = ""  # secondary line, e.g. "de-americanizing"
+    done: int = 0  # progress numerator (0 with total 0 => indeterminate)
+    total: int = 0  # progress denominator
+    seq: int = 0  # monotonic; advances on every change
+
+
 class CalibrationStatus(BaseModel):
     """State of the background calibration job + stale-node accounting."""
 
@@ -646,6 +662,9 @@ class CalibrationStatus(BaseModel):
     #: frontend refetches every mounted view the moment it advances — a
     #: level-triggered sync robust to missed job edges / background calibrations.
     epoch: int
+    #: The fine-grained engine activity in flight (what the engine is doing right
+    #: now), narrated to the bottom status bar. Idle when nothing is running.
+    activity: ActivityInfo = ActivityInfo()
 
 
 class FetchRequest(BaseModel):
@@ -799,13 +818,14 @@ class DistributionArrays(BaseModel):
 
     (x, density) chart f_X on x = Q(z); (u, quantile) chart Q(u). All four
     arrays live on the same trimmed/strided quadrature grid, so they share
-    one length and align point-for-point.
+    one length and align point-for-point. ``u``/``quantile`` are optional — a
+    density-only curve (the left-extended stacked overlay) omits them.
     """
 
     x: list[float]
     density: list[float]
-    u: list[float]
-    quantile: list[float]
+    u: list[float] = []
+    quantile: list[float] = []
 
 
 class DensityResponse(BaseModel):
@@ -823,6 +843,12 @@ class StackedDensityItem(BaseModel):
     t: float
     x: list[float]
     density: list[float]
+    #: Per-expiry axis context, so the overlay's x-axis can switch to strike /
+    #: %ATM / Δ / normalized exactly like the Smile view (every expiry has its own
+    #: forward, ATM vol and smile, so the transform is per-curve).
+    forward: float = 0.0
+    atmVol: float = 0.0
+    vol: list[float] = []  # displayed-model IV at each x (for the Δ axis)
 
 
 class StackedDensityResponse(BaseModel):

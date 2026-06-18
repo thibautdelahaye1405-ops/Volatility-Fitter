@@ -107,7 +107,9 @@ def weighted_rms_vol(
     return float(np.sqrt(np.sum(weights * sq) / np.sum(weights)))
 
 
-def numeric_density(slice_: SmileModel) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def numeric_density(
+    slice_: SmileModel, half_floor: float = 0.0
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Risk-neutral log-return density and CDF of any slice from w(k) alone.
 
     Breeden-Litzenberger via the Durrleman/Gatheral functional: with total
@@ -122,11 +124,25 @@ def numeric_density(slice_: SmileModel) -> tuple[np.ndarray, np.ndarray, np.ndar
     Multi-Core-SIV overlays their own density. w', w'' are central differences;
     a non-arbitrage-free overlay can make g (hence p) dip below zero, so the pdf
     is floored at 0 and renormalized. Returns ``(k, pdf, cdf)`` on a shared grid.
+
+    ``half_floor`` widens the (symmetric) grid so it reaches at least ±half_floor —
+    used by the stacked-densities view to draw the left tail out to a fixed
+    k_min (the density there is ~0 but the curve should reach the display range).
     """
     sd = float(np.sqrt(max(float(slice_.implied_w(0.0)), 1e-8)))
-    half = max(_DENSITY_SD * sd, _DENSITY_MIN_HALF)
+    half = max(_DENSITY_SD * sd, _DENSITY_MIN_HALF, half_floor)
     k = np.linspace(-half, half, _DENSITY_POINTS)
-    w = np.maximum(np.asarray(slice_.implied_w(k), dtype=float), 1e-12)
+    # The model's total variance can be non-finite at the extreme wings (the LQD
+    # endpoint scales can overflow far past the data); edge-fill those so the
+    # density is well-defined out to a wide half (the deep tail is ~0 anyway).
+    w_raw = np.asarray(slice_.implied_w(k), dtype=float)
+    bad = ~np.isfinite(w_raw)
+    if bad.any():
+        good = np.flatnonzero(~bad)
+        w_raw[bad] = (
+            np.interp(np.flatnonzero(bad), good, w_raw[good]) if good.size else 1e-12
+        )
+    w = np.maximum(w_raw, 1e-12)
     wk = np.gradient(w, k)
     wkk = np.gradient(wk, k)
     g = (1.0 - k * wk / (2.0 * w)) ** 2 - 0.25 * wk**2 * (1.0 / w + 0.25) + 0.5 * wkk

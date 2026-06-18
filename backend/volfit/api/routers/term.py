@@ -20,7 +20,9 @@ router = APIRouter()
 def term_structure(
     ticker: str, body: TermStructureRequest, request: Request
 ) -> TermStructureResponse:
+    state = request.app.state.volfit
     try:
-        return analytics.term_structure(request.app.state.volfit, ticker, body)
+        with state.activity.activity("term", f"Fitting {ticker} term structure"):
+            return analytics.term_structure(state, ticker, body)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None

@@ -100,6 +100,9 @@ export interface SmileData {
   /** Inputs drifted since the last calibration — the displayed fit is frozen
    *  (stale) until an explicit Calibrate. Optional for older payloads / mock. */
   stale?: boolean;
+  /** Whole-surface weighted RMS vol error of the ticker (all expiries pooled,
+   *  same fit-target / scheme / var-swap basis as diagnostics.rmsError). */
+  surfaceRmsError?: number;
   /** Pre-transport calibration curve, present only while a spot move is active,
    *  so the chart can overlay the original fit (dimmed) under the transported
    *  smile. None/undefined when no spot move. */

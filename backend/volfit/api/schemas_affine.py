@@ -50,6 +50,7 @@ class AffineSmile(BaseModel):
     expiry: str  # ISO date
     t: float  # CALENDAR year fraction (maturity axis)
     tau: float = 0.0  # event-weighted variance years the smile is quoted in (= t with no events)
+    forward: float = 0.0  # active forward (for the strike / %ATM axis transforms)
     model: list[SmilePoint]  # reconstructed IV curve (Dupire PDE -> Black inv)
     #: The active fetched prior, transported to the current forward and sampled on
     #: this smile's k grid (dotted spot-updated overlay); empty when no active prior.
@@ -58,11 +59,19 @@ class AffineSmile(BaseModel):
     quotes: list[QuoteBand]  # the calibrated quote band at each strike
     varSwap: VarSwapInfo  # var-swap quote (shared with Parametric) + model level
     maxIvErrorBp: float  # worst |model - quote mid| IV over the quotes, bp
+    #: Weighted RMS vol error of THIS expiry, on the calibration-consistent basis
+    #: shared with the Parametric workspace (distance to the chosen fit-target
+    #: band, the active weighting scheme, the var-swap quote). Decimal vol.
+    rmsError: float = 0.0
     #: Risk-neutral density from the Dupire PDE call prices directly (d2C/dx2),
     #: which is smooth and non-negative by construction — far cleaner than the
     #: Breeden-Litzenberger-via-implied-vol density (which clamps to 0 at short
-    #: maturities). Powers the Local-Vol Density sub-tab.
+    #: maturities). Powers the per-expiry Local-Vol density.
     density: DistributionArrays | None = None
+    #: Density left-extended to the display lower bound (k_min = -1.4) for the
+    #: stacked "Densities" overlay (Breeden-Litzenberger on the reconstructed
+    #: smile; allowed to taper to ~0 in the deep tail, unlike ``density``).
+    densityExt: DistributionArrays | None = None
 
 
 class AffineFitResponse(BaseModel):
@@ -77,6 +86,9 @@ class AffineFitResponse(BaseModel):
     maxPriceError: float
     rmsIvErrorBp: float  # implied-vol residual RMS / max over all quotes, bp
     maxIvErrorBp: float
+    #: Whole-surface weighted RMS vol error (all expiries pooled), the same
+    #: calibration-consistent basis as AffineSmile.rmsError. Decimal vol.
+    surfaceRmsError: float = 0.0
     minDensity: list[float]  # per-expiry butterfly proxy (min 2nd diff in x)
     calendarViolations: int  # adjacent-maturity price decreases on the PDE grid
     arbitrageFree: bool

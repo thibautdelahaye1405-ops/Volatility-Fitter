@@ -1,28 +1,22 @@
-// TopBar workflow controls: Fetch spots · Fetch Options Quotes · Calibrate.
+// TopBar workflow controls: Fetch spots · Fetch Options Quotes · Calibrate ·
+// Save priors · Fetch priors.
 //
-// Mirrors the backend trigger model (useWorkflow):
-//  * Fetch spots       — greyed "Real-time Spots" when spotMode = realtime
-//                        (the scheduler polls), else a manual button.
-//  * Fetch Options     — a greyed countdown to the next auto fetch when
-//                        optionsFetchMode = auto, else a manual button.
-//  * Calibrate         — background-calibrates all lit nodes; shows progress
-//                        while running and a stale-node badge when work is due.
+// These are action triggers. The detailed progress narration (what the engine
+// is fetching / calibrating, with gauges and node counts) now lives in the
+// bottom StatusBar; the buttons keep only a MINIMAL CUE — a subtle indeterminate
+// bar + disabled state on the action that is currently in flight — so the click
+// target still shows it is working. Mode-dependent disabled states (Real-time
+// spots, auto options) are kept because they explain why a button is inert.
 import type { UseWorkflowResult } from "../state/useWorkflow";
-
-/** "75" -> "1:15" (seconds -> m:ss for the auto-fetch countdown). */
-function fmtCountdown(seconds: number): string {
-  const s = Math.max(0, Math.round(seconds));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
 
 const BTN =
   "relative overflow-hidden rounded-md border px-2.5 py-1 font-medium transition-colors disabled:cursor-not-allowed";
 const ACTIVE = "border-slate-700 bg-surface-800 text-slate-200 hover:border-slate-600";
 const MUTED = "border-slate-800 bg-surface-900 text-slate-500";
-const FETCHING = "border-accent-500/50 bg-accent-500/10 text-accent-300";
+const WORKING = "border-accent-500/50 bg-accent-500/10 text-accent-300";
 
-/** Indeterminate "working" gauge overlaid on a fetch button while it runs. */
-function FetchingBar() {
+/** Subtle indeterminate "working" cue overlaid on the in-flight button. */
+function WorkingBar() {
   return (
     <span className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-accent-500/15">
       <span className="volfit-indeterminate-fill bg-accent-400" />
@@ -37,46 +31,40 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
   const autoOptions = sched?.optionsFetchMode === "auto";
   const running = calib?.running ?? false;
   const stale = calib?.staleNodes ?? 0;
-  const fetchingSpots = pending === "spots";
-  const fetchingOptions = pending === "options";
-  const savingPriors = pending === "savePriors";
-  const fetchingPriors = pending === "fetchPriors";
   const savedTickers = priors?.tickers.filter((t) => t.nodeCount > 0).length ?? 0;
   const activePriors = priors?.tickers.filter((t) => t.activeSource).length ?? 0;
 
   return (
     <div className="flex items-center gap-2 text-xs">
-      {/* Fetch spots (indeterminate gauge while fetching) */}
+      {/* Fetch spots */}
       <button
         onClick={() => void fetchSpots()}
         disabled={realtimeSpots || busy}
         title={realtimeSpots ? "Spots stream in real time (set in Options)" : "Fetch live spots now"}
-        className={`${BTN} ${realtimeSpots ? MUTED : fetchingSpots ? FETCHING : ACTIVE}`}
+        className={`${BTN} ${realtimeSpots ? MUTED : pending === "spots" ? WORKING : ACTIVE}`}
       >
-        {realtimeSpots ? "Real-time Spots" : fetchingSpots ? "Fetching spots…" : "Fetch spots"}
-        {fetchingSpots && <FetchingBar />}
+        {realtimeSpots ? "Real-time Spots" : "Fetch spots"}
+        {pending === "spots" && <WorkingBar />}
       </button>
 
-      {/* Fetch options quotes (countdown when auto, gauge while fetching) */}
+      {/* Fetch options quotes (muted when on the auto timer — countdown is in the
+          status bar; this just marks why the button is inert) */}
       <button
         onClick={() => void fetchOptions()}
         disabled={autoOptions || busy}
         title={
           autoOptions
-            ? "Options auto-refresh on a timer (set in Options)"
+            ? "Options auto-refresh on a timer (countdown in the status bar)"
             : "Fetch fresh option quotes now"
         }
-        className={`${BTN} ${autoOptions ? MUTED : fetchingOptions ? FETCHING : ACTIVE}`}
+        className={`${BTN} ${autoOptions ? MUTED : pending === "options" ? WORKING : ACTIVE}`}
       >
-        {autoOptions
-          ? `Options in ${fmtCountdown(sched?.secondsToNextOptions ?? 0)}`
-          : fetchingOptions
-            ? "Fetching quotes…"
-            : "Fetch Options Quotes"}
-        {fetchingOptions && <FetchingBar />}
+        {autoOptions ? "Options · auto" : "Fetch Options Quotes"}
+        {pending === "options" && <WorkingBar />}
       </button>
 
-      {/* Calibrate all lit nodes (background, with progress + stale badge) */}
+      {/* Calibrate all lit nodes (background; progress shows in the status bar).
+          A stale-count highlight remains as an actionable cue. */}
       <button
         onClick={() => void calibrate()}
         disabled={running || busy}
@@ -84,17 +72,14 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
         className={[
           BTN,
           running
-            ? MUTED
+            ? WORKING
             : stale > 0
               ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
               : ACTIVE,
         ].join(" ")}
       >
-        {running
-          ? `Calibrating ${calib?.phase || "…"}`
-          : stale > 0
-            ? `Calibrate (${stale})`
-            : "Calibrate"}
+        {!running && stale > 0 ? `Calibrate (${stale})` : "Calibrate"}
+        {running && <WorkingBar />}
       </button>
 
       {/* Save all current calibrations as priors (a full surface snapshot each) */}
@@ -106,10 +91,10 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
             ? `Save all current calibrations as priors (${savedTickers} ticker(s) saved)`
             : "Save all current calibrations as priors"
         }
-        className={`${BTN} ${savingPriors ? FETCHING : ACTIVE}`}
+        className={`${BTN} ${pending === "savePriors" ? WORKING : ACTIVE}`}
       >
-        {savingPriors ? "Saving priors…" : "Save priors"}
-        {savingPriors && <FetchingBar />}
+        Save priors
+        {pending === "savePriors" && <WorkingBar />}
       </button>
 
       {/* Fetch priors (freshness ladder) — activates the dotted spot-updated overlay */}
@@ -124,33 +109,12 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
               : "Fetch priors (Saved → 15m-before-prev-close → prev-close)"
         }
         className={`${BTN} ${
-          savedTickers === 0 ? MUTED : fetchingPriors ? FETCHING : ACTIVE
+          savedTickers === 0 ? MUTED : pending === "fetchPriors" ? WORKING : ACTIVE
         }`}
       >
-        {fetchingPriors ? "Fetching priors…" : "Fetch priors"}
-        {fetchingPriors && <FetchingBar />}
+        Fetch priors
+        {pending === "fetchPriors" && <WorkingBar />}
       </button>
-
-      {/* Compact calibration progress gauge (only while a job is running) */}
-      {running && (
-        <div className="flex flex-col gap-0.5">
-          <div className="h-1 w-16 overflow-hidden rounded-full bg-surface-700">
-            <div
-              className="h-full rounded-full bg-accent-500 transition-all"
-              style={{
-                width: `${
-                  (calib?.total ?? 0) > 0
-                    ? ((calib?.done ?? 0) / (calib?.total ?? 1)) * 100
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
-          <span className="max-w-16 truncate font-mono text-[10px] text-slate-400">
-            {calib?.current || "…"}
-          </span>
-        </div>
-      )}
     </div>
   );
 }

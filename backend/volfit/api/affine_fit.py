@@ -29,6 +29,7 @@ import numpy as np
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
+from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.weights import resolve_weights
 from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
 from volfit.models.localvol import (
@@ -42,6 +43,33 @@ from volfit.models.localvol import (
 
 #: Var-swap replication strike floor (matches calibrate_affine's default).
 _VARSWAP_K_LO = 0.01
+
+
+class _InterpSlice:
+    """Minimal SmileModel over reconstructed (k, w) points: linear-interpolated
+    total variance, flat-extrapolated beyond the range — enough for the
+    left-extended stacked density's tail (Breeden-Litzenberger from w(k))."""
+
+    def __init__(self, k: np.ndarray, w: np.ndarray) -> None:
+        order = np.argsort(k)
+        self._k = np.asarray(k, dtype=float)[order]
+        self._w = np.asarray(w, dtype=float)[order]
+
+    def implied_w(self, k):  # noqa: ANN001 - SmileModel duck-type
+        return np.interp(np.asarray(k, dtype=float), self._k, self._w)
+
+
+def _extended_density(model: list[SmilePoint], tau: float) -> DistributionArrays | None:
+    """Risk-neutral density of a reconstructed smile, left-extended to the
+    display lower bound (k_min = -1.4) for the stacked "Densities" overlay."""
+    if len(model) < 2 or tau <= 0.0:
+        return None
+    from volfit.api.analytics import stacked_density_arrays
+
+    k = np.array([p.k for p in model], dtype=float)
+    w = np.array([p.vol * p.vol * tau for p in model], dtype=float)
+    x, density = stacked_density_arrays(_InterpSlice(k, w))
+    return DistributionArrays(x=x.tolist(), density=density.tolist())
 
 #: PDE strike step and OTM span (x = K/F); the note uses dx = 0.01 to x = 2.2.
 _X_DX = 0.01
@@ -322,13 +350,38 @@ def _reconstruct_smile(solution, i_exp: int, t: float, k_lo: float, k_hi: float)
     return pts
 
 
-def _iv_error_bp(solution, i_exp: int, t: float, k: np.ndarray, w: np.ndarray) -> np.ndarray:
-    """Per-quote |model - quote| implied vol at the calibrated surface, bp."""
+def _model_vol_at(solution, i_exp: int, t: float, k: np.ndarray) -> np.ndarray:
+    """Reconstructed implied vol of the calibrated surface at log-moneyness k."""
     price = solution.price_at(i_exp, np.exp(k))
     model_w = implied_total_variance(k, price)
-    model_vol = np.sqrt(np.maximum(model_w, 0.0) / t)
+    return np.sqrt(np.maximum(model_w, 0.0) / t)
+
+
+def _iv_error_bp(solution, i_exp: int, t: float, k: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Per-quote |model - quote| implied vol at the calibrated surface, bp."""
+    model_vol = _model_vol_at(solution, i_exp, t, k)
     quote_vol = np.sqrt(np.maximum(w, 0.0) / t)
     return np.abs(model_vol - quote_vol) * 1e4
+
+
+def _node_rms_terms(
+    state: AppState, ticker: str, iso: str, tau: float, k: np.ndarray, w: np.ndarray,
+    band, model_vs_vol: float, model_iv: np.ndarray,
+) -> tuple[float, float]:
+    """``(sum_weighted_sq, sum_weight)`` of one reconstructed LV smile's RMS vol
+    error, on the same calibration-consistent basis as the Parametric workspace:
+    distance to the chosen fit-target band, the active weighting scheme, and the
+    var-swap quote (volfit.calib.rms)."""
+    from volfit.api import service  # local import: service is heavy
+
+    weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+    mid_iv = np.sqrt(np.maximum(w, 1e-12) / tau)
+    target = service.varswap_target(state, ticker, iso, k, weights, tau)
+    vs = None
+    if target is not None and tau > 0.0:
+        quote_vol = float(np.sqrt(max(target.total_var, 0.0) / tau))
+        vs = (float(model_vs_vol), quote_vol, float(target.weight))
+    return node_error_terms(model_iv, mid_iv, weights, band, vs)
 
 
 def _diagnostics(solution, x_grid: np.ndarray) -> tuple[list[float], int, bool]:
@@ -435,22 +488,34 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
     smiles: list[AffineSmile] = []
     iv_bp_all: list[float] = []
-    for iso, t, k, w, prepared, _ in rows:
+    rms_num = rms_den = 0.0  # pooled across expiries -> whole-surface RMS
+    for iso, t, k, w, prepared, band in rows:
         i_exp = exp_index[t]
         klo, khi = float(k.min()), float(k.max())
         errs = _iv_error_bp(cal.solution, i_exp, t, k, w)
         iv_bp_all.extend(errs.tolist())
         model_vs_vol = _model_varswap_vol(cal.solution, i_exp, t, x_grid)
+        model = _reconstruct_smile(cal.solution, i_exp, t, klo, khi)
+        # Calibration-consistent RMS (distance to the chosen fit target band, the
+        # active weighting scheme, the var-swap quote) — identical basis to the
+        # Parametric workspace's RMS, on the reconstructed surface's own IVs.
+        num, den = _node_rms_terms(state, ticker, iso, t, k, w, band, model_vs_vol,
+                                   _model_vol_at(cal.solution, i_exp, t, k))
+        rms_num += num
+        rms_den += den
         smiles.append(
             AffineSmile(
                 expiry=iso,
                 t=prepared.t,  # calendar maturity (axis); t above is the tau clock
                 tau=t,
-                model=_reconstruct_smile(cal.solution, i_exp, t, klo, khi),
+                forward=float(prepared.forward),  # for the strike / %ATM axis modes
+                model=model,
                 quotes=_quote_bands(state, ticker, iso, prepared),
                 varSwap=_affine_varswap_info(state, ticker, iso, model_vs_vol),
                 maxIvErrorBp=float(errs.max()) if errs.size else 0.0,
+                rmsError=rms_of_terms(num, den),
                 density=_price_density(cal.solution, i_exp),
+                densityExt=_extended_density(model, t),  # left-extended to k_min=-1.4
             )
         )
 
@@ -466,6 +531,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         maxPriceError=cal.max_price_error,
         rmsIvErrorBp=float(np.sqrt(np.mean(iv_arr**2))),
         maxIvErrorBp=float(iv_arr.max()),
+        surfaceRmsError=rms_of_terms(rms_num, rms_den),
         minDensity=min_density,
         calendarViolations=calendar,
         arbitrageFree=arb_free,

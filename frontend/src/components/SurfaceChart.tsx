@@ -7,6 +7,7 @@ import { api } from "../state/api";
 import type { FitMode } from "../state/useSmile";
 import SurfaceMesh from "./SurfaceMesh";
 import type { SurfaceMeshData } from "./SurfaceMesh";
+import type { AxisMode } from "../lib/axisModes";
 
 /** Response of GET /surface/{ticker} (adds atmVol/forward beyond the mesh). */
 interface SurfaceResponse extends SurfaceMeshData {
@@ -20,13 +21,20 @@ interface SurfaceChartProps {
   fitMode: FitMode;
   /** Bumps to force a refetch (e.g. a spot move transports the surface). */
   reloadKey?: number;
+  /** Strike-axis display mode (shared with the Smile view). */
+  axisMode?: AxisMode;
 }
 
 const message = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
 );
 
-export default function SurfaceChart({ ticker, fitMode, reloadKey = 0 }: SurfaceChartProps) {
+export default function SurfaceChart({
+  ticker,
+  fitMode,
+  reloadKey = 0,
+  axisMode = "logmoneyness",
+}: SurfaceChartProps) {
   const [data, setData] = useState<SurfaceResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -59,5 +67,5 @@ export default function SurfaceChart({ ticker, fitMode, reloadKey = 0 }: Surface
       ? message("Loading surface…")
       : message(`Surface unavailable${error !== null ? ` (${error})` : ""}.`);
   }
-  return <SurfaceMesh data={data} />;
+  return <SurfaceMesh data={data} axisMode={axisMode} />;
 }

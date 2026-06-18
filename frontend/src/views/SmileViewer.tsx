@@ -41,13 +41,18 @@ type ChartView =
 
 const CHART_VIEWS: { id: ChartView; label: string }[] = [
   { id: "smile", label: "Smile" },
-  { id: "stackeddensity", label: "Stacked densities" },
+  { id: "stackeddensity", label: "Densities" },
   { id: "logqd", label: "Log Q-density" },
   { id: "term", label: "Term" },
   { id: "surface", label: "Surface" },
   { id: "stackedvar", label: "Stacked IV" },
   { id: "table", label: "Table" },
 ];
+
+/** Views whose x-axis can switch coordinate (ln(K/F) / strike / %ATM / Δ / …),
+ *  exactly like the Smile: the smile, the density overlay, the 3D surface and
+ *  the stacked total-variance overlay. */
+const AXIS_MODE_VIEWS = new Set<ChartView>(["smile", "stackeddensity", "surface", "stackedvar"]);
 
 /** Interaction hint shown under the chart card, per view. */
 const VIEW_HINTS: Record<ChartView, string> = {
@@ -241,8 +246,8 @@ export default function SmileViewer() {
         );
       case "stackeddensity":
         return live
-          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} />
-          : chartMessage("Stacked densities require the live backend.");
+          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode} />
+          : chartMessage("Densities require the live backend.");
       case "logqd":
         return distributionBody("logqd");
       case "term":
@@ -251,11 +256,11 @@ export default function SmileViewer() {
           : chartMessage("Term-structure view requires the live backend.");
       case "surface":
         return live
-          ? <SurfaceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} />
+          ? <SurfaceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
           : chartMessage("Surface view requires the live backend.");
       case "stackedvar":
         return live
-          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} />
+          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
           : chartMessage("Stacked IV requires the live backend.");
       case "table":
         return live
@@ -317,8 +322,8 @@ export default function SmileViewer() {
               onChange={switchView}
               size="xs"
             />
-            {/* Strike-axis display mode (smile view only) */}
-            {view === "smile" && (
+            {/* Strike-axis display mode (smile / densities / surface / stacked IV) */}
+            {AXIS_MODE_VIEWS.has(view) && (
               <select
                 className={selectClass}
                 value={axisMode}

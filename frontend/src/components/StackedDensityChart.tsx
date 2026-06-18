@@ -12,12 +12,22 @@ import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
 import type { OverlaySeries } from "./OverlayCurvesChart";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
+import {
+  axisModeLabel,
+  axisTickLabel,
+  axisTransform,
+  makeVolAt,
+} from "../lib/axisModes";
+import type { AxisMode } from "../lib/axisModes";
 
 interface StackedItem {
   expiry: string;
   t: number;
   x: number[];
   density: number[];
+  forward: number;
+  atmVol: number;
+  vol: number[]; // displayed-model IV at each x (for the Δ axis)
 }
 interface StackedResponse {
   ticker: string;
@@ -33,9 +43,11 @@ interface Props {
   fitMode: FitMode;
   /** Current smile: refetch when it is refitted (edits, settings changes). */
   smile: SmileData | null;
+  /** Strike-axis display mode (shared with the Smile view). */
+  axisMode?: AxisMode;
 }
 
-export default function StackedDensityChart({ ticker, fitMode, smile }: Props) {
+export default function StackedDensityChart({ ticker, fitMode, smile, axisMode = "logmoneyness" }: Props) {
   const { format } = useExpiryFormat();
   const [data, setData] = useState<StackedResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,19 +83,36 @@ export default function StackedDensityChart({ ticker, fitMode, smile }: Props) {
   }
 
   const n = data.expiries.length;
-  const series: OverlaySeries[] = data.expiries.map((e, i) => ({
-    label: formatExpiry(e.expiry, e.t, format),
-    xs: e.x,
-    ys: e.density,
-    color: maturityColor(n > 1 ? i / (n - 1) : 0),
-  }));
+  // x = log-return (= log-moneyness); each expiry re-coordinates by its own
+  // forward / ATM vol / smile, so the overlay's axis switches just like the Smile.
+  const series: OverlaySeries[] = data.expiries.map((e, i) => {
+    const xs =
+      axisMode === "logmoneyness"
+        ? e.x
+        : e.x.map((k) =>
+            axisTransform(axisMode, k, {
+              forward: e.forward,
+              t: e.t,
+              atmVol: e.atmVol,
+              volAt: makeVolAt(e.x.map((k2, j) => ({ k: k2, vol: e.vol[j] ?? e.atmVol }))),
+              kRange: [e.x[0] ?? -1, e.x[e.x.length - 1] ?? 1],
+            }),
+          );
+    return {
+      label: formatExpiry(e.expiry, e.t, format),
+      xs,
+      ys: e.density,
+      color: maturityColor(n > 1 ? i / (n - 1) : 0),
+    };
+  });
 
   return (
     <OverlayCurvesChart
       series={series}
-      xLabel="x = log(Sₜ / F)"
+      xLabel={axisMode === "logmoneyness" ? "x = log(Sₜ / F)" : axisModeLabel(axisMode)}
       yLabel="density"
       zeroBaseline
+      formatX={(v) => axisTickLabel(axisMode, v)}
     />
   );
 }

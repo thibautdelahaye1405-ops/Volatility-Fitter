@@ -22,7 +22,7 @@ import numpy as np
 
 from volfit.api.displayed import displayed_atm_vol, displayed_slice
 from volfit.api.schemas import SurfaceResponse
-from volfit.api.service import K_PAD, fill_nonfinite, fit_or_get
+from volfit.api.service import K_DISPLAY_HI, K_DISPLAY_LO, K_PAD, fill_nonfinite, fit_or_get
 from volfit.api.state import AppState
 
 #: Shared k-grid density for the 3D mesh / Stacked-IV overlay. Denser now that
@@ -36,11 +36,12 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
     isos = [expiry.isoformat() for expiry in sorted(forwards)]
     records = [fit_or_get(state, ticker, iso, fit_mode) for iso in isos]
 
-    # Union k range across expiries, extended to at least ±1 so the surface /
-    # Stacked-IV wings are drawn beyond the observed quotes (the surface's coarse
-    # k-brush defaults to the full range and shrinks it).
-    k_lo = min(-1.0, min(float(r.prepared.k.min()) for r in records) - K_PAD)
-    k_hi = max(1.0, max(float(r.prepared.k.max()) for r in records) + K_PAD)
+    # Union k range across expiries, extended to at least [-1.4, 1] (the put wing
+    # reaches further) so the surface / Stacked-IV wings are drawn beyond the
+    # observed quotes (the surface's coarse k-brush defaults to the full range
+    # and shrinks it).
+    k_lo = min(K_DISPLAY_LO, min(float(r.prepared.k.min()) for r in records) - K_PAD)
+    k_hi = max(K_DISPLAY_HI, max(float(r.prepared.k.max()) for r in records) + K_PAD)
     grid = np.linspace(k_lo, k_hi, N_SURFACE_POINTS)
 
     vol: list[list[float]] = []

@@ -51,6 +51,7 @@ from volfit.calib.calendar import (
     variance_floor_targets,
 )
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
+from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
 from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
@@ -60,7 +61,6 @@ from volfit.models.diagnostics import (
     numeric_handles,
     numeric_lee_slopes,
     numeric_var_swap_w,
-    weighted_rms_vol,
 )
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
@@ -72,12 +72,26 @@ from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
 N_MODEL_POINTS = 241
 K_PAD = 0.02
 
+#: Minimum log-moneyness display range every drawn curve/mesh is extended to
+#: (beyond the observed quotes): asymmetric — the downside put wing reaches
+#: further (-1.4) than the call wing (+1.0), matching where traders want to see
+#: skew. Shared by the smile model curve and the 3D surface / Stacked-IV mesh.
+K_DISPLAY_LO = -1.4
+K_DISPLAY_HI = 1.0
+
 #: High-order Legendre damping defaults (lam * n^{2r} a_n^2); short-dated slices
 #: left with ~as few quotes as params after the wing filter interpolate with
 #: wild ATM handles unregularized. Now the defaults of schemas.FitSettings (the
 #: hyperparameter panel PUT /settings/fit overrides them per AppState).
 REG_LAMBDA = 1e-6
 REG_POWER = 1.0
+
+#: Friendly model names for the engine-activity narration (status bar).
+_MODEL_LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "Multi-Core SIV"}
+
+
+def _model_label(model_id: str) -> str:
+    return _MODEL_LABELS.get(model_id, model_id.upper())
 
 
 # --------------------------------------------------------- fit-session edits
@@ -269,38 +283,47 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
         state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
         return cached
 
-    forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
-    cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-    t_cal = state.year_fraction(expiry)
-    tau = variance_time(state, ticker, expiry, t_cal)
-    prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
-    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     settings = state.fit_settings()
-    weights = resolve_weights(settings.weightScheme, k, w)
-    band = edited_band(state, ticker, iso, prepared, fit_mode)
-    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pa, pvs = prior_anchor_targets(state, ticker, iso, k, weights, prepared)
-    result = calibrate_slice(
-        k,
-        w,
-        t=prepared.tau,
-        n_order=settings.nOrder,
-        weights=weights,
-        reg_lambda=settings.regLambda,
-        reg_power=settings.regPower,
-        band=band,
-        barrier_center=settings.barrierCenter,
-        barrier_scale=settings.barrierScale,
-        mid_anchor_weight=settings.midAnchorWeight,
-        var_swap=vs,
-        prior_anchor=pa,
-        prior_var_swap=pvs,
+    # Narrate this node's calibration to the bottom status bar (coarse boundary
+    # only — the scipy inner loop is never touched).
+    activity = state.activity.activity(
+        "calibrate", f"Calibrating {ticker} {iso} ({_model_label(settings.model)})"
     )
-    # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
-    # a display overlay on the same edited quotes + band (volfit.api.fit_models).
-    display = build_display_fit(
-        settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs
-    )
+    with activity as act:
+        forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
+        cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
+        t_cal = state.year_fraction(expiry)
+        tau = variance_time(state, ticker, expiry, t_cal)
+        if snapshot.exercise_style == "american" and t_cal > 0.0:
+            act.detail("de-americanizing quotes")
+        prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+        k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
+        weights = resolve_weights(settings.weightScheme, k, w)
+        band = edited_band(state, ticker, iso, prepared, fit_mode)
+        vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+        pa, pvs = prior_anchor_targets(state, ticker, iso, k, weights, prepared)
+        act.detail(f"fitting {_model_label(settings.model)} smile")
+        result = calibrate_slice(
+            k,
+            w,
+            t=prepared.tau,
+            n_order=settings.nOrder,
+            weights=weights,
+            reg_lambda=settings.regLambda,
+            reg_power=settings.regPower,
+            band=band,
+            barrier_center=settings.barrierCenter,
+            barrier_scale=settings.barrierScale,
+            mid_anchor_weight=settings.midAnchorWeight,
+            var_swap=vs,
+            prior_anchor=pa,
+            prior_var_swap=pvs,
+        )
+        # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
+        # a display overlay on the same edited quotes + band (volfit.api.fit_models).
+        display = build_display_fit(
+            settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs
+        )
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
@@ -464,25 +487,85 @@ def fill_nonfinite(vols: np.ndarray) -> np.ndarray:
 
 
 def model_curve(record: FitRecord) -> list[SmilePoint]:
-    """Sample the displayed slice's IV curve, extended to at least k ∈ [-1, 1] so
-    the model wings are drawn well beyond the observed quotes. The smile's brush
-    still defaults to the observed range (SmileData.kMin/kMax); zooming or panning
-    out reveals the extension."""
-    k_lo = min(-1.0, float(record.prepared.k.min()) - K_PAD)
-    k_hi = max(1.0, float(record.prepared.k.max()) + K_PAD)
+    """Sample the displayed slice's IV curve, extended to at least
+    k ∈ [-1.4, 1] so the model wings are drawn well beyond the observed quotes
+    (the put wing reaches further). The smile's brush still defaults to the
+    observed range (SmileData.kMin/kMax); zooming or panning out reveals the
+    extension."""
+    k_lo = min(K_DISPLAY_LO, float(record.prepared.k.min()) - K_PAD)
+    k_hi = max(K_DISPLAY_HI, float(record.prepared.k.max()) + K_PAD)
     grid = np.linspace(k_lo, k_hi, N_MODEL_POINTS)
     w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
     vols = fill_nonfinite(np.sqrt(w / record.prepared.tau))
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
 
-def weighted_rms_error(state: AppState, ticker: str, iso: str, record: FitRecord) -> float:
-    """Weighted RMS vol error of the displayed fit vs the mid quotes, using the
-    SAME weights as the calibration (active weightScheme, over the edited set);
-    decimal vol (the UI renders it as a percentage)."""
-    k, w, _ = edited_fit_inputs(state, ticker, iso, record.prepared, None)
+def _varswap_rms_term(
+    state: AppState, ticker: str, iso: str, record: FitRecord,
+    k: np.ndarray, weights: np.ndarray | None, tau: float,
+) -> tuple[float, float, float] | None:
+    """``(model_vol, quote_vol, weight)`` of the var-swap RMS term, or None.
+
+    Active only when var-swap is enabled and the node has a live quote — the same
+    gate + penalty weight (``varSwapWeightPct`` % of the summed quote weights) the
+    calibration uses, so the reported RMS counts the var-swap exactly as the fit."""
+    target = varswap_target(state, ticker, iso, k, weights, tau)
+    if target is None or tau <= 0.0:
+        return None
+    quote_vol = float(np.sqrt(max(target.total_var, 0.0) / tau))
+    model_vol = float(np.sqrt(max(displayed_var_swap_w(record), 0.0) / tau))
+    return model_vol, quote_vol, float(target.weight)
+
+
+def _node_rms_terms(
+    state: AppState, ticker: str, iso: str, record: FitRecord, fit_mode: str
+) -> tuple[float, float]:
+    """``(sum_weighted_sq, sum_weight)`` of the displayed fit's RMS vol error for
+    one node, consistent with the calibration: distance to the chosen fit target
+    (mid / bid-ask / haircut band), the active weighting scheme, and the var-swap
+    quote (volfit.calib.rms)."""
+    prepared = record.prepared
+    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     weights = resolve_weights(state.fit_settings().weightScheme, k, w)
-    return weighted_rms_vol(displayed_slice(record), k, w, record.prepared.tau, weights)
+    band = edited_band(state, ticker, iso, prepared, fit_mode)
+    tau = prepared.tau
+    model_iv = np.sqrt(np.maximum(displayed_slice(record).implied_w(k), 1e-12) / tau)
+    mid_iv = np.sqrt(np.maximum(w, 1e-12) / tau)
+    vs = _varswap_rms_term(state, ticker, iso, record, k, weights, tau)
+    return node_error_terms(model_iv, mid_iv, weights, band, vs)
+
+
+def weighted_rms_error(
+    state: AppState, ticker: str, iso: str, record: FitRecord, fit_mode: str = "mid"
+) -> float:
+    """Weighted RMS vol error of the displayed fit, scored against its OWN
+    calibration objective: distance to the chosen fit target (mid / bid-ask /
+    haircut band), the active weighting scheme, and any var-swap quote. Decimal
+    vol (the UI renders it as a percentage)."""
+    return rms_of_terms(*_node_rms_terms(state, ticker, iso, record, fit_mode))
+
+
+def surface_rms_error(state: AppState, ticker: str, fit_mode: str) -> float:
+    """Whole-surface weighted RMS vol error of a ticker: the per-node fit-target
+    errors of every expiry pooled (quote-weighted) into one number, on the SAME
+    calibration-consistent basis as ``weighted_rms_error``. Reads the displayed
+    fit of each expiry (cached; no refit). 0 when the ticker has no fittable
+    slices."""
+    try:
+        forwards = state.forwards(ticker)
+    except Exception:
+        return 0.0
+    num = den = 0.0
+    for expiry in sorted(forwards):
+        iso = expiry.isoformat()
+        try:
+            record = fit_or_get(state, ticker, iso, fit_mode)
+        except Exception:
+            continue  # a slice that can't fit (too few quotes) just doesn't score
+        n, d = _node_rms_terms(state, ticker, iso, record, fit_mode)
+        num += n
+        den += d
+    return rms_of_terms(num, den)
 
 
 def _prior_overlay(
@@ -558,7 +641,8 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     session = state.session_if_exists((ticker, iso))
     prepared, slice_ = record.prepared, record.result.slice
     model = model_curve(record)
-    rms_error = weighted_rms_error(state, ticker, iso, record)
+    rms_error = weighted_rms_error(state, ticker, iso, record, fit_mode)
+    surface_rms = surface_rms_error(state, ticker, fit_mode)
 
     # Prior overlay: prefer the ACTIVE fetched prior (dotted, spot-updated to the
     # current forward under the dynamics regime); else a saved per-node prior; else
@@ -641,6 +725,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         canRedo=session.can_redo if session is not None else False,
         stale=node_dirty(state, ticker, iso, fit_mode),
         anchorModel=anchor_model,
+        surfaceRmsError=surface_rms,
     )
 
 
@@ -655,14 +740,18 @@ def surface_inputs(
     """
     snapshot = state.snapshot(ticker)
     forwards = state.forwards(ticker)  # gates the expiry universe
+    american = snapshot.exercise_style == "american"
     plan = []
-    for expiry in sorted(forwards):
-        forward = state.resolved_forward(ticker, expiry)  # honours the policy
-        cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-        t_cal = state.year_fraction(expiry)
-        tau = variance_time(state, ticker, expiry, t_cal)
-        prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
-        plan.append((expiry.isoformat(), prepared))
+    msg = f"Preparing {ticker} quotes"
+    detail = "de-americanizing" if american else ""
+    with state.activity.activity("calibrate", msg, detail):
+        for expiry in sorted(forwards):
+            forward = state.resolved_forward(ticker, expiry)  # honours the policy
+            cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
+            t_cal = state.year_fraction(expiry)
+            tau = variance_time(state, ticker, expiry, t_cal)
+            prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+            plan.append((expiry.isoformat(), prepared))
     return plan
 
 
@@ -736,10 +825,12 @@ def fit_and_commit_slice(
     recipe lives in exactly one place. Both the LQD backbone (``fit_surface_slice``)
     and the SVI/sigmoid overlay (``display_overlay``) honour ``enforce_calendar``.
     """
-    result = fit_surface_slice(state, ticker, iso, prepared, prev, enforce_calendar, fit_mode)
-    overlay = display_overlay(
-        state, ticker, iso, prepared, fit_mode, prev_display, enforce_calendar
-    )
+    model = _model_label(state.fit_settings().model)
+    with state.activity.activity("calibrate", f"Calibrating {ticker} {iso} ({model})"):
+        result = fit_surface_slice(state, ticker, iso, prepared, prev, enforce_calendar, fit_mode)
+        overlay = display_overlay(
+            state, ticker, iso, prepared, fit_mode, prev_display, enforce_calendar
+        )
     record = FitRecord(prepared=prepared, result=result, display=overlay)
     key = fit_key(state, ticker, iso, fit_mode)
     state.store_fit(key, record)
@@ -810,8 +901,8 @@ def run_scenario(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
     record = fit_or_get(state, request.ticker, request.expiry, request.fitMode)
     t, slice_ = record.prepared.tau, displayed_slice(record)
     grid = np.linspace(
-        float(record.prepared.k.min()) - K_PAD,
-        float(record.prepared.k.max()) + K_PAD,
+        min(K_DISPLAY_LO, float(record.prepared.k.min()) - K_PAD),
+        max(K_DISPLAY_HI, float(record.prepared.k.max()) + K_PAD),
         N_MODEL_POINTS,
     )
 

@@ -264,6 +264,13 @@ class AppState(UniverseMixin):
         from volfit.api.jobs import CalibrationJobs
 
         self.calibration_jobs = CalibrationJobs()
+        #: Fine-grained engine-activity reporter (volfit.api.activity): what the
+        #: compute engine is doing right now (fetch / de-am / calibrate / term /
+        #: density / LV surface), narrated to the bottom status bar. Thread-safe;
+        #: pushed at coarse boundaries only so it never slows a fit.
+        from volfit.api.activity import ActivityReporter
+
+        self.activity = ActivityReporter()
         #: Timed-fetch scheduler (volfit.api.scheduler); attached by create_app,
         #: None when AppState is built directly (tests / offline scripts).
         self.scheduler = None

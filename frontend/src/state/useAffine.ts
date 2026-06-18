@@ -41,6 +41,8 @@ export interface AffineSmile {
   t: number;
   /** Event-weighted variance years the smile is quoted in (= t with no events). */
   tau?: number;
+  /** Active forward (for the strike / %ATM x-axis modes). */
+  forward?: number;
   model: SmilePoint[];
   /** Active fetched prior, transported to the current forward (dotted overlay). */
   prior?: SmilePoint[];
@@ -49,6 +51,15 @@ export interface AffineSmile {
   /** Var-swap quote (shared with the Parametric workspace) + model level. */
   varSwap: VarSwapInfo;
   maxIvErrorBp: number;
+  /** Weighted RMS vol error of this expiry (decimal), on the same fit-target /
+   *  scheme / var-swap basis as the Parametric workspace. */
+  rmsError?: number;
+  /** Risk-neutral density (Breeden-Litzenberger from the Dupire PDE call
+   *  prices): pdf f_X on the log-return grid x. Absent on older cached payloads. */
+  density?: { x: number[]; density: number[] };
+  /** Density left-extended to the display lower bound (k_min = -1.4); backs the
+   *  stacked "Densities" overlay so its x-axis spans the full smile range. */
+  densityExt?: { x: number[]; density: number[] };
 }
 
 /** Response of POST /fit/affine/{ticker}. */
@@ -63,6 +74,9 @@ export interface AffineFitResponse {
   maxPriceError: number;
   rmsIvErrorBp: number;
   maxIvErrorBp: number;
+  /** Whole-surface weighted RMS vol error (decimal), same basis as the
+   *  per-expiry rmsError and the Parametric workspace. */
+  surfaceRmsError?: number;
   minDensity: number[];
   calendarViolations: number;
   arbitrageFree: boolean;

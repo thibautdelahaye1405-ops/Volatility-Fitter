@@ -9,6 +9,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 
+/** The fine-grained engine activity in flight (what the engine is doing now),
+ *  narrated to the bottom status bar. `active` false => idle. */
+export interface ActivityInfo {
+  active: boolean;
+  stage: string; // fetch | calibrate | localvol | term | density | surface
+  message: string; // primary line, e.g. "Calibrating SPY 2026-07-17 (LQD)"
+  detail: string; // secondary line, e.g. "de-americanizing"
+  done: number; // progress numerator (0 with total 0 => indeterminate)
+  total: number; // progress denominator
+  seq: number; // monotonic; advances on every change
+}
+
 /** Response of GET /calibration/status. */
 export interface CalibrationStatus {
   running: boolean;
@@ -26,6 +38,8 @@ export interface CalibrationStatus {
   epoch: number;
   /** Coarse phase of the in-flight item: "Parametric" | "Local Vol" | "". */
   phase: string;
+  /** Fine-grained engine activity (the status-bar narration). */
+  activity: ActivityInfo;
 }
 
 /** Response of GET /scheduler. */
@@ -55,8 +69,11 @@ export interface PriorStatus {
   tickers: PriorTickerStatus[];
 }
 
-/** Status poll cadence (ms): drives progress + the auto-fetch countdown. */
-const POLL_MS = 1500;
+/** Status poll cadence (ms): a brisk cadence while the engine is active (so the
+ *  status-bar narration keeps up with what it's doing) and a relaxed one when
+ *  idle (just the auto-fetch countdown / stale accounting). */
+const POLL_ACTIVE_MS = 500;
+const POLL_IDLE_MS = 1500;
 
 /** Which manual action is currently in flight (drives the per-button gauge). */
 export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors" | "fetchPriors";
@@ -94,6 +111,9 @@ export function useWorkflow(
   // establishes a baseline (so the very first poll never spuriously refetches).
   const lastEpoch = useRef<number | null>(null);
   const lastSpotVer = useRef<number | null>(null);
+  // Whether the engine is currently working (a job running or an activity in
+  // flight) — drives the adaptive poll cadence.
+  const activeRef = useRef(false);
 
   const refreshPriors = useCallback(async () => {
     try {
@@ -113,6 +133,7 @@ export function useWorkflow(
       ]);
       setCalib(c);
       setSched(s);
+      activeRef.current = c.running || c.activity.active;
       // A (re)calibration changed a displayed fit somewhere — refetch all mounted
       // views (covers the explicit Calibrate button, auto-calibrate on fetch, the
       // streaming refit, and progressive per-node commits during a running job).
@@ -131,10 +152,24 @@ export function useWorkflow(
 
   useEffect(() => {
     if (!live) return;
-    void poll();
+    let timer = 0;
+    let stopped = false;
+    // Self-rescheduling loop so the cadence can follow the engine: brisk while it
+    // works, relaxed when idle. (setInterval can't change its own period.)
+    const tick = async () => {
+      await poll();
+      if (stopped) return;
+      timer = window.setTimeout(
+        () => void tick(),
+        activeRef.current ? POLL_ACTIVE_MS : POLL_IDLE_MS,
+      );
+    };
+    void tick();
     void refreshPriors(); // saved-prior availability (not in the hot poll loop)
-    const id = window.setInterval(() => void poll(), POLL_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, [live, poll, refreshPriors]);
 
   // Snappy path for the explicit buttons: wait for the background job to go idle,

@@ -4,14 +4,16 @@
 // (POST /fit/affine/{ticker}) and presents Parametric-style sub-tabs, every
 // view DERIVED from that calibrated surface (ROADMAP Phase 10):
 //   Smile      reconstructed arbitrage-free smile vs quotes (per expiry)
-//   Density    Breeden-Litzenberger density of the reconstructed smile
+//   Densities  every expiry's Breeden-Litzenberger density overlaid (≥ 0 ⇔ no
+//              butterfly arb), mirroring the Parametric "Densities" view
 //   Term       ATM / var-swap term structure across the ladder
 //   LV surface the nodal local-vol heatmap
 //   IV surface reconstructed implied-vol mesh over t × strike
 //   Stacked IV total variance w=σ²·τ per expiry (non-crossing ⇔ no calendar arb)
 //   Table      per-strike reconstructed IVs + prices (per expiry)
-// The derived Density / Term / Table views fetch sibling endpoints that reuse
-// the cached affine fit (useAffineView). Live backend only (no mock fallback).
+// Densities / Stacked IV / IV surface are built client-side from the cached fit's
+// per-expiry data; Term / Table fetch sibling endpoints that reuse the cached
+// affine fit (useAffineView). Live backend only (no mock fallback).
 import { useEffect, useMemo, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
@@ -21,7 +23,6 @@ import SurfaceMesh from "../components/SurfaceMesh";
 import type { SurfaceMeshData } from "../components/SurfaceMesh";
 import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesChart";
 import type { OverlaySeries } from "../components/OverlayCurvesChart";
-import DistributionChart from "../components/DistributionChart";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
 import ExpiryFormatToggle from "../components/ExpiryFormatToggle";
@@ -32,7 +33,15 @@ import { useAffineView } from "../state/useAffineView";
 import { useEvents } from "../state/useTerm";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
-import type { DistributionData } from "../state/useScenario";
+import { formatPct } from "../lib/chartScale";
+import {
+  AXIS_MODE_OPTIONS,
+  axisModeLabel,
+  axisTickLabel,
+  axisTransform,
+  makeVolAt,
+} from "../lib/axisModes";
+import type { AxisMode } from "../lib/axisModes";
 import type { ClockMode, TermResponse } from "../state/useTerm";
 
 const selectClass =
@@ -48,10 +57,10 @@ const buttonClass =
  *  nodal local-vol heatmap; "IV surface" is the reconstructed implied-vol
  *  surface (both heatmaps over t × strike). */
 type LvView =
-  | "smile" | "density" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table";
+  | "smile" | "densities" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table";
 const LV_VIEWS: { id: LvView; label: string }[] = [
   { id: "smile", label: "Smile" },
-  { id: "density", label: "Density" },
+  { id: "densities", label: "Densities" },
   { id: "term", label: "Term" },
   { id: "lvsurface", label: "LV surface" },
   { id: "ivsurface", label: "IV surface" },
@@ -60,9 +69,12 @@ const LV_VIEWS: { id: LvView; label: string }[] = [
 ];
 /** Which sub-tabs are per-expiry (need the expiry selector). */
 const PER_EXPIRY: Record<LvView, boolean> = {
-  smile: true, density: true, table: true,
-  term: false, lvsurface: false, ivsurface: false, stackedvar: false,
+  smile: true, table: true,
+  densities: false, term: false, lvsurface: false, ivsurface: false, stackedvar: false,
 };
+/** Views whose x-axis can switch coordinate, exactly like the Parametric Smile:
+ *  the reconstructed smile, the density overlay, the IV surface and stacked var. */
+const AXIS_MODE_VIEWS = new Set<LvView>(["smile", "densities", "ivsurface", "stackedvar"]);
 
 const chartMessage = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
@@ -82,6 +94,8 @@ export default function LocalVolViewer() {
   const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
   const [view, setView] = useState<LvView>("smile");
+  // Strike-axis display mode for the density / IV-surface / stacked-IV views.
+  const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
   // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
   // + maturity-clock toggle, so event-time dilation is consistent in LV's Term.
   const events = useEvents(ticker);
@@ -95,9 +109,6 @@ export default function LocalVolViewer() {
   const expiry = data?.smiles[expiryIdx]?.expiry ?? null;
 
   // Derived views reuse the cached affine fit; only the active one fetches.
-  const density = useAffineView<DistributionData>(
-    "density", ticker, expiry, view === "density", lvReloadKey,
-  );
   const term = useAffineView<TermResponse>("term", ticker, null, view === "term", lvReloadKey);
   const table = useAffineView<AffineTableData>(
     "table", ticker, expiry, view === "table", lvReloadKey,
@@ -125,26 +136,54 @@ export default function LocalVolViewer() {
   const smile = data?.smiles[expiryIdx];
 
   // Reconstructed IV surface: resample every expiry's smile onto a shared
-  // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh.
+  // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh
+  // (the chosen x-axis mode is applied per-row inside SurfaceMesh).
   const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
 
   // Stacked IV: every reconstructed expiry's total variance w(k) = σ(k)²·τ on
   // shared axes (mirrors the Parametric workspace). σ is quoted in the event-
   // variance clock τ, so this is the price total variance — non-crossing across
-  // expiries ⟺ no calendar arbitrage in the local-vol surface.
+  // expiries ⟺ no calendar arbitrage in the local-vol surface. Each expiry
+  // re-coordinates k by its own forward / smile for the chosen axis mode.
   const stackedIv = useMemo<OverlaySeries[] | null>(() => {
     if (!data || data.smiles.length === 0) return null;
     const n = data.smiles.length;
     return data.smiles.map((s, i) => {
       const tau = s.tau && s.tau > 0 ? s.tau : s.t;
+      const ctx = smileAxisContext(s);
       return {
         label: formatExpiry(s.expiry, s.t, format),
-        xs: s.model.map((p) => p.k),
+        xs: s.model.map((p) =>
+          axisMode === "logmoneyness" ? p.k : axisTransform(axisMode, p.k, ctx),
+        ),
         ys: s.model.map((p) => p.vol * p.vol * tau),
         color: maturityColor(n > 1 ? i / (n - 1) : 0),
       };
     });
-  }, [data, format]);
+  }, [data, format, axisMode]);
+
+  // Densities: every reconstructed expiry's risk-neutral pdf (Breeden-
+  // Litzenberger, carried on each smile) overlaid on shared axes — mirrors the
+  // Parametric "Densities" view. All curves staying ≥ 0 ⟺ no butterfly arbitrage.
+  const stackedDensities = useMemo<OverlaySeries[] | null>(() => {
+    if (!data || data.smiles.length === 0) return null;
+    const n = data.smiles.length;
+    // Prefer the left-extended density (reaches k_min = -1.4) over the
+    // central-mass PDE density, so the overlay spans the full smile range.
+    const series = data.smiles
+      .map((s, i) => ({ d: s.densityExt ?? s.density, s, i }))
+      .filter(({ d }) => d && d.x.length > 0)
+      .map(({ d, s, i }) => {
+        const ctx = smileAxisContext(s);
+        return {
+          label: formatExpiry(s.expiry, s.t, format),
+          xs: d!.x.map((k) => (axisMode === "logmoneyness" ? k : axisTransform(axisMode, k, ctx))),
+          ys: d!.density,
+          color: maturityColor(n > 1 ? i / (n - 1) : 0),
+        };
+      });
+    return series.length > 0 ? series : null;
+  }, [data, format, axisMode]);
 
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
@@ -154,26 +193,35 @@ export default function LocalVolViewer() {
         return <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
       case "ivsurface":
         return ivSurface
-          ? <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" />
+          ? <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" axisMode={axisMode} />
           : chartMessage("IV surface needs at least two overlapping expiries.");
       case "stackedvar":
         return stackedIv
           ? (
             <OverlayCurvesChart
               series={stackedIv}
-              xLabel="k = log(K / F)"
+              xLabel={axisMode === "logmoneyness" ? "k = log(K / F)" : axisModeLabel(axisMode)}
               yLabel="total variance w = σ²·τ"
               zeroBaseline
               zoomY
+              formatX={(v) => axisTickLabel(axisMode, v)}
             />
           )
           : chartMessage("Stacked IV needs at least one fitted expiry.");
       case "smile":
-        return smile ? <LocalVolSmile smile={smile} /> : chartMessage("No smile");
-      case "density":
-        return density.data
-          ? <DistributionChart kind="density" current={density.data.current} prior={density.data.prior} />
-          : chartMessage(density.error ?? "Loading density…");
+        return smile ? <LocalVolSmile smile={smile} axisMode={axisMode} /> : chartMessage("No smile");
+      case "densities":
+        return stackedDensities
+          ? (
+            <OverlayCurvesChart
+              series={stackedDensities}
+              xLabel={axisMode === "logmoneyness" ? "x = log(Sₜ / F)" : axisModeLabel(axisMode)}
+              yLabel="density"
+              zeroBaseline
+              formatX={(v) => axisTickLabel(axisMode, v)}
+            />
+          )
+          : chartMessage("Densities need at least one fitted expiry.");
       case "term":
         return term.data
           ? (
@@ -218,6 +266,22 @@ export default function LocalVolViewer() {
         <SegmentedControl options={LV_VIEWS} value={view} onChange={setView} size="xs" />
         <ExpiryFormatToggle />
 
+        {/* Strike-axis display mode (densities / IV surface / stacked IV) */}
+        {AXIS_MODE_VIEWS.has(view) && (
+          <select
+            className={selectClass}
+            value={axisMode}
+            title="Strike-axis display mode"
+            onChange={(e) => setAxisMode(e.target.value as AxisMode)}
+          >
+            {AXIS_MODE_OPTIONS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        )}
+
         {/* Maturity clock (Term sub-tab): real vs shared event-dilated time */}
         {view === "term" && (
           <SegmentedControl
@@ -231,7 +295,7 @@ export default function LocalVolViewer() {
           />
         )}
 
-        {/* Per-expiry selector (smile / density / table) */}
+        {/* Per-expiry selector (smile / table) */}
         {PER_EXPIRY[view] && (
           <label className="flex items-center gap-2 text-xs text-slate-500">
             Expiry
@@ -303,6 +367,23 @@ export default function LocalVolViewer() {
 
         {/* Controls + diagnostics aside */}
         <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
+          {/* Fit RMS — same calibration-consistent basis + format as Parametric */}
+          {data && (
+            <div className="rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
+              <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
+                RMS vol error
+              </div>
+              <div className="flex justify-between font-mono text-[11px] text-slate-300">
+                <span className="text-slate-500">smile</span>
+                <span>{formatPct(smile?.rmsError, 2)}</span>
+              </div>
+              <div className="flex justify-between font-mono text-[11px] text-slate-300">
+                <span className="text-slate-500">surface</span>
+                <span>{formatPct(data.surfaceRmsError, 2)}</span>
+              </div>
+            </div>
+          )}
+
           <div>
             <h3 className="mb-1 text-sm font-semibold text-slate-100">Vertex grid</h3>
             <p className="text-[11px] text-slate-500">
@@ -400,7 +481,7 @@ function interpVol(model: { k: number; vol: number }[], k: number): number {
  *  a shared log-moneyness grid (the intersection range, so no curve is
  *  extrapolated) and return it as a (T × k → σ) mesh for the 3D SurfaceMesh. */
 function buildIvSurface(
-  smiles: { expiry: string; t: number; model: { k: number; vol: number }[] }[],
+  smiles: { expiry: string; t: number; forward?: number; model: { k: number; vol: number }[] }[],
 ): SurfaceMeshData | null {
   const usable = smiles.filter((s) => s.model.length >= 2);
   if (usable.length < 2) return null;
@@ -414,6 +495,23 @@ function buildIvSurface(
     t: usable.map((s) => s.t),
     k: kGrid,
     vol: usable.map((s) => kGrid.map((k) => interpVol(s.model, k))),
+    // Forward per expiry + ATM vol (vol at k=0) so SurfaceMesh can re-coordinate
+    // the x-axis to strike / %ATM / Δ / normalized per row.
+    forward: usable.map((s) => s.forward ?? 0),
+    atmVol: usable.map((s) => interpVol(s.model, 0)),
+  };
+}
+
+/** AxisContext for one reconstructed affine smile: forward + ATM vol from the
+ *  model curve, with a vol lookup for the Δ axis. */
+function smileAxisContext(s: { t: number; forward?: number; model: { k: number; vol: number }[] }) {
+  const volAt = makeVolAt(s.model);
+  return {
+    forward: s.forward ?? 0,
+    t: s.t,
+    atmVol: volAt(0) ?? 0,
+    volAt,
+    kRange: [s.model[0]?.k ?? -1, s.model[s.model.length - 1]?.k ?? 1] as [number, number],
   };
 }
 

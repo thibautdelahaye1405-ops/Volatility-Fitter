@@ -27,6 +27,11 @@ export const AXIS_MODE_OPTIONS: { id: AxisMode; label: string }[] = [
   { id: "lognormalized", label: "k/σ√T" },
 ];
 
+/** Short x-axis caption for a mode (reuses the selector labels). */
+export function axisModeLabel(mode: AxisMode): string {
+  return AXIS_MODE_OPTIONS.find((o) => o.id === mode)?.label ?? "k = ln(K/F)";
+}
+
 /** Per-smile context the transforms need (forward, maturity, model curve). */
 export interface AxisContext {
   forward: number;
@@ -125,8 +130,31 @@ export function axisInvert(mode: AxisMode, v: number, ctx: AxisContext): number 
   }
 }
 
-/** Compact tick label in display units. */
-function tickLabel(mode: AxisMode, v: number): string {
+/** Build a model-vol lookup `volAt(k)` (linear interp, flat-extrapolated) from a
+ *  sorted (k, vol) curve — the context the delta transform needs for overlays /
+ *  surfaces where each expiry carries its own smile. */
+export function makeVolAt(
+  points: readonly { k: number; vol: number }[],
+): (k: number) => number | null {
+  if (points.length === 0) return () => null;
+  const ks = points.map((p) => p.k);
+  const vs = points.map((p) => p.vol);
+  return (k: number) => {
+    if (k <= ks[0]) return vs[0];
+    if (k >= ks[ks.length - 1]) return vs[vs.length - 1];
+    for (let i = 1; i < ks.length; i++) {
+      if (k <= ks[i]) {
+        const f = (k - ks[i - 1]) / (ks[i] - ks[i - 1]);
+        return vs[i - 1] + f * (vs[i] - vs[i - 1]);
+      }
+    }
+    return vs[vs.length - 1];
+  };
+}
+
+/** Compact tick label in display units (exported for charts that plot geometry
+ *  directly in the display coordinate, e.g. the overlay / surface views). */
+export function axisTickLabel(mode: AxisMode, v: number): string {
   switch (mode) {
     case "pctatm":
       return `${formatAxisNumber(v)}%`;
@@ -169,7 +197,7 @@ export function axisTicks(
   for (const v of values) {
     const k = mode === "logmoneyness" ? v : axisInvert(mode, v, ctx);
     if (k === null || !Number.isFinite(k) || k < kLo - eps || k > kHi + eps) continue;
-    ticks.push({ k, label: tickLabel(mode, v) });
+    ticks.push({ k, label: axisTickLabel(mode, v) });
   }
   return ticks;
 }
@@ -197,7 +225,7 @@ export function axisDisplayTicks(
     mode === "delta"
       ? niceTicks(a * 100, b * 100, target).map((v) => v / 100)
       : niceTicks(a, b, target);
-  return values.map((v) => ({ value: v, label: tickLabel(mode, v) }));
+  return values.map((v) => ({ value: v, label: axisTickLabel(mode, v) }));
 }
 
 /** Crosshair readout for a display value, e.g. "K 6150.00" or "25Δ". */

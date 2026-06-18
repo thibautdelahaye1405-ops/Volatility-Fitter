@@ -11,9 +11,18 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { AffineSmile } from "../state/useAffine";
 import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { useZoom } from "../lib/useZoom";
+import {
+  axisDisplayTicks,
+  axisModeLabel,
+  axisTransform,
+  makeVolAt,
+} from "../lib/axisModes";
+import type { AxisMode } from "../lib/axisModes";
 
 interface LocalVolSmileProps {
   smile: AffineSmile;
+  /** Strike-axis display mode (shared with the Parametric Smile). */
+  axisMode?: AxisMode;
 }
 
 function useElementSize() {
@@ -34,7 +43,7 @@ function useElementSize() {
 
 const MARGIN = { top: 10, right: 14, bottom: 28, left: 44 };
 
-export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
+export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: LocalVolSmileProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const clipId = useId();
@@ -44,10 +53,26 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
 
-  const ks = smile.model.map((p) => p.k);
+  // Geometry is plotted in the SELECTED display coordinate (like the Parametric
+  // Smile): tx maps log-moneyness k to the chosen axis (strike / %ATM / Δ / …).
+  const modelVolAt = makeVolAt(smile.model);
+  const axisCtx = {
+    forward: smile.forward ?? 0,
+    t: smile.t,
+    atmVol: modelVolAt(0) ?? smile.model[0]?.vol ?? 0,
+    volAt: modelVolAt,
+    kRange: [smile.model[0]?.k ?? -1, smile.model[smile.model.length - 1]?.k ?? 1] as [
+      number,
+      number,
+    ],
+  };
+  const tx = (k: number): number =>
+    axisMode === "logmoneyness" ? k : axisTransform(axisMode, k, axisCtx);
+
   const vols = smile.model.map((p) => p.vol);
-  const kMin = Math.min(...ks, ...smile.quotes.map((q) => q.k));
-  const kMax = Math.max(...ks, ...smile.quotes.map((q) => q.k));
+  const dxs = [...smile.model.map((p) => tx(p.k)), ...smile.quotes.map((q) => tx(q.k))];
+  const kMin = Math.min(...dxs);
+  const kMax = Math.max(...dxs);
   const vsLevel =
     smile.varSwap.enabled && !smile.varSwap.excluded ? smile.varSwap.level : null;
   let vMin = Math.min(...vols, ...smile.quotes.map((q) => q.bid), ...(vsLevel !== null ? [vsLevel] : []));
@@ -97,12 +122,12 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
   };
 
   const path = smile.model
-    .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(p.k).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(tx(p.k)).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
     .join("");
 
   // Active fetched prior, spot-updated (dotted teal), if present.
   const priorPath = (smile.prior ?? [])
-    .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(p.k).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
+    .map((p, i) => `${i === 0 ? "M" : "L"}${x.map(tx(p.k)).toFixed(1)},${y.map(p.vol).toFixed(1)}`)
     .join("");
 
   const ready = plotW > 0 && plotH > 0 && smile.model.length > 1;
@@ -147,16 +172,16 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
             </g>
           ))}
 
-          {/* X labels (log-moneyness k) */}
-          {niceTicks(vkLo, vkHi, 6).map((v) => (
+          {/* X labels (in the selected display coordinate) */}
+          {axisDisplayTicks(axisMode, vkLo, vkHi, 6).map((t) => (
             <text
-              key={`x-${v}`}
-              x={x.map(v)}
+              key={`x-${t.value}`}
+              x={x.map(t.value)}
               y={size.height - 14}
               textAnchor="middle"
               className="fill-slate-500 font-mono text-[9px]"
             >
-              {v.toFixed(2)}
+              {t.label}
             </text>
           ))}
           <text
@@ -165,13 +190,13 @@ export default function LocalVolSmile({ smile }: LocalVolSmileProps) {
             textAnchor="middle"
             className="fill-slate-600 font-mono text-[9px]"
           >
-            k = log(K/F)
+            {axisMode === "logmoneyness" ? "k = log(K/F)" : axisModeLabel(axisMode)}
           </text>
 
           <g clipPath={`url(#${clipId})`}>
             {/* Quote I-beams (bid/ask) with mid dot */}
             {smile.quotes.map((q) => {
-              const cx = x.map(q.k);
+              const cx = x.map(tx(q.k));
               const dim = q.excluded;
               const color = dim
                 ? "rgb(100 116 139)"

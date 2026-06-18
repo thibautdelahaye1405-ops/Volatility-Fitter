@@ -2,14 +2,12 @@
 // selector (Yahoo / Bloomberg / Massive / Synthetic) with a status light each
 // (green = real-time, amber = delayed, red = unavailable). Switching the source
 // refetches the universe + smile on the new feed.
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { TabDef, TabId } from "../App";
 import { useSmileSession } from "../state/smileSession";
-import { useDataSources } from "../state/useDataSources";
 import type { SourceStatus } from "../state/useDataSources";
-import { useAsOf } from "../state/useAsOf";
 import type { AsOfState } from "../state/useAsOf";
-import { useWorkflow } from "../state/useWorkflow";
+import { useWorkflowContext } from "../state/workflowContext";
 import WorkflowControls from "./WorkflowControls";
 
 interface TopBarProps {
@@ -81,9 +79,10 @@ function asofLabel(a: AsOfState): string {
 }
 
 export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
-  const { source, loading, refreshUniverse, reload, refreshViews, fitMode } = useSmileSession();
-  const live = source === "live";
-  const workflow = useWorkflow(live, refreshViews, fitMode);
+  const { loading } = useSmileSession();
+  // Shared workflow state (single poll loop feeds both the TopBar and the
+  // bottom StatusBar). The detailed progress narration lives in the StatusBar.
+  const { live, workflow, dataSources, asof: asofHook } = useWorkflowContext();
   // Local-Vol master switch (polled on the scheduler status). When off, the
   // Local Vol tab is disabled; bounce away if it's the active tab.
   const localVolEnabled = workflow.sched?.localVolEnabled ?? true;
@@ -91,14 +90,8 @@ export default function TopBar({ tabs, activeTab, onSelect }: TopBarProps) {
     if (!localVolEnabled && activeTab === "localvol") onSelect("parametric");
   }, [localVolEnabled, activeTab, onSelect]);
 
-  // After a source switch, refetch the universe (keeps the selection valid)
-  // and reload the current smile so every workspace reflects the new feed.
-  const onSwitched = useCallback(() => {
-    void refreshUniverse().then(reload).catch(reload);
-  }, [refreshUniverse, reload]);
-
-  const { sources, active, switching, switchSource } = useDataSources(live, onSwitched);
-  const { asof, busy: asofBusy, setLive, setPrevClose, setMoment } = useAsOf(live, active, onSwitched);
+  const { sources, active, switching, switchSource } = dataSources;
+  const { asof, busy: asofBusy, setLive, setPrevClose, setMoment } = asofHook;
   const [open, setOpen] = useState(false);
   const [asofOpen, setAsofOpen] = useState(false);
   // Which day is expanded into its moments (null = derive: the selected day, else

@@ -3,6 +3,7 @@
 // session it mirrors) survives switching between workspace tabs.
 import { useState } from "react";
 import TopBar from "./components/TopBar";
+import StatusBar from "./components/StatusBar";
 import ErrorBoundary from "./components/ErrorBoundary";
 import SmileViewer from "./views/SmileViewer";
 import LocalVolViewer from "./views/LocalVolViewer";
@@ -12,6 +13,7 @@ import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
 import ViewSettingsViewer from "./views/ViewSettingsViewer";
 import { SmileSessionProvider } from "./state/smileSession";
+import { WorkflowProvider } from "./state/workflowContext";
 import { ExpiryFormatProvider } from "./state/expiryFormat";
 import { ViewSettingsProvider } from "./state/viewSettings";
 
@@ -49,6 +51,7 @@ export default function App() {
     <ViewSettingsProvider>
     <ExpiryFormatProvider>
     <SmileSessionProvider>
+    <WorkflowProvider>
       <div className="flex h-full flex-col">
         <TopBar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
 
@@ -70,7 +73,12 @@ export default function App() {
             )}
           </ErrorBoundary>
         </main>
+
+        {/* Bottom status bar: what the engine is doing (fetch / calibrate /
+            term / density / LV), with gauges; an idle "Ready" + summary. */}
+        <StatusBar />
       </div>
+    </WorkflowProvider>
     </SmileSessionProvider>
     </ExpiryFormatProvider>
     </ViewSettingsProvider>

@@ -10,14 +10,20 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { clamp, formatPct } from "../lib/chartScale";
 import { timeAxisValue } from "../lib/timeAxis";
 import type { TimeAxisMode } from "../lib/timeAxis";
+import { axisTickLabel, axisTransform, makeVolAt } from "../lib/axisModes";
+import type { AxisMode } from "../lib/axisModes";
 import RangeBrush from "./RangeBrush";
 
-/** Mesh data: one vol row per expiry over a shared log-moneyness grid k. */
+/** Mesh data: one vol row per expiry over a shared log-moneyness grid k.
+ *  ``forward`` / ``atmVol`` (per expiry) are optional context the strike / %ATM /
+ *  Δ / normalized x-axis modes need; absent ⇒ only the log-moneyness axis. */
 export interface SurfaceMeshData {
   expiries: string[];
   t: number[];
   k: number[];
   vol: number[][];
+  forward?: number[];
+  atmVol?: number[];
 }
 
 /** Camera elevation above the k-T plane (pitch fixed ≈60° from vertical). */
@@ -77,9 +83,16 @@ interface SurfaceMeshProps {
   data: SurfaceMeshData;
   /** Legend caption, e.g. "σ(k, T)" or "σ_IV(k, T)". */
   legendLabel?: string;
+  /** Strike-axis display mode (shared with the Smile view). The brushed window
+   *  still selects columns in log-moneyness; only the displayed x changes. */
+  axisMode?: AxisMode;
 }
 
-export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceMeshProps) {
+export default function SurfaceMesh({
+  data,
+  legendLabel = "σ(k, T)",
+  axisMode = "logmoneyness",
+}: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
   /** Yaw around the vertical (value) axis, radians; drag to rotate. */
@@ -109,10 +122,13 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
     : [-1, 1];
   const [kLo, kHi] = kWindow ?? fullK;
 
-  // Normalize the grid into scene coordinates: x = k (within the brushed window)
-  // in [-1, 1], y = T or √T in [-1, 1], z = value in [0, Z_HEIGHT].
+  // Normalize the grid into scene coordinates: x = the display coordinate (the
+  // chosen axis mode) within the brushed window in [-1, 1], y = T or √T in
+  // [-1, 1], z = value in [0, Z_HEIGHT]. The window still selects COLUMNS in
+  // log-moneyness; each expiry's display-x is its own monotone transform of k
+  // (forward / ATM vol differ per expiry), so e.g. strike shears the sheet.
   const mesh = useMemo(() => {
-    const { k, t, vol } = data;
+    const { k, t, vol, forward, atmVol } = data;
     if (k.length < 2 || t.length < 2 || vol.length !== t.length) return null;
     // Columns inside the brushed k-window, strided down for rendering.
     const inWin: number[] = [];
@@ -122,8 +138,30 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
     const cols: number[] = [];
     for (let c = 0; c < inWin.length; c += stride) cols.push(inWin[c]);
     if (cols[cols.length - 1] !== inWin[inWin.length - 1]) cols.push(inWin[inWin.length - 1]);
-    const kMin = k[cols[0]];
-    const kMax = k[cols[cols.length - 1]];
+    const kRange: readonly [number, number] = [k[0], k[k.length - 1]];
+
+    // Per-row display-x for each windowed column. Log-moneyness (or missing
+    // forward context) keeps the shared k; any other mode transforms per expiry.
+    const useTransform = axisMode !== "logmoneyness" && forward !== undefined;
+    const rowsX: number[][] = t.map((ti, i) => {
+      if (!useTransform) return cols.map((j) => k[j]);
+      const volAt = makeVolAt(k.map((kk, idx) => ({ k: kk, vol: vol[i][idx] })));
+      const ctx = {
+        forward: forward[i],
+        t: ti,
+        atmVol: atmVol?.[i] ?? volAt(0) ?? 0,
+        volAt,
+        kRange,
+      };
+      return cols.map((j) => axisTransform(axisMode, k[j], ctx));
+    });
+    // Global display-domain across every visible vertex (curves can span
+    // different ranges per expiry, e.g. strike).
+    let dMin = Infinity;
+    let dMax = -Infinity;
+    for (const row of rowsX)
+      for (const x of row) { if (Number.isFinite(x)) { dMin = Math.min(dMin, x); dMax = Math.max(dMax, x); } }
+    const dSpan = dMax - dMin || 1;
     const sval = (tt: number) => timeAxisValue(tt, timeMode);
     const sMin = sval(t[0]);
     const sMax = sval(t[t.length - 1]);
@@ -134,15 +172,15 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
       for (const j of cols) { vMin = Math.min(vMin, vol[i][j]); vMax = Math.max(vMax, vol[i][j]); }
     const vSpan = vMax - vMin || 1;
     const rows = t.map((ti, i) =>
-      cols.map((j) => ({
-        x: kMax > kMin ? (2 * (k[j] - kMin)) / (kMax - kMin) - 1 : 0,
+      cols.map((j, c) => ({
+        x: (2 * (rowsX[i][c] - dMin)) / dSpan - 1,
         y: sMax > sMin ? (2 * (sval(ti) - sMin)) / (sMax - sMin) - 1 : 0,
         z: ((vol[i][j] - vMin) / vSpan) * Z_HEIGHT,
         vol: vol[i][j],
       })),
     );
-    return { rows, vMin, vMax, kMin, kMax, tMin: t[0], tMax: t[t.length - 1] };
-  }, [data, kLo, kHi, timeMode]);
+    return { rows, vMin, vMax, xMin: dMin, xMax: dMax, tMin: t[0], tMax: t[t.length - 1] };
+  }, [data, kLo, kHi, timeMode, axisMode]);
 
   const scene = useMemo(() => {
     const plotW = size.width;
@@ -197,13 +235,13 @@ export default function SurfaceMesh({ data, legendLabel = "σ(k, T)" }: SurfaceM
 
     const frame = corners.map((c) => `${X(c).toFixed(1)},${Y(c).toFixed(1)}`).join(" ");
     const labels = [
-      { x: X(corners[0]), y: Y(corners[0]) + 14, text: `k ${mesh.kMin.toFixed(2)}` },
-      { x: X(corners[1]), y: Y(corners[1]) + 14, text: `k ${mesh.kMax.toFixed(2)}` },
+      { x: X(corners[0]), y: Y(corners[0]) + 14, text: axisTickLabel(axisMode, mesh.xMin) },
+      { x: X(corners[1]), y: Y(corners[1]) + 14, text: axisTickLabel(axisMode, mesh.xMax) },
       { x: X(corners[0]), y: Y(corners[0]) + 26, text: `T ${mesh.tMin.toFixed(2)}y` },
       { x: X(corners[3]), y: Y(corners[3]) + 14, text: `T ${mesh.tMax.toFixed(2)}y` },
     ];
     return { quads, frame, labels };
-  }, [mesh, yaw, size, zoomF]);
+  }, [mesh, yaw, size, zoomF, axisMode]);
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);

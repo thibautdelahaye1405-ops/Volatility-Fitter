@@ -12,6 +12,13 @@ import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
 import type { OverlaySeries } from "./OverlayCurvesChart";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
+import {
+  axisModeLabel,
+  axisTickLabel,
+  axisTransform,
+  makeVolAt,
+} from "../lib/axisModes";
+import type { AxisMode } from "../lib/axisModes";
 
 /** Response of GET /surface/{ticker} (backend SurfaceResponse). */
 interface SurfaceResponse {
@@ -21,6 +28,8 @@ interface SurfaceResponse {
   tau: number[]; // event-variance years the mesh vols are quoted in (= t with no events)
   k: number[];
   vol: number[][]; // one row per expiry, one column per k (sqrt(w / tau))
+  forward: number[]; // active forward per expiry (for strike / %ATM axes)
+  atmVol: number[]; // ATM vol per expiry (for the normalized / delta axes)
 }
 
 const message = (text: string) => (
@@ -32,9 +41,16 @@ interface Props {
   fitMode: FitMode;
   /** Bumps to force a refetch (e.g. a spot move transports the surface). */
   reloadKey?: number;
+  /** Strike-axis display mode (shared with the Smile view). */
+  axisMode?: AxisMode;
 }
 
-export default function StackedVarianceChart({ ticker, fitMode, reloadKey = 0 }: Props) {
+export default function StackedVarianceChart({
+  ticker,
+  fitMode,
+  reloadKey = 0,
+  axisMode = "logmoneyness",
+}: Props) {
   const { format } = useExpiryFormat();
   const [data, setData] = useState<SurfaceResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -72,20 +88,37 @@ export default function StackedVarianceChart({ ticker, fitMode, reloadKey = 0 }:
   const n = data.t.length;
   // Total variance w(k) = σ(k)² · τ per expiry (σ is quoted in the event-variance
   // clock τ, so this recovers the price-implied w; non-crossing ⟺ no calendar arb).
-  const series: OverlaySeries[] = data.t.map((ti, i) => ({
-    label: formatExpiry(data.expiries[i], ti, format),
-    xs: data.k,
-    ys: data.vol[i].map((v) => v * v * data.tau[i]),
-    color: maturityColor(n > 1 ? i / (n - 1) : 0),
-  }));
+  // Each expiry re-coordinates k by its own forward / smile for the chosen axis.
+  const kRange: [number, number] = [data.k[0] ?? -1, data.k[data.k.length - 1] ?? 1];
+  const series: OverlaySeries[] = data.t.map((ti, i) => {
+    const xs =
+      axisMode === "logmoneyness"
+        ? data.k
+        : data.k.map((k) =>
+            axisTransform(axisMode, k, {
+              forward: data.forward[i],
+              t: ti,
+              atmVol: data.atmVol[i],
+              volAt: makeVolAt(data.k.map((k2, j) => ({ k: k2, vol: data.vol[i][j] }))),
+              kRange,
+            }),
+          );
+    return {
+      label: formatExpiry(data.expiries[i], ti, format),
+      xs,
+      ys: data.vol[i].map((v) => v * v * data.tau[i]),
+      color: maturityColor(n > 1 ? i / (n - 1) : 0),
+    };
+  });
 
   return (
     <OverlayCurvesChart
       series={series}
-      xLabel="k = log(K / F)"
+      xLabel={axisMode === "logmoneyness" ? "k = log(K / F)" : axisModeLabel(axisMode)}
       yLabel="total variance w = σ²·T"
       zeroBaseline
       zoomY
+      formatX={(v) => axisTickLabel(axisMode, v)}
     />
   );
 }

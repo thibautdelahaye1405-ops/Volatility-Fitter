@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from volfit.api import service
 from volfit.api.schemas import (
+    ActivityInfo,
     CalibrationStatus,
     FetchResult,
     LiveSpot,
@@ -30,6 +31,14 @@ from volfit.api.schemas import (
 )
 from volfit.api.spot import set_shift as _set_spot_shift
 from volfit.api.state import AppState
+
+
+def _source_label(state: AppState) -> str:
+    """Human-readable name of the active data source (for the fetch narration)."""
+    from volfit.api.datasource import SOURCE_LABELS
+
+    sid = state.active_source
+    return SOURCE_LABELS.get(sid, sid.title())
 
 
 # --------------------------------------------------------------- lit nodes
@@ -58,6 +67,7 @@ def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
     """Background-job state plus lit / stale node accounting."""
     job = state.calibration_jobs.status()
     nodes = lit_nodes(state)
+    act = state.activity.snapshot()
     return CalibrationStatus(
         running=job.running,
         total=job.total,
@@ -70,6 +80,15 @@ def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
         staleNodes=_stale_count(state, nodes, fit_mode),
         spotVersion=state.spot_version,
         epoch=state.calib_epoch,
+        activity=ActivityInfo(
+            active=act.active,
+            stage=act.stage,
+            message=act.message,
+            detail=act.detail,
+            done=act.done,
+            total=act.total,
+            seq=act.seq,
+        ),
     )
 
 
@@ -99,7 +118,10 @@ def _affine_thunk(state: AppState, ticker: str, fit_mode: str):
     def thunk() -> None:
         state.set_spot_shift(ticker, 0.0)  # re-anchor at the chain's own spot
         try:
-            calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode=fit_mode))
+            with state.activity.activity(
+                "localvol", f"Calibrating {ticker} local-vol surface", "Dupire fit"
+            ):
+                calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode=fit_mode))
         except ValueError:
             pass  # < 2 expiries with quotes: no LV surface for this ticker
 
@@ -229,11 +251,13 @@ def fetch_spots(state: AppState, tickers: list[str] | None = None) -> dict[str, 
     per-ticker probe so the UI can show the live level.
     """
     chosen = tickers if tickers is not None else state.active_tickers()
+    source = _source_label(state)
     out: dict[str, LiveSpot] = {}
     for ticker in chosen:
         try:
-            anchor = float(state.anchor_spot(ticker))
-            live = float(state.live_spot(ticker))
+            with state.activity.activity("fetch", f"Fetching {ticker} spot from {source}"):
+                anchor = float(state.anchor_spot(ticker))
+                live = float(state.live_spot(ticker))
         except Exception:
             continue
         ret = (live / anchor - 1.0) if anchor > 0.0 else 0.0
@@ -252,11 +276,13 @@ def fetch_options(
     started. Otherwise the nodes stay stale until the user presses Calibrate.
     """
     chosen = tickers if tickers is not None else state.active_tickers()
+    source = _source_label(state)
     spots: dict[str, float] = {}
     fetched: list[str] = []
     for ticker in chosen:
         try:
-            spots[ticker] = float(state.refresh_chain(ticker))
+            with state.activity.activity("fetch", f"Fetching {ticker} quotes from {source}"):
+                spots[ticker] = float(state.refresh_chain(ticker))
             fetched.append(ticker)
         except Exception:
             continue
@@ -278,10 +304,12 @@ def stream_refit(state: AppState, fit_mode: str = "mid") -> bool:
     """
     if not state.options().autoCalibrate:
         return False
+    source = _source_label(state)
     fetched = False
     for ticker in state.active_tickers():
         try:
-            state.refresh_chain(ticker)  # reads the live book under streaming
+            with state.activity.activity("fetch", f"Streaming {ticker} quotes from {source}"):
+                state.refresh_chain(ticker)  # reads the live book under streaming
             fetched = True
         except Exception:
             continue

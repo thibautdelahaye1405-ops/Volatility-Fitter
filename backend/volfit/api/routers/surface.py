@@ -20,7 +20,9 @@ router = APIRouter()
 def get_surface(
     ticker: str, request: Request, fit_mode: FitMode = Query("mid")
 ) -> SurfaceResponse:
+    state = request.app.state.volfit
     try:
-        return surface_payload(request.app.state.volfit, ticker, fit_mode)
+        with state.activity.activity("surface", f"Building {ticker} IV surface"):
+            return surface_payload(state, ticker, fit_mode)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None

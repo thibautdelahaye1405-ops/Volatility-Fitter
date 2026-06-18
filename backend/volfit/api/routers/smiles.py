@@ -36,8 +36,10 @@ router = APIRouter()
 def get_stacked_densities(
     ticker: str, request: Request, fit_mode: FitMode = "mid"
 ) -> StackedDensityResponse:
+    state = request.app.state.volfit
     try:
-        return analytics.stacked_densities(request.app.state.volfit, ticker, fit_mode)
+        with state.activity.activity("density", f"Computing {ticker} densities"):
+            return analytics.stacked_densities(state, ticker, fit_mode)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

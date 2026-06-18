@@ -55,7 +55,103 @@ sits next to the model label.
 
 ---
 
-**Done & verified (522 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (537 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-18] RMS error refined: calibration-consistent + smile AND surface,
+  shown the same way in both workspaces.** New `volfit/calib/rms.py`
+  `node_error_terms` returns `(Σ wᵢeᵢ², Σ wᵢ)` for a node, where the per-quote
+  error eᵢ is the **distance to the chosen fit target** — `model − mid` in "mid"
+  mode, else the band VIOLATION `max(model−hi,0)+max(lo−model,0)` (0 inside the
+  bid-ask / haircut band, mirroring `calib.band`) — weighted by the **active
+  scheme** (equal / TV-density), plus an optional **var-swap** term (model vs
+  quoted var-swap vol at the var-swap penalty weight). Pooling the terms across a
+  ticker's expiries gives the whole-surface RMS. Parametric: `service.
+  weighted_rms_error` now takes `fit_mode` and routes through the helper, new
+  `service.surface_rms_error`, `SmileData.surfaceRmsError`; `SmileAside` shows
+  "RMS — smile" + "RMS — surface" (%). Local-Vol: `affine_fit` computes per-expiry
+  `AffineSmile.rmsError` + `AffineFitResponse.surfaceRmsError` on the reconstructed
+  surface's own IVs via the SAME helper (factored `_model_vol_at`, reusing
+  `service.varswap_target` for the var-swap weight); the LV aside shows the same
+  "RMS vol error — smile / surface" block. So bid-ask fits read ~0 RMS while the
+  curve sits inside the band, and the number matches what the calibrator minimized.
+  Verified over HTTP (mid 7bp / bidask ~0 / haircut ~1bp). 7 new tests
+  (`test_rms.py`); the existing equal-weighting `rmsError == plain RMS vs mid`
+  invariant (mid mode) still holds.
+
+- **[2026-06-18] LV Smile gains the x-axis chooser + Densities reach k_min=-1.4.**
+  (1) The Local-Vol **Smile** sub-tab now has the same strike-axis selector as the
+  other views: `LocalVolSmile` plots its geometry in the chosen display coordinate
+  (`axisTransform` per the single smile's forward / ATM vol / model, ticks via
+  `axisDisplayTicks`), and `smile` joined the LV `AXIS_MODE_VIEWS`. (2) The stacked
+  **Densities** overlay (both Parametric and Local-Vol) now extends its left tail
+  to **k_min = -1.4** (matching the smile/surface range) in log-moneyness — and to
+  the transform of -1.4 in the other axis modes. New `analytics.stacked_density_
+  arrays(slice, k_min)` (Breeden-Litzenberger on a grid widened via a new
+  `numeric_density(half_floor=)` arg, kept `k >= k_min` with the upper tail still
+  central-mass trimmed); Parametric `stacked_densities` uses it, and `AffineSmile`
+  gained a `densityExt` field (left-extended BL density on the reconstructed smile,
+  allowed to taper to ~0 unlike the strictly-positive PDE `density`) that the LV
+  overlay prefers. Hardened `numeric_density` to edge-fill non-finite wing variance
+  (the LQD endpoint scales overflow past the data), so the wide grid stays finite.
+  `DistributionArrays.u/quantile` are now optional (a density-only curve omits
+  them). 1 new test (`test_stacked_densities_reach_k_min`); the stacked test's
+  ≥0 + area∈(0.8,1] invariants still hold (0.99–1.00).
+
+- **[2026-06-18] X-axis: wider display range + selectable coordinate on the
+  overlay/surface views.** (1) Every drawn curve/mesh now extends to at least
+  **k ∈ [-1.4, 1.0]** (asymmetric — the put wing reaches further) instead of the
+  old symmetric ±1: shared `service.K_DISPLAY_LO/HI`, used by `model_curve`,
+  `surface.surface_payload` and `run_scenario` (densities stay probability-mass
+  trimmed). (2) The **strike-axis display mode** (ln(K/F) / Strike / %ATM / Δ /
+  normalized) — previously only on the Smile — is now available on **Densities,
+  Surface / IV Surface, and Stacked IV** in BOTH the Parametric and Local-Vol
+  workspaces. Because those views span multiple expiries, the transform is
+  per-curve: each expiry re-coordinates its own k by its own forward / ATM vol /
+  smile (`lib/axisModes` gained `makeVolAt`, `axisTickLabel`, `axisModeLabel`).
+  `OverlayCurvesChart` took a `formatX` prop (Densities + Stacked IV transform
+  their series' xs and pass a mode-aware tick formatter); `SurfaceMesh` computes a
+  **per-vertex** display-x (the 3D sheet shears under strike/Δ — still a valid
+  rectangular-connectivity mesh) gated by an `axisMode` prop, with the k-brush
+  unchanged. Backend payloads gained the per-expiry context the modes need:
+  `SurfaceResponse` already had `forward`/`atmVol`; `StackedDensityItem` gained
+  `forward`/`atmVol`/`vol` (IV at each x, for Δ); `AffineSmile` gained `forward`.
+  All 529 tests green (the `>= -1.0` model-curve assertion still holds at -1.4);
+  strict-TS build green. Not visually smoked (user's app holds :8000/:5173).
+
+- **[2026-06-18] Local-Vol "Density" → "Densities" + Parametric "Stacked
+  densities" → "Densities".** The Parametric sub-tab was relabeled; the Local-Vol
+  one now overlays EVERY reconstructed expiry's Breeden-Litzenberger density
+  (built client-side from each `AffineSmile.density`, like the LV Stacked IV /
+  IV-surface), replacing the single-expiry chart.
+
+- **[2026-06-18] Bottom STATUS BAR — narrates what the engine is doing.** Replaces
+  the progress hints that crowded the TopBar buttons (per the user's "explicit what
+  the engine is actually doing" request). New `volfit/api/activity.py`
+  `ActivityReporter`: a thread-safe STACK of in-flight activities (most-recent
+  shown, restores the outer frame on pop, monotonic `seq`), pushed only at COARSE
+  boundaries so it never slows a fit. Instrumented: fetch (`workflow.fetch_options`/
+  `fetch_spots`/`stream_refit` → "Fetching SPY quotes from Yahoo"), per-node
+  calibration (`service._compute_fit`/`fit_and_commit_slice` → "Calibrating SPY
+  2026-07-17 (LQD)", with a "de-americanizing"/"fitting <model> smile" detail),
+  LV surface (`workflow._affine_thunk` → "Calibrating SPY local-vol surface"),
+  and the read-path computations at the router level (term/density/surface →
+  "Fitting … term structure" / "Computing … densities" / "Building … IV surface").
+  Surfaced on `GET /calibration/status` as `ActivityInfo activity` (no new poll).
+  Frontend: `state/workflowContext.tsx` lifts `useWorkflow`/`useDataSources`/
+  `useAsOf` into ONE shared provider (App wraps TopBar + the new `StatusBar`), so a
+  single poll loop feeds both surfaces; the poll is now adaptive (500ms while the
+  engine is active, 1500ms idle). `components/StatusBar.tsx`: a thin footer that
+  narrates the activity message + detail with a gauge (determinate node-count for
+  the calibration job, indeterminate otherwise, per-stage accent colour) and, when
+  idle, shows "Ready" + a summary (lit/stale nodes, next auto-fetch countdown,
+  as-of, active source + status light). `WorkflowControls` trimmed to a MINIMAL
+  CUE — static labels + a subtle indeterminate bar/disabled on the in-flight
+  button (the detailed labels + the progress gauge moved to the bar). 7 new tests
+  (`test_activity.py`: stack semantics, monotonic seq, thread-safety, status
+  surfacing, fetch/calibrate narration); ruff + strict-TS build green. Verified
+  end-to-end over HTTP (the activity field serializes; a concurrent reader sees
+  every node's "Calibrating … (LQD)" narration mid-job). Not visually smoked in-app
+  (the user's own app held :8000/:5173) — run `.\restart.ps1` to see it live.
 
 - **[2026-06-18] Calendar-arbitrage constraint made MODEL-AGNOSTIC (was LQD-only).**
   The convex-order constraint lived only on the LQD backbone (`calib/calendar.py`

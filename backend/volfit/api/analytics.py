@@ -45,7 +45,7 @@ from volfit.api.displayed import (
     displayed_slice,
     displayed_var_swap_w,
 )
-from volfit.api.service import fit_or_get
+from volfit.api.service import K_DISPLAY_LO, fill_nonfinite, fit_or_get
 from volfit.api.state import AppState
 from volfit.calib.weighted_time import interp_total_variance, weighted_variance_years
 from volfit.models.base import SmileModel
@@ -227,6 +227,22 @@ def _distribution_model(slice_: SmileModel) -> DistributionArrays:
     )
 
 
+def stacked_density_arrays(
+    slice_: SmileModel, k_min: float = K_DISPLAY_LO
+) -> tuple[np.ndarray, np.ndarray]:
+    """(x, density) for the stacked-densities overlay, left-extended to ``k_min``.
+
+    Uses the Breeden-Litzenberger functional (numeric_density) on a grid widened
+    to reach ``k_min`` on the left, then keeps ``k >= k_min`` (the displayed lower
+    bound, matching the smile/surface range) and trims the upper tail to the
+    central probability mass (``cdf <= 1 - U_TRIM``). The deep-left pdf is ~0, so
+    this draws the full left tail without distorting the central shape. Works for
+    any model (LQD slice or SVI / Multi-Core-SIV overlay)."""
+    k, pdf, cdf = numeric_density(slice_, half_floor=abs(k_min))
+    keep = _trim((k >= k_min) & (cdf <= 1.0 - U_TRIM))
+    return k[keep], pdf[keep]
+
+
 def density_payload(state: AppState, ticker: str, expiry: str, fit_mode: str) -> DensityResponse:
     """Current-fit distribution plus the saved prior's, when one exists.
 
@@ -257,12 +273,23 @@ def stacked_densities(state: AppState, ticker: str, fit_mode: str) -> StackedDen
     for expiry in sorted(forwards):
         iso = expiry.isoformat()
         record = fit_or_get(state, ticker, iso, fit_mode)
-        dist = (
-            _distribution_model(displayed_slice(record))
-            if record.display is not None
-            else _distribution(record.result.slice)
-        )
+        slice_ = displayed_slice(record)
+        # Density left-extended to the display lower bound (k_min = -1.4), so the
+        # overlay's x-axis spans the same range as the smile / surface.
+        x, density = stacked_density_arrays(slice_)
+        # Per-expiry axis context: the displayed-model IV at each density x (= the
+        # log-moneyness grid), so the overlay can re-coordinate to Δ / strike / etc.
+        tau = record.prepared.tau
+        vol = fill_nonfinite(np.sqrt(np.maximum(slice_.implied_w(x), 0.0) / tau))
         items.append(
-            StackedDensityItem(expiry=iso, t=record.prepared.t, x=dist.x, density=dist.density)
+            StackedDensityItem(
+                expiry=iso,
+                t=record.prepared.t,
+                x=x.tolist(),
+                density=density.tolist(),
+                forward=float(record.prepared.forward),
+                atmVol=displayed_atm_vol(record),
+                vol=vol.tolist(),
+            )
         )
     return StackedDensityResponse(ticker=ticker, expiries=items)

@@ -27,6 +27,8 @@ interface OverlayCurvesChartProps {
   zeroBaseline?: boolean;
   /** Allow zooming the y-axis too (Stacked IV); otherwise wheel zooms x only. */
   zoomY?: boolean;
+  /** X tick-label formatter (display units, e.g. "25Δ"/"120%"); default numeric. */
+  formatX?: (v: number) => string;
 }
 
 const MARGIN = { top: 14, right: 16, bottom: 34, left: 56 } as const;
@@ -68,6 +70,7 @@ export default function OverlayCurvesChart({
   yLabel,
   zeroBaseline = false,
   zoomY = false,
+  formatX = formatAxisNumber,
 }: OverlayCurvesChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -196,7 +199,7 @@ export default function OverlayCurvesChart({
                 <g key={`x${t}`}>
                   <line x1={x} x2={x} y1={0} y2={innerH} stroke="var(--color-surface-700)" strokeWidth={1} />
                   <text x={x} y={innerH + 18} textAnchor="middle" className="fill-slate-500 text-[10px]">
-                    {formatAxisNumber(t)}
+                    {formatX(t)}
                   </text>
                 </g>
               );

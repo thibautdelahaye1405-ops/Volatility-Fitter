@@ -44,7 +44,8 @@ export default function SmileAside() {
         { label: "Lee slope L", value: fixed(d.leeLeft, 3) },
         { label: "Lee slope R", value: fixed(d.leeRight, 3) },
         { label: "Var-swap vol", value: formatPct(d.varSwapVol) },
-        { label: "RMS error", value: formatPct(d.rmsError, 2) },
+        { label: "RMS — smile", value: formatPct(d.rmsError, 2) },
+        { label: "RMS — surface", value: formatPct(smile?.surfaceRmsError, 2) },
       ]
     : [];
 
