@@ -84,15 +84,30 @@ def test_affine_fit_is_cached(client):
 
 
 def test_affine_grid_follows_options(client):
-    """The vertex grid is an Options hyperparameter now: a larger gridXNodes
-    yields a bigger nodal table after an (explicit) recalibration. The affine
-    read path is frozen — calibration runs on demand (Calibrate)."""
+    """The vertex grid is an Options hyperparameter now. In delta mode gridXNodes
+    is a FLOOR: a value above the natural delta-node count densifies the strike
+    axis (more vertices) vs the natural set. The read path is frozen —
+    calibration runs on demand (Calibrate)."""
     ticker = _ticker(client)
     opts = client.get("/settings/options").json()
-    client.put("/settings/options", json={**opts, "gridXNodes": 11})
+    client.put("/settings/options", json={**opts, "gridXNodes": 40})  # densify
     client.post(f"/calibrate/{ticker}")  # rebuild the LV surface at the new grid
     fine = client.post(f"/fit/affine/{ticker}", json={}).json()
-    client.put("/settings/options", json={**opts, "gridXNodes": 4})
+    client.put("/settings/options", json={**opts, "gridXNodes": 4})  # natural set
+    client.post(f"/calibrate/{ticker}")
+    coarse = client.post(f"/fit/affine/{ticker}", json={}).json()
+    assert len(fine["xNodes"]) > len(coarse["xNodes"])
+
+
+def test_affine_grid_linear_mode_exact_count(client):
+    """gridStrikeMode 'linear' restores the legacy uniform-in-x axis where
+    gridXNodes is the exact strike-vertex count."""
+    ticker = _ticker(client)
+    opts = client.get("/settings/options").json()
+    client.put("/settings/options", json={**opts, "gridStrikeMode": "linear", "gridXNodes": 11})
+    client.post(f"/calibrate/{ticker}")
+    fine = client.post(f"/fit/affine/{ticker}", json={}).json()
+    client.put("/settings/options", json={**opts, "gridStrikeMode": "linear", "gridXNodes": 5})
     client.post(f"/calibrate/{ticker}")
     coarse = client.post(f"/fit/affine/{ticker}", json={}).json()
     assert len(fine["xNodes"]) > len(coarse["xNodes"])
@@ -105,6 +120,85 @@ def test_affine_optimal_size(client):
     assert o["nExpiries"] >= 2 and o["nQuotes"] > 0
     assert o["gridXNodes"] >= 3
     assert o["gridTNodes"] == 0  # auto: one time vertex per observed expiry
+
+
+def test_affine_delta_axis_dense_near_atm(client):
+    """The default delta-spaced strike axis clusters vertices near ATM and widens
+    toward the wings (the fix for the under-resolved put wing)."""
+    ticker = _ticker(client)
+    data = client.post(f"/fit/affine/{ticker}", json={}).json()
+    k = np.sort(np.log(np.array(data["xNodes"])))
+    gaps = np.diff(k)
+    atm = int(np.argmin(np.abs(k)))  # node nearest k = 0
+    near_atm = gaps[max(atm - 1, 0):atm + 1].min()
+    assert near_atm <= np.median(gaps)  # tight around ATM
+    assert gaps.max() > 2.0 * gaps.min()  # genuinely non-uniform (vs old linspace)
+    assert any(abs(x - 1.0) < 1e-9 for x in data["xNodes"])  # ATM vertex forced in
+
+
+def test_affine_grid_info_matches_fit(client):
+    """The Options grid-info endpoint reports exactly the grid the fit builds."""
+    ticker = _ticker(client)
+    info = client.get(f"/fit/affine/{ticker}/grid-info").json()
+    data = client.post(f"/fit/affine/{ticker}", json={}).json()
+    assert info["nTNodes"] == len(data["tNodes"])
+    assert info["nXNodes"] == len(data["xNodes"])
+    assert info["nVertices"] == info["nTNodes"] * info["nXNodes"]
+    assert info["strikeMode"] == "delta"
+    assert info["nExpiries"] == len(data["smiles"])
+    # Stage 3: a node before the first expiry + t = 0 + every expiry.
+    assert data["tNodes"][0] == 0.0
+    assert info["nTNodes"] >= info["nExpiries"] + 2
+
+
+def test_affine_grid_info_cap_scales_with_mult(client):
+    """The adaptive local-vol cap (grid-info capVol) rises with lvVolCapMult and is
+    bounded by the 400% ceiling — the fix for the 60% clamp on high-vol names."""
+    ticker = _ticker(client)
+    base = client.get(f"/fit/affine/{ticker}/grid-info").json()
+    opts = client.get("/settings/options").json()
+    client.put("/settings/options", json={**opts, "lvVolCapMult": 12.0})
+    raised = client.get(f"/fit/affine/{ticker}/grid-info").json()
+    assert raised["capVol"] > base["capVol"]
+    assert raised["capVol"] <= 4.0 + 1e-9  # 400% ceiling
+    assert raised["floorVol"] == base["floorVol"]  # floor unchanged
+
+
+def test_affine_grid_info_tracks_options(client):
+    """Changing the grid hyperparameters is reflected in grid-info immediately."""
+    ticker = _ticker(client)
+    opts = client.get("/settings/options").json()
+    client.put("/settings/options", json={**opts, "gridTNodes": 0, "gridStrikeMode": "linear",
+                                          "gridXNodes": 6})
+    info = client.get(f"/fit/affine/{ticker}/grid-info").json()
+    assert info["strikeMode"] == "linear"
+    assert info["nXNodes"] in (6, 7)  # 6 linear nodes, +1 if x=1 wasn't on the grid
+
+
+def test_affine_varswap_wiring(client):
+    """Setting a node's var-swap quote pulls the LV surface's model var-swap level
+    toward it; disabling the feature removes the pull (the wiring deliverable)."""
+    from volfit.api.affine_fit import calibrate_affine_surface
+    from volfit.api.schemas_affine import AffineFitRequest
+
+    ticker = _ticker(client)
+    state = client.app.state.volfit
+    base = calibrate_affine_surface(state, ticker, AffineFitRequest())
+    sm = base.smiles[len(base.smiles) // 2]
+    iso, model_vs = sm.expiry, sm.varSwap.modelVol
+    target = model_vs + 0.05  # 5 vol points away from the free fit
+
+    state.varswap_session((ticker, iso)).apply("set", target)
+    pulled = calibrate_affine_surface(state, ticker, AffineFitRequest())
+    sm2 = next(s for s in pulled.smiles if s.expiry == iso)
+    assert sm2.varSwap.level == pytest.approx(target)
+    assert abs(sm2.varSwap.modelVol - target) < abs(model_vs - target)  # pulled in
+
+    state.set_options(state.options().model_copy(update={"varSwapEnabled": False}))
+    off = calibrate_affine_surface(state, ticker, AffineFitRequest())
+    sm3 = next(s for s in off.smiles if s.expiry == iso)
+    # with the penalty off the level relaxes back toward the unconstrained fit
+    assert abs(sm3.varSwap.modelVol - model_vs) < abs(sm2.varSwap.modelVol - model_vs)
 
 
 @pytest.mark.parametrize("mode", ["bidask", "haircut"])

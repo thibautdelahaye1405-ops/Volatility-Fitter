@@ -38,6 +38,18 @@ const REGIMES: { id: DynamicsRegime; label: string; title: string }[] = [
   { id: "custom", label: "SSR", title: "Custom skew-stickiness ratio (set below)" },
 ];
 
+/** The resolved local-vol vertex grid for the active ticker (GET grid-info). */
+interface GridInfo {
+  nTNodes: number;
+  nXNodes: number;
+  nVertices: number;
+  convexWingNodes: number;
+  strikeMode: string;
+  nExpiries: number;
+  capVol: number;
+  floorVol: number;
+}
+
 const card =
   "rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30";
 const numInput =
@@ -83,6 +95,22 @@ export default function OptionsViewer() {
   const anyFlash = flash || fit.flash;
   const applyAll = () => Promise.all([fit.apply(), apply()]);
 
+  // The ACTUAL resolved vertex grid for the active ticker under the APPLIED
+  // settings (so the floor / delta / convex-wing knobs are visible + consistent).
+  // Refetched on ticker change and whenever edits are applied (anyDirty -> false).
+  const [gridInfo, setGridInfo] = useState<GridInfo | null>(null);
+  useEffect(() => {
+    if (!live || !ticker || anyDirty) return;
+    let cancelled = false;
+    api
+      .get<GridInfo>(`/fit/affine/${ticker}/grid-info`)
+      .then((g) => !cancelled && setGridInfo(g))
+      .catch(() => !cancelled && setGridInfo(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [live, ticker, anyDirty]);
+
   // "Save as default" first commits any pending edits (so the persisted snapshot
   // matches what's on screen), then writes the live settings to the app store.
   const saveAsDefault = async () => {
@@ -120,16 +148,84 @@ export default function OptionsViewer() {
         <PenaltyTable group="model" />
 
         <h4 className={subTitle}>Local-vol grid</h4>
-        <div className="space-y-2">
-          <NumberRow label="Strike nodes" value={draft.gridXNodes} step={1} disabled={!live}
+        <Toggle
+          label="Delta strike axis"
+          hint="Place strike vertices on the symmetric {1,2,5,10,25,40,50}Δ axis (dense near ATM, clipped to the traded range) — resolves the put wing. Off = legacy uniform-in-x spacing."
+          checked={draft.gridStrikeMode === "delta"} disabled={!live}
+          onChange={(v) => patch({ gridStrikeMode: v ? "delta" : "linear" })}
+        />
+        <div className="mt-2 space-y-2">
+          <NumberRow
+            label={draft.gridStrikeMode === "delta" ? "Strike nodes (floor)" : "Strike nodes"}
+            value={draft.gridXNodes} step={1} disabled={!live}
             onChange={(v) => patch({ gridXNodes: v })} />
-          <NumberRow label="Time nodes (0 = per expiry)" value={draft.gridTNodes} step={1} disabled={!live}
+          <NumberRow label="Time nodes (floor; 0 = per expiry)" value={draft.gridTNodes} step={1} disabled={!live}
             onChange={(v) => patch({ gridTNodes: v })} />
           <NumberRow label="Roughness λ" value={draft.gridRegLambda} step={0.001} disabled={!live}
             onChange={(v) => patch({ gridRegLambda: v })} />
           <NumberRow label="Roughness ρ (t vs x)" value={draft.gridRegRho} step={0.1} disabled={!live}
             onChange={(v) => patch({ gridRegRho: v })} />
         </div>
+        <div className="mt-2">
+          <Toggle
+            label="Convex wing (< 5Δ)"
+            hint="Soft-penalize concavity of local vol σ(x,t) in x below the 5Δ-put strike, so the sparse left wing doesn't fit too concave"
+            checked={draft.convexWing} disabled={!live}
+            onChange={(v) => patch({ convexWing: v })}
+          />
+          <div className="mt-1">
+            <NumberRow label="Convex-wing weight" value={draft.convexWingWeight} step={100}
+              disabled={!live || !draft.convexWing}
+              onChange={(v) => patch({ convexWingWeight: v })} />
+          </div>
+        </div>
+        <div className="mt-2">
+          <Toggle
+            label="Front tie (t=0 → first row)"
+            hint="Pull the unconstrained t=0 local-vol row toward the first calibrated row (soft one-sided difference), so the free front stops leaking into the shortest, most-curved smile — improves short-dated fits"
+            checked={draft.frontTie} disabled={!live}
+            onChange={(v) => patch({ frontTie: v })}
+          />
+          <div className="mt-1">
+            <NumberRow label="Front-tie weight" value={draft.frontTieWeight} step={0.005}
+              disabled={!live || !draft.frontTie}
+              onChange={(v) => patch({ frontTieWeight: v })} />
+          </div>
+        </div>
+        <div className="mt-2">
+          <NumberRow label="LV cap × (× max IV)" value={draft.lvVolCapMult} step={0.5}
+            disabled={!live}
+            onChange={(v) => patch({ lvVolCapMult: v })} />
+          <p className="mt-1 text-[10px] text-slate-500">
+            Local vol capped at max(60%, this × the highest observed IV) — scales the
+            cap to high-vol names so deep-put local vol isn't clamped.
+          </p>
+        </div>
+        <div className="mt-2">
+          <NumberRow label="Left-wing slope ×" value={draft.leftWingSlopeMult} step={0.1}
+            disabled={!live}
+            onChange={(v) => patch({ leftWingSlopeMult: v })} />
+          <p className="mt-1 text-[10px] text-slate-500">
+            Below the lowest strike the local variance continues linearly toward x=0
+            at this × the first-cell slope (used when Convex wing is on; with a
+            var-swap quote the slope is fitted to the quote, this is its start).
+          </p>
+        </div>
+        {gridInfo && (
+          <p className="mt-2 rounded-md border border-slate-800 bg-surface-800/50 px-2 py-1 text-[10px] text-slate-400">
+            {anyDirty ? (
+              <span className="text-amber-400">Apply to refresh — </span>
+            ) : null}
+            Resolved grid for {ticker}: <span className="font-mono text-slate-200">
+              {gridInfo.nTNodes}×{gridInfo.nXNodes} = {gridInfo.nVertices}
+            </span> vertices ({gridInfo.strikeMode}
+            {gridInfo.convexWingNodes > 0 ? `, ${gridInfo.convexWingNodes} convex-wing` : ""})
+            · {gridInfo.nExpiries} expiries · LV bounds{" "}
+            <span className="font-mono text-slate-200">
+              {(gridInfo.floorVol * 100).toFixed(0)}%–{(gridInfo.capVol * 100).toFixed(0)}%
+            </span>
+          </p>
+        )}
         <button
           type="button"
           disabled={!live || ticker === ""}

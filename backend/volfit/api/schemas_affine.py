@@ -44,6 +44,23 @@ class OptimalGridSize(BaseModel):
     nExpiries: int
 
 
+class GridInfo(BaseModel):
+    """The ACTUAL local-vol vertex grid the current Options produce for a ticker.
+
+    Lets the Options panel show the resolved grid (time x strike vertices) so the
+    floor / delta-axis / convex-wing hyperparameters are visible and consistent
+    with what the fit will build (volfit.api.affine_fit.grid_info)."""
+
+    nTNodes: int  # time vertices (incl. t = 0 and the pre-first-expiry node)
+    nXNodes: int  # strike vertices (incl. the ATM x = 1 node)
+    nVertices: int  # nTNodes * nXNodes (the calibrated parameter count)
+    convexWingNodes: int  # strike vertices in the convex-wing region (0 if off)
+    strikeMode: str  # "delta" | "linear"
+    nExpiries: int  # quotable lit expiries the grid was sized to
+    capVol: float = 0.0  # resolved adaptive local-vol CAP (vol, e.g. 2.7 = 270%)
+    floorVol: float = 0.0  # resolved local-vol FLOOR (vol)
+
+
 class AffineSmile(BaseModel):
     """One expiry's reconstructed arbitrage-free smile plus its quotes."""
 

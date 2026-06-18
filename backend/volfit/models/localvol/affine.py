@@ -47,6 +47,13 @@ class AffineVarianceSurface:
     x_nodes: np.ndarray  # vertex strikes, increasing, x_nodes[0] >= 0, shape (n_x,)
     theta: np.ndarray  # nodal local VARIANCES, shape (n_t, n_x)
     interp: str = "delaunay"
+    #: Left-wing extrapolation: for x < x_nodes[0] the local variance continues
+    #: LINEARLY with slope ``left_extrap_a`` x the slope of the first cell
+    #: (between the two lowest vertices). 0.0 = flat (clamp to the x_min vertex,
+    #: the default and the historical behavior); 1.0 = plain linear continuation;
+    #: > 1 = steeper (a convex left wing keeps rising toward x = 0). The right wing
+    #: stays flat-clamped. The cap is NOT applied here — variance rises freely.
+    left_extrap_a: float = 0.0
 
     def __post_init__(self) -> None:
         t = np.atleast_1d(np.asarray(self.t_nodes, dtype=float))
@@ -55,6 +62,9 @@ class AffineVarianceSurface:
         object.__setattr__(self, "t_nodes", t)
         object.__setattr__(self, "x_nodes", x)
         object.__setattr__(self, "theta", th)
+        object.__setattr__(self, "left_extrap_a", float(self.left_extrap_a))
+        if self.left_extrap_a < 0.0:
+            raise ValueError("left_extrap_a must be >= 0")
         if self.interp not in _INTERP_MODES:
             raise ValueError(f"interp must be one of {_INTERP_MODES}, got {self.interp!r}")
         if t.ndim != 1 or t.size < 2 or np.any(np.diff(t) <= 0):
@@ -77,6 +87,14 @@ class AffineVarianceSurface:
             x_nodes=self.x_nodes,
             theta=np.asarray(theta_flat, dtype=float).reshape(self.theta.shape),
             interp=self.interp,
+            left_extrap_a=self.left_extrap_a,
+        )
+
+    def with_left_extrap_a(self, a: float) -> "AffineVarianceSurface":
+        """Same surface with a different left-wing extrapolation slope multiple."""
+        return AffineVarianceSurface(
+            t_nodes=self.t_nodes, x_nodes=self.x_nodes, theta=self.theta,
+            interp=self.interp, left_extrap_a=float(a),
         )
 
     def _delaunay(self) -> Delaunay:
@@ -89,17 +107,15 @@ class AffineVarianceSurface:
         return tri
 
     # ----------------------------------------------------------- basis rows
-    def basis(self, x: np.ndarray, t: float) -> np.ndarray:
-        """Hat-function weights Phi[i, l]: nu(t, x_i) = Phi @ theta.ravel().
+    def _basis_clamped(self, xc: np.ndarray, t: float) -> np.ndarray:
+        """Hat-function weights at coordinates ALREADY clamped to the hull.
 
-        Vectorized in x for scalar t; coordinates are clamped to the vertex
-        hull (flat extrapolation), so PDE meshes may touch the boundary.
-        Each row has <= 3 nonzeros for triangle modes, <= 4 for bilinear.
+        ``xc`` must lie in [x_nodes[0], x_nodes[-1]] and ``t`` in the t-node range
+        (the callers clamp). This is the in-hull point location; left-wing linear
+        extrapolation is layered on top by ``basis`` / ``basis_components``.
         """
         tn, xn = self.t_nodes, self.x_nodes
-        x = np.asarray(x, dtype=float)
-        t = float(min(max(t, tn[0]), tn[-1]))
-        xc = np.clip(x, xn[0], xn[-1])
+        xc = np.asarray(xc, dtype=float)
 
         if self.interp == "delaunay":
             tri = self._delaunay()
@@ -110,8 +126,8 @@ class AffineVarianceSurface:
             tm = tri.transform[simp]
             b2 = np.einsum("nij,nj->ni", tm[:, :2], pts - tm[:, 2])
             lam = np.column_stack([b2, 1.0 - b2.sum(axis=1)])
-            out = np.zeros((x.size, self.n_params))
-            out[np.arange(x.size)[:, None], tri.simplices[simp]] = lam
+            out = np.zeros((xc.size, self.n_params))
+            out[np.arange(xc.size)[:, None], tri.simplices[simp]] = lam
             return out
 
         it = min(int(np.searchsorted(tn, t, side="right")) - 1, tn.size - 2)
@@ -122,8 +138,8 @@ class AffineVarianceSurface:
 
         m = self.n_params
         n_x = xn.size
-        out = np.zeros((x.size, m))
-        rows = np.arange(x.size)
+        out = np.zeros((xc.size, m))
+        rows = np.arange(xc.size)
         # Flat-index columns of the 4 surrounding vertices (t-major ravel).
         c_aa = it * n_x + ix  # (t_lo, x_lo)
         c_ab = c_aa + 1  # (t_lo, x_hi)
@@ -149,6 +165,48 @@ class AffineVarianceSurface:
             out[rows, c_ab] += np.where(lower, s, 1.0 - u)
             out[rows, c_bb] += np.where(lower, 0.0, u + s - 1.0)
         return out
+
+    def basis_components(
+        self, x: np.ndarray, t: float
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """``(phi_base, phi_lin)`` such that nu(x, t) = (phi_base + a phi_lin) @ theta.
+
+        ``phi_base`` is the flat-extrapolation basis (a = 0, the historical
+        clamp); ``phi_lin`` is the per-point LEFT-wing linear-continuation delta:
+        for x < x_nodes[0], d = (x − x0)/(x1 − x0) (< 0) and the row is
+        d·(basis(x1) − basis(x0)), zero elsewhere. So nu picks up
+        a·d·(nu(x1) − nu(x0)) below x0 — a linear wing with slope a × the first
+        cell's slope. Both are linear in theta, so the calibration can treat ``a``
+        as a free parameter with an analytic sensitivity (= phi_lin @ theta).
+        """
+        tn, xn = self.t_nodes, self.x_nodes
+        x = np.asarray(x, dtype=float)
+        t = float(min(max(t, tn[0]), tn[-1]))
+        xc = np.clip(x, xn[0], xn[-1])
+        phi_base = self._basis_clamped(xc, t)
+        phi_lin = np.zeros_like(phi_base)
+        below = x < xn[0]
+        if np.any(below):
+            b1 = self._basis_clamped(np.array([xn[1]]), t)[0]  # basis at x_nodes[1]
+            d = (x[below] - xn[0]) / (xn[1] - xn[0])  # < 0
+            phi_lin[below] = d[:, None] * (b1[None, :] - phi_base[below])
+        return phi_base, phi_lin
+
+    def basis(self, x: np.ndarray, t: float) -> np.ndarray:
+        """Hat-function weights Phi[i, l]: nu(t, x_i) = Phi @ theta.ravel().
+
+        Vectorized in x for scalar t. In-hull points use the triangulation /
+        tensor interpolation; the right wing is flat-clamped; the LEFT wing
+        (x < x_nodes[0]) continues linearly with slope ``left_extrap_a`` x the
+        first cell's slope (``left_extrap_a`` = 0 ⇒ flat, the default).
+        """
+        if self.left_extrap_a == 0.0:  # flat: skip the phi_lin work (hot path)
+            tn, xn = self.t_nodes, self.x_nodes
+            x = np.asarray(x, dtype=float)
+            t = float(min(max(t, tn[0]), tn[-1]))
+            return self._basis_clamped(np.clip(x, xn[0], xn[-1]), t)
+        phi_base, phi_lin = self.basis_components(x, t)
+        return phi_base + self.left_extrap_a * phi_lin
 
     def variance(self, x: np.ndarray, t: float) -> np.ndarray:
         """Local variance nu_theta(t, x), vectorized in x for scalar t."""
@@ -199,32 +257,53 @@ class DupireSteps:
     interior_x: np.ndarray  # x[1:-1], the PDE interior nodes
     phi: list  # phi[n] = hat weights (n_interior x m) at level t[n+1]
     active_k: np.ndarray  # active_k[n] = live sensitivity-column count after step n
+    #: When the left-wing slope ``a`` is a free parameter, ``phi`` holds the
+    #: flat-extrap base (a = 0) and ``phi_lin[n]`` the linear-continuation delta,
+    #: so the solver forms phi(a) = phi + a * phi_lin per step (and an analytic
+    #: a-sensitivity = phi_lin @ theta). None ⇒ ``a`` is baked into ``phi``.
+    phi_lin: list | None = None
 
 
 def precompute_dupire_steps(
-    surface: AffineVarianceSurface, x_grid: np.ndarray, t_grid: np.ndarray
+    surface: AffineVarianceSurface,
+    x_grid: np.ndarray,
+    t_grid: np.ndarray,
+    with_left_lin: bool = False,
 ) -> DupireSteps:
     """Build the theta-independent per-step basis + active-column schedule.
 
     ``active_k`` is the running maximum of "highest non-zero basis column + 1"
     over the steps so far — derived from the actual basis sparsity, so it stays
     correct for every interpolation mode (delaunay/triangle/bilinear).
+
+    ``with_left_lin`` splits the basis into the flat-extrap base + the left-wing
+    linear-continuation delta (``basis_components``) so the solver can treat the
+    slope multiple ``a`` as a free parameter; otherwise ``a`` is baked into the
+    stored basis via ``surface.basis`` (the default / fixed-a path).
     """
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
     interior = x[1:-1]
     m = surface.n_params
     phi: list = []
+    phi_lin: list | None = [] if with_left_lin else None
     active_k = np.empty(t.size - 1, dtype=int)
     running_max = -1
     for n in range(t.size - 1):
-        ph = surface.basis(interior, float(t[n + 1]))
-        phi.append(ph)
-        touched = np.flatnonzero(np.any(ph != 0.0, axis=0))
+        if with_left_lin:
+            pb, pl = surface.basis_components(interior, float(t[n + 1]))
+            phi.append(pb)
+            phi_lin.append(pl)
+            touched_arr = (pb != 0.0) | (pl != 0.0)
+        else:
+            pb = surface.basis(interior, float(t[n + 1]))
+            phi.append(pb)
+            touched_arr = pb != 0.0
+        touched = np.flatnonzero(np.any(touched_arr, axis=0))
         if touched.size:
             running_max = max(running_max, int(touched[-1]))
         active_k[n] = min(running_max + 1, m)
-    return DupireSteps(interior_x=interior, phi=phi, active_k=active_k)
+    return DupireSteps(interior_x=interior, phi=phi, active_k=active_k, phi_lin=phi_lin)
 
 
 def solve_affine_dupire(
@@ -235,6 +314,8 @@ def solve_affine_dupire(
     *,
     sensitivities: bool = False,
     steps: DupireSteps | None = None,
+    left_a: float | None = None,
+    fit_left_a: bool = False,
 ) -> AffinePDESolution:
     """Fully implicit Euler march of eq. (implicit_step) on the given grids.
 
@@ -252,13 +333,22 @@ def solve_affine_dupire(
     so a standalone solve is unchanged. The sensitivity solve is restricted to
     the live column prefix ``[:active_k]`` — the tail columns are provably zero,
     so the result is bit-for-bit identical to solving all m columns.
+
+    ``left_a`` overrides the surface's left-wing slope multiple for this solve;
+    with ``fit_left_a`` an extra sensitivity column dU/da is propagated
+    (analytically, source = (phi_lin @ theta) * gamma), appended after the m theta
+    columns — so the calibration can optimise ``a`` jointly. Both need a
+    ``steps`` built with ``with_left_lin=True`` (or steps=None here, which builds
+    one); otherwise ``a`` is whatever is baked into ``steps.phi``.
     """
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
     if t[0] != 0.0 or np.any(np.diff(t) <= 0):
         raise ValueError("t_grid must start at 0 and increase strictly")
     if steps is None:
-        steps = precompute_dupire_steps(surface, x, t)
+        steps = precompute_dupire_steps(surface, x, t, with_left_lin=fit_left_a)
+    a = float(left_a) if left_a is not None else surface.left_extrap_a
+    use_lin = steps.phi_lin is not None
     exps = np.array(sorted({float(e) for e in expiries}))
     pos = np.searchsorted(t, exps)
     if np.any(pos >= t.size) or not np.allclose(t[pos], exps, rtol=0.0, atol=1e-12):
@@ -274,10 +364,12 @@ def solve_affine_dupire(
     a_0 = -(a_m + a_p)
 
     m = surface.n_params
+    n_cols = m + 1 if fit_left_a else m  # extra dU/da sensitivity column
+    theta = surface.theta.ravel()
     u = np.maximum(1.0 - x, 0.0)  # payoff (1 - x)^+, includes boundary values
-    sens = np.zeros((n_x, m)) if sensitivities else None
+    sens = np.zeros((n_x, n_cols)) if sensitivities else None
     prices = np.empty((exps.size, n_x))
-    out_sens = np.empty((exps.size, n_x, m)) if sensitivities else None
+    out_sens = np.empty((exps.size, n_x, n_cols)) if sensitivities else None
     if 0 in want:  # expiry 0 is not allowed by searchsorted above (t[0]=0 < exps)
         raise ValueError("expiries must be positive")
 
@@ -285,8 +377,9 @@ def solve_affine_dupire(
     active_k = steps.active_k
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
-        phi = phis[n]  # theta-independent hat weights at the new level (cached)
-        nu = phi @ surface.theta.ravel()
+        phi_base = phis[n]  # cached hat weights at the new level (flat-extrap base)
+        phi = phi_base + a * steps.phi_lin[n] if use_lin else phi_base
+        nu = phi @ theta
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
 
         ab = np.zeros((3, n_x - 2))  # banded I - dt A for solve_banded
@@ -305,8 +398,19 @@ def solve_affine_dupire(
             # against the single step factorization is identical but cheaper.
             k = int(active_k[n])
             au = a_m * u_new[:-2] + a_0 * u_new[1:-1] + a_p * u_new[2:]
-            rhs_s = sens[1:-1, :k] + dt * phi[:, :k] * au[:, None]
-            sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+            if fit_left_a:
+                # dU/da: same recursion, source (phi_lin @ theta) * gamma; appended
+                # as the m-th column (always live once the wing region is touched).
+                glin = steps.phi_lin[n] @ theta
+                idx = np.concatenate([np.arange(k), [m]])
+                src = np.concatenate(
+                    [phi[:, :k] * au[:, None], (glin * au)[:, None]], axis=1
+                )
+                rhs_s = sens[1:-1, idx] + dt * src
+                sens[1:-1, idx] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+            else:
+                rhs_s = sens[1:-1, :k] + dt * phi[:, :k] * au[:, None]
+                sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
             u = u_new
         else:
             sol_u = solve_banded(

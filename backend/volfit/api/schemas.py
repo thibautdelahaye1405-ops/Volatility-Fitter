@@ -159,12 +159,46 @@ class OptionsSettings(BaseModel):
         return cleaned or [0.02, 0.05, 0.10, 0.25, 0.40]
     # local-vol-affine vertex grid + roughness (the single source of truth: the
     # affine fit reads these directly; the Local-Vol workspace has no own knobs).
-    gridXNodes: int = Field(7, ge=3, le=200)  # strike vertices (much larger max now)
-    #: Time vertices: 0 = auto (one vertex per OBSERVED expiry, recommended);
-    #: > 0 caps/subsamples the expiries to that many. Default auto.
-    gridTNodes: int = Field(0, ge=0, le=120)
+    #: Strike-vertex placement: "delta" = the symmetric delta axis (dense near
+    #: ATM, controlled wing reach; the default — fixes the under-resolved put
+    #: wing), "linear" = the legacy uniform-in-x axis. (volfit.api.affine_fit)
+    gridStrikeMode: Literal["delta", "linear"] = "delta"
+    #: Strike vertices. In "delta" mode this is a FLOOR (the delta set ~13 nodes
+    #: drives placement; midpoints are inserted only to reach this many); in
+    #: "linear" mode it is the exact count.
+    gridXNodes: int = Field(12, ge=3, le=200)
+    #: Time vertices (Stage 3 sqrt(T) axis): the base set is always 0 + a node
+    #: before the first expiry + every lit expiry. This is a FLOOR on the number
+    #: of POSITIVE time vertices — the widest sqrt(T) gaps are split until reached
+    #: (never drops an expiry); 0 = the base set only. (volfit.api.affine_fit)
+    gridTNodes: int = Field(10, ge=0, le=120)
     gridRegLambda: float = Field(1e-2, ge=0.0, le=1e4)
     gridRegRho: float = Field(1.0, ge=0.0, le=10.0)  # affine time-vs-strike roughness
+    #: Force the local VOL sigma(x, t) convex in x below the 5Δ-put strike (a soft
+    #: hinge sqrt(W)·relu(-D²sigma) per time row at the deep-put vertices), to stop
+    #: the sparse left wing from fitting too concave. Off ⇒ byte-identical.
+    convexWing: bool = False
+    convexWingWeight: float = Field(1e3, ge=0.0)  # W above; tunable strength
+    #: Front tie (Stage 4): pull the unconstrained t = 0 vertex row toward the
+    #: first (data-identified) row via a soft one-sided difference
+    #: sqrt(W)·(θ[0,:] − θ[1,:]) per strike column, so the free front stops leaking
+    #: into the shortest, most-curved smile. On by default (a mild stabilizer);
+    #: weight 0 / off ⇒ byte-identical. (volfit.models.localvol.affine_calib)
+    frontTie: bool = True
+    frontTieWeight: float = Field(1e-2, ge=0.0)
+    #: Adaptive local-vol CAP: the nodal local vol is bounded at
+    #: max(60%, lvVolCapMult x the highest observed implied vol) — capped at 400%.
+    #: The old fixed 60% cap clamped the deep-put LOCAL vol of high-vol names
+    #: (NVDA), starving the put wing; local variance in the wing runs well above
+    #: implied, so the bound must scale with the name. (volfit.api.affine_fit)
+    lvVolCapMult: float = Field(3.0, ge=1.0, le=20.0)
+    #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
+    #: cell's slope (between the two lowest vertices) — the deep-put local variance
+    #: continues rising toward x = 0 instead of clamping flat. Used as the fixed
+    #: multiple when Convex wing is ON (else flat); when a var-swap quote is set the
+    #: slope becomes a FREE calibration variable (this is its init). The cap does
+    #: not apply in the extrapolation region. (volfit.models.localvol.affine)
+    leftWingSlopeMult: float = Field(1.5, ge=0.0, le=20.0)
     # editable penalty strength (changes calibration output)
     calendarWeight: float = Field(1e6, ge=0.0)
     # graph-solver prior defaults (the Graph SolverPanel seeds from these):

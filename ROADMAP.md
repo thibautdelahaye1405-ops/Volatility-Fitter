@@ -8,7 +8,23 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-17 (resume here)
+## STATUS — updated 2026-06-18 (resume here)
+
+### 🛠 LATEST (2026-06-18) — Local-Vol grid redesign + put-wing fixes (user-confirmed in-app)
+
+The biggest recent thread is a Local-Vol (affine surface) overhaul that fixed bad
+short-dated RMSE and a diverging / under-priced deep put wing on high-vol names
+(NVDA), all detailed in the "Done & verified" log below. In order: **delta-spaced
+strike vertices** (Stage 1), **spacing-aware roughness** (Stage 2), a **convex-wing
+constraint**, a **√T time axis with visible grid hyperparameters** (Stage 3), a
+**short-end front tie** (Stage 4), an **adaptive local-vol cap** (the hard 60% cap
+was starving high-vol put wings — user-confirmed fixed), and **left-wing linear
+extrapolation below x_min** with the slope a free calibration variable when a
+var-swap quote is set (so the LV var-swap matches LQD). All gated, byte-identical
+when off; the note's golden example is untouched. **Still open from this thread:**
+Stage 5 (non-tensor delta bowtie + adjoint gradient for the ~1000-vertex regime)
+and the var-swap-from-parametric toggle (seed the LV var-swap target from the
+prevailing parametric model and auto-fit the wing slope to it).
 
 ### ✅ RESOLVED (2026-06-17/18, user-confirmed in-app) — Backend↔Frontend calibration sync (was TOP PRIORITY)
 
@@ -55,7 +71,119 @@ sits next to the model label.
 
 ---
 
-**Done & verified (537 pytest tests green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+**Done & verified (pytest green incl. 4 perf + 1 live-optional skipped, `git log --oneline` tells the story):**
+
+- **[2026-06-18] Local-Vol fix — left-wing linear extrapolation below x_min
+  (was flat-clamped → var-swap too cheap).** The P1 surface clamped σ(x,t) flat
+  for x below the lowest strike vertex (`affine.basis` clipped to the hull), so
+  the deep-put local variance stopped rising and the model var-swap came in below
+  LQD. Now the left wing continues LINEARLY toward x=0 with slope `a` × the first
+  cell's slope (`AffineVarianceSurface.left_extrap_a`; right wing stays flat, the
+  cap does NOT apply in the extrapolation region — variance rises freely, positive
+  by construction in the put wing). `a` is set by: **var-swap quote present → `a`
+  is a FREE calibration variable** (the deep-put tail steepness is fitted to hit
+  the var-swap, with an analytic dPrice/da PDE sensitivity — `basis_components`
+  splits the basis into flat-base + linear-delta, `precompute_dupire_steps(...,
+  with_left_lin=True)` + `solve_affine_dupire(left_a=, fit_left_a=)` append the
+  da-column, `calibrate_affine(fit_left_a=)` optimises `[θ, a]` jointly);
+  **else convex wing ON → fixed `a` = `leftWingSlopeMult`** (default 1.5, steeper
+  rising wing); **else `a` = 0** (flat, the historical behavior — byte-identical,
+  golden note test untouched). New tunable `OptionsSettings.leftWingSlopeMult`,
+  folded into `affine_key`; Options "Left-wing slope ×" control. 5 new tests
+  (flat/linear/steeper values; analytic da vs finite-difference; free-`a` reduces
+  the var-swap error). ruff + strict-TS green. NB: verify in-app that NVDA's
+  var-swap now matches LQD with a var-swap quote set.
+
+- **[2026-06-18] Local-Vol fix — adaptive local-vol CAP (was a hard 60%).** The
+  affine calibration box-bounded every nodal local vol to [5%, 60%]
+  (`AffineFitRequest.varLo/varHi`), a hard constraint. On a high-vol name (NVDA)
+  the deep-put LOCAL variance must run well above 60% (local vol in the wing is
+  materially higher than implied), so the optimizer clamped and the put wing
+  diverged for Δ<20 — while SPY stayed under the cap and matched LQD perfectly.
+  The cap is now ADAPTIVE (`affine_fit._lv_bounds`): max(60%, `lvVolCapMult` ×
+  the highest observed IV across the surface), capped at a 400% safety ceiling;
+  the 5% floor is unchanged (low-vol names unaffected). New tunable
+  `OptionsSettings.lvVolCapMult` (default 3.0), folded into `affine_key`. The
+  resolved bounds are surfaced in `GridInfo.capVol`/`floorVol` and shown in the
+  Options grid summary ("LV bounds 5%–270%") + an "LV cap ×" control. 4 new tests
+  (`_lv_bounds` scales/floors/ceiling; grid-info cap tracks the multiplier).
+  ruff + strict-TS green. NB: still to verify in-app on NVDA 17-Jul-26 (the deep
+  put wing should now reach).
+
+- **[2026-06-18] Local-Vol grid redesign — Stage 4 (short-end front tie).** The
+  unconstrained `t = 0` vertex row had no quotes and leaked into the shortest,
+  most-curved smile (it enters the Dupire integral over `[0, T₁]`). New soft
+  penalty `sqrt(W)·(θ[0,:] − θ[1,:])` per strike column (`calibrate_affine`
+  `front_tie_weight`) — a one-sided time difference pinning the `t = 0` row to the
+  first (data-identified) row in the τ clock (so events are already handled). Gated
+  by `OptionsSettings.frontTie` / `frontTieWeight`, **on by default** (a mild
+  stabilizer, weight 1e-2); weight 0 / off ⇒ byte-identical (no extra residual
+  rows, golden note test untouched). Folded into `affine_key`. Options UI: "Front
+  tie (t=0 → first row)" toggle + weight. 2 new tests (`test_affine_grid_design.py`:
+  off=byte-identical, the tie shrinks ‖θ₀ − θ₁‖ on a time-varying surface);
+  option-defaults updated. ruff + strict-TS green; affine/options/golden green.
+
+- **[2026-06-18] Local-Vol grid redesign — Stage 3 (sqrt(T) time axis) +
+  visible/consistent grid hyperparameters.** Time vertices are now built by
+  `affine_fit._time_nodes`: the base set is always 0 + a short-end node at the
+  sqrt-T midpoint of [0, T₁] (= T₁/4, decoupling the unconstrained t=0 row from
+  the first, most-curved smile) + every lit expiry; `gridTNodes` (default **10**)
+  is a FLOOR on the positive time vertices — the widest sqrt(T) gaps are split
+  until reached, never dropping an expiry (was: subsample/cap). Applies in both
+  strike modes. The grid build was factored into one shared `_resolve_grid` used
+  by BOTH the fit (`_fit`) and a new read-only `grid_info` / `GET /fit/affine/
+  {ticker}/grid-info` (`GridInfo` schema), so the Options panel shows the ACTUAL
+  resolved grid ("Resolved grid for SPY: 11×13 = 143 vertices (delta, N convex-
+  wing) · 9 expiries", with an "Apply to refresh" hint while edits are pending) —
+  the hyperparameters are now visible and provably consistent with what the fit
+  builds. Options UI relabel: "Time nodes (floor; 0 = per expiry)". 5 new tests
+  (`test_affine_grid_design.py` ×2 time-axis base/floor; `test_api_affine.py` ×2
+  grid-info matches fit / tracks options; option-defaults updated). ruff +
+  strict-TS green; affine/options/workflow/priors suite (68) green.
+
+- **[2026-06-18] Local-Vol grid redesign — Stage 1 (delta-spaced strikes) +
+  Stage 2 (spacing-aware roughness) + convex-wing constraint.** Fixes the two
+  reported LV symptoms (left wing too concave; short-dated RMSE) at the vertex
+  level. (1) **Delta strike axis** (`OptionsSettings.gridStrikeMode`, default
+  `"delta"`): `affine_fit._delta_strike_nodes` places strike vertices at the
+  symmetric `{1,2,5,10,25,40,50}Δ` set on a standardized-moneyness axis
+  `k = ±σ*·√T*·Φ⁻¹(Δ)` (σ* = the longest expiry's ATM vol, T* = max lit tau),
+  clipped to the OBSERVED `[k_lo,k_hi]` with `x=1` forced in — dense near ATM,
+  controlled wing reach. `gridXNodes` becomes a FLOOR (default 12; midpoints
+  inserted only to reach it); `"linear"` keeps the legacy uniform-in-x axis.
+  (2) **Spacing-aware roughness** (`affine_calib.second_difference_rows_spacing`
+  via the cell-width-normalized `_d2_coeffs`): the roughness operator now uses
+  the REAL vertex positions (true curvature, exact for quadratics) instead of
+  the index-space `(1,-2,1)` which over-smoothed the widely-spaced wings; reduces
+  EXACTLY to the legacy stencil on a uniform grid, so the note's golden example
+  is byte-identical (`calibrate_affine` falls back to the index form when
+  `reg_nodes` is None). (3) **Convex-wing constraint**
+  (`OptionsSettings.convexWing` / `convexWingWeight`, off by default): a soft
+  hinge `√W·relu(−D²σ)` per time row penalizing concavity of the VOL row in x at
+  the vertices at/left of the 5Δ-put strike (`wing_convexity_stencils`, analytic
+  subgradient Jacobian); byte-identical when off (no extra residual rows). All
+  three fold into `affine_key` so a change re-fits. Var-swap wiring in the affine
+  path AUDITED and confirmed correct (gated by `varSwapEnabled`/`varSwapWeightPct`,
+  uses the tau clock consistently with the parametric `service.varswap_target`,
+  surfaces the model level, includes var-swap-only expiries) — locked with a
+  regression test. Options UI: "Delta strike axis" + "Convex wing (< 5Δ)" toggles
+  + weight, "Strike nodes (floor)" relabel. 10 new tests (`test_affine_grid_
+  design.py` ×8: uniform-grid equivalence, exact-curvature on non-uniform grid,
+  stencil math, off=byte-identical, penalty convexifies a concave wing;
+  `test_api_affine.py` ×2: delta axis dense-near-ATM, var-swap pull) + the two
+  grid-semantics tests updated. ruff + strict-TS build green.
+
+  **Still to do (deferred from this redesign — the user's point 5):**
+  * **Stage 5 — non-tensor delta bowtie + adjoint gradient.** Place true
+    per-maturity delta vertices (a fanning point cloud, Delaunay-triangulated —
+    the model already supports it) and switch the gradient to the note's adjoint
+    (eq. (adjoint_grad), O(1) in vertex count) to make the max-vertex ceiling
+    (~1000) tractable. Touches `second_difference_rows*`, the basis modes,
+    transport, prior snapshots and the frontend tensor assumptions — large.
+  * **Var-swap → parametric toggle.** A switch that seeds each node's default
+    var-swap level from the prevailing PARAMETRIC model's fair variance and
+    forces the LV surface to calibrate to it (so LV var-swaps inherit the
+    parametric view unless overridden).
 
 - **[2026-06-18] RMS error refined: calibration-consistent + smile AND surface,
   shown the same way in both workspaces.** New `volfit/calib/rms.py`

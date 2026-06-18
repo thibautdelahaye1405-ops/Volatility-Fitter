@@ -14,10 +14,15 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from volfit.api.affine_fit import affine_payload, optimal_grid_size
+from volfit.api.affine_fit import affine_payload, grid_info, optimal_grid_size
 from volfit.api.affine_views import affine_density, affine_table, affine_term
 from volfit.api.schemas import DensityResponse, TableResponse, TermStructureResponse
-from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, OptimalGridSize
+from volfit.api.schemas_affine import (
+    AffineFitRequest,
+    AffineFitResponse,
+    GridInfo,
+    OptimalGridSize,
+)
 from volfit.api.state import UnknownNodeError
 
 router = APIRouter()
@@ -31,6 +36,15 @@ def _body(body: AffineFitRequest | None) -> AffineFitRequest:
 def affine_optimal_size(ticker: str, request: Request) -> OptimalGridSize:
     try:
         return optimal_grid_size(request.app.state.volfit, ticker)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.get("/fit/affine/{ticker}/grid-info", response_model=GridInfo)
+def affine_grid_info(ticker: str, request: Request) -> GridInfo:
+    """The actual vertex grid the current Options produce (for the Options panel)."""
+    try:
+        return grid_info(request.app.state.volfit, ticker)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

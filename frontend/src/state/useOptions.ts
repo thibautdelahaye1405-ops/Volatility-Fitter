@@ -36,10 +36,23 @@ export interface OptionsSettings {
   /** Per-side delta-locations the prior anchor pins (forward deltas in (0,0.5));
    *  ATM is always added, var-swap prior carries the tail below the smallest. */
   priorAnchorDeltas: number[];
+  /** Strike-vertex placement: "delta" (dense near ATM, the default) or legacy
+   *  "linear" uniform-in-x. */
+  gridStrikeMode: "delta" | "linear";
   gridXNodes: number;
   gridTNodes: number;
   gridRegLambda: number;
   gridRegRho: number;
+  /** Force local vol sigma(x,t) convex in x below the 5Δ-put strike (soft hinge). */
+  convexWing: boolean;
+  convexWingWeight: number;
+  /** Pull the t=0 local-vol row toward the first calibrated row (short-end fix). */
+  frontTie: boolean;
+  frontTieWeight: number;
+  /** Adaptive local-vol cap = max(60%, lvVolCapMult x highest observed IV). */
+  lvVolCapMult: number;
+  /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
+  leftWingSlopeMult: number;
   calendarWeight: number;
   graphKappaScale: number;
   graphEtaScale: number;
@@ -68,10 +81,17 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   autoLoadPrior: false,
   priorAnchorWeightPct: 50.0,
   priorAnchorDeltas: [0.02, 0.05, 0.1, 0.25, 0.4],
-  gridXNodes: 7,
-  gridTNodes: 0,
+  gridStrikeMode: "delta",
+  gridXNodes: 12,
+  gridTNodes: 10,
   gridRegLambda: 1e-2,
   gridRegRho: 1.0,
+  convexWing: false,
+  convexWingWeight: 1e3,
+  frontTie: true,
+  frontTieWeight: 1e-2,
+  lvVolCapMult: 3.0,
+  leftWingSlopeMult: 1.5,
   calendarWeight: 1e6,
   graphKappaScale: 1.0,
   graphEtaScale: 1.0,

@@ -9,10 +9,11 @@ LQD smiles. Pipeline:
   1. gather every expiry's edited prepared quotes (the same masked/amended set
      the LQD fit uses), convert mid implied vols to normalized forward call
      prices and vega-scaled tolerances (so the LSQ is ~vol-error weighted);
-  2. build a tensor vertex grid (0 + a spread of listed expiries, by a strike
-     grid spanning the quoted range with the ATM node x = 1 forced in) and the
-     fine PDE x/t grids (t hits every quoted expiry exactly, as the note's
-     forward Dupire march requires);
+  2. build a tensor vertex grid (0 + a spread of listed expiries; strikes on the
+     symmetric DELTA axis x = exp(±sigma*sqrt(T*)Phi^-1(delta)) clipped to the
+     traded range with the ATM node x = 1 forced in — gridStrikeMode "linear"
+     keeps the legacy uniform-in-x axis) and the fine PDE x/t grids (t hits every
+     quoted expiry exactly, as the note's forward Dupire march requires);
   3. calibrate the nodal local variances (bound-constrained, second-difference
      roughness), then reconstruct each expiry's arbitrage-free smile by
      inverting the Dupire PDE call prices through the Black formula.
@@ -25,6 +26,7 @@ on an actual fit request, never on the smile hot path.
 from __future__ import annotations
 
 import numpy as np
+from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantile)
 
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
@@ -87,6 +89,37 @@ _K_PAD = 0.02
 _CACHE_ATTR = "_affine_cache"  # AppState attribute, added lazily here
 
 
+#: Per-side delta locations for the delta-spaced strike axis (50Δ = ATM). The
+#: deep 1/2Δ nodes are usually clipped to the traded range; they only survive
+#: for names quoted that far out (where the convex-wing constraint can then bite).
+_DELTA_SET = (0.01, 0.02, 0.05, 0.10, 0.25, 0.40, 0.50)
+#: The delta defining the 'convex vol below ...Δ' wing region.
+_CONVEX_WING_DELTA = 0.05
+#: Absolute ceiling on the adaptive nodal local-vol cap (variance) = (400% vol)²;
+#: a safety bound for extreme names, not a real fit cap.
+_LV_VAR_CEILING = 16.0
+#: Upper bound on the free left-wing slope multiple ``a`` (× the first-cell slope).
+_LEFT_A_MAX = 20.0
+
+
+def _lv_bounds(rows, opts, var_lo_req: float, var_hi_req: float) -> tuple[float, float]:
+    """Nodal local-VARIANCE box bounds for the calibration.
+
+    The fixed request cap (60% vol) clamps the deep-put LOCAL vol of high-vol
+    names (e.g. NVDA), starving the put wing — local variance in the wing runs
+    well above implied. The cap is therefore ADAPTIVE: at least the request cap,
+    and at least ``lvVolCapMult`` x the highest observed implied vol across the
+    surface, capped at ``_LV_VAR_CEILING`` (400% vol). The floor stays at the
+    request value (a low-vol name is unaffected). Returns ``(var_lo, var_hi)``.
+    """
+    all_iv = np.concatenate(
+        [np.sqrt(np.maximum(w, 1e-12) / t) for _, t, _, w, _, _ in rows]
+    )
+    sigma_max = float(all_iv.max())
+    cap_vol = max(float(np.sqrt(var_hi_req)), float(opts.lvVolCapMult) * sigma_max)
+    return float(var_lo_req), float(min(cap_vol * cap_vol, _LV_VAR_CEILING))
+
+
 def _pick_spread(values: np.ndarray, n: int) -> np.ndarray:
     """``n`` roughly-even entries of a sorted array, always incl. both ends."""
     values = np.asarray(values, dtype=float)
@@ -96,25 +129,116 @@ def _pick_spread(values: np.ndarray, n: int) -> np.ndarray:
     return values[idx]
 
 
-def _vertex_grid(
-    expiries: np.ndarray, x_lo_vertex: float, k_hi: float, n_t_cap: int, n_x: int
-) -> tuple[np.ndarray, np.ndarray]:
-    """Tensor vertex set (note convention): time vertices at the OBSERVED expiries
-    (0 + each), strikes from ``x_lo_vertex`` to the top observed strike incl. x = 1.
+def _time_nodes(expiries: np.ndarray, n_t_floor: int) -> np.ndarray:
+    """Time vertices (Stage 3): 0 + a short-end node before the first expiry +
+    every listed lit expiry, densified in sqrt(T) up to a floor count.
 
-    ``n_t_cap`` <= 0 places one time vertex per observed expiry (the recommended
-    data-driven default); > 0 subsamples the expiries to that many. ``x_lo_vertex``
-    is the lowest strike vertex, placed by the caller strictly between the lowest
-    and second-lowest observed strike so no vertex sits below the data.
+    The base set always carries a knee at each observed expiry (where the data
+    constrains the surface) plus one node at the sqrt-T midpoint between 0 and the
+    first expiry (= T1/4) — this resolves the steep short-end term structure and
+    decouples the unconstrained t = 0 row from the first, most-curved smile.
+    ``n_t_floor`` > 0 is a FLOOR on the number of POSITIVE time vertices: the
+    widest sqrt(T) gaps are split (one midpoint at a time) until at least that
+    many exist, giving "some sqrt(T) density up to the last expiry"; it NEVER
+    drops an expiry. ``n_t_floor`` <= 0 yields just the base set.
     """
-    if n_t_cap and n_t_cap >= 1:
-        picked = _pick_spread(expiries, max(1, n_t_cap - 1))
-    else:
-        picked = expiries  # auto: one vertex per observed expiry
-    t_nodes = np.unique(np.concatenate([[0.0], picked]))
+    exps = np.unique(np.asarray(expiries, dtype=float))
+    exps = exps[exps > 0.0]
+    if exps.size == 0:
+        return np.array([0.0])
+    pre = 0.25 * float(exps[0])  # sqrt-T midpoint of [0, T1]: ((0 + sqrt(T1)) / 2)^2
+    nodes = np.unique(np.concatenate([[pre], exps]))
+    floor = int(n_t_floor)
+    while nodes.size < floor and nodes.size < 500:  # split the widest sqrt(T) gap
+        s = np.sqrt(nodes)
+        i = int(np.argmax(np.diff(s)))
+        mid = (0.5 * (s[i] + s[i + 1])) ** 2
+        nodes = np.unique(np.concatenate([nodes, [mid]]))
+    return np.unique(np.concatenate([[0.0], nodes]))
+
+
+def _axis_scale(rows) -> tuple[float, float]:
+    """(sigma_star, t_star) sizing the standardized-moneyness strike axis: the
+    ATM vol of the LONGEST-dated row (the widest smile sets the axis reach) and
+    the max event-variance maturity tau across the lit expiries."""
+    t_star = max(t for _, t, _, _, _, _ in rows)
+    sigma_star = 0.20
+    for _, t, k, w, _, _ in rows:
+        if t == t_star and t > 0.0:
+            order = np.argsort(k)
+            w_atm = float(np.interp(0.0, k[order], np.asarray(w)[order]))
+            sigma_star = float(np.sqrt(max(w_atm, 1e-8) / t))
+            break
+    return sigma_star, float(t_star)
+
+
+def _delta_strike_nodes(
+    sigma_star: float, t_star: float, k_lo_obs: float, k_hi_obs: float, n_floor: int
+) -> np.ndarray:
+    """Strike vertices x = K/F on the symmetric delta axis, clipped to the data.
+
+    Each delta d maps to a standardized log-moneyness k = ±sigma*·sqrt(T*)·Φ⁻¹(d)
+    (put side k <= 0, call side k >= 0; 50Δ -> ATM), giving dense near-ATM nodes
+    that reach the wings at controlled deltas. The set is clipped to the OBSERVED
+    [k_lo, k_hi] (no vertex past the data — the note: wings beyond quotes are set
+    by regularization, not vertices) with x = 1 forced in. ``n_floor``
+    (gridXNodes) is a minimum: midpoints are inserted until at least that many
+    strike vertices exist.
+    """
+    scale = max(sigma_star * np.sqrt(max(t_star, 1e-8)), 1e-6)
+    ks = [0.0]
+    for d in _DELTA_SET:
+        q = float(ndtri(d))  # <= 0 for d <= 0.5, exactly 0 at 0.5
+        ks.append(scale * q)  # put side (k <= 0)
+        ks.append(-scale * q)  # call side (k >= 0)
+    k = np.unique(np.clip(np.array(ks), k_lo_obs, k_hi_obs))
+    while k.size < max(int(n_floor), 2):  # densify to the floor by midpoint refine
+        k = np.unique(np.concatenate([k, 0.5 * (k[:-1] + k[1:])]))
+    return np.unique(np.concatenate([np.exp(k), [1.0]]))
+
+
+def _vertex_grid(
+    expiries: np.ndarray, x_lo_vertex: float, k_hi: float, n_t_floor: int, n_x: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Legacy LINEAR-in-x tensor vertex set (gridStrikeMode == "linear").
+
+    Strikes uniformly spaced in x from ``x_lo_vertex`` to the top observed strike,
+    incl. x = 1 (kept for reproducibility; the delta-spaced axis is the default);
+    time vertices use the shared sqrt(T) axis (_time_nodes), so the Stage-3 time
+    improvement applies in both strike modes.
+    """
+    t_nodes = _time_nodes(expiries, n_t_floor)
     x_hi = float(np.exp(k_hi))
     x_nodes = np.unique(np.concatenate([np.linspace(x_lo_vertex, x_hi, n_x), [1.0]]))
     return t_nodes, x_nodes
+
+
+def _resolve_grid(rows, opts):
+    """The vertex grid + PDE x_max + convex-wing columns for the CURRENT options.
+
+    Single source of truth shared by the calibration (``_fit``) and the read-only
+    grid summary (``grid_info``), so the Options panel always reports exactly the
+    grid the fit will build. Returns ``(t_nodes, x_nodes, k_hi, convex_cols)``.
+    """
+    expiries = np.array([t for _, t, _, _, _, _ in rows])
+    all_k = np.sort(np.concatenate([k for _, _, k, _, _, _ in rows]))
+    k_lo_obs, k_hi = float(all_k[0]), float(all_k[-1])
+    sigma_star, t_star = _axis_scale(rows)  # sizes the delta axis + the 5Δ boundary
+
+    if opts.gridStrikeMode == "delta":
+        t_nodes = _time_nodes(expiries, opts.gridTNodes)
+        x_nodes = _delta_strike_nodes(sigma_star, t_star, k_lo_obs, k_hi, opts.gridXNodes)
+    else:  # legacy linear-in-x
+        x_lo_vertex, k_hi = _lowest_vertex_x(rows)
+        t_nodes, x_nodes = _vertex_grid(
+            expiries, x_lo_vertex, k_hi, opts.gridTNodes, opts.gridXNodes
+        )
+
+    convex_cols = None
+    if opts.convexWing:
+        k_wing = sigma_star * np.sqrt(max(t_star, 1e-8)) * float(ndtri(_CONVEX_WING_DELTA))
+        convex_cols = np.flatnonzero(x_nodes <= np.exp(k_wing) * (1.0 + 1e-9))
+    return t_nodes, x_nodes, k_hi, convex_cols
 
 
 def _lowest_vertex_x(rows) -> tuple[float, float]:
@@ -457,21 +581,30 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         raise ValueError("affine surface fit needs at least two expiries with quotes")
     opts = state.options()  # grid size + roughness are global hyperparameters now
     expiries = np.array([t for _, t, _, _, _, _ in rows])
-    x_lo_vertex, k_hi = _lowest_vertex_x(rows)
-
-    t_nodes, x_nodes = _vertex_grid(expiries, x_lo_vertex, k_hi, opts.gridTNodes, opts.gridXNodes)
+    t_nodes, x_nodes, k_hi, convex_cols = _resolve_grid(rows, opts)
     x_grid, t_grid = _pde_grids(expiries, k_hi)
 
     options = _option_quotes(rows, state.fit_settings().weightScheme)
     prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
     options = options + prior_opts
+    # Adaptive local-vol box bounds: the cap scales with the name's observed IV
+    # (the fixed 60% cap starved high-vol put wings); floor stays at the request.
+    var_lo, var_hi = _lv_bounds(rows, opts, request.varLo, request.varHi)
+    varswaps = _varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme) + prior_vs
+    # Left-wing (x < x_min) linear extrapolation slope multiple ``a``:
+    #  - var-swap present  -> ``a`` is a FREE calibration variable (the deep-put
+    #    tail steepness is set to hit the var-swap), init = leftWingSlopeMult;
+    #  - else convex wing  -> fixed a = leftWingSlopeMult (steeper rising wing);
+    #  - else              -> a = 0 (flat clamp, the historical behavior).
+    fit_left_a = len(varswaps) > 0
+    a_init = opts.leftWingSlopeMult if (opts.convexWing or fit_left_a) else 0.0
     # Flat initial guess: the median quoted local variance (= vol^2), clipped.
     all_var = np.concatenate([np.maximum(w, 1e-12) / t for _, t, _, w, _, _ in rows])
-    var0 = float(np.clip(np.median(all_var), request.varLo, request.varHi))
+    var0 = float(np.clip(np.median(all_var), var_lo, var_hi))
     surface0 = AffineVarianceSurface(
-        t_nodes=t_nodes, x_nodes=x_nodes, theta=np.full((t_nodes.size, x_nodes.size), var0)
+        t_nodes=t_nodes, x_nodes=x_nodes,
+        theta=np.full((t_nodes.size, x_nodes.size), var0), left_extrap_a=a_init,
     )
-    varswaps = _varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme) + prior_vs
     cal = calibrate_affine(
         surface0,
         options,
@@ -479,9 +612,15 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         t_grid,
         varswaps=varswaps,
         varswap_k_lo=_VARSWAP_K_LO,
-        bounds=(request.varLo, request.varHi),
+        bounds=(var_lo, var_hi),
         reg_lambda=opts.gridRegLambda,
         reg_rho=opts.gridRegRho,
+        reg_nodes=(t_nodes, x_nodes),  # spacing-aware roughness on the real grid
+        convex_cols=convex_cols,
+        convex_weight=opts.convexWingWeight if opts.convexWing else 0.0,
+        front_tie_weight=opts.frontTieWeight if opts.frontTie else 0.0,
+        fit_left_a=fit_left_a,
+        left_a_bounds=(0.0, _LEFT_A_MAX),
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
     )
 
@@ -570,6 +709,38 @@ def optimal_grid_size(state: AppState, ticker: str, fit_mode: str = "mid"):
     return OptimalGridSize(gridXNodes=n_x, gridTNodes=0, nQuotes=n_quotes, nExpiries=n_exp)
 
 
+def grid_info(state: AppState, ticker: str, fit_mode: str = "mid"):
+    """The ACTUAL vertex grid the current Options produce for ``ticker``.
+
+    Builds the same ``_resolve_grid`` the fit uses (so the Options panel reports
+    exactly what will be calibrated, honouring the floor / delta / convex-wing
+    semantics), without running the heavy LSQ. Empty (zeros) when the ticker has
+    fewer than two quotable expiries."""
+    from volfit.api.schemas_affine import GridInfo
+
+    opts = state.options()
+    req = AffineFitRequest()
+    rows = _gather(state, ticker, fit_mode)  # raises UnknownNodeError on bad ticker
+    if len(rows) < 2:
+        return GridInfo(
+            nTNodes=0, nXNodes=0, nVertices=0, convexWingNodes=0,
+            strikeMode=opts.gridStrikeMode, nExpiries=len(rows),
+            capVol=0.0, floorVol=0.0,
+        )
+    t_nodes, x_nodes, _, convex_cols = _resolve_grid(rows, opts)
+    var_lo, var_hi = _lv_bounds(rows, opts, req.varLo, req.varHi)
+    return GridInfo(
+        nTNodes=int(t_nodes.size),
+        nXNodes=int(x_nodes.size),
+        nVertices=int(t_nodes.size * x_nodes.size),
+        convexWingNodes=int(0 if convex_cols is None else convex_cols.size),
+        strikeMode=opts.gridStrikeMode,
+        nExpiries=len(rows),
+        capVol=float(np.sqrt(var_hi)),
+        floorVol=float(np.sqrt(var_lo)),
+    )
+
+
 def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple:
     """Affine surface cache key (no spot shift — that is transported on read).
 
@@ -594,6 +765,8 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         state.data_version(ticker),
         state.active_prior_version(ticker),  # a fetched prior re-anchors the LV fit
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
+        opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
+        opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
         request.model_dump_json(),
     )
 
