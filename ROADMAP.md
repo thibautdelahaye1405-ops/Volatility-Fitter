@@ -10,6 +10,71 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-19 (resume here)
 
+### 🚀 STRUCTURAL PERF BACKLOG (added 2026-06-19, prioritized) — DO THESE NEXT
+
+From an end-to-end perf review (two agents: data/architecture + calibration
+compute). The localized **quick wins are already SHIPPED** on branch
+`perf/quick-wins` (commits "perf(batch A)" + "perf(batch B)"): pooled provider
+HTTP, concurrent multi-ticker fetch, SQLite open fast-path, leaner frontend
+polling (idle backoff + tab-hidden pause + `useSurface` request coalescing +
+stable density-refetch key); looser LQD trf tolerances (1e-15→1e-10),
+deterministic warm-start of the independent surface sweep, and a version-keyed
+prepared-(de-Am'd)-quotes cache. The **structural items below remain** (graph
+sparse-linalg deliberately excluded for now). Ordered by expected wall-clock /
+effort. The numbers tracked: a ~533-vertex affine LV fit ~86 s; LQD12 slice ~35 ms;
+graph 1k-node ~700 ms.
+
+1. **Sparse Gauss-Newton for the piecewise-affine LV surface** — *the single
+   heaviest path in the app* (~86 s @ 533 vertices, hits the 200-eval cap). The
+   roughness / convex / front-tie Jacobian blocks are 3-nnz/row but stored dense
+   and `np.vstack`'d (`models/localvol/affine_calib.py:425,441,443`), and trf's
+   trust-region does a **dense SVD on an (n_res × ~1000) Jacobian**. Reformulate as
+   Gauss-Newton on the **sparse-assembled** normal equations (`scipy.sparse` /
+   `lsqr` — distinct from the rejected `tr_solver='lsmr'`), keeping the small dense
+   data block. Target: 86 s → seconds. This is ROADMAP Stage 5 (non-tensor delta
+   bowtie + adjoint gradient). **See the full implementation plan in
+   `Docs/localvol_calibration_perf_note.md`** (written 2026-06-19, one-liners →
+   structural rewrites, with file:line).
+
+2. **Analytic Jacobian for the LQD slice fit** — the dominant LQD cost is the
+   (P+1)-eval **finite-difference** Jacobian over `build_slice`'s 2001-node Simpson
+   quadrature (`models/lqd/calibrate.py:221`, no `jac=`). `dQ/dz=e^g` and `dA/dz`
+   are exact and **linear in `a` through the Legendre basis**, so `dC/dθ` can be
+   propagated analytically in one quadrature pass (the affine surface already does
+   exactly this). Expect ~3–8× on the slice fit; pass `jac=` to `least_squares`.
+
+3. **Per-ticker version counters + per-(ticker,expiry) chain cache.**
+   `forwards_version` / `events_version` / `settings_version` are **global**
+   (`api/state.py`), so one market-setting / event-calendar edit invalidates EVERY
+   ticker's fits — worst case ~100 tickers × ~10 expiries = 1000 forced refits.
+   Scope them per-ticker where semantically valid. Separately, the chain cache is
+   **per-ticker** (`state._snapshots`), so changing one expiry re-pulls the whole
+   ladder — move to per-(ticker, expiry) (pairs with Massive's per-expiry
+   pagination). Biggest cache-efficiency win at large universes.
+
+4. **WebSocket/SSE push for `{epoch, spotVersion}`** replacing the status poll +
+   N-view refetch fan-out. The 500ms/3s `Promise.all` poll (`useWorkflow.ts`) plus
+   `refreshViews()` (one GET per mounted view on every epoch/spot tick) is the
+   dominant steady-state request source. A single server push lets the client
+   refetch only what changed. WS infra already exists for the live book
+   (`data/massive_ws.py`).
+
+5. **Slim + incrementalize payloads.** `/surface`, `/fit/affine`,
+   `/smiles/{t}/densities` send dense full meshes on every refetch. Add Starlette
+   `GZipMiddleware` (dense float arrays compress well), downsample curve arrays to
+   viewport resolution, and/or return per-expiry deltas. Med-high on payload +
+   client JSON parse.
+
+6. **Columnar history (DuckDB/Parquet)** for snapshots/quotes — already on the
+   Phase 9 list. The row-per-quote SQLite `quotes` table is fine for capture but
+   poor for historical scans / as-of replay / prior-ladder reads; Parquet makes
+   those far cheaper.
+
+> (Graph sparse linear algebra — the two dense O(N³) inversions per coordinate in
+> `graph/prior.py:67,72`, autotune O(7·n_obs·N³) — was identified but EXCLUDED from
+> this backlog per the request. Revisit when the graph solver becomes a bottleneck.)
+
+
 ### 🛠 LATEST (2026-06-19) — Data-source reach + trigger-gated workflow + prior/UX fixes
 
 A data-layer + workflow session. Headlines:
