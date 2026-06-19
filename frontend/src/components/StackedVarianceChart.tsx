@@ -5,9 +5,8 @@
 // curves ⟺ no calendar arbitrage — the exact statement (raw σ smiles can cross
 // even when arbitrage-free, so total variance is the right y-axis). Self-
 // fetching like SurfaceChart; refetches on node / fit-mode change.
-import { useEffect, useState } from "react";
-import { api } from "../state/api";
 import type { FitMode } from "../state/useSmile";
+import { useSurface } from "../state/useSurface";
 import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
 import type { OverlaySeries } from "./OverlayCurvesChart";
 import { useExpiryFormat } from "../state/expiryFormat";
@@ -19,18 +18,6 @@ import {
   makeVolAt,
 } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
-
-/** Response of GET /surface/{ticker} (backend SurfaceResponse). */
-interface SurfaceResponse {
-  ticker: string;
-  expiries: string[];
-  t: number[];
-  tau: number[]; // event-variance years the mesh vols are quoted in (= t with no events)
-  k: number[];
-  vol: number[][]; // one row per expiry, one column per k (sqrt(w / tau))
-  forward: number[]; // active forward per expiry (for strike / %ATM axes)
-  atmVol: number[]; // ATM vol per expiry (for the normalized / delta axes)
-}
 
 const message = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
@@ -52,32 +39,7 @@ export default function StackedVarianceChart({
   axisMode = "logmoneyness",
 }: Props) {
   const { format } = useExpiryFormat();
-  const [data, setData] = useState<SurfaceResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (ticker === "") return;
-    const controller = new AbortController();
-    setLoading(true);
-    api
-      .get<SurfaceResponse>(`/surface/${ticker}`, {
-        params: { fit_mode: fitMode },
-        signal: controller.signal,
-      })
-      .then((d) => {
-        setData(d);
-        setError(null);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
-        setData(null);
-        setLoading(false);
-        setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => controller.abort();
-  }, [ticker, fitMode, reloadKey]);
+  const { data, loading, error } = useSurface(ticker, fitMode, reloadKey);
 
   if (data === null) {
     return loading

@@ -73,7 +73,11 @@ export interface PriorStatus {
  *  status-bar narration keeps up with what it's doing) and a relaxed one when
  *  idle (just the auto-fetch countdown / stale accounting). */
 const POLL_ACTIVE_MS = 500;
-const POLL_IDLE_MS = 1500;
+const POLL_IDLE_MS = 3000;
+/** When the tab is hidden the user can't see any status, so we all but stop
+ *  polling (a slow heartbeat keeps the connection warm); becoming visible again
+ *  triggers an immediate poll via the visibilitychange listener below. */
+const POLL_HIDDEN_MS = 15000;
 
 /** Which manual action is currently in flight (drives the per-button gauge). */
 export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors" | "fetchPriors";
@@ -154,21 +158,31 @@ export function useWorkflow(
     if (!live) return;
     let timer = 0;
     let stopped = false;
+    const hidden = () => typeof document !== "undefined" && document.hidden;
+    const nextDelay = () =>
+      hidden() ? POLL_HIDDEN_MS : activeRef.current ? POLL_ACTIVE_MS : POLL_IDLE_MS;
     // Self-rescheduling loop so the cadence can follow the engine: brisk while it
-    // works, relaxed when idle. (setInterval can't change its own period.)
+    // works, relaxed when idle, all but paused when the tab is hidden.
+    // (setInterval can't change its own period.)
     const tick = async () => {
-      await poll();
+      if (!hidden()) await poll(); // no point hitting the backend for an unseen UI
       if (stopped) return;
-      timer = window.setTimeout(
-        () => void tick(),
-        activeRef.current ? POLL_ACTIVE_MS : POLL_IDLE_MS,
-      );
+      timer = window.setTimeout(() => void tick(), nextDelay());
+    };
+    // Coming back to a visible tab: poll right away so the status is fresh.
+    const onVisible = () => {
+      if (!hidden() && !stopped) {
+        window.clearTimeout(timer);
+        void tick();
+      }
     };
     void tick();
     void refreshPriors(); // saved-prior availability (not in the hot poll loop)
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;
       window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [live, poll, refreshPriors]);
 

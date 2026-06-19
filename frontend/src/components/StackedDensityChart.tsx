@@ -53,6 +53,15 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Refetch only when the surface fit actually changes, not on every new `smile`
+  // object identity. The whole-surface RMS moves whenever ANY expiry refits, the
+  // forward moves on a spot transport, and stale/hasFit flip on calibration — so
+  // this stable key triggers exactly the density-relevant updates while skipping
+  // the dense all-expiry payload on unrelated re-renders / quote-edit churn.
+  const fitKey = smile
+    ? `${smile.surfaceRmsError ?? ""}|${smile.forward}|${smile.stale ? 1 : 0}|${smile.hasFit ? 1 : 0}`
+    : "none";
+
   useEffect(() => {
     if (ticker === "") return;
     const controller = new AbortController();
@@ -74,7 +83,7 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
         setError(err instanceof Error ? err.message : String(err));
       });
     return () => controller.abort();
-  }, [ticker, fitMode, smile]);
+  }, [ticker, fitMode, fitKey]);
 
   if (data === null) {
     return loading

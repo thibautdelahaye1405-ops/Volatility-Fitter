@@ -2,19 +2,10 @@
 // GET /surface/{ticker} lazily (mounted only while the Surface view is open)
 // and renders the (k, sqrt(T), σ) mesh via the shared SurfaceMesh renderer.
 // Live backend only (the parent gates mock mode).
-import { useEffect, useState } from "react";
-import { api } from "../state/api";
 import type { FitMode } from "../state/useSmile";
+import { useSurface } from "../state/useSurface";
 import SurfaceMesh from "./SurfaceMesh";
-import type { SurfaceMeshData } from "./SurfaceMesh";
 import type { AxisMode } from "../lib/axisModes";
-
-/** Response of GET /surface/{ticker} (adds atmVol/forward beyond the mesh). */
-interface SurfaceResponse extends SurfaceMeshData {
-  ticker: string;
-  atmVol: number[];
-  forward: number[];
-}
 
 interface SurfaceChartProps {
   ticker: string;
@@ -35,32 +26,7 @@ export default function SurfaceChart({
   reloadKey = 0,
   axisMode = "logmoneyness",
 }: SurfaceChartProps) {
-  const [data, setData] = useState<SurfaceResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (ticker === "") return;
-    const controller = new AbortController();
-    setLoading(true);
-    setError(null);
-    api
-      .get<SurfaceResponse>(`/surface/${ticker}`, {
-        params: { fit_mode: fitMode },
-        signal: controller.signal,
-      })
-      .then((d) => {
-        setData(d);
-        setLoading(false);
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return; // superseded or unmounted
-        setData(null);
-        setLoading(false);
-        setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => controller.abort();
-  }, [ticker, fitMode, reloadKey]);
+  const { data, loading, error } = useSurface(ticker, fitMode, reloadKey);
 
   if (data === null) {
     return loading

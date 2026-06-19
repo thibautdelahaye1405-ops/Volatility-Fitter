@@ -145,6 +145,11 @@ class VolStore:
         v3 -> v4: the `prior_snapshots` table is added (full calibration
         snapshots for the prior framework) — again a brand-new table, so the
         `CREATE TABLE IF NOT EXISTS` is the whole migration.
+
+        Fast path: a store is opened on *every* capture/persist/load, so once the
+        file is already at `SCHEMA_VERSION` we return immediately — skipping the
+        DDL `executescript` and the `PRAGMA user_version` write that otherwise ran
+        (and committed) on the request thread at every open.
         """
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         if version > SCHEMA_VERSION:
@@ -152,6 +157,8 @@ class VolStore:
                 f"{self.path} has schema version {version}, "
                 f"newer than supported {SCHEMA_VERSION}"
             )
+        if version == SCHEMA_VERSION:
+            return  # already current — no DDL / no write on this open
         self.conn.executescript(_SCHEMA)
         if version == 1:  # existing v1 file: CREATE IF NOT EXISTS didn't touch it
             self.conn.execute(

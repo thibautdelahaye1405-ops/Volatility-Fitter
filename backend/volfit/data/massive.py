@@ -100,6 +100,12 @@ class MassiveProvider(OptionChainProvider):
         self.base_url = base_url.rstrip("/")
         self.max_days = max_days
         self._http_get = http_get
+        #: Lazily-built pooled httpx.Client reused for the process lifetime, so
+        #: the paginated O(pages) GETs of one chain fetch — and every repeat
+        #: fetch / spot poll — share keep-alive connections instead of paying a
+        #: fresh TCP + TLS handshake per call. Bypassed entirely when ``http_get``
+        #: is injected (offline tests). See ``_client``.
+        self._http_client = None
         #: Optional explicit real-time WS cluster override (env
         #: VOLFIT_MASSIVE_WS_URL via serve.py). When unset the cluster is derived
         #: from the REST host, with the delayed cluster as an auto-fallback —
@@ -172,19 +178,29 @@ class MassiveProvider(OptionChainProvider):
 
     # -- HTTP plumbing -------------------------------------------------------
 
+    def _client(self):
+        """The pooled httpx.Client (built on first use), carrying the Bearer auth
+        and default timeout so every ``_get`` reuses keep-alive connections."""
+        if self._http_client is None:
+            import httpx
+
+            self._http_client = httpx.Client(
+                headers={"Authorization": f"Bearer {self.api_key}"},
+                timeout=15.0,
+            )
+        return self._http_client
+
     def _get(self, url: str, params: dict | None = None) -> dict:
         """One GET returning parsed JSON (does not raise on NOT_AUTHORIZED)."""
         if self._http_get is not None:
             return self._http_get(url, params)
-        import httpx
+        return self._client().get(url, params=params).json()
 
-        response = httpx.get(
-            url,
-            params=params,
-            headers={"Authorization": f"Bearer {self.api_key}"},
-            timeout=15.0,
-        )
-        return response.json()
+    def close(self) -> None:
+        """Release the pooled HTTP connections (idempotent; safe if never built)."""
+        if self._http_client is not None:
+            self._http_client.close()
+            self._http_client = None
 
     @staticmethod
     def _raise_if_unauthorized(body: dict) -> None:
