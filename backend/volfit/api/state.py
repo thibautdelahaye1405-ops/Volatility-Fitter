@@ -248,6 +248,13 @@ class AppState(UniverseMixin):
         #: until an explicit Calibrate.
         self._affine_calibrated: dict[str, tuple] = {}
         self._fits: dict[tuple, FitRecord] = {}
+        #: Version-keyed cache of prepared (de-Americanized, inverted) quotes per
+        #: node — the de-Am binomial inversion is the cost here. Shares the exact
+        #: lifecycle of ``_fits`` (cleared on source/as-of switch, per-ticker
+        #: evicted on recalibrate), so it never outlives the fits it feeds. Value
+        #: type is volfit.api.quotes.PreparedQuotes (annotated loosely to avoid an
+        #: import cycle).
+        self._prepared: dict[tuple, object] = {}
         self._priors: dict[tuple[str, str], PriorRecord] = {}
         #: Latest full prior SURFACE snapshot per ticker (the prior framework).
         #: DB-backed (VolStore.prior_snapshots, history kept); this is the warm
@@ -354,6 +361,7 @@ class AppState(UniverseMixin):
         self._snapshots.clear()
         self._forwards.clear()
         self._fits.clear()
+        self._prepared.clear()
         self._calibrated.clear()
         self._anchor_spot.clear()
         self._affine_calibrated.clear()
@@ -863,6 +871,7 @@ class AppState(UniverseMixin):
             self._snapshots.pop(ticker, None)
             self._forwards.pop(ticker, None)
             self._fits = {k: v for k, v in self._fits.items() if k[0] != ticker}
+            self._prepared = {k: v for k, v in self._prepared.items() if k[0] != ticker}
             self._calibrated = {k: v for k, v in self._calibrated.items() if k[0] != ticker}
             self._anchor_spot.pop(ticker, None)
             self._affine_calibrated.pop(ticker, None)
@@ -1029,6 +1038,15 @@ class AppState(UniverseMixin):
     def store_fit(self, key: tuple, record: FitRecord) -> None:
         with self._lock:
             self._fits[key] = record
+
+    def get_prepared(self, key: tuple):
+        """Cached PreparedQuotes for a node (version-keyed), or None."""
+        with self._lock:
+            return self._prepared.get(key)
+
+    def store_prepared(self, key: tuple, prepared) -> None:
+        with self._lock:
+            self._prepared[key] = prepared
 
     # --------------------------------------------------------- edit sessions
     def session(self, key: tuple[str, str]) -> EditSession:

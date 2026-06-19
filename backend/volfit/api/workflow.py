@@ -129,13 +129,29 @@ def _affine_thunk(state: AppState, ticker: str, fit_mode: str):
     return thunk
 
 
-def _parametric_node_item(state: AppState, ticker: str, iso: str, fit_mode: str):
-    """An INDEPENDENT (no calendar coupling) per-node calibration work item."""
-    return (
-        f"{ticker} {iso}",
-        "Parametric",
-        (lambda: service.calibrate_node(state, ticker, iso, fit_mode)),
-    )
+def _independent_ticker_items(
+    state: AppState, ticker: str, isos: list[str], fit_mode: str
+) -> list[tuple[str, str, object]]:
+    """INDEPENDENT (no calendar coupling) per-node items for one ticker that still
+    warm-start each expiry from the previous, shorter-T expiry's freshly-fit LQD
+    params.
+
+    Adjacent maturities have nearly the same smile, so the seed lands trf close to
+    the optimum and cuts its (P+1)-eval Jacobian iterations. The sweep stays
+    deterministic — fixed ascending-T order, every expiry recomputed from scratch
+    each pass — so a node's committed fit is identical regardless of edit history
+    (the single-node Calibrate / undo path is untouched and cold-starts). ``isos``
+    must be ascending-T (``lit_nodes`` is nearest-first)."""
+    ctx: dict = {"prev": None}
+
+    def make(iso: str):
+        def thunk() -> None:
+            record = service.calibrate_node(state, ticker, iso, fit_mode, init=ctx["prev"])
+            ctx["prev"] = record.result.params  # seed the next, longer expiry
+
+        return thunk
+
+    return [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
 
 
 def _coupled_ticker_items(
@@ -191,14 +207,17 @@ def _parametric_items(
 ) -> list[tuple[str, str, object]]:
     """Parametric calibration items for a set of lit nodes: calendar-coupled
     per-ticker chains when ``enforceCalendar`` is on, else independent per node."""
-    if not state.options().enforceCalendar:
-        return [_parametric_node_item(state, t, iso, fit_mode) for t, iso in nodes]
     by_ticker: dict[str, list[str]] = {}
     for t, iso in nodes:  # nodes are nearest-first, so each list is ascending-T
         by_ticker.setdefault(t, []).append(iso)
+    coupled = state.options().enforceCalendar
     items: list[tuple[str, str, object]] = []
     for ticker, isos in by_ticker.items():
-        items.extend(_coupled_ticker_items(state, ticker, isos, fit_mode))
+        items.extend(
+            _coupled_ticker_items(state, ticker, isos, fit_mode)
+            if coupled
+            else _independent_ticker_items(state, ticker, isos, fit_mode)
+        )
     return items
 
 

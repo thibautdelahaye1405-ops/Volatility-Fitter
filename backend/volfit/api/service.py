@@ -146,6 +146,52 @@ def variance_time(state: AppState, ticker: str, expiry, t_cal: float) -> float:
     return weighted_variance_years(t_cal, pairs, normalize=options.normalizeEvents)
 
 
+def _prepared_key(state: AppState, ticker: str, iso: str) -> tuple:
+    """Cache key for a node's PreparedQuotes.
+
+    The de-Americanized, inverted quotes depend ONLY on the chain snapshot, the
+    resolved forward, the maturity / variance clock and the dividend schedule —
+    never on quote/var-swap/prior edits, the band or the fit_mode (those enter
+    later, in ``edited_fit_inputs`` / ``edited_band`` / the model fit). So the key
+    carries exactly the version counters those inputs move under. ``settings`` and
+    ``options`` versions are supersets (a hyperparameter change can't alter the
+    prepared quotes) — including them is deliberate over-keying: an extra
+    invalidation only costs a recompute, never correctness. The as-of reference
+    date is folded in for belt-and-braces (an as-of switch also clears the cache)."""
+    return (
+        ticker,
+        iso,
+        state.data_version(ticker),
+        state.forwards_version,
+        state.settings_version,
+        state.events_version,
+        state.options_version,
+        state.reference_date.toordinal(),
+    )
+
+
+def prepared_quotes(state: AppState, ticker: str, expiry: date) -> PreparedQuotes:
+    """PreparedQuotes for a node, memoized on a version-keyed cache.
+
+    De-Americanization (the per-quote binomial inversion of an American chain) is
+    the cost on this path. The same node's quotes are re-derived by many views in
+    one refresh fan-out and by every pre-Calibrate display poll of a gated node;
+    this caches the result so the de-Am runs once per genuine input change. The
+    caller must have ensured the chain (``ensure_chain`` / ``has_quotes``)."""
+    key = _prepared_key(state, ticker, expiry.isoformat())
+    cached = state.get_prepared(key)
+    if cached is not None:
+        return cached
+    snapshot = state.snapshot(ticker)
+    forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
+    cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
+    t_cal = state.year_fraction(expiry)
+    tau = variance_time(state, ticker, expiry, t_cal)
+    prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+    state.store_prepared(key, prepared)
+    return prepared
+
+
 def varswap_target(
     state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, t: float
 ) -> VarSwapTarget | None:
@@ -267,8 +313,16 @@ def display_overlay(
 
 
 # ------------------------------------------------------------- slice fitting
-def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+def _compute_fit(
+    state: AppState, ticker: str, expiry_iso: str, fit_mode: str, init=None
+) -> FitRecord:
     """Calibrate one slice and mark the node CALIBRATED at the current key/spot.
+
+    ``init`` is an optional LQD warm-start (the previous, shorter-T expiry's params
+    during a surface fan-out). It is left None on the single-node display / undo /
+    explicit-Calibrate path so that path stays cold-started and therefore
+    path-INDEPENDENT (an undo back to a prior edit state reproduces the original fit
+    bit-for-bit); the seed only enters the deterministic surface sweep.
 
     The anchor a spot move is transported from. Cached in ``_fits`` by the full
     fit key; the calibrated pointer (``set_calibrated_ptr``) records that this key
@@ -290,13 +344,9 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
         "calibrate", f"Calibrating {ticker} {iso} ({_model_label(settings.model)})"
     )
     with activity as act:
-        forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
-        cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-        t_cal = state.year_fraction(expiry)
-        tau = variance_time(state, ticker, expiry, t_cal)
-        if snapshot.exercise_style == "american" and t_cal > 0.0:
+        if snapshot.exercise_style == "american" and state.year_fraction(expiry) > 0.0:
             act.detail("de-americanizing quotes")
-        prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+        prepared = prepared_quotes(state, ticker, expiry)  # de-Am memoized per node
         k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
         weights = resolve_weights(settings.weightScheme, k, w)
         band = edited_band(state, ticker, iso, prepared, fit_mode)
@@ -311,6 +361,9 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
             weights=weights,
             reg_lambda=settings.regLambda,
             reg_power=settings.regPower,
+            # Warm start only when handed a same-order seed (the surface sweep's
+            # previous expiry); a mismatched order would be the wrong vector length.
+            init=init if getattr(init, "order", None) == settings.nOrder else None,
             band=band,
             barrier_center=settings.barrierCenter,
             barrier_scale=settings.barrierScale,
@@ -435,13 +488,18 @@ def node_dirty(state: AppState, ticker: str, iso: str, fit_mode: str) -> bool:
     return ptr[0] != fit_key(state, ticker, iso, fit_mode)
 
 
-def calibrate_node(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+def calibrate_node(
+    state: AppState, ticker: str, expiry_iso: str, fit_mode: str, init=None
+) -> FitRecord:
     """Explicitly (re)calibrate one node at the live snapshot spot, re-anchoring
     it: the transient spot shift is cleared so the fit uses the spot synchronous
-    to the fetched options chain, and the calibrated pointer moves to now."""
+    to the fetched options chain, and the calibrated pointer moves to now.
+
+    ``init`` threads an LQD warm-start (the surface sweep's previous expiry); it is
+    None for a lone single-node Calibrate."""
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
     state.set_spot_shift(ticker, 0.0)  # re-anchor: calibrate at the chain's spot
-    return _compute_fit(state, ticker, iso, fit_mode)
+    return _compute_fit(state, ticker, iso, fit_mode, init=init)
 
 
 def displayed_base(
@@ -656,13 +714,8 @@ def prepare_slice(state: AppState, ticker: str, expiry_iso: str):
     if not state.has_quotes(ticker):
         return None
     expiry = state.resolve_expiry(ticker, expiry_iso)
-    snapshot = state.snapshot(ticker)  # cached (has quotes)
     try:
-        forward = state.resolved_forward(ticker, expiry)
-        cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-        t_cal = state.year_fraction(expiry)
-        tau = variance_time(state, ticker, expiry, t_cal)
-        return prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+        return prepared_quotes(state, ticker, expiry)  # de-Am memoized per node
     except Exception:
         return None  # no forward for this expiry yet / degenerate slice
 
@@ -867,12 +920,7 @@ def surface_inputs(
     detail = "de-americanizing" if american else ""
     with state.activity.activity("calibrate", msg, detail):
         for expiry in sorted(forwards):
-            forward = state.resolved_forward(ticker, expiry)  # honours the policy
-            cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-            t_cal = state.year_fraction(expiry)
-            tau = variance_time(state, ticker, expiry, t_cal)
-            prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
-            plan.append((expiry.isoformat(), prepared))
+            plan.append((expiry.isoformat(), prepared_quotes(state, ticker, expiry)))
     return plan
 
 

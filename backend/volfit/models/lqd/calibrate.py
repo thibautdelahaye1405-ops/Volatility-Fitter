@@ -241,9 +241,13 @@ def calibrate_slice(
             opt_n_points,
         ),
         method="trf",
-        xtol=1e-15,
-        ftol=1e-15,
-        gtol=1e-15,
+        # 1e-10 is still ~6 orders below the ~5 vol-bp fit budget (the note's own
+        # fit reaches ~1.2 bp), so the optimum is unchanged to display precision —
+        # but it stops trf from grinding extra (P+1)-eval Jacobian iterations
+        # chasing a 1e-15 reduction that is invisible in the priced surface.
+        xtol=1e-10,
+        ftol=1e-10,
+        gtol=1e-10,
         max_nfev=4000,
     )
 
