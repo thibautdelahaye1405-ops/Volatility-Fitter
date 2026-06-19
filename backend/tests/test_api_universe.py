@@ -72,17 +72,19 @@ def client():
 
 def test_provider_chain_failure_degrades_not_500():
     """A provider that lists ladders but fails the chain fetch (down / throttled /
-    daily cap) must NOT 500 /universe — it degrades to empty ladders, and once the
-    feed recovers the next call repopulates (no frozen-empty cache)."""
+    daily cap) must NOT 500 /universe. The ladder is METADATA (the available
+    expiries), so it still lists them even when quotes can't be fetched — the
+    chain failure degrades the SMILE fetch (no 500), not the universe listing."""
     provider = CappedProvider(reference_date=REF)
     with TestClient(create_app(reference_date=REF, provider=provider)) as c:
         capped = c.get("/universe")
         assert capped.status_code == 200  # graceful, no Internal Server Error
-        assert capped.json()["expiries"]["ALPHA"] == []  # no quotes -> empty ladder
+        # Ladder lists the expiries from metadata even though the chain is capped.
+        assert len(capped.json()["expiries"]["ALPHA"]) == 4
 
         provider.capped = False  # feed recovers (e.g. user switches source)
         recovered = c.get("/universe").json()
-        assert len(recovered["expiries"]["ALPHA"]) == 4  # repopulates, not frozen
+        assert len(recovered["expiries"]["ALPHA"]) == 4  # still lists the ladder
 
 
 def test_transient_empty_ladder_is_not_frozen():

@@ -31,6 +31,8 @@ from volfit.data.bloomberg_parse import (
     session_connected,
     short_blp_reason,
 )
+from volfit.data.bloomberg_search import _merge_matches
+from volfit.data.provider import SymbolMatch
 
 TODAY = date.today()
 
@@ -178,6 +180,50 @@ def test_fetch_chain_no_contracts_raises():
         provider.fetch_chain("SPY", [date(2099, 1, 1)])
 
 
+# ------------------------------------------------- quota: cheap spot + windowing
+
+def test_spot_is_a_single_underlying_hit_not_a_chain_pull():
+    """spot() must read ONE underlying PX_LAST, never re-fetch the whole chain
+    (the base default) — that default torched the Bloomberg daily quota."""
+    provider, blp = _make_provider()
+    assert provider.spot("SPY") == 741.75
+    # Only the underlying was queried — no option contracts in the bdp.
+    assert blp.bdp_securities == ["SPY US Equity"]
+
+
+def test_fetch_chain_windows_far_strikes():
+    """A far-OTM strike outside [0.5, 1.5]*spot is dropped from the bulk bdp so
+    the per-fetch security count (and quota burn) stays bounded."""
+    near = _future(30)
+    descriptors = [
+        f"SPY US {near} C740 Equity",   # ~ATM (741.75) -> kept
+        f"SPY US {near} P380 Equity",   # 0.51x spot -> kept (inside band)
+        f"SPY US {near} P200 Equity",   # 0.27x spot -> windowed out
+        f"SPY US {near} C1200 Equity",  # 1.62x spot -> windowed out
+    ]
+    bdp_values = {"SPY US Equity": {"PX_LAST": 741.75}}
+    for d in descriptors:
+        bdp_values[d] = {"BID": "1.0", "ASK": "1.2", "OPT_EXER_TYP": "American"}
+    blp = FakeBlp(_opt_chain_frame(descriptors), bdp_values)
+    provider = BloombergProvider(["SPY"], blp_module=blp)
+    snap = provider.fetch_chain("SPY")
+    strikes = sorted(q.strike for q in snap.quotes)
+    assert strikes == [380.0, 740.0]  # the two far strikes were never bdp'd
+    assert all(s not in blp.bdp_securities for s in (descriptors[2], descriptors[3]))
+
+
+def test_strike_window_disabled_keeps_everything():
+    near = _future(30)
+    descriptors = [f"SPY US {near} P200 Equity", f"SPY US {near} C1200 Equity"]
+    bdp_values = {"SPY US Equity": {"PX_LAST": 741.75}}
+    for d in descriptors:
+        bdp_values[d] = {"BID": "1.0", "ASK": "1.2", "OPT_EXER_TYP": "American"}
+    blp = FakeBlp(_opt_chain_frame(descriptors), bdp_values)
+    provider = BloombergProvider(["SPY"], blp_module=blp, strike_window=None)
+    snap = provider.fetch_chain("SPY")
+    assert sorted(q.strike for q in snap.quotes) == [200.0, 1200.0]
+
+
 # --------------------------------------------------------------- dividends
 
 def _dvd_frame(rows: list[tuple[date, float, str]]) -> pd.DataFrame:
@@ -299,6 +345,43 @@ def test_session_connected_guards_missing_probe():
     assert session_connected(_RefusingBlp(connected=True)) is True
 
 
+class _LazyEngineBlp:
+    """xbbg 1.3.0 stub: is_connected() reads False until the engine is created
+    (the quota-free _get_engine() call brings up the local Terminal session)."""
+
+    def __init__(self):
+        self._engine_up = False
+
+    def _get_engine(self):
+        self._engine_up = True  # local connect, no billable request
+        return object()
+
+    def is_connected(self) -> bool:
+        return self._engine_up
+
+
+def test_session_connected_inits_lazy_engine():
+    """The fix: a fresh xbbg reads is_connected()==False (engine not created yet);
+    session_connected brings the engine up first so it reflects the open Terminal."""
+    blp = _LazyEngineBlp()
+    assert blp.is_connected() is False  # fresh process, no fetch yet
+    assert session_connected(blp) is True  # engine initialized, now connected
+
+
+class _DeadEngineBlp:
+    """Terminal down: bringing the engine up fails -> reported not connected."""
+
+    def _get_engine(self):
+        raise RuntimeError("no bbcomm / Terminal")
+
+    def is_connected(self) -> bool:
+        return False
+
+
+def test_session_connected_handles_engine_init_failure():
+    assert session_connected(_DeadEngineBlp()) is False
+
+
 # --------------------------------------------------------------- symbol search
 
 def test_normalize_security():
@@ -317,3 +400,105 @@ def test_search_symbols_falls_back_without_blpapi(monkeypatch):
     )
     matches = provider.search_symbols("NVDA")
     assert any(m.symbol == "NVDA" for m in matches)  # echo fallback still resolves
+
+
+def test_merge_matches_dedupes_and_keeps_indices():
+    """The equity+index batches merge by symbol with indices kept first, so an
+    index underlying is never crowded out of the result limit by same-name ETFs."""
+    indices = [SymbolMatch("DAX Index", "DAX", "INDEX")]
+    equities = [
+        SymbolMatch("DAX Index", "duplicate", "EQUITY"),  # dup symbol -> dropped
+        SymbolMatch("DBK GY Equity", "Deutsche Bank", "EQUITY"),
+    ]
+    out = _merge_matches([indices, equities], limit=10)
+    assert [m.symbol for m in out] == ["DAX Index", "DBK GY Equity"]
+    assert out[0].type == "INDEX"  # the index entry survives the de-dup
+    assert _merge_matches([indices, equities], limit=1) == indices  # trimmed
+
+
+# ----------------------------------------------------- non-US names & indices
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("SPY", "SPY US Equity"),          # bare ticker -> default US equity
+        ("NVDA", "NVDA US Equity"),
+        ("SPX INDEX", "SPX Index"),        # app-uppercased full security -> re-cased
+        ("SX5E INDEX", "SX5E Index"),
+        ("SAP GY EQUITY", "SAP GY Equity"),
+        ("SAP GY", "SAP GY Equity"),       # exchange-coded shorthand -> equity
+        ("VOD LN", "VOD LN Equity"),
+        ("7203 JT", "7203 JT Equity"),
+        ("RX1 COMDTY", "RX1 Comdty"),
+    ],
+)
+def test_security_string_shapes(raw, expected):
+    provider, _ = _make_provider()
+    assert provider._security(raw) == expected
+
+
+def test_security_string_custom_yellow_key():
+    """A non-default yellow key only governs bare tickers; an explicit asset
+    class on the input still wins (and is re-cased)."""
+    provider = BloombergProvider(["VOD"], yellow_key="LN Equity",
+                                 blp_module=_RefusingBlp(connected=True))
+    assert provider._security("VOD") == "VOD LN Equity"
+    assert provider._security("SPX INDEX") == "SPX Index"
+
+
+def _chain_frame_for(security: str, descriptors: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "ticker": [security] * len(descriptors),
+            "field": ["OPT_CHAIN"] * len(descriptors),
+            "Security Description": descriptors,
+        }
+    )
+
+
+def test_fetch_index_chain_is_european():
+    """An index underlying ("SX5E INDEX") resolves to "SX5E Index", queries spot
+    under that security, and its options are flagged European."""
+    near = _future(30)
+    descriptors = [f"SX5E {near} C5000 Index", f"SX5E {near} P5000 Index"]
+    bdp_values = {
+        "SX5E Index": {"PX_LAST": 5012.3},
+        f"SX5E {near} C5000 Index": {
+            "BID": "120.0", "ASK": "124.0", "LAST_PRICE": "122.0",
+            "VOLUME": "7", "OPEN_INT": "50", "OPT_EXER_TYP": "European",
+        },
+        f"SX5E {near} P5000 Index": {
+            "BID": "110.0", "ASK": "114.0", "LAST_PRICE": "112.0",
+            "VOLUME": "4", "OPEN_INT": "30", "OPT_EXER_TYP": "European",
+        },
+    }
+    blp = FakeBlp(_chain_frame_for("SX5E Index", descriptors), bdp_values)
+    provider = BloombergProvider(["SX5E INDEX"], blp_module=blp)
+    snap = provider.fetch_chain("SX5E INDEX")
+    assert snap.spot == 5012.3
+    assert snap.exercise_style == "european"
+    assert {q.call_put for q in snap.quotes} == {"C", "P"}
+
+
+def test_fetch_nonus_equity_chain():
+    """An exchange-coded non-US equity ("SAP GY") resolves to the German listing
+    ("SAP GY Equity"), not a US default, and fetches its chain."""
+    near = _future(30)
+    descriptors = [f"SAP GY {near} C220 Equity", f"SAP GY {near} P220 Equity"]
+    bdp_values = {
+        "SAP GY Equity": {"PX_LAST": 218.4},
+        f"SAP GY {near} C220 Equity": {
+            "BID": "5.0", "ASK": "5.4", "LAST_PRICE": "5.2",
+            "VOLUME": "9", "OPEN_INT": "40", "OPT_EXER_TYP": "European",
+        },
+        f"SAP GY {near} P220 Equity": {
+            "BID": "6.0", "ASK": "6.4", "LAST_PRICE": "6.2",
+            "VOLUME": "3", "OPEN_INT": "20", "OPT_EXER_TYP": "European",
+        },
+    }
+    blp = FakeBlp(_chain_frame_for("SAP GY Equity", descriptors), bdp_values)
+    provider = BloombergProvider(["SAP GY"], blp_module=blp)
+    assert provider._security("SAP GY") == "SAP GY Equity"
+    snap = provider.fetch_chain("SAP GY")
+    assert snap.spot == 218.4
+    assert len(snap.quotes) == 2

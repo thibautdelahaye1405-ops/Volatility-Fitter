@@ -37,7 +37,14 @@ from volfit.data.universe import (
 
 
 def universe_payload(state: AppState) -> UniverseResponse:
-    """Active tickers and their expiry ladders (with expiry-type tags)."""
+    """Active tickers and their SELECTED expiry ladders (with expiry-type tags).
+
+    Built from the expiry SELECTION (metadata only — the ladder the user picked),
+    never the parity-implied forwards: deriving forwards would fetch the whole
+    chain for every ticker, so opening the app / editing the universe would pull
+    quotes behind the user's back. In the trigger-gated workflow quotes load only
+    on the explicit Fetch, so this stays network-light (just the cheap expiry
+    listing). Expiries with no fetched quotes simply have no fit until Calibrate."""
     tickers = state.active_tickers()
     expiries = {
         ticker: [
@@ -46,7 +53,7 @@ def universe_payload(state: AppState) -> UniverseResponse:
                 t=state.year_fraction(expiry),
                 expiryType=classify_expiry(expiry, state.reference_date),
             )
-            for expiry in sorted(state.forwards(ticker))
+            for expiry in sorted(state.selected_expiries(ticker))
         ]
         for ticker in tickers
     }
@@ -114,10 +121,15 @@ def reset_expiries(state: AppState, ticker: str) -> ExpiryPickerResponse:
 
 # ------------------------------------------------------------- lit / dark
 def lit_map(state: AppState) -> LitMapResponse:
-    """Lit/dark designation of every selected node, nearest expiry first."""
+    """Lit/dark designation of every SELECTED node, nearest expiry first.
+
+    Enumerated from the expiry SELECTION (cheap metadata, the ladder the user
+    picked), not the parity-implied forwards: in the gated workflow no chain is
+    fetched until the explicit Fetch, so lit/dark must work the moment the active
+    universe changes (before any fetch/calibrate)."""
     nodes: list[LitNode] = []
     for ticker in state.active_tickers():
-        for expiry in sorted(state.forwards(ticker)):
+        for expiry in sorted(state.selected_expiries(ticker)):
             iso = expiry.isoformat()
             nodes.append(LitNode(ticker=ticker, expiry=iso, lit=state.node_lit(ticker, iso)))
     return LitMapResponse(nodes=nodes)
@@ -132,7 +144,8 @@ def set_lit(state: AppState, ticker: str, expiry: str, lit: bool) -> LitNode:
 
 def set_lit_ticker(state: AppState, ticker: str, lit: bool) -> LitMapResponse:
     """Set every selected expiry of a ticker lit/dark at once (bulk toggle)."""
-    for expiry in sorted(state.forwards(ticker)):  # UnknownNodeError if unknown
+    state._require_active(ticker)  # UnknownNodeError if unknown (no chain fetch)
+    for expiry in sorted(state.selected_expiries(ticker)):
         state.set_node_lit(ticker, expiry.isoformat(), lit)
     return lit_map(state)
 

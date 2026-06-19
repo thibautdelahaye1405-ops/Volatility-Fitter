@@ -158,6 +158,13 @@ def affine_term(
 
     violations = sum(1 for near, far in zip(w0s, w0s[1:]) if far < near)
 
+    if not ts:  # no calibrated LV surface yet (gated, pre-Calibrate): empty term
+        return TermStructureResponse(
+            ticker=ticker, points=[],
+            curve=TermCurve(t=[], tau=[], w=[], vol=[]),
+            calendarViolations=0, dividends=[],
+        )
+
     t_max = CURVE_T_PAD * max(ts)
     t_grid = np.linspace(CURVE_T_MIN, t_max, CURVE_POINTS)
     tau_grid = np.array([tau_of(float(t)) for t in t_grid])

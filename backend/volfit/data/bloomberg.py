@@ -55,8 +55,14 @@ from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
 from volfit.data.types import ChainSnapshot, OptionQuote
 
-#: Yellow-key suffixes that mark an already-complete Bloomberg security string.
-_YELLOW_KEYS = (" Equity", " Index", " Curncy", " Comdty", " Corp", " Govt")
+#: Bloomberg "yellow key" asset-class words that complete a security string
+#: ("SPX Index", "SAP GY Equity"). Stored canonically (title-case) and indexed
+#: by their upper-cased form: the rest of the app uppercases every symbol, so a
+#: full security arrives as "SPX INDEX" / "SAP GY EQUITY" and the suffix must be
+#: re-cased before it is sent to Bloomberg (the API is case-sensitive on the
+#: yellow key). Covers the asset classes that list options + the common ones.
+_ASSET_CLASSES = ("Equity", "Index", "Curncy", "Comdty", "Corp", "Govt", "Mtge", "Pfd")
+_ASSET_CLASS_BY_UPPER = {c.upper(): c for c in _ASSET_CLASSES}
 
 #: Per-contract fields pulled in the bulk bdp (strike/expiry/CP come from the
 #: descriptor, so only quote fields + the exercise flag are requested here).
@@ -97,11 +103,19 @@ class BloombergProvider(OptionChainProvider):
         yellow_key: str = "US Equity",
         max_days: int = 730,
         blp_module: object | None = None,
+        strike_window: tuple[float, float] | None = (0.5, 1.5),
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.yellow_key = yellow_key
         self.max_days = max_days
         self._blp = blp_module
+        #: Keep only strikes within ``[lo, hi] * spot`` when fetching a live chain
+        #: (None = the whole listed ladder). A liquid index/ETF lists hundreds of
+        #: strikes spanning a huge range — each is a separately-METERED Bloomberg
+        #: security, and the far tails carry no liquidity (and break the fit), so
+        #: windowing to the fittable band cuts the per-fetch security count (and
+        #: the daily-quota burn) by a large factor. Widen/disable per deployment.
+        self.strike_window = strike_window
         self._chain_cache: dict[str, list[ParsedOption]] = {}
         self._history_cache: dict[str, list[date]] = {}
         #: Lazily-opened blpapi session for the instrument-search service, reused
@@ -124,10 +138,30 @@ class BloombergProvider(OptionChainProvider):
         return self._blp
 
     def _security(self, ticker: str) -> str:
-        """Full Bloomberg security string for an underlying ticker."""
+        """Full Bloomberg security string for an underlying ticker.
+
+        Handles the three shapes the universe layer can hand us (it uppercases
+        every symbol, so a yellow key arrives upper-cased and must be re-cased):
+
+        * **already a full security** — the last token is a yellow-key asset
+          class ("SPX INDEX", "SAP GY EQUITY"): re-case the suffix and pass it
+          through ("SPX Index", "SAP GY Equity") so non-US names and indices
+          work end-to-end;
+        * **exchange-coded equity shorthand** — a root plus a 2-letter market
+          code but no asset class ("SAP GY", "VOD LN", "7203 JT"): append
+          " Equity" (the asset class is implied by the exchange code);
+        * **bare ticker** — a single token ("SPY", "NVDA"): append the default
+          yellow key (``yellow_key``, "US Equity"), i.e. the US listing.
+        """
         t = ticker.strip()
-        if any(t.endswith(yk) for yk in _YELLOW_KEYS):
+        if not t:
             return t
+        parts = t.split()
+        asset_class = _ASSET_CLASS_BY_UPPER.get(parts[-1].upper())
+        if asset_class is not None:  # full security: re-case the yellow key
+            return " ".join(parts[:-1] + [asset_class])
+        if len(parts) >= 2:  # exchange-coded equity (root + market code)
+            return f"{t} Equity"
         return f"{t} {self.yellow_key}"
 
     def list_tickers(self) -> list[str]:
@@ -271,6 +305,16 @@ class BloombergProvider(OptionChainProvider):
             raise ValueError(f"could not determine spot price for {ticker!r}")
         return value
 
+    def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
+        """Cheap underlying spot — ONE PX_LAST reference hit on the underlying.
+
+        Overrides the base contract, whose default re-fetches the WHOLE option
+        chain just to read its spot. Real-time spot polling (spotMode="realtime")
+        probes this every few seconds, so the default would have re-``bdp``ed
+        hundreds–thousands of option contracts per poll and torched the Bloomberg
+        daily reference-data quota. One underlying price per poll instead."""
+        return self._spot(ticker)
+
     # -- chain ---------------------------------------------------------------
 
     def _select_contracts(
@@ -328,9 +372,22 @@ class BloombergProvider(OptionChainProvider):
         history = self.available_history(ticker)
         return history[-1] if history else None
 
+    def _window_contracts(
+        self, contracts: list[ParsedOption], spot: float
+    ) -> list[ParsedOption]:
+        """Drop strikes outside ``strike_window * spot`` (the quota-saving filter;
+        see ``strike_window``). No-op when disabled or non-positive spot; never
+        windows down to nothing (a degenerate band falls back to the full set)."""
+        if self.strike_window is None or spot <= 0.0:
+            return contracts
+        lo, hi = self.strike_window
+        kept = [c for c in contracts if lo * spot <= c.strike <= hi * spot]
+        return kept or contracts
+
     def _fetch_live(self, ticker: str, contracts: list[ParsedOption]) -> ChainSnapshot:
         """The current NBBO chain for the given contracts (one bulk bdp)."""
         spot = self._spot(ticker)
+        contracts = self._window_contracts(contracts, spot)  # quota: fittable band only
         blp = self._blp_module()
         pivot = pivot_bdp(blp.bdp([p.security for p in contracts], list(_QUOTE_FIELDS)))
         timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)

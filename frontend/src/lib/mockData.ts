@@ -97,6 +97,10 @@ export interface SmileData {
   modelInfo?: ModelInfo;
   /** Variance-swap quote + model level for this node. */
   varSwap: VarSwapInfo;
+  /** False when the node has never been calibrated (gated workflow, before the
+   *  Calibrate button): `model` is empty and the view shows quotes (if fetched)
+   *  + the dotted prior (if any). Optional/true for older payloads / mock. */
+  hasFit?: boolean;
   /** Inputs drifted since the last calibration — the displayed fit is frozen
    *  (stale) until an explicit Calibrate. Optional for older payloads / mock. */
   stale?: boolean;

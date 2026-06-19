@@ -221,7 +221,10 @@ class OptionsSettings(BaseModel):
     # ---- calibration / data-fetch workflow (the trigger model) ----
     #: After options are fetched: ON = calibrate all lit nodes in the background;
     #: OFF = leave nodes stale until the user presses Calibrate. Also gates whether
-    #: a quote edit / parameter change refits (ON) or just marks stale (OFF).
+    #: a quote edit / parameter change refits (ON) or just marks stale (OFF). The
+    #: gated live server (serve.py) defaults this OFF (set in AppState when no saved
+    #: preference) so fitting happens only on the explicit Calibrate button; the
+    #: code default stays ON for the ungated test/dev app.
     autoCalibrate: bool = True
     #: Local-Vol (affine) calibration master switch. OFF = the background Calibrate
     #: job skips every ticker's LV surface (only the parametric nodes fit, so test
@@ -366,6 +369,10 @@ class SmileData(BaseModel):
     varSwap: VarSwapInfo  # variance-swap quote + model level for this node
     canUndo: bool  # quote-edit session undo/redo availability
     canRedo: bool  # (both False when the node has no edit session yet)
+    #: False when the node has never been calibrated (gated workflow, before the
+    #: Calibrate button): ``model`` is empty and the view shows quotes (if fetched)
+    #: + the dotted prior (if any), with a "No fit yet — Calibrate" cue.
+    hasFit: bool = True
     stale: bool = False  # inputs drifted since the last calibration (needs Calibrate)
     #: Whole-surface weighted RMS vol error of the ticker (all expiries pooled, the
     #: same calibration-consistent basis as diagnostics.rmsError). Decimal vol.

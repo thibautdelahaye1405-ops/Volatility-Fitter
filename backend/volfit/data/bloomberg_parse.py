@@ -66,10 +66,27 @@ def session_connected(blp) -> bool:
     not, so missing/raising means "unknown" -> ``False``. Used to tell a real
     *down* session apart from a *connected-but-refused* request (entitlement /
     workflow review), which the Data Source light should report differently.
+
+    xbbg 1.x creates its engine (and the local Terminal session) **lazily on the
+    first data request**, so ``is_connected()`` reads ``False`` on a fresh
+    process *even with the Terminal open* — it only flips ``True`` after the
+    first ``bdp``/``bds``. Because ``feed_status`` deliberately issues no billable
+    request, that left the Data Source light stuck on red "no Terminal" until the
+    user's first fetch. We therefore bring the engine up first via the quota-free
+    ``_get_engine()`` (a local bbcomm/Terminal connect, **not** a reference-data
+    request, so it never touches the daily quota) and then probe. Best-effort:
+    skipped on builds/stubs without ``_get_engine`` (e.g. classic pandas xbbg),
+    and a failed connect reads as not-connected.
     """
     probe = getattr(blp, "is_connected", None)
     if probe is None:
         return False
+    ensure_engine = getattr(blp, "_get_engine", None)
+    if ensure_engine is not None:
+        try:
+            ensure_engine()  # idempotent singleton: only the first call connects
+        except Exception:
+            return False
     try:
         return bool(probe())
     except Exception:

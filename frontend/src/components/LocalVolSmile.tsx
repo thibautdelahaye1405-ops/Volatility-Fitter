@@ -194,7 +194,8 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
           </text>
 
           <g clipPath={`url(#${clipId})`}>
-            {/* Quote I-beams (bid/ask) with mid dot */}
+            {/* Quote I-beams (bid/ask) with mid dot. Observed quotes are bright
+                red and bolder than the fitted smile so the market stands out. */}
             {smile.quotes.map((q) => {
               const cx = x.map(tx(q.k));
               const dim = q.excluded;
@@ -202,11 +203,11 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
                 ? "rgb(100 116 139)"
                 : q.amended
                   ? "rgb(251 191 36)"
-                  : "rgb(148 163 184)";
+                  : "rgb(248 113 113)";
               return (
                 <g key={q.index} opacity={dim ? 0.35 : 1}>
-                  <line x1={cx} x2={cx} y1={y.map(q.bid)} y2={y.map(q.ask)} stroke={color} strokeWidth={1} />
-                  <circle cx={cx} cy={y.map(q.mid)} r={2} fill={color} />
+                  <line x1={cx} x2={cx} y1={y.map(q.bid)} y2={y.map(q.ask)} stroke={color} strokeWidth={1.4} />
+                  <circle cx={cx} cy={y.map(q.mid)} r={2.6} fill={color} />
                 </g>
               );
             })}

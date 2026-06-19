@@ -27,10 +27,15 @@ def apply_quote_edit(
     """
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
     # The baseline fit also pins n_quotes (prepared arrays are deterministic
-    # per node, so the index space is stable for the whole session).
+    # per node, so the index space is stable for the whole session). Before any
+    # calibration (gated workflow) the index space comes from the prepared quotes
+    # directly, so quotes can be edited pre-Calibrate too.
     record = service.fit_or_get(state, ticker, iso, fit_mode)
+    prepared = record.prepared if record is not None else service.prepare_slice(state, ticker, iso)
+    if prepared is None:
+        raise ValueError("fetch quotes before editing this node")
     session = state.session((ticker, iso))
-    session.apply(edit.action, edit.index, edit.mid, n_quotes=int(record.prepared.k.size))
+    session.apply(edit.action, edit.index, edit.mid, n_quotes=int(prepared.k.size))
     return service.smile_payload(state, ticker, iso, fit_mode)
 
 

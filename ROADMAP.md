@@ -8,9 +8,83 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-18 (resume here)
+## STATUS — updated 2026-06-19 (resume here)
 
-### 🛠 LATEST (2026-06-18) — Local-Vol grid redesign + put-wing fixes (user-confirmed in-app)
+### 🛠 LATEST (2026-06-19) — Data-source reach + trigger-gated workflow + prior/UX fixes
+
+A data-layer + workflow session. Headlines:
+
+- **Non-US Bloomberg names (indices + stocks).** `BloombergProvider._security` now
+  handles three shapes case-insensitively (the app uppercases every symbol, which
+  had destroyed the yellow key): a full security re-cased (`"SPX INDEX"` →
+  `"SPX Index"`, `"SAP GY EQUITY"` → `"SAP GY Equity"`), exchange-coded equity
+  shorthand (`"SAP GY"`/`"VOD LN"`/`"7203 JT"` → `… Equity`), and bare → default
+  `yellow_key`. Symbol search now covers **equities + indices** (was EQTY-only;
+  `bloomberg_search` queries both yellow keys, indices first, de-duped). So "add
+  underlying" works for non-US/index Bloomberg tickers end-to-end (frontend passes
+  the symbol verbatim). **Massive (Polygon/OPRA) and Yahoo are US-options-only**
+  (verified live: every non-US Yahoo listing returns 0 expiries) — no non-US
+  underlyings available there beyond US-listed ADRs / US index options.
+
+- **Bloomberg status light fixed (was stuck red "no Terminal" with the Terminal
+  open).** xbbg 1.3.0's `is_connected()` is **lazy** — False until the first data
+  request creates the engine, and `feed_status` deliberately issues no billable
+  request. `session_connected` now brings the engine up first via the quota-free
+  `_get_engine()` (a local bbcomm connect, NOT a reference request), so the light
+  reads real-time green from a fresh process. Live-verified green.
+
+- **Bloomberg daily-quota burn cut.** Bloomberg meters UNIQUE SECURITIES/day and
+  an option chain is hundreds–thousands of contracts, so a few fetches tripped
+  `DAILY_CAPACITY_REACHED`. Two amplifiers fixed: (1) `spot()` is **overridden** to
+  one underlying `PX_LAST` (the base default re-pulled the WHOLE chain per spot
+  poll); (2) **strike windowing** — live fetches keep only strikes within
+  `[0.5,1.5]·spot` (ctor `strike_window`, `None` to disable), cutting the per-fetch
+  security count several-fold (the far tails carry no liquidity anyway).
+
+- **TRIGGER-GATED WORKFLOW (the live server; serve.py `gated=True`).** No fetch /
+  no calibration until a button is pressed — on startup or universe selection the
+  app stays quiet. Mechanism: a `gated` flag on `AppState` (tests stay ungated, so
+  the suite is byte-identical). Gated: `snapshot()` is cached-only (only the Fetch
+  button `refresh_chain` and Calibrate's `ensure_chain` hit the feed);
+  `service.displayed_base` returns None instead of bootstrapping a fit; the smile
+  shows **quotes-if-fetched → dotted prior-if-any → stale-fit-if-any → "No fit yet"**
+  (`SmileData.hasFit`, `_no_fit_smile_payload`); every multi-node view skips
+  uncalibrated nodes, single-node views degrade cleanly (no 500s); Calibrate
+  **auto-fetches** the chain first (`_ensure_chains`); the LV/affine surface is
+  gated the same way (`_empty_affine_response`, `AffineFitResponse.hasFit`).
+  `GET /universe` + the **lit/dark map** + `resolve_expiry` now use the expiry
+  **selection metadata** (not parity forwards), so the ladder and Lit/Dark panel
+  populate and toggle immediately on a universe edit — before any fetch. Default
+  **autoCalibrate OFF** in the gated server (set in AppState when no saved pref;
+  schema default stays ON for tests). New `test_gated_workflow.py` (10 tests).
+
+- **Universe expiry-picker: composable + optimistic + debounced.** Fast de-selects
+  no longer clobber each other (each `toggle` read the same stale snapshot and PUT
+  a full-set replacement → only one removed). Now a synchronous `selectedRef`
+  composes edits, checkboxes/count update optimistically, and ONE debounced PUT
+  carries the final set. `useSmile.refreshUniverse` got a monotonic sequence guard
+  so out-of-order `GET /universe` responses can't freeze a stale count.
+
+- **Smile charts: observed quotes in bright RED, bolder** (Parametric + LV), so the
+  market stands out against the fitted curve.
+
+- **Fetch priors fixed (was a no-op / wiped the live smile).** (1) The on-the-fly
+  prior ladder switched the global as-of to a past close and back, and the restore
+  cleared the live chain caches — which the gated workflow no longer re-bootstraps,
+  so the live smile/quotes vanished. `fetch_all` now wraps the as-of round-trip in
+  `AppState.capture_chain_state()`/`restore_chain_state()`, making it transparent
+  to the live surface. (2) The freshness ladder bypassed a deliberately-past saved
+  prior (used the saved snapshot only if newer than prev-close), so you never saw
+  YOUR prior. Now a **saved snapshot always wins** (a prior IS a chosen past
+  observation); recalc-at-prev-close is only the fallback when nothing is saved.
+  The active prior is drawn dotted and **transported to current spot** (the
+  transport machinery was already correct). 2 new prior regression tests.
+
+Full suite green (584 + the new gated/prior tests; 1 live-optional skipped); ruff +
+strict-TS build green. Verified via TestClient/HTTP; not visually smoked in-app
+(the user holds :8000/:5173) — run `.\restart.ps1` to see it live.
+
+### 🛠 PREVIOUS (2026-06-18) — Local-Vol grid redesign + put-wing fixes (user-confirmed in-app)
 
 The biggest recent thread is a Local-Vol (affine surface) overhaul that fixed bad
 short-dated RMSE and a diverging / under-priced deep put wing on high-vol names

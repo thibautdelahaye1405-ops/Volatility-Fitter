@@ -70,13 +70,17 @@ def ensure_universe(state: AppState) -> SmileUniverse:
     smiles: list[SmileNode] = []
     ladders: dict[str, list[str]] = {}
     for ticker in tickers:
-        isos = [e.isoformat() for e in sorted(state.forwards(ticker))]
-        ladders[ticker] = isos
-        for iso in isos:
+        isos: list[str] = []
+        for expiry in sorted(state.forwards(ticker)):
+            iso = expiry.isoformat()
             record = fit_or_get(state, ticker, iso, "mid")
+            if record is None:
+                continue  # uncalibrated node (gated, pre-Calibrate): not in the graph
+            isos.append(iso)
             smiles.append(
                 SmileNode(name=(ticker, iso), t=record.prepared.t, params=record.result.params)
             )
+        ladders[ticker] = isos
 
     weights = _lattice_weights(tickers, ladders, SAME_TICKER_WEIGHT, CROSS_TICKER_WEIGHT)
     universe = build_universe(smiles, weights)

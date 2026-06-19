@@ -63,7 +63,8 @@ def _surface_records(state: AppState, ticker: str, fit_mode: str):
     from volfit.api import service  # local import: service imports this module
 
     isos = [e.isoformat() for e in sorted(state.forwards(ticker))]
-    return [(iso, service.fit_or_get(state, ticker, iso, fit_mode)) for iso in isos]
+    pairs = [(iso, service.fit_or_get(state, ticker, iso, fit_mode)) for iso in isos]
+    return [(iso, rec) for iso, rec in pairs if rec is not None]  # skip uncalibrated
 
 
 def _w_surface(ts: np.ndarray, slices: list):
@@ -178,6 +179,10 @@ def scenario_sticky_grid(state: AppState, request: ScenarioRequest) -> ScenarioR
     from volfit.api import service
 
     record = service.fit_or_get(state, request.ticker, request.expiry, request.fitMode)
+    if record is None:  # gated, never calibrated: nothing to transport yet
+        return ScenarioResponse(
+            k=[], baseVol=[], shiftedVol=[], ssr=2.0, regime="sticky_local_vol_grid"
+        )
     t = record.prepared.t
     grid_k = np.linspace(
         float(record.prepared.k.min()) - K_PAD,

@@ -84,6 +84,9 @@ export interface AffineFitResponse {
   message: string;
   /** Inputs drifted since the last LV calibration — frozen until Calibrate. */
   stale?: boolean;
+  /** False when the LV surface has never been calibrated (gated workflow, before
+   *  the Calibrate button): all arrays empty. Optional/true for older payloads. */
+  hasFit?: boolean;
 }
 
 /** Human-readable message from a thrown value (FastAPI `detail` when present). */

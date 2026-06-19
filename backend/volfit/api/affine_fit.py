@@ -797,6 +797,16 @@ def calibrate_affine_surface(
     return hit
 
 
+def _empty_affine_response(ticker: str) -> AffineFitResponse:
+    """An empty LV surface for a never-calibrated ticker (gated, pre-Calibrate)."""
+    return AffineFitResponse(
+        ticker=ticker, tNodes=[], xNodes=[], localVol=[], smiles=[],
+        rmsPriceError=0.0, maxPriceError=0.0, rmsIvErrorBp=0.0, maxIvErrorBp=0.0,
+        surfaceRmsError=0.0, minDensity=[], calendarViolations=0, arbitrageFree=True,
+        nEvals=0, message="no fit yet — press Calibrate", stale=False, hasFit=False,
+    )
+
+
 def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitResponse:
     """Displayed LV surface for the Local-Vol workspace, served FROZEN.
 
@@ -812,10 +822,14 @@ def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> A
 
     A spot move is transported on read (affine_transport), no refit.
     """
+    # Gated workflow: never calibrated yet -> serve an EMPTY surface (no fetch, no
+    # heavy LV calibration) until the explicit Calibrate button, like the smile.
+    if state._gated and state.get_affine_ptr(ticker) is None:
+        return _empty_affine_response(ticker)
     key = affine_key(state, ticker, request)
     ptr = state.get_affine_ptr(ticker)
     cache = _cache(state)
-    if ptr is None:  # one-time bootstrap so the LV view is never empty
+    if ptr is None:  # one-time bootstrap so the LV view is never empty (ungated)
         hit = _fit(state, ticker, request)
         cache[key] = hit
         state.set_affine_ptr(ticker, key)

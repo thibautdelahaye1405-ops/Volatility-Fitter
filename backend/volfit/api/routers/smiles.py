@@ -65,6 +65,8 @@ def save_prior(
         record = service.fit_or_get(state, ticker, expiry, fit_mode)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
+    if record is None:  # gated, never calibrated: nothing to snapshot as a prior
+        raise HTTPException(status_code=409, detail="calibrate the node before saving a prior")
     state.save_prior(
         (ticker, expiry),
         PriorRecord(

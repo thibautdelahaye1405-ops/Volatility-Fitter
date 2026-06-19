@@ -188,6 +188,8 @@ export default function LocalVolViewer() {
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
     if (loading || data === null) return chartMessage("Calibrating local-vol surface…");
+    if (data.hasFit === false)
+      return chartMessage("No local-vol surface yet — press Calibrate.");
     switch (view) {
       case "lvsurface":
         return <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;

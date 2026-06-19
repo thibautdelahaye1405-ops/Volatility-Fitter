@@ -33,8 +33,19 @@ N_SURFACE_POINTS = 81
 def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceResponse:
     """Assemble the sigma(k, T) mesh for one ticker, nearest expiry first."""
     forwards = state.forwards(ticker)  # raises UnknownNodeError when unknown
-    isos = [expiry.isoformat() for expiry in sorted(forwards)]
-    records = [fit_or_get(state, ticker, iso, fit_mode) for iso in isos]
+    # Only calibrated nodes contribute to the mesh; in the gated workflow (before
+    # Calibrate) some/all expiries have no fit yet and are simply skipped.
+    pairs = [
+        (expiry.isoformat(), fit_or_get(state, ticker, expiry.isoformat(), fit_mode))
+        for expiry in sorted(forwards)
+    ]
+    pairs = [(iso, r) for iso, r in pairs if r is not None]
+    isos = [iso for iso, _ in pairs]
+    records = [r for _, r in pairs]
+    if not records:  # nothing calibrated yet: an empty surface (UI shows a cue)
+        return SurfaceResponse(
+            ticker=ticker, expiries=[], t=[], tau=[], k=[], vol=[], atmVol=[], forward=[]
+        )
 
     # Union k range across expiries, extended to at least [-1.4, 1] (the put wing
     # reaches further) so the surface / Stacked-IV wings are drawn beyond the

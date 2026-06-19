@@ -180,6 +180,9 @@ export function useSmile(): UseSmileResult {
   const [expiry, setExpiryState] = useState("");
   const [fitMode, setFitMode] = useState<FitMode>("mid");
   const fitModeSeeded = useRef(false); // seed fitMode from the saved default once
+  // Monotonic counter so only the latest refreshUniverse() response is applied
+  // (rapid expiry edits can resolve GET /universe out of order — see below).
+  const universeRefreshSeq = useRef(0);
   const [smile, setSmile] = useState<SmileData | null>(null);
   const [source, setSource] = useState<SmileSource>("live");
   const [loading, setLoading] = useState(true);
@@ -496,9 +499,18 @@ export function useSmile(): UseSmileResult {
 
   /** Re-fetch the universe (after the Universe tab edits it) and keep the
    *  selection valid: hold the current ticker/expiry when they survive, else
-   *  fall back to the first ticker / mid-ladder expiry. */
+   *  fall back to the first ticker / mid-ladder expiry.
+   *
+   *  Rapid expiry toggles fire several refreshes whose GET /universe responses
+   *  can resolve OUT OF ORDER (a slower earlier fetch landing after a newer
+   *  one), which would clobber the shared universe with stale selections — the
+   *  "left panel still says 9 selected while the picker shows 2" bug. A
+   *  monotonic sequence guard drops every response but the most recent so only
+   *  the latest backend state is ever applied. */
   const refreshUniverse = useCallback(async (): Promise<void> => {
+    const seq = ++universeRefreshSeq.current;
     const u = await api.get<UniverseResponse>("/universe");
+    if (seq !== universeRefreshSeq.current) return; // a newer refresh superseded this
     if (u.tickers.length === 0) return;
     // Keep the current ticker only if it still has a ladder; otherwise jump to
     // the first populated name (not blindly tickers[0], which may be empty).

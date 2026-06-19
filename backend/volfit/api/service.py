@@ -277,7 +277,7 @@ def _compute_fit(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -
     expiry = state.resolve_expiry(ticker, expiry_iso)
     iso = expiry.isoformat()  # canonical ISO cache/session key
     key = fit_key(state, ticker, iso, fit_mode)
-    snapshot = state.snapshot(ticker)
+    snapshot = state.ensure_chain(ticker)  # Calibrate auto-fetches the chain if absent
     cached = state.get_fit(key)
     if cached is not None:
         state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
@@ -444,30 +444,43 @@ def calibrate_node(state: AppState, ticker: str, expiry_iso: str, fit_mode: str)
     return _compute_fit(state, ticker, iso, fit_mode)
 
 
-def displayed_base(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+def displayed_base(
+    state: AppState, ticker: str, expiry_iso: str, fit_mode: str
+) -> FitRecord | None:
     """The calibrated record to display, BEFORE the spot-move transport.
 
-    Calibration is trigger-gated (ROADMAP workflow): never calibrated yet ->
-    bootstrap one fit; autoCalibrate ON and inputs changed -> refit; otherwise the
-    FROZEN calibrated fit (``node_dirty`` reports staleness), recomputed only on an
-    explicit Calibrate (``calibrate_node``). This is also the "previous
-    calibration" the Smile Viewer overlays dimmed under a transported smile.
-    """
+    Calibration is trigger-gated (ROADMAP workflow): autoCalibrate ON and inputs
+    changed -> refit; otherwise the FROZEN calibrated fit (``node_dirty`` reports
+    staleness), recomputed only on an explicit Calibrate (``calibrate_node``).
+    Also the "previous calibration" the Smile Viewer overlays dimmed under a
+    transported smile.
+
+    Never calibrated yet: in the **gated** workflow (the live server) this returns
+    ``None`` — no fit is bootstrapped on a mere read, so opening the app / picking
+    the universe never calibrates; the node stays "no fit" until the Calibrate
+    button. Ungated (the test app) bootstraps one fit, the historical behaviour."""
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
     ptr = state.get_calibrated_ptr(ticker, iso, fit_mode)
     key = fit_key(state, ticker, iso, fit_mode)
-    if ptr is None or (state.options().autoCalibrate and ptr[0] != key):
+    if ptr is None:
+        return None if state._gated else _compute_fit(state, ticker, iso, fit_mode)
+    if state.options().autoCalibrate and ptr[0] != key:
         return _compute_fit(state, ticker, iso, fit_mode)
     record = state.get_fit(ptr[0])
     if record is None:  # pointer outlived its cache entry (defensive)
-        record = _compute_fit(state, ticker, iso, fit_mode)
+        return None if state._gated else _compute_fit(state, ticker, iso, fit_mode)
     return record
 
 
-def fit_or_get(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> FitRecord:
+def fit_or_get(
+    state: AppState, ticker: str, expiry_iso: str, fit_mode: str
+) -> FitRecord | None:
     """Displayed slice fit for (ticker, expiry, mode): the calibrated anchor
-    (``displayed_base``) with the no-recal spot-move transport applied on top."""
+    (``displayed_base``) with the no-recal spot-move transport applied on top.
+    ``None`` when the node has no fit yet (gated workflow, before Calibrate)."""
     record = displayed_base(state, ticker, expiry_iso, fit_mode)
+    if record is None:
+        return None
     if state.spot_shift(ticker) == 0.0:
         return record
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
@@ -562,6 +575,8 @@ def surface_rms_error(state: AppState, ticker: str, fit_mode: str) -> float:
             record = fit_or_get(state, ticker, iso, fit_mode)
         except Exception:
             continue  # a slice that can't fit (too few quotes) just doesn't score
+        if record is None:
+            continue  # uncalibrated node (gated, pre-Calibrate): contributes nothing
         n, d = _node_rms_terms(state, ticker, iso, record, fit_mode)
         num += n
         den += d
@@ -634,9 +649,114 @@ def model_info(record: FitRecord) -> ModelInfo:
     return ModelInfo(id="svi", label="SVI-JW")  # 5 raw params, no hyperparameter
 
 
+def prepare_slice(state: AppState, ticker: str, expiry_iso: str):
+    """Prepare one expiry's quotes in IV space WITHOUT calibrating — for the
+    pre-Calibrate display (quote bands + the implied forward). ``None`` when no
+    chain has been fetched or the expiry has no implied forward yet."""
+    if not state.has_quotes(ticker):
+        return None
+    expiry = state.resolve_expiry(ticker, expiry_iso)
+    snapshot = state.snapshot(ticker)  # cached (has quotes)
+    try:
+        forward = state.resolved_forward(ticker, expiry)
+        cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
+        t_cal = state.year_fraction(expiry)
+        tau = variance_time(state, ticker, expiry, t_cal)
+        return prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
+    except Exception:
+        return None  # no forward for this expiry yet / degenerate slice
+
+
+def _no_fit_prior(
+    state: AppState, ticker: str, iso: str, forward: float
+) -> tuple[list[SmilePoint], bool]:
+    """The dotted ACTIVE prior on a default grid (transported to ``forward`` under
+    the dynamics regime), or ``([], False)`` when none exists / no forward yet."""
+    if forward <= 0.0:
+        return [], False
+    from volfit.api import prior_transport
+
+    node = prior_transport.prior_node(state.active_prior(ticker), iso)
+    if node is None:
+        return [], False
+    grid = np.linspace(K_DISPLAY_LO, K_DISPLAY_HI, 81)
+    points = prior_transport.transported_prior_points(
+        node, forward, state.dynamics_regime(), grid
+    )
+    return points, True
+
+
+def _no_fit_smile_payload(
+    state: AppState, ticker: str, expiry_iso: str, fit_mode: str
+) -> SmileData:
+    """SmileData for a node with no calibrated fit yet (gated workflow, before the
+    Calibrate button): quote bands if a chain was fetched, the dotted active prior
+    if one exists, an EMPTY model curve, and ``hasFit=False`` so the viewer shows
+    a 'No fit yet — Calibrate' cue instead of charting a phantom fit."""
+    expiry = state.resolve_expiry(ticker, expiry_iso)
+    iso = expiry.isoformat()
+    prepared = prepare_slice(state, ticker, iso)
+    session = state.session_if_exists((ticker, iso))
+    quotes: list[QuoteBand] = []
+    if prepared is not None:
+        for i, (k, b, a, m) in enumerate(
+            zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
+        ):
+            edit = session.edits.get(i) if session is not None else None
+            amended = edit is not None and edit.amended_iv is not None
+            quotes.append(
+                QuoteBand(
+                    k=float(k), bid=float(b), ask=float(a),
+                    mid=edit.amended_iv if amended else float(m), index=i,
+                    excluded=edit is not None and edit.excluded, amended=amended,
+                )
+            )
+    forward = float(prepared.forward) if prepared is not None else 0.0
+    prior, prior_transported = _no_fit_prior(state, ticker, iso, forward)
+    if prepared is not None:
+        k_min = float(prepared.k.min()) - K_PAD
+        k_max = float(prepared.k.max()) + K_PAD
+    else:
+        k_min, k_max = K_DISPLAY_LO, K_DISPLAY_HI
+    vs = state.varswap_session_if_exists((ticker, iso))
+    settings = state.fit_settings()
+    return SmileData(
+        ticker=ticker,
+        expiry=expiry_iso,
+        T=state.year_fraction(expiry),
+        forward=forward,
+        model=[],
+        prior=prior,
+        priorTransported=prior_transported,
+        quotes=quotes,
+        kMin=k_min,
+        kMax=k_max,
+        diagnostics=SmileDiagnostics(
+            atmVol=0.0, skew=0.0, curvature=0.0, aLeft=0.0, aRight=0.0,
+            leeLeft=0.0, leeRight=0.0, varSwapVol=0.0, rmsError=0.0,
+        ),
+        modelInfo=ModelInfo(id=settings.model, label=_model_label(settings.model)),
+        varSwap=VarSwapInfo(
+            level=vs.state.level if vs is not None else None,
+            excluded=vs.state.excluded if vs is not None else False,
+            modelVol=0.0, enabled=state.options().varSwapEnabled,
+            canUndo=vs.can_undo if vs is not None else False,
+            canRedo=vs.can_redo if vs is not None else False,
+        ),
+        canUndo=session.can_undo if session is not None else False,
+        canRedo=session.can_redo if session is not None else False,
+        hasFit=False,
+        stale=False,
+        anchorModel=None,
+        surfaceRmsError=0.0,
+    )
+
+
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
     """Assemble the full SmileData payload for one (ticker, expiry) node."""
     record = fit_or_get(state, ticker, expiry_iso, fit_mode)
+    if record is None:  # gated workflow, never calibrated -> quotes/prior, no curve
+        return _no_fit_smile_payload(state, ticker, expiry_iso, fit_mode)
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()  # session key
     session = state.session_if_exists((ticker, iso))
     prepared, slice_ = record.prepared, record.result.slice
@@ -651,11 +771,12 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
 
     # While a spot move is active, also expose the pre-transport calibration so
     # the viewer overlays it dimmed (the original fit vs the transported smile).
-    anchor_model = (
-        model_curve(displayed_base(state, ticker, iso, fit_mode))
+    anchor_base = (
+        displayed_base(state, ticker, iso, fit_mode)
         if state.spot_shift(ticker) != 0.0
         else None
     )
+    anchor_model = model_curve(anchor_base) if anchor_base is not None else None
 
     if record.display is not None:
         # Non-LQD overlay: numeric handles/var-swap/Lee; A_L/A_R have no analogue.
@@ -738,7 +859,7 @@ def surface_inputs(
     Weights and band are derived per slice at fit time (they depend on the
     edited quotes), so the plan only carries the prepared quotes.
     """
-    snapshot = state.snapshot(ticker)
+    snapshot = state.ensure_chain(ticker)  # calibrate path: fetch the chain if absent
     forwards = state.forwards(ticker)  # gates the expiry universe
     american = snapshot.exercise_style == "american"
     plan = []
@@ -899,6 +1020,12 @@ def run_scenario(state: AppState, request: ScenarioRequest) -> ScenarioResponse:
 
         return scenario_sticky_grid(state, request)
     record = fit_or_get(state, request.ticker, request.expiry, request.fitMode)
+    if record is None:  # gated, never calibrated: nothing to transport yet
+        regime = request.regime
+        return ScenarioResponse(
+            k=[], baseVol=[], shiftedVol=[], ssr=ssr_of_regime(regime),
+            regime=regime.value if isinstance(regime, Regime) else f"{regime:g}",
+        )
     t, slice_ = record.prepared.tau, displayed_slice(record)
     grid = np.linspace(
         min(K_DISPLAY_LO, float(record.prepared.k.min()) - K_PAD),

@@ -28,6 +28,8 @@ def autocalibrate(
     w0: list[float] = []
     for expiry in expiries:
         record = fit_or_get(state, ticker, expiry.isoformat(), request.fitMode)
+        if record is None:
+            continue  # uncalibrated node (gated, pre-Calibrate): no term point
         t.append(record.prepared.t)  # calendar maturity
         # Calendar ATM total variance from the LQD backbone (clock-invariant).
         w0.append(float(record.result.slice.implied_w(0.0)))

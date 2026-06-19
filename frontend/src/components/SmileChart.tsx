@@ -361,21 +361,23 @@ export default function SmileChart({
                   const ym = yScale.map(q.mid);
                   const cap = 3.5;
                   const selected = selectedIndex !== null && q.index === selectedIndex;
-                  const beamStroke = selected ? "var(--color-accent-400)" : "rgb(148 163 184 / 0.55)";
+                  // Observed quotes are drawn in bright red, bolder than the fitted
+                  // smile, so the market is unmistakable against the model curve.
+                  const beamStroke = selected ? "var(--color-accent-400)" : "rgb(248 113 113 / 0.95)";
                   const midStroke = q.amended
                     ? "rgb(251 191 36 / 0.95)"
                     : selected
                       ? "var(--color-accent-400)"
-                      : "rgb(226 232 240 / 0.9)";
+                      : "rgb(248 113 113)";
                   const midHalf = q.amended ? 4 : 2.5;
                   return (
                     <g key={q.index}>
                       {selected && <circle cx={x} cy={ym} r={7} fill="var(--color-accent-400)" opacity={0.18} />}
-                      <g stroke={beamStroke} strokeWidth={1} opacity={q.excluded ? 0.25 : 1}>
+                      <g stroke={beamStroke} strokeWidth={1.4} opacity={q.excluded ? 0.25 : 1}>
                         <line x1={x} x2={x} y1={yb} y2={ya} />
                         <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
                         <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
-                        <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym} stroke={midStroke} strokeWidth={1.5} />
+                        <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym} stroke={midStroke} strokeWidth={2.2} />
                       </g>
                       {q.excluded && (
                         <g stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}>
@@ -438,6 +440,21 @@ export default function SmileChart({
                 {/* Current model fit: accent */}
                 <path d={modelPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
+
+                {/* Trigger-gated cue: no model curve yet (never calibrated). */}
+                {model.length === 0 && (
+                  <text
+                    x={plotW / 2}
+                    y={18}
+                    textAnchor="middle"
+                    className="fill-slate-500"
+                    style={{ fontSize: 11 }}
+                  >
+                    {quotes.length === 0
+                      ? "No quotes — press Fetch"
+                      : "No fit yet — press Calibrate"}
+                  </text>
+                )}
 
                 {/* Crosshair */}
                 {hoverK !== null && hoverVol !== null && (

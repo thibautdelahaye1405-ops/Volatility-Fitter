@@ -106,6 +106,8 @@ def capture_snapshot(state: AppState, ticker: str, fit_mode: str = "mid") -> Pri
             record = service.displayed_base(state, ticker, iso, fit_mode)
         except Exception:  # noqa: BLE001 — a node that can't fit is skipped
             continue
+        if record is None:
+            continue  # uncalibrated node (gated, pre-Calibrate): not in the snapshot
         prepared = record.prepared
         nodes.append(
             PriorNode(
@@ -244,32 +246,53 @@ def _recalibrate_at_prev_close(
 
 
 def fetch_all(state: AppState, fit_mode: str = "mid") -> PriorFetchResult:
-    """Resolve each active ticker's prior via the freshness ladder and set it active.
+    """Activate each active ticker's prior and set it as the dotted, spot-updated
+    overlay (+ Bayesian anchor).
 
-    Per ticker: (1) use the latest SAVED snapshot if it is posterior to the
-    previous close; else (2) calibrate on-the-fly from 15-min-before-previous-close;
-    else (3) the actual previous close. The resolved prior becomes the active
-    (dotted, spot-updated overlay + anchor) prior for the ticker."""
-    prev_close, prev_session = _prev_close_instant(state)
+    Per ticker: (1) use the latest SAVED snapshot — the prior the user explicitly
+    captured (via "Save priors"), whatever observation it reflects; else (2) when
+    nothing has been saved, calibrate one on-the-fly from 15-min-before the
+    previous close, else the actual previous close. The resolved prior becomes the
+    active prior, drawn dotted and **transported to the current spot** (so it can
+    be compared with the prevailing calibrated smile, also at the current spot).
+
+    A saved snapshot is used regardless of its age: a prior is, by definition, a
+    past observation the user chose — the freshness ladder is only the *fallback*
+    when no prior has been saved. (Earlier this used the saved snapshot only if it
+    was newer than the previous close, so a deliberately-past prior was silently
+    replaced by a prev-close recalc — which often coincided with the live smile,
+    making "Fetch priors" look like a no-op.)
+
+    The on-the-fly fallback switches the global as-of to a past close and back,
+    which clears the live chain caches; we snapshot and restore the live surface
+    around the whole resolve so the user's calibrated live smile / quotes survive
+    (in the gated workflow a read no longer lazily re-bootstraps them). The active
+    prior is stored separately from the chain caches, so the set_active_prior
+    calls below survive the restore."""
+    _, prev_session = _prev_close_instant(state)
+    live_state = state.capture_chain_state()
     out: list[PriorFetchTicker] = []
-    for ticker in state.active_tickers():
-        latest = state.latest_prior_snapshot(ticker)
-        if _is_fresh(latest, prev_close):
-            state.set_active_prior(ticker, latest, "saved")
+    try:
+        for ticker in state.active_tickers():
+            latest = state.latest_prior_snapshot(ticker)
+            if latest is not None:  # the user's explicitly-saved prior wins
+                state.set_active_prior(ticker, latest, "saved")
+                out.append(
+                    PriorFetchTicker(
+                        ticker=ticker, source="saved", dataTs=latest.dataTs,
+                        nodeCount=len(latest.nodes),
+                    )
+                )
+                continue
+            snap, source = _recalibrate_at_prev_close(state, ticker, prev_session, fit_mode)
+            state.set_active_prior(ticker, snap, source)
             out.append(
                 PriorFetchTicker(
-                    ticker=ticker, source="saved", dataTs=latest.dataTs,
-                    nodeCount=len(latest.nodes),
+                    ticker=ticker, source=source,
+                    dataTs=snap.dataTs if snap is not None else None,
+                    nodeCount=len(snap.nodes) if snap is not None else 0,
                 )
             )
-            continue
-        snap, source = _recalibrate_at_prev_close(state, ticker, prev_session, fit_mode)
-        state.set_active_prior(ticker, snap, source)
-        out.append(
-            PriorFetchTicker(
-                ticker=ticker, source=source,
-                dataTs=snap.dataTs if snap is not None else None,
-                nodeCount=len(snap.nodes) if snap is not None else 0,
-            )
-        )
+    finally:
+        state.restore_chain_state(live_state)  # undo the transient as-of round-trip
     return PriorFetchResult(tickers=out)

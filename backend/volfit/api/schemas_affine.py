@@ -112,3 +112,6 @@ class AffineFitResponse(BaseModel):
     nEvals: int  # calibration PDE solves
     message: str  # optimizer termination message
     stale: bool = False  # inputs drifted since the last LV calibration (needs Calibrate)
+    #: False when the LV surface has never been calibrated (gated workflow, before
+    #: the Calibrate button): all arrays empty, the UI shows a "Calibrate" cue.
+    hasFit: bool = True

@@ -33,6 +33,7 @@ def create_app(
     providers: dict[str, OptionChainProvider] | None = None,
     active_source: str | None = None,
     enable_scheduler: bool = False,
+    gated: bool = False,
 ) -> FastAPI:
     """Build the API app around one AppState instance.
 
@@ -49,6 +50,7 @@ def create_app(
         store_path=store_path,
         providers=providers,
         active_source=active_source,
+        gated=gated,
     )
     # Restore the last saved/loaded universe as the default selection (no fetch;
     # tickers resolve lazily). Best-effort — a missing store/pointer keeps the

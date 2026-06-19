@@ -129,6 +129,28 @@ def test_fetch_uses_fresh_saved_prior_and_marks_overlay(client):
     assert len(smile["prior"]) == len(smile["model"])  # sampled on the model grid
 
 
+def test_fetch_uses_saved_prior_even_when_stale(client):
+    """A prior IS a chosen past observation: a saved snapshot older than the
+    previous close must still be the one activated by Fetch (drawn dotted +
+    transported), not silently replaced by a prev-close recalc."""
+    from datetime import datetime
+
+    state: AppState = client.app.state.volfit
+    iso = _first_iso(client)
+    client.get(f"/smiles/{TICKER}/{iso}")
+    client.post("/priors/save-all")
+    snap = state.latest_prior_snapshot(TICKER)
+    assert snap is not None
+    stale = snap.model_copy(update={"dataTs": datetime(2020, 1, 1).isoformat()})
+    state.save_prior_snapshot(stale)  # force a clearly-past data moment
+
+    fetched = {t["ticker"]: t for t in client.post("/priors/fetch").json()["tickers"]}
+    assert fetched[TICKER]["source"] == "saved"  # used despite being old
+    assert state.active_prior(TICKER) is not None
+    smile = client.get(f"/smiles/{TICKER}/{iso}").json()
+    assert smile["priorTransported"] is True  # dotted, spot-updated overlay shown
+
+
 def test_is_fresh_ladder_decision():
     """The saved-vs-recalibrate decision keys on the data moment vs prev close."""
     from datetime import datetime, timedelta

@@ -27,7 +27,7 @@ import numpy as np
 
 from volfit.api.displayed import displayed_slice
 from volfit.api.schemas import TableResponse, TableRow
-from volfit.api.service import fit_or_get
+from volfit.api.service import fit_or_get, prepare_slice
 from volfit.api.state import AppState
 from volfit.core.black import black_call
 
@@ -51,13 +51,21 @@ def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     record = fit_or_get(state, ticker, expiry_iso, fit_mode)
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()  # session key
     session = state.session_if_exists((ticker, iso))
-    prepared = record.prepared
+    if record is None:  # gated, never calibrated: quotes only (no model column)
+        prepared = prepare_slice(state, ticker, iso)
+        if prepared is None:
+            return TableResponse(
+                ticker=ticker, expiry=expiry_iso, t=0.0, forward=0.0, discount=1.0, rows=[]
+            )
+        model_iv = prepared.iv_mid  # no fit yet -> the mid stands in for the model col
+    else:
+        prepared = record.prepared
+        # IVs are in the event-weighted clock (prepared.tau): total variance is
+        # iv^2 * tau, so prices reconstructed at tau equal the real market prices,
+        # and the model IV is the weighted vol. ``t`` (calendar) stays the maturity.
+        model_iv = np.sqrt(displayed_slice(record).implied_w(prepared.k) / prepared.tau)
     t, forward, discount = prepared.t, prepared.forward, prepared.discount
-    # IVs are in the event-weighted clock (prepared.tau): total variance is
-    # iv^2 * tau, so prices reconstructed at tau equal the real market prices,
-    # and the model IV is the weighted vol. ``t`` (calendar) stays the maturity.
     tv = prepared.tau
-    model_iv = np.sqrt(displayed_slice(record).implied_w(prepared.k) / tv)
 
     rows: list[TableRow] = []
     for i, (k, bid, mid, ask) in enumerate(

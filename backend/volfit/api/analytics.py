@@ -129,6 +129,8 @@ def term_structure(
     for expiry in sorted(forwards):
         iso = expiry.isoformat()
         record = fit_or_get(state, ticker, iso, request.fitMode)
+        if record is None:
+            continue  # uncalibrated node (gated, pre-Calibrate): no term point
         t = record.prepared.t
         tau = record.prepared.tau
         atm_vol = displayed_atm_vol(record)  # weighted vol = sqrt(w0 / tau)
@@ -161,6 +163,12 @@ def term_structure(
         w0s.append(w0)
 
     violations = sum(1 for near, far in zip(w0s, w0s[1:]) if far < near)
+
+    if not ts:  # no calibrated node yet (gated, pre-Calibrate): empty term curve
+        empty = TermCurve(t=[], tau=[], w=[], vol=[])
+        return TermStructureResponse(
+            ticker=ticker, points=[], curve=empty, calendarViolations=0, dividends=[]
+        )
 
     # Dense curve over the CALENDAR maturity grid; total variance w(T) accrues
     # linearly in the WEIGHTED clock tau (flat forward variance per weighted-time
@@ -251,6 +259,8 @@ def density_payload(state: AppState, ticker: str, expiry: str, fit_mode: str) ->
     saved prior is always the LQD snapshot that was stored.
     """
     record = fit_or_get(state, ticker, expiry, fit_mode)
+    if record is None:  # gated, never calibrated: empty current density
+        return DensityResponse(current=DistributionArrays(x=[], density=[]), prior=None)
     if record.display is not None:
         current = _distribution_model(displayed_slice(record))
     else:
@@ -273,6 +283,8 @@ def stacked_densities(state: AppState, ticker: str, fit_mode: str) -> StackedDen
     for expiry in sorted(forwards):
         iso = expiry.isoformat()
         record = fit_or_get(state, ticker, iso, fit_mode)
+        if record is None:
+            continue  # uncalibrated node (gated, pre-Calibrate): no density curve
         slice_ = displayed_slice(record)
         # Density left-extended to the display lower bound (k_min = -1.4), so the
         # overlay's x-axis spans the same range as the smile / surface.

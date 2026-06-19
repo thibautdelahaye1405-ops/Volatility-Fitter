@@ -133,8 +133,18 @@ class AppState(UniverseMixin):
         store_path: str | os.PathLike | None = None,
         providers: dict[str, OptionChainProvider] | None = None,
         active_source: str | None = None,
+        gated: bool = False,
     ) -> None:
         self.reference_date = reference_date
+        #: Trigger-gated workflow (the live server; serve.py passes True). When on,
+        #: READS never touch the feed or calibrate: ``snapshot`` serves cached-only
+        #: (empty until an explicit Fetch), and ``service.displayed_base`` does NOT
+        #: bootstrap a fit (the smile stays "no fit" until an explicit Calibrate).
+        #: Quotes/spot are fetched only by ``refresh_chain``/``fetch_spots`` (the
+        #: Fetch buttons) and ``ensure_chain`` (Calibrate's auto-fetch). Off (the
+        #: default, used by the test app) keeps the historical lazy-fetch/bootstrap
+        #: behaviour, so the existing suite is byte-identical.
+        self._gated = gated
         #: Available market-data sources keyed by id ("yahoo"/"bloomberg"/
         #: "massive"/"synthetic"). `self.provider` is the *active* one; the Data
         #: Source selector switches `_active_source` at runtime.
@@ -181,6 +191,11 @@ class AppState(UniverseMixin):
             self._fit_settings = saved_fit
         if saved_options is not None:
             self._options = saved_options
+        elif self._gated:
+            # The trigger-gated live server defaults autoCalibrate OFF so a Fetch
+            # only loads quotes and fitting waits for the explicit Calibrate button
+            # (no saved preference yet — a user "Save as default" still wins above).
+            self._options = self._options.model_copy(update={"autoCalibrate": False})
         self._market_settings: dict[str, MarketSettings] = {}
         #: Per-ticker event calendar (shared across workspaces). Events now drive
         #: the event-weighted variance clock used by every fit (volfit.calib.
@@ -346,6 +361,34 @@ class AppState(UniverseMixin):
         self._varswap_sessions.clear()
         self._universe = None
 
+    #: Cache dicts that ``_clear_chain_caches`` wipes — the live surface state a
+    #: transient as-of switch must NOT destroy (see capture/restore below).
+    _CHAIN_CACHE_ATTRS = (
+        "_snapshots", "_forwards", "_fits", "_calibrated", "_anchor_spot",
+        "_affine_calibrated", "_sessions", "_varswap_sessions",
+    )
+
+    def capture_chain_state(self) -> dict:
+        """Snapshot the live as-of + chain-derived caches so a TRANSIENT as-of
+        switch (e.g. the on-the-fly prior fetch, which recalibrates at a past
+        close then restores live) can be made transparent. Without this the
+        restore's cache-clear would wipe the live surface in the gated workflow,
+        where reads no longer lazily re-bootstrap. Restore via
+        ``restore_chain_state``."""
+        with self._lock:
+            saved = {attr: dict(getattr(self, attr)) for attr in self._CHAIN_CACHE_ATTRS}
+            saved["_asof"] = self._asof
+            return saved
+
+    def restore_chain_state(self, saved: dict) -> None:
+        """Restore the live as-of + caches captured by ``capture_chain_state``,
+        leaving the live surface exactly as it was before the as-of round-trip."""
+        with self._lock:
+            for attr in self._CHAIN_CACHE_ATTRS:
+                setattr(self, attr, dict(saved[attr]))
+            self._asof = saved["_asof"]
+            self._universe = None
+
     # ------------------------------------------------------------ as-of
     @property
     def as_of(self) -> AsOfSelection:
@@ -445,13 +488,39 @@ class AppState(UniverseMixin):
         )
 
     def snapshot(self, ticker: str) -> ChainSnapshot:
-        """Fetch-once chain snapshot of the ticker's SELECTED expiries;
-        UnknownNodeError for tickers not in the active universe."""
+        """Chain snapshot of the ticker's SELECTED expiries (cached once);
+        UnknownNodeError for tickers not in the active universe.
+
+        In the trigger-gated workflow (``_gated``) a READ never pulls quotes: if
+        nothing has been fetched yet this returns an empty, uncached snapshot, so
+        opening the app / selecting the universe never touches the feed. The
+        explicit Fetch (``refresh_chain``) and Calibrate (``ensure_chain``) paths
+        do the actual provider fetch. Ungated keeps the historical lazy fetch."""
         self._require_active(ticker)
         self._ensure_selection(ticker)
         with self._lock:
             if ticker in self._snapshots:
                 return self._snapshots[ticker]
+        if self._gated:
+            return self._empty_snapshot(ticker)  # reads never fetch (trigger-gated)
+        return self._fetch_and_cache(ticker)
+
+    def ensure_chain(self, ticker: str) -> ChainSnapshot:
+        """Return the cached chain, fetching it once if absent — the Calibrate
+        auto-fetch path ("press Calibrate before Fetch" still works). Always
+        permitted to hit the feed, even in the gated workflow."""
+        self._require_active(ticker)
+        self._ensure_selection(ticker)
+        with self._lock:
+            if ticker in self._snapshots:
+                return self._snapshots[ticker]
+        return self._fetch_and_cache(ticker)
+
+    def _fetch_and_cache(self, ticker: str) -> ChainSnapshot:
+        """Pull the chain from the active provider for the SELECTED expiries and
+        cache it (the explicit-fetch path). Degrades a feed failure / empty chain
+        to an empty UNCACHED snapshot (retried on the next access), never a 500."""
+        with self._lock:
             chosen = list(self._selected.get(ticker, []))
         if not chosen:
             # Ladder hasn't resolved yet (transient feed miss): return an empty,
@@ -479,6 +548,13 @@ class AppState(UniverseMixin):
             self._snapshots.setdefault(ticker, snap)
             return self._snapshots[ticker]
 
+    def has_quotes(self, ticker: str) -> bool:
+        """Whether a non-empty chain has been fetched + cached for the ticker
+        (so views can show 'press Fetch' vs the quotes without fetching)."""
+        with self._lock:
+            snap = self._snapshots.get(ticker)
+        return snap is not None and bool(snap.quotes)
+
     def forwards(self, ticker: str) -> dict[date, ImpliedForward]:
         """Parity-implied forwards per expiry, cached per ticker."""
         snapshot = self.snapshot(ticker)
@@ -496,12 +572,19 @@ class AppState(UniverseMixin):
             return fwds
 
     def resolve_expiry(self, ticker: str, expiry_iso: str) -> date:
-        """Parse and validate an ISO expiry against the ticker's ladder."""
+        """Parse and validate an ISO expiry against the ticker's SELECTED ladder.
+
+        Validated against the selection (cheap metadata, what the universe lists),
+        not the parity-implied forwards: in the gated workflow no chain is fetched
+        on a read, so forwards is empty until the explicit Fetch, yet a selected
+        node must still resolve (to show quotes / 'no fit yet'). The selection is a
+        superset of the forward-bearing expiries, so valid nodes are unaffected and
+        a genuinely unknown date is still rejected."""
         try:
             expiry = date.fromisoformat(expiry_iso)
         except ValueError:
             raise UnknownNodeError(f"malformed expiry {expiry_iso!r}") from None
-        if expiry not in self.forwards(ticker):
+        if expiry not in self.selected_expiries(ticker):
             raise UnknownNodeError(f"unknown expiry {expiry_iso!r} for {ticker!r}")
         return expiry
 
@@ -709,7 +792,8 @@ class AppState(UniverseMixin):
             self._snapshots.pop(ticker, None)
             self._forwards.pop(ticker, None)
             self._data_version[ticker] = self._data_version.get(ticker, 0) + 1
-        return float(self.snapshot(ticker).spot)  # warm the new chain (outside lock)
+        # Force a provider fetch (in the gated workflow a plain read would not).
+        return float(self._fetch_and_cache(ticker).spot)  # warm the new chain
 
     def get_calibrated_ptr(self, ticker: str, iso: str, mode: str) -> tuple | None:
         """The (fit-key, cal-spot) a node was last calibrated at, or None."""

@@ -201,6 +201,21 @@ def _parametric_items(
     return items
 
 
+def _ensure_chains(state: AppState, tickers: list[str]) -> None:
+    """Calibrate's auto-fetch: load each ticker's chain so its lit nodes resolve.
+
+    In the gated workflow a plain read never fetches, so before Calibrate the
+    expiry ladder (``state.forwards``) is empty and ``lit_nodes`` would find
+    nothing. Fetching here makes "press Calibrate before Fetch" do the sensible
+    thing (fetch then fit). Best-effort per ticker — an unreachable feed is
+    skipped, exactly as ``lit_nodes`` already tolerates."""
+    for ticker in tickers:
+        try:
+            state.ensure_chain(ticker)
+        except Exception:
+            pass
+
+
 def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     """Start a BACKGROUND calibration of every lit node, then (when Local-Vol is
     enabled) each lit ticker's LV (affine) surface. Items carry a coarse ``phase``
@@ -208,6 +223,7 @@ def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     "Calibrating LV". When ``enforceCalendar`` is on the parametric items are
     calendar-coupled per ticker (``_coupled_ticker_items``); else they are
     independent per node. False if a job is already running."""
+    _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
     items = _parametric_items(state, lit_nodes(state), fit_mode)
     if state.options().localVolEnabled:
         for ticker in _lit_tickers(state):
@@ -229,6 +245,7 @@ def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int
 
     Honours ``enforceCalendar`` (calendar-couples the expiries) by running the
     same work items as the background path, just inline."""
+    _ensure_chains(state, [ticker])  # auto-fetch so lit nodes resolve (gated workflow)
     nodes = lit_nodes(state, [ticker])
     for _, _, thunk in _parametric_items(state, nodes, fit_mode):
         thunk()
