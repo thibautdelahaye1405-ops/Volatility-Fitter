@@ -83,6 +83,11 @@ class YahooProvider(OptionChainProvider):
         self.max_days = max_days
         self._ticker_factory = ticker_factory or _default_ticker_factory
         self.exercise_style = exercise_style
+        #: Lazily-built pooled httpx.Client for the autocomplete endpoint, so
+        #: repeated symbol searches reuse one keep-alive connection rather than a
+        #: fresh handshake per keystroke-driven query. (Option chains go through
+        #: yfinance, which keeps its own session on the reused Ticker instance.)
+        self._search_client = None
 
     def _exercise_style(self, ticker: str) -> str:
         """Constructor override, else heuristic: Yahoo's '^'-prefixed symbols
@@ -121,13 +126,15 @@ class YahooProvider(OptionChainProvider):
         if not q:
             return []
         try:
-            import httpx
+            if self._search_client is None:
+                import httpx
 
-            response = httpx.get(
+                self._search_client = httpx.Client(
+                    headers={"User-Agent": "Mozilla/5.0"}, timeout=5.0
+                )
+            response = self._search_client.get(
                 _SEARCH_URL,
                 params={"q": q, "quotesCount": limit, "newsCount": 0},
-                headers={"User-Agent": "Mozilla/5.0"},
-                timeout=5.0,
             )
             quotes = response.json().get("quotes", [])
         except Exception:

@@ -19,6 +19,7 @@ extrapolation targets and are not calibrated here.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 
 from volfit.api import service
 from volfit.api.schemas import (
@@ -294,15 +295,30 @@ def fetch_options(
     """
     chosen = tickers if tickers is not None else state.active_tickers()
     source = _source_label(state)
-    spots: dict[str, float] = {}
-    fetched: list[str] = []
-    for ticker in chosen:
+
+    def _refresh_one(ticker: str) -> tuple[str, float | None]:
+        """Refetch one ticker's chain (blocking network); None spot on failure.
+
+        Each ticker is independent — ``refresh_chain`` touches only that ticker's
+        snapshot/forwards/version under the per-call lock and does its network
+        I/O outside it, and the activity reporter + provider HTTP client are
+        thread-safe — so the chains can be fetched concurrently instead of
+        serially (turning Σ per-ticker latency into the slowest single fetch)."""
         try:
             with state.activity.activity("fetch", f"Fetching {ticker} quotes from {source}"):
-                spots[ticker] = float(state.refresh_chain(ticker))
-            fetched.append(ticker)
+                return ticker, float(state.refresh_chain(ticker))
         except Exception:
-            continue
+            return ticker, None
+
+    spots: dict[str, float] = {}
+    fetched: list[str] = []
+    if chosen:
+        # pool.map preserves input order, so ``fetched`` keeps the chosen order.
+        with ThreadPoolExecutor(max_workers=min(8, len(chosen))) as pool:
+            for ticker, spot in pool.map(_refresh_one, chosen):
+                if spot is not None:
+                    spots[ticker] = spot
+                    fetched.append(ticker)
     started = False
     if state.options().autoCalibrate and fetched:
         started = calibrate_all(state, fit_mode)
