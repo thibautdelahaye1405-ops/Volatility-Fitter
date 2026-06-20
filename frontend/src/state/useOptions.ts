@@ -111,7 +111,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   timeScheme: 'implicit',
   lvEarlyStop: true,
   lvFastKernel: true,
-  lvSolver: 'trf',
+  lvSolver: 'gn',
   leftWingSlopeMult: 1.5,
   calendarWeight: 1e6,
   graphKappaScale: 1.0,

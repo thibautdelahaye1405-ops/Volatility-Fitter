@@ -731,7 +731,16 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     # the Numba march makes each eval cheap, GN's no-SVD evals win ~1.3-1.65x. Opt-in
     # (var-swap fits keep trf — GN doesn't carry the free-left-slope column). GN gets a
     # more conservative early-stop + a looser lsmr (hardened on the benchmark).
-    gn = opts.lvSolver == "gn" and not fit_left_a
+    # GN engages only for the smooth MID objective with the Numba march active (its
+    # win depends on the cheap eval). The bid-ask / haircut band objective is
+    # non-smooth (zero gradient inside the band) — fragile for GN's smooth LM — so those
+    # keep trf's robust trust region, as do var-swap fits and the banded-march fallback.
+    gn = (
+        opts.lvSolver == "gn"
+        and not fit_left_a
+        and engine == "numba"
+        and request.fitMode == "mid"
+    )
     if gn:
         stall_window = _GN_STALL_WINDOW if opts.lvEarlyStop else 0
         stall_rtol, gn_lsmr_tol = _GN_STALL_RTOL, _GN_LSMR_TOL

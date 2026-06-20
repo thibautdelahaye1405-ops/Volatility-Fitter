@@ -161,7 +161,11 @@ at the heavy grid.
   (Stage 6)**, not fewer grid points. Stage 4′ (grid-robust var-swap) still stands
   on its own as a correctness improvement.
 
-### Stage 5 — Matrix-free Gauss–Newton  ✅ REVISITED & SHIPPED opt-in (2026-06-20) after Stage 6′
+### Stage 5 — Matrix-free Gauss–Newton  ✅ REVISITED & SHIPPED as the DEFAULT (2026-06-20) after Stage 6′
+*(Default `lvSolver="gn"`, gated to the smooth MID fit target + Numba march; band/
+haircut/var-swap fits keep trf. The user accepted the ~0.25 bp surface difference for
+the ~1.3–1.65× speed. The write-up below says "opt-in" — that was the initial ship; it
+was promoted to default the same day.)*
 **First verdict (non-viable) was REVERSED once the march got cheap.** Originally GN
 lost to TRF because it needs ~1.7× more evals AND its tight lsmr made each eval
 costlier — when the march dominated. But Stage 6′ showed the per-eval split is

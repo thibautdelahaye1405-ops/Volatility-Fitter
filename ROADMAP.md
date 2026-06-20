@@ -57,13 +57,14 @@ synthetic-only overclaim):
   is cheap.** Its first verdict (non-viable) was reversed: GN AVOIDS trf's dense SVD,
   which Stage 6′ showed is **52%** of an eval, and with the cheap Numba march GN's
   no-SVD evals win. Re-benchmarked (numba + early-stop): **GN ~1.3–1.65× faster than
-  trf** (better surface on SPY g20). Shipped OPT-IN (`OptionsSettings.lvSolver="gn"`,
-  default "trf") since GN converges to a slightly different local optimum on stiff
-  data (surface within ~0.25 bp, sometimes better — the NVDA +0.25 bp gap is inherent,
-  not an early-stop artifact). Hardened the GN early-stop: track best among ACCEPTED
-  iterates only, count rejects as no-progress, conservative window/rtol (18/3e-3) +
-  looser lsmr (1e-6). `gn_lsmr_tol` threaded; `lvSolver` in `affine_key` + Options
-  selector; `test_affine_gn.py` GN early-stop test. Var-swap fits keep trf.
+  trf** (better surface on SPY g20). **Now the DEFAULT** (`lvSolver="gn"`), gated to the
+  smooth MID fit target + Numba march; band/haircut (non-smooth objective), var-swap,
+  and banded-march fits keep trf. The ~0.25 bp surface difference vs trf (a slightly
+  different local optimum on stiff data; the NVDA +0.25 bp gap is inherent) is accepted
+  at the default. Hardened the GN early-stop: track best among ACCEPTED iterates only,
+  count rejects as no-progress, conservative window/rtol (18/3e-3) + looser lsmr (1e-6).
+  `gn_lsmr_tol` threaded; `lvSolver` in `affine_key` + Options selector;
+  `test_affine_gn.py` GN early-stop test.
 - **Stage 6′ — Numba vectorized-Thomas march SHIPPED (6.5× the banded march).** The
   first Numba try (~1.2×) used a column-OUTER scalar Thomas; the real lever was the
   loop order. `affine_march.py`: no-pivot factor-once Thomas + the k sensitivity

@@ -224,8 +224,8 @@ export default function OptionsViewer() {
             onChange={(e) => patch({ lvSolver: e.target.value as "trf" | "gn" })}
             className={numInput}
           >
-            <option value="trf">TRF (default)</option>
-            <option value="gn">Gauss-Newton (faster)</option>
+            <option value="gn">Gauss-Newton (default, faster)</option>
+            <option value="trf">TRF (legacy)</option>
           </select>
         </div>
         <div className="mt-2">
