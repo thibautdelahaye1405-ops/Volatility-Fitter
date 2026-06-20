@@ -17,8 +17,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from volfit.api.affine_fit import _lv_bounds, _time_nodes
+from volfit.api.affine_fit import _axis_scale, _lv_bounds, _resolve_grid, _time_nodes
 from volfit.api.schemas import OptionsSettings
+from scipy.special import ndtri
 from volfit.models.localvol import (
     AffineVarianceSurface,
     OptionQuote,
@@ -312,3 +313,35 @@ def test_convex_wing_penalty_convexifies_left_wing():
         assert free_c < 0.0  # the data wants concave
         assert convex_c > free_c  # the penalty pushes it convex-ward
         assert convex_c > -5e-3  # and essentially achieves convexity
+
+
+def _rows_with_wing(k_lo: float):
+    """Minimal _gather-style rows (iso, tau, k, w, prepared, band) — a low-vol
+    skew quoted from ``k_lo`` to +0.2 across three expiries."""
+    rows = []
+    for t in (0.1, 0.5, 1.0):
+        k = np.linspace(k_lo, 0.20, 15)
+        vol = 0.15 + 0.10 * np.maximum(-k, 0.0)  # equity-like put skew, ~15% ATM
+        rows.append((f"2026-{t}", float(t), k, vol * vol * t, None, None))
+    return rows
+
+
+def test_convex_wing_confined_to_quoted_extrapolation():
+    """The convex-wing constraint must NOT bite on vertices the quotes already
+    constrain — only the unquoted extrapolation tail. With a dense wing (quotes
+    reaching well past the 5Δ-put strike) the 5Δ region is full of quoted
+    vertices, but the data-bounded rule selects none, so the constraint can't
+    fight the quotes (the SPY 26bp-at-gridXNodes=20 regression)."""
+    rows = _rows_with_wing(k_lo=-0.5)  # quotes reach k = -0.5, past 5Δ
+    opts = OptionsSettings(convexWing=True, gridStrikeMode="delta", gridXNodes=20)
+    _, x_nodes, _, convex_cols = _resolve_grid(rows, opts)
+
+    sigma_star, t_star = _axis_scale(rows)
+    k_wing = sigma_star * np.sqrt(t_star) * float(ndtri(0.05))
+    naive = np.flatnonzero(x_nodes <= np.exp(k_wing) * (1.0 + 1e-9))
+    assert naive.size > 0  # the 5Δ region DOES contain (quoted) vertices...
+    assert convex_cols is None  # ...but the fix excludes them (all within data)
+
+    # Off ⇒ never selected, regardless of grid.
+    _, _, _, off = _resolve_grid(rows, opts.model_copy(update={"convexWing": False}))
+    assert off is None

@@ -296,7 +296,20 @@ def _resolve_grid(rows, opts):
     convex_cols = None
     if opts.convexWing:
         k_wing = sigma_star * np.sqrt(max(t_star, 1e-8)) * float(ndtri(_CONVEX_WING_DELTA))
-        convex_cols = np.flatnonzero(x_nodes <= np.exp(k_wing) * (1.0 + 1e-9))
+        # Confine the convex-wing constraint to the true EXTRAPOLATION wing:
+        # vertices at/below the 5Δ-put strike AND strictly below the deepest
+        # observed quote, so it shapes only the unquoted tail and never overrides
+        # dense quoted data (the same principle as the calendar-arb traded-range
+        # fix). Without the data bound, a fine strike grid (large gridXNodes) stacks
+        # convexity constraints onto quoted strikes and distorts the put wing —
+        # badly for low-vol names where the wing is naturally near-linear (SPY at
+        # gridXNodes=20 read 26bp instead of 3bp), while a high-vol name's
+        # already-convex wing hid it. Empty (no unquoted wing vertex) ⇒ no
+        # constraint, which is correct: dense data fully determines the wing.
+        in_wing = x_nodes <= np.exp(k_wing) * (1.0 + 1e-9)
+        beyond_data = x_nodes < np.exp(k_lo_obs)
+        cols = np.flatnonzero(in_wing & beyond_data)
+        convex_cols = cols if cols.size else None
     return t_nodes, x_nodes, k_hi, convex_cols
 
 
