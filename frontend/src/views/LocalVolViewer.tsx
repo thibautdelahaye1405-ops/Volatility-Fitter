@@ -86,7 +86,7 @@ export default function LocalVolViewer() {
     varSwapEnabled, varSwapNonce, applyVarSwap, undoVarSwap, redoVarSwap,
   } = useAffine();
 
-  const { source, spotVersion } = useSmileSession();
+  const { source, spotVersion, fitMode } = useSmileSession();
   const live = source === "live";
   // Spot moves transport the cached surface; fold into the derived-view key so
   // density / term / table refetch alongside the surface (which depends on it
@@ -109,9 +109,9 @@ export default function LocalVolViewer() {
   const expiry = data?.smiles[expiryIdx]?.expiry ?? null;
 
   // Derived views reuse the cached affine fit; only the active one fetches.
-  const term = useAffineView<TermResponse>("term", ticker, null, view === "term", lvReloadKey);
+  const term = useAffineView<TermResponse>("term", ticker, null, view === "term", lvReloadKey, fitMode);
   const table = useAffineView<AffineTableData>(
-    "table", ticker, expiry, view === "table", lvReloadKey,
+    "table", ticker, expiry, view === "table", lvReloadKey, fitMode,
   );
 
   if (error !== null && data === null) {

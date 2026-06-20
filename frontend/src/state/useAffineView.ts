@@ -48,6 +48,7 @@ export function useAffineView<T>(
   expiry: string | null,
   enabled: boolean,
   reloadKey: number = 0,
+  fitMode: string = "mid",
 ): UseAffineViewResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,7 +66,9 @@ export function useAffineView<T>(
     setError(null);
     api
       .post<T>(`/fit/affine/${ticker}/${kind}`, {
-        body: { fitMode: "mid" },  // grid + roughness are global (Options)
+        // Viewed fit target, matching useAffine's surface fit so the derived view
+        // reconstructs from the SAME cached surface (grid + roughness are global).
+        body: { fitMode },
         params: needsExpiry ? { expiry: expiry as string } : undefined,
         signal: controller.signal,
       })
@@ -81,7 +84,7 @@ export function useAffineView<T>(
         setLoading(false);
       });
     return () => controller.abort();
-  }, [kind, ticker, expiry, enabled, needsExpiry, reloadKey]);
+  }, [kind, ticker, expiry, enabled, needsExpiry, reloadKey, fitMode]);
 
   return { data, loading: loading && !hasDataRef.current, error };
 }

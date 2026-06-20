@@ -130,7 +130,7 @@ export interface UseAffineResult {
 }
 
 export function useAffine(): UseAffineResult {
-  const { universe, ticker, setTicker, reload: reloadSmile, spotVersion } =
+  const { universe, ticker, setTicker, reload: reloadSmile, spotVersion, fitMode } =
     useSmileSession();
   const [varSwapEnabled, setVarSwapEnabled] = useState(true);
   const [varSwapNonce, setVarSwapNonce] = useState(0);
@@ -169,7 +169,11 @@ export function useAffine(): UseAffineResult {
     setError(null);
     api
       .post<AffineFitResponse>(`/fit/affine/${ticker}`, {
-        body: { fitMode: "mid" },
+        // Viewed fit target (mid / bid-ask / haircut), matching the Parametric
+        // workspace + the Calibrate target. Hardcoding "mid" showed a stale mid
+        // surface (auto-fit on read) whenever the user calibrated in a band mode,
+        // instead of the bid-ask/haircut surface they actually fit.
+        body: { fitMode },
         signal: controller.signal,
       })
       .then((res) => {
@@ -186,7 +190,8 @@ export function useAffine(): UseAffineResult {
       });
     return () => controller.abort();
     // spotVersion bumps on a spot move / calibration / Options change -> refetch.
-  }, [ticker, attempt, spotVersion]);
+    // fitMode: switching the viewed fit target re-reads that mode's surface.
+  }, [ticker, attempt, spotVersion, fitMode]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
