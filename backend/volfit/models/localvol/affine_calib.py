@@ -363,6 +363,7 @@ def calibrate_affine(
     stall_window: int = 0,
     stall_rtol: float = 1e-3,
     engine: str = "banded",
+    gn_lsmr_tol: float = 1e-10,
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
 
@@ -674,7 +675,8 @@ def calibrate_affine(
         try:
             result = gauss_newton(
                 evaluate, p0, lb, ub,
-                max_nfev=max_nfev, gtol=gtol, xtol=xtol, ftol=ftol,
+                max_nfev=max_nfev, gtol=gtol, xtol=xtol, ftol=ftol, lsmr_tol=gn_lsmr_tol,
+                stall_window=stall_window, stall_rtol=stall_rtol, n_opt_rows=_n_opt_rows,
             )
             if not result.converged:
                 result = _run_trf()

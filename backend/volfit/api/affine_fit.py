@@ -113,6 +113,14 @@ _LEFT_A_MAX = 20.0
 #: Warm-started recalibrations converge before the window, so they are unaffected.
 _STALL_WINDOW = 12
 _STALL_RTOL = 5e-3
+#: GN solver (lvSolver="gn") tuning — hardened on the SPY/NVDA benchmark. GN's
+#: option-block-misfit trajectory is noisier than trf's monotone trust region, so it
+#: gets a MORE CONSERVATIVE early-stop (larger window, smaller rtol) to keep the
+#: surface close to trf; the inner lsmr is loosened to 1e-6 (the cheap Numba march
+#: makes extra outer evals affordable, and 1e-10 over-solves while 1e-4 misfires).
+_GN_STALL_WINDOW = 18
+_GN_STALL_RTOL = 3e-3
+_GN_LSMR_TOL = 1e-6
 
 
 def _lv_bounds(rows, opts, var_lo_req: float, var_hi_req: float) -> tuple[float, float]:
@@ -719,6 +727,17 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     from volfit.models.localvol.affine_march import numba_available
 
     engine = "numba" if (opts.lvFastKernel and numba_available()) else "banded"
+    # Stage 5 (revisited): matrix-free Gauss-Newton avoids trf's dense SVD — now that
+    # the Numba march makes each eval cheap, GN's no-SVD evals win ~1.3-1.65x. Opt-in
+    # (var-swap fits keep trf — GN doesn't carry the free-left-slope column). GN gets a
+    # more conservative early-stop + a looser lsmr (hardened on the benchmark).
+    gn = opts.lvSolver == "gn" and not fit_left_a
+    if gn:
+        stall_window = _GN_STALL_WINDOW if opts.lvEarlyStop else 0
+        stall_rtol, gn_lsmr_tol = _GN_STALL_RTOL, _GN_LSMR_TOL
+    else:
+        stall_window = _STALL_WINDOW if opts.lvEarlyStop else 0
+        stall_rtol, gn_lsmr_tol = _STALL_RTOL, 1e-10
     a_init = opts.leftWingSlopeMult if (opts.convexWing or fit_left_a) else 0.0
     # Flat reference: the median quoted local variance (= vol^2), clipped. This is
     # ``theta_ref`` (the roughness anchor) AND the flat-fallback seed.
@@ -754,10 +773,13 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
         time_scheme=time_scheme,  # Stage 7: Rannacher coarse-dt march when applicable
         # Stage 8: early-stop the cold fit once cost improvement stalls (warm recals
-        # converge before the window, so they are byte-identical either way).
-        stall_window=_STALL_WINDOW if opts.lvEarlyStop else 0,
-        stall_rtol=_STALL_RTOL,
+        # converge before the window, so they are byte-identical either way). The TRF
+        # and GN solvers carry their own hardened window/rtol (set above).
+        stall_window=stall_window,
+        stall_rtol=stall_rtol,
         engine=engine,  # Stage 6′: Numba vectorized-Thomas march when available
+        gn=gn,  # Stage 5 (revisited): matrix-free GN (opt-in, default trf)
+        gn_lsmr_tol=gn_lsmr_tol,
     )
     _record_diagnostics(state, ticker, cal.diagnostics)
 
@@ -908,6 +930,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
         opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop, opts.lvFastKernel,
+        opts.lvSolver,
         request.model_dump_json(),
     )
 

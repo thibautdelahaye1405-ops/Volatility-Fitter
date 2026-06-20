@@ -211,6 +211,23 @@ export default function OptionsViewer() {
             var-swap quote the slope is fitted to the quote, this is its start).
           </p>
         </div>
+        <div className="mt-2 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="LV calibration solver. TRF = scipy trust-region (default). Gauss-Newton = matrix-free GN that avoids trf's dense SVD (~52% of an eval) — ~1.3-1.65x faster with the fast compiled march + early-stop. Trade-off: GN converges to a slightly different local optimum on stiff data, so the surface can differ by up to ~0.25 vol-bp (sometimes better). Needs the fast kernel + early-stop; var-swap fits always use TRF."
+          >
+            LV solver
+          </span>
+          <select
+            value={draft.lvSolver}
+            disabled={!live}
+            onChange={(e) => patch({ lvSolver: e.target.value as "trf" | "gn" })}
+            className={numInput}
+          >
+            <option value="trf">TRF (default)</option>
+            <option value="gn">Gauss-Newton (faster)</option>
+          </select>
+        </div>
         <div className="mt-2">
           <Toggle
             label="Fast compiled march (Numba)"

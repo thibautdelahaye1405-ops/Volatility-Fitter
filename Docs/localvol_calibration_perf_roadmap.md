@@ -161,12 +161,28 @@ at the heavy grid.
   (Stage 6)**, not fewer grid points. Stage 4′ (grid-robust var-swap) still stands
   on its own as a correctness improvement.
 
-### Stage 5 — Matrix-free Gauss–Newton  ⚠️ BUILT but NON-VIABLE on real data (2026-06-20) — shelved, gated off
-**The premise (dense SVD = the heavy-grid wall) does NOT hold at the current
-tensor-grid sizes.** Built and tested, but the real-data benchmark shows it loses to
-dense TRF, so it is kept gated off (`calibrate_affine(gn=...)` only, no app wiring) as
-a seed for the future ≳1000-vertex non-tensor bowtie, where the SVD genuinely
-dominates.
+### Stage 5 — Matrix-free Gauss–Newton  ✅ REVISITED & SHIPPED opt-in (2026-06-20) after Stage 6′
+**First verdict (non-viable) was REVERSED once the march got cheap.** Originally GN
+lost to TRF because it needs ~1.7× more evals AND its tight lsmr made each eval
+costlier — when the march dominated. But Stage 6′ showed the per-eval split is
+**optimizer/SVD 52%**, march 32%, assembly 14%: GN's whole point is to AVOID that 52%
+dense SVD, and with the Numba march making each eval cheap, GN's no-SVD evals finally
+win. Re-benchmarked (SPY/NVDA, numba + early-stop): **GN is ~1.3–1.65× faster than TRF**
+(and on SPY gridX=20 it lands a *better* surface). Shipped **opt-in** (`OptionsSettings
+.lvSolver="gn"`, default "trf") because GN converges to a slightly different local
+optimum on stiff real data — surface within ~0.25 vol-bp of TRF (sometimes better),
+but not identical, so the default surface is left unchanged.
+- **Hardening (the key work):** GN's option-block-misfit trajectory is noisier than
+  TRF's monotone trust region, so its early-stop (1) tracks the best among ACCEPTED
+  iterates only (never a fluky rejected lsmr trial), (2) counts rejects as no-progress,
+  and (3) uses a more conservative window/rtol (18 / 3e-3 vs TRF's 12 / 5e-3) and a
+  looser inner lsmr (1e-6; 1e-10 over-solves, 1e-4 misfires). Benchmark-tuned. The
+  +0.25 bp NVDA gap is INHERENT (a different local optimum), not closable by more
+  conservative stopping. `gn_lsmr_tol` threaded through `calibrate_affine`;
+  `affine_fit` picks GN-specific stall + lsmr; `lvSolver` in `affine_key` + Options
+  selector. `test_affine_gn.py` gains the GN early-stop test (status 4, cuts evals,
+  no fallback, quote-fit preserved).
+- Below: the original (pre-revisit) write-up, kept for the reasoning trail.
 
 - **What was built (correct, retained):** `volfit/models/localvol/affine_gn.py` —
   `LinearizedJacobian` (matrix-free `apply_jacobian` / `apply_jacobian_transpose` +
@@ -289,7 +305,7 @@ dominates.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ → 6 ❌ → 6′ ✅ (6.5× march) → 7 ⚠️ → 8 ✅ (early-stop)`.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 6 ❌ → 6′ ✅ (6.5× march) → 8 ✅ (early-stop) → 5 ✅ (GN, opt-in, after the march got cheap) → 7 ⚠️`.
 Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
 var-swap grid-robust. **Four approaches to cut the per-eval / per-step cost all
 underdelivered for the same reason** — the cold-fit cost is *distributed* roughly

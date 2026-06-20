@@ -211,3 +211,32 @@ def test_gn_starved_budget_still_returns_valid_surface():
     )
     assert np.all(np.isfinite(res.surface.theta))
     assert res.surface.theta.min() >= 0.005 - 1e-9
+
+
+def test_gn_early_stop_cuts_evals_without_fallback():
+    """The GN stall early-stop (Stage 8, GN flavour) terminates a long GN fit at the
+    best ACCEPTED iterate — status 4, no TRF fallback — in fewer evals than letting it
+    run, while landing essentially the same surface."""
+    flat, options, x_grid, t_grid = _heavy_case(
+        9, 15, np.linspace(0.1, 2.0, 8), np.linspace(0.75, 1.25, 13)
+    )
+    # Perturb the quotes so the LSQ has an irreducible residual (the real-data regime):
+    # GN then takes a long tail of tiny steps instead of converging in a few evals.
+    rng = np.random.default_rng(0)
+    options = [
+        OptionQuote(t=o.t, x=o.x, price=o.price * (1.0 + 2e-3 * rng.standard_normal()), tol=o.tol)
+        for o in options
+    ]
+    # tight GN tolerances so it would otherwise grind on -> the stall is the terminator
+    kw = dict(reg_lambda=50.0, bounds=(0.005, 0.20), gn=True,
+              gtol=1e-14, xtol=1e-14, ftol=1e-14, max_nfev=160)
+    full = calibrate_affine(flat, options, x_grid, t_grid, **kw)
+    early = calibrate_affine(
+        flat, options, x_grid, t_grid, stall_window=10, stall_rtol=3e-3, **kw
+    )
+    assert early.diagnostics.status == 4  # GN stall path (not a TRF fallback)
+    assert early.message.startswith("matrix-free")
+    assert early.n_evals < full.n_evals
+    # the early-stop fits the quotes about as well as the full GN run (the tail evals
+    # it skipped barely move the data fit; the unconstrained wing nodes may drift more)
+    assert early.rms_price_error <= 1.3 * full.rms_price_error + 1e-6

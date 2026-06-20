@@ -227,6 +227,15 @@ class OptionsSettings(BaseModel):
     #: automatically when numba is unavailable or for the var-swap / Rannacher paths.
     #: ON by default. LV-only (folded into affine_key).
     lvFastKernel: bool = True
+    #: LV calibration solver (Stage 5, revisited). "trf" = scipy trust-region (the
+    #: default). "gn" = the matrix-free Gauss-Newton (volfit.models.localvol.affine_gn)
+    #: — it AVOIDS trf's dense SVD (~52% of an eval), which finally pays now that the
+    #: Numba march makes each eval cheap: ~1.3-1.65x faster than trf with early-stop.
+    #: Trade-off: GN converges to a slightly DIFFERENT local optimum on stiff real
+    #: data, so its surface can differ by up to ~0.25 vol-bp (sometimes better). Opt-in
+    #: (default trf) so the default surface is unchanged. LV-only (folded into
+    #: affine_key); only active with the Numba kernel + early-stop.
+    lvSolver: Literal["trf", "gn"] = "trf"
     #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
     #: cell's slope (between the two lowest vertices) — the deep-put local variance
     #: continues rising toward x = 0 instead of clamping flat. Used as the fixed

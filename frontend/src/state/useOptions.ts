@@ -64,6 +64,9 @@ export interface OptionsSettings {
   /** Use the compiled Numba vectorized-Thomas Dupire march (~6x the banded march)
    *  for the LV calibration hot path; falls back to banded if numba is unavailable. */
   lvFastKernel: boolean;
+  /** LV solver: "trf" (default) or "gn" = matrix-free Gauss-Newton (avoids trf's
+   *  SVD; ~1.3-1.65x faster with the fast kernel, surface within ~0.25 vol-bp). */
+  lvSolver: 'trf' | 'gn';
   /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
   leftWingSlopeMult: number;
   calendarWeight: number;
@@ -108,6 +111,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   timeScheme: 'implicit',
   lvEarlyStop: true,
   lvFastKernel: true,
+  lvSolver: 'trf',
   leftWingSlopeMult: 1.5,
   calendarWeight: 1e6,
   graphKappaScale: 1.0,

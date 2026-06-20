@@ -168,6 +168,9 @@ def gauss_newton(
     ftol: float = 1e-8,
     lsmr_tol: float = 1e-10,
     max_outer: int | None = None,
+    stall_window: int = 0,
+    stall_rtol: float = 5e-3,
+    n_opt_rows: int = 0,
 ) -> GNResult:
     """Projected Levenberg-Marquardt Gauss-Newton with a matrix-free lsmr step.
 
@@ -203,6 +206,17 @@ def gauss_newton(
     nfev = njev = 1
     cost = 0.5 * float(res @ res)
     g = jac.T @ res
+
+    # Stage 8 early-stop, GN flavour: track the best OPTION-BLOCK misfit and stop
+    # once it has not improved by ``stall_rtol`` over ``stall_window`` evals, returning
+    # the best iterate. GN converges slowly on stiff names (and would otherwise grind
+    # to the eval cap then fall back to TRF); stopping at the stall point gives the
+    # good surface cheaply — the whole point of the cheap-march + no-SVD GN path.
+    def _opt_rms(r):
+        block = r[:n_opt_rows] if n_opt_rows else r
+        return float(np.sqrt(np.mean(block * block)))
+
+    stall = {"best": _opt_rms(res), "since": 0, "x": p.copy()}
     # LM damping lives in the COLUMN-EQUILIBRATED space: after preconditioning the
     # scaled Hessian AᵀA has a ~unit diagonal, so a dimensionless O(1e-3) damping is
     # the natural seed (a raw max-diag(JᵀJ) seed would be orders of magnitude too
@@ -254,6 +268,17 @@ def gauss_newton(
             # Nielsen: shrink damping by the step quality, reset the rejection ramp.
             mu *= max(1.0 / 3.0, 1.0 - (2.0 * rho - 1.0) ** 3)
             nu = 2.0
+            # GN early-stop bookkeeping: only ACCEPTED iterates (legitimate, monotone
+            # in total cost) move ``stall["x"]`` — never a noisy rejected lsmr trial —
+            # so a too-loose inner solve can't latch the stop onto a fluke point. A
+            # genuine option-block improvement resets the counter.
+            q = _opt_rms(res)
+            if q < stall["best"] * (1.0 - stall_rtol):
+                stall["best"] = q
+                stall["since"] = 0
+                stall["x"] = p.copy()
+            else:
+                stall["since"] += 1
             if actual < ftol * cost:
                 status, converged = 2, True
                 break
@@ -262,10 +287,22 @@ def gauss_newton(
                 break
             cost = cost_t
         else:
+            stall["since"] += 1  # a rejected step is also "no progress"
             mu *= nu
             nu *= 2.0
             if not np.isfinite(mu) or mu > 1e16:
                 break  # damping diverged -> TRF fallback
+
+        # Stall: the best accepted option-block misfit has not improved by
+        # ``stall_rtol`` for ``stall_window`` iterations (accepts-with-tiny-gain or
+        # rejects) -> return the best accepted iterate; do NOT fall back to TRF.
+        if stall_window > 0 and stall["since"] >= stall_window:
+            p = stall["x"]
+            res, jac = evaluate(p)[:2]
+            g = jac.T @ res
+            cost = 0.5 * float(res @ res)
+            status, converged = 4, True
+            break
 
     return GNResult(
         x=p,
