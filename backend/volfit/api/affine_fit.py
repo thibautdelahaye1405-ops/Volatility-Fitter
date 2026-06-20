@@ -180,6 +180,55 @@ def _seed_theta(
     return np.clip(seed, var_lo, var_hi), "prev-affine-interp"
 
 
+def _parametric_seed(
+    state: AppState, ticker: str, fit_mode: str,
+    t_nodes: np.ndarray, x_nodes: np.ndarray, var_lo: float, var_hi: float,
+) -> np.ndarray | None:
+    """Cold-start nodal variances from the PARAMETRIC surface's Dupire local
+    variance (Stage 2b) — a far better start than flat for the first fit.
+
+    Reuses the Dupire extraction the GET /localvol path runs: build the displayed
+    parametric (LQD/SVI/sigmoid) total-variance surface w(k, t) and read its
+    Gatheral local variance at the affine vertices (k = log x, t = the τ vertices).
+    Dupire-from-implied is noisy, so this is a SEED ONLY: ``theta_ref`` stays flat,
+    so it changes the starting point, never the regularization or the converged
+    optimum. Uses ONLY already-calibrated parametric slices (cached-lookup, never
+    triggers a parametric fit — the app calibrates parametric before LV, so they are
+    warm); returns None (→ flat fallback) when fewer than two are calibrated yet, or
+    on any extraction failure — best-effort by construction.
+    """
+    try:
+        from volfit.api import service
+        from volfit.api.localvol import _w_surface
+        from volfit.models.localvol import extract_grid
+
+        records = []  # cached-only: the parametric fits the Calibrate job already made
+        for iso in (e.isoformat() for e in sorted(state.forwards(ticker))):
+            ptr = state.get_calibrated_ptr(ticker, iso, fit_mode)  # (fit-key, cal-spot)
+            rec = state.get_fit(ptr[0]) if ptr is not None else None
+            if rec is not None:
+                records.append((iso, rec))
+        if len(records) < 2:
+            return None
+        # τ clock, to match the affine vertices (built from prepared.tau)
+        ts = np.array([float(rec.prepared.tau) for _, rec in records])
+        order = np.argsort(ts)
+        ts = ts[order]
+        slices = [service.displayed_slice(records[i][1]) for i in order]
+        if np.any(np.diff(ts) <= 0):
+            return None
+        k_nodes = np.log(np.clip(np.asarray(x_nodes, dtype=float), 1e-6, None))
+        t_eval = np.maximum(np.asarray(t_nodes, dtype=float), 1e-4)  # avoid t = 0 exactly
+        dt = 0.2 * float(min(ts[0], np.min(np.diff(ts)) if ts.size > 1 else ts[0]))
+        ext = extract_grid(_w_surface(ts, slices), k_nodes, t_eval, dk=2e-3, dt=max(dt, 1e-4))
+        theta = ext.grid.sigma ** 2  # (n_t, n_x) local variance
+        if theta.shape != (t_nodes.size, x_nodes.size) or not np.all(np.isfinite(theta)):
+            return None
+        return np.clip(theta, var_lo, var_hi)
+    except Exception:
+        return None
+
+
 #: AppState side-dict (ticker -> AffineFitDiagnostics) for the last affine fit.
 #: Kept OFF the wire response (wall times are non-deterministic), but available
 #: to the perf rails and a future "warm-started / N evals" UI cue.
@@ -757,6 +806,10 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     # (a flat seed is byte-identical to the legacy start).
     prev = _cache(state).get(state.get_affine_ptr(ticker))
     theta0, seed_source = _seed_theta(prev, t_nodes, x_nodes, var0, var_lo, var_hi)
+    if seed_source == "flat":  # Stage 2b: cold start -> the parametric Dupire seed
+        pseed = _parametric_seed(state, ticker, request.fitMode, t_nodes, x_nodes, var_lo, var_hi)
+        if pseed is not None:
+            theta0, seed_source = pseed, "parametric"
     surface0 = AffineVarianceSurface(
         t_nodes=t_nodes, x_nodes=x_nodes, theta=theta0, left_extrap_a=a_init,
     )

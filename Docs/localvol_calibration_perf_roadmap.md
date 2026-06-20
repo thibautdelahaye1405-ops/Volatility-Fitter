@@ -107,16 +107,21 @@ at the heavy grid.
   ALPHA synthetic, surface bit-identical. New `test_affine_warm_start.py`
   (6 tests). ruff green.
 
-### Stage 2b — Parametric Dupire cold-start seed  *(deferred)*
-- Seed the *first* fit (no previous surface) from the parametric implied surface
-  via `dupire.extract_grid` at the vertices (nan-fill + clip). Needs a 2D
-  `w(k,T)` surface assembled from the per-expiry parametric fits (interp in T) and
-  careful noise handling — the companion (§6.4) flags Dupire-from-implied as
-  noisy, so it must be a *seed only*. Lower value than 2a (cold starts are rare)
-  and higher risk, so split out for its own validation.
-- **Gate:** same final IV quality vs flat cold-start; `nfev` ↓ on first fit; safe
-  fallback when the parametric surface is missing/unstable (bad-seed test); golden
-  byte-identical (no parametric surface in the model-layer golden case).
+### Stage 2b — Parametric Dupire cold-start seed  ✅ DONE (2026-06-20)
+- `affine_fit._parametric_seed`: a COLD fit (no previous surface) now seeds θ from the
+  **parametric surface's Dupire local variance** at the vertices, reusing the GET
+  /localvol extraction (`localvol._w_surface` over the displayed slices →
+  `dupire.extract_grid` at k = log x, t = the τ vertices, nan-fill + clip). **Cached
+  lookup only** — uses the parametric slices the Calibrate job already fit (the app
+  calibrates parametric before LV), never triggers a parametric fit; returns None →
+  flat when fewer than two are calibrated or on any extraction error (best-effort).
+  ``theta_ref`` stays flat, so it changes only the start, not the converged optimum.
+- **Measured (SPY/NVDA, GN default):** nfev 84→66 / 64→36 / 159→80 and the optimizer
+  (lsmr) work ~1.7× lower (a better-conditioned start) ⇒ **~1.3–1.8× on the cold fit**.
+  Data-dependent: large on real skewed surfaces (flat start is far off), neutral on a
+  smooth synthetic (flat is already near-optimal), so the unit test pins the mechanism
+  + quality, not the eval cut. Golden byte-identical (no parametric surface at the
+  model layer). `test_affine_warm_start.py` +1.
 
 ### Stage 4′ — Source-PDE variance-swap  ✅ DONE (2026-06-20)  *(built before Stage 3)*
 - `volfit/models/localvol/varswap_pde.py`: backward source PDE

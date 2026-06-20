@@ -101,3 +101,31 @@ def test_recalibration_warm_starts_and_cuts_evals():
     assert d2.nfev < d1.nfev  # warm start needs fewer optimizer evaluations
     # same optimum: warm start changes the path, not the calibrated surface
     assert np.allclose(np.array(r1.localVol), np.array(r2.localVol), atol=1e-3)
+
+
+def test_cold_fit_seeds_from_parametric_surface():
+    """Stage 2b: when the parametric slices are already calibrated (the Calibrate job
+    fits them before LV), a COLD affine fit seeds theta from their Dupire local
+    variance instead of flat, and still lands a valid surface of the same quality.
+    (The eval-count win is data-dependent — large on real skewed surfaces where the
+    flat start is far off, neutral on this smooth synthetic — so it's measured on the
+    benchmark, not asserted here; the unit test pins the mechanism + correctness.)"""
+    from volfit.api import service
+
+    # parametric-seeded cold fit (calibrate the slices first)
+    state = AppState(REF_DATE)
+    for e in sorted(state.forwards(TICKER)):
+        service.fit_or_get(state, TICKER, e.isoformat(), "mid")
+    seeded_resp = affine_fit.calibrate_affine_surface(state, TICKER, AffineFitRequest())
+    seeded = affine_fit.last_affine_diagnostics(state, TICKER)
+
+    # flat-seed cold fit (no parametric calibrated -> the seed cannot fire)
+    flat_state = AppState(REF_DATE)
+    flat_resp = affine_fit.calibrate_affine_surface(flat_state, TICKER, AffineFitRequest())
+    flat = affine_fit.last_affine_diagnostics(flat_state, TICKER)
+
+    assert seeded.seed_source == "parametric"
+    assert flat.seed_source == "flat"
+    # the parametric-seeded fit is valid and of the same quality as the flat-seed fit
+    assert seeded_resp.arbitrageFree
+    assert seeded_resp.surfaceRmsError <= flat_resp.surfaceRmsError + 5e-4
