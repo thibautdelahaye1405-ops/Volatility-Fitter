@@ -1,5 +1,18 @@
 """Matrix-free Gauss-Newton solver for the affine local-vol calibration (Stage 5).
 
+STATUS (2026-06-20): **explored, NOT viable as a production speed-up at the current
+tensor-grid sizes — kept gated off (``calibrate_affine(gn=...)`` only, no app wiring)
+as a seed for the future ≳1000-vertex non-tensor "bowtie" regime.** On the real
+SPY/NVDA Bloomberg benchmark this LOSES to dense TRF: both solvers run to the
+200-eval cap, so the SVD is *not* the bottleneck at ≤440 vertices (the per-eval PDE
+sensitivity march is, shared by both), and GN's stiff, bound-constrained projected-LM
+needs ~1.7× TRF's evals to reach the same surface (≈339 vs the 200 cap) while its
+tight inner-lsmr makes each eval costlier — net ~1.4× slower (it converges in 8 evals
+only on the clean, zero-residual, in-bounds synthetic case). See
+``Docs/localvol_calibration_perf_roadmap.md`` Stage 5. The robust per-eval win is
+Stage 6 (Numba march). The module + tests below remain correct and are the starting
+point should the bowtie grid (where the SVD genuinely dominates) be built.
+
 The dense ``scipy.optimize.least_squares(method="trf")`` path (affine_calib) does a
 trust-region **dense SVD of the (M_resid x m) Jacobian every iteration** —
 O(m^3) at large vertex counts, the documented ~86 s / 533-vertex wall. The

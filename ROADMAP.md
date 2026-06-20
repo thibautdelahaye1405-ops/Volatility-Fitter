@@ -10,31 +10,40 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-20 (resume here)
 
-### 🛠 LATEST (2026-06-20, later) — Stage 5: matrix-free Gauss-Newton LV solver
+### 🛠 LATEST (2026-06-20, later) — Stage 5 matrix-free GN: BUILT but NON-VIABLE → shelved; Stage 6 next
 
-On branch **`perf/localvol-calibration`**. **LV calibration perf Stage 5 SHIPPED**
-(the heavy-grid dense-SVD wall, backlog #1 below). New
-`backend/volfit/models/localvol/affine_gn.py`: a **matrix-free projected
-Levenberg–Marquardt Gauss-Newton** whose step is solved by preconditioned
-`scipy.sparse.linalg.lsmr` (no JᵀJ, no SVD) — `LinearizedJacobian` exposes the
-tangent/adjoint matvecs (`apply_jacobian`/`apply_jacobian_transpose`) and a
-column-equilibration preconditioner (the missing ingredient behind the earlier
-unpreconditioned `tr_solver='lsmr'` failure). Bounds via active-set projection;
-**automatic fallback to dense TRF** on a stall (`converged=False`) or exception, so
-the surface never degrades. **Inner lsmr tol is deliberately tight (1e-10)**: outer
-PDE solves are the cost, inner matvecs are cheap, so accurate Newton steps minimise
-the outer count (212→8 evals on a 525-vtx case as the tol tightened). Opt-in via
-`OptionsSettings.lvSolver` ("trf" default | "gn", LV-only, folded into `affine_key`)
-+ an Options "LV solver" selector; default OFF ⇒ byte-identical TRF (golden
-untouched). GN lands the TRF surface (objective + θ within tol) on golden + heavy
-**in no more PDE evals**; 255-vtx perf rail `affine_localvol_gn_heavy` ~1.17 s vs
-TRF ~1.57 s, 525-vtx 3.8 s/8 evals vs TRF 5.1 s/12 evals — the gap widens with
-vertex count (TRF's O(m³) SVD), so the ~533-vtx / 86 s live wall (TRF at its
-200-eval cap) is the target this clears. New `test_affine_gn.py` (8 tests: 3
-operator identities, golden+heavy agreement, bounds-active, TRF fallback ×2). Full
-suite **613 passed, 1 skipped** (+ all 5 perf rails green); ruff + strict-TS build
-green. **Next: Stage 6** (Numba `nogil` march + across-ticker parallelism, the
-default-grid per-eval win) — see the roadmap doc.
+On branch **`perf/localvol-calibration`**. Stage 5 (matrix-free Gauss-Newton,
+backlog #1) was built, benchmarked on real data, found **NOT a speed-up at
+tensor-grid sizes, and shelved gated-off**. Honest finding (corrects an earlier
+synthetic-only overclaim):
+
+- **Built (correct, retained as a bowtie-regime seed):**
+  `backend/volfit/models/localvol/affine_gn.py` — `LinearizedJacobian` (matrix-free
+  `apply_jacobian`/`apply_jacobian_transpose` + column-equilibration preconditioner)
+  + `gauss_newton`, a projected Levenberg–Marquardt loop whose step is solved by
+  preconditioned `scipy.sparse.linalg.lsmr` (no JᵀJ, no SVD; bounds via active-set
+  projection). `test_affine_gn.py` (8) — identities + golden/heavy agreement +
+  fallback — all pass. Reachable only via `calibrate_affine(gn=True)`.
+- **Why shelved (SPY/NVDA Bloomberg benchmark, cold-start, 143→440 vtx):** GN is
+  **~1.4× SLOWER than TRF everywhere** and every run shows the TRF-fallback message —
+  GN does NOT converge within the 200-eval cap. Pre-fallback (SPY 220 vtx) it
+  converges only by ftol at **nfev≈339** (vs TRF's 200 cap) to the **same surface**
+  (RMS 2.71 bp; 11/220 nodes at a bound). **Removing the SVD made fits slower**, so
+  at ≤440 vtx the per-eval bottleneck is the **PDE sensitivity march**, not the SVD —
+  the SVD-O(m³) wall is a ≳1000-vtx (future non-tensor bowtie) phenomenon. The clean
+  synthetic rail (zero-residual, in-bounds, GN converges in 8 evals) hid this.
+- **Disposition:** removed the `lvSolver` Options field + UI selector + `affine_fit`
+  wiring (app always uses TRF); kept `affine_gn.py` + `calibrate_affine(gn=)` + tests
+  + the synthetic perf rail (relabelled a correctness/bound guard, not a win).
+- **Next = Stage 6 — Numba `nogil` Dupire march:** compile the per-eval value +
+  multi-RHS sensitivity march (the actual bottleneck), helping every fit/solver, then
+  across-ticker parallelism. (Also worth a cheap look: the surface is already at
+  final RMS at the 200-eval cap, so lowering the cap may cut cold-fit time directly.)
+
+Separately, a strike-grid fix landed: `_delta_strike_nodes` now densifies by
+splitting the single widest gap one node at a time (matching `_time_nodes`) instead
+of doubling every gap — so SPY/NVDA land on the same `gridXNodes` floor (was 11×21 vs
+11×37 from the doubling overshoot). Full suite green; ruff + strict-TS green.
 
 ### 🛠 LATEST (2026-06-20) — LV calibration perf branch + SPY regression FIXED
 
@@ -87,9 +96,12 @@ sparse-linalg deliberately excluded for now). Ordered by expected wall-clock /
 effort. The numbers tracked: a ~533-vertex affine LV fit ~86 s; LQD12 slice ~35 ms;
 graph 1k-node ~700 ms.
 
-1. **Sparse Gauss-Newton for the piecewise-affine LV surface** ✅ **DONE
-   (2026-06-20, Stage 5 — matrix-free preconditioned-lsmr GN, opt-in `lvSolver`;
-   see the LATEST entry above + `affine_gn.py`).** *The single
+1. **Sparse Gauss-Newton for the piecewise-affine LV surface** ⚠️ **ATTEMPTED,
+   NON-VIABLE at tensor-grid sizes (2026-06-20, Stage 5 — shelved gated-off; see the
+   LATEST entry + `affine_gn.py`).** The benchmark showed the dense SVD is NOT the
+   bottleneck at ≤440 vtx (removing it made fits slower — the PDE march is), so the
+   per-eval win must come from Stage 6 (Numba march), not the outer linear algebra;
+   revisit GN only with the future ≳1000-vtx non-tensor bowtie. *The single
    heaviest path in the app* (~86 s @ 533 vertices, hits the 200-eval cap). The
    roughness / convex / front-tie Jacobian blocks are 3-nnz/row but stored dense
    and `np.vstack`'d (`models/localvol/affine_calib.py:425,441,443`), and trf's

@@ -297,9 +297,10 @@ def test_perf_affine_localvol_heavy(perf_report):
 
 def test_perf_affine_localvol_gn_heavy(perf_report):
     """Stage-5 matrix-free Gauss-Newton on the same 255-vertex grid, run to FULL
-    convergence (not capped). The preconditioned lsmr step replaces trf's dense
-    O(m³) SVD, so GN clears the heavy grid in a handful of PDE evaluations — this
-    rail guards that the matrix-free path stays fast as the vertex count grows."""
+    convergence (not capped). NB: GN is a shelved seed (non-viable vs TRF on real
+    bound-constrained data — see affine_gn.py / the roadmap); this rail only guards
+    that the model-layer ``gn=True`` path stays correct and bounded on the clean
+    self-consistent synthetic case, NOT that it beats TRF in production."""
     flat, options, x_grid, t_grid = _affine_case(
         15, 17, np.linspace(0.1, 2.5, 12), np.linspace(0.7, 1.3, 15)
     )

@@ -725,7 +725,6 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         theta_ref=np.full(t_nodes.size * x_nodes.size, var0),
         seed_source=seed_source,
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
-        gn=opts.lvSolver == "gn",  # Stage 5: matrix-free GN (TRF fallback) vs dense TRF
     )
     _record_diagnostics(state, ticker, cal.diagnostics)
 
@@ -875,7 +874,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
-        opts.varSwapMethod, opts.lvSolver,
+        opts.varSwapMethod,
         request.model_dump_json(),
     )
 
