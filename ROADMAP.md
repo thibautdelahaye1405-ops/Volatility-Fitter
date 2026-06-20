@@ -10,7 +10,42 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-20 (resume here)
 
-### 🛠 LATEST (2026-06-20, later) — Stage 5 matrix-free GN: BUILT but NON-VIABLE → shelved; Stage 6 next
+### ✅ CAPSTONE (2026-06-20) — LV calibration perf branch complete; see the methodology note
+
+On branch **`perf/localvol-calibration`**. The Local-Vol (piecewise-affine) calibration
+was re-engineered end-to-end for speed. **The full methodology + every optimisation +
+everything shelved is now consolidated in
+`Docs/localvol_calibration_methodology.md`** (the standalone reference; read it first).
+Headline final state:
+
+- **Default solver = matrix-free Gauss-Newton** (`OptionsSettings.lvSolver="gn"`,
+  `affine_gn.py`): avoids scipy TRF's dense SVD (~52% of an eval). Gated to the smooth
+  MID fit target + the Numba march; band/haircut/var-swap/banded-march fits keep TRF.
+  ~1.3–1.65× over TRF; surface within ~0.25 vol-bp (a slightly different local optimum
+  on stiff data — accepted at the default).
+- **Compiled march** (`affine_march.py`, Stage 6′): a `@njit` no-pivot Thomas march with
+  the sensitivity columns as the contiguous SIMD inner loop + fused source — **6.5× the
+  scipy/LAPACK banded march**, numerically exact (≈1e-15). `numba` is a dependency with a
+  graceful banded fallback. The default `lvFastKernel=True`.
+- **Stall-based early-stop** (Stage 8, `lvEarlyStop=True`): stops the cold fit at the
+  best iterate when the option-block misfit stalls — ~1.45× (SPY) to ~3.3× (NVDA),
+  +0.1–0.25 bp. The lever that scales the whole fit.
+- **Parametric Dupire cold-start seed** (Stage 2b / `#1`): seeds θ from the parametric
+  surface's local variance — ~1.3–1.8× on cold fits.
+- **Sparse reg block in the GN operator** (`#3`): ~1.29× at 440 vtx, negligible at 220.
+- **Cumulative:** the LV cold fit is ~**3–6×** over the original banded baseline (scaling
+  with grid size); recalibrations were already ~instant (Stage 2a warm start).
+- **Shelved (documented in the note, §7):** Stage 3 coarse grid (biases θ), Stage 6 first
+  Numba attempt (~1.2×, wrong loop order), Stage 7 Rannacher (~1.1× + arb risk, opt-in
+  off), GN-for-band-mode (non-smooth), `tr_solver='lsmr'` in trf, thread/process
+  parallelism (GIL).
+
+Full suite **632 passed, 1 skipped**; ruff + strict-TS build green; golden byte-identical.
+**Open levers (incremental only):** vectorise `sens_at`, a better GN preconditioner, the
+future non-tensor bowtie grid (where the SVD genuinely dominates), a smoothed band
+objective for GN. The order-of-magnitude wins are spent.
+
+### 🛠 The journey (2026-06-20, kept for the reasoning trail) — Stage 5 GN first judged non-viable, then reversed
 
 On branch **`perf/localvol-calibration`**. Stage 5 (matrix-free Gauss-Newton,
 backlog #1) was built, benchmarked on real data, found **NOT a speed-up at

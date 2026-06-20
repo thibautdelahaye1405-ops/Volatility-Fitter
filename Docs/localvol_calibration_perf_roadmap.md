@@ -5,6 +5,11 @@ implementation + idea list) and `localvol_calibration_perf_companion.md`
 (sharpened diagnosis + work packages). This file is the agreed build order:
 stages, refinements, and per-stage acceptance gates. Status is tracked inline.*
 
+> **The consolidated reference is now `localvol_calibration_methodology.md`** — a
+> standalone note covering the model, the pricing map, the objective, both solvers,
+> every shipped optimisation, and everything shelved (with reasons). Read it first;
+> this file is the chronological build order + per-stage acceptance gates.
+
 ---
 
 ## Agreed framing
@@ -330,7 +335,8 @@ but not identical, so the default surface is left unchanged.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 6 ❌ → 6′ ✅ (6.5× march) → 8 ✅ (early-stop) → 5 ✅ (GN, opt-in, after the march got cheap) → 7 ⚠️`.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 6 ❌ → 6′ ✅ (6.5× march) → 8 ✅ (early-stop) → 5 ✅ (GN, now DEFAULT after the march got cheap) → 7 ⚠️ (opt-in) → 2b ✅ (#1 cold-start seed) → #3 ✅ (sparse reg)`.
+The consolidated reference is `localvol_calibration_methodology.md`.
 Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
 var-swap grid-robust. **Four approaches to cut the per-eval / per-step cost all
 underdelivered for the same reason** — the cold-fit cost is *distributed* roughly
