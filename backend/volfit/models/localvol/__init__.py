@@ -16,6 +16,7 @@ from volfit.models.localvol.affine import (
 )
 from volfit.models.localvol.affine_calib import (
     AffineCalibration,
+    AffineFitDiagnostics,
     OptionQuote,
     VarSwapQuote,
     calibrate_affine,
@@ -37,6 +38,7 @@ from volfit.models.localvol.pde import PDESolution, solve_dupire
 
 __all__ = [
     "AffineCalibration",
+    "AffineFitDiagnostics",
     "AffinePDESolution",
     "AffineVarianceSurface",
     "DupireSteps",

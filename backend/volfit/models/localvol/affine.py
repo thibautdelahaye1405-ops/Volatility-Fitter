@@ -27,6 +27,7 @@ same normalized undiscounted forward calls as volfit.core.black.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from time import perf_counter
 
 import numpy as np
 from scipy.linalg import solve_banded
@@ -316,6 +317,7 @@ def solve_affine_dupire(
     steps: DupireSteps | None = None,
     left_a: float | None = None,
     fit_left_a: bool = False,
+    timing: dict | None = None,
 ) -> AffinePDESolution:
     """Fully implicit Euler march of eq. (implicit_step) on the given grids.
 
@@ -340,7 +342,13 @@ def solve_affine_dupire(
     columns — so the calibration can optimise ``a`` jointly. Both need a
     ``steps`` built with ``with_left_lin=True`` (or steps=None here, which builds
     one); otherwise ``a`` is whatever is baked into ``steps.phi``.
+
+    ``timing``, when a dict, accumulates wall seconds of the per-step banded
+    solves into ``timing["value_s"]`` (the value march) and ``timing["sens_s"]``
+    (the multi-RHS sensitivity march) — the Stage-0 instrumentation split. None
+    (the default) is the zero-overhead hot path; standalone callers pass nothing.
     """
+    timed = timing is not None
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
     if t[0] != 0.0 or np.any(np.diff(t) <= 0):
@@ -390,7 +398,10 @@ def solve_affine_dupire(
         rhs = u[1:-1].copy()
         rhs[0] += dt * lo[0] * 1.0  # boundary U_0 = 1 (b^{n+1} of the note)
         if sensitivities:
+            _t0 = perf_counter() if timed else 0.0
             sol_u = solve_banded((1, 1), ab.copy(), rhs, check_finite=False)
+            if timed:
+                timing["value_s"] += perf_counter() - _t0
             u_new = np.concatenate(([1.0], sol_u, [0.0]))
             # Source G[i, l] = phi_l(t_{n+1}, x_i) * (a- U_{i-1} + a0 U_i + a+ U_{i+1}).
             # Only the first ``k`` sensitivity columns can be non-zero so far
@@ -398,6 +409,7 @@ def solve_affine_dupire(
             # against the single step factorization is identical but cheaper.
             k = int(active_k[n])
             au = a_m * u_new[:-2] + a_0 * u_new[1:-1] + a_p * u_new[2:]
+            _t0 = perf_counter() if timed else 0.0
             if fit_left_a:
                 # dU/da: same recursion, source (phi_lin @ theta) * gamma; appended
                 # as the m-th column (always live once the wing region is touched).
@@ -411,11 +423,16 @@ def solve_affine_dupire(
             else:
                 rhs_s = sens[1:-1, :k] + dt * phi[:, :k] * au[:, None]
                 sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+            if timed:
+                timing["sens_s"] += perf_counter() - _t0
             u = u_new
         else:
+            _t0 = perf_counter() if timed else 0.0
             sol_u = solve_banded(
                 (1, 1), ab, rhs, overwrite_ab=True, overwrite_b=True, check_finite=False
             )
+            if timed:
+                timing["value_s"] += perf_counter() - _t0
             u = np.concatenate(([1.0], sol_u, [0.0]))
 
         i_out = want.get(n + 1)

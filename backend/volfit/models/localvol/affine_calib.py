@@ -24,6 +24,7 @@ one sensitivity-carrying PDE solve per trial theta serves every residual.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from time import perf_counter
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -225,6 +226,44 @@ def wing_convexity_stencils(
     )
 
 
+@dataclass(frozen=True)
+class AffineFitDiagnostics:
+    """Stage-0 perf/diagnostics for one ``calibrate_affine`` run (side metadata).
+
+    Holds problem-size counts, the optimizer's own termination counters, and a
+    coarse wall-time breakdown so a slow fit can explain itself (the local-vol
+    calibration's two regimes — sensitivity-march-bound at small grids, dense
+    linear-algebra-bound at large grids — are distinguished by which of
+    ``wall_ms_pde_sensitivity`` vs ``wall_ms_optimizer_outer`` dominates). Pure
+    observation: it is attached to the result, never fed back into the fit, so it
+    cannot change any calibrated value (golden output stays byte-identical).
+    """
+
+    # problem size
+    vertex_count: int  # m = fitted nodal variances (theta); excl. the left-a column
+    pde_x_count: int  # PDE strike-grid nodes
+    pde_t_count: int  # PDE time-grid nodes
+    quote_count: int  # option quotes
+    varswap_count: int  # variance-swap quotes
+    residual_count: int  # total LSQ residual length M (all blocks)
+    regularisation_row_count: int  # roughness operator rows
+    fit_left_a: bool  # was the left-wing slope a free parameter
+    # optimizer counters (from scipy least_squares)
+    max_nfev: int
+    nfev: int
+    njev: int
+    status: int
+    cost: float
+    optimality: float
+    active_bound_count: int  # parameters resting on a box bound at the solution
+    # coarse wall-time breakdown (milliseconds)
+    wall_ms_total: float
+    wall_ms_pde_value: float
+    wall_ms_pde_sensitivity: float
+    wall_ms_residual_assembly: float
+    wall_ms_optimizer_outer: float  # total minus the measured PDE + assembly time
+
+
 @dataclass
 class AffineCalibration:
     """Result of ``calibrate_affine``: surface, residual report, optimizer info."""
@@ -239,6 +278,7 @@ class AffineCalibration:
     n_evals: int
     message: str = ""
     left_extrap_a: float = 0.0  # fitted (or fixed) left-wing slope multiple
+    diagnostics: AffineFitDiagnostics | None = None  # Stage-0 perf side metadata
     _extras: dict = field(default_factory=dict)
 
     @property
@@ -372,6 +412,7 @@ def calibrate_affine(
     p_hi = np.array([o.price_hi for o in options]) if band_mode else None
     sqrt_anchor = np.sqrt(mid_anchor_weight)
     n_evals = 0
+    pde_value_s = pde_sens_s = assembly_s = 0.0  # Stage-0 wall-time accumulators
     cache: dict[bytes, tuple] = {}
     m = surface0.n_params
     # The hat basis and active-column schedule depend only on the vertex set and
@@ -401,7 +442,7 @@ def calibrate_affine(
         return np.concatenate([viol, anchor]), np.vstack([j_viol, j_anchor])
 
     def evaluate(params: np.ndarray) -> tuple:
-        nonlocal n_evals
+        nonlocal n_evals, pde_value_s, pde_sens_s, assembly_s
         key = params.tobytes()
         hit = cache.get(key)
         if hit is not None:
@@ -410,10 +451,14 @@ def calibrate_affine(
         theta = params[:m] if fit_left_a else params
         a = float(params[m]) if fit_left_a else surface0.left_extrap_a
         surf = surface0.with_theta(theta).with_left_extrap_a(a)
+        td = {"value_s": 0.0, "sens_s": 0.0}  # Stage-0 per-solve value/sens split
         sol = solve_affine_dupire(
             surf, x_grid, t_grid, expiries, sensitivities=True, steps=steps,
-            left_a=a, fit_left_a=fit_left_a,
+            left_a=a, fit_left_a=fit_left_a, timing=td,
         )
+        pde_value_s += td["value_s"]
+        pde_sens_s += td["sens_s"]
+        t_asm0 = perf_counter()  # residual + Jacobian assembly starts here
         # jp/jz carry an extra da-column at the end when fit_left_a (matching the
         # solver's appended sensitivity column), so the theta-only blocks below are
         # padded with a zero da-column via _pad_a.
@@ -445,6 +490,7 @@ def calibrate_affine(
         cache.clear()  # keep only the latest params (fun + jac pairing)
         out = (res, jac, sol, p, z)
         cache[key] = out
+        assembly_s += perf_counter() - t_asm0
         return out
 
     if fit_left_a:  # parameter vector is [theta (m), a (1)] with its own bounds
@@ -455,6 +501,7 @@ def calibrate_affine(
     else:
         p0 = surface0.theta.ravel()
         opt_bounds = bounds
+    total_t0 = perf_counter()
     result = least_squares(
         lambda p: evaluate(p)[0],
         p0,
@@ -467,8 +514,43 @@ def calibrate_affine(
         max_nfev=max_nfev,
     )
     _, _, sol, p, z = evaluate(result.x)
+    total_s = perf_counter() - total_t0
     theta_hat = result.x[:m] if fit_left_a else result.x
     a_hat = float(result.x[m]) if fit_left_a else surface0.left_extrap_a
+    # Stage-0 side metadata: residual-block sizes + optimizer counters + a coarse
+    # wall-time split (PDE value / sensitivity / assembly / optimizer-outer). Pure
+    # observation — never fed back, so calibrated values are unchanged.
+    n_opt_rows = (2 if band_mode else 1) * len(options)
+    n_cvx_rows = int(cvx[0].size) if cvx_on else 0
+    n_front_rows = int(front_rows.shape[0]) if front_on else 0
+    residual_count = (
+        n_opt_rows + len(varswaps) + int(l_rows.shape[0]) + n_cvx_rows + n_front_rows
+    )
+    diagnostics = AffineFitDiagnostics(
+        vertex_count=m,
+        pde_x_count=int(np.asarray(x_grid).size),
+        pde_t_count=int(np.asarray(t_grid).size),
+        quote_count=len(options),
+        varswap_count=len(varswaps),
+        residual_count=residual_count,
+        regularisation_row_count=int(l_rows.shape[0]),
+        fit_left_a=bool(fit_left_a),
+        max_nfev=int(max_nfev),
+        nfev=int(result.nfev),
+        njev=int(result.njev or 0),
+        status=int(result.status),
+        cost=float(result.cost),
+        optimality=float(result.optimality),
+        active_bound_count=int(
+            np.count_nonzero(getattr(result, "active_mask", np.zeros(0)))
+        ),
+        wall_ms_total=1e3 * total_s,
+        wall_ms_pde_value=1e3 * pde_value_s,
+        wall_ms_pde_sensitivity=1e3 * pde_sens_s,
+        wall_ms_residual_assembly=1e3 * assembly_s,
+        wall_ms_optimizer_outer=1e3
+        * max(total_s - pde_value_s - pde_sens_s - assembly_s, 0.0),
+    )
     return AffineCalibration(
         surface=surface0.with_theta(theta_hat).with_left_extrap_a(a_hat),
         solution=sol,
@@ -480,4 +562,5 @@ def calibrate_affine(
         n_evals=n_evals,
         message=str(result.message),
         left_extrap_a=a_hat,
+        diagnostics=diagnostics,
     )

@@ -27,7 +27,14 @@ from volfit.core.american import (
     deamericanize_batch,
 )
 from volfit.graph import build_graph, build_increment_prior, posterior_update
-from volfit.models.localvol import LocalVolGrid, LocalVolModel
+from volfit.models.localvol import (
+    AffineVarianceSurface,
+    LocalVolGrid,
+    LocalVolModel,
+    OptionQuote,
+    calibrate_affine,
+    solve_affine_dupire,
+)
 from volfit.models.lqd.calibrate import calibrate_slice
 
 pytestmark = pytest.mark.perf
@@ -41,6 +48,8 @@ BUDGET_MS = {
     "graph_update_1k": 2500.0,      # ~700 ms local; Phase-4 target < 1 s @ 1k nodes
     "localvol_forward": 250.0,      # ~20 ms local; CN Dupire forward, 2 expiries
     "deamericanize_chain": 1800.0,  # ~630 ms local; ~80-quote vectorized CRR de-Am
+    "affine_localvol_default": 3000.0,  # ~1.0 s local; 143-vtx LV surface fit (Stage 0 rail)
+    "affine_localvol_heavy": 6000.0,    # ~2.0 s local; 255-vtx LV fit, max_nfev capped
 }
 
 
@@ -208,4 +217,78 @@ def test_perf_deamericanize_chain(perf_report):
         "deamericanize_chain",
         lambda: deamericanize_batch(is_call, prices, spot, k, t, r, q),
         repeat=5,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 5. Affine local-vol surface calibration — the heavy Dupire LSQ (Stage 0 rail).
+# ---------------------------------------------------------------------------
+
+
+def _affine_case(n_t_vtx: int, n_x_vtx: int, expiries: np.ndarray, strikes: np.ndarray):
+    """A self-consistent affine calibration case: quotes generated from a known
+    smooth surface, fit back from a flat start.
+
+    Vertices span [0, T_max] x [0.6, 1.6] in x = K/F; the PDE grid is the note's
+    uniform x = 0.01 i (so x = 1 is a node) hitting every expiry at dt <= 0.01.
+    Returns ``(flat_surface, option_quotes, x_grid, t_grid)`` ready for
+    ``calibrate_affine`` — the same machinery the live LV surface fit drives.
+    """
+    t_nodes = np.linspace(0.0, float(max(expiries)), n_t_vtx)
+    x_nodes = np.linspace(0.6, 1.6, n_x_vtx)
+    tt, xx = np.meshgrid(t_nodes, x_nodes, indexing="ij")
+    theta = np.clip(0.04 + 0.01 * tt + 0.03 * (1.0 - xx) ** 2 + 0.01 * (1.0 - xx), 0.006, 0.19)
+    surf = AffineVarianceSurface(t_nodes=t_nodes, x_nodes=x_nodes, theta=theta)
+
+    x_grid = 0.01 * np.arange(251)  # 0 .. 2.5, x = 1 at node 100
+    t_pts, prev = [0.0], 0.0
+    for e in expiries:
+        n = max(1, int(np.ceil((float(e) - prev) / 0.01)))
+        t_pts.extend(np.linspace(prev, float(e), n + 1)[1:].tolist())
+        prev = float(e)
+    t_grid = np.array(t_pts)
+
+    sol = solve_affine_dupire(surf, x_grid, t_grid, list(expiries))
+    idx = {float(t): i for i, t in enumerate(sol.expiries)}
+    options = [
+        OptionQuote(t=float(e), x=float(x), price=float(sol.price_at(idx[float(e)], x)), tol=2e-4)
+        for e in expiries
+        for x in strikes
+    ]
+    flat = AffineVarianceSurface(
+        t_nodes=t_nodes, x_nodes=x_nodes, theta=np.full((n_t_vtx, n_x_vtx), 0.04)
+    )
+    return flat, options, x_grid, t_grid
+
+
+def test_perf_affine_localvol_default(perf_report):
+    """Default-sized LV surface fit (143 vertices, ~110 quotes): the per-eval
+    sensitivity march dominates here, so this guards that hot path."""
+    flat, options, x_grid, t_grid = _affine_case(
+        11, 13, np.linspace(0.1, 2.0, 10), np.linspace(0.75, 1.25, 11)
+    )
+    _check(
+        perf_report,
+        "affine_localvol_default",
+        lambda: calibrate_affine(
+            flat, options, x_grid, t_grid, reg_lambda=50.0, bounds=(0.005, 0.20)
+        ),
+        repeat=3,
+    )
+
+
+def test_perf_affine_localvol_heavy(perf_report):
+    """High vertex-count LV fit (255 vertices): guards the regime where the
+    optimizer's dense linear algebra grows. ``max_nfev`` is capped so this is a
+    structural per-iteration guard, not the full multi-second convergence."""
+    flat, options, x_grid, t_grid = _affine_case(
+        15, 17, np.linspace(0.1, 2.5, 12), np.linspace(0.7, 1.3, 15)
+    )
+    _check(
+        perf_report,
+        "affine_localvol_heavy",
+        lambda: calibrate_affine(
+            flat, options, x_grid, t_grid, reg_lambda=50.0, bounds=(0.005, 0.20), max_nfev=30
+        ),
+        repeat=2,
     )

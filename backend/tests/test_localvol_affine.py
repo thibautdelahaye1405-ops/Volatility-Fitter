@@ -219,6 +219,31 @@ def test_calibration_recovers_note_nodal_table(calibration):
     assert np.max(np.abs(calibration.surface.theta - THETA_CALIBRATED)) < 2.5e-3
 
 
+def test_calibration_diagnostics_counters(calibration):
+    """Stage-0 side metadata: counts/optimizer/wall-time are populated and
+    self-consistent. Pure observation — it must not perturb any fitted value
+    (the golden tests above already pin those), only describe the run."""
+    d = calibration.diagnostics
+    assert d is not None
+    # problem-size counts match the note's 3 x 7 grid, 15 options, 3 var-swaps
+    assert d.vertex_count == 21
+    assert d.quote_count == 15
+    assert d.varswap_count == 3
+    assert d.pde_x_count == X_GRID.size and d.pde_t_count == T_GRID.size
+    assert not d.fit_left_a
+    # roughness rows: strike 3*(7-2)=15 + time 7*(3-2)=7 = 22; total residual
+    # block = 15 options + 3 var-swaps + 22 roughness (mid mode, no convex/front)
+    assert d.regularisation_row_count == 22
+    assert d.residual_count == 15 + 3 + 22
+    # optimizer counters surfaced from scipy least_squares
+    assert d.nfev > 0 and d.njev > 0
+    assert d.active_bound_count >= 0
+    # wall-time breakdown is non-negative and the sensitivity march is timed
+    assert d.wall_ms_total > 0.0
+    assert d.wall_ms_pde_sensitivity > 0.0
+    assert d.wall_ms_optimizer_outer >= 0.0
+
+
 def test_calibrated_surface_is_arbitrage_free(calibration):
     # Dense-grid checks per the note's "Validate" step: calls in [0, 1],
     # decreasing & convex in strike, nondecreasing in maturity.
