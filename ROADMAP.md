@@ -35,10 +35,18 @@ synthetic-only overclaim):
 - **Disposition:** removed the `lvSolver` Options field + UI selector + `affine_fit`
   wiring (app always uses TRF); kept `affine_gn.py` + `calibrate_affine(gn=)` + tests
   + the synthetic perf rail (relabelled a correctness/bound guard, not a win).
-- **Next = Stage 6 — Numba `nogil` Dupire march:** compile the per-eval value +
-  multi-RHS sensitivity march (the actual bottleneck), helping every fit/solver, then
-  across-ticker parallelism. (Also worth a cheap look: the surface is already at
-  final RMS at the 200-eval cap, so lowering the cap may cut cold-fit time directly.)
+- **Stage 6 (Numba march) ALSO REVERTED (~1.2×):** the compiled Thomas march is
+  numerically exact (≈1e-15 vs banded) but only 1.1–1.26× at 220–440 vtx — the
+  per-eval cost is the irreducible O(N_t·N_x·m) multi-RHS sensitivity solve, which
+  LAPACK already does near-optimally, so compilation can't beat it. `affine_march.py`
+  removed, `numba`/`llvmlite` uninstalled. Third dead-end on the "faster per eval"
+  axis (with Stages 3 & 5) — all the same wall: the PDE march is inherent + efficient.
+- **Next = Stage 7 — Rannacher 2nd-order time stepping** (chosen): Crank–Nicolson +
+  implicit-Euler kink-damping start-up reaches equal accuracy at ~2–4× larger dt ⇒
+  ~2–4× fewer time steps per eval, quality-neutral, gated (default implicit ⇒ golden
+  byte-identical). Complementary cheap lever measured: the cold fit's last ~80–120
+  evals buy <0.1 bp (SPY 2.84 bp @ cap 80 vs 2.71 @ 200; NVDA 10.79 vs 10.63), so a
+  stall-based early-stop / lower `max_nfev` is a ~1.5–2× cold-fit win on its own.
 
 Separately, a strike-grid fix landed: `_delta_strike_nodes` now densifies by
 splitting the single widest gap one node at a time (matching `_time_nodes`) instead

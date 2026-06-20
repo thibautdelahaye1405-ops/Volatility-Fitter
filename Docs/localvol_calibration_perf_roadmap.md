@@ -198,19 +198,49 @@ dominates.
   bowtie grid (Stage 5's original "true delta point-cloud" half), where m is large
   enough that the SVD actually dominates AND an adjoint removes the m-factor PDE cost.
 
-### Stage 6 — Numba `nogil` march + across-ticker parallelism  *(the default-grid fix)*
-- `@njit(cache=True, nogil=True)` inner march (tridiagonal assembly, Thomas
-  value + multi-RHS/tangent solves, boundary terms). Delaunay/basis precompute
-  stays in Python; pass plain arrays in. Warm-up call so JIT latency isn't billed
-  as fit latency.
-- Then enable **across-ticker** thread-parallelism in the calibration job
-  (refinement 6) — now GIL-safe.
-- **Gate:** numerical equivalence to the banded path; speedup outside warm-up;
-  parallel run deterministic and correct.
+### Stage 6 — Numba `nogil` march  ❌ ATTEMPTED, NOT WORTH IT (~1.2×) — reverted
+- Built a `@njit(nogil=True, cache=True)` Thomas-factor-once value+sensitivity
+  march (numerically EXACT vs the banded path — prices/sens matched to ≈1e-15) and
+  benchmarked it on the production PDE grid. **Speedup was only 1.1–1.26× at
+  220–440 vertices** (2.3× only on the tiny 21-vtx golden), and a cache-friendly
+  transposed `(m, n_x)` layout did not move it.
+- **Why:** the per-eval cost is the **irreducible O(N_t·N_x·m) multi-RHS
+  sensitivity solve**, which LAPACK (`solve_banded`) already executes at near-optimal
+  efficiency; a hand-rolled compiled Thomas matches but cannot beat it by more than
+  ~20%, and the dense `nu = phi·theta` / RHS-build (the parts compilation *could*
+  speed up) are not the dominant term. A 40 MB+ `numba`/`llvmlite` dependency for
+  ~1.2× is not worth it on this flaky-PyPI Windows box.
+- **Reverted:** `affine_march.py` removed, `numba`/`llvmlite` uninstalled. (The
+  validated kernel logic is recorded here should a future regime change the maths.)
+- **Lesson (third of three on this axis, with Stages 3 & 5):** the per-eval PDE
+  march cannot be shaved by better linear algebra or compilation — it is inherent
+  and already efficient. **The remaining real levers change the problem:** fewer
+  evals (the cold fit caps at 200 but the last ~80–120 evals buy <0.1 bp — measured),
+  or fewer time steps at equal accuracy (Rannacher), or fewer vertices.
 
-### Opportunistic (after 0–5, independent)
-- **Rannacher start-up / higher-order time stepping** to cut `N_t`; own
-  convergence-order + density/calendar gates; sensitivity recurrence updated.
+### Stage 7 — Rannacher 2nd-order time stepping  *(CHOSEN next — the real structural win)*
+- Backward-Euler is 1st-order and forces dt ≤ 0.01 (~250 steps) to control the
+  payoff-kink error at x=1. Replace with **Crank–Nicolson + Rannacher start-up**
+  (2 implicit-Euler half/full steps to damp the kink, then CN): 2nd-order, so the
+  same accuracy is reached at **~2–4× larger dt ⇒ ~2–4× fewer time steps in every
+  eval** — quality-neutral by construction (better per-step accuracy, not coarsening
+  the data grid as Stage 3 did). Cuts N_t in the O(N_t·N_x·m) march directly.
+- The CN sensitivity recurrence carries two stencil terms (½Δt·dA at levels n and
+  n+1) vs implicit Euler's one; the per-step tridiagonal factor (I − ½Δt A^{n+1})
+  is the same banded solve. Gated `timeScheme="implicit"|"rannacher"`, default
+  implicit ⇒ golden byte-identical.
+- **Gate:** convergence-order test (Rannacher at coarse dt ≈ implicit at fine dt ≈
+  the note's true prices); analytic sensitivities vs FD under CN; arb-free
+  (`_diagnostics` min density ≥ 0, no calendar violations); golden unchanged on the
+  implicit default; perf rail showing the N_t reduction.
+
+### Opportunistic (independent)
+- **Eval-cap / early-stop**: the cold fit's last ~80–120 evals buy <0.1 bp — a
+  stall-based stop or lower `max_nfev` is a cheap ~1.5–2× cold-fit win (measured;
+  small quality cost).
+- **Across-ticker parallelism** in the calibration job (was Stage 6's second half;
+  pure-Python intra-fit threads are GIL-negative, but the per-ticker work-items
+  could run on a process pool — Windows-spawn caveats apply).
 - **Adaptive vertex grids** (two-pass) — last; complicates cache keys and
   warm-start interpolation.
 
@@ -218,16 +248,17 @@ dominates.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ (reverted) → 5 ⚠️ (built, non-viable, shelved) → 6`,
-with Rannacher / adaptive grids folded in opportunistically. Stages 0–2a took the
-default grid faster and recalibration ~instant; 4′ made the var-swap grid-robust;
-**3 was attempted and reverted** (coarse calibration biases θ catastrophically);
-**5 was built but is non-viable at tensor-grid sizes** — the benchmark proved the
-dense SVD is NOT the bottleneck there (removing it made fits slower), so it is
-shelved gated-off as a bowtie-regime seed. **The real per-eval bottleneck is the PDE
-sensitivity march itself ⇒ Stage 6** (compiled `Numba nogil` march, also unlocking
-across-ticker parallelism) is the remaining structural win. The mathematical
-contract and the golden example stay intact throughout.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ (shelved) → 6 ❌ → 7 (Rannacher, chosen)`.
+Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
+var-swap grid-robust. **Three approaches to cut the per-eval cost all failed for the
+same reason** — the per-eval forward-sensitivity PDE march is inherent and already
+LAPACK-efficient: **3** (coarse grid) biased θ; **5** (matrix-free GN) needs more
+evals than TRF and the SVD isn't the bottleneck at tensor-grid sizes; **6** (Numba
+march) is numerically exact but only ~1.2× (LAPACK already optimal). So the work
+turned to levers that change the *problem*: **Stage 7 (Rannacher 2nd-order time
+stepping)** cuts N_t at equal accuracy — the chosen structural win — with eval-cap
+early-stop as a cheap complementary lever. The mathematical contract and the golden
+example stay intact throughout.
 
 ## Invariants (every stage)
 - Golden example within tolerance — the local-vol surface *is* product output, so
