@@ -211,6 +211,14 @@ export default function OptionsViewer() {
             var-swap quote the slope is fitted to the quote, this is its start).
           </p>
         </div>
+        <div className="mt-2">
+          <Toggle
+            label="2nd-order time stepping (experimental)"
+            hint="Rannacher (Crank-Nicolson after implicit-Euler kink-damping start-up) is 2nd-order, so it reaches the same accuracy at ~3x larger time steps. Benchmarked at only ~1.1x net (the CN sensitivity step is ~2x costlier, ~cancelling the fewer-steps win) and CN is not monotone (an arb violation appeared on a coarse-x grid), so it is OFF by default. Off = 1st-order implicit Euler. Var-swap fits always use implicit."
+            checked={draft.timeScheme === "rannacher"} disabled={!live}
+            onChange={(v) => patch({ timeScheme: v ? "rannacher" : "implicit" })}
+          />
+        </div>
         {gridInfo && (
           <p className="mt-2 rounded-md border border-slate-800 bg-surface-800/50 px-2 py-1 text-[10px] text-slate-400">
             {anyDirty ? (

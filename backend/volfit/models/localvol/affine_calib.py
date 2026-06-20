@@ -353,6 +353,8 @@ def calibrate_affine(
     gtol: float = 1e-8,
     max_nfev: int = 200,
     gn: bool = False,
+    time_scheme: str = "implicit",
+    rannacher_steps: int = 2,
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
 
@@ -419,6 +421,13 @@ def calibrate_affine(
     stalls. Default False ⇒ the legacy TRF path, byte-identical (the golden
     example is unaffected). The two solvers agree on the converged surface
     (test_affine_gn); the win is purely the per-iteration linear algebra.
+
+    ``time_scheme`` (Stage 7): "implicit" (default, byte-identical golden) or
+    "rannacher" (Crank-Nicolson after ``rannacher_steps`` implicit start-up steps),
+    forwarded to every ``solve_affine_dupire``. 2nd-order in time ⇒ the caller can
+    march on a several-fold coarser time grid at equal accuracy (the real per-eval
+    win); the analytic sensitivities are differentiated through the CN step too.
+    Falls back to implicit per-step when ``fit_left_a`` (see solve_affine_dupire).
     """
     varswaps = varswaps or []
     expiries = sorted({o.t for o in options} | {v.t for v in varswaps})
@@ -520,6 +529,7 @@ def calibrate_affine(
         sol = solve_affine_dupire(
             surf, x_grid, t_grid, expiries, sensitivities=True, steps=steps,
             left_a=a, fit_left_a=fit_left_a, timing=td,
+            time_scheme=time_scheme, rannacher_steps=rannacher_steps,
         )
         pde_value_s += td["value_s"]
         pde_sens_s += td["sens_s"]

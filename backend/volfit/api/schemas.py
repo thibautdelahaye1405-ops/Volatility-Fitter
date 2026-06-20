@@ -200,6 +200,18 @@ class OptionsSettings(BaseModel):
     #: (NVDA), starving the put wing; local variance in the wing runs well above
     #: implied, so the bound must scale with the name. (volfit.api.affine_fit)
     lvVolCapMult: float = Field(3.0, ge=1.0, le=20.0)
+    #: LV PDE time discretisation (Stage 7): "rannacher" = Crank-Nicolson (2nd order)
+    #: after implicit-Euler kink-damping start-up — reaches the same accuracy at ~3x
+    #: larger dt, so the Dupire march runs ~3x fewer time steps per evaluation (the
+    #: per-eval speed-up); "implicit" = fully implicit Euler (1st order, the legacy
+    #: scheme). Quality-neutral by construction (better per-step accuracy, not a
+    #: coarser data grid). Var-swap fits (free left-slope) keep implicit either way.
+    #: LV-only: folded into affine_key, does not bump the parametric options version.
+    #: Default "implicit": benchmarked at only ~1.1x net (CN's heavier sensitivity
+    #: step ~cancels the fewer-time-steps win) AND CN is not monotone (an arb
+    #: violation appeared on a coarse-x grid), so it is OFF by default; available as
+    #: an opt-in. The real cold-fit lever is fewer evals, not fewer time steps.
+    timeScheme: Literal["implicit", "rannacher"] = "implicit"
     #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
     #: cell's slope (between the two lowest vertices) — the deep-put local variance
     #: continues rising toward x = 0 instead of clamping flat. Used as the fixed

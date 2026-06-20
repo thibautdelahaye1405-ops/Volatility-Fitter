@@ -318,6 +318,8 @@ def solve_affine_dupire(
     left_a: float | None = None,
     fit_left_a: bool = False,
     timing: dict | None = None,
+    time_scheme: str = "implicit",
+    rannacher_steps: int = 2,
 ) -> AffinePDESolution:
     """Fully implicit Euler march of eq. (implicit_step) on the given grids.
 
@@ -347,6 +349,16 @@ def solve_affine_dupire(
     solves into ``timing["value_s"]`` (the value march) and ``timing["sens_s"]``
     (the multi-RHS sensitivity march) — the Stage-0 instrumentation split. None
     (the default) is the zero-overhead hot path; standalone callers pass nothing.
+
+    ``time_scheme`` (Stage 7) selects the time discretisation: "implicit" (the
+    default — fully implicit Euler, 1st order, the byte-identical golden scheme),
+    or "rannacher" — Crank-Nicolson (2nd order) after ``rannacher_steps`` implicit-
+    Euler start-up steps that damp the payoff kink at x = 1 (plain CN would
+    oscillate). 2nd order means a given accuracy is reached at a several-fold larger
+    dt, so the live fit marches far fewer time steps per evaluation at equal
+    accuracy (note "higher-order time stepping"). Rannacher is only applied when
+    ``fit_left_a`` is False (the free-left-slope dU/da column keeps the implicit
+    recursion); a "rannacher" request with ``fit_left_a`` falls back to implicit.
     """
     timed = timing is not None
     x = np.asarray(x_grid, dtype=float)
@@ -357,6 +369,11 @@ def solve_affine_dupire(
         steps = precompute_dupire_steps(surface, x, t, with_left_lin=fit_left_a)
     a = float(left_a) if left_a is not None else surface.left_extrap_a
     use_lin = steps.phi_lin is not None
+    # Crank-Nicolson is used only without the free-left-slope column (which keeps the
+    # implicit dU/da recursion); the first ``rann`` steps stay implicit Euler to damp
+    # the payoff kink (Rannacher start-up), so CN begins at step index ``rann`` >= 1.
+    cn_enabled = time_scheme == "rannacher" and not fit_left_a
+    rann = max(int(rannacher_steps), 1)
     exps = np.array(sorted({float(e) for e in expiries}))
     pos = np.searchsorted(t, exps)
     if np.any(pos >= t.size) or not np.allclose(t[pos], exps, rtol=0.0, atol=1e-12):
@@ -383,20 +400,32 @@ def solve_affine_dupire(
 
     phis = steps.phi
     active_k = steps.active_k
+    nu_prev = None  # nu at the current (old) time level, carried for the CN explicit half
+    phi_prev = None  # basis at the old level (= phis[n-1]), for the CN dA^n source
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
         phi_base = phis[n]  # cached hat weights at the new level (flat-extrap base)
         phi = phi_base + a * steps.phi_lin[n] if use_lin else phi_base
         nu = phi @ theta
+        # Crank-Nicolson on this step? (Rannacher: implicit for the first ``rann``.)
+        is_cn = cn_enabled and n >= rann
+        frac = 0.5 if is_cn else 1.0  # theta-weight on the IMPLICIT (new-level) operator
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
 
-        ab = np.zeros((3, n_x - 2))  # banded I - dt A for solve_banded
-        ab[0, 1:] = -dt * up[:-1]
-        ab[1, :] = 1.0 - dt * di
-        ab[2, :-1] = -dt * lo[1:]
+        ab = np.zeros((3, n_x - 2))  # banded (I - frac*dt*A^{n+1}) for solve_banded
+        ab[0, 1:] = -frac * dt * up[:-1]
+        ab[1, :] = 1.0 - frac * dt * di
+        ab[2, :-1] = -frac * dt * lo[1:]
 
+        u_old = u  # full array at the old level (boundaries included), for the CN half
         rhs = u[1:-1].copy()
-        rhs[0] += dt * lo[0] * 1.0  # boundary U_0 = 1 (b^{n+1} of the note)
+        au_old = None
+        if is_cn:
+            # explicit (old-level) half: + (1-frac)*dt * A^n U^n on the full stencil
+            # (au_old[0] already carries the U_0 = 1 left boundary at level n).
+            au_old = a_m * u_old[:-2] + a_0 * u_old[1:-1] + a_p * u_old[2:]
+            rhs += (1.0 - frac) * dt * nu_prev * au_old
+        rhs[0] += frac * dt * lo[0] * 1.0  # implicit (new-level) U_0 = 1 boundary
         if sensitivities:
             _t0 = perf_counter() if timed else 0.0
             sol_u = solve_banded((1, 1), ab.copy(), rhs, check_finite=False)
@@ -420,6 +449,21 @@ def solve_affine_dupire(
                 )
                 rhs_s = sens[1:-1, idx] + dt * src
                 sens[1:-1, idx] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
+            elif is_cn:
+                # Differentiate the CN step: (I - frac dt A^{n+1}) dU^{n+1} =
+                #   (I + (1-frac) dt A^n) dU^n          [explicit half on the old sens]
+                #   + frac dt (dA^{n+1}_l) U^{n+1}      [new-level source, phi @ au]
+                #   + (1-frac) dt (dA^n_l) U^n          [old-level source, phi_prev @ au_old]
+                old = sens[:, :k]
+                expl = old[1:-1] + (1.0 - frac) * dt * nu_prev[:, None] * (
+                    a_m[:, None] * old[:-2] + a_0[:, None] * old[1:-1] + a_p[:, None] * old[2:]
+                )
+                rhs_s = (
+                    expl
+                    + frac * dt * phi[:, :k] * au[:, None]
+                    + (1.0 - frac) * dt * phi_prev[:, :k] * au_old[:, None]
+                )
+                sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
             else:
                 rhs_s = sens[1:-1, :k] + dt * phi[:, :k] * au[:, None]
                 sens[1:-1, :k] = solve_banded((1, 1), ab, rhs_s, check_finite=False)
@@ -435,6 +479,8 @@ def solve_affine_dupire(
                 timing["value_s"] += perf_counter() - _t0
             u = np.concatenate(([1.0], sol_u, [0.0]))
 
+        nu_prev = nu  # becomes the old-level nu for the next step's CN half
+        phi_prev = phi
         i_out = want.get(n + 1)
         if i_out is not None:
             prices[i_out] = u

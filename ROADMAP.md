@@ -41,12 +41,21 @@ synthetic-only overclaim):
   LAPACK already does near-optimally, so compilation can't beat it. `affine_march.py`
   removed, `numba`/`llvmlite` uninstalled. Third dead-end on the "faster per eval"
   axis (with Stages 3 & 5) — all the same wall: the PDE march is inherent + efficient.
-- **Next = Stage 7 — Rannacher 2nd-order time stepping** (chosen): Crank–Nicolson +
-  implicit-Euler kink-damping start-up reaches equal accuracy at ~2–4× larger dt ⇒
-  ~2–4× fewer time steps per eval, quality-neutral, gated (default implicit ⇒ golden
-  byte-identical). Complementary cheap lever measured: the cold fit's last ~80–120
-  evals buy <0.1 bp (SPY 2.84 bp @ cap 80 vs 2.71 @ 200; NVDA 10.79 vs 10.63), so a
-  stall-based early-stop / lower `max_nfev` is a ~1.5–2× cold-fit win on its own.
+- **Stage 7 (Rannacher 2nd-order time stepping) BUILT but ~1.1× + arb risk → default
+  OFF.** CN-after-implicit-startup with the full analytic CN sensitivity recurrence;
+  validated 2nd-order (21× more accurate than implicit at dt=0.02; sens vs FD ~3e-11;
+  golden byte-identical on the implicit default). But on SPY/NVDA it cut N_t 2.7×
+  (102→37) yet only ran **~1.12× faster** — the CN sensitivity step is ~2× costlier
+  per step (explicit-half matvec + dual-level sources), ~cancelling the fewer-steps
+  win, and the N_t-independent assembly+SVD dilute the rest; CN also broke arb-freedom
+  on NVDA gridX=12 (not monotone). Kept as a tested opt-in (`timeScheme`,
+  `test_affine_time_scheme.py`), default implicit.
+- **FOUR distributed-cost dead-ends (Stages 3, 5, 6, 7):** the cold-fit cost spreads
+  ~evenly across the march, the Jacobian assembly, and the optimizer linear algebra,
+  so no single per-eval/per-step lever moves the total. **Next = the eval-cap /
+  stall-based early-stop** — the cold fit's last ~80–120 of 200 evals buy <0.1 bp, so
+  stopping early is a **~1.5–2× win that scales the WHOLE fit** and stacks with
+  everything. This is the one measured lever that actually works.
 
 Separately, a strike-grid fix landed: `_delta_strike_nodes` now densifies by
 splitting the single widest gap one node at a time (matching `_time_nodes`) instead

@@ -78,7 +78,12 @@ _X_DX = 0.01
 _X_MAX_MIN = 2.5
 _X_HI_PAD = 1.4
 #: PDE time step ceiling (each quoted expiry is forced to be a grid node).
+#: Backward-Euler is 1st-order, so it needs the fine 0.01 ceiling for ~1bp accuracy.
 _DT_MAX = 0.01
+#: Coarser ceiling used with the Rannacher (2nd-order CN) scheme (Stage 7): equal
+#: accuracy at ~3x fewer steps (validated: rannacher@0.03 ~ implicit@0.01). The march
+#: cost is O(N_t), so this is the per-eval speed-up.
+_DT_MAX_RANNACHER = 0.03
 #: Vega-scaled price tolerance: residual (P - y)/(vega * VOL_TOL) ~ vol error
 #: in units of VOL_TOL, so a 1% vol miss contributes ~1.
 _VOL_TOL = 0.01
@@ -337,7 +342,9 @@ def _lowest_vertex_x(rows) -> tuple[float, float]:
     return 0.5 * (x_lo1 + x_lo2), k_hi
 
 
-def _pde_grids(expiries: np.ndarray, k_hi: float) -> tuple[np.ndarray, np.ndarray]:
+def _pde_grids(
+    expiries: np.ndarray, k_hi: float, dt_max: float = _DT_MAX
+) -> tuple[np.ndarray, np.ndarray]:
     """Fine PDE strike grid (from 0) and time grid hitting every expiry.
 
     The strike grid is a UNIFORM lattice of step ``_X_DX`` from 0, so the
@@ -354,7 +361,7 @@ def _pde_grids(expiries: np.ndarray, k_hi: float) -> tuple[np.ndarray, np.ndarra
     t_pts = [0.0]
     prev = 0.0
     for e in expiries:
-        n = max(1, int(np.ceil((e - prev) / _DT_MAX)))
+        n = max(1, int(np.ceil((e - prev) / dt_max)))
         t_pts.extend(np.linspace(prev, float(e), n + 1)[1:].tolist())
         prev = float(e)
     return x_grid, np.array(t_pts)
@@ -677,7 +684,6 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     opts = state.options()  # grid size + roughness are global hyperparameters now
     expiries = np.array([t for _, t, _, _, _, _ in rows])
     t_nodes, x_nodes, k_hi, convex_cols = _resolve_grid(rows, opts)
-    x_grid, t_grid = _pde_grids(expiries, k_hi)
 
     options = _option_quotes(rows, state.fit_settings().weightScheme)
     prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
@@ -692,6 +698,13 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     #  - else convex wing  -> fixed a = leftWingSlopeMult (steeper rising wing);
     #  - else              -> a = 0 (flat clamp, the historical behavior).
     fit_left_a = len(varswaps) > 0
+    # Stage 7 — time discretisation: Rannacher (2nd order) lets the PDE march on a
+    # several-fold COARSER time grid at equal accuracy, the per-eval speed-up. It does
+    # not apply with a free left slope (var-swap fits keep implicit Euler), so those
+    # keep the fine dt. The PDE time grid is built with the matching step ceiling.
+    time_scheme = "implicit" if fit_left_a else opts.timeScheme
+    dt_max = _DT_MAX_RANNACHER if time_scheme == "rannacher" else _DT_MAX
+    x_grid, t_grid = _pde_grids(expiries, k_hi, dt_max)
     a_init = opts.leftWingSlopeMult if (opts.convexWing or fit_left_a) else 0.0
     # Flat reference: the median quoted local variance (= vol^2), clipped. This is
     # ``theta_ref`` (the roughness anchor) AND the flat-fallback seed.
@@ -725,6 +738,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         theta_ref=np.full(t_nodes.size * x_nodes.size, var0),
         seed_source=seed_source,
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
+        time_scheme=time_scheme,  # Stage 7: Rannacher coarse-dt march when applicable
     )
     _record_diagnostics(state, ticker, cal.diagnostics)
 
@@ -874,7 +888,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
-        opts.varSwapMethod,
+        opts.varSwapMethod, opts.timeScheme,
         request.model_dump_json(),
     )
 

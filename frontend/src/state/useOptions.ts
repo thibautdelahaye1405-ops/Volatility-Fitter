@@ -54,6 +54,9 @@ export interface OptionsSettings {
   frontTieWeight: number;
   /** Adaptive local-vol cap = max(60%, lvVolCapMult x highest observed IV). */
   lvVolCapMult: number;
+  /** LV PDE time scheme: "rannacher" = 2nd-order Crank-Nicolson (~3x fewer time
+   *  steps at equal accuracy — faster), "implicit" = 1st-order backward Euler (legacy). */
+  timeScheme: 'implicit' | 'rannacher';
   /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
   leftWingSlopeMult: number;
   calendarWeight: number;
@@ -95,6 +98,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   frontTie: true,
   frontTieWeight: 1e-2,
   lvVolCapMult: 3.0,
+  timeScheme: 'implicit',
   leftWingSlopeMult: 1.5,
   calendarWeight: 1e6,
   graphKappaScale: 1.0,

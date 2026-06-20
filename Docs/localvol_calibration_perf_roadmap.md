@@ -218,26 +218,38 @@ dominates.
   evals (the cold fit caps at 200 but the last ~80–120 evals buy <0.1 bp — measured),
   or fewer time steps at equal accuracy (Rannacher), or fewer vertices.
 
-### Stage 7 — Rannacher 2nd-order time stepping  *(CHOSEN next — the real structural win)*
-- Backward-Euler is 1st-order and forces dt ≤ 0.01 (~250 steps) to control the
-  payoff-kink error at x=1. Replace with **Crank–Nicolson + Rannacher start-up**
-  (2 implicit-Euler half/full steps to damp the kink, then CN): 2nd-order, so the
-  same accuracy is reached at **~2–4× larger dt ⇒ ~2–4× fewer time steps in every
-  eval** — quality-neutral by construction (better per-step accuracy, not coarsening
-  the data grid as Stage 3 did). Cuts N_t in the O(N_t·N_x·m) march directly.
-- The CN sensitivity recurrence carries two stencil terms (½Δt·dA at levels n and
-  n+1) vs implicit Euler's one; the per-step tridiagonal factor (I − ½Δt A^{n+1})
-  is the same banded solve. Gated `timeScheme="implicit"|"rannacher"`, default
-  implicit ⇒ golden byte-identical.
-- **Gate:** convergence-order test (Rannacher at coarse dt ≈ implicit at fine dt ≈
-  the note's true prices); analytic sensitivities vs FD under CN; arb-free
-  (`_diagnostics` min density ≥ 0, no calendar violations); golden unchanged on the
-  implicit default; perf rail showing the N_t reduction.
+### Stage 7 — Rannacher 2nd-order time stepping  ⚠️ BUILT but only ~1.1× + arb risk — default OFF
+- **Built + validated:** Crank–Nicolson after 2 implicit-Euler kink-damping start-up
+  steps, in `solve_affine_dupire(time_scheme="rannacher")` with the full analytic CN
+  sensitivity recurrence (the dual-level ½Δt·dA sources + the explicit-half operator
+  on the previous sensitivities). Confirmed 2nd-order: at dt=0.02 Rannacher's price
+  error vs a time-converged reference is **21× smaller** than implicit Euler's
+  (1.3e-5 vs 2.6e-4); analytic sensitivities match FD to ~3e-11; golden byte-identical
+  on the implicit default. Gated `timeScheme`, folded into `affine_key`.
+  `test_affine_time_scheme.py` (5).
+- **Why only ~1.1× (the surprise):** on the SPY/NVDA benchmark Rannacher cut the time
+  steps **2.7–2.8×** (N_t 102→37, 52→19) at equal RMS (±0.1 bp) — but **total speed-up
+  was only ~1.12×**. The **CN sensitivity step is ~2× costlier per step** than implicit
+  (an explicit-operator matvec on the previous sensitivities + two dual-level source
+  terms + the solve = 4 dense O(N_x·m) ops, vs implicit's 2), so ~2.7× fewer steps ×
+  ~2× per step ≈ break-even; the non-march cost (assembly + optimizer SVD, N_t-
+  independent) dilutes the rest. **And CN is not monotone** (no M-matrix), so on the
+  coarse-x NVDA gridX=12 grid it produced a small arbitrage violation. So Rannacher is
+  **default OFF**, kept as a tested opt-in (`timeScheme`).
+- **The deeper lesson (4th underdelivering approach — Stages 3,5,6,7):** the cold-fit
+  cost is *distributed* roughly evenly across the march, the residual/Jacobian
+  assembly, and the optimizer linear algebra. No single per-eval/per-step lever moves
+  the total much because the others dilute it. **The only lever that scales the whole
+  fit is fewer evals** — see Opportunistic below.
 
 ### Opportunistic (independent)
-- **Eval-cap / early-stop**: the cold fit's last ~80–120 evals buy <0.1 bp — a
-  stall-based stop or lower `max_nfev` is a cheap ~1.5–2× cold-fit win (measured;
-  small quality cost).
+- **Eval-cap / early-stop  ← THE measured robust win.** The cold fit runs to the
+  200-eval cap but its last ~80–120 evals buy <0.1 bp (SPY 2.84 bp @ cap 80 vs 2.71
+  @ 200; NVDA 10.79 vs 10.63). A stall-based early-stop (terminate when the weighted
+  RMS improvement over a window falls below a vol-bp threshold) or simply a lower
+  `max_nfev` is a **~1.5–2× cold-fit win that scales the WHOLE fit** (march +
+  assembly + optimizer), unlike the per-eval levers above — and it stacks with them.
+  This is the one to ship next.
 - **Across-ticker parallelism** in the calibration job (was Stage 6's second half;
   pure-Python intra-fit threads are GIL-negative, but the per-ticker work-items
   could run on a process pool — Windows-spawn caveats apply).
@@ -248,17 +260,20 @@ dominates.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ (shelved) → 6 ❌ → 7 (Rannacher, chosen)`.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ → 6 ❌ → 7 ⚠️ → eval-cap (next)`.
 Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
-var-swap grid-robust. **Three approaches to cut the per-eval cost all failed for the
-same reason** — the per-eval forward-sensitivity PDE march is inherent and already
-LAPACK-efficient: **3** (coarse grid) biased θ; **5** (matrix-free GN) needs more
-evals than TRF and the SVD isn't the bottleneck at tensor-grid sizes; **6** (Numba
-march) is numerically exact but only ~1.2× (LAPACK already optimal). So the work
-turned to levers that change the *problem*: **Stage 7 (Rannacher 2nd-order time
-stepping)** cuts N_t at equal accuracy — the chosen structural win — with eval-cap
-early-stop as a cheap complementary lever. The mathematical contract and the golden
-example stay intact throughout.
+var-swap grid-robust. **Four approaches to cut the per-eval / per-step cost all
+underdelivered for the same reason** — the cold-fit cost is *distributed* roughly
+evenly across the PDE march, the residual/Jacobian assembly, and the optimizer linear
+algebra, so killing any single one is diluted by the others: **3** (coarse grid)
+biased θ; **5** (matrix-free GN) needs more evals than TRF; **6** (Numba march) is
+exact but only ~1.2× (LAPACK already optimal); **7** (Rannacher) cuts N_t 2.7× but the
+heavier CN sensitivity step ~cancels it (~1.1× net) and CN broke arb on a coarse grid.
+**The one lever that scales the WHOLE fit is fewer evaluations** — the cold fit's last
+~80–120 of 200 evals buy <0.1 bp, so a stall-based early-stop is a ~1.5–2× win that
+multiplies march+assembly+optimizer together and stacks with everything. That is the
+next thing to ship. The mathematical contract and the golden example stay intact
+throughout.
 
 ## Invariants (every stage)
 - Golden example within tolerance — the local-vol surface *is* product output, so
