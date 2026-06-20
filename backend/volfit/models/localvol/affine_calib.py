@@ -336,9 +336,10 @@ def calibrate_affine(
     left_a_bounds: tuple[float, float] = (0.0, 20.0),
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     theta_ref: np.ndarray | None = None,
-    xtol: float = 1e-12,
-    ftol: float = 1e-12,
-    gtol: float = 1e-12,
+    x_scale: float | str | np.ndarray = "jac",
+    xtol: float = 1e-8,
+    ftol: float = 1e-8,
+    gtol: float = 1e-8,
     max_nfev: int = 200,
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
@@ -368,6 +369,19 @@ def calibrate_affine(
     an analytic dPrice/da sensitivity — so a var-swap quote can set the deep-put
     tail steepness directly instead of distorting the data-fitted interior. When
     False, ``a`` stays fixed at ``surface0.left_extrap_a`` (0 ⇒ flat wing).
+
+    Solver controls (Stage 1, two independent knobs):
+    * ``x_scale`` — trust-region variable scaling. The problem is badly scaled
+      (ATM/front nodes are strongly identified, far-wing/late-time nodes weakly),
+      so a single radius in raw variance units wastes steps. ``"jac"`` (the
+      default) rescales each iteration from the Jacobian columns, cutting the
+      iteration count on real, skewed surfaces; pass ``1.0`` for the legacy
+      isotropic radius.
+    * ``xtol``/``ftol``/``gtol`` — termination tolerances, defaulting to 1e-8
+      (was 1e-12). The fit is governed by quote noise / vega scaling / bands /
+      regularization, so a 1e-12 numerical target is not economically meaningful
+      and only buys iterations. These two knobs are separable so a surface shift
+      can be attributed to scaling vs early termination.
     """
     varswaps = varswaps or []
     expiries = sorted({o.t for o in options} | {v.t for v in varswaps})
@@ -508,6 +522,7 @@ def calibrate_affine(
         jac=lambda p: evaluate(p)[1],
         bounds=opt_bounds,
         method="trf",
+        x_scale=x_scale,
         xtol=xtol,
         ftol=ftol,
         gtol=gtol,

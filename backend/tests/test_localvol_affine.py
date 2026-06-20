@@ -244,6 +244,24 @@ def test_calibration_diagnostics_counters(calibration):
     assert d.wall_ms_optimizer_outer >= 0.0
 
 
+def test_solver_scaling_cuts_evals_without_moving_surface(calibration):
+    """Stage 1: ``x_scale='jac'`` + 1e-8 tolerances (the new defaults, used by the
+    ``calibration`` fixture) must converge in no more evals than the legacy
+    isotropic-1e-12 solver AND land the same surface. The optimum here is
+    well-identified, so a different solver *path* must not move theta — that is
+    the gate that the speed-up is free of accuracy cost."""
+    options = [OptionQuote(t=t, x=x, price=p, tol=2e-4) for t, x, p, _ in QUOTE_TABLE]
+    varswaps = [VarSwapQuote(t=t, total_var=t * r, tol=2e-4) for t, r in VARSWAP_TABLE]
+    flat = AffineVarianceSurface(t_nodes=TAU, x_nodes=XI, theta=np.full((3, 7), 0.04))
+    legacy = calibrate_affine(
+        flat, options, X_GRID, T_GRID, varswaps=varswaps, reg_lambda=50.0,
+        bounds=(0.005, 0.20), x_scale=1.0, xtol=1e-12, ftol=1e-12, gtol=1e-12,
+    )
+    assert calibration.diagnostics.nfev <= legacy.diagnostics.nfev
+    # same converged optimum to ~machine precision (path-independent here)
+    assert np.max(np.abs(calibration.surface.theta - legacy.surface.theta)) < 1e-6
+
+
 def test_calibrated_surface_is_arbitrage_free(calibration):
     # Dense-grid checks per the note's "Validate" step: calls in [0, 1],
     # decreasing & convex in strike, nondecreasing in maturity.
