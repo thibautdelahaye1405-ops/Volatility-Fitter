@@ -248,6 +248,7 @@ class AffineFitDiagnostics:
     residual_count: int  # total LSQ residual length M (all blocks)
     regularisation_row_count: int  # roughness operator rows
     fit_left_a: bool  # was the left-wing slope a free parameter
+    seed_source: str  # warm-start origin: "flat" | "prev-affine" | "prev-affine-interp"
     # optimizer counters (from scipy least_squares)
     max_nfev: int
     nfev: int
@@ -336,6 +337,7 @@ def calibrate_affine(
     left_a_bounds: tuple[float, float] = (0.0, 20.0),
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
     theta_ref: np.ndarray | None = None,
+    seed_source: str = "flat",
     x_scale: float | str | np.ndarray = "jac",
     xtol: float = 1e-8,
     ftol: float = 1e-8,
@@ -350,6 +352,14 @@ def calibrate_affine(
     forward sensitivities per trial theta yields both residuals and the
     analytic Jacobian; results are memoized so scipy's separate fun/jac
     callbacks cost a single solve.
+
+    ``surface0.theta`` is the warm-start point (``theta0``). It is deliberately
+    decoupled from ``theta_ref``: pass a non-flat ``theta0`` to start near the
+    optimum (fewer evals) while keeping ``theta_ref`` at the flat reference, so
+    the roughness penalty stays L·(θ − flat) = L·θ (L·const = 0) — i.e. a warm
+    start does not change the regularization or the converged optimum. The
+    ``seed_source`` tag is recorded in the diagnostics only (where the warm start
+    came from); it does not affect the fit.
 
     ``reg_nodes`` = (t_nodes, x_nodes): when given, the roughness operator is the
     spacing-aware ``second_difference_rows_spacing`` on the real vertex positions
@@ -550,6 +560,7 @@ def calibrate_affine(
         residual_count=residual_count,
         regularisation_row_count=int(l_rows.shape[0]),
         fit_left_a=bool(fit_left_a),
+        seed_source=str(seed_source),
         max_nfev=int(max_nfev),
         nfev=int(result.nfev),
         njev=int(result.njev or 0),

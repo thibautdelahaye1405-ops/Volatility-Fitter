@@ -93,15 +93,30 @@ at the heavy grid.
   `nfev` ↓ or flat on default + heavy (assert via Stage-0 counters); no
   density/calendar-arb regression.
 
-### Stage 2 — Warm starts
-- Seed hierarchy in `affine_fit._fit`: previous affine θ (reuse if grid matches,
-  else linear-interp + clip) → parametric Dupire seed (`dupire.extract_grid` at
-  the vertices, nan-fill + clip) → flat-median fallback. **`theta0` only;
-  `theta_ref` unchanged** (refinement 2). Seed diagnostics into Stage 0's
-  dataclass.
-- **Gate:** same final IV quality; theta within stability tol of flat-start;
-  `nfev` ↓ on recalibration; safe fallback (deliberately-bad-seed test); golden
-  byte-identical.
+### Stage 2a — Warm starts (previous surface)  ✅ DONE (2026-06-20)
+- `affine_fit._seed_theta`: seed `theta0` from the previous calibrated surface
+  (direct reuse on a matching vertex grid, linear-interp + clip onto a changed
+  grid), flat-median fallback. **`theta0` only; `theta_ref` pinned to the flat
+  `var0`** (refinement 2) so the roughness penalty `L·(θ−flat)=L·θ` is unchanged
+  and a flat seed is byte-identical to the legacy start. `seed_source` recorded in
+  `AffineFitDiagnostics`; diagnostics stashed on an AppState side-dict
+  (`last_affine_diagnostics`) — off the wire response (wall times are
+  non-deterministic), available to perf rails / a future UI cue.
+- **Gate (met):** cold-start byte-identical (golden + API green); a recalibration
+  flips `seed_source` flat→prev-affine, **nfev 19→1 / wall 2089→54 ms** on the
+  ALPHA synthetic, surface bit-identical. New `test_affine_warm_start.py`
+  (6 tests). ruff green.
+
+### Stage 2b — Parametric Dupire cold-start seed  *(deferred)*
+- Seed the *first* fit (no previous surface) from the parametric implied surface
+  via `dupire.extract_grid` at the vertices (nan-fill + clip). Needs a 2D
+  `w(k,T)` surface assembled from the per-expiry parametric fits (interp in T) and
+  careful noise handling — the companion (§6.4) flags Dupire-from-implied as
+  noisy, so it must be a *seed only*. Lower value than 2a (cold starts are rare)
+  and higher risk, so split out for its own validation.
+- **Gate:** same final IV quality vs flat cold-start; `nfev` ↓ on first fit; safe
+  fallback when the parametric surface is missing/unstable (bad-seed test); golden
+  byte-identical (no parametric surface in the model-layer golden case).
 
 ### Stage 4′ — Source-PDE variance-swap  *(built before Stage 3)*
 - `price_varswap(surface, expiry, method="static"|"source_pde")`; backward source

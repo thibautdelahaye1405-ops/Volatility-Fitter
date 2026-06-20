@@ -120,6 +120,65 @@ def _lv_bounds(rows, opts, var_lo_req: float, var_hi_req: float) -> tuple[float,
     return float(var_lo_req), float(min(cap_vol * cap_vol, _LV_VAR_CEILING))
 
 
+def _seed_theta(
+    prev, t_nodes: np.ndarray, x_nodes: np.ndarray,
+    var0: float, var_lo: float, var_hi: float,
+) -> tuple[np.ndarray, str]:
+    """Warm-start nodal variances (Stage 2) from the previous calibrated surface.
+
+    Reuses the previous surface's theta when the vertex grid is unchanged (the
+    common intraday recalibration), else linearly interpolates it onto the new
+    grid; clipped to the box either way. Flat ``var0`` when no usable previous
+    surface exists. Returns ``(theta0_grid, seed_source)``.
+
+    The caller keeps ``theta_ref`` at the flat ``var0`` regardless, so a flat seed
+    is byte-identical to the legacy start and a warm seed changes only the
+    starting point — not the regularization or the converged optimum (refinement
+    2 of the roadmap: seed != temporal prior).
+    """
+    flat = np.full((t_nodes.size, x_nodes.size), var0)
+    if prev is None or not getattr(prev, "tNodes", None) or not getattr(prev, "localVol", None):
+        return flat, "flat"
+    pt = np.asarray(prev.tNodes, dtype=float)
+    px = np.asarray(prev.xNodes, dtype=float)
+    pth = np.asarray(prev.localVol, dtype=float) ** 2  # localVol = sqrt(nodal variance)
+    if pth.shape != (pt.size, px.size) or pt.size < 2 or px.size < 2:
+        return flat, "flat"
+    if (
+        pt.shape == t_nodes.shape and px.shape == x_nodes.shape
+        and np.allclose(pt, t_nodes) and np.allclose(px, x_nodes)
+    ):
+        return np.clip(pth, var_lo, var_hi), "prev-affine"
+    from scipy.interpolate import RegularGridInterpolator
+
+    interp = RegularGridInterpolator(
+        (pt, px), pth, method="linear", bounds_error=False, fill_value=None
+    )
+    tt, xx = np.meshgrid(t_nodes, x_nodes, indexing="ij")
+    seed = interp(np.column_stack([tt.ravel(), xx.ravel()])).reshape(tt.shape)
+    return np.clip(seed, var_lo, var_hi), "prev-affine-interp"
+
+
+#: AppState side-dict (ticker -> AffineFitDiagnostics) for the last affine fit.
+#: Kept OFF the wire response (wall times are non-deterministic), but available
+#: to the perf rails and a future "warm-started / N evals" UI cue.
+_LAST_DIAG_ATTR = "_affine_last_diag"
+
+
+def _record_diagnostics(state: AppState, ticker: str, diag) -> None:
+    cache = getattr(state, _LAST_DIAG_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(state, _LAST_DIAG_ATTR, cache)
+    cache[ticker] = diag
+
+
+def last_affine_diagnostics(state: AppState, ticker: str):
+    """Diagnostics of the ticker's most recent affine fit, or None if never fit
+    this session (Stage-0 counters + the Stage-2 ``seed_source``)."""
+    return getattr(state, _LAST_DIAG_ATTR, {}).get(ticker)
+
+
 def _pick_spread(values: np.ndarray, n: int) -> np.ndarray:
     """``n`` roughly-even entries of a sorted array, always incl. both ends."""
     values = np.asarray(values, dtype=float)
@@ -598,12 +657,17 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     #  - else              -> a = 0 (flat clamp, the historical behavior).
     fit_left_a = len(varswaps) > 0
     a_init = opts.leftWingSlopeMult if (opts.convexWing or fit_left_a) else 0.0
-    # Flat initial guess: the median quoted local variance (= vol^2), clipped.
+    # Flat reference: the median quoted local variance (= vol^2), clipped. This is
+    # ``theta_ref`` (the roughness anchor) AND the flat-fallback seed.
     all_var = np.concatenate([np.maximum(w, 1e-12) / t for _, t, _, w, _, _ in rows])
     var0 = float(np.clip(np.median(all_var), var_lo, var_hi))
+    # Warm start (Stage 2): seed theta0 from the previous calibrated surface when
+    # one exists; theta_ref stays the flat var0 so the regularization is unchanged
+    # (a flat seed is byte-identical to the legacy start).
+    prev = _cache(state).get(state.get_affine_ptr(ticker))
+    theta0, seed_source = _seed_theta(prev, t_nodes, x_nodes, var0, var_lo, var_hi)
     surface0 = AffineVarianceSurface(
-        t_nodes=t_nodes, x_nodes=x_nodes,
-        theta=np.full((t_nodes.size, x_nodes.size), var0), left_extrap_a=a_init,
+        t_nodes=t_nodes, x_nodes=x_nodes, theta=theta0, left_extrap_a=a_init,
     )
     cal = calibrate_affine(
         surface0,
@@ -621,8 +685,11 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         front_tie_weight=opts.frontTieWeight if opts.frontTie else 0.0,
         fit_left_a=fit_left_a,
         left_a_bounds=(0.0, _LEFT_A_MAX),
+        theta_ref=np.full(t_nodes.size * x_nodes.size, var0),
+        seed_source=seed_source,
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
     )
+    _record_diagnostics(state, ticker, cal.diagnostics)
 
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
     smiles: list[AffineSmile] = []
