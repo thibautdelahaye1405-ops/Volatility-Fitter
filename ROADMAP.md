@@ -8,7 +8,44 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-19 (resume here)
+## STATUS — updated 2026-06-20 (resume here)
+
+### 🛠 LATEST (2026-06-20) — LV calibration perf branch + SPY regression FIXED
+
+On branch **`perf/localvol-calibration`** (off main). Two threads, full
+roadmap in `Docs/localvol_calibration_perf_roadmap.md` (Stages 0–6):
+
+- **LV calibration perf — Stages 0/1/2a/4′ SHIPPED.** Stage 0 = instrumentation
+  (`AffineFitDiagnostics`: counts, optimizer counters, wall-time split;
+  `solve_affine_dupire(timing=)`; perf rails) — pure side metadata, golden
+  byte-identical. Stage 1 = `calibrate_affine` `x_scale='jac'` + tols 1e-12→1e-8
+  (two toggles), nfev 23→12 on golden, surface identical. Stage 2a = warm-start
+  `theta0` from the previous surface (`affine_fit._seed_theta`, `theta_ref` pinned
+  flat → flat seed byte-identical), recalibration nfev 19→1 / wall ~38× faster.
+  Stage 4′ = backward **source-PDE variance swap** (`models/localvol/varswap_pde.py`,
+  note eq. variance_swap_source_pde), analytic dI/dθ + dI/da vs FD, grid-robust;
+  gated by `OptionsSettings.varSwapMethod` (default static → byte-identical).
+- **SPY "26 bps RMSE" regression ROOT-CAUSED + FIXED (commit ff853be).** The
+  convex-wing constraint selected EVERY vertex ≤5Δ regardless of data; at the
+  user's saved `gridXNodes=20` it stacked convexity penalties onto densely-quoted
+  put strikes and forced the wrong wing on low-vol SPY (NVDA's convex wing hid it).
+  Fix: confine `convex_cols` to vertices below the deepest quote (the
+  extrapolation tail only). SPY 25.7→2.6 bp. Diagnosed via a captured Bloomberg
+  benchmark (the bug only reproduces with the persisted DB settings:
+  fitMode=haircut + gridXNodes=20 + convexWing — read from
+  `backend/data/volfit.sqlite`).
+- **Bloomberg SPY+NVDA benchmark committed**: `backend/capture_benchmark.py` →
+  `backend/tests/fixtures/lv_benchmark_bloomberg.json` (2534 quotes);
+  `backend/lv_benchmark.py` replays it offline; `tests/test_lv_benchmark.py` guards
+  the convex-wing regression (opt-in `-m perf`).
+- **Stage 3 (coarse calibration grid) ATTEMPTED, NON-VIABLE — reverted.** Coarse
+  calibration biases θ by up to ~26 vol points (≫ tolerance), SPY went nan, modest
+  speedup. Re-confirms the prior rejection ([[calibration-perf]]). The per-eval
+  win must come from Stage 5/6, not grid coarsening.
+
+**Next (fresh session): Stage 5 — matrix-free Gauss-Newton** (= backlog item #1
+below; the ~86 s heavy-grid dense-SVD wall). Then Stage 6 (Numba `nogil` march +
+parallelism). Full suite **604 passed, 1 skipped** (ruff + strict-TS green).
 
 ### 🚀 STRUCTURAL PERF BACKLOG (added 2026-06-19, prioritized) — DO THESE NEXT
 
