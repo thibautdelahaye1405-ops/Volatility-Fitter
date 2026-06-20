@@ -60,26 +60,48 @@ from scipy.sparse.linalg import LinearOperator, lsmr
 class LinearizedJacobian:
     """The Jacobian J of one linearisation as a matrix-free linear operator.
 
-    Wraps the dense (M_resid x n_param) Jacobian of a single ``evaluate`` call and
-    exposes the products an inexact-Newton step needs without forming JᵀJ or an
-    SVD. ``apply_jacobian(v) = J @ v`` (the tangent / directional-derivative
-    action) and ``apply_jacobian_transpose(w) = Jᵀ @ w`` (the adjoint, e.g. the
-    gradient Jᵀr); ``column_scale`` is the Jacobi preconditioner (1/‖column‖).
+    Exposes the products an inexact-Newton step needs without forming JᵀJ or an
+    SVD: ``apply_jacobian(v) = J·v`` (tangent), ``apply_jacobian_transpose(w) = Jᵀ·w``
+    (adjoint / gradient), and ``column_scale`` (the Jacobi preconditioner 1/‖col‖).
+
+    J is stored as a top **dense data block** ``jac`` (the option/var-swap rows,
+    dense in the vertices their expiry touches) optionally stacked over a **sparse
+    regularisation block** ``reg`` (the roughness / convex / front-tie rows, 3-nnz
+    per row). Keeping ``reg`` sparse makes both the matvec (O(nnz) not O(M_reg·n))
+    and the assembly (no dense reg materialisation) cheap — the bulk of the GN
+    per-eval cost after the SVD is gone. ``reg=None`` ⇒ ``jac`` IS the whole matrix
+    (the legacy dense path; the identity tests cover both).
     """
 
-    jac: np.ndarray  # dense (M, n) — the per-evaluation Jacobian (the oracle)
+    jac: np.ndarray  # dense (M_data, n) data block (or the whole matrix if reg None)
+    reg: object = None  # optional sparse (M_reg, n) regularisation block, stacked below
 
     @property
     def shape(self) -> tuple[int, int]:
-        return self.jac.shape
+        m = self.jac.shape[0] + (self.reg.shape[0] if self.reg is not None else 0)
+        return (m, self.jac.shape[1])
+
+    def to_dense(self) -> np.ndarray:
+        """The full dense Jacobian (data over reg) — for a scipy TRF fallback."""
+        if self.reg is None:
+            return self.jac
+        return np.vstack([self.jac, np.asarray(self.reg.todense())])
 
     def apply_jacobian(self, v: np.ndarray) -> np.ndarray:
         """Tangent action J·v (directional derivative of the residual in v)."""
-        return self.jac @ np.asarray(v, dtype=float)
+        v = np.asarray(v, dtype=float)
+        dv = self.jac @ v
+        if self.reg is None:
+            return dv
+        return np.concatenate([dv, self.reg @ v])
 
     def apply_jacobian_transpose(self, w: np.ndarray) -> np.ndarray:
         """Adjoint action Jᵀ·w (e.g. the gradient Jᵀr of ½‖r‖²)."""
-        return self.jac.T @ np.asarray(w, dtype=float)
+        w = np.asarray(w, dtype=float)
+        if self.reg is None:
+            return self.jac.T @ w
+        md = self.jac.shape[0]
+        return self.jac.T @ w[:md] + self.reg.T @ w[md:]
 
     def column_scale(self, floor: float = 1e-12) -> np.ndarray:
         """Jacobi preconditioner s_j = 1/‖J_·j‖ (equilibrates column norms).
@@ -89,6 +111,8 @@ class LinearizedJacobian:
         parameter pinned anyway.
         """
         col2 = np.einsum("ij,ij->j", self.jac, self.jac)
+        if self.reg is not None:
+            col2 = col2 + np.asarray(self.reg.power(2).sum(axis=0)).ravel()
         return 1.0 / np.sqrt(np.maximum(col2, floor))
 
     def scaled_operator(self, scale: np.ndarray) -> LinearOperator:
@@ -97,12 +121,12 @@ class LinearizedJacobian:
         lsmr sees only the matvec ``J(scale·y)`` and the rmatvec ``scale·(Jᵀw)`` —
         no dense factorisation. Solving in y = θ/scale is the preconditioning.
         """
-        m, n = self.jac.shape
+        m, n = self.shape
         s = np.asarray(scale, dtype=float)
         return LinearOperator(
             (m, n),
-            matvec=lambda y: self.jac @ (s * y),
-            rmatvec=lambda w: s * (self.jac.T @ w),
+            matvec=lambda y: self.apply_jacobian(s * y),
+            rmatvec=lambda w: s * self.apply_jacobian_transpose(w),
         )
 
 
@@ -202,10 +226,14 @@ def gauss_newton(
     if max_outer is None:
         max_outer = max(50, 2 * max_nfev)
 
+    def _as_lin(j):
+        return j if isinstance(j, LinearizedJacobian) else LinearizedJacobian(j)
+
     res, jac = evaluate(p)[:2]
+    lin = _as_lin(jac)
     nfev = njev = 1
     cost = 0.5 * float(res @ res)
-    g = jac.T @ res
+    g = lin.apply_jacobian_transpose(res)
 
     # Stage 8 early-stop, GN flavour: track the best OPTION-BLOCK misfit and stop
     # once it has not improved by ``stall_rtol`` over ``stall_window`` evals, returning
@@ -234,7 +262,6 @@ def gauss_newton(
         if nfev >= max_nfev:
             break
 
-        lin = LinearizedJacobian(jac)
         scale = lin.column_scale()
         a_op = lin.scaled_operator(scale)
         # lsmr solves min ‖A y - b‖² + damp²‖y‖² with A = J·diag(scale), b = -r;
@@ -255,16 +282,16 @@ def gauss_newton(
 
         # Gauss-Newton model reduction along the PROJECTED step (exact for the
         # linearised residual r + J·Δ): predicted = cost - ½‖r + J·Δ‖².
-        j_step = jac @ actual_step
+        j_step = lin.apply_jacobian(actual_step)
         predicted = -float(res @ j_step) - 0.5 * float(j_step @ j_step)
         actual = cost - cost_t
         rho = actual / predicted if predicted > 0.0 else -1.0
 
         if rho > 1e-4 and cost_t < cost:
             step_norm = float(np.linalg.norm(actual_step))
-            p, res, jac = p_trial, res_t, jac_t  # accept the trial linearisation
+            p, res, lin = p_trial, res_t, _as_lin(jac_t)  # accept the trial linearisation
             njev += 1
-            g = jac.T @ res
+            g = lin.apply_jacobian_transpose(res)
             # Nielsen: shrink damping by the step quality, reset the rejection ramp.
             mu *= max(1.0 / 3.0, 1.0 - (2.0 * rho - 1.0) ** 3)
             nu = 2.0
@@ -299,7 +326,7 @@ def gauss_newton(
         if stall_window > 0 and stall["since"] >= stall_window:
             p = stall["x"]
             res, jac = evaluate(p)[:2]
-            g = jac.T @ res
+            g = _as_lin(jac).apply_jacobian_transpose(res)
             cost = 0.5 * float(res @ res)
             status, converged = 4, True
             break

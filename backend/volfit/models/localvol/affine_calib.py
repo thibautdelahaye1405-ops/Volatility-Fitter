@@ -28,10 +28,11 @@ from time import perf_counter
 from types import SimpleNamespace
 
 import numpy as np
+from scipy import sparse
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
-from volfit.models.localvol.affine_gn import gauss_newton
+from volfit.models.localvol.affine_gn import LinearizedJacobian, gauss_newton
 from volfit.models.localvol.affine import (
     AffinePDESolution,
     AffineVarianceSurface,
@@ -331,6 +332,13 @@ class _StallStop(Exception):
     """Raised inside the LSQ objective to early-stop a stalled cold fit (Stage 8)."""
 
 
+#: Use the sparse-reg GN Jacobian operator (#3): keeps the roughness/convex/front-tie
+#: rows sparse so the lsmr matvec is O(nnz) not O(M_reg·m). Numerically identical to the
+#: dense path (output to the bit); negligible at ~220 vtx but ~1.3× at ~440 vtx (the
+#: dense reg matvec is O(m²)). A rollback kill-switch for the default GN hot path.
+_GN_SPARSE_REG = True
+
+
 def calibrate_affine(
     surface0: AffineVarianceSurface,
     options: list[OptionQuote],
@@ -516,6 +524,15 @@ def calibrate_affine(
     pde_value_s = pde_sens_s = assembly_s = 0.0  # Stage-0 wall-time accumulators
     cache: dict[bytes, tuple] = {}
     m = surface0.n_params
+    # Stage 6′/#3: the GN solver consumes a matrix-free operator (dense option block +
+    # SPARSE regularisation block), so for the GN-eligible case (mid objective, no
+    # var-swap, no free left slope) the per-eval Jacobian skips the dense reg vstack
+    # and the lsmr matvec runs on the 3-nnz/row reg sparsely. The constant roughness /
+    # front-tie rows are built as CSR once. (TRF / band / var-swap keep the dense jac;
+    # a GN fall-back to TRF densifies the operator via LinearizedJacobian.to_dense.)
+    gn_op = gn and not band_mode and not fit_left_a and not varswaps and _GN_SPARSE_REG
+    l_csr = sparse.csr_matrix(sqrt_lam * l_rows) if gn_op else None
+    front_csr = sparse.csr_matrix(sqrt_front * front_rows) if (gn_op and front_on) else None
     # The hat basis and active-column schedule depend only on the vertex set and
     # grids (not theta), so build them once and reuse for every trial theta. With
     # a free left-wing slope the base / linear-delta bases are stored separately.
@@ -578,7 +595,12 @@ def calibrate_affine(
         res = np.concatenate(
             [res_opt, (z - z_mkt) / zeta, sqrt_lam * (l_rows @ (theta - ref))]
         )
-        jac = np.vstack([jac_opt, jz / zeta[:, None], _pad_a(sqrt_lam * l_rows)])
+        # GN-eligible case keeps the reg rows SPARSE; everything else builds the dense
+        # Jacobian exactly as before (byte-identical golden / TRF path).
+        if gn_op:
+            reg_blocks: list = [l_csr]
+        else:
+            jac = np.vstack([jac_opt, jz / zeta[:, None], _pad_a(sqrt_lam * l_rows)])
         if cvx_on:
             # Soft convexity of the VOL row sigma = sqrt(theta) in x at the wing
             # columns: curv = D²sigma (cell-width-normalized); penalize curv < 0.
@@ -588,16 +610,30 @@ def calibrate_affine(
             viol = sqrt_cvx * np.maximum(-curv, 0.0)
             dsig = 0.5 / sig  # dsigma/dtheta
             fac = np.where(curv < 0.0, -sqrt_cvx, 0.0)  # subgradient gate
-            jac_cvx = np.zeros((curv.size, theta.size))
             ar = np.arange(curv.size)
-            jac_cvx[ar, col_m] = fac * c_m * dsig[col_m]
-            jac_cvx[ar, col_0] = fac * c_0 * dsig[col_0]
-            jac_cvx[ar, col_p] = fac * c_p * dsig[col_p]
             res = np.concatenate([res, viol])
-            jac = np.vstack([jac, _pad_a(jac_cvx)])
+            if gn_op:
+                data = np.concatenate(
+                    [fac * c_m * dsig[col_m], fac * c_0 * dsig[col_0], fac * c_p * dsig[col_p]]
+                )
+                rows = np.concatenate([ar, ar, ar])
+                cols = np.concatenate([col_m, col_0, col_p])
+                reg_blocks.append(sparse.csr_matrix((data, (rows, cols)), shape=(curv.size, m)))
+            else:
+                jac_cvx = np.zeros((curv.size, theta.size))
+                jac_cvx[ar, col_m] = fac * c_m * dsig[col_m]
+                jac_cvx[ar, col_0] = fac * c_0 * dsig[col_0]
+                jac_cvx[ar, col_p] = fac * c_p * dsig[col_p]
+                jac = np.vstack([jac, _pad_a(jac_cvx)])
         if front_on:
             res = np.concatenate([res, sqrt_front * (front_rows @ theta)])
-            jac = np.vstack([jac, _pad_a(sqrt_front * front_rows)])
+            if gn_op:
+                reg_blocks.append(front_csr)
+            else:
+                jac = np.vstack([jac, _pad_a(sqrt_front * front_rows)])
+        if gn_op:
+            j_reg = sparse.vstack(reg_blocks, format="csr") if len(reg_blocks) > 1 else reg_blocks[0]
+            jac = LinearizedJacobian(jac_opt, j_reg)
         cache.clear()  # keep only the latest params (fun + jac pairing)
         out = (res, jac, sol, p, z)
         cache[key] = out
@@ -649,13 +685,17 @@ def calibrate_affine(
             active_mask=amask, message="early stop: cost improvement stalled",
         )
 
+    def _dense_jac(p):  # scipy TRF needs a dense array; densify the GN operator
+        j = evaluate(p)[1]
+        return j.to_dense() if isinstance(j, LinearizedJacobian) else j
+
     def _run_trf():
         fun = _fun if stall_window > 0 else (lambda p: evaluate(p)[0])
         try:
             return least_squares(
                 fun,
                 p0,
-                jac=lambda p: evaluate(p)[1],
+                jac=_dense_jac,
                 bounds=opt_bounds,
                 method="trf",
                 x_scale=x_scale,

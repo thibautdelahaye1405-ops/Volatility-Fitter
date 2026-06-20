@@ -230,6 +230,22 @@ but not identical, so the default surface is left unchanged.
   vectorised multi-RHS solve, and its dense `nu = phi·theta` loop LOST to BLAS. The
   real opportunity (Stage 6′) was the loop ORDER. Reverted at the time.
 
+### #3 — Sparse reg block in the GN Jacobian operator  ✅ DONE (2026-06-20)
+- After the SVD is gone (GN) and the march is cheap (Numba), the per-eval cost is the
+  Jacobian assembly + the lsmr matvec. The roughness / convex / front-tie rows are
+  3-nnz/row but were assembled dense and `vstack`'d. `LinearizedJacobian` now carries a
+  **dense data block over a SPARSE (CSR) reg block**: `apply_jacobian` /
+  `apply_jacobian_transpose` / `column_scale` combine the two, so the reg matvec is
+  O(nnz) not O(M_reg·m) and no dense reg is materialised. `gauss_newton` was refactored
+  onto the operator abstraction; `calibrate_affine` builds the sparse operator for the
+  GN-eligible case (mid, no var-swap, no left slope), constant roughness/front rows as
+  CSR once, the convex block sparse per-eval. **Numerically identical** to the dense
+  path (output to the bit); a GN→TRF fallback densifies via `to_dense`. Behind the
+  `_GN_SPARSE_REG` rollback flag.
+- **Measured (A/B, GN default):** negligible at ~220 vtx (~1.03×) but **~1.29× at
+  ~440 vtx** (the dense reg matvec is O(m²), so it pays as the grid grows). drms 0.000.
+  `test_affine_gn.py` +2 (operator identity vs dense, sparse==dense calibrated surface).
+
 ### Stage 6′ — Numba vectorized-Thomas march  ✅ SHIPPED (2026-06-20) — 6.5× the banded march
 - `volfit/models/localvol/affine_march.py`: a `@njit(cache=True, nogil=True,
   fastmath=True)` value+sensitivity march that **beats scipy/LAPACK ~6× on the

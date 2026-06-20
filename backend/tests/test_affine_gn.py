@@ -213,6 +213,45 @@ def test_gn_starved_budget_still_returns_valid_surface():
     assert res.surface.theta.min() >= 0.005 - 1e-9
 
 
+def test_sparse_reg_operator_matches_dense():
+    """A LinearizedJacobian with a (dense data, sparse reg) split gives the same
+    matvec / rmatvec / column-scale / dense as the equivalent single dense block (#3)."""
+    import scipy.sparse as sp
+
+    rng = np.random.default_rng(4)
+    data = rng.standard_normal((18, 30))
+    reg = rng.standard_normal((40, 30))
+    reg[np.abs(reg) < 1.0] = 0.0  # make it genuinely sparse
+    lin_sp = LinearizedJacobian(data, sp.csr_matrix(reg))
+    lin_de = LinearizedJacobian(np.vstack([data, reg]))
+    v = rng.standard_normal(30)
+    w = rng.standard_normal(58)
+    assert np.allclose(lin_sp.apply_jacobian(v), lin_de.apply_jacobian(v))
+    assert np.allclose(lin_sp.apply_jacobian_transpose(w), lin_de.apply_jacobian_transpose(w))
+    assert np.allclose(lin_sp.column_scale(), lin_de.column_scale())
+    assert np.allclose(lin_sp.to_dense(), lin_de.jac)
+    assert lin_sp.shape == lin_de.shape
+
+
+def test_gn_sparse_reg_equals_dense_reg():
+    """The calibrated GN surface is identical whether the regularisation block is
+    assembled sparse (#3, the default) or dense — the optimisation is unchanged."""
+    import volfit.models.localvol.affine_calib as ac
+
+    flat, options, x_grid, t_grid = _heavy_case(
+        11, 17, np.linspace(0.1, 2.0, 8), np.linspace(0.75, 1.25, 13)
+    )
+    kw = dict(reg_lambda=50.0, bounds=(0.005, 0.20), gn=True)
+    try:
+        ac._GN_SPARSE_REG = True
+        sparse_fit = calibrate_affine(flat, options, x_grid, t_grid, **kw)
+        ac._GN_SPARSE_REG = False
+        dense_fit = calibrate_affine(flat, options, x_grid, t_grid, **kw)
+    finally:
+        ac._GN_SPARSE_REG = True
+    assert np.allclose(sparse_fit.surface.theta, dense_fit.surface.theta, atol=1e-9)
+
+
 def test_gn_early_stop_cuts_evals_without_fallback():
     """The GN stall early-stop (Stage 8, GN flavour) terminates a long GN fit at the
     best ACCEPTED iterate — status 4, no TRF fallback — in fewer evals than letting it
