@@ -140,16 +140,26 @@ at the heavy grid.
   (4 tests). Cost: one extra backward march per var-swap quote per eval
   (net-negative until Stage 3, as planned).
 
-### Stage 3 — Calibration grid ≠ publication grid
-- Three grids: vertex / calibration-PDE / publication-PDE. Vertex grid unchanged.
-  Non-uniform `x_grid_calib` (0, 1, every quote `K/F`, dense ATM band, local
-  refinement around quotes, geometric tails) + time grid hitting every
-  expiry/vertex, coarser elsewhere. One fine **publication** solve after
-  convergence drives all user-facing smiles/density/diagnostics. Switch the
-  var-swap residual to `source_pde` so wing-shrink can't move it.
-- **Gate (merged with 4′):** golden θ/IV/var-swap within tol (or an explicitly
-  reviewed tolerance bump — the surface is product output); **`x_max`-invariant
-  var-swap**; density ≥ 0; runtime ↓ on default + heavy.
+### Stage 3 — Calibration grid ≠ publication grid  ❌ ATTEMPTED, NOT VIABLE (2026-06-20)
+- Built it: a coarse non-uniform calibration grid (fine 0.01 band across the
+  quotes, coarse dead tails) + a fine **publication** solve for display + forced
+  source-PDE var-swap, gated behind `coarseCalibGrid` (byte-identical off). Tried
+  abrupt-4× and geometric tails, 0.1–0.3 band pads.
+- **Failed the gate decisively** on the Bloomberg benchmark: the coarse
+  calibration **biases θ by 0.08–0.47 in variance (up to ~26 vol points at a
+  node)** — orders of magnitude over the ~2.5e-3 golden tolerance — SPY even
+  produced a **nan/pathological surface**, and the speedup was modest/inconsistent
+  (often negative on SPY, ~2× on NVDA). The publication re-solve does NOT fix it
+  because the *θ itself* is biased: the optimizer absorbs the coarse-grid
+  discretization error into the nodal variances. This re-confirms the documented
+  prior rejection ([[calibration-perf]]: "coarse-grid breaks the affine surface")
+  and the companion's §7.1 warning. **Reverted.**
+- **Conclusion:** grid coarsening is the *only* Stage-3 lever for per-eval cost,
+  and it is fundamentally unsafe for this model (the local-vol surface is the
+  product output, and it's sensitive to the pricing grid). The real per-eval wins
+  must come from **faster linear algebra (Stage 5)** and a **compiled march
+  (Stage 6)**, not fewer grid points. Stage 4′ (grid-robust var-swap) still stands
+  on its own as a correctness improvement.
 
 ### Stage 5 — Matrix-free Gauss–Newton  *(the heavy-grid fix)*
 - Add **alongside** the dense path (dense sensitivities as oracle):
@@ -183,10 +193,12 @@ at the heavy grid.
 
 ## Sequencing summary
 
-`Stage 0 (done) → 1 → 2 → 4′ → 3 → 5 → 6`, with Rannacher / adaptive grids folded
-in opportunistically. Stages 0–2 should take the default grid sub-second; 4′+3
-remove the var-swap/wing coupling and shrink per-eval cost; 5 clears the
-heavy-grid SVD wall; 6 compiles the residual Python-loop cost and unlocks
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ (non-viable, reverted) → 5 → 6`,
+with Rannacher / adaptive grids folded in opportunistically. Stages 0–2a took the
+default grid faster and recalibration ~instant; 4′ made the var-swap grid-robust;
+**3 was attempted and reverted** (coarse calibration biases θ catastrophically).
+The remaining per-eval win is structural: 5 clears the heavy-grid dense-SVD wall
+(matrix-free Gauss–Newton), 6 compiles the Python-loop march and unlocks
 parallelism. The mathematical contract and the golden example stay intact
 throughout.
 
