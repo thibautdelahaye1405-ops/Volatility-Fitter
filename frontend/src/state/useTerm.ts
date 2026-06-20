@@ -190,7 +190,7 @@ export function useEvents(ticker: string): TermEvent[] {
 
 export function useTerm(): UseTermResult {
   // Underlying selection is shared with the Smile tab via the session.
-  const { universe, ticker, setTicker, reload: reloadSmile, spotVersion } =
+  const { universe, ticker, setTicker, reload: reloadSmile, spotVersion, fitMode } =
     useSmileSession();
 
   const [data, setData] = useState<TermResponse | null>(null);
@@ -301,7 +301,12 @@ export function useTerm(): UseTermResult {
     api
       .post<TermResponse>(`/term/${ticker}`, {
         body: {
-          fitMode: "mid",
+          // Use the VIEWED fit target (mid / bid-ask / haircut), not a hardcoded
+          // "mid". The term reads each node's calibrated fit for this mode, and a
+          // node calibrated only in bid-ask/haircut has no "mid" pointer — so a
+          // hardcoded "mid" returned 0 points (empty ladder + no curve) whenever
+          // the smile was fit in a band mode.
+          fitMode,
           // Drop half-typed rows (NaN from an emptied input) client-side
           // rather than tripping the backend's 422 validation.
           events: debouncedEvents
@@ -325,7 +330,8 @@ export function useTerm(): UseTermResult {
       });
     return () => controller.abort();
     // spotVersion: a spot move transports the term curve (no recalibration).
-  }, [ticker, debouncedEvents, eventsEnabled, attempt, spotVersion]);
+    // fitMode: switching the viewed fit target re-reads that mode's calibrated fits.
+  }, [ticker, debouncedEvents, eventsEnabled, attempt, spotVersion, fitMode]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
@@ -366,7 +372,7 @@ export function useTerm(): UseTermResult {
       try {
         const res = await api.post<{ events: { time: number; weight: number; label: string }[] }>(
           `/events/${ticker}/autocalibrate`,
-          { body: { maxExpiry, fitMode: "mid" } },
+          { body: { maxExpiry, fitMode } },
         );
         const loaded = res.events.map((e) => ({ id: nextIdRef.current++, ...e }));
         savedRef.current = serializeEvents(loaded); // backend already saved; skip echo PUT
@@ -378,7 +384,7 @@ export function useTerm(): UseTermResult {
       reload();
       reloadSmile();
     },
-    [ticker, reload, reloadSmile],
+    [ticker, reload, reloadSmile, fitMode],
   );
 
   const addEvent = useCallback(() => {
