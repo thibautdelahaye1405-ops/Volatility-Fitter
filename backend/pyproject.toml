@@ -10,6 +10,10 @@ requires-python = ">=3.11"
 dependencies = [
     "numpy>=1.26",
     "scipy>=1.11",
+    # Compiled LV Dupire march (~6x the banded path; volfit.models.localvol.affine_march).
+    # Imported behind a guard with an automatic banded fallback, so a missing/failed
+    # numba degrades gracefully rather than breaking the calibration.
+    "numba>=0.59",
 ]
 
 [project.optional-dependencies]

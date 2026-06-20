@@ -286,11 +286,16 @@ def precompute_dupire_steps(
     t = np.asarray(t_grid, dtype=float)
     interior = x[1:-1]
     m = surface.n_params
-    phi: list = []
+    n_steps = t.size - 1
+    # Without the left-wing split, store the per-step basis as ONE contiguous
+    # (n_steps, n_int, m) array: the banded march indexes ``phi[n]`` (a 2-D view, so
+    # byte-identical), and the Numba vectorized-Thomas march (affine_march) consumes
+    # the whole array directly. With the split (fit_left_a) keep the legacy lists.
+    phi: list | np.ndarray = [] if with_left_lin else np.empty((n_steps, interior.size, m))
     phi_lin: list | None = [] if with_left_lin else None
-    active_k = np.empty(t.size - 1, dtype=int)
+    active_k = np.empty(n_steps, dtype=int)
     running_max = -1
-    for n in range(t.size - 1):
+    for n in range(n_steps):
         if with_left_lin:
             pb, pl = surface.basis_components(interior, float(t[n + 1]))
             phi.append(pb)
@@ -298,7 +303,7 @@ def precompute_dupire_steps(
             touched_arr = (pb != 0.0) | (pl != 0.0)
         else:
             pb = surface.basis(interior, float(t[n + 1]))
-            phi.append(pb)
+            phi[n] = pb
             touched_arr = pb != 0.0
         touched = np.flatnonzero(np.any(touched_arr, axis=0))
         if touched.size:
@@ -320,6 +325,7 @@ def solve_affine_dupire(
     timing: dict | None = None,
     time_scheme: str = "implicit",
     rannacher_steps: int = 2,
+    engine: str = "banded",
 ) -> AffinePDESolution:
     """Fully implicit Euler march of eq. (implicit_step) on the given grids.
 
@@ -397,6 +403,24 @@ def solve_affine_dupire(
     out_sens = np.empty((exps.size, n_x, n_cols)) if sensitivities else None
     if 0 in want:  # expiry 0 is not allowed by searchsorted above (t[0]=0 < exps)
         raise ValueError("expiries must be positive")
+
+    # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) handles the
+    # common hot path — value + theta-sensitivities, implicit Euler, no free left
+    # slope, with the contiguous (n_steps, n_int, m) basis. Everything else (value-
+    # only, Rannacher CN, fit_left_a, or numba unavailable) keeps the banded march.
+    if engine == "numba" and sensitivities and not fit_left_a and not use_lin \
+            and time_scheme == "implicit" and isinstance(steps.phi, np.ndarray):
+        from volfit.models.localvol.affine_march import march_value_sens, numba_available
+
+        if numba_available():
+            want_step = np.full(t.size - 1, -1, dtype=np.int64)
+            for p, i in want.items():
+                want_step[p - 1] = i
+            pr, se = march_value_sens(
+                steps.phi, theta, a_m, a_p, a_0, np.diff(t), steps.active_k,
+                want_step, u, exps.size,
+            )
+            return AffinePDESolution(x_grid=x, expiries=exps, prices=pr, sens=se)
 
     phis = steps.phi
     active_k = steps.active_k

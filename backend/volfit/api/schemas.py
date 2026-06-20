@@ -220,6 +220,13 @@ class OptionsSettings(BaseModel):
     #: converge before the stall window so they are unaffected. ON by default; OFF runs
     #: the full 200-eval fit. LV-only (folded into affine_key).
     lvEarlyStop: bool = True
+    #: Use the compiled Numba vectorized-Thomas Dupire march (Stage 6′) for the LV
+    #: calibration hot path — ~6x the scipy/LAPACK banded march (no-pivot Thomas,
+    #: SIMD across the sensitivity columns, fused source), the bulk of the per-eval
+    #: cost. Output matches the banded march to ~1e-15; falls back to banded
+    #: automatically when numba is unavailable or for the var-swap / Rannacher paths.
+    #: ON by default. LV-only (folded into affine_key).
+    lvFastKernel: bool = True
     #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
     #: cell's slope (between the two lowest vertices) — the deep-put local variance
     #: continues rising toward x = 0 instead of clamping flat. Used as the fixed

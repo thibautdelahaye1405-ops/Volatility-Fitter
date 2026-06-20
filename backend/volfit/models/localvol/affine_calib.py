@@ -362,6 +362,7 @@ def calibrate_affine(
     rannacher_steps: int = 2,
     stall_window: int = 0,
     stall_rtol: float = 1e-3,
+    engine: str = "banded",
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
 
@@ -446,6 +447,13 @@ def calibrate_affine(
     march on a several-fold coarser time grid at equal accuracy (the real per-eval
     win); the analytic sensitivities are differentiated through the CN step too.
     Falls back to implicit per-step when ``fit_left_a`` (see solve_affine_dupire).
+
+    ``engine`` (Stage 6′): "banded" (default, scipy LAPACK march) or "numba" — the
+    vectorized no-pivot Thomas kernel (volfit.models.localvol.affine_march), ~6× the
+    banded march and the bulk of the per-eval cost. Forwarded to every
+    ``solve_affine_dupire``; it self-restricts to the implicit / no-left-slope path
+    and falls back to banded otherwise (or when numba is unavailable), so it is a
+    transparent accelerator (output matches banded to ~1e-15).
     """
     varswaps = varswaps or []
     expiries = sorted({o.t for o in options} | {v.t for v in varswaps})
@@ -547,7 +555,7 @@ def calibrate_affine(
         sol = solve_affine_dupire(
             surf, x_grid, t_grid, expiries, sensitivities=True, steps=steps,
             left_a=a, fit_left_a=fit_left_a, timing=td,
-            time_scheme=time_scheme, rannacher_steps=rannacher_steps,
+            time_scheme=time_scheme, rannacher_steps=rannacher_steps, engine=engine,
         )
         pde_value_s += td["value_s"]
         pde_sens_s += td["sens_s"]

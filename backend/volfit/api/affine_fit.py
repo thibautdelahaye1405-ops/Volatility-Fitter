@@ -713,6 +713,12 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
     time_scheme = "implicit" if fit_left_a else opts.timeScheme
     dt_max = _DT_MAX_RANNACHER if time_scheme == "rannacher" else _DT_MAX
     x_grid, t_grid = _pde_grids(expiries, k_hi, dt_max)
+    # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) drives the
+    # hot path when enabled + importable; it self-restricts to the implicit /
+    # no-left-slope case inside solve_affine_dupire and falls back to banded.
+    from volfit.models.localvol.affine_march import numba_available
+
+    engine = "numba" if (opts.lvFastKernel and numba_available()) else "banded"
     a_init = opts.leftWingSlopeMult if (opts.convexWing or fit_left_a) else 0.0
     # Flat reference: the median quoted local variance (= vol^2), clipped. This is
     # ``theta_ref`` (the roughness anchor) AND the flat-fallback seed.
@@ -751,6 +757,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         # converge before the window, so they are byte-identical either way).
         stall_window=_STALL_WINDOW if opts.lvEarlyStop else 0,
         stall_rtol=_STALL_RTOL,
+        engine=engine,  # Stage 6′: Numba vectorized-Thomas march when available
     )
     _record_diagnostics(state, ticker, cal.diagnostics)
 
@@ -900,7 +907,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
-        opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop,
+        opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop, opts.lvFastKernel,
         request.model_dump_json(),
     )
 

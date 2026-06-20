@@ -28,6 +28,11 @@ from volfit.models.localvol.affine_gn import (
     LinearizedJacobian,
     gauss_newton,
 )
+from volfit.models.localvol.affine_march import (
+    march_value_sens,
+    numba_available,
+    warmup,
+)
 from volfit.models.localvol.dupire import (
     ExtractionResult,
     dupire_local_variance,
@@ -56,6 +61,9 @@ __all__ = [
     "GNResult",
     "LinearizedJacobian",
     "gauss_newton",
+    "march_value_sens",
+    "numba_available",
+    "warmup",
     "LocalVolDiagnostics",
     "LocalVolGrid",
     "LocalVolModel",

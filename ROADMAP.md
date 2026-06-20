@@ -53,6 +53,18 @@ synthetic-only overclaim):
 - **FOUR distributed-cost dead-ends (Stages 3, 5, 6, 7):** the cold-fit cost spreads
   ~evenly across the march, the Jacobian assembly, and the optimizer linear algebra,
   so no single per-eval/per-step lever moves the total.
+- **Stage 6′ — Numba vectorized-Thomas march SHIPPED (6.5× the banded march).** The
+  first Numba try (~1.2×) used a column-OUTER scalar Thomas; the real lever was the
+  loop order. `affine_march.py`: no-pivot factor-once Thomas + the k sensitivity
+  columns as the CONTIGUOUS INNER (SIMD) loop + fused source ⇒ **6.1–6.9× vs LAPACK
+  `dgbsv`** on the march (220–440 vtx; numerically exact ≈1e-15). Wired
+  `solve_affine_dupire(engine=)` / `calibrate_affine(engine=)` / `OptionsSettings
+  .lvFastKernel` (default ON, in `affine_key`) + Options toggle; basis stored as one
+  contiguous `(n_steps,n_int,m)` array (banded indexes views ⇒ golden byte-identical);
+  `numba` added to deps with a graceful banded fallback. `test_affine_march.py` (5).
+  **Amdahl:** the march is only ~32% of an eval (optimizer/SVD is 52%, assembly 14%),
+  so 6.5× march → ~1.3× whole-fit alone, but **combined with early-stop the cold fit
+  is 1.7× (SPY) – 3.8× (NVDA) faster**. New bottleneck = the optimizer SVD (52%).
 - **Stage 8 — stall-based early-stop SHIPPED (the win that works).** `calibrate_affine`
   tracks the best option-block misfit and stops the cold fit once it stalls (returns
   the best-cost iterate); `OptionsSettings.lvEarlyStop` (default ON, window 12 /

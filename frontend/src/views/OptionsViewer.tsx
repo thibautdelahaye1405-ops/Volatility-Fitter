@@ -213,6 +213,14 @@ export default function OptionsViewer() {
         </div>
         <div className="mt-2">
           <Toggle
+            label="Fast compiled march (Numba)"
+            hint="Run the LV Dupire calibration march on the compiled Numba vectorized-Thomas kernel (~6x the scipy/LAPACK banded march: no-pivot Thomas, SIMD across the sensitivity columns, fused source) — the bulk of the per-eval cost. Output matches the banded march to ~1e-15. Falls back to banded automatically if Numba isn't installed or for the var-swap / 2nd-order paths. Off = always use the banded march."
+            checked={draft.lvFastKernel} disabled={!live}
+            onChange={(v) => patch({ lvFastKernel: v })}
+          />
+        </div>
+        <div className="mt-2">
+          <Toggle
             label="Early-stop cold fit (faster)"
             hint="Stop the cold LV calibration once the quote-fit improvement stalls, instead of always running to the 200-evaluation cap. The tail evals barely move the surface, so this scales the whole fit: ~1.45x on slow-converging names (+0.10 vol-bp) up to ~3.3x on fast-converging ones (+0.25 bp). Warm-started recalibrations converge before the stall window, so they are unaffected. Off = full 200-eval fit."
             checked={draft.lvEarlyStop} disabled={!live}

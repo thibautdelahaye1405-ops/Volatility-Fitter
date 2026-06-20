@@ -198,25 +198,40 @@ dominates.
   bowtie grid (Stage 5's original "true delta point-cloud" half), where m is large
   enough that the SVD actually dominates AND an adjoint removes the m-factor PDE cost.
 
-### Stage 6 — Numba `nogil` march  ❌ ATTEMPTED, NOT WORTH IT (~1.2×) — reverted
-- Built a `@njit(nogil=True, cache=True)` Thomas-factor-once value+sensitivity
-  march (numerically EXACT vs the banded path — prices/sens matched to ≈1e-15) and
-  benchmarked it on the production PDE grid. **Speedup was only 1.1–1.26× at
-  220–440 vertices** (2.3× only on the tiny 21-vtx golden), and a cache-friendly
-  transposed `(m, n_x)` layout did not move it.
-- **Why:** the per-eval cost is the **irreducible O(N_t·N_x·m) multi-RHS
-  sensitivity solve**, which LAPACK (`solve_banded`) already executes at near-optimal
-  efficiency; a hand-rolled compiled Thomas matches but cannot beat it by more than
-  ~20%, and the dense `nu = phi·theta` / RHS-build (the parts compilation *could*
-  speed up) are not the dominant term. A 40 MB+ `numba`/`llvmlite` dependency for
-  ~1.2× is not worth it on this flaky-PyPI Windows box.
-- **Reverted:** `affine_march.py` removed, `numba`/`llvmlite` uninstalled. (The
-  validated kernel logic is recorded here should a future regime change the maths.)
-- **Lesson (third of three on this axis, with Stages 3 & 5):** the per-eval PDE
-  march cannot be shaved by better linear algebra or compilation — it is inherent
-  and already efficient. **The remaining real levers change the problem:** fewer
-  evals (the cold fit caps at 200 but the last ~80–120 evals buy <0.1 bp — measured),
-  or fewer time steps at equal accuracy (Rannacher), or fewer vertices.
+### Stage 6 — Numba march, first attempt  ❌ ~1.2× (column-outer scalar Thomas)
+- A first `@njit` Thomas march (numerically exact) gave only **1.1–1.26×** on the
+  march. **Cause (mis-diagnosed at the time as "LAPACK is optimal"): the kernel
+  looped column-OUTER, scalar** — a per-column Thomas that couldn't beat LAPACK's
+  vectorised multi-RHS solve, and its dense `nu = phi·theta` loop LOST to BLAS. The
+  real opportunity (Stage 6′) was the loop ORDER. Reverted at the time.
+
+### Stage 6′ — Numba vectorized-Thomas march  ✅ SHIPPED (2026-06-20) — 6.5× the banded march
+- `volfit/models/localvol/affine_march.py`: a `@njit(cache=True, nogil=True,
+  fastmath=True)` value+sensitivity march that **beats scipy/LAPACK ~6× on the
+  march** by exploiting what `dgbsv` cannot:
+  * **no-pivot Thomas** (factor-once, shared by the value + every sensitivity
+    column) — our M-matrix needs no pivoting/fill, so ~⅓ of `dgbsv`'s flops;
+  * the **k RHS columns are the CONTIGUOUS INNER loop** of the forward/back sweeps
+    ⇒ SIMD across columns (the sweeps are sequential only in strike);
+  * the sensitivity **source fused into the forward sweep** (no dense `rhs_s`,
+    no per-step `scipy` call / allocation).
+  Numerically exact vs banded (prices/sens ≈1e-15). Measured march: **6.1–6.9× at
+  220–440 vtx** (banded 94/139/184 ms → 14/23/29 ms). The earlier 1.2× was purely
+  the wrong loop order (column-outer scalar).
+- Wired via `solve_affine_dupire(engine="banded"|"numba")` (self-restricts to the
+  implicit / no-left-slope / sensitivity path, else falls back to banded),
+  `precompute_dupire_steps` storing the basis as one contiguous `(n_steps, n_int, m)`
+  array (banded indexes views ⇒ byte-identical golden), `calibrate_affine(engine=)`,
+  `OptionsSettings.lvFastKernel` (default ON, in `affine_key`) + Options toggle, and
+  `numba` added to `pyproject` deps with a **graceful import-guard fallback** to
+  banded. `test_affine_march.py` (5).
+- **Whole-fit leverage is Amdahl-bounded** — the march is only **~32%** of each eval
+  (measured SPY gridX=20: pde_sensitivity 32%, residual_assembly 14%, **optimizer_
+  outer 52%**, pde_value 2%). So the 6.5× march → **~1.3× whole-fit on its own**, and
+  combined with the Stage-8 early-stop (shipped) → **1.7× (SPY) to 3.8× (NVDA)** on
+  the cold fit. **The new dominant cost is the optimizer (scipy trf's dense SVD /
+  trust-region, 52%)** — the next lever if more is wanted (early-stop already attacks
+  it by cutting the eval count).
 
 ### Stage 7 — Rannacher 2nd-order time stepping  ⚠️ BUILT but only ~1.1× + arb risk — default OFF
 - **Built + validated:** Crank–Nicolson after 2 implicit-Euler kink-damping start-up
@@ -274,7 +289,7 @@ dominates.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ → 6 ❌ → 7 ⚠️ → 8 ✅ (early-stop)`.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ → 6 ❌ → 6′ ✅ (6.5× march) → 7 ⚠️ → 8 ✅ (early-stop)`.
 Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
 var-swap grid-robust. **Four approaches to cut the per-eval / per-step cost all
 underdelivered for the same reason** — the cold-fit cost is *distributed* roughly
