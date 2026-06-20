@@ -64,7 +64,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (559 green as of 2026-06-18, incl. 4 perf; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (632 passed, 1 skipped as of 2026-06-20, incl. 6 perf rails; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
             ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
             the best-reachable active one; switch live via the TopBar Data
@@ -83,7 +83,8 @@ Key commands (Windows, repo root):
             (probes api.massive.com + api.polygon.io, every call, to pinpoint a feed gate)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance installed.
+- volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance/numba installed
+  (numba is a real dep now — the LV Numba march; graceful banded fallback if it's missing).
 - PyPI is intermittently flaky here (TLS resets; pip.ini has retries=15 — just retry).
 - Sub-agents have no shell access: they write code; the lead agent runs and verifies.
 - UI smoke tests: npm i --no-save puppeteer-core (frontend), drive headless Edge
