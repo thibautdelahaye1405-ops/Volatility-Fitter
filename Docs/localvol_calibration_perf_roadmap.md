@@ -118,13 +118,27 @@ at the heavy grid.
   fallback when the parametric surface is missing/unstable (bad-seed test); golden
   byte-identical (no parametric surface in the model-layer golden case).
 
-### Stage 4′ — Source-PDE variance-swap  *(built before Stage 3)*
-- `price_varswap(surface, expiry, method="static"|"source_pde")`; backward source
-  PDE (note eq. variance_swap_source_pde) with an **analytic sensitivity
-  recurrence** so the `least_squares` Jacobian contract holds. `static` default;
-  `source_pde` behind a flag.
-- **Gate:** matches static replication on the golden fine grid (prices + sens vs
-  FD). No perf claim yet (overhead until Stage 3).
+### Stage 4′ — Source-PDE variance-swap  ✅ DONE (2026-06-20)  *(built before Stage 3)*
+- `volfit/models/localvol/varswap_pde.py`: backward source PDE
+  `∂_t g + ½ν x²∂_xx g + ν = 0, g(T,·)=0, I(T)=g(0,1)` (note eq.
+  variance_swap_source_pde), same implicit-Euler tridiagonal operator as the
+  forward march, marched backward with a +ν source and degenerate-boundary
+  accumulation. **Analytic dI/dθ** (note eq. var_sensitivity_pde, multi-RHS) +
+  **dI/da** (left-wing slope) — both validated vs FD to ~1e-10. `precompute_
+  varswap_steps` hoists the θ/a-independent basis; sliced per var-swap expiry.
+  Wired through `calibrate_affine(varswap_method=)`, `affine_fit` (fit + displayed
+  level + `affine_key`), `OptionsSettings.varSwapMethod` ("static"|"source_pde",
+  default static), and an Options "Var-swap pricing" selector.
+- **Note:** first tried the cheap **log-contract-via-density** form
+  (`I=−2∫log(x)∂_xx c dx`, reusing the forward solve) — it matched static on the
+  golden grid but was *more* sensitive to x_max truncation, not less, so it was
+  dropped. The source PDE's `g(0,1)` is a genuinely local quantity (robust to a
+  coarse/truncated wing — the Stage-3 payoff).
+- **Gate (met):** source value matches static to ≤1 var-bp on the golden grid;
+  dI/dθ + dI/da match FD; an end-to-end fit with `source_pde` hits the var-swap
+  quotes to <1 var-bp; `static` (default) byte-identical. `test_varswap_source.py`
+  (4 tests). Cost: one extra backward march per var-swap quote per eval
+  (net-negative until Stage 3, as planned).
 
 ### Stage 3 — Calibration grid ≠ publication grid
 - Three grids: vertex / calibration-PDE / publication-PDE. Vertex grid unchanged.

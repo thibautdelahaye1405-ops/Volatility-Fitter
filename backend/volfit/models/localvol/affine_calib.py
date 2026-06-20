@@ -36,6 +36,11 @@ from volfit.models.localvol.affine import (
     precompute_dupire_steps,
     solve_affine_dupire,
 )
+from volfit.models.localvol.varswap_pde import (
+    VarSwapSteps,
+    precompute_varswap_steps,
+    solve_varswap_source,
+)
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,8 @@ def varswap_const(x_grid: np.ndarray, k_lo: float = 0.0) -> float:
     xs = x[idx]
     f = (xs - 1.0) / (xs * xs)
     return float(2.0 * np.trapezoid(f, xs))
+
+
 
 
 def second_difference_rows(n_t: int, n_x: int, rho: float = 1.0) -> np.ndarray:
@@ -326,6 +333,7 @@ def calibrate_affine(
     *,
     varswaps: list[VarSwapQuote] | None = None,
     varswap_k_lo: float = 0.01,
+    varswap_method: str = "static",
     bounds: tuple[float, float] = (0.005, 0.20),
     reg_lambda: float = 1e-4,
     reg_rho: float = 1.0,
@@ -380,6 +388,14 @@ def calibrate_affine(
     tail steepness directly instead of distorting the data-fitted interior. When
     False, ``a`` stays fixed at ``surface0.left_extrap_a`` (0 ⇒ flat wing).
 
+    ``varswap_method`` selects how the model variance swap is priced: "static" (the
+    default) is the log-contract strike replication ``varswap_weights`` @ C (a
+    theta-linear functional reusing the forward sensitivities — cheap, but k^-2
+    weighted so wing-grid sensitive); "source_pde" is the backward source PDE
+    g(0,1) (volfit.models.localvol.varswap_pde) — a local quantity robust to a
+    coarse/truncated strike grid (Stage 3), at the cost of one extra backward march
+    (with analytic dI/dtheta, dI/da) per var-swap quote per evaluation.
+
     Solver controls (Stage 1, two independent knobs):
     * ``x_scale`` — trust-region variable scaling. The problem is badly scaled
       (ATM/front nodes are strongly identified, far-wing/late-time nodes weakly),
@@ -397,6 +413,20 @@ def calibrate_affine(
     expiries = sorted({o.t for o in options} | {v.t for v in varswaps})
     q_w = varswap_weights(x_grid, varswap_k_lo) if varswaps else np.zeros_like(x_grid)
     q_c = varswap_const(x_grid, varswap_k_lo) if varswaps else 0.0
+    # Source-PDE var-swap (Stage 4'): per-expiry backward-march steps, precomputed
+    # once (the basis is theta/a-independent) and sliced to each var-swap's t-prefix.
+    vs_specs = None
+    if varswap_method == "source_pde" and varswaps:
+        vs_full = precompute_varswap_steps(surface0, x_grid, t_grid, with_left_lin=fit_left_a)
+        vs_specs = []
+        for v in varswaps:
+            pos = int(np.searchsorted(t_grid, v.t))
+            if pos >= t_grid.size or abs(float(t_grid[pos]) - v.t) > 1e-9:
+                raise ValueError("each var-swap expiry must be a t_grid point")
+            lin = None if vs_full.phi_lin_full is None else vs_full.phi_lin_full[: pos + 1]
+            vs_specs.append(
+                (t_grid[: pos + 1], VarSwapSteps(phi_full=vs_full.phi_full[: pos + 1], phi_lin_full=lin))
+            )
     if reg_nodes is not None:
         l_rows = second_difference_rows_spacing(reg_nodes[0], reg_nodes[1], reg_rho)
     else:
@@ -487,6 +517,15 @@ def calibrate_affine(
         # solver's appended sensitivity column), so the theta-only blocks below are
         # padded with a zero da-column via _pad_a.
         p, z, jp, jz = _model_values(sol, options, varswaps, q_w, q_c, True)
+        if vs_specs is not None:  # Stage 4': source-PDE var-swap overrides the static z/jz
+            n_cols = m + 1 if fit_left_a else m
+            z = np.empty(len(varswaps))
+            jz = np.empty((len(varswaps), n_cols))
+            for i, (tg, st) in enumerate(vs_specs):
+                z[i], jz[i] = solve_varswap_source(
+                    surf, x_grid, tg, sensitivities=True, steps=st,
+                    left_a=a, fit_left_a=fit_left_a,
+                )
         res_opt, jac_opt = _option_block(p, jp)
         res = np.concatenate(
             [res_opt, (z - z_mkt) / zeta, sqrt_lam * (l_rows @ (theta - ref))]

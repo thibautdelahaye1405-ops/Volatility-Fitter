@@ -136,6 +136,14 @@ class OptionsSettings(BaseModel):
     #: Changes calibration output, so it bumps the options version (set_options),
     #: and only matters while ``varSwapEnabled`` is on.
     varSwapWeightPct: float = Field(10.0, ge=0.0, le=1000.0)
+    #: How the Local-Vol fit prices the model variance swap. "static" is the
+    #: log-contract strike replication of the option surface (the k^-2-weighted
+    #: integral); "source_pde" is the backward source PDE g(0,1)
+    #: (volfit.models.localvol.varswap_pde) — a LOCAL quantity, far less sensitive
+    #: to coarsening/truncating the strike grid in the wings (needed once the
+    #: calibration grid is coarsened; Stage 3). Calibration-affecting (bumps the
+    #: options version); parametric models always use the static replication.
+    varSwapMethod: Literal["static", "source_pde"] = "static"
     # prior default
     autoLoadPrior: bool = False
     #: Prior-anchor budget as a PERCENTAGE of the summed option-quote weights of the

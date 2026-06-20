@@ -35,6 +35,11 @@ from volfit.models.localvol.model import (
     LocalVolSlice,
 )
 from volfit.models.localvol.pde import PDESolution, solve_dupire
+from volfit.models.localvol.varswap_pde import (
+    VarSwapSteps,
+    precompute_varswap_steps,
+    solve_varswap_source,
+)
 
 __all__ = [
     "AffineCalibration",
@@ -50,6 +55,9 @@ __all__ = [
     "OptionQuote",
     "PDESolution",
     "VarSwapQuote",
+    "VarSwapSteps",
+    "precompute_varswap_steps",
+    "solve_varswap_source",
     "calibrate_affine",
     "dupire_local_variance",
     "extract_grid",

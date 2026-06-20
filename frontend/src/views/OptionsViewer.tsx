@@ -286,6 +286,23 @@ export default function OptionsViewer() {
         </div>
         <div className="mt-1 flex items-center justify-between">
           <span
+            className={`${rowLabel} ${draft.varSwapEnabled ? "" : "opacity-40"}`}
+            title="How the Local-Vol fit prices the model variance swap: static log-contract strike replication (k^-2 weighted, grid-sensitive in the wings), or the backward source PDE g(0,1) — a local quantity robust to a coarse/truncated strike grid"
+          >
+            Var-swap pricing
+          </span>
+          <select
+            value={draft.varSwapMethod}
+            disabled={!live || !draft.varSwapEnabled}
+            onChange={(e) => patch({ varSwapMethod: e.target.value as "static" | "source_pde" })}
+            className={numInput}
+          >
+            <option value="static">Static (replication)</option>
+            <option value="source_pde">Source PDE</option>
+          </select>
+        </div>
+        <div className="mt-1 flex items-center justify-between">
+          <span
             className={`${rowLabel} ${draft.autoLoadPrior ? "" : "opacity-40"}`}
             title="Prior-anchor budget as a % of the summed option-quote weights of the node — distributed across delta-locations by the observed-vs-desired quote-density gap, pulling the fit toward the fetched prior where data is sparse (Auto-load prior)"
           >

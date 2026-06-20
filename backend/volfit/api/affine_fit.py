@@ -478,9 +478,21 @@ def _affine_varswap_info(
     )
 
 
-def _model_varswap_vol(solution, i_exp: int, t: float, x_grid: np.ndarray) -> float:
-    """Model fair var-swap vol of an expiry by log-contract replication on the
-    PDE grid (the same construction the affine var-swap residual uses)."""
+def _model_varswap_vol(
+    solution, i_exp: int, t: float, x_grid: np.ndarray,
+    surface=None, t_grid: np.ndarray | None = None, method: str = "static",
+) -> float:
+    """Model fair var-swap vol of an expiry — the SAME construction the var-swap
+    residual uses, so the displayed level matches what was calibrated. "static"
+    is the log-contract replication on the PDE grid; "source_pde" runs the backward
+    source PDE on the calibrated ``surface`` up to ``t`` (volfit.models.localvol
+    .varswap_pde)."""
+    if method == "source_pde" and surface is not None and t_grid is not None:
+        from volfit.models.localvol import solve_varswap_source
+
+        pos = int(np.searchsorted(t_grid, t))
+        w_vs, _ = solve_varswap_source(surface, x_grid, t_grid[: pos + 1])
+        return float(np.sqrt(max(w_vs, 0.0) / t))
     q_w = varswap_weights(x_grid, _VARSWAP_K_LO)
     q_c = varswap_const(x_grid, _VARSWAP_K_LO)
     w_vs = float(q_w @ solution.prices[i_exp] + q_c)
@@ -689,6 +701,7 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         t_grid,
         varswaps=varswaps,
         varswap_k_lo=_VARSWAP_K_LO,
+        varswap_method=opts.varSwapMethod,
         bounds=(var_lo, var_hi),
         reg_lambda=opts.gridRegLambda,
         reg_rho=opts.gridRegRho,
@@ -713,7 +726,10 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         klo, khi = float(k.min()), float(k.max())
         errs = _iv_error_bp(cal.solution, i_exp, t, k, w)
         iv_bp_all.extend(errs.tolist())
-        model_vs_vol = _model_varswap_vol(cal.solution, i_exp, t, x_grid)
+        model_vs_vol = _model_varswap_vol(
+            cal.solution, i_exp, t, x_grid,
+            surface=cal.surface, t_grid=t_grid, method=opts.varSwapMethod,
+        )
         model = _reconstruct_smile(cal.solution, i_exp, t, klo, khi)
         # Calibration-consistent RMS (distance to the chosen fit target band, the
         # active weighting scheme, the var-swap quote) — identical basis to the
@@ -847,6 +863,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
+        opts.varSwapMethod,
         request.model_dump_json(),
     )
 

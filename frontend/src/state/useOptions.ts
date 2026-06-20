@@ -30,6 +30,9 @@ export interface OptionsSettings {
   normalizeEvents: boolean;
   varSwapEnabled: boolean;
   varSwapWeightPct: number;
+  /** Local-Vol model var-swap pricing: static log-contract replication, or the
+   *  grid-robust backward source PDE g(0,1) (volfit.models.localvol.varswap_pde). */
+  varSwapMethod: 'static' | 'source_pde';
   autoLoadPrior: boolean;
   /** Prior-anchor penalty weight as a % of summed quote weights (autoLoadPrior). */
   priorAnchorWeightPct: number;
@@ -78,6 +81,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   normalizeEvents: false,
   varSwapEnabled: true,
   varSwapWeightPct: 10.0,
+  varSwapMethod: 'static',
   autoLoadPrior: false,
   priorAnchorWeightPct: 50.0,
   priorAnchorDeltas: [0.02, 0.05, 0.1, 0.25, 0.4],
