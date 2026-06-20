@@ -17,7 +17,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from volfit.api.affine_fit import _axis_scale, _lv_bounds, _resolve_grid, _time_nodes
+from volfit.api.affine_fit import (
+    _axis_scale,
+    _delta_strike_nodes,
+    _lv_bounds,
+    _resolve_grid,
+    _time_nodes,
+)
 from volfit.api.schemas import OptionsSettings
 from scipy.special import ndtri
 from volfit.models.localvol import (
@@ -206,6 +212,39 @@ def test_time_nodes_sqrt_t_floor_densifies_and_keeps_expiries():
     assert int((dense > 0).sum()) >= 12
     for e in exps:
         assert np.any(np.isclose(dense, e))
+
+
+# ------------------------------------- delta strike axis: incremental densify
+def test_delta_axis_lands_on_floor_not_overshoot():
+    """The widest-gap refinement lands the strike count exactly on the floor
+    (was: the doubling refine overshot to base*2^k). x = 1 is always present and is
+    not double-counted, so the count is the floor."""
+    # A wide observed range so all 13 delta nodes survive clipping (base = 13).
+    floor = 25
+    x = _delta_strike_nodes(0.20, 1.0, k_lo_obs=-1.2, k_hi_obs=1.2, n_floor=floor)
+    assert x.size == floor  # exactly the floor — no doubling overshoot
+    assert np.all(np.diff(x) > 0)  # sorted, strictly increasing
+    assert np.any(np.isclose(x, 1.0))  # ATM vertex forced in
+
+
+def test_delta_axis_two_names_reach_the_same_floor():
+    """Two names whose base delta-node counts differ (one wing clipped harder) both
+    land on the SAME floor — the fix for SPY-vs-NVDA divergent resolutions."""
+    floor = 20
+    # 'SPY-like': low scale, all nodes within range -> larger base.
+    spy = _delta_strike_nodes(0.16, 1.0, k_lo_obs=-0.65, k_hi_obs=0.37, n_floor=floor)
+    # 'NVDA-like': high scale, call wing clipped -> smaller base.
+    nvda = _delta_strike_nodes(0.43, 0.5, k_lo_obs=-0.71, k_hi_obs=0.38, n_floor=floor)
+    assert spy.size == floor and nvda.size == floor
+
+
+def test_delta_axis_no_densify_when_base_exceeds_floor():
+    """A floor below the natural (clipped) base count leaves the base set untouched
+    (the floor is a minimum, never a cap)."""
+    natural = _delta_strike_nodes(0.20, 1.0, k_lo_obs=-1.2, k_hi_obs=1.2, n_floor=2)
+    assert natural.size > 5  # the full delta set survived
+    same = _delta_strike_nodes(0.20, 1.0, k_lo_obs=-1.2, k_hi_obs=1.2, n_floor=natural.size - 3)
+    assert same.size == natural.size  # floor below base -> no extra vertices
 
 
 def _concave_wing_quotes() -> list[OptionQuote]:

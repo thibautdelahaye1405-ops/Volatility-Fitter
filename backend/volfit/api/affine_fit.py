@@ -241,8 +241,17 @@ def _delta_strike_nodes(
     that reach the wings at controlled deltas. The set is clipped to the OBSERVED
     [k_lo, k_hi] (no vertex past the data — the note: wings beyond quotes are set
     by regularization, not vertices) with x = 1 forced in. ``n_floor``
-    (gridXNodes) is a minimum: midpoints are inserted until at least that many
-    strike vertices exist.
+    (gridXNodes) is a minimum: the single WIDEST gap is split one node at a time
+    until exactly that many strike vertices exist.
+
+    The widest-gap refinement (the same incremental scheme as ``_time_nodes`` on
+    the time axis) lands the count ON the floor, regardless of how many delta
+    nodes survived clipping. The previous refine inserted a midpoint into EVERY
+    gap each pass (doubling, n -> 2n-1), so the result overshot the floor
+    non-monotonically: a base count just below half the floor doubled twice while
+    one just above it doubled once — giving wildly different resolutions to two
+    similar names (e.g. NVDA 10 -> 19 -> 37 vs SPY 11 -> 21 at the same floor),
+    with the SPARSER base ending up FINER. One-at-a-time splitting removes that.
     """
     scale = max(sigma_star * np.sqrt(max(t_star, 1e-8)), 1e-6)
     ks = [0.0]
@@ -251,8 +260,10 @@ def _delta_strike_nodes(
         ks.append(scale * q)  # put side (k <= 0)
         ks.append(-scale * q)  # call side (k >= 0)
     k = np.unique(np.clip(np.array(ks), k_lo_obs, k_hi_obs))
-    while k.size < max(int(n_floor), 2):  # densify to the floor by midpoint refine
-        k = np.unique(np.concatenate([k, 0.5 * (k[:-1] + k[1:])]))
+    floor = max(int(n_floor), 2)
+    while k.size < floor and k.size >= 2:  # split the single widest gap, one node at a time
+        i = int(np.argmax(np.diff(k)))
+        k = np.insert(k, i + 1, 0.5 * (k[i] + k[i + 1]))
     return np.unique(np.concatenate([np.exp(k), [1.0]]))
 
 
