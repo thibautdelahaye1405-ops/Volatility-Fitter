@@ -212,6 +212,14 @@ class OptionsSettings(BaseModel):
     #: violation appeared on a coarse-x grid), so it is OFF by default; available as
     #: an opt-in. The real cold-fit lever is fewer evals, not fewer time steps.
     timeScheme: Literal["implicit", "rannacher"] = "implicit"
+    #: Early-stop the COLD LV fit when the quote-fit improvement stalls (Stage 8). The
+    #: fit otherwise runs to the 200-eval cap though its tail evals barely move the
+    #: surface; stopping at the stall point scales the WHOLE fit (march + assembly +
+    #: optimizer). Measured ~1.45x (slow-converging SPY, +0.10 bp) to ~3.3x
+    #: (fast-converging NVDA, +0.25 bp) on the cold fit; warm-started recalibrations
+    #: converge before the stall window so they are unaffected. ON by default; OFF runs
+    #: the full 200-eval fit. LV-only (folded into affine_key).
+    lvEarlyStop: bool = True
     #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
     #: cell's slope (between the two lowest vertices) — the deep-put local variance
     #: continues rising toward x = 0 instead of clamping flat. Used as the fixed

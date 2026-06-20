@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from time import perf_counter
+from types import SimpleNamespace
 
 import numpy as np
 from scipy.optimize import least_squares
@@ -326,6 +327,10 @@ def _model_values(
     return p, z, jp, jz
 
 
+class _StallStop(Exception):
+    """Raised inside the LSQ objective to early-stop a stalled cold fit (Stage 8)."""
+
+
 def calibrate_affine(
     surface0: AffineVarianceSurface,
     options: list[OptionQuote],
@@ -355,6 +360,8 @@ def calibrate_affine(
     gn: bool = False,
     time_scheme: str = "implicit",
     rannacher_steps: int = 2,
+    stall_window: int = 0,
+    stall_rtol: float = 1e-3,
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
 
@@ -421,6 +428,17 @@ def calibrate_affine(
     stalls. Default False ⇒ the legacy TRF path, byte-identical (the golden
     example is unaffected). The two solvers agree on the converged surface
     (test_affine_gn); the win is purely the per-iteration linear algebra.
+
+    ``stall_window`` (Stage 8 — the one lever that scales the WHOLE fit): early-stop
+    the cold trf solve when the best (minimum) cost seen has not improved by a
+    relative ``stall_rtol`` over the last ``stall_window`` objective evaluations. The
+    cold fit otherwise runs to ``max_nfev`` (200) even though its last ~80-120 evals
+    move the surface < 0.1 vol-bp; stopping at the stall point cuts march + assembly +
+    optimizer together (a ~1.5-2x cold-fit win). ``stall_window = 0`` (default)
+    disables it ⇒ byte-identical. The best-cost iterate is returned (not the last
+    trial), so the result is never worse than the stall point. Warm-started
+    recalibrations converge in ~1 eval and never reach the window, so they are
+    unaffected.
 
     ``time_scheme`` (Stage 7): "implicit" (default, byte-identical golden) or
     "rannacher" (Crank-Nicolson after ``rannacher_steps`` implicit start-up steps),
@@ -588,19 +606,57 @@ def calibrate_affine(
         ub = np.full(p0.size, bounds[1])
         opt_bounds = bounds
 
-    def _run_trf():
-        return least_squares(
-            lambda p: evaluate(p)[0],
-            p0,
-            jac=lambda p: evaluate(p)[1],
-            bounds=opt_bounds,
-            method="trf",
-            x_scale=x_scale,
-            xtol=xtol,
-            ftol=ftol,
-            gtol=gtol,
-            max_nfev=max_nfev,
+    # Stage 8 early-stop: track the best OPTION-BLOCK misfit (the actual quote-fit
+    # quality, excluding the always-changing roughness penalty) and raise once it has
+    # not improved by ``stall_rtol`` (relative) for ``stall_window`` evals. Using the
+    # option block, not the total cost, makes the criterion track vol-fit RMS directly.
+    _n_opt_rows = (2 if band_mode else 1) * len(options)
+    stall = {"best": np.inf, "since": 0, "x": p0.copy()}
+
+    def _fun(p):
+        r = evaluate(p)[0]
+        block = r[:_n_opt_rows] if _n_opt_rows else r
+        q = float(np.sqrt(np.mean(block * block)))  # option-block RMS (~ weighted vol error)
+        if q < stall["best"] * (1.0 - stall_rtol):
+            stall["best"] = q
+            stall["since"] = 0
+            stall["x"] = p.copy()
+        else:
+            stall["since"] += 1
+            if stall["since"] >= stall_window:
+                raise _StallStop
+        return r
+
+    def _stall_result():
+        """Synthesize a least_squares-like result at the best-cost iterate."""
+        rb, jb, _, _, _ = evaluate(stall["x"])
+        g = jb.T @ rb
+        amask = np.zeros(stall["x"].size, dtype=int)
+        amask[stall["x"] <= lb + 1e-12] = -1
+        amask[stall["x"] >= ub - 1e-12] = 1
+        return SimpleNamespace(
+            x=stall["x"], nfev=n_evals, njev=n_evals, status=99,
+            cost=0.5 * float(rb @ rb), optimality=float(np.max(np.abs(g))) if g.size else 0.0,
+            active_mask=amask, message="early stop: cost improvement stalled",
         )
+
+    def _run_trf():
+        fun = _fun if stall_window > 0 else (lambda p: evaluate(p)[0])
+        try:
+            return least_squares(
+                fun,
+                p0,
+                jac=lambda p: evaluate(p)[1],
+                bounds=opt_bounds,
+                method="trf",
+                x_scale=x_scale,
+                xtol=xtol,
+                ftol=ftol,
+                gtol=gtol,
+                max_nfev=max_nfev,
+            )
+        except _StallStop:
+            return _stall_result()
 
     total_t0 = perf_counter()
     if gn:

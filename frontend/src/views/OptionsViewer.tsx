@@ -213,6 +213,14 @@ export default function OptionsViewer() {
         </div>
         <div className="mt-2">
           <Toggle
+            label="Early-stop cold fit (faster)"
+            hint="Stop the cold LV calibration once the quote-fit improvement stalls, instead of always running to the 200-evaluation cap. The tail evals barely move the surface, so this scales the whole fit: ~1.45x on slow-converging names (+0.10 vol-bp) up to ~3.3x on fast-converging ones (+0.25 bp). Warm-started recalibrations converge before the stall window, so they are unaffected. Off = full 200-eval fit."
+            checked={draft.lvEarlyStop} disabled={!live}
+            onChange={(v) => patch({ lvEarlyStop: v })}
+          />
+        </div>
+        <div className="mt-2">
+          <Toggle
             label="2nd-order time stepping (experimental)"
             hint="Rannacher (Crank-Nicolson after implicit-Euler kink-damping start-up) is 2nd-order, so it reaches the same accuracy at ~3x larger time steps. Benchmarked at only ~1.1x net (the CN sensitivity step is ~2x costlier, ~cancelling the fewer-steps win) and CN is not monotone (an arb violation appeared on a coarse-x grid), so it is OFF by default. Off = 1st-order implicit Euler. Var-swap fits always use implicit."
             checked={draft.timeScheme === "rannacher"} disabled={!live}

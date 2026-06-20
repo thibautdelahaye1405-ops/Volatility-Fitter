@@ -57,6 +57,10 @@ export interface OptionsSettings {
   /** LV PDE time scheme: "rannacher" = 2nd-order Crank-Nicolson (~3x fewer time
    *  steps at equal accuracy — faster), "implicit" = 1st-order backward Euler (legacy). */
   timeScheme: 'implicit' | 'rannacher';
+  /** Early-stop the cold LV fit when the quote-fit improvement stalls (~1.45x on
+   *  slow-converging names up to ~3.3x on fast ones, +0.1-0.25 bp; warm recals
+   *  unaffected). */
+  lvEarlyStop: boolean;
   /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
   leftWingSlopeMult: number;
   calendarWeight: number;
@@ -99,6 +103,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   frontTieWeight: 1e-2,
   lvVolCapMult: 3.0,
   timeScheme: 'implicit',
+  lvEarlyStop: true,
   leftWingSlopeMult: 1.5,
   calendarWeight: 1e6,
   graphKappaScale: 1.0,

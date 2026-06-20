@@ -242,14 +242,28 @@ dominates.
   the total much because the others dilute it. **The only lever that scales the whole
   fit is fewer evals** — see Opportunistic below.
 
+### Stage 8 — Stall-based early-stop  ✅ DONE (2026-06-20) — THE win that scales the whole fit
+- `calibrate_affine(stall_window=, stall_rtol=)`: track the best OPTION-BLOCK misfit
+  (the quote-fit quality, excluding the always-changing roughness penalty) across trf
+  objective evals; raise `_StallStop` once it has not improved by `stall_rtol`
+  (relative) over `stall_window` evals, and return the **best-cost iterate** (never
+  worse than the stall point). `stall_window=0` (default) ⇒ byte-identical. Wired via
+  `OptionsSettings.lvEarlyStop` (default ON, folded into `affine_key`) +
+  `affine_fit._STALL_WINDOW=12` / `_STALL_RTOL=5e-3` + an Options toggle.
+- **Why this is the lever that works** (where 3/5/6/7 failed): fewer evals multiply
+  march + assembly + optimizer *together*, so it scales the whole fit. **Measured
+  (SPY/NVDA gridX=20, vs the full 200-eval fit):** fast-converging NVDA (a clear
+  convergence knee) → **3.3×** (16.8→5.1 s, nfev 200→41) at +0.25 bp; slow-converging
+  SPY (no knee, keeps improving) → **1.45×** (31.2→21.5 s, nfev 200→109) at +0.10 bp.
+  Adaptive by design — it stops when a fit has converged and keeps going while it is
+  still improving. Warm-started recalibrations
+  converge before the window, so they are unaffected (Stage 2a already made them ~1
+  eval). `test_affine_early_stop.py` (3): disabled byte-identical, cuts evals + keeps
+  surface, reports the stall status.
+- Stacks with everything else (it is orthogonal to the march/optimizer). Rannacher
+  (Stage 7, opt-in) would compound on top if enabled.
+
 ### Opportunistic (independent)
-- **Eval-cap / early-stop  ← THE measured robust win.** The cold fit runs to the
-  200-eval cap but its last ~80–120 evals buy <0.1 bp (SPY 2.84 bp @ cap 80 vs 2.71
-  @ 200; NVDA 10.79 vs 10.63). A stall-based early-stop (terminate when the weighted
-  RMS improvement over a window falls below a vol-bp threshold) or simply a lower
-  `max_nfev` is a **~1.5–2× cold-fit win that scales the WHOLE fit** (march +
-  assembly + optimizer), unlike the per-eval levers above — and it stacks with them.
-  This is the one to ship next.
 - **Across-ticker parallelism** in the calibration job (was Stage 6's second half;
   pure-Python intra-fit threads are GIL-negative, but the per-ticker work-items
   could run on a process pool — Windows-spawn caveats apply).
@@ -260,7 +274,7 @@ dominates.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ → 6 ❌ → 7 ⚠️ → eval-cap (next)`.
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ → 5 ⚠️ → 6 ❌ → 7 ⚠️ → 8 ✅ (early-stop)`.
 Stages 0–2a took the default grid faster and recalibration ~instant; 4′ made the
 var-swap grid-robust. **Four approaches to cut the per-eval / per-step cost all
 underdelivered for the same reason** — the cold-fit cost is *distributed* roughly
@@ -269,11 +283,11 @@ algebra, so killing any single one is diluted by the others: **3** (coarse grid)
 biased θ; **5** (matrix-free GN) needs more evals than TRF; **6** (Numba march) is
 exact but only ~1.2× (LAPACK already optimal); **7** (Rannacher) cuts N_t 2.7× but the
 heavier CN sensitivity step ~cancels it (~1.1× net) and CN broke arb on a coarse grid.
-**The one lever that scales the WHOLE fit is fewer evaluations** — the cold fit's last
-~80–120 of 200 evals buy <0.1 bp, so a stall-based early-stop is a ~1.5–2× win that
-multiplies march+assembly+optimizer together and stacks with everything. That is the
-next thing to ship. The mathematical contract and the golden example stay intact
-throughout.
+**The one lever that scales the WHOLE fit is fewer evaluations** — Stage 8's
+stall-based early-stop (✅ shipped) multiplies march+assembly+optimizer together:
+3.3× on fast-converging names (NVDA), 1.45× on slow ones (SPY) — adaptive, +0.10–0.25
+bp cost, and it stacks with everything. The mathematical contract and the golden example stay
+intact throughout.
 
 ## Invariants (every stage)
 - Golden example within tolerance — the local-vol surface *is* product output, so

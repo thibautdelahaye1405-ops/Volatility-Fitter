@@ -105,6 +105,14 @@ _CONVEX_WING_DELTA = 0.05
 _LV_VAR_CEILING = 16.0
 #: Upper bound on the free left-wing slope multiple ``a`` (× the first-cell slope).
 _LEFT_A_MAX = 20.0
+#: Stage 8 early-stop: terminate the cold fit once the best OPTION-BLOCK misfit has
+#: not improved by ``_STALL_RTOL`` (relative) over ``_STALL_WINDOW`` objective evals.
+#: Tuned on the SPY/NVDA benchmark: fast-converging names (NVDA, a clear knee) get
+#: ~3.3x at +0.25 bp RMS; slow-converging names with no knee (SPY) get ~1.45x at
+#: +0.10 bp — adaptive by design (stop when converged, keep going while improving).
+#: Warm-started recalibrations converge before the window, so they are unaffected.
+_STALL_WINDOW = 12
+_STALL_RTOL = 5e-3
 
 
 def _lv_bounds(rows, opts, var_lo_req: float, var_hi_req: float) -> tuple[float, float]:
@@ -739,6 +747,10 @@ def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitRe
         seed_source=seed_source,
         mid_anchor_weight=state.fit_settings().midAnchorWeight,
         time_scheme=time_scheme,  # Stage 7: Rannacher coarse-dt march when applicable
+        # Stage 8: early-stop the cold fit once cost improvement stalls (warm recals
+        # converge before the window, so they are byte-identical either way).
+        stall_window=_STALL_WINDOW if opts.lvEarlyStop else 0,
+        stall_rtol=_STALL_RTOL,
     )
     _record_diagnostics(state, ticker, cal.diagnostics)
 
@@ -888,7 +900,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
-        opts.varSwapMethod, opts.timeScheme,
+        opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop,
         request.model_dump_json(),
     )
 

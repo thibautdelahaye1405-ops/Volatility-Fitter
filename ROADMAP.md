@@ -52,10 +52,17 @@ synthetic-only overclaim):
   `test_affine_time_scheme.py`), default implicit.
 - **FOUR distributed-cost dead-ends (Stages 3, 5, 6, 7):** the cold-fit cost spreads
   ~evenly across the march, the Jacobian assembly, and the optimizer linear algebra,
-  so no single per-eval/per-step lever moves the total. **Next = the eval-cap /
-  stall-based early-stop** — the cold fit's last ~80–120 of 200 evals buy <0.1 bp, so
-  stopping early is a **~1.5–2× win that scales the WHOLE fit** and stacks with
-  everything. This is the one measured lever that actually works.
+  so no single per-eval/per-step lever moves the total.
+- **Stage 8 — stall-based early-stop SHIPPED (the win that works).** `calibrate_affine`
+  tracks the best option-block misfit and stops the cold fit once it stalls (returns
+  the best-cost iterate); `OptionsSettings.lvEarlyStop` (default ON, window 12 /
+  rtol 5e-3, in `affine_key`) + Options toggle; `stall_window=0` ⇒ byte-identical.
+  Fewer evals multiply march + assembly + optimizer *together*, so it scales the whole
+  fit: measured (SPY/NVDA gridX=20 vs full 200-eval) **3.3× on NVDA** (16.8→5.1 s, a
+  convergence knee) at +0.25 bp and **1.45× on SPY** (31.2→21.5 s, no knee) at +0.10 bp
+  — adaptive (stops when converged, runs while improving); warm recals unaffected.
+  `test_affine_early_stop.py` (3). This is the one measured lever that actually works,
+  and it stacks with the (opt-in) Rannacher scheme.
 
 Separately, a strike-grid fix landed: `_delta_strike_nodes` now densifies by
 splitting the single widest gap one node at a time (matching `_time_nodes`) instead
