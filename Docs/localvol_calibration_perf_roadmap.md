@@ -161,17 +161,36 @@ at the heavy grid.
   (Stage 6)**, not fewer grid points. Stage 4′ (grid-robust var-swap) still stands
   on its own as a correctness improvement.
 
-### Stage 5 — Matrix-free Gauss–Newton  *(the heavy-grid fix)*
-- Add **alongside** the dense path (dense sensitivities as oracle):
-  `apply_jacobian(theta, v)` (tangent sweep) and `apply_jacobian_transpose(theta,
-  w)` (adjoint sweep, **time-causal truncation**, refinement 1). Three identity
-  tests: `Jv` vs FD; `⟨Jv,w⟩=⟨v,Jᵀw⟩`; gradient α-test.
-- Preconditioned LSMR/CG Gauss–Newton on `(JᵀJ + λRᵀR + βD)Δ = −Jᵀr`,
-  preconditioner `diag(data-sens) + λ_t L_tᵀL_t + λ_x L_xᵀL_x + εI`. **Bounds via
-  active-set projection** (preferred over sigmoid, which worsens conditioning in
-  the bound-binding wings). Fall back to dense TRF on failure.
-- **Gate:** dense and matrix-free agree (objective + θ within tol) on golden +
-  heavy; heavy runtime ↓ materially; fallback verified.
+### Stage 5 — Matrix-free Gauss–Newton  ✅ DONE (2026-06-20)  *(the heavy-grid fix)*
+- `volfit/models/localvol/affine_gn.py`: `LinearizedJacobian` wraps one
+  evaluation's dense Jacobian as a matrix-free linear operator — `apply_jacobian`
+  (tangent action Jv) / `apply_jacobian_transpose` (adjoint Jᵀw) + a
+  column-equilibration (`column_scale`) preconditioner. `gauss_newton` is a
+  **projected Levenberg–Marquardt** loop whose step is the LM-damped,
+  column-preconditioned linear least squares solved **matrix-free by
+  `scipy.sparse.linalg.lsmr`** (no JᵀJ, no SVD). The column scaling is the missing
+  ingredient behind the earlier unpreconditioned `tr_solver='lsmr'` failure.
+  **Bounds via active-set projection** (clip + projected-gradient convergence,
+  preferred over sigmoid). Three identity tests pass: `Jv` vs FD; `⟨Jv,w⟩=⟨v,Jᵀw⟩`;
+  gradient α-test (`test_affine_gn.py`).
+- **Key tuning:** the inner `lsmr` tolerance is TIGHT (1e-10). The expensive unit
+  is each outer iteration's sensitivity PDE solve while the inner lsmr is cheap
+  dense matvecs, so solving the step accurately to take near-full Newton steps
+  minimises outer PDE solves (a loose inner tol crawls and inflates the outer
+  count many-fold — measured 212→8 evals on a 525-vtx case as the tol tightened).
+- Wired through `calibrate_affine(gn=...)` (default False ⇒ byte-identical dense
+  TRF, golden untouched), `OptionsSettings.lvSolver` ("trf"|"gn", LV-only, folded
+  into `affine_key`), `affine_fit._fit`, and an Options "LV solver" selector. On a
+  numerical stall GN returns `converged=False` (or raises) and `calibrate_affine`
+  **falls back to dense TRF** — never degrades the surface.
+- **Gate (met):** GN lands the TRF surface (objective + nodal θ within tol) on the
+  golden 3×7 case and a heavy ~325-vtx case **in no more PDE evals**; bound-binding
+  case respected; forced-breakdown TRF fallback verified. Heavy runtime down: the
+  255-vtx perf rail (`affine_localvol_gn_heavy`, full convergence) runs ~1.17 s vs
+  TRF's ~1.57 s, and a 525-vtx self-consistent case 3.8 s (8 evals) vs TRF 5.1 s
+  (12 evals) — the gap widens with vertex count as TRF's O(m³) SVD dominates. The
+  ~533-vtx / 86 s live wall (TRF hitting the 200-eval cap) is the target this
+  clears.
 
 ### Stage 6 — Numba `nogil` march + across-ticker parallelism  *(the default-grid fix)*
 - `@njit(cache=True, nogil=True)` inner march (tridiagonal assembly, Thomas
@@ -193,14 +212,15 @@ at the heavy grid.
 
 ## Sequencing summary
 
-Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ (non-viable, reverted) → 5 → 6`,
+Realised: `Stage 0 ✅ → 1 ✅ → 2a ✅ → 4′ ✅ → 3 ❌ (non-viable, reverted) → 5 ✅ → 6`,
 with Rannacher / adaptive grids folded in opportunistically. Stages 0–2a took the
 default grid faster and recalibration ~instant; 4′ made the var-swap grid-robust;
-**3 was attempted and reverted** (coarse calibration biases θ catastrophically).
-The remaining per-eval win is structural: 5 clears the heavy-grid dense-SVD wall
-(matrix-free Gauss–Newton), 6 compiles the Python-loop march and unlocks
-parallelism. The mathematical contract and the golden example stay intact
-throughout.
+**3 was attempted and reverted** (coarse calibration biases θ catastrophically);
+**5 ✅ clears the heavy-grid dense-SVD wall** (matrix-free preconditioned-lsmr
+Gauss–Newton, opt-in via `lvSolver`, TRF fallback). The remaining per-eval win is
+**Stage 6** — a compiled (`Numba nogil`) Python-loop march that also unlocks
+across-ticker parallelism. The mathematical contract and the golden example stay
+intact throughout.
 
 ## Invariants (every stage)
 - Golden example within tolerance — the local-vol surface *is* product output, so

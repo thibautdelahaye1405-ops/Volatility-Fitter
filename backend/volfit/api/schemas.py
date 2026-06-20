@@ -200,6 +200,15 @@ class OptionsSettings(BaseModel):
     #: (NVDA), starving the put wing; local variance in the wing runs well above
     #: implied, so the bound must scale with the name. (volfit.api.affine_fit)
     lvVolCapMult: float = Field(3.0, ge=1.0, le=20.0)
+    #: Local-Vol surface solver (Stage 5): "trf" = scipy's dense trust-region least
+    #: squares (the legacy default; an O(m³) dense SVD per iteration that walls the
+    #: heavy ~500+-vertex grid at tens of seconds), "gn" = the matrix-free projected
+    #: Gauss-Newton of volfit.models.localvol.affine_gn (preconditioned lsmr step, no
+    #: SVD — seconds on the same grid, falling back to trf if it stalls). The two land
+    #: the same surface; "gn" only changes the path. LV-only (like gridXNodes /
+    #: varSwapMethod): folded into affine_key so a switch re-fits the surface, but it
+    #: does not bump the parametric options version. (volfit.models.localvol.affine_calib)
+    lvSolver: Literal["trf", "gn"] = "trf"
     #: Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first
     #: cell's slope (between the two lowest vertices) — the deep-put local variance
     #: continues rising toward x = 0 instead of clamping flat. Used as the fixed

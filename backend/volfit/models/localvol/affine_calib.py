@@ -30,6 +30,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
+from volfit.models.localvol.affine_gn import gauss_newton
 from volfit.models.localvol.affine import (
     AffinePDESolution,
     AffineVarianceSurface,
@@ -351,6 +352,7 @@ def calibrate_affine(
     ftol: float = 1e-8,
     gtol: float = 1e-8,
     max_nfev: int = 200,
+    gn: bool = False,
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
 
@@ -408,6 +410,15 @@ def calibrate_affine(
       regularization, so a 1e-12 numerical target is not economically meaningful
       and only buys iterations. These two knobs are separable so a surface shift
       can be attributed to scaling vs early termination.
+
+    ``gn`` (Stage 5): solve with the **matrix-free projected Gauss-Newton** of
+    volfit.models.localvol.affine_gn instead of scipy's dense-SVD ``trf``. The GN
+    step is solved by preconditioned lsmr (no JᵀJ, no SVD), the headline fix for
+    the large-grid O(m³) wall; it consumes the SAME ``evaluate`` callback so the
+    model is identical, and **falls back to dense TRF** if the iterative solve
+    stalls. Default False ⇒ the legacy TRF path, byte-identical (the golden
+    example is unaffected). The two solvers agree on the converged surface
+    (test_affine_gn); the win is purely the per-iteration linear algebra.
     """
     varswaps = varswaps or []
     expiries = sorted({o.t for o in options} | {v.t for v in varswaps})
@@ -563,20 +574,40 @@ def calibrate_affine(
         opt_bounds: tuple = (lb, ub)
     else:
         p0 = surface0.theta.ravel()
+        lb = np.full(p0.size, bounds[0])
+        ub = np.full(p0.size, bounds[1])
         opt_bounds = bounds
+
+    def _run_trf():
+        return least_squares(
+            lambda p: evaluate(p)[0],
+            p0,
+            jac=lambda p: evaluate(p)[1],
+            bounds=opt_bounds,
+            method="trf",
+            x_scale=x_scale,
+            xtol=xtol,
+            ftol=ftol,
+            gtol=gtol,
+            max_nfev=max_nfev,
+        )
+
     total_t0 = perf_counter()
-    result = least_squares(
-        lambda p: evaluate(p)[0],
-        p0,
-        jac=lambda p: evaluate(p)[1],
-        bounds=opt_bounds,
-        method="trf",
-        x_scale=x_scale,
-        xtol=xtol,
-        ftol=ftol,
-        gtol=gtol,
-        max_nfev=max_nfev,
-    )
+    if gn:
+        # Stage 5: matrix-free projected Gauss-Newton (preconditioned lsmr). On a
+        # numerical stall it returns converged=False and we fall back to dense TRF,
+        # so the GN path never degrades the surface relative to the legacy solver.
+        try:
+            result = gauss_newton(
+                evaluate, p0, lb, ub,
+                max_nfev=max_nfev, gtol=gtol, xtol=xtol, ftol=ftol,
+            )
+            if not result.converged:
+                result = _run_trf()
+        except (np.linalg.LinAlgError, ValueError, FloatingPointError):
+            result = _run_trf()
+    else:
+        result = _run_trf()
     _, _, sol, p, z = evaluate(result.x)
     total_s = perf_counter() - total_t0
     theta_hat = result.x[:m] if fit_left_a else result.x

@@ -211,6 +211,23 @@ export default function OptionsViewer() {
             var-swap quote the slope is fitted to the quote, this is its start).
           </p>
         </div>
+        <div className="mt-2 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="LV surface solver: TRF = dense trust-region least squares (legacy; an O(m³) dense SVD per iteration that walls heavy ≥500-vertex grids at tens of seconds). Gauss-Newton = matrix-free projected GN (preconditioned lsmr step, no SVD — seconds on the same grid, automatic TRF fallback if it stalls). Same surface; only the path differs."
+          >
+            LV solver
+          </span>
+          <select
+            value={draft.lvSolver}
+            disabled={!live}
+            onChange={(e) => patch({ lvSolver: e.target.value as "trf" | "gn" })}
+            className={numInput}
+          >
+            <option value="trf">TRF (dense, legacy)</option>
+            <option value="gn">Gauss-Newton (matrix-free)</option>
+          </select>
+        </div>
         {gridInfo && (
           <p className="mt-2 rounded-md border border-slate-800 bg-surface-800/50 px-2 py-1 text-[10px] text-slate-400">
             {anyDirty ? (

@@ -10,6 +10,32 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-20 (resume here)
 
+### 🛠 LATEST (2026-06-20, later) — Stage 5: matrix-free Gauss-Newton LV solver
+
+On branch **`perf/localvol-calibration`**. **LV calibration perf Stage 5 SHIPPED**
+(the heavy-grid dense-SVD wall, backlog #1 below). New
+`backend/volfit/models/localvol/affine_gn.py`: a **matrix-free projected
+Levenberg–Marquardt Gauss-Newton** whose step is solved by preconditioned
+`scipy.sparse.linalg.lsmr` (no JᵀJ, no SVD) — `LinearizedJacobian` exposes the
+tangent/adjoint matvecs (`apply_jacobian`/`apply_jacobian_transpose`) and a
+column-equilibration preconditioner (the missing ingredient behind the earlier
+unpreconditioned `tr_solver='lsmr'` failure). Bounds via active-set projection;
+**automatic fallback to dense TRF** on a stall (`converged=False`) or exception, so
+the surface never degrades. **Inner lsmr tol is deliberately tight (1e-10)**: outer
+PDE solves are the cost, inner matvecs are cheap, so accurate Newton steps minimise
+the outer count (212→8 evals on a 525-vtx case as the tol tightened). Opt-in via
+`OptionsSettings.lvSolver` ("trf" default | "gn", LV-only, folded into `affine_key`)
++ an Options "LV solver" selector; default OFF ⇒ byte-identical TRF (golden
+untouched). GN lands the TRF surface (objective + θ within tol) on golden + heavy
+**in no more PDE evals**; 255-vtx perf rail `affine_localvol_gn_heavy` ~1.17 s vs
+TRF ~1.57 s, 525-vtx 3.8 s/8 evals vs TRF 5.1 s/12 evals — the gap widens with
+vertex count (TRF's O(m³) SVD), so the ~533-vtx / 86 s live wall (TRF at its
+200-eval cap) is the target this clears. New `test_affine_gn.py` (8 tests: 3
+operator identities, golden+heavy agreement, bounds-active, TRF fallback ×2). Full
+suite **613 passed, 1 skipped** (+ all 5 perf rails green); ruff + strict-TS build
+green. **Next: Stage 6** (Numba `nogil` march + across-ticker parallelism, the
+default-grid per-eval win) — see the roadmap doc.
+
 ### 🛠 LATEST (2026-06-20) — LV calibration perf branch + SPY regression FIXED
 
 On branch **`perf/localvol-calibration`** (off main). Two threads, full
@@ -61,7 +87,9 @@ sparse-linalg deliberately excluded for now). Ordered by expected wall-clock /
 effort. The numbers tracked: a ~533-vertex affine LV fit ~86 s; LQD12 slice ~35 ms;
 graph 1k-node ~700 ms.
 
-1. **Sparse Gauss-Newton for the piecewise-affine LV surface** — *the single
+1. **Sparse Gauss-Newton for the piecewise-affine LV surface** ✅ **DONE
+   (2026-06-20, Stage 5 — matrix-free preconditioned-lsmr GN, opt-in `lvSolver`;
+   see the LATEST entry above + `affine_gn.py`).** *The single
    heaviest path in the app* (~86 s @ 533 vertices, hits the 200-eval cap). The
    roughness / convex / front-tie Jacobian blocks are 3-nnz/row but stored dense
    and `np.vstack`'d (`models/localvol/affine_calib.py:425,441,443`), and trf's

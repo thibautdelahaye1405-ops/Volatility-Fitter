@@ -50,6 +50,7 @@ BUDGET_MS = {
     "deamericanize_chain": 1800.0,  # ~630 ms local; ~80-quote vectorized CRR de-Am
     "affine_localvol_default": 3000.0,  # ~1.0 s local; 143-vtx LV surface fit (Stage 0 rail)
     "affine_localvol_heavy": 6000.0,    # ~2.0 s local; 255-vtx LV fit, max_nfev capped
+    "affine_localvol_gn_heavy": 4000.0,  # ~1.2 s local; 255-vtx Stage-5 matrix-free GN (full converge)
 }
 
 
@@ -289,6 +290,24 @@ def test_perf_affine_localvol_heavy(perf_report):
         "affine_localvol_heavy",
         lambda: calibrate_affine(
             flat, options, x_grid, t_grid, reg_lambda=50.0, bounds=(0.005, 0.20), max_nfev=30
+        ),
+        repeat=2,
+    )
+
+
+def test_perf_affine_localvol_gn_heavy(perf_report):
+    """Stage-5 matrix-free Gauss-Newton on the same 255-vertex grid, run to FULL
+    convergence (not capped). The preconditioned lsmr step replaces trf's dense
+    O(m³) SVD, so GN clears the heavy grid in a handful of PDE evaluations — this
+    rail guards that the matrix-free path stays fast as the vertex count grows."""
+    flat, options, x_grid, t_grid = _affine_case(
+        15, 17, np.linspace(0.1, 2.5, 12), np.linspace(0.7, 1.3, 15)
+    )
+    _check(
+        perf_report,
+        "affine_localvol_gn_heavy",
+        lambda: calibrate_affine(
+            flat, options, x_grid, t_grid, reg_lambda=50.0, bounds=(0.005, 0.20), gn=True
         ),
         repeat=2,
     )

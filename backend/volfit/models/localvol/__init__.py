@@ -23,6 +23,11 @@ from volfit.models.localvol.affine_calib import (
     varswap_const,
     varswap_weights,
 )
+from volfit.models.localvol.affine_gn import (
+    GNResult,
+    LinearizedJacobian,
+    gauss_newton,
+)
 from volfit.models.localvol.dupire import (
     ExtractionResult,
     dupire_local_variance,
@@ -48,6 +53,9 @@ __all__ = [
     "AffineVarianceSurface",
     "DupireSteps",
     "ExtractionResult",
+    "GNResult",
+    "LinearizedJacobian",
+    "gauss_newton",
     "LocalVolDiagnostics",
     "LocalVolGrid",
     "LocalVolModel",
