@@ -20,6 +20,8 @@ from volfit.api.schemas import (
     GraphAutotuneRequest,
     GraphAutotuneResponse,
     GraphBacktestResponse,
+    GraphEdgesRequest,
+    GraphEdgesResponse,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
     GraphNodeInfo,
@@ -100,3 +102,23 @@ def backtest(body: GraphExtrapolateRequest, request: Request) -> GraphBacktestRe
     """Leave-one-node-out backtest over the validation-clean calibrated nodes
     (plan Phase 8): per-node residuals + an aggregate calibration summary."""
     return graph_backtest.backtest(request.app.state.volfit, body)
+
+
+@router.get("/graph/edges", response_model=GraphEdgesResponse)
+def get_graph_edges(request: Request) -> GraphEdgesResponse:
+    """The persisted per-edge overrides (weight + beta); empty ⇒ auto-lattice."""
+    return GraphEdgesResponse(edges=request.app.state.volfit.graph_edges())
+
+
+@router.put("/graph/edges", response_model=GraphEdgesResponse)
+def put_graph_edges(body: GraphEdgesRequest, request: Request) -> GraphEdgesResponse:
+    """Replace the per-edge overrides (persisted). Empty list ⇒ back to the lattice."""
+    state = request.app.state.volfit
+    state.set_graph_edges(body.edges)
+    return GraphEdgesResponse(edges=state.graph_edges())
+
+
+@router.get("/graph/edges/lattice", response_model=GraphEdgesResponse)
+def get_lattice_edges(request: Request) -> GraphEdgesResponse:
+    """The auto-lattice edges as editable rows — the editor's 'seed from lattice'."""
+    return GraphEdgesResponse(edges=graph_extrapolation.lattice_edges(request.app.state.volfit))

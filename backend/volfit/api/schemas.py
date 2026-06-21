@@ -676,6 +676,34 @@ class GraphEdgeBeta(BaseModel):
     betaCurv: float = 1.0
 
 
+class GraphEdgeInput(BaseModel):
+    """One user-supplied directed edge: weight (TRUST) + per-handle beta (AMPLITUDE)
+    kept as separate fields (plan Phase 7 / Amendment D). A supplied edge list
+    defines the whole graph topology, overriding the auto-lattice; the node SET is
+    still the selected lit+dark universe. ``beta_ij`` need not equal ``beta_ji``."""
+
+    fromTicker: str
+    fromExpiry: str
+    toTicker: str
+    toExpiry: str
+    weight: float = Field(default=1.0, ge=0.0)  # directed conductance / trust
+    betaAtmVol: float = 1.0  # directed amplitude per handle
+    betaSkew: float = 1.0
+    betaCurv: float = 1.0
+
+
+class GraphEdgesResponse(BaseModel):
+    """The persisted per-edge graph overrides (GET/PUT /graph/edges)."""
+
+    edges: list[GraphEdgeInput]
+
+
+class GraphEdgesRequest(BaseModel):
+    """Replace the persisted per-edge overrides (empty list ⇒ back to the lattice)."""
+
+    edges: list[GraphEdgeInput]
+
+
 class GraphExtrapolateRequest(GraphSolverParams):
     """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
 
@@ -695,6 +723,11 @@ class GraphExtrapolateRequest(GraphSolverParams):
 
     #: Explicit per-edge per-handle beta overrides (take precedence over crossBeta).
     edgeBetas: list[GraphEdgeBeta] = []
+
+    #: Explicit edge list (weight + beta). When non-empty it defines the whole
+    #: topology (overrides the lattice + crossBeta/edgeBetas); empty falls back to
+    #: the persisted edges, then the auto-lattice (plan Phase 7).
+    edges: list[GraphEdgeInput] = []
 
 
 class GraphExtrapolateNode(BaseModel):

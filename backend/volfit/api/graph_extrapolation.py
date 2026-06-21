@@ -28,6 +28,7 @@ from volfit.api.graph_universe import (
     build_selected_universe,
 )
 from volfit.api.schemas import (
+    GraphEdgeInput,
     GraphExtrapolateNode,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
@@ -140,18 +141,51 @@ def _propagate_field(
     return HandleField(mean=mean, sd=sd, posteriors=tuple(posteriors))
 
 
-def _handle_beta_matrices(universe: "SelectedUniverse", request) -> list[np.ndarray] | None:
-    """Per-handle beta matrices (atm_vol, skew, curvature), or None when no beta is
-    requested (the byte-identical no-beta path, plan Phase 6).
+def lattice_edges(state: AppState) -> list[GraphEdgeInput]:
+    """The auto-lattice directed edges over the selected universe as editable
+    GraphEdgeInputs (weight from the lattice, betas 1) — the edge editor's
+    "seed from lattice" source (plan Phase 7)."""
+    from volfit.api.graph_universe import lattice_weights_for
 
-    ``crossBeta`` broadcasts to every cross-ticker edge / handle / direction;
-    ``edgeBetas`` then overrides named directed edges per handle."""
+    return [
+        GraphEdgeInput(
+            fromTicker=src[0], fromExpiry=src[1], toTicker=dst[0], toExpiry=dst[1], weight=w
+        )
+        for (src, dst), w in lattice_weights_for(state).items()
+    ]
+
+
+def _handle_beta_matrices(
+    universe: "SelectedUniverse", request, edges=None
+) -> list[np.ndarray] | None:
+    """Per-handle beta matrices (atm_vol, skew, curvature), or None when no beta is
+    requested (the byte-identical no-beta path, plan Phase 6/7).
+
+    When an explicit ``edges`` list is in effect, betas come from the edges (each
+    edge carries weight + per-handle beta). Otherwise ``crossBeta`` broadcasts to
+    every cross-ticker edge / handle / direction and ``edgeBetas`` overrides named
+    directed edges per handle."""
+    graph = universe.graph
+
+    if edges is not None:
+        mats = [beta_matrix(graph) for _ in range(N_HANDLES)]
+        any_beta = False
+        for e in edges:
+            src, dst = (e.fromTicker, e.fromExpiry), (e.toTicker, e.toExpiry)
+            if src in graph.index and dst in graph.index:
+                i, j = graph.index[src], graph.index[dst]
+                mats[0][i, j] = e.betaAtmVol
+                mats[1][i, j] = e.betaSkew
+                mats[2][i, j] = e.betaCurv
+                if e.betaAtmVol != 1.0 or e.betaSkew != 1.0 or e.betaCurv != 1.0:
+                    any_beta = True
+        return mats if any_beta else None
+
     cross_beta = request.crossBeta
     edge_betas = request.edgeBetas
     if (cross_beta is None or cross_beta == 1.0) and not edge_betas:
         return None
 
-    graph = universe.graph
     mats = [beta_matrix(graph) for _ in range(N_HANDLES)]  # all-ones per handle
     if cross_beta is not None:
         for i, j in graph.edges:  # undirected support; set both directions
@@ -169,12 +203,12 @@ def _handle_beta_matrices(universe: "SelectedUniverse", request) -> list[np.ndar
     return mats
 
 
-def _build_increment_priors(universe: "SelectedUniverse", request):
-    """Per-handle increment priors with optional per-edge beta (plan Phase 6).
+def _build_increment_priors(universe: "SelectedUniverse", request, edges=None):
+    """Per-handle increment priors with optional per-edge beta (plan Phase 6/7).
 
     Mirrors ``graph_service._build_priors`` (the same kappa/eta/lambda regime) but
     threads each handle's beta matrix into the directed residual ``L_dir^β``."""
-    betas = _handle_beta_matrices(universe, request)
+    betas = _handle_beta_matrices(universe, request, edges)
     priors = []
     for c, (s, eta) in enumerate(GRAPH_PRIOR_HYPER):
         ot_weight = request.lambdaScale / s**2 if request.lambdaScale > 0.0 else 0.0
@@ -222,7 +256,17 @@ def solve(
     # Local import avoids a module-load cycle (graph_nodes imports us for typing).
     from volfit.api.graph_nodes import resolve_priors
 
-    universe = build_selected_universe(state, request.calendarWeight, request.crossWeight)
+    # Resolve the edge topology: request edges win, then the persisted overrides,
+    # else None ⇒ the auto-lattice (plan Phase 7).
+    edges = list(request.edges) or state.graph_edges() or None
+    edge_tuples = (
+        [((e.fromTicker, e.fromExpiry), (e.toTicker, e.toExpiry), e.weight) for e in edges]
+        if edges
+        else None
+    )
+    universe = build_selected_universe(
+        state, request.calendarWeight, request.crossWeight, edges=edge_tuples
+    )
     if universe.graph is None:
         return None
 
@@ -275,7 +319,7 @@ def solve(
         else np.empty((0, N_HANDLES))
     )
 
-    increment_priors = _build_increment_priors(universe, request)
+    increment_priors = _build_increment_priors(universe, request, edges)
     field = _propagate_field(
         universe.graph,
         increment_priors,

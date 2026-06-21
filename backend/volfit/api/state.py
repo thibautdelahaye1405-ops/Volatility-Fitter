@@ -28,6 +28,7 @@ from volfit.api.schemas import (
     EventSpec,
     FitSettings,
     ForwardPolicy,
+    GraphEdgeInput,
     MarketSettings,
     OptionsSettings,
     SmilePoint,
@@ -37,7 +38,9 @@ from volfit.api.settings_persist import (
     clear_defaults,
     has_defaults,
     load_defaults,
+    load_graph_edges,
     save_defaults,
+    save_graph_edges,
 )
 from volfit.api.varswap_session import VarSwapSession
 from volfit.data.dividends import (
@@ -196,6 +199,12 @@ class AppState(UniverseMixin):
             # only loads quotes and fitting waits for the explicit Calibrate button
             # (no saved preference yet — a user "Save as default" still wins above).
             self._options = self._options.model_copy(update={"autoCalibrate": False})
+        #: Persisted per-edge graph overrides (plan Phase 7): weight + per-handle
+        #: beta per directed edge. Empty ⇒ the production solve uses the auto-lattice.
+        #: Restored from the store; the Graph edge editor PUTs replacements.
+        self._graph_edges: list[GraphEdgeInput] = _coerce_graph_edges(
+            load_graph_edges(self.store_path)
+        )
         self._market_settings: dict[str, MarketSettings] = {}
         #: Per-ticker event calendar (shared across workspaces). Events now drive
         #: the event-weighted variance clock used by every fit (volfit.calib.
@@ -1176,6 +1185,18 @@ class AppState(UniverseMixin):
             else:
                 self._dark_nodes.add((ticker, iso))
 
+    # ------------------------------------------------------- graph edge overrides
+    def graph_edges(self) -> list[GraphEdgeInput]:
+        """The persisted per-edge graph overrides (empty ⇒ auto-lattice)."""
+        with self._lock:
+            return list(self._graph_edges)
+
+    def set_graph_edges(self, edges: list[GraphEdgeInput]) -> None:
+        """Replace the per-edge overrides and persist them (best-effort)."""
+        with self._lock:
+            self._graph_edges = list(edges)
+        save_graph_edges(self.store_path, [e.model_dump() for e in edges])
+
     # --------------------------------------------------------------- universe
     @property
     def universe(self):
@@ -1184,6 +1205,18 @@ class AppState(UniverseMixin):
     @universe.setter
     def universe(self, value) -> None:
         self._universe = value
+
+
+def _coerce_graph_edges(raw: list[dict]) -> list[GraphEdgeInput]:
+    """Validate persisted edge dicts into GraphEdgeInput, dropping unreadable ones
+    (a stale/partial blob degrades to fewer edges, never a startup crash)."""
+    out: list[GraphEdgeInput] = []
+    for item in raw:
+        try:
+            out.append(GraphEdgeInput(**item))
+        except Exception:  # noqa: BLE001 — skip a malformed persisted edge
+            continue
+    return out
 
 
 def _source_id_of(provider: OptionChainProvider) -> str:

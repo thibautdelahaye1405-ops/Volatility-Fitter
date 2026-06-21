@@ -84,19 +84,35 @@ def _selected_ladders(state: AppState) -> dict[str, list[str]]:
     return ladders
 
 
+def lattice_weights_for(
+    state: AppState,
+    calendar_weight: float | None = None,
+    cross_weight: float | None = None,
+) -> dict[tuple[NodeId, NodeId], float]:
+    """The auto-lattice directed weights over the selected universe (calendar
+    chains + cross-ticker same-expiry). Exposed so the edge editor can seed from
+    the lattice the solve would otherwise build."""
+    ladders = _selected_ladders(state)
+    calendar_w = SAME_TICKER_WEIGHT if calendar_weight is None else calendar_weight
+    cross_w = CROSS_TICKER_WEIGHT if cross_weight is None else cross_weight
+    return _lattice_weights(list(ladders), ladders, calendar_w, cross_w)
+
+
 def build_selected_universe(
     state: AppState,
     calendar_weight: float | None = None,
     cross_weight: float | None = None,
+    edges: list[tuple[NodeId, NodeId, float]] | None = None,
 ) -> SelectedUniverse:
     """Build the production graph over the selected lit+dark universe.
 
     Nodes = every active ticker x its selected expiries (lit/dark read from
-    ``state.node_lit``); edges = the lattice (calendar chains + cross-ticker
-    same-expiry) restricted to that node set, with optional ``calendar_weight`` /
-    ``cross_weight`` overrides (null keeps the service defaults). Unselected
-    provider expiries are never included (plan Amendment C). An empty selection
-    yields an empty universe with ``graph=None`` rather than crashing.
+    ``state.node_lit``). Edges default to the auto-lattice (calendar chains +
+    cross-ticker same-expiry) with optional ``calendar_weight`` / ``cross_weight``
+    overrides; an explicit ``edges`` list of ``(src_name, dst_name, weight)``
+    REPLACES the lattice (restricted to the selected node set — edges naming an
+    unselected node are dropped) (plan Phase 7). Unselected provider expiries are
+    never included (Amendment C). An empty selection yields ``graph=None``.
     """
     ladders = _selected_ladders(state)
     nodes: list[SelectedNode] = []
@@ -107,8 +123,14 @@ def build_selected_universe(
     if not nodes:
         return SelectedUniverse(nodes=(), graph=None)
 
-    calendar_w = SAME_TICKER_WEIGHT if calendar_weight is None else calendar_weight
-    cross_w = CROSS_TICKER_WEIGHT if cross_weight is None else cross_weight
-    weights = _lattice_weights(list(ladders), ladders, calendar_w, cross_w)
+    names = {node.name for node in nodes}
+    if edges is not None:
+        weights = {
+            (src, dst): float(w) for src, dst, w in edges if src in names and dst in names
+        }
+    else:
+        calendar_w = SAME_TICKER_WEIGHT if calendar_weight is None else calendar_weight
+        cross_w = CROSS_TICKER_WEIGHT if cross_weight is None else cross_weight
+        weights = _lattice_weights(list(ladders), ladders, calendar_w, cross_w)
     graph = build_graph([node.name for node in nodes], weights)
     return SelectedUniverse(nodes=tuple(nodes), graph=graph)

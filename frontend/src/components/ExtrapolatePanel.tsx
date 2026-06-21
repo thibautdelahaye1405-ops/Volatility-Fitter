@@ -1,7 +1,8 @@
 // Production extrapolation aside (plan Phase 7/8 UI): runs the prior-anchored
 // solve + the leave-one-node-out backtest and lists each node's prior -> posterior
 // ATM move with provenance. Distinct from the manual-shift sandbox observations.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import EdgeEditor from "./EdgeEditor";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
 
 interface ExtrapolatePanelProps {
@@ -30,11 +31,16 @@ export default function ExtrapolatePanel({
   setCrossBeta,
   onOpenSmile,
 }: ExtrapolatePanelProps) {
+  const [editing, setEditing] = useState(false);
   const rows = useMemo(
     () =>
       (extra.nodes ?? [])
         .slice()
         .sort((a, b) => a.ticker.localeCompare(b.ticker) || a.expiry.localeCompare(b.expiry)),
+    [extra.nodes],
+  );
+  const editorNodes = useMemo(
+    () => (extra.nodes ?? []).map((n) => ({ ticker: n.ticker, expiry: n.expiry })),
     [extra.nodes],
   );
 
@@ -87,6 +93,13 @@ export default function ExtrapolatePanel({
         >
           {extra.backtesting ? "Backtesting…" : "Backtest"}
         </button>
+        <button
+          className={buttonClass}
+          title="Edit the per-edge graph weights + beta"
+          onClick={() => setEditing((v) => !v)}
+        >
+          {editing ? "Done" : "Edges"}
+        </button>
       </div>
 
       {extra.error !== null && (
@@ -110,7 +123,15 @@ export default function ExtrapolatePanel({
         </div>
       )}
 
-      {/* Per-node prior -> posterior table */}
+      {/* Edge editor (Phase 7) replaces the node table when open */}
+      {editing ? (
+        <EdgeEditor
+          nodes={editorNodes}
+          onSaved={() => void extra.run(body)}
+          onClose={() => setEditing(false)}
+        />
+      ) : (
+      /* Per-node prior -> posterior table */
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
           <p className="py-2 text-xs text-slate-500">
@@ -150,6 +171,7 @@ export default function ExtrapolatePanel({
           </div>
         )}
       </div>
+      )}
 
       <p className="mt-1 shrink-0 text-[10px] text-slate-600">
         Click a node to open its reconstructed smile · provenance per node from the prior.
