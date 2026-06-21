@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from volfit.api import graph_service
+from volfit.api import graph_extrapolation, graph_service
 from volfit.api.schemas import (
     GraphAutotuneRequest,
     GraphAutotuneResponse,
+    GraphExtrapolateRequest,
+    GraphExtrapolateResponse,
     GraphNodeInfo,
     GraphNodesResponse,
     GraphSolveRequest,
@@ -57,3 +59,11 @@ def autotune_graph(body: GraphAutotuneRequest, request: Request) -> GraphAutotun
         return graph_service.autotune_graph(request.app.state.volfit, body)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.post("/graph/extrapolate", response_model=GraphExtrapolateResponse)
+def extrapolate(body: GraphExtrapolateRequest, request: Request) -> GraphExtrapolateResponse:
+    """Production prior-anchored extrapolation over the selected lit+dark universe
+    (plan Phase 3): transported priors -> lit-calibration innovations -> graph
+    posterior. Distinct from the manual-shift sandbox ``POST /graph/solve``."""
+    return graph_extrapolation.extrapolate(request.app.state.volfit, body)

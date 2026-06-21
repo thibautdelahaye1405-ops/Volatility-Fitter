@@ -658,6 +658,57 @@ class GraphNodesResponse(BaseModel):
     nodes: list[GraphNodeInfo]
 
 
+# ----------------------------------------------- production graph extrapolation
+class GraphExtrapolateRequest(GraphSolverParams):
+    """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
+
+    Unlike the sandbox ``GraphSolveRequest``, observations are NOT manually typed:
+    they are derived server-side as ``calibrated_handles - transported_prior_handles``
+    on the lit nodes (plan Amendment A). The solver knobs (eta/kappa/lambda/nu,
+    calendar/cross weights) carry over from ``GraphSolverParams``.
+    """
+
+    #: Diagnostic/stress override: use flat ATM-only baselines at every node,
+    #: ignoring any saved prior (plan Phase 2 flat_atm).
+    flatAtm: bool = False
+
+
+class GraphExtrapolateNode(BaseModel):
+    """One node's prior -> posterior ATM-handle summary with full provenance.
+
+    Bulk payload is ATM summaries only; full reconstructed curves are fetched per
+    node on demand via the node-smile route (plan Amendment E / Phase 5)."""
+
+    ticker: str
+    expiry: str
+    t: float  # calendar year fraction (display)
+    lit: bool
+    calibrated: bool  # lit AND has a calibration today (so it is an observation)
+    priorSource: str  # active_transported | nearest_expiry_transported | ...
+    priorAsOf: str | None = None
+    transportDistance: float  # h = log(F_now / F_prior)
+    validForValidation: bool
+    # Baseline (transported prior) handles.
+    priorAtmVol: float
+    priorSkew: float
+    priorCurv: float
+    # Posterior (extrapolated) handles + ATM credible band.
+    postAtmVol: float
+    postSkew: float
+    postCurv: float
+    shiftBp: float  # (post - prior) ATM vol, basis points
+    sd: float  # posterior ATM-vol standard deviation
+    bandLo: float
+    bandHi: float
+    innovationBp: float | None = None  # lit nodes: (calibrated - prior) ATM vol, bp
+
+
+class GraphExtrapolateResponse(BaseModel):
+    """Posterior field over every selected node (production extrapolation)."""
+
+    nodes: list[GraphExtrapolateNode]
+
+
 # ------------------------------------------------------------------ scenario
 class ScenarioRequest(BaseModel):
     """SSR scenario: shift one smile for a spot move under a dynamics regime.

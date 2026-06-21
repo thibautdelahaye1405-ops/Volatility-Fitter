@@ -32,17 +32,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from volfit.api import prior_transport
-from volfit.api.graph_extrapolation import SelectedUniverse
 from volfit.api.graph_service import GRAPH_PRECISION
 from volfit.api.schemas_prior import PriorNode, PriorSurfaceSnapshot
 from volfit.api.service import fit_or_get
 from volfit.api.state import AppState
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.quadrature import build_slice
+
+if TYPE_CHECKING:  # avoid a runtime import cycle (graph_extrapolation imports us)
+    from volfit.api.graph_extrapolation import SelectedUniverse
 
 #: Per-source baseline-precision scale on GRAPH_PRECISION (the active-prior tier).
 #: A weaker provenance enters the solver with materially less confidence so its
@@ -247,7 +250,7 @@ def _flat_baseline(f_now: float | None, source: str, flat_atm_vol: float) -> Nod
 
 
 def resolve_priors(
-    state: AppState, universe: SelectedUniverse, **opts
+    state: AppState, universe: "SelectedUniverse", **opts
 ) -> tuple[NodePrior, ...]:
     """Resolve baselines for every node of the universe, in graph order."""
     return tuple(
