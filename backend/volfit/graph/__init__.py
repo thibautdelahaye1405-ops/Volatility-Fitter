@@ -7,6 +7,7 @@ increment prior built from directed-graph smoothness and an optimal-transport
 tangent metric, with honest marginal posterior precisions.
 """
 
+from volfit.graph.beta import beta_matrix, directed_residual_beta
 from volfit.graph.build import SmileGraph, build_graph
 from volfit.graph.operators import (
     directed_residual,
@@ -22,9 +23,11 @@ __all__ = [
     "GraphPosterior",
     "IncrementPrior",
     "SmileGraph",
+    "beta_matrix",
     "build_graph",
     "build_increment_prior",
     "directed_residual",
+    "directed_residual_beta",
     "incidence_matrix",
     "marginal_log_likelihood",
     "mobility_laplacian",

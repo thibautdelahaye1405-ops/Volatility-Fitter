@@ -44,8 +44,8 @@ from volfit.api.state import AppState
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.quadrature import build_slice
 
-if TYPE_CHECKING:  # avoid a runtime import cycle (graph_extrapolation imports us)
-    from volfit.api.graph_extrapolation import SelectedUniverse
+if TYPE_CHECKING:
+    from volfit.api.graph_universe import SelectedUniverse
 
 #: Per-source baseline-precision scale on GRAPH_PRECISION (the active-prior tier).
 #: A weaker provenance enters the solver with materially less confidence so its
