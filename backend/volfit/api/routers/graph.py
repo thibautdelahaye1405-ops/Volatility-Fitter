@@ -13,9 +13,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from volfit.api import (
     graph_backtest,
     graph_extrapolation,
+    graph_lv,
     graph_reconstruct,
     graph_service,
 )
+from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse
 from volfit.api.schemas import (
     GraphAutotuneRequest,
     GraphAutotuneResponse,
@@ -122,3 +124,13 @@ def put_graph_edges(body: GraphEdgesRequest, request: Request) -> GraphEdgesResp
 def get_lattice_edges(request: Request) -> GraphEdgesResponse:
     """The auto-lattice edges as editable rows — the editor's 'seed from lattice'."""
     return GraphEdgesResponse(edges=graph_extrapolation.lattice_edges(request.app.state.volfit))
+
+
+@router.post("/graph/extrapolate/lv/{ticker}", response_model=AffineFitResponse)
+def extrapolate_lv(
+    ticker: str, body: AffineFitRequest, request: Request
+) -> AffineFitResponse:
+    """Project the ticker's graph-extrapolated smiles onto an affine Local-Vol
+    surface (plan Phase 9 / Amendment G): the extrapolation is the target, then a
+    standard LV calibration runs against it."""
+    return graph_lv.project_to_lv(request.app.state.volfit, ticker.upper(), body)

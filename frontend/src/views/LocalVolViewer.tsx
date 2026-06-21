@@ -83,7 +83,8 @@ const chartMessage = (text: string) => (
 export default function LocalVolViewer() {
   const {
     data, loading, refreshing, error, reload, ticker, setTicker, tickers,
-    varSwapEnabled, varSwapNonce, applyVarSwap, undoVarSwap, redoVarSwap,
+    varSwapEnabled, varSwapNonce, graphSource, setGraphSource,
+    applyVarSwap, undoVarSwap, redoVarSwap,
   } = useAffine();
 
   const { source, spotVersion, fitMode } = useSmileSession();
@@ -318,6 +319,20 @@ export default function LocalVolViewer() {
             </select>
           </label>
         )}
+
+        {/* Source: live quotes vs the graph-extrapolated LV projection (Phase 9) */}
+        <button
+          onClick={() => setGraphSource(!graphSource)}
+          title="Calibrate the LV surface to the graph-extrapolated smiles instead of the live quotes"
+          className={[
+            "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+            graphSource
+              ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
+              : "border-slate-700 text-slate-400 hover:text-slate-200",
+          ].join(" ")}
+        >
+          Graph-extrapolated
+        </button>
 
         {data && (
           <span className="ml-auto flex items-center gap-3 font-mono text-[11px] text-slate-500">

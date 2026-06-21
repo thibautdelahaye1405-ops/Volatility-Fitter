@@ -119,6 +119,11 @@ export interface UseAffineResult {
   tickers: string[];
   /** Whether var-swap quoting is enabled (OptionsSettings.varSwapEnabled). */
   varSwapEnabled: boolean;
+  /** Source the LV surface from the GRAPH-EXTRAPOLATED smiles (the affine fit is
+   *  calibrated to the graph reconstruction) instead of the live quotes (plan
+   *  Phase 9 / Amendment G). */
+  graphSource: boolean;
+  setGraphSource: (on: boolean) => void;
   /** Bumped on every var-swap edit; feed to useAffineView so the derived
    *  (density/term/table) views refetch the recalibrated surface too. */
   varSwapNonce: number;
@@ -134,6 +139,7 @@ export function useAffine(): UseAffineResult {
     useSmileSession();
   const [varSwapEnabled, setVarSwapEnabled] = useState(true);
   const [varSwapNonce, setVarSwapNonce] = useState(0);
+  const [graphSource, setGraphSource] = useState(false);
 
   const [data, setData] = useState<AffineFitResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,8 +173,13 @@ export function useAffine(): UseAffineResult {
     if (hasDataRef.current) setRefreshing(true);
     else setLoading(true);
     setError(null);
+    // Graph-extrapolated source projects the graph reconstruction onto an LV
+    // surface (POST /graph/extrapolate/lv); else the live-quote calibration.
+    const endpoint = graphSource
+      ? `/graph/extrapolate/lv/${ticker}`
+      : `/fit/affine/${ticker}`;
     api
-      .post<AffineFitResponse>(`/fit/affine/${ticker}`, {
+      .post<AffineFitResponse>(endpoint, {
         // Viewed fit target (mid / bid-ask / haircut), matching the Parametric
         // workspace + the Calibrate target. Hardcoding "mid" showed a stale mid
         // surface (auto-fit on read) whenever the user calibrated in a band mode,
@@ -191,7 +202,8 @@ export function useAffine(): UseAffineResult {
     return () => controller.abort();
     // spotVersion bumps on a spot move / calibration / Options change -> refetch.
     // fitMode: switching the viewed fit target re-reads that mode's surface.
-  }, [ticker, attempt, spotVersion, fitMode]);
+    // graphSource: toggling the source re-fetches from the other endpoint.
+  }, [ticker, attempt, spotVersion, fitMode, graphSource]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
@@ -238,6 +250,8 @@ export function useAffine(): UseAffineResult {
     tickers: universe?.tickers ?? [],
     varSwapEnabled,
     varSwapNonce,
+    graphSource,
+    setGraphSource,
     applyVarSwap,
     undoVarSwap,
     redoVarSwap,

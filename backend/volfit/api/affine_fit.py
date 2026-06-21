@@ -741,9 +741,17 @@ def _prior_anchor_quotes(
     return extra_opts, extra_vs
 
 
-def _fit(state: AppState, ticker: str, request: AffineFitRequest) -> AffineFitResponse:
-    """Run the calibration and assemble the response (uncached inner step)."""
-    rows = _gather(state, ticker, request.fitMode)
+def _fit(
+    state: AppState, ticker: str, request: AffineFitRequest, rows=None
+) -> AffineFitResponse:
+    """Run the calibration and assemble the response (uncached inner step).
+
+    ``rows`` defaults to the live chain (``_gather``); a caller may inject its own
+    ``(iso, tau, k, w, prepared, band)`` rows — e.g. the graph-extrapolation LV
+    projection (``graph_lv``), which swaps the target total variance ``w`` for the
+    graph-reconstructed smile so the LV surface is fitted to the extrapolation."""
+    if rows is None:
+        rows = _gather(state, ticker, request.fitMode)
     if len(rows) < 2:
         raise ValueError("affine surface fit needs at least two expiries with quotes")
     opts = state.options()  # grid size + roughness are global hyperparameters now
