@@ -7,6 +7,7 @@
 // bar + disabled state on the action that is currently in flight — so the click
 // target still shows it is working. Mode-dependent disabled states (Real-time
 // spots, auto options) are kept because they explain why a button is inert.
+import { useRef, useState } from "react";
 import type { UseWorkflowResult } from "../state/useWorkflow";
 
 const BTN =
@@ -33,6 +34,28 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
   const stale = calib?.staleNodes ?? 0;
   const savedTickers = priors?.tickers.filter((t) => t.nodeCount > 0).length ?? 0;
   const activePriors = priors?.tickers.filter((t) => t.activeSource).length ?? 0;
+
+  // Transient "✓" acknowledgments on the prior buttons (no toast system; mirrors
+  // the per-node Save-prior flash). Tells the user the bulk action actually ran.
+  const [flash, setFlash] = useState<{ save?: string; fetch?: string }>({});
+  const timers = useRef<number[]>([]);
+  const showFlash = (which: "save" | "fetch", text: string) => {
+    setFlash((f) => ({ ...f, [which]: text }));
+    timers.current.push(
+      window.setTimeout(() => setFlash((f) => ({ ...f, [which]: undefined })), 2400),
+    );
+  };
+  const onSavePriors = () =>
+    void savePriors().then((r) => {
+      if (r) showFlash("save", r.nodes > 0 ? `Saved ${r.nodes} ✓` : "Nothing to save");
+    });
+  const onFetchPriors = () =>
+    void fetchPriors().then((r) => {
+      if (r) {
+        const active = r.tickers.filter((t) => t.source !== "none").length;
+        showFlash("fetch", active > 0 ? `Activated ${active} ✓` : "No prior found");
+      }
+    });
 
   return (
     <div className="flex items-center gap-2 text-xs">
@@ -84,22 +107,24 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
 
       {/* Save all current calibrations as priors (a full surface snapshot each) */}
       <button
-        onClick={() => void savePriors()}
+        onClick={onSavePriors}
         disabled={busy}
         title={
           savedTickers > 0
             ? `Save all current calibrations as priors (${savedTickers} ticker(s) saved)`
             : "Save all current calibrations as priors"
         }
-        className={`${BTN} ${pending === "savePriors" ? WORKING : ACTIVE}`}
+        className={`${BTN} ${
+          flash.save ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300" : pending === "savePriors" ? WORKING : ACTIVE
+        }`}
       >
-        Save priors
+        {flash.save ?? "Save priors"}
         {pending === "savePriors" && <WorkingBar />}
       </button>
 
       {/* Fetch priors (freshness ladder) — activates the dotted spot-updated overlay */}
       <button
-        onClick={() => void fetchPriors()}
+        onClick={onFetchPriors}
         disabled={busy || savedTickers === 0}
         title={
           savedTickers === 0
@@ -109,10 +134,16 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
               : "Fetch priors (Saved → 15m-before-prev-close → prev-close)"
         }
         className={`${BTN} ${
-          savedTickers === 0 ? MUTED : pending === "fetchPriors" ? WORKING : ACTIVE
+          flash.fetch
+            ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
+            : savedTickers === 0
+              ? MUTED
+              : pending === "fetchPriors"
+                ? WORKING
+                : ACTIVE
         }`}
       >
-        Fetch priors
+        {flash.fetch ?? "Fetch priors"}
         {pending === "fetchPriors" && <WorkingBar />}
       </button>
     </div>

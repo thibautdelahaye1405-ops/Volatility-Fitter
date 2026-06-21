@@ -93,10 +93,25 @@ export interface UseWorkflowResult {
   calibrate: () => Promise<void>;
   /** Saved-prior availability across the active universe (null until first poll). */
   priors: PriorStatus | null;
-  /** Snapshot every ticker's current calibration as a prior (POST /priors/save-all). */
-  savePriors: () => Promise<void>;
-  /** Resolve + activate each ticker's prior via the freshness ladder (POST /priors/fetch). */
-  fetchPriors: () => Promise<void>;
+  /** Snapshot every ticker's current calibration as a prior (POST /priors/save-all).
+   *  Returns the save result (tickers + total nodes snapshotted + whether it was
+   *  persisted to disk) so the UI can acknowledge the action. */
+  savePriors: () => Promise<PriorSaveResult | undefined>;
+  /** Resolve + activate each ticker's prior via the freshness ladder (POST /priors/fetch).
+   *  Returns the per-ticker fetch outcome (source + node count). */
+  fetchPriors: () => Promise<PriorFetchResult | undefined>;
+}
+
+/** POST /priors/save-all result. */
+export interface PriorSaveResult {
+  tickers: string[];
+  nodes: number;
+  persisted: boolean;
+}
+
+/** POST /priors/fetch result (per-ticker freshness-ladder outcome). */
+export interface PriorFetchResult {
+  tickers: { ticker: string; source: string; dataTs: string | null; nodeCount: number }[];
 }
 
 export function useWorkflow(
@@ -233,8 +248,9 @@ export function useWorkflow(
   const savePriors = useCallback(async () => {
     setPending("savePriors");
     try {
-      await api.post("/priors/save-all");
+      const res = await api.post<PriorSaveResult>("/priors/save-all");
       await refreshPriors();
+      return res;
     } finally {
       setPending(null);
     }
@@ -243,9 +259,10 @@ export function useWorkflow(
   const fetchPriors = useCallback(async () => {
     setPending("fetchPriors");
     try {
-      await api.post("/priors/fetch");
+      const res = await api.post<PriorFetchResult>("/priors/fetch");
       await refreshPriors();
       refreshViews(); // the dotted, spot-updated prior overlays change on every view
+      return res;
     } finally {
       setPending(null);
     }
