@@ -43,8 +43,13 @@ Docs/      Technical notes (LaTeX)
   **event-weighted variance clock** (events add day-weights; optional 1Y-budget
   normalization) re-prices every vol in event time, with **auto-calibration** of
   the event calendar from the term structure.
-- **Graph extrapolation**: OT-Bayesian propagation of sparse ATM-handle
-  observations across a (ticker, expiry) smile universe with credible bands.
+- **Graph extrapolation**: OT-Bayesian propagation across a (ticker, expiry) smile
+  universe — a manual-shift **sandbox** plus a **prior-anchored production path**
+  (transported prior → lit-calibration innovation → graph posterior → reconstructed
+  dark smiles, in the chosen model, with credible bands + quote-vs-market metrics),
+  data-derived precision, a leave-one-node-out **backtest**, a persisted per-edge
+  **weight+beta editor**, and projection of the extrapolated smiles onto a
+  **local-vol surface**.
 - **Data**: four interchangeable providers — deterministic **synthetic**
   (offline), **Yahoo Finance** (yfinance), **Bloomberg** (xbbg, live Terminal),
   **Massive** (Massive.com / ex-Polygon REST) — behind one in-app **Data Source
@@ -100,8 +105,12 @@ Docs/      Technical notes (LaTeX)
     features** (arb-fix / events / var-swaps / auto-load-prior + the
     calibration/fetch triggers) and **Spot-vol dynamics**. One Apply commits both
     the fit and options settings.
-  - **Graph** — light/dim nodes (shared with Universe), solver panel (κ/η/λ/ν,
-    auto-tune η, lasso), posterior shift + uncertainty overlay.
+  - **Graph** — a **Sandbox** mode (light/dim nodes shared with Universe, solver
+    panel κ/η/λ/ν, auto-tune η, lasso, posterior shift + uncertainty overlay) and a
+    production **Extrapolate** mode over the selected lit+dark universe: per-node
+    prior→posterior moves with provenance, flat-baseline + cross-β knobs, a
+    leave-one-node-out backtest, an edge editor, and drill-in to a node's
+    reconstructed smile + band overlaid on its live quotes.
   - **Universe** — provider symbol search, per-ticker expiry selection, and a
     lit/dark node matrix beside the active set, plus named universes.
   - **View** — display preferences (colour scheme: Dark / Light / High-contrast /

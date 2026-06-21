@@ -3,7 +3,13 @@
 *Written 2026-06-21 for a fresh session. Companion to
 `Docs/graph_extrapolation_status_note.md` (gap analysis) and
 `Docs/graph_extrapolation_status_note_addon.md` (the six design decisions).
-Read all three before starting. **This is a plan only — nothing here is implemented yet.***
+Read all three before starting.
+
+**STATUS (updated 2026-06-21): Phases 1–9 are IMPLEMENTED and merged to `main`**
+(commit `3cc909f` + the LV-projection follow-up); Phase 10 (sparse perf) is
+deferred. See ROADMAP.md "STATUS" for the as-built summary. This document is kept
+as the original plan of record; the wording below ("nothing implemented yet", "this
+is a plan only") describes its state at authoring time, not the current code.*
 
 ---
 
