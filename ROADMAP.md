@@ -53,12 +53,20 @@ the production path is entirely additive. The spine:
   (RMS / in-band hit / ζ) and a dismiss ✕ (`graphFocus.tsx`, `useGraphNodeSmile.ts`,
   `SmileChart` overlay props). Strict-TS green; verified in-app.
 
+- **Phase 7 edge editor (DONE)** — user-supplied sparse bi-directed weighted graph
+  with per-edge weight (trust) + beta (amplitude). `GraphEdgeInput`; an explicit
+  edge list overrides the lattice over the selected node set; persisted overrides
+  round-trip (`settings_persist` graph_edges, GET/PUT `/graph/edges`,
+  `/graph/edges/lattice` seed); solve resolves request → persisted → lattice.
+  `_stationary_distribution` gained a teleport-damped fallback so a sparse/
+  disconnected (reducible) user graph no longer fails the singular solve
+  (irreducible graphs byte-identical). Frontend: an Edge editor in the Extrapolate
+  panel (`EdgeEditor.tsx`, `useGraphEdges.ts`) — seed/add/remove/edit + persist.
+
 Tests: `test_graph_{extrapolation,node_priors,extrapolate_solve,precision,
-reconstruct,beta,backtest}.py` (~50 new). **Full suite 696 passed, 1 skipped.**
+reconstruct,beta,backtest,edges}.py` (~58 new). **Full suite 704 passed, 1 skipped.**
 
 **Next up (remaining plan phases):**
-- **Phase 7 edge inputs** — a persisted per-edge weight + beta editor (the backend
-  accepts `edgeBetas`; UI exposes only the single `crossBeta` knob so far).
 - **Phase 9** — model-agnostic native reconstruction (SVI / Multi-Core SIV target
   fit; Local-Vol as a projection target, not native param transport — Amendment G).
 - **Phase 10** — sparse perf (deferred; only when selected universes ≫ 10³ nodes).
