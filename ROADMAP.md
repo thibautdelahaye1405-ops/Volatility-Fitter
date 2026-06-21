@@ -46,15 +46,17 @@ the production path is entirely additive. The spine:
 - **Frontend** — Sandbox/Extrapolate toggle in the Graph workspace
   (`useGraphExtrapolation.ts`, `ExtrapolatePanel.tsx`): runs the solve + backtest,
   lists per-node prior→posterior moves with provenance, flatAtm + crossBeta knobs,
-  drill-in. Strict-TS build green.
+  drill-in; the chart draws the full selected universe in Extrapolate mode.
+- **Phase 5 live overlay (DONE)** — drilling into a node overlays its GET
+  node-smile reconstruction (violet posterior curve + shaded credible band) on the
+  live quotes in the Smile viewer, with a GRAPH provenance + quote-metrics badge
+  (RMS / in-band hit / ζ) and a dismiss ✕ (`graphFocus.tsx`, `useGraphNodeSmile.ts`,
+  `SmileChart` overlay props). Strict-TS green; verified in-app.
 
 Tests: `test_graph_{extrapolation,node_priors,extrapolate_solve,precision,
 reconstruct,beta,backtest}.py` (~50 new). **Full suite 696 passed, 1 skipped.**
 
 **Next up (remaining plan phases):**
-- **Phase 5 frontend overlay** — wire the drill-in to draw the GET node-smile
-  reconstructed curve + band over live quotes in the Smile viewer (backend ready;
-  the drill-in currently opens the normal smile).
 - **Phase 7 edge inputs** — a persisted per-edge weight + beta editor (the backend
   accepts `edgeBetas`; UI exposes only the single `crossBeta` knob so far).
 - **Phase 9** — model-agnostic native reconstruction (SVI / Multi-Core SIV target
