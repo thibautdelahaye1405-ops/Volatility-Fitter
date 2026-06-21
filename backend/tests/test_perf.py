@@ -47,7 +47,7 @@ BUDGET_MS = {
     "lqd_slice_fit": 350.0,         # ~35 ms local (was ~95; grid/Simpson cache + 2001-node opt grid)
     "graph_update_1k": 2500.0,      # ~700 ms local; Phase-4 target < 1 s @ 1k nodes
     "localvol_forward": 250.0,      # ~20 ms local; CN Dupire forward, 2 expiries
-    "deamericanize_chain": 1800.0,  # ~630 ms local; ~80-quote vectorized CRR de-Am
+    "deamericanize_chain": 1800.0,  # ~3 ms numba / ~350 ms numpy fallback; ~80-quote CRR de-Am
     "affine_localvol_default": 3000.0,  # ~1.0 s local; 143-vtx LV surface fit (Stage 0 rail)
     "affine_localvol_heavy": 6000.0,    # ~2.0 s local; 255-vtx LV fit, max_nfev capped
     "affine_localvol_gn_heavy": 4000.0,  # ~1.2 s local; 255-vtx Stage-5 matrix-free GN (full converge)
@@ -219,6 +219,34 @@ def test_perf_deamericanize_chain(perf_report):
         lambda: deamericanize_batch(is_call, prices, spot, k, t, r, q),
         repeat=5,
     )
+
+
+def test_perf_deamericanize_numba_speedup(monkeypatch):
+    """Stage 4 gate: the compiled kernel is >= 2x the NumPy fallback on a wide
+    chain, with JIT compile excluded (first call is a warmup). Skipped where
+    Numba is unavailable (the fallback is then the only path)."""
+    from volfit.core import american_numba
+
+    if not american_numba.NUMBA_AVAILABLE:
+        pytest.skip("numba not available; only the NumPy fallback exists")
+
+    spot, t, r, q = 100.0, 0.5, 0.05, 0.02
+    forward = spot * float(np.exp((r - q) * t))
+    strikes = np.concatenate([np.linspace(0.55, 1.75, 150) * forward] * 2)  # ~300 quotes
+    is_call = np.concatenate([np.ones(150, bool), np.zeros(150, bool)])
+    sigma = 0.2 + 0.05 * np.log(strikes / forward) ** 2
+    prices = binomial_price_batch(
+        is_call, spot, strikes, t, sigma, r, q, n_steps=DEFAULT_BATCH_STEPS, american=True
+    )
+    call = lambda: deamericanize_batch(is_call, prices, spot, strikes, t, r, q)  # noqa: E731
+
+    numba_ms = _median_ms(call, repeat=5, warmup=2)  # warmup absorbs JIT compile
+    monkeypatch.setattr(american_numba, "NUMBA_AVAILABLE", False)
+    numpy_ms = _median_ms(call, repeat=3, warmup=1)
+
+    speedup = numpy_ms / numba_ms
+    print(f"\n  deam numba {numba_ms:.1f} ms vs numpy {numpy_ms:.1f} ms  ({speedup:.1f}x)")
+    assert speedup >= 2.0, f"numba de-Am only {speedup:.1f}x the NumPy path"
 
 
 # ---------------------------------------------------------------------------

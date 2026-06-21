@@ -5,8 +5,7 @@ preparation currently affects the local-vol calibration path, quantifies the
 cost on the Bloomberg fixture, and proposes a staged roadmap for making it
 faster without weakening the price-quality contract.*
 
-> **Implementation status (2026-06-21).** Stages 0–3 SHIPPED (branch
-> `perf/deamericanization`).
+> **Implementation status (2026-06-21).** Stages 0–4 SHIPPED and merged to `main`.
 > - **Stage 1** — `BATCH_BISECTIONS 45 → 24` (`core/american.py`). Isolated de-Am
 >   perf rail **825 ms → 390 ms (~2.1×)**; IV drift vs the 45-bisection baseline
 >   locked `< 0.01 vol bp` (`test_quotes_deam.test_batch_bisections_24_matches_45_baseline`).
@@ -24,11 +23,23 @@ faster without weakening the price-quality contract.*
 >   tree work is the rows between the buffered cut and the final 4 sd cut.
 >   `PreparedQuotes.n_deam_input` exposes rows actually fed to de-Am.
 >   `test_quotes_deam` ×2 (wide-chain byte-identical + count drop; zero-bid row).
+> - **Stage 4** — `core/american_numba.py`: `@njit(cache,nogil)` scalar CRR
+>   (`_crr_price`) + `@njit(parallel)` per-quote bracket/bisect kernel
+>   (`_deam_kernel`, `prange` over quotes). One scalar CRR per quote (no
+>   `(n_quote,n)` slabs), up-factor powers precomputed once per eval (no per-step
+>   `exp`), quotes parallel across cores. `deamericanize_batch` dispatches to it
+>   when Numba is present, else the lockstep NumPy `_deam_bisect_numpy` fallback;
+>   the two agree to tree rounding (observed **max diff 0.0** + identical NaN
+>   alignment, incl. discrete cash dividends). **~60× on a 300-quote wide chain**;
+>   the ~80-quote rail dropped from ~630 ms to ~5 ms. Perf gate
+>   `test_perf_deamericanize_numba_speedup` (>=2×, JIT-warmup excluded);
+>   correctness `test_american_numba.py` (5).
 > - **Stage 0** — drift + invalidation rails added above (a full Bloomberg
 >   `prepare_quotes` timing rail remains a nice-to-have).
-> - **Not yet done:** Stages 4 (Numba kernel), 5 (selective parallelism),
->   6 (analytic American), 7 (cross-update reuse), 8 (research).
-> Full suite **641 passed, 1 skipped**; ruff + strict-TS green.
+> - **Not yet done:** Stages 5 (selective parallelism — likely moot now that the
+>   kernel itself parallelizes across quotes), 6 (analytic American),
+>   7 (cross-update reuse), 8 (research).
+> Full suite **647 passed, 1 skipped**; ruff + strict-TS green.
 
 ---
 
