@@ -6,11 +6,22 @@
 //
 // This view requires the live backend (GET /graph/nodes, POST /graph/solve)
 // — there is deliberately no mock fallback for the solver.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import GraphChart from "../components/GraphChart";
 import SolverPanel from "../components/SolverPanel";
+import ExtrapolatePanel from "../components/ExtrapolatePanel";
 import { useGraph } from "../state/useGraph";
+import { useGraphExtrapolation } from "../state/useGraphExtrapolation";
 import { useSmileSession } from "../state/smileSession";
+
+/** Graph workspace mode: the manual-shift sandbox vs the prior-anchored
+ *  production extrapolation over the selected lit+dark universe. */
+type GraphMode = "sandbox" | "extrapolate";
+
+/** No-op chart handlers for Extrapolate mode (nodes aren't lit by clicking;
+ *  the lit/dark set is the selected universe, edited in the Universe tab). */
+const noop = (_key: string): void => undefined;
+const noopArray = (_keys: string[]): void => undefined;
 
 interface GraphViewerProps {
   /** Switch the app to the Smile tab (after this view sets the node). */
@@ -48,6 +59,10 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     autotuneError,
   } = useGraph();
   const { setTicker, setExpiry } = useSmileSession();
+  const [mode, setMode] = useState<GraphMode>("sandbox");
+  const extra = useGraphExtrapolation();
+  // In Extrapolate mode the chart shows the production posterior field.
+  const chartResults = mode === "extrapolate" ? extra.results : results;
 
   /** Drill into a node's smile: point the shared session at it, then jump. */
   const openSmile = (ticker: string, expiry: string) => {
@@ -101,11 +116,24 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           <h2 className="text-sm font-semibold text-slate-100">
             Smile universe
           </h2>
-          <span className="font-mono text-[11px] text-slate-500">
-            nodes (ticker, T) · calendar + cross-ticker edges
-          </span>
-          {/* Post-solve summary strip */}
-          {summary !== null && (
+          {/* Sandbox (manual shifts) vs production Extrapolate (prior-anchored) */}
+          <div className="flex overflow-hidden rounded-md border border-slate-700 text-[11px]">
+            {(["sandbox", "extrapolate"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-2 py-0.5 transition-colors ${
+                  mode === m
+                    ? "bg-accent-600 text-white"
+                    : "bg-surface-800 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {m === "sandbox" ? "Sandbox" : "Extrapolate"}
+              </button>
+            ))}
+          </div>
+          {/* Post-solve summary strip (sandbox only) */}
+          {mode === "sandbox" && summary !== null && (
             <span className="ml-auto font-mono text-[11px] text-slate-400">
               <span className="text-amber-400">{summary.observed} observed</span>
               {" · "}
@@ -125,9 +153,9 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
             <GraphChart
               nodes={nodes}
               lit={lit}
-              results={results}
-              onToggle={toggleLit}
-              onLasso={lightMany}
+              results={chartResults}
+              onToggle={mode === "sandbox" ? toggleLit : noop}
+              onLasso={mode === "sandbox" ? lightMany : noopArray}
               onOpenSmile={openSmile}
             />
           )}
@@ -139,7 +167,13 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         </p>
       </div>
 
-      {/* Observations + solver panel */}
+      {/* Production extrapolation aside (prior-anchored) */}
+      {mode === "extrapolate" && (
+        <ExtrapolatePanel extra={extra} params={params} onOpenSmile={openSmile} />
+      )}
+
+      {/* Observations + solver panel (sandbox) */}
+      {mode === "sandbox" && (
       <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
         <h3 className="mb-1 text-sm font-semibold text-slate-100">
           Observations
@@ -241,6 +275,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           </div>
         </div>
       </aside>
+      )}
     </div>
   );
 }
