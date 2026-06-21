@@ -28,8 +28,8 @@ import numpy as np
 
 from volfit.api.graph_service import (
     CROSS_TICKER_WEIGHT,
+    GRAPH_PRIOR_HYPER,
     SAME_TICKER_WEIGHT,
-    _build_priors,
     _lattice_weights,
 )
 from volfit.api.schemas import (
@@ -39,7 +39,9 @@ from volfit.api.schemas import (
 )
 from volfit.api.service import fit_or_get, weighted_rms_error
 from volfit.api.state import AppState
+from volfit.graph import build_increment_prior
 from volfit.graph import precision as gprec
+from volfit.graph.beta import beta_matrix
 from volfit.graph.build import NodeId, SmileGraph, build_graph
 from volfit.graph.posterior import posterior_update
 from volfit.graph.smile_universe import HandleField, N_HANDLES
@@ -233,21 +235,84 @@ def _propagate_field(
     return HandleField(mean=mean, sd=sd, posteriors=tuple(posteriors))
 
 
-def extrapolate(
-    state: AppState, request: GraphExtrapolateRequest
-) -> GraphExtrapolateResponse:
-    """Production prior-anchored extrapolation (plan Phase 3, Amendment A).
+def _handle_beta_matrices(universe: "SelectedUniverse", request) -> list[np.ndarray] | None:
+    """Per-handle beta matrices (atm_vol, skew, curvature), or None when no beta is
+    requested (the byte-identical no-beta path, plan Phase 6).
+
+    ``crossBeta`` broadcasts to every cross-ticker edge / handle / direction;
+    ``edgeBetas`` then overrides named directed edges per handle."""
+    cross_beta = request.crossBeta
+    edge_betas = request.edgeBetas
+    if (cross_beta is None or cross_beta == 1.0) and not edge_betas:
+        return None
+
+    graph = universe.graph
+    mats = [beta_matrix(graph) for _ in range(N_HANDLES)]  # all-ones per handle
+    if cross_beta is not None:
+        for i, j in graph.edges:  # undirected support; set both directions
+            if universe.nodes[i].ticker != universe.nodes[j].ticker:
+                for m in mats:
+                    m[i, j] = m[j, i] = float(cross_beta)
+    for eb in edge_betas:
+        src = (eb.fromTicker, eb.fromExpiry)
+        dst = (eb.toTicker, eb.toExpiry)
+        if src in graph.index and dst in graph.index:
+            i, j = graph.index[src], graph.index[dst]
+            mats[0][i, j] = eb.betaAtmVol
+            mats[1][i, j] = eb.betaSkew
+            mats[2][i, j] = eb.betaCurv
+    return mats
+
+
+def _build_increment_priors(universe: "SelectedUniverse", request):
+    """Per-handle increment priors with optional per-edge beta (plan Phase 6).
+
+    Mirrors ``graph_service._build_priors`` (the same kappa/eta/lambda regime) but
+    threads each handle's beta matrix into the directed residual ``L_dir^β``."""
+    betas = _handle_beta_matrices(universe, request)
+    priors = []
+    for c, (s, eta) in enumerate(GRAPH_PRIOR_HYPER):
+        ot_weight = request.lambdaScale / s**2 if request.lambdaScale > 0.0 else 0.0
+        priors.append(
+            build_increment_prior(
+                universe.graph,
+                kappa=request.kappaScale / s**2,
+                eta=eta * request.etaScale,
+                ot_weight=ot_weight,
+                source_allowance=request.nu,
+                beta=None if betas is None else betas[c],
+            )
+        )
+    return priors
+
+
+@dataclass(frozen=True)
+class ExtrapolationSolution:
+    """The full solved field for one extrapolation request — shared by the bulk
+    summary (``extrapolate``) and the per-node smile reconstruction (Phase 5)."""
+
+    universe: "SelectedUniverse"
+    priors_meta: tuple  # tuple[NodePrior]
+    field: HandleField
+    base_breakdowns: list
+    obs_breakdowns: dict  # node index -> PrecisionBreakdown
+    obs_value_by_idx: dict  # node index -> calibrated handles (3,)
+    calibrated: list  # bool per node
+    fit_mode: str
+
+
+def solve(state: AppState, request: GraphExtrapolateRequest) -> ExtrapolationSolution | None:
+    """Run the production prior-anchored solve (plan Phase 3/4); None if empty.
 
     transported prior baselines -> lit-calibration innovations -> graph posterior
-    increment -> per-node posterior ATM handles + credible bands. Dark nodes are
-    never observations; they only receive propagation.
+    increment, with data-derived precision. Dark nodes are never observations.
     """
     # Local import avoids a module-load cycle (graph_nodes imports us for typing).
     from volfit.api.graph_nodes import resolve_priors
 
     universe = build_selected_universe(state, request.calendarWeight, request.crossWeight)
     if universe.graph is None:
-        return GraphExtrapolateResponse(nodes=[])
+        return None
 
     fit_mode = state.last_fit_mode
     priors_meta = resolve_priors(state, universe, flat_atm=request.flatAtm)
@@ -294,7 +359,7 @@ def extrapolate(
         else np.empty((0, N_HANDLES))
     )
 
-    increment_priors = _build_priors(universe.graph, request)
+    increment_priors = _build_increment_priors(universe, request)
     field = _propagate_field(
         universe.graph,
         increment_priors,
@@ -304,12 +369,34 @@ def extrapolate(
         obs_values,
         obs_precision,
     )
+    return ExtrapolationSolution(
+        universe=universe,
+        priors_meta=priors_meta,
+        field=field,
+        base_breakdowns=base_breakdowns,
+        obs_breakdowns=obs_breakdowns,
+        obs_value_by_idx=dict(zip(obs_idx_list, obs_values_list)),
+        calibrated=calibrated,
+        fit_mode=fit_mode,
+    )
+
+
+def extrapolate(
+    state: AppState, request: GraphExtrapolateRequest
+) -> GraphExtrapolateResponse:
+    """Bulk ATM-summary response over every selected node (plan Phase 3, Amendment E:
+    summaries only; full curves are fetched per node via the node-smile route)."""
+    sol = solve(state, request)
+    if sol is None:
+        return GraphExtrapolateResponse(nodes=[])
+    universe, field = sol.universe, sol.field
+    base_breakdowns, obs_breakdowns = sol.base_breakdowns, sol.obs_breakdowns
+    obs_value_by_idx = sol.obs_value_by_idx
     band_lo, band_hi = field.atm_vol_band()
 
-    obs_value_by_idx = dict(zip(obs_idx_list, obs_values_list))
     nodes = []
     for i, node in enumerate(universe.nodes):
-        meta = priors_meta[i]
+        meta = sol.priors_meta[i]
         prior_h = meta.handles
         post_h = field.mean[i]
         innovation_bp = None
@@ -330,7 +417,7 @@ def extrapolate(
                 expiry=node.expiry,
                 t=_node_t(state, node.expiry),
                 lit=node.lit,
-                calibrated=calibrated[i],
+                calibrated=sol.calibrated[i],
                 priorSource=meta.source,
                 priorAsOf=meta.as_of,
                 transportDistance=meta.transport_distance,

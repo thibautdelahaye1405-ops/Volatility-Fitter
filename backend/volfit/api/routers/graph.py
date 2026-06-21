@@ -8,9 +8,9 @@ named nodes and returns per-node posterior ATM vol with credible bands.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from volfit.api import graph_extrapolation, graph_service
+from volfit.api import graph_extrapolation, graph_reconstruct, graph_service
 from volfit.api.schemas import (
     GraphAutotuneRequest,
     GraphAutotuneResponse,
@@ -18,6 +18,7 @@ from volfit.api.schemas import (
     GraphExtrapolateResponse,
     GraphNodeInfo,
     GraphNodesResponse,
+    GraphNodeSmile,
     GraphSolveRequest,
     GraphSolveResponse,
 )
@@ -67,3 +68,22 @@ def extrapolate(body: GraphExtrapolateRequest, request: Request) -> GraphExtrapo
     (plan Phase 3): transported priors -> lit-calibration innovations -> graph
     posterior. Distinct from the manual-shift sandbox ``POST /graph/solve``."""
     return graph_extrapolation.extrapolate(request.app.state.volfit, body)
+
+
+@router.get(
+    "/graph/extrapolate/nodes/{ticker}/{expiry}", response_model=GraphNodeSmile
+)
+def extrapolate_node_smile(
+    ticker: str,
+    expiry: str,
+    request: Request,
+    params: GraphExtrapolateRequest = Depends(),
+) -> GraphNodeSmile:
+    """One node's full reconstructed smile + prior/lit overlays + quote metrics
+    (plan Phase 5, lazy per-node payload). Solver knobs come from query params."""
+    try:
+        return graph_reconstruct.node_smile(
+            request.app.state.volfit, ticker, expiry, params
+        )
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None

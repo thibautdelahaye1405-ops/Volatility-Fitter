@@ -659,6 +659,23 @@ class GraphNodesResponse(BaseModel):
 
 
 # ----------------------------------------------- production graph extrapolation
+class GraphEdgeBeta(BaseModel):
+    """Per-edge increment beta (plan Phase 6, Amendment D): the AMPLITUDE of a
+    directed move, kept strictly separate from the edge weight (the TRUST).
+
+    Directional: ``(from -> to)`` scales how much a unit move at the source node
+    propagates to the target, per handle. ``beta_ij`` need not equal ``beta_ji``.
+    """
+
+    fromTicker: str
+    fromExpiry: str
+    toTicker: str
+    toExpiry: str
+    betaAtmVol: float = 1.0
+    betaSkew: float = 1.0
+    betaCurv: float = 1.0
+
+
 class GraphExtrapolateRequest(GraphSolverParams):
     """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
 
@@ -671,6 +688,13 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: Diagnostic/stress override: use flat ATM-only baselines at every node,
     #: ignoring any saved prior (plan Phase 2 flat_atm).
     flatAtm: bool = False
+
+    #: v1 single-knob beta broadcast to every cross-ticker edge / handle / direction
+    #: (calendar edges default to beta 1). Null keeps all betas at 1.
+    crossBeta: float | None = None
+
+    #: Explicit per-edge per-handle beta overrides (take precedence over crossBeta).
+    edgeBetas: list[GraphEdgeBeta] = []
 
 
 class GraphExtrapolateNode(BaseModel):
@@ -711,6 +735,56 @@ class GraphExtrapolateResponse(BaseModel):
     """Posterior field over every selected node (production extrapolation)."""
 
     nodes: list[GraphExtrapolateNode]
+
+
+class GraphQuotePoint(BaseModel):
+    """One market quote band on a reconstructed node (for the live overlay)."""
+
+    k: float
+    bid: float
+    mid: float
+    ask: float
+
+
+class GraphNodeMetrics(BaseModel):
+    """Quote-comparison metrics of a reconstructed smile vs the market (plan Phase 5)."""
+
+    nQuotes: int
+    rmsVol: float  # weighted RMS vol error vs mid (calib/rms), decimal vol
+    insideSpreadHitRate: float  # fraction of strikes with model inside [bid, ask]
+    atmResidualBp: float  # (post - market) ATM vol, basis points
+    skewResidual: float
+    curvResidual: float
+    standardizedResidual: float | None = None  # quoted DARK nodes only (eq. zeta)
+
+
+class GraphNodeSmile(BaseModel):
+    """A reconstructed node's full smile + prior/lit overlays + quote metrics.
+
+    Fetched on demand per node (plan Amendment E) — the bulk solve returns ATM
+    summaries only. Curves are sampled on the shared display k-grid."""
+
+    ticker: str
+    expiry: str
+    t: float
+    lit: bool
+    calibrated: bool
+    priorSource: str
+    validForValidation: bool
+    priorAtmVol: float
+    priorSkew: float
+    priorCurv: float
+    postAtmVol: float
+    postSkew: float
+    postCurv: float
+    sd: float
+    post: list[SmilePoint]  # reconstructed posterior smile
+    postBandLo: list[SmilePoint]  # 95% credible band (ATM-level uncertainty)
+    postBandHi: list[SmilePoint]
+    prior: list[SmilePoint]  # transported prior smile
+    litCalibration: list[SmilePoint]  # the node's own calibration (lit nodes)
+    quotes: list[GraphQuotePoint]
+    metrics: GraphNodeMetrics | None = None
 
 
 # ------------------------------------------------------------------ scenario
