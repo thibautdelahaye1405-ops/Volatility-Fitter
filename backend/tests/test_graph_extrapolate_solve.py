@@ -139,6 +139,18 @@ def test_graph_nodes_ignores_inactive_provider_tickers():
         assert all(n["ticker"] != dropped for n in resp.json()["nodes"])
 
 
+def test_known_ticker_accepts_active_and_provider(state):
+    """A user-added ticker (in the active set, not the provider watchlist) is a
+    known ticker for read-path guards — so market/history/graph don't 404 it."""
+    active = state.active_tickers()
+    assert state.known_ticker(active[0]) is True
+    assert state.known_ticker("DEFINITELY_NOT_A_TICKER") is False
+    # Simulate a user-added ticker present only in the active set.
+    state._active_tickers = active + ["NVDA"]
+    assert "NVDA" not in state.provider.list_tickers()
+    assert state.known_ticker("NVDA") is True
+
+
 def test_route_extrapolate_smoke():
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
         tk = "ALPHA"

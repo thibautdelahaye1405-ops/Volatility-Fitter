@@ -94,7 +94,7 @@ def history_payload(
     (UnknownNodeError); a missing store path or an empty store is simply an
     empty series — history being unconfigured is not an error.
     """
-    if ticker not in state.provider.list_tickers():
+    if not state.known_ticker(ticker):
         raise UnknownNodeError(f"unknown ticker {ticker!r}")
     points: list[HistoryPoint] = []
     if state.store_path is not None:

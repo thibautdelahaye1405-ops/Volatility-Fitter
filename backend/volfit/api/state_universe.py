@@ -32,6 +32,16 @@ class UniverseMixin:
         with self._lock:
             return list(self._active_tickers)
 
+    def known_ticker(self, ticker: str) -> bool:
+        """Whether a ticker is valid for read endpoints: in the ACTIVE universe
+        (so a user-added symbol like NVDA counts) or the provider's watchlist.
+        Read-path guards must use this, not ``provider.list_tickers()`` alone,
+        which would 404 a ticker the user added at runtime."""
+        with self._lock:
+            if ticker in self._active_tickers:
+                return True
+        return ticker in self.provider.list_tickers()
+
     def add_ticker(self, symbol: str) -> str:
         """Add a ticker to the universe, validating it has fittable expiries.
 

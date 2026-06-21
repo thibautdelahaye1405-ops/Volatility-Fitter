@@ -49,12 +49,13 @@ def get_massive_iv(
     ticker: str, request: Request, expiry: str | None = Query(None)
 ) -> MassiveIvResponse:
     """Massive IV/greeks for a ticker, optionally restricted to one expiry."""
-    provider = request.app.state.volfit.provider
+    state = request.app.state.volfit
+    provider = state.provider
     if not isinstance(provider, MassiveProvider):
         raise HTTPException(
             status_code=404, detail="Massive IV overlay requires the Massive provider"
         )
-    if ticker.upper() not in provider.list_tickers():
+    if not state.known_ticker(ticker.upper()):
         raise HTTPException(status_code=404, detail=f"unknown ticker {ticker!r}")
     expiries: list[date] | None = None
     if expiry:
