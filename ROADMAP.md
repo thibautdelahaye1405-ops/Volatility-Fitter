@@ -63,13 +63,27 @@ the production path is entirely additive. The spine:
   (irreducible graphs byte-identical). Frontend: an Edge editor in the Extrapolate
   panel (`EdgeEditor.tsx`, `useGraphEdges.ts`) — seed/add/remove/edit + persist.
 
-Tests: `test_graph_{extrapolation,node_priors,extrapolate_solve,precision,
-reconstruct,beta,backtest,edges}.py` (~58 new). **Full suite 704 passed, 1 skipped.**
+- **Phase 9 model-agnostic reconstruction (DONE for parametric)** — the node-smile
+  reconstruction renders in the CHOSEN model (LQD/SVI/Multi-Core SIV), not always
+  LQD: LQD is the exact target, SVI/Sig are fitted to it (`graph_reconstruct
+  ._native_slice` via `build_display_fit`) so their ATM handles still match the
+  propagated ones; band carried onto the native curve; metrics + lit overlay use
+  the displayed model; `GraphNodeSmile.model` shown in the overlay badge.
 
-**Next up (remaining plan phases):**
-- **Phase 9** — model-agnostic native reconstruction (SVI / Multi-Core SIV target
-  fit; Local-Vol as a projection target, not native param transport — Amendment G).
+Tests: `test_graph_{extrapolation,node_priors,extrapolate_solve,precision,
+reconstruct,reconstruct_models,beta,backtest,edges}.py` (~64 new).
+**Full suite 708 passed, 1 skipped.**
+
+**Next up (remaining):**
+- **Phase 9 LV projection** — project the graph smile onto an affine LV surface
+  (Amendment G). Needs a graph->LocalVol drill-in first (the parametric Smile
+  viewer, where the drill-in lands today, uses lqd/svi/sigmoid; LV is a separate
+  workspace with no graph drill-in yet).
 - **Phase 10** — sparse perf (deferred; only when selected universes ≫ 10³ nodes).
+- **Pre-graph robustness fixes (2026-06-21)**: `/graph/nodes` iterates the ACTIVE
+  universe (was provider watchlist → 500 on an inactive ticker); empty universe no
+  longer 500s; `state.known_ticker` so read-path guards (market/history/massive-IV)
+  accept user-added tickers; Save/Fetch priors flash a confirmation.
 
 ---
 
