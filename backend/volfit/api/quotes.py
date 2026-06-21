@@ -37,6 +37,16 @@ are excluded. Such options carry essentially no vega, so their implied
 vols are numerically meaningless and would dominate max-IV-error
 diagnostics without informing the fit (the synthetic 1M chain quotes
 strikes out to ~6.5 sd, exactly this failure mode).
+
+Pre-de-Am screen (speed note Stage 3): de-Americanization is the cost on this
+path, yet on a wide American chain many rows are de-Amed only to be dropped
+later by the static-bound / wing filters. ``_pre_deam_screen`` removes, BEFORE
+the CRR trees run, only rows those later filters are guaranteed to drop anyway
+(a non-positive bid, which de-Am can only lower further; and far-wing strikes
+beyond a buffered Z_MAX cut). It is output-preserving by construction — the
+prepared (k, w, IV) arrays are byte-identical with the screen on or off — so it
+trades no quote quality for fewer tree pricings. Pass ``prefilter=False`` to
+disable it (used by the equivalence tests).
 """
 
 from __future__ import annotations
@@ -58,6 +68,13 @@ from volfit.data.types import ChainSnapshot
 #: matches the realistically quoted range and keeps every slice < 30 vol bp).
 Z_MAX = 4.0
 
+#: Pre-de-Am wing buffer (Stage 3). Rows beyond ``PREFILTER_WING_BUFFER * Z_MAX``
+#: ATM standard deviations are guaranteed to fail the final Z_MAX wing filter:
+#: de-Am only lowers wing variance and barely moves ATM, and the ATM variance
+#: estimated from the raw American mids is >= the de-Amed one, so the buffered
+#: cut is strictly looser than the final cut. 1.5 leaves generous margin.
+PREFILTER_WING_BUFFER = 1.5
+
 
 @dataclass(frozen=True)
 class PreparedQuotes:
@@ -78,6 +95,10 @@ class PreparedQuotes:
     iv_mid: np.ndarray
     iv_ask: np.ndarray
     n_deamericanized: int = 0
+    #: Rows actually fed to the de-Am trees after the Stage-3 pre-screen (equals
+    #: the OTM-row count when the screen removes nothing or is disabled). Pure
+    #: diagnostic — lets a test confirm the screen cut tree work on wide chains.
+    n_deam_input: int = 0
     #: Event-WEIGHTED variance years (volfit.calib.weighted_time). The smile is
     #: fit / quoted in this clock, so iv = sqrt(w / tau): adding an event before
     #: the expiry raises tau and lowers every reported vol at fixed price.
@@ -130,6 +151,41 @@ def _early_exercise_premiums(
     return eep, int(ok.sum())
 
 
+def _pre_deam_screen(
+    k: np.ndarray,
+    bid: np.ndarray,
+    mid: np.ndarray,
+    is_call: np.ndarray,
+    scale: float,
+) -> np.ndarray:
+    """Keep-mask of rows worth de-Americanizing (module doc, Stage 3).
+
+    Two output-preserving screens, both provably subsets of the existing
+    post-de-Am filters, so the prepared arrays stay byte-identical:
+
+    - ``bid <= 0`` (or non-finite): de-Am only lowers the bid, so the row can
+      never clear the strict lower static bound — it is always dropped later.
+    - ``|k|`` beyond ``PREFILTER_WING_BUFFER * Z_MAX * sqrt(w_atm)``: the final
+      wing filter cuts at ``Z_MAX * sqrt(w_atm_final)``; the ATM variance here is
+      estimated from the raw (American) mids, which read >= the de-Amed variance,
+      so the buffered cut is strictly looser and removes only rows the final cut
+      would also remove.
+
+    The ATM estimate inverts the raw mids as if European (cheap, no tree); at
+    ATM the early-exercise premium is ~0 so it is accurate, and where it is
+    unusable (no two finite near-ATM mids) the wing screen is skipped.
+    """
+    keep = np.isfinite(bid) & (bid > 0.0)
+    shift = np.where(is_call, 0.0, 1.0 - np.exp(k))
+    w_raw = implied_total_variance(k, mid * scale + shift)
+    finite = np.isfinite(w_raw)
+    if int(finite.sum()) >= 2:
+        w_atm = float(np.interp(0.0, k[finite], w_raw[finite]))
+        if np.isfinite(w_atm) and w_atm > 0.0:
+            keep &= np.abs(k) <= PREFILTER_WING_BUFFER * Z_MAX * np.sqrt(w_atm)
+    return keep
+
+
 def prepare_quotes(
     snapshot: ChainSnapshot,
     expiry: date,
@@ -137,6 +193,7 @@ def prepare_quotes(
     t: float,
     cash_dividends: tuple[np.ndarray, np.ndarray, float] | None = None,
     tau: float | None = None,
+    prefilter: bool = True,
 ) -> PreparedQuotes:
     """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs.
 
@@ -176,7 +233,16 @@ def prepare_quotes(
 
     # American chains: strip the early-exercise premium from bid/mid/ask.
     n_deam = 0
+    n_deam_input = int(k_arr.size)
     if snapshot.exercise_style == "american" and t > 0.0:
+        # Stage 3 pre-screen: drop rows the post-filters are guaranteed to drop
+        # before the costly de-Am trees price them (byte-identical output).
+        if prefilter and k_arr.size:
+            pre = _pre_deam_screen(k_arr, bid, mid, is_call, scale)
+            if pre.any() and not pre.all():
+                k_arr, strikes, is_call = k_arr[pre], strikes[pre], is_call[pre]
+                bid, mid, ask = bid[pre], mid[pre], ask[pre]
+            n_deam_input = int(k_arr.size)
         eep, n_deam = _early_exercise_premiums(
             snapshot.spot, is_call, strikes, k_arr, mid, f, d, t, cash_dividends
         )
@@ -205,6 +271,7 @@ def prepare_quotes(
         iv_mid=np.sqrt(w_mid[keep] / tv),
         iv_ask=np.sqrt(w_ask[keep] / tv),
         n_deamericanized=n_deam,
+        n_deam_input=n_deam_input,
         tau=tv,
     )
 

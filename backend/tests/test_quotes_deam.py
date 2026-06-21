@@ -178,6 +178,66 @@ def test_batch_bisections_24_matches_45_baseline():
     assert drift.max() < 0.01e-2, drift.max()  # < 0.01 vol bp, the Stage 1 gate
 
 
+# -- Stage 3 pre-de-Am screen (output-preserving) ----------------------------
+
+#: A wide ladder: deep wings reach ~6.5 ATM sd (0.20 vol, 0.5y => ~0.14 sd),
+#: well past the 6 sd (1.5 * Z_MAX) pre-screen and the 4 sd final wing filter.
+MONEYNESS_WIDE = np.linspace(0.40, 2.60, 56)
+
+
+def make_wide_american_chain() -> ChainSnapshot:
+    quotes = []
+    for m in MONEYNESS_WIDE:
+        strike = float(m * FORWARD)
+        sigma = float(smile_vol(np.log(strike / FORWARD)))
+        for cp in ("C", "P"):
+            mid = binomial_price(
+                cp == "C", SPOT, strike, T, sigma, RATE, DIV_YIELD,
+                n_steps=DEFAULT_BATCH_STEPS, american=True,
+            )
+            quotes.append(_quote(strike, cp, mid))
+    return ChainSnapshot("X", SPOT, TIMESTAMP, quotes, exercise_style="american")
+
+
+def test_prefilter_is_byte_identical_and_cuts_deam_work():
+    """The pre-screen must leave the prepared (k, w, IV) arrays byte-identical
+    while feeding strictly fewer rows to the de-Am trees on a wide chain."""
+    chain = make_wide_american_chain()
+    on = prepare_quotes(chain, EXPIRY, RESOLVED, T, prefilter=True)
+    off = prepare_quotes(chain, EXPIRY, RESOLVED, T, prefilter=False)
+
+    # Output-preserving: every surviving quote is identical.
+    assert np.array_equal(on.k, off.k)
+    assert np.array_equal(on.w_mid, off.w_mid)
+    assert np.array_equal(on.iv_bid, off.iv_bid)
+    assert np.array_equal(on.iv_mid, off.iv_mid)
+    assert np.array_equal(on.iv_ask, off.iv_ask)
+
+    # But the screen spared real tree work: fewer rows reached de-Am, and the
+    # far wings it dropped were never going to survive the final filter anyway.
+    assert on.n_deam_input < off.n_deam_input
+    assert off.n_deam_input == MONEYNESS_WIDE.size  # OFF de-Ams every OTM row (one side/strike)
+    assert on.k.size <= on.n_deam_input  # final filter keeps a subset of de-Amed
+
+
+def test_prefilter_drops_nonpositive_bid_rows_before_deam():
+    """A zero-bid deep-wing row (always dropped by the lower static bound) is
+    screened before de-Am, yet the surviving arrays are unchanged."""
+    chain = make_american_chain("american")
+    # Inject a deep OTM put with a zero bid (a real wing-quote shape).
+    zero_bid = OptionQuote(
+        ticker="X", expiry=EXPIRY, strike=0.55 * FORWARD, call_put="P",
+        bid=0.0, ask=0.05, last=0.02, timestamp=TIMESTAMP,
+    )
+    chain = ChainSnapshot("X", SPOT, TIMESTAMP, [*chain.quotes, zero_bid], exercise_style="american")
+
+    on = prepare_quotes(chain, EXPIRY, RESOLVED, T, prefilter=True)
+    off = prepare_quotes(chain, EXPIRY, RESOLVED, T, prefilter=False)
+    assert np.array_equal(on.k, off.k)  # zero-bid row absent from BOTH outputs
+    assert np.array_equal(on.iv_mid, off.iv_mid)
+    assert on.n_deam_input < off.n_deam_input  # but ON never de-Amed it
+
+
 # -- stale edit indices -------------------------------------------------------
 
 

@@ -5,7 +5,8 @@ preparation currently affects the local-vol calibration path, quantifies the
 cost on the Bloomberg fixture, and proposes a staged roadmap for making it
 faster without weakening the price-quality contract.*
 
-> **Implementation status (2026-06-21).** Stages 0–2 SHIPPED.
+> **Implementation status (2026-06-21).** Stages 0–3 SHIPPED (branch
+> `perf/deamericanization`).
 > - **Stage 1** — `BATCH_BISECTIONS 45 → 24` (`core/american.py`). Isolated de-Am
 >   perf rail **825 ms → 390 ms (~2.1×)**; IV drift vs the 45-bisection baseline
 >   locked `< 0.01 vol bp` (`test_quotes_deam.test_batch_bisections_24_matches_45_baseline`).
@@ -15,11 +16,19 @@ faster without weakening the price-quality contract.*
 >   roughness, var-swap, calendar) no longer re-runs de-Am, and the key is
 >   ticker-scoped (one ticker's forward edit no longer busts another's prepared
 >   quotes). Invalidation table: `test_prepared_cache_key.py` (6).
+> - **Stage 3** — `quotes._pre_deam_screen` removes, BEFORE the CRR trees,
+>   only rows the post-de-Am filters are guaranteed to drop anyway (non-positive
+>   bid; far-wing strikes beyond `PREFILTER_WING_BUFFER(1.5)·Z_MAX` ATM sd,
+>   estimated from raw mids). **Output-preserving by construction** — prepared
+>   `(k, w, IV)` arrays byte-identical on/off (`prefilter=` flag); the spared
+>   tree work is the rows between the buffered cut and the final 4 sd cut.
+>   `PreparedQuotes.n_deam_input` exposes rows actually fed to de-Am.
+>   `test_quotes_deam` ×2 (wide-chain byte-identical + count drop; zero-bid row).
 > - **Stage 0** — drift + invalidation rails added above (a full Bloomberg
 >   `prepare_quotes` timing rail remains a nice-to-have).
-> - **Not yet done:** Stages 3 (pre-filter), 4 (Numba kernel), 5 (selective
->   parallelism), 6 (analytic American), 7 (cross-update reuse), 8 (research).
-> Full suite **639 passed, 1 skipped**; ruff + strict-TS green.
+> - **Not yet done:** Stages 4 (Numba kernel), 5 (selective parallelism),
+>   6 (analytic American), 7 (cross-update reuse), 8 (research).
+> Full suite **641 passed, 1 skipped**; ruff + strict-TS green.
 
 ---
 
