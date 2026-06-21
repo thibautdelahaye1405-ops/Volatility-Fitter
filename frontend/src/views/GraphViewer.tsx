@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import GraphChart from "../components/GraphChart";
 import SolverPanel from "../components/SolverPanel";
 import ExtrapolatePanel from "../components/ExtrapolatePanel";
-import { useGraph } from "../state/useGraph";
+import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
 import { useGraphExtrapolation } from "../state/useGraphExtrapolation";
 import { useSmileSession } from "../state/smileSession";
 
@@ -61,7 +61,42 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const { setTicker, setExpiry } = useSmileSession();
   const [mode, setMode] = useState<GraphMode>("sandbox");
   const extra = useGraphExtrapolation();
-  // In Extrapolate mode the chart shows the production posterior field.
+
+  // In Extrapolate mode the chart is driven by the production solve: the full
+  // SELECTED lit+dark universe (its prior handles as the baseline), the
+  // calibrated nodes lit (amber ring = an observation), and the posterior field.
+  // Before the first solve (extra.nodes null) it falls back to the sandbox
+  // lattice so the chart is never blank.
+  const extraChartNodes = useMemo<GraphNodeBase[] | null>(
+    () =>
+      extra.nodes === null
+        ? null
+        : extra.nodes.map((n) => ({
+            ticker: n.ticker,
+            expiry: n.expiry,
+            t: n.t,
+            atmVol: n.priorAtmVol,
+            skew: n.priorSkew,
+            curvature: n.priorCurv,
+            lit: n.lit,
+          })),
+    [extra.nodes],
+  );
+  const extraChartLit = useMemo<Record<string, number>>(
+    () =>
+      extra.nodes === null
+        ? {}
+        : Object.fromEntries(
+            extra.nodes
+              .filter((n) => n.calibrated)
+              .map((n) => [nodeKey(n.ticker, n.expiry), 0]),
+          ),
+    [extra.nodes],
+  );
+
+  const extrapolating = mode === "extrapolate" && extraChartNodes !== null;
+  const chartNodes = extrapolating ? extraChartNodes : nodes;
+  const chartLit = extrapolating ? extraChartLit : lit;
   const chartResults = mode === "extrapolate" ? extra.results : results;
 
   /** Drill into a node's smile: point the shared session at it, then jump. */
@@ -145,14 +180,14 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         </div>
 
         <div className="min-h-0 flex-1">
-          {loading || nodes === null ? (
+          {(loading || nodes === null) && !extrapolating ? (
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Fitting baseline nodes… (first load can take a second)
             </div>
           ) : (
             <GraphChart
-              nodes={nodes}
-              lit={lit}
+              nodes={chartNodes ?? []}
+              lit={chartLit}
               results={chartResults}
               onToggle={mode === "sandbox" ? toggleLit : noop}
               onLasso={mode === "sandbox" ? lightMany : noopArray}
@@ -163,7 +198,9 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
         {/* Interaction hint */}
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          Click to light/dim · drag to lasso · double-click to open smile · Solve to propagate
+          {mode === "sandbox"
+            ? "Click to light/dim · drag to lasso · double-click to open smile · Solve to propagate"
+            : "Selected lit+dark universe · amber ring = calibrated observation · double-click to open smile · Extrapolate to propagate"}
         </p>
       </div>
 
