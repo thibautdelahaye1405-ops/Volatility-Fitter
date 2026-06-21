@@ -70,16 +70,25 @@ the production path is entirely additive. The spine:
   propagated ones; band carried onto the native curve; metrics + lit overlay use
   the displayed model; `GraphNodeSmile.model` shown in the overlay badge.
 
-Tests: `test_graph_{extrapolation,node_priors,extrapolate_solve,precision,
-reconstruct,reconstruct_models,beta,backtest,edges}.py` (~64 new).
-**Full suite 708 passed, 1 skipped.**
+- **Phase 9 LV projection (DONE)** — LV has no cheap 3-param transport, so the
+  graph-extrapolated parametric smile is the projection TARGET: `graph_lv
+  .project_to_lv` reuses each expiry's live strike grid + forward, swaps the target
+  total variance for the graph reconstruction, and runs the standard affine LV
+  calibration (via a minimal `affine_fit._fit(rows=)` seam). Arb-free (Dupire),
+  reproduces the extrapolated smiles. `POST /graph/extrapolate/lv/{ticker}`; the
+  LocalVol viewer has a "Graph-extrapolated" source toggle (`useAffine` swaps the
+  endpoint).
+
+Merged to **main** (`3cc909f`, Phases 1-9). Tests: `test_graph_{extrapolation,
+node_priors,extrapolate_solve,precision,reconstruct,reconstruct_models,beta,
+backtest,edges,lv}.py` (~68 new). **Full suite 718 passed, 1 skipped.**
 
 **Next up (remaining):**
-- **Phase 9 LV projection** — project the graph smile onto an affine LV surface
-  (Amendment G). Needs a graph->LocalVol drill-in first (the parametric Smile
-  viewer, where the drill-in lands today, uses lqd/svi/sigmoid; LV is a separate
-  workspace with no graph drill-in yet).
-- **Phase 10** — sparse perf (deferred; only when selected universes ≫ 10³ nodes).
+- **Phase 10** — sparse perf (deferred; only when selected universes ≫ 10³ nodes):
+  `prior.py:67,72` dense N×N inverses, autotune O(7·n_obs·N³) → the note's §8
+  matrix-free path (sparse solves + Hutchinson diagonal).
+- **(optional) graph→LocalVol drill-in** — a direct UI jump; the source toggle
+  already lets the user view the LV projection in the LocalVol workspace.
 - **Pre-graph robustness fixes (2026-06-21)**: `/graph/nodes` iterates the ACTIVE
   universe (was provider watchlist → 500 on an inactive ticker); empty universe no
   longer 500s; `state.known_ticker` so read-path guards (market/history/massive-IV)
