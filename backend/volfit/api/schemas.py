@@ -800,6 +800,7 @@ class GraphNodeSmile(BaseModel):
     ticker: str
     expiry: str
     t: float
+    model: str = "lqd"  # the displayed model family the smile is reconstructed in
     lit: bool
     calibrated: bool
     priorSource: str

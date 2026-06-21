@@ -21,6 +21,7 @@ export interface GraphNodeSmile {
   ticker: string;
   expiry: string;
   t: number;
+  model: string; // the model family the smile is reconstructed in (lqd/svi/sigmoid)
   lit: boolean;
   calibrated: boolean;
   priorSource: string;

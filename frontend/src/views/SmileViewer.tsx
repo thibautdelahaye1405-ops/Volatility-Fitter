@@ -342,6 +342,7 @@ export default function SmileViewer() {
             {graphOverlay !== null && (
               <span className="flex items-center gap-1.5 rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
                 <span className="font-semibold tracking-wider">GRAPH</span>
+                <span className="uppercase text-violet-400/90">{graphOverlay.model}</span>
                 <span className="text-violet-400/90">{graphOverlay.priorSource}</span>
                 {graphOverlay.metrics !== null && (
                   <span className="font-mono text-violet-200/90">

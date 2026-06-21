@@ -41,6 +41,8 @@ from volfit.api.service import (
 from volfit.api.state import AppState, UnknownNodeError
 from volfit.calib.rms import node_error_terms, rms
 from volfit.graph import precision as gprec
+from volfit.api.displayed import displayed_slice
+from volfit.api.fit_models import build_display_fit
 from volfit.graph.hyper import standardized_residuals
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.ortho import build_atm_coordinates
@@ -59,15 +61,43 @@ def _curve(slice_, tau: float, grid: np.ndarray) -> list[SmilePoint]:
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
 
-def _retarget_curve(chart, handles, tau: float, grid: np.ndarray) -> list[SmilePoint]:
-    """LQD smile at target ATM ``handles`` (w0 = sigma0^2 tau). Empty on a Newton
-    failure at extreme handles (the band edges of a very wide posterior)."""
+def _retarget_slice(chart, handles, tau: float):
+    """The exact arb-free LQD slice at target ATM ``handles`` (w0 = sigma0^2 tau),
+    or None on a Newton failure at extreme handles (a very wide band edge)."""
     target = np.array([handles[0] * handles[0] * tau, handles[1], handles[2]])
     try:
-        params = chart.retarget(target)
+        return build_slice(chart.retarget(target))
     except RuntimeError:
+        return None
+
+
+def _native_slice(model: str, settings, lqd_slice, tau: float, grid: np.ndarray):
+    """Fit the chosen parametric model (SVI / Multi-Core SIV) to the LQD-reconstructed
+    target smile so the graph overlay matches the family the rest of the app draws
+    (plan Phase 9 / Amendment G). LQD ⇒ None (the LQD slice is used directly).
+
+    The graph propagates the model-agnostic ATM handles; the LQD reconstruction is
+    the exact target smile, and the native fit lands on it (its ATM handles match the
+    propagated handles within fit tolerance)."""
+    if model not in ("svi", "sigmoid"):
+        return None
+    w = np.maximum(np.asarray(lqd_slice.implied_w(grid), dtype=float), 1e-10)
+    finite = np.isfinite(w)
+    if finite.sum() < 5:
+        return None
+    fit = build_display_fit(model, grid[finite], w[finite], tau, None, settings)
+    return fit.slice if fit is not None else None
+
+
+def _shift_band(native_post, lqd_post, lqd_band) -> list[SmilePoint]:
+    """Carry the LQD level-uncertainty band onto the native posterior curve: at each
+    k, native_post + (lqd_band - lqd_post). Grids are aligned (same display grid)."""
+    if not native_post or len(native_post) != len(lqd_post) or len(lqd_band) != len(lqd_post):
         return []
-    return _curve(build_slice(params), tau, grid)
+    return [
+        SmilePoint(k=p.k, vol=float(p.vol + (b.vol - q.vol)))
+        for p, q, b in zip(native_post, lqd_post, lqd_band)
+    ]
 
 
 def _base_slice(state: AppState, ticker: str, iso: str, fit_mode: str):
@@ -105,7 +135,9 @@ def _prior_curve(
             node, float(f_now), state.dynamics_regime(), grid
         )
     if chart is not None:
-        return _retarget_curve(chart, meta.handles, tau, grid)
+        sl = _retarget_slice(chart, meta.handles, tau)
+        if sl is not None:
+            return _curve(sl, tau, grid)
     return []
 
 
@@ -114,33 +146,27 @@ def _quote_metrics(
     ticker: str,
     iso: str,
     fit_mode: str,
+    post_slice,
     post_handles: np.ndarray,
     sd: float,
     lit: bool,
 ) -> tuple[GraphNodeMetrics | None, list[GraphQuotePoint]]:
-    """Compare the reconstructed posterior smile to the node's market quotes.
+    """Compare the reconstructed posterior smile (``post_slice``, the displayed
+    model) to the node's market quotes.
 
     The standardized residual for a quoted DARK node uses the observation
     precision it WOULD carry if it were lit (derived from its own chain), so the
     posterior uncertainty is checked against a real held-out measurement."""
     record = fit_or_get(state, ticker, iso, fit_mode)
-    if record is None:
+    if record is None or post_slice is None:
         return None, []
     prepared = record.prepared
     tau = float(prepared.tau)
     k = np.asarray(prepared.k, dtype=float)
     base_params = record.result.params
 
-    # Reconstruct the posterior smile at THIS node's shape, read it on the quotes.
-    chart = build_atm_coordinates(base_params, tau)
-    target = np.array(
-        [post_handles[0] * post_handles[0] * tau, post_handles[1], post_handles[2]]
-    )
-    try:
-        post_params = chart.retarget(target)
-    except RuntimeError:
-        post_params = base_params
-    model_iv = np.sqrt(np.maximum(build_slice(post_params).implied_w(k), 1e-12) / tau)
+    # Read the reconstructed (displayed-model) posterior smile on the quotes.
+    model_iv = np.sqrt(np.maximum(post_slice.implied_w(k), 1e-12) / tau)
 
     num, den = node_error_terms(model_iv, np.asarray(prepared.iv_mid, dtype=float))
     inside = np.logical_and(
@@ -202,35 +228,53 @@ def node_smile(
     sd = float(sol.field.sd[i, 0])
     grid = _display_grid()
 
+    model = state.fit_settings().model
     base_params, tau = _base_slice(state, ticker, iso, sol.fit_mode)
     chart = build_atm_coordinates(base_params, tau) if base_params is not None else None
 
+    # Reconstruct the LQD target smile (exact handles), then — if the chosen model
+    # is SVI / Multi-Core SIV — refit that family to the target so the overlay
+    # matches what the rest of the app draws (plan Phase 9). The band is the LQD
+    # level-uncertainty band carried onto the native curve.
+    post_slice = None
+    post_curve: list[SmilePoint] = []
+    band_lo: list[SmilePoint] = []
+    band_hi: list[SmilePoint] = []
     if chart is not None:
         half = Z_95 * sd
-        post_curve = _retarget_curve(chart, post_h, tau, grid)
-        band_lo = _retarget_curve(chart, [post_h[0] - half, post_h[1], post_h[2]], tau, grid)
-        band_hi = _retarget_curve(chart, [post_h[0] + half, post_h[1], post_h[2]], tau, grid)
-    else:
-        post_curve = band_lo = band_hi = []
+        lqd_post = _retarget_slice(chart, post_h, tau)
+        lqd_lo = _retarget_slice(chart, [post_h[0] - half, post_h[1], post_h[2]], tau)
+        lqd_hi = _retarget_slice(chart, [post_h[0] + half, post_h[1], post_h[2]], tau)
+        if lqd_post is not None:
+            native = _native_slice(model, state.fit_settings(), lqd_post, tau, grid)
+            post_slice = native if native is not None else lqd_post
+            post_curve = _curve(post_slice, tau, grid)
+            lqd_post_curve = _curve(lqd_post, tau, grid)
+            lo_c = _curve(lqd_lo, tau, grid) if lqd_lo is not None else []
+            hi_c = _curve(lqd_hi, tau, grid) if lqd_hi is not None else []
+            if native is not None:
+                band_lo = _shift_band(post_curve, lqd_post_curve, lo_c)
+                band_hi = _shift_band(post_curve, lqd_post_curve, hi_c)
+            else:
+                band_lo, band_hi = lo_c, hi_c
 
     prior_curve = _prior_curve(state, ticker, iso, meta, chart, tau, grid)
 
     lit_curve: list[SmilePoint] = []
     if node.lit and sol.calibrated[i]:
         record = fit_or_get(state, ticker, iso, sol.fit_mode)
-        if record is not None:
-            lit_curve = _curve(
-                build_slice(record.result.params), float(record.prepared.tau), grid
-            )
+        if record is not None:  # the lit node's own calibration in the displayed model
+            lit_curve = _curve(displayed_slice(record), float(record.prepared.tau), grid)
 
     metrics, quotes = _quote_metrics(
-        state, ticker, iso, sol.fit_mode, post_h, sd, node.lit
+        state, ticker, iso, sol.fit_mode, post_slice, post_h, sd, node.lit
     )
 
     return GraphNodeSmile(
         ticker=ticker,
         expiry=iso,
         t=_node_t(state, iso),
+        model=model,
         lit=node.lit,
         calibrated=sol.calibrated[i],
         priorSource=meta.source,
