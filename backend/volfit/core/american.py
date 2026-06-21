@@ -31,6 +31,8 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import brentq
 
+from volfit.core import american_numba
+
 #: Default tree depth: European leg matches Black-Scholes to ~1e-5 in price
 #: (relative to spot), far below quote noise.
 DEFAULT_STEPS = 501
@@ -261,61 +263,39 @@ def binomial_price_batch(
     return out
 
 
-def deamericanize_batch(
-    is_call: np.ndarray,
-    prices: np.ndarray,
+def _deam_bisect_numpy(
+    ic: np.ndarray,
+    px: np.ndarray,
     s: float,
-    k: np.ndarray,
+    kk: np.ndarray,
     t: float,
-    r: float = 0.0,
-    q: float = 0.0,
-    n_steps: int = DEFAULT_BATCH_STEPS,
-    bisections: int = BATCH_BISECTIONS,
-    div_times: np.ndarray | None = None,
-    div_amounts: np.ndarray | None = None,
+    r: float,
+    q: float,
+    n_steps: int,
+    bisections: int,
+    lo: float,
+    div_times: np.ndarray | None,
+    div_amounts: np.ndarray | None,
 ) -> np.ndarray:
-    """De-Americanize a whole chain at once via vectorized bisection.
+    """Lockstep NumPy bracket-and-bisect for the pre-screened quotes (fallback).
 
-    Same contract per quote as the scalar `deamericanize` (nan for unusable
-    prices), but every iteration evaluates one `binomial_price_batch` over
-    all still-active quotes, so a few dozen tree sweeps invert hundreds of
-    quotes. Screens mirror the scalar: static bounds first, then the CRR
-    drift floor ``lo`` — quotes priced below the near-zero-vol model price
-    (e.g. a deep-ITM put at its early-exercise floor) and quotes never
-    bracketed by SIGMA_HI come back nan. ``bisections`` halvings of a
-    <= SIGMA_HI bracket leave ~SIGMA_HI/2^bisections of sigma uncertainty
-    (the default 24 lands within ~2.4e-7 of sigma, ~0.002 vol bp — below quote
-    noise; callers that only need a few bp of vol, e.g. the forward de-bias,
-    pass a smaller count to trade precision for speed).
+    Every iteration prices the whole still-active batch with one
+    `binomial_price_batch` sweep, so a few dozen sweeps invert the chain. This is
+    the always-available path when Numba is absent; the compiled kernel in
+    `core.american_numba` mirrors its bracketing and bisection exactly.
     """
-    is_call = np.asarray(is_call, dtype=bool)
-    prices = np.asarray(prices, dtype=float)
-    k = np.asarray(k, dtype=float)
-    out = np.full(prices.shape, np.nan)
-    if t <= 0.0:
-        return out  # expired: only intrinsic trades, no vol to imply
-
-    # Static no-arbitrage screen (strict bounds, as in the scalar).
-    intrinsic = np.maximum(np.where(is_call, s - k, k - s), 0.0)
-    upper = np.where(is_call, s, k)
-    idx = np.flatnonzero((prices > intrinsic) & (prices < upper))
-    if idx.size == 0:
-        return out
-    ic, px, kk = is_call[idx], prices[idx], k[idx]
 
     def price_at(sig: np.ndarray) -> np.ndarray:
         return binomial_price_batch(
             ic, s, kk, t, sig, r, q, n_steps, True, div_times, div_amounts
         )
 
-    # Lower bracket just above the CRR drift floor (same margin as scalar).
-    lo = max(SIGMA_LO, 1.5 * abs(r - q) * float(np.sqrt(t / n_steps)))
-    lo_arr = np.full(idx.size, lo)
+    lo_arr = np.full(px.size, lo)
     ok = price_at(lo_arr) <= px  # nan-safe: model price above target -> drop
 
     # Upper bracket: double until the model price clears the target. Starting
     # at >= 0.5 with the SIGMA_HI cap bounds this to a handful of sweeps.
-    hi_arr = np.full(idx.size, max(0.5, 2.0 * lo))
+    hi_arr = np.full(px.size, max(0.5, 2.0 * lo))
     pending = ok.copy()
     while pending.any():
         pending &= ~(price_at(hi_arr) >= px)  # still below target (or nan)
@@ -333,5 +313,67 @@ def deamericanize_batch(
 
     root = 0.5 * (lo_arr + hi_arr)
     root[~ok] = np.nan
+    return root
+
+
+def deamericanize_batch(
+    is_call: np.ndarray,
+    prices: np.ndarray,
+    s: float,
+    k: np.ndarray,
+    t: float,
+    r: float = 0.0,
+    q: float = 0.0,
+    n_steps: int = DEFAULT_BATCH_STEPS,
+    bisections: int = BATCH_BISECTIONS,
+    div_times: np.ndarray | None = None,
+    div_amounts: np.ndarray | None = None,
+) -> np.ndarray:
+    """De-Americanize a whole chain at once via per-quote bracketed bisection.
+
+    Same contract per quote as the scalar `deamericanize` (nan for unusable
+    prices): static bounds first, then the CRR drift floor ``lo`` — quotes priced
+    below the near-zero-vol model price (e.g. a deep-ITM put at its early-exercise
+    floor) and quotes never bracketed by SIGMA_HI come back nan. ``bisections``
+    halvings of a <= SIGMA_HI bracket leave ~SIGMA_HI/2^bisections of sigma
+    uncertainty (the default 24 lands within ~2.4e-7 of sigma, ~0.002 vol bp —
+    below quote noise; callers that only need a few bp, e.g. the forward de-bias,
+    pass a smaller count to trade precision for speed).
+
+    The heavy inversion runs on the compiled `core.american_numba` kernel (one
+    scalar CRR per quote, parallel across quotes) when Numba is available, and on
+    the lockstep NumPy fallback otherwise; the two agree to tree rounding.
+    """
+    is_call = np.asarray(is_call, dtype=bool)
+    prices = np.asarray(prices, dtype=float)
+    k = np.asarray(k, dtype=float)
+    out = np.full(prices.shape, np.nan)
+    if t <= 0.0:
+        return out  # expired: only intrinsic trades, no vol to imply
+
+    # Static no-arbitrage screen (strict bounds, as in the scalar).
+    intrinsic = np.maximum(np.where(is_call, s - k, k - s), 0.0)
+    upper = np.where(is_call, s, k)
+    idx = np.flatnonzero((prices > intrinsic) & (prices < upper))
+    if idx.size == 0:
+        return out
+    ic, px, kk = is_call[idx], prices[idx], k[idx]
+
+    # Escrowed lattice base / PV add-back and the CRR drift-floor lower bracket
+    # (shared by both backends; an empty/swallowed lattice -> all nan, as before).
+    base, pv_step = _escrow(s, r, t, n_steps, div_times, div_amounts)
+    if base <= 0.0:
+        return out
+    lo = max(SIGMA_LO, 1.5 * abs(r - q) * float(np.sqrt(t / n_steps)))
+
+    if american_numba.NUMBA_AVAILABLE:
+        dt = t / n_steps
+        root = american_numba.deamericanize_kernel(
+            ic, px, kk, base, pv_step, r, q, dt, float(np.sqrt(dt)), n_steps, bisections, lo
+        )
+    else:
+        root = _deam_bisect_numpy(
+            ic, px, s, kk, t, r, q, n_steps, bisections, lo, div_times, div_amounts
+        )
     out[idx] = root
     return out
