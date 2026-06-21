@@ -15,7 +15,12 @@ import numpy as np
 
 from volfit.api.quotes import apply_edits, prepare_quotes
 from volfit.api.session import QuoteEdit
-from volfit.core.american import DEFAULT_BATCH_STEPS, binomial_price
+from volfit.core.american import (
+    DEFAULT_BATCH_STEPS,
+    binomial_price,
+    binomial_price_batch,
+    deamericanize_batch,
+)
 from volfit.core.black import black_call
 from volfit.data.forwards import ResolvedForward
 from volfit.data.types import ChainSnapshot, OptionQuote
@@ -141,6 +146,36 @@ def test_european_chain_passes_through_unchanged():
     # tolerance — the pre-de-Am pipeline behaviour, byte for byte.
     errors = np.abs(prepared.iv_mid - smile_vol(prepared.k))
     assert errors.max() < 1e-5, errors
+
+
+# -- Stage 1 bisection-count drift (Docs/deamericanization_calibration_speed_note) --
+
+
+def test_batch_bisections_24_matches_45_baseline():
+    """Cutting the de-Am bisection count from the old 45 to the current 24
+    default must not move the implied vol: both halve a <= SIGMA_HI bracket
+    well past quote precision, so the recovered sigma is identical to a tiny
+    tolerance. This locks the Stage 1 acceptance gate (<= 0.01 vol bp drift)
+    so a future bisection change cannot silently regress quote quality.
+    """
+    spot, t, r, q = 100.0, 0.5, 0.05, 0.02
+    forward = spot * float(np.exp((r - q) * t))
+    # Calls and puts across a realistic post-filter wing (~80 quotes).
+    strikes = np.concatenate([np.linspace(0.80, 1.25, 40) * forward] * 2)
+    is_call = np.concatenate([np.ones(40, bool), np.zeros(40, bool)])
+    log_m = np.log(strikes / forward)
+    sigma = 0.2 + 0.05 * log_m**2
+    prices = binomial_price_batch(
+        is_call, spot, strikes, t, sigma, r, q, n_steps=DEFAULT_BATCH_STEPS, american=True
+    )
+
+    sig_45 = deamericanize_batch(is_call, prices, spot, strikes, t, r, q, bisections=45)
+    sig_24 = deamericanize_batch(is_call, prices, spot, strikes, t, r, q, bisections=24)
+
+    ok = np.isfinite(sig_45) & np.isfinite(sig_24)
+    assert ok.sum() >= 70  # the whole realistic ladder inverts under both counts
+    drift = np.abs(sig_45[ok] - sig_24[ok])
+    assert drift.max() < 0.01e-2, drift.max()  # < 0.01 vol bp, the Stage 1 gate
 
 
 # -- stale edit indices -------------------------------------------------------

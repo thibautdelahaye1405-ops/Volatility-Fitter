@@ -55,6 +55,7 @@ from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
 from volfit.calib.weighted_time import weighted_variance_years
 from volfit.calib.weights import resolve_weights
+from volfit.data.forwards import ResolvedForward
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
 from volfit.dynamics.transport import TransportedSlice
 from volfit.models.diagnostics import (
@@ -146,47 +147,88 @@ def variance_time(state: AppState, ticker: str, expiry, t_cal: float) -> float:
     return weighted_variance_years(t_cal, pairs, normalize=options.normalizeEvents)
 
 
-def _prepared_key(state: AppState, ticker: str, iso: str) -> tuple:
-    """Cache key for a node's PreparedQuotes.
+def _cash_digest(cash_divs: tuple | None) -> tuple | None:
+    """Stable, hashable digest of a (ex_times, scaled_amounts, rate) schedule.
 
-    The de-Americanized, inverted quotes depend ONLY on the chain snapshot, the
-    resolved forward, the maturity / variance clock and the dividend schedule —
-    never on quote/var-swap/prior edits, the band or the fit_mode (those enter
-    later, in ``edited_fit_inputs`` / ``edited_band`` / the model fit). So the key
-    carries exactly the version counters those inputs move under. ``settings`` and
-    ``options`` versions are supersets (a hyperparameter change can't alter the
-    prepared quotes) — including them is deliberate over-keying: an extra
-    invalidation only costs a recompute, never correctness. The as-of reference
-    date is folded in for belt-and-braces (an as-of switch also clears the cache)."""
+    Rounds the floats to remove resolution jitter so an unchanged schedule keys
+    identically across calls; ``None`` (continuous-yield de-Am) digests to None."""
+    if cash_divs is None:
+        return None
+    times, amounts, rate = cash_divs
+    return (
+        tuple(np.round(np.asarray(times, dtype=float), 9)),
+        tuple(np.round(np.asarray(amounts, dtype=float), 9)),
+        round(float(rate), 12),
+    )
+
+
+def _prepared_key(
+    state: AppState,
+    ticker: str,
+    iso: str,
+    forward: ResolvedForward,
+    cash_divs: tuple | None,
+    t_cal: float,
+    tau: float,
+) -> tuple:
+    """Content-digest cache key for a node's PreparedQuotes (note Stage 2).
+
+    De-Americanized, inverted quotes depend ONLY on the raw chain snapshot, the
+    resolved forward/discount, the maturity / variance clock and the dividend
+    schedule — never on quote/var-swap/prior edits, the band or the fit_mode
+    (those enter later, in ``edited_fit_inputs`` / ``edited_band`` / the model
+    fit). The earlier key carried the broad global version counters
+    (``settings``/``options``/``forwards``/``events``), which over-invalidated:
+    every LV-hyperparameter tweak re-ran the (seconds-long) de-Am, and the global
+    ``forwards_version`` let one ticker's forward edit bust another ticker's
+    prepared quotes. We instead fold in the actual RESOLVED inputs the prep
+    consumes — so a change re-keys iff it really changes a de-Am input, and the
+    key is naturally ticker-scoped:
+
+      - ``data_version``  : raw chain identity (bumped on fetch / chain invalidate)
+      - forward, discount : the resolved forward (absorbs forward policy/manual)
+      - cash schedule     : discrete-dividend de-Am inputs (absorbs div model/rate)
+      - t_cal             : calendar maturity (drives de-Am carry + discounting)
+      - tau               : variance clock (absorbs eventsEnabled/normalize/calendar)
+      - reference_date    : as-of (belt-and-braces; an as-of switch also re-keys)
+
+    The resolution cost (forward/schedule/tau) is microseconds against the
+    seconds of de-Am it gates, so computing it on every call — including hits —
+    is a clear win."""
     return (
         ticker,
         iso,
         state.data_version(ticker),
-        state.forwards_version,
-        state.settings_version,
-        state.events_version,
-        state.options_version,
+        round(float(forward.forward), 9),
+        round(float(forward.discount), 12),
+        _cash_digest(cash_divs),
+        round(float(t_cal), 12),
+        round(float(tau), 12),
         state.reference_date.toordinal(),
     )
 
 
 def prepared_quotes(state: AppState, ticker: str, expiry: date) -> PreparedQuotes:
-    """PreparedQuotes for a node, memoized on a version-keyed cache.
+    """PreparedQuotes for a node, memoized on a content-digest cache.
 
     De-Americanization (the per-quote binomial inversion of an American chain) is
     the cost on this path. The same node's quotes are re-derived by many views in
     one refresh fan-out and by every pre-Calibrate display poll of a gated node;
     this caches the result so the de-Am runs once per genuine input change. The
-    caller must have ensured the chain (``ensure_chain`` / ``has_quotes``)."""
-    key = _prepared_key(state, ticker, expiry.isoformat())
-    cached = state.get_prepared(key)
-    if cached is not None:
-        return cached
-    snapshot = state.snapshot(ticker)
+    caller must have ensured the chain (``ensure_chain`` / ``has_quotes``).
+
+    The de-Am inputs are resolved FIRST (forward, cash schedule, clocks) so they
+    can be digested into the key — they are cheap to resolve and are exactly what
+    ``prepare_quotes`` needs on a miss, so nothing is computed twice."""
     forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
     cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
     t_cal = state.year_fraction(expiry)
     tau = variance_time(state, ticker, expiry, t_cal)
+    key = _prepared_key(state, ticker, expiry.isoformat(), forward, cash_divs, t_cal, tau)
+    cached = state.get_prepared(key)
+    if cached is not None:
+        return cached
+    snapshot = state.snapshot(ticker)
     prepared = prepare_quotes(snapshot, expiry, forward, t_cal, cash_divs, tau=tau)
     state.store_prepared(key, prepared)
     return prepared

@@ -44,10 +44,16 @@ SIGMA_HI = 4.0
 #: milliseconds. The scalar default stays at the deeper DEFAULT_STEPS.
 DEFAULT_BATCH_STEPS = 192
 
-#: Bisection sweeps in deamericanize_batch: halving a <= SIGMA_HI bracket 45
-#: times leaves < 2e-13 of sigma uncertainty, comparable to the scalar
-#: Brent tolerances.
-BATCH_BISECTIONS = 45
+#: Bisection sweeps in deamericanize_batch. Halving a <= SIGMA_HI (4.0)
+#: bracket leaves ~SIGMA_HI/2^bisections of sigma uncertainty; at 24 that is
+#: ~2.4e-7 of sigma (~0.002 vol bp), already far below quote noise. The old
+#: default of 45 (~1e-13 of sigma) was solving the de-Am inversion to a
+#: precision the calibration never uses: on the Bloomberg SPY fixture, 24
+#: sweeps were ~1.8x faster than 45 at the same 192-step tree with effectively
+#: zero IV drift (Docs/deamericanization_calibration_speed_note.md, Stage 1;
+#: drift locked under 0.01 vol bp by test_quotes_deam). The forward de-bias
+#: passes its own (smaller) count, so this default governs only quote prep.
+BATCH_BISECTIONS = 24
 
 
 def _escrow(
@@ -278,9 +284,9 @@ def deamericanize_batch(
     (e.g. a deep-ITM put at its early-exercise floor) and quotes never
     bracketed by SIGMA_HI come back nan. ``bisections`` halvings of a
     <= SIGMA_HI bracket leave ~SIGMA_HI/2^bisections of sigma uncertainty
-    (the default lands within ~2e-13; callers that only need a few bp of vol,
-    e.g. the forward de-bias, pass a smaller count to trade precision for
-    speed).
+    (the default 24 lands within ~2.4e-7 of sigma, ~0.002 vol bp — below quote
+    noise; callers that only need a few bp of vol, e.g. the forward de-bias,
+    pass a smaller count to trade precision for speed).
     """
     is_call = np.asarray(is_call, dtype=bool)
     prices = np.asarray(prices, dtype=float)
