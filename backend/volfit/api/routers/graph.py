@@ -10,10 +10,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from volfit.api import graph_extrapolation, graph_reconstruct, graph_service
+from volfit.api import (
+    graph_backtest,
+    graph_extrapolation,
+    graph_reconstruct,
+    graph_service,
+)
 from volfit.api.schemas import (
     GraphAutotuneRequest,
     GraphAutotuneResponse,
+    GraphBacktestResponse,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
     GraphNodeInfo,
@@ -87,3 +93,10 @@ def extrapolate_node_smile(
         )
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.post("/graph/backtest", response_model=GraphBacktestResponse)
+def backtest(body: GraphExtrapolateRequest, request: Request) -> GraphBacktestResponse:
+    """Leave-one-node-out backtest over the validation-clean calibrated nodes
+    (plan Phase 8): per-node residuals + an aggregate calibration summary."""
+    return graph_backtest.backtest(request.app.state.volfit, body)

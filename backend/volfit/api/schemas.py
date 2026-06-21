@@ -787,6 +787,30 @@ class GraphNodeSmile(BaseModel):
     metrics: GraphNodeMetrics | None = None
 
 
+class GraphBacktestNode(BaseModel):
+    """One held-out node's leave-one-node-out prediction vs its calibration."""
+
+    ticker: str
+    expiry: str
+    priorSource: str
+    calibratedAtmVol: float
+    postAtmVol: float  # predicted from the other nodes (this one withheld)
+    residualBp: float  # (post - calibrated) ATM vol, basis points
+    standardizedResidual: float  # zeta under the posterior + obs uncertainty
+
+
+class GraphBacktestResponse(BaseModel):
+    """Leave-one-node-out backtest over the calibrated, validation-clean nodes
+    (plan Phase 8): per-node residuals + an aggregate calibration summary."""
+
+    nodes: list[GraphBacktestNode]
+    nScored: int
+    nExcludedBootstrap: int  # calibrated nodes skipped (circular bootstrap prior)
+    rmseBp: float  # RMS held-out ATM-vol prediction error, basis points
+    zetaMean: float  # mean standardized residual (well-calibrated ⇒ ~0)
+    zetaStd: float  # std standardized residual (well-calibrated ⇒ ~1)
+
+
 # ------------------------------------------------------------------ scenario
 class ScenarioRequest(BaseModel):
     """SSR scenario: shift one smile for a spot move under a dynamics regime.

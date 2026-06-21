@@ -206,11 +206,18 @@ class ExtrapolationSolution:
     fit_mode: str
 
 
-def solve(state: AppState, request: GraphExtrapolateRequest) -> ExtrapolationSolution | None:
+def solve(
+    state: AppState,
+    request: GraphExtrapolateRequest,
+    hold_out: frozenset = frozenset(),
+) -> ExtrapolationSolution | None:
     """Run the production prior-anchored solve (plan Phase 3/4); None if empty.
 
     transported prior baselines -> lit-calibration innovations -> graph posterior
     increment, with data-derived precision. Dark nodes are never observations.
+    ``hold_out`` is a set of node names withheld from the observations (used by the
+    leave-one-node-out backtest, plan Phase 8); their calibrated handles are still
+    computed (for scoring) but do not feed the propagation.
     """
     # Local import avoids a module-load cycle (graph_nodes imports us for typing).
     from volfit.api.graph_nodes import resolve_priors
@@ -239,6 +246,7 @@ def solve(state: AppState, request: GraphExtrapolateRequest) -> ExtrapolationSol
     obs_values_list: list[np.ndarray] = []
     calibrated = [False] * len(universe.nodes)
     obs_breakdowns: dict[int, gprec.PrecisionBreakdown] = {}
+    calibrated_by_idx: dict[int, np.ndarray] = {}
     for i, node in enumerate(universe.nodes):
         if not node.lit:
             continue
@@ -251,6 +259,9 @@ def solve(state: AppState, request: GraphExtrapolateRequest) -> ExtrapolationSol
         n_atm, rel_spread = _quote_stats(record.prepared)
         obs_breakdowns[i] = gprec.observation_precision(rms, n_atm, rel_spread)
         calibrated[i] = True
+        calibrated_by_idx[i] = y
+        if node.name in hold_out:  # withheld from the propagation (LOO scoring)
+            continue
         obs_idx_list.append(i)
         obs_values_list.append(y)
 
@@ -280,7 +291,7 @@ def solve(state: AppState, request: GraphExtrapolateRequest) -> ExtrapolationSol
         field=field,
         base_breakdowns=base_breakdowns,
         obs_breakdowns=obs_breakdowns,
-        obs_value_by_idx=dict(zip(obs_idx_list, obs_values_list)),
+        obs_value_by_idx=calibrated_by_idx,
         calibrated=calibrated,
         fit_mode=fit_mode,
     )
