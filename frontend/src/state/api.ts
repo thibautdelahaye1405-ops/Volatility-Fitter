@@ -1,8 +1,18 @@
 // Minimal typed fetch helper for the FastAPI backend.
 // No endpoints are wired up yet; views will import `api` once the backend is live.
 
-/** Base URL of the FastAPI backend. */
-export const API_BASE_URL = "http://localhost:8000";
+/**
+ * Base URL of the FastAPI backend.
+ *
+ * Dev (Vite on :5173) talks cross-origin to the dev backend on :8000 with CORS.
+ * Production builds are served by FastAPI itself from the same origin (the
+ * single-origin desktop `.exe`), so we target `window.location.origin` — the
+ * page's own host:port — which makes the bundle portable to any port the
+ * desktop launcher happens to bind (it falls back off :8000 if taken).
+ */
+export const API_BASE_URL = import.meta.env.DEV
+  ? "http://localhost:8000"
+  : window.location.origin;
 
 /** Error thrown when the backend responds with a non-2xx status. */
 export class ApiError extends Error {

@@ -10,6 +10,22 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-21 (resume here)
 
+### 🖥️ DESKTOP `.exe` — single-origin refactor SHIPPED (2026-06-21, branch `feature/desktop-exe`)
+
+Bifurcated off `main` (main unchanged, continues independently). Makes FastAPI
+serve the React build on **one origin** — the prerequisite for a PyInstaller
+`.exe`. Additive only; `create_app` and the dev workflow (`restart.ps1`, Vite on
+:5173 + CORS) are byte-identical. New: `backend/volfit/api/frontend.py`
+(`mount_frontend`/`find_frontend_dist`), `backend/desktop.py` (single-origin
+entry point — auto-picks a free port, opens the browser, app-data DB default),
+`volfit.spec` + `build_exe.ps1` (PyInstaller scaffold), and `api.ts`'s
+`API_BASE_URL` now relative in prod builds (`window.location.origin`). Verified
+in-app: UI + `/assets/*` + API all serve from one origin with API routes taking
+precedence; 4 new tests (`test_frontend_mount.py`), full suite green. **Scope was
+single-origin + scaffold — a full `.exe` freeze has not been run yet.** See
+`DESKTOP.md`. Remaining: run the first freeze + iterate numba/llvmlite hidden
+imports; optional pywebview window chrome, icon, code-signing.
+
 ### 🚀 GRAPH SMILE-EXTRAPOLATION — production path SHIPPED (2026-06-21, branch `feature/graph-extrapolation`)
 
 The prior-anchored production extrapolator of
