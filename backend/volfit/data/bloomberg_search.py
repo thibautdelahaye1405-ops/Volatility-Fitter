@@ -10,24 +10,29 @@ Both **equities/ETFs** and **indices** are searched (and merged), so non-US
 stocks ("SAP GY Equity") and index underlyings ("SX5E Index", "UKX Index") are
 both discoverable for the universe picker — the instrumentListRequest takes a
 single ``yellowKeyFilter``, so one request is issued per yellow key and the hits
-are de-duplicated.
+are **interleaved** (round-robin) so neither asset class crowds the other out of
+the result limit.
 """
 
 from __future__ import annotations
 
+from itertools import zip_longest
+
 from volfit.data.bloomberg_parse import normalize_security
 from volfit.data.provider import SymbolMatch
+from volfit.data.symbols import portable_ticker
 
 #: Bloomberg security-search service (free-text symbol/name -> securities).
 INSTRUMENTS_SERVICE = "//blp/instruments"
 
-#: Yellow keys to search, each as ``(filter, type-label)``. Indices first so a
-#: genuine index query ("DAX", "SX5E") is never crowded out of the result limit
-#: by ETFs sharing the name; the index filter returns nothing for an equity
-#: query, so plain stock searches are unaffected.
+#: Yellow keys to search, each as ``(filter, type-label)``. Equities first — the
+#: common ticker search ("AAPL") — then indices; results are INTERLEAVED in
+#: ``_merge_matches`` so an index query still surfaces its index and an equity
+#: query still surfaces equities (the previous concat-indices-first dropped every
+#: equity off the end of the limit when the index filter returned loose matches).
 _YK_FILTERS = (
-    ("YK_FILTER_INDX", "INDEX"),
     ("YK_FILTER_EQTY", "EQUITY"),
+    ("YK_FILTER_INDX", "INDEX"),
 )
 
 
@@ -84,7 +89,9 @@ def _run_filter(
                 row = results.getValueAsElement(i)
                 if not row.hasElement("security"):
                     continue
-                security = normalize_security(row.getElementAsString("security"))
+                security = portable_ticker(
+                    normalize_security(row.getElementAsString("security"))
+                )
                 description = (
                     row.getElementAsString("description")
                     if row.hasElement("description")
@@ -99,12 +106,21 @@ def _run_filter(
 
 
 def _merge_matches(batches: list[list[SymbolMatch]], limit: int) -> list[SymbolMatch]:
-    """Flatten per-yellow-key result batches, de-duplicate by symbol, trim."""
+    """Round-robin merge across the yellow-key batches, de-dup by symbol, trim.
+
+    Interleaving (not concatenating one yellow key before the other) keeps BOTH
+    asset classes in the top ``limit``: an equity query still surfaces equities
+    even when the index filter also returns loose matches, and an index query
+    still surfaces its index. ``zip_longest`` lets the richer batch fill the
+    remaining slots, so a stock search with few index hits still returns mostly
+    equities. Batches are consumed in the given order, so the first batch leads
+    each round (equities, per ``_YK_FILTERS``).
+    """
     out: list[SymbolMatch] = []
     seen: set[str] = set()
-    for batch in batches:
-        for match in batch:
-            if match.symbol in seen:
+    for row in zip_longest(*batches):
+        for match in row:
+            if match is None or match.symbol in seen:
                 continue
             seen.add(match.symbol)
             out.append(match)

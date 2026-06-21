@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from volfit.api import create_app
+from volfit.api.state import AppState
 from volfit.data.provider import SyntheticProvider
 
 REF = date(2026, 6, 10)
@@ -68,6 +69,22 @@ class CappedProvider(SyntheticProvider):
 def client():
     with TestClient(create_app(reference_date=REF)) as c:
         yield c
+
+
+def test_restore_universe_normalizes_decorated_symbols():
+    """A saved universe that stored a Bloomberg-decorated symbol ("AAPL US EQUITY")
+    is normalized to the portable bare ticker on restore, so it resolves on every
+    source — and collapses against a duplicate bare entry."""
+    state = AppState(REF)
+    state.restore_universe(["AAPL US EQUITY", "MSFT", "AAPL"])
+    assert state.active_tickers() == ["AAPL", "MSFT"]  # decorated -> bare, deduped
+
+
+def test_restore_universe_keeps_non_us_and_index_symbols():
+    """Non-US names and indices are Bloomberg-only and keep their full security."""
+    state = AppState(REF)
+    state.restore_universe(["SPX INDEX", "SAP GY EQUITY"])
+    assert state.active_tickers() == ["SPX INDEX", "SAP GY EQUITY"]
 
 
 def test_provider_chain_failure_degrades_not_500():

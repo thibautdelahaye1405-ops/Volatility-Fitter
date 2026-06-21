@@ -16,6 +16,7 @@ from datetime import date
 
 from volfit.data.expiry_select import default_selection
 from volfit.data.forwards import implied_forwards
+from volfit.data.symbols import portable_ticker
 
 
 class UnknownNodeError(KeyError):
@@ -39,7 +40,7 @@ class UniverseMixin:
         Idempotent. Pre-caches the snapshot/forwards and resets the graph
         universe so it rebuilds over the new node set.
         """
-        sym = symbol.strip().upper()
+        sym = portable_ticker(symbol.strip().upper())  # portable across sources
         if not sym:
             raise UnknownNodeError("empty ticker symbol")
         with self._lock:
@@ -78,7 +79,7 @@ class UniverseMixin:
 
     def remove_ticker(self, symbol: str) -> None:
         """Remove a ticker from the universe (never the last one)."""
-        sym = symbol.strip().upper()
+        sym = portable_ticker(symbol.strip().upper())
         with self._lock:
             if sym not in self._active_tickers:
                 raise UnknownNodeError(f"unknown ticker {sym!r}")
@@ -92,7 +93,9 @@ class UniverseMixin:
         """Replace the universe (loading a saved one); unfetchable symbols are
         skipped. Each ticker starts on the default selection (callers re-apply
         any saved custom picks). Raises ValueError if nothing usable survives."""
-        wanted = list(dict.fromkeys(s.strip().upper() for s in symbols if s.strip()))
+        wanted = list(
+            dict.fromkeys(portable_ticker(s.strip().upper()) for s in symbols if s.strip())
+        )
         validated: list[str] = []
         fetched: dict[str, tuple] = {}
         for sym in wanted:
@@ -136,14 +139,16 @@ class UniverseMixin:
         ``_ensure_selection`` to apply once each ladder loads. Tickers a provider
         can no longer serve simply resolve to no data (handled downstream), exactly
         as an unreachable default-watchlist ticker would."""
-        wanted = list(dict.fromkeys(t.strip().upper() for t in tickers if t.strip()))
+        wanted = list(
+            dict.fromkeys(portable_ticker(t.strip().upper()) for t in tickers if t.strip())
+        )
         if not wanted:
             return
         with self._lock:
             self._active_tickers = wanted
             self._pending_selections = {}
             for ticker, picks in (selections or {}).items():
-                sym = ticker.strip().upper()
+                sym = portable_ticker(ticker.strip().upper())
                 if not picks:
                     continue  # auto: the default rule applies lazily
                 try:

@@ -402,18 +402,48 @@ def test_search_symbols_falls_back_without_blpapi(monkeypatch):
     assert any(m.symbol == "NVDA" for m in matches)  # echo fallback still resolves
 
 
-def test_merge_matches_dedupes_and_keeps_indices():
-    """The equity+index batches merge by symbol with indices kept first, so an
-    index underlying is never crowded out of the result limit by same-name ETFs."""
-    indices = [SymbolMatch("DAX Index", "DAX", "INDEX")]
+def test_merge_matches_interleaves_equities_and_indices():
+    """Equity and index batches are interleaved (round-robin), so neither asset
+    class is crowded out of the result limit — the regression behind 'an equity
+    query shows only indices'. Batches lead in the order given (equities first)."""
     equities = [
-        SymbolMatch("DAX Index", "duplicate", "EQUITY"),  # dup symbol -> dropped
-        SymbolMatch("DBK GY Equity", "Deutsche Bank", "EQUITY"),
+        SymbolMatch("AAPL", "Apple", "EQUITY"),
+        SymbolMatch("MSFT", "Microsoft", "EQUITY"),
     ]
-    out = _merge_matches([indices, equities], limit=10)
-    assert [m.symbol for m in out] == ["DAX Index", "DBK GY Equity"]
-    assert out[0].type == "INDEX"  # the index entry survives the de-dup
-    assert _merge_matches([indices, equities], limit=1) == indices  # trimmed
+    indices = [
+        SymbolMatch("SPX Index", "S&P 500", "INDEX"),
+        SymbolMatch("NDX Index", "Nasdaq 100", "INDEX"),
+    ]
+    out = _merge_matches([equities, indices], limit=10)
+    assert [m.symbol for m in out] == ["AAPL", "SPX Index", "MSFT", "NDX Index"]
+
+
+def test_merge_matches_dedupes_and_lets_rich_batch_fill():
+    """A duplicate symbol is dropped, and when one batch is sparse the other
+    fills the remaining slots (so a stock search with few index hits stays
+    equity-heavy instead of being capped at one equity)."""
+    equities = [
+        SymbolMatch("AAPL", "Apple", "EQUITY"),
+        SymbolMatch("AAPL", "duplicate", "EQUITY"),  # dup symbol -> dropped
+        SymbolMatch("AMD", "AMD", "EQUITY"),
+    ]
+    indices = [SymbolMatch("SPX Index", "S&P 500", "INDEX")]
+    out = _merge_matches([equities, indices], limit=10)
+    assert [m.symbol for m in out] == ["AAPL", "SPX Index", "AMD"]
+    assert _merge_matches([equities, indices], limit=1)[0].symbol == "AAPL"  # trimmed
+
+
+def test_portable_ticker_strips_us_equity_only():
+    """US equities store as the bare ticker (portable across data sources);
+    non-US names and indices keep their full Bloomberg security. Case-insensitive
+    so it works on the title-case search result and the upper-cased stored form."""
+    from volfit.data.symbols import portable_ticker
+
+    assert portable_ticker("AAPL US Equity") == "AAPL"
+    assert portable_ticker("AAPL US EQUITY") == "AAPL"  # stored upper-case form
+    assert portable_ticker("SAP GY Equity") == "SAP GY Equity"  # non-US: kept
+    assert portable_ticker("SPX Index") == "SPX Index"  # index: kept
+    assert portable_ticker("AAPL") == "AAPL"  # already bare
 
 
 # ----------------------------------------------------- non-US names & indices
