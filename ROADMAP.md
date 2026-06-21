@@ -21,10 +21,12 @@ entry point — auto-picks a free port, opens the browser, app-data DB default),
 `volfit.spec` + `build_exe.ps1` (PyInstaller scaffold), and `api.ts`'s
 `API_BASE_URL` now relative in prod builds (`window.location.origin`). Verified
 in-app: UI + `/assets/*` + API all serve from one origin with API routes taking
-precedence; 4 new tests (`test_frontend_mount.py`), full suite green. **Scope was
-single-origin + scaffold — a full `.exe` freeze has not been run yet.** See
-`DESKTOP.md`. Remaining: run the first freeze + iterate numba/llvmlite hidden
-imports; optional pywebview window chrome, icon, code-signing.
+precedence; 4 new tests (`test_frontend_mount.py`), full suite green. **The
+PyInstaller freeze now succeeds** — `build_exe.ps1` → `dist\VolFitter.exe`
+(~135 MB one-file) launches and serves UI+API on one origin from the frozen
+`sys._MEIPASS` bundle (verified). Non-fatal `tbb12.dll` warning (numba falls back
+to the workqueue layer; `pip install tbb` to silence). See `DESKTOP.md`.
+Remaining (optional): pywebview window chrome, app icon, code-signing.
 
 ### 🚀 GRAPH SMILE-EXTRAPOLATION — production path SHIPPED (2026-06-21, branch `feature/graph-extrapolation`)
 

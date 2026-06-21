@@ -1,4 +1,4 @@
-# build_exe.ps1 — build the VolFitter standalone desktop .exe.
+# build_exe.ps1 - build the VolFitter standalone desktop .exe.
 #
 # Pipeline:
 #   1. Build the React bundle  (npm --prefix frontend run build -> frontend/dist)
@@ -12,7 +12,7 @@
 #          .\build_exe.ps1 -SkipFrontend   # reuse an existing frontend/dist
 #
 # Prereqs: Node/npm (for the React build) and the project's .venv (volfit
-# editable-installed, numba/scipy/fastapi/uvicorn present — see CLAUDE.md).
+# editable-installed, numba/scipy/fastapi/uvicorn present - see CLAUDE.md).
 
 param(
     [switch]$SkipFrontend   # reuse an existing frontend/dist (faster re-freeze)
@@ -23,7 +23,7 @@ $repo = $PSScriptRoot
 $py   = Join-Path $repo ".venv\Scripts\python.exe"
 
 if (-not (Test-Path $py)) {
-    throw "No .venv python at $py — create the venv first (see CLAUDE.md)."
+    throw "No .venv python at $py - create the venv first (see CLAUDE.md)."
 }
 
 # --- 1. Build the React bundle ---------------------------------------------
@@ -42,7 +42,7 @@ if ($SkipFrontend) {
 
 $indexHtml = Join-Path $repo "frontend\dist\index.html"
 if (-not (Test-Path $indexHtml)) {
-    throw "frontend/dist/index.html missing — run without -SkipFrontend to build it."
+    throw "frontend/dist/index.html missing - run without -SkipFrontend to build it."
 }
 
 # --- 2. Ensure PyInstaller is available ------------------------------------
@@ -51,7 +51,7 @@ Write-Host "Checking PyInstaller ..." -ForegroundColor Cyan
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Installing PyInstaller into the .venv ..."
     & $py -m pip install pyinstaller
-    if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (PyPI is flaky here — retry)" }
+    if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (PyPI is flaky here - retry)" }
 }
 
 # --- 3. Freeze the .exe -----------------------------------------------------

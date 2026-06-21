@@ -70,10 +70,18 @@ the UI + API on one origin and opens your browser.
 - `upx=False` on purpose — UPX trips antivirus and can corrupt the numba/llvmlite
   DLLs. `console=True` so the active data source + URL are visible.
 
-### Not yet done (scaffold only)
+### Build status
 
-A full `.exe` build has **not** been run on this pass (scope: single-origin
-refactor + scaffold). The spec is ready; expect the usual first-freeze
-iteration on numba/scipy/llvmlite hidden imports and DLLs. Likely follow-ups:
-window chrome (pywebview instead of the system browser), an app icon, and
-code-signing.
+The freeze has been run and **succeeds**: `dist\VolFitter.exe` (~135 MB,
+one-file) launches, serves the UI + API on one origin (verified `/`,
+`/universe`, `/assets/*` all 200 from the frozen bundle's `sys._MEIPASS`
+`frontend_dist`), and writes persistence under `%LOCALAPPDATA%\VolFitter`.
+
+Known caveat: PyInstaller warns `tbb12.dll` could not be resolved (numba's TBB
+threading layer is not installed in the venv). It is **non-fatal** — numba
+imports and falls back to its `workqueue` threading layer, and the LV march has
+its own banded fallback besides. To silence it / get TBB parallelism, `pip
+install tbb` into the venv before building.
+
+Likely follow-ups: window chrome (pywebview instead of the system browser), an
+app icon, and code-signing.
