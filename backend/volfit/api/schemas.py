@@ -701,6 +701,10 @@ class GraphExtrapolateNode(BaseModel):
     bandLo: float
     bandHi: float
     innovationBp: float | None = None  # lit nodes: (calibrated - prior) ATM vol, bp
+    # Data-derived precision (plan Phase 4), per handle (atm_vol, skew, curvature).
+    baselinePrecision: list[float] = []  # transported-prior baseline precision
+    obsPrecision: list[float] | None = None  # lit-node observation precision
+    precisionFactors: dict[str, float] = {}  # the scalar factor breakdown
 
 
 class GraphExtrapolateResponse(BaseModel):

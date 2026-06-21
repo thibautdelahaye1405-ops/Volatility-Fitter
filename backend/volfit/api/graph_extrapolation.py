@@ -28,7 +28,6 @@ import numpy as np
 
 from volfit.api.graph_service import (
     CROSS_TICKER_WEIGHT,
-    GRAPH_PRECISION,
     SAME_TICKER_WEIGHT,
     _build_priors,
     _lattice_weights,
@@ -38,13 +37,17 @@ from volfit.api.schemas import (
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
 )
-from volfit.api.service import fit_or_get
+from volfit.api.service import fit_or_get, weighted_rms_error
 from volfit.api.state import AppState
+from volfit.graph import precision as gprec
 from volfit.graph.build import NodeId, SmileGraph, build_graph
 from volfit.graph.posterior import posterior_update
 from volfit.graph.smile_universe import HandleField, N_HANDLES
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.quadrature import build_slice
+
+#: Near-ATM half-window (log-moneyness) for the quote-density / spread factors.
+ATM_BAND = 0.10
 
 
 @dataclass(frozen=True)
@@ -159,6 +162,36 @@ def _node_t(state: AppState, iso: str) -> float:
     return max(days, 0) / 365.25
 
 
+def _quote_stats(prepared) -> tuple[float, float]:
+    """(near-ATM quote count, relative bid-ask spread) for the precision factors.
+
+    Spread is mean ``(iv_ask - iv_bid) / iv_mid`` over the near-ATM window (all
+    quotes if none fall inside it). Drives the quote-density + spread precision
+    factors (plan Phase 4)."""
+    k = np.asarray(prepared.k, dtype=float)
+    near = np.abs(k) <= ATM_BAND
+    if not near.any():
+        near = np.ones_like(k, dtype=bool)
+    n_atm = float(np.count_nonzero(near))
+    mid = np.maximum(np.asarray(prepared.iv_mid, dtype=float)[near], 1e-6)
+    width = np.asarray(prepared.iv_ask, dtype=float)[near] - np.asarray(
+        prepared.iv_bid, dtype=float
+    )[near]
+    rel_spread = float(np.mean(np.maximum(width, 0.0) / mid))
+    return n_atm, rel_spread
+
+
+def _prior_age_days(state: AppState, as_of: str | None) -> float:
+    """Days between the reference date and a prior snapshot's market moment."""
+    if not as_of:
+        return 0.0
+    try:
+        as_of_date = date.fromisoformat(as_of[:10])
+    except ValueError:
+        return 0.0
+    return max((state.reference_date - as_of_date).days, 0)
+
+
 def _propagate_field(
     graph: SmileGraph,
     priors,
@@ -219,18 +252,34 @@ def extrapolate(
     fit_mode = state.last_fit_mode
     priors_meta = resolve_priors(state, universe, flat_atm=request.flatAtm)
     baseline = np.vstack([p.handles for p in priors_meta])
-    baseline_precision = np.vstack([p.precision for p in priors_meta])
+
+    # Data-derived baseline precision per node (plan Phase 4): provenance tier x
+    # prior age x transport distance, with floors/caps.
+    base_breakdowns = [
+        gprec.baseline_precision(
+            p.source, _prior_age_days(state, p.as_of), p.transport_distance
+        )
+        for p in priors_meta
+    ]
+    baseline_precision = np.vstack([b.precision for b in base_breakdowns])
 
     # Lit nodes with a calibration become observations; dark nodes never do.
+    # Each observation's precision is derived from fit quality + quote coverage.
     obs_idx_list: list[int] = []
     obs_values_list: list[np.ndarray] = []
     calibrated = [False] * len(universe.nodes)
+    obs_breakdowns: dict[int, gprec.PrecisionBreakdown] = {}
     for i, node in enumerate(universe.nodes):
         if not node.lit:
             continue
-        y = _calibrated_handles(state, node.ticker, node.expiry, fit_mode)
-        if y is None:
+        record = fit_or_get(state, node.ticker, node.expiry, fit_mode)
+        if record is None:
             continue
+        h = atm_handles(build_slice(record.result.params), record.prepared.tau)
+        y = np.array([h.sigma0, h.skew, h.curvature])
+        rms = weighted_rms_error(state, node.ticker, node.expiry, record, fit_mode)
+        n_atm, rel_spread = _quote_stats(record.prepared)
+        obs_breakdowns[i] = gprec.observation_precision(rms, n_atm, rel_spread)
         calibrated[i] = True
         obs_idx_list.append(i)
         obs_values_list.append(y)
@@ -239,7 +288,11 @@ def extrapolate(
     obs_values = (
         np.vstack(obs_values_list) if obs_values_list else np.empty((0, N_HANDLES))
     )
-    obs_precision = np.broadcast_to(GRAPH_PRECISION, (obs_idx.size, N_HANDLES))
+    obs_precision = (
+        np.vstack([obs_breakdowns[i].precision for i in obs_idx_list])
+        if obs_idx_list
+        else np.empty((0, N_HANDLES))
+    )
 
     increment_priors = _build_priors(universe.graph, request)
     field = _propagate_field(
@@ -262,8 +315,17 @@ def extrapolate(
         innovation_bp = None
         if i in obs_value_by_idx:
             innovation_bp = float((obs_value_by_idx[i][0] - prior_h[0]) * 1e4)
+        obs_bd = obs_breakdowns.get(i)
+        factors = dict(base_breakdowns[i].factors)
+        if obs_bd is not None:
+            factors.update(obs_bd.factors)
         nodes.append(
             GraphExtrapolateNode(
+                baselinePrecision=[float(v) for v in base_breakdowns[i].precision],
+                obsPrecision=(
+                    [float(v) for v in obs_bd.precision] if obs_bd is not None else None
+                ),
+                precisionFactors=factors,
                 ticker=node.ticker,
                 expiry=node.expiry,
                 t=_node_t(state, node.expiry),
