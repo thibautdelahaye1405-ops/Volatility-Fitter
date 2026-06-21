@@ -68,6 +68,8 @@ def _solve_stationary(kernel: np.ndarray) -> np.ndarray | None:
     """pi with pi^T K = pi^T, sum pi = 1, or None if the chain is reducible
     (singular system / negative mass)."""
     n = kernel.shape[0]
+    if n == 0:
+        return np.zeros(0)  # empty graph (no calibrated/selected nodes yet)
     system = kernel.T - np.eye(n)
     system[-1, :] = 1.0
     rhs = np.zeros(n)

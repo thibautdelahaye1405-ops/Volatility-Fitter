@@ -116,6 +116,15 @@ def test_propagation_moves_a_dark_neighbour(state):
     assert np.sign(dark.shiftBp) == np.sign(mean_innov)
 
 
+def test_graph_nodes_empty_before_calibration():
+    """GET /graph/nodes returns 200 with no nodes before anything is calibrated
+    (the gated server) — never a 500 (which the browser shows as 'Failed to fetch')."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        resp = client.get("/graph/nodes")
+        assert resp.status_code == 200
+        assert resp.json()["nodes"] == []
+
+
 def test_route_extrapolate_smoke():
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
         tk = "ALPHA"

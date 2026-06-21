@@ -200,6 +200,12 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Fitting baseline nodes… (first load can take a second)
             </div>
+          ) : (chartNodes ?? []).length === 0 ? (
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500">
+              {mode === "sandbox"
+                ? "No calibrated nodes yet — calibrate from the Parametric tab, or switch to Extrapolate to propagate transported priors across the selected universe."
+                : "Press Extrapolate to build the selected lit+dark universe and propagate."}
+            </div>
           ) : (
             <GraphChart
               nodes={chartNodes ?? []}
