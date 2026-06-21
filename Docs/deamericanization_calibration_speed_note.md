@@ -40,6 +40,14 @@ faster without weakening the price-quality contract.*
 >   kernel itself parallelizes across quotes), 6 (analytic American),
 >   7 (cross-update reuse), 8 (research).
 > Full suite **647 passed, 1 skipped**; ruff + strict-TS green.
+>
+> **De-Am work is paused here (2026-06-21).** After Stage 4 the inversion is no
+> longer a latency bottleneck (~60× on wide chains), so the remaining stages are
+> optional. See the **future-dev note on analytic American approximations below**
+> (§6 "Optional analytic American approximations" + the Stage-6 recommendation) —
+> that is the next genuinely additive lever IF de-Am ever needs to be faster
+> again, but it changes the numerical pricing target and is not worth its
+> validation cost while the CRR kernel is this fast.
 
 ---
 
@@ -619,6 +627,31 @@ Approximation never silently replaces CRR outside validated regimes.
 Continuous-yield fixtures show material speedup with sub-bp IV drift.
 Discrete-cash-dividend chains stay on CRR by default.
 ```
+
+**Future-dev note (2026-06-21) — recommendation if this stage is ever picked up.**
+De-Am work paused after Stage 4; the Numba CRR kernel (`core/american_numba.py`)
+made the inversion ~60× faster on wide chains, so analytic approximations are no
+longer needed for latency. If a future need arises (e.g. a much larger universe,
+or a deliberately rough interactive mode), the lowest-risk way in is use case **2
+above** — use **Bjerksund-Stensland 2002** purely as a *closed-form initial
+bracket/seed* for the existing CRR bisection, NOT as a replacement pricer. That
+keeps the numerical target exactly CRR (zero contract change, no new validation
+surface) while cutting bisection count, and it composes with the kernel rather
+than competing with it. Concretely:
+
+- add `core/american_analytic.py` with a vectorized BS-2002 call/put price +
+  implied-vol seed (continuous-yield only; assert no discrete cash schedule);
+- in `american_numba._deam_kernel`, replace the fixed `[lo, hi]` start with a
+  tight bracket around the analytic seed, keeping the `lo`/`SIGMA_HI` clamps and
+  the existing doubling as the safety net so a bad seed cannot change the result;
+- only then consider use case **1** (skip CRR entirely where BS-2002 and a CRR
+  sentinel agree within an EEP tolerance) — that one *does* change the target, so
+  gate it behind an explicit "fast de-Am" option, never the default, and validate
+  across the rate/dividend/maturity/moneyness regimes in §9's fixture set.
+
+Treat a full analytic *replacement* pricer (changing the de-Am target by default)
+as out of scope unless the CRR kernel stops being fast enough — which, at ~60×,
+it is not expected to.
 
 ### Stage 7 - Reuse across quote updates
 
