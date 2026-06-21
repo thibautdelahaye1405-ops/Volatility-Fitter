@@ -125,6 +125,20 @@ def test_graph_nodes_empty_before_calibration():
         assert resp.json()["nodes"] == []
 
 
+def test_graph_nodes_ignores_inactive_provider_tickers():
+    """GET /graph/nodes iterates the ACTIVE universe, not the provider watchlist:
+    removing a ticker from the active set (it stays in provider.list_tickers())
+    must not 500 (regression: forwards() on an inactive ticker raised)."""
+    with TestClient(create_app(reference_date=REF_DATE)) as client:
+        st = client.app.state.volfit
+        dropped = st.active_tickers()[-1]
+        st.remove_ticker(dropped)
+        st.universe = None  # force a rebuild over the new active set
+        resp = client.get("/graph/nodes")
+        assert resp.status_code == 200
+        assert all(n["ticker"] != dropped for n in resp.json()["nodes"])
+
+
 def test_route_extrapolate_smoke():
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
         tk = "ALPHA"

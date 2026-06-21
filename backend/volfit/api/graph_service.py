@@ -66,12 +66,20 @@ def ensure_universe(state: AppState) -> SmileUniverse:
     if state.universe is not None:
         return state.universe
 
-    tickers = state.provider.list_tickers()
+    # Iterate the user's ACTIVE universe, not the provider's static watchlist:
+    # the two diverge once the user adds/removes tickers (e.g. SPY+NVDA active
+    # while the provider still lists QQQ), and forwards() on an inactive ticker
+    # raises UnknownNodeError -> a 500 the browser shows as "Failed to fetch".
+    tickers = state.active_tickers()
     smiles: list[SmileNode] = []
     ladders: dict[str, list[str]] = {}
     for ticker in tickers:
         isos: list[str] = []
-        for expiry in sorted(state.forwards(ticker)):
+        try:
+            expiries = sorted(state.forwards(ticker))
+        except Exception:  # noqa: BLE001 — a ticker with no fetched chain is skipped
+            expiries = []
+        for expiry in expiries:
             iso = expiry.isoformat()
             record = fit_or_get(state, ticker, iso, "mid")
             if record is None:
