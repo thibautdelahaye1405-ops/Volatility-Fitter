@@ -8,7 +8,86 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-20 (resume here)
+## STATUS — updated 2026-06-21 (resume here)
+
+### 🚀 GRAPH SMILE-EXTRAPOLATION — production path SHIPPED (2026-06-21, branch `feature/graph-extrapolation`)
+
+The prior-anchored production extrapolator of
+`Docs/graph_extrapolation_implementation_plan.md` is built end-to-end (v1 = the
+plan's Phases 1–6, plus Phase 8 backtest). The manual-shift sandbox
+(`/graph/solve`, `/graph/nodes`, `/graph/autotune`) is **untouched** (Amendment A);
+the production path is entirely additive. The spine:
+
+    transported prior → lit-calibration innovation → graph posterior increment
+                      → dark reconstructed smile    → quote comparison
+
+- **Phase 1** `api/graph_universe.py` — `build_selected_universe(state)` over the
+  user-selected **lit+dark nodes only** (Amendment C); lattice topology reused.
+- **Phase 2** `api/graph_nodes.py` — `resolve_node_prior` by the locked hierarchy
+  (active_transported → nearest_expiry_transported → today_bootstrap → flat_atm),
+  each carrying provenance + `valid_for_validation`. Handles read exactly off the
+  LQD backbone at h=0, numerically off the transported curve otherwise.
+- **Phase 3** `api/graph_extrapolation.py` + `POST /graph/extrapolate` — innovation
+  `d = calibrated − transported_prior` on lit nodes; dark nodes never observations.
+- **Phase 4** `graph/precision.py` — observation precision = 1/rms² × quote-density
+  × bid-ask × freshness; baseline precision = provenance tier × age × transport;
+  per-handle floors/caps; design point reproduces the legacy `[1e6,1e6,1e4]`.
+  Factor breakdown surfaced in diagnostics (Amendment F).
+- **Phase 5** `api/graph_reconstruct.py` + `GET /graph/extrapolate/nodes/{tk}/{exp}`
+  — retarget posterior handles → arb-free smile + band + prior/lit overlays + quote
+  metrics (weighted RMS, inside-spread hit rate, standardized residual for quoted
+  DARK nodes only). Lazy per-node payload (Amendment E).
+- **Phase 6** `graph/beta.py` — `L_dir^β = (I−K∘B)ᵀΠ(I−K∘B)`, PSD, per-handle;
+  beta=1 byte-identical (golden guard). `crossBeta` + explicit `edgeBetas`
+  (weight=trust and beta=amplitude are separate fields, Amendment D).
+- **Phase 8** `api/graph_backtest.py` + `POST /graph/backtest` — leave-one-node-out
+  over validation-clean nodes; residuals + standardized residuals + aggregate
+  calibration (rmseBp, ζ mean/std); bootstrap priors excluded (Amendment B).
+- **Frontend** — Sandbox/Extrapolate toggle in the Graph workspace
+  (`useGraphExtrapolation.ts`, `ExtrapolatePanel.tsx`): runs the solve + backtest,
+  lists per-node prior→posterior moves with provenance, flatAtm + crossBeta knobs,
+  drill-in; the chart draws the full selected universe in Extrapolate mode.
+- **Phase 5 live overlay (DONE)** — drilling into a node overlays its GET
+  node-smile reconstruction (violet posterior curve + shaded credible band) on the
+  live quotes in the Smile viewer, with a GRAPH provenance + quote-metrics badge
+  (RMS / in-band hit / ζ) and a dismiss ✕ (`graphFocus.tsx`, `useGraphNodeSmile.ts`,
+  `SmileChart` overlay props). Strict-TS green; verified in-app.
+
+- **Phase 7 edge editor (DONE)** — user-supplied sparse bi-directed weighted graph
+  with per-edge weight (trust) + beta (amplitude). `GraphEdgeInput`; an explicit
+  edge list overrides the lattice over the selected node set; persisted overrides
+  round-trip (`settings_persist` graph_edges, GET/PUT `/graph/edges`,
+  `/graph/edges/lattice` seed); solve resolves request → persisted → lattice.
+  `_stationary_distribution` gained a teleport-damped fallback so a sparse/
+  disconnected (reducible) user graph no longer fails the singular solve
+  (irreducible graphs byte-identical). Frontend: an Edge editor in the Extrapolate
+  panel (`EdgeEditor.tsx`, `useGraphEdges.ts`) — seed/add/remove/edit + persist.
+
+- **Phase 9 model-agnostic reconstruction (DONE for parametric)** — the node-smile
+  reconstruction renders in the CHOSEN model (LQD/SVI/Multi-Core SIV), not always
+  LQD: LQD is the exact target, SVI/Sig are fitted to it (`graph_reconstruct
+  ._native_slice` via `build_display_fit`) so their ATM handles still match the
+  propagated ones; band carried onto the native curve; metrics + lit overlay use
+  the displayed model; `GraphNodeSmile.model` shown in the overlay badge.
+
+Tests: `test_graph_{extrapolation,node_priors,extrapolate_solve,precision,
+reconstruct,reconstruct_models,beta,backtest,edges}.py` (~64 new).
+**Full suite 708 passed, 1 skipped.**
+
+**Next up (remaining):**
+- **Phase 9 LV projection** — project the graph smile onto an affine LV surface
+  (Amendment G). Needs a graph->LocalVol drill-in first (the parametric Smile
+  viewer, where the drill-in lands today, uses lqd/svi/sigmoid; LV is a separate
+  workspace with no graph drill-in yet).
+- **Phase 10** — sparse perf (deferred; only when selected universes ≫ 10³ nodes).
+- **Pre-graph robustness fixes (2026-06-21)**: `/graph/nodes` iterates the ACTIVE
+  universe (was provider watchlist → 500 on an inactive ticker); empty universe no
+  longer 500s; `state.known_ticker` so read-path guards (market/history/massive-IV)
+  accept user-added tickers; Save/Fetch priors flash a confirmation.
+
+---
+
+## STATUS — earlier (2026-06-20)
 
 ### ✅ CAPSTONE (2026-06-20) — LV calibration perf branch complete; see the methodology note
 

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from volfit.graph.beta import directed_residual_beta
 from volfit.graph.build import SmileGraph
 from volfit.graph.operators import directed_residual, mobility_laplacian
 
@@ -45,12 +46,15 @@ def build_increment_prior(
     source_allowance: float = 0.1,
     rho: np.ndarray | None = None,
     mobility_mean: str = "logarithmic",
+    beta: np.ndarray | None = None,
 ) -> IncrementPrior:
     """Assemble Q_Delta and its inverse for the given hyperparameters.
 
     ``kappa`` is the local temporal precision (scalar or per-node);
     ``eta`` weights directed smoothness; ``ot_weight`` (lambda) weights the
     OT tangent penalty with source/sink allowance ``nu`` = ``source_allowance``.
+    ``beta`` (N x N) scales the directed prediction rule per edge for THIS handle
+    (``L_dir^β``, plan Phase 6); None keeps the plain directed residual.
     """
     n = graph.n_nodes
     kappa_vec = np.broadcast_to(np.asarray(kappa, dtype=float), (n,)).copy()
@@ -59,7 +63,10 @@ def build_increment_prior(
 
     precision = np.diag(kappa_vec)
     if eta > 0.0:
-        precision = precision + eta * directed_residual(graph)
+        residual = (
+            directed_residual(graph) if beta is None else directed_residual_beta(graph, beta)
+        )
+        precision = precision + eta * residual
     if ot_weight > 0.0:
         if source_allowance <= 0.0:
             raise ValueError("source allowance nu must be > 0 (eq. uot-poisson)")

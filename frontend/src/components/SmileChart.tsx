@@ -48,6 +48,11 @@ interface SmileChartProps {
   massiveIv?: SmilePoint[] | null;
   /** Active var-swap quote vol — drawn as a horizontal teal line when set. */
   varSwapLevel?: number | null;
+  /** Graph-extrapolated reconstructed smile (plan Phase 5 overlay): solid violet
+   *  posterior curve with a shaded credible band, over the live quotes. */
+  graphPost?: SmilePoint[] | null;
+  graphBandLo?: SmilePoint[] | null;
+  graphBandHi?: SmilePoint[] | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -105,6 +110,9 @@ export default function SmileChart({
   anchorCurve = null,
   massiveIv = null,
   varSwapLevel = null,
+  graphPost = null,
+  graphBandLo = null,
+  graphBandHi = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -158,13 +166,16 @@ export default function SmileChart({
     scan(prior);
     if (scenario) scan(scenario);
     if (anchorCurve) scan(anchorCurve);
+    if (graphPost) scan(graphPost);
+    if (graphBandLo) scan(graphBandLo);
+    if (graphBandHi) scan(graphBandHi);
     for (const q of quotes) if (inView(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (varSwapLevel !== null) { yMin = Math.min(yMin, varSwapLevel); yMax = Math.max(yMax, varSwapLevel); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     const yView = zoom.viewY([yMin - pad, yMax + pad]);
     return { xScale: xs, yScale: linearScale(yView, [plotH, 0]), xView: view };
-  }, [model, prior, scenario, anchorCurve, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
+  }, [model, prior, scenario, anchorCurve, graphPost, graphBandLo, graphBandHi, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
 
   /** Build an SVG path for a curve in display coordinates (clip handles overflow). */
   const pathOf = (curve: SmilePoint[]): string => {
@@ -180,6 +191,22 @@ export default function SmileChart({
   const priorPath = useMemo(() => pathOf(prior), [prior, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const anchorPath = useMemo(() => (anchorCurve ? pathOf(anchorCurve) : ""), [anchorCurve, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const graphPostPath = useMemo(() => (graphPost ? pathOf(graphPost) : ""), [graphPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Credible-band area: forward along the high edge, back along the low edge.
+  const graphBandPath = useMemo(() => {
+    if (!graphBandLo || !graphBandHi || graphBandLo.length === 0 || graphBandHi.length === 0) return "";
+    let d = "";
+    for (const p of graphBandHi) {
+      const x = xScale.map(tx(p.k));
+      const y = yScale.map(p.vol);
+      d += d === "" ? `M${x.toFixed(2)},${y.toFixed(2)}` : `L${x.toFixed(2)},${y.toFixed(2)}`;
+    }
+    for (let i = graphBandLo.length - 1; i >= 0; i--) {
+      const p = graphBandLo[i];
+      d += `L${xScale.map(tx(p.k)).toFixed(2)},${yScale.map(p.vol).toFixed(2)}`;
+    }
+    return d + "Z";
+  }, [graphBandLo, graphBandHi, xScale, yScale, tx]);
 
   // X ticks: nice values in display units, placed directly on the display scale.
   const xTicks = useMemo(
@@ -281,6 +308,11 @@ export default function SmileChart({
         {varSwapLevel !== null && (
           <span className="flex items-center gap-1.5">
             <span className="h-0 w-5 border-t-2 border-dashed border-teal-400" /> Var-swap
+          </span>
+        )}
+        {graphPostPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0.5 w-5 rounded" style={{ background: "rgb(167 139 250)" }} /> Graph extrapolation
           </span>
         )}
         <span className="ml-auto text-[10px] text-slate-600">scroll: zoom · drag: pan · dbl-click: reset</span>
@@ -424,6 +456,16 @@ export default function SmileChart({
                 {anchorPath !== "" && (
                   <path d={anchorPath} fill="none" stroke="var(--color-accent-400)"
                     strokeOpacity={0.32} strokeWidth={1.5} strokeLinejoin="round" />
+                )}
+
+                {/* Graph-extrapolated reconstruction: shaded credible band + a
+                    solid violet posterior curve (plan Phase 5 live overlay). */}
+                {graphBandPath !== "" && (
+                  <path d={graphBandPath} fill="rgb(167 139 250 / 0.16)" stroke="none" pointerEvents="none" />
+                )}
+                {graphPostPath !== "" && (
+                  <path d={graphPostPath} fill="none" stroke="rgb(167 139 250 / 0.95)"
+                    strokeWidth={2} strokeLinejoin="round" pointerEvents="none" />
                 )}
 
                 {/* Massive IV overlay: read-only cyan dots */}

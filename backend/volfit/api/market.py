@@ -26,8 +26,9 @@ from volfit.api.state import AppState, UnknownNodeError
 
 
 def _check_ticker(state: AppState, ticker: str) -> None:
-    """UnknownNodeError (-> 404) for tickers outside the provider universe."""
-    if ticker not in state.provider.list_tickers():
+    """UnknownNodeError (-> 404) for tickers outside the known universe (active
+    set ∪ provider watchlist, so a user-added ticker like NVDA is accepted)."""
+    if not state.known_ticker(ticker):
         raise UnknownNodeError(f"unknown ticker {ticker!r}")
 
 

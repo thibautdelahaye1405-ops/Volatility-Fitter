@@ -108,6 +108,16 @@ def test_reconstructed_smiles_are_arbitrage_free_with_exact_handles(universe, fi
         np.testing.assert_allclose(achieved, field.mean[i], rtol=0, atol=1e-8)
 
 
+def test_build_universe_empty_is_valid():
+    """An empty universe (nothing calibrated yet) builds without raising — the
+    gated Graph tab hits this before any Calibrate (regression: 0x0 stationary
+    solve / np.vstack([]) used to 500 GET /graph/nodes)."""
+    u = build_universe([], {})
+    assert u.graph.n_nodes == 0
+    assert u.handles.shape == (0, 3)
+    assert len(u.smiles) == 0
+
+
 def test_node_handles_match_benchmark_values():
     """Sanity: the baseline handle extraction matches the known SPX-like fit."""
     smile = SmileNode(name=("A", 0.5), t=0.5, params=bm.SVI_LQD_PARAMS)

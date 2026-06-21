@@ -80,7 +80,11 @@ def build_universe(
 ) -> SmileUniverse:
     """Assemble the graph (nodes ordered as given) and baseline handles."""
     graph = build_graph([s.name for s in smiles], weights)
-    handles = np.vstack([node_handles(s) for s in smiles])
+    handles = (
+        np.vstack([node_handles(s) for s in smiles])
+        if smiles
+        else np.zeros((0, N_HANDLES))  # empty universe (nothing calibrated yet)
+    )
     return SmileUniverse(graph=graph, smiles=tuple(smiles), handles=handles)
 
 

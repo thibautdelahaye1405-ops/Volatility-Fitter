@@ -6,11 +6,23 @@
 //
 // This view requires the live backend (GET /graph/nodes, POST /graph/solve)
 // — there is deliberately no mock fallback for the solver.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import GraphChart from "../components/GraphChart";
 import SolverPanel from "../components/SolverPanel";
-import { useGraph } from "../state/useGraph";
+import ExtrapolatePanel from "../components/ExtrapolatePanel";
+import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
+import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
+import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
+
+/** Graph workspace mode: the manual-shift sandbox vs the prior-anchored
+ *  production extrapolation over the selected lit+dark universe. */
+type GraphMode = "sandbox" | "extrapolate";
+
+/** No-op chart handlers for Extrapolate mode (nodes aren't lit by clicking;
+ *  the lit/dark set is the selected universe, edited in the Universe tab). */
+const noop = (_key: string): void => undefined;
+const noopArray = (_keys: string[]): void => undefined;
 
 interface GraphViewerProps {
   /** Switch the app to the Smile tab (after this view sets the node). */
@@ -48,11 +60,65 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     autotuneError,
   } = useGraph();
   const { setTicker, setExpiry } = useSmileSession();
+  const { setFocus } = useGraphFocus();
+  const [mode, setMode] = useState<GraphMode>("sandbox");
+  const extra = useGraphExtrapolation();
 
-  /** Drill into a node's smile: point the shared session at it, then jump. */
+  // Production-only solver knobs (owned here so the drill-in focus can rebuild
+  // the exact request body the Extrapolate panel solved with).
+  const [flatAtm, setFlatAtm] = useState(false);
+  const [crossBeta, setCrossBeta] = useState(1);
+  const extrapolateBody = useMemo(
+    () => buildExtrapolateBody(params, flatAtm, crossBeta),
+    [params, flatAtm, crossBeta],
+  );
+
+  // In Extrapolate mode the chart is driven by the production solve: the full
+  // SELECTED lit+dark universe (its prior handles as the baseline), the
+  // calibrated nodes lit (amber ring = an observation), and the posterior field.
+  // Before the first solve (extra.nodes null) it falls back to the sandbox
+  // lattice so the chart is never blank.
+  const extraChartNodes = useMemo<GraphNodeBase[] | null>(
+    () =>
+      extra.nodes === null
+        ? null
+        : extra.nodes.map((n) => ({
+            ticker: n.ticker,
+            expiry: n.expiry,
+            t: n.t,
+            atmVol: n.priorAtmVol,
+            skew: n.priorSkew,
+            curvature: n.priorCurv,
+            lit: n.lit,
+          })),
+    [extra.nodes],
+  );
+  const extraChartLit = useMemo<Record<string, number>>(
+    () =>
+      extra.nodes === null
+        ? {}
+        : Object.fromEntries(
+            extra.nodes
+              .filter((n) => n.calibrated)
+              .map((n) => [nodeKey(n.ticker, n.expiry), 0]),
+          ),
+    [extra.nodes],
+  );
+
+  const extrapolating = mode === "extrapolate" && extraChartNodes !== null;
+  const chartNodes = extrapolating ? extraChartNodes : nodes;
+  const chartLit = extrapolating ? extraChartLit : lit;
+  const chartResults = mode === "extrapolate" ? extra.results : results;
+
+  /** Drill into a node's smile: point the shared session at it, then jump. In
+   *  Extrapolate mode also set the graph-extrapolation focus so the Smile viewer
+   *  overlays this node's reconstructed smile + band; clear it in the sandbox. */
   const openSmile = (ticker: string, expiry: string) => {
     setTicker(ticker); // also picks a default expiry on the ladder…
     setExpiry(expiry); // …which this immediately overrides with the node's
+    setFocus(
+      mode === "extrapolate" ? { ticker, expiry, body: extrapolateBody } : null,
+    );
     onNavigateToSmile();
   };
 
@@ -101,11 +167,24 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           <h2 className="text-sm font-semibold text-slate-100">
             Smile universe
           </h2>
-          <span className="font-mono text-[11px] text-slate-500">
-            nodes (ticker, T) · calendar + cross-ticker edges
-          </span>
-          {/* Post-solve summary strip */}
-          {summary !== null && (
+          {/* Sandbox (manual shifts) vs production Extrapolate (prior-anchored) */}
+          <div className="flex overflow-hidden rounded-md border border-slate-700 text-[11px]">
+            {(["sandbox", "extrapolate"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                className={`px-2 py-0.5 transition-colors ${
+                  mode === m
+                    ? "bg-accent-600 text-white"
+                    : "bg-surface-800 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {m === "sandbox" ? "Sandbox" : "Extrapolate"}
+              </button>
+            ))}
+          </div>
+          {/* Post-solve summary strip (sandbox only) */}
+          {mode === "sandbox" && summary !== null && (
             <span className="ml-auto font-mono text-[11px] text-slate-400">
               <span className="text-amber-400">{summary.observed} observed</span>
               {" · "}
@@ -117,17 +196,23 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         </div>
 
         <div className="min-h-0 flex-1">
-          {loading || nodes === null ? (
+          {(loading || nodes === null) && !extrapolating ? (
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Fitting baseline nodes… (first load can take a second)
             </div>
+          ) : (chartNodes ?? []).length === 0 ? (
+            <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500">
+              {mode === "sandbox"
+                ? "No calibrated nodes yet — calibrate from the Parametric tab, or switch to Extrapolate to propagate transported priors across the selected universe."
+                : "Press Extrapolate to build the selected lit+dark universe and propagate."}
+            </div>
           ) : (
             <GraphChart
-              nodes={nodes}
-              lit={lit}
-              results={results}
-              onToggle={toggleLit}
-              onLasso={lightMany}
+              nodes={chartNodes ?? []}
+              lit={chartLit}
+              results={chartResults}
+              onToggle={mode === "sandbox" ? toggleLit : noop}
+              onLasso={mode === "sandbox" ? lightMany : noopArray}
               onOpenSmile={openSmile}
             />
           )}
@@ -135,11 +220,27 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
         {/* Interaction hint */}
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          Click to light/dim · drag to lasso · double-click to open smile · Solve to propagate
+          {mode === "sandbox"
+            ? "Click to light/dim · drag to lasso · double-click to open smile · Solve to propagate"
+            : "Selected lit+dark universe · amber ring = calibrated observation · double-click to open smile · Extrapolate to propagate"}
         </p>
       </div>
 
-      {/* Observations + solver panel */}
+      {/* Production extrapolation aside (prior-anchored) */}
+      {mode === "extrapolate" && (
+        <ExtrapolatePanel
+          extra={extra}
+          body={extrapolateBody}
+          flatAtm={flatAtm}
+          setFlatAtm={setFlatAtm}
+          crossBeta={crossBeta}
+          setCrossBeta={setCrossBeta}
+          onOpenSmile={openSmile}
+        />
+      )}
+
+      {/* Observations + solver panel (sandbox) */}
+      {mode === "sandbox" && (
       <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
         <h3 className="mb-1 text-sm font-semibold text-slate-100">
           Observations
@@ -241,6 +342,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           </div>
         </div>
       </aside>
+      )}
     </div>
   );
 }

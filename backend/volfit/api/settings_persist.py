@@ -21,6 +21,7 @@ from volfit.data.store import VolStore
 
 FIT_KEY = "fit_settings"
 OPTIONS_KEY = "options_settings"
+GRAPH_EDGES_KEY = "graph_edges"
 
 
 def load_defaults(
@@ -71,6 +72,29 @@ def has_defaults(store_path) -> bool:
             )
     except Exception:  # noqa: BLE001 — status probe is advisory
         return False
+
+
+def load_graph_edges(store_path) -> list[dict]:
+    """Read the persisted per-edge graph overrides (plan Phase 7); [] when absent
+    or unreadable. Stored as ``{"edges": [...]}`` under one app_settings key."""
+    if store_path is None:
+        return []
+    try:
+        with VolStore(store_path) as store:
+            raw = store.load_setting(GRAPH_EDGES_KEY)
+    except Exception as exc:  # noqa: BLE001 — restore must never break startup
+        warnings.warn(f"graph-edges load failed: {exc}")
+        return []
+    return list(raw.get("edges", [])) if raw else []
+
+
+def save_graph_edges(store_path, edges: list[dict]) -> bool:
+    """Persist the per-edge graph overrides; False when no store is set."""
+    if store_path is None:
+        return False
+    with VolStore(store_path) as store:
+        store.save_setting(GRAPH_EDGES_KEY, {"edges": edges})
+    return True
 
 
 def _coerce(model, raw):

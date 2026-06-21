@@ -658,6 +658,193 @@ class GraphNodesResponse(BaseModel):
     nodes: list[GraphNodeInfo]
 
 
+# ----------------------------------------------- production graph extrapolation
+class GraphEdgeBeta(BaseModel):
+    """Per-edge increment beta (plan Phase 6, Amendment D): the AMPLITUDE of a
+    directed move, kept strictly separate from the edge weight (the TRUST).
+
+    Directional: ``(from -> to)`` scales how much a unit move at the source node
+    propagates to the target, per handle. ``beta_ij`` need not equal ``beta_ji``.
+    """
+
+    fromTicker: str
+    fromExpiry: str
+    toTicker: str
+    toExpiry: str
+    betaAtmVol: float = 1.0
+    betaSkew: float = 1.0
+    betaCurv: float = 1.0
+
+
+class GraphEdgeInput(BaseModel):
+    """One user-supplied directed edge: weight (TRUST) + per-handle beta (AMPLITUDE)
+    kept as separate fields (plan Phase 7 / Amendment D). A supplied edge list
+    defines the whole graph topology, overriding the auto-lattice; the node SET is
+    still the selected lit+dark universe. ``beta_ij`` need not equal ``beta_ji``."""
+
+    fromTicker: str
+    fromExpiry: str
+    toTicker: str
+    toExpiry: str
+    weight: float = Field(default=1.0, ge=0.0)  # directed conductance / trust
+    betaAtmVol: float = 1.0  # directed amplitude per handle
+    betaSkew: float = 1.0
+    betaCurv: float = 1.0
+
+
+class GraphEdgesResponse(BaseModel):
+    """The persisted per-edge graph overrides (GET/PUT /graph/edges)."""
+
+    edges: list[GraphEdgeInput]
+
+
+class GraphEdgesRequest(BaseModel):
+    """Replace the persisted per-edge overrides (empty list ⇒ back to the lattice)."""
+
+    edges: list[GraphEdgeInput]
+
+
+class GraphExtrapolateRequest(GraphSolverParams):
+    """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
+
+    Unlike the sandbox ``GraphSolveRequest``, observations are NOT manually typed:
+    they are derived server-side as ``calibrated_handles - transported_prior_handles``
+    on the lit nodes (plan Amendment A). The solver knobs (eta/kappa/lambda/nu,
+    calendar/cross weights) carry over from ``GraphSolverParams``.
+    """
+
+    #: Diagnostic/stress override: use flat ATM-only baselines at every node,
+    #: ignoring any saved prior (plan Phase 2 flat_atm).
+    flatAtm: bool = False
+
+    #: v1 single-knob beta broadcast to every cross-ticker edge / handle / direction
+    #: (calendar edges default to beta 1). Null keeps all betas at 1.
+    crossBeta: float | None = None
+
+    #: Explicit per-edge per-handle beta overrides (take precedence over crossBeta).
+    edgeBetas: list[GraphEdgeBeta] = []
+
+    #: Explicit edge list (weight + beta). When non-empty it defines the whole
+    #: topology (overrides the lattice + crossBeta/edgeBetas); empty falls back to
+    #: the persisted edges, then the auto-lattice (plan Phase 7).
+    edges: list[GraphEdgeInput] = []
+
+
+class GraphExtrapolateNode(BaseModel):
+    """One node's prior -> posterior ATM-handle summary with full provenance.
+
+    Bulk payload is ATM summaries only; full reconstructed curves are fetched per
+    node on demand via the node-smile route (plan Amendment E / Phase 5)."""
+
+    ticker: str
+    expiry: str
+    t: float  # calendar year fraction (display)
+    lit: bool
+    calibrated: bool  # lit AND has a calibration today (so it is an observation)
+    priorSource: str  # active_transported | nearest_expiry_transported | ...
+    priorAsOf: str | None = None
+    transportDistance: float  # h = log(F_now / F_prior)
+    validForValidation: bool
+    # Baseline (transported prior) handles.
+    priorAtmVol: float
+    priorSkew: float
+    priorCurv: float
+    # Posterior (extrapolated) handles + ATM credible band.
+    postAtmVol: float
+    postSkew: float
+    postCurv: float
+    shiftBp: float  # (post - prior) ATM vol, basis points
+    sd: float  # posterior ATM-vol standard deviation
+    bandLo: float
+    bandHi: float
+    innovationBp: float | None = None  # lit nodes: (calibrated - prior) ATM vol, bp
+    # Data-derived precision (plan Phase 4), per handle (atm_vol, skew, curvature).
+    baselinePrecision: list[float] = []  # transported-prior baseline precision
+    obsPrecision: list[float] | None = None  # lit-node observation precision
+    precisionFactors: dict[str, float] = {}  # the scalar factor breakdown
+
+
+class GraphExtrapolateResponse(BaseModel):
+    """Posterior field over every selected node (production extrapolation)."""
+
+    nodes: list[GraphExtrapolateNode]
+
+
+class GraphQuotePoint(BaseModel):
+    """One market quote band on a reconstructed node (for the live overlay)."""
+
+    k: float
+    bid: float
+    mid: float
+    ask: float
+
+
+class GraphNodeMetrics(BaseModel):
+    """Quote-comparison metrics of a reconstructed smile vs the market (plan Phase 5)."""
+
+    nQuotes: int
+    rmsVol: float  # weighted RMS vol error vs mid (calib/rms), decimal vol
+    insideSpreadHitRate: float  # fraction of strikes with model inside [bid, ask]
+    atmResidualBp: float  # (post - market) ATM vol, basis points
+    skewResidual: float
+    curvResidual: float
+    standardizedResidual: float | None = None  # quoted DARK nodes only (eq. zeta)
+
+
+class GraphNodeSmile(BaseModel):
+    """A reconstructed node's full smile + prior/lit overlays + quote metrics.
+
+    Fetched on demand per node (plan Amendment E) — the bulk solve returns ATM
+    summaries only. Curves are sampled on the shared display k-grid."""
+
+    ticker: str
+    expiry: str
+    t: float
+    model: str = "lqd"  # the displayed model family the smile is reconstructed in
+    lit: bool
+    calibrated: bool
+    priorSource: str
+    validForValidation: bool
+    priorAtmVol: float
+    priorSkew: float
+    priorCurv: float
+    postAtmVol: float
+    postSkew: float
+    postCurv: float
+    sd: float
+    post: list[SmilePoint]  # reconstructed posterior smile
+    postBandLo: list[SmilePoint]  # 95% credible band (ATM-level uncertainty)
+    postBandHi: list[SmilePoint]
+    prior: list[SmilePoint]  # transported prior smile
+    litCalibration: list[SmilePoint]  # the node's own calibration (lit nodes)
+    quotes: list[GraphQuotePoint]
+    metrics: GraphNodeMetrics | None = None
+
+
+class GraphBacktestNode(BaseModel):
+    """One held-out node's leave-one-node-out prediction vs its calibration."""
+
+    ticker: str
+    expiry: str
+    priorSource: str
+    calibratedAtmVol: float
+    postAtmVol: float  # predicted from the other nodes (this one withheld)
+    residualBp: float  # (post - calibrated) ATM vol, basis points
+    standardizedResidual: float  # zeta under the posterior + obs uncertainty
+
+
+class GraphBacktestResponse(BaseModel):
+    """Leave-one-node-out backtest over the calibrated, validation-clean nodes
+    (plan Phase 8): per-node residuals + an aggregate calibration summary."""
+
+    nodes: list[GraphBacktestNode]
+    nScored: int
+    nExcludedBootstrap: int  # calibrated nodes skipped (circular bootstrap prior)
+    rmseBp: float  # RMS held-out ATM-vol prediction error, basis points
+    zetaMean: float  # mean standardized residual (well-calibrated ⇒ ~0)
+    zetaStd: float  # std standardized residual (well-calibrated ⇒ ~1)
+
+
 # ------------------------------------------------------------------ scenario
 class ScenarioRequest(BaseModel):
     """SSR scenario: shift one smile for a spot move under a dynamics regime.

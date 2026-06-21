@@ -57,23 +57,51 @@ def _row_normalize(weights: np.ndarray, self_loop: float) -> np.ndarray:
     return w / out_degree[:, None]
 
 
-def _stationary_distribution(kernel: np.ndarray) -> np.ndarray:
-    """Solve pi^T K = pi^T, sum pi = 1 by a dense linear system.
+#: Uniform-teleport damping used ONLY to regularize the stationary solve for a
+#: reducible chain (a sparse / disconnected user-supplied topology, plan Phase 7):
+#: K' = (1-d) K + d/n. Irreducible graphs never hit this path, so their stationary
+#: distribution — and everything derived from it — is byte-identical.
+STATIONARY_DAMPING = 1.0e-3
 
-    The singular system (K^T - I) pi = 0 gets its last equation replaced by
-    the normalization; this is exact for irreducible chains and avoids the
-    periodicity pitfalls of power iteration.
-    """
+
+def _solve_stationary(kernel: np.ndarray) -> np.ndarray | None:
+    """pi with pi^T K = pi^T, sum pi = 1, or None if the chain is reducible
+    (singular system / negative mass)."""
     n = kernel.shape[0]
+    if n == 0:
+        return np.zeros(0)  # empty graph (no calibrated/selected nodes yet)
     system = kernel.T - np.eye(n)
     system[-1, :] = 1.0
     rhs = np.zeros(n)
     rhs[-1] = 1.0
-    pi = np.linalg.solve(system, rhs)
+    try:
+        pi = np.linalg.solve(system, rhs)
+    except np.linalg.LinAlgError:
+        return None
     if np.any(pi <= -1e-12):
-        raise ValueError("stationary distribution has negative mass; graph not irreducible?")
+        return None
     pi = np.clip(pi, 0.0, None)
     return pi / pi.sum()
+
+
+def _stationary_distribution(kernel: np.ndarray) -> np.ndarray:
+    """Solve pi^T K = pi^T, sum pi = 1 by a dense linear system.
+
+    Exact for irreducible chains (the singular (K^T - I) pi = 0 system with its
+    last equation replaced by the normalization). A reducible chain — a sparse or
+    disconnected user-supplied edge set — has no unique stationary distribution, so
+    we fall back to a uniform-teleport-damped kernel (the PageRank regularization)
+    that always yields a unique positive one; irreducible graphs never reach it.
+    """
+    pi = _solve_stationary(kernel)
+    if pi is not None:
+        return pi
+    n = kernel.shape[0]
+    damped = (1.0 - STATIONARY_DAMPING) * kernel + STATIONARY_DAMPING / n
+    pi = _solve_stationary(damped)
+    if pi is not None:
+        return pi
+    return np.full(n, 1.0 / n)  # last-resort uniform (never expected)
 
 
 def build_graph(
