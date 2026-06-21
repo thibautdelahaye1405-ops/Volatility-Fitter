@@ -20,6 +20,8 @@ import UniverseHeader, { selectClass } from "../components/UniverseHeader";
 import SmileAside from "../components/SmileAside";
 import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
+import { useGraphFocus } from "../state/graphFocus";
+import { useGraphNodeSmile } from "../state/useGraphNodeSmile";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
@@ -92,6 +94,7 @@ export default function SmileViewer() {
     spotVersion,
   } = useSmileSession();
   const { format } = useExpiryFormat();
+  const { focus, setFocus } = useGraphFocus();
 
   const [kWindow, setKWindow] = useState<[number, number]>([0, 1]);
   // Selected quote, referenced by its stable `index` field (not array
@@ -160,6 +163,22 @@ export default function SmileViewer() {
     smile?.forward ?? 0,
     showMassiveIv && view === "smile",
   );
+
+  // Graph-extrapolation live overlay (plan Phase 5): when the user drilled into
+  // THIS node from the Graph Extrapolate mode, fetch its reconstructed smile and
+  // overlay the posterior curve + credible band on the quotes.
+  const graphActive =
+    live &&
+    view === "smile" &&
+    focus !== null &&
+    focus.ticker === ticker &&
+    focus.expiry === expiry;
+  const graphNode = useGraphNodeSmile(graphActive, ticker, expiry, focus?.body ?? {});
+  // Guard against a stale frame: only overlay when the response matches the node.
+  const graphOverlay =
+    graphActive && graphNode.node?.ticker === ticker && graphNode.node?.expiry === expiry
+      ? graphNode.node
+      : null;
 
   // Global keyboard shortcuts (Esc, Del, ↑↓ amend, Ctrl+Z/Y).
   useSmileShortcuts({ smile, source, selectedIndex, setSelectedIndex, applyEdit, undo, redo });
@@ -242,6 +261,9 @@ export default function SmileViewer() {
             varSwapLevel={
               smile.varSwap.enabled && !smile.varSwap.excluded ? smile.varSwap.level : null
             }
+            graphPost={graphOverlay?.post ?? null}
+            graphBandLo={graphOverlay?.postBandLo ?? null}
+            graphBandHi={graphOverlay?.postBandHi ?? null}
           />
         );
       case "stackeddensity":
@@ -313,6 +335,29 @@ export default function SmileViewer() {
             {updatedFlash && (
               <span className="volfit-fade-in rounded border border-accent-500/50 bg-accent-500/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-accent-300">
                 UPDATED
+              </span>
+            )}
+            {/* Graph-extrapolation overlay badge: provenance + quote metrics,
+                with a ✕ to dismiss the overlay (clears the drill-in focus). */}
+            {graphOverlay !== null && (
+              <span className="flex items-center gap-1.5 rounded border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+                <span className="font-semibold tracking-wider">GRAPH</span>
+                <span className="text-violet-400/90">{graphOverlay.priorSource}</span>
+                {graphOverlay.metrics !== null && (
+                  <span className="font-mono text-violet-200/90">
+                    RMS {(graphOverlay.metrics.rmsVol * 100).toFixed(2)}% · in-band{" "}
+                    {(graphOverlay.metrics.insideSpreadHitRate * 100).toFixed(0)}%
+                    {graphOverlay.metrics.standardizedResidual !== null &&
+                      ` · ζ ${graphOverlay.metrics.standardizedResidual.toFixed(2)}`}
+                  </span>
+                )}
+                <button
+                  title="Dismiss the graph-extrapolation overlay"
+                  className="ml-0.5 text-violet-400 hover:text-violet-200"
+                  onClick={() => setFocus(null)}
+                >
+                  ✕
+                </button>
               </span>
             )}
             {/* View toggle: smile / distributions / surface / table */}

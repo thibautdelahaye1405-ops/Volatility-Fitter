@@ -13,6 +13,7 @@ import GraphViewer from "./views/GraphViewer";
 import UniverseManager from "./views/UniverseManager";
 import ViewSettingsViewer from "./views/ViewSettingsViewer";
 import { SmileSessionProvider } from "./state/smileSession";
+import { GraphFocusProvider } from "./state/graphFocus";
 import { WorkflowProvider } from "./state/workflowContext";
 import { ExpiryFormatProvider } from "./state/expiryFormat";
 import { ViewSettingsProvider } from "./state/viewSettings";
@@ -51,6 +52,7 @@ export default function App() {
     <ViewSettingsProvider>
     <ExpiryFormatProvider>
     <SmileSessionProvider>
+    <GraphFocusProvider>
     <WorkflowProvider>
       <div className="flex h-full flex-col">
         <TopBar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
@@ -79,6 +81,7 @@ export default function App() {
         <StatusBar />
       </div>
     </WorkflowProvider>
+    </GraphFocusProvider>
     </SmileSessionProvider>
     </ExpiryFormatProvider>
     </ViewSettingsProvider>

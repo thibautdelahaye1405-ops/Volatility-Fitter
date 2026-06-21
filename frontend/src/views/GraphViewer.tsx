@@ -11,7 +11,8 @@ import GraphChart from "../components/GraphChart";
 import SolverPanel from "../components/SolverPanel";
 import ExtrapolatePanel from "../components/ExtrapolatePanel";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
-import { useGraphExtrapolation } from "../state/useGraphExtrapolation";
+import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
+import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
 
 /** Graph workspace mode: the manual-shift sandbox vs the prior-anchored
@@ -59,8 +60,18 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     autotuneError,
   } = useGraph();
   const { setTicker, setExpiry } = useSmileSession();
+  const { setFocus } = useGraphFocus();
   const [mode, setMode] = useState<GraphMode>("sandbox");
   const extra = useGraphExtrapolation();
+
+  // Production-only solver knobs (owned here so the drill-in focus can rebuild
+  // the exact request body the Extrapolate panel solved with).
+  const [flatAtm, setFlatAtm] = useState(false);
+  const [crossBeta, setCrossBeta] = useState(1);
+  const extrapolateBody = useMemo(
+    () => buildExtrapolateBody(params, flatAtm, crossBeta),
+    [params, flatAtm, crossBeta],
+  );
 
   // In Extrapolate mode the chart is driven by the production solve: the full
   // SELECTED lit+dark universe (its prior handles as the baseline), the
@@ -99,10 +110,15 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const chartLit = extrapolating ? extraChartLit : lit;
   const chartResults = mode === "extrapolate" ? extra.results : results;
 
-  /** Drill into a node's smile: point the shared session at it, then jump. */
+  /** Drill into a node's smile: point the shared session at it, then jump. In
+   *  Extrapolate mode also set the graph-extrapolation focus so the Smile viewer
+   *  overlays this node's reconstructed smile + band; clear it in the sandbox. */
   const openSmile = (ticker: string, expiry: string) => {
     setTicker(ticker); // also picks a default expiry on the ladder…
     setExpiry(expiry); // …which this immediately overrides with the node's
+    setFocus(
+      mode === "extrapolate" ? { ticker, expiry, body: extrapolateBody } : null,
+    );
     onNavigateToSmile();
   };
 
@@ -206,7 +222,15 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
       {/* Production extrapolation aside (prior-anchored) */}
       {mode === "extrapolate" && (
-        <ExtrapolatePanel extra={extra} params={params} onOpenSmile={openSmile} />
+        <ExtrapolatePanel
+          extra={extra}
+          body={extrapolateBody}
+          flatAtm={flatAtm}
+          setFlatAtm={setFlatAtm}
+          crossBeta={crossBeta}
+          setCrossBeta={setCrossBeta}
+          onOpenSmile={openSmile}
+        />
       )}
 
       {/* Observations + solver panel (sandbox) */}

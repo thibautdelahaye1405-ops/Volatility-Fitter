@@ -1,13 +1,18 @@
 // Production extrapolation aside (plan Phase 7/8 UI): runs the prior-anchored
 // solve + the leave-one-node-out backtest and lists each node's prior -> posterior
 // ATM move with provenance. Distinct from the manual-shift sandbox observations.
-import { useMemo, useState } from "react";
-import type { SolverParams } from "../state/useGraph";
+import { useMemo } from "react";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
 
 interface ExtrapolatePanelProps {
   extra: UseGraphExtrapolationResult;
-  params: SolverParams;
+  /** The /graph/extrapolate request body (built in the parent so the drill-in
+   *  overlay reconstructs with the same knobs). */
+  body: Record<string, string | number | boolean>;
+  flatAtm: boolean;
+  setFlatAtm: (v: boolean) => void;
+  crossBeta: number;
+  setCrossBeta: (v: number) => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
 }
 
@@ -16,39 +21,15 @@ const buttonClass =
   "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
 
-/** Build the /graph/extrapolate request body from the shared solver knobs plus
- *  the production-only flags (flat baselines, cross-ticker beta). */
-function requestBody(
-  params: SolverParams,
-  flatAtm: boolean,
-  crossBeta: number | null,
-): Record<string, unknown> {
-  const body: Record<string, unknown> = {
-    etaScale: params.etaScale,
-    kappaScale: params.kappaScale,
-    lambdaScale: params.lambdaScale,
-    nu: params.nu,
-    flatAtm,
-  };
-  if (params.calendarWeight !== null) body.calendarWeight = params.calendarWeight;
-  if (params.crossWeight !== null) body.crossWeight = params.crossWeight;
-  if (crossBeta !== null && crossBeta !== 1) body.crossBeta = crossBeta;
-  return body;
-}
-
 export default function ExtrapolatePanel({
   extra,
-  params,
+  body,
+  flatAtm,
+  setFlatAtm,
+  crossBeta,
+  setCrossBeta,
   onOpenSmile,
 }: ExtrapolatePanelProps) {
-  const [flatAtm, setFlatAtm] = useState(false);
-  const [crossBeta, setCrossBeta] = useState(1);
-
-  const body = useMemo(
-    () => requestBody(params, flatAtm, crossBeta),
-    [params, flatAtm, crossBeta],
-  );
-
   const rows = useMemo(
     () =>
       (extra.nodes ?? [])

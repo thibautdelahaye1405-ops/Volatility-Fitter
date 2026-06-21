@@ -7,7 +7,29 @@
 // POST /graph/backtest runs the leave-one-node-out validation. Live backend only.
 import { useCallback, useState } from "react";
 import { api } from "./api";
-import { nodeKey, type GraphSolveNode } from "./useGraph";
+import { nodeKey, type GraphSolveNode, type SolverParams } from "./useGraph";
+
+/** Build the /graph/extrapolate request body from the shared solver knobs plus
+ *  the production-only flags (flat baselines, cross-ticker beta). Shared by the
+ *  Extrapolate panel (run/backtest) and the drill-in focus (node-smile overlay)
+ *  so the overlay reconstructs with the same knobs the table was solved with. */
+export function buildExtrapolateBody(
+  params: SolverParams,
+  flatAtm: boolean,
+  crossBeta: number | null,
+): Record<string, string | number | boolean> {
+  const body: Record<string, string | number | boolean> = {
+    etaScale: params.etaScale,
+    kappaScale: params.kappaScale,
+    lambdaScale: params.lambdaScale,
+    nu: params.nu,
+    flatAtm,
+  };
+  if (params.calendarWeight !== null) body.calendarWeight = params.calendarWeight;
+  if (params.crossWeight !== null) body.crossWeight = params.crossWeight;
+  if (crossBeta !== null && crossBeta !== 1) body.crossBeta = crossBeta;
+  return body;
+}
 
 /** One node's prior -> posterior summary (backend GraphExtrapolateNode). */
 export interface ExtrapolateNode {
