@@ -8,7 +8,49 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-21 (resume here)
+## STATUS — updated 2026-06-22 (resume here)
+
+### 🧪 OFFLINE BACKTEST HARNESS — pilot validated (2026-06-22, `backend/backtest/`)
+
+A standalone harness (additive; imports `volfit`, changes nothing) to measure
+calibration **precision / speed / breaks** across models & hyperparameters vs an
+SVI-JW baseline, attribute end-to-end time (fetch / de-Am / fit), and (next) score
+graph leave-one-out vs the transported-prior baseline. Full plan + every parameter:
+**`backend/backtest/SPEC.md`**; how-to + module map: `backend/backtest/README.md`.
+
+Two phases:
+- **Capture** (`capture.py`) — reconstructs the **15:45-ET NBBO** chain per
+  (asset, day) from the Massive/Polygon **`quotes_v1`** flat files (real bid/ask;
+  new `quotes_store.py` reader — the live `FlatFileStore` reads only trade aggs).
+  Writes immutable JSON fixtures; resumable; one daily firehose scan shared across
+  the universe. **Nightly window 23:30–06:30** (`--window`) so the machine is free
+  by day; a day in progress finishes (never killed mid-scan).
+- **Compute** (`run_compute.py` → `dispatch.py`, `replay.py`) — replays fixtures
+  offline through a `StaticProvider`/`AppState`; per node de-Am once then sweep
+  **SVI-JW · LQD-6/8/10/12 · SIV-0/1/2/3** under **{mid, haircut(0.5)} × {equal,
+  tv_density}**; uniform precision (in-sample + leave-3rd-out OOS + Durrleman
+  no-butterfly g(k)), timing, arb. `analyze.py` → Pareto / time-attribution / break
+  report.
+
+**Sample set** (`universe.py`): pilot 8 / full 25 assets (SPX·NDX·RUT indices
+European multi-root, EEM·EFA ETFs, mega-caps + sector breadth single names); 3
+regimes — `spike_aug2024`, `high_oct2022`, `low_jul2023` (low/stable relaxed to
+2023). Ladder = monthlies + 3 weeklies, DTE 7–400, ≤10/node, all strikes.
+
+**Pilot findings (Aug-5-2024 spike):** end-to-end clean; **LQD-10/12 dominate
+SVI-JW** (≈4 bp vs 25 bp mid on liquid SPX, **0% vs 50% butterfly-arb**, OOS ≤
+in-sample); **Multi-Core SIV overfits + arb-breaks even at 1 core** (slow, dropped
+SIV-4); de-Am ≈ 15% of an American node (fit dominates), 0 for European indices.
+
+**Cost finding:** the `quotes_v1` day-file is the OPRA firehose — one non-splittable
+gzip; **Aug-5 scan ≈ 8.85 h**. Paid once/day, shared across assets (reduced to a
+~1.7 MB Parquet cache). So a 20-day window ≈ ~3 weeks of nights. A faster
+per-contract REST-quotes path (`/v3/quotes` at the 15:45 timestamp) is the
+mitigation to probe.
+
+**Remaining:** graph leave-one-out (Phase 6 — runs once ≥2 nights captured; under
+**sticky-moneyness + SSR 1.0** transport), the NN-training dataset emitter (Phase 7,
+Parquet), LV `wall_ms_pde_*` timing wiring, and the REST-quotes feasibility probe.
 
 ### 🚀 GRAPH SMILE-EXTRAPOLATION — production path SHIPPED (2026-06-21, branch `feature/graph-extrapolation`)
 

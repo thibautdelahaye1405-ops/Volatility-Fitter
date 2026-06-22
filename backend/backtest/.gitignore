@@ -1,0 +1,6 @@
+# Generated backtest artifacts — never commit (large / reproducible from capture).
+_cache/
+fixtures/
+results/
+_measure.log
+_smoke_dispatch.py

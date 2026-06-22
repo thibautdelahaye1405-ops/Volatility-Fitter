@@ -115,6 +115,13 @@ Docs/      Technical notes (LaTeX)
     lit/dark node matrix beside the active set, plus named universes.
   - **View** — display preferences (colour scheme: Dark / Light / High-contrast /
     Warm, contrast + brightness, expiry-label format), client-side + persisted.
+- **Backtest harness** (`backend/backtest/`, offline) — captures historical
+  15:45-ET NBBO chains (Massive/Polygon `quotes_v1` flat files) into immutable
+  fixtures, then replays them through the production engine to measure calibration
+  precision / speed / breaks across models & hyperparameters vs an SVI-JW baseline
+  (LQD-6/8/10/12, Multi-Core SIV-0/1/2/3, mid & haircut targets, equal & tv-density
+  weighting), attribute end-to-end time, and score graph leave-one-out. See
+  `backend/backtest/SPEC.md` and `README.md` there.
 
 ## Run everything (Windows, from repo root)
 

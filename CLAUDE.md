@@ -82,6 +82,13 @@ Key commands (Windows, repo root):
 - Massive diag: $env:VOLFIT_MASSIVE_KEY='...'; .venv\Scripts\python backend\massive_diag.py SPY
             (probes api.massive.com + api.polygon.io, every call, to pinpoint a feed gate)
 - Demo:     .venv\Scripts\python backend\demo.py
+- Backtest: offline harness in backend\backtest\ (run `-m backtest.<mod>` from backend\,
+            needs the flat-file creds: dot-source restart.local.ps1 first). Capture
+            historical NBBO fixtures: `-m backtest.capture --universe pilot --regimes
+            spike_aug2024 --window 23:30-06:30` (nightly window; quotes_v1 firehose
+            ~8.85h/day, resumable). Compute sweep + reports: `-m backtest.run_compute
+            --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
+            Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
 - volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance/numba installed
   (numba is a real dep now — the LV Numba march; graceful banded fallback if it's missing).
