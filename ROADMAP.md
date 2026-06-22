@@ -10,6 +10,26 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-22 (resume here)
 
+### 🧭 SESSION WRAP (2026-06-22) — read this first
+
+Two threads landed on **main** today (full suite **744 passed, 1 skipped**; ruff +
+strict-TS green):
+
+1. **Offline backtest harness** (`backend/backtest/`, see `SPEC.md` + `README.md`)
+   — pilot validated end-to-end on Aug-5-2024. The **nightly capture is running in
+   the background, windowed 23:30–06:30** (so the machine is free by day), grinding
+   the ~20-day spike window resumably (the `quotes_v1` firehose is ~8.85 h/day). On
+   resume: check `backend/backtest/fixtures/` for captured days, then
+   `run_compute` + `analyze`. **Pending (user asked for "later today"):** probe the
+   per-contract REST-quotes path (`/v3/quotes` at the 15:45 timestamp) as the
+   firehose mitigation. Remaining harness: graph leave-one-out (Phase 6, needs ≥2
+   captured days; sticky-moneyness + SSR 1.0) and the NN-dataset emitter (Phase 7,
+   feeds off `volfit/data/columnar.py`).
+2. **Structural perf backlog — COMPLETE** (#2–#6; details in that section below).
+
+Workflow note: normal dev = edit JS/Python + `.\restart.ps1`; the PyInstaller `.exe`
+(`build_exe.ps1` → `\dist`) is rebuilt ONLY on an explicit "compile to .exe".
+
 ### 🧪 OFFLINE BACKTEST HARNESS — pilot validated (2026-06-22, `backend/backtest/`)
 
 A standalone harness (additive; imports `volfit`, changes nothing) to measure
@@ -317,7 +337,14 @@ roadmap in `Docs/localvol_calibration_perf_roadmap.md` (Stages 0–6):
 below; the ~86 s heavy-grid dense-SVD wall). Then Stage 6 (Numba `nogil` march +
 parallelism). Full suite **604 passed, 1 skipped** (ruff + strict-TS green).
 
-### 🚀 STRUCTURAL PERF BACKLOG (added 2026-06-19, prioritized) — DO THESE NEXT
+### 🚀 STRUCTURAL PERF BACKLOG (added 2026-06-19) — ✅ COMPLETE (2026-06-22)
+
+**All actionable items done** (see the ✅ tags on each below): #2 analytic LQD
+Jacobian (~2.3–2.9×), #3 per-ticker version counters + chain-cache reconciliation
+(A/B/C), #4 SSE status push, #5 GZip + payload slimming, #6 columnar Parquet/DuckDB
+history (core). #1 (sparse GN) stays shelved (non-viable at tensor-grid sizes).
+Deferred, non-blocking follow-ons: #5 per-expiry deltas, #6 live dual-write
+integration, and the analytic Jacobian for the var-swap/prior LQD configs.
 
 From an end-to-end perf review (two agents: data/architecture + calibration
 compute). The localized **quick wins are already SHIPPED** on branch
