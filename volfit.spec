@@ -23,7 +23,9 @@ Notes / gotchas baked in below:
     hence the explicit collection below.
 """
 
+import glob
 import os
+import sys
 
 from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
 
@@ -58,6 +60,16 @@ hiddenimports += collect_submodules("llvmlite")
 binaries = []
 binaries += collect_dynamic_libs("llvmlite")
 binaries += collect_dynamic_libs("numba")
+
+# Intel TBB runtime (numba's TBB threading layer). When `tbb` is pip-installed,
+# tbb12.dll lands in <venv>/Library/bin, NOT inside a package dir, so
+# collect_dynamic_libs misses it — add it explicitly so the frozen exe gets the
+# parallel layer instead of falling back to workqueue (and silences PyInstaller's
+# "could not resolve tbb12.dll" warning). Skipped cleanly if tbb isn't installed.
+binaries += collect_dynamic_libs("tbb")
+for _dll in ("tbb12.dll", "tbbmalloc.dll", "tcm.dll"):
+    for _hit in glob.glob(os.path.join(sys.prefix, "Library", "bin", _dll)):
+        binaries.append((_hit, "."))
 
 block_cipher = None
 

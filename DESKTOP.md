@@ -77,11 +77,11 @@ one-file) launches, serves the UI + API on one origin (verified `/`,
 `/universe`, `/assets/*` all 200 from the frozen bundle's `sys._MEIPASS`
 `frontend_dist`), and writes persistence under `%LOCALAPPDATA%\VolFitter`.
 
-Known caveat: PyInstaller warns `tbb12.dll` could not be resolved (numba's TBB
-threading layer is not installed in the venv). It is **non-fatal** — numba
-imports and falls back to its `workqueue` threading layer, and the LV march has
-its own banded fallback besides. To silence it / get TBB parallelism, `pip
-install tbb` into the venv before building.
+numba's TBB threading layer: `build_exe.ps1` installs `tbb` into the venv and
+`volfit.spec` bundles `tbb12.dll` (from `<venv>/Library/bin`) into the exe, so
+numba gets its parallel layer when frozen — no `tbb12.dll` warning. If `tbb` is
+ever missing, the build still succeeds and numba falls back to the `workqueue`
+layer (and the LV march has its own banded fallback besides).
 
 Likely follow-ups: window chrome (pywebview instead of the system browser), an
 app icon, and code-signing.

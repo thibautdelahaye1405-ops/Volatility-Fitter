@@ -54,6 +54,17 @@ if ($LASTEXITCODE -ne 0) {
     if ($LASTEXITCODE -ne 0) { throw "pip install pyinstaller failed (PyPI is flaky here - retry)" }
 }
 
+# Intel TBB runtime: gives numba its parallel threading layer in the frozen exe
+# (and silences PyInstaller's 'could not resolve tbb12.dll' warning). The spec
+# bundles tbb12.dll from <venv>/Library/bin when present. Non-fatal if it fails -
+# numba just falls back to the workqueue layer.
+Write-Host "Ensuring Intel TBB runtime (numba parallel layer) ..." -ForegroundColor Cyan
+& $py -c "import tbb" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    & $py -m pip install tbb
+    if ($LASTEXITCODE -ne 0) { Write-Host "  (tbb install failed; numba will use the workqueue layer)" -ForegroundColor Yellow }
+}
+
 # --- 3. Freeze the .exe -----------------------------------------------------
 Write-Host "Freezing dist/VolFitter.exe via volfit.spec ..." -ForegroundColor Cyan
 & $py -m PyInstaller --noconfirm --clean (Join-Path $repo "volfit.spec")
