@@ -190,7 +190,10 @@ class QuotesFlatFileStore:
         )
         if cache is None:
             return select  # inline mode: chain_at runs the SELECT directly
-        if not os.path.exists(cache):
+        # Re-scan when the cache is absent OR a 0-byte orphan: a kill mid-COPY (this
+        # is a long-running, windowed job) leaves an empty parquet; "exists -> skip"
+        # would then read no quotes and silently drop that day. Treat empty as absent.
+        if not os.path.exists(cache) or os.path.getsize(cache) == 0:
             os.makedirs(self.cache_dir, exist_ok=True)
             con = self._connect()
             try:
