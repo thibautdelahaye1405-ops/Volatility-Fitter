@@ -23,6 +23,7 @@ from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
+from volfit.models.lqd.jacobian import residual_jacobian
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
 
 # Soft-barrier location/steepness for A_R: starts pushing back well before
@@ -218,9 +219,16 @@ def calibrate_slice(
         w0_guess = float(np.interp(0.0, k, w_quotes))
         init = logistic_init(w0_guess, n_order=n_order)
 
+    # Analytic Jacobian (ROADMAP perf #2) for the var-swap/prior-free residual
+    # configuration (mid or band fit + reg + calendar + barrier) — one quadrature
+    # pass instead of trf's (P+1) finite-difference rebuilds. The var-swap and
+    # prior-anchor terms are not yet differentiated analytically, so those fits
+    # fall back to the finite-difference Jacobian (correct, just not accelerated).
+    use_analytic = var_swap is None and prior_anchor is None and prior_var_swap is None
     result = least_squares(
         _residuals,
         init.to_vector(),
+        jac=residual_jacobian if use_analytic else "2-point",
         args=(
             k,
             target_price,

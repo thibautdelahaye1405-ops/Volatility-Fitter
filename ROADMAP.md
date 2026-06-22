@@ -348,12 +348,17 @@ graph 1k-node ~700 ms.
    `Docs/localvol_calibration_perf_note.md`** (written 2026-06-19, one-liners →
    structural rewrites, with file:line).
 
-2. **Analytic Jacobian for the LQD slice fit** — the dominant LQD cost is the
-   (P+1)-eval **finite-difference** Jacobian over `build_slice`'s 2001-node Simpson
-   quadrature (`models/lqd/calibrate.py:221`, no `jac=`). `dQ/dz=e^g` and `dA/dz`
-   are exact and **linear in `a` through the Legendre basis**, so `dC/dθ` can be
-   propagated analytically in one quadrature pass (the affine surface already does
-   exactly this). Expect ~3–8× on the slice fit; pass `jac=` to `least_squares`.
+2. **Analytic Jacobian for the LQD slice fit** ✅ **DONE 2026-06-22.** Was a
+   (P+1)-eval finite-difference Jacobian rebuilding the quadrature every column.
+   `models/lqd/jacobian.py` propagates `dC/dθ` in one quadrature pass: the priced
+   call's implicit `z_k` dependence cancels (`dA/dz = -e^k u(1-u)` at `z_k`), so
+   `dC/dθ = ∂A/∂θ|_{z_k}` = `hermite_eval(z_k; ∂a_z/∂θ, ∂da_dz/∂θ)`, with every
+   nodal sensitivity from differentiating the build_slice pipeline (g affine in θ;
+   `dQ'/dθ = Q'·φ`). Covers mid + band fits, the reg block, the calendar slack, and
+   the A_R barrier; var-swap / prior-anchor configs fall back to FD (not yet
+   differentiated). `calibrate_slice` passes `jac=` when those are absent. Measured
+   **~2.3× (order 6) → ~2.9× (order 12)**, same converged cost (≈1e-6). Validated
+   vs 3-point FD (`test_lqd_jacobian.py`); golden LQD fits byte-unchanged.
 
 3. **Per-ticker version counters + chain-cache reconciliation** ✅ **DONE
    2026-06-22.** (A) `forwards_version` and `events_version` were global
