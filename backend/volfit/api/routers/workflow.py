@@ -12,7 +12,11 @@ POST /priors/seed                   -> seed previous-close priors on demand
 
 from __future__ import annotations
 
+import asyncio
+from time import monotonic
+
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 
 from volfit.api import workflow
 from volfit.api.schemas import (
@@ -47,6 +51,51 @@ def get_status(request: Request, fit_mode: FitMode | None = None) -> Calibration
 @router.get("/scheduler", response_model=SchedulerStatus)
 def get_scheduler(request: Request) -> SchedulerStatus:
     return workflow.scheduler_status(request.app.state.volfit)
+
+
+#: SSE watch cadence (s): how often the server re-reads its own in-process status.
+#: This is a cheap local attribute read (no I/O), and an event is pushed to the
+#: client ONLY when the payload actually changes — so the client holds one
+#: connection and refetches views only on real epoch/spot/activity changes instead
+#: of polling every 500 ms. (ROADMAP perf #4.)
+_SSE_TICK = 0.25
+_SSE_HEARTBEAT = 15.0  # keep-alive comment when nothing changed, to hold the conn
+
+
+@router.get("/calibration/stream")
+async def stream_status(request: Request, fit_mode: FitMode | None = None) -> StreamingResponse:
+    """Server-Sent Events stream of the calibration status (push, not poll).
+
+    Emits the same `CalibrationStatus` payload as `/calibration/status`, but only
+    when it changes (plus a periodic keep-alive). `text/event-stream` is excluded
+    from GZip by Starlette, so events flush in real time. The frontend keeps the
+    plain poll as a fallback, so an absent/again-down stream never freezes the UI.
+    """
+    state = request.app.state.volfit
+    mode = _mode(state, fit_mode)
+
+    async def gen():
+        last: str | None = None
+        last_beat = monotonic()
+        while True:
+            if await request.is_disconnected():
+                break
+            payload = workflow.status(state, mode).model_dump_json()
+            now = monotonic()
+            if payload != last:
+                last = payload
+                last_beat = now
+                yield f"data: {payload}\n\n"
+            elif now - last_beat >= _SSE_HEARTBEAT:
+                last_beat = now
+                yield ": keepalive\n\n"
+            await asyncio.sleep(_SSE_TICK)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/calibrate/cancel", response_model=CalibrationStatus)

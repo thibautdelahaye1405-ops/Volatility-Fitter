@@ -364,18 +364,26 @@ graph 1k-node ~700 ms.
    ladder — move to per-(ticker, expiry) (pairs with Massive's per-expiry
    pagination). Biggest cache-efficiency win at large universes.
 
-4. **WebSocket/SSE push for `{epoch, spotVersion}`** replacing the status poll +
-   N-view refetch fan-out. The 500ms/3s `Promise.all` poll (`useWorkflow.ts`) plus
-   `refreshViews()` (one GET per mounted view on every epoch/spot tick) is the
-   dominant steady-state request source. A single server push lets the client
-   refetch only what changed. WS infra already exists for the live book
-   (`data/massive_ws.py`).
+4. **SSE push for `{epoch, spotVersion}`** ✅ **DONE 2026-06-22.** The 500ms status
+   poll + `refreshViews()` fan-out is replaced by a Server-Sent-Events stream
+   `GET /calibration/stream` (`routers/workflow.py`) that pushes the
+   `CalibrationStatus` payload only when it changes (250ms in-process watch +
+   15s keep-alive; `text/event-stream` is auto-excluded from GZip so it flushes
+   live). `useWorkflow.ts` consumes it via `EventSource` and runs the same
+   idempotent `applyStatus` (epoch/spot diff → `refreshViews`); the poll stays as a
+   fallback (relaxed to a 5s scheduler-only refresh while the stream is healthy,
+   speeds back up if it drops), dropped when the tab is hidden, reconnected on
+   fit-mode change. Worst case (no SSE / mock) = the prior polling exactly.
+   `test_sse_status.py`; live-smoked under uvicorn. (SSE chosen over WS: one-way,
+   native browser auto-reconnect, no upgrade/proxy quirks.)
 
-5. **Slim + incrementalize payloads.** `/surface`, `/fit/affine`,
-   `/smiles/{t}/densities` send dense full meshes on every refetch. Add Starlette
-   `GZipMiddleware` (dense float arrays compress well), downsample curve arrays to
-   viewport resolution, and/or return per-expiry deltas. Med-high on payload +
-   client JSON parse.
+5. **Slim + incrementalize payloads.** ✅ **DONE 2026-06-22 (GZip + downsampling).**
+   `GZipMiddleware(minimum_size=1024, compresslevel=6)` added inside CORS
+   (`api/app.py`) — ~2.4–2.6× on the dense payloads (stacked densities, surface),
+   transparent, tiny polls uncompressed (`test_gzip.py`). Viewport downsampling was
+   already in place (curves strided to ≤`MAX_CHART_POINTS`=241, surface 81/expiry,
+   term 80), so the raw payloads were already modest. **Remaining (deferred):**
+   per-expiry deltas — pairs with #4's "what changed" event, do alongside it.
 
 6. **Columnar history (DuckDB/Parquet)** for snapshots/quotes — already on the
    Phase 9 list. The row-per-quote SQLite `quotes` table is fine for capture but

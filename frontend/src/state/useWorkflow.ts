@@ -7,7 +7,7 @@
 // transports the surface (real-time spot), it bumps the session's view version
 // so every workspace re-pulls the refreshed views. Live backend only.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "./api";
+import { api, API_BASE_URL } from "./api";
 
 /** The fine-grained engine activity in flight (what the engine is doing now),
  *  narrated to the bottom status bar. `active` false => idle. */
@@ -78,6 +78,10 @@ const POLL_IDLE_MS = 3000;
  *  polling (a slow heartbeat keeps the connection warm); becoming visible again
  *  triggers an immediate poll via the visibilitychange listener below. */
 const POLL_HIDDEN_MS = 15000;
+/** Cadence while the SSE stream is connected: the stream pushes the status
+ *  (epoch/spot/activity → view refetches), so the timer only refreshes the
+ *  scheduler countdowns and acts as a backstop. (ROADMAP perf #4.) */
+const POLL_SSE_MS = 5000;
 
 /** Which manual action is currently in flight (drives the per-button gauge). */
 export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors" | "fetchPriors";
@@ -142,16 +146,13 @@ export function useWorkflow(
     }
   }, []);
 
-  const poll = useCallback(async () => {
-    try {
-      const [c, s] = await Promise.all([
-        // Pass the viewed fit target so the stale accounting reports the SAME
-        // per-mode pointer the smile is shown in (mid vs bid-ask vs haircut).
-        api.get<CalibrationStatus>("/calibration/status", { params: { fit_mode: fitMode } }),
-        api.get<SchedulerStatus>("/scheduler"),
-      ]);
+  // Apply a status snapshot (from the SSE push OR the fallback poll). Level-
+  // triggered + idempotent: whichever source observes a counter advance first
+  // refetches the views; the other no-ops (refs already updated). null baselines
+  // on the first observation so it never spuriously refetches on connect.
+  const applyStatus = useCallback(
+    (c: CalibrationStatus) => {
       setCalib(c);
-      setSched(s);
       activeRef.current = c.running || c.activity.active;
       // A (re)calibration changed a displayed fit somewhere — refetch all mounted
       // views (covers the explicit Calibrate button, auto-calibrate on fetch, the
@@ -160,46 +161,113 @@ export function useWorkflow(
       lastEpoch.current = c.epoch;
       // Pure spot transport (no recalibration) — the backend scheduler moved the
       // surface under real-time spot; refetch so the transported curves follow.
-      if (lastSpotVer.current !== null && c.spotVersion !== lastSpotVer.current) {
-        refreshViews();
-      }
+      if (lastSpotVer.current !== null && c.spotVersion !== lastSpotVer.current) refreshViews();
       lastSpotVer.current = c.spotVersion;
+    },
+    [refreshViews],
+  );
+
+  const pollScheduler = useCallback(async () => {
+    try {
+      setSched(await api.get<SchedulerStatus>("/scheduler"));
     } catch {
       /* backend unreachable: leave the last status */
     }
-  }, [refreshViews, fitMode]);
+  }, []);
+
+  // Full poll (status + scheduler) — the fallback when the SSE stream is down,
+  // and the resync the explicit-action path awaits.
+  const poll = useCallback(async () => {
+    try {
+      const [c, s] = await Promise.all([
+        // Pass the viewed fit target so the stale accounting reports the SAME
+        // per-mode pointer the smile is shown in (mid vs bid-ask vs haircut).
+        api.get<CalibrationStatus>("/calibration/status", { params: { fit_mode: fitMode } }),
+        api.get<SchedulerStatus>("/scheduler"),
+      ]);
+      setSched(s);
+      applyStatus(c);
+    } catch {
+      /* backend unreachable: leave the last status */
+    }
+  }, [applyStatus, fitMode]);
 
   useEffect(() => {
     if (!live) return;
     let timer = 0;
     let stopped = false;
+    let es: EventSource | null = null;
+    const sseOk = { current: false };
     const hidden = () => typeof document !== "undefined" && document.hidden;
+
+    // SSE push of the calibration status (ROADMAP perf #4): one connection
+    // replaces the 500ms status poll + N-view refetch fan-out. The poll stays as
+    // a fallback (relaxed while the stream is healthy), so an absent / dropped
+    // stream degrades to exactly the previous polling behaviour — never freezes.
+    const closeSse = () => {
+      if (es) es.close();
+      es = null;
+      sseOk.current = false;
+    };
+    const openSse = () => {
+      if (es || typeof EventSource === "undefined") return;
+      const url = new URL("/calibration/stream", API_BASE_URL);
+      url.searchParams.set("fit_mode", fitMode);
+      const src = new EventSource(url);
+      src.onopen = () => (sseOk.current = true);
+      src.onmessage = (e) => {
+        try {
+          applyStatus(JSON.parse(e.data) as CalibrationStatus);
+        } catch {
+          /* ignore a malformed frame; the next one / the poll backstop recovers */
+        }
+      };
+      // EventSource auto-reconnects; flip the flag so the timer speeds back up to
+      // the full poll until the stream is healthy again.
+      src.onerror = () => (sseOk.current = false);
+      es = src;
+    };
+
     const nextDelay = () =>
-      hidden() ? POLL_HIDDEN_MS : activeRef.current ? POLL_ACTIVE_MS : POLL_IDLE_MS;
-    // Self-rescheduling loop so the cadence can follow the engine: brisk while it
-    // works, relaxed when idle, all but paused when the tab is hidden.
-    // (setInterval can't change its own period.)
+      hidden()
+        ? POLL_HIDDEN_MS
+        : sseOk.current
+          ? POLL_SSE_MS
+          : activeRef.current
+            ? POLL_ACTIVE_MS
+            : POLL_IDLE_MS;
+    // Self-rescheduling loop: while the SSE stream is healthy it only refreshes
+    // the scheduler countdowns (the stream pushes the status); otherwise it does
+    // the full status+scheduler poll, brisk while the engine works.
     const tick = async () => {
-      if (!hidden()) await poll(); // no point hitting the backend for an unseen UI
+      if (!hidden()) await (sseOk.current ? pollScheduler() : poll());
       if (stopped) return;
       timer = window.setTimeout(() => void tick(), nextDelay());
     };
-    // Coming back to a visible tab: poll right away so the status is fresh.
+    // Hidden tab: drop the stream (no refetches for a UI nobody sees). Visible
+    // again: reopen the stream + poll right away so the status is fresh.
     const onVisible = () => {
-      if (!hidden() && !stopped) {
+      if (stopped) return;
+      if (hidden()) {
+        closeSse();
+      } else {
+        openSse();
         window.clearTimeout(timer);
         void tick();
       }
     };
+
+    if (!hidden()) openSse();
     void tick();
     void refreshPriors(); // saved-prior availability (not in the hot poll loop)
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;
+      closeSse();
       window.clearTimeout(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [live, poll, refreshPriors]);
+  }, [live, poll, pollScheduler, applyStatus, refreshPriors, fitMode]);
 
   // Snappy path for the explicit buttons: wait for the background job to go idle,
   // then refresh immediately rather than waiting up to one poll interval. This is

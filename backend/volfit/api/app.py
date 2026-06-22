@@ -16,6 +16,7 @@ from datetime import date
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from volfit.api.routers import ALL_ROUTERS
 from volfit.api.scheduler import Scheduler
@@ -74,6 +75,11 @@ def create_app(
 
     app = FastAPI(title="volfit", lifespan=lifespan)
     app.state.volfit = state
+    # GZip the dense JSON payloads (surface meshes, affine grids, stacked
+    # densities); float arrays compress ~5-10x. Added BEFORE CORS so CORS stays
+    # the outermost middleware (it must answer preflight first); small responses
+    # (status polls) stay uncompressed via minimum_size. (ROADMAP perf #5.)
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
