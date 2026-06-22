@@ -222,11 +222,15 @@ class AppState(UniverseMixin):
         #: no-recal spot-move transport (volfit.dynamics.transport): the
         #: calibrated anchor smile/surface/LV-grid is transported analytically,
         #: never refitted. NOT in the fit-cache key (the anchor fit stays warm and
-        #: is transported on top); ``_spot_version`` busts only the DERIVED grid
-        #: caches (localvol extraction, affine surface) whose own keys would
-        #: otherwise go stale.
+        #: is transported on top). Two counters (ROADMAP perf #3C): the GLOBAL
+        #: ``_spot_version`` is the client refresh signal surfaced in the status
+        #: payload (a spot moved somewhere → re-pull the mounted views); the
+        #: PER-TICKER ``_spot_version_by_ticker`` keys the DERIVED grid caches
+        #: (localvol extraction) so a SPOT move on one name does not bust every
+        #: other name's transported grid.
         self._spot_shift: dict[str, float] = {}
         self._spot_version = 0
+        self._spot_version_by_ticker: dict[str, int] = {}
         #: Per-ticker market-DATA version: bumped when a fresh options chain is
         #: fetched ("Fetch Options Quotes" / the scheduler). Folded into the fit
         #: key so a refetch marks every node stale (and auto-calibration refits).
@@ -765,12 +769,20 @@ class AppState(UniverseMixin):
     # ------------------------------------------------------------- spot shift
     @property
     def spot_version(self) -> int:
-        """Monotone counter bumped on any spot-shift change; folded into the
-        DERIVED grid caches (localvol extraction / affine surface) so a spot
-        move re-transports them. Deliberately NOT in the slice fit-cache key —
-        the anchor fit is transported on read, never re-fitted."""
+        """GLOBAL monotone counter bumped on any ticker's spot-shift change — the
+        client refresh signal (surfaced in the status payload): a spot moved
+        somewhere, re-pull the mounted views. Deliberately NOT in the slice
+        fit-cache key — the anchor fit is transported on read, never re-fitted.
+        Use ``spot_version_for(ticker)`` for the per-ticker derived-grid cache key."""
         with self._lock:
             return self._spot_version
+
+    def spot_version_for(self, ticker: str) -> int:
+        """PER-TICKER spot version folded into the derived-grid caches (localvol
+        extraction) so one name's spot move re-transports only that name's grid,
+        not every other ticker's (ROADMAP perf #3C)."""
+        with self._lock:
+            return self._spot_version_by_ticker.get(ticker, 0)
 
     def spot_shift(self, ticker: str) -> float:
         """The ticker's active spot shift (proportional return; 0 = anchored)."""
@@ -783,7 +795,10 @@ class AppState(UniverseMixin):
         with self._lock:
             if float(shift) != self._spot_shift.get(ticker, 0.0):
                 self._spot_shift[ticker] = float(shift)
-                self._spot_version += 1
+                self._spot_version += 1  # global client signal
+                self._spot_version_by_ticker[ticker] = (
+                    self._spot_version_by_ticker.get(ticker, 0) + 1  # per-ticker cache key
+                )
             return self._spot_shift.get(ticker, 0.0)
 
     # --------------------------------------------------- data / calibration state
@@ -879,7 +894,10 @@ class AppState(UniverseMixin):
         recalibrates at the current spot (the explicit "Calibrate" action)."""
         with self._lock:
             if self._spot_shift.pop(ticker, 0.0) != 0.0:
-                self._spot_version += 1
+                self._spot_version += 1  # global client signal
+                self._spot_version_by_ticker[ticker] = (
+                    self._spot_version_by_ticker.get(ticker, 0) + 1  # per-ticker cache key
+                )
             self._snapshots.pop(ticker, None)
             self._forwards.pop(ticker, None)
             self._fits = {k: v for k, v in self._fits.items() if k[0] != ticker}

@@ -372,7 +372,12 @@ graph 1k-node ~700 ms.
    re-fetch when a genuinely new expiry is added (so the chain never mixes
    spot/instants). Tests: `test_api_forwards.py` (cross-ticker isolation),
    `test_chain_cache.py` (subset-no-refetch + warm-fit reuse, add-refetches).
-   *(`spot_version` is still global — a candidate for the same per-ticker scoping.)*
+   (C) `spot_version` was also global, so one name's spot move re-transported every
+   other name's derived grid (localvol extraction). Now split: the GLOBAL
+   `spot_version` stays the client refresh signal in the status payload, and a new
+   PER-TICKER `spot_version_for(ticker)` keys the derived-grid cache — a SPY move
+   re-transports only SPY's grid. `test_spot_version.py` (per-ticker spot, global
+   signal intact).
 
 4. **SSE push for `{epoch, spotVersion}`** ✅ **DONE 2026-06-22.** The 500ms status
    poll + `refreshViews()` fan-out is replaced by a Server-Sent-Events stream

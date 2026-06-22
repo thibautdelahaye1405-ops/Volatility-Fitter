@@ -116,7 +116,7 @@ def localvol_record(state: AppState, ticker: str, fit_mode: str):
         state.forwards_version(ticker),
         state.events_version(ticker),
         state.options_version,
-        state.spot_version,
+        state.spot_version_for(ticker),  # per-ticker: another name's spot move won't bust this
         state.data_version(ticker),
     )
     cache = getattr(state, _CACHE_ATTR, None)
