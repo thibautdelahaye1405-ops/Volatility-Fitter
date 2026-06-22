@@ -22,11 +22,15 @@ entry point — auto-picks a free port, opens the browser, app-data DB default),
 `API_BASE_URL` now relative in prod builds (`window.location.origin`). Verified
 in-app: UI + `/assets/*` + API all serve from one origin with API routes taking
 precedence; 4 new tests (`test_frontend_mount.py`), full suite green. **The
-PyInstaller freeze now succeeds** — `build_exe.ps1` → `dist\VolFitter.exe`
-(~135 MB one-file) launches and serves UI+API on one origin from the frozen
-`sys._MEIPASS` bundle (verified). Non-fatal `tbb12.dll` warning (numba falls back
-to the workqueue layer; `pip install tbb` to silence). See `DESKTOP.md`.
-Remaining (optional): pywebview window chrome, app icon, code-signing.
+PyInstaller freeze succeeds** — `build_exe.ps1` → `dist\VolFitter.exe` (~135 MB
+one-file). **Now a native windowed app**: `desktop.py` serves uvicorn on a daemon
+thread and opens the UI in a pywebview WebView2 window (browser fallback;
+`VOLFIT_DESKTOP_MODE=window|browser|server`); `console=False` so logs go to
+`%LOCALAPPDATA%\VolFitter\desktop.log`. App icon = a volatility-smile tile
+(`assets/make_icon.py` → `volfitter.ico` + `frontend/public/favicon.ico`); exe
+`icon=` set; `tbb12.dll` bundled (no warning). Verified the frozen window renders
+the app + drives live API calls. See `DESKTOP.md`. Remaining (optional):
+code-signing, an installer for shortcuts.
 
 ### 🚀 GRAPH SMILE-EXTRAPOLATION — production path SHIPPED (2026-06-21, branch `feature/graph-extrapolation`)
 

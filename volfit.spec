@@ -39,8 +39,11 @@ if not os.path.isfile(os.path.join(FRONTEND_DIST, "index.html")):
         "(`npm --prefix frontend run build`) or use build_exe.ps1."
     )
 
-# --- data: the whole built React bundle, mapped to `frontend_dist/` ----------
+# --- data: the React bundle (-> frontend_dist/) + the app icon ----------------
 datas = [(FRONTEND_DIST, "frontend_dist")]
+ICON = os.path.join(REPO, "assets", "volfitter.ico")
+if os.path.isfile(ICON):
+    datas.append((ICON, "."))   # so desktop._find_icon() resolves it at runtime
 
 # --- hidden imports: things loaded by string / native ------------------------
 hiddenimports = []
@@ -55,6 +58,10 @@ hiddenimports += [
 ]
 hiddenimports += collect_submodules("numba")
 hiddenimports += collect_submodules("llvmlite")
+# pywebview native window: its platform backend + pythonnet (.NET / WebView2 on
+# Windows) are resolved dynamically. collect_all is overkill; these cover it.
+hiddenimports += collect_submodules("webview")
+hiddenimports += ["clr", "clr_loader", "pythonnet", "proxy_tools", "bottle"]
 
 # numba/llvmlite/scipy native libraries.
 binaries = []
@@ -107,8 +114,9 @@ exe = EXE(
     strip=False,
     upx=False,            # UPX often trips antivirus + corrupts numba/llvmlite DLLs
     runtime_tmpdir=None,
-    console=True,         # keep the console: it shows the active data source + URL
+    console=False,        # windowed app: no console flashes behind the native window
     disable_windowed_traceback=False,
+    icon=(ICON if os.path.isfile(ICON) else None),  # exe + window + taskbar icon
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,

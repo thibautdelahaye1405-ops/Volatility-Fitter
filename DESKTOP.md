@@ -34,21 +34,47 @@ Three small, additive pieces make it work:
 
 3. **`backend/desktop.py`** — the packaged entry point. Reuses
    `serve.build_app()` (same data-source registration / auto-pick), mounts the
-   frontend, picks a free port (falling back off :8000), opens the browser, and
-   runs uvicorn. Persistence defaults to
+   frontend, picks a free port (falling back off :8000), serves uvicorn on a
+   **background thread**, and opens the UI in a **native pywebview window**
+   (system WebView2 on Windows) — falling back to the system browser if the
+   window backend is unavailable. Persistence defaults to
    `%LOCALAPPDATA%\VolFitter\volfit.sqlite` so named universes / fit history
    survive even when the install dir is read-only.
+
+## Native window, icon & logs
+
+- **Window** — pywebview owns the main thread (a Windows requirement), so
+  uvicorn runs on a daemon thread; closing the window stops the server
+  (`server.should_exit`). Title "VolFitter", 1480×920, dark-navy background so
+  there's no white flash before the React app paints.
+- **Icon** — `assets/make_icon.py` draws a volatility-smile tile
+  (`assets/volfitter.ico` for the exe/window/taskbar; `frontend/public/favicon.ico`
+  for the browser tab / WebView2 favicon). `build_exe.ps1` regenerates both
+  before the frontend build; `volfit.spec` sets the exe `icon=`.
+- **Logs** — the exe is windowed (`console=False`), so `desktop.py` redirects
+  `stdout`/`stderr` to `%LOCALAPPDATA%\VolFitter\desktop.log` (uvicorn logging
+  would otherwise crash writing to a null stream). A failed launch leaves a
+  trace there.
+
+### Launch modes (`VOLFIT_DESKTOP_MODE`)
+
+| value | behaviour |
+| --- | --- |
+| `window` *(default)* | native pywebview window (browser fallback if unavailable) |
+| `browser` | serve + open the system browser |
+| `server` | serve only, launch no UI (smoke tests / headless) |
+
+(`VOLFIT_DESKTOP_NO_BROWSER=1` is a deprecated alias for `server`.)
 
 ## Run it from source (no freeze)
 
 ```powershell
 npm --prefix frontend run build        # produces frontend/dist
-.venv\Scripts\python backend\desktop.py
+.venv\Scripts\python backend\desktop.py   # opens a native window
 ```
 
-Opens your browser at `http://127.0.0.1:8000/` (or a free port). Useful env:
-`VOLFIT_DESKTOP_PORT`, `VOLFIT_DESKTOP_NO_BROWSER=1`, plus all of `serve.py`'s
-`VOLFIT_PROVIDER` / `VOLFIT_TICKERS` / `VOLFIT_MASSIVE_KEY` …
+Useful env: `VOLFIT_DESKTOP_MODE`, `VOLFIT_DESKTOP_PORT`, plus all of
+`serve.py`'s `VOLFIT_PROVIDER` / `VOLFIT_TICKERS` / `VOLFIT_MASSIVE_KEY` …
 
 ## Build the `.exe`
 
@@ -58,24 +84,28 @@ Opens your browser at `http://127.0.0.1:8000/` (or a free port). Useful env:
 ```
 
 Output: `dist\VolFitter.exe` — a one-file executable. Double-click it; it serves
-the UI + API on one origin and opens your browser.
+the UI + API on one origin and opens a native window.
 
 ### PyInstaller notes (`volfit.spec`)
 
 - Entry = `backend/desktop.py`; `pathex=[backend]` so `from serve import …`
-  resolves. `frontend/dist` ships as data under `frontend_dist`.
+  resolves. `frontend/dist` ships as data under `frontend_dist`; the icon ships
+  at the bundle root.
 - `hiddenimports` collect `volfit`, `uvicorn` (its loop/protocol/lifespan impls
-  are loaded by string), `numba`, `llvmlite`; native DLLs for numba/llvmlite are
-  pulled via `collect_dynamic_libs`.
+  are loaded by string), `numba`, `llvmlite`, and `webview` + `pythonnet`/`clr`
+  (the WebView2 backend); native DLLs for numba/llvmlite/tbb are pulled via
+  `collect_dynamic_libs` + an explicit `tbb12.dll` add.
 - `upx=False` on purpose — UPX trips antivirus and can corrupt the numba/llvmlite
-  DLLs. `console=True` so the active data source + URL are visible.
+  DLLs. `console=False` (windowed); logs go to `%LOCALAPPDATA%\VolFitter\desktop.log`.
 
 ### Build status
 
 The freeze has been run and **succeeds**: `dist\VolFitter.exe` (~135 MB,
-one-file) launches, serves the UI + API on one origin (verified `/`,
-`/universe`, `/assets/*` all 200 from the frozen bundle's `sys._MEIPASS`
-`frontend_dist`), and writes persistence under `%LOCALAPPDATA%\VolFitter`.
+one-file) launches a native window, serves the UI + API on one origin (verified
+the WebView2 window renders the app and drives live API calls — `/`, `/favicon.ico`,
+`/priors`, `/spot`, `/smiles/*` all 200 from the frozen `sys._MEIPASS` bundle),
+and writes persistence + logs under `%LOCALAPPDATA%\VolFitter`. The bundle
+contains `tbb12.dll`, `volfitter.ico`, and `frontend_dist/favicon.ico`.
 
 numba's TBB threading layer: `build_exe.ps1` installs `tbb` into the venv and
 `volfit.spec` bundles `tbb12.dll` (from `<venv>/Library/bin`) into the exe, so
@@ -83,5 +113,5 @@ numba gets its parallel layer when frozen — no `tbb12.dll` warning. If `tbb` i
 ever missing, the build still succeeds and numba falls back to the `workqueue`
 layer (and the LV march has its own banded fallback besides).
 
-Likely follow-ups: window chrome (pywebview instead of the system browser), an
-app icon, and code-signing.
+Likely follow-ups: code-signing (avoids the SmartScreen prompt on first run) and
+an installer (e.g. Inno Setup) for Start-menu/desktop shortcuts.
