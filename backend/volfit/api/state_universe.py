@@ -17,6 +17,7 @@ from datetime import date
 from volfit.data.expiry_select import default_selection
 from volfit.data.forwards import implied_forwards
 from volfit.data.symbols import portable_ticker
+from volfit.data.types import ChainSnapshot
 
 
 class UnknownNodeError(KeyError):
@@ -240,6 +241,34 @@ class UniverseMixin:
         self._forwards.pop(ticker, None)
         self._universe = None
 
+    def _reconcile_chain_selection(self, ticker: str, new_expiries: list[date]) -> None:
+        """Reconcile the cached chain with a changed expiry selection (ROADMAP perf
+        #3B). Assumes the lock is held.
+
+        A per-ticker ``ChainSnapshot`` is one atomic observation (a single
+        spot/instant across its expiries). So: if the cached chain already covers
+        the new selection (a deselect, or re-selecting a subset), PRUNE the snapshot
+        + forwards to it IN PLACE — no re-fetch, and every surviving node keeps its
+        warm fit (the per-node fit keys are unchanged). Only a genuinely NEW expiry
+        (absent from the cached chain) forces a full atomic re-fetch, so the chain
+        never mixes instants. The LV/term views still re-derive for the new set,
+        since the pruned forwards change their (per-iso) cache keys."""
+        self._universe = None  # ladder changed -> rebuild the graph topology
+        snap = self._snapshots.get(ticker)
+        want = set(new_expiries)
+        if snap is None or not want.issubset(set(snap.expiries())):
+            self._snapshots.pop(ticker, None)  # full atomic re-fetch next access
+            self._forwards.pop(ticker, None)
+            return
+        kept = [q for q in snap.quotes if q.expiry in want]
+        self._snapshots[ticker] = ChainSnapshot(
+            ticker=snap.ticker, spot=snap.spot, timestamp=snap.timestamp,
+            quotes=kept, exercise_style=snap.exercise_style,
+        )
+        fwds = self._forwards.get(ticker)
+        if fwds is not None:
+            self._forwards[ticker] = {e: f for e, f in fwds.items() if e in want}
+
     def set_expiries(self, ticker: str, expiries: list[date]) -> list[date]:
         """Replace a ticker's selected expiries (custom mode). Dates outside the
         available list are dropped; an empty result is rejected."""
@@ -252,7 +281,7 @@ class UniverseMixin:
                 raise ValueError("selection must keep at least one expiry")
             self._selected[ticker] = chosen
             self._selection_mode[ticker] = "custom"
-            self._invalidate_ticker(ticker)
+            self._reconcile_chain_selection(ticker, chosen)
             return list(chosen)
 
     def reset_expiries(self, ticker: str) -> list[date]:
@@ -263,5 +292,5 @@ class UniverseMixin:
             chosen = default_selection(self._available[ticker], self.reference_date)
             self._selected[ticker] = chosen
             self._selection_mode[ticker] = "auto"
-            self._invalidate_ticker(ticker)
+            self._reconcile_chain_selection(ticker, chosen)
             return list(chosen)

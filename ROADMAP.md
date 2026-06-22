@@ -355,21 +355,24 @@ graph 1k-node ~700 ms.
    propagated analytically in one quadrature pass (the affine surface already does
    exactly this). Expect ~3–8× on the slice fit; pass `jac=` to `least_squares`.
 
-3. **Per-ticker version counters** ✅ **DONE 2026-06-22** **+ per-(ticker,expiry)
-   chain cache (remaining).** `forwards_version` and `events_version` were global
+3. **Per-ticker version counters + chain-cache reconciliation** ✅ **DONE
+   2026-06-22.** (A) `forwards_version` and `events_version` were global
    (`api/state.py`), so one market-setting / event-calendar edit invalidated EVERY
    ticker's fits — worst case ~100 tickers × ~10 expiries = 1000 forced refits. Now
    **per-ticker dicts** (`forwards_version(ticker)` / `events_version(ticker)`),
    folded into `fit_key` / `affine_key` / the local-vol view key — a name's
    rate/dividend/forward-policy/event-calendar edit refits only that name.
    `settings_version` / `options_version` stay **global** (model / penalties / grid
-   genuinely affect all tickers — correct to refit everyone). `data_version` /
-   `active_prior_version` were already per-ticker. Cross-ticker isolation test in
-   `test_api_forwards.py`. **Still open:** the chain cache is **per-ticker**
-   (`state._snapshots`), so changing one expiry re-pulls the whole ladder — move to
-   per-(ticker, expiry) (a deeper snapshot/fetch refactor; pairs with Massive's
-   per-expiry pagination). *(`spot_version` is also global — a candidate for the
-   same per-ticker scoping, out of this entry's original scope.)*
+   genuinely affect all tickers — correct to refit everyone); `data_version` /
+   `active_prior_version` were already per-ticker. (B) Changing one expiry no longer
+   re-pulls the whole ladder: `_reconcile_chain_selection` (`state_universe.py`)
+   PRUNES the cached snapshot + forwards in place when the new selection is a subset
+   of the cached chain (deselect / re-select) — **no provider fetch, surviving nodes
+   keep warm fits** (per-node fit keys unchanged) — and only forces a full **atomic**
+   re-fetch when a genuinely new expiry is added (so the chain never mixes
+   spot/instants). Tests: `test_api_forwards.py` (cross-ticker isolation),
+   `test_chain_cache.py` (subset-no-refetch + warm-fit reuse, add-refetches).
+   *(`spot_version` is still global — a candidate for the same per-ticker scoping.)*
 
 4. **SSE push for `{epoch, spotVersion}`** ✅ **DONE 2026-06-22.** The 500ms status
    poll + `refreshViews()` fan-out is replaced by a Server-Sent-Events stream
