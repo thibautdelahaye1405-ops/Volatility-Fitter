@@ -400,10 +400,19 @@ graph 1k-node ~700 ms.
    term 80), so the raw payloads were already modest. **Remaining (deferred):**
    per-expiry deltas — pairs with #4's "what changed" event, do alongside it.
 
-6. **Columnar history (DuckDB/Parquet)** for snapshots/quotes — already on the
-   Phase 9 list. The row-per-quote SQLite `quotes` table is fine for capture but
-   poor for historical scans / as-of replay / prior-ladder reads; Parquet makes
-   those far cheaper.
+6. **Columnar history (DuckDB/Parquet)** ✅ **CORE DONE 2026-06-22 (additive).**
+   `volfit/data/columnar.py` — `ColumnarHistory`: snapshots written one Parquet
+   file per `(ticker, date)`, queried via DuckDB with column pruning + `ts`
+   predicate pushdown. Provides the VolStore-compatible analytical reads
+   (`snapshot_at` / `latest_snapshot` / `list_snapshots`, round-trip-faithful) PLUS
+   the capability SQLite is poor at — `scan_quotes(tickers, start, end)`, a
+   multi-snapshot columnar scan (the feed for the Phase-7 neural-operator dataset /
+   historical studies) — and `export_from_sqlite` to migrate existing capture
+   (idempotent / de-duped). `test_columnar.py` (4). **Deliberately NOT wired into
+   the live hot path:** SQLite stays the source of truth (its single-snapshot reads
+   are already indexed/fast); the live dual-write + read-through-with-fallback is
+   the separately-reviewable last mile. The columnar layer is shared with the
+   backtest harness (Phase 7).
 
 > (Graph sparse linear algebra — the two dense O(N³) inversions per coordinate in
 > `graph/prior.py:67,72`, autotune O(7·n_obs·N³) — was identified but EXCLUDED from
