@@ -116,13 +116,15 @@ def test_dividend_yield_lowers_theoretical_forwards(client):
 def test_redundant_market_put_keeps_caches(client):
     state = client.app.state.volfit
     client.put("/settings/market/ALPHA", json={"dividendYield": 0.02})
-    version = state.forwards_version
+    version = state.forwards_version("ALPHA")
     # Identical re-PUT: no version bump, warm fit caches stay valid.
     client.put("/settings/market/ALPHA", json={"dividendYield": 0.02})
-    assert state.forwards_version == version
+    assert state.forwards_version("ALPHA") == version
     # A real change bumps it exactly once.
     client.put("/settings/market/ALPHA", json={"dividendYield": 0.03})
-    assert state.forwards_version == version + 1
+    assert state.forwards_version("ALPHA") == version + 1
+    # Per-ticker: ALPHA's edit must NOT bump another ticker's forwards version.
+    assert state.forwards_version("BETA") == 0
 
 
 def test_theoretical_mode_drives_fits(client):

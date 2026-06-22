@@ -990,9 +990,9 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         request.fitMode,
         versions,
         vs_versions,
-        state.events_version,
+        state.events_version(ticker),
         state.settings_version,
-        state.forwards_version,
+        state.forwards_version(ticker),
         state.options_version,
         state.data_version(ticker),
         state.active_prior_version(ticker),  # a fetched prior re-anchors the LV fit

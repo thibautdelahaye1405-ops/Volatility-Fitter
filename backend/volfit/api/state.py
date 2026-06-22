@@ -211,9 +211,12 @@ class AppState(UniverseMixin):
         #: weighted_time), so a calendar change must refit: the events version is
         #: folded into the fit-cache key.
         self._events: dict[str, list[EventSpec]] = {}
-        self._events_version = 0  # bumped on any event-calendar change
+        #: PER-TICKER version counters (ROADMAP perf #3): the event calendar, market
+        #: settings and forward policy are per-ticker concepts, so one ticker's edit
+        #: must not invalidate every other ticker's warm fits. Keyed by ticker.
+        self._events_version: dict[str, int] = {}  # bumped on a ticker's calendar change
         self._forward_policies: dict[tuple[str, str], ForwardPolicy] = {}
-        self._forwards_version = 0  # bumped on change; part of fit-cache keys
+        self._forwards_version: dict[str, int] = {}  # bumped on a ticker's fwd change
         #: Per-ticker hypothetical/live spot SHIFT (proportional return vs the
         #: spot the fits were calibrated at, ``_anchor_spot``). Drives the fast
         #: no-recal spot-move transport (volfit.dynamics.transport): the
@@ -909,13 +912,12 @@ class AppState(UniverseMixin):
             return float(self.snapshot(ticker).spot)
 
     # ------------------------------------ market settings and forward policy
-    @property
-    def forwards_version(self) -> int:
-        """Monotone counter folded into fit keys; bumps whenever a market
-        setting or forward policy changes (any ticker — forwards feed every
-        prepared-quote array, so a global bust is the simple safe choice)."""
+    def forwards_version(self, ticker: str) -> int:
+        """Per-ticker monotone counter folded into the fit key; bumps when THIS
+        ticker's market settings or forward policy change. Per-ticker so editing
+        one name's rate/dividends/forward never refits the rest (ROADMAP perf #3)."""
         with self._lock:
-            return self._forwards_version
+            return self._forwards_version.get(ticker, 0)
 
     def market_settings(self, ticker: str) -> MarketSettings:
         """The ticker's rate/dividend settings (defaults when never set)."""
@@ -928,7 +930,7 @@ class AppState(UniverseMixin):
         with self._lock:
             if settings != self._market_settings.get(ticker, MarketSettings()):
                 self._market_settings[ticker] = settings
-                self._forwards_version += 1
+                self._forwards_version[ticker] = self._forwards_version.get(ticker, 0) + 1
             return self._market_settings.get(ticker) or MarketSettings()
 
     def forward_policy(self, ticker: str, expiry_iso: str) -> ForwardPolicy:
@@ -945,16 +947,16 @@ class AppState(UniverseMixin):
         with self._lock:
             if policy != self._forward_policies.get((ticker, iso), ForwardPolicy()):
                 self._forward_policies[(ticker, iso)] = policy
-                self._forwards_version += 1
+                self._forwards_version[ticker] = self._forwards_version.get(ticker, 0) + 1
             return self._forward_policies.get((ticker, iso)) or ForwardPolicy()
 
     # ------------------------------------------------------ event calendar
-    @property
-    def events_version(self) -> int:
-        """Monotone counter folded into fit keys; bumps on calendar changes
-        (events drive the variance clock, so a change must refit)."""
+    def events_version(self, ticker: str) -> int:
+        """Per-ticker monotone counter folded into the fit key; bumps on THIS
+        ticker's event-calendar change (events drive its variance clock). Per-ticker
+        so one name's calendar edit never refits the rest (ROADMAP perf #3)."""
         with self._lock:
-            return self._events_version
+            return self._events_version.get(ticker, 0)
 
     def events(self, ticker: str) -> list[EventSpec]:
         """The ticker's persisted event calendar (empty when never set)."""
@@ -967,7 +969,7 @@ class AppState(UniverseMixin):
         with self._lock:
             if events != self._events.get(ticker, []):
                 self._events[ticker] = list(events)
-                self._events_version += 1
+                self._events_version[ticker] = self._events_version.get(ticker, 0) + 1
             return list(self._events.get(ticker, []))
 
     def dividend_model(self, ticker: str) -> DividendModel:

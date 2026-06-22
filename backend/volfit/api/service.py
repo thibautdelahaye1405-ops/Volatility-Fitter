@@ -120,9 +120,9 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
         fit_mode,
         session_version(state, ticker, iso),
         varswap_version(state, ticker, iso),
-        state.events_version,
+        state.events_version(ticker),
         state.settings_version,
-        state.forwards_version,
+        state.forwards_version(ticker),
         state.options_version,
         state.data_version(ticker),  # fresh options fetch -> stale / refit
         state.active_prior_version(ticker),  # a fetched prior re-anchors the fit
