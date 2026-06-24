@@ -27,6 +27,7 @@ from volfit.data.forwards import implied_forwards
 from volfit.data.types import ChainSnapshot, OptionQuote
 
 from backtest.quotes_store import QuotesFlatFileStore
+from backtest.rest_quotes import RestQuotesClient
 from backtest.universe import (
     FULL,
     PILOT,
@@ -148,15 +149,9 @@ def _fixture_path(regime: str, as_of: date, ticker: str) -> str:
     return os.path.join(FIXTURE_DIR, regime, as_of.isoformat(), f"{ticker}.json")
 
 
-def capture_day(
-    store: QuotesFlatFileStore,
-    assets: tuple[AssetSpec, ...],
-    regime: str,
-    as_of: date,
-    scan_roots: list[str],
-) -> dict:
-    """Capture every asset for one trading day; returns a small cost record."""
-    ts = snapshot_utc(as_of)
+def capture_day(fetch, assets: tuple[AssetSpec, ...], regime: str, as_of: date) -> dict:
+    """Capture every asset for one trading day via ``fetch(asset, as_of) ->
+    ChainSnapshot | None`` (rest or flat-file source); returns a cost record."""
     t0 = time.perf_counter()
     n_written = n_skipped = n_empty = 0
     for asset in assets:
@@ -164,12 +159,7 @@ def capture_day(
         if os.path.exists(path):
             n_skipped += 1
             continue
-        chain = store.chain_at(
-            asset.ticker, None, ts,
-            option_roots=list(asset.option_roots),
-            cache_roots=scan_roots,
-            exercise_style=asset.exercise_style,
-        )
+        chain = fetch(asset, as_of)
         fixture = _build_fixture(asset, as_of, chain) if chain is not None else None
         if fixture is None:
             n_empty += 1
@@ -185,6 +175,43 @@ def capture_day(
     }
 
 
+def _flatfile_fetch(assets: tuple[AssetSpec, ...]):
+    """A fetch closure backed by the quotes_v1 flat files (the firehose)."""
+    scan_roots = all_option_roots(assets)
+    store = QuotesFlatFileStore(
+        access_key=os.environ.get("VOLFIT_FLATFILES_KEY", ""),
+        secret=os.environ.get("VOLFIT_FLATFILES_SECRET", ""),
+        endpoint=os.environ.get("VOLFIT_FLATFILES_ENDPOINT", "files.massive.com"),
+        cache_dir=CACHE_DIR,
+    )
+    if not store.available():
+        raise SystemExit("flat-file creds missing — dot-source restart.local.ps1 first.")
+
+    def fetch(asset: AssetSpec, as_of: date):
+        return store.chain_at(
+            asset.ticker, None, snapshot_utc(as_of),
+            option_roots=list(asset.option_roots), cache_roots=scan_roots,
+            exercise_style=asset.exercise_style,
+        )
+
+    return fetch
+
+
+def _rest_fetch():
+    """A fetch closure backed by the per-contract REST quotes API (fast path)."""
+    client = RestQuotesClient(os.environ.get("VOLFIT_MASSIVE_KEY", ""))  # raises on a stub key
+
+    def fetch(asset: AssetSpec, as_of: date):
+        by_expiry = client.enumerate_contracts(list(asset.option_roots), as_of)
+        selected = select_expiries(sorted(by_expiry), as_of)
+        sub = {e: by_expiry[e] for e in selected if e in by_expiry}
+        if not sub:
+            return None
+        return client.fetch_nbbo(asset.ticker, sub, snapshot_utc(as_of), asset.exercise_style)
+
+    return fetch
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Freeze NBBO chain fixtures for the backtest.")
     ap.add_argument("--universe", choices=["pilot", "full"], default="pilot")
@@ -198,19 +225,14 @@ def main() -> int:
                     help="restrict scanning to a nightly local-time window, "
                          "e.g. '23:30-06:30'; a day in progress finishes, but no "
                          "new day starts outside it")
+    ap.add_argument("--source", choices=["rest", "flatfile"], default="rest",
+                    help="rest = per-contract REST quotes (fast, ~min/day); "
+                         "flatfile = the quotes_v1 firehose (~hours/day)")
     args = ap.parse_args()
     window = _parse_window(args.window) if args.window else None
 
     assets = PILOT if args.universe == "pilot" else FULL
-    scan_roots = all_option_roots(assets)
-    store = QuotesFlatFileStore(
-        access_key=os.environ.get("VOLFIT_FLATFILES_KEY", ""),
-        secret=os.environ.get("VOLFIT_FLATFILES_SECRET", ""),
-        endpoint=os.environ.get("VOLFIT_FLATFILES_ENDPOINT", "files.massive.com"),
-        cache_dir=CACHE_DIR,
-    )
-    if not store.available():
-        raise SystemExit("flat-file creds missing — dot-source restart.local.ps1 first.")
+    fetch = _rest_fetch() if args.source == "rest" else _flatfile_fetch(assets)
 
     explicit = (
         [date.fromisoformat(d.strip()) for d in args.dates.split(",")]
@@ -225,7 +247,8 @@ def main() -> int:
             days = trading_days(start, end)
         if args.limit_days:
             days = days[: args.limit_days]
-        print(f"== {regime}: {len(days)} trading days, {len(assets)} assets ==", flush=True)
+        print(f"== {regime}: {len(days)} trading days, {len(assets)} assets "
+              f"(source={args.source}) ==", flush=True)
         for d in days:
             # Skip the window wait when this day is already fully captured (cheap
             # resume) — only gate genuine scans.
@@ -233,7 +256,7 @@ def main() -> int:
             if window is not None and not done:
                 _wait_for_window(*window)
             try:
-                rec = capture_day(store, assets, regime, d, scan_roots)
+                rec = capture_day(fetch, assets, regime, d)
                 print(
                     f"  {rec['date']}  scan={rec['scan_seconds']:6.1f}s  "
                     f"written={rec['written']} skipped={rec['skipped']} empty={rec['empty']}",

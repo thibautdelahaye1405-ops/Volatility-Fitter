@@ -147,17 +147,25 @@ arb), the **time attribution** (de-Am vs fit, split by exercise style), and the
 
 ---
 
-## 4. Schedule (nightly window)
+## 4. Capture source & cost
 
-The capture runs **only 23:30 → 06:30 local time** (`--window 23:30-06:30`) so the
-machine is free during the day. Granularity is **per day**: a day already scanning
-when 06:30 passes **runs to completion** (never killed mid-scan — that would waste
-the partial download, since the per-day cache writes only on completion); no **new**
-day starts outside the window. Fully resumable (captured days are skipped).
+Two sources, selected with `capture.py --source`:
 
-**Cost reality:** the `quotes_v1` day-file is a single non-splittable gzip (the OPRA
-firehose). The Aug-5-2024 spike day took **~8.85 h** to scan; other days are hours
-too. So one 7-hour window likely **cannot finish a full day** — expect ~1 day per
-night with some morning overrun, i.e. the 20-day pilot spans ~3 weeks of nights. If
-that is too slow, the alternative is per-contract REST quotes at the 15:45 timestamp
-(thousands of small calls, potentially minutes/day) — needs a rate-limit probe.
+- **`rest` (default)** — per-contract REST quotes (`rest_quotes.py`): enumerate the
+  day's contracts (`/v3/reference/options/contracts`, `as_of=date`, plain ticker for
+  indices), then fetch each contract's NBBO at the 15:45-ET instant CONCURRENTLY
+  (`/v3/quotes?timestamp.lte=&order=desc&limit=1`, ~110/s, Options-Advanced = no
+  rate limit). **~4.4 min/day for all 8 pilot assets** → the 20-day pilot ≈ ~90 min;
+  runs anytime (no overnight window, bandwidth-light). Validated 2026-06-24: data
+  matches the firehose (spots + quote counts). Needs a real `VOLFIT_MASSIVE_KEY`
+  (the stub is rejected at construction).
+
+- **`flatfile` (fallback)** — the `quotes_v1` firehose: one non-splittable gzip/day
+  (the Aug-5 spike day took **~8.85 h** to scan), so it is run **windowed**
+  (`--window 23:30-06:30`, per-day granularity, a day in progress finishes, no new
+  day starts outside) to keep the machine free by day. Resumable (a 0-byte cache
+  from a kill mid-scan is treated as absent and re-scanned). Retired in favour of
+  `rest`; kept for environments with flat-file creds but no REST key.
+
+Both write identical fixtures (captured days are skipped on rerun, so either source
+is fully resumable).

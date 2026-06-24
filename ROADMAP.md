@@ -16,15 +16,19 @@ Two threads landed on **main** today (full suite **744 passed, 1 skipped**; ruff
 strict-TS green):
 
 1. **Offline backtest harness** (`backend/backtest/`, see `SPEC.md` + `README.md`)
-   — pilot validated end-to-end on Aug-5-2024. The **nightly capture is running in
-   the background, windowed 23:30–06:30** (so the machine is free by day), grinding
-   the ~20-day spike window resumably (the `quotes_v1` firehose is ~8.85 h/day). On
-   resume: check `backend/backtest/fixtures/` for captured days, then
-   `run_compute` + `analyze`. **Pending (user asked for "later today"):** probe the
-   per-contract REST-quotes path (`/v3/quotes` at the 15:45 timestamp) as the
-   firehose mitigation. Remaining harness: graph leave-one-out (Phase 6, needs ≥2
-   captured days; sticky-moneyness + SSR 1.0) and the NN-dataset emitter (Phase 7,
-   feeds off `volfit/data/columnar.py`).
+   — pilot validated end-to-end. **Capture is now via the per-contract REST quotes
+   API** (`rest_quotes.py`, `capture.py --source rest`, the DEFAULT): ~4.4 min/day
+   for all 8 pilot assets (vs the `quotes_v1` flat-file firehose at ~4.8 h/day —
+   ~65× faster, no overnight window needed; the firehose is the `--source flatfile`
+   fallback). Historical NBBO confirmed, Options-Advanced plan = no rate limit,
+   ~110 quotes/s. REST data matches the firehose (spots + quote counts). The nightly
+   firehose grind has been retired; the full pilot re-captures via REST in ~90 min.
+   On resume: check `backend/backtest/fixtures/`, then `run_compute` + `analyze`.
+   Remaining harness: graph leave-one-out (Phase 6, needs ≥2 captured days;
+   sticky-moneyness + SSR 1.0) and the NN-dataset emitter (Phase 7, feeds off
+   `volfit/data/columnar.py`). NB: the real `VOLFIT_MASSIVE_KEY` is shadowed by a
+   stale 4-char env var (the `if (-not …)` guard in restart.local.ps1 skips it) —
+   force-set the key or clear the stale var.
 2. **Structural perf backlog — COMPLETE** (#2–#6; details in that section below).
 
 Workflow note: normal dev = edit JS/Python + `.\restart.ps1`; the PyInstaller `.exe`
