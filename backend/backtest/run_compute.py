@@ -27,7 +27,7 @@ RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 
 
 def _parametric_rows(state, fixtures: list[Fixture], weight_scheme: str,
-                     fit_mode: str) -> list[dict]:
+                     fit_mode: str, specs) -> list[dict]:
     """Fit the model sweep for every node in one as-of day's fixtures (the de-Am is
     memoized on ``state``, so reusing it across weight/fit-mode combos is cheap)."""
     rows: list[dict] = []
@@ -36,7 +36,7 @@ def _parametric_rows(state, fixtures: list[Fixture], weight_scheme: str,
             try:
                 rows.extend(
                     fit_node(state, f.asset, expiry, f.regime, f.sector,
-                             f.exercise_style, weight_scheme=weight_scheme,
+                             f.exercise_style, specs=specs, weight_scheme=weight_scheme,
                              fit_mode=fit_mode)
                 )
             except Exception as exc:  # noqa: BLE001 - a node break is a recorded result
@@ -108,9 +108,19 @@ def main() -> int:
                     help="comma-separated weighting schemes (equal|tv_density)")
     ap.add_argument("--fit-modes", default="mid,haircut",
                     help="comma-separated fit targets (mid|haircut)")
+    ap.add_argument("--models", default=None,
+                    help="comma-separated model labels to keep (default: the full "
+                         "sweep). e.g. SVI-JW,LQD-6,LQD-8,LQD-10,LQD-12,SIV-0 drops "
+                         "the slow, non-viable SIV-1/2/3 for the scaled batches.")
     args = ap.parse_args()
     weights = [w.strip() for w in args.weights.split(",")]
     fit_modes = [m.strip() for m in args.fit_modes.split(",")]
+    specs = DEFAULT_SWEEP
+    if args.models:
+        keep = {m.strip() for m in args.models.split(",")}
+        specs = tuple(s for s in DEFAULT_SWEEP if s.label in keep)
+        if not specs:
+            raise SystemExit(f"--models matched no sweep labels: {keep}")
 
     paths = list_fixtures(regime=args.regime, asset=args.asset)
     if not paths:
@@ -120,7 +130,7 @@ def main() -> int:
         f = load_fixture(p)
         by_date[f.as_of].append(f)
     print(f"{len(paths)} fixtures over {len(by_date)} days; "
-          f"sweep={[s.label for s in DEFAULT_SWEEP]}; "
+          f"sweep={[s.label for s in specs]}; "
           f"weights={weights} fit_modes={fit_modes}", flush=True)
 
     # One row list per (weight, fit_mode) combo; LV is fit-target-independent here.
@@ -131,7 +141,7 @@ def main() -> int:
         state = state_for_day(fixtures)  # built once; de-Am memoized across combos
         for w in weights:
             for m in fit_modes:
-                par[(w, m)].extend(_parametric_rows(state, fixtures, w, m))
+                par[(w, m)].extend(_parametric_rows(state, fixtures, w, m, specs))
         if args.lv:
             lv_rows.extend(_lv_rows(state, fixtures))
         print(f"  {as_of}: {len(fixtures)} assets done"
