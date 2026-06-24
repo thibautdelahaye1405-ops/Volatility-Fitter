@@ -7,10 +7,14 @@ engine but changes none of it.
 
 ## Two phases
 
-1. **Capture** (slow, run once) — `capture.py` reconstructs the 15:45-ET NBBO
-   chain per (asset, trading-day) from the Massive/Polygon **`quotes_v1`** flat
-   files (real bid/ask), selects an expiry ladder, computes parity forwards, and
-   writes one immutable JSON fixture per (asset, date) under `fixtures/`.
+1. **Capture** (run once, resumable) — `capture.py` reconstructs the 15:45-ET NBBO
+   chain per (asset, trading-day), selects an expiry ladder, computes parity
+   forwards, and writes one immutable JSON fixture per (asset, date) under
+   `fixtures/`. Two sources via `--source`:
+   - **`rest` (default)** — per-contract REST quotes (`rest_quotes.py`):
+     ~**4.4 min/day** for 8 assets, no overnight window. Needs `VOLFIT_MASSIVE_KEY`.
+   - **`flatfile`** — the `quotes_v1` firehose (`quotes_store.py`): ~hours/day, run
+     windowed (`--window 23:30-06:30`). Fallback when there's no REST key.
 2. **Compute** (fast, offline, re-runnable) — `run_compute.py` replays the
    fixtures through a `StaticProvider` + `AppState` and fits the parametric model
    sweep (`dispatch.py`) and the Local-Vol surface, writing a tidy metrics table
@@ -21,38 +25,48 @@ engine but changes none of it.
 
 | file | role |
 |---|---|
-| `probe_flatfiles.py` | Phase-0 gate: confirm the `quotes_v1` entitlement + history reach. |
-| `quotes_store.py` | `QuotesFlatFileStore` — NBBO reconstruction at a target instant. |
+| `rest_quotes.py` | `RestQuotesClient` — fast per-contract REST NBBO capture (default source). |
+| `probe_rest.py` | feasibility probe for the REST path (entitlement, rate limit, latency). |
+| `probe_flatfiles.py` | gate: confirm the `quotes_v1` flat-file entitlement + history reach. |
+| `quotes_store.py` | `QuotesFlatFileStore` — flat-file NBBO reconstruction (fallback source). |
 | `universe.py` | asset set (display ticker → OCC roots, exercise style) + regime windows. |
-| `capture.py` | capture-phase driver (resumable; one daily scan shared across the universe). |
+| `capture.py` | capture-phase driver (`--source rest|flatfile`; resumable, captured days skip). |
 | `replay.py` | fixture loader + `StaticProvider` + `state_for_day`. |
 | `dispatch.py` | uniform per-model fit + precision/speed/arb metrics. |
 | `run_compute.py` | compute-phase driver (parametric sweep + `--lv` surface). |
 | `analyze.py` | model Pareto vs SVI-JW, time attribution, break inventory → markdown. |
 
-## Run (Windows, repo root)
+## Run / resume (Windows, repo root)
 
 ```powershell
-. .\restart.local.ps1                          # load flat-file creds into env
+. .\restart.local.ps1                          # load creds
+# KEY GOTCHA: the real 32-char VOLFIT_MASSIVE_KEY is shadowed by a stale 4-char
+# env var (restart.local.ps1's `if (-not $env:..)` guard skips it). Force-set it,
+# or clear the stale var so the guard sets the real one:
+$env:VOLFIT_MASSIVE_KEY = '<your 32-char Massive/Polygon REST key>'
 cd backend
-..\.venv\Scripts\python.exe -m backtest.probe_flatfiles            # one-time gate
-..\.venv\Scripts\python.exe -m backtest.capture --universe pilot --regimes spike_aug2024
+..\.venv\Scripts\python.exe -m backtest.capture --source rest --universe pilot --regimes spike_aug2024
 ..\.venv\Scripts\python.exe -m backtest.run_compute --regime spike_aug2024 --lv
-..\.venv\Scripts\python.exe -m backtest.analyze --results backtest\results\spike_aug2024_parametric.parquet
+..\.venv\Scripts\python.exe -m backtest.analyze --results backtest\results\spike_aug2024_parametric_tv_density_mid.json --kind parametric
 ```
 
-## Cost note (measured 2026-06-21)
+The capture is **fully resumable** — already-captured (asset, date) fixtures are
+skipped — so re-running the same command continues where a prior run stopped
+(after a crash, a session quit, or an interrupt). That is the handover mechanism:
+just re-run it.
 
-The `quotes_v1` product is the OPRA NBBO firehose: one gzipped CSV per day, many
-GB, **not splittable**, so each *day* costs one full streamed scan (network-bound,
-~tens of minutes). It is paid **once per day** and shared across the whole asset
-universe (the daily scan is filtered to our roots and the reduced NBBO cached as a
-tiny Parquet under `_cache/`), so adding assets is ~free but adding days is not.
-Plan the capture as a background job; it is resumable (existing fixtures skipped).
+## Cost
+
+- **`rest` (default)** — ~**4.4 min/day** for the 8 pilot assets (concurrent
+  per-contract NBBO; Options-Advanced plan = no rate limit, ~110 quotes/s). The
+  20-day pilot ≈ ~90 min; runs anytime (no overnight window, bandwidth-light).
+- **`flatfile`** — the OPRA firehose: one non-splittable gzip/day, **~4.8 h/day**
+  (network-bound); run windowed. ~65× slower than REST. Reduced NBBO cached under
+  `_cache/` (a 0-byte cache from a kill mid-scan is treated as absent + re-scanned).
 
 ## Status
 
-Phase 0 (quotes reader) + Phase 1 (capture) + Phase 2 (dispatch/replay) +
-Phases 4/5/8 (metrics/analyze) built and unit-tested offline. Pilot = 1 regime
-(Aug-2024 spike) × 8 assets. Graph leave-one-out (Phase 6) and the NN dataset
-emitter (Phase 7) follow once multi-day fixtures exist.
+Capture (REST + flat-file) + compute (dispatch/replay) + metrics/analyze built and
+tested. Pilot = Aug-2024 spike × 8 assets. **Remaining:** graph leave-one-out
+(Phase 6 — runs once ≥2 days are captured; sticky-moneyness + SSR 1.0) and the
+NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`).
