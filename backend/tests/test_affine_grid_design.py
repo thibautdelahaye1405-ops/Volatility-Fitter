@@ -421,6 +421,29 @@ def test_augment_is_noop_when_every_expiry_already_covered():
     assert _augment_per_expiry_coverage(dense, rows, 0) is dense
 
 
+def test_pde_dx_refines_only_short_surfaces():
+    """Fix #2: the PDE strike step refines for a short-dated front (snapped to 1/N
+    so x = 1 stays a node) but is byte-identical (_X_DX) for a normal surface."""
+    from volfit.api.affine_fit import _X_DX, _pde_dx, _pde_grids
+
+    normal = [
+        ("a", 0.25, np.linspace(-0.20, 0.15, 11), (0.20**2) * 0.25 * np.ones(11), None, None),
+        ("b", 1.00, np.linspace(-0.50, 0.25, 11), (0.20**2) * 1.00 * np.ones(11), None, None),
+    ]
+    assert _pde_dx(normal) == _X_DX  # shortest expiry not tiny -> default step
+
+    short = [
+        ("a", 0.02, np.linspace(-0.06, 0.05, 11), (0.13**2) * 0.02 * np.ones(11), None, None),
+        ("b", 1.00, np.linspace(-0.50, 0.25, 11), (0.20**2) * 1.00 * np.ones(11), None, None),
+    ]
+    dx = _pde_dx(short)
+    assert dx < _X_DX  # the 1-week front refines the shared step
+    inv = 1.0 / dx
+    assert abs(inv - round(inv)) < 1e-9  # dx = 1/N
+    x_grid, _ = _pde_grids(np.array([0.02, 1.0]), 0.25, 0.01, dx)
+    assert np.isclose(x_grid, 1.0).any()  # x = 1 is exactly a PDE node
+
+
 def test_convex_wing_confined_to_quoted_extrapolation():
     """The convex-wing constraint must NOT bite on vertices the quotes already
     constrain — only the unquoted extrapolation tail. With a dense wing (quotes

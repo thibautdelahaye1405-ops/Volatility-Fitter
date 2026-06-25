@@ -79,6 +79,17 @@ def _extended_density(model: list[SmilePoint], tau: float) -> DistributionArrays
 _X_DX = 0.01
 _X_MAX_MIN = 2.5
 _X_HI_PAD = 1.4
+#: Short-expiry PDE strike refinement (fix #2). A short-dated risk-neutral density
+#: is concentrated near x = 1 — a 6-DTE SPY weekly lives in x in [0.93, 1.06], only
+#: ~13 nodes at dx = 0.01 — so the fixed step under-resolves its ATM gamma (measured:
+#: refining to dx = 0.005 cut the weekly LV RMS ~28.7 -> ~22 bp, then plateaus). The
+#: PDE x-grid is SHARED across expiries and x = 1 must stay a node (var-swap
+#: replication + uniform-grid density), so the step is adaptive-but-uniform: dx must
+#: resolve the SHORTEST expiry's ATM std sigma*sqrt(tau) to this fraction, snapped to
+#: 1/N so x = 1 is node N, never coarser than _X_DX and never finer than 1/_PDE_N_MAX.
+#: A normal surface (shortest expiry not tiny) keeps dx = _X_DX => byte-identical.
+_PDE_DX_SHORT_FRAC = 0.3
+_PDE_N_MAX = 400  # finest PDE strike grid = dx 0.0025 (cost cap)
 #: PDE time step ceiling (each quoted expiry is forced to be a grid node).
 #: Backward-Euler is 1st-order, so it needs the fine 0.01 ceiling for ~1bp accuracy.
 _DT_MAX = 0.01
@@ -470,22 +481,46 @@ def _lowest_vertex_x(rows) -> tuple[float, float]:
     return 0.5 * (x_lo1 + x_lo2), k_hi
 
 
+def _pde_dx(rows) -> float:
+    """Adaptive-but-uniform PDE strike step (fix #2): fine enough to resolve the
+    SHORTEST expiry's ATM std, snapped to 1/N so x = 1 stays node N.
+
+    A short-dated density concentrates near x = 1, so the fixed ``_X_DX`` = 0.01
+    under-resolves its ATM gamma. The step refines to ``_PDE_DX_SHORT_FRAC`` x the
+    smallest ATM total-vol ``sigma*sqrt(tau)`` across the lit expiries (= sqrt of
+    the ATM total variance), clamped to ``[1/_PDE_N_MAX, _X_DX]``. A normal surface
+    (shortest expiry not tiny) lands back on ``_X_DX`` ⇒ byte-identical. The grid is
+    SHARED by all expiries (one forward Dupire march), so the shortest sets it.
+    """
+    s_min = np.inf
+    for _, tau, k, w, _, _ in rows:
+        order = np.argsort(k)
+        w_atm = float(np.interp(0.0, np.asarray(k)[order], np.asarray(w)[order]))
+        s_min = min(s_min, np.sqrt(max(w_atm, 1e-12)))  # sigma*sqrt(tau) at ATM
+    target = _PDE_DX_SHORT_FRAC * float(s_min)
+    if not np.isfinite(target) or target >= _X_DX:
+        return _X_DX  # normal surface: keep the default step (byte-identical)
+    n = min(int(np.ceil(1.0 / target)), _PDE_N_MAX)  # x = 1 is node n => dx = 1/n
+    return 1.0 / n
+
+
 def _pde_grids(
-    expiries: np.ndarray, k_hi: float, dt_max: float = _DT_MAX
+    expiries: np.ndarray, k_hi: float, dt_max: float = _DT_MAX, dx: float = _X_DX
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fine PDE strike grid (from 0) and time grid hitting every expiry.
 
-    The strike grid is a UNIFORM lattice of step ``_X_DX`` from 0, so the
-    var-swap anchor ``x = 1`` is always exactly a node (1.0 = 100 * 0.01) — the
-    log-contract replication (affine_calib.varswap_weights) rejects a grid that
-    misses it. ``np.linspace(0, x_max, ...)`` to an arbitrary ``x_max`` (e.g. a
-    real ticker's wide strike range, > the 2.5 floor and off the 0.01 lattice)
-    would land x = 1 between nodes and 422 every fit; the synthetic range floors
-    at 2.5 which aligns, which is why this only bit live data.
+    The strike grid is a UNIFORM lattice of step ``dx`` from 0 (default ``_X_DX``;
+    short-dated surfaces pass a finer ``_pde_dx``), so the var-swap anchor ``x = 1``
+    is always exactly a node — the log-contract replication
+    (affine_calib.varswap_weights) rejects a grid that misses it, so ``dx`` MUST be
+    ``1/N`` (the caller guarantees this). ``np.linspace(0, x_max, ...)`` to an
+    arbitrary ``x_max`` (e.g. a real ticker's wide strike range, > the 2.5 floor and
+    off the lattice) would land x = 1 between nodes and 422 every fit; the synthetic
+    range floors at 2.5 which aligns, which is why this only bit live data.
     """
     x_max = max(float(np.exp(k_hi)) * _X_HI_PAD, _X_MAX_MIN)
-    n = int(np.ceil(round(x_max / _X_DX, 6)))  # steps to cover x_max
-    x_grid = _X_DX * np.arange(n + 1)  # 0, dx, 2dx, ... ; 1.0 = node 100
+    n = int(np.ceil(round(x_max / dx, 6)))  # steps to cover x_max
+    x_grid = dx * np.arange(n + 1)  # 0, dx, 2dx, ... ; 1.0 = node 1/dx
     t_pts = [0.0]
     prev = 0.0
     for e in expiries:
@@ -897,7 +932,9 @@ def _fit(
     # keep the fine dt. The PDE time grid is built with the matching step ceiling.
     time_scheme = "implicit" if fit_left_a else opts.timeScheme
     dt_max = _DT_MAX_RANNACHER if time_scheme == "rannacher" else _DT_MAX
-    x_grid, t_grid = _pde_grids(expiries, k_hi, dt_max)
+    # Fix #2: refine the (shared, uniform) PDE strike step for short-dated surfaces,
+    # whose density concentrates near x = 1; byte-identical for normal surfaces.
+    x_grid, t_grid = _pde_grids(expiries, k_hi, dt_max, _pde_dx(rows))
     # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) drives the
     # hot path when enabled + importable; it self-restricts to the implicit /
     # no-left-slope case inside solve_affine_dupire and falls back to banded.
