@@ -31,15 +31,6 @@ cannot invert (nan sigma) keep their raw prices and fall through to the
 European static-bounds filter. The tree's carry comes from the resolved
 forward itself: r = -ln(D)/t and q = r - ln(F/spot)/t.
 
-Because each strike is de-Americanized independently and the premium is clamped
-at zero, the resulting European-equivalent CALL prices can be locally non-convex
-in strike — butterfly-arbitrageable inputs every model then has to fit. After
-EEP subtraction the mid call curve is projected onto the convex cone
-(`_convex_call_projection`) and the same per-strike delta is carried onto
-bid/ask, so the band keeps its width but centres on an arb-free mid. This runs
-for AMERICAN chains only (`convex_deam=True`, the default); European chains are
-byte-identical. See backtest/FINDINGS_calibration_arb.md R3.
-
 Wing filter (the Phase-3 "outlier filter" item): quotes further than
 Z_MAX standard deviations from the forward, |k| > Z_MAX * sqrt(w_atm),
 are excluded. Such options carry essentially no vega, so their implied
@@ -64,7 +55,6 @@ from dataclasses import dataclass
 from datetime import date
 
 import numpy as np
-from scipy.optimize import lsq_linear
 
 from volfit.api.session import QuoteEdit
 from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, resolve_band
@@ -161,58 +151,6 @@ def _early_exercise_premiums(
     return eep, int(ok.sum())
 
 
-#: Convexity short-circuit: skip the projection when the most-negative normalized
-#: butterfly price is above ``-CONVEX_TOL`` — i.e. the call curve is already convex to
-#: below a quote tick (a 1e-4 normalized butterfly is sub-penny). De-Am leaves dense
-#: chains convex to ~1e-5 noise; the genuine sparse-wing violations (EFA/EEM) are ~1e-3,
-#: a clean two-order gap, so the QP is paid only where it matters. Keeps the live path
-#: lightning-fast (a 240-strike NVDA chain skips the solve entirely).
-CONVEX_TOL = 1e-4
-
-
-def _convex_call_projection(strikes: np.ndarray, c: np.ndarray, tol: float = CONVEX_TOL) -> np.ndarray:
-    """L2-closest convex-in-strike call-price curve to ``c`` (butterfly repair).
-
-    De-Americanizing each strike INDEPENDENTLY and clamping the premium at zero
-    (``max(EEP, 0)``) can leave the European-equivalent normalized call prices
-    locally NON-convex in K — i.e. a negative risk-neutral density across three
-    adjacent strikes, butterfly-arbitrageable inputs handed to every model (see
-    backtest/FINDINGS_calibration_arb.md R3). Convexity of C(K) is exactly the
-    no-butterfly condition, so the mid call curve is projected onto the convex cone
-    before inversion.
-
-    A convex sequence is a free affine part plus non-negative knot weights:
-
-        c_m = a + b (K_m - K_0) + Σ_{j} δ_j (K_m - K_j)_+ ,   δ_j >= 0
-
-    (the second-difference / hinge basis). Minimising ‖c_proj - c‖² over (a, b, δ)
-    under that single box bound IS the exact convex L2 regression — one small
-    bounded linear least squares (``lsq_linear``), n×n in the strike count. Only
-    the butterfly (convexity) condition is enforced; monotonicity of calls in K is
-    left to the data (de-Am rarely breaks it, and coupling it needs a real QP).
-    Where the input is already convex the projection returns it (δ → 0), so the
-    adjustment is confined to the genuinely non-convex strikes.
-    """
-    n = int(strikes.size)
-    c = np.asarray(c, dtype=float)
-    if n < 3:  # convexity is vacuous below three points
-        return c.copy()
-    k = strikes.astype(float)
-    # Cheap short-circuit: the discrete butterfly B_i = c_{i-1}(K_{i+1}-K_i) -
-    # c_i(K_{i+1}-K_{i-1}) + c_{i+1}(K_i-K_{i-1}) is >= 0 iff the curve is convex at i.
-    # If the worst butterfly is above -tol the curve is already arb-free to sub-quote
-    # precision — return it and skip the least squares (the common case).
-    bf = c[:-2] * (k[2:] - k[1:-1]) - c[1:-1] * (k[2:] - k[:-2]) + c[2:] * (k[1:-1] - k[:-2])
-    if bf.size and float(bf.min()) >= -tol:
-        return c.copy()
-    cols = [np.ones(n), k - k[0]] + [np.maximum(k - k[j], 0.0) for j in range(1, n - 1)]
-    a_mat = np.column_stack(cols)  # (n, n): [1, (K-K0), (K-K_j)_+ ...]
-    lo = np.full(n, -np.inf)
-    lo[2:] = 0.0  # δ_j >= 0 (convexity); the affine part a, b stays free
-    sol = lsq_linear(a_mat, np.asarray(c, dtype=float), bounds=(lo, np.full(n, np.inf)))
-    return a_mat @ sol.x
-
-
 def _pre_deam_screen(
     k: np.ndarray,
     bid: np.ndarray,
@@ -256,7 +194,6 @@ def prepare_quotes(
     cash_dividends: tuple[np.ndarray, np.ndarray, float] | None = None,
     tau: float | None = None,
     prefilter: bool = True,
-    convex_deam: bool = True,
 ) -> PreparedQuotes:
     """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs.
 
@@ -311,14 +248,11 @@ def prepare_quotes(
         )
         bid, mid, ask = bid - eep, mid - eep, ask - eep
 
-    # European pipeline: normalize, parity-shift puts -> normalized CALL prices c.
+    # European pipeline: normalize, parity-shift puts, invert to variance.
     shift = np.where(is_call, 0.0, 1.0 - np.exp(k_arr))
-    c_bid = bid * scale + shift
-    c_mid = mid * scale + shift
-    c_ask = ask * scale + shift
-    w_bid = implied_total_variance(k_arr, c_bid)
-    w_mid = implied_total_variance(k_arr, c_mid)
-    w_ask = implied_total_variance(k_arr, c_ask)
+    w_bid = implied_total_variance(k_arr, bid * scale + shift)
+    w_mid = implied_total_variance(k_arr, mid * scale + shift)
+    w_ask = implied_total_variance(k_arr, ask * scale + shift)
 
     keep = np.isfinite(w_bid) & np.isfinite(w_mid) & np.isfinite(w_ask)
     if not keep.any():
@@ -327,40 +261,15 @@ def prepare_quotes(
     # drop strikes more than Z_MAX standard deviations from the forward.
     w_atm = float(np.interp(0.0, k_arr[keep], w_mid[keep]))
     keep &= np.abs(k_arr) <= Z_MAX * np.sqrt(w_atm)
-    k_f = k_arr[keep]
-    w_bid_f, w_mid_f, w_ask_f = w_bid[keep], w_mid[keep], w_ask[keep]
-
-    # Convex de-Am repair: independent per-strike de-Am + ``max(EEP, 0)`` can leave the
-    # surviving call curve locally non-convex (butterfly-arbitrageable inputs). Project
-    # the mid onto the convex cone and carry the same per-strike delta onto bid/ask, so
-    # the spread is preserved while the band centres on an arb-free mid (FINDINGS R3).
-    # Run on the FINAL survivors only — identical for prefilter on/off (which removes
-    # just guaranteed-dropped rows), so the pre-screen stays byte-identical. European
-    # chains skip this entirely -> byte-identical with the pre-R3 pipeline.
-    if convex_deam and snapshot.exercise_style == "american" and t > 0.0 and k_f.size >= 3:
-        c_mid_f = c_mid[keep]
-        # Convexity is in strike K; use K/F = e^k as the abscissa so it (and the
-        # butterfly tolerance) are scale-stable across underlyings (linear in K).
-        c_proj = _convex_call_projection(np.exp(k_f), c_mid_f)
-        delta = c_proj - c_mid_f
-        wb = implied_total_variance(k_f, c_bid[keep] + delta)
-        wm = implied_total_variance(k_f, c_proj)
-        wa = implied_total_variance(k_f, c_ask[keep] + delta)
-        # Adopt the projected band only where all three still invert (the repair stays
-        # inside the static bounds); otherwise keep the per-strike values for that row.
-        ok = np.isfinite(wb) & np.isfinite(wm) & np.isfinite(wa)
-        w_bid_f = np.where(ok, wb, w_bid_f)
-        w_mid_f = np.where(ok, wm, w_mid_f)
-        w_ask_f = np.where(ok, wa, w_ask_f)
     return PreparedQuotes(
         t=t,
         forward=f,
         discount=d,
-        k=k_f,
-        w_mid=w_mid_f,
-        iv_bid=np.sqrt(w_bid_f / tv),
-        iv_mid=np.sqrt(w_mid_f / tv),
-        iv_ask=np.sqrt(w_ask_f / tv),
+        k=k_arr[keep],
+        w_mid=w_mid[keep],
+        iv_bid=np.sqrt(w_bid[keep] / tv),
+        iv_mid=np.sqrt(w_mid[keep] / tv),
+        iv_ask=np.sqrt(w_ask[keep] / tv),
         n_deamericanized=n_deam,
         n_deam_input=n_deam_input,
         tau=tv,

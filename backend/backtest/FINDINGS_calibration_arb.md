@@ -156,23 +156,7 @@ Original plan:
   wing arb still flagged (it is real, F4); a synthetic known-arb slice still trips.
 - **Risk:** low/medium — metric-only, no engine change; re-run is cheap.
 
-### R3 — Convex-project de-Americanized prices before inversion  ·  ✅ DONE
-
-*Shipped as `_convex_call_projection` in `api/quotes.py`: after the bound+wing filter,
-the surviving mid call curve is projected onto the convex cone (exact L2 convex
-regression via the hinge-basis `scipy.lsq_linear`, no QP dep) and the same per-strike
-delta carried onto bid/ask (band width preserved). Gated to American chains
-(`convex_deam=True`) → European byte-identical; runs after the wing filter so the
-pre-de-Am screen stays byte-identical. A normalized-butterfly short-circuit
-(`CONVEX_TOL=1e-4`, sub-tick) skips the solve on already-convex chains — a 240-strike
-NVDA chain skips entirely (~free), so the live path stays fast. Measured (spike,
-American): **15/150 nodes have economically-real butterfly arb (all illiquid EEM/EFA);
-on those the projection cuts median in-RMS SVI 220→158, LQD-12 241→175, SIV-2 96→40 bp.**
-The dense/liquid nodes are convex to sub-tick noise and untouched — a targeted repair,
-not a smile-wide change. (The earlier-looked-large arb in the strike-2nd-difference was
-spacing-amplified; the economic butterfly price is the right, scale-stable measure.)*
-
-Original plan:
+### R3 — Convex-project de-Americanized prices before inversion  ·  *priority: high, medium*
 
 - **Problem (F3b):** independent per-strike CRR de-Am + `max(EEP,0)` clamp leaves
   the European-equivalent call-price set locally non-convex at American wings —
