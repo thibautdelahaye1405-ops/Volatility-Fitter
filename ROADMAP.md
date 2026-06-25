@@ -16,19 +16,23 @@ Two threads landed on **main** today (full suite **744 passed, 1 skipped**; ruff
 strict-TS green):
 
 1. **Offline backtest harness** (`backend/backtest/`, see `SPEC.md` + `README.md`)
-   — pilot validated end-to-end. **Capture is now via the per-contract REST quotes
-   API** (`rest_quotes.py`, `capture.py --source rest`, the DEFAULT): ~4.4 min/day
-   for all 8 pilot assets (vs the `quotes_v1` flat-file firehose at ~4.8 h/day —
-   ~65× faster, no overnight window needed; the firehose is the `--source flatfile`
-   fallback). Historical NBBO confirmed, Options-Advanced plan = no rate limit,
-   ~110 quotes/s. REST data matches the firehose (spots + quote counts). The nightly
-   firehose grind has been retired; the full pilot re-captures via REST in ~90 min.
-   On resume: check `backend/backtest/fixtures/`, then `run_compute` + `analyze`.
-   Remaining harness: graph leave-one-out (Phase 6, needs ≥2 captured days;
-   sticky-moneyness + SSR 1.0) and the NN-dataset emitter (Phase 7, feeds off
-   `volfit/data/columnar.py`). NB: the real `VOLFIT_MASSIVE_KEY` is shadowed by a
-   stale 4-char env var (the `if (-not …)` guard in restart.local.ps1 skips it) —
-   force-set the key or clear the stale var.
+   — **3-regime pilot complete** (8 assets × 60 days: spike_aug2024, high_oct2022,
+   low_jul2023). Capture via the per-contract **REST quotes API** (`rest_quotes.py`,
+   `capture.py --source rest`, DEFAULT): ~4.4 min/day, ~65× the flat-file firehose
+   (`--source flatfile` fallback), Options-Advanced = no rate limit, historical NBBO
+   back to ≥2022. The scaled batches use `run_compute --models …` to drop the
+   non-viable SIV-1/2/3.
+   **Key results (robust across all 3 regimes):** LQD (8–12) **strictly dominates
+   SVI-JW** — faster *and* 2–3× lower RMS, no overfit (LQD-12 in-RMS = 0.31×/0.37×/
+   0.45× SVI in spike/high/low); the analytic Jacobian made LQD the speed leader
+   too. **Multi-Core SIV cores overfit** (60–75% butterfly-arb; base SIV-0 ≈ SVI).
+   The harness flagged a **real recurring LV bug** (`LinearizedJacobian` has no
+   `.T`, in the matrix-free GN solver `affine_gn.py`) on 6 surfaces across regimes
+   (NVDA, NDX) — worth fixing.
+   **Next batches:** full **25-asset universe**; **graph leave-one-out** (Phase 6,
+   runnable now — sticky-moneyness + SSR 1.0); **NN-dataset emit** (Phase 7, feeds
+   off `volfit/data/columnar.py`). NB: the real `VOLFIT_MASSIVE_KEY` is shadowed by
+   a stale 4-char env var (restart.local.ps1's `if (-not …)` guard) — force-set it.
 2. **Structural perf backlog — COMPLETE** (#2–#6; details in that section below).
 
 Workflow note: normal dev = edit JS/Python + `.\restart.ps1`; the PyInstaller `.exe`
