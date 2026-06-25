@@ -753,7 +753,10 @@ def calibrate_affine(
     def _stall_result():
         """Synthesize a least_squares-like result at the best-cost iterate."""
         rb, jb, _, _, _ = evaluate(stall["x"])
-        g = jb.T @ rb
+        # gn_op evaluates ``jb`` as a matrix-free LinearizedJacobian (no ``.T``); its
+        # ``apply_jacobian_transpose`` IS Jᵀr. This path is reached when a GN fit
+        # falls back to TRF (stiff names) and TRF then early-stops on the stall.
+        g = jb.apply_jacobian_transpose(rb) if isinstance(jb, LinearizedJacobian) else jb.T @ rb
         amask = np.zeros(stall["x"].size, dtype=int)
         amask[stall["x"] <= lb + 1e-12] = -1
         amask[stall["x"] >= ub - 1e-12] = 1

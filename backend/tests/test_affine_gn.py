@@ -252,6 +252,37 @@ def test_gn_sparse_reg_equals_dense_reg():
     assert np.allclose(sparse_fit.surface.theta, dense_fit.surface.theta, atol=1e-9)
 
 
+def test_gn_trf_fallback_then_stall_returns_surface(monkeypatch):
+    """Regression (backtest LV crash on NVDA/NDX): when a GN fit falls back to dense
+    TRF (the stiff-name path) AND that TRF run early-stops on the stall, the synthetic
+    ``_stall_result`` must form the gradient via the matrix-free operator — ``gn_op``
+    keeps ``jb`` a LinearizedJacobian, which has no ``.T``. Before the fix this raised
+    ``AttributeError: 'LinearizedJacobian' object has no attribute 'T'``."""
+    flat, options, x_grid, t_grid = _heavy_case(
+        9, 15, np.linspace(0.1, 2.0, 8), np.linspace(0.75, 1.25, 13)
+    )
+    rng = np.random.default_rng(1)
+    options = [  # irreducible residual so the TRF fallback grinds into the stall window
+        OptionQuote(t=o.t, x=o.x, price=o.price * (1.0 + 2e-3 * rng.standard_normal()), tol=o.tol)
+        for o in options
+    ]
+
+    def _boom(*args, **kwargs):  # force the GN->TRF fallback (the stiff-name behaviour)
+        raise ValueError("forced GN breakdown")
+
+    monkeypatch.setattr("volfit.models.localvol.affine_calib.gauss_newton", _boom)
+    # Tight tolerances so the fallback TRF grinds tiny non-improving steps near the
+    # optimum and trips the option-block stall (the NVDA/NDX behaviour) -> _stall_result.
+    res = calibrate_affine(
+        flat, options, x_grid, t_grid, reg_lambda=50.0, bounds=(0.005, 0.20),
+        gn=True, stall_window=6, stall_rtol=3e-3, max_nfev=160,
+        gtol=1e-14, xtol=1e-14, ftol=1e-14,
+    )
+    assert np.all(np.isfinite(res.surface.theta))  # no crash, valid surface
+    assert res.surface.theta.min() >= 0.005 - 1e-9
+    assert res.surface.theta.max() <= 0.20 + 1e-9
+
+
 def test_gn_early_stop_cuts_evals_without_fallback():
     """The GN stall early-stop (Stage 8, GN flavour) terminates a long GN fit at the
     best ACCEPTED iterate — status 4, no TRF fallback — in fewer evals than letting it
