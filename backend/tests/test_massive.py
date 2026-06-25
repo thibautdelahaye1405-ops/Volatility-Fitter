@@ -144,6 +144,25 @@ def test_fetch_chain_full_entitlement():
     assert call.last == 12.5 and call.volume == 66 and call.open_interest == 8
 
 
+def test_spot_reads_underlying_without_full_chain():
+    """spot() must not pull the whole chain (the base default does, ~20-30 s on a big
+    name): with expiries given it hits ONLY the nearest expiry's snapshot, reads
+    underlying_asset.price, and never enumerates the contracts reference."""
+    pages = {
+        "/v3/snapshot/options/SPY": {
+            "results": [_snap_result(500, 30, "call"), _snap_result(500, 30, "put")],
+            "status": "OK",
+        }
+    }
+    fake = FakeHttp(pages)
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=fake)
+    s = provider.spot("SPY", [date.fromisoformat(_exp(30)), date.fromisoformat(_exp(60))])
+    assert s == 741.75
+    assert _ref_calls(fake) == 0  # expiries supplied -> no contracts-reference pull
+    snap_calls = [u for u, _ in fake.calls if "snapshot/options" in u]
+    assert len(snap_calls) == 1  # nearest expiry only, not every expiry
+
+
 def test_fetch_chain_without_spot_raises_upgrade():
     # Snapshot lacks last_quote + underlying price (the current key's tier);
     # the stock-snapshot fallback answers NOT_AUTHORIZED.

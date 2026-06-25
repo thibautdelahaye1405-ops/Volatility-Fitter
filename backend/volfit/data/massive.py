@@ -240,6 +240,33 @@ class MassiveProvider(OptionChainProvider):
                 expiries.add(expiry)
         return sorted(expiries)
 
+    def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
+        """Underlying spot WITHOUT pulling the whole chain.
+
+        The base default re-reads ``fetch_chain``'s spot, which on Massive paginates
+        EVERY listed expiry (~13k contracts on a big name -> 20-30 s) just for one
+        number — the cause of a "stuck on Fetch spots" stall. Instead read it from the
+        live WS book if streaming, else from a SINGLE (nearest) expiry's snapshot:
+        ``underlying_asset.price`` if present, else that expiry's put-call-parity
+        forward, falling back to the stock snapshot. ~1-2 s vs ~20-30 s.
+        """
+        if self._live_book is not None:
+            chain = self._chain_from_book(ticker, expiries)
+            if chain is not None and chain.spot:
+                return float(chain.spot)
+        exps = list(expiries) if expiries else self.available_expiries(ticker)
+        if not exps:
+            return float(self.fetch_chain(ticker, expiries).spot)
+        results = self._snapshot_results(ticker, sorted(exps)[:1])  # nearest expiry only
+        for result in results:
+            px = price_or_none((result.get("underlying_asset") or {}).get("price"))
+            if px is not None:
+                return float(px)
+        parity = self._spot_from_parity(results)
+        if parity is not None:
+            return float(parity)
+        return self._spot(ticker)
+
     # -- chain ---------------------------------------------------------------
 
     def _snapshot_results(
