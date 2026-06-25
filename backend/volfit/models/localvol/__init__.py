@@ -17,6 +17,7 @@ from volfit.models.localvol.affine import (
 from volfit.models.localvol.affine_calib import (
     AffineCalibration,
     AffineFitDiagnostics,
+    BasketQuote,
     OptionQuote,
     VarSwapQuote,
     calibrate_affine,
@@ -55,6 +56,7 @@ __all__ = [
     "AffineCalibration",
     "AffineFitDiagnostics",
     "AffinePDESolution",
+    "BasketQuote",
     "AffineVarianceSurface",
     "DupireSteps",
     "ExtractionResult",

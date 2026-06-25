@@ -33,11 +33,14 @@ the SVI / Multi-Core-SIV display overlays do not.
     `sqrt(λ_j)·(O_j(model) − O_prior_j)/scale_j` (RR/BF are signed baskets of
     model vols, not option prices — cleanest as residuals; this also fixes the
     SVI/SIV asymmetry).
-  - Affine LV → **synthetic leg + var-swap quotes** (the LV surface prices through
-    the Dupire PDE and has no cheap "vol at k" residual API; it already ingests
-    `OptionQuote`s). Trade-off: the signed-basket coupling is lost (each leg is its
-    own quote), mitigated by coherent gating (a basket's legs activate together)
-    and the var-swap leg carrying the level.
+  - Affine LV → **signed-basket residuals** (`BasketQuote`), NOT per-leg quotes.
+    The coupling IS kept: on the PDE surface `σ_model(x_a) ≈ σ_prior(x_a) +
+    (P_model − P_prior)/vega_a`, so the signed basket `O = Σ c_a σ(x_a)` is a
+    linear functional of the leg call prices — one residual per operator that pins
+    skew/curvature without pinning the absolute wing level. Reuses the forward
+    sensitivities (no extra PDE solve), like a var-swap row. (Earlier note said
+    "synthetic leg quotes"; superseded — the per-leg projection dropped the
+    coupling and quietly re-introduced "ATM moved, wings persisted" for LV.)
 
 ## The residual object (shared across modes)
 
@@ -92,14 +95,22 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
   `operator_prior` (and `prior_anchor` for SVI/SIG — the asymmetry fix); stack
   residuals. `build_display_fit` threads them through.
 
-### Phase 4 — Affine LV
-- `affine_fit._prior_anchor_quotes`: generalize to emit operator-derived synthetic
-  leg + var-swap quotes (gated by mode); keep the legacy strike-gap path.
+### Phase 4 — Affine LV (signed-basket residuals, Option A)
+- `affine_calib.BasketQuote` + `calibrate_affine(baskets=...)`: dense
+  linear-functional residuals of the leg call prices (reuse the forward
+  sensitivities), one row per operator — keeps the RR/BF coupling. GN runs via the
+  dense operator (baskets excluded from the sparse-reg fast path). Empty ⇒
+  byte-identical.
+- `api/prior_lv.build_operator_lv_targets`: operator prior → `BasketQuote`s (ATM
+  1-leg, RR 2-leg, BF 3-leg) + a `VarSwapQuote`. Pure builder; Phase 5 wires it
+  into `_fit` and keeps the legacy strike-gap path.
 
 ### Phase 5 — Mode dispatch + two-pass prepass
 - `service.prior_targets` (renamed) routes by resolved mode; `_compute_fit` passes
   operator/anchor into `calibrate_slice` AND `build_display_fit`. Opt-in two-pass.
-- `affine_fit._fit` branches the same way.
+- `affine_fit._fit` branches the same way: strike_gap → legacy
+  `_prior_anchor_quotes`; operator/hybrid → `prior_lv.build_operator_lv_targets`
+  → `calibrate_affine(baskets=..., varswaps=...)`.
 
 ### Phase 6 — Factor mode, Hybrid, Graph-only
 - Factor extraction (`calib/factors.py` or in operators): level/skew/curvature/

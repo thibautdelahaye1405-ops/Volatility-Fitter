@@ -73,6 +73,33 @@ class VarSwapQuote:
     tol: float = 2e-4
 
 
+@dataclass(frozen=True)
+class BasketQuote:
+    """A signed-basket operator-prior target: a linear functional of call prices.
+
+    The quote-operator prior (design note §5) persists trader operators —
+    ATM = σ(0), RR = σ(k_call) − σ(k_put), BF = ½(σ(k_call)+σ(k_put)) − σ(0). On
+    the PDE-priced LV surface an operator's implied vol is, to first order about
+    the prior, σ_model(x_a) ≈ σ_prior(x_a) + (P_model(x_a) − P_prior(x_a))/vega_a,
+    so the SIGNED basket O = Σ_a c_a σ(x_a) is a linear functional of the leg call
+    prices. Encoding it as ONE residual per operator (rather than one independent
+    quote per leg) keeps the RR/BF coupling: it pins the skew / curvature WITHOUT
+    pinning the absolute wing level — so a genuine level move is not damped.
+
+    ``xs`` are the leg strikes (x = K/F); ``weights`` the signed per-leg
+    coefficients ``c_a / vega_a``; ``target`` the prior basket value
+    ``Σ_a weights_a · P_prior(x_a)`` (price space, so the σ_prior parts cancel);
+    ``tol`` the LSQ tolerance (= 1/√λ). Residual = (Σ_a weights_a·P_model(x_a) −
+    target) / tol ≈ √λ · (O_model − O_prior). Like a var-swap quote it is a dense
+    linear functional of the solution, so it reuses the forward sensitivities."""
+
+    t: float
+    xs: np.ndarray
+    weights: np.ndarray
+    target: float
+    tol: float = 1.0
+
+
 def varswap_weights(x_grid: np.ndarray, k_lo: float = 0.0) -> np.ndarray:
     """Trapezoid weights q with I(T) = q @ C(T, .) + const(parity).
 
@@ -328,6 +355,32 @@ def _model_values(
     return p, z, jp, jz
 
 
+def _basket_values(
+    solution: AffinePDESolution, baskets: list[BasketQuote], with_jac: bool
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Operator-basket residual values (and Jacobian rows) from a PDE solve.
+
+    Each basket is a signed linear functional of the model call prices at its leg
+    strikes — the linearized quote-operator prior (skew / curvature) that keeps the
+    RR/BF coupling the per-leg projection loses. Reuses ``price_at`` / ``sens_at``
+    (interpolation off the price / sensitivity grid), so it costs no extra solve."""
+    n_cols = solution.sens.shape[2] if solution.sens is not None else 0
+    if not baskets:
+        return np.zeros(0), (np.zeros((0, n_cols)) if with_jac else None)
+    exp_index = {float(t): i for i, t in enumerate(solution.expiries)}
+    vals = np.array(
+        [float(np.asarray(b.weights) @ solution.price_at(exp_index[b.t], np.asarray(b.xs)))
+         for b in baskets]
+    )
+    if not with_jac:
+        return vals, None
+    jac = np.vstack(
+        [np.asarray(b.weights) @ solution.sens_at(exp_index[b.t], np.asarray(b.xs))
+         for b in baskets]
+    )
+    return vals, jac
+
+
 class _StallStop(Exception):
     """Raised inside the LSQ objective to early-stop a stalled cold fit (Stage 8)."""
 
@@ -346,6 +399,7 @@ def calibrate_affine(
     t_grid: np.ndarray,
     *,
     varswaps: list[VarSwapQuote] | None = None,
+    baskets: list[BasketQuote] | None = None,
     varswap_k_lo: float = 0.01,
     varswap_method: str = "static",
     bounds: tuple[float, float] = (0.005, 0.20),
@@ -381,6 +435,13 @@ def calibrate_affine(
     forward sensitivities per trial theta yields both residuals and the
     analytic Jacobian; results are memoized so scipy's separate fun/jac
     callbacks cost a single solve.
+
+    ``baskets`` (``BasketQuote``) add the SIGNED quote-operator prior (ATM / RR / BF;
+    design note §5) as dense linear-functional residuals of the leg call prices —
+    one row per operator, preserving the RR/BF coupling (skew / curvature pinned to
+    the prior without pinning the absolute wing level). They reuse the forward
+    sensitivities like the var-swap rows and force the dense-Jacobian path (GN still
+    runs via the dense operator). None / empty ⇒ byte-identical.
 
     ``surface0.theta`` is the warm-start point (``theta0``). It is deliberately
     decoupled from ``theta_ref``: pass a non-flat ``theta0`` to start near the
@@ -465,7 +526,8 @@ def calibrate_affine(
     transparent accelerator (output matches banded to ~1e-15).
     """
     varswaps = varswaps or []
-    expiries = sorted({o.t for o in options} | {v.t for v in varswaps})
+    baskets = baskets or []
+    expiries = sorted({o.t for o in options} | {v.t for v in varswaps} | {b.t for b in baskets})
     q_w = varswap_weights(x_grid, varswap_k_lo) if varswaps else np.zeros_like(x_grid)
     q_c = varswap_const(x_grid, varswap_k_lo) if varswaps else 0.0
     # Source-PDE var-swap (Stage 4'): per-expiry backward-march steps, precomputed
@@ -515,6 +577,9 @@ def calibrate_affine(
     zeta = np.array([v.tol for v in varswaps])
     z_mkt = np.array([v.total_var for v in varswaps])
     y_mkt = np.array([o.price for o in options])
+    # Operator-prior baskets (signed linear functionals; the RR/BF coupling).
+    b_tol = np.array([b.tol for b in baskets])
+    b_target = np.array([b.target for b in baskets])
     # Band fit: present iff the quotes carry call-price band edges.
     band_mode = bool(options) and options[0].price_lo is not None
     p_lo = np.array([o.price_lo for o in options]) if band_mode else None
@@ -530,7 +595,13 @@ def calibrate_affine(
     # and the lsmr matvec runs on the 3-nnz/row reg sparsely. The constant roughness /
     # front-tie rows are built as CSR once. (TRF / band / var-swap keep the dense jac;
     # a GN fall-back to TRF densifies the operator via LinearizedJacobian.to_dense.)
-    gn_op = gn and not band_mode and not fit_left_a and not varswaps and _GN_SPARSE_REG
+    # Baskets are dense linear-functional rows (like var-swaps), so they cannot live
+    # in the sparse reg block — they force the dense-Jacobian path (GN still RUNS via
+    # the dense operator, just without the sparse-reg fast path).
+    gn_op = (
+        gn and not band_mode and not fit_left_a and not varswaps and not baskets
+        and _GN_SPARSE_REG
+    )
     l_csr = sparse.csr_matrix(sqrt_lam * l_rows) if gn_op else None
     front_csr = sparse.csr_matrix(sqrt_front * front_rows) if (gn_op and front_on) else None
     # The hat basis and active-column schedule depend only on the vertex set and
@@ -592,15 +663,22 @@ def calibrate_affine(
                     left_a=a, fit_left_a=fit_left_a,
                 )
         res_opt, jac_opt = _option_block(p, jp)
+        # Operator-prior basket block (dense linear functional of the leg prices,
+        # like the var-swap row); empty arrays when no baskets ⇒ byte-identical.
+        bvals, bjac = _basket_values(sol, baskets, True)
+        res_bask = (bvals - b_target) / b_tol
         res = np.concatenate(
-            [res_opt, (z - z_mkt) / zeta, sqrt_lam * (l_rows @ (theta - ref))]
+            [res_opt, (z - z_mkt) / zeta, res_bask, sqrt_lam * (l_rows @ (theta - ref))]
         )
         # GN-eligible case keeps the reg rows SPARSE; everything else builds the dense
-        # Jacobian exactly as before (byte-identical golden / TRF path).
+        # Jacobian exactly as before (byte-identical golden / TRF path). bjac carries
+        # the da-column from sens_at (like jz), so it is not _pad_a'd.
         if gn_op:
             reg_blocks: list = [l_csr]
         else:
-            jac = np.vstack([jac_opt, jz / zeta[:, None], _pad_a(sqrt_lam * l_rows)])
+            jac = np.vstack(
+                [jac_opt, jz / zeta[:, None], bjac / b_tol[:, None], _pad_a(sqrt_lam * l_rows)]
+            )
         if cvx_on:
             # Soft convexity of the VOL row sigma = sqrt(theta) in x at the wing
             # columns: curv = D²sigma (cell-width-normalized); penalize curv < 0.
@@ -735,7 +813,8 @@ def calibrate_affine(
     n_cvx_rows = int(cvx[0].size) if cvx_on else 0
     n_front_rows = int(front_rows.shape[0]) if front_on else 0
     residual_count = (
-        n_opt_rows + len(varswaps) + int(l_rows.shape[0]) + n_cvx_rows + n_front_rows
+        n_opt_rows + len(varswaps) + len(baskets)
+        + int(l_rows.shape[0]) + n_cvx_rows + n_front_rows
     )
     diagnostics = AffineFitDiagnostics(
         vertex_count=m,
