@@ -125,6 +125,28 @@ def test_set_active_source_switches_and_keeps_watchlist():
     assert state._snapshots == {}  # caches cleared on switch
 
 
+def test_switch_reresolves_custom_picks_lazily():
+    """A switch must acknowledge instantly: it does NO per-ticker fetch, stashing any
+    custom expiry picks in _pending_selections. They are re-applied LAZILY on the new
+    source the first time the ticker is accessed (intersected with the new ladder)."""
+    exp = date.fromordinal(REF.toordinal() + 30)  # the stub's only listed expiry
+    state = AppState(REF, providers={"stub": _StubProvider(), "stub2": _StubProvider()},
+                     active_source="stub")
+    # SPY resolved as a CUSTOM pick on the first source
+    state._available["SPY"] = [exp]
+    state._selected["SPY"] = [exp]
+    state._selection_mode["SPY"] = "custom"
+
+    state.set_active_source("stub2")
+    assert not state._available.get("SPY")  # switch did NOT re-resolve eagerly
+    assert state._pending_selections.get("SPY") == [exp]  # stashed for lazy re-apply
+
+    # first access resolves on the new source and re-applies the custom pick
+    assert state.selected_expiries("SPY") == [exp]
+    assert state._selection_mode["SPY"] == "custom"
+    assert "SPY" not in state._pending_selections  # consumed
+
+
 def test_set_active_source_unknown_raises():
     state = AppState(REF, providers={"synthetic": SyntheticProvider(reference_date=REF)})
     with pytest.raises(KeyError):

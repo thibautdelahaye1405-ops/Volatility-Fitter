@@ -140,6 +140,10 @@ class MassiveProvider(OptionChainProvider):
         #: (ticker, expiry set); cleared on ``refresh_contracts`` if a fresh pull
         #: is wanted (e.g. a brand-new listing appears mid-session).
         self._contracts_cache: dict[tuple[str, frozenset | None], list[dict]] = {}
+        #: Cache of the listed expiry ladder per ticker. The contracts reference is
+        #: static intra-day, so a switch back to this source (or any re-resolve) reuses
+        #: it instead of re-paginating; cleared by ``refresh_contracts``.
+        self._expiries_cache: dict[str, list[date]] = {}
 
     def list_tickers(self) -> list[str]:
         return list(self._tickers)
@@ -224,11 +228,17 @@ class MassiveProvider(OptionChainProvider):
 
     def available_expiries(self, ticker: str) -> list[date]:
         """All listed (unexpired) expiries inside (0, max_days] via the contracts
-        reference endpoint (cheap; entitled on all tiers)."""
+        reference endpoint (cheap; entitled on all tiers). Cached per ticker for the
+        session (the listing is static intra-day), so a data-source switch back here or
+        any re-resolve is instant; ``refresh_contracts`` clears it for a fresh pull."""
+        key = ticker.upper()
+        cached = self._expiries_cache.get(key)
+        if cached is not None:
+            return list(cached)
         today = date.today()
         expiries: set[date] = set()
         params = {
-            "underlying_ticker": ticker.upper(),
+            "underlying_ticker": key,
             "expired": "false",
             "order": "asc",
             "sort": "expiration_date",
@@ -238,7 +248,10 @@ class MassiveProvider(OptionChainProvider):
             expiry = _iso_date(contract.get("expiration_date"))
             if expiry is not None and 0 < (expiry - today).days <= self.max_days:
                 expiries.add(expiry)
-        return sorted(expiries)
+        result = sorted(expiries)
+        if result:  # don't freeze a transient empty miss — let the next call re-probe
+            self._expiries_cache[key] = result
+        return result
 
     def spot(self, ticker: str, expiries: list[date] | None = None) -> float:
         """Underlying spot WITHOUT pulling the whole chain.
@@ -764,8 +777,9 @@ class MassiveProvider(OptionChainProvider):
         return out
 
     def refresh_contracts(self) -> None:
-        """Drop the cached contract listings (force a fresh reference pull)."""
+        """Drop the cached contract listings + expiry ladders (force a fresh pull)."""
         self._contracts_cache.clear()
+        self._expiries_cache.clear()
 
     def _quote_le(self, option_ticker: str, ns: int) -> dict:
         """The most recent NBBO quote at-or-before ``ns`` (nanoseconds) for one

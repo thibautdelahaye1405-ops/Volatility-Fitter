@@ -69,6 +69,25 @@ def test_available_expiries_paginates_and_filters():
     assert expiries == sorted({date.fromisoformat(_exp(30)), date.fromisoformat(_exp(120))})
 
 
+def test_available_expiries_cached_per_ticker():
+    """The expiry ladder is static intra-session: a second call reuses the cache and
+    does not re-paginate the contracts reference; refresh_contracts forces a fresh pull."""
+    pages = {
+        "/v3/reference/options/contracts": {
+            "results": [_contract(500, 30), _contract(520, 120)],
+            "status": "OK",
+        }
+    }
+    fake = FakeHttp(pages)
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=fake)
+    a = provider.available_expiries("SPY")
+    assert a and provider.available_expiries("SPY") == a
+    assert _ref_calls(fake) == 1  # second call served from cache
+    provider.refresh_contracts()
+    provider.available_expiries("SPY")
+    assert _ref_calls(fake) == 2  # cleared -> fresh pull
+
+
 # ------------------------------------------------- contract-listing cache
 
 def _ref_calls(fake: "FakeHttp") -> int:

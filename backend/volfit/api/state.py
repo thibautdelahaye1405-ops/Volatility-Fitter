@@ -50,7 +50,6 @@ from volfit.data.dividends import (
     theoretical_forward,
 )
 from volfit.api.state_universe import UniverseMixin, UnknownNodeError  # noqa: F401 (re-export)
-from volfit.data.expiry_select import default_selection
 from volfit.data.forwards import ImpliedForward, ResolvedForward, implied_forwards
 from volfit.data.provider import AsOf, OptionChainProvider, SyntheticProvider
 from volfit.data.store import VolStore
@@ -346,29 +345,21 @@ class AppState(UniverseMixin):
         with self._lock:
             if source_id == self._active_source:
                 return self._active_source
-            custom = {
-                t: list(self._selected[t])
-                for t, mode in self._selection_mode.items()
-                if mode == "custom" and t in self._selected
-            }
+            # Preserve custom expiry picks but re-resolve them LAZILY on the new feed:
+            # stash them in _pending_selections so each ticker re-probes its available
+            # ladder on first access (_ensure_selection), intersecting the picks with
+            # the new source's listing. The switch returns instantly instead of blocking
+            # on a synchronous per-ticker available_expiries fetch (seconds each on a
+            # paginated feed like Massive); auto tickers re-resolve to their default.
+            for t, mode in self._selection_mode.items():
+                if mode == "custom" and t in self._selected:
+                    self._pending_selections[t] = list(self._selected[t])
             self._active_source = source_id
             self._asof = AsOfSelection()  # a new feed starts live
             self._available.clear()
             self._selected.clear()
             self._selection_mode.clear()
             self._clear_chain_caches()
-        # Re-apply custom expiry picks against the new source (network, no lock).
-        for ticker, dates in custom.items():
-            try:
-                available = self.provider.available_expiries(ticker)
-            except Exception:
-                continue  # ticker unavailable on the new source; lazy path 404s
-            keep = [d for d in dates if d in set(available)]
-            chosen = keep or default_selection(available, self.reference_date)
-            with self._lock:
-                self._available[ticker] = available
-                self._selected[ticker] = chosen
-                self._selection_mode[ticker] = "custom" if keep else "auto"
         return self._active_source
 
     def _clear_chain_caches(self) -> None:
