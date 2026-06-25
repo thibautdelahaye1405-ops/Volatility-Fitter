@@ -20,6 +20,7 @@ from volfit.api import analytics, service, table
 from volfit.api.schemas import (
     DensityResponse,
     FitMode,
+    PriorDiagnostics,
     PriorSavedResponse,
     SmileData,
     StackedDensityResponse,
@@ -76,6 +77,15 @@ def save_prior(
         ),
     )
     return PriorSavedResponse(saved=True)
+
+
+@router.get("/smiles/{ticker}/{expiry}/prior-diagnostics", response_model=PriorDiagnostics)
+def get_prior_diagnostics(
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+) -> PriorDiagnostics:
+    """Auditable prior-persistence state for the node (design note §9.4): the active
+    operators/factors with their gap + weight. Advisory — never raises."""
+    return service.prior_diagnostics(request.app.state.volfit, ticker, expiry, fit_mode)
 
 
 @router.get("/smiles/{ticker}/{expiry}/density", response_model=DensityResponse)

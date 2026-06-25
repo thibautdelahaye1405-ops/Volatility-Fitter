@@ -365,6 +365,39 @@ def prior_targets(
     return PriorTargets(prior_anchor=anchor, operator_prior=target, prior_var_swap=pvs)
 
 
+def prior_diagnostics(state: AppState, ticker: str, iso: str, fit_mode: str = "mid"):
+    """Per-node prior-persistence diagnostics (design note §9.4): which operators /
+    factors the prior is persisting, their observation vs required precision, the
+    activation gap and the final weight — so the prior is auditable, not a hidden
+    stabilizer. Best-effort: an inactive payload when the node has no chain / prior."""
+    from volfit.api.schemas import PriorDiagnostics, PriorOperatorDiag
+
+    mode = state.options().priorPersistenceMode
+    try:
+        expiry = state.resolve_expiry(ticker, iso)
+        iso = expiry.isoformat()
+        prepared = prepared_quotes(state, ticker, expiry)
+        k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
+        weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+        pt = prior_targets(state, ticker, iso, k, weights, prepared)
+    except Exception:  # noqa: BLE001 — diagnostics are advisory, must never 500
+        return PriorDiagnostics(mode=mode, active=False)
+    ops = [
+        PriorOperatorDiag(**d)
+        for d in (pt.operator_prior.diagnostics if pt.operator_prior is not None else [])
+    ]
+    vs_vol = vs_w = None
+    if pt.prior_var_swap is not None and prepared.tau > 0.0:
+        vs_vol = float(math.sqrt(max(pt.prior_var_swap.total_var, 0.0) / prepared.tau))
+        vs_w = float(pt.prior_var_swap.weight)
+    anchor_n = int(pt.prior_anchor.k.size) if pt.prior_anchor is not None else None
+    active = bool(ops) or pt.prior_var_swap is not None or pt.prior_anchor is not None
+    return PriorDiagnostics(
+        mode=mode, active=active, operators=ops,
+        varSwapPriorVol=vs_vol, varSwapWeight=vs_w, strikeAnchorCount=anchor_n,
+    )
+
+
 def edited_fit_inputs(
     state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, weights: np.ndarray | None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:

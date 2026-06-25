@@ -12,10 +12,11 @@
 //
 // FitSettings (model/penalties/haircut/weighting) and OptionsSettings (the rest)
 // are two backend endpoints but share ONE sticky Apply bar here.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import HyperparamPanel from "../components/HyperparamPanel";
 import { NumberRow, PenaltyTable, Segmented, Toggle } from "../components/OptionsControls";
+import PriorPersistencePanel from "../components/PriorPersistencePanel";
 import { api } from "../state/api";
 import { useOptions } from "../state/useOptions";
 import type { DynamicsRegime } from "../state/useOptions";
@@ -64,30 +65,6 @@ export default function OptionsViewer() {
   const { draft, patch, dirty, busy, flash, apply, adopt } = useOptions(live, reload);
   const fit = useFitSettings(live, reload);
   const defaults = useSettingsDefaults(live);
-
-  // Prior-anchor delta set, edited as a comma-separated %-per-side list (ATM is
-  // implicit). A local text buffer commits on blur so typing isn't reformatted
-  // mid-keystroke; it resyncs when the draft array changes from outside.
-  const fmtDeltas = (ds: number[]) => ds.map((d) => +(d * 100).toFixed(2)).join(", ");
-  const [deltaText, setDeltaText] = useState(() => fmtDeltas(draft.priorAnchorDeltas));
-  const deltaRef = useRef(draft.priorAnchorDeltas);
-  useEffect(() => {
-    if (draft.priorAnchorDeltas !== deltaRef.current) {
-      deltaRef.current = draft.priorAnchorDeltas;
-      setDeltaText(fmtDeltas(draft.priorAnchorDeltas));
-    }
-  }, [draft.priorAnchorDeltas]);
-  const commitDeltas = () => {
-    const parsed = deltaText
-      .split(/[,\s]+/)
-      .map(Number)
-      .filter((x) => Number.isFinite(x) && x > 0 && x < 50);
-    const ds = Array.from(new Set(parsed.map((x) => +(x / 100).toFixed(4)))).sort((a, b) => a - b);
-    const next = ds.length ? ds : draft.priorAnchorDeltas;
-    deltaRef.current = next;
-    setDeltaText(fmtDeltas(next));
-    patch({ priorAnchorDeltas: next });
-  };
 
   // One Apply commits both backends (each is a no-op when its draft is clean).
   const anyDirty = dirty || fit.dirty;
@@ -342,38 +319,18 @@ export default function OptionsViewer() {
             <option value="source_pde">Source PDE</option>
           </select>
         </div>
-        <div className="mt-1 flex items-center justify-between">
-          <span
-            className={`${rowLabel} ${draft.autoLoadPrior ? "" : "opacity-40"}`}
-            title="Prior-anchor budget as a % of the summed option-quote weights of the node — distributed across delta-locations by the observed-vs-desired quote-density gap, pulling the fit toward the fetched prior where data is sparse (Auto-load prior)"
-          >
-            Prior-anchor weight (%)
-          </span>
-          <input
-            type="number" step={1} min={0} value={draft.priorAnchorWeightPct}
-            disabled={!live || !draft.autoLoadPrior}
-            onChange={(e) => patch({ priorAnchorWeightPct: Number(e.target.value) })}
-            className={numInput}
-          />
-        </div>
-        <div className="mt-1 flex items-center justify-between">
-          <span
-            className={`${rowLabel} ${draft.autoLoadPrior ? "" : "opacity-40"}`}
-            title="Per-side delta-locations the prior anchor pins (the wing shape), as a comma-separated list of deltas in %. ATM is always included; the var-swap prior carries the aggregate tail below the smallest delta."
-          >
-            Prior-anchor Δ (%, per side)
-          </span>
-          <input
-            type="text" value={deltaText}
-            disabled={!live || !draft.autoLoadPrior}
-            onChange={(e) => setDeltaText(e.target.value)}
-            onBlur={commitDeltas}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-            }}
-            className={`${numInput} w-32 text-right`}
-          />
-        </div>
+        {/* Prior persistence: mode selector + mode-grouped knobs + the §9.4
+            diagnostics table (roadmap Phase 7). The master enable is the
+            "Auto-load prior" toggle in Workflow; this picks the flavor. */}
+        <PriorPersistencePanel
+          draft={draft}
+          patch={patch}
+          live={live}
+          ticker={ticker}
+          fitMode={fitMode}
+          refreshKey={anyDirty}
+        />
+
         <Toggle
           label="Normalize events"
           hint="Rescale all days so the 1Y weight budget stays 365 (1Y vols unchanged; events redistribute variance within the year)"
@@ -431,7 +388,7 @@ export default function OptionsViewer() {
           onChange={(v) => patch({ varSwapEnabled: v })}
         />
         <Toggle
-          label="Auto-load prior" hint="Anchor the fit to the fetched prior at delta-locations, weighted by where quotes are sparse (data-gap); fades where data is dense. Strength = Prior-anchor weight in Calibration"
+          label="Auto-load prior" hint="Master enable for prior persistence: anchor the calibration to the fetched prior where the market is under-informed. The FLAVOR (strike gaps / quote operators / smile factors / hybrid / graph only) is the Prior-persistence mode in Calibration."
           checked={draft.autoLoadPrior} disabled={!live}
           onChange={(v) => patch({ autoLoadPrior: v })}
         />

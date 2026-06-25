@@ -21,6 +21,20 @@ export type SpotMode = "realtime" | "static";
 /** Options-chain fetch mode: "auto" = scheduler timer; "on_demand" = button only. */
 export type OptionsFetchMode = "auto" | "on_demand";
 
+/** Prior-persistence mode (design note §10): how a fetched prior is persisted into
+ *  the calibration. off/overlay add no penalty; strike_gap = legacy data-gap
+ *  anchor; quote_operator/smile_factor persist trader factors only where
+ *  under-observed; hybrid = operators + a deep-tail anchor; graph_only leaves lit
+ *  calibration market-pure (the graph carries the prior). */
+export type PriorPersistenceMode =
+  | "off"
+  | "overlay"
+  | "strike_gap"
+  | "quote_operator"
+  | "smile_factor"
+  | "hybrid"
+  | "graph_only";
+
 /** Mirror of the backend OptionsSettings schema (volfit/api/schemas.py). */
 export interface OptionsSettings {
   /** Default fit target (Mid / Bid-Ask / Haircut); seeds the session on load. */
@@ -39,6 +53,25 @@ export interface OptionsSettings {
   /** Per-side delta-locations the prior anchor pins (forward deltas in (0,0.5));
    *  ATM is always added, var-swap prior carries the tail below the smallest. */
   priorAnchorDeltas: number[];
+  /** Which prior-persistence model the calibration uses (design note §10). */
+  priorPersistenceMode: PriorPersistenceMode;
+  /** Quote operators the prior may persist (quote_operator / hybrid). */
+  priorOperatorSet: string[];
+  priorOperatorStrengthPct: number;
+  priorOperatorRequiredPrecision: number;
+  priorOperatorGapExponent: number;
+  /** Quote-support kernel bandwidth (also the smile-factor FD step). */
+  priorOperatorBandwidth: number;
+  priorOperatorCovarianceMode: "diagonal" | "full";
+  /** Two-pass activation: fit data-only first, then refit only under-observed priors. */
+  priorDataOnlyPrepass: boolean;
+  /** Risk-reversal sign convention. */
+  collarSign: "call_put" | "put_call";
+  /** Smile factors the prior may persist (smile_factor mode). */
+  priorFactorSet: string[];
+  priorFactorStrengthPct: number;
+  /** Residual deep-tail strike-anchor budget in hybrid mode (% of quote weights). */
+  priorTailAnchorStrengthPct: number;
   /** Strike-vertex placement: "delta" (dense near ATM, the default) or legacy
    *  "linear" uniform-in-x. */
   gridStrikeMode: "delta" | "linear";
@@ -98,6 +131,18 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   autoLoadPrior: false,
   priorAnchorWeightPct: 50.0,
   priorAnchorDeltas: [0.02, 0.05, 0.1, 0.25, 0.4],
+  priorPersistenceMode: "hybrid",
+  priorOperatorSet: ["ATM", "RR25", "BF25", "VarSwap"],
+  priorOperatorStrengthPct: 50.0,
+  priorOperatorRequiredPrecision: 1.0,
+  priorOperatorGapExponent: 1.0,
+  priorOperatorBandwidth: 0.06,
+  priorOperatorCovarianceMode: "diagonal",
+  priorDataOnlyPrepass: false,
+  collarSign: "call_put",
+  priorFactorSet: ["ATM", "skew", "curvature", "VarSwap"],
+  priorFactorStrengthPct: 50.0,
+  priorTailAnchorStrengthPct: 20.0,
   gridStrikeMode: "delta",
   gridXNodes: 12,
   gridTNodes: 10,

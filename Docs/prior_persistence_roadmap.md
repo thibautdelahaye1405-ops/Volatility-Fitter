@@ -141,10 +141,19 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
 - **Graph-only** short-circuits all calibration anchors (already inert from Phase 5;
   lit nodes pure data, graph carries the dark-node prior).
 
-### Phase 7 — Diagnostics + frontend
-- Backend per-operator/factor diagnostics table (prior · data-only · final · obs
-  prec · required prec · gap · λ · binding reason). Frontend: mode selector +
-  mode-grouped knobs in `OptionsViewer`, a diagnostics panel, overlay visibility.
+### Phase 7 — Diagnostics + frontend  ✅ DONE
+- Backend: `PriorDiagnostics` / `PriorOperatorDiag` schemas + `service.prior_diagnostics`
+  (reads `OperatorPriorTarget.diagnostics`: operator · priorValue · obsPrecision ·
+  requiredPrecision · gap · λ) + `GET /smiles/{t}/{e}/prior-diagnostics` (advisory,
+  never 500s). `test_prior_diagnostics.py`.
+- Frontend: `useOptions` gains the mode + all knobs; new `PriorPersistencePanel.tsx`
+  (the §10 mode selector + mode-grouped knobs — strike / operator / factor / hybrid
+  with a ChipSet operator/factor set, collar sign, gate knobs, two-pass toggle) +
+  the §9.4 diagnostics table (per-expiry active factors with gap + λ). Wired into
+  `OptionsViewer` Calibration card; the Workflow "Auto-load prior" toggle relabelled
+  as the master enable. strict-TS green.
+- (Overlay-visibility hiding of the dotted prior in `off` mode is a small follow-on;
+  the dotted prior currently always draws when a prior is active.)
 
 ### Phase 8 — Validation & default flip
 - Full unit/golden/parity coverage; backtest harness gains a prior-mode axis;

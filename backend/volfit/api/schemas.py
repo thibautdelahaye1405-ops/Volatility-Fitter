@@ -384,6 +384,35 @@ class SettingsDefaultsReset(SettingsDefaultsStatus):
     options: OptionsSettings
 
 
+# ------------------------------------------------- prior-persistence diagnostics
+class PriorOperatorDiag(BaseModel):
+    """One operator / factor's prior-persistence diagnostics (design note §9.4).
+
+    ``gap`` in [0, 1] is the activation factor (1 = fully persisted, 0 = the data
+    identifies it so the prior is off); ``activeLambda`` is the final LSQ weight."""
+
+    operator: str
+    priorValue: float
+    obsPrecision: float
+    requiredPrecision: float
+    gap: float
+    activeLambda: float
+
+
+class PriorDiagnostics(BaseModel):
+    """Auditable prior-persistence state for one node (the §9.4 table): which shape
+    factors the prior is persisting and why, so the prior is never a hidden
+    stabilizer. ``operators`` is populated in quote-operator / smile-factor / hybrid
+    modes; ``strikeAnchorCount`` in strike-gap / hybrid (the deep-tail anchor)."""
+
+    mode: str
+    active: bool
+    operators: list[PriorOperatorDiag] = []
+    varSwapPriorVol: float | None = None
+    varSwapWeight: float | None = None
+    strikeAnchorCount: int | None = None
+
+
 # ------------------------------------------------------------- smile payload
 class SmilePoint(BaseModel):
     """One point of a continuous model curve in (log-moneyness, vol) space."""
