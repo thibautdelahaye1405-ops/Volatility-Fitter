@@ -30,6 +30,22 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+# The model-agnostic scalar factors + half-lives live in the shared precision
+# vocabulary (volfit.calib.precision, design note §9) so the operator/factor prior
+# builders and the graph baseline gate on the SAME quantities. Re-exported here so
+# the graph-specific helpers below (and any caller of gprec.spread_factor) keep
+# their import surface; values are byte-identical to the originals.
+from volfit.calib.precision import (  # noqa: F401  (re-export)
+    OBS_FRESHNESS_HALFLIFE,
+    PRIOR_AGE_HALFLIFE,
+    RMS_FLOOR,
+    TRANSPORT_SCALE,
+    freshness_factor,
+    quote_density_factor,
+    spread_factor,
+    transport_factor,
+)
+
 #: Relative per-handle confidence (atm_vol, skew, curvature). Anchored so an
 #: active/dense/tight/fresh node lands on the legacy [1e6, 1e6, 1e4] regime.
 HANDLE_CONFIDENCE = np.array([1.0, 1.0, 0.01])
@@ -41,24 +57,6 @@ OBS_PRECISION_CAP = np.array([1.0e7, 1.0e7, 1.0e5])
 #: Baseline-precision per-handle floor / cap.
 BASE_PRECISION_FLOOR = np.array([1.0e2, 1.0e2, 1.0])
 BASE_PRECISION_CAP = np.array([2.0e6, 2.0e6, 2.0e4])
-
-#: 1/rms² base: a 1bp-vol fit is excellent but not infinitely precise.
-RMS_FLOOR = 1.0e-4  # 1 vol bp
-
-#: Near-ATM quote count giving full density credit; fewer scales precision down.
-REF_ATM_QUOTES = 8.0
-MIN_DENSITY_FACTOR = 0.15
-
-#: Relative bid-ask spread (band width / ATM vol) at which precision halves.
-SPREAD_HALF = 0.05
-
-#: As-of / prior freshness half-lives (days).
-OBS_FRESHNESS_HALFLIFE = 3.0
-PRIOR_AGE_HALFLIFE = 30.0
-
-#: Transport-distance scale: |h = log(F_now/F_prior)| of this size halves-ish the
-#: prior precision (further transport ⇒ less trustworthy baseline).
-TRANSPORT_SCALE = 0.10
 
 #: Provenance tier base precision (atm-vol units; per-handle via HANDLE_CONFIDENCE).
 SOURCE_BASE = {
@@ -77,26 +75,6 @@ class PrecisionBreakdown:
 
     precision: np.ndarray  # (3,)
     factors: dict[str, float] = field(default_factory=dict)
-
-
-def quote_density_factor(n_atm_quotes: float) -> float:
-    """More near-ATM quotes ⇒ higher precision, saturating at REF_ATM_QUOTES."""
-    return float(np.clip(n_atm_quotes / REF_ATM_QUOTES, MIN_DENSITY_FACTOR, 1.0))
-
-
-def spread_factor(rel_spread: float) -> float:
-    """Wider bid-ask (relative to ATM vol) ⇒ lower precision, in (0, 1]."""
-    return float(1.0 / (1.0 + max(rel_spread, 0.0) / SPREAD_HALF))
-
-
-def freshness_factor(age_days: float, half_life: float = OBS_FRESHNESS_HALFLIFE) -> float:
-    """Exponential decay with age (an as-of mismatch / stale quote)."""
-    return float(0.5 ** (max(age_days, 0.0) / half_life))
-
-
-def transport_factor(transport_distance: float) -> float:
-    """Further forward transport ⇒ less precise baseline, in (0, 1]."""
-    return float(np.exp(-abs(transport_distance) / TRANSPORT_SCALE))
 
 
 def observation_precision(
