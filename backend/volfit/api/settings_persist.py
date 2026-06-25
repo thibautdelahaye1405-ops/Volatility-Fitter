@@ -97,10 +97,27 @@ def save_graph_edges(store_path, edges: list[dict]) -> bool:
     return True
 
 
+def _migrate_options(raw: dict) -> dict:
+    """Forward-migrate a persisted OptionsSettings blob (a copy is returned).
+
+    Pre-mode blobs (saved before ``priorPersistenceMode`` existed) carried only the
+    binary ``autoLoadPrior`` switch. Map it to the equivalent mode so a restored
+    desk keeps its EXACT prior behaviour (the legacy strike-gap anchor) rather than
+    jumping to the new ``hybrid`` code default. New installs have no blob, so they
+    are untouched and pick up the recommended ``hybrid`` default.
+    """
+    raw = dict(raw)
+    if "priorPersistenceMode" not in raw:
+        raw["priorPersistenceMode"] = "strike_gap" if raw.get("autoLoadPrior") else "off"
+    return raw
+
+
 def _coerce(model, raw):
     """Validate a persisted blob into ``model``; None on absence or bad data."""
     if not raw:
         return None
+    if model is OptionsSettings:
+        raw = _migrate_options(raw)
     try:
         return model(**raw)
     except Exception as exc:  # noqa: BLE001 — stale/partial blob -> code default

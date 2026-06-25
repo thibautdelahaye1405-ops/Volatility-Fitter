@@ -722,6 +722,27 @@ class AppState(UniverseMixin):
                     or options.autoLoadPrior != self._options.autoLoadPrior
                     or options.priorAnchorWeightPct != self._options.priorAnchorWeightPct
                     or options.priorAnchorDeltas != self._options.priorAnchorDeltas
+                    # prior-persistence mode + operator/factor/tail knobs (the
+                    # 7-mode menu; Docs/prior_persistence_roadmap.md) — all change
+                    # calibration output once wired, so they bust the fit cache.
+                    or options.priorPersistenceMode != self._options.priorPersistenceMode
+                    or options.priorOperatorSet != self._options.priorOperatorSet
+                    or options.priorOperatorStrengthPct
+                    != self._options.priorOperatorStrengthPct
+                    or options.priorOperatorRequiredPrecision
+                    != self._options.priorOperatorRequiredPrecision
+                    or options.priorOperatorGapExponent
+                    != self._options.priorOperatorGapExponent
+                    or options.priorOperatorBandwidth != self._options.priorOperatorBandwidth
+                    or options.priorOperatorCovarianceMode
+                    != self._options.priorOperatorCovarianceMode
+                    or options.priorDataOnlyPrepass != self._options.priorDataOnlyPrepass
+                    or options.collarSign != self._options.collarSign
+                    or options.priorFactorSet != self._options.priorFactorSet
+                    or options.priorFactorStrengthPct
+                    != self._options.priorFactorStrengthPct
+                    or options.priorTailAnchorStrengthPct
+                    != self._options.priorTailAnchorStrengthPct
                 )
                 if affects_fit:
                     self._options_version += 1

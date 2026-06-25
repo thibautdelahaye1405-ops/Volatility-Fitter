@@ -165,6 +165,76 @@ class OptionsSettings(BaseModel):
         set if nothing valid is given (so the anchor always has placements)."""
         cleaned = sorted({round(float(d), 4) for d in v if 0.0 < float(d) < 0.5})
         return cleaned or [0.02, 0.05, 0.10, 0.25, 0.40]
+
+    # ---- prior-persistence mode (Docs/prior_persistence_design_options.md §10) --
+    #: Which prior-persistence model the calibration uses. ``strike_gap`` is the
+    #: legacy data-gap anchor (what ``autoLoadPrior`` used to switch on);
+    #: ``quote_operator`` / ``smile_factor`` / ``hybrid`` persist trader-readable
+    #: shape factors (ATM/RR/BF/var-swap, or level/skew/curvature) ONLY where the
+    #: live quotes do not already identify them (the §9.3 activation gate);
+    #: ``graph_only`` leaves lit calibration market-pure and relies on the graph
+    #: baseline for dark nodes; ``off`` / ``overlay`` add no calibration penalty
+    #: (``overlay`` still draws the dotted transported prior). A persisted
+    #: pre-mode blob is migrated from ``autoLoadPrior`` on store load
+    #: (settings_persist); new installs default to the recommended ``hybrid``.
+    #: Calibration-affecting -> bumps the options version (set_options).
+    priorPersistenceMode: Literal[
+        "off", "overlay", "strike_gap", "quote_operator",
+        "smile_factor", "hybrid", "graph_only",
+    ] = "hybrid"
+    #: Quote operators the prior may persist in ``quote_operator`` / ``hybrid``
+    #: modes (§5): ATM level, 25/10-delta risk-reversal (RR) and butterfly (BF),
+    #: and the var-swap level. Unknown names are dropped; empty -> the default set.
+    priorOperatorSet: list[str] = Field(default=["ATM", "RR25", "BF25", "VarSwap"])
+    #: Base operator-prior budget as a percent of the summed option-quote weights.
+    priorOperatorStrengthPct: float = Field(50.0, ge=0.0, le=1000.0)
+    #: Observation-precision threshold above which an operator's prior turns OFF
+    #: (the gate's required precision; per-operator multipliers live in code, §9.3).
+    priorOperatorRequiredPrecision: float = Field(1.0, ge=0.0)
+    #: Sharpness gamma of the gate transition gap = max(1 - obs/req, 0)^gamma (§9.3).
+    priorOperatorGapExponent: float = Field(1.0, ge=0.0, le=10.0)
+    #: Quote-support kernel bandwidth (log-moneyness) around each operator leg (§5.3).
+    priorOperatorBandwidth: float = Field(0.06, gt=0.0, le=2.0)
+    #: Operator covariance model: ``diagonal`` (per-operator, the v1) or ``full``
+    #: (Jacobian-propagated covariance, a later upgrade — §5.3).
+    priorOperatorCovarianceMode: Literal["diagonal", "full"] = "diagonal"
+    #: Two-pass activation (§5.4): fit data-only first, measure operator precision,
+    #: then refit with only the under-observed operator priors, so a well-observed
+    #: move is never damped. Off (default) = the cheaper single-pass quote-support
+    #: gate (no extra fit). Calibration-affecting -> bumps the options version.
+    priorDataOnlyPrepass: bool = False
+    #: Risk-reversal / collar sign convention: ``call_put`` = call-delta minus
+    #: put-delta vol, ``put_call`` = the opposite (§5.1, desk choice).
+    collarSign: Literal["call_put", "put_call"] = "call_put"
+    #: Smile factors the prior may persist in ``smile_factor`` mode (§6): ATM vol,
+    #: ATM skew, ATM curvature, optional wing slopes, var-swap vol.
+    priorFactorSet: list[str] = Field(default=["ATM", "skew", "curvature", "VarSwap"])
+    #: Base factor-prior budget as a percent of the summed quote weights (§6).
+    priorFactorStrengthPct: float = Field(50.0, ge=0.0, le=1000.0)
+    #: Residual deep-tail strike-anchor budget in ``hybrid`` mode, as a percent of
+    #: the summed quote weights — applied only where no operator/quote covers the
+    #: tail (uses ``priorAnchorDeltas`` for the deep placements, §7).
+    priorTailAnchorStrengthPct: float = Field(20.0, ge=0.0, le=1000.0)
+
+    @field_validator("priorOperatorSet")
+    @classmethod
+    def _clean_operators(cls, v: list[str]) -> list[str]:
+        """Keep known operator names in declaration order (dedup); empty -> default.
+
+        Known: ATM, RR25/BF25 (25-delta), RR10/BF10 (10-delta), VarSwap. Mirrors
+        the registry in volfit.calib.operators so the UI cannot persist an op the
+        builder does not know."""
+        known = ["ATM", "RR25", "BF25", "RR10", "BF10", "VarSwap"]
+        kept = [op for op in known if op in set(v)]
+        return kept or ["ATM", "RR25", "BF25", "VarSwap"]
+
+    @field_validator("priorFactorSet")
+    @classmethod
+    def _clean_factors(cls, v: list[str]) -> list[str]:
+        """Keep known factor names in canonical order (dedup); empty -> default."""
+        known = ["ATM", "skew", "curvature", "leftWing", "rightWing", "VarSwap"]
+        kept = [f for f in known if f in set(v)]
+        return kept or ["ATM", "skew", "curvature", "VarSwap"]
     # local-vol-affine vertex grid + roughness (the single source of truth: the
     # affine fit reads these directly; the Local-Vol workspace has no own knobs).
     #: Strike-vertex placement: "delta" = the symmetric delta axis (dense near
