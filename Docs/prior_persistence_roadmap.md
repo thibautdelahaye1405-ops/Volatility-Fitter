@@ -126,11 +126,20 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
   resolves to operator/hybrid, not strike_gap — prior-specific tests set the mode
   explicitly.)
 
-### Phase 6 — Factor mode, Hybrid, Graph-only
-- Factor extraction (`calib/factors.py` or in operators): level/skew/curvature/
-  wing/var-swap with the coverage gate. Hybrid = operators + deep-tail strike
-  anchor where no operator/quote covers. Graph-only short-circuits all calibration
-  anchors (lit nodes pure data; graph carries the prior for dark nodes).
+### Phase 6 — Factor mode, Hybrid, Graph-only  ✅ DONE
+- **Smile factors** (`calib/factors.py`): ATM-local signed σ-baskets (level / skew /
+  curvature / optional wing slopes + var-swap) via FD stencils, returning the SAME
+  `OperatorPriorTarget` so every consumer is unchanged. Shares the operators'
+  `assemble_target` / `varswap_rec` (refactored out of `operators.py`).
+- **Hybrid** = operators + a residual deep-tail strike anchor at the deltas below
+  the shallowest wing operator (`operators.hybrid_tail_deltas`,
+  `priorTailAnchorStrengthPct`). `prior_targets` sets BOTH `operator_prior` and the
+  tail `prior_anchor`; the calibrators stack both blocks.
+- LV path: `prior_lv.build_factor_lv_targets` + the shared
+  `lv_targets_from_operator_prior` converter; `_prior_lv_targets` routes factor /
+  hybrid (hybrid adds the deep-tail quotes via a parametrized `_prior_anchor_quotes`).
+- **Graph-only** short-circuits all calibration anchors (already inert from Phase 5;
+  lit nodes pure data, graph carries the dark-node prior).
 
 ### Phase 7 — Diagnostics + frontend
 - Backend per-operator/factor diagnostics table (prior · data-only · final · obs

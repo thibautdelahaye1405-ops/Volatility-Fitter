@@ -54,6 +54,19 @@ OPERATOR_DELTAS: dict[str, float] = {
 KNOWN_OPERATORS = ("ATM", "RR25", "BF25", "RR10", "BF10", "VarSwap")
 
 
+def hybrid_tail_deltas(op_set: list[str], anchor_deltas) -> tuple[float, ...]:
+    """Deep-tail deltas for the hybrid residual strike anchor (design note §7).
+
+    The ``anchor_deltas`` below the shallowest active RR/BF operator delta — i.e.
+    where no quote operator reaches — so the tail anchor only persists the deep
+    unquoted wing. Falls back to (0.02, 0.05) when the operator set has no wing
+    operator (only ATM / VarSwap)."""
+    op_deltas = [OPERATOR_DELTAS[op] for op in op_set if op in OPERATOR_DELTAS]
+    floor = min(op_deltas) if op_deltas else 0.10
+    tail = tuple(float(d) for d in anchor_deltas if d < floor)
+    return tail or (0.02, 0.05)
+
+
 @dataclass(frozen=True)
 class OperatorPriorTarget:
     """A resolved set of active operator-prior penalties for one slice fit.
@@ -205,7 +218,100 @@ def _operator_obs_info(coeff_row: np.ndarray, support: np.ndarray) -> float:
     return 1.0 / denom if denom > 0.0 else 0.0
 
 
-# ----------------------------------------------------------- builder
+# ----------------------------------------------------------- builder (shared)
+def assemble_target(
+    names: list[str],
+    legs_k: np.ndarray,
+    coeff: np.ndarray,
+    prior_w: Callable[[np.ndarray], np.ndarray],
+    prior_tau: float,
+    tau: float,
+    k_quotes: np.ndarray,
+    weights: np.ndarray | None,
+    total_budget: float,
+    required_precision: float,
+    gap_exponent: float,
+    bandwidth: float,
+) -> OperatorPriorTarget | None:
+    """Gate a set of signed σ-baskets into an OperatorPriorTarget, or None.
+
+    Shared by the quote operators (delta strikes) and the smile factors (ATM-local
+    finite-difference stencils): both are signed baskets ``O = Σ_a c_a σ(k_a)``, so
+    the gate (§9.3) / budget split / diagnostics are identical — only the leg
+    placement differs. Prior value is in VOL space (the variance-time rescale
+    cancels: ``σ_prior(k) = sqrt(prior_w(k)/prior_tau)``). ``total_budget`` is split
+    across the under-observed baskets in proportion to their activation gap; a
+    fully-observed set returns None."""
+    if not names:
+        return None
+    sigma_prior = _sigma_at(prior_w, legs_k, prior_tau)
+    prior_value = coeff @ sigma_prior
+    support = _quote_support(k_quotes, weights, legs_k, bandwidth)
+    obs = np.array([_operator_obs_info(coeff[r], support) for r in range(len(names))])
+    gap = np.asarray(activation_gap(obs, max(required_precision, _EPS), gap_exponent), dtype=float)
+    gsum = float(gap.sum())
+    if gsum <= 0.0:
+        return None
+    lam = total_budget * gap / gsum
+    keep = lam > 0.0
+    if not keep.any():
+        return None
+    scale = np.ones(len(names))  # vol-error units (reserved for future tuning)
+    diags = [
+        {
+            "operator": names[r],
+            "priorValue": float(prior_value[r]),
+            "obsPrecision": float(obs[r]),
+            "requiredPrecision": float(required_precision),
+            "gap": float(gap[r]),
+            "activeLambda": float(lam[r]),
+        }
+        for r in range(len(names))
+        if keep[r]
+    ]
+    return OperatorPriorTarget(
+        names=[names[r] for r in range(len(names)) if keep[r]],
+        legs_k=legs_k,
+        coeff=coeff[keep],
+        prior_value=prior_value[keep],
+        scale=scale[keep],
+        active_lambda=lam[keep],
+        tau=float(tau),
+        diagnostics=diags,
+    )
+
+
+def varswap_rec(
+    prior_w: Callable[[np.ndarray], np.ndarray],
+    prior_tau: float,
+    tau: float,
+    k_quotes: np.ndarray,
+    weights: np.ndarray | None,
+    total_budget: float,
+    required_precision: float,
+    gap_exponent: float,
+    bandwidth: float,
+) -> VarSwapPriorRec:
+    """The var-swap operator rec: coverage measured over a broad ATM+wings probe.
+
+    Shared by operator and factor modes. The var-swap level (tail-aware) is
+    under-observed unless quotes reach ~2 ATM-std into the wings; its prior value is
+    the fair var-swap re-expressed at the node tau."""
+    no_vs = VarSwapPriorRec(active=False, prior_total_var=0.0, weight=0.0, gap=0.0)
+    sig_atm = float(_sigma_at(prior_w, np.array([0.0]), prior_tau)[0])
+    wing = 2.0 * sig_atm * math.sqrt(prior_tau)
+    probe = np.array([-wing, 0.0, wing])
+    psup = _quote_support(k_quotes, weights, probe, bandwidth)
+    vs_obs = 1.0 / float(np.sum(1.0 / (psup + _EPS)))  # harmonic over the probe
+    vs_gap = float(activation_gap(vs_obs, max(required_precision, _EPS), gap_exponent))
+    if vs_gap <= 0.0:
+        return no_vs
+    w_vs = varswap_total_variance(prior_w) * (tau / prior_tau)
+    return VarSwapPriorRec(
+        active=True, prior_total_var=float(w_vs), weight=total_budget * vs_gap, gap=vs_gap
+    )
+
+
 def build_operator_prior(
     prior_w: Callable[[np.ndarray], np.ndarray],
     prior_tau: float,
@@ -220,78 +326,28 @@ def build_operator_prior(
     gap_exponent: float = 1.0,
     bandwidth: float = 0.06,
 ) -> tuple[OperatorPriorTarget | None, VarSwapPriorRec]:
-    """Resolve the active operator-prior target + var-swap rec from a prior smile.
+    """Resolve the active quote-operator prior (ATM/RR/BF) + var-swap rec.
 
     ``prior_w(k)`` is the (transported) prior total variance, ``prior_tau`` its
     variance time, ``tau`` the node's. ``k_quotes`` / ``weights`` are the live
-    quotes (drive the §9.3 activation gate). ``total_budget`` is the operator-prior
-    LSQ budget (a percent of the summed quote weights), distributed across the
-    under-observed operators in proportion to their activation gap. Returns
-    ``(target | None, varswap_rec)`` — None when nothing is under-observed."""
+    quotes (drive the §9.3 gate). ``total_budget`` is split across the
+    under-observed operators by activation gap. Returns ``(target | None,
+    varswap_rec)`` — None when nothing is under-observed."""
     no_vs = VarSwapPriorRec(active=False, prior_total_var=0.0, weight=0.0, gap=0.0)
     k_quotes = np.asarray(k_quotes, dtype=float)
     if total_budget <= 0.0 or tau <= 0.0 or prior_tau <= 0.0 or k_quotes.size == 0:
         return None, no_vs
-
-    # ---- vol operators (ATM/RR/BF): legs frozen on the prior smile ----
     legs_k, coeff, names = _resolve_legs(prior_w, prior_tau, op_set, collar_sign)
-    target: OperatorPriorTarget | None = None
-    if names:
-        # Prior operator value in VOL space (variance-time rescale cancels):
-        # sigma_prior(k) = sqrt(prior_w(k) / prior_tau).
-        sigma_prior = _sigma_at(prior_w, legs_k, prior_tau)
-        prior_value = coeff @ sigma_prior
-        support = _quote_support(k_quotes, weights, legs_k, bandwidth)
-        obs = np.array([_operator_obs_info(coeff[r], support) for r in range(len(names))])
-        gap = np.asarray(
-            activation_gap(obs, max(required_precision, _EPS), gap_exponent), dtype=float
-        )
-        gsum = float(gap.sum())
-        scale = np.ones(len(names))  # vol-error units (reserved for future tuning)
-        if gsum > 0.0:
-            lam = total_budget * gap / gsum
-            keep = lam > 0.0
-            if keep.any():
-                diags = [
-                    {
-                        "operator": names[r],
-                        "priorValue": float(prior_value[r]),
-                        "obsPrecision": float(obs[r]),
-                        "requiredPrecision": float(required_precision),
-                        "gap": float(gap[r]),
-                        "activeLambda": float(lam[r]),
-                    }
-                    for r in range(len(names))
-                    if keep[r]
-                ]
-                target = OperatorPriorTarget(
-                    names=[names[r] for r in range(len(names)) if keep[r]],
-                    legs_k=legs_k,
-                    coeff=coeff[keep],
-                    prior_value=prior_value[keep],
-                    scale=scale[keep],
-                    active_lambda=lam[keep],
-                    tau=float(tau),
-                    diagnostics=diags,
-                )
-
-    # ---- var-swap operator: coverage measured over a broad ATM+wings probe ----
-    vs = no_vs
-    if "VarSwap" in op_set:
-        sig_atm = float(_sigma_at(prior_w, np.array([0.0]), prior_tau)[0])
-        wing = 2.0 * sig_atm * math.sqrt(prior_tau)
-        probe = np.array([-wing, 0.0, wing])
-        psup = _quote_support(k_quotes, weights, probe, bandwidth)
-        vs_obs = 1.0 / float(np.sum(1.0 / (psup + _EPS)))  # harmonic over the probe
-        vs_gap = float(activation_gap(vs_obs, max(required_precision, _EPS), gap_exponent))
-        if vs_gap > 0.0:
-            w_vs = varswap_total_variance(prior_w) * (tau / prior_tau)
-            vs = VarSwapPriorRec(
-                active=True,
-                prior_total_var=float(w_vs),
-                weight=total_budget * vs_gap,
-                gap=vs_gap,
-            )
+    target = assemble_target(
+        names, legs_k, coeff, prior_w, prior_tau, tau, k_quotes, weights,
+        total_budget, required_precision, gap_exponent, bandwidth,
+    )
+    vs = (
+        varswap_rec(prior_w, prior_tau, tau, k_quotes, weights, total_budget,
+                    required_precision, gap_exponent, bandwidth)
+        if "VarSwap" in op_set
+        else no_vs
+    )
     return target, vs
 
 

@@ -32,6 +32,7 @@ from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
+from volfit.calib.operators import hybrid_tail_deltas
 from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.weights import resolve_weights
 from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
@@ -689,7 +690,7 @@ def _diagnostics(solution, x_grid: np.ndarray) -> tuple[list[float], int, bool]:
 
 
 def _prior_anchor_quotes(
-    state: AppState, ticker: str, rows
+    state: AppState, ticker: str, rows, deltas=None, weight_pct: float | None = None
 ) -> tuple[list[OptionQuote], list[VarSwapQuote]]:
     """Extra anchor quotes pulling the LV surface toward the (transported) prior.
 
@@ -700,9 +701,15 @@ def _prior_anchor_quotes(
     and emitted as OptionQuotes (price = prior price, tol = vega·VOL_TOL/√weight —
     higher weight ⇒ tighter) plus a companion var-swap quote scaled by how
     unobserved the smile is. Empty unless ``autoLoadPrior`` is on and a prior is
-    active."""
+    active.
+
+    ``deltas`` / ``weight_pct`` override the anchor placements and budget (default
+    ``priorAnchorDeltas`` / ``priorAnchorWeightPct``) — the hybrid mode passes the
+    deep-tail subset + ``priorTailAnchorStrengthPct`` for the residual tail anchor."""
     opts = state.options()
-    if not opts.autoLoadPrior or opts.priorAnchorWeightPct <= 0.0:
+    pct = opts.priorAnchorWeightPct if weight_pct is None else weight_pct
+    use_deltas = tuple(opts.priorAnchorDeltas if deltas is None else deltas)
+    if not opts.autoLoadPrior or pct <= 0.0:
         return [], []
     active = state.active_prior(ticker)
     if active is None:
@@ -722,10 +729,9 @@ def _prior_anchor_quotes(
         moved = prior_transport.transported_prior_slice(node, float(prepared.forward), regime)
         qw = resolve_weights(scheme, k, w)
         sum_w = float(np.sum(qw)) if qw is not None else float(k.size)
-        budget = (opts.priorAnchorWeightPct / 100.0) * sum_w
+        budget = (pct / 100.0) * sum_w
         target, unmet = build_prior_anchor(
-            moved.implied_w, node.tau, k, tau, budget, scheme=scheme,
-            deltas=tuple(opts.priorAnchorDeltas),
+            moved.implied_w, node.tau, k, tau, budget, scheme=scheme, deltas=use_deltas,
         )
         if target is not None:
             tol = _VOL_TOL / (target.inv_vega * np.sqrt(np.maximum(target.weights, 1e-12)))
@@ -746,10 +752,11 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
     """Per-mode LV prior targets: ``(extra option quotes, baskets, extra var-swaps)``.
 
     Routes ``OptionsSettings.priorPersistenceMode`` (volfit.api.prior_mode) for the
-    LV surface: ``strike_gap`` -> the legacy data-gap synthetic option quotes (the
-    ``_prior_anchor_quotes`` path); ``quote_operator`` / ``hybrid`` -> signed-basket
-    operator targets (volfit.api.prior_lv) that KEEP the RR/BF coupling; ``off`` /
-    ``overlay`` / ``graph_only`` / ``smile_factor`` (until Phase 6) -> none. Gated by
+    LV surface: ``strike_gap`` -> the legacy data-gap synthetic option quotes;
+    ``quote_operator`` -> signed-basket operator targets (keep the RR/BF coupling);
+    ``smile_factor`` -> signed-basket factor targets (level/skew/curvature);
+    ``hybrid`` -> operator baskets PLUS a residual deep-tail strike anchor where no
+    operator reaches; ``off`` / ``overlay`` / ``graph_only`` -> none. Gated by
     ``autoLoadPrior`` (the transition master) + an active prior, mirroring
     ``service.prior_targets`` so the LV surface and the parametric smile agree."""
     opts = state.options()
@@ -759,13 +766,14 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
     if plan.strike_anchor:
         prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
         return prior_opts, [], prior_vs
-    if plan.operators:
+    if plan.operators or plan.factors:
         active = state.active_prior(ticker)
         if active is None:
             return [], [], []
         from volfit.api import prior_transport
-        from volfit.api.prior_lv import build_operator_lv_targets
+        from volfit.api.prior_lv import build_factor_lv_targets, build_operator_lv_targets
 
+        build = build_factor_lv_targets if plan.factors else build_operator_lv_targets
         regime = state.dynamics_regime()
         scheme = state.fit_settings().weightScheme
         baskets: list = []
@@ -776,10 +784,17 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
                 continue
             moved = prior_transport.transported_prior_slice(node, float(prepared.forward), regime)
             qw = resolve_weights(scheme, k, w)
-            b, v = build_operator_lv_targets(moved.implied_w, node.tau, tau, k, qw, opts)
+            b, v = build(moved.implied_w, node.tau, tau, k, qw, opts)
             baskets.extend(b)
             vs_quotes.extend(v)
-        return [], baskets, vs_quotes
+        # hybrid: add the residual deep-tail strike anchor (operators carry the rest).
+        extra_opts: list = []
+        if plan.tail_anchor:
+            tail_deltas = hybrid_tail_deltas(opts.priorOperatorSet, opts.priorAnchorDeltas)
+            extra_opts, _tail_vs = _prior_anchor_quotes(
+                state, ticker, rows, deltas=tail_deltas, weight_pct=opts.priorTailAnchorStrengthPct
+            )
+        return extra_opts, baskets, vs_quotes
     return [], [], []
 
 

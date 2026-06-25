@@ -51,7 +51,12 @@ from volfit.calib.calendar import (
     variance_floor_targets,
 )
 from volfit.api.prior_mode import resolve_prior_mode
-from volfit.calib.operators import OperatorPriorTarget, build_operator_prior
+from volfit.calib.factors import build_factor_prior
+from volfit.calib.operators import (
+    OperatorPriorTarget,
+    build_operator_prior,
+    hybrid_tail_deltas,
+)
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
 from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
@@ -317,8 +322,23 @@ def prior_targets(
             pvs = VarSwapTarget(total_var=float(w_vs), weight=budget * unmet, t=float(prepared.tau))
         return PriorTargets(prior_anchor=anchor, prior_var_swap=pvs)
 
+    if plan.factors:
+        # smile_factor: ATM-local level/skew/curvature distance to the prior (§6).
+        budget = (options.priorFactorStrengthPct / 100.0) * sum_w
+        target, vs = build_factor_prior(
+            moved.implied_w, node.tau, prepared.tau, k, weights, budget,
+            factor_set=list(options.priorFactorSet),
+            step=options.priorOperatorBandwidth,
+            required_precision=options.priorOperatorRequiredPrecision,
+            gap_exponent=options.priorOperatorGapExponent,
+            bandwidth=options.priorOperatorBandwidth,
+        )
+        pvs = None
+        if vs.active and vs.weight > 0.0:
+            pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
+        return PriorTargets(operator_prior=target, prior_var_swap=pvs)
+
     # operator / hybrid: the signed quote-operator prior (ATM/RR/BF; design note §5).
-    # The deep-tail strike anchor of hybrid is added in Phase 6.
     budget = (options.priorOperatorStrengthPct / 100.0) * sum_w
     target, vs = build_operator_prior(
         moved.implied_w, node.tau, prepared.tau, k, weights, budget,
@@ -331,7 +351,18 @@ def prior_targets(
     pvs = None
     if vs.active and vs.weight > 0.0:
         pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
-    return PriorTargets(operator_prior=target, prior_var_swap=pvs)
+    anchor = None
+    if plan.tail_anchor:
+        # hybrid (design note §7): a residual deep-tail strike anchor only where no
+        # operator/quote reaches (the deltas below the shallowest wing operator).
+        tail_deltas = hybrid_tail_deltas(options.priorOperatorSet, options.priorAnchorDeltas)
+        tail_budget = (options.priorTailAnchorStrengthPct / 100.0) * sum_w
+        if tail_budget > 0.0:
+            anchor, _unmet = build_prior_anchor(
+                moved.implied_w, node.tau, k, prepared.tau, tail_budget,
+                scheme=state.fit_settings().weightScheme, deltas=tail_deltas,
+            )
+    return PriorTargets(prior_anchor=anchor, operator_prior=target, prior_var_swap=pvs)
 
 
 def edited_fit_inputs(

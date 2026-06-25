@@ -170,6 +170,37 @@ def test_prior_targets_operator_mode_routes_to_operators():
     assert pt.operator_prior is not None and len(pt.operator_prior.names) > 0
 
 
+def test_prior_targets_hybrid_sets_operator_and_tail_anchor():
+    """hybrid mode returns BOTH the operator prior AND a residual deep-tail strike
+    anchor (the deltas below the shallowest wing operator)."""
+    state, iso, prepared, _k = _strike_gap_state()
+    state.set_options(state.options().model_copy(update={
+        "priorPersistenceMode": "hybrid", "autoLoadPrior": True,
+        "priorOperatorBandwidth": 0.03,
+    }))
+    priors.save_all(state)
+    priors.fetch_all(state)
+    k_sparse = np.array([-0.01, 0.0, 0.01])  # sparse -> operators + tail both bite
+    pt = service.prior_targets(state, TICKER, iso, k_sparse, None, prepared)
+    assert pt.operator_prior is not None and len(pt.operator_prior.names) > 0
+    assert pt.prior_anchor is not None and pt.prior_anchor.k.size > 0  # the deep-tail anchor
+
+
+def test_prior_targets_smile_factor_routes_to_factors():
+    """smile_factor mode routes to the factor prior (operator_prior slot), no strike anchor."""
+    state, iso, prepared, _k = _strike_gap_state()
+    state.set_options(state.options().model_copy(update={
+        "priorPersistenceMode": "smile_factor", "autoLoadPrior": True,
+        "priorOperatorBandwidth": 0.02,
+    }))
+    priors.save_all(state)
+    priors.fetch_all(state)
+    k_sparse = np.array([-0.004, 0.0, 0.004])  # very sparse -> ATM-local factors bite
+    pt = service.prior_targets(state, TICKER, iso, k_sparse, None, prepared)
+    assert pt.prior_anchor is None
+    assert pt.operator_prior is not None and len(pt.operator_prior.names) > 0
+
+
 def test_prior_targets_off_and_graph_only_are_empty():
     """off / overlay / graph_only add no calibration penalty even with a prior active."""
     state, iso, prepared, k = _strike_gap_state()
@@ -199,6 +230,41 @@ def test_affine_prior_anchor_quotes_gated_and_present():
     # Off -> no anchor quotes.
     state.set_options(state.options().model_copy(update={"autoLoadPrior": False}))
     assert affine_fit._prior_anchor_quotes(state, TICKER, rows) == ([], [])
+
+
+def test_affine_prior_lv_targets_route_by_mode():
+    """affine_fit._prior_lv_targets returns the right shape per mode (no errors):
+    strike_gap -> option quotes; operator/factor -> baskets; hybrid -> baskets (+ a
+    deep-tail anchor); off -> empty."""
+    from volfit.api import affine_fit
+
+    state = AppState(REF_DATE)
+    state.set_options(state.options().model_copy(update={"autoLoadPrior": True}))
+    priors.save_all(state)
+    priors.fetch_all(state)
+    rows = affine_fit._gather(state, TICKER, "mid")
+
+    def _set(mode, **extra):
+        state.set_options(state.options().model_copy(update={"priorPersistenceMode": mode, **extra}))
+
+    _set("strike_gap")
+    o, b, _v = affine_fit._prior_lv_targets(state, TICKER, rows)
+    assert len(o) > 0 and b == []  # legacy strike quotes
+
+    _set("quote_operator", priorOperatorBandwidth=0.03)
+    o, b, _v = affine_fit._prior_lv_targets(state, TICKER, rows)
+    assert o == [] and isinstance(b, list)  # baskets path (may be empty on dense data)
+
+    _set("hybrid", priorOperatorBandwidth=0.03)
+    o, b, _v = affine_fit._prior_lv_targets(state, TICKER, rows)
+    assert isinstance(o, list) and isinstance(b, list)  # operators + tail anchor, no error
+
+    _set("smile_factor", priorOperatorBandwidth=0.02)
+    o, b, _v = affine_fit._prior_lv_targets(state, TICKER, rows)
+    assert o == [] and isinstance(b, list)  # factor baskets path
+
+    _set("off")
+    assert affine_fit._prior_lv_targets(state, TICKER, rows) == ([], [], [])
 
 
 def test_fetched_prior_busts_the_fit_cache():
