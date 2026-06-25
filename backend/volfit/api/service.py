@@ -818,9 +818,14 @@ def _prior_overlay(
     Precedence: the ACTIVE fetched prior (transported to the current forward under
     the dynamics regime, drawn dotted) -> a saved per-node prior -> the current fit
     (so the chart always carries a prior line). The transported prior is sampled on
-    the model curve's own k grid so the dotted line aligns with the smile."""
+    the model curve's own k grid so the dotted line aligns with the smile.
+
+    In persistence mode ``off`` (``draw_overlay`` False) no prior is drawn at all —
+    the viewer shows the pure current-market fit (design note §10)."""
     from volfit.api import prior_transport
 
+    if not resolve_prior_mode(state.options()).draw_overlay:
+        return [], False
     node = prior_transport.prior_node(state.active_prior(ticker), iso)
     if node is not None:
         grid = np.array([p.k for p in model], dtype=float)
@@ -893,8 +898,11 @@ def _no_fit_prior(
     state: AppState, ticker: str, iso: str, forward: float
 ) -> tuple[list[SmilePoint], bool]:
     """The dotted ACTIVE prior on a default grid (transported to ``forward`` under
-    the dynamics regime), or ``([], False)`` when none exists / no forward yet."""
-    if forward <= 0.0:
+    the dynamics regime), or ``([], False)`` when none exists / no forward yet.
+
+    Suppressed in persistence mode ``off`` (``draw_overlay`` False), like the
+    post-fit overlay, so a gated node shows no prior either."""
+    if forward <= 0.0 or not resolve_prior_mode(state.options()).draw_overlay:
         return [], False
     from volfit.api import prior_transport
 

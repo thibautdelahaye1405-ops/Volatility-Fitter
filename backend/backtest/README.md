@@ -75,19 +75,35 @@ separately:
   design goal across modes: operators/factors follow the level and reconstruct the
   jumped wing (shape is level-invariant), while the legacy strike-gap anchor clings
   to yesterday's absolute level. This is the self-contained mode comparison.
-- **Future (empirical, needs ≥2 captured days):** a temporal extension — fit
-  day _T-1_ as the prior, then on day _T_ thin the chain to the ATM region and
-  score each `priorPersistenceMode` (off / strike_gap / quote_operator /
-  smile_factor / hybrid) by the reconstructed-wing error vs the full day-_T_ chain.
-  This is what would tune the two flagged defaults: the var-swap coverage probe
-  (`operators._VARSWAP_PROBE_STD`, now 1.4σ) and the operator support bandwidth
-  (`OptionsSettings.priorOperatorBandwidth`, 0.06 — leaks ATM support into the
-  wing legs). Wire it as a `dispatch`-level axis once the temporal fixtures exist.
+- **Empirical (BUILT — `temporal.py`):** the temporal extension, now that ≥2
+  consecutive days are captured per regime. For every consecutive day pair (_T-1_,
+  _T_) and asset it fits _T-1_'s full chain → freezes it as the active prior
+  (`priors.capture_snapshot`, `lv=False`), thins day _T_ to its ATM region
+  (`|k| ≤ c_atm·σ√τ`, fed to the fit) and scores the reconstructed MODERATE wing
+  (`c_atm·σ√τ < |k| ≤ c_wing·σ√τ`, held out) for each `priorPersistenceMode`
+  (off / strike_gap / quote_operator / smile_factor / hybrid) vs the true day-_T_
+  quotes. `off` (no prior) is the baseline each mode must beat; the deep tail beyond
+  `c_wing` σ is excluded (no operator reaches it and LQD far-wing extrapolation off a
+  narrow ATM set is fragile). Sweeps the two flagged defaults — the var-swap coverage
+  probe (`operators._VARSWAP_PROBE_STD`, 1.4σ) and the operator support bandwidth
+  (`OptionsSettings.priorOperatorBandwidth`, 0.06) — and reports, per (mode, bandwidth,
+  probe), median wing RMS, median improvement over off, and the win-rate.
+
+      python -m backtest.temporal --regime spike_aug2024
+      python -m backtest.temporal --regime spike_aug2024 --asset SPX \
+          --modes off,quote_operator,hybrid --bandwidths 0.04,0.06,0.10 --probes 1.0,1.4,2.0
+
+  Writes `results/<regime>_temporal_prior.json` (per-node rows + the aggregate
+  summary). Covered by `tests/test_temporal_backtest.py` (helpers + a synthetic
+  self-prior end-to-end). **Findings + the tuning verdict:**
+  `FINDINGS_prior_temporal.md` (TL;DR: the full spike regime confirms `hybrid` is the
+  best mode at every bandwidth/probe; the operator bandwidth is not a useful lever —
+  no shipped default changed).
 
 ## Status
 
 Capture (REST + flat-file) + compute (dispatch/replay) + metrics/analyze built and
-tested. Pilot = Aug-2024 spike × 8 assets. **Remaining:** graph leave-one-out
-(Phase 6 — runs once ≥2 days are captured; sticky-moneyness + SSR 1.0), the
-NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`), and the
-prior-mode temporal axis (above).
+tested. Pilot = Aug-2024 spike × 8 assets. The **prior-mode temporal axis**
+(`temporal.py`, above) is built and runnable. **Remaining:** graph leave-one-out
+(Phase 6 — runs once ≥2 days are captured; sticky-moneyness + SSR 1.0) and the
+NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`).

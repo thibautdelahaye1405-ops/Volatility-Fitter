@@ -10,6 +10,43 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-25 (resume here)
 
+### 🧭 SESSION WRAP (2026-06-25) — prior-persistence follow-ons DONE
+
+The two open prior-persistence follow-ons (from the 7-mode menu wrap below) are
+both closed on **main**:
+
+- **Overlay-hide-on-`off`.** In persistence mode `off` no prior curve is drawn at
+  all (pure current market) — `service._prior_overlay` / `_no_fit_prior` and
+  `affine_transport.attach_affine_priors` now consult `resolve_prior_mode.draw_overlay`
+  and return empty; the SmileChart legend drops the "Prior" entry when the curve is
+  empty. `overlay` mode still draws the dotted transported prior (no penalty). The
+  calibration was already inert in `off` (Phase 8); this is the matching display fix.
+  Guard: `test_priors.test_off_mode_hides_prior_overlay`.
+- **Empirical temporal mode-scoring harness** (`backend/backtest/temporal.py`, the
+  Phase-8 follow-on flagged in `backtest/README.md`). The ≥2-day prerequisite is met
+  — all 3 captured regimes have consecutive days. For every (asset, T-1→T) pair it
+  fits T-1's full chain → freezes it as the active prior (`capture_snapshot(lv=False)`,
+  a new backward-compatible flag), thins day T to its ATM region (`|k|≤c_atm·σ√τ`),
+  refits under each `priorPersistenceMode`, and scores the reconstructed MODERATE wing
+  (`c_atm·σ√τ<|k|≤c_wing·σ√τ`, held out) vs the true day-T quotes; `off` is the
+  baseline. Sweeps the two flagged defaults (var-swap probe `_VARSWAP_PROBE_STD`,
+  operator `priorOperatorBandwidth`); reports per-(mode,bw,probe) median wing RMS /
+  median improvement-over-off / win-rate. `tests/test_temporal_backtest.py` (helpers
+  + synthetic self-prior end-to-end). **VERDICT** (full spike regime, 1117 nodes +
+  a bandwidth×probe sweep; numbers + tables in `backtest/FINDINGS_prior_temporal.md`):
+  **`hybrid` (the shipped default) reconstructs the held-out wing ~32 bp better than
+  no-prior, ~66% of the time, and wins at EVERY (bandwidth, probe)**; `strike_gap`
+  close second; pure `quote_operator`/`smile_factor` never beat off at the median at
+  any bandwidth — the reconstruction comes from the tail/strike anchor, not the signed
+  RR/BF operators. **So `priorOperatorBandwidth` is NOT a productive lever and is left
+  at 0.06; the var-swap probe stays 1.4σ** (probe 1.0 marginally edges it for hybrid —
+  the one candidate to confirm cross-regime before flipping a shipped default). **No
+  default changed** — the harness confirms the shipped config. Next: rerun across
+  `high_oct2022` / `low_jul2023` for regime-robustness.
+
+Full suite **827 passed, 1 skipped** (was 822/1; +4 `test_temporal_backtest.py`, +1
+overlay test). ruff + strict-TS clean.
+
 ### 🧭 SESSION WRAP (2026-06-25) — short-dated Local-Vol fit FIXED (fixes #1–#2)
 
 Short-dated LV smiles (a true 6-DTE SPY weekly) fit **catastrophically** — 108 bp

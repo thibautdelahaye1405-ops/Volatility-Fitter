@@ -152,8 +152,11 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
   the §9.4 diagnostics table (per-expiry active factors with gap + λ). Wired into
   `OptionsViewer` Calibration card; the Workflow "Auto-load prior" toggle relabelled
   as the master enable. strict-TS green.
-- (Overlay-visibility hiding of the dotted prior in `off` mode is a small follow-on;
-  the dotted prior currently always draws when a prior is active.)
+- **Overlay-hide-on-`off` (DONE):** in mode `off` (`resolve_prior_mode.draw_overlay`
+  False) no prior curve is drawn at all — `service._prior_overlay` / `_no_fit_prior`
+  and `affine_transport.attach_affine_priors` return empty, and the SmileChart legend
+  drops the "Prior" entry when the curve is empty. `overlay` still draws the dotted
+  transported prior (no penalty). Guard: `test_priors.test_off_mode_hides_prior_overlay`.
 
 ### Phase 8 — Validation & default flip  ✅ DONE
 - **Synthetic no-damp validation** (`tests/test_prior_nodamp.py`): an overnight
@@ -161,11 +164,13 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
   the level and reconstruct the jumped wing (shape is level-invariant) while the
   strike-gap anchor clings to yesterday's absolute level. The runnable mode
   comparison (the precision harness scores single-snapshot fits, not temporal
-  persistence — the empirical temporal axis is documented in `backtest/README.md`
-  as a ≥2-day-fixture follow-on).
+  persistence). The **empirical temporal axis is now built** —
+  `backend/backtest/temporal.py` (fit _T-1_ → thin _T_ to ATM → score reconstructed
+  moderate wing per mode, sweeping bandwidth + var-swap probe; see
+  `backtest/README.md` and `tests/test_temporal_backtest.py`).
 - **Tuned** the over-eager var-swap coverage probe `2.0σ → 1.4σ`
-  (`operators._VARSWAP_PROBE_STD`); operator bandwidth `0.06` left as-is (flagged
-  for the temporal backtest to tune).
+  (`operators._VARSWAP_PROBE_STD`); operator bandwidth `0.06` left as-is (now
+  tunable empirically via the `backtest/temporal.py` bandwidth × probe sweep).
 - **Flipped the default + retired the `autoLoadPrior` master:** the MODE is now the
   single source of truth (`prior_targets` / `_prior_lv_targets` / `_prior_anchor_quotes`
   no longer gate on `autoLoadPrior`); the schema default mode is `hybrid` (Phase 0),
