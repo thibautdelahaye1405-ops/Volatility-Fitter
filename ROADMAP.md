@@ -8,7 +8,51 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-25 (resume here)
+## STATUS — updated 2026-06-26 (resume here)
+
+### 🧭 SESSION WRAP (2026-06-26) — graph leave-one-out backtest (Phase 6) BUILT
+
+The headline differentiator — graph smile-extrapolation — now has a **temporal
+leave-one-out harness** (`backend/backtest/graph_loo.py` + `graph_edges.py`;
+additive, no production change beyond the already-shipped `capture_snapshot(lv=False)`).
+Per consecutive captured pair (T-1, T): freeze T-1 as the active prior, transport it
+under SSR R, form the lit innovation `d = calibrated_T − transported_prior`, propagate
+through a **directed graph**, and compare the graph posterior for held-out nodes with
+their ACTUAL day-T calibration — all 3 handles (ATM/skew/curvature) + reconstructed
+full-smile wing RMS — and vs the pure transported-prior baseline (the graph's **skill**).
+
+Design (confirmed with the user 2026-06-26):
+- **SSR sweep R∈{0,1}** — R=0 (sticky-moneyness) leaves an underperformer's baseline
+  vol unmoved → OVER-credits the graph; R=1 (sticky-strike) bakes in the full leverage
+  → UNDER-credits it. The truth is bracketed; both reported. (R=2 omitted.)
+- **Both designs** — full_loo (withhold each clean node) + liquid_split (lit=index/ETF,
+  dark=single names = the product use case).
+- **Directed vol-normalized edges** — calendar β=√(T_to/T_from) high-conductance,
+  Index→name β=0.7, SectorETF→name β=0.8, name→name same-sector β=0.6, else 0;
+  absolute β=β_vn·σ_from/σ_to. **Direction:** `w_ij`="j informs i" ⇒ a `GraphEdgeInput`
+  flows to→from, so "index informs name" = `from=NAME,to=INDEX` (verified + test-locked).
+- **Lit calibration runs in mode `off`** (pure market) so the innovation is the genuine
+  market-vs-prior move, not a prior-anchored fit; the active prior still drives the
+  graph *baseline* via `resolve_priors` (independent of the calibration anchor).
+
+**VERDICT (full spike regime, 18 pairs, 4134 held-out nodes; tables in
+`backtest/FINDINGS_graph_loo.md`):**
+- **full_loo — the graph DECISIVELY beats transport: ATM skill +37 bp (R=0) / +26 bp
+  (R=1), wing +3 to +7 bp, with ζ mean ≈ 0 (UNBIASED) and ζ std 0.72–0.90
+  (well-calibrated, slightly conservative).** The "fill a sparse/missing node from its
+  lit neighbours" use case works, driven by CALENDAR coupling. The R-sweep brackets
+  the true skill at +26 to +37 bp exactly as posed (R=0 over-credits, R=1 under-).
+- **liquid_split — cross-asset extrapolation to FULLY-dark names adds ~nothing (ATM
+  skill ≈ 0, wing slightly negative).** Two measured causes: the transported prior is
+  an excellent same-name predictor at very high baseline precision (a 96 bp SPX
+  innovation moves the dark AAPL node 0.01 bp), AND the **8-asset pilot is starved** —
+  no US sector ETF, AAPL/NVDA/JPM share no sector ⇒ `name→name`/`ETF→name` edges are
+  DORMANT. NOT a verdict against the method — the experiment can't exercise it.
+- **Two concrete follow-ups** to give cross-asset a fair test: the **25-asset capture**
+  (same-sector clusters + sector ETFs light the dormant edges), and a **lower baseline
+  precision for DARK nodes** in `graph/precision.py` (a dark target is less certain than
+  a lit prior, so it shouldn't pin the posterior — production change, validate on 25).
+Tests: `tests/test_graph_loo_backtest.py` (taxonomy + direction/√T/vol-norm edge logic).
 
 ### 🧭 SESSION WRAP (2026-06-25) — prior-persistence follow-ons DONE
 

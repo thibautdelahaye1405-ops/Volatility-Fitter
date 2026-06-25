@@ -1,0 +1,151 @@
+"""Directed edge construction for the graph LOO backtest (roadmap Phase 6).
+
+Builds the user-specified directed graph topology over a captured universe:
+
+  * **calendar** (same ticker, adjacent expiries, both directions): high
+    conductance, ``beta = sqrt(T_informer / T_influenced)`` — a vol move at one
+    expiry maps to its neighbour scaled by the sqrt-maturity ratio (short-dated
+    vol-of-vol is larger, so a long expiry moves less than the short that drove it,
+    and vice-versa);
+  * **index -> single name** (same expiry): vol-normalized ``beta = 0.7``,
+    moderate conductance — the systematic market factor;
+  * **sector-ETF -> single name** (same sector, same expiry): ``beta = 0.8``,
+    higher conductance;
+  * **single name -> single name** (same sector, same expiry, both directions):
+    ``beta = 0.6``, moderate conductance;
+  * every other edge: absent (``beta = 0``).
+
+DIRECTION CONVENTION (critical — see volfit.graph.build): the raw weight ``w_ij``
+means "j is relevant when predicting i", and a ``GraphEdgeInput`` writes
+``w[from, to]``. So **information flows from ``toTicker`` to ``fromTicker``** — the
+``to`` node INFORMS the ``from`` node. To encode "the index informs the name" we
+therefore emit ``fromTicker=NAME, toTicker=INDEX`` (the influenced node is ``from``,
+the informer is ``to``). The per-edge beta ``beta_ij`` (i=from, j=to) then scales
+"the from-node's move per unit to-node move", exactly the vol-beta of name on index.
+
+**Vol-normalized beta:** the handles propagate in absolute vol units, so a
+vol-normalized ``beta_vn`` (a relative-move multiplier) becomes the absolute edge
+beta ``beta_vn * sigma_from / sigma_to`` (v1: the same factor on all three handles;
+flagged for per-handle refinement). ``sigma`` is each node's baseline (transported-
+prior) ATM vol — the pre-move scale.
+"""
+
+from __future__ import annotations
+
+import math
+from collections import defaultdict
+from dataclasses import dataclass, field
+
+from volfit.api.schemas import GraphEdgeInput
+
+from backtest.universe import FULL
+
+NodeKey = tuple[str, str]  # (ticker, expiry-ISO)
+
+#: Asset taxonomy from the backtest universe (FULL is the superset of PILOT).
+_SPECS = {a.ticker: a for a in FULL}
+#: ETFs are american-settled non-index roots; the only two in the universe are the
+#: broad international funds (no US sector ETF is captured yet, so the ETF->name
+#: edge class is dormant on the current pilot fixtures).
+_ETF_TICKERS = frozenset({"EEM", "EFA"})
+
+
+def asset_kind(ticker: str) -> str:
+    """``"index"`` (sector=index) | ``"etf"`` | ``"name"`` (single name)."""
+    spec = _SPECS.get(ticker)
+    if spec is not None and spec.sector == "index":
+        return "index"
+    if ticker in _ETF_TICKERS:
+        return "etf"
+    return "name"
+
+
+def asset_sector(ticker: str) -> str:
+    spec = _SPECS.get(ticker)
+    return spec.sector if spec is not None else "unknown"
+
+
+@dataclass(frozen=True)
+class EdgeConfig:
+    """Directed-edge weights (conductance / "precision") + vol-normalized betas."""
+
+    cal_weight: float = 10.0       # calendar conductance (high precision)
+    index_weight: float = 2.0      # index -> name (moderate)
+    etf_weight: float = 4.0        # sector-ETF -> name (higher)
+    name_weight: float = 2.0       # name -> name same sector (moderate)
+    beta_index: float = 0.7
+    beta_etf: float = 0.8
+    beta_name: float = 0.6
+    #: Which index tickers act as cross-asset market hubs (default the broad index;
+    #: connecting every index to every name would multiply-count the market factor).
+    market_indices: tuple[str, ...] = ("SPX",)
+    beta_cap: float = 3.0          # clip vol-ratio / sqrt-T betas to a sane band
+    handles: tuple[str, ...] = field(default=("atm", "skew", "curv"))
+
+
+def _clip(beta: float, cfg: EdgeConfig) -> float:
+    return float(min(max(beta, 0.0), cfg.beta_cap))
+
+
+def _edge(frm: NodeKey, to: NodeKey, weight: float, beta: float) -> GraphEdgeInput:
+    """A directed edge: ``to`` INFORMS ``frm`` (info flows to->from). Same beta on
+    all three handles in v1."""
+    return GraphEdgeInput(
+        fromTicker=frm[0], fromExpiry=frm[1], toTicker=to[0], toExpiry=to[1],
+        weight=weight, betaAtmVol=beta, betaSkew=beta, betaCurv=beta,
+    )
+
+
+def build_directed_edges(
+    nodes: list[NodeKey],
+    sigma: dict[NodeKey, float],
+    t: dict[NodeKey, float],
+    cfg: EdgeConfig | None = None,
+) -> list[GraphEdgeInput]:
+    """The directed edge list (calendar + cross-asset) for one captured universe.
+
+    ``sigma`` / ``t`` are each node's baseline ATM vol and calendar year-fraction.
+    Cross-asset edges connect same-expiry nodes; only single names are *influenced*
+    cross-asset (indices / ETFs receive calendar edges only)."""
+    cfg = cfg or EdgeConfig()
+    edges: list[GraphEdgeInput] = []
+
+    # --- calendar: each adjacent expiry pair informs the other (both directions) ---
+    by_ticker: dict[str, list[NodeKey]] = defaultdict(list)
+    for n in nodes:
+        by_ticker[n[0]].append(n)
+    for ns in by_ticker.values():
+        ns.sort(key=lambda n: t.get(n, 0.0))
+        for a, b in zip(ns[:-1], ns[1:]):  # t[a] <= t[b]
+            ta, tb = max(t.get(a, 0.0), 1e-9), max(t.get(b, 0.0), 1e-9)
+            # b (long) informs a (short): beta = sqrt(T_to / T_from) = sqrt(tb/ta) >= 1
+            edges.append(_edge(a, b, cfg.cal_weight, _clip(math.sqrt(tb / ta), cfg)))
+            # a (short) informs b (long): beta = sqrt(ta/tb) <= 1
+            edges.append(_edge(b, a, cfg.cal_weight, _clip(math.sqrt(ta / tb), cfg)))
+
+    # --- cross-asset, same expiry: informer (to) -> influenced single name (from) ---
+    by_iso: dict[str, list[NodeKey]] = defaultdict(list)
+    for n in nodes:
+        by_iso[n[1]].append(n)
+    for ns in by_iso.values():
+        for influenced in ns:
+            if asset_kind(influenced[0]) != "name":
+                continue  # only single names are influenced cross-asset
+            sec = asset_sector(influenced[0])
+            for informer in ns:
+                if informer == influenced:
+                    continue
+                kind = asset_kind(informer[0])
+                if kind == "index" and informer[0] in cfg.market_indices:
+                    beta_vn, w = cfg.beta_index, cfg.index_weight
+                elif kind == "etf" and asset_sector(informer[0]) == sec:
+                    beta_vn, w = cfg.beta_etf, cfg.etf_weight
+                elif kind == "name" and asset_sector(informer[0]) == sec:
+                    beta_vn, w = cfg.beta_name, cfg.name_weight
+                else:
+                    continue  # every other edge: beta 0 (omitted)
+                sig_from = sigma.get(influenced, 0.0)
+                sig_to = sigma.get(informer, 0.0)
+                ratio = sig_from / sig_to if sig_to > 0.0 else 1.0
+                edges.append(_edge(influenced, informer, w, _clip(beta_vn * ratio, cfg)))
+    return edges
