@@ -82,6 +82,7 @@ def build_display_fit(
     calendar_weight: float = 1e6,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
+    prior_var_swap: VarSwapTarget | None = None,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
 
@@ -118,6 +119,7 @@ def build_display_fit(
             var_swap=var_swap,
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
+            prior_var_swap=prior_var_swap,
         )
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
@@ -129,6 +131,7 @@ def build_display_fit(
             var_swap=var_swap,
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
+            prior_var_swap=prior_var_swap,
         )
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)

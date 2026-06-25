@@ -28,6 +28,7 @@ from __future__ import annotations
 import numpy as np
 from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantile)
 
+from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
@@ -741,6 +742,47 @@ def _prior_anchor_quotes(
     return extra_opts, extra_vs
 
 
+def _prior_lv_targets(state: AppState, ticker: str, rows):
+    """Per-mode LV prior targets: ``(extra option quotes, baskets, extra var-swaps)``.
+
+    Routes ``OptionsSettings.priorPersistenceMode`` (volfit.api.prior_mode) for the
+    LV surface: ``strike_gap`` -> the legacy data-gap synthetic option quotes (the
+    ``_prior_anchor_quotes`` path); ``quote_operator`` / ``hybrid`` -> signed-basket
+    operator targets (volfit.api.prior_lv) that KEEP the RR/BF coupling; ``off`` /
+    ``overlay`` / ``graph_only`` / ``smile_factor`` (until Phase 6) -> none. Gated by
+    ``autoLoadPrior`` (the transition master) + an active prior, mirroring
+    ``service.prior_targets`` so the LV surface and the parametric smile agree."""
+    opts = state.options()
+    plan = resolve_prior_mode(opts)
+    if not opts.autoLoadPrior or not plan.any_calibration_prior:
+        return [], [], []
+    if plan.strike_anchor:
+        prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
+        return prior_opts, [], prior_vs
+    if plan.operators:
+        active = state.active_prior(ticker)
+        if active is None:
+            return [], [], []
+        from volfit.api import prior_transport
+        from volfit.api.prior_lv import build_operator_lv_targets
+
+        regime = state.dynamics_regime()
+        scheme = state.fit_settings().weightScheme
+        baskets: list = []
+        vs_quotes: list = []
+        for iso, tau, k, w, prepared, _band in rows:
+            node = prior_transport.prior_node(active, iso)
+            if node is None:
+                continue
+            moved = prior_transport.transported_prior_slice(node, float(prepared.forward), regime)
+            qw = resolve_weights(scheme, k, w)
+            b, v = build_operator_lv_targets(moved.implied_w, node.tau, tau, k, qw, opts)
+            baskets.extend(b)
+            vs_quotes.extend(v)
+        return [], baskets, vs_quotes
+    return [], [], []
+
+
 def _fit(
     state: AppState, ticker: str, request: AffineFitRequest, rows=None
 ) -> AffineFitResponse:
@@ -759,7 +801,9 @@ def _fit(
     t_nodes, x_nodes, k_hi, convex_cols = _resolve_grid(rows, opts)
 
     options = _option_quotes(rows, state.fit_settings().weightScheme)
-    prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
+    # Prior persistence (mode-routed): strike-gap synthetic quotes OR signed-basket
+    # operator targets that keep the RR/BF coupling; empty unless a prior is active.
+    prior_opts, prior_baskets, prior_vs = _prior_lv_targets(state, ticker, rows)
     options = options + prior_opts
     # Adaptive local-vol box bounds: the cap scales with the name's observed IV
     # (the fixed 60% cap starved high-vol put wings); floor stays at the request.
@@ -827,6 +871,7 @@ def _fit(
         x_grid,
         t_grid,
         varswaps=varswaps,
+        baskets=prior_baskets,
         varswap_k_lo=_VARSWAP_K_LO,
         varswap_method=opts.varSwapMethod,
         bounds=(var_lo, var_hi),

@@ -113,6 +113,7 @@ def _fit(
     calendar_weight: float = 1e6,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
+    prior_var_swap: VarSwapTarget | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
@@ -153,7 +154,7 @@ def _fit(
             # No calendar arb: total variance w = v(z)*t must not drop below floor.
             w_model = np.maximum(_eval_v(theta, cal_z, n_cores), _V_FLOOR) * t
             res = np.concatenate([res, sqrt_cal * np.maximum(cal_floor - w_model, 0.0)])
-        if prior_anchor is not None or operator_prior is not None:
+        if prior_anchor is not None or operator_prior is not None or prior_var_swap is not None:
             def implied_w(kk: np.ndarray) -> np.ndarray:
                 zz = np.asarray(kk, float) / (sigma_ref * np.sqrt(t))
                 return np.maximum(_eval_v(theta, zz, n_cores), _V_FLOOR) * t
@@ -162,6 +163,8 @@ def _fit(
                 res = np.concatenate([res, prior_anchor_residuals(cp, prior_anchor)])
             if operator_prior is not None:
                 res = np.concatenate([res, operator_residuals(implied_w, operator_prior)])
+            if prior_var_swap is not None:  # prior's var-swap level (operator companion)
+                res = np.concatenate([res, [varswap_residual(implied_w, prior_var_swap)]])
         return res
 
     theta0 = np.clip(theta0, lo, hi)
@@ -184,6 +187,7 @@ def calibrate_sigmoid(
     calendar_weight: float = 1e6,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
+    prior_var_swap: VarSwapTarget | None = None,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -236,6 +240,7 @@ def calibrate_sigmoid(
             calendar_k=calendar_k, calendar_floor=calendar_floor,
             calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
+            prior_var_swap=prior_var_swap,
         )
     else:
         theta = _fit(
@@ -245,6 +250,7 @@ def calibrate_sigmoid(
             calendar_k=calendar_k, calendar_floor=calendar_floor,
             calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
+            prior_var_swap=prior_var_swap,
         )
 
     cores = tuple(

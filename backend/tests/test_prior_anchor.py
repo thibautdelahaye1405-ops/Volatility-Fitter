@@ -120,28 +120,66 @@ def test_prior_anchor_fills_sparse_wings_toward_the_prior():
 
 
 # ------------------------------------------------------------- service gating
-def test_prior_anchor_targets_gating():
-    """service.prior_anchor_targets: None unless autoLoadPrior is on AND a prior
-    has been fetched (active); a real target once both hold."""
+def _strike_gap_state():
+    """An AppState in strike_gap mode with a node resolved (for the gating tests)."""
     state = AppState(REF_DATE)
+    state.set_options(state.options().model_copy(update={"priorPersistenceMode": "strike_gap"}))
     iso = [e.isoformat() for e in sorted(state.forwards(TICKER))][1]
     record = service.displayed_base(state, TICKER, iso, "mid")
-    k = record.prepared.k
+    return state, iso, record.prepared, record.prepared.k
 
-    # Off by default.
-    anchor, vs = service.prior_anchor_targets(state, TICKER, iso, k, None, record.prepared)
-    assert anchor is None and vs is None
 
-    # autoLoadPrior on but no active (fetched) prior yet: still None.
+def test_prior_targets_gating():
+    """service.prior_targets: empty unless autoLoadPrior is on AND a prior has been
+    fetched (active); a real strike anchor once both hold (strike_gap mode)."""
+    state, iso, prepared, k = _strike_gap_state()
+
+    # Off by default (autoLoadPrior False).
+    pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
+    assert pt.prior_anchor is None and pt.operator_prior is None and pt.prior_var_swap is None
+
+    # autoLoadPrior on but no active (fetched) prior yet: still empty.
     state.set_options(state.options().model_copy(update={"autoLoadPrior": True}))
-    anchor, vs = service.prior_anchor_targets(state, TICKER, iso, k, None, record.prepared)
-    assert anchor is None and vs is None
+    pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
+    assert pt.prior_anchor is None
 
-    # Save + fetch -> active prior -> a real anchor target.
+    # Save + fetch -> active prior -> a real STRIKE anchor (not an operator target).
     priors.save_all(state)
     priors.fetch_all(state)
-    anchor, _vs = service.prior_anchor_targets(state, TICKER, iso, k, None, record.prepared)
-    assert anchor is not None and anchor.k.size > 0
+    pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
+    assert pt.prior_anchor is not None and pt.prior_anchor.k.size > 0
+    assert pt.operator_prior is None  # strike_gap mode routes to the anchor, not operators
+
+
+def test_prior_targets_operator_mode_routes_to_operators():
+    """quote_operator mode routes to the signed operator prior, not the strike anchor.
+
+    Driven with a SPARSE near-ATM quote set (+ a tight support bandwidth) so the
+    RR/BF wing operators are under-observed and activate; a dense chain would
+    correctly leave them off (the data wins)."""
+    state, iso, prepared, _k = _strike_gap_state()
+    state.set_options(state.options().model_copy(update={
+        "priorPersistenceMode": "quote_operator", "autoLoadPrior": True,
+        "priorOperatorBandwidth": 0.03,
+    }))
+    priors.save_all(state)
+    priors.fetch_all(state)
+    k_sparse = np.array([-0.01, 0.0, 0.01])  # ATM-only -> wings under-observed
+    pt = service.prior_targets(state, TICKER, iso, k_sparse, None, prepared)
+    assert pt.prior_anchor is None  # not the strike-gap path
+    assert pt.operator_prior is not None and len(pt.operator_prior.names) > 0
+
+
+def test_prior_targets_off_and_graph_only_are_empty():
+    """off / overlay / graph_only add no calibration penalty even with a prior active."""
+    state, iso, prepared, k = _strike_gap_state()
+    state.set_options(state.options().model_copy(update={"autoLoadPrior": True}))
+    priors.save_all(state)
+    priors.fetch_all(state)
+    for mode in ("off", "overlay", "graph_only"):
+        state.set_options(state.options().model_copy(update={"priorPersistenceMode": mode}))
+        pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
+        assert pt.prior_anchor is None and pt.operator_prior is None and pt.prior_var_swap is None
 
 
 def test_affine_prior_anchor_quotes_gated_and_present():

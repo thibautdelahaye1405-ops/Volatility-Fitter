@@ -125,6 +125,7 @@ def calibrate_svi(
     calendar_weight: float = 1e6,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
+    prior_var_swap: VarSwapTarget | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -174,6 +175,8 @@ def calibrate_svi(
         res = np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
         if var_swap is not None:
             res = np.concatenate((res, [varswap_residual(raw.total_variance, var_swap)]))
+        if prior_var_swap is not None:  # prior's var-swap level (operator/strike-gap companion)
+            res = np.concatenate((res, [varswap_residual(raw.total_variance, prior_var_swap)]))
         if cal_on:
             # No calendar arb: total variance must not drop below the nearer expiry.
             cal = sqrt_cal * np.maximum(cal_floor - raw.total_variance(cal_k), 0.0)

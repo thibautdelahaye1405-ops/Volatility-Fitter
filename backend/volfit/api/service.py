@@ -12,7 +12,7 @@ redo entry points live in volfit.api.edits.
 from __future__ import annotations
 
 import math
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 
 import numpy as np
@@ -50,6 +50,8 @@ from volfit.calib.calendar import (
     variance_floor_grid_from,
     variance_floor_targets,
 )
+from volfit.api.prior_mode import resolve_prior_mode
+from volfit.calib.operators import OperatorPriorTarget, build_operator_prior
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
 from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
@@ -256,47 +258,80 @@ def varswap_target(
     return VarSwapTarget(total_var=level * level * t, weight=weight, t=t)
 
 
-def prior_anchor_targets(
-    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared
-) -> tuple[PriorAnchorTarget | None, VarSwapTarget | None]:
-    """The data-gap prior anchor + companion var-swap prior for a node, or (None, None).
+@dataclass(frozen=True)
+class PriorTargets:
+    """Resolved prior-persistence targets for one slice fit, routed by mode.
 
-    Active only when ``autoLoadPrior`` is on AND a prior has been fetched (the
-    ACTIVE, spot-updated prior). The prior's LQD backbone is transported to the
-    node's current forward under the dynamics regime (so the anchor is spot-
-    consistent with the live quotes), then anchored at delta-locations with the
-    data-gap precision (volfit.calib.prior): dense-quote zones get ~0 weight, the
-    sparse wings lean on the prior. The total anchor budget is
-    ``priorAnchorWeightPct`` percent of the summed quote weights (like the var-swap
-    penalty). A companion var-swap prior pulls the overall level, scaled by how
-    unobserved the smile is (so it fades as the data fills in)."""
+    At most one of ``prior_anchor`` (strike-gap mode) / ``operator_prior``
+    (operator & hybrid modes) is set; ``prior_var_swap`` is the companion var-swap
+    level for whichever is active. All None ⇒ no prior penalty (off / overlay /
+    graph_only / smile_factor[until Phase 6], or no active prior) ⇒ byte-identical."""
+
+    prior_anchor: PriorAnchorTarget | None = None
+    operator_prior: OperatorPriorTarget | None = None
+    prior_var_swap: VarSwapTarget | None = None
+
+
+def prior_targets(
+    state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared
+) -> PriorTargets:
+    """Resolve the active prior-persistence targets for a node (design note §10).
+
+    Routed by ``OptionsSettings.priorPersistenceMode`` (volfit.api.prior_mode):
+    ``strike_gap`` builds the legacy data-gap strike anchor (volfit.calib.prior);
+    ``quote_operator`` / ``hybrid`` build the signed quote-operator prior
+    (volfit.calib.operators) — the SAME object every parametric model and the LV
+    surface consume. ``off`` / ``overlay`` / ``graph_only`` (and ``smile_factor``
+    until Phase 6) add no calibration penalty.
+
+    Gated by ``autoLoadPrior`` (the transition master enable; Phase 8 retires it in
+    favour of the mode) AND an active, fetched prior — either off ⇒ empty targets ⇒
+    byte-identical. The prior's LQD backbone is transported to the node's forward
+    under the dynamics regime so it is spot-consistent with the live quotes."""
     options = state.options()
-    if not options.autoLoadPrior or options.priorAnchorWeightPct <= 0.0:
-        return None, None
+    plan = resolve_prior_mode(options)
+    if not options.autoLoadPrior or not plan.any_calibration_prior:
+        return PriorTargets()
     from volfit.api import prior_transport
 
     node = prior_transport.prior_node(state.active_prior(ticker), iso)
     if node is None:
-        return None, None
+        return PriorTargets()
     moved = prior_transport.transported_prior_slice(
         node, float(prepared.forward), state.dynamics_regime()
     )
     sum_w = float(np.sum(weights)) if weights is not None else float(k.size)
-    budget = (options.priorAnchorWeightPct / 100.0) * sum_w
-    anchor, unmet = build_prior_anchor(
-        moved.implied_w, node.tau, k, prepared.tau, budget,
-        scheme=state.fit_settings().weightScheme,
-        deltas=tuple(options.priorAnchorDeltas),
-    )
-    prior_vs: VarSwapTarget | None = None
-    if budget > 0.0 and unmet > 0.0:
-        # Prior's fair var-swap (model-free replication on the transported curve),
-        # re-expressed at the current variance time; weight fades with coverage.
-        w_vs = varswap_total_variance(moved.implied_w) * (prepared.tau / node.tau)
-        prior_vs = VarSwapTarget(
-            total_var=float(w_vs), weight=budget * unmet, t=float(prepared.tau)
+
+    if plan.strike_anchor:
+        budget = (options.priorAnchorWeightPct / 100.0) * sum_w
+        anchor, unmet = build_prior_anchor(
+            moved.implied_w, node.tau, k, prepared.tau, budget,
+            scheme=state.fit_settings().weightScheme,
+            deltas=tuple(options.priorAnchorDeltas),
         )
-    return anchor, prior_vs
+        pvs: VarSwapTarget | None = None
+        if budget > 0.0 and unmet > 0.0:
+            # Prior's fair var-swap (model-free replication on the transported curve),
+            # re-expressed at the current variance time; weight fades with coverage.
+            w_vs = varswap_total_variance(moved.implied_w) * (prepared.tau / node.tau)
+            pvs = VarSwapTarget(total_var=float(w_vs), weight=budget * unmet, t=float(prepared.tau))
+        return PriorTargets(prior_anchor=anchor, prior_var_swap=pvs)
+
+    # operator / hybrid: the signed quote-operator prior (ATM/RR/BF; design note §5).
+    # The deep-tail strike anchor of hybrid is added in Phase 6.
+    budget = (options.priorOperatorStrengthPct / 100.0) * sum_w
+    target, vs = build_operator_prior(
+        moved.implied_w, node.tau, prepared.tau, k, weights, budget,
+        op_set=list(options.priorOperatorSet),
+        collar_sign=options.collarSign,
+        required_precision=options.priorOperatorRequiredPrecision,
+        gap_exponent=options.priorOperatorGapExponent,
+        bandwidth=options.priorOperatorBandwidth,
+    )
+    pvs = None
+    if vs.active and vs.weight > 0.0:
+        pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
+    return PriorTargets(operator_prior=target, prior_var_swap=pvs)
 
 
 def edited_fit_inputs(
@@ -342,6 +377,7 @@ def display_overlay(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    pt = prior_targets(state, ticker, iso, k, weights, prepared)
     cal_floor = None
     if enforce_calendar and prev_display is not None:
         # Confine the floor to THIS expiry's traded log-moneyness range: outside
@@ -351,6 +387,8 @@ def display_overlay(
     return build_display_fit(
         settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs,
         calendar_floor=cal_floor, calendar_weight=state.options().calendarWeight,
+        prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
+        prior_var_swap=pt.prior_var_swap,
     )
 
 
@@ -393,7 +431,25 @@ def _compute_fit(
         weights = resolve_weights(settings.weightScheme, k, w)
         band = edited_band(state, ticker, iso, prepared, fit_mode)
         vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-        pa, pvs = prior_anchor_targets(state, ticker, iso, k, weights, prepared)
+        pt = prior_targets(state, ticker, iso, k, weights, prepared)
+        # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit data-only
+        # first so the data-fitted level/shape is the seed, then refit with the gated
+        # prior initialized from it. Single-node path only (init is None); the
+        # warm-started surface sweep keeps its previous-expiry seed.
+        seed = init
+        if (
+            state.options().priorDataOnlyPrepass
+            and init is None
+            and (pt.operator_prior is not None or pt.prior_anchor is not None)
+        ):
+            act.detail("data-only prepass")
+            seed = calibrate_slice(
+                k, w, t=prepared.tau, n_order=settings.nOrder, weights=weights,
+                reg_lambda=settings.regLambda, reg_power=settings.regPower,
+                band=band, barrier_center=settings.barrierCenter,
+                barrier_scale=settings.barrierScale, mid_anchor_weight=settings.midAnchorWeight,
+                var_swap=vs,
+            ).params
         act.detail(f"fitting {_model_label(settings.model)} smile")
         result = calibrate_slice(
             k,
@@ -404,20 +460,25 @@ def _compute_fit(
             reg_lambda=settings.regLambda,
             reg_power=settings.regPower,
             # Warm start only when handed a same-order seed (the surface sweep's
-            # previous expiry); a mismatched order would be the wrong vector length.
-            init=init if getattr(init, "order", None) == settings.nOrder else None,
+            # previous expiry, or the two-pass data-only fit); a mismatched order
+            # would be the wrong vector length.
+            init=seed if getattr(seed, "order", None) == settings.nOrder else None,
             band=band,
             barrier_center=settings.barrierCenter,
             barrier_scale=settings.barrierScale,
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=vs,
-            prior_anchor=pa,
-            prior_var_swap=pvs,
+            prior_anchor=pt.prior_anchor,
+            prior_var_swap=pt.prior_var_swap,
+            operator_prior=pt.operator_prior,
         )
         # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
-        # a display overlay on the same edited quotes + band (volfit.api.fit_models).
+        # a display overlay on the same edited quotes + band (volfit.api.fit_models),
+        # now carrying the SAME prior so SVI/SIV match the backbone (Phase 3/5).
         display = build_display_fit(
-            settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs
+            settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs,
+            prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
+            prior_var_swap=pt.prior_var_swap,
         )
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)
@@ -991,7 +1052,7 @@ def fit_surface_slice(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pa, pvs = prior_anchor_targets(state, ticker, iso, k, weights, prepared)
+    pt = prior_targets(state, ticker, iso, k, weights, prepared)
     return calibrate_slice(
         k,
         w,
@@ -1009,8 +1070,9 @@ def fit_surface_slice(
         barrier_scale=settings.barrierScale,
         mid_anchor_weight=settings.midAnchorWeight,
         var_swap=vs,
-        prior_anchor=pa,
-        prior_var_swap=pvs,
+        prior_anchor=pt.prior_anchor,
+        prior_var_swap=pt.prior_var_swap,
+        operator_prior=pt.operator_prior,
     )
 
 

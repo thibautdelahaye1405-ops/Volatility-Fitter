@@ -105,12 +105,26 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
   1-leg, RR 2-leg, BF 3-leg) + a `VarSwapQuote`. Pure builder; Phase 5 wires it
   into `_fit` and keeps the legacy strike-gap path.
 
-### Phase 5 — Mode dispatch + two-pass prepass
-- `service.prior_targets` (renamed) routes by resolved mode; `_compute_fit` passes
-  operator/anchor into `calibrate_slice` AND `build_display_fit`. Opt-in two-pass.
-- `affine_fit._fit` branches the same way: strike_gap → legacy
+### Phase 5 — Mode dispatch + two-pass prepass  ✅ DONE
+- `service.prior_anchor_targets` → `prior_targets` returning a `PriorTargets` struct
+  (strike_anchor | operator_prior + companion prior_var_swap), routed by
+  `resolve_prior_mode`. Threaded into BOTH `calibrate_slice` AND `build_display_fit`
+  in `_compute_fit` AND `fit_surface_slice`/`display_overlay` (so SVI/Multi-Core-SIV
+  overlays get the prior in every path — asymmetry fixed end-to-end).
+- `affine_fit._prior_lv_targets` routes the LV path: strike_gap → legacy
   `_prior_anchor_quotes`; operator/hybrid → `prior_lv.build_operator_lv_targets`
   → `calibrate_affine(baskets=..., varswaps=...)`.
+- Completed the parametric prior surface: `prior_var_swap` added to `calibrate_svi`
+  / `calibrate_sigmoid` + `build_display_fit` (the operator var-swap companion).
+- **Two-pass** (`priorDataOnlyPrepass`, opt-in): implemented in `_compute_fit`
+  (single-node path) — data-only fit seeds the prior refit. The warm-started surface
+  sweep keeps its previous-expiry seed (coupled-path two-pass deferred).
+- **Gating decision:** `autoLoadPrior` is the TRANSITION master-enable (default
+  False ⇒ byte-identical everywhere); the mode selects the builder when it is on.
+  Phase 8 retires `autoLoadPrior` in favour of the mode once hybrid is backtested.
+  (NB schema default mode=hybrid means `OptionsSettings(autoLoadPrior=True)` now
+  resolves to operator/hybrid, not strike_gap — prior-specific tests set the mode
+  explicitly.)
 
 ### Phase 6 — Factor mode, Hybrid, Graph-only
 - Factor extraction (`calib/factors.py` or in operators): level/skew/curvature/
