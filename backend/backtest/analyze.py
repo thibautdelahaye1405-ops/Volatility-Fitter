@@ -26,6 +26,15 @@ def _med(series) -> float:
     return float(series.median()) if len(series) else float("nan")
 
 
+def _arb_mask(df):
+    """Genuine-static-arb mask per row. Prefers the analytic, FD-free ``arb_real``
+    (R2); falls back to the reconstructed ``bfly_neg_frac > 1e-6`` for older result
+    tables that predate it (so prior parquets still render)."""
+    if "arb_real" in df:
+        return df["arb_real"].fillna(False).astype(bool)
+    return df.get("bfly_neg_frac", 0) > 1e-6
+
+
 def parametric_report(df) -> str:
     """Per-model Pareto + time attribution + break inventory as markdown."""
 
@@ -39,7 +48,7 @@ def parametric_report(df) -> str:
         g = ok[ok["model"] == model]
         fit, in_rms = _med(g["fit_ms"]), _med(g["in_rmse_bp"])
         oos = _med(g["oos_rmse_bp"].dropna()) if "oos_rmse_bp" in g else float("nan")
-        arb = 100.0 * float((g.get("bfly_neg_frac", 0) > 1e-6).mean())
+        arb = 100.0 * float(_arb_mask(g).mean())
         spd = base_fit / fit if fit else float("nan")
         rel = in_rms / base_in if base_in else float("nan")
         lines.append(
@@ -66,7 +75,7 @@ def parametric_report(df) -> str:
         for _, r in breaks.head(20).iterrows():
             lines.append(f"  - {r.get('asset')} {r.get('as_of')} {r.get('expiry')} "
                          f"{r.get('model')}: {r.get('error')}")
-    arb_rows = ok[ok.get("bfly_neg_frac", 0) > 1e-6]
+    arb_rows = ok[_arb_mask(ok)]
     lines.append(f"- butterfly-arb slices: **{len(arb_rows)}**")
     # RMSE outliers (z>3 within model)
     n_out = 0

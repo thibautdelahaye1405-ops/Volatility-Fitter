@@ -112,7 +112,7 @@ Gauss-Newton path (`affine_gn.py`). Deterministic, not data-dependent noise.
 Ordering = correctness/trust before speed before model-quality. Each item is
 independent; ship + golden-test one at a time per the repo convention.
 
-### R1 — Fix the LV `LinearizedJacobian.T` crash  ·  *priority: now, small*
+### R1 — Fix the LV `LinearizedJacobian.T` crash  ·  ✅ DONE (commit 91f6d1b)
 
 - **Problem:** matrix-free GN solver calls `.T` on a `LinearizedJacobian` operator
   that has no transpose attribute → hard crash on 6 NVDA/NDX surfaces.
@@ -126,7 +126,16 @@ independent; ship + golden-test one at a time per the repo convention.
   reports show 0 failures; existing LV golden tests byte-identical.
 - **Risk:** low — localized; reproduce with NVDA 2024-07-31 / 2024-08-01 fixtures.
 
-### R2 — Make the butterfly-arb metric trustworthy (analytic-density arb checks)  ·  *priority: now, medium*
+### R2 — Make the butterfly-arb metric trustworthy (analytic-density arb checks)  ·  ✅ DONE
+
+*Shipped as `_analytic_butterfly` in `dispatch.py` + `arb_real`/`bfly_*_an` columns +
+`analyze.py` `_arb_mask` (analytic-first, reconstructed fallback for old parquets); no
+engine change — SIV's own `gatheral_g`, SVI closed-form w',w'', LQD structural density
+positivity. Validated on real American nodes: LQD 28.3%→**0.0%**, SVI 20.8%→9.2%,
+SIV-0 22.5%→10.0% (FD over-count removed), SIV-2 **75.8%** (genuine wing arb preserved).
+Re-run `run_compute` to populate the new columns in the result tables.*
+
+Original plan:
 
 - **Problem:** the arb column penalizes LQD for finite-difference reconstruction
   noise at the traded-range edges (F3a). It is a numerical artifact, not arbitrage.
