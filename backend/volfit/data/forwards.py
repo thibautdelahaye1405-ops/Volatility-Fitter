@@ -25,6 +25,18 @@ floored at OUTLIER_FLOOR_BP of spot so clean tight chains never trim), and
 refit — at most MAX_TRIM_ROUNDS rounds and never below MIN_PAIRED_STRIKES
 survivors.  Dropped pairs are reported as ``n_outliers``.
 
+Discount clamp ([REQ 2026-06-25], robustness to noisy/stale feeds): the parity
+SLOPE *is* the discount, the worst-identified parameter, and on a noisy/stale live
+feed (a delayed tier with wide deep-ITM quotes) it drifts to nonsense — observed
+implied discount > 1, a negative rate, which tilts the whole forward and gaps the
+displayed smile at the money. So when a reference date is supplied (the fitting path),
+the implied discount is **clamped to a physical rate band** [RATE_MIN, RATE_MAX]:
+clean chains sit well inside it and are byte-for-byte unchanged; only an absurd
+discount is bounded. When the clamp bites, the forward is **re-derived from the
+well-identified level** — a spread + ATM weighted mean of K + (C-P)/D (tight,
+near-the-money pairs, where parity is cleanest and both legs are liquid, dominate) —
+so it no longer inherits the bad slope (F = intercept/slope).
+
 American de-biasing (fixes the ATM smile kink): put-call parity is an
 *equality* only for European options.  American C - P carries the difference
 of the call and put early-exercise premiums, so a forward implied from RAW
@@ -51,6 +63,7 @@ European snapshots and the no-reference path are byte-for-byte unchanged.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date
 from typing import Literal
@@ -71,6 +84,18 @@ OUTLIER_NSIGMA = 4.0
 OUTLIER_FLOOR_BP = 1e-4
 #: Trim/refit rounds (each round can only shrink the active set).
 MAX_TRIM_ROUNDS = 3
+
+#: Discount clamp (robustness to noisy/stale feeds, when a reference date is given).
+#: The parity SLOPE *is* the discount — the worst-identified parameter — and on real
+#: delayed feeds it drifts to nonsense (observed D > 1, a negative implied rate, which
+#: tilts the forward and gaps the smile at the money). The implied discount is clamped
+#: to the physical rate band [RATE_MIN, RATE_MAX]; clean chains sit inside it untouched.
+#: When the clamp bites, the forward is re-derived from the well-identified level by a
+#: spread + ATM weighted mean of K + (C-P)/D (tight near-the-money pairs dominate).
+RATE_MIN, RATE_MAX = -0.05, 0.30  # physical bounds on the parity-implied discount's rate
+ATM_KERNEL_H = 0.10  # ATM Gaussian bandwidth (log-moneyness) for the re-derived forward
+SPREAD_FLOOR_FRAC = 5e-4  # inverse-spread weight floor, as a fraction of spot
+FWD_CLAMP_LOG = 0.5  # forward sanity bound |ln(F/S)|; beyond it, fall back to spot
 
 #: American de-bias fixed-point iteration: re-imply the forward from
 #: de-Americanized mids until F moves less than FORWARD_TOL_REL (relative),
@@ -199,8 +224,40 @@ def _refine_american(
     return forward, rms
 
 
+def _quality_weights(
+    strikes: np.ndarray, spread_c: np.ndarray, spread_p: np.ndarray, spot: float
+) -> np.ndarray:
+    """Per-pair trust weight: inverse combined bid-ask spread x ATM Gaussian kernel.
+
+    Tight, near-the-money pairs — where put-call parity is cleanest and both legs
+    are liquid — dominate; the wide/stale or deep-wing pairs that tilt a plain
+    equal-weight regression are damped. Zero-spread (close-like) data, which carries
+    no spread signal, falls back to the ATM kernel alone."""
+    spread = np.maximum(spread_c, 0.0) + np.maximum(spread_p, 0.0)
+    inv_spread = 1.0 / (spread + SPREAD_FLOOR_FRAC * spot)
+    kern = np.exp(-((np.log(strikes / spot) / ATM_KERNEL_H) ** 2))
+    return inv_spread * kern
+
+
+def _forward_at_discount(
+    strikes: np.ndarray, c: np.ndarray, p: np.ndarray,
+    spread_c: np.ndarray, spread_p: np.ndarray, spot: float, discount: float,
+) -> float:
+    """Forward at a FIXED discount, from the well-identified LEVEL: a spread/ATM-
+    weighted mean of the per-strike F_i = K + (C-P)/D. Used after the parity slope
+    is clamped, so the forward no longer inherits the bad slope (F = intercept/slope).
+    Tight near-the-money pairs dominate; an absurd result falls back to spot."""
+    w = _quality_weights(strikes, spread_c, spread_p, spot)
+    f_i = strikes + (c - p) / discount
+    wsum = float(np.sum(w))
+    forward = float(np.sum(w * f_i) / wsum) if wsum > 0.0 else spot
+    if not (np.isfinite(forward) and forward > 0.0) or abs(math.log(forward / spot)) > FWD_CLAMP_LOG:
+        return spot
+    return forward
+
+
 def implied_forward(
-    snapshot: ChainSnapshot, expiry: date, reference_date: date | None = None
+    snapshot: ChainSnapshot, expiry: date, reference_date: date | None = None,
 ) -> ImpliedForward | None:
     """Imply the forward for one expiry, or None if the data is insufficient.
 
@@ -209,25 +266,27 @@ def implied_forward(
     For an American snapshot, pass ``reference_date`` to de-bias the forward
     (see the module docstring); without it the raw-mid regression is used.
     """
-    call_mids: dict[float, float] = {}
-    put_mids: dict[float, float] = {}
+    call: dict[float, tuple[float, float]] = {}  # strike -> (mid, spread)
+    put: dict[float, tuple[float, float]] = {}
     for quote in snapshot.quotes_for(expiry):
         mid = quote.mid
         if mid is None:
             continue
-        side = call_mids if quote.call_put == "C" else put_mids
-        side[quote.strike] = mid
+        spread = quote.spread if (quote.spread is not None and quote.spread > 0.0) else 0.0
+        (call if quote.call_put == "C" else put)[quote.strike] = (mid, spread)
 
-    paired = sorted(set(call_mids) & set(put_mids))
+    paired = sorted(set(call) & set(put))
     if len(paired) < MIN_PAIRED_STRIKES:
         return None
 
     strikes = np.array(paired)
-    c = np.array([call_mids[s] for s in paired])
-    p = np.array([put_mids[s] for s in paired])
+    c = np.array([call[s][0] for s in paired])
+    p = np.array([put[s][0] for s in paired])
+    spread_c = np.array([call[s][1] for s in paired])
+    spread_p = np.array([put[s][1] for s in paired])
     y = c - p
 
-    # Robust loop: trim pairs whose parity residual is a stale-quote outlier.
+    # Equal-weight parity regression + stale-quote outlier trim.
     active = np.ones(strikes.size, dtype=bool)
     a, b, residuals = _fit(strikes, y)
     for _ in range(MAX_TRIM_ROUNDS):
@@ -240,12 +299,28 @@ def implied_forward(
             break
         active[np.nonzero(active)[0][~keep]] = False
         a, b, residuals = _fit(strikes[active], y[active])
-
     discount = -b
     if discount <= 0.0 and snapshot.exercise_style != "american":
         return None  # nonsensical fit (e.g. corrupt quotes)
     forward = a / discount if discount != 0.0 else float("nan")
     rms = float(np.sqrt(np.mean(residuals * residuals)))
+
+    # Clamp the discount to a physical rate band. The parity SLOPE is the discount,
+    # the worst-identified parameter, and on noisy/stale wings (delayed feeds) it
+    # drifts to D > 1 — a negative implied rate that tilts the forward and gaps the
+    # smile at the money. Clean chains sit well inside the band and are untouched
+    # (byte-identical); only an absurd discount is bounded, and the forward then
+    # re-derived from the well-identified level so it no longer inherits the bad slope.
+    if reference_date is not None:
+        t = (expiry - reference_date).days / 365.0
+        if t > 0.0 and np.isfinite(discount):
+            d_clamped = min(max(discount, math.exp(-RATE_MAX * t)), math.exp(-RATE_MIN * t))
+            if d_clamped != discount:
+                discount = d_clamped
+                forward = _forward_at_discount(
+                    strikes[active], c[active], p[active],
+                    spread_c[active], spread_p[active], snapshot.spot, discount
+                )
 
     # American de-bias: nudge the forward (discount held) using de-Americanized
     # European-equivalent mids so the OTM put and call sides join at the money.
@@ -271,13 +346,14 @@ def implied_forward(
 
 
 def implied_forwards(
-    snapshot: ChainSnapshot, reference_date: date | None = None
+    snapshot: ChainSnapshot, reference_date: date | None = None,
 ) -> dict[date, ImpliedForward]:
     """Imply forwards for every expiry in the chain that has enough pairs.
 
-    Pass ``reference_date`` to de-bias American snapshots (the fitting path
-    does, via volfit.api.state); without it the raw-mid regression is used
-    (European chains are identical either way).
+    Pass ``reference_date`` (the fitting path does, via volfit.api.state) to
+    de-bias American snapshots AND clamp the parity discount to a physical rate
+    band — robust to the noisy/stale wings that otherwise drift it to D > 1.
+    Without it the raw-mid regression is used (offline/backtest callers).
     """
     out: dict[date, ImpliedForward] = {}
     for expiry in snapshot.expiries():

@@ -586,8 +586,9 @@ class AppState(UniverseMixin):
             cached = self._forwards.get(ticker)
             if cached:
                 return cached
-            # Pass the reference date so American chains are de-biased
-            # (parity from de-Americanized mids; see data.forwards).
+            # Pass the reference date so American chains are de-biased and the parity
+            # discount is clamped to a physical rate band (robust to noisy/stale wings;
+            # see data.forwards).
             fwds = implied_forwards(snapshot, self.reference_date)
             # Don't cache an empty result (unresolved ladder / empty chain): a
             # transient feed miss must be retried on the next access, not frozen.
