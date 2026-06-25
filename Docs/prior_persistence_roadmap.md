@@ -1,0 +1,124 @@
+# Prior Persistence — Implementation Roadmap
+
+Companion to `Docs/prior_persistence_design_options.md` (the design note). That note
+defines the *what* (7 persistence modes, the precision vocabulary, two-pass
+activation, diagnostics); this file is the *how* — the phased build plan, file
+touch-points, and acceptance tests.
+
+## Goal
+
+Turn today's single opinionated strike-gap anchor into the design note's full
+7-mode menu and make every persisted prior auditable:
+
+    Off · Overlay only · Strike gaps · Quote operators · Smile factors · Hybrid · Graph only
+
+…while keeping the existing strike-gap machinery intact (golden byte-identical
+when off) and fixing the current asymmetry where LQD/LV get the prior anchor but
+the SVI / Multi-Core-SIV display overlays do not.
+
+## Locked decisions (from the planning Q&A, 2026-06-24)
+
+- **Scope:** all 7 modes, including Graph-only.
+- **Two-pass "don't damp the signal":** heuristic single-pass is the DEFAULT;
+  the data-only prepass is an opt-in toggle (`priorDataOnlyPrepass`, default off).
+  Single-pass gates priors by quote-support precision with no extra fit; two-pass
+  fits data-only first, measures operator precision, then refits with only the
+  under-observed operator priors (~2x per-node fit cost).
+- **Default mode:** ship with legacy behaviour preserved (a persisted
+  `autoLoadPrior=on` migrates to `strike_gap`, byte-identical); flip the schema
+  default for NEW installs to `hybrid` and the recommended default to `hybrid`
+  in the final phase, after the backtest confirms it.
+- **Operator → optimizer route (decided here):**
+  - LQD / SVI-JW / Multi-Core SIV → **direct signed-basket operator residuals**
+    `sqrt(λ_j)·(O_j(model) − O_prior_j)/scale_j` (RR/BF are signed baskets of
+    model vols, not option prices — cleanest as residuals; this also fixes the
+    SVI/SIV asymmetry).
+  - Affine LV → **synthetic leg + var-swap quotes** (the LV surface prices through
+    the Dupire PDE and has no cheap "vol at k" residual API; it already ingests
+    `OptionQuote`s). Trade-off: the signed-basket coupling is lost (each leg is its
+    own quote), mitigated by coherent gating (a basket's legs activate together)
+    and the var-swap leg carrying the level.
+
+## The residual object (shared across modes)
+
+    sqrt(λ_j) · (O_j(model) − O_j(prior)) / scale_j
+
+where `O_j` is a strike price, an operator (ATM/RR/BF/var-swap), or a factor, and
+
+    gap_j = max(1 − obs_precision_j / required_precision_j, 0) ^ gamma
+    λ_j   = global_strength · base_prior_precision_j · gap_j
+
+so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
+
+---
+
+## Phases
+
+### Phase 0 — Schema, mode resolver, migration, version-bumping
+*Foundation; no behaviour change.*
+- `api/schemas.py` `OptionsSettings`: add `priorPersistenceMode` + operator/factor/
+  tail knobs (`priorOperatorSet`, `priorOperatorStrengthPct`,
+  `priorOperatorRequiredPrecision`, `priorOperatorGapExponent`,
+  `priorOperatorBandwidth`, `priorOperatorCovarianceMode`, `priorDataOnlyPrepass`,
+  `priorFactorSet`, `priorFactorStrengthPct`, `priorTailAnchorStrengthPct`,
+  `collarSign`). Keep `autoLoadPrior` / `priorAnchorWeightPct` / `priorAnchorDeltas`
+  (now strike-gap / hybrid-tail specific).
+- `api/state.py` `set_options`: fold every new calibration-affecting field into the
+  `affects_fit` predicate (global `options_version`).
+- Migration: a persisted blob predating the mode field derives
+  `autoLoadPrior=True → "strike_gap"`, else `"off"`; new installs default `hybrid`.
+- New `api/prior_mode.py`: `resolve_prior_mode(opts)` → which builders are live.
+- Tests: options round-trip; migration; `off`/`overlay` byte-identical to
+  `autoLoadPrior=False`.
+
+### Phase 1 — Shared precision vocabulary
+- New `calib/precision.py`: lift the generic factor functions + activation gate out
+  of `graph/precision.py`; `graph/precision.py` re-imports (byte-identical, golden
+  design-point guard).
+- Tests: gate monotonic, gap=0 when obs≥req, graph design point unchanged.
+
+### Phase 2 — Operator library
+- New `calib/operators.py` (+ `operator_precision.py` if >400 lines): operator
+  registry (ATM/RR_d/BF_d/VarSwapVol, optional wing slopes) with legs + signed
+  coefficients honouring `collarSign`; `delta_strikes` (shared with `prior.py`);
+  `evaluate_operators(smile_w_fn, …)` (model-agnostic); `operator_scales`;
+  heuristic `observation_precision` (the §5.3 harmonic leg aggregation);
+  `build_operator_prior(...) → OperatorPriorTarget`; `operator_residuals(...)`.
+  `OperatorPriorTarget` carries the per-operator diagnostics payload.
+- Tests: delta placement vs Black, RR/BF signs, gate behaviour, residual length.
+
+### Phase 3 — Parametric calibrators (+ asymmetry fix)
+- `calibrate_slice` (LQD), `calibrate_svi`, `calibrate_sigmoid`: accept
+  `operator_prior` (and `prior_anchor` for SVI/SIG — the asymmetry fix); stack
+  residuals. `build_display_fit` threads them through.
+
+### Phase 4 — Affine LV
+- `affine_fit._prior_anchor_quotes`: generalize to emit operator-derived synthetic
+  leg + var-swap quotes (gated by mode); keep the legacy strike-gap path.
+
+### Phase 5 — Mode dispatch + two-pass prepass
+- `service.prior_targets` (renamed) routes by resolved mode; `_compute_fit` passes
+  operator/anchor into `calibrate_slice` AND `build_display_fit`. Opt-in two-pass.
+- `affine_fit._fit` branches the same way.
+
+### Phase 6 — Factor mode, Hybrid, Graph-only
+- Factor extraction (`calib/factors.py` or in operators): level/skew/curvature/
+  wing/var-swap with the coverage gate. Hybrid = operators + deep-tail strike
+  anchor where no operator/quote covers. Graph-only short-circuits all calibration
+  anchors (lit nodes pure data; graph carries the prior for dark nodes).
+
+### Phase 7 — Diagnostics + frontend
+- Backend per-operator/factor diagnostics table (prior · data-only · final · obs
+  prec · required prec · gap · λ · binding reason). Frontend: mode selector +
+  mode-grouped knobs in `OptionsViewer`, a diagnostics panel, overlay visibility.
+
+### Phase 8 — Validation & default flip
+- Full unit/golden/parity coverage; backtest harness gains a prior-mode axis;
+  flip the recommended default to `hybrid`.
+
+## Cross-cutting
+
+- Perf: operator residuals are a few rows; two-pass is opt-in; new knobs bump the
+  global options version (one refit on change). No new O(N^3).
+- Files ≤ 400 lines (split operators if needed). Every phase carries an
+  "off ⇒ byte-identical" golden guard. Docstrings cite the design-note sections.
