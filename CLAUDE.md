@@ -64,7 +64,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (744 passed, 1 skipped as of 2026-06-22, incl. 7 perf rails; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (822 passed, 1 skipped as of 2026-06-25, incl. 7 perf rails; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
             ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
             the best-reachable active one; switch live via the TopBar Data
@@ -81,6 +81,10 @@ Key commands (Windows, repo root):
 - Snapshot: .venv\Scripts\python backend\snapshot.py SPY QQQ   (Yahoo -> SQLite + forwards)
 - Massive diag: $env:VOLFIT_MASSIVE_KEY='...'; .venv\Scripts\python backend\massive_diag.py SPY
             (probes api.massive.com + api.polygon.io, every call, to pinpoint a feed gate)
+- LV bench:  .venv\Scripts\python backend\lv_benchmark.py [--fixture <json>]   (offline
+            Local-Vol fit over a static fixture; prints per-expiry Phase-0 diagnostics
+            [vtxInRange / vegaFloored / PDE steps]. capture_massive_weekly.py refreshes
+            the true-weekly fixture tests\fixtures\lv_weekly_massive.json from Massive Live.)
 - Demo:     .venv\Scripts\python backend\demo.py
 - Backtest: offline harness in backend\backtest\ (run `-m backtest.<mod>` from backend\,
             needs the flat-file creds: dot-source restart.local.ps1 first). Capture

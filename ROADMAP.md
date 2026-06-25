@@ -10,6 +10,48 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-06-25 (resume here)
 
+### 🧭 SESSION WRAP (2026-06-25) — short-dated Local-Vol fit FIXED (fixes #1–#2)
+
+Short-dated LV smiles (a true 6-DTE SPY weekly) fit **catastrophically** — 108 bp
+RMS / 249 bp max vs the parametric ~47 bp — while normal expiries fit well. Full
+diagnose-then-fix arc, all on **main** (commits `5663a73`, `c096b21`; suite **822
+passed, 1 skipped**):
+
+- **Phase 0 — measure first** (`volfit/api/affine_diag.py`, a pure per-expiry
+  side-channel; `lv_benchmark.py --fixture` prints it). The Bloomberg fixture has
+  no expiry < 27 d, so a **true-weekly capture** was taken from Massive Live
+  (`capture_massive_weekly.py` → `tests/fixtures/lv_weekly_massive.json`; SPY
+  2026-07-01/07-06 weeklies + the long ladder). Root cause: the delta strike axis
+  is sized to the LONGEST expiry and clipped to the GLOBAL range, so a narrow short
+  smile lands only ~3 vertices on its sharpest curvature. **Ruled out** (measured,
+  not guessed): vega floor (1.3× threshold, never triggers), PDE time steps (2→33 =
+  no change), local-vol cap, prior/early-stop (inert without a loaded prior), and
+  adding time slices ahead of the weekly (a single expiry pins only the time-
+  *integral* — measured flat). The residual is short-end quote/de-Am noise the
+  rigid parametric averages through but the flexible LV chases.
+- **Fix #1 — short-expiry strike coverage floor.** `OptionsSettings.gridXMinPerExpiry`
+  (default 8; 0 = legacy axis byte-identical). After the delta axis is built,
+  `_augment_per_expiry_coverage` splits the widest IN-RANGE gaps until each expiry
+  has ≥ m_min vertices inside ITS OWN traded range — adds nodes ONLY to under-covered
+  short-front expiries (even gap-fill; clustering the expiry's own delta nodes left
+  wing gaps and stalled at 37 bp). Added to `affine_key`.
+- **Fix #2 — short-expiry-aware PDE strike step.** `_pde_dx(rows)` refines the
+  shared uniform PDE x-step to 0.3 × the smallest ATM σ√τ, snapped to 1/N so x = 1
+  stays a node, clamped to `[1/400, 0.01]`. Normal surfaces stay on 0.01 ⇒
+  byte-identical.
+
+**Result (default settings):** weekly 07-01 **108.2 → 23.5 bp** (now *better* than
+the parametric 47 bp), 07-06 49 → 14.0 bp, surface 35.8 → 11.5 bp. Bloomberg NVDA
+byte-identical, SPY 3.3 → 2.8 bp — **no regression to well-fitting names.** Method &
+levers documented in `Docs/localvol_calibration_methodology.md` §4/§9.
+
+**Open follow-on — Fix #3 (optional):** the residual ~23 bp on the 6-DTE is a
+near-ATM data-noise outlier (a 20.8% IV spiking from a ~13% smile via de-Am/parity
+on clean 1%-spread markets). A robust loss (Huber/Cauchy) on short-dated residuals,
+or defaulting very short expiries to fit-to-band, would close the last gap to a
+visually clean weekly. Touches the LSQ objective (not just the grid); the
+catastrophic regime is already gone, so this is quality polish, not a blocker.
+
 ### 🧭 SESSION WRAP (2026-06-25) — prior-persistence 7-mode menu SHIPPED
 
 The prior-persistence redesign of `Docs/prior_persistence_design_options.md` is

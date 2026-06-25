@@ -120,8 +120,31 @@ left-wing slope `a` is a free parameter when a var-swap quote is present (analyt
   **floor**: the single widest gap is split one node at a time until reached (the same
   incremental scheme as the time axis — *not* the old doubling, which overshot the
   floor non-monotonically and gave similar names wildly different resolutions).
+- **Short-expiry strike coverage floor** (`_augment_per_expiry_coverage`,
+  `gridXMinPerExpiry`, default 8; **fix #1**): the delta axis above is sized to the
+  *longest* expiry's `σ*·√T*` and clipped to the *global* `[k_lo, k_hi]`, so a narrow
+  **short** smile lands only a handful of vertices on its sharpest curvature — a real,
+  measured failure: a 6-DTE SPY weekly got 3/13 in-range vertices and **108 bp** LV
+  RMS (vs the parametric ~47 bp), dropping to ~28 bp once it reaches ~8. After the
+  axis is built, `_resolve_grid` splits the widest **in-range** gaps until *each*
+  expiry has at least `gridXMinPerExpiry` vertices inside *its own* traded
+  `[k_lo, k_hi]`. This densifies **only under-covered (short-front) expiries** — a
+  well-covered normal expiry already meets the floor and is untouched (often
+  byte-identical). Even gap-fill is used deliberately: clustering the expiry's *own*
+  delta nodes instead left wing gaps and stalled at ~37 bp. `0` ⇒ the legacy axis.
 - **Time vertices** (`_time_nodes`): `0` + a short-end node at `T₁/4` + every lit
-  expiry, densified in √T to the `gridTNodes` floor (never dropping an expiry).
+  expiry, densified in √T to the `gridTNodes` floor (never dropping an expiry). NB:
+  adding *more* time vertices ahead of a weekly does **not** help its fit — a single
+  expiry constrains only the time-*integral* of local variance over `[0, τ₁]`, so
+  extra front rows are unconstrained DOF (measured flat); the short-end lever is
+  strike resolution, not time resolution.
+- **PDE strike step** (`_pde_dx`, **fix #2**): the *fine* PDE lattice (§2) is a
+  uniform `dx` shared by all expiries. The fixed `dx = 0.01` under-resolves a
+  short-dated density, which concentrates near `x = 1` (a 6-DTE weekly lives in
+  `x ∈ [0.93, 1.06]` — only ~13 nodes). `_pde_dx` refines `dx` to `0.3 ×` the
+  smallest ATM `σ√τ` across the lit expiries, **snapped to `1/N`** so the var-swap
+  anchor `x = 1` stays node `N`, clamped to `[1/400, 0.01]`. A normal surface lands
+  back on `0.01` ⇒ byte-identical. Worth ~5–6 bp on a true weekly on top of fix #1.
 - The grid build is one shared `_resolve_grid`, also surfaced read-only on
   `GET /fit/affine/{ticker}/grid-info` so the Options panel shows the exact grid.
 
@@ -252,6 +275,12 @@ a coarse/truncated strike grid (vs the `k⁻²`-weighted static replication), wi
 - **Adaptive local-vol cap**, **left-wing linear extrapolation**, **delta strike axis**,
   **spacing-aware roughness**, **√T time axis + front tie** — all detailed in the
   roadmap's "Done & verified" log.
+- **Short-dated fit (fixes #1/#2, §4)**: the per-expiry strike coverage floor
+  (`gridXMinPerExpiry`) + adaptive PDE step (`_pde_dx`) took a true 6-DTE SPY weekly
+  from **108 → 23.5 bp** (better than the parametric ~47 bp), normal names
+  byte-identical / slightly better. Diagnosed by the Phase-0 per-expiry
+  diagnostics (`api/affine_diag.py`) on a true-weekly Massive capture
+  (`capture_massive_weekly.py`).
 
 ### 6.11 Cumulative result
 Default path (strike-grid fix → Numba march → early-stop → GN → parametric seed → sparse
@@ -316,3 +345,13 @@ cold fits. These are *incremental* (~10–30%), not order-of-magnitude:
   + its SVD today) — a research item, not incremental.
 
 The order-of-magnitude wins (compiled march, SVD-avoidance, early-stop) are spent.
+
+**Open quality lever — short-dated robust weighting (fix #3).** After fixes #1/#2
+(§4) the residual on a true ~6-DTE weekly (~23 bp) is dominated by a near-ATM
+**data-noise outlier** (e.g. a 20.8% IV spiking from a ~13% smile via de-Am / parity
+stitching, on otherwise clean 1%-spread markets). The flexible LV chases it; the
+rigid parametric form averages through. A robust loss (Huber/Cauchy) on the option
+block for short maturities, or defaulting very short expiries to the bid-ask **band**
+objective instead of mid, would close the last gap to a visually clean weekly. This
+touches the LSQ objective (not just the grid), so it is a deliberate next step, not
+incremental — and optional, since the catastrophic under-resolution regime is gone.
