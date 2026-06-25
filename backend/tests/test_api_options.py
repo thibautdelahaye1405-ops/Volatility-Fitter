@@ -82,6 +82,7 @@ def test_defaults(client):
         "optionsFetchMode": "on_demand",
         "optionsFetchMinutes": 5.0,
         "streamRefitSeconds": 5.0,
+        "autoStream": True,
     }
 
 
@@ -138,6 +139,7 @@ def test_put_round_trip(client):
         "optionsFetchMode": "auto",
         "optionsFetchMinutes": 15.0,
         "streamRefitSeconds": 3.0,
+        "autoStream": False,
     }
     assert client.put("/settings/options", json=body).status_code == 200
     assert client.get("/settings/options").json() == body

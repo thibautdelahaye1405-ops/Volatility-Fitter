@@ -118,6 +118,9 @@ export interface OptionsSettings {
   optionsFetchMinutes: number;
   /** Seconds between full refits while a live WS book streams (Massive realtime). */
   streamRefitSeconds: number;
+  /** Auto-open the WS book on a streaming source (Massive) so Fetch/Calibrate serve
+   *  from the fast in-memory book instead of the slow REST snapshot. */
+  autoStream: boolean;
 }
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
@@ -172,6 +175,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   optionsFetchMode: "on_demand",
   optionsFetchMinutes: 5.0,
   streamRefitSeconds: 5.0,
+  autoStream: true,
 };
 
 export interface UseOptionsResult {

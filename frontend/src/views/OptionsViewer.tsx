@@ -406,6 +406,12 @@ export default function OptionsViewer() {
               checked={draft.localVolEnabled} disabled={!live}
               onChange={(v) => patch({ localVolEnabled: v })}
             />
+            <Toggle
+              label="Stream live book (Massive)"
+              hint="On: a streaming source (Massive) auto-opens its real-time WS book so Fetch / Calibrate / spot serve from the fast in-memory book instead of the slow REST snapshot. Off: force REST. No effect on Yahoo / Bloomberg / Synthetic."
+              checked={draft.autoStream} disabled={!live}
+              onChange={(v) => patch({ autoStream: v })}
+            />
             <div>
               <span className={`${rowLabel} mb-1 block`}>Spot prices</span>
               <Segmented

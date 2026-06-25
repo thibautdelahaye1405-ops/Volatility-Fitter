@@ -364,6 +364,13 @@ class OptionsSettings(BaseModel):
     #: ``streamRefitSeconds`` — a faster, book-driven loop distinct from the
     #: minutes-cadence ``optionsFetchMode == "auto"`` REST refetch.
     streamRefitSeconds: float = Field(5.0, gt=0.0, le=600.0)
+    #: Auto-open the real-time WS book on a streaming-capable active source (Massive)
+    #: so chain Fetch / Calibrate / spot serve from the fast in-memory book instead of
+    #: the slow paginated REST snapshot. Independent of ``spotMode`` — the book just
+    #: feeds fetches; live re-pricing / auto-refit stay gated on ``spotMode=="realtime"``.
+    #: ON by default; OFF forces REST even on Massive. No effect on sources without a
+    #: stream (Yahoo / Bloomberg / Synthetic).
+    autoStream: bool = True
 
 
 # --------------------------------------------------- persisted settings defaults

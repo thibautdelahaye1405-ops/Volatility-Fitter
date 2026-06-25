@@ -642,12 +642,16 @@ class AppState(UniverseMixin):
         old one down first)."""
         with self._lock:
             active, mode = self._active_source, self._options.spotMode
+            auto = self._options.autoStream
             providers = dict(self._providers)
         for sid, prov in providers.items():
             if not hasattr(prov, "start_streaming"):
                 continue
             streaming = prov.is_streaming()
-            want = sid == active and mode == "realtime"
+            # Stream the active source's WS book when spotMode is realtime (live
+            # re-pricing) OR autoStream is on (just feed fast Fetch/Calibrate from the
+            # book; re-pricing/refit stay gated on realtime in the scheduler).
+            want = sid == active and (mode == "realtime" or auto)
             if not want:
                 if streaming:
                     prov.stop_streaming()  # source/mode no longer wants it
