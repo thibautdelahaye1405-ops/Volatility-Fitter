@@ -182,6 +182,26 @@ def test_spot_reads_underlying_without_full_chain():
     assert len(snap_calls) == 1  # nearest expiry only, not every expiry
 
 
+def test_snapshot_results_concurrent_multi_expiry_preserves_order():
+    """Multiple selected expiries paginate CONCURRENTLY; the results come back complete
+    and concatenated in sorted-expiry order regardless of which thread finishes first."""
+    e1, e2 = _exp(30), _exp(60)
+
+    def http_get(url, params):  # param-aware: each expiry returns its own contract
+        exp = (params or {}).get("expiration_date")
+        days = {e1: 30, e2: 60}.get(exp)
+        if days is None:
+            return {"results": [], "status": "OK"}
+        return {"results": [_snap_result(500 + days, days, "call")], "status": "OK"}
+
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=http_get)
+    # pass the expiries UNSORTED; the output must still be sorted-expiry order
+    results = provider._snapshot_results(
+        "SPY", [date.fromisoformat(e2), date.fromisoformat(e1)]
+    )
+    assert [r["details"]["expiration_date"] for r in results] == [e1, e2]
+
+
 def test_fetch_chain_without_spot_raises_upgrade():
     # Snapshot lacks last_quote + underlying price (the current key's tier);
     # the stock-snapshot fallback answers NOT_AUTHORIZED.

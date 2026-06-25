@@ -46,6 +46,13 @@ DEFAULT_BASE_URL = "https://api.massive.com"
 #: Snapshot page size cap (Massive limits to 250).
 _SNAPSHOT_LIMIT = 250
 
+#: Max concurrent per-expiry snapshot fetches. Each selected expiry is an independent
+#: REST query, so they paginate in parallel over the pooled (thread-safe) httpx client.
+#: Kept DELIBERATELY LOW: the snapshot endpoint is heavy and the delayed tier throttles
+#: concurrency — measured on live SPY, 2 workers cut a 6-expiry fetch ~1.7x (5.6s->3.3s),
+#: but 3-4 ran SLOWER than sequential and 8 hit read-timeouts. 2 is the safe sweet spot.
+_SNAPSHOT_WORKERS = 2
+
 #: Max contracts the per-contract historical-quote path (``_fetch_intraday``) will
 #: reconstruct before fast-failing — beyond a handful it's impractical (one
 #: sequential REST per contract); a full past-day chain must use the flat files.
@@ -285,17 +292,32 @@ class MassiveProvider(OptionChainProvider):
     def _snapshot_results(
         self, ticker: str, expiries: list[date] | None
     ) -> list[dict]:
-        """Raw snapshot ``results`` for the selected expiries (or the horizon)."""
+        """Raw snapshot ``results`` for the selected expiries (or the horizon).
+
+        Per-expiry snapshots are INDEPENDENT REST queries, so for more than one expiry
+        they are paginated CONCURRENTLY (a small thread pool over the pooled, thread-safe
+        httpx client) — wall-clock drops from the sum of per-expiry fetches to ~the
+        slowest single one. Results are concatenated in sorted-expiry order, so the
+        output is deterministic regardless of completion order."""
         path = f"/v3/snapshot/options/{ticker.upper()}"
-        if expiries:
-            out: list[dict] = []
-            for expiry in sorted(expiries):
-                out.extend(
-                    self._paginate(
-                        path,
-                        {"expiration_date": expiry.isoformat(), "limit": _SNAPSHOT_LIMIT},
-                    )
+
+        def fetch_expiry(expiry: date) -> list[dict]:
+            return list(
+                self._paginate(
+                    path, {"expiration_date": expiry.isoformat(), "limit": _SNAPSHOT_LIMIT}
                 )
+            )
+
+        if expiries:
+            exps = sorted(expiries)
+            if len(exps) == 1:
+                return fetch_expiry(exps[0])
+            if self._http_get is None:
+                self._client()  # warm the pooled client once before fanning out (no race)
+            out: list[dict] = []
+            with ThreadPoolExecutor(max_workers=min(_SNAPSHOT_WORKERS, len(exps))) as pool:
+                for chunk in pool.map(fetch_expiry, exps):  # map preserves input order
+                    out.extend(chunk)
             return out
         end = date.fromordinal(date.today().toordinal() + self.max_days)
         return list(
