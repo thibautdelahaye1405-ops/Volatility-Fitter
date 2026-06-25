@@ -248,6 +248,15 @@ class OptionsSettings(BaseModel):
     #: drives placement; midpoints are inserted only to reach this many); in
     #: "linear" mode it is the exact count.
     gridXNodes: int = Field(12, ge=3, le=200)
+    #: Minimum strike vertices guaranteed INSIDE each expiry's OWN traded range
+    #: (fix #1 for short-dated LV). The delta axis is sized to the LONGEST expiry
+    #: and clipped to the GLOBAL strike range, so a narrow SHORT smile can land only
+    #: a few vertices on its sharpest curvature (measured: a 6-DTE SPY weekly got
+    #: 3 -> 108 bp LV RMS, vs ~28 bp once it reaches ~8). The shared axis's widest
+    #: in-range gaps are split until each expiry has at least this many vertices, so
+    #: ONLY under-resolved (short-front) expiries gain nodes — well-covered normal
+    #: expiries are untouched (often byte-identical). 0 = off (legacy axis).
+    gridXMinPerExpiry: int = Field(8, ge=0, le=60)
     #: Time vertices (Stage 3 sqrt(T) axis): the base set is always 0 + a node
     #: before the first expiry + every lit expiry. This is a FLOOR on the number
     #: of POSITIVE time vertices — the widest sqrt(T) gaps are split until reached

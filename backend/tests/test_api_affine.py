@@ -169,10 +169,10 @@ def test_affine_grid_info_tracks_options(client):
     ticker = _ticker(client)
     opts = client.get("/settings/options").json()
     client.put("/settings/options", json={**opts, "gridTNodes": 0, "gridStrikeMode": "linear",
-                                          "gridXNodes": 6})
+                                          "gridXNodes": 6, "gridXMinPerExpiry": 0})
     info = client.get(f"/fit/affine/{ticker}/grid-info").json()
     assert info["strikeMode"] == "linear"
-    assert info["nXNodes"] in (6, 7)  # 6 linear nodes, +1 if x=1 wasn't on the grid
+    assert info["nXNodes"] in (6, 7)  # 6 linear nodes, +1 if x=1 wasn't on the grid (floor off)
 
 
 def test_affine_varswap_wiring(client):

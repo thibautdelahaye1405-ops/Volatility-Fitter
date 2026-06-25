@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 from volfit.api.affine_fit import (
+    _augment_per_expiry_coverage,
     _axis_scale,
     _delta_strike_nodes,
     _lv_bounds,
@@ -363,6 +364,61 @@ def _rows_with_wing(k_lo: float):
         vol = 0.15 + 0.10 * np.maximum(-k, 0.0)  # equity-like put skew, ~15% ATM
         rows.append((f"2026-{t}", float(t), k, vol * vol * t, None, None))
     return rows
+
+
+def _short_and_long_rows():
+    """A NARROW short expiry + a WIDE long one — the tensor-axis under-resolution
+    setup: the shared delta axis is sized to the long expiry and clipped to the
+    global range, so the short smile lands few vertices (the fix-#1 case)."""
+    ks = np.linspace(-0.06, 0.05, 9)
+    kl = np.linspace(-0.50, 0.25, 21)
+    return [
+        ("2026-01-08", 0.02, ks, (0.15**2) * 0.02 * np.ones_like(ks), None, None),
+        ("2027-01-01", 1.00, kl, (0.15**2) * 1.00 * np.ones_like(kl), None, None),
+    ]
+
+
+def _n_in(x_nodes, lo, hi):
+    logx = np.log(np.asarray(x_nodes))
+    return int(np.count_nonzero((logx >= lo) & (logx <= hi)))
+
+
+def test_coverage_floor_off_is_the_legacy_delta_axis():
+    """gridXMinPerExpiry = 0 reproduces the raw delta axis byte-for-byte."""
+    rows = _short_and_long_rows()
+    opts = OptionsSettings(gridStrikeMode="delta", gridXNodes=12, gridXMinPerExpiry=0)
+    _, x_off, _, _ = _resolve_grid(rows, opts)
+    ss, ts = _axis_scale(rows)
+    all_k = np.sort(np.concatenate([k for _, _, k, _, _, _ in rows]))
+    base = _delta_strike_nodes(ss, ts, float(all_k[0]), float(all_k[-1]), 12)
+    assert np.array_equal(x_off, base)
+    # the short smile IS under-resolved on the legacy axis (the bug)
+    assert _n_in(x_off, -0.06, 0.05) < 8
+
+
+def test_coverage_floor_densifies_only_the_short_front():
+    """The floor lifts the short expiry to >= m_min in-range vertices, adding nodes;
+    the wide long expiry was already covered."""
+    rows = _short_and_long_rows()
+    opts = OptionsSettings(gridStrikeMode="delta", gridXNodes=12, gridXMinPerExpiry=8)
+    _, x_on, _, _ = _resolve_grid(rows, opts)
+    _, x_off, _, _ = _resolve_grid(rows, opts.model_copy(update={"gridXMinPerExpiry": 0}))
+    assert _n_in(x_on, -0.06, 0.05) >= 8  # short front now meets the floor
+    assert _n_in(x_on, -0.50, 0.25) >= 8  # long stays covered
+    assert x_on.size > x_off.size  # nodes were added (to the short front)
+    # every legacy node survives (augmentation only INSERTS, never moves/drops)
+    assert set(np.round(x_off, 12)).issubset(set(np.round(x_on, 12)))
+
+
+def test_augment_is_noop_when_every_expiry_already_covered():
+    """A dense axis that already covers the short range gains nothing — so a normal,
+    well-resolved name is untouched (no needless vertices / compute)."""
+    rows = _short_and_long_rows()
+    dense = np.unique(np.concatenate([np.exp(np.linspace(-0.5, 0.25, 60)), [1.0]]))
+    out = _augment_per_expiry_coverage(dense, rows, 8)
+    assert np.array_equal(out, dense)
+    # and m_min <= 0 returns the input unchanged (same object)
+    assert _augment_per_expiry_coverage(dense, rows, 0) is dense
 
 
 def test_convex_wing_confined_to_quoted_extrapolation():

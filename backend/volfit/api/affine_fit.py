@@ -251,6 +251,27 @@ def last_affine_diagnostics(state: AppState, ticker: str):
     return getattr(state, _LAST_DIAG_ATTR, {}).get(ticker)
 
 
+#: AppState side-dict (ticker -> list[AffineExpiryDiagnostics]) from the last fit.
+#: Phase 0 per-expiry diagnostics (volfit.api.affine_diag): kept OFF the wire
+#: response (the response contract is frozen) but available to lv_benchmark.py and
+#: a future debug endpoint, mirroring ``_LAST_DIAG_ATTR``.
+_EXP_DIAG_ATTR = "_affine_expiry_diag"
+
+
+def _record_expiry_diagnostics(state: AppState, ticker: str, diags) -> None:
+    cache = getattr(state, _EXP_DIAG_ATTR, None)
+    if cache is None:
+        cache = {}
+        setattr(state, _EXP_DIAG_ATTR, cache)
+    cache[ticker] = diags
+
+
+def last_affine_expiry_diagnostics(state: AppState, ticker: str):
+    """Phase-0 per-expiry diagnostics of the ticker's most recent affine fit, or
+    None if never fit this session (volfit.api.affine_diag.expiry_diagnostics)."""
+    return getattr(state, _EXP_DIAG_ATTR, {}).get(ticker)
+
+
 def _pick_spread(values: np.ndarray, n: int) -> np.ndarray:
     """``n`` roughly-even entries of a sorted array, always incl. both ends."""
     values = np.asarray(values, dtype=float)
@@ -339,6 +360,40 @@ def _delta_strike_nodes(
     return np.unique(np.concatenate([np.exp(k), [1.0]]))
 
 
+def _augment_per_expiry_coverage(
+    x_nodes: np.ndarray, rows, m_min: int
+) -> np.ndarray:
+    """Guarantee each expiry at least ``m_min`` strike vertices inside its OWN
+    traded ``[k_lo, k_hi]`` by splitting the widest in-range gaps (fix #1).
+
+    The delta axis (``_delta_strike_nodes``) is sized to the LONGEST expiry and
+    clipped to the GLOBAL strike range, so a SHORT expiry's narrow smile can land
+    only a handful of vertices on its sharpest curvature — measured: a 6-DTE SPY
+    weekly got 3/13 in-range vertices and 108 bp LV RMS (catastrophic vs the
+    parametric ~47 bp), dropping to ~28 bp (the short-end data-noise floor) once it
+    reaches ~8. This densifies ONLY under-covered expiries (the short front): a
+    well-covered normal expiry already has ``>= m_min`` in-range vertices, so it is
+    untouched (often byte-identical). Even gap-fill beats clustering the expiry's
+    own delta nodes (which leaves wing gaps). ``m_min <= 0`` ⇒ unchanged.
+    """
+    x = np.asarray(x_nodes, dtype=float)
+    if m_min <= 0 or x.size == 0:
+        return x_nodes
+    k = np.sort(np.log(x[x > 0.0]))  # work in log-moneyness; x = 1 re-added at end
+    for _, _, kk, _, _, _ in rows:
+        klo, khi = float(np.min(kk)), float(np.max(kk))
+        # split the widest in-range gap until m_min vertices lie within [klo, khi];
+        # the size guard is a defensive cap against a degenerate tiny range.
+        while int(np.count_nonzero((k >= klo) & (k <= khi))) < m_min and k.size < 500:
+            seg = k[(k >= klo) & (k <= khi)]
+            if seg.size < 2:
+                break  # < 2 in-range vertices to bisect (degenerate slice)
+            g = int(np.argmax(np.diff(seg)))
+            mid = 0.5 * (seg[g] + seg[g + 1])
+            k = np.unique(np.insert(k, np.searchsorted(k, mid), mid))
+    return np.unique(np.concatenate([np.exp(k), [1.0]]))
+
+
 def _vertex_grid(
     expiries: np.ndarray, x_lo_vertex: float, k_hi: float, n_t_floor: int, n_x: int
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -375,6 +430,12 @@ def _resolve_grid(rows, opts):
         t_nodes, x_nodes = _vertex_grid(
             expiries, x_lo_vertex, k_hi, opts.gridTNodes, opts.gridXNodes
         )
+
+    # Short-expiry coverage floor (fix #1): densify any expiry under-resolved on the
+    # shared axis (the short front), so its smile has enough strike DOF. The added
+    # nodes sit inside each expiry's traded range (never the extrapolation wing), so
+    # the convex-wing selection below is unaffected.
+    x_nodes = _augment_per_expiry_coverage(x_nodes, rows, opts.gridXMinPerExpiry)
 
     convex_cols = None
     if opts.convexWing:
@@ -951,6 +1012,18 @@ def _fit(
         )
 
     min_density, calendar, arb_free = _diagnostics(cal.solution, x_grid)
+    # Phase 0: per-expiry diagnostics (vega-floor count, vertices-in-range, PDE
+    # steps, prior-row count) — pure observation, computed AFTER the solve so it
+    # cannot change any calibrated value; stored on the side-channel for the
+    # benchmark / a debug endpoint, never on the wire response.
+    from volfit.api.affine_diag import expiry_diagnostics
+
+    prior_t_counts: dict[float, int] = {}
+    for o in prior_opts:
+        prior_t_counts[float(o.t)] = prior_t_counts.get(float(o.t), 0) + 1
+    _record_expiry_diagnostics(
+        state, ticker, expiry_diagnostics(rows, x_nodes, t_grid, _VEGA_FLOOR, prior_t_counts)
+    )
     iv_arr = np.array(iv_bp_all) if iv_bp_all else np.zeros(1)
     return AffineFitResponse(
         ticker=ticker,
@@ -1056,7 +1129,8 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         state.options_version,
         state.data_version(ticker),
         state.active_prior_version(ticker),  # a fetched prior re-anchors the LV fit
-        opts.gridXNodes, opts.gridTNodes, opts.gridRegLambda, opts.gridRegRho,
+        opts.gridXNodes, opts.gridXMinPerExpiry, opts.gridTNodes,
+        opts.gridRegLambda, opts.gridRegRho,
         opts.gridStrikeMode, opts.convexWing, opts.convexWingWeight,
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
         opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop, opts.lvFastKernel,
