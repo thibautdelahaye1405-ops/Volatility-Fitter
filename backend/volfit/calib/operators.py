@@ -45,6 +45,11 @@ from volfit.calib.varswap import varswap_total_variance
 
 _W_FLOOR = 1e-12
 _EPS = 1e-9
+#: Var-swap coverage probe half-width in ATM standard deviations. The var-swap
+#: level is "observed" when the quotes reach ~this far into the wings; tuned down
+#: from 2.0 (which left it almost always under-covered) to a more typical coverage
+#: threshold (Phase 8). The real multi-regime tuning is the backtest's to refine.
+_VARSWAP_PROBE_STD = 1.4
 
 #: Per-side forward delta implied by each named operator (ATM/VarSwap have none).
 OPERATOR_DELTAS: dict[str, float] = {
@@ -299,7 +304,7 @@ def varswap_rec(
     the fair var-swap re-expressed at the node tau."""
     no_vs = VarSwapPriorRec(active=False, prior_total_var=0.0, weight=0.0, gap=0.0)
     sig_atm = float(_sigma_at(prior_w, np.array([0.0]), prior_tau)[0])
-    wing = 2.0 * sig_atm * math.sqrt(prior_tau)
+    wing = _VARSWAP_PROBE_STD * sig_atm * math.sqrt(prior_tau)
     probe = np.array([-wing, 0.0, wing])
     psup = _quote_support(k_quotes, weights, probe, bandwidth)
     vs_obs = 1.0 / float(np.sum(1.0 / (psup + _EPS)))  # harmonic over the probe

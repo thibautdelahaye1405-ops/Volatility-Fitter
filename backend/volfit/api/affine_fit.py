@@ -700,8 +700,8 @@ def _prior_anchor_quotes(
     at delta-locations whose weight follows the observed-vs-desired quote density,
     and emitted as OptionQuotes (price = prior price, tol = vega·VOL_TOL/√weight —
     higher weight ⇒ tighter) plus a companion var-swap quote scaled by how
-    unobserved the smile is. Empty unless ``autoLoadPrior`` is on and a prior is
-    active.
+    unobserved the smile is. Empty when ``pct`` ≤ 0 or no prior is active; the
+    prior-mode gating is the caller's (``_prior_lv_targets``).
 
     ``deltas`` / ``weight_pct`` override the anchor placements and budget (default
     ``priorAnchorDeltas`` / ``priorAnchorWeightPct``) — the hybrid mode passes the
@@ -709,7 +709,7 @@ def _prior_anchor_quotes(
     opts = state.options()
     pct = opts.priorAnchorWeightPct if weight_pct is None else weight_pct
     use_deltas = tuple(opts.priorAnchorDeltas if deltas is None else deltas)
-    if not opts.autoLoadPrior or pct <= 0.0:
+    if pct <= 0.0:  # mode gating is the caller's job (_prior_lv_targets); this is the builder
         return [], []
     active = state.active_prior(ticker)
     if active is None:
@@ -756,12 +756,12 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
     ``quote_operator`` -> signed-basket operator targets (keep the RR/BF coupling);
     ``smile_factor`` -> signed-basket factor targets (level/skew/curvature);
     ``hybrid`` -> operator baskets PLUS a residual deep-tail strike anchor where no
-    operator reaches; ``off`` / ``overlay`` / ``graph_only`` -> none. Gated by
-    ``autoLoadPrior`` (the transition master) + an active prior, mirroring
+    operator reaches; ``off`` / ``overlay`` / ``graph_only`` -> none. The MODE is the
+    single source of truth (Phase 8 retired the ``autoLoadPrior`` master), mirroring
     ``service.prior_targets`` so the LV surface and the parametric smile agree."""
     opts = state.options()
     plan = resolve_prior_mode(opts)
-    if not opts.autoLoadPrior or not plan.any_calibration_prior:
+    if not plan.any_calibration_prior:
         return [], [], []
     if plan.strike_anchor:
         prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)

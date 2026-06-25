@@ -64,9 +64,30 @@ just re-run it.
   (network-bound); run windowed. ~65× slower than REST. Reduced NBBO cached under
   `_cache/` (a 0-byte cache from a kill mid-scan is treated as absent + re-scanned).
 
+## Prior-persistence mode scoring (Docs/prior_persistence_roadmap.md, Phase 8)
+
+This harness scores **single-snapshot** fit precision; prior persistence is a
+**temporal** behaviour (yesterday's prior vs today's market), so it is validated
+separately:
+
+- **Now (runnable):** `backend/tests/test_prior_nodamp.py` — a synthetic
+  "overnight ATM jump, shape unchanged, wings unquoted" scenario that asserts the
+  design goal across modes: operators/factors follow the level and reconstruct the
+  jumped wing (shape is level-invariant), while the legacy strike-gap anchor clings
+  to yesterday's absolute level. This is the self-contained mode comparison.
+- **Future (empirical, needs ≥2 captured days):** a temporal extension — fit
+  day _T-1_ as the prior, then on day _T_ thin the chain to the ATM region and
+  score each `priorPersistenceMode` (off / strike_gap / quote_operator /
+  smile_factor / hybrid) by the reconstructed-wing error vs the full day-_T_ chain.
+  This is what would tune the two flagged defaults: the var-swap coverage probe
+  (`operators._VARSWAP_PROBE_STD`, now 1.4σ) and the operator support bandwidth
+  (`OptionsSettings.priorOperatorBandwidth`, 0.06 — leaks ATM support into the
+  wing legs). Wire it as a `dispatch`-level axis once the temporal fixtures exist.
+
 ## Status
 
 Capture (REST + flat-file) + compute (dispatch/replay) + metrics/analyze built and
 tested. Pilot = Aug-2024 spike × 8 assets. **Remaining:** graph leave-one-out
-(Phase 6 — runs once ≥2 days are captured; sticky-moneyness + SSR 1.0) and the
-NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`).
+(Phase 6 — runs once ≥2 days are captured; sticky-moneyness + SSR 1.0), the
+NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`), and the
+prior-mode temporal axis (above).

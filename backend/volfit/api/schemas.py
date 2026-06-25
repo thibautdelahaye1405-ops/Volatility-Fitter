@@ -144,7 +144,10 @@ class OptionsSettings(BaseModel):
     #: calibration grid is coarsened; Stage 3). Calibration-affecting (bumps the
     #: options version); parametric models always use the static replication.
     varSwapMethod: Literal["static", "source_pde"] = "static"
-    # prior default
+    # prior default. LEGACY (Phase 8): ``priorPersistenceMode`` is now the single
+    # source of truth for prior gating; this field is retained only so a pre-mode
+    # persisted blob can be migrated to a mode on store load (settings_persist) and
+    # for round-trip back-compat. It no longer gates calibration.
     autoLoadPrior: bool = False
     #: Prior-anchor budget as a PERCENTAGE of the summed option-quote weights of the
     #: node (like the var-swap penalty): the total weight given to the data-gap

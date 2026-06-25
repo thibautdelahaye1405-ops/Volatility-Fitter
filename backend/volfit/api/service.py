@@ -289,13 +289,15 @@ def prior_targets(
     surface consume. ``off`` / ``overlay`` / ``graph_only`` (and ``smile_factor``
     until Phase 6) add no calibration penalty.
 
-    Gated by ``autoLoadPrior`` (the transition master enable; Phase 8 retires it in
-    favour of the mode) AND an active, fetched prior — either off ⇒ empty targets ⇒
-    byte-identical. The prior's LQD backbone is transported to the node's forward
-    under the dynamics regime so it is spot-consistent with the live quotes."""
+    The MODE is the single source of truth (Phase 8 retired the ``autoLoadPrior``
+    master): a non-penalty mode (off / overlay / graph_only) or no active fetched
+    prior ⇒ empty targets ⇒ byte-identical. Existing desks are preserved by the
+    store-load migration (legacy ``autoLoadPrior`` off → mode ``off``). The prior's
+    LQD backbone is transported to the node's forward under the dynamics regime so it
+    is spot-consistent with the live quotes."""
     options = state.options()
     plan = resolve_prior_mode(options)
-    if not options.autoLoadPrior or not plan.any_calibration_prior:
+    if not plan.any_calibration_prior:
         return PriorTargets()
     from volfit.api import prior_transport
 

@@ -155,9 +155,24 @@ so a well-observed operator (`obs ≥ required`) receives **zero** prior weight.
 - (Overlay-visibility hiding of the dotted prior in `off` mode is a small follow-on;
   the dotted prior currently always draws when a prior is active.)
 
-### Phase 8 — Validation & default flip
-- Full unit/golden/parity coverage; backtest harness gains a prior-mode axis;
-  flip the recommended default to `hybrid`.
+### Phase 8 — Validation & default flip  ✅ DONE
+- **Synthetic no-damp validation** (`tests/test_prior_nodamp.py`): an overnight
+  ATM-jump / shape-unchanged / wings-unquoted scenario — operators & factors follow
+  the level and reconstruct the jumped wing (shape is level-invariant) while the
+  strike-gap anchor clings to yesterday's absolute level. The runnable mode
+  comparison (the precision harness scores single-snapshot fits, not temporal
+  persistence — the empirical temporal axis is documented in `backtest/README.md`
+  as a ≥2-day-fixture follow-on).
+- **Tuned** the over-eager var-swap coverage probe `2.0σ → 1.4σ`
+  (`operators._VARSWAP_PROBE_STD`); operator bandwidth `0.06` left as-is (flagged
+  for the temporal backtest to tune).
+- **Flipped the default + retired the `autoLoadPrior` master:** the MODE is now the
+  single source of truth (`prior_targets` / `_prior_lv_targets` / `_prior_anchor_quotes`
+  no longer gate on `autoLoadPrior`); the schema default mode is `hybrid` (Phase 0),
+  so new installs get hybrid persistence while existing desks are preserved by the
+  store-load migration (legacy off → mode `off`). `autoLoadPrior` kept as a legacy
+  field for migration + round-trip only; the frontend toggle removed (mode=off is
+  the off switch). Full suite 798 passed / 1 skipped; strict-TS + ruff green.
 
 ## Cross-cutting
 

@@ -8,7 +8,32 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-22 (resume here)
+## STATUS — updated 2026-06-25 (resume here)
+
+### 🧭 SESSION WRAP (2026-06-25) — prior-persistence 7-mode menu SHIPPED
+
+The prior-persistence redesign of `Docs/prior_persistence_design_options.md` is
+built end-to-end (plan + per-phase log in `Docs/prior_persistence_roadmap.md`).
+All 7 modes are live (parametric + Local-Vol): **Off · Overlay · Strike gaps ·
+Quote operators · Smile factors · Hybrid · Graph only**, selected by
+`OptionsSettings.priorPersistenceMode` (the new single source of truth; the legacy
+`autoLoadPrior` master was retired — mode=off is the off switch; existing desks
+preserved by the store-load migration). Highlights:
+- `calib/operators.py` (ATM/RR/BF signed σ-baskets + var-swap) + `calib/factors.py`
+  (ATM-local level/skew/curvature) + shared `calib/precision.py` activation gate.
+- Parametric (LQD/SVI/Multi-Core-SIV) get direct signed-operator residuals — this
+  **fixed the long-standing asymmetry** (SVI/SIV overlays previously got no prior).
+- Local-Vol keeps the RR/BF coupling via **signed-basket residuals**
+  (`affine_calib.BasketQuote`, a linear functional of leg prices — not per-leg
+  quotes that drop the coupling).
+- Hybrid = operators + a residual deep-tail strike anchor; two-pass opt-in
+  (`priorDataOnlyPrepass`); `GET /smiles/{t}/{e}/prior-diagnostics` + an Options
+  mode selector & §9.4 audit panel (`PriorPersistencePanel.tsx`).
+- Validated by `tests/test_prior_nodamp.py` (overnight ATM-jump no-damp check).
+Full suite **798 passed, 1 skipped**; strict-TS + ruff green. Committed on `main`
+(dddd163..); **not pushed to origin.** Open follow-ons: empirical temporal-fixture
+mode scoring + tuning the var-swap probe / operator bandwidth (see
+`backtest/README.md`); overlay-hide-on-`off` in the smile viewer.
 
 ### 🧭 SESSION WRAP (2026-06-22) — read this first
 

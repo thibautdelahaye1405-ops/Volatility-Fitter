@@ -130,25 +130,26 @@ def _strike_gap_state():
 
 
 def test_prior_targets_gating():
-    """service.prior_targets: empty unless autoLoadPrior is on AND a prior has been
-    fetched (active); a real strike anchor once both hold (strike_gap mode)."""
-    state, iso, prepared, k = _strike_gap_state()
+    """service.prior_targets: empty until a prior is active; the MODE gates (the
+    autoLoadPrior master was retired in Phase 8) — strike_gap yields a strike
+    anchor, 'off' stays empty even with the prior active."""
+    state, iso, prepared, k = _strike_gap_state()  # mode = strike_gap
 
-    # Off by default (autoLoadPrior False).
+    # No active (fetched) prior yet: empty.
     pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
     assert pt.prior_anchor is None and pt.operator_prior is None and pt.prior_var_swap is None
-
-    # autoLoadPrior on but no active (fetched) prior yet: still empty.
-    state.set_options(state.options().model_copy(update={"autoLoadPrior": True}))
-    pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
-    assert pt.prior_anchor is None
 
     # Save + fetch -> active prior -> a real STRIKE anchor (not an operator target).
     priors.save_all(state)
     priors.fetch_all(state)
     pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
     assert pt.prior_anchor is not None and pt.prior_anchor.k.size > 0
-    assert pt.operator_prior is None  # strike_gap mode routes to the anchor, not operators
+    assert pt.operator_prior is None  # strike_gap routes to the anchor, not operators
+
+    # mode 'off' disables the prior even with an active prior fetched.
+    state.set_options(state.options().model_copy(update={"priorPersistenceMode": "off"}))
+    pt = service.prior_targets(state, TICKER, iso, k, None, prepared)
+    assert pt.prior_anchor is None and pt.operator_prior is None and pt.prior_var_swap is None
 
 
 def test_prior_targets_operator_mode_routes_to_operators():
@@ -214,12 +215,11 @@ def test_prior_targets_off_and_graph_only_are_empty():
 
 
 def test_affine_prior_anchor_quotes_gated_and_present():
-    """The affine LV fit gains delta-location prior anchor quotes only when
-    autoLoadPrior is on and a prior is active (same data-gap framework)."""
+    """The strike-anchor builder emits delta-location prior quotes when a prior is
+    active; weight_pct=0 yields none (its own gate). Mode routing is the caller's."""
     from volfit.api import affine_fit
 
     state = AppState(REF_DATE)
-    state.set_options(state.options().model_copy(update={"autoLoadPrior": True}))
     priors.save_all(state)
     priors.fetch_all(state)
 
@@ -227,9 +227,8 @@ def test_affine_prior_anchor_quotes_gated_and_present():
     extra_opts, _extra_vs = affine_fit._prior_anchor_quotes(state, TICKER, rows)
     assert len(extra_opts) > 0  # delta-location anchors added to the LV fit
 
-    # Off -> no anchor quotes.
-    state.set_options(state.options().model_copy(update={"autoLoadPrior": False}))
-    assert affine_fit._prior_anchor_quotes(state, TICKER, rows) == ([], [])
+    # weight_pct = 0 -> no anchor quotes.
+    assert affine_fit._prior_anchor_quotes(state, TICKER, rows, weight_pct=0.0) == ([], [])
 
 
 def test_affine_prior_lv_targets_route_by_mode():

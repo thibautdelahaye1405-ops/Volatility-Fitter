@@ -387,11 +387,9 @@ export default function OptionsViewer() {
           checked={draft.varSwapEnabled} disabled={!live}
           onChange={(v) => patch({ varSwapEnabled: v })}
         />
-        <Toggle
-          label="Auto-load prior" hint="Master enable for prior persistence: anchor the calibration to the fetched prior where the market is under-informed. The FLAVOR (strike gaps / quote operators / smile factors / hybrid / graph only) is the Prior-persistence mode in Calibration."
-          checked={draft.autoLoadPrior} disabled={!live}
-          onChange={(v) => patch({ autoLoadPrior: v })}
-        />
+        {/* Prior persistence is controlled by its mode selector (Calibration card);
+            "Off" disables it. The legacy Auto-load-prior master toggle was retired
+            in Phase 8 (the mode is the single source of truth). */}
 
         <div className="mt-4 border-t border-slate-800 pt-3">
           <h4 className={`${subTitle} mt-0`}>Calibration &amp; data triggers</h4>

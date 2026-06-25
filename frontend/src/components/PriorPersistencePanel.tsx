@@ -138,9 +138,8 @@ export default function PriorPersistencePanel({
         </select>
       </div>
       <p className="mb-2 text-[10px] text-slate-500">
-        {MODES.find((m) => m.id === mode)?.hint} Applies when{" "}
-        <span className={draft.autoLoadPrior ? "text-accent-400" : "text-amber-400"}>Auto-load prior</span>{" "}
-        is on (Workflow) and a prior has been fetched.
+        {MODES.find((m) => m.id === mode)?.hint} Applies once a prior has been fetched
+        (Save / Fetch priors); pick <span className="text-slate-300">Off</span> to disable.
       </p>
 
       {/* strike-gap anchor knobs (also the hybrid deep-tail anchor placements) */}
