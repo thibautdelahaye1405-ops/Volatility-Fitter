@@ -23,6 +23,8 @@ from dataclasses import dataclass
 import numpy as np
 
 from volfit.calib.band import BandTarget
+from volfit.calib.operators import OperatorPriorTarget
+from volfit.calib.prior import PriorAnchorTarget
 from volfit.calib.varswap import VarSwapTarget
 from volfit.models.base import SmileModel
 from volfit.models.diagnostics import (
@@ -78,6 +80,8 @@ def build_display_fit(
     var_swap: VarSwapTarget | None = None,
     calendar_floor: tuple[np.ndarray, np.ndarray] | None = None,
     calendar_weight: float = 1e6,
+    prior_anchor: PriorAnchorTarget | None = None,
+    operator_prior: OperatorPriorTarget | None = None,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
 
@@ -93,6 +97,12 @@ def build_display_fit(
     total variance); when present both overlay families gain the model-agnostic
     calendar hinge with strength ``calendar_weight``. None leaves the fit
     byte-identical (the LQD-only path passes None).
+
+    ``prior_anchor`` (strike-gap mode) and ``operator_prior`` (operator / hybrid
+    modes) carry the prior-persistence penalty into the overlay calibration, so
+    the SVI / Multi-Core SIV overlays receive the SAME prior semantics as the LQD
+    backbone (roadmap Phase 3 — the asymmetry fix). Both None leave the overlay
+    byte-identical.
     """
     if model not in OVERLAY_MODELS:
         return None
@@ -107,6 +117,7 @@ def build_display_fit(
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
+            prior_anchor=prior_anchor, operator_prior=operator_prior,
         )
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
@@ -117,6 +128,7 @@ def build_display_fit(
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
+            prior_anchor=prior_anchor, operator_prior=operator_prior,
         )
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)

@@ -19,6 +19,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
 from volfit.core.black import black_call, black_vega_sigma
@@ -78,6 +79,7 @@ def _residuals(
     var_swap: VarSwapTarget | None,
     prior_anchor: PriorAnchorTarget | None,
     prior_var_swap: VarSwapTarget | None,
+    operator_prior: OperatorPriorTarget | None,
     n_points: int,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
@@ -93,11 +95,13 @@ def _residuals(
     _, a_right = endpoint_scales(params)
     n_cal = 0 if cal_z is None else cal_z.size
     n_prior = 0 if prior_anchor is None else prior_anchor.k.size
+    n_op = 0 if operator_prior is None else len(operator_prior.names)
     band_mode = price_lo is not None
     n_fit = (2 * k.size) if band_mode else k.size
     vs = np.empty(0) if var_swap is None else np.zeros(1)
     pa = np.empty(0) if prior_anchor is None else np.zeros(n_prior)
     pvs = np.empty(0) if prior_var_swap is None else np.zeros(1)
+    op = np.empty(0) if operator_prior is None else np.zeros(n_op)
     try:
         slice_ = build_slice(params, n_points=n_points)
         model_price = slice_.call_price(k)
@@ -131,14 +135,19 @@ def _residuals(
             # Prior's var-swap level as a model-free total-variance moment (cheap
             # closed form), scaled by how unobserved the smile is.
             pvs = np.array([varswap_residual_w(slice_.var_swap_strike(), prior_var_swap)])
+        if operator_prior is not None:
+            # Quote-operator prior (ATM/RR/BF): pull the model's operators toward
+            # the prior's where the live quotes don't identify them (design note §5).
+            op = operator_residuals(slice_.implied_w, operator_prior)
     except ValueError:
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
         pa = np.zeros(n_prior)
         pvs = np.zeros(0 if prior_var_swap is None else 1)
+        op = np.zeros(n_op)
     barrier = np.log1p(np.exp(barrier_scale * (a_right - barrier_center)))
-    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa, pvs))
+    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa, pvs, op))
 
 
 def calibrate_slice(
@@ -160,6 +169,7 @@ def calibrate_slice(
     var_swap: VarSwapTarget | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
+    operator_prior: OperatorPriorTarget | None = None,
     opt_n_points: int = OPT_N_POINTS,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
@@ -191,9 +201,11 @@ def calibrate_slice(
 
     ``prior_anchor`` (volfit.calib.prior) adds vega-normalized residuals pulling
     the fit toward a (transported) prior at delta-locations, weighted by the
-    data-gap precision (the autoLoadPrior feature); ``prior_var_swap`` adds the
-    prior's var-swap level as a companion total-variance moment. Both None (the
-    default) leave the objective byte-identical.
+    data-gap precision (the strike-gap prior mode); ``prior_var_swap`` adds the
+    prior's var-swap level as a companion total-variance moment. ``operator_prior``
+    (volfit.calib.operators) adds the quote-operator prior block (ATM/RR/BF) for
+    the operator / hybrid prior modes. All None (the default) leave the objective
+    byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -224,7 +236,12 @@ def calibrate_slice(
     # pass instead of trf's (P+1) finite-difference rebuilds. The var-swap and
     # prior-anchor terms are not yet differentiated analytically, so those fits
     # fall back to the finite-difference Jacobian (correct, just not accelerated).
-    use_analytic = var_swap is None and prior_anchor is None and prior_var_swap is None
+    use_analytic = (
+        var_swap is None
+        and prior_anchor is None
+        and prior_var_swap is None
+        and operator_prior is None
+    )
     result = least_squares(
         _residuals,
         init.to_vector(),
@@ -246,6 +263,7 @@ def calibrate_slice(
             var_swap,
             prior_anchor,
             prior_var_swap,
+            operator_prior,
             opt_n_points,
         ),
         method="trf",

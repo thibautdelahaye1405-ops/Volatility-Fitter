@@ -74,6 +74,7 @@ def residual_jacobian(
     var_swap,  # gated None — present so the signature matches _residuals
     prior_anchor,
     prior_var_swap,
+    operator_prior,
     n_points: int,
 ) -> np.ndarray:
     """Analytic Jacobian of ``_residuals`` (var_swap/prior gated off). Rows are

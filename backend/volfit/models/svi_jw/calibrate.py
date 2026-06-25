@@ -33,8 +33,10 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.operators import OperatorPriorTarget, operator_residuals
+from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
-from volfit.core.black import black_vega_sigma
+from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.svi_jw.svi import RawSVI
 
 #: Soft-penalty weight for the two no-arbitrage constraints. Large enough to
@@ -121,6 +123,8 @@ def calibrate_svi(
     calendar_k: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    prior_anchor: PriorAnchorTarget | None = None,
+    operator_prior: OperatorPriorTarget | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -142,6 +146,12 @@ def calibrate_svi(
     expiry: a soft hinge ``sqrt(calendar_weight)*max(floor - w(k), 0)`` keeping
     this slice's total variance at or above the nearer one (no calendar arb).
     Both None (the default) leave the objective byte-identical.
+
+    ``prior_anchor`` (volfit.calib.prior, the strike-gap mode) and
+    ``operator_prior`` (volfit.calib.operators, the operator / hybrid modes) add
+    the prior-persistence residual blocks — the same semantics LQD receives, so
+    the SVI display overlay is no longer an exception (roadmap Phase 3). Both None
+    (the default) leave the objective byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -168,6 +178,13 @@ def calibrate_svi(
             # No calendar arb: total variance must not drop below the nearer expiry.
             cal = sqrt_cal * np.maximum(cal_floor - raw.total_variance(cal_k), 0.0)
             res = np.concatenate((res, cal))
+        if prior_anchor is not None:
+            # Strike-gap prior: vega-normalized pull toward the prior's call prices.
+            cp = black_call(prior_anchor.k, np.maximum(raw.total_variance(prior_anchor.k), 1e-12))
+            res = np.concatenate((res, prior_anchor_residuals(cp, prior_anchor)))
+        if operator_prior is not None:
+            # Quote-operator prior (ATM/RR/BF) toward the prior's operators.
+            res = np.concatenate((res, operator_residuals(raw.total_variance, operator_prior)))
         return res
 
     theta0 = _init_theta(k, w_quotes)

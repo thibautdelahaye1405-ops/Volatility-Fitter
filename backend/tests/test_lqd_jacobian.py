@@ -35,8 +35,9 @@ def _theta():
 
 
 def _args(cal_z=None, cal_floor=None, plo=None, phi=None):
+    # trailing None×4 = var_swap, prior_anchor, prior_var_swap, operator_prior
     return (K, TARGET, INV_VEGA, SW, REG, cal_z, cal_floor, 1e6, plo, phi,
-            0.90, 50.0, 0.05, None, None, None, 2001)
+            0.90, 50.0, 0.05, None, None, None, None, 2001)
 
 
 def _max_rel(theta, args):

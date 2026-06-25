@@ -19,7 +19,10 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.operators import OperatorPriorTarget, operator_residuals
+from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
+from volfit.core.black import black_call
 from volfit.models.sigmoid.kernels import hat, siv_base
 from volfit.models.sigmoid.sigmoid import HatCore, MultiCoreSiv
 
@@ -108,6 +111,8 @@ def _fit(
     calendar_k: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    prior_anchor: PriorAnchorTarget | None = None,
+    operator_prior: OperatorPriorTarget | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
@@ -148,6 +153,15 @@ def _fit(
             # No calendar arb: total variance w = v(z)*t must not drop below floor.
             w_model = np.maximum(_eval_v(theta, cal_z, n_cores), _V_FLOOR) * t
             res = np.concatenate([res, sqrt_cal * np.maximum(cal_floor - w_model, 0.0)])
+        if prior_anchor is not None or operator_prior is not None:
+            def implied_w(kk: np.ndarray) -> np.ndarray:
+                zz = np.asarray(kk, float) / (sigma_ref * np.sqrt(t))
+                return np.maximum(_eval_v(theta, zz, n_cores), _V_FLOOR) * t
+            if prior_anchor is not None:
+                cp = black_call(prior_anchor.k, implied_w(prior_anchor.k))
+                res = np.concatenate([res, prior_anchor_residuals(cp, prior_anchor)])
+            if operator_prior is not None:
+                res = np.concatenate([res, operator_residuals(implied_w, operator_prior)])
         return res
 
     theta0 = np.clip(theta0, lo, hi)
@@ -168,6 +182,8 @@ def calibrate_sigmoid(
     calendar_k: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    prior_anchor: PriorAnchorTarget | None = None,
+    operator_prior: OperatorPriorTarget | None = None,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -183,6 +199,12 @@ def calibrate_sigmoid(
     add the model-agnostic calendar hinge against the previous, shorter expiry —
     applied only in the final refine stage (the base-seeding stage stays mid), so
     both None leaves the fit byte-identical.
+
+    ``prior_anchor`` (strike-gap mode) and ``operator_prior`` (operator / hybrid
+    modes) add the prior-persistence residual blocks in the final refine stage
+    only (the base-seeding stays mid), matching the LQD/SVI paths — the Multi-Core
+    SIV overlay is no longer a prior exception (roadmap Phase 3). Both None (the
+    default) leave the fit byte-identical.
     """
     k = np.asarray(k, dtype=float)
     vol_quotes = np.sqrt(np.asarray(w_quotes, dtype=float) / t)
@@ -213,6 +235,7 @@ def calibrate_sigmoid(
             var_swap=var_swap, sigma_ref=sigma_ref, t=t,
             calendar_k=calendar_k, calendar_floor=calendar_floor,
             calendar_weight=calendar_weight,
+            prior_anchor=prior_anchor, operator_prior=operator_prior,
         )
     else:
         theta = _fit(
@@ -221,6 +244,7 @@ def calibrate_sigmoid(
             var_swap=var_swap, sigma_ref=sigma_ref, t=t,
             calendar_k=calendar_k, calendar_floor=calendar_floor,
             calendar_weight=calendar_weight,
+            prior_anchor=prior_anchor, operator_prior=operator_prior,
         )
 
     cores = tuple(
