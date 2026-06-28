@@ -183,21 +183,25 @@ Original plan:
   (`convex_deam=True`; European/disabled/already-convex ⇒ no-op ⇒ byte-identical).
   Tests: `tests/test_convex_deam.py` (ATM byte-identical guard + band-stay + convex).
 
-### R4 — Analytic Jacobian + tolerance retune for SVI  ·  *priority: medium, medium*
+### R4 — Analytic Jacobian for SVI  ·  ✅ DONE
 
-- **Problem (F1):** SVI is the slowest-converging baseline purely for lack of an
-  analytic Jacobian and over-tight `1e-15` tolerances.
-- **Approach:** derive and pass an analytic Jacobian for the raw-SVI residual
-  (`w(k)=a+b(ρ(k−m)+√((k−m)²+σ²))` with the softplus/tanh/exp reparam) plus the two
-  penalty rows; loosen `xtol/ftol/gtol` toward LQD's `1e-10`. Mirror the LQD pattern
-  (`jac=` argument, analytic-vs-FD gate when penalties/priors are absent).
-- **Files:** new `backend/volfit/models/svi_jw/jacobian.py`;
-  `models/svi_jw/calibrate.py:166-194`.
-- **Acceptance:** SVI fit ms drops materially (target ≈ LQD-8 range); fitted params
-  unchanged within tolerance vs the FD path on the benchmark fixtures; full suite
-  green. Validate via a backtest re-run (speed column).
-- **Risk:** medium — analytic Jacobian derivation is error-prone; guard with a
-  finite-difference agreement test (analytic J vs `2-point` to ~1e-6).
+- **Problem (F1):** SVI was the slowest baseline only because it lacked an analytic
+  Jacobian — scipy's finite-difference fallback costs `1+P=6` residual evals/step and
+  re-runs the penalty rows each time.
+- **Shipped:** `volfit/models/svi_jw/jacobian.py` (`svi_residual_jacobian`) +
+  `calibrate.py`. Closed-form Jacobian of the residual via the reparam chain rule
+  (`db/dθ_b=1−e^{−b}`, `dρ/dθ_ρ=1−ρ²`, `dσ/dθ_σ=σ`); covers the mid OR band data term
+  + the two no-arb penalty subgradients + the calendar floor; var-swap / strike-gap /
+  operator-prior blocks fall back to FD (gated exactly like LQD).
+- **Key finding — keep LM, do NOT switch to trf.** The plan suggested mirroring LQD's
+  `trf + 1e-10`, but on noisy real chains **trf was measured SLOWER** (more iterations
+  through the penalty kinks: 40 ms / 298 nfev vs LM's 26 ms / 193). The win is the
+  Jacobian, not the optimizer — so it is a **drop-in**: same LM optimizer + same `1e-15`
+  tol, only the Jacobian swapped FD → analytic. Results unchanged to fit precision
+  (same nfev), full suite green.
+- **Measured (real spike nodes):** **~2.6× faster** (26.3 → 10.2 ms/node) at unchanged
+  convergence. FD-agreement guard: `tests/test_svi_jacobian.py` (analytic vs central
+  FD over mid / band / calendar / active-penalty configs).
 
 ### R5 — Analytic Jacobian for Multi-Core SIV  ·  *priority: low/medium, larger*
 
@@ -260,6 +264,6 @@ them first. R3 is the one genuine engine change on the shared live path (test
 carefully). R4 is a clean isolated speed win. R5/R6 hinge on whether Multi-Core SIV
 earns its place at all, which the precision data alone already calls into question.
 
-**Status (2026-06-28):** R1 ✅, R2 ✅, R3 ✅ (wing-only redesign). Remaining: **R4**
-(SVI analytic Jacobian — clean isolated speed win) and the **R6 menu decision** (cap
-SIV at 0/1 vs invest in R5+R6 shape work; the overfit data argues for the cap).
+**Status (2026-06-28):** R1 ✅, R2 ✅, R3 ✅ (wing-only redesign), R4 ✅ (SVI analytic
+Jacobian, ~2.6×). Remaining: the **R6 menu decision** (cap SIV at 0/1 vs invest in
+R5+R6 shape work; the overfit data argues for the cap). R5 is gated on that decision.
