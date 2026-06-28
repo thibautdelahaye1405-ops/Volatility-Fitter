@@ -58,6 +58,7 @@ import numpy as np
 
 from volfit.api.session import QuoteEdit
 from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, resolve_band
+from volfit.calib.convex_deam import convex_wing_repair
 from volfit.core.american import deamericanize_batch
 from volfit.core.black import black_call, implied_total_variance
 from volfit.data.forwards import ImpliedForward, ResolvedForward
@@ -194,6 +195,7 @@ def prepare_quotes(
     cash_dividends: tuple[np.ndarray, np.ndarray, float] | None = None,
     tau: float | None = None,
     prefilter: bool = True,
+    convex_deam: bool = True,
 ) -> PreparedQuotes:
     """Turn one expiry of a chain into sorted (k, w, IV-band) fit inputs.
 
@@ -248,11 +250,15 @@ def prepare_quotes(
         )
         bid, mid, ask = bid - eep, mid - eep, ask - eep
 
-    # European pipeline: normalize, parity-shift puts, invert to variance.
+    # European pipeline: normalize, parity-shift puts -> normalized CALL prices c,
+    # invert to total variance.
     shift = np.where(is_call, 0.0, 1.0 - np.exp(k_arr))
-    w_bid = implied_total_variance(k_arr, bid * scale + shift)
-    w_mid = implied_total_variance(k_arr, mid * scale + shift)
-    w_ask = implied_total_variance(k_arr, ask * scale + shift)
+    c_bid = bid * scale + shift
+    c_mid = mid * scale + shift
+    c_ask = ask * scale + shift
+    w_bid = implied_total_variance(k_arr, c_bid)
+    w_mid = implied_total_variance(k_arr, c_mid)
+    w_ask = implied_total_variance(k_arr, c_ask)
 
     keep = np.isfinite(w_bid) & np.isfinite(w_mid) & np.isfinite(w_ask)
     if not keep.any():
@@ -261,15 +267,33 @@ def prepare_quotes(
     # drop strikes more than Z_MAX standard deviations from the forward.
     w_atm = float(np.interp(0.0, k_arr[keep], w_mid[keep]))
     keep &= np.abs(k_arr) <= Z_MAX * np.sqrt(w_atm)
+
+    ks = k_arr[keep]
+    w_bid_s, w_mid_s, w_ask_s = w_bid[keep], w_mid[keep], w_ask[keep]
+    # R3 (FINDINGS_calibration_arb): independent per-strike de-Am + max(EEP,0) can
+    # leave the American call wings non-convex (butterfly-arbitrageable inputs).
+    # Repair the WINGS only — the ATM core stays byte-identical — then re-invert the
+    # (spread-preserving) repaired band. European / convex / disabled => no-op =>
+    # byte-identical (the repair returns None and this whole block is skipped).
+    if convex_deam and snapshot.exercise_style == "american" and t > 0.0:
+        repaired = convex_wing_repair(ks, c_mid[keep], c_bid[keep], c_ask[keep], w_atm, f)
+        if repaired is not None:
+            delta = repaired - c_mid[keep]  # same per-strike shift on bid/ask => spread kept
+            w_bid_r = implied_total_variance(ks, c_bid[keep] + delta)
+            w_mid_r = implied_total_variance(ks, repaired)
+            w_ask_r = implied_total_variance(ks, c_ask[keep] + delta)
+            ok = np.isfinite(w_bid_r) & np.isfinite(w_mid_r) & np.isfinite(w_ask_r)
+            ks, w_bid_s, w_mid_s, w_ask_s = ks[ok], w_bid_r[ok], w_mid_r[ok], w_ask_r[ok]
+
     return PreparedQuotes(
         t=t,
         forward=f,
         discount=d,
-        k=k_arr[keep],
-        w_mid=w_mid[keep],
-        iv_bid=np.sqrt(w_bid[keep] / tv),
-        iv_mid=np.sqrt(w_mid[keep] / tv),
-        iv_ask=np.sqrt(w_ask[keep] / tv),
+        k=ks,
+        w_mid=w_mid_s,
+        iv_bid=np.sqrt(w_bid_s / tv),
+        iv_mid=np.sqrt(w_mid_s / tv),
+        iv_ask=np.sqrt(w_ask_s / tv),
         n_deamericanized=n_deam,
         n_deam_input=n_deam_input,
         tau=tv,

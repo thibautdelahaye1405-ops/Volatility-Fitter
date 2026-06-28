@@ -156,24 +156,32 @@ Original plan:
   wing arb still flagged (it is real, F4); a synthetic known-arb slice still trips.
 - **Risk:** low/medium — metric-only, no engine change; re-run is cheap.
 
-### R3 — Convex-project de-Americanized prices before inversion  ·  *priority: high, medium*
+### R3 — Wing-only convex de-Am repair  ·  ✅ DONE (redesign; first attempt reverted)
 
 - **Problem (F3b):** independent per-strike CRR de-Am + `max(EEP,0)` clamp leaves
   the European-equivalent call-price set locally non-convex at American wings —
-  genuine (small) arbitrage in the *inputs* fed to **every** model, not just LQD.
-- **Approach:** after EEP subtraction in `prepare_quotes`/`_early_exercise_premiums`,
-  add a joint **monotone + convex projection** on `C(K)` per expiry (isotonic +
-  convex regression, or a small QP / PAV-style pass) before implied-vol inversion.
-  Must preserve bid/ask band structure (project mid; keep band half-widths) and be
-  a no-op (byte-identical) for European chains with no EEP step.
-- **Files:** `backend/volfit/api/quotes.py:113-255` (de-Am path); new helper for the
-  convex projection; guard so European indices are untouched.
-- **Acceptance:** de-Am'd `C(K)` strictly convex per expiry; American LQD arb (under
-  the R2 analytic metric) drops toward European levels; all-model American RMS not
-  worsened; European fits byte-identical.
-- **Risk:** medium — touches the shared prep path used by the live app; needs a
-  golden test that European output is unchanged and an American before/after convex
-  check. Sequence **after R2** so the arb improvement is measurable.
+  genuine (small) arbitrage in the *inputs* fed to **every** model.
+- **First attempt (reverted, `ec68c52`):** a GLOBAL convex projection of the whole
+  call curve with a free affine part. Repairing a wing re-tilted the baseline and
+  moved the ATM call price a sub-penny — huge in ATM IV (vega) → the **ATM smile gap
+  seen live on SPY/NVDA**.
+- **Redesign (shipped):** `volfit/calib/convex_deam.py` + `quotes.py`. The repair is
+  confined to the WINGS and the ATM core (`|z| ≤ Z_CORE=1`) is held **byte-identical**:
+  each wing is projected onto `{convex} ∩ {bid/ask band}` (Dykstra alternating
+  projection), anchored at its core boundary so the dense high-vega ATM never moves.
+  The **band constraint is essential** — plain convex projection of an illiquid
+  non-convex wing pushes prices to the no-arb boundary → absurd IVs (a put wing went
+  27%→104%, Lee-violating) → catastrophic downstream fits (+5000 bp). Keeping the
+  repaired mid inside the QUOTED spread bounds the correction to real uncertainty.
+  Gated American-only + a convexity short-circuit (`CONVEX_TOL=1e-3`, calibrated so
+  dense liquid chains are untouched and only genuinely arbitraged illiquid wings fire).
+- **Measured (spike, American):** ATM IV diff `7e-16` (byte-identical), European diff
+  `0.0`; dense names (AAPL/NVDA/JPM) never fire; illiquid EEM/EFA fire on the
+  arbitraged nodes and the band clip removed the blow-ups — LQD-8 in-RMS on fired
+  nodes **median 211 → 162 bp, improved 89/110, worst-case now +316 bp** (was +5300).
+- **Files:** `volfit/calib/convex_deam.py` (new), `volfit/api/quotes.py:189-303`
+  (`convex_deam=True`; European/disabled/already-convex ⇒ no-op ⇒ byte-identical).
+  Tests: `tests/test_convex_deam.py` (ATM byte-identical guard + band-stay + convex).
 
 ### R4 — Analytic Jacobian + tolerance retune for SVI  ·  *priority: medium, medium*
 
@@ -251,3 +259,7 @@ R1 + R2 are pure-win, low-risk, and make every subsequent number trustworthy —
 them first. R3 is the one genuine engine change on the shared live path (test
 carefully). R4 is a clean isolated speed win. R5/R6 hinge on whether Multi-Core SIV
 earns its place at all, which the precision data alone already calls into question.
+
+**Status (2026-06-28):** R1 ✅, R2 ✅, R3 ✅ (wing-only redesign). Remaining: **R4**
+(SVI analytic Jacobian — clean isolated speed win) and the **R6 menu decision** (cap
+SIV at 0/1 vs invest in R5+R6 shape work; the overfit data argues for the cap).
