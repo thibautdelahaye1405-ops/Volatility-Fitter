@@ -203,22 +203,26 @@ Original plan:
   convergence. FD-agreement guard: `tests/test_svi_jacobian.py` (analytic vs central
   FD over mid / band / calendar / active-penalty configs).
 
-### R5 — Analytic Jacobian for Multi-Core SIV  ·  *priority: low/medium, larger*
+### R5 — Analytic Jacobian for Multi-Core SIV  ·  ✅ DONE
 
 - **Problem (F2):** SIV's super-linear cost is dominated by the `6+4R` finite-
   difference Jacobian evals × R-scaled residual cost.
-- **Approach:** analytic Jacobian for the base SIV params and each hat core
-  (`alpha, c, h, κ` — the kernels have closed-form derivatives in `kernels.py`).
-  Reduces per-step evals from `6+4R+1` to ~2 and removes the dominant factor; the
-  residual's per-core cost and the linear-algebra growth remain but the model
-  becomes usable for R≥1. *Only worth doing if SIV cores are kept at all* — see R6;
-  the backtest verdict is that cores overfit, so this may be deprioritized in favor
-  of dropping SIV-2/3 from the production menu.
-- **Files:** new `backend/volfit/models/sigmoid/jacobian.py`;
-  `models/sigmoid/calibrate.py:171`.
-- **Acceptance:** SIV-3 fit ms falls by ~the (6+4R) factor; fitted surface unchanged
-  vs FD within tolerance; analytic-J agreement test.
-- **Risk:** medium/larger — most params, most algebra. Gate behind the R6 decision.
+- **Shipped:** `volfit/models/sigmoid/jacobian.py` (`siv_residual_jacobian`) +
+  `calibrate.py`. Closed-form gradient of the model variance `v_R(z) = v_base(z) +
+  Σ_r α_r B(z; c_r, h_r, κ_r)`: the 6 base partials (`dΦ_κ/dκ = (-2Φ + uΦ')/κ`,
+  `dv/dz0 = -v_z` since the slice is C² across z0) and the 4 hat partials per core
+  (`dB/dc = -B'`, plus `dB/dh` / `dB/dκ` by the quotient rule on the same
+  primitives). Covers the mid OR band data term + the amplitude ridge + the calendar
+  floor; var-swap / strike-gap / operator-prior fall back to FD (gated like LQD/SVI).
+  Kept trf (the params are bound-constrained, unlike LM-fit SVI) — only the Jacobian
+  is swapped FD → analytic.
+- **Measured (SVI benchmark):** **~2–2.8× per core** (SIV-0 1.9×, SIV-1 2.1×, SIV-2
+  2.8×, SIV-3 2.0×) at unchanged fits. FD-agreement guard:
+  `tests/test_sigmoid_jacobian.py` (base / two-core / band / calendar configs,
+  exercising every base + hat partial). Full suite green.
+- **NB:** this speeds SIV but does not change the **R6** finding that multi-core SIV
+  *overfits on precision* (OOS gap) and manufactures put-wing arb — the menu-cap
+  decision stands on its own merits.
 
 ### R6 — Tame SIV's put-wing arbitrage (curvature regularization / shape constraint)  ·  *priority: medium, research-ish*
 
@@ -265,5 +269,6 @@ carefully). R4 is a clean isolated speed win. R5/R6 hinge on whether Multi-Core 
 earns its place at all, which the precision data alone already calls into question.
 
 **Status (2026-06-28):** R1 ✅, R2 ✅, R3 ✅ (wing-only redesign), R4 ✅ (SVI analytic
-Jacobian, ~2.6×). Remaining: the **R6 menu decision** (cap SIV at 0/1 vs invest in
-R5+R6 shape work; the overfit data argues for the cap). R5 is gated on that decision.
+Jacobian, ~2.6×), R5 ✅ (SIV analytic Jacobian, ~2–2.8×/core). Remaining: only the
+**R6 menu decision** (cap SIV at 0/1 vs add the put-wing shape regularizer; the
+overfit + arb data argues for the cap — R5 makes cores faster but no less overfit).

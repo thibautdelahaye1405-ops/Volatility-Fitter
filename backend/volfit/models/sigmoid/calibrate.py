@@ -23,6 +23,7 @@ from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call
+from volfit.models.sigmoid.jacobian import siv_residual_jacobian
 from volfit.models.sigmoid.kernels import hat, siv_base
 from volfit.models.sigmoid.sigmoid import HatCore, MultiCoreSiv
 
@@ -168,7 +169,29 @@ def _fit(
         return res
 
     theta0 = np.clip(theta0, lo, hi)
-    result = least_squares(residuals, theta0, bounds=(lo, hi), method="trf", xtol=1e-12, ftol=1e-12)
+    # Analytic Jacobian (R5) for the var-swap/prior-free configuration (mid OR band
+    # fit + the amplitude ridge + calendar) — ~2 evals/step instead of scipy's
+    # (6+4R+1) finite differences, the dominant cost of multi-core fits. The
+    # var-swap / strike-gap / operator-prior blocks keep the finite-difference path
+    # (correct, not accelerated), exactly as LQD and SVI gate their analytic Jacobian.
+    # trf is kept (the parameters are bound-constrained, unlike the LM-fit SVI).
+    use_analytic = (
+        var_swap is None
+        and prior_anchor is None
+        and operator_prior is None
+        and prior_var_swap is None
+    )
+    jac = "2-point"
+    if use_analytic:
+        def jac(theta: np.ndarray) -> np.ndarray:  # noqa: F811 — gated analytic Jacobian
+            return siv_residual_jacobian(
+                theta, z, n_cores, t, sqrt_w, band, mid_anchor_weight, ridge,
+                cal_z, cal_floor, sqrt_cal,
+            )
+
+    result = least_squares(
+        residuals, theta0, bounds=(lo, hi), jac=jac, method="trf", xtol=1e-12, ftol=1e-12
+    )
     return result.x
 
 
