@@ -1,0 +1,379 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{SVI and SVI-JW}\\[2pt]
+\large Stochastic-volatility-inspired slices, jump-wing handles, and constrained calibration\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~02}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/svi_tables.tex}
+
+\begin{abstract}
+This note documents the Vol-Fitter's SVI slice model. Raw SVI parametrizes total
+implied variance as a hyperbola in log-moneyness,
+$w(k)=a+b\{\rho(k-m)+\sqrt{(k-m)^2+\sigma^2}\}$, with five parameters that are
+geometrically opaque but analytically convenient. The \emph{jump-wing} (SVI-JW)
+re-coordinatization replaces them with five quantities a trader actually quotes
+--- ATM variance, ATM skew, the two wing slopes, and the minimum variance --- and
+we give the exact conversion in both directions. We state the static no-arbitrage
+conditions (Durrleman's butterfly function and Lee's wing bound), show how the
+calibrator enforces them as two soft penalties that vanish on any admissible
+slice, and explain the unconstrained reparametrization (softplus / $\tanh$ /
+$\exp$) that lets a plain Levenberg--Marquardt solver only ever propose feasible
+slices. As in the LQD note, the residual Jacobian is available in closed form;
+a fresh run recovers a benchmark SVI-JW smile to machine precision, reproduces
+its jump-wing handles exactly, and runs \svispeedup$\times$ faster than the
+finite-difference Jacobian.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Why SVI, and why two parametrizations}
+\label{sec:why}
+
+SVI is the workhorse of single-slice equity-index fitting because the hyperbola
+\begin{equation}
+w(k)=a+b\Big\{\rho(k-m)+\sqrt{(k-m)^2+\sigma^2}\Big\}
+\label{eq:rawsvi}
+\end{equation}
+is, in five parameters, simultaneously (i) linear in its wings ---
+$w(k)\sim b(1\pm\rho)\,|k|$ --- so automatically Lee-compatible, (ii) smooth and
+convex enough to be butterfly-free over a wide admissible cone, and (iii) cheap
+to evaluate and differentiate. The cost is that $(a,b,\rho,m,\sigma)$ are
+geometrically entangled: no single one is ``the skew'' or ``the ATM level''. The
+Vol-Fitter therefore carries SVI in \emph{two} coordinate systems --- raw for the
+optimizer, jump-wing for the human --- and converts losslessly between them.
+
+\begin{heuristic}
+Read \eqref{eq:rawsvi} as a hyperbola: $b$ is the overall steepness (the
+asymptotic opening angle), $\rho\in(-1,1)$ tilts it (left wing steeper than right
+for the equity put skew $\rho<0$), $m$ shifts its vertex in $k$, $\sigma$ rounds
+off the vertex (larger $\sigma$ = flatter bottom), and $a$ raises the whole curve.
+The wings are straight lines of slope $b(1-\rho)$ on the left and $b(1+\rho)$ on
+the right --- which is exactly what Lee's bound constrains.
+\end{heuristic}
+
+%======================================================================
+\section{Raw SVI geometry}
+\label{sec:raw}
+
+The derivatives used everywhere below are
+\begin{equation}
+w'(k)=b\Big(\rho+\frac{k-m}{r}\Big),\qquad
+w''(k)=\frac{b\,\sigma^2}{r^3},\qquad
+r=\sqrt{(k-m)^2+\sigma^2}.
+\label{eq:svi_deriv}
+\end{equation}
+Note $w''>0$ always (the slice is convex in $k$), and the wing limits are
+\begin{equation}
+\lim_{k\to-\infty}\frac{w(k)}{|k|}=b(1-\rho),
+\qquad
+\lim_{k\to+\infty}\frac{w(k)}{k}=b(1+\rho).
+\label{eq:svi_wings}
+\end{equation}
+The vertex (minimum total variance) sits at $k^\star=m-\sigma\rho/\sqrt{1-\rho^2}$
+with value $w(k^\star)=a+b\sigma\sqrt{1-\rho^2}$; this minimum is the quantity the
+jump-wing parametrization calls $\widetilde v\,t$.
+
+%======================================================================
+\section{The jump-wing handles}
+\label{sec:jw}
+
+The SVI-JW parametrization $(v,\psi,p,c,\widetilde v)$ at expiry $t$ is defined by
+ATM and wing functionals of the slice:
+\begin{equation}
+\begin{aligned}
+v&=\frac{w(0)}{t} && \text{ATM variance,}\\
+\psi&=\frac{b}{2\sqrt{w_0}}\Big(\rho-\frac{m}{\sqrt{m^2+\sigma^2}}\Big) && \text{ATM skew,}\\
+p&=\frac{b(1-\rho)}{\sqrt{w_0}},\quad c=\frac{b(1+\rho)}{\sqrt{w_0}} && \text{put/call wing slopes,}\\
+\widetilde v&=\frac{a+b\sigma\sqrt{1-\rho^2}}{t} && \text{minimum variance,}
+\end{aligned}
+\label{eq:jw_def}
+\end{equation}
+with $w_0=w(0)=vt$. \Cref{fig:jw} annotates the five handles on a fitted smile.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\textwidth]{fig_svi_jw.pdf}
+\caption{The five SVI-JW handles read off a fitted slice: ATM variance $v$, ATM
+skew $\psi$, put/call wing slopes $p,c$, and minimum variance $\widetilde v$.}
+\label{fig:jw}
+\end{figure}
+
+\subsection{The conversion, both ways}
+
+Going \emph{from} jump-wing \emph{to} raw is what the app stores when a desk
+quotes handles. Set $w_0=vt$, $\sqrt{w_0}=\sqrt{vt}$, and
+\begin{equation}
+b=\frac{\sqrt{w_0}}{2}(p+c),\qquad \rho=\frac{c-p}{c+p},\qquad
+\chi:=\frac{m}{\sqrt{m^2+\sigma^2}}=\rho-\frac{4\psi}{p+c}.
+\label{eq:jw_to_raw_1}
+\end{equation}
+From $\chi$ one recovers $m=\chi\sigma/\sqrt{1-\chi^2}$ and
+$\sqrt{m^2+\sigma^2}=\sigma/\sqrt{1-\chi^2}$; subtracting the minimum-variance
+identity from the ATM identity gives the closed form
+\begin{equation}
+\sigma=\frac{w_0-\widetilde v\,t}{b\big((1-\rho\chi)/\sqrt{1-\chi^2}-\sqrt{1-\rho^2}\big)},
+\qquad a=\widetilde v\,t-b\sigma\sqrt{1-\rho^2}.
+\label{eq:jw_to_raw_2}
+\end{equation}
+The reverse map \emph{from} raw \emph{to} jump-wing is just the definitions
+\eqref{eq:jw_def} evaluated on the fitted raw slice; the Vol-Fitter uses it to
+display handles after every calibration. \Cref{sec:example} verifies the
+round-trip numerically to machine precision.
+
+%======================================================================
+\section{Static no-arbitrage}
+\label{sec:noarb}
+
+\subsection{Butterfly: Durrleman's function}
+
+A slice is free of butterfly arbitrage iff the risk-neutral density it implies is
+non-negative, which Durrleman's condition expresses directly on total variance:
+\begin{equation}
+g(k)=\Big(1-\frac{k\,w'(k)}{2w(k)}\Big)^2-\frac{w'(k)^2}{4}\Big(\frac{1}{w(k)}+\frac14\Big)+\frac{w''(k)}{2}\ \ge\ 0
+\quad\forall k.
+\label{eq:durrleman}
+\end{equation}
+For raw SVI, $g$ is a smooth function of \eqref{eq:rawsvi}--\eqref{eq:svi_deriv}
+with no closed-form sign, so it is checked on a grid as a fit diagnostic. The
+Gatheral--Jacquier conditions give sufficient parameter-space inequalities (e.g.
+$b(1+|\rho|)\le 4/(... )$-type bounds and the requirement that the minimum
+variance be non-negative); the calibrator enforces the two that bite in practice.
+
+\subsection{The two soft penalties}
+
+The optimizer adds, to the data residual, two penalties that are \emph{exactly
+zero} on an admissible slice and grow linearly past the boundary:
+\begin{equation}
+\rho_{\text{pen}}(\theta)=W\!\begin{pmatrix}
+\max\big(-(a+b\sigma\sqrt{1-\rho^2}),\,0\big)\\[2pt]
+\max\big(b(1+|\rho|)-\beta_{\max},\,0\big)
+\end{pmatrix},
+\label{eq:svi_penalties}
+\end{equation}
+with weight $W=\svipenalty$ and Lee cap $\beta_{\max}=\svileemax$. The first
+keeps the \emph{minimum total variance} non-negative (no negative density mass at
+the vertex); the second enforces Lee's bound that the asymptotic total-variance
+slope cannot exceed $2$. Because both vanish on a clean fit, an admissible smile
+(such as the benchmark of \cref{sec:example}) is byte-identical with or without
+them --- they are a feasibility fence, not a regularizer.
+
+\begin{caution}
+The penalty weight $W=\svipenalty$ is in $\mathrm{vol}^2$ units, deliberately
+large enough to dominate a violated constraint yet invisible on an admissible
+slice. It is \emph{not} a tuning dial for fit quality: raising it cannot improve
+a feasible fit, and lowering it only lets the optimizer wander into the
+arbitrageable cone. Note~09 develops the Lee bound across all the models; here it
+is one of these two hinges.
+\end{caution}
+
+%======================================================================
+\section{Calibration}
+\label{sec:calib}
+
+\subsection{Unconstrained reparametrization}
+
+Rather than run a bound-constrained optimizer, the Vol-Fitter reparametrizes so
+that \emph{every} point of $\R^5$ maps to an admissible raw slice:
+\begin{equation}
+a\ \text{free},\quad
+b=\operatorname{softplus}(\theta_b)\ge 0,\quad
+\rho=\tanh(\theta_\rho)\in(-1,1),\quad
+m\ \text{free},\quad
+\sigma=e^{\theta_\sigma}>0.
+\label{eq:reparam}
+\end{equation}
+This guarantees $b\ge0$, $|\rho|<1$, $\sigma>0$ for free, so the unconstrained
+Levenberg--Marquardt solver never wastes effort on the box and never proposes a
+nonsensical hyperbola; only the two \emph{economic} constraints
+\eqref{eq:svi_penalties} remain, and they are soft.
+
+\subsection{Objective, weights and the data-driven start}
+
+The data term is a plain implied-volatility residual,
+$r_i=\sqrt{\omega_i}\,(\sigma^{\text{SVI}}(k_i)-\sigma_i)$, optionally
+vega-weighted (pass $\omega_i=\text{vega}_i^2$). The initializer is geometric and
+reads the smile directly: the argmin of $w$ seeds $(a,m)$, and the two finite
+wing slopes seed $(b,\rho)$ via \eqref{eq:svi_wings}, then the reparametrization
+\eqref{eq:reparam} is inverted to get $\theta_0$. On a liquid smile a single LM
+pass converges from this start.
+
+\subsection{The analytic Jacobian and the optional blocks}
+
+The residual stack --- data (mid or band), the two penalties, and an optional
+calendar hinge --- has a closed-form Jacobian propagated through the
+reparametrization \eqref{eq:reparam} by the chain rule; the calibrator uses it
+whenever no var-swap or prior block is present (those are not yet differentiated
+and fall back to finite differences, exactly as in LQD). The optional blocks
+mirror the rest of the series:
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Band fit} (Note~07): the mid residual becomes a vol-space band
+hinge with a small mid anchor.
+\item \textbf{Calendar hinge} (Note~10): the \emph{model-agnostic} constraint
+$\sqrt{W_{\text{cal}}}\,\max(\text{floor}-w(k),0)$ keeps this slice's total
+variance at or above the nearer expiry's --- the same machinery LQD expresses via
+its quantile $A(z)$, here written directly on $w(k)$.
+\item \textbf{Var-swap target} (Note~08) and \textbf{prior persistence}
+(Note~13): added as in LQD, so the SVI \emph{display overlay} receives the same
+prior treatment as the primary model --- closing a long-standing asymmetry in
+which SVI overlays got no prior at all.
+\end{itemize}
+
+\begin{perfbox}
+The solver is Levenberg--Marquardt (\texttt{method="lm"}), not trust-region
+reflective. On noisy real chains LM crosses the penalty kinks in far fewer
+iterations than \texttt{trf} at matched tolerance, so it is the faster
+same-accuracy choice; the analytic Jacobian is then a drop-in that swaps scipy's
+$1+P$ finite-difference evaluations for one closed-form call. \Cref{sec:example}
+measures \svispeedup$\times$ end-to-end with the optimum unchanged to
+$\svicostdiff$ in cost. See \cref{app:perf}.
+\end{perfbox}
+
+%======================================================================
+\section{Worked example: round-trip recovery}
+\label{sec:example}
+
+The cleanest test of an SVI-JW implementation is a round trip. Take the SPX-like
+benchmark raw slice $(a,b,\rho,m,\sigma)=(0.010625,\,0.07289,\,-0.5,\,0.05831,\,
+0.10100)$ at $t=0.5$ --- the image under \eqref{eq:jw_to_raw_1}--\eqref{eq:jw_to_raw_2}
+of the jump-wing handles $(v,\psi,p,c,\widetilde v)=(0.0425,-0.25,0.75,0.25,0.034)$.
+Generate quotes from it, refit raw SVI from the geometric start, and read the
+handles back.
+
+The fit recovers the raw parameters (\cref{tab:svi_raw}) with a maximum
+implied-volatility error of \svimaxerr\ volatility basis points in \svinfev\
+residual evaluations, the wing slopes come out $b(1-\rho)=\sviwingL$ (put) and
+$b(1+\rho)=\sviwingR$ (call), and --- the point of the exercise --- the recovered
+jump-wing handles (\cref{tab:svi_jw}) reproduce the original
+$(0.0425,-0.25,0.75,0.25,0.034)$ to display precision. The conversion
+\eqref{eq:jw_def}--\eqref{eq:jw_to_raw_2} is therefore exact, not approximate.
+\Cref{fig:fit} shows the fit and \cref{fig:g} the Durrleman function staying
+non-negative across the strike range.
+
+\begin{table}[H]
+\centering
+\begin{minipage}{0.46\textwidth}\centering
+\caption{Recovered raw SVI.}\label{tab:svi_raw}
+\svirawtable
+\end{minipage}\hfill
+\begin{minipage}{0.46\textwidth}\centering
+\caption{Recovered SVI-JW handles.}\label{tab:svi_jw}
+\svijwtable
+\end{minipage}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.49\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_svi_fit.pdf}\\[1pt]
+{\footnotesize (a) target, fit, quotes}
+\end{minipage}\hfill
+\begin{minipage}{0.49\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_svi_g.pdf}\\[1pt]
+{\footnotesize (b) Durrleman $g(k)\geq0$}
+\end{minipage}
+\caption{Left: the benchmark smile and its SVI fit (max error \svimaxerr\ vol
+bps). Right: the butterfly diagnostic $g(k)$, positive throughout.}
+\label{fig:fit}
+\end{figure}
+\begin{figure}[H]\centering\phantomsection\label{fig:g}\end{figure}
+
+\begin{heuristic}
+A round-trip error of \svimaxerr\ vol bps is expected because the target \emph{is}
+an SVI slice --- the exercise validates the optimizer and the conversion, not the
+expressiveness of SVI. On genuine market chains SVI typically fits liquid index
+smiles to a few vol bps but is stiffer than LQD or Local-Vol on event or
+double-hump shapes (a single hyperbola has one vertex), which is precisely why
+the app offers the other models.
+\end{heuristic}
+
+%======================================================================
+\section{What is original here, and limitations}
+\label{sec:original}
+
+SVI and the jump-wing handles are due to Gatheral; the arbitrage-free analysis is
+Gatheral--Jacquier and Durrleman. The implementation choices worth noting are the
+\emph{feasibility-by-reparametrization} \eqref{eq:reparam} (the solver cannot
+leave the admissible cone except through the two soft economic constraints), the
+\emph{closed-form raw$\leftrightarrow$JW round trip} used live for trader handles,
+and the \emph{analytic LM Jacobian} that makes SVI the speed peer of the other
+models. As a slice model SVI is intrinsically unimodal: it cannot represent a
+bimodal event density (Note~01's double-hat) or a WW-shaped smile (Note~03), and
+its single global hyperbola can over-smooth a sharp short-dated skew. It is
+butterfly-free only over its admissible cone --- enforced softly here --- and
+carries no calendar coupling on its own; that is supplied by the model-agnostic
+hinge of Note~10.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.24\textwidth}p{0.13\textwidth}p{0.55\textwidth}}
+\caption{SVI hyperparameters.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead
+\toprule Knob & Default & Role\\ \midrule
+\endhead
+\multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\ \midrule
+\texttt{sviPenaltyWeight} $W$ & \svipenalty & Weight of the two soft
+no-arbitrage penalties \eqref{eq:svi_penalties}; $\mathrm{vol}^2$ units.\\
+\texttt{leeSlopeMax} $\beta_{\max}$ & \svileemax & Lee wing-slope cap; the
+asymptotic total-variance slope $b(1+|\rho|)$ may not exceed it.\\
+\texttt{midAnchorWeight} & $0.05$ & Mid anchor weight in the band-fit objective
+(Note~07).\\
+\texttt{weightScheme} & \texttt{equal} & Per-quote weights (Note~07); pass
+$\text{vega}^2$ for a vega-weighted fit.\\
+\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10).\\
+\midrule
+\multicolumn{3}{l}{\emph{Internal (reparametrization / solver)}}\\ \midrule
+$b=\operatorname{softplus}(\theta_b)$ & --- & Enforces $b\ge0$.\\
+$\rho=\tanh(\theta_\rho)$ & --- & Enforces $|\rho|<1$.\\
+$\sigma=e^{\theta_\sigma}$ & --- & Enforces $\sigma>0$.\\
+LM tolerances & $10^{-15}$ & \texttt{xtol/ftol/gtol}; LM converges in few
+iterations so tight tolerances are cheap.\\
+floor $10^{-12}$ & --- & Total-variance floor inside $\sqrt{w/t}$ to avoid
+$\sqrt{\text{neg}}$ on infeasible trial slices.\\
+\bottomrule
+\end{longtable}
+
+%======================================================================
+\section{Performance notes}
+\label{app:perf}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Levenberg--Marquardt over trust-region.} On real noisy chains LM
+crosses the penalty kinks in fewer iterations than \texttt{trf} at matched
+tolerance; \texttt{trf} at $10^{-10}$ was measured \emph{slower} on real nodes.
+\item \textbf{Analytic Jacobian.} Closed-form Jacobian of the residual stack
+(data $+$ penalties $+$ calendar) through the reparametrization; a fresh run
+measured \svianalyticms\,ms vs \svifdms\,ms for the finite-difference path
+(\svispeedup$\times$) with the optimum unchanged to $\svicostdiff$ in cost.
+Gated to the var-swap/prior-free configuration.
+\item \textbf{Feasibility by construction.} The reparametrization removes the
+box-constraint handling entirely, so each LM step is a plain linear solve.
+\item \textbf{Geometric warm start.} Reading $(a,m)$ from the vertex and
+$(b,\rho)$ from the wing slopes lands $\theta_0$ close enough that liquid smiles
+converge in a single pass.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{Gatheral2004} J.~Gatheral. A parsimonious arbitrage-free implied
+volatility parameterization. Presentation, Global Derivatives, 2004.
+\bibitem{GatheralJacquier2014} J.~Gatheral and A.~Jacquier. Arbitrage-free SVI
+volatility surfaces. \emph{Quantitative Finance}, 14(1):59--71, 2014.
+\bibitem{Lee2004} R.~W.~Lee. The moment formula for implied volatility at extreme
+strikes. \emph{Mathematical Finance}, 14(3):469--480, 2004.
+\bibitem{Durrleman2010} V.~Durrleman. From implied to spot volatilities.
+\emph{Finance and Stochastics}, 14(2):157--177, 2010.
+\end{thebibliography}
+
+\end{document}

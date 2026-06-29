@@ -1,0 +1,341 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+\graphicspath{{figures/}}
+
+\title{\textbf{Graph Smile-Extrapolation}\\[2pt]
+\large Filling dark nodes from lit neighbours by an OT-regularized Bayesian graph\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~14}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/graph_tables.tex}
+
+\begin{abstract}
+This is the Vol-Fitter's headline differentiator: extrapolating sparse smile
+observations to a \emph{full universe} of smiles, across expiries and assets, by
+propagating signal through a graph whose nodes are smiles $(\text{underlying},T)$.
+The mathematics is a Gaussian inverse problem with an optimal-transport-regularized
+prior on the \emph{increments}, not the levels --- so the default answer is
+``nothing changed from the prior'', and observed nodes force only the coherent,
+graph-plausible changes that explain them. We build the directed graph (a
+row-normalized kernel, its stationary distribution, reversible and directed
+Laplacians), assemble the increment precision
+$Q_\Delta=D_\kappa+\eta L_{\text{dir}}+\lambda(A_\rho+\nu I)^{-1}$ from three
+beliefs (local smallness, directed prediction, low-energy unbalanced-OT flux), and
+condition on the lit nodes in covariance form exploiting $n_{\text{obs}}\ll N$. We
+then describe the production spine --- transported prior, lit-calibration
+innovation, graph posterior increment, dark-node reconstruction, quote comparison
+--- with its provenance hierarchy, data-derived precision, and per-edge directed
+amplitude $\beta$. A real run of the production solver shows a lit innovation
+flowing to dark nodes and decaying with a widening credible band; and a temporal
+leave-one-out backtest measures the graph's \emph{skill} over the transported-prior
+baseline at $+26$ to $+37$ ATM vol bps, well calibrated (standardized-residual mean
+$\approx0$).
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{The problem and the idea}
+\label{sec:idea}
+
+Most of a desk's universe is illiquid. A handful of nodes --- index expiries, a few
+mega-caps --- are richly quoted (\emph{lit}); the rest --- single-name expiries,
+far tenors --- are barely quoted or not at all (\emph{dark}). The dark nodes still
+need surfaces. The Vol-Fitter builds them by treating the universe as a
+\emph{graph}: nodes are smiles $(\text{underlying},T)$, edges encode that one node
+informs another (calendar edges within a name; cross-asset edges from an index or
+sector ETF to its single names). A prior surface ties the whole graph together;
+today's lit calibrations perturb it; the perturbation propagates to the dark nodes.
+
+\begin{heuristic}
+The central modelling choice is to regularize the \emph{increment}
+$z=x^1-x^0$ --- how each node moved from its prior --- rather than the level $x^1$.
+Why? Because the prior already encodes the shape of every smile; what the graph
+must infer is only the \emph{change}, and changes are far more coherent across the
+graph than levels (an index move drags its names; a calendar shift is smooth in
+$T$). Regularizing increments means the default answer is ``no change'', and data
+is required only to justify departures from the prior --- exactly the right
+inductive bias for a sparsely-observed universe.
+\end{heuristic}
+
+The carrier is compact: each node propagates its three ATM handles
+$(\sigma_0,s_0,\kappa_0)$ (Note~01) as independent Gaussian coordinates, and the
+reconstruction retargets those handles to an arbitrage-free smile in the chosen
+model. The production spine is \cref{fig:spine}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, align=center, font=\footnotesize,
+    minimum height=8mm, inner sep=3pt, fill=blue!4, draw=blue!40!black},
+  arr/.style={-{Stealth[length=2mm]}, thick, draw=black!55},
+  node distance=6mm,
+]
+\node[box] (a) {transported\\prior};
+\node[box, right=of a] (b) {lit\\innovation $d$};
+\node[box, right=of b] (c) {graph posterior\\increment};
+\node[box, right=of c] (d) {dark\\reconstruction};
+\node[box, right=of d] (e) {quote\\comparison};
+\draw[arr] (a)--(b); \draw[arr] (b)--(c); \draw[arr] (c)--(d); \draw[arr] (d)--(e);
+\end{tikzpicture}
+\caption{The production spine: a transported prior plus the lit-node calibration
+innovation $d=\text{calibrated}-\text{transported}$ propagate to a posterior
+increment, which reconstructs the dark smiles, scored against any quotes.}
+\label{fig:spine}
+\end{figure}
+
+%======================================================================
+\section{The directed graph}
+\label{sec:graph}
+
+Edge weights $w_{ij}$ read ``$j$ informs $i$''. Row-normalizing gives a
+transition kernel $K$ (row-stochastic), with stationary distribution $\pi$
+($\pi\T K=\pi\T$) and reversibilized conductances $c_{ij}=\pi_i K_{ij}$. From these
+come two Laplacians used by the prior:
+\begin{itemize}[leftmargin=1.4em]
+\item the \textbf{reversible} Laplacian $L_{\text{rev}}=B C B\T$ (the symmetric
+part, a graph smoothness energy);
+\item the \textbf{directed residual} $L_{\text{dir}}=(I-K)\T\Pi(I-K)$, which
+penalizes a node deviating from the $\pi$-weighted prediction of its in-neighbours
+--- the directed prediction rule.
+\end{itemize}
+Calendar edges (one name across $T$) are high-conductance and vol-normalized
+($\beta_{\text{vn}}=\sqrt{T_{\text{to}}/T_{\text{from}}}$); cross-asset edges
+(index$\to$name, ETF$\to$name, same-sector name$\to$name) carry smaller trust.
+
+%======================================================================
+\section{The increment prior}
+\label{sec:prior}
+
+The increment $z$ is given the Gaussian prior with precision
+\begin{equation}
+\boxed{\;Q_\Delta=D_\kappa+\eta\,L_{\text{dir}}+\lambda\,(A_\rho+\nu I)^{-1},\;}
+\label{eq:Qdelta}
+\end{equation}
+encoding three complementary beliefs:
+\begin{enumerate}[leftmargin=1.6em]
+\item $D_\kappa=\diag(\kappa)$: increments are \emph{locally small} (a node does not
+move far from its prior on its own).
+\item $\eta L_{\text{dir}}$: increments \emph{respect the directed prediction} ---
+a node's move should be explained by its in-neighbours' moves.
+\item $\lambda(A_\rho+\nu I)^{-1}$: increments should be \emph{producible by a
+low-energy graph flux} plus $\nu$-priced sources/sinks --- the unbalanced
+optimal-transport tangent norm, with $A_\rho$ the mobility-weighted Laplacian and
+$\nu$ the source allowance. This term says ``a coherent move is one that could have
+been transported along the edges cheaply''.
+\end{enumerate}
+$Q_\Delta$ is positive-definite ($D_\kappa>0$, the others PSD). At this scale
+(universes of $O(10^3)$ nodes) the matrix is formed and inverted densely; the
+matrix-free sparse path is the deferred performance follow-up (\cref{app:perf}).
+
+\begin{heuristic}
+Read the three terms as three answers to ``what is a plausible change?''
+$\kappa$: a small one. $\eta$: one my neighbours predict. $\lambda$: one that could
+flow cheaply across the graph. Turning $\lambda$ on (off by default) adds the
+transport view, which matters when changes should move \emph{mass} along edges
+rather than just smooth out; $\nu$ controls how much un-transported source is
+allowed before that becomes expensive.
+\end{heuristic}
+
+%======================================================================
+\section{Conditioning on the lit nodes}
+\label{sec:posterior}
+
+Given a finite baseline $\bar x^0$ with precision $p^0$, the predictive moments are
+$\mu^-=\bar x^0+m_\Delta$ and $K^-=P_0^{-1}+K_\Delta$ with $K_\Delta=Q_\Delta^{-1}$.
+Conditioning on lit observations $y$ (precision $r$) at nodes $S$ is done in
+\emph{covariance form}, exploiting $n_{\text{obs}}\ll N$: only the observed columns
+of $K^-$ and a small $n\times n$ innovation system are needed,
+\begin{equation}
+S_y\,\alpha=y-\mu^-_S,\qquad
+\mu^+=\mu^-+K^-_{\cdot S}\,\alpha,\qquad
+S_y=K^-_{SS}+\diag(1/r).
+\label{eq:posterior}
+\end{equation}
+The marginal posterior variance is $K^+_{ii}=K^-_{ii}-\big(K^-_{\cdot S}S_y^{-1}{K^-_{\cdot S}}\T\big)_{ii}$,
+and the reported per-node precision is $\pi_i^+=1/K^+_{ii}$.
+
+\begin{caution}
+The reported precision is $1/K^+_{ii}$ --- the reciprocal of the marginal
+\emph{variance} --- \emph{not} the $i$-th diagonal of the posterior precision
+matrix $Q^+$. Those differ whenever nodes are correlated (always), and confusing
+them is the classic Gaussian-graph error: $Q^+_{ii}$ overstates how much a node is
+pinned, because it ignores that its neighbours are uncertain too. The credible
+bands in \cref{fig:prop} use the marginal variance.
+\end{caution}
+
+\Cref{fig:prop} is a real run of the production solver on a calendar chain with one
+lit node: the unit innovation propagates to the dark nodes, decaying along the
+graph, while the posterior precision falls from $\graphlitprec$ at the lit node to
+$\graphfarprec$ at the far dark node --- the credible band widening accordingly.
+\Cref{fig:eta} shows the directed-smoothness weight $\eta$ controlling how far the
+signal reaches.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.52\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_graph_prop.pdf}\\[1pt]
+{\footnotesize (a) propagation + credible band}
+\end{minipage}\hfill
+\begin{minipage}{0.45\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_graph_eta.pdf}\\[1pt]
+{\footnotesize (b) reach vs $\eta$}
+\end{minipage}
+\caption{A lit innovation propagating through the production graph solver to dark
+nodes, decaying with a widening credible band; stronger directed smoothness
+$\eta$ propagates farther.}
+\label{fig:prop}
+\end{figure}
+\begin{figure}[H]\centering\phantomsection\label{fig:eta}\end{figure}
+
+%======================================================================
+\section{The production spine}
+\label{sec:spine}
+
+\subsection{Transported prior and provenance}
+
+Each node's baseline $x^0$ is the prior's three handles, \emph{transported to the
+current spot} (Note~12). The prior is resolved by a strict hierarchy, each level
+carrying its provenance and a validity flag: \emph{active transported} (a saved
+prior) $\to$ \emph{nearest-expiry transported} (reduced precision) $\to$
+\emph{today bootstrap} (weak, not valid for validation) $\to$ \emph{flat ATM}
+(diagnostic only). The provenance sets the baseline precision tier.
+
+\subsection{Lit innovation, not manual shift}
+
+For each lit node the innovation is $d=\text{calibrated handles}-\text{transported
+prior handles}$ --- the genuine market-versus-prior move, computed by actually
+fitting the lit node (in pure-market mode, so the innovation is not itself
+prior-anchored). Dark nodes are never observations.
+
+\subsection{Reconstruction and comparison}
+
+The posterior handles at a dark node are retargeted (Note~01's
+$\texttt{ortho.retarget}$) to an exact arbitrage-free smile in the chosen model
+(LQD exactly; SVI/SIV fitted to it; local-vol as a projection target), carrying the
+credible band onto the curve. Where a dark node \emph{does} have a few quotes, they
+are compared against the reconstruction --- weighted RMS, inside-spread hit rate,
+and a standardized residual $\zeta$ using the posterior uncertainty --- giving an
+honest, never-trained-on measure of the extrapolation.
+
+\subsection{Per-edge amplitude}
+
+Trust and amplitude are separate. The edge \emph{weight} is how much node $j$
+informs node $i$; the per-edge \emph{beta} $\beta_{ij}$ scales the directed
+\emph{increment} amplitude, $z_i\approx\sum_j K_{ij}\beta_{ij}z_j$, entering the
+directed residual as $L_{\text{dir}}^\beta=(I-K\!\circ\!B)\T\Pi(I-K\!\circ\!B)$
+(PSD by construction; $\beta\equiv1$ is byte-identical to the plain rule). Beta is
+per-handle and per-direction --- an index ATM move may translate to a name move at
+$0.7$ while the skew translates at a different rate.
+
+%======================================================================
+\section{Does it work? The leave-one-out backtest}
+\label{sec:backtest}
+
+The graph's value is its \emph{skill} over the transported-prior baseline --- does
+propagating the lit innovation beat just keeping the prior? A temporal
+leave-one-out harness measures it: per consecutive captured day-pair, freeze
+day-$(T{-}1)$ as the prior, transport it, form the lit innovations, propagate, and
+compare the graph posterior for \emph{held-out} nodes against their actual day-$T$
+calibration --- versus the pure transported-prior baseline.
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Fill a sparse node from its lit neighbours} (withhold each clean
+node): the graph \emph{decisively} beats transport --- ATM skill $+37$ vol bps
+(sticky-moneyness transport) to $+26$ (sticky-strike), wing $+3$ to $+7$ bps, with
+standardized-residual mean $\approx0$ (unbiased) and std $0.72$--$0.90$ (well
+calibrated, slightly conservative). The two stickiness regimes \emph{bracket} the
+true skill exactly as posed. The driver is the calendar coupling.
+\item \textbf{Cross-asset to fully-dark names}: in the 8-asset pilot this adds
+$\sim0$ --- but for two \emph{measured} reasons, not a verdict against the method:
+the transported prior is already an excellent same-name predictor at very high
+baseline precision, and the pilot is starved of the same-sector clusters and sector
+ETFs that light the cross-asset edges. The follow-ups (a 25-asset capture; a lower
+baseline precision for dark nodes) are designed to give it a fair test.
+\end{itemize}
+
+So the headline use case --- reconstructing a missing or sparse node from its lit
+neighbours --- works, and the experiment honestly reports where it cannot yet
+exercise the cross-asset path.
+
+%======================================================================
+\section{What is original here}
+\label{sec:original}
+
+The Gaussian-graph machinery is classical; the originality is the synthesis for
+volatility. \emph{Regularizing increments, not levels} \eqref{eq:Qdelta} is the
+right bias for a sparse universe and makes ``no change'' the default. The
+\emph{three-belief OT-regularized prior} unifies local smoothness, directed
+prediction, and transportable flux in one precision. The \emph{production spine}
+--- transported prior, market-true innovation, provenance-tiered precision,
+handle-carrier reconstruction --- turns the theory into smiles with credible bands.
+The \emph{per-edge per-handle beta} separates trust from amplitude. And the
+\emph{leave-one-out skill measurement} --- bracketed by the two stickiness regimes,
+with calibrated standardized residuals --- is an honest verdict rather than an
+in-sample fit. To our knowledge, propagating arbitrage-free smile handles through
+an OT-regularized Bayesian graph to reconstruct an unquoted universe is novel.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.24\textwidth}p{0.14\textwidth}p{0.54\textwidth}}
+\caption{Graph-extrapolation hyperparameters.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
+\texttt{graphKappaScale} $\kappa$ & $1.0$ & Local temporal precision (increment smallness).\\
+\texttt{graphEtaScale} $\eta$ & $1.0$ & Directed-smoothness weight.\\
+\texttt{graphLambdaScale} $\lambda$ & $0.0$ & OT tangent-norm weight (off by default).\\
+\texttt{graphNu} $\nu$ & $0.1$ & Unbalanced-OT source allowance.\\
+\texttt{crossBeta} / \texttt{edgeBetas} & $1.0$ & Per-edge directed increment amplitude.\\
+edge weights & lattice / user & Calendar / cross-asset trusts (or an explicit edge list).\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden (precision tiers)}}\\ \midrule
+\texttt{HANDLE\_CONFIDENCE} & $[1,1,0.01]$ & Per-handle (ATM/skew/curv) relative confidence.\\
+\texttt{SOURCE\_BASE} & tiered & Provenance precision (active $\gg$ nearest $\gg$ bootstrap $\gg$ flat).\\
+\texttt{OBS/BASE\_PRECISION\_FLOOR/CAP} & per-handle & Floors/caps so no fit dominates / no prior vanishes.\\
+\bottomrule
+\end{longtable}
+
+%======================================================================
+\section{Performance notes}
+\label{app:perf}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Covariance-form conditioning.} Only the $n_{\text{obs}}$ observed
+columns of $K^-$ and an $n_{\text{obs}}\times n_{\text{obs}}$ innovation solve are
+formed --- cheap when few nodes are lit.
+\item \textbf{Dense at $O(10^3)$.} $Q_\Delta$ and $K_\Delta=Q_\Delta^{-1}$ are
+formed densely; fine up to $\sim10^3$ selected nodes. The deferred Phase-10 sparse
+path replaces the two dense $N\times N$ inverses and the $O(7\,n_{\text{obs}}N^3)$
+autotune with sparse solves $(A_\rho+\nu I)u=v$ and a Hutchinson diagonal
+estimator, for universes $\gg10^3$ nodes.
+\item \textbf{$\beta\equiv1$ golden.} The per-edge beta machinery is byte-identical
+to the plain directed rule at $\beta=1$, so it is strictly additive.
+\item \textbf{Empirical-Bayes autotune.} Hyperparameters $(\kappa,\eta,\lambda,\nu)$
+can be set by marginal-likelihood maximization with held-out calibration; this is
+the $O(7\,n_{\text{obs}}N^3)$ cost the sparse path targets.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{Peyre2019} G.~Peyr\'e and M.~Cuturi. Computational optimal transport.
+\emph{Found.\ Trends Mach.\ Learn.}, 11(5--6):355--607, 2019.
+\bibitem{Chizat2018} L.~Chizat, G.~Peyr\'e, B.~Schmitzer and F.-X.~Vialard. An
+interpolating distance between optimal transport and Fisher--Rao metrics.
+\emph{Found.\ Comput.\ Math.}, 18:1--44, 2018.
+\bibitem{RasmussenWilliams2006} C.~Rasmussen and C.~Williams. \emph{Gaussian
+Processes for Machine Learning}. MIT Press, 2006.
+\bibitem{Strassen1965} V.~Strassen. The existence of probability measures with
+given marginals. \emph{Ann.\ Math.\ Statist.}, 36(2):423--439, 1965.
+\end{thebibliography}
+
+\end{document}

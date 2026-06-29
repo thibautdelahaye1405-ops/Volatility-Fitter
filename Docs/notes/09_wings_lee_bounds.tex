@@ -1,0 +1,245 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{Wings, Lee Bounds and Tail Control}\\[2pt]
+\large How four models keep their extrapolated wings arbitrage-admissible\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~09}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/wings_tables.tex}
+
+\begin{abstract}
+A smile model earns its keep in the \emph{wings} --- the region beyond the
+quoted strikes, where the fit becomes pure extrapolation and where mispriced
+tails leak into var-swaps, risk-reversals and butterflies. This cross-cutting
+note collects the wing treatment shared by the Vol-Fitter's models. The universal
+constraint is Lee's moment formula: the asymptotic slope of total implied
+variance, $\beta=\limsup_{k\to\pm\infty}w(k)/|k|$, cannot exceed $2$, and it is
+tied to the number of finite moments of the underlying by an explicit map
+$\beta=\psi(p)$. We show how each model realizes or enforces this: LQD reads the
+slopes off its endpoint scales and is Lee-consistent \emph{by construction}; SVI
+has linear wings and enforces the bound with a soft penalty; Multi-Core SIV
+inherits its base wings because the hats are wing-neutral; and the local-vol
+surface extrapolates with a controlled linear slope. A single calibration window,
+fitted by all three parametric models and extrapolated far, shows their wings
+agreeing in sign and order of magnitude while differing in detail --- and we
+explain the subtle bug in which a fixed wide arbitrage-floor grid let a model's
+own linear extrapolation manufacture phantom violations, and the confinement fix.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{The universal constraint: Lee's moment formula}
+\label{sec:lee}
+
+Let $w(k,T)=\sigma_{\BS}^2(k,T)\,T$ be total implied variance at log-moneyness
+$k=\log(K/F_T)$. Lee's theorem bounds how fast the wings may grow.
+
+\begin{theorem}[Lee moment formula]
+\label{thm:lee}
+Define the right tail slope $\beta_R=\limsup_{k\to+\infty}w(k,T)/k$ and the left
+slope $\beta_L=\limsup_{k\to-\infty}w(k,T)/|k|$. Let
+$p_R^*=\sup\{p:\E[S_T^{1+p}]<\infty\}$ and
+$q_L^*=\sup\{q:\E[S_T^{-q}]<\infty\}$ be the right/left moment critical exponents.
+Then
+\begin{equation}
+\beta_R=\psi(p_R^*),\qquad \beta_L=\psi(q_L^*),\qquad
+\psi(p)=2-4\big(\sqrt{p^2+p}-p\big),
+\label{eq:psi}
+\end{equation}
+and in particular $0\le\beta\le2$. Equivalently
+$\tfrac{1}{2\beta}+\tfrac{\beta}{8}-\tfrac12=p$.
+\end{theorem}
+
+\Cref{fig:psi} plots $\psi$. It is decreasing, from $\psi(0)=2$ (no finite moment
+beyond the first $\Rightarrow$ steepest admissible wing) to $\psi(\infty)=0$ (all
+moments finite $\Rightarrow$ flat wing). The ceiling $\beta=2$ is model-free: any
+smile with a steeper asymptotic variance slope admits arbitrage.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\textwidth]{fig_wings_psi.pdf}
+\caption{The Lee map $\beta=\psi(p)$: heavier tails (smaller moment exponent $p$)
+force steeper variance wings, capped at the model-free ceiling $\beta=2$.}
+\label{fig:psi}
+\end{figure}
+
+\begin{heuristic}
+The wing slope and the tail heaviness are two faces of one coin. A fat right tail
+(few finite positive moments) \emph{must} show up as a steep right variance wing;
+a model that draws a flat wing over a fat-tailed density is internally
+inconsistent and will misprice far-OTM calls. Lee's bound is therefore not a
+nuisance constraint but a consistency condition between the smile and the law it
+implies --- which is why the LQD model, built from the law outward, satisfies it
+automatically.
+\end{heuristic}
+
+%======================================================================
+\section{Four models, four wing mechanisms}
+\label{sec:models}
+
+\subsection{LQD: Lee-consistent by construction}
+
+The LQD model (Note~01) parametrizes the log quantile density with logarithmic
+endpoints, giving \emph{exponential} return tails with scales $A_L,A_R$ read off
+the endpoint coefficients. The moment exponents are then exact,
+$p_R^*=1/A_R-1$ and $q_L^*=1/A_L$, and the wing slopes follow from
+\cref{thm:lee},
+\begin{equation}
+\beta_L=\psi(1/A_L),\qquad \beta_R=\psi(1/A_R-1),\quad A_R<1.
+\label{eq:lqd_wings}
+\end{equation}
+No penalty enforces this --- it is structural. The only wing-related constraint is
+the hard $A_R<1$ (a finite forward), handled by the soft barrier of Note~01. The
+benchmark fit yields $(\beta_L,\beta_R)=(\betaLQDL,\betaLQDR)$.
+
+\subsection{SVI: linear wings with a soft cap}
+
+Raw SVI (Note~02) has exactly linear wings, $w(k)\sim b(1\mp\rho)|k|$, so its
+slopes are $\beta_L=b(1-\rho)$ and $\beta_R=b(1+\rho)$ in closed form
+($=(\sviwingLraw,\sviwingRraw)$ here, though the figure's fitted slice differs
+slightly). Lee's bound is the explicit inequality $b(1+|\rho|)\le2$, enforced as
+one of the two soft no-arbitrage penalties (weight \texttt{sviPenaltyWeight}, cap
+\texttt{leeSlopeMax}$=2$). On any admissible smile the penalty is zero; it only
+fences the optimizer out of the steep-wing region.
+
+\subsection{Multi-Core SIV: inherited wings}
+
+The Multi-Core SIV slice (Note~03) is a convex base plus $R$ \emph{zero-wing}
+hats. Because each hat and its first two derivatives vanish in both tails, the
+asymptotic wings depend only on the base, with $z$-space variance slopes
+$S_0\mp2K_0/\kappa_{P,C}$. Converting to total-variance $k$-space via
+$k=\sigma_{\text{ref}}\sqrt t\,z$, $w=tv$ gives
+\begin{equation}
+\beta_{L,R}=\frac{\sqrt t}{\sigma_{\text{ref}}}\,\Big|S_0\mp\frac{2K_0}{\kappa_{P,C}}\Big|,
+\label{eq:siv_wings}
+\end{equation}
+$=(\betaMCSIVL,\betaMCSIVR)$ on the benchmark. Adding cores cannot change the
+wings --- the entire reason for the zero-wing design.
+
+\subsection{Local volatility: controlled linear extrapolation}
+
+The piecewise-affine local-volatility surface (Note~04) has no closed-form
+implied-vol wing; beyond the deepest quoted strike $x_{\min}$ it extrapolates the
+\emph{local} variance linearly with a slope tied to the first interior cell
+(parameter \texttt{leftWingSlopeMult}), rising toward $x\to0$. The Dupire map then
+turns that into an implied-vol wing. The slope multiplier and, when a var-swap
+quote is present, a free left-extrapolation coefficient give the desk direct
+control of the put wing where there are no strikes to pin it.
+
+\subsection{Side by side}
+
+\Cref{fig:extrap} fits the same narrow calibration window with all three
+parametric models and extrapolates far past it. The wings agree in sign (the
+equity put skew: $\beta_L>\beta_R$) and order of magnitude, but diverge in
+detail --- each model's tail is a property of \emph{its} extrapolation law, not of
+the (identical) quotes. \Cref{tab:betas} collects the analytic slopes.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{fig_wings_extrap.pdf}
+\caption{Three models fitted to the same window (shaded) and extrapolated. Inside
+the window they agree to vol bps; outside, each draws its own Lee-admissible
+wing.}
+\label{fig:extrap}
+\end{figure}
+
+\begin{table}[H]
+\centering
+\caption{Analytic asymptotic total-variance wing slopes $\beta=\lim w(k)/|k|$ on
+the benchmark window; all are far below the Lee ceiling $2$.}
+\label{tab:betas}
+\begin{tabular}{lrrr}
+\toprule
+Model & $\beta_L$ (put) & $\beta_R$ (call) & mechanism\\
+\midrule
+LQD & \betaLQDL & \betaLQDR & structural via $\psi(1/A)$\\
+SVI & \betaSVIL & \betaSVIR & linear $b(1\mp\rho)$, soft Lee cap\\
+MC-SIV & \betaMCSIVL & \betaMCSIVR & base wings, hats neutral\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%======================================================================
+\section{A wing-extrapolation pitfall: phantom calendar violations}
+\label{sec:phantom}
+
+Wing extrapolation interacts dangerously with the \emph{calendar} no-arbitrage
+machinery (Note~10). Calendar-freedom requires the later expiry's total variance
+to dominate the nearer one's at every $k$; the Vol-Fitter enforces this with a
+soft floor evaluated on a grid of log-moneyness points. The subtlety:
+
+\begin{caution}
+If the calendar floor is evaluated on a \emph{fixed, wide} grid (say
+$k\in[-1,1]$) that extends far beyond the traded strikes, then a model's own
+\emph{linear-wing extrapolation} --- which is unconstrained by data out there ---
+can dip below the nearer expiry purely as an artefact of extrapolation, creating a
+\emph{phantom} calendar violation. The optimizer then flattens the far fit to
+``cure'' a problem the data never posed. This was observed live: SVI overlays on
+NVDA and SPY had their far wings flattened by phantom violations manufactured on
+the fixed wide grid.
+\end{caution}
+
+The fix is \emph{confinement}: the calendar floor is built only on the
+\emph{traded} log-moneyness range (\texttt{variance\_floor\_grid\_from} the actual
+quotes), so the constraint bites where there is data and the wings are left to
+each model's own Lee-admissible extrapolation. The LQD and sigmoid math were
+untouched; only the grid over which the floor is sampled changed. This is the
+single most important practical lesson about wings: \emph{do not let a constraint
+sample the curve where only extrapolation lives.} Note~10 develops the calendar
+machinery in full.
+
+%======================================================================
+\section{What is original here}
+\label{sec:original}
+
+The Lee theory is classical; the contribution is the \emph{uniform} treatment.
+The same wing slope $\beta$ is computed three structurally different ways
+(\eqref{eq:lqd_wings}, the SVI linear slopes, \eqref{eq:siv_wings}) and shown to
+agree, so the choice of model is a choice of \emph{how} to extrapolate, not
+\emph{whether} the extrapolation is admissible. And the confinement fix of
+\cref{sec:phantom} --- recognizing that an arbitrage constraint must not be
+sampled in the extrapolation region --- is a genuinely non-obvious engineering
+insight that the cross-model perspective makes visible.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.26\textwidth}p{0.13\textwidth}p{0.52\textwidth}}
+\caption{Wing-related knobs (cross-model).}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\texttt{leeSlopeMax} & $2.0$ & SVI Lee wing-slope cap $b(1+|\rho|)\le\beta_{\max}$.\\
+\texttt{sviPenaltyWeight} & $10^3$ & Weight of the SVI Lee/min-variance penalties.\\
+\texttt{leftWingSlopeMult} & $1.5$ & LV left local-variance extrapolation slope multiple (Note~04).\\
+\texttt{lvVolCapMult} & $3.0$ & LV local-vol cap as a multiple of max implied vol (Note~04).\\
+\texttt{EPS\_AR} (hidden) & $10^{-6}$ & LQD $A_R<1$ buffer; the only LQD wing constraint (Note~01).\\
+calendar floor grid & traded range & Confined to quoted $k$ to avoid phantom wing violations (Note~10).\\
+\bottomrule
+\end{longtable}
+
+\noindent\textbf{Performance.} Wing handling adds no measurable cost: LQD slopes
+are a by-product of the endpoint scales already computed; SVI/SIV slopes are
+closed forms of the fitted parameters; the LV wing is part of the surface solve.
+The only performance-relevant choice is the confinement of \cref{sec:phantom},
+which \emph{reduces} work by not over-constraining the extrapolation region.
+
+\begin{thebibliography}{9}
+\bibitem{Lee2004} R.~W.~Lee. The moment formula for implied volatility at extreme
+strikes. \emph{Mathematical Finance}, 14(3):469--480, 2004.
+\bibitem{BenaimFriz2009} S.~Benaim and P.~Friz. Regular variation and smile
+asymptotics. \emph{Mathematical Finance}, 19(1):1--12, 2009.
+\bibitem{GatheralJacquier2014} J.~Gatheral and A.~Jacquier. Arbitrage-free SVI
+volatility surfaces. \emph{Quantitative Finance}, 14(1):59--71, 2014.
+\end{thebibliography}
+
+\end{document}

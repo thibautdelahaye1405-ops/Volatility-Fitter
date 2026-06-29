@@ -1,0 +1,377 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{Multi-Core SIV}\\[2pt]
+\large A sigmoid implied-variance base with zero-wing hats for WW and event smiles\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~03}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/siv_tables.tex}
+
+\begin{abstract}
+This note documents the Vol-Fitter's sigmoid family, the \emph{Multi-Core SIV}
+(MC-SIV) model. The base is a six-parameter Sigmoid Implied Variance slice: a
+log-cosh convexity primitive giving an ATM level, an ATM skew, a convexity
+amplitude, and \emph{asymmetric} put/call wing steepnesses, $C^2$ across its
+centre. On top of the base the model adds $R$ signed \emph{zero-wing hat}
+kernels --- normalized centred second differences of the log-cosh primitive ---
+each of which inserts a local variance hump ($\alpha>0$) or notch ($\alpha<0$)
+\emph{without moving the base wing slopes}. This is exactly the structure a
+single hyperbola (SVI, Note~02) cannot provide: we prove that a globally convex
+slice cannot reproduce a WW-shaped smile (central trough with two shoulders), and
+show that two hats reduce the fit error on such a smile from \sivbasemaxerr\ to
+\sivmaxerr\ volatility basis points. The model carries $6+4R$ parameters, has a
+closed-form Durrleman butterfly diagnostic, and is calibrated in three stages
+(base $\to$ greedy hat seeding $\to$ joint bounded refine) with an analytic
+Jacobian measured \sivspeedup$\times$ faster than finite differences. The cores
+count $R$ is the user's ``cores'' slider, the direct analogue of the LQD Legendre
+order; a note on its tendency to over-fit closes the discussion.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Motivation: what a hyperbola cannot do}
+\label{sec:motivation}
+
+SVI's strength --- one convex hyperbola --- is also its ceiling. Some smiles are
+not convex. Ahead of a binary event, or in names with bimodal positioning, the
+implied-volatility curve develops a \emph{WW} shape: a trough near the money,
+a \emph{shoulder} (local maximum) on each side, and then wings that turn up again
+toward the Lee asymptotes. \Cref{fig:fit} shows such a target; the base sigmoid
+alone (the dotted curve) misses the shoulders by \sivbasemaxerr\ vol bps.
+
+\begin{proposition}[A convex slice cannot make a WW]
+\label{prop:convex}
+If total variance $w(k)$ is convex on an interval, then on that interval $w$ has
+no interior strict local maximum, hence no shoulder flanked by two troughs. A
+WW smile, which has interior local maxima, therefore cannot be represented by any
+globally convex slice (in particular by raw SVI, whose $w''>0$ everywhere).
+\end{proposition}
+
+\begin{proof}
+A convex function on an interval lies below the chord between any two points and
+its one-sided derivatives are non-decreasing; an interior strict local maximum
+would force the derivative to change from positive to negative, contradicting
+monotone non-decreasing slope. SVI has $w''(k)=b\sigma^2/r^3>0$ (Note~02), so it
+is strictly convex.
+\end{proof}
+
+The MC-SIV answer is to keep a convex \emph{base} that owns the wings and the
+overall skew, and to add \emph{local, wing-neutral} corrections that can be
+positive or negative. The design constraint is sharp:
+
+\begin{heuristic}
+A shoulder is a \emph{local} feature: it changes the body of the smile in a
+bounded region but must not alter the asymptotic wings (those are pinned by Lee
+and by liquid risk-reversals). So the correction kernels must vanish --- in value,
+slope, \emph{and} curvature --- in both tails. That ``zero-wing'' requirement is
+what singles out the centred-second-difference hat of \cref{sec:hats}, and it is
+why an arbitrary Gaussian bump would be wrong (a Gaussian decays but tilts the
+local skew on the way out).
+\end{heuristic}
+
+%======================================================================
+\section{The one-core SIV base}
+\label{sec:base}
+
+\subsection{Coordinates and the log-cosh primitive}
+
+Work in the dimensionless log-strike
+\begin{equation}
+z=\frac{k}{\sigma_{\text{ref}}\sqrt t},
+\label{eq:zdef}
+\end{equation}
+where $\sigma_{\text{ref}}$ is the near-the-money quoted volatility, so that $z$
+measures moneyness in standard deviations and the model is roughly scale-free
+across expiries. The convexity primitive is the \emph{log-cosh}
+\begin{equation}
+\Phi_\kappa(u)=\frac{4}{\kappa^2}\log\cosh\!\Big(\frac{\kappa u}{2}\Big),
+\qquad
+\Phi_\kappa'(u)=\frac{2}{\kappa}\tanh\!\Big(\frac{\kappa u}{2}\Big),
+\qquad
+\Phi_\kappa''(u)=\operatorname{sech}^2\!\Big(\frac{\kappa u}{2}\Big).
+\label{eq:phi}
+\end{equation}
+$\Phi_\kappa$ is a smooth, convex, even ``softened $|u|$'': $\Phi_\kappa(u)\to|u|$
+for large $|u|$ (the wing) and $\Phi_\kappa(u)\approx u^2/2$ near $0$ (the
+rounded vertex), with $\kappa$ the transition steepness. For numerical safety the
+log-cosh is replaced by its asymptote $|x|-\log2$ beyond $|x|=50$ to avoid
+$\cosh$ overflow.
+
+\subsection{The six base parameters}
+
+The base slice and its $z$-derivatives are
+\begin{equation}
+\begin{aligned}
+v_{\text{base}}(z)&=V_0+S_0(z-z_0)+K_0\,\Phi_{\kappa_i}(z-z_0),\\
+v_{\text{base}}'(z)&=S_0+K_0\,\Phi_{\kappa_i}'(z-z_0),\qquad
+v_{\text{base}}''(z)=K_0\,\Phi_{\kappa_i}''(z-z_0),
+\end{aligned}
+\label{eq:base}
+\end{equation}
+with the steepness switching $\kappa_i=\kappa_P$ for $z<z_0$ and
+$\kappa_i=\kappa_C$ for $z\ge z_0$. The six parameters are the variance level
+$V_0$ at the centre $z_0$, the skew $S_0$, the convexity amplitude $K_0\ge0$, the
+centre $z_0$, and the \emph{asymmetric} put/call wing steepnesses
+$\kappa_P,\kappa_C$. Because $\Phi$ and $\Phi'$ both vanish at the origin, the
+slice is $C^2$ across $z_0$ even though the steepness switches there --- so the
+asymmetry is in the \emph{rate} at which each wing straightens, not a kink. The
+asymptotic $z$-space variance wing slopes are
+\begin{equation}
+v_{\text{base}}'(z)\to S_0\mp\frac{2K_0}{\kappa_{P,C}}
+\quad(z\to\mp\infty),
+\label{eq:wing_slopes}
+\end{equation}
+i.e.\ a left slope $S_0-2K_0/\kappa_P$ and a right slope $S_0+2K_0/\kappa_C$.
+These are the only handles that set the wings, a fact \cref{sec:hats} exploits.
+
+%======================================================================
+\section{Zero-wing hats}
+\label{sec:hats}
+
+\subsection{Definition}
+
+The correction kernel is the normalized centred second difference of the
+log-cosh primitive,
+\begin{equation}
+B_{c,h,\kappa}(z)=\frac{\Phi_\kappa(u-h)-2\Phi_\kappa(u)+\Phi_\kappa(u+h)}{2\Phi_\kappa(h)},
+\qquad u=z-c,
+\label{eq:hat}
+\end{equation}
+centred at $c$, of half-width $h$ and steepness $\kappa$, normalized so that
+$B_{c,h,\kappa}(c)=1$. Its derivatives are the same second difference of $\Phi'$
+and $\Phi''$ over the same normalizer.
+
+\begin{lemma}[Zero wings]
+\label{lem:zerowing}
+$B_{c,h,\kappa}(z)\to0$, $B_{c,h,\kappa}'(z)\to0$ and $B_{c,h,\kappa}''(z)\to0$
+as $z\to\pm\infty$.
+\end{lemma}
+
+\begin{proof}
+For large $|u|$, $\Phi_\kappa(u)=|u|-\tfrac{2}{\kappa}\log2+o(1)$ is asymptotically
+\emph{affine}, so the centred second difference
+$\Phi_\kappa(u-h)-2\Phi_\kappa(u)+\Phi_\kappa(u+h)\to0$ (a second difference
+annihilates affine functions). The same holds for $\Phi'$ (which tends to the
+constants $\pm2/\kappa$) and $\Phi''$ (which decays). Hence $B$ and its first two
+derivatives vanish in both tails.
+\end{proof}
+
+\Cref{lem:zerowing} is the whole point: adding $\alpha B$ to the base changes the
+body but leaves the wing slopes \eqref{eq:wing_slopes} \emph{exactly} unchanged.
+The amplitude $\alpha$ is in variance units and, since $B(c)=1$, is approximately
+the variance displacement at the centre. A positive $\alpha$ raises a shoulder; a
+negative $\alpha$ digs a notch. The curvature at the centre is
+$B''(c)=2(\operatorname{sech}^2(\kappa h/2)-1)/(2\Phi_\kappa(h))<0$, so a positive
+hat is locally concave (a hump), as it should be.
+
+\subsection{The full model}
+
+The Multi-Core SIV slice is the base plus $R$ signed hats,
+\begin{equation}
+\boxed{\;v_R(z)=v_{\text{base}}(z)+\sum_{r=1}^{R}\alpha_r\,B_{c_r,h_r,\kappa_r}(z),\;}
+\qquad w(k)=t\,v_R(z),
+\label{eq:model}
+\end{equation}
+with $6+4R$ parameters. By \cref{lem:zerowing} every member of this family has
+the \emph{same} Lee-compatible wings as its base, regardless of $R$ --- so adding
+expressiveness in the body never threatens the tails. The cores count $R$ is the
+``cores'' slider, the analogue of the LQD Legendre order $N$ and the SVI vs LQD vs
+LV expressiveness dial.
+
+%======================================================================
+\section{Static no-arbitrage}
+\label{sec:noarb}
+
+Butterfly-freedom is the Durrleman condition \eqref{eq:durrleman_siv}, evaluated
+by converting the $z$-space variance and its derivatives to total-variance
+$k$-space derivatives via $k=\sigma_{\text{ref}}\sqrt t\,z$ and $w=tv$:
+\begin{equation}
+g(k)=\Big(1-\frac{k\,w'}{2w}\Big)^2-\frac{w'^2}{4}\Big(\frac1w+\frac14\Big)+\frac{w''}{2}\ \ge0.
+\label{eq:durrleman_siv}
+\end{equation}
+Since the risk-neutral density is proportional to $g$, the diagnostic
+$g(k)\ge0$ on the grid is the no-butterfly check. Unlike LQD, MC-SIV is
+\emph{not} arbitrage-free by construction: a large or narrow hat can drive $g$
+negative, so $g$ is reported per fit and the calibration bounds (\cref{sec:calib})
+keep hats in a benign range. The wings are Lee-compatible by construction
+(\cref{lem:zerowing}); the cross-model wing treatment is Note~09.
+
+%======================================================================
+\section{Calibration}
+\label{sec:calib}
+
+The fit is a three-stage workflow that respects the model's layered structure.
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Base fit ($R=0$).} Fit the six base parameters to the mid quotes
+under bound constraints, from a data-driven start that reads the ATM variance,
+the local skew and the local convexity off three interpolated points. This stage
+is always mid, so its residual is meaningful for the next stage.
+\item \textbf{Greedy hat seeding.} Compute the base residual in variance space and
+place each of the $R$ hats at the largest remaining $|{\text{residual}}|$,
+masking a neighbourhood after each placement so the hats do not pile up. Each
+seed starts at half-width $h=\sivhinit$ and steepness $\kappa=\sivkappainit$ with
+amplitude clipped to the residual.
+\item \textbf{Joint bounded refine.} Refine all $6+4R$ parameters together under
+the requested objective (mid or band) with a mild ridge $\sqrt{\varrho}\,\alpha_r$
+on the hat amplitudes, $\varrho=\sivridge$. The ridge keeps overlapping cores from
+exploding against each other without biasing a well-determined amplitude.
+\end{enumerate}
+
+All positive parameters ($K_0$, the steepnesses, the hat half-widths and
+steepnesses) are bound-constrained directly through scipy's trust-region
+reflective solver; the hat half-width is held in $[\sivhlo,\sivhhi]$ and the
+steepness in $[\sivkappalo,\sivkappahi]$. Crucially the cores count is capped so
+the model never has more parameters than quotes,
+\begin{equation}
+R\le\Big\lfloor\frac{N_{\text{quotes}}-6}{4}\Big\rfloor,
+\label{eq:identifiability}
+\end{equation}
+which guards sparse short-dated chains against fitting spurious narrow kernels.
+The refine stage carries the same optional blocks as the other models --- band
+fit (Note~07), var-swap target (Note~08), the model-agnostic calendar hinge
+(Note~10), and prior persistence (Note~13) --- so the sigmoid overlay is no longer
+a prior exception.
+
+\begin{perfbox}
+The dominant cost of an $R$-core fit is the $(6+4R+1)$-evaluation
+finite-difference Jacobian. The closed-form Jacobian of the residual stack (data
+$+$ ridge $+$ calendar) propagated through the log-cosh primitive replaces it in
+one pass; a fresh run on the two-core WW fit measured \sivanalyticms\,ms vs
+\sivfdms\,ms (\sivspeedup$\times$) with the optimum unchanged to $\sivcostdiff$ in
+cost. It is gated to the var-swap/prior-free configuration, as in LQD and SVI.
+See \cref{app:perf}.
+\end{perfbox}
+
+%======================================================================
+\section{Worked example: a WW smile}
+\label{sec:example}
+
+The target in \cref{fig:fit} is a synthetic WW: rising V wings with a shoulder on
+each side of the ATM trough --- the shape \cref{prop:convex} forbids a hyperbola.
+The base SIV ($R=0$) fits it only to \sivbasemaxerr\ vol bps, missing both
+shoulders. Two hats ($R=2$, $6+4\cdot2=\sivnparam$ parameters) reduce the maximum
+error to \sivmaxerr\ vol bps while preserving the wing slopes
+$(S_0-2K_0/\kappa_P,\,S_0+2K_0/\kappa_C)=(\sivwingL,\,\sivwingR)$ and keeping the
+fit butterfly-free (\cref{fig:diag}, $g(k)\ge0$). \Cref{fig:components} shows the
+decomposition: the convex base owns the V, and the two signed hats add precisely
+the two shoulders, each localized and wing-neutral.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.80\textwidth]{fig_siv_fit.pdf}
+\caption{The WW smile: the convex base ($R=0$, dotted) misses the shoulders by
+\sivbasemaxerr\ vol bps; the two-core MC-SIV fit (dashed) reaches \sivmaxerr\ vol
+bps.}
+\label{fig:fit}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.52\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_siv_components.pdf}\\[1pt]
+{\footnotesize (a) base $+$ two signed hats}
+\end{minipage}\hfill
+\begin{minipage}{0.45\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_siv_g.pdf}\\[1pt]
+{\footnotesize (b) Durrleman $g(k)\geq0$}
+\end{minipage}
+\caption{Left: the additive decomposition --- the convex base owns the wings, the
+hats own the shoulders. Right: the butterfly diagnostic stays non-negative.}
+\label{fig:components}
+\end{figure}
+\begin{figure}[H]\centering\phantomsection\label{fig:diag}\end{figure}
+
+%======================================================================
+\section{Original ideas, and the over-fit caution}
+\label{sec:original}
+
+The genuinely original elements are the \emph{zero-wing hat}
+\eqref{eq:hat}--\cref{lem:zerowing} --- a correction basis that is local in the
+body and provably neutral in the wings, so expressiveness and tail control are
+decoupled --- and the \emph{layered three-stage calibration} that places the hats
+on residuals rather than optimizing them blind. Together they let one model span
+from a clean index smile ($R=0$, equivalent to a sigmoid SVI) to a bimodal event
+smile ($R=2,3$) on a single slider.
+
+\begin{caution}
+With great expressiveness comes over-fitting. The offline backtest (project
+\texttt{backtest/}) found that on liquid index chains the Multi-Core hats
+\emph{over-fit}: cores chase quote noise and manufacture butterfly-arbitrage
+(measured 60--75\% of calibrated nodes with $g<0$ at $R\ge1$ on dense data),
+while the base $R=0$ behaves like SVI. The identifiability cap
+\eqref{eq:identifiability}, the amplitude ridge, and the $g$ diagnostic mitigate
+this, but the operational guidance is: \emph{use cores only when the smile is
+genuinely non-convex} (events, bimodal positioning), and prefer LQD or Local-Vol
+for routine fitting. The cores slider is a scalpel, not a default.
+\end{caution}
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.24\textwidth}p{0.14\textwidth}p{0.54\textwidth}}
+\caption{Multi-Core SIV hyperparameters.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead
+\toprule Knob & Default & Role\\ \midrule
+\endhead
+\multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\ \midrule
+\texttt{nCores} $R$ & $2$ & Number of zero-wing hats; capped by
+\eqref{eq:identifiability}. $0$ = pure sigmoid base.\\
+\texttt{sigmoidRidge} $\varrho$ & \sivridge & $\ell^2$ penalty on hat amplitudes
+in the refine stage.\\
+\texttt{midAnchorWeight} & $0.05$ & Band-fit mid anchor (Note~07).\\
+\texttt{weightScheme} & \texttt{equal} & Per-quote weights (Note~07).\\
+\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10).\\
+\midrule
+\multicolumn{3}{l}{\emph{Internal (seeding / bounds)}}\\ \midrule
+\texttt{\_H\_INIT} & \sivhinit & Hat half-width seed.\\
+\texttt{\_KAPPA\_INIT} & \sivkappainit & Hat steepness seed.\\
+\texttt{\_H\_BOUNDS} & $[\sivhlo,\sivhhi]$ & Hat half-width bounds.\\
+\texttt{\_KAPPA\_BOUNDS} & $[\sivkappalo,\sivkappahi]$ & Hat steepness bounds.\\
+\texttt{\_C\_PAD} & $0.5$ & Centre padding beyond the quoted $z$-range.\\
+\texttt{\_V\_FLOOR} & $10^{-8}$ & Variance floor so $\sqrt v$ stays real.\\
+\texttt{\_LOGCOSH\_CLIP} & $50$ & $|x|$ beyond which $\log\cosh$ uses its asymptote.\\
+\texttt{xtol/ftol} & $10^{-12}$ & trf tolerances.\\
+\bottomrule
+\end{longtable}
+
+%======================================================================
+\section{Performance notes}
+\label{app:perf}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Analytic Jacobian} through the log-cosh primitive replaces the
+$(6+4R+1)$-evaluation finite difference; measured \sivspeedup$\times$ on the WW
+fit, optimum unchanged to $\sivcostdiff$. Gated to the var-swap/prior-free path.
+\item \textbf{Layered warm start.} Fitting the base first and seeding hats on its
+residual gives the joint refine an excellent start, so the bounded trf converges
+quickly even with several cores.
+\item \textbf{Vectorized kernels.} $\Phi,\Phi',\Phi''$ and the hat second
+differences are NumPy-vectorized and side-effect free, shared between the model
+and its Jacobian.
+\item \textbf{Identifiability cap.} Limiting $R$ by the quote count avoids wasting
+iterations on under-determined narrow kernels and is the first line of defence
+against the over-fit of \cref{sec:original}.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface: A Practitioner's
+Guide}. Wiley, 2006.
+\bibitem{Durrleman2010} V.~Durrleman. From implied to spot volatilities.
+\emph{Finance and Stochastics}, 14(2):157--177, 2010.
+\bibitem{Lee2004} R.~W.~Lee. The moment formula for implied volatility at extreme
+strikes. \emph{Mathematical Finance}, 14(3):469--480, 2004.
+\end{thebibliography}
+
+\end{document}

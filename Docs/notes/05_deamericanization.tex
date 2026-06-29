@@ -1,0 +1,304 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{De-Americanization}\\[2pt]
+\large Removing the early-exercise premium from listed option quotes, fast\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~05}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/deam_tables.tex}
+
+\begin{abstract}
+Listed single-stock and ETF options are \emph{American}: they may be exercised
+early, so their prices carry an early-exercise premium over the European value.
+Feeding those prices straight into a European implied-volatility inversion biases
+the smile --- upward, and worst where vega is small. This note documents the
+Vol-Fitter's de-Americanization: for each quote it finds the volatility $\sigma^*$
+such that a Cox--Ross--Rubinstein American tree reprices the quote, and returns
+$\sigma^*$ as the European-equivalent Black volatility. We explain why this tree
+inversion is the right control variate, how discrete cash dividends enter through
+an escrowed-spot lattice, and the numerical choices --- tree depth, the
+bracketed-bisection sweep --- that hold the inversion to sub-vol-bp accuracy. The
+hot path is a Numba kernel that de-Americanizes a whole chain with no per-step
+allocations: on a \deamchainn-quote chain it runs in \deamnumbams\,ms versus
+\deamnumpyms\,ms for the NumPy batch, a \deamspeedup$\times$ speed-up, and a
+content-digest cache ensures fit-tuning never re-runs it. A worked example shows
+the naive European inversion over-stating implied volatility by up to \deammaxbias\
+volatility basis points on a dividend-paying name, an error the de-Americanization
+removes entirely.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Why de-Americanize}
+\label{sec:why}
+
+The volatility models of Notes~01--04 all assume \emph{European} prices: they work
+with $C_T(k)=\E^T[(e^{X_T}-e^k)^+]$, a terminal expectation. A listed American
+option is worth more, because its holder may exercise before expiry; the excess is
+the \emph{early-exercise premium} (EEP). If one inverts an American price with the
+European Black formula, the extra value is misattributed to volatility, and the
+implied vol comes out biased.
+
+\begin{heuristic}
+The bias is not uniform. It is largest exactly where the European model is
+least sensitive to volatility --- deep in-the-money, where vega is small, so a
+given dollar of early-exercise premium translates into a large spurious vol move.
+A naive smile built from American quotes therefore has corrupted wings, the very
+region the fitter most needs to extrapolate. De-Americanization is not a cosmetic
+preprocessing step; it is the difference between fitting the market's volatility
+and fitting its exercise policy.
+\end{heuristic}
+
+\Cref{fig:bias} makes this concrete on American calls written on a stock paying a
+$6\%$ dividend yield (where early exercise to capture dividends is rational): an
+option priced at a true $25\%$ volatility, inverted naively as European, implies a
+volatility up to \deammaxbias\ vol bps too high, rising as the option goes in the
+money. De-Americanization recovers a flat $25\%$.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.55\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_deam_bias.pdf}\\[1pt]
+{\footnotesize (a) naive vs de-Americanized implied vol}
+\end{minipage}\hfill
+\begin{minipage}{0.42\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_deam_eep.pdf}\\[1pt]
+{\footnotesize (b) the early-exercise premium}
+\end{minipage}
+\caption{The naive European inversion of an American price is biased up by the
+early-exercise premium; the de-Americanization returns the true volatility.}
+\label{fig:bias}
+\end{figure}
+
+%======================================================================
+\section{The pricing tree}
+\label{sec:tree}
+
+\subsection{Cox--Ross--Rubinstein}
+
+The American value is computed by a Cox--Ross--Rubinstein (CRR) binomial tree. With
+$N$ steps of size $\Delta t=T/N$, the spot moves by $u=e^{\sigma\sqrt{\Delta t}}$
+or $d=1/u$ each step, with risk-neutral up-probability
+\begin{equation}
+p=\frac{e^{(r-q)\Delta t}-d}{u-d},\qquad 0<p<1,
+\label{eq:crr_p}
+\end{equation}
+($r$ the rate, $q$ a continuous dividend yield). The condition $0<p<1$ is the CRR
+no-arbitrage requirement $d<e^{(r-q)\Delta t}<u$; it fails only for extreme
+drift-to-vol ratios and then \emph{raises} rather than silently mis-pricing. The
+tree rolls back from the payoff with discounting $e^{-r\Delta t}$, taking
+$\max(\text{continuation},\text{intrinsic})$ at each node for the American
+feature. The European value is the same recursion without the intrinsic
+comparison.
+
+\subsection{Discrete cash dividends}
+
+A continuous yield $q$ is a crude proxy for a real single name. Discrete cash
+dividends are handled by the \emph{escrowed-spot} method: the present value of
+dividends with ex-dates in $(0,T]$ is stripped from the spot to form the diffusing
+``base'' lattice, and the actual spot at each node is the base lattice plus the
+present value of dividends not yet paid. This keeps the lattice recombining (cash
+dividends otherwise break recombination) while pricing early exercise against the
+\emph{actual} cum-dividend spot. The two mechanisms coexist: discrete cash for
+near dividends, a continuous proxy for the far tail.
+
+%======================================================================
+\section{The de-Americanization map}
+\label{sec:map}
+
+\subsection{Tree inversion as a control variate}
+
+De-Americanization is a one-dimensional root find. Given an American quote $A$ at
+$(s,K,T,r,q)$,
+\begin{equation}
+\boxed{\;\text{find }\sigma^*:\ \text{CRR}_{\text{Am}}(\sigma^*)=A,\quad
+\text{return }\sigma^*\text{ as the European-equivalent Black vol.}\;}
+\label{eq:deam}
+\end{equation}
+
+\begin{heuristic}
+Why is the \emph{tree's} $\sigma^*$ the right European volatility? Because the
+tree is used as a \emph{control variate} for the early-exercise feature. The
+quantity we ultimately want is the European Black vol; the market price differs
+from the European price by an EEP we cannot observe. The tree supplies a model EEP
+as a function of $\sigma$. Solving $\text{CRR}_{\text{Am}}(\sigma^*)=A$ implicitly
+subtracts the model EEP at $\sigma^*$, and the European Black price at the
+\emph{same} $\sigma^*$ equals the tree's European value (the two agree to tree
+discretization, $\sim10^{-5}$ at the default depth). So $\sigma^*$ is exactly the
+de-Americanized Black vol: the early-exercise premium cancels in the control
+variate, leaving the diffusion volatility. The method is exact in the model and
+robust in practice because the EEP is a smooth, slowly varying function of
+$\sigma$.
+\end{heuristic}
+
+\subsection{Static bounds and bracketing}
+
+A price below intrinsic (impossible for an American option) or above the static
+upper bound ($s$ for a call, $K$ for a put) yields \texttt{nan}, mirroring the
+fitter's convention for unusable quotes. The bracket lower end is lifted just above
+the CRR drift floor $\sigma\sqrt{\Delta t}>|r-q|\Delta t$ so \eqref{eq:crr_p}
+stays valid, and the upper end is expanded until the price is bracketed, capped at
+$\sigma=\text{\texttt{SIGMA\_HI}}=4$.
+
+%======================================================================
+\section{Numerical choices}
+\label{sec:numerics}
+
+\subsection{Depth and bisection}
+
+Two depths are used. The \emph{scalar} path (one quote at a time) uses
+$N=\text{\texttt{DEFAULT\_STEPS}}=501$ and a Brent root find; the European leg of
+the tree then matches Black to $\sim10^{-5}$. The \emph{batch} path uses a coarser
+$N=\deamsteps$ tree and a fixed \deambisect-sweep bracketed bisection, which prices
+within a few $10^{-4}$ of Black and resolves $\sigma^*$ to $\sim0.002$ vol bps ---
+far below the fit budget. The bisection count was tuned down from $45$ to
+\deambisect\ at no measurable accuracy cost ($<0.01$ vol bp drift), a $\sim2\times$
+saving on the isolated de-Am rail.
+
+\begin{caution}
+The tree depth is a numerical-target knob, not a free speed dial. Cutting the
+batch depth from $\deamsteps$ to $128$ buys a $\sim4\times$ speed-up but shifts the
+priced European leg by $\sim15$ vol bps --- i.e.\ it changes the \emph{answer}, not
+just the runtime. The depth is held at $\deamsteps$ and speed is bought elsewhere
+(the Numba kernel, \cref{sec:numba}).
+\end{caution}
+
+\subsection{The Numba kernel}
+\label{sec:numba}
+
+The hot path de-Americanizes a whole chain. The NumPy batch vectorizes across
+quotes but still allocates per step; the compiled kernel does a single scalar CRR
+per quote with no per-step allocation --- precomputed power tables, the escrow
+lattice constants hoisted out, and a \texttt{prange} parallel loop over quotes.
+
+\begin{perfbox}
+On a \deamchainn-quote chain the Numba kernel runs in \deamnumbams\,ms versus
+\deamnumpyms\,ms for the NumPy batch --- a \deamspeedup$\times$ speed-up (the
+documented figure on wide real chains is $\sim60\times$; this synthetic chain,
+being uniform, parallelizes especially well). If Numba is unavailable the code
+falls back to the NumPy batch with identical results to bisection rounding. The
+kernel agrees with the scalar tree to tree-rounding precision.
+\end{perfbox}
+
+\subsection{The content-digest cache}
+
+De-Americanization depends only on the de-Am \emph{inputs} --- forward, discount,
+the cash-dividend schedule, the year fractions, and the as-of --- not on any fit
+setting. The pipeline keys a cache on a content digest of exactly those inputs, so
+tuning a fit penalty, changing the model, or re-weighting quotes never re-runs the
+trees. The de-Am cost is paid once per genuine data change and is then free across
+the entire calibration sweep. A conservative pre-screen (non-positive bids, a wing
+buffer) drops quotes that cannot survive the static bounds \emph{before} the tree
+runs, and is output-preserving by construction.
+
+%======================================================================
+\section{Worked example and measured cost}
+\label{sec:example}
+
+\Cref{fig:bias} is generated by pricing American calls on a $6\%$-dividend stock
+at a true $25\%$ volatility and inverting each both ways. The naive European
+inversion over-states the volatility by up to \deammaxbias\ vol bps, rising into
+the money exactly as \cref{sec:why} predicts; the de-Americanization returns a
+flat $25\%$. The early-exercise premium (panel b) is the economic source of the
+bias: positive, and largest in the money where early exercise to capture the
+dividend is most valuable. The timing table (\cref{tab:deam_time}) records the
+kernel speed-up on a wide chain.
+
+\begin{table}[H]
+\centering
+\caption{De-Americanizing a \deamchainn-quote chain (fastest of three repeats,
+$\deamsteps$-step trees, \deambisect\ bisections).}
+\label{tab:deam_time}
+\begin{tabular}{lrr}
+\toprule
+Path & time (ms) & relative\\
+\midrule
+NumPy batch & \deamnumpyms & $1\times$\\
+Numba kernel & \deamnumbams & \deamspeedup$\times$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+%======================================================================
+\section{What is original, and future directions}
+\label{sec:original}
+
+The control-variate view of tree inversion is folklore; the contributions here are
+the \emph{allocation-free Numba kernel} (the per-step allocation, not the
+arithmetic, was the NumPy bottleneck), the \emph{content-digest cache} that
+scopes de-Am cost to genuine data changes rather than to fit iterations, and the
+\emph{measured} depth/bisection tuning that cut work without moving the numerical
+target. The natural next step --- documented but not yet shipped --- is to seed the
+bracket with a fast analytic American approximation (Barone--Adesi--Whaley or
+Bjerksund--Stensland 2002) so each tree starts near its root, composing with the
+kernel for a further constant-factor win; these are \emph{seeds}, not the answer,
+so they change no contract.
+
+\begin{caution}
+De-Americanization inherits the model's assumptions: a flat dividend treatment, no
+discrete jumps, and the CRR diffusion. For names with hard-to-model dividend
+timing or borrow, $\sigma^*$ is only as good as the forward and dividend inputs
+(Note~06). The method removes the \emph{early-exercise} bias; it cannot repair a
+wrong forward.
+\end{caution}
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.26\textwidth}p{0.14\textwidth}p{0.52\textwidth}}
+\caption{De-Americanization hyperparameters (all hidden / internal).}\label{tab:atlas}\\
+\toprule Constant & Default & Role\\ \midrule
+\endfirsthead \toprule Constant & Default & Role\\ \midrule \endhead
+\texttt{DEFAULT\_STEPS} & $501$ & Scalar CRR tree depth; European leg matches Black to $\sim10^{-5}$.\\
+\texttt{DEFAULT\_BATCH\_STEPS} & $\deamsteps$ & Batch/kernel tree depth.\\
+\texttt{BATCH\_BISECTIONS} & $\deambisect$ & Bracketed-bisection sweeps ($\sim0.002$ vol bp).\\
+\texttt{SIGMA\_LO} & $10^{-4}$ & Lower vol bracket (lifted above the CRR drift floor).\\
+\texttt{SIGMA\_HI} & $4.0$ & Upper vol bracket cap.\\
+escrow PV & --- & Discrete-cash-dividend escrowed-spot lattice.\\
+pre-screen buffer & $1.5\times$ & Wing buffer for the conservative bid/bounds pre-screen.\\
+content digest & --- & Cache key (forward, discount, dividends, $t$, $\tau$, as-of).\\
+\bottomrule
+\end{longtable}
+
+%======================================================================
+\section{Performance notes}
+\label{app:perf}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Numba kernel} (\cref{sec:numba}). Single scalar CRR per quote, no
+per-step allocation, precomputed powers, \texttt{prange} over quotes; measured
+\deamspeedup$\times$ over the NumPy batch on a \deamchainn-quote chain. Graceful
+NumPy fallback.
+\item \textbf{Bisection tuning.} $45\to\deambisect$ sweeps, $<0.01$ vol bp drift,
+$\sim2\times$ on the isolated rail.
+\item \textbf{Content-digest cache.} De-Am re-runs only on a genuine data change,
+never on fit-setting changes --- so it is free across a calibration sweep.
+\item \textbf{Output-preserving pre-screen.} Drops unusable quotes before the tree,
+by construction not changing any surviving result.
+\item \textbf{Future (not shipped):} BAW / BS-2002 analytic bracket seeds to start
+each tree near its root.
+\end{enumerate}
+
+\begin{thebibliography}{9}
+\bibitem{CoxRossRubinstein1979} J.~Cox, S.~Ross and M.~Rubinstein. Option pricing:
+a simplified approach. \emph{J.\ Financial Economics}, 7(3):229--263, 1979.
+\bibitem{BaroneAdesiWhaley1987} G.~Barone-Adesi and R.~Whaley. Efficient analytic
+approximation of American option values. \emph{J.\ Finance}, 42(2):301--320, 1987.
+\bibitem{BjerksundStensland2002} P.~Bjerksund and G.~Stensland. Closed form
+valuation of American options. Working paper, NHH, 2002.
+\bibitem{Burkovska2018} O.~Burkovska et al. Calibration to American options:
+numerical investigation of the de-Americanization method.
+\emph{arXiv:1611.06181}.
+\end{thebibliography}
+
+\end{document}
