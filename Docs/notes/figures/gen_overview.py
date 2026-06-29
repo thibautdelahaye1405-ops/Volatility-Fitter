@@ -71,7 +71,7 @@ def main():
                 label=fr"$T={t*12:.0f}$m")
         ax.scatter(k, 100 * np.sqrt(w / t), s=10, color=c, alpha=0.6)
     ax.set_xlabel(r"log-moneyness $k=\log(K/F)$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.legend(frameon=False, ncol=2)
     fig.savefig(OUT / "fig_ov_smiles.pdf")
     plt.close(fig)

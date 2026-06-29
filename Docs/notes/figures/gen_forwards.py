@@ -85,7 +85,7 @@ def main():
     ax.axhline(100 * RATE_MIN, color=SLATE, lw=0.7)
     ax.axhline(100 * RATE_MAX, color=SLATE, lw=0.7)
     ax.set_xlabel("parity-slope error (multiplicative)")
-    ax.set_ylabel(r"implied rate (\%)")
+    ax.set_ylabel(r"implied rate (%)")
     ax.set_ylim(-40, 60)
     ax.set_title("A noisy slope drifts the rate out of the band; the clamp pins it",
                  fontsize=10)

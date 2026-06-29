@@ -160,15 +160,15 @@ the tree then matches Black to $\sim10^{-5}$. The \emph{batch} path uses a coars
 $N=\deamsteps$ tree and a fixed \deambisect-sweep bracketed bisection, which prices
 within a few $10^{-4}$ of Black and resolves $\sigma^*$ to $\sim0.002$ vol bps ---
 far below the fit budget. The bisection count was tuned down from $45$ to
-\deambisect\ at no measurable accuracy cost ($<0.01$ vol bp drift), a $\sim2\times$
+\deambisect\ at no measurable accuracy cost ($<0.01$ vol bp drift), a $\sim1.8\times$
 saving on the isolated de-Am rail.
 
 \begin{caution}
 The tree depth is a numerical-target knob, not a free speed dial. Cutting the
-batch depth from $\deamsteps$ to $128$ buys a $\sim4\times$ speed-up but shifts the
-priced European leg by $\sim15$ vol bps --- i.e.\ it changes the \emph{answer}, not
-just the runtime. The depth is held at $\deamsteps$ and speed is bought elsewhere
-(the Numba kernel, \cref{sec:numba}).
+batch depth from $\deamsteps$ to $128$ is faster (the backward induction is
+$O(N^2)$, so $\sim2\times$) but shifts the priced European leg by $\sim15$ vol bps
+--- i.e.\ it changes the \emph{answer}, not just the runtime. The depth is held at
+$\deamsteps$ and speed is bought elsewhere (the Numba kernel, \cref{sec:numba}).
 \end{caution}
 
 \subsection{The Numba kernel}
@@ -280,7 +280,7 @@ per-step allocation, precomputed powers, \texttt{prange} over quotes; measured
 \deamspeedup$\times$ over the NumPy batch on a \deamchainn-quote chain. Graceful
 NumPy fallback.
 \item \textbf{Bisection tuning.} $45\to\deambisect$ sweeps, $<0.01$ vol bp drift,
-$\sim2\times$ on the isolated rail.
+$\sim1.8\times$ on the isolated rail.
 \item \textbf{Content-digest cache.} De-Am re-runs only on a genuine data change,
 never on fit-setting changes --- so it is free across a calibration sweep.
 \item \textbf{Output-preserving pre-screen.} Drops unusable quotes before the tree,

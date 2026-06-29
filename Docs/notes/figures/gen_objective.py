@@ -97,7 +97,7 @@ def band_fig():
     ax.plot(kk, 100 * band_res.slice.implied_vol(kk, t), color=TEAL,
             label="band fit (sits in band)")
     ax.set_xlabel(r"log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.legend(frameon=False)
     fig.savefig(OUT / "fig_obj_band.pdf")
     plt.close(fig)

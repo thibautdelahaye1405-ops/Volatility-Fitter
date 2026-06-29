@@ -193,9 +193,9 @@ prior and calibrator. Yesterday's prior is a calm $\priatmprior\%$-ATM smile.
 Overnight the market jumps: today's ATM is $\priatmmarket\%$ with a steeper skew,
 and \emph{only} the ATM region ($|k|\le0.10$) is quoted. The market-only fit
 captures the ATM but extrapolates the steep skew into a wild put wing
-($\priwingmo\%$ at $k=-0.30$). The prior-persisted fit keeps the ATM at the
-\emph{market} level (\priatmpersist\%, \emph{not} damped toward the prior's
-\priatmprior\%) because the gate is zero where the quotes are dense, while holding
+($\priwingmo\%$ at $k=-0.30$). The prior-persisted fit keeps the ATM essentially
+at the \emph{market} level (\priatmpersist\%, tracking the market's
+\priatmmarket\% rather than being damped toward the prior's \priatmprior\%) because the gate is zero where the quotes are dense, while holding
 the unquoted wing at the prior ($\priwingps\%$, vs the prior's $\priwingprior\%$)
 because the gate is one where there are no quotes. The signal is preserved; the gap
 is filled.

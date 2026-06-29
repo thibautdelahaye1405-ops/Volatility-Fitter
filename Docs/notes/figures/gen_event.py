@@ -69,7 +69,7 @@ def main():
     ax.plot(T, 100 * iv_event, color=TEAL, label="with event")
     ax.axvline(te, color="black", lw=0.8, alpha=0.5)
     ax.set_xlabel(r"calendar time $T$ (years)")
-    ax.set_ylabel(r"ATM implied volatility (\%)")
+    ax.set_ylabel(r"ATM implied volatility (%)")
     ax.set_title("The event lifts short-dated vol, then decays (price preserved)",
                  fontsize=10)
     ax.legend(frameon=False)

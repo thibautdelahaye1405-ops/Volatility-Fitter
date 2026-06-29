@@ -60,7 +60,7 @@ def main():
         ax.plot(k, 100 * sig, color=c, ls="--", label=f"{name} (SSR={ssr:.0f})")
     ax.axvline(0, color="black", lw=0.6, alpha=0.4)
     ax.set_xlabel(r"new-forward log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.set_title(r"Smile after a $-5\%$ spot move", fontsize=10)
     ax.legend(frameon=False, fontsize=9)
     fig.savefig(OUT / "fig_ssr_transport.pdf")
@@ -73,8 +73,8 @@ def main():
         atm = [shifted_smile(np.array([0.0]), vol_curve, skew, float(m), regime=ssr)[0]
                for m in moves]
         ax.plot(100 * moves, 100 * np.array(atm), color=c, label=f"{name} (SSR={ssr:.0f})")
-    ax.set_xlabel(r"spot move (\%)")
-    ax.set_ylabel(r"ATM implied volatility (\%)")
+    ax.set_xlabel(r"spot move (%)")
+    ax.set_ylabel(r"ATM implied volatility (%)")
     ax.set_title(r"$\Delta\sigma_{\rm atm}=\mathrm{SSR}\cdot\mathrm{skew}\cdot\delta$",
                  fontsize=10)
     ax.legend(frameon=False, fontsize=9)

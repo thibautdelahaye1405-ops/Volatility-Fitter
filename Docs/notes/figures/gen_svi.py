@@ -135,7 +135,7 @@ def main():
     ax.plot(kk, 100 * raw.implied_vol(kk, t), color=TEAL, ls="--", label="SVI fit")
     ax.scatter(k, 100 * np.sqrt(w / t), s=18, color=RUST, zorder=5, label="quotes")
     ax.set_xlabel(r"log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.legend(frameon=False)
     fig.savefig(OUT / "fig_svi_fit.pdf")
     plt.close(fig)
@@ -147,8 +147,8 @@ def main():
     k0 = 0.0
     v0 = 100 * raw.implied_vol(np.array([0.0]), t)[0]
     ax.scatter([k0], [v0], color=RUST, zorder=5)
-    ax.annotate(r"$v$: ATM variance", (k0, v0), (0.02, v0 + 1.2),
-                fontsize=9, color=RUST)
+    ax.annotate(r"$v$: ATM variance", (k0, v0), (-0.20, v0 + 2.6),
+                arrowprops=dict(arrowstyle="->", color=RUST), fontsize=9, color=RUST)
     # skew slope arrow near ATM
     sk = (100 * raw.implied_vol(np.array([0.05]), t)[0] - v0) / 0.05
     ax.annotate(r"$\psi$: ATM skew", (0.0, v0), (-0.30, v0 + 3.0),
@@ -159,9 +159,10 @@ def main():
                 fontsize=9, color=SLATE)
     kmin = kk[np.argmin(vol)]
     ax.annotate(r"$\tilde v$: min variance", (kmin, np.min(vol)),
-                (kmin - 0.05, np.min(vol) - 4), fontsize=9, color=TEAL)
+                (kmin - 0.04, np.min(vol) + 3.0),
+                arrowprops=dict(arrowstyle="->", color=TEAL), fontsize=9, color=TEAL)
     ax.set_xlabel(r"log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     fig.savefig(OUT / "fig_svi_jw.pdf")
     plt.close(fig)
 

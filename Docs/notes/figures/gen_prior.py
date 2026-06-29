@@ -92,7 +92,7 @@ def nodamp_fig():
                label="today's ATM quotes")
     ax.axvspan(-0.10, 0.10, color="black", alpha=0.04)
     ax.set_xlabel(r"log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.set_title("ATM follows the market jump; wings held by the prior", fontsize=10)
     ax.legend(frameon=False, fontsize=9)
     fig.savefig(OUT / "fig_prior_nodamp.pdf")

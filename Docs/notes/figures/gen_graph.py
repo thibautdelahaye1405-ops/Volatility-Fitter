@@ -71,7 +71,7 @@ def main():
     lo, hi = post.credible_band()
 
     fig, ax = plt.subplots()
-    ax.fill_between(idx, lo, hi, color=TEAL, alpha=0.15, label="95\\% credible band")
+    ax.fill_between(idx, lo, hi, color=TEAL, alpha=0.15, label="95% credible band")
     ax.plot(idx, post.mean, "-o", color=TEAL, label="posterior increment")
     ax.scatter([0], [post.mean[0]], s=80, color=RUST, zorder=6, label="lit node (observed)")
     ax.axhline(0, color="black", lw=0.7)

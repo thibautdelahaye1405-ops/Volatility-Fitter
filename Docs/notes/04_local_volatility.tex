@@ -27,7 +27,8 @@ and observation operator, the variance-swap log-contract replication and its
 faster source-PDE alternative, and the calibration objective with its roughness,
 convex-wing and front-tie regularizers. We then give the sensitivity PDE and the
 adjoint gradient, and --- the engineering heart of the note --- the numerical
-optimizations that took the cold fit from $\sim$\,86\,s to single-digit seconds:
+optimizations that cut the cold fit $\sim3$--$6\times$ (from $\sim$\,86\,s to
+$\sim$\,15--30\,s, scaling with grid size), with recalibrations near-instant:
 a compiled vectorized-Thomas Dupire march ($\sim6.5\times$), a stall-based
 early-stop, a parametric Dupire warm seed, and the matrix-free Gauss--Newton
 solver that avoids the dense SVD. A synthetic round trip recovers a known surface
@@ -136,11 +137,13 @@ lack.
 
 \subsection{Discretization}
 
-The PDE \eqref{eq:dupire} is solved on a uniform spatial grid $x_g$ (default
-$\sim$\,$1201$ nodes spanning several standard deviations, \texttt{DEFAULT\_N\_K})
-by fully implicit (backward) Euler in maturity with step $\le$ \texttt{DEFAULT\_DT\_MAX}
-$=1/400$, optionally Rannacher-started (a few implicit quarter-steps before
-Crank--Nicolson). Each step solves a tridiagonal $M$-matrix system
+The forward map \eqref{eq:dupire} is solved on a uniform spatial grid with step
+$\Delta x=0.01$ on $x\in[0,\sim2.5]$ ($\sim250$ nodes) by fully implicit (backward)
+Euler in maturity with step $\Delta T=0.01$ (the local variance entering each step
+at the new time level $t_{n+1}$), optionally Rannacher-started with a couple of
+implicit start-up steps before Crank--Nicolson. (A separate log-strike validator,
+\cref{app:atlas}, runs the finer fixed grid.) Each step solves a tridiagonal
+$M$-matrix system
 \begin{equation}
 (I-\Delta T\,A_n)\,U^{n+1}=U^{n},
 \label{eq:implicit}
@@ -155,8 +158,9 @@ $(T,x)$ off the solution by interpolation.
 \label{sec:diagnostics}
 
 Because the surface is only \emph{up to scheme noise} arbitrage-free, the model
-measures the residual: a butterfly tolerance on $\partial_{xx}c$ and a calendar
-tolerance on $\partial_T c$ (both $10^{-8}$). The model is gated behind these
+measures the residual: a butterfly tolerance on $\partial_{xx}c$
+($\gtrsim-10^{-6}$ density) and a calendar tolerance on $\partial_T c$
+($<-10^{-9}$ price decrement). The model is gated behind these
 diagnostics rather than assuming cleanliness --- a deliberate design choice.
 
 %======================================================================
@@ -205,8 +209,9 @@ that lets a coarse grid generalize.
 \item \textbf{Convex wing} hinge: a one-sided penalty enforcing local convexity of
 the wing, confined to vertices \emph{below the deepest quote} (the extrapolation
 tail only --- see \cref{sec:convexbug}).
-\item \textbf{Front tie}: a light penalty tying the front-end vertices to the ATM
-level where the shortest expiry has little strike coverage.
+\item \textbf{Front tie}: a light penalty tying the unconstrained $t=0$ time row
+to the first (data-identified) expiry row across strikes, anchoring the front end
+where the shortest expiry has little coverage.
 \end{itemize}
 
 %======================================================================
@@ -419,17 +424,23 @@ the fit, though much faster, remains the heaviest single computation in the app.
 \texttt{lvEarlyStop} & \texttt{true} & Stall-based early stop.\\
 \texttt{timeScheme} & \texttt{implicit} & Implicit Euler or Rannacher/CN.\\
 \midrule
-\multicolumn{3}{l}{\emph{Hidden (PDE / solver)}}\\ \midrule
-\texttt{DEFAULT\_N\_K} & $1201$ & PDE spatial nodes.\\
-\texttt{DEFAULT\_DT\_MAX} & $1/400$ & PDE max time step.\\
-\texttt{N\_RANNACHER} & $4$ & Rannacher start quarter-steps.\\
-\texttt{SPAN\_SD} / \texttt{SPAN\_MIN} & $7.5$ / $0.6$ & PDE grid span (sd / floor).\\
+\multicolumn{3}{l}{\emph{Hidden (affine-calibration PDE / solver)}}\\ \midrule
+affine PDE step & $\Delta x=0.01$ & Spatial step on $x\in[0,\sim2.5]$ ($\sim250$ nodes).\\
+affine time step & $\Delta T=0.01$ & Implicit-Euler maturity step.\\
+\texttt{rannacher\_steps} & $2$ & Implicit start-up steps before CN (opt-in scheme).\\
+short-dated step & $0.3\,\sigma\sqrt\tau$ & Refined $\Delta x$ floor, clamped $[1/400,0.01]$ (\cref{sec:short}).\\
 \texttt{VAR\_FLOOR} & $10^{-6}$ & Dupire local-variance floor.\\
 variance bounds & $[0.005,0.20]$ & Nodal local-variance box (vol $[7\%,45\%]$).\\
 \texttt{x\_scale} & \texttt{jac} & Optimizer column scaling.\\
 \texttt{xtol/ftol/gtol} & $10^{-8}$ & Optimizer tolerances.\\
 \texttt{max\_nfev} & $200$ & Evaluation cap.\\
 \texttt{stall\_window/rtol} & $12$--$18$ / $\sim3\text{--}5\!\times\!10^{-3}$ & Early-stop window/tolerance.\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden (separate log-strike validator, \texttt{pde.py})}}\\ \midrule
+\texttt{DEFAULT\_N\_K} & $1201$ & Validator spatial nodes.\\
+\texttt{DEFAULT\_DT\_MAX} & $1/400$ & Validator max time step.\\
+\texttt{N\_RANNACHER} & $4$ & Validator Rannacher quarter-steps.\\
+\texttt{SPAN\_SD} / \texttt{SPAN\_MIN} & $7.5$ / $0.6$ & Validator grid span (sd / floor).\\
 \bottomrule
 \end{longtable}
 

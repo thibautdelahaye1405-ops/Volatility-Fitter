@@ -611,10 +611,11 @@ The analytic Jacobian covers the configuration with \emph{no} var-swap or prior
 blocks (the var-swap and prior-anchor terms are not yet differentiated
 analytically; those fits fall back to scipy's two-point finite difference ---
 correct, merely not accelerated). \Cref{tab:timing} reports a fresh end-to-end
-comparison: the analytic and finite-difference fits reach an \emph{identical}
-optimum (cost differs at the $10^{-16}$ level) while the analytic Jacobian is
-$1.4$--$1.7\times$ faster across $N=6\ldots12$ on this benchmark, with both paths
-converging in a handful of iterations.
+comparison: the analytic and finite-difference fits reach the \emph{same}
+optimum (the costs agree to $\sim11$ significant figures, relative difference
+$\sim10^{-11}$) while the analytic Jacobian is $1.4$--$1.7\times$ faster across
+$N=6\ldots12$ on this benchmark, with both paths converging in a handful of
+iterations.
 
 \begin{table}[H]
 \centering
@@ -684,8 +685,10 @@ A_L=\lqdsviAL,\quad A_R=\lqdsviAR,\quad \mu=\lqdsvimu,\quad
 \beta_L=\lqdsvibetaL,\quad \beta_R=\lqdsvibetaR.
 \end{equation}
 For comparison the raw-SVI wing slopes are $b(1-\rho)=0.1093$ (left) and
-$b(1+\rho)=0.0364$ (right): the Lee slopes agree to two--three digits even though
-nothing imposed it --- they emerge from the fitted endpoint basis. The exact ATM
+$b(1+\rho)=0.0364$ (right): the Lee slopes agree to $\sim$2 digits on the right
+wing ($\beta_R=\lqdsvibetaR$ vs $0.0364$) and to $\sim$1 on the steeper left
+($\beta_L=\lqdsvibetaL$ vs $0.1093$, $\sim$10\%), even though nothing imposed it
+--- they emerge from the fitted endpoint basis. The exact ATM
 handles are $\sigma_0=\lqdsvisigma\%$, $s_0=\lqdsviskew$, $\kappa_0=\lqdsvicurv$,
 and the martingale check returns $\E[e^X]-1=\lqdsvimart$. The maximum
 implied-volatility error over the calibration grid is \lqdsvimaxerr\ volatility
@@ -860,9 +863,10 @@ evaluation (clean Greeks) and machine-precision strike inversion by
 Hermite--Newton --- and supplies precisely the nodal sensitivities the analytic
 Jacobian reuses.
 \item \textbf{Analytic Jacobian} (\cref{sec:jacobian}). One quadrature pass
-instead of $P+1$ finite-difference rebuilds, exact (optimum unchanged to
-$10^{-16}$), measured $1.4$--$1.7\times$ end-to-end here and structurally more on
-heavier configurations. Gated to the var-swap/prior-free configuration.
+instead of $P+1$ finite-difference rebuilds, reaching the same optimum (relative
+cost agreement $\sim10^{-11}$), measured $1.4$--$1.7\times$ end-to-end here and
+structurally more on heavier configurations. Gated to the var-swap/prior-free
+configuration.
 \item \textbf{Looser tolerances.} Dropping \texttt{trf} tolerances from
 $10^{-15}$ to $10^{-10}$ stops the optimizer chasing a $10^{-15}$ cost reduction
 that is invisible in the priced surface, saving whole $(P+1)$-eval iterations at

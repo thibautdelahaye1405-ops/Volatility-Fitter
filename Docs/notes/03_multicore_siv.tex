@@ -99,8 +99,9 @@ across expiries. The convexity primitive is the \emph{log-cosh}
 \Phi_\kappa''(u)=\operatorname{sech}^2\!\Big(\frac{\kappa u}{2}\Big).
 \label{eq:phi}
 \end{equation}
-$\Phi_\kappa$ is a smooth, convex, even ``softened $|u|$'': $\Phi_\kappa(u)\to|u|$
-for large $|u|$ (the wing) and $\Phi_\kappa(u)\approx u^2/2$ near $0$ (the
+$\Phi_\kappa$ is a smooth, convex, even softened absolute value:
+$\Phi_\kappa(u)\sim\tfrac{2}{\kappa}|u|-\tfrac{4}{\kappa^2}\log2$ for large $|u|$
+(a wing of slope $2/\kappa$) and $\Phi_\kappa(u)\approx u^2/2$ near $0$ (the
 rounded vertex), with $\kappa$ the transition steepness. For numerical safety the
 log-cosh is replaced by its asymptote $|x|-\log2$ beyond $|x|=50$ to avoid
 $\cosh$ overflow.
@@ -156,8 +157,8 @@ as $z\to\pm\infty$.
 \end{lemma}
 
 \begin{proof}
-For large $|u|$, $\Phi_\kappa(u)=|u|-\tfrac{2}{\kappa}\log2+o(1)$ is asymptotically
-\emph{affine}, so the centred second difference
+For large $|u|$, $\Phi_\kappa(u)=\tfrac{2}{\kappa}|u|-\tfrac{4}{\kappa^2}\log2+o(1)$
+is asymptotically \emph{affine}, so the centred second difference
 $\Phi_\kappa(u-h)-2\Phi_\kappa(u)+\Phi_\kappa(u+h)\to0$ (a second difference
 annihilates affine functions). The same holds for $\Phi'$ (which tends to the
 constants $\pm2/\kappa$) and $\Phi''$ (which decays). Hence $B$ and its first two

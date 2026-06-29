@@ -82,7 +82,7 @@ def main():
     ax.plot(kk, 100 * siv.vol(kk), color=TEAL, ls="--", label="MC-SIV ($R{=}2$)")
     ax.scatter(k, 100 * vol, s=14, color=RUST, zorder=5, label="quotes")
     ax.set_xlabel(r"log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.legend(frameon=False)
     fig.savefig(OUT / "fig_siv_fit.pdf")
     plt.close(fig)

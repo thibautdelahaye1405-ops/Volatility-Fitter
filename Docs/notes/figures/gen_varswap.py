@@ -64,7 +64,7 @@ def main():
     ax.plot(hws, 100 * np.array(vols), color=TEAL)
     ax.axvline(6.0, color=SLATE, ls=":", label=r"production half-width $=6$")
     ax.set_xlabel(r"replication half-width (log-moneyness)")
-    ax.set_ylabel(r"fair var-swap vol (\%)")
+    ax.set_ylabel(r"fair var-swap vol (%)")
     ax.legend(frameon=False)
     fig.savefig(OUT / "fig_vs_convergence.pdf")
     plt.close(fig)
@@ -79,14 +79,14 @@ def main():
     kk = np.linspace(-0.40, 0.34, 300)
     fig, ax = plt.subplots()
     ax.plot(kk, 100 * base.slice.implied_vol(kk, t), color=SLATE,
-            label=fr"no target (var-swap {100*vs_vol_closed:.2f}\%)")
+            label=fr"no target (var-swap {100*vs_vol_closed:.2f}%)")
     ax.plot(kk, 100 * pulled.slice.implied_vol(kk, t), color=TEAL, ls="--",
-            label=fr"with target (var-swap {100*pulled_vol:.2f}\%)")
+            label=fr"with target (var-swap {100*pulled_vol:.2f}%)")
     ax.scatter(k, 100 * np.sqrt(w / t), s=12, color=RUST, zorder=5, label="option quotes")
     ax.axhline(100 * target_vol, color=RUST, ls=":", lw=1.0,
-               label=fr"var-swap quote {100*target_vol:.2f}\%")
+               label=fr"var-swap quote {100*target_vol:.2f}%")
     ax.set_xlabel(r"log-moneyness $k$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.legend(frameon=False, fontsize=9)
     fig.savefig(OUT / "fig_vs_fit.pdf")
     plt.close(fig)

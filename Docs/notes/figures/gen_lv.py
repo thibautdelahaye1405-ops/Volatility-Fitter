@@ -100,7 +100,7 @@ def fig_surface(cal):
     ax.set_xlabel(r"normalized strike $x=K/F$")
     ax.set_ylabel(r"maturity $t$ (years)")
     cb = fig.colorbar(im, ax=ax)
-    cb.set_label(r"local volatility $\sqrt{\nu}$ (\%)")
+    cb.set_label(r"local volatility $\sqrt{\nu}$ (%)")
     ax.set_title("Recovered piecewise-affine local-volatility surface", fontsize=10)
     fig.savefig(OUT / "fig_lv_surface.pdf")
     plt.close(fig)
@@ -113,7 +113,7 @@ def fig_fit(target, recovered):
         xr, ivr = recovered[T]
         ax.plot(np.log(xr), 100 * ivr, color=c, ls="--", lw=1.2)
     ax.set_xlabel(r"log-moneyness $k=\log(K/F)$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.set_title("Truth (solid) vs recovered (dashed)", fontsize=10)
     ax.legend(frameon=False, ncol=2, fontsize=9)
     fig.savefig(OUT / "fig_lv_fit.pdf")

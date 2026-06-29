@@ -78,7 +78,7 @@ def bias_figures():
     ax.plot(strikes, 100 * naive, color=RUST, label="naive (American as European)")
     ax.plot(strikes, 100 * deam, color=TEAL, ls="--", label="de-Americanized")
     ax.set_xlabel("strike $K$")
-    ax.set_ylabel(r"implied volatility (\%)")
+    ax.set_ylabel(r"implied volatility (%)")
     ax.set_title(r"American calls, dividend yield $6\%$: naive inversion biased up",
                  fontsize=10)
     ax.legend(frameon=False)
