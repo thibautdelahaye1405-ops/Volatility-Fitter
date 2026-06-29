@@ -59,7 +59,8 @@ DEFAULT_SWEEP: tuple[ModelSpec, ...] = (
     ModelSpec("sigmoid", "SIV-0", {"n_cores": 0}),
     ModelSpec("sigmoid", "SIV-1", {"n_cores": 1}),
     ModelSpec("sigmoid", "SIV-2", {"n_cores": 2}),
-    ModelSpec("sigmoid", "SIV-3", {"n_cores": 3}),
+    # SIV-3 dropped: cores >= 3 overfit on precision + manufacture put-wing arb
+    # (FINDINGS_calibration_arb F4/R6); the production menu is capped at 2 cores.
 )
 
 

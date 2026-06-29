@@ -739,6 +739,9 @@ class AppState(UniverseMixin):
                     != self._options.priorFactorStrengthPct
                     or options.priorTailAnchorStrengthPct
                     != self._options.priorTailAnchorStrengthPct
+                    # SIV put-wing no-butterfly regularizer (R6) — changes the SIV
+                    # overlay calibration, so it busts the fit cache.
+                    or options.sivWingPenaltyPct != self._options.sivWingPenaltyPct
                 )
                 if affects_fit:
                     self._options_version += 1

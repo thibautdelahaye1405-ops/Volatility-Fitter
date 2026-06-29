@@ -347,6 +347,16 @@ export default function OptionsViewer() {
             className={numInput}
           />
         </div>
+        <div className="mt-2 flex items-center justify-between">
+          <span className={rowLabel} title="Multi-Core SIV put-wing no-butterfly regularizer (% of base; 0 = off). Zero on an arb-free slice, so liquid names are untouched.">
+            SIV wing penalty %
+          </span>
+          <input
+            type="number" step={10} min={0} max={1000} value={draft.sivWingPenaltyPct} disabled={!live}
+            onChange={(e) => patch({ sivWingPenaltyPct: Number(e.target.value) })}
+            className={numInput}
+          />
+        </div>
 
         <h4 className={subTitle}>Calibration penalties</h4>
         <PenaltyTable group="calibration" />

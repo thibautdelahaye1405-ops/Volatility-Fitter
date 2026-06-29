@@ -19,6 +19,7 @@ import numpy as np
 
 from volfit.api import history
 from volfit.api.fit_models import DisplayFit, _max_iv_error, build_display_fit
+from volfit.models.sigmoid.calibrate import WING_PENALTY_BASE
 from volfit.api.quotes import (
     PreparedQuotes,
     apply_band_edits,
@@ -455,6 +456,7 @@ def display_overlay(
         calendar_floor=cal_floor, calendar_weight=state.options().calendarWeight,
         prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
         prior_var_swap=pt.prior_var_swap,
+        wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
     )
 
 
@@ -545,6 +547,7 @@ def _compute_fit(
             settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs,
             prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
             prior_var_swap=pt.prior_var_swap,
+            wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
         )
     record = FitRecord(prepared=prepared, result=result, display=display)
     state.store_fit(key, record)

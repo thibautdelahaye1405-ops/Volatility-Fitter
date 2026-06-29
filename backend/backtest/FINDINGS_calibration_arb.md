@@ -224,33 +224,34 @@ Original plan:
   *overfits on precision* (OOS gap) and manufactures put-wing arb — the menu-cap
   decision stands on its own merits.
 
-### R6 — Tame SIV's put-wing arbitrage (curvature regularization / shape constraint)  ·  *priority: medium, research-ish*
+### R6 — SIV menu cap (2 cores) + put-wing no-butterfly regularizer  ·  ✅ DONE
 
-- **Problem (F4):** SIV manufactures butterfly arb in the unquoted wings, 64% on the
-  put side, because the hat cores add unconstrained curvature where no quotes
-  discipline them.
-- **Approach (options, in increasing intrusiveness):**
-  1. **Wing-curvature penalty** — add a soft `∫ max(−g(k), 0)² dk` (Durrleman
-     no-butterfly) or a `w''` smoothness penalty evaluated on a moneyness grid that
-     **extends past the traded range**, weighted up in the wings (asymmetric: more
-     weight on the put side). Cheapest; keeps the model, just regularizes shape.
-  2. **Hat amplitude / placement constraint** — bound each core's amplitude by the
-     local quote density, or forbid seeding a hat outside the traded `[k_lo,k_hi]`,
-     so cores cannot fire into the unquoted tail.
-  3. **Lee-slope-style wing cap** — enforce the linear total-variance wing bound
-     (as SVI already does via the Lee slope penalty) on the SIV tail so deep wings
-     stay arb-admissible.
-  4. **Decision input:** given the backtest already shows SIV-2/3 overfit on
-     *precision* (OOS gap) independent of arb, the simplest production answer may be
-     to **cap the menu at SIV-0/1** and not chase multi-core shape fixes. R6 is the
-     "if we keep cores" path.
-- **Files:** `models/sigmoid/calibrate.py` (penalty/seed logic), `kernels.py`
-  (curvature terms); reuse the analytic g(k) from R2 for the penalty.
-- **Acceptance:** SIV-3 wing arb (analytic metric) drops sharply with ≤ small
-  in-sample RMS cost; OOS gap narrows; put/call arb asymmetry reduced.
-- **Risk:** research — a curvature penalty interacts with the (missing) analytic
-  Jacobian and can slow fits further; measure on the captured wing-heavy nodes
-  (NVDA/EEM deep expiries) before committing.
+- **Problem (F4):** SIV manufactures butterfly arb in the unquoted wings (64% put-side)
+  because the hat cores add unconstrained curvature where no quotes discipline them;
+  cores ≥3 also overfit on precision (OOS gap).
+- **Shipped — two parts:**
+  1. **Menu cap at 2 cores.** `FitSettings.nCores` → `Field(2, ge=0, le=2)` with a
+     `mode="before"` clamp validator (persisted desks with nCores>2 load, clamped, not
+     rejected); the frontend slider max 6→2; `dispatch.DEFAULT_SWEEP` drops SIV-3.
+  2. **Durrleman put-wing penalty** (the regularizer, default-on). `calibrate_sigmoid`
+     gains `wing_penalty`; the refine stage adds soft rows `sqrt(λ_j)·max(−g(z_j), 0)`
+     on a grid extending `±2` in z past the traded range, the put side weighted ×2
+     (F4). `g` reuses the model's analytic `gatheral_g_from_z`. **Zero on an arb-free
+     slice ⇒ liquid names byte-identical.** Strength = `OptionsSettings.sivWingPenaltyPct`
+     (100 = base `WING_PENALTY_BASE`=1e3; 0 = off) threaded via `build_display_fit`;
+     bumps the options version.
+- **Speed kept (the R5 win):** a **hybrid Jacobian** — analytic for the fit/ridge/
+  calendar blocks, finite-difference *only* the cheap g-penalty rows (a ~49-point grid,
+  not the N quotes). So the penalized fit keeps ~the R5 speed.
+- **Measured:** synthetic arbitraged slice minG **−10.2 → −0.008**; real illiquid EEM
+  wing-heavy nodes minG median **−7.86 → −0.019** (~400× smaller violation), at +79 bp
+  in-sample RMS — but that is fitting *less* to the genuinely-arbitraged de-Am'd
+  illiquid quotes (the right trade); arb-free/liquid slices byte-identical (clean SVI
+  benchmark identical to 3e-17). Tests: `tests/test_siv_wing_penalty.py` (cap clamp +
+  arb-repair + byte-identical-when-clean).
+- **Files:** `models/sigmoid/calibrate.py` (penalty + hybrid Jacobian), `schemas.py`
+  (cap + `sivWingPenaltyPct`), `service.py`/`fit_models.py` (threading), `state.py`
+  (version bump), `HyperparamPanel`/`OptionsViewer`/`useOptions` (UI).
 
 ---
 
@@ -268,7 +269,6 @@ them first. R3 is the one genuine engine change on the shared live path (test
 carefully). R4 is a clean isolated speed win. R5/R6 hinge on whether Multi-Core SIV
 earns its place at all, which the precision data alone already calls into question.
 
-**Status (2026-06-28):** R1 ✅, R2 ✅, R3 ✅ (wing-only redesign), R4 ✅ (SVI analytic
-Jacobian, ~2.6×), R5 ✅ (SIV analytic Jacobian, ~2–2.8×/core). Remaining: only the
-**R6 menu decision** (cap SIV at 0/1 vs add the put-wing shape regularizer; the
-overfit + arb data argues for the cap — R5 makes cores faster but no less overfit).
+**Status (2026-06-29): ALL ITEMS COMPLETE.** R1 ✅, R2 ✅, R3 ✅ (wing-only de-Am
+redesign), R4 ✅ (SVI analytic Jacobian ~2.6×), R5 ✅ (SIV analytic Jacobian ~2–2.8×/
+core), R6 ✅ (SIV menu capped at 2 cores + put-wing Durrleman regularizer, `sivWingPenaltyPct`).
