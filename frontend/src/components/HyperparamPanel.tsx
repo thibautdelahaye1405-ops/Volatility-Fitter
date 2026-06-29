@@ -254,7 +254,7 @@ export default function HyperparamPanel({ group, draft, patch, disabled }: Hyper
         <input
           type="range"
           min={0}
-          max={6}
+          max={2}
           step={1}
           value={draft.nCores}
           disabled={sigmoidOnly}

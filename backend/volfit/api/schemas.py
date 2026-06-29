@@ -64,7 +64,7 @@ class FitSettings(BaseModel):
     nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
     regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
     regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}
-    nCores: int = Field(2, ge=0, le=6)  # Multi-Core SIV hat count R (sigmoid only)
+    nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)
     haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
     weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights
     # --- per-model optimization / penalty coefficients (Options exposes them
@@ -76,6 +76,13 @@ class FitSettings(BaseModel):
     leeSlopeMax: float = Field(2.0, gt=0.0)  # SVI Lee wing-slope bound
     sigmoidRidge: float = Field(1e-2, ge=0.0)  # Multi-Core SIV hat-amplitude ridge
     midAnchorWeight: float = Field(0.05, ge=0.0)  # band-mode mid anchor (all models)
+
+    @field_validator("nCores", mode="before")
+    @classmethod
+    def _clamp_cores(cls, v: int) -> int:
+        """SIV cores capped at 2 (FINDINGS R6: cores ≥3 overfit + manufacture wing
+        arb). Clamp rather than reject so a persisted desk with nCores>2 still loads."""
+        return min(int(v), 2)
 
 
 # ----------------------------------------------------- options (meta) settings
@@ -329,6 +336,11 @@ class OptionsSettings(BaseModel):
     leftWingSlopeMult: float = Field(1.5, ge=0.0, le=20.0)
     # editable penalty strength (changes calibration output)
     calendarWeight: float = Field(1e6, ge=0.0)
+    #: Multi-Core SIV put-wing no-butterfly regularizer strength, as a percentage of
+    #: the base weight (FINDINGS_calibration_arb R6). 100 = the default Durrleman
+    #: penalty that pushes g(k) >= 0 in the unquoted wings; 0 = off (byte-identical).
+    #: Zero on an arb-free slice, so liquid names are untouched regardless.
+    sivWingPenaltyPct: float = Field(100.0, ge=0.0, le=1000.0)
     # graph-solver prior defaults (the Graph SolverPanel seeds from these):
     # kappa = prior strength (local precision toward baseline), eta = reach,
     # lambda = OT flux weight (0 = off), nu = OT source allowance.

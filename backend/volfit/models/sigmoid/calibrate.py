@@ -24,7 +24,7 @@ from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call
 from volfit.models.sigmoid.jacobian import siv_residual_jacobian
-from volfit.models.sigmoid.kernels import hat, siv_base
+from volfit.models.sigmoid.kernels import gatheral_g_from_z, hat, hat_p, hat_pp, siv_base
 from volfit.models.sigmoid.sigmoid import HatCore, MultiCoreSiv
 
 #: Per-hat starting half-width / steepness (note's WW example, eq ww-fit-model).
@@ -40,6 +40,30 @@ _C_PAD = 0.5
 _RIDGE = 1e-2
 #: Variance floor mirroring MultiCoreSiv (keeps vol = sqrt(v) real).
 _V_FLOOR = 1e-8
+
+#: Put-wing no-butterfly regularizer (FINDINGS_calibration_arb R6). The zero-wing
+#: hats can break convexity (Durrleman g < 0) in the UNQUOTED tail; a soft penalty
+#: sqrt(lambda_j) * max(-g(z_j), 0) on a grid extending past the traded range pushes
+#: g >= 0 where no quote disciplines it. Zero on an arb-free slice ⇒ byte-identical.
+#: ``WING_PENALTY_BASE`` is the base strength (variance² units, like the SVI penalty),
+#: scaled by ``OptionsSettings.sivWingPenaltyPct`` at the service; the put side is
+#: weighted ``_WING_PUT_FACTOR`` heavier (F4: ~64% of violations are put-side).
+WING_PENALTY_BASE = 1e3
+_WING_PAD = 2.0  # how far past the quoted z-range the penalty grid extends (z units)
+_WING_GRID = 49  # grid points over the extended range
+_WING_PUT_FACTOR = 2.0
+
+
+def _eval_g(theta: np.ndarray, z: np.ndarray, n_cores: int, t: float, sigma_ref: float) -> np.ndarray:
+    """Durrleman/Gatheral g(z) of the model slice (>= 0 ⇔ no butterfly arb)."""
+    v0, s0, k0, z0, kp, kc = theta[:6]
+    v, vz, vzz = siv_base(z, v0, s0, k0, z0, kp, kc)
+    for r in range(n_cores):
+        alpha, c, h, kappa = theta[6 + 4 * r : 10 + 4 * r]
+        v = v + alpha * hat(z, c, h, kappa)
+        vz = vz + alpha * hat_p(z, c, h, kappa)
+        vzz = vzz + alpha * hat_pp(z, c, h, kappa)
+    return gatheral_g_from_z(z, np.maximum(v, _V_FLOOR), vz, vzz, t, sigma_ref)
 
 
 def _reference_vol(vol_quotes: np.ndarray, k: np.ndarray) -> float:
@@ -115,6 +139,8 @@ def _fit(
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
+    wing_z: np.ndarray | None = None,
+    wing_sqrt_lambda: np.ndarray | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
@@ -166,7 +192,26 @@ def _fit(
                 res = np.concatenate([res, operator_residuals(implied_w, operator_prior)])
             if prior_var_swap is not None:  # prior's var-swap level (operator companion)
                 res = np.concatenate([res, [varswap_residual(implied_w, prior_var_swap)]])
+        if wing_sqrt_lambda is not None:
+            # Put-wing no-butterfly regularizer (R6): zero on an arb-free slice.
+            g = _eval_g(theta, wing_z, n_cores, t, sigma_ref)
+            res = np.concatenate([res, wing_sqrt_lambda * np.maximum(-g, 0.0)])
         return res
+
+    def _wing_fd_jac(theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+        """Central finite-difference of the wing-penalty rows only — cheap (a small
+        g grid), so the dominant fit/ridge/calendar blocks stay analytic (hybrid)."""
+        def wres(th: np.ndarray) -> np.ndarray:
+            g = _eval_g(th, wing_z, n_cores, t, sigma_ref)
+            return wing_sqrt_lambda * np.maximum(-g, 0.0)
+
+        base = wres(theta)
+        jw = np.empty((base.size, theta.size))
+        for p in range(theta.size):
+            d = np.zeros_like(theta)
+            d[p] = eps
+            jw[:, p] = (wres(theta + d) - wres(theta - d)) / (2.0 * eps)
+        return jw
 
     theta0 = np.clip(theta0, lo, hi)
     # Analytic Jacobian (R5) for the var-swap/prior-free configuration (mid OR band
@@ -184,10 +229,13 @@ def _fit(
     jac = "2-point"
     if use_analytic:
         def jac(theta: np.ndarray) -> np.ndarray:  # noqa: F811 — gated analytic Jacobian
-            return siv_residual_jacobian(
+            j = siv_residual_jacobian(
                 theta, z, n_cores, t, sqrt_w, band, mid_anchor_weight, ridge,
                 cal_z, cal_floor, sqrt_cal,
             )
+            if wing_sqrt_lambda is not None:  # hybrid: FD only the cheap g-penalty rows
+                j = np.vstack([j, _wing_fd_jac(theta)])
+            return j
 
     result = least_squares(
         residuals, theta0, bounds=(lo, hi), jac=jac, method="trf", xtol=1e-12, ftol=1e-12
@@ -211,6 +259,7 @@ def calibrate_sigmoid(
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
+    wing_penalty: float = 0.0,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -242,6 +291,15 @@ def calibrate_sigmoid(
     sigma_ref = _reference_vol(vol_quotes, k)
     z = k / (sigma_ref * np.sqrt(t))
 
+    # Put-wing no-butterfly regularizer grid (R6): extends past the traded z-range
+    # into the unquoted tails, weighted heavier on the put side. None ⇒ off ⇒
+    # byte-identical (applied only in the refine stage, never the base seeding).
+    wing_z = wing_sqrt_lambda = None
+    if wing_penalty > 0.0 and z.size:
+        wing_z = np.linspace(z.min() - _WING_PAD, z.max() + _WING_PAD, _WING_GRID)
+        put_factor = np.where(wing_z < 0.0, _WING_PUT_FACTOR, 1.0)
+        wing_sqrt_lambda = np.sqrt(wing_penalty * put_factor)
+
     # Stage 1: base SIV (R = 0), always on mid — gives a stable centre and the
     # residuals used to place the hats.
     base_lo, base_hi = _base_bounds(z)
@@ -264,6 +322,7 @@ def calibrate_sigmoid(
             calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
+            wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
         )
     else:
         theta = _fit(
@@ -274,6 +333,7 @@ def calibrate_sigmoid(
             calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
+            wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
         )
 
     cores = tuple(

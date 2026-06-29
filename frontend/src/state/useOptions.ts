@@ -103,6 +103,8 @@ export interface OptionsSettings {
   /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
   leftWingSlopeMult: number;
   calendarWeight: number;
+  /** Multi-Core SIV put-wing no-butterfly regularizer strength (% of base; 0 = off). */
+  sivWingPenaltyPct: number;
   graphKappaScale: number;
   graphEtaScale: number;
   graphLambdaScale: number;
@@ -162,6 +164,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   lvSolver: 'gn',
   leftWingSlopeMult: 1.5,
   calendarWeight: 1e6,
+  sivWingPenaltyPct: 100,
   graphKappaScale: 1.0,
   graphEtaScale: 1.0,
   graphLambdaScale: 0.0,

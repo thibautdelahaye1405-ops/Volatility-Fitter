@@ -83,6 +83,7 @@ def build_display_fit(
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
+    wing_penalty: float = 0.0,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
 
@@ -132,6 +133,7 @@ def build_display_fit(
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
+            wing_penalty=wing_penalty,
         )
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)

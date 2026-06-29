@@ -122,9 +122,9 @@ def test_penalty_coefficients_change_fits(client):
     assert any(abs(a - b) > 1e-6 for a, b in zip(svi_base, svi_tight))
 
     # Sigmoid hat ridge: a heavy ridge shrinks the hats, changing the curve.
-    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 3, "sigmoidRidge": 1e-2})
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 2, "sigmoidRidge": 1e-2})
     sig_base = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
-    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 3, "sigmoidRidge": 1e3})
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 2, "sigmoidRidge": 1e3})
     sig_ridged = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
     assert any(abs(a - b) > 1e-6 for a, b in zip(sig_base, sig_ridged))
 
@@ -135,8 +135,7 @@ def test_validation_bounds(client):
         {"nOrder": 99},
         {"regLambda": -1.0},
         {"regPower": 9.0},
-        {"nCores": -1},  # Multi-Core SIV hat count is in [0, 6]
-        {"nCores": 7},
+        {"nCores": -1},  # Multi-Core SIV hat count is in [0, 2] (capped; >2 clamps, <0 rejects)
         {"haircut": -0.001},  # haircut is in [0, 0.05] absolute vol
         {"haircut": 0.1},
         {"weightScheme": "inverse_spread"},  # not a known weighting scheme
@@ -163,7 +162,7 @@ def test_n_cores_changes_sigmoid_fit(client):
     expiry = _expiry(client, 3)
     client.put("/settings/fit", json={"model": "sigmoid", "nCores": 0})
     rms_base = _fit_rms_bp(client, expiry)
-    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 3})
+    client.put("/settings/fit", json={"model": "sigmoid", "nCores": 2})
     rms_cored = _fit_rms_bp(client, expiry)
     # Adding hats cannot make the in-sample fit worse; on a curved smile it
     # changes the fitted curve measurably.
