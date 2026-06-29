@@ -1,0 +1,216 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{Forwards, Discounting and Dividends}\\[2pt]
+\large Parity-implied forwards, a robustness clamp, and American de-bias\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~06}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/fwd_tables.tex}
+
+\begin{abstract}
+Every smile in the Vol-Fitter is forward-normalized: log-moneyness is
+$k=\log(K/F_T)$, and a wrong forward shifts the entire smile, gapping it at the
+money. This note documents how the forward and discount are obtained and made
+robust. The primary route is a put--call parity regression: since
+$C(K)-P(K)=D\,(F-K)$, a straight-line fit of the call--put price difference against
+strike yields the discount $D$ as its slope and the forward $F$ from its intercept,
+iterated with outlier rejection. The parity \emph{slope} is the worst-identified
+parameter, and on a noisy or stale feed it drifts to an unphysical rate that tilts
+the whole forward; we describe the \emph{discount clamp} that pins the implied rate
+to a physical band and re-derives the forward from the well-identified price level
+when it bites --- leaving clean chains untouched. Dividends enter as a discrete
+escrowed cash schedule or a continuous yield, and a coarse \emph{American de-bias}
+iterates the carry to the fixed point that reconciles the de-Americanized puts and
+calls, with the discount held. A worked example recovers a known forward to the
+cent and shows the clamp catching a noisy slope.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Why the forward matters}
+\label{sec:why}
+
+The forward $F_T$ is the anchor of the whole smile. Log-moneyness, the ATM point,
+the put/call OTM split, the de-Americanization (Note~05) and the var-swap
+replication (Note~08) are all defined relative to it. A forward error of even a
+fraction of a percent shifts the ATM strike and tilts the put--call balance, which
+shows up as a \emph{gap} in the at-the-money smile --- the most visible symptom of
+a bad forward. So the forward must be both \emph{accurate} on clean data and
+\emph{robust} on the noisy, delayed feeds the app often runs against.
+
+\begin{heuristic}
+The forward is not quoted; it is \emph{inferred} from the option prices themselves
+through put--call parity. That makes it a fitted quantity with its own error bars,
+and the discount (the parity slope) is the least reliable of them. The whole design
+below is about extracting the forward where the data is informative (the price
+level) and refusing to trust it where it is not (the slope on a stale feed).
+\end{heuristic}
+
+%======================================================================
+\section{The parity regression}
+\label{sec:parity}
+
+Put--call parity in forward-normalized, discounted terms reads
+\begin{equation}
+C(K)-P(K)=D\,(F-K),
+\label{eq:parity}
+\end{equation}
+where $D=e^{-rT}$ is the discount factor and $F$ the forward. This is a straight
+line in $K$: regressing the call--put difference on strike,
+\begin{equation}
+\underbrace{C(K)-P(K)}_{y}=\underbrace{DF}_{a}-\underbrace{D}_{-b}\,K,
+\qquad D=-b,\quad F=\frac{a}{D},
+\label{eq:regress}
+\end{equation}
+gives the discount as the (negated) slope and the forward as the intercept divided
+by the discount. The fit iterates: fit, measure residuals, drop paired strikes
+with implausible residuals (or fewer than three pairs), and refit, so a few crossed
+or stale quotes do not corrupt the line. \Cref{fig:parity} shows the recovery on a
+clean synthetic chain --- the forward comes back to the cent and the rate to its
+true $4\%$.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.74\textwidth]{fig_fwd_parity.pdf}
+\caption{The put--call parity regression $C-P=D(F-K)$. The slope is the discount
+($\to$ rate $\fwdrate\%$), the intercept gives the forward ($F=\fwdhat$, true
+$\fwdtrue$).}
+\label{fig:parity}
+\end{figure}
+
+%======================================================================
+\section{The discount clamp}
+\label{sec:clamp}
+
+The parity slope \emph{is} the discount, and it is the worst-identified parameter
+in \eqref{eq:regress}: the price difference $C-P$ changes slowly with strike, so a
+little noise in the mids tilts the line a lot. On a clean chain this is harmless; on
+a noisy or stale delayed feed it drifts to nonsense --- an implied discount $D>1$,
+i.e.\ a \emph{negative} rate, which tilts the forward and gaps the ATM smile.
+
+\begin{caution}
+A negative implied rate is not a market signal here; it is feed noise in the least
+reliable regression parameter. Letting it through propagates a small price error
+into a large level error: a $5\%$ discount error shifts the whole implied-vol level.
+The forward's \emph{level} (the intercept) is well identified; its \emph{slope}
+(the discount) is not.
+\end{caution}
+
+The fix, when a reference date pins the year fraction, is to clamp the
+parity-implied rate $r=-\log D/T$ to a physical band
+$[\text{\fwdratemin}\%,\text{\fwdratemax}\%]$. Clean chains sit strictly inside the
+band and are byte-identical. When the clamp bites, the forward is \emph{re-derived
+from the well-identified price level} at the clamped discount, rather than from the
+tilted slope --- so the robust forward keeps the good information (the level) and
+discards the bad (the runaway slope). A final sanity bound $|\log(F/S)|<\text{FWD\_CLAMP\_LOG}=0.5$
+falls back to spot if even the level is unusable. \Cref{fig:clamp} shows the
+implied rate leaving the band as the slope is perturbed and the clamp pinning it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.74\textwidth]{fig_fwd_clamp.pdf}
+\caption{As a multiplicative slope error perturbs the discount, the raw parity rate
+(dashed) leaves the physical band; the clamp (solid) pins it to
+$[\fwdratemin\%,\fwdratemax\%]$ and the forward is re-derived from the price level.}
+\label{fig:clamp}
+\end{figure}
+
+%======================================================================
+\section{Dividends}
+\label{sec:divs}
+
+The carry that links spot to forward, $F=S\,e^{(r-q)T}$, must account for
+dividends. Two treatments coexist (Note~05 uses the same machinery for the pricing
+tree):
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Discrete cash} (\texttt{discrete\_absolute}): a schedule of ex-dates
+and cash amounts, priced by the escrowed-spot method --- the present value of
+dividends in $(0,T]$ is stripped from the spot to form the diffusing lattice, and
+early exercise is evaluated against the actual cum-dividend spot.
+\item \textbf{Continuous yield} (\texttt{continuous}): a constant $q$, a crude but
+cheap proxy for far-dated proportional dividends, and a coexisting tail when
+combined with a discrete near schedule.
+\end{itemize}
+The dividend mode is per ticker, editable, and feeds both the forward carry and the
+de-Americanization tree.
+
+%======================================================================
+\section{American de-bias}
+\label{sec:debias}
+
+There is a circularity between the forward and de-Americanization: the forward sets
+the carry $q$, the carry drives early exercise, and de-Americanizing the puts and
+calls re-implies the forward. The raw parity regression uses American mids
+directly, which biases the forward slightly because the early-exercise premium is
+not symmetric between puts and calls. The \emph{de-bias} resolves this with the
+discount \emph{held}: fixing the rate $r=-\log D/T$ from the raw parity, each round
+sets the carry $q=r-\log(F/S)/T$ from the current forward, de-Americanizes the
+near-ATM call and put mids to European-equivalent Black vols, reprices them as
+European, and re-implies the forward at the \emph{fixed} slope $-D$,
+\begin{equation}
+F\ \leftarrow\ \frac{1}{D}\,\overline{\big(y+D\,K\big)},\qquad y=\text{European }(C-P),
+\end{equation}
+iterating to the fixed point where the two de-Americanized OTM sides join. Only a
+near-ATM band of strikes and a coarse tree enter --- it locates the forward to
+$\sim1$ basis point in a few milliseconds, while quote prep does the
+full-precision per-quote de-Americanization downstream. The discount is left
+exactly as the raw parity gave it.
+
+%======================================================================
+\section{What is original here}
+\label{sec:original}
+
+Parity forward extraction is textbook; the robustness engineering is the
+contribution. The \emph{discount clamp} encodes the right epistemics --- trust the
+well-identified price level, distrust the ill-identified slope, and re-derive the
+forward accordingly --- so the app survives the noisy delayed feeds that would
+otherwise gap every ATM smile. The \emph{de-bias} closes the forward/de-Am
+circularity at the fixed point that quote prep actually uses, with the discount
+held so the two corrections do not fight. Both are byte-identical on clean data, so
+the robustness costs nothing when it is not needed.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.27\textwidth}p{0.16\textwidth}p{0.49\textwidth}}
+\caption{Forward/dividend hyperparameters.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
+\texttt{ForwardPolicy.mode} & \texttt{parity} & \texttt{parity} (regression) or \texttt{theoretical} (carry model).\\
+\texttt{MarketSettings.rate} $r$ & --- & Risk-free rate for the theoretical forward / tree.\\
+\texttt{dividendMode} & \texttt{continuous} & \texttt{continuous} yield or \texttt{discrete\_absolute} cash.\\
+\texttt{dividends} & empty & Discrete $(\text{ex-date},\text{amount})$ schedule.\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
+\texttt{RATE\_MIN/MAX} & $[\fwdratemin\%,\fwdratemax\%]$ & Physical band for the parity-implied rate (clamp).\\
+\texttt{FWD\_CLAMP\_LOG} & $0.5$ & Sanity bound on $|\log(F/S)|$; else fall back to spot.\\
+\texttt{MIN\_PAIRED\_STRIKES} & $3$ & Minimum paired strikes for a parity fit.\\
+\texttt{DEAM\_REFINE\_BAND} & near-ATM & Strike band entering the de-bias iteration.\\
+\texttt{MAX\_DEAM\_ITERS} & few & De-bias fixed-point iterations.\\
+\bottomrule
+\end{longtable}
+
+\noindent\textbf{Performance.} The parity regression is a $2\times2$ least squares
+per expiry; the clamp is a comparison; the de-bias is a handful of coarse-tree
+de-Americalizations on a near-ATM band ($\sim1$ bp forward in a few ms). All are
+negligible against the smile fit, and editing a name's rate or dividend schedule
+bumps only that ticker's forwards version, refitting just that name.
+
+\begin{thebibliography}{9}
+\bibitem{Hull2017} J.~Hull. \emph{Options, Futures, and Other Derivatives}.
+Pearson, 10th ed., 2017.
+\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface}. Wiley, 2006.
+\end{thebibliography}
+
+\end{document}

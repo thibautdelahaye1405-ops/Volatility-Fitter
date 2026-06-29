@@ -75,19 +75,71 @@ separately:
   design goal across modes: operators/factors follow the level and reconstruct the
   jumped wing (shape is level-invariant), while the legacy strike-gap anchor clings
   to yesterday's absolute level. This is the self-contained mode comparison.
-- **Future (empirical, needs ≥2 captured days):** a temporal extension — fit
-  day _T-1_ as the prior, then on day _T_ thin the chain to the ATM region and
-  score each `priorPersistenceMode` (off / strike_gap / quote_operator /
-  smile_factor / hybrid) by the reconstructed-wing error vs the full day-_T_ chain.
-  This is what would tune the two flagged defaults: the var-swap coverage probe
-  (`operators._VARSWAP_PROBE_STD`, now 1.4σ) and the operator support bandwidth
-  (`OptionsSettings.priorOperatorBandwidth`, 0.06 — leaks ATM support into the
-  wing legs). Wire it as a `dispatch`-level axis once the temporal fixtures exist.
+- **Empirical (BUILT — `temporal.py`):** the temporal extension, now that ≥2
+  consecutive days are captured per regime. For every consecutive day pair (_T-1_,
+  _T_) and asset it fits _T-1_'s full chain → freezes it as the active prior
+  (`priors.capture_snapshot`, `lv=False`), thins day _T_ to its ATM region
+  (`|k| ≤ c_atm·σ√τ`, fed to the fit) and scores the reconstructed MODERATE wing
+  (`c_atm·σ√τ < |k| ≤ c_wing·σ√τ`, held out) for each `priorPersistenceMode`
+  (off / strike_gap / quote_operator / smile_factor / hybrid) vs the true day-_T_
+  quotes. `off` (no prior) is the baseline each mode must beat; the deep tail beyond
+  `c_wing` σ is excluded (no operator reaches it and LQD far-wing extrapolation off a
+  narrow ATM set is fragile). Sweeps the two flagged defaults — the var-swap coverage
+  probe (`operators._VARSWAP_PROBE_STD`, 1.4σ) and the operator support bandwidth
+  (`OptionsSettings.priorOperatorBandwidth`, 0.06) — and reports, per (mode, bandwidth,
+  probe), median wing RMS, median improvement over off, and the win-rate.
+
+      python -m backtest.temporal --regime spike_aug2024
+      python -m backtest.temporal --regime spike_aug2024 --asset SPX \
+          --modes off,quote_operator,hybrid --bandwidths 0.04,0.06,0.10 --probes 1.0,1.4,2.0
+
+  Writes `results/<regime>_temporal_prior.json` (per-node rows + the aggregate
+  summary). Covered by `tests/test_temporal_backtest.py` (helpers + a synthetic
+  self-prior end-to-end). **Findings + the tuning verdict:**
+  `FINDINGS_prior_temporal.md` (TL;DR: the full spike regime confirms `hybrid` is the
+  best mode at every bandwidth/probe; the operator bandwidth is not a useful lever —
+  no shipped default changed).
+
+## Graph leave-one-out (roadmap Phase 6, `graph_loo.py`)
+
+Validates the headline differentiator — graph smile-extrapolation across the
+universe — **temporally** on the captured day pairs. For each consecutive (T-1, T):
+freeze T-1's surface as the active prior per ticker (`capture_snapshot(lv=False)`),
+transport it under SSR regime R, form the lit innovation `d = calibrated_T −
+transported_prior`, propagate through the **directed graph** (`graph_edges.py`), and
+compare the graph posterior for held-out nodes with their ACTUAL day-T calibration —
+all three handles (ATM/skew/curvature) + the reconstructed full-smile **wing RMS** —
+and against the pure transported-prior baseline (the graph's **skill**: does the
+signal beat the mechanical spot-transport?).
+
+- **SSR sweep R∈{0,1}** (Q1): R=0 (sticky-moneyness) leaves an underperformer's
+  baseline vol unmoved and OVER-credits the graph; R=1 (sticky-strike) bakes in the
+  full leverage and UNDER-credits it — the truth is bracketed, so both are reported.
+- **Two designs** (`--designs`): **full_loo** withholds each validation-clean node in
+  turn (calendar + cross-asset neighbours carry it); **liquid_split** lights only
+  indices/ETFs and scores the single names as dark extrapolation targets (the real
+  product use case).
+- **Directed edges** (`graph_edges.py`): calendar (high conductance, β=√(T_to/T_from)),
+  Index→name (β=0.7 vol-normalized), SectorETF→name (β=0.8), name→name same-sector
+  (β=0.6), everything else β=0. **Direction:** `w_ij` = "j informs i", so a
+  `GraphEdgeInput` flows `to`→`from` — "index informs name" is emitted as
+  `from=NAME, to=INDEX`. Vol-normalized β becomes the absolute edge β = β_vn·σ_from/σ_to.
+
+      python -m backtest.graph_loo --regime spike_aug2024
+      python -m backtest.graph_loo --regime spike_aug2024 --designs liquid_split --max-pairs 4
+
+  Writes `results/<regime>_graph_loo.json`. Covered by `tests/test_graph_loo_backtest.py`
+  (taxonomy + the direction/vol-normalization/√T edge logic). **NB (pilot caveat):**
+  the captured 8-asset pilot has no US sector ETF and its single names share no sector
+  (AAPL/NVDA/JPM), so the ETF→name and name→name edge classes are **dormant** — only
+  Index→name + calendar are exercised. The full name→name / sector tests need the
+  25-asset capture.
 
 ## Status
 
 Capture (REST + flat-file) + compute (dispatch/replay) + metrics/analyze built and
-tested. Pilot = Aug-2024 spike × 8 assets. **Remaining:** graph leave-one-out
-(Phase 6 — runs once ≥2 days are captured; sticky-moneyness + SSR 1.0), the
-NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`), and the
-prior-mode temporal axis (above).
+tested. Pilot = Aug-2024 spike × 8 assets. The **prior-mode temporal axis**
+(`temporal.py`) and the **graph leave-one-out** (`graph_loo.py`, Phase 6) are both
+built and runnable. **Remaining:** the NN-dataset emitter (Phase 7, feeds off
+`volfit/data/columnar.py`), the full 25-asset capture (lights up the dormant
+name→name / sector-ETF graph edges), and the LV `wall_ms_pde_*` timing wiring.

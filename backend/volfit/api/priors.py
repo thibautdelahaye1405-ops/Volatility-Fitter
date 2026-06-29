@@ -85,13 +85,19 @@ def _lv_surface_snapshot(state: AppState, ticker: str, fit_mode: str) -> LvSurfa
     return LvSurfaceSnapshot(tNodes=list(resp.tNodes), xNodes=list(resp.xNodes), theta=theta)
 
 
-def capture_snapshot(state: AppState, ticker: str, fit_mode: str = "mid") -> PriorSurfaceSnapshot | None:
+def capture_snapshot(
+    state: AppState, ticker: str, fit_mode: str = "mid", lv: bool = True
+) -> PriorSurfaceSnapshot | None:
     """Freeze the ticker's calibrated surface into a PriorSurfaceSnapshot.
 
     Captures every LIT expiry's displayed fit (the frozen calibrated slice +
     its LQD backbone), the market state (ref spot, per-expiry forward/discount,
     MarketSettings, event calendar) and the affine LV grid if present. Returns
     None when the ticker has no lit nodes to snapshot.
+
+    ``lv=False`` skips the (expensive) Local-Vol surface capture for callers that
+    only consume the parametric backbone (e.g. the temporal prior-mode backtest,
+    whose transport reads the LQD nodes) — the default keeps it byte-identical.
     """
     from volfit.api import service
 
@@ -134,7 +140,7 @@ def capture_snapshot(state: AppState, ticker: str, fit_mode: str = "mid") -> Pri
         market=state.market_settings(ticker).model_dump(),
         events=[e.model_dump() for e in state.events(ticker)],
         nodes=nodes,
-        lvSurface=_lv_surface_snapshot(state, ticker, fit_mode),
+        lvSurface=_lv_surface_snapshot(state, ticker, fit_mode) if lv else None,
     )
 
 

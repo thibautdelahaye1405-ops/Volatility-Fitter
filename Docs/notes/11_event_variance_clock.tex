@@ -1,0 +1,188 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{Event Time Dilation and the Variance Clock}\\[2pt]
+\large Two clocks, day-weighted events, and a price-preserving vol drop\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~11}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/event_tables.tex}
+
+\begin{abstract}
+Variance does not accrue uniformly in calendar time: a scheduled event ---
+earnings, an FOMC print, a court ruling --- packs the variance of several normal
+days onto one. This note documents the Vol-Fitter's \emph{variance clock}, which
+makes that explicit by carrying two times: calendar time $t$, and a dilated
+variance time $\tau$ in which an event day counts as several. Each event adds a
+number of \emph{extra equivalent days}; the surface is fitted and quoted in
+weighted years $\tau=\tau_{\text{days}}/365$. The key invariant is
+price-preservation: total variance $w(k)$ is fixed by the observed option price
+and is clock-independent, so the working implied volatility $\sqrt{w/\tau}$
+\emph{drops} when an event is inserted before the expiry --- exactly the
+overnight-vol-crush traders expect. An optional normalization rescales all days so
+the one-year variance budget is unchanged, making events \emph{redistribute}
+variance within the year rather than add it. With no events the variance clock
+collapses to calendar time and every downstream fit is byte-identical to the
+plain pipeline. A worked example shows a $4$-extra-day earnings event lifting
+short-dated implied vol and decaying away, with a working-vol drop of
+\evtdropbp\ vol bps at a fixed expiry just past the event.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{Why two clocks}
+\label{sec:why}
+
+A diffusion model assumes variance accrues at a steady rate: total variance
+$w=\sigma^2 t$ is linear in calendar time. Real markets violate this around
+scheduled events, where a single day carries the variance of many. Forcing such a
+surface onto a single calendar clock produces the familiar pathology --- a
+short-dated implied vol that looks ``too high'' and a term structure with a kink
+that a smooth model cannot represent without distorting the smile.
+
+\begin{heuristic}
+Separate the \emph{calendar} (how many days until expiry) from the \emph{variance
+budget} (how much variance those days carry). An earnings day is one calendar day
+but, say, five days' worth of variance. If we measure time in \emph{variance days},
+the diffusion looks steady again --- and the ``too high'' short-dated implied vol
+is just the same total variance divided by a smaller calendar time. The event
+clock is the change of variable that restores $w=\sigma^2\tau$ with a constant
+$\sigma$.
+\end{heuristic}
+
+%======================================================================
+\section{The variance clock}
+\label{sec:clock}
+
+\subsection{Day-weighted variance time}
+
+Each event carries a number $N_e$ of \emph{extra} equivalent days (an earnings day
+with $N_e=4$ counts as $5$ normal days of variance). The variance time to a
+calendar maturity $t$ is
+\begin{equation}
+\boxed{\;\tau_{\text{days}}(t)=t\cdot 365+\!\!\sum_{t_e\le t}\!N_e,
+\qquad \tau(t)=\frac{\tau_{\text{days}}(t)}{365},\;}
+\label{eq:clock}
+\end{equation}
+counting only events at or before $t$. \Cref{fig:clock} plots $\tau(t)$: it tracks
+the calendar line until the event, jumps by $N_e/365$ there, and runs parallel
+afterward. The fits and quotes live on $\tau$; with no events, $\tau(t)=t$ exactly.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.74\textwidth]{fig_event_clock.pdf}
+\caption{Variance time $\tau(t)$ for an event at $t_e=\evtte$ worth $\evtextra$
+extra days: it jumps at the event and runs parallel to calendar time thereafter.
+The normalized clock (dashed) rescales so the one-year budget is unchanged.}
+\label{fig:clock}
+\end{figure}
+
+\subsection{Price preservation}
+
+The crucial invariant is that the \emph{total variance} $w(k)$ is fixed by the
+observed option price --- it is the Black total variance that reprices the quote,
+and that is clock-independent. The variance clock only changes how we
+\emph{report} it as a volatility:
+\begin{equation}
+\sigma_{\text{work}}(k)=\sqrt{\frac{w(k)}{\tau}}.
+\label{eq:workvol}
+\end{equation}
+Inserting an event before the expiry raises $\tau$ at fixed $w$, so the working
+implied vol \emph{drops}. This is the vol crush: the price is unchanged, but the
+\emph{diffusive} volatility implied by it is lower once the event's variance is
+accounted for separately. \Cref{fig:term} shows the term-structure consequence:
+with the event, short-dated calendar implied vol is lifted (the event's variance
+compressed into few calendar days) and decays as the event becomes a smaller
+fraction of the maturity; without it, the term structure is flat.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.74\textwidth]{fig_event_term.pdf}
+\caption{ATM implied-vol term structure with and without the event. The event
+lifts short-dated vol and decays away; the option \emph{prices} are preserved,
+only the implied-vol reading changes.}
+\label{fig:term}
+\end{figure}
+
+\subsection{Normalization}
+
+By default the cumulative weight exceeds the calendar-day count ($\tau>t$). With
+normalization on (an Options toggle), all days --- event days included --- are
+rescaled by a single factor so the one-year weight budget stays $365$:
+\begin{equation}
+\tau_{\text{days}}(t)\ \longmapsto\ \tau_{\text{days}}(t)\cdot\frac{365}{365+\sum_{t_e\le1}N_e}.
+\label{eq:normalize}
+\end{equation}
+Then the one-year variance time --- and the one-year implied vol --- are identical
+to a no-event year: events only \emph{redistribute} variance within the year, they
+do not add it. Which convention to use is a desk choice: un-normalized treats the
+events as genuinely extra variance, normalized treats them as a known reallocation
+of a fixed annual budget.
+
+%======================================================================
+\section{How it threads the pipeline}
+\label{sec:thread}
+
+The dual clock is prepared once per node: \texttt{weighted\_variance\_years} gives
+$\tau$, and every fit (parametric and local-vol), the local-vol grid, the term
+structure and the option table consume $\tau$ in place of $t$. Total variance is
+interpolated \emph{linearly in $\tau$} between quoted nodes --- flat forward
+variance per weighted-time unit --- so the dense vol curve $\sqrt{w/\tau}$ stays
+bounded near zero and sensible past the last expiry. The term-structure view uses
+the shared calendar (not the per-node events) so the displayed curve is coherent
+across expiries. Changing the event calendar bumps the per-ticker events version,
+forcing a refit of only that name; with an empty calendar the whole pipeline is
+byte-identical to calendar time.
+
+%======================================================================
+\section{What is original here}
+\label{sec:original}
+
+Event time changes are not new in spirit (Bergomi and others dilate time around
+events), but the implementation here has two clean properties worth singling out.
+First, \emph{price preservation by construction}: the event clock never touches
+$w(k)$, only the volatility read-off \eqref{eq:workvol}, so adding an event can
+never change an option price --- it cannot introduce arbitrage. Second, the
+\emph{day-weighted} parametrization \eqref{eq:clock} makes the event size a single
+intuitive number (extra equivalent days) that a desk can quote and reason about,
+with an optional budget normalization \eqref{eq:normalize} that cleanly separates
+``extra variance'' from ``reallocated variance''. And the byte-identical fallback
+when the calendar is empty means the feature is strictly additive.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.26\textwidth}p{0.16\textwidth}p{0.50\textwidth}}
+\caption{Event-clock hyperparameters.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\multicolumn{3}{l}{\emph{Surfaced (OptionsSettings)}}\\ \midrule
+\texttt{events} & empty & List of \texttt{EventSpec}$(t_e,N_e,\text{label})$; $N_e$ = extra equivalent days.\\
+\texttt{normalizeEvents} & off & Rescale all days to a fixed $365$ one-year budget \eqref{eq:normalize}.\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
+\texttt{DAYS\_PER\_YEAR} & $\evtdays$ & Calendar-to-variance day conversion.\\
+\bottomrule
+\end{longtable}
+
+\noindent\textbf{Performance.} The clock is a scalar sum per node, negligible.
+With no events $\tau=t$ and the entire downstream pipeline is byte-identical, so
+the feature adds zero cost when unused; changing the event calendar refits only the
+affected ticker (per-ticker events version).
+
+\begin{thebibliography}{9}
+\bibitem{Bergomi2016} L.~Bergomi. \emph{Stochastic Volatility Modeling}. CRC Press,
+2016.
+\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface}. Wiley, 2006.
+\end{thebibliography}
+
+\end{document}

@@ -156,57 +156,73 @@ Original plan:
   wing arb still flagged (it is real, F4); a synthetic known-arb slice still trips.
 - **Risk:** low/medium — metric-only, no engine change; re-run is cheap.
 
-### R3 — Convex-project de-Americanized prices before inversion  ·  *priority: high, medium*
+### R3 — Wing-only convex de-Am repair  ·  ✅ DONE (redesign; first attempt reverted)
 
 - **Problem (F3b):** independent per-strike CRR de-Am + `max(EEP,0)` clamp leaves
   the European-equivalent call-price set locally non-convex at American wings —
-  genuine (small) arbitrage in the *inputs* fed to **every** model, not just LQD.
-- **Approach:** after EEP subtraction in `prepare_quotes`/`_early_exercise_premiums`,
-  add a joint **monotone + convex projection** on `C(K)` per expiry (isotonic +
-  convex regression, or a small QP / PAV-style pass) before implied-vol inversion.
-  Must preserve bid/ask band structure (project mid; keep band half-widths) and be
-  a no-op (byte-identical) for European chains with no EEP step.
-- **Files:** `backend/volfit/api/quotes.py:113-255` (de-Am path); new helper for the
-  convex projection; guard so European indices are untouched.
-- **Acceptance:** de-Am'd `C(K)` strictly convex per expiry; American LQD arb (under
-  the R2 analytic metric) drops toward European levels; all-model American RMS not
-  worsened; European fits byte-identical.
-- **Risk:** medium — touches the shared prep path used by the live app; needs a
-  golden test that European output is unchanged and an American before/after convex
-  check. Sequence **after R2** so the arb improvement is measurable.
+  genuine (small) arbitrage in the *inputs* fed to **every** model.
+- **First attempt (reverted, `ec68c52`):** a GLOBAL convex projection of the whole
+  call curve with a free affine part. Repairing a wing re-tilted the baseline and
+  moved the ATM call price a sub-penny — huge in ATM IV (vega) → the **ATM smile gap
+  seen live on SPY/NVDA**.
+- **Redesign (shipped):** `volfit/calib/convex_deam.py` + `quotes.py`. The repair is
+  confined to the WINGS and the ATM core (`|z| ≤ Z_CORE=1`) is held **byte-identical**:
+  each wing is projected onto `{convex} ∩ {bid/ask band}` (Dykstra alternating
+  projection), anchored at its core boundary so the dense high-vega ATM never moves.
+  The **band constraint is essential** — plain convex projection of an illiquid
+  non-convex wing pushes prices to the no-arb boundary → absurd IVs (a put wing went
+  27%→104%, Lee-violating) → catastrophic downstream fits (+5000 bp). Keeping the
+  repaired mid inside the QUOTED spread bounds the correction to real uncertainty.
+  Gated American-only + a convexity short-circuit (`CONVEX_TOL=1e-3`, calibrated so
+  dense liquid chains are untouched and only genuinely arbitraged illiquid wings fire).
+- **Measured (spike, American):** ATM IV diff `7e-16` (byte-identical), European diff
+  `0.0`; dense names (AAPL/NVDA/JPM) never fire; illiquid EEM/EFA fire on the
+  arbitraged nodes and the band clip removed the blow-ups — LQD-8 in-RMS on fired
+  nodes **median 211 → 162 bp, improved 89/110, worst-case now +316 bp** (was +5300).
+- **Files:** `volfit/calib/convex_deam.py` (new), `volfit/api/quotes.py:189-303`
+  (`convex_deam=True`; European/disabled/already-convex ⇒ no-op ⇒ byte-identical).
+  Tests: `tests/test_convex_deam.py` (ATM byte-identical guard + band-stay + convex).
 
-### R4 — Analytic Jacobian + tolerance retune for SVI  ·  *priority: medium, medium*
+### R4 — Analytic Jacobian for SVI  ·  ✅ DONE
 
-- **Problem (F1):** SVI is the slowest-converging baseline purely for lack of an
-  analytic Jacobian and over-tight `1e-15` tolerances.
-- **Approach:** derive and pass an analytic Jacobian for the raw-SVI residual
-  (`w(k)=a+b(ρ(k−m)+√((k−m)²+σ²))` with the softplus/tanh/exp reparam) plus the two
-  penalty rows; loosen `xtol/ftol/gtol` toward LQD's `1e-10`. Mirror the LQD pattern
-  (`jac=` argument, analytic-vs-FD gate when penalties/priors are absent).
-- **Files:** new `backend/volfit/models/svi_jw/jacobian.py`;
-  `models/svi_jw/calibrate.py:166-194`.
-- **Acceptance:** SVI fit ms drops materially (target ≈ LQD-8 range); fitted params
-  unchanged within tolerance vs the FD path on the benchmark fixtures; full suite
-  green. Validate via a backtest re-run (speed column).
-- **Risk:** medium — analytic Jacobian derivation is error-prone; guard with a
-  finite-difference agreement test (analytic J vs `2-point` to ~1e-6).
+- **Problem (F1):** SVI was the slowest baseline only because it lacked an analytic
+  Jacobian — scipy's finite-difference fallback costs `1+P=6` residual evals/step and
+  re-runs the penalty rows each time.
+- **Shipped:** `volfit/models/svi_jw/jacobian.py` (`svi_residual_jacobian`) +
+  `calibrate.py`. Closed-form Jacobian of the residual via the reparam chain rule
+  (`db/dθ_b=1−e^{−b}`, `dρ/dθ_ρ=1−ρ²`, `dσ/dθ_σ=σ`); covers the mid OR band data term
+  + the two no-arb penalty subgradients + the calendar floor; var-swap / strike-gap /
+  operator-prior blocks fall back to FD (gated exactly like LQD).
+- **Key finding — keep LM, do NOT switch to trf.** The plan suggested mirroring LQD's
+  `trf + 1e-10`, but on noisy real chains **trf was measured SLOWER** (more iterations
+  through the penalty kinks: 40 ms / 298 nfev vs LM's 26 ms / 193). The win is the
+  Jacobian, not the optimizer — so it is a **drop-in**: same LM optimizer + same `1e-15`
+  tol, only the Jacobian swapped FD → analytic. Results unchanged to fit precision
+  (same nfev), full suite green.
+- **Measured (real spike nodes):** **~2.6× faster** (26.3 → 10.2 ms/node) at unchanged
+  convergence. FD-agreement guard: `tests/test_svi_jacobian.py` (analytic vs central
+  FD over mid / band / calendar / active-penalty configs).
 
-### R5 — Analytic Jacobian for Multi-Core SIV  ·  *priority: low/medium, larger*
+### R5 — Analytic Jacobian for Multi-Core SIV  ·  ✅ DONE
 
 - **Problem (F2):** SIV's super-linear cost is dominated by the `6+4R` finite-
   difference Jacobian evals × R-scaled residual cost.
-- **Approach:** analytic Jacobian for the base SIV params and each hat core
-  (`alpha, c, h, κ` — the kernels have closed-form derivatives in `kernels.py`).
-  Reduces per-step evals from `6+4R+1` to ~2 and removes the dominant factor; the
-  residual's per-core cost and the linear-algebra growth remain but the model
-  becomes usable for R≥1. *Only worth doing if SIV cores are kept at all* — see R6;
-  the backtest verdict is that cores overfit, so this may be deprioritized in favor
-  of dropping SIV-2/3 from the production menu.
-- **Files:** new `backend/volfit/models/sigmoid/jacobian.py`;
-  `models/sigmoid/calibrate.py:171`.
-- **Acceptance:** SIV-3 fit ms falls by ~the (6+4R) factor; fitted surface unchanged
-  vs FD within tolerance; analytic-J agreement test.
-- **Risk:** medium/larger — most params, most algebra. Gate behind the R6 decision.
+- **Shipped:** `volfit/models/sigmoid/jacobian.py` (`siv_residual_jacobian`) +
+  `calibrate.py`. Closed-form gradient of the model variance `v_R(z) = v_base(z) +
+  Σ_r α_r B(z; c_r, h_r, κ_r)`: the 6 base partials (`dΦ_κ/dκ = (-2Φ + uΦ')/κ`,
+  `dv/dz0 = -v_z` since the slice is C² across z0) and the 4 hat partials per core
+  (`dB/dc = -B'`, plus `dB/dh` / `dB/dκ` by the quotient rule on the same
+  primitives). Covers the mid OR band data term + the amplitude ridge + the calendar
+  floor; var-swap / strike-gap / operator-prior fall back to FD (gated like LQD/SVI).
+  Kept trf (the params are bound-constrained, unlike LM-fit SVI) — only the Jacobian
+  is swapped FD → analytic.
+- **Measured (SVI benchmark):** **~2–2.8× per core** (SIV-0 1.9×, SIV-1 2.1×, SIV-2
+  2.8×, SIV-3 2.0×) at unchanged fits. FD-agreement guard:
+  `tests/test_sigmoid_jacobian.py` (base / two-core / band / calendar configs,
+  exercising every base + hat partial). Full suite green.
+- **NB:** this speeds SIV but does not change the **R6** finding that multi-core SIV
+  *overfits on precision* (OOS gap) and manufactures put-wing arb — the menu-cap
+  decision stands on its own merits.
 
 ### R6 — Tame SIV's put-wing arbitrage (curvature regularization / shape constraint)  ·  *priority: medium, research-ish*
 
@@ -251,3 +267,8 @@ R1 + R2 are pure-win, low-risk, and make every subsequent number trustworthy —
 them first. R3 is the one genuine engine change on the shared live path (test
 carefully). R4 is a clean isolated speed win. R5/R6 hinge on whether Multi-Core SIV
 earns its place at all, which the precision data alone already calls into question.
+
+**Status (2026-06-28):** R1 ✅, R2 ✅, R3 ✅ (wing-only redesign), R4 ✅ (SVI analytic
+Jacobian, ~2.6×), R5 ✅ (SIV analytic Jacobian, ~2–2.8×/core). Remaining: only the
+**R6 menu decision** (cap SIV at 0/1 vs add the put-wing shape regularizer; the
+overfit + arb data argues for the cap — R5 makes cores faster but no less overfit).

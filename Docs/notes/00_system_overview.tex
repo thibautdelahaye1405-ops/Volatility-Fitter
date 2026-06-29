@@ -1,0 +1,406 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,calc}
+\graphicspath{{figures/}}
+
+\title{\textbf{System Overview, Conventions \& Hyperparameter Atlas}\\[2pt]
+\large What the Vol-Fitter does, the pipeline, and the master index of every knob\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~00}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This is the map of the territory. The Vol-Fitter is an implied-volatility
+surface fitter in the spirit of a professional vola-fitter, with one
+differentiating capability: it \emph{extrapolates} sparse smile observations to
+a full universe of smiles, across expiries \emph{and} assets, by propagating
+signal through a graph whose nodes are smiles $(\text{underlying},T)$. This note
+states the market and normalization conventions shared by the whole series,
+walks the end-to-end compute pipeline (fetch $\to$ de-Americanize $\to$ forwards
+$\to$ fit $\to$ views $\to$ graph), catalogues what the application can do, and
+ends with a \emph{master hyperparameter atlas} cross-linked to the topic notes
+that derive each knob. It is the front door: read it once, then any other note
+in the series stands alone.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{What the application is}
+\label{sec:what}
+
+At its core the Vol-Fitter solves one problem repeatedly --- \emph{given noisy,
+sparse option quotes for one expiry of one underlying, produce a smooth,
+arbitrage-free implied-volatility smile} --- and then layers three ambitions on
+top of it:
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{A choice of models, all arbitrage-aware.} Four smile
+representations share one calibration spine: the \emph{LQD} log-quantile-density
+model (Note~01), \emph{SVI / SVI-JW} (Note~02), the \emph{Multi-Core SIV} sigmoid
+family (Note~03), and a full \emph{piecewise-affine local-volatility} surface
+(Note~04). The first three are slice parametrizations that are butterfly-free by
+construction or by penalty; the fourth is a genuine local-volatility grid solving
+the Dupire PDE.
+\item \textbf{A professional desk workflow.} Real bid/ask handling, var-swap
+targets, density-corrected weighting, event time dilation, dividend and
+forward treatment, spot--vol dynamics, and a Bayesian prior-persistence machine
+that decides, quote by quote, whether to trust the market or the saved prior.
+\item \textbf{Graph smile-extrapolation.} The headline differentiator (Note~14):
+a transported prior plus the lit-node calibration innovation are propagated
+through an optimal-transport-regularized Bayesian graph to reconstruct the
+\emph{dark} nodes nobody quoted.
+\end{enumerate}
+
+\begin{heuristic}
+The unifying idea is that a volatility surface is not a curve to be drawn but a
+\emph{family of probability laws} to be inferred --- one risk-neutral law per
+$(\text{underlying},T)$ node --- subject to no-arbitrage couplings (butterfly
+within a slice, calendar across expiries) and to a Bayesian prior that ties the
+whole universe together. Every design choice in the app follows from taking that
+sentence literally.
+\end{heuristic}
+
+\Cref{fig:guarantees} shows the two structural guarantees on a four-expiry
+synthetic surface fitted by the production LQD calibrator: the implied densities
+are all non-negative (no butterfly arbitrage) and the ATM total-variance term
+structure is non-decreasing (no calendar arbitrage).
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.49\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_ov_smiles.pdf}\\[2pt]
+{\footnotesize (a) Four fitted smiles}
+\end{minipage}\hfill
+\begin{minipage}{0.49\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_ov_densities.pdf}\\[2pt]
+{\footnotesize (b) Stacked densities, all $\geq 0$}
+\end{minipage}
+\\[6pt]
+\begin{minipage}{0.62\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_ov_termvar.pdf}\\[2pt]
+{\footnotesize (c) ATM total variance non-decreasing in $T$}
+\end{minipage}
+\caption{The two no-arbitrage guarantees, produced end to end by the production
+fitter on a synthetic but calendar-monotone surface.}
+\label{fig:guarantees}
+\end{figure}
+
+%======================================================================
+\section{Market conventions and normalization}
+\label{sec:conventions}
+
+These conventions hold across the entire series; individual notes assume them
+without restating.
+
+\begin{definition}[Forward measure and normalization]
+For expiry $T$ with forward price $F_T$, work under the $T$-forward measure and
+in forward-normalized, undiscounted units. The log-moneyness is
+$k=\log(K/F_T)$, the log-forward return is $X_T=\log(S_T/F_T)$, and normalized
+call/put prices are $C_T(k)=\E^T[(e^{X_T}-e^k)^+]$ and
+$P_T(k)=\E^T[(e^k-e^{X_T})^+]$, with the martingale condition $\E^T[e^{X_T}]=1$.
+\end{definition}
+
+\begin{definition}[Total variance and the Black map]
+Total implied variance is $w(k,T)=\sigma_{\BS}^2(k,T)\,T$. The normalized Black
+call is $\Black(k,w)=\PhiN(d_+)-e^k\PhiN(d_-)$ with
+$d_\pm=-k/\sqrt w\pm\sqrt w/2$. Implied total variance is the unique $w$ solving
+$\Black(k,w)=C_T(k)$; the fitter inverts it by a vectorized scheme rather than a
+scalar root-find per strike.
+\end{definition}
+
+Three conventions deserve emphasis because they recur:
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Two clocks.} Calendar time $t$ (year-fraction to expiry) and
+\emph{variance} time $\tau$ (calendar time dilated by scheduled events) are kept
+separate. Fits live on $\tau$; implied volatility is reported as $\sqrt{w/\tau}$,
+so adding an event \emph{lowers} reported IV while preserving price (Note~11).
+\item \textbf{Forward-normalized everything.} Prices, strikes and densities are
+quoted relative to $F_T$, so a single smile object is spot-independent until a
+dynamics rule (Note~12) transports it under a spot move.
+\item \textbf{Vega-normalized residuals.} Calibration losses are price residuals
+divided by Black vega, which makes the objective behave like a volatility error
+while keeping every iterate a valid price (Notes~01, 04, 07).
+\end{itemize}
+
+%======================================================================
+\section{The compute pipeline}
+\label{sec:pipeline}
+
+Every smile the app shows is the output of the pipeline in
+\cref{fig:pipeline}. The stages are deliberately decoupled and independently
+cached so that, e.g., editing a fit penalty never re-pulls data or re-runs
+de-Americanization.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=6mm and 9mm,
+  box/.style={draw, rounded corners, align=center, minimum height=9mm,
+    inner sep=3pt, font=\footnotesize, fill=blue!4, draw=blue!40!black},
+  data/.style={box, fill=black!4, draw=black!45},
+  view/.style={box, fill=green!5, draw=green!45!black},
+  arr/.style={-{Stealth[length=2mm]}, thick, draw=black!55},
+]
+\node[data] (feed) {Data feed\\\scriptsize Yahoo / Bloomberg / Massive};
+\node[box, right=of feed] (deam) {De-Am\\\scriptsize CRR + bisect (N.\,05)};
+\node[box, right=of deam] (fwd) {Forwards\\\scriptsize parity, divs (N.\,06)};
+\node[box, right=of fwd] (prep) {Prepare\\\scriptsize OTM, screen, weight};
+\node[box, below=10mm of prep] (fit) {Calibrate slice\\\scriptsize N.\,01--04, 07--13};
+\node[view, left=of fit] (views) {Views\\\scriptsize smile / density / term};
+\node[view, left=of views] (graph) {Graph\\\scriptsize extrapolate (N.\,14)};
+
+\begin{scope}[on background layer]
+  \node[draw=black!20, rounded corners, fit=(feed)(prep), inner sep=4pt,
+    label={[font=\scriptsize\itshape, black!55]above:quote preparation}] {};
+\end{scope}
+
+\draw[arr] (feed) -- (deam);
+\draw[arr] (deam) -- (fwd);
+\draw[arr] (fwd) -- (prep);
+\draw[arr] (prep) -- (fit);
+\draw[arr] (fit) -- (views);
+\draw[arr] (views) -- (graph);
+\draw[arr] (fit.south) to[out=-90,in=-90] node[below,font=\scriptsize]{prior} (graph.south);
+\end{tikzpicture}
+\caption{The end-to-end compute spine. Quote preparation (de-Americanize,
+forwards/dividends, OTM selection, static screen, weighting) feeds the per-slice
+calibration; the calibrated lit nodes drive both the viewer and the graph
+extrapolator, which reconstructs the dark nodes.}
+\label{fig:pipeline}
+\end{figure}
+
+\paragraph{Stage by stage.}
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Data feed.} A provider registry exposes Yahoo (US options),
+Bloomberg (xbbg; US + non-US indices/equities), and Massive (Polygon/OPRA), plus
+a synthetic source; an as-of selector serves Live / previous-close / EOD /
+captured-replay. US-options-only providers and the non-US Bloomberg path are
+handled transparently.
+\item \textbf{De-Americanization} (Note~05). Listed equity options are American;
+each quote is converted to its European-equivalent implied volatility by
+inverting a Cox--Ross--Rubinstein tree (bisection), with a Numba kernel for wide
+chains and a content-digest cache so fit-tuning never re-runs it.
+\item \textbf{Forwards and dividends} (Note~06). Put--call parity yields the
+implied forward and discount (clamped against feed noise); discrete dividends and
+American de-bias are handled here.
+\item \textbf{Prepare.} Out-of-the-money selection, a static no-arbitrage/wing
+screen, and the choice of observation weights (Note~07).
+\item \textbf{Calibrate slice.} The chosen model is fitted to the prepared quotes
+under the active objective: mid / bid--ask band / haircut (Note~07), optional
+var-swap target (Note~08), calendar coupling (Note~10), event clock (Note~11),
+and Bayesian prior persistence (Note~13).
+\item \textbf{Views.} Every smile-derived view --- smile, stacked densities,
+stacked total variance, quantile density, term structure, local-vol surface,
+SSR scenario --- follows the chosen model and is downsampled for the UI.
+\item \textbf{Graph} (Note~14). The transported prior plus the lit-node
+innovation propagate through the OT-regularized Bayesian graph to reconstruct
+dark-node smiles with credible bands.
+\end{enumerate}
+
+%======================================================================
+\section{The smile graph}
+\label{sec:graph}
+
+The object that makes the app more than a slice fitter is the \emph{smile graph}
+(\cref{fig:smilegraph}): nodes are smiles $(\text{underlying},T)$; edges encode
+that one node informs another. Calendar edges link expiries of one name;
+cross-asset edges link an index or sector ETF to its single names. A user marks
+nodes \emph{lit} (quoted, calibrated) or \emph{dark} (to be reconstructed). The
+graph carries the three ATM handles $(\sigma_0,s_0,\kappa_0)$ of each node as a
+Gaussian signal and propagates the lit innovation to the dark nodes; Note~14
+develops the optimal-transport-regularized Bayesian solver behind it, and the
+leave-one-out backtest that measures its skill.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  lit/.style={circle, draw=blue!50!black, fill=blue!12, minimum size=7mm,
+    font=\scriptsize},
+  dark/.style={circle, draw=black!45, fill=black!6, minimum size=7mm,
+    font=\scriptsize, densely dashed},
+  e/.style={-{Stealth[length=1.6mm]}, draw=black!45},
+  cal/.style={e, draw=teal!60!black},
+]
+% index row (lit)
+\node[lit] (i1) {$T_1$};
+\node[lit, right=8mm of i1] (i2) {$T_2$};
+\node[lit, right=8mm of i2] (i3) {$T_3$};
+\node[left=3mm of i1, font=\footnotesize\bfseries] {SPX};
+% name row (dark)
+\node[dark, below=12mm of i1] (n1) {$T_1$};
+\node[dark, right=8mm of n1] (n2) {$T_2$};
+\node[dark, right=8mm of n2] (n3) {$T_3$};
+\node[left=3mm of n1, font=\footnotesize\bfseries] {AAPL};
+% calendar edges
+\draw[cal] (i1) -- (i2); \draw[cal] (i2) -- (i3);
+\draw[cal] (n1) -- (n2); \draw[cal] (n2) -- (n3);
+% cross-asset edges (index informs name)
+\draw[e] (i1) -- (n1); \draw[e] (i2) -- (n2); \draw[e] (i3) -- (n3);
+\node[font=\scriptsize, teal!60!black] at (3.0,-0.7) {calendar};
+\node[font=\scriptsize, black!55] at (3.9,-1.7) {index $\to$ name};
+\end{tikzpicture}
+\caption{A fragment of the smile graph: lit index nodes (solid) inform dark
+single-name nodes (dashed) across both calendar and cross-asset edges. The graph
+posterior reconstructs the dark smiles from the lit innovation.}
+\label{fig:smilegraph}
+\end{figure}
+
+%======================================================================
+\section{Capability catalogue}
+\label{sec:capabilities}
+
+\Cref{tab:caps} indexes what the app can do against the note that documents the
+mathematics. It doubles as a reading order.
+
+\begin{longtable}{p{0.36\textwidth}p{0.50\textwidth}r}
+\caption{Capability $\to$ note index.}\label{tab:caps}\\
+\toprule
+Capability & Summary & Note\\
+\midrule
+\endfirsthead
+\toprule Capability & Summary & Note\\ \midrule
+\endhead
+LQD smile model & Arbitrage-free-by-construction log-quantile density;
+analytic Jacobian & 01\\
+SVI / SVI-JW & Raw and jump-wing SVI with no-arb penalty and Lee cap & 02\\
+Multi-Core SIV & Sigmoid base + zero-wing hats for WW/event smiles & 03\\
+Local volatility & Piecewise-affine Dupire surface; GN/Numba calibration & 04\\
+De-Americanization & CRR tree + bisection, Numba kernel, cache digest & 05\\
+Forwards / dividends & Parity forward + discount clamp, discrete divs & 06\\
+Weighting \& bid--ask & Equal / time-value-density weights; band/haircut fit & 07\\
+Variance-swap targets & Replication, LQD closed form, source-PDE & 08\\
+Wings \& Lee bounds & Tail control unified across models & 09\\
+Calendar arbitrage & Convex-order soft hinge, model-agnostic & 10\\
+Event variance clock & Dual calendar/variance time, day-weighted events & 11\\
+Spot--vol dynamics & Sticky strike/moneyness/local-vol, SSR transport & 12\\
+Prior persistence & 7-mode Bayesian menu, precision gate, two-pass & 13\\
+Graph extrapolation & Transported prior + directed increments + backtest & 14\\
+\bottomrule
+\end{longtable}
+
+\paragraph{Viewer and data capabilities (engineering, not derived here).} The
+workspace is organized into Parametric, LocalVol, Forwards, Options, Graph and
+Universe tabs: charts of prior/current fit vs.\ quote bands in normalized or
+fixed strike, quantile and density functions, term structure and event-dilated
+calendar in vol and variance, var-swap levels, interactive quote
+select/erase/amend, universe selection, lit/dark node maps, and the graph
+editor. Data plumbing (providers, as-of replay, dividend editor, persistence of
+named universes and fit history) is described in the project README rather than
+in this mathematical series.
+
+%======================================================================
+\section{How the notes are organized}
+\label{sec:org}
+
+Each note is standalone and follows the same skeleton: assumptions and heuristics
+first, then full derivations in a clean-math body, then a worked example with
+figures generated by the production code, and finally two appendices --- \textbf{A,
+a hyperparameter atlas} (every knob, surfaced or hidden, with its default) and
+\textbf{B, performance} (the numerical optimizations and measured timings). Notes
+cross-reference each other (this note's \cref{tab:caps} is the index) but never
+depend on one another's internals. Numbers and plots are \emph{measured}, not
+copied: where a fresh run differs from an older design note, the fresh run wins.
+
+%======================================================================
+\appendix
+\section{Master hyperparameter atlas}
+\label{app:master}
+
+The complete index of tunable parameters across the app, surfaced
+(\texttt{FitSettings} / \texttt{OptionsSettings}, user-facing) and hidden
+(internal constants). Each row points to the note that derives its role; defaults
+are the shipped values. This is a directory, not a derivation --- consult the
+referenced note for meaning.
+
+\begin{longtable}{p{0.30\textwidth}p{0.16\textwidth}p{0.40\textwidth}r}
+\caption{Surfaced parameters.}\label{tab:master_surfaced}\\
+\toprule
+Parameter & Default & Role & Note\\
+\midrule
+\endfirsthead
+\toprule Parameter & Default & Role & Note\\ \midrule
+\endhead
+\texttt{nOrder} & $6$ & LQD Legendre order & 01\\
+\texttt{regLambda} / \texttt{regPower} & $10^{-6}$ / $1$ & LQD high-order ridge & 01\\
+\texttt{barrierCenter} / \texttt{barrierScale} & $0.90$ / $50$ & LQD $A_R$ barrier & 01\\
+\texttt{nCores} & $2$ & Multi-Core SIV hat count & 03\\
+\texttt{sigmoidRidge} & $10^{-2}$ & SIV hat-amplitude ridge & 03\\
+\texttt{sviPenaltyWeight} & $10^{3}$ & SVI no-arbitrage penalty & 02\\
+\texttt{leeSlopeMax} & $2.0$ & SVI Lee wing-slope cap & 02, 09\\
+\texttt{gridXNodes} & $12$ & LV strike-grid vertices & 04\\
+\texttt{gridXMinPerExpiry} & $8$ & LV short-dated coverage floor & 04\\
+\texttt{gridTNodes} & $10$ & LV maturity-grid vertices & 04\\
+\texttt{gridRegLambda} / \texttt{gridRegRho} & $10^{-2}$ / $1$ & LV roughness penalty / ratio & 04\\
+\texttt{convexWingWeight} & $10^{3}$ & LV wing-convexity penalty & 04\\
+\texttt{frontTieWeight} & $10^{-2}$ & LV front-end tie-to-ATM & 04\\
+\texttt{lvVolCapMult} & $3.0$ & LV local-vol cap multiple & 04\\
+\texttt{weightScheme} & \texttt{equal} & equal / tv-density weights & 07\\
+\texttt{fitMode} & \texttt{mid} & mid / bidask / haircut & 07\\
+\texttt{haircut} & $0.005$ & band haircut (vol) & 07\\
+\texttt{midAnchorWeight} & $0.05$ & band mid anchor & 07\\
+\texttt{varSwapWeightPct} & $10\%$ & var-swap budget & 08\\
+\texttt{calendarWeight} & $10^{6}$ & calendar soft-constraint penalty & 10\\
+\texttt{ssr} & $2.0$ & spot--vol SSR / regime & 12\\
+\texttt{priorPersistenceMode} & \texttt{hybrid} & prior mode selector & 13\\
+\texttt{priorOperatorSet} & ATM/RR25/BF25/VS & operators to persist & 13\\
+\texttt{priorOperatorStrengthPct} & $50\%$ & operator prior budget & 13\\
+\texttt{priorOperatorRequiredPrecision} & $1.0$ & operator activation gate & 13\\
+\texttt{priorOperatorGapExponent} & $1.0$ & gate exponent $\gamma$ & 13\\
+\texttt{priorOperatorBandwidth} & $0.06$ & operator leg KDE bandwidth & 13\\
+\texttt{priorFactorSet} & ATM/skew/curv/VS & smile factors to persist & 13\\
+\texttt{priorFactorStrengthPct} & $50\%$ & factor prior budget & 13\\
+\texttt{priorTailAnchorStrengthPct} & $20\%$ & hybrid tail-anchor budget & 13\\
+\texttt{priorAnchorWeightPct} & $50\%$ & strike-gap prior budget & 13\\
+\texttt{graphKappaScale} $\kappa$ & $1.0$ & graph temporal precision & 14\\
+\texttt{graphEtaScale} $\eta$ & $1.0$ & graph directed smoothness & 14\\
+\texttt{graphLambdaScale} $\lambda$ & $0.0$ & graph OT regularization & 14\\
+\texttt{graphNu} $\nu$ & $0.1$ & graph UOT source allowance & 14\\
+\texttt{events} & --- & scheduled event clock & 11\\
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.26\textwidth}p{0.14\textwidth}p{0.46\textwidth}r}
+\caption{Hidden internal constants (selected).}\label{tab:master_hidden}\\
+\toprule
+Constant & Default & Role & Note\\
+\midrule
+\endfirsthead
+\toprule Constant & Default & Role & Note\\ \midrule
+\endhead
+\texttt{Z\_MAX} / \texttt{N\_POINTS} & $40$ / $8001$ & LQD quadrature grid & 01\\
+\texttt{OPT\_N\_POINTS} & $2001$ & LQD optimization grid & 01\\
+\texttt{EPS\_AR} & $10^{-6}$ & LQD $A_R<1$ buffer & 01\\
+\texttt{DEFAULT\_N\_K} & $1201$ & LV PDE strike nodes & 04\\
+\texttt{DEFAULT\_DT\_MAX} & $1/400$ & LV PDE max time step & 04\\
+\texttt{N\_RANNACHER} & $4$ & LV Rannacher start steps & 04\\
+\texttt{VAR\_FLOOR} & $10^{-6}$ & Dupire local-variance floor & 04\\
+\texttt{DEFAULT\_STEPS} & $501$ & CRR scalar tree depth & 05\\
+\texttt{DEFAULT\_BATCH\_STEPS} & $192$ & CRR batch tree depth & 05\\
+\texttt{BATCH\_BISECTIONS} & $24$ & de-Am bisection sweeps & 05\\
+\texttt{SIGMA\_LO} / \texttt{SIGMA\_HI} & $10^{-4}$ / $4$ & implied-vol bracket & 05\\
+\texttt{VS\_HALF\_WIDTH} / \texttt{VS\_POINTS} & $6$ / $801$ & var-swap replication grid & 08\\
+\texttt{CAL\_STRIDE} & $25$ & calendar constraint stride & 10\\
+\texttt{DAYS\_PER\_YEAR} & $365$ & calendar$\to$variance clock & 11\\
+\texttt{SPREAD\_HALF} & $0.05$ & precision spread half-width & 13\\
+\texttt{OBS\_FRESHNESS\_HALFLIFE} & $3$\,d & observation freshness decay & 13\\
+\texttt{TRANSPORT\_SCALE} & $0.10$ & prior transport precision decay & 13\\
+\texttt{HANDLE\_CONFIDENCE} & $[1,1,0.01]$ & per-handle graph confidence & 14\\
+\texttt{SOURCE\_BASE} & tiered & prior provenance precision & 14\\
+\bottomrule
+\end{longtable}
+
+\paragraph{Reading the atlas.} A surfaced parameter is a \emph{policy} choice ---
+how strong a penalty, which prior mode, how to weight quotes --- safe to tune. A
+hidden constant is tied to an algorithm's correctness (the $A_R$ buffer, the PDE
+floor, the tree depth) and is exposed only in the relevant note's Appendix~A,
+where the consequences of changing it are spelled out. Together they are the full
+control surface of the fitter.
+
+\end{document}

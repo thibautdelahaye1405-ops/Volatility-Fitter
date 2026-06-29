@@ -37,6 +37,7 @@ from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call, black_vega_sigma
+from volfit.models.svi_jw.jacobian import svi_residual_jacobian
 from volfit.models.svi_jw.svi import RawSVI
 
 #: Soft-penalty weight for the two no-arbitrage constraints. Large enough to
@@ -191,7 +192,34 @@ def calibrate_svi(
         return res
 
     theta0 = _init_theta(k, w_quotes)
-    result = least_squares(residuals, theta0, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)
+    # Analytic Jacobian (R4) for the var-swap/prior-free configuration (mid OR band
+    # fit + penalties + calendar) — ~2 evals/step vs scipy's 1+P finite differences.
+    # The var-swap / strike-gap / operator-prior blocks are not yet differentiated, so
+    # those fits keep the finite-difference LM path (correct, just not accelerated),
+    # exactly as LQD gates its analytic Jacobian.
+    use_analytic = (
+        var_swap is None
+        and prior_anchor is None
+        and prior_var_swap is None
+        and operator_prior is None
+    )
+    if use_analytic:
+        def jac(theta: np.ndarray) -> np.ndarray:
+            return svi_residual_jacobian(
+                theta, k, t, sqrt_weights, band, mid_anchor_weight,
+                penalty_weight, lee_slope_max, cal_k, cal_floor, sqrt_cal,
+            )
+
+        # Keep the SAME LM optimizer + tolerance — only swap the Jacobian from scipy's
+        # 1+P finite differences to the closed form. LM (not trf) is deliberate: on
+        # noisy real chains LM converges in far fewer iterations than trf through the
+        # penalty kinks, so a same-convergence drop-in is ~2.6x with results unchanged
+        # to fit precision (trf at 1e-10 was measured SLOWER on real nodes).
+        result = least_squares(
+            residuals, theta0, jac=jac, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15
+        )
+    else:
+        result = least_squares(residuals, theta0, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)
     raw = _unpack(result.x)
 
     model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)

@@ -129,6 +129,34 @@ def test_fetch_uses_fresh_saved_prior_and_marks_overlay(client):
     assert len(smile["prior"]) == len(smile["model"])  # sampled on the model grid
 
 
+def test_off_mode_hides_prior_overlay(client):
+    """Persistence mode 'off' = pure current market: even with an active fetched
+    prior, NO prior curve is drawn (parametric, LV, and the pre-fit gated node) —
+    the overlay-hide-on-off follow-on. 'overlay' still draws it."""
+    iso = _first_iso(client)
+    client.get(f"/smiles/{TICKER}/{iso}")
+    client.post("/priors/save-all")
+    client.post("/priors/fetch")
+    state: AppState = client.app.state.volfit
+    assert state.active_prior(TICKER) is not None
+
+    opts = client.get("/settings/options").json()
+    client.put("/settings/options", json={**opts, "priorPersistenceMode": "off"})
+
+    smile = client.get(f"/smiles/{TICKER}/{iso}").json()
+    assert smile["priorTransported"] is False
+    assert smile["prior"] == []  # no dotted/dashed prior in off mode
+
+    lv = client.post(f"/fit/affine/{TICKER}", json={"fitMode": "mid"}).json()
+    assert all(s["prior"] == [] and s["priorTransported"] is False for s in lv["smiles"])
+
+    # 'overlay' mode re-draws the transported prior without a calibration penalty.
+    client.put("/settings/options", json={**opts, "priorPersistenceMode": "overlay"})
+    back = client.get(f"/smiles/{TICKER}/{iso}").json()
+    assert back["priorTransported"] is True
+    assert len(back["prior"]) == len(back["model"])
+
+
 def test_fetch_uses_saved_prior_even_when_stale(client):
     """A prior IS a chosen past observation: a saved snapshot older than the
     previous close must still be the one activated by Fetch (drawn dotted +

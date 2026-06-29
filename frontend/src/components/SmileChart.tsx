@@ -292,9 +292,11 @@ export default function SmileChart({
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-5 rounded bg-accent-400" /> Current fit
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-0 w-5 border-t-2 border-dashed border-slate-500" /> Prior
-        </span>
+        {prior.length > 0 && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0 w-5 border-t-2 border-dashed border-slate-500" /> Prior
+          </span>
+        )}
         {scenarioPath !== "" && (
           <span className="flex items-center gap-1.5">
             <span className="h-0 w-5 border-t-2 border-dotted border-amber-400" /> SSR scenario

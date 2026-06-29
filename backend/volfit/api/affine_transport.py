@@ -101,9 +101,12 @@ def attach_affine_priors(
     transported to the smile's current forward under the dynamics regime and
     sampled on the smile's own k grid (volfit.api.prior_transport) — the same
     machinery as the parametric overlay, so the two workspaces show a consistent
-    prior. No active prior ⇒ the response is returned unchanged."""
+    prior. No active prior — or persistence mode ``off`` (no overlay drawn, design
+    note §10) — ⇒ the response is returned unchanged."""
+    from volfit.api.prior_mode import resolve_prior_mode
+
     active = state.active_prior(ticker)
-    if active is None:
+    if active is None or not resolve_prior_mode(state.options()).draw_overlay:
         return response
     from volfit.api import prior_transport, service
 
