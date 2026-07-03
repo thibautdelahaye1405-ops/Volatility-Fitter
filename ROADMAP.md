@@ -10,6 +10,55 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-07-03 (resume here)
 
+### 🧭 SESSION WRAP (2026-07-03, evening) — Observation Kalman filter Phases 0–3 SHIPPED
+
+The Note 15 observation filter (`Docs/kalman_filtering.tex` — a per-node
+temporal Kalman filter on the (ATM, skew, curvature) handles, strictly
+separated from prior persistence) is built through its numerical + app layers,
+all on **main** (commits `fddddda`, `be8b56f`, `160bd73`, `8a53990`; full
+suite **905 passed, 1 skipped**; ruff + strict-TS green). Roadmap + phase log:
+**`Docs/observation_filter_roadmap.md`** (read it first — 4 scope decisions
+recorded there; the user explicitly confirmed the Jacobian R_t route).
+
+- **Phase 0** — `observationFilterMode` off/overlay/active + knobs
+  (`api/schemas.py`, `useOptions.ts`); `api/filter_mode.py` resolver; NEW
+  lightweight `AppState._filter_version` (overlay knobs refresh the overlay
+  WITHOUT busting fit caches; only off/overlay↔active transitions or knobs
+  while active bump `options_version`).
+- **Phase 1** — `calib/observation_filter.py`, pure numpy: Joseph-form
+  `kalman_update` (+ gain cap, input PSD validation), eq.-Q `process_noise`
+  with per-component breakdown, `should_reset`, whitened MAP rows
+  (`prediction_prior_residual`, jitter REPORTED), first-order SSR
+  `transport_handles`. GOLDEN cross-check: reproduces
+  `graph/posterior.posterior_update` to 1e-12.
+- **Phase 2** — `calib/observation_measurement.py`: **Jacobian R_t**
+  (USER-CONFIRMED) `R = ρ·G·(JᵀWJ+Λ)⁺·Gᵀ` off the calibrators' new
+  `solver_diag` seam (LQD/SVI/SIV retain `result.jac` — byte-identical when
+  None); regularized eigen-inverse (clamps, never explodes/vanishes); χ²
+  inflation; graph floors/caps envelope; factors fallback
+  (`filterCovarianceMode`). **UNITS finding:** quote weights are RELATIVE, so
+  the builder takes `noise_scale` = stated per-quote noise (bid-ask
+  half-spread, floored) on the DATA rows only — R obeys the quadratic
+  contract. Band semantics free (inactive hinges ⇒ zero rows).
+- **Phase 3** — `api/observation_filter.py` + `GET /smiles/{t}/{e}/filter`
+  (`FilterDiagnostics`): update-on-commit hooked into BOTH fit paths
+  (`_compute_fit` + `fit_and_commit_slice`), idempotent per
+  (data_version, session_version); seeds from `resolve_node_prior`;
+  resets = quote-edit/stale reseed, source/as-of wipe
+  (`_clear_chain_caches` + `_CHAIN_CACHE_ATTRS` round-trip survival;
+  `recalibrate` deliberately keeps the state — a refetch is a new
+  observation). Everything advisory — can never break a calibration.
+
+**Next up (the filter arc):** Phase 4 frontend overlay
+(`useObservationFilter.ts` clone of `useGraphNodeSmile`, SmileChart
+filterPost/band props, `ObservationFilterPanel.tsx` in Options) → **Phase 5
+temporal backtest** (`backend/backtest/observation_filter.py`, clones
+`temporal.py`; the §9 protocol + Q-knob & covariance-mode sweeps — THE
+acceptance gate) → Phase 6 active one-stage MAP (via a `build_filter_prior`
+OperatorPriorTarget with NO gate + the persistence auto-exclusion) → Phases
+7–8 (default flip + Note 15 adoption into Docs/notes/). Unchanged from before:
+the 25-asset capture etc. (next section).
+
 ### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
 
 Docs + backtest session; all on **main** and pushed (through `fe5feb4`).

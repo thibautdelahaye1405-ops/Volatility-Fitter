@@ -171,6 +171,15 @@ and the backtest module.
   RESID_INFLATION_CAP)` with `χ² = rᵀWr` from the same solution residuals
   (`calib/rms.node_error_terms` semantics); `R_t = ρ·R_x`. This carries the
   note's contradictory-cluster case file.
+- **UNITS (discovered in implementation, shipped):** production quote weights
+  are RELATIVE (equal/tv-density), not 1/noise², so `JᵀWJ` alone is the
+  information under an implied noise of one full vol point — R saturates the
+  envelope. The builder therefore takes `noise_scale` = the stated per-quote
+  noise std in vol units (bid-ask half-spread / haircut, floored) and divides
+  the DATA rows only (intrinsic reg rows keep their prior scale). R then obeys
+  the quadratic contract (2× stated noise ⇒ 4× covariance) and is tied to the
+  market's stated uncertainty, exactly the note's §4 intent. The app layer
+  (Phase 3) supplies the per-quote half-spreads from the prepared chain.
 - **Band semantics come for free on this route:** in `bidask`/`haircut` modes
   the inactive hinge rows have `band_sign = 0` inside the band ⇒ they
   contribute nothing to `JᵀWJ`; only the small mid anchor remains — exactly
