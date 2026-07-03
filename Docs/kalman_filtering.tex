@@ -1,0 +1,811 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{Observation Kalman Filtering}\\[2pt]
+\large Denoising observed smiles without confusing noise with gaps\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~15}
+\author{Vol-Fitter}
+\date{\today}
+
+% Note-local notation.
+\newcommand{\obs}{\mathrm{obs}}
+\newcommand{\pred}{\mathrm{pred}}
+\newcommand{\post}{\mathrm{post}}
+\newcommand{\gap}{\mathrm{gap}}
+\newcommand{\calL}{\mathcal L}
+\newcommand{\calI}{\mathcal I}
+\newcommand{\calO}{\mathcal O}
+\newcommand{\calQ}{\mathcal Q}
+\newcommand{\calR}{\mathcal R}
+\newcommand{\calH}{\mathcal H}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Prior persistence and Kalman filtering both pull a smile away from a raw,
+current-market fit, so they are easy to confuse in implementation. They should
+not be confused mathematically. Prior persistence is a \emph{gap regularizer}: it
+keeps unobserved or weakly identified smile functionals near a transported prior
+and turns itself off where today's quotes already identify the functional. A
+Kalman observation filter is a \emph{temporal state estimator}: it assumes the
+current smile is observed through noisy, sometimes contradictory quotes, predicts
+the smile from the previous filtered state, and updates according to the
+relative precision of the prediction and the observation. This note proposes a
+clean Vol-Fitter architecture for adding such a filter. The state is not raw
+option mids, but compact arbitrage-safe smile handles; the transition is the
+existing SSR transport; the measurement is a data-only fit with a covariance
+derived from bid--ask width, quote density, fit residuals and local
+inconsistency; and active mode is a one-stage MAP calibration so the same quotes
+are not counted twice. A small case file shows the key distinction: dense but
+contradictory close strikes should inflate observation noise and be denoised by
+the Kalman layer, while genuinely unquoted wings should be governed by prior
+persistence.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{The production symptom}
+\label{sec:symptom}
+
+A sparse wing and a noisy cluster are different failures.
+
+In a sparse wing, the desk has almost no market information. A data-only fit can
+extend the ATM skew into the tail and create a new signal where no option
+actually traded. Note~13 solved that problem with an activation gate: the prior
+is strong in the gap and exactly off where the data is sufficient.
+
+In a noisy cluster, the desk has information, but it is internally inconsistent.
+Two adjacent strikes may imply a local kink because one market is stale, a wide
+bid--ask band may make the mid meaningless, or an American wing repair may have
+preserved spread while lowering the reliable rank of the wing. The right answer
+is not "fill with yesterday"; the right answer is "infer the latent current
+smile under observation noise."
+
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item Prior persistence acts only on functionals not identified by the current
+market at the required precision.
+\item Observation filtering acts only through an explicit prediction covariance
+and an explicit measurement covariance.
+\item The same quote cannot be used once to create a filtered posterior and then
+again as an independent calibration datum.
+\item The filter state is an arbitrage-safe coordinate, such as ATM handles or
+operator values, never a free raw-IV curve.
+\item Every filtered output reports prediction, observation, innovation, gain
+and posterior uncertainty.
+\end{enumerate}
+\end{invariant}
+
+The two features therefore answer two different questions:
+\[
+\begin{array}{ll}
+\text{Prior persistence:} & \text{Where do we lack enough observations to
+identify the smile?}\\[2pt]
+\text{Kalman filtering:} & \text{Given observations here, how noisy are they?}
+\end{array}
+\]
+The implementation should preserve that distinction all the way to the UI.
+
+%======================================================================
+\section{Two regularizers, two measures}
+\label{sec:split}
+
+Let $x_t\in\R^d$ denote the latent smile state of one node at snapshot time
+$t$: for the first implementation this should be a compact vector of handles,
+for example
+\[
+x_t=(\sigma_{\atm,t},s_{\atm,t},\kappa_{\atm,t})\T,
+\]
+possibly extended later by signed operators such as RR25, BF25 and var-swap.
+Let $q_t$ be the prepared quote set after forwards, de-Americanization,
+event-clock conversion, bid--ask band construction and quote edits.
+
+\subsection{Prior persistence}
+
+Prior persistence is a penalty in a calibration objective. With a prior state
+$x_t^0$ transported to the current forward, and functionals
+$O_j:\R^d\to\R$, Note~13 has the universal form
+\begin{equation}
+\calL_{\mathrm{persist}}(x)
+=\half\sum_j
+\lambda_j^{\gap}
+\left(\frac{O_j(x)-O_j(x_t^0)}{a_j}\right)^2,
+\qquad
+\lambda_j^{\gap}
+=\lambda_j^0
+\max\!\left(1-\frac{\pi^{\obs}_j}{\pi^{\mathrm{req}}_j},0\right)^\gamma .
+\label{eq:persistence}
+\end{equation}
+The gate is driven by \emph{identifiability}: when current quotes identify
+functional $O_j$ at or above the required precision, $\lambda_j^{\gap}=0$.
+Thus prior persistence is not primarily a denoiser. It is a rule for refusing
+to invent signal outside the support of the observation.
+
+\subsection{Observation filtering}
+
+A Kalman filter is instead a sequential estimator. It starts from the previous
+posterior law for $x_{t-1}$, transports it forward, then combines the transported
+prediction with today's noisy observation. In the linear-Gaussian handle model,
+\begin{align}
+x_t &= \Phi_t x_{t-1}+u_t+\eta_t,
+&\eta_t&\sim\mathcal N(0,Q_t), \label{eq:state}\\
+z_t &= H_t x_t+\epsilon_t,
+&\epsilon_t&\sim\mathcal N(0,R_t), \label{eq:measurement}
+\end{align}
+where $z_t$ is not a raw quote vector; it is a noisy handle estimate extracted
+from today's prepared quotes. $Q_t$ is process covariance: time elapsed, spot
+move, event risk and transport distance. $R_t$ is measurement covariance:
+bid--ask width, quote density, stale fields, de-Americanization repairs, band
+slack and contradictory close strikes.
+
+\begin{heuristic}
+Persistence says "do not put signal where the market did not speak." Filtering
+says "when the market speaks with a noisy voice, infer what it probably meant."
+Both can pull toward a previous surface, but the sufficient statistic is
+different: persistence uses a \emph{gap}; filtering uses a \emph{covariance}.
+\end{heuristic}
+
+%======================================================================
+\section{The Kalman object}
+\label{sec:kalman}
+
+The Vol-Fitter should implement the filter in covariance form, matching the
+graph posterior style of Note~14. For a direct handle observation $H_t=I$, the
+form is especially transparent, but the equations below allow a subset or a
+linear operator measurement.
+
+\begin{definition}[Predicted and observed handle laws]
+\label{def:laws}
+At snapshot $t$, the prediction law and the measurement law are
+\[
+x_t\given\mathcal F_{t-1}\sim\mathcal N(m_t^-,P_t^-),
+\qquad
+z_t\given x_t\sim\mathcal N(H_t x_t,R_t).
+\]
+$m_t^-$ is the transported previous filtered state; $P_t^-$ is its transported
+uncertainty plus process noise. $z_t$ and $R_t$ are extracted from today's
+prepared quotes without using prior persistence.
+\end{definition}
+
+The central update is
+\begin{equation}
+\boxed{\;
+\begin{aligned}
+S_t&=H_tP_t^-H_t\T+R_t,\\
+K_t&=P_t^-H_t\T S_t^{-1},\\
+m_t^+&=m_t^-+K_t\big(z_t-H_tm_t^-\big),\\
+P_t^+&=(I-K_tH_t)P_t^-(I-K_tH_t)\T+K_tR_tK_t\T .
+\end{aligned}
+\;}
+\label{eq:kalman}
+\end{equation}
+The last line is the Joseph form; it is a little longer than
+$P_t^+=(I-K_tH_t)P_t^-$, but it preserves symmetry and positive
+semidefiniteness better in floating point.
+
+\begin{proposition}[Precision-weighted shrinkage]
+\label{prop:scalar}
+In one dimension with $H_t=1$, prediction variance $p$ and measurement variance
+$r$, the posterior mean is
+\[
+m^+=\frac{r}{p+r}m^-+\frac{p}{p+r}z,
+\]
+and the Kalman gain is $K=p/(p+r)$.
+\end{proposition}
+
+\begin{proof}
+The innovation variance is $S=p+r$, so $K=p/S$. Substituting in
+$m^+=m^-+K(z-m^-)$ gives
+$m^+=(1-K)m^-+Kz=r(p+r)^{-1}m^-+p(p+r)^{-1}z$.
+\end{proof}
+
+\Cref{prop:scalar} is the whole desk intuition. If today's observation is tight
+($r\ll p$), the filtered smile moves to the market. If today's observation is
+noisy ($r\gg p$), it stays near the transported prediction. The movement is not
+controlled by whether the region is observed; it is controlled by the relative
+uncertainties of prediction and observation.
+
+%======================================================================
+\section{Where the observation covariance comes from}
+\label{sec:measurement}
+
+The hard part is not the Kalman algebra. The hard part is building a
+measurement covariance $R_t$ that reflects the quote set honestly.
+
+\subsection{Do not filter raw mids}
+
+Raw contracts are a poor state space. The OTM side changes when the forward
+moves; contracts appear and disappear; American contracts need early-exercise
+removal; a strike can be inside a wide spread but far from its midpoint; and a
+raw implied-vol vector is not guaranteed to remain butterfly-free after
+smoothing. The filter should begin after the existing quote-prep pipeline in
+\nolinkurl{backend/volfit/api/quotes.py}.
+
+\subsection{Extract a noisy handle observation}
+
+The recommended v1 is a two-step observation extractor:
+\[
+z_t=\argmin_x\ \calL_{\mathrm{quote}}(x;q_t)+\calL_{\mathrm{intrinsic}}(x),
+\label{eq:extract}
+\]
+where $\calL_{\mathrm{quote}}$ is the same vega-normalized/bid--ask-aware loss
+as Note~07, and $\calL_{\mathrm{intrinsic}}$ contains only intrinsic model
+regularization needed to obtain a valid no-arbitrage smile. It must not include
+temporal prior persistence. The extractor then maps the fitted smile to handles
+$z_t=(\hat\sigma_{\atm},\hat s_{\atm},\hat\kappa_{\atm})$.
+
+Near the optimum, linearize the quote residuals as
+\[
+r(\theta)\approx r(\hat\theta)+J(\theta-\hat\theta).
+\]
+If the handle map is $x=g(\theta)$ with Jacobian $G=\partial g/\partial\theta$,
+then an observed-information approximation is
+\begin{equation}
+\calI_\theta=J\T WJ+\Lambda_{\mathrm{intrinsic}},
+\qquad
+R_x\approx G\,\calI_\theta\pinv G\T .
+\label{eq:cov-delta}
+\end{equation}
+Equivalently, if the model is already parameterized by handles, use the handle
+Hessian directly. In either case the covariance is inflated by realized
+inconsistency:
+\begin{equation}
+R_t=\rho_t R_x,\qquad
+\rho_t=\max\left(1,\frac{\chi_t^2}{\max(m-d,1)}\right),
+\qquad
+\chi_t^2=r(\hat\theta)\T W r(\hat\theta).
+\label{eq:resid-inflation}
+\end{equation}
+This is the mechanism that makes close-strike contradictions visible to the
+filter. A contradictory cluster may have many quotes, but if it cannot be fitted
+within its stated noise, $\rho_t$ grows and the Kalman gain falls in the
+directions the cluster does not reliably identify.
+
+\begin{remark}[Bands and covariance]
+For bid--ask mode, quotes inside the band should not pretend to identify the
+mid. In a practical implementation, inactive hinge rows contribute little or
+nothing to $J\T WJ$, while the weak mid anchor contributes only at its small
+anchor weight. This matches Note~07's semantics: inside the spread the market is
+a set, not a point.
+\end{remark}
+
+\subsection{A cheaper v1 precision builder}
+
+The full covariance \eqref{eq:cov-delta} is the right target, but a first
+implementation can reuse the existing precision vocabulary:
+\[
+R_t^{-1}
+=\diag(c_h)\,
+\pi_{\mathrm{fit}}\,
+f_{\mathrm{density}}\,
+f_{\mathrm{spread}}\,
+f_{\mathrm{fresh}}\,
+f_{\mathrm{repair}}\,
+f_{\mathrm{resid}},
+\label{eq:cheapR}
+\]
+where $c_h$ is per-handle confidence, $\pi_{\mathrm{fit}}$ is inverse squared
+RMS with a floor and cap, and the scalar factors are exactly the kind already
+used by \nolinkurl{backend/volfit/calib/precision.py} and
+\nolinkurl{backend/volfit/graph/precision.py}. This is less elegant than a full
+Jacobian covariance but enough for an overlay pilot.
+
+%======================================================================
+\section{The prediction law}
+\label{sec:prediction}
+
+The prediction must transport the previous filtered smile before comparing it
+with today's quotes. For a handle state,
+\[
+m_t^-=\mathcal T_t(m_{t-1}^+),
+\qquad
+P_t^-=A_tP_{t-1}^+A_t\T+Q_t,
+\label{eq:transport}
+\]
+where $\mathcal T_t$ is the SSR/spot-vol transport of Note~12 and
+$A_t=\partial\mathcal T_t/\partial x$ is its local Jacobian. For a small v1,
+$A_t=I$ is acceptable for ATM/skew/curvature if the state is recomputed after
+transport; the important point is that process covariance $Q_t$ grows when the
+prediction is less trustworthy.
+
+Useful process-noise components are
+\[
+Q_t=Q_{\mathrm{clock}}(\Delta t)+Q_{\mathrm{spot}}(\abs h)
++Q_{\mathrm{event}}+Q_{\mathrm{source}}+Q_{\mathrm{model}},
+\label{eq:Q}
+\]
+with the following meanings:
+\begin{description}[leftmargin=1.7em,style=nextline]
+\item[Clock noise.]
+Volatility surfaces diffuse through time. A square-root-time scale,
+$q_h^2\Delta t$ per handle, is the natural baseline.
+\item[Spot transport noise.]
+The larger the log-forward move $h=\log(F_t/F_{t-1})$, the less certain the
+transported state. This is the same intuition as the transport-distance factor
+in prior persistence.
+\item[Event noise.]
+Known event windows should widen the prediction before the event is resolved.
+The event clock changes the time variable; this term admits that the shape
+response itself is uncertain.
+\item[Source noise.]
+Switching provider, as-of mode, or live/previous-close source should widen or
+reset the filter. A live quote stream and a prior-close snapshot are not the
+same stochastic clock.
+\item[Model noise.]
+If the display model changes from LQD to SVI or Multi-Core SIV, the filtered
+handle state may persist, but model-specific parameters should not.
+\end{description}
+
+\begin{caution}
+Do not filter native local-vol parameters. The local-vol grid is a projection
+machinery with its own PDE stability and no-arbitrage constraints. Filter the
+target smile handles, then project or refit the local-vol surface to that target.
+\end{caution}
+
+%======================================================================
+\section{The clean architecture}
+\label{sec:architecture}
+
+There are two mathematically safe ways to make the filter active.
+
+\subsection{Overlay mode: compute, display, do not affect calibration}
+
+Overlay mode is the recommended first delivery. The workflow is:
+\begin{enumerate}[leftmargin=1.6em]
+\item Fetch or stream an option snapshot.
+\item Prepare quotes through the existing pipeline.
+\item Run the current data-only calibration, with prior persistence off for the
+measurement pass.
+\item Extract $z_t$ and $R_t$.
+\item Predict $(m_t^-,P_t^-)$ from the previous filtered state.
+\item Apply \eqref{eq:kalman}; store $(m_t^+,P_t^+)$ and diagnostics.
+\item Draw raw calibration, transported prediction and filtered handles/curve.
+\end{enumerate}
+This mode cannot double-count quotes because it does not feed the posterior back
+into the fit. It is therefore ideal for tuning $Q_t$, $R_t$ and reset rules.
+
+\subsection{Active mode: one-stage MAP, not posterior plus quotes}
+
+Active mode should not first build $m_t^+$ from today's quotes and then add
+$m_t^+$ as a prior while fitting the same quotes again. That counts $q_t$ twice.
+The correct active objective is the one-step MAP problem
+\begin{equation}
+\calL_{\mathrm{active}}(\theta)
+=\calL_{\mathrm{quote}}(\theta;q_t)
++\half\norm[\Big]{\calH(\theta)-m_t^-}_{(P_t^-)^{-1}}^2
++\calL_{\mathrm{intrinsic}}(\theta)
++\calL_{\mathrm{persist},\perp}(\theta).
+\label{eq:active-map}
+\end{equation}
+Here $\calH(\theta)$ extracts the filtered handle coordinates from the model.
+The second term is the Kalman prediction prior. The quote likelihood is today's
+market. In the linear-Gaussian case, minimizing \eqref{eq:active-map} gives the
+same $m_t^+$ as \eqref{eq:kalman}. In the nonlinear smile case it is the extended
+Kalman/MAP version.
+
+$\calL_{\mathrm{persist},\perp}$ is the remaining prior-persistence term, but
+only on coordinates not already covered by the filter's prediction prior or on
+regions outside the filtered handle state. This is the clean split:
+\[
+\begin{aligned}
+\text{Kalman term}
+&=\text{temporal prior on observed latent state},\\
+\text{persistence term}
+&=\text{gap prior on unobserved functionals}.
+\end{aligned}
+\]
+
+\begin{proposition}[No double counting in the MAP form]
+\label{prop:nodouble}
+If the model is linear, the quote extractor is $z=H x+\epsilon$ with
+$\epsilon\sim\mathcal N(0,R)$, and the prediction is
+$x\sim\mathcal N(m^-,P^-)$, then the minimizer of
+\[
+\half\norm{z-Hx}_{R^{-1}}^2+\half\norm{x-m^-}_{(P^-)^{-1}}^2
+\]
+is the Kalman posterior mean in \eqref{eq:kalman}.
+\end{proposition}
+
+\begin{proof}
+The first-order condition is
+\[
+\big(H\T R^{-1}H+(P^-)^{-1}\big)x
+=H\T R^{-1}z+(P^-)^{-1}m^- .
+\]
+The Woodbury identity rewrites the inverse of the left-hand side as
+$P^- - P^-H\T(HP^-H\T+R)^{-1}HP^-$. Substitution gives
+$x=m^-+P^-H\T(HP^-H\T+R)^{-1}(z-Hm^-)$, which is \eqref{eq:kalman}.
+\end{proof}
+
+\subsection{Where prior persistence remains}
+
+Prior persistence should remain available in active mode, but with explicit
+semantics:
+\begin{itemize}[leftmargin=1.4em]
+\item It may act on deep tails or operator baskets not represented in the
+Kalman state.
+\item It may provide the initial saved prior from which the first filtered state
+is seeded.
+\item It may act on dark graph nodes that have no current quote observation.
+\item It should not also anchor ATM/skew/curvature to the same previous state
+that already appears as $m_t^-$ in the Kalman term.
+\end{itemize}
+
+%======================================================================
+\section{A telling case file}
+\label{sec:case}
+
+\begin{example}[title={Case file: close-strike contradiction versus true gap}]
+\textbf{Setup.} A one-month equity smile has nine near-ATM quotes and no
+reliable quotes beyond $25\Delta$. The previous filtered state transported to
+today is
+\[
+m^-=(20.0\%,\ -0.35,\ 0.10),\qquad
+\sqrt{\diag P^-}=(0.30\%,\ 0.08,\ 0.05).
+\]
+The near-ATM quotes imply a data-only handle observation
+\[
+z=(20.4\%,\ -0.37,\ 0.55).
+\]
+The ATM level and skew are consistent, but one stale close strike forces a very
+large curvature if the fit chases mids literally.
+
+\textbf{Diagnosis.} Quote density alone would say the region is well observed.
+Therefore prior persistence should switch off for ATM/skew/curvature; using it
+to pull curvature back would violate the Note~13 rule. The contradiction should
+instead appear as measurement noise. Suppose the observation standard deviations
+after residual inflation are
+\[
+\sqrt{\diag R}=(0.15\%,\ 0.05,\ 0.30).
+\]
+The scalar gains are approximately
+\[
+K_{\sigma}=\frac{0.30^2}{0.30^2+0.15^2}=0.80,\quad
+K_s=\frac{0.08^2}{0.08^2+0.05^2}=0.72,\quad
+K_\kappa=\frac{0.05^2}{0.05^2+0.30^2}=0.027.
+\]
+
+\textbf{Filter.} The update moves the real observed level and skew:
+\[
+m^+_\sigma=20.0+0.80(20.4-20.0)=20.32\%,\qquad
+m^+_s=-0.35+0.72(-0.02)=-0.364.
+\]
+But it barely accepts the isolated curvature kink:
+\[
+m^+_\kappa=0.10+0.027(0.55-0.10)\approx0.112.
+\]
+
+\textbf{Persistence.} The unquoted wing is a different matter. For a deep-tail
+functional $O_{\mathrm{tail}}$, observation precision is below requirement, so
+the activation gate of \eqref{eq:persistence} is near one and the transported
+prior supplies the tail anchor. The same day therefore has both effects:
+Kalman filtering denoises the observed cluster, while prior persistence fills
+the wing gap.
+\end{example}
+
+This example is deliberately small, but it captures the implementation rule: a
+dense cluster with a bad internal residual is not a gap; it is a high-$R_t$
+observation. A strike range with no reliable quotes is a gap; it belongs to
+prior persistence.
+
+%======================================================================
+\section{Implementation plan}
+\label{sec:implementation}
+
+\subsection{State objects}
+
+Add a pure numerical module, proposed as
+\nolinkurl{backend/volfit/calib/observation_filter.py}, with immutable
+dataclasses:
+\begin{description}[leftmargin=1.7em,style=nextline]
+\item[\texttt{FilterState}.]
+Node key, as-of/source key, handle names, posterior mean $m^+$, covariance
+$P^+$, timestamp, provenance, and reset reason.
+\item[\texttt{FilterPrediction}.]
+Predicted mean $m^-$, covariance $P^-$, transport distance, process-noise
+breakdown.
+\item[\texttt{FilterMeasurement}.]
+Observed handles $z$, covariance $R$, quote-count/spread/RMS/inconsistency
+breakdown.
+\item[\texttt{FilterUpdate}.]
+Innovation $z-Hm^-$, innovation covariance $S$, gain $K$, posterior mean and
+covariance.
+\end{description}
+
+The numerical core should be pure numpy: no app state, no provider calls, no
+calibration side effects.
+
+\subsection{API and state integration}
+
+An app layer, proposed as \nolinkurl{backend/volfit/api/observation_filter.py},
+would:
+\begin{enumerate}[leftmargin=1.6em]
+\item Resolve the node key $(\mathrm{ticker},\mathrm{expiry},\mathrm{fitMode},
+\mathrm{source},\mathrm{asOf})$.
+\item Read prepared quotes and the latest data-only fit.
+\item Build the measurement and covariance.
+\item Read the previous filter state or seed from an active transported prior.
+\item Apply the update and store diagnostics on \texttt{AppState}.
+\item Expose a payload to the Smile and Graph views.
+\end{enumerate}
+
+The state must reset on source/as-of changes, expiry changes, fit-mode changes
+that alter the observation loss, provider switches, large calendar gaps, and
+manual quote edits that invalidate the measurement.
+
+\subsection{Settings}
+
+The first surfaced settings should be deliberately few:
+\begingroup
+\small
+\begin{longtable}{p{0.38\textwidth}p{0.13\textwidth}p{0.41\textwidth}}
+\caption{Proposed observation-filter settings.}\label{tab:settings}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\texttt{observationFilterMode} & \texttt{off} &
+\texttt{off} / \texttt{overlay} / \texttt{active}.\\
+\texttt{observationFilterState} & ATM / skew / curv &
+Handle coordinates carried by the filter.\\
+\texttt{filterProcessVolBpSqrtDay} & $5$--$15$ bp &
+Clock process noise for ATM level; skew/curvature scale separately.\\
+\texttt{filterTransportNoiseScale} & $0.10$ &
+Extra process noise per log-forward transport distance.\\
+\texttt{filterResidualInflation} & on &
+Use \eqref{eq:resid-inflation} to inflate $R_t$.\\
+\texttt{filterMaxGain} & $1.0$ &
+Optional safety cap; useful during pilot, removable later.\\
+\texttt{filterResetHours} & session/EOD dependent &
+Maximum gap before the state is reset rather than predicted.\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+Hidden constants can mirror the graph precision scales: per-handle confidence,
+precision floors/caps, spread half-life and quote-density saturation.
+
+\subsection{Workflow placement}
+
+The placement in the existing workflow is:
+\[
+\begin{aligned}
+&\text{fetch snapshot}\to\text{prepare quotes}\to\text{data-only fit}\\
+&\to\text{measurement }(z_t,R_t)
+\to\text{predict/update filter}
+\to\text{overlay or active MAP calibration}.
+\end{aligned}
+\]
+For a background calibration job, this belongs between the prepared-quote plan
+and the final fit commit. For live streaming, the filter may update every
+snapshot while active calibration remains trigger-gated; overlay mode is useful
+here because it shows whether the filter is tracking or lagging before it is
+allowed to steer calibration.
+
+%======================================================================
+\section{Validation protocol}
+\label{sec:validation}
+
+The filter should not be accepted because charts look smooth. It needs a
+temporal backtest that distinguishes denoising from signal damping.
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Consecutive snapshots.} Use stored chain snapshots with real
+timestamps. Fit $t-1$, predict $t$, update on a thinned or noisy subset of
+$t$, and score held-out quotes at $t$.
+\item \textbf{Close-strike contradiction injection.} Perturb one or two close
+strikes inside the spread model and verify that curvature noise is rejected
+without suppressing level moves.
+\item \textbf{Shock pass-through.} Raise the whole ATM cluster by a true
+volatility jump with tight spreads. The filter must move with high gain.
+\item \textbf{Gap preservation.} Remove the wings. The Kalman layer should not
+invent tail information; prior persistence or graph reconstruction should carry
+that load.
+\item \textbf{Double-count guard.} Active mode must match the one-stage MAP
+objective. A test should fail if the implementation applies a posterior target
+and raw quotes as independent evidence.
+\item \textbf{Calibration of uncertainty.} Standardized residuals,
+$(\mathrm{heldout}-m^+)/\sqrt{P^++R_{\mathrm{heldout}}}$, should have mean near
+zero and standard deviation near one, or conservatively below one.
+\end{enumerate}
+
+Success is not "lower every RMS." Success is lower held-out error in noisy
+snapshots, lower shape jitter in repeated live refreshes, and no meaningful
+lag on high-quality market moves.
+
+%======================================================================
+\section{Existing anchors and proposed additions}
+\label{sec:anchors}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.27\textwidth}p{0.32\textwidth}p{0.35\textwidth}@{}}
+\caption{How the proposed filter should attach to today's code.}\\
+\toprule
+Responsibility & Existing anchor & Proposed addition\\
+\midrule
+\endfirsthead
+\toprule Responsibility & Existing anchor & Proposed addition\\ \midrule
+\endhead
+Raw quote containers and snapshot timestamps &
+\nolinkurl{backend/volfit/data/types.py} &
+Use snapshot timestamp/source in the filter node key.\\
+Quote preparation, de-Americanization and IV bands &
+\nolinkurl{backend/volfit/api/quotes.py} &
+Build measurements only after prepared quotes exist.\\
+Bid--ask objective and band semantics &
+\nolinkurl{backend/volfit/calib/band.py} &
+Map inactive band rows into low measurement precision.\\
+Calibration-consistent RMS &
+\nolinkurl{backend/volfit/calib/rms.py} &
+Use fit residuals for $R_t$ inflation.\\
+Shared precision vocabulary &
+\nolinkurl{backend/volfit/calib/precision.py},
+\nolinkurl{backend/volfit/graph/precision.py} &
+Reuse density, spread, freshness and caps for cheap $R_t$.\\
+Prior-persistence builders and gates &
+\nolinkurl{backend/volfit/calib/prior.py},
+\nolinkurl{backend/volfit/calib/operators.py},
+\nolinkurl{backend/volfit/calib/factors.py} &
+Keep gap priors separate from the Kalman prediction prior.\\
+Covariance-form Gaussian update pattern &
+\nolinkurl{backend/volfit/graph/posterior.py} &
+Mirror its marginal-variance and innovation diagnostics.\\
+Workflow fetch/calibrate/stream placement &
+\nolinkurl{backend/volfit/api/workflow.py},
+\nolinkurl{backend/volfit/api/service.py} &
+\nolinkurl{backend/volfit/api/observation_filter.py}.\\
+Numerical filter core &
+None today &
+\nolinkurl{backend/volfit/calib/observation_filter.py}.\\
+Backtest harness &
+\nolinkurl{backend/backtest},
+\nolinkurl{backend/tests/test_temporal_backtest.py} &
+\nolinkurl{backend/backtest/observation_filter.py},
+\nolinkurl{backend/tests/test_observation_filter.py}.\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+%======================================================================
+\section{What is original here}
+\label{sec:original}
+
+The Kalman equations are classical \cite{Kalman1960,AndersonMoore1979}. The
+Vol-Fitter-specific contribution is the separation of three notions that are
+usually blended in volatility tools:
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Quote likelihood}: today's prepared quotes, with bands, weights
+and no-arbitrage model structure.
+\item \textbf{Temporal filtering}: a transported latent smile state with
+prediction and measurement covariance.
+\item \textbf{Gap persistence}: a prior that activates only where current quotes
+do not identify a functional.
+\end{enumerate}
+That separation is what makes the feature safe. The filter can denoise a noisy
+observed smile without using yesterday as a fake quote, and prior persistence can
+stabilize unobserved wings without damping a real current-market move.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begingroup
+\small
+\begin{longtable}{p{0.38\textwidth}p{0.13\textwidth}p{0.41\textwidth}}
+\caption{Observation-filter hyperparameters, proposed v1.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
+\texttt{observationFilterMode} & \texttt{off} & Feature mode:
+\texttt{off}, \texttt{overlay}, \texttt{active}.\\
+\texttt{observationFilterState} & ATM / skew / curv & Handle set carried by the
+filter.\\
+\texttt{filterProcessVolBpSqrtDay} & $10$ bp & ATM process noise per square-root
+calendar day.\\
+\texttt{filterProcessSkewSqrtDay} & $0.02$ & Skew process noise scale.\\
+\texttt{filterProcessCurvSqrtDay} & $0.05$ & Curvature process noise scale.\\
+\texttt{filterTransportNoiseScale} & $0.10$ & Process-noise multiplier for
+large spot/forward transports.\\
+\texttt{filterResetHours} & source dependent & Reset rather than predict across
+long data gaps.\\
+\texttt{filterMaxGain} & $1.0$ & Pilot safety cap on diagonalized gains; should
+not bind in normal operation.\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden / derived}}\\ \midrule
+\texttt{HANDLE\_CONFIDENCE} & $[1,1,0.01]$ initially & Curvature is less
+identified than level and skew, matching graph precision practice.\\
+\texttt{RMS\_FLOOR} & existing precision floor & Prevents one excellent fit from
+creating infinite observation precision.\\
+\texttt{SPREAD\_HALF} & existing precision half-life & Wider bid--ask bands
+inflate $R_t$.\\
+\texttt{REF\_ATM\_QUOTES} & existing density saturation & Dense ATM support
+raises level/skew precision.\\
+\texttt{RESID\_INFLATION\_CAP} & TBD & Caps \eqref{eq:resid-inflation} during
+the pilot to avoid one broken chain poisoning the state.\\
+\texttt{SOURCE\_RESET\_POLICY} & strict & Reset on provider/as-of/source changes
+unless an explicit bridge is implemented.\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+%======================================================================
+\section{Performance notes}
+\label{app:perf}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Overlay mode is cheap after calibration.} If a data-only fit has
+already been computed, the Kalman update is a dense $d\times d$ solve with
+$d\le6$ in v1. The cost is invisible next to calibration.
+\item \textbf{The expensive part is covariance extraction.} Full
+Jacobian-propagated $R_t$ requires either existing analytic Jacobians or a
+Gauss--Newton approximation from the optimizer. The cheap precision builder
+\eqref{eq:cheapR} is a sensible first overlay.
+\item \textbf{Active MAP should not add a second fit pass by default.} The
+prediction prior is just another residual block in the existing least-squares
+stack. A diagnostic data-only prepass can improve $R_t$, but it should be an
+explicit setting just like Note~13's prior prepass.
+\item \textbf{State storage is small.} Per node, the state is $O(d^2)$: a mean,
+covariance and a few diagnostics. Even thousands of nodes are negligible.
+\item \textbf{Graph generalization is natural but later.} A graph Kalman filter
+would replace the per-node $P_t^-$ with a block covariance over the universe.
+That is Note~14's covariance-form posterior with time dynamics added; it should
+come after the single-node filter is validated.
+\end{enumerate}
+
+%======================================================================
+\section{Reference implementation}
+\label{app:ref}
+
+The numerical heart is small. The listing below is intentionally model-free: it
+assumes the caller has already built the prediction and measurement moments.
+
+\begin{lstlisting}[caption={Covariance-form Kalman update with Joseph covariance.}]
+def kalman_update(mean_pred, cov_pred, obs, obs_cov, H=None):
+    m = np.asarray(mean_pred, dtype=float)
+    P = np.asarray(cov_pred, dtype=float)
+    z = np.asarray(obs, dtype=float)
+    R = np.asarray(obs_cov, dtype=float)
+    H = np.eye(m.size) if H is None else np.asarray(H, dtype=float)
+
+    innovation = z - H @ m
+    S = H @ P @ H.T + R
+    K = np.linalg.solve(S.T, (P @ H.T).T).T
+
+    out_mean = m + K @ innovation
+    I_KH = np.eye(m.size) - K @ H
+    out_cov = I_KH @ P @ I_KH.T + K @ R @ K.T
+    out_cov = 0.5 * (out_cov + out_cov.T)
+    if np.any(np.linalg.eigvalsh(out_cov) < -1e-12):
+        raise FloatingPointError("posterior covariance lost PSD")
+    return out_mean, out_cov, innovation, S, K
+\end{lstlisting}
+
+The active calibration residual corresponding to \eqref{eq:active-map} is also
+small once the model exposes a handle extractor:
+
+\begin{lstlisting}[caption={Residual rows for the active MAP prediction prior.}]
+def prediction_prior_residual(model_handles, mean_pred, cov_pred):
+    L = np.linalg.cholesky(np.asarray(cov_pred, dtype=float))
+    return np.linalg.solve(L, np.asarray(model_handles) - np.asarray(mean_pred))
+\end{lstlisting}
+
+In production the Cholesky solve should use a small jitter and report it; adding
+jitter is a diagnostic event, not a silent repair.
+
+\begin{thebibliography}{9}
+\bibitem{Kalman1960} R.~E.~Kalman. A new approach to linear filtering and
+prediction problems. \emph{Journal of Basic Engineering}, 82(1):35--45, 1960.
+\bibitem{AndersonMoore1979} B.~D.~O.~Anderson and J.~B.~Moore.
+\emph{Optimal Filtering}. Prentice-Hall, 1979.
+\bibitem{Gelman2013} A.~Gelman et al. \emph{Bayesian Data Analysis}. CRC Press,
+3rd ed., 2013.
+\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface}. Wiley, 2006.
+\end{thebibliography}
+
+\end{document}

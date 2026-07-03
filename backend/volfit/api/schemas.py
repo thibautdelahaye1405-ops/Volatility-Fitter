@@ -245,6 +245,44 @@ class OptionsSettings(BaseModel):
         known = ["ATM", "skew", "curvature", "leftWing", "rightWing", "VarSwap"]
         kept = [f for f in known if f in set(v)]
         return kept or ["ATM", "skew", "curvature", "VarSwap"]
+
+    # ---- observation Kalman filter (Docs/kalman_filtering.tex, Note 15) --------
+    #: Temporal observation filter over the smile handles (ATM vol / skew /
+    #: curvature). ``off`` = feature absent (byte-identical); ``overlay`` =
+    #: predict/update per snapshot and DRAW the filtered state, calibration
+    #: untouched (the pilot mode); ``active`` = the Kalman prediction prior enters
+    #: the fit as a one-stage MAP residual block (note eq. active-map) — never a
+    #: second pass over the same quotes. Only the off<->active transition affects
+    #: fits (see set_options); overlay changes bump the lightweight filter version.
+    observationFilterMode: Literal["off", "overlay", "active"] = "off"
+    #: Measurement-covariance route (note §4): ``jacobian`` = R propagated from the
+    #: fit's solution Jacobian, R = rho * G (J^T W J)^+ G^T (eq. cov-delta) — the
+    #: default; ``factors`` = the cheap precision-factor builder (eq. cheapR),
+    #: kept as the fallback + A/B diagnostic.
+    filterCovarianceMode: Literal["jacobian", "factors"] = "jacobian"
+    #: ATM-level process noise in vol BP per sqrt(calendar day) (eq. Q clock term).
+    filterProcessVolBpSqrtDay: float = Field(10.0, ge=0.0, le=1000.0)
+    #: Skew / curvature process-noise scales per sqrt(calendar day).
+    filterProcessSkewSqrtDay: float = Field(0.02, ge=0.0, le=10.0)
+    filterProcessCurvSqrtDay: float = Field(0.05, ge=0.0, le=10.0)
+    #: Extra process std per unit |log-forward| transport distance (eq. Q spot term;
+    #: the same intuition as the prior-persistence transport factor).
+    filterTransportNoiseScale: float = Field(0.10, ge=0.0, le=10.0)
+    #: Inflate R by the realized fit inconsistency rho = clip(chi^2/(m-d), 1, cap)
+    #: (eq. resid-inflation) so a dense-but-contradictory cluster reads as noise.
+    filterResidualInflation: bool = True
+    #: Pilot safety cap on the diagonalized per-handle gains; 1.0 = no cap binding
+    #: in normal operation (the update itself keeps K in [0, 1] per handle).
+    filterMaxGain: float = Field(1.0, ge=0.0, le=1.0)
+    #: Maximum data gap (hours) the filter will PREDICT across; a longer gap resets
+    #: the state instead (reset_reason="stale"). Default spans a weekend + holiday.
+    filterResetHours: float = Field(96.0, gt=0.0, le=720.0)
+    #: Measurement pass: fit data-only first (persistence priors off) so z_t is a
+    #: clean market observation, then run the committed fit as usual. Off = reuse
+    #: the committed fit's handles and flag contamination (note §5.1; the same
+    #: cost trade-off as ``priorDataOnlyPrepass``).
+    filterDataOnlyPrepass: bool = False
+
     # local-vol-affine vertex grid + roughness (the single source of truth: the
     # affine fit reads these directly; the Local-Vol workspace has no own knobs).
     #: Strike-vertex placement: "delta" = the symmetric delta axis (dense near

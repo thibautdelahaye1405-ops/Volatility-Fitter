@@ -72,6 +72,26 @@ export interface OptionsSettings {
   priorFactorStrengthPct: number;
   /** Residual deep-tail strike-anchor budget in hybrid mode (% of quote weights). */
   priorTailAnchorStrengthPct: number;
+  /** Observation Kalman filter (Note 15): off = absent; overlay = draw the
+   *  filtered handles, calibration untouched; active = one-stage MAP prior. */
+  observationFilterMode: "off" | "overlay" | "active";
+  /** Measurement covariance route: Jacobian-propagated (default) or the cheap
+   *  precision-factor fallback (A/B diagnostic). */
+  filterCovarianceMode: "jacobian" | "factors";
+  /** ATM process noise, vol bp per sqrt(calendar day). */
+  filterProcessVolBpSqrtDay: number;
+  filterProcessSkewSqrtDay: number;
+  filterProcessCurvSqrtDay: number;
+  /** Extra process std per unit |log-forward| transport distance. */
+  filterTransportNoiseScale: number;
+  /** Inflate R by realized fit inconsistency chi^2/(m-d) (clipped). */
+  filterResidualInflation: boolean;
+  /** Pilot safety cap on per-handle gains (1 = not binding). */
+  filterMaxGain: number;
+  /** Max data gap (hours) predicted across; longer resets the state. */
+  filterResetHours: number;
+  /** Fit data-only first so the measurement is a clean market observation. */
+  filterDataOnlyPrepass: boolean;
   /** Strike-vertex placement: "delta" (dense near ATM, the default) or legacy
    *  "linear" uniform-in-x. */
   gridStrikeMode: "delta" | "linear";
@@ -148,6 +168,16 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   priorFactorSet: ["ATM", "skew", "curvature", "VarSwap"],
   priorFactorStrengthPct: 50.0,
   priorTailAnchorStrengthPct: 20.0,
+  observationFilterMode: "off",
+  filterCovarianceMode: "jacobian",
+  filterProcessVolBpSqrtDay: 10.0,
+  filterProcessSkewSqrtDay: 0.02,
+  filterProcessCurvSqrtDay: 0.05,
+  filterTransportNoiseScale: 0.1,
+  filterResidualInflation: true,
+  filterMaxGain: 1.0,
+  filterResetHours: 96.0,
+  filterDataOnlyPrepass: false,
   gridStrikeMode: "delta",
   gridXNodes: 12,
   gridTNodes: 10,

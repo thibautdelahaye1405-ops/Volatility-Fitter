@@ -186,6 +186,10 @@ class AppState(UniverseMixin):
         #: Global meta / UX settings + engine defaults (the Options workspace).
         self._options = OptionsSettings()
         self._options_version = 0  # bumped only when a fit-affecting field changes
+        #: Observation-filter overlay version (Note 15): bumped whenever ANY
+        #: filter knob changes so the overlay payload refreshes, WITHOUT busting
+        #: fit caches (only active-mode changes touch _options_version).
+        self._filter_version = 0
         #: Restore the user's saved Fit/Options defaults (the Options "Save as
         #: default" button) when a store is configured; code defaults otherwise.
         saved_fit, saved_options = load_defaults(self.store_path)
@@ -699,6 +703,13 @@ class AppState(UniverseMixin):
         with self._lock:
             return self._options
 
+    @property
+    def filter_version(self) -> int:
+        """Observation-filter overlay version (Note 15): keys the filter overlay
+        payload so a knob tweak refreshes the view without invalidating fits."""
+        with self._lock:
+            return self._filter_version
+
     def set_options(self, options: OptionsSettings) -> OptionsSettings:
         """Apply new meta settings. Calibration-affecting fields bump the options
         version (``calendarWeight``, the var-swap penalty knobs ``varSwapEnabled``
@@ -708,8 +719,37 @@ class AppState(UniverseMixin):
         read live and need no cache invalidation."""
         with self._lock:
             if options != self._options:
+                # Observation filter (Note 15): overlay-mode knobs must NOT bust
+                # the fit cache (the filter only reads fits in overlay), so filter
+                # fields join affects_fit only when the active-MAP fit changes —
+                # an off/overlay <-> active transition, or any knob while active.
+                _filter_knobs = (
+                    "filterCovarianceMode",
+                    "filterProcessVolBpSqrtDay",
+                    "filterProcessSkewSqrtDay",
+                    "filterProcessCurvSqrtDay",
+                    "filterTransportNoiseScale",
+                    "filterResidualInflation",
+                    "filterMaxGain",
+                    "filterResetHours",
+                    "filterDataOnlyPrepass",
+                )
+                filter_changed = options.observationFilterMode != (
+                    self._options.observationFilterMode
+                ) or any(
+                    getattr(options, f) != getattr(self._options, f)
+                    for f in _filter_knobs
+                )
+                was_active = self._options.observationFilterMode == "active"
+                is_active = options.observationFilterMode == "active"
+                filter_affects_fit = (was_active != is_active) or (
+                    is_active and filter_changed
+                )
+                if filter_changed:
+                    self._filter_version += 1
                 affects_fit = (
-                    options.calendarWeight != self._options.calendarWeight
+                    filter_affects_fit
+                    or options.calendarWeight != self._options.calendarWeight
                     or options.varSwapEnabled != self._options.varSwapEnabled
                     or options.varSwapWeightPct != self._options.varSwapWeightPct
                     or options.eventsEnabled != self._options.eventsEnabled
