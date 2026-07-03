@@ -23,20 +23,14 @@ from volfit.dynamics.ssr import shifted_smile
 from volfit.models.svi_jw.svi import RawSVI
 
 OUT = Path(__file__).resolve().parent
-plt.rcParams.update(
-    {
-        "figure.figsize": (7.2, 4.3),
-        "font.size": 11,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "lines.linewidth": 1.8,
-        "savefig.bbox": "tight",
-        "savefig.dpi": 200,
-    }
-)
-SLATE, TEAL, RUST, AMBER = "#334155", "#0f766e", "#b91c1c", "#b45309"
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from style import PALETTE, setup  # noqa: E402
+
+setup()
+SLATE, TEAL, RUST, AMBER = (PALETTE['muted'], PALETTE['teal'],
+                            PALETTE['rust'], PALETTE['amber'])
 RAW = RawSVI(a=0.0106, b=0.0729, rho=-0.5, m=0.0583, sigma=0.1010)
 T = 0.5
 REGIMES = [("sticky moneyness", 0.0, TEAL),

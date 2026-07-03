@@ -62,6 +62,20 @@ vega division recovers the vol-like loss for free. For the vol-space models
 exactly that. One residual concept, two implementations, identical units.
 \end{heuristic}
 
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item One objective vocabulary for every model: same residual units, same
+weight schemes, same band construction --- a mode or scheme change means the
+same thing on LQD, SVI, SIV and LV.
+\item Weights are mean-normalized to one, so switching schemes never silently
+re-tunes the data-versus-regularization balance.
+\item Inside the quoted band the fit pays only the small mid anchor ---
+the band never pushes, it only stops punishing.
+\item The reported RMS is the distance to the objective that was actually
+minimized, under the weights that were actually used.
+\end{enumerate}
+\end{invariant}
+
 %======================================================================
 \section{Observation weighting}
 \label{sec:weights}
@@ -158,12 +172,12 @@ monotone residual space --- implied vol for SVI/SIV, vega-normalized price for
 LQD/LV --- and the band-violation subgradient $\sgn$ feeds the analytic Jacobians.
 Both are one line:
 
-\begin{lstlisting}[caption={The two-sided band hinge and its subgradient (distilled
-from \texttt{calib/band.py}; match production exactly).},label={lst:band}]
-def band_violation(model, lo, hi):   # > 0 only outside [lo, hi]; exactly 0 inside
+\begin{lstlisting}[caption={The two-sided band hinge and its subgradient (from
+\texttt{calib/band.py}; match production exactly).},label={lst:band}]
+def band_violation(model, lo, hi):   # > 0 only outside [lo, hi]; 0 inside
     return np.maximum(model - hi, 0.0) + np.maximum(lo - model, 0.0)
 
-def band_sign(model, lo, hi):        # d(violation)/d(model): +1 above, -1 below, 0 inside
+def band_violation_sign(model, lo, hi):   # +1 above, -1 below, 0 inside
     return np.where(model > hi, 1.0, 0.0) - np.where(model < lo, 1.0, 0.0)
 \end{lstlisting}
 
@@ -217,6 +231,55 @@ mean-normalization that keeps regularization invariant across schemes --- and th
 plugs into every model's analytic Jacobian, so bid--ask fitting is a first-class
 mode rather than a bolt-on. Together they let the desk express ``fit what matters,
 to within the spread'' in two orthogonal knobs.
+
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.32\textwidth}p{0.11\textwidth}p{0.24\textwidth}p{0.29\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+Density-corrected weights match the design note's worked example &
+\eqref{eq:tvweights} &
+\nolinkurl{calib/weights.py} &
+\nolinkurl{test_weights.py::test_doc_worked_example}\\
+Uniform grid reduces to pure time value &
+\cref{sec:weights} &
+\nolinkurl{calib/weights.py} &
+\nolinkurl{test_weights.py::test_uniform_grid_reduces_to_time_value}\\
+Dense cluster down-weighted; mean-one normalization &
+\eqref{eq:tvweights} &
+\nolinkurl{calib/weights.py::resolve_weights} &
+\nolinkurl{test_weights.py::test_dense_region_downweighted}, \nolinkurl{::test_resolve_weights_equal_is_none_and_tv_is_mean_one}\\
+The scheme moves every model &
+invariant~1 &
+\nolinkurl{calib/weights.py} &
+\nolinkurl{test_weights.py::test_weight_scheme_moves_every_model}\\
+Band modes; haircut collapses gracefully to mid &
+\cref{sec:band} &
+\nolinkurl{calib/band.py::resolve_band} &
+\nolinkurl{test_band_fit.py::test_resolve_band_modes}, \nolinkurl{::test_haircut_default_is_half_vol_point}\\
+Zero residual inside the band &
+\eqref{eq:band} &
+\nolinkurl{calib/band.py} &
+\nolinkurl{test_band_fit.py::test_band_residuals_zero_inside_band}\\
+RMS mirrors the minimized objective &
+\cref{sec:rms} &
+\nolinkurl{calib/rms.py} &
+\nolinkurl{test_rms.py::test_mid_mode_is_weighted_rms_distance_to_mid}, \nolinkurl{::test_band_mode_zero_inside_band_distance_outside}\\
+Band-mode RMS never exceeds mid-mode; surface pooling &
+\cref{sec:rms} &
+\nolinkurl{calib/rms.py} &
+\nolinkurl{test_rms.py::test_band_mode_rms_not_above_mid_mode}, \nolinkurl{::test_surface_rms_pools_expiries}\\
+\bottomrule
+\end{longtable}
+\endgroup
 
 \appendix
 %======================================================================

@@ -22,20 +22,13 @@ import numpy as np
 from volfit.calib.weighted_time import weighted_variance_years
 
 OUT = Path(__file__).resolve().parent
-plt.rcParams.update(
-    {
-        "figure.figsize": (7.2, 4.3),
-        "font.size": 11,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "lines.linewidth": 1.8,
-        "savefig.bbox": "tight",
-        "savefig.dpi": 200,
-    }
-)
-TEAL, RUST, SLATE = "#0f766e", "#b91c1c", "#334155"
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from style import PALETTE, setup  # noqa: E402
+
+setup()
+TEAL, RUST, SLATE = PALETTE['teal'], PALETTE['rust'], PALETTE['muted']
 
 
 def main():

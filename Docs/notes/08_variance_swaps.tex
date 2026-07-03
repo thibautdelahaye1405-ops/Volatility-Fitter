@@ -64,6 +64,20 @@ control of Note~09, which constrains the wing \emph{slope} while the var-swap
 constrains the wing \emph{mass}.
 \end{heuristic}
 
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item One var-swap quote per node, model-independent, shared by the
+parametric and local-vol views, with its own undo/redo history.
+\item With no quote set (or the toggle off) every calibrator is
+byte-identical to the un-targeted fit.
+\item The model's own fair var-swap is computed by a route that is cheap
+\emph{inside} the optimizer loop --- never by replication against a curve
+that must be inverted per point.
+\item The weight is relative (a fraction of the node's option weight), so
+the target means the same thing on a 10-quote node and a 100-quote node.
+\end{enumerate}
+\end{invariant}
+
 %======================================================================
 \section{The replication and the penalty}
 \label{sec:penalty}
@@ -122,11 +136,33 @@ converged well before the production half-width of $6$.}
 \label{sec:cheap}
 
 The penalty needs the \emph{model's} fair var-swap at every optimizer iteration.
-Doing that by the generic replication \eqref{eq:repl} is a trap: it calls the
-model's $\text{implied\_w}(k)$ on $\sim800$ points, and for LQD each such point is
-a Black inversion of a quadrature --- so a single Jacobian column triggers
-thousands of root finds and the fit takes minutes. Each model therefore supplies
-its \emph{own} cheap var-swap.
+
+\begin{example}[title={Case file: the fit that took minutes}]
+\textbf{Setup.} The first wiring of the var-swap penalty used the generic
+replication \eqref{eq:repl} for every model --- correct, uniform, and
+obviously fine, since the integral is just a trapezoid.
+
+\textbf{Failure mode.} LQD fits with a var-swap target went from milliseconds
+to \emph{minutes}, hanging the calibrate loop.
+
+\textbf{Diagnosis.} The replication calls the model's
+$\texttt{implied\_w}(k)$ on $\sim800$ points --- and for LQD each point is a
+Black \emph{inversion} of a quadrature-priced call. Inside a
+finite-difference Jacobian that is $\sim800$ root-finds \emph{per parameter
+column per iteration}: thousands of inversions to price one number the model
+knows in closed form.
+
+\textbf{Fix.} Per-model routes (below): LQD prices the log contract exactly
+as $-2\,\E[X]$ on its existing grid; SVI/SIV keep the replication because
+their $w(k)$ is arithmetic (evaluated, never solved); the LV surface gets a
+source PDE with analytic sensitivities.
+
+\textbf{Verdict.} The closed form agrees with the replication to
+\vsagreebp\ vol bps (validating both), and the var-swap penalty now costs
+essentially nothing in any model. The lesson generalizes: \emph{a uniform
+implementation is not a virtue when the models' native objects differ ---
+route each model through what it already computes.}
+\end{example}
 
 \subsection{LQD: the exact closed form}
 
@@ -213,6 +249,51 @@ weighting (a fraction of the node's option weight) keeps the target scale-free
 across nodes with very different quote counts. Together they make one extra global
 constraint cost essentially nothing.
 
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.32\textwidth}p{0.11\textwidth}p{0.24\textwidth}p{0.29\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+Penalty pulls every model toward the quote &
+\eqref{eq:vs_resid} &
+\nolinkurl{calib/varswap.py} &
+\nolinkurl{test_varswap.py::test_penalty_pulls_model_varswap_toward_quote_all_models}\\
+No target / disabled is byte-identical &
+invariant~2 &
+\nolinkurl{calib/varswap.py} &
+\nolinkurl{test_varswap.py::test_none_target_is_byte_identical}, \nolinkurl{::test_disabling_varswap_drops_the_penalty}\\
+Weight strength monotone &
+\eqref{eq:vs_resid} &
+\nolinkurl{calib/varswap.py} &
+\nolinkurl{test_varswap.py::test_weight_strength_monotone}\\
+Session set/exclude/undo/redo &
+invariant~1 &
+\nolinkurl{api/varswap_session.py} &
+\nolinkurl{test_varswap.py::test_session_set_exclude_include_remove}, \nolinkurl{::test_session_undo_redo_and_validation}\\
+LV fit carries and honours the quote &
+\cref{sec:cheap} &
+\nolinkurl{api/affine_fit.py} &
+\nolinkurl{test_varswap.py::test_affine_fit_carries_and_honours_varswap}\\
+Source PDE matches static; analytic sensitivities &
+\eqref{eq:source_pde} &
+\nolinkurl{models/localvol/varswap_pde.py} &
+\nolinkurl{test_varswap_source.py::test_source_pde_value_matches_static}, \nolinkurl{::test_source_pde_theta_sensitivity_matches_fd}\\
+LQD closed form (the case-file fix) &
+\eqref{eq:lqd_vs} &
+\nolinkurl{models/lqd/quadrature.py::var_swap_strike} &
+\nolinkurl{test_varswap.py} (all-models pull), agreement figure \vsagreebp\ bp\\
+\bottomrule
+\end{longtable}
+\endgroup
+
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
@@ -223,7 +304,8 @@ constraint cost essentially nothing.
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
 \multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
-\texttt{varSwapEnabled} & off & Master toggle for the var-swap target.\\
+\texttt{varSwapEnabled} & \texttt{true} & Master toggle (surfaces the var-swap
+level); the penalty itself activates only when a quote is set on the node.\\
 \texttt{varSwapWeightPct} & $10\%$ & Var-swap weight as a fraction of node option weight.\\
 \texttt{varSwapMethod} (LV) & \texttt{static} & Replication or source-PDE pricer.\\
 \midrule

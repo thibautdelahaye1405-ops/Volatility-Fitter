@@ -151,6 +151,30 @@ Each note: commit after it compiles clean with its figures.
   seeding wording fixed (α=clip(residual,−1,1)). Invariant boxes +
   traceability tables added to both; gen_svi/gen_siv restyled via style.py.
   Next: 06/07/08/11/12 polish, then 00, 01 lightly.
+- **2026-07-03 — Notes 06/07/08/11/12 polished** (batch; pass now 12/15).
+  All five gained invariant boxes + traceability tables with exact test
+  anchors, and their five generators now run through figures/style.py.
+  Note 06: case file "the delayed feed that gapped the ATM smile"
+  (commit 57ed482: Massive SPY D 1.01–1.015 live; incl. the FAILED
+  rate-anchor attempt that jagged the discount TS, regressed the LV benchmark
+  and deadlocked state.forwards); all four dividend modes documented
+  (proportional + mixed were missing); atlas constants filled
+  (OUTLIER_NSIGMA=4, MAX_TRIM_ROUNDS=3, ATM_KERNEL_H=0.10,
+  DEAM_REFINE_BAND=0.15, MAX_DEAM_ITERS=6); clamp listing honestly labeled
+  simplified (production _forward_at_discount is quality-weighted).
+  Note 07: band_sign → band_violation_sign (caption claimed exact match).
+  Note 08: case file "the fit that took minutes" (replication-in-the-Jacobian
+  trap → per-model routes; the memory's "158s" figure is NOT in the repo and
+  was not introduced); varSwapEnabled default corrected to true.
+  Note 11: listing renamed weighted_variance_years; remark separating the
+  production clock from the legacy event_time.EventClock and flagging the
+  stale weight="years" docstrings (day semantics is correct + test-locked).
+  Note 12: sign conventions fixed once (assumption block: h>0 = forward up,
+  k vs prevailing forward, curve-vs-quote distinction) + the classic
+  curve-k+δ vs quote-k−h sign-trap caution; agent audit confirmed every
+  boxed formula matches code sign-for-sign; honest gap noted
+  (affine_transport composite has no dedicated unit test).
+  Remaining: 00 rewrite last, 01 lightly.
 
 - **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
   updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and

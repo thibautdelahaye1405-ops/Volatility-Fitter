@@ -27,20 +27,14 @@ from volfit.models.lqd.calibrate import calibrate_slice
 from volfit.models.svi_jw.svi import RawSVI
 
 OUT = Path(__file__).resolve().parent
-plt.rcParams.update(
-    {
-        "figure.figsize": (7.2, 4.3),
-        "font.size": 11,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "lines.linewidth": 1.8,
-        "savefig.bbox": "tight",
-        "savefig.dpi": 200,
-    }
-)
-TEAL, RUST, SLATE, AMBER = "#0f766e", "#b91c1c", "#334155", "#b45309"
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from style import PALETTE, setup  # noqa: E402
+
+setup()
+TEAL, RUST, SLATE, AMBER = (PALETTE['teal'], PALETTE['rust'],
+                            PALETTE['muted'], PALETTE['amber'])
 RAW = RawSVI(a=0.0106, b=0.0729, rho=-0.5, m=0.0583, sigma=0.1010)
 
 

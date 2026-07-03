@@ -57,6 +57,21 @@ clock is the change of variable that restores $w=\sigma^2\tau$ with a constant
 $\sigma$.
 \end{heuristic}
 
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Price preservation.} The clock never touches $w(k)$; it changes
+only the volatility read-off $\sqrt{w/\tau}$. Adding an event cannot change an
+option price, hence cannot introduce arbitrage.
+\item With an empty calendar, $\tau=t$ exactly and the entire downstream
+pipeline is byte-identical.
+\item Every consumer --- every fit, the LV surface, the term structure, the
+table --- reads the \emph{same} $\tau$; there is one variance clock per node,
+not one per view.
+\item Editing the calendar refits only the affected ticker (per-ticker events
+version).
+\end{enumerate}
+\end{invariant}
+
 %======================================================================
 \section{The variance clock}
 \label{sec:clock}
@@ -78,14 +93,15 @@ The clock \eqref{eq:clock}, with the optional $1$Y-budget normalization, is dire
 (matches production to $10^{-12}$):
 
 \begin{lstlisting}[caption={The event variance clock $\tau(t)$ \eqref{eq:clock}
-(distilled from \texttt{calib/weighted\_time.py}).},label={lst:clock}]
-def variance_years(t_cal, events, normalize=False, dpy=365.0):   # events: (t_e, N_e) pairs
-    if t_cal <= 0: return t_cal
-    tau_days = t_cal*dpy + sum(N for te, N in events if te <= t_cal and N > 0)   # add event days
-    if normalize:                                    # rescale so a 1Y budget stays dpy days
+(distilled from \texttt{calib/weighted\_time.py::weighted\_variance\_years}).},
+label={lst:clock}]
+def weighted_variance_years(t_cal, events, normalize=False, dpy=365.0):
+    if t_cal <= 0: return t_cal          # events: (t_e, N_e) pairs, N_e = extra days
+    tau_days = t_cal*dpy + sum(N for te, N in events if te <= t_cal and N > 0)
+    if normalize:                        # rescale so a 1Y budget stays dpy days
         e1 = sum(N for te, N in events if te <= 1.0 and N > 0)
         tau_days *= dpy/(dpy + e1)
-    return tau_days/dpy                              # tau(t); equals t_cal with no events
+    return tau_days/dpy                  # tau(t); equals t_cal with no events
 \end{lstlisting}
 
 \begin{figure}[H]
@@ -143,9 +159,25 @@ of a fixed annual budget.
 \section{How it threads the pipeline}
 \label{sec:thread}
 
-The dual clock is prepared once per node: \texttt{weighted\_variance\_years} gives
-$\tau$, and every fit (parametric and local-vol), the local-vol grid, the term
-structure and the option table consume $\tau$ in place of $t$. Total variance is
+The dual clock is prepared once per node by the clock of \cref{lst:clock}:
+$\tau$ is stored as \texttt{prepared.tau} beside the calendar
+\texttt{prepared.t}, and every fit (parametric and local-vol), the local-vol
+grid, the term structure and the option table consume $\tau$ in place of
+$t$.
+
+\begin{remark}[One production clock, one legacy clock, one unit trap]
+Two dilation clocks exist in the codebase and must not be conflated. The
+production clock is \texttt{calib/weighted\_time.py} --- day-weighted, exactly
+\eqref{eq:clock}, the one every fit consumes. The older
+\texttt{calib/event\_time.py} (\texttt{EventClock}) survives only for
+term-structure interpolation. And the unit trap: the \texttt{EventSpec}
+schema docstring (and the legacy clock's) still describe \texttt{weight} in
+\emph{years} of extra diffusion time, but production consumes it as
+\emph{extra equivalent days} --- confirmed both by the call site (the pairs
+feed \eqref{eq:clock} directly) and by the auto-calibrator, which constructs
+\texttt{EventSpec(weight=days)}. The day semantics documented here is the
+correct, test-locked one; the code comments are the stale party.
+\end{remark} Total variance is
 interpolated \emph{linearly in $\tau$} between quoted nodes --- flat forward
 variance per weighted-time unit --- so the dense vol curve $\sqrt{w/\tau}$ stays
 bounded near zero and sensible past the last expiry. The term-structure view uses
@@ -168,6 +200,47 @@ intuitive number (extra equivalent days) that a desk can quote and reason about,
 with an optional budget normalization \eqref{eq:normalize} that cleanly separates
 ``extra variance'' from ``reallocated variance''. And the byte-identical fallback
 when the calendar is empty means the feature is strictly additive.
+
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.34\textwidth}p{0.10\textwidth}p{0.23\textwidth}p{0.29\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+No events: identity clock, byte-identical pipeline &
+invariant~2 &
+\nolinkurl{calib/weighted_time.py} &
+\nolinkurl{test_weighted_time.py::test_no_events_is_identity}, \nolinkurl{::test_no_event_byte_identical}\\
+Event adds day weights before its date only &
+\eqref{eq:clock} &
+\nolinkurl{calib/weighted_time.py} &
+\nolinkurl{test_weighted_time.py::test_event_before_adds_day_weights}\\
+Price preservation: IV drops by $\sqrt{t/\tau}$ &
+\eqref{eq:workvol} &
+\nolinkurl{api/service.py}, \nolinkurl{api/displayed.py} &
+\nolinkurl{test_weighted_time.py::test_event_lowers_iv_by_sqrt_t_over_tau}, \nolinkurl{::test_localvol_iv_drops_with_event}\\
+Normalization pins the one-year budget &
+\eqref{eq:normalize} &
+\nolinkurl{calib/weighted_time.py} &
+\nolinkurl{test_weighted_time.py::test_normalization_pins_one_year}, \nolinkurl{::test_normalization_keeps_one_year_vol}\\
+Surface mesh shares the smile's clock &
+\cref{sec:thread} &
+\nolinkurl{api/affine_views.py} &
+\nolinkurl{test_surface_clock.py::test_surface_mesh_uses_variance_clock_like_the_smile}\\
+Legacy clock confined to term interpolation &
+remark &
+\nolinkurl{calib/event_time.py} &
+\nolinkurl{test_event_time.py::test_interpolation_lumps_event_variance}\\
+\bottomrule
+\end{longtable}
+\endgroup
 
 \appendix
 %======================================================================

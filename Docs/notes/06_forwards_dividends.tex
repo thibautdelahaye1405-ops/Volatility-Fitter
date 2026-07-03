@@ -54,6 +54,20 @@ below is about extracting the forward where the data is informative (the price
 level) and refusing to trust it where it is not (the slope on a stale feed).
 \end{heuristic}
 
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item On a clean chain, every robustness device is byte-identical to the plain
+parity regression --- the clamp, the trim loop and the de-bias only engage on
+demonstrably bad inputs.
+\item The implied rate never leaves a physical band; when the slope is
+untrustworthy, the forward is re-derived from the well-identified price level.
+\item The discount is \emph{held} through the American de-bias --- the two
+corrections never fight over the same parameter.
+\item Editing a name's rate or dividends bumps only that ticker's forwards
+version: one name's noise never refits the universe.
+\end{enumerate}
+\end{invariant}
+
 %======================================================================
 \section{The parity regression}
 \label{sec:parity}
@@ -75,8 +89,10 @@ by the discount. In code it is a one-line least squares (this recovers a known
 forward/discount to $10^{-6}/10^{-9}$ and equals the production regression to
 $10^{-9}$):
 
-\begin{lstlisting}[caption={Put--call parity regression for the forward and discount
-\eqref{eq:regress} (distilled from \texttt{data/forwards.py}).},label={lst:parity}]
+\begin{lstlisting}[caption={Put--call parity regression for the forward and
+discount \eqref{eq:regress} --- distilled from \texttt{data/forwards.py}
+(production's \texttt{\_fit} uses \texttt{lstsq} inside an outlier-trim loop
+and takes the snapshot, not raw arrays).},label={lst:parity}]
 def implied_forward(K, call_mid, put_mid):
     y = call_mid - put_mid              # C - P = D F - D K = a + b K
     b, a = np.polyfit(K, y, 1)          # slope b = -D, intercept a = D F
@@ -121,11 +137,43 @@ The fix, when a reference date pins the year fraction, is to clamp the
 parity-implied rate $r=-\log D/T$ to a physical band
 $[\text{\fwdratemin}\%,\text{\fwdratemax}\%]$. Clean chains sit strictly inside the
 band and are byte-identical. When the clamp bites, the forward is \emph{re-derived
-from the well-identified price level} at the clamped discount, rather than from the
-tilted slope --- so the robust forward keeps the good information (the level) and
-discards the bad (the runaway slope). A final sanity bound $|\log(F/S)|<\text{FWD\_CLAMP\_LOG}=0.5$
-falls back to spot if even the level is unusable. \Cref{fig:clamp} shows the
-implied rate leaving the band as the slope is perturbed and the clamp pinning it.
+from the well-identified price level} at the clamped discount --- a per-strike
+average of $K+(C-P)/D$ weighted by quote quality (tighter spreads and
+near-ATM strikes count more, kernel width $0.10$ in log-moneyness) --- rather
+than from the tilted slope. So the robust forward keeps the good information
+(the level) and discards the bad (the runaway slope). A final sanity bound
+$|\log(F/S)|<\text{FWD\_CLAMP\_LOG}=0.5$ falls back to spot if even the level
+is unusable. \Cref{fig:clamp} shows the implied rate leaving the band as the
+slope is perturbed and the clamp pinning it.
+
+\begin{example}[title={Case file: the delayed feed that gapped the ATM smile}]
+\textbf{Setup.} Live SPY on the Massive delayed feed; also reproduced on a
+Bloomberg fixture. Quotes are individually sane but collectively stale ---
+mids drift asynchronously across strikes.
+
+\textbf{Failure mode.} The parity regression returned discounts of
+$1.01$--$1.015$ live (up to $1.024$ on the fixture): an implied \emph{negative}
+rate. The tilted slope dragged the forward, and every ATM smile showed the
+telltale gap between the put and call sides.
+
+\textbf{The failed first fix.} Anchoring the \emph{rate} per expiry to a
+smoothed term structure looked principled --- and broke everything: the
+per-expiry discounts came out jagged, the LV benchmark regressed, and the
+attempt deadlocked \texttt{state.forwards}. Reverted. The lesson: do not
+repair the ill-identified parameter by making it a fitted object with even
+more structure; \emph{stop trusting it}.
+
+\textbf{Fix.} The clamp above: pin the rate to the physical band, re-derive
+the forward from the quality-weighted price level, keep spot as the last
+resort. The discount stays exactly what parity gave whenever it is physical.
+
+\textbf{Verdict (test-locked).} Clean chains recovered to truth and
+unclamped (byte-identical); stale-wing chains that break the unclamped
+regression stay sane under the clamp; zero-spread close-like data still
+resolves; and with no reference date (year fraction unknown) the clamp
+correctly stands down. The residual ATM jitter that remains on the delayed
+feed is feed noise, not the forward.
+\end{example}
 
 \begin{figure}[H]
 \centering
@@ -141,19 +189,24 @@ $[\fwdratemin\%,\fwdratemax\%]$ and the forward is re-derived from the price lev
 \label{sec:divs}
 
 The carry that links spot to forward, $F=S\,e^{(r-q)T}$, must account for
-dividends. Two treatments coexist (Note~05 uses the same machinery for the pricing
+dividends. Four modes coexist (Note~05 uses the same machinery for the pricing
 tree):
 \begin{itemize}[leftmargin=1.4em]
 \item \textbf{Discrete cash} (\texttt{discrete\_absolute}): a schedule of ex-dates
-and cash amounts, priced by the escrowed-spot method --- the present value of
-dividends in $(0,T]$ is stripped from the spot to form the diffusing lattice, and
-early exercise is evaluated against the actual cum-dividend spot.
+and cash amounts, priced by the escrowed-spot method ---
+$F=(S-\sum_iD_ie^{-r\tau_i})\,e^{rT}$ --- with early exercise evaluated
+against the actual cum-dividend spot.
+\item \textbf{Discrete proportional} (\texttt{discrete\_proportional}): ex-date
+percentage haircuts, for names that quote dividends as yields per event.
 \item \textbf{Continuous yield} (\texttt{continuous}): a constant $q$, a crude but
-cheap proxy for far-dated proportional dividends, and a coexisting tail when
-combined with a discrete near schedule.
+cheap proxy for far-dated proportional dividends.
+\item \textbf{Mixed} (\texttt{mixed}): discrete cash for near ex-dates,
+switching to a proportional/continuous tail beyond a horizon
+(\texttt{switch\_years}) --- the realistic single-name default shape.
 \end{itemize}
-The dividend mode is per ticker, editable, and feeds both the forward carry and the
-de-Americanization tree.
+The dividend mode is per ticker and editable; it feeds both the forward carry
+and the de-Americanization tree, and an equivalent-yield round trip across all
+four modes is test-locked.
 
 %======================================================================
 \section{American de-bias}
@@ -190,6 +243,55 @@ circularity at the fixed point that quote prep actually uses, with the discount
 held so the two corrections do not fight. Both are byte-identical on clean data, so
 the robustness costs nothing when it is not needed.
 
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.32\textwidth}p{0.11\textwidth}p{0.25\textwidth}p{0.28\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+Clean chain: truth recovered, clamp inert (byte-identical) &
+\cref{sec:clamp} &
+\nolinkurl{data/forwards.py} &
+\nolinkurl{test_forward_robust.py::test_clean_chain_recovered_to_truth_and_unclamped}\\
+Stale wings break the raw regression; clamp stays sane &
+case file &
+\nolinkurl{data/forwards.py} &
+\nolinkurl{test_forward_robust.py::test_stale_wings_break_unclamped_but_clamp_stays_sane}\\
+No reference date $\Rightarrow$ clamp stands down &
+\cref{sec:clamp} &
+\nolinkurl{data/forwards.py} &
+\nolinkurl{test_forward_robust.py::test_no_reference_date_skips_clamp}\\
+De-bias holds the discount, smooths the forward &
+\cref{sec:debias} &
+\nolinkurl{data/forwards.py} (\nolinkurl{_refine_american}) &
+\nolinkurl{test_forward_debias.py::test_debias_holds_discount_debiases_forward_and_smooths}\\
+No localized ATM spike after de-bias &
+\cref{sec:why} &
+\nolinkurl{data/forwards.py} &
+\nolinkurl{test_forward_debias.py::test_debiased_smile_has_no_localized_atm_spike}\\
+European chains unaffected by the de-bias &
+\cref{sec:debias} &
+\nolinkurl{data/forwards.py} &
+\nolinkurl{test_forward_debias.py::test_european_chain_unaffected_by_reference_date}\\
+All four dividend modes; equivalent-yield round trip &
+\cref{sec:divs} &
+\nolinkurl{data/dividends.py} &
+\nolinkurl{test_dividends.py::test_equivalent_yield_round_trips_every_mode}, \nolinkurl{::test_mixed_forward_switches_at_horizon}\\
+Per-ticker forwards version scoping &
+invariant~4 &
+\nolinkurl{api/state.py} &
+\nolinkurl{test_api_forwards.py::test_parity_defaults_cover_the_ladder}\\
+\bottomrule
+\end{longtable}
+\endgroup
+
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
@@ -209,8 +311,13 @@ the robustness costs nothing when it is not needed.
 \texttt{RATE\_MIN/MAX} & $[\fwdratemin\%,\fwdratemax\%]$ & Physical band for the parity-implied rate (clamp).\\
 \texttt{FWD\_CLAMP\_LOG} & $0.5$ & Sanity bound on $|\log(F/S)|$; else fall back to spot.\\
 \texttt{MIN\_PAIRED\_STRIKES} & $3$ & Minimum paired strikes for a parity fit.\\
-\texttt{DEAM\_REFINE\_BAND} & near-ATM & Strike band entering the de-bias iteration.\\
-\texttt{MAX\_DEAM\_ITERS} & few & De-bias fixed-point iterations.\\
+\texttt{OUTLIER\_NSIGMA} / \texttt{MAX\_TRIM\_ROUNDS} & $4$ / $3$ & Residual
+trim threshold and iteration cap in the parity fit.\\
+\texttt{ATM\_KERNEL\_H} & $0.10$ & ATM Gaussian kernel width in the
+level-re-derivation quality weights.\\
+\texttt{DEAM\_REFINE\_BAND} & $0.15$ & Log-moneyness band entering the de-bias
+iteration.\\
+\texttt{MAX\_DEAM\_ITERS} & $6$ & De-bias fixed-point iterations.\\
 \bottomrule
 \end{longtable}
 
@@ -230,8 +337,11 @@ when it bites, re-derives the forward as a per-strike average $F=\operatorname{m
 (K+(C-P)/D)$ (the well-identified \emph{level}) rather than the slope-driven $a/b$,
 so the forward no longer inherits the bad slope.
 
-\begin{lstlisting}[caption={The discount clamp and forward re-derivation (distilled
-from \texttt{data/forwards.py}).}]
+\begin{lstlisting}[caption={The discount clamp and forward re-derivation ---
+simplified from \texttt{data/forwards.py}, where the clamp is inline in
+\texttt{implied\_forward} and the level mean is the quality-weighted
+\texttt{\_forward\_at\_discount} (spread $\times$ ATM kernel), with the spot
+fallback of \cref{sec:clamp}.}]
 def clamp_forward(K, call_mid, put_mid, t, F, D, r_lo=-0.05, r_hi=0.30):
     r = -np.log(D)/t                     # the parity discount's implied rate
     if r_lo <= r <= r_hi:
