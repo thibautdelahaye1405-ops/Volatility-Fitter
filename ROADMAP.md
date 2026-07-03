@@ -8,7 +8,44 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-06-26 (resume here)
+## STATUS — updated 2026-07-03 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
+
+Docs + backtest session; all on **main** and pushed (through `fe5feb4`).
+
+- **R6 landed on main.** The Multi-Core SIV 2-core cap + put-wing Durrleman
+  regularizer (`sivWingPenaltyPct`, FINDINGS_calibration_arb R6) is now on main
+  (cherry-pick `556cf64` + docs merge `45c8a4a`), completing the R1–R6 roadmap.
+- **R3×R6 ablation — NEW** (`backend/backtest/ablation_arb.py` +
+  `tests/test_ablation_arb.py` + `backtest/FINDINGS_ablation_arb.md`). R3 (convex
+  de-Am of the call INPUTS) and R6 (put-wing penalty on the SIV OUTPUT) defend the
+  same F4 put-wing butterfly from opposite ends, both default-on — redundant? Fits
+  SIV-2 per American node under the 2×2 `{R3}×{R6}`, reads arb from the analytic
+  Durrleman g on a grid extended ±2 ATM-std into the wing, scoped to the arb-prone
+  population. `ablate_node` is fixture-independent (test drives it on a synthetic
+  American chain; CLI `--no-oos` default + `--max-days` bound foreground runs —
+  BACKGROUND JOBS GET KILLED on this box, so run foreground in ~2-day chunks,
+  ~1.9 min/fixture). **VERDICT: COMPLEMENTARY, not redundant** (captured spike
+  EEM/EFA 2d, 38 arb-prone; AAPL/NVDA/JPM contrast): R3 cuts arb ~3× AND *improves*
+  in-RMS 92→25 bp (removes the arbitraged de-Am input the SIV chased), byte-identical
+  on liquid names (gating confirmed on real data); R6 eliminates the arb but 749 bp
+  alone; **`both` = R6's arb removal at 225 bp — R3 makes R6 affordable, validating
+  both shipping default-on.** Caveat: 2-day slice; the ±2z grid is harsher than the
+  R6 note's metric. Follow-up: sweep `sivWingPenaltyPct` on illiquid names now R3
+  absorbs most of the need; rerun the ablation on `high_oct2022` / `low_jul2023`.
+- **Technical notes (`Docs/notes/`) synced + augmented.** (1) Notes 03/05/09/00 now
+  document R6 (cap + put-wing penalty + hybrid Jacobian), R3 (the convex de-Am wing
+  repair), and the ablation verdict — fully cross-consistent (incl. the confinement-
+  vs-intrinsic-constraint reconciliation in Note 09). (2) **Verified code snippets
+  added to all 15 notes** — inline crux (≤15 lines) + a fuller Appendix C where
+  warranted, each distilled from the production module and EXECUTED against it
+  (agreement 1e-10…1e-15). All PDFs rebuilt clean with `latexmk`.
+
+**Next up (unchanged priority):** the **25-asset capture** (lights the dormant
+name→name / sector-ETF graph edges AND gives cross-asset extrapolation a fair test)
++ lower dark-node baseline precision in `graph/precision.py`; rerun temporal +
+ablation across `high_oct2022` / `low_jul2023`; then graph Phase 10 sparse perf.
 
 ### 🧭 SESSION WRAP (2026-06-26) — graph leave-one-out backtest (Phase 6) BUILT
 

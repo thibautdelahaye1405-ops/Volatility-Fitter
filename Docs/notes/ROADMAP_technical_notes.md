@@ -67,3 +67,16 @@ Total ≈ 280–360 pp.
 9. **14 Graph Extrapolation** (capstone).
 
 Each note: commit after it compiles clean with its figures.
+
+## Post-series updates
+
+- **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
+  updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and
+  put-wing Durrleman regularizer (`sivWingPenaltyPct`), the de-Americanization
+  wing-convexity repair, and the R3×R6 ablation verdict (complementary, not
+  redundant). (2) **Verified code snippets were added to all 15 notes** — an inline
+  crux (≤15 lines) beside the central equation plus a fuller *Appendix C — Reference
+  implementation* where warranted, ≤50 lines/note, numpy/scipy only. Each snippet is
+  distilled from the production module and **executed** against it (agreement
+  1e-10…1e-15); the standalone verifiers are session scratch, not committed. All PDFs
+  rebuilt clean with `latexmk`.
