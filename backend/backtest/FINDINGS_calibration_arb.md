@@ -272,3 +272,12 @@ earns its place at all, which the precision data alone already calls into questi
 **Status (2026-06-29): ALL ITEMS COMPLETE.** R1 ✅, R2 ✅, R3 ✅ (wing-only de-Am
 redesign), R4 ✅ (SVI analytic Jacobian ~2.6×), R5 ✅ (SIV analytic Jacobian ~2–2.8×/
 core), R6 ✅ (SIV menu capped at 2 cores + put-wing Durrleman regularizer, `sivWingPenaltyPct`).
+
+**Follow-up (2026-07-03): R3 × R6 ablation → `FINDINGS_ablation_arb.md`.** R3 and R6
+defend the same put-wing pathology from opposite ends (input repair vs output penalty),
+so the 2×2 `{R3}×{R6}` was run on the captured illiquid ETFs to isolate each. **Verdict:
+complementary, not redundant.** R3 cuts the arb ~3× AND *improves* in-sample RMS (92→25
+bp — it removes arbitraged de-Am input the SIV was chasing) and is byte-identical on
+liquid names (gating confirmed); R6 eliminates the violation but costs 749 bp alone;
+**`both` reaches R6's arb removal at 225 bp — R3 makes R6 affordable, validating both
+shipping default-on.**

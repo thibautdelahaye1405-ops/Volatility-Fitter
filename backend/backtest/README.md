@@ -35,6 +35,7 @@ engine but changes none of it.
 | `dispatch.py` | uniform per-model fit + precision/speed/arb metrics. |
 | `run_compute.py` | compute-phase driver (parametric sweep + `--lv` surface). |
 | `analyze.py` | model Pareto vs SVI-JW, time attribution, break inventory → markdown. |
+| `ablation_arb.py` | R3 (convex de-Am) × R6 (put-wing penalty) ablation on SIV wing arb. |
 
 ## Run / resume (Windows, repo root)
 
@@ -134,6 +135,27 @@ signal beat the mechanical spot-transport?).
   (AAPL/NVDA/JPM), so the ETF→name and name→name edge classes are **dormant** — only
   Index→name + calendar are exercised. The full name→name / sector tests need the
   25-asset capture.
+
+## R3 × R6 wing-arb ablation (`ablation_arb.py`, FINDINGS follow-up)
+
+R3 (`volfit/calib/convex_deam.py`, convex de-Am of the call *inputs*) and R6
+(`models/sigmoid/calibrate.py` `wing_penalty`, the put-wing Durrleman penalty on the
+SIV *output*) both defend the SAME F4 put-wing butterfly pathology from opposite ends,
+and both ship default-on. This isolates which one actually removes the arb by fitting
+every American node under the 2×2 `{R3 off/on} × {R6 off/on}` → `neither / R3 / R6 /
+both` and measuring the model's **analytic** Durrleman g (no FD noise, the R2 lesson)
+on a grid extended ±2 ATM-std past the traded range (the F4 region), alongside in- and
+leave-every-3rd-out RMS so the precision **cost** of each defence sits next to the arb
+it removes. The aggregate scopes to the **arb-prone** population (nodes whose `neither`
+cell is materially arbitraged) and reports a per-cell repair fraction (the attribution).
+
+    python -m backtest.ablation_arb --regime spike_aug2024
+    python -m backtest.ablation_arb --regime spike_aug2024 --assets EEM,EFA --cores 2
+
+Writes `results/<regime>_ablation_arb.json`. `ablate_node` is fixture-independent (takes
+a live `AppState`), so `tests/test_ablation_arb.py` drives it on a synthetic American
+chain (real de-Am) plus deterministic aggregation/grid unit tests. Findings:
+`FINDINGS_ablation_arb.md`.
 
 ## Status
 
