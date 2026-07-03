@@ -115,6 +115,18 @@ $\Black(k,w)=C_T(k)$; the fitter inverts it by a vectorized scheme rather than a
 scalar root-find per strike.
 \end{definition}
 
+This one primitive underlies every model in the series; in normalized form it is a
+handful of lines (matches production to $10^{-12}$):
+
+\begin{lstlisting}[caption={The normalized Black call $\Black(k,w)$ --- the shared
+pricing primitive (distilled from \texttt{core/black.py}).},label={lst:black}]
+def black_call(k, w):                       # k = log(K/F), w = total variance sigma^2 T
+    sq = np.sqrt(w)
+    dp = -k/sq + 0.5*sq                      # d_+;  d_- = d_+ - sqrt(w)
+    price = norm_cdf(dp) - np.exp(k)*norm_cdf(dp - sq)
+    return np.where(w > 1e-12, price, np.maximum(1 - np.exp(k), 0.0))  # intrinsic at w->0
+\end{lstlisting}
+
 Three conventions deserve emphasis because they recur:
 \begin{itemize}[leftmargin=1.4em]
 \item \textbf{Two clocks.} Calendar time $t$ (year-fraction to expiry) and

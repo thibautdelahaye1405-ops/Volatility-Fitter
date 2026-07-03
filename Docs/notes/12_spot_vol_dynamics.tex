@@ -72,7 +72,15 @@ transports the smile to new-forward moneyness $k$ by
 The first term is a \emph{sticky-strike re-indexing} (a strike that was at
 moneyness $k+\delta$ before the move is at moneyness $k$ after it); the second is a
 uniform \emph{level adjustment} that dials in the desired ATM response while
-preserving the smile shape.
+preserving the smile shape. The transport \eqref{eq:shift} is literally one line
+(matches production to $10^{-13}$):
+
+\begin{lstlisting}[caption={The SSR smile transport \eqref{eq:shift} for any
+regime (distilled from \texttt{dynamics/ssr.py}).},label={lst:ssr}]
+def shifted_smile(k, vol_curve, atm_skew, spot_return, ssr):
+    d = np.log1p(spot_return)                        # delta = log(F_new / F_old)
+    return vol_curve(k + d) + (ssr - 1.0)*atm_skew*d  # sticky-strike reindex + level adj
+\end{lstlisting}
 
 \begin{proposition}[ATM response]
 \label{prop:atm}

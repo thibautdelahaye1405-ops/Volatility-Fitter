@@ -91,7 +91,17 @@ and $\pi^{\text{req}}_j$ the precision at which the prior should switch off. Whe
 the data meets or exceeds the requirement, $\mathrm{gap}_j=0$ and the prior
 contributes \emph{nothing}; when the data says nothing, $\mathrm{gap}_j\to1$ and
 the prior is at full strength. The exponent $\gamma$ sharpens the transition.
-\Cref{fig:gate} plots it.
+\Cref{fig:gate} plots it. The gate and the prior precision it produces are two lines
+(matches production to $10^{-13}$):
+
+\begin{lstlisting}[caption={The universal activation gate \eqref{eq:gap} and the
+gated prior precision (distilled from \texttt{calib/precision.py}).},label={lst:gate}]
+def activation_gap(obs, req, gamma=1.0):     # 1 where data says nothing, 0 where it identifies
+    return np.clip(1 - obs/np.maximum(req, 1e-12), 0.0, 1.0)**gamma
+
+def active_prior_precision(base, gap):       # prior precision actually entering the fit
+    return base * gap                        # ~0 where the data is already sufficient
+\end{lstlisting}
 
 \begin{figure}[H]
 \centering
@@ -281,6 +291,24 @@ fit when the mode is \texttt{off}, so persistence is strictly additive.
 the options version (one refit on change). The single-pass gate is free (it reuses
 quote-support density); the two-pass prepass costs $\sim2\times$ per node and is
 opt-in. Mode \texttt{off} is byte-identical to a plain fit.
+
+%======================================================================
+\section{Reference implementation: the gated posterior}
+\label{app:ref}
+
+The gate feeds a precision-weighted Gaussian update. For one coordinate with prior
+mean $\mu_0$ at (gated) precision $\lambda_0$ and a datum $d$ at precision
+$\lambda_d$, the posterior mean is the precision-weighted average --- which the
+least-squares stack realizes as a residual row $\sqrt{\lambda_0}\,(\theta-\mu_0)$
+appended to the data. The gate multiplying $\lambda_0$ is exactly what makes the
+prior vanish where the data is strong ($\lambda_0\to0\Rightarrow$ posterior $\to d$)
+and dominate where it is absent ($\lambda_d\to0\Rightarrow$ posterior $\to\mu_0$).
+
+\begin{lstlisting}[caption={The precision-weighted posterior the gated prior row
+implements.}]
+def posterior(mu0, lam0, d, lam_d):       # lam0 = active_prior_precision (gated)
+    return (lam0*mu0 + lam_d*d) / (lam0 + lam_d)   # -> d as lam0->0;  -> mu0 as lam_d->0
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{Gelman2013} A.~Gelman et al. \emph{Bayesian Data Analysis}. CRC Press,

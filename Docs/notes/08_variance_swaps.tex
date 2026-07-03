@@ -75,7 +75,22 @@ w_{\text{vs}}=2\!\int_{-\infty}^{\infty}\!\Big[\Black(k,w(k))+(e^k-1)^-\Big]e^{-
 \label{eq:repl}
 \end{equation}
 evaluated by a trapezoid on $k\in[-H,H]$ with $H=\vshalfwidth$ and \vspoints\
-points (the put leg adds $(e^k-1)e^{-k}$ for $k<0$). The half-width is coarser than
+points (the put leg adds $(e^k-1)e^{-k}$ for $k<0$). In code, \eqref{eq:repl} is a
+trapezoid over any model's $w(k)$ (matches production to $10^{-9}$):
+
+\begin{lstlisting}[caption={Model-free var-swap total variance by log-contract
+replication \eqref{eq:repl} (distilled from \texttt{calib/varswap.py}).},
+label={lst:repl}]
+def varswap_total_variance(implied_w, half=6.0, n=801):   # implied_w(k) -> total variance
+    k = np.linspace(-half, half, n)
+    w = np.maximum(implied_w(k), 1e-12)
+    integ = black_call(k, w)*np.exp(-k)              # OTM call leg, discounted
+    put = k < 0
+    integ[put] += 1 - np.exp(-k[put])               # (e^k - 1) e^{-k} on the put side
+    return 2.0*np.trapezoid(integ, k)
+\end{lstlisting}
+
+The half-width is coarser than
 the diagnostics grid because this runs \emph{inside} the optimizer loop; $\pm6$
 captures the OTM mass to well under a basis point for any sane smile, as
 \cref{fig:conv} confirms --- the fair var-swap vol has plateaued by a half-width of
@@ -225,6 +240,21 @@ SVI/SIV (negligible); the LV source PDE is one extra backward solve with analyti
 sensitivities. Using the generic replication on an LQD curve --- $\sim800$ Black
 inversions per Jacobian column --- would turn a millisecond fit into minutes, which
 is the whole reason for the per-model routes of \cref{sec:cheap}.
+
+%======================================================================
+\section{Reference implementation: the LQD closed form}
+\label{app:ref}
+
+For LQD the fair var-swap total variance is $-2\,\E[X]$ with no replication integral
+and no Black inversions: the log contract is exactly the mean log-return, and the
+quadrature grid already carries $Q(z)$ and $u(1-u)$ (Note~01). Agrees with the
+generic replication to \vsagreebp\ vol bps and with production to $10^{-12}$.
+
+\begin{lstlisting}[caption={The LQD closed-form var-swap strike, the mean
+log-return (distilled from \texttt{models/lqd/quadrature.py}).}]
+def var_swap_strike(z, q_z, u):           # z: logit grid, q_z = Q(z), u = expit(z)
+    return -2.0 * np.trapezoid(q_z * u * (1 - u), z)   # = -2 E[X], the log contract
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{CarrMadan1998} P.~Carr and D.~Madan. Towards a theory of volatility

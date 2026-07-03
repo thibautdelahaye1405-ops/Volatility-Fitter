@@ -124,7 +124,14 @@ enforced as a soft hinge $\sqrt{W_{\text{cal}}}\,\max(w_{\text{near}}(k)-w_{\tex
 on a log-moneyness grid. This reads only the previous slice's $\text{implied\_w}(k)$,
 so it applies to \emph{any} model --- raw SVI, Multi-Core SIV, or the local-vol
 overlay --- and gives the whole surface a uniform calendar treatment regardless of
-which model draws each slice.
+which model draws each slice. As residual rows it is one line, the same squared-hinge
+shape as the band objective (Note~07):
+
+\begin{lstlisting}[caption={The model-agnostic calendar hinge \eqref{eq:wfloor}
+(distilled from \texttt{calib/calendar.py}).},label={lst:cal}]
+def calendar_residual(w_far, w_near, weight):    # w_* = implied_w(k) on the SAME grid
+    return np.sqrt(weight) * np.maximum(w_near - w_far, 0.0)   # 0 unless the later dips below
+\end{lstlisting}
 
 \subsection{The confinement fix}
 \label{sec:confine}
@@ -143,7 +150,15 @@ on NVDA and SPY overlays.
 
 The fix is \emph{confinement}: \texttt{variance\_floor\_grid\_from} builds the
 floor grid on the \emph{observed} quote range $[\min k,\max k]$ only (empty quotes
-fall back to the wide grid). Calendar arbitrage is only meaningful where prices are
+fall back to the wide grid) --- a two-line change that is the whole cure:
+
+\begin{lstlisting}[caption={The confinement fix: sample the floor only on the traded
+range (distilled from \texttt{calib/calendar.py}).},label={lst:confine}]
+def floor_grid(k_quotes, n=41):          # the grid the calendar hinge is sampled on
+    return np.linspace(k_quotes.min(), k_quotes.max(), n)   # traded span, NOT a fixed wide grid
+\end{lstlisting}
+
+Calendar arbitrage is only meaningful where prices are
 observable; confining the floor keeps the constraint where the fit and the data
 both live, and leaves each model's wings to its own Lee-admissible extrapolation
 (Note~09). This is the same lesson as the local-vol convex-wing regression of

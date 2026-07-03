@@ -74,6 +74,19 @@ calendar maturity $t$ is
 counting only events at or before $t$. \Cref{fig:clock} plots $\tau(t)$: it tracks
 the calendar line until the event, jumps by $N_e/365$ there, and runs parallel
 afterward. The fits and quotes live on $\tau$; with no events, $\tau(t)=t$ exactly.
+The clock \eqref{eq:clock}, with the optional $1$Y-budget normalization, is direct
+(matches production to $10^{-12}$):
+
+\begin{lstlisting}[caption={The event variance clock $\tau(t)$ \eqref{eq:clock}
+(distilled from \texttt{calib/weighted\_time.py}).},label={lst:clock}]
+def variance_years(t_cal, events, normalize=False, dpy=365.0):   # events: (t_e, N_e) pairs
+    if t_cal <= 0: return t_cal
+    tau_days = t_cal*dpy + sum(N for te, N in events if te <= t_cal and N > 0)   # add event days
+    if normalize:                                    # rescale so a 1Y budget stays dpy days
+        e1 = sum(N for te, N in events if te <= 1.0 and N > 0)
+        tau_days *= dpy/(dpy + e1)
+    return tau_days/dpy                              # tau(t); equals t_cal with no events
+\end{lstlisting}
 
 \begin{figure}[H]
 \centering

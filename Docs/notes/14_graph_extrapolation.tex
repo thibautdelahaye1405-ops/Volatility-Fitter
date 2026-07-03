@@ -106,6 +106,20 @@ part, a graph smoothness energy);
 penalizes a node deviating from the $\pi$-weighted prediction of its in-neighbours
 --- the directed prediction rule.
 \end{itemize}
+The stationary solve and the directed Laplacian are a few lines (the solve gives
+$\pi\T K=\pi\T$; the Laplacian matches production and is symmetric PSD to $10^{-12}$):
+
+\begin{lstlisting}[caption={The stationary distribution and directed-residual
+Laplacian (distilled from \texttt{graph/\{build,beta\}.py}).},label={lst:graph}]
+def stationary(K):                        # solve pi^T K = pi^T, sum(pi) = 1
+    n = len(K); S = K.T - np.eye(n); S[-1] = 1.0   # replace last row by the mass constraint
+    rhs = np.zeros(n); rhs[-1] = 1.0
+    return np.linalg.solve(S, rhs)
+
+def directed_laplacian(K, pi):            # L_dir = (I - K)^T diag(pi) (I - K), PSD
+    M = np.eye(len(K)) - K
+    return M.T @ (pi[:, None] * M)
+\end{lstlisting}
 Calendar edges (one name across $T$) are high-conductance and vol-normalized
 ($\beta_{\text{vn}}=\sqrt{T_{\text{to}}/T_{\text{from}}}$); cross-asset edges
 (index$\to$name, ETF$\to$name, same-sector name$\to$name) carry smaller trust.
@@ -325,6 +339,23 @@ to the plain directed rule at $\beta=1$, so it is strictly additive.
 can be set by marginal-likelihood maximization with held-out calibration; this is
 the $O(7\,n_{\text{obs}}N^3)$ cost the sparse path targets.
 \end{enumerate}
+
+%======================================================================
+\section{Reference implementation: per-edge trust}
+\label{app:ref}
+
+The per-edge trust $\beta$ (calendar vs cross-asset) enters as a
+Hadamard rescaling of the kernel, $L_{\text{dir}}^\beta=(I-K\!\circ\!B)\T\Pi
+(I-K\!\circ\!B)$, so \cref{lst:graph} generalizes by one term. With $B\equiv1$ it is
+byte-identical to the plain directed Laplacian, so the machinery is strictly
+additive.
+
+\begin{lstlisting}[caption={The $\beta$-weighted directed Laplacian (distilled from
+\texttt{graph/beta.py}).}]
+def directed_laplacian_beta(K, pi, B):    # B[i,j] = trust on edge i<-j; B == 1 -> plain
+    M = np.eye(len(K)) - K*B               # Hadamard rescale of the kernel
+    return M.T @ (pi[:, None] * M)         # symmetric PSD by construction
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{Peyre2019} G.~Peyr\'e and M.~Cuturi. Computational optimal transport.

@@ -58,6 +58,21 @@ and in particular $0\le\beta\le2$. Equivalently
 $\tfrac{1}{2\beta}+\tfrac{\beta}{8}-\tfrac12=p$.
 \end{theorem}
 
+The map and the way LQD reads its wing slopes off the endpoint scales
+$A_L,A_R=e^{g(0)},e^{g(1)}$ (\cref{sec:models}) are a few lines (matches production
+to $10^{-13}$/$10^{-10}$):
+
+\begin{lstlisting}[caption={Lee's $\psi$ and the LQD structural wing slopes
+(distilled from \texttt{models/lqd/basis.py}).},label={lst:lee}]
+def lee_psi(p):                          # beta = psi(p); decreasing, psi(0)=2, psi(inf)=0
+    return 2 - 4*(np.sqrt(p*p + p) - p)
+
+def lqd_wing_slopes(A_L, A_R):           # exponential tails -> exact moment exponents
+    beta_L = lee_psi(1/A_L)                            # left:  p* = 1/A_L
+    beta_R = 2.0 if A_R >= 1 else lee_psi(1/A_R - 1)   # right: p* = 1/A_R - 1  (A_R < 1)
+    return beta_L, beta_R
+\end{lstlisting}
+
 \Cref{fig:psi} plots $\psi$. It is decreasing, from $\psi(0)=2$ (no finite moment
 beyond the first $\Rightarrow$ steepest admissible wing) to $\psi(\infty)=0$ (all
 moments finite $\Rightarrow$ flat wing). The ceiling $\beta=2$ is model-free: any
