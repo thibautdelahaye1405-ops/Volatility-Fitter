@@ -117,6 +117,22 @@ Each note: commit after it compiles clean with its figures.
   VS 1.0; strike-gap unmet 67%). Atlas gains `collarSign` and
   `priorOperatorCovarianceMode` (diagonal-only implemented). Next: 09+10
   (wings/calendar arc).
+- **2026-07-03 — Notes 09+10 hardened as one arc** (fourth+fifth of the pass).
+  Note 10: Assumption block (fixed-forward normalization, deterministic
+  carry, event-clock remark), the four-faces theorem (calls ⇔ convex order ⇔
+  integrated quantiles ⇔ total variance) with proof sketches, Kellerer
+  peacock remark, G=A(z) as a proposition; phantom-calendar promoted to a
+  case file with a NEW `fig_cal_phantom` reproduced via the production
+  `calibrate_svi` + `variance_floor_grid[_from]` (wide grid: far fit misses
+  its own quotes by 151 vol bp; confined: 0.0); fixed the false claim that
+  the floor threads to the LV overlay (LV is calendar-clean via ν≥0).
+  Note 09: ψ-map lemma with proof, SIV zero-wing inheritance proposition,
+  full R6 section (±2z 49-pt put-weighted Durrleman hinge, hybrid Jacobian,
+  2-core cap; −10.2→−0.008, EEM ~400×, +79 bp) and the R3×R6 ablation case
+  file (92/25/749/225 bp); **the confinement principle** named and boxed
+  with its four instances and the two-curve/one-curve criterion.
+  Traceability tables both notes; listings verified (lee_psi exact,
+  lee_slopes 0 err). Next: 02+03.
 
 - **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
   updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and

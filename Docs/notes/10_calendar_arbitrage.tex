@@ -14,23 +14,30 @@
 \input{figures/cal_tables.tex}
 
 \begin{abstract}
-Butterfly-freedom keeps a single smile a valid density; calendar-freedom keeps a
-\emph{surface} consistent across maturities. This note documents how the
-Vol-Fitter enforces it. With every expiry normalized by its forward, absence of
-calendar arbitrage is the statement that the terminal laws are increasing in
-convex order --- equivalently, that normalized call prices, and hence total
-implied variance at each fixed log-moneyness, are non-decreasing in maturity. We
-give two enforcements. For LQD the convex order is exactly an ordering of the
-\emph{integrated upper-quantile} curves, which each built slice already carries as
-its asset-share integral, so the constraint is an elementwise array comparison
-with no quantile inversion; expiries are fitted nearest-to-farthest under a soft
-slack. For the SVI and Multi-Core SIV overlays, which carry no quantile curve, a
-\emph{model-agnostic} hinge enforces $w_{\text{far}}(k)\ge w_{\text{near}}(k)$
-directly on total variance. We then explain the subtle but important
-\emph{confinement} fix --- the floor must be sampled only on the traded strike
-range, or a steep short-dated slice's linear-wing extrapolation manufactures a
-phantom violation that flattens the in-data fit. A worked example takes an
-inverted-wing pair from a calendar violation of \calviolfree\ to \calviolcured.
+Butterfly-freedom keeps a single smile a valid density; calendar-freedom
+keeps a \emph{surface} consistent across maturities. This note states
+precisely what that means and how the Vol-Fitter enforces it. Under
+fixed-forward normalization with deterministic carry, calendar-freedom is
+four equivalent statements --- normalized calls non-decreasing in maturity,
+the terminal laws increasing in convex order, the integrated upper-quantile
+curves ordered, and total implied variance non-decreasing at every fixed
+log-moneyness --- and, by Kellerer's theorem, exactly the condition for the
+fitted surface to be consistent with \emph{some} martingale. Two
+enforcements follow. For LQD the integrated upper-quantile curve \emph{is}
+the asset-share integral every built slice already carries, so the
+constraint is an elementwise array comparison; expiries are fitted
+nearest-to-farthest under a soft slack. For the SVI and Multi-Core SIV
+overlays a \emph{model-agnostic} hinge enforces
+$w_{\text{far}}(k)\ge w_{\text{near}}(k)$ directly (the local-vol surface
+needs neither: positivity of its local variance is calendar-cleanliness,
+Note~04). The note's case file is the \emph{phantom calendar}: a fixed wide
+floor grid let a steep short expiry's linear-wing extrapolation manufacture
+violations in a no-data region, flattening far fits live on NVDA and SPY;
+the confinement fix --- sample the floor only on the traded range --- is
+reproduced here with the production calibrator (far-fit error
+\calphantomwide\ vol bp under the wide grid vs \calphantomdata\ under the
+confined one). A worked example takes an inverted-wing pair from a
+violation of \calviolfree\ to \calviolcured.
 \end{abstract}
 
 \tableofcontents
@@ -40,144 +47,224 @@ inverted-wing pair from a calendar violation of \calviolfree\ to \calviolcured.
 \section{What calendar-freedom means}
 \label{sec:meaning}
 
-Fix log-moneyness $k$ and let $C_{T}(k)$ be the forward-normalized call at expiry
-$T$. With all expiries normalized to unit forward, the absence of a calendar
-spread arbitrage is
-\begin{equation}
-C_{T_i}(k)\le C_{T_j}(k)\quad\text{for }T_i<T_j,\ \forall k,
-\label{eq:calmono}
-\end{equation}
-i.e.\ a longer-dated call is never cheaper than a shorter-dated one at the same
-moneyness. Because the Black price is increasing in total variance, under
-deterministic proportional carry \eqref{eq:calmono} is equivalent to total
-variance being non-decreasing in maturity, $w_{T_i}(k)\le w_{T_j}(k)$. The
-sharper, model-independent statement is in terms of the terminal laws: writing
-$Y_T=S_T/F_T$ (mean one), \eqref{eq:calmono} holds iff
-\begin{equation}
-Y_{T_i}\le_{cx}Y_{T_j},
-\label{eq:convex}
-\end{equation}
-the $Y$'s are increasing in \emph{convex order}. This is the object the LQD
-enforcement uses directly.
+\begin{assumption}[Units and carry]
+\label{ass:units}
+Each expiry is normalized by its own forward: $Y_T=S_T/F_T$ (so
+$\E[Y_T]=1$ for every $T$), quotes live at fixed log-moneyness
+$k=\log(K/F_T)$, and rates, borrow and dividends are deterministic and
+absorbed into $F_T$ (Note~06). Comparisons across maturity are made at fixed
+$k$ --- fixed \emph{forward} moneyness, not fixed cash strike. Discrete cash
+dividends make the cash-strike statement fail while the normalized one
+survives; stochastic rates would break the equivalence between calendar
+spreads and the normalized comparison altogether. The event clock of
+Note~11 reparametrizes maturity within each slice but preserves the
+\emph{ordering} of expiries, so the statements below are unaffected.
+\end{assumption}
+
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item Where data lives, the fitted surface is increasing in convex order:
+no calendar spread against it.
+\item Enforcement is a \emph{soft} hinge --- quotes still win a genuine
+conflict, and the diagnostic reports what slack was used.
+\item \texttt{enforceCalendar} off, or no previous slice, is byte-identical
+to independent fits.
+\item The constraint is sampled only where \emph{both} slices are pinned by
+data --- the confinement principle (Note~09).
+\end{enumerate}
+\end{invariant}
+
+\begin{theorem}[Four faces of calendar-freedom]
+\label{thm:faces}
+Let $\{Y_T\}$ have unit mean, $C_T(k)=\E[(Y_T-e^k)^+]$ the normalized calls,
+$G_T(\alpha)=\int_\alpha^1Q_{Y,T}(u)\,\dd u$ the integrated upper-quantile
+curves, and $w_T(k)$ the total implied variances. For $T_i<T_j$ the
+following are equivalent:
+\begin{enumerate}[leftmargin=1.8em,label=(\roman*)]
+\item $C_{T_i}(k)\le C_{T_j}(k)$ for all $k$ (no calendar-spread arbitrage);
+\item $Y_{T_i}\le_{cx}Y_{T_j}$ (increasing convex order);
+\item $G_{T_i}(\alpha)\le G_{T_j}(\alpha)$ for all $\alpha\in[0,1]$, with
+equality at $\alpha=0$;
+\item $w_{T_i}(k)\le w_{T_j}(k)$ for all $k$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+(i)$\Leftrightarrow$(ii): call payoffs $(y-e^k)^+$ span the convex functions
+of $y$ (every convex function with equal means integrates against the second
+derivative of the call in strike --- the Breeden--Litzenberger pairing), so
+ordering all calls with equal means is exactly convex order
+\cite{Strassen1965,CarrMadan2005}.
+(ii)$\Leftrightarrow$(iii): the Hardy--Littlewood characterization ---
+$\E\phi(Y_i)\le\E\phi(Y_j)$ for all convex $\phi$ iff the integrated
+quantile functions are ordered; $G$ is the upper-tail version, and
+$G(0)=\E Y=1$ pins the means.
+(i)$\Leftrightarrow$(iv): the normalized Black price is strictly increasing
+in total variance at fixed $k$, so ordering prices at every $k$ is ordering
+the implied $w$ at every $k$ \cite{GatheralJacquier2014}.
+\end{proof}
+
+\begin{remark}[Kellerer: why this is the whole story]
+\label{rem:kellerer}
+If in addition each slice is butterfly-free (a valid density --- Notes
+01--04), then (ii) for all pairs makes the family
+$\{\mathrm{law}(Y_T)\}$ a \emph{peacock}, and Kellerer's theorem supplies a
+martingale with exactly these marginals \cite{Kellerer1972}. So
+butterfly-freedom per slice plus calendar-freedom across slices is not
+merely ``no static arbitrage'': it is precisely the statement that the
+fitted surface is consistent with \emph{some} arbitrage-free dynamic model,
+even though the fitter never names one.
+\end{remark}
 
 \begin{heuristic}
-Convex order with equal means says the longer-maturity law is a ``mean-preserving
-spread'' of the shorter one: same forward, more dispersion. That is exactly what a
-diffusion does --- variance accumulates with time --- so calendar-freedom is the
-statement that the surface is consistent with \emph{some} martingale, even if the
-fitter never names one. Enforcing it on the fitted slices is what stops two
-independently-fitted expiries from implying a negative forward variance between
-them.
+Convex order with equal means says the longer law is a mean-preserving
+spread of the shorter: same forward, more dispersion --- exactly what a
+diffusion does as variance accumulates. Enforcing it between
+independently-fitted expiries is what stops two good slice fits from
+implying a negative forward variance between them.
 \end{heuristic}
 
 %======================================================================
 \section{The LQD-exact enforcement}
 \label{sec:lqd}
 
-\subsection{Convex order as integrated quantiles}
+\begin{proposition}[The asset share is the integrated quantile curve]
+\label{prop:GisA}
+For an LQD slice with quantile $Q(z)$ in the logit coordinate
+(Note~01), the integrated upper-quantile curve equals the asset-share
+integral at the corresponding grid point:
+\[
+G(\alpha)
+=\int_\alpha^1 e^{Q(u)}\,\dd u
+=\int_{z_\alpha}^{\infty}e^{Q(z)}\,\Lambda(z)\big(1-\Lambda(z)\big)\,\dd z
+=A(z_\alpha).
+\]
+\end{proposition}
 
-For equal-mean laws, $Y_{T_i}\le_{cx}Y_{T_j}$ holds iff the \emph{integrated
-upper-quantile} curves are ordered:
-\begin{equation}
-G_i(\alpha):=\int_\alpha^1 Q_{Y,T_i}(u)\,\dd u\ \le\ G_j(\alpha)\quad\forall\alpha\in[0,1],
-\label{eq:Gorder}
-\end{equation}
-with equality at $\alpha=0$ (equal means). Now recall (Note~01) that for an LQD
-slice $Q_Y(u)=e^{Q(u)}$ and, in the logit coordinate, $\dd u=u(1-u)\,\dd z$, so
-\begin{equation}
-G(\alpha)=\int_{\alpha}^1 e^{Q(u)}\,\dd u=\int_{z_\alpha}^{\infty}e^{Q(z)}\Lambda(z)(1-\Lambda(z))\,\dd z=A(z_\alpha),
-\end{equation}
-which is \emph{exactly} the asset-share integral $A(z)$ every built slice already
-carries on the shared quadrature grid. The calendar constraint is therefore an
-elementwise comparison of two \texttt{a\_z} arrays --- no quantile inversion, no
-per-strike call comparison --- and, because the grid is uniform in $z$, it places
-constraint points densely in the wings exactly where they matter.
+\begin{proof}
+Substitute $u=\Lambda(z)$, $\dd u=\Lambda(z)(1-\Lambda(z))\,\dd z$ in the
+definition of $G$ and compare with Note~01's asset-share integral
+$A(z)$ --- they are the same object.
+\end{proof}
 
-\subsection{Sequential fitting with slack}
+So \cref{thm:faces}(iii) needs no new computation: every built slice already
+carries $A(z)$ on the shared quadrature grid, and the calendar constraint is
+an elementwise comparison of two arrays --- no quantile inversion, no
+per-strike call comparison --- with constraint points automatically dense in
+the wings (the grid is uniform in $z$, not $k$).
 
-The surface is built nearest-to-farthest. The constraint subgrid takes every
-\calstride th node ($\sim320$ points on the $8001$-node grid). Each new slice is
-fitted subject to the soft floor
+The surface is fitted nearest-to-farthest. The constraint subgrid takes
+every \calstride th node ($\sim320$ points on the $8001$-node grid), and
+each new slice carries the soft squared-hinge slack
 \begin{equation}
-A_j(z_m)\ \ge\ A_i(z_m)-\tau_m,
+\sqrt{W_{\text{cal}}}\,\max\!\big(A_i(z_m)-A_j(z_m),\,0\big),
+\qquad W_{\text{cal}}=\texttt{calendarWeight}=10^6,
 \label{eq:slack}
 \end{equation}
-implemented as the squared-hinge slack $\sqrt{W_{\text{cal}}}\,\max(A_i(z_m)-A_j(z_m),0)$
-in the LQD objective (weight \texttt{calendarWeight}, default $10^6$). The floor is
-keyed on the constraint $z$-\emph{coordinates}, so the next slice can enforce it by
-Hermite-evaluating its own curve there even when it is calibrated on a coarser
-optimization grid --- bit-for-bit equivalent to the node-indexed form on the native
-grid.
+keyed on the constraint $z$-\emph{coordinates}, so a slice calibrated on a
+coarser optimization grid enforces it by Hermite evaluation, bit-for-bit
+equivalent to the node-indexed form on the native grid.
 
 %======================================================================
 \section{The model-agnostic enforcement}
 \label{sec:agnostic}
 
-The SVI and Multi-Core SIV overlays carry no integrated-quantile curve, so they use
-Gatheral's equivalent \emph{surface} condition directly: total implied variance
-non-decreasing in maturity,
+The SVI and Multi-Core SIV overlays carry no quantile curve, so they use
+face (iv) directly: a soft hinge on total variance,
 \begin{equation}
-w_{\text{far}}(k)\ \ge\ w_{\text{near}}(k)\quad\forall k,
+\sqrt{W_{\text{cal}}}\,\max\!\big(w_{\text{near}}(k_m)-w_{\text{far}}(k_m),\,0\big),
 \label{eq:wfloor}
 \end{equation}
-enforced as a soft hinge $\sqrt{W_{\text{cal}}}\,\max(w_{\text{near}}(k)-w_{\text{far}}(k),0)$
-on a log-moneyness grid. This reads only the previous slice's $\text{implied\_w}(k)$,
-so it applies to \emph{any} model --- raw SVI, Multi-Core SIV, or the local-vol
-overlay --- and gives the whole surface a uniform calendar treatment regardless of
-which model draws each slice. As residual rows it is one line, the same squared-hinge
-shape as the band objective (Note~07):
+on a log-moneyness grid, reading only the previous slice's
+$\texttt{implied\_w}(k)$. (The local-vol surface needs \emph{neither}
+enforcement: a positive local variance is calendar-clean by construction ---
+Note~04's \cref{thm:faces}(iv) holds along the whole PDE march --- so the
+floor threads only to the parametric overlays.)
 
-\begin{lstlisting}[caption={The model-agnostic calendar hinge \eqref{eq:wfloor}
-(distilled from \texttt{calib/calendar.py}).},label={lst:cal}]
-def calendar_residual(w_far, w_near, weight):    # w_* = implied_w(k) on the SAME grid
-    return np.sqrt(weight) * np.maximum(w_near - w_far, 0.0)   # 0 unless the later dips below
-\end{lstlisting}
-
-\subsection{The confinement fix}
-\label{sec:confine}
-
-Where the floor \eqref{eq:wfloor} is \emph{sampled} turns out to be critical.
-
-\begin{caution}
-If the floor grid is fixed and wide (say $k\in[-1,1]$, far beyond the traded
-strikes), then for a family with \emph{linear wings} (SVI) a steep short-dated
-slice extrapolates to far higher wing variance than a flatter long-dated one, so
-$w_{\text{near}}>w_{\text{far}}$ out in the untraded wing --- a \emph{phantom}
-violation created purely by extrapolation. The optimizer then flattens the
-long-dated wing to ``cure'' a problem the data never posed. This was observed live
-on NVDA and SPY overlays.
-\end{caution}
-
-The fix is \emph{confinement}: \texttt{variance\_floor\_grid\_from} builds the
-floor grid on the \emph{observed} quote range $[\min k,\max k]$ only (empty quotes
-fall back to the wide grid) --- a two-line change that is the whole cure:
-
-\begin{lstlisting}[caption={The confinement fix: sample the floor only on the traded
-range (distilled from \texttt{calib/calendar.py}).},label={lst:confine}]
-def floor_grid(k_quotes, n=41):          # the grid the calendar hinge is sampled on
-    return np.linspace(k_quotes.min(), k_quotes.max(), n)   # traded span, NOT a fixed wide grid
-\end{lstlisting}
-
-Calendar arbitrage is only meaningful where prices are
-observable; confining the floor keeps the constraint where the fit and the data
-both live, and leaves each model's wings to its own Lee-admissible extrapolation
-(Note~09). This is the same lesson as the local-vol convex-wing regression of
-Note~04: \emph{a no-arbitrage constraint must not be sampled where only
-extrapolation lives.}
+The production plumbing is the part that took care. The floor requires the
+\emph{previous} displayed slice, so \texttt{enforceCalendar} threads
+\texttt{prev\_display} ascending-$T$ through every path that fits a slice:
+the single-slice overlay, \texttt{fit\_and\_commit\_slice}, the full-surface
+loop, and the coupled Calibrate workflow all pass the just-fitted display to
+the next expiry. Wherever the floor is absent (\texttt{off}, or the first
+expiry) the residual block is absent too --- byte-identical, test-locked for
+SVI, SIV, and the display pipeline.
 
 %======================================================================
-\section{Worked example}
+\section{Case file: the phantom calendar}
+\label{sec:phantom}
+
+\begin{example}[title={Case file: the phantom calendar violation}]
+\textbf{Setup.} A steep short-dated slice over a flatter long-dated one ---
+a single-name skew: near SVI $b=0.20,\rho=-0.7$; far $b=0.08,\rho=-0.3$;
+the far expiry's quotes span only $k\in[-0.25,0.20]$. On the data, the far
+slice sits \emph{above} the near one everywhere: genuinely
+calendar-consistent.
+
+\textbf{Failure mode.} Live SVI overlays on NVDA (Sep-26) and SPY (Jun-27)
+fitted \emph{flat} with huge RMS whenever the calendar toggle was on.
+
+\textbf{Diagnosis.} The floor \eqref{eq:wfloor} was sampled on a fixed wide
+grid $k\in[-1,1]$. With \emph{linear} wings, the steep near slice
+extrapolates to far higher variance at the grid edges than the flat far
+slice --- so $w_{\text{near}}>w_{\text{far}}$ out where neither expiry has a
+single quote. A \emph{phantom} violation, manufactured entirely by two
+extrapolation laws disagreeing in a no-data region; the hinge then flattened
+the far fit to cure a problem the data never posed
+(\cref{fig:phantom}, left).
+
+\textbf{Fix.} Confinement: \texttt{variance\_floor\_grid\_from} builds the
+floor grid on the observed quote span $[\min k,\max k]$ only ($41$ points;
+the wide $[-1,1]$/$161$-point grid survives only as the empty-quotes
+fallback). The two-curve constraint is sampled only where both curves are
+pinned by data --- the confinement principle of Note~09, of which this
+incident is the founding instance.
+
+\textbf{Verdict (reproduced with the production calibrator,
+\cref{fig:phantom}).} Under the wide grid the far fit misses its own quotes
+by \calphantomwide\ vol bp; under the confined grid by \calphantomdata\ ---
+indistinguishable from the unconstrained fit. Test-locked, including the
+assertion that the scenario is consistent on data and inconsistent only in
+extrapolation.
+\end{example}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\textwidth]{fig_cal_phantom.pdf}
+\caption{The phantom calendar, reproduced with the production calibrator.
+Left: on the traded range (shaded) the far slice dominates the near one ---
+no true violation --- but the steep near wing extrapolates above the flat
+far wing exactly where the wide floor grid (dots) samples; the ``violation''
+exists only where no data does. Right: fitted under the wide-grid floor the
+far smile flattens away from its own quotes (\calphantomwide\ vol bp);
+confined to the traded range it is indistinguishable from the unconstrained
+fit (\calphantomdata\ vol bp).}
+\label{fig:phantom}
+\end{figure}
+
+\begin{lstlisting}[caption={The confinement fix,
+\texttt{variance\_floor\_grid\_from} (verified in \cref{app:ref}).},
+label={lst:confine}]
+def variance_floor_grid_from(k_quotes, n=41):
+    k = np.asarray(k_quotes, float)     # floor on the TRADED span only
+    if k.size == 0:
+        return variance_floor_grid()    # no data at all: wide fallback
+    return np.linspace(float(k.min()), float(k.max()), n)
+\end{lstlisting}
+
+%======================================================================
+\section{Worked example: curing a real violation}
 \label{sec:example}
 
-\Cref{fig:cross} fits an \emph{inverted-wing} pair: a high-vol short expiry
-($T=0.25$) over a calmer long expiry ($T=0.5$), the kind of term structure an
-imminent event produces. Fitted independently, the long slice's total variance
-dips \emph{below} the short one's in the wings (the shaded region) --- a calendar
-violation of $\calviolfree$. Refitting the long slice under the calendar floor from
-the short one lifts it to dominate everywhere, driving the violation to
-$\calviolcured$ (numerically zero). \Cref{fig:G} shows the cured pair's integrated
-upper-quantile curves correctly ordered, $G_{\text{far}}\ge G_{\text{near}}$ ---
-the convex order \eqref{eq:convex} made manifest.
+Confinement removes \emph{phantom} violations; this example shows the floor
+doing its real job. \Cref{fig:cross} fits an \emph{inverted-wing} pair: a
+high-vol short expiry ($T=0.25$) over a calmer long one ($T=0.5$), the term
+structure an imminent event produces. Fitted independently, the long slice's
+total variance dips below the short one's in the wings --- a genuine
+calendar violation of \calviolfree. Refitting under the calendar floor lifts
+it to dominate everywhere ($\calviolcured$, numerically zero), and the
+integrated upper-quantile curves come out correctly ordered,
+$G_{\text{far}}\ge G_{\text{near}}$ --- \cref{thm:faces}(iii) made visible.
 
 \begin{figure}[H]
 \centering
@@ -189,8 +276,9 @@ the convex order \eqref{eq:convex} made manifest.
 \includegraphics[width=\textwidth]{fig_cal_G.pdf}\\[1pt]
 {\footnotesize (b) integrated quantiles, ordered}
 \end{minipage}
-\caption{An inverted-wing pair: the unconstrained long slice crosses the short one
-(violation $\calviolfree$); the calendar floor cures it (violation $\calviolcured$).}
+\caption{An inverted-wing pair: the unconstrained long slice crosses the
+short one (violation \calviolfree); the calendar floor cures it
+(\calviolcured).}
 \label{fig:cross}
 \end{figure}
 \begin{figure}[H]\centering\phantomsection\label{fig:G}\end{figure}
@@ -199,53 +287,132 @@ the convex order \eqref{eq:convex} made manifest.
 \section{What is original here}
 \label{sec:original}
 
-The convex-order characterization is classical (Strassen, Carr--Madan); the
-contributions are implementation. Recognizing that the LQD asset-share integral
-$A(z)$ \emph{is} the integrated upper-quantile curve $G(\alpha)$ makes the calendar
-constraint a free elementwise comparison rather than a dense grid of inverted
-call inequalities. Extending the same no-arbitrage to the SVI/SIV/LV overlays
-through the model-agnostic total-variance floor \eqref{eq:wfloor} gives the whole
-surface one calendar treatment. And the \emph{confinement} fix \eqref{sec:confine}
---- sampling the floor only where data lives --- is a genuinely non-obvious lesson
-that the same wide-grid mistake recurs in two places (here and the local-vol
-convex wing) and is cured the same way.
+The convex-order characterization is classical; the contributions are
+implementation. Recognizing that the LQD asset share \emph{is} the
+integrated upper-quantile curve (\cref{prop:GisA}) makes the calendar
+constraint a free elementwise comparison rather than a grid of inverted
+call inequalities. Extending one calendar treatment to every parametric
+overlay through the total-variance floor \eqref{eq:wfloor} --- threaded
+ascending-$T$ through every calibration path --- gives the surface a uniform
+guarantee regardless of which model draws each slice. And the phantom
+calendar of \cref{sec:phantom} is the incident that crystallized the
+confinement principle now applied in three other places (Notes 04, 05, 09).
+
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.30\textwidth}p{0.12\textwidth}p{0.26\textwidth}p{0.28\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+LQD integrated-quantile constraint; surface repair &
+\cref{prop:GisA}, \eqref{eq:slack} &
+\nolinkurl{calib/calendar.py}, \nolinkurl{models/lqd/calibrate.py} &
+\nolinkurl{test_surface.py::test_violating_quotes_get_repaired_when_enforced}\\
+Model-agnostic floor reads prev slice's $w$ &
+\eqref{eq:wfloor} &
+\nolinkurl{calib/calendar.py} &
+\nolinkurl{test_overlay_calendar.py::test_variance_floor_reads_prev_total_variance}\\
+Floor crushes real violations (SVI, SIV) &
+\cref{sec:example} &
+\nolinkurl{models/svi_jw/calibrate.py}, \nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_overlay_calendar.py::test_svi_floor_crushes_calendar_violation}, \nolinkurl{::test_sigmoid_floor_crushes_calendar_violation}\\
+Byte-identical with no floor / off &
+invariant~3 &
+\nolinkurl{models/svi_jw/calibrate.py}, \nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_overlay_calendar.py::test_svi_no_floor_is_byte_identical}, \nolinkurl{::test_build_display_fit_no_floor_byte_identical}\\
+Phantom scenario: consistent on data, phantom in wings &
+\cref{sec:phantom} &
+\nolinkurl{calib/calendar.py} &
+\nolinkurl{test_overlay_calendar.py::test_far_above_near_inside_data_but_not_in_wings}\\
+Confined grid fits clean; wide grid flattens &
+\cref{sec:phantom} &
+\nolinkurl{calib/calendar.py::variance_floor_grid_from} &
+\nolinkurl{test_overlay_calendar.py::test_wide_grid_breaks_svi_but_data_grid_does_not}\\
+prev\_display threaded ascending-$T$ everywhere &
+\cref{sec:agnostic} &
+\nolinkurl{api/service.py}, \nolinkurl{api/workflow.py} &
+\nolinkurl{test_calibration_workflow.py::test_enforce_calendar_threads_prev_into_parametric_items}, \nolinkurl{::test_enforce_calendar_threads_prev_overlay_for_non_lqd}\\
+Coupled surface arbitrage-free &
+\cref{thm:faces} &
+\nolinkurl{api/workflow.py} &
+\nolinkurl{test_calibration_workflow.py::test_enforce_calendar_surface_is_arbitrage_free}\\
+\bottomrule
+\end{longtable}
+\endgroup
 
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
 \label{app:atlas}
 
-\begin{longtable}{p{0.26\textwidth}p{0.14\textwidth}p{0.52\textwidth}}
+\begin{longtable}{p{0.28\textwidth}p{0.14\textwidth}p{0.50\textwidth}}
 \caption{Calendar-arbitrage hyperparameters.}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
 \multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
-\texttt{enforceCalendar} & on & Master toggle for calendar coupling.\\
-\texttt{calendarWeight} $W_{\text{cal}}$ & $10^{6}$ & Soft-constraint penalty strength.\\
+\texttt{enforceCalendar} & \texttt{true} & Master toggle for calendar
+coupling (all calibration paths).\\
+\texttt{calendarWeight} $W_{\text{cal}}$ & $10^{6}$ & Soft-hinge penalty
+strength. \emph{Not} the graph's edge-trust \texttt{calendarWeight} of
+Note~14, which shares the name.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
-\texttt{CAL\_STRIDE} & $\calstride$ & LQD constraint subgrid stride ($\sim320$ points).\\
-\texttt{VAR\_FLOOR\_KMIN/KMAX} & $[-1,1]$ & Fallback wide floor grid (empty quotes only).\\
-\texttt{VAR\_FLOOR\_N} & $161$ & Wide floor grid resolution.\\
-\texttt{VAR\_FLOOR\_N\_DATA} & $41$ & Confined floor grid resolution.\\
-floor grid & traded range & \texttt{variance\_floor\_grid\_from}: confined to $[\min k,\max k]$.\\
+\texttt{CAL\_STRIDE} & $25$ & LQD constraint subgrid stride ($\sim320$
+points on the $8001$-node grid).\\
+\texttt{VAR\_FLOOR\_N\_DATA} & $41$ & Confined floor grid resolution
+(\cref{lst:confine}).\\
+\texttt{VAR\_FLOOR\_KMIN/KMAX} & $[-1,1]$ & Fallback wide grid ---
+empty-quotes only.\\
+\texttt{VAR\_FLOOR\_N} & $161$ & Wide fallback grid resolution.\\
+floor tolerance & $0$ & Hinge slack offset in the floor builders.\\
 \bottomrule
 \end{longtable}
 
-\noindent\textbf{Performance.} The LQD constraint is an array slice and subtraction
-on the already-built asset share --- effectively free; its Jacobian rows are
-$-\partial A/\partial\theta$ on the active constraints, supplied by the analytic
-Jacobian (Note~01). The model-agnostic floor is $\sim40$ arithmetic evaluations of
-the previous slice's $w(k)$. Confinement \emph{reduces} work by not over-sampling
-the extrapolation region.
+\noindent\textbf{Performance.} The LQD constraint is an array slice and
+subtraction on the already-built asset share --- effectively free; its
+Jacobian rows are $-\partial A/\partial\theta$ on the active constraints,
+supplied by the analytic Jacobian of Note~01. The model-agnostic floor is
+$41$ evaluations of the previous slice's $w(k)$. Confinement \emph{reduces}
+work by not sampling the extrapolation region.
+
+%======================================================================
+\section{Reference implementation}
+\label{app:ref}
+
+The two enforcement residuals are one line each, and the confined grid is
+\cref{lst:confine}. The hinge below reproduces the residual blocks inside
+the SVI/SIV calibrators exactly (the production rows are inline in each
+calibrator, not a shared function --- deliberately, since each model
+evaluates its own $w$); \cref{lst:confine} matches
+\texttt{variance\_floor\_grid\_from} output to machine precision on quoted
+and empty inputs alike.
+
+\begin{lstlisting}[caption={The calendar hinge as it appears (inline) in
+each parametric calibrator, and the LQD asset-share form.}]
+# SVI / Multi-Core SIV (face (iv)):    rows are zero unless the far dips
+cal = np.sqrt(calendar_weight) * np.maximum(cal_floor - w_model, 0.0)
+
+# LQD (face (iii)): the same hinge on the asset share A(z)
+cal = np.sqrt(cal_weight) * np.maximum(cal_floor - slice_.asset_share_at(cal_z), 0.0)
+\end{lstlisting}
 
 \begin{thebibliography}{9}
-\bibitem{Strassen1965} V.~Strassen. The existence of probability measures with
-given marginals. \emph{Ann.\ Math.\ Statist.}, 36(2):423--439, 1965.
-\bibitem{CarrMadan2005} P.~Carr and D.~Madan. A note on sufficient conditions for
-no arbitrage. \emph{Finance Research Letters}, 2(3):125--130, 2005.
-\bibitem{GatheralJacquier2014} J.~Gatheral and A.~Jacquier. Arbitrage-free SVI
-volatility surfaces. \emph{Quantitative Finance}, 14(1):59--71, 2014.
+\bibitem{Strassen1965} V.~Strassen. The existence of probability measures
+with given marginals. \emph{Ann.\ Math.\ Statist.}, 36(2):423--439, 1965.
+\bibitem{Kellerer1972} H.~Kellerer. Markov-Komposition und eine Anwendung
+auf Martingale. \emph{Math.\ Ann.}, 198:99--122, 1972.
+\bibitem{CarrMadan2005} P.~Carr and D.~Madan. A note on sufficient
+conditions for no arbitrage. \emph{Finance Research Letters},
+2(3):125--130, 2005.
+\bibitem{GatheralJacquier2014} J.~Gatheral and A.~Jacquier. Arbitrage-free
+SVI volatility surfaces. \emph{Quantitative Finance}, 14(1):59--71, 2014.
 \end{thebibliography}
 
 \end{document}

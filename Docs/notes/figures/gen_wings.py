@@ -12,6 +12,7 @@ total-variance slope beta = lim w(k)/|k|. Also plots the Lee map beta = psi(p).
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import matplotlib
@@ -20,27 +21,19 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from volfit.models.lqd.basis import lee_psi, lee_slopes
-from volfit.models.lqd.calibrate import calibrate_slice
-from volfit.models.sigmoid.calibrate import calibrate_sigmoid
-from volfit.models.svi_jw.calibrate import calibrate_svi
-from volfit.models.svi_jw.svi import RawSVI
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from style import PALETTE, callout, save, setup  # noqa: E402
+
+from volfit.models.lqd.basis import lee_psi, lee_slopes  # noqa: E402
+from volfit.models.lqd.calibrate import calibrate_slice  # noqa: E402
+from volfit.models.sigmoid.calibrate import calibrate_sigmoid  # noqa: E402
+from volfit.models.svi_jw.calibrate import calibrate_svi  # noqa: E402
+from volfit.models.svi_jw.svi import RawSVI  # noqa: E402
 
 OUT = Path(__file__).resolve().parent
-plt.rcParams.update(
-    {
-        "figure.figsize": (7.2, 4.3),
-        "font.size": 11,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "lines.linewidth": 1.8,
-        "savefig.bbox": "tight",
-        "savefig.dpi": 200,
-    }
-)
-TEAL, RUST, AMBER, SLATE = "#0f766e", "#b91c1c", "#b45309", "#334155"
+setup()
+TEAL, RUST, AMBER, SLATE = (PALETTE["teal"], PALETTE["rust"],
+                            PALETTE["amber"], PALETTE["muted"])
 
 
 def beta_numeric(implied_w, k_big=2.5):
@@ -68,28 +61,33 @@ def main():
     }
 
     # --- extrapolation plot
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(6.9, 4.1))
     kk = np.linspace(-0.95, 0.80, 400)
     for name, (iw, c) in models.items():
         ax.plot(kk, iw(kk), color=c, label=name)
     ax.axvspan(k.min(), k.max(), color="black", alpha=0.05, label="fit window")
-    ax.scatter(k, w, s=10, color=SLATE, zorder=5)
+    ax.scatter(k, w, s=10, color="black", zorder=5)
     ax.set_xlabel(r"log-moneyness $k$")
     ax.set_ylabel(r"total variance $w(k)$")
-    ax.legend(frameon=False)
-    fig.savefig(OUT / "fig_wings_extrap.pdf")
-    plt.close(fig)
+    ax.set_title("Same quotes, three Lee-admissible tails")
+    ax.legend(loc="upper right")
+    callout(ax, "inside the window:\nagreement to vol bps",
+            xy=(0.0, float(models['LQD'][0](np.array([0.0]))[0])),
+            xytext=(-0.42, 0.075))
+    callout(ax, "outside: the tail is\nthe model's own law",
+            xy=(-0.85, float(models['SVI'][0](np.array([-0.85]))[0])),
+            xytext=(-0.55, 0.145))
+    save(fig, OUT / "fig_wings_extrap.pdf")
 
     # --- Lee map psi(p)
-    fig, ax = plt.subplots(figsize=(6.4, 3.8))
+    fig, ax = plt.subplots(figsize=(6.4, 3.6))
     p = np.linspace(0, 4, 300)
     ax.plot(p, lee_psi(p), color=TEAL)
     ax.axhline(2.0, color=RUST, ls="--", lw=1.0, label=r"Lee ceiling $\beta=2$")
     ax.set_xlabel(r"moment critical exponent $p$")
     ax.set_ylabel(r"wing slope $\beta=\psi(p)$")
-    ax.legend(frameon=False)
-    fig.savefig(OUT / "fig_wings_psi.pdf")
-    plt.close(fig)
+    ax.legend()
+    save(fig, OUT / "fig_wings_psi.pdf")
 
     # --- analytic asymptotic total-variance slopes beta = lim w(k)/|k|
     bL_lqd, bR_lqd = lee_slopes(lqd.params)          # LQD: via Lee psi(1/A)

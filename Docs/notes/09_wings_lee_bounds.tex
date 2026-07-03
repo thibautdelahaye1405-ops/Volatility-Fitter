@@ -17,83 +17,133 @@
 A smile model earns its keep in the \emph{wings} --- the region beyond the
 quoted strikes, where the fit becomes pure extrapolation and where mispriced
 tails leak into var-swaps, risk-reversals and butterflies. This cross-cutting
-note collects the wing treatment shared by the Vol-Fitter's models. The universal
-constraint is Lee's moment formula: the asymptotic slope of total implied
-variance, $\beta=\limsup_{k\to\pm\infty}w(k)/|k|$, cannot exceed $2$, and it is
-tied to the number of finite moments of the underlying by an explicit map
-$\beta=\psi(p)$. We show how each model realizes or enforces this: LQD reads the
-slopes off its endpoint scales and is Lee-consistent \emph{by construction}; SVI
-has linear wings and enforces the bound with a soft penalty; Multi-Core SIV
-inherits its base wings because the hats are wing-neutral; and the local-vol
-surface extrapolates with a controlled linear slope. A single calibration window,
-fitted by all three parametric models and extrapolated far, shows their wings
-agreeing in sign and order of magnitude while differing in detail --- and we
-explain the subtle bug in which a fixed wide arbitrage-floor grid let a model's
-own linear extrapolation manufacture phantom violations, and the confinement fix.
+note collects the wing treatment shared by the Vol-Fitter's models. The
+universal constraint is Lee's moment formula: the asymptotic slope of total
+implied variance, $\beta=\limsup_{k\to\pm\infty}w(k)/|k|$, cannot exceed $2$
+and is tied to the moment critical exponents by the explicit map
+$\beta=\psi(p)$. We show how each model realizes or enforces it --- LQD
+structurally, SVI by a soft cap, Multi-Core SIV by wing-neutral hats --- and
+prove the zero-wing inheritance the SIV design relies on. The finite wing is a
+separate battle: the asymptotic slope can be admissible while a hat still
+dents the Durrleman density out where quotes are sparse, which is why the
+default-on put-wing regularizer samples $g$ \emph{past} the traded range
+(measured: worst violation $-10.2\to-0.008$ on the synthetic slice, a
+$\sim400\times$ median repair on real illiquid wings, byte-identical on clean
+slices). A case file replays the backtest finding that motivated it and the
+ablation verdict that the de-Americanization repair and the penalty are
+complementary, not redundant ($92\to25$ bp with the input repair alone;
+$749$ bp with the output penalty alone; $225$ bp with both). The note closes
+with the arc's centerpiece: the \emph{confinement principle} --- which
+no-arbitrage constraints must be sampled only where data lives, and which
+must extend into the wings --- with its four production instances.
 \end{abstract}
 
 \tableofcontents
 \newpage
 
 %======================================================================
+\section{The production problem}
+\label{sec:problem}
+
+Nobody quotes the far wings, yet everything downstream reads them: var-swap
+replication integrates $1/K^2$-weighted prices into the tails, risk metrics
+difference the wings, and the graph extrapolator (Note~14) inherits whatever
+tail the fitted model draws. Wing errors are invisible in the fit RMS ---
+there are no quotes to miss --- and show up later as a mispriced tail
+somewhere else. Two distinct things can go wrong: the \emph{asymptotic} slope
+can violate Lee's model-free bound (an arbitrage against the existence of any
+law), and the \emph{finite} wing can lose density positivity even with an
+admissible slope (a butterfly arbitrage in the extrapolated region).
+
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item Every displayed wing is Lee-admissible: $\beta\le2$, structurally where
+possible, by a soft cap otherwise.
+\item Single-slice (butterfly) constraints \emph{extend} into the wings;
+two-slice (calendar) constraints are \emph{confined} to the traded range
+(\cref{sec:principle}).
+\item Every wing guard is strictly additive: on an already-clean slice it is
+byte-identical to no guard.
+\item The tail is a property of the model's extrapolation law, not of the
+quotes; where the desk needs control (LV deep puts), the slope is an explicit
+knob or a calibrated variable.
+\end{enumerate}
+\end{invariant}
+
+%======================================================================
 \section{The universal constraint: Lee's moment formula}
 \label{sec:lee}
 
 Let $w(k,T)=\sigma_{\BS}^2(k,T)\,T$ be total implied variance at log-moneyness
-$k=\log(K/F_T)$. Lee's theorem bounds how fast the wings may grow.
+$k=\log(K/F_T)$.
 
-\begin{theorem}[Lee moment formula]
+\begin{theorem}[Lee moment formula \cite{Lee2004}]
 \label{thm:lee}
-Define the right tail slope $\beta_R=\limsup_{k\to+\infty}w(k,T)/k$ and the left
-slope $\beta_L=\limsup_{k\to-\infty}w(k,T)/|k|$. Let
-$p_R^*=\sup\{p:\E[S_T^{1+p}]<\infty\}$ and
-$q_L^*=\sup\{q:\E[S_T^{-q}]<\infty\}$ be the right/left moment critical exponents.
-Then
+Define the wing slopes
+\[
+\beta_R=\limsup_{k\to+\infty}\frac{w(k,T)}{k},\qquad
+\beta_L=\limsup_{k\to-\infty}\frac{w(k,T)}{|k|},
+\]
+and let $p_R^*=\sup\{p:\E[S_T^{1+p}]<\infty\}$ and
+$q_L^*=\sup\{q:\E[S_T^{-q}]<\infty\}$ be the moment critical exponents. Then
 \begin{equation}
 \beta_R=\psi(p_R^*),\qquad \beta_L=\psi(q_L^*),\qquad
-\psi(p)=2-4\big(\sqrt{p^2+p}-p\big),
+\psi(p)=2-4\big(\sqrt{p^2+p}-p\big).
 \label{eq:psi}
 \end{equation}
-and in particular $0\le\beta\le2$. Equivalently
-$\tfrac{1}{2\beta}+\tfrac{\beta}{8}-\tfrac12=p$.
 \end{theorem}
 
-The map and the way LQD reads its wing slopes off the endpoint scales
-$A_L,A_R=e^{g(0)},e^{g(1)}$ (\cref{sec:models}) are a few lines (matches production
-to $10^{-13}$/$10^{-10}$):
+\begin{lemma}[Properties of the Lee map]
+\label{lem:psi}
+$\psi$ is a strictly decreasing bijection from $[0,\infty]$ onto $[0,2]$,
+with $\psi(0)=2$, $\psi(\infty)=0$, and explicit inverse
+$p=\tfrac{1}{2\beta}+\tfrac{\beta}{8}-\tfrac12$. In particular $0\le\beta\le2$
+for \emph{every} arbitrage-free smile --- the ceiling $\beta=2$ is model-free.
+\end{lemma}
+
+\begin{proof}
+Write $\psi(p)=2\big(\sqrt{p+1}-\sqrt p\big)^2$: the parenthesis is positive
+and strictly decreasing (its derivative
+$\tfrac12(1/\sqrt{p+1}-1/\sqrt p)<0$), with limits $1$ at $p=0$ and $0$ at
+$\infty$; squaring and doubling gives the range $(0,2]$ plus the endpoint
+$\psi(\infty)=0$. Solving $\beta=2(\sqrt{p+1}-\sqrt p)^2$ for $p$ gives the
+stated inverse by elementary algebra.
+\end{proof}
+
+The map, and the way LQD reads its slopes off the endpoint scales
+$A_L=e^{g(0)}$, $A_R=e^{g(1)}$ of Note~01, are a few lines. \Cref{app:ref}
+verifies this distilled listing against the production \texttt{lee\_psi}
+and \texttt{lee\_slopes} to $10^{-15}$ (the production function takes the
+LQD parameter object and computes the endpoint scales itself):
 
 \begin{lstlisting}[caption={Lee's $\psi$ and the LQD structural wing slopes
 (distilled from \texttt{models/lqd/basis.py}).},label={lst:lee}]
-def lee_psi(p):                          # beta = psi(p); decreasing, psi(0)=2, psi(inf)=0
+def lee_psi(p):                 # beta = psi(p); decreasing, psi(0)=2
     return 2 - 4*(np.sqrt(p*p + p) - p)
 
-def lqd_wing_slopes(A_L, A_R):           # exponential tails -> exact moment exponents
-    beta_L = lee_psi(1/A_L)                            # left:  p* = 1/A_L
-    beta_R = 2.0 if A_R >= 1 else lee_psi(1/A_R - 1)   # right: p* = 1/A_R - 1  (A_R < 1)
+def lee_slopes(A_L, A_R):       # exponential tails -> exact exponents
+    beta_L = lee_psi(1/A_L)                          # left:  p* = 1/A_L
+    beta_R = 2.0 if A_R >= 1 else lee_psi(1/A_R - 1) # right: p* = 1/A_R - 1
     return beta_L, beta_R
 \end{lstlisting}
-
-\Cref{fig:psi} plots $\psi$. It is decreasing, from $\psi(0)=2$ (no finite moment
-beyond the first $\Rightarrow$ steepest admissible wing) to $\psi(\infty)=0$ (all
-moments finite $\Rightarrow$ flat wing). The ceiling $\beta=2$ is model-free: any
-smile with a steeper asymptotic variance slope admits arbitrage.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.62\textwidth]{fig_wings_psi.pdf}
-\caption{The Lee map $\beta=\psi(p)$: heavier tails (smaller moment exponent $p$)
-force steeper variance wings, capped at the model-free ceiling $\beta=2$.}
+\caption{The Lee map $\beta=\psi(p)$: heavier tails (smaller moment exponent
+$p$) force steeper variance wings, capped at the model-free ceiling
+$\beta=2$.}
 \label{fig:psi}
 \end{figure}
 
 \begin{heuristic}
-The wing slope and the tail heaviness are two faces of one coin. A fat right tail
-(few finite positive moments) \emph{must} show up as a steep right variance wing;
-a model that draws a flat wing over a fat-tailed density is internally
-inconsistent and will misprice far-OTM calls. Lee's bound is therefore not a
-nuisance constraint but a consistency condition between the smile and the law it
-implies --- which is why the LQD model, built from the law outward, satisfies it
-automatically.
+The wing slope and the tail heaviness are two faces of one coin. A fat right
+tail (few finite positive moments) \emph{must} show up as a steep right
+variance wing; a model that draws a flat wing over a fat-tailed density is
+internally inconsistent and will misprice far-OTM calls. Lee's bound is not a
+nuisance constraint but a consistency condition between the smile and the law
+it implies --- which is why the LQD model, built from the law outward,
+satisfies it automatically.
 \end{heuristic}
 
 %======================================================================
@@ -102,78 +152,99 @@ automatically.
 
 \subsection{LQD: Lee-consistent by construction}
 
-The LQD model (Note~01) parametrizes the log quantile density with logarithmic
-endpoints, giving \emph{exponential} return tails with scales $A_L,A_R$ read off
-the endpoint coefficients. The moment exponents are then exact,
+The LQD model (Note~01) parametrizes the log quantile density with
+logarithmic endpoints, giving \emph{exponential} return tails with scales
+$A_L,A_R$ read off the endpoint coefficients. The moment exponents are exact,
 $p_R^*=1/A_R-1$ and $q_L^*=1/A_L$, and the wing slopes follow from
-\cref{thm:lee},
+\cref{thm:lee}:
 \begin{equation}
 \beta_L=\psi(1/A_L),\qquad \beta_R=\psi(1/A_R-1),\quad A_R<1.
 \label{eq:lqd_wings}
 \end{equation}
-No penalty enforces this --- it is structural. The only wing-related constraint is
-the hard $A_R<1$ (a finite forward), handled by the soft barrier of Note~01. The
-benchmark fit yields $(\beta_L,\beta_R)=(\betaLQDL,\betaLQDR)$.
+No penalty enforces this --- it is structural. The only wing-related
+constraint is the hard $A_R<1$ (finite forward), handled by Note~01's soft
+barrier. The benchmark fit yields $(\beta_L,\beta_R)=(\betaLQDL,\betaLQDR)$.
 
 \subsection{SVI: linear wings with a soft cap}
 
-Raw SVI (Note~02) has exactly linear wings, $w(k)\sim b(1\mp\rho)|k|$, so its
-slopes are $\beta_L=b(1-\rho)$ and $\beta_R=b(1+\rho)$ in closed form
-($=(\sviwingLraw,\sviwingRraw)$ here, though the figure's fitted slice differs
-slightly). Lee's bound is the explicit inequality $b(1+|\rho|)\le2$, enforced as
-one of the two soft no-arbitrage penalties (weight \texttt{sviPenaltyWeight}, cap
-\texttt{leeSlopeMax}$=2$). On any admissible smile the penalty is zero; it only
-fences the optimizer out of the steep-wing region.
+Raw SVI (Note~02) has exactly linear wings, $w(k)\sim b(1\mp\rho)|k|$, so
+$\beta_L=b(1-\rho)$ and $\beta_R=b(1+\rho)$ in closed form
+($=(\sviwingLraw,\sviwingRraw)$ on the benchmark parameters). Lee's bound is
+the explicit inequality $b(1+|\rho|)\le2$, enforced as a soft hinge
+$\max\big(b(1+|\rho|)-\beta_{\max},0\big)$ at weight $10^3$ alongside the
+min-variance penalty (cap \texttt{leeSlopeMax}$\,=2$). On any admissible
+smile both penalties are exactly zero; they only fence the optimizer out of
+the inadmissible region.
 
 \subsection{Multi-Core SIV: inherited wings}
 
-The Multi-Core SIV slice (Note~03) is a convex base plus $R$ \emph{zero-wing}
-hats. Because each hat and its first two derivatives vanish in both tails, the
-asymptotic wings depend only on the base, with $z$-space variance slopes
-$S_0\mp2K_0/\kappa_{P,C}$. Converting to total-variance $k$-space via
-$k=\sigma_{\text{ref}}\sqrt t\,z$, $w=tv$ gives
+The Multi-Core SIV slice (Note~03) is a convex base plus up to two
+\emph{zero-wing} hats.
+
+\begin{proposition}[Zero-wing inheritance]
+\label{prop:zerowing}
+Let $v(z)=v_{\text{base}}(z)+\sum_r h_r(z)$ in standardized moneyness $z$,
+where each hat $h_r$ and its first two derivatives vanish as
+$z\to\pm\infty$. Then the asymptotic variance slopes of $v$ equal those of
+the base, $S_0\mp2K_0/\kappa_{P,C}$, for \emph{any} number of hats and any
+hat parameters; in total-variance $k$-space, with
+$k=\sigma_{\text{ref}}\sqrt t\,z$ and $w=tv$,
 \begin{equation}
-\beta_{L,R}=\frac{\sqrt t}{\sigma_{\text{ref}}}\,\Big|S_0\mp\frac{2K_0}{\kappa_{P,C}}\Big|,
+\beta_{L,R}
+=\frac{\sqrt t}{\sigma_{\text{ref}}}\,
+\Big|S_0\mp\frac{2K_0}{\kappa_{P,C}}\Big|.
 \label{eq:siv_wings}
 \end{equation}
-$=(\betaMCSIVL,\betaMCSIVR)$ on the benchmark. Adding cores cannot change the
-wings --- the entire reason for the zero-wing design. The zero-wing property pins
-the asymptotic \emph{slope}; it does not by itself keep the finite-wing
-\emph{curvature} admissible, since a hat can still dent the Durrleman $g$ below zero
-out in the sparsely quoted put wing. That residual is what the default-on put-wing
-penalty of Note~03 discourages, sampling $g$ a fixed padding past the quoted range.
+\end{proposition}
+
+\begin{proof}
+$v'(z)=v'_{\text{base}}(z)+\sum_rh_r'(z)\to v'_{\text{base}}(z)$ as
+$|z|\to\infty$ since each $h_r'\to0$; the base is asymptotically linear with
+the stated slopes. The $k$-space conversion is the chain rule through
+$k=\sigma_{\text{ref}}\sqrt t\,z$ and $w=tv$.
+\end{proof}
+
+On the benchmark, $(\beta_L,\beta_R)=(\betaMCSIVL,\betaMCSIVR)$. Adding cores
+cannot change the wings --- the entire point of the zero-wing design. But the
+proposition pins only the asymptotic \emph{slope}: a hat can still dent the
+Durrleman $g$ below zero at \emph{finite} $|z|$, out in the sparsely quoted
+put wing. That residual failure mode is real, measured, and policed by the
+put-wing regularizer of \cref{sec:r6}.
 
 \subsection{Local volatility: controlled linear extrapolation}
 
-The piecewise-affine local-volatility surface (Note~04) has no closed-form
-implied-vol wing; beyond the deepest quoted strike $x_{\min}$ it extrapolates the
-\emph{local} variance linearly with a slope tied to the first interior cell
-(parameter \texttt{leftWingSlopeMult}), rising toward $x\to0$. The Dupire map then
-turns that into an implied-vol wing. The slope multiplier and, when a var-swap
-quote is present, a free left-extrapolation coefficient give the desk direct
-control of the put wing where there are no strikes to pin it.
+The piecewise-affine local-vol surface (Note~04) has no closed-form
+implied-vol wing. Beyond the deepest strike vertex it extrapolates the
+\emph{local} variance linearly with slope \texttt{left\_extrap\_a} times the
+first interior cell's slope; the right wing is flat-clamped. The knob mapping
+is deliberate: the slope is $0$ (flat clamp) on the hot path, seeded from
+\texttt{leftWingSlopeMult}$\,=1.5$ when the convex-wing hinge is on, and
+becomes a \emph{free calibration variable} (bounds $[0,20]$) exactly when a
+var-swap quote is present to identify the deep-put tail --- the one
+instrument that genuinely observes it (Note~08).
 
 \subsection{Side by side}
 
-\Cref{fig:extrap} fits the same narrow calibration window with all three
-parametric models and extrapolates far past it. The wings agree in sign (the
-equity put skew: $\beta_L>\beta_R$) and order of magnitude, but diverge in
-detail --- each model's tail is a property of \emph{its} extrapolation law, not of
-the (identical) quotes. \Cref{tab:betas} collects the analytic slopes.
+\Cref{fig:extrap} fits the same narrow window with the three parametric
+models and extrapolates far past it. The wings agree in sign (the equity put
+skew, $\beta_L>\beta_R$) and order of magnitude but diverge in detail ---
+each tail is a property of \emph{its} extrapolation law, not of the identical
+quotes. \Cref{tab:betas} collects the analytic slopes.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.80\textwidth]{fig_wings_extrap.pdf}
-\caption{Three models fitted to the same window (shaded) and extrapolated. Inside
-the window they agree to vol bps; outside, each draws its own Lee-admissible
-wing.}
+\includegraphics[width=0.85\textwidth]{fig_wings_extrap.pdf}
+\caption{Three models fitted to the same window (shaded) and extrapolated.
+Inside the window they agree to vol bps; outside, each draws its own
+Lee-admissible wing. The divergence \emph{is} the model choice.}
 \label{fig:extrap}
 \end{figure}
 
 \begin{table}[H]
 \centering
-\caption{Analytic asymptotic total-variance wing slopes $\beta=\lim w(k)/|k|$ on
-the benchmark window; all are far below the Lee ceiling $2$.}
+\caption{Analytic asymptotic total-variance wing slopes
+$\beta=\lim w(k)/|k|$ on the benchmark window; all far below the Lee ceiling
+$2$.}
 \label{tab:betas}
 \begin{tabular}{lrrr}
 \toprule
@@ -181,97 +252,271 @@ Model & $\beta_L$ (put) & $\beta_R$ (call) & mechanism\\
 \midrule
 LQD & \betaLQDL & \betaLQDR & structural via $\psi(1/A)$\\
 SVI & \betaSVIL & \betaSVIR & linear $b(1\mp\rho)$, soft Lee cap\\
-MC-SIV & \betaMCSIVL & \betaMCSIVR & base wings, hats neutral\\
+MC-SIV & \betaMCSIVL & \betaMCSIVR & base wings, hats neutral
+(\cref{prop:zerowing})\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 %======================================================================
-\section{A wing-extrapolation pitfall: phantom calendar violations}
-\label{sec:phantom}
+\section{Policing the finite wing: the SIV put-wing regularizer}
+\label{sec:r6}
 
-Wing extrapolation interacts dangerously with the \emph{calendar} no-arbitrage
-machinery (Note~10). Calendar-freedom requires the later expiry's total variance
-to dominate the nearer one's at every $k$; the Vol-Fitter enforces this with a
-soft floor evaluated on a grid of log-moneyness points. The subtlety:
+An admissible slope does not make an admissible wing. The backtest's arb
+census located the Multi-Core SIV's failures precisely: $64\%$ of butterfly
+violations sit in the \emph{put} wing (median worst-violation location
+$z\approx-3.2$), against $4\%$ at the money --- hats fitted to sparse
+illiquid quotes buy in-sample RMS by denting the density where no quote
+objects. The shipped defence (the R6 fix) has three parts:
 
-\begin{caution}
-If the calendar floor is evaluated on a \emph{fixed, wide} grid (say
-$k\in[-1,1]$) that extends far beyond the traded strikes, then a model's own
-\emph{linear-wing extrapolation} --- which is unconstrained by data out there ---
-can dip below the nearer expiry purely as an artefact of extrapolation, creating a
-\emph{phantom} calendar violation. The optimizer then flattens the far fit to
-``cure'' a problem the data never posed. This was observed live: SVI overlays on
-NVDA and SPY had their far wings flattened by phantom violations manufactured on
-the fixed wide grid.
-\end{caution}
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{A capacity cap.} \texttt{nCores} is clamped to $\le2$ at the
+schema (and to $(n_{\text{quotes}}-6)/4$ in the calibrator): most historical
+violations came from high-core fits chasing noise.
+\item \textbf{A one-sided Durrleman hinge.} The refine stage carries residual
+rows $\sqrt{\lambda_{\text{w}}}\,\max(-g(z_m),0)$ on a $49$-point grid
+extending \emph{two standardized-moneyness units past the traded range} on
+both sides, with the put side weighted $2\times$ (where the census says the
+risk lives). The weight is
+$\lambda_{\text{w}}=(\texttt{sivWingPenaltyPct}/100)\cdot10^3$, default
+$100\%$.
+\item \textbf{A hybrid Jacobian.} The $g$ rows are finite-differenced (49
+points, one column at a time) while the quote/ridge/calendar blocks keep
+their analytic Jacobian --- the penalty costs little and perturbs nothing
+when inactive.
+\end{enumerate}
 
-The fix is \emph{confinement}: the calendar floor is built only on the
-\emph{traded} log-moneyness range (\texttt{variance\_floor\_grid\_from} the actual
-quotes), so the constraint bites where there is data and the wings are left to
-each model's own Lee-admissible extrapolation. The LQD and sigmoid math were
-untouched; only the grid over which the floor is sampled changed. This is the
-single most important practical lesson about wings: \emph{do not let a constraint
-sample the curve where only extrapolation lives.} Note~10 develops the calendar
-machinery in full.
+Measured: the synthetic arb slice's worst $g$ went $-10.2\to-0.008$; on real
+illiquid wings (EEM) the median worst violation improved $\sim400\times$
+($-7.86\to-0.019$) at $+79$ bp in-sample cost; on clean liquid slices the
+penalty rows are zero and the fit is byte-identical to $3\times10^{-17}$.
+Note that sampling $g$ \emph{past} the quoted range here is correct, not a
+violation of confinement --- see \cref{sec:principle}.
 
-\begin{remark}[Confinement versus intrinsic constraints]
-The confinement lesson is specific to constraints that compare \emph{two}
-extrapolations. A calendar floor pits one expiry's wing against another's, so
-sampling it where neither is pinned by data manufactures a phantom violation ---
-hence confine it to the traded range. A \emph{butterfly} constraint is different: it
-is an intrinsic property of a \emph{single} slice ($g\ge0$, equivalently a convex
-call curve) that must hold everywhere, wings included. So the Multi-Core SIV
-put-wing penalty (Note~03) deliberately samples $g$ \emph{past} the quoted range,
-and the de-Americanization convexity repair (Note~05) fixes the same wing butterfly
-at the \emph{input} --- neither contradicts confinement, because a single-curve
-constraint has no rival extrapolation to be spuriously violated against.
-\end{remark}
+\begin{example}[title={Case file: the SIV that invented a put wing}]
+\textbf{Setup.} The three-regime backtest sweep (F4): Multi-Core SIV on
+illiquid single names, where the put wing has a handful of wide quotes.
+
+\textbf{Failure mode.} SIV-2 improved in-sample RMS over SIV-0 --- and
+carried genuine butterfly arbitrage on $76\%$ of arb-prone nodes, almost all
+in the put wing. The model was buying RMS with a fake weekend wing: a hat
+parked where no quote could object.
+
+\textbf{Diagnosis.} The analytic (FD-free) arb metric (R2) separated real
+violations from finite-difference noise: with exact $w',w''$ per model, the
+apparent LQD ``violations'' vanished entirely ($28\%\to0$ --- structural
+positivity confirmed) while SIV-2's survived ($76\%$, genuine). The census
+then localized them: put wing, $z\approx-3.2$.
+
+\textbf{Fix.} The 2-core cap plus the put-weighted Durrleman hinge above
+(output side), composing with the de-Americanization wing repair of Note~05
+(input side).
+
+\textbf{Verdict (ablation, test-locked).} On the arb-prone illiquid
+population, with neither fix: worst $g$ $-30.4$, arbitrage on $100\%$,
+in-sample $92$ bp. Input repair alone: arbitrage cut $\sim3\times$ \emph{and}
+RMS improved to $25$ bp --- the SIV had been chasing arbitraged de-Am
+inputs. Output penalty alone: arbitrage essentially eliminated
+($g\ge-0.02$) but at $749$ bp --- brutal, because the model must fight its
+own corrupted inputs. Both: the penalty's arbitrage removal at $225$ bp.
+\emph{Complementary, not redundant}: the input repair makes the output
+penalty affordable. On liquid names both are byte-identical no-ops.
+\end{example}
+
+%======================================================================
+\section{The confinement principle}
+\label{sec:principle}
+
+Four production incidents --- the phantom calendar violations (Note~10's
+case file), the local-vol convex-wing regression (Note~04), the de-Am global
+repair revert (Note~05), and the SIV put-wing penalty above --- resolve into
+one rule.
+
+\begin{heuristic}
+\textbf{The confinement principle.} \emph{A constraint that compares two
+curves must be sampled only where data pins both; a constraint intrinsic to
+one curve must hold everywhere, wings included.} A two-curve constraint
+evaluated where both sides are extrapolation can only compare two fictions
+--- any ``violation'' there is an artefact of the extrapolation laws, and
+enforcing it lets the fiction corrupt the fit where data \emph{does} live. A
+single-curve constraint (density positivity, call convexity) is a property of
+the law itself: it has no rival extrapolation to be spuriously violated
+against, and abandoning it in the wings is exactly how fake tails are born.
+\end{heuristic}
+
+\begin{center}
+\small
+\begin{tabular}{p{0.30\textwidth}p{0.13\textwidth}p{0.22\textwidth}p{0.24\textwidth}}
+\toprule
+Constraint & Curves & Treatment & Where\\
+\midrule
+Calendar floor $w_{\text{far}}\ge w_{\text{near}}$ & two &
+\textbf{confined} to traded range & Note~10
+(\nolinkurl{variance_floor_grid_from})\\
+LV convex-wing hinge & two\footnotemark & \textbf{confined} to the
+extrapolation tail below the deepest quote & Note~04\\
+SIV Durrleman $g\ge0$ & one & \textbf{extended} $\pm2$ ATM-std past quotes &
+\cref{sec:r6}\\
+De-Am call convexity & one & \textbf{extended} to the wings, but
+band-constrained and ATM-core-fixed & Note~05\\
+\bottomrule
+\end{tabular}
+\end{center}
+\footnotetext{The LV wing hinge compares the model's wing against the
+\emph{quotes'} implied shape when sampled inside the quoted range --- the
+regression of Note~04 --- so it behaves as a two-curve constraint and is
+confined; in the pure extrapolation tail it degenerates to a one-curve
+convexity preference, which is where it is allowed to act.}
+
+The de-Am row shows the principle's refinement rather than an exception: the
+constraint (convexity) rightly extends into the wings, but the
+\emph{correction} it licenses is confined --- to the quoted bid--ask band and
+away from the ATM core --- because a repair, unlike a constraint, moves
+prices. Extending a one-curve constraint is safe; extending a repair's
+\emph{authority} unboundedly is how a $27\%$ put wing became $104\%$
+(Note~05).
 
 %======================================================================
 \section{What is original here}
 \label{sec:original}
 
-The Lee theory is classical; the contribution is the \emph{uniform} treatment.
-The same wing slope $\beta$ is computed three structurally different ways
-(\eqref{eq:lqd_wings}, the SVI linear slopes, \eqref{eq:siv_wings}) and shown to
-agree, so the choice of model is a choice of \emph{how} to extrapolate, not
-\emph{whether} the extrapolation is admissible. And the confinement fix of
-\cref{sec:phantom} --- recognizing that an arbitrage constraint must not be
-sampled in the extrapolation region --- is a genuinely non-obvious engineering
-insight that the cross-model perspective makes visible.
+The Lee theory is classical; the contribution is the \emph{uniform}
+treatment. The same slope $\beta$ is computed three structurally different
+ways (\eqref{eq:lqd_wings}, the SVI closed forms, \eqref{eq:siv_wings}) and
+shown to agree on one window, so the model choice is a choice of \emph{how}
+to extrapolate, never \emph{whether} the extrapolation is admissible. The
+put-wing regularizer is a census-guided constraint --- placed where the
+measured violations live, weighted by their measured asymmetry, and validated
+by an ablation that also proved it composes with the input-side repair. And
+the confinement principle of \cref{sec:principle} --- with its two-curve /
+one-curve criterion --- turns four hard-won production incidents into one
+transferable design rule.
+
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.30\textwidth}p{0.12\textwidth}p{0.26\textwidth}p{0.28\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+LQD structural Lee slopes; underflow-safe &
+\eqref{eq:lqd_wings} &
+\nolinkurl{models/lqd/basis.py} &
+\nolinkurl{test_lqd_basis.py::test_svi_fit_lee_slopes_match_note}, \nolinkurl{::test_lee_slopes_handle_underflowed_endpoint_scales}\\
+SVI Lee cap enforced &
+\cref{sec:models} &
+\nolinkurl{models/svi_jw/calibrate.py} &
+\nolinkurl{test_svi_calibrate.py::test_respects_lee_wing_bound}\\
+SIV hats are zero-wing &
+\cref{prop:zerowing} &
+\nolinkurl{models/sigmoid/sigmoid.py}, \nolinkurl{kernels.py} &
+\nolinkurl{test_sigmoid_model.py}\\
+2-core cap &
+\cref{sec:r6} &
+\nolinkurl{api/schemas.py}, \nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_siv_wing_penalty.py::test_cores_clamped_to_two}\\
+Put-wing hinge removes wing arb; byte-identical on clean slices &
+\cref{sec:r6} &
+\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_siv_wing_penalty.py::test_penalty_removes_wing_arb}, \nolinkurl{::test_penalty_byte_identical_on_arb_free_slice}\\
+Analytic FD-free arb metric &
+\cref{sec:r6} &
+\nolinkurl{backend/backtest/dispatch.py}, \nolinkurl{models/sigmoid/kernels.py} &
+\nolinkurl{test_backtest_arb.py}\\
+R3$\times$R6 ablation: complementary &
+case file &
+\nolinkurl{backend/backtest/ablation_arb.py} &
+\nolinkurl{test_ablation_arb.py}\\
+De-Am wing repair (input side) &
+\cref{sec:principle} &
+\nolinkurl{calib/convex_deam.py} &
+\nolinkurl{test_convex_deam.py}\\
+Calendar floor confined (two-curve) &
+\cref{sec:principle} &
+\nolinkurl{calib/calendar.py} &
+\nolinkurl{test_overlay_calendar.py::test_wide_grid_breaks_svi_but_data_grid_does_not}\\
+LV convex wing confined to tail &
+\cref{sec:principle} &
+\nolinkurl{api/affine_fit.py} &
+\nolinkurl{test_affine_grid_design.py::test_convex_wing_confined_to_quoted_extrapolation}\\
+\bottomrule
+\end{longtable}
+\endgroup
 
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
 \label{app:atlas}
 
-\begin{longtable}{p{0.26\textwidth}p{0.13\textwidth}p{0.52\textwidth}}
+\begin{longtable}{p{0.27\textwidth}p{0.13\textwidth}p{0.51\textwidth}}
 \caption{Wing-related knobs (cross-model).}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
-\texttt{leeSlopeMax} & $2.0$ & SVI Lee wing-slope cap $b(1+|\rho|)\le\beta_{\max}$.\\
-\texttt{sviPenaltyWeight} & $10^3$ & Weight of the SVI Lee/min-variance penalties.\\
-\texttt{leftWingSlopeMult} & $1.5$ & LV left local-variance extrapolation slope multiple (Note~04).\\
-\texttt{lvVolCapMult} & $3.0$ & LV local-vol cap as a multiple of max implied vol (Note~04).\\
-\texttt{EPS\_AR} (hidden) & $10^{-6}$ & LQD $A_R<1$ buffer; the only LQD wing constraint (Note~01).\\
-calendar floor grid & traded range & Confined to quoted $k$ to avoid phantom wing violations (Note~10).\\
+\multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
+\texttt{sivWingPenaltyPct} & $100$ & Put-wing Durrleman hinge strength
+(\% of the $10^3$ base weight); $0$ disables.\\
+\texttt{nCores} & $2$ (max $2$) & SIV core count, schema-clamped
+(\cref{sec:r6}).\\
+\texttt{leeSlopeMax} & $2.0$ & SVI Lee cap $b(1+|\rho|)\le\beta_{\max}$.\\
+\texttt{sviPenaltyWeight} & $10^3$ & Weight of the SVI Lee / min-variance
+penalties.\\
+\texttt{leftWingSlopeMult} & $1.5$ & LV left extrapolation slope seed; free
+variable under a var-swap (Note~04).\\
+\texttt{lvVolCapMult} & $3.0$ & LV local-vol cap multiple (Note~04).\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
+\texttt{\_WING\_PAD} & $2.0$ & The $g$-grid extends $\pm2$ standardized
+units past the traded range.\\
+\texttt{\_WING\_GRID} & $49$ & Points on the $g$-grid.\\
+\texttt{\_WING\_PUT\_FACTOR} & $2.0$ & Extra weight on the put side (the
+census asymmetry).\\
+\texttt{EPS\_AR} & $10^{-6}$ & LQD $A_R<1$ buffer; the only LQD wing
+constraint (Note~01).\\
+calendar floor grid & traded range & Confined per the principle of
+\cref{sec:principle} (Note~10).\\
 \bottomrule
 \end{longtable}
 
-\noindent\textbf{Performance.} Wing handling adds no measurable cost: LQD slopes
-are a by-product of the endpoint scales already computed; SVI/SIV slopes are
-closed forms of the fitted parameters; the LV wing is part of the surface solve.
-The only performance-relevant choice is the confinement of \cref{sec:phantom},
-which \emph{reduces} work by not over-constraining the extrapolation region.
+%======================================================================
+\section{Performance notes}
+\label{app:perf}
+
+Wing handling is essentially free: the LQD slopes are a by-product of the
+endpoint scales; SVI/SIV slopes are closed forms of the fitted parameters;
+the LV wing is part of the surface solve. The put-wing hinge adds $49$
+residual rows in the refine stage only, with a hybrid Jacobian (analytic
+blocks untouched, $g$ rows by finite differences); on a clean slice the rows
+are zero and the optimum is byte-identical. The analytic arb metric (R2)
+replaced a double \texttt{np.gradient} on 201 points with closed-form
+$w',w''$ per model --- more accurate \emph{and} cheaper. Confinement
+(\cref{sec:principle}) reduces work by not over-constraining the
+extrapolation region.
+
+%======================================================================
+\section{Reference implementation}
+\label{app:ref}
+
+The listing of \cref{sec:lee} is verified against
+\texttt{models/lqd/basis.py}: \texttt{lee\_psi} is character-identical, and
+the distilled \texttt{lee\_slopes} (taking the endpoint scales directly)
+agrees with the
+production function (which takes the LQD parameter vector and computes the
+endpoint scales itself) to $10^{-15}$ across the benchmark fits, including
+the underflow guards at extreme scales.
 
 \begin{thebibliography}{9}
-\bibitem{Lee2004} R.~W.~Lee. The moment formula for implied volatility at extreme
-strikes. \emph{Mathematical Finance}, 14(3):469--480, 2004.
+\bibitem{Lee2004} R.~W.~Lee. The moment formula for implied volatility at
+extreme strikes. \emph{Mathematical Finance}, 14(3):469--480, 2004.
 \bibitem{BenaimFriz2009} S.~Benaim and P.~Friz. Regular variation and smile
 asymptotics. \emph{Mathematical Finance}, 19(1):1--12, 2009.
-\bibitem{GatheralJacquier2014} J.~Gatheral and A.~Jacquier. Arbitrage-free SVI
-volatility surfaces. \emph{Quantitative Finance}, 14(1):59--71, 2014.
+\bibitem{GatheralJacquier2014} J.~Gatheral and A.~Jacquier. Arbitrage-free
+SVI volatility surfaces. \emph{Quantitative Finance}, 14(1):59--71, 2014.
 \end{thebibliography}
 
 \end{document}
