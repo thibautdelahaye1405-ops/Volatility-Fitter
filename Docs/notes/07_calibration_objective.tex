@@ -156,6 +156,16 @@ so a quote tighter than $2h$ collapses gracefully to a mid fit on that strike. T
 hinge is monotone in the quote value, so the \emph{same} construction works in any
 monotone residual space --- implied vol for SVI/SIV, vega-normalized price for
 LQD/LV --- and the band-violation subgradient $\sgn$ feeds the analytic Jacobians.
+Both are one line:
+
+\begin{lstlisting}[caption={The two-sided band hinge and its subgradient (distilled
+from \texttt{calib/band.py}; match production exactly).},label={lst:band}]
+def band_violation(model, lo, hi):   # > 0 only outside [lo, hi]; exactly 0 inside
+    return np.maximum(model - hi, 0.0) + np.maximum(lo - model, 0.0)
+
+def band_sign(model, lo, hi):        # d(violation)/d(model): +1 above, -1 below, 0 inside
+    return np.where(model > hi, 1.0, 0.0) - np.where(model < lo, 1.0, 0.0)
+\end{lstlisting}
 
 \Cref{fig:band} shows a band fit against a mid fit on a smile with a widening wing
 spread and noisy mids: the band fit is content to sit anywhere inside the shaded
@@ -234,6 +244,25 @@ $\eta$ (vega floor) & $10^{-4}$ & Floor on Black vega in \eqref{eq:vega}.\\
 residual is $O(m)$, both negligible against the fit; the band subgradient is
 analytic so it adds nothing to Jacobian assembly. Switching schemes or modes bumps
 the options version and triggers exactly one refit.
+
+%======================================================================
+\section{Reference implementation: the band residual stack}
+\label{app:ref}
+
+The full objective stacks two blocks per quote: the band violation (scaled by the
+per-quote weight, or $1/\text{vega}$ in the LQD/LV price space) and a weak mid
+anchor of strength $\theta_{\text{mid}}$, so the fit is free inside the band yet
+never drifts off a one-sided quote. Squaring and summing reproduces the loss
+$\max(m-\text{hi},0)^2+\max(\text{lo}-m,0)^2+\theta_{\text{mid}}(m-\text{mid})^2$.
+Matches production to $10^{-15}$.
+
+\begin{lstlisting}[caption={The stacked band-objective residual (distilled from
+\texttt{calib/band.py}).}]
+def band_residuals(model, lo, hi, mid, scale, mid_anchor_weight):
+    viol = scale * band_violation(model, lo, hi)         # push inside the bid/ask band
+    anchor = np.sqrt(mid_anchor_weight) * scale * (model - mid)   # weak pull to mid
+    return np.concatenate([viol, anchor])                # least-squares stack (length 2N)
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{tvweights} Vol-Fitter Technical Note, \emph{Density-corrected time-value

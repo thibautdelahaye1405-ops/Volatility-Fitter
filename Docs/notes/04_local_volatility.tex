@@ -154,6 +154,25 @@ unconditionally stable and monotone --- it cannot create spurious negative
 densities. The observation operator reads the normalized call at each quote's
 $(T,x)$ off the solution by interpolation.
 
+Diagonal dominance makes pivoting unnecessary, so each step \eqref{eq:implicit} is
+a no-pivot Thomas march --- the kernel the compiled march (\cref{app:perf})
+accelerates $\sim6.5\times$:
+
+\begin{lstlisting}[caption={The no-pivot tridiagonal (Thomas) solve for one implicit
+step \eqref{eq:implicit} (distilled from \texttt{models/localvol/affine\_march.py};
+matches a dense solve to $10^{-10}$).},label={lst:thomas}]
+def thomas(a, b, c, d):            # a: sub-diagonal, b: diagonal, c: super-diagonal
+    n = len(d); cp = np.empty(n); dp = np.empty(n)
+    cp[0], dp[0] = c[0]/b[0], d[0]/b[0]
+    for i in range(1, n):          # forward sweep: eliminate the sub-diagonal
+        m = b[i] - a[i]*cp[i-1]
+        cp[i], dp[i] = c[i]/m, (d[i] - a[i]*dp[i-1])/m
+    x = np.empty(n); x[-1] = dp[-1]
+    for i in range(n-2, -1, -1):   # back substitution
+        x[i] = dp[i] - cp[i]*x[i+1]
+    return x
+\end{lstlisting}
+
 \subsection{No-arbitrage diagnostics}
 \label{sec:diagnostics}
 
@@ -466,6 +485,25 @@ attempt (wrong loop order), Rannacher ($1.1\times$ + arb risk), GN for the
 non-smooth band objective, thread/process parallelism (GIL). Four distributed-cost
 dead-ends confirming the cost is spread, not localized.
 \end{enumerate}
+
+%======================================================================
+\section{Reference implementation: Dupire extraction}
+\label{app:ref}
+
+Forward calibration never differentiates the data (\cref{sec:dupire}), but the
+inverse map --- read a local-variance grid off an \emph{already-fitted}
+total-variance surface $w(k,T)$ --- is Gatheral's formula, used for grid export and
+the graph LV projection (Note~14). The denominator $g$ is the butterfly function:
+$g\le0$ marks strike arbitrage in the implied surface, where no positive local
+variance can reproduce it, returned \texttt{nan}. Matches production to $10^{-13}$.
+
+\begin{lstlisting}[caption={Dupire/Gatheral local variance from an implied
+total-variance surface (distilled from \texttt{models/localvol/dupire.py}).}]
+def dupire_local_variance(k, w, wk, wkk, wt):  # w=w(k,T) with its k, kk, T derivatives
+    r = k/w
+    g = 1 - r*wk + 0.25*(-0.25 - 1/w + r*r)*wk*wk + 0.5*wkk   # butterfly denominator
+    return np.where((w > 0) & (g > 0), wt/np.where(g > 0, g, 1), np.nan)  # nan if g <= 0
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{Dupire1994} B.~Dupire. Pricing with a smile. \emph{Risk}, 7(1):18--20, 1994.

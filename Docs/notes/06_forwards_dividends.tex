@@ -71,7 +71,20 @@ line in $K$: regressing the call--put difference on strike,
 \label{eq:regress}
 \end{equation}
 gives the discount as the (negated) slope and the forward as the intercept divided
-by the discount. The fit iterates: fit, measure residuals, drop paired strikes
+by the discount. In code it is a one-line least squares (this recovers a known
+forward/discount to $10^{-6}/10^{-9}$ and equals the production regression to
+$10^{-9}$):
+
+\begin{lstlisting}[caption={Put--call parity regression for the forward and discount
+\eqref{eq:regress} (distilled from \texttt{data/forwards.py}).},label={lst:parity}]
+def implied_forward(K, call_mid, put_mid):
+    y = call_mid - put_mid              # C - P = D F - D K = a + b K
+    b, a = np.polyfit(K, y, 1)          # slope b = -D, intercept a = D F
+    D = -b                              # discount factor
+    return a/D, D                       # forward F = a/D
+\end{lstlisting}
+
+The fit iterates: fit, measure residuals, drop paired strikes
 with implausible residuals (or fewer than three pairs), and refit, so a few crossed
 or stale quotes do not corrupt the line. \Cref{fig:parity} shows the recovery on a
 clean synthetic chain --- the forward comes back to the cent and the rate to its
@@ -206,6 +219,27 @@ per expiry; the clamp is a comparison; the de-bias is a handful of coarse-tree
 de-Americalizations on a near-ATM band ($\sim1$ bp forward in a few ms). All are
 negligible against the smile fit, and editing a name's rate or dividend schedule
 bumps only that ticker's forwards version, refitting just that name.
+
+%======================================================================
+\section{Reference implementation: the discount clamp}
+\label{app:ref}
+
+The parity \emph{slope} is the discount --- the worst-identified parameter --- so on
+a noisy feed it can imply a nonphysical rate. The clamp pins the rate to a band and,
+when it bites, re-derives the forward as a per-strike average $F=\operatorname{mean}
+(K+(C-P)/D)$ (the well-identified \emph{level}) rather than the slope-driven $a/b$,
+so the forward no longer inherits the bad slope.
+
+\begin{lstlisting}[caption={The discount clamp and forward re-derivation (distilled
+from \texttt{data/forwards.py}).}]
+def clamp_forward(K, call_mid, put_mid, t, F, D, r_lo=-0.05, r_hi=0.30):
+    r = -np.log(D)/t                     # the parity discount's implied rate
+    if r_lo <= r <= r_hi:
+        return F, D                      # physical: keep the regression result
+    D = np.exp(-np.clip(r, r_lo, r_hi)*t)         # clamp the rate to the band
+    F = np.mean(K + (call_mid - put_mid)/D)       # re-derive F from the LEVEL, not a/b
+    return F, D
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{Hull2017} J.~Hull. \emph{Options, Futures, and Other Derivatives}.

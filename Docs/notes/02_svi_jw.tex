@@ -127,7 +127,22 @@ identity from the ATM identity gives the closed form
 The reverse map \emph{from} raw \emph{to} jump-wing is just the definitions
 \eqref{eq:jw_def} evaluated on the fitted raw slice; the Vol-Fitter uses it to
 display handles after every calibration. \Cref{sec:example} verifies the
-round-trip numerically to machine precision.
+round-trip numerically to machine precision. The forward conversion
+\eqref{eq:jw_to_raw_1}--\eqref{eq:jw_to_raw_2} is direct:
+
+\begin{lstlisting}[caption={SVI-JW handles $\to$ raw SVI (distilled from
+\texttt{models/svi\_jw/svi.py}; agrees with it to $10^{-12}$).},label={lst:jw2raw}]
+def jw_to_raw(t, v, psi, p, c, vt):          # v, psi, p, c, vtilde  ->  a, b, rho, m, sigma
+    w0 = v*t; sq = np.sqrt(w0)
+    b = 0.5*sq*(p + c)
+    rho = (c - p)/(c + p)
+    chi = rho - 4*psi/(p + c)                # chi = m / sqrt(m^2 + sigma^2)
+    r1x, r1r = np.sqrt(1 - chi*chi), np.sqrt(1 - rho*rho)
+    sigma = (w0 - vt*t) / (b*((1 - rho*chi)/r1x - r1r))
+    m = chi*sigma/r1x
+    a = vt*t - b*sigma*r1r
+    return a, b, rho, m, sigma
+\end{lstlisting}
 
 %======================================================================
 \section{Static no-arbitrage}
@@ -364,6 +379,30 @@ box-constraint handling entirely, so each LM step is a plain linear solve.
 $(b,\rho)$ from the wing slopes lands $\theta_0$ close enough that liquid smiles
 converge in a single pass.
 \end{enumerate}
+
+%======================================================================
+\section{Reference implementation: the reverse map}
+\label{app:ref}
+
+The raw slice evaluates in one line, $w(k)=a+b(\rho(k-m)+\sqrt{(k-m)^2+\sigma^2})$;
+the reverse conversion \eqref{eq:jw_def} reads the five jump-wing handles off it.
+Composing with \cref{lst:jw2raw} recovers the original handles to $10^{-10}$ --- the
+round trip is exact, not approximate.
+
+\begin{lstlisting}[caption={Raw SVI evaluation and raw $\to$ SVI-JW (distilled from
+\texttt{models/svi\_jw/svi.py}).}]
+def w_svi(k, a, b, rho, m, sigma):           # the hyperbola w(k)
+    km = k - m
+    return a + b*(rho*km + np.sqrt(km*km + sigma**2))
+
+def raw_to_jw(t, a, b, rho, m, sigma):       # a, b, rho, m, sigma  ->  v, psi, p, c, vtilde
+    w0 = w_svi(0.0, a, b, rho, m, sigma); sq = np.sqrt(w0)
+    v = w0/t                                 # ATM variance
+    psi = b/(2*sq)*(rho - m/np.sqrt(m*m + sigma**2))          # ATM skew
+    p, c = b*(1 - rho)/sq, b*(1 + rho)/sq    # put / call wing slopes
+    vt = (a + b*sigma*np.sqrt(1 - rho*rho))/t                 # minimum variance
+    return v, psi, p, c, vt
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{Gatheral2004} J.~Gatheral. A parsimonious arbitrage-free implied
