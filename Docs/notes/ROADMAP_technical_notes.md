@@ -101,6 +101,22 @@ Each note: commit after it compiles clean with its figures.
   interp, `frontTie=True`, `_DELTA_SET`/`_CONVEX_WING_DELTA` in the atlas.
   Traceability table with exact test anchors; Appendix C verified against
   `models/localvol/dupire.py` (exact). Next: Note 13.
+- **2026-07-03 — Note 13 hardened** (third note of the pass). The two gating
+  mechanisms are now honestly distinguished (the operator/factor
+  `activation_gap` precision-ratio gate vs the strike-gap coverage-deficit
+  weighting — earlier revisions blurred them), with three propositions: the
+  no-damp guarantee (closed gate ⇒ row identically zero), harmonic basket
+  support = propagated leg precision, and the basket null-space theorem
+  (RR/BF baskets are invariant under the common level shift that per-leg
+  anchoring damps — the theorem behind `test_prior_nodamp.py`). Scoped the
+  full precision vocabulary to its real consumer (the graph baseline);
+  diagnostics endpoint documented as a field table; two case files (the
+  4-vol-pt jump the strike anchor damped; the temporal backtest that
+  confirmed hybrid, ~32 bp / 66%); new `fig_prior_activation` rendering both
+  mechanisms from the production builders (ATM gap 0, RR25 0.99, BF25 0.95,
+  VS 1.0; strike-gap unmet 67%). Atlas gains `collarSign` and
+  `priorOperatorCovarianceMode` (diagonal-only implemented). Next: 09+10
+  (wings/calendar arc).
 
 - **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
   updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and

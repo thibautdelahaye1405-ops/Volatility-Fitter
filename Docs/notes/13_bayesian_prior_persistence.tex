@@ -16,24 +16,29 @@
 \begin{abstract}
 A desk does not re-derive its volatility surface from scratch each morning: it
 \emph{persists} yesterday's surface and lets today's quotes update it. Done
-naively this is a dilemma. Load the prior too hard and you \emph{damp} a real
-overnight signal --- an ATM vol that genuinely jumped gets pulled back toward
-yesterday. Load it too softly and the sparsely-quoted wings \emph{flap}, over-fit
-to a steep ATM skew. This note documents the Vol-Fitter's resolution: a Bayesian
-prior-persistence framework built on one idea --- an \emph{activation gate} that
-turns the prior \emph{off} exactly where today's quotes already identify a feature,
-and \emph{on} where they do not. We give the universal residual form and the gate
-$\mathrm{gap}=\max(1-\text{obs}/\text{req},0)^\gamma$, the shared precision
-vocabulary (quote density, bid--ask width, freshness, transport distance), and the
-seven persistence modes --- off, overlay, strike gaps, quote operators, smile
-factors, hybrid (the default), and graph-only --- including why the
-risk-reversal/butterfly operators must be \emph{signed baskets} to preserve their
-coupling. A worked example, built with the production calibrator, shows an ATM jump
-of $+8$ vol points preserved (the persisted ATM is \priatmpersist\%, tracking the
-market, not the calmer prior's \priatmprior\%) while an unquoted wing is held at the
-prior ($\priwingps\%$ vs the market-only fit's wild $\priwingmo\%$). An empirical
-temporal backtest confirms the hybrid default reconstructs held-out wings
-$\sim32$ vol bps better than no prior, two-thirds of the time.
+naively this is a dilemma --- anchor hard and you \emph{damp} a genuine
+overnight move; anchor softly and the unquoted wings \emph{flap}. This note
+documents the Vol-Fitter's resolution: gated Bayesian persistence, where every
+mode adds residual rows of one universal shape and an \emph{activation gate}
+turns each row off exactly where today's quotes already identify its feature.
+We give formal definitions of the two gating mechanisms actually shipped ---
+the precision-ratio gate of the operator and factor modes, and the
+coverage-deficit weighting of the strike-gap mode --- and prove the three
+statements the design rests on: a closed gate contributes nothing to the
+objective (the no-damp guarantee), the propagated precision of a signed basket
+is the weighted harmonic support of its legs, and persisting RR/BF as
+\emph{baskets} rather than legs preserves exactly the level direction that
+per-leg anchoring would damp. The seven persistence modes, the diagnostics
+endpoint, and the transported-prior provenance are specified against the code.
+Two case files close the loop: the 4-vol-point overnight jump where the
+operator prior tracks the jumped wing while the strike anchor clings to
+yesterday's level, and the temporal backtest that \emph{confirmed} the shipped
+hybrid default ($\sim32$ vol bps better held-out wing reconstruction than no
+prior, two-thirds of the time) while honestly convicting the pure operator
+modes of adding nothing at the median. The worked example, built with the
+production calibrator, shows an ATM jump preserved (\priatmpersist\% vs the
+market's \priatmmarket\%) while the unquoted wing is held
+(\priwingps\% vs the market-only fit's \priwingmo\%).
 \end{abstract}
 
 \tableofcontents
@@ -43,279 +48,687 @@ $\sim32$ vol bps better than no prior, two-thirds of the time.
 \section{The morning dilemma}
 \label{sec:dilemma}
 
-Overnight, two things change unevenly. The at-the-money level may move sharply on
-fresh news, and it is \emph{well quoted} --- the liquid near-the-money options
-re-price immediately. The wings, by contrast, may have \emph{no} fresh quotes at
-all, yet they still need values. A fitter faces a choice:
+Overnight, two things change unevenly. The at-the-money level may move sharply
+on fresh news, and it is \emph{well quoted} --- the liquid near-the-money
+options re-price immediately. The wings may have \emph{no} fresh quotes at
+all, yet they still need values. A fitter faces a choice: re-fit from today's
+quotes only, and the model extrapolates the (now steeper) ATM skew into
+implausible tails --- the wings \emph{flap}; or anchor hard to yesterday's
+prior, and the prior pulls the \emph{ATM} back toward yesterday --- the real
+signal is \emph{damped}.
 
-\begin{itemize}[leftmargin=1.4em]
-\item \textbf{Re-fit from today's quotes only.} The ATM is captured, but with no
-wing quotes the model extrapolates the (now steeper) ATM skew into the wings,
-producing implausible tails --- the wings \emph{flap}.
-\item \textbf{Anchor hard to yesterday's prior.} The wings are stabilized, but the
-prior also pulls the \emph{ATM} back toward yesterday, \emph{damping} the real
-overnight signal.
-\end{itemize}
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Do not damp the signal.} A feature today's quotes identify is
+never pulled toward the prior: its gate is exactly zero, not merely small.
+\item \textbf{Fill the gap.} A feature today's quotes do not identify is held
+at the (transported) prior, with strength that grows as coverage falls.
+\item \textbf{Strictly additive.} Mode \texttt{off} is byte-identical to a
+plain fit; every prior block is a no-op when its target is \texttt{None}.
+\item \textbf{Coupled features persist coupled.} A risk-reversal is one
+statement, not two leg statements; persistence must not silently decompose it.
+\end{enumerate}
+\end{invariant}
 
 \begin{heuristic}
 The resolution is to make the prior's strength \emph{local} and
-\emph{data-aware}: strong in the wings (no quotes $\Rightarrow$ trust yesterday),
-zero at the money (fresh quotes $\Rightarrow$ trust today). The same prior, applied
-through a gate that reads how well today's data identifies each feature, gives both
-behaviours at once. This is just Bayesian updating with a precision that depends on
-the observation density --- but stated as an operational rule: \emph{do not damp the
-signal.}
+\emph{data-aware}: strong in the wings (no quotes $\Rightarrow$ trust
+yesterday), zero at the money (fresh quotes $\Rightarrow$ trust today). This
+is ordinary Bayesian updating with an observation-dependent prior precision
+--- stated as an operational rule: \emph{do not damp the signal}.
 \end{heuristic}
 
 %======================================================================
-\section{The universal residual and the activation gate}
+\section{The universal residual and the gate}
 \label{sec:gate}
 
-Every persistence mode adds residuals of one shape: a difference between a
-\emph{functional} of the model and the same functional of the prior, scaled by a
-data-aware weight,
+Every persistence mode adds least-squares rows of one shape: a functional of
+the model minus the same functional of the transported prior, carried at a
+gated weight,
 \begin{equation}
-\boxed{\;r_j=\sqrt{\lambda_j}\,\frac{O_j(\text{model})-O_j(\text{prior})}{\text{scale}_j},
-\qquad
-\lambda_j=\underbrace{\text{strength}}_{\text{global}}\cdot\underbrace{\pi^{\text{prior}}_j}_{\text{prior precision}}\cdot\underbrace{\mathrm{gap}_j}_{\text{gate}}.\;}
+\boxed{\;r_j=\sqrt{\lambda_j}\;
+\frac{O_j(\text{model})-O_j(\text{prior})}{\text{scale}_j},\;}
 \label{eq:universal}
 \end{equation}
-$O_j$ is a strike price, an operator (ATM/RR/BF), or a local smile factor depending
-on the mode (\cref{sec:modes}). The decisive factor is the \emph{activation gate}
+where $O_j$ is a call price at a delta location, a quote operator
+(ATM/RR/BF/var-swap), or a local smile factor, depending on the mode
+(\cref{sec:modes}).
+
+\begin{definition}[Activation gate]
+\label{def:gate}
+For an observation precision $\pi^{\text{obs}}\ge0$, a required precision
+$\pi^{\text{req}}>0$ and a sharpness $\gamma>0$,
 \begin{equation}
-\mathrm{gap}_j=\max\!\Big(1-\frac{\pi^{\text{obs}}_j}{\pi^{\text{req}}_j},\,0\Big)^{\!\gamma},
+\mathrm{gap}\big(\pi^{\text{obs}}\big)
+=\Big(\min\big(\max\big(1-\pi^{\text{obs}}/\pi^{\text{req}},\,0\big),\,1\big)\Big)^{\gamma}.
 \label{eq:gap}
 \end{equation}
-where $\pi^{\text{obs}}_j$ is how precisely today's quotes identify coordinate $j$
-and $\pi^{\text{req}}_j$ the precision at which the prior should switch off. When
-the data meets or exceeds the requirement, $\mathrm{gap}_j=0$ and the prior
-contributes \emph{nothing}; when the data says nothing, $\mathrm{gap}_j\to1$ and
-the prior is at full strength. The exponent $\gamma$ sharpens the transition.
-\Cref{fig:gate} plots it. The gate and the prior precision it produces are two lines
-(matches production to $10^{-13}$):
+\end{definition}
 
-\begin{lstlisting}[caption={The universal activation gate \eqref{eq:gap} and the
-gated prior precision (distilled from \texttt{calib/precision.py}).},label={lst:gate}]
-def activation_gap(obs, req, gamma=1.0):     # 1 where data says nothing, 0 where it identifies
+The gate is $1$ where the data says nothing, decreases monotonically as the
+data improves, and --- the decisive property --- is \emph{exactly zero} for
+all $\pi^{\text{obs}}\ge\pi^{\text{req}}$, not asymptotically small.
+$\gamma$ sharpens the edge (\cref{fig:gate}).
+
+\begin{proposition}[The no-damp guarantee]
+\label{prop:nodamp}
+Fix a mode and let coordinate $j$ satisfy
+$\pi^{\text{obs}}_j\ge\pi^{\text{req}}_j$, so $\mathrm{gap}_j=0$ and hence
+$\lambda_j=0$ in \eqref{eq:universal}. Then the row $r_j\equiv0$ for
+\emph{every} model parameter vector: the objective, its gradient and its
+Gauss--Newton model are independent of the prior value $O_j(\text{prior})$.
+In particular, with all gates closed the fit is the prior-free fit, and with
+mode \texttt{off} the fit is byte-identical to a plain fit (test-locked).
+\end{proposition}
+
+\begin{proof}
+$\lambda_j=0$ makes $r_j$ the zero function of $\theta$, so it contributes
+$0$ to the cost and a zero row to the Jacobian; nothing downstream can depend
+on the prior through it. The byte-identity claims are locked by
+\texttt{test\_none\_anchor\_leaves\_the\_fit\_byte\_identical} and the
+\texttt{off}-mode routing tests.
+\end{proof}
+
+This is the difference between gating and shrinkage: a ridge toward the prior
+with a small weight still biases every coordinate a little; the gate biases
+identified coordinates \emph{not at all}, and spends its entire budget on the
+unidentified ones.
+
+\begin{lstlisting}[caption={The activation gate \eqref{eq:gap}, verbatim from
+the shared vocabulary (\texttt{calib/precision.py}); matches production
+exactly (\cref{app:ref}).},label={lst:gate}]
+def activation_gap(obs, req, gamma=1.0):  # 1: data silent; 0: identified
     return np.clip(1 - obs/np.maximum(req, 1e-12), 0.0, 1.0)**gamma
-
-def active_prior_precision(base, gap):       # prior precision actually entering the fit
-    return base * gap                        # ~0 where the data is already sufficient
 \end{lstlisting}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.72\textwidth]{fig_prior_gate.pdf}
-\caption{The activation gate \eqref{eq:gap}. Past the required precision the prior
-weight is exactly zero --- the ``do not damp the signal'' rule. $\gamma$ controls
-how hard the on/off edge is.}
+\caption{The activation gate \eqref{eq:gap}. Past the required precision the
+prior weight is exactly zero --- the ``do not damp the signal'' rule.
+$\gamma$ controls how hard the on/off edge is.}
 \label{fig:gate}
 \end{figure}
 
 %======================================================================
-\section{The precision vocabulary}
-\label{sec:precision}
+\section{Two gates, honestly distinguished}
+\label{sec:twogates}
 
-The gate needs a shared notion of precision, used identically by every mode (and
-by the graph baseline of Note~14). A raw precision is scaled by model-agnostic
-factors in $(0,1]$:
-\begin{itemize}[leftmargin=1.4em]
-\item \textbf{Fit quality} $1/\text{rms}^2$, floored at a $1$-vol-bp excellence
-level (a great fit is precise, not infinitely so).
-\item \textbf{Quote density} --- more supporting quotes raise precision, saturating
-at a reference count ($\sim8$ near-ATM quotes for full credit).
-\item \textbf{Bid--ask width} --- precision halves at a relative spread of $\sim5\%$
-of ATM vol.
-\item \textbf{Freshness} --- exponential decay with quote/prior age (half-lives of a
-few days for observations, $\sim30$ days for the prior).
-\item \textbf{Transport distance} --- a prior transported a forward distance
-$|h|=|\log(F_{\text{now}}/F_{\text{prior}})|$ is less trustworthy, decaying on a
-scale of $\sim10\%$.
-\end{itemize}
-The \emph{observation} precision (data side) combines fit quality, density,
-spread and freshness; the \emph{prior} precision (baseline side) combines
-provenance, age and transport. Both carry per-handle floors and caps so that one
-excellent fit cannot dominate and one stale prior cannot vanish entirely.
+Production ships \emph{two} gating mechanisms, and earlier revisions of this
+note blurred them. They answer the same question --- \emph{where should the
+prior pull?} --- with different mathematics.
+
+\subsection{The operator/factor gate: a precision ratio}
+\label{sec:opgate}
+
+For the operator and factor modes, the observation precision of a coordinate
+is its \emph{quote support}: each leg location $k_a$ receives the
+Gaussian-kernel effective quote count
+$s_a=\sum_q \omega_q\,e^{-(k_q-k_a)^2/2b^2}$ with bandwidth
+$b=\texttt{priorOperatorBandwidth}$, and a basket
+$O=\sum_a c_a\,\sigma(k_a)$ aggregates its legs' support harmonically:
+\begin{equation}
+\pi^{\text{obs}}(O)=\Big(\sum_a\frac{c_a^2}{s_a+\eps}\Big)^{-1}.
+\label{eq:harmonic}
+\end{equation}
+
+\begin{proposition}[Harmonic support is the propagated basket precision]
+\label{prop:harmonic}
+Suppose each leg vol is estimable from today's quotes with variance
+proportional to $1/s_a$, independently across legs. Then the implied estimate
+of the basket $O=\sum_ac_a\sigma(k_a)$ has variance proportional to
+$\sum_ac_a^2/s_a$, i.e.\ precision proportional to \eqref{eq:harmonic}. In
+particular one unquoted leg ($s_a\to0$) drives $\pi^{\text{obs}}(O)\to0$
+however well the other leg is quoted: a risk-reversal with a missing put leg
+is \emph{unidentified}, and its gate opens.
+\end{proposition}
+
+\begin{proof}
+$\Var\big(\sum_ac_a\hat\sigma_a\big)=\sum_ac_a^2\Var(\hat\sigma_a)
+\propto\sum_ac_a^2/s_a$ by independence; take reciprocals.
+\end{proof}
+
+The active weights split a budget $B$ over the open gates,
+\begin{equation}
+\lambda_j=B\,\frac{\mathrm{gap}_j}{\sum_i \mathrm{gap}_i},
+\qquad B=\frac{\texttt{priorOperatorStrengthPct}}{100}\sum_q\omega_q ,
+\label{eq:budget}
+\end{equation}
+and operators with $\mathrm{gap}_j=0$ are dropped from the target entirely.
+
+\begin{remark}[What the shipped gate does \emph{not} use]
+\label{rem:notused}
+The required precision $\pi^{\text{req}}$ is the single scalar
+\texttt{priorOperatorRequiredPrecision} for all operators (a per-operator
+schedule is declared in the design but not implemented), and the budget split
+\eqref{eq:budget} does \emph{not} multiply a base prior precision. The richer
+vocabulary of \cref{sec:vocab} --- spread, freshness, transport-distance and
+fit-quality factors, and \texttt{active\_prior\_precision} --- is consumed by
+the \emph{graph baseline} of Note~14, not by this gate.
+\end{remark}
+
+\subsection{The strike-gap weighting: a coverage deficit}
+\label{sec:sggate}
+
+The strike-gap mode gates by a different object: a \emph{density deficit} in
+log-moneyness. With $\rho_{\text{obs}}$ the Gaussian KDE of today's quote
+locations (total mass $=$ quote count, bandwidth $0.06$) and
+$\rho_{\text{des}}$ a desired coverage of the same mass spread over the wider
+anchor span, each anchor strike $x_j$ (placed at the deltas
+$\{2,5,10,25,40\}\Delta$ by the Black delta map
+$k=\tfrac12\sigma^2\tau-\sigma\sqrt\tau\,\Phi^{-1}(c)$) receives
+\begin{equation}
+\text{weight}_j
+=B_{\text{sg}}\cdot
+\frac{\big(\rho_{\text{des}}(x_j)-\rho_{\text{obs}}(x_j)\big)^{+}\,\Delta x_j}
+{\sum_i\big(\rho_{\text{des}}(x_i)-\rho_{\text{obs}}(x_i)\big)^{+}\,\Delta x_i},
+\qquad
+\text{unmet}=\frac{\sum_i(\cdots)^+\Delta x_i}{\text{desired mass}},
+\label{eq:deficit}
+\end{equation}
+with $\Delta x_j$ the anchor's Voronoi cell width, and the residual is the
+vega-normalized \emph{call-price} difference at $x_j$ (the deep-wing
+$1/\text{vega}$ capped at $25\times$ its minimum so an anchor cannot amplify
+noise unboundedly). Where quotes already meet the desired density the deficit
+is zero --- the same ``off where the data speaks'' behaviour as
+\cref{def:gate}, but expressed as coverage in strike space rather than a
+precision ratio, and never multiplied by a prior precision. The companion
+var-swap pull is scaled by the \emph{unmet} fraction: a fully covered smile
+persists nothing, including the var-swap level.
+
+\begin{caution}
+The two mechanisms persist different \emph{things}. Strike-gap rows anchor
+\emph{absolute call prices}: if the whole vol level jumps overnight, an
+unquoted wing is pulled toward yesterday's \emph{absolute} wing --- correct
+when the level is stable, wrong across a jump. Operator/factor rows anchor
+\emph{level-invariant shape} (RR, BF, curvature are unchanged by
+$\sigma\mapsto\sigma+c$), so the persisted wing rides \emph{today's} level.
+The first case file of \cref{sec:cases} measures exactly this distinction ---
+it is why the hybrid default carries the shape on operators and reserves
+strike anchors for the deep tail no operator covers.
+\end{caution}
+
+\subsection{The shared vocabulary and its consumers}
+\label{sec:vocab}
+
+\texttt{calib/precision.py} is the single home of the gate
+\eqref{eq:gap} and the scalar confidence factors
+\begin{equation}
+\begin{aligned}
+\text{density}&=\mathrm{clip}(n/8,\,0.15,\,1), &
+\text{spread}&=\frac{1}{1+\text{rel spread}/0.05},\\
+\text{freshness}&=2^{-\text{age}/\text{half-life}}\ (3\,\text{d obs},\ 30\,\text{d prior}), &
+\text{transport}&=e^{-|h|/0.10},
+\end{aligned}
+\label{eq:factors}
+\end{equation}
+with $|h|=|\log(F_{\text{now}}/F_{\text{prior}})|$ the transported forward
+distance. The persistence gate of \cref{sec:opgate} consumes only the quote
+support; the \emph{full} vocabulary --- fit quality $1/\text{rms}^2$ floored
+at 1 vol bp, provenance tiers, and the factors \eqref{eq:factors} --- prices
+the graph baseline of Note~14, which imports these functions from here
+(re-export golden-locked, so the two systems cannot drift apart).
+
+%======================================================================
+\section{Operators, factors, and why baskets}
+\label{sec:operators}
+
+\begin{definition}[Quote operators]
+\label{def:operators}
+With $\sigma(k)$ a slice's implied vol, $k_{c,\delta},k_{p,\delta}$ the
+call/put strikes at delta $\delta$ on the \emph{prior} smile, and
+\texttt{collarSign} fixing the RR orientation:
+\[
+\text{ATM}=\sigma(0),\qquad
+\text{RR}_\delta=\pm\big(\sigma(k_{c,\delta})-\sigma(k_{p,\delta})\big),\qquad
+\text{BF}_\delta=\tfrac12\big(\sigma(k_{c,\delta})+\sigma(k_{p,\delta})\big)-\sigma(0),
+\]
+plus $\text{VarSwap}=\sqrt{K_{\text{var}}/\tau}$. Each is a \emph{signed
+basket} $O=\sum_ac_a\sigma(k_a)$ over frozen leg locations; the known set is
+$\{$ATM, RR25, BF25, RR10, BF10, VarSwap$\}$.
+\end{definition}
+
+\begin{definition}[Smile factors]
+\label{def:factors}
+The factor mode replaces delta legs by ATM-local stencils of step
+$h=\texttt{priorOperatorBandwidth}$:
+$\text{skew}=\sigma(h)-\sigma(-h)$,
+$\text{curvature}=\sigma(h)-2\sigma(0)+\sigma(-h)$,
+$\text{leftWing}=\sigma(-3h)-\sigma(0)$,
+$\text{rightWing}=\sigma(3h)-\sigma(0)$ (raw differences, not divided by
+$h$) --- the prior's \emph{shape} re-expressed at the current node. Factors
+reuse the operator gate and target machinery verbatim.
+\end{definition}
+
+\begin{proposition}[Baskets preserve exactly the directions legs would damp]
+\label{prop:nullspace}
+Consider one operator $O=\sum_ac_a\sigma_a$ over $L$ legs, and compare two
+penalties on the leg vols $\sigma\in\R^L$:
+the basket row
+$r_{\text{bsk}}=\sqrt\lambda\,(c\T\sigma-c\T\sigma^{\text{prior}})$ and the
+per-leg rows
+$r_a=\sqrt{\lambda_a}\,(\sigma_a-\sigma_a^{\text{prior}})$, $a=1..L$. The
+basket penalty is invariant under every leg move $\delta$ with
+$c\T\delta=0$ --- an $(L{-}1)$-dimensional space that, for RR and BF,
+contains the \emph{common level shift} $\delta=\1$ (since the coefficients
+sum to zero). The per-leg penalty is invariant only under $\delta=0$: it
+penalizes the level shift with weight $\sum_a\lambda_a$, i.e.\ it damps a
+market-wide vol move even when the market's RR and BF are unchanged.
+\end{proposition}
+
+\begin{proof}
+$r_{\text{bsk}}$ depends on $\sigma$ only through $c\T\sigma$, so its level
+sets are affine hyperplanes with normal $c$; adding any
+$\delta\in c^\perp$ leaves it fixed, and $\dim c^\perp=L-1$. For RR,
+$c=(+1,-1)$; for BF, $c=(\tfrac12,\tfrac12,-1)$; both satisfy $c\T\1=0$, so
+$\1\in c^\perp$. The per-leg stack has Jacobian
+$\diag(\sqrt{\lambda_a})$ of full rank, so its only invariant direction is
+$0$, and its value at $\sigma^{\text{prior}}+t\1$ grows like
+$t^2\sum_a\lambda_a$.
+\end{proof}
+
+This is invariant~4 made precise, and it is why the LV route was
+\emph{changed} during the build: the first design emitted synthetic per-leg
+quotes, which silently damped the level; the shipped design emits one signed
+\texttt{BasketQuote} per operator. On the local-vol surface, where the
+natural unknowns are call prices, the basket is transported to price space by
+the frozen-vega linearization
+$\sigma(k_a)\approx\sigma^{\text{prior}}_a+(P_a-P^{\text{prior}}_a)/\text{vega}_a$:
+weights $w_a=c_a/\text{vega}_a$, target $\sum_aw_aP^{\text{prior}}_a$,
+tolerance $1/\sqrt\lambda$. It also cured a long-standing asymmetry: the SVI
+and Multi-Core SIV overlays, which previously received no prior at all, now
+consume the same operator targets as LQD.
 
 %======================================================================
 \section{The seven modes}
 \label{sec:modes}
 
-The mode (\texttt{priorPersistenceMode}) chooses the functional $O_j$ in
-\eqref{eq:universal}.
+The single source of truth is \texttt{priorPersistenceMode} (the legacy
+\texttt{autoLoadPrior} toggle is retired; a saved-settings blob from the old
+world migrates to \texttt{strike\_gap} or \texttt{off}, and new installs
+default to \texttt{hybrid}). The resolver maps the mode to plan flags
+consumed by every fit path:
 
-\begin{enumerate}[leftmargin=1.6em]
-\item \textbf{Off.} No prior penalty and no overlay --- a pure current-market fit.
-\item \textbf{Overlay.} The transported prior is \emph{drawn} (dotted) for
-reference but exerts no calibration pull.
-\item \textbf{Strike gaps.} $O_j$ is the call price at a spread of delta-locations.
-The weight follows the \emph{data-gap} density: $\rho_{\text{desired}}(x)-\rho_{\text{observed}}(x)$,
-the positive part, where $\rho_{\text{observed}}$ is a Gaussian kernel density of
-the live quotes and $\rho_{\text{desired}}$ is the coverage we want spread over the
-\emph{wider} delta span. A region already sampled to the desired density gets zero
-prior weight; only the deficit (sparse wings, gaps) is filled. This is the mode in
-the worked example.
-\item \textbf{Quote operators.} $O_j\in\{\text{ATM},\text{RR}_{25},\text{BF}_{25},\text{VarSwap}\}$,
-persisted only where today's quotes do not identify the operator. RR and BF must be
-\emph{signed baskets} (\cref{sec:baskets}).
-\item \textbf{Smile factors.} $O_j\in\{\text{ATM},\text{skew},\text{curvature},\dots\}$,
-ATM-local finite-difference stencils --- the prior's \emph{shape} re-expressed at
-the current node.
-\item \textbf{Hybrid (default).} Operator priors (ATM/RR/BF/var-swap) plus a
-residual deep-tail strike anchor only where no operator covers --- the empirically
-best reconstruction (\cref{sec:validation}).
-\item \textbf{Graph-only.} The prior enters \emph{only} as the graph baseline for
-extrapolation (Note~14); dark nodes receive propagated innovations rather than a
-direct anchor.
-\end{enumerate}
+\begin{center}
+\small
+\setlength{\tabcolsep}{4.5pt}
+\begin{tabular}{lccccc}
+\toprule
+Mode & overlay & strike & operators & factors & tail\\
+\midrule
+\texttt{off} & & & & & \\
+\texttt{overlay} & \checkmark & & & & \\
+\texttt{strike\_gap} & \checkmark & \checkmark & & & \\
+\texttt{quote\_operator} & \checkmark & & \checkmark & & \\
+\texttt{smile\_factor} & \checkmark & & & \checkmark & \\
+\texttt{hybrid} (default) & \checkmark & & \checkmark & & \checkmark\\
+\texttt{graph\_only} & \checkmark & & & & \\
+\bottomrule
+\end{tabular}
+\end{center}
 
-\subsection{Why operators are signed baskets}
-\label{sec:baskets}
+\noindent\texttt{graph\_only} routes the prior exclusively into the graph
+baseline of Note~14 (dark nodes receive propagated innovations, no direct
+anchor); \texttt{hybrid}'s \emph{tail anchor} is the strike-gap machinery
+restricted to the deltas strictly below the shallowest active wing operator
+(fallback $\{2,5\}\Delta$), at its own budget --- operators carry the shape,
+the tail anchor covers only what no operator reaches. Every budget is a
+percentage of the summed quote weights, so prior strength scales with how
+much data the fit actually has.
 
-A risk-reversal or butterfly is a \emph{combination} of leg vols, not a single
-quote. Persisting RR and BF as \emph{per-leg} prices would silently drop their
-coupling --- the prior would anchor the legs independently and lose ``the skew
-should persist'' as a joint statement. Instead each operator is a signed linear
-functional (basket) of the leg implied vols (parametric) or of the leg call prices
-(local-vol), giving \emph{one} residual per operator that preserves the RR/BF
-coupling on whatever surface the model draws. This also fixed a long-standing
-asymmetry: the SVI and Multi-Core SIV overlays, which previously received no prior
-at all, now get the same signed-operator treatment as LQD.
-
-%======================================================================
-\section{Two-pass activation}
+\subsection{Two-pass activation}
 \label{sec:twopass}
 
-The gate \eqref{eq:gap} needs the observation precision, which in its sharpest form
-is the \emph{realized} fit quality --- a chicken-and-egg with the fit it modifies.
-The optional two-pass mode (\texttt{priorDataOnlyPrepass}) resolves it cleanly:
-fit once on data alone, measure each operator's realized precision, then refit with
-priors active only on the under-observed coordinates. This is the most faithful
-``do not damp'' behaviour but costs $\sim2\times$ per node, so it is opt-in; the
-default single pass gates by quote-support precision with no extra fit.
+The sharpest observation precision is the \emph{realized} fit quality --- a
+chicken-and-egg with the fit it modifies. The opt-in
+\texttt{priorDataOnlyPrepass} resolves it exactly: fit once on data alone,
+measure each operator's realized precision, refit with priors active only on
+the under-observed coordinates. It is the most faithful no-damp behaviour at
+$\sim2\times$ cost per node; the default single pass gates on quote support
+\eqref{eq:harmonic} with no extra fit.
+
+%======================================================================
+\section{Transport and provenance}
+\label{sec:transport}
+
+The prior is never consumed raw. Its LQD backbone (the canonical stored
+object per expiry) is \emph{transported} to the current forward under the
+active spot-dynamics regime (Note~12), with
+$h=\log(F_{\text{now}}/F_{\text{prior}})$; all operator, factor and anchor
+targets are evaluated on the transported smile $w(k)$. A snapshot stores, per
+expiry, the LQD backbone plus the displayed-model parameters, forwards,
+discounts and both clocks $(\tau,t)$; persistence is to the \texttt{VolStore}
+database with history, and the active prior carries a provenance source
+(\texttt{saved} / \texttt{15min} / \texttt{close} / \texttt{none}) and a
+per-ticker monotone version that busts the fit cache --- a fetched prior can
+never silently coexist with fits made under the old one.
+
+%======================================================================
+\section{Diagnostics}
+\label{sec:diagnostics}
+
+Persistence must be \emph{inspectable}: the panel answers ``is the prior
+pulling here, and how hard?'' without reading code. Per node,
+\texttt{GET /smiles/\{ticker\}/\{expiry\}/prior-diagnostics} returns:
+
+\begin{center}
+\small
+\begin{tabular}{llp{0.55\textwidth}}
+\toprule
+Field & Type & Meaning\\
+\midrule
+\texttt{mode} / \texttt{active} & str / bool & Resolved mode; whether any
+prior row is live on this node.\\
+\texttt{operators[]} & list & One row per operator (active \emph{and}
+gated-off).\\
+\quad\texttt{operator} & str & ATM / RR25 / BF25 / VarSwap / factor name.\\
+\quad\texttt{priorValue} & float & The operator on the transported prior.\\
+\quad\texttt{obsPrecision} & float & Quote support \eqref{eq:harmonic}.\\
+\quad\texttt{requiredPrecision} & float & The gate threshold in force.\\
+\quad\texttt{gap} & float & The gate \eqref{eq:gap}: $0$ = off, $1$ = full
+pull.\\
+\quad\texttt{activeLambda} & float & The LSQ weight \eqref{eq:budget}
+actually applied.\\
+\texttt{varSwapPriorVol} / \texttt{varSwapWeight} & float & The var-swap pull,
+if active.\\
+\texttt{strikeAnchorCount} & int & Tail/strike anchors in force.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The endpoint is best-effort (it reports \emph{inactive} rather than failing)
+and drives the frontend \texttt{PriorPersistencePanel}, whose table shows the
+same gap/$\lambda$ columns. \Cref{fig:activation} renders the two mechanisms
+of \cref{sec:twogates} for the worked example's market: the strike-gap budget
+lands entirely in the unquoted wings, and the operator gate closes ATM while
+opening RR/BF/var-swap.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.98\textwidth]{fig_prior_activation.pdf}
+\caption{Activation diagnostics for a densely-ATM-quoted, wing-bare smile,
+computed by the production builders. Left: the strike-gap coverage deficit
+\eqref{eq:deficit} --- anchors inside the quoted band get zero budget.
+Right: the operator gate --- ATM's quote support exceeds the requirement
+(gap $0$, dropped from the target); the wing-dependent operators are
+under-observed and receive the budget.}
+\label{fig:activation}
+\end{figure}
 
 %======================================================================
 \section{Worked example: an overnight jump}
 \label{sec:example}
 
-\Cref{fig:nodamp} is the dilemma made concrete, built with the production strike-gap
-prior and calibrator. Yesterday's prior is a calm $\priatmprior\%$-ATM smile.
-Overnight the market jumps: today's ATM is $\priatmmarket\%$ with a steeper skew,
-and \emph{only} the ATM region ($|k|\le0.10$) is quoted. The market-only fit
-captures the ATM but extrapolates the steep skew into a wild put wing
-($\priwingmo\%$ at $k=-0.30$). The prior-persisted fit keeps the ATM essentially
-at the \emph{market} level (\priatmpersist\%, tracking the market's
-\priatmmarket\% rather than being damped toward the prior's \priatmprior\%) because the gate is zero where the quotes are dense, while holding
-the unquoted wing at the prior ($\priwingps\%$, vs the prior's $\priwingprior\%$)
-because the gate is one where there are no quotes. The signal is preserved; the gap
-is filled.
+\Cref{fig:nodamp} is the dilemma made concrete, built with the production
+strike-gap prior and calibrator. Yesterday's prior is a calm
+$\priatmprior\%$-ATM smile. Overnight the market jumps: today's ATM is
+$\priatmmarket\%$ with a steeper skew, and \emph{only} the ATM region
+($|k|\le0.10$) is quoted. The market-only fit captures the ATM but
+extrapolates the steep skew into a wild put wing ($\priwingmo\%$ at
+$k=-0.30$). The prior-persisted fit keeps the ATM at the \emph{market} level
+(\priatmpersist\%) because the coverage deficit \eqref{eq:deficit} is zero
+where quotes are dense, while holding the unquoted wing at the prior
+($\priwingps\%$ vs the prior's $\priwingprior\%$) because the deficit is
+total where there are none. The signal is preserved; the gap is filled.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.82\textwidth]{fig_prior_nodamp.pdf}
-\caption{``Don't damp the signal.'' The persisted fit (solid) tracks the market ATM
-jump (quoted region shaded) while the unquoted wings are held by the prior (dotted),
-rather than flapping like the market-only fit (dashed).}
+\caption{``Don't damp the signal.'' The persisted fit (solid) tracks the
+market ATM jump (quoted region shaded) while the unquoted wings are held by
+the prior (dotted), rather than flapping like the market-only fit (dashed).}
 \label{fig:nodamp}
 \end{figure}
 
-%======================================================================
-\section{Empirical validation}
-\label{sec:validation}
+Note what this example does \emph{and does not} show: the strike-gap anchor
+holds the wing at yesterday's \emph{absolute} level, which is right here
+because the wing genuinely had no information --- but across a level jump
+that same absoluteness becomes the failure mode the next section measures.
 
-The framework is validated by a \emph{temporal} backtest. For each
-$(\text{asset},\,T{-}1\to T)$ pair it fits day $T{-}1$'s full chain, freezes it as
-the active prior, thins day $T$ to its ATM region, refits under each mode, and
-scores the reconstructed \emph{held-out} moderate wing against the true day-$T$
-quotes (with \texttt{off} as the baseline). Over the full spike regime ($1117$
-nodes plus a bandwidth/probe sweep), the shipped \textbf{hybrid} default
-reconstructs the held-out wing $\sim32$ vol bps better than no prior, $\sim66\%$ of
-the time, and wins at \emph{every} bandwidth and var-swap probe tested; the
-strike-gap mode is a close second, while the pure signed-operator modes do not beat
-\texttt{off} at the median --- the reconstruction comes from the tail/strike anchor,
-not the signed RR/BF operators. The backtest thus \emph{confirmed} the shipped
-configuration rather than changing a default: the operator bandwidth is not a
-productive lever (left at $0.06$) and the var-swap probe stays at $1.4\sigma$.
+%======================================================================
+\section{Case files}
+\label{sec:cases}
+
+\begin{example}[title={Case file: the jump the strike anchor damped}]
+\textbf{Setup.} The scenario of \texttt{test\_prior\_nodamp.py}: a
+$\tau=0.5$ node, an overnight ATM jump of $4$ vol points with the whole
+smile lifted, today's quotes dense at the money and absent in the wings.
+Operator prior (\texttt{ATM/RR25/BF25}) vs the legacy strike-gap anchor, both
+through the production calibrator.
+
+\textbf{Failure mode.} The strike anchor pins the unquoted wing to
+yesterday's \emph{absolute} wing vol --- which after a level jump is the
+\emph{wrong} wing: it under-shoots today's true (lifted) wing and drags the
+nearby smile with it.
+
+\textbf{Diagnosis.} \Cref{prop:nullspace}: per-strike price anchors penalize
+the common level direction $\1$; RR/BF baskets are invariant under it. The
+operator target also drops ATM automatically
+(\texttt{"ATM" not in op.names}) because its quote support exceeds the
+requirement --- \cref{prop:nodamp} in action.
+
+\textbf{Fix.} Persist \emph{shape}, not level: the operator rows carry
+yesterday's RR/BF onto today's level, and the wing is reconstructed as
+``today's ATM $+$ yesterday's skew/convexity''.
+
+\textbf{Verdict (test-locked).} The operator-prior wing lands closer to the
+\emph{true jumped} wing than the strike anchor's, while the strike anchor's
+wing stays closer to \emph{yesterday's} wing; the operator and factor fits
+match the data-only ATM to $<0.4$ and $<0.6$ vol points respectively --- no
+damping. The hybrid default is precisely this division of labour: operators
+for shape, strike anchors only for the deep tail no operator covers.
+\end{example}
+
+\begin{example}[title={Case file: the backtest that confirmed the default}]
+\textbf{Setup.} The temporal harness: for each $(\text{asset},T{-}1\to T)$
+pair, fit day $T{-}1$'s full chain, freeze it as the active prior, thin day
+$T$ to its ATM region, refit under each mode, and score the reconstructed
+held-out moderate wing against day $T$'s true quotes; \texttt{off} is the
+baseline. Full spike regime, $1117$ nodes, plus a bandwidth and var-swap
+probe sweep.
+
+\textbf{Verdict.} The shipped \textbf{hybrid} default reconstructs the
+held-out wing $\sim32$ vol bps better than no prior, $\sim66\%$ of the time,
+and wins at \emph{every} bandwidth and probe tested; strike-gap is a close
+second. The \emph{pure} signed-operator modes do not beat \texttt{off} at
+the median --- with the wing entirely dark, the reconstruction is driven by
+the tail/strike anchor, not the RR/BF rows.
+
+\textbf{Lesson.} The backtest \emph{confirmed} rather than changed the
+configuration: bandwidth is not a productive lever (left at $0.06$), the
+var-swap probe stays at $1.4\sigma$, and the hybrid's two components are
+both necessary --- operators to avoid damping (previous case file), the tail
+anchor to actually rebuild a fully dark wing. Neither alone suffices; the
+composite does.
+\end{example}
 
 %======================================================================
 \section{What is original here}
 \label{sec:original}
 
-The Bayesian framing (prior precision $\times$ data precision) is standard; the
-contributions are the \emph{operational} pieces. The \emph{activation gate}
-\eqref{eq:gap} turns ``do not damp the signal'' into one differentiable factor
-shared by every mode. The \emph{shared precision vocabulary} means strike gaps,
-operators, factors and the graph baseline all speak the same language of
-confidence. The \emph{signed-basket} operators \eqref{sec:baskets} keep the RR/BF
-coupling that per-leg persistence would lose, and incidentally cured the
-overlay-models' missing-prior asymmetry. And the \emph{two-pass} option closes the
-fit-quality circularity exactly. The whole framework is byte-identical to a plain
-fit when the mode is \texttt{off}, so persistence is strictly additive.
+The Bayesian framing is standard; the contributions are operational. The
+\emph{activation gate} \eqref{eq:gap} turns ``do not damp the signal'' into
+one differentiable factor with a provable dead zone (\cref{prop:nodamp}).
+The \emph{harmonic basket support} \eqref{eq:harmonic} prices identifiability
+of a combination, not of legs (\cref{prop:harmonic}). The
+\emph{signed-basket} operators preserve exactly the level direction per-leg
+persistence would damp (\cref{prop:nullspace}) --- the theorem behind the
+measured case file --- and incidentally cured the SVI/SIV missing-prior
+asymmetry. The \emph{shared vocabulary} keeps the persistence gate and the
+graph baseline speaking one language without letting them silently diverge
+(golden re-export tests). And the whole framework is strictly additive:
+\texttt{off} is byte-identical to a plain fit.
+
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.28\textwidth}p{0.13\textwidth}p{0.27\textwidth}p{0.28\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+Gate: zero past requirement, monotone, $\gamma$ sharpens &
+\cref{def:gate} &
+\nolinkurl{calib/precision.py} &
+\nolinkurl{test_precision_shared.py::test_gap_zero_when_well_observed}, \nolinkurl{::test_gap_monotone_and_gamma_sharpens}\\
+No-damp / byte-identical off &
+\cref{prop:nodamp} &
+\nolinkurl{calib/prior.py}, \nolinkurl{api/prior_mode.py} &
+\nolinkurl{test_prior_anchor.py::test_none_anchor_leaves_the_fit_byte_identical}, \nolinkurl{test_prior_parametric.py::test_none_arguments_are_noops}\\
+Operator math (RR sign, BF convexity) &
+\cref{def:operators} &
+\nolinkurl{calib/operators.py} &
+\nolinkurl{test_operators.py::test_risk_reversal_sign_and_collar}, \nolinkurl{::test_butterfly_positive_on_convex_smile}\\
+Gate closes ATM on dense quotes, keeps wings &
+\cref{prop:harmonic} &
+\nolinkurl{calib/operators.py} &
+\nolinkurl{test_operators.py::test_dense_atm_turns_off_atm_keeps_wings}, \nolinkurl{::test_full_coverage_returns_none}\\
+Budget splits across open gates &
+\eqref{eq:budget} &
+\nolinkurl{calib/operators.py} &
+\nolinkurl{test_operators.py::test_budget_splits_across_active_operators}\\
+Factor stencils; hybrid tail below shallowest operator &
+\cref{def:factors} &
+\nolinkurl{calib/factors.py} &
+\nolinkurl{test_prior_factors.py::test_factor_legs_stencils}, \nolinkurl{::test_hybrid_tail_deltas_below_shallowest_operator}\\
+Strike-gap deficit weights; vega cap &
+\eqref{eq:deficit} &
+\nolinkurl{calib/prior.py} &
+\nolinkurl{test_prior_anchor.py::test_prior_targets_gating}, \nolinkurl{::test_inv_vega_cap_bounds_tail_amplification}\\
+Mode resolver; autoLoadPrior migration &
+\cref{sec:modes} &
+\nolinkurl{api/prior_mode.py}, \nolinkurl{api/settings_persist.py} &
+\nolinkurl{test_prior_mode.py::test_resolver_flags_per_mode}, \nolinkurl{::test_migration_legacy_autoloadprior_on}\\
+All models consume the prior (SVI/SIV asymmetry fixed) &
+\cref{sec:operators} &
+\nolinkurl{models/{lqd,svi_jw,sigmoid}/calibrate.py} &
+\nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\
+LV route emits signed baskets, not per-leg quotes &
+\cref{prop:nullspace} &
+\nolinkurl{api/prior_lv.py} &
+\nolinkurl{test_prior_lv.py::test_rr_basket_is_a_signed_difference}, \nolinkurl{test_prior_factors.py::test_factor_lv_targets_are_baskets}\\
+No-damp under a level jump (case file) &
+\cref{sec:cases} &
+\nolinkurl{calib/operators.py} &
+\nolinkurl{test_prior_nodamp.py::test_operator_prior_follows_level_and_reconstructs_jumped_wing}\\
+Diagnostics endpoint &
+\cref{sec:diagnostics} &
+\nolinkurl{api/routers/smiles.py}, \nolinkurl{service.prior_diagnostics} &
+\nolinkurl{test_prior_diagnostics.py::test_diagnostics_endpoint_ok}\\
+Vocabulary shared with the graph (no drift) &
+\cref{sec:vocab} &
+\nolinkurl{calib/precision.py}, \nolinkurl{graph/precision.py} &
+\nolinkurl{test_precision_shared.py::test_graph_reexports_shared_factors}, \nolinkurl{::test_graph_design_point_unchanged}\\
+Persistence round-trip; transported identity &
+\cref{sec:transport} &
+\nolinkurl{api/priors.py}, \nolinkurl{api/prior_transport.py} &
+\nolinkurl{test_priors.py::test_priors_persist_across_restart}, \nolinkurl{::test_transported_prior_identity_and_shift}\\
+\bottomrule
+\end{longtable}
+\endgroup
 
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
 \label{app:atlas}
 
-\begin{longtable}{p{0.30\textwidth}p{0.14\textwidth}p{0.48\textwidth}}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{p{0.34\textwidth}p{0.15\textwidth}p{0.44\textwidth}}
 \caption{Prior-persistence hyperparameters.}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
 \multicolumn{3}{l}{\emph{Surfaced (OptionsSettings)}}\\ \midrule
-\texttt{priorPersistenceMode} & \texttt{hybrid} & The mode selector (\cref{sec:modes}).\\
-\texttt{priorAnchorWeightPct} & $50\%$ & Strike-gap budget (fraction of option weight).\\
-\texttt{priorAnchorDeltas} & $\{2,5,10,25,40\}\Delta$ & Delta-locations for strike anchors.\\
-\texttt{priorOperatorSet} & ATM/RR25/BF25/VS & Operators to persist.\\
-\texttt{priorOperatorStrengthPct} & $50\%$ & Operator budget.\\
-\texttt{priorOperatorRequiredPrecision} & $1.0$ & Gate threshold $\pi^{\text{req}}$.\\
+\texttt{priorPersistenceMode} & \texttt{hybrid} & The mode selector
+(\cref{sec:modes}); sole gate --- \texttt{autoLoadPrior} is retired
+(migration only).\\
+\texttt{priorAnchorWeightPct} & $50$ & Strike-gap budget (\% of summed quote
+weights).\\
+\texttt{priorAnchorDeltas} & $\{2,5,10,25,40\}\Delta$ & Delta locations for
+strike anchors.\\
+\texttt{priorOperatorSet} & ATM, RR25, BF25, VS & Operators to persist
+(known: also RR10, BF10).\\
+\texttt{priorOperatorStrengthPct} & $50$ & Operator budget.\\
+\texttt{priorOperatorRequiredPrecision} & $1.0$ & Gate threshold
+$\pi^{\text{req}}$ (one scalar for all operators).\\
 \texttt{priorOperatorGapExponent} $\gamma$ & $1.0$ & Gate sharpness.\\
-\texttt{priorOperatorBandwidth} & $0.06$ & Operator leg KDE bandwidth.\\
-\texttt{priorFactorSet} & ATM/skew/curv/VS & Smile factors to persist.\\
-\texttt{priorFactorStrengthPct} & $50\%$ & Factor budget.\\
-\texttt{priorTailAnchorStrengthPct} & $20\%$ & Hybrid deep-tail anchor budget.\\
-\texttt{priorDataOnlyPrepass} & off & Two-pass activation (\cref{sec:twopass}).\\
+\texttt{priorOperatorBandwidth} & $0.06$ & Quote-support kernel bandwidth;
+also the factor stencil step.\\
+\texttt{priorOperatorCovarianceMode} & \texttt{diagonal} & Declared
+\texttt{diagonal}/\texttt{full}; only \texttt{diagonal} is implemented.\\
+\texttt{collarSign} & \texttt{call\_put} & RR orientation
+($\pm(\sigma_c-\sigma_p)$).\\
+\texttt{priorFactorSet} & ATM, skew, curv, VS & Factors to persist.\\
+\texttt{priorFactorStrengthPct} & $50$ & Factor budget.\\
+\texttt{priorTailAnchorStrengthPct} & $20$ & Hybrid deep-tail anchor budget.\\
+\texttt{priorDataOnlyPrepass} & \texttt{false} & Two-pass activation
+(\cref{sec:twopass}).\\
 \midrule
-\multicolumn{3}{l}{\emph{Hidden (precision vocabulary)}}\\ \midrule
+\multicolumn{3}{l}{\emph{Hidden (persistence path)}}\\ \midrule
+\texttt{DEFAULT\_BANDWIDTH} & $0.06$ & Strike-gap KDE bandwidth.\\
+\texttt{MAX\_INV\_VEGA\_RATIO} & $25$ & Cap on deep-wing $1/\text{vega}$
+amplification.\\
+\texttt{\_VARSWAP\_PROBE\_STD} & $1.4$ & Var-swap coverage probe half-width
+(ATM std units).\\
+\texttt{\_WING\_MULT} & $3$ & Factor wing stencils at $\pm3h$.\\
+\texttt{\_VOL\_TOL} (LV) & $0.01$ & Vol tolerance behind LV basket/var-swap
+tolerances.\\
+\midrule
+\multicolumn{3}{l}{\emph{Hidden (shared vocabulary; consumed by the graph
+baseline, Note~14)}}\\ \midrule
 \texttt{RMS\_FLOOR} & $10^{-4}$ & Fit-quality precision floor (1 vol bp).\\
-\texttt{REF\_ATM\_QUOTES} & $8$ & Quote count for full density credit.\\
+\texttt{REF\_ATM\_QUOTES} & $8$ & Density credit saturation.\\
+\texttt{MIN\_DENSITY\_FACTOR} & $0.15$ & Density credit floor.\\
 \texttt{SPREAD\_HALF} & $0.05$ & Relative spread at which precision halves.\\
-\texttt{OBS/PRIOR\_FRESHNESS\_HALFLIFE} & $3$\,/\,$30$\,d & Freshness/age half-lives.\\
-\texttt{TRANSPORT\_SCALE} & $0.10$ & Transport-distance precision scale.\\
-\texttt{DEFAULT\_BANDWIDTH} & $0.06$ & Observed-quote KDE bandwidth.\\
-\texttt{MAX\_INV\_VEGA\_RATIO} & $25$ & Cap on deep-wing vega amplification.\\
-\texttt{\_VARSWAP\_PROBE\_STD} & $1.4\sigma$ & Var-swap coverage probe half-width.\\
+\texttt{OBS/PRIOR} freshness half-lives & $3$ / $30$ d & Observation / prior
+age decay.\\
+\texttt{TRANSPORT\_SCALE} & $0.10$ & Transport-distance decay scale.\\
 \bottomrule
 \end{longtable}
+\normalsize
 
-\noindent\textbf{Performance.} The prior blocks add a few residual rows and bump
-the options version (one refit on change). The single-pass gate is free (it reuses
-quote-support density); the two-pass prepass costs $\sim2\times$ per node and is
-opt-in. Mode \texttt{off} is byte-identical to a plain fit.
+\noindent\textbf{Performance.} The prior blocks add a handful of
+constant-length residual rows; every prior knob bumps the options version
+(one refit on change), and a fetched prior busts the fit cache. The
+single-pass gate is free (it reuses quote support); the two-pass prepass
+costs $\sim2\times$ per node and is opt-in. Mode \texttt{off} is
+byte-identical to a plain fit.
 
 %======================================================================
 \section{Reference implementation: the gated posterior}
 \label{app:ref}
 
-The gate feeds a precision-weighted Gaussian update. For one coordinate with prior
-mean $\mu_0$ at (gated) precision $\lambda_0$ and a datum $d$ at precision
-$\lambda_d$, the posterior mean is the precision-weighted average --- which the
-least-squares stack realizes as a residual row $\sqrt{\lambda_0}\,(\theta-\mu_0)$
-appended to the data. The gate multiplying $\lambda_0$ is exactly what makes the
-prior vanish where the data is strong ($\lambda_0\to0\Rightarrow$ posterior $\to d$)
-and dominate where it is absent ($\lambda_d\to0\Rightarrow$ posterior $\to\mu_0$).
+The gate feeds a precision-weighted Gaussian update. For one coordinate with
+prior mean $\mu_0$ at gated precision $\lambda_0$ and a datum $d$ at
+precision $\lambda_d$, the posterior mean is the precision-weighted average,
+which the least-squares stack realizes as the row
+$\sqrt{\lambda_0}(\theta-\mu_0)$ appended to the data rows. The listing
+reproduces the production \texttt{activation\_gap} exactly and states the
+posterior it implies: $\lambda_0\to0$ (closed gate) gives the data,
+$\lambda_d\to0$ (no data) gives the prior.
 
-\begin{lstlisting}[caption={The precision-weighted posterior the gated prior row
-implements.}]
-def posterior(mu0, lam0, d, lam_d):       # lam0 = active_prior_precision (gated)
-    return (lam0*mu0 + lam_d*d) / (lam0 + lam_d)   # -> d as lam0->0;  -> mu0 as lam_d->0
+\begin{lstlisting}[caption={The gate (verbatim vs \texttt{calib/precision.py})
+and the scalar posterior a gated row implements.}]
+def activation_gap(obs, req, gamma=1.0):
+    return np.clip(1 - obs/np.maximum(req, 1e-12), 0.0, 1.0)**gamma
+
+def posterior(mu0, lam0, d, lam_d):    # lam0 = gated prior precision
+    return (lam0*mu0 + lam_d*d) / (lam0 + lam_d)
+    # lam0 -> 0: posterior -> d (no damping); lam_d -> 0: -> mu0 (gap filled)
 \end{lstlisting}
 
 \begin{thebibliography}{9}
-\bibitem{Gelman2013} A.~Gelman et al. \emph{Bayesian Data Analysis}. CRC Press,
-3rd ed., 2013.
-\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface}. Wiley, 2006.
-\bibitem{Tikhonov1977} A.~Tikhonov and V.~Arsenin. \emph{Solutions of Ill-Posed
-Problems}. Winston, 1977.
+\bibitem{Gelman2013} A.~Gelman et al. \emph{Bayesian Data Analysis}. CRC
+Press, 3rd ed., 2013.
+\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface}. Wiley,
+2006.
+\bibitem{Tikhonov1977} A.~Tikhonov and V.~Arsenin. \emph{Solutions of
+Ill-Posed Problems}. Winston, 1977.
 \end{thebibliography}
 
 \end{document}
