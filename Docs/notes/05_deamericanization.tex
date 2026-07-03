@@ -27,10 +27,14 @@ bracketed-bisection sweep --- that hold the inversion to sub-vol-bp accuracy. Th
 hot path is a Numba kernel that de-Americanizes a whole chain with no per-step
 allocations: on a \deamchainn-quote chain it runs in \deamnumbams\,ms versus
 \deamnumpyms\,ms for the NumPy batch, a \deamspeedup$\times$ speed-up, and a
-content-digest cache ensures fit-tuning never re-runs it. A worked example shows
-the naive European inversion over-stating implied volatility by up to \deammaxbias\
-volatility basis points on a dividend-paying name, an error the de-Americanization
-removes entirely.
+content-digest cache ensures fit-tuning never re-runs it. Because the inversion is
+done per strike independently, the European-equivalent call curve it returns can
+come out slightly \emph{non-convex} in the sparse wings --- a butterfly arbitrage in
+the input --- so we also document a cross-strike \emph{convexity repair}, confined to
+the wings and to the quoted bid--ask band so that the dense at-the-money core is left
+byte-identical. A worked example shows the naive European inversion over-stating
+implied volatility by up to \deammaxbias\ volatility basis points on a
+dividend-paying name, an error the de-Americanization removes entirely.
 \end{abstract}
 
 \tableofcontents
@@ -200,6 +204,83 @@ buffer) drops quotes that cannot survive the static bounds \emph{before} the tre
 runs, and is output-preserving by construction.
 
 %======================================================================
+\section{Cross-strike convexity: repairing the de-Americanized wings}
+\label{sec:convex}
+
+De-Americanization inverts each strike \emph{independently} --- its own root find
+\eqref{eq:deam}, its own $\max(\text{EEP},0)$ clamp --- with no coupling across
+strikes. That independence is what makes the Numba kernel embarrassingly parallel
+(\cref{sec:numba}), but it carries a subtle cost: the set of European-equivalent
+call prices $\{C(K_i)\}$ it returns need not be \emph{convex} in the strike.
+
+Convexity is not optional. Writing the undiscounted call as
+$C(K)=\E^{\Q}[(S_T-K)^+]$, its second derivative in strike is the risk-neutral
+density, $\partial^2C/\partial K^2=f_{S_T}(K)\ge0$: \emph{convexity of the call
+curve in strike is exactly the no-butterfly-arbitrage condition}. On a discrete
+strike grid the test is the divided second difference
+\begin{equation}
+\Delta^2_i=\frac{C_{i-1}(K_{i+1}-K_i)-C_i(K_{i+1}-K_{i-1})+C_{i+1}(K_i-K_{i-1})}
+{K_{i+1}-K_{i-1}}\ \ge\ 0,
+\label{eq:bfly_strike}
+\end{equation}
+non-negative iff $C$ is convex at $K_i$. Because de-Am strips a one-sided,
+strike-local premium in the sparse, low-vega wings, $\Delta^2_i$ can come out
+slightly negative there --- a genuine (small) butterfly arbitrage in the
+\emph{input} handed to every downstream model, and the seed of the Multi-Core SIV
+put-wing violation of Note~03.
+
+\begin{caution}
+\textbf{The reverted global fix.} The first repair projected the \emph{whole} call
+curve onto the convex cone with a
+free affine part. Repairing a wing dip that way re-tilted the affine baseline and
+moved the \emph{at-the-money} call price by a fraction of a cent --- negligible in
+price, but enormous in ATM implied volatility, where vega is largest. It surfaced
+live as an ATM smile gap on SPY and NVDA and was reverted. The lesson: the dense,
+high-vega ATM core must be held \emph{exactly} fixed; only the wings may move.
+\end{caution}
+
+The shipped repair is therefore \emph{wing-only and band-constrained}. With
+standardized moneyness $z=k/\sqrt{w_{\atm}}$, strikes in the core
+$|z|\le Z_{\text{core}}=1$ are held byte-identical. Each wing, anchored at its core
+boundary, is replaced by the $\ell^2$-closest curve that is simultaneously
+\emph{convex} and \emph{inside the quoted band}, i.e.\ the projection onto the
+intersection $\mathcal C\cap\mathcal B$ of
+\begin{equation}
+\mathcal C=\{\hat C:\hat C\ \text{convex, leaving the anchor no flatter than the
+core}\},\quad
+\mathcal B=\{\hat C:C^{\text{bid}}\le\hat C\le C^{\text{ask}}\},
+\label{eq:convex_sets}
+\end{equation}
+computed by Dykstra's alternating projection --- the convex-cone step is a
+non-negative-hinge least squares, the band step a clip. A common per-strike shift is
+applied to bid, mid and ask so the \emph{spread is preserved}, and the repaired mids
+are re-inverted to total variance.
+
+\begin{heuristic}
+Why the band constraint is load-bearing. Plain convex projection of an illiquid,
+genuinely non-convex wing is free to push a price all the way to the static no-arb
+boundary --- and a wing call price at that boundary inverts to an absurd implied
+volatility (a put wing was seen to jump from $27\%$ to $104\%$, itself
+Lee-violating), detonating the downstream fit. Confining the repaired price to the
+\emph{quoted spread} bounds the correction to the market's own stated uncertainty:
+the repair can move a price only as far as the bid--ask allows, which is exactly as
+far as the quote is genuinely ambiguous.
+\end{heuristic}
+
+The repair is gated American-only and short-circuits on any curve already convex to
+a tolerance $\text{CONVEX\_TOL}=10^{-3}$ (normalized price units), calibrated so that
+dense liquid chains --- whose de-Am wings carry only $\sim\!10^{-4}$ rounding
+curvature --- are \emph{never} touched (byte-identical, ATM implied-vol difference
+$\sim10^{-15}$), while genuinely arbitraged illiquid wings ($10^{-3}$ to $10^{-2}$)
+are repaired. On those illiquid nodes an ablation found the repair both
+\emph{reduces} the fitted arbitrage and \emph{lowers} the in-sample error --- the
+model no longer chases the arbitraged quotes --- and it composes with the SIV
+put-wing penalty of Note~03 rather than duplicating it: the de-Am repair removes the
+arbitrage at the \emph{source}, the penalty enforces the constraint on the
+\emph{output}, and running both attains the penalty's arbitrage removal at a fraction
+of its standalone in-sample cost.
+
+%======================================================================
 \section{Worked example and measured cost}
 \label{sec:example}
 
@@ -234,9 +315,11 @@ Numba kernel & \deamnumbams & \deamspeedup$\times$\\
 The control-variate view of tree inversion is folklore; the contributions here are
 the \emph{allocation-free Numba kernel} (the per-step allocation, not the
 arithmetic, was the NumPy bottleneck), the \emph{content-digest cache} that
-scopes de-Am cost to genuine data changes rather than to fit iterations, and the
+scopes de-Am cost to genuine data changes rather than to fit iterations, the
 \emph{measured} depth/bisection tuning that cut work without moving the numerical
-target. The natural next step --- documented but not yet shipped --- is to seed the
+target, and the \emph{wing-only, band-constrained convexity repair}
+(\cref{sec:convex}) that removes the butterfly arbitrage the per-strike inversion
+leaves in the sparse wings while holding the dense ATM core exactly fixed. The natural next step --- documented but not yet shipped --- is to seed the
 bracket with a fast analytic American approximation (Barone--Adesi--Whaley or
 Bjerksund--Stensland 2002) so each tree starts near its root, composing with the
 kernel for a further constant-factor win; these are \emph{seeds}, not the answer,
@@ -267,6 +350,12 @@ wrong forward.
 escrow PV & --- & Discrete-cash-dividend escrowed-spot lattice.\\
 pre-screen buffer & $1.5\times$ & Wing buffer for the conservative bid/bounds pre-screen.\\
 content digest & --- & Cache key (forward, discount, dividends, $t$, $\tau$, as-of).\\
+\texttt{convex\_deam} & \texttt{true} & Enable the wing-only convex de-Am repair
+(\cref{sec:convex}); American chains only, European a no-op.\\
+$Z_{\text{core}}$ & $1.0$ & ATM core half-width (units of $\sqrt{w_{\atm}}$) held
+byte-identical by the repair.\\
+\texttt{CONVEX\_TOL} & $10^{-3}$ & Convexity short-circuit: a curve convex to this
+(normalized price) is left untouched.\\
 \bottomrule
 \end{longtable}
 

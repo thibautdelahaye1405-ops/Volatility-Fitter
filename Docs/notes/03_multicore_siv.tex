@@ -29,8 +29,11 @@ show that two hats reduce the fit error on such a smile from \sivbasemaxerr\ to
 closed-form Durrleman butterfly diagnostic, and is calibrated in three stages
 (base $\to$ greedy hat seeding $\to$ joint bounded refine) with an analytic
 Jacobian measured \sivspeedup$\times$ faster than finite differences. The cores
-count $R$ is the user's ``cores'' slider, the direct analogue of the LQD Legendre
-order; a note on its tendency to over-fit closes the discussion.
+count $R$ is the user's ``cores'' slider --- the direct analogue of the LQD
+Legendre order --- capped at two, because the offline backtest shows deeper stacks
+over-fit and manufacture butterfly arbitrage disproportionately in the \emph{put}
+wing; a default-on put-wing Durrleman regularizer that vanishes on any admissible
+slice, and a note on that over-fit tendency, close the discussion.
 \end{abstract}
 
 \tableofcontents
@@ -201,9 +204,52 @@ g(k)=\Big(1-\frac{k\,w'}{2w}\Big)^2-\frac{w'^2}{4}\Big(\frac1w+\frac14\Big)+\fra
 Since the risk-neutral density is proportional to $g$, the diagnostic
 $g(k)\ge0$ on the grid is the no-butterfly check. Unlike LQD, MC-SIV is
 \emph{not} arbitrage-free by construction: a large or narrow hat can drive $g$
-negative, so $g$ is reported per fit and the calibration bounds (\cref{sec:calib})
-keep hats in a benign range. The wings are Lee-compatible by construction
-(\cref{lem:zerowing}); the cross-model wing treatment is Note~09.
+negative, so $g$ is reported per fit, the calibration bounds (\cref{sec:calib})
+keep hats in a benign range, and a default-on \emph{put-wing regularizer}
+(\cref{sec:wingpen}) actively penalizes any residual violation. The wings are
+Lee-compatible by construction (\cref{lem:zerowing}); the cross-model wing
+treatment is Note~09.
+
+\subsection{Where the arbitrage lives, and the put-wing regularizer}
+\label{sec:wingpen}
+
+When cores over-reach, they break \eqref{eq:durrleman_siv} not near the money ---
+where quotes are dense and discipline the curvature --- but out in the
+\emph{sparsely quoted wings}, where each hat's local curvature is unconstrained by
+data. The offline backtest (project \texttt{backtest/}) localizes the violation
+sharply: across refit multi-core nodes about $64\%$ of the $g<0$ points sit in the
+\emph{put} wing (the steep, variance-loaded side of the equity skew) against only
+$\sim4\%$ near the money, with the worst point at a median standardized moneyness
+$z\approx-3.2$. To discipline exactly that region, the joint refine stage carries an
+optional soft \emph{put-wing Durrleman penalty}. On a grid $\{z_j\}_{j=1}^{M}$ of
+$M=49$ points spanning a padding $\Delta z=2$ in $z$ \emph{past} the quoted range
+(so it reaches into the unquoted tails), it appends the residual rows
+\begin{equation}
+r^{\text{wing}}_j=\sqrt{\lambda_j}\,\max\!\big(-g(z_j),\,0\big),
+\qquad
+\lambda_j=\Lambda\,\lambda_0\,\big(1+\1\{z_j<0\}\big),
+\label{eq:wingpen}
+\end{equation}
+with $g$ the model's analytic Durrleman functional \eqref{eq:durrleman_siv},
+$\lambda_0=10^{3}$ the base strength, $\Lambda=\texttt{sivWingPenaltyPct}/100$ the
+surfaced dial (default $1$; $0$ disables), and the indicator \emph{doubling} the
+weight on the put side to match the measured asymmetry. Because
+$\max(-g,0)=0$ wherever the slice is butterfly-free, \eqref{eq:wingpen} is
+\emph{exactly zero on an admissible fit}: a liquid, arbitrage-free name is
+byte-identical with or without it. The penalty bites only where a hat would
+otherwise manufacture a wing violation, pulling the fit back to the admissible
+boundary there rather than everywhere.
+
+\begin{heuristic}
+The penalty is a \emph{one-sided} hinge on the same $g$ the model already reports,
+sampled where the model extrapolates rather than where it interpolates. It does not
+\emph{guarantee} $g\ge0$ (a soft penalty trades the violation against the data fit),
+but on genuinely arbitraged illiquid wings it shrinks the worst violation by orders
+of magnitude --- the backtest measured a median wing $\min g$ moving from
+$\approx-7.9$ to $\approx-0.02$ --- at the cost of fitting \emph{less} to the
+arbitraged de-Americanized quotes that caused the violation, which is the right
+trade (Note~05 removes that arbitrage at the source; \cref{sec:original}).
+\end{heuristic}
 
 %======================================================================
 \section{Calibration}
@@ -237,10 +283,14 @@ R\le\Big\lfloor\frac{N_{\text{quotes}}-6}{4}\Big\rfloor,
 \label{eq:identifiability}
 \end{equation}
 which guards sparse short-dated chains against fitting spurious narrow kernels.
-The refine stage carries the same optional blocks as the other models --- band
-fit (Note~07), var-swap target (Note~08), the model-agnostic calendar hinge
-(Note~10), and prior persistence (Note~13) --- so the sigmoid overlay is no longer
-a prior exception.
+Independently of this data-driven bound, the surfaced \texttt{nCores} is
+\emph{hard-capped at two}, $R\in\{0,1,2\}$: the backtest found that $R\ge3$ buys no
+out-of-sample precision while manufacturing the put-wing arbitrage of
+\cref{sec:wingpen}, so a persisted desk setting above two is silently \emph{clamped}
+(not rejected) on load. The refine stage carries the same optional blocks as the
+other models --- band fit (Note~07), var-swap target (Note~08), the model-agnostic
+calendar hinge (Note~10), prior persistence (Note~13), and the put-wing regularizer
+\eqref{eq:wingpen} --- so the sigmoid overlay is no longer a prior exception.
 
 \begin{perfbox}
 The dominant cost of an $R$-core fit is the $(6+4R+1)$-evaluation
@@ -248,8 +298,11 @@ finite-difference Jacobian. The closed-form Jacobian of the residual stack (data
 $+$ ridge $+$ calendar) propagated through the log-cosh primitive replaces it in
 one pass; a fresh run on the two-core WW fit measured \sivanalyticms\,ms vs
 \sivfdms\,ms (\sivspeedup$\times$) with the optimum unchanged to $\sivcostdiff$ in
-cost. It is gated to the var-swap/prior-free configuration, as in LQD and SVI.
-See \cref{app:perf}.
+cost. It is gated to the var-swap/prior-free configuration, as in LQD and SVI. When
+the put-wing regularizer \eqref{eq:wingpen} is active the Jacobian is
+\emph{hybrid}: analytic for the data/ridge/calendar rows and finite-difference only
+for the cheap $49$-point $g$-penalty grid, so the penalized fit keeps essentially
+the analytic speed. See \cref{app:perf}.
 \end{perfbox}
 
 %======================================================================
@@ -301,19 +354,38 @@ body and provably neutral in the wings, so expressiveness and tail control are
 decoupled --- and the \emph{layered three-stage calibration} that places the hats
 on residuals rather than optimizing them blind. Together they let one model span
 from a clean index smile ($R=0$, equivalent to a sigmoid SVI) to a bimodal event
-smile ($R=2,3$) on a single slider.
+smile ($R=2$) on a single slider.
 
 \begin{caution}
 With great expressiveness comes over-fitting. The offline backtest (project
 \texttt{backtest/}) found that on liquid index chains the Multi-Core hats
 \emph{over-fit}: cores chase quote noise and manufacture butterfly-arbitrage
-(measured 60--75\% of calibrated nodes with $g<0$ at $R\ge1$ on dense data),
-while the base $R=0$ behaves like SVI. The identifiability cap
-\eqref{eq:identifiability}, the amplitude ridge, and the $g$ diagnostic mitigate
-this, but the operational guidance is: \emph{use cores only when the smile is
-genuinely non-convex} (events, bimodal positioning), and prefer LQD or Local-Vol
-for routine fitting. The cores slider is a scalpel, not a default.
+(the analytic diagnostic flags $g<0$ on a majority of calibrated nodes at $R\ge2$
+on dense data), while the base $R=0$ behaves like SVI, and the marginal precision
+is out-of-sample negative for $R\ge3$. Two measures followed. The amplitude ridge,
+the identifiability cap \eqref{eq:identifiability}, and the $g$ diagnostic mitigate
+the fit itself; the surfaced slider is \emph{hard-capped at two} (\cref{sec:calib});
+and the put-wing regularizer \eqref{eq:wingpen} of \cref{sec:wingpen} is default-on
+to catch the residual wing violations that remain within the cap. The operational
+guidance is unchanged: \emph{use cores only when the smile is genuinely non-convex}
+(events, bimodal positioning), and prefer LQD or Local-Vol for routine fitting. The
+cores slider is a scalpel, not a default.
 \end{caution}
+
+\begin{remark}[Two defences, one pathology --- and they are complementary]
+The put-wing violation has \emph{two} sources: the flexible SIV genuinely
+over-reaching (cured by \eqref{eq:wingpen}), and \emph{arbitraged inputs} --- the
+per-strike de-Americanization of Note~05 can hand every model a call curve that is
+already slightly non-convex in the wings. An ablation isolating the two defences
+(the de-Am convex repair of Note~05 versus the penalty \eqref{eq:wingpen}) on
+illiquid American ETFs found them \emph{complementary, not redundant}: the de-Am
+repair alone cuts the violation about threefold \emph{and lowers} the in-sample fit
+error (it removes the arbitraged quotes the model was chasing), whereas the penalty
+alone nearly eliminates the violation but at a steep in-sample cost (it must fight
+those same quotes); running both attains the penalty's arbitrage removal at roughly
+a third of that cost, because the inputs are cleaned before the constraint is
+imposed. That is the quantitative case for shipping both on by default.
+\end{remark}
 
 \appendix
 %======================================================================
@@ -327,8 +399,11 @@ for routine fitting. The cores slider is a scalpel, not a default.
 \toprule Knob & Default & Role\\ \midrule
 \endhead
 \multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\ \midrule
-\texttt{nCores} $R$ & $2$ & Number of zero-wing hats; capped by
-\eqref{eq:identifiability}. $0$ = pure sigmoid base.\\
+\texttt{nCores} $R$ & $2$ & Number of zero-wing hats, $R\in\{0,1,2\}$
+(hard-capped at two; a persisted larger value is clamped, and the identifiability
+bound \eqref{eq:identifiability} may reduce it further). $0$ = pure sigmoid base.\\
+\texttt{sivWingPenaltyPct} $\Lambda$ & $100$ & Put-wing Durrleman penalty
+\eqref{eq:wingpen} strength; $100=$ base $\lambda_0=10^{3}$, $0=$ off.\\
 \texttt{sigmoidRidge} $\varrho$ & \sivridge & $\ell^2$ penalty on hat amplitudes
 in the refine stage.\\
 \texttt{midAnchorWeight} & $0.05$ & Band-fit mid anchor (Note~07).\\
@@ -355,6 +430,9 @@ in the refine stage.\\
 \item \textbf{Analytic Jacobian} through the log-cosh primitive replaces the
 $(6+4R+1)$-evaluation finite difference; measured \sivspeedup$\times$ on the WW
 fit, optimum unchanged to $\sivcostdiff$. Gated to the var-swap/prior-free path.
+When the put-wing penalty \eqref{eq:wingpen} is active, only its $49$-point $g$-grid
+is finite-differenced (a \emph{hybrid} Jacobian), so the penalized fit retains
+essentially this speed.
 \item \textbf{Layered warm start.} Fitting the base first and seeding hats on its
 residual gives the joint refine an excellent start, so the bounded trf converges
 quickly even with several cores.

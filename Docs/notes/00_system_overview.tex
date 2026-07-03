@@ -186,7 +186,9 @@ handled transparently.
 \item \textbf{De-Americanization} (Note~05). Listed equity options are American;
 each quote is converted to its European-equivalent implied volatility by
 inverting a Cox--Ross--Rubinstein tree (bisection), with a Numba kernel for wide
-chains and a content-digest cache so fit-tuning never re-runs it.
+chains and a content-digest cache so fit-tuning never re-runs it. A wing-only,
+band-constrained convexity repair then removes the butterfly arbitrage the
+per-strike inversion can leave in the sparse wings, holding the ATM core fixed.
 \item \textbf{Forwards and dividends} (Note~06). Put--call parity yields the
 implied forward and discount (clamped against feed noise); discrete dividends and
 American de-bias are handled here.
@@ -272,7 +274,7 @@ analytic Jacobian & 01\\
 SVI / SVI-JW & Raw and jump-wing SVI with no-arb penalty and Lee cap & 02\\
 Multi-Core SIV & Sigmoid base + zero-wing hats for WW/event smiles & 03\\
 Local volatility & Piecewise-affine Dupire surface; GN/Numba calibration & 04\\
-De-Americanization & CRR tree + bisection, Numba kernel, cache digest & 05\\
+De-Americanization & CRR tree + bisection, Numba kernel, cache digest, wing convex repair & 05\\
 Forwards / dividends & Parity forward + discount clamp, discrete divs & 06\\
 Weighting \& bid--ask & Equal / time-value-density weights; band/haircut fit & 07\\
 Variance-swap targets & Replication, LQD closed form, source-PDE & 08\\
@@ -330,8 +332,9 @@ Parameter & Default & Role & Note\\
 \texttt{nOrder} & $6$ & LQD Legendre order & 01\\
 \texttt{regLambda} / \texttt{regPower} & $10^{-6}$ / $1$ & LQD high-order ridge & 01\\
 \texttt{barrierCenter} / \texttt{barrierScale} & $0.90$ / $50$ & LQD $A_R$ barrier & 01\\
-\texttt{nCores} & $2$ & Multi-Core SIV hat count & 03\\
+\texttt{nCores} & $2$ & Multi-Core SIV hat count (hard-capped at 2) & 03\\
 \texttt{sigmoidRidge} & $10^{-2}$ & SIV hat-amplitude ridge & 03\\
+\texttt{sivWingPenaltyPct} & $100$ & SIV put-wing Durrleman penalty ($0=$ off) & 03\\
 \texttt{sviPenaltyWeight} & $10^{3}$ & SVI no-arbitrage penalty & 02\\
 \texttt{leeSlopeMax} & $2.0$ & SVI Lee wing-slope cap & 02, 09\\
 \texttt{gridXNodes} & $12$ & LV strike-grid vertices & 04\\

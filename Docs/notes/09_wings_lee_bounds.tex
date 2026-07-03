@@ -122,7 +122,11 @@ $k=\sigma_{\text{ref}}\sqrt t\,z$, $w=tv$ gives
 \label{eq:siv_wings}
 \end{equation}
 $=(\betaMCSIVL,\betaMCSIVR)$ on the benchmark. Adding cores cannot change the
-wings --- the entire reason for the zero-wing design.
+wings --- the entire reason for the zero-wing design. The zero-wing property pins
+the asymptotic \emph{slope}; it does not by itself keep the finite-wing
+\emph{curvature} admissible, since a hat can still dent the Durrleman $g$ below zero
+out in the sparsely quoted put wing. That residual is what the default-on put-wing
+penalty of Note~03 discourages, sampling $g$ a fixed padding past the quoted range.
 
 \subsection{Local volatility: controlled linear extrapolation}
 
@@ -195,6 +199,19 @@ untouched; only the grid over which the floor is sampled changed. This is the
 single most important practical lesson about wings: \emph{do not let a constraint
 sample the curve where only extrapolation lives.} Note~10 develops the calendar
 machinery in full.
+
+\begin{remark}[Confinement versus intrinsic constraints]
+The confinement lesson is specific to constraints that compare \emph{two}
+extrapolations. A calendar floor pits one expiry's wing against another's, so
+sampling it where neither is pinned by data manufactures a phantom violation ---
+hence confine it to the traded range. A \emph{butterfly} constraint is different: it
+is an intrinsic property of a \emph{single} slice ($g\ge0$, equivalently a convex
+call curve) that must hold everywhere, wings included. So the Multi-Core SIV
+put-wing penalty (Note~03) deliberately samples $g$ \emph{past} the quoted range,
+and the de-Americanization convexity repair (Note~05) fixes the same wing butterfly
+at the \emph{input} --- neither contradicts confinement, because a single-curve
+constraint has no rival extrapolation to be spuriously violated against.
+\end{remark}
 
 %======================================================================
 \section{What is original here}
