@@ -203,6 +203,27 @@ def predict(
     )
 
 
+def transport_handles(handles: np.ndarray, h: float, ssr: float) -> np.ndarray:
+    """First-order SSR transport of the handle state (Note 12 eq. shift).
+
+    The smile transport sigma_new(k) = sigma_old(k + h) + (SSR-1) s0 h gives, to
+    first order in the log-forward move h, the handle map
+
+        atm'  = atm + SSR * skew * h        (the Note 12 ATM response)
+        skew' = skew + curvature * h        (re-reading the shape at k = h)
+        curv' = curvature.
+
+    This is the cheap v1 prediction transport for a PREVIOUSLY FILTERED state
+    (a full curve transport is not available for a bare handle vector); the
+    associated uncertainty growth lives in Q's spot term, and seeding uses the
+    exact curve transport via the prior machinery instead."""
+    x = np.asarray(handles, dtype=float)
+    hh = float(h)
+    return np.array(
+        [x[0] + float(ssr) * x[1] * hh, x[1] + x[2] * hh, x[2]]
+    )
+
+
 # ----------------------------------------------------------------- reset rule
 def should_reset(
     dt_hours: float,

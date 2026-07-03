@@ -51,6 +51,7 @@ from volfit.calib.calendar import (
     variance_floor_grid_from,
     variance_floor_targets,
 )
+from volfit.api.filter_mode import resolve_filter_mode
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.calib.factors import build_factor_prior
 from volfit.calib.operators import (
@@ -519,6 +520,12 @@ def _compute_fit(
                 var_swap=vs,
             ).params
         act.detail(f"fitting {_model_label(settings.model)} smile")
+        # Observation filter (Note 15): retain the solver's solution Jacobian /
+        # residual so the commit hook can build the Jacobian R_t without a
+        # second fit. Pure side-channel; None when the filter is off.
+        fd: dict | None = (
+            {} if resolve_filter_mode(state.options()).enabled else None
+        )
         result = calibrate_slice(
             k,
             w,
@@ -539,6 +546,7 @@ def _compute_fit(
             prior_anchor=pt.prior_anchor,
             prior_var_swap=pt.prior_var_swap,
             operator_prior=pt.operator_prior,
+            solver_diag=fd,
         )
         # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
         # a display overlay on the same edited quotes + band (volfit.api.fit_models),
@@ -553,6 +561,10 @@ def _compute_fit(
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
+    if fd is not None:  # observation filter (Note 15) — advisory, never raises
+        from volfit.api import observation_filter
+
+        observation_filter.commit_hook(state, ticker, iso, fit_mode, record, fd)
     return record
 
 
@@ -1112,6 +1124,7 @@ def fit_surface_slice(
     prev: CalibrationResult | None,
     enforce_calendar: bool,
     fit_mode: str = "mid",
+    solver_diag: dict | None = None,
 ) -> CalibrationResult:
     """One step of the calibrate_surface loop: warm start + calendar floor.
 
@@ -1150,6 +1163,7 @@ def fit_surface_slice(
         prior_anchor=pt.prior_anchor,
         prior_var_swap=pt.prior_var_swap,
         operator_prior=pt.operator_prior,
+        solver_diag=solver_diag,
     )
 
 
@@ -1176,8 +1190,11 @@ def fit_and_commit_slice(
     and the SVI/sigmoid overlay (``display_overlay``) honour ``enforce_calendar``.
     """
     model = _model_label(state.fit_settings().model)
+    fd: dict | None = {} if resolve_filter_mode(state.options()).enabled else None
     with state.activity.activity("calibrate", f"Calibrating {ticker} {iso} ({model})"):
-        result = fit_surface_slice(state, ticker, iso, prepared, prev, enforce_calendar, fit_mode)
+        result = fit_surface_slice(
+            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode, solver_diag=fd
+        )
         overlay = display_overlay(
             state, ticker, iso, prepared, fit_mode, prev_display, enforce_calendar
         )
@@ -1186,6 +1203,10 @@ def fit_and_commit_slice(
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
+    if fd is not None:  # observation filter (Note 15) — advisory, never raises
+        from volfit.api import observation_filter
+
+        observation_filter.commit_hook(state, ticker, iso, fit_mode, record, fd)
     return record
 
 

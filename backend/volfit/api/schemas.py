@@ -482,6 +482,31 @@ class PriorDiagnostics(BaseModel):
     strikeAnchorCount: int | None = None
 
 
+class FilterDiagnostics(BaseModel):
+    """Auditable observation-filter step for one node (Note 15 invariant 5:
+    every filtered output reports prediction, observation, innovation, gain and
+    posterior uncertainty). ``active=False`` when the filter is off or the node
+    has no state yet; per-handle lists follow ``handleNames`` order."""
+
+    active: bool
+    mode: str
+    handleNames: list[str] = []
+    provenance: str | None = None  # "seed:<prior source>" | "update"
+    resetReason: str | None = None  # why the state was (re)seeded, else None
+    contaminated: bool = False  # z taken from a persistence-anchored fit (§5.1)
+    transportDistance: float | None = None  # |log-forward| moved since the prior state
+    prediction: list[float] = []
+    predictionStd: list[float] = []
+    observation: list[float] = []
+    observationStd: list[float] = []
+    innovation: list[float] = []
+    gain: list[float] = []  # diagonal of K
+    posterior: list[float] = []
+    posteriorStd: list[float] = []
+    measurementBreakdown: dict[str, float] = {}
+    processBreakdown: dict[str, list[float]] = {}
+
+
 # ------------------------------------------------------------- smile payload
 class SmilePoint(BaseModel):
     """One point of a continuous model curve in (log-moneyness, vol) space."""

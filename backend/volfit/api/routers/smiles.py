@@ -16,9 +16,10 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from volfit.api import analytics, service, table
+from volfit.api import analytics, observation_filter, service, table
 from volfit.api.schemas import (
     DensityResponse,
+    FilterDiagnostics,
     FitMode,
     PriorDiagnostics,
     PriorSavedResponse,
@@ -86,6 +87,18 @@ def get_prior_diagnostics(
     """Auditable prior-persistence state for the node (design note §9.4): the active
     operators/factors with their gap + weight. Advisory — never raises."""
     return service.prior_diagnostics(request.app.state.volfit, ticker, expiry, fit_mode)
+
+
+@router.get("/smiles/{ticker}/{expiry}/filter", response_model=FilterDiagnostics)
+def get_filter_diagnostics(
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+) -> FilterDiagnostics:
+    """The node's observation-filter step (Note 15 invariant 5): prediction,
+    observation, innovation, gain, posterior + covariance audits. Advisory —
+    never raises; ``active=False`` when the filter is off or unseeded."""
+    return observation_filter.filter_diagnostics(
+        request.app.state.volfit, ticker, expiry, fit_mode
+    )
 
 
 @router.get("/smiles/{ticker}/{expiry}/density", response_model=DensityResponse)

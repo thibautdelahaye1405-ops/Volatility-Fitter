@@ -190,6 +190,12 @@ class AppState(UniverseMixin):
         #: filter knob changes so the overlay payload refreshes, WITHOUT busting
         #: fit caches (only active-mode changes touch _options_version).
         self._filter_version = 0
+        #: Per-node observation-filter states (Note 15 Phase 3), keyed
+        #: (ticker, iso, fit_mode) -> api.observation_filter.NodeFilter. Wiped
+        #: with the chain caches (source/as-of switch = the strict reset) but
+        #: SURVIVES recalibrate (a refetch is a new observation, not a reset)
+        #: and transient as-of round-trips (_CHAIN_CACHE_ATTRS).
+        self._filter_states: dict[tuple, object] = {}
         #: Restore the user's saved Fit/Options defaults (the Options "Save as
         #: default" button) when a store is configured; code defaults otherwise.
         saved_fit, saved_options = load_defaults(self.store_path)
@@ -378,14 +384,25 @@ class AppState(UniverseMixin):
         self._affine_calibrated.clear()
         self._sessions.clear()
         self._varswap_sessions.clear()
+        self._filter_states.clear()  # source/as-of switch = the filter's strict reset
         self._universe = None
 
     #: Cache dicts that ``_clear_chain_caches`` wipes — the live surface state a
     #: transient as-of switch must NOT destroy (see capture/restore below).
     _CHAIN_CACHE_ATTRS = (
         "_snapshots", "_forwards", "_fits", "_calibrated", "_anchor_spot",
-        "_affine_calibrated", "_sessions", "_varswap_sessions",
+        "_affine_calibrated", "_sessions", "_varswap_sessions", "_filter_states",
     )
+
+    # ------------------------------------------- observation filter (Note 15)
+    def filter_node(self, key: tuple):
+        """The stored per-node filter holder, or None (Note 15 Phase 3)."""
+        with self._lock:
+            return self._filter_states.get(key)
+
+    def set_filter_node(self, key: tuple, holder) -> None:
+        with self._lock:
+            self._filter_states[key] = holder
 
     def capture_chain_state(self) -> dict:
         """Snapshot the live as-of + chain-derived caches so a TRANSIENT as-of
