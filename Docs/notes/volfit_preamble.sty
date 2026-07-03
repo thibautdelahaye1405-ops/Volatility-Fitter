@@ -45,18 +45,33 @@
 
 % ---------------------------------------------------------------- coloured asides
 \RequirePackage[most]{tcolorbox}
-% Heuristic / intuition box.
-\newtcolorbox{heuristic}[1][]{colback=blue!4,colframe=blue!45!black,
-  fonttitle=\bfseries,title={Heuristic},#1}
-% Performance / numerical-optimisation box.
-\newtcolorbox{perfbox}[1][]{colback=green!4,colframe=green!40!black,
-  fonttitle=\bfseries,title={Performance},#1}
-% Caution / pitfall box.
-\newtcolorbox{caution}[1][]{colback=red!4,colframe=red!45!black,
-  fonttitle=\bfseries,title={Caution},#1}
-% Worked-example box (kept open across pages).
-\newtcolorbox{example}[1][]{breakable,colback=black!2,colframe=black!55,
-  fonttitle=\bfseries,title={Example},#1}
+% House style (2026-07 hardening pass, see STYLE_GUIDE.md): asides are QUIET.
+% Prose and mathematics are the page's primary visual objects; a box marks a
+% change of voice, not a headline. All asides share one shape --- a thin accent
+% bar on the left, a faint wash, a small coloured title --- so colour alone
+% distinguishes the semantics:
+%   heuristic  (blue)   intuition, the "why" behind a construction;
+%   perfbox    (green)  numerical / performance engineering;
+%   caution    (red)    pitfalls, reverted fixes, hard constraints;
+%   example    (grey)   worked examples and case files (breakable);
+%   invariant  (amber)  the production invariants a note's machinery protects.
+% Editorial rule: roughly one box per page at most; the single \boxed display
+% equation per note is reserved for its central mathematical object.
+\newcommand{\volfitaside}[3]{% #1 = env name, #2 = accent colour, #3 = title
+  \newtcolorbox{#1}[1][]{enhanced jigsaw, breakable,
+    frame hidden, boxrule=0pt, arc=1.2mm,
+    borderline west={2.2pt}{0pt}{#2!70!black},
+    colback=#2!4!white,
+    coltitle=#2!35!black, fonttitle=\bfseries\small,
+    title={#3},
+    left=2.2mm, right=2.2mm, top=1.4mm, bottom=1.6mm,
+    before skip=8pt, after skip=8pt,
+    ##1}}
+\volfitaside{heuristic}{blue}{Heuristic}
+\volfitaside{perfbox}{green!55!black}{Performance}
+\volfitaside{caution}{red}{Caution}
+\volfitaside{example}{black}{Example}
+\volfitaside{invariant}{orange!85!black}{Invariant}
 
 % ---------------------------------------------------------------- hyperlinks (load late)
 \RequirePackage{hyperref}

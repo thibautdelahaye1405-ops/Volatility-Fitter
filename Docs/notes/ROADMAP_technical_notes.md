@@ -70,6 +70,23 @@ Each note: commit after it compiles clean with its figures.
 
 ## Post-series updates
 
+- **2026-07-03 — editorial & mathematical hardening pass (pilot: Note 14).**
+  House style codified in `STYLE_GUIDE.md` (Problem / Invariant / Mechanism /
+  Implementation / Example opening contract, theorem-shaping, case files,
+  figure rules, traceability tables). `volfit_preamble.sty` boxes softened to
+  one quiet shape (left accent bar + faint wash) and a new `invariant` box
+  added; all 15 PDFs rebuilt. Shared figure helper `figures/style.py` created
+  (all future generators import it). **Note 14 rewritten as the pilot**:
+  assumptions/definitions/propositions with proofs (PSD directed residual,
+  proper prior, screened-Poisson OT dual, Schur-complement update), the
+  six-node case file solved by the production code, regenerated
+  narrative figures, exact LOO numbers (+37.1/+25.6 bp), and a traceability
+  table with verified code/test anchors (Appendix C executed against
+  `volfit.graph`, < 1e-10). The external comparison draft in
+  `pilot_graph_extrapolation/` is superseded. Remaining notes get the same
+  treatment in the priority order: 04, 13, 09+10, 02+03, 06/07/08/11/12,
+  00 last, 01 lightly.
+
 - **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
   updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and
   put-wing Durrleman regularizer (`sivWingPenaltyPct`), the de-Americanization
