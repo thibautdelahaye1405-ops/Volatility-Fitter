@@ -1,6 +1,6 @@
 {
   "round_trip_max_err_bp": 0.6367897939590916,
-  "wall_s": 1.0093704999890178,
+  "wall_s": 1.0515237999497913,
   "n_evals": 33,
   "benchmark": {
     "SPY": {
