@@ -1,0 +1,11 @@
+# LaTeX build artifacts (notes + figures are committed; litter is not)
+*.aux
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.fff
+*.lof
+*.lot

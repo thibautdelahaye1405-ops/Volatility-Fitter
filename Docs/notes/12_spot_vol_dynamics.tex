@@ -1,0 +1,210 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{volfit_preamble}
+\graphicspath{{figures/}}
+
+\title{\textbf{Spot--Vol Dynamics: SSR and Smile Transport}\\[2pt]
+\large Moving the smile when spot moves, without recalibration\\[2pt]
+\normalsize Vol-Fitter Technical Notes, No.~12}
+\author{Vol-Fitter}
+\date{\today}
+
+\begin{document}
+\maketitle
+\input{figures/ssr_tables.tex}
+
+\begin{abstract}
+When the underlying moves, the implied-volatility smile moves with it, and a desk
+must know \emph{how} --- to risk-manage, to scenario, and to refresh a surface
+between calibrations. This note documents the Vol-Fitter's spot--vol dynamics. The
+organizing quantity is the skew-stickiness ratio
+$\mathrm{SSR}=(\dd\sigma_{\text{atm}}/\dd\ln F)/\text{skew}$, the fraction of the
+skew realized as an ATM-vol change per unit log-spot move. Three canonical regimes
+fix it: sticky-moneyness ($\mathrm{SSR}=0$, the smile rides with the forward),
+sticky-strike ($\mathrm{SSR}=1$, vol fixed at each strike), and sticky-local-vol
+($\mathrm{SSR}\approx2$ for short-dated skews). We give the analytic transport that
+realizes any SSR in one line, derive its ATM response, and then the \emph{exact}
+sticky-local-vol transport (a Hagan-style log-moneyness displacement) and the
+local-vol-grid relabeling that implements it by simply re-indexing the surface's
+strike nodes. All of it is recalibration-free: a spot move refreshes the surface by
+arithmetic, not by re-solving. A worked example transports an equity smile under a
+$\ssrmove\%$ move in the three regimes.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%======================================================================
+\section{The question}
+\label{sec:question}
+
+A calibrated surface is a snapshot at one spot. The next tick moves spot, and the
+desk needs the new smile \emph{now} --- faster than a recalibration, and consistent
+with a chosen dynamics assumption. The assumptions differ in how much the ATM vol
+follows the skew as spot moves, and the summary statistic is the
+\emph{skew-stickiness ratio}
+\begin{equation}
+\mathrm{SSR}=\frac{\dd\sigma_{\text{atm}}/\dd\ln F}{s_0},
+\qquad s_0=\left.\frac{\partial\sigma}{\partial k}\right|_{k=0}\ (\text{the ATM skew}).
+\label{eq:ssr}
+\end{equation}
+
+\begin{heuristic}
+Read SSR as ``how much of the skew is real''. The skew $s_0$ says that lower
+strikes have higher vol. When spot drops, does the ATM vol rise to where the old
+lower-strike vol was (SSR$=1$, sticky-strike), not move at all in moneyness terms
+(SSR$=0$, sticky-moneyness), or \emph{overshoot} (SSR$\approx2$, sticky-local-vol,
+the empirically common short-dated regime)? SSR interpolates these, and the
+transport below realizes any value of it.
+\end{heuristic}
+
+%======================================================================
+\section{The analytic transport}
+\label{sec:transport}
+
+Let $h=\delta=\ln(F_{\text{new}}/F_{\text{old}})$ be the log-forward move and
+$\sigma_{\text{old}}(k)$ the pre-move smile in log-moneyness. The Vol-Fitter
+transports the smile to new-forward moneyness $k$ by
+\begin{equation}
+\boxed{\;\sigma_{\text{new}}(k)=\sigma_{\text{old}}(k+\delta)+(\mathrm{SSR}-1)\,s_0\,\delta.\;}
+\label{eq:shift}
+\end{equation}
+The first term is a \emph{sticky-strike re-indexing} (a strike that was at
+moneyness $k+\delta$ before the move is at moneyness $k$ after it); the second is a
+uniform \emph{level adjustment} that dials in the desired ATM response while
+preserving the smile shape.
+
+\begin{proposition}[ATM response]
+\label{prop:atm}
+Under \eqref{eq:shift}, to first order in $\delta$ the ATM vol moves by
+$\Delta\sigma_{\text{atm}}=\mathrm{SSR}\cdot s_0\cdot\delta$, consistent with the
+SSR definition \eqref{eq:ssr}.
+\end{proposition}
+
+\begin{proof}
+At $k=0$, $\sigma_{\text{new}}(0)=\sigma_{\text{old}}(\delta)+(\mathrm{SSR}-1)s_0\delta
+=\sigma_{\text{old}}(0)+s_0\delta+(\mathrm{SSR}-1)s_0\delta+O(\delta^2)
+=\sigma_{\text{old}}(0)+\mathrm{SSR}\,s_0\delta+O(\delta^2)$.
+\end{proof}
+
+So $\mathrm{SSR}=0$ leaves the smile a pure function of moneyness (sticky-moneyness:
+$\Delta\sigma_{\text{atm}}=0$), $\mathrm{SSR}=1$ cancels the level term and freezes
+vol at each strike (sticky-strike), and $\mathrm{SSR}=2$ doubles the skew's
+contribution. \Cref{fig:transport} transports an equity smile (ATM skew
+$s_0=\ssrskew$) under a $\ssrmove\%$ move in all three regimes;
+\cref{fig:response} shows the linear ATM responses of slope $\mathrm{SSR}\,s_0$.
+
+\begin{figure}[H]
+\centering
+\begin{minipage}{0.52\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_ssr_transport.pdf}\\[1pt]
+{\footnotesize (a) transported smiles}
+\end{minipage}\hfill
+\begin{minipage}{0.45\textwidth}\centering
+\includegraphics[width=\textwidth]{fig_ssr_response.pdf}\\[1pt]
+{\footnotesize (b) ATM response vs spot move}
+\end{minipage}
+\caption{Transporting an equity smile under a $\ssrmove\%$ spot move in the three
+canonical regimes. The ATM response is linear with slope $\mathrm{SSR}\cdot s_0$.}
+\label{fig:transport}
+\end{figure}
+\begin{figure}[H]\centering\phantomsection\label{fig:response}\end{figure}
+
+%======================================================================
+\section{Exact sticky-local-vol}
+\label{sec:exactlv}
+
+The shift \eqref{eq:shift} is a first-order, shape-preserving approximation. For
+the \emph{sticky-local-vol} regime there is an \emph{exact} transport, because
+holding the local-volatility function fixed in absolute strike determines the new
+implied surface completely. In total-variance form, the horizontal-SSR transport is
+\begin{equation}
+\widetilde w_1^{R}(T,k)=w_0\big(T,\;k+R\,h_T\big),
+\end{equation}
+and the exact sticky-local-vol transport replaces the linear displacement by the
+Hagan log-moneyness map
+\begin{equation}
+w_1^{\text{LV}}(T,k)=w_0\big(T,\;\ell_T(k,h)\big),
+\qquad \ell_T(k,h)=\log\!\big(e^{h}(e^{k}+1)-1\big),
+\label{eq:hagan}
+\end{equation}
+which is the exact relabeling of moneyness when the local-vol surface is held fixed
+in absolute strike and the forward moves by $h$. An optional ATM re-anchor
+$\sigma_{\text{atm}}\to\sigma_0+R\,\kappa_T h_T$ makes the linear SSR response exact
+even for large moves.
+
+\subsection{The local-vol-grid relabeling}
+
+When the dynamics are driven by the extracted local-vol \emph{grid} (Note~04), the
+transport is even simpler: it is a \emph{relabeling of the grid's strike nodes}. A
+grid node at absolute strike $K_i^0(t)$ moves to
+\begin{equation}
+K_i^{1,R}(t)=K_i^0(t)\,e^{(1-R/2)h_t},
+\qquad\Longleftrightarrow\qquad
+x_i^1=x_i^0-\tfrac{R}{2}\,h_t,
+\label{eq:gridrelabel}
+\end{equation}
+in forward-normalized moneyness $x$. For $R=2$ (sticky-local-vol) the factor is
+$e^{0}=1$: the grid is held fixed in absolute strike and re-priced through the
+Dupire PDE, which is the \emph{exact} dynamics --- here SSR is an \emph{output} of
+the reprice, not an input, and the value $2$ is only its short-maturity limit. For
+$R=0$ (sticky-moneyness) the grid scales with the forward; $R=1$ (sticky-strike)
+sits halfway. This is why the local-vol regime is labeled both
+\texttt{sticky\_local\_vol} (the analytic Hagan transport) and
+\texttt{sticky\_local\_vol\_grid} (the exact PDE reprice).
+
+\begin{heuristic}
+The grid relabeling \eqref{eq:gridrelabel} is the cleanest statement of the whole
+note: a stickiness regime is just a rule for \emph{how the local-vol grid's strikes
+follow the spot}. $1-R/2$ is the fraction of the spot move the grid follows --- none
+of it ($R=2$, grid frozen in strike), all of it ($R=0$, grid rides the forward), or
+half ($R=1$). Everything else --- the implied-vol shift \eqref{eq:shift}, the ATM
+response, the Hagan map --- is a consequence of that one rule.
+\end{heuristic}
+
+%======================================================================
+\section{What is original here}
+\label{sec:original}
+
+The SSR and the stickiness regimes are standard (Bergomi, Hagan); the value here is
+the \emph{unified, recalibration-free} implementation. The single transport
+\eqref{eq:shift} realizes \emph{any} SSR (named regime or custom number) by
+arithmetic on the existing curve; the exact sticky-local-vol path
+\eqref{eq:hagan}--\eqref{eq:gridrelabel} ties the analytic shift, the Hagan
+relabeling, and the local-vol-grid reprice into one parameter $R$; and because the
+local-vol regime can be either the analytic transport or the exact PDE reprice, the
+desk can trade speed for exactness on one slider. No spot move ever triggers a
+re-solve.
+
+\appendix
+%======================================================================
+\section{Hyperparameter atlas}
+\label{app:atlas}
+
+\begin{longtable}{p{0.28\textwidth}p{0.16\textwidth}p{0.48\textwidth}}
+\caption{Spot--vol-dynamics hyperparameters.}\label{tab:atlas}\\
+\toprule Knob & Default & Role\\ \midrule
+\endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
+\texttt{ssr} & $2.0$ & SSR value or named regime (\texttt{sticky\_moneyness} /
+\texttt{sticky\_strike} / \texttt{sticky\_local\_vol} / \texttt{sticky\_local\_vol\_grid}).\\
+$R$ regime map & $\{0,1,2,2\}$ & SSR of the four named regimes.\\
+ATM re-anchor & off & Optional exact linear SSR for large moves ($\sigma_0+R\kappa_T h_T$).\\
+\bottomrule
+\end{longtable}
+
+\noindent\textbf{Performance.} The analytic transport \eqref{eq:shift} and the grid
+relabeling \eqref{eq:gridrelabel} are $O(\text{grid})$ arithmetic --- no
+optimization, no PDE --- so a spot move refreshes the whole surface essentially for
+free. Only the exact sticky-local-vol-grid reprice costs a Dupire PDE solve, and is
+chosen explicitly when exactness is wanted over speed. A spot move bumps the
+per-ticker spot version, so only the moved name's derived grid is re-transported.
+
+\begin{thebibliography}{9}
+\bibitem{Bergomi2016} L.~Bergomi. \emph{Stochastic Volatility Modeling}. CRC Press,
+2016.
+\bibitem{Hagan2002} P.~Hagan, D.~Kumar, A.~Lesniewski and D.~Woodward. Managing
+smile risk. \emph{Wilmott Magazine}, 2002.
+\bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface}. Wiley, 2006.
+\end{thebibliography}
+
+\end{document}
