@@ -176,6 +176,21 @@ negative $\alpha$ digs a notch. The curvature at the centre is
 $B''(c)=2(\operatorname{sech}^2(\kappa h/2)-1)/(2\Phi_\kappa(h))<0$, so a positive
 hat is locally concave (a hump), as it should be.
 
+The two objects read directly as \eqref{eq:phi}--\eqref{eq:hat}:
+
+\begin{lstlisting}[caption={The primitive $\Phi_\kappa$ and the zero-wing hat
+$B_{c,h,\kappa}$ (distilled from \texttt{models/sigmoid/kernels.py}; agrees with
+it to $10^{-13}$).},label={lst:hat}]
+def phi(u, kappa):                          # log-cosh primitive Phi_kappa
+    x = np.clip(kappa * u / 2, -50, 50)     # guard cosh() overflow
+    return (4 / kappa**2) * np.log(np.cosh(x))
+
+def hat(z, c, h, kappa):                    # zero-wing kernel B_{c,h,kappa}
+    u = z - c                               # centred 2nd difference of Phi:
+    raw = phi(u-h, kappa) - 2*phi(u, kappa) + phi(u+h, kappa)
+    return raw / (2 * phi(h, kappa))        # normalized so B(c) = 1
+\end{lstlisting}
+
 \subsection{The full model}
 
 The Multi-Core SIV slice is the base plus $R$ signed hats,
@@ -443,6 +458,45 @@ and its Jacobian.
 iterations on under-determined narrow kernels and is the first line of defence
 against the over-fit of \cref{sec:original}.
 \end{enumerate}
+
+%======================================================================
+\section{Reference implementation}
+\label{app:ref}
+
+Building on \cref{lst:hat}, the full slice $v_R(z)$ \eqref{eq:model} and the
+butterfly diagnostic $g(k)$ \eqref{eq:durrleman_siv} are a few more lines. The
+$z$-jets (value, slope, curvature) are carried together because $g$ needs all
+three; \texttt{\_dhat} forms a hat or either of its derivatives from the matching
+$\Phi$-jet, so the zero-wing second difference is written once. Verified against
+\texttt{MultiCoreSiv} on a two-core benchmark to $10^{-13}$.
+
+\begin{lstlisting}[caption={The full model $v_R(z)$ and Durrleman $g(k)$
+(distilled from \texttt{models/sigmoid/\{kernels,sigmoid\}.py}).}]
+def phi_p(u, k):  return (2/k) * np.tanh(k*u/2)        # Phi'
+def phi_pp(u, k): return 1 / np.cosh(k*u/2)**2         # Phi''
+def _dhat(f, z, c, h, kappa):                          # B or a B-derivative
+    u = z - c                                          #   from the matching Phi-jet
+    return (f(u-h,kappa) - 2*f(u,kappa) + f(u+h,kappa)) / (2*phi(h, kappa))
+
+def v_model(z, base, cores):
+    """MC-SIV variance v_R(z) = v_base(z) + sum_r alpha_r B_r(z), with z-jets."""
+    v0, s0, k0, z0, kp, kc = base
+    u = z - z0
+    kappa = np.where(u < 0, kp, kc)                    # asymmetric wings, C^2 at z0
+    v, vz, vzz = v0 + s0*u + k0*phi(u,kappa), s0 + k0*phi_p(u,kappa), k0*phi_pp(u,kappa)
+    for alpha, c, h, kap in cores:                     # add the signed zero-wing hats
+        v   += alpha * _dhat(phi,    z, c, h, kap)
+        vz  += alpha * _dhat(phi_p,  z, c, h, kap)
+        vzz += alpha * _dhat(phi_pp, z, c, h, kap)
+    return v, vz, vzz
+
+def durrleman_g(z, base, cores, t, sigma_ref):
+    """Butterfly diagnostic g(k) >= 0; converts z-space jets to k-space."""
+    v, vz, vzz = v_model(z, base, cores)
+    k, w = sigma_ref*np.sqrt(t)*z, t*v
+    wk, wkk = np.sqrt(t)/sigma_ref*vz, vzz/sigma_ref**2
+    return (1 - k*wk/(2*w))**2 - 0.25*wk**2*(1/w + 0.25) + 0.5*wkk
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{Gatheral2006} J.~Gatheral. \emph{The Volatility Surface: A Practitioner's

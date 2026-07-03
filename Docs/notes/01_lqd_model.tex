@@ -106,6 +106,17 @@ The minimal production model $N=6$ carries the seven parameters
 $(L,R,a_2,a_3,a_4,a_5,a_6)$, and higher $N$ adds body detail without ever
 touching the no-arbitrage mechanism.
 
+In code the positivity is a single line: with the smooth part
+$g(u)=(1-u)L+uR+\sum_n a_nP_n(1-2u)$, the return density is $f_X(Q(u))=1/q(u)=
+u(1-u)\,e^{-g(u)}$, non-negative for \emph{any} coefficients.
+
+\begin{lstlisting}[caption={The LQD density is structurally non-negative --- no
+constraint, no penalty (distilled from \texttt{models/lqd/quadrature.py}).},
+label={lst:lqd_density}]
+def density(u, g):                    # g(u) = (1-u)*L + u*R + sum_n a_n P_n(1-2u)
+    return u * (1 - u) * np.exp(-g)   # = e^{-ell(u)} >= 0 for ANY g  =>  no butterfly
+\end{lstlisting}
+
 \paragraph{Why this is the right trade.} A direct-IV model spends optimizer
 effort \emph{policing} arbitrage; the LQD model spends none, because the feasible
 set \emph{is} the set of densities. The price is two scalar nonlinearities: a
@@ -891,6 +902,47 @@ and subtracting the minimum-variance relation from the ATM relation,
 \end{equation}
 The benchmark's raw parameters in \cref{sec:examples} are the image of
 $(v,\psi,p,c,\widetilde v)=(0.0425,-0.25,0.75,0.25,0.034)$ at $T=0.5$.
+
+%======================================================================
+\section{Reference implementation}
+\label{app:ref}
+
+The whole slice is one quadrature pass in the logit coordinate $z=\log(u/(1-u))$:
+form $g$, integrate $\dd Q/\dd z=e^{g}$ to the quantile, solve one scalar
+normalization for the martingale shift $\mu$, and reverse-integrate the
+asset-share $A(z)$; every strike is then priced by $C(k)=A(z_k)-e^k(1-u_k)$. The
+listing below reproduces \texttt{build\_slice}'s quantile, asset share and $\mu$ to
+$10^{-8}$ on the $N=6$ benchmark and gives $\E[e^X]=1.000000$ (production inverts
+$Q(z_k)=k$ and interpolates $A$ with cubic Hermite for smooth Greeks; the linear
+\texttt{np.interp} here agrees to $10^{-7}$ on the dense grid).
+
+\begin{lstlisting}[caption={The LQD quadrature pipeline (distilled from
+\texttt{models/lqd/\{basis,quadrature\}.py}).}]
+def legendre(n_max, x):                     # P_0..P_{n_max}, 3-term recursion
+    P = np.empty((n_max+1, x.size)); P[0] = 1.0; P[1] = x
+    for n in range(1, n_max):
+        P[n+1] = ((2*n+1)*x*P[n] - n*P[n-1]) / (n+1)
+    return P
+
+def g_of_u(u, L, R, a):                     # smooth part g(u) of ell(u)
+    return (1-u)*L + u*R + a @ legendre(len(a)+1, 1 - 2*u)[2:]
+
+def build_slice(z, L, R, a):                # one quadrature pass, eqs (q_logit)-(mu_norm)
+    u = expit(z); dz = z[1] - z[0]
+    A_L, A_R = np.exp(g_of_u(np.array([0.0, 1.0]), L, R, a))   # tail scales e^{g(0)}, e^{g(1)}
+    Q = cumulative_simpson(np.exp(g_of_u(u, L, R, a)), dx=dz, initial=0.0)  # dQ/dz = e^{g}
+    Q -= Q[len(z)//2]                       # anchor Q(0) = 0
+    mass = np.exp(Q)*u*(1-u)
+    tot = np.trapezoid(mass, z) + np.exp(Q[-1]-z[-1])/(1-A_R) + np.exp(Q[0]-z[-1])/(1+A_L)
+    mu = -np.log(tot); Q = Q + mu           # martingale normalization: E[e^X] = 1
+    m = np.exp(Q)*u*(1-u)
+    A = cumulative_simpson(m[::-1], dx=dz, initial=0.0)[::-1] + np.exp(Q[-1]-z[-1])/(1-A_R)
+    return u, Q, A                          # asset share A(z) = int_z^inf e^{Q} u(1-u)
+
+def call_price(k, z, u, Q, A):              # C(k) = A(z_k) - e^k (1 - u_k)
+    zk = np.interp(k, Q, z)                 # invert Q(z_k) = k
+    return np.interp(zk, z, A) - np.exp(k)*(1 - expit(zk))
+\end{lstlisting}
 
 \begin{thebibliography}{9}
 \bibitem{BreedenLitzenberger1978} D.~Breeden and R.~Litzenberger.
