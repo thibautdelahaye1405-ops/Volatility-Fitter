@@ -133,6 +133,24 @@ Each note: commit after it compiles clean with its figures.
   with its four instances and the two-curve/one-curve criterion.
   Traceability tables both notes; listings verified (lee_psi exact,
   lee_slopes 0 err). Next: 02+03.
+- **2026-07-03 — Notes 02+03 hardened** (sixth+seventh of the pass).
+  Note 02: the **conversion-domain proposition** — a JW quintuple is
+  representable iff v>0, p,c>0, **−p/2 < ψ < c/2**, ψ≠0, ṽ<v (Cauchy–Schwarz
+  proof) — with the ψ=0 coordinate-singularity remark (handles don't identify
+  (m,σ) on the symmetric-vertex stratum; verified numerically against
+  production `jw_to_raw`: 500 interior round trips exact, boundary
+  non-finite, three σ's sharing identical handles at ψ=0) and a caution that
+  the converter has ZERO guards (the domain is a contract, flagged in the
+  traceability section as a documented gap). No-arb restated in JW units
+  (ṽ≥0; max(p,c)·√(vt) ≤ 2). Fixed: `raw_to_jw` does not exist in the backend
+  (appendix caption corrected; runtime shows 3 FD numeric handles, not 5 JW);
+  atlas calendarWeight is OptionsSettings. Note 03: schema-vs-library core
+  cap made precise (clamp is at the settings boundary; library uncapped,
+  test-exercised at R=3), hats-are-non-unique/curve-is-contractual invariant,
+  exact ablation numbers (92/25/749/225 bp) in the complementarity remark,
+  seeding wording fixed (α=clip(residual,−1,1)). Invariant boxes +
+  traceability tables added to both; gen_svi/gen_siv restyled via style.py.
+  Next: 06/07/08/11/12 polish, then 00, 01 lightly.
 
 - **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
   updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and

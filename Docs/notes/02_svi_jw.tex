@@ -20,14 +20,22 @@ $w(k)=a+b\{\rho(k-m)+\sqrt{(k-m)^2+\sigma^2}\}$, with five parameters that are
 geometrically opaque but analytically convenient. The \emph{jump-wing} (SVI-JW)
 re-coordinatization replaces them with five quantities a trader actually quotes
 --- ATM variance, ATM skew, the two wing slopes, and the minimum variance --- and
-we give the exact conversion in both directions. We state the static no-arbitrage
-conditions (Durrleman's butterfly function and Lee's wing bound), show how the
-calibrator enforces them as two soft penalties that vanish on any admissible
-slice, and explain the unconstrained reparametrization (softplus / $\tanh$ /
-$\exp$) that lets a plain Levenberg--Marquardt solver only ever propose feasible
-slices. As in the LQD note, the residual Jacobian is available in closed form;
-a fresh run recovers a benchmark SVI-JW smile to machine precision, reproduces
-its jump-wing handles exactly, and runs \svispeedup$\times$ faster than the
+we give the exact conversion in both directions \emph{together with its exact
+domain}: a jump-wing quintuple is representable at all iff $v>0$, $p,c>0$, the
+quoted ATM skew lies strictly between half the wing slopes,
+$-p/2<\psi<c/2$, and $\widetilde v<v$ --- with a genuine coordinate
+singularity on the stratum $\psi=0$ (ATM at the vertex), where $(m,\sigma)$
+is not identified by the handles. The production converter carries
+\emph{no} guards, so this domain is the caller's contract, stated here
+precisely. We restate the no-arbitrage conditions in JW units --- Lee's cap
+becomes $\max(p,c)\sqrt{vt}\le2$ and the minimum-variance condition is
+$\widetilde v\ge0$ --- show how the calibrator enforces them as two soft
+penalties that vanish on any admissible slice, and explain the unconstrained
+reparametrization (softplus / $\tanh$ / $\exp$) that lets a plain
+Levenberg--Marquardt solver only ever propose feasible slices. As in the LQD
+note, the residual Jacobian is available in closed form; a fresh run recovers
+a benchmark SVI-JW smile to machine precision, reproduces its jump-wing
+handles exactly, and runs \svispeedup$\times$ faster than the
 finite-difference Jacobian.
 \end{abstract}
 
@@ -50,6 +58,21 @@ to evaluate and differentiate. The cost is that $(a,b,\rho,m,\sigma)$ are
 geometrically entangled: no single one is ``the skew'' or ``the ATM level''. The
 Vol-Fitter therefore carries SVI in \emph{two} coordinate systems --- raw for the
 optimizer, jump-wing for the human --- and converts losslessly between them.
+
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item The optimizer can only propose structurally valid hyperbolas: $b\ge0$,
+$|\rho|<1$, $\sigma>0$ hold by reparametrization, not by rejection.
+\item The two economic no-arbitrage conditions --- non-negative minimum
+variance and the Lee wing cap --- are soft hinges that are \emph{exactly zero}
+on any admissible slice (byte-identical fits).
+\item The raw$\leftrightarrow$JW conversion is exact on its domain
+(\cref{prop:domain}); the converter itself carries no guards, so the domain is
+the caller's contract.
+\item SVI is a display overlay like any other: band, calendar, var-swap and
+prior blocks attach identically, and each is absent-is-byte-identical.
+\end{enumerate}
+\end{invariant}
 
 \begin{heuristic}
 Read \eqref{eq:rawsvi} as a hyperbola: $b$ is the overall steepness (the
@@ -125,8 +148,12 @@ identity from the ATM identity gives the closed form
 \label{eq:jw_to_raw_2}
 \end{equation}
 The reverse map \emph{from} raw \emph{to} jump-wing is just the definitions
-\eqref{eq:jw_def} evaluated on the fitted raw slice; the Vol-Fitter uses it to
-display handles after every calibration. \Cref{sec:example} verifies the
+\eqref{eq:jw_def} evaluated on the fitted raw slice. (Two precisions about
+what production actually runs: the backend ships only the forward converter
+\texttt{jw\_to\_raw} --- the reverse map lives in the figure generator and in
+these equations --- and the \emph{live} smile panel displays the three
+model-agnostic numeric handles ATM vol/skew/curvature by finite differences,
+not the five closed-form JW handles.) \Cref{sec:example} verifies the
 round-trip numerically to machine precision. The forward conversion
 \eqref{eq:jw_to_raw_1}--\eqref{eq:jw_to_raw_2} is direct:
 
@@ -144,6 +171,77 @@ def jw_to_raw(t, v, psi, p, c, vt):          # v, psi, p, c, vtilde  ->  a, b, r
     return a, b, rho, m, sigma
 \end{lstlisting}
 
+\subsection{The conversion domain, exactly}
+\label{sec:domain}
+
+Not every quintuple $(v,\psi,p,c,\widetilde v)$ is a smile. The formulas above
+divide by $p+c$, by $\sqrt{1-\chi^2}$ and by the bracket in
+\eqref{eq:jw_to_raw_2}, and the production converter carries \emph{no} guards
+--- so the exact domain is worth stating and proving.
+
+\begin{proposition}[Conversion domain]
+\label{prop:domain}
+Fix $t>0$. The map \eqref{eq:jw_to_raw_1}--\eqref{eq:jw_to_raw_2} produces a
+valid raw slice ($b>0$, $|\rho|<1$, $\sigma>0$, $m$ finite) if and only if
+\[
+v>0,\qquad p>0,\ c>0,\qquad -\frac{p}{2}<\psi<\frac{c}{2},\qquad
+\psi\neq0,\qquad \widetilde v<v .
+\]
+In words: the wings must be genuinely upward, the quoted ATM skew must lie
+strictly between \emph{half the wing slopes}, and the ATM variance must sit
+strictly above the minimum.
+\end{proposition}
+
+\begin{proof}
+$p,c>0$ gives $b=\tfrac{\sqrt{w_0}}{2}(p+c)>0$ and
+$\rho=(c-p)/(c+p)\in(-1,1)$. For $\chi=\rho-4\psi/(p+c)$, using
+$(\rho-1)(p+c)=-2p$ and $(\rho+1)(p+c)=2c$,
+\[
+|\chi|<1
+\iff \frac{(\rho-1)(p+c)}{4}<\psi<\frac{(\rho+1)(p+c)}{4}
+\iff -\frac p2<\psi<\frac c2 ,
+\]
+which keeps $m=\chi\sigma/\sqrt{1-\chi^2}$ finite. For $\sigma$: by
+Cauchy--Schwarz applied to the unit vectors $(\rho,\sqrt{1-\rho^2})$ and
+$(\chi,\sqrt{1-\chi^2})$,
+\[
+\rho\chi+\sqrt{1-\rho^2}\sqrt{1-\chi^2}\le1,
+\quad\text{i.e.}\quad
+\frac{1-\rho\chi}{\sqrt{1-\chi^2}}\ \ge\ \sqrt{1-\rho^2},
+\]
+with equality iff $\chi=\rho$, i.e.\ iff $\psi=0$. So the bracket in
+\eqref{eq:jw_to_raw_2} is strictly positive exactly when $\psi\neq0$, and
+$\sigma>0$ then requires the numerator $w_0-\widetilde vt>0$, i.e.\
+$\widetilde v<v$. Conversely each failure breaks a requirement: $p+c\le0$
+kills $b$ or $\rho$; $\psi$ outside the band sends $|\chi|\ge1$ ($m$
+infinite); $\psi=0$ zeroes the bracket; $\widetilde v\ge v$ makes
+$\sigma\le0$.
+\end{proof}
+
+\begin{remark}[The $\psi=0$ stratum is a genuine coordinate singularity]
+\label{rem:psi0}
+On a true SVI slice, $\psi=0$ means $\chi=\rho$, which happens exactly when
+the ATM point \emph{is} the vertex --- and then $\widetilde v=v$
+automatically. On that stratum the five handles do not identify the slice:
+for any $\sigma>0$, the raw slice with $m=\rho\sigma/\sqrt{1-\rho^2}$ and
+$a=\widetilde vt-b\sigma\sqrt{1-\rho^2}$ reproduces the \emph{same}
+$(v,0,p,c,v)$ --- the handles omit ATM curvature, and this is where it shows.
+The jump-wing chart is a fine trader coordinate system \emph{away} from the
+symmetric-vertex stratum, and ill-conditioned near it: as $\psi\to0$, the
+conversion computes $\sigma$ as a ratio of two vanishing quantities, with
+catastrophic cancellation before the limit.
+\end{remark}
+
+\begin{caution}
+The production \texttt{jw\_to\_raw} implements the formulas verbatim with
+\emph{zero} domain checks: $p+c=0$ or $|\chi|\ge1$ divides by zero silently,
+and a near-zero $\psi$ silently amplifies rounding. This is deliberate ---
+the converter's only callers feed it benchmark or desk handles comfortably
+inside \cref{prop:domain} --- but it makes the domain a \emph{contract}, not
+a runtime guarantee. Anyone wiring JW handles to user input must validate
+against \cref{prop:domain} first; the note, not the code, is the fence.
+\end{caution}
+
 %======================================================================
 \section{Static no-arbitrage}
 \label{sec:noarb}
@@ -158,10 +256,35 @@ g(k)=\Big(1-\frac{k\,w'(k)}{2w(k)}\Big)^2-\frac{w'(k)^2}{4}\Big(\frac{1}{w(k)}+\
 \label{eq:durrleman}
 \end{equation}
 For raw SVI, $g$ is a smooth function of \eqref{eq:rawsvi}--\eqref{eq:svi_deriv}
-with no closed-form sign, so it is checked on a grid as a fit diagnostic. The
-Gatheral--Jacquier conditions give sufficient parameter-space inequalities
-bounding the wing steepness $b(1+|\rho|)$ and requiring the minimum total
-variance to be non-negative; the calibrator enforces the two that bite in practice.
+with no closed-form sign. In production it is evaluated as the closed-form
+$(w,w',w'')$ triple by the backtest's analytic arbitrage metric (Note~09) and
+by the note's own figures; the fit itself does not carry a $g$ hinge --- the
+Gatheral--Jacquier parameter-space conditions bound the wing steepness
+$b(1+|\rho|)$ and the minimum total variance, and the calibrator enforces the
+two that bite in practice.
+
+\begin{proposition}[The enforced conditions, in JW units]
+\label{prop:jwnoarb}
+Under the conversion of \cref{sec:jw}, the two coded penalties read directly
+on the trader handles: the minimum-variance condition
+$a+b\sigma\sqrt{1-\rho^2}\ge0$ is exactly $\widetilde v\ge0$, and Lee's cap
+$b(1+|\rho|)\le\beta_{\max}$ is exactly
+\[
+\max(p,c)\,\sqrt{vt}\ \le\ \beta_{\max}\ (=2).
+\]
+\end{proposition}
+
+\begin{proof}
+The first is the definition of $\widetilde v$ in \eqref{eq:jw_def} times
+$t>0$. For the second, $b(1\mp\rho)=p\sqrt{w_0}$ and $c\sqrt{w_0}$
+respectively by \eqref{eq:jw_def}, so
+$b(1+|\rho|)=\max\big(b(1-\rho),b(1+\rho)\big)=\max(p,c)\sqrt{w_0}$ with
+$w_0=vt$.
+\end{proof}
+
+So a desk can sanity-check a handle quote before any conversion: wings
+non-negative at the vertex ($\widetilde v\ge0$), skew inside
+$(-p/2,\,c/2)$ (\cref{prop:domain}), and $\max(p,c)\sqrt{vt}\le2$ (Lee).
 
 \subsection{The two soft penalties}
 
@@ -327,6 +450,60 @@ butterfly-free only over its admissible cone --- enforced softly here --- and
 carries no calendar coupling on its own; that is supplied by the model-agnostic
 hinge of Note~10.
 
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.30\textwidth}p{0.13\textwidth}p{0.25\textwidth}p{0.28\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+JW$\to$raw conversion exact on the benchmark &
+\cref{sec:jw} &
+\nolinkurl{models/svi_jw/svi.py::jw_to_raw} &
+\nolinkurl{test_lqd_pricing.py::test_jw_conversion_matches_note}\\
+Round trip: parameters and curve recovered &
+\cref{sec:example} &
+\nolinkurl{models/svi_jw/calibrate.py} &
+\nolinkurl{test_svi_calibrate.py::test_recovers_benchmark_parameters}, \nolinkurl{::test_curve_reproduced_to_machine_precision}\\
+Lee cap enforced &
+\cref{prop:jwnoarb} &
+\nolinkurl{models/svi_jw/calibrate.py::_penalties} &
+\nolinkurl{test_svi_calibrate.py::test_respects_lee_wing_bound}\\
+Minimum variance non-negative &
+\cref{prop:jwnoarb} &
+\nolinkurl{models/svi_jw/calibrate.py::_penalties} &
+\nolinkurl{test_svi_calibrate.py::test_min_variance_non_negative}\\
+Analytic Jacobian $=$ FD, penalties active or not &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/jacobian.py} &
+\nolinkurl{test_svi_jacobian.py::test_mid_fit_admissible}, \nolinkurl{::test_lee_penalty_active}, \nolinkurl{::test_min_variance_penalty_active}\\
+Calendar hinge rows correct &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/calibrate.py} &
+\nolinkurl{test_svi_jacobian.py::test_calendar_floor_active}, \nolinkurl{test_overlay_calendar.py::test_svi_no_floor_is_byte_identical}\\
+Vega-weighted fit supported &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/calibrate.py::_vega_weights} &
+\nolinkurl{test_svi_calibrate.py::test_recovers_under_vega_weights}\\
+Prior blocks reach the SVI overlay &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/calibrate.py} &
+\nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\
+\bottomrule
+\end{longtable}
+\endgroup
+
+\noindent The conversion-domain conditions of \cref{prop:domain} are a
+\emph{documented contract}, not code: the converter has no guards and no
+domain test. That is a known, deliberate gap --- flagged here so it cannot be
+mistaken for an enforced invariant.
+
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
@@ -347,7 +524,8 @@ asymptotic total-variance slope $b(1+|\rho|)$ may not exceed it.\\
 (Note~07).\\
 \texttt{weightScheme} & \texttt{equal} & Per-quote weights (Note~07); pass
 $\text{vega}^2$ for a vega-weighted fit.\\
-\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10).\\
+\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10; lives
+in \texttt{OptionsSettings}, not \texttt{FitSettings}).\\
 \midrule
 \multicolumn{3}{l}{\emph{Internal (reparametrization / solver)}}\\ \midrule
 $b=\operatorname{softplus}(\theta_b)$ & --- & Enforces $b\ge0$.\\
@@ -389,8 +567,10 @@ the reverse conversion \eqref{eq:jw_def} reads the five jump-wing handles off it
 Composing with \cref{lst:jw2raw} recovers the original handles to $10^{-10}$ --- the
 round trip is exact, not approximate.
 
-\begin{lstlisting}[caption={Raw SVI evaluation and raw $\to$ SVI-JW (distilled from
-\texttt{models/svi\_jw/svi.py}).}]
+\begin{lstlisting}[caption={Raw SVI evaluation (the
+\texttt{RawSVI.total\_variance} method) and the reverse map raw $\to$ SVI-JW
+--- the equations \eqref{eq:jw_def}; the backend ships only the forward
+converter, and this reverse listing is the one the figure generator runs.}]
 def w_svi(k, a, b, rho, m, sigma):           # the hyperbola w(k)
     km = k - m
     return a + b*(rho*km + np.sqrt(km*km + sigma**2))

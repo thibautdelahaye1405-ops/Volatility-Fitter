@@ -68,7 +68,24 @@ is strictly convex.
 
 The MC-SIV answer is to keep a convex \emph{base} that owns the wings and the
 overall skew, and to add \emph{local, wing-neutral} corrections that can be
-positive or negative. The design constraint is sharp:
+positive or negative.
+
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item Adding cores never moves the asymptotic wings: every hat and its first
+two derivatives vanish in both tails (\cref{lem:zerowing}).
+\item Expressiveness is budgeted: cores are capped by the quote count
+\eqref{eq:identifiability} and the surfaced slider is clamped to two.
+\item The model reports its own butterfly diagnostic $g$ per fit, and the
+default-on put-wing hinge is exactly zero on any admissible slice
+(byte-identical, test-locked).
+\item The parameters are a means, not the object: hats are non-unique by
+design, and only the \emph{curve} is contractual
+(\cref{sec:calib}).
+\end{enumerate}
+\end{invariant}
+
+The design constraint on the correction kernels is sharp:
 
 \begin{heuristic}
 A shoulder is a \emph{local} feature: it changes the body of the smile in a
@@ -245,10 +262,11 @@ r^{\text{wing}}_j=\sqrt{\lambda_j}\,\max\!\big(-g(z_j),\,0\big),
 \lambda_j=\Lambda\,\lambda_0\,\big(1+\1\{z_j<0\}\big),
 \label{eq:wingpen}
 \end{equation}
-with $g$ the model's analytic Durrleman functional \eqref{eq:durrleman_siv},
-$\lambda_0=10^{3}$ the base strength, $\Lambda=\texttt{sivWingPenaltyPct}/100$ the
-surfaced dial (default $1$; $0$ disables), and the indicator \emph{doubling} the
-weight on the put side to match the measured asymmetry. Because
+with $g$ the model's analytic Durrleman functional \eqref{eq:durrleman_siv}
+and $\lambda_0=10^{3}$ the base strength. The surfaced dial is
+$\Lambda=\texttt{sivWingPenaltyPct}/100$ (default $1$; $0$ disables), and the
+indicator \emph{doubles} the weight on the put side to match the measured
+asymmetry. Because
 $\max(-g,0)=0$ wherever the slice is butterfly-free, \eqref{eq:wingpen} is
 \emph{exactly zero on an admissible fit}: a liquid, arbitrage-free name is
 byte-identical with or without it. The penalty bites only where a hat would
@@ -279,9 +297,10 @@ the local skew and the local convexity off three interpolated points. This stage
 is always mid, so its residual is meaningful for the next stage.
 \item \textbf{Greedy hat seeding.} Compute the base residual in variance space and
 place each of the $R$ hats at the largest remaining $|{\text{residual}}|$,
-masking a neighbourhood after each placement so the hats do not pile up. Each
-seed starts at half-width $h=\sivhinit$ and steepness $\kappa=\sivkappainit$ with
-amplitude clipped to the residual.
+masking a neighbourhood after each placement so two hats cannot seed on the
+same feature. Each seed starts at half-width $h=\sivhinit$ and steepness
+$\kappa=\sivkappainit$, with amplitude initialized \emph{from} the local
+residual and clipped to $[-1,1]$ variance units.
 \item \textbf{Joint bounded refine.} Refine all $6+4R$ parameters together under
 the requested objective (mid or band) with a mild ridge $\sqrt{\varrho}\,\alpha_r$
 on the hat amplitudes, $\varrho=\sivridge$. The ridge keeps overlapping cores from
@@ -302,7 +321,15 @@ Independently of this data-driven bound, the surfaced \texttt{nCores} is
 \emph{hard-capped at two}, $R\in\{0,1,2\}$: the backtest found that $R\ge3$ buys no
 out-of-sample precision while manufacturing the put-wing arbitrage of
 \cref{sec:wingpen}, so a persisted desk setting above two is silently \emph{clamped}
-(not rejected) on load. The refine stage carries the same optional blocks as the
+(not rejected) on load. Precision matters here: the clamp lives in the
+\emph{schema} (\texttt{FitSettings.nCores}), not in the calibrator ---
+\texttt{calibrate\_sigmoid(n\_cores=3)} runs happily, and the library's own
+tests exercise it. The cap is a product decision about what the app will
+persist and display, enforced at the settings boundary; research code below
+that boundary deliberately keeps the full family. Relatedly, the hats are
+\emph{non-unique} by construction (two overlapping hats can trade amplitude
+against each other): the round-trip test recovers the \emph{curve}, not the
+parameters, and nothing downstream ever consumes hat parameters directly. The refine stage carries the same optional blocks as the
 other models --- band fit (Note~07), var-swap target (Note~08), the model-agnostic
 calendar hinge (Note~10), prior persistence (Note~13), and the put-wing regularizer
 \eqref{eq:wingpen} --- so the sigmoid overlay is no longer a prior exception.
@@ -330,7 +357,10 @@ The base SIV ($R=0$) fits it only to \sivbasemaxerr\ vol bps, missing both
 shoulders. Two hats ($R=2$, $6+4\cdot2=\sivnparam$ parameters) reduce the maximum
 error to \sivmaxerr\ vol bps while preserving the wing slopes
 $(S_0-2K_0/\kappa_P,\,S_0+2K_0/\kappa_C)=(\sivwingL,\,\sivwingR)$ and keeping the
-fit butterfly-free (\cref{fig:diag}, $g(k)\ge0$). \Cref{fig:components} shows the
+fit butterfly-free (\cref{fig:diag}, $g(k)\ge0$). (How many cores a WW needs
+depends on the target: this note's WW resolves at $R=2$, while the library's
+own, sharper synthetic requires $R=3$ --- which the uncapped library test
+exercises, below the schema clamp of \cref{sec:calib}.) \Cref{fig:components} shows the
 decomposition: the convex base owns the V, and the two signed hats add precisely
 the two shoulders, each localized and wing-neutral.
 
@@ -393,14 +423,77 @@ over-reaching (cured by \eqref{eq:wingpen}), and \emph{arbitraged inputs} --- th
 per-strike de-Americanization of Note~05 can hand every model a call curve that is
 already slightly non-convex in the wings. An ablation isolating the two defences
 (the de-Am convex repair of Note~05 versus the penalty \eqref{eq:wingpen}) on
-illiquid American ETFs found them \emph{complementary, not redundant}: the de-Am
-repair alone cuts the violation about threefold \emph{and lowers} the in-sample fit
-error (it removes the arbitraged quotes the model was chasing), whereas the penalty
-alone nearly eliminates the violation but at a steep in-sample cost (it must fight
-those same quotes); running both attains the penalty's arbitrage removal at roughly
-a third of that cost, because the inputs are cleaned before the constraint is
-imposed. That is the quantitative case for shipping both on by default.
+illiquid American ETFs found them \emph{complementary, not redundant}. On the
+arb-prone population: with neither, worst $g\approx-30$ and in-sample RMS
+$92$ bp; the de-Am repair alone cuts the violation about threefold \emph{and
+lowers} the RMS to $25$ bp (it removes the arbitraged quotes the model was
+chasing); the penalty alone nearly eliminates the violation ($g\ge-0.02$) but
+at $749$ bp (it must fight those same quotes); both attain the penalty's
+arbitrage removal at $225$ bp, because the inputs are cleaned before the
+constraint is imposed. On liquid names both are byte-identical no-ops. That
+is the quantitative case for shipping both on by default; the census that
+sited the penalty (64\% put wing, median worst violation at $z\approx-3.2$)
+and the cross-model framing are Note~09's case file and confinement
+principle.
 \end{remark}
+
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.30\textwidth}p{0.13\textwidth}p{0.25\textwidth}p{0.28\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+Hat is unit-height, flat at centre, zero-wing in value/slope/curvature &
+\cref{lem:zerowing} &
+\nolinkurl{models/sigmoid/kernels.py} &
+\nolinkurl{test_sigmoid.py::test_hat_is_zero_wing_and_unit_height}\\
+Wing slopes preserved under cores; $g$ and $\min v$ diagnostics match note &
+\eqref{eq:wing_slopes} &
+\nolinkurl{models/sigmoid/sigmoid.py} &
+\nolinkurl{test_sigmoid.py::test_note_arbitrage_diagnostics}\\
+Cores improve the WW fit monotonically &
+\cref{sec:example} &
+\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_sigmoid.py::test_more_cores_fit_better_on_ww_smile}\\
+Identifiability cap $6+4R\le N$ &
+\eqref{eq:identifiability} &
+\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_sigmoid.py::test_cores_are_capped_to_quote_count}\\
+Surfaced slider clamped to two (schema boundary) &
+\cref{sec:calib} &
+\nolinkurl{api/schemas.py} &
+\nolinkurl{test_siv_wing_penalty.py::test_cores_clamped_to_two}\\
+Put-wing hinge removes wing arb; byte-identical on clean slices; off by
+library default &
+\eqref{eq:wingpen} &
+\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_siv_wing_penalty.py::test_penalty_removes_wing_arb}, \nolinkurl{::test_penalty_byte_identical_on_arb_free_slice}, \nolinkurl{::test_penalty_off_default}\\
+Analytic Jacobian $=$ FD (base, cores, band, calendar) &
+\cref{sec:calib} &
+\nolinkurl{models/sigmoid/jacobian.py} &
+\nolinkurl{test_sigmoid_jacobian.py::test_two_cores_mid}, \nolinkurl{::test_two_cores_band}, \nolinkurl{::test_calendar_active}\\
+Curve identified, parameters deliberately not &
+\cref{sec:calib} &
+\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_sigmoid.py::test_round_trip_curve_recovery}\\
+Prior blocks reach the SIV overlay &
+\cref{sec:calib} &
+\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\
+R3$\times$R6 ablation numbers &
+\cref{sec:original} &
+\nolinkurl{backend/backtest/ablation_arb.py} &
+\nolinkurl{test_ablation_arb.py}\\
+\bottomrule
+\end{longtable}
+\endgroup
 
 \appendix
 %======================================================================
@@ -415,15 +508,17 @@ imposed. That is the quantitative case for shipping both on by default.
 \endhead
 \multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\ \midrule
 \texttt{nCores} $R$ & $2$ & Number of zero-wing hats, $R\in\{0,1,2\}$
-(hard-capped at two; a persisted larger value is clamped, and the identifiability
-bound \eqref{eq:identifiability} may reduce it further). $0$ = pure sigmoid base.\\
+(schema-clamped at two --- a persisted larger value is silently reduced; the
+library itself is uncapped, and the identifiability bound
+\eqref{eq:identifiability} may reduce $R$ further). $0$ = pure sigmoid base.\\
 \texttt{sivWingPenaltyPct} $\Lambda$ & $100$ & Put-wing Durrleman penalty
 \eqref{eq:wingpen} strength; $100=$ base $\lambda_0=10^{3}$, $0=$ off.\\
 \texttt{sigmoidRidge} $\varrho$ & \sivridge & $\ell^2$ penalty on hat amplitudes
 in the refine stage.\\
 \texttt{midAnchorWeight} & $0.05$ & Band-fit mid anchor (Note~07).\\
 \texttt{weightScheme} & \texttt{equal} & Per-quote weights (Note~07).\\
-\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10).\\
+\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10; lives in
+\texttt{OptionsSettings}, not \texttt{FitSettings}).\\
 \midrule
 \multicolumn{3}{l}{\emph{Internal (seeding / bounds)}}\\ \midrule
 \texttt{\_H\_INIT} & \sivhinit & Hat half-width seed.\\

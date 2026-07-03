@@ -39,21 +39,16 @@ from volfit.models.sigmoid.calibrate import (
 from volfit.models.sigmoid.jacobian import siv_residual_jacobian
 from volfit.models.sigmoid.kernels import hat, siv_base
 
+import sys  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from style import PALETTE, setup  # noqa: E402
+
 OUT = Path(__file__).resolve().parent
-plt.rcParams.update(
-    {
-        "figure.figsize": (7.2, 4.3),
-        "font.size": 11,
-        "axes.grid": True,
-        "grid.alpha": 0.25,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "lines.linewidth": 1.8,
-        "savefig.bbox": "tight",
-        "savefig.dpi": 200,
-    }
-)
-TEAL, RUST, SLATE, AMBER, VIOLET = "#0f766e", "#b91c1c", "#334155", "#b45309", "#6d28d9"
+setup()
+TEAL, RUST, SLATE, AMBER, VIOLET = (PALETTE["teal"], PALETTE["rust"],
+                                    PALETTE["muted"], PALETTE["amber"],
+                                    PALETTE["violet"])
 
 
 def ww_target_vol(k):
