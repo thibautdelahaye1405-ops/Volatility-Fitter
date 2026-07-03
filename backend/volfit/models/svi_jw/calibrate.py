@@ -127,6 +127,7 @@ def calibrate_svi(
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
+    solver_diag: dict | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -154,6 +155,11 @@ def calibrate_svi(
     the prior-persistence residual blocks — the same semantics LQD receives, so
     the SVI display overlay is no longer an exception (roadmap Phase 3). Both None
     (the default) leave the objective byte-identical.
+
+    ``solver_diag`` (Note 15 Phase 2): a caller-owned dict filled with the
+    solver's solution-point Jacobian / residual / theta and the fit-block row
+    count, for the observation filter's information matrix J^T W J. Pure
+    side-channel; None (the default) is byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -220,6 +226,14 @@ def calibrate_svi(
         )
     else:
         result = least_squares(residuals, theta0, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)
+    if solver_diag is not None:
+        solver_diag.update(
+            jac=np.asarray(result.jac, dtype=float),
+            residual=np.asarray(result.fun, dtype=float),
+            theta=np.asarray(result.x, dtype=float).copy(),
+            n_fit_rows=int(k.size if band is None else 2 * k.size),
+            n_quotes=int(k.size),
+        )
     raw = _unpack(result.x)
 
     model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)

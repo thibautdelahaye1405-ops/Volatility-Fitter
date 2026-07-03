@@ -141,6 +141,7 @@ def _fit(
     prior_var_swap: VarSwapTarget | None = None,
     wing_z: np.ndarray | None = None,
     wing_sqrt_lambda: np.ndarray | None = None,
+    solver_diag: dict | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
@@ -240,6 +241,16 @@ def _fit(
     result = least_squares(
         residuals, theta0, bounds=(lo, hi), jac=jac, method="trf", xtol=1e-12, ftol=1e-12
     )
+    if solver_diag is not None:
+        # Note 15 Phase 2 side-channel: the solution-point Jacobian / residual
+        # for the observation filter's information matrix J^T W J.
+        solver_diag.update(
+            jac=np.asarray(result.jac, dtype=float),
+            residual=np.asarray(result.fun, dtype=float),
+            theta=np.asarray(result.x, dtype=float).copy(),
+            n_fit_rows=int(z.size if band is None else 2 * z.size),
+            n_quotes=int(z.size),
+        )
     return result.x
 
 
@@ -260,6 +271,7 @@ def calibrate_sigmoid(
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
     wing_penalty: float = 0.0,
+    solver_diag: dict | None = None,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -281,6 +293,10 @@ def calibrate_sigmoid(
     only (the base-seeding stays mid), matching the LQD/SVI paths — the Multi-Core
     SIV overlay is no longer a prior exception (roadmap Phase 3). Both None (the
     default) leave the fit byte-identical.
+
+    ``solver_diag`` (Note 15 Phase 2): filled from the FINAL refine stage's
+    solver (the fit that produces the returned parameters), for the observation
+    filter's information matrix. None (the default) is byte-identical.
     """
     k = np.asarray(k, dtype=float)
     vol_quotes = np.sqrt(np.asarray(w_quotes, dtype=float) / t)
@@ -323,6 +339,7 @@ def calibrate_sigmoid(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
+            solver_diag=solver_diag,
         )
     else:
         theta = _fit(
@@ -334,6 +351,7 @@ def calibrate_sigmoid(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
+            solver_diag=solver_diag,
         )
 
     cores = tuple(

@@ -171,6 +171,7 @@ def calibrate_slice(
     prior_var_swap: VarSwapTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     opt_n_points: int = OPT_N_POINTS,
+    solver_diag: dict | None = None,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
@@ -206,6 +207,12 @@ def calibrate_slice(
     (volfit.calib.operators) adds the quote-operator prior block (ATM/RR/BF) for
     the operator / hybrid prior modes. All None (the default) leave the objective
     byte-identical.
+
+    ``solver_diag`` (Note 15 Phase 2): a caller-owned dict filled with the
+    solver's solution-point Jacobian / residual / theta and the fit-block row
+    count, so the observation filter can form the information matrix J^T W J
+    without a second fit (weights/vega scaling are already folded into the
+    rows). Pure side-channel; None (the default) is byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -276,6 +283,15 @@ def calibrate_slice(
         gtol=1e-10,
         max_nfev=4000,
     )
+
+    if solver_diag is not None:
+        solver_diag.update(
+            jac=np.asarray(result.jac, dtype=float),
+            residual=np.asarray(result.fun, dtype=float),
+            theta=np.asarray(result.x, dtype=float).copy(),
+            n_fit_rows=int(k.size if band is None else 2 * k.size),
+            n_quotes=int(k.size),
+        )
 
     params = LQDParams.from_vector(result.x)
     slice_ = build_slice(params)
