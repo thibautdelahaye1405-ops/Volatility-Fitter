@@ -69,6 +69,21 @@ density'' becomes ``fit \emph{within} the space of densities, then read off
 implied volatility.''
 \end{heuristic}
 
+\begin{invariant}
+\begin{enumerate}[leftmargin=1.6em]
+\item Every parameter vector prices from a genuine non-negative density:
+butterfly-freedom is structural, never a penalty
+(\cref{prop:nobutterfly}).
+\item The only hard admissibility condition is $A_R<1$ (a finite forward),
+guarded by a smooth barrier before the wall.
+\item The martingale normalization is a single scalar shift: it changes
+neither the density's shape, its tails, nor its positivity.
+\item The ATM handles $(\sigma_0,s_0,\kappa_0)$ are exact closed-form
+functionals of the slice --- the same three coordinates the graph
+extrapolator of Note~14 propagates.
+\end{enumerate}
+\end{invariant}
+
 The modelling object is the log-forward return
 \begin{equation}
 X_T=\log\!\left(\frac{S_T}{F_T}\right),
@@ -805,6 +820,63 @@ assumes a continuous law on $(0,\infty)$: a true atom at zero (jump-to-default)
 is only \emph{approximated} by a very heavy left tail and would otherwise require
 an explicit mass point outside the continuous quantile-density component.
 
+%======================================================================
+\section{Traceability}
+\label{sec:traceability}
+
+\begingroup
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{longtable}{@{}p{0.32\textwidth}p{0.12\textwidth}p{0.23\textwidth}p{0.29\textwidth}@{}}
+\caption{Claims in this note and the code/tests that lock them.}\\
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endfirsthead
+\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\endhead
+Density positive; call curve monotone and convex; parity holds &
+\cref{prop:nobutterfly} &
+\nolinkurl{models/lqd/quadrature.py} &
+\nolinkurl{test_lqd_pricing.py::test_density_positive}, \nolinkurl{::test_call_curve_monotone_and_convex_in_strike}, \nolinkurl{::test_put_call_parity}\\
+Martingale shift correct; $\E[e^X]=1$ &
+\eqref{eq:mu_norm} &
+\nolinkurl{models/lqd/quadrature.py} &
+\nolinkurl{test_lqd_pricing.py::test_svi_fit_martingale_shift_matches_note}, \nolinkurl{::test_svi_fit_martingale_integral_is_one}\\
+Endpoint scales and Lee slopes; underflow-safe &
+\eqref{eq:AL}--\eqref{eq:lee_slopes} &
+\nolinkurl{models/lqd/basis.py} &
+\nolinkurl{test_lqd_basis.py::test_svi_fit_endpoint_scales_match_note}, \nolinkurl{::test_svi_fit_lee_slopes_match_note}\\
+Legendre basis: recursion and orthogonality &
+\eqref{eq:leg_recursion} &
+\nolinkurl{models/lqd/basis.py} &
+\nolinkurl{test_lqd_basis.py::test_legendre_recursion_matches_explicit_polynomials}, \nolinkurl{::test_legendre_orthogonality_on_unit_interval}\\
+Exact ATM handles &
+\eqref{eq:atm_handles} &
+\nolinkurl{models/lqd/atm.py} &
+\nolinkurl{test_lqd_atm.py::test_atm_level_matches_implied_vol}, \nolinkurl{::test_atm_skew_matches_finite_difference}, \nolinkurl{::test_atm_curvature_matches_finite_difference}\\
+Orthogonal chart: shape moves preserve handles; retarget exact &
+\cref{sec:ortho} &
+\nolinkurl{models/lqd/ortho.py} &
+\nolinkurl{test_lqd_ortho.py::test_shape_move_leaves_handles_nearly_unchanged}, \nolinkurl{::test_retarget_hits_exact_handles}\\
+Analytic Jacobian $=$ FD (mid, band, calendar); same optimum &
+\cref{thm:cancel} &
+\nolinkurl{models/lqd/jacobian.py} &
+\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_mid}, \nolinkurl{::test_jacobian_matches_fd_calendar}, \nolinkurl{::test_analytic_and_fd_fits_agree}\\
+Benchmark fit and speed rail &
+\cref{sec:examples} &
+\nolinkurl{models/lqd/calibrate.py} &
+\nolinkurl{test_lqd_calibrate.py::test_calibrate_to_svi_benchmark}, \nolinkurl{::test_calibration_is_fast_enough}\\
+Double-hat event smile: bimodal density recovered &
+\cref{sec:examples} &
+\nolinkurl{models/lqd/calibrate.py} &
+\nolinkurl{test_lqd_pricing.py::test_double_hat_density_is_bimodal}\\
+JW conversion used by the benchmark &
+\cref{app:svijw} &
+\nolinkurl{models/svi_jw/svi.py} &
+\nolinkurl{test_lqd_pricing.py::test_jw_conversion_matches_note}\\
+\bottomrule
+\end{longtable}
+\endgroup
+
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
@@ -900,8 +972,11 @@ and subtracting the minimum-variance relation from the ATM relation,
 \quad m=\frac{\chi\sigma}{\sqrt{1-\chi^2}},
 \quad a=\widetilde vT-b\sigma\sqrt{1-\rho^2}.
 \end{equation}
-The benchmark's raw parameters in \cref{sec:examples} are the image of
-$(v,\psi,p,c,\widetilde v)=(0.0425,-0.25,0.75,0.25,0.034)$ at $T=0.5$.
+The benchmark's raw parameters in \cref{sec:examples} are the image, at
+$T=0.5$, of
+\[
+(v,\psi,p,c,\widetilde v)=(0.0425,\,-0.25,\,0.75,\,0.25,\,0.034).
+\]
 
 %======================================================================
 \section{Reference implementation}

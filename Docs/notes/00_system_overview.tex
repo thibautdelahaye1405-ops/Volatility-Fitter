@@ -67,6 +67,26 @@ whole universe together. Every design choice in the app follows from taking that
 sentence literally.
 \end{heuristic}
 
+\begin{invariant}
+The system-wide contracts every note protects, stated once:
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Arbitrage-cleanliness is structural where possible, measured
+where not.} LQD and the LV surface are clean by construction; SVI/SIV are
+fenced by penalties that are exactly zero on admissible slices; and the
+residual scheme noise is reported by explicit diagnostics, never assumed away.
+\item \textbf{Every feature is strictly additive.} Bands, var-swap targets,
+calendar coupling, the event clock, priors, betas, the wing penalty: each is
+byte-identical to its absence when off --- and that byte-identity is
+test-locked, not asserted.
+\item \textbf{Numbers are measured, not copied.} Figures and tables are
+generated fresh by the production code; reference listings are executed
+against the modules they distill; claims carry test anchors.
+\item \textbf{Versioned invalidation is scoped.} Editing one name's rate,
+dividends, events or prior bumps that ticker's version and refits that name
+--- never the universe.
+\end{enumerate}
+\end{invariant}
+
 \Cref{fig:guarantees} shows the two structural guarantees on a four-expiry
 synthetic surface fitted by the production LQD calibrator: the implied densities
 are all non-negative (no butterfly arbitrage) and the ATM total-variance term
@@ -310,30 +330,104 @@ named universes and fit history) is described in the project README rather than
 in this mathematical series.
 
 %======================================================================
+\section{The design rules that recur}
+\label{sec:rules}
+
+Reading the series end to end, a handful of design rules appear again and
+again --- each learned from a production incident, each now documented as a
+\emph{case file} in its note. They are worth stating once as the app's
+engineering philosophy.
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{The confinement principle} (Note~09). A constraint comparing
+\emph{two} curves is sampled only where data pins both; a constraint
+intrinsic to \emph{one} curve holds everywhere, wings included. Four
+instances: the calendar floor (confined, Note~10), the LV convex wing
+(confined, Note~04), the SIV Durrleman penalty (extended, Note~03), the
+de-Am convexity repair (extended, but its \emph{authority} confined to the
+quoted band, Note~05).
+\item \textbf{Trust the well-identified parameter.} The parity forward keeps
+the price level and refuses the noisy slope (Note~06); the prior gate trusts
+the market exactly where quotes identify a feature and yesterday exactly
+where they do not (Note~13).
+\item \textbf{Persist shape, not level.} Operators and factors are
+level-invariant baskets, so an overnight jump is never damped
+(Note~13); the graph propagates \emph{increments}, so ``no change'' is the
+default dark-node answer (Note~14).
+\item \textbf{Route each model through its native object.} The var-swap is
+a closed form for LQD, arithmetic for SVI/SIV, a source PDE for LV
+(Note~08); the calendar constraint is the asset share for LQD and a
+total-variance hinge for the overlays (Note~10). Uniform implementations
+across non-uniform models are a trap.
+\item \textbf{Measure first, fix second.} The short-dated LV failure was
+convicted by per-expiry counts before any model change (Note~04); the SIV
+wing penalty sits where the arb census located the violations (Notes~03,
+09); the temporal backtests score priors and the graph against honest
+held-out baselines (Notes~13, 14).
+\end{enumerate}
+
+\Cref{tab:casefiles} indexes the production incidents documented across the
+series --- the fastest way to learn the system is arguably to read these
+first.
+
+\begin{longtable}{p{0.52\textwidth}p{0.30\textwidth}r}
+\caption{Case-file index: production incidents and their lessons.}\label{tab:casefiles}\\
+\toprule Incident & Lesson & Note\\ \midrule
+\endfirsthead \toprule Incident & Lesson & Note\\ \midrule \endhead
+The six-day weekly that broke the LV strike grid ($108\to23.5$ bp) &
+measure first; per-expiry coverage floors & 04\\
+The convex wing that flattened SPY ($25.7\to2.6$ bp) &
+constraints stay off quoted territory & 04\\
+The reverted global de-Am repair (ATM smile gap) &
+repairs need confined authority & 05\\
+The delayed feed that gapped the ATM smile (discount clamp; failed
+rate-anchor) & trust the well-identified parameter & 06\\
+The fit that took minutes (var-swap replication in the Jacobian) &
+native-object routing & 08\\
+The SIV that invented a put wing (R3$\times$R6 ablation,
+$92/25/749/225$ bp) & input repair and output penalty compose & 09, 03\\
+The phantom calendar (NVDA/SPY flattened; $151\to0$ bp reproduced) &
+the confinement principle & 10, 09\\
+The jump the strike anchor damped (operators persist shape) &
+persist shape, not level & 13\\
+\bottomrule
+\end{longtable}
+
+%======================================================================
 \section{How the notes are organized}
 \label{sec:org}
 
-Each note is standalone and follows the same skeleton: assumptions and heuristics
-first, then full derivations in a clean-math body, then a worked example with
-figures generated by the production code, and finally two appendices --- \textbf{A,
-a hyperparameter atlas} (every knob, surfaced or hidden, with its default) and
-\textbf{B, performance} (the numerical optimizations and measured timings). Notes
-cross-reference each other (this note's \cref{tab:caps} is the index) but never
-depend on one another's internals. Numbers and plots are \emph{measured}, not
-copied: where a fresh run differs from an older design note, the fresh run wins.
+Each note is standalone and follows the same skeleton, codified in
+\texttt{Docs/notes/STYLE\_GUIDE.md}: an opening that states the
+\emph{production problem} and the \emph{invariants} being protected (the
+amber box near the top of every note), a theorem-shaped body whose central
+object gets the note's single boxed equation, a worked example or
+\emph{case file} told as a production incident, a \emph{traceability table}
+tying each claim to its module and locking test, and three appendices ---
+\textbf{A, a hyperparameter atlas} (every knob, surfaced or hidden, with its
+default), \textbf{B, performance} (measured optimizations, including the
+rejected ones), and \textbf{C, a reference implementation} ($\le50$ lines,
+executed against the production module before being committed). Figures run
+through the shared \texttt{figures/style.py} and their captions state the
+lesson, not the axes. Notes cross-reference each other (this note's
+\cref{tab:caps} is the index) but never depend on one another's internals.
+Numbers and plots are \emph{measured}, not copied: where a fresh run differs
+from an older design note, the fresh run wins.
 
 %======================================================================
 \appendix
 \section{Master hyperparameter atlas}
 \label{app:master}
 
-The complete index of tunable parameters across the app, surfaced
-(\texttt{FitSettings} / \texttt{OptionsSettings}, user-facing) and hidden
+The complete index of tunable parameters across the app: surfaced (the
+user-facing \texttt{FitSettings} and \texttt{OptionsSettings}) and hidden
 (internal constants). Each row points to the note that derives its role; defaults
 are the shipped values. This is a directory, not a derivation --- consult the
 referenced note for meaning.
 
-\begin{longtable}{p{0.30\textwidth}p{0.16\textwidth}p{0.40\textwidth}r}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{longtable}{p{0.34\textwidth}p{0.14\textwidth}p{0.38\textwidth}r}
 \caption{Surfaced parameters.}\label{tab:master_surfaced}\\
 \toprule
 Parameter & Default & Role & Note\\
@@ -344,7 +438,7 @@ Parameter & Default & Role & Note\\
 \texttt{nOrder} & $6$ & LQD Legendre order & 01\\
 \texttt{regLambda} / \texttt{regPower} & $10^{-6}$ / $1$ & LQD high-order ridge & 01\\
 \texttt{barrierCenter} / \texttt{barrierScale} & $0.90$ / $50$ & LQD $A_R$ barrier & 01\\
-\texttt{nCores} & $2$ & Multi-Core SIV hat count (hard-capped at 2) & 03\\
+\texttt{nCores} & $2$ & Multi-Core SIV hat count (schema-clamped at 2) & 03\\
 \texttt{sigmoidRidge} & $10^{-2}$ & SIV hat-amplitude ridge & 03\\
 \texttt{sivWingPenaltyPct} & $100$ & SIV put-wing Durrleman penalty ($0=$ off) & 03\\
 \texttt{sviPenaltyWeight} & $10^{3}$ & SVI no-arbitrage penalty & 02\\
@@ -353,7 +447,8 @@ Parameter & Default & Role & Note\\
 \texttt{gridXMinPerExpiry} & $8$ & LV short-dated coverage floor & 04\\
 \texttt{gridTNodes} & $10$ & LV maturity-grid vertices & 04\\
 \texttt{gridRegLambda} / \texttt{gridRegRho} & $10^{-2}$ / $1$ & LV roughness penalty / ratio & 04\\
-\texttt{convexWingWeight} & $10^{3}$ & LV wing-convexity penalty & 04\\
+\texttt{convexWingWeight} & $10^{3}$ & LV wing-convexity penalty
+(\texttt{convexWing} off by default; tail-confined) & 04\\
 \texttt{frontTieWeight} & $10^{-2}$ & LV front-end tie-to-ATM & 04\\
 \texttt{lvVolCapMult} & $3.0$ & LV local-vol cap multiple & 04\\
 \texttt{weightScheme} & \texttt{equal} & equal / tv-density weights & 07\\
@@ -364,12 +459,12 @@ Parameter & Default & Role & Note\\
 \texttt{calendarWeight} & $10^{6}$ & calendar soft-constraint penalty & 10\\
 \texttt{ssr} & $2.0$ & spot--vol SSR / regime & 12\\
 \texttt{priorPersistenceMode} & \texttt{hybrid} & prior mode selector & 13\\
-\texttt{priorOperatorSet} & ATM/RR25/BF25/VS & operators to persist & 13\\
+\texttt{priorOperatorSet} & ATM, RR25, BF25, VS & operators to persist & 13\\
 \texttt{priorOperatorStrengthPct} & $50\%$ & operator prior budget & 13\\
 \texttt{priorOperatorRequiredPrecision} & $1.0$ & operator activation gate & 13\\
 \texttt{priorOperatorGapExponent} & $1.0$ & gate exponent $\gamma$ & 13\\
 \texttt{priorOperatorBandwidth} & $0.06$ & operator leg KDE bandwidth & 13\\
-\texttt{priorFactorSet} & ATM/skew/curv/VS & smile factors to persist & 13\\
+\texttt{priorFactorSet} & ATM, skew, curv, VS & smile factors to persist & 13\\
 \texttt{priorFactorStrengthPct} & $50\%$ & factor prior budget & 13\\
 \texttt{priorTailAnchorStrengthPct} & $20\%$ & hybrid tail-anchor budget & 13\\
 \texttt{priorAnchorWeightPct} & $50\%$ & strike-gap prior budget & 13\\
@@ -381,7 +476,7 @@ Parameter & Default & Role & Note\\
 \bottomrule
 \end{longtable}
 
-\begin{longtable}{p{0.26\textwidth}p{0.14\textwidth}p{0.46\textwidth}r}
+\begin{longtable}{p{0.28\textwidth}p{0.14\textwidth}p{0.44\textwidth}r}
 \caption{Hidden internal constants (selected).}\label{tab:master_hidden}\\
 \toprule
 Constant & Default & Role & Note\\
@@ -411,6 +506,7 @@ Constant & Default & Role & Note\\
 \bottomrule
 \end{longtable}
 
+\normalsize
 \paragraph{Reading the atlas.} A surfaced parameter is a \emph{policy} choice ---
 how strong a penalty, which prior mode, how to weight quotes --- safe to tune. A
 hidden constant is tied to an algorithm's correctness (the $A_R$ buffer, the PDE

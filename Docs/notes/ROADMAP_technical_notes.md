@@ -175,6 +175,23 @@ Each note: commit after it compiles clean with its figures.
   boxed formula matches code sign-for-sign; honest gap noted
   (affine_transport composite has no dedicated unit test).
   Remaining: 00 rewrite last, 01 lightly.
+- **2026-07-03 — Notes 00 + 01: the hardening pass is COMPLETE (15/15).**
+  Note 00 now opens with the system-wide invariant box (structural-or-measured
+  cleanliness, strict additivity, measured numbers, scoped invalidation),
+  gains a new section **"The design rules that recur"** distilling the
+  series' engineering philosophy (confinement principle; trust the
+  well-identified parameter; persist shape not level; native-object routing;
+  measure first) plus a **case-file index** of the eight production
+  incidents documented across the series; the "How the notes are organized"
+  section now describes the actual house skeleton (STYLE_GUIDE.md contract,
+  case files, traceability tables, verified Appendix C); master atlas
+  precision fixes (nCores schema-clamped, convexWing off-by-default).
+  Note 01 (kept as the template) received only the invariant box and a
+  traceability table with verified test anchors (test_lqd_{pricing,basis,
+  atm,ortho,jacobian,calibrate}.py). Every note in the series now carries:
+  invariant box, one boxed central equation, case file(s) where incidents
+  exist, traceability table with real anchors, quiet asides, style.py
+  figures, and an executed reference listing.
 
 - **2026-07-03 — content sync + reference code.** (1) Notes 03/05/09/00 were
   updated to reflect the shipped R3/R6 work: the Multi-Core SIV 2-core cap and
