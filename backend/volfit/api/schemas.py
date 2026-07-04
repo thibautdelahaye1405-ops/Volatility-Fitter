@@ -261,7 +261,11 @@ class OptionsSettings(BaseModel):
     #: kept as the fallback + A/B diagnostic.
     filterCovarianceMode: Literal["jacobian", "factors"] = "jacobian"
     #: ATM-level process noise in vol BP per sqrt(calendar day) (eq. Q clock term).
-    filterProcessVolBpSqrtDay: float = Field(10.0, ge=0.0, le=1000.0)
+    #: Default 30 (was the note's 10): the 3-regime Phase-7 backtest is one-sided —
+    #: at 30 the posterior is calibrated (zeta std 0.8-1.9 vs 1.3-6.2 at 10) and
+    #: shock lag drops 3-8x, in every regime and on both covariance routes
+    #: (backtest/FINDINGS_observation_filter.md).
+    filterProcessVolBpSqrtDay: float = Field(30.0, ge=0.0, le=1000.0)
     #: Skew / curvature process-noise scales per sqrt(calendar day).
     filterProcessSkewSqrtDay: float = Field(0.02, ge=0.0, le=10.0)
     filterProcessCurvSqrtDay: float = Field(0.05, ge=0.0, le=10.0)

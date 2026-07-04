@@ -65,10 +65,48 @@ better calibrated (ζ std 1.30 vs 1.55) and clearly better on contradiction
 kinked cluster). Factors' blunter, larger R gives slightly higher shock gain
 (0.94 vs 0.90). Both viable; jacobian stays the default.
 
-## Remaining before the Phase-6/7 verdict
+---
 
-1. Full-regime run (19 pairs × 8 assets; overnight foreground chunks:
-   `python -m backtest.observation_filter --regime spike_aug2024 --asset X`),
-   then `high_oct2022` / `low_jul2023` for regime robustness.
-2. Adaptive-Q design for F4; short-dated policy for F3.
-3. Re-check the contradiction verdict on the curvature columns explicitly.
+# Full 3-regime run (Phase 7, 2026-07-04) — 38,181 steps
+
+All 19 day pairs × 8 assets × 3 regimes (`run_filter_full.ps1`; merged
+summaries: `results/<regime>_observation_filter_merged.json`). Key rows at
+the decision point (>30d, thinned):
+
+| regime | route | bp | errPost vs errMeas | win | ζ std |
+|---|---|---|---|---|---|
+| spike_aug2024 | jacobian | 30 | 10.5 vs 6.7 bp | 0.38 | 1.76 |
+| spike_aug2024 | factors | 30 | 9.1 vs 6.7 bp | 0.41 | 1.88 |
+| high_oct2022 | jacobian | 30 | 9.2 vs 7.7 bp | 0.49 | 0.82 |
+| high_oct2022 | factors | 30 | 7.9 vs 7.7 bp | 0.57 | 0.77 |
+| low_jul2023 | jacobian | 30 | 5.3 vs 4.0 bp | 0.49 | 1.05 |
+| low_jul2023 | factors | 30 | 4.6 vs 4.1 bp | 0.54 | 0.90 |
+
+**F6 — bp = 30 is one-sided ⇒ DEFAULT FLIPPED (10 → 30, shipped).** In every
+regime, on both routes, at every scenario: ζ std collapses toward 1 (thinned
+>30d: 5.2→1.8 / 1.4→0.8 / 1.3→1.1 on jacobian), shock errors shrink 3–8×,
+win rates rise. The note's 10 bp/√day starves the prediction uncertainty.
+
+**F7 — jacobian vs factors is a real trade-off; jacobian stays default.**
+Contradiction (the filter's core denoising case): jacobian is 2–3× better in
+every regime (e.g. high: 10.5 vs 29.7 bp, win 0.51 vs 0.28) — its
+geometry-aware R downweights the kinked cluster. Shock: factors is better
+(spike >30d: 18.7 vs 38.6 bp lag) because its blunter, smaller effective R
+yields higher gain. Thinned: factors marginally ahead (win +0.05,
+comparable ζ). Verdict: jacobian remains the default (contradiction
+rejection is the purpose; the shock gap is the adaptive-Q item and closes
+for both routes); factors stays one knob away.
+
+**F8 — median-day realism check.** On plain consecutive days the raw
+measurement is already good (4–8 bp) and the filter's median win is ~0.4–0.57:
+the filter pays for itself on the NOISY tail (the contradiction columns and
+the ≤30d/illiquid names), not on clean liquid days — consistent with the
+note's success criterion ("lower held-out error in noisy snapshots", not
+"lower every RMS"). ζ mean ≈ −0.3…−1.3 on thinned is a harness artifact to
+note: the ATM-window thinning is slightly biased vs the full-chain truth.
+
+**F3/F4 follow-ups (unchanged, now the pre-active-default work list):**
+adaptive Q (innovation-gated widening — closes the shock gap on both
+routes); the ≤30d policy (win < 0.5 in all regimes; maturity-scaled R floor
+or exclusion); add `active` mode to the harness sweep before any active
+default; re-check contradiction on the curvature columns.

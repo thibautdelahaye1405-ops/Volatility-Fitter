@@ -55,7 +55,7 @@ def test_defaults(client):
         "priorTailAnchorStrengthPct": 20.0,
         "observationFilterMode": "off",
         "filterCovarianceMode": "jacobian",
-        "filterProcessVolBpSqrtDay": 10.0,
+        "filterProcessVolBpSqrtDay": 30.0,
         "filterProcessSkewSqrtDay": 0.02,
         "filterProcessCurvSqrtDay": 0.05,
         "filterTransportNoiseScale": 0.10,
