@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 
 import HyperparamPanel from "../components/HyperparamPanel";
 import { NumberRow, PenaltyTable, Segmented, Toggle } from "../components/OptionsControls";
+import ObservationFilterPanel from "../components/ObservationFilterPanel";
 import PriorPersistencePanel from "../components/PriorPersistencePanel";
 import { api } from "../state/api";
 import { useOptions } from "../state/useOptions";
@@ -323,6 +324,16 @@ export default function OptionsViewer() {
             diagnostics table (roadmap Phase 7). The master enable is the
             "Auto-load prior" toggle in Workflow; this picks the flavor. */}
         <PriorPersistencePanel
+          draft={draft}
+          patch={patch}
+          live={live}
+          ticker={ticker}
+          fitMode={fitMode}
+          refreshKey={anyDirty}
+        />
+        {/* Observation Kalman filter (Note 15 Phase 4): mode selector +
+            process-noise / safety knobs + the per-expiry gain audit table. */}
+        <ObservationFilterPanel
           draft={draft}
           patch={patch}
           live={live}

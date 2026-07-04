@@ -22,6 +22,7 @@ import SegmentedControl from "../components/SegmentedControl";
 import { useSmileSession } from "../state/smileSession";
 import { useGraphFocus } from "../state/graphFocus";
 import { useGraphNodeSmile } from "../state/useGraphNodeSmile";
+import { useObservationFilter } from "../state/useObservationFilter";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
@@ -180,6 +181,19 @@ export default function SmileViewer() {
       ? graphNode.node
       : null;
 
+  // Observation-filter overlay (Note 15 Phase 4): the filtered handle posterior
+  // for the viewed node. Advisory + cheap; the hook yields null while the filter
+  // is off or unseeded, so the overlay and badge simply don't render.
+  const { data: filterDiag } = useObservationFilter(
+    live && view === "smile",
+    ticker,
+    expiry,
+    fitMode,
+    spotVersion,
+  );
+  // The measurement breakdown is an open Record — the rho key may be absent.
+  const filterRho: number | undefined = filterDiag?.measurementBreakdown["rho"];
+
   // Global keyboard shortcuts (Esc, Del, ↑↓ amend, Ctrl+Z/Y).
   useSmileShortcuts({ smile, source, selectedIndex, setSelectedIndex, applyEdit, undo, redo });
 
@@ -264,6 +278,10 @@ export default function SmileViewer() {
             graphPost={graphOverlay?.post ?? null}
             graphBandLo={graphOverlay?.postBandLo ?? null}
             graphBandHi={graphOverlay?.postBandHi ?? null}
+            filterPost={filterDiag?.post ?? null}
+            filterBandLo={filterDiag?.postBandLo ?? null}
+            filterBandHi={filterDiag?.postBandHi ?? null}
+            filterPred={filterDiag?.predCurve ?? null}
           />
         );
       case "stackeddensity":
@@ -359,6 +377,34 @@ export default function SmileViewer() {
                 >
                   ✕
                 </button>
+              </span>
+            )}
+            {/* Observation-filter badge (Note 15): per-handle Kalman gains +
+                measurement rho + provenance; amber-tinted when the measurement
+                was flagged contaminated. Renders only while the filter is on. */}
+            {filterDiag !== null && (
+              <span
+                title={`Observation filter (${filterDiag.mode}) — gains per handle (${filterDiag.handleNames.join(", ")})${filterDiag.resetReason !== null ? ` · reset: ${filterDiag.resetReason}` : ""}`}
+                className={[
+                  "flex items-center gap-1.5 rounded border px-1.5 py-0.5 text-[10px] font-medium",
+                  filterDiag.contaminated
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                    : "border-teal-500/40 bg-teal-500/10 text-teal-300",
+                ].join(" ")}
+              >
+                <span className="font-semibold tracking-wider">FILTER</span>
+                <span className="font-mono">
+                  K {filterDiag.gain.map((g) => g.toFixed(2)).join("/")}
+                </span>
+                {filterRho !== undefined && (
+                  <span className="font-mono">ρ {filterRho.toFixed(2)}</span>
+                )}
+                {filterDiag.provenance !== null && (
+                  <span className={filterDiag.contaminated ? "text-amber-400/90" : "text-teal-400/90"}>
+                    {filterDiag.provenance}
+                  </span>
+                )}
+                {filterDiag.contaminated && <span className="font-semibold">cont.</span>}
               </span>
             )}
             {/* View toggle: smile / distributions / surface / table */}

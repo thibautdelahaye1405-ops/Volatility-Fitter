@@ -482,11 +482,22 @@ class PriorDiagnostics(BaseModel):
     strikeAnchorCount: int | None = None
 
 
+# ------------------------------------------------------------- smile payload
+class SmilePoint(BaseModel):
+    """One point of a continuous model curve in (log-moneyness, vol) space."""
+
+    k: float
+    vol: float
+
+
 class FilterDiagnostics(BaseModel):
     """Auditable observation-filter step for one node (Note 15 invariant 5:
     every filtered output reports prediction, observation, innovation, gain and
     posterior uncertainty). ``active=False`` when the filter is off or the node
-    has no state yet; per-handle lists follow ``handleNames`` order."""
+    has no state yet; per-handle lists follow ``handleNames`` order. The curve
+    fields carry the drawable overlay: the LQD backbone retargeted to the
+    posterior handles (+ a level credible band) and to the transported
+    prediction; empty when reconstruction fails (advisory payload)."""
 
     active: bool
     mode: str
@@ -505,14 +516,10 @@ class FilterDiagnostics(BaseModel):
     posteriorStd: list[float] = []
     measurementBreakdown: dict[str, float] = {}
     processBreakdown: dict[str, list[float]] = {}
-
-
-# ------------------------------------------------------------- smile payload
-class SmilePoint(BaseModel):
-    """One point of a continuous model curve in (log-moneyness, vol) space."""
-
-    k: float
-    vol: float
+    post: list[SmilePoint] = []  # smile retargeted to the posterior m+
+    postBandLo: list[SmilePoint] = []  # m+ level - 1.96 sd(ATM)
+    postBandHi: list[SmilePoint] = []  # m+ level + 1.96 sd(ATM)
+    predCurve: list[SmilePoint] = []  # smile retargeted to the prediction m-
 
 
 class QuoteBand(BaseModel):

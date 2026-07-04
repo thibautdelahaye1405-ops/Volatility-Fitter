@@ -80,6 +80,12 @@ def test_diagnostics_payload_complete():
         assert len(field) == 3
     assert set(d.processBreakdown) == {"clock", "spot", "event", "source", "model"}
     assert d.measurementBreakdown["route"] == 1.0
+    # drawable overlay: posterior curve + level band + prediction curve, with
+    # the band ordered around the posterior at ATM
+    assert len(d.post) > 0 and len(d.predCurve) > 0
+    assert len(d.postBandLo) == len(d.post) == len(d.postBandHi)
+    mid = len(d.post) // 2
+    assert d.postBandLo[mid].vol <= d.post[mid].vol <= d.postBandHi[mid].vol
 
 
 # ------------------------------------------------------------- idempotency

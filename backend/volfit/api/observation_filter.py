@@ -290,6 +290,9 @@ def filter_diagnostics(state: AppState, ticker: str, expiry: str, fit_mode: str)
         return [float(v) for v in np.sqrt(np.maximum(np.diag(cov), 0.0))]
 
     pred, meas, upd = holder.prediction, holder.measurement, holder.update
+    post, band_lo, band_hi, pred_curve = _overlay_curves(
+        state, ticker, iso, fit_mode, holder
+    )
     return FilterDiagnostics(
         active=True,
         mode=plan.mode,
@@ -310,7 +313,53 @@ def filter_diagnostics(state: AppState, ticker: str, expiry: str, fit_mode: str)
         processBreakdown={
             k: [float(x) for x in v] for k, v in pred.q_breakdown.items()
         },
+        post=post,
+        postBandLo=band_lo,
+        postBandHi=band_hi,
+        predCurve=pred_curve,
     )
+
+
+def _overlay_curves(state, ticker: str, iso: str, fit_mode: str, holder: NodeFilter):
+    """Drawable overlay: the node's LQD backbone retargeted to the posterior m+
+    (exact handles, arb-free — the graph_reconstruct seam), a level credible
+    band at m+ ± 1.96 sd(ATM), and the transported prediction m-. Empty lists
+    on any failure (the payload is advisory)."""
+    from volfit.api import service
+    from volfit.models.lqd.ortho import build_atm_coordinates
+    from volfit.models.lqd.quadrature import build_slice as _build
+
+    empty: list = []
+    try:
+        record = service.fit_or_get(state, ticker, iso, fit_mode)
+        if record is None:
+            return empty, empty, empty, empty
+        tau = float(record.prepared.tau)
+        chart = build_atm_coordinates(record.result.params, tau)
+        grid = np.linspace(service.K_DISPLAY_LO, service.K_DISPLAY_HI, service.N_MODEL_POINTS)
+
+        def _curve(handles):
+            target = np.array(
+                [handles[0] * handles[0] * tau, handles[1], handles[2]]
+            )
+            try:
+                slice_ = _build(chart.retarget(target))
+            except RuntimeError:  # Newton failure at extreme handles
+                return empty
+            w = np.maximum(np.asarray(slice_.implied_w(grid), dtype=float), 0.0)
+            vols = service.fill_nonfinite(np.sqrt(w / tau))
+            from volfit.api.schemas import SmilePoint
+
+            return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
+
+        m_post = holder.state.mean
+        sd_atm = float(np.sqrt(max(holder.state.cov[0, 0], 0.0)))
+        lo = np.array([max(m_post[0] - 1.96 * sd_atm, 1e-4), m_post[1], m_post[2]])
+        hi = np.array([m_post[0] + 1.96 * sd_atm, m_post[1], m_post[2]])
+        pred_c = _curve(holder.prediction.mean) if holder.prediction is not None else empty
+        return _curve(m_post), _curve(lo), _curve(hi), pred_c
+    except Exception:  # noqa: BLE001 — advisory payload, never raises
+        return empty, empty, empty, empty
 
 
 def reset_node(state: AppState, ticker: str, iso: str, fit_mode: str) -> None:

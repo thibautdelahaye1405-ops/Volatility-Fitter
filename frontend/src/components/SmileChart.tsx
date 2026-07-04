@@ -53,6 +53,12 @@ interface SmileChartProps {
   graphPost?: SmilePoint[] | null;
   graphBandLo?: SmilePoint[] | null;
   graphBandHi?: SmilePoint[] | null;
+  /** Observation-filter overlay (Note 15 Phase 4): solid teal filtered
+   *  posterior with a shaded ±1σ band, plus a dashed one-step prediction. */
+  filterPost?: SmilePoint[] | null;
+  filterBandLo?: SmilePoint[] | null;
+  filterBandHi?: SmilePoint[] | null;
+  filterPred?: SmilePoint[] | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -113,6 +119,10 @@ export default function SmileChart({
   graphPost = null,
   graphBandLo = null,
   graphBandHi = null,
+  filterPost = null,
+  filterBandLo = null,
+  filterBandHi = null,
+  filterPred = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -169,13 +179,17 @@ export default function SmileChart({
     if (graphPost) scan(graphPost);
     if (graphBandLo) scan(graphBandLo);
     if (graphBandHi) scan(graphBandHi);
+    if (filterPost) scan(filterPost);
+    if (filterBandLo) scan(filterBandLo);
+    if (filterBandHi) scan(filterBandHi);
+    if (filterPred) scan(filterPred);
     for (const q of quotes) if (inView(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (varSwapLevel !== null) { yMin = Math.min(yMin, varSwapLevel); yMax = Math.max(yMax, varSwapLevel); }
     if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     const yView = zoom.viewY([yMin - pad, yMax + pad]);
     return { xScale: xs, yScale: linearScale(yView, [plotH, 0]), xView: view };
-  }, [model, prior, scenario, anchorCurve, graphPost, graphBandLo, graphBandHi, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
+  }, [model, prior, scenario, anchorCurve, graphPost, graphBandLo, graphBandHi, filterPost, filterBandLo, filterBandHi, filterPred, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
 
   /** Build an SVG path for a curve in display coordinates (clip handles overflow). */
   const pathOf = (curve: SmilePoint[]): string => {
@@ -192,21 +206,25 @@ export default function SmileChart({
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const anchorPath = useMemo(() => (anchorCurve ? pathOf(anchorCurve) : ""), [anchorCurve, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const graphPostPath = useMemo(() => (graphPost ? pathOf(graphPost) : ""), [graphPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filterPostPath = useMemo(() => (filterPost ? pathOf(filterPost) : ""), [filterPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filterPredPath = useMemo(() => (filterPred ? pathOf(filterPred) : ""), [filterPred, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   // Credible-band area: forward along the high edge, back along the low edge.
-  const graphBandPath = useMemo(() => {
-    if (!graphBandLo || !graphBandHi || graphBandLo.length === 0 || graphBandHi.length === 0) return "";
+  const bandPathOf = (lo: SmilePoint[] | null, hi: SmilePoint[] | null): string => {
+    if (!lo || !hi || lo.length === 0 || hi.length === 0) return "";
     let d = "";
-    for (const p of graphBandHi) {
+    for (const p of hi) {
       const x = xScale.map(tx(p.k));
       const y = yScale.map(p.vol);
       d += d === "" ? `M${x.toFixed(2)},${y.toFixed(2)}` : `L${x.toFixed(2)},${y.toFixed(2)}`;
     }
-    for (let i = graphBandLo.length - 1; i >= 0; i--) {
-      const p = graphBandLo[i];
+    for (let i = lo.length - 1; i >= 0; i--) {
+      const p = lo[i];
       d += `L${xScale.map(tx(p.k)).toFixed(2)},${yScale.map(p.vol).toFixed(2)}`;
     }
     return d + "Z";
-  }, [graphBandLo, graphBandHi, xScale, yScale, tx]);
+  };
+  const graphBandPath = useMemo(() => bandPathOf(graphBandLo, graphBandHi), [graphBandLo, graphBandHi, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
+  const filterBandPath = useMemo(() => bandPathOf(filterBandLo, filterBandHi), [filterBandLo, filterBandHi, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // X ticks: nice values in display units, placed directly on the display scale.
   const xTicks = useMemo(
@@ -315,6 +333,16 @@ export default function SmileChart({
         {graphPostPath !== "" && (
           <span className="flex items-center gap-1.5">
             <span className="h-0.5 w-5 rounded" style={{ background: "rgb(167 139 250)" }} /> Graph extrapolation
+          </span>
+        )}
+        {filterPostPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0.5 w-5 rounded" style={{ background: "rgb(20 184 166)" }} /> Filter
+          </span>
+        )}
+        {filterPredPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-0 w-5 border-t-2 border-dashed border-teal-300" /> Filter pred
           </span>
         )}
         <span className="ml-auto text-[10px] text-slate-600">scroll: zoom · drag: pan · dbl-click: reset</span>
@@ -467,6 +495,21 @@ export default function SmileChart({
                 )}
                 {graphPostPath !== "" && (
                   <path d={graphPostPath} fill="none" stroke="rgb(167 139 250 / 0.95)"
+                    strokeWidth={2} strokeLinejoin="round" pointerEvents="none" />
+                )}
+
+                {/* Observation-filter overlay (Note 15): shaded ±1σ band, a
+                    dashed lighter one-step prediction and a solid teal
+                    filtered-posterior curve. */}
+                {filterBandPath !== "" && (
+                  <path d={filterBandPath} fill="rgb(20 184 166 / 0.14)" stroke="none" pointerEvents="none" />
+                )}
+                {filterPredPath !== "" && (
+                  <path d={filterPredPath} fill="none" stroke="rgb(94 234 212 / 0.8)"
+                    strokeWidth={1.5} strokeDasharray="3 3" pointerEvents="none" />
+                )}
+                {filterPostPath !== "" && (
+                  <path d={filterPostPath} fill="none" stroke="rgb(20 184 166 / 0.95)"
                     strokeWidth={2} strokeLinejoin="round" pointerEvents="none" />
                 )}
 
