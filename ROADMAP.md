@@ -114,10 +114,14 @@ recorded there; the user explicitly confirmed the Jacobian R_t route).
 
 **Next up:** F3/F4 SHIPPED 2026-07-04 (`83800b3` — `filterAdaptiveSigma=3`
 innovation-gated Q, shock win → 1.0 without chasing noisy chains; √(30/DTE)
-short-dated noise floor; harness `--adaptive`/`--tag`). Remaining filter
-follow-ups: `active` in the harness sweep before any active default, a small
-Note-15 addendum for F3/F4, visually smoke overlay/active in-app; then the
-pre-filter backlog: the **25-asset capture** + lower dark-node baseline precision, the
+short-dated noise floor; harness `--adaptive`/`--tag`). `active` is now IN the
+harness sweep (`c6147db`, `--modes overlay,active`; SPX pilot: the MAP even
+edges the overlay posterior, 4.7 vs 5.5 bp, ζ ≈ 1.1 — NB err_post==err_meas
+by construction there, baseline = the overlay run's raw column). Remaining
+filter follow-ups: a small Note-15 addendum for F3/F4 + the mode sweep, a
+full-regime `--modes overlay,active --adaptive` rerun (user's own PowerShell
+window: `run_filter_full.ps1` needs those flags added or run per-asset),
+visually smoke overlay/active in-app; then the pre-filter backlog: the **25-asset capture** + lower dark-node baseline precision, the
 temporal/ablation reruns on the other regimes, graph Phase 10 sparse perf.
 Housekeeping: SmileChart.tsx ~600 lines (split candidate).
 
