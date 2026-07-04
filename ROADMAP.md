@@ -49,15 +49,41 @@ recorded there; the user explicitly confirmed the Jacobian R_t route).
   `recalibrate` deliberately keeps the state — a refetch is a new
   observation). Everything advisory — can never break a calibration.
 
-**Next up (the filter arc):** Phase 4 frontend overlay
-(`useObservationFilter.ts` clone of `useGraphNodeSmile`, SmileChart
-filterPost/band props, `ObservationFilterPanel.tsx` in Options) → **Phase 5
-temporal backtest** (`backend/backtest/observation_filter.py`, clones
-`temporal.py`; the §9 protocol + Q-knob & covariance-mode sweeps — THE
-acceptance gate) → Phase 6 active one-stage MAP (via a `build_filter_prior`
-OperatorPriorTarget with NO gate + the persistence auto-exclusion) → Phases
-7–8 (default flip + Note 15 adoption into Docs/notes/). Unchanged from before:
-the 25-asset capture etc. (next section).
+- **Phase 4 (2026-07-04, `90588ab`) — overlay UI SHIPPED.** FilterDiagnostics
+  now carries the drawable overlay (LQD backbone RETARGETED to m⁺ via the
+  graph `build_atm_coordinates.retarget` seam + 1.96·sd(ATM) band + the m⁻
+  prediction curve); frontend: `useObservationFilter.ts`, SmileChart teal
+  filter overlay + legend, SmileViewer FILTER badge (gains/ρ/provenance/
+  contamination), `ObservationFilterPanel.tsx` in Options (mode + knobs +
+  per-expiry diagnostics table). strict-TS + Vite build green. NB SmileChart
+  ~600 lines — a future-split candidate. Not yet visually smoked in-app —
+  run `.\restart.ps1`, set Options→Observation filter→overlay, Calibrate.
+
+- **Phase 5 harness (2026-07-04, `69caad1`) — temporal backtest BUILT +
+  smoked.** `backend/backtest/observation_filter.py` (clones `temporal.py`,
+  drives the PRODUCTION `on_fit_commit`): per (T-1,T) pair × expiry, carry the
+  T-1 posterior into day T, commit a thinned measurement under scenarios
+  thinned/contradiction/shock, score vs raw-measurement + gain-0 baselines +
+  ζ + retargeted wing RMS; sweeps covariance route × process noise. SPX
+  1-pair smoke (54 steps): **filter denoises (4bp vs 8bp raw) and the
+  jacobian route dominates factors on shock pass-through (gain 0.957 vs
+  0.57)** — but **ζ std ≈ 27 = posterior overconfidence** (partly
+  methodological: score omits the truth fit's own noise R_heldout).
+  `tests/test_filter_backtest.py` (5). Results:
+  `backtest/results/spike_aug2024_observation_filter.json`.
+
+**Next up (the filter arc):** (a) **finish Phase 5** — fix the ζ metric to
+include the truth-fit noise (`√(P⁺+R_truth)`), rerun the full spike regime
+(all assets/pairs; foreground chunks — background jobs get killed on this
+box: `python -m backtest.observation_filter --regime spike_aug2024`), tune
+R/Q (residual-inflation floor / noise floor / process bp) until ζ std ≲ 1,
+write `backtest/FINDINGS_observation_filter.md`; (b) Phase 6 active one-stage
+MAP (a `build_filter_prior` OperatorPriorTarget with NO gate + the
+persistence auto-exclusion in `resolve_prior_mode`), gated on (a)'s verdict;
+(c) Phases 7–8 (default flip + Note 15 adoption into Docs/notes/). Also:
+visually smoke the Phase-4 overlay in-app (`.\restart.ps1`, Options →
+Observation filter → overlay, Calibrate). Unchanged from before: the 25-asset
+capture etc. (next section).
 
 ### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
 
