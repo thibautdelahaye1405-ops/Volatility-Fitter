@@ -160,6 +160,18 @@ def test_source_switch_wipes_and_roundtrip_restores():
     assert state.filter_node(key) is not None  # round-trip transparent
 
 
+# ------------------------------------------------------- short-dated noise
+def test_maturity_noise_multiplier():
+    """FINDINGS F3: stated noise scales sqrt(30/DTE) below 30 DTE, never
+    below 1 — a 7-DTE chain's R roughly doubles, a 1-year chain is untouched."""
+    from volfit.api.observation_filter import _maturity_noise_mult
+
+    assert _maturity_noise_mult(1.0) == 1.0
+    assert _maturity_noise_mult(30.0 / 365.0) == pytest.approx(1.0)
+    assert _maturity_noise_mult(7.0 / 365.0) == pytest.approx(np.sqrt(30 / 7), rel=1e-6)
+    assert _maturity_noise_mult(15.0 / 365.0) > _maturity_noise_mult(20.0 / 365.0)
+
+
 # ------------------------------------------------------------------ transport
 def test_transport_handles_first_order():
     """ATM moves by SSR*skew*h, skew by curvature*h, curvature unchanged

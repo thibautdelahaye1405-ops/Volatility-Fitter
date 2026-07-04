@@ -27,6 +27,7 @@ KNOB_PROBES = [
     {"filterProcessCurvSqrtDay": 0.10},
     {"filterTransportNoiseScale": 0.25},
     {"filterResidualInflation": False},
+    {"filterAdaptiveSigma": 0.0},
     {"filterMaxGain": 0.8},
     {"filterResetHours": 24.0},
     {"filterDataOnlyPrepass": True},

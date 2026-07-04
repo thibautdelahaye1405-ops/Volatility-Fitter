@@ -103,7 +103,7 @@ def test_shock_passes_through():
     tested is the GAIN's response to that configuration, not the default."""
     state = _state()
     state.set_options(state.options().model_copy(
-        update={"filterProcessVolBpSqrtDay": 100.0}))  # 1 vol pt / sqrt day
+        update={"filterProcessVolBpSqrtDay": 100.0, "filterAdaptiveSigma": 0.0}))
     iso = _iso(state)
     prev = prior_holder(state, TICKER, iso)
     s = filter_step(state, TICKER, iso, _aged(prev), "shock", **STEP_KW)
@@ -112,6 +112,34 @@ def test_shock_passes_through():
     assert s["err_post"][0] < 0.6 * SHOCK_VOL  # lag well under the jump size
     # and the raw measurement itself tracked the jump (sanity on the scenario)
     assert s["err_meas"][0] < 0.2 * SHOCK_VOL
+
+
+def test_adaptive_q_closes_the_shock_lag():
+    """FINDINGS F4: at the SHIPPED clock (30 bp/sqrt-day) a 5-point jump lags
+    badly with the gate off; the innovation-gated widening (default sigma 3)
+    lifts the gain and cuts the lag by well over half."""
+    state = _state()
+    iso = _iso(state)
+    prev = prior_holder(state, TICKER, iso)
+
+    def run(sigma):
+        state.set_options(state.options().model_copy(update={
+            "filterProcessVolBpSqrtDay": 30.0, "filterAdaptiveSigma": sigma,
+        }))
+        return filter_step(state, TICKER, iso, _aged(prev), "shock", **STEP_KW)
+
+    off = run(0.0)
+    on = run(3.0)
+    assert off is not None and on is not None
+    assert on["gain"][0] > off["gain"][0]
+    assert on["err_post"][0] < 0.4 * off["err_post"][0]  # lag cut > 60%
+    # and a CLEAN day is untouched by the gate (byte-identical update)
+    off_thin = run(0.0)
+    state.set_options(state.options().model_copy(update={"filterAdaptiveSigma": 3.0}))
+    on_thin = filter_step(state, TICKER, iso, _aged(prev), "thinned", **STEP_KW)
+    state.set_options(state.options().model_copy(update={"filterAdaptiveSigma": 0.0}))
+    off_thin = filter_step(state, TICKER, iso, _aged(prev), "thinned", **STEP_KW)
+    assert on_thin["gain"] == pytest.approx(off_thin["gain"], abs=1e-9)
 
 
 def test_contradiction_rejected_more_than_level():

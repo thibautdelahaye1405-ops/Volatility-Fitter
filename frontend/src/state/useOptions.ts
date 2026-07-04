@@ -86,6 +86,9 @@ export interface OptionsSettings {
   filterTransportNoiseScale: number;
   /** Inflate R by realized fit inconsistency chi^2/(m-d) (clipped). */
   filterResidualInflation: boolean;
+  /** Innovation-gated adaptive process noise: surprises beyond this many
+   *  sigmas raise the gain instead of lagging (0 = off). */
+  filterAdaptiveSigma: number;
   /** Pilot safety cap on per-handle gains (1 = not binding). */
   filterMaxGain: number;
   /** Max data gap (hours) predicted across; longer resets the state. */
@@ -175,6 +178,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   filterProcessCurvSqrtDay: 0.05,
   filterTransportNoiseScale: 0.1,
   filterResidualInflation: true,
+  filterAdaptiveSigma: 3.0,
   filterMaxGain: 1.0,
   filterResetHours: 96.0,
   filterDataOnlyPrepass: false,

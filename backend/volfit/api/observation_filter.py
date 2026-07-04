@@ -44,6 +44,7 @@ from volfit.calib.observation_filter import (
     FilterPrediction,
     FilterState,
     FilterUpdate,
+    adaptive_inflation,
     build_filter_prior,
     kalman_update,
     predict,
@@ -100,15 +101,31 @@ def _backbone_handles(result, tau: float) -> np.ndarray:
     return np.array([h.sigma0, h.skew, h.curvature])
 
 
-def _noise_from_band(band, n_quotes: int, n_fit_rows: int):
-    """Per-row stated noise std = the bid-ask half-spread, floored at RMS_FLOOR.
+#: Short-dated noise reference (FINDINGS F3): below ~30 DTE the thinned-vs-full
+#: ATM discrepancy runs 2-3x the stated half-spread (short-end quote/de-Am
+#: noise, the LV short-dated diagnosis), so the stated noise is scaled by
+#: sqrt(REF/DTE) — ~1.4x at 15 DTE, ~2x at 7 DTE, never below 1.
+SHORT_DATED_REF_DAYS = 30.0
+
+
+def _maturity_noise_mult(tau: float) -> float:
+    days = max(float(tau) * 365.0, 1.0)
+    return max(1.0, float(np.sqrt(SHORT_DATED_REF_DAYS / days)))
+
+
+def _noise_from_band(band, n_quotes: int, n_fit_rows: int, tau: float):
+    """Per-row stated noise std = the bid-ask half-spread, floored at RMS_FLOOR
+    and scaled by the short-dated multiplier (F3).
 
     ``band`` is the edited BID-ASK band (built regardless of the fit mode — the
     spread is the market's stated uncertainty even for a mid fit). Band-mode
     fits have 2 rows per quote (hinge + anchor), so the vector is tiled."""
+    mult = _maturity_noise_mult(tau)
     if band is None:
-        return 10.0 * RMS_FLOOR  # no band info: assume a 10 bp noise scalar
-    half = np.maximum((np.asarray(band.iv_hi) - np.asarray(band.iv_lo)) / 2.0, RMS_FLOOR)
+        return mult * 10.0 * RMS_FLOOR  # no band info: assume a 10 bp noise scalar
+    half = mult * np.maximum(
+        (np.asarray(band.iv_hi) - np.asarray(band.iv_lo)) / 2.0, RMS_FLOOR
+    )
     if half.size != n_quotes:  # edits changed alignment — degrade to the median
         return float(np.median(half))
     return np.concatenate([half, half]) if n_fit_rows == 2 * n_quotes else half
@@ -153,7 +170,8 @@ def _measurement(
             solver_diag["n_fit_rows"],
             solver_diag["n_quotes"],
             noise_scale=_noise_from_band(
-                band, solver_diag["n_quotes"], solver_diag["n_fit_rows"]
+                band, solver_diag["n_quotes"], solver_diag["n_fit_rows"],
+                prepared.tau,
             ),
             inflate=state.options().filterResidualInflation,
             contaminated=contaminated,
@@ -179,12 +197,13 @@ def _typical_noise(state: AppState, ticker: str, iso: str, prepared) -> float:
     from volfit.api import service
 
     band = service.edited_band(state, ticker, iso, prepared, "bidask")
+    mult = _maturity_noise_mult(prepared.tau)
     if band is None:
-        return 10.0 * RMS_FLOOR
+        return mult * 10.0 * RMS_FLOOR
     half = np.maximum(
         (np.asarray(band.iv_hi) - np.asarray(band.iv_lo)) / 2.0, RMS_FLOOR
     )
-    return float(np.median(half)) if half.size else 10.0 * RMS_FLOOR
+    return mult * float(np.median(half)) if half.size else mult * 10.0 * RMS_FLOOR
 
 
 def _prediction_from(
@@ -358,6 +377,26 @@ def on_fit_commit(
         return holder
 
     measurement = _measurement(state, ticker, iso, record, solver_diag)
+    if reason is None and opts.filterAdaptiveSigma > 0.0:
+        # Innovation-gated Q widening (FINDINGS F4): a genuine large move
+        # reads as ~gate sigmas instead of lagging; seeds are excluded (their
+        # innovation is not a prediction surprise).
+        factors = adaptive_inflation(
+            measurement.handles - prediction.mean,
+            np.diag(prediction.cov),
+            np.diag(measurement.cov),
+            opts.filterAdaptiveSigma,
+        )
+        if np.any(factors > 1.0):
+            scale = np.sqrt(factors)
+            prediction = replace(
+                prediction,
+                cov=prediction.cov * np.outer(scale, scale),
+                q_breakdown={
+                    **prediction.q_breakdown,
+                    "adaptive": (factors - 1.0) * np.diag(prediction.cov),
+                },
+            )
     pred_cov, meas_cov = prediction.cov, measurement.cov
     if DIAGONAL_UPDATE:  # per-handle scalar gains (see the constant's docstring)
         pred_cov = np.diag(np.diag(pred_cov))

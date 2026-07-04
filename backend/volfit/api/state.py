@@ -747,6 +747,7 @@ class AppState(UniverseMixin):
                     "filterProcessCurvSqrtDay",
                     "filterTransportNoiseScale",
                     "filterResidualInflation",
+                    "filterAdaptiveSigma",
                     "filterMaxGain",
                     "filterResetHours",
                     "filterDataOnlyPrepass",

@@ -180,6 +180,31 @@ def process_noise(
     return total, breakdown
 
 
+def adaptive_inflation(
+    innovation: np.ndarray,
+    p_diag: np.ndarray,
+    r_diag: np.ndarray,
+    sigma_gate: float,
+    cap: float = RESID_INFLATION_CAP,
+) -> np.ndarray:
+    """Innovation-gated process-noise widening (IAE-style; FINDINGS F4).
+
+    A fixed clock Q cannot span calm and spike regimes: a genuine 5-point
+    overnight jump is ~50 sigma under a 30 bp/sqrt-day prior, so the filter
+    lags it. Per handle, when the standardized innovation |nu|/sqrt(P- + R)
+    exceeds ``sigma_gate``, P- is inflated by (zeta/gate)^2 (capped) so the
+    surprise reads as ~gate sigmas and the gain rises toward the data. Clean
+    days never trip it (byte-identical below the gate); an internally
+    CONTRADICTORY chain does not either — its rho-inflated R already shrinks
+    the standardized innovation. Returns the per-handle inflation factors."""
+    if sigma_gate <= 0.0:
+        return np.ones_like(np.asarray(p_diag, dtype=float))
+    nu = np.asarray(innovation, dtype=float)
+    s = np.maximum(np.asarray(p_diag, dtype=float) + np.asarray(r_diag, dtype=float), 1e-18)
+    zeta2 = nu * nu / s
+    return np.clip(zeta2 / (sigma_gate * sigma_gate), 1.0, cap)
+
+
 def predict(
     transported_mean: np.ndarray,
     prev_cov: np.ndarray,

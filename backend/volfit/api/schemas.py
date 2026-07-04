@@ -275,6 +275,13 @@ class OptionsSettings(BaseModel):
     #: Inflate R by the realized fit inconsistency rho = clip(chi^2/(m-d), 1, cap)
     #: (eq. resid-inflation) so a dense-but-contradictory cluster reads as noise.
     filterResidualInflation: bool = True
+    #: Innovation-gated adaptive process noise (FINDINGS F4, the shock-lag fix):
+    #: when a handle's standardized innovation exceeds this many sigmas, P- is
+    #: inflated so the surprise reads as ~this level and the gain rises toward
+    #: the data. 0 = off. Clean days never trip it; a contradictory chain's
+    #: rho-inflated R keeps it quiet. Overlay update path only (the active-MAP
+    #: prior is built before the measurement exists).
+    filterAdaptiveSigma: float = Field(3.0, ge=0.0, le=20.0)
     #: Pilot safety cap on the diagonalized per-handle gains; 1.0 = no cap binding
     #: in normal operation (the update itself keeps K in [0, 1] per handle).
     filterMaxGain: float = Field(1.0, ge=0.0, le=1.0)

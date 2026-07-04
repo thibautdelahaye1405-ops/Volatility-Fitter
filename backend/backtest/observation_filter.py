@@ -242,6 +242,7 @@ def filter_step(
 def run(
     regime: str, asset: str | None, cov_modes, process_bps, scenarios,
     c_atm: float, c_wing: float, min_atm: int, min_wing: int, max_pairs: int | None,
+    adaptive_sigma: float | None = None,
 ) -> list[NodeResult]:
     """Score every consecutive day pair x expiry x scenario x config."""
     paths = list_fixtures(regime=regime, asset=asset)
@@ -269,12 +270,15 @@ def run(
                 for cov_mode in cov_modes:
                     for bp in process_bps:
                         state_t = state_for_day([today_fx])
-                        state_t.set_options(state_t.options().model_copy(update={
+                        upd = {
                             "observationFilterMode": "overlay",
                             "priorPersistenceMode": "off",
                             "filterCovarianceMode": cov_mode,
                             "filterProcessVolBpSqrtDay": bp,
-                        }))
+                        }
+                        if adaptive_sigma is not None:
+                            upd["filterAdaptiveSigma"] = adaptive_sigma
+                        state_t.set_options(state_t.options().model_copy(update=upd))
                         if snap is not None:  # seeding fallback parity with prod
                             state_t.set_active_prior(tk, snap, "saved")
                         for scenario in scenarios:
@@ -348,6 +352,9 @@ def main() -> int:
     ap.add_argument("--min-atm", type=int, default=5)
     ap.add_argument("--min-wing", type=int, default=3)
     ap.add_argument("--max-pairs", type=int, default=None)
+    ap.add_argument("--adaptive", type=float, default=None,
+                    help="filterAdaptiveSigma override (0 = off; default: schema)")
+    ap.add_argument("--tag", default="", help="result-filename suffix (A/B runs)")
     args = ap.parse_args()
 
     cov_modes = tuple(m.strip() for m in args.cov_modes.split(","))
@@ -357,10 +364,11 @@ def main() -> int:
           f"bp={process_bps} scenarios={scenarios}", flush=True)
 
     results = run(args.regime, args.asset, cov_modes, process_bps, scenarios,
-                  args.c_atm, args.c_wing, args.min_atm, args.min_wing, args.max_pairs)
+                  args.c_atm, args.c_wing, args.min_atm, args.min_wing, args.max_pairs,
+                  adaptive_sigma=args.adaptive)
     summary = summarize(results)
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    suffix = f"_{args.asset}" if args.asset else ""
+    suffix = (f"_{args.asset}" if args.asset else "") + (f"_{args.tag}" if args.tag else "")
     base = os.path.join(RESULTS_DIR, f"{args.regime}_observation_filter{suffix}")
     with open(base + ".json", "w", encoding="utf-8") as fh:
         json.dump({"rows": [r.__dict__ for r in results], "summary": summary},

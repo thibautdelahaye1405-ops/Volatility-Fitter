@@ -105,7 +105,27 @@ note's success criterion ("lower held-out error in noisy snapshots", not
 "lower every RMS"). ζ mean ≈ −0.3…−1.3 on thinned is a harness artifact to
 note: the ATM-window thinning is slightly biased vs the full-chain truth.
 
-**F3/F4 follow-ups (unchanged, now the pre-active-default work list):**
+## F3/F4 follow-ups — SHIPPED (2026-07-04, adaptive Q + short-dated floor)
+
+**F4 → `filterAdaptiveSigma` (default 3, 0 = off).** Innovation-gated P⁻
+widening (IAE-style, `calib/observation_filter.adaptive_inflation`): a
+surprise beyond 3σ inflates P⁻ by (ζ/3)² (capped 25×) so it reads as ~3σ.
+SPX real-fixture A/B (4 pairs, bp 30, jacobian): shock win 0.42→**1.00**
+(≤30d) and 0.67→**1.00** (>30d), ζ std 3.76→0.84 / 0.45→0.20; thinned
+unchanged. Safety (EFA, the noisy-chain case): the gate barely fires — its
+wide-spread R keeps standardized innovations small, so junk is NOT chased
+(the flip side: illiquid names still lag genuine jumps — conservative by
+design). A ρ-inflated contradictory chain is quiet for the same reason
+(unit-locked). Overlay path only (the active-MAP prior precedes the
+measurement).
+
+**F3 → maturity-scaled noise floor.** Stated per-quote noise ×
+√(30 DTE / DTE) below 30 DTE (`api/observation_filter._maturity_noise_mult`,
+never < 1): a 7-DTE chain's R roughly doubles, matching the measured 2–3×
+thinned-vs-full short-end discrepancy. Applied consistently to the
+measurement noise, the active-MAP λ and the posterior unwhitening.
+
+**Remaining pre-active-default work:**
 adaptive Q (innovation-gated widening — closes the shock gap on both
 routes); the ≤30d policy (win < 0.5 in all regimes; maturity-scaled R floor
 or exclusion); add `active` mode to the harness sweep before any active

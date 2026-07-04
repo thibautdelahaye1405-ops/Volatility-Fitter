@@ -230,3 +230,25 @@ def test_prediction_prior_residual_jitter_reported():
 
 def test_handle_names_consistent_with_move_scales():
     assert len(HANDLE_NAMES) == len(HANDLE_MOVE_SCALES) == 3
+
+
+# --------------------------------------------------------- adaptive inflation
+def test_adaptive_inflation_gating():
+    """Below the gate: byte-identical (all factors 1). Beyond it: P- inflated
+    by (zeta/gate)^2, capped; a bigger stated R (a contradictory chain's rho)
+    quiets the gate (FINDINGS F4)."""
+    from volfit.calib.observation_filter import adaptive_inflation
+
+    p = np.array([1e-6, 1e-4, 1e-2])
+    r = np.array([1e-6, 1e-4, 1e-2])
+    small = np.sqrt(p + r) * 2.0  # 2-sigma surprises, gate 3
+    assert adaptive_inflation(small, p, r, 3.0) == pytest.approx(np.ones(3))
+    big = np.sqrt(p + r) * np.array([30.0, 2.0, 2.0])  # a 30-sigma ATM jump
+    f = adaptive_inflation(big, p, r, 3.0)
+    assert f[0] == pytest.approx(min((30.0 / 3.0) ** 2, 25.0))  # capped at 25
+    assert f[1] == 1.0 and f[2] == 1.0  # per handle, others untouched
+    # rho-inflated R shrinks the standardized innovation => quieter gate
+    f_noisy = adaptive_inflation(big, p, r * 100.0, 3.0)
+    assert f_noisy[0] < f[0]
+    # gate 0 = off
+    assert adaptive_inflation(big, p, r, 0.0) == pytest.approx(np.ones(3))
