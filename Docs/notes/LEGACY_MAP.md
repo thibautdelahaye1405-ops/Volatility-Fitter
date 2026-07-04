@@ -22,6 +22,7 @@ replacement.
 | `iv_time_value_density_weights.tex` | `07_calibration_objective.tex` (absorbed) |
 | `spot_move_vol_surface_note_updated.tex` | `12_spot_vol_dynamics.tex` |
 | `ot_bayesian_graph_extrapolation_expanded.tex` | `14_graph_extrapolation.tex` |
+| `kalman_filtering.tex` | `15_kalman_filtering.tex` |
 
 ## Guidance
 
