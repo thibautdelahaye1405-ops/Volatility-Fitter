@@ -108,6 +108,39 @@ def _fit_data_only(k, w, tau, solver_diag=None):
     )
 
 
+def _truth_with_cov(prepared, k, w_truth, tau):
+    """The day-T truth handles AND their own covariance R_truth (the note's
+    protocol scores zeta against sqrt(P+ + R_heldout): the full-chain fit is
+    itself a noisy estimate, and omitting its noise overstates the filter's
+    miscalibration). Built with the same Jacobian machinery as the
+    measurement, noise = the full chain's bid-ask half-spreads."""
+    from volfit.calib.observation_measurement import (
+        handle_jacobian_fd,
+        measurement_from_jacobian,
+    )
+    from volfit.calib.precision import RMS_FLOOR
+    from volfit.models.lqd.basis import LQDParams
+
+    fd: dict = {}
+    result = _fit_data_only(k, w_truth, tau, solver_diag=fd)
+    truth = _handles(result, tau)
+
+    def handle_fn(theta):
+        h = atm_handles(build_slice(LQDParams.from_vector(theta)), tau)
+        return np.array([h.sigma0, h.skew, h.curvature])
+
+    half = np.maximum(
+        (np.asarray(prepared.iv_ask) - np.asarray(prepared.iv_bid)) / 2.0, RMS_FLOOR
+    )
+    noise = half if half.size == fd["n_quotes"] else float(np.median(half))
+    g = handle_jacobian_fd(handle_fn, fd["theta"])
+    m = measurement_from_jacobian(
+        truth, fd["jac"], g, fd["residual"], fd["n_fit_rows"], fd["n_quotes"],
+        noise_scale=noise,
+    )
+    return truth, np.diag(m.cov)
+
+
 def _apply_scenario(scenario: str, k_in, w_in, tau: float):
     """Perturb the thinned day-T inputs per the protocol; returns (k, w, dvol)
     where dvol is the true level shift baked into the truth for scoring."""
@@ -158,9 +191,10 @@ def filter_step(
     k_in, w_in, dvol = _apply_scenario(scenario, k[atm], w[atm], tau)
 
     # Truth = the full-chain data-only fit (level-shifted in the shock scenario
-    # so the truth carries the same genuine jump the measurement saw).
+    # so the truth carries the same genuine jump the measurement saw), with its
+    # OWN covariance for the zeta denominator.
     w_truth = w if dvol == 0.0 else (np.sqrt(np.maximum(w, 1e-12) / tau) + dvol) ** 2 * tau
-    truth = _handles(_fit_data_only(k, w_truth, tau), tau)
+    truth, r_truth = _truth_with_cov(prepared, k, w_truth, tau)
     w_wing = w_truth[wing]
 
     # The measurement fit (thinned + scenario), committed through PRODUCTION.
@@ -179,7 +213,9 @@ def filter_step(
     m_post, p_post = holder.state.mean, holder.state.cov
     m_pred = holder.prediction.mean
     z = holder.measurement.handles
-    sd = np.sqrt(np.maximum(np.diag(p_post), 1e-18))
+    # zeta denominator = sqrt(P+ + R_truth): the held-out truth is itself noisy
+    # (note SS9 item 6 scores against P+ + R_heldout).
+    sd = np.sqrt(np.maximum(np.diag(p_post) + r_truth, 1e-18))
 
     # Reconstructed smiles: the thinned backbone retargeted to the posterior.
     chart = build_atm_coordinates(result.params, tau)
@@ -260,15 +296,24 @@ def run(
     return results
 
 
+#: Maturity split for the summary: the short bucket isolates the known
+#: short-dated quote/de-Am noise regime (LV short-dated diagnosis) where the
+#: thinned-vs-full ATM discrepancy is dominated by data noise, not the filter.
+SHORT_DTE_YEARS = 30.0 / 365.0
+
+
 def summarize(results: list[NodeResult]) -> list[dict]:
-    """Aggregate per (scenario, cov_mode, process_bp): the denoise-vs-damp
-    verdict numbers. err_* are per-handle medians in ATM-vol bp / raw units;
-    win = fraction of nodes where the posterior beats the raw measurement."""
+    """Aggregate per (scenario, cov_mode, process_bp, maturity bucket): the
+    denoise-vs-damp verdict numbers. err_* are per-handle medians in ATM-vol
+    bp / raw units; win = fraction of nodes where the posterior beats the raw
+    measurement. The <=30d / >30d split keeps the short-dated noise regime
+    from masking (or being masked by) the normal-maturity calibration."""
     by_cfg: dict[tuple, list[NodeResult]] = defaultdict(list)
     for r in results:
-        by_cfg[(r.scenario, r.cov_mode, r.process_bp)].append(r)
+        bucket = "<=30d" if r.t <= SHORT_DTE_YEARS else ">30d"
+        by_cfg[(r.scenario, r.cov_mode, r.process_bp, bucket)].append(r)
     out: list[dict] = []
-    for (scenario, cov, bp), grp in sorted(by_cfg.items()):
+    for (scenario, cov, bp, bucket), grp in sorted(by_cfg.items()):
         post = np.array([g.err_post for g in grp], float)
         meas = np.array([g.err_meas for g in grp], float)
         pred = np.array([g.err_pred for g in grp], float)
@@ -277,7 +322,7 @@ def summarize(results: list[NodeResult]) -> list[dict]:
         wp = np.array([g.wing_post_bp for g in grp if g.wing_post_bp is not None], float)
         wm = np.array([g.wing_meas_bp for g in grp if g.wing_meas_bp is not None], float)
         out.append(dict(
-            scenario=scenario, cov_mode=cov, process_bp=bp, n=len(grp),
+            scenario=scenario, cov_mode=cov, process_bp=bp, bucket=bucket, n=len(grp),
             med_err_post=[round(float(v), 5) for v in np.median(post, axis=0)],
             med_err_meas=[round(float(v), 5) for v in np.median(meas, axis=0)],
             med_err_pred=[round(float(v), 5) for v in np.median(pred, axis=0)],
@@ -315,15 +360,18 @@ def main() -> int:
                   args.c_atm, args.c_wing, args.min_atm, args.min_wing, args.max_pairs)
     summary = summarize(results)
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    base = os.path.join(RESULTS_DIR, f"{args.regime}_observation_filter")
+    suffix = f"_{args.asset}" if args.asset else ""
+    base = os.path.join(RESULTS_DIR, f"{args.regime}_observation_filter{suffix}")
     with open(base + ".json", "w", encoding="utf-8") as fh:
         json.dump({"rows": [r.__dict__ for r in results], "summary": summary},
                   fh, default=str, indent=2)
     print(f"\nwrote {base}.json  ({len(results)} steps)\n")
-    hdr = f"{'scenario':<15}{'cov':<10}{'bp':>5}{'n':>5}  errPost(atm)  errMeas(atm)  win  gain(atm)  zstd(atm)"
+    hdr = (f"{'scenario':<15}{'cov':<10}{'bp':>5}{'bucket':>8}{'n':>5}"
+           "  errPost(atm)  errMeas(atm)  win  gain(atm)  zstd(atm)")
     print(hdr)
     for s in summary:
-        print(f"{s['scenario']:<15}{s['cov_mode']:<10}{s['process_bp']:>5}{s['n']:>5}"
+        print(f"{s['scenario']:<15}{s['cov_mode']:<10}{s['process_bp']:>5}"
+              f"{s['bucket']:>8}{s['n']:>5}"
               f"  {s['med_err_post'][0]:>11}  {s['med_err_meas'][0]:>11}"
               f"  {s['win_vs_meas'][0]:>4}  {s['med_gain'][0]:>8}  {s['zeta_std'][0]:>8}")
     return 0

@@ -61,6 +61,16 @@ from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import LQDParams
 from volfit.models.lqd.quadrature import build_slice
 
+#: v1 runs the update DIAGONALLY — per-handle scalar gains, the Note 14 graph
+#: convention ("production runs handle-by-handle"). Measured reason (Phase-5
+#: backtest, EEM/EFA spike day): the Jacobian R carries strong level-curvature
+#: correlations, and on a coarse-strike chain a junk curvature innovation then
+#: drags the ATM level through the OFF-DIAGONAL gain terms — posterior errors
+#: of 3-28 vol points, worse than BOTH baselines (impossible for scalar
+#: updates; filterMaxGain caps own-gains only, so it cannot prevent this).
+#: The full-covariance update stays available for later study.
+DIAGONAL_UPDATE = True
+
 
 @dataclass
 class NodeFilter:
@@ -230,11 +240,15 @@ def on_fit_commit(
     )
     prediction = predict(base_mean, base_cov, q_diag, abs(h), q_breakdown)
     measurement = _measurement(state, ticker, iso, record, solver_diag)
+    pred_cov, meas_cov = prediction.cov, measurement.cov
+    if DIAGONAL_UPDATE:  # per-handle scalar gains (see the constant's docstring)
+        pred_cov = np.diag(np.diag(pred_cov))
+        meas_cov = np.diag(np.diag(meas_cov))
     upd = kalman_update(
         prediction.mean,
-        prediction.cov,
+        pred_cov,
         measurement.handles,
-        measurement.cov,
+        meas_cov,
         max_gain=opts.filterMaxGain,
     )
     new_state = FilterState(
