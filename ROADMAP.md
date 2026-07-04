@@ -121,9 +121,14 @@ by construction there, baseline = the overlay run's raw column). Remaining
 filter follow-ups: a small Note-15 addendum for F3/F4 + the mode sweep, a
 full-regime `--modes overlay,active --adaptive` rerun (user's own PowerShell
 window: `run_filter_full.ps1` needs those flags added or run per-asset),
-visually smoke overlay/active in-app; then the pre-filter backlog: the **25-asset capture** + lower dark-node baseline precision, the
-temporal/ablation reruns on the other regimes, graph Phase 10 sparse perf.
-Housekeeping: SmileChart.tsx ~600 lines (split candidate).
+visually smoke overlay/active in-app. **Dark-node baseline precision SHIPPED**
+(`78a1fc5`: `DARK_BASE_SCALE=0.25` in `graph/precision.py` — the graph-LOO
+"dark prior pins the posterior" fix; lit design point byte-identical;
+validate/tune on the 25-asset capture). Then the rest of the pre-filter
+backlog: the **25-asset capture** (overnight capture jobs, user's window +
+flat-file creds), the temporal/ablation reruns on the other regimes, graph
+Phase 10 sparse perf. Housekeeping: SmileChart.tsx ~600 lines (split
+candidate).
 
 ### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
 
