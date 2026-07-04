@@ -93,6 +93,10 @@ class NodeResult:
     zeta: list  # (truth - m+) / sd(P+) per handle
     wing_post_bp: float | None  # retargeted-to-m+ smile vs held-out quotes
     wing_meas_bp: float | None  # the data-only thinned fit (no filter)
+    #: observationFilterMode the step ran under ("overlay" = the pure Kalman
+    #: update on a data-only fit; "active" = the one-stage MAP fit). Defaults
+    #: to overlay so pre-sweep result files load unchanged.
+    mode: str = "overlay"
 
 
 def _handles(result, tau: float) -> np.ndarray:
@@ -198,12 +202,21 @@ def filter_step(
     w_wing = w_truth[wing]
 
     # The measurement fit (thinned + scenario), committed through PRODUCTION.
-    fd: dict = {}
-    result = _fit_data_only(k_in, w_in, tau, solver_diag=fd)
-    record = FitRecord(prepared=prepared, result=result, display=None)
+    # Inject the carried T-1 state FIRST (data_version -1 = "new observation");
+    # in ACTIVE mode the fit itself then carries the prediction prior (the
+    # one-stage MAP), exactly as the production fit path would build it.
     key = (asset, iso, "mid")
-    # inject the carried T-1 state; data_version -1 guarantees "new observation"
     state_t.set_filter_node(key, replace(holder_prev, data_version=-1))
+    ft = None
+    if state_t.options().observationFilterMode == "active":
+        ft = ofilt.active_prediction_target(state_t, asset, iso, "mid", prepared)
+    fd: dict = {}
+    weights = resolve_weights("equal", k_in, w_in)
+    result = calibrate_slice(
+        k_in, w_in, t=tau, n_order=6, weights=weights,
+        operator_prior=ft, solver_diag=fd, **_LQD,
+    )
+    record = FitRecord(prepared=prepared, result=result, display=None)
     holder = ofilt.on_fit_commit(state_t, asset, iso, "mid", record, fd)
     if holder is None or holder.update is None:
         return None
@@ -243,6 +256,7 @@ def run(
     regime: str, asset: str | None, cov_modes, process_bps, scenarios,
     c_atm: float, c_wing: float, min_atm: int, min_wing: int, max_pairs: int | None,
     adaptive_sigma: float | None = None,
+    filter_modes: tuple = ("overlay",),
 ) -> list[NodeResult]:
     """Score every consecutive day pair x expiry x scenario x config."""
     paths = list_fixtures(regime=regime, asset=asset)
@@ -269,31 +283,33 @@ def run(
                     continue
                 for cov_mode in cov_modes:
                     for bp in process_bps:
-                        state_t = state_for_day([today_fx])
-                        upd = {
-                            "observationFilterMode": "overlay",
-                            "priorPersistenceMode": "off",
-                            "filterCovarianceMode": cov_mode,
-                            "filterProcessVolBpSqrtDay": bp,
-                        }
-                        if adaptive_sigma is not None:
-                            upd["filterAdaptiveSigma"] = adaptive_sigma
-                        state_t.set_options(state_t.options().model_copy(update=upd))
-                        if snap is not None:  # seeding fallback parity with prod
-                            state_t.set_active_prior(tk, snap, "saved")
-                        for scenario in scenarios:
-                            try:
-                                s = filter_step(state_t, tk, iso, holder_prev,
-                                                scenario, c_atm, c_wing,
-                                                min_atm, min_wing)
-                            except Exception:  # noqa: BLE001 — skip, don't crash
-                                s = None
-                            if s is not None:
-                                results.append(NodeResult(
-                                    asset=tk, as_of=today_fx.as_of.isoformat(),
-                                    prior_as_of=prior_fx.as_of.isoformat(),
-                                    expiry=iso, regime=regime, scenario=scenario,
-                                    cov_mode=cov_mode, process_bp=bp, **s))
+                        for fmode in filter_modes:
+                            state_t = state_for_day([today_fx])
+                            upd = {
+                                "observationFilterMode": fmode,
+                                "priorPersistenceMode": "off",
+                                "filterCovarianceMode": cov_mode,
+                                "filterProcessVolBpSqrtDay": bp,
+                            }
+                            if adaptive_sigma is not None:
+                                upd["filterAdaptiveSigma"] = adaptive_sigma
+                            state_t.set_options(state_t.options().model_copy(update=upd))
+                            if snap is not None:  # seeding fallback parity with prod
+                                state_t.set_active_prior(tk, snap, "saved")
+                            for scenario in scenarios:
+                                try:
+                                    s = filter_step(state_t, tk, iso, holder_prev,
+                                                    scenario, c_atm, c_wing,
+                                                    min_atm, min_wing)
+                                except Exception:  # noqa: BLE001 — skip, don't crash
+                                    s = None
+                                if s is not None:
+                                    results.append(NodeResult(
+                                        asset=tk, as_of=today_fx.as_of.isoformat(),
+                                        prior_as_of=prior_fx.as_of.isoformat(),
+                                        expiry=iso, regime=regime, scenario=scenario,
+                                        cov_mode=cov_mode, process_bp=bp,
+                                        mode=fmode, **s))
             print(f"  {tk} {today_fx.as_of}: "
                   f"{sum(1 for r in results if r.asset == tk and r.as_of == today_fx.as_of.isoformat())} "
                   f"steps scored", flush=True)
@@ -315,9 +331,9 @@ def summarize(results: list[NodeResult]) -> list[dict]:
     by_cfg: dict[tuple, list[NodeResult]] = defaultdict(list)
     for r in results:
         bucket = "<=30d" if r.t <= SHORT_DTE_YEARS else ">30d"
-        by_cfg[(r.scenario, r.cov_mode, r.process_bp, bucket)].append(r)
+        by_cfg[(r.scenario, r.cov_mode, r.process_bp, r.mode, bucket)].append(r)
     out: list[dict] = []
-    for (scenario, cov, bp, bucket), grp in sorted(by_cfg.items()):
+    for (scenario, cov, bp, fmode, bucket), grp in sorted(by_cfg.items()):
         post = np.array([g.err_post for g in grp], float)
         meas = np.array([g.err_meas for g in grp], float)
         pred = np.array([g.err_pred for g in grp], float)
@@ -326,7 +342,8 @@ def summarize(results: list[NodeResult]) -> list[dict]:
         wp = np.array([g.wing_post_bp for g in grp if g.wing_post_bp is not None], float)
         wm = np.array([g.wing_meas_bp for g in grp if g.wing_meas_bp is not None], float)
         out.append(dict(
-            scenario=scenario, cov_mode=cov, process_bp=bp, bucket=bucket, n=len(grp),
+            scenario=scenario, cov_mode=cov, process_bp=bp, mode=fmode,
+            bucket=bucket, n=len(grp),
             med_err_post=[round(float(v), 5) for v in np.median(post, axis=0)],
             med_err_meas=[round(float(v), 5) for v in np.median(meas, axis=0)],
             med_err_pred=[round(float(v), 5) for v in np.median(pred, axis=0)],
@@ -355,6 +372,8 @@ def main() -> int:
     ap.add_argument("--adaptive", type=float, default=None,
                     help="filterAdaptiveSigma override (0 = off; default: schema)")
     ap.add_argument("--tag", default="", help="result-filename suffix (A/B runs)")
+    ap.add_argument("--modes", default="overlay",
+                    help="observationFilterMode sweep, e.g. overlay,active")
     args = ap.parse_args()
 
     cov_modes = tuple(m.strip() for m in args.cov_modes.split(","))
@@ -365,7 +384,8 @@ def main() -> int:
 
     results = run(args.regime, args.asset, cov_modes, process_bps, scenarios,
                   args.c_atm, args.c_wing, args.min_atm, args.min_wing, args.max_pairs,
-                  adaptive_sigma=args.adaptive)
+                  adaptive_sigma=args.adaptive,
+                  filter_modes=tuple(m.strip() for m in args.modes.split(",")))
     summary = summarize(results)
     os.makedirs(RESULTS_DIR, exist_ok=True)
     suffix = (f"_{args.asset}" if args.asset else "") + (f"_{args.tag}" if args.tag else "")
@@ -374,12 +394,12 @@ def main() -> int:
         json.dump({"rows": [r.__dict__ for r in results], "summary": summary},
                   fh, default=str, indent=2)
     print(f"\nwrote {base}.json  ({len(results)} steps)\n")
-    hdr = (f"{'scenario':<15}{'cov':<10}{'bp':>5}{'bucket':>8}{'n':>5}"
+    hdr = (f"{'scenario':<15}{'cov':<10}{'bp':>5}{'mode':>9}{'bucket':>8}{'n':>5}"
            "  errPost(atm)  errMeas(atm)  win  gain(atm)  zstd(atm)")
     print(hdr)
     for s in summary:
         print(f"{s['scenario']:<15}{s['cov_mode']:<10}{s['process_bp']:>5}"
-              f"{s['bucket']:>8}{s['n']:>5}"
+              f"{s['mode']:>9}{s['bucket']:>8}{s['n']:>5}"
               f"  {s['med_err_post'][0]:>11}  {s['med_err_meas'][0]:>11}"
               f"  {s['win_vs_meas'][0]:>4}  {s['med_gain'][0]:>8}  {s['zeta_std'][0]:>8}")
     return 0

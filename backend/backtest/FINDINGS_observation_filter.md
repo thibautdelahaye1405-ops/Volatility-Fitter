@@ -125,6 +125,18 @@ never < 1): a 7-DTE chain's R roughly doubles, matching the measured 2–3×
 thinned-vs-full short-end discrepancy. Applied consistently to the
 measurement noise, the active-MAP λ and the posterior unwhitening.
 
+## Active mode in the sweep (2026-07-04, `--modes overlay,active`)
+
+The harness now scores the one-stage MAP itself: in active mode the fit
+carries `active_prediction_target` and the "measurement" IS the MAP solution,
+so `err_post == err_meas` by construction (win_vs_meas is meaningless there —
+compare against the OVERLAY run's raw column). SPX 4-pair pilot (bp 30,
+jacobian, adaptive on): **thinned active 4.7 bp vs raw 6.1 bp — and it edges
+the overlay posterior (5.5 bp); shock 2.4 bp, ζ std 1.1/0.87** — the joint
+MAP fit denoises at least as well as the post-hoc blend, with honest
+uncertainty. Cross-asset/full-regime active sweep rides the next full run
+before any default discussion.
+
 **Remaining pre-active-default work:**
 adaptive Q (innovation-gated widening — closes the shock gap on both
 routes); the ≤30d policy (win < 0.5 in all regimes; maturity-scaled R floor
