@@ -104,15 +104,20 @@ recorded there; the user explicitly confirmed the Jacobian R_t route).
   mid fit per node; /filter curves memoized (29ms→0.06ms); FD Jacobian on the
   opt grid.
 
-**Next up (the filter arc):** **Phase 8** — Note 15 adoption into
-`Docs/notes/15_kalman_filtering.tex` (STYLE_GUIDE hardening; update the
-note's defaults to the shipped ones — bp 30, DIAGONAL_UPDATE, λ=s_q²/P⁻ MAP
-units, noise_scale; `gen_kalman.py` figures off the 3-regime results —
-case-file gains + ζ calibration; verified Appendix C vs
-calib/observation_filter.py; traceability table). Then the pre-active-default
-work list (FINDINGS F3/F4): adaptive Q, the ≤30d policy, `active` in the
-harness sweep. Also: visually smoke the overlay + active in-app. Unchanged
-from before: the 25-asset capture etc. (next section).
+- **Phase 8 (2026-07-04, `80989e7`) — Note 15 in the series; THE FILTER ARC
+  IS COMPLETE (8/8 phases).** `Docs/notes/15_kalman_filtering.tex` (19 pp,
+  STYLE_GUIDE-hardened, shipped defaults, TWO case files incl. the EEM/EFA
+  off-diagonal blow-up, the backtest-verdict section) + `gen_kalman.py`
+  (production-code figures, 42 macros, Appendix C executed vs
+  calib/observation_filter.py at 0.0e+00). `Docs/kalman_filtering.tex` kept
+  with the SUPERSEDED banner (docstrings cite its labels) + LEGACY_MAP row.
+
+**Next up:** the filter follow-ups (FINDINGS F3/F4 — adaptive Q for shock
+lag, the ≤30d short-dated policy, `active` in the harness sweep before any
+active default) + visually smoke overlay/active in-app; then the pre-filter
+backlog: the **25-asset capture** + lower dark-node baseline precision, the
+temporal/ablation reruns on the other regimes, graph Phase 10 sparse perf.
+Housekeeping: SmileChart.tsx ~600 lines (split candidate).
 
 ### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
 
