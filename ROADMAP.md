@@ -112,10 +112,12 @@ recorded there; the user explicitly confirmed the Jacobian R_t route).
   calib/observation_filter.py at 0.0e+00). `Docs/kalman_filtering.tex` kept
   with the SUPERSEDED banner (docstrings cite its labels) + LEGACY_MAP row.
 
-**Next up:** the filter follow-ups (FINDINGS F3/F4 — adaptive Q for shock
-lag, the ≤30d short-dated policy, `active` in the harness sweep before any
-active default) + visually smoke overlay/active in-app; then the pre-filter
-backlog: the **25-asset capture** + lower dark-node baseline precision, the
+**Next up:** F3/F4 SHIPPED 2026-07-04 (`83800b3` — `filterAdaptiveSigma=3`
+innovation-gated Q, shock win → 1.0 without chasing noisy chains; √(30/DTE)
+short-dated noise floor; harness `--adaptive`/`--tag`). Remaining filter
+follow-ups: `active` in the harness sweep before any active default, a small
+Note-15 addendum for F3/F4, visually smoke overlay/active in-app; then the
+pre-filter backlog: the **25-asset capture** + lower dark-node baseline precision, the
 temporal/ablation reruns on the other regimes, graph Phase 10 sparse perf.
 Housekeeping: SmileChart.tsx ~600 lines (split candidate).
 
