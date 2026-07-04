@@ -13,7 +13,9 @@
 param(
     [string[]]$Regimes = @("spike_aug2024", "high_oct2022", "low_jul2023"),
     [string[]]$Assets = @("SPX", "NDX", "RUT", "EEM", "EFA", "AAPL", "JPM", "NVDA"),
-    [string]$ProcessBps = "10,30"
+    [string]$ProcessBps = "30",
+    [string]$Modes = "overlay,active",
+    [string]$Tag = "v2"
 )
 
 $backend = Split-Path $PSScriptRoot -Parent
@@ -22,7 +24,8 @@ Push-Location $backend
 try {
     foreach ($regime in $Regimes) {
         foreach ($a in $Assets) {
-            $out = Join-Path $PSScriptRoot "results\${regime}_observation_filter_$a.json"
+            $suffix = if ($Tag) { "_$a`_$Tag" } else { "_$a" }
+            $out = Join-Path $PSScriptRoot "results\${regime}_observation_filter$suffix.json"
             if (Test-Path $out) {
                 try { $rows = (Get-Content $out -Raw | ConvertFrom-Json).rows.Count } catch { $rows = 0 }
                 if ($rows -gt 200) {
@@ -31,7 +34,8 @@ try {
                 }
             }
             Write-Host (">>> {0} {1}  {2}" -f $regime, $a, (Get-Date -Format "yyyy-MM-dd HH:mm"))
-            & $py -m backtest.observation_filter --regime $regime --asset $a --process-bps $ProcessBps
+            & $py -m backtest.observation_filter --regime $regime --asset $a `
+                --process-bps $ProcessBps --modes $Modes --tag $Tag
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "!!! $regime $a exited $LASTEXITCODE (continuing)"
             }

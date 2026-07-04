@@ -838,13 +838,26 @@ are measured, known, and deliberately not hidden. (i)~The $\le30$ DTE bucket
 is a different regime: short-dated nodes carry $90$--$160$ bp thinned-vs-full
 discrepancies from quote and de-Americanization noise (the Note~04/05
 short-dated diagnosis, not a filter defect), the filter loses to raw there,
-and the buckets are reported separately so neither regime masks the other; the
-candidate policies are excluding $<30$ DTE nodes or a maturity-scaled
-measurement-noise floor. (ii)~A fixed clock cannot span calm and spike regimes
---- the pre-active follow-up is an adaptive $Q$ (innovation-gated widening),
-which is what closes the residual shock lag on both routes. (iii)~The
-\texttt{active} mode should join the harness sweep before any active-mode
-default is considered.
+and the buckets are reported separately so neither regime masks the other.
+\emph{Shipped:} a maturity-scaled noise floor --- the stated per-quote noise
+is multiplied by $\sqrt{30\,\mathrm{DTE}/\mathrm{DTE}}$ below $30$ DTE (never
+below one), matching the measured $2$--$3\times$ short-end discrepancy and
+applied consistently to $R_t$, the active MAP weights and the posterior
+unwhitening. (ii)~A fixed clock cannot span calm and spike regimes.
+\emph{Shipped:} innovation-gated adaptive $Q$
+(\texttt{filterAdaptiveSigma}, default $3$): a per-handle surprise beyond the
+gate inflates $P^-$ by $(\zeta/3)^2$ (capped) so it reads as ${\sim}3\sigma$.
+Measured on the spike fixtures: SPX shock win $0.42\to1.00$ with
+$\zeta$-std $3.8\to0.8$, clean days byte-identical below the gate; on the
+noisy EFA chain the gate stays quiet --- its wide-spread (and
+$\rho$-inflated) $R$ shrinks the standardized innovation, so junk is not
+chased. (iii)~The \texttt{active} mode is in the harness sweep
+(\texttt{--modes overlay,active}); in that mode the measurement IS the MAP
+solution, so the baseline is the overlay run's raw column. The SPX pilot has
+the MAP at $4.7$ bp against $6.1$ bp raw --- edging the overlay posterior
+($5.5$ bp) with $\zeta$-std ${\sim}1.1$: fitting quotes and prediction
+jointly beats blending them after the fact, as \cref{prop:nodouble} suggests
+it should. The cross-asset active sweep rides the next full-regime run.
 
 %======================================================================
 \section{What is original here}
@@ -881,12 +894,14 @@ auto-exclusion makes double-anchoring impossible rather than discouraged.
 The diagonal update discards genuine cross-handle information by design; the
 off-diagonal blow-up of \cref{sec:case} showed why that trade is currently
 right, but a shrunk-correlation update is a live research item, not a closed
-door. The clock process noise is a fixed scalar and demonstrably cannot span
-calm and spike regimes at once ($q=30$ is the best single value, not a
-resolution --- adaptive $Q$ is the follow-up). Short-dated nodes ($\le30$ DTE)
-are dominated by quote and de-Americanization noise that the filter can
-neither model nor fix; they need their own measurement-noise policy before
-active mode is trusted there. The state is per-node: a graph-coupled filter
+door. The clock process noise is a fixed scalar; the shipped
+innovation-gated adaptive $Q$ (\cref{sec:backtest}) recovers genuine jumps,
+but it inherits the measurement's trustworthiness --- on wide-spread
+illiquid chains it deliberately stays quiet, so those names still lag real
+moves. Short-dated nodes ($\le30$ DTE) are dominated by quote and
+de-Americanization noise; the shipped $\sqrt{30/\mathrm{DTE}}$ noise floor
+sizes $R_t$ honestly there, but honest uncertainty is not signal --- the
+short end remains the filter's weakest bucket. The state is per-node: a graph-coupled filter
 (Note~14's block covariance with time dynamics) is deferred until the
 single-node filter has earned trust. And the measurement carrier is the LQD
 backbone: a displayed model whose handles disagree with the backbone's inherits
@@ -981,6 +996,10 @@ scale.\\
 $\abs{\log(F_t/F_{t-1})}$ transport distance (\cref{eq:Q} spot term).\\
 \texttt{filterResidualInflation} & on & Apply \cref{eq:resid-inflation} so a
 dense-but-contradictory cluster reads as measurement noise.\\
+\texttt{filterAdaptiveSigma} & $3$ & Innovation-gated adaptive $Q$
+(\cref{sec:backtest}): a per-handle surprise beyond this many standardized
+sigmas inflates $P^-$ by $(\zeta/\text{gate})^2$, capped; $0$ = off. Overlay
+path only (the active MAP prior precedes the measurement).\\
 \texttt{filterMaxGain} & $1.0$ & Pilot safety cap on the per-handle own-gains;
 at $1.0$ it never binds (own-gains sit in $(0,1)$ by construction).\\
 \texttt{filterResetHours} & $96$ & Maximum data gap the filter predicts
@@ -998,7 +1017,12 @@ file.\\
 MAP prior legs; the stencil identities are exact on a locally quadratic
 smile.\\
 \texttt{RESID\_INFLATION\_CAP} & $25$ & Cap on $\rho_t$ in
-\cref{eq:resid-inflation}: one broken chain cannot poison the state.\\
+\cref{eq:resid-inflation}: one broken chain cannot poison the state. Also
+caps the adaptive-$Q$ inflation factors.\\
+\texttt{SHORT\_DATED\_REF\_DAYS} & $30$ & Short-dated noise floor: the stated
+per-quote noise is scaled by $\sqrt{30/\mathrm{DTE}}$ below $30$ DTE (never
+below one), consistently in $R_t$, the active MAP weights and the posterior
+unwhitening.\\
 \texttt{INFO\_RANK\_RTOL} & $10^{-10}$ & Relative eigenvalue cutoff of
 $\calI_\theta$; small eigenvalues are clamped \emph{up}, so unidentified
 directions inflate $R$ finitely instead of exploding or vanishing.\\
