@@ -92,18 +92,27 @@ recorded there; the user explicitly confirmed the Jacobian R_t route).
   P⁻, NO second update (Prop. nodouble — the double-count guard test locks
   MAP ≡ Kalman to 1e-10 and detects the wrong architecture).
 
-**Next up (the filter arc):** **Phase 7** — the full-regime overnight run
-(19 pairs × 8 assets, per-asset foreground chunks:
-`python -m backtest.observation_filter --regime spike_aug2024 --asset X`,
-then `high_oct2022`/`low_jul2023`), add `active` to the harness sweep,
-adaptive-Q design (shock lag), the ≤30d short-dated policy, and the
-bp 10→30 default decision; then **Phase 8** — Note 15 adoption into
-`Docs/notes/15_kalman_filtering.tex` (STYLE_GUIDE hardening, gen_kalman.py
-figures off the backtest results, verified Appendix C vs
-calib/observation_filter.py, traceability table). Also: visually smoke the
-Phase-4 overlay + the active mode in-app (`.\restart.ps1`, Options →
-Observation filter, Calibrate). Unchanged from before: the 25-asset capture
-etc. (next section).
+- **Phase 7 (2026-07-04, `4574af9`) — 3-regime verdict; bp default flipped.**
+  Full run (38,181 steps; `run_filter_full.ps1`, resumable — NB tool-managed
+  background jobs get killed, the user's own PowerShell window works):
+  **F6 `filterProcessVolBpSqrtDay` 10→30 SHIPPED** (one-sided everywhere: ζ
+  std → ~1, shock lag 3–8× smaller); **F7 jacobian stays default** (2–3×
+  better contradiction rejection every regime; factors better on shocks —
+  the adaptive-Q item closes that); **F8** the filter is ~neutral on clean
+  liquid days and pays on the noisy tail (the note's success criterion). A
+  live-perf fix landed the same day (`fce3341`): seed no longer runs a hidden
+  mid fit per node; /filter curves memoized (29ms→0.06ms); FD Jacobian on the
+  opt grid.
+
+**Next up (the filter arc):** **Phase 8** — Note 15 adoption into
+`Docs/notes/15_kalman_filtering.tex` (STYLE_GUIDE hardening; update the
+note's defaults to the shipped ones — bp 30, DIAGONAL_UPDATE, λ=s_q²/P⁻ MAP
+units, noise_scale; `gen_kalman.py` figures off the 3-regime results —
+case-file gains + ζ calibration; verified Appendix C vs
+calib/observation_filter.py; traceability table). Then the pre-active-default
+work list (FINDINGS F3/F4): adaptive Q, the ≤30d policy, `active` in the
+harness sweep. Also: visually smoke the overlay + active in-app. Unchanged
+from before: the 25-asset capture etc. (next section).
 
 ### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
 
