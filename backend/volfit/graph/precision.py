@@ -102,22 +102,35 @@ def observation_precision(
     )
 
 
+#: Baseline-precision multiplier for DARK nodes (graph-LOO follow-up): a dark
+#: node's transported prior is a TARGET to be moved by propagated signal, not
+#: a lit prior corroborated by today's quotes — at full tier precision it
+#: pinned the posterior (measured: a 96 bp SPX innovation moved a dark AAPL
+#: node 0.01 bp). 0.25 mirrors the nearest-expiry tier scale; validate on the
+#: 25-asset capture before tuning further.
+DARK_BASE_SCALE = 0.25
+
+
 def baseline_precision(
     source: str,
     age_days: float = 0.0,
     transport_distance: float = 0.0,
+    dark: bool = False,
 ) -> PrecisionBreakdown:
     """All-node baseline precision from provenance tier + age + transport (plan Q5).
 
-    At the design point (active_transported, age 0, no transport) this returns the
-    legacy ``[1e6, 1e6, 1e4]`` so the Phase-2 provenance tiers are reproduced."""
+    At the design point (active_transported, age 0, no transport, lit) this
+    returns the legacy ``[1e6, 1e6, 1e4]`` so the Phase-2 provenance tiers are
+    reproduced; ``dark=True`` scales the tier by ``DARK_BASE_SCALE`` so a dark
+    target does not pin the posterior against its lit neighbours."""
     base = SOURCE_BASE.get(source, SOURCE_BASE["none"])
+    df = DARK_BASE_SCALE if dark else 1.0
     af = freshness_factor(age_days, half_life=PRIOR_AGE_HALFLIFE)
     tf = transport_factor(transport_distance)
     precision = np.clip(
-        base * af * tf * HANDLE_CONFIDENCE, BASE_PRECISION_FLOOR, BASE_PRECISION_CAP
+        base * df * af * tf * HANDLE_CONFIDENCE, BASE_PRECISION_FLOOR, BASE_PRECISION_CAP
     )
     return PrecisionBreakdown(
         precision=precision,
-        factors={"sourceBase": float(base), "priorAge": af, "transport": tf},
+        factors={"sourceBase": float(base), "priorAge": af, "transport": tf, "dark": df},
     )

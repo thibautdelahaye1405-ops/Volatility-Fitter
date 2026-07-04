@@ -275,12 +275,15 @@ def solve(
     baseline = np.vstack([p.handles for p in priors_meta])
 
     # Data-derived baseline precision per node (plan Phase 4): provenance tier x
-    # prior age x transport distance, with floors/caps.
+    # prior age x transport distance, with floors/caps. Dark nodes get the
+    # DARK_BASE_SCALE tier reduction (graph-LOO follow-up): their transported
+    # prior is the target to move, not a quote-corroborated anchor.
     base_breakdowns = [
         gprec.baseline_precision(
-            p.source, _prior_age_days(state, p.as_of), p.transport_distance
+            p.source, _prior_age_days(state, p.as_of), p.transport_distance,
+            dark=not node.lit,
         )
-        for p in priors_meta
+        for p, node in zip(priors_meta, universe.nodes)
     ]
     baseline_precision = np.vstack([b.precision for b in base_breakdowns])
 

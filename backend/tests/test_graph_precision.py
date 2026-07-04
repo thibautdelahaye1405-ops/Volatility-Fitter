@@ -95,3 +95,15 @@ def test_response_surfaces_precision_and_factors():
     dark = next(n for n in resp.nodes if n.ticker == tk and n.expiry == dark_iso)
     assert dark.obsPrecision is None  # dark node has no observation precision
     assert len(dark.baselinePrecision) == 3
+
+
+def test_dark_node_baseline_scaled():
+    """Graph-LOO follow-up: a DARK node's baseline enters at DARK_BASE_SCALE
+    tier precision (its prior is the target to move, not a quote-corroborated
+    anchor); the lit design point stays byte-identical."""
+    lit = gprec.baseline_precision("active_transported")
+    dark = gprec.baseline_precision("active_transported", dark=True)
+    assert dark.factors["dark"] == gprec.DARK_BASE_SCALE
+    assert np.allclose(dark.precision / lit.precision, gprec.DARK_BASE_SCALE)
+    # the lit design point (the legacy [1e6, 1e6, 1e4]) is untouched
+    assert np.allclose(lit.precision, np.array([1.0e6, 1.0e6, 1.0e4]))
