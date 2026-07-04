@@ -72,18 +72,38 @@ recorded there; the user explicitly confirmed the Jacobian R_t route).
   `tests/test_filter_backtest.py` (5). Results:
   `backtest/results/spike_aug2024_observation_filter.json`.
 
-**Next up (the filter arc):** (a) **finish Phase 5** — fix the ζ metric to
-include the truth-fit noise (`√(P⁺+R_truth)`), rerun the full spike regime
-(all assets/pairs; foreground chunks — background jobs get killed on this
-box: `python -m backtest.observation_filter --regime spike_aug2024`), tune
-R/Q (residual-inflation floor / noise floor / process bp) until ζ std ≲ 1,
-write `backtest/FINDINGS_observation_filter.md`; (b) Phase 6 active one-stage
-MAP (a `build_filter_prior` OperatorPriorTarget with NO gate + the
-persistence auto-exclusion in `resolve_prior_mode`), gated on (a)'s verdict;
-(c) Phases 7–8 (default flip + Note 15 adoption into Docs/notes/). Also:
-visually smoke the Phase-4 overlay in-app (`.\restart.ps1`, Options →
-Observation filter → overlay, Calibrate). Unchanged from before: the 25-asset
-capture etc. (next section).
+- **Phase 5 verdict (2026-07-04, `6463668`) — the gate PASSES.** ζ now scores
+  against `√(P⁺+R_truth)`; **DIAGONAL_UPDATE shipped** (production fix: the
+  full-covariance update let a junk curvature innovation on coarse-strike
+  EEM/EFA drag the ATM level through OFF-diagonal gains — 3–28 vol-point
+  posterior errors, worse than both baselines); summary split ≤30d/>30d.
+  8-asset pilot (666 steps, `FINDINGS_observation_filter.md`): at (jacobian,
+  bp=30, >30d) the filter is a CALIBRATED denoiser — err 7.1bp vs 7.6 raw /
+  26 gain-0, win 0.73, ζ ~ N(−0.3, 1.3); jacobian beats factors on
+  contradiction + calibration. Open: shock lag (adaptive Q), short-dated
+  (≤30d) policy, bp 10→30 default (Phase 7 after the full run).
+- **Phase 6 (2026-07-04, `f844c15`) — active one-stage MAP SHIPPED,
+  default-off.** `build_filter_prior` = the prediction as an UNGATED
+  OperatorPriorTarget (stencil legs, λ = s_q²/P⁻ in the fit's unit-weight
+  convention); hard-coded persistence auto-exclusion in `resolve_prior_mode`
+  (only the deep-tail anchor survives); `service.prior_targets` injects the
+  filter target independent of any saved prior; MAP posterior bookkeeping
+  P⁺ = G(J_totalᵀJ_total)⁺Gᵀ (all rows unwhitened by the same s_q), capped at
+  P⁻, NO second update (Prop. nodouble — the double-count guard test locks
+  MAP ≡ Kalman to 1e-10 and detects the wrong architecture).
+
+**Next up (the filter arc):** **Phase 7** — the full-regime overnight run
+(19 pairs × 8 assets, per-asset foreground chunks:
+`python -m backtest.observation_filter --regime spike_aug2024 --asset X`,
+then `high_oct2022`/`low_jul2023`), add `active` to the harness sweep,
+adaptive-Q design (shock lag), the ≤30d short-dated policy, and the
+bp 10→30 default decision; then **Phase 8** — Note 15 adoption into
+`Docs/notes/15_kalman_filtering.tex` (STYLE_GUIDE hardening, gen_kalman.py
+figures off the backtest results, verified Appendix C vs
+calib/observation_filter.py, traceability table). Also: visually smoke the
+Phase-4 overlay + the active mode in-app (`.\restart.ps1`, Options →
+Observation filter, Calibrate). Unchanged from before: the 25-asset capture
+etc. (next section).
 
 ### 🧭 SESSION WRAP (2026-07-03) — R6 on main; R3×R6 ablation; technical notes augmented
 
