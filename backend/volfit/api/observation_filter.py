@@ -60,6 +60,7 @@ from volfit.calib.precision import RMS_FLOOR
 from volfit.dynamics.ssr import ssr_of_regime
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import LQDParams
+from volfit.models.lqd.calibrate import OPT_N_POINTS
 from volfit.models.lqd.quadrature import build_slice
 
 #: v1 runs the update DIAGONALLY — per-handle scalar gains, the Note 14 graph
@@ -86,6 +87,11 @@ class NodeFilter:
     data_version: int
     session_version: int
     forward: float  # the prepared forward the state was committed at
+    #: Memoized overlay curves (post, band_lo, band_hi, pred) — the retarget
+    #: Newton solves are expensive and the live UI polls the payload per
+    #: refresh signal, so they are computed once per committed state, not per
+    #: GET (measured live: per-GET retargets made the app feel frozen).
+    curves: tuple | None = None
 
 
 def _backbone_handles(result, tau: float) -> np.ndarray:
@@ -132,7 +138,10 @@ def _measurement(
         band = service.edited_band(state, ticker, iso, prepared, "bidask")
 
         def handle_fn(theta):
-            h = atm_handles(build_slice(LQDParams.from_vector(theta)), prepared.tau)
+            # the coarse opt-grid slice: plenty for a covariance derivative,
+            # ~4x cheaper than the full display quadrature (14 builds per node)
+            slice_ = build_slice(LQDParams.from_vector(theta), n_points=OPT_N_POINTS)
+            h = atm_handles(slice_, prepared.tau)
             return np.array([h.sigma0, h.skew, h.curvature])
 
         g = handle_jacobian_fd(handle_fn, solver_diag["theta"])
@@ -239,20 +248,44 @@ def active_prediction_target(
 
 
 def _seed(
-    state: AppState, ticker: str, iso: str, key: tuple, ts: float, reason: str
+    state: AppState, ticker: str, iso: str, key: tuple, ts: float, reason: str,
+    record,
 ) -> FilterState:
-    """(Re)seed from the transported active prior (note §6.3: persistence 'may
-    provide the initial saved prior from which the first filtered state is
-    seeded'); P0 = the provenance-tier baseline covariance."""
-    prior = resolve_node_prior(state, ticker, iso)
-    cov = np.diag(1.0 / np.maximum(np.asarray(prior.precision, dtype=float), 1e-12))
+    """(Re)seed the filter state (note §6.3: persistence 'may provide the
+    initial saved prior from which the first filtered state is seeded').
+
+    With a saved prior snapshot: the transported prior via the provenance
+    hierarchy (bootstrap DISABLED — its fit_or_get(mid) branch silently runs a
+    FULL extra mid calibration per node, which made switching the filter on
+    crawl on a live universe). Without one: the committed fit's own backbone
+    handles at bootstrap-tier precision — the same information the bootstrap
+    branch would have fetched, for free."""
+    if state.active_prior(ticker) is not None:
+        prior = resolve_node_prior(state, ticker, iso, allow_bootstrap=False)
+        if prior.source in ("active_transported", "nearest_expiry_transported"):
+            cov = np.diag(
+                1.0 / np.maximum(np.asarray(prior.precision, dtype=float), 1e-12)
+            )
+            return FilterState(
+                node_key=key,
+                handle_names=FILTER_HANDLES,
+                mean=np.asarray(prior.handles, dtype=float),
+                cov=cov,
+                timestamp=ts,
+                provenance=f"seed:{prior.source}",
+                reset_reason=reason,
+            )
+    from volfit.api.graph_nodes import PRIOR_SOURCE_PRECISION_SCALE
+    from volfit.api.graph_service import GRAPH_PRECISION
+
+    precision = GRAPH_PRECISION * PRIOR_SOURCE_PRECISION_SCALE["today_bootstrap"]
     return FilterState(
         node_key=key,
         handle_names=FILTER_HANDLES,
-        mean=np.asarray(prior.handles, dtype=float),
-        cov=cov,
+        mean=_backbone_handles(record.result, record.prepared.tau),
+        cov=np.diag(1.0 / np.maximum(precision, 1e-12)),
         timestamp=ts,
-        provenance=f"seed:{prior.source}",
+        provenance="seed:today_fit",
         reset_reason=reason,
     )
 
@@ -297,7 +330,7 @@ def on_fit_commit(
     if reason is not None:
         # A (re)seed: the prior machinery already transported to the current
         # forward, so the prediction is the seed law itself (dt = 0, h = 0).
-        seeded = _seed(state, ticker, iso, key, ts_now, reason)
+        seeded = _seed(state, ticker, iso, key, ts_now, reason, record)
         q_diag, q_breakdown = process_noise(
             0.0, 0.0,
             vol_bp_sqrt_day=opts.filterProcessVolBpSqrtDay,
@@ -380,7 +413,9 @@ def _map_bookkeeping(
     noise = _typical_noise(state, ticker, iso, prepared)
 
     def handle_fn(theta):
-        h = atm_handles(build_slice(LQDParams.from_vector(theta)), prepared.tau)
+        # coarse opt-grid slice — a covariance derivative, not a display curve
+        slice_ = build_slice(LQDParams.from_vector(theta), n_points=OPT_N_POINTS)
+        h = atm_handles(slice_, prepared.tau)
         return np.array([h.sigma0, h.skew, h.curvature])
 
     g = handle_jacobian_fd(handle_fn, solver_diag["theta"])
@@ -457,9 +492,9 @@ def filter_diagnostics(state: AppState, ticker: str, expiry: str, fit_mode: str)
         return [float(v) for v in np.sqrt(np.maximum(np.diag(cov), 0.0))]
 
     pred, meas, upd = holder.prediction, holder.measurement, holder.update
-    post, band_lo, band_hi, pred_curve = _overlay_curves(
-        state, ticker, iso, fit_mode, holder
-    )
+    if holder.curves is None:  # once per committed state, not per GET
+        holder.curves = _overlay_curves(state, ticker, iso, fit_mode, holder)
+    post, band_lo, band_hi, pred_curve = holder.curves
     return FilterDiagnostics(
         active=True,
         mode=plan.mode,
