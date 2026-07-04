@@ -44,6 +44,7 @@ from volfit.calib.observation_filter import (
     FilterPrediction,
     FilterState,
     FilterUpdate,
+    build_filter_prior,
     kalman_update,
     predict,
     process_noise,
@@ -161,6 +162,82 @@ def _measurement(
     return measurement_from_factors(z, rms, n_atm, rel_spread, contaminated=contaminated)
 
 
+def _typical_noise(state: AppState, ticker: str, iso: str, prepared) -> float:
+    """The node's typical stated per-quote noise (median bid-ask half-spread,
+    floored) — the s_q that expresses the MAP prior in the fit's weighting
+    convention AND unwhitens the posterior information (one consistent value
+    for both, or the MAP algebra breaks)."""
+    from volfit.api import service
+
+    band = service.edited_band(state, ticker, iso, prepared, "bidask")
+    if band is None:
+        return 10.0 * RMS_FLOOR
+    half = np.maximum(
+        (np.asarray(band.iv_hi) - np.asarray(band.iv_lo)) / 2.0, RMS_FLOOR
+    )
+    return float(np.median(half)) if half.size else 10.0 * RMS_FLOOR
+
+
+def _prediction_from(
+    state: AppState, prev: "NodeFilter", f_now: float, ts_now: float
+) -> tuple[FilterPrediction, float]:
+    """The transported prediction law (m^-, P^-) from a previous holder —
+    shared by the overlay update and the active-MAP prior so both anchor to
+    the SAME prediction."""
+    opts = state.options()
+    h = (
+        float(np.log(f_now / prev.forward))
+        if prev.forward > 0.0 and f_now > 0.0
+        else 0.0
+    )
+    ssr = ssr_of_regime(state.dynamics_regime())
+    base_mean = transport_handles(prev.state.mean, h, ssr)
+    dt_days = max(ts_now - prev.state.timestamp, 0.0) / 86400.0
+    q_diag, q_breakdown = process_noise(
+        dt_days,
+        h,
+        vol_bp_sqrt_day=opts.filterProcessVolBpSqrtDay,
+        skew_sqrt_day=opts.filterProcessSkewSqrtDay,
+        curv_sqrt_day=opts.filterProcessCurvSqrtDay,
+        transport_scale=opts.filterTransportNoiseScale,
+    )
+    return predict(base_mean, prev.state.cov, q_diag, abs(h), q_breakdown), h
+
+
+def active_prediction_target(
+    state: AppState, ticker: str, iso: str, fit_mode: str, prepared
+):
+    """The Kalman prediction prior for the ACTIVE one-stage MAP fit (note eq.
+    active-map), or None — mode not active, no previous state, or a reset is
+    due (the fit then runs data-only and the commit reseeds). Consumed by
+    ``service.prior_targets`` as the operator block, so it reaches every
+    parametric model with no new wiring."""
+    plan = resolve_filter_mode(state.options())
+    if not plan.active:
+        return None
+    prev: NodeFilter | None = state.filter_node((ticker, iso, fit_mode))
+    if prev is None:
+        return None
+    from volfit.api import service
+
+    ts_now = float(state.snapshot(ticker).timestamp.timestamp())
+    dt_hours = max(ts_now - prev.state.timestamp, 0.0) / 3600.0
+    sv = service.session_version(state, ticker, iso)
+    if should_reset(
+        dt_hours,
+        state.options().filterResetHours,
+        quotes_edited=prev.session_version != sv,
+    ):
+        return None
+    pred, _h = _prediction_from(state, prev, float(prepared.forward), ts_now)
+    return build_filter_prior(
+        pred.mean,
+        np.diag(pred.cov),
+        prepared.tau,
+        quote_noise=_typical_noise(state, ticker, iso, prepared),
+    )
+
+
 def _seed(
     state: AppState, ticker: str, iso: str, key: tuple, ts: float, reason: str
 ) -> FilterState:
@@ -218,27 +295,35 @@ def on_fit_commit(
         )
 
     if reason is not None:
+        # A (re)seed: the prior machinery already transported to the current
+        # forward, so the prediction is the seed law itself (dt = 0, h = 0).
         seeded = _seed(state, ticker, iso, key, ts_now, reason)
-        h = 0.0  # the prior machinery already transported to the current forward
-        base_mean, base_cov, prev_ts = seeded.mean, seeded.cov, ts_now
+        q_diag, q_breakdown = process_noise(
+            0.0, 0.0,
+            vol_bp_sqrt_day=opts.filterProcessVolBpSqrtDay,
+            skew_sqrt_day=opts.filterProcessSkewSqrtDay,
+            curv_sqrt_day=opts.filterProcessCurvSqrtDay,
+            transport_scale=opts.filterTransportNoiseScale,
+        )
+        prediction = predict(seeded.mean, seeded.cov, q_diag, 0.0, q_breakdown)
         provenance = seeded.provenance
     else:
-        h = float(np.log(f_now / prev.forward)) if prev.forward > 0.0 and f_now > 0.0 else 0.0
-        ssr = ssr_of_regime(state.dynamics_regime())
-        base_mean = transport_handles(prev.state.mean, h, ssr)
-        base_cov, prev_ts = prev.state.cov, prev.state.timestamp
+        prediction, _h = _prediction_from(state, prev, f_now, ts_now)
         provenance = "update"
 
-    dt_days = max(ts_now - prev_ts, 0.0) / 86400.0
-    q_diag, q_breakdown = process_noise(
-        dt_days,
-        h,
-        vol_bp_sqrt_day=opts.filterProcessVolBpSqrtDay,
-        skew_sqrt_day=opts.filterProcessSkewSqrtDay,
-        curv_sqrt_day=opts.filterProcessCurvSqrtDay,
-        transport_scale=opts.filterTransportNoiseScale,
-    )
-    prediction = predict(base_mean, base_cov, q_diag, abs(h), q_breakdown)
+    if plan.active and reason is None:
+        # One-stage MAP (note eq. active-map): the committed fit already
+        # carried the prediction prior as residual rows — applying a second
+        # Kalman update against the same quotes would double-count them.
+        holder = _map_bookkeeping(
+            state, ticker, iso, key, record, solver_diag, prediction,
+            ts_now, f_now, dv, sv,
+        )
+        if holder is None:
+            return prev  # no solver Jacobian retained (cached path): keep state
+        state.set_filter_node(key, holder)
+        return holder
+
     measurement = _measurement(state, ticker, iso, record, solver_diag)
     pred_cov, meas_cov = prediction.cov, measurement.cov
     if DIAGONAL_UPDATE:  # per-handle scalar gains (see the constant's docstring)
@@ -271,6 +356,74 @@ def on_fit_commit(
     )
     state.set_filter_node(key, holder)
     return holder
+
+
+def _map_bookkeeping(
+    state: AppState, ticker: str, iso: str, key: tuple, record,
+    solver_diag: dict | None, prediction: FilterPrediction,
+    ts_now: float, f_now: float, dv: int, sv: int,
+) -> NodeFilter | None:
+    """Active-mode posterior bookkeeping (note eq. active-map).
+
+    The committed fit IS the one-stage MAP solution, so ``m+`` is simply its
+    backbone handles. ``P+`` comes from the FULL solver information: the
+    retained Jacobian contains the data rows PLUS the whitened prediction-
+    prior rows (weighted s_q^2/P^- in the fit's convention), and unwhitening
+    ALL rows by the same s_q lands the information at data/s_q^2 + (P^-)^{-1}
+    — exactly the posterior information (Prop. nodouble). The reported "gain"
+    is the implied per-handle information ratio 1 - P+/P-. Returns None when
+    no solver Jacobian was retained (a cached fit): the caller keeps the
+    previous state rather than double-updating."""
+    if not solver_diag or "jac" not in solver_diag:
+        return None
+    prepared = record.prepared
+    noise = _typical_noise(state, ticker, iso, prepared)
+
+    def handle_fn(theta):
+        h = atm_handles(build_slice(LQDParams.from_vector(theta)), prepared.tau)
+        return np.array([h.sigma0, h.skew, h.curvature])
+
+    g = handle_jacobian_fd(handle_fn, solver_diag["theta"])
+    z = _backbone_handles(record.result, prepared.tau)
+    meas = measurement_from_jacobian(
+        z,
+        solver_diag["jac"],
+        g,
+        solver_diag["residual"],
+        solver_diag["n_fit_rows"],
+        solver_diag["n_quotes"],
+        noise_scale=noise,
+        scale_rows=int(np.asarray(solver_diag["residual"]).size),
+        inflate=state.options().filterResidualInflation,
+    )
+    meas.breakdown["map"] = 1.0
+    p_pred = np.maximum(np.diag(prediction.cov), 1e-18)
+    p_post = np.maximum(np.diag(meas.cov), 1e-18)
+    # A posterior can never be LESS certain than its prediction: information
+    # only adds, and inconsistent data (rho > 1) should drive P+ toward P-,
+    # not beyond it. Cap per handle, rescaling rows/cols so correlations
+    # survive (the rho inflation + FD-stencil approximation can otherwise
+    # push the unwhitened information slightly past the prior).
+    capped = np.minimum(p_post, p_pred)
+    scale = np.sqrt(capped / p_post)
+    cov_post = meas.cov * np.outer(scale, scale)
+    np.fill_diagonal(cov_post, capped)
+    gain = np.clip(1.0 - capped / p_pred, 0.0, 1.0)
+    upd = FilterUpdate(
+        innovation=z - prediction.mean,  # the realized state move m+ - m-
+        innovation_cov=np.diag(p_pred),  # display-only approximation
+        gain=np.diag(gain),
+        mean=z,
+        cov=cov_post,
+    )
+    new_state = FilterState(
+        node_key=key, handle_names=FILTER_HANDLES, mean=z, cov=cov_post,
+        timestamp=ts_now, provenance="map", reset_reason=None,
+    )
+    return NodeFilter(
+        state=new_state, prediction=prediction, measurement=meas, update=upd,
+        data_version=dv, session_version=sv, forward=f_now,
+    )
 
 
 def commit_hook(state: AppState, ticker: str, iso: str, fit_mode: str, record, solver_diag):

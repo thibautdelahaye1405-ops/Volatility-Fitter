@@ -52,14 +52,28 @@ class PriorModePlan:
 
 
 def resolve_prior_mode(options: OptionsSettings) -> PriorModePlan:
-    """Map the persisted mode to the live-builder flags (design note §10)."""
+    """Map the persisted mode to the live-builder flags (design note §10).
+
+    Observation-filter auto-exclusion (Note 15 §6.3, hard-coded by design):
+    when ``observationFilterMode == "active"`` the Kalman prediction prior
+    already anchors the ATM level and local shape, so every persistence
+    builder overlapping those coordinates is DROPPED — operators (ATM/RR/BF),
+    smile factors, and the near-ATM strike anchor. Anchoring both to the same
+    previous state would count it twice (the note's invariant 3). What
+    survives is exactly what the filter state does not carry: the DEEP-TAIL
+    strike anchor (kept for any mode that had a calibration prior) and the
+    graph's dark-node baseline. There is deliberately no knob."""
     mode = options.priorPersistenceMode
+    filter_active = options.observationFilterMode == "active"
+    had_calibration_prior = mode in (
+        "strike_gap", "quote_operator", "smile_factor", "hybrid"
+    )
     return PriorModePlan(
         mode=mode,
         draw_overlay=mode != "off",
-        strike_anchor=mode == "strike_gap",
-        operators=mode in ("quote_operator", "hybrid"),
-        factors=mode == "smile_factor",
-        tail_anchor=mode == "hybrid",
+        strike_anchor=mode == "strike_gap" and not filter_active,
+        operators=mode in ("quote_operator", "hybrid") and not filter_active,
+        factors=mode == "smile_factor" and not filter_active,
+        tail_anchor=mode == "hybrid" or (filter_active and had_calibration_prior),
         graph_only=mode == "graph_only",
     )

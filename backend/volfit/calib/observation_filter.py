@@ -254,6 +254,65 @@ def should_reset(
 
 
 # -------------------------------------------------- active-MAP residual rows
+#: ATM-local stencil half-width for the active-MAP prior legs (matches the
+#: smile-factor default step; the stencil identities are EXACT on a locally
+#: quadratic smile).
+FILTER_STENCIL_H = 0.06
+
+
+def build_filter_prior(
+    mean_pred: np.ndarray,
+    var_pred: np.ndarray,
+    tau: float,
+    quote_noise: float = 1.0,
+):
+    """The Kalman prediction prior as an UNGATED OperatorPriorTarget (note eq.
+    active-map): stacking its rows onto the quote loss makes the fit the
+    one-stage MAP — the same quotes are never counted twice.
+
+    The target reuses the smile-factor stencil legs (sigma at 0, +/-h), so it
+    flows to LQD/SVI/Multi-Core-SIV through the existing ``operator_prior``
+    plumbing with no per-model wiring. Units: the filter state is
+    (sigma_atm, d sigma/dk, d^2 sigma/dk^2), the stencils measure
+    (sigma(0), 2h*skew, h^2*curvature) — exact on a locally quadratic smile —
+    so targets and variances are converted accordingly.
+
+    ``quote_noise`` expresses the prior in the FIT'S weighting convention: the
+    quote rows are (near-)unit-weighted vol errors, i.e. the true MAP
+    objective sum((e_i/s_q)^2) + sum(d_j^2/P_jj) multiplied through by s_q^2 —
+    so the consistent prior weight is lambda_j = s_q^2 / Var(O_j) with s_q the
+    typical stated per-quote noise (half-spread). Crucially there is NO
+    activation gate: the prediction prior is always on at its covariance
+    weight — that is precisely the persistence/filter distinction (note
+    SS6.3)."""
+    from volfit.calib.operators import OperatorPriorTarget
+
+    m = np.asarray(mean_pred, dtype=float)
+    v = np.maximum(np.asarray(var_pred, dtype=float), 1e-18)
+    h = FILTER_STENCIL_H
+    legs_k = np.array([-h, 0.0, h])
+    coeff = np.array([
+        [0.0, 1.0, 0.0],  # ATM        = sigma(0)
+        [-1.0, 0.0, 1.0],  # skew stencil = sigma(h) - sigma(-h)      = 2h * skew
+        [1.0, -2.0, 1.0],  # curv stencil = sigma(h)-2sigma(0)+sigma(-h) = h^2 * curv
+    ])
+    stencil_scale = np.array([1.0, 2.0 * h, h * h])
+    prior_value = stencil_scale * m
+    lam = float(quote_noise) ** 2 / (stencil_scale**2 * v)
+    names = ["filterATM", "filterSkew", "filterCurv"]
+    diagnostics = [
+        {
+            "operator": nm, "priorValue": float(pv), "obsPrecision": 0.0,
+            "requiredPrecision": 0.0, "gap": 1.0, "activeLambda": float(lb),
+        }
+        for nm, pv, lb in zip(names, prior_value, lam)
+    ]
+    return OperatorPriorTarget(
+        names=names, legs_k=legs_k, coeff=coeff, prior_value=prior_value,
+        scale=np.ones(3), active_lambda=lam, tau=float(tau),
+        diagnostics=diagnostics,
+    )
+
 def prediction_prior_residual(
     model_handles: np.ndarray,
     mean_pred: np.ndarray,

@@ -280,6 +280,38 @@ class PriorTargets:
 
 
 def prior_targets(
+    state: AppState,
+    ticker: str,
+    iso: str,
+    k: np.ndarray,
+    weights: np.ndarray | None,
+    prepared,
+    fit_mode: str = "mid",
+) -> PriorTargets:
+    """Persistence targets + the observation-filter prediction prior (Note 15).
+
+    The persistence targets come from ``_persistence_targets`` (mode-routed,
+    with the active-filter auto-exclusion already applied by
+    ``resolve_prior_mode``). In filter mode ``active`` the Kalman prediction
+    prior is injected as the operator block (an ungated OperatorPriorTarget,
+    eq. active-map) — it is independent of any SAVED persistence prior, so it
+    applies even when no prior snapshot is fetched; the surviving deep-tail
+    anchor rides alongside it."""
+    targets = _persistence_targets(state, ticker, iso, k, weights, prepared)
+    if state.options().observationFilterMode == "active":
+        from volfit.api import observation_filter as ofilt
+
+        ft = ofilt.active_prediction_target(state, ticker, iso, fit_mode, prepared)
+        if ft is not None:
+            targets = PriorTargets(
+                prior_anchor=targets.prior_anchor,
+                operator_prior=ft,  # persistence operators are excluded in active
+                prior_var_swap=targets.prior_var_swap,
+            )
+    return targets
+
+
+def _persistence_targets(
     state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared
 ) -> PriorTargets:
     """Resolve the active prior-persistence targets for a node (design note §10).
@@ -343,18 +375,21 @@ def prior_targets(
         return PriorTargets(operator_prior=target, prior_var_swap=pvs)
 
     # operator / hybrid: the signed quote-operator prior (ATM/RR/BF; design note §5).
-    budget = (options.priorOperatorStrengthPct / 100.0) * sum_w
-    target, vs = build_operator_prior(
-        moved.implied_w, node.tau, prepared.tau, k, weights, budget,
-        op_set=list(options.priorOperatorSet),
-        collar_sign=options.collarSign,
-        required_precision=options.priorOperatorRequiredPrecision,
-        gap_exponent=options.priorOperatorGapExponent,
-        bandwidth=options.priorOperatorBandwidth,
-    )
+    # Guarded: under the active-filter auto-exclusion only the tail anchor survives.
+    target = None
     pvs = None
-    if vs.active and vs.weight > 0.0:
-        pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
+    if plan.operators:
+        budget = (options.priorOperatorStrengthPct / 100.0) * sum_w
+        target, vs = build_operator_prior(
+            moved.implied_w, node.tau, prepared.tau, k, weights, budget,
+            op_set=list(options.priorOperatorSet),
+            collar_sign=options.collarSign,
+            required_precision=options.priorOperatorRequiredPrecision,
+            gap_exponent=options.priorOperatorGapExponent,
+            bandwidth=options.priorOperatorBandwidth,
+        )
+        if vs.active and vs.weight > 0.0:
+            pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
     anchor = None
     if plan.tail_anchor:
         # hybrid (design note §7): a residual deep-tail strike anchor only where no
@@ -383,7 +418,7 @@ def prior_diagnostics(state: AppState, ticker: str, iso: str, fit_mode: str = "m
         prepared = prepared_quotes(state, ticker, expiry)
         k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
         weights = resolve_weights(state.fit_settings().weightScheme, k, w)
-        pt = prior_targets(state, ticker, iso, k, weights, prepared)
+        pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
     except Exception:  # noqa: BLE001 — diagnostics are advisory, must never 500
         return PriorDiagnostics(mode=mode, active=False)
     ops = [
@@ -445,7 +480,7 @@ def display_overlay(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pt = prior_targets(state, ticker, iso, k, weights, prepared)
+    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
     cal_floor = None
     if enforce_calendar and prev_display is not None:
         # Confine the floor to THIS expiry's traded log-moneyness range: outside
@@ -500,7 +535,7 @@ def _compute_fit(
         weights = resolve_weights(settings.weightScheme, k, w)
         band = edited_band(state, ticker, iso, prepared, fit_mode)
         vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-        pt = prior_targets(state, ticker, iso, k, weights, prepared)
+        pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
         # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit data-only
         # first so the data-fitted level/shape is the seed, then refit with the gated
         # prior initialized from it. Single-node path only (init is None); the
@@ -1142,7 +1177,7 @@ def fit_surface_slice(
     weights = resolve_weights(settings.weightScheme, k, w)
     band = edited_band(state, ticker, iso, prepared, fit_mode)
     vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pt = prior_targets(state, ticker, iso, k, weights, prepared)
+    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
     return calibrate_slice(
         k,
         w,

@@ -188,14 +188,27 @@ def measurement_from_jacobian(
     inflate: bool = True,
     inflation_cap: float = RESID_INFLATION_CAP,
     contaminated: bool = False,
+    scale_rows: int | None = None,
 ) -> FilterMeasurement:
     """The Jacobian route (note eq. cov-delta + resid-inflation), audited.
 
     ``noise_scale`` is the stated per-quote noise std in vol units (bid-ask
     half-spread with a floor / haircut; scalar or per data row) — see the
-    module docstring UNITS note. 1.0 means the rows already carry 1/noise."""
+    module docstring UNITS note. 1.0 means the rows already carry 1/noise.
+
+    ``scale_rows`` (default: the fit rows) is how many leading rows the noise
+    divides. The active-MAP posterior bookkeeping passes the FULL row count
+    with a scalar noise: the solver Jacobian then contains the whitened
+    prediction-prior rows (weighted s_q^2/P^- in the fit's convention), and
+    dividing everything by s_q lands the information at data/s_q^2 + 1/P^- —
+    i.e. the returned covariance IS the MAP posterior covariance. The chi^2
+    inflation always reads the FIT rows only."""
     z = np.asarray(handles, dtype=float)
-    jac, res = _scale_data_rows(solver_jac, residual, n_fit_rows, noise_scale)
+    jac, res = _scale_data_rows(
+        solver_jac, residual,
+        n_fit_rows if scale_rows is None else scale_rows,
+        noise_scale,
+    )
     info = information_matrix(jac)
     r_x, n_clamped = covariance_from_information(handle_jac, info)
     rho = (
