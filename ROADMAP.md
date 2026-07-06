@@ -212,7 +212,12 @@ PHASE 1 COMPLETE).** The frontend had ZERO tests; now:
   when a CI exists.
 
 **Quote-derived error bars SHIPPED (same evening; Phase-1 follow-up; suite
-959 passed, 1 skipped).** Every calibrated smile now shows "error bars from
+958 passed, 1 skipped — the `graph_update_1k` perf rail busted its budget
+ONLY under the user's concurrent benchmark-sweep CPU load [dense-BLAS
+contention; it passed both earlier full runs today; all other rails 1–52% of
+budget under load] — RE-VERIFY `-m perf` after the sweep. Also found + killed
+24 orphaned spawn workers accumulated by the racy `shutdown(wait=False)`;
+fit_pool now joins on shutdown).** Every calibrated smile now shows "error bars from
 the quotes" — the Vola-parity feature, and it was nearly free: the Note 15 §4
 measurement machinery (solver Jacobian → R_x = G(JᵀWJ+Λ)⁺Gᵀ with the bid-ask
 half-spread as stated noise) already existed; it just only ran with the
