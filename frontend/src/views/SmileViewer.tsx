@@ -282,6 +282,9 @@ export default function SmileViewer() {
             filterBandLo={filterDiag?.postBandLo ?? null}
             filterBandHi={filterDiag?.postBandHi ?? null}
             filterPred={filterDiag?.predCurve ?? null}
+            fitBandHalf={
+              smile.diagnostics.atmVolStd != null ? 1.96 * smile.diagnostics.atmVolStd : null
+            }
           />
         );
       case "stackeddensity":

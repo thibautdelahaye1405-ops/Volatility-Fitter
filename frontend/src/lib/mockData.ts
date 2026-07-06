@@ -40,6 +40,11 @@ export interface SmileDiagnostics {
   varSwapVol: number;
   /** Weighted RMS vol error of the fit (decimal vol; rendered as a percentage). */
   rmsError: number;
+  /** Quote-derived 1σ handle uncertainty (fit Jacobian + bid-ask noise);
+   *  null/absent when no calibration or the measurement failed. */
+  atmVolStd?: number | null;
+  skewStd?: number | null;
+  curvStd?: number | null;
 }
 
 /** One displayed-model hyperparameter as a label/value pair (LQD degree, cores). */

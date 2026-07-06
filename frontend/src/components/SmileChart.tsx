@@ -59,6 +59,10 @@ interface SmileChartProps {
   filterBandLo?: SmilePoint[] | null;
   filterBandHi?: SmilePoint[] | null;
   filterPred?: SmilePoint[] | null;
+  /** Quote-derived fit confidence half-width (vol units, e.g. 1.96·σ_atm from
+   *  the fit's own Jacobian + bid-ask noise): a subtle accent band around the
+   *  current fit — "error bars from the quotes". */
+  fitBandHalf?: number | null;
 }
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
@@ -123,6 +127,7 @@ export default function SmileChart({
   filterBandLo = null,
   filterBandHi = null,
   filterPred = null,
+  fitBandHalf = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -225,6 +230,14 @@ export default function SmileChart({
   };
   const graphBandPath = useMemo(() => bandPathOf(graphBandLo, graphBandHi), [graphBandLo, graphBandHi, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
   const filterBandPath = useMemo(() => bandPathOf(filterBandLo, filterBandHi), [filterBandLo, filterBandHi, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fit confidence band: the current fit shifted by ±the quote-derived
+  // ATM-level half-width (a level band — the uncertainty IS the ATM handle's).
+  const fitBandPath = useMemo(() => {
+    if (fitBandHalf === null || fitBandHalf <= 0 || model.length === 0) return "";
+    const lo = model.map((p) => ({ k: p.k, vol: p.vol - fitBandHalf }));
+    const hi = model.map((p) => ({ k: p.k, vol: p.vol + fitBandHalf }));
+    return bandPathOf(lo, hi);
+  }, [model, fitBandHalf, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // X ticks: nice values in display units, placed directly on the display scale.
   const xTicks = useMemo(
@@ -310,6 +323,11 @@ export default function SmileChart({
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-5 rounded bg-accent-400" /> Current fit
         </span>
+        {fitBandPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-5 rounded bg-accent-400/15" /> ±1.96σ quotes
+          </span>
+        )}
         {prior.length > 0 && (
           <span className="flex items-center gap-1.5">
             <span className="h-0 w-5 border-t-2 border-dashed border-slate-500" /> Prior
@@ -523,6 +541,13 @@ export default function SmileChart({
                       r={2} fill="rgb(34 211 238 / 0.85)" pointerEvents="none" />
                   );
                 })}
+
+                {/* Quote-derived confidence band around the current fit
+                    (±1.96·σ_atm from the fit's own Jacobian + bid-ask noise). */}
+                {fitBandPath !== "" && (
+                  <path d={fitBandPath} fill="var(--color-accent-400)" fillOpacity={0.09}
+                    stroke="none" pointerEvents="none" />
+                )}
 
                 {/* Current model fit: accent */}
                 <path d={modelPath} fill="none" stroke="var(--color-accent-400)"

@@ -17,7 +17,7 @@ from datetime import date
 
 import numpy as np
 
-from volfit.api import fit_pool, history
+from volfit.api import fit_pool, fit_uncertainty, history
 from volfit.api.fit_models import DisplayFit, _max_iv_error
 from volfit.calib.fit_task import OverlaySettings, SliceFitTask, run_slice_fit
 from volfit.models.sigmoid.calibrate import WING_PENALTY_BASE
@@ -52,7 +52,6 @@ from volfit.calib.calendar import (
     variance_floor_grid_from,
     variance_floor_targets,
 )
-from volfit.api.filter_mode import resolve_filter_mode
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.calib.factors import build_factor_prior
 from volfit.calib.operators import (
@@ -554,11 +553,11 @@ def _slice_task(
             wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
         )
 
-    # Observation filter (Note 15): retain the solver's solution Jacobian /
-    # residual so the commit hook can build the Jacobian R_t without a second
-    # fit. Pure side-channel; False when the filter is off or there is no fit.
-    want_diag = with_fit and resolve_filter_mode(state.options()).enabled
-    return SliceFitTask(calibrate=calibrate, prepass=prepass, overlay=overlay, want_diag=want_diag)
+    # Retain the solver's solution Jacobian / residual on EVERY fit (pure
+    # side-channel, the fit itself is byte-identical): it feeds the quote-
+    # derived error bars (api/fit_uncertainty) always, and the observation
+    # filter's commit hook when the filter is on (which self-gates on mode).
+    return SliceFitTask(calibrate=calibrate, prepass=prepass, overlay=overlay, want_diag=with_fit)
 
 
 def display_overlay(
@@ -635,8 +634,9 @@ def _compute_fit(
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
-    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory
-        from volfit.api import observation_filter
+    fit_uncertainty.store(state, ticker, iso, fit_mode, key, record, outcome.solver_diag)
+    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory,
+        from volfit.api import observation_filter  # self-gates on the filter mode
 
         observation_filter.commit_hook(
             state, ticker, iso, fit_mode, record, outcome.solver_diag
@@ -1099,6 +1099,12 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
     )
     anchor_model = model_curve(anchor_base) if anchor_base is not None else None
 
+    # Quote-derived error bars of the DISPLAYED (frozen) calibration —
+    # (σ_atm, σ_skew, σ_curv) from the fit's own Jacobian + bid-ask noise
+    # (api/fit_uncertainty; advisory, None when unavailable).
+    stds = fit_uncertainty.handle_stds(state, ticker, iso, fit_mode)
+    atm_std, skew_std, curv_std = stds if stds is not None else (None, None, None)
+
     if record.display is not None:
         # Non-LQD overlay: numeric handles/var-swap/Lee; A_L/A_R have no analogue.
         d = record.display
@@ -1112,6 +1118,9 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             leeRight=d.lee_right,
             varSwapVol=float(np.sqrt(d.var_swap_w / prepared.tau)),
             rmsError=rms_error,
+            atmVolStd=atm_std,
+            skewStd=skew_std,
+            curvStd=curv_std,
         )
     else:
         handles = atm_handles(slice_, prepared.tau)
@@ -1127,6 +1136,9 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             leeRight=lee_right,
             varSwapVol=float(np.sqrt(slice_.var_swap_strike() / prepared.tau)),
             rmsError=rms_error,
+            atmVolStd=atm_std,
+            skewStd=skew_std,
+            curvStd=curv_std,
         )
     # Every prepared quote is listed (excluded dimmed by the UI); an amended
     # quote shows its overridden mid, bid/ask stay the market band.
@@ -1261,8 +1273,9 @@ def fit_and_commit_slice(
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
-    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory
-        from volfit.api import observation_filter
+    fit_uncertainty.store(state, ticker, iso, fit_mode, key, record, outcome.solver_diag)
+    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory,
+        from volfit.api import observation_filter  # self-gates on the filter mode
 
         observation_filter.commit_hook(
             state, ticker, iso, fit_mode, record, outcome.solver_diag

@@ -139,12 +139,18 @@ def execute(task):
 
 
 def shutdown() -> None:
-    """Tear the pool down (app lifespan close / interpreter exit)."""
+    """Tear the pool down (app lifespan close / interpreter exit).
+
+    ``wait=True``: a fire-and-forget shutdown at interpreter exit races the
+    process teardown on Windows and STRANDS spawn workers (observed: dozens of
+    orphaned ``multiprocessing.spawn`` pythons accumulated across sessions).
+    Workers are idle between tasks, so the join is quick; in-flight fits are
+    cancelled first."""
     global _pool
     with _lock:
         pool, _pool = _pool, None
     if pool is not None:
-        pool.shutdown(wait=False, cancel_futures=True)
+        pool.shutdown(wait=True, cancel_futures=True)
 
 
 def _reset_for_tests() -> None:

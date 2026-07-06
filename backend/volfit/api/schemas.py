@@ -564,6 +564,13 @@ class SmileDiagnostics(BaseModel):
     leeRight: float
     varSwapVol: float
     rmsError: float  # weighted RMS vol error of the fit (decimal vol; UI shows %)
+    #: Quote-derived 1σ uncertainty of the LQD-backbone handles (Note 15 §4:
+    #: the solver's solution Jacobian propagated through the handle map, with
+    #: the bid-ask half-spread as the stated noise) — the chart's error bars.
+    #: None when no calibration / the measurement failed (advisory channel).
+    atmVolStd: float | None = None
+    skewStd: float | None = None
+    curvStd: float | None = None
 
 
 class ModelParam(BaseModel):

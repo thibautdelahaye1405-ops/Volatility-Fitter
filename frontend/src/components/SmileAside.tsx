@@ -36,7 +36,14 @@ export default function SmileAside() {
   const d = smile?.diagnostics;
   const diagnostics: { label: string; value: string }[] = d
     ? [
-        { label: "ATM vol", value: formatPct(d.atmVol) },
+        {
+          label: "ATM vol",
+          // Quote-derived 1σ error bar (the fit's own Jacobian + bid-ask noise).
+          value:
+            d.atmVolStd != null
+              ? `${formatPct(d.atmVol)} ±${formatPct(d.atmVolStd, 2)}`
+              : formatPct(d.atmVol),
+        },
         { label: "Skew", value: fixed(d.skew, 3) },
         { label: "Curvature", value: fixed(d.curvature, 2) },
         { label: "A_L (left wing)", value: fixed(d.aLeft, 3) },

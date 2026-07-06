@@ -211,6 +211,29 @@ PHASE 1 COMPLETE).** The frontend had ZERO tests; now:
   against a live synthetic backend (assert data actually renders), CI wiring
   when a CI exists.
 
+**Quote-derived error bars SHIPPED (same evening; Phase-1 follow-up; suite
+959 passed, 1 skipped).** Every calibrated smile now shows "error bars from
+the quotes" — the Vola-parity feature, and it was nearly free: the Note 15 §4
+measurement machinery (solver Jacobian → R_x = G(JᵀWJ+Λ)⁺Gᵀ with the bid-ask
+half-spread as stated noise) already existed; it just only ran with the
+filter on.
+
+- `solver_diag` is now retained on EVERY fit (`_slice_task` want_diag always;
+  pure side-channel, fits byte-identical; the filter commit hook self-gates
+  on mode so filter state is NOT created when off — test-locked). New
+  `api/fit_uncertainty.py` computes + caches the measurement per fit key at
+  commit (advisory, never raises); records without one (pre-feature cache)
+  degrade to the factors route lazily on read.
+- `SmileDiagnostics` gains `atmVolStd`/`skewStd`/`curvStd` (None-safe); the
+  smile payload reports the DISPLAYED (frozen) fit's uncertainty — a stale
+  node keeps its committed σ (keyed by the calibrated pointer).
+- UI: SmileChart draws a subtle accent band = current fit ±1.96·σ_atm (level
+  band; legend "±1.96σ quotes"); SmileAside shows "ATM 20.5% ±0.15%".
+  `tests/test_fit_uncertainty.py` (5).
+- Follow-ups: surface σ in the Quality dashboard + exports; per-model handle
+  maps (today the LQD backbone prices the uncertainty for overlays too, like
+  the filter); an Options toggle if anyone wants the band off.
+
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
 All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).
