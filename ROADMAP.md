@@ -63,6 +63,33 @@ nodes). First item done on **main** (suite **931 passed, 1 skipped**; ruff clean
   CalibrationStatus for the UI, move LV response assembly off the GIL if 25-
   asset runs need it.
 
+**Quality dashboard SHIPPED (same evening; commercial-MVP arc, item 2; suite
+938 passed, 1 skipped; strict-TS + Vite green).** New **Quality** workspace
+tab = the universe publish-readiness screen:
+
+- **Backend `GET /quality`** (`api/quality.py` + `schemas_quality.py` +
+  `routers/quality.py`): per lit node — calibration-consistent weighted RMS
+  (same `_node_rms_terms` basis as the viewers), max-IV bp, ATM/skew, Lee wing
+  slopes vs the ≤2 bound, adjacent-expiry calendar convex-order violation
+  (LQD backbone slices), staleness, var-swap/filter flags; per ticker —
+  pooled surface RMS + the cached LV response health (rmsIvErrorBp,
+  arbitrageFree, calendarViolations, min-density); summary tiles + a
+  publish-ready rule (hasFit ∧ ¬stale ∧ leeOk ∧ calendarOk ∧ RMS ≤
+  `rms_budget_bp`, default 50). **STRICTLY no fit on read** — records via
+  calibrated ptr + fit cache, LV via affine ptr + cache, filter via the
+  memoized accessor; test-locked incl. "GET creates zero pointers" both gated
+  and ungated (`tests/test_quality.py`, 6 tests).
+- **Frontend**: `views/QualityViewer.tsx` + `state/useQuality.ts` (refetches
+  on the shared view-version = calibration epoch/spot), headline tiles,
+  per-ticker rollup with LV cell, exception-first sortable node table with
+  "exceptions only" filter; live-only offline card. Tab wired in `App.tsx`.
+- Smoked end-to-end (fetch → calibrate → report: 12/12 ready, median 3.4bp);
+  the smoke also exercised the fit-pool BrokenProcessPool inline-fallback in
+  the wild (stdin parent can't spawn on Windows — real entry points can).
+- Dashboard follow-ups: drill-in to the Parametric tab on row click, prior
+  activation column (needs a cheap cached signal), butterfly g-metric for
+  overlay models, CSV/report export (arc item c).
+
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
 All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).

@@ -12,6 +12,7 @@ from volfit.api.routers.history import router as history_router
 from volfit.api.routers.localvol import router as localvol_router
 from volfit.api.routers.massive_iv import router as massive_iv_router
 from volfit.api.routers.priors import router as priors_router
+from volfit.api.routers.quality import router as quality_router
 from volfit.api.routers.scenario import router as scenario_router
 from volfit.api.routers.settings import router as settings_router
 from volfit.api.routers.smiles import router as smiles_router
@@ -38,6 +39,7 @@ ALL_ROUTERS = (
     localvol_router,
     massive_iv_router,
     priors_router,
+    quality_router,
     scenario_router,
     settings_router,
     spot_router,
@@ -61,6 +63,7 @@ __all__ = [
     "localvol_router",
     "massive_iv_router",
     "priors_router",
+    "quality_router",
     "scenario_router",
     "settings_router",
     "smiles_router",

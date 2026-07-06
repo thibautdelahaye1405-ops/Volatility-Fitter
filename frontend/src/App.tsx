@@ -10,6 +10,7 @@ import LocalVolViewer from "./views/LocalVolViewer";
 import ForwardsViewer from "./views/ForwardsViewer";
 import OptionsViewer from "./views/OptionsViewer";
 import GraphViewer from "./views/GraphViewer";
+import QualityViewer from "./views/QualityViewer";
 import UniverseManager from "./views/UniverseManager";
 import ViewSettingsViewer from "./views/ViewSettingsViewer";
 import { SmileSessionProvider } from "./state/smileSession";
@@ -27,6 +28,7 @@ export type TabId =
   | "forwards"
   | "options"
   | "graph"
+  | "quality"
   | "universe"
   | "view";
 
@@ -41,6 +43,7 @@ export const TABS: TabDef[] = [
   { id: "forwards", label: "Forwards" },
   { id: "options", label: "Options" },
   { id: "graph", label: "Graph" },
+  { id: "quality", label: "Quality" },
   { id: "universe", label: "Universe" },
   { id: "view", label: "View" },
 ];
@@ -64,6 +67,7 @@ export default function App() {
           <ErrorBoundary key={activeTab} label={TABS.find((t) => t.id === activeTab)?.label}>
             {activeTab === "parametric" && <SmileViewer />}
             {activeTab === "localvol" && <LocalVolViewer />}
+            {activeTab === "quality" && <QualityViewer />}
             {activeTab === "universe" && <UniverseManager />}
             {activeTab === "forwards" && <ForwardsViewer />}
             {activeTab === "options" && <OptionsViewer />}
