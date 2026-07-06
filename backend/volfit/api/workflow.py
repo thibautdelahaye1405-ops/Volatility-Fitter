@@ -261,28 +261,34 @@ def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     calendar-coupled per ticker (``_coupled_ticker_items``); else they are
     independent per node. False if a job is already running.
 
-    The parametric stage runs its per-ticker groups CONCURRENTLY: each group's
-    thunks ship their slice fits to the fit process pool (``fit_pool.pooled_thunk``)
+    Both stages run their per-ticker groups CONCURRENTLY: each group's thunks
+    ship their CPU-heavy fits — the parametric slice fits AND the ticker's LV
+    (affine) calibration — to the fit process pool (``fit_pool.pooled_thunk``)
     while the warm-start chain stays sequential inside its group, so a
     multi-ticker Calibrate scales with the configured workers
     (VOLFIT_CALIB_WORKERS; 1 = the historical serial behaviour, byte-identical
-    fits either way). The LV stage keeps the historical serial order after a
-    barrier — the affine fits run in-process (Numba) and are not pooled yet."""
+    fits either way). The stage barrier is kept: LV starts only after every
+    parametric group finished (its cold-start seed reads the LQD fits)."""
     _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
     workers = fit_pool.configured_workers()
-    groups = []
-    for ticker, items in _parametric_groups(state, lit_nodes(state), fit_mode):
-        if workers > 1:  # background work: slice fits are pool-eligible
-            items = [(label, phase, fit_pool.pooled_thunk(t)) for label, phase, t in items]
-        groups.append((ticker, items))
+
+    def pooled(items):  # background work: the heavy fits are pool-eligible
+        if workers <= 1:
+            return items
+        return [(label, phase, fit_pool.pooled_thunk(t)) for label, phase, t in items]
+
+    groups = [
+        (ticker, pooled(items))
+        for ticker, items in _parametric_groups(state, lit_nodes(state), fit_mode)
+    ]
     stages: list[list[tuple[str, list]]] = [groups]
     if state.options().localVolEnabled:
-        lv_items = [
-            (f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode))
+        lv_groups = [
+            (ticker, pooled([(f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode))]))
             for ticker in _lit_tickers(state)
         ]
-        if lv_items:
-            stages.append([("LV", lv_items)])
+        if lv_groups:
+            stages.append(lv_groups)
     if workers > 1 and groups:
         fit_pool.prewarm()  # workers import volfit while the de-Am prep runs
     return state.calibration_jobs.start_stages(stages, workers=workers)

@@ -212,6 +212,37 @@ def test_pooled_execute_matches_inline():
         fit_pool._reset_for_tests()
 
 
+def test_affine_pooled_matches_inline():
+    """The LV (affine) surface calibration crosses the pool byte-identically:
+    two fresh states (same cold-start conditions), one fit inline and one via a
+    real spawn pool, must produce EXACTLY the same response — and the pooled
+    run must genuinely use the pool (no silent inline fallback)."""
+    import os
+
+    from volfit.api.affine_fit import calibrate_affine_surface
+    from volfit.api.schemas_affine import AffineFitRequest
+
+    inline = calibrate_affine_surface(
+        AppState(REF_DATE), TICKER, AffineFitRequest(fitMode="mid")
+    )
+
+    os.environ["VOLFIT_CALIB_WORKERS"] = "2"
+    fit_pool._reset_for_tests()
+    try:
+        with fit_pool.pooled():
+            pooled = calibrate_affine_surface(
+                AppState(REF_DATE), TICKER, AffineFitRequest(fitMode="mid")
+            )
+        assert fit_pool._disabled is False and fit_pool._pool is not None
+        assert pooled.localVol == inline.localVol  # nodal vols, exact
+        assert pooled.rmsIvErrorBp == inline.rmsIvErrorBp
+        assert pooled.nEvals == inline.nEvals
+        assert pooled.model_dump() == inline.model_dump()  # the whole response
+    finally:
+        os.environ["VOLFIT_CALIB_WORKERS"] = "1"
+        fit_pool._reset_for_tests()
+
+
 def test_interactive_execute_never_touches_the_pool():
     """Outside a ``pooled()`` context (single-node Calibrate on a request
     thread, autoCalibrate refits) the fit runs inline and the pool is never
@@ -241,25 +272,44 @@ def _fit_vectors(state: AppState) -> dict[tuple[str, str], np.ndarray]:
     return out
 
 
+def _affine_hits(state: AppState) -> dict[str, object]:
+    """Per-ticker committed LV responses (via the calibrated pointer)."""
+    from volfit.api import affine_fit, workflow
+
+    out: dict[str, object] = {}
+    for ticker in {t for t, _ in workflow.lit_nodes(state)}:
+        ptr = state.get_affine_ptr(ticker)
+        if ptr is not None:
+            out[ticker] = affine_fit._cache(state)[ptr]
+    return out
+
+
 def test_calibrate_all_concurrent_groups_match_serial(monkeypatch):
     """THE identity gate: calibrate_all with concurrent per-ticker groups (3 job
     threads, pool suppressed so fits run inline under the GIL) commits exactly
-    the same parameters for every lit node as the historical serial runner —
+    the same parametric fits AND LV surfaces as the historical serial runner —
     grouping, warm-start chains and concurrent AppState commits change nothing."""
     from volfit.api import workflow
 
+    def make_state() -> AppState:
+        state = AppState(REF_DATE)
+        state.set_options(state.options().model_copy(update={"localVolEnabled": True}))
+        return state
+
     monkeypatch.setenv("VOLFIT_CALIB_WORKERS", "1")
-    serial = AppState(REF_DATE)
+    serial = make_state()
     assert workflow.calibrate_all(serial)
-    serial.calibration_jobs.join(120.0)
+    serial.calibration_jobs.join(240.0)
     reference = _fit_vectors(serial)
+    lv_reference = _affine_hits(serial)
     assert len(reference) >= 8  # 3 synthetic tickers x 4 expiries
+    assert len(lv_reference) == 3  # one LV surface per ticker
 
     monkeypatch.setenv("VOLFIT_CALIB_WORKERS", "3")
     monkeypatch.setattr(fit_pool, "_get_pool", lambda: None)  # inline, threads only
-    parallel = AppState(REF_DATE)
+    parallel = make_state()
     assert workflow.calibrate_all(parallel)
-    parallel.calibration_jobs.join(120.0)
+    parallel.calibration_jobs.join(240.0)
     status = parallel.calibration_jobs.status()
     assert status.error == "" and status.done == status.total
 
@@ -267,3 +317,8 @@ def test_calibrate_all_concurrent_groups_match_serial(monkeypatch):
     assert set(got) == set(reference)
     for key, vector in reference.items():
         np.testing.assert_array_equal(got[key], vector)
+    lv_got = _affine_hits(parallel)
+    assert set(lv_got) == set(lv_reference)
+    for ticker, hit in lv_reference.items():
+        assert lv_got[ticker].localVol == hit.localVol
+        assert lv_got[ticker].model_dump() == hit.model_dump()

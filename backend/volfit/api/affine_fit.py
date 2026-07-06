@@ -25,13 +25,17 @@ on an actual fit request, never on the smile hot path.
 
 from __future__ import annotations
 
+import threading
+
 import numpy as np
 from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantile)
 
+from volfit.api import fit_pool
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
 from volfit.api.state import AppState
+from volfit.calib.fit_task import AffineFitTask
 from volfit.calib.operators import hybrid_tail_deltas
 from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.weights import resolve_weights
@@ -40,7 +44,6 @@ from volfit.models.localvol import (
     AffineVarianceSurface,
     OptionQuote,
     VarSwapQuote,
-    calibrate_affine,
     varswap_const,
     varswap_weights,
 )
@@ -247,13 +250,27 @@ def _parametric_seed(
 #: to the perf rails and a future "warm-started / N evals" UI cue.
 _LAST_DIAG_ATTR = "_affine_last_diag"
 
+#: Guards the lazy creation of the AppState side-dicts below: the LV stage of
+#: the background Calibrate runs its per-ticker items on concurrent job
+#: threads, and an unguarded getattr/setattr pair could lose one thread's
+#: freshly created dict. Per-key writes are per-ticker (disjoint) and atomic
+#: under the GIL; only the attach needs the lock.
+_side_dict_lock = threading.Lock()
+
+
+def _side_dict(state: AppState, attr: str) -> dict:
+    cache = getattr(state, attr, None)
+    if cache is None:
+        with _side_dict_lock:
+            cache = getattr(state, attr, None)
+            if cache is None:
+                cache = {}
+                setattr(state, attr, cache)
+    return cache
+
 
 def _record_diagnostics(state: AppState, ticker: str, diag) -> None:
-    cache = getattr(state, _LAST_DIAG_ATTR, None)
-    if cache is None:
-        cache = {}
-        setattr(state, _LAST_DIAG_ATTR, cache)
-    cache[ticker] = diag
+    _side_dict(state, _LAST_DIAG_ATTR)[ticker] = diag
 
 
 def last_affine_diagnostics(state: AppState, ticker: str):
@@ -270,11 +287,7 @@ _EXP_DIAG_ATTR = "_affine_expiry_diag"
 
 
 def _record_expiry_diagnostics(state: AppState, ticker: str, diags) -> None:
-    cache = getattr(state, _EXP_DIAG_ATTR, None)
-    if cache is None:
-        cache = {}
-        setattr(state, _EXP_DIAG_ATTR, cache)
-    cache[ticker] = diags
+    _side_dict(state, _EXP_DIAG_ATTR)[ticker] = diags
 
 
 def last_affine_expiry_diagnostics(state: AppState, ticker: str):
@@ -978,11 +991,15 @@ def _fit(
     surface0 = AffineVarianceSurface(
         t_nodes=t_nodes, x_nodes=x_nodes, theta=theta0, left_extrap_a=a_init,
     )
-    cal = calibrate_affine(
-        surface0,
-        options,
-        x_grid,
-        t_grid,
+    # The heavy LSQ (hundreds of Dupire marches) as ONE pure task: a background
+    # Calibrate thunk ships it to the fit process pool (volfit.api.fit_pool),
+    # a sync/request-thread call runs it inline — byte-identical either way.
+    # Gather (above) and response assembly (below) stay main-side.
+    cal = fit_pool.execute(AffineFitTask(calibrate=dict(
+        surface0=surface0,
+        options=options,
+        x_grid=x_grid,
+        t_grid=t_grid,
         varswaps=varswaps,
         baskets=prior_baskets,
         varswap_k_lo=_VARSWAP_K_LO,
@@ -1008,7 +1025,7 @@ def _fit(
         engine=engine,  # Stage 6′: Numba vectorized-Thomas march when available
         gn=gn,  # Stage 5 (revisited): matrix-free GN (opt-in, default trf)
         gn_lsmr_tol=gn_lsmr_tol,
-    )
+    )))
     _record_diagnostics(state, ticker, cal.diagnostics)
 
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
@@ -1177,11 +1194,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
 
 
 def _cache(state: AppState) -> dict:
-    cache = getattr(state, _CACHE_ATTR, None)
-    if cache is None:
-        cache = {}
-        setattr(state, _CACHE_ATTR, cache)
-    return cache
+    return _side_dict(state, _CACHE_ATTR)
 
 
 def affine_dirty(state: AppState, ticker: str, request: AffineFitRequest) -> bool:

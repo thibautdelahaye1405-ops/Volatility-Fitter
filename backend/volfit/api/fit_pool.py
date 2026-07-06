@@ -1,10 +1,11 @@
 """Process-pool execution of slice-fit tasks (parallel background Calibrate).
 
-Slice calibrations are CPU-bound scipy work that holds the GIL, so the
-background Calibrate job parallelizes across TICKERS by shipping each slice
-fit (volfit.calib.fit_task) to a spawn-context process pool; the per-ticker
-warm-start / calendar chain stays sequential inside its job thread, which
-mostly blocks on pool futures. Interactive fits — a single-node Calibrate on
+Calibrations are CPU-bound scipy work that holds the GIL (thread-parallelism
+measured GIL-negative for both the slice and the LV fits), so the background
+Calibrate job parallelizes across TICKERS by shipping each slice fit and each
+ticker's LV (affine) calibration (volfit.calib.fit_task) to a spawn-context
+process pool; the per-ticker warm-start / calendar chain stays sequential
+inside its job thread, which mostly blocks on pool futures. Interactive fits — a single-node Calibrate on
 a request thread, an autoCalibrate refit on a GET — never touch the pool:
 they run inline so they can never queue behind a 25-ticker background job.
 The job runner opts in per thunk via ``pooled()`` (a thread-local flag).
@@ -30,7 +31,7 @@ from concurrent.futures.process import BrokenProcessPool
 from contextlib import contextmanager
 from pickle import PicklingError
 
-from volfit.calib.fit_task import SliceFitOutcome, SliceFitTask, run_slice_fit
+from volfit.calib.fit_task import SliceFitTask, run_fit_task
 
 log = logging.getLogger("volfit.fit_pool")
 
@@ -114,25 +115,27 @@ def prewarm() -> None:
         return
     try:
         for _ in range(configured_workers()):
-            pool.submit(run_slice_fit, SliceFitTask())  # empty task: import + return
+            pool.submit(run_fit_task, SliceFitTask())  # empty task: import + return
     except Exception:  # pragma: no cover - prewarm must never break Calibrate
         pass
 
 
-def execute(task: SliceFitTask) -> SliceFitOutcome:
-    """Run a task in the pool when this thread opted in (``pooled``), else inline."""
+def execute(task):
+    """Run a fit task (SliceFitTask or AffineFitTask) in the pool when this
+    thread opted in (``pooled``), else inline. Returns the task runner's result
+    (SliceFitOutcome / AffineCalibration) — one code path either way."""
     if not getattr(_use_pool, "on", False) or configured_workers() < 2:
-        return run_slice_fit(task)
+        return run_fit_task(task)
     pool = _get_pool()
     if pool is None:
-        return run_slice_fit(task)
+        return run_fit_task(task)
     try:
-        return pool.submit(run_slice_fit, task).result()
+        return pool.submit(run_fit_task, task).result()
     except (BrokenProcessPool, PicklingError, OSError) as exc:
         # Pool infrastructure failure — a genuine fit error (e.g. ValueError
         # from an infeasible slice) raises through the future unwrapped.
         _disable(exc)
-        return run_slice_fit(task)
+        return run_fit_task(task)
 
 
 def shutdown() -> None:

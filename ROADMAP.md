@@ -45,9 +45,23 @@ nodes). First item done on **main** (suite **931 passed, 1 skipped**; ruff clean
   chains fit 5–10× longer ⇒ expect closer-to-linear scaling on 25 assets. The
   serial LV stage now dominates a full Calibrate — pooling it is the top
   follow-up.
-- Follow-ups noted: pool the LV stage (Numba affine fits still serial), job
-  resume/queue-priorities/ETA, a `workers` field in CalibrationStatus for the
-  UI.
+- **LV stage POOLED too (same evening; suite 932 passed, 1 skipped).**
+  Thread-parallel LV measured GIL-negative (0.73× — the nogil Numba march is a
+  minority of the fit), so the heavy `calibrate_affine` LSQ ships to the same
+  process pool as an `AffineFitTask` (its call site in `affine_fit._fit` was
+  already pure data in/out — `AffineCalibration` pickles); gather + response
+  assembly stay main-side. The LV stage now runs per-ticker groups
+  concurrently after the parametric barrier (the cold-start seed reads the LQD
+  fits). Lazy AppState side-dicts (`_affine_cache`, diag caches) hardened
+  against concurrent creation. Identity locked: real-pool LV response
+  `model_dump()` equality + LV surfaces added to the serial-vs-parallel
+  calibrate_all gate. **Full Calibrate (9 tickers, parametric + LV, 6
+  workers): warm 2.11× (6.20s → 2.94s), cold 1.45×** (was 0.99× with LV
+  serial). Remaining ceiling = main-side GIL work (de-Am prep + smile
+  reconstruction on the job threads).
+- Follow-ups noted: job resume/queue-priorities/ETA, a `workers` field in
+  CalibrationStatus for the UI, move LV response assembly off the GIL if 25-
+  asset runs need it.
 
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
@@ -66,12 +80,15 @@ All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).
   mids, so scenario A/Bs under-report this fix (unit-locked); a v3 run (and a
   shock-the-prepared-chain scenario) can quantify it later.
 - User confirmed the in-app visual pass; dark-node precision shipped earlier
-  (`78a1fc5`). **25-asset capture running in the user's window**
-  (`run_capture_full.ps1`, resumable; ~15 h total).
+  (`78a1fc5`). **25-asset capture COMPLETED 2026-07-06**
+  (`run_capture_full.ps1` finished in the user's window — the full-universe
+  fixtures are on disk; user-reported, contents not yet inventoried).
 
-**Plan:** next session(s) = **augmenting app features** (user-directed); then,
-once the capture completes, the **25-asset graph leave-one-out** (sector edges
-lit + `DARK_BASE_SCALE` validation) and the temporal/ablation reruns.
+**Plan:** next session(s) = **augmenting app features** (user-directed;
+productization arc underway, see the wrap above); the capture prerequisite is
+now CLEARED for the **25-asset graph leave-one-out** (sector edges lit +
+`DARK_BASE_SCALE` validation) and the temporal/ablation reruns — run those
+when the app-feature push pauses.
 
 ## STATUS — earlier (2026-07-03)
 

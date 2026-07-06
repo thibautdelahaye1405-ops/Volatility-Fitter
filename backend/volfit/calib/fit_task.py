@@ -77,3 +77,35 @@ def run_slice_fit(task: SliceFitTask) -> SliceFitOutcome:
         result = calibrate_slice(**kwargs, solver_diag=diag)
     display = build_display_fit(**task.overlay) if task.overlay is not None else None
     return SliceFitOutcome(result=result, display=display, solver_diag=diag)
+
+
+@dataclass(frozen=True)
+class AffineFitTask:
+    """One ticker's LV (affine local-variance) surface calibration as a pure
+    task: the exact keyword bundle for models.localvol.calibrate_affine, whose
+    call site (volfit.api.affine_fit._fit) already takes only picklable data —
+    numpy grids/arrays and the frozen quote dataclasses (OptionQuote /
+    VarSwapQuote / BasketQuote / AffineVarianceSurface). Everything before the
+    call (gather, grid resolution, warm-start seed) and after it (smile
+    reconstruction, diagnostics, response assembly) stays main-side."""
+
+    calibrate: dict
+
+
+def run_affine_fit(task: AffineFitTask):
+    """Execute one affine calibration (models.localvol.AffineCalibration).
+
+    The Numba march kernel is disk-cached JIT, so a worker pays one cache load
+    on its first LV fit; the returned solution/sensitivity arrays are plain
+    numpy (a few MB) and pickle back cleanly."""
+    from volfit.models.localvol import calibrate_affine
+
+    return calibrate_affine(**task.calibrate)
+
+
+def run_fit_task(task):
+    """Pool entry point: dispatch a task to its runner (single code path for
+    pooled and inline execution — volfit.api.fit_pool submits THIS function)."""
+    if isinstance(task, AffineFitTask):
+        return run_affine_fit(task)
+    return run_slice_fit(task)
