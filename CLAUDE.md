@@ -102,6 +102,9 @@ Key commands (Windows, repo root):
             --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
             Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
+- Frontend tests: cd frontend ; npm test   (vitest, 13 tests) ; npm run smoke:ui
+            (headless-Edge tab smoke over vite preview :4188, screenshots .smoke\;
+            needs npm run build first)
 - volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance/numba installed
   (numba is a real dep now — the LV Numba march; graceful banded fallback if it's missing).
 - PyPI is intermittently flaky here (TLS resets; pip.ini has retries=15 — just retry).

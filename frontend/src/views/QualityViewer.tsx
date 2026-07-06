@@ -4,6 +4,8 @@
 // backend's cached calibrations (GET /quality never fits), refreshed on every
 // calibration epoch like the other views.
 import { useMemo, useState } from "react";
+import { fmtBp, sortNodes } from "../lib/qualityFormat";
+import type { SortMode } from "../lib/qualityFormat";
 import { API_BASE_URL } from "../state/api";
 import { useQuality } from "../state/useQuality";
 import type { QualityNode, QualityTicker } from "../state/useQuality";
@@ -12,26 +14,6 @@ const card =
   "flex min-h-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30";
 const th = "px-2 py-1.5 font-medium whitespace-nowrap text-right";
 const td = "px-2 py-1 text-right tabular-nums";
-
-type SortMode = "exceptions" | "rms" | "node";
-
-/** Format a bp figure: 1 decimal normally, 2 sig figs when sub-0.1 (a
- *  near-exact fit must not display as a fake hard zero). */
-function fmtBp(value: number): string {
-  return value >= 0.1 || value === 0 ? value.toFixed(1) : value.toPrecision(2);
-}
-
-/** Order rows for the table: exceptions first (not-ready, worst RMS on top),
- *  by RMS, or in natural ticker/expiry order. */
-function sortNodes(nodes: QualityNode[], mode: SortMode): QualityNode[] {
-  const rows = [...nodes];
-  if (mode === "node") return rows; // backend order: ticker, ascending expiry
-  if (mode === "rms") return rows.sort((a, b) => b.rmsBp - a.rmsBp);
-  return rows.sort((a, b) => {
-    if (a.ready !== b.ready) return a.ready ? 1 : -1;
-    return b.rmsBp - a.rmsBp;
-  });
-}
 
 function Tile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (

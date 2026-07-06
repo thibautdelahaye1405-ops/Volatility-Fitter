@@ -180,6 +180,36 @@ window.
   in your own window** (resumable; rerun after any interruption), then read
   `backend\backtest\results\benchmark\benchmark_report.html` and record the
   verdict (graph-LOO FINDINGS update + DARK_BASE_SCALE tuning decision).
+  NB the report currently on disk is the 1-pair SMOKE render — `report`
+  regenerates it from whatever parts exist.
+
+**Frontend test harness SHIPPED (same evening; commercial-MVP arc, item 6 —
+PHASE 1 COMPLETE).** The frontend had ZERO tests; now:
+
+- **vitest + jsdom + Testing Library** (devDeps; `npm test` = `vitest run`;
+  standalone `vitest.config.ts` — no Tailwind plugin needed in tests; JSX via
+  esbuild automatic runtime, no React plugin). **13 tests**: pure Quality
+  helpers extracted to `src/lib/qualityFormat.ts` (fmtBp sub-0.1bp rule,
+  exception-first sort, input immutability), `GraphAttributionCard`
+  (contribution rows/signs/β chips/others fold, gain×innovation tooltip,
+  close/open wiring, empty-solve state), `QualityViewer` (tiles, exceptions
+  filter, offline card + retry) — data hooks mocked; the HTTP contracts stay
+  locked by the backend suites. Test files live in src/ and type-check under
+  `tsc -b`.
+- **Headless-Edge UI smoke** (`npm run smoke:ui` → `scripts/ui_smoke.mjs`,
+  puppeteer-core): spawns `vite preview` on :4188 (via the vite JS bin —
+  Node ≥20 EINVALs on .cmd spawns; strip ANSI before matching the banner),
+  drives every workspace tab, fails on any pageerror / ErrorBoundary
+  fallback / empty main, screenshots to `.smoke/` (gitignored).
+- **The smoke caught a real production bug on its first run**: the Local Vol
+  tab crashed (React #300) whenever the app ran WITHOUT a backend — its
+  offline card early-returned BETWEEN hooks, so the hook count changed when
+  the session flipped live→mock after mount. Fixed by moving the offline
+  return below the last hook (`LocalVolViewer.tsx`); all 8 tabs now render
+  offline.
+- Follow-ups: hook-level tests with a mocked fetch layer, a smoke variant
+  against a live synthetic backend (assert data actually renders), CI wiring
+  when a CI exists.
 
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 

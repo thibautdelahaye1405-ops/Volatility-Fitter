@@ -115,25 +115,6 @@ export default function LocalVolViewer() {
     "table", ticker, expiry, view === "table", lvReloadKey, fitMode,
   );
 
-  if (error !== null && data === null) {
-    return (
-      <div className="flex h-full items-center justify-center p-4">
-        <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-900 p-8 text-center shadow-xl shadow-black/30">
-          <h2 className="mb-2 text-sm font-semibold text-slate-100">
-            Local-vol fit requires the live backend
-          </h2>
-          <p className="mb-1 text-xs text-slate-500">
-            Start the FastAPI server on :8000 and retry.
-          </p>
-          <p className="mb-5 truncate text-[10px] text-amber-400/80" title={error}>
-            {error}
-          </p>
-          <button className={buttonClass} onClick={reload}>Retry</button>
-        </div>
-      </div>
-    );
-  }
-
   const smile = data?.smiles[expiryIdx];
 
   // Reconstructed IV surface: resample every expiry's smile onto a shared
@@ -185,6 +166,28 @@ export default function LocalVolViewer() {
       });
     return series.length > 0 ? series : null;
   }, [data, format, axisMode]);
+
+  // Offline card AFTER every hook: an early return between hooks changes the
+  // hook count when the session flips live→mock after mount (React #300 — the
+  // UI smoke caught exactly this on the offline Local Vol tab).
+  if (error !== null && data === null) {
+    return (
+      <div className="flex h-full items-center justify-center p-4">
+        <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-900 p-8 text-center shadow-xl shadow-black/30">
+          <h2 className="mb-2 text-sm font-semibold text-slate-100">
+            Local-vol fit requires the live backend
+          </h2>
+          <p className="mb-1 text-xs text-slate-500">
+            Start the FastAPI server on :8000 and retry.
+          </p>
+          <p className="mb-5 truncate text-[10px] text-amber-400/80" title={error}>
+            {error}
+          </p>
+          <button className={buttonClass} onClick={reload}>Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
