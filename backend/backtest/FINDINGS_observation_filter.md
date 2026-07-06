@@ -137,6 +137,41 @@ MAP fit denoises at least as well as the post-hoc blend, with honest
 uncertainty. Cross-asset/full-regime active sweep rides the next full run
 before any default discussion.
 
+---
+
+# v2 full-regime run (2026-07-05/06) — overlay vs ACTIVE, adaptive Q on
+39,190 steps = 3 regimes × 8 assets × all pairs, jacobian, bp 30,
+`filterAdaptiveSigma=3` (merged: `results/*_v2_merged.json`). Key cells
+(>30d; active's err_post==err_meas by construction, baseline = overlay raw):
+
+| regime | scenario | active | overlay post | raw |
+|---|---|---|---|---|
+| spike | thinned | **6.5 bp** | 9.3 | 6.7 |
+| high | thinned | **4.8 bp** | 9.3 | 7.7 |
+| low | thinned | **3.4 bp** | 5.3 | 4.0 |
+| high | contradiction | **5.6 bp** | 10.6 | 9.8 |
+| low | contradiction | **4.5 bp** | 6.3 | 5.4 |
+| spike | shock | 19.5 bp | **4.6** | 3.8 |
+| high | shock | 25.2 bp | **7.9** | 5.8 |
+
+**F9 — active MAP is the best denoiser on plain/contradiction days,
+cross-regime.** It beats BOTH the raw fit and the overlay posterior in every
+regime outside shocks (e.g. high-vol contradiction 5.6 vs 9.8 raw), with
+honest ζ (std 0.4–1.4 >30d). Jointly fitting quotes + prediction beats
+post-hoc blending, as Prop. nodouble suggests.
+
+**F10 — active's one weakness: shocks, because adaptive Q is overlay-only.**
+The MAP prior weight is fixed before the measurement exists, so active lags
+jumps (19–25 bp) exactly where the overlay now excels. THE remaining item
+before any active-by-default: innovation-gated widening for the active path
+(gate on the previous step's innovation, or a cheap ATM pre-probe).
+
+**F11 — adaptive Q validated at full scale (v2 overlay vs Phase-7 overlay).**
+Shock err (>30d): spike 38.6→4.6 bp, high 78.6→7.9, low 11.6→4.9; win
+0.13–0.25→0.50–0.62. Thinned/contradiction unchanged (the gate stays quiet on
+clean days — as designed). The ≤30d bucket also improved materially (shock
+win 0.54–0.68) under the maturity floor + gate.
+
 **Remaining pre-active-default work:**
 adaptive Q (innovation-gated widening — closes the shock gap on both
 routes); the ≤30d policy (win < 0.5 in all regimes; maturity-scaled R floor
