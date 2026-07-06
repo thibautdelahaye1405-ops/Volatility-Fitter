@@ -57,7 +57,12 @@ def min_norm_butterfly(strikes: np.ndarray, c: np.ndarray) -> float:
     a = k[1:-1] - k[:-2]
     b = k[2:] - k[1:-1]
     fly = c[:-2] * b - c[1:-1] * (a + b) + c[2:] * a
-    return float(np.min(fly / (a + b)))
+    span = a + b  # zero only at >=3 coincident strikes (captured chains carry dupes)
+    if not span.all():
+        fly, span = fly[span > 0.0], span[span > 0.0]
+        if span.size == 0:
+            return 0.0
+    return float(np.min(fly / span))
 
 
 def _repair_wing(u: np.ndarray, c: np.ndarray, slope_floor: float) -> np.ndarray:
@@ -113,6 +118,23 @@ def _project_wing_banded(
     return x
 
 
+def _core_slope(strikes: np.ndarray, c: np.ndarray, anchor: int, inward: int) -> float | None:
+    """``dc/dK`` entering the core boundary ``anchor``, measured against the nearest
+    STRICTLY DISTINCT strike on the core side (``inward`` = -1 at the right boundary,
+    +1 at the left). Captured chains can carry duplicate strikes (multiple listings at
+    one strike); the naive one-step divided difference then divides by zero and hands
+    ``lsq_linear`` an infinite lower bound (the spike_aug2024 XOM crash). Identical to
+    the one-step difference when the neighbour is distinct; ``None`` when every core
+    strike coincides with the anchor (degenerate — the caller skips that wing)."""
+    j = anchor + inward
+    while 0 <= j < strikes.size:
+        gap = strikes[anchor] - strikes[j]
+        if gap != 0.0:
+            return float((c[anchor] - c[j]) / gap)
+        j += inward
+    return None
+
+
 def convex_wing_repair(
     k: np.ndarray,
     c: np.ndarray,
@@ -155,18 +177,20 @@ def convex_wing_repair(
 
     # Right wing: anchor at the core's outer-right strike `hi`, repair hi..n-1.
     if hi < n - 1:
-        slope_in = (c[hi] - c[hi - 1]) / (strikes[hi] - strikes[hi - 1])
-        u = strikes[hi:] - strikes[hi]
-        out[hi:] = _project_wing_banded(u, c[hi:], c_lo[hi:], c_hi[hi:], slope_in)
+        slope_in = _core_slope(strikes, c, hi, -1)
+        if slope_in is not None:
+            u = strikes[hi:] - strikes[hi]
+            out[hi:] = _project_wing_banded(u, c[hi:], c_lo[hi:], c_hi[hi:], slope_in)
 
     # Left wing: reflect to outward distance u = K_lo - K (increasing away from the
     # money). The incoming core slope in u is -(dc/dK) at the boundary.
     if lo > 0:
-        sl = slice(0, lo + 1)
-        u = (strikes[lo] - strikes[sl])[::-1]  # u[0]=0 at the anchor, increasing out
-        rev = slice(None, None, -1)
-        out[sl] = _project_wing_banded(
-            u, c[sl][rev], c_lo[sl][rev], c_hi[sl][rev],
-            -(c[lo + 1] - c[lo]) / (strikes[lo + 1] - strikes[lo]),
-        )[rev]
+        slope_in = _core_slope(strikes, c, lo, +1)
+        if slope_in is not None:
+            sl = slice(0, lo + 1)
+            u = (strikes[lo] - strikes[sl])[::-1]  # u[0]=0 at anchor, increasing out
+            rev = slice(None, None, -1)
+            out[sl] = _project_wing_banded(
+                u, c[sl][rev], c_lo[sl][rev], c_hi[sl][rev], -slope_in,
+            )[rev]
     return out

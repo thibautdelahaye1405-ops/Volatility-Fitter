@@ -182,6 +182,20 @@ window.
   verdict (graph-LOO FINDINGS update + DARK_BASE_SCALE tuning decision).
   NB the report currently on disk is the 1-pair SMOKE render — `report`
   regenerates it from whatever parts exist.
+- **[2026-07-07] First sweep attempt died mid-run + spike regime SILENTLY
+  EMPTY — root cause FIXED.** The spike_aug2024 fixtures carry DUPLICATE
+  strikes (multiple listings at one strike; XOM 2024-12-20 was the trigger):
+  the convex wing repair's anchor slope divided by zero at a core boundary,
+  `lsq_linear` got an infinite lower bound, and the ValueError killed whole
+  day-pairs (9 empty parts + one doubly-partial one — the per-pair skip only
+  prints to the console). Fix in `volfit/calib/convex_deam.py`: anchor slope
+  now measured to the nearest STRICTLY DISTINCT strike (`_core_slope`;
+  byte-identical on clean chains), unmeasurable slope ⇒ that wing is skipped,
+  zero-span butterflies masked in `min_norm_butterfly`. Regression tests in
+  `tests/test_convex_deam.py` (7). The failing pair now scores 898 rows (was
+  0). Bad spike parts DELETED (the healthy 1-pair smoke part kept); progress
+  on disk: high_oct2022 7/10 parts, spike + low_jul2023 to (re)compute —
+  relaunch the sweep as above.
 
 **Frontend test harness SHIPPED (same evening; commercial-MVP arc, item 6 —
 PHASE 1 COMPLETE).** The frontend had ZERO tests; now:
