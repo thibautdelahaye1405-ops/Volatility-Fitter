@@ -172,6 +172,57 @@ def test_maturity_noise_multiplier():
     assert _maturity_noise_mult(15.0 / 365.0) > _maturity_noise_mult(20.0 / 365.0)
 
 
+# ---------------------------------------------------- active adaptive (F10)
+def test_active_adaptive_probe_and_lag():
+    """The ACTIVE-path gate (F10): the level row fires on a fit-free ATM probe
+    of the prepared mids; the shape rows on the previous step's innovation;
+    clean inputs leave all factors at 1 (byte-identical prior)."""
+    from types import SimpleNamespace
+
+    from volfit.api.observation_filter import _active_adaptive_factors
+    from volfit.calib.observation_filter import (
+        FilterPrediction,
+        FilterState,
+        FilterUpdate,
+    )
+    from volfit.api.observation_filter import NodeFilter
+
+    pred = FilterPrediction(
+        mean=np.array([0.20, -0.3, 0.1]),
+        cov=np.diag([1e-6, 1e-4, 1e-2]),  # 10bp ATM prediction std
+        transport_distance=0.0,
+    )
+    state0 = FilterState(("T", "e", "mid"), ("ATM", "skew", "curvature"),
+                         pred.mean, pred.cov, 0.0, "update")
+    quiet_upd = FilterUpdate(np.zeros(3), pred.cov, np.eye(3), pred.mean, pred.cov)
+    prev = NodeFilter(state0, pred, None, quiet_upd, 0, 0, 100.0)
+
+    def prepared(atm_vol):
+        k = np.linspace(-0.2, 0.2, 9)
+        return SimpleNamespace(k=k, iv_mid=np.full(9, atm_vol))
+
+    # clean: probe matches the prediction, quiet previous step -> all ones
+    f = _active_adaptive_factors(prev, pred, prepared(0.20), 3.0, 0.002)
+    assert f == pytest.approx(np.ones(3))
+    # a 5-point jump IN THE PREPARED MIDS fires the level gate hard
+    f = _active_adaptive_factors(prev, pred, prepared(0.25), 3.0, 0.002)
+    assert f[0] > 10.0 and f[1] == 1.0 and f[2] == 1.0
+    # a surprised PREVIOUS step widens the shape rows (lagged fading memory)
+    loud = NodeFilter(
+        state0, pred,
+        # prev measurement R (diagonal), prev innovation 10x its scale on skew
+        SimpleNamespace(cov=np.diag([1e-6, 1e-4, 1e-2])),  # prev measurement R
+        FilterUpdate(np.array([0.0, 0.20, 0.0]), pred.cov, np.eye(3),
+                     pred.mean, pred.cov),
+        0, 0, 100.0,
+    )
+    f = _active_adaptive_factors(loud, pred, prepared(0.20), 3.0, 0.002)
+    assert f[1] > 5.0 and f[2] == 1.0
+    # gate off -> ones regardless
+    f = _active_adaptive_factors(loud, pred, prepared(0.25), 0.0, 0.002)
+    assert f == pytest.approx(np.ones(3))
+
+
 # ------------------------------------------------------------------ transport
 def test_transport_handles_first_order():
     """ATM moves by SSR*skew*h, skew by curvature*h, curvature unchanged

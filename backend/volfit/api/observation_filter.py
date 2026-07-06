@@ -232,6 +232,57 @@ def _prediction_from(
     return predict(base_mean, prev.state.cov, q_diag, abs(h), q_breakdown), h
 
 
+def _active_adaptive_factors(
+    prev: "NodeFilter", prediction: FilterPrediction, prepared, gate: float,
+    noise: float,
+) -> np.ndarray:
+    """Per-handle P^- inflation for the ACTIVE path (FINDINGS F10).
+
+    The overlay gate uses today's innovation, which does not exist before the
+    MAP fit — so the LEVEL row is gated by a fit-free ATM probe (the prepared
+    mid IV interpolated at k=0, probe noise = the stated s_q), and the SHAPE
+    rows by the PREVIOUS step's realized innovation (one-step-lagged fading
+    memory: after a surprise day the next prior is wide). Deterministic in
+    (prev, prepared, options), so the prior builder and the posterior
+    bookkeeping compute IDENTICAL factors — the MAP algebra stays consistent."""
+    if gate <= 0.0:
+        return np.ones(3)
+    k = np.asarray(prepared.k, dtype=float)
+    factors = np.ones(3)
+    if k.size >= 2:
+        sigma_probe = float(np.interp(0.0, k, np.asarray(prepared.iv_mid, float)))
+        factors[0] = adaptive_inflation(
+            np.array([sigma_probe - prediction.mean[0]]),
+            np.array([prediction.cov[0, 0]]),
+            np.array([noise * noise]),
+            gate,
+        )[0]
+    if prev.update is not None and prev.prediction is not None and prev.measurement is not None:
+        lag = adaptive_inflation(
+            prev.update.innovation,
+            np.diag(prev.prediction.cov),
+            np.diag(prev.measurement.cov),
+            gate,
+        )
+        factors[0] = max(factors[0], lag[0])
+        factors[1], factors[2] = lag[1], lag[2]
+    return factors
+
+
+def _inflate_prediction(prediction: FilterPrediction, factors: np.ndarray) -> FilterPrediction:
+    if not np.any(factors > 1.0):
+        return prediction
+    scale = np.sqrt(factors)
+    return replace(
+        prediction,
+        cov=prediction.cov * np.outer(scale, scale),
+        q_breakdown={
+            **prediction.q_breakdown,
+            "adaptive": (factors - 1.0) * np.diag(prediction.cov),
+        },
+    )
+
+
 def active_prediction_target(
     state: AppState, ticker: str, iso: str, fit_mode: str, prepared
 ):
@@ -258,11 +309,15 @@ def active_prediction_target(
     ):
         return None
     pred, _h = _prediction_from(state, prev, float(prepared.forward), ts_now)
+    noise = _typical_noise(state, ticker, iso, prepared)
+    pred = _inflate_prediction(
+        pred,
+        _active_adaptive_factors(
+            prev, pred, prepared, state.options().filterAdaptiveSigma, noise
+        ),
+    )
     return build_filter_prior(
-        pred.mean,
-        np.diag(pred.cov),
-        prepared.tau,
-        quote_noise=_typical_noise(state, ticker, iso, prepared),
+        pred.mean, np.diag(pred.cov), prepared.tau, quote_noise=noise
     )
 
 
@@ -367,6 +422,15 @@ def on_fit_commit(
         # One-stage MAP (note eq. active-map): the committed fit already
         # carried the prediction prior as residual rows — applying a second
         # Kalman update against the same quotes would double-count them.
+        # The SAME adaptive factors the prior builder used (deterministic in
+        # prev/prepared/options) keep the posterior bookkeeping consistent.
+        prediction = _inflate_prediction(
+            prediction,
+            _active_adaptive_factors(
+                prev, prediction, record.prepared, opts.filterAdaptiveSigma,
+                _typical_noise(state, ticker, iso, record.prepared),
+            ),
+        )
         holder = _map_bookkeeping(
             state, ticker, iso, key, record, solver_diag, prediction,
             ts_now, f_now, dv, sv,
@@ -381,22 +445,15 @@ def on_fit_commit(
         # Innovation-gated Q widening (FINDINGS F4): a genuine large move
         # reads as ~gate sigmas instead of lagging; seeds are excluded (their
         # innovation is not a prediction surprise).
-        factors = adaptive_inflation(
-            measurement.handles - prediction.mean,
-            np.diag(prediction.cov),
-            np.diag(measurement.cov),
-            opts.filterAdaptiveSigma,
+        prediction = _inflate_prediction(
+            prediction,
+            adaptive_inflation(
+                measurement.handles - prediction.mean,
+                np.diag(prediction.cov),
+                np.diag(measurement.cov),
+                opts.filterAdaptiveSigma,
+            ),
         )
-        if np.any(factors > 1.0):
-            scale = np.sqrt(factors)
-            prediction = replace(
-                prediction,
-                cov=prediction.cov * np.outer(scale, scale),
-                q_breakdown={
-                    **prediction.q_breakdown,
-                    "adaptive": (factors - 1.0) * np.diag(prediction.cov),
-                },
-            )
     pred_cov, meas_cov = prediction.cov, measurement.cov
     if DIAGONAL_UPDATE:  # per-handle scalar gains (see the constant's docstring)
         pred_cov = np.diag(np.diag(pred_cov))

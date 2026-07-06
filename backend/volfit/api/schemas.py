@@ -279,8 +279,9 @@ class OptionsSettings(BaseModel):
     #: when a handle's standardized innovation exceeds this many sigmas, P- is
     #: inflated so the surprise reads as ~this level and the gain rises toward
     #: the data. 0 = off. Clean days never trip it; a contradictory chain's
-    #: rho-inflated R keeps it quiet. Overlay update path only (the active-MAP
-    #: prior is built before the measurement exists).
+    #: rho-inflated R keeps it quiet. Overlay: gated on today's innovation.
+    #: Active (F10): the level row is gated by a fit-free ATM probe of the
+    #: prepared mids, the shape rows by the previous step's innovation.
     filterAdaptiveSigma: float = Field(3.0, ge=0.0, le=20.0)
     #: Pilot safety cap on the diagonalized per-handle gains; 1.0 = no cap binding
     #: in normal operation (the update itself keeps K in [0, 1] per handle).
