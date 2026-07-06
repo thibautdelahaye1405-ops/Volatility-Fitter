@@ -189,8 +189,18 @@ def _setup_day(state_t, tickers, snaps, r_val: float, design: str) -> None:
                 state_t.set_node_lit(tk, iso, not dark)
 
 
-def run(regime: str, designs, r_values, max_pairs: int | None, cfg: EdgeConfig) -> list[dict]:
-    """Score every consecutive day pair across both designs and SSR regimes."""
+def run(
+    regime: str,
+    designs,
+    r_values,
+    max_pairs: int | None,
+    cfg: EdgeConfig,
+    pair_range: tuple[int, int] | None = None,
+) -> list[dict]:
+    """Score consecutive day pairs across the designs and SSR regimes.
+
+    ``pair_range=(a, b)`` scores pairs ``a..b-1`` only (the benchmark pack's
+    chunked/resumable driver); ``max_pairs`` keeps the historical prefix cut."""
     paths = list_fixtures(regime=regime)
     if not paths:
         raise SystemExit(f"no fixtures for regime={regime}")
@@ -200,7 +210,11 @@ def run(regime: str, designs, r_values, max_pairs: int | None, cfg: EdgeConfig) 
         f = load_fixture(p)
         by_date[f.as_of].append(f)
     dates = sorted(by_date)
-    pairs = list(zip(dates[:-1], dates[1:]))[: max_pairs or None]
+    pairs = list(zip(dates[:-1], dates[1:]))
+    if pair_range is not None:
+        pairs = pairs[pair_range[0] : pair_range[1]]
+    elif max_pairs:
+        pairs = pairs[:max_pairs]
 
     out: list[dict] = []
     for d0, d1 in pairs:

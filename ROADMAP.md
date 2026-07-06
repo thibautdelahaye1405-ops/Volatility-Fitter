@@ -149,6 +149,38 @@ THAT lit node moved through gain g."
   click-selection on the graph CHART itself (today: the aside list), visual
   in-app smoke (run `.\restart.ps1` → Graph → Extrapolate → click a row).
 
+**Benchmark pack HARNESS SHIPPED (same evening; commercial-MVP arc, item 5;
+suite 954 passed, 1 skipped).** The 25-asset graph-LOO packaged as a
+regenerable validation artifact; the FULL sweep is queued for the user's
+window.
+
+- **Capture inventoried**: 3 regimes × 20 days × 25 assets on disk
+  (`low_jul2023` day 1 partial at 11 — the resumable capture's interruption
+  point; 59/60 days full).
+- **`backtest/benchmark_pack.py`**: chunked + RESUMABLE `run` (part file per
+  pair-chunk under `results/benchmark/`, existing parts skipped; rows DEDUPED
+  on (regime, day, design, R, node) at merge so overlapping smoke/full parts
+  can't double-count) + `report` (self-contained HTML: manifest, headline
+  skill/ζ tiles, per-regime design×R tables, full-LOO per-asset-kind split,
+  methodology; plus machine-readable `benchmark_pack.json`).
+  `graph_loo.run` gained `pair_range` for the chunking. 7 tests on the pure
+  parts. **`run_benchmark_pack.ps1`** = the user's-window launcher
+  (foreground, resumable; the full_loo sweep is hours — tool-managed
+  background jobs get killed on this box).
+- **Smoked on the real fixtures** (1 pair, liquid_split, R=0): 199 dark
+  single-name nodes scored, report rendered + screenshot-verified. Early
+  honest signal: dark-name ATM skill ≈ 0 on this calm pre-spike pair — in
+  liquid_split only SPX informs the dark names (intl-ETF edges dormant,
+  name→name edges connect dark↔dark), ζ std 0.48 = conservative posterior.
+  Whether `DARK_BASE_SCALE=0.25` unlocks enough gain (and what the sector
+  name→name edges do in full_loo, where names are lit) is exactly what the
+  full run answers.
+- **NEXT: run
+  `powershell -ExecutionPolicy Bypass -File backend\backtest\run_benchmark_pack.ps1`
+  in your own window** (resumable; rerun after any interruption), then read
+  `backend\backtest\results\benchmark\benchmark_report.html` and record the
+  verdict (graph-LOO FINDINGS update + DARK_BASE_SCALE tuning decision).
+
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
 All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).
