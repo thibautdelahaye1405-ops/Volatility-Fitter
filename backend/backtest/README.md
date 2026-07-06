@@ -165,3 +165,23 @@ tested. Pilot = Aug-2024 spike Ã— 8 assets. The **prior-mode temporal axis**
 built and runnable. **Remaining:** the NN-dataset emitter (Phase 7, feeds off
 `volfit/data/columnar.py`), the full 25-asset capture (lights up the dormant
 nameâ†’name / sector-ETF graph edges), and the LV `wall_ms_pde_*` timing wiring.
+
+## Observation-filter temporal backtest (Note 15, Phase 5+)
+
+`observation_filter.py` — drives the PRODUCTION `on_fit_commit` per captured
+day pair: carry the T-1 posterior into day T, commit a thinned measurement
+under scenarios `thinned / contradiction / shock`, score vs the raw-fit and
+gain-0 baselines + zeta calibration + retargeted wing RMS. Sweeps
+`--cov-modes jacobian,factors`, `--process-bps`, `--modes overlay,active`,
+`--adaptive`; `--tag` keeps A/B runs off the canonical result files.
+Full-regime launcher: `run_filter_full.ps1` (resumable; run it in YOUR OWN
+PowerShell window). Verdicts F1-F11: `FINDINGS_observation_filter.md`.
+NB the synthetic shock perturbs the thinned FIT inputs only, not the
+prepared mids the active-path ATM probe reads (F10 is unit-locked instead).
+
+## 25-asset capture
+
+`run_capture_full.ps1` — resumable REST capture of the FULL universe across
+all 3 regimes (~5 min/trading day for the 17 non-pilot names; force-sets
+VOLFIT_MASSIVE_KEY from restart.local.ps1). Feeds the 25-asset graph
+leave-one-out (sector edges + graph/precision.py DARK_BASE_SCALE validation).

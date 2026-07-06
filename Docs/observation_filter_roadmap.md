@@ -1,5 +1,12 @@
 # Observation Kalman Filter — Implementation Roadmap
 
+> **STATUS 2026-07-06: COMPLETE.** All 8 phases + follow-ups shipped on main
+> (Phases 0–3 2026-07-03; 4–8 2026-07-04; F3/F4 `83800b3`, active-in-sweep
+> `c6147db`, F10 active gate `a66b016`). Verdicts F1–F11 in
+> `backend/backtest/FINDINGS_observation_filter.md`; the note is
+> `Docs/notes/15_kalman_filtering.tex`. This file is the historical plan +
+> phase log.
+
 Companion to `Docs/kalman_filtering.tex` (Note 15, the design note). That note
 defines the *what* (a per-node temporal Kalman filter on smile handles, strictly
 separated from Note 13's prior-persistence gap regularizer); this file is the

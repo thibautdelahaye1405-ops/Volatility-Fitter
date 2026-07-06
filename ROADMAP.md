@@ -8,7 +8,33 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-07-03 (resume here)
+## STATUS — updated 2026-07-06 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
+
+All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).
+
+- **v2 full-regime run analyzed (39,190 steps; `4600c8e`;
+  `FINDINGS_observation_filter.md`): F9 — ACTIVE MAP is the best denoiser on
+  plain/contradiction days in every regime (beats raw AND the overlay
+  posterior, e.g. high-vol contradiction 5.6 vs 9.8 bp raw; ζ std 0.4–1.4);
+  F10 — its shock lag traced to the gate being overlay-only; F11 — adaptive Q
+  validated at full scale (shock 39–79 bp → 5–8 bp, clean days untouched).**
+- **F10 FIXED (`a66b016`):** active-path adaptive gate — a fit-free ATM probe
+  of the prepared mids gates the level row, the previous step's innovation
+  gates the shape rows; identical factors in the prior builder and the MAP
+  bookkeeping. NB the harness's synthetic shock never touches the prepared
+  mids, so scenario A/Bs under-report this fix (unit-locked); a v3 run (and a
+  shock-the-prepared-chain scenario) can quantify it later.
+- User confirmed the in-app visual pass; dark-node precision shipped earlier
+  (`78a1fc5`). **25-asset capture running in the user's window**
+  (`run_capture_full.ps1`, resumable; ~15 h total).
+
+**Plan:** next session(s) = **augmenting app features** (user-directed); then,
+once the capture completes, the **25-asset graph leave-one-out** (sector edges
+lit + `DARK_BASE_SCALE` validation) and the temporal/ablation reruns.
+
+## STATUS — earlier (2026-07-03)
 
 ### 🧭 SESSION WRAP (2026-07-03, evening) — Observation Kalman filter Phases 0–3 SHIPPED
 
