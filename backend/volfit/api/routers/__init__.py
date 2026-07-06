@@ -5,6 +5,7 @@ from volfit.api.routers.asof import router as asof_router
 from volfit.api.routers.datasource import router as datasource_router
 from volfit.api.routers.edits import router as edits_router
 from volfit.api.routers.events import router as events_router
+from volfit.api.routers.export import router as export_router
 from volfit.api.routers.fit import router as fit_router
 from volfit.api.routers.forwards import router as forwards_router
 from volfit.api.routers.graph import router as graph_router
@@ -31,6 +32,7 @@ ALL_ROUTERS = (
     smiles_router,
     edits_router,
     events_router,
+    export_router,
     fit_router,
     affine_router,
     forwards_router,
@@ -56,6 +58,7 @@ __all__ = [
     "datasource_router",
     "edits_router",
     "events_router",
+    "export_router",
     "fit_router",
     "forwards_router",
     "graph_router",

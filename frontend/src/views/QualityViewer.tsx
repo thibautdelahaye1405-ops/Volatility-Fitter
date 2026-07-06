@@ -4,6 +4,7 @@
 // backend's cached calibrations (GET /quality never fits), refreshed on every
 // calibration epoch like the other views.
 import { useMemo, useState } from "react";
+import { API_BASE_URL } from "../state/api";
 import { useQuality } from "../state/useQuality";
 import type { QualityNode, QualityTicker } from "../state/useQuality";
 
@@ -13,6 +14,12 @@ const th = "px-2 py-1.5 font-medium whitespace-nowrap text-right";
 const td = "px-2 py-1 text-right tabular-nums";
 
 type SortMode = "exceptions" | "rms" | "node";
+
+/** Format a bp figure: 1 decimal normally, 2 sig figs when sub-0.1 (a
+ *  near-exact fit must not display as a fake hard zero). */
+function fmtBp(value: number): string {
+  return value >= 0.1 || value === 0 ? value.toFixed(1) : value.toPrecision(2);
+}
 
 /** Order rows for the table: exceptions first (not-ready, worst RMS on top),
  *  by RMS, or in natural ticker/expiry order. */
@@ -66,7 +73,7 @@ function LvCell({ ticker }: { ticker: QualityTicker }) {
   ].filter((f): f is string => f !== null);
   return (
     <span className={tone}>
-      {lv.rmsIvErrorBp.toFixed(1)} bp{flags.length > 0 ? ` · ${flags.join(" · ")}` : ""}
+      {fmtBp(lv.rmsIvErrorBp)} bp{flags.length > 0 ? ` · ${flags.join(" · ")}` : ""}
     </span>
   );
 }
@@ -121,10 +128,10 @@ export default function QualityViewer() {
         <Tile label="Stale" value={`${s.stale}`} tone={s.stale > 0 ? "text-amber-300" : undefined} />
         <Tile label="No fit" value={`${s.noFit}`} tone={s.noFit > 0 ? "text-slate-400" : undefined} />
         <Tile label="Arb flags" value={`${s.arbFlags}`} tone={s.arbFlags > 0 ? "text-rose-400" : undefined} />
-        <Tile label="Median RMS" value={`${s.medianRmsBp.toFixed(1)} bp`} />
+        <Tile label="Median RMS" value={`${fmtBp(s.medianRmsBp)} bp`} />
         <Tile
           label="Worst RMS"
-          value={`${s.worstRmsBp.toFixed(1)} bp`}
+          value={`${fmtBp(s.worstRmsBp)} bp`}
           tone={s.worstRmsBp > report.rmsBudgetBp ? "text-amber-300" : undefined}
         />
         <Tile
@@ -142,6 +149,31 @@ export default function QualityViewer() {
             <span className="text-[10px] text-slate-600">
               mode {report.fitMode} · filter {s.filterMode} · prior {s.priorMode}
             </span>
+          </div>
+          {/* Publish workflow: the HTML report opens in a tab (save/share from
+              there); the surface artifacts download with a dated filename +
+              reproducibility manifest. All read cached fits only. */}
+          <div className="mb-2 flex items-center gap-1.5">
+            <a
+              href={`${API_BASE_URL}/export/report`}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md bg-accent-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-500"
+            >
+              Quality report
+            </a>
+            <a
+              href={`${API_BASE_URL}/export/surfaces`}
+              className="rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-slate-600"
+            >
+              Surfaces JSON
+            </a>
+            <a
+              href={`${API_BASE_URL}/export/surfaces?format=csv`}
+              className="rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-slate-600"
+            >
+              Surfaces CSV
+            </a>
           </div>
           <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-800">
             <table className="w-full border-collapse font-mono text-[11px] leading-tight">
@@ -163,7 +195,7 @@ export default function QualityViewer() {
                       {t.ready}/{t.nodes}
                     </td>
                     <td className={`${td} ${t.stale > 0 ? "text-amber-300" : ""}`}>{t.stale}</td>
-                    <td className={td}>{t.surfaceRmsBp.toFixed(1)}</td>
+                    <td className={td}>{fmtBp(t.surfaceRmsBp)}</td>
                     <td className={`${td} ${t.arbFlags > 0 ? "text-rose-400" : ""}`}>{t.arbFlags}</td>
                     <td className={`${td} text-left`}>
                       <LvCell ticker={t} />
@@ -242,9 +274,9 @@ export default function QualityViewer() {
                     <td className={td}>{n.hasFit ? n.model : "—"}</td>
                     <td className={td}>{n.hasFit ? n.nQuotes : "—"}</td>
                     <td className={`${td} ${n.hasFit && n.rmsBp > report.rmsBudgetBp ? "text-amber-300" : ""}`}>
-                      {n.hasFit ? n.rmsBp.toFixed(1) : "—"}
+                      {n.hasFit ? fmtBp(n.rmsBp) : "—"}
                     </td>
-                    <td className={td}>{n.hasFit ? n.maxIvBp.toFixed(1) : "—"}</td>
+                    <td className={td}>{n.hasFit ? fmtBp(n.maxIvBp) : "—"}</td>
                     <td className={td}>{n.hasFit ? `${(n.atmVol * 100).toFixed(1)}%` : "—"}</td>
                     <td className={`${td} ${!n.leeOk ? "text-rose-400" : ""}`}>
                       {n.hasFit ? `${n.leeLeft.toFixed(2)}/${n.leeRight.toFixed(2)}` : "—"}

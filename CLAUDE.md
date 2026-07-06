@@ -64,7 +64,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (938 passed, 1 skipped as of 2026-07-06, incl. 7 perf rails; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (942 passed, 1 skipped as of 2026-07-06, incl. 7 perf rails; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Parallel calibrate: background Calibrate ships slice fits AND per-ticker LV
             (affine) fits to a process pool ($env:VOLFIT_CALIB_WORKERS, default
             cpu-1 capped 8; 0/1 = serial, byte-identical fits either way;

@@ -88,7 +88,35 @@ tab = the universe publish-readiness screen:
   the wild (stdin parent can't spawn on Windows — real entry points can).
 - Dashboard follow-ups: drill-in to the Parametric tab on row click, prior
   activation column (needs a cheap cached signal), butterfly g-metric for
-  overlay models, CSV/report export (arc item c).
+  overlay models.
+
+**Export/publish workflow SHIPPED (same evening; commercial-MVP arc, item 3;
+suite 942 passed, 1 skipped; strict-TS + Vite green).**
+
+- **`GET /export/surfaces`** (`api/export.py` + `routers/export.py`):
+  downloads the CACHED calibrations (fitted nodes only — publish what is
+  calibrated; same strict no-fit-on-read as /quality) with a
+  **reproducibility manifest** (generated-at, app version, data source,
+  as-of, fit mode, full FitSettings, calibration-relevant Options toggles,
+  settings/options versions, per-ticker snapshot timestamps + data
+  versions). `format=json` = full fidelity (241-pt model curves with
+  k/strike/IV/total-var, LQD backbone params, the LV grid, per-node quality
+  joined from /quality); `format=csv` = one row per curve point for Excel.
+  Dated `Content-Disposition` filenames; `tickers=` filter. Parquet deferred
+  (pyarrow not a dep).
+- **`GET /export/report`** (`api/export_report.py`): the end-of-day publish
+  artifact — a self-contained HTML quality report (inline CSS, no external
+  assets, email/archive-safe): manifest stamp, summary tiles, per-ticker
+  rollup with LV health, exceptions section, full node table, the publish
+  rule in the footer. Rendered + screenshot-verified in headless Edge.
+- **Quality tab buttons**: "Quality report" (opens in a tab), "Surfaces
+  JSON/CSV" (direct downloads) — plain cross-origin navigation, no fetch.
+- Sub-0.1bp figures now render as 2 sig figs, not a fake "0.0" (the synthetic
+  LV fits are ~0.01bp; report + viewer share the rule).
+- Tests: `tests/test_export.py` (4 — never-fits guard, full-fidelity payload,
+  CSV↔JSON row parity, HTTP routes incl. dispositions).
+- Follow-ups: server-side publish-to-directory (scheduled EOD artifact drop),
+  Parquet via optional pyarrow, per-model overlay params in the JSON export.
 
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
