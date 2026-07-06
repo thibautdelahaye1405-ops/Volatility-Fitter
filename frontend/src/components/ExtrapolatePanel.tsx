@@ -3,6 +3,7 @@
 // ATM move with provenance. Distinct from the manual-shift sandbox observations.
 import { useMemo, useState } from "react";
 import EdgeEditor from "./EdgeEditor";
+import GraphAttributionCard from "./GraphAttributionCard";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
 
 interface ExtrapolatePanelProps {
@@ -15,6 +16,12 @@ interface ExtrapolatePanelProps {
   crossBeta: number;
   setCrossBeta: (v: number) => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
+}
+
+/** The node whose attribution card is open, or null. */
+interface SelectedNode {
+  ticker: string;
+  expiry: string;
 }
 
 const buttonClass =
@@ -32,6 +39,7 @@ export default function ExtrapolatePanel({
   onOpenSmile,
 }: ExtrapolatePanelProps) {
   const [editing, setEditing] = useState(false);
+  const [selected, setSelected] = useState<SelectedNode | null>(null);
   const rows = useMemo(
     () =>
       (extra.nodes ?? [])
@@ -131,7 +139,18 @@ export default function ExtrapolatePanel({
           onClose={() => setEditing(false)}
         />
       ) : (
-      /* Per-node prior -> posterior table */
+      <>
+      {/* Attribution card (explainability): why the selected node moved */}
+      {selected !== null && (
+        <GraphAttributionCard
+          ticker={selected.ticker}
+          expiry={selected.expiry}
+          body={body}
+          onClose={() => setSelected(null)}
+          onOpenSmile={onOpenSmile}
+        />
+      )}
+      {/* Per-node prior -> posterior table */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
           <p className="py-2 text-xs text-slate-500">
@@ -139,42 +158,62 @@ export default function ExtrapolatePanel({
           </p>
         ) : (
           <div className="divide-y divide-slate-800">
-            {rows.map((n) => (
-              <button
+            {rows.map((n) => {
+              const isSelected =
+                selected !== null &&
+                selected.ticker === n.ticker &&
+                selected.expiry === n.expiry;
+              return (
+              <div
                 key={`${n.ticker}|${n.expiry}`}
-                onClick={() => onOpenSmile(n.ticker, n.expiry)}
-                title="Open this node's reconstructed smile"
-                className="flex w-full items-center gap-2 py-1.5 text-left transition-colors hover:bg-surface-800/40"
+                className={`flex w-full items-center gap-2 py-1.5 transition-colors hover:bg-surface-800/40 ${
+                  isSelected ? "bg-surface-800/60" : ""
+                }`}
               >
-                <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
-                  <span className="font-medium text-slate-100">{n.ticker}</span>{" "}
-                  <span className="font-mono text-[10px] text-slate-500">{n.expiry}</span>
-                  <span
-                    className={`ml-1 text-[9px] ${n.lit ? "text-amber-400" : "text-slate-600"}`}
-                  >
-                    {n.lit ? "lit" : "dark"}
-                  </span>
-                </span>
-                <span className="shrink-0 font-mono text-[10px] text-slate-400">
-                  {(n.priorAtmVol * 100).toFixed(1)}→{(n.postAtmVol * 100).toFixed(1)}%
-                </span>
-                <span
-                  className={`w-12 shrink-0 text-right font-mono text-[10px] ${
-                    n.shiftBp >= 0 ? "text-emerald-400" : "text-rose-400"
-                  }`}
+                <button
+                  onClick={() => setSelected(isSelected ? null : { ticker: n.ticker, expiry: n.expiry })}
+                  title="Attribute this node's move to the lit observations"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 >
-                  {n.shiftBp >= 0 ? "+" : ""}
-                  {n.shiftBp.toFixed(0)}bp
-                </span>
-              </button>
-            ))}
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
+                    <span className="font-medium text-slate-100">{n.ticker}</span>{" "}
+                    <span className="font-mono text-[10px] text-slate-500">{n.expiry}</span>
+                    <span
+                      className={`ml-1 text-[9px] ${n.lit ? "text-amber-400" : "text-slate-600"}`}
+                    >
+                      {n.lit ? "lit" : "dark"}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                    {(n.priorAtmVol * 100).toFixed(1)}→{(n.postAtmVol * 100).toFixed(1)}%
+                  </span>
+                  <span
+                    className={`w-12 shrink-0 text-right font-mono text-[10px] ${
+                      n.shiftBp >= 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}
+                  >
+                    {n.shiftBp >= 0 ? "+" : ""}
+                    {n.shiftBp.toFixed(0)}bp
+                  </span>
+                </button>
+                <button
+                  onClick={() => onOpenSmile(n.ticker, n.expiry)}
+                  title="Open this node's reconstructed smile"
+                  className="shrink-0 text-[11px] text-slate-600 hover:text-slate-300"
+                >
+                  ↗
+                </button>
+              </div>
+              );
+            })}
           </div>
         )}
       </div>
+      </>
       )}
 
       <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-        Click a node to open its reconstructed smile · provenance per node from the prior.
+        Click a node to attribute its move · ↗ opens its reconstructed smile.
       </p>
     </aside>
   );

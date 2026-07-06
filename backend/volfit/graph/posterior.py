@@ -25,6 +25,7 @@ class GraphPosterior:
     innovation_cov: np.ndarray  # S_y
     innovation_weights: np.ndarray  # alpha = S_y^{-1} (y - H mu^-)
     observed: np.ndarray  # indices of lit nodes
+    observed_columns: np.ndarray  # K^-[:, observed] (the update's own columns)
 
     @property
     def marginal_precision(self) -> np.ndarray:
@@ -35,6 +36,21 @@ class GraphPosterior:
         """(lo, hi) pointwise credible interval (eq. credible-interval)."""
         half = z_score * np.sqrt(self.marginal_variance)
         return self.mean - half, self.mean + half
+
+    def attribution(self, i: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """(gain_row, innovation, contributions) — node ``i``'s posterior shift
+        decomposed EXACTLY over the observed nodes.
+
+        The update is linear-Gaussian, mu^+_i = mu^-_i + K^-[i, obs] alpha, so
+        with the Kalman-gain row K_i = K^-[i, obs] S_y^{-1} and the raw
+        innovation d = S_y alpha (= y - mu^-_obs), each observed node j
+        contributes ``K_i[j] * d[j]`` and the contributions sum to the shift
+        to solver precision — the panel's "this dark smile moved because THAT
+        lit node moved" readout is the update's own arithmetic, not a model."""
+        row = self.observed_columns[i]
+        gain = np.linalg.solve(self.innovation_cov, row)  # S_y is symmetric PD
+        innovation = self.innovation_cov @ self.innovation_weights
+        return gain, innovation, gain * innovation
 
 
 def posterior_update(
@@ -88,4 +104,5 @@ def posterior_update(
         innovation_cov=s_y,
         innovation_weights=alpha,
         observed=obs_idx,
+        observed_columns=cols,
     )

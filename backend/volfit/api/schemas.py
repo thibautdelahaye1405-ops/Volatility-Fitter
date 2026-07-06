@@ -1003,6 +1003,25 @@ class GraphNodeMetrics(BaseModel):
     standardizedResidual: float | None = None  # quoted DARK nodes only (eq. zeta)
 
 
+class GraphAttributionEntry(BaseModel):
+    """One observed (lit) node's exact share of a target node's posterior ATM
+    move: ``contributionBp = gain × innovationBp`` where ``gain`` is the
+    Kalman-gain row entry K[target, source] of the update that produced the
+    displayed posterior, and ``innovationBp`` the source's own ATM innovation
+    (its calibration minus its transported prior). The entries sum to the
+    target's shift to solver precision — arithmetic, not a heuristic.
+    ``edgeBeta`` reports the DIRECT edge's ATM beta when the pair is directly
+    connected (context only: the gain folds the whole precision structure, so
+    influence also flows through indirect paths)."""
+
+    ticker: str
+    expiry: str
+    innovationBp: float
+    gain: float
+    contributionBp: float
+    edgeBeta: float | None = None
+
+
 class GraphNodeSmile(BaseModel):
     """A reconstructed node's full smile + prior/lit overlays + quote metrics.
 
@@ -1031,6 +1050,11 @@ class GraphNodeSmile(BaseModel):
     litCalibration: list[SmilePoint]  # the node's own calibration (lit nodes)
     quotes: list[GraphQuotePoint]
     metrics: GraphNodeMetrics | None = None
+    #: Exact per-lit-node decomposition of the ATM shift (largest |contribution|
+    #: first, capped); ``attributionOthersBp`` folds the truncated tail so the
+    #: list + remainder always sum to (postAtmVol - priorAtmVol) in bp.
+    attribution: list[GraphAttributionEntry] = []
+    attributionOthersBp: float = 0.0
 
 
 class GraphBacktestNode(BaseModel):

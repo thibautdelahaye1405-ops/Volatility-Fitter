@@ -16,6 +16,18 @@ export interface GraphNodeMetrics {
   standardizedResidual: number | null;
 }
 
+/** One lit node's exact share of the target's posterior ATM move:
+ *  contributionBp = gain × innovationBp, the update's own arithmetic — the
+ *  entries (+ the folded remainder) sum to the target's shift exactly. */
+export interface GraphAttributionEntry {
+  ticker: string;
+  expiry: string;
+  innovationBp: number; // the source's own ATM innovation (market − prior)
+  gain: number; // Kalman-gain row entry K[target, source]
+  contributionBp: number;
+  edgeBeta: number | null; // direct-edge ATM β when explicitly connected
+}
+
 /** GET /graph/extrapolate/nodes/{ticker}/{expiry} response. */
 export interface GraphNodeSmile {
   ticker: string;
@@ -25,6 +37,7 @@ export interface GraphNodeSmile {
   lit: boolean;
   calibrated: boolean;
   priorSource: string;
+  priorAtmVol: number;
   postAtmVol: number;
   sd: number;
   post: SmilePoint[];
@@ -33,6 +46,8 @@ export interface GraphNodeSmile {
   prior: SmilePoint[];
   litCalibration: SmilePoint[];
   metrics: GraphNodeMetrics | null;
+  attribution: GraphAttributionEntry[];
+  attributionOthersBp: number;
 }
 
 interface UseGraphNodeSmileResult {

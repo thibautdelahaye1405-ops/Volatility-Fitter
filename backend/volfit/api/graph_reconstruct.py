@@ -24,6 +24,7 @@ from volfit.api import prior_transport
 from volfit.api.graph_extrapolation import _node_t, _quote_stats, solve
 from volfit.api.graph_nodes import current_forward
 from volfit.api.schemas import (
+    GraphAttributionEntry,
     GraphExtrapolateRequest,
     GraphNodeMetrics,
     GraphNodeSmile,
@@ -209,6 +210,62 @@ def _quote_metrics(
     return metrics, quotes
 
 
+#: Attribution list cap — the truncated tail folds into ``attributionOthersBp``
+#: so the readout stays exact while the payload stays screen-sized.
+_MAX_ATTRIBUTION = 20
+
+
+def _direct_edge_betas(
+    request: GraphExtrapolateRequest, target: tuple[str, str]
+) -> dict[tuple[str, str], float]:
+    """ATM beta of every EXPLICIT request edge touching the target, keyed by the
+    other endpoint. Context only (empty when the topology came from the
+    persisted edges / auto-lattice): the gain already folds all paths."""
+    out: dict[tuple[str, str], float] = {}
+    for edge in request.edges:
+        a = (edge.fromTicker, edge.fromExpiry)
+        b = (edge.toTicker, edge.toExpiry)
+        if a == target:
+            out[b] = float(edge.betaAtmVol)
+        elif b == target:
+            out[a] = float(edge.betaAtmVol)
+    return out
+
+
+def _attribution(
+    sol, request: GraphExtrapolateRequest, i: int, target: tuple[str, str]
+) -> tuple[list[GraphAttributionEntry], float]:
+    """The target node's exact per-lit-node ATM attribution (largest first).
+
+    Reads the ATM coordinate's own posterior update (``field.posteriors[0]``,
+    the update that produced the displayed mean), so the entries + the folded
+    remainder sum to (post - prior) ATM to solver precision."""
+    post0 = sol.field.posteriors[0]
+    if post0.observed.size == 0:
+        return [], 0.0
+    gain, innovation, contrib = post0.attribution(i)
+    betas = _direct_edge_betas(request, target)
+    order = np.argsort(-np.abs(contrib))
+    entries: list[GraphAttributionEntry] = []
+    others = 0.0
+    for rank, j in enumerate(order):
+        if rank < _MAX_ATTRIBUTION:
+            name = sol.universe.nodes[int(post0.observed[j])].name
+            entries.append(
+                GraphAttributionEntry(
+                    ticker=name[0],
+                    expiry=name[1],
+                    innovationBp=float(innovation[j] * 1e4),
+                    gain=float(gain[j]),
+                    contributionBp=float(contrib[j] * 1e4),
+                    edgeBeta=betas.get(name),
+                )
+            )
+        else:
+            others += float(contrib[j] * 1e4)
+    return entries, others
+
+
 def node_smile(
     state: AppState, ticker: str, iso: str, request: GraphExtrapolateRequest
 ) -> GraphNodeSmile:
@@ -269,6 +326,7 @@ def node_smile(
     metrics, quotes = _quote_metrics(
         state, ticker, iso, sol.fit_mode, post_slice, post_h, sd, node.lit
     )
+    attribution, attribution_others = _attribution(sol, request, i, (ticker, iso))
 
     return GraphNodeSmile(
         ticker=ticker,
@@ -293,4 +351,6 @@ def node_smile(
         litCalibration=lit_curve,
         quotes=quotes,
         metrics=metrics,
+        attribution=attribution,
+        attributionOthersBp=attribution_others,
     )

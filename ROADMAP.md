@@ -118,6 +118,37 @@ suite 942 passed, 1 skipped; strict-TS + Vite green).**
 - Follow-ups: server-side publish-to-directory (scheduled EOD artifact drop),
   Parquet via optional pyarrow, per-model overlay params in the JSON export.
 
+**Graph attribution panel SHIPPED (same evening; commercial-MVP arc, item 4;
+suite 947 passed, 1 skipped; strict-TS + Vite green).** The explainability
+readout for the headline differentiator: "this dark smile moved +x bp because
+THAT lit node moved through gain g."
+
+- **Math = the update's own arithmetic, not a heuristic.**
+  `GraphPosterior` now keeps its observed K⁻ columns
+  (`observed_columns`, `graph/posterior.py`) and gains
+  `attribution(i) → (gain_row, innovation, contributions)`: with
+  K_i = K⁻[i,obs]·S_y⁻¹ and d = S_y·α, node j contributes K_i[j]·d[j] and the
+  contributions SUM TO THE DISPLAYED SHIFT to solver precision (locked at
+  1e-14 on a hand-built system and 1e-6 bp through the production path,
+  `tests/test_graph_attribution.py`, 5 tests).
+- **API**: `GraphNodeSmile.attribution` (per-lit-node entries: innovationBp,
+  gain, contributionBp, optional direct-edge `edgeBeta` context from explicit
+  request edges; largest first, capped at 20 with the tail folded into
+  `attributionOthersBp` so the sum stays exact) — rides the existing
+  per-node drill-in GET `/graph/extrapolate/nodes/{t}/{e}`
+  (`graph_reconstruct._attribution`), no new endpoint.
+- **UI**: Extrapolate aside — clicking a node row now opens an ATTRIBUTION
+  CARD (`GraphAttributionCard.tsx`: signed contribution bars, gain×innovation
+  tooltip, β chips, "others" row, exact-sum footnote); ↗ per row keeps the
+  reconstructed-smile drill-in.
+- Sanity on synthetic: a dark ALPHA Sep node's move decomposes with calendar
+  neighbours dominant (gain ≈ 0.41) and cross-ticker gains ~0.05 — matching
+  the LOO finding that calendar coupling carries the skill; sum check exact.
+- Follow-ups: attribution for skew/curvature coordinates (same seam, coords
+  1/2), per-edge PATH decomposition (research: gains fold all paths), node
+  click-selection on the graph CHART itself (today: the aside list), visual
+  in-app smoke (run `.\restart.ps1` → Graph → Extrapolate → click a row).
+
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
 All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).
