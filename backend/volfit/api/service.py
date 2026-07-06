@@ -17,8 +17,9 @@ from datetime import date
 
 import numpy as np
 
-from volfit.api import history
-from volfit.api.fit_models import DisplayFit, _max_iv_error, build_display_fit
+from volfit.api import fit_pool, history
+from volfit.api.fit_models import DisplayFit, _max_iv_error
+from volfit.calib.fit_task import OverlaySettings, SliceFitTask, run_slice_fit
 from volfit.models.sigmoid.calibrate import WING_PENALTY_BASE
 from volfit.api.quotes import (
     PreparedQuotes,
@@ -74,7 +75,7 @@ from volfit.models.diagnostics import (
 )
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import endpoint_scales, lee_slopes
-from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
+from volfit.models.lqd.calibrate import CalibrationResult
 
 #: Model-curve sampling: points over the extended (≥[-1,1]) display grid; denser
 #: than before to keep ATM resolution across the wider range. K_PAD pads the
@@ -456,6 +457,110 @@ def edited_band(
     return apply_band_edits(prepared, edits, fit_mode, state.fit_settings().haircut)
 
 
+def _overlay_settings(settings) -> OverlaySettings:
+    """The picklable FitSettings subset the overlay fit reads (fit_task)."""
+    return OverlaySettings(
+        sviPenaltyWeight=settings.sviPenaltyWeight,
+        leeSlopeMax=settings.leeSlopeMax,
+        midAnchorWeight=settings.midAnchorWeight,
+        nCores=settings.nCores,
+        sigmoidRidge=settings.sigmoidRidge,
+    )
+
+
+def _slice_task(
+    state: AppState,
+    ticker: str,
+    iso: str,
+    prepared: PreparedQuotes,
+    fit_mode: str,
+    *,
+    init=None,
+    prev: CalibrationResult | None = None,
+    prev_display: DisplayFit | None = None,
+    enforce_calendar: bool = False,
+    allow_prepass: bool = False,
+    with_fit: bool = True,
+    with_overlay: bool = True,
+) -> SliceFitTask:
+    """Assemble one node's slice-fit work as a pure, picklable task.
+
+    Every state read (edited quotes, weights, band, var-swap quote, prior /
+    filter targets, hyperparameters) happens HERE on the calling thread; the
+    returned task can then run inline or in a fit-pool worker with identical
+    results (volfit.calib.fit_task.run_slice_fit is the single code path).
+
+    ``init`` is the LQD warm start (the surface sweep's previous expiry);
+    ``prev``/``prev_display`` supply the calendar floors under
+    ``enforce_calendar`` (LQD asset-share floor / model-agnostic variance
+    floor confined to THIS expiry's traded range — outside the quotes both
+    slices are pure extrapolation and a wing mismatch is a phantom violation).
+    ``allow_prepass`` opts the single-node path into the two-pass
+    priorDataOnlyPrepass; ``with_fit=False`` builds an overlay-only task
+    (display_overlay), ``with_overlay=False`` an LQD-only task."""
+    settings = state.fit_settings()
+    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
+    weights = resolve_weights(settings.weightScheme, k, w)
+    band = edited_band(state, ticker, iso, prepared, fit_mode)
+    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
+
+    calibrate = prepass = None
+    if with_fit:
+        cal_z = cal_floor = None
+        if enforce_calendar and prev is not None:
+            cal_z, cal_floor = calendar_floor_targets(prev.slice)
+        base = dict(
+            k=k, w_quotes=w, t=prepared.tau, n_order=settings.nOrder,
+            weights=weights, reg_lambda=settings.regLambda,
+            reg_power=settings.regPower, band=band,
+            barrier_center=settings.barrierCenter,
+            barrier_scale=settings.barrierScale,
+            mid_anchor_weight=settings.midAnchorWeight, var_swap=vs,
+        )
+        # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit
+        # data-only first so the data-fitted level/shape is the seed, then refit
+        # with the gated prior initialized from it. Single-node path only; the
+        # warm-started surface sweep keeps its previous-expiry seed.
+        if (
+            allow_prepass
+            and init is None
+            and state.options().priorDataOnlyPrepass
+            and (pt.operator_prior is not None or pt.prior_anchor is not None)
+        ):
+            prepass = dict(base)
+        calibrate = dict(
+            base,
+            # Warm start only from a same-order seed (a mismatched order would
+            # be the wrong vector length); the prepass seed always matches.
+            init=init if getattr(init, "order", None) == settings.nOrder else None,
+            calendar_z=cal_z, calendar_floor=cal_floor,
+            calendar_weight=state.options().calendarWeight,
+            prior_anchor=pt.prior_anchor, prior_var_swap=pt.prior_var_swap,
+            operator_prior=pt.operator_prior,
+        )
+
+    overlay = None
+    if with_overlay and settings.model != "lqd":
+        o_floor = None
+        if enforce_calendar and prev_display is not None:
+            o_floor = variance_floor_targets(prev_display.slice, variance_floor_grid_from(k))
+        overlay = dict(
+            model=settings.model, k=k, w=w, t=prepared.tau, weights=weights,
+            settings=_overlay_settings(settings), band=band, var_swap=vs,
+            calendar_floor=o_floor, calendar_weight=state.options().calendarWeight,
+            prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
+            prior_var_swap=pt.prior_var_swap,
+            wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
+        )
+
+    # Observation filter (Note 15): retain the solver's solution Jacobian /
+    # residual so the commit hook can build the Jacobian R_t without a second
+    # fit. Pure side-channel; False when the filter is off or there is no fit.
+    want_diag = with_fit and resolve_filter_mode(state.options()).enabled
+    return SliceFitTask(calibrate=calibrate, prepass=prepass, overlay=overlay, want_diag=want_diag)
+
+
 def display_overlay(
     state: AppState,
     ticker: str,
@@ -473,27 +578,11 @@ def display_overlay(
     model-agnostic total-variance floor (volfit.calib.calendar) so the SVI /
     sigmoid overlay respects calendar order just as the LQD backbone does. Both
     omitted (the single-node path) leaves the overlay byte-identical."""
-    settings = state.fit_settings()
-    if settings.model == "lqd":
-        return None
-    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-    weights = resolve_weights(settings.weightScheme, k, w)
-    band = edited_band(state, ticker, iso, prepared, fit_mode)
-    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
-    cal_floor = None
-    if enforce_calendar and prev_display is not None:
-        # Confine the floor to THIS expiry's traded log-moneyness range: outside
-        # the quotes both slices are pure extrapolation and an SVI wing mismatch
-        # there is a phantom violation, not real calendar arb.
-        cal_floor = variance_floor_targets(prev_display.slice, variance_floor_grid_from(k))
-    return build_display_fit(
-        settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs,
-        calendar_floor=cal_floor, calendar_weight=state.options().calendarWeight,
-        prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
-        prior_var_swap=pt.prior_var_swap,
-        wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
+    task = _slice_task(
+        state, ticker, iso, prepared, fit_mode,
+        prev_display=prev_display, enforce_calendar=enforce_calendar, with_fit=False,
     )
+    return run_slice_fit(task).display
 
 
 # ------------------------------------------------------------- slice fitting
@@ -531,75 +620,27 @@ def _compute_fit(
         if snapshot.exercise_style == "american" and state.year_fraction(expiry) > 0.0:
             act.detail("de-americanizing quotes")
         prepared = prepared_quotes(state, ticker, expiry)  # de-Am memoized per node
-        k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-        weights = resolve_weights(settings.weightScheme, k, w)
-        band = edited_band(state, ticker, iso, prepared, fit_mode)
-        vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-        pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
-        # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit data-only
-        # first so the data-fitted level/shape is the seed, then refit with the gated
-        # prior initialized from it. Single-node path only (init is None); the
-        # warm-started surface sweep keeps its previous-expiry seed.
-        seed = init
-        if (
-            state.options().priorDataOnlyPrepass
-            and init is None
-            and (pt.operator_prior is not None or pt.prior_anchor is not None)
-        ):
+        # The LQD backbone fit + the non-LQD display overlay (same edited quotes,
+        # band and prior — Phase 3/5) as ONE pure task: a background Calibrate
+        # thunk routes it to the fit process pool (volfit.api.fit_pool), an
+        # interactive call runs it inline — byte-identical either way.
+        task = _slice_task(
+            state, ticker, iso, prepared, fit_mode, init=init, allow_prepass=True
+        )
+        if task.prepass is not None:
             act.detail("data-only prepass")
-            seed = calibrate_slice(
-                k, w, t=prepared.tau, n_order=settings.nOrder, weights=weights,
-                reg_lambda=settings.regLambda, reg_power=settings.regPower,
-                band=band, barrier_center=settings.barrierCenter,
-                barrier_scale=settings.barrierScale, mid_anchor_weight=settings.midAnchorWeight,
-                var_swap=vs,
-            ).params
         act.detail(f"fitting {_model_label(settings.model)} smile")
-        # Observation filter (Note 15): retain the solver's solution Jacobian /
-        # residual so the commit hook can build the Jacobian R_t without a
-        # second fit. Pure side-channel; None when the filter is off.
-        fd: dict | None = (
-            {} if resolve_filter_mode(state.options()).enabled else None
-        )
-        result = calibrate_slice(
-            k,
-            w,
-            t=prepared.tau,
-            n_order=settings.nOrder,
-            weights=weights,
-            reg_lambda=settings.regLambda,
-            reg_power=settings.regPower,
-            # Warm start only when handed a same-order seed (the surface sweep's
-            # previous expiry, or the two-pass data-only fit); a mismatched order
-            # would be the wrong vector length.
-            init=seed if getattr(seed, "order", None) == settings.nOrder else None,
-            band=band,
-            barrier_center=settings.barrierCenter,
-            barrier_scale=settings.barrierScale,
-            mid_anchor_weight=settings.midAnchorWeight,
-            var_swap=vs,
-            prior_anchor=pt.prior_anchor,
-            prior_var_swap=pt.prior_var_swap,
-            operator_prior=pt.operator_prior,
-            solver_diag=fd,
-        )
-        # LQD is always fitted (the analytic backbone); a non-LQD model choice adds
-        # a display overlay on the same edited quotes + band (volfit.api.fit_models),
-        # now carrying the SAME prior so SVI/SIV match the backbone (Phase 3/5).
-        display = build_display_fit(
-            settings.model, k, w, prepared.tau, weights, settings, band=band, var_swap=vs,
-            prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
-            prior_var_swap=pt.prior_var_swap,
-            wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
-        )
-    record = FitRecord(prepared=prepared, result=result, display=display)
+        outcome = fit_pool.execute(task)
+    record = FitRecord(prepared=prepared, result=outcome.result, display=outcome.display)
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
-    if fd is not None:  # observation filter (Note 15) — advisory, never raises
+    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory
         from volfit.api import observation_filter
 
-        observation_filter.commit_hook(state, ticker, iso, fit_mode, record, fd)
+        observation_filter.commit_hook(
+            state, ticker, iso, fit_mode, record, outcome.solver_diag
+        )
     return record
 
 
@@ -1169,37 +1210,17 @@ def fit_surface_slice(
     masking quotes leaves it untouched. ``fit_mode`` selects the band objective;
     the weight scheme follows the fit settings (volfit.calib.weights).
     """
-    cal_z = cal_floor = None
-    if enforce_calendar and prev is not None:
-        cal_z, cal_floor = calendar_floor_targets(prev.slice)
-    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
-    settings = state.fit_settings()
-    weights = resolve_weights(settings.weightScheme, k, w)
-    band = edited_band(state, ticker, iso, prepared, fit_mode)
-    vs = varswap_target(state, ticker, iso, k, weights, prepared.tau)
-    pt = prior_targets(state, ticker, iso, k, weights, prepared, fit_mode)
-    return calibrate_slice(
-        k,
-        w,
-        t=prepared.tau,
-        n_order=settings.nOrder,
-        weights=weights,
-        reg_lambda=settings.regLambda,
-        reg_power=settings.regPower,
+    task = _slice_task(
+        state, ticker, iso, prepared, fit_mode,
         init=prev.params if prev is not None else None,
-        band=band,
-        calendar_z=cal_z,
-        calendar_floor=cal_floor,
-        calendar_weight=state.options().calendarWeight,
-        barrier_center=settings.barrierCenter,
-        barrier_scale=settings.barrierScale,
-        mid_anchor_weight=settings.midAnchorWeight,
-        var_swap=vs,
-        prior_anchor=pt.prior_anchor,
-        prior_var_swap=pt.prior_var_swap,
-        operator_prior=pt.operator_prior,
-        solver_diag=solver_diag,
+        prev=prev, enforce_calendar=enforce_calendar, with_overlay=False,
     )
+    if solver_diag is not None:  # honour a caller-provided side-channel dict
+        task = replace(task, want_diag=True)
+    outcome = run_slice_fit(task)
+    if solver_diag is not None and outcome.solver_diag:
+        solver_diag.update(outcome.solver_diag)
+    return outcome.result
 
 
 def fit_and_commit_slice(
@@ -1221,27 +1242,31 @@ def fit_and_commit_slice(
 
     Shared by the surface-fit endpoint (``fit_surface`` / the WS route) and the
     calendar-coupled branch of the background Calibrate job, so the coupling
-    recipe lives in exactly one place. Both the LQD backbone (``fit_surface_slice``)
-    and the SVI/sigmoid overlay (``display_overlay``) honour ``enforce_calendar``.
+    recipe lives in exactly one place. Both the LQD backbone and the SVI/sigmoid
+    overlay honour ``enforce_calendar`` (they share one ``_slice_task``).
     """
     model = _model_label(state.fit_settings().model)
-    fd: dict | None = {} if resolve_filter_mode(state.options()).enabled else None
     with state.activity.activity("calibrate", f"Calibrating {ticker} {iso} ({model})"):
-        result = fit_surface_slice(
-            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode, solver_diag=fd
+        # LQD backbone (warm start + calendar floor) + overlay as ONE pure task;
+        # the background Calibrate thunk routes it to the fit process pool
+        # (volfit.api.fit_pool), the sync surface fit runs it inline.
+        task = _slice_task(
+            state, ticker, iso, prepared, fit_mode,
+            init=prev.params if prev is not None else None,
+            prev=prev, prev_display=prev_display, enforce_calendar=enforce_calendar,
         )
-        overlay = display_overlay(
-            state, ticker, iso, prepared, fit_mode, prev_display, enforce_calendar
-        )
-    record = FitRecord(prepared=prepared, result=result, display=overlay)
+        outcome = fit_pool.execute(task)
+    record = FitRecord(prepared=prepared, result=outcome.result, display=outcome.display)
     key = fit_key(state, ticker, iso, fit_mode)
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
-    if fd is not None:  # observation filter (Note 15) — advisory, never raises
+    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory
         from volfit.api import observation_filter
 
-        observation_filter.commit_hook(state, ticker, iso, fit_mode, record, fd)
+        observation_filter.commit_hook(
+            state, ticker, iso, fit_mode, record, outcome.solver_diag
+        )
     return record
 
 

@@ -245,4 +245,10 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # A frozen (PyInstaller) exe re-executes itself to spawn the calibration
+    # fit-pool workers (volfit.api.fit_pool); without this guard each worker
+    # would relaunch the whole app instead of running the pool bootstrap.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     main()

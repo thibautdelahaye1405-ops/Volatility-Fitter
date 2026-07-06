@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from volfit.api import service
+from volfit.api import fit_pool, service
 from volfit.api.schemas import (
     ActivityInfo,
     CalibrationStatus,
@@ -202,23 +202,40 @@ def _coupled_ticker_items(
     return [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
 
 
-def _parametric_items(
+def _parametric_groups(
     state: AppState, nodes: list[tuple[str, str]], fit_mode: str
-) -> list[tuple[str, str, object]]:
-    """Parametric calibration items for a set of lit nodes: calendar-coupled
-    per-ticker chains when ``enforceCalendar`` is on, else independent per node."""
+) -> list[tuple[str, list[tuple[str, str, object]]]]:
+    """Per-ticker parametric calibration groups for a set of lit nodes.
+
+    Each group is one ticker's ordered item chain — calendar-coupled when
+    ``enforceCalendar`` is on, else independent-but-warm-started — so groups
+    can run CONCURRENTLY (tickers are independent) while the chain inside a
+    group stays sequential (the warm-start / calendar threading needs the
+    previous, shorter expiry's fresh fit)."""
     by_ticker: dict[str, list[str]] = {}
     for t, iso in nodes:  # nodes are nearest-first, so each list is ascending-T
         by_ticker.setdefault(t, []).append(iso)
     coupled = state.options().enforceCalendar
-    items: list[tuple[str, str, object]] = []
-    for ticker, isos in by_ticker.items():
-        items.extend(
+    return [
+        (
+            ticker,
             _coupled_ticker_items(state, ticker, isos, fit_mode)
             if coupled
-            else _independent_ticker_items(state, ticker, isos, fit_mode)
+            else _independent_ticker_items(state, ticker, isos, fit_mode),
         )
-    return items
+        for ticker, isos in by_ticker.items()
+    ]
+
+
+def _parametric_items(
+    state: AppState, nodes: list[tuple[str, str]], fit_mode: str
+) -> list[tuple[str, str, object]]:
+    """Parametric calibration items for a set of lit nodes, flattened in the
+    historical ticker-then-ascending-T order (the sync ``calibrate_ticker``
+    path and tests; the background job runs the grouped form)."""
+    return [
+        item for _t, items in _parametric_groups(state, nodes, fit_mode) for item in items
+    ]
 
 
 def _ensure_chains(state: AppState, tickers: list[str]) -> None:
@@ -242,13 +259,33 @@ def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     ("Parametric" | "LV") so the UI can show "Calibrating Parametric" then
     "Calibrating LV". When ``enforceCalendar`` is on the parametric items are
     calendar-coupled per ticker (``_coupled_ticker_items``); else they are
-    independent per node. False if a job is already running."""
+    independent per node. False if a job is already running.
+
+    The parametric stage runs its per-ticker groups CONCURRENTLY: each group's
+    thunks ship their slice fits to the fit process pool (``fit_pool.pooled_thunk``)
+    while the warm-start chain stays sequential inside its group, so a
+    multi-ticker Calibrate scales with the configured workers
+    (VOLFIT_CALIB_WORKERS; 1 = the historical serial behaviour, byte-identical
+    fits either way). The LV stage keeps the historical serial order after a
+    barrier — the affine fits run in-process (Numba) and are not pooled yet."""
     _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
-    items = _parametric_items(state, lit_nodes(state), fit_mode)
+    workers = fit_pool.configured_workers()
+    groups = []
+    for ticker, items in _parametric_groups(state, lit_nodes(state), fit_mode):
+        if workers > 1:  # background work: slice fits are pool-eligible
+            items = [(label, phase, fit_pool.pooled_thunk(t)) for label, phase, t in items]
+        groups.append((ticker, items))
+    stages: list[list[tuple[str, list]]] = [groups]
     if state.options().localVolEnabled:
-        for ticker in _lit_tickers(state):
-            items.append((f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode)))
-    return state.calibration_jobs.start(items)
+        lv_items = [
+            (f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode))
+            for ticker in _lit_tickers(state)
+        ]
+        if lv_items:
+            stages.append([("LV", lv_items)])
+    if workers > 1 and groups:
+        fit_pool.prewarm()  # workers import volfit while the de-Am prep runs
+    return state.calibration_jobs.start_stages(stages, workers=workers)
 
 
 def _lit_tickers(state: AppState) -> list[str]:

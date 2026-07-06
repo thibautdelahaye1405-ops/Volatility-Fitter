@@ -10,6 +10,39 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ## STATUS — updated 2026-07-06 (resume here)
 
+### 🧭 SESSION WRAP (2026-07-06, evening) — PARALLEL background calibration SHIPPED (commercial-MVP arc, item 1)
+
+Productization arc opened (plan: quality dashboard → export/publish → graph
+explainability → benchmark pack; sparse graph solver deferred until >2–3k
+nodes). First item done on **main** (suite **931 passed, 1 skipped**; ruff clean):
+
+- **Parallel per-ticker background Calibrate.** `calibrate_all` now runs its
+  per-ticker groups CONCURRENTLY: stages of groups in `api/jobs.py`
+  (`start_stages`; stage 2 = the LV barrier, serial as before; legacy
+  `start()` contract kept), each group's warm-start/calendar chain sequential
+  inside its thread. The CPU-heavy slice fits ship to a **spawn process pool**
+  (`api/fit_pool.py`, `VOLFIT_CALIB_WORKERS`, default cpu−1 capped 8; 0/1 =
+  historical serial) as pure picklable tasks (`calib/fit_task.py` — ONE code
+  path pooled or inline, so results are byte-identical; locked by
+  `test_parallel_calibration.py`'s serial-vs-parallel identity gate + a real
+  spawn-pool round-trip). Assembly/commit stay main-side under the state lock
+  (`service._slice_task`); `_compute_fit`/`fit_and_commit_slice` route through
+  it; `fit_surface_slice`/`display_overlay` are thin wrappers over the same
+  assembler.
+- **Interactive fits never pool** — `fit_pool.pooled()` is a thread-local
+  opt-in wrapped around background thunks only, so a single-node Calibrate /
+  autoCalibrate GET can never queue behind a 25-ticker job (test-locked).
+- Infra failures (spawn/pickling/killed worker) **fall back inline** and stick
+  for the session; genuine fit errors keep per-item isolation. Cancel keeps
+  per-node granularity across all groups. `build_display_fit` moved to
+  `volfit/models/display.py` (api/fit_models.py = re-export shim) so workers
+  never import the FastAPI graph; `desktop.py` gained
+  `multiprocessing.freeze_support()` (frozen-exe fork-bomb guard).
+  `tests/conftest.py` pins workers=1 suite-wide (dedicated tests opt in).
+- Follow-ups noted: pool the LV stage (Numba affine fits still serial), job
+  resume/queue-priorities/ETA, a `workers` field in CalibrationStatus for the
+  UI.
+
 ### 🧭 SESSION WRAP (2026-07-05/06) — v2 verdict (F9–F11); F10 active gate; capture underway
 
 All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).

@@ -67,25 +67,34 @@ def test_options_fetch_marks_stale_when_auto_off():
 
 def test_calibrate_all_skips_lv_when_localvol_disabled(monkeypatch):
     """localVolEnabled gates the LV (affine) work items; parametric nodes always
-    fit. Items carry the coarse phase used by the UI status."""
+    fit. Items carry the coarse phase used by the UI status. The LV items form
+    their own STAGE (a barrier after the concurrent parametric groups)."""
     from volfit.api import workflow
 
     state = _state(auto=True)
     captured: dict = {}
     monkeypatch.setattr(
-        state.calibration_jobs, "start",
-        lambda items: (captured.__setitem__("items", items) or True),
+        state.calibration_jobs, "start_stages",
+        lambda stages, workers=1: (captured.__setitem__("stages", stages) or True),
     )
+
+    def phases(stages):
+        return {
+            phase
+            for groups in stages
+            for _name, items in groups
+            for _label, phase, _thunk in items
+        }
 
     state.set_options(state.options().model_copy(update={"localVolEnabled": True}))
     workflow.calibrate_all(state)
-    phases_on = {phase for _label, phase, _thunk in captured["items"]}
-    assert "Parametric" in phases_on and "LV" in phases_on
+    assert phases(captured["stages"]) == {"Parametric", "LV"}
+    assert len(captured["stages"]) == 2  # LV runs as its own barrier stage
 
     state.set_options(state.options().model_copy(update={"localVolEnabled": False}))
     workflow.calibrate_all(state)
-    phases_off = {phase for _label, phase, _thunk in captured["items"]}
-    assert phases_off == {"Parametric"}  # LV items skipped when disabled
+    assert phases(captured["stages"]) == {"Parametric"}  # LV skipped when disabled
+    assert len(captured["stages"]) == 1
 
 
 def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
@@ -157,13 +166,15 @@ def test_enforce_calendar_threads_prev_overlay_for_non_lqd(monkeypatch):
     state.set_fit_settings(state.fit_settings().model_copy(update={"model": "svi"}))
 
     seen: list[tuple[bool, bool]] = []  # (prev_display_is_none, enforce)
-    real = service.display_overlay
+    real = service._slice_task
 
-    def spy(st, tk, iso, prepared, fit_mode, prev_display=None, enforce_calendar=False):
-        seen.append((prev_display is None, enforce_calendar))
-        return real(st, tk, iso, prepared, fit_mode, prev_display, enforce_calendar)
+    def spy(st, tk, iso, prepared, fit_mode, **kw):
+        # The coupled commit path builds ONE combined task (LQD + overlay);
+        # its overlay floor comes from the threaded prev_display.
+        seen.append((kw.get("prev_display") is None, kw.get("enforce_calendar", False)))
+        return real(st, tk, iso, prepared, fit_mode, **kw)
 
-    monkeypatch.setattr(service, "display_overlay", spy)
+    monkeypatch.setattr(service, "_slice_task", spy)
 
     nodes = workflow.lit_nodes(state, [TICKER])
     assert len(nodes) >= 2
