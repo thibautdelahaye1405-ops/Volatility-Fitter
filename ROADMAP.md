@@ -39,6 +39,12 @@ nodes). First item done on **main** (suite **931 passed, 1 skipped**; ruff clean
   never import the FastAPI graph; `desktop.py` gained
   `multiprocessing.freeze_support()` (frozen-exe fork-bomb guard).
   `tests/conftest.py` pins workers=1 suite-wide (dedicated tests opt in).
+- **Measured (9 synthetic tickers × 4 expiries, 6 workers, LV off): warm pool
+  3.26× (0.92s → 0.28s), cold first-Calibrate 0.79× (one ~1s spawn per app
+  session).** Synthetic fits are ~25ms so the round-trip caps the ratio; real
+  chains fit 5–10× longer ⇒ expect closer-to-linear scaling on 25 assets. The
+  serial LV stage now dominates a full Calibrate — pooling it is the top
+  follow-up.
 - Follow-ups noted: pool the LV stage (Numba affine fits still serial), job
   resume/queue-priorities/ETA, a `workers` field in CalibrationStatus for the
   UI.
