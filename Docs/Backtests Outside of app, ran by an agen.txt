@@ -1,0 +1,20 @@
+Backtests Outside of app, ran by an agent in a separate session
+***
+
+Objectives :
+- measure calibration performance of various models and hyperparameters vs SVI-JW baseline. In precision and speed.
+- measure end-to-end calibration time and attribute : data fetchiung /prep, de-americanize, model-fit
+- exhibit breaks (LV non-convergence, arb-break, RMSE outlier ...) and diuagnose
+- measure graph performance on leave-one-out, vs transported prior baseline
+- construct a set of quotes and calibrations with sufficient breadth so it can train a neural operator for LV cal
+***
+
+Sample set is large representative set of historical quotes :
+- assets : SPX and Nasdaq and Russell (most liquid chains), and 2 ETFs (MXEF and ?) and 20 names : 10 largest caps, complemented with 1 to 3 names in each sector (largest / most liquid sectors can get more than 1 name) 
+- dates : 20 days periods, with different regimes : S&P vol stable and sub-12, S&P vol spikes and snaps back quickly, S&P vol remains high for a few weeks. 
+- time of the day : ideally intraday snapshot (like 15mn before close) to get proper bid-asks instead of noisy offical close.
+***
+
+
+
+
