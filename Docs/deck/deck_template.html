@@ -1,0 +1,1505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vol-Fitter — Capabilities Deck</title>
+<style>
+  /* ---------- deck tokens (light institutional) --------------------------- */
+  :root {
+    --bg:      #F4F7FA;   /* soft cool-white ground */
+    --panel:   #FFFFFF;   /* card surface */
+    --panel-2: #EEF2F7;   /* recessed surface */
+    --line:    #D9E2EC;   /* hairline borders */
+    --ink:     #0B1520;   /* primary text */
+    --ink-2:   #44556A;   /* secondary text */
+    --muted:   #7A8AA0;   /* captions, chrome */
+    --cyan:    #0369A1;   /* observed / market */
+    --amber:   #B45309;   /* prior / transported baseline */
+    --green:   #047857;   /* posterior / improved */
+    --violet:  #6D28D9;   /* graph posterior (matches app overlay) */
+    --red:     #DC2626;   /* arbitrage / rejected */
+    /* chart series (validated on white, light mode) */
+    --s-lqd:   #059669;
+    --s-svi:   #D97706;
+    --s-siv:   #8B5CF6;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body {
+    font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+  }
+  code, .mono { font-family: "Cascadia Code", Consolas, ui-monospace, monospace; }
+
+  /* ---------- fixed 1920x1080 slides, scaled to the window ---------------- */
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  .slide {
+    width: 1920px; height: 1080px;
+    background: var(--bg);
+    position: absolute;
+    transform-origin: center center;
+    display: none;
+    flex-direction: column;
+    padding: 72px 96px 56px;
+  }
+  .slide.active { display: flex; }
+
+  /* ---------- shared slide anatomy ---------------------------------------- */
+  .kicker {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 20px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px;
+  }
+  .kicker .tag {
+    font-size: 17px; letter-spacing: .1em; padding: 4px 12px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2);
+    background: var(--panel);
+  }
+  h1.claim {
+    font-size: 46px; line-height: 1.14; font-weight: 650; max-width: 1560px;
+    letter-spacing: -0.01em; margin-bottom: 28px;
+  }
+  h1.claim .hl { color: var(--violet); }
+  h1.claim .hlc { color: var(--cyan); }
+  /* plain-language context line for readers new to the app and the notes */
+  .lede {
+    font-size: 22px; line-height: 1.5; color: var(--ink-2);
+    margin: -10px 0 24px; max-width: 1620px;
+  }
+  .lede b { color: var(--ink); font-weight: 600; }
+  /* color-keyed caption legend for screenshots */
+  .capkey { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 10px; font-size: 17px; color: var(--ink-2); }
+  .capkey .ci { display: flex; align-items: center; gap: 8px; }
+  .capkey .sw { width: 24px; height: 4px; border-radius: 2px; flex: none; }
+  .capkey .sw.dash { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); }
+  /* glossary cards */
+  .gloss { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; min-height: 0; align-content: start; }
+  .gloss .g {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px;
+  }
+  .gloss .g .t { font-size: 22px; font-weight: 650; margin-bottom: 6px; }
+  .gloss .g .t .m { color: var(--violet); }
+  .gloss .g .d { font-size: 19px; line-height: 1.45; color: var(--ink-2); }
+  .gloss .g .d b { color: var(--ink); }
+  /* which-model-when mini table */
+  table.pick { border-collapse: collapse; width: 100%; font-size: 19px; margin-top: 18px; }
+  table.pick td { padding: 8px 12px; border-bottom: 1px solid rgba(217,226,236,.8); color: var(--ink-2); vertical-align: top; }
+  table.pick td:first-child { font-weight: 650; color: var(--ink); white-space: nowrap; width: 170px; }
+  .cols { display: grid; grid-template-columns: 1fr 1.35fr; gap: 56px; flex: 1; min-height: 0; }
+  .cols.even { grid-template-columns: 1fr 1.15fr; }
+  .cols.rev { grid-template-columns: 1.35fr 1fr; }
+  /* balance airy columns: center each column's content vertically (falls back
+     to top-aligned when the content overflows, instead of clipping both ends) */
+  .cols > div { display: flex; flex-direction: column; justify-content: safe center; min-height: 0; }
+
+  .eqblock {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 28px; margin-bottom: 16px;
+  }
+  .eqblock.core { border-color: rgba(109,40,217,.35); background: linear-gradient(180deg, rgba(109,40,217,.05), rgba(109,40,217,.015)), var(--panel); }
+  .eqblock .eqtitle {
+    font-size: 15px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 12px;
+  }
+  .eq { color: var(--ink); display: flex; justify-content: center; }
+  .eq svg { max-width: 100%; height: auto; }
+
+  ul.points { list-style: none; margin-top: 6px; }
+  ul.points li {
+    font-size: 21px; line-height: 1.48; color: var(--ink-2);
+    padding-left: 24px; position: relative; margin-bottom: 10px;
+  }
+  ul.points li::before {
+    content: ""; position: absolute; left: 0; top: 12px;
+    width: 10px; height: 10px; border-radius: 3px; background: var(--cyan);
+  }
+  ul.points li strong { color: var(--ink); font-weight: 600; }
+  ul.points li.g::before { background: var(--green); }
+  ul.points li.a::before { background: var(--amber); }
+  ul.points li.v::before { background: var(--violet); }
+  ul.points li.r::before { background: var(--red); }
+
+  .shot {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: var(--panel); box-shadow: 0 18px 44px rgba(15,30,60,.16);
+  }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shotcap { font-size: 17.5px; color: var(--muted); margin-top: 12px; line-height: 1.45; }
+  .shotcap .k { color: var(--ink-2); font-weight: 600; }
+
+  /* note-figure cards (light matplotlib figures, framed) */
+  .figcard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; box-shadow: 0 10px 26px rgba(15,30,60,.08);
+  }
+  .figcard img { display: block; width: 100%; height: auto; }
+  .figrow { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+  .strip {
+    margin-top: 22px; padding: 16px 24px;
+    border-left: 3px solid var(--cyan);
+    background: linear-gradient(90deg, rgba(3,105,161,.06), transparent 65%);
+    font-size: 21px; color: var(--ink-2); border-radius: 0 10px 10px 0;
+  }
+  .strip b { color: var(--ink); font-weight: 600; }
+  .strip .lbl {
+    font-size: 17px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--cyan); display: block; margin-bottom: 6px;
+  }
+
+  .statrow { display: flex; gap: 18px; margin: 18px 0 0; }
+  .stat {
+    flex: 1; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 18px 22px;
+  }
+  .stat .v { font-size: 34px; font-weight: 650; letter-spacing: -.01em; }
+  .stat .v.g { color: var(--green); } .stat .v.c { color: var(--cyan); }
+  .stat .v.vl { color: var(--violet); } .stat .v.am { color: var(--amber); }
+  .stat .v.rd { color: var(--red); }
+  .stat .l { font-size: 17px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+
+  /* ---------- title slide -------------------------------------------------- */
+  .slide.title { padding: 88px 110px 0; }
+  .title .brand {
+    font-size: 22px; letter-spacing: .28em; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 26px;
+  }
+  .title h1 { font-size: 84px; line-height: 1.06; font-weight: 680; letter-spacing: -.015em; max-width: 1560px; color: var(--ink); }
+  .title h1 .hl { color: var(--violet); }
+  .title .sub { font-size: 30px; color: var(--ink-2); margin-top: 28px; max-width: 1350px; line-height: 1.45; }
+  .title .chips { display: flex; gap: 14px; margin-top: 36px; }
+  .title .chip {
+    font-size: 20px; color: var(--ink-2); padding: 10px 20px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
+  }
+  .title .chip b { color: var(--ink); font-weight: 600; }
+  .title .titleshot {
+    margin-top: 52px; border: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    overflow: hidden; box-shadow: 0 -18px 44px rgba(15,30,60,.14);
+    height: 330px; background: #0b1220;
+  }
+  .title .titleshot img { display: block; width: 100%; height: auto; margin-top: -6px; }
+
+  /* ---------- case-file panel ---------------------------------------------- */
+  .case {
+    border: 1px solid rgba(220,38,38,.30); border-radius: 14px;
+    background: linear-gradient(180deg, rgba(220,38,38,.04), rgba(220,38,38,.01)), var(--panel);
+    padding: 24px 28px; margin-bottom: 18px;
+  }
+  .case .lbl {
+    font-size: 17px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--red); margin-bottom: 12px; display: flex; align-items: center; gap: 10px;
+  }
+  .case .lbl::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+  .case p { font-size: 20px; line-height: 1.5; color: var(--ink-2); }
+  .case p b { color: var(--ink); }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .step { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .step .n { font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .step .t { font-size: 18px; color: var(--ink-2); line-height: 1.4; }
+  .step .t b { color: var(--ink); }
+  .step.bad .n { color: var(--red); } .step.fix .n { color: var(--green); }
+
+  /* ---------- evidence chart ----------------------------------------------- */
+  .chartcard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px 28px 18px;
+  }
+  .chartcard svg { display: block; width: 100%; height: 400px; }
+  .chartcard .ct { font-size: 21px; font-weight: 600; margin-bottom: 4px; }
+  .chartcard .cs { font-size: 17px; color: var(--muted); margin-bottom: 12px; }
+  .legend { display: flex; gap: 26px; font-size: 17px; color: var(--ink-2); margin-bottom: 8px; flex-wrap: wrap; }
+  .legend .li { display: flex; align-items: center; gap: 9px; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 50%; }
+  .legend .sw.ring { background: transparent; border: 2.5px solid var(--muted); }
+  table.evi { border-collapse: collapse; width: 100%; font-size: 20px; }
+  table.evi th, table.evi td { padding: 10px 14px; text-align: right; }
+  table.evi th {
+    color: var(--muted); font-weight: 500; font-size: 16px; letter-spacing: .08em;
+    text-transform: uppercase; border-bottom: 1px solid var(--line);
+  }
+  table.evi td:first-child, table.evi th:first-child { text-align: left; }
+  table.evi td { color: var(--ink-2); border-bottom: 1px solid rgba(217,226,236,.8); }
+  table.evi td.m { font-family: "Cascadia Code", Consolas, monospace; }
+  table.evi tr.win td { color: var(--ink); background: rgba(5,150,105,.07); }
+  table.evi td .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 10px; vertical-align: 1px; }
+
+  /* ---------- pipeline diagram ---------------------------------------------- */
+  .pipe { display: flex; align-items: stretch; gap: 0; margin: 10px 0 6px; }
+  .pipe .node {
+    flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 14px; text-align: center; position: relative;
+  }
+  .pipe .node .t { font-size: 20px; font-weight: 600; color: var(--ink); }
+  .pipe .node .d { font-size: 15.5px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .pipe .arrow { align-self: center; padding: 0 10px; color: var(--muted); font-size: 26px; }
+  .pipe .node.em { border-color: rgba(109,40,217,.4); background: linear-gradient(180deg, rgba(109,40,217,.05), rgba(109,40,217,.015)), var(--panel); }
+
+  /* ---------- montage -------------------------------------------------------- */
+  .montage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; flex: 1; min-height: 0; align-content: start; }
+  .montage .cell .shot { height: 268px; }
+  .montage .cell .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+  .montage .cap { font-size: 17px; color: var(--ink-2); margin-top: 8px; font-weight: 600; }
+  .montage .cap span { color: var(--muted); font-weight: 400; }
+
+  /* ---------- closing --------------------------------------------------------- */
+  .slide.close { justify-content: center; padding: 0 160px; }
+  .close .brand { font-size: 20px; letter-spacing: .28em; text-transform: uppercase; color: var(--cyan); margin-bottom: 30px; }
+  .close h1 { font-size: 62px; line-height: 1.16; font-weight: 650; letter-spacing: -.012em; max-width: 1560px; }
+  .close h1 .hl { color: var(--violet); }
+  .close .sub { font-size: 27px; color: var(--ink-2); margin-top: 34px; max-width: 1380px; line-height: 1.55; }
+
+  /* ---------- footer / nav -------------------------------------------------- */
+  .foot {
+    position: absolute; bottom: 26px; left: 96px; right: 96px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 17px; color: var(--muted); letter-spacing: .06em;
+  }
+  #dots { position: fixed; bottom: 18px; right: 24px; display: flex; gap: 6px; z-index: 5; }
+  #dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--line); cursor: pointer; }
+  #dots span.on { background: var(--cyan); }
+  #counter { position: fixed; bottom: 14px; left: 24px; font-size: 14px; color: var(--muted); z-index: 5; font-family: Consolas, monospace; }
+
+  @media print {
+    body { overflow: visible; }
+    #stage { position: static; }
+    #dots, #counter { display: none; }
+    .slide { display: flex !important; position: static; transform: none !important; page-break-after: always; }
+    @page { size: 1920px 1080px; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- ============ 01 · TITLE ============================================== -->
+<section class="slide title active">
+  <div class="brand">Vol-Fitter</div>
+  <h1>Arbitrage-aware volatility surfaces,<br>with <span class="hl">graph propagation</span> to the smiles nobody quotes.</h1>
+  <p class="sub">A volatility workstation that turns sparse, noisy option markets into explainable,
+    arbitrage-clean surfaces with uncertainty — and propagates liquid-name information across
+    expiries and assets.</p>
+  <div class="chips">
+    <span class="chip"><b>4</b> smile models, one calibration spine</span>
+    <span class="chip"><b>16</b> technical notes, equation-anchored</span>
+    <span class="chip"><b>931</b> tests green</span>
+    <span class="chip">backtested on <b>3</b> historical regimes</span>
+  </div>
+  <div class="titleshot"><img src="{{IMG:graph_extrapolate}}" alt="Graph extrapolation workspace"></div>
+</section>
+
+<!-- ============ 02 · THE PROBLEM ========================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">The problem</span><span>Why option surfaces are hard</span></div>
+  <h1 class="claim">Listed option markets are <span class="hlc">sparse, noisy, and structurally constrained</span> — most of the surface is never quoted.</h1>
+  <div class="cols">
+    <div>
+      <ul class="points">
+        <li><strong>Wide, asymmetric spreads</strong> — wings quote at multiples of ATM spread; mids are not fair value.</li>
+        <li class="a"><strong>American exercise</strong> — listed equity quotes embed an early-exercise premium that poisons European-model fits.</li>
+        <li class="r"><strong>Structural no-arbitrage</strong> — butterfly and calendar constraints couple every strike and expiry; a fit that ignores them produces tradable-looking nonsense.</li>
+        <li class="v"><strong>Events distort the clock</strong> — earnings compress into a day what diffusion spreads over weeks.</li>
+        <li class="g"><strong>Most names are dark</strong> — beyond the top tickers, whole expiries have no usable quotes at all.</li>
+      </ul>
+      <div class="statrow">
+        <div class="stat"><div class="v rd">most</div><div class="l">of the (underlying × expiry) universe has no reliable quotes at any moment</div></div>
+        <div class="stat"><div class="v c">every</div><div class="l">downstream decision — pricing, hedging, alpha — still needs the full surface</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:quote_table}}" alt="Quote table with bid/ask spreads vs fit"></div>
+      <p class="shotcap"><span class="k">The raw material — live SPY chain (Yahoo feed).</span> Per strike: bid / mid / ask implied volatility (IV),
+        the model's fitted IV, and the deviation. The fitter's job is to decide which of these numbers to believe, and by how much.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    A volatility desk does not need another curve-drawer — it needs a system that turns <b>partial, contradictory evidence into a full, arbitrage-clean surface with uncertainty</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 03 · ARCHITECTURE ======================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 00 · System overview</span><span>Architecture</span></div>
+  <h1 class="claim">One pipeline, one pricing primitive, one handle vocabulary — <span class="hlc">every feature speaks the same coordinates</span>.</h1>
+  <p class="lede">Every quote passes through one deterministic pipeline, and every model reads and writes the same small set of
+    smile descriptors — the <b>"handles"</b>: at-the-money (ATM) volatility, skew, curvature, wing slopes. That shared vocabulary
+    is what lets the later layers (priors, filtering, the graph) compose.</p>
+  <div class="pipe">
+    <div class="node"><div class="t">Fetch</div><div class="d">Yahoo · Bloomberg · Massive · Synthetic, live or as-of</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="t">De-Americanize</div><div class="d">CRR inversion, Numba kernel</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="t">Forwards</div><div class="d">parity regression, clamped &amp; de-biased</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="t">Prepare</div><div class="d">weights, bands, event clock</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="t">Calibrate</div><div class="d">LQD · SVI-JW · MC-SIV · Local Vol</div></div>
+    <div class="arrow">→</div>
+    <div class="node"><div class="t">Persist &amp; filter</div><div class="d">Bayesian priors, Kalman filter</div></div>
+    <div class="arrow">→</div>
+    <div class="node em"><div class="t">Graph</div><div class="d">propagate to dark nodes</div></div>
+  </div>
+  <div class="cols" style="margin-top:18px">
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">The shared pricing primitive — normalized Black on total variance</div>
+        <div class="eq">{{EQ:black_map}}</div>
+      </div>
+      <ul class="points">
+        <li>All models quote the same objects: <strong>total variance w(k), ATM vol, skew, curvature, wing scales</strong>.</li>
+        <li class="g">Because priors, the filter and the graph act on the <strong>same handles</strong>, they compose instead of fighting.</li>
+      </ul>
+    </div>
+    <div>
+      <ul class="points">
+        <li class="v"><strong>Arbitrage-cleanliness is structural where possible, measured where not</strong> — LQD and Local Vol are clean by construction; SVI/SIV are fenced by penalties that vanish on admissible slices.</li>
+        <li class="a"><strong>Every feature is strictly additive</strong> — bands, var-swaps, events, priors, calendar coupling: byte-identical to OFF when disabled, and that byte-identity is test-locked.</li>
+      </ul>
+      <table class="pick">
+        <tr><td>LQD</td><td>the house default — best accuracy, structural no-arbitrage, exact handles</td></tr>
+        <tr><td>SVI-JW</td><td>interoperability — import/export in the units counterparties use</td></tr>
+        <tr><td>Multi-Core SIV</td><td>event weeks — W-shaped smiles a convex model cannot reach</td></tr>
+        <tr><td>Local Vol</td><td>exotics &amp; hedging — a PDE-ready pricing surface, not just smiles</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The architecture is why the headline feature works at all: <b>graph propagation is only possible because everything upstream normalizes into one coordinate system</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 04 · THE PAYOFF, UP FRONT ================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">The differentiator, worked</span><span>One end-to-end example</span></div>
+  <h1 class="claim">Here is the payoff first: <span class="hl">SPY reprices — a dark NVDA smile follows</span>, with uncertainty attached.</h1>
+  <p class="lede">A controlled demo session (synthetic feed, so it is exactly reproducible): only SPY is quoted ("lit");
+    QQQ, AAPL, NVDA and IWM are dark. SPY's whole surface reprices +150 bp. <b>The rest of this deck exists to earn
+    each arrow in this picture.</b></p>
+  <div class="steps" style="grid-template-columns: repeat(4, 1fr); margin: 0 0 20px;">
+    <div class="step"><div class="n">1 · Lit move</div><div class="t">SPY recalibrates <b>+150 bp</b> across its ladder — real quotes, real fit</div></div>
+    <div class="step"><div class="n">2 · Innovation</div><div class="t">Versus its spot-transported prior, that is <b>+150 bp of genuine news</b> — not noise, not a level</div></div>
+    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news flows along calendar and cross-asset edges, damped by edge weight and β</div></div>
+    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smile lifts <b>+37 bp</b>, inside a ±140 bp credible band it can be judged against</div></div>
+  </div>
+  <div class="cols" style="flex:1">
+    <div>
+      <div class="shot" style="height: 330px; overflow: hidden;"><img src="{{IMG:graph_lattice_crop}}" style="object-fit: cover; object-position: center top; height: 100%; width: 100%;" alt="Graph lattice: SPY lit, +37bp propagated to dark names"></div>
+      <p class="shotcap"><span class="k">The lattice.</span> SPY's four lit nodes (amber rings, +145…150 bp) and every dark
+        node's posterior shift (+37…40 bp) — per node, per expiry.</p>
+    </div>
+    <div>
+      <div class="shot" style="height: 330px; overflow: hidden;"><img src="{{IMG:smile_hero}}" style="object-fit: cover; object-position: left top; height: 100%; width: 100%;" alt="Dark NVDA smile reconstructed with credible band"></div>
+      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA 1M: violet — the graph posterior and its band;
+        blue — the node's own last calibration. The badge carries the audit trail.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    This is the capability incumbent fitters do not have: <b>the unquoted majority of the surface universe stays marked,
+    moves for stated reasons, and carries honest uncertainty</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 05 · GLOSSARY ============================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Vocabulary</span><span>Eight words the deck uses precisely</span></div>
+  <h1 class="claim">Eight terms, defined once — <span class="hlc">everything after this slide uses them exactly</span>.</h1>
+  <div class="gloss">
+    <div class="g"><div class="t"><span class="m">Handle</span></div><div class="d">A smile descriptor a desk quotes in: <b>ATM vol, skew, curvature, wing slopes</b>. In this app they are model parameters (or exact functions of them), not chart read-offs.</div></div>
+    <div class="g"><div class="t"><span class="m">Node</span> · lit / dark</div><div class="d">One (underlying, expiry) smile — the unit of everything here. <b>Lit</b> = has usable quotes, gets calibrated; <b>dark</b> = unquoted, gets reconstructed.</div></div>
+    <div class="g"><div class="t"><span class="m">Transported prior</span></div><div class="d">Yesterday's fitted surface, moved to today's spot by the chosen spot-vol rule (SSR) — the <b>"no news" baseline</b> for every node.</div></div>
+    <div class="g"><div class="t"><span class="m">Innovation</span></div><div class="d">Today's calibration <b>minus</b> the transported prior, per handle — the genuine news in a lit node. The only thing the graph propagates.</div></div>
+    <div class="g"><div class="t"><span class="m">Posterior</span> · credible band</div><div class="d">The estimate after combining sources (prior + news), with its uncertainty. A dark node's posterior comes with a band it can be <b>judged against later</b>.</div></div>
+    <div class="g"><div class="t"><span class="m">RMS · bp</span></div><div class="d">Fit error = <b>root-mean-square implied-vol error</b>, in vol basis points (1 bp = 0.01 vol point). 10 bp ≈ tighter than most quoted spreads.</div></div>
+    <div class="g"><div class="t"><span class="m">ζ</span> (standardized residual)</div><div class="d">Error divided by its own predicted uncertainty. If the bands are honest, ζ ≈ standard normal: <b>mean 0 (unbiased), std 1 (calibrated)</b>.</div></div>
+    <div class="g"><div class="t"><span class="m">Static no-arbitrage</span></div><div class="d">What "arbitrage-free" means here: <b>butterfly-clean within each slice, calendar-clean across expiries</b>. Not a claim about dynamic or model risk.</div></div>
+  </div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 06 · LQD ================================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 01 · LQD</span><span>Modeling backbone</span></div>
+  <h1 class="claim">The house model makes density positivity <span class="hl">native</span> — and exposes exact ATM handles.</h1>
+  <p class="lede"><b>LQD = Log-Quantile-Density.</b> Instead of parametrizing the implied-vol curve and hoping the implied
+    density stays positive, the model parametrizes the log of the quantile density of the terminal return — an object whose
+    exponential is positive by definition. Positive density ⇔ no butterfly arbitrage, so admissibility is built in, not enforced.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Log-quantile-density basis — positive density by construction</div>
+        <div class="eq">{{EQ:lqd_basis}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">Exact ATM handles — vol, skew, curvature in closed form</div>
+        <div class="eq">{{EQ:lqd_handles}}</div>
+      </div>
+      <ul class="points">
+        <li class="g"><strong>Butterfly-free by construction</strong> — the density is an exponential; no penalty needed within a slice.</li>
+        <li class="a">One hard constraint only: <strong>A<sub>R</sub> &lt; 1</strong> (finite forward); Lee tail slopes come out structural, not tuned.</li>
+        <li class="v"><strong>Analytic Jacobian via implicit-root cancellation</strong> — each optimizer step costs two model
+          evaluations regardless of degree, so a 12-parameter LQD calibrates in the same ~30 ms league as the 5-parameter SVI.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:parametric_smile}}" alt="Parametric workspace: live SPY LQD fit vs quotes"></div>
+      <p class="shotcap"><span class="k">Parametric workspace — live SPY, Dec-2026 expiry (Yahoo feed).</span>
+        Blue — the LQD fit; red marks — quoted bid/ask per strike (smile RMS 0.14 vol pts through ~70 strikes, including the
+        stale mids the market left in the chain). The aside reports the handles the model controls directly:
+        ATM vol, skew, curvature, wing scales A<sub>L</sub>/A<sub>R</sub>, Lee slopes, var-swap level.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Handles are the desk vocabulary — <b>ATM, skew, curvature are model parameters, not read-offs</b>,
+    so priors, filters and the graph all speak the same coordinates.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 05 · EVIDENCE ============================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Backtest · 3 regimes</span><span>Validation</span></div>
+  <h1 class="claim">Backtested on real NBBO history: <span class="hl">LQD fits 2–3× tighter than SVI-JW</span> at comparable cost.</h1>
+  <p class="lede">Offline backtest: historical NBBO quotes (national best bid/offer) replayed through the production calibrators
+    over three regimes, on the 8-asset pilot universe (SPX · NDX · RUT · EEM · EFA · AAPL · NVDA · JPM, full expiry ladders).
+    <b>In-sample</b> = RMS vol error on the strikes used in the fit; <b>out-of-sample (OOS)</b> = error on held-out strikes — the overfitting test.</p>
+  <div class="cols even">
+    <div>
+      <div class="chartcard">
+        <div class="ct">Fit error vs fit time — spike regime (Aug 2024), 1,576 nodes</div>
+        <div class="cs">Lower-left is better · filled = in-sample RMS · hollow = out-of-sample · times pre-date SVI's analytic Jacobian (now ~10 ms)</div>
+        <div class="legend">
+          <span class="li"><span class="sw" style="background:var(--s-lqd)"></span>LQD (deg 8–12)</span>
+          <span class="li"><span class="sw" style="background:var(--s-svi)"></span>SVI-JW</span>
+          <span class="li"><span class="sw" style="background:var(--s-siv)"></span>Multi-Core SIV</span>
+          <span class="li"><span class="sw ring"></span>out-of-sample</span>
+        </div>
+        {{CHART:evidence}}
+      </div>
+    </div>
+    <div>
+      <table class="evi">
+        <tr><th>model</th><th>in-RMS bp</th><th>OOS bp</th><th>fit ms</th><th>vs SVI</th></tr>
+        <tr><td><span class="dot" style="background:var(--s-svi)"></span>SVI-JW</td><td class="m">24.3</td><td class="m">26.8</td><td class="m">45.5</td><td class="m">1.00×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-8</td><td class="m">10.2</td><td class="m">12.2</td><td class="m">24.5</td><td class="m">0.42×</td></tr>
+        <tr class="win"><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-12</td><td class="m">7.6</td><td class="m">9.8</td><td class="m">31.5</td><td class="m">0.31×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-siv)"></span>SIV-3</td><td class="m">9.0</td><td class="m">13.6</td><td class="m">2023</td><td class="m">0.37×</td></tr>
+      </table>
+      <div class="statrow">
+        <div class="stat"><div class="v g">0.31–0.45×</div><div class="l">LQD-12 in-RMS vs SVI, consistent across spike / high / low regimes</div></div>
+        <div class="stat"><div class="v c">0</div><div class="l">fit failures across all models and regimes</div></div>
+      </div>
+      <ul class="points" style="margin-top:20px">
+        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no overfit at any degree</strong>.</li>
+        <li class="r">SIV's extra cores buy in-sample error and <strong>give it back out-of-sample</strong> — production caps cores at 2 and regularizes the put wing.</li>
+        <li class="a">Fit times are as measured <strong>in this sweep</strong> — it ran before SVI's analytic Jacobian shipped
+          (SVI is ~10 ms since). The <strong>accuracy columns are the durable result</strong>; on speed the honest claim is parity.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The house model is not a taste choice: on replayed market history it is <b>2–3× tighter than the industry-standard SVI
+    baseline at comparable fit cost — with twice the parameters and none of the overfit</b>, plus the arbitrage metrics to prove cleanliness.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 06 · LQD DISTRIBUTIONS ===================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 01 · LQD</span><span>Distributions</span></div>
+  <h1 class="claim">A smile fit is a <span class="hlc">probability law</span> — the density and quantile views are first-class, not afterthoughts.</h1>
+  <p class="lede">A fitted smile <b>is</b> a risk-neutral distribution of the terminal return — every IV curve implies one.
+    Because LQD parametrizes that distribution directly, the density and quantile views below are the model read in its native
+    coordinates, not a numerical second derivative of a fitted curve.</p>
+  <div class="cols rev">
+    <div>
+      <div class="figrow">
+        <div class="figcard"><img src="{{FIG:fig_lqd_density}}" alt="LQD risk-neutral density"></div>
+        <div class="figcard"><img src="{{FIG:fig_lqd_logq}}" alt="LQD log quantile density"></div>
+      </div>
+      <p class="shotcap"><span class="k">Generated by the production fitter.</span> Left — the risk-neutral density behind a fitted smile,
+        non-negative everywhere by construction. Right — the log-quantile-density ℓ(u) itself: the model's native coordinate,
+        where wings are two numbers (L, R) and the body is a smooth Legendre expansion.</p>
+    </div>
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">Pricing identity in logit coordinates — no Black inversion in the loop</div>
+        <div class="eq">{{EQ:lqd_pricing}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">Structural tails — Lee slopes from the endpoint scales</div>
+        <div class="eq">{{EQ:lqd_tail}}</div>
+      </div>
+      <ul class="points">
+        <li>Prices come from a <strong>closed-form asset-share integral</strong> — quotes, densities, quantiles and var-swaps all read off the same object.</li>
+        <li class="g">Tail behaviour is <strong>diagnosed, not assumed</strong>: A<sub>L</sub>, A<sub>R</sub> and the implied Lee slopes are reported with every fit.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Because the density is the model, <b>digital prices, tail odds and var-swap strikes are consistent with the smile by construction</b> — not by post-processing.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 07 · SVI/JW ================================================ -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 02 · SVI / SVI-JW</span><span>The industry baseline, done carefully</span></div>
+  <h1 class="claim">SVI is the lingua franca — the app speaks it in <span class="hlc">jump-wing handles</span>, with the conversion domain made explicit.</h1>
+  <p class="lede"><b>SVI ("Stochastic Volatility Inspired", Gatheral)</b> is the market-standard 5-parameter smile; most desks and
+    vendors quote surfaces in it. The <b>jump-wings (JW)</b> reparametrization re-expresses the same curve in trader units:
+    level, skew, two wing slopes, minimum.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">Raw SVI — what the optimizer sees</div>
+        <div class="eq">{{EQ:svi_raw}}</div>
+      </div>
+      <div class="eqblock core">
+        <div class="eqtitle">Jump-wing handles — what humans see (exact, lossless on its domain)</div>
+        <div class="eq">{{EQ:svi_jw}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>Feasible by reparametrization</strong> — softplus/tanh/exp transforms keep every optimizer iterate a valid slice.</li>
+        <li class="g"><strong>Analytic Levenberg–Marquardt Jacobian</strong> — shipped after the backtest showed the default
+          finite-difference gradients were the cost driver: <strong>26.3 → 10.2 ms per fit (~2.6×)</strong>, identical solution.</li>
+        <li class="a">The raw↔JW conversion is exact <strong>on a documented domain</strong> — including the ψ=0 coordinate singularity, stated as a contract instead of hidden.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_svi_jw_deck}}" alt="SVI jump-wing handles annotated with skew tangent"></div>
+      <p class="shotcap"><span class="k">The five jump-wing handles on one slice.</span> The level <em>v</em> at the money,
+        the skew ψ drawn as the actual tangent at k = 0, the two asymptotic wing slopes <em>p</em> and <em>c</em>, and the
+        smile minimum ṽ. The desk reads and bumps these; the optimizer never leaves raw coordinates.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Full interoperability with the market's standard model — <b>SVI surfaces can be imported, fitted, bumped and exported in the units every counterparty uses</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 08 · NO-ARB PENALTIES ====================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 02 · SVI / SVI-JW</span><span>Arbitrage fencing</span></div>
+  <h1 class="claim">Soft penalties that are <span class="hlc">exactly zero on admissible slices</span> turn parametric fits into tradable surfaces.</h1>
+  <p class="lede">Two classical conditions keep a single smile arbitrage-free: the <b>Durrleman function g(k) ≥ 0</b>
+    (equivalent to a non-negative implied density — no butterfly arbitrage) and <b>Lee's bound</b> capping how fast the wings may
+    grow. SVI does not satisfy them automatically, so the calibrator fences it. Scope, stated precisely: <b>static</b> cleanliness —
+    butterfly here, calendar on a later slide — not dynamic completeness.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Durrleman butterfly function + Lee cap in JW units</div>
+        <div class="eq">{{EQ:durrleman}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>g(k) ≥ 0 is the butterfly test</strong> — reported as a per-fit diagnostic for every model, not just penalized.</li>
+        <li class="g">Penalties are <strong>inactive on clean slices</strong> — a fit that satisfies no-arbitrage pays nothing; enforcement is byte-identical to OFF.</li>
+        <li class="r">Even the <strong>measurement</strong> was audited: an earlier arbitrage metric took finite differences of
+          reconstructed prices, and its numerical noise flagged <strong>28.3% of provably-clean LQD slices</strong>. The shipped
+          metric evaluates g(k) analytically on the model's own density — the true rate reads 0.0%.</li>
+      </ul>
+      <div class="statrow">
+        <div class="stat"><div class="v g">28.3% → 0.0%</div><div class="l">LQD "butterfly-arb rate" once measured analytically instead of by finite differences</div></div>
+        <div class="stat"><div class="v c">g(k)</div><div class="l">reported on every fit — cleanliness is a number, not a claim</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_svi_g}}" alt="Durrleman g(k) diagnostic non-negative"></div>
+      <p class="shotcap"><span class="k">The certificate, plotted.</span> The Durrleman function of a fitted slice staying non-negative across the strike range —
+        the same curve the penalty rows sample during calibration.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    A surface you can quote from: <b>no butterfly or vertical-spread arbitrage inside any fitted slice, and the diagnostic to prove it per fit</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 09 · MULTI-CORE SIV ======================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 03 · Multi-Core SIV</span><span>Event-shaped smiles</span></div>
+  <h1 class="claim">Event smiles make a <span class="hlc">W</span> — a convex hyperbola cannot; zero-wing hats can.</h1>
+  <p class="lede">Around a scheduled binary event (earnings, CPI, FDA…) the market prices a <b>mixture of outcomes</b>, and the
+    smile develops shoulders — a "W". <b>SIV = Sigmoid Implied Variance</b>: a six-parameter convex base that owns the wings,
+    plus up to R localized "hat" bumps that add the shoulders without being able to touch the tails.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">The six-parameter base — level V₀, slope S₀, curvature K₀, centre z₀, one wing-curvature per side</div>
+        <div class="eq">{{EQ:siv_base}}</div>
+      </div>
+      <div class="eqblock core">
+        <div class="eqtitle">The full model — base + R signed zero-wing hats</div>
+        <div class="eq">{{EQ:siv_model}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">The hat kernel — a normalized second difference of the same log-cosh primitive</div>
+        <div class="eq">{{EQ:siv_hat}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>Hats never move the wings</strong> (zero-wing lemma): B decays to zero on both sides, so humps and notches leave the asymptotic slopes untouched.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figrow">
+        <div class="figcard"><img src="{{FIG:fig_siv_fit}}" alt="SIV W-smile fit"></div>
+        <div class="figcard"><img src="{{FIG:fig_siv_components}}" alt="SIV base + hat components"></div>
+      </div>
+      <p class="shotcap"><span class="k">A W-smile, fitted and decomposed.</span> Left — the fit through an event-shaped slice a convex model cannot reach.
+        Right — the decomposition: smooth sigmoid base plus localized hat kernels, each with its own centre, width and sign.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Earnings weeks stop being "the expiry we can't fit" — <b>the event structure is captured without spline chaos and without contaminating the wings</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 10 · SIV GUARDRAILS ======================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 03 + 09 · Case file</span><span>Expressiveness needs guardrails</span></div>
+  <h1 class="claim">A model powerful enough to fit a W is powerful enough to <span class="hl">invent one</span> — so it ships with guardrails.</h1>
+  <p class="lede">Flexibility is a liability on thin markets: given freedom, SIV's hats will happily "explain" stale wing quotes
+    by manufacturing structure no one would trade. The guardrails below were not designed on a whiteboard — they came out of the
+    backtest, and were <b>ablated</b> (each fix tested alone and together) on real chains.</p>
+  <div class="cols even">
+    <div>
+      <div class="case">
+        <div class="lbl">Case file — the SIV that invented a put wing</div>
+        <p>On illiquid ETF chains, SIV placed hats in the <b>unquoted put wing</b> — 64% of its arbitrage lived there,
+          worst around z ≈ −3.2. Two candidate fixes were built and <b>ablated against each other</b> on real data:</p>
+        <div class="steps">
+          <div class="step bad"><div class="n">Neither</div><div class="t"><b>92 bp</b> RMS, worst g ≈ −30 — arbitrage and bad fits</div></div>
+          <div class="step"><div class="n">One alone</div><div class="t">de-Am repair: 25 bp but arb remains · penalty: arb-free but <b>749 bp</b></div></div>
+          <div class="step fix"><div class="n">Both</div><div class="t">arb-free at <b>225 bp</b> — the repair makes the penalty affordable</div></div>
+        </div>
+      </div>
+      <ul class="points">
+        <li class="g">Production verdict: <strong>cores hard-capped at 2</strong> (the backtest showed cores ≥ 3 overfit), plus an identifiability cap R ≤ (N<sub>quotes</sub>−6)/4.</li>
+        <li class="v">A <strong>put-wing-weighted Durrleman regularizer</strong> fences exactly the region the census identified — extended where needed, confined where not.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_siv_g}}" alt="SIV Durrleman diagnostic with put-wing regularizer"></div>
+      <p class="shotcap"><span class="k">The fence, visualized.</span> The Durrleman diagnostic on an SIV slice with the put-wing regularizer active —
+        the g(k) ≥ 0 certificate holds through the region where unconstrained hats used to manufacture arbitrage.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Model risk management built in: <b>expressiveness is budgeted, measured, and ablation-tested on market data</b> — not left to the optimizer's imagination.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 11 · LOCAL VOL ============================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 04 · Local volatility</span><span>The pricing surface</span></div>
+  <h1 class="claim">A piecewise-affine local-vol surface calibrated <span class="hlc">through the PDE itself</span> — positivity of nodes is cleanliness of the surface.</h1>
+  <p class="lede"><b>Local volatility</b> is the state-dependent instantaneous volatility σ(t, S) consistent with today's option
+    prices (Dupire) — the workhorse for pricing exotics and for hedging dynamics. Here it is not extracted from a fitted smile by
+    differentiation; it is <b>calibrated directly</b>: local-variance values on a maturity × strike grid, priced through the
+    forward pricing equation (a partial differential equation, PDE) in the spirit of Andreasen–Huge.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Forward Dupire equation — the implicit pricing map</div>
+        <div class="eq">{{EQ:dupire}}</div>
+      </div>
+      <ul class="points">
+        <li>Quotes are fitted <strong>through the forward PDE</strong> (Andreasen–Huge philosophy): the surface that prices the market is found directly, not bootstrapped slice by slice.</li>
+        <li class="g"><strong>Nodal positivity ⇒ arbitrage-free surface</strong> — one theorem replaces a penalty zoo: any positive local-variance grid propagates clean prices everywhere.</li>
+        <li class="v">Continuous piecewise-affine ν(t,x): <strong>interpretable nodes</strong> on a strike × maturity grid — a trader can read (and cap) the local vol directly.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:localvol_heatmap}}" alt="Local-vol surface heatmap"></div>
+      <p class="shotcap"><span class="k">Local Vol workspace — live SPY (Yahoo feed).</span> The calibrated nodal local-vol
+        heatmap over maturity × strike, with the arbitrage badge, per-expiry error table and var-swap panel. Smile, densities,
+        term structure and implied-vol surface views are all reconstructed from this one calibrated object.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The bridge to exotics and hedging: <b>the same surface that reprices the vanilla market drives PDE pricing, scenario transport and sticky-local-vol dynamics</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 12 · LV ENGINEERING ======================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 04 · Local volatility</span><span>Engineering for real calibration loops</span></div>
+  <h1 class="claim">The local-vol calibrator is engineered like a production solver, <span class="hlc">not a research script</span>.</h1>
+  <p class="lede">A local-vol calibrator lives or dies on numerics: the stability of the time-stepping scheme, the exactness of
+    the gradients fed to the optimizer, and the raw speed of the inner PDE solve that runs hundreds of times per calibration.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">Implicit Euler step — an M-matrix, hence unconditionally stable and monotone</div>
+        <div class="eq">{{EQ:lv_step}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>Discrete maximum principle</strong> — the step matrix is an M-matrix (positive diagonal, non-positive off-diagonals),
+          so there is no time-step restriction and no spurious oscillation; the popular Crank–Nicolson scheme measurably loses this.</li>
+        <li class="g"><strong>Exact discrete sensitivities</strong> — the tangent and adjoint of the actual scheme (not of the
+          continuous equation) feed a matrix-free Gauss–Newton solver, ~1.3–1.65× faster than the default trust-region method.</li>
+        <li class="v"><strong>Compiled PDE march (Numba): 6.5×</strong> the LAPACK banded solve, numerically exact to ~1e-15, with a plain-NumPy fallback.</li>
+      </ul>
+      <div class="statrow">
+        <div class="stat"><div class="v c">6.5×</div><div class="l">PDE march speed-up (Numba vs banded LAPACK)</div></div>
+        <div class="stat"><div class="v g">108 → 23.5 bp</div><div class="l">six-day weekly rescued by strike-grid diagnosis (case file)</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_lv_rescue}}" alt="Short-dated weekly rescue before/after"></div>
+      <p class="shotcap"><span class="k">Case file — the weekly that broke the grid.</span> A true 1-week expiry fitted terribly until per-expiry diagnostics
+        (vertices-in-range, vega floor, PDE steps) isolated strike under-resolution as the cause. The fix is measured, not guessed: 108 → 23.5 bp.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Local vol you can recalibrate <b>inside a trading loop</b> — stable numerics, exact gradients, and diagnostics that name the failure mode when a fit degrades.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 13 · DE-AMERICANIZATION ==================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 05 · De-Americanization</span><span>Quote preparation</span></div>
+  <h1 class="claim">American quotes are <span class="hlc">converted, not ignored</span> — the tree is a control variate, not a pricing engine.</h1>
+  <p class="lede">US-listed single-stock and ETF options are <b>American</b>: they can be exercised early, and their quotes embed
+    an early-exercise premium that a European model does not know about. Fitting without removing it biases the put wing by
+    whole vol points. The cure: invert each quote through a <b>Cox–Ross–Rubinstein (CRR) binomial tree</b> and keep the
+    European-equivalent vol.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Per-strike CRR inversion — return the European-equivalent Black vol</div>
+        <div class="eq">{{EQ:deam}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>Escrowed-spot lattice</strong> handles discrete dividends; the early-exercise premium is removed strike by strike.</li>
+        <li class="g"><strong>Compiled CRR kernel (Numba): ~60×</strong> on wide chains, plus a content-digest cache so re-tuning a fit never re-runs the conversion.</li>
+        <li class="r"><strong>Caution, learned in production:</strong> a whole-curve convexity repair moved the dense ATM core and gapped live SPY/NVDA smiles — reverted; the shipped repair is <strong>wing-only, band-constrained</strong>, with the ATM core held exactly fixed.</li>
+      </ul>
+      <div class="statrow">
+        <div class="stat"><div class="v c">~60×</div><div class="l">de-Americanization speed-up (Numba kernel, 300-quote chain)</div></div>
+        <div class="stat"><div class="v g">0</div><div class="l">changes to clean European chains — the conversion is byte-identical when there is nothing to remove</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_deam_bias}}" alt="American vs de-Americanized implied vol bias"></div>
+      <p class="shotcap"><span class="k">What the premium does to a fit.</span> Implied-vol bias of raw American quotes against the de-Americanized truth —
+        the put side drifts by whole vol points as moneyness and carry grow. Fitting European models to raw quotes bakes this in.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Single names and dividend payers become fittable: <b>early exercise is removed before modeling, and the repair never invents information where the market quoted none</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 14 · FORWARDS ============================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 06 · Forwards &amp; dividends</span><span>Case file inside</span></div>
+  <h1 class="claim">The forward comes from the chain — and the <span class="hlc">worst-identified parameter is clamped</span>, not trusted.</h1>
+  <p class="lede">Every implied vol depends on the forward F and the discount factor D used to compute it. Both are estimated
+    from the option chain itself — put–call parity holds model-free, so a regression of C−P on the strike recovers them with no
+    external curve. The catch: the regression <b>slope</b> (the discount) is poorly identified on noisy chains, and an error
+    there drags the forward and tears the ATM smile.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Put–call parity as a regression — slope is the discount, level is the forward</div>
+        <div class="eq">{{EQ:parity}}</div>
+      </div>
+      <div class="case">
+        <div class="lbl">Case file — the delayed feed that gapped the ATM smile</div>
+        <p>A delayed data tier quoted stale pairs; the parity <b>slope</b> drifted to discounts above 1 (negative rates),
+          dragging the forward and tearing a gap into the ATM smile. Fix: <b>clamp the implied rate to a physical band</b> and
+          re-derive the forward from the well-identified price level. Clean chains are byte-identical; the broken feed heals.</p>
+      </div>
+      <ul class="points">
+        <li class="g">Four dividend modes (yield, discrete cash, blends) + a de-bias loop that <strong>holds the discount fixed</strong> while removing American bias from the parity inputs.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:forwards}}" alt="Forwards workspace with dividends"></div>
+      <p class="shotcap"><span class="k">Forwards workspace — live SPY (Yahoo feed).</span> The forward curve with per-expiry
+        parity-implied vs theoretical carry values, the source of each, manual overrides, and a click-to-edit discrete dividend
+        schedule that feeds both the forward model and the de-Americanization lattice.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Every IV in the system stands on a <b>defensible forward</b> — estimated from the market, stabilized against feed pathologies, and overridable when the desk knows better.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 15 · OBJECTIVE + WEIGHTS =================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 07 · Calibration objective</span><span>One objective, every model</span></div>
+  <h1 class="claim">The objective optimizes what traders care about: <span class="hlc">vol error, inside the spread</span>.</h1>
+  <p class="lede">A mid quote is not fair value — it is the midpoint of a spread that can be half a vol point wide in the wings.
+    So all models share one objective: residuals normalized by <b>vega</b> (the loss reads in vol units), <b>bid–ask bands</b>
+    (only leaving the quoted band costs anything), and <b>liquidity-aware weights</b>.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">Vega-normalized price residual — behaves like vol error, iterates stay valid prices</div>
+        <div class="eq">{{EQ:vega_residual}}</div>
+      </div>
+      <div class="eqblock core">
+        <div class="eqtitle">Bid–ask band objective — inside the band, only a tiny mid anchor</div>
+        <div class="eq">{{EQ:band_objective}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">Density-corrected time-value weights</div>
+        <div class="eq">{{EQ:tv_weights}}</div>
+      </div>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_obj_band_deck}}" alt="Band objective: junk wing mids drag the mid fit, not the band fit"></div>
+      <p class="shotcap"><span class="k">Same model, same settings — only the target differs.</span> Three wing mids are junk
+        (stale prints inside wide spreads, red diamonds): the <b>fit to mids</b> (dashed) is dragged toward them; the
+        <b>fit to the band</b> (teal) stays smooth, since a clean curve already sits inside every quoted spread.
+        Three fit targets ship — Mid, Bid–Ask, Haircut (the band shrunk by a safety margin) — and the weights turn bad
+        markets into low confidence rather than bad fits.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    A fit inside the spread is <b>free by design</b> — the fitter only pays to leave the quoted band, which is exactly how a trader thinks about it.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 16 · VARIANCE SWAPS ======================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 08 · Variance swaps</span><span>Case file inside</span></div>
+  <h1 class="claim">One var-swap quote pins the whole wing mass — entered as a <span class="hlc">soft target shared by every model</span>.</h1>
+  <p class="lede">A <b>variance swap</b> pays realized variance; its fair strike is a model-free integral over the whole smile,
+    dominated by the wings. Desks often trust a dealer var-swap mark more than any individual deep-wing quote — so the app
+    accepts one var-swap level per (name, expiry) and lets it discipline the wings of whichever model is fitting.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Log-contract replication + the penalty residual</div>
+        <div class="eq">{{EQ:varswap}}</div>
+      </div>
+      <div class="case">
+        <div class="lbl">Case file — the fit that took minutes</div>
+        <p>Routing the penalty through generic replication meant <b>~800 Black inversions per Jacobian column</b> for LQD —
+          a 158-second fit. The lesson became a design rule: <b>route through the model's native object</b>.
+          LQD prices the var-swap in closed form, SVI/SIV by arithmetic replication, Local Vol by one extra source-PDE solve.</p>
+      </div>
+      <ul class="points">
+        <li class="g">Per-node quote with its own <strong>undo/redo session</strong>, shared by Parametric and Local Vol; weight set as a % of total quote weight; byte-identical when off.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_vs_fit}}" alt="Fit with variance-swap target contribution"></div>
+      <p class="shotcap"><span class="k">The target at work.</span> A fitted smile with and without the var-swap penalty — one number pulls the
+        integrated wing mass to the quoted level without distorting the well-quoted body.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Var-swap and OTC marks become <b>calibration inputs, not afterthoughts</b> — the wings integrate to the level the desk actually trades.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 17 · WINGS & LEE =========================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 09 · Wings &amp; Lee bounds</span><span>Tail discipline</span></div>
+  <h1 class="claim">Wings obey <span class="hlc">moment logic</span> — Lee's bound caps every model's tails, each by its own mechanism.</h1>
+  <p class="lede"><b>Lee's moment formula</b>: total implied variance can grow at most linearly in |log-moneyness|, with slope
+    at most 2, and the slope is tied to how many moments the terminal distribution has. A steeper wing implies an infinite
+    price for some traded payoff — free money. It is the one universal law of smile extrapolation.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Lee's moment formula — asymptotic variance slopes capped at 2</div>
+        <div class="eq">{{EQ:lqd_tail}}</div>
+      </div>
+      <ul class="points">
+        <li class="g"><strong>LQD:</strong> structural — the endpoint scales A<sub>L</sub>, A<sub>R</sub> imply the slopes; admissibility is one inequality.</li>
+        <li class="a"><strong>SVI:</strong> a soft cap b(1+|ρ|) ≤ 2 in the penalty vocabulary.</li>
+        <li class="v"><strong>MC-SIV:</strong> hats are wing-neutral by construction — the base alone owns the tails.</li>
+        <li>The far wing is where models <strong>extrapolate with confidence they don't have</strong> — so extrapolation behaviour is a stated, tested contract per model.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figrow">
+        <div class="figcard"><img src="{{FIG:fig_wings_psi}}" alt="Lee psi function"></div>
+        <div class="figcard"><img src="{{FIG:fig_wings_extrap}}" alt="Wing extrapolation across models"></div>
+      </div>
+      <p class="shotcap"><span class="k">Tails, quantified.</span> Left — Lee's ψ(p): the exact map from the number of finite moments to the admissible
+        variance slope. Right — how each model extrapolates beyond the last quote; the differences are the point.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Deep OTM marks inherit <b>tail discipline from moment theory</b> — not from whatever the last two quotes happened to say.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 18 · CALENDAR CASE FILE ==================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 10 · Calendar arbitrage</span><span>Case file</span></div>
+  <h1 class="claim">Constraints act only <span class="hl">where data lives</span> — a production incident made that a design rule.</h1>
+  <p class="lede"><b>Calendar arbitrage</b>: if an option with more time is cheaper than one with less (same forward-moneyness),
+    a calendar spread earns free convexity. The clean statement is in total variance w = σ²T, which must be non-decreasing in
+    maturity. The subtlety is not the constraint — it is <b>where you are allowed to check it</b>.</p>
+  <div class="cols even">
+    <div>
+      <div class="eqblock">
+        <div class="eqtitle">Calendar consistency — convex order, four equivalent faces</div>
+        <div class="eq">{{EQ:cal_faces}}</div>
+      </div>
+      <div class="eqblock core">
+        <div class="eqtitle">The soft floor hinge — confined to the traded strike range</div>
+        <div class="eq">{{EQ:cal_hinge}}</div>
+      </div>
+      <div class="strip" style="margin-top:22px"><span class="lbl">The confinement principle</span>
+        A penalty that compares <b>two curves</b> may only be sampled where <b>both are pinned by data</b> —
+        extrapolated regions can manufacture violations that do not exist.</div>
+    </div>
+    <div>
+      <div class="case">
+        <div class="lbl">Case file — the phantom calendar arbitrage</div>
+        <p>Far-dated <b>NVDA and SPY fits came back flattened</b>. Root cause: the calendar floor was sampled on a fixed
+          wide strike grid, where the near expiry's <b>extrapolated</b> steep wing towered over the far expiry —
+          a violation that existed only in the extrapolation, never in the market.</p>
+        <div class="steps">
+          <div class="step bad"><div class="n">Symptom</div><div class="t">Far smiles flattened; <b>151 bp</b> of phantom penalty in the fit</div></div>
+          <div class="step"><div class="n">Diagnosis</div><div class="t">Floor grid extended into unquoted strikes; wings compared where <b>neither slice had data</b></div></div>
+          <div class="step fix"><div class="n">Fix</div><div class="t">Floor confined to the <b>traded log-strike range</b> → phantom penalty <b>151 → 0 bp</b>, real violations still caught</div></div>
+        </div>
+      </div>
+      <ul class="points">
+        <li class="g">The hinge is <strong>exactly zero on admissible surfaces</strong> — calendar enforcement is byte-identical to OFF when the surface is clean.</li>
+        <li class="v">Same machinery, model-agnostic: LQD enforces via asset-share exactly; SVI/SIV via the total-variance floor.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    No-arbitrage enforcement that <b>never distorts a clean market</b>: violations are repaired where quoted,
+    never invented where extrapolated.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 19 · EVENT CLOCK =========================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 11 · Event variance clock</span><span>Events are time</span></div>
+  <h1 class="claim">Events are modeled as <span class="hlc">time, not as smile damage</span> — the variance clock is price-preserving by construction.</h1>
+  <p class="lede">An earnings date concentrates a known lump of variance into a single day — which is why implied vol "crushes"
+    after the print. Modeled correctly, this is a <b>change of clock</b>: measure maturity in variance time τ, where an event
+    day counts as 1 + N ordinary days, and the kink in the term structure disappears.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">The dilated clock — each event adds N equivalent days of variance</div>
+        <div class="eq">{{EQ:event_clock}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>Total variance w(k) is clock-independent</strong> — prices never move when an event is inserted; only the working IV drops. The vol crush is a change of units, not of value.</li>
+        <li class="g">One clock per node, shared by <strong>every view</strong>: fits, local vol, term structure, tables.</li>
+        <li class="v"><strong>Auto-calibrate</strong> places events so event-time forward variance is flat — the calendar is inferred from the term structure, then editable.</li>
+        <li class="a">Empty calendar ⇒ τ = t, <strong>byte-identical</strong> — the feature costs nothing when unused.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:term}}" alt="Term structure with event calendar and dilated clock"></div>
+      <p class="shotcap"><span class="k">Term workspace — live SPY (Yahoo feed) with an event calendar.</span> ATM vol and
+        forward variance across the expiry ladder, two scheduled events (2 equivalent days each) in the editable calendar,
+        the real-time / event-dilated clock toggle, event auto-calibration, and the per-expiry var-swap levels.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Pre/post-earnings surfaces become <b>comparable across names and dates</b> — event-time vol is the signal; calendar-time vol is the artifact.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 20 · SSR TRANSPORT ========================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 12 · Spot–vol dynamics</span><span>Recalibration-free transport</span></div>
+  <h1 class="claim">When spot moves, the surface moves <span class="hlc">by rule, before recalibration</span> — one transport realizes any SSR.</h1>
+  <p class="lede"><b>SSR = skew-stickiness ratio</b>: how much ATM vol moves when spot moves, in units of the skew. The classic
+    regimes are points on one dial — R = 0 "sticky-moneyness" (the smile rides with spot), R = 1 "sticky-strike" (vol per strike
+    frozen), R = 2 "sticky-local-vol". One analytic transport realizes any value in between, instantly and without refitting.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">The SSR transport — one formula spans sticky-strike to sticky-moneyness and beyond</div>
+        <div class="eq">{{EQ:ssr_transport}}</div>
+      </div>
+      <ul class="points">
+        <li><strong>SSR is the dial</strong>: R = 0 sticky-moneyness, R = 1 sticky-strike, R = 2 sticky-local-vol — and anything between, from one analytic map.</li>
+        <li class="v">The <strong>exact sticky-local-vol transport</strong> is a Hagan log-moneyness relabeling; the LV grid transports by strike-node relabeling — no refit, no PDE re-solve.</li>
+        <li class="a">Sign conventions are a stated <strong>assumption block</strong> — the classic off-by-sign (curve reads +δ, quote relabels −h) is documented and test-locked.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figrow">
+        <div class="figcard"><img src="{{FIG:fig_ssr_transport}}" alt="SSR transport of a smile"></div>
+        <div class="figcard"><img src="{{FIG:fig_ssr_response}}" alt="ATM response per SSR regime"></div>
+      </div>
+      <p class="shotcap"><span class="k">The regimes, side by side.</span> Left — one smile transported under different SSR values for the same spot move.
+        Right — the ATM response Δσ = SSR·s₀·δ per regime: the number a vol trader quotes as "how much does vol come in if we rally 1%".</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Scenario marks and priors move with spot <b>instantly and consistently with the desk's dynamics view</b> — recalibration then only absorbs genuine news.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 21 · PRIOR PERSISTENCE ===================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 13 · Bayesian prior persistence</span><span>Trust-gated memory</span></div>
+  <h1 class="claim">The app remembers <span class="hlc">shape, not level</span> — and only where today's quotes fail to identify it.</h1>
+  <p class="lede">Yesterday's fitted surface is information — but only where today's market is silent. The prior enters the fit
+    as extra least-squares rows comparing the model to yesterday's (spot-transported) surface, feature by feature — and each
+    row's weight is <b>gated</b>: exactly zero where today's quotes already pin that feature down.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">One universal residual shape — model vs transported prior, per feature</div>
+        <div class="eq">{{EQ:prior_residual}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">The activation gate — exactly zero where data is sufficient</div>
+        <div class="eq">{{EQ:prior_gate}}</div>
+      </div>
+      <ul class="points">
+        <li class="g"><strong>No-damp guarantee</strong> — a feature today's quotes identify precisely is never pulled toward yesterday (proved, and test-locked).</li>
+        <li class="v"><strong>Signed baskets</strong> (RR/BF) persist skew shape while staying invariant to the level shift a jump should keep — "persist shape, not level" is a theorem here, not a slogan.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_prior_gate}}" alt="Prior activation gate vs observed precision"></div>
+      <p class="shotcap"><span class="k">The gate, plotted.</span> Prior strength as a function of observed precision: full trust in the prior where the
+        market says nothing, exactly zero where the market speaks clearly, smooth in between — with exponent γ as the desk's aggressiveness dial.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Sparse afternoons stop destroying morning marks: <b>the surface holds its shape through quote droughts without ever fighting live information</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 22 · PRIOR EVIDENCE ======================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 13 · Bayesian prior persistence</span><span>Modes, audited</span></div>
+  <h1 class="claim">Seven prior modes, <span class="hl">scored against each other</span> on held-out wings — hybrid won and ships as default.</h1>
+  <p class="lede">The persistence menu was raced, not debated: on historical day-pairs, fit day two with each prior mode while
+    hiding one wing's quotes, then score how well each mode reconstructs the hidden wing. RR/BF below = risk-reversal and
+    butterfly, the standard skew and curvature baskets.</p>
+  <div class="cols even">
+    <div>
+      <div class="statrow" style="margin-top:0">
+        <div class="stat"><div class="v g">~32 bp</div><div class="l">better held-out wing reconstruction vs no-prior (hybrid, full spike regime)</div></div>
+        <div class="stat"><div class="v c">66%</div><div class="l">win rate over 1,116 nodes, all 19 temporal pairs</div></div>
+      </div>
+      <ul class="points" style="margin-top:20px">
+        <li class="g"><strong>Hybrid mode</strong> (operators + deep-tail strike anchor) beat every alternative at every bandwidth — the shipped default is the measured winner, not a guess.</li>
+        <li class="a">Pure quote-operator and smile-factor modes <strong>never beat no-prior</strong> at the median — and the deck says so; negative results are results.</li>
+        <li class="r"><strong>Case file:</strong> the overnight jump a strike anchor damped — per-leg anchoring pulled a repriced surface halfway back to yesterday; signed baskets fixed the null space.</li>
+        <li class="v">Every activation is <strong>auditable</strong>: per-expiry gap, active λ, and observed precision in a diagnostics table.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:options_calibration_crop}}" alt="Calibration settings with prior persistence panel and diagnostics"></div>
+      <p class="shotcap"><span class="k">The audit surface.</span> The Calibration card: prior mode (Hybrid), tail-anchor and operator strength,
+        operator selection (ATM/RR/BF/VarSwap), gate parameters, the two-pass "don't damp signal" option — and the live per-expiry prior diagnostics table.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Memory with a paper trail: <b>which prior acted, where, and how strongly is a table in the UI</b> — not a mystery inside the optimizer.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 23 · OBSERVATION FILTER ==================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 15 · Observation Kalman filter</span><span>Noise vs news</span></div>
+  <h1 class="claim">A Kalman filter in handle space separates <span class="hlc">quote noise from genuine surface motion</span>.</h1>
+  <p class="lede">Distinct from the prior (which fills gaps <em>within</em> a fit), the filter works <em>across time</em>: it treats each
+    calibration as a noisy <b>measurement</b> of the true handles, predicts today from yesterday's filtered state under the SSR
+    transport, and blends the two by relative precision. The blend weights are the <b>Kalman gains K ∈ [0,1]</b>: K = 1 means
+    "believe today fully", K = 0 means "today is noise".</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">The update — relative precision decides how much of today to believe</div>
+        <div class="eq">{{EQ:kalman_update}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">Active mode — a one-stage MAP fit (provably no double-counting)</div>
+        <div class="eq">{{EQ:kalman_map}}</div>
+      </div>
+      <ul class="points">
+        <li>State = the <strong>compact ATM handles</strong>; prediction = yesterday's state under SSR transport; measurement noise = the fit's own solution Jacobian, inflated by realized χ².</li>
+        <li class="g"><strong>Adaptive process noise</strong> opens the gate on genuine shocks (39–79 bp errors → 5–8 bp) and stays closed on quiet days.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:filter_smile}}" alt="Smile with filter posterior overlay and gains"></div>
+      <div class="capkey">
+        <span class="ci"><span class="sw" style="background:#3B82F6"></span>today's raw fit</span>
+        <span class="ci"><span class="sw" style="background:#14B8A6"></span>filter posterior (shaded: ±1σ)</span>
+        <span class="ci"><span class="sw dash" style="color:#14B8A6"></span>prediction (yesterday, transported)</span>
+        <span class="ci"><span class="sw" style="background:#F87171; height:10px; width:4px"></span>bid/ask quotes</span>
+      </div>
+      <p class="shotcap"><span class="k">The filter on a smile (controlled demo session; amber ticks mark quote mids that were
+        manually amended to stage the move).</span> The badge is the audit: per-handle gains K = 0.39 / 0.00 / 0.00 and residual
+        inflation ρ = 1.32 — the filter believes today's ATM level about two-fifths, and today's noisy skew and curvature not at all,
+        so the posterior sits between prediction and fit.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Marks stop chasing microstructure: <b>the surface moves when the market moves, and holds when only the quotes wiggle</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 24 · FILTER EVIDENCE ======================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 15 · Observation Kalman filter</span><span>Validated at scale</span></div>
+  <h1 class="claim">The filter was tuned by <span class="hl">39,190 backtested steps</span> — and its best mode beats both inputs it blends.</h1>
+  <p class="lede">Every configuration choice below was decided by replaying three historical regimes day by day. "Active MAP"
+    = the filter's strongest mode: instead of blending after the fit, the prediction enters the fit itself as a
+    maximum-a-posteriori (MAP) penalty — provably equivalent to the Kalman update, with no quote double-counted.
+    ζ = error divided by its own predicted uncertainty (should be ≈ standard normal if the bands are honest).</p>
+  <div class="cols even">
+    <div>
+      <div class="statrow" style="margin-top:0">
+        <div class="stat"><div class="v g">5.6 vs 9.8 bp</div><div class="l">active MAP vs raw fit on contradiction days (high-vol regime)</div></div>
+        <div class="stat"><div class="v c">39,190</div><div class="l">filter steps backtested — 3 regimes × 8 assets × all day-pairs</div></div>
+        <div class="stat"><div class="v vl">10 → 30 bp/√day</div><div class="l">process-noise default flipped by the evidence (one-sided win)</div></div>
+      </div>
+      <ul class="points" style="margin-top:20px">
+        <li class="g"><strong>Active MAP is the best denoiser in every regime</strong> — beating both the raw fit and the overlay posterior, with honest ζ statistics.</li>
+        <li class="r"><strong>Case file:</strong> full-covariance updates let junk curvature drag ATM level on coarse ETF chains (EEM/EFA, errors up to 28 vol points) — production runs the update per handle, diagonally.</li>
+        <li class="v"><strong>Case file:</strong> close-strike contradiction vs a true gap — gains 0.80/0.72/0.027: the filter absorbs noise strike-by-strike but yields to consistent repricing.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_kalman_backtest}}" alt="Filter backtest summary"></div>
+      <p class="shotcap"><span class="k">The evidence.</span> Backtest summary across regimes: the filtered state tracks the truth through shocks
+        (adaptive Q) while cutting noise on plain days — the configuration shipped is the configuration that won.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The filter's gains are a <b>per-expiry trust report on the live market</b> — a low K on curvature is the system telling you that part of the smile is noise today.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 25 · GRAPH CONCEPT ========================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 14 · Graph extrapolation</span><span>The differentiator begins</span></div>
+  <h1 class="claim">The universe is a <span class="hl">graph of smiles</span> — calendar edges within a name, cross-asset edges across names.</h1>
+  <p class="lede">Nodes are (underlying, expiry) smiles. <b>Lit</b> nodes have usable quotes and get calibrated; <b>dark</b> nodes
+    do not — they are the point of the exercise. Edges say which smiles should co-move: adjacent expiries of one name
+    (calendar edges) and same-tenor smiles of related names (cross-asset edges).</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Row-stochastic kernel, conductances, and the β-weighted directed Laplacian</div>
+        <div class="eq">{{EQ:graph_kernel}}</div>
+      </div>
+      <ul class="points">
+        <li>Nodes are <strong>(underlying, expiry)</strong> smiles; the lattice is what the desk already draws on a whiteboard — SPY 1M talks to SPY 3M and to QQQ 1M.</li>
+        <li class="v">The Laplacian regularizes <strong>increments, not levels</strong> — "no change from the transported prior" is always the default; the graph never invents a move.</li>
+        <li class="a"><strong>Lit vs dark is a per-node switch</strong> — the same universe object drives calibration, the graph, and the UI matrix.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:graph_sandbox}}" alt="Graph sandbox lattice"></div>
+      <p class="shotcap"><span class="k">The lattice (controlled demo session).</span> Tickers × expiries, lit (calibrated) nodes ringed amber.
+        The sandbox mode lets a trader light nodes, type hypothetical ATM shifts and watch the posterior field respond —
+        the production mode replaces hand-typed shifts with real calibration innovations.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The graph formalizes what traders do informally — <b>"SPY repriced, so my dark midcap should too, a little"</b> — with a posterior and a band instead of a hunch.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 26 · GRAPH HERO ============================================ -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 14 · Graph extrapolation</span><span>The differentiator</span></div>
+  <h1 class="claim">Dark smiles move by <span class="hl">innovation</span>, not by copying liquid names.</h1>
+  <p class="lede"><b>Innovation</b> = what today's calibration says minus what yesterday's spot-transported surface predicted —
+    the genuine news in a lit name. Only that increment propagates through the graph; levels never do. So a dark node keeps its
+    own personality (its transported prior) and inherits only its neighbours' <em>surprises</em>, with uncertainty attached.</p>
+  <div class="cols">
+    <div>
+      <div class="eqblock core">
+        <div class="eqtitle">Increment precision — three beliefs, one Gaussian prior</div>
+        <div class="eq">{{EQ:graph_precision}}</div>
+      </div>
+      <div class="eqblock">
+        <div class="eqtitle">Conditioning on lit innovations — covariance-form update</div>
+        <div class="eq">{{EQ:graph_update}}</div>
+      </div>
+      <ul class="points">
+        <li class="a"><strong>κ</strong> anchors every node to its <em>transported prior</em> — "no news" means no move.</li>
+        <li class="v"><strong>η</strong> propagates lit-node innovations along directed calendar and cross-asset edges.</li>
+        <li class="c"><strong>λ</strong> regularizes the flow as an optimal-transport flux — moves stay economically local.</li>
+        <li class="g"><strong>Containment:</strong> innovations enter weighted by the lit fit's own precision — a noisy, wide-band
+          calibration propagates weakly, so one bad lit node cannot drag its neighbourhood.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:smile_hero}}" alt="Dark NVDA node reconstructed by the graph"></div>
+      <div class="capkey">
+        <span class="ci"><span class="sw" style="background:#8B5CF6"></span>graph posterior (shaded: credible band)</span>
+        <span class="ci"><span class="sw" style="background:#3B82F6"></span>node's own last calibration</span>
+        <span class="ci"><span class="sw" style="background:#F87171; height:10px; width:4px"></span>bid/ask quotes (not used — node is dark)</span>
+      </div>
+      <p class="shotcap"><span class="k">A dark node, reconstructed (controlled demo: only SPY is lit, repriced +150 bp).</span>
+        NVDA's 1-month smile is unquoted in this session. The violet posterior lifts it off its transported prior by the
+        graph-propagated innovation, inside an honest credible band — with per-node provenance in the badge
+        (reconstruction RMS 0.46 vol pts · 62% of quotes in-band · standardized residual ζ = −0.27).</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Sparse single names inherit <b>information, with uncertainty attached</b> — not levels — from liquid neighbors.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 27 · EDGES & BETA ========================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 14 · Graph extrapolation</span><span>Economically interpretable</span></div>
+  <h1 class="claim">Every edge is a <span class="hlc">number a trader can defend</span> — weights, betas, and an editor to own them.</h1>
+  <p class="lede">Propagation strength is not a black box: each edge carries a weight (how strongly two smiles are coupled) and
+    a <b>β</b> (how many units of the neighbour's move a node inherits — the same β a trader means by "NVDA moves 1.3× QQQ").</p>
+  <div class="cols even">
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li class="v"><strong>Per-edge β</strong> scales how much of a neighbor's innovation a node inherits — index→name edges can
+          carry β &gt; 1 (levered names) or β &lt; 1 (defensive). Today β is <strong>seeded at 1 and desk-set</strong>; historical estimation is a roadmap item.</li>
+        <li><strong>Calendar and cross-ticker edge weights</strong> are two visible dials, not buried constants; η is <strong>auto-tunable by leave-one-out</strong> over the lit nodes.</li>
+        <li class="g">The persisted <strong>edge editor</strong> seeds a default graph from the universe and lets the desk add, remove, or reweight relationships — the graph is a desk view, versioned like one.</li>
+        <li class="a">Confidence honesty is a stated caution: bands come from the <strong>marginal posterior covariance</strong>, never the precision diagonal.</li>
+      </ul>
+      <div class="statrow">
+        <div class="stat"><div class="v vl">β per edge</div><div class="l">directed, PSD-safe (proved), persisted with the universe</div></div>
+        <div class="stat"><div class="v c">LOO η</div><div class="l">propagation reach cross-validated on the lit nodes, one click</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:edge_editor}}" alt="Per-edge graph editor"></div>
+      <p class="shotcap"><span class="k">The edge editor (controlled demo session).</span> The persisted per-edge view over the
+        selected universe: seeded defaults, editable weights and β, cross-ticker toggles — opened directly from the
+        Extrapolate panel that consumes it.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The propagation model is <b>auditable in the desk's own language</b> — "NVDA follows QQQ at β 1.3" is an editable row, not a latent parameter.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 28 · GRAPH VALIDATION ====================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Note 14 · Graph extrapolation</span><span>Held-out proof</span></div>
+  <h1 class="claim">Graph skill is <span class="hl">proven for neighbour-supported holdouts</span> — fully-dark cross-asset validation is next.</h1>
+  <p class="lede"><b>Leave-one-out (LOO)</b>: pretend a lit node is dark, let the graph reconstruct it from the others, then
+    compare to the calibration it actually had. The baseline to beat is the mechanical alternative — just spot-transporting
+    yesterday's surface. "Skill" below = how much closer the graph gets than that baseline.</p>
+  <div class="cols even">
+    <div>
+      <div class="statrow" style="margin-top:0">
+        <div class="stat"><div class="v vl">+26…+37 bp</div><div class="l">ATM skill vs mechanical spot-transport — 4,134 held-out nodes, 0 skipped</div></div>
+        <div class="stat"><div class="v g">ζ ≈ 0 · σ 0.72–0.90</div><div class="l">unbiased, well-calibrated bands (slightly conservative)</div></div>
+      </div>
+      <ul class="points" style="margin-top:20px">
+        <li class="g"><strong>Neighbour-supported nodes: decisive skill</strong>, driven by calendar coupling — the sweep brackets genuine skill at +26…+37 bp across SSR assumptions.</li>
+        <li class="a"><strong>Honest scope:</strong> the fully-dark cross-asset split showed ~0 skill on the 8-asset pilot — that universe is structurally starved (no sector ETF; name↔name edges dormant). The 25-asset capture that fixes it is complete; the rerun is queued.</li>
+        <li class="v">Backtesting is <strong>one click in the panel</strong> — the same LOO that validated the method runs on the desk's own universe, on demand.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_graph_backtest}}" alt="Graph LOO backtest results"></div>
+      <p class="shotcap"><span class="k">Leave-one-out, plotted.</span> Held-out node predictions versus realized calibrations: the graph posterior
+        (vs the transported-prior baseline) tightens errors and its standardized residuals sit where a correct model's should.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    A propagation engine you can <b>re-certify on your own book any day</b> — and whose one unproven case
+    (a name with <em>no</em> graph support at all) is stated as unproven, not claimed.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 29 · WORKSTATION TOUR ====================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Product</span><span>The workstation today</span></div>
+  <h1 class="claim">Not a library with a demo — a <span class="hlc">working vol workstation</span>, eight workspaces deep.</h1>
+  <div class="montage">
+    <div class="cell"><div class="shot"><img src="{{IMG:densities}}" alt=""></div><div class="cap">Stacked densities <span>— every expiry ≥ 0: no butterfly arb, at a glance</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:stacked_iv}}" alt=""></div><div class="cap">Stacked total variance <span>— non-crossing: no calendar arb</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:surface}}" alt=""></div><div class="cap">3D IV surface <span>— rotatable σ(k,T) mesh</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:localvol_ivsurface}}" alt=""></div><div class="cap">Local Vol views <span>— surface, smiles, tables off one calibrated object</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:universe}}" alt=""></div><div class="cap">Universe manager <span>— catalogue, expiries, lit/dark matrix, saved universes</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:logq}}" alt=""></div><div class="cap">Log quantile density <span>— the model's native coordinate, charted</span></div></div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Parametric · Local Vol · Forwards · Options · Graph · Quality · Universe · View — <b>every modeling claim in this deck is a screen a trader can open</b>, live against Yahoo, Bloomberg or Massive.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 30 · QUALITY & RUNBOOK ===================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Product</span><span>Fit quality as a first-class screen</span></div>
+  <h1 class="claim">The daily loop ends at a <span class="hlc">publish gate</span> — fit quality is a dashboard, not a feeling.</h1>
+  <div class="cols even">
+    <div>
+      <div class="pipe" style="flex-direction:column; gap:10px">
+        <div class="node" style="text-align:left"><div class="t">1 · Select &amp; fetch</div><div class="d">universe, expiries, lit/dark designation; spots + chains from the active source</div></div>
+        <div class="node" style="text-align:left"><div class="t">2 · Calibrate</div><div class="d">background per-ticker groups on a process pool (~2× warm) — byte-identical to serial</div></div>
+        <div class="node" style="text-align:left"><div class="t">3 · Inspect &amp; adjust</div><div class="d">smiles, densities, term, LV; amend quotes, var-swaps, events, priors, filter</div></div>
+        <div class="node" style="text-align:left"><div class="t">4 · Propagate</div><div class="d">graph extrapolation over the dark universe, LOO-checked</div></div>
+        <div class="node em" style="text-align:left"><div class="t">5 · Gate &amp; publish</div><div class="d">per-node RMS budgets, arb flags, staleness — then JSON/CSV surface export + HTML report for downstream systems</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:quality}}" alt="Quality dashboard with publish gates"></div>
+      <p class="shotcap"><span class="k">The Quality workspace — live session (Yahoo feed).</span> Publish-ready counts, per-node
+        RMS against its budget, max-IV deviations, Lee slopes, calendar-violation flags and local-vol arbitrage status —
+        exceptions first, one refresh, with the offending node one click away.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    The question "can we publish this surface?" gets <b>a per-node answer with named exceptions</b> — the runbook a vol desk actually operates.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 31 · PERFORMANCE =========================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Engineering</span><span>Measured, then optimized</span></div>
+  <h1 class="claim">Speed is a feature with a budget: <span class="hlc">slice &lt; 50 ms, surface &lt; 1 s</span> — met, and held by perf rails in the test suite.</h1>
+  <p class="lede">Context for every number on this slide: single node = one (name, expiry) smile fit; measured on a laptop-class
+    i7-12700H / 16 GB (the development machine — no server hardware involved). Live measurement, this deck's 30-node /
+    5-ticker Yahoo session: <b>full recalibration 7.6 s warm; 96.6 s cold start</b> (process-pool spawn, de-Americanization,
+    kernel compilation — each cached thereafter).</p>
+  <div class="statrow" style="margin-top:6px">
+    <div class="stat"><div class="v c">96 → 35 ms</div><div class="l">LQD slice fit (2.7×) — "the atom of every parametric fit"</div></div>
+    <div class="stat"><div class="v g">~60×</div><div class="l">de-Americanization (Numba CRR kernel, wide chains)</div></div>
+    <div class="stat"><div class="v vl">6.5×</div><div class="l">LV PDE march (Numba vectorized Thomas vs LAPACK banded)</div></div>
+    <div class="stat"><div class="v am">2.6× / 2–2.8×</div><div class="l">SVI / SIV analytic Jacobians vs finite differences</div></div>
+    <div class="stat"><div class="v c">2.1×</div><div class="l">warm parallel background calibration (per-ticker process pool)</div></div>
+  </div>
+  <div class="cols" style="margin-top:26px">
+    <div>
+      <ul class="points">
+        <li><strong>Measure first</strong> is a design rule: every headline number above began as a profile, shipped as a fix, and is locked by a perf rail in the test suite (7 perf tests).</li>
+        <li class="g"><strong>Analytic everywhere it pays</strong> — LQD's implicit-root Jacobian, SVI/SIV Jacobians, the FD-free arbitrage metric, closed-form var-swaps.</li>
+        <li class="v"><strong>Graceful degradation</strong> — every Numba kernel has a NumPy fallback that agrees to rounding; missing numba never breaks a fit.</li>
+      </ul>
+    </div>
+    <div>
+      <ul class="points">
+        <li class="a"><strong>Caches are content-addressed</strong> — de-Am results keyed by chain digest; fit-tuning never re-pays preparation; invalidation is per-ticker, never global.</li>
+        <li><strong>Failed optimizations are recorded too</strong> — thread parallelism (a net loss under Python's global interpreter lock) and coarse-grid warm starts (they broke the affine surface) were measured, rejected, and documented so they are not retried.</li>
+        <li class="g">Background calibration is <strong>byte-identical to serial</strong> — speed never changes a number.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Fast enough to sit <b>inside the quote loop</b>: a 30-node universe re-marks in ~8 seconds warm on a laptop,
+    a single slice in the time a quote blinks — and every number above states its hardware and cache state.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 32 · DISCIPLINE ============================================ -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Engineering</span><span>Why the numbers can be trusted</span></div>
+  <h1 class="claim">Every claim in this deck traces to <span class="hlc">an equation, a module, and a test</span>.</h1>
+  <p class="lede">Provenance of everything shown: market-facing screenshots are a <b>live Yahoo session (2026-07-06)</b>;
+    the graph and filter screenshots are <b>staged synthetic demos and their captions say so</b>; backtest numbers are
+    <b>historical NBBO replay</b> (Massive/Polygon flat files). Nothing in this deck is a mock-up.</p>
+  <div class="cols">
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li><strong>A 931-test suite, green at commit 645bf1e (2026-07-06)</strong> — <code>pytest backend/tests -q</code> — including
+          golden tests that pin the code to the notes' equations, byte-identity locks on every OFF toggle, and
+          finite-difference-agreement guards on every analytic Jacobian.</li>
+        <li class="v"><strong>16 technical notes</strong> (Notes 00–15) with a fixed contract: one boxed central equation, an invariant box, a traceability table (claim → equation → module → test), and an executed ≤ 50-line reference implementation.</li>
+        <li class="g"><strong>Numbers are measured, not copied</strong> — every figure and table in the notes is regenerated by the production code at build time; a drifting number fails the build, not the reader.</li>
+        <li class="r"><strong>Eight production case files</strong> — indexed in Note 00 — record what broke, why, and which design rule it produced. The deck quoted four of them.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figrow">
+        <div class="figcard"><img src="{{FIG:fig_ov_densities}}" alt="Stacked densities all non-negative"></div>
+        <div class="figcard"><img src="{{FIG:fig_ov_termvar}}" alt="ATM total variance non-decreasing"></div>
+      </div>
+      <p class="shotcap"><span class="k">The two structural guarantees, regenerated on every build.</span> All implied densities non-negative
+        (no butterfly arbitrage) and ATM total variance non-decreasing (no calendar arbitrage) — produced end-to-end by the production
+        calibrator on the notes' reference surface.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Model governance comes built in: <b>an auditor can walk from any surface number back to the equation and the test that guards it</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 33 · ROADMAP =============================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Outlook</span><span>What remains is productization</span></div>
+  <h1 class="claim">The modeling stack is built and validated — <span class="hlc">what remains is productization, not invention</span>.</h1>
+  <div class="cols">
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li class="g"><strong>Recently landed</strong> — parallel background calibration (~2× warm, byte-identical), the Quality publish-gate dashboard, surface export/publish, per-node graph attribution, the 25-asset historical capture for cross-asset validation.</li>
+        <li class="v"><strong>Next</strong> — the benchmark pack against reference fitters, the cross-asset leave-one-out rerun on the 25-asset universe, frontend test coverage.</li>
+        <li><strong>Then</strong> — portfolio/P&amp;L views, multi-user data services, enterprise entitlements.</li>
+      </ul>
+    </div>
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li class="a"><strong>Stated limits today</strong> — single-process serving; largest exercised end-to-end: the 25-asset
+          capture universe offline, ~30-node universes live; beyond ~2–3k nodes the sparse graph solver is wanted (deferred
+          deliberately); fully-dark cross-asset skill is pending its rerun rather than claimed.</li>
+        <li><strong>Data</strong> — Yahoo (free), Massive/Polygon (delayed + flat-file history), Bloomberg (Terminal) behind one provider contract with health lights and as-of replay.</li>
+        <li class="g"><strong>Outputs today</strong> — JSON/CSV surface export with a manifest, an HTML fit report, and the full REST API;
+          <strong>not yet</strong>: portfolio Greeks/P&amp;L, multi-user entitlements. Deployment: dev server or single-file desktop build.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Positioning</span>
+    <b>A professional-grade fitter plus a graph intelligence layer for sparse volatility markets</b> — the fitter earns the desk's trust; the graph is what competitors don't have.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
+</section>
+
+<!-- ============ 34 · CLOSE ================================================= -->
+<section class="slide close">
+  <div class="brand">Vol-Fitter</div>
+  <h1>The edge is not one model.<br>It is a <span class="hl">shared handle system</span> where models, priors, filters
+    and the graph reinforce each other — so sparse markets stop being unpriceable.</h1>
+  <p class="sub">Four arbitrage-aware smile models · trading-grade quote preparation · Bayesian memory and Kalman filtering
+    in one coordinate system · and a validated graph that carries information to the smiles nobody quotes.
+    Backtested on three historical regimes. Auditable to the equation. Running today.</p>
+</section>
+
+</div>
+
+<div id="dots"></div>
+<div id="counter"></div>
+
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const dots = document.getElementById("dots");
+  const counter = document.getElementById("counter");
+  slides.forEach((el, i) => {
+    const d = document.createElement("span");
+    d.onclick = () => show(i);
+    dots.appendChild(d);
+    const f = el.querySelector(".foot span:last-child");
+    if (f) f.textContent = String(i + 1).padStart(2, "0") + " / " + slides.length;
+  });
+  let cur = 0;
+  function fit() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    slides.forEach((el) => (el.style.transform = `scale(${s})`));
+  }
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((el, j) => el.classList.toggle("active", j === cur));
+    [...dots.children].forEach((d, j) => d.classList.toggle("on", j === cur));
+    counter.textContent = `${cur + 1} / ${slides.length}`;
+  }
+  addEventListener("resize", fit);
+  addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) show(cur + 1);
+    else if (["ArrowLeft", "PageUp"].includes(e.key)) show(cur - 1);
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+  });
+  fit(); show(0);
+</script>
+</body>
+</html>

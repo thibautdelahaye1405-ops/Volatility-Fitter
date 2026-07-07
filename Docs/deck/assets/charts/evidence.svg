@@ -1,0 +1,81 @@
+﻿<svg viewBox="0 0 640 430" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Inter, system-ui, sans-serif" role="img" aria-label="Scatter: fit error versus fit time for six models; LQD cluster is lower-left (better) of SVI-JW; SIV is far right with a large out-of-sample gap.">
+  <!-- grid -->
+  <g stroke="#DCE4EE" stroke-width="1">
+    <line x1="70" y1="360" x2="610" y2="360"/>
+    <line x1="70" y1="277.5" x2="610" y2="277.5" stroke-dasharray="3 5"/>
+    <line x1="70" y1="195" x2="610" y2="195" stroke-dasharray="3 5"/>
+    <line x1="70" y1="112.5" x2="610" y2="112.5" stroke-dasharray="3 5"/>
+    <line x1="70" y1="30" x2="610" y2="30" stroke-dasharray="3 5"/>
+  </g>
+  <!-- x ticks (log) -->
+  <g fill="#8A99AD" font-size="13" text-anchor="middle">
+    <text x="70" y="382">10</text>
+    <text x="174" y="382">30</text>
+    <text x="288" y="382">100</text>
+    <text x="392" y="382">300</text>
+    <text x="506" y="382">1000</text>
+    <text x="610" y="382">3000</text>
+  </g>
+  <!-- y ticks -->
+  <g fill="#8A99AD" font-size="13" text-anchor="end">
+    <text x="58" y="364">0</text>
+    <text x="58" y="281.5">7</text>
+    <text x="58" y="199">14</text>
+    <text x="58" y="116.5">21</text>
+    <text x="58" y="34">28</text>
+  </g>
+  <!-- axis titles -->
+  <text x="340" y="412" fill="#44556A" font-size="14" text-anchor="middle">median fit time per slice (ms, log scale)</text>
+  <text x="16" y="195" fill="#44556A" font-size="14" text-anchor="middle" transform="rotate(-90 16 195)">weighted RMS vol error (bp)</text>
+  <!-- better annotation -->
+  <text x="120" y="336" fill="#8A99AD" font-size="14" font-style="italic">&#8601; better</text>
+
+  <!-- SVI-JW -->
+  <g>
+    <title>SVI-JW — in-sample 24.3 bp, OOS 26.8 bp, 45.5 ms</title>
+    <line x1="213.4" y1="73.7" x2="213.4" y2="44.4" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="213.4" cy="44.4" r="6" fill="none" stroke="#D97706" stroke-width="2.5"/>
+    <circle cx="213.4" cy="73.7" r="7.5" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="230" y="66" fill="#44556A" font-size="15" font-weight="600">SVI-JW</text>
+  </g>
+
+  <!-- LQD cluster -->
+  <g>
+    <title>LQD-8 — in-sample 10.2 bp, OOS 12.2 bp, 24.5 ms</title>
+    <line x1="154.8" y1="240.3" x2="154.8" y2="216.7" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="154.8" cy="216.7" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="154.8" cy="240.3" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="140" y="230" fill="#44556A" font-size="15" text-anchor="end">LQD-8</text>
+  </g>
+  <g>
+    <title>LQD-10 — in-sample 8.4 bp, OOS 10.4 bp, 27.7 ms</title>
+    <line x1="166.5" y1="260.6" x2="166.5" y2="238.0" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="166.5" cy="238.0" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="166.5" cy="260.6" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+  <g>
+    <title>LQD-12 — in-sample 7.6 bp, OOS 9.8 bp, 31.5 ms</title>
+    <line x1="178.6" y1="270.7" x2="178.6" y2="244.3" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="178.6" cy="244.3" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="178.6" cy="270.7" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="196" y="305" fill="#0B1520" font-size="15" font-weight="600">LQD-12</text>
+    <line x1="185" y1="278" x2="196" y2="296" stroke="#8A99AD" stroke-width="1"/>
+  </g>
+
+  <!-- SIV -->
+  <g>
+    <title>SIV-2 — in-sample 9.2 bp, OOS 14.0 bp, 514 ms</title>
+    <line x1="443.0" y1="251.5" x2="443.0" y2="195.1" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="443.0" cy="195.1" r="6" fill="none" stroke="#8B5CF6" stroke-width="2.5"/>
+    <circle cx="443.0" cy="251.5" r="7.5" fill="#8B5CF6" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="420" y="276" fill="#44556A" font-size="15">SIV-2</text>
+  </g>
+  <g>
+    <title>SIV-3 — in-sample 9.0 bp, OOS 13.6 bp, 2023 ms</title>
+    <line x1="572.7" y1="253.7" x2="572.7" y2="200.0" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="572.7" cy="200.0" r="6" fill="none" stroke="#8B5CF6" stroke-width="2.5"/>
+    <circle cx="572.7" cy="253.7" r="7.5" fill="#8B5CF6" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="550" y="278" fill="#44556A" font-size="15">SIV-3</text>
+    <text x="510" y="175" fill="#8B5CF6" font-size="13.5" font-style="italic" text-anchor="middle">OOS gap = overfit</text>
+  </g>
+</svg>
