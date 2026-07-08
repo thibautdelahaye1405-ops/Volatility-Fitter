@@ -8,7 +8,51 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-07-06 (resume here)
+## STATUS — updated 2026-07-08 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-08) — GRAPH UX REVAMP SHIPPED (4 phases, e36ef79→912b00b)
+
+User-approved redesign (options confirmed via Q&A): true graph view, merged
+workflow, honest cinematics, block-matrix edge input. All on **main**; gates
+per phase: tsc+vite build, vitest (55), 8-tab Edge smoke, LIVE synthetic
+visual checks (screenshots in frontend\.smoke\), backend suite **969 passed,
+1 skipped** (8 new block tests).
+
+- **Network view replaces the lattice (e36ef79).** `lib/graphLayout.ts` =
+  deterministic ticker-pod force layout (pods = calendar spines, springs =
+  aggregated cross-ticker edge weight; seeded mulberry32, 12 tests);
+  `GraphNetworkChart.tsx` renders the REAL solver topology (overrides else
+  lattice) with pan/zoom/Fit, per-pair edge bundles that expand on hover,
+  neighborhood hover-dim; old GraphChart deleted, lasso retired.
+  `scripts/graph_visual.mjs` = live visual driver (synthetic :8011).
+- **One workflow, one verb (f30f73e).** Sandbox/Extrapolate fork replaced by
+  an observation-source radio (From calibrations | Manual what-if) in the new
+  `PropagatePanel`; single PROPAGATE button routes to /graph/extrapolate or
+  /graph/solve; Backtest → Validate (LOO); solver knobs collapse into a
+  details section; `ExtrapolateResults.tsx` = table+attribution extraction.
+- **Attribution-wave cinematics (d646b93).** Posterior field reveals outward
+  by REAL BFS hop from the lit set (`lib/graphWave`, `useWaveTimeline`,
+  160ms/hop, reduced-motion instant, click skips); calibrations source also
+  fetches the top-5 moved dark nodes' attributions and animates particles on
+  the top gain×innovation paths (`useAttributionParticles`,
+  `GraphWaveOverlay`, SMIL). Verified live: mid-wave screenshot shows the
+  staged reveal (200→89→19 bp down SPY's calendar chain);
+  `scripts/graph_wave_check.mjs` reproduces it.
+- **Block-matrix edge editor (912b00b).** Backend `GraphBlockRule`
+  (pairs/calendar/overrides) persisted VERBATIM (settings_persist
+  `graph_block_rule`) with server-side expansion into /graph/edges
+  (`api/graph_blocks.py` reuses the lattice's `_selected_ladders` pairing;
+  raw PUT /graph/edges clears the rule); GET/PUT /graph/edges/blocks. Frontend
+  `EdgeMatrixEditor` modal: sparse ticker×ticker heatmap grid (diagonal =
+  calendar), cell popover (weight/β/symmetric), TSV paste, CSV export,
+  per-edge overrides drill-down to the old row editor.
+- **Follow-ups:** expiry×expiry drill-in per matrix cell (backend overrides
+  already support it — UI cell → sub-matrix); particles unverified on real
+  data (synthetic innovations are 0 → filtered; check on a live universe);
+  count-up bp labels; a vitest for PropagatePanel; graph_visual/wave_check
+  consolidation into the smoke pack.
+
+
 
 ### 🧭 SESSION WRAP (2026-07-06, evening) — PARALLEL background calibration SHIPPED (commercial-MVP arc, item 1)
 
