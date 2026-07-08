@@ -47,12 +47,14 @@ interface CellPopoverProps {
   onChange: (cell: MatrixCell) => void;
   onClear: () => void;
   onClose: () => void;
+  /** Open the expiry×expiry drill-in for this ticker pair (ticker matrix only). */
+  onDrill?: () => void;
 }
 
 /** Small inline editor anchored under the clicked cell. A fixed transparent
  *  scrim behind it (TopBar dropdown pattern) closes on click-away; Escape and
  *  focus leaving the popover close it too. */
-export function CellPopover({ cell, diagonal, onChange, onClear, onClose }: CellPopoverProps) {
+export function CellPopover({ cell, diagonal, onChange, onClear, onClose, onDrill }: CellPopoverProps) {
   return (
     <>
       <button
@@ -113,10 +115,19 @@ export function CellPopover({ cell, diagonal, onChange, onClear, onClose }: Cell
             symmetric ⇄
           </label>
         )}
-        <div className="flex items-center justify-between pt-0.5">
+        <div className="flex items-center justify-between gap-2 pt-0.5">
           <button className="text-[10px] text-rose-400/80 hover:text-rose-300" onClick={onClear}>
             Clear
           </button>
+          {onDrill !== undefined && (
+            <button
+              className="text-[10px] text-accent-400 hover:text-accent-300"
+              title="Override individual expiry-to-expiry edges of this pair"
+              onClick={onDrill}
+            >
+              Expiries…
+            </button>
+          )}
           <button className="text-[10px] text-slate-400 hover:text-slate-200" onClick={onClose}>
             Done
           </button>

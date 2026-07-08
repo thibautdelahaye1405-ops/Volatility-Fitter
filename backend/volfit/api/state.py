@@ -315,6 +315,9 @@ class AppState(UniverseMixin):
         #: Lit = an observed source for the graph solver, dark = extrapolated.
         self._dark_nodes: set[tuple[str, str]] = set()
         self._universe = None  # volfit.graph.smile_universe.SmileUniverse
+        #: Calibration signature the cached universe was built against
+        #: (see calib_signature); None forces the next ensure_universe build.
+        self._universe_sig = None
         #: Background calibration job manager (the global "Calibrate" action and
         #: the scheduler's auto-calibrate both run through this).
         from volfit.api.jobs import CalibrationJobs
@@ -946,6 +949,18 @@ class AppState(UniverseMixin):
             return self._calib_epoch
 
     @property
+    def calib_signature(self) -> tuple:
+        """Cheap change-detector over the calibration state the graph sandbox
+        universe is built from: (viewed fit mode, number of calibrated pointers,
+        re-calibration epoch). A first-ever Calibrate grows the count (the epoch
+        deliberately ignores bootstraps), a re-calibration bumps the epoch, and a
+        fit-mode switch changes the mode — any of which must invalidate a cached
+        universe, else the Graph tab serves fits that are no longer on screen
+        (or an EMPTY universe cached before the first Calibrate, forever)."""
+        with self._lock:
+            return (self._last_fit_mode, len(self._calibrated), self._calib_epoch)
+
+    @property
     def last_fit_mode(self) -> str:
         """The fit target the user is currently viewing (recorded on smile fetch)."""
         with self._lock:
@@ -1337,6 +1352,17 @@ class AppState(UniverseMixin):
     @universe.setter
     def universe(self, value) -> None:
         self._universe = value
+        if value is None:  # explicit invalidation also drops the build signature
+            self._universe_sig = None
+
+    @property
+    def universe_sig(self) -> tuple | None:
+        """calib_signature the cached universe was built against (None = rebuild)."""
+        return self._universe_sig
+
+    @universe_sig.setter
+    def universe_sig(self, value: tuple | None) -> None:
+        self._universe_sig = value
 
 
 def _coerce_block_rule(raw: dict | None) -> GraphBlockRule | None:

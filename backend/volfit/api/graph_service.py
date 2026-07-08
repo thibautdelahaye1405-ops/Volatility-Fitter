@@ -54,16 +54,18 @@ AUTOTUNE_ETA_GRID = (0.1, 0.25, 0.5, 1.0, 2.0, 4.0, 10.0)
 
 
 def ensure_universe(state: AppState) -> SmileUniverse:
-    """Build (once) the smile universe over all tickers x expiries, mid fits.
+    """Build (lazily) the smile universe over all tickers x expiries.
 
-    Node names are (ticker, expiry-ISO). The build is deterministic and the
-    underlying slice fits are themselves cached, so a concurrent double build
-    only costs time, never consistency. Slice fits flow through fit_or_get,
-    so quote edits made *before* the first graph solve shape the universe
-    naturally; the universe is built once and not invalidated by later edits
-    (acceptable: graph handles are slow-moving levels, not live fit state).
+    Node names are (ticker, expiry-ISO); slices are the fits of the mode the
+    user is VIEWING (``state.last_fit_mode`` — hardcoding mid left the whole
+    sandbox empty on the gated server whenever the user calibrated in another
+    mode). The cache is keyed on ``state.calib_signature`` so a Calibrate, a
+    re-calibration, or a fit-mode switch rebuilds it — previously a universe
+    built BEFORE the first Calibrate was cached empty forever. The build is
+    deterministic and the slice fits are themselves cached, so a concurrent
+    double build only costs time, never consistency.
     """
-    if state.universe is not None:
+    if state.universe is not None and state.universe_sig == state.calib_signature:
         return state.universe
 
     # Iterate the user's ACTIVE universe, not the provider's static watchlist:
@@ -71,6 +73,7 @@ def ensure_universe(state: AppState) -> SmileUniverse:
     # while the provider still lists QQQ), and forwards() on an inactive ticker
     # raises UnknownNodeError -> a 500 the browser shows as "Failed to fetch".
     tickers = state.active_tickers()
+    fit_mode = state.last_fit_mode
     smiles: list[SmileNode] = []
     ladders: dict[str, list[str]] = {}
     for ticker in tickers:
@@ -81,7 +84,7 @@ def ensure_universe(state: AppState) -> SmileUniverse:
             expiries = []
         for expiry in expiries:
             iso = expiry.isoformat()
-            record = fit_or_get(state, ticker, iso, "mid")
+            record = fit_or_get(state, ticker, iso, fit_mode)
             if record is None:
                 continue  # uncalibrated node (gated, pre-Calibrate): not in the graph
             isos.append(iso)
@@ -93,6 +96,9 @@ def ensure_universe(state: AppState) -> SmileUniverse:
     weights = _lattice_weights(tickers, ladders, SAME_TICKER_WEIGHT, CROSS_TICKER_WEIGHT)
     universe = build_universe(smiles, weights)
     state.universe = universe
+    # Capture AFTER the build: on the ungated app the bootstrap fits above set
+    # calibrated pointers themselves (the signature settles once they exist).
+    state.universe_sig = state.calib_signature
     return universe
 
 

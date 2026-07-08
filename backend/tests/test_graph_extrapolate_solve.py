@@ -125,6 +125,24 @@ def test_graph_nodes_empty_before_calibration():
         assert resp.json()["nodes"] == []
 
 
+def test_graph_nodes_appear_after_calibration_in_viewed_mode():
+    """The sandbox universe rebuilds once calibrations land, in the mode the
+    user is VIEWING. Regression (2026-07-09): the universe was (a) cached empty
+    forever when the Graph tab was opened before the first Calibrate, and (b)
+    hardcoded to mid fits — a haircut-mode session had no Manual what-if nodes
+    at all even after calibrating everything."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        # Cache the pre-Calibrate (empty) universe, as opening the Graph tab does.
+        assert client.get("/graph/nodes").json()["nodes"] == []
+        tk = "ALPHA"
+        iso = client.get("/universe").json()["expiries"][tk][1]["expiry"]
+        # View + calibrate in a NON-mid mode (viewing records last_fit_mode).
+        client.get(f"/smiles/{tk}/{iso}", params={"fit_mode": "haircut"})
+        client.post(f"/calibrate/{tk}/{iso}", params={"fit_mode": "haircut"})
+        nodes = client.get("/graph/nodes").json()["nodes"]
+        assert (tk, iso) in {(n["ticker"], n["expiry"]) for n in nodes}
+
+
 def test_graph_nodes_ignores_inactive_provider_tickers():
     """GET /graph/nodes iterates the ACTIVE universe, not the provider watchlist:
     removing a ticker from the active set (it stays in provider.list_tickers())

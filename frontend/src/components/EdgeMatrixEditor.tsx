@@ -2,13 +2,16 @@
 // replaces the row-list edge editor as the primary Edges surface. One cell
 // per ticker pair — an off-diagonal cell is a same-expiry cross-ticker pair
 // rule (both directions when symmetric ⇄), the tinted diagonal is each
-// ticker's own consecutive-expiry calendar chain — and the old per-edge row
-// editor survives behind "Per-edge overrides…" as the advanced view (its rows
-// are layered last over the expanded rule). Persists via PUT
-// /graph/edges/blocks; an all-empty rule falls back to the auto-lattice.
-// Rendered as a large modal — the Graph aside is too narrow for a matrix.
+// ticker's own consecutive-expiry calendar chain. A cell's popover drills
+// into its expiry×expiry sub-matrix (EdgeExpiryMatrix) to override single
+// directed edges, and the old per-edge row editor survives behind "Per-edge
+// overrides…" as the advanced view — both write rule.overrides, layered last
+// over the expanded rule. Persists via PUT /graph/edges/blocks; an all-empty
+// rule falls back to the auto-lattice. Rendered as a large modal — the Graph
+// aside is too narrow for a matrix.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import EdgeEditor from "./EdgeEditor";
+import EdgeExpiryMatrix from "./EdgeExpiryMatrix";
 import {
   CellPopover,
   PasteTsvPanel,
@@ -50,6 +53,31 @@ export default function EdgeMatrixEditor({
   const [pasting, setPasting] = useState(false);
   const [pasteErrors, setPasteErrors] = useState<string[]>([]);
   const [showOverrides, setShowOverrides] = useState(false);
+  const [drill, setDrill] = useState<{ src: string; dst: string } | null>(null);
+
+  // Ladder per ticker for the expiry×expiry drill-in (selected universe order).
+  const expiriesByTicker = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const n of nodes) {
+      const arr = m.get(n.ticker) ?? [];
+      if (!arr.includes(n.expiry)) arr.push(n.expiry);
+      m.set(n.ticker, arr);
+    }
+    for (const arr of m.values()) arr.sort();
+    return m;
+  }, [nodes]);
+
+  /** Per-expiry overrides touching a ticker pair (either direction) — the
+   *  drill-in badge on the ticker cell. */
+  const overrideCount = useCallback(
+    (s: string, d: string) =>
+      overrides.filter(
+        (o) =>
+          (o.fromTicker === s && o.toTicker === d) ||
+          (o.fromTicker === d && o.toTicker === s),
+      ).length,
+    [overrides],
+  );
 
   const load = useCallback(() => {
     setBusy(true);
@@ -67,18 +95,19 @@ export default function EdgeMatrixEditor({
     load();
   }, [load]);
 
-  // Escape unwinds one layer at a time: cell popover, paste panel, the modal.
-  // (The popover swallows its own Escape, so this mostly sees the last two.)
+  // Escape unwinds one layer at a time: cell popover, paste panel, the
+  // expiry drill-in, the modal. (The popover swallows its own Escape.)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (editing !== null) setEditing(null);
       else if (pasting) setPasting(false);
+      else if (drill !== null) setDrill(null);
       else onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [editing, pasting, onClose]);
+  }, [editing, pasting, drill, onClose]);
 
   const maxWeight = useMemo(() => {
     let m = 0;
@@ -172,7 +201,7 @@ export default function EdgeMatrixEditor({
         <div className="mb-2 flex shrink-0 flex-wrap items-center gap-1.5">
           <button
             className={btn}
-            disabled={busy || showOverrides}
+            disabled={busy || showOverrides || drill !== null}
             onClick={() => {
               setPasting((v) => !v);
               setPasteErrors([]);
@@ -182,15 +211,19 @@ export default function EdgeMatrixEditor({
           </button>
           <button
             className={btn}
-            disabled={busy || showOverrides || grid.size === 0}
+            disabled={busy || showOverrides || drill !== null || grid.size === 0}
             onClick={() => downloadCsv(toCsv(grid, tickers))}
           >
             Export CSV
           </button>
-          <button className={btn} disabled={busy || showOverrides} onClick={resetAll}>
+          <button className={btn} disabled={busy || showOverrides || drill !== null} onClick={resetAll}>
             Reset all
           </button>
-          <button className={btn + " ml-auto"} disabled={busy} onClick={() => setShowOverrides((v) => !v)}>
+          <button
+            className={btn + " ml-auto"}
+            disabled={busy || drill !== null}
+            onClick={() => setShowOverrides((v) => !v)}
+          >
             {showOverrides ? "Back to matrix" : `Per-edge overrides… (${overrides.length})`}
           </button>
         </div>
@@ -216,6 +249,18 @@ export default function EdgeMatrixEditor({
           />
         ) : pasting ? (
           <PasteTsvPanel errors={pasteErrors} busy={busy} onApply={applyTsv} onCancel={() => setPasting(false)} />
+        ) : drill !== null ? (
+          <EdgeExpiryMatrix
+            src={drill.src}
+            dst={drill.dst}
+            srcExpiries={expiriesByTicker.get(drill.src) ?? []}
+            dstExpiries={expiriesByTicker.get(drill.dst) ?? []}
+            baseCell={cellAt(grid, drill.src, drill.dst)}
+            overrides={overrides}
+            busy={busy}
+            onChange={setOverrides}
+            onBack={() => setDrill(null)}
+          />
         ) : tickers.length === 0 ? (
           <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-slate-800 px-6 text-center text-xs text-slate-500">
             No universe selected — pick tickers and expiries in the Universe tab
@@ -246,6 +291,7 @@ export default function EdgeMatrixEditor({
                       const rawKey = cellKey(src, dst);
                       const cell = cellAt(grid, src, dst);
                       const diagonal = src === dst;
+                      const nOverrides = overrideCount(src, dst);
                       return (
                         <td
                           key={dst}
@@ -278,6 +324,12 @@ export default function EdgeMatrixEditor({
                                 ·
                               </span>
                             )}
+                            {/* Per-expiry overrides live under this pair. */}
+                            {nOverrides > 0 && (
+                              <span className="absolute right-0.5 top-0 text-[8px] text-accent-400">
+                                {nOverrides}
+                              </span>
+                            )}
                           </button>
                           {editing === rawKey && (
                             <CellPopover
@@ -286,6 +338,10 @@ export default function EdgeMatrixEditor({
                               onChange={(c) => applyCell(canonicalKey(src, dst), c)}
                               onClear={() => clearCell(canonicalKey(src, dst))}
                               onClose={() => setEditing(null)}
+                              onDrill={() => {
+                                setEditing(null);
+                                setDrill({ src, dst });
+                              }}
                             />
                           )}
                         </td>
