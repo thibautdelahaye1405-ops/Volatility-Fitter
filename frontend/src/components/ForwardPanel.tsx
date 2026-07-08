@@ -45,6 +45,9 @@ export interface ForwardsResponse {
   ticker: string;
   spot: number;
   exerciseStyle: "european" | "american";
+  /** IV-synthesized zero-carry chain (delayed tier, NBBO gated): parity is
+   *  pinned to F = spot, D = 1 by construction, not a market read. */
+  zeroCarry?: boolean;
   entries: ForwardEntry[];
 }
 

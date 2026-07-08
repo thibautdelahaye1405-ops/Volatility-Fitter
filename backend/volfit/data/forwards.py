@@ -37,6 +37,21 @@ well-identified level** — a spread + ATM weighted mean of K + (C-P)/D (tight,
 near-the-money pairs, where parity is cleanest and both legs are liquid, dominate) —
 so it no longer inherits the bad slope (F = intercept/slope).
 
+Zero-carry synthesized chains ([REQ 2026-07-08], the SPY forward incident):
+a delayed data tier can gate NBBO quotes, and the provider then SYNTHESIZES the
+chain from its per-contract IVs, pricing every contract with Black at F = spot,
+D = 1, zero spread (volfit.data.massive._chain_from_ivs). Those prices carry no
+parity information — the provider's call/put IVs embed its OWN carry model, so
+regressing the zero-carry re-prices reads the call/put IV asymmetry as a
+spurious forward and discount (observed live on SPY: -3.8% short-dated implied
+rates, D > 1, and a one-year forward +1.7% above the F = spot the prices were
+built with — inside the discount clamp's rate band, so the clamp is silent).
+`implied_forward` therefore returns the chain's own construction convention
+(F = spot, D = 1, rms 0) for such chains, via the snapshot's explicit
+``zero_carry`` flag (persisted with the snapshot, store schema v5). The flag is
+deliberately NOT inferred from chain-wide zero spreads: EOD close marks also
+quote bid == ask yet their mids carry genuine parity information.
+
 American de-biasing (fixes the ATM smile kink): put-call parity is an
 *equality* only for European options.  American C - P carries the difference
 of the call and put early-exercise premiums, so a forward implied from RAW
@@ -278,6 +293,18 @@ def implied_forward(
     paired = sorted(set(call) & set(put))
     if len(paired) < MIN_PAIRED_STRIKES:
         return None
+
+    # Zero-carry synthesized chains (a delayed tier's IV fallback: every price
+    # is Black at F = spot, D = 1, zero spread) carry NO parity information —
+    # the provider's call/put IVs embed ITS carry model, so regressing their
+    # zero-carry re-prices reads that asymmetry as a spurious forward/discount
+    # (observed live on SPY: -3.8% short rates, a +1.7% one-year forward).
+    # The honest parity answer is the chain's own construction convention.
+    if snapshot.is_zero_carry():
+        return ImpliedForward(
+            expiry=expiry, forward=snapshot.spot, discount=1.0,
+            n_strikes=len(paired), residual_rms=0.0,
+        )
 
     strikes = np.array(paired)
     c = np.array([call[s][0] for s in paired])

@@ -9,6 +9,7 @@ from datetime import date, datetime, timedelta
 import pytest
 
 from volfit.data import (
+    ChainSnapshot,
     OptionQuote,
     SyntheticProvider,
     Universe,
@@ -118,6 +119,21 @@ def test_snapshot_round_trip(tmp_path, chain):
         loaded = store.load_snapshot(sid)
     assert len(loaded.quotes) == len(chain.quotes)
     assert loaded == chain  # exact: floats, ints, dates, timestamps
+
+
+def test_snapshot_round_trip_keeps_zero_carry(tmp_path, chain):
+    """The zero-carry flag (IV-synthesized chains, schema v5) survives
+    persistence, so a replayed synthesized chain keeps pinning its parity
+    forward to F = spot, D = 1 instead of regressing noise."""
+    flagged = ChainSnapshot(
+        chain.ticker, chain.spot, chain.timestamp, chain.quotes,
+        chain.exercise_style, zero_carry=True,
+    )
+    with VolStore(tmp_path / "vol.db") as store:
+        sid = store.save_snapshot(flagged)
+        loaded = store.load_snapshot(sid)
+    assert loaded.zero_carry is True
+    assert loaded == flagged
 
 
 def test_latest_snapshot(tmp_path, chain):

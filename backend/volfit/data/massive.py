@@ -619,6 +619,7 @@ class MassiveProvider(OptionChainProvider):
         return ChainSnapshot(
             ticker=ticker.upper(), spot=spot, timestamp=timestamp,
             quotes=quotes, exercise_style="european",
+            zero_carry=True,  # parity is meaningless here: F = spot, D = 1 by construction
         )
 
     def _spot_from_parity(self, results: list[dict]) -> float | None:

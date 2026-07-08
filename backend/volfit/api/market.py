@@ -84,6 +84,7 @@ def forwards_payload(state: AppState, ticker: str) -> ForwardsResponse:
         ticker=ticker,
         spot=snapshot.spot,
         exerciseStyle=snapshot.exercise_style,
+        zeroCarry=snapshot.is_zero_carry(),
         entries=entries,
     )
 

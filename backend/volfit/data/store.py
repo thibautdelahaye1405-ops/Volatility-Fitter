@@ -32,7 +32,10 @@ from volfit.data.types import ChainSnapshot, Instrument, OptionQuote
 #: v3 ([REQ 2026-06-15]): an `app_settings` key/value table persists the global
 #: Fit + Options defaults (the Options "Save as default" button), so a backend
 #: restart restores them instead of the code defaults.
-SCHEMA_VERSION = 4
+#: v5 ([REQ 2026-07-08]): snapshots carry the `zero_carry` flag so replayed
+#: IV-synthesized chains (delayed tier, NBBO gated) keep pinning the parity
+#: forward to their F = spot, D = 1 construction instead of regressing noise.
+SCHEMA_VERSION = 5
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -45,7 +48,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     ticker         TEXT NOT NULL,
     spot           REAL NOT NULL,
     ts             TEXT NOT NULL,
-    exercise_style TEXT NOT NULL DEFAULT 'european'
+    exercise_style TEXT NOT NULL DEFAULT 'european',
+    zero_carry     INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS quotes (
     snapshot_id   INTEGER NOT NULL REFERENCES snapshots(id),
@@ -145,6 +149,8 @@ class VolStore:
         v3 -> v4: the `prior_snapshots` table is added (full calibration
         snapshots for the prior framework) — again a brand-new table, so the
         `CREATE TABLE IF NOT EXISTS` is the whole migration.
+        v4 -> v5: the `snapshots` table gains `zero_carry` (old rows default
+        to 0 — real-quote chains; only the IV-synthesized fallback sets it).
 
         Fast path: a store is opened on *every* capture/persist/load, so once the
         file is already at `SCHEMA_VERSION` we return immediately — skipping the
@@ -164,6 +170,11 @@ class VolStore:
             self.conn.execute(
                 "ALTER TABLE snapshots ADD COLUMN "
                 "exercise_style TEXT NOT NULL DEFAULT 'european'"
+            )
+        if 1 <= version <= 4:  # pre-v5 file: add the zero-carry flag
+            self.conn.execute(
+                "ALTER TABLE snapshots ADD COLUMN "
+                "zero_carry INTEGER NOT NULL DEFAULT 0"
             )
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
@@ -200,13 +211,14 @@ class VolStore:
     def save_snapshot(self, snapshot: ChainSnapshot) -> int:
         """Persist one chain snapshot; returns the new snapshot id."""
         cur = self.conn.execute(
-            "INSERT INTO snapshots (ticker, spot, ts, exercise_style) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO snapshots (ticker, spot, ts, exercise_style, zero_carry) "
+            "VALUES (?, ?, ?, ?, ?)",
             (
                 snapshot.ticker,
                 snapshot.spot,
                 snapshot.timestamp.isoformat(),
                 snapshot.exercise_style,
+                int(snapshot.zero_carry),
             ),
         )
         snapshot_id = int(cur.lastrowid)
@@ -234,12 +246,13 @@ class VolStore:
     def load_snapshot(self, snapshot_id: int) -> ChainSnapshot:
         """Reload a snapshot; raises KeyError if the id is unknown."""
         row = self.conn.execute(
-            "SELECT ticker, spot, ts, exercise_style FROM snapshots WHERE id = ?",
+            "SELECT ticker, spot, ts, exercise_style, zero_carry "
+            "FROM snapshots WHERE id = ?",
             (snapshot_id,),
         ).fetchone()
         if row is None:
             raise KeyError(f"no snapshot with id {snapshot_id}")
-        ticker, spot, ts, exercise_style = row
+        ticker, spot, ts, exercise_style, zero_carry = row
         timestamp = datetime.fromisoformat(ts)
         quotes = [
             OptionQuote(
@@ -267,6 +280,7 @@ class VolStore:
             timestamp=timestamp,
             quotes=quotes,
             exercise_style=exercise_style,
+            zero_carry=bool(zero_carry),
         )
 
     def latest_snapshot(self, ticker: str) -> ChainSnapshot | None:

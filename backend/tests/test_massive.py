@@ -239,6 +239,7 @@ def test_iv_fallback_synthesizes_fittable_chain():
     snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
     assert snap.spot == 741.75
     assert snap.exercise_style == "european"  # priced from Black, no de-Am
+    assert snap.zero_carry  # parity carries no information: F = spot, D = 1
     c = next(q for q in snap.quotes if q.call_put == "C")
     assert c.bid == c.ask and c.bid > 0  # zero-spread synthetic quote
     # Re-invert the OTM call price -> recovers Massive's IV.

@@ -103,6 +103,14 @@ export default function ForwardsViewer() {
             {data.entries.length} expiries
           </span>
         )}
+        {data?.zeroCarry && (
+          <span
+            className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400"
+            title="The feed gated NBBO quotes, so this chain was synthesized from the provider's per-contract IVs at zero carry (every price is Black at forward = spot, discount = 1, zero spread). Parity carries no information here, so the forward is pinned to that convention — not a market read."
+          >
+            IV-synthesized · zero carry · F pinned to spot
+          </span>
+        )}
         {error && (
           <span className="ml-auto truncate text-[10px] text-amber-400/80" title={error}>
             {error}

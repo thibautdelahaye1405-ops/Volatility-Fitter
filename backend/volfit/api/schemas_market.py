@@ -98,4 +98,8 @@ class ForwardsResponse(BaseModel):
     ticker: str
     spot: float
     exerciseStyle: str  # "european" | "american" (drives de-Americanization)
+    #: True when the chain is an IV-synthesized zero-carry fallback (delayed
+    #: tier, NBBO gated): parity is pinned to F = spot, D = 1 by construction
+    #: and the UI should say so rather than present it as a market read.
+    zeroCarry: bool = False
     entries: list[ForwardEntry]

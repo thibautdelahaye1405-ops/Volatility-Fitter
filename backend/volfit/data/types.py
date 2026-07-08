@@ -79,6 +79,13 @@ class ChainSnapshot:
     timestamp: datetime
     quotes: list[OptionQuote] = field(default_factory=list)
     exercise_style: str = "european"  # "european" | "american"
+    #: True for chains SYNTHESIZED from provider per-contract IVs at zero carry
+    #: (every price is Black at F = spot, D = 1, zero spread — e.g. Massive's
+    #: delayed-tier fallback when NBBO quotes are gated). Such chains carry no
+    #: put-call-parity information: the provider's call/put IVs embed ITS carry
+    #: model, so a parity regression reads the asymmetry as a spurious
+    #: forward/discount. Consumers must pin F = spot, D = 1 instead.
+    zero_carry: bool = False
 
     def __post_init__(self) -> None:
         if self.exercise_style not in ("european", "american"):
@@ -86,6 +93,13 @@ class ChainSnapshot:
                 "exercise_style must be 'european' or 'american', "
                 f"got {self.exercise_style!r}"
             )
+
+    def is_zero_carry(self) -> bool:
+        """The explicit flag only — deliberately NOT inferred from chain-wide
+        zero spreads: EOD close marks also quote bid == ask yet their mids
+        carry genuine parity information. The flag persists with the snapshot
+        (store schema v5), so replayed synthesized chains keep it."""
+        return self.zero_carry
 
     def expiries(self) -> list[date]:
         """Sorted unique expiries present in the chain."""

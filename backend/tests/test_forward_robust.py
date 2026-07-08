@@ -87,3 +87,38 @@ def test_no_reference_date_skips_clamp():
     legacy = implied_forward(_chain(), EXPIRY)
     assert legacy is not None
     assert abs(legacy.forward / F_TRUE - 1.0) < 1e-3
+
+
+def _zero_carry_chain() -> ChainSnapshot:
+    """An IV-synthesized chain the way the delayed-tier fallback builds one:
+    prices carry the PROVIDER's carry (call/put IVs disagree once re-priced at
+    zero carry), quoted zero-spread and flagged zero_carry ([REQ 2026-07-08])."""
+    base = _chain(zero_spread=True)  # true-carry parity prices, bid == ask
+    return ChainSnapshot(
+        base.ticker, base.spot, base.timestamp, base.quotes,
+        base.exercise_style, zero_carry=True,
+    )
+
+
+def test_zero_carry_chain_pins_forward_to_spot():
+    """A flagged zero-carry synthesized chain gets its own construction
+    convention back — F = spot, D = 1, rms 0 — never a parity regression
+    (which reads the provider's call/put IV asymmetry as a fake forward:
+    the live SPY -3.8%-rate / +1.7%-forward incident)."""
+    f = implied_forward(_zero_carry_chain(), EXPIRY, REF)
+    assert f is not None
+    assert f.forward == SPOT and f.discount == 1.0
+    assert f.residual_rms == 0.0 and f.n_strikes > 0
+    # The no-reference path pins identically (the flag, not the clamp, decides).
+    g = implied_forward(_zero_carry_chain(), EXPIRY)
+    assert g is not None and g.forward == SPOT and g.discount == 1.0
+
+
+def test_unflagged_zero_spread_chain_still_regresses():
+    """Chain-wide zero spreads alone must NOT trigger the pin: EOD close marks
+    also quote bid == ask yet their mids carry genuine parity information. The
+    regression result (true carry) is measurably different from the pin."""
+    f = implied_forward(_chain(zero_spread=True), EXPIRY, REF)
+    assert f is not None
+    assert abs(f.forward / F_TRUE - 1.0) < 1e-3  # regression recovers TRUE carry
+    assert f.forward != SPOT and f.discount != 1.0  # the pin did not fire
