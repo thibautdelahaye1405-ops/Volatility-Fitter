@@ -12,7 +12,7 @@ Usage:  python Docs\\deck\\stage_graph.py [http://127.0.0.1:8001]
 
 Recipe (Docs/deck/README.md steps 1-3 + 5), idempotent:
   1. universe = SPY QQQ AAPL NVDA IWM, everything LIT (rerun-safe)
-  2. options: observation filter ACTIVE, graph-prior defaults eta 3.16 /
+  2. options: observation filter ACTIVE, graph-prior defaults eta 10 /
      lambda 0.1 / nu 0.1 (these seed the Graph tab's Solver panel), LV off
      (not needed for graph shots — keeps the three calibrations fast)
   3. fetch spots + options; calibrate #0 (seeds the filter state + baselines)
@@ -22,8 +22,8 @@ Recipe (Docs/deck/README.md steps 1-3 + 5), idempotent:
   6. amend EVERY SPY quote mid +150 bp; calibrate #1 (the big lit innovation)
   7. nudge one near-ATM SPY quote +10 bp more; calibrate #2 (a realistic
      small innovation so the filter overlay / gains table look sensible)
-  8. POST /graph/extrapolate with the deck knobs (eta 3.16, kappa 1,
-     lambda 0.1, nu 0.1, cross-ticker edge weight 30) and PRINT the per-node
+  8. POST /graph/extrapolate with the deck knobs (eta 10, kappa 1,
+     lambda 0.1, nu 0.1, cross-ticker edge weight 100) and PRINT the per-node
      shifts/bands + the NVDA hero-node reconstruction metrics + the SPY
      filter diagnostics — the numbers the slide captions cite.
 
@@ -49,14 +49,18 @@ DARK_TICKERS = ["QQQ", "AAPL", "NVDA", "IWM"]
 SHIFT_VOL = 0.0150   # +150 bp on every SPY quote mid
 NUDGE_VOL = 0.0010   # +10 bp second-pass nudge for the filter story
 
-#: Solver knobs of the deck's propagation (README step 3: eta 3.16x = slider
-#: 0.5, lambda 0.1, cross-ticker weight 30). Must match capture_graph.mjs.
+#: Solver knobs of the deck's propagation (README step 3: eta 10x = slider 1.0,
+#: lambda 0.1, cross-ticker weight 100). Must match capture_graph.mjs.
+#: eta 10 sits on the flat part of the LOO autotune curve (eta 4 -> 118.4 bp,
+#: eta 10 -> 118.5 bp on this staging) and gives a dark posterior gain of ~0.5
+#: (NVDA +43...+79 bp on a +95...+143 bp SPY innovation) instead of the ~0.25
+#: the rev-4 deck showed with eta 3.16 / cross 30, which read as too timid.
 KNOBS = {
-    "etaScale": 3.16,
+    "etaScale": 10.0,
     "kappaScale": 1.0,
     "lambdaScale": 0.1,
     "nu": 0.1,
-    "crossWeight": 30.0,
+    "crossWeight": 100.0,
     "flatAtm": False,
 }
 
@@ -196,16 +200,24 @@ def spy_expiries() -> list[str]:
     return exps
 
 
-def amend_spy(shift: float) -> None:
-    """Bulk-amend every included SPY quote's mid IV by +shift (per expiry).
+def reset_spy_edits() -> None:
+    """Drop any persisted SPY quote edits from a previous run.
 
-    Resets each expiry's edit session first, so a RERUN of this script shifts
-    from the market mids again instead of stacking +150 bp on +150 bp."""
+    MUST run before calibration #0 / the prior save: edit sessions persist in
+    the DB, so on a rerun the baseline fits (and therefore the saved priors)
+    would otherwise already contain the previous run's +150 bp and the staged
+    innovation would collapse to the +10 bp nudge."""
     for expiry in spy_expiries():
         try:
             req("POST", f"/smiles/SPY/{expiry}/edits?fit_mode=mid", {"action": "reset"}, timeout=180)
         except RuntimeError as e:  # a fresh node may have no edit session yet
             log(f"  (reset skipped on SPY {expiry}: {e})")
+    log("SPY edit sessions reset (baseline quotes = market mids)")
+
+
+def amend_spy(shift: float) -> None:
+    """Bulk-amend every included SPY quote's mid IV by +shift (per expiry)."""
+    for expiry in spy_expiries():
         smile = req("GET", f"/smiles/SPY/{expiry}")
         n = 0
         for q in smile["quotes"]:
@@ -325,6 +337,7 @@ def main() -> None:
     ensure_universe()
     stage_options(filter_mode="off")  # filter OFF: full +150 bp innovations
     fetch_market_data()
+    reset_spy_edits()  # rerun-safety: baseline must not inherit old edits
     calibrate("#0 — baseline")
     stage_priors()
     darken_targets()

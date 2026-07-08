@@ -385,21 +385,21 @@
     QQQ, AAPL, NVDA and IWM are dark. SPY's whole surface reprices +150 bp. <b>The rest of this deck exists to earn
     each arrow in this picture.</b></p>
   <div class="steps" style="grid-template-columns: repeat(4, 1fr); margin: 0 0 20px;">
-    <div class="step"><div class="n">1 · Lit move</div><div class="t">SPY's quote mids are amended <b>+150 bp</b> and it recalibrates <b>+83…+145 bp</b> across its ladder — real fits, not typed shifts</div></div>
-    <div class="step"><div class="n">2 · Innovation</div><div class="t">Versus its spot-transported prior, that is <b>+95…+143 bp of genuine news</b> — not noise, not a level</div></div>
-    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news flows along calendar and cross-asset edges, damped by edge weight and β</div></div>
-    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+22…+39 bp</b>, inside a ±270 bp credible band they can be judged against</div></div>
+    <div class="step"><div class="n">1 · Lit move</div><div class="t">Every SPY quote mid is amended <b>+150 bp</b>, then SPY's four expiries are genuinely recalibrated on the shifted quotes — <b>real fits, not typed shifts</b></div></div>
+    <div class="step"><div class="n">2 · Innovation</div><div class="t">Innovation = new fit − transported prior, per handle: <b>+97…+151 bp of ATM news</b> across SPY's expiry ladder. Only this <b>change</b> propagates — never vol levels</div></div>
+    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news diffuses along calendar and cross-asset edges; each dark node blends it with its own prior by <b>Bayesian precision weights</b> — a deliberate fraction, with widened uncertainty</div></div>
+    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+43…+79 bp of ATM vol</b> (≈½ the SPY news), inside a <b>±1.9–2.0 vol-pt</b> 95% credible band (±1.96σ) they can be judged against later</div></div>
   </div>
   <div class="cols" style="flex:1">
     <div>
-      <div class="shot" style="height: 330px; overflow: hidden;"><img src="{{IMG:graph_lattice_crop}}" style="object-fit: cover; object-position: center top; height: 100%; width: 100%;" alt="Graph lattice: SPY lit, +37bp propagated to dark names"></div>
-      <p class="shotcap"><span class="k">The lattice.</span> SPY's four lit nodes (amber rings, +83…+145 bp) and every dark
-        node's posterior shift (+22…+39 bp) — per node, per expiry.</p>
+      <div class="shot" style="height: 430px; background:#EEF2F7;"><img src="{{IMG:graph_lattice_content}}" style="object-fit: contain; height: 100%; width: 100%;" alt="Graph lattice: SPY lit +77…+140 bp, dark names inherit +43…+79 bp"></div>
+      <p class="shotcap"><span class="k">The lattice after propagation.</span> SPY's four lit nodes (amber rings) shift
+        <b>+77…+140 bp</b>; every dark node inherits <b>+43…+79 bp</b> — per node, per expiry, largest where SPY's own move was largest.</p>
     </div>
     <div>
-      <div class="shot" style="height: 330px; overflow: hidden;"><img src="{{IMG:smile_hero}}" style="object-fit: cover; object-position: left top; height: 100%; width: 100%;" alt="Dark NVDA smile reconstructed with credible band"></div>
-      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior and its band;
-        blue — the node's own last calibration. The badge carries the audit trail.</p>
+      <div class="shot"><img src="{{IMG:smile_hero_wide}}" alt="Dark NVDA smile reconstructed with credible band"></div>
+      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior, <b>+57 bp</b> above
+        the node's own last calibration (blue), with its 95% band. The badge carries the audit trail (source nodes, gain × innovation).</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
@@ -419,7 +419,7 @@
     <div class="g"><div class="t"><span class="m">Innovation</span></div><div class="d">Today's calibration <b>minus</b> the transported prior, per handle — the genuine news in a lit node. The only thing the graph propagates.</div></div>
     <div class="g"><div class="t"><span class="m">Posterior</span> · credible band</div><div class="d">The estimate after combining sources (prior + news), with its uncertainty. A dark node's posterior comes with a band it can be <b>judged against later</b>.</div></div>
     <div class="g"><div class="t"><span class="m">RMS · bp</span></div><div class="d">Fit error = <b>root-mean-square implied-vol error</b>, in vol basis points (1 bp = 0.01 vol point). 10 bp ≈ tighter than most quoted spreads.</div></div>
-    <div class="g"><div class="t"><span class="m">ζ</span> (standardized residual)</div><div class="d">Error divided by its own predicted uncertainty. If the bands are honest, ζ ≈ standard normal: <b>mean 0 (unbiased), std 1 (calibrated)</b>.</div></div>
+    <div class="g"><div class="t"><span class="m">ζ</span> (standardized residual)</div><div class="d">Error divided by its own predicted uncertainty — computed wherever the system quotes a band: graph reconstructions, the LOO backtest, the observation filter. If the bands are honest, ζ ≈ standard normal: <b>mean 0 (unbiased), std 1 (calibrated)</b>.</div></div>
     <div class="g"><div class="t"><span class="m">Static no-arbitrage</span></div><div class="d">What "arbitrage-free" means here: <b>butterfly-clean within each slice, calendar-clean across expiries</b>. Not a claim about dynamic or model risk.</div></div>
   </div>
   <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
@@ -446,8 +446,8 @@
       </div>
       <ul class="points">
         <li class="g"><strong>Butterfly-free by construction</strong> — the density is an exponential; no penalty needed within a slice.</li>
-        <li class="a">One hard constraint only: <strong>A<sub>R</sub> &lt; 1</strong>, where A<sub>R</sub> is the right endpoint scale —
-          the model's right-tail steepness — and A<sub>R</sub> &lt; 1 is exactly a finite forward; Lee tail slopes come out structural, not tuned.</li>
+        <li class="a">One hard constraint only: <strong>A<sub>R</sub> &lt; 1</strong> — the right tail scale, read off the basis as
+          A<sub>R</sub> = exp(R + &Sigma;<sub>n</sub>(&minus;1)<sup>n</sup>a<sub>n</sub>) — exactly a finite forward; Lee slopes come out structural, not tuned.</li>
         <li class="v"><strong>Analytic Jacobian via implicit-root cancellation</strong> — two model evaluations per optimizer step
           regardless of degree: a 12-parameter LQD fits in the same ~30 ms league as 5-parameter SVI.</li>
       </ul>
@@ -1296,9 +1296,10 @@
         <span class="ci"><span class="sw" style="background:#F87171; height:10px; width:4px"></span>bid/ask quotes (not used — node is dark)</span>
       </div>
       <p class="shotcap"><span class="k">A dark node, reconstructed (controlled demo: only SPY is lit, its quote mids amended +150 bp).</span>
-        NVDA's six-month smile is unquoted in this session. The violet posterior lifts it off its transported prior by the
-        graph-propagated innovation, inside a stated credible band — with per-node provenance in the badge
-        (reconstruction RMS 0.34 vol pts · 53% of quotes in-band · standardized residual ζ = −0.2).</p>
+        NVDA's six-month smile is unquoted in this session. The violet posterior lifts it <b>+57 bp</b> off its transported prior by the
+        graph-propagated innovation, inside a stated credible band — with per-node provenance in the badge. The untouched NVDA quotes
+        deliberately did <em>not</em> move, so the posterior disagrees with them by design — by about half its own stated band
+        (standardized residual ζ = −0.56): the uncertainty is honest about exactly this risk.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>

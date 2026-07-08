@@ -4,7 +4,7 @@
 1920x1080 canvas scaled to the window). Open it in any browser; navigate with
 arrow keys / PageUp / PageDown / Home / End; print-to-PDF for a handout.
 
-**Current state: full 36-slide deck, rev 4** (also exported as
+**Current state: full 36-slide deck, rev 5** (also exported as
 `volfitter_deck.pdf`, one page per slide) — opening (problem, architecture,
 worked dark-smile walkthrough, glossary), models (LQD ×2, backtest evidence,
 SVI ×2, MCS ×2, Local Vol ×2), trading realism (de-Am, forwards, objective,
@@ -12,6 +12,22 @@ var-swaps, wings, calendar case file, event clock), dynamics (SSR, priors ×2,
 Kalman filter ×2), the graph section (concept, hero, edges, LOO validation),
 and product close (workstation tour, quality/runbook, performance, discipline,
 roadmap, closing statement).
+
+Rev-5 changes (2026-07-08 pm): **graph demo restaged with stronger propagation**
+(eta 10 = slider max, cross-ticker weight 100 — dark gain ~0.5 instead of ~0.25;
+eta 10 sits on the flat part of the LOO autotune curve, so it is data-consistent,
+not hand-favored): lattice now SPY +77…+140 bp lit / +43…+79 bp dark inside a
+±195-200 bp 95% band, hero NVDA +57 bp (ζ = −0.56 vs the deliberately-unmoved
+synthetic quotes — caption reframed honestly). Slide-4 steps rewritten to define
+innovation precisely (change vs transported prior, never levels) and to state
+units/band convention; slide-4 shots no longer vertically cropped (lattice
+pre-cropped to content + contain on matched bg #EEF2F7, hero pre-cropped wide as
+`smile_hero_wide.png`); glossary ζ entry lists where ζ is used; slide-6 A_R
+expression added (A_R = exp(R + Σ(−1)^n a_n)); parametric_smile retaken intraday
+(cleaner quotes) with the quote-editor button cluster removed at capture; the
+same button cluster is PIL-blanked in smile_hero. stage_graph.py is now truly
+idempotent (SPY edit sessions reset BEFORE calibration #0 — previously a rerun
+saved priors contaminated by the prior run's +150 bp and innovations collapsed).
 
 Rev-4 changes (2026-07-08): **app screenshots retaken in the app's LIGHT theme
 from a live Massive session** (was dark theme / Yahoo); tone pass (quant-to-quant,
@@ -68,9 +84,9 @@ visible and reproducible offline) and their captions say so.
    priors (without the fetch, extrapolation falls back to `today_bootstrap`
    and every innovation is zero), darkens QQQ/AAPL/NVDA/IWM, reprices SPY
    +150 bp via quote-edit amends, stages the observation filter, and runs the
-   extrapolation with visible-propagation knobs (eta 3.16, lambda 0.1,
-   cross-ticker weight 30 → dark nodes inherit ~+37-40 bp with a ~140 bp
-   credible band). Then `node ../Docs/deck/capture_graph.mjs`.
+   extrapolation with visible-propagation knobs (eta 10, lambda 0.1,
+   cross-ticker weight 100 → dark nodes inherit +43…+79 bp inside a
+   ±195-200 bp 95% band). Then `node ../Docs/deck/capture_graph.mjs`.
 5. The captions on the graph/filter/hero slides cite the staged session's
    numbers (innovation bp, band width, reconstruction RMS / in-band % / ζ,
    filter gains) — `stage_graph.py` prints them; update the captions if the
@@ -82,6 +98,12 @@ visible and reproducible offline) and their captions say so.
 NOTE: the `.mjs` scripts import `puppeteer-core`, which Node resolves
 relative to the SCRIPT's location — copy them into `frontend\` before running
 (`Copy-Item Docs\deck\capture_market.mjs frontend\; cd frontend; node .\capture_market.mjs`).
+CAVEAT: the capture scripts also resolve their OUTPUT dir relative to the
+script location, so when run from `frontend\` the PNGs land in
+`frontend\assets\shots\` — copy them back to `Docs\deck\assets\shots\`, but do
+NOT clobber `edge_editor.png` / `options_calibration_crop.png` (those come from
+`capture_extras.mjs` + a PIL crop; a plain capture_graph run overwrites them
+with the un-staged / un-cropped variants).
 
 ## Verifying + exporting
 

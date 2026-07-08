@@ -22,10 +22,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SHOTS = path.join(HERE, "assets", "shots");
 
 // Solver knobs (must match stage_graph.py KNOBS): eta slider is log10-scaled,
-// so 10^0.5 = 3.16x. Lambda slider is linear. Cross weight is a number input.
-const ETA_SLIDER = "0.5";
+// so 10^1 = 10x (the slider max). Lambda slider is linear. Cross weight is a
+// number input.
+const ETA_SLIDER = "1";
 const LAMBDA_SLIDER = "0.1";
-const CROSS_WEIGHT = "30";
+const CROSS_WEIGHT = "100";
 
 const log = (m) => console.log(`[capture_graph] ${m}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
