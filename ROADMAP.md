@@ -46,11 +46,18 @@ visual checks (screenshots in frontend\.smoke\), backend suite **969 passed,
   `EdgeMatrixEditor` modal: sparse ticker×ticker heatmap grid (diagonal =
   calendar), cell popover (weight/β/symmetric), TSV paste, CSV export,
   per-edge overrides drill-down to the old row editor.
-- **Follow-ups:** expiry×expiry drill-in per matrix cell (backend overrides
-  already support it — UI cell → sub-matrix); particles unverified on real
-  data (synthetic innovations are 0 → filtered; check on a live universe);
-  count-up bp labels; a vitest for PropagatePanel; graph_visual/wave_check
-  consolidation into the smoke pack.
+- **Follow-ups (updated 2026-07-09 — graph hardening session, 3e94468 +
+  0a71cb9):** DONE: expiry×expiry drill-in per matrix cell (EdgeExpiryMatrix,
+  overrides layered last, ⇄ mirror, inherited-cell hints, count badge);
+  particles VERIFIED on real data (7 concurrent on the live universe);
+  PropagatePanel vitest (7) + EdgeExpiryMatrix vitest (5). Same session:
+  Edges matrix fed by the SELECTED universe (was the empty sandbox lattice);
+  api.ts request timeouts (60s default, long-job overrides) so stalled
+  requests can't spin forever; sandbox universe (Manual what-if) now follows
+  calibrations + the viewed fit mode (calib_signature cache key — was
+  hardcoded mid AND cached empty forever on the gated server; NB the running
+  backend needs a restart to pick this up). REMAINING: count-up bp labels;
+  graph_visual/wave_check consolidation into the smoke pack.
 
 
 
