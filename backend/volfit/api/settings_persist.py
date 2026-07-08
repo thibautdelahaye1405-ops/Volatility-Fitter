@@ -22,6 +22,7 @@ from volfit.data.store import VolStore
 FIT_KEY = "fit_settings"
 OPTIONS_KEY = "options_settings"
 GRAPH_EDGES_KEY = "graph_edges"
+GRAPH_BLOCK_RULE_KEY = "graph_block_rule"
 
 
 def load_defaults(
@@ -94,6 +95,33 @@ def save_graph_edges(store_path, edges: list[dict]) -> bool:
         return False
     with VolStore(store_path) as store:
         store.save_setting(GRAPH_EDGES_KEY, {"edges": edges})
+    return True
+
+
+def load_graph_block_rule(store_path) -> dict | None:
+    """Read the persisted ticker-block rule (the sparse block-matrix editor);
+    None when absent or unreadable. Stored VERBATIM — the rule must round-trip
+    exactly as the user wrote it, its expansion lives under GRAPH_EDGES_KEY."""
+    if store_path is None:
+        return None
+    try:
+        with VolStore(store_path) as store:
+            return store.load_setting(GRAPH_BLOCK_RULE_KEY)
+    except Exception as exc:  # noqa: BLE001 — restore must never break startup
+        warnings.warn(f"graph-block-rule load failed: {exc}")
+        return None
+
+
+def save_graph_block_rule(store_path, rule: dict | None) -> bool:
+    """Persist the ticker-block rule verbatim (None DELETES it — the edge list
+    is hand-edited or cleared); False when no store is set."""
+    if store_path is None:
+        return False
+    with VolStore(store_path) as store:
+        if rule is None:
+            store.delete_setting(GRAPH_BLOCK_RULE_KEY)
+        else:
+            store.save_setting(GRAPH_BLOCK_RULE_KEY, rule)
     return True
 
 

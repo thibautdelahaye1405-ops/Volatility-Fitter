@@ -28,6 +28,7 @@ from volfit.api.schemas import (
     EventSpec,
     FitSettings,
     ForwardPolicy,
+    GraphBlockRule,
     GraphEdgeInput,
     MarketSettings,
     OptionsSettings,
@@ -38,8 +39,10 @@ from volfit.api.settings_persist import (
     clear_defaults,
     has_defaults,
     load_defaults,
+    load_graph_block_rule,
     load_graph_edges,
     save_defaults,
+    save_graph_block_rule,
     save_graph_edges,
 )
 from volfit.api.varswap_session import VarSwapSession
@@ -213,6 +216,12 @@ class AppState(UniverseMixin):
         #: Restored from the store; the Graph edge editor PUTs replacements.
         self._graph_edges: list[GraphEdgeInput] = _coerce_graph_edges(
             load_graph_edges(self.store_path)
+        )
+        #: Persisted ticker-block rule (the sparse block-matrix editor). Stored
+        #: VERBATIM so it round-trips exactly as written; its EXPANSION is what
+        #: lives in _graph_edges. None ⇒ no rule (the edge list, if any, is raw).
+        self._graph_block_rule: GraphBlockRule | None = _coerce_block_rule(
+            load_graph_block_rule(self.store_path)
         )
         self._market_settings: dict[str, MarketSettings] = {}
         #: Per-ticker event calendar (shared across workspaces). Events now drive
@@ -1290,10 +1299,35 @@ class AppState(UniverseMixin):
             return list(self._graph_edges)
 
     def set_graph_edges(self, edges: list[GraphEdgeInput]) -> None:
-        """Replace the per-edge overrides and persist them (best-effort)."""
+        """Replace the per-edge overrides and persist them (best-effort).
+
+        Also DROPS any stored block rule: the raw editor hand-edits the list, so
+        a rule kept alongside would misdescribe the topology it claims to expand
+        to. The block editor goes through ``set_graph_block_rule`` instead."""
         with self._lock:
             self._graph_edges = list(edges)
+            self._graph_block_rule = None
         save_graph_edges(self.store_path, [e.model_dump() for e in edges])
+        save_graph_block_rule(self.store_path, None)
+
+    def graph_block_rule(self) -> GraphBlockRule | None:
+        """The persisted ticker-block rule (None ⇒ no rule stored)."""
+        with self._lock:
+            return self._graph_block_rule
+
+    def set_graph_block_rule(
+        self, rule: GraphBlockRule | None, edges: list[GraphEdgeInput]
+    ) -> None:
+        """Persist the block rule AND its expansion in ONE step, so /graph/edges
+        immediately serves the expanded list. ``rule=None`` with ``edges=[]``
+        clears both — back to the auto-lattice."""
+        with self._lock:
+            self._graph_block_rule = rule
+            self._graph_edges = list(edges)
+        save_graph_edges(self.store_path, [e.model_dump() for e in edges])
+        save_graph_block_rule(
+            self.store_path, rule.model_dump() if rule is not None else None
+        )
 
     # --------------------------------------------------------------- universe
     @property
@@ -1303,6 +1337,18 @@ class AppState(UniverseMixin):
     @universe.setter
     def universe(self, value) -> None:
         self._universe = value
+
+
+def _coerce_block_rule(raw: dict | None) -> GraphBlockRule | None:
+    """Validate a persisted block-rule blob; None on absence or bad data (a stale
+    blob degrades to 'no rule' — the expanded edges persist separately, so the
+    served topology survives even when the rule blob does not)."""
+    if not raw:
+        return None
+    try:
+        return GraphBlockRule(**raw)
+    except Exception:  # noqa: BLE001 — never let a stale blob break startup
+        return None
 
 
 def _coerce_graph_edges(raw: list[dict]) -> list[GraphEdgeInput]:

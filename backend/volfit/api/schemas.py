@@ -923,6 +923,54 @@ class GraphEdgesRequest(BaseModel):
     edges: list[GraphEdgeInput]
 
 
+# --------------------------------------------------- ticker-block topology rules
+class GraphBlockPair(BaseModel):
+    """One cross-ticker block rule: same-expiry links between ``a`` and ``b`` on
+    every expiry present in BOTH tickers' selected ladders (the exact pairing the
+    auto-lattice uses for its cross edges). ``symmetric`` emits both directions,
+    otherwise a→b only; ``beta`` broadcasts to all three handle betas."""
+
+    a: str
+    b: str
+    weight: float = Field(gt=0.0)  # directed conductance / trust (required)
+    beta: float = 1.0  # broadcast to betaAtmVol/betaSkew/betaCurv
+    symmetric: bool = True
+
+
+class GraphBlockCalendar(BaseModel):
+    """One ticker's calendar-chain block rule: consecutive selected expiries
+    linked in BOTH directions (matching the auto-lattice's calendar edges)."""
+
+    ticker: str
+    weight: float = Field(gt=0.0)
+    beta: float = 1.0
+
+
+class GraphBlockRule(BaseModel):
+    """Sparse ticker×ticker block-matrix topology rule (GET/PUT /graph/edges/blocks).
+
+    The rule is what the user WROTE — it persists verbatim and round-trips exactly
+    as written; the backend expands it into the per-edge list that ``/graph/edges``
+    continues to serve (volfit.api.graph_blocks). Explicit ``overrides`` (full
+    per-edge rows) are layered LAST: an override REPLACES any expanded edge with
+    the same directed (from, to) node pair."""
+
+    pairs: list[GraphBlockPair] = []
+    calendar: list[GraphBlockCalendar] = []
+    overrides: list[GraphEdgeInput] = []
+
+    def is_empty(self) -> bool:
+        """True when the rule carries nothing — clears back to the auto-lattice."""
+        return not (self.pairs or self.calendar or self.overrides)
+
+
+class GraphBlockRuleResponse(BaseModel):
+    """The persisted block rule plus the size of its current expansion."""
+
+    rule: GraphBlockRule
+    expandedCount: int
+
+
 class GraphExtrapolateRequest(GraphSolverParams):
     """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
 

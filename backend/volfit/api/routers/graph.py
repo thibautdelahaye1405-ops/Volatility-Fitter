@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from volfit.api import (
     graph_backtest,
+    graph_blocks,
     graph_extrapolation,
     graph_lv,
     graph_reconstruct,
@@ -22,6 +23,8 @@ from volfit.api.schemas import (
     GraphAutotuneRequest,
     GraphAutotuneResponse,
     GraphBacktestResponse,
+    GraphBlockRule,
+    GraphBlockRuleResponse,
     GraphEdgesRequest,
     GraphEdgesResponse,
     GraphExtrapolateRequest,
@@ -124,6 +127,30 @@ def put_graph_edges(body: GraphEdgesRequest, request: Request) -> GraphEdgesResp
 def get_lattice_edges(request: Request) -> GraphEdgesResponse:
     """The auto-lattice edges as editable rows — the editor's 'seed from lattice'."""
     return GraphEdgesResponse(edges=graph_extrapolation.lattice_edges(request.app.state.volfit))
+
+
+@router.get("/graph/edges/blocks", response_model=GraphBlockRuleResponse)
+def get_graph_blocks(request: Request) -> GraphBlockRuleResponse:
+    """The persisted ticker-block rule VERBATIM (an empty rule when none is
+    stored) plus the size of its expansion over the current selected universe."""
+    state = request.app.state.volfit
+    rule = state.graph_block_rule() or GraphBlockRule()
+    return GraphBlockRuleResponse(
+        rule=rule, expandedCount=len(graph_blocks.expand_block_rule(state, rule))
+    )
+
+
+@router.put("/graph/edges/blocks", response_model=GraphBlockRuleResponse)
+def put_graph_blocks(body: GraphBlockRule, request: Request) -> GraphBlockRuleResponse:
+    """Persist the block rule AND install its expansion as the per-edge overrides
+    in one step, so /graph/edges immediately serves the expanded list. An
+    ALL-EMPTY rule clears both — back to the auto-lattice."""
+    state = request.app.state.volfit
+    expanded = graph_blocks.expand_block_rule(state, body)
+    state.set_graph_block_rule(None if body.is_empty() else body, expanded)
+    return GraphBlockRuleResponse(
+        rule=state.graph_block_rule() or GraphBlockRule(), expandedCount=len(expanded)
+    )
 
 
 @router.post("/graph/extrapolate/lv/{ticker}", response_model=AffineFitResponse)

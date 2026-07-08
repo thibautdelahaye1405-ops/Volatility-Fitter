@@ -8,7 +8,7 @@
 // action. Backtest (calibrations) lives under Validate; auto-tune η sits with
 // the solver knobs it tunes.
 import { useMemo, useState } from "react";
-import EdgeEditor from "./EdgeEditor";
+import EdgeMatrixEditor from "./EdgeMatrixEditor";
 import ExtrapolateResults from "./ExtrapolateResults";
 import SolverPanel from "./SolverPanel";
 import type { UseGraphResult } from "../state/useGraph";
@@ -74,6 +74,11 @@ export default function PropagatePanel({
     () => (graph.nodes ?? []).map((n) => ({ ticker: n.ticker, expiry: n.expiry })),
     [graph.nodes],
   );
+  const tickers = useMemo(() => {
+    const seen: string[] = [];
+    for (const n of graph.nodes ?? []) if (!seen.includes(n.ticker)) seen.push(n.ticker);
+    return seen;
+  }, [graph.nodes]);
 
   const busy = manual ? graph.solving : extra.running;
   const canPropagate = manual ? litEntries.length > 0 : true;
@@ -145,9 +150,10 @@ export default function PropagatePanel({
         </p>
       )}
 
-      {/* Edge editor replaces the body while open */}
-      {editingEdges ? (
-        <EdgeEditor
+      {/* Edge weight matrix (modal — the aside is too narrow for a grid) */}
+      {editingEdges && (
+        <EdgeMatrixEditor
+          tickers={tickers}
           nodes={editorNodes}
           onSaved={() => {
             onEdgesSaved?.();
@@ -155,7 +161,8 @@ export default function PropagatePanel({
           }}
           onClose={() => setEditingEdges(false)}
         />
-      ) : (
+      )}
+      {
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {manual ? (
             /* One row per lit node: shift input (vol pts) + unlight */
@@ -219,7 +226,7 @@ export default function PropagatePanel({
             />
           </details>
         </div>
-      )}
+      }
 
       {/* Propagate / Clear / Validate (pinned below the scroll area) */}
       <div className="mt-3 border-t border-slate-800 pt-3">
