@@ -4,19 +4,28 @@
 1920x1080 canvas scaled to the window). Open it in any browser; navigate with
 arrow keys / PageUp / PageDown / Home / End; print-to-PDF for a handout.
 
-**Current state: full 36-slide deck** (also exported as `volfitter_deck.pdf`,
-one page per slide) — opening (problem, architecture, **worked dark-smile
-walkthrough**, **glossary**), models (LQD ×2, backtest evidence, SVI ×2,
-MC-SIV ×2, Local Vol ×2), trading realism (de-Am, forwards, objective,
+**Current state: full 36-slide deck, rev 4** (also exported as
+`volfitter_deck.pdf`, one page per slide) — opening (problem, architecture,
+worked dark-smile walkthrough, glossary), models (LQD ×2, backtest evidence,
+SVI ×2, MCS ×2, Local Vol ×2), trading realism (de-Am, forwards, objective,
 var-swaps, wings, calendar case file, event clock), dynamics (SSR, priors ×2,
 Kalman filter ×2), the graph section (concept, hero, edges, LOO validation),
 and product close (workstation tour, quality/runbook, performance, discipline,
 roadmap, closing statement).
 
+Rev-4 changes (2026-07-08): **app screenshots retaken in the app's LIGHT theme
+from a live Massive session** (was dark theme / Yahoo); tone pass (quant-to-quant,
+less sales); titles made fully explicit with technical-note references moved to
+slide footers; every equation carries a notation line defining its symbols;
+**"Multi-Core SIV" renamed "Multi-Core Sigmoid (MCS)"** deck-wide and in the app
+UI labels; new fit-to-mid vs fit-to-band figure (`gen_band_deck_fig.py`, uses the
+production calibrator; seed-searched for a visibly noisy mid fit) plus a concrete
+haircut explanation; slide-13 piecewise-affine/wings/Lee explanation; MAP spelled
+out on the filter-evidence slide.
+
 Perf claims on the performance slide are measured on this machine
 (i7-12700H/16GB): the 30-node live Yahoo session recalibrates in **7.6 s warm /
-96.6 s cold** (timed via `scratchpad` script, 2026-07-06); test count is dated
-to commit `645bf1e`.
+96.6 s cold** (timed 2026-07-06); test count is dated in the deck.
 
 ## Layout
 
@@ -28,45 +37,62 @@ to commit `645bf1e`.
   NOTE: equation SVG ids are namespaced per equation at build time — dvisvgm
   reuses glyph ids (`g1-67`, ...) across files, and inlining many SVGs into one
   document otherwise makes `<use>` resolve to another equation's glyphs.
-- `assets/shots/` — app screenshots (headless Edge, deviceScaleFactor 2).
+- `assets/shots/` — app screenshots (headless Edge, deviceScaleFactor 2,
+  light theme via localStorage `volfit.viewSettings`).
 - `assets/fig/` — the technical notes' figures (`Docs/notes/figures/fig_*.pdf`
-  rasterized via MiKTeX `pdftoppm -png -r 180`).
+  rasterized via MiKTeX `pdftoppm -png -r 180`) + deck-only figures
+  (`gen_band_deck_fig.py` regenerates `fig_obj_band_deck.png`).
 - `assets/eq/` — equations rendered from the technical notes' LaTeX
   (MiKTeX `latex` + `dvisvgm --no-fonts`, painted `currentColor`).
 - `assets/charts/` — hand-authored data-viz SVGs (palette validated for both
-  the light surface and dark: LQD `#059669`, SVI `#D97706`, SIV `#8B5CF6`).
+  the light surface and dark: LQD `#059669`, SVI `#D97706`, MCS `#8B5CF6`).
 
-## Recapturing screenshots
+## Recapturing screenshots (scripts now persisted here)
 
 Market-facing shots (Parametric views, quote table, Term, Local Vol, Forwards,
-Universe, Quality) come from a **live Yahoo session**: launch with
-`VOLFIT_PROVIDER=yahoo`, restrict each ticker to ~6 expiries near
-30/60/90/180/365/540 days via `PUT /universe/{ticker}/expiries`, fetch,
-add SPY events, calibrate. The graph and filter shots come from a staged
-synthetic session (so the propagation story is visible and reproducible
-offline) and their captions say so:
+Universe, Quality) come from a **live Massive session**; the graph and filter
+shots come from a **staged synthetic session** (so the propagation story is
+visible and reproducible offline) and their captions say so.
 
-1. Serve the app single-origin on :8001 (leaves the dev :8000 untouched):
-   `VOLFIT_DESKTOP_MODE=server VOLFIT_DESKTOP_PORT=8001 VOLFIT_PROVIDER=synthetic`
-   plus a scratch `VOLFIT_DB`, then `python backend/desktop.py`
-   (needs `npm --prefix frontend run build` once).
-2. Stage: fetch spots + options -> Calibrate -> Save priors -> **Fetch priors**
-   (activates them; otherwise extrapolation falls back to `today_bootstrap` and
-   every innovation is zero) -> darken QQQ/AAPL/NVDA/IWM via
-   `PUT /universe/lit/{ticker} {"lit": false}` -> reprice SPY by amending every
-   quote mid +150 bp (`POST /smiles/SPY/{expiry}/edits`) -> Calibrate.
-3. Solver knobs for a visible propagation: eta 3.16x (slider 0.5), lambda 0.1,
-   cross-ticker edge weight 30 -> dark nodes inherit ~+37-40 bp of SPY's
-   +150 bp with an ~140 bp credible band.
-4. Drive headless Edge with puppeteer-core (installed in `frontend/`) and
-   screenshot the Parametric smile, the Graph Extrapolate lattice, and a dark
-   NVDA node's reconstructed smile (click its row in the Extrapolate panel).
-5. Extras staged for the full deck: an SPY event calendar
-   (`PUT /events/SPY {"events":[{"time":0.12,"weight":3},{"time":0.37,"weight":3}]}`)
-   for the Term shot, and the observation filter
-   (`PUT /settings/options` with `observationFilterMode: "active"` + two
-   calibrations with a small quote nudge between them) for the FILTER-overlay
-   smile, the filter panel, and the Quality dashboard shots.
+1. Build the frontend once: `npm --prefix frontend run build`.
+2. Serve single-origin on :8001 (leaves dev :8000 untouched); dot-source
+   `restart.local.ps1` first for the Massive key:
+   `VOLFIT_DESKTOP_MODE=server VOLFIT_DESKTOP_PORT=8001 VOLFIT_PROVIDER=massive`
+   (or `synthetic` for the graph session) plus a scratch `VOLFIT_DB`, then
+   `python backend/desktop.py`.
+3. Market session: `python Docs/deck/stage_market.py` (universe SPY/QQQ/AAPL/
+   NVDA/IWM, ~6 expiries/ticker near 30/60/90/180/365/540 d, SPY events,
+   calibrate) then from `frontend/`: `node ../Docs/deck/capture_market.mjs`.
+4. Graph/filter session (synthetic provider, fresh scratch DB):
+   `python Docs/deck/stage_graph.py` — it calibrates, saves **and fetches**
+   priors (without the fetch, extrapolation falls back to `today_bootstrap`
+   and every innovation is zero), darkens QQQ/AAPL/NVDA/IWM, reprices SPY
+   +150 bp via quote-edit amends, stages the observation filter, and runs the
+   extrapolation with visible-propagation knobs (eta 3.16, lambda 0.1,
+   cross-ticker weight 30 → dark nodes inherit ~+37-40 bp with a ~140 bp
+   credible band). Then `node ../Docs/deck/capture_graph.mjs`.
+5. The captions on the graph/filter/hero slides cite the staged session's
+   numbers (innovation bp, band width, reconstruction RMS / in-band % / ζ,
+   filter gains) — `stage_graph.py` prints them; update the captions if the
+   staging changes. `capture_extras.mjs` retakes the edge-editor shot (it
+   PUTs a desk-authored block rule first — weights 30, β 0.9–1.3, calendar
+   100 — so the matrix isn't the empty auto-lattice state) and the
+   options_calibration_crop (bounded clip; crop afterwards with PIL if tall).
+
+NOTE: the `.mjs` scripts import `puppeteer-core`, which Node resolves
+relative to the SCRIPT's location — copy them into `frontend\` before running
+(`Copy-Item Docs\deck\capture_market.mjs frontend\; cd frontend; node .\capture_market.mjs`).
+
+## Verifying + exporting
+
+- `verify_deck.mjs` (copy to frontend\, then `node .\verify_deck.mjs`) —
+  screenshots every slide of the BUILT deck to a scratch folder and flags
+  content past the slide bottom or clipped inside `.cols` (the columns clip
+  overflow, so text never overlaps the trading-relevance strip — but clipped
+  content must be trimmed instead). Slide 1 always reports a by-design IMG
+  overflow (the title shot is intentionally cropped by its container).
+- `export_pdf.mjs` (same copy-to-frontend dance) — one 1920x1080 PDF page per
+  slide via the print CSS → `volfitter_deck.pdf`.
 
 The deck's palette/typography rules live in `deck_template.html`'s CSS tokens.
 Numbers on the evidence slide come from
