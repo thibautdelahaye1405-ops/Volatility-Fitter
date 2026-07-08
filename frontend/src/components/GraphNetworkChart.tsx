@@ -14,21 +14,27 @@
 //                   posterior shift (bp), plus an outer halo whose radius /
 //                   fade encode the posterior sd (bigger + fainter = more
 //                   uncertain). Lit nodes keep the amber ring on top.
+//
+// Solve cinematics (optional `wave` / `particles` props): the posterior field
+// reveals outward from the lit set by REAL BFS hop over the real edge set,
+// and attribution particles travel the top gain × innovation paths — honest
+// staging, never decoration. A pan gesture fast-forwards the reveal.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { GraphNodeBase, GraphSolveNode } from "../state/useGraph";
 import { nodeKey } from "../state/useGraph";
+import type { ParticleSpec } from "../state/useAttributionParticles";
 import { clamp } from "../lib/chartScale";
-import { shiftColor } from "../lib/graphColor";
 import { computeGraphLayout } from "../lib/graphLayout";
 import type { GraphLayout, LayoutEdgeIn, PairEdgeDetail } from "../lib/graphLayout";
+import GraphWaveOverlay from "./GraphWaveOverlay";
 import {
   ArrowMarker,
   BundleTooltip,
+  GraphNodes,
   NodeTooltip,
-  HALO_MAX,
+  WavePulseStyle,
   K_MAX,
   K_MIN,
-  NODE_R,
   SLATE_400,
   buildAdjacency,
   bundleGeometry,
@@ -36,6 +42,7 @@ import {
   type BundleGeo,
   type Size,
   type Transform,
+  type WaveState,
 } from "./GraphNetworkChart.helpers";
 
 interface GraphNetworkChartProps {
@@ -51,6 +58,12 @@ interface GraphNetworkChartProps {
   onToggle: (key: string) => void;
   /** Double click: drill into the node's smile. */
   onOpenSmile: (ticker: string, expiry: string) => void;
+  /** Reveal-wave state (real BFS hops + timeline); absent = no gating. */
+  wave?: WaveState;
+  /** Attribution particles (real gain × innovation paths) for the overlay. */
+  particles?: ParticleSpec[];
+  /** Propagation counter — keys the particle show so a new solve restarts it. */
+  waveEpoch?: number;
 }
 
 export default function GraphNetworkChart({
@@ -60,6 +73,9 @@ export default function GraphNetworkChart({
   results,
   onToggle,
   onOpenSmile,
+  wave,
+  particles,
+  waveEpoch,
 }: GraphNetworkChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState<Size | null>(null);
@@ -177,6 +193,7 @@ export default function GraphNetworkChart({
   /* --------------------------- pan handlers --------------------------- */
   const startPan = (e: React.MouseEvent) => {
     if (e.button !== 0) return; // left button only; nodes stop propagation
+    if (wave?.animating) wave.skip(); // a pan gesture fast-forwards the reveal
     dragRef.current = { sx: e.clientX, sy: e.clientY, tx: transform.tx, ty: transform.ty };
     setDragging(true);
   };
@@ -210,6 +227,7 @@ export default function GraphNetworkChart({
         <defs>
           <ArrowMarker id="gnc-arrow" px={7} />
           <ArrowMarker id="gnc-arrow-sm" px={5} />
+          {wave !== undefined && <WavePulseStyle />}
         </defs>
         <g transform={`translate(${tx} ${ty}) scale(${k})`}>
           {/* Cross-ticker bundles: one Bézier per ticker pair, log-weight width */}
@@ -291,83 +309,30 @@ export default function GraphNetworkChart({
             </g>
           ))}
 
-          {/* Nodes */}
-          {nodes.map((n) => {
-            const key = nodeKey(n.ticker, n.expiry);
-            const p = layout.nodePos.get(key);
-            if (!p) return null;
-            const isLit = key in lit;
-            const result = results?.[key];
-            const fill = result
-              ? shiftColor(result.shiftBp, maxAbsShift)
-              : "var(--color-surface-700)";
-            // Uncertainty halo: radius grows and fades with the posterior sd
-            // (normalised by the solve's max sd, extra radius <= HALO_MAX).
-            const sdFrac = result && maxSd > 0 ? clamp(result.sd / maxSd, 0, 1) : 0;
-            // Centre label: lit pre-solve -> observation in vol pts;
-            // post-solve -> posterior shift in whole bp.
-            const label = result
-              ? `${result.shiftBp >= 0 ? "+" : ""}${Math.round(result.shiftBp)}`
-              : isLit
-                ? `${(lit[key] ?? 0) >= 0 ? "+" : ""}${((lit[key] ?? 0) * 100).toFixed(1)}`
-                : null;
-            return (
-              // Click toggles lit/dark; double-click opens the smile (the two
-              // single clicks of a dblclick toggle twice, i.e. net no-op).
-              <g
-                key={key}
-                className="cursor-pointer"
-                opacity={focus === null || focus.keep.has(key) ? 1 : 0.15}
-                // Stop the press from starting a background pan so a plain
-                // click still toggles this node.
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={() => onToggle(key)}
-                onDoubleClick={() => onOpenSmile(n.ticker, n.expiry)}
-                onMouseEnter={() => setHoverKey(key)}
-                onMouseLeave={() => setHoverKey(null)}
-              >
-                {result && sdFrac > 0 && (
-                  <circle
-                    cx={p.x} cy={p.y}
-                    r={NODE_R + sdFrac * HALO_MAX}
-                    fill={fill}
-                    opacity={0.3 - 0.18 * sdFrac}
-                  />
-                )}
-                <circle
-                  cx={p.x} cy={p.y} r={NODE_R}
-                  fill={fill}
-                  stroke={isLit ? "#fbbf24" : "rgb(148 163 184 / 0.35)"}
-                  strokeWidth={isLit ? 2 : 1}
-                  style={
-                    isLit
-                      ? { filter: "drop-shadow(0 0 6px rgb(251 191 36 / 0.55))" }
-                      : undefined
-                  }
-                />
-                {label !== null && (
-                  <text
-                    x={p.x} y={p.y} dy="0.34em" textAnchor="middle"
-                    pointerEvents="none"
-                    className={[
-                      "font-mono text-[9px] font-medium",
-                      result ? "fill-slate-100" : "fill-amber-300",
-                    ].join(" ")}
-                  >
-                    {label}
-                  </text>
-                )}
-                {/* Expiry shorthand beside the node (MM-DD of an ISO date) */}
-                <text
-                  x={p.x + 17} y={p.y} dy="0.32em"
-                  pointerEvents="none"
-                  className="fill-slate-500 font-mono text-[8px]"
-                >
-                  {n.expiry.slice(5)}
-                </text>
-              </g>
-            );
-          })}
+          {/* Nodes (helpers layer — applies the reveal-wave gating) */}
+          <GraphNodes
+            nodes={nodes}
+            layout={layout}
+            lit={lit}
+            results={results}
+            maxAbsShift={maxAbsShift}
+            maxSd={maxSd}
+            focusKeep={focus === null ? null : focus.keep}
+            wave={wave}
+            onToggle={onToggle}
+            onOpenSmile={onOpenSmile}
+            onHover={setHoverKey}
+          />
+
+          {/* Attribution particles: real contribution paths, world coords,
+              above the scene, below the (HTML) tooltips */}
+          {particles !== undefined && particles.length > 0 && (
+            <GraphWaveOverlay
+              particles={particles}
+              nodePos={layout.nodePos}
+              epoch={waveEpoch ?? 0}
+            />
+          )}
         </g>
       </svg>
 

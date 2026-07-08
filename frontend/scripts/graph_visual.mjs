@@ -56,10 +56,21 @@ try {
           ),
         { timeout: 120000 },
       );
-      await new Promise((r) => setTimeout(r, 1200));
+      await new Promise((r) => setTimeout(r, 400)); // mid-wave: reveal + particles in flight
+      await page.screenshot({ path: `${OUT}graph-live-wave.png` });
+      await new Promise((r) => setTimeout(r, 3000)); // wave + particle show settled
       await page.screenshot({ path: `${OUT}graph-live-solved.png` });
     } else console.log("Propagate disabled — baseline shot only");
   } else console.log("Propagate button not found — baseline shot only");
+
+  // Edge weight matrix modal.
+  const [edgesBtn] = await page.$$('xpath/.//button[normalize-space()="Edges"]');
+  if (edgesBtn) {
+    await edgesBtn.click();
+    await new Promise((r) => setTimeout(r, 800)); // rule fetch + grid render
+    await page.screenshot({ path: `${OUT}graph-live-matrix.png` });
+    await page.keyboard.press("Escape");
+  }
 
   if (pageErrors.length > 0) {
     failed = true;

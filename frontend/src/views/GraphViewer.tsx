@@ -6,6 +6,10 @@
 // as calendar spines). Click a node to light/dim it, double-click to drill
 // into its smile; drag to pan, wheel to zoom.
 //
+// When a propagation lands, the posterior field reveals outward from the lit
+// nodes by real BFS hop (the solve cinematics — lib/graphWave) and attribution
+// particles travel the top gain × innovation paths.
+//
 // This view requires the live backend (GET /graph/nodes, POST /graph/solve,
 // POST /graph/extrapolate) — there is deliberately no mock fallback.
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +20,9 @@ import { useGraphEdges } from "../state/useGraphEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
+import { useWaveTimeline } from "../state/useWaveTimeline";
+import { useAttributionParticles } from "../state/useAttributionParticles";
+import { waveHops } from "../lib/graphWave";
 import type { LayoutEdgeIn } from "../lib/graphLayout";
 
 /** No-op chart handler for the calibrations source (the lit/dark set is the
@@ -117,6 +124,48 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const chartLit = extrapolating ? extraChartLit : manual ? graph.lit : {};
   const chartResults = manual ? graph.results : extra.results;
 
+  // Solve cinematics: stage the posterior reveal by REAL BFS hop from the lit
+  // set over the real edge topology (honest distance, not decoration).
+  const litKeySet = useMemo(() => new Set(Object.keys(chartLit)), [chartLit]);
+  const hops = useMemo(
+    () =>
+      waveHops(
+        (chartNodes ?? []).map((n) => nodeKey(n.ticker, n.expiry)),
+        edges,
+        litKeySet,
+      ),
+    [chartNodes, edges, litKeySet],
+  );
+  // Wave epoch: bump when a NEW result set lands. Keyed off the underlying
+  // state identities (graph.results / extra.nodes) — extra.results is rebuilt
+  // every render, so watching chartResults directly would loop.
+  const resultsIdentity = manual ? graph.results : extra.nodes;
+  const [waveEpoch, setWaveEpoch] = useState(0);
+  useEffect(() => {
+    if (resultsIdentity !== null) setWaveEpoch((v) => v + 1);
+  }, [resultsIdentity]);
+  const timeline = useWaveTimeline(waveEpoch, hops.maxHop);
+
+  // Attribution particles (calibrations source only): fetch as soon as the
+  // results land — the overlay's own epoch timer drives when they display.
+  // Candidates = the dark nodes the propagation moved most.
+  const particleCandidates = useMemo(
+    () =>
+      manual || extra.nodes === null
+        ? []
+        : extra.nodes
+            .filter((n) => !n.lit)
+            .sort((a, b) => Math.abs(b.shiftBp) - Math.abs(a.shiftBp))
+            .slice(0, 5)
+            .map((n) => ({ ticker: n.ticker, expiry: n.expiry, shiftBp: n.shiftBp })),
+    [manual, extra.nodes],
+  );
+  const particles = useAttributionParticles(
+    !manual && extra.nodes !== null,
+    particleCandidates,
+    extrapolateBody,
+  );
+
   /** Drill into a node's smile: point the shared session at it, then jump.
    *  With the calibrations source also set the graph-extrapolation focus so
    *  the Smile viewer overlays this node's reconstructed smile + band. */
@@ -195,6 +244,14 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
               results={chartResults}
               onToggle={manual ? graph.toggleLit : noop}
               onOpenSmile={openSmile}
+              wave={{
+                hopOf: hops.hopOf,
+                revealedHop: timeline.revealedHop,
+                animating: timeline.animating,
+                skip: timeline.skip,
+              }}
+              particles={particles}
+              waveEpoch={waveEpoch}
             />
           )}
         </div>

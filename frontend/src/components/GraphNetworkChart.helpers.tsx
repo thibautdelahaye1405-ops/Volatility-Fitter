@@ -1,7 +1,8 @@
 // Presentation helpers for GraphNetworkChart, split out to respect the
 // 400-line file policy: pan/zoom fit, bundle Bézier geometry, node-key
-// adjacency, arrowhead markers, and the two hover tooltips. Everything here
-// is stateless — the chart owns all interaction state.
+// adjacency, arrowhead markers, the node layer (with its reveal-wave gating),
+// and the two hover tooltips. Everything here is stateless — the chart owns
+// all interaction state.
 import type { GraphNodeBase, GraphSolveNode } from "../state/useGraph";
 import { nodeKey } from "../state/useGraph";
 import { clamp, formatPct } from "../lib/chartScale";
@@ -106,6 +107,165 @@ export function buildAdjacency(
     link(adj, nodeKey(c.ticker, c.toExpiry), nodeKey(c.ticker, c.fromExpiry));
   }
   return { adj, nodeBundles };
+}
+
+/** Reveal-wave state threaded from the viewer: real BFS hops (lib/graphWave)
+ *  plus the paced timeline (state/useWaveTimeline). Absent = no gating. */
+export interface WaveState {
+  hopOf: Map<string, number>;
+  revealedHop: number;
+  animating: boolean;
+  skip: () => void;
+}
+
+/** One-shot lit-node pulse for the reveal wave, scoped to this chart via a
+ *  <style> in the svg defs (the house avoids global css edits). transform-box
+ *  makes the scale run about each circle's own centre, not the svg origin. */
+export function WavePulseStyle() {
+  return (
+    <style>{`
+      @keyframes gnc-lit-pulse {
+        0% { transform: scale(1); }
+        45% { transform: scale(1.4); }
+        100% { transform: scale(1); }
+      }
+      .gnc-lit-pulse {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: gnc-lit-pulse 700ms ease-out 1;
+      }
+    `}</style>
+  );
+}
+
+/** Node layer, extracted so the chart stays under the 400-line policy.
+ *
+ *  Reveal-wave gating: when `wave` is present, a node's posterior rendering
+ *  (shift fill / bp label / sd halo) only applies once the wave has reached
+ *  its BFS hop — until then it keeps the pre-solve look (slate fill, lit ring
+ *  if lit). Fill and halo opacity move via style transitions (400 ms) so each
+ *  hop ring blooms rather than pops; while the wave is animating, lit nodes
+ *  carry the one-shot pulse class. */
+export function GraphNodes({
+  nodes,
+  layout,
+  lit,
+  results,
+  maxAbsShift,
+  maxSd,
+  focusKeep,
+  wave,
+  onToggle,
+  onOpenSmile,
+  onHover,
+}: {
+  nodes: GraphNodeBase[];
+  layout: GraphLayout;
+  lit: Record<string, number>;
+  results: Record<string, GraphSolveNode> | null;
+  maxAbsShift: number;
+  maxSd: number;
+  focusKeep: ReadonlySet<string> | null;
+  wave: WaveState | undefined;
+  onToggle: (key: string) => void;
+  onOpenSmile: (ticker: string, expiry: string) => void;
+  onHover: (key: string | null) => void;
+}) {
+  return (
+    <>
+      {nodes.map((n) => {
+        const key = nodeKey(n.ticker, n.expiry);
+        const p = layout.nodePos.get(key);
+        if (!p) return null;
+        const isLit = key in lit;
+        // The posterior exists but stays hidden until the reveal wave reaches
+        // this node's hop; until then the node keeps the pre-solve look.
+        const raw = results?.[key];
+        const revealed =
+          wave === undefined || (wave.hopOf.get(key) ?? 0) <= wave.revealedHop;
+        const result = revealed ? raw : undefined;
+        const fill = result
+          ? shiftColor(result.shiftBp, maxAbsShift)
+          : "var(--color-surface-700)";
+        // Uncertainty halo: radius grows and fades with the posterior sd
+        // (normalised by the solve's max sd, extra radius <= HALO_MAX). Kept
+        // mounted at opacity 0 pre-reveal so it fades in instead of popping.
+        const sdFrac = raw && maxSd > 0 ? clamp(raw.sd / maxSd, 0, 1) : 0;
+        // Centre label: lit pre-solve (or pre-reveal) -> observation in vol
+        // pts; revealed -> posterior shift in whole bp.
+        const label = result
+          ? `${result.shiftBp >= 0 ? "+" : ""}${Math.round(result.shiftBp)}`
+          : isLit
+            ? `${(lit[key] ?? 0) >= 0 ? "+" : ""}${((lit[key] ?? 0) * 100).toFixed(1)}`
+            : null;
+        return (
+          // Click toggles lit/dark; double-click opens the smile (the two
+          // single clicks of a dblclick toggle twice, i.e. net no-op).
+          <g
+            key={key}
+            className="cursor-pointer"
+            opacity={focusKeep === null || focusKeep.has(key) ? 1 : 0.15}
+            // Stop the press from starting a background pan so a plain
+            // click still toggles this node.
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => onToggle(key)}
+            onDoubleClick={() => onOpenSmile(n.ticker, n.expiry)}
+            onMouseEnter={() => onHover(key)}
+            onMouseLeave={() => onHover(null)}
+          >
+            {raw && sdFrac > 0 && (
+              <circle
+                cx={p.x} cy={p.y}
+                r={NODE_R + sdFrac * HALO_MAX}
+                fill={shiftColor(raw.shiftBp, maxAbsShift)}
+                style={{
+                  opacity: revealed ? 0.3 - 0.18 * sdFrac : 0,
+                  transition: "opacity 400ms ease-out",
+                }}
+              />
+            )}
+            <circle
+              cx={p.x} cy={p.y} r={NODE_R}
+              className={
+                wave !== undefined && wave.animating && isLit
+                  ? "gnc-lit-pulse"
+                  : undefined
+              }
+              stroke={isLit ? "#fbbf24" : "rgb(148 163 184 / 0.35)"}
+              strokeWidth={isLit ? 2 : 1}
+              style={{
+                fill,
+                transition: "fill 400ms ease-out",
+                ...(isLit
+                  ? { filter: "drop-shadow(0 0 6px rgb(251 191 36 / 0.55))" }
+                  : undefined),
+              }}
+            />
+            {label !== null && (
+              <text
+                x={p.x} y={p.y} dy="0.34em" textAnchor="middle"
+                pointerEvents="none"
+                className={[
+                  "font-mono text-[9px] font-medium",
+                  result ? "fill-slate-100" : "fill-amber-300",
+                ].join(" ")}
+              >
+                {label}
+              </text>
+            )}
+            {/* Expiry shorthand beside the node (MM-DD of an ISO date) */}
+            <text
+              x={p.x + 17} y={p.y} dy="0.32em"
+              pointerEvents="none"
+              className="fill-slate-500 font-mono text-[8px]"
+            >
+              {n.expiry.slice(5)}
+            </text>
+          </g>
+        );
+      })}
+    </>
+  );
 }
 
 /** Small arrowhead marker (shared defs); auto-start-reverse flips at starts. */
