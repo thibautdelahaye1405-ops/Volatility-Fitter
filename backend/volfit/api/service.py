@@ -97,7 +97,7 @@ REG_LAMBDA = 1e-6
 REG_POWER = 1.0
 
 #: Friendly model names for the engine-activity narration (status bar).
-_MODEL_LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "Multi-Core SIV"}
+_MODEL_LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "Multi-Core Sigmoid"}
 
 
 def _model_label(model_id: str) -> str:
@@ -952,7 +952,7 @@ def model_info(record: FitRecord) -> ModelInfo:
     """The model family + hyperparameters that produced the DISPLAYED fit.
 
     Read off the actual displayed slice — LQD when there is no overlay (degree N
-    from the fitted Legendre params), else the overlay family (Multi-Core SIV
+    from the fitted Legendre params), else the overlay family (Multi-Core Sigmoid
     reports its fitted core count R; SVI-JW has no hyperparameter). This reflects
     what is drawn even for a frozen/stale node, so the diagnostics panel always
     names the model the chart actually shows, not the (possibly newer) settings."""
@@ -966,7 +966,7 @@ def model_info(record: FitRecord) -> ModelInfo:
     if display.model == "sigmoid":
         return ModelInfo(
             id="sigmoid",
-            label="Multi-Core SIV",
+            label="Multi-Core Sigmoid",
             params=[ModelParam(label="Cores R", value=str(len(display.slice.cores)))],
         )
     return ModelInfo(id="svi", label="SVI-JW")  # 5 raw params, no hyperparameter

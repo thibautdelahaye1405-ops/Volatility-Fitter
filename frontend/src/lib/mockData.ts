@@ -56,7 +56,7 @@ export interface ModelParam {
 /** The model family + hyperparameters that produced the displayed fit. */
 export interface ModelInfo {
   id: "lqd" | "svi" | "sigmoid";
-  /** Human family name ("LQD", "SVI-JW", "Multi-Core SIV"). */
+  /** Human family name ("LQD", "SVI-JW", "Multi-Core Sigmoid"). */
   label: string;
   params: ModelParam[];
 }

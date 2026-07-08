@@ -359,8 +359,8 @@ export default function OptionsViewer() {
           />
         </div>
         <div className="mt-2 flex items-center justify-between">
-          <span className={rowLabel} title="Multi-Core SIV put-wing no-butterfly regularizer (% of base; 0 = off). Zero on an arb-free slice, so liquid names are untouched.">
-            SIV wing penalty %
+          <span className={rowLabel} title="Multi-Core Sigmoid put-wing no-butterfly regularizer (% of base; 0 = off). Zero on an arb-free slice, so liquid names are untouched.">
+            MCS wing penalty %
           </span>
           <input
             type="number" step={10} min={0} max={1000} value={draft.sivWingPenaltyPct} disabled={!live}

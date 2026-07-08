@@ -12,7 +12,7 @@ export const PENALTIES: { name: string; formula: string; strength: string; group
   { name: "LQD high-order damping", formula: "λ · n^(2r) · aₙ²  (n ≥ 4)", strength: "Model: Damping λ · r", group: "model" },
   { name: "SVI min-variance", formula: "P · max(−(a + bσ√(1−ρ²)), 0)²", strength: "Model: SVI no-arb penalty", group: "model" },
   { name: "SVI Lee wing", formula: "P · max(b(1+|ρ|) − 2, 0)²", strength: "Model: SVI Lee slope max", group: "model" },
-  { name: "Sigmoid amplitude ridge", formula: "ridge · Σ αᵣ²  (hat amplitudes)", strength: "Model: SIV hat ridge", group: "model" },
+  { name: "Sigmoid amplitude ridge", formula: "ridge · Σ αᵣ²  (hat amplitudes)", strength: "Model: MCS hat ridge", group: "model" },
   { name: "Affine LV roughness", formula: "√λ · L(θ − θ_ref),  L = 2nd diff in (t, x)", strength: "Model: Grid roughness λ", group: "model" },
   { name: "Calendar slack (arb-fix)", formula: "w · Σ max(floor − Gᵢ(α), 0)²", strength: "Calibration: Calendar weight", group: "calibration" },
   { name: "Band hinge + mid anchor", formula: "max(m−ask,0)² + max(bid−m,0)² + w(m−mid)²", strength: "Calibration: Haircut · Band mid anchor", group: "calibration" },

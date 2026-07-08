@@ -68,7 +68,7 @@ export default function SmileAside() {
       </p>
 
       {/* Displayed model family + hyperparameters (degree for LQD, cores for the
-          Multi-Core SIV sigmoid) — names the model the chart actually shows, even
+          Multi-Core Sigmoid) — names the model the chart actually shows, even
           for a frozen/stale node, so model/hyperparameter testing is legible. */}
       {info && (
         <div className="mb-4 rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">

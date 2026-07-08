@@ -2,7 +2,7 @@
 //
 // Edits the backend's global fit settings (GET/PUT /settings/fit): vol-surface
 // model, LQD Legendre order N, the high-order damping lambda * n^{2r}, the
-// Multi-Core SIV hat count R, the haircut band-shrink, the quote-weighting
+// Multi-Core Sigmoid hat count R, the haircut band-shrink, the quote-weighting
 // scheme and the per-model penalty coefficients. The draft + Apply live in
 // useFitSettings (lifted), so these controls render across two themed Options
 // cards sharing one draft: group="model" (model + hyperparameters + model
@@ -56,7 +56,7 @@ export const FIT_DEFAULTS: FitSettings = {
 const MODELS: { id: string; label: string; title: string; enabled: boolean }[] = [
   { id: "lqd", label: "LQD", title: "Logistic-quantile density slices (arbitrage-free)", enabled: true },
   { id: "svi", label: "SVI", title: "Raw SVI own calibration (Gatheral)", enabled: true },
-  { id: "sigmoid", label: "Sig", title: "Four-parameter sigmoid marking curve", enabled: true },
+  { id: "sigmoid", label: "MCS", title: "Multi-Core Sigmoid — sigmoid base + zero-wing hat kernels", enabled: true },
   { id: "lv", label: "LV", title: "Local-vol grid — view via the LV-grid scenario; direct fit TODO", enabled: false },
 ];
 
@@ -99,7 +99,7 @@ export default function HyperparamPanel({ group, draft, patch, disabled }: Hyper
   // The Legendre order and high-order damping are LQD-only knobs; the SVI and
   // sigmoid overlays ignore them, so the controls are disabled off-LQD.
   const lqdOnly = disabled || draft.model !== "lqd";
-  // The Multi-Core SIV hat count only drives the "sigmoid" family.
+  // The Multi-Core Sigmoid hat count only drives the "sigmoid" family.
   const sigmoidOnly = disabled || draft.model !== "sigmoid";
 
   const wrap = (children: ReactNode) => (
@@ -243,11 +243,11 @@ export default function HyperparamPanel({ group, draft, patch, disabled }: Hyper
         </div>
       </div>
 
-      {/* Multi-Core SIV hat count R: active only for the sigmoid family. */}
+      {/* Multi-Core Sigmoid hat count R: active only for the sigmoid family. */}
       <div className={sigmoidOnly && !disabled ? "opacity-40" : ""}>
         <div className="mb-1 flex items-center justify-between">
-          <span className={rowLabel} title="Zero-wing hat kernels added to the SIV base (eq param-count)">
-            SIV cores R
+          <span className={rowLabel} title="Zero-wing hat kernels added to the MCS base (eq param-count)">
+            MCS cores R
           </span>
           <span className="font-mono text-xs font-medium text-slate-100">{draft.nCores}</span>
         </div>

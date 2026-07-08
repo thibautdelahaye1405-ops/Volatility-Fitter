@@ -591,7 +591,7 @@ class ModelInfo(BaseModel):
     Parametric diagnostics aside to make model/hyperparameter testing legible."""
 
     id: Literal["lqd", "svi", "sigmoid"]
-    label: str  # human family name ("LQD", "SVI-JW", "Multi-Core SIV")
+    label: str  # human family name ("LQD", "SVI-JW", "Multi-Core Sigmoid")
     params: list[ModelParam] = Field(default_factory=list)
 
 

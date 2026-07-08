@@ -245,7 +245,7 @@ def test_calib_epoch_no_churn_on_repeated_reads_auto_on():
 
 def test_model_info_reflects_displayed_model():
     """The diagnostics model info names the family + hyperparameters of the
-    DISPLAYED fit: LQD reports its Legendre degree; the Multi-Core SIV sigmoid
+    DISPLAYED fit: LQD reports its Legendre degree; the Multi-Core Sigmoid
     overlay reports its fitted core count."""
     state = _state(auto=False)
     iso = _iso(state)
@@ -258,7 +258,7 @@ def test_model_info_reflects_displayed_model():
     state.set_fit_settings(fs.model_copy(update={"model": "sigmoid", "nCores": 3}))
     service.calibrate_node(state, TICKER, iso, "mid")
     s2 = service.smile_payload(state, TICKER, iso, "mid")
-    assert s2.modelInfo.id == "sigmoid" and s2.modelInfo.label == "Multi-Core SIV"
+    assert s2.modelInfo.id == "sigmoid" and s2.modelInfo.label == "Multi-Core Sigmoid"
     assert s2.modelInfo.params[0].label == "Cores R"
     # Reported R is the EFFECTIVE core count of the displayed slice (capped by the
     # quote budget), so it is always faithful to what the chart draws.

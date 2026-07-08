@@ -75,7 +75,7 @@ export default function PenaltyCoefficients({ group, draft, onChange, disabled }
       {Row("SVI Lee slope max", "Lee wing-slope bound b(1+|ρ|) ≤ this", "leeSlopeMax", 0.1, "svi")}
 
       {/* Sigmoid */}
-      {Row("SIV hat ridge", "Multi-Core SIV hat-amplitude ridge penalty", "sigmoidRidge", 0.01, "sigmoid")}
+      {Row("MCS hat ridge", "Multi-Core Sigmoid hat-amplitude ridge penalty", "sigmoidRidge", 0.01, "sigmoid")}
     </div>
   );
 }
