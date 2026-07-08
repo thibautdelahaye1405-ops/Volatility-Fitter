@@ -43,20 +43,23 @@ try {
   await new Promise((r) => setTimeout(r, 800)); // settle the fit transform
   await page.screenshot({ path: `${OUT}graph-live-baseline.png` });
 
-  // Sandbox solve over the seeded lit set (Solve enabled when lit >= 1).
-  const [solveBtn] = await page.$$('xpath/.//button[normalize-space()="Solve"]');
-  if (solveBtn) {
-    const disabled = await solveBtn.evaluate((b) => b.disabled);
+  // Propagate (default source: from calibrations) and shoot the posterior.
+  const [propagateBtn] = await page.$$('xpath/.//button[normalize-space()="Propagate"]');
+  if (propagateBtn) {
+    const disabled = await propagateBtn.evaluate((b) => b.disabled);
     if (!disabled) {
-      await solveBtn.click();
+      await propagateBtn.click();
       await page.waitForFunction(
-        () => [...document.querySelectorAll("button")].some((b) => b.textContent?.trim() === "Solve"),
-        { timeout: 60000 },
+        () =>
+          [...document.querySelectorAll("button")].some(
+            (b) => b.textContent?.trim() === "Propagate" && !b.disabled,
+          ),
+        { timeout: 120000 },
       );
       await new Promise((r) => setTimeout(r, 1200));
       await page.screenshot({ path: `${OUT}graph-live-solved.png` });
-    } else console.log("Solve disabled (no lit nodes) — baseline shot only");
-  }
+    } else console.log("Propagate disabled — baseline shot only");
+  } else console.log("Propagate button not found — baseline shot only");
 
   if (pageErrors.length > 0) {
     failed = true;

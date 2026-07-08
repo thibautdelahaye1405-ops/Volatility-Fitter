@@ -1,17 +1,16 @@
 // Graph workspace: smile-node graph for cross-asset signal propagation.
-// Click nodes to light them (mark an observed ATM-vol shift), tune the
-// propagation reach η, then Solve: the backend OT-Bayesian engine returns
-// posterior shifts + uncertainty bands for every node in the universe,
-// drawn on the ticker-pod network view (pods positioned by edge-weight
-// springs, expiries as calendar spines). Double-click a node to drill
+//
+// ONE workflow: pick the observation source (lit calibrations vs manual
+// what-if shifts), press PROPAGATE, read the posterior field on the
+// ticker-pod network view (pods positioned by edge-weight springs, expiries
+// as calendar spines). Click a node to light/dim it, double-click to drill
 // into its smile; drag to pan, wheel to zoom.
 //
-// This view requires the live backend (GET /graph/nodes, POST /graph/solve)
-// — there is deliberately no mock fallback for the solver.
+// This view requires the live backend (GET /graph/nodes, POST /graph/solve,
+// POST /graph/extrapolate) — there is deliberately no mock fallback.
 import { useEffect, useMemo, useState } from "react";
 import GraphNetworkChart from "../components/GraphNetworkChart";
-import SolverPanel from "../components/SolverPanel";
-import ExtrapolatePanel from "../components/ExtrapolatePanel";
+import PropagatePanel, { type ObservationSource } from "../components/PropagatePanel";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
 import { useGraphEdges } from "../state/useGraphEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
@@ -19,18 +18,9 @@ import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
 import type { LayoutEdgeIn } from "../lib/graphLayout";
 
-/** Graph workspace mode: the manual-shift sandbox vs the prior-anchored
- *  production extrapolation over the selected lit+dark universe. */
-type GraphMode = "sandbox" | "extrapolate";
-
-/** No-op chart handler for Extrapolate mode (nodes aren't lit by clicking;
- *  the lit/dark set is the selected universe, edited in the Universe tab). */
+/** No-op chart handler for the calibrations source (the lit/dark set is the
+ *  selected universe — edited in the Universe tab, not by clicking). */
 const noop = (_key: string): void => undefined;
-
-interface GraphViewerProps {
-  /** Switch the app to the Smile tab (after this view sets the node). */
-  onNavigateToSmile: () => void;
-}
 
 /** Small bordered button, matching the smile toolbar style. */
 const buttonClass =
@@ -38,33 +28,26 @@ const buttonClass =
   "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
 
+interface GraphViewerProps {
+  /** Switch the app to the Smile tab (after this view sets the node). */
+  onNavigateToSmile: () => void;
+}
+
 export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
-  const {
-    nodes,
-    loading,
-    error,
-    reload,
-    lit,
-    toggleLit,
-    setShift,
-    unlight,
-    params,
-    setParam,
-    resetParams,
-    solve,
-    solving,
-    solveError,
-    results,
-    clear,
-    autotune,
-    autotuning,
-    autotuneResult,
-    autotuneError,
-  } = useGraph();
+  const graph = useGraph();
+  const extra = useGraphExtrapolation();
   const { setTicker, setExpiry } = useSmileSession();
   const { setFocus } = useGraphFocus();
-  const [mode, setMode] = useState<GraphMode>("sandbox");
-  const extra = useGraphExtrapolation();
+  const [source, setSource] = useState<ObservationSource>("calibrations");
+
+  // Calibrations-only solver flags (owned here so the drill-in focus can
+  // rebuild the exact request body the panel propagated with).
+  const [flatAtm, setFlatAtm] = useState(false);
+  const [crossBeta, setCrossBeta] = useState(1);
+  const extrapolateBody = useMemo(
+    () => buildExtrapolateBody(graph.params, flatAtm, crossBeta),
+    [graph.params, flatAtm, crossBeta],
+  );
 
   // The REAL solver topology for the network view: persisted per-edge
   // overrides when any exist, else the auto-lattice the solver would build.
@@ -96,20 +79,11 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     };
   }, [fetchEdges, fetchLattice, edgesVersion]);
 
-  // Production-only solver knobs (owned here so the drill-in focus can rebuild
-  // the exact request body the Extrapolate panel solved with).
-  const [flatAtm, setFlatAtm] = useState(false);
-  const [crossBeta, setCrossBeta] = useState(1);
-  const extrapolateBody = useMemo(
-    () => buildExtrapolateBody(params, flatAtm, crossBeta),
-    [params, flatAtm, crossBeta],
-  );
-
-  // In Extrapolate mode the chart is driven by the production solve: the full
-  // SELECTED lit+dark universe (its prior handles as the baseline), the
-  // calibrated nodes lit (amber ring = an observation), and the posterior field.
-  // Before the first solve (extra.nodes null) it falls back to the sandbox
-  // lattice so the chart is never blank.
+  // With the calibrations source the chart is driven by the production solve:
+  // the full SELECTED lit+dark universe (prior handles as the baseline), the
+  // calibrated nodes lit (amber ring = an observation), and the posterior
+  // field. Before the first Propagate (extra.nodes null) it falls back to the
+  // baseline universe so the chart is never blank.
   const extraChartNodes = useMemo<GraphNodeBase[] | null>(
     () =>
       extra.nodes === null
@@ -137,40 +111,33 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     [extra.nodes],
   );
 
-  const extrapolating = mode === "extrapolate" && extraChartNodes !== null;
-  const chartNodes = extrapolating ? extraChartNodes : nodes;
-  const chartLit = extrapolating ? extraChartLit : lit;
-  const chartResults = mode === "extrapolate" ? extra.results : results;
+  const manual = source === "manual";
+  const extrapolating = !manual && extraChartNodes !== null;
+  const chartNodes = extrapolating ? extraChartNodes : graph.nodes;
+  const chartLit = extrapolating ? extraChartLit : manual ? graph.lit : {};
+  const chartResults = manual ? graph.results : extra.results;
 
-  /** Drill into a node's smile: point the shared session at it, then jump. In
-   *  Extrapolate mode also set the graph-extrapolation focus so the Smile viewer
-   *  overlays this node's reconstructed smile + band; clear it in the sandbox. */
+  /** Drill into a node's smile: point the shared session at it, then jump.
+   *  With the calibrations source also set the graph-extrapolation focus so
+   *  the Smile viewer overlays this node's reconstructed smile + band. */
   const openSmile = (ticker: string, expiry: string) => {
     setTicker(ticker); // also picks a default expiry on the ladder…
     setExpiry(expiry); // …which this immediately overrides with the node's
-    setFocus(
-      mode === "extrapolate" ? { ticker, expiry, body: extrapolateBody } : null,
-    );
+    setFocus(manual ? null : { ticker, expiry, body: extrapolateBody });
     onNavigateToSmile();
   };
 
-  // Lit entries in a stable display order (by key: ticker, then expiry).
-  const litEntries = useMemo(
-    () => Object.entries(lit).sort(([a], [b]) => a.localeCompare(b)),
-    [lit],
-  );
-
   // Summary strip: observed / extrapolated counts + the solve's max |shift|.
   const summary = useMemo(() => {
-    if (results === null) return null;
-    const all = Object.values(results);
+    if (chartResults === null) return null;
+    const all = Object.values(chartResults);
     const observed = all.filter((n) => n.observed).length;
     const maxAbs = all.reduce((m, n) => Math.max(m, Math.abs(n.shiftBp)), 0);
     return { observed, extrapolated: all.length - observed, maxAbs };
-  }, [results]);
+  }, [chartResults]);
 
   // Backend offline (and nothing loaded): centered empty-state card.
-  if (error !== null && nodes === null) {
+  if (graph.error !== null && graph.nodes === null) {
     return (
       <div className="flex h-full items-center justify-center p-4">
         <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-900 p-8 text-center shadow-xl shadow-black/30">
@@ -180,10 +147,10 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           <p className="mb-1 text-xs text-slate-500">
             Start the FastAPI server on :8000 and retry.
           </p>
-          <p className="mb-5 truncate text-[10px] text-amber-400/80" title={error}>
-            {error}
+          <p className="mb-5 truncate text-[10px] text-amber-400/80" title={graph.error}>
+            {graph.error}
           </p>
-          <button className={buttonClass} onClick={reload}>
+          <button className={buttonClass} onClick={graph.reload}>
             Retry
           </button>
         </div>
@@ -196,27 +163,9 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
       {/* Graph card */}
       <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
         <div className="mb-2 flex shrink-0 items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-100">
-            Smile universe
-          </h2>
-          {/* Sandbox (manual shifts) vs production Extrapolate (prior-anchored) */}
-          <div className="flex overflow-hidden rounded-md border border-slate-700 text-[11px]">
-            {(["sandbox", "extrapolate"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`px-2 py-0.5 transition-colors ${
-                  mode === m
-                    ? "bg-accent-600 text-white"
-                    : "bg-surface-800 text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                {m === "sandbox" ? "Sandbox" : "Extrapolate"}
-              </button>
-            ))}
-          </div>
-          {/* Post-solve summary strip (sandbox only) */}
-          {mode === "sandbox" && summary !== null && (
+          <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
+          {/* Post-propagation summary strip */}
+          {summary !== null && (
             <span className="ml-auto font-mono text-[11px] text-slate-400">
               <span className="text-amber-400">{summary.observed} observed</span>
               {" · "}
@@ -228,15 +177,15 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         </div>
 
         <div className="min-h-0 flex-1">
-          {(loading || nodes === null) && !extrapolating ? (
+          {(graph.loading || graph.nodes === null) && !extrapolating ? (
             <div className="flex h-full items-center justify-center text-xs text-slate-500">
               Fitting baseline nodes… (first load can take a second)
             </div>
           ) : (chartNodes ?? []).length === 0 ? (
             <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500">
-              {mode === "sandbox"
-                ? "No calibrated nodes yet — calibrate from the Parametric tab, or switch to Extrapolate to propagate transported priors across the selected universe."
-                : "Press Extrapolate to build the selected lit+dark universe and propagate."}
+              No calibrated nodes yet — calibrate from the Parametric tab, or
+              press Propagate to spread the transported priors across the
+              selected universe.
             </div>
           ) : (
             <GraphNetworkChart
@@ -244,7 +193,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
               edges={edges}
               lit={chartLit}
               results={chartResults}
-              onToggle={mode === "sandbox" ? toggleLit : noop}
+              onToggle={manual ? graph.toggleLit : noop}
               onOpenSmile={openSmile}
             />
           )}
@@ -252,130 +201,25 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
         {/* Interaction hint */}
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          {mode === "sandbox"
-            ? "Click to light/dim · double-click to open smile · drag to pan, wheel to zoom · Solve to propagate"
-            : "Selected lit+dark universe · amber ring = calibrated observation · double-click to open smile · Extrapolate to propagate"}
+          {manual
+            ? "Click to light/dim · double-click to open smile · drag to pan, wheel to zoom · Propagate to spread"
+            : "Selected lit+dark universe · amber ring = calibrated observation · double-click to open smile · drag to pan, wheel to zoom"}
         </p>
       </div>
 
-      {/* Production extrapolation aside (prior-anchored) */}
-      {mode === "extrapolate" && (
-        <ExtrapolatePanel
-          extra={extra}
-          body={extrapolateBody}
-          flatAtm={flatAtm}
-          setFlatAtm={setFlatAtm}
-          crossBeta={crossBeta}
-          setCrossBeta={setCrossBeta}
-          onOpenSmile={openSmile}
-          onEdgesSaved={() => setEdgesVersion((v) => v + 1)}
-        />
-      )}
-
-      {/* Observations + solver panel (sandbox) */}
-      {mode === "sandbox" && (
-      <aside className="flex w-72 shrink-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
-        <h3 className="mb-1 text-sm font-semibold text-slate-100">
-          Observations
-        </h3>
-        <p className="mb-3 text-[11px] text-slate-500">
-          Lit nodes feed the solver as ATM-vol shifts, in vol points.
-        </p>
-
-        {/* One row per lit node: shift input (vol pts) + unlight */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {litEntries.length === 0 ? (
-            <p className="py-2 text-xs text-slate-500">
-              No lit nodes — click nodes in the graph to add observations.
-            </p>
-          ) : (
-            <div className="divide-y divide-slate-800">
-              {litEntries.map(([key, dAtmVol]) => {
-                const [ticker = "", expiry = ""] = key.split("|");
-                return (
-                  <div key={key} className="flex items-center gap-2 py-1.5">
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
-                      <span className="font-medium text-slate-100">{ticker}</span>{" "}
-                      <span className="font-mono text-[10px] text-slate-500">
-                        {expiry}
-                      </span>
-                    </span>
-                    {/* Vol points: +2.0 means dAtmVol = +0.02 (stored as
-                        decimal). Uncontrolled (defaultValue) so partial
-                        entries like "-" don't snap back while typing. */}
-                    <input
-                      type="number"
-                      step={0.5}
-                      defaultValue={Number((dAtmVol * 100).toFixed(1))}
-                      onChange={(e) => {
-                        const pts = e.target.valueAsNumber;
-                        if (Number.isFinite(pts)) setShift(key, pts / 100);
-                      }}
-                      className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
-                    />
-                    <span className="text-[10px] text-slate-500">pts</span>
-                    <button
-                      onClick={() => unlight(key)}
-                      title="Remove observation"
-                      className="px-0.5 text-sm leading-none text-slate-500 transition-colors hover:text-slate-200"
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <SolverPanel
-            params={params}
-            setParam={setParam}
-            resetParams={resetParams}
-            litCount={litEntries.length}
-            autotune={() => void autotune()}
-            autotuning={autotuning}
-            autotuneResult={autotuneResult}
-            autotuneError={autotuneError}
-          />
-        </div>
-
-        {/* Solve / Clear (pinned below the scroll area) */}
-        <div className="mt-3 border-t border-slate-800 pt-3">
-          <div className="flex items-center gap-2">
-            <button
-              disabled={litEntries.length === 0 || solving}
-              onClick={() => void solve()}
-              className="flex flex-1 items-center justify-center gap-2 rounded-md bg-accent-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors enabled:hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              {solving && (
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-              )}
-              {solving ? "Solving…" : "Solve"}
-            </button>
-            <button
-              disabled={results === null}
-              onClick={clear}
-              className={buttonClass}
-            >
-              Clear results
-            </button>
-          </div>
-          {solveError !== null && (
-            <p className="mt-2 text-[10px] text-amber-400">{solveError}</p>
-          )}
-
-          {/* Visual legend */}
-          <div className="mt-3 space-y-1 border-t border-slate-800 pt-3 text-[10px] text-slate-500">
-            <p>
-              <span className="text-amber-400">amber ring</span> observed ·{" "}
-              <span className="text-sky-400">blue</span>→
-              <span className="text-red-400">red</span> posterior shift
-            </p>
-            <p>halo size/fade = posterior uncertainty (sd)</p>
-          </div>
-        </div>
-      </aside>
-      )}
+      <PropagatePanel
+        source={source}
+        setSource={setSource}
+        graph={graph}
+        extra={extra}
+        body={extrapolateBody}
+        flatAtm={flatAtm}
+        setFlatAtm={setFlatAtm}
+        crossBeta={crossBeta}
+        setCrossBeta={setCrossBeta}
+        onOpenSmile={openSmile}
+        onEdgesSaved={() => setEdgesVersion((v) => v + 1)}
+      />
     </div>
   );
 }

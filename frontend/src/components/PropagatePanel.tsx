@@ -1,0 +1,282 @@
+// The Graph workspace's single control panel: one workflow, one verb.
+//
+// The old Sandbox / Extrapolate mode fork collapses into an OBSERVATION SOURCE
+// radio: "From calibrations" (production — transported priors + the lit nodes'
+// calibration innovations, POST /graph/extrapolate) or "Manual what-if" (typed
+// ATM-vol shifts on lit nodes, POST /graph/solve). Same graph, same solver
+// knobs, same posterior visuals either way; PROPAGATE is the only primary
+// action. Backtest (calibrations) lives under Validate; auto-tune η sits with
+// the solver knobs it tunes.
+import { useMemo, useState } from "react";
+import EdgeEditor from "./EdgeEditor";
+import ExtrapolateResults from "./ExtrapolateResults";
+import SolverPanel from "./SolverPanel";
+import type { UseGraphResult } from "../state/useGraph";
+import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
+
+/** Where the propagated observations come from. */
+export type ObservationSource = "calibrations" | "manual";
+
+interface PropagatePanelProps {
+  source: ObservationSource;
+  setSource: (s: ObservationSource) => void;
+  graph: UseGraphResult;
+  extra: UseGraphExtrapolationResult;
+  /** The /graph/extrapolate body (built in the parent; shared with drill-ins). */
+  body: Record<string, string | number | boolean>;
+  flatAtm: boolean;
+  setFlatAtm: (v: boolean) => void;
+  crossBeta: number;
+  setCrossBeta: (v: number) => void;
+  onOpenSmile: (ticker: string, expiry: string) => void;
+  onEdgesSaved?: () => void;
+}
+
+const buttonClass =
+  "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
+  "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
+  "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
+
+const SOURCES: { key: ObservationSource; label: string; blurb: string }[] = [
+  {
+    key: "calibrations",
+    label: "From calibrations",
+    blurb: "Lit nodes' calibrated moves vs their transported priors drive the field.",
+  },
+  {
+    key: "manual",
+    label: "Manual what-if",
+    blurb: "Type ATM-vol shifts on lit nodes and see them spread.",
+  },
+];
+
+export default function PropagatePanel({
+  source,
+  setSource,
+  graph,
+  extra,
+  body,
+  flatAtm,
+  setFlatAtm,
+  crossBeta,
+  setCrossBeta,
+  onOpenSmile,
+  onEdgesSaved,
+}: PropagatePanelProps) {
+  const [editingEdges, setEditingEdges] = useState(false);
+
+  const manual = source === "manual";
+  const litEntries = useMemo(
+    () => Object.entries(graph.lit).sort(([a], [b]) => a.localeCompare(b)),
+    [graph.lit],
+  );
+  const editorNodes = useMemo(
+    () => (graph.nodes ?? []).map((n) => ({ ticker: n.ticker, expiry: n.expiry })),
+    [graph.nodes],
+  );
+
+  const busy = manual ? graph.solving : extra.running;
+  const canPropagate = manual ? litEntries.length > 0 : true;
+  const hasResults = manual ? graph.results !== null : extra.nodes !== null;
+  const propagate = () => {
+    if (manual) void graph.solve();
+    else void extra.run(body);
+  };
+  const clear = () => {
+    if (manual) graph.clear();
+    else extra.clear();
+  };
+  const error = manual ? graph.solveError : extra.error;
+
+  return (
+    <aside className="flex w-80 shrink-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
+      {/* Observation source */}
+      <h3 className="mb-2 text-sm font-semibold text-slate-100">Observations</h3>
+      <div className="mb-1 flex overflow-hidden rounded-md border border-slate-700 text-[11px]">
+        {SOURCES.map((s) => (
+          <button
+            key={s.key}
+            onClick={() => setSource(s.key)}
+            className={`flex-1 px-2 py-1 transition-colors ${
+              source === s.key
+                ? "bg-accent-600 text-white"
+                : "bg-surface-800 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+      </div>
+      <p className="mb-3 text-[11px] text-slate-500">
+        {SOURCES.find((s) => s.key === source)?.blurb}
+      </p>
+
+      {/* Calibrations-only knobs */}
+      {!manual && (
+        <div className="mb-3 space-y-2 text-[11px] text-slate-400">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={flatAtm}
+              onChange={(e) => setFlatAtm(e.target.checked)}
+              className="accent-accent-500"
+            />
+            Flat baselines (diagnostic)
+          </label>
+          <label className="flex items-center justify-between gap-2">
+            <span>Cross-ticker β</span>
+            <input
+              type="number"
+              step={0.1}
+              value={crossBeta}
+              onChange={(e) => {
+                const v = e.target.valueAsNumber;
+                if (Number.isFinite(v)) setCrossBeta(v);
+              }}
+              className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
+            />
+          </label>
+        </div>
+      )}
+
+      {error !== null && (
+        <p className="mb-2 truncate text-[10px] text-amber-400/80" title={error}>
+          {error}
+        </p>
+      )}
+
+      {/* Edge editor replaces the body while open */}
+      {editingEdges ? (
+        <EdgeEditor
+          nodes={editorNodes}
+          onSaved={() => {
+            onEdgesSaved?.();
+            if (!manual) void extra.run(body);
+          }}
+          onClose={() => setEditingEdges(false)}
+        />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {manual ? (
+            /* One row per lit node: shift input (vol pts) + unlight */
+            litEntries.length === 0 ? (
+              <p className="py-2 text-xs text-slate-500">
+                No lit nodes — click nodes in the graph to add observations.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-800">
+                {litEntries.map(([key, dAtmVol]) => {
+                  const [ticker = "", expiry = ""] = key.split("|");
+                  return (
+                    <div key={key} className="flex items-center gap-2 py-1.5">
+                      <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
+                        <span className="font-medium text-slate-100">{ticker}</span>{" "}
+                        <span className="font-mono text-[10px] text-slate-500">{expiry}</span>
+                      </span>
+                      {/* Vol points: +2.0 means dAtmVol = +0.02. Uncontrolled so
+                          partial entries like "-" don't snap back while typing. */}
+                      <input
+                        type="number"
+                        step={0.5}
+                        defaultValue={Number((dAtmVol * 100).toFixed(1))}
+                        onChange={(e) => {
+                          const pts = e.target.valueAsNumber;
+                          if (Number.isFinite(pts)) graph.setShift(key, pts / 100);
+                        }}
+                        className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
+                      />
+                      <span className="text-[10px] text-slate-500">pts</span>
+                      <button
+                        onClick={() => graph.unlight(key)}
+                        title="Remove observation"
+                        className="px-0.5 text-sm leading-none text-slate-500 transition-colors hover:text-slate-200"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : (
+            <ExtrapolateResults extra={extra} body={body} onOpenSmile={onOpenSmile} />
+          )}
+
+          {/* Solver knobs (shared by both sources; auto-tune η lives here) */}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-[11px] text-slate-500 transition-colors hover:text-slate-300">
+              Solver settings
+            </summary>
+            <SolverPanel
+              params={graph.params}
+              setParam={graph.setParam}
+              resetParams={graph.resetParams}
+              litCount={litEntries.length}
+              autotune={() => void graph.autotune()}
+              autotuning={graph.autotuning}
+              autotuneResult={graph.autotuneResult}
+              autotuneError={graph.autotuneError}
+            />
+          </details>
+        </div>
+      )}
+
+      {/* Propagate / Clear / Validate (pinned below the scroll area) */}
+      <div className="mt-3 border-t border-slate-800 pt-3">
+        <div className="flex items-center gap-2">
+          <button
+            disabled={!canPropagate || busy}
+            onClick={propagate}
+            title={
+              manual && litEntries.length === 0
+                ? "Light at least one node first"
+                : "Propagate the observations through the graph"
+            }
+            className="flex flex-1 items-center justify-center gap-2 rounded-md bg-accent-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors enabled:hover:bg-accent-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {busy && (
+              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            )}
+            {busy ? "Propagating…" : "Propagate"}
+          </button>
+          <button disabled={!hasResults} onClick={clear} className={buttonClass}>
+            Clear
+          </button>
+        </div>
+
+        <div className="mt-2 flex items-center gap-2">
+          {!manual && (
+            <button
+              className={buttonClass + " flex-1"}
+              disabled={extra.backtesting}
+              onClick={() => void extra.runBacktest(body)}
+              title="Leave-one-node-out validation of the current knobs"
+            >
+              {extra.backtesting ? "Backtesting…" : "Validate (LOO)"}
+            </button>
+          )}
+          <button
+            className={buttonClass + (manual ? " flex-1" : "")}
+            onClick={() => setEditingEdges((v) => !v)}
+            title="Edit the per-edge graph weights + beta"
+          >
+            {editingEdges ? "Done" : "Edges"}
+          </button>
+        </div>
+        {!manual && extra.backtestError !== null && (
+          <p className="mt-2 text-[10px] text-amber-400">{extra.backtestError}</p>
+        )}
+
+        {/* Visual legend */}
+        <div className="mt-3 space-y-1 border-t border-slate-800 pt-3 text-[10px] text-slate-500">
+          <p>
+            <span className="text-amber-400">amber ring</span> observed ·{" "}
+            <span className="text-sky-400">blue</span>→
+            <span className="text-red-400">red</span> posterior shift
+          </p>
+          <p>halo size/fade = posterior uncertainty (sd)</p>
+        </div>
+      </div>
+    </aside>
+  );
+}
