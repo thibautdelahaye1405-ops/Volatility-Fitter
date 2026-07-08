@@ -16,6 +16,9 @@ interface ExtrapolatePanelProps {
   crossBeta: number;
   setCrossBeta: (v: number) => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
+  /** Fired after the edge editor persists, so the parent can refresh the
+   *  network view's displayed topology. */
+  onEdgesSaved?: () => void;
 }
 
 /** The node whose attribution card is open, or null. */
@@ -37,6 +40,7 @@ export default function ExtrapolatePanel({
   crossBeta,
   setCrossBeta,
   onOpenSmile,
+  onEdgesSaved,
 }: ExtrapolatePanelProps) {
   const [editing, setEditing] = useState(false);
   const [selected, setSelected] = useState<SelectedNode | null>(null);
@@ -135,7 +139,10 @@ export default function ExtrapolatePanel({
       {editing ? (
         <EdgeEditor
           nodes={editorNodes}
-          onSaved={() => void extra.run(body)}
+          onSaved={() => {
+            onEdgesSaved?.();
+            void extra.run(body);
+          }}
           onClose={() => setEditing(false)}
         />
       ) : (

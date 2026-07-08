@@ -2,27 +2,30 @@
 // Click nodes to light them (mark an observed ATM-vol shift), tune the
 // propagation reach η, then Solve: the backend OT-Bayesian engine returns
 // posterior shifts + uncertainty bands for every node in the universe,
-// overlaid on the lattice. Double-click any node to drill into its smile.
+// drawn on the ticker-pod network view (pods positioned by edge-weight
+// springs, expiries as calendar spines). Double-click a node to drill
+// into its smile; drag to pan, wheel to zoom.
 //
 // This view requires the live backend (GET /graph/nodes, POST /graph/solve)
 // — there is deliberately no mock fallback for the solver.
-import { useMemo, useState } from "react";
-import GraphChart from "../components/GraphChart";
+import { useEffect, useMemo, useState } from "react";
+import GraphNetworkChart from "../components/GraphNetworkChart";
 import SolverPanel from "../components/SolverPanel";
 import ExtrapolatePanel from "../components/ExtrapolatePanel";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
+import { useGraphEdges } from "../state/useGraphEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
+import type { LayoutEdgeIn } from "../lib/graphLayout";
 
 /** Graph workspace mode: the manual-shift sandbox vs the prior-anchored
  *  production extrapolation over the selected lit+dark universe. */
 type GraphMode = "sandbox" | "extrapolate";
 
-/** No-op chart handlers for Extrapolate mode (nodes aren't lit by clicking;
+/** No-op chart handler for Extrapolate mode (nodes aren't lit by clicking;
  *  the lit/dark set is the selected universe, edited in the Universe tab). */
 const noop = (_key: string): void => undefined;
-const noopArray = (_keys: string[]): void => undefined;
 
 interface GraphViewerProps {
   /** Switch the app to the Smile tab (after this view sets the node). */
@@ -44,7 +47,6 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     lit,
     toggleLit,
     setShift,
-    lightMany,
     unlight,
     params,
     setParam,
@@ -63,6 +65,36 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const { setFocus } = useGraphFocus();
   const [mode, setMode] = useState<GraphMode>("sandbox");
   const extra = useGraphExtrapolation();
+
+  // The REAL solver topology for the network view: persisted per-edge
+  // overrides when any exist, else the auto-lattice the solver would build.
+  // Re-fetched when the edge editor saves (edgesVersion bump).
+  const { fetchEdges, fetchLattice } = useGraphEdges();
+  const [edges, setEdges] = useState<LayoutEdgeIn[]>([]);
+  const [edgesVersion, setEdgesVersion] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    fetchEdges()
+      .then((e) => (e.length > 0 ? e : fetchLattice()))
+      .then((e) => {
+        if (alive)
+          setEdges(
+            e.map((r) => ({
+              fromTicker: r.fromTicker,
+              fromExpiry: r.fromExpiry,
+              toTicker: r.toTicker,
+              toExpiry: r.toExpiry,
+              weight: r.weight,
+            })),
+          );
+      })
+      .catch(() => {
+        /* topology is display-only; the solver builds its own — keep last */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [fetchEdges, fetchLattice, edgesVersion]);
 
   // Production-only solver knobs (owned here so the drill-in focus can rebuild
   // the exact request body the Extrapolate panel solved with).
@@ -207,12 +239,12 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
                 : "Press Extrapolate to build the selected lit+dark universe and propagate."}
             </div>
           ) : (
-            <GraphChart
+            <GraphNetworkChart
               nodes={chartNodes ?? []}
+              edges={edges}
               lit={chartLit}
               results={chartResults}
               onToggle={mode === "sandbox" ? toggleLit : noop}
-              onLasso={mode === "sandbox" ? lightMany : noopArray}
               onOpenSmile={openSmile}
             />
           )}
@@ -221,7 +253,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         {/* Interaction hint */}
         <p className="mt-1 shrink-0 text-[10px] text-slate-600">
           {mode === "sandbox"
-            ? "Click to light/dim · drag to lasso · double-click to open smile · Solve to propagate"
+            ? "Click to light/dim · double-click to open smile · drag to pan, wheel to zoom · Solve to propagate"
             : "Selected lit+dark universe · amber ring = calibrated observation · double-click to open smile · Extrapolate to propagate"}
         </p>
       </div>
@@ -236,6 +268,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           crossBeta={crossBeta}
           setCrossBeta={setCrossBeta}
           onOpenSmile={openSmile}
+          onEdgesSaved={() => setEdgesVersion((v) => v + 1)}
         />
       )}
 
