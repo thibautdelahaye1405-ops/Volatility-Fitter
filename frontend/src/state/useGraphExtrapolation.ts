@@ -144,7 +144,11 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
     setBacktesting(true);
     setBacktestError(null);
     try {
-      setBacktest(await api.post<BacktestResult>("/graph/backtest", { body }));
+      // LOO = one full solve per held-out node: legitimately slow on a large
+      // universe, so give it well beyond the default request timeout.
+      setBacktest(
+        await api.post<BacktestResult>("/graph/backtest", { body, timeoutMs: 300_000 }),
+      );
     } catch (err: unknown) {
       setBacktestError(messageOf(err));
     } finally {

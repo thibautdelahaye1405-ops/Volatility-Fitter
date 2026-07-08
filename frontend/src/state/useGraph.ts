@@ -350,8 +350,10 @@ export function useGraph(): UseGraphResult {
     setAutotuning(true);
     setAutotuneError(null);
     try {
+      // Autotune sweeps a leave-one-out grid over eta — slow on big universes.
       const res = await api.post<AutotuneResult>("/graph/autotune", {
         body: { observations, ...paramsBody(params) },
+        timeoutMs: 300_000,
       });
       setAutotuneResult(res);
       // Adopt the chosen reach so the next Solve uses it.

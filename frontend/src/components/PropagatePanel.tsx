@@ -7,12 +7,14 @@
 // knobs, same posterior visuals either way; PROPAGATE is the only primary
 // action. Backtest (calibrations) lives under Validate; auto-tune η sits with
 // the solver knobs it tunes.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import EdgeMatrixEditor from "./EdgeMatrixEditor";
 import ExtrapolateResults from "./ExtrapolateResults";
 import SolverPanel from "./SolverPanel";
+import { api } from "../state/api";
 import type { UseGraphResult } from "../state/useGraph";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
+import type { UniverseResponse } from "../state/useSmile";
 
 /** Where the propagated observations come from. */
 export type ObservationSource = "calibrations" | "manual";
@@ -70,15 +72,48 @@ export default function PropagatePanel({
     () => Object.entries(graph.lit).sort(([a], [b]) => a.localeCompare(b)),
     [graph.lit],
   );
+
+  // Edge-editor universe: the SELECTED universe (GET /universe — what the
+  // production solve propagates over), fetched fresh each time the editor
+  // opens. The sandbox lattice (graph.nodes) is only a fallback — on the
+  // gated live server it is empty until nodes are calibrated in mid mode,
+  // which used to leave the matrix without a single row.
+  const [universeNodes, setUniverseNodes] = useState<
+    { ticker: string; expiry: string }[] | null
+  >(null);
+  useEffect(() => {
+    if (!editingEdges) return;
+    let alive = true;
+    api
+      .get<UniverseResponse>("/universe")
+      .then((u) => {
+        if (!alive) return;
+        setUniverseNodes(
+          u.tickers.flatMap((t) =>
+            (u.expiries[t] ?? []).map((e) => ({ ticker: t, expiry: e.expiry })),
+          ),
+        );
+      })
+      .catch(() => {
+        /* keep the sandbox fallback */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [editingEdges]);
+
   const editorNodes = useMemo(
-    () => (graph.nodes ?? []).map((n) => ({ ticker: n.ticker, expiry: n.expiry })),
-    [graph.nodes],
+    () =>
+      universeNodes !== null && universeNodes.length > 0
+        ? universeNodes
+        : (graph.nodes ?? []).map((n) => ({ ticker: n.ticker, expiry: n.expiry })),
+    [universeNodes, graph.nodes],
   );
   const tickers = useMemo(() => {
     const seen: string[] = [];
-    for (const n of graph.nodes ?? []) if (!seen.includes(n.ticker)) seen.push(n.ticker);
+    for (const n of editorNodes) if (!seen.includes(n.ticker)) seen.push(n.ticker);
     return seen;
-  }, [graph.nodes]);
+  }, [editorNodes]);
 
   const busy = manual ? graph.solving : extra.running;
   const canPropagate = manual ? litEntries.length > 0 : true;

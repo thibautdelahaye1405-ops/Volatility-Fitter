@@ -113,7 +113,12 @@ export function useUniverse() {
 
   const addTicker = useCallback(
     (symbol: string) =>
-      act(`add:${symbol}`, () => api.post("/universe/tickers", { body: { symbol } }), refreshUniverse),
+      act(
+        `add:${symbol}`,
+        // Adding a ticker can trigger a chain fetch on the backend.
+        () => api.post("/universe/tickers", { body: { symbol }, timeoutMs: 300_000 }),
+        refreshUniverse,
+      ),
     [act, refreshUniverse],
   );
 
@@ -133,7 +138,12 @@ export function useUniverse() {
 
   const loadUniverse = useCallback(
     (name: string) =>
-      act(`load:${name}`, () => api.post(`/universe/load/${encodeURIComponent(name)}`), refreshUniverse),
+      act(
+        `load:${name}`,
+        // Loading a saved universe refetches its chains — minutes, not seconds.
+        () => api.post(`/universe/load/${encodeURIComponent(name)}`, { timeoutMs: 300_000 }),
+        refreshUniverse,
+      ),
     [act, refreshUniverse],
   );
 

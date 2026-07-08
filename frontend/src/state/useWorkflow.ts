@@ -296,7 +296,13 @@ export function useWorkflow(
         // fit_mode targets the mode the smile is VIEWED in, so Calibrate / the
         // auto-fetch re-point the same per-mode calibrated pointer (otherwise a
         // bid-ask / haircut smile stays frozen because only "mid" was calibrated).
-        await api.post(path, { params: { fit_mode: fitMode }, ...(withBody ? { body: {} } : {}) });
+        // Chain fetches / calibration kicks can legitimately run for minutes
+        // on a large universe; the status poll below is the responsive layer.
+        await api.post(path, {
+          params: { fit_mode: fitMode },
+          timeoutMs: 600_000,
+          ...(withBody ? { body: {} } : {}),
+        });
         if (awaitJob) await awaitCalibration(); // block until the fit completes
         await poll(); // resync status + advance the epoch/spot baselines
         refreshViews(); // refetch every view against the now-current fit
@@ -316,7 +322,7 @@ export function useWorkflow(
   const savePriors = useCallback(async () => {
     setPending("savePriors");
     try {
-      const res = await api.post<PriorSaveResult>("/priors/save-all");
+      const res = await api.post<PriorSaveResult>("/priors/save-all", { timeoutMs: 300_000 });
       await refreshPriors();
       return res;
     } finally {
@@ -327,7 +333,7 @@ export function useWorkflow(
   const fetchPriors = useCallback(async () => {
     setPending("fetchPriors");
     try {
-      const res = await api.post<PriorFetchResult>("/priors/fetch");
+      const res = await api.post<PriorFetchResult>("/priors/fetch", { timeoutMs: 300_000 });
       await refreshPriors();
       refreshViews(); // the dotted, spot-updated prior overlays change on every view
       return res;

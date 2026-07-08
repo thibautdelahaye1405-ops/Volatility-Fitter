@@ -216,6 +216,11 @@ export default function EdgeMatrixEditor({
           />
         ) : pasting ? (
           <PasteTsvPanel errors={pasteErrors} busy={busy} onApply={applyTsv} onCancel={() => setPasting(false)} />
+        ) : tickers.length === 0 ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center rounded-md border border-slate-800 px-6 text-center text-xs text-slate-500">
+            No universe selected — pick tickers and expiries in the Universe tab
+            to populate the matrix.
+          </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-800">
             <table className="border-separate border-spacing-0 font-mono text-[11px] leading-tight">

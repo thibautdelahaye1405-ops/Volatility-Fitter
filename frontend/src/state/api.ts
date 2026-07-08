@@ -34,9 +34,19 @@ interface RequestOptions {
   body?: unknown;
   /** Abort signal for cancellable requests. */
   signal?: AbortSignal;
+  /** Milliseconds before the request aborts with a timeout error. Defaults to
+   *  60s; pass a larger value for known-long jobs, or 0 to disable. */
+  timeoutMs?: number;
 }
 
-/** Core request function: builds the URL, sends JSON, parses JSON. */
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+/** Core request function: builds the URL, sends JSON, parses JSON.
+ *
+ *  Every request carries a timeout: a stalled request must surface as a
+ *  visible error, never an eternal spinner — each stuck fetch also pins one
+ *  of the browser's ~6 connections per host until every later call to the
+ *  backend queues behind it. */
 async function request<T>(
   method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
@@ -47,17 +57,40 @@ async function request<T>(
     if (value !== undefined) url.searchParams.set(key, String(value));
   }
 
-  const response = await fetch(url, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    signal: options.signal,
-  });
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer =
+    timeoutMs > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs)
+      : undefined;
+  const onCallerAbort = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  else options.signal?.addEventListener("abort", onCallerAbort, { once: true });
 
-  if (!response.ok) {
-    throw new ApiError(response.status, response.statusText, await response.text());
+  try {
+    // The abort covers the body read too — a connection can stall mid-stream.
+    const response = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new ApiError(response.status, response.statusText, await response.text());
+    }
+    return (await response.json()) as T;
+  } catch (err: unknown) {
+    if (timedOut)
+      throw new Error(`${method} ${path} timed out after ${Math.round(timeoutMs / 1000)}s`);
+    throw err;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onCallerAbort);
   }
-  return (await response.json()) as T;
 }
 
 /** Typed convenience wrappers, e.g. `api.get<Smile[]>("/smiles")`. */

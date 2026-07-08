@@ -57,14 +57,21 @@ export function useAttributionParticles(
     }
     const picked = candRef.current.slice(0, MAX_TARGETS);
     const controller = new AbortController();
-    Promise.all(
-      picked.map((c) =>
-        api.get<GraphNodeSmile>(
-          `/graph/extrapolate/nodes/${c.ticker}/${encodeURIComponent(c.expiry)}`,
-          { params: bodyRef.current, signal: controller.signal },
-        ),
-      ),
-    )
+    // Sequential on purpose: this is background garnish, and a parallel burst
+    // of drill-in fetches would eat most of the browser's ~6-connections-per-
+    // host budget right when the user starts clicking around the results.
+    (async () => {
+      const nodes: GraphNodeSmile[] = [];
+      for (const c of picked) {
+        nodes.push(
+          await api.get<GraphNodeSmile>(
+            `/graph/extrapolate/nodes/${c.ticker}/${encodeURIComponent(c.expiry)}`,
+            { params: bodyRef.current, signal: controller.signal },
+          ),
+        );
+      }
+      return nodes;
+    })()
       .then((nodes) => {
         // Keep each target's strongest attribution entries above the floor.
         const kept: { fromKey: string; toKey: string; bp: number }[] = [];
