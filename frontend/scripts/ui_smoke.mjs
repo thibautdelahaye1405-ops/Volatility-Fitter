@@ -12,7 +12,18 @@ import puppeteer from "puppeteer-core";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const PORT = 4188; // off the dev/preview defaults so a running app never collides
-const TABS = ["Parametric", "Local Vol", "Forwards", "Options", "Graph", "Quality", "Universe", "View"];
+// Workspaces behind the grouped top-bar menus: open `menu`, click `item`
+// (menu: null = a direct tab; "VolFit" = the brand menu holding Options/View).
+const TABS = [
+  { name: "Parametric", menu: "Surfaces", item: "Parametric" },
+  { name: "Local Vol", menu: "Surfaces", item: "Local Vol" },
+  { name: "Forwards", menu: "Surfaces", item: "Forwards" },
+  { name: "Options", menu: "VolFit", item: "Options" },
+  { name: "Graph", menu: "Universe", item: "Graph" },
+  { name: "Quality", menu: null, item: "Quality" },
+  { name: "Universe", menu: "Universe", item: "Selection" },
+  { name: "View", menu: "VolFit", item: "View" },
+];
 const OUT = new URL("../.smoke/", import.meta.url).pathname.replace(/^\/(\w:)/, "$1");
 
 function startPreview() {
@@ -57,10 +68,26 @@ try {
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "networkidle2", timeout: 30000 });
 
   for (const tab of TABS) {
-    // TopBar nav buttons carry the tab label as their text.
-    const [button] = await page.$$(`xpath/.//nav//button[normalize-space()="${tab}"]`);
+    let button;
+    if (tab.menu === null) {
+      // Direct tab (Quality): its header button carries the label.
+      [button] = await page.$$(`xpath/.//header//button[contains(normalize-space(), "${tab.name}")]`);
+    } else {
+      // Open the group / brand menu, then click the item row (its label lives
+      // in a dedicated <span> inside the MenuItem button).
+      const [trigger] = await page.$$(
+        `xpath/.//header//button[contains(normalize-space(), "${tab.menu}")]`,
+      );
+      if (trigger) {
+        await trigger.click();
+        await new Promise((r) => setTimeout(r, 150));
+        [button] = await page.$$(
+          `xpath/.//span[normalize-space()="${tab.item}"]/ancestor::button[1]`,
+        );
+      }
+    }
     if (!button) {
-      console.error(`FAIL ${tab}: nav button not found`);
+      console.error(`FAIL ${tab.name}: menu path ${tab.menu ?? "(direct)"} → ${tab.item} not found`);
       failures += 1;
       continue;
     }
@@ -70,15 +97,15 @@ try {
       document.body.innerText.includes("hit an error"),
     );
     const empty = await page.evaluate(() => document.querySelector("main")?.innerText.trim() === "");
-    const slug = tab.toLowerCase().replace(/\s+/g, "-");
+    const slug = tab.name.toLowerCase().replace(/\s+/g, "-");
     await page.screenshot({ path: `${OUT}${slug}.png` });
     if (crashed || empty || pageErrors.length > 0) {
-      console.error(`FAIL ${tab}: crashed=${crashed} empty=${empty} pageErrors=${pageErrors.length}`);
+      console.error(`FAIL ${tab.name}: crashed=${crashed} empty=${empty} pageErrors=${pageErrors.length}`);
       pageErrors.forEach((e) => console.error(`  ${e}`));
       pageErrors.length = 0;
       failures += 1;
     } else {
-      console.log(`ok   ${tab}`);
+      console.log(`ok   ${tab.name}`);
     }
   }
 } finally {
