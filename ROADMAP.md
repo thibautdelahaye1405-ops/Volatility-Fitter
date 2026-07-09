@@ -44,6 +44,32 @@ resweep (commits `61045ac`, `fadb413`, `8cfac99`; full tables in
   event/earnings-aware dark baseline precision); Phase 2 deployment-model
   decision; benchmark_pack gained `--eta/--cross-mult/--tag` for future sweeps.
 
+### 🧭 SESSION WRAP (2026-07-09, later) — NOTES CURRENCY PASS + EXTRAP-ARB MEASUREMENT (Phase 1)
+
+- **All 15 technical notes reviewed against code + deck by 6 parallel agents**
+  (commit `8e3bac3`): MCS naming series-wide; Note 00 gained the Kalman
+  filter + graph verdict + zero-carry pin; Note 03's fig_siv_g bug fixed at
+  the generator (synthetic target itself carried butterfly arb — now asserted
+  clean, min g +0.381); Note 05 gained the real-SPY de-Am figure (+519/+817
+  bp, generated macros); Note 06 gained the zero-carry case file; Note 12's
+  "no re-solve" over-claim corrected; Note 15 carries the v2 full-scale
+  filter results as macros. Deck: LQD 13-params, "best denoiser" scoped,
+  zero-carry bullet. Two stale docstrings fixed (varswap path, EventSpec
+  days). All PDFs rebuilt clean.
+- **Extrapolated-region arb measurement SHIPPED (Notes 09/10 Phase 1 —
+  measure first, enforce later):** `volfit/models/diagnostics.py::
+  extrapolated_arb` measures, per lit node, over the TIME-VALUE ENVELOPE
+  (beyond traded strikes while the model's own OTM value ≥ 1bp of forward =
+  "extrapolated but not worthless"): worst Durrleman g of the displayed
+  slice (one-curve), worst calendar crossing vs the previous displayed slice
+  (vol bp, two-curve), and asymptotic wing-slope order. Rides GET /quality
+  (`extrapMinG/extrapOk/extrapCalBp/extrapCalOk/wingOrderOk` per node,
+  `extrapFlags` rollups) + a QualityViewer column — STRICTLY ADVISORY, never
+  gates publish-readiness, no fit behavior changed. Phases 2-3 (tapered
+  enforcement, publish-time wing-only projection) stay open pending measured
+  rates on real universes; design recorded in Notes 09/10's open-problem
+  remarks (updated with Phase-1 status, PDFs rebuilt).
+
 ### 🧭 SESSION WRAP (2026-07-08) — GRAPH UX REVAMP SHIPPED (4 phases, e36ef79→912b00b)
 
 User-approved redesign (options confirmed via Q&A): true graph view, merged

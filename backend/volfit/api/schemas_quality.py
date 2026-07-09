@@ -32,6 +32,14 @@ class QualityNode(BaseModel):
     leeOk: bool
     calendarViolation: float  # worst convex-order violation vs the previous fitted expiry
     calendarOk: bool
+    # --- extrapolated-region arb (Notes 09/10 Phase 1): MEASURED, advisory only —
+    # never gates ``ready``. Envelope = beyond the traded strikes, while the
+    # model's own OTM value >= 1 bp of forward ("extrapolated but not worthless").
+    extrapMinG: float | None = None  # worst Durrleman g over the envelope (>=0 clean)
+    extrapOk: bool = True  # extrapMinG >= 0 (or no envelope)
+    extrapCalBp: float | None = None  # worst calendar crossing vs prev expiry, vol bp
+    extrapCalOk: bool = True  # extrapCalBp ~ 0 (or no previous slice)
+    wingOrderOk: bool | None = None  # asymptotic Lee-slope order vs prev (far >= near)
     varSwapQuoted: bool  # an active var-swap quote participates in this node's fit
     filterActive: bool  # observation filter holds a committed state for this node
     filterContaminated: bool  # measurement taken while a persistence prior was active
@@ -62,6 +70,7 @@ class QualityTicker(BaseModel):
     surfaceRmsBp: float  # quote-weight-pooled RMS across the fitted nodes
     worstNodeRmsBp: float
     arbFlags: int  # nodes failing Lee or calendar
+    extrapFlags: int = 0  # nodes with extrapolated-region arb (advisory)
     ready: int  # publish-ready node count
     lv: LvQuality | None = None  # None when LV disabled / never calibrated
 
@@ -77,6 +86,7 @@ class QualitySummary(BaseModel):
     noFit: int
     readyNodes: int
     arbFlags: int
+    extrapFlags: int = 0  # nodes with extrapolated-region arb (advisory, not gating)
     medianRmsBp: float  # over fitted nodes (0 when none)
     worstRmsBp: float
     filterMode: str  # observation-filter mode ("off" | "overlay" | "active")

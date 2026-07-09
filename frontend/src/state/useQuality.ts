@@ -23,6 +23,12 @@ export interface QualityNode {
   leeOk: boolean;
   calendarViolation: number;
   calendarOk: boolean;
+  /** Extrapolated-region arb (advisory measurement, Notes 09/10 Phase 1). */
+  extrapMinG: number | null;
+  extrapOk: boolean;
+  extrapCalBp: number | null;
+  extrapCalOk: boolean;
+  wingOrderOk: boolean | null;
   varSwapQuoted: boolean;
   filterActive: boolean;
   filterContaminated: boolean;

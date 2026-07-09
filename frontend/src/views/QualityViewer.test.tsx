@@ -16,7 +16,8 @@ function node(over: Partial<QualityNode>): QualityNode {
     ticker: "ALPHA", expiry: "2026-07-10", tau: 0.1, hasFit: true, stale: false,
     model: "lqd", nQuotes: 9, rmsBp: 8.2, maxIvBp: 16.3, atmVol: 0.21, skew: -0.1,
     leeLeft: 0.02, leeRight: 0.01, leeOk: true, calendarViolation: 0,
-    calendarOk: true, varSwapQuoted: false, filterActive: false,
+    calendarOk: true, extrapMinG: 0.94, extrapOk: true, extrapCalBp: 0,
+    extrapCalOk: true, wingOrderOk: true, varSwapQuoted: false, filterActive: false,
     filterContaminated: false, ready: true, issues: [],
     ...over,
   };

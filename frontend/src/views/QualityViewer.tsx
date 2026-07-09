@@ -234,6 +234,7 @@ export default function QualityViewer() {
                   <th className={th}>ATM</th>
                   <th className={th}>Lee L/R</th>
                   <th className={th}>Cal viol</th>
+                  <th className={th} title="Extrapolated-region arb over the time-value envelope (advisory): worst Durrleman g · calendar crossing bp. '—' = worthless past the quoted range.">Extrap g·cal</th>
                   <th className={`${th} text-left`}>Status</th>
                 </tr>
               </thead>
@@ -266,6 +267,13 @@ export default function QualityViewer() {
                     <td className={`${td} ${!n.calendarOk ? "text-rose-400" : ""}`}>
                       {n.hasFit ? (n.calendarViolation > 0 ? n.calendarViolation.toExponential(1) : "0") : "—"}
                     </td>
+                    <td className={`${td} ${n.extrapOk === false || n.extrapCalOk === false ? "text-amber-300" : ""}`}>
+                      {n.hasFit
+                        ? `${n.extrapMinG == null ? "—" : n.extrapMinG.toFixed(2)} · ${
+                            n.extrapCalBp == null ? "—" : n.extrapCalBp.toFixed(0)
+                          }`
+                        : "—"}
+                    </td>
                     <td className="px-2 py-1 text-left">
                       <StatusCell node={n} />
                     </td>
@@ -273,7 +281,7 @@ export default function QualityViewer() {
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-2 py-6 text-center text-slate-500">
+                    <td colSpan={10} className="px-2 py-6 text-center text-slate-500">
                       {onlyExceptions ? "No exceptions — every node is publish-ready." : "No lit nodes (fetch a universe first)."}
                     </td>
                   </tr>

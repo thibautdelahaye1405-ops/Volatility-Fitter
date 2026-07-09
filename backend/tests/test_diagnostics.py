@@ -117,3 +117,58 @@ def test_numeric_diagnostics_are_finite_on_nan_wings():
     h = numeric_handles(slice_, t=0.5)
     assert np.isfinite(h.atm_vol) and np.isfinite(h.skew) and np.isfinite(h.curvature)
     assert np.isfinite(numeric_var_swap_w(slice_))  # integral spans the NaN wings
+
+
+# ------------------------------------------------- extrapolated-region arb
+def test_extrapolated_arb_clean_flat_slice():
+    """A flat smile is butterfly-clean everywhere: g = 1 over the envelope,
+    and a LOWER previous slice produces zero calendar crossing."""
+    from volfit.models.diagnostics import extrapolated_arb
+
+    flat = RawSVI(a=0.04, b=0.0, rho=0.0, m=0.0, sigma=1.0)
+    lower = RawSVI(a=0.01, b=0.0, rho=0.0, m=0.0, sigma=1.0)
+    ex = extrapolated_arb(flat, -0.2, 0.2, t=0.25, prev_slice=lower)
+    assert ex.k_hi > 0.2 and ex.k_lo < -0.2  # 40%-vol smile: envelope extends
+    assert ex.min_g is not None and abs(ex.min_g - 1.0) < 1e-2
+    assert ex.cal_bp == 0.0
+
+
+def test_extrapolated_arb_flags_calendar_crossing():
+    """A HIGHER previous slice crosses this one everywhere: sigma gap in bp."""
+    from volfit.models.diagnostics import extrapolated_arb
+
+    this = RawSVI(a=0.04, b=0.0, rho=0.0, m=0.0, sigma=1.0)
+    higher = RawSVI(a=0.09, b=0.0, rho=0.0, m=0.0, sigma=1.0)
+    ex = extrapolated_arb(this, -0.2, 0.2, t=0.25, prev_slice=higher)
+    # sigma_prev = 60%, sigma_this = 40% at t=0.25 -> ~2000 bp crossing
+    assert ex.cal_bp is not None and abs(ex.cal_bp - 2000.0) < 1.0
+
+
+class _WiggleSlice:
+    """Butterfly-clean inside the traded range, an oscillating (arb-y) wing
+    outside it — the shape the envelope measurement exists to catch."""
+
+    def implied_w(self, k):
+        k = np.asarray(k, dtype=float)
+        w = np.full_like(k, 0.09)
+        out = np.abs(k) > 0.2
+        w[out] += 0.03 * np.sin(25.0 * (np.abs(k[out]) - 0.2))
+        return w
+
+
+def test_extrapolated_arb_flags_negative_g_in_wing():
+    from volfit.models.diagnostics import extrapolated_arb
+
+    ex = extrapolated_arb(_WiggleSlice(), -0.2, 0.2, t=0.25)
+    assert ex.min_g is not None and ex.min_g < 0.0
+
+
+def test_extrapolated_arb_empty_envelope_when_worthless():
+    """A tiny-vol slice with a far-OTM traded edge: options past the edge are
+    worthless -> no envelope, no g, bounds pinned to the traded edge."""
+    from volfit.models.diagnostics import extrapolated_arb
+
+    tiny = RawSVI(a=0.0001, b=0.0, rho=0.0, m=0.0, sigma=1.0)  # ~1% vol at t=1
+    ex = extrapolated_arb(tiny, -0.8, 0.8, t=1.0)
+    assert ex.min_g is None
+    assert ex.k_hi == 0.8 and ex.k_lo == -0.8

@@ -121,7 +121,7 @@ def numeric_density(
         g(k) = (1 - k w'/(2w))^2 - (w'/2)^2 (1/w + 1/4) + w''/2,
 
     matching LQDSlice's exact density on an LQD slice and giving the SVI /
-    Multi-Core-SIV overlays their own density. w', w'' are central differences;
+    Multi-Core Sigmoid (MCS) overlays their own density. w', w'' are central differences;
     a non-arbitrage-free overlay can make g (hence p) dip below zero, so the pdf
     is floored at 0 and renormalized. Returns ``(k, pdf, cdf)`` on a shared grid.
 
@@ -167,3 +167,110 @@ def numeric_lee_slopes(slice_: SmileModel) -> tuple[float, float]:
     right = (w_rr - w_r) / dk
     left = (w_ll - w_l) / dk  # dw/d(-k): positive when the left wing rises
     return _finite(left), _finite(right)
+
+
+# --------------------------------------------------------------- extrapolated arb
+#: How far past the traded edge the extrapolated-region scan may reach (in k).
+_EXTRAP_REACH = 4.0
+_EXTRAP_POINTS = 241
+#: Default "not worthless" floor: OTM option value >= 1 bp of the forward.
+EXTRAP_TV_FLOOR = 1e-4
+
+
+@dataclass(frozen=True)
+class ExtrapArb:
+    """Extrapolated-region arbitrage measurement of one slice (Notes 09/10,
+    Phase 1 of the softer-enforcement design: MEASURED, never enforced).
+
+    The envelope is the strike region beyond the traded range where the
+    model's own OTM option value is still >= ``tv_floor`` ("extrapolated but
+    not worthless"). ``min_g`` is the worst Durrleman g over both wings of the
+    envelope (>= 0 = butterfly-clean); ``cal_bp`` is the worst calendar
+    crossing vs the previous expiry over the same envelope, expressed in vol
+    bp at this slice's maturity (0 when clean or no previous slice)."""
+
+    k_lo: float  # left envelope outer edge (== traded edge when empty)
+    k_hi: float  # right envelope outer edge
+    min_g: float | None  # None when the envelope is empty on both sides
+    cal_bp: float | None  # None when no previous slice was supplied
+
+
+def durrleman_g(slice_: SmileModel, k: np.ndarray) -> np.ndarray:
+    """Durrleman g(k) of a slice by central differences of its own w(k).
+
+    The derivatives are of the MODEL curve (smooth), not of reconstructed
+    prices — the analytic-measurement lesson of the arb-metric audit. Non-
+    finite w (overflowing wings) yields non-finite g; callers mask it."""
+    w = np.maximum(np.asarray(slice_.implied_w(k), dtype=float), 1e-12)
+    wk = np.gradient(w, k)
+    wkk = np.gradient(wk, k)
+    return (1.0 - k * wk / (2.0 * w)) ** 2 - 0.25 * wk**2 * (1.0 / w + 0.25) + 0.5 * wkk
+
+
+def _otm_value(slice_: SmileModel, k: np.ndarray) -> np.ndarray:
+    """Normalized OTM option value: call for k >= 0, put (by parity) for k < 0."""
+    w = np.maximum(np.asarray(slice_.implied_w(k), dtype=float), 1e-12)
+    call = black_call(k, w)
+    put_side = k < 0.0
+    value = call.copy()
+    value[put_side] = call[put_side] - (1.0 - np.exp(k[put_side]))
+    return value
+
+
+def _envelope(slice_: SmileModel, edge: float, sign: float, tv_floor: float) -> np.ndarray:
+    """Contiguous grid past ``edge`` (direction ``sign``) while the OTM value
+    stays >= tv_floor and w stays finite. Empty when worthless at the edge."""
+    k = edge + sign * np.linspace(0.0, _EXTRAP_REACH, _EXTRAP_POINTS)[1:]
+    value = _otm_value(slice_, k)
+    alive = np.isfinite(value) & (value >= tv_floor)
+    if not alive[0]:
+        return k[:0]
+    cut = np.argmin(alive) if not alive.all() else alive.size
+    return k[:cut]
+
+
+def extrapolated_arb(
+    slice_: SmileModel,
+    k_min_traded: float,
+    k_max_traded: float,
+    t: float,
+    prev_slice: SmileModel | None = None,
+    tv_floor: float = EXTRAP_TV_FLOOR,
+) -> ExtrapArb:
+    """Measure butterfly and calendar arbitrage in the extrapolated region.
+
+    Butterfly (one-curve): min Durrleman g over the envelope of THIS slice.
+    Calendar (two-curve): worst sigma_prev - sigma_this crossing (vol bp at
+    maturity ``t``) over the same envelope vs ``prev_slice``. Advisory only —
+    Phase 1 measures, enforcement (if ever) is a separate, tapered design."""
+    left = _envelope(slice_, float(k_min_traded), -1.0, tv_floor)
+    right = _envelope(slice_, float(k_max_traded), +1.0, tv_floor)
+    k_env = np.concatenate([left[::-1], right])
+
+    min_g: float | None = None
+    for wing in (left, right):
+        if wing.size < 3:  # need a stencil for the second derivative
+            continue
+        g = durrleman_g(slice_, wing)
+        g = g[np.isfinite(g)]
+        if g.size:
+            worst = float(g.min())
+            min_g = worst if min_g is None else min(min_g, worst)
+
+    cal_bp: float | None = None
+    if prev_slice is not None:
+        cal_bp = 0.0
+        if k_env.size:
+            w_this = np.maximum(np.asarray(slice_.implied_w(k_env), float), 1e-12)
+            w_prev = np.maximum(np.asarray(prev_slice.implied_w(k_env), float), 1e-12)
+            sig_gap = (np.sqrt(w_prev / t) - np.sqrt(w_this / t)) * 1e4
+            sig_gap = sig_gap[np.isfinite(sig_gap)]
+            if sig_gap.size:
+                cal_bp = max(0.0, float(sig_gap.max()))
+
+    return ExtrapArb(
+        k_lo=float(left[-1]) if left.size else float(k_min_traded),
+        k_hi=float(right[-1]) if right.size else float(k_max_traded),
+        min_g=min_g,
+        cal_bp=cal_bp,
+    )

@@ -266,11 +266,24 @@ candidate refinement is a \emph{softer} floor in the near-extrapolation
 region --- the hinge weight decaying with distance past the last quote, or
 with the options' remaining time value, so that a gross inversion where
 options are demonstrably not worthless is still leaned on while the deep-wing
-disagreement of two extrapolation fictions stays harmless. This is open
-(flagged 2026-07): any such scheme must be designed jointly with Note~09's
-per-model wing contracts and the floor-grid construction of
-\cref{lst:confine}, and must preserve the case-file property that the
-NVDA/SPY phantom stays cured.
+disagreement of two extrapolation fictions stays harmless. Any such scheme
+must be designed jointly with Note~09's per-model wing contracts and the
+floor-grid construction of \cref{lst:confine}, and must preserve the
+case-file property that the NVDA/SPY phantom stays cured.
+
+\emph{Phase 1 shipped (2026-07-09) — measure first.} The Quality report now
+\emph{measures} the extrapolated region before anything enforces it: per lit
+node, over the \emph{time-value envelope} (strikes beyond the traded span
+where the model's own OTM value is still $\ge$ 1\,bp of forward ---
+``extrapolated but not worthless''), it reports the worst Durrleman $g$ of
+the displayed slice, the worst calendar crossing versus the previous
+expiry's displayed slice (vol bp), and the asymptotic wing-slope order
+(\nolinkurl{volfit/models/diagnostics.py::extrapolated\_arb},
+\nolinkurl{api/quality.py}; locked by
+\nolinkurl{test\_diagnostics.py} / \nolinkurl{test\_quality.py}). The fields
+are \emph{advisory} --- they never gate publish-readiness. Enforcement (the
+tapered hinge above) remains open, pending what the measurement shows on
+real universes.
 \end{remark}
 
 %======================================================================

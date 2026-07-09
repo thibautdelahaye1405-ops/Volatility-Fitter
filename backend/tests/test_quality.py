@@ -100,16 +100,40 @@ def test_calendar_flag_fires_on_reversed_slices():
     far = service.calibrate_node(state, TICKER, isos[2], "mid")
 
     ok_node, _ = quality._node_row(
-        state, TICKER, isos[2], "mid", far, near.result.slice, 50.0, False
+        state, TICKER, isos[2], "mid", far, near.result.slice, None, None, 50.0, False
     )
     assert ok_node.calendarOk and ok_node.ready
 
     bad_node, _ = quality._node_row(
-        state, TICKER, isos[0], "mid", near, far.result.slice, 50.0, False
+        state, TICKER, isos[0], "mid", near, far.result.slice, None, None, 50.0, False
     )
     assert bad_node.calendarViolation > 0.0
     assert not bad_node.calendarOk and not bad_node.ready
     assert "calendar arb vs previous expiry" in bad_node.issues
+
+
+def test_extrap_measurement_is_advisory_and_populated():
+    """Extrapolated-region fields are measured on fitted rows and NEVER gate
+    readiness (Notes 09/10 Phase 1: measure first, enforce later)."""
+    state = AppState(REF_DATE)
+    isos = _isos(state)
+    service.calibrate_node(state, TICKER, isos[0], "mid")
+    service.calibrate_node(state, TICKER, isos[1], "mid")
+    report = quality.build_quality_report(state)
+    fitted = [n for n in report.nodes if n.hasFit]
+    assert len(fitted) == 2
+    # the first fitted row has no previous expiry: no calendar / wing-order info
+    assert fitted[0].extrapCalBp is None and fitted[0].wingOrderOk is None
+    # the second row is measured against the first (displayed family)
+    assert fitted[1].extrapCalBp is not None
+    assert fitted[1].wingOrderOk is not None
+    # the synthetic chain's quoted edges are already worthless (OTM value below
+    # the 1 bp floor), so the envelope is empty by design: g unmeasured, clean
+    assert fitted[1].extrapMinG is None and fitted[1].extrapOk
+    # advisory contract: extrap flags never appear in issues / readiness
+    for n in fitted:
+        assert not any("extrap" in issue.lower() for issue in n.issues)
+    assert report.summary.extrapFlags == sum(t.extrapFlags for t in report.tickers)
 
 
 def test_rms_budget_drives_readiness():

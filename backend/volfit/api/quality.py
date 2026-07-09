@@ -3,7 +3,10 @@
 Aggregates CACHED calibrations into one publish-readiness screen: per lit
 node the calibration-consistent RMS, the Lee wing slopes, the adjacent-expiry
 calendar check and staleness; per ticker the pooled surface RMS and the
-cached LV (affine) surface health; plus universe headline counts.
+cached LV (affine) surface health; plus universe headline counts. Also
+MEASURES (advisory, never gating) arbitrage in the extrapolated strike region
+over the time-value envelope — Notes 09/10's softer-enforcement design,
+Phase 1: butterfly g, calendar crossings, and asymptotic wing-slope order.
 
 STRICTLY NO FIT ON READ: records are fetched via the calibrated pointer +
 fit cache (never ``fit_or_get``, whose ungated branch bootstraps a fit), the
@@ -28,6 +31,7 @@ from volfit.api.schemas_quality import (
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_violation
 from volfit.calib.rms import rms as rms_of_terms
+from volfit.models.diagnostics import extrapolated_arb
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import lee_slopes
 
@@ -37,6 +41,12 @@ _LEE_BOUND = 2.0
 _LEE_TOL = 1e-9
 #: Calendar convex-order tolerance — matches the surface-fit acceptance tests.
 _CAL_TOL = 1e-6
+#: Extrapolated-region tolerances (Notes 09/10 Phase 1 — advisory measurement):
+#: g may dip infinitesimally negative from the numeric stencil; the calendar
+#: crossing tolerance is 1 vol bp (below any tradable edge).
+_EXTRAP_G_TOL = 1e-6
+_EXTRAP_CAL_TOL_BP = 1.0
+_WING_ORDER_TOL = 1e-9
 #: Default per-node RMS publish budget (vol bp).
 DEFAULT_RMS_BUDGET_BP = 50.0
 
@@ -119,6 +129,8 @@ def _node_row(
     fit_mode: str,
     record: FitRecord,
     prev_slice,
+    prev_display,
+    prev_lee: tuple[float, float] | None,
     rms_budget_bp: float,
     filter_on: bool,
 ) -> tuple[QualityNode, tuple[float, float]]:
@@ -139,6 +151,32 @@ def _node_row(
         except Exception:
             violation = 0.0
     cal_ok = violation <= _CAL_TOL
+
+    # Extrapolated-region arb (Notes 09/10 Phase 1): measured on the DISPLAYED
+    # slice — the published wing — over the time-value envelope; the calendar
+    # crossing compares displayed vs previous displayed (same published family).
+    # ADVISORY: reported, never gates readiness (measure first, enforce later).
+    disp = record.display.slice if record.display is not None else record.result.slice
+    extrap_min_g = extrap_cal = None
+    extrap_ok = extrap_cal_ok = True
+    kq = record.prepared.k
+    if kq.size:
+        try:
+            ex = extrapolated_arb(
+                disp, float(kq.min()), float(kq.max()), float(record.prepared.tau),
+                prev_slice=prev_display,
+            )
+            extrap_min_g, extrap_cal = ex.min_g, ex.cal_bp
+            extrap_ok = extrap_min_g is None or extrap_min_g >= -_EXTRAP_G_TOL
+            extrap_cal_ok = extrap_cal is None or extrap_cal <= _EXTRAP_CAL_TOL_BP
+        except Exception:  # the measurement must never break a status read
+            pass
+    wing_order: bool | None = None
+    if prev_lee is not None:
+        wing_order = (
+            lee_left >= prev_lee[0] - _WING_ORDER_TOL
+            and lee_right >= prev_lee[1] - _WING_ORDER_TOL
+        )
     f_active, f_contaminated = (
         _filter_flags(state, ticker, iso, fit_mode) if filter_on else (False, False)
     )
@@ -169,6 +207,11 @@ def _node_row(
         leeOk=lee_ok,
         calendarViolation=violation,
         calendarOk=cal_ok,
+        extrapMinG=extrap_min_g,
+        extrapOk=extrap_ok,
+        extrapCalBp=extrap_cal,
+        extrapCalOk=extrap_cal_ok,
+        wingOrderOk=wing_order,
         varSwapQuoted=_varswap_quoted(state, ticker, iso),
         filterActive=f_active,
         filterContaminated=f_contaminated,  # advisory — never blocks readiness
@@ -198,6 +241,8 @@ def build_quality_report(
         rows: list[QualityNode] = []
         num = den = 0.0
         prev_slice = None
+        prev_display = None
+        prev_lee: tuple[float, float] | None = None
         for expiry in forwards:
             iso = expiry.isoformat()
             if not state.node_lit(ticker, iso):
@@ -209,12 +254,17 @@ def build_quality_report(
                 rows.append(_no_fit_node(ticker, iso))
                 continue  # calendar chain: compare across the gap, keep prev_slice
             node, (n, d) = _node_row(
-                state, ticker, iso, mode, record, prev_slice, rms_budget_bp, filter_on
+                state, ticker, iso, mode, record, prev_slice, prev_display, prev_lee,
+                rms_budget_bp, filter_on,
             )
             rows.append(node)
             num += n
             den += d
             prev_slice = record.result.slice
+            prev_display = (
+                record.display.slice if record.display is not None else record.result.slice
+            )
+            prev_lee = (node.leeLeft, node.leeRight)
         if not rows:
             continue
         fitted = [r for r in rows if r.hasFit]
@@ -227,6 +277,7 @@ def build_quality_report(
                 surfaceRmsBp=rms_of_terms(num, den) * 1e4,
                 worstNodeRmsBp=max((r.rmsBp for r in fitted), default=0.0),
                 arbFlags=sum(1 for r in fitted if not (r.leeOk and r.calendarOk)),
+                extrapFlags=sum(1 for r in fitted if not (r.extrapOk and r.extrapCalOk)),
                 ready=sum(1 for r in rows if r.ready),
                 lv=_lv_quality(state, ticker, mode),
             )
@@ -245,6 +296,7 @@ def build_quality_report(
         noFit=len(nodes) - len(fitted),
         readyNodes=sum(1 for r in nodes if r.ready),
         arbFlags=sum(t.arbFlags for t in tickers),
+        extrapFlags=sum(t.extrapFlags for t in tickers),
         medianRmsBp=float(np.median(rms_values)) if rms_values else 0.0,
         worstRmsBp=max(rms_values, default=0.0),
         filterMode=state.options().observationFilterMode,
