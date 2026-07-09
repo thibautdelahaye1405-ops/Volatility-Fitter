@@ -1,0 +1,120 @@
+"""Deck figure: de-Americanization bias on a REAL captured SPY chain.
+
+Rev-6 replacement for the synthetic fig_deam_bias on the de-Am slide. Uses the
+production CRR machinery (volfit.core.american) on the true-weekly Massive
+capture (backend/tests/fixtures/lv_weekly_massive.json, SPY, as-of 2026-06-25):
+for every put of one expiry, invert the observed American mid two ways —
+naively through a EUROPEAN tree (what a fitter that ignores early exercise
+would see) and properly through the AMERICAN tree (the de-Americanized
+European-equivalent vol). The wedge that opens on in-the-money puts IS the
+early-exercise premium, on live market prices.
+
+Carry note: this delayed-tier capture's parity-implied rate is unphysical
+(negative, clamped), so the carry is supplied: r = 4.3% money-market,
+q = 1.2% SPY dividend yield (mid-2026). The caption states this.
+
+Output: Docs/deck/assets/fig/fig_deam_bias_real.png (also .pdf next to it).
+"""
+
+from __future__ import annotations
+
+import sys
+from datetime import date
+from pathlib import Path
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.optimize import brentq
+
+REPO = Path(r"C:\Users\thiba\vol-fitter")
+sys.path.insert(0, str(REPO / "Docs" / "notes" / "figures"))  # notes' style.py
+sys.path.insert(0, str(REPO / "backend"))  # lv_benchmark fixture loader
+
+from style import PALETTE, setup  # noqa: E402
+
+from lv_benchmark import load_benchmark  # noqa: E402
+from volfit.core.american import binomial_price, deamericanize_batch  # noqa: E402
+
+setup()
+TEAL, RUST, SLATE = PALETTE["teal"], PALETTE["rust"], PALETTE["muted"]
+OUT = REPO / "Docs" / "deck" / "assets" / "fig"
+
+FIXTURE = REPO / "backend" / "tests" / "fixtures" / "lv_weekly_massive.json"
+EXPIRY = date(2026, 12, 18)
+R, Q = 0.043, 0.012  # supplied carry (see module docstring)
+
+
+def naive_european_iv(mid: float, s: float, k: float, t: float) -> float:
+    """The biased vol: invert the AMERICAN market price through a EUROPEAN tree."""
+    try:
+        return brentq(
+            lambda v: binomial_price(False, s, k, t, v, R, Q, american=False) - mid,
+            1e-3, 3.0, xtol=1e-8,
+        )
+    except ValueError:
+        return np.nan
+
+
+def main():
+    data, chains = load_benchmark(FIXTURE)
+    ref = date.fromisoformat(data["as_of"])
+    snap = chains["SPY"]
+    s = float(snap.spot)
+    t = (EXPIRY - ref).days / 365.0
+
+    puts = sorted(
+        (x for x in snap.quotes_for(EXPIRY)
+         if x.call_put == "P" and x.mid is not None and x.bid and x.bid > 0),
+        key=lambda x: x.strike,
+    )
+    ks = np.array([p.strike for p in puts], dtype=float)
+    mids = np.array([p.mid for p in puts], dtype=float)
+
+    keep = (ks >= 0.55 * s) & (ks <= 1.38 * s)
+    ks, mids = ks[keep], mids[keep]
+
+    deam = deamericanize_batch(np.zeros(ks.size, dtype=bool), mids, s, ks, t, R, Q)
+    naive = np.array([naive_european_iv(m, s, float(k), t) for k, m in zip(ks, mids)])
+
+    ok = np.isfinite(deam) & np.isfinite(naive)
+    ks, deam, naive = ks[ok], deam[ok], naive[ok]
+    pct = 100.0 * ks / s
+    bias_bp = 1e4 * (naive - deam)
+
+    fig, ax = plt.subplots(figsize=(7.4, 4.5))
+    ax.fill_between(pct, 100 * deam, 100 * naive, where=pct >= 100.0,
+                    color=RUST, alpha=0.10, lw=0)
+    ax.plot(pct, 100 * naive, color=RUST, lw=1.8,
+            label="American mid inverted as European — biased")
+    ax.plot(pct, 100 * deam, color=TEAL, ls="--", lw=2.0,
+            label="de-Americanized (CRR-inverted) — European-equivalent")
+    ax.axvline(100.0, color=SLATE, ls=":", lw=1.1, alpha=0.8)
+    ax.annotate("ATM", xy=(100.0, 0.02), xycoords=("data", "axes fraction"),
+                xytext=(3, 0), textcoords="offset points", color=SLATE, fontsize=9)
+    i = int(np.argmin(np.abs(pct - 124.0)))
+    ax.annotate("the wedge = early-exercise premium\n(median ITM +519 bp, max +817 bp)",
+                xy=(pct[i], 50 * (naive[i] + deam[i])), xytext=(-160, 46),
+                textcoords="offset points", color=PALETTE["ink"], fontsize=9,
+                arrowprops=dict(arrowstyle="-", color=SLATE, lw=0.9))
+
+    ax.set_xlabel("put strike (% of spot)")
+    ax.set_ylabel("implied volatility (%)")
+    ax.legend(frameon=False, loc="upper left", fontsize=9)
+    fig.tight_layout()
+    fig.savefig(OUT / "fig_deam_bias_real.png", dpi=200)
+    fig.savefig(OUT / "fig_deam_bias_real.pdf")
+    plt.close(fig)
+
+    itm = pct > 100.0
+    print(f"SPY {EXPIRY} (as-of {ref}), {ks.size} puts, spot {s:.2f}, t={t:.3f}")
+    print(f"max bias {bias_bp.max():.0f} bp at K={ks[bias_bp.argmax()]:.0f} "
+          f"({pct[bias_bp.argmax()]:.0f}% of spot)")
+    print(f"median ITM-put bias {np.median(bias_bp[itm]):.0f} bp; "
+          f"median OTM-put bias {np.median(bias_bp[~itm]):.1f} bp")
+
+
+if __name__ == "__main__":
+    main()

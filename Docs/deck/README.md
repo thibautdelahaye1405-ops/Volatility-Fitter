@@ -4,7 +4,7 @@
 1920x1080 canvas scaled to the window). Open it in any browser; navigate with
 arrow keys / PageUp / PageDown / Home / End; print-to-PDF for a handout.
 
-**Current state: full 36-slide deck, rev 5** (also exported as
+**Current state: full 36-slide deck, rev 6** (also exported as
 `volfitter_deck.pdf`, one page per slide) — opening (problem, architecture,
 worked dark-smile walkthrough, glossary), models (LQD ×2, backtest evidence,
 SVI ×2, MCS ×2, Local Vol ×2), trading realism (de-Am, forwards, objective,
@@ -12,6 +12,64 @@ var-swaps, wings, calendar case file, event clock), dynamics (SSR, priors ×2,
 Kalman filter ×2), the graph section (concept, hero, edges, LOO validation),
 and product close (workstation tour, quality/runbook, performance, discipline,
 roadmap, closing statement).
+
+Rev-6 changes (2026-07-09): **clarity pass on the model/quote-prep slides**
+(user feedback: slides must stand alone for a reader who has NOT read the
+notes, teacher-to-student register). Slide 1: two title shots side by side
+(graph lattice + smile with graph update and ±1.96σ band), labelled pills,
+object-fit cover (the old single-shot by-design overflow is gone). Slide 12
+(MCS guardrails): rewritten as a numbered 1-2-3 guardrail story (budget /
+fence / proof-by-ablation case panel), leaning on slide 10's Durrleman
+introduction; **the note's fig_siv_g is REPLACED** — the user spotted that
+its g(k) curve is actually negative near k ≈ ±0.13 (min g = −0.38: the
+synthetic WW target itself carries butterfly arb, so the note figure's
+"g ≥ 0" title is false for that fit — Note 03 follow-up). The slide's chart
+and its ablation panel are now the SAME experiment (user asked for numeric
+consistency): `gen_siv_ablation_deck.py` → `fig_siv_ablation_deck.png`
+re-fits ONE real census node (EFA, as-of 2024-07-29, expiry 2024-08-09, 22
+quotes — the node closest to the census medians in
+`backend/backtest/results/spike_aug2024_ablation_arb.json`) in all four
+R3×R6 cells via the ablation harness's own helpers, reproducing its stored
+rows exactly: neither 75 bp / g −116, de-Am repair alone 18 bp / g −12,
+fence alone arb-free / 726 bp, both arb-free / 34 bp (symlog y, quoted range
+shaded). Panel 3 cites those four numbers, with the 38-node census medians
+(92/25/749/225 bp) as the closing line. Needs the spike_aug2024 backtest
+fixtures on disk to regenerate.
+Slide 13: exotics-workhorse framing removed (LV+SV
+is out of scope); triangular cells stated (each grid rectangle split into two
+triangles, affine per triangle — bilinear would not be). Slide 14: implicit
+Euler vs Crank–Nicolson taught (CN monotone only under a step bound, kink
+oscillations; implicit = M-matrix, monotone at any step, one order traded).
+Slide 15: escrowed-spot lattice and the content-digest cache explained; the
+reverted whole-curve repair's CAUSE stated (free global baseline re-tilt →
+sub-penny ATM price moves, large in vol where vega peaks); **synthetic de-Am
+bias chart replaced by a real-data figure** (`gen_deam_real_fig.py` →
+`fig_deam_bias_real.png`: live SPY Massive capture 2026-06-25, Dec-2026
+expiry, every put mid inverted as-European vs de-Americanized — median ITM
+wedge +519 bp, max +817 bp; carry supplied r=4.3%/q=1.2%, the capture's
+parity carry being the slide-16 delayed-feed pathology). Slide 17: time-value
+weights taught in the eqnote (1-D Voronoi cell defined; TV vs s_i/s̄ pulls;
+uniform-grid ⇒ correction 1). Slide 19: "the differences are the point"
+replaced by the explicit statement (wings are a stated per-model contract,
+all under Lee's slope-2 cap). Second feedback batch (dynamics slides):
+slide 22 — the sticky-local-vol bullet unpacked into three (Hagan relabeling
+ℓ(k,δ) ≈ k+2δ ⇒ SSR ≈ 2; LV grid nodes follow the fraction 1−R/2 of the
+move — and the old "no PDE re-solve" claim CORRECTED: the exact sticky-LV
+grid reprice does cost one Dupire solve, per Note 12; the sign-trap bullet
+spelled out as curve k+δ vs quote k−δ). Slide 23 — gate chart caption is
+now an axis-by-axis walkthrough (x = quote precision / required, y = prior
+pull, exact zero at 1, γ = fade dial). Slide 24 — LOO wing race explained
+plainly (hide a wing on day two, score its reconstruction). Slide 25 —
+filter lede rewritten teacher-style (noise vs news, gains K), the
+Jacobian/χ² jargon bullet replaced by "both noise levels are measured, not
+assumed". Slide 26 — evidence lede names the three regimes; caption now
+explains the figure panel by panel (A: ζ ≈ 1 band honesty, 10→30 bp/√day;
+B: prediction 22–47 bp vs raw/filtered under ~10 bp). Slide 31 — montage
+screenshots no longer cover-cropped (object-fit: contain on #EEF2F7, whole
+workspace visible). OPEN follow-up noted in memory: revisit
+confinement (slide 20) — surfaces should arguably be usable somewhat beyond
+the quoted strike range. Residual verify flags (slide 6: 5px, 14/15: 8px)
+are margin overhang only — screenshots confirmed no visible clipping.
 
 Rev-5 changes (2026-07-08 pm): **graph demo restaged with stronger propagation**
 (eta 10 = slider max, cross-ticker weight 100 — dark gain ~0.5 instead of ~0.25;
@@ -57,7 +115,12 @@ Perf claims on the performance slide are measured on this machine
   light theme via localStorage `volfit.viewSettings`).
 - `assets/fig/` — the technical notes' figures (`Docs/notes/figures/fig_*.pdf`
   rasterized via MiKTeX `pdftoppm -png -r 180`) + deck-only figures
-  (`gen_band_deck_fig.py` regenerates `fig_obj_band_deck.png`).
+  (`gen_band_deck_fig.py` regenerates `fig_obj_band_deck.png`;
+  `gen_deam_real_fig.py` regenerates `fig_deam_bias_real.png` from the real
+  SPY Massive fixture via the production CRR machinery;
+  `gen_siv_ablation_deck.py` regenerates `fig_siv_ablation_deck.png`, the
+  R3×R6 ablation g-curves on the real EFA census node — needs the
+  spike_aug2024 backtest fixtures).
 - `assets/eq/` — equations rendered from the technical notes' LaTeX
   (MiKTeX `latex` + `dvisvgm --no-fonts`, painted `currentColor`).
 - `assets/charts/` — hand-authored data-viz SVGs (palette validated for both
