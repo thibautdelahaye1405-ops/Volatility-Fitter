@@ -119,22 +119,51 @@ Findings:
 **Net:** cross-asset extrapolation to fully-dark names WORKS mechanically
 after the reverse-edge fix and adds genuine-but-modest skill in stress; its
 honest product claim is "keeps dark names marked and moving with the market,
-with stated uncertainty" — not "predicts single-name vol". A benchmark-pack
-resweep under the fixed topology (+ η at the LOO-tuned reach rather than the
-default 1) is required before quoting any liquid_split number. The void
-liquid_split rows have been STRIPPED from the `results/benchmark/` parts
-(originals archived in `void_liquid_pre_topofix/`); the resweep command
-(user's window, calibration-bound, ~2.5 h/regime; resumable):
+with stated uncertainty" — not "predicts single-name vol". The void
+liquid_split rows were STRIPPED from the `results/benchmark/` parts
+(originals archived in `void_liquid_pre_topofix/`) and the full liquid_split
+benchmark was RE-RUN under the fixed topology.
 
-    cd backend
-    ..\.venv\Scripts\python -m backtest.benchmark_pack run `
-        --designs liquid_split --eta 10 --cross-mult 25 --tag _topofix_eta10
-    ..\.venv\Scripts\python -m backtest.benchmark_pack report
+## 2026-07-09 — liquid_split resweep (fixed topology, η 10 × cross ×25)
 
-(η 10 / cross ×25 = the sweep's strongest tested cell, tuned on spike only —
-high_oct2022 / low_jul2023 then serve as out-of-sample validation. The --tag
-keeps the new parts from colliding with the archived full_loo parts; every
-row carries an eta/indexWeight provenance stamp.)
+Full 3-regime resweep (user's window; parts `*_topofix_eta10.json`; command:
+`-m backtest.benchmark_pack run --designs liquid_split --eta 10
+--cross-mult 25 --tag _topofix_eta10`, then `report`). η 10 / cross ×25 were
+TUNED ON SPIKE (the sensitivity sweep's strongest cell); high_oct2022 and
+low_jul2023 are therefore out-of-sample for the knob choice. Dark single
+names only, ~3.4–3.7k scores per regime × R:
+
+    regime         R    n     atmGr   atmBs    atmSk   med|shift|  zMean   zStd
+    spike_aug2024  0  3419    489.5   503.7   +14.15      10.4    -0.01   1.10
+    spike_aug2024  1  3419    475.5   483.5    +7.91       2.8    -0.06   1.02
+    high_oct2022   0  3674    193.6   200.9    +7.24       5.5    -0.02   0.78
+    high_oct2022   1  3674    174.3   178.1    +3.82       3.9    -0.03   0.70
+    low_jul2023    0  3536    451.6   452.3    +0.67       4.2    -0.04   1.91
+    low_jul2023    1  3536    452.0   452.8    +0.78       3.4    -0.06   1.85
+
+### Final verdict on cross-asset extrapolation to fully-dark names
+
+1. **Real, quotable skill in stressed regimes**: +7.9…+14.2 bp on the spike
+   (in-sample for the knobs, but the skill is 3× the sensitivity-sweep
+   preview once the crash/snapback days enter) and **+3.8…+7.2 bp
+   out-of-sample on high_oct2022**, with unbiased, honest-to-conservative
+   bands (ζ std 0.70–1.10).
+2. **~Nothing in the calm regime** (+0.7 bp on low_jul2023): single-name
+   moves there are earnings/idiosyncratic, the systematic component the graph
+   can carry is negligible — and the bands are markedly OVERCONFIDENT there
+   (ζ std ~1.9). Skill is never negative in any cell: propagation never
+   hurts, it just can't manufacture idiosyncratic information.
+3. **Follow-up (band honesty in calm tape):** dark-name posterior uncertainty
+   should widen when the name's own regime is idiosyncratic (e.g. an
+   event/earnings-aware term in the dark baseline precision, or a per-kind ζ
+   recalibration) — ζ std 1.9 in low_jul2023 is the one dishonest cell in
+   the pack.
+
+**Product framing this supports:** graph propagation to fully-dark names
+earns its keep exactly when the desk needs it — when the market reprices
+together — adding up to ~14 bp of ATM accuracy over mechanical transport in
+stress, never subtracting in calm; uncertainty is honest in stress and needs
+an idiosyncratic-regime widening in calm tape.
 
 ---
 
