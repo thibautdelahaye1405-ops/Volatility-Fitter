@@ -81,6 +81,18 @@ class EdgeConfig:
     market_indices: tuple[str, ...] = ("SPX",)
     beta_cap: float = 3.0          # clip vol-ratio / sqrt-T betas to a sane band
     handles: tuple[str, ...] = field(default=("atm", "skew", "curv"))
+    #: Weight fraction of the REVERSE cross edge (name informs its index/ETF
+    #: informer). 2026-07-09 root-cause: with informer->name edges only, single
+    #: names are TRANSIENT states of the directed walk — their stationary mass
+    #: pi is exactly 0, so the reversibilized conductance c_ij = f(pi, K) on
+    #: every edge touching a name VANISHES and the increment prior decouples
+    #: dark names entirely (liquid_split skill was 0.000 in the pilot AND the
+    #: 25-asset benchmark for this reason, NOT because of baseline-precision
+    #: pinning). The reverse edge restores stationary mass; its beta is the
+    #: INVERSE of the forward beta, so both directions encode the same linear
+    #: relation and no second economic claim is introduced. 0 disables
+    #: (reproduces the legacy, disconnected behaviour).
+    cross_reverse_frac: float = 1.0
 
 
 def _clip(beta: float, cfg: EdgeConfig) -> float:
@@ -147,5 +159,14 @@ def build_directed_edges(
                 sig_from = sigma.get(influenced, 0.0)
                 sig_to = sigma.get(informer, 0.0)
                 ratio = sig_from / sig_to if sig_to > 0.0 else 1.0
-                edges.append(_edge(influenced, informer, w, _clip(beta_vn * ratio, cfg)))
+                beta_fwd = _clip(beta_vn * ratio, cfg)
+                edges.append(_edge(influenced, informer, w, beta_fwd))
+                # Reverse edge for index/ETF informers only (name<->name pairs are
+                # already emitted in both directions by this loop): keeps single
+                # names recurrent so their conductance is nonzero (see EdgeConfig).
+                if kind != "name" and cfg.cross_reverse_frac > 0.0:
+                    edges.append(_edge(
+                        informer, influenced, w * cfg.cross_reverse_frac,
+                        _clip(1.0 / max(beta_fwd, 1e-6), cfg),
+                    ))
     return edges

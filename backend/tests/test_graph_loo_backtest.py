@@ -29,7 +29,12 @@ def _edge_map(edges):
 
 def test_index_to_name_direction_and_vol_normalization():
     """Index informs name: the edge is from=NAME, to=INDEX (info flows to->from), and
-    the absolute beta is the vol-normalized 0.7 times sigma_name / sigma_index."""
+    the absolute beta is the vol-normalized 0.7 times sigma_name / sigma_index.
+
+    A REVERSE edge (name informs index) is also emitted with the INVERSE beta:
+    without it single names are transient states of the directed walk (stationary
+    mass 0 -> reversibilized conductance 0 -> dark names fully decoupled — the
+    2026-07-09 liquid_split root cause). Same relation, so no new economics."""
     iso = "2024-08-16"
     spx, aapl = ("SPX", iso), ("AAPL", iso)
     sigma = {spx: 0.20, aapl: 0.40}
@@ -37,10 +42,17 @@ def test_index_to_name_direction_and_vol_normalization():
     edges = _edge_map(build_directed_edges([spx, aapl], sigma, t, EdgeConfig()))
 
     assert (aapl, spx) in edges  # influenced=AAPL is `from`, informer=SPX is `to`
-    assert (spx, aapl) not in edges  # indices are not influenced cross-asset
     e = edges[(aapl, spx)]
     assert math.isclose(e.betaAtmVol, 0.7 * 0.40 / 0.20, rel_tol=1e-9)  # vol-normalized
     assert e.betaAtmVol == e.betaSkew == e.betaCurv  # v1: same beta on all handles
+    # reverse edge: same weight (conductance symmetric), inverse beta (same relation)
+    r = edges[(spx, aapl)]
+    assert r.weight == e.weight
+    assert math.isclose(r.betaAtmVol, 1.0 / e.betaAtmVol, rel_tol=1e-9)
+    # ablation switch reproduces the legacy one-way topology
+    legacy = _edge_map(build_directed_edges(
+        [spx, aapl], sigma, t, EdgeConfig(cross_reverse_frac=0.0)))
+    assert (spx, aapl) not in legacy
 
 
 def test_same_sector_name_edges_only():
