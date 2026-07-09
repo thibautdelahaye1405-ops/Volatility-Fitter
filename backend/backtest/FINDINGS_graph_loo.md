@@ -121,8 +121,20 @@ after the reverse-edge fix and adds genuine-but-modest skill in stress; its
 honest product claim is "keeps dark names marked and moving with the market,
 with stated uncertainty" — not "predicts single-name vol". A benchmark-pack
 resweep under the fixed topology (+ η at the LOO-tuned reach rather than the
-default 1) is required before quoting any liquid_split number; the
-`results/benchmark/` liquid_split rows must not be cited.
+default 1) is required before quoting any liquid_split number. The void
+liquid_split rows have been STRIPPED from the `results/benchmark/` parts
+(originals archived in `void_liquid_pre_topofix/`); the resweep command
+(user's window, calibration-bound, ~2.5 h/regime; resumable):
+
+    cd backend
+    ..\.venv\Scripts\python -m backtest.benchmark_pack run `
+        --designs liquid_split --eta 10 --cross-mult 25 --tag _topofix_eta10
+    ..\.venv\Scripts\python -m backtest.benchmark_pack report
+
+(η 10 / cross ×25 = the sweep's strongest tested cell, tuned on spike only —
+high_oct2022 / low_jul2023 then serve as out-of-sample validation. The --tag
+keeps the new parts from colliding with the archived full_loo parts; every
+row carries an eta/indexWeight provenance stamp.)
 
 ---
 

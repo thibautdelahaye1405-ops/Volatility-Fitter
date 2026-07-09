@@ -51,8 +51,10 @@ def _n_pairs(regime: str) -> int:
     return max(len(dates) - 1, 0)
 
 
-def _part_path(regime: str, a: int, b: int) -> str:
-    return os.path.join(RESULTS_DIR, f"{regime}_pairs{a:02d}-{b:02d}.json")
+def _part_path(regime: str, a: int, b: int, tag: str = "") -> str:
+    """``tag`` (e.g. "_topofix_eta10") names a distinct sweep so its parts can
+    coexist with (and not be skipped by) an earlier sweep's part files."""
+    return os.path.join(RESULTS_DIR, f"{regime}_pairs{a:02d}-{b:02d}{tag}.json")
 
 
 def chunk_ranges(n_pairs: int, chunk: int) -> list[tuple[int, int]]:
@@ -62,7 +64,7 @@ def chunk_ranges(n_pairs: int, chunk: int) -> list[tuple[int, int]]:
 
 def run_regime(
     regime: str, designs, r_values, chunk: int, cfg: EdgeConfig,
-    max_pairs: int | None = None,
+    max_pairs: int | None = None, eta_scale: float = 1.0, tag: str = "",
 ) -> None:
     """Score one regime chunk-by-chunk, skipping chunks whose part file exists."""
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -70,12 +72,16 @@ def run_regime(
     if max_pairs is not None:
         n = min(n, max_pairs)
     for a, b in chunk_ranges(n, chunk):
-        path = _part_path(regime, a, b)
+        path = _part_path(regime, a, b, tag)
         if os.path.exists(path):
             print(f"{regime} pairs {a}-{b}: part exists, skipped", flush=True)
             continue
         print(f"{regime} pairs {a}-{b}: scoring…", flush=True)
-        rows = run_loo(regime, designs, r_values, None, cfg, pair_range=(a, b))
+        rows = run_loo(regime, designs, r_values, None, cfg, pair_range=(a, b),
+                       eta_scale=eta_scale)
+        # Provenance stamp: the merge dedups on (regime, day, design, R, node),
+        # so rows from differently-knobbed sweeps would otherwise mix silently.
+        rows = [dict(r, eta=eta_scale, indexWeight=cfg.index_weight) for r in rows]
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"regime": regime, "pairs": [a, b], "rows": rows}, fh, default=str)
         print(f"{regime} pairs {a}-{b}: {len(rows)} scores -> {path}", flush=True)
@@ -334,6 +340,13 @@ def main() -> int:
     ap.add_argument("--regimes-r", default="0,1")
     ap.add_argument("--chunk", type=int, default=2, help="day pairs per resumable part")
     ap.add_argument("--max-pairs", type=int, default=None, help="cap pairs (smoke runs)")
+    ap.add_argument("--eta", type=float, default=1.0,
+                    help="solver propagation reach etaScale (default 1 = production)")
+    ap.add_argument("--cross-mult", type=float, default=1.0,
+                    help="multiply the cross-asset edge conductances (index/etf/name)")
+    ap.add_argument("--tag", default="",
+                    help="part-filename suffix naming this sweep (e.g. _topofix_eta10);"
+                         " REQUIRED in practice for a re-run, else old parts skip it")
     args = ap.parse_args()
 
     if args.command == "report":
@@ -344,8 +357,11 @@ def main() -> int:
     designs = tuple(d.strip() for d in args.designs.split(","))
     r_values = tuple(float(r) for r in args.regimes_r.split(","))
     regimes = (args.regime,) if args.regime else REGIMES
+    m = args.cross_mult
+    cfg = EdgeConfig(index_weight=2.0 * m, etf_weight=4.0 * m, name_weight=2.0 * m)
     for regime in regimes:
-        run_regime(regime, designs, r_values, args.chunk, EdgeConfig(), args.max_pairs)
+        run_regime(regime, designs, r_values, args.chunk, cfg, args.max_pairs,
+                   eta_scale=args.eta, tag=args.tag)
     return 0
 
 

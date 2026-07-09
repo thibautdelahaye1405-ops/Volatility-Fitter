@@ -196,11 +196,15 @@ def run(
     max_pairs: int | None,
     cfg: EdgeConfig,
     pair_range: tuple[int, int] | None = None,
+    eta_scale: float = 1.0,
 ) -> list[dict]:
     """Score consecutive day pairs across the designs and SSR regimes.
 
     ``pair_range=(a, b)`` scores pairs ``a..b-1`` only (the benchmark pack's
-    chunked/resumable driver); ``max_pairs`` keeps the historical prefix cut."""
+    chunked/resumable driver); ``max_pairs`` keeps the historical prefix cut.
+    ``eta_scale`` sets the solver's propagation reach (GraphExtrapolateRequest
+    etaScale; default 1.0 = the production default — the 2026-07-09 sensitivity
+    sweep showed reach, not precision, is the binding cross-asset lever)."""
     paths = list_fixtures(regime=regime)
     if not paths:
         raise SystemExit(f"no fixtures for regime={regime}")
@@ -229,7 +233,7 @@ def run(
                     _setup_day(state_t, tickers, snaps, r_val, design)
                     sigma, tmap = _baseline_maps(state_t)
                     edges = build_directed_edges(list(sigma), sigma, tmap, cfg)
-                    req = GraphExtrapolateRequest(edges=edges)
+                    req = GraphExtrapolateRequest(edges=edges, etaScale=eta_scale)
                     full = solve(state_t, req)
                     if full is None:
                         continue

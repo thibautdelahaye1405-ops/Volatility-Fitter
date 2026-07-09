@@ -59,27 +59,38 @@ def test_summarize_by_groups_and_tolerates_missing():
 
 
 def test_parts_roundtrip_and_resume_skip(tmp_path, monkeypatch, capsys):
+    from backtest.graph_edges import EdgeConfig
+
     monkeypatch.setattr(bp, "RESULTS_DIR", str(tmp_path))
     calls: list[tuple] = []
 
-    def fake_loo(regime, designs, r_values, max_pairs, cfg, pair_range=None):
+    def fake_loo(regime, designs, r_values, max_pairs, cfg, pair_range=None,
+                 eta_scale=1.0):
         calls.append(pair_range)
         return [_row(as_of=f"day{pair_range[0]}")]
 
     monkeypatch.setattr(bp, "run_loo", fake_loo)
     monkeypatch.setattr(bp, "_n_pairs", lambda regime: 5)
 
-    bp.run_regime("spike_aug2024", ("full_loo",), (0.0,), chunk=2, cfg=None)
+    bp.run_regime("spike_aug2024", ("full_loo",), (0.0,), chunk=2, cfg=EdgeConfig())
     assert calls == [(0, 2), (2, 4), (4, 5)]
 
     calls.clear()
-    bp.run_regime("spike_aug2024", ("full_loo",), (0.0,), chunk=2, cfg=None)
+    bp.run_regime("spike_aug2024", ("full_loo",), (0.0,), chunk=2, cfg=EdgeConfig())
     assert calls == []  # every part exists -> fully resumed, nothing recomputed
     assert "skipped" in capsys.readouterr().out
 
     rows = bp.load_parts("spike_aug2024")
     assert len(rows) == 3
+    assert all(r["eta"] == 1.0 for r in rows)  # provenance stamp on every row
     assert bp.load_parts("other_regime") == []
+
+    # A TAGGED sweep coexists with the untagged parts instead of being skipped.
+    calls.clear()
+    bp.run_regime("spike_aug2024", ("liquid_split",), (0.0,), chunk=2,
+                  cfg=EdgeConfig(), eta_scale=10.0, tag="_topofix_eta10")
+    assert calls == [(0, 2), (2, 4), (4, 5)]  # ran despite existing untagged parts
+    assert (tmp_path / "spike_aug2024_pairs00-02_topofix_eta10.json").exists()
 
 
 def test_load_parts_dedupes_overlapping_chunks(tmp_path, monkeypatch):
