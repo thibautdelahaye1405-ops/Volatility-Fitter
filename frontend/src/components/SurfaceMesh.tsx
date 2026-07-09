@@ -1,9 +1,9 @@
 // Presentational 3D surface (k × T × value) — pure SVG, no chart deps.
 //
 // Renders a (k, sqrt(T), value) mesh through an orthographic projection with
-// free yaw rotation (drag) at a fixed pitch; each grid cell is split into two
-// triangles, painter-sorted back to front and shaded with a blue→cyan→amber→red
-// colormap (triangles are the true piecewise-affine facets). Extracted from
+// free yaw rotation (drag) at a fixed pitch; cells are painter-sorted back to
+// front and shaded with a blue→cyan→amber→red colormap (optionally split into
+// their two triangular facets — see `triangulate`). Extracted from
 // SurfaceChart so both the Parametric vol surface (fetched) and the Local Vol
 // reconstructed-IV surface (built client-side) share one renderer.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -99,6 +99,10 @@ interface SurfaceMeshProps {
    *  in log-moneyness (the LV nodal surface is in x = K/F). Memoize at the call
    *  site; the brush still windows in data.k units. */
   rowXTransform?: (x: number, row: number) => number;
+  /** Paint each cell as its TWO triangular facets (the true piecewise-affine
+   *  geometry of a nodal grid — the LV surface) instead of one quad (default,
+   *  the smoother look the IV surfaces keep). */
+  triangulate?: boolean;
 }
 
 export default function SurfaceMesh({
@@ -109,6 +113,7 @@ export default function SurfaceMesh({
   formatX,
   countCaption,
   rowXTransform,
+  triangulate = false,
 }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -236,28 +241,33 @@ export default function SurfaceMesh({
     const Y = (p: { sy: number }) => oy + p.sy * scale;
 
     const vSpan = mesh.vMax - mesh.vMin || 1;
-    // Each cell renders as its TWO triangular facets (the surface is piecewise
-    // affine over triangles, not planar over quads), split along the (i,j) →
-    // (i+1,j+1) diagonal; each facet gets its own colour and paint depth.
+    // One facet per cell (quad), or — when triangulated — the cell's TWO
+    // triangular facets split along the (i,j) → (i+1,j+1) diagonal, each with
+    // its own colour and paint depth.
     const quads: { d: string; depth: number; color: string }[] = [];
+    const pushFacet = (
+      cs: { sx: number; sy: number; depth: number }[],
+      vols: number[],
+    ) => {
+      const vAvg = vols.reduce((a, v) => a + v, 0) / vols.length;
+      quads.push({
+        d: `M${cs.map((p) => `${X(p).toFixed(1)},${Y(p).toFixed(1)}`).join("L")}Z`,
+        depth: cs.reduce((a, p) => a + p.depth, 0) / cs.length,
+        color: valColor((vAvg - mesh.vMin) / vSpan),
+      });
+    };
     for (let i = 0; i < pts.length - 1; i++) {
       for (let j = 0; j < pts[i].length - 1; j++) {
-        const corners3 = [
-          [pts[i][j], pts[i][j + 1], pts[i + 1][j + 1]],
-          [pts[i][j], pts[i + 1][j + 1], pts[i + 1][j]],
+        const [p00, p01, p11, p10] = [pts[i][j], pts[i][j + 1], pts[i + 1][j + 1], pts[i + 1][j]];
+        const [v00, v01, v11, v10] = [
+          mesh.rows[i][j].vol, mesh.rows[i][j + 1].vol,
+          mesh.rows[i + 1][j + 1].vol, mesh.rows[i + 1][j].vol,
         ];
-        const vols3 = [
-          [mesh.rows[i][j].vol, mesh.rows[i][j + 1].vol, mesh.rows[i + 1][j + 1].vol],
-          [mesh.rows[i][j].vol, mesh.rows[i + 1][j + 1].vol, mesh.rows[i + 1][j].vol],
-        ];
-        for (let s = 0; s < 2; s++) {
-          const c3 = corners3[s];
-          const vAvg = (vols3[s][0] + vols3[s][1] + vols3[s][2]) / 3;
-          quads.push({
-            d: `M${c3.map((p) => `${X(p).toFixed(1)},${Y(p).toFixed(1)}`).join("L")}Z`,
-            depth: (c3[0].depth + c3[1].depth + c3[2].depth) / 3,
-            color: valColor((vAvg - mesh.vMin) / vSpan),
-          });
+        if (triangulate) {
+          pushFacet([p00, p01, p11], [v00, v01, v11]);
+          pushFacet([p00, p11, p10], [v00, v11, v10]);
+        } else {
+          pushFacet([p00, p01, p11, p10], [v00, v01, v11, v10]);
         }
       }
     }
@@ -268,7 +278,7 @@ export default function SurfaceMesh({
     // formatters don't have to be memo dependencies.
     const anchors = corners.map((c) => ({ x: X(c), y: Y(c) }));
     return { quads, frame, anchors };
-  }, [mesh, yaw, size, zoomF, axisMode]);
+  }, [mesh, yaw, size, zoomF, triangulate]);
 
   const fmtV = formatValue ?? formatPct;
   const fmtX = formatX ?? ((v: number) => axisTickLabel(axisMode, v));

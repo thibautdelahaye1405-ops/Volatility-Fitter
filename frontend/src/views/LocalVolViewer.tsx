@@ -270,6 +270,7 @@ export default function LocalVolViewer() {
               formatX={lvFormatX}
               countCaption={`${data.tNodes.length}×${data.xNodes.length} vertices`}
               rowXTransform={lvXTransform}
+              triangulate
             />
           )
           : <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
