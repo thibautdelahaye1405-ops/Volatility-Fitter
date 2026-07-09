@@ -180,7 +180,7 @@ export default function ViewSettingsViewer() {
       {/* Expiry label format (also surfaced in Options + the chart headers). */}
       <div className={card}>
         <h3 className={sectionTitle}>Expiry label format</h3>
-        <p className={sectionHint}>Applied across every view; also a ↻ toggle in the chart headers.</p>
+        <p className={sectionHint}>Applied across every view (chart headers, selectors, tables).</p>
         <div className="flex flex-wrap items-center gap-1.5">
           {EXPIRY_FORMATS.map((f) => (
             <button
