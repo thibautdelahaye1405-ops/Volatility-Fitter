@@ -125,16 +125,22 @@ signal beat the mechanical spot-transport?).
   (β=0.6), everything else β=0. **Direction:** `w_ij` = "j informs i", so a
   `GraphEdgeInput` flows `to`→`from` — "index informs name" is emitted as
   `from=NAME, to=INDEX`. Vol-normalized β becomes the absolute edge β = β_vn·σ_from/σ_to.
+  **Reverse cross edges** (`EdgeConfig.cross_reverse_frac`, default 1, inverse β) are
+  REQUIRED: with one-way cross edges single names are transient under the trust kernel
+  (stationary π=0 ⇒ reversibilized conductance 0 ⇒ dark names fully decoupled), which
+  silently zeroed every liquid_split result until 2026-07-09; 0 reproduces that legacy
+  topology for ablation.
 
       python -m backtest.graph_loo --regime spike_aug2024
       python -m backtest.graph_loo --regime spike_aug2024 --designs liquid_split --max-pairs 4
 
   Writes `results/<regime>_graph_loo.json`. Covered by `tests/test_graph_loo_backtest.py`
-  (taxonomy + the direction/vol-normalization/√T edge logic). **NB (pilot caveat):**
-  the captured 8-asset pilot has no US sector ETF and its single names share no sector
-  (AAPL/NVDA/JPM), so the ETF→name and name→name edge classes are **dormant** — only
-  Index→name + calendar are exercised. The full name→name / sector tests need the
-  25-asset capture.
+  (taxonomy + the direction/vol-normalization/√T edge logic). **Verdict (2026-07-09,
+  25 assets × 3 regimes, fixed topology; tables in `FINDINGS_graph_loo.md`):**
+  neighbour-supported indexes +10…+76 bp / ETFs +3…+7 bp ATM skill; fully-dark single
+  names +7.9…+14.2 bp in the Aug-2024 spike and +3.8…+7.2 bp out-of-sample in Oct-2022,
+  ≈0 (never negative) in the Jul-2023 calm — whose dark-name bands read overconfident
+  (ζ std ~1.9, open follow-up).
 
 ## R3 × R6 wing-arb ablation (`ablation_arb.py`, FINDINGS follow-up)
 
@@ -160,15 +166,14 @@ chain (real de-Am) plus deterministic aggregation/grid unit tests. Findings:
 ## Status
 
 Capture (REST + flat-file) + compute (dispatch/replay) + metrics/analyze built and
-tested. Pilot = Aug-2024 spike × 8 assets. The **prior-mode temporal axis**
-(`temporal.py`) and the **graph leave-one-out** (`graph_loo.py`, Phase 6) are both
-built and runnable. **Remaining:** the NN-dataset emitter (Phase 7, feeds off
-`volfit/data/columnar.py`), the full 25-asset capture (lights up the dormant
-name→name / sector-ETF graph edges), and the LV `wall_ms_pde_*` timing wiring.
+tested. The 25-asset capture and the full 3-regime benchmark pack (full_loo +
+liquid_split, fixed topology) are DONE (2026-07-09; verdict above). **Remaining:**
+the NN-dataset emitter (Phase 7, feeds off `volfit/data/columnar.py`), the LV
+`wall_ms_pde_*` timing wiring, and the calm-regime dark-name band widening.
 
 ## Observation-filter temporal backtest (Note 15, Phase 5+)
 
-`observation_filter.py` � drives the PRODUCTION `on_fit_commit` per captured
+`observation_filter.py` � drives the PRODUCTION `on_fit_commit` per captured
 day pair: carry the T-1 posterior into day T, commit a thinned measurement
 under scenarios `thinned / contradiction / shock`, score vs the raw-fit and
 gain-0 baselines + zeta calibration + retargeted wing RMS. Sweeps
@@ -181,7 +186,8 @@ prepared mids the active-path ATM probe reads (F10 is unit-locked instead).
 
 ## 25-asset capture
 
-`run_capture_full.ps1` � resumable REST capture of the FULL universe across
+`run_capture_full.ps1` � resumable REST capture of the FULL universe across
 all 3 regimes (~5 min/trading day for the 17 non-pilot names; force-sets
-VOLFIT_MASSIVE_KEY from restart.local.ps1). Feeds the 25-asset graph
-leave-one-out (sector edges + graph/precision.py DARK_BASE_SCALE validation).
+VOLFIT_MASSIVE_KEY from restart.local.ps1). Fed the 25-asset graph
+leave-one-out (verdict 2026-07-09 above; graph/precision.py DARK_BASE_SCALE
+proved a DEAD lever — the levers are reach η and cross conductance).

@@ -1404,31 +1404,32 @@
 <!-- ============ 28 · GRAPH VALIDATION ====================================== -->
 <section class="slide">
   <div class="kicker"><span class="tag">Graph</span><span>The propagation layer — held-out validation</span></div>
-  <h1 class="claim">Graph skill is <span class="hl">demonstrated for neighbour-supported holdouts</span> — fully-dark cross-asset validation is next.</h1>
+  <h1 class="claim">Graph skill is <span class="hl">demonstrated on held-out history — including fully-dark names</span> in the regimes that matter.</h1>
   <p class="lede"><b>Leave-one-out (LOO)</b>: pretend a lit node is dark, let the graph reconstruct it from the others, then
     compare to the calibration it actually had. The baseline to beat is the mechanical alternative — just spot-transporting
-    yesterday's surface. "Skill" below = how much closer the graph gets than that baseline.</p>
+    yesterday's surface. "Skill" = how much closer the graph gets. 25 assets × 3 historical regimes, ~47k held-out scores.</p>
   <div class="cols even">
     <div>
       <div class="statrow" style="margin-top:0">
-        <div class="stat"><div class="v vl">+26…+37 bp</div><div class="l">ATM skill vs mechanical spot-transport — 4,134 held-out nodes, 0 skipped</div></div>
-        <div class="stat"><div class="v g">ζ ≈ 0 · σ 0.72–0.90</div><div class="l">unbiased, well-calibrated bands (slightly conservative)</div></div>
+        <div class="stat"><div class="v vl">+8…+14 bp</div><div class="l">fully-dark single names behind lit indexes/ETFs — Aug-2024 spike, the product case</div></div>
+        <div class="stat"><div class="v g">+3.8…+7.2 bp</div><div class="l">same, fully out-of-sample (Oct-2022 bear; reach tuned on the spike only)</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
-        <li class="g"><strong>Neighbour-supported nodes: decisive skill</strong>, driven by calendar coupling — the sweep brackets genuine skill at +26…+37 bp across SSR assumptions.</li>
-        <li class="a"><strong>Honest scope:</strong> the fully-dark cross-asset split showed ~0 skill on the 8-asset pilot — that universe is structurally starved (no sector ETF; name↔name edges dormant). The 25-asset capture that fixes it is complete; the rerun is queued.</li>
+        <li class="g"><strong>Neighbour-supported holdouts: decisive skill, calendar-driven</strong> — indexes +10…+76 bp, ETFs +3…+7 bp across all three regimes (ranges bracket the SSR transport assumptions).</li>
+        <li class="a"><strong>Honest scope:</strong> in the Jul-2023 calm the dark-name skill is ≈0 (never negative) — single-name moves there are earnings-idiosyncratic, and there is no systematic signal to carry; that regime's dark-name bands read overconfident (ζ std ~1.9, flagged with a fix queued). Everywhere else ζ ≈ 0, std 0.70–1.10.</li>
         <li class="v">Backtesting is <strong>one click in the panel</strong> — the same LOO that validated the method runs on the desk's own universe, on demand.</li>
       </ul>
     </div>
     <div>
       <div class="figcard"><img src="{{FIG:fig_graph_backtest}}" alt="Graph LOO backtest results"></div>
-      <p class="shotcap"><span class="k">Leave-one-out, plotted.</span> Held-out node predictions versus realized calibrations: the graph posterior
+      <p class="shotcap"><span class="k">Leave-one-out, plotted (8-asset pilot run; the 25-asset benchmark ships as a regenerable
+        HTML artifact).</span> Held-out node predictions versus realized calibrations: the graph posterior
         (vs the transported-prior baseline) tightens errors and its standardized residuals sit where a correct model's should.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    A propagation engine you can <b>re-certify on your own book any day</b> — and whose one unproven case
-    (a name with <em>no</em> graph support at all) is stated as unproven, not claimed.</div>
+    A propagation engine you can <b>re-certify on your own book any day</b> — it earns its keep exactly when the market
+    reprices together, and its weakest case (dark names in calm, idiosyncratic tape) is reported at its measured ≈0, not claimed.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 14 · Graph extrapolation</span><span></span></div>
 </section>
 
@@ -1552,8 +1553,8 @@
   <div class="cols">
     <div>
       <ul class="points" style="margin-top:4px">
-        <li class="g"><strong>Recently landed</strong> — parallel background calibration (~2× warm, byte-identical), the Quality publish-gate dashboard, surface export/publish, per-node graph attribution, the 25-asset historical capture for cross-asset validation, a frontend test harness (unit + headless-UI smoke).</li>
-        <li class="v"><strong>Next</strong> — the benchmark-pack verdict (run in progress), the cross-asset leave-one-out rerun on the 25-asset universe, the deployment-model decision.</li>
+        <li class="g"><strong>Recently landed</strong> — parallel background calibration (~2× warm, byte-identical), the Quality publish-gate dashboard, surface export/publish, per-node graph attribution, the full 25-asset × 3-regime benchmark pack (~47k held-out scores, including the fully-dark cross-asset validation), a frontend test harness (unit + headless-UI smoke).</li>
+        <li class="v"><strong>Next</strong> — calm-regime dark-name band widening (the one overconfident cell in the benchmark), the deployment-model decision.</li>
         <li><strong>Then</strong> — portfolio/P&amp;L views, multi-user data services, enterprise entitlements.</li>
       </ul>
     </div>
@@ -1561,7 +1562,7 @@
       <ul class="points" style="margin-top:4px">
         <li class="a"><strong>Stated limits today</strong> — single-process serving; largest exercised end-to-end: the 25-asset
           capture universe offline, ~30-node universes live; beyond ~2–3k nodes the sparse graph solver is wanted (deferred
-          deliberately); fully-dark cross-asset skill is pending its rerun rather than claimed.</li>
+          deliberately); fully-dark cross-asset skill is demonstrated in stressed regimes, measured ≈0 in calm idiosyncratic tape.</li>
         <li><strong>Data</strong> — Yahoo (free), Massive/Polygon (delayed + flat-file history), Bloomberg (Terminal) behind one provider contract with health lights and as-of replay.</li>
         <li class="g"><strong>Outputs today</strong> — JSON/CSV surface export with a manifest, an HTML fit report, and the full REST API;
           <strong>not yet</strong>: portfolio Greeks/P&amp;L, multi-user entitlements. Deployment: dev server or single-file desktop build.</li>

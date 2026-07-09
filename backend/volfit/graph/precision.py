@@ -104,10 +104,14 @@ def observation_precision(
 
 #: Baseline-precision multiplier for DARK nodes (graph-LOO follow-up): a dark
 #: node's transported prior is a TARGET to be moved by propagated signal, not
-#: a lit prior corroborated by today's quotes — at full tier precision it
-#: pinned the posterior (measured: a 96 bp SPX innovation moved a dark AAPL
-#: node 0.01 bp). 0.25 mirrors the nearest-expiry tier scale; validate on the
-#: 25-asset capture before tuning further.
+#: a lit prior corroborated by today's quotes. 0.25 mirrors the nearest-expiry
+#: tier scale. NB (validated on the 25-asset benchmark, 2026-07-09): the
+#: original motivating measurement ("a 96 bp SPX innovation moved a dark AAPL
+#: node 0.01 bp") was a HARNESS topology artifact (one-way cross edges made
+#: names transient -> conductance 0), not precision pinning; post-fix this
+#: scale measured as a dead lever for the posterior mean (identical shifts at
+#: 0.25/0.05/0.01 — the levers are reach eta and edge conductance). It still
+#: sets the dark band width, so keep it; do not tune it expecting gain.
 DARK_BASE_SCALE = 0.25
 
 

@@ -80,7 +80,9 @@ Each note: commit after it compiles clean with its figures.
   assumptions/definitions/propositions with proofs (PSD directed residual,
   proper prior, screened-Poisson OT dual, Schur-complement update), the
   six-node case file solved by the production code, regenerated
-  narrative figures, exact LOO numbers (+37.1/+25.6 bp), and a traceability
+  narrative figures, exact LOO numbers (+37.1/+25.6 bp; updated 2026-07-09
+  with the 25-asset benchmark, the transient-name topology case file, and the
+  fully-dark resweep verdict — see Note 14 §backtest), and a traceability
   table with verified code/test anchors (Appendix C executed against
   `volfit.graph`, < 1e-10). The external comparison draft in
   `pilot_graph_extrapolation/` is superseded. Remaining notes get the same

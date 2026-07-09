@@ -8,7 +8,41 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
-## STATUS — updated 2026-07-08 (resume here)
+## STATUS — updated 2026-07-09 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
+
+Full 25-asset benchmark pack finished (user's window; ~47k held-out scores,
+3 regimes × 2 designs × R∈{0,1}), then a root-cause hunt and a same-day fix +
+resweep (commits `61045ac`, `fadb413`, `8cfac99`; full tables in
+`backend/backtest/FINDINGS_graph_loo.md`):
+
+- **full_loo skill concentrates where the graph has support**: indexes
+  +10…+76 bp, ETFs +3…+7 bp across all 3 regimes; single names ≈0 (they are
+  ~80% of rows with 178–460 bp earnings-dominated base RMS, which is why the
+  aggregate looked small vs the pilot's index-weighted +26…+37 bp headline).
+- **liquid_split = 0.000 everywhere was a HARNESS BUG, not a market fact**:
+  `backtest/graph_edges.py` emitted cross edges one-way (informer→name) ⇒
+  names were TRANSIENT under the trust kernel ⇒ stationary π=0 on every name
+  ⇒ reversibilized conductance 0 ⇒ dark names fully decoupled. The pilot's
+  "96 bp SPX moves dark AAPL 0.01 bp" was this artifact (precision pinning =
+  misdiagnosis; `DARK_BASE_SCALE` measured a DEAD lever post-fix). Product
+  auto-lattice unaffected (symmetric edges). FIX: `EdgeConfig.cross_reverse_frac`
+  (reverse edge, inverse β = same linear relation; 0 = legacy; test-locked).
+  Void liquid rows stripped from `results/benchmark/` (archived
+  `void_liquid_pre_topofix/`); benchmark artifact regenerated.
+- **Resweep on fixed topology** (`--eta 10 --cross-mult 25 --tag
+  _topofix_eta10`; knobs tuned on spike, others OOS): dark-name skill
+  **spike +7.9…+14.2 bp (ζ std 1.02–1.10, honest) · high_oct2022 +3.8…+7.2 bp
+  OUT-OF-SAMPLE (ζ 0.70–0.78) · low_jul2023 ≈0 (earnings-idio; never
+  negative) with OVERCONFIDENT bands (ζ std ~1.9)**. Product claim: propagation
+  earns its keep in stress, never hurts in calm.
+- **Docs upgraded to the new numbers**: Note 14 (abstract, case-file
+  subsection + 25-asset verdict table + traceability row), deck slides 28/34 +
+  exec-deck slide 9, FINDINGS, this file.
+- **NEXT**: calm-regime dark-name band widening (the one dishonest cell —
+  event/earnings-aware dark baseline precision); Phase 2 deployment-model
+  decision; benchmark_pack gained `--eta/--cross-mult/--tag` for future sweeps.
 
 ### 🧭 SESSION WRAP (2026-07-08) — GRAPH UX REVAMP SHIPPED (4 phases, e36ef79→912b00b)
 
@@ -225,14 +259,17 @@ window.
   name→name edges connect dark↔dark), ζ std 0.48 = conservative posterior.
   Whether `DARK_BASE_SCALE=0.25` unlocks enough gain (and what the sector
   name→name edges do in full_loo, where names are lit) is exactly what the
-  full run answers.
+  full run answers. *[SUPERSEDED 2026-07-09: the zeros were a topology bug
+  (one-way cross edges → transient names → conductance 0), and
+  `DARK_BASE_SCALE` proved a dead lever — see the 2026-07-09 wrap.]*
 - **NEXT: run
   `powershell -ExecutionPolicy Bypass -File backend\backtest\run_benchmark_pack.ps1`
   in your own window** (resumable; rerun after any interruption), then read
   `backend\backtest\results\benchmark\benchmark_report.html` and record the
   verdict (graph-LOO FINDINGS update + DARK_BASE_SCALE tuning decision).
   NB the report currently on disk is the 1-pair SMOKE render — `report`
-  regenerates it from whatever parts exist.
+  regenerates it from whatever parts exist. *[DONE 2026-07-09 — verdict, root
+  cause and resweep recorded in the 2026-07-09 wrap.]*
 - **[2026-07-07] First sweep attempt died mid-run + spike regime SILENTLY
   EMPTY — root cause FIXED.** The spike_aug2024 fixtures carry DUPLICATE
   strikes (multiple listings at one strike; XOM 2024-12-20 was the trigger):
@@ -328,8 +365,8 @@ All on **main** (through `a66b016`; suite **921 passed, 1 skipped**).
 **Plan:** next session(s) = **augmenting app features** (user-directed;
 productization arc underway, see the wrap above); the capture prerequisite is
 now CLEARED for the **25-asset graph leave-one-out** (sector edges lit +
-`DARK_BASE_SCALE` validation) and the temporal/ablation reruns — run those
-when the app-feature push pauses.
+`DARK_BASE_SCALE` validation) *[DONE 2026-07-09 — see that wrap]* and the
+temporal/ablation reruns — run those when the app-feature push pauses.
 
 ## STATUS — earlier (2026-07-03)
 
@@ -528,10 +565,17 @@ Design (confirmed with the user 2026-06-26):
   innovation moves the dark AAPL node 0.01 bp), AND the **8-asset pilot is starved** —
   no US sector ETF, AAPL/NVDA/JPM share no sector ⇒ `name→name`/`ETF→name` edges are
   DORMANT. NOT a verdict against the method — the experiment can't exercise it.
+  *[SUPERSEDED 2026-07-09: both "measured causes" were symptoms of a harness
+  topology defect (one-way cross edges → names transient → π=0 → conductance
+  0 → dark names decoupled). Post-fix, dark-name skill is +7.9…+14.2 bp in
+  the spike and +3.8…+7.2 bp out-of-sample in high_oct2022, ≈0 in the calm
+  regime — see the 2026-07-09 wrap + FINDINGS_graph_loo.md.]*
 - **Two concrete follow-ups** to give cross-asset a fair test: the **25-asset capture**
   (same-sector clusters + sector ETFs light the dormant edges), and a **lower baseline
   precision for DARK nodes** in `graph/precision.py` (a dark target is less certain than
   a lit prior, so it shouldn't pin the posterior — production change, validate on 25).
+  *[Resolved 2026-07-09: the capture ran, `DARK_BASE_SCALE` proved a dead lever, and
+  the real unlock was the reverse-edge topology fix + reach η.]*
 Tests: `tests/test_graph_loo_backtest.py` (taxonomy + direction/√T/vol-norm edge logic).
 
 ### 🧭 SESSION WRAP (2026-06-25) — prior-persistence follow-ons DONE

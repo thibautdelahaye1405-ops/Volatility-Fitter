@@ -42,9 +42,15 @@ quote comparison --- is described with its provenance hierarchy, data-derived
 precision tiers, and per-edge directed amplitude $\beta$. A six-node case file,
 solved by the production code, shows the whole mechanism on one page; and a
 temporal leave-one-out backtest measures the graph's \emph{skill} over the
-transported-prior baseline at $+25.6$ to $+37.1$ ATM vol bps, unbiased
-(standardized-residual mean $\approx0$) and slightly conservative (std
-$0.72$--$0.90$). A traceability table ties every claim to its module and test.
+transported-prior baseline: on 25 assets across three historical regimes
+($\sim$47k held-out scores), neighbour-supported indexes gain $+10$ to $+76$
+ATM vol bps and ETFs $+3$ to $+7$; fully-dark single names behind lit
+indexes/ETFs --- the product case --- gain $+8$ to $+14$ bps in the
+August-2024 spike and $+3.8$ to $+7.2$ fully out-of-sample in the October-2022
+bear, with unbiased standardized residuals ($\bar\zeta\approx0$). A case file
+documents the harness topology defect that had previously masked the
+cross-asset path entirely. A traceability table ties every claim to its module
+and test.
 \end{abstract}
 
 \tableofcontents
@@ -582,25 +588,92 @@ standardized residuals unbiased ($\bar\zeta=-0.01$) and slightly conservative
 touch too wide, which is the safe side of miscalibration. The driver is the
 calendar coupling.
 \item \textbf{Cross-asset to fully-dark names} (lit = index/ETF only): skill
-$\approx0$ on this pilot --- for two \emph{measured} reasons, not a verdict
-against the method. The same-name transported prior is already an excellent
-predictor at very high baseline precision (a $96$ bp SPX innovation moves a
-fully-dark AAPL node by $0.01$ bp), and the 8-asset capture is structurally
-starved of the same-sector clusters and sector ETFs that light the cross-asset
-path. The follow-ups --- a 25-asset capture, and a lower dark-node baseline
-precision --- are designed to give that path a fair test.
+$\approx0$ on this pilot. Two explanations were recorded at the time --- a
+pinning baseline precision (a $96$ bp SPX innovation was measured to move a
+fully-dark AAPL node by $0.01$ bp) and a structurally starved 8-asset universe.
+\emph{Both later proved to be symptoms of a harness topology defect}, not
+properties of the method or the data; the case file below documents the
+defect, its fix, and the corrected verdict.
 \end{itemize}
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.95\textwidth]{fig_graph_backtest.pdf}
-\caption{The leave-one-out verdict. Left: skill over the transported prior for
-the headline use case, bracketed by the two transport regimes --- the graph adds
-$+25.6$ to $+37.1$ ATM vol bps. Right: the standardized-residual std is below
-one in both regimes: the posterior bands are slightly conservative, never
-overconfident.}
+\caption{The leave-one-out verdict (8-asset pilot run; the 25-asset benchmark
+below ships as a regenerable HTML artifact). Left: skill over the transported
+prior for the neighbour-supported use case, bracketed by the two transport
+regimes --- the graph adds $+25.6$ to $+37.1$ ATM vol bps. Right: the
+standardized-residual std is below one in both regimes: the posterior bands are
+slightly conservative, never overconfident.}
 \label{fig:backtest}
 \end{figure}
+
+\subsection{Case file: the transient-name topology defect}
+\label{sec:loo-casefile}
+
+The pilot's cross-asset null survived the move to the full 25-asset capture
+(3 regimes $\times$ 19 day pairs, $\sim$47k held-out scores): the liquid-split
+design returned ATM skill $+0.000$ in \emph{every} regime --- graph RMS equal
+to the baseline to three decimals --- even though same-sector name--name and
+index$\to$name edges were live. Exact zeros are not damping; they are
+disconnection, and the diagnosis found it in the \emph{harness}, not the
+solver. The backtest edge builder emitted cross-asset edges one-way (informer
+$\to$ name; indexes and ETFs received calendar edges only). Under the trust
+kernel $K$ of \cref{def:kernel} the single names were therefore
+\emph{transient} states of the directed walk: all their mass drains into the
+index/ETF calendar chains and none returns, so the stationary distribution
+puts $\pi_i=0$ on every name, the reversibilized conductance
+$c_{ij}=f(\pi,K)$ vanishes on every edge touching a name, and the increment
+prior decouples the dark names entirely. No signal ever arrived: the dark
+baseline precision never mattered (measured post-fix: a dead lever ---
+identical posteriors at $0.25\times$, $0.05\times$ and $0.01\times$ the tier),
+and the ``$0.01$ bp'' pilot measurement was this artifact. The production
+auto-lattice is unaffected: its cross-ticker edges are symmetric, so
+$\pi>0$ everywhere.
+
+The fix (\nolinkurl{EdgeConfig.cross_reverse_frac}, default $1$) emits the
+reverse edge --- the name informs its index/ETF informer --- with the
+\emph{inverse} amplitude $\beta$, so both directions encode the same linear
+relation and no second economic claim is introduced; names become recurrent
+and their conductance is nonzero. Setting the fraction to $0$ reproduces the
+legacy disconnected topology (test-locked).
+
+\subsection{The 25-asset verdict on fully-dark names}
+\label{sec:loo-25}
+
+With the topology fixed, the liquid-split design was re-run over all three
+regimes at reach $\eta=10$ and cross-conductance $\times25$ --- tuned on the
+spike regime only, so October 2022 and July 2023 are out-of-sample for the
+knob choice. Dark single names only ($\sim$3.4--3.7k scores per regime and
+transport regime $R$; ATM, bps):
+
+\begin{center}\small
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+regime & $R$ & graph RMS & baseline RMS & skill & $\zeta$ (mean/std)\\
+\midrule
+spike Aug-2024 & 0 & 489.5 & 503.7 & $+14.2$ & $-0.01$ / $1.10$\\
+spike Aug-2024 & 1 & 475.5 & 483.5 & $+7.9$  & $-0.06$ / $1.02$\\
+high Oct-2022  & 0 & 193.6 & 200.9 & $+7.2$  & $-0.02$ / $0.78$\\
+high Oct-2022  & 1 & 174.3 & 178.1 & $+3.8$  & $-0.03$ / $0.70$\\
+low Jul-2023   & 0 & 451.6 & 452.3 & $+0.7$  & $-0.04$ / $1.91$\\
+low Jul-2023   & 1 & 452.0 & 452.8 & $+0.8$  & $-0.06$ / $1.85$\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Three conclusions. \textbf{(i)} Cross-asset extrapolation to fully-dark names
+carries real, quotable skill in stressed regimes: $+7.9$ to $+14.2$ bps in the
+spike and $+3.8$ to $+7.2$ fully out-of-sample in the October-2022 bear, with
+unbiased, honest-to-conservative bands. \textbf{(ii)} In the calm regime the
+skill is $\approx0$ --- never negative --- because single-name moves there are
+earnings-idiosyncratic and carry no systematic component the graph could
+transport; the mechanism cannot manufacture idiosyncratic information, only
+carry shared repricing. \textbf{(iii)} The one dishonest cell in the pack is
+the calm regime's dark-name bands ($\operatorname{std}\zeta\approx1.9$,
+overconfident): the dark posterior uncertainty should widen when a name's own
+regime is idiosyncratic (an event/earnings-aware term in the dark baseline
+precision) --- an open follow-up.
 
 %======================================================================
 \section{What is original here}
@@ -693,6 +766,11 @@ Directed vol-normalized backtest edges &
 \cref{sec:spine} &
 \nolinkurl{backend/backtest/graph_edges.py} &
 \nolinkurl{test_graph_loo_backtest.py}\\
+Reverse cross edge keeps names recurrent ($\pi>0$); fraction $0$ = legacy
+disconnected topology &
+\cref{sec:loo-casefile} &
+\nolinkurl{EdgeConfig.cross_reverse_frac} &
+\nolinkurl{test_graph_loo_backtest.py::test_index_to_name_direction_and_vol_normalization}\\
 \bottomrule
 \end{longtable}
 \endgroup
