@@ -4,8 +4,8 @@ import path from "node:path";
 import puppeteer from "puppeteer-core";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const DECK = "C:\\Users\\thiba\\vol-fitter\\Docs\\deck\\volfitter_deck.html";
-const OUT = process.argv[2] ?? "C:\\Users\\thiba\\AppData\\Local\\Temp\\claude\\C--Users-thiba-vol-fitter\\58e790b8-d813-4578-9916-b05e2b73bee8\\scratchpad\\deckverify";
+const DECK = process.argv[2] ?? "C:\\Users\\thiba\\vol-fitter\\Docs\\deck\\volfitter_deck.html";
+const OUT = process.argv[3] ?? "C:\\Users\\thiba\\AppData\\Local\\Temp\\claude\\C--Users-thiba-vol-fitter\\58e790b8-d813-4578-9916-b05e2b73bee8\\scratchpad\\deckverify";
 
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await puppeteer.launch({ executablePath: EDGE, headless: true, args: ["--window-size=1920,1080"] });

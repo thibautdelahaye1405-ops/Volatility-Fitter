@@ -4,6 +4,23 @@
 1920x1080 canvas scaled to the window). Open it in any browser; navigate with
 arrow keys / PageUp / PageDown / Home / End; print-to-PDF for a handout.
 
+**Executive cut**: `volfitter_deck_exec.html` (+ `.pdf`) is a 12-slide
+condensation of the same material, built from `deck_exec_template.html`
+(same CSS/nav, extracted from the full template; the exec template is a
+standalone file — edit it directly). Structure: title · problem · system
+(one pipeline, four models) · the worked SPY→NVDA example · quote
+preparation (real de-Am figure) · arbitrage discipline · backtest evidence ·
+dynamics (SSR + prior + filter on one slide) · the graph validated ·
+workstation montage · runbook + performance · close. Every slide's footer
+names the full-deck slides that back it. Rebuild:
+`python build.py deck_exec_template.html volfitter_deck_exec.html`; verify /
+export take the deck path as an argument now:
+`node verify_deck.mjs <deck.html> [outdir]`,
+`node export_pdf.mjs <deck.html> <out.pdf>` (no args = the full deck).
+CAVEAT (learned building it): assembling templates with PowerShell 5.1 needs
+explicit UTF-8 reads (`[IO.File]::ReadAllText(..., UTF8)`) — default
+`Get-Content` reads ANSI and every em-dash ships as mojibake.
+
 **Current state: full 36-slide deck, rev 6** (also exported as
 `volfitter_deck.pdf`, one page per slide) — opening (problem, architecture,
 worked dark-smile walkthrough, glossary), models (LQD ×2, backtest evidence,

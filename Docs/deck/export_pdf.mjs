@@ -2,8 +2,8 @@
 import puppeteer from "puppeteer-core";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
-const DECK = "C:\\Users\\thiba\\vol-fitter\\Docs\\deck\\volfitter_deck.html";
-const OUT = "C:\\Users\\thiba\\vol-fitter\\Docs\\deck\\volfitter_deck.pdf";
+const DECK = process.argv[2] ?? "C:\\Users\\thiba\\vol-fitter\\Docs\\deck\\volfitter_deck.html";
+const OUT = process.argv[3] ?? "C:\\Users\\thiba\\vol-fitter\\Docs\\deck\\volfitter_deck.pdf";
 
 const browser = await puppeteer.launch({ executablePath: EDGE, headless: true });
 const page = await browser.newPage();

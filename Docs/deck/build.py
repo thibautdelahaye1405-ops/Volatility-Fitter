@@ -6,16 +6,20 @@ Tokens in the template:
     {{FIG:name}}   -> data URI of assets/fig/name.png     (note figures)
     {{EQ:name}}    -> inlined assets/eq/name.svg   (XML prolog stripped)
     {{CHART:name}} -> inlined assets/charts/name.svg
+
+Optional args build another template (e.g. the 12-slide exec cut):
+    python build.py [template.html] [out.html]
 """
 from __future__ import annotations
 
 import base64
 import re
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
-TEMPLATE = HERE / "deck_template.html"
-OUT = HERE / "volfitter_deck.html"
+TEMPLATE = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "deck_template.html"
+OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "volfitter_deck.html"
 
 
 #: Equation display scale: dvisvgm emits pt sizes; blow them up for the 1920px

@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vol-Fitter — executive summary</title>
+<style>
+  /* ---------- deck tokens (light institutional) --------------------------- */
+  :root {
+    --bg:      #F4F7FA;   /* soft cool-white ground */
+    --panel:   #FFFFFF;   /* card surface */
+    --panel-2: #EEF2F7;   /* recessed surface */
+    --line:    #D9E2EC;   /* hairline borders */
+    --ink:     #0B1520;   /* primary text */
+    --ink-2:   #44556A;   /* secondary text */
+    --muted:   #7A8AA0;   /* captions, chrome */
+    --cyan:    #0369A1;   /* observed / market */
+    --amber:   #B45309;   /* prior / transported baseline */
+    --green:   #047857;   /* posterior / improved */
+    --violet:  #6D28D9;   /* graph posterior (matches app overlay) */
+    --red:     #DC2626;   /* arbitrage / rejected */
+    /* chart series (validated on white, light mode) */
+    --s-lqd:   #059669;
+    --s-svi:   #D97706;
+    --s-siv:   #8B5CF6;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); }
+  body {
+    font-family: "Segoe UI", "Inter", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    overflow: hidden;
+  }
+  code, .mono { font-family: "Cascadia Code", Consolas, ui-monospace, monospace; }
+
+  /* ---------- fixed 1920x1080 slides, scaled to the window ---------------- */
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  .slide {
+    width: 1920px; height: 1080px;
+    background: var(--bg);
+    position: absolute;
+    transform-origin: center center;
+    display: none;
+    flex-direction: column;
+    padding: 62px 96px 52px;
+  }
+  .slide.active { display: flex; }
+
+  /* ---------- shared slide anatomy ---------------------------------------- */
+  .kicker {
+    display: flex; align-items: center; gap: 14px;
+    font-size: 20px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 10px;
+  }
+  .kicker .tag {
+    font-size: 17px; letter-spacing: .1em; padding: 4px 12px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2);
+    background: var(--panel);
+  }
+  h1.claim {
+    font-size: 41px; line-height: 1.14; font-weight: 650; max-width: 1560px;
+    letter-spacing: -0.01em; margin-bottom: 20px;
+  }
+  h1.claim .hl { color: var(--violet); }
+  h1.claim .hlc { color: var(--cyan); }
+  /* plain-language context line for readers new to the app and the notes */
+  .lede {
+    font-size: 20.5px; line-height: 1.45; color: var(--ink-2);
+    margin: -8px 0 18px; max-width: 1620px;
+  }
+  .lede b { color: var(--ink); font-weight: 600; }
+  /* color-keyed caption legend for screenshots */
+  .capkey { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 6px; font-size: 16px; color: var(--ink-2); }
+  .capkey .ci { display: flex; align-items: center; gap: 8px; }
+  .capkey .sw { width: 24px; height: 4px; border-radius: 2px; flex: none; }
+  .capkey .sw.dash { background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); }
+  /* glossary cards */
+  .gloss { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 1; min-height: 0; align-content: start; }
+  .gloss .g {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 22px;
+  }
+  .gloss .g .t { font-size: 22px; font-weight: 650; margin-bottom: 6px; }
+  .gloss .g .t .m { color: var(--violet); }
+  .gloss .g .d { font-size: 19px; line-height: 1.45; color: var(--ink-2); }
+  .gloss .g .d b { color: var(--ink); }
+  /* which-model-when mini table */
+  table.pick { border-collapse: collapse; width: 100%; font-size: 19px; margin-top: 18px; }
+  table.pick td { padding: 8px 12px; border-bottom: 1px solid rgba(217,226,236,.8); color: var(--ink-2); vertical-align: top; }
+  table.pick td:first-child { font-weight: 650; color: var(--ink); white-space: nowrap; width: 170px; }
+  .cols { display: grid; grid-template-columns: 1fr 1.35fr; gap: 56px; flex: 1; min-height: 0; overflow: hidden; }
+  .cols.even { grid-template-columns: 1fr 1.15fr; }
+  .cols.rev { grid-template-columns: 1.35fr 1fr; }
+  /* balance airy columns: center each column's content vertically (falls back
+     to top-aligned when the content overflows, instead of clipping both ends) */
+  .cols > div { display: flex; flex-direction: column; justify-content: safe center; min-height: 0; }
+
+  .eqblock {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 12px 20px; margin-bottom: 10px;
+  }
+  .eqblock.core { border-color: rgba(109,40,217,.35); background: linear-gradient(180deg, rgba(109,40,217,.05), rgba(109,40,217,.015)), var(--panel); }
+  .eqblock .eqtitle {
+    font-size: 15px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 8px;
+  }
+  .eq { color: var(--ink); display: flex; justify-content: center; }
+  .eq svg { max-width: 100%; height: auto; }
+  /* explicit symbol definitions under each equation */
+  .eqnote { font-size: 14.5px; color: var(--muted); margin-top: 8px; line-height: 1.42; }
+  .eqnote i, .eqnote em { color: var(--ink-2); font-style: normal; font-family: "Cascadia Code", Consolas, ui-monospace, monospace; font-size: 14.5px; }
+
+  ul.points { list-style: none; margin-top: 6px; }
+  ul.points li {
+    font-size: 19.5px; line-height: 1.4; color: var(--ink-2);
+    padding-left: 24px; position: relative; margin-bottom: 7px;
+  }
+  ul.points li::before {
+    content: ""; position: absolute; left: 0; top: 12px;
+    width: 10px; height: 10px; border-radius: 3px; background: var(--cyan);
+  }
+  ul.points li strong { color: var(--ink); font-weight: 600; }
+  ul.points li.g::before { background: var(--green); }
+  ul.points li.a::before { background: var(--amber); }
+  ul.points li.v::before { background: var(--violet); }
+  ul.points li.r::before { background: var(--red); }
+
+  .shot {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: var(--panel); box-shadow: 0 18px 44px rgba(15,30,60,.16);
+  }
+  .shot img { display: block; width: 100%; height: auto; }
+  .shotcap { font-size: 17px; color: var(--muted); margin-top: 8px; line-height: 1.42; }
+  .shotcap .k { color: var(--ink-2); font-weight: 600; }
+
+  /* note-figure cards (light matplotlib figures, framed) */
+  .figcard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px; box-shadow: 0 10px 26px rgba(15,30,60,.08);
+  }
+  .figcard img { display: block; width: 100%; height: auto; }
+  .figrow { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+
+  .strip {
+    margin-top: 14px; padding: 12px 20px;
+    border-left: 3px solid var(--cyan);
+    background-color: var(--bg);
+    background-image: linear-gradient(90deg, rgba(3,105,161,.06), transparent 65%);
+    font-size: 21px; color: var(--ink-2); border-radius: 0 10px 10px 0;
+    position: relative; z-index: 1;
+  }
+  .strip b { color: var(--ink); font-weight: 600; }
+  .strip .lbl {
+    font-size: 17px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--cyan); display: block; margin-bottom: 6px;
+  }
+
+  .statrow { display: flex; gap: 18px; margin: 12px 0 0; }
+  .stat {
+    flex: 1; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px 18px;
+  }
+  .stat .v { font-size: 34px; font-weight: 650; letter-spacing: -.01em; }
+  .stat .v.g { color: var(--green); } .stat .v.c { color: var(--cyan); }
+  .stat .v.vl { color: var(--violet); } .stat .v.am { color: var(--amber); }
+  .stat .v.rd { color: var(--red); }
+  .stat .l { font-size: 17px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+
+  /* ---------- title slide -------------------------------------------------- */
+  .slide.title { padding: 88px 110px 0; }
+  .title .brand {
+    font-size: 22px; letter-spacing: .28em; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 26px;
+  }
+  .title h1 { font-size: 84px; line-height: 1.06; font-weight: 680; letter-spacing: -.015em; max-width: 1560px; color: var(--ink); }
+  .title h1 .hl { color: var(--violet); }
+  .title .sub { font-size: 30px; color: var(--ink-2); margin-top: 28px; max-width: 1350px; line-height: 1.45; }
+  .title .chips { display: flex; gap: 14px; margin-top: 36px; }
+  .title .chip {
+    font-size: 20px; color: var(--ink-2); padding: 10px 20px;
+    border: 1px solid var(--line); border-radius: 999px; background: var(--panel);
+  }
+  .title .chip b { color: var(--ink); font-weight: 600; }
+  .title .titleshots { display: flex; gap: 20px; margin-top: 52px; }
+  .title .titleshot {
+    flex: 1; border: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    overflow: hidden; box-shadow: 0 -18px 44px rgba(15,30,60,.14);
+    height: 330px; background: #fff; position: relative;
+  }
+  .title .titleshot img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: left top; }
+  .title .titleshot.smile img { object-position: left 32%; }
+  .title .titleshot .shotlbl {
+    position: absolute; top: 12px; right: 12px; z-index: 2;
+    font-size: 17px; font-weight: 600; color: var(--ink-2);
+    background: rgba(255,255,255,.88); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 14px;
+  }
+
+  /* ---------- case-file panel ---------------------------------------------- */
+  .case {
+    border: 1px solid rgba(220,38,38,.30); border-radius: 14px;
+    background: linear-gradient(180deg, rgba(220,38,38,.04), rgba(220,38,38,.01)), var(--panel);
+    padding: 18px 22px; margin-bottom: 14px;
+  }
+  .case .lbl {
+    font-size: 17px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--red); margin-bottom: 12px; display: flex; align-items: center; gap: 10px;
+  }
+  .case .lbl::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+  .case p { font-size: 20px; line-height: 1.5; color: var(--ink-2); }
+  .case p b { color: var(--ink); }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .step { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .step .n { font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .step .t { font-size: 18px; color: var(--ink-2); line-height: 1.4; }
+  .step .t b { color: var(--ink); }
+  .step.bad .n { color: var(--red); } .step.fix .n { color: var(--green); }
+
+  /* ---------- evidence chart ----------------------------------------------- */
+  .chartcard {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 26px 28px 18px;
+  }
+  .chartcard svg { display: block; width: 100%; height: 400px; }
+  .chartcard .ct { font-size: 21px; font-weight: 600; margin-bottom: 4px; }
+  .chartcard .cs { font-size: 17px; color: var(--muted); margin-bottom: 12px; }
+  .legend { display: flex; gap: 26px; font-size: 17px; color: var(--ink-2); margin-bottom: 8px; flex-wrap: wrap; }
+  .legend .li { display: flex; align-items: center; gap: 9px; }
+  .legend .sw { width: 14px; height: 14px; border-radius: 50%; }
+  .legend .sw.ring { background: transparent; border: 2.5px solid var(--muted); }
+  table.evi { border-collapse: collapse; width: 100%; font-size: 20px; }
+  table.evi th, table.evi td { padding: 10px 14px; text-align: right; }
+  table.evi th {
+    color: var(--muted); font-weight: 500; font-size: 16px; letter-spacing: .08em;
+    text-transform: uppercase; border-bottom: 1px solid var(--line);
+  }
+  table.evi td:first-child, table.evi th:first-child { text-align: left; }
+  table.evi td { color: var(--ink-2); border-bottom: 1px solid rgba(217,226,236,.8); }
+  table.evi td.m { font-family: "Cascadia Code", Consolas, monospace; }
+  table.evi tr.win td { color: var(--ink); background: rgba(5,150,105,.07); }
+  table.evi td .dot { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 10px; vertical-align: 1px; }
+
+  /* ---------- pipeline diagram ---------------------------------------------- */
+  .pipe { display: flex; align-items: stretch; gap: 0; margin: 10px 0 6px; }
+  .pipe .node {
+    flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 14px; text-align: center; position: relative;
+  }
+  .pipe .node .t { font-size: 20px; font-weight: 600; color: var(--ink); }
+  .pipe .node .d { font-size: 15.5px; color: var(--muted); margin-top: 6px; line-height: 1.35; }
+  .pipe .arrow { align-self: center; padding: 0 10px; color: var(--muted); font-size: 26px; }
+  .pipe .node.em { border-color: rgba(109,40,217,.4); background: linear-gradient(180deg, rgba(109,40,217,.05), rgba(109,40,217,.015)), var(--panel); }
+
+  /* ---------- montage -------------------------------------------------------- */
+  .montage { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; flex: 1; min-height: 0; align-content: start; }
+  .montage .cell .shot { height: 268px; background: #EEF2F7; }
+  .montage .cell .shot img { width: 100%; height: 100%; object-fit: contain; }
+  .montage .cap { font-size: 17px; color: var(--ink-2); margin-top: 8px; font-weight: 600; }
+  .montage .cap span { color: var(--muted); font-weight: 400; }
+
+  /* ---------- closing --------------------------------------------------------- */
+  .slide.close { justify-content: center; padding: 0 160px; }
+  .close .brand { font-size: 20px; letter-spacing: .28em; text-transform: uppercase; color: var(--cyan); margin-bottom: 30px; }
+  .close h1 { font-size: 62px; line-height: 1.16; font-weight: 650; letter-spacing: -.012em; max-width: 1560px; }
+  .close h1 .hl { color: var(--violet); }
+  .close .sub { font-size: 27px; color: var(--ink-2); margin-top: 34px; max-width: 1380px; line-height: 1.55; }
+
+  /* ---------- footer / nav -------------------------------------------------- */
+  .foot {
+    position: absolute; bottom: 26px; left: 96px; right: 96px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 17px; color: var(--muted); letter-spacing: .06em;
+  }
+  #dots { position: fixed; bottom: 18px; right: 24px; display: flex; gap: 6px; z-index: 5; }
+  #dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--line); cursor: pointer; }
+  #dots span.on { background: var(--cyan); }
+  #counter { position: fixed; bottom: 14px; left: 24px; font-size: 14px; color: var(--muted); z-index: 5; font-family: Consolas, monospace; }
+
+  @media print {
+    body { overflow: visible; }
+    #stage { position: static; }
+    #dots, #counter { display: none; }
+    .slide { display: flex !important; position: static; transform: none !important; page-break-after: always; }
+    @page { size: 1920px 1080px; margin: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- ============ 01 · TITLE ============================================== -->
+<section class="slide title active">
+  <div class="brand">Vol-Fitter</div>
+  <h1>Arbitrage-aware volatility surfaces,<br>with <span class="hl">graph propagation</span> to the smiles nobody quotes.</h1>
+  <p class="sub">A volatility workstation that turns sparse, noisy option markets into explainable,
+    arbitrage-clean surfaces with uncertainty — and propagates liquid-name information across
+    expiries and assets. <b>The 12-slide executive cut</b>; a 36-slide technical deck stands behind every claim.</p>
+  <div class="chips">
+    <span class="chip"><b>4</b> smile models, one calibration spine</span>
+    <span class="chip"><b>16</b> technical notes, equation-anchored</span>
+    <span class="chip"><b>969</b> tests green</span>
+    <span class="chip">backtested on <b>3</b> historical regimes</span>
+  </div>
+  <div class="titleshots">
+    <div class="titleshot"><span class="shotlbl">Graph propagation</span><img src="{{IMG:graph_extrapolate}}" alt="Graph extrapolation workspace"></div>
+    <div class="titleshot smile"><span class="shotlbl">Smile fit · update &amp; band</span><img src="{{IMG:smile_hero_wide}}" alt="Smile fit with graph update and quote band"></div>
+  </div>
+</section>
+
+<!-- ============ 02 · THE PROBLEM ========================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">The problem</span><span>Why option surfaces are hard</span></div>
+  <h1 class="claim">Listed option markets are <span class="hlc">sparse, noisy, and structurally constrained</span> — most of the surface is never quoted.</h1>
+  <div class="cols">
+    <div>
+      <ul class="points">
+        <li><strong>Wide, asymmetric spreads</strong> — wings quote at multiples of ATM spread; mids are not fair value.</li>
+        <li class="a"><strong>American exercise</strong> — listed equity quotes embed an early-exercise premium that poisons European-model fits.</li>
+        <li class="r"><strong>Structural no-arbitrage</strong> — butterfly and calendar constraints couple every strike and expiry; a fit that ignores them produces tradable-looking nonsense.</li>
+        <li class="v"><strong>Events distort the clock</strong> — earnings compress into a day what diffusion spreads over weeks.</li>
+        <li class="g"><strong>Most names are dark</strong> — beyond the top tickers, whole expiries have no usable quotes at all.</li>
+      </ul>
+      <div class="statrow">
+        <div class="stat"><div class="v rd">most</div><div class="l">of the (underlying × expiry) universe has no reliable quotes at any moment</div></div>
+        <div class="stat"><div class="v c">every</div><div class="l">downstream decision — pricing, hedging, alpha — still needs the full surface</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:quote_table}}" alt="Quote table with bid/ask spreads vs fit"></div>
+      <p class="shotcap"><span class="k">The raw material — live SPY chain (Massive feed).</span> Per strike: bid / mid / ask implied
+        volatility, the model's fitted value, and the deviation. The fitter's job is to decide which of these numbers to believe, and by how much.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    Trading desks need a system that turns <b>partial, contradictory evidence into a full, arbitrage-clean surface with uncertainty</b>.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 2</span><span></span></div>
+</section>
+
+<!-- ============ 03 · WHAT IT IS ========================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">The system</span><span>One pipeline, four models, one vocabulary</span></div>
+  <h1 class="claim">One quote pipeline feeds <span class="hlc">four smile models</span> — all speaking the desk's own "handles": ATM vol, skew, curvature, wings.</h1>
+  <p class="lede">Every quote passes one deterministic preparation pipeline (forwards, de-Americanization, liquidity weighting);
+    every model reads and writes the same handle coordinates — which is what lets priors, filters and the graph act on any
+    model's output without translation.</p>
+  <div class="cols">
+    <div>
+      <ul class="points">
+        <li class="g"><strong>LQD, the house model</strong> — parametrizes the return distribution itself, so the implied density is
+          <strong>positive by construction</strong>: no butterfly arbitrage inside a slice, by design rather than by penalty.</li>
+        <li class="a"><strong>SVI-JW, the market standard</strong> — imported, fitted, bumped and exported in the jump-wing units every counterparty uses.</li>
+        <li class="v"><strong>Multi-Core Sigmoid, the event model</strong> — fits the W-shaped smiles around earnings that convex
+          models cannot reach, with hard guardrails (parameters capped by quote count, arbitrage measured on every fit).</li>
+        <li class="c"><strong>Local Vol, the non-parametric surface</strong> — a piecewise-affine local-variance grid calibrated
+          through the pricing PDE itself; positive nodes ⇒ positive surface ⇒ arbitrage-free prices.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:parametric_smile}}" alt="Parametric workspace: live SPY LQD fit vs quotes"></div>
+      <p class="shotcap"><span class="k">The Parametric workspace — live SPY (Massive feed).</span> Blue — the fitted smile;
+        red marks — quoted bid/ask per strike. The aside reports the handles directly: ATM vol, skew, curvature, wing scales,
+        Lee slopes, var-swap level — <b>model parameters, not chart read-offs</b>.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    Handles are the desk vocabulary — <b>every model, prior, filter and graph update speaks the same coordinates</b>, so nothing is a black box in translation.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 3, 6–14</span><span></span></div>
+</section>
+
+<!-- ============ 04 · THE WORKED EXAMPLE ================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">The core idea, worked</span><span>One end-to-end example</span></div>
+  <h1 class="claim">The end goal first: <span class="hl">SPY reprices — an unquoted NVDA smile follows</span>, with uncertainty attached.</h1>
+  <p class="lede">A controlled demo session (synthetic feed, exactly reproducible): only SPY is quoted ("lit"); QQQ, AAPL, NVDA
+    and IWM are dark. SPY's whole surface reprices +150 bp.</p>
+  <div class="steps" style="grid-template-columns: repeat(4, 1fr); margin: 0 0 20px;">
+    <div class="step"><div class="n">1 · Lit move</div><div class="t">Every SPY quote mid is amended <b>+150 bp</b>, then SPY's four expiries are genuinely recalibrated on the shifted quotes — <b>real fits, not typed shifts</b></div></div>
+    <div class="step"><div class="n">2 · Innovation</div><div class="t">Innovation = new fit − transported prior, per handle: <b>+97…+151 bp of ATM news</b> across SPY's expiry ladder. Only this <b>change</b> propagates — never vol levels</div></div>
+    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news diffuses along calendar and cross-asset edges; each dark node blends it with its own prior by <b>Bayesian precision weights</b> — a deliberate fraction, with widened uncertainty</div></div>
+    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+43…+79 bp of ATM vol</b> (≈½ the SPY news), inside a <b>±1.9–2.0 vol-pt</b> 95% credible band (±1.96σ) they can be judged against later</div></div>
+  </div>
+  <div class="cols" style="flex:1">
+    <div>
+      <div class="shot" style="height: 430px; background:#EEF2F7;"><img src="{{IMG:graph_lattice_content}}" style="object-fit: contain; height: 100%; width: 100%;" alt="Graph lattice: SPY lit, dark names inherit"></div>
+      <p class="shotcap"><span class="k">The lattice after propagation.</span> SPY's four lit nodes (amber rings) shift
+        <b>+77…+140 bp</b>; every dark node inherits <b>+43…+79 bp</b> — per node, per expiry, largest where SPY's own move was largest.</p>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:smile_hero_wide}}" alt="Dark NVDA smile reconstructed with credible band"></div>
+      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior, <b>+57 bp</b> above
+        the node's own last calibration (blue), with its 95% band. The badge carries the audit trail (source nodes, gain × innovation).</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    <b>The unquoted majority of the surface universe stays marked, moves for stated reasons, and carries stated uncertainty.</b></div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 4</span><span></span></div>
+</section>
+
+<!-- ============ 05 · QUOTE PREPARATION =================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Quote preparation</span><span>Making US-listed quotes fittable</span></div>
+  <h1 class="claim">Before any model sees a quote: <span class="hlc">early exercise removed, forwards stabilized, spreads respected</span>.</h1>
+  <div class="cols">
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li class="g"><strong>De-Americanization</strong> — US-listed quotes embed an early-exercise premium; each is inverted through
+          a binomial tree to its European-equivalent vol. On real SPY data (chart) the in-the-money put premium runs a
+          <strong>median +519 bp</strong> — poison for any fit that ignored it. Compiled kernel: <strong>~60×</strong> on wide chains.</li>
+        <li class="a"><strong>Forwards implied from the chain itself</strong> — put–call parity as a regression; the poorly-identified
+          discount is clamped to a physical band. A production case file: a delayed feed's stale pairs tore the ATM smile — the
+          clamp healed it, byte-identical on clean chains.</li>
+        <li class="v"><strong>Fit to the band, not the mid</strong> — a mid inside a wide wing spread is not fair value, so staying
+          anywhere inside the quoted spread is free and only leaving it costs. Noisy wing prints stop dragging kinks into the smile;
+          three targets (mid / band / haircut) span the styles desks actually use.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard" style="width: 84%; margin: 0 auto;"><img src="{{FIG:fig_deam_bias_real}}" alt="Real SPY puts: American mids inverted as European vs de-Americanized"></div>
+      <p class="shotcap"><span class="k">Real market data, not a toy.</span> One live SPY expiry (Massive capture, ~6 months): every
+        put mid inverted two ways — as if European (red) vs de-Americanized (teal). Out of the money they agree to a few bp;
+        in the money the wedge is the early-exercise premium — median <b>+519 bp</b>, up to <b>+817 bp</b>.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    Single names and dividend payers become fittable, every IV stands on a defensible forward, and <b>the fitter only pays to leave the quoted spread — exactly how a trader thinks about it</b>.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 15–17</span><span></span></div>
+</section>
+
+<!-- ============ 06 · ARBITRAGE DISCIPLINE ================================ -->
+<section class="slide">
+  <div class="kicker"><span class="tag">No-arbitrage</span><span>Discipline, with case files</span></div>
+  <h1 class="claim">Arbitrage-free means <span class="hlc">measured and enforced where data lives</span> — never invented where it doesn't.</h1>
+  <div class="cols">
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li class="g"><strong>Cleanliness is a number, not a claim</strong> — every fit reports its butterfly diagnostic (the
+          Durrleman g(k), proportional to the implied probability density); calendar consistency is checked in total variance
+          across expiries.</li>
+        <li class="v"><strong>Penalties are exactly zero on clean surfaces</strong> — enforcement is byte-identical to OFF when the
+          market is admissible: a clean fit is never distorted.</li>
+        <li class="r"><strong>Production case files became design rules</strong> — a calendar check sampled in unquoted strikes
+          manufactured 151 bp of phantom penalty and flattened far-dated fits (fix: constraints confined to the traded range);
+          the event model once invented a put wing on illiquid chains (fix: a measured, ablation-tested fence). Both are
+          documented and test-locked.</li>
+        <li class="a"><strong>Wings obey moment logic</strong> — every model's tail extrapolation is a stated contract under
+          Lee's universal slope cap; deep OTM marks inherit discipline from theory, not from the last two quotes.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figrow">
+        <div class="figcard"><img src="{{FIG:fig_ov_densities}}" alt="Stacked densities all non-negative"></div>
+        <div class="figcard"><img src="{{FIG:fig_ov_termvar}}" alt="ATM total variance non-decreasing"></div>
+      </div>
+      <p class="shotcap"><span class="k">The two structural guarantees, regenerated on every build.</span> All implied densities
+        non-negative (no butterfly arbitrage) and ATM total variance non-decreasing in maturity (no calendar arbitrage) —
+        produced end-to-end by the production calibrator.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    A surface you can quote from: <b>no-arbitrage enforcement that repairs violations where quoted and never distorts a clean market</b>.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 10, 19–20</span><span></span></div>
+</section>
+
+<!-- ============ 07 · BACKTEST EVIDENCE =================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Backtest · 3 regimes</span><span>Model validation on market history</span></div>
+  <h1 class="claim">Backtested on real NBBO history: <span class="hl">the house model fits 2–3× tighter than SVI-JW</span> at comparable cost.</h1>
+  <p class="lede">Historical NBBO quotes replayed through the production calibrators over three regimes (Aug-2024 spike,
+    high-vol Oct-2022, low-vol Jul-2023) on an 8-asset pilot universe, full expiry ladders. <b>Out-of-sample</b> = error on
+    held-out strikes — the overfitting test.</p>
+  <div class="cols even">
+    <div>
+      <div class="chartcard">
+        <div class="ct">Fit error vs fit time — spike regime (Aug 2024), 1,576 nodes</div>
+        <div class="cs">Lower-left is better · filled = in-sample RMS · hollow = out-of-sample · times pre-date SVI's analytic Jacobian (now ~10 ms)</div>
+        <div class="legend">
+          <span class="li"><span class="sw" style="background:var(--s-lqd)"></span>LQD (deg 8–12)</span>
+          <span class="li"><span class="sw" style="background:var(--s-svi)"></span>SVI-JW</span>
+          <span class="li"><span class="sw" style="background:var(--s-siv)"></span>Multi-Core Sigmoid (MCS)</span>
+          <span class="li"><span class="sw ring"></span>out-of-sample</span>
+        </div>
+        {{CHART:evidence}}
+      </div>
+    </div>
+    <div>
+      <table class="evi">
+        <tr><th>model</th><th>in-RMS bp</th><th>OOS bp</th><th>fit ms</th><th>vs SVI</th></tr>
+        <tr><td><span class="dot" style="background:var(--s-svi)"></span>SVI-JW</td><td class="m">24.3</td><td class="m">26.8</td><td class="m">45.5</td><td class="m">1.00×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-8</td><td class="m">10.2</td><td class="m">12.2</td><td class="m">24.5</td><td class="m">0.42×</td></tr>
+        <tr class="win"><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-12</td><td class="m">7.6</td><td class="m">9.8</td><td class="m">31.5</td><td class="m">0.31×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-siv)"></span>MCS-3</td><td class="m">9.0</td><td class="m">13.6</td><td class="m">2023</td><td class="m">0.37×</td></tr>
+      </table>
+      <div class="statrow">
+        <div class="stat"><div class="v g">0.31–0.45×</div><div class="l">LQD-12 error vs SVI, consistent across all three regimes</div></div>
+        <div class="stat"><div class="v c">0</div><div class="l">fit failures across all models and regimes</div></div>
+      </div>
+      <ul class="points" style="margin-top:20px">
+        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no overfit at any degree</strong>.</li>
+        <li class="r">Where a model overfit (MCS's extra cores), the backtest caught it — <strong>production caps and regularizes accordingly</strong>.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    On replayed market history the house model fits <b>2–3× tighter than the market-standard baseline, with no measured overfit</b> — and the same harness reports arbitrage metrics alongside the errors.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 7</span><span></span></div>
+</section>
+
+<!-- ============ 08 · DYNAMICS ============================================ -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Dynamics</span><span>Spot moves · memory · noise vs news</span></div>
+  <h1 class="claim">The surface <span class="hlc">moves with spot by rule, remembers yesterday only where today is silent</span> — and tells noise from news.</h1>
+  <div class="cols">
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li><strong>Spot–vol transport (SSR)</strong> — when spot moves, every mark moves instantly by the desk's chosen
+          stickiness rule (sticky-strike, sticky-moneyness, sticky-local-vol — one dial spans them all); recalibration then
+          absorbs only genuine news.</li>
+        <li class="v"><strong>Prior persistence</strong> — the fit remembers yesterday's smile <em>shape, not its level</em>, and each
+          pull is gated to <strong>exactly zero</strong> wherever today's quotes speak. Validated on history: <strong>~32 bp</strong>
+          better held-out wing reconstruction, <strong>66% win rate</strong> over 1,116 nodes — and two candidate designs that never
+          beat "no prior" are reported, not hidden.</li>
+        <li class="g"><strong>The observation filter</strong> — a Kalman filter on the handles separates quote noise from genuine
+          surface motion, believing today in proportion to its measured precision. Tuned by <strong>39,190 backtested steps</strong>;
+          on days when quotes contradict the chain it beats the raw fit outright (<strong>5.6 vs 9.8 bp</strong>) with honest
+          uncertainty bands.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:filter_smile}}" alt="Smile with filter posterior overlay and gains"></div>
+      <div class="capkey">
+        <span class="ci"><span class="sw" style="background:#3B82F6"></span>today's raw fit</span>
+        <span class="ci"><span class="sw" style="background:#14B8A6"></span>filter posterior (shaded: ±1σ)</span>
+        <span class="ci"><span class="sw dash" style="color:#14B8A6"></span>prediction (yesterday, transported)</span>
+        <span class="ci"><span class="sw" style="background:#F87171; height:10px; width:4px"></span>bid/ask quotes</span>
+      </div>
+      <p class="shotcap"><span class="k">The filter on a smile (controlled demo session).</span> The badge is the audit: per-handle
+        gains K = 0.36 / 0.00 / 0.00 — the filter believes today's ATM level about a third, and today's noisy skew and curvature
+        not at all, so the posterior sits between prediction and fit.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    Marks stop chasing microstructure and sparse afternoons stop destroying morning marks — <b>the surface moves when the market moves, and holds when only the quotes wiggle</b>.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 22–26</span><span></span></div>
+</section>
+
+<!-- ============ 09 · THE GRAPH, VALIDATED ================================ -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Graph</span><span>The differentiator, validated</span></div>
+  <h1 class="claim">The propagation layer carries <span class="hl">news, never levels</span>, to unquoted smiles — and is validated by leave-one-out on history.</h1>
+  <p class="lede">Nodes are (underlying, expiry) smiles; edges couple adjacent expiries and related names. Only calibration
+    <b>innovations</b> propagate, weighted by each lit fit's own precision — a dark node keeps its own personality and inherits its
+    neighbours' surprises, with uncertainty attached. <b>Leave-one-out (LOO)</b>: pretend a lit node is dark, reconstruct it from
+    the others, compare to the calibration it actually had.</p>
+  <div class="cols even">
+    <div>
+      <div class="statrow" style="margin-top:0">
+        <div class="stat"><div class="v vl">+26…+37 bp</div><div class="l">ATM skill vs mechanical spot-transport — 4,134 held-out nodes, 0 skipped</div></div>
+        <div class="stat"><div class="v g">ζ ≈ 0 · σ 0.72–0.90</div><div class="l">unbiased, well-calibrated bands (slightly conservative)</div></div>
+      </div>
+      <ul class="points" style="margin-top:20px">
+        <li class="g"><strong>Decisive skill where the graph has support</strong> — driven by calendar coupling, robust across transport assumptions.</li>
+        <li class="a"><strong>Honest scope</strong> — the fully-dark cross-asset case showed ~0 skill on the structurally-starved
+          8-asset pilot; the 25-asset capture that fixes it is complete and the rerun is queued. Unproven is stated as unproven.</li>
+        <li class="v"><strong>Every edge is a number a trader can defend</strong> — weights and per-edge β ("NVDA moves 1.3× QQQ")
+          live in a persisted editor, and the same LOO backtest re-certifies the graph on the desk's own universe, one click.</li>
+      </ul>
+    </div>
+    <div>
+      <div class="figcard"><img src="{{FIG:fig_graph_backtest}}" alt="Graph LOO backtest results"></div>
+      <p class="shotcap"><span class="k">Leave-one-out, plotted.</span> Held-out node predictions versus realized calibrations: the
+        graph posterior tightens errors over the transported-prior baseline, and its standardized residuals sit where a correct
+        model's should.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    The graph formalizes what traders do informally — <b>"SPY repriced, so my dark midcap should too, a little"</b> — with a posterior and a band instead of a hunch.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 27–30</span><span></span></div>
+</section>
+
+<!-- ============ 10 · THE PRODUCT ========================================= -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Product</span><span>The workstation today</span></div>
+  <h1 class="claim">Everything above ships in a <span class="hlc">working workstation</span> — eight workspaces, live against three data feeds.</h1>
+  <div class="montage">
+    <div class="cell"><div class="shot"><img src="{{IMG:densities}}" alt=""></div><div class="cap">Stacked densities <span>— every expiry ≥ 0: no butterfly arb, at a glance</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:stacked_iv}}" alt=""></div><div class="cap">Stacked total variance <span>— non-crossing: no calendar arb</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:surface}}" alt=""></div><div class="cap">3D IV surface <span>— rotatable σ(k,T) mesh</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:localvol_ivsurface}}" alt=""></div><div class="cap">Local Vol views <span>— surface, smiles, tables off one calibrated object</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:universe}}" alt=""></div><div class="cap">Universe manager <span>— catalogue, expiries, lit/dark matrix, saved universes</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:logq}}" alt=""></div><div class="cap">Log quantile density <span>— the model's native coordinate, charted</span></div></div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    Parametric · Local Vol · Forwards · Options · Graph · Quality · Universe · View — <b>every claim in this deck is a screen a trader can open</b>, live against Yahoo, Bloomberg or Massive.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 31</span><span></span></div>
+</section>
+
+<!-- ============ 11 · RUNBOOK & PERFORMANCE =============================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Product · Engineering</span><span>Operable, gated, and fast</span></div>
+  <h1 class="claim">A daily runbook ending at a <span class="hlc">publish gate</span> — fast enough to sit inside the quote loop.</h1>
+  <div class="statrow" style="margin-top:6px">
+    <div class="stat"><div class="v c">7.6 s warm</div><div class="l">full 30-node universe recalibration (96.6 s cold), laptop-class hardware</div></div>
+    <div class="stat"><div class="v g">~35 ms</div><div class="l">one smile fit — the atom of every parametric calibration</div></div>
+    <div class="stat"><div class="v vl">~60× · 6.5×</div><div class="l">compiled de-Americanization · local-vol PDE march</div></div>
+    <div class="stat"><div class="v am">byte-identical</div><div class="l">parallel background calibration vs serial — speed never changes a number</div></div>
+  </div>
+  <div class="cols" style="margin-top:24px">
+    <div>
+      <div class="pipe" style="flex-direction:column; gap:10px">
+        <div class="node" style="text-align:left"><div class="t">1 · Select &amp; fetch</div><div class="d">universe, expiries, lit/dark designation; spots + chains from the active source</div></div>
+        <div class="node" style="text-align:left"><div class="t">2 · Calibrate</div><div class="d">background per-ticker groups on a process pool (~2× warm)</div></div>
+        <div class="node" style="text-align:left"><div class="t">3 · Inspect &amp; adjust</div><div class="d">smiles, densities, term, LV; amend quotes, var-swaps, events, priors, filter</div></div>
+        <div class="node" style="text-align:left"><div class="t">4 · Propagate</div><div class="d">graph extrapolation over the dark universe, LOO-checked</div></div>
+        <div class="node em" style="text-align:left"><div class="t">5 · Gate &amp; publish</div><div class="d">per-node RMS budgets, arb flags, staleness — then JSON/CSV export + HTML report for downstream systems</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="shot"><img src="{{IMG:quality}}" alt="Quality dashboard with publish gates"></div>
+      <p class="shotcap"><span class="k">The Quality workspace — live session (Massive feed).</span> Publish-ready counts, per-node RMS
+        against its budget, Lee slopes, calendar and butterfly flags — exceptions first, the offending node one click away.
+        The question "can we publish this surface?" gets a per-node answer.</p>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Why it matters</span>
+    <b>The runbook a vol desk actually operates</b> — and every performance number states its hardware and cache state, held by perf rails in the test suite.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 32–33</span><span></span></div>
+</section>
+
+<!-- ============ 12 · CLOSE =============================================== -->
+<section class="slide close">
+  <div class="brand">Vol-Fitter</div>
+  <h1>A professional-grade fitter, plus the <span class="hl">graph propagation layer</span> sparse volatility markets are missing.</h1>
+  <p class="sub">Four arbitrage-aware smile models · trading-grade quote preparation · Bayesian memory and Kalman filtering in one
+    coordinate system · a graph layer, validated on held-out nodes, that carries information to the smiles nobody quotes.
+    969 tests green · 16 equation-anchored technical notes · backtested on three historical regimes — every number in this deck
+    traces to an equation, a module, and a test. <b>The modeling stack is built and validated; what remains is productization,
+    not invention.</b></p>
+</section>
+
+</div>
+
+<div id="dots"></div>
+<div id="counter"></div>
+
+<script>
+  const slides = [...document.querySelectorAll(".slide")];
+  const dots = document.getElementById("dots");
+  const counter = document.getElementById("counter");
+  slides.forEach((el, i) => {
+    const d = document.createElement("span");
+    d.onclick = () => show(i);
+    dots.appendChild(d);
+    const f = el.querySelector(".foot span:last-child");
+    if (f) f.textContent = String(i + 1).padStart(2, "0") + " / " + slides.length;
+  });
+  let cur = 0;
+  function fit() {
+    const s = Math.min(innerWidth / 1920, innerHeight / 1080);
+    slides.forEach((el) => (el.style.transform = `scale(${s})`));
+  }
+  function show(i) {
+    cur = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((el, j) => el.classList.toggle("active", j === cur));
+    [...dots.children].forEach((d, j) => d.classList.toggle("on", j === cur));
+    counter.textContent = `${cur + 1} / ${slides.length}`;
+  }
+  addEventListener("resize", fit);
+  addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) show(cur + 1);
+    else if (["ArrowLeft", "PageUp"].includes(e.key)) show(cur - 1);
+    else if (e.key === "Home") show(0);
+    else if (e.key === "End") show(slides.length - 1);
+  });
+  fit(); show(0);
+</script>
+</body>
+</html>
