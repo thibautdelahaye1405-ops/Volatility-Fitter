@@ -49,6 +49,46 @@ function Slider({
   );
 }
 
+/** Static miniature smile chart for the Preview card: dashed prior, accent fit
+ *  curve and red quote bid–ask bars — the exact colours the real SmileChart
+ *  uses, so the scheme choice is judged on realistic content. Not interactive. */
+function MiniSmile() {
+  // Quote columns: (x, y-on-fit) with a ±5px bid–ask beam around the mid.
+  const quotes: [number, number][] = [
+    [24, 32], [54, 45], [84, 59], [114, 72], [144, 78], [174, 73], [204, 63],
+  ];
+  return (
+    <svg width={230} height={112} aria-hidden className="shrink-0">
+      {/* Frame + ATM gridline */}
+      <line x1={10} y1={98} x2={222} y2={98} className="stroke-slate-700" />
+      <line x1={130} y1={12} x2={130} y2={98} strokeDasharray="2 4" className="stroke-slate-700" />
+      {/* Prior (dashed) and current fit (accent) */}
+      <path
+        d="M10,31 C45,48 80,68 120,80 C150,88 190,76 220,66"
+        fill="none" strokeDasharray="4 4" strokeWidth={1.2} className="stroke-slate-500"
+      />
+      <path
+        d="M10,25 C45,42 80,62 120,74 C150,82 190,70 220,60"
+        fill="none" stroke="var(--color-accent-500)" strokeWidth={1.8}
+      />
+      {/* Quotes: bid–ask beams with caps + mid ticks (SmileChart red) */}
+      {quotes.map(([x, y]) => (
+        <g key={x} stroke="rgb(248 113 113 / 0.95)" strokeWidth={1.2}>
+          <line x1={x} x2={x} y1={y - 5} y2={y + 5} />
+          <line x1={x - 3} x2={x + 3} y1={y - 5} y2={y - 5} />
+          <line x1={x - 3} x2={x + 3} y1={y + 5} y2={y + 5} />
+          <line x1={x - 2.5} x2={x + 2.5} y1={y} y2={y} strokeWidth={2} />
+        </g>
+      ))}
+      {/* Axis labels */}
+      <text x={12} y={108} className="fill-slate-500 font-mono text-[8px]">-0.4</text>
+      <text x={127} y={108} className="fill-slate-500 font-mono text-[8px]">0</text>
+      <text x={210} y={108} className="fill-slate-500 font-mono text-[8px]">0.4</text>
+      <text x={12} y={18} className="fill-slate-500 font-mono text-[8px]">σ</text>
+    </svg>
+  );
+}
+
 export default function ViewSettingsViewer() {
   const {
     scheme, contrast, brightness,
@@ -162,19 +202,37 @@ export default function ViewSettingsViewer() {
         </div>
       </div>
 
-      {/* Live preview strip so the scheme/contrast effect is obvious. */}
+      {/* Live preview: a NON-INTERACTIVE specimen (mini smile chart + text
+          tiers + palette) so the scheme / contrast effect is obvious. */}
       <div className={card}>
         <h3 className={sectionTitle}>Preview</h3>
-        <div className="mt-2 flex flex-col gap-1 rounded-lg border border-slate-800 bg-surface-800 p-3">
-          <div className="text-sm font-semibold text-slate-100">Heading text</div>
-          <div className="text-xs text-slate-200">Body text — primary readout</div>
-          <div className="text-xs text-slate-400">Label / secondary text</div>
-          <div className="text-[11px] text-slate-500">Hint / tertiary text</div>
-          <div className="mt-1 flex gap-2">
-            <span className="rounded bg-accent-600/25 px-2 py-0.5 text-[11px] text-accent-400">accent chip</span>
-            <span className="rounded border border-slate-700 px-2 py-0.5 font-mono text-[11px] text-slate-300">
-              mono 21.87%
-            </span>
+        <p className={sectionHint}>
+          Live sample of the current scheme — how a chart, the text tiers and the
+          palette will render. Nothing here is a setting.
+        </p>
+        <div className="flex flex-wrap items-center gap-6 rounded-lg border border-slate-800 bg-surface-800 p-3">
+          <MiniSmile />
+          <div className="flex min-w-44 flex-col gap-1">
+            <div className="text-sm font-semibold text-slate-100">Heading text</div>
+            <div className="text-xs text-slate-200">Body text — primary readout</div>
+            <div className="text-xs text-slate-400">Label / secondary text</div>
+            <div className="text-[11px] text-slate-500">Hint / tertiary text</div>
+            <div className="mt-1 flex gap-2">
+              <span className="rounded bg-accent-600/25 px-2 py-0.5 text-[11px] text-accent-400">accent</span>
+              <span className="rounded border border-slate-700 px-2 py-0.5 font-mono text-[11px] text-slate-300">
+                mono 21.87%
+              </span>
+            </div>
+            {/* Palette dots: surface stack · accent · status colours */}
+            <div className="mt-2 flex items-center gap-1.5">
+              {[
+                "bg-surface-950", "bg-surface-900", "bg-surface-700",
+                "bg-accent-500", "bg-emerald-500", "bg-amber-400", "bg-rose-500",
+              ].map((c) => (
+                <span key={c} className={`h-3 w-3 rounded-full border border-slate-700/60 ${c}`} />
+              ))}
+              <span className="ml-1 text-[10px] text-slate-500">palette</span>
+            </div>
           </div>
         </div>
       </div>
