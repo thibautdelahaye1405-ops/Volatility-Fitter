@@ -1,10 +1,11 @@
-// Diagnostics aside of the Parametric workspace, extracted from SmileViewer:
-// headline fit diagnostics plus the SSR spot-scenario slider. The model
-// selector, forward/dividend editor and full hyperparameters all moved to the
-// Options / Forwards workspaces (ROADMAP Phase 10 + follow-up), leaving the
-// aside to diagnostics + the live spot scenario. Reads the shared smile
-// session directly; the only prop is whether the Smile chart view is active
-// (the scenario overlay is only drawn there).
+// Diagnostics aside of the Parametric workspace: headline fit diagnostics
+// (ATM / skew / curvature / RMS) with the secondary readouts (wings, Lee
+// slopes, var-swap vol) behind a small expander, plus the variance-swap
+// editor and the SSR spot-scenario slider. The displayed model + its
+// hyperparameters render as a compact chip in the panel header (full values
+// in the tooltip); model selection itself lives in Options.
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import SpotPanel from "./SpotPanel";
 import VarSwapPanel from "./VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
@@ -16,6 +17,22 @@ import { formatPct } from "../lib/chartScale";
 function fixed(v: number | null | undefined, digits: number): string {
   return v != null && Number.isFinite(v) ? v.toFixed(digits) : "—";
 }
+
+interface DiagRow {
+  label: string;
+  value: string;
+}
+
+const DiagList = ({ rows }: { rows: DiagRow[] }) => (
+  <dl className="divide-y divide-slate-800">
+    {rows.map((row) => (
+      <div key={row.label} className="flex items-center justify-between py-1.5">
+        <dt className="text-xs text-slate-400">{row.label}</dt>
+        <dd className="font-mono text-xs font-medium text-slate-100">{row.value}</dd>
+      </div>
+    ))}
+  </dl>
+);
 
 export default function SmileAside() {
   const {
@@ -31,10 +48,12 @@ export default function SmileAside() {
     redoVarSwap,
   } = useSmileSession();
   const live = source === "live";
+  const [showMore, setShowMore] = useState(false);
 
   const info = smile?.modelInfo;
   const d = smile?.diagnostics;
-  const diagnostics: { label: string; value: string }[] = d
+
+  const headline: DiagRow[] = d
     ? [
         {
           label: "ATM vol",
@@ -46,71 +65,69 @@ export default function SmileAside() {
         },
         { label: "Skew", value: fixed(d.skew, 3) },
         { label: "Curvature", value: fixed(d.curvature, 2) },
+        { label: "RMS — smile", value: formatPct(d.rmsError, 2) },
+        { label: "RMS — surface", value: formatPct(smile?.surfaceRmsError, 2) },
+      ]
+    : [];
+  const secondary: DiagRow[] = d
+    ? [
         { label: "A_L (left wing)", value: fixed(d.aLeft, 3) },
         { label: "A_R (right wing)", value: fixed(d.aRight, 3) },
         { label: "Lee slope L", value: fixed(d.leeLeft, 3) },
         { label: "Lee slope R", value: fixed(d.leeRight, 3) },
         { label: "Var-swap vol", value: formatPct(d.varSwapVol) },
-        { label: "RMS — smile", value: formatPct(d.rmsError, 2) },
-        { label: "RMS — surface", value: formatPct(smile?.surfaceRmsError, 2) },
       ]
     : [];
 
   return (
     <aside className="w-72 shrink-0 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
-      <h3 className="mb-1 text-sm font-semibold text-slate-100">
-        Fit diagnostics
-      </h3>
-      <p className="mb-4 text-[11px] text-slate-500">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
+        {/* Displayed model + hyperparameters as one compact chip — names the
+            model the chart actually shows, even for a frozen/stale node. */}
+        {info && (
+          <span
+            title={info.params.map((p) => `${p.label}: ${p.value}`).join(" · ") || info.label}
+            className="flex items-center gap-1.5 rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-300"
+          >
+            {smile?.stale && (
+              <span className="font-sans font-semibold uppercase text-amber-400">stale</span>
+            )}
+            {info.label}
+            {info.params.length > 0 && (
+              <span className="font-medium text-slate-400">
+                {info.params.map((p) => `${p.label} ${p.value}`).join(" · ")}
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+      <p className="mb-3 text-[11px] text-slate-500">
         {smile
           ? `Current calibration · ${smile.ticker} ${smile.expiry}`
           : "Awaiting data…"}
       </p>
 
-      {/* Displayed model family + hyperparameters (degree for LQD, cores for the
-          Multi-Core Sigmoid) — names the model the chart actually shows, even
-          for a frozen/stale node, so model/hyperparameter testing is legible. */}
-      {info && (
-        <div className="mb-4 rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] uppercase tracking-wide text-slate-500">
-              Model
-            </span>
-            <div className="flex items-center gap-1.5">
-              {smile?.stale && (
-                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-400">
-                  Stale
-                </span>
-              )}
-              <span className="font-mono text-xs font-semibold text-sky-300">
-                {info.label}
-              </span>
-            </div>
-          </div>
-          {info.params.map((p) => (
-            <div key={p.label} className="mt-1 flex items-center justify-between">
-              <span className="text-xs text-slate-400">{p.label}</span>
-              <span className="font-mono text-xs font-medium text-slate-100">
-                {p.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <DiagList rows={headline} />
 
-      <dl className="divide-y divide-slate-800">
-        {diagnostics.map((row) => (
-          <div
-            key={row.label}
-            className="flex items-center justify-between py-2"
+      {/* Secondary diagnostics behind a slim expander. */}
+      {secondary.length > 0 && (
+        <>
+          <button
+            onClick={() => setShowMore((v) => !v)}
+            className="mt-1 flex w-full items-center gap-1 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-300"
           >
-            <dt className="text-xs text-slate-400">{row.label}</dt>
-            <dd className="font-mono text-xs font-medium text-slate-100">
-              {row.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
+            {showMore ? (
+              <ChevronDown size={12} strokeWidth={1.75} />
+            ) : (
+              <ChevronRight size={12} strokeWidth={1.75} />
+            )}
+            More diagnostics
+            {!showMore && <span className="text-slate-600">· wings, Lee, var-swap</span>}
+          </button>
+          {showMore && <DiagList rows={secondary} />}
+        </>
+      )}
 
       {/* Variance-swap quote: adds a calibration penalty (Options-gated) */}
       {smile?.varSwap.enabled && (

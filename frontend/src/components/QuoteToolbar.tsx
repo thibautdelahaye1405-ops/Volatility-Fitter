@@ -1,6 +1,9 @@
 // Compact quote-editing toolbar for the Smile Viewer chart header.
-// Buttons mirror the keyboard shortcuts (Del exclude, Ctrl+Z/Y undo/redo)
-// and are all disabled in mock mode, where there is no fit session to edit.
+// Icon + label chips mirroring the keyboard shortcuts (Del exclude,
+// Ctrl+Z/Y undo/redo); all disabled in mock mode, where there is no fit
+// session to edit.
+import { Ban, RotateCcw, Undo2, Redo2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import type { QuoteBand } from "../lib/mockData";
 
 interface QuoteToolbarProps {
@@ -18,12 +21,34 @@ interface QuoteToolbarProps {
   onReset: () => void;
 }
 
-/** Small bordered buttons, matching the fit-mode segmented control.
+/** Small bordered chips, matching the top-bar action buttons.
  *  Exported so siblings of this toolbar (e.g. Save prior) match exactly. */
 export const toolbarButtonClass =
-  "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] " +
-  "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
+  "flex items-center gap-1 rounded-md border border-slate-700 bg-surface-800 px-2 py-1 " +
+  "text-[11px] font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
+
+/** One icon + label toolbar chip. */
+function Chip({
+  icon: Icon,
+  label,
+  disabled,
+  title,
+  onClick,
+}: {
+  icon: LucideIcon;
+  label: string;
+  disabled: boolean;
+  title?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button className={toolbarButtonClass} disabled={disabled} title={title} onClick={onClick}>
+      <Icon size={12} strokeWidth={1.75} className="opacity-80" />
+      {label}
+    </button>
+  );
+}
 
 export default function QuoteToolbar({
   selectedQuote,
@@ -40,38 +65,34 @@ export default function QuoteToolbar({
   const offlineTitle = live ? undefined : "requires live backend";
   return (
     <div className="flex items-center gap-1.5">
-      <button
-        className={toolbarButtonClass}
+      <Chip
+        icon={Ban}
+        label={selectedQuote?.excluded ? "Restore" : "Exclude"}
         disabled={!live || selectedQuote === null}
-        title={offlineTitle}
+        title={offlineTitle ?? "Exclude / restore the selected quote (Del)"}
         onClick={onToggleExclude}
-      >
-        {selectedQuote?.excluded ? "Restore" : "Exclude"}
-      </button>
-      <button
-        className={toolbarButtonClass}
+      />
+      <Chip
+        icon={Undo2}
+        label="Undo"
         disabled={!live || !canUndo}
-        title={offlineTitle}
+        title={offlineTitle ?? "Undo (Ctrl+Z)"}
         onClick={onUndo}
-      >
-        Undo
-      </button>
-      <button
-        className={toolbarButtonClass}
+      />
+      <Chip
+        icon={Redo2}
+        label="Redo"
         disabled={!live || !canRedo}
-        title={offlineTitle}
+        title={offlineTitle ?? "Redo (Ctrl+Y)"}
         onClick={onRedo}
-      >
-        Redo
-      </button>
-      <button
-        className={toolbarButtonClass}
+      />
+      <Chip
+        icon={RotateCcw}
+        label="Reset edits"
         disabled={!live || !canReset}
-        title={offlineTitle}
+        title={offlineTitle ?? "Drop every exclusion / amendment"}
         onClick={onReset}
-      >
-        Reset edits
-      </button>
+      />
     </div>
   );
 }

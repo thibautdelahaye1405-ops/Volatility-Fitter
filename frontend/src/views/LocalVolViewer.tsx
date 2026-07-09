@@ -16,6 +16,7 @@
 // per-expiry data; Term / Table fetch sibling endpoints that reuse the cached
 // affine fit (useAffineView). Live backend only (no mock fallback).
 import { useEffect, useMemo, useState } from "react";
+import { Waypoints } from "lucide-react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
 import LocalVolTable from "../components/LocalVolTable";
@@ -26,7 +27,6 @@ import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesCh
 import type { OverlaySeries } from "../components/OverlayCurvesChart";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
-import ExpiryFormatToggle from "../components/ExpiryFormatToggle";
 import VarSwapPanel from "../components/VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
 import { useAffine } from "../state/useAffine";
@@ -330,7 +330,8 @@ export default function LocalVolViewer() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
-      {/* Header: ticker + sub-tab selector + expiry chips + arb badge */}
+      {/* Header: Underlying · Expiry · sub-tabs · view controls, status badges
+          right-aligned — the same grammar as the Parametric workspace. */}
       <div className="flex shrink-0 flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-xs text-slate-500">
           Underlying
@@ -346,8 +347,30 @@ export default function LocalVolViewer() {
           </select>
         </label>
 
+        {/* Per-expiry selector (smile / table) — right after Underlying, matching
+            the Parametric header's Underlying · Expiry · sub-tabs order. */}
+        {PER_EXPIRY[view] && (
+          <label className="flex items-center gap-2 text-xs text-slate-500">
+            Expiry
+            <select
+              className={selectClass}
+              value={data?.smiles[expiryIdx]?.expiry ?? ""}
+              onChange={(e) => {
+                const i = (data?.smiles ?? []).findIndex((s) => s.expiry === e.target.value);
+                if (i >= 0) setExpiryIdx(i);
+              }}
+              disabled={(data?.smiles ?? []).length === 0}
+            >
+              {(data?.smiles ?? []).map((s) => (
+                <option key={s.expiry} value={s.expiry}>
+                  {formatExpiry(s.expiry, s.t, format)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <SegmentedControl options={LV_VIEWS} value={view} onChange={setView} size="xs" />
-        <ExpiryFormatToggle />
 
         {/* Strike-axis display mode (densities / IV surface / stacked IV) */}
         {AXIS_MODE_VIEWS.has(view) && (
@@ -407,39 +430,18 @@ export default function LocalVolViewer() {
           />
         )}
 
-        {/* Per-expiry selector (smile / table) */}
-        {PER_EXPIRY[view] && (
-          <label className="flex items-center gap-2 text-xs text-slate-500">
-            Expiry
-            <select
-              className={selectClass}
-              value={data?.smiles[expiryIdx]?.expiry ?? ""}
-              onChange={(e) => {
-                const i = (data?.smiles ?? []).findIndex((s) => s.expiry === e.target.value);
-                if (i >= 0) setExpiryIdx(i);
-              }}
-              disabled={(data?.smiles ?? []).length === 0}
-            >
-              {(data?.smiles ?? []).map((s) => (
-                <option key={s.expiry} value={s.expiry}>
-                  {formatExpiry(s.expiry, s.t, format)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
         {/* Source: live quotes vs the graph-extrapolated LV projection (Phase 9) */}
         <button
           onClick={() => setGraphSource(!graphSource)}
           title="Calibrate the LV surface to the graph-extrapolated smiles instead of the live quotes"
           className={[
-            "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+            "flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
             graphSource
               ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-              : "border-slate-700 text-slate-400 hover:text-slate-200",
+              : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
           ].join(" ")}
         >
+          <Waypoints size={12} strokeWidth={1.75} className="opacity-80" />
           Graph-extrapolated
         </button>
 
@@ -493,6 +495,16 @@ export default function LocalVolViewer() {
 
         {/* Controls + diagnostics aside */}
         <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
+            <p
+              className="mt-1 text-[11px] text-slate-500"
+              title="Grid size, regularizers and solver are global hyperparameters — set them in Options ▸ Local-Vol surface"
+            >
+              {ticker !== "" ? `Local-vol surface · ${ticker}` : "Awaiting data…"}
+            </p>
+          </div>
+
           {/* Fit RMS — same calibration-consistent basis + format as Parametric */}
           {data && (
             <div className="rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
@@ -509,15 +521,6 @@ export default function LocalVolViewer() {
               </div>
             </div>
           )}
-
-          <div>
-            <h3 className="mb-1 text-sm font-semibold text-slate-100">Vertex grid</h3>
-            <p className="text-[11px] text-slate-500">
-              Grid size (strike/time nodes) &amp; roughness λ, ρ are global
-              hyperparameters — set them in the <span className="text-slate-300">Options</span> tab
-              (with an "Optimal size" button). Time vertices default to the observed expiries.
-            </p>
-          </div>
 
           {/* Var-swap quote for the selected expiry (Options-gated, shared
               with the Parametric workspace) */}

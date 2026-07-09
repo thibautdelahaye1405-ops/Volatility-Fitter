@@ -1,21 +1,14 @@
-// Universe header of the Parametric workspace: underlying / expiry selectors
-// and the fit-mode segmented control. Reads the shared smile session directly
-// so SmileViewer only handles chart-card concerns. The Expiry dropdown lists
-// every selected expiry of the ticker (the old D/W/M/Q class-filter chips were
-// removed — expiry curation lives in the Universe tab).
+// Workspace header of the Parametric screen: Underlying / Expiry selectors,
+// then the caller's view controls (sub-tabs, axis mode, overlays) via
+// `children`, with status badges right-aligned via `right` — the same header
+// grammar as the Local Vol workspace, so the two screens read identically.
+// The fit target and the expiry-label format are settings (Options ▸
+// Calibration and brand menu ▸ View), not per-screen toggles.
 import { useMemo } from "react";
-import SegmentedControl from "./SegmentedControl";
-import ExpiryFormatToggle from "./ExpiryFormatToggle";
+import type { ReactNode } from "react";
 import { useSmileSession } from "../state/smileSession";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
-import type { FitMode } from "../state/useSmile";
-
-const FIT_MODES: { id: FitMode; label: string }[] = [
-  { id: "mid", label: "Mid" },
-  { id: "bidask", label: "Bid-Ask" },
-  { id: "haircut", label: "Haircut" },
-];
 
 /** Shared styling for the header selects (also used by the axis-mode one). */
 export const selectClass =
@@ -23,9 +16,16 @@ export const selectClass =
   "font-medium text-slate-200 outline-none hover:border-slate-600 " +
   "focus:border-accent-500";
 
-export default function UniverseHeader() {
-  const { universe, ticker, expiry, fitMode, setTicker, setExpiry, setFitMode } =
-    useSmileSession();
+export default function UniverseHeader({
+  children,
+  right,
+}: {
+  /** View controls rendered after the selectors (sub-tabs, axis mode, …). */
+  children?: ReactNode;
+  /** Right-aligned status badges. */
+  right?: ReactNode;
+}) {
+  const { universe, ticker, expiry, setTicker, setExpiry } = useSmileSession();
   const { format } = useExpiryFormat();
 
   const ladder = useMemo(
@@ -67,14 +67,11 @@ export default function UniverseHeader() {
         </select>
       </label>
 
-      {/* Expiry-format quick toggle */}
-      <ExpiryFormatToggle />
+      {children}
 
-      {/* Fit-mode segmented control */}
-      <div className="ml-auto flex items-center gap-2">
-        <span className="text-xs text-slate-500">Fit to</span>
-        <SegmentedControl options={FIT_MODES} value={fitMode} onChange={setFitMode} />
-      </div>
+      {right !== undefined && (
+        <div className="ml-auto flex items-center gap-2">{right}</div>
+      )}
     </div>
   );
 }

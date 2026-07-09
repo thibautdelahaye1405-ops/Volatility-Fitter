@@ -1,13 +1,15 @@
 // Smile workspace: per-expiry implied volatility smile fitting and editing.
 // Data comes from the shared smile session (FastAPI backend with a built-in
-// mock fallback). The header (UniverseHeader) owns universe selection and
-// expiry-class filtering; the aside (SmileAside) hosts diagnostics plus the
-// scenario / forward / hyperparameter panels. The chart card offers five
+// mock fallback). The header (UniverseHeader) owns universe selection, the
+// sub-tabs and view controls, with status badges right-aligned — the same
+// grammar as the Local Vol workspace; the aside (SmileAside) hosts
+// diagnostics plus the scenario panels. The chart card offers seven
 // views — the editable Smile (with six strike-axis display modes), fitted
 // Density / Log-Q-density, the 3D vol Surface and the quote Table (the last four
 // require the live backend). Quote edits post to the backend fit session and
 // the returned refit replaces the smile; shortcuts live in useSmileShortcuts.
 import { useEffect, useRef, useState } from "react";
+import { Bookmark } from "lucide-react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
@@ -314,23 +316,11 @@ export default function SmileViewer() {
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
-      {/* Header: universe selectors, expiry-class filter, fit-mode control */}
-      <UniverseHeader />
-
-      {/* Body: chart card + diagnostics panel */}
-      <div className="flex min-h-0 flex-1 gap-4">
-        {/* Chart card (briefly ringed when a refit lands) */}
-        <div
-          className={[
-            "flex min-w-0 flex-1 flex-col rounded-xl border bg-surface-900 p-4 shadow-xl shadow-black/30",
-            "transition-colors duration-500",
-            updatedFlash ? "border-accent-500/70" : "border-slate-800",
-          ].join(" ")}
-        >
-          <div className="mb-2 flex shrink-0 items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-100">
-              {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
-            </h2>
+      {/* Header: universe selectors · sub-tabs · view controls · status badges
+          (same grammar as the Local Vol workspace). */}
+      <UniverseHeader
+        right={
+          <>
             {/* Data-source badge: live backend vs built-in mock fallback */}
             <span
               title={error ?? undefined}
@@ -352,12 +342,64 @@ export default function SmileViewer() {
                 STALE
               </span>
             )}
-            {/* Transient confirmation that a completed refit just refreshed the fit */}
+            {/* Transient confirmation that a completed refit refreshed the fit */}
             {updatedFlash && (
               <span className="volfit-fade-in rounded border border-accent-500/50 bg-accent-500/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-wider text-accent-300">
                 UPDATED
               </span>
             )}
+          </>
+        }
+      >
+        {/* View toggle: smile / distributions / surface / table */}
+        <SegmentedControl options={CHART_VIEWS} value={view} onChange={switchView} size="xs" />
+        {/* Strike-axis display mode (smile / densities / surface / stacked IV) */}
+        {AXIS_MODE_VIEWS.has(view) && (
+          <select
+            className={selectClass}
+            value={axisMode}
+            title="Strike-axis display mode"
+            onChange={(e) => setAxisMode(e.target.value as AxisMode)}
+          >
+            {AXIS_MODE_OPTIONS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        )}
+        {/* Read-only Massive-IV overlay toggle (no-op unless the backend
+            runs the Massive provider; the dots simply won't appear). */}
+        {view === "smile" && live && (
+          <button
+            className={[
+              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              showMassiveIv
+                ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+                : "border-slate-700 text-slate-400 hover:text-slate-200",
+            ].join(" ")}
+            title="Overlay Massive's own implied vols (read-only comparison)"
+            onClick={() => setShowMassiveIv((v) => !v)}
+          >
+            Massive IV
+          </button>
+        )}
+      </UniverseHeader>
+
+      {/* Body: chart card + diagnostics panel */}
+      <div className="flex min-h-0 flex-1 gap-4">
+        {/* Chart card (briefly ringed when a refit lands) */}
+        <div
+          className={[
+            "flex min-w-0 flex-1 flex-col rounded-xl border bg-surface-900 p-4 shadow-xl shadow-black/30",
+            "transition-colors duration-500",
+            updatedFlash ? "border-accent-500/70" : "border-slate-800",
+          ].join(" ")}
+        >
+          <div className="mb-2 flex shrink-0 items-center gap-2">
+            <h2 className="text-sm font-semibold text-slate-100">
+              {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
+            </h2>
             {/* Graph-extrapolation overlay badge: provenance + quote metrics,
                 with a ✕ to dismiss the overlay (clears the drill-in focus). */}
             {graphOverlay !== null && (
@@ -410,44 +452,6 @@ export default function SmileViewer() {
                 {filterDiag.contaminated && <span className="font-semibold">cont.</span>}
               </span>
             )}
-            {/* View toggle: smile / distributions / surface / table */}
-            <SegmentedControl
-              options={CHART_VIEWS}
-              value={view}
-              onChange={switchView}
-              size="xs"
-            />
-            {/* Strike-axis display mode (smile / densities / surface / stacked IV) */}
-            {AXIS_MODE_VIEWS.has(view) && (
-              <select
-                className={selectClass}
-                value={axisMode}
-                title="Strike-axis display mode"
-                onChange={(e) => setAxisMode(e.target.value as AxisMode)}
-              >
-                {AXIS_MODE_OPTIONS.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            )}
-            {/* Read-only Massive-IV overlay toggle (no-op unless the backend
-                runs the Massive provider; the dots simply won't appear). */}
-            {view === "smile" && live && (
-              <button
-                className={[
-                  "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
-                  showMassiveIv
-                    ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
-                    : "border-slate-700 text-slate-400 hover:text-slate-200",
-                ].join(" ")}
-                title="Overlay Massive's own implied vols (read-only comparison)"
-                onClick={() => setShowMassiveIv((v) => !v)}
-              >
-                Massive IV
-              </button>
-            )}
             {/* Surface refetch errors without unmounting the chart */}
             {error !== null && source === "live" && (
               <span className="truncate text-[10px] text-amber-400/80">
@@ -482,6 +486,7 @@ export default function SmileViewer() {
                 }
                 onClick={onSavePrior}
               >
+                <Bookmark size={12} strokeWidth={1.75} className="opacity-80" />
                 {savedFlash ? "Saved ✓" : "Save prior"}
               </button>
             </div>
