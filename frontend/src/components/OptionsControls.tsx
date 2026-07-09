@@ -1,5 +1,6 @@
 // Small presentational controls + the penalty catalogue used by the Options tab.
 // Extracted from OptionsViewer to keep that file under the 400-line policy.
+import type { FitModel } from "./HyperparamPanel";
 
 const segWrap = "flex overflow-hidden rounded-md border border-slate-700 bg-surface-800";
 const numInput =
@@ -7,20 +8,29 @@ const numInput =
   "font-mono text-[11px] text-slate-200 outline-none hover:border-slate-600 focus:border-accent-500";
 
 /** Penalty catalogue: description + formula + which knob sets its strength.
- *  `group` routes each row to the Model or the Calibration card. */
-export const PENALTIES: { name: string; formula: string; strength: string; group: "model" | "calibration" }[] = [
-  { name: "LQD high-order damping", formula: "λ · n^(2r) · aₙ²  (n ≥ 4)", strength: "Model: Damping λ · r", group: "model" },
-  { name: "SVI min-variance", formula: "P · max(−(a + bσ√(1−ρ²)), 0)²", strength: "Model: SVI no-arb penalty", group: "model" },
-  { name: "SVI Lee wing", formula: "P · max(b(1+|ρ|) − 2, 0)²", strength: "Model: SVI Lee slope max", group: "model" },
-  { name: "Sigmoid amplitude ridge", formula: "ridge · Σ αᵣ²  (hat amplitudes)", strength: "Model: MCS hat ridge", group: "model" },
-  { name: "Affine LV roughness", formula: "√λ · L(θ − θ_ref),  L = 2nd diff in (t, x)", strength: "Model: Grid roughness λ", group: "model" },
+ *  `group` routes each row to its themed section (Parametric / Local-Vol /
+ *  Calibration); a `model` tag further scopes parametric rows so the table
+ *  shows only the ACTIVE model's penalties. */
+export const PENALTIES: {
+  name: string; formula: string; strength: string;
+  group: "model" | "calibration" | "lv"; model?: FitModel;
+}[] = [
+  { name: "LQD high-order damping", formula: "λ · n^(2r) · aₙ²  (n ≥ 4)", strength: "Parametric: Damping λ · r", group: "model", model: "lqd" },
+  { name: "SVI min-variance", formula: "P · max(−(a + bσ√(1−ρ²)), 0)²", strength: "Parametric: SVI no-arb penalty", group: "model", model: "svi" },
+  { name: "SVI Lee wing", formula: "P · max(b(1+|ρ|) − 2, 0)²", strength: "Parametric: SVI Lee slope max", group: "model", model: "svi" },
+  { name: "Sigmoid amplitude ridge", formula: "ridge · Σ αᵣ²  (hat amplitudes)", strength: "Parametric: MCS hat ridge", group: "model", model: "sigmoid" },
+  { name: "MCS put-wing butterfly", formula: "pct · Σ max(−g(k), 0)²  (put wing)", strength: "Parametric: MCS wing penalty %", group: "model", model: "sigmoid" },
+  { name: "Affine LV roughness", formula: "√λ · L(θ − θ_ref),  L = 2nd diff in (t, x)", strength: "Local-Vol: Grid roughness λ", group: "lv" },
   { name: "Calendar slack (arb-fix)", formula: "w · Σ max(floor − Gᵢ(α), 0)²", strength: "Calibration: Calendar weight", group: "calibration" },
   { name: "Band hinge + mid anchor", formula: "max(m−ask,0)² + max(bid−m,0)² + w(m−mid)²", strength: "Calibration: Haircut · Band mid anchor", group: "calibration" },
 ];
 
-/** Render the penalty catalogue filtered to one themed group. */
-export function PenaltyTable({ group }: { group: "model" | "calibration" }) {
-  const rows = PENALTIES.filter((p) => p.group === group);
+/** Render the penalty catalogue filtered to one themed group; pass `model` to
+ *  keep only that model's rows (untagged rows always show). */
+export function PenaltyTable({ group, model }: { group: "model" | "calibration" | "lv"; model?: FitModel }) {
+  const rows = PENALTIES.filter(
+    (p) => p.group === group && (p.model === undefined || model === undefined || p.model === model),
+  );
   return (
     <div className="overflow-x-auto rounded-md border border-slate-800">
       <table className="w-full border-collapse text-left text-[11px]">

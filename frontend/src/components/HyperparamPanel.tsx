@@ -50,14 +50,14 @@ export const FIT_DEFAULTS: FitSettings = {
   midAnchorWeight: 0.05,
 };
 
-/** Model choices. LQD is the arbitrage-free default and the analytic backbone
- *  (density/term/graph/local-vol stay LQD-based); SVI and sigmoid fit the
- *  displayed smile as overlays. */
+/** Parametric model choices. LQD is the arbitrage-free default and the
+ *  analytic backbone (density/term/graph/local-vol stay LQD-based); SVI and
+ *  sigmoid fit the displayed smile as overlays. The Local-Vol grid is NOT a
+ *  parametric family — it has its own Options section. */
 const MODELS: { id: string; label: string; title: string; enabled: boolean }[] = [
   { id: "lqd", label: "LQD", title: "Logistic-quantile density slices (arbitrage-free)", enabled: true },
   { id: "svi", label: "SVI", title: "Raw SVI own calibration (Gatheral)", enabled: true },
   { id: "sigmoid", label: "MCS", title: "Multi-Core Sigmoid — sigmoid base + zero-wing hat kernels", enabled: true },
-  { id: "lv", label: "LV", title: "Local-vol grid — view via the LV-grid scenario; direct fit TODO", enabled: false },
 ];
 
 /** Damping presets: log-spaced lambda values, Off = exact interpolation. */
@@ -96,12 +96,6 @@ const selectClass =
   "focus:border-accent-500 disabled:cursor-not-allowed";
 
 export default function HyperparamPanel({ group, draft, patch, disabled }: HyperparamPanelProps) {
-  // The Legendre order and high-order damping are LQD-only knobs; the SVI and
-  // sigmoid overlays ignore them, so the controls are disabled off-LQD.
-  const lqdOnly = disabled || draft.model !== "lqd";
-  // The Multi-Core Sigmoid hat count only drives the "sigmoid" family.
-  const sigmoidOnly = disabled || draft.model !== "sigmoid";
-
   const wrap = (children: ReactNode) => (
     <section
       className={disabled ? "opacity-40" : ""}
@@ -190,81 +184,85 @@ export default function HyperparamPanel({ group, draft, patch, disabled }: Hyper
         ))}
       </div>
 
-      {/* LQD-only knobs: greyed out when an SVI/sigmoid overlay is selected. */}
-      <div className={lqdOnly && !disabled ? "opacity-40" : ""}>
-        {/* Legendre order N */}
-        <div className="mb-1 flex items-center justify-between">
-          <span className={rowLabel}>Legendre order N</span>
-          <span className="font-mono text-xs font-medium text-slate-100">{draft.nOrder}</span>
-        </div>
-        <input
-          type="range"
-          min={4}
-          max={12}
-          step={1}
-          value={draft.nOrder}
-          disabled={lqdOnly}
-          onChange={(e) => patch({ nOrder: Number(e.target.value) })}
-          className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
-          style={{ accentColor: "var(--color-accent-500)" }}
-        />
+      {/* LQD-only knobs: shown only when LQD is the active model. */}
+      {draft.model === "lqd" && (
+        <div>
+          {/* Legendre order N */}
+          <div className="mb-1 flex items-center justify-between">
+            <span className={rowLabel}>Legendre order N</span>
+            <span className="font-mono text-xs font-medium text-slate-100">{draft.nOrder}</span>
+          </div>
+          <input
+            type="range"
+            min={4}
+            max={12}
+            step={1}
+            value={draft.nOrder}
+            disabled={disabled}
+            onChange={(e) => patch({ nOrder: Number(e.target.value) })}
+            className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
+            style={{ accentColor: "var(--color-accent-500)" }}
+          />
 
-        {/* Damping lambda + power r */}
-        <div className="mb-3 flex items-center justify-between">
-          <span className={rowLabel} title="High-order damping lambda * n^(2r) * a_n^2">
-            Damping λ · power r
-          </span>
-          <span className="flex gap-1.5">
-            <select
-              value={draft.regLambda}
-              disabled={lqdOnly}
-              onChange={(e) => patch({ regLambda: Number(e.target.value) })}
-              className={selectClass}
-            >
-              {LAMBDAS.map((v) => (
-                <option key={v} value={v}>
-                  {lambdaLabel(v)}
-                </option>
-              ))}
-            </select>
-            <select
-              value={draft.regPower}
-              disabled={lqdOnly}
-              onChange={(e) => patch({ regPower: Number(e.target.value) })}
-              className={selectClass}
-            >
-              {POWERS.map((v) => (
-                <option key={v} value={v}>
-                  {v.toFixed(1)}
-                </option>
-              ))}
-            </select>
-          </span>
+          {/* Damping lambda + power r */}
+          <div className="mb-3 flex items-center justify-between">
+            <span className={rowLabel} title="High-order damping lambda * n^(2r) * a_n^2">
+              Damping λ · power r
+            </span>
+            <span className="flex gap-1.5">
+              <select
+                value={draft.regLambda}
+                disabled={disabled}
+                onChange={(e) => patch({ regLambda: Number(e.target.value) })}
+                className={selectClass}
+              >
+                {LAMBDAS.map((v) => (
+                  <option key={v} value={v}>
+                    {lambdaLabel(v)}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={draft.regPower}
+                disabled={disabled}
+                onChange={(e) => patch({ regPower: Number(e.target.value) })}
+                className={selectClass}
+              >
+                {POWERS.map((v) => (
+                  <option key={v} value={v}>
+                    {v.toFixed(1)}
+                  </option>
+                ))}
+              </select>
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Multi-Core Sigmoid hat count R: active only for the sigmoid family. */}
-      <div className={sigmoidOnly && !disabled ? "opacity-40" : ""}>
-        <div className="mb-1 flex items-center justify-between">
-          <span className={rowLabel} title="Zero-wing hat kernels added to the MCS base (eq param-count)">
-            MCS cores R
-          </span>
-          <span className="font-mono text-xs font-medium text-slate-100">{draft.nCores}</span>
+      {/* Multi-Core Sigmoid hat count R: shown only for the sigmoid family. */}
+      {draft.model === "sigmoid" && (
+        <div>
+          <div className="mb-1 flex items-center justify-between">
+            <span className={rowLabel} title="Zero-wing hat kernels added to the MCS base (eq param-count)">
+              MCS cores R
+            </span>
+            <span className="font-mono text-xs font-medium text-slate-100">{draft.nCores}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={2}
+            step={1}
+            value={draft.nCores}
+            disabled={disabled}
+            onChange={(e) => patch({ nCores: Number(e.target.value) })}
+            className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
+            style={{ accentColor: "var(--color-accent-500)" }}
+          />
         </div>
-        <input
-          type="range"
-          min={0}
-          max={2}
-          step={1}
-          value={draft.nCores}
-          disabled={sigmoidOnly}
-          onChange={(e) => patch({ nCores: Number(e.target.value) })}
-          className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
-          style={{ accentColor: "var(--color-accent-500)" }}
-        />
-      </div>
+      )}
 
-      {/* Per-model optimization / penalty coefficients. */}
+      {/* The active model's optimization / penalty coefficients. */}
       <PenaltyCoefficients group="model" draft={draft} onChange={patch} disabled={disabled} />
     </>,
   );
