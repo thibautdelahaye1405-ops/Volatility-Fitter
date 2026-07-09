@@ -86,12 +86,22 @@ interface SurfaceMeshProps {
   /** Strike-axis display mode (shared with the Smile view). The brushed window
    *  still selects columns in log-moneyness; only the displayed x changes. */
   axisMode?: AxisMode;
+  /** Legend value formatter (default percent — right for vols; the local-
+   *  variance surface passes a plain-number formatter). */
+  formatValue?: (v: number) => string;
+  /** Corner x-axis label formatter (default the axis-mode tick label). */
+  formatX?: (v: number) => string;
+  /** Grid-size caption (default "N expiries · M strikes"). */
+  countCaption?: string;
 }
 
 export default function SurfaceMesh({
   data,
   legendLabel = "σ(k, T)",
   axisMode = "logmoneyness",
+  formatValue,
+  formatX,
+  countCaption,
 }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -234,14 +244,23 @@ export default function SurfaceMesh({
     quads.sort((a, b) => b.depth - a.depth);
 
     const frame = corners.map((c) => `${X(c).toFixed(1)},${Y(c).toFixed(1)}`).join(" ");
-    const labels = [
-      { x: X(corners[0]), y: Y(corners[0]) + 14, text: axisTickLabel(axisMode, mesh.xMin) },
-      { x: X(corners[1]), y: Y(corners[1]) + 14, text: axisTickLabel(axisMode, mesh.xMax) },
-      { x: X(corners[0]), y: Y(corners[0]) + 26, text: `T ${mesh.tMin.toFixed(2)}y` },
-      { x: X(corners[3]), y: Y(corners[3]) + 14, text: `T ${mesh.tMax.toFixed(2)}y` },
-    ];
-    return { quads, frame, labels };
+    // Corner pixel anchors; label text is built at render time so custom
+    // formatters don't have to be memo dependencies.
+    const anchors = corners.map((c) => ({ x: X(c), y: Y(c) }));
+    return { quads, frame, anchors };
   }, [mesh, yaw, size, zoomF, axisMode]);
+
+  const fmtV = formatValue ?? formatPct;
+  const fmtX = formatX ?? ((v: number) => axisTickLabel(axisMode, v));
+  const labels =
+    mesh !== null && scene !== null
+      ? [
+          { x: scene.anchors[0].x, y: scene.anchors[0].y + 14, text: fmtX(mesh.xMin) },
+          { x: scene.anchors[1].x, y: scene.anchors[1].y + 14, text: fmtX(mesh.xMax) },
+          { x: scene.anchors[0].x, y: scene.anchors[0].y + 26, text: `T ${mesh.tMin.toFixed(2)}y` },
+          { x: scene.anchors[3].x, y: scene.anchors[3].y + 14, text: `T ${mesh.tMax.toFixed(2)}y` },
+        ]
+      : [];
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -262,7 +281,7 @@ export default function SurfaceMesh({
         <span className="font-mono text-slate-500">{legendLabel}</span>
         {mesh !== null && (
           <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
-            {formatPct(mesh.vMin)}
+            {fmtV(mesh.vMin)}
             <span
               className="h-2 w-24 rounded"
               style={{
@@ -270,11 +289,11 @@ export default function SurfaceMesh({
                   "linear-gradient(90deg, rgb(59 130 246), rgb(34 211 238), rgb(251 191 36), rgb(239 68 68))",
               }}
             />
-            {formatPct(mesh.vMax)}
+            {fmtV(mesh.vMax)}
           </span>
         )}
         <span className="text-[10px] text-slate-500">
-          {data.expiries.length} expiries · {data.k.length} strikes
+          {countCaption ?? `${data.expiries.length} expiries · ${data.k.length} strikes`}
         </span>
         <div className="ml-auto flex items-center gap-2">
           {/* Maturity-axis scaling toggle */}
@@ -319,8 +338,8 @@ export default function SurfaceMesh({
               <path key={i} d={q.d} fill={q.color} fillOpacity={0.55} stroke={q.color}
                 strokeOpacity={0.9} strokeWidth={0.6} strokeLinejoin="round" />
             ))}
-            {scene.labels.map((l) => (
-              <text key={l.text} x={l.x} y={l.y} textAnchor="middle" className="fill-slate-500 font-mono text-[10px]">
+            {labels.map((l, i) => (
+              <text key={i} x={l.x} y={l.y} textAnchor="middle" className="fill-slate-500 font-mono text-[10px]">
                 {l.text}
               </text>
             ))}

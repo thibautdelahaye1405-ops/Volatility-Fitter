@@ -7,7 +7,8 @@
 //   Densities  every expiry's Breeden-Litzenberger density overlaid (≥ 0 ⇔ no
 //              butterfly arb), mirroring the Parametric "Densities" view
 //   Term       ATM / var-swap term structure across the ladder
-//   LV surface the nodal local-vol heatmap
+//   LV surface the nodal local-vol grid — 3D local-variance mesh (default,
+//              same renderer as the IV surface) or the flat vertex heatmap
 //   IV surface reconstructed implied-vol mesh over t × strike
 //   Stacked IV total variance w=σ²·τ per expiry (non-crossing ⇔ no calendar arb)
 //   Table      per-strike reconstructed IVs + prices (per expiry)
@@ -97,6 +98,8 @@ export default function LocalVolViewer() {
   const [view, setView] = useState<LvView>("smile");
   // Strike-axis display mode for the density / IV-surface / stacked-IV views.
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
+  // LV-surface render mode: 3D local-variance mesh (default) or vertex heatmap.
+  const [lvRender, setLvRender] = useState<"mesh" | "heatmap">("mesh");
   // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
   // + maturity-clock toggle, so event-time dilation is consistent in LV's Term.
   const events = useEvents(ticker);
@@ -121,6 +124,19 @@ export default function LocalVolViewer() {
   // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh
   // (the chosen x-axis mode is applied per-row inside SurfaceMesh).
   const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
+
+  // Nodal LV surface as a 3D mesh in LOCAL VARIANCE σ²_loc (the quantity the
+  // pricing PDE actually consumes): rows = vertex maturities t, columns =
+  // vertex strikes x = K/F. Same renderer as the IV surface.
+  const lvMesh = useMemo<SurfaceMeshData | null>(() => {
+    if (!data || data.tNodes.length < 2 || data.xNodes.length < 2) return null;
+    return {
+      expiries: data.tNodes.map((t) => t.toFixed(2)),
+      t: data.tNodes,
+      k: data.xNodes,
+      vol: data.localVol.map((row) => row.map((v) => v * v)),
+    };
+  }, [data]);
 
   // Stacked IV: every reconstructed expiry's total variance w(k) = σ(k)²·τ on
   // shared axes (mirrors the Parametric workspace). σ is quoted in the event-
@@ -196,7 +212,17 @@ export default function LocalVolViewer() {
       return chartMessage("No local-vol surface yet — press Calibrate.");
     switch (view) {
       case "lvsurface":
-        return <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
+        return lvRender === "mesh" && lvMesh
+          ? (
+            <SurfaceMesh
+              data={lvMesh}
+              legendLabel="σ²_loc(x, t)"
+              formatValue={(v) => Number(v.toPrecision(3)).toString()}
+              formatX={(v) => `x ${v.toFixed(2)}`}
+              countCaption={`${data.tNodes.length}×${data.xNodes.length} vertices`}
+            />
+          )
+          : <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
       case "ivsurface":
         return ivSurface
           ? <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" axisMode={axisMode} />
@@ -286,6 +312,19 @@ export default function LocalVolViewer() {
               </option>
             ))}
           </select>
+        )}
+
+        {/* LV-surface render mode: 3D local-variance mesh vs vertex heatmap */}
+        {view === "lvsurface" && (
+          <SegmentedControl
+            options={[
+              { id: "mesh" as const, label: "3D σ²_loc" },
+              { id: "heatmap" as const, label: "Heat map" },
+            ]}
+            value={lvRender}
+            onChange={setLvRender}
+            size="xs"
+          />
         )}
 
         {/* Maturity clock (Term sub-tab): real vs shared event-dilated time */}
