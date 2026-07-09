@@ -336,14 +336,40 @@ export default function GraphNetworkChart({
         </g>
       </svg>
 
-      {/* Fit-to-view (resets the pan/zoom to the initial framing) */}
-      <button
-        onClick={() => size !== null && setTransform(fitTransform(size, layout))}
-        title="Fit graph to view"
-        className="absolute right-3 top-3 rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:border-slate-600 hover:text-slate-100"
-      >
-        ⤢ Fit
-      </button>
+      {/* Zoom cluster: in / out around the canvas centre + fit-to-view */}
+      <div className="absolute right-3 top-3 flex flex-col overflow-hidden rounded-md border border-slate-700 bg-surface-800 text-slate-300">
+        {(
+          [
+            { label: "+", title: "Zoom in", f: 1.3 },
+            { label: "−", title: "Zoom out", f: 1 / 1.3 },
+          ] as const
+        ).map((z) => (
+          <button
+            key={z.label}
+            title={z.title}
+            onClick={() => {
+              if (size === null) return;
+              setTransform((prev) => {
+                const k = clamp(prev.k * z.f, K_MIN, K_MAX);
+                const s = k / prev.k; // zoom around the canvas centre
+                const cx = size.w / 2;
+                const cy = size.h / 2;
+                return { k, tx: cx - (cx - prev.tx) * s, ty: cy - (cy - prev.ty) * s };
+              });
+            }}
+            className="px-2 py-1 text-sm leading-none transition-colors hover:bg-slate-700/40 hover:text-slate-100"
+          >
+            {z.label}
+          </button>
+        ))}
+        <button
+          onClick={() => size !== null && setTransform(fitTransform(size, layout))}
+          title="Fit graph to view"
+          className="border-t border-slate-700 px-2 py-1 text-xs leading-none transition-colors hover:bg-slate-700/40 hover:text-slate-100"
+        >
+          ⤢
+        </button>
+      </div>
 
       {hoverNode && hoverPos && (
         <NodeTooltip

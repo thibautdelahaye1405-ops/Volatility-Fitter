@@ -82,11 +82,9 @@ function renderPanel(opts: {
 } = {}) {
   const graph = opts.graph ?? graphStub();
   const extra = opts.extra ?? extraStub();
-  const setSource = vi.fn();
   render(
     <PropagatePanel
       source={opts.source ?? "calibrations"}
-      setSource={setSource}
       graph={graph}
       extra={extra}
       body={BODY}
@@ -97,7 +95,7 @@ function renderPanel(opts: {
       onOpenSmile={vi.fn()}
     />,
   );
-  return { graph, extra, setSource };
+  return { graph, extra };
 }
 
 afterEach(() => {

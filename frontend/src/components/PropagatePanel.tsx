@@ -8,6 +8,7 @@
 // action. Backtest (calibrations) lives under Validate; auto-tune η sits with
 // the solver knobs it tunes.
 import { useEffect, useMemo, useState } from "react";
+import { Eraser, FlaskConical, Grid3x3 } from "lucide-react";
 import EdgeMatrixEditor from "./EdgeMatrixEditor";
 import ExtrapolateResults from "./ExtrapolateResults";
 import SolverPanel from "./SolverPanel";
@@ -20,8 +21,8 @@ import type { UniverseResponse } from "../state/useSmile";
 export type ObservationSource = "calibrations" | "manual";
 
 interface PropagatePanelProps {
+  /** Selected in the workspace header; the panel adapts its content. */
   source: ObservationSource;
-  setSource: (s: ObservationSource) => void;
   graph: UseGraphResult;
   extra: UseGraphExtrapolationResult;
   /** The /graph/extrapolate body (built in the parent; shared with drill-ins). */
@@ -35,9 +36,10 @@ interface PropagatePanelProps {
 }
 
 const buttonClass =
-  "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
-  "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
-  "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
+  "flex items-center justify-center gap-1 rounded-md border border-slate-700 bg-surface-800 " +
+  "px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors " +
+  "enabled:hover:border-slate-600 enabled:hover:text-slate-100 " +
+  "disabled:cursor-not-allowed disabled:opacity-40";
 
 const SOURCES: { key: ObservationSource; label: string; blurb: string }[] = [
   {
@@ -54,7 +56,6 @@ const SOURCES: { key: ObservationSource; label: string; blurb: string }[] = [
 
 export default function PropagatePanel({
   source,
-  setSource,
   graph,
   extra,
   body,
@@ -130,23 +131,8 @@ export default function PropagatePanel({
 
   return (
     <aside className="flex w-80 shrink-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
-      {/* Observation source */}
-      <h3 className="mb-2 text-sm font-semibold text-slate-100">Observations</h3>
-      <div className="mb-1 flex overflow-hidden rounded-md border border-slate-700 text-[11px]">
-        {SOURCES.map((s) => (
-          <button
-            key={s.key}
-            onClick={() => setSource(s.key)}
-            className={`flex-1 px-2 py-1 transition-colors ${
-              source === s.key
-                ? "bg-accent-600 text-white"
-                : "bg-surface-800 text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
+      {/* Observations (the source selector lives in the workspace header) */}
+      <h3 className="mb-1 text-sm font-semibold text-slate-100">Observations</h3>
       <p className="mb-3 text-[11px] text-slate-500">
         {SOURCES.find((s) => s.key === source)?.blurb}
       </p>
@@ -246,8 +232,11 @@ export default function PropagatePanel({
 
           {/* Solver knobs (shared by both sources; auto-tune η lives here) */}
           <details className="mt-3">
-            <summary className="cursor-pointer text-[11px] text-slate-500 transition-colors hover:text-slate-300">
-              Solver settings
+            <summary
+              className="cursor-pointer text-[11px] text-slate-500 transition-colors hover:text-slate-300"
+              title="Defaults are seeded from Options ▸ Graph; edits here apply to this session"
+            >
+              Solver settings <span className="text-slate-600">· seeded from Options ▸ Graph</span>
             </summary>
             <SolverPanel
               params={graph.params}
@@ -281,8 +270,14 @@ export default function PropagatePanel({
             )}
             {busy ? "Propagating…" : "Propagate"}
           </button>
-          <button disabled={!hasResults} onClick={clear} className={buttonClass}>
-            Clear
+          <button
+            disabled={!hasResults}
+            onClick={clear}
+            title="Reset the posterior field (observations are kept)"
+            className={buttonClass}
+          >
+            <Eraser size={12} strokeWidth={1.75} className="opacity-80" />
+            Clear field
           </button>
         </div>
 
@@ -294,6 +289,7 @@ export default function PropagatePanel({
               onClick={() => void extra.runBacktest(body)}
               title="Leave-one-node-out validation of the current knobs"
             >
+              <FlaskConical size={12} strokeWidth={1.75} className="opacity-80" />
               {extra.backtesting ? "Backtesting…" : "Validate (LOO)"}
             </button>
           )}
@@ -302,22 +298,13 @@ export default function PropagatePanel({
             onClick={() => setEditingEdges((v) => !v)}
             title="Edit the per-edge graph weights + beta"
           >
+            <Grid3x3 size={12} strokeWidth={1.75} className="opacity-80" />
             {editingEdges ? "Done" : "Edges"}
           </button>
         </div>
         {!manual && extra.backtestError !== null && (
           <p className="mt-2 text-[10px] text-amber-400">{extra.backtestError}</p>
         )}
-
-        {/* Visual legend */}
-        <div className="mt-3 space-y-1 border-t border-slate-800 pt-3 text-[10px] text-slate-500">
-          <p>
-            <span className="text-amber-400">amber ring</span> observed ·{" "}
-            <span className="text-sky-400">blue</span>→
-            <span className="text-red-400">red</span> posterior shift
-          </p>
-          <p>halo size/fade = posterior uncertainty (sd)</p>
-        </div>
       </div>
     </aside>
   );

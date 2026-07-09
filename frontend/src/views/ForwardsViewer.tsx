@@ -97,23 +97,32 @@ export default function ForwardsViewer() {
             ))}
           </select>
         </label>
-        {data && (
-          <span className="font-mono text-[11px] text-slate-500">
-            spot {data.spot.toFixed(2)} · {data.exerciseStyle} ·{" "}
-            {data.entries.length} expiries
-          </span>
-        )}
-        {data?.zeroCarry && (
-          <span
-            className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400"
-            title="The feed gated NBBO quotes, so this chain was synthesized from the provider's per-contract IVs at zero carry (every price is Black at forward = spot, discount = 1, zero spread). Parity carries no information here, so the forward is pinned to that convention — not a market read."
-          >
-            IV-synthesized · zero carry · F pinned to spot
-          </span>
-        )}
         {error && (
-          <span className="ml-auto truncate text-[10px] text-amber-400/80" title={error}>
+          <span className="truncate text-[10px] text-amber-400/80" title={error}>
             {error}
+          </span>
+        )}
+
+        {/* Status badges, right-aligned (same grammar as the other screens) */}
+        {data && (
+          <span className="ml-auto flex items-center gap-2 font-mono text-[11px] text-slate-500">
+            {data.zeroCarry && (
+              <span
+                className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-400"
+                title="The feed gated NBBO quotes, so this chain was synthesized from the provider's per-contract IVs at zero carry (every price is Black at forward = spot, discount = 1, zero spread). Parity carries no information here, so the forward is pinned to that convention — not a market read."
+              >
+                IV-synthesized · zero carry · F pinned to spot
+              </span>
+            )}
+            <span className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5">
+              spot {data.spot.toFixed(2)}
+            </span>
+            <span className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5">
+              {data.exerciseStyle}
+            </span>
+            <span className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5">
+              {data.entries.length} expiries
+            </span>
           </span>
         )}
       </div>

@@ -4,8 +4,11 @@
 // with the Graph tab via GET/PUT /universe/lit): lit = an observed source for
 // the graph solver, dark = an extrapolation target (stale / filled in by the
 // solver). Rows are tickers, cells are their selected expiries; click a cell to
-// toggle it, or use the per-ticker bulk buttons. Live backend only.
+// toggle it, or use the per-ticker bulk buttons. The optional row slots let the
+// Universe workspace fold ticker management into the SAME rows (▸ name expands
+// the expiry picker, `actions` renders e.g. a Remove chip). Live backend only.
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "../state/api";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
@@ -26,9 +29,23 @@ const bulkBtn =
 
 interface Props {
   universe: UniverseResponse | null;
+  /** Trailing per-ticker actions (e.g. the Remove chip). */
+  actions?: (ticker: string) => ReactNode;
+  /** Which ticker's expanded editor is open (controlled by the caller). */
+  expanded?: string | null;
+  /** Clicking the ▸ ticker name toggles its expanded editor. */
+  onToggleExpand?: (ticker: string) => void;
+  /** Expanded row content (e.g. the expiry-selection picker). */
+  renderExpanded?: (ticker: string) => ReactNode;
 }
 
-export default function LitDarkMatrix({ universe }: Props) {
+export default function LitDarkMatrix({
+  universe,
+  actions,
+  expanded = null,
+  onToggleExpand,
+  renderExpanded,
+}: Props) {
   const { format } = useExpiryFormat();
   const [nodes, setNodes] = useState<LitNode[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -114,49 +131,68 @@ export default function LitDarkMatrix({ universe }: Props) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="mb-1 flex shrink-0 items-center gap-2">
-        <h2 className="text-sm font-semibold text-slate-100">Lit / dark nodes</h2>
+        <h2 className="text-sm font-semibold text-slate-100">Universe nodes</h2>
         <span className="text-[11px] text-slate-500">
-          lit = observed source · dark = extrapolated by the graph solver
+          click a chip to toggle · <span className="text-accent-300">lit</span> = observed source ·
+          dark = extrapolated by the graph solver
         </span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        {[...byTicker.entries()].map(([ticker, rows]) => (
-          <div key={ticker} className="flex items-center gap-2 border-t border-slate-800/60 py-1.5">
-            <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-100">
-              {ticker}
-            </span>
-            <div className="flex shrink-0 gap-1">
-              <button className={bulkBtn} onClick={() => toggleTicker(ticker, true)} title="Light all">
-                lit
-              </button>
-              <button className={bulkBtn} onClick={() => toggleTicker(ticker, false)} title="Darken all">
-                dark
-              </button>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {rows.map((n) => {
-                const t = tOf.get(`${n.ticker}|${n.expiry}`);
-                const label =
-                  t !== undefined ? formatExpiry(n.expiry, t, format) : n.expiry.slice(5);
-                return (
+        {[...byTicker.entries()].map(([ticker, rows]) => {
+          const open = expanded === ticker;
+          return (
+            <div key={ticker} className="border-t border-slate-800/60 py-1.5">
+              <div className="flex items-center gap-2">
+                {onToggleExpand ? (
                   <button
-                    key={n.expiry}
-                    onClick={() => toggleNode(n)}
-                    title={`${n.expiry} · ${n.lit ? "lit (observed)" : "dark (extrapolated)"}`}
-                    className={[
-                      "rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
-                      n.lit
-                        ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
-                        : "border-slate-700 bg-surface-800 text-slate-600 hover:text-slate-400",
-                    ].join(" ")}
+                    className="w-16 shrink-0 text-left font-mono text-xs font-medium text-slate-100 hover:text-accent-400"
+                    title="Edit this ticker's selected expiries"
+                    onClick={() => onToggleExpand(ticker)}
                   >
-                    {label}
+                    {open ? "▾ " : "▸ "}
+                    {ticker}
                   </button>
-                );
-              })}
+                ) : (
+                  <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-100">
+                    {ticker}
+                  </span>
+                )}
+                <div className="flex shrink-0 gap-1">
+                  <button className={bulkBtn} onClick={() => toggleTicker(ticker, true)} title="Light all">
+                    lit
+                  </button>
+                  <button className={bulkBtn} onClick={() => toggleTicker(ticker, false)} title="Darken all">
+                    dark
+                  </button>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-wrap gap-1">
+                  {rows.map((n) => {
+                    const t = tOf.get(`${n.ticker}|${n.expiry}`);
+                    const label =
+                      t !== undefined ? formatExpiry(n.expiry, t, format) : n.expiry.slice(5);
+                    return (
+                      <button
+                        key={n.expiry}
+                        onClick={() => toggleNode(n)}
+                        title={`${n.expiry} · ${n.lit ? "lit (observed)" : "dark (extrapolated)"}`}
+                        className={[
+                          "rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
+                          n.lit
+                            ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                            : "border-slate-700 bg-surface-800 text-slate-600 hover:text-slate-400",
+                        ].join(" ")}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {actions && <div className="ml-auto shrink-0">{actions(ticker)}</div>}
+              </div>
+              {open && renderExpanded && renderExpanded(ticker)}
             </div>
-          </div>
-        ))}
+          );
+        })}
         {nodes.length === 0 && (
           <p className="py-2 text-[11px] text-slate-500">No nodes yet.</p>
         )}

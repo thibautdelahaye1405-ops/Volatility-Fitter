@@ -1,11 +1,15 @@
 // Universe-management workspace: curate the tickers the app works on.
 //
-// Search the provider catalogue by symbol or company name, add a hit to the
-// active universe (the backend fetches its chain on demand), remove tickers,
-// and save / load / delete named universes (when a store is configured). Edits
-// flow into the shared smile session, so every other workspace's selectors
-// update immediately. Live backend only (the universe lives on the server).
+// One mental model, one card: every ticker row shows its expiry chips with the
+// lit/dark designation toggled directly on the chips (shared with the Graph
+// tab), ▸ expands the expiry-selection picker, Remove drops the ticker. The
+// header hosts the catalogue search (results in an anchored dropdown); a
+// narrow aside saves / loads named universes (when a store is configured).
+// Edits flow into the shared smile session, so every other workspace's
+// selectors update immediately. Live backend only (the universe lives on the
+// server).
 import { useState } from "react";
+import { FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import { useUniverse } from "../state/useUniverse";
 import ExpiryPicker from "../components/ExpiryPicker";
 import LitDarkMatrix from "../components/LitDarkMatrix";
@@ -16,9 +20,9 @@ const inputClass =
   "w-full rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
   "text-slate-100 outline-none placeholder:text-slate-600 hover:border-slate-600 focus:border-accent-500";
 const smallBtn =
-  "rounded border border-slate-700 bg-surface-800 px-2 py-0.5 text-[11px] font-medium " +
-  "text-slate-300 transition-colors enabled:hover:border-slate-600 enabled:hover:text-slate-100 " +
-  "disabled:cursor-not-allowed disabled:opacity-40";
+  "flex items-center gap-1 rounded border border-slate-700 bg-surface-800 px-2 py-0.5 text-[11px] " +
+  "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
+  "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function UniverseManager() {
   const {
@@ -58,15 +62,76 @@ export default function UniverseManager() {
 
   const tickers = universe?.tickers ?? [];
   const inUniverse = new Set(tickers);
+  const nodeCount = tickers.reduce((n, t) => n + (universe?.expiries[t] ?? []).length, 0);
+  const showResults = query.trim() !== "";
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
-      {/* Header */}
-      <div className="flex shrink-0 items-center gap-3">
+      {/* Header: summary · catalogue search (anchored dropdown) · error */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
         <h1 className="text-sm font-semibold text-slate-100">Universe</h1>
         <span className="text-[11px] text-slate-500">
-          {tickers.length} underlying{tickers.length === 1 ? "" : "s"} · as of {universe?.asOf}
+          {tickers.length} underlying{tickers.length === 1 ? "" : "s"} · {nodeCount} expiries · as
+          of {universe?.asOf}
         </span>
+
+        {/* Add underlying: search-as-you-type, results anchored below. */}
+        <div className="relative w-96 max-w-full">
+          <input
+            className={inputClass}
+            placeholder="Add underlying — search symbol or name (e.g. AAPL, Microsoft)…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          {showResults && (
+            <>
+              {/* Click-away closes by clearing the query. */}
+              <button
+                className="fixed inset-0 z-10 cursor-default"
+                aria-hidden
+                onClick={() => setQuery("")}
+              />
+              <div className="absolute left-0 right-0 z-20 mt-1 max-h-80 overflow-y-auto rounded-lg border border-slate-700 bg-surface-800 py-1 shadow-xl shadow-black/40">
+                {searching && <p className="px-3 py-2 text-[11px] text-slate-500">Searching…</p>}
+                {!searching && results.length === 0 && (
+                  <p className="px-3 py-2 text-[11px] text-slate-500">No matches.</p>
+                )}
+                {results.map((m) => {
+                  const present = inUniverse.has(m.symbol);
+                  return (
+                    <div
+                      key={m.symbol}
+                      className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-700/30"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono text-xs font-medium text-slate-100">
+                          {m.symbol}
+                        </span>
+                        {m.name && (
+                          <span className="ml-2 truncate text-[11px] text-slate-500">{m.name}</span>
+                        )}
+                      </div>
+                      {(m.type || m.exchange) && (
+                        <span className="shrink-0 text-[10px] text-slate-600">
+                          {[m.type, m.exchange].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                      <button
+                        className={smallBtn}
+                        disabled={present || busy !== null}
+                        onClick={() => addTicker(m.symbol)}
+                      >
+                        <Plus size={11} strokeWidth={1.75} className="opacity-80" />
+                        {present ? "Added" : busy === `add:${m.symbol}` ? "Adding…" : "Add"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+
         {error && (
           <span className="ml-auto truncate text-[11px] text-amber-400" title={error}>
             {error}
@@ -74,98 +139,28 @@ export default function UniverseManager() {
         )}
       </div>
 
-      {/* Search / add (full-width, stays visible at top) */}
-      <div className={`${card} shrink-0`}>
-        <h2 className="mb-2 text-sm font-semibold text-slate-100">Add underlying</h2>
-        <input
-          className={inputClass}
-          placeholder="Search symbol or company name (e.g. AAPL, Microsoft)…"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <div className="mt-2 max-h-56 overflow-y-auto">
-          {searching && <p className="px-1 py-2 text-[11px] text-slate-500">Searching…</p>}
-          {!searching && query.trim() !== "" && results.length === 0 && (
-            <p className="px-1 py-2 text-[11px] text-slate-500">No matches.</p>
-          )}
-          <div className="divide-y divide-slate-800/60">
-            {results.map((m) => {
-              const present = inUniverse.has(m.symbol);
-              return (
-                <div key={m.symbol} className="flex items-center gap-2 py-1.5">
-                  <div className="min-w-0 flex-1">
-                    <span className="font-mono text-xs font-medium text-slate-100">
-                      {m.symbol}
-                    </span>
-                    {m.name && (
-                      <span className="ml-2 truncate text-[11px] text-slate-500">{m.name}</span>
-                    )}
-                  </div>
-                  {(m.type || m.exchange) && (
-                    <span className="shrink-0 text-[10px] text-slate-600">
-                      {[m.type, m.exchange].filter(Boolean).join(" · ")}
-                    </span>
-                  )}
-                  <button
-                    className={smallBtn}
-                    disabled={present || busy !== null}
-                    onClick={() => addTicker(m.symbol)}
-                  >
-                    {present ? "Added" : busy === `add:${m.symbol}` ? "Adding…" : "Add"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Main area: Active universe | Lit/Dark side by side, + Saved aside */}
+      {/* Body: one merged nodes card + the saved-universes aside */}
       <div className="flex min-h-0 flex-1 gap-4">
-        {/* Active universe (left column) */}
-        <div className={`${card} min-h-0 flex-1`}>
-          <h2 className="mb-2 shrink-0 text-sm font-semibold text-slate-100">Active universe</h2>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <div className="divide-y divide-slate-800/60">
-              {tickers.map((t) => {
-                const ladder = universe?.expiries[t] ?? [];
-                const open = expanded === t;
-                return (
-                  <div key={t} className="py-1.5">
-                    <div className="flex items-center gap-2">
-                      <button
-                        className="w-24 text-left font-mono text-xs font-medium text-slate-100 hover:text-accent-400"
-                        title="Edit this ticker's expiries"
-                        onClick={() => setExpanded(open ? null : t)}
-                      >
-                        {open ? "▾ " : "▸ "}
-                        {t}
-                      </button>
-                      <span className="flex-1 text-[11px] text-slate-500">
-                        {ladder.length} expir{ladder.length === 1 ? "y" : "ies"} selected
-                      </span>
-                      <button
-                        className={smallBtn}
-                        disabled={tickers.length <= 1 || busy !== null}
-                        title={
-                          tickers.length <= 1 ? "the universe needs at least one ticker" : undefined
-                        }
-                        onClick={() => removeTicker(t)}
-                      >
-                        {busy === `remove:${t}` ? "Removing…" : "Remove"}
-                      </button>
-                    </div>
-                    {open && <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Lit/dark node designation (right column, shared with the Graph tab) */}
-        <div className={`${card} min-h-0 flex-1`}>
-          <LitDarkMatrix universe={universe ?? null} />
+        <div className={`${card} min-h-0 min-w-0 flex-1`}>
+          <LitDarkMatrix
+            universe={universe ?? null}
+            expanded={expanded}
+            onToggleExpand={(t) => setExpanded((cur) => (cur === t ? null : t))}
+            renderExpanded={(t) => <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
+            actions={(t) => (
+              <button
+                className={smallBtn}
+                disabled={tickers.length <= 1 || busy !== null}
+                title={
+                  tickers.length <= 1 ? "the universe needs at least one ticker" : "Remove ticker"
+                }
+                onClick={() => removeTicker(t)}
+              >
+                <Trash2 size={11} strokeWidth={1.75} className="opacity-80" />
+                {busy === `remove:${t}` ? "Removing…" : "Remove"}
+              </button>
+            )}
+          />
         </div>
 
         {/* Saved universes (narrow aside) */}
@@ -193,6 +188,7 @@ export default function UniverseManager() {
                   disabled={newName.trim() === "" || busy !== null}
                   onClick={() => saveUniverse(newName.trim())}
                 >
+                  <Save size={11} strokeWidth={1.75} className="opacity-80" />
                   Save
                 </button>
               </div>
@@ -209,6 +205,7 @@ export default function UniverseManager() {
                           disabled={busy !== null}
                           onClick={() => loadUniverse(name)}
                         >
+                          <FolderOpen size={11} strokeWidth={1.75} className="opacity-80" />
                           {busy === `load:${name}` ? "…" : "Load"}
                         </button>
                         <button
@@ -217,7 +214,7 @@ export default function UniverseManager() {
                           onClick={() => deleteUniverse(name)}
                           title="Delete this saved universe"
                         >
-                          ×
+                          <Trash2 size={11} strokeWidth={1.75} className="opacity-80" />
                         </button>
                       </div>
                     ))}

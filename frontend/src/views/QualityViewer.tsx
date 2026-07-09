@@ -4,6 +4,7 @@
 // backend's cached calibrations (GET /quality never fits), refreshed on every
 // calibration epoch like the other views.
 import { useMemo, useState } from "react";
+import { ExternalLink, FileJson, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { fmtBp, sortNodes } from "../lib/qualityFormat";
 import type { SortMode } from "../lib/qualityFormat";
 import { API_BASE_URL } from "../state/api";
@@ -127,33 +128,41 @@ export default function QualityViewer() {
         {/* Per-ticker rollup */}
         <div className={`${card} w-[380px] shrink-0`}>
           <div className="mb-2 flex items-baseline justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Tickers</h2>
+            <h2 className="text-sm font-semibold text-slate-100">Tickers</h2>
             <span className="text-[10px] text-slate-600">
               mode {report.fitMode} · filter {s.filterMode} · prior {s.priorMode}
             </span>
           </div>
-          {/* Publish workflow: the HTML report opens in a tab (save/share from
-              there); the surface artifacts download with a dated filename +
-              reproducibility manifest. All read cached fits only. */}
+          {/* Publish workflow — EXPORTS, not view tabs: the HTML report opens
+              in a tab (save/share from there); the surface artifacts download
+              with a dated filename + reproducibility manifest. All read cached
+              fits only. */}
           <div className="mb-2 flex items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-slate-600">Export</span>
             <a
               href={`${API_BASE_URL}/export/report`}
               target="_blank"
               rel="noreferrer"
-              className="rounded-md bg-accent-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-500"
+              title="Open the HTML quality report in a new tab"
+              className="flex items-center gap-1 whitespace-nowrap rounded-md bg-accent-600 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-accent-500"
             >
-              Quality report
+              <ExternalLink size={11} strokeWidth={1.75} className="opacity-90" />
+              Report
             </a>
             <a
               href={`${API_BASE_URL}/export/surfaces`}
-              className="rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-slate-600"
+              title="Download every published surface as JSON (dated, with a reproducibility manifest)"
+              className="flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-slate-600 hover:text-slate-100"
             >
+              <FileJson size={11} strokeWidth={1.75} className="opacity-80" />
               Surfaces JSON
             </a>
             <a
               href={`${API_BASE_URL}/export/surfaces?format=csv`}
-              className="rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-slate-600"
+              title="Download every published surface as CSV"
+              className="flex items-center gap-1 whitespace-nowrap rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-slate-600 hover:text-slate-100"
             >
+              <FileSpreadsheet size={11} strokeWidth={1.75} className="opacity-80" />
               Surfaces CSV
             </a>
           </div>
@@ -192,8 +201,8 @@ export default function QualityViewer() {
         {/* Per-node table */}
         <div className={`${card} min-w-0 flex-1`}>
           <div className="mb-2 flex items-center justify-between gap-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Nodes {loading ? "· refreshing…" : ""}
+            <h2 className="text-sm font-semibold text-slate-100">
+              Nodes {loading ? <span className="text-slate-500">· refreshing…</span> : ""}
             </h2>
             <div className="flex items-center gap-2 text-[11px] text-slate-400">
               <label className="flex items-center gap-1.5">
@@ -216,8 +225,10 @@ export default function QualityViewer() {
               </select>
               <button
                 onClick={reload}
-                className="rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 enabled:hover:border-slate-600"
+                title="Re-read the cached calibrations"
+                className="flex items-center gap-1 rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 enabled:hover:border-slate-600 enabled:hover:text-slate-100"
               >
+                <RefreshCw size={11} strokeWidth={1.75} className="opacity-80" />
                 Refresh
               </button>
             </div>

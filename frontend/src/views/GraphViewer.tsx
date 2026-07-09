@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from "react";
 import GraphNetworkChart from "../components/GraphNetworkChart";
 import PropagatePanel, { type ObservationSource } from "../components/PropagatePanel";
+import SegmentedControl from "../components/SegmentedControl";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
 import { useGraphEdges } from "../state/useGraphEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
@@ -207,15 +208,40 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     );
   }
 
+  // Header badges: lit/dark composition of the displayed universe.
+  const litCount =
+    extrapolating || manual
+      ? Object.keys(chartLit).length
+      : (chartNodes ?? []).filter((n) => n.lit).length;
+  const darkCount = Math.max(0, (chartNodes ?? []).length - litCount);
+
   return (
-    <div className="flex h-full gap-4 p-4">
-      {/* Graph card */}
-      <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
-        <div className="mb-2 flex shrink-0 items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
-          {/* Post-propagation summary strip */}
+    <div className="flex h-full flex-col gap-4 p-4">
+      {/* Header: observation source · status badges (same grammar as the
+          surface workspaces: controls left, status right). */}
+      <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-xs text-slate-500">
+          Observations
+          <SegmentedControl
+            options={[
+              { id: "calibrations" as ObservationSource, label: "From calibrations" },
+              { id: "manual" as ObservationSource, label: "Manual what-if" },
+            ]}
+            value={source}
+            onChange={setSource}
+            size="xs"
+          />
+        </label>
+
+        <div className="ml-auto flex items-center gap-2 font-mono text-[11px] text-slate-500">
+          <span
+            className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5"
+            title="Lit = observed source · dark = extrapolation target (edited in Universe ▸ Selection)"
+          >
+            {litCount} lit · {darkCount} dark
+          </span>
           {summary !== null && (
-            <span className="ml-auto font-mono text-[11px] text-slate-400">
+            <span className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 text-slate-400">
               <span className="text-amber-400">{summary.observed} observed</span>
               {" · "}
               {summary.extrapolated} extrapolated
@@ -223,6 +249,14 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
               max |shift| {summary.maxAbs.toFixed(1)} bp
             </span>
           )}
+        </div>
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-4">
+      {/* Graph card */}
+      <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+        <div className="mb-2 flex shrink-0 items-center gap-2">
+          <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
         </div>
 
         <div className="min-h-0 flex-1">
@@ -256,17 +290,33 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           )}
         </div>
 
-        {/* Interaction hint */}
-        <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-          {manual
-            ? "Click to light/dim · double-click to open smile · drag to pan, wheel to zoom · Propagate to spread"
-            : "Selected lit+dark universe · amber ring = calibrated observation · double-click to open smile · drag to pan, wheel to zoom"}
-        </p>
+        {/* Interaction hint + visual legend (next to the canvas it explains) */}
+        <div className="mt-1 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-600">
+          <span>
+            {manual
+              ? "Click to light/dim · double-click to open smile · drag to pan, wheel to zoom"
+              : "Double-click to open smile · drag to pan, wheel to zoom"}
+          </span>
+          <span className="ml-auto flex items-center gap-3 text-slate-500">
+            <span className="flex items-center gap-1">
+              <span className="h-2.5 w-2.5 rounded-full border-2 border-amber-400/90" /> observed
+            </span>
+            <span className="flex items-center gap-1">
+              <span
+                className="h-2 w-8 rounded-sm"
+                style={{ background: "linear-gradient(90deg, rgb(56 189 248), rgb(100 116 139), rgb(248 113 113))" }}
+              />
+              posterior shift
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="h-3 w-3 rounded-full bg-slate-400/25" /> halo = uncertainty (sd)
+            </span>
+          </span>
+        </div>
       </div>
 
       <PropagatePanel
         source={source}
-        setSource={setSource}
         graph={graph}
         extra={extra}
         body={extrapolateBody}
@@ -277,6 +327,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         onOpenSmile={openSmile}
         onEdgesSaved={() => setEdgesVersion((v) => v + 1)}
       />
+      </div>
     </div>
   );
 }
