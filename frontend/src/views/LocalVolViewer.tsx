@@ -77,6 +77,17 @@ const PER_EXPIRY: Record<LvView, boolean> = {
  *  the reconstructed smile, the density overlay, the IV surface and stacked var. */
 const AXIS_MODE_VIEWS = new Set<LvView>(["smile", "densities", "ivsurface", "stackedvar"]);
 
+/** X-axis scales for the 3D LV mesh. The nodal grid lives in x = K/F, so only
+ *  coordinates derivable from it are offered (Δ / normalized need an implied
+ *  vol the LV grid does not carry). Strike uses the per-row forward F(t)
+ *  interpolated from the expiry ladder, shearing the sheet like the IV view. */
+type LvAxis = "moneyness" | "logmoneyness" | "strike";
+const LV_AXIS_OPTIONS: { id: LvAxis; label: string }[] = [
+  { id: "moneyness", label: "x = K/F" },
+  { id: "logmoneyness", label: "k = ln(K/F)" },
+  { id: "strike", label: "Strike K" },
+];
+
 const chartMessage = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
 );
@@ -100,6 +111,8 @@ export default function LocalVolViewer() {
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
   // LV-surface render mode: 3D local-variance mesh (default) or vertex heatmap.
   const [lvRender, setLvRender] = useState<"mesh" | "heatmap">("mesh");
+  // X-axis scale for the 3D LV mesh (the heatmap stays in x = K/F).
+  const [lvAxis, setLvAxis] = useState<LvAxis>("moneyness");
   // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
   // + maturity-clock toggle, so event-time dilation is consistent in LV's Term.
   const events = useEvents(ticker);
@@ -137,6 +150,42 @@ export default function LocalVolViewer() {
       vol: data.localVol.map((row) => row.map((v) => v * v)),
     };
   }, [data]);
+
+  // Display-x transform for the 3D LV mesh (grid x = K/F, per t-row). Strike
+  // interpolates ln F(t) across the expiry ladder (flat-extrapolated); the
+  // brush and heatmap stay in x. Memoized so SurfaceMesh's mesh memo is stable.
+  const lvXTransform = useMemo<((x: number, row: number) => number) | undefined>(() => {
+    if (lvAxis === "moneyness" || !data) return undefined;
+    if (lvAxis === "logmoneyness") return (x) => Math.log(x);
+    const fwd = data.smiles
+      .filter((s) => (s.forward ?? 0) > 0)
+      .map((s) => ({ t: s.t, lf: Math.log(s.forward as number) }));
+    if (fwd.length === 0) return undefined; // no forwards: fall back to x
+    const { tNodes } = data;
+    const fAt = (t: number): number => {
+      if (t <= fwd[0].t) return Math.exp(fwd[0].lf);
+      const last = fwd[fwd.length - 1];
+      if (t >= last.t) return Math.exp(last.lf);
+      for (let i = 1; i < fwd.length; i++) {
+        if (t <= fwd[i].t) {
+          const a = fwd[i - 1];
+          const f = (t - a.t) / (fwd[i].t - a.t);
+          return Math.exp(a.lf + f * (fwd[i].lf - a.lf));
+        }
+      }
+      return Math.exp(last.lf);
+    };
+    const rowF = tNodes.map(fAt);
+    return (x, row) => x * (rowF[row] ?? 1);
+  }, [lvAxis, data]);
+
+  /** Corner-label formatter matching the chosen LV x-axis scale (falls back to
+   *  x when the strike transform is unavailable, mirroring lvXTransform). */
+  const lvFormatX = (v: number): string => {
+    if (lvXTransform === undefined) return `x ${v.toFixed(2)}`;
+    if (lvAxis === "strike") return `K ${v >= 100 ? v.toFixed(0) : v.toFixed(2)}`;
+    return `k ${v.toFixed(2)}`;
+  };
 
   // Stacked IV: every reconstructed expiry's total variance w(k) = σ(k)²·τ on
   // shared axes (mirrors the Parametric workspace). σ is quoted in the event-
@@ -218,8 +267,9 @@ export default function LocalVolViewer() {
               data={lvMesh}
               legendLabel="σ²_loc(x, t)"
               formatValue={(v) => Number(v.toPrecision(3)).toString()}
-              formatX={(v) => `x ${v.toFixed(2)}`}
+              formatX={lvFormatX}
               countCaption={`${data.tNodes.length}×${data.xNodes.length} vertices`}
+              rowXTransform={lvXTransform}
             />
           )
           : <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
@@ -325,6 +375,22 @@ export default function LocalVolViewer() {
             onChange={setLvRender}
             size="xs"
           />
+        )}
+
+        {/* X-axis scale for the 3D LV mesh (grid-native coordinates only) */}
+        {view === "lvsurface" && lvRender === "mesh" && (
+          <select
+            className={selectClass}
+            value={lvAxis}
+            title="Strike-axis display scale"
+            onChange={(e) => setLvAxis(e.target.value as LvAxis)}
+          >
+            {LV_AXIS_OPTIONS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
         )}
 
         {/* Maturity clock (Term sub-tab): real vs shared event-dilated time */}

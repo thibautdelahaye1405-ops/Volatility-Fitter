@@ -1,8 +1,9 @@
 // Presentational 3D surface (k × T × value) — pure SVG, no chart deps.
 //
 // Renders a (k, sqrt(T), value) mesh through an orthographic projection with
-// free yaw rotation (drag) at a fixed pitch; cells are painter-sorted back to
-// front and shaded with a blue→cyan→amber→red colormap. Extracted from
+// free yaw rotation (drag) at a fixed pitch; each grid cell is split into two
+// triangles, painter-sorted back to front and shaded with a blue→cyan→amber→red
+// colormap (triangles are the true piecewise-affine facets). Extracted from
 // SurfaceChart so both the Parametric vol surface (fetched) and the Local Vol
 // reconstructed-IV surface (built client-side) share one renderer.
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -93,6 +94,11 @@ interface SurfaceMeshProps {
   formatX?: (v: number) => string;
   /** Grid-size caption (default "N expiries · M strikes"). */
   countCaption?: string;
+  /** Per-row display-x override: maps a grid x (data.k, row index) straight to
+   *  the display coordinate, bypassing the axis-mode machinery — for grids not
+   *  in log-moneyness (the LV nodal surface is in x = K/F). Memoize at the call
+   *  site; the brush still windows in data.k units. */
+  rowXTransform?: (x: number, row: number) => number;
 }
 
 export default function SurfaceMesh({
@@ -102,6 +108,7 @@ export default function SurfaceMesh({
   formatValue,
   formatX,
   countCaption,
+  rowXTransform,
 }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -150,10 +157,12 @@ export default function SurfaceMesh({
     if (cols[cols.length - 1] !== inWin[inWin.length - 1]) cols.push(inWin[inWin.length - 1]);
     const kRange: readonly [number, number] = [k[0], k[k.length - 1]];
 
-    // Per-row display-x for each windowed column. Log-moneyness (or missing
-    // forward context) keeps the shared k; any other mode transforms per expiry.
+    // Per-row display-x for each windowed column. An explicit rowXTransform
+    // wins; else log-moneyness (or missing forward context) keeps the shared
+    // k, and any other axis mode transforms per expiry.
     const useTransform = axisMode !== "logmoneyness" && forward !== undefined;
     const rowsX: number[][] = t.map((ti, i) => {
+      if (rowXTransform) return cols.map((j) => rowXTransform(k[j], i));
       if (!useTransform) return cols.map((j) => k[j]);
       const volAt = makeVolAt(k.map((kk, idx) => ({ k: kk, vol: vol[i][idx] })));
       const ctx = {
@@ -190,7 +199,7 @@ export default function SurfaceMesh({
       })),
     );
     return { rows, vMin, vMax, xMin: dMin, xMax: dMax, tMin: t[0], tMax: t[t.length - 1] };
-  }, [data, kLo, kHi, timeMode, axisMode]);
+  }, [data, kLo, kHi, timeMode, axisMode, rowXTransform]);
 
   const scene = useMemo(() => {
     const plotW = size.width;
@@ -227,18 +236,29 @@ export default function SurfaceMesh({
     const Y = (p: { sy: number }) => oy + p.sy * scale;
 
     const vSpan = mesh.vMax - mesh.vMin || 1;
+    // Each cell renders as its TWO triangular facets (the surface is piecewise
+    // affine over triangles, not planar over quads), split along the (i,j) →
+    // (i+1,j+1) diagonal; each facet gets its own colour and paint depth.
     const quads: { d: string; depth: number; color: string }[] = [];
     for (let i = 0; i < pts.length - 1; i++) {
       for (let j = 0; j < pts[i].length - 1; j++) {
-        const c4 = [pts[i][j], pts[i][j + 1], pts[i + 1][j + 1], pts[i + 1][j]];
-        const vAvg =
-          (mesh.rows[i][j].vol + mesh.rows[i][j + 1].vol +
-            mesh.rows[i + 1][j + 1].vol + mesh.rows[i + 1][j].vol) / 4;
-        quads.push({
-          d: `M${c4.map((p) => `${X(p).toFixed(1)},${Y(p).toFixed(1)}`).join("L")}Z`,
-          depth: (c4[0].depth + c4[1].depth + c4[2].depth + c4[3].depth) / 4,
-          color: valColor((vAvg - mesh.vMin) / vSpan),
-        });
+        const corners3 = [
+          [pts[i][j], pts[i][j + 1], pts[i + 1][j + 1]],
+          [pts[i][j], pts[i + 1][j + 1], pts[i + 1][j]],
+        ];
+        const vols3 = [
+          [mesh.rows[i][j].vol, mesh.rows[i][j + 1].vol, mesh.rows[i + 1][j + 1].vol],
+          [mesh.rows[i][j].vol, mesh.rows[i + 1][j + 1].vol, mesh.rows[i + 1][j].vol],
+        ];
+        for (let s = 0; s < 2; s++) {
+          const c3 = corners3[s];
+          const vAvg = (vols3[s][0] + vols3[s][1] + vols3[s][2]) / 3;
+          quads.push({
+            d: `M${c3.map((p) => `${X(p).toFixed(1)},${Y(p).toFixed(1)}`).join("L")}Z`,
+            depth: (c3[0].depth + c3[1].depth + c3[2].depth) / 3,
+            color: valColor((vAvg - mesh.vMin) / vSpan),
+          });
+        }
       }
     }
     quads.sort((a, b) => b.depth - a.depth);
