@@ -812,6 +812,9 @@ class AppState(UniverseMixin):
                     # SIV put-wing no-butterfly regularizer (R6) — changes the SIV
                     # overlay calibration, so it busts the fit cache.
                     or options.sivWingPenaltyPct != self._options.sivWingPenaltyPct
+                    # Extrapolated-region tapered enforcement (Notes 09/10
+                    # Phase 2) — changes the overlay calibration when on.
+                    or options.extrapEnforce != self._options.extrapEnforce
                 )
                 if affects_fit:
                     self._options_version += 1

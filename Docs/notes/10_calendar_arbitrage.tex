@@ -281,9 +281,25 @@ expiry's displayed slice (vol bp), and the asymptotic wing-slope order
 (\nolinkurl{volfit/models/diagnostics.py::extrapolated\_arb},
 \nolinkurl{api/quality.py}; locked by
 \nolinkurl{test\_diagnostics.py} / \nolinkurl{test\_quality.py}). The fields
-are \emph{advisory} --- they never gate publish-readiness. Enforcement (the
-tapered hinge above) remains open, pending what the measurement shows on
-real universes.
+are \emph{advisory} --- they never gate publish-readiness.
+
+\emph{Phase 2 shipped (2026-07-09) --- tapered enforcement, opt-in.} With
+\texttt{OptionsSettings.extrapEnforce} on (OFF by default, byte-identical
+off), the SVI / MCS overlay fits gain three residual blocks over the same
+time-value envelope (\nolinkurl{volfit/calib/extrap.py}): a one-curve
+butterfly hinge on the iterate's own Durrleman $g$, the tapered calendar
+hinge against the previous \emph{displayed} slice, and the scalar
+asymptotic wing-slope-order hinge (far $\ge$ near) --- the two-curve far
+field is handled by SCALAR conditions, never by pointwise differencing of
+two extrapolations (the phantom lesson, kept by construction). Every row is
+expressed in vol units and budgeted at a quarter of an average quote's
+weight, so the whole block leans like a handful of extra quotes and can
+never outvote the data: on a clean pair the fit is untouched to fit
+precision; on a genuine mild crossing ($\sim$450 bp) the enforcement halves
+it at $\sim$29 bp of traded-range RMS
+(\nolinkurl{tests/test\_extrap\_enforce.py} locks all four contracts).
+Phase 3 --- a publish-time wing-only projection with the data core pinned
+--- remains open.
 \end{remark}
 
 %======================================================================

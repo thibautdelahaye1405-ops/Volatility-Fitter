@@ -126,6 +126,13 @@ class OptionsSettings(BaseModel):
     fitMode: FitMode = "mid"
     # arbitrage / events / var-swap (wired as global defaults)
     enforceCalendar: bool = True
+    #: Tapered no-arb enforcement in the extrapolated strike region (Notes
+    #: 09/10 Phase 2, volfit.calib.extrap): the SVI/MCS overlay fits gain a
+    #: butterfly hinge on the time-value envelope, a tapered calendar hinge
+    #: vs the previous displayed slice, and the wing-slope-order hinge. OFF by
+    #: default (byte-identical); affects calibration -> bumps the options
+    #: version. Phase 1 (the Quality tab's advisory measurement) is always on.
+    extrapEnforce: bool = False
     #: Master switch for the event-weighted variance clock (volfit.calib.
     #: weighted_time): when on, the ticker's event calendar augments day-weights
     #: so an event before an expiry lowers the working IV at fixed price. Now

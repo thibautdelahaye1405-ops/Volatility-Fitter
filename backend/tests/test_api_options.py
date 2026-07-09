@@ -33,6 +33,7 @@ def test_defaults(client):
     assert settings == {
         "fitMode": "mid",
         "enforceCalendar": True,
+        "extrapEnforce": False,
         "eventsEnabled": True,
         "normalizeEvents": False,
         "varSwapEnabled": True,
@@ -103,6 +104,7 @@ def test_put_round_trip(client):
     body = {
         "fitMode": "haircut",
         "enforceCalendar": False,
+        "extrapEnforce": True,
         "eventsEnabled": False,
         "normalizeEvents": True,
         "varSwapEnabled": False,

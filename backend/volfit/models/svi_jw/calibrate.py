@@ -33,6 +33,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.extrap import ExtrapTarget, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
@@ -127,6 +128,7 @@ def calibrate_svi(
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
+    extrap: "ExtrapTarget | None" = None,
     solver_diag: dict | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
@@ -155,6 +157,14 @@ def calibrate_svi(
     the prior-persistence residual blocks — the same semantics LQD receives, so
     the SVI display overlay is no longer an exception (roadmap Phase 3). Both None
     (the default) leave the objective byte-identical.
+
+    ``extrap`` (volfit.calib.extrap, Notes 09/10 Phase 2) adds the tapered
+    extrapolated-region blocks: a Durrleman-g butterfly hinge on the slice's
+    own envelope, the tapered calendar hinge against the previous displayed
+    slice, and the scalar wing-slope-order hinge (analytic slopes b(1∓ρ)).
+    All rows are zero on an admissible fit; None (the default) is
+    byte-identical. The extrap rows are FD-differentiated (a small hybrid
+    block, like the MCS wing penalty), so the analytic Jacobian is kept.
 
     ``solver_diag`` (Note 15 Phase 2): a caller-owned dict filled with the
     solver's solution-point Jacobian / residual / theta and the fit-block row
@@ -195,7 +205,31 @@ def calibrate_svi(
         if operator_prior is not None:
             # Quote-operator prior (ATM/RR/BF) toward the prior's operators.
             res = np.concatenate((res, operator_residuals(raw.total_variance, operator_prior)))
+        if extrap is not None:
+            res = np.concatenate((res, _extrap_rows(raw)))
         return res
+
+    def _extrap_rows(raw: RawSVI) -> np.ndarray:
+        """Tapered extrapolated-region rows (LAST in the residual vector)."""
+        return extrap_residuals(
+            raw.total_variance, extrap, t,
+            mean_weight=float(np.mean(sqrt_weights**2)),
+            # SVI's asymptotic total-variance slopes are exact: b(1 -/+ rho).
+            lee_fn=lambda: (raw.b * (1.0 - raw.rho), raw.b * (1.0 + raw.rho)),
+        )
+
+    def _extrap_fd_jac(theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+        """Central FD of the extrap rows only — the hybrid-Jacobian pattern of
+        the MCS wing penalty: the dominant blocks stay analytic."""
+        base = _extrap_rows(_unpack(theta))
+        jw = np.empty((base.size, theta.size))
+        for p in range(theta.size):
+            d = np.zeros_like(theta)
+            d[p] = eps
+            jw[:, p] = (
+                _extrap_rows(_unpack(theta + d)) - _extrap_rows(_unpack(theta - d))
+            ) / (2.0 * eps)
+        return jw
 
     theta0 = _init_theta(k, w_quotes)
     # Analytic Jacobian (R4) for the var-swap/prior-free configuration (mid OR band
@@ -211,10 +245,13 @@ def calibrate_svi(
     )
     if use_analytic:
         def jac(theta: np.ndarray) -> np.ndarray:
-            return svi_residual_jacobian(
+            j = svi_residual_jacobian(
                 theta, k, t, sqrt_weights, band, mid_anchor_weight,
                 penalty_weight, lee_slope_max, cal_k, cal_floor, sqrt_cal,
             )
+            if extrap is not None:  # hybrid: FD only the small extrap block
+                j = np.vstack([j, _extrap_fd_jac(theta)])
+            return j
 
         # Keep the SAME LM optimizer + tolerance — only swap the Jacobian from scipy's
         # 1+P finite differences to the closed form. LM (not trf) is deliberate: on

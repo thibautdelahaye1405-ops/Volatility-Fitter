@@ -19,10 +19,12 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.extrap import ExtrapTarget, WFn, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call
+from volfit.models.diagnostics import numeric_lee_slopes
 from volfit.models.sigmoid.jacobian import siv_residual_jacobian
 from volfit.models.sigmoid.kernels import gatheral_g_from_z, hat, hat_p, hat_pp, siv_base
 from volfit.models.sigmoid.sigmoid import HatCore, MultiCoreSiv
@@ -141,6 +143,7 @@ def _fit(
     prior_var_swap: VarSwapTarget | None = None,
     wing_z: np.ndarray | None = None,
     wing_sqrt_lambda: np.ndarray | None = None,
+    extrap: "ExtrapTarget | None" = None,
     solver_diag: dict | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
@@ -197,7 +200,32 @@ def _fit(
             # Put-wing no-butterfly regularizer (R6): zero on an arb-free slice.
             g = _eval_g(theta, wing_z, n_cores, t, sigma_ref)
             res = np.concatenate([res, wing_sqrt_lambda * np.maximum(-g, 0.0)])
+        if extrap is not None:
+            res = np.concatenate([res, _extrap_rows(theta)])
         return res
+
+    def _extrap_rows(theta: np.ndarray) -> np.ndarray:
+        """Tapered extrapolated-region rows (Notes 09/10 Phase 2, LAST block)."""
+        def w_of_k(kk: np.ndarray) -> np.ndarray:
+            zz = np.asarray(kk, float) / (sigma_ref * np.sqrt(t))
+            return np.maximum(_eval_v(theta, zz, n_cores), _V_FLOOR) * t
+
+        return extrap_residuals(
+            w_of_k, extrap, t,
+            mean_weight=float(np.mean(sqrt_w**2)),
+            # MCS wings have no closed-form slope: numeric, like the diagnostics.
+            lee_fn=lambda: numeric_lee_slopes(WFn(w_of_k)),
+        )
+
+    def _extrap_fd_jac(theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
+        """Central FD of the extrap rows only (the wing-penalty hybrid pattern)."""
+        base = _extrap_rows(theta)
+        jw = np.empty((base.size, theta.size))
+        for p in range(theta.size):
+            d = np.zeros_like(theta)
+            d[p] = eps
+            jw[:, p] = (_extrap_rows(theta + d) - _extrap_rows(theta - d)) / (2.0 * eps)
+        return jw
 
     def _wing_fd_jac(theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
         """Central finite-difference of the wing-penalty rows only — cheap (a small
@@ -236,6 +264,8 @@ def _fit(
             )
             if wing_sqrt_lambda is not None:  # hybrid: FD only the cheap g-penalty rows
                 j = np.vstack([j, _wing_fd_jac(theta)])
+            if extrap is not None:  # hybrid: FD only the small extrap block
+                j = np.vstack([j, _extrap_fd_jac(theta)])
             return j
 
     result = least_squares(
@@ -271,6 +301,7 @@ def calibrate_sigmoid(
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
     wing_penalty: float = 0.0,
+    extrap: ExtrapTarget | None = None,
     solver_diag: dict | None = None,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
@@ -339,6 +370,7 @@ def calibrate_sigmoid(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
+            extrap=extrap,
             solver_diag=solver_diag,
         )
     else:
@@ -351,6 +383,7 @@ def calibrate_sigmoid(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
+            extrap=extrap,
             solver_diag=solver_diag,
         )
 

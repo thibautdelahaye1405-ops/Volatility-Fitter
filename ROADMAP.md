@@ -65,10 +65,25 @@ resweep (commits `61045ac`, `fadb413`, `8cfac99`; full tables in
   (vol bp, two-curve), and asymptotic wing-slope order. Rides GET /quality
   (`extrapMinG/extrapOk/extrapCalBp/extrapCalOk/wingOrderOk` per node,
   `extrapFlags` rollups) + a QualityViewer column — STRICTLY ADVISORY, never
-  gates publish-readiness, no fit behavior changed. Phases 2-3 (tapered
-  enforcement, publish-time wing-only projection) stay open pending measured
-  rates on real universes; design recorded in Notes 09/10's open-problem
-  remarks (updated with Phase-1 status, PDFs rebuilt).
+  gates publish-readiness, no fit behavior changed.
+- **Phase 2 SHIPPED same day — tapered enforcement, opt-in
+  (`OptionsSettings.extrapEnforce`, default OFF, byte-identical off, bumps
+  options_version):** `volfit/calib/extrap.py` builds the enforcement
+  geometry ONCE from the quotes (envelope reach = 2·√w_edge, taper =
+  OTM-value ratio) + the previous DISPLAYED slice; the SVI/MCS overlay fits
+  gain three hinge blocks (one-curve Durrleman g; tapered calendar vs prev
+  displayed; SCALAR wing-slope order for the far field — never pointwise
+  differencing of two extrapolations). All rows in VOL units budgeted at
+  ¼-quote weight each (the var-swap pattern), so the block LEANS like a few
+  extra quotes and cannot outvote data: clean pair = untouched to fit
+  precision; mild real crossing (~450bp) halved at ~29bp traded RMS.
+  Analytic Jacobians kept via the hybrid-FD-block pattern (the MCS
+  wing-penalty precedent). Options-tab "Extrapolation guard" toggle.
+  test_extrap_enforce.py locks the four contracts; Notes 09/10 remarks
+  updated + rebuilt. Phase 3 (publish-time wing-only projection, core
+  pinned) remains open. NB conflicted extrap fits can hit the iteration cap
+  (nfev ~500, ~100-200ms) — opt-in only, flagged for a Phase-2.1 look if it
+  matters in practice.
 
 ### 🧭 SESSION WRAP (2026-07-08) — GRAPH UX REVAMP SHIPPED (4 phases, e36ef79→912b00b)
 

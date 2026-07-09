@@ -88,6 +88,7 @@ def build_display_fit(
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
     wing_penalty: float = 0.0,
+    extrap=None,
 ) -> DisplayFit | None:
     """Fit the chosen overlay family; None for "lqd" (the dedicated path).
 
@@ -108,9 +109,14 @@ def build_display_fit(
 
     ``prior_anchor`` (strike-gap mode) and ``operator_prior`` (operator / hybrid
     modes) carry the prior-persistence penalty into the overlay calibration, so
-    the SVI / Multi-Core SIV overlays receive the SAME prior semantics as the LQD
-    backbone (roadmap Phase 3 — the asymmetry fix). Both None leave the overlay
-    byte-identical.
+    the SVI / Multi-Core Sigmoid (MCS) overlays receive the SAME prior semantics
+    as the LQD backbone (roadmap Phase 3 — the asymmetry fix). Both None leave
+    the overlay byte-identical.
+
+    ``extrap`` (volfit.calib.extrap.ExtrapTarget, Notes 09/10 Phase 2) adds the
+    tapered extrapolated-region enforcement blocks to either overlay family;
+    None (the default, and whenever ``OptionsSettings.extrapEnforce`` is off)
+    leaves the overlay byte-identical.
     """
     if model not in OVERLAY_MODELS:
         return None
@@ -127,6 +133,7 @@ def build_display_fit(
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
+            extrap=extrap,
         )
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
@@ -140,6 +147,7 @@ def build_display_fit(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_penalty=wing_penalty,
+            extrap=extrap,
         )
         max_err = _max_iv_error(slice_, k, w, t)
     lee_left, lee_right = numeric_lee_slopes(slice_)

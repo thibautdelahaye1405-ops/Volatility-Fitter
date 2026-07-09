@@ -40,6 +40,10 @@ export interface OptionsSettings {
   /** Default fit target (Mid / Bid-Ask / Haircut); seeds the session on load. */
   fitMode: FitMode;
   enforceCalendar: boolean;
+  /** Tapered no-arb enforcement in the extrapolated strike region (Notes 09/10
+   *  Phase 2): SVI/MCS overlay fits lean on the time-value envelope. Off =
+   *  byte-identical fits; the Quality tab's extrap measurement is always on. */
+  extrapEnforce: boolean;
   eventsEnabled: boolean;
   normalizeEvents: boolean;
   varSwapEnabled: boolean;
@@ -151,6 +155,7 @@ export interface OptionsSettings {
 export const OPTIONS_DEFAULTS: OptionsSettings = {
   fitMode: "mid",
   enforceCalendar: true,
+  extrapEnforce: false,
   eventsEnabled: true,
   normalizeEvents: false,
   varSwapEnabled: true,

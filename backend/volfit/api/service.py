@@ -53,6 +53,7 @@ from volfit.calib.calendar import (
     variance_floor_targets,
 )
 from volfit.api.prior_mode import resolve_prior_mode
+from volfit.calib.extrap import build_extrap_target
 from volfit.calib.factors import build_factor_prior
 from volfit.calib.operators import (
     OperatorPriorTarget,
@@ -544,6 +545,21 @@ def _slice_task(
         o_floor = None
         if enforce_calendar and prev_display is not None:
             o_floor = variance_floor_targets(prev_display.slice, variance_floor_grid_from(k))
+        # Tapered extrapolated-region enforcement (Notes 09/10 Phase 2): the
+        # envelope geometry is built ONCE from the quotes (+ the previous
+        # displayed slice for the calendar floor / slope order); OFF ⇒ None ⇒
+        # byte-identical overlay fits.
+        o_extrap = None
+        if state.options().extrapEnforce:
+            o_extrap = build_extrap_target(
+                k, w,
+                prev_slice=prev_display.slice if prev_display is not None else None,
+                prev_lee=(
+                    (prev_display.lee_left, prev_display.lee_right)
+                    if prev_display is not None
+                    else None
+                ),
+            )
         overlay = dict(
             model=settings.model, k=k, w=w, t=prepared.tau, weights=weights,
             settings=_overlay_settings(settings), band=band, var_swap=vs,
@@ -551,6 +567,7 @@ def _slice_task(
             prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
             prior_var_swap=pt.prior_var_swap,
             wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,
+            extrap=o_extrap,
         )
 
     # Retain the solver's solution Jacobian / residual on EVERY fit (pure
