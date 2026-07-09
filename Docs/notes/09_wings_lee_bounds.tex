@@ -22,8 +22,8 @@ universal constraint is Lee's moment formula: the asymptotic slope of total
 implied variance, $\beta=\limsup_{k\to\pm\infty}w(k)/|k|$, cannot exceed $2$
 and is tied to the moment critical exponents by the explicit map
 $\beta=\psi(p)$. We show how each model realizes or enforces it --- LQD
-structurally, SVI by a soft cap, Multi-Core SIV by wing-neutral hats --- and
-prove the zero-wing inheritance the SIV design relies on. The finite wing is a
+structurally, SVI by a soft cap, the Multi-Core Sigmoid (MCS) by wing-neutral
+hats --- and prove the zero-wing inheritance the MCS design relies on. The finite wing is a
 separate battle: the asymptotic slope can be admissible while a hat still
 dents the Durrleman density out where quotes are sparse, which is why the
 default-on put-wing regularizer samples $g$ \emph{past} the traded range
@@ -176,9 +176,9 @@ min-variance penalty (cap \texttt{leeSlopeMax}$\,=2$). On any admissible
 smile both penalties are exactly zero; they only fence the optimizer out of
 the inadmissible region.
 
-\subsection{Multi-Core SIV: inherited wings}
+\subsection{Multi-Core Sigmoid (MCS): inherited wings}
 
-The Multi-Core SIV slice (Note~03) is a convex base plus up to two
+The Multi-Core Sigmoid (MCS) slice (Note~03) is a convex base plus up to two
 \emph{zero-wing} hats.
 
 \begin{proposition}[Zero-wing inheritance]
@@ -229,7 +229,18 @@ instrument that genuinely observes it (Note~08).
 models and extrapolates far past it. The wings agree in sign (the equity put
 skew, $\beta_L>\beta_R$) and order of magnitude but diverge in detail ---
 each tail is a property of \emph{its} extrapolation law, not of the identical
-quotes. \Cref{tab:betas} collects the analytic slopes.
+quotes. That divergence is not a defect to be averaged away: past the last
+quote a wing is a modelling \emph{choice}, not an estimate --- the far wing is
+exactly where a model extrapolates with confidence it does not have --- so
+what the fitter guarantees is not agreement but a stated, tested \emph{wing
+contract} per model. LQD draws exponential return tails with structural
+slopes $\psi(1/A_L),\psi(1/A_R-1)$; SVI draws linear variance wings
+$b(1\mp\rho)$ under the soft Lee cap; the MCS base alone owns the tails, hats
+neutral (\cref{prop:zerowing}); LV extrapolates local variance flat on the
+call side and controlled-linearly on the put side. Choosing a model \emph{is}
+choosing an extrapolation law --- the differences are the point; the shared
+promise is only that every contract is Lee-admissible.
+\Cref{tab:betas} collects the analytic slopes.
 
 \begin{figure}[H]
 \centering
@@ -252,18 +263,18 @@ Model & $\beta_L$ (put) & $\beta_R$ (call) & mechanism\\
 \midrule
 LQD & \betaLQDL & \betaLQDR & structural via $\psi(1/A)$\\
 SVI & \betaSVIL & \betaSVIR & linear $b(1\mp\rho)$, soft Lee cap\\
-MC-SIV & \betaMCSIVL & \betaMCSIVR & base wings, hats neutral
+MCS & \betaMCSIVL & \betaMCSIVR & base wings, hats neutral
 (\cref{prop:zerowing})\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 %======================================================================
-\section{Policing the finite wing: the SIV put-wing regularizer}
+\section{Policing the finite wing: the MCS put-wing regularizer}
 \label{sec:r6}
 
 An admissible slope does not make an admissible wing. The backtest's arb
-census located the Multi-Core SIV's failures precisely: $64\%$ of butterfly
+census located the MCS's failures precisely: $64\%$ of butterfly
 violations sit in the \emph{put} wing (median worst-violation location
 $z\approx-3.2$), against $4\%$ at the money --- hats fitted to sparse
 illiquid quotes buy in-sample RMS by denting the density where no quote
@@ -293,11 +304,11 @@ penalty rows are zero and the fit is byte-identical to $3\times10^{-17}$.
 Note that sampling $g$ \emph{past} the quoted range here is correct, not a
 violation of confinement --- see \cref{sec:principle}.
 
-\begin{example}[title={Case file: the SIV that invented a put wing}]
-\textbf{Setup.} The three-regime backtest sweep (F4): Multi-Core SIV on
-illiquid single names, where the put wing has a handful of wide quotes.
+\begin{example}[title={Case file: the MCS that invented a put wing}]
+\textbf{Setup.} The three-regime backtest sweep (F4): the Multi-Core Sigmoid
+on illiquid single names, where the put wing has a handful of wide quotes.
 
-\textbf{Failure mode.} SIV-2 improved in-sample RMS over SIV-0 --- and
+\textbf{Failure mode.} MCS-2 improved in-sample RMS over MCS-0 --- and
 carried genuine butterfly arbitrage on $76\%$ of arb-prone nodes, almost all
 in the put wing. The model was buying RMS with a fake weekend wing: a hat
 parked where no quote could object.
@@ -305,7 +316,7 @@ parked where no quote could object.
 \textbf{Diagnosis.} The analytic (FD-free) arb metric (R2) separated real
 violations from finite-difference noise: with exact $w',w''$ per model, the
 apparent LQD ``violations'' vanished entirely ($28\%\to0$ --- structural
-positivity confirmed) while SIV-2's survived ($76\%$, genuine). The census
+positivity confirmed) while MCS-2's survived ($76\%$, genuine). The census
 then localized them: put wing, $z\approx-3.2$.
 
 \textbf{Fix.} The 2-core cap plus the put-weighted Durrleman hinge above
@@ -315,12 +326,17 @@ then localized them: put wing, $z\approx-3.2$.
 \textbf{Verdict (ablation, test-locked).} On the arb-prone illiquid
 population, with neither fix: worst $g$ $-30.4$, arbitrage on $100\%$,
 in-sample $92$ bp. Input repair alone: arbitrage cut $\sim3\times$ \emph{and}
-RMS improved to $25$ bp --- the SIV had been chasing arbitraged de-Am
+RMS improved to $25$ bp --- the MCS had been chasing arbitraged de-Am
 inputs. Output penalty alone: arbitrage essentially eliminated
 ($g\ge-0.02$) but at $749$ bp --- brutal, because the model must fight its
 own corrupted inputs. Both: the penalty's arbitrage removal at $225$ bp.
-\emph{Complementary, not redundant}: the input repair makes the output
-penalty affordable. On liquid names both are byte-identical no-ops.
+(Those are medians across the $38$ arb-prone census nodes; one real node
+makes it concrete --- EFA in the Aug-2024 vol spike, $11$ days out, $22$
+quotes: $75$ bp at $g=-116$ with neither defence, $18$ bp but $g=-12$ with
+the repair alone, arb-free at $726$ bp with the penalty alone, arb-free at
+$34$ bp with both.) \emph{Complementary, not redundant}: the input repair
+makes the output penalty affordable. On liquid names both are byte-identical
+no-ops.
 \end{example}
 
 %======================================================================
@@ -329,7 +345,7 @@ penalty affordable. On liquid names both are byte-identical no-ops.
 
 Four production incidents --- the phantom calendar violations (Note~10's
 case file), the local-vol convex-wing regression (Note~04), the de-Am global
-repair revert (Note~05), and the SIV put-wing penalty above --- resolve into
+repair revert (Note~05), and the MCS put-wing penalty above --- resolve into
 one rule.
 
 \begin{heuristic}
@@ -355,7 +371,7 @@ Calendar floor $w_{\text{far}}\ge w_{\text{near}}$ & two &
 (\nolinkurl{variance_floor_grid_from})\\
 LV convex-wing hinge & two\footnotemark & \textbf{confined} to the
 extrapolation tail below the deepest quote & Note~04\\
-SIV Durrleman $g\ge0$ & one & \textbf{extended} $\pm2$ ATM-std past quotes &
+MCS Durrleman $g\ge0$ & one & \textbf{extended} $\pm2$ ATM-std past quotes &
 \cref{sec:r6}\\
 De-Am call convexity & one & \textbf{extended} to the wings, but
 band-constrained and ATM-core-fixed & Note~05\\
@@ -375,6 +391,22 @@ away from the ATM core --- because a repair, unlike a constraint, moves
 prices. Extending a one-curve constraint is safe; extending a repair's
 \emph{authority} unboundedly is how a $27\%$ put wing became $104\%$
 (Note~05).
+
+\begin{remark}[Open problem: softer two-curve enforcement in the wings]
+\label{rem:softwings}
+Confinement as stated is binary: a two-curve constraint is either sampled
+(inside the traded range) or ignored (outside). But the extrapolated region
+is not uniformly worthless --- just past the last quote the options still
+carry genuine premium, and there a calendar inversion between two
+\emph{stated} wing contracts (\cref{sec:models}) is a real inconsistency
+even if no quote witnesses it. Whether two-curve constraints deserve a
+\emph{softer} enforcement in the near-extrapolation region --- the penalty
+weight decaying with distance past the last quote, or with remaining time
+value, so gross contract disagreements are still leaned on while deep-wing
+phantoms stay harmless --- is open (flagged 2026-07). It must be settled
+jointly with this note's wing contracts and Note~10's floor-grid
+construction; see the matching open problem there.
+\end{remark}
 
 %======================================================================
 \section{What is original here}
@@ -413,7 +445,7 @@ SVI Lee cap enforced &
 \cref{sec:models} &
 \nolinkurl{models/svi_jw/calibrate.py} &
 \nolinkurl{test_svi_calibrate.py::test_respects_lee_wing_bound}\\
-SIV hats are zero-wing &
+MCS hats are zero-wing &
 \cref{prop:zerowing} &
 \nolinkurl{models/sigmoid/sigmoid.py}, \nolinkurl{kernels.py} &
 \nolinkurl{test_sigmoid_model.py}\\
@@ -461,7 +493,7 @@ LV convex wing confined to tail &
 \multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
 \texttt{sivWingPenaltyPct} & $100$ & Put-wing Durrleman hinge strength
 (\% of the $10^3$ base weight); $0$ disables.\\
-\texttt{nCores} & $2$ (max $2$) & SIV core count, schema-clamped
+\texttt{nCores} & $2$ (max $2$) & MCS core count, schema-clamped
 (\cref{sec:r6}).\\
 \texttt{leeSlopeMax} & $2.0$ & SVI Lee cap $b(1+|\rho|)\le\beta_{\max}$.\\
 \texttt{sviPenaltyWeight} & $10^3$ & Weight of the SVI Lee / min-variance
@@ -488,7 +520,7 @@ calendar floor grid & traded range & Confined per the principle of
 \label{app:perf}
 
 Wing handling is essentially free: the LQD slopes are a by-product of the
-endpoint scales; SVI/SIV slopes are closed forms of the fitted parameters;
+endpoint scales; SVI/MCS slopes are closed forms of the fitted parameters;
 the LV wing is part of the surface solve. The put-wing hinge adds $49$
 residual rows in the refine stage only, with a hybrid Jacobian (analytic
 blocks untouched, $g$ rows by finite differences); on a clean slice the rows

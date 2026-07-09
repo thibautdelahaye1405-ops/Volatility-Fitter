@@ -23,7 +23,8 @@ var-swap total variance is the model-free OTM log-contract replication; the
 penalty pulls the model's \emph{own} fair var-swap toward the quote, in vol units,
 weighted as a chosen fraction of the node's option weight. Computing the model's
 var-swap cheaply is the crux: the generic replication re-solves implied variance on
-a grid every Jacobian column and would make a single fit take minutes, so LQD uses
+a grid every Jacobian column and turned a millisecond LQD fit into a measured
+$158$-second one, so LQD uses
 its \emph{exact closed form} ($-2\,\E[X]$) and the local-vol surface uses a
 \emph{source PDE} ($I(T)=g(0,1)$) with analytic sensitivities. A fresh run confirms
 the LQD closed form agrees with replication to \vsagreebp\ vol bps, the replication
@@ -111,7 +112,7 @@ captures the OTM mass to well under a basis point for any sane smile, as
 $\sim4$.
 
 The penalty is a single residual in \emph{volatility} units, so it stacks directly
-onto the vol-space data residuals of SVI/SIV and the vega-normalized residuals of
+onto the vol-space data residuals of SVI/MCS and the vega-normalized residuals of
 LQD/LV:
 \begin{equation}
 \boxed{\;r_{\text{vs}}=\sqrt{\omega_{\text{vs}}}\,\big(\sigma_{\text{vs}}^{\text{model}}-\sigma_{\text{vs}}^{\text{quote}}\big),
@@ -143,7 +144,8 @@ replication \eqref{eq:repl} for every model --- correct, uniform, and
 obviously fine, since the integral is just a trapezoid.
 
 \textbf{Failure mode.} LQD fits with a var-swap target went from milliseconds
-to \emph{minutes}, hanging the calibrate loop.
+to \emph{minutes} --- a $158$-second fit was measured --- hanging the
+calibrate loop.
 
 \textbf{Diagnosis.} The replication calls the model's
 $\texttt{implied\_w}(k)$ on $\sim800$ points --- and for LQD each point is a
@@ -153,7 +155,7 @@ column per iteration}: thousands of inversions to price one number the model
 knows in closed form.
 
 \textbf{Fix.} Per-model routes (below): LQD prices the log contract exactly
-as $-2\,\E[X]$ on its existing grid; SVI/SIV keep the replication because
+as $-2\,\E[X]$ on its existing grid; SVI/MCS keep the replication because
 their $w(k)$ is arithmetic (evaluated, never solved); the LV surface gets a
 source PDE with analytic sensitivities.
 
@@ -177,9 +179,9 @@ whose integrand decays like $z\,e^{-|z|}$. No inversion, no extra grid --- it is
 essentially free. \Cref{tab:vs} confirms it agrees with the generic replication to
 \vsagreebp\ vol bps, validating both.
 
-\subsection{SVI and SIV: arithmetic curves}
+\subsection{SVI and MCS: arithmetic curves}
 
-For SVI and Multi-Core SIV the total variance $w(k)$ is closed-form arithmetic
+For SVI and Multi-Core Sigmoid (MCS) the total variance $w(k)$ is closed-form arithmetic
 (a hyperbola, or a log-cosh sum), so the replication \eqref{eq:repl} is cheap
 directly --- no inversion is needed because $w(k)$ is evaluated, not solved.
 
@@ -241,7 +243,7 @@ Targeted-fit fair var-swap & $\vspulled\%$\\
 \label{sec:original}
 
 The log-contract replication is Carr--Madan; the contributions are practical. The
-\emph{per-model cheap var-swap} --- LQD's closed form \eqref{eq:lqd_vs}, SVI/SIV's
+\emph{per-model cheap var-swap} --- LQD's closed form \eqref{eq:lqd_vs}, SVI/MCS's
 arithmetic curves, and the LV source PDE \eqref{eq:source_pde} with analytic
 sensitivities --- is what makes a var-swap target affordable \emph{inside} the
 optimizer loop rather than as a slow post-hoc check; and the \emph{relative}
@@ -318,7 +320,7 @@ level); the penalty itself activates only when a quote is set on the node.\\
 
 \noindent\textbf{Performance.} The LQD closed form is one quadrature on the
 existing grid (free); the replication is $\sim800$ arithmetic evaluations for
-SVI/SIV (negligible); the LV source PDE is one extra backward solve with analytic
+SVI/MCS (negligible); the LV source PDE is one extra backward solve with analytic
 sensitivities. Using the generic replication on an LQD curve --- $\sim800$ Black
 inversions per Jacobian column --- would turn a millisecond fit into minutes, which
 is the whole reason for the per-model routes of \cref{sec:cheap}.

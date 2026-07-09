@@ -336,8 +336,8 @@ the frozen-vega linearization
 $\sigma(k_a)\approx\sigma^{\text{prior}}_a+(P_a-P^{\text{prior}}_a)/\text{vega}_a$:
 weights $w_a=c_a/\text{vega}_a$, target $\sum_aw_aP^{\text{prior}}_a$,
 tolerance $1/\sqrt\lambda$. It also cured a long-standing asymmetry: the SVI
-and Multi-Core SIV overlays, which previously received no prior at all, now
-consume the same operator targets as LQD.
+and Multi-Core Sigmoid (MCS) overlays, which previously received no prior at
+all, now consume the same operator targets as LQD.
 
 %======================================================================
 \section{The seven modes}
@@ -553,7 +553,7 @@ The \emph{harmonic basket support} \eqref{eq:harmonic} prices identifiability
 of a combination, not of legs (\cref{prop:harmonic}). The
 \emph{signed-basket} operators preserve exactly the level direction per-leg
 persistence would damp (\cref{prop:nullspace}) --- the theorem behind the
-measured case file --- and incidentally cured the SVI/SIV missing-prior
+measured case file --- and incidentally cured the SVI/MCS missing-prior
 asymmetry. The \emph{shared vocabulary} keeps the persistence gate and the
 graph baseline speaking one language without letting them silently diverge
 (golden re-export tests). And the whole framework is strictly additive:
@@ -604,7 +604,7 @@ Mode resolver; autoLoadPrior migration &
 \cref{sec:modes} &
 \nolinkurl{api/prior_mode.py}, \nolinkurl{api/settings_persist.py} &
 \nolinkurl{test_prior_mode.py::test_resolver_flags_per_mode}, \nolinkurl{::test_migration_legacy_autoloadprior_on}\\
-All models consume the prior (SVI/SIV asymmetry fixed) &
+All models consume the prior (SVI/MCS asymmetry fixed) &
 \cref{sec:operators} &
 \nolinkurl{models/{lqd,svi_jw,sigmoid}/calibrate.py} &
 \nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\

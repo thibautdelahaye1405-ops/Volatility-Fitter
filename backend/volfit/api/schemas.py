@@ -1286,8 +1286,9 @@ class LocalVolGridResponse(BaseModel):
 
 # ------------------------------------------------------------ term structure
 class EventSpec(BaseModel):
-    """One scheduled event of the dilated clock: ``weight`` years of extra
-    diffusion time lumped at year-fraction ``time`` (volfit.calib.event_time).
+    """One scheduled event of the dilated clock: ``weight`` EXTRA EQUIVALENT
+    DAYS of diffusion time lumped at year-fraction ``time`` (the production
+    clock volfit.calib.weighted_time consumes day-weights; Note 11).
     Pydantic enforces time > 0 and weight >= 0, so bad specs are 422s."""
 
     time: float = Field(gt=0)

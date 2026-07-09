@@ -10,7 +10,10 @@ Everything is computed by PRODUCTION code, never a re-implementation:
                            3-regime temporal backtest merged summaries
                            (backend/backtest/results/
                             <regime>_observation_filter_merged.json)
-  kalman_tables.tex        \\input-able macros for every number the note quotes
+  kalman_tables.tex        \\input-able macros for every number the note quotes,
+                           including the v2 full-regime sweep (overlay vs
+                           active, adaptive Q on; <regime>_observation_filter_
+                           v2_merged.json) behind FINDINGS F9-F11
 
 The script also executes the note's Appendix C reference listing against the
 production ``kalman_update`` on a random-seeded 3x3 problem and emits the max
@@ -85,12 +88,33 @@ def _load_regime(stem: str) -> list[dict] | None:
     return json.loads(path.read_text(encoding="utf-8"))["summary"]
 
 
+def _load_v2(stem: str) -> list[dict] | None:
+    """The v2 full sweep (overlay vs ACTIVE, adaptive Q on) — FINDINGS F9–F11."""
+    path = RESULTS / f"{stem}_observation_filter_v2_merged.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))["summary"]
+
+
 def _row(rows: list[dict], scenario: str, cov: str, bp: float, bucket: str):
     for r in rows:
         if (
             r["scenario"] == scenario
             and r["cov_mode"] == cov
             and float(r["process_bp"]) == bp
+            and r["bucket"] == bucket
+        ):
+            return r
+    return None
+
+
+def _row_v2(rows: list[dict], scenario: str, mode: str, bucket: str,
+            cov: str = "jacobian"):
+    for r in rows:
+        if (
+            r["scenario"] == scenario
+            and r["cov_mode"] == cov
+            and r["mode"] == mode
             and r["bucket"] == bucket
         ):
             return r
@@ -172,7 +196,8 @@ def backtest_figure(macros: dict[str, str]) -> None:
         rows = _load_regime(stem)
         if rows is None:  # missing regime: figure skips it, macros say so
             for name in ("Zstd%sTen", "Zstd%sThirty", "ErrPost%s", "ErrMeas%s",
-                         "ErrPred%s", "Win%s", "ContraJac%s", "ContraFac%s"):
+                         "ErrPred%s", "Win%s", "ContraJac%s", "ContraFac%s",
+                         "ShockJac%s", "ShockFac%s"):
                 macros["Kal" + name % suffix] = "--"
             continue
         loaded.append((suffix, label, rows))
@@ -196,11 +221,10 @@ def backtest_figure(macros: dict[str, str]) -> None:
             s10 = _row(rows, "shock", cov, 10.0, BUCKET)
             s30 = _row(rows, "shock", cov, 30.0, BUCKET)
             shock_ratios.append(s10["med_err_post"][0] / s30["med_err_post"][0])
-        if stem == "spike_aug2024":
-            sj = _row(rows, "shock", "jacobian", 30.0, BUCKET)
-            sf = _row(rows, "shock", "factors", 30.0, BUCKET)
-            macros["KalShockJacSpike"] = f"{1e4 * sj['med_err_post'][0]:.1f}"
-            macros["KalShockFacSpike"] = f"{1e4 * sf['med_err_post'][0]:.1f}"
+        sj = _row(rows, "shock", "jacobian", 30.0, BUCKET)
+        sf = _row(rows, "shock", "factors", 30.0, BUCKET)
+        macros[f"KalShockJac{suffix}"] = f"{1e4 * sj['med_err_post'][0]:.1f}"
+        macros[f"KalShockFac{suffix}"] = f"{1e4 * sf['med_err_post'][0]:.1f}"
 
     macros["KalStepsTotal"] = f"{total_steps:,}".replace(",", r"\,")
     if shock_ratios:
@@ -249,6 +273,51 @@ def backtest_figure(macros: dict[str, str]) -> None:
     save(fig, OUT / "fig_kalman_backtest.pdf")
 
 
+# ------------------------------------------------- v2 sweep (overlay vs ACTIVE)
+def v2_backtest_macros(macros: dict[str, str]) -> None:
+    """Macros from the v2 full-regime sweep (overlay AND active modes, adaptive
+    Q on; FINDINGS F9–F11). In active mode the committed fit IS the one-stage
+    MAP solution, so ``med_err_post == med_err_meas`` there and the baseline is
+    the OVERLAY run's raw-measurement column of the same sweep."""
+    total_steps = 0
+    all_loaded = True
+    zetas: list[float] = []
+
+    for stem, suffix, _ in REGIMES:
+        rows = _load_v2(stem)
+        if rows is None:
+            all_loaded = False
+            for name in ("ActThin%s", "ActContra%s", "ActShock%s",
+                         "OvlContra%s", "RawContra%s", "OvlShock%s"):
+                macros["Kal" + name % suffix] = "--"
+            continue
+        total_steps += sum(r["n"] for r in rows)
+
+        act_thin = _row_v2(rows, "thinned", "active", BUCKET)
+        act_con = _row_v2(rows, "contradiction", "active", BUCKET)
+        act_shk = _row_v2(rows, "shock", "active", BUCKET)
+        ovl_con = _row_v2(rows, "contradiction", "overlay", BUCKET)
+        ovl_shk = _row_v2(rows, "shock", "overlay", BUCKET)
+
+        macros[f"KalActThin{suffix}"] = f"{1e4 * act_thin['med_err_post'][0]:.1f}"
+        macros[f"KalActContra{suffix}"] = f"{1e4 * act_con['med_err_post'][0]:.1f}"
+        macros[f"KalActShock{suffix}"] = f"{1e4 * act_shk['med_err_post'][0]:.1f}"
+        macros[f"KalOvlContra{suffix}"] = f"{1e4 * ovl_con['med_err_post'][0]:.1f}"
+        macros[f"KalRawContra{suffix}"] = f"{1e4 * ovl_con['med_err_meas'][0]:.1f}"
+        macros[f"KalOvlShock{suffix}"] = f"{1e4 * ovl_shk['med_err_post'][0]:.1f}"
+        zetas += [act_thin["zeta_std"][0], act_con["zeta_std"][0]]
+
+    if all_loaded and total_steps:
+        macros["KalStepsVTwo"] = f"{total_steps:,}".replace(",", r"\,")
+        macros["KalActZetaMin"] = f"{min(zetas):.1f}"
+        macros["KalActZetaMax"] = f"{max(zetas):.1f}"
+    else:
+        macros["KalStepsVTwo"] = "--"
+        macros["KalActZetaMin"] = macros["KalActZetaMax"] = "--"
+        print("v2 merged backtest JSONs missing under", RESULTS,
+              "- v2 macros emitted as '--'")
+
+
 # ------------------------------------- Appendix C: reference vs production
 def kalman_update_ref(mean_pred, cov_pred, obs, obs_cov, H=None):
     """The note's Appendix C listing, verbatim (numpy only)."""
@@ -295,6 +364,7 @@ def main() -> None:
     macros: dict[str, str] = {}
     case_figure(macros)
     backtest_figure(macros)
+    v2_backtest_macros(macros)
     appendix_c_check(macros)
     macros.update(FINDINGS_F1)
 

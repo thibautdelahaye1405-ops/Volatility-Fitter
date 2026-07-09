@@ -12,6 +12,11 @@
 \begin{document}
 \maketitle
 \input{figures/deam_tables.tex}
+% Real-chain macros (gen_deam_real.py); fallbacks let the note compile before
+% the generator has run — the fallback values are the deck-verified figures.
+\IfFileExists{figures/deam_real_tables.tex}%
+{\input{figures/deam_real_tables.tex}}%
+{\newcommand{\deamrealmedianitm}{519}\newcommand{\deamrealmaxbias}{817}}
 
 \begin{abstract}
 Listed single-stock and ETF options are \emph{American}: they may be exercised
@@ -34,7 +39,10 @@ the input --- so we also document a cross-strike \emph{convexity repair}, confin
 the wings and to the quoted bid--ask band so that the dense at-the-money core is left
 byte-identical. A worked example shows the naive European inversion over-stating
 implied volatility by up to \deammaxbias\ volatility basis points on a
-dividend-paying name, an error the de-Americanization removes entirely.
+dividend-paying name, an error the de-Americanization removes entirely; on a
+live captured SPY chain the same wedge, measured on real mids, runs to a median
+\deamrealmedianitm\ vol bps across the in-the-money puts (maximum
+\deamrealmaxbias).
 \end{abstract}
 
 \tableofcontents
@@ -243,15 +251,15 @@ strike grid the test is the divided second difference
 non-negative iff $C$ is convex at $K_i$. Because de-Am strips a one-sided,
 strike-local premium in the sparse, low-vega wings, $\Delta^2_i$ can come out
 slightly negative there --- a genuine (small) butterfly arbitrage in the
-\emph{input} handed to every downstream model, and the seed of the Multi-Core SIV
-put-wing violation of Note~03.
+\emph{input} handed to every downstream model, and the seed of the Multi-Core
+Sigmoid (MCS) put-wing violation of Note~03.
 
 \begin{caution}
 \textbf{The reverted global fix.} The first repair projected the \emph{whole} call
-curve onto the convex cone with a
-free affine part. Repairing a wing dip that way re-tilted the affine baseline and
-moved the \emph{at-the-money} call price by a fraction of a cent --- negligible in
-price, but enormous in ATM implied volatility, where vega is largest. It surfaced
+curve onto the convex cone with a free \emph{global} affine part. Repairing a wing
+dip that way re-tilted the whole baseline and moved the \emph{at-the-money} call
+price by a sub-penny --- negligible in price, but enormous in ATM implied
+volatility, exactly where vega peaks. It surfaced
 live as an ATM smile gap on SPY and NVDA and was reverted. The lesson: the dense,
 high-vega ATM core must be held \emph{exactly} fixed; only the wings may move.
 \end{caution}
@@ -291,7 +299,7 @@ curvature --- are \emph{never} touched (byte-identical, ATM implied-vol differen
 $\sim10^{-15}$), while genuinely arbitraged illiquid wings ($10^{-3}$ to $10^{-2}$)
 are repaired. On those illiquid nodes an ablation found the repair both
 \emph{reduces} the fitted arbitrage and \emph{lowers} the in-sample error --- the
-model no longer chases the arbitraged quotes --- and it composes with the SIV
+model no longer chases the arbitraged quotes --- and it composes with the MCS
 put-wing penalty of Note~03 rather than duplicating it: the de-Am repair removes the
 arbitrage at the \emph{source}, the penalty enforces the constraint on the
 \emph{output}, and running both attains the penalty's arbitrage removal at a fraction
@@ -324,6 +332,40 @@ Numba kernel & \deamnumbams & \deamspeedup$\times$\\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\paragraph{Real-chain evidence.}
+The synthetic example controls the truth; \cref{fig:deam_real} shows the same
+wedge on live market prices, with nothing simulated. Every put mid of one
+captured SPY expiry (the Massive true-weekly fixture
+\texttt{lv\_weekly\_massive.json}, as-of 2026-06-25; the December-2026 expiry,
+roughly six months out) is inverted both ways through the production tree:
+naively as if European, and through the American inversion \eqref{eq:deam}.
+Out of the money the two agree to a few vol bps --- the early-exercise right is
+nearly worthless there --- while in the money the wedge \emph{is} the
+early-exercise premium, measured on real quotes: a median
+\deamrealmedianitm\ vol bps across the in-the-money puts, up to
+\deamrealmaxbias. A European fit fed the raw mids would inherit every basis
+point of it, concentrated exactly in the low-vega wing the fitter must
+extrapolate from. One honesty note: the delayed-tier capture's parity-implied
+carry is unphysical (Note~06 documents the synthesized-chain failure mode), so
+the carry is supplied explicitly --- $r=4.3\%$ money-market, $q=1.2\%$ SPY
+dividend yield (mid-2026) --- a live instance of the closing caution of
+\cref{sec:original}: the method removes the early-exercise bias, but only on
+top of trustworthy carry inputs.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.82\textwidth]{fig_deam_real.pdf}
+\caption{Real market data, not a toy: one live SPY expiry (Massive capture,
+as-of 2026-06-25, December-2026 expiry), every put mid inverted as if European
+versus de-Americanized through the tree. Out of the money the two agree; in
+the money the wedge is the early-exercise premium --- median
+\deamrealmedianitm\ vol bps, up to \deamrealmaxbias\ --- which would poison
+any European fit fed the raw quotes. Carry supplied ($r=4.3\%$, $q=1.2\%$)
+because the delayed capture's parity carry is unusable (Note~06). Generated by
+\texttt{figures/gen\_deam\_real.py} from the production CRR machinery.}
+\label{fig:deam_real}
+\end{figure}
 
 %======================================================================
 \section{What is original, and future directions}

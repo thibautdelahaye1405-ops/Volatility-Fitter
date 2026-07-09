@@ -4,7 +4,7 @@
 \graphicspath{{figures/}}
 
 \title{\textbf{Forwards, Discounting and Dividends}\\[2pt]
-\large Parity-implied forwards, a robustness clamp, and American de-bias\\[2pt]
+\large Parity-implied forwards, a robustness clamp, the zero-carry pin, and American de-bias\\[2pt]
 \normalsize Vol-Fitter Technical Notes, No.~06}
 \author{Vol-Fitter}
 \date{\today}
@@ -24,7 +24,14 @@ iterated with outlier rejection. The parity \emph{slope} is the worst-identified
 parameter, and on a noisy or stale feed it drifts to an unphysical rate that tilts
 the whole forward; we describe the \emph{discount clamp} that pins the implied rate
 to a physical band and re-derives the forward from the well-identified price level
-when it bites --- leaving clean chains untouched. Dividends enter as a discrete
+when it bites --- leaving clean chains untouched. A second, sharper failure carries
+no noise at all: when a delayed feed gates the quote stream, the provider
+\emph{synthesizes} the chain from its per-contract implied vols, pricing every
+contract with Black at $F=S$, $D=1$ --- prices that contain \emph{zero} parity
+information. Such chains are flagged at ingestion and their forward is
+\emph{pinned} to the construction convention $F=S$, $D=1$ rather than regressed;
+the clamp cannot catch this case because the spurious implied rates stay inside
+the physical band. Dividends enter as a discrete
 escrowed cash schedule or a continuous yield, and a coarse \emph{American de-bias}
 iterates the carry to the fixed point that reconciles the de-Americanized puts and
 calls, with the discount held. A worked example recovers a known forward to the
@@ -51,7 +58,9 @@ The forward is not quoted; it is \emph{inferred} from the option prices themselv
 through put--call parity. That makes it a fitted quantity with its own error bars,
 and the discount (the parity slope) is the least reliable of them. The whole design
 below is about extracting the forward where the data is informative (the price
-level) and refusing to trust it where it is not (the slope on a stale feed).
+level), refusing to trust it where it is not (the slope on a stale feed), and
+refusing to infer it at all where the chain contains no parity information
+(a synthesized zero-carry chain, \cref{sec:zerocarry}).
 \end{heuristic}
 
 \begin{invariant}
@@ -63,6 +72,11 @@ demonstrably bad inputs.
 untrustworthy, the forward is re-derived from the well-identified price level.
 \item The discount is \emph{held} through the American de-bias --- the two
 corrections never fight over the same parameter.
+\item Parity is regressed only on prices that \emph{contain} parity
+information: a chain synthesized from provider IVs at zero carry is flagged
+explicitly and pinned to its construction convention $F=S$, $D=1$. The flag
+is never inferred from zero spreads --- EOD close marks also quote
+$\text{bid}=\text{ask}$ yet their mids carry genuine parity information.
 \item Editing a name's rate or dividends bumps only that ticker's forwards
 version: one name's noise never refits the universe.
 \end{enumerate}
@@ -184,6 +198,77 @@ $[\fwdratemin\%,\fwdratemax\%]$ and the forward is re-derived from the price lev
 \label{fig:clamp}
 \end{figure}
 
+The clamp bounds an \emph{absurd} answer. There is one failure mode it cannot
+see: a chain whose parity content is exactly zero, where the regression returns
+a wrong answer that is perfectly \emph{plausible}. That case needs its own
+device.
+
+%======================================================================
+\section{The zero-carry pin}
+\label{sec:zerocarry}
+
+Delayed data tiers can gate the live quote stream (the NBBO). When that
+happens, a provider does not return an empty chain --- it \emph{synthesizes}
+one from its per-contract implied vols, pricing every contract with Black at
+$F=S$, $D=1$, and quoting it with zero spread
+(\texttt{data/massive.py}). Those prices are perfectly self-consistent, but
+they contain \emph{no} put--call parity information: the forward and discount
+were not observed, they were \emph{assumed} by the synthesis. Worse, the
+provider's call and put IVs embed the provider's \emph{own} carry model, so
+once its contracts are re-priced at zero carry the call/put asymmetry survives
+in the prices --- and a parity regression dutifully reads that asymmetry as a
+forward and a discount that nobody ever quoted.
+
+\begin{example}[title={Case file: the garbage forwards the clamp could not see}]
+\textbf{Setup.} Live SPY on the Massive delayed tier, recurring over several
+sessions: the tier gated the NBBO quotes, so every chain the app received was
+IV-synthesized at zero carry.
+
+\textbf{Failure mode.} Recurring garbage forwards on a healthy-looking feed:
+short-dated implied rates of $-3.8\%$, discounts above one, and a one-year
+forward $+1.7\%$ \emph{above} the $F=S$ the prices had been built with. The
+discount clamp of \cref{sec:clamp} stayed silent throughout --- the spurious
+rates sat \emph{inside} the physical band, so there was nothing absurd to
+bound. (The same saga's failed first fix --- anchoring the rate to a smoothed
+term structure --- is the one described in \cref{sec:clamp}: it regressed the
+LV benchmark and deadlocked the forwards state before being reverted.)
+
+\textbf{Diagnosis.} The regression was not noisy; it was answering a question
+the data could not ask. Every synthesized price is Black at $F=S$, $D=1$, so
+the only structure left for the regression to find is the provider's call/put
+IV asymmetry --- a spurious signal that is \emph{small enough to be
+plausible}, which is exactly why the clamp (built for absurd slopes) never
+fired.
+
+\textbf{Fix.} Recognize the regime at ingestion, not in the regression. The
+provider layer flags the synthesized snapshot
+(\texttt{ChainSnapshot.zero\_carry} in \texttt{data/types.py}); for a flagged
+chain \texttt{implied\_forward} returns the chain's own construction
+convention --- $F=S$, $D=1$, zero residual --- and never regresses. The flag
+is \emph{explicit} and persists with the snapshot (store schema v5), so
+captured chains replay correctly; it is deliberately \emph{not} inferred from
+chain-wide zero spreads, because EOD close marks also quote
+$\text{bid}=\text{ask}$ yet their mids carry genuine parity information. The
+Forwards tab shows a badge (``IV-synthesized $\cdot$ zero carry $\cdot$ $F$
+pinned to spot'') so the desk knows the forward is a convention, not a market
+read.
+
+\textbf{Verdict (test-locked).} A flagged zero-carry chain pins to $F=S$,
+$D=1$ on both the reference-date and legacy paths (the flag, not the clamp,
+decides); an \emph{unflagged} zero-spread chain still regresses and recovers
+its true carry; the flag round-trips through the store. The recurring SPY
+forward incident is closed at the root.
+\end{example}
+
+The pin completes an epistemic ladder: the regression extracts the forward
+where parity is informative; the clamp refuses the slope where parity is
+noisy; and the pin refuses the regression entirely where parity is
+\emph{vacuous} --- returning the only honest answer the chain contains, its
+own construction convention. The regime matters downstream too: on such feeds
+anything that needs a carry (the de-Americanization of Note~05, for instance)
+must source it externally, because the parity-implied carry is not merely
+noisy but meaningless.
+
 %======================================================================
 \section{Dividends}
 \label{sec:divs}
@@ -238,10 +323,14 @@ Parity forward extraction is textbook; the robustness engineering is the
 contribution. The \emph{discount clamp} encodes the right epistemics --- trust the
 well-identified price level, distrust the ill-identified slope, and re-derive the
 forward accordingly --- so the app survives the noisy delayed feeds that would
-otherwise gap every ATM smile. The \emph{de-bias} closes the forward/de-Am
+otherwise gap every ATM smile. The \emph{zero-carry pin} extends the same
+epistemics to the degenerate case: a synthesized chain carries no parity
+information at all, so the honest forward is the chain's own construction
+convention, recognized by an explicit ingestion-time flag rather than any
+inference from the prices. The \emph{de-bias} closes the forward/de-Am
 circularity at the fixed point that quote prep actually uses, with the discount
-held so the two corrections do not fight. Both are byte-identical on clean data, so
-the robustness costs nothing when it is not needed.
+held so the two corrections do not fight. All three are byte-identical on clean
+data, so the robustness costs nothing when it is not needed.
 
 %======================================================================
 \section{Traceability}
@@ -268,6 +357,18 @@ No reference date $\Rightarrow$ clamp stands down &
 \cref{sec:clamp} &
 \nolinkurl{data/forwards.py} &
 \nolinkurl{test_forward_robust.py::test_no_reference_date_skips_clamp}\\
+Zero-carry chain pinned to $F=S$, $D=1$ (flag decides, both paths) &
+\cref{sec:zerocarry} &
+\nolinkurl{data/forwards.py}, \nolinkurl{data/types.py} &
+\nolinkurl{test_forward_robust.py::test_zero_carry_chain_pins_forward_to_spot}\\
+Zero spreads alone never trigger the pin &
+invariant~4 &
+\nolinkurl{data/types.py} (\nolinkurl{is_zero_carry}) &
+\nolinkurl{test_forward_robust.py::test_unflagged_zero_spread_chain_still_regresses}\\
+Provider flags synthesized chains; flag persists (schema v5) &
+\cref{sec:zerocarry} &
+\nolinkurl{data/massive.py}, \nolinkurl{data/store.py} &
+\nolinkurl{test_massive.py::test_iv_fallback_synthesizes_fittable_chain}, \nolinkurl{test_data_layer.py::test_snapshot_round_trip_keeps_zero_carry}\\
 De-bias holds the discount, smooths the forward &
 \cref{sec:debias} &
 \nolinkurl{data/forwards.py} (\nolinkurl{_refine_american}) &
@@ -285,7 +386,7 @@ All four dividend modes; equivalent-yield round trip &
 \nolinkurl{data/dividends.py} &
 \nolinkurl{test_dividends.py::test_equivalent_yield_round_trips_every_mode}, \nolinkurl{::test_mixed_forward_switches_at_horizon}\\
 Per-ticker forwards version scoping &
-invariant~4 &
+invariant~5 &
 \nolinkurl{api/state.py} &
 \nolinkurl{test_api_forwards.py::test_parity_defaults_cover_the_ladder}\\
 \bottomrule

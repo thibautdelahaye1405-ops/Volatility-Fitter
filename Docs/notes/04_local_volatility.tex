@@ -153,7 +153,8 @@ variance is the continuous piecewise-affine interpolant
 \label{eq:p1}
 \end{equation}
 where the hat functions $\phi_{ij}$ are barycentric on a (cached Delaunay)
-triangulation of the vertices --- genuinely affine on each triangle --- and
+triangulation of the vertices --- each grid rectangle is split into two
+triangles, and the interpolant is genuinely affine on each --- and
 $\theta_{ij}=\nu(\tau_i,\xi_j)>0$ are the \emph{nodal local variances}, the
 calibration parameters. The flat vector is time-major
 $\theta=\operatorname{vec}(\theta)$.
@@ -185,6 +186,17 @@ linearly with slope \texttt{left\_extrap\_a} times the first interior cell's
 slope --- $a=0$, the hot-path default, is a flat clamp; a free $a$ is fitted
 only when a var-swap quote identifies the deep-put tail (Note~08). The right
 wing is flat-clamped.
+
+\begin{remark}[Lee's bound needs no penalty here]
+\label{rem:lee}
+Bounded positive local variance with flat (or controlled-linear) wings bounds
+the total implied variance uniformly in strike --- by comparison with the
+constant-variance diffusion, $w(k,T)\le\nu_{\mathrm{hi}}\,T$ for all $k$ ---
+so the implied wing slope $\dd w/\dd|k|$ decays to zero, strictly inside Lee's
+cap of $2$ (Note~09). Unlike the parametric slices, no wing penalty is needed;
+the slopes are still \emph{measured and reported} by the shared slice
+diagnostics (\nolinkurl{models/diagnostics.py}), not assumed.
+\end{remark}
 
 \subsection{Grid design}
 
@@ -603,7 +615,7 @@ extrapolation tail only.
 \textbf{Verdict.} SPY $25.7\to2.6$ vol bp, NVDA unchanged; the confinement is
 test-locked. The lesson echoes Notes~05 and~09: \emph{a shape constraint must
 not be imposed where the data already speaks} --- the same principle, at the
-de-Am input, the SIV output, and here the LV extrapolation tail.
+de-Am input, the MCS output, and here the LV extrapolation tail.
 \end{example}
 
 %======================================================================
@@ -817,6 +829,11 @@ optimum; automatic TRF fallback; sparse CSR regularization block.
 \item \textbf{Warm starts.} Previous-surface recalibration $\sim38\times$;
 parametric-Dupire cold seed $1.3$--$1.8\times$; $\theta_{\text{ref}}$ fixed so
 the optimum is unchanged.
+\item \textbf{Solver scaling and tolerances.} \texttt{x\_scale='jac'} plus
+termination tolerances relaxed $10^{-12}\to10^{-8}$ on the TRF path: the fit
+is governed by quote noise, vega floors and bands, so the tighter tolerance
+only bought iterations --- evaluation count cut, surface identical (the atlas
+records the resulting defaults).
 \item \textbf{Shelved (documented in the perf roadmap):} coarse-grid calibration
 (biases $\theta$ by up to $\sim26$ vol points --- non-viable), first Numba
 attempt (wrong loop order, $1.2\times$), Rannacher/CN ($\sim1.1\times$ and a

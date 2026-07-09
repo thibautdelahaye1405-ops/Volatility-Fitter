@@ -26,9 +26,12 @@ sticky-strike ($\mathrm{SSR}=1$, vol fixed at each strike), and sticky-local-vol
 realizes any SSR in one line, derive its ATM response, and then the \emph{exact}
 sticky-local-vol transport (a Hagan-style log-moneyness displacement) and the
 local-vol-grid relabeling that implements it by simply re-indexing the surface's
-strike nodes. All of it is recalibration-free: a spot move refreshes the surface by
-arithmetic, not by re-solving. A worked example transports an equity smile under a
-$\ssrmove\%$ move in the three regimes.
+strike nodes. Every relabeling path is recalibration-free --- a spot move refreshes
+the surface by arithmetic, not by re-solving; the one exception is the exact
+sticky-local-vol-grid \emph{reprice}, which pays for its exactness with a single
+Dupire PDE solve and is chosen explicitly when exactness is wanted over speed. A
+worked example transports an equity smile under a $\ssrmove\%$ move in the three
+regimes.
 \end{abstract}
 
 \tableofcontents
@@ -178,6 +181,24 @@ in absolute strike and the forward moves by $h$. An optional ATM re-anchor
 $\sigma_{\text{atm}}\to\sigma_0+R\,\kappa_T h_T$ makes the linear SSR response exact
 even for large moves.
 
+Expanding the Hagan map for a small move exposes where the famous ``$\approx2$''
+comes from:
+\begin{equation}
+\ell_T(k,h)=k+\big(1+e^{-k}\big)\,h+O(h^2),
+\qquad\text{so}\qquad
+\ell_T(0,h)\approx 2h .
+\label{eq:ellexpand}
+\end{equation}
+Holding the local-vol surface fixed makes the new smile read the old curve
+\emph{two} units of log-moneyness per unit forward move at the money --- twice the
+sticky-strike displacement of $\delta$ in \eqref{eq:shift} --- so the ATM vol picks
+up $2\,s_0\,h$ to first order: the short-dated $\mathrm{SSR}\approx2$ of
+\cref{sec:question} is not an empirical accident but the ATM slope of the exact
+relabeling \eqref{eq:hagan}. Away from the money the displacement $(1+e^{-k})h$ is
+strike-dependent --- larger on the put wing, smaller on the call wing --- which is
+what the linear shift \eqref{eq:shift} deliberately flattens into a single level
+adjustment. The expansion is test-locked (traceability table).
+
 \subsection{The local-vol-grid relabeling}
 
 When the dynamics are driven by the extracted local-vol \emph{grid} (Note~04), the
@@ -192,7 +213,11 @@ x_i^1=x_i^0-\tfrac{R}{2}\,h_t,
 in forward-normalized moneyness $x$. For $R=2$ (sticky-local-vol) the factor is
 $e^{0}=1$: the grid is held fixed in absolute strike and re-priced through the
 Dupire PDE, which is the \emph{exact} dynamics --- here SSR is an \emph{output} of
-the reprice, not an input, and the value $2$ is only its short-maturity limit. For
+the reprice, not an input, and the value $2$ is only its short-maturity limit
+\eqref{eq:ellexpand}. The exactness is not free: this reprice is the one path in
+the note that is \emph{not} re-solve-free --- it costs a single Dupire PDE solve
+(Note~04), whereas every relabeling path (\eqref{eq:shift}, \eqref{eq:hagan},
+\eqref{eq:gridrelabel}) remains pure arithmetic. For
 $R=0$ (sticky-moneyness) the grid scales with the forward; $R=1$ (sticky-strike)
 sits halfway. This is why the local-vol regime is labeled both
 \texttt{sticky\_local\_vol} (the analytic Hagan transport) and
@@ -227,8 +252,9 @@ arithmetic on the existing curve; the exact sticky-local-vol path
 \eqref{eq:hagan}--\eqref{eq:gridrelabel} ties the analytic shift, the Hagan
 relabeling, and the local-vol-grid reprice into one parameter $R$; and because the
 local-vol regime can be either the analytic transport or the exact PDE reprice, the
-desk can trade speed for exactness on one slider. No spot move ever triggers a
-re-solve.
+desk can trade speed for exactness on one slider. No relabeling path ever triggers
+a re-solve; only the exact sticky-local-vol-grid reprice pays for its exactness
+with one Dupire solve, and it is chosen explicitly.
 
 %======================================================================
 \section{Traceability}
@@ -256,7 +282,7 @@ Sticky-moneyness / sticky-strike signs &
 \nolinkurl{dynamics/transport.py} &
 \nolinkurl{test_spot_transport.py::test_sticky_moneyness_leaves_smile_in_moneyness_unchanged}, \nolinkurl{::test_sticky_strike_fixes_vol_at_fixed_strike}\\
 Hagan map small-move expansion; LV double-skew response &
-\eqref{eq:hagan} &
+\eqref{eq:hagan}, \eqref{eq:ellexpand} &
 \nolinkurl{dynamics/transport.py::ell_T} &
 \nolinkurl{test_spot_transport.py::test_ell_T_small_move_expansion}, \nolinkurl{::test_sticky_local_vol_double_skew_atm_response}\\
 Grid rule pinned to $(x,\,x-\tfrac12H,\,x-H)$ &

@@ -26,7 +26,10 @@ and is clock-independent, so the working implied volatility $\sqrt{w/\tau}$
 \emph{drops} when an event is inserted before the expiry --- exactly the
 overnight-vol-crush traders expect. An optional normalization rescales all days so
 the one-year variance budget is unchanged, making events \emph{redistribute}
-variance within the year rather than add it. With no events the variance clock
+variance within the year rather than add it. The calendar can be typed in or
+\emph{auto-calibrated}: a solver places events so the event-time forward
+variance is as flat as possible, inferring the calendar from the term
+structure's kinks, after which it is editable. With no events the variance clock
 collapses to calendar time and every downstream fit is byte-identical to the
 plain pipeline. A worked example shows a $4$-extra-day earnings event lifting
 short-dated implied vol and decaying away, with a working-vol drop of
@@ -170,14 +173,15 @@ Two dilation clocks exist in the codebase and must not be conflated. The
 production clock is \texttt{calib/weighted\_time.py} --- day-weighted, exactly
 \eqref{eq:clock}, the one every fit consumes. The older
 \texttt{calib/event\_time.py} (\texttt{EventClock}) survives only for
-term-structure interpolation. And the unit trap: the \texttt{EventSpec}
-schema docstring (and the legacy clock's) still describe \texttt{weight} in
-\emph{years} of extra diffusion time, but production consumes it as
-\emph{extra equivalent days} --- confirmed both by the call site (the pairs
-feed \eqref{eq:clock} directly) and by the auto-calibrator, which constructs
-\texttt{EventSpec(weight=days)}. The day semantics documented here is the
-correct, test-locked one; the code comments are the stale party.
-\end{remark} Total variance is
+term-structure interpolation. And the unit trap: \texttt{weight} is
+\emph{extra equivalent days}, never years --- confirmed both by the call site
+(the pairs feed \eqref{eq:clock} directly) and by the auto-calibrator, which
+constructs \texttt{EventSpec(weight=days)}. The \texttt{EventSpec} schema
+docstring said \emph{years} until 2026-07-09 (now fixed to the day semantics
+documented here); the legacy clock's comments remain the stale party.
+\end{remark}
+
+Total variance is
 interpolated \emph{linearly in $\tau$} between quoted nodes --- flat forward
 variance per weighted-time unit --- so the dense vol curve $\sqrt{w/\tau}$ stays
 bounded near zero and sensible past the last expiry. The term-structure view uses
@@ -185,6 +189,24 @@ the shared calendar (not the per-node events) so the displayed curve is coherent
 across expiries. Changing the event calendar bumps the per-ticker events version,
 forcing a refit of only that name; with an empty calendar the whole pipeline is
 byte-identical to calendar time.
+
+Nor must the calendar be hand-entered. The Term workspace's
+\emph{auto-calibrate} action infers it from the ATM term structure: placing
+one candidate event before each expiry up to a chosen horizon
+(\texttt{maxExpiry}), it solves for the non-negative extra days $N_e$ that
+make the \emph{event-time} forward variance between consecutive expiries,
+$(w_i-w_{i-1})/(\tau_i-\tau_{i-1})$, as flat and as monotone-increasing as
+possible while keeping the events small and sparse (a bounded L-BFGS-B solve;
+events under half a day are thresholded away, so the result is a short list).
+The calendar-time forward variance $(w_i-w_{i-1})/(t_i-t_{i-1})$ is
+event-\emph{invariant} --- prices fix $w$ --- so the objective works on the
+dilated clock, the one events actually move: since an event can only
+\emph{lengthen} an interval's weighted time, it pulls \emph{down} the
+forward-variance spike an earnings-packed interval produces, toward its
+neighbours. The calendar is thus read off exactly the kinks the clock was
+built to explain, installed as the shared per-ticker calendar, and edited
+like any hand-entered one (\nolinkurl{calib/event_autocalib.py},
+\nolinkurl{api/event_autocalib.py}).
 
 %======================================================================
 \section{What is original here}
@@ -199,7 +221,9 @@ never change an option price --- it cannot introduce arbitrage. Second, the
 intuitive number (extra equivalent days) that a desk can quote and reason about,
 with an optional budget normalization \eqref{eq:normalize} that cleanly separates
 ``extra variance'' from ``reallocated variance''. And the byte-identical fallback
-when the calendar is empty means the feature is strictly additive.
+when the calendar is empty means the feature is strictly additive. The payoff is
+comparability: pre- and post-earnings surfaces line up across names and dates
+because event-time vol is the signal --- calendar-time vol is the artifact.
 
 %======================================================================
 \section{Traceability}
@@ -238,6 +262,11 @@ Legacy clock confined to term interpolation &
 remark &
 \nolinkurl{calib/event_time.py} &
 \nolinkurl{test_event_time.py::test_interpolation_lumps_event_variance}\\
+Auto-calibrate flattens event-time forward variance; flat input stays
+eventless &
+\cref{sec:thread} &
+\nolinkurl{calib/event_autocalib.py}, \nolinkurl{api/event_autocalib.py} &
+\nolinkurl{test_event_autocalib.py::test_spike_is_flattened}, \nolinkurl{::test_flat_input_stays_eventless}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -254,9 +283,17 @@ remark &
 \multicolumn{3}{l}{\emph{Surfaced (OptionsSettings)}}\\ \midrule
 \texttt{events} & empty & List of \texttt{EventSpec}$(t_e,N_e,\text{label})$; $N_e$ = extra equivalent days.\\
 \texttt{normalizeEvents} & off & Rescale all days to a fixed $365$ one-year budget \eqref{eq:normalize}.\\
+\texttt{maxExpiry} & --- & Auto-calibrate horizon: one candidate event per
+expiry at or before it (\cref{sec:thread}).\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
 \texttt{DAYS\_PER\_YEAR} & $\evtdays$ & Calendar-to-variance day conversion.\\
+\texttt{mono\_weight} & $1.0$ & Auto-calibrate: penalty on decreasing
+event-time forward variance.\\
+\texttt{sparse\_weight} / \texttt{ridge\_weight} & $10^{-3}$ / $10^{-4}$ &
+Auto-calibrate: keep solved events small and sparse.\\
+\texttt{min\_event\_days} & $0.5$ & Auto-calibrate sparsity threshold:
+smaller solved events are dropped.\\
 \bottomrule
 \end{longtable}
 

@@ -57,8 +57,30 @@
 \newcommand{\KalStepsTotal}{38\,181}%
 \newcommand{\KalShockJacSpike}{38.6}%
 \newcommand{\KalShockFacSpike}{18.7}%
+\newcommand{\KalShockJacHigh}{78.6}%
+\newcommand{\KalShockJacLow}{11.6}%
 \newcommand{\KalShockImproveMin}{3}%
 \newcommand{\KalShockImproveMax}{8}%
+\newcommand{\KalStepsVTwo}{39\,190}%
+\newcommand{\KalActThinSpike}{6.5}%
+\newcommand{\KalActThinHigh}{4.8}%
+\newcommand{\KalActThinLow}{3.4}%
+\newcommand{\KalActContraSpike}{9.1}%
+\newcommand{\KalActContraHigh}{5.6}%
+\newcommand{\KalActContraLow}{4.5}%
+\newcommand{\KalActShockSpike}{19.5}%
+\newcommand{\KalActShockHigh}{25.2}%
+\newcommand{\KalOvlContraSpike}{12.1}%
+\newcommand{\KalOvlContraHigh}{10.6}%
+\newcommand{\KalOvlContraLow}{6.3}%
+\newcommand{\KalRawContraSpike}{7.9}%
+\newcommand{\KalRawContraHigh}{9.8}%
+\newcommand{\KalRawContraLow}{5.4}%
+\newcommand{\KalOvlShockSpike}{4.6}%
+\newcommand{\KalOvlShockHigh}{7.9}%
+\newcommand{\KalOvlShockLow}{4.9}%
+\newcommand{\KalActZetaMin}{0.4}%
+\newcommand{\KalActZetaMax}{1.4}%
 \newcommand{\KalRefAgreement}{10^{-16}}%
 \newcommand{\KalBlowupMinPts}{3}%
 \newcommand{\KalBlowupMaxPts}{28}%
@@ -94,7 +116,13 @@ Jacobian-propagated covariance as the default route ($2$--$3\times$ better
 contradiction rejection than the factor route in every regime), and taught the
 one genuinely structural lesson: on coarse-strike chains the full-covariance
 update let a junk curvature innovation drag the ATM level through off-diagonal
-gains, so production runs the update per handle.
+gains, so production runs the update per handle. A second,
+\KalStepsVTwo-step sweep with the adaptive clock on then scored active mode
+itself: the one-stage MAP is the best denoiser wherever denoising is the job
+--- on high-vol contradiction days \KalActContraHigh\ vs \KalRawContraHigh\ bp
+for the raw fit it consumes --- and its one measured weakness, shock lag
+(the adaptive clock is overlay-only), is the flagged item before any
+active-by-default.
 \end{abstract}
 
 \tableofcontents
@@ -614,9 +642,9 @@ $\sigma(h)-\sigma(-h)=2h\,s_{\atm}$ and
 $\sigma(h)-2\sigma(0)+\sigma(-h)=h^2\kappa_{\atm}$
 are \emph{exact}, so the handle targets convert to stencil targets with no
 approximation beyond local quadraticity. Because these are ordinary operator
-residuals, the prior flows to LQD, SVI and Multi-Core SIV through the existing
-plumbing with zero per-model wiring --- and, crucially, it carries \emph{no}
-activation gate. The Kalman prior is always on at its covariance weight; that
+residuals, the prior flows to LQD, SVI and Multi-Core Sigmoid (MCS) through
+the existing plumbing with zero per-model wiring --- and, crucially, it
+carries \emph{no} activation gate. The Kalman prior is always on at its covariance weight; that
 is precisely the persistence/filter distinction of \cref{sec:split}.
 \item \textbf{The weights are the MAP objective in the fit's own units.} The
 quote rows are (near-)unit-weighted vol errors, i.e.\ the true MAP objective
@@ -702,6 +730,11 @@ functional, observation precision is below requirement, so the activation gate
 of \cref{eq:persistence} is near one and the transported prior supplies the
 tail anchor. The same day therefore has both effects: Kalman filtering
 denoises the observed cluster, while prior persistence fills the wing gap.
+
+\textbf{The other half of the story.} A rejected kink must not become a
+rejected \emph{move}: when the whole chain genuinely reprices, the innovation
+gate of \cref{sec:backtest} reads the coherent surprise, opens $P^-$, and the
+filter follows the market --- noise resisted, news respected.
 \end{example}
 
 \begin{figure}[H]
@@ -779,10 +812,13 @@ followed). Calibration of uncertainty is scored by the standardized residual
 $\zeta=(\text{truth}-m^+)/\sqrt{P^++R_{\mathrm{truth}}}$ --- the truth is
 itself a fitted estimate, and scoring against $\sqrt{P^+}$ alone overstated
 miscalibration threefold. Results are bucketed by maturity
-($\le30$ and $>30$ days to expiry); the full sweep spans \KalStepsTotal\
-scored steps. \Cref{fig:backtest} shows the two headline panels; the numbers
-below are all at the decision cell (Jacobian route, thinned, $>30$d) unless
-stated.
+($\le30$ and $>30$ days to expiry). Two full sweeps were run: the
+\KalStepsTotal-step \emph{tuning} sweep (overlay only) that settled the clock
+noise and the covariance route, and a \KalStepsVTwo-step \emph{v2} sweep ---
+overlay \emph{and} active modes, adaptive $Q$ on --- that scored the shipped
+configuration end-to-end. \Cref{fig:backtest} shows the two headline panels;
+the numbers below are at the decision cell (Jacobian route, thinned, $>30$d)
+of the tuning sweep unless stated.
 
 \begin{figure}[H]
 \centering
@@ -833,7 +869,7 @@ snapshots'', not ``lower every RMS''). The slightly negative $\zeta$ means on
 thinned days are a harness artifact worth recording: the ATM-window thinning
 is mildly biased against the full-chain truth.
 
-\paragraph{Documented limitations and the pre-active work list.} Three items
+\paragraph{Documented limitations, and what shipped against them.} Two items
 are measured, known, and deliberately not hidden. (i)~The $\le30$ DTE bucket
 is a different regime: short-dated nodes carry $90$--$160$ bp thinned-vs-full
 discrepancies from quote and de-Americanization noise (the Note~04/05
@@ -847,17 +883,39 @@ unwhitening. (ii)~A fixed clock cannot span calm and spike regimes.
 \emph{Shipped:} innovation-gated adaptive $Q$
 (\texttt{filterAdaptiveSigma}, default $3$): a per-handle surprise beyond the
 gate inflates $P^-$ by $(\zeta/3)^2$ (capped) so it reads as ${\sim}3\sigma$.
-Measured on the spike fixtures: SPX shock win $0.42\to1.00$ with
+Measured first on the spike fixtures (SPX shock win $0.42\to1.00$ with
 $\zeta$-std $3.8\to0.8$, clean days byte-identical below the gate; on the
 noisy EFA chain the gate stays quiet --- its wide-spread (and
 $\rho$-inflated) $R$ shrinks the standardized innovation, so junk is not
-chased. (iii)~The \texttt{active} mode is in the harness sweep
-(\texttt{--modes overlay,active}); in that mode the measurement IS the MAP
-solution, so the baseline is the overlay run's raw column. The SPX pilot has
-the MAP at $4.7$ bp against $6.1$ bp raw --- edging the overlay posterior
-($5.5$ bp) with $\zeta$-std ${\sim}1.1$: fitting quotes and prediction
-jointly beats blending them after the fact, as \cref{prop:nodouble} suggests
-it should. The cross-asset active sweep rides the next full-regime run.
+chased), then validated at full scale by the v2 sweep: the median shock
+error ($>30$d) collapses from \KalShockJacSpike\ to \KalOvlShockSpike\ bp in
+the spike regime, \KalShockJacHigh\ to \KalOvlShockHigh\ in high-vol and
+\KalShockJacLow\ to \KalOvlShockLow\ in low-vol, with the thinned and
+contradiction cells unchanged --- the gate opens on genuine shocks and stays
+quiet on clean days, as designed.
+
+\paragraph{Active mode, measured at full scale.} The v2 sweep scores the
+\texttt{active} one-stage MAP itself (\texttt{--modes overlay,active}); in
+that mode the committed fit IS the MAP solution, so the baseline is the
+overlay run's raw-measurement column of the same sweep. The verdict is
+one-sided wherever denoising is the job: on plain thinned days the active
+MAP beats \emph{both} the raw fit and the overlay posterior in every regime
+(\KalActThinSpike/\KalActThinHigh/\KalActThinLow\ bp against raw
+\KalErrMeasSpike/\KalErrMeasHigh/\KalErrMeasLow\ per regime), and on
+contradiction days it wins outright in the high- and low-vol regimes
+(\KalActContraHigh\ vs \KalRawContraHigh\ bp raw; \KalActContraLow\ vs
+\KalRawContraLow) while in the spike regime it still beats the post-hoc
+blend (\KalActContraSpike\ vs \KalOvlContraSpike\ bp) though not the raw fit
+(\KalRawContraSpike\ bp) --- all with honest uncertainty ($\zeta$ std
+\KalActZetaMin--\KalActZetaMax\ over those cells). Fitting quotes and
+prediction jointly beats blending them after the fact, exactly as
+\cref{prop:nodouble} says it should. The measured weakness is the shock
+scenario (\KalActShockSpike--\KalActShockHigh\ bp lag in the spike and
+high-vol regimes): the MAP prior weight is fixed before the measurement
+exists, so the innovation-gated adaptive $Q$ --- overlay-only by
+construction --- cannot open for it. Extending the gate to the active path
+(gating on the previous step's innovation, or a cheap ATM pre-probe) is
+\emph{the} remaining item before any active-by-default discussion.
 
 %======================================================================
 \section{What is original here}
@@ -898,7 +956,10 @@ door. The clock process noise is a fixed scalar; the shipped
 innovation-gated adaptive $Q$ (\cref{sec:backtest}) recovers genuine jumps,
 but it inherits the measurement's trustworthiness --- on wide-spread
 illiquid chains it deliberately stays quiet, so those names still lag real
-moves. Short-dated nodes ($\le30$ DTE) are dominated by quote and
+moves --- and it is overlay-only: the active MAP's prior weight is fixed
+before the measurement exists, so active mode lags genuine shocks
+(\KalActShockSpike--\KalActShockHigh\ bp in the v2 sweep) until the gate is
+extended to the fit path. Short-dated nodes ($\le30$ DTE) are dominated by quote and
 de-Americanization noise; the shipped $\sqrt{30/\mathrm{DTE}}$ noise floor
 sizes $R_t$ honestly there, but honest uncertainty is not signal --- the
 short end remains the filter's weakest bucket. The state is per-node: a graph-coupled filter

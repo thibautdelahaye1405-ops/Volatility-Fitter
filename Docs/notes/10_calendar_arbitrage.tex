@@ -26,8 +26,8 @@ fitted surface to be consistent with \emph{some} martingale. Two
 enforcements follow. For LQD the integrated upper-quantile curve \emph{is}
 the asset-share integral every built slice already carries, so the
 constraint is an elementwise array comparison; expiries are fitted
-nearest-to-farthest under a soft slack. For the SVI and Multi-Core SIV
-overlays a \emph{model-agnostic} hinge enforces
+nearest-to-farthest under a soft slack. For the SVI and Multi-Core Sigmoid
+(MCS) overlays a \emph{model-agnostic} hinge enforces
 $w_{\text{far}}(k)\ge w_{\text{near}}(k)$ directly (the local-vol surface
 needs neither: positivity of its local variance is calendar-cleanliness,
 Note~04). The note's case file is the \emph{phantom calendar}: a fixed wide
@@ -36,8 +36,10 @@ violations in a no-data region, flattening far fits live on NVDA and SPY;
 the confinement fix --- sample the floor only on the traded range --- is
 reproduced here with the production calibrator (far-fit error
 \calphantomwide\ vol bp under the wide grid vs \calphantomdata\ under the
-confined one). A worked example takes an inverted-wing pair from a
-violation of \calviolfree\ to \calviolcured.
+confined one). An explicitly-flagged open problem records what confinement
+gives up: softer enforcement in the extrapolated region, where options are
+not yet worthless (\cref{rem:openwings}). A worked example takes an
+inverted-wing pair from a violation of \calviolfree\ to \calviolcured.
 \end{abstract}
 
 \tableofcontents
@@ -169,8 +171,8 @@ equivalent to the node-indexed form on the native grid.
 \section{The model-agnostic enforcement}
 \label{sec:agnostic}
 
-The SVI and Multi-Core SIV overlays carry no quantile curve, so they use
-face (iv) directly: a soft hinge on total variance,
+The SVI and Multi-Core Sigmoid (MCS) overlays carry no quantile curve, so
+they use face (iv) directly: a soft hinge on total variance,
 \begin{equation}
 \sqrt{W_{\text{cal}}}\,\max\!\big(w_{\text{near}}(k_m)-w_{\text{far}}(k_m),\,0\big),
 \label{eq:wfloor}
@@ -188,7 +190,7 @@ the single-slice overlay, \texttt{fit\_and\_commit\_slice}, the full-surface
 loop, and the coupled Calibrate workflow all pass the just-fitted display to
 the next expiry. Wherever the floor is absent (\texttt{off}, or the first
 expiry) the residual block is absent too --- byte-identical, test-locked for
-SVI, SIV, and the display pipeline.
+SVI, MCS, and the display pipeline.
 
 %======================================================================
 \section{Case file: the phantom calendar}
@@ -251,6 +253,25 @@ def variance_floor_grid_from(k_quotes, n=41):
         return variance_floor_grid()    # no data at all: wide fallback
     return np.linspace(float(k.min()), float(k.max()), n)
 \end{lstlisting}
+
+\begin{remark}[Open problem: what the extrapolated region still deserves]
+\label{rem:openwings}
+Confinement is kept --- it is the production rule, and the case file above is
+why. It is not the last word. The confined floor enforces \emph{nothing}
+outside the traded span, yet the extrapolated region is not uniformly
+worthless: just past the last quote the options still carry genuine premium,
+and a calendar inversion there between two \emph{stated} wing contracts
+(Note~09) is a real inconsistency even if no quote witnesses it. The
+candidate refinement is a \emph{softer} floor in the near-extrapolation
+region --- the hinge weight decaying with distance past the last quote, or
+with the options' remaining time value, so that a gross inversion where
+options are demonstrably not worthless is still leaned on while the deep-wing
+disagreement of two extrapolation fictions stays harmless. This is open
+(flagged 2026-07): any such scheme must be designed jointly with Note~09's
+per-model wing contracts and the floor-grid construction of
+\cref{lst:confine}, and must preserve the case-file property that the
+NVDA/SPY phantom stays cured.
+\end{remark}
 
 %======================================================================
 \section{Worked example: curing a real violation}
@@ -319,7 +340,7 @@ Model-agnostic floor reads prev slice's $w$ &
 \eqref{eq:wfloor} &
 \nolinkurl{calib/calendar.py} &
 \nolinkurl{test_overlay_calendar.py::test_variance_floor_reads_prev_total_variance}\\
-Floor crushes real violations (SVI, SIV) &
+Floor crushes real violations (SVI, MCS) &
 \cref{sec:example} &
 \nolinkurl{models/svi_jw/calibrate.py}, \nolinkurl{models/sigmoid/calibrate.py} &
 \nolinkurl{test_overlay_calendar.py::test_svi_floor_crushes_calendar_violation}, \nolinkurl{::test_sigmoid_floor_crushes_calendar_violation}\\
@@ -388,7 +409,7 @@ work by not sampling the extrapolation region.
 
 The two enforcement residuals are one line each, and the confined grid is
 \cref{lst:confine}. The hinge below reproduces the residual blocks inside
-the SVI/SIV calibrators exactly (the production rows are inline in each
+the SVI/MCS calibrators exactly (the production rows are inline in each
 calibrator, not a shared function --- deliberately, since each model
 evaluates its own $w$); \cref{lst:confine} matches
 \texttt{variance\_floor\_grid\_from} output to machine precision on quoted
@@ -396,7 +417,7 @@ and empty inputs alike.
 
 \begin{lstlisting}[caption={The calendar hinge as it appears (inline) in
 each parametric calibrator, and the LQD asset-share form.}]
-# SVI / Multi-Core SIV (face (iv)):    rows are zero unless the far dips
+# SVI / Multi-Core Sigmoid (face (iv)): rows are zero unless the far dips
 cal = np.sqrt(calendar_weight) * np.maximum(cal_floor - w_model, 0.0)
 
 # LQD (face (iii)): the same hinge on the asset share A(z)

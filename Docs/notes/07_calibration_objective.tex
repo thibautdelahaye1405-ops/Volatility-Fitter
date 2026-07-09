@@ -14,7 +14,7 @@
 \input{figures/obj_tables.tex}
 
 \begin{abstract}
-Every model in the Vol-Fitter --- LQD, SVI, Multi-Core SIV, local volatility ---
+Every model in the Vol-Fitter --- LQD, SVI, Multi-Core Sigmoid (MCS), local volatility ---
 is calibrated by minimizing the \emph{same} kind of objective, and this note
 documents that shared machinery so the model notes need not repeat it. Three
 ingredients: a residual \emph{scale} (vega-normalized price, so the loss behaves
@@ -58,7 +58,7 @@ Why not just fit volatility directly? Because for the density-based models
 (LQD, LV) the \emph{price} is the arbitrage-free object and the implied vol is a
 nonlinear read-off; fitting price keeps the feasible set convex-clean, and the
 vega division recovers the vol-like loss for free. For the vol-space models
-(SVI, SIV) the residual is already a vol error and \eqref{eq:vega} degenerates to
+(SVI, MCS) the residual is already a vol error and \eqref{eq:vega} degenerates to
 exactly that. One residual concept, two implementations, identical units.
 \end{heuristic}
 
@@ -66,7 +66,7 @@ exactly that. One residual concept, two implementations, identical units.
 \begin{enumerate}[leftmargin=1.6em]
 \item One objective vocabulary for every model: same residual units, same
 weight schemes, same band construction --- a mode or scheme change means the
-same thing on LQD, SVI, SIV and LV.
+same thing on LQD, SVI, MCS and LV.
 \item Weights are mean-normalized to one, so switching schemes never silently
 re-tunes the data-versus-regularization balance.
 \item Inside the quoted band the fit pays only the small mid anchor ---
@@ -98,12 +98,15 @@ The Vol-Fitter offers two schemes via \texttt{weightScheme}. The default
 \end{equation}
 where $\mathrm{TV}_i$ is the quote's \emph{time value} (its OTM option price, which
 in forward-normalized units is its whole value), and $s_i$ is the one-dimensional
-Voronoi cell width of the quote in log-strike --- half the gap to each neighbour,
-one-sided at the ends. The factor $\mathrm{TV}_i$ is the economic weight (a quote
+Voronoi cell width of the quote in log-strike: the stretch of the strike axis
+closer to this quote than to any other --- half the gap to each neighbour,
+one-sided at the ends --- i.e.\ how much strike range this quote alone covers.
+The factor $\mathrm{TV}_i$ is the economic weight (a quote
 on a richly-priced option matters more); the factor $s_i/\bar s$ is the
-\emph{density correction}, dividing out the local sampling density $1/s_i$ so that
-the \emph{aggregate} weight over strike space follows the time-value measure
-$\mathrm{TV}(x)\,\dd x$ rather than the raw quote histogram.
+\emph{density correction}, dividing out the exchange's listing density $1/s_i$ so
+that the \emph{aggregate} weight over strike space follows the time-value measure
+$\mathrm{TV}(x)\,\dd x$ rather than the raw quote histogram --- without it, the
+densely-listed ATM cluster would outvote the wings simply by quote \emph{count}.
 
 \begin{proposition}[Uniform-grid sanity check]
 On a uniform log-strike grid all $s_i$ are equal, so $s_i/\bar s=1$ and
@@ -114,7 +117,7 @@ weighting, with no double-counting to correct.
 A cap \texttt{DEFAULT\_MAX\_MULT}$=10$ on the spacing multiplier $s_i/\bar s$
 stops a single isolated far-wing quote from dominating. Crucially the weights are
 \emph{mean-normalized to one}, so switching schemes leaves the
-data-versus-regularization balance unchanged: the LQD ridge, the sigmoid hat
+data-versus-regularization balance unchanged: the LQD ridge, the MCS hat
 ridge and the LV roughness penalty are all tuned against unit-mean weights and
 never silently over- or under-regularize when the scheme changes.
 
@@ -166,9 +169,13 @@ each side toward mid by \texttt{haircut} volatility points, never crossing mid,
 \text{lo}=\min(\text{bid}+h,\text{mid}),\qquad
 \text{hi}=\max(\text{mid},\text{ask}-h),
 \end{equation}
-so a quote tighter than $2h$ collapses gracefully to a mid fit on that strike. The
+so a quote tighter than $2h$ collapses gracefully to a mid fit on that strike.
+This makes the haircut one dial that spans the whole mid-to-band spectrum: tight
+ATM spreads collapse onto the mid (the fit follows mids exactly where they are
+informative), while wide wing spreads keep a meaningful band (the fit only has to
+stay inside it). The
 hinge is monotone in the quote value, so the \emph{same} construction works in any
-monotone residual space --- implied vol for SVI/SIV, vega-normalized price for
+monotone residual space --- implied vol for SVI/MCS, vega-normalized price for
 LQD/LV --- and the band-violation subgradient $\sgn$ feeds the analytic Jacobians.
 Both are one line:
 

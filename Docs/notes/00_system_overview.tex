@@ -43,15 +43,18 @@ top of it:
 \begin{enumerate}[leftmargin=1.6em]
 \item \textbf{A choice of models, all arbitrage-aware.} Four smile
 representations share one calibration spine: the \emph{LQD} log-quantile-density
-model (Note~01), \emph{SVI / SVI-JW} (Note~02), the \emph{Multi-Core SIV} sigmoid
-family (Note~03), and a full \emph{piecewise-affine local-volatility} surface
-(Note~04). The first three are slice parametrizations that are butterfly-free by
-construction or by penalty; the fourth is a genuine local-volatility grid solving
-the Dupire PDE.
-\item \textbf{A professional desk workflow.} Real bid/ask handling, var-swap
-targets, density-corrected weighting, event time dilation, dividend and
-forward treatment, spot--vol dynamics, and a Bayesian prior-persistence machine
-that decides, quote by quote, whether to trust the market or the saved prior.
+model (Note~01), \emph{SVI / SVI-JW} (Note~02), the \emph{Multi-Core Sigmoid
+(MCS)} family (Note~03), and a full \emph{piecewise-affine local-volatility}
+surface (Note~04). The first three are slice parametrizations that are
+butterfly-free by construction or by penalty; the fourth is a genuine
+local-volatility grid solving the Dupire PDE.
+\item \textbf{A professional desk workflow.} Real bid/ask handling (fit to mid,
+to the bid--ask band, or to a haircut band), var-swap targets, density-corrected
+weighting, event time dilation, dividend and forward treatment, spot--vol
+dynamics, a Bayesian prior-persistence machine that decides, quote by quote,
+whether to trust the market or the saved prior, and a temporal observation
+filter (a per-handle Kalman/MAP estimator, Note~15) that denoises noisy or
+contradictory quotes without ever confusing noise with data gaps.
 \item \textbf{Graph smile-extrapolation.} The headline differentiator (Note~14):
 a transported prior plus the lit-node calibration innovation are propagated
 through an optimal-transport-regularized Bayesian graph to reconstruct the
@@ -71,13 +74,13 @@ sentence literally.
 The system-wide contracts every note protects, stated once:
 \begin{enumerate}[leftmargin=1.6em]
 \item \textbf{Arbitrage-cleanliness is structural where possible, measured
-where not.} LQD and the LV surface are clean by construction; SVI/SIV are
+where not.} LQD and the LV surface are clean by construction; SVI/MCS are
 fenced by penalties that are exactly zero on admissible slices; and the
 residual scheme noise is reported by explicit diagnostics, never assumed away.
 \item \textbf{Every feature is strictly additive.} Bands, var-swap targets,
-calendar coupling, the event clock, priors, betas, the wing penalty: each is
-byte-identical to its absence when off --- and that byte-identity is
-test-locked, not asserted.
+calendar coupling, the event clock, priors, betas, the wing penalty, the
+observation filter: each is byte-identical to its absence when off --- and
+that byte-identity is test-locked, not asserted.
 \item \textbf{Numbers are measured, not copied.} Figures and tables are
 generated fresh by the production code; reference listings are executed
 against the modules they distill; claims carry test anchors.
@@ -223,13 +226,23 @@ band-constrained convexity repair then removes the butterfly arbitrage the
 per-strike inversion can leave in the sparse wings, holding the ATM core fixed.
 \item \textbf{Forwards and dividends} (Note~06). Put--call parity yields the
 implied forward and discount (clamped against feed noise); discrete dividends and
-American de-bias are handled here.
+American de-bias are handled here. One provider pathology is handled upstream of
+the regression: chains a delayed feed \emph{synthesizes} at zero carry (NBBO
+gated, so the provider emits Black prices from its own IV marks at $F=$ spot,
+$D=1$) are flagged at capture and \emph{pinned} to $F=$ spot, $D=1$ rather than
+parity-regressed --- regressing quotes that already embed the provider's carry
+produced garbage forwards.
 \item \textbf{Prepare.} Out-of-the-money selection, a static no-arbitrage/wing
 screen, and the choice of observation weights (Note~07).
 \item \textbf{Calibrate slice.} The chosen model is fitted to the prepared quotes
 under the active objective: mid / bid--ask band / haircut (Note~07), optional
 var-swap target (Note~08), calendar coupling (Note~10), event clock (Note~11),
-and Bayesian prior persistence (Note~13).
+and Bayesian prior persistence (Note~13). On commit, the fitted ATM handles can
+additionally pass through the observation Kalman filter (Note~15;
+\texttt{off}/\texttt{overlay}/\texttt{active}, \texttt{off} byte-identical to
+the feature never existing): a per-handle temporal state estimator that weighs
+today's noisy observation against the previous filtered state transported under
+the Note~12 dynamics.
 \item \textbf{Views.} Every smile-derived view --- smile, stacked densities,
 stacked total variance, quantile density, term structure, local-vol surface,
 SSR scenario --- follows the chosen model and is downsampled for the UI.
@@ -250,7 +263,18 @@ nodes \emph{lit} (quoted, calibrated) or \emph{dark} (to be reconstructed). The
 graph carries the three ATM handles $(\sigma_0,s_0,\kappa_0)$ of each node as a
 Gaussian signal and propagates the lit innovation to the dark nodes; Note~14
 develops the optimal-transport-regularized Bayesian solver behind it, and the
-leave-one-out backtest that measures its skill.
+leave-one-out backtest that measures its skill. That skill is now measured at
+scale: on the 25-asset benchmark across three historical regimes ($\sim$47k
+held-out scores), neighbour-supported indexes gain $+10$ to $+76$ ATM vol bps
+over the transported-prior baseline and ETFs $+3$ to $+7$; fully-dark single
+names behind lit indexes/ETFs --- the product case --- gain $+7.9$ to $+14.2$
+bps in the August-2024 spike and $+3.8$ to $+7.2$ fully out-of-sample in the
+October-2022 bear, with unbiased standardized residuals. In the calm July-2023
+regime the dark-name skill is $\approx0$ (never negative): single-name moves
+there are earnings-idiosyncratic, and the graph carries shared repricing, not
+idiosyncratic news. The one flagged weakness is the calm regime's dark-name
+bands ($\operatorname{std}\zeta\approx1.9$, overconfident) --- an open
+follow-up recorded in Note~14.
 
 \begin{figure}[H]
 \centering
@@ -304,7 +328,7 @@ Capability & Summary & Note\\
 LQD smile model & Arbitrage-free-by-construction log-quantile density;
 analytic Jacobian & 01\\
 SVI / SVI-JW & Raw and jump-wing SVI with no-arb penalty and Lee cap & 02\\
-Multi-Core SIV & Sigmoid base + zero-wing hats for WW/event smiles & 03\\
+Multi-Core Sigmoid (MCS) & Sigmoid base + zero-wing hats for WW/event smiles & 03\\
 Local volatility & Piecewise-affine Dupire surface; GN/Numba calibration & 04\\
 De-Americanization & CRR tree + bisection, Numba kernel, cache digest, wing convex repair & 05\\
 Forwards / dividends & Parity forward + discount clamp, discrete divs & 06\\
@@ -316,6 +340,8 @@ Event variance clock & Dual calendar/variance time, day-weighted events & 11\\
 Spot--vol dynamics & Sticky strike/moneyness/local-vol, SSR transport & 12\\
 Prior persistence & 7-mode Bayesian menu, precision gate, two-pass & 13\\
 Graph extrapolation & Transported prior + directed increments + backtest & 14\\
+Observation Kalman filter & Per-handle temporal denoising of the ATM handles;
+one-stage MAP active mode & 15\\
 \bottomrule
 \end{longtable}
 
@@ -343,7 +369,7 @@ engineering philosophy.
 \emph{two} curves is sampled only where data pins both; a constraint
 intrinsic to \emph{one} curve holds everywhere, wings included. Four
 instances: the calendar floor (confined, Note~10), the LV convex wing
-(confined, Note~04), the SIV Durrleman penalty (extended, Note~03), the
+(confined, Note~04), the MCS Durrleman penalty (extended, Note~03), the
 de-Am convexity repair (extended, but its \emph{authority} confined to the
 quoted band, Note~05).
 \item \textbf{Trust the well-identified parameter.} The parity forward keeps
@@ -355,15 +381,15 @@ level-invariant baskets, so an overnight jump is never damped
 (Note~13); the graph propagates \emph{increments}, so ``no change'' is the
 default dark-node answer (Note~14).
 \item \textbf{Route each model through its native object.} The var-swap is
-a closed form for LQD, arithmetic for SVI/SIV, a source PDE for LV
+a closed form for LQD, arithmetic for SVI/MCS, a source PDE for LV
 (Note~08); the calendar constraint is the asset share for LQD and a
 total-variance hinge for the overlays (Note~10). Uniform implementations
 across non-uniform models are a trap.
 \item \textbf{Measure first, fix second.} The short-dated LV failure was
-convicted by per-expiry counts before any model change (Note~04); the SIV
+convicted by per-expiry counts before any model change (Note~04); the MCS
 wing penalty sits where the arb census located the violations (Notes~03,
-09); the temporal backtests score priors and the graph against honest
-held-out baselines (Notes~13, 14).
+09); the temporal backtests score priors, the graph and the observation
+filter against honest held-out baselines (Notes~13--15).
 \end{enumerate}
 
 \Cref{tab:casefiles} indexes the production incidents documented across the
@@ -384,12 +410,20 @@ The delayed feed that gapped the ATM smile (discount clamp; failed
 rate-anchor) & trust the well-identified parameter & 06\\
 The fit that took minutes (var-swap replication in the Jacobian) &
 native-object routing & 08\\
-The SIV that invented a put wing (R3$\times$R6 ablation,
+The MCS that invented a put wing (R3$\times$R6 ablation,
 $92/25/749/225$ bp) & input repair and output penalty compose & 09, 03\\
 The phantom calendar (NVDA/SPY flattened; $151\to0$ bp reproduced) &
 the confinement principle & 10, 09\\
 The jump the strike anchor damped (operators persist shape) &
 persist shape, not level & 13\\
+The backtest that confirmed the hybrid default ($\sim$32 bp on the
+held-out wing, 1117 nodes) & defaults are chosen by held-out evidence & 13\\
+The transient-name topology defect (cross-asset skill exactly $0.000$) &
+exact zeros are disconnection, not damping & 14\\
+The close-strike contradiction vs.\ the true gap (gains
+$0.80/0.72/0.03$) & noise is not a gap: filter and prior split the work & 15\\
+The off-diagonal blow-up on coarse chains ($3$--$28$ vol points) &
+per-handle updates; caps do not police cross-gains & 15\\
 \bottomrule
 \end{longtable}
 
@@ -438,9 +472,9 @@ Parameter & Default & Role & Note\\
 \texttt{nOrder} & $6$ & LQD Legendre order & 01\\
 \texttt{regLambda} / \texttt{regPower} & $10^{-6}$ / $1$ & LQD high-order ridge & 01\\
 \texttt{barrierCenter} / \texttt{barrierScale} & $0.90$ / $50$ & LQD $A_R$ barrier & 01\\
-\texttt{nCores} & $2$ & Multi-Core SIV hat count (schema-clamped at 2) & 03\\
-\texttt{sigmoidRidge} & $10^{-2}$ & SIV hat-amplitude ridge & 03\\
-\texttt{sivWingPenaltyPct} & $100$ & SIV put-wing Durrleman penalty ($0=$ off) & 03\\
+\texttt{nCores} & $2$ & MCS hat count (schema-clamped at 2) & 03\\
+\texttt{sigmoidRidge} & $10^{-2}$ & MCS hat-amplitude ridge & 03\\
+\texttt{sivWingPenaltyPct} & $100$ & MCS put-wing Durrleman penalty ($0=$ off) & 03\\
 \texttt{sviPenaltyWeight} & $10^{3}$ & SVI no-arbitrage penalty & 02\\
 \texttt{leeSlopeMax} & $2.0$ & SVI Lee wing-slope cap & 02, 09\\
 \texttt{gridXNodes} & $12$ & LV strike-grid vertices & 04\\
@@ -473,6 +507,17 @@ Parameter & Default & Role & Note\\
 \texttt{graphLambdaScale} $\lambda$ & $0.0$ & graph OT regularization & 14\\
 \texttt{graphNu} $\nu$ & $0.1$ & graph UOT source allowance & 14\\
 \texttt{events} & --- & scheduled event clock & 11\\
+\texttt{observationFilterMode} & \texttt{off} & filter off / overlay / active (MAP) & 15\\
+\texttt{filterCovarianceMode} & \texttt{jacobian} & measurement-covariance route & 15\\
+\texttt{filterProcessVolBpSqrtDay} & $30$ & ATM clock process noise (bp/$\sqrt{\text{day}}$) & 15\\
+\texttt{filterProcessSkewSqrtDay} & $0.02$ & skew clock process noise & 15\\
+\texttt{filterProcessCurvSqrtDay} & $0.05$ & curvature clock process noise & 15\\
+\texttt{filterTransportNoiseScale} & $0.10$ & process std per unit transport distance & 15\\
+\texttt{filterResidualInflation} & on & contradiction reads as measurement noise & 15\\
+\texttt{filterAdaptiveSigma} & $3$ & innovation-gated adaptive $Q$ ($0=$ off) & 15\\
+\texttt{filterMaxGain} & $1.0$ & per-handle own-gain safety cap & 15\\
+\texttt{filterResetHours} & $96$ & maximum data gap predicted across & 15\\
+\texttt{filterDataOnlyPrepass} & off & strictly persistence-free measurement & 15\\
 \bottomrule
 \end{longtable}
 
@@ -503,6 +548,8 @@ Constant & Default & Role & Note\\
 \texttt{TRANSPORT\_SCALE} & $0.10$ & prior transport precision decay & 13\\
 \texttt{HANDLE\_CONFIDENCE} & $[1,1,0.01]$ & per-handle graph confidence & 14\\
 \texttt{SOURCE\_BASE} & tiered & prior provenance precision & 14\\
+\texttt{DIAGONAL\_UPDATE} & on & per-handle scalar Kalman gains & 15\\
+\texttt{RESID\_INFLATION\_CAP} & $25$ & cap on the contradiction inflation & 15\\
 \bottomrule
 \end{longtable}
 

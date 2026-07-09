@@ -3,7 +3,7 @@
 \usepackage{volfit_preamble}
 \graphicspath{{figures/}}
 
-\title{\textbf{Multi-Core SIV}\\[2pt]
+\title{\textbf{Multi-Core Sigmoid (MCS)}\\[2pt]
 \large A sigmoid implied-variance base with zero-wing hats for WW and event smiles\\[2pt]
 \normalsize Vol-Fitter Technical Notes, No.~03}
 \author{Vol-Fitter}
@@ -12,10 +12,15 @@
 \begin{document}
 \maketitle
 \input{figures/siv_tables.tex}
+% Fallbacks so the note compiles before gen_siv.py has been re-run; the
+% generator overwrites siv_tables.tex with the measured values.
+\providecommand{\sivtargetgmin}{--}
+\providecommand{\sivfitgmin}{--}
 
 \begin{abstract}
-This note documents the Vol-Fitter's sigmoid family, the \emph{Multi-Core SIV}
-(MC-SIV) model. The base is a six-parameter Sigmoid Implied Variance slice: a
+This note documents the Vol-Fitter's sigmoid family, the \emph{Multi-Core
+Sigmoid} (MCS) model. The base is a six-parameter sigmoid implied-variance
+slice: a
 log-cosh convexity primitive giving an ATM level, an ATM skew, a convexity
 amplitude, and \emph{asymmetric} put/call wing steepnesses, $C^2$ across its
 centre. On top of the base the model adds $R$ signed \emph{zero-wing hat}
@@ -66,7 +71,7 @@ monotone non-decreasing slope. SVI has $w''(k)=b\sigma^2/r^3>0$ (Note~02), so it
 is strictly convex.
 \end{proof}
 
-The MC-SIV answer is to keep a convex \emph{base} that owns the wings and the
+The MCS answer is to keep a convex \emph{base} that owns the wings and the
 overall skew, and to add \emph{local, wing-neutral} corrections that can be
 positive or negative.
 
@@ -98,7 +103,7 @@ local skew on the way out).
 \end{heuristic}
 
 %======================================================================
-\section{The one-core SIV base}
+\section{The sigmoid base}
 \label{sec:base}
 
 \subsection{Coordinates and the log-cosh primitive}
@@ -210,7 +215,7 @@ def hat(z, c, h, kappa):                    # zero-wing kernel B_{c,h,kappa}
 
 \subsection{The full model}
 
-The Multi-Core SIV slice is the base plus $R$ signed hats,
+The Multi-Core Sigmoid (MCS) slice is the base plus $R$ signed hats,
 \begin{equation}
 \boxed{\;v_R(z)=v_{\text{base}}(z)+\sum_{r=1}^{R}\alpha_r\,B_{c_r,h_r,\kappa_r}(z),\;}
 \qquad w(k)=t\,v_R(z),
@@ -234,7 +239,7 @@ g(k)=\Big(1-\frac{k\,w'}{2w}\Big)^2-\frac{w'^2}{4}\Big(\frac1w+\frac14\Big)+\fra
 \label{eq:durrleman_siv}
 \end{equation}
 Since the risk-neutral density is proportional to $g$, the diagnostic
-$g(k)\ge0$ on the grid is the no-butterfly check. Unlike LQD, MC-SIV is
+$g(k)\ge0$ on the grid is the no-butterfly check. Unlike LQD, MCS is
 \emph{not} arbitrage-free by construction: a large or narrow hat can drive $g$
 negative, so $g$ is reported per fit, the calibration bounds (\cref{sec:calib})
 keep hats in a benign range, and a default-on \emph{put-wing regularizer}
@@ -352,8 +357,10 @@ the analytic speed. See \cref{app:perf}.
 \label{sec:example}
 
 The target in \cref{fig:fit} is a synthetic WW: rising V wings with a shoulder on
-each side of the ATM trough --- the shape \cref{prop:convex} forbids a hyperbola.
-The base SIV ($R=0$) fits it only to \sivbasemaxerr\ vol bps, missing both
+each side of the ATM trough --- the shape \cref{prop:convex} forbids a hyperbola
+--- and it is itself \emph{verified butterfly-clean} before any fit runs (see
+the remark closing this section).
+The sigmoid base ($R=0$) fits it only to \sivbasemaxerr\ vol bps, missing both
 shoulders. Two hats ($R=2$, $6+4\cdot2=\sivnparam$ parameters) reduce the maximum
 error to \sivmaxerr\ vol bps while preserving the wing slopes
 $(S_0-2K_0/\kappa_P,\,S_0+2K_0/\kappa_C)=(\sivwingL,\,\sivwingR)$ and keeping the
@@ -368,7 +375,7 @@ the two shoulders, each localized and wing-neutral.
 \centering
 \includegraphics[width=0.80\textwidth]{fig_siv_fit.pdf}
 \caption{The WW smile: the convex base ($R=0$, dotted) misses the shoulders by
-\sivbasemaxerr\ vol bps; the two-core MC-SIV fit (dashed) reaches \sivmaxerr\ vol
+\sivbasemaxerr\ vol bps; the two-core MCS fit (dashed) reaches \sivmaxerr\ vol
 bps.}
 \label{fig:fit}
 \end{figure}
@@ -381,13 +388,32 @@ bps.}
 \end{minipage}\hfill
 \begin{minipage}{0.45\textwidth}\centering
 \includegraphics[width=\textwidth]{fig_siv_g.pdf}\\[1pt]
-{\footnotesize (b) Durrleman $g(k)\geq0$}
+{\footnotesize (b) Durrleman $g(k)\geq0$, fit and target}
 \end{minipage}
 \caption{Left: the additive decomposition --- the convex base owns the wings, the
-hats own the shoulders. Right: the butterfly diagnostic stays non-negative.}
+hats own the shoulders. Right: the butterfly diagnostic stays non-negative for
+\emph{both} curves --- the fitted slice and the synthetic target it chased,
+whose own analytic $g$ is asserted positive by the generator.}
 \label{fig:components}
 \end{figure}
 \begin{figure}[H]\centering\phantomsection\label{fig:diag}\end{figure}
+
+\begin{remark}[The target must be clean too --- a fixed figure bug]
+\label{rem:targetbug}
+A certificate is only as strong as the exercise it certifies. An earlier
+revision of this note's generator built a WW target whose \emph{own}
+Durrleman function dipped to $g\approx-0.38$ near the shoulders: the
+synthetic ``market'' itself carried butterfly arbitrage, so no admissible
+slice could both track it closely and honour $g\ge0$, and the figure's claim
+was quietly false. The fix re-chose the shoulder amplitudes and widths ---
+the shoulder-top curvature scales like $2A/s^2$ and is what drives $w''$,
+hence $g$, negative --- and the wing slope, so the target is genuinely
+admissible; the generator now computes the target's $g$ from \emph{analytic}
+jets (no finite differences, the measurement lesson of Note~02) and asserts
+$g>0$ on the plotted grid before any fit runs. Current values: target
+$\min g=\sivtargetgmin$, fitted slice $\min g=\sivfitgmin$
+(\nolinkurl{figures/gen_siv.py}).
+\end{remark}
 
 %======================================================================
 \section{Original ideas, and the over-fit caution}
@@ -406,8 +432,9 @@ With great expressiveness comes over-fitting. The offline backtest (project
 \texttt{backtest/}) found that on liquid index chains the Multi-Core hats
 \emph{over-fit}: cores chase quote noise and manufacture butterfly-arbitrage
 (the analytic diagnostic flags $g<0$ on a majority of calibrated nodes at $R\ge2$
-on dense data), while the base $R=0$ behaves like SVI, and the marginal precision
-is out-of-sample negative for $R\ge3$. Two measures followed. The amplitude ridge,
+on dense data), while the base $R=0$ behaves like SVI; the extra cores buy
+in-sample error and \emph{give it back out-of-sample} --- the marginal precision
+is negative for $R\ge3$. Two measures followed. The amplitude ridge,
 the identifiability cap \eqref{eq:identifiability}, and the $g$ diagnostic mitigate
 the fit itself; the surfaced slider is \emph{hard-capped at two} (\cref{sec:calib});
 and the put-wing regularizer \eqref{eq:wingpen} of \cref{sec:wingpen} is default-on
@@ -418,23 +445,28 @@ cores slider is a scalpel, not a default.
 \end{caution}
 
 \begin{remark}[Two defences, one pathology --- and they are complementary]
-The put-wing violation has \emph{two} sources: the flexible SIV genuinely
+The put-wing violation has \emph{two} sources: the flexible MCS genuinely
 over-reaching (cured by \eqref{eq:wingpen}), and \emph{arbitraged inputs} --- the
 per-strike de-Americanization of Note~05 can hand every model a call curve that is
 already slightly non-convex in the wings. An ablation isolating the two defences
 (the de-Am convex repair of Note~05 versus the penalty \eqref{eq:wingpen}) on
 illiquid American ETFs found them \emph{complementary, not redundant}. On the
-arb-prone population: with neither, worst $g\approx-30$ and in-sample RMS
-$92$ bp; the de-Am repair alone cuts the violation about threefold \emph{and
-lowers} the RMS to $25$ bp (it removes the arbitraged quotes the model was
-chasing); the penalty alone nearly eliminates the violation ($g\ge-0.02$) but
-at $749$ bp (it must fight those same quotes); both attain the penalty's
-arbitrage removal at $225$ bp, because the inputs are cleaned before the
-constraint is imposed. On liquid names both are byte-identical no-ops. That
-is the quantitative case for shipping both on by default; the census that
-sited the penalty (64\% put wing, median worst violation at $z\approx-3.2$)
-and the cross-model framing are Note~09's case file and confinement
-principle.
+arb-prone population (medians over 38 nodes): with neither, worst-point
+$g\approx-30$ and in-sample RMS $92$ bp; the de-Am repair alone cuts the
+violation about threefold \emph{and lowers} the RMS to $25$ bp (it removes the
+arbitraged quotes the model was chasing); the penalty alone nearly eliminates
+the violation ($g\ge-0.02$) but at $749$ bp (it must fight those same quotes);
+both attain the penalty's arbitrage removal at $225$ bp, because the inputs
+are cleaned before the constraint is imposed. One real node makes the
+mechanism vivid (EFA in the Aug-2024 vol spike, 11 days to expiry, 22
+quotes): neither defence, $75$ bp with worst $g=-116$; repair alone, a tight
+$18$ bp but $g=-12$ remains; penalty alone, arbitrage-free but $726$ bp;
+both, arbitrage-free at $34$ bp. The fence is expensive only when it must
+fight arbitraged inputs --- the repair is what makes it affordable. On liquid
+names both are byte-identical no-ops. That is the quantitative case for
+shipping both on by default; the census that sited the penalty (64\% put
+wing, median worst violation at $z\approx-3.2$) and the cross-model framing
+are Note~09's case file and confinement principle.
 \end{remark}
 
 %======================================================================
@@ -483,7 +515,7 @@ Curve identified, parameters deliberately not &
 \cref{sec:calib} &
 \nolinkurl{models/sigmoid/calibrate.py} &
 \nolinkurl{test_sigmoid.py::test_round_trip_curve_recovery}\\
-Prior blocks reach the SIV overlay &
+Prior blocks reach the MCS overlay &
 \cref{sec:calib} &
 \nolinkurl{models/sigmoid/calibrate.py} &
 \nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\
@@ -491,6 +523,10 @@ R3$\times$R6 ablation numbers &
 \cref{sec:original} &
 \nolinkurl{backend/backtest/ablation_arb.py} &
 \nolinkurl{test_ablation_arb.py}\\
+WW figure target and fit butterfly-clean ($g>0$ asserted) &
+\cref{rem:targetbug} &
+\nolinkurl{figures/gen_siv.py} &
+runtime assertion in the generator (no separate test)\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -501,7 +537,7 @@ R3$\times$R6 ablation numbers &
 \label{app:atlas}
 
 \begin{longtable}{p{0.24\textwidth}p{0.14\textwidth}p{0.54\textwidth}}
-\caption{Multi-Core SIV hyperparameters.}\label{tab:atlas}\\
+\caption{Multi-Core Sigmoid (MCS) hyperparameters.}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead
 \toprule Knob & Default & Role\\ \midrule
@@ -574,7 +610,7 @@ def _dhat(f, z, c, h, kappa):                          # B or a B-derivative
     return (f(u-h,kappa) - 2*f(u,kappa) + f(u+h,kappa)) / (2*phi(h, kappa))
 
 def v_model(z, base, cores):
-    """MC-SIV variance v_R(z) = v_base(z) + sum_r alpha_r B_r(z), with z-jets."""
+    """MCS variance v_R(z) = v_base(z) + sum_r alpha_r B_r(z), with z-jets."""
     v0, s0, k0, z0, kp, kc = base
     u = z - z0
     kappa = np.where(u < 0, kp, kc)                    # asymmetric wings, C^2 at z0

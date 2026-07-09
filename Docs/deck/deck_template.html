@@ -460,7 +460,7 @@
         <li class="a">One hard constraint only: <strong>A<sub>R</sub> &lt; 1</strong> — the right tail scale
           A<sub>R</sub> = exp(R + &Sigma;<sub>n</sub>(&minus;1)<sup>n</sup>a<sub>n</sub>) — exactly a finite forward; Lee slopes come out structural, not tuned.</li>
         <li class="v"><strong>Analytic Jacobian via implicit-root cancellation</strong> — two model evaluations per optimizer step
-          regardless of degree: a 12-parameter LQD fits in SVI's ~30 ms league.</li>
+          regardless of degree: a 13-parameter LQD (degree 12) fits in SVI's ~30 ms league.</li>
       </ul>
     </div>
     <div>
@@ -874,6 +874,7 @@
       </div>
       <ul class="points">
         <li class="g">Four dividend modes (yield, discrete cash, blends) + a de-bias loop that <strong>holds the discount fixed</strong> while removing American bias from the parity inputs.</li>
+        <li class="a"><strong>Zero-carry synthesized chains carry no parity signal at all</strong> — flagged at ingestion and pinned to F = spot, D = 1 (badged), never regressed; their spurious carry stays in-band, so only the pin catches it.</li>
       </ul>
     </div>
     <div>
@@ -1270,7 +1271,7 @@
         <div class="stat"><div class="v vl">10 → 30 bp/√day</div><div class="l">process-noise default flipped by the evidence (one-sided win)</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
-        <li class="g"><strong>Active MAP is the best denoiser in every regime</strong> — more accurate than the raw fit it takes in <em>and</em> than blending after the fit.</li>
+        <li class="g"><strong>Active MAP is the best denoiser on thinned days in every regime</strong> — more accurate than the raw fit it takes in <em>and</em> than blending after the fit (one honest exception: the spike regime's contradiction cell beats the blend but not the raw fit).</li>
         <li class="r"><strong>Case file:</strong> on coarse ETF chains (EEM/EFA), letting all handles update <em>together</em> let junk
           curvature drag the ATM level — errors up to 28 vol points. Production updates each handle independently.</li>
         <li class="v"><strong>Case file:</strong> two stale quotes contradicting the chain read gains 0.80/0.72/0.03 — absorbed as

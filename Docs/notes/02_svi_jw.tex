@@ -263,6 +263,17 @@ Gatheral--Jacquier parameter-space conditions bound the wing steepness
 $b(1+|\rho|)$ and the minimum total variance, and the calibrator enforces the
 two that bite in practice.
 
+How $g$ is \emph{measured} matters as much as what it says. An earlier
+backtest metric evaluated $g$ by finite differences of reconstructed option
+prices, and its numerical noise flagged $28.3\%$ of provably-clean LQD slices
+as arbitrageable; recomputed analytically from each model's own
+$(w,w',w'')$, the LQD rate reads $0.0\%$, and SVI's flagged rate fell from
+$20.8\%$ to $9.2\%$ --- the survivors being genuine: the two soft hinges below
+fence the conditions that bite, they do not certify $g\ge0$ pointwise. The
+production rule that came out of that audit is that the diagnostic is always
+computed on model derivatives, never by differencing prices (Note~09 has the
+cross-model treatment).
+
 \begin{proposition}[The enforced conditions, in JW units]
 \label{prop:jwnoarb}
 Under the conversion of \cref{sec:jw}, the two coded penalties read directly
@@ -370,9 +381,13 @@ The solver is Levenberg--Marquardt (\texttt{method="lm"}), not trust-region
 reflective. On noisy real chains LM crosses the penalty kinks in far fewer
 iterations than \texttt{trf} at matched tolerance, so it is the faster
 same-accuracy choice; the analytic Jacobian is then a drop-in that swaps scipy's
-$1+P$ finite-difference evaluations for one closed-form call. \Cref{sec:example}
-measures \svispeedup$\times$ end-to-end with the optimum unchanged to
-$\svicostdiff$ in cost. See \cref{app:perf}.
+$1+P$ finite-difference evaluations for one closed-form call. It shipped after
+the offline backtest (project \texttt{backtest/}) identified those
+finite-difference evaluations as SVI's dominant fit cost: on real spike-regime
+nodes the swap measured $26.3\to10.2$\,ms per fit ($\approx2.6\times$) at
+unchanged convergence --- same optimizer, same tolerances, identical solution.
+\Cref{sec:example} measures \svispeedup$\times$ on this note's benchmark with
+the optimum unchanged to $\svicostdiff$ in cost. See \cref{app:perf}.
 \end{perfbox}
 
 %======================================================================
@@ -550,7 +565,10 @@ tolerance; \texttt{trf} at $10^{-10}$ was measured \emph{slower} on real nodes.
 (data $+$ penalties $+$ calendar) through the reparametrization; a fresh run
 measured \svianalyticms\,ms vs \svifdms\,ms for the finite-difference path
 (\svispeedup$\times$) with the optimum unchanged to $\svicostdiff$ in cost.
-Gated to the var-swap/prior-free configuration.
+On production-sized real chains (spike-regime backtest nodes) the same swap
+measured $26.3\to10.2$\,ms per fit ($\approx2.6\times$) --- the backtest
+finding that motivated shipping it. Gated to the var-swap/prior-free
+configuration.
 \item \textbf{Feasibility by construction.} The reparametrization removes the
 box-constraint handling entirely, so each LM step is a plain linear solve.
 \item \textbf{Geometric warm start.} Reading $(a,m)$ from the vertex and

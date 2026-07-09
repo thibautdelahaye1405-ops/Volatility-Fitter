@@ -16,7 +16,7 @@ written in *volatility* units (var-swap vol = sqrt(w_vs / t)), so it stacks
 directly onto the data residuals of SVI / sigmoid (already vol-space) and of LQD
 (vega-normalized price ~= vol error). The residual carries sqrt(weight); the
 caller sets ``weight`` so the var-swap contributes a chosen fraction of the total
-option-quote weight of the node (see volfit.api.varswap.varswap_target):
+option-quote weight of the node (see volfit.api.service.varswap_target):
 
     residual = sqrt(weight) * (sigma_vs_model - sigma_vs_quote).
 
