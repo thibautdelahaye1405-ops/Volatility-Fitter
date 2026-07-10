@@ -96,6 +96,14 @@ _PDE_N_MAX = 400  # finest PDE strike grid = dx 0.0025 (cost cap)
 #: PDE time step ceiling (each quoted expiry is forced to be a grid node).
 #: Backward-Euler is 1st-order, so it needs the fine 0.01 ceiling for ~1bp accuracy.
 _DT_MAX = 0.01
+
+#: Short-first-expiry dt refinement (fix #3, see _pde_grids): when the flat
+#: dt ceiling would give the FIRST expiry fewer than _PDE_NT_FIRST_GATE steps
+#: (t1 < gate x dt_max, i.e. under ~1 month at the implicit default), march it
+#: with _PDE_NT_SHORT steps instead. Measured on the SPY 1-week surface
+#: (dx = 1/209): flat-surface IV error 243 bp at 2 steps -> 26 bp at 32.
+_PDE_NT_FIRST_GATE = 8
+_PDE_NT_SHORT = 32
 #: Coarser ceiling used with the Rannacher (2nd-order CN) scheme (Stage 7): equal
 #: accuracy at ~3x fewer steps (validated: rannacher@0.03 ~ implicit@0.01). The march
 #: cost is O(N_t), so this is the per-eval speed-up.
@@ -530,14 +538,29 @@ def _pde_grids(
     arbitrary ``x_max`` (e.g. a real ticker's wide strike range, > the 2.5 floor and
     off the lattice) would land x = 1 between nodes and 422 every fit; the synthetic
     range floors at 2.5 which aligns, which is why this only bit live data.
+
+    Short first expiry (fix #3, the dt analogue of ``_pde_dx``): with the flat
+    ``dt_max`` ceiling a TRUE weekly got as few as 2 implicit-Euler steps, and
+    the payoff-kink smearing of so coarse a march mis-prices even a FLAT 11.5%
+    surface by ~240 bp at the 1-week ATM. The calibration then bends theta to
+    cancel the operator error — nodal vols ring between the box floor and 4x
+    the market (the SPY 2026-07-17 "10% IV floor" symptom: floor-pinned nodes
+    reprice to a ~10.9% plateau on a converged march while the market dips to
+    9.3%). When the first expiry would get fewer than ``_PDE_NT_FIRST_GATE``
+    steps, it is marched with ``_PDE_NT_SHORT`` steps instead (~26 bp flat-
+    surface error). Surfaces whose first expiry already clears the gate — every
+    fixture with t1 >= 8 x dt_max, the regime the Phase-0 short-dated diagnosis
+    validated — keep byte-identical grids.
     """
     x_max = max(float(np.exp(k_hi)) * _X_HI_PAD, _X_MAX_MIN)
     n = int(np.ceil(round(x_max / dx, 6)))  # steps to cover x_max
     x_grid = dx * np.arange(n + 1)  # 0, dx, 2dx, ... ; 1.0 = node 1/dx
     t_pts = [0.0]
     prev = 0.0
-    for e in expiries:
+    for i, e in enumerate(expiries):
         n = max(1, int(np.ceil((e - prev) / dt_max)))
+        if i == 0 and n < _PDE_NT_FIRST_GATE:
+            n = _PDE_NT_SHORT  # short-first-expiry dt refinement (docstring)
         t_pts.extend(np.linspace(prev, float(e), n + 1)[1:].tolist())
         prev = float(e)
     return x_grid, np.array(t_pts)

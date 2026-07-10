@@ -444,6 +444,31 @@ def test_pde_dx_refines_only_short_surfaces():
     assert np.isclose(x_grid, 1.0).any()  # x = 1 is exactly a PDE node
 
 
+def test_pde_dt_refines_only_short_first_expiry():
+    """Fix #3 (the dt analogue of fix #2): a true-weekly FIRST expiry is marched
+    with _PDE_NT_SHORT time steps instead of the ~2 the flat dt ceiling gave
+    (which mis-priced even a flat surface by ~240 bp at the 1-week ATM and made
+    the calibration ring theta against the box floor). A surface whose first
+    expiry already gets >= _PDE_NT_FIRST_GATE steps keeps a byte-identical grid."""
+    from volfit.api.affine_fit import _PDE_NT_SHORT, _X_DX, _pde_grids
+
+    # Weekly front: refined to _PDE_NT_SHORT steps on [0, t1], expiries stay nodes.
+    t1, t2 = 7.0 / 365.0, 0.25
+    _, t_short = _pde_grids(np.array([t1, t2]), 0.25, 0.01, _X_DX)
+    n_first = int(np.sum((t_short > 0.0) & (t_short <= t1 + 1e-12)))
+    assert n_first == _PDE_NT_SHORT
+    assert np.isclose(t_short, t1).any() and np.isclose(t_short, t2).any()
+
+    # Normal front (t1 = 0.1 -> 10 steps >= gate): byte-identical to the old rule.
+    _, t_norm = _pde_grids(np.array([0.1, 1.0]), 0.25, 0.01, _X_DX)
+    t_pts, prev = [0.0], 0.0
+    for e in (0.1, 1.0):
+        n = max(1, int(np.ceil((e - prev) / 0.01)))
+        t_pts.extend(np.linspace(prev, e, n + 1)[1:].tolist())
+        prev = e
+    assert np.allclose(t_norm, np.array(t_pts))
+
+
 def test_convex_wing_confined_to_quoted_extrapolation():
     """The convex-wing constraint must NOT bite on vertices the quotes already
     constrain — only the unquoted extrapolation tail. With a dense wing (quotes
