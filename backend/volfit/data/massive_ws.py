@@ -69,6 +69,14 @@ class LiveBook:
         with self._lock:
             return self._quotes.get(contract)
 
+    def newest_ts(self) -> int | None:
+        """Largest provider timestamp across the booked ticks (None when the
+        book is empty or the feed sends no timestamps) — the freshness signal
+        the Data Source selector shows ('stream idle since …')."""
+        with self._lock:
+            stamps = [t.ts for t in self._quotes.values() if t.ts is not None]
+        return max(stamps) if stamps else None
+
     def size(self) -> int:
         with self._lock:
             return len(self._quotes)

@@ -27,9 +27,21 @@ class DataSource(BaseModel):
     active: bool
 
 
+class DataAge(BaseModel):
+    """Worst loaded live-chain age across the active universe (data_age)."""
+
+    ageMin: float
+    level: str  # "fresh" | "amber" | "red" (OptionsSettings thresholds)
+    label: str  # human age: "4m" / "13.5h" / "3.2d"
+    worstTicker: str
+
+
 class DataSourcesResponse(BaseModel):
     active: str
     sources: list[DataSource]
+    #: None when not applicable: historical as-of, nothing fetched yet, or
+    #: exact-price (synthetic) chains only.
+    dataAge: DataAge | None = None
 
 
 @router.get("/datasources", response_model=DataSourcesResponse)

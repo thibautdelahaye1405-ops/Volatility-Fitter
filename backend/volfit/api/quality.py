@@ -20,6 +20,7 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api import service
+from volfit.api.data_age import format_age, ticker_ages
 from volfit.api.filter_mode import resolve_filter_mode
 from volfit.api.schemas_quality import (
     LvQuality,
@@ -133,6 +134,7 @@ def _node_row(
     prev_lee: tuple[float, float] | None,
     rms_budget_bp: float,
     filter_on: bool,
+    data_age: tuple[float, bool] | None = None,
 ) -> tuple[QualityNode, tuple[float, float]]:
     """One fitted node's quality row + its pooled (num, den) RMS terms."""
     ptr = state.get_calibrated_ptr(ticker, iso, fit_mode)
@@ -190,6 +192,11 @@ def _node_row(
         issues.append("Lee wing slope > 2")
     if not cal_ok:
         issues.append("calendar arb vs previous expiry")
+    # Data-age staleness (volfit.api.data_age): red-stale live data fails
+    # readiness — a fit can be perfect and still be a fit of yesterday's book.
+    age_min = data_age[0] if data_age is not None else None
+    if data_age is not None and data_age[1]:
+        issues.append(f"stale data ({format_age(data_age[0])} old)")
     node = QualityNode(
         ticker=ticker,
         expiry=iso,
@@ -215,6 +222,7 @@ def _node_row(
         varSwapQuoted=_varswap_quoted(state, ticker, iso),
         filterActive=f_active,
         filterContaminated=f_contaminated,  # advisory — never blocks readiness
+        dataAgeMin=age_min,
         ready=not issues,
         issues=issues,
     )
@@ -228,12 +236,18 @@ def build_quality_report(
 ) -> QualityReport:
     """Assemble the universe quality report from cached calibrations only."""
     mode = fit_mode if fit_mode is not None else state.last_fit_mode
-    filter_on = resolve_filter_mode(state.options()).enabled
+    opts = state.options()
+    filter_on = resolve_filter_mode(opts).enabled
+    # Loaded live-chain ages (volfit.api.data_age): {} when not live / nothing
+    # fetched / exact-price chains — every node then reports dataAgeMin=None.
+    ages = ticker_ages(state)
     nodes: list[QualityNode] = []
     tickers: list[QualityTicker] = []
     dark_nodes = 0
 
     for ticker in state.active_tickers():
+        age_min = ages.get(ticker)
+        data_age = (age_min, age_min >= opts.dataAgeRedMin) if age_min is not None else None
         try:
             forwards = sorted(state.forwards(ticker))
         except Exception:
@@ -255,7 +269,7 @@ def build_quality_report(
                 continue  # calendar chain: compare across the gap, keep prev_slice
             node, (n, d) = _node_row(
                 state, ticker, iso, mode, record, prev_slice, prev_display, prev_lee,
-                rms_budget_bp, filter_on,
+                rms_budget_bp, filter_on, data_age,
             )
             rows.append(node)
             num += n
@@ -278,6 +292,7 @@ def build_quality_report(
                 worstNodeRmsBp=max((r.rmsBp for r in fitted), default=0.0),
                 arbFlags=sum(1 for r in fitted if not (r.leeOk and r.calendarOk)),
                 extrapFlags=sum(1 for r in fitted if not (r.extrapOk and r.extrapCalOk)),
+                dataAgeMin=age_min,
                 ready=sum(1 for r in rows if r.ready),
                 lv=_lv_quality(state, ticker, mode),
             )
@@ -299,10 +314,11 @@ def build_quality_report(
         extrapFlags=sum(t.extrapFlags for t in tickers),
         medianRmsBp=float(np.median(rms_values)) if rms_values else 0.0,
         worstRmsBp=max(rms_values, default=0.0),
-        filterMode=state.options().observationFilterMode,
-        priorMode=state.options().priorPersistenceMode,
+        filterMode=opts.observationFilterMode,
+        priorMode=opts.priorPersistenceMode,
         lvTickers=len(lv_rollups),
         lvArbFree=sum(1 for lv in lv_rollups if lv.arbitrageFree),
+        staleDataTickers=sum(1 for a in ages.values() if a >= opts.dataAgeRedMin),
     )
     return QualityReport(
         fitMode=mode,

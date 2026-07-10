@@ -53,7 +53,12 @@ def probe_statuses(
 
 
 def datasources_payload(state, refresh: bool = False) -> dict:
-    """The selector payload: every source with its status + the active one."""
+    """The selector payload: every source with its status + the active one,
+    plus the worst loaded-chain data age (volfit.api.data_age; None when not
+    live / nothing fetched) — the TopBar market pill and the Calibrate
+    stale-data hint both read it off this poll."""
+    from volfit.api.data_age import universe_age
+
     statuses = state.source_statuses(refresh=refresh)
     active = state.active_source
     sources = [
@@ -66,7 +71,7 @@ def datasources_payload(state, refresh: bool = False) -> dict:
         }
         for sid, (level, detail) in statuses.items()
     ]
-    return {"active": active, "sources": sources}
+    return {"active": active, "sources": sources, "dataAge": universe_age(state)}
 
 
 def switch_source(state, source_id: str) -> dict:

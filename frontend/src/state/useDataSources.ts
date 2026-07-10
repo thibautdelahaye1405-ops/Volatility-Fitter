@@ -18,10 +18,20 @@ export interface DataSourceInfo {
   active: boolean;
 }
 
+/** Worst loaded live-chain age across the universe (backend data_age).
+ *  Null when not applicable: historical as-of, nothing fetched, synthetic. */
+export interface DataAgeInfo {
+  ageMin: number;
+  level: "fresh" | "amber" | "red";
+  label: string; // human age: "4m" / "13.5h" / "3.2d"
+  worstTicker: string;
+}
+
 /** Response of GET /datasources and POST /datasource/{id}. */
 interface DataSourcesResponse {
   active: string;
   sources: DataSourceInfo[];
+  dataAge?: DataAgeInfo | null;
 }
 
 /** What the TopBar selector consumes. */
@@ -29,6 +39,7 @@ export interface UseDataSourcesResult {
   sources: DataSourceInfo[];
   active: string;
   switching: boolean;
+  dataAge: DataAgeInfo | null;
   switchSource: (id: string) => Promise<void>;
 }
 
@@ -42,10 +53,12 @@ export function useDataSources(
   const [sources, setSources] = useState<DataSourceInfo[]>([]);
   const [active, setActive] = useState("");
   const [switching, setSwitching] = useState(false);
+  const [dataAge, setDataAge] = useState<DataAgeInfo | null>(null);
 
   const apply = (d: DataSourcesResponse) => {
     setSources(d.sources);
     setActive(d.active);
+    setDataAge(d.dataAge ?? null);
   };
 
   // Poll /datasources while the backend is live; clear when offline (mock).
@@ -53,6 +66,7 @@ export function useDataSources(
     if (!live) {
       setSources([]);
       setActive("");
+      setDataAge(null);
       return;
     }
     const controller = new AbortController();
@@ -87,5 +101,5 @@ export function useDataSources(
     [active, switching, onSwitched],
   );
 
-  return { sources, active, switching, switchSource };
+  return { sources, active, switching, dataAge, switchSource };
 }

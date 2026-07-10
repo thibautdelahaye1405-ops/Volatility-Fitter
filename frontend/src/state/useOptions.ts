@@ -150,6 +150,11 @@ export interface OptionsSettings {
   /** Auto-open the WS book on a streaming source (Massive) so Fetch/Calibrate serve
    *  from the fast in-memory book instead of the slow REST snapshot. */
   autoStream: boolean;
+  /** Data-age staleness thresholds (minutes) for the loaded LIVE quotes: past
+   *  amber the market pill warns; past red the quality report fails readiness
+   *  and Calibrate shows a stale-data warning. Display/report policy only. */
+  dataAgeAmberMin: number;
+  dataAgeRedMin: number;
 }
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
@@ -218,6 +223,8 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   optionsFetchMinutes: 5.0,
   streamRefitSeconds: 5.0,
   autoStream: true,
+  dataAgeAmberMin: 20.0,
+  dataAgeRedMin: 120.0,
 };
 
 export interface UseOptionsResult {

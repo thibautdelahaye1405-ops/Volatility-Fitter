@@ -16,6 +16,23 @@ const card =
 const th = "px-2 py-1.5 font-medium whitespace-nowrap text-right";
 const td = "px-2 py-1 text-right tabular-nums";
 
+/** Human age of the loaded live chain ("4m" / "13.5h"); "—" off-live. */
+function fmtAge(minutes: number | null): string {
+  if (minutes === null) return "—";
+  if (minutes < 90) return `${Math.round(minutes)}m`;
+  const hours = minutes / 60;
+  return hours < 48 ? `${hours.toFixed(1)}h` : `${(hours / 24).toFixed(1)}d`;
+}
+
+/** Display tone mirroring the backend's default 20/120-min thresholds (the
+ *  authoritative gate is the backend-issued "stale data" issue). */
+function ageTone(minutes: number | null): string {
+  if (minutes === null) return "text-slate-600";
+  if (minutes >= 120) return "text-rose-400";
+  if (minutes >= 20) return "text-amber-300";
+  return "";
+}
+
 function Tile({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex flex-col rounded-lg border border-slate-800 bg-surface-800 px-3 py-2">
@@ -173,6 +190,9 @@ export default function QualityViewer() {
                   <th className={`${th} text-left`}>Ticker</th>
                   <th className={th}>Ready</th>
                   <th className={th}>Stale</th>
+                  <th className={th} title="Age of the loaded live quotes (— when not live)">
+                    Age
+                  </th>
                   <th className={th}>RMS bp</th>
                   <th className={th}>Arb</th>
                   <th className={th}>LV</th>
@@ -186,6 +206,7 @@ export default function QualityViewer() {
                       {t.ready}/{t.nodes}
                     </td>
                     <td className={`${td} ${t.stale > 0 ? "text-amber-300" : ""}`}>{t.stale}</td>
+                    <td className={`${td} ${ageTone(t.dataAgeMin)}`}>{fmtAge(t.dataAgeMin)}</td>
                     <td className={td}>{fmtBp(t.surfaceRmsBp)}</td>
                     <td className={`${td} ${t.arbFlags > 0 ? "text-rose-400" : ""}`}>{t.arbFlags}</td>
                     <td className={`${td} text-left`}>

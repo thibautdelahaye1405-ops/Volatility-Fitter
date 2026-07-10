@@ -55,7 +55,7 @@ export default function TopBar({ activeTab, onSelect }: TopBarProps) {
           </span>
         ) : (
           <>
-            <WorkflowControls workflow={workflow} />
+            <WorkflowControls workflow={workflow} dataAge={dataSources.dataAge} />
             <MarketMenu dataSources={dataSources} asofHook={asof} />
           </>
         )}

@@ -78,7 +78,7 @@ export default function MarketMenu({
   dataSources: UseDataSourcesResult;
   asofHook: UseAsOfResult;
 }) {
-  const { sources, active, switching, switchSource } = dataSources;
+  const { sources, active, switching, dataAge, switchSource } = dataSources;
   const { asof, busy: asofBusy, setLive, setPrevClose, setMoment } = asofHook;
   const [open, setOpen] = useState(false);
   // Which day is expanded into its moments (null = derive: the selected day,
@@ -87,6 +87,10 @@ export default function MarketMenu({
 
   const activeSource = sources.find((s) => s.id === active);
   const historical = asof !== null && asof.mode !== "live";
+  // Data-age staleness of the LIVE view (backend data_age; null off-live).
+  // Red-stale live data means "live" is really the previous session — say so.
+  const staleLive = !historical && dataAge !== null && dataAge.level !== "fresh";
+  const redStale = staleLive && dataAge!.level === "red";
   const openDay =
     expandedDay && asof?.days.some((d) => d.date === expandedDay)
       ? expandedDay
@@ -97,12 +101,18 @@ export default function MarketMenu({
     <div className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        title="Market data source & as-of timestamp"
+        title={
+          staleLive
+            ? `Live view is pricing quotes ${dataAge!.label} old (worst: ${dataAge!.worstTicker})`
+            : "Market data source & as-of timestamp"
+        }
         className={[
           "flex items-center gap-2 rounded-md border px-2.5 py-1 hover:border-slate-600",
-          historical
-            ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
-            : "border-slate-700 bg-surface-800 text-slate-200",
+          redStale
+            ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
+            : historical || staleLive
+              ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+              : "border-slate-700 bg-surface-800 text-slate-200",
         ].join(" ")}
       >
         <span
@@ -113,7 +123,12 @@ export default function MarketMenu({
         <span className="font-medium">{activeSource?.label ?? (active || "Source")}</span>
         {asof && (
           <span className={`text-slate-400 ${asofBusy ? "animate-pulse" : ""}`}>
-            · {asofLabel(asof)}
+            · {redStale ? "prev session" : asofLabel(asof)}
+          </span>
+        )}
+        {staleLive && (
+          <span className={redStale ? "text-rose-300" : "text-amber-300"}>
+            · quotes {dataAge!.label}
           </span>
         )}
         <ChevronDown size={12} className="text-slate-500" />

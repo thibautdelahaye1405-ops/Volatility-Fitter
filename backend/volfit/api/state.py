@@ -603,6 +603,13 @@ class AppState(UniverseMixin):
             snap = self._snapshots.get(ticker)
         return snap is not None and bool(snap.quotes)
 
+    def loaded_snapshot(self, ticker: str) -> ChainSnapshot | None:
+        """The cached chain if one has been fetched, else None — NEVER fetches.
+        Status/staleness reads (volfit.api.data_age) use this so polling the
+        data-age of the universe stays feed-free."""
+        with self._lock:
+            return self._snapshots.get(ticker)
+
     def forwards(self, ticker: str) -> dict[date, ImpliedForward]:
         """Parity-implied forwards per expiry, cached per ticker."""
         snapshot = self.snapshot(ticker)

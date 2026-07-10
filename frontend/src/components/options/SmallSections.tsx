@@ -121,9 +121,22 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           )}
         </div>
       </div>
+      <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <NumberRow
+          label="Data age · amber (min)" value={draft.dataAgeAmberMin} step={5}
+          disabled={!live} onChange={(v) => patch({ dataAgeAmberMin: v })}
+        />
+        <NumberRow
+          label="Data age · red (min)" value={draft.dataAgeRedMin} step={15}
+          disabled={!live} onChange={(v) => patch({ dataAgeRedMin: v })}
+        />
+      </div>
       <p className="mt-3 text-[11px] text-slate-500">
         A spot move transports the surface (no recalibration); fetching fresh option
         quotes (or any change with Auto-calibrate off) marks lit nodes STALE until Calibrate.
+        Data-age alerts watch how old the loaded LIVE quotes are (a stale delayed-feed
+        book, a premarket fetch): past amber the market pill warns; past red the quality
+        report fails publish-readiness and Calibrate shows a stale-data warning.
       </p>
     </>
   );

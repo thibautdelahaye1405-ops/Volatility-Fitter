@@ -124,6 +124,15 @@ class OptionsSettings(BaseModel):
     #: only (each fit still receives its mode per request), so it never bumps the
     #: options version.
     fitMode: FitMode = "mid"
+    #: Data-age staleness thresholds (minutes) for LIVE real-feed chains
+    #: (volfit.api.data_age): past ``dataAgeAmberMin`` the market pill turns
+    #: amber (advisory — e.g. the delayed tier's 15 min lag); past
+    #: ``dataAgeRedMin`` it turns red and the quality report fails the node's
+    #: publish-readiness (a premarket fetch of yesterday's book must not read
+    #: 13/13 ready). Display/report policy only — never bumps the options
+    #: version, never touches a fit.
+    dataAgeAmberMin: float = Field(20.0, ge=1.0, le=1440.0)
+    dataAgeRedMin: float = Field(120.0, ge=5.0, le=10080.0)
     # arbitrage / events / var-swap (wired as global defaults)
     enforceCalendar: bool = True
     #: Tapered no-arb enforcement in the extrapolated strike region (Notes

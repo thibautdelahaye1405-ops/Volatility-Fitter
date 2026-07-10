@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from html import escape
 
+from volfit.api.data_age import age_level, format_age
 from volfit.api.export import ExportManifest, build_manifest
 from volfit.api.quality import build_quality_report
 from volfit.api.schemas_quality import QualityNode, QualityReport
@@ -67,11 +68,23 @@ def _summary_tiles(report: QualityReport) -> str:
               "warn" if s.worstRmsBp > report.rmsBudgetBp else ""),
         _tile("LV surfaces", f"{s.lvArbFree}/{s.lvTickers} arb-free" if s.lvTickers else "—",
               "bad" if s.lvTickers and s.lvArbFree < s.lvTickers else ""),
+        _tile("Stale data", str(s.staleDataTickers) if s.staleDataTickers else "0",
+              "bad" if s.staleDataTickers else ""),
     ]
     return f'<div class="tiles">{"".join(tiles)}</div>'
 
 
-def _ticker_table(report: QualityReport) -> str:
+def _age_cell(age_min: float | None, amber_min: float, red_min: float) -> str:
+    """Data-age cell: '—' when age has no meaning (historical / synthetic)."""
+    if age_min is None:
+        return '<span class="muted">—</span>'
+    tone = {"fresh": "ok", "amber": "warn", "red": "bad"}[
+        age_level(age_min, amber_min, red_min)
+    ]
+    return f'<span class="{tone}">{escape(format_age(age_min))}</span>'
+
+
+def _ticker_table(report: QualityReport, amber_min: float, red_min: float) -> str:
     rows = []
     for t in report.tickers:
         if t.lv is None:
@@ -87,12 +100,13 @@ def _ticker_table(report: QualityReport) -> str:
             f"<tr><td>{escape(t.ticker)}</td>"
             f'<td class="{ready_cls}">{t.ready}/{t.nodes}</td>'
             f'<td class="{"warn" if t.stale else ""}">{t.stale}</td>'
+            f"<td>{_age_cell(t.dataAgeMin, amber_min, red_min)}</td>"
             f"<td>{_bp(t.surfaceRmsBp)}</td><td>{_bp(t.worstNodeRmsBp)}</td>"
             f'<td class="{"bad" if t.arbFlags else ""}">{t.arbFlags}</td>'
             f"<td>{lv}</td></tr>"
         )
     return (
-        "<table><thead><tr><th>Ticker</th><th>Ready</th><th>Stale</th>"
+        "<table><thead><tr><th>Ticker</th><th>Ready</th><th>Stale</th><th>Data age</th>"
         "<th>Surface RMS bp</th><th>Worst node bp</th><th>Arb</th><th>Local vol</th>"
         f'</tr></thead><tbody>{"".join(rows)}</tbody></table>'
     )
@@ -151,6 +165,7 @@ def build_quality_report_html(
 
     budget = rms_budget_bp if rms_budget_bp is not None else DEFAULT_RMS_BUDGET_BP
     mode = fit_mode if fit_mode is not None else state.last_fit_mode
+    opts = state.options()
     report = build_quality_report(state, mode, budget)
     manifest = build_manifest(state, mode, report, [t.ticker for t in report.tickers])
     exceptions = [n for n in report.nodes if not n.ready]
@@ -167,11 +182,12 @@ def build_quality_report_html(
 {_manifest_block(manifest)}
 {_summary_tiles(report)}
 <h2>Tickers</h2>
-{_ticker_table(report)}
+{_ticker_table(report, opts.dataAgeAmberMin, opts.dataAgeRedMin)}
 <h2>Exceptions ({len(exceptions)})</h2>
 {exceptions_html}
 <h2>All nodes ({len(report.nodes)})</h2>
 {_node_table(report.nodes, budget)}
-<footer>Publish rule: fitted ∧ not stale ∧ Lee ≤ 2 ∧ calendar-clean ∧ RMS ≤ {budget:.0f} bp.
+<footer>Publish rule: fitted ∧ not stale ∧ Lee ≤ 2 ∧ calendar-clean ∧ RMS ≤ {budget:.0f} bp
+∧ live data fresher than {opts.dataAgeRedMin:.0f} min.
 Report reads cached calibrations only.</footer>
 </body></html>"""

@@ -32,6 +32,8 @@ def test_defaults(client):
     settings = client.get("/settings/options").json()
     assert settings == {
         "fitMode": "mid",
+        "dataAgeAmberMin": 20.0,
+        "dataAgeRedMin": 120.0,
         "enforceCalendar": True,
         "extrapEnforce": False,
         "eventsEnabled": True,
@@ -103,6 +105,8 @@ def test_defaults(client):
 def test_put_round_trip(client):
     body = {
         "fitMode": "haircut",
+        "dataAgeAmberMin": 30.0,
+        "dataAgeRedMin": 240.0,
         "enforceCalendar": False,
         "extrapEnforce": True,
         "eventsEnabled": False,

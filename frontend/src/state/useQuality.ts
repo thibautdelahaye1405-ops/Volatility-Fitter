@@ -32,6 +32,9 @@ export interface QualityNode {
   varSwapQuoted: boolean;
   filterActive: boolean;
   filterContaminated: boolean;
+  /** Loaded live-chain age, minutes (null: historical / synthetic / unfetched).
+   *  Red-stale data (past the Options threshold) fails readiness. */
+  dataAgeMin: number | null;
   ready: boolean;
   issues: string[];
 }
@@ -55,6 +58,8 @@ export interface QualityTicker {
   surfaceRmsBp: number;
   worstNodeRmsBp: number;
   arbFlags: number;
+  /** Loaded live-chain age in minutes (null: historical / synthetic / unfetched). */
+  dataAgeMin: number | null;
   ready: number;
   lv: LvQuality | null;
 }
@@ -74,6 +79,8 @@ export interface QualitySummary {
   priorMode: string;
   lvTickers: number;
   lvArbFree: number;
+  /** Tickers whose loaded live chain is red-stale (fails readiness). */
+  staleDataTickers: number;
 }
 
 export interface QualityReport {

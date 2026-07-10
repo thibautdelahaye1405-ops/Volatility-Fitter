@@ -43,6 +43,10 @@ class QualityNode(BaseModel):
     varSwapQuoted: bool  # an active var-swap quote participates in this node's fit
     filterActive: bool  # observation filter holds a committed state for this node
     filterContaminated: bool  # measurement taken while a persistence prior was active
+    #: Age (minutes) of the ticker's loaded LIVE chain (volfit.api.data_age);
+    #: None when not applicable (historical as-of, synthetic, nothing fetched).
+    #: Red-stale data (past OptionsSettings.dataAgeRedMin) fails readiness.
+    dataAgeMin: float | None = None
     ready: bool  # publish-ready under the report's rule (see QualityReport)
     issues: list[str]  # human-readable reasons ready is False (empty when ready)
 
@@ -71,6 +75,7 @@ class QualityTicker(BaseModel):
     worstNodeRmsBp: float
     arbFlags: int  # nodes failing Lee or calendar
     extrapFlags: int = 0  # nodes with extrapolated-region arb (advisory)
+    dataAgeMin: float | None = None  # loaded live-chain age, minutes (see QualityNode)
     ready: int  # publish-ready node count
     lv: LvQuality | None = None  # None when LV disabled / never calibrated
 
@@ -93,14 +98,19 @@ class QualitySummary(BaseModel):
     priorMode: str  # prior-persistence mode
     lvTickers: int  # tickers with a cached LV surface
     lvArbFree: int
+    #: Tickers whose loaded live chain is red-stale (age past dataAgeRedMin) —
+    #: their nodes are not publish-ready however good the fits look.
+    staleDataTickers: int = 0
 
 
 class QualityReport(BaseModel):
     """GET /quality response.
 
     Publish-readiness rule (per node): hasFit AND NOT stale AND leeOk AND
-    calendarOk AND rmsBp <= rmsBudgetBp. ``issues`` lists every failed check
-    per node; ``filterContaminated`` is advisory and never blocks readiness.
+    calendarOk AND rmsBp <= rmsBudgetBp AND the ticker's live data is not
+    red-stale (dataAgeMin < OptionsSettings.dataAgeRedMin, when applicable).
+    ``issues`` lists every failed check per node; ``filterContaminated`` and
+    amber data age are advisory and never block readiness.
     """
 
     fitMode: str

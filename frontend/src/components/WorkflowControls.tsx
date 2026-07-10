@@ -8,7 +8,8 @@
 // target still shows it is working. Mode-dependent disabled states (Real-time
 // spots, auto options) are kept because they explain why an item is inert.
 import { useRef, useState } from "react";
-import { Bookmark, ChevronDown, Download, Play } from "lucide-react";
+import { Bookmark, ChevronDown, Download, Play, TriangleAlert } from "lucide-react";
+import type { DataAgeInfo } from "../state/useDataSources";
 import type { UseWorkflowResult } from "../state/useWorkflow";
 import { MenuItem, MenuPanel } from "./topbar/Menu";
 
@@ -27,9 +28,17 @@ function WorkingBar() {
   );
 }
 
-export default function WorkflowControls({ workflow }: { workflow: UseWorkflowResult }) {
+export default function WorkflowControls({
+  workflow,
+  dataAge = null,
+}: {
+  workflow: UseWorkflowResult;
+  /** Worst live-chain age (useDataSources): red = warn on Calibrate. */
+  dataAge?: DataAgeInfo | null;
+}) {
   const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate, priors, savePriors,
     fetchPriors } = workflow;
+  const redStale = dataAge !== null && dataAge.level === "red";
   const realtimeSpots = sched?.spotMode === "realtime";
   const autoOptions = sched?.optionsFetchMode === "auto";
   const running = calib?.running ?? false;
@@ -98,21 +107,33 @@ export default function WorkflowControls({ workflow }: { workflow: UseWorkflowRe
       </div>
 
       {/* Calibrate — the primary verb keeps its own button (background job;
-          progress shows in the status bar). Stale count stays actionable. */}
+          progress shows in the status bar). Stale count stays actionable.
+          Red-stale live data (the market pill's age) shows a warning cue:
+          calibrating still works, but it is a fit of the previous session. */}
       <button
         onClick={() => void calibrate()}
         disabled={running || busy}
-        title="Calibrate all lit nodes"
+        title={
+          redStale
+            ? `Warning: live quotes are ${dataAge!.label} old (previous session) — calibrating fits stale data`
+            : "Calibrate all lit nodes"
+        }
         className={[
           BTN,
           running
             ? WORKING
-            : stale > 0
-              ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
-              : ACTIVE,
+            : redStale
+              ? "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
+              : stale > 0
+                ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
+                : ACTIVE,
         ].join(" ")}
       >
-        <Play size={13} strokeWidth={1.75} className="opacity-80" />
+        {redStale && !running ? (
+          <TriangleAlert size={13} strokeWidth={1.75} className="opacity-90" />
+        ) : (
+          <Play size={13} strokeWidth={1.75} className="opacity-80" />
+        )}
         {!running && stale > 0 ? `Calibrate (${stale})` : "Calibrate"}
         {running && <WorkingBar />}
       </button>

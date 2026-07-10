@@ -187,7 +187,11 @@ class MassiveProvider(OptionChainProvider):
         """Cheap liveness probe (two single-page GETs, never full pagination):
         red without a key / when the contracts reference is unauthorized or
         unreachable; amber when the snapshot endpoint is authorized (a typically
-        delayed tier) or only the reference works (quotes gated)."""
+        delayed tier) or only the reference works (quotes gated). While
+        streaming, the detail carries the WS book's freshness — the book keeps
+        each contract's LAST tick across quiet periods (overnight/premarket),
+        so 'stream idle since …' is the tell that a "live" fetch would serve
+        yesterday's quotes."""
         if not self.api_key:
             return ("red", "no API key")
         tickers = self.list_tickers()
@@ -213,7 +217,21 @@ class MassiveProvider(OptionChainProvider):
             return ("amber", "reference only")
         if snap.get("status") == "NOT_AUTHORIZED":
             return ("amber", "reference only (quotes gated)")
-        return ("amber", "delayed feed")
+        return ("amber", f"delayed feed{self._stream_freshness()}")
+
+    def _stream_freshness(self) -> str:
+        """' · streaming' / ' · stream idle since HH:MM' suffix (empty when not
+        streaming). Idle = the newest booked tick is over ~20 min old."""
+        if self._live_book is None:
+            return ""
+        newest = _ns_to_utc_naive(self._live_book.newest_ts())
+        if newest is None:
+            return " · stream warming"
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        if (now - newest).total_seconds() <= 20 * 60:
+            return " · streaming"
+        day = "" if newest.date() == now.date() else f"{newest:%b %d} "
+        return f" · stream idle since {day}{newest:%H:%M} UTC"
 
     # -- HTTP plumbing -------------------------------------------------------
 
