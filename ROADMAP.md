@@ -254,10 +254,24 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   tests/test_expiry_time.py (12). Known v1 simplification: PM close stamped
   16:00 ET (SPY/QQQ/SPX trade to 16:15 — per-root override rides the R2
   0DTE consumer).
-- **NEXT (R1):** item 6 short-dated quote prep (price-space residuals,
-  intrinsic tolerance, quarantine — validate on the weekly fixture); item 7
-  CarryCurve v0; item 8 governance kernel; item 9 state-scoping refactor
-  (LAND ALONE).
+- **R1 item 6 SHIPPED — short-dated quote quarantine + diagnostics.** The
+  prep screens (tick floor, static bounds, wing cut, crossed markets, ...)
+  used to drop quotes SILENTLY; now every drop is quarantined with a named
+  reason (`ScreenedQuote` on `PreparedQuotes.screened`: tick_floor /
+  missing_or_crossed / below_intrinsic [explicit `INTRINSIC_TOL` — a side at
+  or below intrinsic = near-zero time value, no stable IV] / price_bound /
+  iv_unresolvable / wing / nonpositive_bid). KEPT SET BYTE-IDENTICAL (the
+  drops are named, not changed — evidence: weekly-fixture kept counts match
+  the benchmark nQ column exactly). Plus per-quote `eep` retained on
+  American chains (de-Am model-dominance signal: 32/81 kept quotes on the
+  6-DTE carry EEP) and `vega_floored` count (kept quotes with Black vega
+  < 1e-3 — where IV residuals are meaningless and the price-space
+  objectives LQD/LV already use are authoritative). Surfaced advisory on
+  QualityNode.screened/vegaFloored. tests/test_quote_screen.py (7).
+  Discovery: price-space residuals ALREADY exist where they matter (LQD +
+  affine LV fit vega-normalized price); SVI/MCS stay vol-space until R2.
+- **NEXT (R1):** item 7 CarryCurve v0; item 8 governance kernel; item 9
+  state-scoping refactor (LAND ALONE).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

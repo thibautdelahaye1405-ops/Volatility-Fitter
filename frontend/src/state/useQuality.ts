@@ -35,6 +35,10 @@ export interface QualityNode {
   /** Loaded live-chain age, minutes (null: historical / synthetic / unfetched).
    *  Red-stale data (past the Options threshold) fails readiness. */
   dataAgeMin: number | null;
+  /** Quarantined-quote counts by reason (advisory; optional for older payloads). */
+  screened?: Record<string, number>;
+  /** Kept quotes with Black vega below the diagnostic floor (IVs unreliable). */
+  vegaFloored?: number;
   ready: boolean;
   issues: string[];
 }

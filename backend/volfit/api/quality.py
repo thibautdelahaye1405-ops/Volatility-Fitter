@@ -224,10 +224,21 @@ def _node_row(
         filterActive=f_active,
         filterContaminated=f_contaminated,  # advisory — never blocks readiness
         dataAgeMin=age_min,
+        screened=_screened_counts(record.prepared),
+        vegaFloored=int(getattr(record.prepared, "vega_floored", 0)),
         ready=not issues,
         issues=issues,
     )
     return node, (num, den)
+
+
+def _screened_counts(prepared) -> dict[str, int]:
+    """Quarantined-quote counts by reason (R1 item 6 — advisory observability;
+    the drops themselves predate the record and never gate readiness)."""
+    counts: dict[str, int] = {}
+    for s in getattr(prepared, "screened", ()):
+        counts[s.reason] = counts.get(s.reason, 0) + 1
+    return counts
 
 
 def build_quality_report(

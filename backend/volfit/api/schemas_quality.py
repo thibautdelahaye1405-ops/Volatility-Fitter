@@ -47,6 +47,13 @@ class QualityNode(BaseModel):
     #: None when not applicable (historical as-of, synthetic, nothing fetched).
     #: Red-stale data (past OptionsSettings.dataAgeRedMin) fails readiness.
     dataAgeMin: float | None = None
+    #: Quarantined-quote counts by reason (quote prep, R1 item 6): tick_floor,
+    #: below_intrinsic, missing_or_crossed, wing, ... ADVISORY — the screens
+    #: predate this record; naming the drops never changes readiness.
+    screened: dict[str, int] = {}
+    #: Kept quotes whose Black vega sits below the diagnostic floor — their
+    #: IV residuals are numerically meaningless (price space is authoritative).
+    vegaFloored: int = 0
     ready: bool  # publish-ready under the report's rule (see QualityReport)
     issues: list[str]  # human-readable reasons ready is False (empty when ready)
 

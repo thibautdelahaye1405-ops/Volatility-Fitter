@@ -66,7 +66,7 @@ from volfit.api.session import QuoteEdit
 from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, resolve_band
 from volfit.calib.convex_deam import convex_wing_repair
 from volfit.core.american import deamericanize_batch
-from volfit.core.black import black_call, implied_total_variance
+from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
 from volfit.data.forwards import ImpliedForward, ResolvedForward
 from volfit.data.types import ChainSnapshot
 
@@ -94,6 +94,43 @@ PREFILTER_WING_BUFFER = 1.5
 #: synthetic / IV-exact chains have no price quantum and skip the floor, so
 #: every exact-price pipeline stays byte-identical.
 TICK_FLOOR_TICKS = 3.0
+
+#: Explicit intrinsic tolerance (normalized-call price units) for the
+#: quarantine CLASSIFICATION: a side at or below intrinsic + this tolerance
+#: is reported as "below_intrinsic" rather than a generic inversion failure.
+#: 0.0 matches implied_total_variance's strict lower bound exactly, so the
+#: kept/dropped quote sets are byte-identical to the pre-quarantine pipeline
+#: (roadmap R1 item 6: name the drop, don't change it — yet).
+INTRINSIC_TOL = 0.0
+
+#: Per-quote vega-floor diagnostic threshold (vol-units Black vega): kept
+#: quotes below it are counted on the prepared slice — where the count is
+#: material, IV-space residuals are numerically meaningless and the price-
+#: space objectives (LQD / affine LV already fit vega-normalized price)
+#: are the authoritative view. Mirrors the affine _VEGA_FLOOR.
+VEGA_FLOOR_DIAG = 1e-3
+
+
+@dataclass(frozen=True)
+class ScreenedQuote:
+    """One quote the preparation quarantined, with the REASON it was dropped.
+
+    The screens themselves predate this record (tick floor, static bounds,
+    wing cut, ...) but used to drop silently; a desk auditing a thin weekly
+    needs to see WHY a strike is absent (roadmap R1 item 6). Reasons:
+    ``missing_or_crossed`` (no two-sided market), ``tick_floor`` (price at a
+    few ticks — the quantum, not the market, sets the IV),
+    ``nonpositive_bid`` (bid <= 0 after screens: unclearable lower bound),
+    ``below_intrinsic`` (a side at or below intrinsic value — near-zero time
+    value, no stable IV exists), ``price_bound`` (a side at or above the
+    upper static bound), ``iv_unresolvable`` (inside the bounds but the
+    inversion failed), ``wing`` (beyond Z_MAX ATM standard deviations).
+    """
+
+    strike: float
+    call_put: str  # "C" | "P"
+    k: float  # log-moneyness ln(K/F)
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -124,6 +161,17 @@ class PreparedQuotes:
     #: the expiry raises tau and lowers every reported vol at fixed price.
     #: Defaults to ``t`` (no events) so the calendar pipeline is byte-identical.
     tau: float = 0.0
+    #: Quotes the preparation quarantined, each with its reason (R1 item 6) —
+    #: pure observability: the kept set is unchanged, the drops are named.
+    screened: tuple[ScreenedQuote, ...] = ()
+    #: Per-quote early-exercise premium stripped before inversion, aligned
+    #: with ``k`` (None on European chains). Where EEP is a large fraction of
+    #: the mid, the de-Am MODEL — not the market — dominates the quote's IV.
+    eep: np.ndarray | None = None
+    #: Kept quotes whose Black vega (vol units, the fit clock) sits below
+    #: VEGA_FLOOR_DIAG: their IV residuals are numerically meaningless and
+    #: price-space objectives are the honest view (roadmap R1 item 6).
+    vega_floored: int = 0
 
     def __post_init__(self) -> None:
         if self.tau <= 0.0:
@@ -178,7 +226,11 @@ def _pre_deam_screen(
     is_call: np.ndarray,
     scale: float,
 ) -> np.ndarray:
-    """Keep-mask of rows worth de-Americanizing (module doc, Stage 3).
+    """(keep, bid_ok) masks of rows worth de-Americanizing (module doc, Stage 3).
+
+    ``bid_ok`` is returned separately so the caller can NAME each drop:
+    rows failing it quarantine as ``nonpositive_bid``, rows passing it but
+    failing the buffered wing cut quarantine as ``wing``.
 
     Two output-preserving screens, both provably subsets of the existing
     post-de-Am filters, so the prepared arrays stay byte-identical:
@@ -195,7 +247,8 @@ def _pre_deam_screen(
     ATM the early-exercise premium is ~0 so it is accurate, and where it is
     unusable (no two finite near-ATM mids) the wing screen is skipped.
     """
-    keep = np.isfinite(bid) & (bid > 0.0)
+    bid_ok = np.isfinite(bid) & (bid > 0.0)
+    keep = bid_ok.copy()
     shift = np.where(is_call, 0.0, 1.0 - np.exp(k))
     w_raw = implied_total_variance(k, mid * scale + shift)
     finite = np.isfinite(w_raw)
@@ -203,7 +256,7 @@ def _pre_deam_screen(
         w_atm = float(np.interp(0.0, k[finite], w_raw[finite]))
         if np.isfinite(w_atm) and w_atm > 0.0:
             keep &= np.abs(k) <= PREFILTER_WING_BUFFER * Z_MAX * np.sqrt(w_atm)
-    return keep
+    return keep, bid_ok
 
 
 def prepare_quotes(
@@ -237,15 +290,23 @@ def prepare_quotes(
 
     # Raw rows first: (k, strike, is_call, bid, mid, ask) in price space —
     # de-Americanization needs strikes and option types before normalization.
+    # Every drop from here on is QUARANTINED with a reason (R1 item 6) — the
+    # kept set is unchanged, the absences become auditable. The OTM-side skip
+    # is structural (the ITM twin of every strike), not a quarantine.
+    screened: list[ScreenedQuote] = []
     rows: list[tuple[float, float, bool, float, float, float]] = []
     for quote in snapshot.quotes_for(expiry):
-        if quote.bid is None or quote.ask is None or quote.mid is None:
-            continue
         if quote.call_put != ("C" if quote.strike >= f else "P"):
             continue  # keep the OTM side only
-        if price_floor is not None and quote.mid <= price_floor:
-            continue  # tick-noise floor: the price quantum dominates the IV
         k = float(np.log(quote.strike / f))
+        if quote.bid is None or quote.ask is None or quote.mid is None:
+            screened.append(
+                ScreenedQuote(quote.strike, quote.call_put, k, "missing_or_crossed")
+            )
+            continue
+        if price_floor is not None and quote.mid <= price_floor:
+            screened.append(ScreenedQuote(quote.strike, quote.call_put, k, "tick_floor"))
+            continue  # tick-noise floor: the price quantum dominates the IV
         rows.append((k, quote.strike, quote.call_put == "C", quote.bid, quote.mid, quote.ask))
 
     if not rows:  # real providers can serve one-sided-only expiries
@@ -258,22 +319,35 @@ def prepare_quotes(
     mid = np.array([r[4] for r in rows])
     ask = np.array([r[5] for r in rows])
 
+    def _quarantine(mask: np.ndarray, reasons) -> None:
+        """Record dropped rows; ``reasons`` is a string or per-row array."""
+        for i in np.flatnonzero(mask):
+            r = reasons if isinstance(reasons, str) else str(reasons[i])
+            screened.append(
+                ScreenedQuote(
+                    float(strikes[i]), "C" if is_call[i] else "P", float(k_arr[i]), r
+                )
+            )
+
     # American chains: strip the early-exercise premium from bid/mid/ask.
     n_deam = 0
     n_deam_input = int(k_arr.size)
+    eep_arr: np.ndarray | None = None
     if snapshot.exercise_style == "american" and t > 0.0:
         # Stage 3 pre-screen: drop rows the post-filters are guaranteed to drop
         # before the costly de-Am trees price them (byte-identical output).
         if prefilter and k_arr.size:
-            pre = _pre_deam_screen(k_arr, bid, mid, is_call, scale)
+            pre, bid_ok = _pre_deam_screen(k_arr, bid, mid, is_call, scale)
+            _quarantine(~pre & ~bid_ok, "nonpositive_bid")
+            _quarantine(~pre & bid_ok, "wing")
             if pre.any() and not pre.all():
                 k_arr, strikes, is_call = k_arr[pre], strikes[pre], is_call[pre]
                 bid, mid, ask = bid[pre], mid[pre], ask[pre]
             n_deam_input = int(k_arr.size)
-        eep, n_deam = _early_exercise_premiums(
+        eep_arr, n_deam = _early_exercise_premiums(
             snapshot.spot, is_call, strikes, k_arr, mid, f, d, t, cash_dividends
         )
-        bid, mid, ask = bid - eep, mid - eep, ask - eep
+        bid, mid, ask = bid - eep_arr, mid - eep_arr, ask - eep_arr
 
     # European pipeline: normalize, parity-shift puts -> normalized CALL prices c,
     # invert to total variance.
@@ -288,13 +362,31 @@ def prepare_quotes(
     keep = np.isfinite(w_bid) & np.isfinite(w_mid) & np.isfinite(w_ask)
     if not keep.any():
         raise ValueError(f"no quotes inside static bounds for {expiry.isoformat()}")
+    # Name the static-bound drops (R1 item 6): a side at/below intrinsic (+ the
+    # explicit INTRINSIC_TOL) means near-zero time value — no stable IV exists;
+    # at/above the upper bound means a broken price; anything else failed the
+    # inversion inside the bounds (w beyond W_MAX). Same drops, named.
+    if not keep.all():
+        intrinsic = np.maximum(1.0 - np.exp(k_arr), 0.0)
+        lo = np.minimum(np.minimum(c_bid, c_mid), c_ask)
+        hi = np.maximum(np.maximum(c_bid, c_mid), c_ask)
+        reasons = np.where(
+            lo <= intrinsic + INTRINSIC_TOL,
+            "below_intrinsic",
+            np.where(hi >= 1.0, "price_bound", "iv_unresolvable"),
+        )
+        _quarantine(~keep, reasons)
     # Wing filter: estimate ATM total variance from the surviving mids, then
     # drop strikes more than Z_MAX standard deviations from the forward.
     w_atm = float(np.interp(0.0, k_arr[keep], w_mid[keep]))
-    keep &= np.abs(k_arr) <= Z_MAX * np.sqrt(w_atm)
+    wing_drop = keep & (np.abs(k_arr) > Z_MAX * np.sqrt(w_atm))
+    _quarantine(wing_drop, "wing")
+    keep &= ~wing_drop
 
     ks = k_arr[keep]
     w_bid_s, w_mid_s, w_ask_s = w_bid[keep], w_mid[keep], w_ask[keep]
+    eep_s = eep_arr[keep] if eep_arr is not None else None
+    strikes_s, is_call_s = strikes[keep], is_call[keep]
     # R3 (FINDINGS_calibration_arb): independent per-strike de-Am + max(EEP,0) can
     # leave the American call wings non-convex (butterfly-arbitrageable inputs).
     # Repair the WINGS only — the ATM core stays byte-identical — then re-invert the
@@ -308,8 +400,19 @@ def prepare_quotes(
             w_mid_r = implied_total_variance(ks, repaired)
             w_ask_r = implied_total_variance(ks, c_ask[keep] + delta)
             ok = np.isfinite(w_bid_r) & np.isfinite(w_mid_r) & np.isfinite(w_ask_r)
+            if not ok.all():
+                for i in np.flatnonzero(~ok):  # repaired band failed to re-invert
+                    screened.append(
+                        ScreenedQuote(
+                            float(strikes_s[i]), "C" if is_call_s[i] else "P",
+                            float(ks[i]), "iv_unresolvable",
+                        )
+                    )
             ks, w_bid_s, w_mid_s, w_ask_s = ks[ok], w_bid_r[ok], w_mid_r[ok], w_ask_r[ok]
+            if eep_s is not None:
+                eep_s = eep_s[ok]
 
+    iv_mid_s = np.sqrt(w_mid_s / tv)
     return PreparedQuotes(
         t=t,
         forward=f,
@@ -317,11 +420,16 @@ def prepare_quotes(
         k=ks,
         w_mid=w_mid_s,
         iv_bid=np.sqrt(w_bid_s / tv),
-        iv_mid=np.sqrt(w_mid_s / tv),
+        iv_mid=iv_mid_s,
         iv_ask=np.sqrt(w_ask_s / tv),
         n_deamericanized=n_deam,
         n_deam_input=n_deam_input,
         tau=tv,
+        screened=tuple(screened),
+        eep=eep_s,
+        vega_floored=int(
+            np.count_nonzero(black_vega_sigma(ks, iv_mid_s, tv) < VEGA_FLOOR_DIAG)
+        ),
     )
 
 
