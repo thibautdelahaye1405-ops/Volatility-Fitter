@@ -482,7 +482,8 @@
   <h1 class="claim">Backtested on real NBBO history: <span class="hl">LQD fits 2–3× tighter than SVI-JW</span> at comparable cost.</h1>
   <p class="lede">Offline backtest: historical NBBO quotes (national best bid/offer) replayed through the production calibrators
     over three regimes, on the 8-asset pilot universe (SPX · NDX · RUT · EEM · EFA · AAPL · NVDA · JPM, full expiry ladders).
-    <b>In-sample</b> = RMS vol error on the strikes used in the fit; <b>out-of-sample (OOS)</b> = error on held-out strikes — the overfitting test.</p>
+    <b>In-sample</b> = RMS vol error on the strikes used in the fit; <b>out-of-sample (OOS)</b> = error on held-out strikes — the overfitting
+    test. The hold-out is every 3rd strike across the chain, the identical mask for every model — it samples ATM and wings alike and cannot favour one model's basis.</p>
   <div class="cols even">
     <div>
       <div class="chartcard">
@@ -805,7 +806,7 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    Local vol you can recalibrate <b>inside a trading loop</b> — stable numerics, exact gradients, and diagnostics that name the failure mode when a fit degrades.</div>
+    Local vol you can recalibrate <b>inside a trading loop</b> — stable numerics, exact gradients (bump-and-reprice-checked), and diagnostics that name the failure mode when a fit degrades.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 04 · Local volatility</span><span></span></div>
 </section>
 
@@ -1181,13 +1182,13 @@
     <div>
       <div class="statrow" style="margin-top:0">
         <div class="stat"><div class="v g">~32 bp</div><div class="l">better held-out wing reconstruction vs no-prior (hybrid, full spike regime)</div></div>
-        <div class="stat"><div class="v c">66%</div><div class="l">win rate over 1,116 nodes, all 19 temporal pairs</div></div>
+        <div class="stat"><div class="v c">66%</div><div class="l">win rate over 1,116 nodes — Aug-2024 spike regime, 8 assets, 19 day-pairs (cross-regime rerun queued)</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
         <li class="g"><strong>The winner — "hybrid":</strong> soft pulls on the smile features (ATM/RR/BF) plus one anchor deep in
           the tail. It beat every alternative at every prior strength tested — the shipped default is the measured winner, not a
           preference.</li>
-        <li class="a">Two of the seven modes <strong>never beat using no prior at all</strong> at the median — that negative result is reported, not hidden.</li>
+        <li class="a">Two of the seven modes — quote-operator and smile-factor pulls, level-invariant baskets that carry no absolute wing level — <strong>never beat using no prior at all</strong> at the median. That negative result is reported, not hidden.</li>
         <li class="r"><strong>Case file:</strong> anchoring individual strike <em>levels</em> pulled a genuinely repriced surface
           halfway back to yesterday after an overnight jump. What ships instead: remember skew and curvature as level-invariant
           baskets — shape persists, level stays free.</li>
@@ -1271,7 +1272,8 @@
         <div class="stat"><div class="v vl">10 → 30 bp/√day</div><div class="l">process-noise default flipped by the evidence (one-sided win)</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
-        <li class="g"><strong>Active MAP is the best denoiser on thinned days in every regime</strong> — more accurate than the raw fit it takes in <em>and</em> than blending after the fit (one honest exception: the spike regime's contradiction cell beats the blend but not the raw fit).</li>
+        <li class="g"><strong>Active MAP is the best denoiser on thinned days in every regime</strong> — more accurate than the raw fit it takes in <em>and</em> than blending after the fit.</li>
+        <li class="a"><strong>Its measured weakness is outright shock days</strong>, where active still trails the raw fit (19.5 vs 3.8 bp, spike; 25.2 vs 5.8, high-vol): the adaptive drift-gate is overlay-only today — closing that is the stated blocker before active-by-default.</li>
         <li class="r"><strong>Case file:</strong> on coarse ETF chains (EEM/EFA), letting all handles update <em>together</em> let junk
           curvature drag the ATM level — errors up to 28 vol points. Production updates each handle independently.</li>
         <li class="v"><strong>Case file:</strong> two stale quotes contradicting the chain read gains 0.80/0.72/0.03 — absorbed as
@@ -1382,7 +1384,8 @@
         <li class="v"><strong>Per-edge β</strong> scales how much of a neighbor's innovation a node inherits — index→name edges can
           carry β &gt; 1 (levered names) or β &lt; 1 (defensive). Today β is <strong>seeded at 1 and desk-set</strong>; historical estimation is a roadmap item.</li>
         <li><strong>Calendar and cross-ticker edge weights</strong> are two visible dials, not buried constants; η is <strong>auto-tunable by leave-one-out</strong> over the lit nodes.</li>
-        <li class="g">The persisted <strong>edge editor</strong> seeds a default graph from the universe and lets the desk add, remove, or reweight relationships — the graph is a desk view, versioned like one.</li>
+        <li class="g">The persisted <strong>edge editor</strong> seeds a default graph from the universe and lets the desk add, remove, or reweight relationships — the graph is a persisted desk view (per-edge version history is a roadmap item).</li>
+        <li class="c">Every dark-node move <strong>decomposes exactly</strong>: the attribution card lists per-neighbour contributions (gain × innovation) that sum to the posterior shift — test-locked, not approximate.</li>
         <li class="a">Confidence honesty is a stated caution: bands come from the <strong>marginal posterior covariance</strong>, never the precision diagonal.</li>
       </ul>
       <div class="statrow">

@@ -516,12 +516,12 @@
           absorbs only genuine news.</li>
         <li class="v"><strong>Prior persistence</strong> — the fit remembers yesterday's smile <em>shape, not its level</em>, and each
           pull is gated to <strong>exactly zero</strong> wherever today's quotes speak. Validated on history: <strong>~32 bp</strong>
-          better held-out wing reconstruction, <strong>66% win rate</strong> over 1,116 nodes — and two candidate designs that never
-          beat "no prior" are reported, not hidden.</li>
+          better held-out wing reconstruction, <strong>66% win rate</strong> over 1,116 nodes (Aug-2024 spike regime; cross-regime
+          rerun queued) — and two candidate designs that never beat "no prior" are reported, not hidden.</li>
         <li class="g"><strong>The observation filter</strong> — a Kalman filter on the handles separates quote noise from genuine
           surface motion, believing today in proportion to its measured precision. Tuned by <strong>39,190 backtested steps</strong>;
           on days when quotes contradict the chain it beats the raw fit outright (<strong>5.6 vs 9.8 bp</strong>) with honest
-          uncertainty bands.</li>
+          uncertainty bands; on outright shock days the raw fit still wins — the flagged fix before active-by-default.</li>
       </ul>
     </div>
     <div>
