@@ -68,6 +68,32 @@ class OptionQuote:
 
 
 @dataclass(frozen=True)
+class ExpirySettlement:
+    """Exact expiry-time semantics for ONE expiry (roadmap R1 item 5).
+
+    Day-granular maturities hide everything 0DTE needs: whether the contract
+    settles on the open (AM index monthlies: SPX/NDX/RUT) or the close (PM,
+    everything else), when trading actually stops, and how much of the final
+    session remains. Both instants are timezone-naive UTC (the codebase
+    convention), built from exchange-session rules — holidays and half-days
+    included — by ``volfit.data.expiry_time``.
+
+    Carried on the snapshot (store schema v7) but NOT yet consumed by the
+    fit clock: ``prepared.t``/``prepared.tau`` stay day-granular ACT/365
+    until the 0DTE calibration path lands (roadmap R2), so every fit is
+    byte-identical with or without it.
+    """
+
+    style: str  # "pm" (settle on the close) | "am" (settle on the open)
+    last_trade: datetime  # last tradable instant, UTC-naive
+    settle: datetime  # settlement/exercise reference instant, UTC-naive
+
+    def __post_init__(self) -> None:
+        if self.style not in ("am", "pm"):
+            raise ValueError(f"settlement style must be 'am' or 'pm', got {self.style!r}")
+
+
+@dataclass(frozen=True)
 class ChainSnapshot:
     """A full option chain for one underlying at one instant.
 
@@ -100,6 +126,11 @@ class ChainSnapshot:
     #: across many strikes inverts to a fake IV ramp with tick-step gaps).
     #: Persists with the snapshot (store schema v6) so replays keep the screen.
     tick_size: float | None = None
+    #: Per-expiry exact settlement semantics (store schema v7): AM/PM style +
+    #: last-trade and settlement instants (UTC-naive). None = unknown (legacy
+    #: rows, providers that have not populated it); consumers must fall back
+    #: to day-granular conventions. Populated via volfit.data.expiry_time.
+    settlement: dict[date, ExpirySettlement] | None = None
 
     def __post_init__(self) -> None:
         if self.exercise_style not in ("european", "american"):

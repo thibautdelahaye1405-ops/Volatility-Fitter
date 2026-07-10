@@ -413,6 +413,8 @@ class BloombergProvider(OptionChainProvider):
                     timestamp=timestamp,
                 )
             )
+        from volfit.data.expiry_time import settlement_map
+
         return ChainSnapshot(
             ticker=ticker,
             spot=spot,
@@ -420,6 +422,7 @@ class BloombergProvider(OptionChainProvider):
             quotes=quotes,
             exercise_style=_resolve_style(styles),
             tick_size=US_OPTION_TICK,
+            settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
         )
 
     # -- dividends (provider-specific capability, not part of the contract) --

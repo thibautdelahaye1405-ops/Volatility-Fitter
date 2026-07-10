@@ -147,10 +147,13 @@ class FlatFileStore:
         spot = _parity_spot(quotes)
         if spot is None:
             return None
+        from volfit.data.expiry_time import settlement_map
+
         return ChainSnapshot(
             ticker=upper, spot=spot, timestamp=ts, quotes=quotes,
             exercise_style="american",  # US single-stock / ETF options
             tick_size=US_OPTION_TICK,
+            settlement=settlement_map({q.expiry for q in quotes}, root=upper),
         )
 
     # ------------------------------------------------------------- internals

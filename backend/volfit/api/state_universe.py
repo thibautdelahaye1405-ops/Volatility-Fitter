@@ -261,9 +261,19 @@ class UniverseMixin:
             self._forwards.pop(ticker, None)
             return
         kept = [q for q in snap.quotes if q.expiry in want]
+        # Carry ALL chain-level metadata through the prune: dropping zero_carry
+        # would un-pin an IV-synthesized chain's parity forward, dropping
+        # tick_size would disable the tick-noise screen, and the settlement
+        # map is filtered to the surviving expiries.
         self._snapshots[ticker] = ChainSnapshot(
             ticker=snap.ticker, spot=snap.spot, timestamp=snap.timestamp,
             quotes=kept, exercise_style=snap.exercise_style,
+            zero_carry=snap.zero_carry, tick_size=snap.tick_size,
+            settlement=(
+                {e: s for e, s in snap.settlement.items() if e in want}
+                if snap.settlement is not None
+                else None
+            ),
         )
         fwds = self._forwards.get(ticker)
         if fwds is not None:

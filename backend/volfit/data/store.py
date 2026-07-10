@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from volfit.data.types import ChainSnapshot, Instrument, OptionQuote
+from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, OptionQuote
 
 #: v2 ([REQ 2026-06-12]): snapshots carry the contracts' exercise style so
 #: reloaded chains keep de-Americanizing exactly like freshly fetched ones.
@@ -35,7 +35,10 @@ from volfit.data.types import ChainSnapshot, Instrument, OptionQuote
 #: v5 ([REQ 2026-07-08]): snapshots carry the `zero_carry` flag so replayed
 #: IV-synthesized chains (delayed tier, NBBO gated) keep pinning the parity
 #: forward to their F = spot, D = 1 construction instead of regressing noise.
-SCHEMA_VERSION = 6
+#: v7 (roadmap R1 item 5, 2026-07-10): snapshots carry per-expiry settlement
+#: semantics (AM/PM style + last-trade/settle instants) as a JSON column so
+#: replays keep the exact expiry clock the 0DTE path will consume.
+SCHEMA_VERSION = 7
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -44,13 +47,14 @@ CREATE TABLE IF NOT EXISTS instruments (
     currency TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS snapshots (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    ticker         TEXT NOT NULL,
-    spot           REAL NOT NULL,
-    ts             TEXT NOT NULL,
-    exercise_style TEXT NOT NULL DEFAULT 'european',
-    zero_carry     INTEGER NOT NULL DEFAULT 0,
-    tick_size      REAL
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    ticker          TEXT NOT NULL,
+    spot            REAL NOT NULL,
+    ts              TEXT NOT NULL,
+    exercise_style  TEXT NOT NULL DEFAULT 'european',
+    zero_carry      INTEGER NOT NULL DEFAULT 0,
+    tick_size       REAL,
+    settlement_json TEXT
 );
 CREATE TABLE IF NOT EXISTS quotes (
     snapshot_id   INTEGER NOT NULL REFERENCES snapshots(id),
@@ -181,6 +185,8 @@ class VolStore:
             )
         if 1 <= version <= 5:  # pre-v6 file: add the venue tick size
             self.conn.execute("ALTER TABLE snapshots ADD COLUMN tick_size REAL")
+        if 1 <= version <= 6:  # pre-v7 file: add per-expiry settlement semantics
+            self.conn.execute("ALTER TABLE snapshots ADD COLUMN settlement_json TEXT")
         self.conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         self.conn.commit()
 
@@ -215,9 +221,21 @@ class VolStore:
 
     def save_snapshot(self, snapshot: ChainSnapshot) -> int:
         """Persist one chain snapshot; returns the new snapshot id."""
+        settlement_json = None
+        if snapshot.settlement is not None:
+            settlement_json = json.dumps(
+                {
+                    e.isoformat(): {
+                        "style": s.style,
+                        "lastTrade": s.last_trade.isoformat(),
+                        "settle": s.settle.isoformat(),
+                    }
+                    for e, s in snapshot.settlement.items()
+                }
+            )
         cur = self.conn.execute(
             "INSERT INTO snapshots (ticker, spot, ts, exercise_style, zero_carry, "
-            "tick_size) VALUES (?, ?, ?, ?, ?, ?)",
+            "tick_size, settlement_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 snapshot.ticker,
                 snapshot.spot,
@@ -225,6 +243,7 @@ class VolStore:
                 snapshot.exercise_style,
                 int(snapshot.zero_carry),
                 snapshot.tick_size,
+                settlement_json,
             ),
         )
         snapshot_id = int(cur.lastrowid)
@@ -252,14 +271,24 @@ class VolStore:
     def load_snapshot(self, snapshot_id: int) -> ChainSnapshot:
         """Reload a snapshot; raises KeyError if the id is unknown."""
         row = self.conn.execute(
-            "SELECT ticker, spot, ts, exercise_style, zero_carry, tick_size "
-            "FROM snapshots WHERE id = ?",
+            "SELECT ticker, spot, ts, exercise_style, zero_carry, tick_size, "
+            "settlement_json FROM snapshots WHERE id = ?",
             (snapshot_id,),
         ).fetchone()
         if row is None:
             raise KeyError(f"no snapshot with id {snapshot_id}")
-        ticker, spot, ts, exercise_style, zero_carry, tick_size = row
+        ticker, spot, ts, exercise_style, zero_carry, tick_size, settlement_json = row
         timestamp = datetime.fromisoformat(ts)
+        settlement = None
+        if settlement_json:
+            settlement = {
+                date.fromisoformat(e): ExpirySettlement(
+                    style=s["style"],
+                    last_trade=datetime.fromisoformat(s["lastTrade"]),
+                    settle=datetime.fromisoformat(s["settle"]),
+                )
+                for e, s in json.loads(settlement_json).items()
+            }
         quotes = [
             OptionQuote(
                 ticker=ticker,
@@ -288,6 +317,7 @@ class VolStore:
             exercise_style=exercise_style,
             zero_carry=bool(zero_carry),
             tick_size=tick_size,
+            settlement=settlement,
         )
 
     def latest_snapshot(self, ticker: str) -> ChainSnapshot | None:

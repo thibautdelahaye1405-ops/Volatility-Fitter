@@ -232,12 +232,32 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   honesty, 3 regime verdicts. test_certification.py locks registry
   integrity (renamed test files break the registry test), report rendering,
   and one real runner round-trip.
-- **R0 COMPLETE (items 1-4).** NEXT: R1 foundations (timestamp semantics →
-  short-dated quote prep → CarryCurve v0 → governance kernel → state-scoping
-  refactor) + the hosting track's data-rights question. USER-ACTION items
-  parked from R0.4: 25-asset capture reruns + deck slide-7 backtest refresh
-  (hours, user's window). Follow-ups parked: LV per-interval dt refinement;
-  skew/curv band widening (R3).
+- **R0 COMPLETE (items 1-4).** USER-ACTION items parked from R0.4: the
+  benchmark ζ rerun (`-m backtest.benchmark_pack run --designs liquid_split
+  --eta 10 --cross-mult 25 --tag _idiofloor_eta10`, user's window) + deck
+  slide-7 refresh after it. Follow-ups parked: LV per-interval dt
+  refinement; skew/curv band widening (R3).
+- **R1 item 5 SHIPPED — exact timestamp/settlement semantics (store schema
+  v7).** New `volfit/data/expiry_time.py`: RULE-computed NYSE calendar
+  (holidays incl. Good Friday via Easter algorithm, Sat→Fri/Sun→Mon
+  observation, 13:00 half-days), per-expiry `ExpirySettlement` (PM = session
+  close; AM index roots SPX/NDX/RUT = 09:30 settle + prior-session 16:15
+  last trade; non-trading expiries roll back), `exact_year_fraction`
+  (signed, ACT/365, UTC-naive per codebase convention). ChainSnapshot gains
+  trailing `settlement` map (schema v7 = `settlement_json` column, old rows
+  NULL); ALL providers populate it (synthetic/yahoo/massive×5-sites/
+  flatfiles/bloomberg×2). **Fits byte-identical**: prepared.t/tau untouched
+  (the compute switch is R2's 0DTE path). BONUS FIX: the universe prune
+  (`_reconcile_chain_selection`) was silently DROPPING zero_carry/tick_size
+  on every expiry deselect (un-pinning IV-synth forwards, disabling the
+  tick screen) — now carries all chain metadata, test-locked.
+  tests/test_expiry_time.py (12). Known v1 simplification: PM close stamped
+  16:00 ET (SPY/QQQ/SPX trade to 16:15 — per-root override rides the R2
+  0DTE consumer).
+- **NEXT (R1):** item 6 short-dated quote prep (price-space residuals,
+  intrinsic tolerance, quarantine — validate on the weekly fixture); item 7
+  CarryCurve v0; item 8 governance kernel; item 9 state-scoping refactor
+  (LAND ALONE).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

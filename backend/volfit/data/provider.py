@@ -273,4 +273,9 @@ class SyntheticProvider(OptionChainProvider):
                         )
                     )
 
-        return ChainSnapshot(ticker=ticker, spot=spot, timestamp=timestamp, quotes=quotes)
+        from volfit.data.expiry_time import settlement_map
+
+        return ChainSnapshot(
+            ticker=ticker, spot=spot, timestamp=timestamp, quotes=quotes,
+            settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
+        )

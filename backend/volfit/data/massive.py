@@ -93,6 +93,13 @@ def _ns_to_utc_naive(ns) -> datetime | None:
     )
 
 
+def _settlement_for(quotes, ticker: str):
+    """Per-expiry settlement conventions for a fetched chain (store schema v7)."""
+    from volfit.data.expiry_time import settlement_map
+
+    return settlement_map({q.expiry for q in quotes}, root=ticker)
+
+
 def _iso_date(value) -> date | None:
     """Parse an ISO 'YYYY-MM-DD' (possibly with a time suffix) to date."""
     if value is None:
@@ -516,6 +523,7 @@ class MassiveProvider(OptionChainProvider):
             ticker=ticker.upper(), spot=spot, timestamp=newest or now,
             quotes=quotes, exercise_style=_resolve_style(styles),
             tick_size=_US_OPTION_TICK,
+            settlement=_settlement_for(quotes, ticker),
         )
 
     def fetch_chain(
@@ -626,6 +634,7 @@ class MassiveProvider(OptionChainProvider):
             quotes=quotes,
             exercise_style=_resolve_style(styles),
             tick_size=_US_OPTION_TICK,
+            settlement=_settlement_for(quotes, ticker),
         )
 
     def _chain_from_iv(
@@ -678,6 +687,7 @@ class MassiveProvider(OptionChainProvider):
             ticker=ticker.upper(), spot=spot, timestamp=timestamp,
             quotes=quotes, exercise_style="european",
             zero_carry=True,  # parity is meaningless here: F = spot, D = 1 by construction
+            settlement=_settlement_for(quotes, ticker),
         )
 
     def _spot_from_parity(self, results: list[dict]) -> float | None:
@@ -817,6 +827,7 @@ class MassiveProvider(OptionChainProvider):
         return ChainSnapshot(
             ticker=ticker.upper(), spot=spot, timestamp=ts, quotes=quotes,
             exercise_style=_resolve_style(styles), tick_size=_US_OPTION_TICK,
+            settlement=_settlement_for(quotes, ticker),
         )
 
     # -- intraday replay (historical NBBO at an instant) ---------------------
@@ -921,6 +932,7 @@ class MassiveProvider(OptionChainProvider):
             quotes=quotes,
             exercise_style=_resolve_style(styles),
             tick_size=_US_OPTION_TICK,
+            settlement=_settlement_for(quotes, ticker),
         )
 
     def _spot_at(self, ticker: str, ns: int) -> float:

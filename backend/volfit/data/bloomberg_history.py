@@ -70,6 +70,8 @@ def fetch_eod(
         )
         for c in contracts
     ]
+    from volfit.data.expiry_time import settlement_map
+
     return ChainSnapshot(
         ticker=ticker,
         spot=spot,
@@ -77,4 +79,5 @@ def fetch_eod(
         quotes=quotes,
         exercise_style=exercise_style,
         tick_size=US_OPTION_TICK,
+        settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
     )

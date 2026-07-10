@@ -303,6 +303,8 @@ class YahooProvider(OptionChainProvider):
             raise ValueError(
                 f"all {failures} expiries failed for {ticker!r}; see warnings"
             )
+        from volfit.data.expiry_time import settlement_map
+
         return ChainSnapshot(
             ticker=ticker,
             spot=spot,
@@ -310,4 +312,5 @@ class YahooProvider(OptionChainProvider):
             quotes=quotes,
             exercise_style=self._exercise_style(ticker),
             tick_size=US_OPTION_TICK,
+            settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
         )
