@@ -38,6 +38,10 @@ export interface ForwardEntry {
   activeForward: number;
   activeDiscount: number;
   activeSource: string;
+  /** Option-implied borrow (bp/yr) off the parity-vs-theoretical gap;
+   *  null = carry unidentified at this expiry (the calm, common state —
+   *  never a silent zero). Optional for older payloads. */
+  impliedBorrowBp?: number | null;
 }
 
 /** Response of GET /forwards/{ticker}. */

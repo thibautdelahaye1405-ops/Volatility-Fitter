@@ -90,6 +90,58 @@ class ForwardEntry(BaseModel):
     activeForward: float
     activeDiscount: float
     activeSource: str
+    #: Option-implied borrow (continuous, bp/yr) read off the parity-vs-
+    #: theoretical forward gap at this expiry — None when carry is
+    #: UNIDENTIFIED here (zero-carry chain, thin/noisy parity, or a
+    #: non-parity forward mode). The COMMON state for single names; the UI
+    #: presents it calmly, never as a silent zero (CarryCurve v0).
+    impliedBorrowBp: float | None = None
+
+
+class CarryPoint(BaseModel):
+    """One expiry's carry decomposition with per-component provenance
+    (roadmap R1 item 7 — CarryCurve v0).
+
+    Sources: ``parity_implied`` (read off the option market), ``desk``
+    (user-entered), ``model`` (grown from rate + dividend model), ``prior``
+    (carried assumption), ``unidentified`` (no defensible read — NEVER a
+    silent zero-borrow fallback)."""
+
+    expiry: str
+    t: float
+    forward: float
+    forwardSource: str
+    discount: float
+    discountSource: str
+    borrowBp: float | None  # continuous implied borrow, bp/yr; None = unidentified
+    borrowSource: str  # "parity_implied" | "unidentified"
+    identifiable: bool  # parity carries information at this expiry
+    nStrikes: int = 0  # parity-pair count behind the read
+    residualRms: float = 0.0  # parity regression residual (price units)
+    nOutliers: int = 0  # parity pairs dropped by the stale screen
+
+
+class CarryCurveResponse(BaseModel):
+    """GET /carry/{ticker} — the versioned per-ticker carry object.
+
+    Aggregates what forwards/dividends/rate supply piecemeal: a discount +
+    dividend + borrow view per expiry, every component tagged with its
+    source and the borrow leg carrying an explicit identifiability verdict.
+    Versioned by the same counters the fit caches key on, so a published
+    surface can cite exactly which carry it was built against."""
+
+    ticker: str
+    spot: float
+    rate: float
+    rateSource: str = "desk"  # MarketSettings.rate — flat, user-owned
+    dividendMode: str
+    dividendSource: str  # "desk" (editor/settings) | "none"
+    zeroCarry: bool = False
+    forwardsVersion: int = 0
+    dataVersion: int = 0
+    points: list[CarryPoint]
+    identified: int = 0  # expiries with a defensible borrow read
+    unidentified: int = 0  # the calm, common state — never silently zero
 
 
 class ForwardsResponse(BaseModel):

@@ -151,7 +151,7 @@ export default function ForwardsViewer() {
             <table className="w-full border-collapse font-mono text-[11px] leading-tight">
               <thead className="sticky top-0 z-10 bg-surface-800 text-slate-400">
                 <tr>
-                  {["Expiry", "T", "Parity", "Theo", "Manual", "Active", "Source"].map((h) => (
+                  {["Expiry", "T", "Parity", "Theo", "Manual", "Active", "Borrow", "Source"].map((h) => (
                     <th
                       key={h}
                       className={[
@@ -183,6 +183,18 @@ export default function ForwardsViewer() {
                     <td className="px-2 py-1 text-right">{fmtFwd(e.manualForward)}</td>
                     <td className="px-2 py-1 text-right font-semibold text-accent-400">
                       {fmtFwd(e.activeForward)}
+                    </td>
+                    <td
+                      className="px-2 py-1 text-right text-slate-400"
+                      title={
+                        typeof e.impliedBorrowBp === "number"
+                          ? "Option-implied borrow (parity vs theoretical forward), bp/yr"
+                          : "Carry unidentified at this expiry (thin parity / zero-carry / non-parity mode) — not a zero"
+                      }
+                    >
+                      {typeof e.impliedBorrowBp === "number"
+                        ? `${e.impliedBorrowBp.toFixed(0)} bp`
+                        : "—"}
                     </td>
                     <td className="px-2 py-1 text-left text-slate-500">{e.activeSource}</td>
                   </tr>

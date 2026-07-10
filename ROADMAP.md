@@ -270,8 +270,23 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   QualityNode.screened/vegaFloored. tests/test_quote_screen.py (7).
   Discovery: price-space residuals ALREADY exist where they matter (LQD +
   affine LV fit vega-normalized price); SVI/MCS stay vol-space until R2.
-- **NEXT (R1):** item 7 CarryCurve v0; item 8 governance kernel; item 9
-  state-scoping refactor (LAND ALONE).
+- **R1 item 7 SHIPPED — CarryCurve v0 (provenance + identifiability).** New
+  `volfit/api/carry.py` + GET /carry/{ticker}: the per-ticker carry object
+  {forward, discount, option-implied borrow} per expiry, every component
+  source-tagged (parity_implied / desk / model / unidentified). Borrow =
+  ln(F_theo/F_parity)/T (the flat rate cancels; positive = hard-to-borrow),
+  read ONLY when identifiable (parity regression present, not zero-carry,
+  ≥ CARRY_MIN_STRIKES=6 pairs, residual_rms ≤ 1e-3·spot) — otherwise
+  borrowBp=None, borrowSource="unidentified", the CALM common state, never
+  a silent zero. Versioned by forwardsVersion/dataVersion (fit caches
+  already key on resolved forwards). Surfaced: ForwardEntry.impliedBorrowBp
+  + a Borrow column in the Forwards tab (em-dash + tooltip when
+  unidentified); QualityTicker.carryIdentified/carryUnidentified (ADVISORY
+  — gating arrives with R2's joint borrow/de-Am fixed point).
+  tests/test_carry.py (5: planted 300bp borrow recovered ±2%, zero-carry →
+  calmly unidentified, rollups advisory).
+- **NEXT (R1):** item 8 governance kernel (manifest + event log + lifecycle
+  + replay); item 9 state-scoping refactor (LAND ALONE).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

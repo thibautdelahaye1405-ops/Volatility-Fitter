@@ -23,6 +23,8 @@ from volfit.api.schemas_history import (  # noqa: F401  (re-export)
     HistoryResponse,
 )
 from volfit.api.schemas_market import (  # noqa: F401  (re-export)
+    CarryCurveResponse,
+    CarryPoint,
     DividendSpec,
     ForwardEntry,
     ForwardPolicy,

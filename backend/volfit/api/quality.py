@@ -20,6 +20,7 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api import service
+from volfit.api.carry import carry_counts
 from volfit.api.data_age import format_age, ticker_ages
 from volfit.api.filter_mode import resolve_filter_mode
 from volfit.api.schemas_quality import (
@@ -294,6 +295,7 @@ def build_quality_report(
         if not rows:
             continue
         fitted = [r for r in rows if r.hasFit]
+        carry_id, carry_unid = carry_counts(state, ticker)
         tickers.append(
             QualityTicker(
                 ticker=ticker,
@@ -305,6 +307,8 @@ def build_quality_report(
                 arbFlags=sum(1 for r in fitted if not (r.leeOk and r.calendarOk)),
                 extrapFlags=sum(1 for r in fitted if not (r.extrapOk and r.extrapCalOk)),
                 dataAgeMin=age_min,
+                carryIdentified=carry_id,
+                carryUnidentified=carry_unid,
                 ready=sum(1 for r in rows if r.ready),
                 lv=_lv_quality(state, ticker, mode),
             )

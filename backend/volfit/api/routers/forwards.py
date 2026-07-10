@@ -16,7 +16,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 
 from volfit.api import market
+from volfit.api.carry import carry_curve
 from volfit.api.schemas import (
+    CarryCurveResponse,
     ForwardEntry,
     ForwardPolicy,
     ForwardsResponse,
@@ -31,6 +33,17 @@ router = APIRouter()
 def get_forwards(ticker: str, request: Request) -> ForwardsResponse:
     try:
         return market.forwards_payload(request.app.state.volfit, ticker)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.get("/carry/{ticker}", response_model=CarryCurveResponse)
+def get_carry(ticker: str, request: Request) -> CarryCurveResponse:
+    """The versioned per-ticker CarryCurve (R1 item 7): forward / discount /
+    option-implied borrow per expiry with source tags — 'unidentified' is a
+    calm, common state, never a silent zero-borrow."""
+    try:
+        return carry_curve(request.app.state.volfit, ticker)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
 

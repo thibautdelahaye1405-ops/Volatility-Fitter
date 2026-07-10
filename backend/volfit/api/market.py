@@ -50,12 +50,21 @@ def set_market_settings(
 # ----------------------------------------------------------- forward modes
 def _forward_entry(state: AppState, ticker: str, expiry: date) -> ForwardEntry:
     """One expiry's parity / theoretical / active forward, side by side."""
+    from volfit.api.carry import borrow_identified, implied_borrow_bp
+
     iso = expiry.isoformat()
     parity = state.forwards(ticker).get(expiry)
     theo_forward, theo_discount = state.theoretical_forward_for(ticker, expiry)
     policy = state.forward_policy(ticker, iso)
     active = state.resolved_forward(ticker, expiry)
+    snapshot = state.snapshot(ticker)
+    borrow = (
+        implied_borrow_bp(parity.forward, theo_forward, state.year_fraction(expiry))
+        if borrow_identified(parity, snapshot.is_zero_carry(), float(snapshot.spot))
+        else None
+    )
     return ForwardEntry(
+        impliedBorrowBp=borrow,
         expiry=iso,
         t=state.year_fraction(expiry),
         parityForward=None if parity is None else parity.forward,

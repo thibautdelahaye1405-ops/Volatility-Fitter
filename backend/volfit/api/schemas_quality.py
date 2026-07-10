@@ -89,6 +89,11 @@ class QualityTicker(BaseModel):
     arbFlags: int  # nodes failing Lee or calendar
     extrapFlags: int = 0  # nodes with extrapolated-region arb (advisory)
     dataAgeMin: float | None = None  # loaded live-chain age, minutes (see QualityNode)
+    #: Carry identifiability (CarryCurve v0, ADVISORY): expiries with a
+    #: defensible option-implied borrow read vs the calm "unidentified" rest.
+    #: Gating on carry confidence arrives with the R2 joint borrow/de-Am work.
+    carryIdentified: int = 0
+    carryUnidentified: int = 0
     ready: int  # publish-ready node count
     lv: LvQuality | None = None  # None when LV disabled / never calibrated
 
