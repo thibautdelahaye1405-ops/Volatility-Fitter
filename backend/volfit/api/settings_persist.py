@@ -23,6 +23,7 @@ FIT_KEY = "fit_settings"
 OPTIONS_KEY = "options_settings"
 GRAPH_EDGES_KEY = "graph_edges"
 GRAPH_BLOCK_RULE_KEY = "graph_block_rule"
+GRAPH_IDIO_KEY = "graph_idio_history"
 
 
 def load_defaults(
@@ -122,6 +123,28 @@ def save_graph_block_rule(store_path, rule: dict | None) -> bool:
             store.delete_setting(GRAPH_BLOCK_RULE_KEY)
         else:
             store.save_setting(GRAPH_BLOCK_RULE_KEY, rule)
+    return True
+
+
+def load_graph_idio(store_path) -> dict | None:
+    """Read the persisted graph innovation history (the idio band-floor input,
+    volfit.graph.idio); None when absent or unreadable."""
+    if store_path is None:
+        return None
+    try:
+        with VolStore(store_path) as store:
+            return store.load_setting(GRAPH_IDIO_KEY)
+    except Exception as exc:  # noqa: BLE001 — restore must never break startup
+        warnings.warn(f"graph-idio-history load failed: {exc}")
+        return None
+
+
+def save_graph_idio(store_path, blob: dict) -> bool:
+    """Persist the graph innovation history; False when no store is set."""
+    if store_path is None:
+        return False
+    with VolStore(store_path) as store:
+        store.save_setting(GRAPH_IDIO_KEY, blob)
     return True
 
 

@@ -62,6 +62,32 @@ def chunk_ranges(n_pairs: int, chunk: int) -> list[tuple[int, int]]:
     return [(a, min(a + chunk, n_pairs)) for a in range(0, n_pairs, chunk)]
 
 
+def _history_seed(regime: str, upto: int, tag: str) -> list[dict]:
+    """Rows from this sweep's EARLIER part files (pairs < ``upto``) — they seed
+    the idio band floor's innovation history so a chunked run reproduces the
+    single-process estimator instead of cold-starting every chunk. Only same-tag
+    parts qualify (other sweeps ran under different knobs)."""
+    rows: list[dict] = []
+    if not os.path.isdir(RESULTS_DIR):
+        return rows
+    suffix = f"{tag}.json" if tag else ".json"
+    for name in sorted(os.listdir(RESULTS_DIR)):
+        if not name.startswith(f"{regime}_pairs") or not name.endswith(suffix):
+            continue
+        core = name[len(f"{regime}_pairs"):-len(".json")]
+        core = core[: -len(tag)] if tag else core
+        if not tag and "_" in core:  # untagged scan must not pick a tagged part
+            continue
+        try:
+            a, b = (int(x) for x in core.split("-"))
+        except ValueError:
+            continue
+        if b <= upto:
+            with open(os.path.join(RESULTS_DIR, name), encoding="utf-8") as fh:
+                rows.extend(json.load(fh)["rows"])
+    return rows
+
+
 def run_regime(
     regime: str, designs, r_values, chunk: int, cfg: EdgeConfig,
     max_pairs: int | None = None, eta_scale: float = 1.0, tag: str = "",
@@ -78,7 +104,7 @@ def run_regime(
             continue
         print(f"{regime} pairs {a}-{b}: scoring…", flush=True)
         rows = run_loo(regime, designs, r_values, None, cfg, pair_range=(a, b),
-                       eta_scale=eta_scale)
+                       eta_scale=eta_scale, history_rows=_history_seed(regime, a, tag))
         # Provenance stamp: the merge dedups on (regime, day, design, R, node),
         # so rows from differently-knobbed sweeps would otherwise mix silently.
         rows = [dict(r, eta=eta_scale, indexWeight=cfg.index_weight) for r in rows]

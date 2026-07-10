@@ -1012,6 +1012,13 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: the persisted edges, then the auto-lattice (plan Phase 7).
     edges: list[GraphEdgeInput] = []
 
+    #: Idio band floor (volfit.graph.idio): a non-observed node's ATM credible
+    #: band is floored from the ticker's trailing innovation history — the fix
+    #: for the calm-regime dark-name band overconfidence (FINDINGS_graph_loo
+    #: 2026-07-09). Band-only (never moves a posterior mean); OFF restores the
+    #: legacy bands exactly.
+    idioFloor: bool = True
+
 
 class GraphExtrapolateNode(BaseModel):
     """One node's prior -> posterior ATM-handle summary with full provenance.

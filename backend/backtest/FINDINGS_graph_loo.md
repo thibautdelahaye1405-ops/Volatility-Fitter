@@ -165,6 +165,51 @@ together — adding up to ~14 bp of ATM accuracy over mechanical transport in
 stress, never subtracting in calm; uncertainty is honest in stress and needs
 an idiosyncratic-regime widening in calm tape.
 
+## 2026-07-10 — idio band floor closes the calm-regime overconfidence (SHIPPED)
+
+The follow-up above is implemented as a **band floor from the node's own
+trailing unexplained move** (`volfit/graph/idio.py`, wired into the shared
+`solve()` so production, the in-app LOO and this harness all exercise it):
+
+    sd_atm'^2 = max(sd_atm^2, 0.30 * sigma_I^2)
+
+`sigma_I` = shrunk EWMA-RMS (half-life 5 trading days, shrink k=4 toward the
+cross-sectional pool) of the ticker's past ATM innovations vs the transported
+prior, pooled across expiries, STRICTLY causal (cold start ⇒ no floor ⇒
+byte-identical legacy field). Key mechanics: a dark node's baseline precision
+enters ONLY its band variance (never the posterior mean — `posterior.py`'s
+`1/p0` term is absent from the mean's observed columns), so the floor is
+mean-invariant by construction; production records lit-node innovations at
+every solve (`AppState.record_graph_innovations`, persisted) and floors a
+node from the days it was lit; the harness accumulates the same quantity
+across day pairs (`graph_loo._idio_sigma_map`), with `benchmark_pack` seeding
+each chunk from earlier same-tag parts so chunked runs match a single process.
+
+**Design + validation were OFFLINE on the stored rows** (band-only ⇒ stored
+residuals stay exact; `zeta' = -res_atm / sqrt(var' + 1/r)` with `1/r`
+recovered from the stored `zeta`/`sd`/`res_atm`). Sweep over rule ∈
+{additive, floor} × λ ∈ {0.25…1.0} × half-life {3, 5, flat}: additive
+widening degrades the honest stress cells; the floor at λ=0.30 is surgical.
+Shipped-estimator replay on the resweep parts (dark names, η10×cross25):
+
+    regime         R    zStd before -> after   floor binds
+    low_jul2023    0        1.91 -> 1.02          12.5%
+    low_jul2023    1        1.85 -> 1.03          12.9%
+    spike_aug2024  0        1.10 -> 0.99          26.2%
+    spike_aug2024  1        1.02 -> 0.94          18.7%
+    high_oct2022   0        0.78 -> 0.77           0.8%
+    high_oct2022   1        0.70 -> 0.70           0.8%
+
+ζ means stay unbiased (drift ≤ 0.06). full_loo cells improve the same way
+(low-regime names 1.48 → 0.87). The floor **self-gates across asset kinds**
+(index/ETF trailing innovations are small, so their already-conservative
+bands are essentially untouched, binds ≈ 0%) — no asset taxonomy or regime
+input needed, which is what makes it production-clean. Posterior means and
+ATM skill are UNCHANGED everywhere by construction; `GraphExtrapolateRequest.
+idioFloor=false` restores legacy bands exactly. Contracts locked in
+`tests/test_graph_idio.py` (11 tests). Follow-up: skew/curvature band
+widening rides the full handle-covariance work (roadmap R3).
+
 ---
 
 # Pilot findings (2026-06-26, 8 assets, spike only) — historical

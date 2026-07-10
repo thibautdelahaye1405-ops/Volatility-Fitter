@@ -41,10 +41,13 @@ from volfit.api.settings_persist import (
     load_defaults,
     load_graph_block_rule,
     load_graph_edges,
+    load_graph_idio,
     save_defaults,
     save_graph_block_rule,
     save_graph_edges,
+    save_graph_idio,
 )
+from volfit.graph.idio import IdioHistory
 from volfit.api.varswap_session import VarSwapSession
 from volfit.data.dividends import (
     Dividend,
@@ -222,6 +225,13 @@ class AppState(UniverseMixin):
         #: lives in _graph_edges. None ⇒ no rule (the edge list, if any, is raw).
         self._graph_block_rule: GraphBlockRule | None = _coerce_block_rule(
             load_graph_block_rule(self.store_path)
+        )
+        #: Trailing per-ticker ATM-innovation record feeding the idio band floor
+        #: (volfit.graph.idio): every production solve records its lit-node
+        #: innovations here, and a node that later goes dark gets its credible
+        #: band floored from the days it was lit. Persisted best-effort.
+        self._graph_idio: IdioHistory = IdioHistory.from_blob(
+            load_graph_idio(self.store_path)
         )
         self._market_settings: dict[str, MarketSettings] = {}
         #: Per-ticker event calendar (shared across workspaces). Events now drive
@@ -1353,6 +1363,29 @@ class AppState(UniverseMixin):
         save_graph_block_rule(
             self.store_path, rule.model_dump() if rule is not None else None
         )
+
+    # ------------------------------------------------------ graph idio history
+    def graph_idio_sigma(self) -> dict[str, float]:
+        """Per-ticker trailing idio sigma from innovations recorded STRICTLY
+        before today (the reference date) — the idio band floor's causal input."""
+        with self._lock:
+            return self._graph_idio.sigma_map(self.reference_date.isoformat())
+
+    def record_graph_innovations(self, items: dict[tuple[str, str], float]) -> None:
+        """Record today's lit-node ATM innovations ``{(ticker, expiry): innov}``.
+
+        Idempotent per (ticker, day, expiry) — repeated solves overwrite — and
+        persisted best-effort so the floor survives a restart."""
+        if not items:
+            return
+        day = self.reference_date.isoformat()
+        with self._lock:
+            changed = False
+            for (ticker, expiry), value in items.items():
+                changed |= self._graph_idio.record(ticker, day, expiry, value)
+            blob = self._graph_idio.to_blob() if changed else None
+        if blob is not None:
+            save_graph_idio(self.store_path, blob)
 
     # --------------------------------------------------------------- universe
     @property

@@ -150,7 +150,36 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## STATUS — updated 2026-07-09 (resume here)
+## STATUS — updated 2026-07-10 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + IDIO BAND FLOOR (R0 item 1) SHIPPED
+
+- **FORWARD ROADMAP v2 adopted** (section above; commit `4256dc4`): R0 honest
+  measurement → R1 multi-tenant-ready foundations → R2 0DTE/borrow robustness
+  → R3 moat → R4 state + first hosted instance. Settles the deployment model
+  (hosted, single-tenant instances first, BYO data entitlement) — the old
+  "Phase 2 deployment-model decision" is CLOSED.
+- **R0 item 1 SHIPPED — idio band floor** (the calm-regime dark-name ζ std
+  ~1.9 overconfidence, the pack's one dishonest cell): new
+  `volfit/graph/idio.py` — a non-observed node's ATM band std is floored at
+  `sqrt(0.30) ×` the ticker's trailing innovation RMS (shrunk EWMA, half-life
+  5d, strictly causal, cold-start silent). Wired into the shared
+  `graph_extrapolation.solve()` (production + in-app LOO + benchmark all
+  exercise it); production records lit innovations per solve
+  (`AppState.record_graph_innovations`, persisted `graph_idio_history`);
+  `graph_loo` accumulates the same across day pairs; `benchmark_pack` seeds
+  chunks from earlier same-tag parts. **Design + validation offline on the
+  47,393 stored benchmark rows** (band-only ⇒ stored residuals exact):
+  low_jul2023 ζ std 1.91→1.02 / 1.85→1.03, spike 1.10→0.99 / 1.02→0.94,
+  high_oct2022 untouched (0.8% binds); means/skill unchanged by construction;
+  self-gates across kinds (no taxonomy needed). Full numbers + method in
+  `backend/backtest/FINDINGS_graph_loo.md` (2026-07-10 section). Escape
+  hatch: `GraphExtrapolateRequest.idioFloor=false` = legacy bands exactly.
+  11 new tests (`test_graph_idio.py`).
+- **NEXT (R0):** item 2 LV quality on converged-operator reprices; item 3
+  extrap-arb Phase 3 (publish projection); item 4 stress/certification pack
+  v0. Follow-up parked: skew/curv band widening rides R3's handle-covariance
+  work.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

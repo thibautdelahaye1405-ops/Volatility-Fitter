@@ -46,6 +46,7 @@ from volfit.api.graph_reconstruct import _retarget_slice
 from volfit.api.schemas import GraphExtrapolateRequest
 from volfit.api.state import AppState
 from volfit.graph.hyper import standardized_residuals
+from volfit.graph.idio import trailing_idio_sigma
 from volfit.models.lqd.ortho import build_atm_coordinates
 
 from backtest.graph_edges import EdgeConfig, asset_kind, build_directed_edges
@@ -130,8 +131,39 @@ def _score_node(state, full, held, idx, node, truth, fit_mode) -> dict | None:
     return row
 
 
+# ------------------------------------------------------------- idio band floor
+def _idio_sigma_map(entries, today_iso: str) -> dict[str, float]:
+    """Strictly-causal per-ticker trailing idio sigma from previously SCORED rows
+    (their ``base_atm`` = transported-prior residual = the node's innovation),
+    with the same-kind cross-sectional pool as the shrink target — the exact
+    estimator validated offline on the stored benchmark parts (2026-07-10).
+
+    ``entries`` are ``(as_of_iso, ticker, kind, base_atm)`` accumulated across
+    the run's day pairs (plus any seed from earlier chunk parts); only entries
+    strictly before ``today_iso`` are used."""
+    past = [(a, tk, kd, v) for (a, tk, kd, v) in entries if a < today_iso]
+    if not past:
+        return {}
+    pool: dict[str, list] = defaultdict(list)
+    own: dict[str, list] = defaultdict(list)
+    kind_of: dict[str, str] = {}
+    for a, tk, kd, v in past:
+        pool[kd].append(v * v)
+        own[tk].append((a, v))
+        kind_of[tk] = kd
+    out: dict[str, float] = {}
+    for tk, tk_entries in own.items():
+        p = pool[kind_of[tk]]
+        s = trailing_idio_sigma(tk_entries, float(np.mean(p)) if p else None)
+        if s is not None:
+            out[tk] = s
+    return out
+
+
 # --------------------------------------------------------------- one (pair, R, design)
-def _run_design(state, full, req, design: str, fit_mode: str) -> list[dict]:
+def _run_design(
+    state, full, req, design: str, fit_mode: str, idio_sigma: dict[str, float] | None = None
+) -> list[dict]:
     """Score either every validation-clean node (full_loo) or the dark single names
     (liquid_split) for one solved universe."""
     universe = full.universe
@@ -155,7 +187,7 @@ def _run_design(state, full, req, design: str, fit_mode: str) -> list[dict]:
         if not full.calibrated[i] or not full.priors_meta[i].valid_for_validation:
             continue
         try:
-            held = solve(state, req, hold_out=frozenset({node.name}))
+            held = solve(state, req, hold_out=frozenset({node.name}), idio_atm_sigma=idio_sigma)
             if held is None:
                 continue
             r = _score_node(state, full, held, i, node, full.obs_value_by_idx[i], fit_mode)
@@ -197,6 +229,7 @@ def run(
     cfg: EdgeConfig,
     pair_range: tuple[int, int] | None = None,
     eta_scale: float = 1.0,
+    history_rows: list[dict] | None = None,
 ) -> list[dict]:
     """Score consecutive day pairs across the designs and SSR regimes.
 
@@ -204,7 +237,11 @@ def run(
     chunked/resumable driver); ``max_pairs`` keeps the historical prefix cut.
     ``eta_scale`` sets the solver's propagation reach (GraphExtrapolateRequest
     etaScale; default 1.0 = the production default — the 2026-07-09 sensitivity
-    sweep showed reach, not precision, is the binding cross-asset lever)."""
+    sweep showed reach, not precision, is the binding cross-asset lever).
+    ``history_rows`` seeds the idio band floor's innovation history with rows
+    scored by EARLIER chunks (matched on design/ssr; only rows dated strictly
+    before a pair's day-T are ever used), so chunked pack runs reproduce the
+    single-process estimator instead of cold-starting each chunk."""
     paths = list_fixtures(regime=regime)
     if not paths:
         raise SystemExit(f"no fixtures for regime={regime}")
@@ -221,6 +258,16 @@ def run(
         pairs = pairs[:max_pairs]
 
     out: list[dict] = []
+    # Idio-floor innovation history per (design, R) cell — seeded from earlier
+    # chunks' rows, then extended with this run's own scored rows (base_atm is
+    # the node's innovation vs the transported prior). Strictly causal: the map
+    # handed to a pair's solves only ever sees rows dated before that pair's T.
+    recs: dict[tuple, list] = defaultdict(list)
+    for r in history_rows or []:
+        if r.get("base_atm") is not None:
+            recs[(r["design"], int(r["ssr"]))].append(
+                (r["as_of"], r["ticker"], r["kind"], float(r["base_atm"]))
+            )
     for d0, d1 in pairs:
         fx0, fx1 = by_date[d0], by_date[d1]
         tickers = sorted({f.asset for f in fx1})
@@ -234,13 +281,19 @@ def run(
                     sigma, tmap = _baseline_maps(state_t)
                     edges = build_directed_edges(list(sigma), sigma, tmap, cfg)
                     req = GraphExtrapolateRequest(edges=edges, etaScale=eta_scale)
-                    full = solve(state_t, req)
+                    idio_sig = _idio_sigma_map(recs[(design, int(r_val))], d1.isoformat())
+                    full = solve(state_t, req, idio_atm_sigma=idio_sig)
                     if full is None:
                         continue
-                    for row in _run_design(state_t, full, req, design, full.fit_mode):
+                    for row in _run_design(state_t, full, req, design, full.fit_mode, idio_sig):
                         out.append(dict(row, regime=regime, as_of=d1.isoformat(),
                                         prior_as_of=d0.isoformat(),
                                         ssr=int(r_val), design=design))
+                        if row.get("base_atm") is not None:
+                            recs[(design, int(r_val))].append(
+                                (d1.isoformat(), row["ticker"], row["kind"],
+                                 float(row["base_atm"]))
+                            )
         except Exception as exc:  # noqa: BLE001 — one bad pair never kills the sweep
             print(f"  {d1}: SKIPPED ({type(exc).__name__}: {str(exc)[:80]})", flush=True)
             continue

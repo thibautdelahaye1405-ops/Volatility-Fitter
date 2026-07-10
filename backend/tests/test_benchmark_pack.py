@@ -63,10 +63,12 @@ def test_parts_roundtrip_and_resume_skip(tmp_path, monkeypatch, capsys):
 
     monkeypatch.setattr(bp, "RESULTS_DIR", str(tmp_path))
     calls: list[tuple] = []
+    seeds: list[int] = []
 
     def fake_loo(regime, designs, r_values, max_pairs, cfg, pair_range=None,
-                 eta_scale=1.0):
+                 eta_scale=1.0, history_rows=None):
         calls.append(pair_range)
+        seeds.append(len(history_rows or []))
         return [_row(as_of=f"day{pair_range[0]}")]
 
     monkeypatch.setattr(bp, "run_loo", fake_loo)
@@ -74,6 +76,9 @@ def test_parts_roundtrip_and_resume_skip(tmp_path, monkeypatch, capsys):
 
     bp.run_regime("spike_aug2024", ("full_loo",), (0.0,), chunk=2, cfg=EdgeConfig())
     assert calls == [(0, 2), (2, 4), (4, 5)]
+    # Each chunk is seeded with every EARLIER same-tag part's rows (the idio
+    # band floor's cross-chunk innovation history): 0, then 1, then 2 rows.
+    assert seeds == [0, 1, 2]
 
     calls.clear()
     bp.run_regime("spike_aug2024", ("full_loo",), (0.0,), chunk=2, cfg=EdgeConfig())
@@ -91,6 +96,7 @@ def test_parts_roundtrip_and_resume_skip(tmp_path, monkeypatch, capsys):
                   cfg=EdgeConfig(), eta_scale=10.0, tag="_topofix_eta10")
     assert calls == [(0, 2), (2, 4), (4, 5)]  # ran despite existing untagged parts
     assert (tmp_path / "spike_aug2024_pairs00-02_topofix_eta10.json").exists()
+    assert seeds[-3:] == [0, 1, 2]  # tagged sweep never seeds from untagged parts
 
 
 def test_load_parts_dedupes_overlapping_chunks(tmp_path, monkeypatch):

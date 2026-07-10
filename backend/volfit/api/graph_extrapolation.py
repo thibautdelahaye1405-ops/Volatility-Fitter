@@ -37,6 +37,7 @@ from volfit.api.service import fit_or_get, weighted_rms_error
 from volfit.api.state import AppState
 from volfit.graph import build_increment_prior
 from volfit.graph import precision as gprec
+from volfit.graph.idio import apply_idio_floor
 from volfit.graph.beta import beta_matrix
 from volfit.graph.build import SmileGraph
 from volfit.graph.posterior import posterior_update
@@ -244,6 +245,7 @@ def solve(
     state: AppState,
     request: GraphExtrapolateRequest,
     hold_out: frozenset = frozenset(),
+    idio_atm_sigma: dict[str, float] | None = None,
 ) -> ExtrapolationSolution | None:
     """Run the production prior-anchored solve (plan Phase 3/4); None if empty.
 
@@ -252,6 +254,11 @@ def solve(
     ``hold_out`` is a set of node names withheld from the observations (used by the
     leave-one-node-out backtest, plan Phase 8); their calibrated handles are still
     computed (for scoring) but do not feed the propagation.
+
+    ``idio_atm_sigma`` maps ticker -> trailing idio sigma for the band floor
+    (volfit.graph.idio); None pulls the state's recorded history (production),
+    the offline harness passes its own strictly-causal estimate. Band-only:
+    posterior means are identical with or without it.
     """
     # Local import avoids a module-load cycle (graph_nodes imports us for typing).
     from volfit.api.graph_nodes import resolve_priors
@@ -331,6 +338,38 @@ def solve(
         obs_idx,
         obs_values,
         obs_precision,
+    )
+
+    # Idio band floor (volfit.graph.idio): every node that did NOT contribute an
+    # observation (dark, held out, or lit-but-uncalibrated) has its ATM band std
+    # floored at sqrt(IDIO_FLOOR_LAMBDA) x the ticker's trailing innovation RMS.
+    # Band-only — the posterior means above are final. Cold start (no history)
+    # leaves the field byte-identical.
+    if request.idioFloor:
+        if idio_atm_sigma is None:
+            idio_atm_sigma = state.graph_idio_sigma()
+        if idio_atm_sigma:
+            observed = set(obs_idx_list)
+            sigmas = np.full(len(universe.nodes), np.nan)
+            for i, node in enumerate(universe.nodes):
+                if i not in observed and node.ticker in idio_atm_sigma:
+                    sigmas[i] = idio_atm_sigma[node.ticker]
+            field, bound = apply_idio_floor(field, sigmas)
+            for i in np.flatnonzero(bound):  # surfaced in node diagnostics
+                base_breakdowns[i].factors["idioSigma"] = float(sigmas[i])
+
+    # Record today's lit innovations (calibrated - transported prior, ATM) so a
+    # node that goes dark on a LATER day gets floored from the days it was lit.
+    # Idempotent per (ticker, day, expiry); a no-op without a store on scratch
+    # states (the benchmark harness builds throwaway states and feeds the floor
+    # its own strictly-causal history instead).
+    state.record_graph_innovations(
+        {
+            (universe.nodes[i].ticker, universe.nodes[i].expiry): float(
+                y[0] - baseline[i, 0]
+            )
+            for i, y in calibrated_by_idx.items()
+        }
     )
     return ExtrapolationSolution(
         universe=universe,
