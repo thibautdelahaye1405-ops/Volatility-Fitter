@@ -21,10 +21,11 @@ releases in order; within a release, items are independent unless noted.
   instances first (one container per client desk; own state + DB; dodges the
   AppState multi-tenancy rewrite; SQLite stays viable for v1). This CLOSES the
   "Phase 2 deployment-model decision" that earlier STATUS entries left open.
-- **Data rights: prefer bring-your-own-entitlement** — the client's instance
-  connects with THEIR feed credentials (provider registry already supports
-  this); we ship computation + surfaces + lineage, not market data. Clarify
-  provider redistribution terms during R0/R1 — longest lead time in the plan.
+- **Data rights: bring-your-own-entitlement ASSUMED (user, 2026-07-10)** —
+  the client's instance connects with THEIR feed credentials (provider
+  registry already supports this); we ship computation + surfaces + lineage,
+  not market data. Redistribution talks PARKED; revisit only if BYO fails
+  commercially with a design partner.
 - **0DTE ambition: research/replay grade v1** (flat-file intraday capture +
   deterministic replay; SPY/QQQ/IWM, no index-feed or realtime spend). Live
   0DTE is a post-hosting, client-entitled feature.
