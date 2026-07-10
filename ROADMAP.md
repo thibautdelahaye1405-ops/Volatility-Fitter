@@ -8,6 +8,148 @@ are smiles `(underlying, T)`, using the OT-regularized Bayesian solver of
 
 ---
 
+## FORWARD ROADMAP v2 — adopted 2026-07-10 (hosted-product arc)
+
+User-ratified plan (strategy session 2026-07-10). Guiding constraint, applied
+to ourselves first: **no new sophistication without calibrated uncertainty,
+replayable lineage, and a benchmark showing it adds value.** Work down the
+releases in order; within a release, items are independent unless noted.
+
+### Strategic decisions (settled 2026-07-10 — do not re-litigate)
+
+- **Deployment model: hosted multi-user product**, reached via single-tenant
+  instances first (one container per client desk; own state + DB; dodges the
+  AppState multi-tenancy rewrite; SQLite stays viable for v1). This CLOSES the
+  "Phase 2 deployment-model decision" that earlier STATUS entries left open.
+- **Data rights: prefer bring-your-own-entitlement** — the client's instance
+  connects with THEIR feed credentials (provider registry already supports
+  this); we ship computation + surfaces + lineage, not market data. Clarify
+  provider redistribution terms during R0/R1 — longest lead time in the plan.
+- **0DTE ambition: research/replay grade v1** (flat-file intraday capture +
+  deterministic replay; SPY/QQQ/IWM, no index-feed or realtime spend). Live
+  0DTE is a post-hosting, client-entitled feature.
+- **Borrow: option-implied (tier 2) is the best available input** — the
+  identifiability diagnostic is the CORE object; "unidentified" is the common
+  state for single names and the UX must present it calmly. Publish blocking
+  only on (material American correction × unidentified carry).
+- **Governance audience: prospective-client due diligence** — replay bar is
+  "documented tolerance", not bit-exactness; certification/ζ/replay artifacts
+  are sales collateral and should emit client-facing reports.
+
+### R0 — Honest measurement + certification pack  ← CURRENT
+
+1. **Calm-regime dark-name band widening** (the ζ std ~1.9 overconfident cell
+   in low_jul2023): event/earnings-aware dark baseline uncertainty, then ζ
+   calibration conditioned on regime / asset type / liquidity / earnings
+   proximity. Must NOT degrade spike-regime honesty (ζ 1.02–1.10).
+2. **LV quality on converged-operator reprices** — quality-tab LV rmsBp shares
+   the in-operator blindness found in the short-dated diagnosis; judge LV on
+   reprices from the converged operator.
+3. **Extrapolated-arb Phase 3** — publish-time wing-only projection (core
+   pinned), so hard publish gates have teeth.
+4. **Stress/certification pack v0** — freeze the 3 captured regimes + every
+   named historical bug (liquid_split one-way edges, zero-carry synthesis,
+   convex-wing×fine-grid 26bp, fig_siv_g arb target, R3 ATM gap, React-#300
+   smoke catch, …) into a regenerable matrix: market regimes × data failures ×
+   model stress. Quality publish gate consumes the SAME case definitions.
+   Emits a client-facing certification report (deck-tooling precedent).
+   Fold in dangling follow-ups: 25-asset capture reruns, deck slide-7 refresh.
+
+### R1 — Foundations, multi-tenant-ready by design
+
+5. **Exact timestamp/settlement semantics** (schema bump — valuation, last
+   trading, exercise, settlement times; AM/PM, holidays, half-days). Do BEFORE
+   more captures accumulate day-granular maturities.
+6. **Short-dated quote preparation**: price/bid-ask-space residuals as the
+   authoritative object near zero vega, explicit intrinsic tolerance,
+   vega-floor incidence diagnostics, quarantine (not unstable IVs). NOT
+   0DTE-specific — validate on tests/fixtures/lv_weekly_massive.json first.
+7. **CarryCurve v0**: versioned {discount, dividends, borrow} with per-
+   component source tags (observed/desk/parity-implied/prior), identifiability
+   diagnostics, explicit "unidentified" state, publish block. No joint solve
+   yet.
+8. **Governance kernel**: SurfaceManifest (hash-chained parents, dedupe,
+   retention policy), append-only event log (actor field, constant "desk" for
+   now), lifecycle state machine (Captured→Prepared→Calibrated→Reviewed→
+   Published; →Rejected; Published→Superseded/Recalled), one-command
+   replay-to-tolerance report.
+9. **State-scoping refactor**: AppState → serializable workspace object.
+   Prerequisite for hosting, replay, AND durable filter state. Land it early
+   and ALONE — it can silently break byte-identical conventions the suite
+   locks.
+
+**Hosting track (parallel, decision-first):** provider redistribution terms vs
+BYO-entitlement (start now); single-tenant container packaging spike (the
+desktop-exe single-origin refactor is a head start); auth deferred to R4.
+
+### R2 — Robustness release
+
+10. **0DTE v1 (research grade)**: intraday variance clock (extend the
+    calib/weighted_time.py dual clock to sub-day: remaining trading minutes,
+    session seasonality, close-to-open, scheduled intraday events); new
+    intraday capture campaign via flat files; absolute-timestamp calendar
+    constraints for adjacent dailies; temporal-filter tuning for intraday
+    jumps; fast degraded mode (prior transport + conservative uncertainty,
+    clearly labeled — shares the dark-node uncertainty/provenance machinery).
+    Exit gates run FROM the stress pack: no NaN/IV explosions on valid quotes,
+    deterministic replay, hard publish failure on unresolved intrinsic or
+    calendar inconsistency, sub-50ms warm slice latency, price/band-space
+    quality reporting, next-snapshot held-out vs raw/transport/filter.
+11. **Joint borrow/de-Am fixed point** (borrow/divs → de-Am → parity forward →
+    updated borrow, iterate): discrete dividends consistent in both legs,
+    isolated maturity specials allowed, IV-sensitivity to borrow uncertainty,
+    trader carry view (implied borrow, parity residuals, EEP, confidence by
+    expiry). Exit gates: held-out parity error improves vs implicit forward;
+    known HTB names recover stably; tree-inversion/joint-solve failure rates
+    explicit; ordinary names byte-identical (test-locked from day one).
+
+### R3 — Moat release
+
+12. **Functional posterior for parametric slices**: propagate 3-handle joint
+    covariance (delta-method on the slice map) → full smile credible bands,
+    density/tail-mass bands, var-swap uncertainty, extrapolated-calendar
+    confidence. LV-surface uncertainty CUT from v1 (expensive outlier).
+13. **Active observation selection** (pulled forward from the draft's phase 5
+    — closed-form on graph/precision.py, rank-one/Schur, no refit): "which
+    dark node to quote next for max posterior-variance reduction", optionally
+    exposure-weighted. Prospect-demo centerpiece. Prereq: item 1 (calibrated
+    bands), else recommendations mislead.
+14. **Learned shrunk betas** as a benchmark-adjudicated ablation (index↔ETF,
+    ETF↔constituents, sector peers, calendar-within-underlying; shrink hard —
+    3 regimes × 25 assets is thin; strict time-split; auto-reject unstable/
+    sign-flipping edges; every edge editable + versioned). Plus the **OT
+    ablation decision**: demonstrate repeatable incremental value and activate,
+    or reposition as Bayesian graph propagation (deck honesty pass already
+    leans that way). Expect a modest delta over β=1 — let the pack decide.
+
+### R4 — State release + first hosted deployment
+
+15. **Graph-coupled temporal state**: durable filter state (rides the R1
+    workspace object), adaptive-Q shock handling in active MAP, then one
+    sparse update combining temporal prediction + graph precision. Overlay
+    ONLY, benchmarked vs raw fit / single-node Kalman / static graph
+    posterior / transported prior, with PRE-REGISTERED kill criteria. Goal:
+    separate systematic repricing / idio moves / observation noise / missing
+    information — not smoother surfaces.
+16. **First single-tenant hosted instance** with a design-partner desk —
+    forces auth, live actor field in the event log, and the enterprise slice
+    of model/config governance (registry: model+version, approved scope,
+    limitations, default rationale, validation-pack version, perf budget,
+    change→which-certifications-rerun) driven by a real user.
+
+### Named risks
+
+- **Data rights have the longest fuse** — if BYO-entitlement fails
+  commercially, R4's shape changes; get the answer during R0/R1.
+- **State-scoping refactor** can silently break byte-identical test locks —
+  isolate it.
+- **Manifest volume at intraday cadence** — hash-chain + parent dedupe +
+  retention policy or SQLite eats the disk.
+- **Gate false positives kill the story** — "refuses to publish what it can't
+  defend" only sells if gates rarely cry wolf; hence R0 first.
+
+---
+
 ## STATUS — updated 2026-07-09 (resume here)
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
