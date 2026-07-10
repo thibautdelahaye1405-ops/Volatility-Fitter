@@ -413,7 +413,14 @@ crossings and wing-slope order over the time-value envelope, advisory only
 the SVI/MCS overlay fits, budgeted in vol units at a fraction of the data
 weight so it leans without outvoting quotes; the far-field calendar order is
 enforced through the SCALAR wing-slope condition, never pointwise. Note~10's
-matching remark carries the mechanism and the measured lean/cost trade.}
+matching remark carries the mechanism and the measured lean/cost trade.
+Phase 3 (2026-07-10): the publish-time wing-only projection --- exported
+curve samples lifted onto the discrete arbitrage-free cone in OTM-price
+space, traded core pinned byte-identically, fits and in-app views untouched
+(\nolinkurl{volfit/models/projection.py}); the projection is a repair, so
+its \emph{authority} is confined to the wings per \cref{sec:principle} even
+though the constraints it restores extend there. Note~10's remark carries
+the mechanism.}
 \end{remark}
 
 %======================================================================

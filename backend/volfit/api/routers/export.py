@@ -34,13 +34,19 @@ def export_surfaces(
     format: str = "json",
     tickers: str | None = None,
     fit_mode: str | None = None,
+    project_wings: bool = True,
 ) -> Response:
     """Download the calibrated surfaces (fitted nodes only) + manifest.
 
     ``format=json`` is the full-fidelity artifact (curves, LQD params, LV grid,
-    per-node quality); ``format=csv`` flattens the curves for Excel."""
+    per-node quality); ``format=csv`` flattens the curves for Excel.
+    ``project_wings`` (default on) applies the Notes 09/10 Phase-3 publish-time
+    wing projection — the published wings are discrete-arb-free, the traded
+    core byte-identical; ``project_wings=false`` exports the raw model wings."""
     state = request.app.state.volfit
-    export = build_surface_export(state, fit_mode, _tickers_param(tickers))
+    export = build_surface_export(
+        state, fit_mode, _tickers_param(tickers), project_wings=project_wings
+    )
     if format == "csv":
         return Response(
             content=surface_export_csv(export),

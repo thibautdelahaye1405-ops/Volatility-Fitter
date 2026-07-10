@@ -203,10 +203,22 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   acceptable nfev.** Note the first-order-scheme caveat: the dt/4 reference
   still carries ~25% of the operator error, so the metric slightly
   UNDERSTATES.
-- **NEXT (R0):** item 3 extrap-arb Phase 3 (publish projection); item 4
-  stress/certification pack v0 (the operator catch above becomes a named
-  case). Follow-ups parked: per-interval dt refinement (above); skew/curv
-  band widening rides R3's handle-covariance work.
+- **R0 item 3 SHIPPED — extrap-arb Phase 3, publish-time wing projection
+  (core pinned).** New `volfit/models/projection.py`: exported curve samples
+  repaired per wing in OTM-price space (calls right / puts left) — outward
+  from the pinned traded edge, prices lifted onto the discrete arb-free cone
+  (non-increasing, convex in strike incl. the core seam, ≥ the previous
+  PUBLISHED expiry's price; ascending-maturity sweep so the artifact is
+  jointly ordered) then inverted back to w. Repair only RAISES wing prices;
+  clean wing ⇒ byte-identical export (exact no-op); fits/views untouched;
+  floor above the pinned core edge = core conflict → capped + flagged
+  `wingsClean=false`, never repaired. Rides GET /export/surfaces (default
+  ON, `project_wings=false` = raw wings), `ExportNode.curveProjected` +
+  manifest `wingProjection/projectedNodes`. Notes 09/10 remarks updated +
+  PDFs rebuilt. Tests: test_wing_projection.py (6).
+- **NEXT (R0):** item 4 stress/certification pack v0 (the LV operator catch
+  above becomes a named case). Follow-ups parked: per-interval dt refinement
+  (above); skew/curv band widening rides R3's handle-covariance work.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

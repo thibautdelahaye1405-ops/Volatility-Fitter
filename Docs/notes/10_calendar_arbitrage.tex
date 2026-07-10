@@ -298,8 +298,24 @@ never outvote the data: on a clean pair the fit is untouched to fit
 precision; on a genuine mild crossing ($\sim$450 bp) the enforcement halves
 it at $\sim$29 bp of traded-range RMS
 (\nolinkurl{tests/test\_extrap\_enforce.py} locks all four contracts).
-Phase 3 --- a publish-time wing-only projection with the data core pinned
---- remains open.
+
+\emph{Phase 3 shipped (2026-07-10) --- publish-time wing-only projection,
+core pinned.} The \emph{exported} curve samples
+(\texttt{GET /export/surfaces}, default on, \texttt{project\_wings=false}
+restores the raw model wings) are repaired in OTM-price space per wing
+(\nolinkurl{volfit/models/projection.py}): going outward from the pinned
+traded edge, prices are lifted onto the discrete arbitrage-free cone ---
+non-increasing, convex in strike including the seam with the core, and at or
+above the previous \emph{published} expiry's price at the same log-moneyness,
+expiries processed in ascending maturity --- then inverted back to total
+variance. The repair only ever \emph{raises} wing prices; a clean wing
+exports byte-identically; fits, cached calibrations and every in-app view
+are untouched (the projection moves prices, so per Note~09's confinement
+principle its \emph{authority} is confined to the wings even though the
+constraints it restores extend there); a floor exceeding the pinned traded
+edge --- a \emph{core} calendar conflict, the fit's business --- is capped
+and flagged (\texttt{wingsClean=false}) rather than repaired
+(\nolinkurl{tests/test\_wing\_projection.py}).
 \end{remark}
 
 %======================================================================

@@ -28,6 +28,7 @@ from volfit.api import service
 from volfit.api.quality import build_quality_report
 from volfit.api.schemas_quality import QualityNode
 from volfit.api.state import AppState
+from volfit.models.projection import ProjectedWings, project_published_wings
 
 
 class ExportPoint(BaseModel):
@@ -58,6 +59,15 @@ class ExportNode(BaseModel):
     lqdParams: dict  # the analytic LQD backbone {L, R, a[]} (reproducibility)
     quality: ExportNodeQuality
     curve: list[ExportPoint]
+    #: Notes 09/10 Phase 3: the published wings were projected onto the
+    #: discrete arb-free set (traded core byte-identical). When True, the
+    #: curve's wings differ from the raw displayed model — and from a curve
+    #: reconstructed from ``lqdParams``, which stay the UNPROJECTED model.
+    curveProjected: bool = False
+    #: False when the previous expiry's published wing exceeded this node's
+    #: pinned traded edge — a core calendar conflict the wing projection must
+    #: not repair (it belongs to the fit / quality gate).
+    wingsClean: bool = True
 
 
 class ExportLocalVol(BaseModel):
@@ -91,6 +101,11 @@ class ExportManifest(BaseModel):
     fittedNodes: int
     litNodes: int  # fitted + not-yet-calibrated (export carries fitted only)
     readyNodes: int  # publish-ready per the quality rule
+    #: Notes 09/10 Phase 3 provenance: whether the publish-time wing projection
+    #: ran, and how many nodes it actually moved (0 with wingProjection=True
+    #: means every wing was already arb-clean — the projection is a no-op).
+    wingProjection: bool = True
+    projectedNodes: int = 0
 
 
 class SurfaceExport(BaseModel):
@@ -133,8 +148,23 @@ def build_manifest(state: AppState, fit_mode: str, report, tickers: list[str]) -
     )
 
 
-def _export_node(state: AppState, ticker: str, row: QualityNode, fit_mode: str) -> ExportNode | None:
-    """One fitted node's export payload (None if its cache entry vanished)."""
+def _export_node(
+    state: AppState,
+    ticker: str,
+    row: QualityNode,
+    fit_mode: str,
+    project: bool = True,
+    prev_pub: tuple[np.ndarray, np.ndarray] | None = None,
+) -> tuple[ExportNode, tuple[np.ndarray, np.ndarray]] | None:
+    """One fitted node's export payload (None if its cache entry vanished).
+
+    With ``project`` the PUBLISHED wings are projected onto the discrete
+    arb-free set (Notes 09/10 Phase 3): traded core byte-identical, wings
+    lifted to butterfly cleanliness and to the calendar floor of the previous
+    expiry's PUBLISHED curve ``prev_pub`` (call ascending in maturity). The
+    second return element is this node's published (k, w) — the next expiry's
+    floor. In-app views and cached fits are untouched.
+    """
     ptr = state.get_calibrated_ptr(ticker, row.expiry, fit_mode)
     record = state.get_fit(ptr[0]) if ptr is not None else None
     if record is None:
@@ -142,18 +172,33 @@ def _export_node(state: AppState, ticker: str, row: QualityNode, fit_mode: str) 
     prepared = record.prepared
     forward = float(prepared.forward)
     tau = float(prepared.tau)
+    points = service.model_curve(record)
+    k_arr = np.array([p.k for p in points])
+    w_arr = np.array([p.vol * p.vol * tau for p in points])
+    projected = ProjectedWings(w=w_arr, changed=False, fully_clean=True)
+    if project and prepared.k.size:
+        projected = project_published_wings(
+            k_arr, w_arr,
+            float(np.min(prepared.k)), float(np.max(prepared.k)),
+            prev_k=prev_pub[0] if prev_pub is not None else None,
+            prev_w=prev_pub[1] if prev_pub is not None else None,
+        )
+    w_pub = np.asarray(projected.w, dtype=float)
+    iv_pub = np.sqrt(np.maximum(w_pub, 0.0) / tau) if tau > 0.0 else w_pub * 0.0
     curve = [
         ExportPoint(
             k=p.k,
             strike=forward * float(np.exp(p.k)),
-            iv=p.vol,
-            w=p.vol * p.vol * tau,
+            # Samples the projection moved re-derive IV from the projected w;
+            # untouched samples (the whole core) stay byte-identical.
+            iv=float(iv_pub[i]) if w_pub[i] != w_arr[i] else p.vol,
+            w=float(w_pub[i]),
         )
-        for p in service.model_curve(record)
+        for i, p in enumerate(points)
     ]
     params = record.result.params
     var_swap_w = service.displayed_var_swap_w(record)
-    return ExportNode(
+    node = ExportNode(
         expiry=row.expiry,
         t=float(prepared.t),
         tau=tau,
@@ -167,7 +212,10 @@ def _export_node(state: AppState, ticker: str, row: QualityNode, fit_mode: str) 
             ready=row.ready, issues=row.issues,
         ),
         curve=curve,
+        curveProjected=projected.changed,
+        wingsClean=projected.fully_clean,
     )
+    return node, (k_arr, w_pub)
 
 
 def _export_local_vol(state: AppState, ticker: str) -> ExportLocalVol | None:
@@ -181,9 +229,16 @@ def _export_local_vol(state: AppState, ticker: str) -> ExportLocalVol | None:
 
 
 def build_surface_export(
-    state: AppState, fit_mode: str | None = None, tickers: list[str] | None = None
+    state: AppState,
+    fit_mode: str | None = None,
+    tickers: list[str] | None = None,
+    project_wings: bool = True,
 ) -> SurfaceExport:
-    """Assemble the export from cached fits only (fitted nodes; publish set)."""
+    """Assemble the export from cached fits only (fitted nodes; publish set).
+
+    ``project_wings`` (default ON) runs the Notes 09/10 Phase-3 publish-time
+    wing projection per ticker in ascending maturity, so the published surface
+    is jointly wing-arb-free; clean wings export byte-identical curves."""
     mode = fit_mode if fit_mode is not None else state.last_fit_mode
     report = build_quality_report(state, mode)
     chosen = set(tickers) if tickers else None
@@ -193,12 +248,20 @@ def build_surface_export(
             rows_by_ticker.setdefault(row.ticker, []).append(row)
 
     out: list[ExportTicker] = []
+    projected_nodes = 0
     for ticker, rows in rows_by_ticker.items():
-        nodes = [
-            node
-            for row in rows
-            if (node := _export_node(state, ticker, row, mode)) is not None
-        ]
+        nodes: list[ExportNode] = []
+        prev_pub: tuple[np.ndarray, np.ndarray] | None = None
+        # Ascending maturity: each node's calendar floor is the PREVIOUS
+        # expiry's published (projected) curve, so the artifact is ordered.
+        for row in sorted(rows, key=lambda r: r.tau):
+            built = _export_node(state, ticker, row, mode,
+                                 project=project_wings, prev_pub=prev_pub)
+            if built is None:
+                continue
+            node, prev_pub = built
+            projected_nodes += int(node.curveProjected)
+            nodes.append(node)
         if not nodes:
             continue
         snapshot = state.snapshot(ticker)  # present: the ticker has cached fits
@@ -212,10 +275,11 @@ def build_surface_export(
                 localVol=_export_local_vol(state, ticker),
             )
         )
-    return SurfaceExport(
-        manifest=build_manifest(state, mode, report, [t.ticker for t in out]),
-        tickers=out,
+    manifest = build_manifest(state, mode, report, [t.ticker for t in out])
+    manifest = manifest.model_copy(
+        update={"wingProjection": project_wings, "projectedNodes": projected_nodes}
     )
+    return SurfaceExport(manifest=manifest, tickers=out)
 
 
 #: CSV column order — flat, one row per curve point, Excel-friendly.
