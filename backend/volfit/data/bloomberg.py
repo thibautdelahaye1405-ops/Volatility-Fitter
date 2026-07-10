@@ -53,7 +53,7 @@ from volfit.data.bloomberg_search import instrument_search
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Bloomberg "yellow key" asset-class words that complete a security string
 #: ("SPX Index", "SAP GY Equity"). Stored canonically (title-case) and indexed
@@ -419,6 +419,7 @@ class BloombergProvider(OptionChainProvider):
             timestamp=timestamp,
             quotes=quotes,
             exercise_style=_resolve_style(styles),
+            tick_size=US_OPTION_TICK,
         )
 
     # -- dividends (provider-specific capability, not part of the contract) --

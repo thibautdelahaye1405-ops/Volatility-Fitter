@@ -40,7 +40,7 @@ from typing import Callable, Iterable
 
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.occ import parse_option_symbol
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Default S3-compatible host + bucket. ``files.massive.com`` is the active
 #: Massive host (live-verified 2026-06-15); the legacy ``files.polygon.io`` serves
@@ -150,6 +150,7 @@ class FlatFileStore:
         return ChainSnapshot(
             ticker=upper, spot=spot, timestamp=ts, quotes=quotes,
             exercise_style="american",  # US single-stock / ETF options
+            tick_size=US_OPTION_TICK,
         )
 
     # ------------------------------------------------------------- internals

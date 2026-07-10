@@ -38,7 +38,7 @@ from typing import Callable, Iterator, Sequence
 from volfit.core.black import black_call
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Default REST host (api.polygon.io still works for legacy keys).
 DEFAULT_BASE_URL = "https://api.massive.com"
@@ -63,6 +63,34 @@ _INTRADAY_REST_MAX = 40
 #: a generous safety cap on the selection size (the user's expiry pick bounds it).
 _AGG_CONCURRENCY = 12
 _INTRADAY_AGG_MAX = 1500
+
+
+#: Carried on every real-price chain so quote prep can screen tick-noise
+#: quotes (ChainSnapshot.tick_size). The IV-synthesized fallback chain is
+#: exact Black prices and deliberately does NOT set it.
+_US_OPTION_TICK = US_OPTION_TICK
+
+
+def _ns_to_utc_naive(ns) -> datetime | None:
+    """Provider epoch timestamp -> UTC-naive datetime (the stored form).
+
+    The WS feed's ``t`` is nominally nanoseconds but Polygon channels have
+    shipped ms too, so the unit is inferred from magnitude; values outside
+    2001..2286 (epoch 1e9..1e10 seconds) return None rather than stamping a
+    chain with a nonsense date (callers then fall back to the wall clock)."""
+    if ns is None:
+        return None
+    try:
+        seconds = float(ns)
+    except (TypeError, ValueError):
+        return None
+    while seconds >= 1e10:  # ns -> us -> ms -> s, whichever the feed sent
+        seconds /= 1e3
+    if not 1e9 <= seconds < 1e10:
+        return None
+    return datetime.fromtimestamp(seconds, tz=timezone.utc).replace(
+        tzinfo=None, microsecond=0
+    )
 
 
 def _iso_date(value) -> date | None:
@@ -428,15 +456,25 @@ class MassiveProvider(OptionChainProvider):
     ) -> ChainSnapshot | None:
         """Build the live chain from the streamed NBBO book for the selected
         contracts. None until enough two-sided quotes are booked to imply a
-        forward (so the caller can REST-fetch the first frame)."""
+        forward (so the caller can REST-fetch the first frame).
+
+        The chain (and each quote) is stamped with the PROVIDER tick times, not
+        the wall clock: the book retains each contract's last tick across quiet
+        periods, so a premarket fetch otherwise relabels yesterday's closing
+        NBBO as a fresh "live" snapshot — the timestamp is the only honest
+        staleness signal the viewer gets."""
         contracts = self._intraday_contracts(ticker, expiries)
         if not contracts:
             return None
-        timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+        now = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+        newest: datetime | None = None
         quotes: list[OptionQuote] = []
         styles: list[str] = []
         for c in contracts:
             tick = self._live_book.quote(c["ticker"]) if self._live_book else None
+            tick_ts = _ns_to_utc_naive(tick.ts) if tick is not None else None
+            if tick_ts is not None and (newest is None or tick_ts > newest):
+                newest = tick_ts
             quotes.append(
                 OptionQuote(
                     ticker=ticker.upper(),
@@ -448,7 +486,7 @@ class MassiveProvider(OptionChainProvider):
                     last=None,
                     volume=None,
                     open_interest=None,
-                    timestamp=timestamp,
+                    timestamp=tick_ts or now,
                 )
             )
             if c["style"] in ("american", "european"):
@@ -457,8 +495,9 @@ class MassiveProvider(OptionChainProvider):
         if spot is None:
             return None
         return ChainSnapshot(
-            ticker=ticker.upper(), spot=spot, timestamp=timestamp,
+            ticker=ticker.upper(), spot=spot, timestamp=newest or now,
             quotes=quotes, exercise_style=_resolve_style(styles),
+            tick_size=_US_OPTION_TICK,
         )
 
     def fetch_chain(
@@ -568,6 +607,7 @@ class MassiveProvider(OptionChainProvider):
             timestamp=timestamp,
             quotes=quotes,
             exercise_style=_resolve_style(styles),
+            tick_size=_US_OPTION_TICK,
         )
 
     def _chain_from_iv(
@@ -758,7 +798,7 @@ class MassiveProvider(OptionChainProvider):
             )
         return ChainSnapshot(
             ticker=ticker.upper(), spot=spot, timestamp=ts, quotes=quotes,
-            exercise_style=_resolve_style(styles),
+            exercise_style=_resolve_style(styles), tick_size=_US_OPTION_TICK,
         )
 
     # -- intraday replay (historical NBBO at an instant) ---------------------
@@ -862,6 +902,7 @@ class MassiveProvider(OptionChainProvider):
             timestamp=ts,
             quotes=quotes,
             exercise_style=_resolve_style(styles),
+            tick_size=_US_OPTION_TICK,
         )
 
     def _spot_at(self, ticker: str, ns: int) -> float:

@@ -38,7 +38,7 @@ from typing import Callable, Sequence
 from volfit.data.fieldmap import int_or_none as _int_or_none
 from volfit.data.fieldmap import price_or_none as _price_or_none
 from volfit.data.provider import OptionChainProvider, SymbolMatch
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Yahoo autocomplete endpoint and the option-bearing quote types we surface.
 _SEARCH_URL = "https://query2.finance.yahoo.com/v1/finance/search"
@@ -309,4 +309,5 @@ class YahooProvider(OptionChainProvider):
             timestamp=timestamp,
             quotes=quotes,
             exercise_style=self._exercise_style(ticker),
+            tick_size=US_OPTION_TICK,
         )

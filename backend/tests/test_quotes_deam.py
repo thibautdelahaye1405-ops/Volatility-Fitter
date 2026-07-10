@@ -238,6 +238,42 @@ def test_prefilter_drops_nonpositive_bid_rows_before_deam():
     assert on.n_deam_input < off.n_deam_input  # but ON never de-Amed it
 
 
+# -- tick-noise floor ---------------------------------------------------------
+
+
+def test_tick_floor_drops_few_tick_quotes_on_real_feed_chains():
+    """On a chain carrying a venue tick size, OTM quotes priced at <= 3 ticks
+    are dropped (their IV is quantization noise — the SPY weekly staircase);
+    the same chain without a tick size keeps them (exact-price pipelines are
+    byte-identical)."""
+    from dataclasses import replace
+
+    chain = make_european_chain()
+    # A near-wing call inside Z_MAX quoted at 2 ticks — pure tick noise.
+    junk_strike = 1.22 * FORWARD
+    junk = OptionQuote(
+        ticker="X", expiry=EXPIRY, strike=junk_strike, call_put="C",
+        bid=0.01, ask=0.03, last=0.02, timestamp=TIMESTAMP,
+    )
+    plain = ChainSnapshot(
+        "X", SPOT, TIMESTAMP, [*chain.quotes, junk], exercise_style="european"
+    )
+    ticked = replace(plain, tick_size=0.01)
+
+    kept = prepare_quotes(plain, EXPIRY, RESOLVED, T)
+    screened = prepare_quotes(ticked, EXPIRY, RESOLVED, T)
+    k_junk = float(np.log(junk_strike / FORWARD))
+    assert np.isclose(kept.k, k_junk).any()  # no tick size: the row survives
+    assert not np.isclose(screened.k, k_junk).any()  # ticked feed: dropped
+    # Every other quote is untouched — the screen only removes the junk row
+    # (to inversion tolerance: the vectorized batch iterates to joint
+    # convergence, so per-row results can move by ulps when the batch changes).
+    assert screened.k.size == kept.k.size - 1
+    keep_mask = ~np.isclose(kept.k, k_junk)
+    assert np.array_equal(screened.k, kept.k[keep_mask])
+    assert np.allclose(screened.w_mid, kept.w_mid[keep_mask], rtol=0, atol=1e-10)
+
+
 # -- stale edit indices -------------------------------------------------------
 
 

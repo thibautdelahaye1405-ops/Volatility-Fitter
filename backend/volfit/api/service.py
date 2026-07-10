@@ -80,7 +80,13 @@ from volfit.models.lqd.calibrate import CalibrationResult
 #: Model-curve sampling: points over the extended (≥[-1,1]) display grid; denser
 #: than before to keep ATM resolution across the wider range. K_PAD pads the
 #: OBSERVED range used for the brush extent / default window.
+#: N_CORE_POINTS of the budget are concentrated on the observed quote range —
+#: a 1-week smile spans only a few percent of the fixed display range, and a
+#: uniform grid drew it with ~10 samples (visibly piecewise-linear at the ATM
+#: curvature); the wings beyond the quotes are smooth extrapolation and keep
+#: reading fine at the coarser spacing.
 N_MODEL_POINTS = 241
+N_CORE_POINTS = 121
 K_PAD = 0.02
 
 #: Minimum log-moneyness display range every drawn curve/mesh is extended to
@@ -834,15 +840,37 @@ def fill_nonfinite(vols: np.ndarray) -> np.ndarray:
     return out
 
 
+def _display_grid(k_lo: float, k_hi: float, core_lo: float, core_hi: float) -> np.ndarray:
+    """N_MODEL_POINTS display abscissae: N_CORE_POINTS dense over the observed
+    quote range [core_lo, core_hi], the rest split over the extrapolation wings
+    proportionally to their width. On a short-dated slice the quotes cover a few
+    percent of the display range — uniform sampling rendered the whole smile
+    with ~10 segments (kinked to the eye) while wasting the budget on the wings."""
+    core_lo, core_hi = max(k_lo, core_lo), min(k_hi, core_hi)
+    n_wings = N_MODEL_POINTS - N_CORE_POINTS
+    left, right = core_lo - k_lo, k_hi - core_hi
+    if left + right <= 0.0:  # quotes span the whole display range: plain uniform
+        return np.linspace(k_lo, k_hi, N_MODEL_POINTS)
+    n_left = int(round(n_wings * left / (left + right)))
+    n_right = n_wings - n_left
+    return np.concatenate([
+        np.linspace(k_lo, core_lo, n_left, endpoint=False),
+        np.linspace(core_lo, core_hi, N_CORE_POINTS, endpoint=(n_right == 0)),
+        np.linspace(core_hi, k_hi, n_right + 1)[1:] if n_right else np.empty(0),
+    ])
+
+
 def model_curve(record: FitRecord) -> list[SmilePoint]:
     """Sample the displayed slice's IV curve, extended to at least
     k ∈ [-1.4, 1] so the model wings are drawn well beyond the observed quotes
     (the put wing reaches further). The smile's brush still defaults to the
     observed range (SmileData.kMin/kMax); zooming or panning out reveals the
-    extension."""
-    k_lo = min(K_DISPLAY_LO, float(record.prepared.k.min()) - K_PAD)
-    k_hi = max(K_DISPLAY_HI, float(record.prepared.k.max()) + K_PAD)
-    grid = np.linspace(k_lo, k_hi, N_MODEL_POINTS)
+    extension. The grid is denser inside the observed range (``_display_grid``)."""
+    k_obs_lo = float(record.prepared.k.min()) - K_PAD
+    k_obs_hi = float(record.prepared.k.max()) + K_PAD
+    k_lo = min(K_DISPLAY_LO, k_obs_lo)
+    k_hi = max(K_DISPLAY_HI, k_obs_hi)
+    grid = _display_grid(k_lo, k_hi, k_obs_lo, k_obs_hi)
     w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
     vols = fill_nonfinite(np.sqrt(w / record.prepared.tau))
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]

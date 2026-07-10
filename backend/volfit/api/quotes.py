@@ -31,6 +31,12 @@ cannot invert (nan sigma) keep their raw prices and fall through to the
 European static-bounds filter. The tree's carry comes from the resolved
 forward itself: r = -ln(D)/t and q = r - ln(F/spot)/t.
 
+Tick-noise floor: on chains from real market feeds (``ChainSnapshot.tick_size``
+set), OTM quotes priced at or below ``TICK_FLOOR_TICKS`` ticks are dropped
+before anything else — their price quantum, not the market, sets the implied
+vol (see the constant's note for the SPY weekly staircase this cures). Exact-
+price chains (synthetic, IV-synthesized) carry no tick size and skip it.
+
 Wing filter (the Phase-3 "outlier filter" item): quotes further than
 Z_MAX standard deviations from the forward, |k| > Z_MAX * sqrt(w_atm),
 are excluded. Such options carry essentially no vega, so their implied
@@ -75,6 +81,19 @@ Z_MAX = 4.0
 #: estimated from the raw American mids is >= the de-Amed one, so the buffered
 #: cut is strictly looser than the final cut. 1.5 leaves generous margin.
 PREFILTER_WING_BUFFER = 1.5
+
+#: Tick-noise price floor, in ticks of the snapshot's venue increment: OTM
+#: quotes whose mid is at or below this many ticks are dropped — a price known
+#: only to ±half a tick out of ≤3 ticks carries no implied-vol information.
+#: The failure mode it removes is vivid on short-dated wings priced off a
+#: stale/delayed feed: SPY 1-week calls quoted flat at $0.02 across 14 strikes
+#: invert to an IV "ramp" from 11% to 15% with a gap down at every one-tick
+#: step, and the smile fit chases that staircase. The Z_MAX moneyness filter
+#: cannot catch these — on a steep weekly they sit well inside 4 sd. Only
+#: chains from real market feeds carry a ``tick_size`` (see ChainSnapshot);
+#: synthetic / IV-exact chains have no price quantum and skip the floor, so
+#: every exact-price pipeline stays byte-identical.
+TICK_FLOOR_TICKS = 3.0
 
 
 @dataclass(frozen=True)
@@ -211,6 +230,10 @@ def prepare_quotes(
     tv = t if tau is None or tau <= 0.0 else tau
     f, d = forward.forward, forward.discount
     scale = 1.0 / (d * f)
+    # Tick-noise floor (module doc): only real-feed chains carry a tick size.
+    price_floor = (
+        TICK_FLOOR_TICKS * snapshot.tick_size if snapshot.tick_size else None
+    )
 
     # Raw rows first: (k, strike, is_call, bid, mid, ask) in price space —
     # de-Americanization needs strikes and option types before normalization.
@@ -220,6 +243,8 @@ def prepare_quotes(
             continue
         if quote.call_put != ("C" if quote.strike >= f else "P"):
             continue  # keep the OTM side only
+        if price_floor is not None and quote.mid <= price_floor:
+            continue  # tick-noise floor: the price quantum dominates the IV
         k = float(np.log(quote.strike / f))
         rows.append((k, quote.strike, quote.call_put == "C", quote.bid, quote.mid, quote.ask))
 

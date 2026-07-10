@@ -18,7 +18,7 @@ from datetime import date, datetime, time, timedelta
 
 from volfit.data.bloomberg_parse import ParsedOption, as_date, columns, pivot_bdh
 from volfit.data.fieldmap import int_or_none, price_or_none
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 #: Historical EOD fields (note the PX_-prefixed names ``bdh`` uses).
 _HIST_FIELDS = ("PX_BID", "PX_ASK", "PX_LAST", "PX_VOLUME", "OPEN_INT")
@@ -76,4 +76,5 @@ def fetch_eod(
         timestamp=timestamp,
         quotes=quotes,
         exercise_style=exercise_style,
+        tick_size=US_OPTION_TICK,
     )

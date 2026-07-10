@@ -316,6 +316,67 @@ def test_fetch_chain_live_serves_from_ws_book():
     assert call100.bid == 4.0 and call100.ask == 4.2  # straight from the streamed book
 
 
+def test_real_chains_carry_tick_size_but_iv_synthesized_do_not():
+    """Real-price chains are stamped with the $0.01 venue tick (quote prep's
+    tick-noise screen keys off it); the IV-synthesized fallback is exact Black
+    prices — no price quantum, no screen."""
+    days = 30
+    res = _snap_result(500, days, "call", quote=True, spot=True)
+    put = _snap_result(400, days, "put", quote=True, spot=True)
+    pages = {"/v3/snapshot/options/SPY": {"results": [res, put], "status": "OK"}}
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages))
+    snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
+    assert snap.tick_size == 0.01
+
+    call = _snap_result(800, days, "call", quote=False, spot=True)
+    put2 = _snap_result(700, days, "put", quote=False, spot=True)
+    call["implied_volatility"] = put2["implied_volatility"] = 0.19
+    pages_iv = {"/v3/snapshot/options/SPY": {"results": [call, put2], "status": "OK"}}
+    provider_iv = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages_iv))
+    synth = provider_iv.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
+    assert synth.zero_carry and synth.tick_size is None
+
+
+def test_book_chain_stamped_with_provider_tick_times():
+    """A chain built from the WS book carries the NEWEST provider tick time,
+    not the wall clock — the book retains yesterday's closing ticks across
+    quiet periods, and relabelling them 'now' would hide the staleness."""
+    from datetime import datetime, timezone
+
+    from volfit.data.massive_ws import LiveBook
+
+    days = 30
+    old = datetime(2026, 7, 9, 20, 14, 0, tzinfo=timezone.utc)
+    older = datetime(2026, 7, 9, 20, 13, 30, tzinfo=timezone.utc)
+    book_prices = {95: (7.0, 2.0), 100: (4.0, 4.0), 105: (2.0, 7.0)}
+    contracts = []
+    for strike in book_prices:
+        for cp in ("call", "put"):
+            contracts.append({
+                "ticker": f"O:SPY{strike}{cp[0].upper()}", "contract_type": cp,
+                "exercise_style": "american", "expiration_date": _exp(days),
+                "strike_price": strike, "underlying_ticker": "SPY",
+            })
+    pages = {"/v3/reference/options/contracts": {"results": contracts, "status": "OK"}}
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages))
+
+    book = LiveBook()
+    for i, (strike, (c, p)) in enumerate(book_prices.items()):
+        ts = old if i == 0 else older
+        ns = int(ts.timestamp() * 1e9)
+        book.apply([
+            {"ev": "Q", "sym": f"O:SPY{strike}C", "bp": c, "ap": c + 0.2, "t": ns},
+            {"ev": "Q", "sym": f"O:SPY{strike}P", "bp": p, "ap": p + 0.2, "t": ns},
+        ])
+    provider._live_book = book
+
+    snap = provider.fetch_chain("SPY", [date.fromisoformat(_exp(days))])
+    assert snap.timestamp == old.replace(tzinfo=None)  # newest tick, UTC-naive
+    assert snap.tick_size == 0.01
+    stamped = [q.timestamp for q in snap.quotes if q.bid is not None]
+    assert set(stamped) <= {old.replace(tzinfo=None), older.replace(tzinfo=None)}
+
+
 def test_ws_url_derives_from_host():
     p = MassiveProvider(["SPY"], api_key="k")
     assert p._ws_url() == "wss://socket.massive.com/options"

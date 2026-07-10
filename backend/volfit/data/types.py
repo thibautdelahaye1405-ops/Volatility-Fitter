@@ -20,6 +20,12 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 
+#: US listed options quote in pennies on the liquid penny-program names this
+#: app targets — real-feed providers stamp it on their chains (see
+#: ``ChainSnapshot.tick_size``) so quote prep can screen tick-noise quotes.
+US_OPTION_TICK = 0.01
+
+
 @dataclass(frozen=True)
 class OptionQuote:
     """One raw option quote as observed from a provider.
@@ -86,6 +92,14 @@ class ChainSnapshot:
     #: model, so a parity regression reads the asymmetry as a spurious
     #: forward/discount. Consumers must pin F = spot, D = 1 instead.
     zero_carry: bool = False
+    #: Price increment of the venue the quotes came from ($0.01 for US penny-
+    #: quoted options), or None when prices are EXACT (synthetic chains, chains
+    #: synthesized from provider IVs). Real feeds set it so quote prep can drop
+    #: OTM quotes priced at a few ticks — there the price quantum, not the
+    #: market, sets the implied vol (a stale weekly wing quoted flat at $0.02
+    #: across many strikes inverts to a fake IV ramp with tick-step gaps).
+    #: Persists with the snapshot (store schema v6) so replays keep the screen.
+    tick_size: float | None = None
 
     def __post_init__(self) -> None:
         if self.exercise_style not in ("european", "american"):

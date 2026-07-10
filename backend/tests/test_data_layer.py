@@ -136,6 +136,21 @@ def test_snapshot_round_trip_keeps_zero_carry(tmp_path, chain):
     assert loaded == flagged
 
 
+def test_snapshot_round_trip_keeps_tick_size(tmp_path, chain):
+    """The venue tick size (real-feed chains, schema v6) survives persistence,
+    so a replayed real chain keeps the tick-noise quote screen; synthetic
+    chains stay None and keep skipping it."""
+    ticked = ChainSnapshot(
+        chain.ticker, chain.spot, chain.timestamp, chain.quotes,
+        chain.exercise_style, tick_size=0.01,
+    )
+    with VolStore(tmp_path / "vol.db") as store:
+        sid_ticked = store.save_snapshot(ticked)
+        sid_plain = store.save_snapshot(chain)
+        assert store.load_snapshot(sid_ticked).tick_size == 0.01
+        assert store.load_snapshot(sid_plain).tick_size is None
+
+
 def test_latest_snapshot(tmp_path, chain):
     later = SyntheticProvider(
         reference_date=REF_DATE + timedelta(days=1), seed=7
