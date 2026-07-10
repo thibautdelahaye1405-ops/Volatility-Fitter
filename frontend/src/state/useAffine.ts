@@ -74,6 +74,11 @@ export interface AffineFitResponse {
   maxPriceError: number;
   rmsIvErrorBp: number;
   maxIvErrorBp: number;
+  /** Converged-operator reprice RMS/max (bp) — the HONEST fit error; a large
+   *  gap to rmsIvErrorBp flags operator-compensated (untrustworthy) fits.
+   *  Optional for older payloads. */
+  rmsConvergedBp?: number;
+  maxConvergedBp?: number;
   /** Whole-surface weighted RMS vol error (decimal), same basis as the
    *  per-expiry rmsError and the Parametric workspace. */
   surfaceRmsError?: number;

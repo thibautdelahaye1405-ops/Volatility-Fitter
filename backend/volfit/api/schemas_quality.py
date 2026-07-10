@@ -59,6 +59,12 @@ class LvQuality(BaseModel):
     rmsIvErrorBp: float
     maxIvErrorBp: float
     surfaceRmsBp: float  # pooled weighted RMS (same basis as the parametric rows)
+    #: HONEST fit RMS (bp): the calibrated surface repriced on a CONVERGED
+    #: operator (dt/4, dx/2 — models.localvol.reprice). In-operator rms is
+    #: blind to time-discretization error (the optimizer compensates), so a
+    #: large gap between this and rmsIvErrorBp flags an operator-compensated
+    #: surface — judge the LV fit by THIS number.
+    rmsConvergedBp: float = 0.0
     arbitrageFree: bool
     calendarViolations: int  # adjacent-maturity price decreases on the PDE grid
     worstMinDensity: float  # most negative per-expiry min density (butterfly proxy)

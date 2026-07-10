@@ -47,6 +47,7 @@ from volfit.models.localvol import (
     varswap_const,
     varswap_weights,
 )
+from volfit.models.localvol.reprice import refined_grids, reprice_affine_dupire
 
 #: Var-swap replication strike floor (matches calibrate_affine's default).
 _VARSWAP_K_LO = 0.01
@@ -1051,15 +1052,30 @@ def _fit(
     )))
     _record_diagnostics(state, ticker, cal.diagnostics)
 
+    # R0.2 (roadmap v2): the HONEST fit metric — one value-only reprice of the
+    # calibrated surface on a converged operator (dt/4, dx/2). Computed after
+    # the solve, so calibration stays byte-identical; quality reads this number
+    # because in-operator residuals are blind to time-discretization error
+    # (the optimizer bends theta to cancel it — the fix-#3 lesson).
+    conv_sol = reprice_affine_dupire(
+        cal.surface.with_left_extrap_a(cal.left_extrap_a),
+        *refined_grids(x_grid, t_grid),
+        expiries=expiries,
+    )
+    conv_index = {float(e): i for i, e in enumerate(conv_sol.expiries)}
+
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
     smiles: list[AffineSmile] = []
     iv_bp_all: list[float] = []
+    conv_bp_all: list[float] = []
     rms_num = rms_den = 0.0  # pooled across expiries -> whole-surface RMS
     for iso, t, k, w, prepared, band in rows:
         i_exp = exp_index[t]
         klo, khi = float(k.min()), float(k.max())
         errs = _iv_error_bp(cal.solution, i_exp, t, k, w)
         iv_bp_all.extend(errs.tolist())
+        errs_conv = _iv_error_bp(conv_sol, conv_index[t], t, k, w)
+        conv_bp_all.extend(errs_conv.tolist())
         model_vs_vol = _model_varswap_vol(
             cal.solution, i_exp, t, x_grid,
             surface=cal.surface, t_grid=t_grid, method=opts.varSwapMethod,
@@ -1083,6 +1099,9 @@ def _fit(
                 varSwap=_affine_varswap_info(state, ticker, iso, model_vs_vol),
                 maxIvErrorBp=float(errs.max()) if errs.size else 0.0,
                 rmsError=rms_of_terms(num, den),
+                rmsConvergedBp=(
+                    float(np.sqrt(np.mean(errs_conv**2))) if errs_conv.size else 0.0
+                ),
                 density=_price_density(cal.solution, i_exp),
                 densityExt=_extended_density(model, t),  # left-extended to k_min=-1.4
             )
@@ -1102,6 +1121,7 @@ def _fit(
         state, ticker, expiry_diagnostics(rows, x_nodes, t_grid, _VEGA_FLOOR, prior_t_counts)
     )
     iv_arr = np.array(iv_bp_all) if iv_bp_all else np.zeros(1)
+    conv_arr = np.array(conv_bp_all) if conv_bp_all else np.zeros(1)
     return AffineFitResponse(
         ticker=ticker,
         tNodes=[float(v) for v in t_nodes],
@@ -1112,6 +1132,8 @@ def _fit(
         maxPriceError=cal.max_price_error,
         rmsIvErrorBp=float(np.sqrt(np.mean(iv_arr**2))),
         maxIvErrorBp=float(iv_arr.max()),
+        rmsConvergedBp=float(np.sqrt(np.mean(conv_arr**2))),
+        maxConvergedBp=float(conv_arr.max()),
         surfaceRmsError=rms_of_terms(rms_num, rms_den),
         minDensity=min_density,
         calendarViolations=calendar,

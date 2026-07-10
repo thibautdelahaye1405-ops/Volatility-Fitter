@@ -117,6 +117,7 @@ def _lv_quality(state: AppState, ticker: str, fit_mode: str) -> LvQuality | None
         rmsIvErrorBp=hit.rmsIvErrorBp,
         maxIvErrorBp=hit.maxIvErrorBp,
         surfaceRmsBp=hit.surfaceRmsError * 1e4,
+        rmsConvergedBp=hit.rmsConvergedBp,
         arbitrageFree=hit.arbitrageFree,
         calendarViolations=hit.calendarViolations,
         worstMinDensity=worst_density,

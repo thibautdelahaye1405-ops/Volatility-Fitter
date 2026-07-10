@@ -81,6 +81,8 @@ def test_ticker_rollup_and_lv_quality():
     assert row.surfaceRmsBp > 0.0 and row.worstNodeRmsBp >= row.surfaceRmsBp / 2
     assert row.lv is not None and row.lv.hasFit and not row.lv.stale
     assert row.lv.rmsIvErrorBp > 0.0
+    # The honest metric rides the same cached response (never recomputed on read).
+    assert row.lv.rmsConvergedBp > 0.0
     assert isinstance(row.lv.arbitrageFree, bool)
     assert report.summary.lvTickers == 1
     # Other tickers were never LV-calibrated: no LV rollup, and reading the

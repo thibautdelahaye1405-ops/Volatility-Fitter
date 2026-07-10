@@ -45,6 +45,10 @@ export interface LvQuality {
   rmsIvErrorBp: number;
   maxIvErrorBp: number;
   surfaceRmsBp: number;
+  /** Honest fit RMS (bp): the surface repriced on a CONVERGED operator —
+   * in-operator rms is blind to time-discretization error, so a large gap
+   * to rmsIvErrorBp flags an operator-compensated surface. */
+  rmsConvergedBp: number;
   arbitrageFree: boolean;
   calendarViolations: number;
   worstMinDensity: number;

@@ -152,7 +152,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ## STATUS — updated 2026-07-10 (resume here)
 
-### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + IDIO BAND FLOOR (R0 item 1) SHIPPED
+### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + R0 ITEMS 1-2 SHIPPED
 
 - **FORWARD ROADMAP v2 adopted** (section above; commit `4256dc4`): R0 honest
   measurement → R1 multi-tenant-ready foundations → R2 0DTE/borrow robustness
@@ -176,10 +176,37 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   `backend/backtest/FINDINGS_graph_loo.md` (2026-07-10 section). Escape
   hatch: `GraphExtrapolateRequest.idioFloor=false` = legacy bands exactly.
   11 new tests (`test_graph_idio.py`).
-- **NEXT (R0):** item 2 LV quality on converged-operator reprices; item 3
-  extrap-arb Phase 3 (publish projection); item 4 stress/certification pack
-  v0. Follow-up parked: skew/curv band widening rides R3's handle-covariance
-  work.
+- **R0 item 2 SHIPPED — converged-operator LV quality metric.** New
+  `volfit/models/localvol/reprice.py`: a value-only implicit-Euler march that
+  mirrors `solve_affine_dupire`'s numerics bit-for-bit (test-locked) but
+  evaluates `surface.variance` per step (O(n_x) memory), so the calibrated
+  surface is repriced ONCE on a refined operator (every calibration time step
+  ÷4, strike step ÷2) at fit-commit. Rides the response as
+  `rmsConvergedBp`/`maxConvergedBp` (+ per-expiry `AffineSmile.
+  rmsConvergedBp`), into `LvQuality.rmsConvergedBp`, the QualityViewer LV
+  cell (converged rms is the headline; `op-err` flag when it dwarfs the
+  in-operator rms), the LocalVol footer, and `lv_benchmark`'s per-expiry
+  table (`conv` column). Calibration byte-identical (computed after the
+  solve). Tests: `test_lv_reprice.py` (6 — bitwise parity, grid contracts,
+  Black convergence, the blindness-exposure fit test).
+- **⚠️ THE METRIC'S FIRST CATCH — the calibration operator is NOT converged
+  past the first expiry.** Synthetic ALPHA: in-operator rms 0.009bp but
+  converged rms 47bp, front expiry (~30d, 9 steps — just clears the fix-#3
+  gate of 8) carries 103bp (decomposition: dt×4 alone = 93bp, dx×2 = 7bp).
+  True-weekly SPY fixture (`lv_benchmark --fixture tests/fixtures/
+  lv_weekly_massive.json`): surface in-op 11.2bp vs CONVERGED 46.2bp — fix #3
+  refined only the FIRST interval (32 steps) while 07-01→07-06 gets 2 steps
+  (conv 77bp vs in-op 13bp) and →07-17 gets 4 (69bp vs 19bp). **Follow-up
+  (calibration-behavior change, own fixture-validated pass): per-interval dt
+  refinement (extend the fix-#3 gate to every short inter-expiry interval,
+  cost-aware); acceptance = conv rms ≈ in-op rms on the weekly fixture at
+  acceptable nfev.** Note the first-order-scheme caveat: the dt/4 reference
+  still carries ~25% of the operator error, so the metric slightly
+  UNDERSTATES.
+- **NEXT (R0):** item 3 extrap-arb Phase 3 (publish projection); item 4
+  stress/certification pack v0 (the operator catch above becomes a named
+  case). Follow-ups parked: per-interval dt refinement (above); skew/curv
+  band widening rides R3's handle-covariance work.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

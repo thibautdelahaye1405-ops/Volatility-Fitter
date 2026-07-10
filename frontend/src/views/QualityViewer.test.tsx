@@ -18,7 +18,7 @@ function node(over: Partial<QualityNode>): QualityNode {
     leeLeft: 0.02, leeRight: 0.01, leeOk: true, calendarViolation: 0,
     calendarOk: true, extrapMinG: 0.94, extrapOk: true, extrapCalBp: 0,
     extrapCalOk: true, wingOrderOk: true, varSwapQuoted: false, filterActive: false,
-    filterContaminated: false, ready: true, issues: [],
+    filterContaminated: false, dataAgeMin: null, ready: true, issues: [],
     ...over,
   };
 }
@@ -35,15 +35,16 @@ function report(): QualityReport {
       tickers: 1, litNodes: 2, darkNodes: 0, fitted: 2, stale: 1, noFit: 0,
       readyNodes: 1, arbFlags: 0, medianRmsBp: 5.6, worstRmsBp: 8.2,
       filterMode: "off", priorMode: "hybrid", lvTickers: 1, lvArbFree: 1,
+      staleDataTickers: 0,
     },
     tickers: [
       {
         ticker: "ALPHA", nodes: 2, fitted: 2, stale: 1, surfaceRmsBp: 5.0,
-        worstNodeRmsBp: 8.2, arbFlags: 0, ready: 1,
+        worstNodeRmsBp: 8.2, arbFlags: 0, dataAgeMin: null, ready: 1,
         lv: {
           hasFit: true, stale: false, rmsIvErrorBp: 0.0086, maxIvErrorBp: 0.03,
-          surfaceRmsBp: 0.0086, arbitrageFree: true, calendarViolations: 0,
-          worstMinDensity: 0.001,
+          surfaceRmsBp: 0.0086, rmsConvergedBp: 0.0086, arbitrageFree: true,
+          calendarViolations: 0, worstMinDensity: 0.001,
         },
       },
     ],

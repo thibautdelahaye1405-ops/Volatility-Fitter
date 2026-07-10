@@ -80,6 +80,12 @@ class AffineSmile(BaseModel):
     #: shared with the Parametric workspace (distance to the chosen fit-target
     #: band, the active weighting scheme, the var-swap quote). Decimal vol.
     rmsError: float = 0.0
+    #: HONEST per-expiry IV residual RMS (bp): the calibrated surface repriced on
+    #: a CONVERGED operator (models.localvol.reprice, dt/4 + dx/2). In-operator
+    #: residuals are blind to time-discretization error (the optimizer cancels
+    #: it), so this is the number to judge the fit by — a large gap to the
+    #: in-operator rms flags an operator-compensated (untrustworthy) surface.
+    rmsConvergedBp: float = 0.0
     #: Risk-neutral density from the Dupire PDE call prices directly (d2C/dx2),
     #: which is smooth and non-negative by construction — far cleaner than the
     #: Breeden-Litzenberger-via-implied-vol density (which clamps to 0 at short
@@ -103,6 +109,12 @@ class AffineFitResponse(BaseModel):
     maxPriceError: float
     rmsIvErrorBp: float  # implied-vol residual RMS / max over all quotes, bp
     maxIvErrorBp: float
+    #: Converged-operator reprice metrics (models.localvol.reprice): the SAME
+    #: per-quote IV residuals as rmsIvErrorBp/maxIvErrorBp but priced on a
+    #: refined march (dt/4, dx/2) of the calibrated surface. The honest fit
+    #: quality — in-operator rms cannot see operator error (fix-#3 lesson).
+    rmsConvergedBp: float = 0.0
+    maxConvergedBp: float = 0.0
     #: Whole-surface weighted RMS vol error (all expiries pooled), the same
     #: calibration-consistent basis as AffineSmile.rmsError. Decimal vol.
     surfaceRmsError: float = 0.0

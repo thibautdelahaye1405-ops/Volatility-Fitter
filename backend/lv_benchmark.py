@@ -121,21 +121,25 @@ def report(state: AppState, ticker: str) -> None:
     xdiag = {x.expiry: x for x in (last_affine_expiry_diagnostics(state, ticker) or [])}
     print(
         f"{ticker}: surface RMS = {resp.surfaceRmsError * 1e4:.1f} bp  "
+        f"CONVERGED rms = {resp.rmsConvergedBp:.1f} bp (max {resp.maxConvergedBp:.1f})  "
         f"(vtx={d.vertex_count}, bounds={d.active_bound_count}, nfev={d.nfev}/{d.max_nfev})"
     )
     # Phase 0 header: the columns that separate Cause A (vtxInRange) from Cause B
     # (vegaFloored / vega√τ) and Cause C (steps), plus prior leakage (priorRows).
+    # ``conv`` is the converged-operator reprice rms (the HONEST per-expiry error;
+    # a large conv/rms gap = operator-compensated fit, the fix-#3 blindness).
     print(
-        "   expiry        rms    maxErr  nQ  | vtxIn/Tot  kRange         "
+        "   expiry        rms     conv    maxErr  nQ  | vtxIn/Tot  kRange         "
         "| floored  vegaATM  steps  priorRows"
     )
     for sm in resp.smiles:
         x = xdiag.get(sm.expiry)
         if x is None:
-            print(f"   {sm.expiry}  rms={sm.rmsError * 1e4:5.1f} bp")
+            print(f"   {sm.expiry}  rms={sm.rmsError * 1e4:5.1f} bp  conv={sm.rmsConvergedBp:5.1f} bp")
             continue
         print(
-            f"   {sm.expiry} {sm.rmsError * 1e4:5.1f}bp {sm.maxIvErrorBp:6.1f}bp "
+            f"   {sm.expiry} {sm.rmsError * 1e4:5.1f}bp {sm.rmsConvergedBp:6.1f}bp "
+            f"{sm.maxIvErrorBp:6.1f}bp "
             f"{x.n_quotes:3d}  | {x.n_vertices_in_range:3d}/{x.n_vertices_total:<3d}  "
             f"[{x.k_lo:+.3f},{x.k_hi:+.3f}] | "
             f"{x.n_vega_floored:3d} ({x.vega_floor_frac * 100:4.0f}%) "

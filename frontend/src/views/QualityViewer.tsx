@@ -66,14 +66,24 @@ function StatusCell({ node }: { node: QualityNode }) {
 function LvCell({ ticker }: { ticker: QualityTicker }) {
   const lv = ticker.lv;
   if (lv === null) return <span className="text-slate-600">—</span>;
-  const tone = !lv.arbitrageFree ? "text-rose-400" : lv.stale ? "text-amber-300" : "text-slate-300";
+  // The headline is the CONVERGED-operator reprice RMS (the honest number);
+  // a large gap to the in-operator rms means the optimizer compensated for
+  // operator error — the surface is untrustworthy however good the fit looks.
+  const conv = lv.rmsConvergedBp || lv.rmsIvErrorBp; // 0 = legacy cache, fall back
+  const opGap = lv.rmsConvergedBp > 0 && conv > 1.5 * lv.rmsIvErrorBp + 2;
+  const tone = !lv.arbitrageFree || opGap
+    ? "text-rose-400"
+    : lv.stale
+      ? "text-amber-300"
+      : "text-slate-300";
   const flags = [
     lv.stale ? "stale" : null,
     lv.arbitrageFree ? null : `arb (${lv.calendarViolations} cal)`,
+    opGap ? `op-err (fit ${fmtBp(lv.rmsIvErrorBp)})` : null,
   ].filter((f): f is string => f !== null);
   return (
-    <span className={tone}>
-      {fmtBp(lv.rmsIvErrorBp)} bp{flags.length > 0 ? ` · ${flags.join(" · ")}` : ""}
+    <span className={tone} title="Converged-operator reprice RMS (honest LV fit error)">
+      {fmtBp(conv)} bp{flags.length > 0 ? ` · ${flags.join(" · ")}` : ""}
     </span>
   );
 }

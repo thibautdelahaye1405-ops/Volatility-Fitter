@@ -464,7 +464,11 @@ export default function LocalVolViewer() {
             >
               {data.arbitrageFree ? "arb-free" : `${data.calendarViolations} cal. viol.`}
             </span>
-            rms {data.rmsIvErrorBp.toFixed(0)} · max {data.maxIvErrorBp.toFixed(0)} bp
+            rms {data.rmsIvErrorBp.toFixed(0)}
+            {typeof data.rmsConvergedBp === "number"
+              ? ` · conv ${data.rmsConvergedBp.toFixed(0)}`
+              : ""}{" "}
+            · max {data.maxIvErrorBp.toFixed(0)} bp
           </span>
         )}
       </div>
