@@ -69,6 +69,9 @@ Key commands (Windows, repo root):
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1
             in the USER'S window (hours; tool background jobs get killed).
+- Certification: `-m backtest.certification run|report` (15 named stress cases
+            — every historical bug — run via their pytest locks; client-facing
+            HTML/JSON under backtest\results\certification\, ~5-10 min).
 - Parallel calibrate: background Calibrate ships slice fits AND per-ticker LV
             (affine) fits to a process pool ($env:VOLFIT_CALIB_WORKERS, default
             cpu-1 capped 8; 0/1 = serial, byte-identical fits either way;

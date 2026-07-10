@@ -216,9 +216,27 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   ON, `project_wings=false` = raw wings), `ExportNode.curveProjected` +
   manifest `wingProjection/projectedNodes`. Notes 09/10 remarks updated +
   PDFs rebuilt. Tests: test_wing_projection.py (6).
-- **NEXT (R0):** item 4 stress/certification pack v0 (the LV operator catch
-  above becomes a named case). Follow-ups parked: per-interval dt refinement
-  (above); skew/curv band widening rides R3's handle-covariance work.
+- **R0 item 4 SHIPPED — certification pack v0.** `backtest/certification.py`:
+  15 NAMED cases across the matrix (market regimes × data failures × model
+  stress), each = title + client-readable story + origin commit + the pytest
+  LOCKS that guard it (validation and production share one set of
+  definitions); market-regime verdicts pull the stored benchmark-pack
+  tables. `python -m backtest.certification run|report` → per-case PASS/FAIL
+  (one isolated pytest process each) + self-contained HTML/JSON artifact
+  under `results/certification/` (gitignored, regenerable). Cases include:
+  zero-carry chains, duplicate strikes, tick noise, stale/crossed wings,
+  data age, weekly LV resolution, LV operator blindness (the 2026-07-10
+  catch), convex-wing tail, calendar phantom, de-Am repair confinement,
+  extrap wing contracts (Phases 1-3), graph dark disconnection, dark-band
+  honesty, 3 regime verdicts. test_certification.py locks registry
+  integrity (renamed test files break the registry test), report rendering,
+  and one real runner round-trip.
+- **R0 COMPLETE (items 1-4).** NEXT: R1 foundations (timestamp semantics →
+  short-dated quote prep → CarryCurve v0 → governance kernel → state-scoping
+  refactor) + the hosting track's data-rights question. USER-ACTION items
+  parked from R0.4: 25-asset capture reruns + deck slide-7 backtest refresh
+  (hours, user's window). Follow-ups parked: LV per-interval dt refinement;
+  skew/curv band widening (R3).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
