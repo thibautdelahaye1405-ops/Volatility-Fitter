@@ -18,6 +18,7 @@ frontend/dist/
 *.db
 data/snapshots/
 *.parquet
+tmp/
 
 # IDE / OS
 .vscode/
