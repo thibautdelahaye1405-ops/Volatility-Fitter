@@ -285,8 +285,26 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   — gating arrives with R2's joint borrow/de-Am fixed point).
   tests/test_carry.py (5: planted 300bp borrow recovered ±2%, zero-carry →
   calmly unidentified, rollups advisory).
-- **NEXT (R1):** item 8 governance kernel (manifest + event log + lifecycle
-  + replay); item 9 state-scoping refactor (LAND ALONE).
+- **R1 item 8 SHIPPED (2026-07-11) — governance kernel.** Store schema v8:
+  APPEND-ONLY `events` audit table (actor="desk" until hosting names
+  sessions; no update/delete surface exists) + hash-chained `manifests`
+  table. `AppState.log_event` (best-effort: in-memory tail always, store
+  when configured, never breaks the operation) wired at: fit/options/market
+  settings (changed-fields diffs), forward policy, quote edits (validated
+  actions only), prior selection, graph edges, publish, recall. Every
+  export with a store PERSISTS a SurfaceManifest (id = content hash chained
+  to the previous publish, which it supersedes; recall flips state, never
+  deletes; artifact blobs age out past ARTIFACT_RETAIN=50, rows/docs are
+  forever) storing snapshots + settings + policies + the stamped artifact.
+  Lifecycle: published → superseded / recalled. GET /publish/history +
+  POST /publish/{id}/recall. **`python -m volfit.replay_report [id|latest]`
+  = the roadmap-3.5 acceptance: rebuilds a FRESH state from stored inputs,
+  re-calibrates the published nodes, re-exports, diffs every curve point —
+  test-locked at ≤1e-9 IV** (v0 fidelity notes surfaced: session edits +
+  prior content not captured; LV grid stored, not re-fit).
+  tests/test_governance.py (4).
+- **NEXT (R1):** item 9 state-scoping refactor (LAND ALONE, fresh session —
+  byte-identical locks at risk). R1 then complete.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

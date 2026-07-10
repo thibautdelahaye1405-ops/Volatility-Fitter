@@ -36,6 +36,14 @@ def apply_quote_edit(
         raise ValueError("fetch quotes before editing this node")
     session = state.session((ticker, iso))
     session.apply(edit.action, edit.index, edit.mid, n_quotes=int(prepared.k.size))
+    # Governance kernel (R1 item 8): quote interventions are audited — action,
+    # strike coordinate and (for amends) the new mid IV, after validation so
+    # only edits that actually landed are recorded.
+    k = float(prepared.k[edit.index]) if edit.index is not None else None
+    state.log_event(
+        "quote_edit", scope=f"{ticker}/{iso}",
+        payload={"action": edit.action, "index": edit.index, "k": k, "mid": edit.mid},
+    )
     return service.smile_payload(state, ticker, iso, fit_mode)
 
 

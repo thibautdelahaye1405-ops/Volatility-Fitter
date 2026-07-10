@@ -63,6 +63,37 @@ def export_surfaces(
     )
 
 
+@router.get("/publish/history")
+def publish_history(request: Request, limit: int = 50):
+    """The manifest chain, newest first (governance kernel, R1 item 8):
+    id, timestamp, parent, lifecycle state, tickers, node count."""
+    from volfit.data import governance
+    from volfit.data.store import VolStore
+
+    state = request.app.state.volfit
+    if state.store_path is None:
+        return []
+    with VolStore(state.store_path) as store:
+        return governance.list_manifests(store, limit)
+
+
+@router.post("/publish/{manifest_id}/recall")
+def recall_publish(manifest_id: str, request: Request):
+    """Recall a published surface — the lifecycle transition, not a delete:
+    the manifest row, document and artifact all remain for audit/replay."""
+    from volfit.data import governance
+    from volfit.data.store import VolStore
+
+    state = request.app.state.volfit
+    if state.store_path is None:
+        raise HTTPException(status_code=409, detail="no persistence store configured")
+    with VolStore(state.store_path) as store:
+        if not governance.set_manifest_state(store, manifest_id, "recalled"):
+            raise HTTPException(status_code=404, detail="unknown manifest id")
+    state.log_event("recall", payload={"manifest": manifest_id})
+    return {"id": manifest_id, "state": "recalled"}
+
+
 @router.get("/export/report", response_class=HTMLResponse)
 def export_report(
     request: Request,

@@ -106,6 +106,12 @@ class ExportManifest(BaseModel):
     #: means every wing was already arb-clean — the projection is a no-op).
     wingProjection: bool = True
     projectedNodes: int = 0
+    #: Governance kernel (R1 item 8): the persisted manifest's content-hash id
+    #: and its parent in the publish chain. None when no store is configured —
+    #: the artifact then visibly lacks lineage. A published manifest is never
+    #: mutated; a new publish supersedes it, a recall flips its state.
+    manifestId: str | None = None
+    parentId: str | None = None
 
 
 class SurfaceExport(BaseModel):
@@ -279,7 +285,95 @@ def build_surface_export(
     manifest = manifest.model_copy(
         update={"wingProjection": project_wings, "projectedNodes": projected_nodes}
     )
-    return SurfaceExport(manifest=manifest, tickers=out)
+    return _publish(state, SurfaceExport(manifest=manifest, tickers=out))
+
+
+def _publish(state: AppState, export: SurfaceExport) -> SurfaceExport:
+    """Persist the governance manifest for this publish (R1 item 8).
+
+    Stores, in one transaction: the per-ticker chain snapshots the surfaces
+    were built from, the full settings/policy inputs, and the stamped artifact
+    itself — everything ``python -m volfit.replay_report`` needs to reproduce
+    the published numbers. The manifest id is the content hash of the document
+    chained to the previous publish (which it supersedes). Without a store the
+    export still succeeds but carries no lineage (manifestId stays None);
+    a persistence failure is surfaced as a warning, never a broken export.
+    """
+    if state.store_path is None or not export.tickers:
+        return export
+    import warnings
+
+    from volfit.data import governance
+    from volfit.data.store import VolStore
+
+    try:
+        with VolStore(state.store_path) as store:
+            snapshot_ids = {
+                t.ticker: store.save_snapshot(state.snapshot(t.ticker))
+                for t in export.tickers
+            }
+            doc = {
+                "referenceDate": state.reference_date.isoformat(),
+                "generatedAt": export.manifest.generatedAt,
+                "appVersion": export.manifest.appVersion,
+                "source": export.manifest.source,
+                "asOf": export.manifest.asOf,
+                "fitMode": export.manifest.fitMode,
+                "projectWings": export.manifest.wingProjection,
+                "tickers": export.manifest.tickers,
+                "fittedNodes": export.manifest.fittedNodes,
+                "snapshotIds": snapshot_ids,
+                "fitSettings": export.manifest.fitSettings,
+                "options": state.options().model_dump(),
+                "marketSettings": {
+                    t.ticker: state.market_settings(t.ticker).model_dump()
+                    for t in export.tickers
+                },
+                "forwardPolicies": {
+                    t.ticker: {
+                        n.expiry: state.forward_policy(t.ticker, n.expiry).model_dump()
+                        for n in t.nodes
+                        if state.forward_policy(t.ticker, n.expiry).mode != "parity"
+                    }
+                    for t in export.tickers
+                },
+                "nodes": {t.ticker: [n.expiry for n in t.nodes] for t in export.tickers},
+                # Replay-fidelity notes: session quote edits and active prior
+                # CONTENT are not captured in v0 — a nonzero count documents
+                # the tolerance a replay diff must be read against.
+                "editedNodes": sum(
+                    1
+                    for t in export.tickers
+                    for n in t.nodes
+                    if (s := state.session_if_exists((t.ticker, n.expiry))) is not None
+                    and s.edits
+                ),
+                "activePriors": sum(
+                    1 for t in export.tickers if state.active_prior(t.ticker) is not None
+                ),
+                "artifactHash": governance.content_id(export.model_dump()),
+            }
+            mid, parent = governance.chain_ids(store, doc)
+            stamped = export.model_copy(
+                update={
+                    "manifest": export.manifest.model_copy(
+                        update={"manifestId": mid, "parentId": parent}
+                    )
+                }
+            )
+            governance.save_manifest(
+                store, doc, stamped.model_dump_json(), mid=mid, parent=parent
+            )
+    except Exception as exc:  # noqa: BLE001 — export must not break on lineage
+        warnings.warn(f"publish manifest not persisted: {exc}")
+        return export
+    state.log_event(
+        "publish",
+        scope=",".join(export.manifest.tickers),
+        payload={"manifest": mid, "parent": parent,
+                 "nodes": export.manifest.fittedNodes},
+    )
+    return stamped
 
 
 #: CSV column order — flat, one row per curve point, Excel-friendly.

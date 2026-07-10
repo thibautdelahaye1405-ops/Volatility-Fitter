@@ -38,7 +38,12 @@ from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, Optio
 #: v7 (roadmap R1 item 5, 2026-07-10): snapshots carry per-expiry settlement
 #: semantics (AM/PM style + last-trade/settle instants) as a JSON column so
 #: replays keep the exact expiry clock the 0DTE path will consume.
-SCHEMA_VERSION = 7
+#: v8 (roadmap R1 item 8, 2026-07-10): governance kernel — an APPEND-ONLY
+#: `events` audit table (every intervention: who/when/what/old/new) and a
+#: hash-chained `manifests` table (one row per published surface, with the
+#: stored inputs + artifact a replay reproduces it from). New tables only,
+#: so the CREATE IF NOT EXISTS in _SCHEMA is the whole migration.
+SCHEMA_VERSION = 8
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -96,6 +101,22 @@ CREATE TABLE IF NOT EXISTS prior_snapshots (
 CREATE TABLE IF NOT EXISTS universes (
     name        TEXT PRIMARY KEY,
     config_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           TEXT NOT NULL,
+    actor        TEXT NOT NULL,
+    action       TEXT NOT NULL,
+    scope        TEXT NOT NULL DEFAULT '',
+    payload_json TEXT
+);
+CREATE TABLE IF NOT EXISTS manifests (
+    id            TEXT PRIMARY KEY,
+    ts            TEXT NOT NULL,
+    parent        TEXT,
+    state         TEXT NOT NULL,
+    doc_json      TEXT NOT NULL,
+    artifact_json TEXT
 );
 CREATE TABLE IF NOT EXISTS app_settings (
     key        TEXT PRIMARY KEY,

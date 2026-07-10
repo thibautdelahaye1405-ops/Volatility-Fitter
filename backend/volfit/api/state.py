@@ -18,6 +18,7 @@ import math
 import os
 import threading
 import warnings
+from collections import deque
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import TYPE_CHECKING
@@ -56,6 +57,7 @@ from volfit.data.dividends import (
     theoretical_forward,
 )
 from volfit.api.state_universe import UniverseMixin, UnknownNodeError  # noqa: F401 (re-export)
+from volfit.data import governance
 from volfit.data.forwards import ImpliedForward, ResolvedForward, implied_forwards
 from volfit.data.provider import AsOf, OptionChainProvider, SyntheticProvider
 from volfit.data.store import VolStore
@@ -233,6 +235,9 @@ class AppState(UniverseMixin):
         self._graph_idio: IdioHistory = IdioHistory.from_blob(
             load_graph_idio(self.store_path)
         )
+        #: In-memory tail of the append-only audit log (governance kernel, R1
+        #: item 8); the durable log lives in the store's `events` table.
+        self._event_tail: deque = deque(maxlen=200)
         self._market_settings: dict[str, MarketSettings] = {}
         #: Per-ticker event calendar (shared across workspaces). Events now drive
         #: the event-weighted variance clock used by every fit (volfit.calib.
@@ -673,10 +678,13 @@ class AppState(UniverseMixin):
         """Apply new hyperparameters; identical settings don't bump the
         version, so a redundant PUT never invalidates warm fit caches."""
         with self._lock:
+            old = self._fit_settings
             if settings != self._fit_settings:
                 self._fit_settings = settings
                 self._settings_version += 1
-            return self._fit_settings
+        if settings != old:
+            self.log_event("fit_settings", payload=_dump_diff(old, settings))
+        return self.fit_settings()
 
     # ------------------------------------------------ real-time streaming (WS)
     def sync_streaming(self) -> None:
@@ -764,6 +772,7 @@ class AppState(UniverseMixin):
         ``priorAnchorWeightPct``); the rest are global defaults / display toggles
         read live and need no cache invalidation."""
         with self._lock:
+            _audit_old = self._options
             if options != self._options:
                 # Observation filter (Note 15): overlay-mode knobs must NOT bust
                 # the fit cache (the filter only reads fits in overlay), so filter
@@ -836,7 +845,10 @@ class AppState(UniverseMixin):
                 if affects_fit:
                     self._options_version += 1
                 self._options = options
-            return self._options
+            current = self._options
+        if current != _audit_old:
+            self.log_event("options_settings", payload=_dump_diff(_audit_old, current))
+        return current
 
     # -------------------------------------------- persisted settings defaults
     def store_enabled(self) -> bool:
@@ -1068,10 +1080,14 @@ class AppState(UniverseMixin):
         """Apply new market settings; identical settings don't bump the
         forwards version, so a redundant PUT never invalidates warm fits."""
         with self._lock:
-            if settings != self._market_settings.get(ticker, MarketSettings()):
+            old = self._market_settings.get(ticker, MarketSettings())
+            if settings != old:
                 self._market_settings[ticker] = settings
                 self._forwards_version[ticker] = self._forwards_version.get(ticker, 0) + 1
-            return self._market_settings.get(ticker) or MarketSettings()
+        if settings != old:
+            self.log_event("market_settings", scope=ticker,
+                           payload=_dump_diff(old, settings))
+        return self.market_settings(ticker)
 
     def forward_policy(self, ticker: str, expiry_iso: str) -> ForwardPolicy:
         """The node's forward policy ("parity" default when never set)."""
@@ -1085,10 +1101,14 @@ class AppState(UniverseMixin):
         (validated *before* storing), version bumped only on a real change."""
         iso = self.resolve_expiry(ticker, expiry_iso).isoformat()  # may raise
         with self._lock:
-            if policy != self._forward_policies.get((ticker, iso), ForwardPolicy()):
+            old = self._forward_policies.get((ticker, iso), ForwardPolicy())
+            if policy != old:
                 self._forward_policies[(ticker, iso)] = policy
                 self._forwards_version[ticker] = self._forwards_version.get(ticker, 0) + 1
-            return self._forward_policies.get((ticker, iso)) or ForwardPolicy()
+        if policy != old:
+            self.log_event("forward_policy", scope=f"{ticker}/{iso}",
+                           payload=_dump_diff(old, policy))
+        return self.forward_policy(ticker, iso)
 
     # ------------------------------------------------------ event calendar
     def events_version(self, ticker: str) -> int:
@@ -1297,6 +1317,10 @@ class AppState(UniverseMixin):
                 self._active_prior[ticker] = snapshot
             self._active_prior_source[ticker] = source
             self._active_prior_version[ticker] = self._active_prior_version.get(ticker, 0) + 1
+        self.log_event(
+            "prior_selection", scope=ticker,
+            payload={"source": source, "cleared": snapshot is None},
+        )
 
     def active_prior_version(self, ticker: str) -> int:
         """Per-ticker active-prior version (folded into fit / affine cache keys)."""
@@ -1344,6 +1368,7 @@ class AppState(UniverseMixin):
             self._graph_block_rule = None
         save_graph_edges(self.store_path, [e.model_dump() for e in edges])
         save_graph_block_rule(self.store_path, None)
+        self.log_event("graph_edges", payload={"nEdges": len(edges), "rule": None})
 
     def graph_block_rule(self) -> GraphBlockRule | None:
         """The persisted ticker-block rule (None ⇒ no rule stored)."""
@@ -1363,6 +1388,33 @@ class AppState(UniverseMixin):
         save_graph_block_rule(
             self.store_path, rule.model_dump() if rule is not None else None
         )
+        self.log_event(
+            "graph_edges", payload={"nEdges": len(edges), "rule": rule is not None}
+        )
+
+    # ------------------------------------------------------------- audit log
+    def log_event(self, action: str, scope: str = "", payload: dict | None = None) -> None:
+        """Append-only audit event (governance kernel, R1 item 8).
+
+        Best-effort by design: the in-memory tail always records (tests, the
+        UI's recent-activity view), the store persists when configured, and a
+        persistence hiccup NEVER breaks the operation being audited. Actor is
+        the constant "desk" until the hosted product names sessions."""
+        entry = {"action": action, "scope": scope, "payload": payload or {}}
+        with self._lock:
+            self._event_tail.append(entry)
+        if self.store_path is None:
+            return
+        try:
+            with VolStore(self.store_path) as store:
+                governance.append_event(store, action, scope, payload or {})
+        except Exception:  # noqa: BLE001 — audit must never break the operation
+            pass
+
+    def event_tail(self, limit: int = 50) -> list[dict]:
+        """The most recent in-memory audit events, newest first."""
+        with self._lock:
+            return list(self._event_tail)[-limit:][::-1]
 
     # ------------------------------------------------------ graph idio history
     def graph_idio_sigma(self) -> dict[str, float]:
@@ -1418,6 +1470,13 @@ def _coerce_block_rule(raw: dict | None) -> GraphBlockRule | None:
         return GraphBlockRule(**raw)
     except Exception:  # noqa: BLE001 — never let a stale blob break startup
         return None
+
+
+def _dump_diff(old, new) -> dict:
+    """Changed-fields diff of two pydantic models: {field: [old, new]} — the
+    audit log records WHAT moved, not full settings dumps."""
+    od, nd = old.model_dump(), new.model_dump()
+    return {k: [od.get(k), nd[k]] for k in nd if od.get(k) != nd[k]}
 
 
 def _coerce_graph_edges(raw: list[dict]) -> list[GraphEdgeInput]:
