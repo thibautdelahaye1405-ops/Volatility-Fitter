@@ -60,70 +60,82 @@ TEAL, RUST, SLATE, AMBER, VIOLET = (PALETTE["teal"], PALETTE["rust"],
                                     PALETTE["violet"])
 
 
-#: WW target construction: softened-V wings plus two Gaussian shoulders,
-#: (amplitude A, centre c, width s). The parameters are deliberately gentle —
-#: shoulder curvature ~ 2A/s^2 is what drives Durrleman's w''/2 term negative,
-#: and the previous revision (A=0.028/s=0.055, wing slope 0.32) violated
-#: g >= 0 near the shoulder tops. These values keep min g ~ +0.4 on the
-#: plotted grid while preserving the interior local maxima a convex slice
-#: cannot represent; `main` asserts the cleanliness before fitting.
-_WING_LVL, _WING_SLOPE, _WING_B2 = 0.16, 0.20, 0.0009
-_SHOULDERS = ((0.028, -0.13, 0.090), (0.027, 0.14, 0.095))
+#: WW target construction, GLOBALLY butterfly-clean and Lee-admissible: total
+#: variance is an SVI-style hyperbolic base (rho = 0, m = 0) plus two Gaussian
+#: shoulders — Gaussians vanish with all derivatives, so the w-wings are
+#: EXACTLY linear with slope beta = _T_B <= 2 (Lee-admissible for every k, not
+#: just a window), and g(k) -> (4 - beta^2)/16 > 0 in both tails. An earlier
+#: revision built the target in VOL space with ~0.20|k| tails (w quadratic:
+#: Lee eventually violated, cleanliness only per-window); this construction
+#: makes the cleanliness claim global. `main` asserts g > 0 for target AND fit
+#: on the wide grid |k| <= _WIDE_K before writing anything.
+_T_A, _T_B, _T_SIG = 0.005, 0.055, 0.30       # base: a + b sqrt(k^2 + sig^2)
+_T_AMP, _T_C, _T_S = 0.007, 0.20, 0.12        # shoulders: A exp(-((k-+c)/s)^2)
+_WIDE_K = 12.0
 
 
-def ww_target_jets(k):
-    """Analytic (v, v', v'') of the WW target volatility — no finite differences."""
+def ww_target_wjets(k):
+    """Analytic (w, w', w'') of the WW target TOTAL VARIANCE — no finite
+    differences, and asymptotically linear by construction."""
     k = np.asarray(k, dtype=float)
-    r = np.sqrt(k * k + _WING_B2)
-    v = _WING_LVL + _WING_SLOPE * (r - 0.03)
-    v1 = _WING_SLOPE * k / r
-    v2 = _WING_SLOPE * _WING_B2 / r**3
-    for amp, c, s in _SHOULDERS:
+    r = np.sqrt(k * k + _T_SIG * _T_SIG)
+    w = _T_A + _T_B * r
+    w1 = _T_B * k / r
+    w2 = _T_B * _T_SIG * _T_SIG / r**3
+    for c in (-_T_C, _T_C):
         u = k - c
-        e = amp * np.exp(-((u / s) ** 2))
-        v += e
-        v1 += e * (-2.0 * u / s**2)
-        v2 += e * (4.0 * u * u / s**4 - 2.0 / s**2)
-    return v, v1, v2
+        e = _T_AMP * np.exp(-((u / _T_S) ** 2))
+        w = w + e
+        w1 = w1 + e * (-2.0 * u / _T_S**2)
+        w2 = w2 + e * (4.0 * u * u / _T_S**4 - 2.0 / _T_S**2)
+    return w, w1, w2
 
 
-def ww_target_vol(k):
-    """A WW smile: rising V wings with two shoulders flanking the ATM trough."""
-    return ww_target_jets(k)[0]
+def ww_target_vol(k, t):
+    """A WW smile: hyperbolic-in-w wings with two shoulders flanking the trough."""
+    return np.sqrt(ww_target_wjets(k)[0] / t)
 
 
 def target_g(k, t):
-    """Durrleman g of the target, from the analytic jets (w = t v^2)."""
-    v, v1, v2 = ww_target_jets(k)
-    w = t * v * v
-    w1 = 2.0 * t * v * v1
-    w2 = 2.0 * t * (v1 * v1 + v * v2)
+    """Durrleman g of the target, from the analytic w-jets."""
+    del t  # w-space jets need no clock
+    w, w1, w2 = ww_target_wjets(k)
     return (1.0 - k * w1 / (2.0 * w)) ** 2 - 0.25 * w1**2 * (1.0 / w + 0.25) + 0.5 * w2
 
 
 def main():
     t = 0.25
     k = np.linspace(-0.40, 0.40, 41)
-    vol = ww_target_vol(k)
-    w = vol**2 * t
+    w = ww_target_wjets(k)[0]
+    vol = np.sqrt(w / t)
 
     kk = np.linspace(-0.45, 0.45, 400)
 
     # The target must be admissible BEFORE anything is fitted to it: a target
     # that itself carries butterfly arbitrage makes the fit's g >= 0 claim
-    # unattainable (the earlier-revision bug).
-    g_target = target_g(kk, t)
-    target_g_min = float(g_target.min())
-    assert target_g_min > 0.0, (
+    # unattainable (the earlier-revision bug). The check is GLOBAL, not
+    # per-window: dense wide grid + the analytic tail limit (4 - beta^2)/16.
+    wide = np.linspace(-_WIDE_K, _WIDE_K, 60001)
+    target_g_min = float(target_g(wide, t).min())
+    tail_g = (4.0 - _T_B * _T_B) / 16.0
+    assert target_g_min > 0.0 and tail_g > 0.0, (
         f"synthetic WW target carries butterfly arbitrage: min g = {target_g_min:.4f}"
     )
+    g_target = target_g(kk, t)
 
     siv0 = calibrate_sigmoid(k, w, t, n_cores=0)
     siv = calibrate_sigmoid(k, w, t, n_cores=2)
 
+    # The FIT must be globally clean too: its hats are zero-wing and its base
+    # w-wings are linear, so the same wide-grid + tail-limit check applies.
+    fit_g_min_wide = float(siv.gatheral_g(wide).min())
+    assert siv.is_butterfly_free(wide), (
+        f"two-core MCS fit violates the butterfly bound: min g = {fit_g_min_wide:.4f}"
+    )
+
     # --- fit
     fig, ax = plt.subplots()
-    ax.plot(kk, 100 * ww_target_vol(kk), color=SLATE, lw=2.2, label="WW target")
+    ax.plot(kk, 100 * ww_target_vol(kk, t), color=SLATE, lw=2.2, label="WW target")
     ax.plot(kk, 100 * siv0.vol(kk), color=AMBER, ls=":", label="sigmoid base ($R{=}0$)")
     ax.plot(kk, 100 * siv.vol(kk), color=TEAL, ls="--", label="MCS ($R{=}2$)")
     ax.scatter(k, 100 * vol, s=14, color=RUST, zorder=5, label="quotes")
@@ -150,13 +162,9 @@ def main():
     fig.savefig(OUT / "fig_siv_components.pdf")
     plt.close(fig)
 
-    # --- g(k): the fitted slice AND the target it chased must both certify
+    # --- g(k): the fitted slice AND the target it chased, both globally clean
     fig, ax = plt.subplots(figsize=(7.2, 3.4))
     g = siv.gatheral_g(kk)
-    fit_g_min = float(g.min())
-    assert fit_g_min > -1e-9, (
-        f"two-core MCS fit violates the butterfly bound: min g = {fit_g_min:.4f}"
-    )
     ax.axhline(0, color="black", lw=0.8)
     ax.plot(kk, g_target, color=SLATE, lw=1.2, ls=":", label="WW target (analytic)")
     ax.plot(kk, g, color=TEAL, label="MCS fit ($R{=}2$)")
@@ -164,8 +172,8 @@ def main():
     ax.set_xlabel(r"log-moneyness $k$")
     ax.set_ylabel(r"Durrleman $g(k)$")
     ax.legend(frameon=False, fontsize=9)
-    ax.set_title(r"$g(k)\geq 0$: target and two-shoulder fit both butterfly-free",
-                 fontsize=10)
+    ax.set_title(r"$g(k)\geq 0$ globally (asserted to $|k|=12$ + positive tail"
+                 r" limits): both curves butterfly-clean", fontsize=10)
     fig.savefig(OUT / "fig_siv_g.pdf")
     plt.close(fig)
 
@@ -230,17 +238,20 @@ def main():
     L.append(r"\newcommand{\sivspeedup}{%.2f}" % (tf / ta))
     L.append(r"\newcommand{\sivcostdiff}{%.1e}" % abs(ra.cost - rf.cost))
     L.append(r"\newcommand{\sivtargetgmin}{%.2f}" % target_g_min)
-    L.append(r"\newcommand{\sivfitgmin}{%.2f}" % fit_g_min)
+    L.append(r"\newcommand{\sivfitgmin}{%.2f}" % fit_g_min_wide)
+    L.append(r"\newcommand{\sivtargetbeta}{%.3f}" % _T_B)
+    L.append(r"\newcommand{\sivtargettailg}{%.3f}" % tail_g)
     (OUT / "siv_tables.tex").write_text("\n".join(L) + "\n", encoding="utf-8")
     (OUT / "siv_numbers.json").write_text(json.dumps(
         {"max_err_bp": max_err, "wing": [wl, wr],
          "speedup": tf / ta, "cores": len(siv.cores),
-         "target_g_min": target_g_min, "fit_g_min": fit_g_min},
+         "target_g_min_wide": target_g_min, "fit_g_min_wide": fit_g_min_wide,
+         "target_beta": _T_B, "tail_g": tail_g},
         indent=2), encoding="utf-8")
     print("MCS WW fit max err %.2f bp (base %.2f bp); speedup %.2fx; "
-          "target min g %.3f, fit min g %.3f"
+          "wide-grid target min g %.3f, fit min g %.3f, tail limit %.3f"
           % (max_err, float(np.max(np.abs(100 * (siv0.vol(k) - vol)))) * 100,
-             tf / ta, target_g_min, fit_g_min))
+             tf / ta, target_g_min, fit_g_min_wide, tail_g))
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ from volfit.models.lqd.basis import lee_psi, lee_slopes  # noqa: E402
 from volfit.models.lqd.calibrate import calibrate_slice  # noqa: E402
 from volfit.models.sigmoid.calibrate import calibrate_sigmoid  # noqa: E402
 from volfit.models.svi_jw.calibrate import calibrate_svi  # noqa: E402
-from volfit.models.svi_jw.svi import RawSVI  # noqa: E402
+from volfit.models.svi_jw.svi import SVIJW, jw_to_raw  # noqa: E402
 
 OUT = Path(__file__).resolve().parent
 setup()
@@ -46,7 +46,9 @@ def beta_numeric(implied_w, k_big=2.5):
 
 def main():
     t = 0.5
-    raw_t = RawSVI(a=0.010625, b=0.0728868987, rho=-0.5, m=0.0583095189, sigma=0.1009950494)
+    # The benchmark raw slice via the PRODUCTION converter (same JW handles as
+    # Notes 01/02), so all three notes share one target through shipped code.
+    raw_t = jw_to_raw(SVIJW(t=t, v=0.0425, psi=-0.25, p=0.75, c=0.25, v_tilde=0.034))
     k = np.linspace(-0.35, 0.30, 23)
     w = raw_t.total_variance(k)
 

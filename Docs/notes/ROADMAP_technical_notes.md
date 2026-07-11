@@ -138,7 +138,9 @@ Each note: commit after it compiles clean with its figures.
   lee_slopes 0 err). Next: 02+03.
 - **2026-07-03 — Notes 02+03 hardened** (sixth+seventh of the pass).
   Note 02: the **conversion-domain proposition** — a JW quintuple is
-  representable iff v>0, p,c>0, **−p/2 < ψ < c/2**, ψ≠0, ṽ<v (Cauchy–Schwarz
+  regular inverse domain (unique nonsingular inverse; the ψ=0, ṽ=v stratum is
+  also representable, by infinitely many raw slices): v>0, p,c>0,
+  **−p/2 < ψ < c/2**, ψ≠0, ṽ<v (Cauchy–Schwarz
   proof) — with the ψ=0 coordinate-singularity remark (handles don't identify
   (m,σ) on the symmetric-vertex stratum; verified numerically against
   production `jw_to_raw`: 500 interior round trips exact, boundary

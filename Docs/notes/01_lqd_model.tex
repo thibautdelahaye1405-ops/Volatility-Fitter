@@ -24,8 +24,8 @@ parametrizes
 \ell(u)=\log q(u)=-\log u-\log(1-u)+(1-u)L+uR+\sum_{n=2}^{N}a_nP_n(1-2u),
 \qquad u\in(0,1),
 \]
-where the $P_n$ are Legendre polynomials. The smallest production specification
-$N=6$ has seven parameters. Because $q=e^{\ell}>0$ automatically, the recovered
+where the $P_n$ are Legendre polynomials. The shipped default $N=6$ has seven
+parameters (the API supports $4\le N\le16$). Because $q=e^{\ell}>0$ automatically, the recovered
 risk-neutral density is non-negative \emph{by construction}: a one-expiry LQD
 slice is free of butterfly arbitrage after a single scalar martingale
 normalization, with no positivity penalty anywhere in the optimizer. The
@@ -39,9 +39,11 @@ section derives the model's \emph{analytic residual Jacobian} --- a clean
 cancellation identity that removes the finite-difference quadrature rebuild and
 is, to our knowledge, the original engineering contribution of this
 implementation. Every figure and table is generated fresh by the production
-calibrator: the seven-parameter fit to an SPX-like SVI-JW smile reaches a
-maximum implied-volatility error of \lqdsvimaxerr\ volatility basis points, and
-a thirteen-parameter fit reproduces a bimodal ``double-hat'' event density.
+calibrator on \emph{synthetic approximation benchmarks} (market-fit evidence
+lives in the backtest reports): the seven-parameter fit to an SPX-like SVI-JW
+target reaches a maximum implied-volatility error of \lqdsvimaxerr\ volatility
+basis points, and a thirteen-parameter fit reproduces a bimodal ``double-hat''
+event density.
 \end{abstract}
 
 \tableofcontents
@@ -99,6 +101,39 @@ C_T(k)=\E^{T}\!\left[(e^{X_T}-e^{k})^+\right],
 the second equality being the martingale (forward) condition. Unless a maturity
 is displayed, every formula below is for one expiry.
 
+\paragraph{Time convention.} Three time objects are distinct in production and
+must not be conflated: $T$ is the \emph{expiry date}; $t_T$ is its calendar
+year fraction; and $\tau_T$ is the \emph{active variance time} --- calendar
+time dilated by scheduled events (Note~11), with $\tau_T=t_T$ whenever the
+event clock is off or the calendar is empty. Every quantity of the form
+$w=\sigma^2\times\text{time}$, every vega, and every ATM-handle annualization
+in this note uses $\tau_T$: the calibrator receives \texttt{prepared.tau}, not
+the calendar fraction. To keep the classical formulas readable we write a bare
+$T$ inside them; wherever $T$ appears in a time role
+($w=\sigma^2T$, $\sqrt T$ in a vega, $w_0/T$ in a handle), read $\tau_T$.
+
+\paragraph{Units and vocabulary.} A dollar quote converts to the normalized
+units above by $C^{\text{norm}}=C^{\$}/(D_TF_T)$, with $D_T$ the discount
+factor to expiry. $\PhiN$ and $\phin$ are the standard normal CDF and PDF. A
+\emph{volatility basis point} (vol bp) is $10^{-4}$ in volatility ($0.01$ vol
+point). The \emph{(forward Black) delta} of a strike is $\PhiN(d_+)$ --- used
+here only as a moneyness label. The \emph{haircut band} is the bid--ask band
+shrunk by a fixed vol amount (Note~07). A \emph{risk reversal} (RR) is the
+call-minus-put IV difference at matched deltas and a \emph{butterfly} (BF) the
+wing-average-minus-ATM IV at matched deltas; both appear only as prior
+operators (Note~13). \emph{SVI} is the ``stochastic volatility inspired''
+smile parametrization and \emph{SVI-JW} its ``jump-wings'' trader
+re-coordinatization (\cref{app:svijw}).
+
+\paragraph{The whole model in one line.} Coefficients
+$\theta=(L,R,a_2,\dots,a_N)$ define $g$; integrating $e^{g}$ gives the
+quantile $Q$; one scalar shift $\mu$ makes $e^{Q}$ a mean-one law; the
+asset-share integral of $e^{Q}$ prices calls; the Black inversion of those
+prices is the smile:
+\[
+\theta\;\to\;g\;\to\;Q\;\to\;\mu\;\to\;C(k)\;\to\;\sigma_{\text{imp}}(k).
+\]
+
 If $F_X$ is the law of $X$ and $Q(u)=F_X^{-1}(u)$ for $0<u<1$, the quantile
 density is
 \begin{equation}
@@ -117,9 +152,9 @@ terms $-\log u$ and $-\log(1-u)$ manufacture logarithmic quantile tails ---
 equivalently, exponential return tails and therefore the linear
 implied-total-variance wings that Lee's formula demands. The endpoint
 coefficients $L,R$ scale those tails; the Legendre modes $a_n$ shape the body.
-The minimal production model $N=6$ carries the seven parameters
-$(L,R,a_2,a_3,a_4,a_5,a_6)$, and higher $N$ adds body detail without ever
-touching the no-arbitrage mechanism.
+The shipped default $N=6$ carries the seven parameters
+$(L,R,a_2,a_3,a_4,a_5,a_6)$; the API accepts $4\le N\le16$, and higher $N$ adds
+body detail without ever touching the no-arbitrage mechanism.
 
 In code the positivity is a single line: with the smooth part
 $g(u)=(1-u)L+uR+\sum_n a_nP_n(1-2u)$, the return density is $f_X(Q(u))=1/q(u)=
@@ -128,8 +163,8 @@ u(1-u)\,e^{-g(u)}$, non-negative for \emph{any} coefficients.
 \begin{lstlisting}[caption={The LQD density is structurally non-negative --- no
 constraint, no penalty (distilled from \texttt{models/lqd/quadrature.py}).},
 label={lst:lqd_density}]
-def density(u, g):                    # g(u) = (1-u)*L + u*R + sum_n a_n P_n(1-2u)
-    return u * (1 - u) * np.exp(-g)   # = e^{-ell(u)} >= 0 for ANY g  =>  no butterfly
+def density(u, g):        # g(u) = (1-u) L + u R + sum a_n P_n(1-2u)
+    return u * (1 - u) * np.exp(-g)   # >= 0 for ANY g: no butterfly
 \end{lstlisting}
 
 \paragraph{Why this is the right trade.} A direct-IV model spends optimizer
@@ -219,13 +254,26 @@ A(z)=\int_z^{\infty}e^{Q(s)}\,\Lambda(s)(1-\Lambda(s))\,\dd s.
 \end{equation}
 Since $1-u_k=\int_{z_k}^{\infty}\Lambda(s)(1-\Lambda(s))\dd s$, the call price is
 \begin{equation}
-\boxed{\;C(k)=A(z_k)-e^{k}(1-u_k).\;}
+C(k)=A(z_k)-e^{k}(1-u_k).
 \label{eq:call_logit}
 \end{equation}
 A single quadrature grid yields $Q(z)$ and $A(z)$; every strike is then priced by
 interpolation. This pricing identity is also the seed of the analytic Jacobian
 of \cref{sec:jacobian}, because the implicit dependence of $z_k$ on the
 parameters will cancel exactly.
+
+\begin{example}[title={Example: the logistic base --- the whole machine on one toy}]
+Set every $a_n=0$ and $L=R=\log s$. Then $g\equiv\log s$, so
+\eqref{eq:q_logit} gives $\dd Q/\dd z=s$: the quantile is exactly
+$Q(z)=\mu+sz$, i.e.\ $X=\mu+s\log\!\big(U/(1-U)\big)$ is a \emph{logistic} random variable
+with scale $s$ and variance $\pi^2s^2/3$. The endpoint scales are
+$A_L=A_R=s$, so the slice is admissible iff $s<1$; the shift
+\eqref{eq:mu_norm} evaluates to $\mu=-\log\big(\pi s/\sin(\pi s)\big)$ in
+closed form; and the smile is a gentle symmetric smile with
+$w_0\approx\pi^2s^2/3$. This two-line model is precisely the production
+cold-start initializer of \cref{sec:calib}: match $s$ to the ATM variance,
+then let the optimizer bend $L\ne R$ (tail asymmetry) and the $a_n$ (body).
+\end{example}
 
 %======================================================================
 \section{Basis functions and exact coefficients}
@@ -267,7 +315,7 @@ coordinate, $Q(z)=\mu+A_Lz+O(1)$ as $z\to-\infty$ and $Q(z)=\mu+A_Rz+O(1)$ as
 $z\to+\infty$. The right-tail integrability condition for a \emph{finite forward}
 is
 \begin{equation}
-\boxed{A_R<1.}
+A_R<1.
 \label{eq:AR_condition}
 \end{equation}
 Indeed, as $z\to+\infty$, $\Lambda(z)(1-\Lambda(z))\sim e^{-z}$ and
@@ -333,11 +381,13 @@ is the subject of Note~09; here they fall out of the parametrization for free.
 
 \begin{heuristic}
 The map $\psi$ is decreasing: a \emph{heavier} tail (larger $A$, hence smaller
-critical exponent) gives a \emph{steeper} variance wing (larger $\beta$). Equity
-index smiles have small $A_L,A_R$ --- modestly fatter than log-normal --- so
-their wings sit comfortably below the model-free ceiling $\beta=2$, and a
-truncation $z\in[-40,40]$ in double precision is far more than enough
-(\cref{sec:quadrature}).
+critical exponent) gives a \emph{steeper} variance wing (larger $\beta$). Be
+precise about ``fat'': LQD return tails are \emph{exponential}, hence
+asymptotically \emph{much} heavier than the log-normal's Gaussian log-return
+tails --- though over traded strikes the two can look close. Equity index
+smiles fit small $A_L,A_R$, so their wings sit comfortably below the
+model-free ceiling $\beta=2$, and a truncation $z\in[-40,40]$ in double
+precision is far more than enough (\cref{sec:quadrature}).
 \end{heuristic}
 
 %======================================================================
@@ -449,14 +499,25 @@ s_0=\frac{w_1}{2\sqrt{Tw_0}},\quad
 \kappa_0=\frac{w_2}{2\sqrt{Tw_0}}-\frac{w_1^2}{4\sqrt{T}\,w_0^{3/2}}.
 \label{eq:atm_handles}
 \end{equation}
-These are exact for every LQD slice. The Vol-Fitter uses them as the carrier of
-the graph extrapolator (Note~14), which propagates exactly $(\sigma_0,s_0,\kappa_0)$
-across the smile graph.
+These are exact for every LQD slice, and their meaning and units are worth
+stating: $\sigma_0=\sigma_{\text{imp}}(0)$ is the ATM implied volatility
+(annualized on the active clock $\tau_T$),
+$s_0=\partial_k\sigma_{\text{imp}}(0)$ is the ATM \emph{skew} (volatility per
+unit log-moneyness) and $\kappa_0=\partial_{kk}\sigma_{\text{imp}}(0)$ the ATM
+\emph{curvature} (volatility per unit log-moneyness squared). Two closely
+related coordinate triples coexist in production and must not be conflated:
+the \emph{graph-facing carrier} is $h=(\sigma_0,s_0,\kappa_0)$ --- what
+Note~14 propagates across the smile graph --- while the \emph{internal
+orthogonal chart} of \cref{sec:ortho} works in $H=(w_0,s_0,\kappa_0)$ with
+$w_0=\sigma_0^2\,\tau_T$ the ATM total variance (\texttt{models/lqd/ortho.py};
+the graph adapter converts between the two).
 
 \subsection{The ATM-orthogonal chart}
 \label{sec:ortho}
 
-Collect the three handles into $H(\theta)=(w_0,s_0,\kappa_0)$ and let
+Collect the three handles into $H(\theta)=(w_0,s_0,\kappa_0)$ --- note the
+first coordinate is the ATM \emph{total variance}, not $\sigma_0$
+(\cref{sec:atm_exact}) --- and let
 $J=\partial H/\partial\theta\in\R^{3\times d}$ at a reference $\theta^*$ (computed
 by central differences; the quadrature is deterministic, so this is accurate to
 $\sim10^{-9}$). The least-norm perturbation realizing a desired handle change
@@ -476,6 +537,17 @@ preconditioner that rarely needs refreshing. This is what lets a trader drag ATM
 level, skew or curvature while the optimizer keeps using the remaining Legendre
 modes for wings, shoulders and event convexity.
 
+\begin{caution}
+The chart is \emph{local}: $U$ and $V$ are built from the Jacobian at the
+reference $\theta^*$, so the first-order handle-invariance of the shape
+directions degrades for large excursions, and the retarget Newton solve can
+fail to converge --- or converge only to an \emph{infeasible} point --- when
+the requested handles push the slice toward the $A_R=1$ integrability wall
+(e.g.\ a large curvature move on a thin-tailed reference). Callers must treat
+retargeting as an operation that can fail near the wall, not as a total map on
+handle space.
+\end{caution}
+
 %======================================================================
 \section{Calibration of one expiry}
 \label{sec:calib}
@@ -494,7 +566,10 @@ high-order ridge $\lambda\,n^{2r}a_n^2$ is optional and suppresses oscillation i
 sparse markets; it deliberately leaves the first body modes $a_2,a_3$ free. The
 hard admissibility condition is $A_R<1-\eps_R$ for a small buffer $\eps_R$. There
 is \emph{no} density-positivity term --- positivity is structural
-(\cref{prop:nobutterfly}).
+(\cref{prop:nobutterfly}). Equation~\eqref{eq:calib_objective} shows only the
+\emph{core} rows (data $+$ ridge); the full production residual stack, with each
+block's activation condition and Jacobian route, is tabulated in
+\cref{sec:hooks}.
 
 \paragraph{The soft tail barrier.} To keep the residual smooth as the optimizer
 approaches the $A_R=1$ wall, the stacked residual carries a softplus barrier
@@ -503,7 +578,9 @@ b(\theta)=\log\!\big(1+e^{\,s(A_R-c)}\big),
 \label{eq:barrier}
 \end{equation}
 with centre $c=$ \lqdbarriercenter\ and steepness $s=$ \lqdbarrierscale\ (both
-\texttt{FitSettings} coefficients). The barrier is negligible for $A_R\ll c$ and
+\texttt{FitSettings} coefficients; evaluated as
+$\operatorname{logaddexp}(0,\cdot)$ so a wild trial $\theta$ cannot overflow
+it). The barrier is negligible for $A_R\ll c$ and
 rises steeply near the wall, pushing the fit back \emph{before} it reaches the
 hard rejection. When a trial $\theta$ does cross $A_R\ge1$, the price block is
 replaced by a large smooth-in-$A_R$ penalty $10+A_R$ so the trust region still
@@ -511,46 +588,89 @@ has a gradient pointing back to feasibility.
 
 \subsection{Initialization}
 
-Three robust initializers are available; the default is the \emph{logistic base}
-$a_n=0$, $L=R=\log s$ with $s=\sqrt{3w_0}/\pi$ from the variance match
-$\Var(X)\approx\pi^2s^2/3$, seeded from the ATM-interpolated quote variance. A
-\emph{wing-aware base} sets $L,R$ from estimated Lee slopes through
-\eqref{eq:lee_slopes}; a \emph{quantile projection} least-squares-fits $g$ to a
-trusted external density and is used to warm-start hard event smiles.
+The cold-start initializer is the \emph{logistic base}: $a_n=0$, $L=R=\log s$
+with $s=\sqrt{3w_0}/\pi$ from the variance match $\Var(X)=\pi^2s^2/3$, seeded
+from the ATM-interpolated quote variance --- the \texttt{logistic\_init}
+routine of \texttt{calibrate.py}, and exactly the toy of the example in
+\cref{sec:logit}. It is the only cold initializer in production. Sequential
+workflows do better than cold: the background Calibrate sweep \emph{warm-starts}
+each expiry from the previous, shorter-dated expiry's freshly fitted
+parameters (adjacent maturities have nearly the same smile, so \texttt{trf}
+lands close to the optimum), and the service can also run a \emph{data-only
+prepass} --- a persistence-free fit used as the measurement stage of the prior
+and filter machinery (Notes~13, 15). Wing-aware and quantile-projection
+initializers are roadmap items, not shipped code.
 
-\subsection{The hooks: bands, var-swaps, and priors}
+\subsection{The full residual stack}
+\label{sec:hooks}
 
-The same objective \eqref{eq:calib_objective} carries four optional residual
-blocks that are byte-identical-to-absent when unused, and which connect this note
-to the rest of the series:
-\begin{itemize}[leftmargin=1.4em]
-\item \textbf{Bid--ask / haircut band} (Note~07). The mid residual is replaced by
-a band objective: the vol band edges become call-price edges, and a one-sided
-hinge penalizes the model leaving the band plus a small mid anchor, all in the
-same vega-normalized price space.
-\item \textbf{Variance-swap target} (Note~08). One vol-space penalty pulls the
-slice's fair var-swap toward a quoted level. LQD prices the var swap by the
-\emph{exact closed form} $-2\,\E[X]=-2\!\int Q(u)\dd u$ (\cref{sec:varswap}), not
-by replication --- so the var-swap fit stays as cheap as the mid fit.
-\item \textbf{Strike-gap prior anchor} (Note~13). Vega-normalized residuals pull
-the fit toward a transported prior at delta-locations, weighted by how
-data-starved the smile is.
-\item \textbf{Quote-operator prior} (Note~13). ATM/RR/BF operator residuals pull
-the model's operators toward the prior's where live quotes do not identify them.
-\end{itemize}
+The production objective is the stacked residual of
+\cref{tab:stack} --- \texttt{calibrate\_slice} concatenates, in order: the
+data block, the ridge, the calendar slack, the barrier, and the optional
+var-swap/prior blocks. Every optional block is byte-identical-to-absent when
+unused (test-locked), and each connects this note to the rest of the series.
+The Jacobian column matters operationally: the analytic route of
+\cref{sec:jacobian} covers the first five blocks; activating \emph{any}
+var-swap or prior block switches the whole fit to scipy's finite-difference
+Jacobian (correct, merely not accelerated).
 
-\subsection{The var-swap closed form}
+\begin{table}[H]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}p{0.24\textwidth}p{0.26\textwidth}p{0.24\textwidth}l@{}}
+\toprule
+Residual block & Active when & Units / scaling & Jacobian\\
+\midrule
+Mid data block & \texttt{fitMode=mid} (default) & vega-normalized price
+($\approx$ vol) & analytic\\
+Band data block (hinge $+$ mid anchor; Note~07) & \texttt{fitMode}
+\texttt{bidask}/\texttt{haircut} & vega-normalized price & analytic\\
+High-order ridge & \texttt{regLambda}$>0$ (rows $n\ge4$) & coefficient units &
+analytic\\
+Calendar slack (Note~10) & \texttt{enforceCalendar} $+$ a nearer fitted expiry
+& asset share (normalized price) & analytic\\
+$A_R$ soft barrier & always (one row) & dimensionless & analytic\\
+\midrule
+Market var-swap (Note~08) & \texttt{varSwapEnabled} $+$ an active quote &
+vol & FD fallback\\
+Prior strike-gap anchor (Note~13) & \texttt{strike\_gap} / \texttt{hybrid}
+tail, active prior & vega-normalized price & FD fallback\\
+Prior var-swap companion (Note~13) & alongside an active prior & vol & FD
+fallback\\
+Operator prior (Note~13) & \texttt{quote\_operator} / \texttt{hybrid}, gated
+per operator & operator units (vol) & FD fallback\\
+Active-filter MAP (Note~15) & filter mode \texttt{active} (rides the operator
+block, ungated) & handle units & FD fallback\\
+\bottomrule
+\end{tabular}
+\caption{The LQD residual stack as production assembles it
+(\texttt{models/lqd/calibrate.py}; the prior/filter targets are resolved in
+\texttt{api/service.py}). ``FD fallback'' means the presence of that block
+switches the entire fit to the finite-difference Jacobian.}
+\label{tab:stack}
+\end{table}
+
+\subsection{The var-swap route: a native log-contract quadrature}
 \label{sec:varswap}
 
-Because the log contract has the static replication
-$\E[-2X]=-2\int_0^1 Q(u)\dd u$, the LQD fair var-swap total variance is a single
-quadrature against the same grid,
+The log-contract identity $w_{\text{vs}}=-2\,\E[X]=-2\int_0^1 Q(u)\dd u$ is
+exact for the log-contract \emph{proxy} of the var swap; LQD evaluates it as a
+single trapezoidal quadrature on the grid it already owns,
 \begin{equation}
 w_{\text{vs}}=-2\int_{-\infty}^{\infty}Q(z)\,\Lambda(z)(1-\Lambda(z))\,\dd z,
 \end{equation}
-whose integrand decays like $z\,e^{-|z|}$. This is why the LQD var-swap penalty
-is free: the generic replication of Note~08 would re-solve implied variance on a
-strike grid at every Jacobian column and turn a millisecond fit into minutes.
+whose integrand decays like $z\,e^{-|z|}$
+(\texttt{quadrature.py::var\_swap\_strike}). Two qualifications keep the claim
+honest. First, this is a \emph{direct native one-dimensional quadrature},
+dramatically cheaper than the generic strike replication of Note~08 --- which
+would re-solve implied variance on a strike grid at every Jacobian column and
+turn a millisecond fit into minutes --- but activating the var-swap block also
+disables the analytic Jacobian (\cref{tab:stack}), so a var-swap fit is
+\emph{not} literally as cheap as a mid fit. Second, the identity prices the
+log contract: its correspondence with a realized-variance swap assumes the
+continuous-monitoring, continuous-path (diffusion) convention; jumps and
+discrete sampling require the usual corrections, which are outside this
+model's scope.
 
 %======================================================================
 \section{The analytic residual Jacobian}
@@ -559,9 +679,11 @@ strike grid at every Jacobian column and turn a millisecond fit into minutes.
 The dominant cost of \eqref{eq:calib_objective} used to be the Jacobian: scipy
 rebuilt the entire quadrature pipeline $P+1$ times per iteration to finite
 difference it ($P=d=N+1$ parameters). The Vol-Fitter instead propagates the
-exact Jacobian of the whole residual stack in \emph{one} quadrature pass. The key
-is a cancellation identity, and it is the cleanest piece of mathematics in the
-implementation.
+analytic Jacobian of the \emph{core} residual stack --- the mid or band data
+block, ridge, calendar slack and barrier rows of \cref{tab:stack} --- in
+\emph{one} quadrature pass; a fit with any var-swap or prior block active falls
+back to finite differences. The key is a cancellation identity, and it is the
+cleanest piece of mathematics in the implementation.
 
 \subsection{The cancellation identity}
 
@@ -590,8 +712,8 @@ A_z(z_k)+e^{k}\Lambda'(z_k)
 The implicit dependence of the strike root $z_k$ on the parameters drops out of
 the price gradient, leaving
 \begin{equation}
-\boxed{\;\frac{\dd C}{\dd\theta}
-=\left.\frac{\partial A}{\partial\theta}\right|_{z=z_k}.\;}
+\frac{\dd C}{\dd\theta}
+=\left.\frac{\partial A}{\partial\theta}\right|_{z=z_k}.
 \label{eq:dC}
 \end{equation}
 \end{theorem}
@@ -601,6 +723,18 @@ parameter-sensitivities of the asset share at the fixed point $z_k$ --- by the
 very same Hermite interpolation used to price, fed the nodal sensitivities
 $\partial A/\partial\theta_j$ and $\partial A_z/\partial\theta_j$ instead of the
 nodal values.
+
+One honesty note on exactness. \Cref{thm:cancel} is exact for the
+\emph{continuous} objects. The production discretization interpolates $Q$ and
+$A$ as two separate Hermite interpolants, so between grid nodes the
+interpolated price is not \emph{algebraically} the integral of the
+interpolated quantile, and the implemented gradient inherits that (tiny)
+discretization mismatch. The operational claim is therefore \emph{benchmarked
+numerical agreement}, not algebraic identity: the analytic Jacobian matches a
+3-point finite difference to a relative $10^{-3}$ tolerance on the mid, band
+and calendar stacks, and analytic and finite-difference \emph{fits} reach the
+same solution ($|\Delta\theta|\lesssim10^{-5}$, cost agreement
+$\sim10^{-11}$; \texttt{test\_lqd\_jacobian.py}).
 
 \subsection{Nodal sensitivities}
 
@@ -636,18 +770,26 @@ $\expit\!\big(s(A_R-c)\big)\,s\,\partial A_R/\partial\theta$.
 The analytic Jacobian covers the configuration with \emph{no} var-swap or prior
 blocks (the var-swap and prior-anchor terms are not yet differentiated
 analytically; those fits fall back to scipy's two-point finite difference ---
-correct, merely not accelerated). \Cref{tab:timing} reports a fresh end-to-end
-comparison: the analytic and finite-difference fits reach the \emph{same}
-optimum (the costs agree to $\sim11$ significant figures, relative difference
-$\sim10^{-11}$) while the analytic Jacobian is $1.4$--$1.7\times$ faster across
-$N=6\ldots12$ on this benchmark, with both paths converging in a handful of
-iterations.
+correct, merely not accelerated). \Cref{tab:timing} reports a fresh comparison:
+the analytic and finite-difference fits reach the same fitted solution within
+the stated tolerances (costs agreeing to $\sim11$ significant figures,
+relative difference $\sim10^{-11}$) while the analytic Jacobian is
+$1.3$--$1.7\times$ faster across $N=6\ldots12$ on this benchmark, with both
+paths converging in a handful of iterations. Scope of the measurement: the
+generator times the least-squares \emph{residual path} (repeated
+\texttt{calibrate\_slice} calls on the synthetic benchmark), not the full
+public calibration-and-reporting workflow; it runs single-threaded on this
+development machine with the static-grid cache warm and only the core residual
+blocks active. Different hardware, cache state or an active var-swap/prior
+block will move the ratio.
 
 \begin{table}[H]
 \centering
 \caption{Analytic vs.\ two-point finite-difference Jacobian, fresh run of the
-production calibrator on the SVI-JW benchmark (fastest of three repeats). $P=N+1$
-is the parameter count; the cost columns confirm an identical optimum.}
+production calibrator on the SVI-JW benchmark (fastest of three repeats,
+single-threaded, warm static-grid cache, core residual blocks only). $P=N+1$
+is the parameter count; the cost column confirms the same optimum within
+tolerance.}
 \label{tab:timing}
 \lqdtimingtable
 \end{table}
@@ -658,21 +800,26 @@ static grid makes a \emph{repeat} \texttt{build\_slice} cheap, so the $P+1$
 finite-difference builds are not $P+1$ times the cost of one cold build. Second,
 \texttt{trf} converges here in $\sim7$ iterations, so the linear algebra and the
 single value evaluation dilute the Jacobian saving. The win is larger on heavier
-configurations and is, importantly, \emph{free of approximation}: the optimum is
-unchanged. The structural payoff --- a Jacobian that no longer rebuilds the
-quadrature --- is what makes higher-order and surface-wide fits comfortable.
+configurations, and the benchmark reaches the same fitted solution within the
+stated tolerances. The structural payoff --- a Jacobian that no longer rebuilds
+the quadrature --- is what makes higher-order and surface-wide fits comfortable.
 \end{heuristic}
 
 %======================================================================
-\section{Calendar-arbitrage-free surfaces}
+\section{Soft calendar-arbitrage control}
 \label{sec:calendar}
 
 \Cref{prop:nobutterfly} kills butterfly arbitrage within a slice but says nothing
-across expiries. For $T_1<\dots<T_M$ with each forward-normalized to mean one,
-absence of calendar arbitrage at fixed log-moneyness is
-$C_{T_i}(k)\le C_{T_j}(k)$ for $T_i<T_j$ --- equivalently the laws of $Y_T$ are
-increasing in convex order. With equal means, $Y_{T_i}\le_{cx}Y_{T_j}$ iff the
-\emph{integrated upper-quantile} curves are ordered,
+across expiries. Two standing assumptions frame this section: carry is
+deterministic (so working under each $T$-forward measure in normalized units is
+legitimate) and every slice is normalized to mean one, $\E[Y_T]=1$. For
+$T_1<\dots<T_M$, absence of calendar arbitrage at fixed log-moneyness is
+$C_{T_i}(k)\le C_{T_j}(k)$ for $T_i<T_j$ --- equivalently the laws of $Y_T$
+increase in \emph{convex order}. In plain language: the longer-dated law is
+``more spread out'' --- every convex payoff (every call, at every strike) is
+worth at least as much under it --- without its mean moving. With equal means,
+$Y_{T_i}\le_{cx}Y_{T_j}$ iff the \emph{integrated upper-quantile} curves are
+ordered,
 \begin{equation}
 G_i(\alpha):=\int_\alpha^1 e^{Q_i(u)}\dd u\;\le\;G_j(\alpha)\quad\forall\alpha\in[0,1],
 \label{eq:calendar}
@@ -680,15 +827,23 @@ G_i(\alpha):=\int_\alpha^1 e^{Q_i(u)}\dd u\;\le\;G_j(\alpha)\quad\forall\alpha\i
 with equality at $\alpha=0$. This is exactly the upper asset share of
 \eqref{eq:asset_share} read at quantile level, so it is already on the grid. The
 surface is built nearest-to-farthest: each new slice is fitted subject to
-$G_i(\alpha_m)\ge G_{i-1}(\alpha_m)-\tau_m$ on a dense $\alpha$-grid, enforced as
-the soft calendar slack of \eqref{eq:calib_objective} (penalty weight
-\texttt{calendarWeight}), with the constraint evaluated at $z$-values so it is
-exact regardless of the optimization grid. The quantile constraint is better
-conditioned than a grid of call inequalities because it never inverts $Q$ at a
-strike and stays meaningful in the wings where IV inversion is ill-conditioned.
-Note~10 develops the model-agnostic calendar machinery (and the subtlety that
-the variance floor must be confined to the traded log-$k$ range); here we only
-record that for LQD the constraint is the native object $A(z)$.
+$G_i(\alpha_m)\ge G_{i-1}(\alpha_m)-\eps_m$ on a dense $\alpha$-grid, where
+$\eps_m\ge0$ is a per-node slack tolerance --- production currently runs
+$\eps_m=0$ (no tolerance) --- enforced as the soft calendar slack of
+\eqref{eq:calib_objective} (penalty weight \texttt{calendarWeight}), with the
+constraint evaluated at $z$-values so it is exact regardless of the
+optimization grid. The quantile constraint is better conditioned than a grid of
+call inequalities because it never inverts $Q$ at a strike and stays meaningful
+in the wings where IV inversion is ill-conditioned.
+
+Honesty about the guarantee: this is \emph{control}, not a theorem. The hinge
+carries a finite weight, so a hard-pressed fit can retain a small violation
+rather than destroy the quote fit; the whole coupling is a user toggle
+(\texttt{enforceCalendar}) and off means off; and residual calendar violations
+are \emph{measured and reported} by the surface diagnostics rather than assumed
+away. Note~10 develops the model-agnostic calendar machinery (and the subtlety
+that the variance floor must be confined to the traded log-$k$ range); here we
+only record that for LQD the constraint is the native object $A(z)$.
 
 %======================================================================
 \section{Worked examples}
@@ -696,13 +851,22 @@ record that for LQD the constraint is the native object $A(z)$.
 
 All numbers and figures in this section are produced by
 \texttt{Docs/notes/figures/gen\_lqd.py}, which fits the production calibrator to
-two synthetic targets.
+two synthetic targets. Read them for what they are: \emph{synthetic
+approximation benchmarks} --- they measure how well the basis can reproduce a
+known clean curve, not how well the model fits noisy market quotes.
+Market-fit evidence (RMS vs bid--ask NBBO quotes, in- and out-of-sample,
+against an SVI-JW baseline) lives in the backtest harness and its reports
+(\texttt{backend/backtest/}).
 
 \subsection{An SPX-like SVI-JW smile}
 
 The benchmark target is a six-month SPX-like slice from raw SVI
-$w(k)=a+b\{\rho(k-m)+\sqrt{(k-m)^2+\sigma^2}\}$ with
-$(a,b,\rho,m,\sigma)=(0.010625,\,0.07289,\,-0.5,\,0.05831,\,0.10100)$, an ATM
+$w(k)=a+b\{\rho(k-m)+\sqrt{(k-m)^2+\sigma_{\mathrm{SVI}}^2}\}$ with
+\begin{equation*}
+(a,\,b,\,\rho,\,m,\,\sigma_{\mathrm{SVI}})
+=(0.010625,\;0.07289,\;-0.5,\;0.05831,\;0.10100),
+\end{equation*}
+an ATM
 volatility near $20.6\%$ with a pronounced index put skew. The seven-parameter
 $N=6$ fit over $k\in[-0.35,0.30]$ converges in \lqdsvinfev\ residual evaluations
 to the coefficients of \cref{tab:svi_coeffs}, with endpoint and Lee diagnostics
@@ -718,7 +882,8 @@ wing ($\beta_R=\lqdsvibetaR$ vs $0.0364$) and to $\sim$1 on the steeper left
 handles are $\sigma_0=\lqdsvisigma\%$, $s_0=\lqdsviskew$, $\kappa_0=\lqdsvicurv$,
 and the martingale check returns $\E[e^X]-1=\lqdsvimart$. The maximum
 implied-volatility error over the calibration grid is \lqdsvimaxerr\ volatility
-basis points (\cref{fig:svi}).
+basis points (\cref{fig:svi}) --- an approximation-capacity number on a clean
+synthetic target, not a market-fit error.
 
 \begin{figure}[H]
 \centering
@@ -743,8 +908,8 @@ extrapolation, not an SVI continuation.}
 \begin{minipage}{0.49\textwidth}\centering
 \includegraphics[width=\textwidth]{fig_lqd_logq.pdf}
 \end{minipage}
-\caption{Left: the risk-neutral log-return density implied by the SVI fit ---
-non-negative by construction. Right: the fitted log quantile density
+\caption{Left: the risk-neutral log-return density of the LQD slice fitted to
+the SVI target --- non-negative by construction. Right: the fitted log quantile density
 $\ell(u)=\log q(u)$; the $-\log u-\log(1-u)$ endpoints are the source of the
 exponential tails.}
 \label{fig:density}
@@ -803,8 +968,8 @@ which the optimizer's shape modes do not disturb them --- the same three handles
 that the graph extrapolator propagates in Note~14.
 \item \textbf{The implicit-root cancellation} (\cref{thm:cancel}). The strike
 root's dependence on $\theta$ vanishing from the price gradient is what turns a
-$P+1$-rebuild finite-difference Jacobian into a one-pass analytic one, with the
-optimum provably unchanged.
+$P+1$-rebuild finite-difference Jacobian into a one-pass analytic one; the
+benchmark reaches the same fitted solution within the stated tolerance.
 \end{enumerate}
 
 %======================================================================
@@ -812,66 +977,125 @@ optimum provably unchanged.
 \label{sec:limits}
 
 LQD removes butterfly arbitrage by construction but \emph{not} calendar
-arbitrage across independently fitted expiries --- that needs the convex-order
-constraints of \cref{sec:calendar}. Very high Legendre orders can fit noise and
-sculpt spurious density wiggles; this is a model-risk, not an arbitrage, problem,
-controlled by the ridge, bid--ask weighting and event priors. Finally the model
-assumes a continuous law on $(0,\infty)$: a true atom at zero (jump-to-default)
-is only \emph{approximated} by a very heavy left tail and would otherwise require
-an explicit mass point outside the continuous quantile-density component.
+arbitrage across independently fitted expiries --- and the cross-expiry
+machinery of \cref{sec:calendar} is \emph{soft}, finite-weight and optional,
+so a coupled surface is calendar-\emph{controlled}, not calendar-guaranteed.
+Very high Legendre orders can fit noise and sculpt spurious density wiggles;
+this is a model-risk, not an arbitrage, problem, controlled by the ridge,
+bid--ask weighting and event priors. Several further limits deserve explicit
+statement:
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Near the integrability wall.} As $A_R\to1$ the forward integral
+degenerates: the tail corrections dominate, conditioning of the fit and of the
+retarget Newton solve deteriorates, and the barrier is doing real work. Fits
+that live near the wall should be treated as fragile even when admissible.
+\item \textbf{Atoms of any kind.} The model is a continuous law on
+$(0,\infty)$: not only a jump-to-default atom at zero but \emph{any} exact
+mass point (e.g.\ a pinned settlement price) can only be approximated by a
+sharp continuous feature, never represented.
+\item \textbf{Positive is not plausible.} Structural positivity guarantees a
+\emph{density}, not a sensible one: an unregularized high-order fit can
+produce economically implausible (multi-modal, spiky) yet perfectly
+arbitrage-free shapes. Positivity removes one failure class; judgment and the
+ridge handle the rest.
+\item \textbf{Coefficient non-uniqueness in practice.} Distinct coefficient
+vectors can price indistinguishably (near-degenerate directions grow with $N$
+and with sparse data), so fitted coefficients are not comparable across fits
+--- compare handles, curves and densities, not raw $\theta$.
+\item \textbf{Unstudied sensitivities.} There is no dedicated study of
+handle \emph{drift} under rolling recalibration, nor of digital/one-touch
+sensitivities to the interpolation scheme; both are open measurement items,
+not established properties.
+\end{itemize}
 
 %======================================================================
 \section{Traceability}
 \label{sec:traceability}
 
+One caveat on the ``match note'' anchors: the fixture coefficients those tests
+lock were recorded when the benchmark was first frozen, so they are
+\emph{legacy locks} --- they pin the production behaviour against regression,
+but their literal values can lag the freshly regenerated tables in this note
+(the note's numbers always come from a fresh \texttt{gen\_lqd.py} run). Where
+the two disagree, the fresh run is the current truth and the test is the
+regression tripwire.
+
 \begingroup
 \small
-\setlength{\tabcolsep}{3pt}
-\begin{longtable}{@{}p{0.32\textwidth}p{0.12\textwidth}p{0.23\textwidth}p{0.29\textwidth}@{}}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.30\textwidth}p{0.11\textwidth}p{0.55\textwidth}@{}}
 \caption{Claims in this note and the code/tests that lock them.}\\
-\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\toprule Claim & Object & Code anchor \newline \emph{Test anchors}\\ \midrule
 \endfirsthead
-\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\toprule Claim & Object & Code anchor \newline \emph{Test anchors}\\ \midrule
 \endhead
 Density positive; call curve monotone and convex; parity holds &
 \cref{prop:nobutterfly} &
-\nolinkurl{models/lqd/quadrature.py} &
-\nolinkurl{test_lqd_pricing.py::test_density_positive}, \nolinkurl{::test_call_curve_monotone_and_convex_in_strike}, \nolinkurl{::test_put_call_parity}\\
+\nolinkurl{models/lqd/quadrature.py}\newline
+\nolinkurl{test_lqd_pricing.py::test_density_positive}\newline
+\nolinkurl{::test_call_curve_monotone_and_convex_in_strike}\newline
+\nolinkurl{::test_put_call_parity}\\
+\addlinespace
 Martingale shift correct; $\E[e^X]=1$ &
 \eqref{eq:mu_norm} &
-\nolinkurl{models/lqd/quadrature.py} &
-\nolinkurl{test_lqd_pricing.py::test_svi_fit_martingale_shift_matches_note}, \nolinkurl{::test_svi_fit_martingale_integral_is_one}\\
-Endpoint scales and Lee slopes; underflow-safe &
+\nolinkurl{models/lqd/quadrature.py}\newline
+\nolinkurl{test_lqd_pricing.py::test_svi_fit_martingale_shift_matches_note}\newline
+\nolinkurl{::test_svi_fit_martingale_integral_is_one}\\
+\addlinespace
+Endpoint scales and Lee slopes; stable for extreme scales &
 \eqref{eq:AL}--\eqref{eq:lee_slopes} &
-\nolinkurl{models/lqd/basis.py} &
-\nolinkurl{test_lqd_basis.py::test_svi_fit_endpoint_scales_match_note}, \nolinkurl{::test_svi_fit_lee_slopes_match_note}\\
+\nolinkurl{models/lqd/basis.py}\newline
+\nolinkurl{test_lqd_basis.py::test_svi_fit_endpoint_scales_match_note}\newline
+\nolinkurl{::test_svi_fit_lee_slopes_match_note}\newline
+\nolinkurl{::test_lee_slopes_stable_for_tiny_nonzero_endpoint_scales}\\
+\addlinespace
 Legendre basis: recursion and orthogonality &
 \eqref{eq:leg_recursion} &
-\nolinkurl{models/lqd/basis.py} &
-\nolinkurl{test_lqd_basis.py::test_legendre_recursion_matches_explicit_polynomials}, \nolinkurl{::test_legendre_orthogonality_on_unit_interval}\\
+\nolinkurl{models/lqd/basis.py}\newline
+\nolinkurl{test_lqd_basis.py::test_legendre_recursion_matches_explicit_polynomials}\newline
+\nolinkurl{::test_legendre_orthogonality_on_unit_interval}\\
+\addlinespace
 Exact ATM handles &
 \eqref{eq:atm_handles} &
-\nolinkurl{models/lqd/atm.py} &
-\nolinkurl{test_lqd_atm.py::test_atm_level_matches_implied_vol}, \nolinkurl{::test_atm_skew_matches_finite_difference}, \nolinkurl{::test_atm_curvature_matches_finite_difference}\\
+\nolinkurl{models/lqd/atm.py}\newline
+\nolinkurl{test_lqd_atm.py::test_atm_level_matches_implied_vol}\newline
+\nolinkurl{::test_atm_skew_matches_finite_difference}\newline
+\nolinkurl{::test_atm_curvature_matches_finite_difference}\\
+\addlinespace
 Orthogonal chart: shape moves preserve handles; retarget exact &
 \cref{sec:ortho} &
-\nolinkurl{models/lqd/ortho.py} &
-\nolinkurl{test_lqd_ortho.py::test_shape_move_leaves_handles_nearly_unchanged}, \nolinkurl{::test_retarget_hits_exact_handles}\\
-Analytic Jacobian $=$ FD (mid, band, calendar); same optimum &
+\nolinkurl{models/lqd/ortho.py}\newline
+\nolinkurl{test_lqd_ortho.py::test_shape_move_leaves_handles_nearly_unchanged}\newline
+\nolinkurl{::test_retarget_hits_exact_handles}\\
+\addlinespace
+Analytic Jacobian matches FD (mid, band, calendar); fits agree &
 \cref{thm:cancel} &
-\nolinkurl{models/lqd/jacobian.py} &
-\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_mid}, \nolinkurl{::test_jacobian_matches_fd_calendar}, \nolinkurl{::test_analytic_and_fd_fits_agree}\\
-Benchmark fit and speed rail &
+\nolinkurl{models/lqd/jacobian.py}\newline
+\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_mid}\newline
+\nolinkurl{::test_jacobian_matches_fd_band}\newline
+\nolinkurl{::test_jacobian_matches_fd_calendar}\newline
+\nolinkurl{::test_analytic_and_fd_fits_agree}\\
+\addlinespace
+Barrier finite for wild trial parameters &
+\eqref{eq:barrier} &
+\nolinkurl{models/lqd/calibrate.py}\newline
+\nolinkurl{test_lqd_jacobian.py::test_barrier_residual_finite_for_wild_tail_scale}\\
+\addlinespace
+Benchmark fit and speed rail (legacy fixture) &
 \cref{sec:examples} &
-\nolinkurl{models/lqd/calibrate.py} &
-\nolinkurl{test_lqd_calibrate.py::test_calibrate_to_svi_benchmark}, \nolinkurl{::test_calibration_is_fast_enough}\\
+\nolinkurl{models/lqd/calibrate.py}\newline
+\nolinkurl{test_lqd_calibrate.py::test_calibrate_to_svi_benchmark}\newline
+\nolinkurl{::test_calibration_is_fast_enough}\\
+\addlinespace
 Double-hat event smile: bimodal density recovered &
 \cref{sec:examples} &
-\nolinkurl{models/lqd/calibrate.py} &
+\nolinkurl{models/lqd/calibrate.py}\newline
 \nolinkurl{test_lqd_pricing.py::test_double_hat_density_is_bimodal}\\
+\addlinespace
 JW conversion used by the benchmark &
 \cref{app:svijw} &
-\nolinkurl{models/svi_jw/svi.py} &
+\nolinkurl{models/svi_jw/svi.py}\newline
 \nolinkurl{test_lqd_pricing.py::test_jw_conversion_matches_note}\\
 \bottomrule
 \end{longtable}
@@ -879,15 +1103,21 @@ JW conversion used by the benchmark &
 
 \appendix
 %======================================================================
-\section{Hyperparameter atlas}
+\section{LQD-native controls and numerical constants}
 \label{app:atlas}
 
-Every knob touching the LQD slice, with its default and role. Surfaced knobs are
-user-facing \texttt{FitSettings}; hidden knobs are internal constants tuned to
-the algorithm and not exposed.
+The knobs \emph{specific to} the LQD slice, with defaults and roles. Surfaced
+knobs are user-facing \texttt{FitSettings}; hidden knobs are internal constants
+tuned to the algorithm and not exposed. The \emph{shared} calibration controls
+that also shape an LQD fit --- \texttt{fitMode}, \texttt{haircut},
+\texttt{midAnchorWeight}, \texttt{enforceCalendar}/\texttt{calendarWeight},
+the var-swap controls, and the prior-persistence and observation-filter
+settings of \cref{tab:stack} --- are indexed in Note~00's control table and
+derived in their own notes (07, 08, 10, 13, 15); they are deliberately not
+duplicated here.
 
 \begin{longtable}{p{0.26\textwidth}p{0.12\textwidth}p{0.54\textwidth}}
-\caption{LQD hyperparameters.}\label{tab:atlas}\\
+\caption{LQD-native controls.}\label{tab:atlas}\\
 \toprule
 Knob & Default & Role\\
 \midrule
@@ -897,7 +1127,8 @@ Knob & Default & Role\\
 \multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\
 \midrule
 \texttt{nOrder} $N$ & $6$ & Legendre expansion order; $7$ parameters at $N=6$.
-$6$ for ordinary slices, $8$--$14$ for scheduled-event slices.\\
+Schema range $4\le N\le16$: $6$ for ordinary slices, $8$--$14$ for
+scheduled-event slices.\\
 \texttt{regLambda} $\lambda$ & $10^{-6}$ & High-order ridge coefficient in
 \eqref{eq:calib_objective}; suppresses oscillation in sparse data.\\
 \texttt{regPower} $r$ & $1.0$ & Ridge exponent in $n^{2r}a_n^2$; larger $r$
@@ -946,8 +1177,9 @@ evaluation (clean Greeks) and machine-precision strike inversion by
 Hermite--Newton --- and supplies precisely the nodal sensitivities the analytic
 Jacobian reuses.
 \item \textbf{Analytic Jacobian} (\cref{sec:jacobian}). One quadrature pass
-instead of $P+1$ finite-difference rebuilds, reaching the same optimum (relative
-cost agreement $\sim10^{-11}$), measured $1.4$--$1.7\times$ end-to-end here and
+instead of $P+1$ finite-difference rebuilds, reaching the same fitted solution
+within tolerance (relative cost agreement $\sim10^{-11}$), measured
+$1.3$--$1.7\times$ on the residual-path benchmark of \cref{tab:timing} and
 structurally more on heavier configurations. Gated to the var-swap/prior-free
 configuration.
 \item \textbf{Looser tolerances.} Dropping \texttt{trf} tolerances from
@@ -960,20 +1192,27 @@ no display-precision cost.
 \section{The SVI-JW conversion used in the example}
 \label{app:svijw}
 
-The SVI-JW parameters $(v,\psi,p,c,\widetilde v)$ relate to raw SVI by
+SVI (``stochastic volatility inspired'') is the five-parameter total-variance
+slice $w(k)=a+b\{\rho(k-m)+\sqrt{(k-m)^2+\sigma_{\mathrm{SVI}}^2}\}$; SVI-JW
+(``jump-wings'') re-coordinatizes it into trader quantities. The JW parameters
+$(v,\psi,p,c,\widetilde v)$ relate to raw SVI by
 $w_0=vT$, $b=\tfrac{\sqrt{w_0}}{2}(p+c)$, $\rho=\tfrac{c-p}{c+p}$,
-$\psi=\tfrac{b}{2\sqrt{w_0}}\big(\rho-\tfrac{m}{\sqrt{m^2+\sigma^2}}\big)$ and
-$\widetilde vT=a+b\sigma\sqrt{1-\rho^2}$. Setting
-$\chi=\tfrac{m}{\sqrt{m^2+\sigma^2}}=\rho-\tfrac{4\psi}{p+c}$ gives
-$m=\chi\sigma/\sqrt{1-\chi^2}$ and $\sqrt{m^2+\sigma^2}=\sigma/\sqrt{1-\chi^2}$,
+$\psi=\tfrac{b}{2\sqrt{w_0}}\big(\rho-\tfrac{m}{\sqrt{m^2+\sigma_{\mathrm{SVI}}^2}}\big)$ and
+$\widetilde vT=a+b\sigma_{\mathrm{SVI}}\sqrt{1-\rho^2}$. Setting
+$\chi=\tfrac{m}{\sqrt{m^2+\sigma_{\mathrm{SVI}}^2}}=\rho-\tfrac{4\psi}{p+c}$ gives
+$m=\chi\sigma_{\mathrm{SVI}}/\sqrt{1-\chi^2}$ and
+$\sqrt{m^2+\sigma_{\mathrm{SVI}}^2}=\sigma_{\mathrm{SVI}}/\sqrt{1-\chi^2}$,
 and subtracting the minimum-variance relation from the ATM relation,
 \begin{equation}
-\sigma=\frac{w_0-\widetilde vT}{b\big((1-\rho\chi)/\sqrt{1-\chi^2}-\sqrt{1-\rho^2}\big)},
-\quad m=\frac{\chi\sigma}{\sqrt{1-\chi^2}},
-\quad a=\widetilde vT-b\sigma\sqrt{1-\rho^2}.
+\sigma_{\mathrm{SVI}}=\frac{w_0-\widetilde vT}{b\big((1-\rho\chi)/\sqrt{1-\chi^2}-\sqrt{1-\rho^2}\big)},
+\quad m=\frac{\chi\sigma_{\mathrm{SVI}}}{\sqrt{1-\chi^2}},
+\quad a=\widetilde vT-b\sigma_{\mathrm{SVI}}\sqrt{1-\rho^2}.
 \end{equation}
-The benchmark's raw parameters in \cref{sec:examples} are the image, at
-$T=0.5$, of
+The inversion is exact on its documented domain --- $p+c>0$, $|\chi|<1$ and a
+nonzero denominator above --- and has a genuine \emph{coordinate singularity}
+at $\psi=0$ with $m\ne0$ handled separately (Note~02 states the full domain
+contract, $-p/2<\psi<c/2$, and its $\psi=0$ stratum). The benchmark's raw
+parameters in \cref{sec:examples} are the image, at $T=0.5$, of
 \[
 (v,\psi,p,c,\widetilde v)=(0.0425,\,-0.25,\,0.75,\,0.25,\,0.034).
 \]
@@ -993,29 +1232,37 @@ $Q(z_k)=k$ and interpolates $A$ with cubic Hermite for smooth Greeks; the linear
 
 \begin{lstlisting}[caption={The LQD quadrature pipeline (distilled from
 \texttt{models/lqd/\{basis,quadrature\}.py}).}]
-def legendre(n_max, x):                     # P_0..P_{n_max}, 3-term recursion
+def legendre(n_max, x):            # P_0..P_{n_max}, 3-term recursion
     P = np.empty((n_max+1, x.size)); P[0] = 1.0; P[1] = x
     for n in range(1, n_max):
         P[n+1] = ((2*n+1)*x*P[n] - n*P[n-1]) / (n+1)
     return P
 
-def g_of_u(u, L, R, a):                     # smooth part g(u) of ell(u)
+def g_of_u(u, L, R, a):            # smooth part g(u) of ell(u)
     return (1-u)*L + u*R + a @ legendre(len(a)+1, 1 - 2*u)[2:]
 
-def build_slice(z, L, R, a):                # one quadrature pass, eqs (q_logit)-(mu_norm)
+def build_slice(z, L, R, a):
+    # One quadrature pass, eqs (q_logit)-(mu_norm).
     u = expit(z); dz = z[1] - z[0]
-    A_L, A_R = np.exp(g_of_u(np.array([0.0, 1.0]), L, R, a))   # tail scales e^{g(0)}, e^{g(1)}
-    Q = cumulative_simpson(np.exp(g_of_u(u, L, R, a)), dx=dz, initial=0.0)  # dQ/dz = e^{g}
-    Q -= Q[len(z)//2]                       # anchor Q(0) = 0
+    # Tail scales e^{g(0)}, e^{g(1)}:
+    A_L, A_R = np.exp(g_of_u(np.array([0.0, 1.0]), L, R, a))
+    dQ = np.exp(g_of_u(u, L, R, a))          # dQ/dz = e^{g}
+    Q = cumulative_simpson(dQ, dx=dz, initial=0.0)
+    Q -= Q[len(z)//2]                        # anchor Q(0) = 0
     mass = np.exp(Q)*u*(1-u)
-    tot = np.trapezoid(mass, z) + np.exp(Q[-1]-z[-1])/(1-A_R) + np.exp(Q[0]-z[-1])/(1+A_L)
-    mu = -np.log(tot); Q = Q + mu           # martingale normalization: E[e^X] = 1
+    tot = (np.trapezoid(mass, z)             # + analytic tails
+           + np.exp(Q[-1]-z[-1])/(1-A_R)
+           + np.exp(Q[0]-z[-1])/(1+A_L))
+    mu = -np.log(tot); Q = Q + mu            # now E[e^X] = 1
     m = np.exp(Q)*u*(1-u)
-    A = cumulative_simpson(m[::-1], dx=dz, initial=0.0)[::-1] + np.exp(Q[-1]-z[-1])/(1-A_R)
-    return u, Q, A                          # asset share A(z) = int_z^inf e^{Q} u(1-u)
+    # Asset share A(z) = int_z^inf e^{Q} u(1-u):
+    A = (cumulative_simpson(m[::-1], dx=dz, initial=0.0)[::-1]
+         + np.exp(Q[-1]-z[-1])/(1-A_R))
+    return u, Q, A
 
-def call_price(k, z, u, Q, A):              # C(k) = A(z_k) - e^k (1 - u_k)
-    zk = np.interp(k, Q, z)                 # invert Q(z_k) = k
+def call_price(k, z, u, Q, A):
+    # C(k) = A(z_k) - e^k (1 - u_k)
+    zk = np.interp(k, Q, z)                  # invert Q(z_k) = k
     return np.interp(zk, z, A) - np.exp(k)*(1 - expit(zk))
 \end{lstlisting}
 

@@ -20,29 +20,63 @@
 \begin{abstract}
 This note documents the Vol-Fitter's sigmoid family, the \emph{Multi-Core
 Sigmoid} (MCS) model. The base is a six-parameter sigmoid implied-variance
-slice: a
-log-cosh convexity primitive giving an ATM level, an ATM skew, a convexity
-amplitude, and \emph{asymmetric} put/call wing steepnesses, $C^2$ across its
-centre. On top of the base the model adds $R$ signed \emph{zero-wing hat}
-kernels --- normalized centred second differences of the log-cosh primitive ---
-each of which inserts a local variance hump ($\alpha>0$) or notch ($\alpha<0$)
-\emph{without moving the base wing slopes}. This is exactly the structure a
-single hyperbola (SVI, Note~02) cannot provide: we prove that a globally convex
-slice cannot reproduce a WW-shaped smile (central trough with two shoulders), and
+slice: a log-cosh convexity primitive giving a variance level and slope
+\emph{at its fitted centre}, a convexity amplitude, and \emph{asymmetric}
+put/call wing steepnesses, $C^2$ across the centre. On top of the base the
+model adds $R$ signed \emph{zero-wing hat} kernels --- normalized centred
+second differences of the log-cosh primitive --- each of which inserts a local
+variance hump ($\alpha>0$) or notch ($\alpha<0$) \emph{without moving the base
+wing slopes}: the hats are asymptotic-wing-neutral, which is weaker than
+Lee-compatible --- admissibility of the preserved base wings is a separate,
+diagnosed condition. This local-correction structure is exactly what a single
+hyperbola (SVI, Note~02) cannot provide: we prove that a globally convex slice
+cannot reproduce a WW-shaped smile (central trough with two shoulders), and
 show that two hats reduce the fit error on such a smile from \sivbasemaxerr\ to
 \sivmaxerr\ volatility basis points. The model carries $6+4R$ parameters, has a
 closed-form Durrleman butterfly diagnostic, and is calibrated in three stages
 (base $\to$ greedy hat seeding $\to$ joint bounded refine) with an analytic
-Jacobian measured \sivspeedup$\times$ faster than finite differences. The cores
-count $R$ is the user's ``cores'' slider --- the direct analogue of the LQD
-Legendre order --- capped at two, because the offline backtest shows deeper stacks
-over-fit and manufacture butterfly arbitrage disproportionately in the \emph{put}
-wing; a default-on put-wing Durrleman regularizer that vanishes on any admissible
-slice, and a note on that over-fit tendency, close the discussion.
+Jacobian measured \sivspeedup$\times$ faster than finite differences on the
+final-refine microbenchmark. The cores count $R$ is the user's ``cores''
+slider --- the direct analogue of the LQD Legendre order --- capped at two,
+because the offline backtest shows a third core buys almost nothing
+out-of-sample at several times the cost while worsening wing arbitrage; a
+default-on put-wing Durrleman regularizer that vanishes on any clean slice,
+and a note on that over-fit tendency, close the discussion.
 \end{abstract}
 
+\newpage
 \tableofcontents
 \newpage
+
+%======================================================================
+\section*{Conventions, and what you control}
+\addcontentsline{toc}{section}{Conventions, and what you control}
+
+\paragraph{Conventions.} $k=\log(K/F)$ is log-moneyness; $v=\sigma_{\text{imp}}^2$
+is \emph{annualized implied variance} (the quantity MCS models);
+$w=\tau v$ is total variance, where $\tau$ is the production \emph{variance
+clock} --- calendar time dilated by scheduled events (Notes~00, 11), equal to
+the calendar year fraction $t$ only when the event clock is off. Production
+passes $\tau$ (\texttt{prepared.tau}) to the calibrator; the formulas below
+write a bare $t$, and wherever it plays a time role, read $\tau$. The
+$z$-scale reference $\sigma_{\text{ref}}$ is the \emph{quoted} volatility
+nearest the money, with a median-of-quotes fallback when that quote is
+degenerate ($\le0.1\%$); it is fixed before the fit, never optimized. A
+\emph{vol bp} is $10^{-4}$ in volatility.
+
+\paragraph{What you control, and what you observe.} For a desk user: MCS is
+the \texttt{sigmoid} family in the model selector; LQD remains the routine
+default slice model, and MCS is the event/WW specialist. If MCS is selected
+the product runs $R=2$ cores with the put-wing penalty at $100\%$; the
+\emph{library} defaults are $R=0$ and penalty off (research code keeps the
+full family). The user controls three things: the cores slider $R\in\{0,1,2\}$,
+the amplitude ridge, and the wing-penalty strength. Individual hat parameters
+$(\alpha_r,c_r,h_r,\kappa_r)$ are \emph{not} trader handles --- they are
+non-unique by design and nothing downstream consumes them. What you observe
+is the same as for every model: the fitted curve, the full-curve ATM
+level/skew/curvature handles (computed from the displayed curve --- note the
+base parameters $V_0,S_0$ are \emph{not} these handles, and the hats can move
+them), and the per-fit quality diagnostics including $g$.
 
 %======================================================================
 \section{Motivation: what a hyperbola cannot do}
@@ -82,8 +116,10 @@ two derivatives vanish in both tails (\cref{lem:zerowing}).
 \item Expressiveness is budgeted: cores are capped by the quote count
 \eqref{eq:identifiability} and the surfaced slider is clamped to two.
 \item The model reports its own butterfly diagnostic $g$ per fit, and the
-default-on put-wing hinge is exactly zero on any admissible slice
-(byte-identical, test-locked).
+put-wing hinge rows are exactly zero on any clean slice --- penalty
+\emph{off} is locked byte-identical; penalty \emph{on} over a clean slice is
+locked unchanged to solver tolerance ($10^{-9}$ relative), test-locked either
+way.
 \item The parameters are a means, not the object: hats are non-unique by
 design, and only the \emph{curve} is contractual
 (\cref{sec:calib}).
@@ -94,12 +130,17 @@ The design constraint on the correction kernels is sharp:
 
 \begin{heuristic}
 A shoulder is a \emph{local} feature: it changes the body of the smile in a
-bounded region but must not alter the asymptotic wings (those are pinned by Lee
-and by liquid risk-reversals). So the correction kernels must vanish --- in value,
-slope, \emph{and} curvature --- in both tails. That ``zero-wing'' requirement is
-what singles out the centred-second-difference hat of \cref{sec:hats}, and it is
-why an arbitrary Gaussian bump would be wrong (a Gaussian decays but tilts the
-local skew on the way out).
+bounded region but must not alter the asymptotic wings (those are pinned by
+liquid risk-reversals and by whatever tail law the base commits to). So the
+correction kernels must vanish --- in value, slope, \emph{and} curvature ---
+in both tails. That ``zero-wing'' requirement does not \emph{uniquely} select
+a kernel (a Gaussian and its first two derivatives also vanish in the tails);
+the centred-second-difference hat of \cref{sec:hats} is the convenient
+implementation choice: it is built from the \emph{same} log-cosh primitive as
+the base --- so the model and its Jacobian share one set of analytic jets ---
+it is unit-normalized at its centre ($\alpha$ reads directly as the variance
+displacement there), and its plateau width and shoulder steepness are separate
+dials ($h$, $\kappa$) where a Gaussian has only one.
 \end{heuristic}
 
 %======================================================================
@@ -144,9 +185,13 @@ v_{\text{base}}''(z)=K_0\,\Phi_{\kappa_i}''(z-z_0),
 \end{equation}
 with the steepness switching $\kappa_i=\kappa_P$ for $z<z_0$ and
 $\kappa_i=\kappa_C$ for $z\ge z_0$. The six parameters are the variance level
-$V_0$ at the centre $z_0$, the skew $S_0$, the convexity amplitude $K_0\ge0$, the
-centre $z_0$, and the \emph{asymmetric} put/call wing steepnesses
-$\kappa_P,\kappa_C$. Because $\Phi$ and $\Phi'$ both vanish at the origin, the
+$V_0$ \emph{at the fitted centre} $z_0$, the $z$-slope $S_0$ there, the
+convexity amplitude $K_0\ge0$, the centre $z_0$, and the \emph{asymmetric}
+put/call wing steepnesses $\kappa_P,\kappa_C$. Be precise about what $V_0,S_0$
+are \emph{not}: the centre $z_0$ is fitted and generally $\ne0$, so they are
+not the ATM level and skew, and the hats can move the full model's ATM handles
+besides --- the displayed ATM level/skew/curvature always come from the full
+curve. Because $\Phi$ and $\Phi'$ both vanish at the origin, the
 slice is $C^2$ across $z_0$ even though the steepness switches there --- so the
 asymmetry is in the \emph{rate} at which each wing straightens, not a kink. The
 asymptotic $z$-space variance wing slopes are
@@ -201,16 +246,24 @@ hat is locally concave (a hump), as it should be.
 The two objects read directly as \eqref{eq:phi}--\eqref{eq:hat}:
 
 \begin{lstlisting}[caption={The primitive $\Phi_\kappa$ and the zero-wing hat
-$B_{c,h,\kappa}$ (distilled from \texttt{models/sigmoid/kernels.py}; agrees with
-it to $10^{-13}$).},label={lst:hat}]
-def phi(u, kappa):                          # log-cosh primitive Phi_kappa
-    x = np.clip(kappa * u / 2, -50, 50)     # guard cosh() overflow
-    return (4 / kappa**2) * np.log(np.cosh(x))
+$B_{c,h,\kappa}$ --- the production tail handling verbatim
+(\texttt{models/sigmoid/kernels.py}): past $|x|=50$ the log-cosh SWITCHES to
+its exact linear asymptote $|x|-\log2$; clipping $x$ instead would freeze
+$\Phi$ constant in the far tail and destroy the wing slopes.},label={lst:hat}]
+def safe_logcosh(x):
+    # log(cosh(x)) = |x| - log 2 + O(e^{-2|x|})
+    x = np.abs(x)
+    return np.where(x < 50.0,
+                    np.log(np.cosh(np.minimum(x, 50.0))),
+                    x - np.log(2.0))
 
-def hat(z, c, h, kappa):                    # zero-wing kernel B_{c,h,kappa}
-    u = z - c                               # centred 2nd difference of Phi:
+def phi(u, kappa):        # log-cosh primitive Phi_kappa
+    return (4 / kappa**2) * safe_logcosh(kappa * u / 2)
+
+def hat(z, c, h, kappa):  # zero-wing kernel B_{c,h,kappa}
+    u = z - c             # centred 2nd difference of Phi:
     raw = phi(u-h, kappa) - 2*phi(u, kappa) + phi(u+h, kappa)
-    return raw / (2 * phi(h, kappa))        # normalized so B(c) = 1
+    return raw / (2 * phi(h, kappa))   # so B(c) = 1
 \end{lstlisting}
 
 \subsection{The full model}
@@ -222,10 +275,24 @@ The Multi-Core Sigmoid (MCS) slice is the base plus $R$ signed hats,
 \label{eq:model}
 \end{equation}
 with $6+4R$ parameters. By \cref{lem:zerowing} every member of this family has
-the \emph{same} Lee-compatible wings as its base, regardless of $R$ --- so adding
-expressiveness in the body never threatens the tails. The cores count $R$ is the
-``cores'' slider, the analogue of the LQD Legendre order $N$ and the SVI vs LQD vs
-LV expressiveness dial.
+the \emph{same asymptotic wings as its base}, regardless of $R$ --- so adding
+expressiveness in the body never \emph{moves} the tails. Wing-neutral is
+weaker than Lee-compatible, and the distinction matters: nothing constrains
+the preserved base slopes themselves. In total-variance $k$-space the wing
+slopes are
+\begin{equation}
+\beta_P=\frac{\sqrt{\tau}}{\sigma_{\text{ref}}}\Big(\frac{2K_0}{\kappa_P}-S_0\Big),
+\qquad
+\beta_C=\frac{\sqrt{\tau}}{\sigma_{\text{ref}}}\Big(S_0+\frac{2K_0}{\kappa_C}\Big),
+\label{eq:beta_kspace}
+\end{equation}
+and admissibility requires $0\le\beta_{P},\beta_{C}\le2$ (upward wings, under
+Lee's cap). The calibration bounds of \cref{sec:calib} do \emph{not} enforce
+this --- the hats are asymptotic-wing-neutral, and admissibility of the
+preserved base wings must be checked separately (it is diagnosed, not
+guaranteed; the cross-model wing treatment is Note~09). The cores count $R$
+is the ``cores'' slider, the analogue of the LQD Legendre order $N$ and the
+SVI vs LQD vs LV expressiveness dial.
 
 %======================================================================
 \section{Static no-arbitrage}
@@ -238,14 +305,29 @@ $k$-space derivatives via $k=\sigma_{\text{ref}}\sqrt t\,z$ and $w=tv$:
 g(k)=\Big(1-\frac{k\,w'}{2w}\Big)^2-\frac{w'^2}{4}\Big(\frac1w+\frac14\Big)+\frac{w''}{2}\ \ge0.
 \label{eq:durrleman_siv}
 \end{equation}
-Since the risk-neutral density is proportional to $g$, the diagnostic
-$g(k)\ge0$ on the grid is the no-butterfly check. Unlike LQD, MCS is
+The equivalence ``$g\ge0$ $\iff$ non-negative density'' carries conditions
+worth stating for this model: it presumes the \emph{raw} variance is positive
+($v_R>0$ --- signed hats can drive it negative, and there is no positivity
+penalty in the fit), the slice is smooth, and the wings behave appropriately;
+and a finite evaluation grid makes $g$ a \emph{diagnostic}, never a global
+certificate. Positivity and the floor interact subtly in code: pricing floors
+the variance at $10^{-8}$, and the reported diagnostic is the Durrleman
+functional of that \emph{priced} (floored) curve --- where the floor binds the
+priced slice is locally constant, its derivatives are zero, and
+\texttt{is\_butterfly\_free} flags the slice as not-free through its separate
+raw-positivity check. (An earlier revision mixed the floored value with the
+raw derivatives --- a functional of no curve at all; fixed and test-locked
+2026-07-11. The \emph{penalty}-path $g$ inside the calibrator deliberately
+keeps the raw derivatives: at collapsed-variance grid points the $1/w$ term
+then explodes negative, acting as a harsh de-facto barrier against hats that
+drive variance through zero.) Unlike LQD, MCS is
 \emph{not} arbitrage-free by construction: a large or narrow hat can drive $g$
 negative, so $g$ is reported per fit, the calibration bounds (\cref{sec:calib})
 keep hats in a benign range, and a default-on \emph{put-wing regularizer}
-(\cref{sec:wingpen}) actively penalizes any residual violation. The wings are
-Lee-compatible by construction (\cref{lem:zerowing}); the cross-model wing
-treatment is Note~09.
+(\cref{sec:wingpen}) penalizes residual violations. The wings are
+asymptotic-wing-neutral by construction (\cref{lem:zerowing}) --- their
+Lee-admissibility is a separate check, \eqref{eq:beta_kspace}; the cross-model
+wing treatment is Note~09.
 
 \subsection{Where the arbitrage lives, and the put-wing regularizer}
 \label{sec:wingpen}
@@ -254,13 +336,16 @@ When cores over-reach, they break \eqref{eq:durrleman_siv} not near the money --
 where quotes are dense and discipline the curvature --- but out in the
 \emph{sparsely quoted wings}, where each hat's local curvature is unconstrained by
 data. The offline backtest (project \texttt{backtest/}) localizes the violation
-sharply: across refit multi-core nodes about $64\%$ of the $g<0$ points sit in the
-\emph{put} wing (the steep, variance-loaded side of the equity skew) against only
-$\sim4\%$ near the money, with the worst point at a median standardized moneyness
-$z\approx-3.2$. To discipline exactly that region, the joint refine stage carries an
-optional soft \emph{put-wing Durrleman penalty}. On a grid $\{z_j\}_{j=1}^{M}$ of
-$M=49$ points spanning a padding $\Delta z=2$ in $z$ \emph{past} the quoted range
-(so it reaches into the unquoted tails), it appends the residual rows
+sharply --- with its scope stated: across the \emph{audited SIV-3 spike-regime
+refits} (the population that motivated the cap; not all event or liquid fits)
+about $64\%$ of the $g<0$ points sit in the \emph{put} wing (the steep,
+variance-loaded side of the equity skew) against only $\sim4\%$ near the money,
+with the worst point at a median standardized moneyness $z\approx-3.2$. To
+discipline that region, the joint refine stage carries an optional soft
+\emph{put-wing Durrleman penalty}. Its grid $\{z_j\}_{j=1}^{M}$ of $M=49$
+points spans the \emph{entire} interval $[z_{\min}-2,\,z_{\max}+2]$ ---
+quoted region included, extended $\Delta z=2$ into the unquoted tails on both
+sides --- and it appends the residual rows
 \begin{equation}
 r^{\text{wing}}_j=\sqrt{\lambda_j}\,\max\!\big(-g(z_j),\,0\big),
 \qquad
@@ -279,14 +364,18 @@ otherwise manufacture a wing violation, pulling the fit back to the admissible
 boundary there rather than everywhere.
 
 \begin{heuristic}
-The penalty is a \emph{one-sided} hinge on the same $g$ the model already reports,
-sampled where the model extrapolates rather than where it interpolates. It does not
-\emph{guarantee} $g\ge0$ (a soft penalty trades the violation against the data fit),
-but on genuinely arbitraged illiquid wings it shrinks the worst violation by orders
-of magnitude --- the backtest measured a median wing $\min g$ moving from
-$\approx-7.9$ to $\approx-0.02$ --- at the cost of fitting \emph{less} to the
-arbitraged de-Americanized quotes that caused the violation, which is the right
-trade (Note~05 removes that arbitrage at the source; \cref{sec:original}).
+The penalty is a \emph{one-sided} hinge on the same $g$ the model already
+reports. Although its grid covers the quoted region too, it \emph{bites} where
+the model extrapolates: where quotes are dense they already discipline the
+curvature, so $g\ge0$ there and the hinge rows are zero. It does not
+\emph{guarantee} $g\ge0$ (a soft penalty trades the violation against the data
+fit --- the ablation below leaves a residual flagged population even with every
+defence on), but on genuinely arbitraged illiquid wings it shrinks the worst
+violation by orders of magnitude --- the backtest measured a median wing
+$\min g$ moving from $\approx-7.9$ to $\approx-0.02$ --- at the cost of
+fitting \emph{less} to the arbitraged de-Americanized quotes that caused the
+violation, which is the right trade (Note~05 removes that arbitrage at the
+source; \cref{sec:original}).
 \end{heuristic}
 
 %======================================================================
@@ -315,18 +404,25 @@ exploding against each other without biasing a well-determined amplitude.
 All positive parameters ($K_0$, the steepnesses, the hat half-widths and
 steepnesses) are bound-constrained directly through scipy's trust-region
 reflective solver; the hat half-width is held in $[\sivhlo,\sivhhi]$ and the
-steepness in $[\sivkappalo,\sivkappahi]$. Crucially the cores count is capped so
-the model never has more parameters than quotes,
+steepness in $[\sivkappalo,\sivkappahi]$. The cores count is capped by the
+quote count,
 \begin{equation}
 R\le\Big\lfloor\frac{N_{\text{quotes}}-6}{4}\Big\rfloor,
 \label{eq:identifiability}
 \end{equation}
-which guards sparse short-dated chains against fitting spurious narrow kernels.
-Independently of this data-driven bound, the surfaced \texttt{nCores} is
-\emph{hard-capped at two}, $R\in\{0,1,2\}$: the backtest found that $R\ge3$ buys no
-out-of-sample precision while manufacturing the put-wing arbitrage of
-\cref{sec:wingpen}, so a persisted desk setting above two is silently \emph{clamped}
-(not rejected) on load. Precision matters here: the clamp lives in the
+which guards sparse short-dated chains against fitting spurious narrow
+kernels. Be precise about what this rule does and does not prevent: it caps
+only the \emph{hats}, so it stops underidentified hats whenever
+$N_{\text{quotes}}\ge6$ --- but the application's minimum of \emph{five}
+included quotes per node means the six-parameter base can still be fitted to
+five quotes (one parameter over the data; the bounds and the data-driven
+start keep it tame, but it is not an identifiability guarantee). Independently
+of this data-driven bound, the surfaced \texttt{nCores} is \emph{hard-capped
+at two}, $R\in\{0,1,2\}$: the backtest found a third core buys almost nothing
+out-of-sample (\cref{sec:original}) while manufacturing the put-wing arbitrage
+of \cref{sec:wingpen}, so any incoming setting above two --- persisted
+\emph{or} freshly submitted, the validator runs on every parse --- is silently
+\emph{clamped} (not rejected). Precision matters here: the clamp lives in the
 \emph{schema} (\texttt{FitSettings.nCores}), not in the calibrator ---
 \texttt{calibrate\_sigmoid(n\_cores=3)} runs happily, and the library's own
 tests exercise it. The cap is a product decision about what the app will
@@ -334,42 +430,62 @@ persist and display, enforced at the settings boundary; research code below
 that boundary deliberately keeps the full family. Relatedly, the hats are
 \emph{non-unique} by construction (two overlapping hats can trade amplitude
 against each other): the round-trip test recovers the \emph{curve}, not the
-parameters, and nothing downstream ever consumes hat parameters directly. The refine stage carries the same optional blocks as the
-other models --- band fit (Note~07), var-swap target (Note~08), the model-agnostic
-calendar hinge (Note~10), prior persistence (Note~13), and the put-wing regularizer
-\eqref{eq:wingpen} --- so the sigmoid overlay is no longer a prior exception.
+parameters, and nothing downstream ever consumes hat parameters directly. The
+refine stage carries the same optional blocks as the other models --- band fit
+(Note~07), var-swap target (Note~08), the model-agnostic calendar hinge
+(Note~10), prior persistence (Note~13), the put-wing regularizer
+\eqref{eq:wingpen}, and the default-off \texttt{extrapEnforce} tapered
+extrapolated-region fences (Notes 09--10; finite-differenced rows over the
+analytic core, like SVI) --- so the sigmoid overlay is no longer a prior
+exception.
 
 \begin{perfbox}
 The dominant cost of an $R$-core fit is the $(6+4R+1)$-evaluation
 finite-difference Jacobian. The closed-form Jacobian of the residual stack (data
 $+$ ridge $+$ calendar) propagated through the log-cosh primitive replaces it in
-one pass; a fresh run on the two-core WW fit measured \sivanalyticms\,ms vs
-\sivfdms\,ms (\sivspeedup$\times$) with the optimum unchanged to $\sivcostdiff$ in
-cost. It is gated to the var-swap/prior-free configuration, as in LQD and SVI. When
-the put-wing regularizer \eqref{eq:wingpen} is active the Jacobian is
-\emph{hybrid}: analytic for the data/ridge/calendar rows and finite-difference only
-for the cheap $49$-point $g$-penalty grid, so the penalized fit keeps essentially
-the analytic speed. See \cref{app:perf}.
+one pass; a fresh run measured \sivanalyticms\,ms vs \sivfdms\,ms
+(\sivspeedup$\times$) with the optimum unchanged to $\sivcostdiff$ in cost.
+Scope of that number: it is a \emph{final-refine microbenchmark} --- the $R=2$
+mid refine alone, clean configuration, on the synthetic WW target --- and
+excludes the base fit, the hat seeding and the product-default wing penalty;
+it is not an end-to-end calibration timing. The analytic path is gated to the
+var-swap/prior-free configuration, as in LQD and SVI. When the put-wing
+regularizer \eqref{eq:wingpen} or the \texttt{extrapEnforce} fences are active
+the Jacobian is \emph{hybrid}: analytic for the data/ridge/calendar rows and
+finite-difference only for the small penalty blocks, so the penalized fit
+keeps most of the analytic speed. See \cref{app:perf}.
 \end{perfbox}
 
 %======================================================================
 \section{Worked example: a WW smile}
 \label{sec:example}
 
-The target in \cref{fig:fit} is a synthetic WW: rising V wings with a shoulder on
-each side of the ATM trough --- the shape \cref{prop:convex} forbids a hyperbola
---- and it is itself \emph{verified butterfly-clean} before any fit runs (see
-the remark closing this section).
+The target in \cref{fig:fit} is a synthetic WW built to be \emph{globally}
+admissible, not merely clean on a window: its \emph{total variance} is a
+hyperbolic base plus two Gaussian shoulders,
+$w(k)=a+b\sqrt{k^2+\varsigma^2}+\sum_\pm A\,e^{-((k\mp c)/s)^2}$. Gaussians
+vanish with all their derivatives, so the $w$-wings are \emph{exactly linear}
+with slope $\beta=b=\sivtargetbeta$ --- Lee-admissible for every $k$ --- and
+the Durrleman functional tends to the positive limit
+$(4-\beta^2)/16=\sivtargettailg$ in both tails. The generator asserts $g>0$
+for the target \emph{and} the fitted slice on a dense grid out to $|k|=12$
+before writing anything, which together with the tail limits makes the
+cleanliness claim global (see the remark closing this section; the shape
+still has the two interior local maxima \cref{prop:convex} forbids a
+hyperbola).
 The sigmoid base ($R=0$) fits it only to \sivbasemaxerr\ vol bps, missing both
 shoulders. Two hats ($R=2$, $6+4\cdot2=\sivnparam$ parameters) reduce the maximum
 error to \sivmaxerr\ vol bps while preserving the wing slopes
 $(S_0-2K_0/\kappa_P,\,S_0+2K_0/\kappa_C)=(\sivwingL,\,\sivwingR)$ and keeping the
-fit butterfly-free (\cref{fig:diag}, $g(k)\ge0$). (How many cores a WW needs
+fit butterfly-clean globally (\cref{fig:components}(b) plots $g$ on the
+display window; the wide-grid minimum is \sivfitgmin). (How many cores a WW needs
 depends on the target: this note's WW resolves at $R=2$, while the library's
 own, sharper synthetic requires $R=3$ --- which the uncapped library test
 exercises, below the schema clamp of \cref{sec:calib}.) \Cref{fig:components} shows the
 decomposition: the convex base owns the V, and the two signed hats add precisely
-the two shoulders, each localized and wing-neutral.
+the two shoulders, each localized and wing-neutral. This regenerated two-core
+example carries its own regression lock
+(\texttt{test\_sigmoid.py::test\_note03\_ww\_two\_core\_example\_regression}).
 
 \begin{figure}[H]
 \centering
@@ -391,28 +507,35 @@ bps.}
 {\footnotesize (b) Durrleman $g(k)\geq0$, fit and target}
 \end{minipage}
 \caption{Left: the additive decomposition --- the convex base owns the wings, the
-hats own the shoulders. Right: the butterfly diagnostic stays non-negative for
-\emph{both} curves --- the fitted slice and the synthetic target it chased,
-whose own analytic $g$ is asserted positive by the generator.}
+hats own the shoulders. Right: the butterfly diagnostic for both curves ---
+the fitted slice and the synthetic target it chased --- non-negative on the
+display window and, by the wide-grid assertion plus the analytic tail limits,
+globally.}
 \label{fig:components}
 \end{figure}
-\begin{figure}[H]\centering\phantomsection\label{fig:diag}\end{figure}
 
-\begin{remark}[The target must be clean too --- a fixed figure bug]
+\begin{remark}[The target must be clean too --- a bug fixed twice]
 \label{rem:targetbug}
-A certificate is only as strong as the exercise it certifies. An earlier
-revision of this note's generator built a WW target whose \emph{own}
-Durrleman function dipped to $g\approx-0.38$ near the shoulders: the
-synthetic ``market'' itself carried butterfly arbitrage, so no admissible
-slice could both track it closely and honour $g\ge0$, and the figure's claim
-was quietly false. The fix re-chose the shoulder amplitudes and widths ---
-the shoulder-top curvature scales like $2A/s^2$ and is what drives $w''$,
-hence $g$, negative --- and the wing slope, so the target is genuinely
-admissible; the generator now computes the target's $g$ from \emph{analytic}
-jets (no finite differences, the measurement lesson of Note~02) and asserts
-$g>0$ on the plotted grid before any fit runs. Current values: target
+A diagnostic is only as strong as the exercise it certifies, and this
+figure's target needed two rounds of honesty. An early revision built a WW
+target whose \emph{own} Durrleman function dipped to $g\approx-0.38$ near the
+shoulders: the synthetic ``market'' itself carried butterfly arbitrage, so no
+admissible slice could both track it closely and honour $g\ge0$, and the
+figure's claim was quietly false. The first fix re-chose the shoulder
+amplitudes and widths (the shoulder-top curvature scales like $2A/s^2$ and is
+what drives $w''$, hence $g$, negative) --- but that target was built in
+\emph{volatility} space with $\sim0.20|k|$ tails, so its total variance grew
+quadratically and still violated Lee far outside the plotted window: the
+cleanliness was only per-window. The current construction builds the target
+in \emph{total-variance} space --- hyperbolic base $+$ Gaussian shoulders ---
+so the $w$-wings are exactly linear ($\beta=\sivtargetbeta\le2$) and the tail
+$g$ limit $(4-\beta^2)/16$ is positive analytically; the generator computes
+$g$ from analytic jets (no finite differences, the measurement lesson of
+Note~02) and asserts $g>0$ for target \emph{and} fit on a dense grid to
+$|k|=12$ before any figure is written. Current wide-grid values: target
 $\min g=\sivtargetgmin$, fitted slice $\min g=\sivfitgmin$
-(\nolinkurl{figures/gen_siv.py}).
+(\nolinkurl{figures/gen_siv.py}; locked by
+\nolinkurl{test_sigmoid.py::test_note03_ww_target_globally_clean}).
 \end{remark}
 
 %======================================================================
@@ -424,17 +547,24 @@ The genuinely original elements are the \emph{zero-wing hat}
 body and provably neutral in the wings, so expressiveness and tail control are
 decoupled --- and the \emph{layered three-stage calibration} that places the hats
 on residuals rather than optimizing them blind. Together they let one model span
-from a clean index smile ($R=0$, equivalent to a sigmoid SVI) to a bimodal event
-smile ($R=2$) on a single slider.
+from a clean index smile ($R=0$ --- the sigmoid base itself, a different
+convex family from SVI, not an SVI equivalent) to an event-shaped WW smile
+($R=2$) on a single slider. (A WW \emph{implied-volatility} curve suggests,
+but does not by itself prove, a bimodal risk-neutral density --- the density
+is the Breeden--Litzenberger second derivative of price, not a re-reading of
+the vol curve.)
 
 \begin{caution}
 With great expressiveness comes over-fitting. The offline backtest (project
 \texttt{backtest/}) found that on liquid index chains the Multi-Core hats
 \emph{over-fit}: cores chase quote noise and manufacture butterfly-arbitrage
 (the analytic diagnostic flags $g<0$ on a majority of calibrated nodes at $R\ge2$
-on dense data), while the base $R=0$ behaves like SVI; the extra cores buy
-in-sample error and \emph{give it back out-of-sample} --- the marginal precision
-is negative for $R\ge3$. Two measures followed. The amplitude ridge,
+on dense data), while the base $R=0$ behaves comparably to SVI; the extra
+cores buy in-sample error and give most of it back out-of-sample. The honest
+marginal number for the third core, from the spike replay: OOS RMS
+$13.99\to13.58$ bp --- a $0.41$ bp improvement --- for roughly four times the
+historical fit cost ($514\to2023$ ms in that harness) and worse arbitrage.
+Not ``negative precision'', but nowhere near worth it. Two measures followed. The amplitude ridge,
 the identifiability cap \eqref{eq:identifiability}, and the $g$ diagnostic mitigate
 the fit itself; the surfaced slider is \emph{hard-capped at two} (\cref{sec:calib});
 and the put-wing regularizer \eqref{eq:wingpen} of \cref{sec:wingpen} is default-on
@@ -455,78 +585,128 @@ arb-prone population (medians over 38 nodes): with neither, worst-point
 $g\approx-30$ and in-sample RMS $92$ bp; the de-Am repair alone cuts the
 violation about threefold \emph{and lowers} the RMS to $25$ bp (it removes the
 arbitraged quotes the model was chasing); the penalty alone nearly eliminates
-the violation ($g\ge-0.02$) but at $749$ bp (it must fight those same quotes);
-both attain the penalty's arbitrage removal at $225$ bp, because the inputs
-are cleaned before the constraint is imposed. One real node makes the
-mechanism vivid (EFA in the Aug-2024 vol spike, 11 days to expiry, 22
-quotes): neither defence, $75$ bp with worst $g=-116$; repair alone, a tight
-$18$ bp but $g=-12$ remains; penalty alone, arbitrage-free but $726$ bp;
-both, arbitrage-free at $34$ bp. The fence is expensive only when it must
-fight arbitraged inputs --- the repair is what makes it affordable. On liquid
-names both are byte-identical no-ops. That is the quantitative case for
-shipping both on by default; the census that sited the penalty (64\% put
-wing, median worst violation at $z\approx-3.2$) and the cross-model framing
-are Note~09's case file and confinement principle.
+the violation (median $\min g\ge-0.02$) but at $749$ bp (it must fight those
+same quotes); both attain the penalty's arbitrage reduction at $225$ bp,
+because the inputs are cleaned before the constraint is imposed. Reduction,
+not elimination: even with both defences on, $26\%$ of the illiquid
+population stays flagged --- neither defence \emph{guarantees} $g\ge0$. One
+real node makes the mechanism vivid (EFA in the Aug-2024 vol spike, 11 days
+to expiry, 22 quotes): neither defence, $75$ bp with worst $g=-116$; repair
+alone, a tight $18$ bp but $g=-12$ remains; penalty alone, arbitrage-free but
+$726$ bp; both, arbitrage-free at $34$ bp. The fence is expensive only when
+it must fight arbitraged inputs --- the repair is what makes it affordable.
+On liquid names the two defences behave differently, and only one is a no-op:
+the de-Am \emph{repair} never fires there (dense chains have convex de-Am
+wings --- byte-identical, confirmed on real data), but on the \emph{flagged}
+liquid subset (17 of 30 audited nodes) the \emph{penalty} genuinely trades
+fit for cleanliness: median in-sample error $10.9\to36.9$ bp with $41\%$
+still flagged. That trade is the price of the fence where the violations are
+shallow ($\min g\approx-0.23$) and the quotes dense. The quantitative case
+for shipping both on by default stands on the illiquid population; the census
+that sited the penalty (64\% put wing on the audited SIV-3 spike refits,
+median worst violation at $z\approx-3.2$) and the cross-model framing are
+Note~09's case file and confinement principle.
 \end{remark}
 
 %======================================================================
 \section{Traceability}
 \label{sec:traceability}
 
+A scoping word first: the ``zero-wing / diagnostics'' rows below anchor
+Note 03's \emph{current} construction; the legacy three-core golden tests
+(\texttt{test\_note\_table1\ldots} etc., from the superseded design note's
+sharper synthetic) lock the library's uncapped $R=3$ behaviour and are kept as
+regression tripwires, not as evidence for this note's figures --- the
+regenerated two-core example now has its \emph{own} lock. The penalty rows
+are locked with stated tolerances: penalty-off is byte-identical
+(\texttt{assert\_array\_equal}); penalty-on over a clean slice is unchanged
+to $10^{-9}$ relative; and the repair test accepts a repaired
+$\min g\ge-0.05$, not exactly zero.
+
 \begingroup
 \small
-\setlength{\tabcolsep}{3pt}
-\begin{longtable}{@{}p{0.30\textwidth}p{0.13\textwidth}p{0.25\textwidth}p{0.28\textwidth}@{}}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.36\textwidth}p{0.10\textwidth}p{0.50\textwidth}@{}}
 \caption{Claims in this note and the code/tests that lock them.}\\
-\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\toprule Claim & Object & Code anchor \newline \emph{Test anchors}\\ \midrule
 \endfirsthead
-\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\toprule Claim & Object & Code anchor \newline \emph{Test anchors}\\ \midrule
 \endhead
 Hat is unit-height, flat at centre, zero-wing in value/slope/curvature &
 \cref{lem:zerowing} &
-\nolinkurl{models/sigmoid/kernels.py} &
+\nolinkurl{models/sigmoid/kernels.py}\newline
 \nolinkurl{test_sigmoid.py::test_hat_is_zero_wing_and_unit_height}\\
+\addlinespace
 Wing slopes preserved under cores; $g$ and $\min v$ diagnostics match note &
 \eqref{eq:wing_slopes} &
-\nolinkurl{models/sigmoid/sigmoid.py} &
+\nolinkurl{models/sigmoid/sigmoid.py}\newline
 \nolinkurl{test_sigmoid.py::test_note_arbitrage_diagnostics}\\
-Cores improve the WW fit monotonically &
+\addlinespace
+Reported $g$ is the priced (floored) curve's functional; degenerate slices
+flagged not-free &
+\cref{sec:noarb} &
+\nolinkurl{models/sigmoid/sigmoid.py::gatheral_g}\newline
+\nolinkurl{test_sigmoid.py::test_floored_diagnostic_is_priced_curve_functional}\\
+\addlinespace
+This note's two-core WW example (fit tight, base misses shoulders; target
+and fit globally butterfly-clean) &
 \cref{sec:example} &
-\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{models/sigmoid/calibrate.py}\newline
+\nolinkurl{test_sigmoid.py::test_note03_ww_two_core_example_regression}\newline
+\nolinkurl{::test_note03_ww_target_globally_clean}\\
+\addlinespace
+Cores improve the WW fit monotonically (legacy synthetic) &
+\cref{sec:example} &
+\nolinkurl{models/sigmoid/calibrate.py}\newline
 \nolinkurl{test_sigmoid.py::test_more_cores_fit_better_on_ww_smile}\\
-Identifiability cap $6+4R\le N$ &
+\addlinespace
+Hat-count cap $R\le\lfloor(N-6)/4\rfloor$ (hats only; the base still fits at
+$N=5$) &
 \eqref{eq:identifiability} &
-\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{models/sigmoid/calibrate.py}\newline
 \nolinkurl{test_sigmoid.py::test_cores_are_capped_to_quote_count}\\
-Surfaced slider clamped to two (schema boundary) &
+\addlinespace
+Surfaced slider clamped to two (schema boundary, every parse) &
 \cref{sec:calib} &
-\nolinkurl{api/schemas.py} &
+\nolinkurl{api/schemas.py}\newline
 \nolinkurl{test_siv_wing_penalty.py::test_cores_clamped_to_two}\\
-Put-wing hinge removes wing arb; byte-identical on clean slices; off by
-library default &
+\addlinespace
+Put-wing hinge repairs wing arb (to $\min g\ge-0.05$); clean slices unchanged
+($10^{-9}$ rel); off by library default (byte-identical) &
 \eqref{eq:wingpen} &
-\nolinkurl{models/sigmoid/calibrate.py} &
-\nolinkurl{test_siv_wing_penalty.py::test_penalty_removes_wing_arb}, \nolinkurl{::test_penalty_byte_identical_on_arb_free_slice}, \nolinkurl{::test_penalty_off_default}\\
-Analytic Jacobian $=$ FD (base, cores, band, calendar) &
+\nolinkurl{models/sigmoid/calibrate.py}\newline
+\nolinkurl{test_siv_wing_penalty.py::test_penalty_removes_wing_arb}\newline
+\nolinkurl{::test_penalty_byte_identical_on_arb_free_slice}\newline
+\nolinkurl{::test_penalty_off_default}\\
+\addlinespace
+Analytic Jacobian matches FD (base, cores, band, calendar) &
 \cref{sec:calib} &
-\nolinkurl{models/sigmoid/jacobian.py} &
-\nolinkurl{test_sigmoid_jacobian.py::test_two_cores_mid}, \nolinkurl{::test_two_cores_band}, \nolinkurl{::test_calendar_active}\\
+\nolinkurl{models/sigmoid/jacobian.py}\newline
+\nolinkurl{test_sigmoid_jacobian.py::test_two_cores_mid}\newline
+\nolinkurl{::test_two_cores_band}\newline
+\nolinkurl{::test_calendar_active}\\
+\addlinespace
 Curve identified, parameters deliberately not &
 \cref{sec:calib} &
-\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{models/sigmoid/calibrate.py}\newline
 \nolinkurl{test_sigmoid.py::test_round_trip_curve_recovery}\\
+\addlinespace
 Prior blocks reach the MCS overlay &
 \cref{sec:calib} &
-\nolinkurl{models/sigmoid/calibrate.py} &
+\nolinkurl{models/sigmoid/calibrate.py}\newline
 \nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\
+\addlinespace
 R3$\times$R6 ablation numbers &
 \cref{sec:original} &
-\nolinkurl{backend/backtest/ablation_arb.py} &
+\nolinkurl{backend/backtest/ablation_arb.py}\newline
 \nolinkurl{test_ablation_arb.py}\\
-WW figure target and fit butterfly-clean ($g>0$ asserted) &
+\addlinespace
+WW figure target and fit butterfly-clean globally (dense grid to $|k|=12$
+$+$ analytic tail limits) &
 \cref{rem:targetbug} &
-\nolinkurl{figures/gen_siv.py} &
-runtime assertion in the generator (no separate test)\\
+\nolinkurl{figures/gen_siv.py}\newline
+runtime assertions in the generator $+$ the two example tests above\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -542,19 +722,24 @@ runtime assertion in the generator (no separate test)\\
 \endfirsthead
 \toprule Knob & Default & Role\\ \midrule
 \endhead
-\multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\ \midrule
-\texttt{nCores} $R$ & $2$ & Number of zero-wing hats, $R\in\{0,1,2\}$
-(schema-clamped at two --- a persisted larger value is silently reduced; the
-library itself is uncapped, and the identifiability bound
+\multicolumn{3}{@{}p{0.95\textwidth}@{}}{\emph{Surfaced. Product defaults
+shown (the product's default model is LQD; these apply when MCS is
+selected). Library defaults differ: $R=0$, penalty off.}}\\ \midrule
+\texttt{nCores} $R$ (\texttt{FitSettings}) & $2$ & Number of zero-wing hats,
+$R\in\{0,1,2\}$ (schema-clamped at two on \emph{every} parse --- persisted or
+fresh; the library itself is uncapped, and the identifiability bound
 \eqref{eq:identifiability} may reduce $R$ further). $0$ = pure sigmoid base.\\
-\texttt{sivWingPenaltyPct} $\Lambda$ & $100$ & Put-wing Durrleman penalty
-\eqref{eq:wingpen} strength; $100=$ base $\lambda_0=10^{3}$, $0=$ off.\\
-\texttt{sigmoidRidge} $\varrho$ & \sivridge & $\ell^2$ penalty on hat amplitudes
-in the refine stage.\\
+\texttt{sivWingPenaltyPct} $\Lambda$ (\texttt{OptionsSettings}) & $100$ &
+Put-wing Durrleman penalty \eqref{eq:wingpen} strength; $100=$ base
+$\lambda_0=10^{3}$, $0=$ off.\\
+\texttt{sigmoidRidge} $\varrho$ (\texttt{FitSettings}) & \sivridge & $\ell^2$
+penalty on hat amplitudes in the refine stage.\\
 \texttt{midAnchorWeight} & $0.05$ & Band-fit mid anchor (Note~07).\\
 \texttt{weightScheme} & \texttt{equal} & Per-quote weights (Note~07).\\
-\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10; lives in
-\texttt{OptionsSettings}, not \texttt{FitSettings}).\\
+\texttt{calendarWeight} & $10^{6}$ & Calendar hinge penalty (Note~10;
+\texttt{OptionsSettings}).\\
+\texttt{extrapEnforce} & off & Tapered extrapolated-region fences (Notes
+09--10; \texttt{OptionsSettings}); hybrid Jacobian when on.\\
 \midrule
 \multicolumn{3}{l}{\emph{Internal (seeding / bounds)}}\\ \midrule
 \texttt{\_H\_INIT} & \sivhinit & Hat half-width seed.\\
@@ -574,11 +759,14 @@ in the refine stage.\\
 
 \begin{enumerate}[leftmargin=1.6em]
 \item \textbf{Analytic Jacobian} through the log-cosh primitive replaces the
-$(6+4R+1)$-evaluation finite difference; measured \sivspeedup$\times$ on the WW
-fit, optimum unchanged to $\sivcostdiff$. Gated to the var-swap/prior-free path.
-When the put-wing penalty \eqref{eq:wingpen} is active, only its $49$-point $g$-grid
-is finite-differenced (a \emph{hybrid} Jacobian), so the penalized fit retains
-essentially this speed.
+$(6+4R+1)$-evaluation finite difference; measured \sivspeedup$\times$ on the
+\emph{final-refine microbenchmark} (the $R=2$ mid refine alone --- base fit,
+seeding and the product-default wing penalty excluded; single-threaded
+development machine, fastest of three), optimum unchanged to $\sivcostdiff$.
+Gated to the var-swap/prior-free path. When the put-wing penalty
+\eqref{eq:wingpen} or \texttt{extrapEnforce} is active, only the small penalty
+grids are finite-differenced (a \emph{hybrid} Jacobian), so the penalized fit
+retains most of this speed.
 \item \textbf{Layered warm start.} Fitting the base first and seeding hats on its
 residual gives the joint refine an excellent start, so the bounded trf converges
 quickly even with several cores.

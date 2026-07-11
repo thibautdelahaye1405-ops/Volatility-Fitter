@@ -205,11 +205,17 @@ $k=\sigma_{\text{ref}}\sqrt t\,z$ and $w=tv$.
 \end{proof}
 
 On the benchmark, $(\beta_L,\beta_R)=(\betaMCSIVL,\betaMCSIVR)$. Adding cores
-cannot change the wings --- the entire point of the zero-wing design. But the
-proposition pins only the asymptotic \emph{slope}: a hat can still dent the
-Durrleman $g$ below zero at \emph{finite} $|z|$, out in the sparsely quoted
-put wing. That residual failure mode is real, measured, and policed by the
-put-wing regularizer of \cref{sec:r6}.
+cannot change the wings --- the entire point of the zero-wing design. Two
+caveats bound what the proposition buys. First, it pins only the asymptotic
+\emph{slope}: a hat can still dent the Durrleman $g$ below zero at
+\emph{finite} $|z|$, out in the sparsely quoted put wing --- a residual
+failure mode that is real, measured, and policed by the put-wing regularizer
+of \cref{sec:r6}. Second, wing-\emph{neutral} is not wing-\emph{admissible}:
+the inheritance theorem preserves whatever slopes the base fitted, and
+nothing in the MCS calibration bounds forces those base slopes to satisfy
+Lee's sign and cap conditions, $0\le\beta_{L,R}\le2$. Unlike LQD (structural)
+and SVI (soft cap), MCS admissibility of the wings is \emph{diagnosed}, not
+enforced.
 
 \subsection{Local volatility: controlled linear extrapolation}
 
@@ -238,8 +244,10 @@ slopes $\psi(1/A_L),\psi(1/A_R-1)$; SVI draws linear variance wings
 $b(1\mp\rho)$ under the soft Lee cap; the MCS base alone owns the tails, hats
 neutral (\cref{prop:zerowing}); LV extrapolates local variance flat on the
 call side and controlled-linearly on the put side. Choosing a model \emph{is}
-choosing an extrapolation law --- the differences are the point; the shared
-promise is only that every contract is Lee-admissible.
+choosing an extrapolation law --- the differences are the point. The shared
+promise is that each contract's Lee status is \emph{stated and checked},
+with per-model teeth: structural for LQD, a soft cap for SVI, bounded local
+variance for LV, and \emph{diagnosis only} for the MCS base slopes.
 \Cref{tab:betas} collects the analytic slopes.
 
 \begin{figure}[H]

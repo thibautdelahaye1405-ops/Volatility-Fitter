@@ -1,12 +1,19 @@
 """Figures and tables for Note 02 (SVI / SVI-JW).
 
-Fits the production raw-SVI calibrator to the SPX-like benchmark, recovers the
-SVI-JW jump-wing handles, checks the Durrleman butterfly function, and times the
-analytic vs finite-difference Jacobian. Outputs next to this script:
+Builds the benchmark target through the PRODUCTION forward converter
+jw_to_raw (so the example is a genuine JW -> raw -> fit -> JW round trip
+through shipped code), fits the production raw-SVI calibrator, reads the
+jump-wing handles back, checks the Durrleman butterfly function on the
+diagnostic grid, and times the analytic vs finite-difference Jacobian.
+Outputs next to this script:
 
   fig_svi_fit.pdf    target, SVI fit, quotes
-  fig_svi_jw.pdf     the five SVI-JW handles annotated on the smile
-  fig_svi_g.pdf      Durrleman g(k) >= 0 butterfly diagnostic
+  fig_svi_jw.pdf     the five SVI-JW handles with HONEST units: the IV axis
+                     carries sqrt(v), sqrt(vtilde) and the ATM tangent of
+                     slope psi/sqrt(tau); the wing slopes p, c live on the
+                     total-variance inset (asymptote slopes p*sqrt(v*tau),
+                     c*sqrt(v*tau))
+  fig_svi_g.pdf      Durrleman g(k) >= 0 on the diagnostic grid
   svi_tables.tex     \\input-able macros (raw + JW params, wings, timing)
 """
 
@@ -33,7 +40,7 @@ from volfit.models.svi_jw.calibrate import (
     calibrate_svi,
 )
 from volfit.models.svi_jw.jacobian import svi_residual_jacobian
-from volfit.models.svi_jw.svi import RawSVI
+from volfit.models.svi_jw.svi import RawSVI, SVIJW, jw_to_raw
 
 import sys  # noqa: E402
 
@@ -46,8 +53,13 @@ TEAL, RUST, SLATE, AMBER = (PALETTE["teal"], PALETTE["rust"],
                             PALETTE["muted"], PALETTE["amber"])
 
 
+#: The benchmark JW handles; the raw target is their image under the
+#: PRODUCTION converter, so the whole example round-trips shipped code.
+TARGET_JW = SVIJW(t=0.5, v=0.0425, psi=-0.25, p=0.75, c=0.25, v_tilde=0.034)
+
+
 def target_raw():
-    return RawSVI(a=0.010625, b=0.0728868987, rho=-0.5, m=0.0583095189, sigma=0.1009950494)
+    return jw_to_raw(TARGET_JW)
 
 
 def durrleman_g(raw: RawSVI, k):
@@ -134,29 +146,46 @@ def main():
     fig.savefig(OUT / "fig_svi_fit.pdf")
     plt.close(fig)
 
-    # --- JW handles annotated
-    fig, ax = plt.subplots()
+    # --- JW handles annotated, in HONEST units. The IV panel can only show
+    # the IV-equivalents: sqrt(v), sqrt(vtilde), and the ATM tangent of slope
+    # psi/sqrt(tau). The wing slopes p, c are normalized TOTAL-VARIANCE
+    # slopes, so they live on the w(k) inset (asymptote slopes p*sqrt(v*tau),
+    # c*sqrt(v*tau)), not on the IV curve.
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
     vol = 100 * raw.implied_vol(kk, t)
     ax.plot(kk, vol, color=TEAL)
-    k0 = 0.0
-    v0 = 100 * raw.implied_vol(np.array([0.0]), t)[0]
-    ax.scatter([k0], [v0], color=RUST, zorder=5)
-    ax.annotate(r"$v$: ATM variance", (k0, v0), (-0.20, v0 + 2.6),
+    v0 = 100 * np.sqrt(jw["v"])
+    ax.scatter([0.0], [v0], color=RUST, zorder=5)
+    ax.annotate(r"$\sqrt{v}$: ATM vol", (0.0, v0), (0.10, v0 + 3.2),
                 arrowprops=dict(arrowstyle="->", color=RUST), fontsize=9, color=RUST)
-    # skew slope arrow near ATM
-    sk = (100 * raw.implied_vol(np.array([0.05]), t)[0] - v0) / 0.05
-    ax.annotate(r"$\psi$: ATM skew", (0.0, v0), (-0.30, v0 + 3.0),
+    # ATM tangent: actual IV slope is psi / sqrt(tau).
+    slope = 100 * jw["psi"] / np.sqrt(t)
+    kt = np.linspace(-0.10, 0.10, 2)
+    ax.plot(kt, v0 + slope * kt, color=AMBER, lw=1.4, ls="--", zorder=4)
+    ax.annotate(r"ATM tangent, slope $\psi/\sqrt{\tau}$",
+                (-0.09, v0 + slope * (-0.09)), (-0.44, 25.5),
                 arrowprops=dict(arrowstyle="->", color=AMBER), fontsize=9, color=AMBER)
-    ax.annotate(r"$p$: put wing", (kk[20], vol[20]), (-0.42, vol[20] - 4),
-                fontsize=9, color=SLATE)
-    ax.annotate(r"$c$: call wing", (kk[-20], vol[-20]), (0.18, vol[-20] + 2),
-                fontsize=9, color=SLATE)
-    kmin = kk[np.argmin(vol)]
-    ax.annotate(r"$\tilde v$: min variance", (kmin, np.min(vol)),
-                (kmin - 0.04, np.min(vol) + 3.0),
+    kmin_iv = kk[np.argmin(vol)]
+    ax.annotate(r"$\sqrt{\tilde v}$: min vol", (kmin_iv, np.min(vol)),
+                (kmin_iv + 0.10, np.min(vol) + 1.6),
                 arrowprops=dict(arrowstyle="->", color=TEAL), fontsize=9, color=TEAL)
     ax.set_xlabel(r"log-moneyness $k$")
     ax.set_ylabel(r"implied volatility (%)")
+    ax.set_title(r"IV panel: $\sqrt{v}$, $\sqrt{\tilde v}$ and the ATM tangent"
+                 r" $\psi/\sqrt{\tau}$; $p,c$ live in total variance (inset)",
+                 fontsize=9)
+    # Inset: total variance with the asymptotes whose slopes ARE p,c scaled.
+    axi = ax.inset_axes([0.58, 0.55, 0.40, 0.42])
+    w_kk = raw.total_variance(kk)
+    axi.plot(kk, w_kk, color=TEAL, lw=1.2)
+    left = raw.a + raw.b * (raw.rho * (kk - raw.m) - (kk - raw.m))
+    right = raw.a + raw.b * (raw.rho * (kk - raw.m) + (kk - raw.m))
+    axi.plot(kk, left, color=SLATE, lw=0.9, ls=":")
+    axi.plot(kk, right, color=SLATE, lw=0.9, ls=":")
+    axi.set_ylim(0.0, float(w_kk.max()) * 1.05)
+    axi.set_title(r"$w(k)$; asymptote slopes $p\sqrt{v\tau}$, $c\sqrt{v\tau}$",
+                  fontsize=7.5)
+    axi.tick_params(labelsize=6.5)
     fig.savefig(OUT / "fig_svi_jw.pdf")
     plt.close(fig)
 
@@ -168,7 +197,8 @@ def main():
     ax.fill_between(kk, g, 0, where=(g >= 0), color=TEAL, alpha=0.10)
     ax.set_xlabel(r"log-moneyness $k$")
     ax.set_ylabel(r"Durrleman $g(k)$")
-    ax.set_title(r"$g(k)\geq 0$ everywhere: no butterfly arbitrage", fontsize=10)
+    ax.set_title(r"$g(k)\geq 0$ on the diagnostic grid: no butterfly arbitrage detected",
+                 fontsize=10)
     fig.savefig(OUT / "fig_svi_g.pdf")
     plt.close(fig)
 
