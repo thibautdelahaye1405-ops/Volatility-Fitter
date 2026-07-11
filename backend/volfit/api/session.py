@@ -131,3 +131,40 @@ class EditSession:
         self.edits = self._redo.pop()
         self.version += 1
         return True
+
+    # ---------------------------------------------------------- serialization
+    def to_doc(self, history: bool = True) -> dict:
+        """JSON-safe dump (workspace serialization / publish manifests).
+
+        With ``history`` False only the net edit map + version is captured —
+        exactly what reproducing a fit needs (publish manifests use this)."""
+        doc = {"version": self.version, "edits": _edits_doc(self.edits)}
+        if history:
+            doc["undo"] = [_edits_doc(m) for m in self._undo]
+            doc["redo"] = [_edits_doc(m) for m in self._redo]
+        return doc
+
+    def load_doc(self, doc: dict) -> None:
+        """Replace the session's content from a ``to_doc`` dump."""
+        self.edits = _edits_from_doc(doc.get("edits", {}))
+        self.version = int(doc.get("version", 0))
+        self._undo = [_edits_from_doc(m) for m in doc.get("undo", [])]
+        self._redo = [_edits_from_doc(m) for m in doc.get("redo", [])]
+
+
+def _edits_doc(edits: dict[int, QuoteEdit]) -> dict:
+    """JSON keys are strings, so quote indices serialize as str(index)."""
+    return {
+        str(i): {"excluded": e.excluded, "amendedIv": e.amended_iv}
+        for i, e in sorted(edits.items())
+    }
+
+
+def _edits_from_doc(doc: dict) -> dict[int, QuoteEdit]:
+    return {
+        int(i): QuoteEdit(
+            excluded=bool(d.get("excluded", False)),
+            amended_iv=None if d.get("amendedIv") is None else float(d["amendedIv"]),
+        )
+        for i, d in doc.items()
+    }

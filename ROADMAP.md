@@ -74,10 +74,10 @@ releases in order; within a release, items are independent unless noted.
    now), lifecycle state machine (Captured→Prepared→Calibrated→Reviewed→
    Published; →Rejected; Published→Superseded/Recalled), one-command
    replay-to-tolerance report.
-9. **State-scoping refactor**: AppState → serializable workspace object.
+9. ~~**State-scoping refactor**: AppState → serializable workspace object.
    Prerequisite for hosting, replay, AND durable filter state. Land it early
    and ALONE — it can silently break byte-identical conventions the suite
-   locks.
+   locks.~~ DONE 2026-07-11 (see STATUS) — R1 COMPLETE.
 
 **Hosting track (parallel, decision-first):** provider redistribution terms vs
 BYO-entitlement (start now); single-tenant container packaging spike (the
@@ -151,7 +151,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## STATUS — updated 2026-07-10 (resume here)
+## STATUS — updated 2026-07-11 (resume here)
 
 ### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + R0 ITEMS 1-2 SHIPPED
 
@@ -303,8 +303,39 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   test-locked at ≤1e-9 IV** (v0 fidelity notes surfaced: session edits +
   prior content not captured; LV grid stored, not re-fit).
   tests/test_governance.py (4).
-- **NEXT (R1):** item 9 state-scoping refactor (LAND ALONE, fresh session —
-  byte-identical locks at risk). R1 then complete.
+- **R1 item 9 SHIPPED (2026-07-11) — state-scoping refactor: AppState's
+  user-authored state is ONE serializable Workspace object. R1 COMPLETE.**
+  New `volfit/api/workspace.py`: `Workspace` owns the scoped state (fit +
+  options settings, market settings, event calendars, forward policies,
+  quote-edit + var-swap sessions with undo/redo, saved per-node priors,
+  active fetched priors + ladder source, observation-filter node states,
+  lit/dark picks, graph edge overrides + block rule, spot shifts, viewed
+  fit mode, as-of); AppState delegates every historical attribute through
+  `ScopedField` data descriptors, so the ~74 files touching those names are
+  UNCHANGED and behaviour is byte-identical by construction (both suite
+  halves green, incl. the golden locks + parallel-calibration identity).
+  `AppState.workspace_doc()` / `restore_workspace()` = the JSON round-trip
+  (floats exact; numpy → lists); restore is a state RESET: chain-derived +
+  per-ticker derived caches drop, every version counter advances past its
+  current value, universe tickers + custom picks restore lazily (no
+  network). **Replay fidelity gaps CLOSED**: publish manifests now capture
+  session quote edits, var-swap quotes (an unstated third gap — they shape
+  fits too) and active-prior CONTENT + sources, scoped to the published
+  nodes; `volfit.replay_report` restores them before recalibrating, so an
+  edited + anchored publish replays at 0.0 IV diff (test-locked ≤1e-9,
+  CLI-verified). Fidelity notes remain only for: legacy v0 count-only
+  manifests, publishes with the ACTIVE observation filter (the MAP
+  prediction state predates the published fits — not post-hoc recoverable),
+  and STALE published nodes (new `staleNodes` manifest count: a frozen fit
+  calibrated at older inputs than the manifest captures diffs by
+  construction — surfaced, not hidden). tests/test_workspace.py (8: doc
+  round-trip, session/var-swap history round-trip, restored-fit
+  byte-identity, restore-is-a-reset, filter-state round-trip, exact replay
+  with edits+prior, stale note, legacy-vs-captured notes).
+- **NEXT (R2):** 0DTE v1 research grade (intraday variance clock, capture
+  campaign, absolute-timestamp calendar constraints) or joint borrow/de-Am
+  fixed point — items are independent; the hosting track's container
+  packaging spike can start any time (the workspace object unblocks it).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

@@ -48,6 +48,7 @@ from volfit.api.settings_persist import (
     save_graph_edges,
     save_graph_idio,
 )
+from volfit.api.workspace import ScopedField, Workspace, build_doc, restore_doc
 from volfit.graph.idio import IdioHistory
 from volfit.api.varswap_session import VarSwapSession
 from volfit.data.dividends import (
@@ -134,7 +135,43 @@ class AppState(UniverseMixin):
     Universe management and per-ticker expiry selection are provided by
     UniverseMixin (volfit.api.state_universe); this class owns the caches the
     mixin operates on, plus market data, fit settings, forwards and sessions.
+
+    STATE SCOPING (R1 item 9): the user-authored subset — settings, quote/
+    var-swap edit sessions, priors, policies, filter states, graph overrides —
+    lives in one serializable ``Workspace`` object (``self._ws``, see
+    volfit.api.workspace). The attributes below delegate to it through
+    ``ScopedField`` descriptors so every historical call site keeps its name;
+    ``workspace_doc()`` / ``restore_workspace()`` serialize and swap the whole
+    scoped state (hosting, durable filter state, replay fidelity).
     """
+
+    # Workspace-scoped attributes (each delegates to self._ws — one line per
+    # field so the scoped set is explicit and greppable).
+    _fit_settings = ScopedField("fit_settings")
+    _settings_version = ScopedField("settings_version")
+    _options = ScopedField("options")
+    _options_version = ScopedField("options_version")
+    _filter_version = ScopedField("filter_version")
+    _filter_states = ScopedField("filter_states")
+    _graph_edges = ScopedField("graph_edges")
+    _graph_block_rule = ScopedField("graph_block_rule")
+    _market_settings = ScopedField("market_settings")
+    _events = ScopedField("events")
+    _events_version = ScopedField("events_version")
+    _forward_policies = ScopedField("forward_policies")
+    _forwards_version = ScopedField("forwards_version")
+    _spot_shift = ScopedField("spot_shift")
+    _spot_version = ScopedField("spot_version")
+    _spot_version_by_ticker = ScopedField("spot_version_by_ticker")
+    _sessions = ScopedField("sessions")
+    _varswap_sessions = ScopedField("varswap_sessions")
+    _priors = ScopedField("priors")
+    _active_prior = ScopedField("active_prior")
+    _active_prior_source = ScopedField("active_prior_source")
+    _active_prior_version = ScopedField("active_prior_version")
+    _dark_nodes = ScopedField("dark_nodes")
+    _last_fit_mode = ScopedField("last_fit_mode")
+    _asof = ScopedField("asof")
 
     def __init__(
         self,
@@ -146,6 +183,9 @@ class AppState(UniverseMixin):
         gated: bool = False,
     ) -> None:
         self.reference_date = reference_date
+        #: The serializable user-authored WORKSPACE (R1 item 9). Created FIRST:
+        #: every ScopedField assignment below lands on it.
+        self._ws = Workspace()
         #: Trigger-gated workflow (the live server; serve.py passes True). When on,
         #: READS never touch the feed or calibrate: ``snapshot`` serves cached-only
         #: (empty until an explicit Fetch), and ``service.displayed_base`` does NOT
@@ -451,6 +491,20 @@ class AppState(UniverseMixin):
                 setattr(self, attr, dict(saved[attr]))
             self._asof = saved["_asof"]
             self._universe = None
+
+    # -------------------------------------------------------------- workspace
+    def workspace_doc(self) -> dict:
+        """Serialize the user-authored workspace (R1 item 9) to a JSON-safe
+        dict — settings, sessions, priors, policies, filter states, graph
+        overrides, spot shifts, as-of and the universe's tickers + picks."""
+        return build_doc(self)
+
+    def restore_workspace(self, doc: dict) -> None:
+        """Install a serialized workspace: replaces the whole scoped state,
+        drops every chain-derived / per-ticker derived cache and advances all
+        version counters, so nothing warm can serve a pre-restore fit. The
+        universe restores lazily (no network); fits recalibrate on demand."""
+        restore_doc(self, doc)
 
     # ------------------------------------------------------------ as-of
     @property

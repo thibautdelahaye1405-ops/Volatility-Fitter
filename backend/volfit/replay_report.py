@@ -15,10 +15,16 @@ Run (from backend\\)::
 ``--db`` defaults to the VOLFIT_DB environment variable (what the app runs
 with). Exit code 0 = every point within tolerance, 1 otherwise.
 
-Documented v0 fidelity limits (each surfaced in the report when present):
-session quote edits and active-prior CONTENT are not captured by the
-manifest, so surfaces published with either carry a stated tolerance rather
-than exactness; the LV grid is stored in the artifact but not re-fit here.
+Fidelity: manifests capture session quote edits, var-swap quotes and
+active-prior content (R1 item 9 closed the v0 gaps), and this tool restores
+them before recalibrating — edited/anchored surfaces replay exactly.
+Documented remaining limits (surfaced in the report when present): a node
+published STALE was frozen at older inputs than the manifest captures, so
+it diffs by construction; legacy v0 manifests carry only edit/prior COUNTS,
+so their edited/anchored nodes keep a stated tolerance; a publish made with
+the ACTIVE observation filter is anchored to a Kalman prediction state that
+no longer exists at replay time; the LV grid is stored in the artifact but
+not re-fit here.
 """
 
 from __future__ import annotations
@@ -103,6 +109,24 @@ def replay(db_path, manifest_id: str = "latest", tol: float = 1e-7) -> dict:
     for tk, pols in doc.get("forwardPolicies", {}).items():
         for iso, pol in pols.items():
             state.set_forward_policy(tk, iso, ForwardPolicy(**pol))
+    # Replay fidelity (R1 item 9): restore the captured session quote edits,
+    # var-swap quotes and active priors so edited/anchored fits reproduce
+    # exactly. Legacy v0 manifests lack these keys (see _fidelity_notes).
+    for tk, per in doc.get("sessionEdits", {}).items():
+        for iso, sdoc in per.items():
+            state.session((tk, iso)).load_doc(sdoc)
+    for tk, per in doc.get("varSwapQuotes", {}).items():
+        for iso, vdoc in per.items():
+            state.varswap_session((tk, iso)).load_doc(vdoc)
+    if doc.get("activePriorContent"):
+        from volfit.api.schemas_prior import PriorSurfaceSnapshot
+
+        for tk, blob in doc["activePriorContent"].items():
+            state.set_active_prior(
+                tk,
+                PriorSurfaceSnapshot.model_validate(blob),
+                doc.get("activePriorSources", {}).get(tk, "saved"),
+            )
     for tk, isos in doc["nodes"].items():
         for iso in isos:
             service.calibrate_node(state, tk, iso, doc["fitMode"])
@@ -144,18 +168,41 @@ def replay(db_path, manifest_id: str = "latest", tol: float = 1e-7) -> dict:
         "worstIvDiff": worst,
         "tolerance": tol,
         "ok": worst <= tol,
-        "fidelityNotes": [
-            note
-            for note, flag in (
-                (f"{doc.get('editedNodes', 0)} node(s) had session quote edits "
-                 "(not captured — diffs there are expected)",
-                 doc.get("editedNodes", 0)),
-                (f"{doc.get('activePriors', 0)} ticker(s) had an active prior "
-                 "(content not captured)", doc.get("activePriors", 0)),
-            )
-            if flag
-        ],
+        "fidelityNotes": _fidelity_notes(doc),
     }
+
+
+def _fidelity_notes(doc: dict) -> list[str]:
+    """Documented fidelity limits of one manifest, empty when replay is exact.
+
+    Content-capturing manifests (R1 item 9: ``sessionEdits`` /
+    ``activePriorContent`` present, even if empty) restore edits and priors, so
+    the legacy count-based notes apply only to v0 manifests that lack the keys.
+    A publish made with the ACTIVE observation filter is anchored to a Kalman
+    prediction state that predates the published fits and is not recoverable
+    post-hoc — always noted."""
+    notes = []
+    if doc.get("staleNodes", 0):
+        notes.append(
+            f"{doc['staleNodes']} published node(s) were STALE — frozen at "
+            "older inputs than the manifest captures, diffs there are expected"
+        )
+    if "sessionEdits" not in doc and doc.get("editedNodes", 0):
+        notes.append(
+            f"{doc['editedNodes']} node(s) had session quote edits "
+            "(legacy manifest, content not captured — diffs there are expected)"
+        )
+    if "activePriorContent" not in doc and doc.get("activePriors", 0):
+        notes.append(
+            f"{doc['activePriors']} ticker(s) had an active prior "
+            "(legacy manifest, content not captured)"
+        )
+    if doc.get("options", {}).get("observationFilterMode") == "active":
+        notes.append(
+            "published with the ACTIVE observation filter — the MAP prediction "
+            "prior is not replayable, read diffs against a stated tolerance"
+        )
+    return notes
 
 
 def main() -> int:

@@ -338,9 +338,13 @@ def _publish(state: AppState, export: SurfaceExport) -> SurfaceExport:
                     for t in export.tickers
                 },
                 "nodes": {t.ticker: [n.expiry for n in t.nodes] for t in export.tickers},
-                # Replay-fidelity notes: session quote edits and active prior
-                # CONTENT are not captured in v0 — a nonzero count documents
-                # the tolerance a replay diff must be read against.
+                # Replay fidelity (R1 item 9, closing the v0 gaps): the manifest
+                # captures session quote edits, var-swap quotes and active-prior
+                # CONTENT for the published scope, so volfit.replay_report can
+                # restore them and reproduce edited/anchored fits exactly. The
+                # editedNodes/activePriors counts stay for readability and for
+                # readers of legacy (v0) manifests.
+                **_session_capture(state, export),
                 "editedNodes": sum(
                     1
                     for t in export.tickers
@@ -350,6 +354,13 @@ def _publish(state: AppState, export: SurfaceExport) -> SurfaceExport:
                 ),
                 "activePriors": sum(
                     1 for t in export.tickers if state.active_prior(t.ticker) is not None
+                ),
+                # A STALE node exports its frozen fit, calibrated at OLDER
+                # inputs than this manifest captures — replay recalibrates
+                # from the captured inputs, so diffs there are expected and
+                # the count is surfaced as a fidelity note.
+                "staleNodes": sum(
+                    1 for t in export.tickers for n in t.nodes if n.quality.stale
                 ),
                 "artifactHash": governance.content_id(export.model_dump()),
             }
@@ -374,6 +385,37 @@ def _publish(state: AppState, export: SurfaceExport) -> SurfaceExport:
                  "nodes": export.manifest.fittedNodes},
     )
     return stamped
+
+
+def _session_capture(state: AppState, export: SurfaceExport) -> dict:
+    """The replay-fidelity content of a publish (R1 item 9), scoped to the
+    published nodes: quote-edit sessions (net edit map only — no undo history),
+    var-swap quotes, and each published ticker's active-prior snapshot + its
+    freshness-ladder source. Keys are always present (possibly empty): their
+    PRESENCE is how replay distinguishes a content-capturing manifest from a
+    legacy v0 one that only carried counts."""
+    session_edits: dict[str, dict] = {}
+    varswap_quotes: dict[str, dict] = {}
+    prior_content: dict[str, dict] = {}
+    prior_sources: dict[str, str] = {}
+    for t in export.tickers:
+        for n in t.nodes:
+            s = state.session_if_exists((t.ticker, n.expiry))
+            if s is not None and s.edits:
+                session_edits.setdefault(t.ticker, {})[n.expiry] = s.to_doc(history=False)
+            vs = state.varswap_session_if_exists((t.ticker, n.expiry))
+            if vs is not None and (vs.state.level is not None or vs.state.excluded):
+                varswap_quotes.setdefault(t.ticker, {})[n.expiry] = vs.to_doc(history=False)
+        snap = state.active_prior(t.ticker)
+        if snap is not None:
+            prior_content[t.ticker] = snap.model_dump(mode="json")
+            prior_sources[t.ticker] = state.active_prior_source(t.ticker) or "saved"
+    return {
+        "sessionEdits": session_edits,
+        "varSwapQuotes": varswap_quotes,
+        "activePriorContent": prior_content,
+        "activePriorSources": prior_sources,
+    }
 
 
 #: CSV column order — flat, one row per curve point, Excel-friendly.

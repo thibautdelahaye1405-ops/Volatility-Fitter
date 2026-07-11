@@ -116,3 +116,33 @@ class VarSwapSession:
         self.state = self._redo.pop()
         self.version += 1
         return True
+
+    # ---------------------------------------------------------- serialization
+    def to_doc(self, history: bool = True) -> dict:
+        """JSON-safe dump (workspace serialization / publish manifests).
+
+        With ``history`` False only the net quote state + version is captured
+        — exactly what reproducing a fit needs (publish manifests use this)."""
+        doc = {"version": self.version, "state": _vs_doc(self.state)}
+        if history:
+            doc["undo"] = [_vs_doc(s) for s in self._undo]
+            doc["redo"] = [_vs_doc(s) for s in self._redo]
+        return doc
+
+    def load_doc(self, doc: dict) -> None:
+        """Replace the session's content from a ``to_doc`` dump."""
+        self.state = _vs_from_doc(doc.get("state", {}))
+        self.version = int(doc.get("version", 0))
+        self._undo = [_vs_from_doc(s) for s in doc.get("undo", [])]
+        self._redo = [_vs_from_doc(s) for s in doc.get("redo", [])]
+
+
+def _vs_doc(s: VarSwapState) -> dict:
+    return {"level": s.level, "excluded": s.excluded}
+
+
+def _vs_from_doc(d: dict) -> VarSwapState:
+    return VarSwapState(
+        level=None if d.get("level") is None else float(d["level"]),
+        excluded=bool(d.get("excluded", False)),
+    )
