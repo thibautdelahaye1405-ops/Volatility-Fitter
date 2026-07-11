@@ -491,6 +491,22 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   source restart.local.ps1 first), then the clock validation script
   (scratchpad\validate_0dte_clock.py pattern: StoredChains provider +
   intradayClock ON → sub-day t + sane LQD fit on the real 0DTE node).
+- **USER ACTION PENDING — the 0DTE probe capture.** First attempt
+  (2026-07-11 evening) started correctly (creds + S3 fine, COPY began)
+  but the process died minutes in (tmp_*.parquet leftover; harmless —
+  resume treats 0-byte caches as absent). Relaunch in a window that
+  will NOT sleep, with output teed to a log:
+  `cd backend; . ..\restart.local.ps1;`
+  `..\.venv\Scripts\python -m backtest.capture_intraday --start
+  2026-07-10 --end 2026-07-10 --tickers SPY --db
+  backtest\results\intraday.sqlite *>&1 | Tee-Object -FilePath
+  backtest\results\capture_probe.log`
+  The scan is SILENT for hours (one line at completion); liveness = the
+  python process burning CPU + an established HTTPS connection to
+  files.massive.com. Then: `-m backtest.validate_intraday_clock --db
+  backtest\results\intraday.sqlite --ticker SPY --ts
+  2026-07-10T16:30:00`. If clean, widen: `--start 2026-06-30 --end
+  2026-07-10 --tickers SPY,QQQ,IWM` (resumable across evenings).
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent
