@@ -46,6 +46,23 @@ from volfit.models.localvol.varswap_pde import (
 )
 
 
+#: First-quoted-expiry threshold (years, ~29 days — the fix-#3 short-front
+#: regime) below which the front tie chains over EVERY vertex row before the
+#: first expiry instead of only t = 0. See the front-tie block in
+#: ``calibrate_affine``; surfaces with a longer front keep byte-identical fits.
+FRONT_TIE_SHORT_T = 0.08
+
+#: Tie weight used for the short-front chain (overrides a weaker user weight
+#: there). The sub-front rows are UNIDENTIFIED — quotes pin only the variance
+#: integral to the first expiry — so tying them hard is a structural prior,
+#: not a fit-quality trade-off. Measured on real 2-DTE dailies: at the default
+#: 1e-2 the rows ring 5-30 vol-pts and the fit basin-hops NON-MONOTONICALLY
+#: under operator refinement (NVDA converged reprice 130 -> 172 bp on a FINER
+#: dt); at 1.0 the ringing collapses (130 -> 57 bp), refinement becomes
+#: monotone, and the in-op fit is unchanged or better.
+FRONT_TIE_CHAIN_WEIGHT = 1.0
+
+
 @dataclass(frozen=True)
 class OptionQuote:
     """One normalized forward call quote (T, x = K/F, price y, tolerance eta).
@@ -458,10 +475,13 @@ def calibrate_affine(
     ``convex_cols`` (with ``convex_weight`` > 0) adds the soft 'convex vol below
     5Δ' constraint at those strike columns: a hinge sqrt(W)·relu(-(D²σ)) per time
     row penalizing concavity of the VOL row in x. ``front_tie_weight`` > 0 adds the
-    soft front tie sqrt(W)·(θ[0,:] − θ[1,:]) per strike column — a one-sided
-    difference pinning the unconstrained t = 0 row to the first (data-identified)
-    row so it stops leaking into the shortest, most-curved smile. Off (None / 0)
-    for any of these ⇒ no extra rows, so the fit is byte-identical.
+    soft front tie sqrt(W)·(θ[i,:] − θ[i+1,:]) per strike column — one-sided
+    differences pinning the unconstrained sub-front rows to the first
+    (data-identified) row so they stop leaking into the shortest, most-curved
+    smile: the single t = 0 row for a normal front, the whole chain of rows
+    below the first quoted expiry when it is short (``FRONT_TIE_SHORT_T``).
+    Off (None / 0) for any of these ⇒ no extra rows, so the fit is
+    byte-identical.
 
     ``fit_left_a`` makes the surface's LEFT-wing extrapolation slope multiple
     ``a`` (volfit.models.localvol.affine, ``left_extrap_a``) a free calibration
@@ -561,16 +581,37 @@ def calibrate_affine(
         sqrt_cvx = np.sqrt(convex_weight)
     else:
         cvx_on = False
-    # Front tie: one-sided time difference θ[0,:] − θ[1,:] per strike column
-    # (theta-independent, so the linear operator is built once).
+    # Front tie: one-sided time differences θ[i,:] − θ[i+1,:] per strike column
+    # (theta-independent, so the linear operator is built once). Legacy = the
+    # single t = 0 row tied to row 1. On a SHORT front (first quoted expiry
+    # below FRONT_TIE_SHORT_T) the chain extends over EVERY vertex row below
+    # the first expiry: quotes pin only the variance INTEGRAL 0 -> t1, so each
+    # sub-front row (t = 0 AND the t1/4 pre-node) is individually unidentified
+    # and the optimizer trades them against each other to cancel residual
+    # operator error — measured on real 2-DTE dailies as 5-30 vol-pt ringing
+    # between adjacent sub-front rows (in-op rms fine, converged reprice
+    # 126 bp) that leaks into the front smile. Longer fronts keep the legacy
+    # single tie ⇒ byte-identical.
     front_on = front_tie_weight > 0.0 and surface0.t_nodes.size >= 2
     if front_on:
         n_x0 = surface0.x_nodes.size
-        front_rows = np.zeros((n_x0, surface0.theta.size))
+        t_first = expiries[0] if expiries else np.inf
+        short_front = t_first < FRONT_TIE_SHORT_T
+        n_sub = 1
+        if short_front:
+            n_sub = int(np.sum(surface0.t_nodes < t_first - 1e-12))
+        n_sub = max(1, min(n_sub, surface0.t_nodes.size - 1))
+        front_rows = np.zeros((n_sub * n_x0, surface0.theta.size))
         cols = np.arange(n_x0)
-        front_rows[cols, cols] = 1.0  # θ[0, j]
-        front_rows[cols, n_x0 + cols] = -1.0  # θ[1, j]
-        sqrt_front = np.sqrt(front_tie_weight)
+        for r in range(n_sub):
+            front_rows[r * n_x0 + cols, r * n_x0 + cols] = 1.0  # θ[r, j]
+            front_rows[r * n_x0 + cols, (r + 1) * n_x0 + cols] = -1.0  # θ[r+1, j]
+        w_tie = (
+            max(front_tie_weight, FRONT_TIE_CHAIN_WEIGHT)
+            if short_front
+            else front_tie_weight
+        )
+        sqrt_front = np.sqrt(w_tie)
     ref = surface0.theta.ravel().copy() if theta_ref is None else np.asarray(theta_ref)
     sqrt_lam = np.sqrt(reg_lambda)
     eta = np.array([o.tol for o in options])

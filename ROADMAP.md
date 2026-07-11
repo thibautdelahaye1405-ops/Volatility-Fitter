@@ -377,6 +377,29 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   fixture surface conv 46→41 bp; Bloomberg fixture grids untouched by
   construction. 2 new locks in test_affine_grid_design.py (29 total).
   NB: restart the app to pick the fix up, then Calibrate.
+- **LV daily-ladder follow-up SHIPPED (2026-07-11, later) — chained
+  sub-front tie.** After the dt/coverage fixes the user saw SPY 07-13
+  noisier + NVDA 07-13 unsmooth. Root cause: the vertex rows BELOW the
+  first quoted expiry (t=0 and the t1/4 pre-node) are individually
+  unidentified (quotes pin only the variance integral 0→t1) and the
+  frontTie only chained t=0→row1 — so the sub-front pair rang freely
+  (NVDA t=0 near-ATM 0.62→0.42→0.05 across adjacent nodes) and the fit
+  BASIN-HOPPED non-monotonically under operator refinement (NVDA 2-DTE
+  conv 130bp, 172bp on a FINER dt). Fix: on a short front
+  (< FRONT_TIE_SHORT_T = 0.08y, the fix-#3 regime) the tie chains over
+  EVERY sub-front row at FRONT_TIE_CHAIN_WEIGHT = 1.0 (a structural prior
+  on unidentified DOF, not a fit trade-off; user weight kept on normal
+  fronts ⇒ byte-identical there). Measured: NVDA 07-13 conv 130→57bp
+  (monotone under refinement again), SPY dailies surface conv 23→21bp
+  (bounds-pinned 19→12), weekly fixture 41→30bp, Bloomberg ~unchanged
+  (in-op 2.8→2.9bp — its 27d front is inside the gate, mildly helped).
+  Deliberately NOT shipped after measuring: dt 32→128 and finer dx (2-4×
+  march cost for single-digit bp once tied). The user's "make the [0,2d]
+  grid finer" intuition was inverted: fewer effective DOF there, not
+  more. Lock: test_affine_grid_design.py (ringing collapses when chained,
+  survives untied, normal-front gate intact). NVDA Bloomberg 27d front
+  conv ~124bp = pre-existing separate issue (34 quotes, 8 coarse steps at
+  high vol, clears the dt gate) — candidate for a later dt-per-vol pass.
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent

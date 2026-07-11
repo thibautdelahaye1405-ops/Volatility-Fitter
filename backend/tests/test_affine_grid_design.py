@@ -311,6 +311,64 @@ def test_front_tie_pulls_t0_toward_first_row():
     assert gap_tied < gap_free  # the tie pins the front to the first row
 
 
+def test_front_tie_chains_below_a_short_first_expiry():
+    """Sub-front vertex rows (t = 0 AND the t1/4 pre-node) are individually
+    unidentified — quotes pin only the variance integral to the first expiry —
+    so on a SHORT front the tie must chain over ALL of them at the strong
+    FRONT_TIE_CHAIN_WEIGHT: ringing seeded into those rows (integral-neutral,
+    invisible to the quotes) must collapse, while an untied fit keeps it (the
+    optimizer has no data gradient against it). Measured live consequence of
+    the ringing: NVDA 2-DTE converged reprice 130 bp, non-monotone under
+    operator refinement; 57 bp once chained. A NORMAL front (>=
+    FRONT_TIE_SHORT_T) keeps the legacy single t=0 tie, so its pre-node row
+    may retain the ringing — the gate that keeps long surfaces byte-identical."""
+    from volfit.models.localvol.affine_calib import FRONT_TIE_SHORT_T
+
+    x_nodes = _X_NODES
+    xs = np.array([0.65, 0.75, 0.85, 0.95, 1.00, 1.05, 1.15])
+
+    def _run(t1: float, tie: float):
+        t_nodes = np.array([0.0, t1 / 4.0, t1, 0.5])
+        flat = AffineVarianceSurface(
+            t_nodes=t_nodes, x_nodes=x_nodes, theta=np.full((4, 7), 0.04)
+        )
+        t_grid = np.unique(np.concatenate(
+            [np.linspace(0.0, t1, 33), np.linspace(t1, 0.5, 21)]
+        ))
+        sol = solve_affine_dupire(flat, _X_GRID, t_grid, [t1, 0.5])
+        idx = {float(e): i for i, e in enumerate(sol.expiries)}
+        quotes = [
+            OptionQuote(t=t, x=float(x), price=float(p), tol=2e-4)
+            for t in (t1, 0.5)
+            for x, p in zip(xs, sol.price_at(idx[t], xs))
+        ]
+        ring = np.full((4, 7), 0.04)  # integral-neutral ringing below t1
+        ring[0] += 0.03 * np.where(np.arange(7) % 2 == 0, 1.0, -1.0)
+        ring[1] -= 0.03 * np.where(np.arange(7) % 2 == 0, 1.0, -1.0)
+        seeded = AffineVarianceSurface(t_nodes=t_nodes, x_nodes=x_nodes, theta=ring)
+        cal = calibrate_affine(
+            seeded, quotes, _X_GRID, t_grid,
+            reg_lambda=1e-8, front_tie_weight=tie,
+            theta_ref=np.full(4 * 7, 0.04),
+        )
+        th = cal.surface.theta
+        return max(
+            float(np.max(np.abs(th[0] - th[1]))),
+            float(np.max(np.abs(th[1] - th[2]))),
+        )
+
+    t_short = 6.0 / 365.0
+    assert t_short < FRONT_TIE_SHORT_T < 0.25
+    spread_free = _run(t_short, tie=0.0)
+    spread_tied = _run(t_short, tie=1e-2)  # chain weight kicks in via the gate
+    assert spread_free > 5e-3  # untied: the unidentified ringing survives
+    assert spread_tied < 1e-3  # chained: sub-front rows collapse to the data row
+    # normal front: the legacy single t=0 tie only — the pre-node row is NOT
+    # chained to the data row (the byte-identity gate for long surfaces)
+    spread_normal = _run(0.25, tie=1e-2)
+    assert spread_normal > 1e-3
+
+
 def _left_wing_vol_curvature(theta_row: np.ndarray) -> float:
     """Min second difference of the VOL row over the left-wing nodes (x < 0.85);
     negative => concave."""
