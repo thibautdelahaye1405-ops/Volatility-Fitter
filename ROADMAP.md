@@ -420,6 +420,32 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   budget. Remaining honest residual on 2-DTE: ~3-5 SPY quotes with
   3-7bp-wide bands vs ~6.5bp fit noise = tick-grid data noise (fix-order
   #3 robust weighting territory, not grid).
+- **LV daily-ladder round 4 SHIPPED (2026-07-11) — adaptive local-vol
+  FLOOR (the "LV constraints wrong when expiry ≤ 2 days" the user
+  guessed).** SPY 07-13 upside still out-of-band with an awkward drawn
+  shape while observed IVs formed a smooth smile. Root cause: the nodal
+  local-vol floor was FIXED at 5% (the cap had been made adaptive long
+  ago; the floor stayed level-blind), and a low-vol smile MINIMUM needs
+  local vol BELOW its implieds (BBF: implied ≈ path average of local
+  vol) — SPY's 2-DTE upside dips to 6.5% implied, needing ~3.5% local
+  vol, so the fit RODE the box (the exported upside vertex pinned at
+  exactly 0.0500 on every short row) and no regularizer or vertex budget
+  could reach the quotes. Fix: floor = min(request 5%,
+  _LV_VOL_FLOOR_FRAC(0.5) × the lowest ATM implied across expiries) —
+  keyed on ATM deliberately (a global quote-min let one noisy deep-wing
+  implied unlock the UNQUOTED wing where the box stabilizes: the
+  convexWing × fine-grid lock read 61bp/53 butterfly flags — caught by
+  test_lv_benchmark), and applied WITHOUT round-tripping the request
+  value through sqrt (a 1-ulp box perturbation alone flipped that
+  fragile fit into the same bad basin). Result: SPY 07-13 upside now
+  ±1-3bp through the smile minimum, in-op 6.5→5.7bp / conv 12.2→10.2bp;
+  NVDA + Bloomberg + weekly byte-identical (ATM implieds ≥ 10%).
+  The user's hidden-expiry/virtual-quote regularizer idea was NOT needed:
+  fix #5's chained tie already enforces that prior (flat forward variance
+  below t1) in local-variance space, and the actual blocker was the box
+  constraint, which no regularizer can cross; synthetic quotes would also
+  contaminate the audited objective (governance). tests: floor
+  scales/ATM-keyed/wing-robust in test_affine_grid_design (29).
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent

@@ -135,6 +135,11 @@ _CONVEX_WING_DELTA = 0.05
 #: Absolute ceiling on the adaptive nodal local-vol cap (variance) = (400% vol)²;
 #: a safety bound for extreme names, not a real fit cap.
 _LV_VAR_CEILING = 16.0
+#: Adaptive floor fraction: the nodal local-vol floor may drop to this fraction
+#: of the LOWEST observed implied vol (see _lv_bounds — a smile minimum needs
+#: local vol below the implieds it averages into). 0.5 keeps every surface with
+#: min implied >= 10% on the legacy 5% request floor (byte-identical).
+_LV_VOL_FLOOR_FRAC = 0.5
 #: Upper bound on the free left-wing slope multiple ``a`` (× the first-cell slope).
 _LEFT_A_MAX = 20.0
 #: Stage 8 early-stop: terminate the cold fit once the best OPTION-BLOCK misfit has
@@ -162,15 +167,44 @@ def _lv_bounds(rows, opts, var_lo_req: float, var_hi_req: float) -> tuple[float,
     names (e.g. NVDA), starving the put wing — local variance in the wing runs
     well above implied. The cap is therefore ADAPTIVE: at least the request cap,
     and at least ``lvVolCapMult`` x the highest observed implied vol across the
-    surface, capped at ``_LV_VAR_CEILING`` (400% vol). The floor stays at the
-    request value (a low-vol name is unaffected). Returns ``(var_lo, var_hi)``.
+    surface, capped at ``_LV_VAR_CEILING`` (400% vol).
+
+    The FLOOR is adaptive symmetrically (2026-07-11, the daily-ladder pass): a
+    fixed 5% floor is level-blind, and a LOW-vol short-dated smile needs local
+    vol BELOW its minimum implied — implied vol is a path average of local vol
+    (BBF), so an implied smile dipping to 6.5% (SPY 2-DTE upside) requires the
+    local vol to undershoot the dip before rising into the call wing. With the
+    fixed floor the fit RODE the box (the exported grid's upside vertex pinned
+    at exactly 0.0500 on every short row) and the upside quotes were
+    unreachable — no regularizer can fix a shape the box forbids. Now: at most
+    the request floor, and at most ``_LV_VOL_FLOOR_FRAC`` x the lowest ATM
+    implied vol across the expiries. Keyed on ATM deliberately: a global
+    quote-min would let one noisy deep-wing implied drag the floor down in the
+    UNQUOTED wing, where the box does real stabilization work (test-locked:
+    the Bloomberg convexWing x fine-grid surface read 61 bp with 53 butterfly
+    flags on a quote-min floor). A surface whose ATM implieds all sit above
+    5%/frac (10% at the 0.5 default — every normal name) keeps the request
+    floor, byte-identical. Returns ``(var_lo, var_hi)``.
     """
     all_iv = np.concatenate(
         [np.sqrt(np.maximum(w, 1e-12) / t) for _, t, _, w, _, _ in rows]
     )
     sigma_max = float(all_iv.max())
+    atm_iv = [
+        np.sqrt(max(float(np.interp(0.0, k[np.argsort(k)], np.asarray(w)[np.argsort(k)])), 1e-12) / t)
+        for _, t, k, w, _, _ in rows
+        if t > 0.0 and np.asarray(k).size >= 2
+    ]
     cap_vol = max(float(np.sqrt(var_hi_req)), float(opts.lvVolCapMult) * sigma_max)
-    return float(var_lo_req), float(min(cap_vol * cap_vol, _LV_VAR_CEILING))
+    var_lo = float(var_lo_req)
+    if atm_iv:
+        # Lower the floor ONLY when it bites (never round-trip the request
+        # value through sqrt: the ulp perturbation of the box flipped the
+        # fragile convexWing x fine-grid fit into a 61 bp basin, test-locked).
+        adaptive = _LV_VOL_FLOOR_FRAC * float(min(atm_iv))
+        if adaptive * adaptive < var_lo:
+            var_lo = adaptive * adaptive
+    return var_lo, float(min(cap_vol * cap_vol, _LV_VAR_CEILING))
 
 
 def _seed_theta(

@@ -191,6 +191,30 @@ def test_lv_bounds_ceiling_caps_extreme_iv():
     assert np.sqrt(hi) == pytest.approx(4.0)  # _LV_VAR_CEILING = 16 -> 400% vol
 
 
+def test_lv_bounds_floor_drops_below_a_low_iv_smile():
+    """A low-vol smile needs LOCAL vol below its implieds near the smile min
+    (implied is a path AVERAGE of local vol — BBF), so the floor adapts down:
+    the fixed 5% box made a 6.5%-implied SPY 2-DTE upside unreachable (the fit
+    rode the floor: the exported grid's upside vertex pinned at exactly 0.0500
+    on every short row, and the upside quotes sat outside their bands). The
+    floor keys on the ATM implied, NOT the global quote min — a noisy deep-wing
+    implied must not unlock the unquoted wing, where the box stabilizes (the
+    quote-min variant read 61 bp / 53 butterfly flags on the Bloomberg
+    convexWing x fine-grid lock)."""
+    opts = OptionsSettings()
+    lo, _ = _lv_bounds(_rows_with_iv(0.065), opts, 0.0025, 0.36)
+    assert np.sqrt(lo) == pytest.approx(0.5 * 0.065)  # 3.25%, not 5%
+    # normal names (ATM implieds >= 10%) keep the request floor byte-identically
+    lo_norm, _ = _lv_bounds(_rows_with_iv(0.15), opts, 0.0025, 0.36)
+    assert lo_norm == pytest.approx(0.0025)
+    # a low WING implied on a normal-ATM smile does not move the floor
+    t = 0.5
+    k = np.array([-0.1, 0.0, 0.1])
+    w = np.array([0.15**2, 0.15**2, 0.06**2]) * t  # 6% call-wing implied
+    lo_wing, _ = _lv_bounds([("e", t, k, w, None, None)], opts, 0.0025, 0.36)
+    assert lo_wing == pytest.approx(0.0025)
+
+
 # --------------------------------------------------- Stage 3: time axis
 def test_time_nodes_base_set_pre_node_and_expiries():
     """The base set (floor 0) is 0 + a pre-first-expiry node (T1/4) + every expiry."""
