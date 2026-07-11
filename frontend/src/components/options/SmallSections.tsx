@@ -35,6 +35,32 @@ export function EventsSection({ draft, patch, live }: SectionProps) {
         Per-ticker event calendars (dates &amp; weights) are edited in the
         Parametric workspace's Term sub-tab.
       </p>
+      <Toggle
+        label="Intraday clock (0DTE research)"
+        hint="Value each expiry from the chain snapshot's timestamp to its exact settlement instant (NYSE sessions, AM/PM, half-days), with variance accruing on the session-weighted profile below. Off = day-granular maturities, byte-identical fits."
+        checked={draft.intradayClock} disabled={!live}
+        onChange={(v) => patch({ intradayClock: v })}
+      />
+      {draft.intradayClock && (
+        <div className="space-y-2">
+          <NumberRow
+            label="Session variance share" value={draft.sessionVarShare}
+            step={0.05} disabled={!live}
+            onChange={(v) => patch({ sessionVarShare: v })}
+          />
+          <NumberRow
+            label="Non-trading day weight" value={draft.nonTradingWeight}
+            step={0.1} disabled={!live}
+            onChange={(v) => patch({ nonTradingWeight: v })}
+          />
+          <p className="mt-1 text-[10px] text-slate-600">
+            Share 0.271 (= 6.5/24) is the flat-density legacy convention;
+            ~0.7–0.9 concentrates variance in trading hours (remaining
+            minutes for a live 0DTE, cheap overnight). Weight 1 prices a
+            weekend at three full days; lower it to study the weekend effect.
+          </p>
+        </div>
+      )}
     </>
   );
 }

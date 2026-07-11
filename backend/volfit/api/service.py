@@ -62,9 +62,11 @@ from volfit.calib.operators import (
 )
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
 from volfit.calib.rms import node_error_terms, rms as rms_of_terms
+from volfit.calib.intraday_time import intraday_variance_days
 from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
-from volfit.calib.weighted_time import weighted_variance_years
+from volfit.calib.weighted_time import DAYS_PER_YEAR, weighted_variance_years
 from volfit.calib.weights import resolve_weights
+from volfit.data.expiry_time import default_settlement, exact_year_fraction
 from volfit.data.forwards import ResolvedForward
 from volfit.dynamics.ssr import Regime, shifted_smile, ssr_of_regime
 from volfit.dynamics.transport import TransportedSlice
@@ -145,22 +147,56 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
     )
 
 
-def variance_time(state: AppState, ticker: str, expiry, t_cal: float) -> float:
+def node_clock(state: AppState, ticker: str, expiry) -> tuple[float, float | None]:
+    """The node's calendar clock: (year fraction t, intraday day-base or None).
+
+    Legacy day-granular ``state.year_fraction`` when the 0DTE research clock
+    is off (byte-identical). When ``OptionsSettings.intradayClock`` is on:
+    exact ACT/365 from the chain snapshot's TIMESTAMP to the expiry's
+    settlement instant (the schema-v7 settlement map; the NYSE rule fallback
+    for chains that predate it), clamped at 0 past settlement, plus the
+    session-weighted day base (volfit.calib.intraday_time) that
+    ``variance_time`` accrues tau from. Valuation is always the SNAPSHOT
+    timestamp, never wall clock — replay/captured chains price at their own
+    moment, and the observation filter's convention is matched."""
+    options = state.options()
+    if not options.intradayClock:
+        return state.year_fraction(expiry), None
+    snap = state.snapshot(ticker)
+    rec = snap.settlement.get(expiry) if snap.settlement is not None else None
+    settle = rec.settle if rec is not None else default_settlement(expiry).settle
+    t_exact = exact_year_fraction(snap.timestamp, settle)
+    if t_exact <= 0.0:
+        return 0.0, 0.0
+    base = intraday_variance_days(
+        snap.timestamp, settle, options.sessionVarShare, options.nonTradingWeight
+    )
+    return t_exact, base
+
+
+def variance_time(
+    state: AppState, ticker: str, expiry, t_cal: float, base_days: float | None = None
+) -> float:
     """Event-weighted variance years for a node (volfit.calib.weighted_time).
 
     The smile is calibrated/quoted in this clock so an event before the expiry
     lowers every reported vol at fixed price. Reduces to the calendar ``t_cal``
     when the event clock is off (OptionsSettings.eventsEnabled) or the ticker has
     no events. ``expiry`` is accepted for symmetry/future use; the clock depends
-    only on the calendar maturity and the ticker's shared event calendar."""
+    only on the calendar maturity and the ticker's shared event calendar.
+
+    ``base_days`` is the intraday clock's accrued day-weights (``node_clock``):
+    when given it replaces the calendar day base, so tau carries the sub-day
+    session profile whether or not the ticker has events; the event CUTOFF
+    stays on the calendar maturity."""
     options = state.options()
-    if not options.eventsEnabled:
-        return t_cal
-    events = state.events(ticker)
+    events = state.events(ticker) if options.eventsEnabled else []
     if not events:
-        return t_cal
+        return t_cal if base_days is None else base_days / DAYS_PER_YEAR
     pairs = [(e.time, e.weight) for e in events]
-    return weighted_variance_years(t_cal, pairs, normalize=options.normalizeEvents)
+    return weighted_variance_years(
+        t_cal, pairs, normalize=options.normalizeEvents, base_days=base_days
+    )
 
 
 def _cash_digest(cash_divs: tuple | None) -> tuple | None:
@@ -238,8 +274,8 @@ def prepared_quotes(state: AppState, ticker: str, expiry: date) -> PreparedQuote
     ``prepare_quotes`` needs on a miss, so nothing is computed twice."""
     forward = state.resolved_forward(ticker, expiry)  # honours the forward policy
     cash_divs = state.cash_dividend_schedule(ticker, expiry, forward.forward)
-    t_cal = state.year_fraction(expiry)
-    tau = variance_time(state, ticker, expiry, t_cal)
+    t_cal, base_days = node_clock(state, ticker, expiry)
+    tau = variance_time(state, ticker, expiry, t_cal, base_days)
     key = _prepared_key(state, ticker, expiry.isoformat(), forward, cash_divs, t_cal, tau)
     cached = state.get_prepared(key)
     if cached is not None:

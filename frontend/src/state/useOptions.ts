@@ -46,6 +46,17 @@ export interface OptionsSettings {
   extrapEnforce: boolean;
   eventsEnabled: boolean;
   normalizeEvents: boolean;
+  /** 0DTE research clock: value maturities snapshot-timestamp -> exact
+   *  settlement instant, variance accruing on the session-weighted profile.
+   *  Off = byte-identical day-granular fits. */
+  intradayClock: boolean;
+  /** Fraction of a trading day's variance accruing during the session
+   *  (09:30 ET -> close). 6.5/24 = flat density (legacy day convention);
+   *  research ~0.7-0.9 makes a 0DTE's clock "remaining trading minutes". */
+  sessionVarShare: number;
+  /** Day-weight of a non-trading day (weekend/holiday) on the intraday
+   *  clock; 1 = legacy (a 3-day weekend costs 3 days of variance). */
+  nonTradingWeight: number;
   varSwapEnabled: boolean;
   varSwapWeightPct: number;
   /** Local-Vol model var-swap pricing: static log-contract replication, or the
@@ -163,6 +174,9 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   extrapEnforce: false,
   eventsEnabled: true,
   normalizeEvents: false,
+  intradayClock: false,
+  sessionVarShare: 6.5 / 24.0,
+  nonTradingWeight: 1.0,
   varSwapEnabled: true,
   varSwapWeightPct: 10.0,
   varSwapMethod: 'static',

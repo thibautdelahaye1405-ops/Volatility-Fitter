@@ -864,6 +864,12 @@ class AppState(UniverseMixin):
                     or options.varSwapWeightPct != self._options.varSwapWeightPct
                     or options.eventsEnabled != self._options.eventsEnabled
                     or options.normalizeEvents != self._options.normalizeEvents
+                    # 0DTE research clock (R2 item 10): the toggle and both
+                    # profile knobs change every node's (t, tau), so they bust
+                    # the fit cache like the event-clock switches above.
+                    or options.intradayClock != self._options.intradayClock
+                    or options.sessionVarShare != self._options.sessionVarShare
+                    or options.nonTradingWeight != self._options.nonTradingWeight
                     or options.enforceCalendar != self._options.enforceCalendar
                     or options.autoLoadPrior != self._options.autoLoadPrior
                     or options.priorAnchorWeightPct != self._options.priorAnchorWeightPct

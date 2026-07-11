@@ -30,6 +30,7 @@ to ``exact_year_fraction``.
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from functools import lru_cache
 from zoneinfo import ZoneInfo
 
 from volfit.data.types import ExpirySettlement
@@ -86,8 +87,12 @@ def _observed(d: date) -> date:
     return d
 
 
+@lru_cache(maxsize=64)
 def nyse_holidays(year: int) -> frozenset[date]:
-    """Full-closure NYSE holidays of one year, computed from the rules."""
+    """Full-closure NYSE holidays of one year, computed from the rules.
+
+    Memoized: the intraday variance clock (volfit.calib.intraday_time) walks
+    day-by-day over year-long horizons per node, so the per-year set is hot."""
     days = {
         _observed(date(year, 1, 1)),  # New Year's Day
         _nth_weekday(year, 1, 0, 3),  # Martin Luther King Jr. Day

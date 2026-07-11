@@ -42,6 +42,7 @@ def weighted_variance_years(
     events: Sequence[tuple[float, float]],
     normalize: bool = False,
     days_per_year: float = DAYS_PER_YEAR,
+    base_days: float | None = None,
 ) -> float:
     """Weighted variance years tau to a calendar maturity ``t_cal``.
 
@@ -50,11 +51,20 @@ def weighted_variance_years(
     so the one-year weight budget stays ``days_per_year`` (1Y vols unchanged).
     Returns ``t_cal`` exactly when there are no events at or before it and no
     normalization is in force.
+
+    ``base_days`` substitutes the day-weight base the events add onto — the
+    sub-day intraday clock (volfit.calib.intraday_time) passes its accrued
+    day-weights here while the event CUTOFF stays at the calendar maturity
+    ``t_cal``, so an event's placement never depends on the intraday
+    reweighting. ``None`` (the default) keeps the calendar base
+    ``t_cal * days_per_year`` — byte-identical to the historical behaviour.
     """
     if t_cal <= 0.0:
         return float(t_cal)
     extra_before = sum(n for te, n in events if te <= t_cal and n > 0.0)
-    tau_days = t_cal * days_per_year + extra_before
+    tau_days = (
+        t_cal * days_per_year if base_days is None else float(base_days)
+    ) + extra_before
     if normalize:
         # Uniform factor pinning the 1Y weighted budget to a no-event year.
         extra_1y = sum(n for te, n in events if te <= 1.0 and n > 0.0)

@@ -154,6 +154,27 @@ class OptionsSettings(BaseModel):
     #: and 1Y vols are unchanged. Off by default (cumulative weight > calendar
     #: days). Affects calibration -> bumps the options version.
     normalizeEvents: bool = False
+    # ---- 0DTE research clock (roadmap R2 item 10) ----
+    #: Sub-day maturities: value each node from the chain snapshot's timestamp
+    #: to the expiry's exact SETTLEMENT instant (the schema-v7 settlement map;
+    #: NYSE session rules as fallback) instead of integer calendar days, and
+    #: accrue variance time through the session-weighted intraday profile
+    #: (volfit.calib.intraday_time). OFF by default — byte-identical fits.
+    #: Affects calibration -> bumps the options version.
+    intradayClock: bool = False
+    #: Fraction of a trading day's variance that accrues DURING the exchange
+    #: session (09:30 ET to the close; half-day sessions scale it). The default
+    #: 6.5/24 is the flat-density share that nests the legacy day convention;
+    #: research values (~0.7-0.9) make a live 0DTE's clock "remaining trading
+    #: minutes" and the overnight cheap. Only read while ``intradayClock`` is
+    #: on; affects calibration -> bumps the options version.
+    sessionVarShare: float = Field(6.5 / 24.0, ge=0.0, le=1.0)
+    #: Day-weight of a NON-trading calendar day (weekends, exchange holidays)
+    #: on the intraday clock — the weekend-effect research lever. 1.0 (the
+    #: default) keeps the legacy convention where a 3-day weekend costs three
+    #: full days of variance. Only read while ``intradayClock`` is on; affects
+    #: calibration -> bumps the options version.
+    nonTradingWeight: float = Field(1.0, ge=0.0, le=1.0)
     varSwapEnabled: bool = True
     #: Var-swap penalty weight as a PERCENTAGE of the summed option-quote weights
     #: of the same (asset, expiry) node (volfit.api.varswap.varswap_target): at

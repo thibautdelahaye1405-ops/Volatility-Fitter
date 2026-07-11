@@ -332,10 +332,36 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   round-trip, session/var-swap history round-trip, restored-fit
   byte-identity, restore-is-a-reset, filter-state round-trip, exact replay
   with edits+prior, stale note, legacy-vs-captured notes).
-- **NEXT (R2):** 0DTE v1 research grade (intraday variance clock, capture
-  campaign, absolute-timestamp calendar constraints) or joint borrow/de-Am
-  fixed point — items are independent; the hosting track's container
-  packaging spike can start any time (the workspace object unblocks it).
+- **R2 item 10 STARTED (2026-07-11) — intraday variance clock SHIPPED (the
+  0DTE core enabler).** New `volfit/calib/intraday_time.py`: sub-day
+  day-weight integrator over the NYSE session rules (volfit/data/
+  expiry_time, now lru-cached) — every trading day still carries weight 1
+  (the legacy integer-day convention, extended below one day), split
+  ``sessionVarShare`` over the session (09:30 ET→close; half-day sessions
+  scale it) and the rest off-session; non-trading days carry
+  ``nonTradingWeight`` (the weekend-effect lever). The default share 6.5/24
+  is the flat density: close-to-close spans integrate to exact whole days
+  (across weekends AND the DST weekend), sub-day spans to wall fractions.
+  Wiring: `OptionsSettings.intradayClock` (default OFF = byte-identical;
+  toggle + both knobs bump the options version) → `service.node_clock`
+  values each node from the SNAPSHOT timestamp (never wall clock — replay
+  prices at its own moment) to the schema-v7 settlement instant (NYSE rule
+  fallback), clamped at 0 past settlement; `variance_time` gains
+  ``base_days`` so tau rides the session profile while the EVENT cutoff
+  stays on calendar time (a fractional EventSpec.time is now a genuine
+  intraday event — 08:30 CPI just works). LV/term/density follow
+  automatically (they read prepared.t/tau). Audit: remaining
+  `state.year_fraction` sites (forwards/carry/dividends/universe metadata)
+  stay day-granular by design v1. Options-tab Events group gained the
+  toggle + 2 knobs. tests/test_intraday_time.py (12).
+- **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
+  flat files, user's window) + captured-replay validation of the clock on
+  real 0DTE chains; absolute-timestamp calendar constraints for adjacent
+  dailies (same-date AM/PM ordering); temporal-filter tuning for intraday
+  jumps; fast degraded mode; stress-pack exit gates (no NaN on valid
+  quotes, deterministic replay, hard publish failure on unresolved
+  intrinsic/calendar inconsistency, sub-50ms warm slice latency). R2 item
+  11 (joint borrow/de-Am) independent; hosting container spike unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
