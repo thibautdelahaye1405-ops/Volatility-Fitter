@@ -482,7 +482,8 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   backtest/fixtures/intraday/ + optional `--db` writing every snapshot
   into a VolStore WITH the settlement map, so the app's as-of "captured"
   replay + the intraday clock price real 0DTE chains.
-  tests/test_capture_intraday.py (7, fully offline via source_uri).
+  tests/test_capture_intraday.py (6, fully offline via source_uri) +
+  `-m backtest.validate_intraday_clock` (the post-capture acceptance CLI).
   **The scan itself is a USER'S-WINDOW job** (~hours/day-file on this
   link, same as the nightly capture; interactive probes get killed):
   probe = `python -m backtest.capture_intraday --start 2026-07-10 --end
