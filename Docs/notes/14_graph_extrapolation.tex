@@ -669,11 +669,21 @@ unbiased, honest-to-conservative bands. \textbf{(ii)} In the calm regime the
 skill is $\approx0$ --- never negative --- because single-name moves there are
 earnings-idiosyncratic and carry no systematic component the graph could
 transport; the mechanism cannot manufacture idiosyncratic information, only
-carry shared repricing. \textbf{(iii)} The one dishonest cell in the pack is
-the calm regime's dark-name bands ($\operatorname{std}\zeta\approx1.9$,
-overconfident): the dark posterior uncertainty should widen when a name's own
-regime is idiosyncratic (an event/earnings-aware term in the dark baseline
-precision) --- an open follow-up.
+carry shared repricing. \textbf{(iii)} The one dishonest cell in the pack was
+the calm regime's dark-name bands ($\operatorname{std}\zeta\approx1.9$ in the
+table above, overconfident). That cell is now closed at the ATM level by the
+\emph{idiosyncratic band floor} (\texttt{volfit/graph/idio.py}, on by default
+in production): the dark ATM band variance is floored at
+$\lambda\,\sigma_I^2$ ($\lambda=0.30$), where $\sigma_I$ is a strictly causal,
+shrunk EWMA-RMS (half-life 5 trading days, shrunk toward the cross-sectional
+pool) of the node's own past lit-node innovations against the transported
+prior. Because a dark node's baseline precision enters only its band variance
+--- never the posterior mean --- the floor is mean-invariant by construction,
+so the skill column above is unchanged; validated offline on the stored
+benchmark rows, the two calm cells moved
+$\operatorname{std}\zeta\;1.91\to1.02$ and $1.85\to1.03$ with the stressed
+cells intact. Widening the \emph{skew and curvature} bands in idiosyncratic
+tape remains the open residual.
 
 %======================================================================
 \section{What is original here}

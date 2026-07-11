@@ -72,7 +72,7 @@ Docs/      Technical notes (LaTeX)
   weighting, haircut, SIV cores, penalty strengths, the A_R barrier, the SVI
   no-arb penalty + Lee bound, the SIV ridge, the band mid-anchor, the local-vol
   roughness, and the graph prior strength) are global, explicit settings.
-- **UI** — seven workspaces (TopBar Data Source + As-of selectors [the captured
+- **UI** — eight workspaces (TopBar Data Source + As-of selectors [the captured
   snapshot picker splits date → time, weekdays only], global expiry-format
   toggle, and workflow controls: **Fetch spots** / **Fetch Options Quotes** (or
   an auto-fetch countdown) / **Calibrate** with a live progress gauge + a
@@ -111,6 +111,11 @@ Docs/      Technical notes (LaTeX)
     prior→posterior moves with provenance, flat-baseline + cross-β knobs, a
     leave-one-node-out backtest, an edge editor, and drill-in to a node's
     reconstructed smile + band overlaid on its live quotes.
+  - **Quality** — the universe fit-quality / publish-readiness dashboard:
+    headline tiles (ready / stale / arb / RMS), a per-ticker rollup including
+    LV-surface health, a per-node exception table (data-age staleness fails
+    readiness), and CSV/JSON surface export — served from cached calibrations
+    (never fits).
   - **Universe** — provider symbol search, per-ticker expiry selection, and a
     lit/dark node matrix beside the active set, plus named universes.
   - **View** — display preferences (colour scheme: Dark / Light / High-contrast /

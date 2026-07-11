@@ -5,7 +5,10 @@ fits a production LQD slice to each, and renders three panels that illustrate
 the app's structural guarantees end to end:
 
   fig_ov_smiles.pdf     four fitted smiles vs log-moneyness
-  fig_ov_termvar.pdf    ATM total-variance term structure (non-decreasing)
+  fig_ov_termvar.pdf    ATM total-variance term structure (sanity check only:
+                        the slices are fitted INDEPENDENTLY here, so this is
+                        not a calendar-arbitrage demonstration — that needs
+                        w-ordering at every strike, Note 10)
   fig_ov_densities.pdf  stacked risk-neutral densities (all >= 0)
 
 Run from the repo root with the project venv.
@@ -83,7 +86,7 @@ def main():
     ax.plot(ts, w0, "-o", color="#0f766e")
     ax.set_xlabel(r"expiry $T$ (years)")
     ax.set_ylabel(r"ATM total variance $w_0=\sigma_0^2 T$")
-    ax.set_title("Non-decreasing in $T$ (no calendar arbitrage)", fontsize=10)
+    ax.set_title("ATM sanity check: non-decreasing in $T$ (slices fitted independently)", fontsize=10)
     fig.savefig(OUT / "fig_ov_termvar.pdf")
     plt.close(fig)
 

@@ -32,7 +32,7 @@ numerical optimizations and performance of the Vol-Fitter application.
   "leave nothing behind"; emphasize what is genuinely original.
 - Build: `latexmk -pdf NN_topic.tex` (MiKTeX present).
 
-## The 15 notes
+## The 16 notes
 
 | #  | File                              | Status vs legacy | Est. pp | Source material |
 |----|-----------------------------------|------------------|---------|-----------------|
@@ -51,6 +51,7 @@ numerical optimizations and performance of the Vol-Fitter application.
 | 12 | `12_spot_vol_dynamics.tex`        | rewrite of `spot_move_vol_surface_note_updated.tex` | 16–20 | `dynamics/{ssr,transport}.py` |
 | 13 | `13_bayesian_prior_persistence.tex`| NEW (from prior-persistence design+roadmap) | 22–28 | `calib/{operators,factors,precision,prior}.py` |
 | 14 | `14_graph_extrapolation.tex`      | rewrite of `ot_bayesian_graph_extrapolation_expanded.tex` + production binding | 40–55 | `graph/*`, `api/graph_*` |
+| 15 | `15_kalman_filtering.tex`         | NEW (from `kalman_filtering.tex` design note) | 24–30 | `calib/observation_*.py`, `api/observation_filter.py` |
 
 Total ≈ 280–360 pp.
 
@@ -205,3 +206,27 @@ Each note: commit after it compiles clean with its figures.
   distilled from the production module and **executed** against it (agreement
   1e-10…1e-15); the standalone verifiers are session scratch, not committed. All PDFs
   rebuilt clean with `latexmk`.
+
+- **2026-07-11 — Note 00 accuracy + self-containment pass.** Fixed against
+  current code: pipeline order (forwards/carry resolve *before* per-quote
+  de-Am; fit branches to views *and* graph), graded arbitrage claims (LQD by
+  construction / LV structural / SVI+MCS soft-fenced + diagnosed), LV
+  positioned as a jointly calibrated local-*variance* surface (not a fourth
+  slice model), Figure 1 panel (c) relabeled an ATM sanity check (slices are
+  fitted independently there), per-model residual units (SVI/MCS fit in IV,
+  LQD/LV vega-normalized price), two-clock notation (clock-independent w;
+  market IV √(w/t) vs working IV √(w/τ)), graph status refreshed (idio ATM
+  band floor SHIPPED, calm ζ 1.91→1.02 / 1.85→1.03; OT term off by default),
+  filter/prior wording de-absolutized, scoped invalidation conditioned on
+  autoCalibrate. Added: vocabulary block, operational "dark" definition,
+  handle→smile retargeting explanation, skill/ζ definitions, labeled case-file
+  metrics, scope-and-limits box, eight-tab workspace list (incl. Quality).
+  Atlas renamed "Principal calibration controls," corrected (ssr custom-only,
+  grid floors, frontTie semantics, validator-PDE constants, exact literals)
+  and extended (model, enforceCalendar, extrapEnforce, events/normalize,
+  varSwapMethod, LV solver/grid modes, dynamics regime, idioFloor,
+  autoCalibrate); schemas.py declared the exhaustive source. Synchronized:
+  Note 14 §LOO-25 + trader_QA.md (idio fix shipped, no longer "queued"),
+  README (eight workspaces + Quality), this file's note count (16). Deck
+  slides repeating the old pipeline/ATM-calendar claims still need their own
+  pass.

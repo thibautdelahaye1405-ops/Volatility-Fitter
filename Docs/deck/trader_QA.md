@@ -54,10 +54,12 @@ chain contradicts itself, cutting the gain on exactly the contaminated handles
 
 **Is the ±1.9–2.0 vol-pt band OOS-calibrated?** In the demo it is internally
 consistent (marginal posterior covariance). Out-of-sample calibration is measured in
-the LOO backtest: standardized residuals ζ ≈ 0 with std 0.70–1.10 in most cells —
-except calm-regime fully-dark single names, where std ≈ 1.9 (bands too narrow; fix
-queued — see slide 30). Answer both halves; do not claim OOS calibration for the demo
-band itself.
+the LOO backtest: standardized residuals ζ ≈ 0 with std 0.70–1.10 in most cells.
+The one exception found — calm-regime fully-dark single names at std ≈ 1.9 (bands
+too narrow) — is FIXED as of 2026-07-10: the idiosyncratic ATM-band floor
+(`volfit/graph/idio.py`, on by default) moved those cells to std 1.02/1.03, validated
+offline on the stored benchmark rows; skew/curvature band widening remains open (see
+slide 30). Answer both halves; do not claim OOS calibration for the demo band itself.
 
 ---
 
@@ -76,9 +78,11 @@ uncertainty are variance-based, not distribution-based:
 - Graph: precision floors/caps and provenance/age/transport decay of the baseline.
 
 There is **no automatic distribution-free band recalibration**; the guardrail is the
-empirical ζ audit per regime and cell, and the one dishonest cell found (calm-regime
-dark names) is flagged on the slide with a queued fix (idiosyncratic-regime band
-widening / per-kind ζ recalibration).
+empirical ζ audit per regime and cell. The one dishonest cell it found (calm-regime
+dark names, ζ std ≈ 1.9) is now closed at the ATM level by the idiosyncratic band
+floor (`volfit/graph/idio.py`, shipped 2026-07-10, on by default: ζ std 1.91→1.02,
+1.85→1.03, mean-invariant); skew/curvature widening in idiosyncratic tape is the
+remaining open item.
 
 ---
 
@@ -392,8 +396,9 @@ auditable structure of slide 29 is a direct consequence. The assumption is then
 audited, not trusted: ζ per regime and cell.
 
 **Bands under nonlinear/jumpy shocks?** Answered by the same audit: spike-regime ζ
-std 0.7–1.1 (honest), the calm-regime dark-name cell at ~1.9 is the known exception
-with a queued fix. Do not claim more.
+std 0.7–1.1 (honest); the calm-regime dark-name cell that measured ~1.9 is fixed at
+the ATM level by the idio band floor (shipped 2026-07-10, ζ std → 1.02/1.03);
+skew/curvature widening stays open. Do not claim more.
 
 **Double-counting.** The posterior precision is three *disjoint additive* sources:
 baseline/prior precision (provenance × age × transport), increment-prior precision
@@ -426,15 +431,20 @@ shown, remainder folded into "others"), test-locked (`test_graph_attribution.py`
 
 ## Slide 30 — Graph validation: calm-regime fix, breakdowns, baseline
 
-**The overconfident cell — fix and severity.** Severity is bounded and quantified:
+**The overconfident cell — fix and severity.** Severity was bounded and quantified:
 one cell (calm regime × fully-dark single names), skill ≈ +0.7 bp (never negative),
 bands ~2× too narrow (ζ std 1.85–1.91); everywhere else 0.7–1.1. Risk profile: a
-trader over-trusting a dark-name band in quiet, earnings-driven tape. Fix queued:
-widen the dark baseline uncertainty when the name's regime is idiosyncratic
-(earnings-aware term) or per-kind ζ recalibration. Note the superficially-obvious
-lever (dark base scale) was measured to be dead for the posterior mean — the binding
-constraints are reach η and edge conductance; that diagnosis is *why* the fix targets
-the band, not the mean.
+trader over-trusting a dark-name band in quiet, earnings-driven tape. **Fix SHIPPED
+2026-07-10** — the idiosyncratic ATM-band floor (`volfit/graph/idio.py`, on by
+default in production): the dark ATM band variance is floored at 0.30 × the node's
+own strictly-causal trailing innovation RMS (EWMA half-life 5d, pool-shrunk), which
+is mean-invariant by construction (a dark node's baseline precision enters only the
+band, never the posterior mean). Validated offline on the stored benchmark rows: the
+two calm cells moved ζ std 1.91→1.02 and 1.85→1.03 with the stressed cells intact.
+Remaining open: widening the skew/curvature bands in idiosyncratic tape. Note the
+superficially-obvious lever (dark base scale) was measured to be dead for the
+posterior mean — the binding constraints are reach η and edge conductance; that
+diagnosis is *why* the fix targets the band, not the mean.
 
 **Breakdowns.** Today: by regime × asset kind (index/ETF/single-name) × design in the
 benchmark artifact. Not yet: sector, market cap, earnings proximity, liquidity decile
