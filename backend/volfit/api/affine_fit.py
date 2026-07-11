@@ -162,6 +162,16 @@ _LV_VIRTUAL_FRONT_MAX_T = 0.0
 #: Tolerance multiplier for the virtual quotes (1.0 = per-quote parity with the
 #: parent front quotes in vol terms; larger = weaker regularizer).
 _LV_VIRTUAL_TOL_MULT = 1.0
+
+#: Short-dated EVEN-coverage gate (years, ~10 days): expiries at most this old
+#: additionally require that no strike-vertex GAP inside their traded range
+#: (boundary-augmented) exceeds range/(gridXMinPerExpiry - 1). The count floor
+#: alone is SIDE-BLIND: a downside-heavy base axis (e.g. gridXNodes = 20) can
+#: satisfy 8-in-range with one upside vertex, and the daily front then draws a
+#: V through its call quotes (live-diagnosed: model -22 bp at K=759 / +34 bp at
+#: K=762 with interior upside vertices {1.0046} only). Long expiries keep the
+#: count-only rule (byte-identical).
+_COVERAGE_GAP_MAX_T = 10.0 / 365.0
 #: Upper bound on the free left-wing slope multiple ``a`` (× the first-cell slope).
 _LEFT_A_MAX = 20.0
 #: Stage 8 early-stop: terminate the cold fit once the best OPTION-BLOCK misfit has
@@ -494,6 +504,28 @@ def _augment_per_expiry_coverage(
             if seg.size < 2:
                 break  # zero-width traded range (degenerate slice)
             g = int(np.argmax(np.diff(seg)))
+            mid = 0.5 * (seg[g] + seg[g + 1])
+            k = np.unique(np.insert(k, np.searchsorted(k, mid), mid))
+    # Short-dated EVEN coverage (_COVERAGE_GAP_MAX_T): the count floor above is
+    # SIDE-BLIND — a downside-heavy base axis meets it with a single upside
+    # vertex and the daily front draws a V through its call quotes. For short
+    # expiries, keep splitting the widest boundary-augmented gap until none
+    # exceeds range/(m_min - 1); a well-spread expiry is already under the cap
+    # (no-op), and long expiries never enter (byte-identical).
+    for _, t, kk, _, _, _ in rows:
+        if t > _COVERAGE_GAP_MAX_T:
+            continue
+        klo, khi = float(np.min(kk)), float(np.max(kk))
+        gap_cap = (khi - klo) / max(m_min - 1, 1)
+        if gap_cap <= 0.0:
+            continue
+        while k.size < 500:
+            seg = np.unique(np.concatenate([[klo], k[(k >= klo) & (k <= khi)], [khi]]))
+            if seg.size < 2:
+                break
+            g = int(np.argmax(np.diff(seg)))
+            if float(seg[g + 1] - seg[g]) <= gap_cap:
+                break  # evenly covered
             mid = 0.5 * (seg[g] + seg[g + 1])
             k = np.unique(np.insert(k, np.searchsorted(k, mid), mid))
     return np.unique(np.concatenate([np.exp(k), [1.0]]))

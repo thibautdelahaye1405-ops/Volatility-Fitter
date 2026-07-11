@@ -446,6 +446,29 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   constraint, which no regularizer can cross; synthetic quotes would also
   contaminate the audited objective (governance). tests: floor
   scales/ATM-keyed/wing-robust in test_affine_grid_design (29).
+- **LV daily-ladder round 5 SHIPPED (2026-07-11) — side-blind coverage +
+  the hidden-expiry verdict.** Diagnosed the USER'S LIVE surface over the
+  API (their config: haircut, gridXNodes=20, convexWing — NOT the
+  benchmark defaults; their live 07-13 read −22bp at K=759 / +34bp at
+  K=762 with interior upside vertices {1.0046} only): with 20 base
+  nodes the delta axis already lands ≥8 in-range vertices so the COUNT
+  floor never densifies — but they are put-side-heavy, and the call side
+  keeps ONE bend point → the model draws a V through the upside quotes.
+  Fix: short expiries (≤ ~10d, `_COVERAGE_GAP_MAX_T`) additionally
+  require EVEN coverage — no boundary-augmented in-range gap >
+  range/(gridXMinPerExpiry−1) — side-aware by construction; long
+  expiries keep the count rule byte-identically (the fragile
+  convexWing×20 Bloomberg lock passes untouched). User-config repro:
+  758–762 to ±1–5bp, rms 7.5→5.2 / conv 18.6→10.1bp; default config:
+  NVDA 07-13 conv 56.9→34.8bp. ALSO: the user's hidden-virtual-expiry
+  regularizer (t1/2, half variance) implemented faithfully + a
+  self-similar k/√2 variant, measured across weights 1–8×: net-negative
+  everywhere (fixed-strike wrecks steep-skew NVDA 18.5→50–59bp;
+  self-similar degrades SPY conv 10→15–18bp) — the asserted mid-time
+  smile is an unsupported observable competing with real quotes; kept
+  DORMANT (`_LV_VIRTUAL_FRONT_MAX_T=0.0`), builder test-locked. Session
+  lesson: check export generatedAt vs commit times — round 4's "still
+  bad" was a pre-fix surface; round 5's was REAL and config-dependent.
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent
