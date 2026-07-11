@@ -60,17 +60,28 @@ OTM puts (left of the forward) and OTM calls (right of it) under the resulting
 carry, pushing the two sides in OPPOSITE directions: a visible implied-vol
 jump straight at the money.
 
-When a reference date is supplied for an American snapshot we de-bias *only
-the forward*, holding the parity DISCOUNT at its raw regressed value
-(``_refine_american``).  This is deliberate: the discount is the regression
-SLOPE, poorly identified on short-dated narrow-strike chains, and re-implying
-it from de-Americanized prices is numerically fragile — on live SPY it drifted
-to implausible rates (a 5% discount error shifts the whole IV level through
-the 1/(D F) normalization).  The forward (the intercept-driven LEVEL) is
-robust, and the kink is driven by the carry q = r - ln(F/S)/t, i.e. by the
-forward.  So we iterate the carry's q via the forward to the fixed point that
-reconciles the de-Americanized puts and calls, leaving the discount exactly as
-the existing pipeline already used it — no IV-level regression, the kink gone.
+When a reference date is supplied for an American snapshot, ``_refine_american``
+de-biases the forward AND — when needed — the discount ([REQ 2026-07-11], the
+SPY 17-Jun-27 kink; this is the joint borrow/de-Americanization fixed point the
+carry roadmap deferred to R2). The raw parity SLOPE is contaminated by the
+K-dependence of the early-exercise premium difference (ITM-put EEP grows with
+K), and on a long-dated chain the bias is large enough to flip the implied rate
+NEGATIVE (observed live: D = 1.0039 at 0.93y, r = -0.41%, structured parity
+residuals of +$9..$15). Under a negative rate and the resulting negative carry
+the binomial model prices ZERO early-exercise premium on both sides, so the
+old forward-only de-bias had nothing to act on and the smile kept a ~28 vol-bp
+jump at the money.
+
+The refinement therefore treats the de-Americanized put/call IV gap at the
+money — the user-visible defect — as the estimating equation for the rate:
+European calls and puts at the same strike share one Black vol, so at the
+correct (r, F) the de-Americanized sides JOIN. The gap is monotone in the
+assumed rate (a higher r prices more put EEP and less call EEP), so a bounded
+bisection inside the physical band [RATE_MIN, RATE_MAX] finds the rate that
+zeroes it; each candidate re-runs the forward fixed point below. Chains whose
+sides already join within GAP_TOL_VOL keep the raw regressed discount and the
+forward-only behavior bit-for-bit (short-dated chains: EEP ~ 0 makes the rate
+unidentifiable AND the kink invisible — exactly the cases to leave alone).
 Discrete-dividend chains can retain a small residual kink (the tree uses a
 continuous yield); discrete-dividend de-Americanization is future work.
 European snapshots and the no-reference path are byte-for-byte unchanged.
@@ -129,6 +140,36 @@ DEAM_REFINE_BISECT = 16
 DEAM_REFINE_BAND = 0.15  # |log(K/F)| window of strikes used for the de-bias
 DEAM_REFINE_MAX_STRIKES = 11  # cap the near-ATM set (averaging plateaus fast)
 
+#: Joint rate refinement ([REQ 2026-07-11], the SPY 17-Jun-27 kink): when the
+#: de-Americanized put and call IV sides fail to join at the money by more than
+#: GAP_TOL_VOL (vol units) under the raw parity discount, the rate is re-implied
+#: by bisecting the (monotone) gap to zero inside [RATE_MIN, RATE_MAX]. Below
+#: the tolerance — every clean or short-dated chain — the raw discount and the
+#: forward-only refinement are kept bit-for-bit.
+GAP_TOL_VOL = 5e-4  # 5 vol bp: an ATM side gap below this is invisible
+GAP_BISECT_ITERS = 24  # bisection cap (band 35% wide -> sub-bp rate resolution)
+GAP_RATE_TOL = 1e-4  # stop when the rate bracket is 1 bp wide
+#: The switch gap is LOCAL: the per-strike de-Am'd call-put IV difference is a
+#: steep, nearly linear function of K (a discount error tilts it at ~1 bp/$ on
+#: live SPY), so it must be read AT the forward — a Gaussian kernel of this
+#: log-moneyness bandwidth around F (a wide-band mean cancels to ~0 by symmetry
+#: and a wide-band line fit is leveraged by wing structure; both were measured
+#: to miss the ~25 bp ATM signal on the live chain). The bandwidth is TIGHT —
+#: at 1% it spans only the couple of strikes straddling the switch — because a
+#: wider kernel leaks the gap-line SLOPE into the read through asymmetric
+#: strike coverage around F and biases the implied rate upward (measured:
+#: bw 0.02 rooted at r 6.2% where the strictly local pair measure roots 4.5%).
+GAP_KERNEL_H = 0.01
+#: The gap must also be measured at FULL tree depth: the coarse 48-step tree
+#: carries a systematic ~40 vol-bp call-put inversion asymmetry (odd/even strike
+#: lattice alignment that does not cancel between the sides), which buries the
+#: signal and even flips its monotonicity in r. Full depth per gap evaluation is
+#: affordable since the Numba CRR kernel (core.american_numba); the always-run
+#: forward-only fixed point keeps the coarse tree so chains below the gate stay
+#: bit-for-bit on the historical path.
+GAP_TREE_STEPS = 192
+GAP_TREE_BISECT = 24
+
 
 @dataclass(frozen=True)
 class ImpliedForward:
@@ -178,20 +219,31 @@ def _refine_american(
     t: float,
     forward: float,
     discount: float,
-) -> tuple[float, float] | None:
-    """De-bias the forward (discount held), returning (F, european-rms) or None.
+) -> tuple[float, float, float] | None:
+    """De-bias the forward — and, when the sides fail to join, the discount.
 
-    The rate r = -ln(D)/t is fixed from the raw parity discount; each round
-    sets the carry q = r - ln(F/S)/t from the current forward, de-Americanizes
-    the call and put mids to European-equivalent Black vols, reprices them as
-    European calls (puts by parity) and re-implies the forward at the FIXED
-    slope -D (F = mean(y + D K)/D). Iterating moves q to the fixed point that
-    reconciles the de-Americanized puts and calls — exactly the carry quote
-    prep uses — so the two OTM sides join, with the discount left untouched.
+    Returns (F, D, european-rms) or None. Per candidate rate r (carry
+    q = r - ln(F/S)/t from the current forward), the call and put mids are
+    de-Americanized to European-equivalent Black vols, repriced as European
+    calls (puts by parity) and the forward re-implied at the fixed slope
+    -e^{-rt} (F = mean(y + D K)/D) to its fixed point — exactly the carry
+    quote prep uses downstream.
 
-    Only the near-ATM band of strikes enters (DEAM_REFINE_BAND), with a coarse
-    tree: it locates the forward to ~1 bp in a few ms, while quote prep keeps
-    doing the full-precision per-quote de-Am downstream.
+    European calls and puts at one strike share one Black vol, so the
+    de-Americanized IV side gap sigma_c - sigma_p, read AT the forward with a
+    tight ATM kernel (GAP_KERNEL_H), measures the ATM kink directly. Under the
+    raw parity discount a gap within GAP_TOL_VOL keeps that discount
+    bit-for-bit (the historical forward-only behavior); a larger gap
+    re-implies the rate by bisecting the (monotone-decreasing) gap to zero
+    inside [RATE_MIN, RATE_MAX] — the raw slope is EEP-contaminated on exactly
+    these chains (module docstring). No bracketing sign change -> the raw
+    discount is kept (never extrapolate outside the physical band).
+
+    Only the near-ATM band of strikes enters (DEAM_REFINE_BAND). The always-run
+    forward-only fixed point keeps the historical coarse tree (bit-identical
+    below the gate); the gate and the rate search price at full depth, where
+    the gap signal beats the lattice noise (GAP_TREE_STEPS comment). Quote prep
+    keeps doing the full-precision per-quote de-Am downstream.
     """
     # Near-ATM subset (selected once from the initial forward): cheapest and
     # most reliable strikes for the de-bias.
@@ -208,35 +260,111 @@ def _refine_american(
 
     is_call = np.ones(strikes.size, dtype=bool)
     is_put = np.zeros(strikes.size, dtype=bool)
-    r = -float(np.log(discount)) / t  # fixed: the raw parity discount's rate
-    rms = float("nan")
-    for _ in range(MAX_DEAM_ITERS):
-        q = r - float(np.log(forward / spot)) / t
+    f_init = forward
+
+    def evaluate(r: float, steps: int, bisect: int) -> tuple[float, float, float] | None:
+        """Forward fixed point at rate r: (F, rms, mean IV side gap) or None.
+
+        ``steps``/``bisect`` set the de-Am tree depth: coarse for the always-run
+        forward-only path (the historical, bit-identical behavior), full depth
+        for the gate/bisection where the gap signal must beat the lattice noise
+        (GAP_TREE_STEPS comment)."""
+        d = math.exp(-r * t)
+        f = f_init
+        rms = gap = float("nan")
+        for _ in range(MAX_DEAM_ITERS):
+            q = r - float(np.log(f / spot)) / t
+            sigma_c = deamericanize_batch(
+                is_call, call_mids, spot, strikes, t, r, q, steps, bisect
+            )
+            sigma_p = deamericanize_batch(
+                is_put, put_mids, spot, strikes, t, r, q, steps, bisect
+            )
+            ok = np.isfinite(sigma_c) & np.isfinite(sigma_p)
+            if int(ok.sum()) < MIN_PAIRED_STRIKES:
+                return None  # too few invertible pairs to trust the de-biased fit
+            # Switch gap: the de-Am'd call-put IV difference READ AT the forward
+            # (ATM kernel) — the jump the smile shows where OTM sides swap.
+            w_atm = np.exp(-((np.log(strikes[ok] / f) / GAP_KERNEL_H) ** 2))
+            gap = float(np.sum(w_atm * (sigma_c[ok] - sigma_p[ok])) / np.sum(w_atm))
+            # European-equivalent prices via normalized Black (the exact map quote
+            # prep inverts): call = D F c, put = D F (c - 1 + e^k).
+            k = np.log(strikes / f)
+            eur_c = d * f * black_call(k, sigma_c**2 * t)
+            eur_p = d * f * (black_call(k, sigma_p**2 * t) - 1.0 + np.exp(k))
+            # Re-imply the forward at the FIXED slope -D: y = D (F - K) => F below.
+            y = (eur_c - eur_p)[ok]
+            k_ok = strikes[ok]
+            new_f = float(np.mean(y + d * k_ok) / d)
+            residuals = y - d * (new_f - k_ok)
+            rms = float(np.sqrt(np.mean(residuals * residuals)))
+            converged = abs(new_f - f) <= FORWARD_TOL_REL * f
+            f = new_f
+            if converged:
+                break
+        return f, rms, gap
+
+    def switch_gap_at(r: float, f: float) -> float:
+        """Full-depth switch gap with F HELD at ``f`` (no refit) — reads the kink
+        quote prep would actually display under (r, f)."""
+        q = r - float(np.log(f / spot)) / t
         sigma_c = deamericanize_batch(
-            is_call, call_mids, spot, strikes, t, r, q, DEAM_REFINE_STEPS, DEAM_REFINE_BISECT
+            is_call, call_mids, spot, strikes, t, r, q, GAP_TREE_STEPS, GAP_TREE_BISECT
         )
         sigma_p = deamericanize_batch(
-            is_put, put_mids, spot, strikes, t, r, q, DEAM_REFINE_STEPS, DEAM_REFINE_BISECT
+            is_put, put_mids, spot, strikes, t, r, q, GAP_TREE_STEPS, GAP_TREE_BISECT
         )
         ok = np.isfinite(sigma_c) & np.isfinite(sigma_p)
         if int(ok.sum()) < MIN_PAIRED_STRIKES:
-            return None  # too few invertible pairs to trust the de-biased fit
-        # European-equivalent prices via normalized Black (the exact map quote
-        # prep inverts): call = D F c, put = D F (c - 1 + e^k).
-        k = np.log(strikes / forward)
-        eur_c = discount * forward * black_call(k, sigma_c**2 * t)
-        eur_p = discount * forward * (black_call(k, sigma_p**2 * t) - 1.0 + np.exp(k))
-        # Re-imply the forward at the FIXED slope -D: y = D (F - K) => F below.
-        y = (eur_c - eur_p)[ok]
-        k_ok = strikes[ok]
-        new_forward = float(np.mean(y + discount * k_ok) / discount)
-        residuals = y - discount * (new_forward - k_ok)
-        rms = float(np.sqrt(np.mean(residuals * residuals)))
-        converged = abs(new_forward - forward) <= FORWARD_TOL_REL * forward
-        forward = new_forward
-        if converged:
+            return float("nan")
+        w_atm = np.exp(-((np.log(strikes[ok] / f) / GAP_KERNEL_H) ** 2))
+        return float(np.sum(w_atm * (sigma_c[ok] - sigma_p[ok])) / np.sum(w_atm))
+
+    r_raw = -float(np.log(discount)) / t
+    base = evaluate(r_raw, DEAM_REFINE_STEPS, DEAM_REFINE_BISECT)
+    if base is None:
+        return None
+    f_raw, rms_raw, _ = base
+    # Gate on the kink the pipeline would DISPLAY: full depth, at the coarse
+    # path's own forward (the F-refit inside ``evaluate`` partially masks it).
+    gate_gap = switch_gap_at(r_raw, f_raw)
+    if not np.isfinite(gate_gap) or abs(gate_gap) <= GAP_TOL_VOL:
+        return f_raw, discount, rms_raw  # sides join: raw discount, old behavior
+
+    # The gap (with the forward re-fit per candidate) decreases in r — a higher
+    # rate prices more put EEP and less call EEP — so bracket toward the band
+    # edge on the gap's side and bisect. Everything stays inside the physical
+    # rate band; no sign change there -> keep the raw fit.
+    start = evaluate(r_raw, GAP_TREE_STEPS, GAP_TREE_BISECT)
+    if start is None or not np.isfinite(start[2]):
+        return f_raw, discount, rms_raw
+    gap0 = start[2]
+    if abs(gap0) <= GAP_TOL_VOL:
+        # The raw rate already reconciles the sides once the forward is re-fit
+        # at full depth: the displayed kink was the coarse forward's error.
+        return start[0], discount, start[1]
+    r_edge = RATE_MAX if gap0 > 0.0 else RATE_MIN
+    edge = evaluate(r_edge, GAP_TREE_STEPS, GAP_TREE_BISECT)
+    if edge is None or not np.isfinite(edge[2]) or edge[2] * gap0 >= 0.0:
+        return f_raw, discount, rms_raw
+    lo, hi = (r_raw, r_edge) if gap0 > 0.0 else (r_edge, r_raw)
+    r_best, best = r_raw, start
+    for _ in range(GAP_BISECT_ITERS):
+        mid = 0.5 * (lo + hi)
+        cand = evaluate(mid, GAP_TREE_STEPS, GAP_TREE_BISECT)
+        if cand is None or not np.isfinite(cand[2]):
+            return f_raw, discount, rms_raw  # inversion degraded mid-search
+        r_best, best = mid, cand
+        # The gap is FLAT near the root (~1 bp per 1% of rate), so the stop must
+        # be tight — a loose tolerance admits a multi-percent rate window.
+        if abs(cand[2]) <= 0.2 * GAP_TOL_VOL or hi - lo <= GAP_RATE_TOL:
             break
-    return forward, rms
+        if cand[2] > 0.0:
+            lo = mid
+        else:
+            hi = mid
+    f_star, rms_star, _ = best
+    return f_star, math.exp(-r_best * t), rms_star
 
 
 def _quality_weights(
@@ -349,8 +477,10 @@ def implied_forward(
                     spread_c[active], spread_p[active], snapshot.spot, discount
                 )
 
-    # American de-bias: nudge the forward (discount held) using de-Americanized
-    # European-equivalent mids so the OTM put and call sides join at the money.
+    # American de-bias: nudge the forward — and, when the de-Americanized put
+    # and call sides still fail to join at the money, the discount too (the raw
+    # parity slope is EEP-contaminated on exactly those chains; module doc) —
+    # so the two OTM sides meet at the switch strike.
     if snapshot.exercise_style == "american" and reference_date is not None:
         t = (expiry - reference_date).days / 365.0
         if t > 0.0 and discount > 0.0:
@@ -358,7 +488,7 @@ def implied_forward(
                 snapshot.spot, strikes[active], c[active], p[active], t, forward, discount
             )
             if refined is not None:
-                forward, rms = refined
+                forward, discount, rms = refined
 
     if discount <= 0.0 or not np.isfinite(forward):
         return None
