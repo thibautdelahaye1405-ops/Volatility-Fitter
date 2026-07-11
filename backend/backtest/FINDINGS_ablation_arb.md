@@ -67,8 +67,10 @@ per-cell **repair fraction**. `in_bp` is the in-sample weighted RMS vol error.
    impose a ~3× larger fit distortion on illiquid names.
 
 So the two are not doing the same job twice. R3 is the cheap, precision-positive first
-line that removes the arbitrage *source*; R6 is the enforcement that *guarantees* the
-no-butterfly constraint; and the two compose — R3 makes R6's guarantee cheap.
+line that removes the arbitrage *source*; R6 is the soft enforcement that drives the
+no-butterfly violation down (median min-g → −0.02, with 26% of the illiquid population
+still flagged — reduction, not a guarantee); and the two compose — R3 makes R6's
+enforcement cheap.
 
 ## Caveats (honest scope)
 

@@ -7,11 +7,15 @@ Generic Multi-Core SIV slice of ``Docs/Multi_Core_SIV_Technical_Note.tex``:
     z = k / (sigma_ref sqrt(T))                                  (eqs main-model, z-def)
 
 where ``v`` is annualized Black implied *variance*, ``v_SIV`` is the one-core
-SIV base (level / skew / convexity / asymmetric wing slopes, 6 parameters) and
-the ``B`` kernels are normalized zero-wing hats (eq B-def). Each signed hat adds
-a local variance hump (alpha > 0) or notch (alpha < 0) WITHOUT moving the SIV
-wing slopes (eq model-wing-preservation), so the model fits WW / dual-hat
-smiles while keeping Lee-compatible tails. The parameter count is 6 + 4R
+SIV base (level / slope / convexity at its fitted centre + asymmetric wing
+steepnesses, 6 parameters) and the ``B`` kernels are normalized zero-wing hats
+(eq B-def). Each signed hat adds a local variance hump (alpha > 0) or notch
+(alpha < 0) WITHOUT moving the SIV wing slopes (eq model-wing-preservation):
+the hats are asymptotic-wing-NEUTRAL. That is weaker than Lee-compatible —
+nothing constrains the preserved BASE wing slopes to satisfy Lee's sign/cap
+conditions (0 <= sqrt(t)/sigma_ref * (2 K0/kappa_P - S0) <= 2 and the call
+analogue); admissibility of the base wings is a separate, diagnosed condition
+(Notes 03/09). The parameter count is 6 + 4R
 (eq param-count); R is exposed to the user as the "cores" slider, the direct
 analogue of the LQD Legendre order.
 
@@ -108,15 +112,32 @@ class MultiCoreSiv:
 
     # ----------------------------------------------------------- diagnostics
     def gatheral_g(self, k: np.ndarray | float) -> np.ndarray:
-        """Durrleman/Gatheral density functional g(k) (eq g-function); g>=0 => no butterfly."""
+        """Durrleman/Gatheral density functional g(k) (eq g-function); g>=0 => no butterfly.
+
+        Computed for the PRICED curve: pricing floors the variance at _V_FLOOR,
+        so wherever the floor binds the priced slice is locally constant and its
+        derivatives are zero — mixing the floored value with the RAW derivatives
+        (the pre-2026-07-11 behaviour) produced a functional of no curve at all.
+        The kink at the floor boundary is measure-zero and treated as inactive;
+        a slice whose floor binds anywhere is degenerate regardless, and
+        ``is_butterfly_free`` reports it as not-free via the positivity check."""
         z = self.z(k)
         v, vz, vzz = self.variance_z(z)
-        return gatheral_g_from_z(z, np.maximum(v, self._V_FLOOR), vz, vzz, self.t, self.sigma_ref)
+        binding = v <= self._V_FLOOR
+        return gatheral_g_from_z(
+            z,
+            np.maximum(v, self._V_FLOOR),
+            np.where(binding, 0.0, vz),
+            np.where(binding, 0.0, vzz),
+            self.t,
+            self.sigma_ref,
+        )
 
     def is_butterfly_free(self, k: np.ndarray, eps: float = 0.0) -> bool:
-        """True iff g(k) >= eps and v(z) > 0 across the supplied grid."""
+        """True iff raw v(z) > _V_FLOOR (the floor never binds — the priced curve
+        is the model, not the clamp) and g(k) >= eps across the supplied grid."""
         v, _, _ = self.variance_z(self.z(k))
-        return bool(np.all(v > 0.0) and np.all(self.gatheral_g(k) >= eps))
+        return bool(np.all(v > self._V_FLOOR) and np.all(self.gatheral_g(k) >= eps))
 
     def wing_slopes(self) -> tuple[float, float]:
         """Asymptotic z-space variance wing slopes (-W_P, W_C) (eq mcsiv-wing-slopes).

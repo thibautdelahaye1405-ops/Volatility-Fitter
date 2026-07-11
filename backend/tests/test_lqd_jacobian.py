@@ -73,6 +73,16 @@ def test_infeasible_tail_branch_shape_and_finite():
     assert np.all(np.isfinite(jac))
 
 
+def test_barrier_residual_finite_for_wild_tail_scale():
+    """The A_R softplus barrier must stay finite for a wild trial theta:
+    log1p(exp(x)) overflowed to inf past x ~ 709 (R = 20 gives A_R ~ e^20,
+    x ~ 2.4e10), poisoning trf's cost; logaddexp(0, x) is stable (~x)."""
+    theta = _theta()
+    theta[1] = 20.0  # R -> A_R ~ e^20: infeasible branch + huge barrier arg
+    res = _residuals(theta, *_args())
+    assert np.all(np.isfinite(res))
+
+
 def test_analytic_and_fd_fits_agree():
     """calibrate_slice (analytic, default) reaches the same params as a forced-FD
     fit — same optimum, the Jacobian only changes the path."""

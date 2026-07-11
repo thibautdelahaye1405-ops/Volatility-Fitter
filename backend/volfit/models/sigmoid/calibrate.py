@@ -57,7 +57,15 @@ _WING_PUT_FACTOR = 2.0
 
 
 def _eval_g(theta: np.ndarray, z: np.ndarray, n_cores: int, t: float, sigma_ref: float) -> np.ndarray:
-    """Durrleman/Gatheral g(z) of the model slice (>= 0 ⇔ no butterfly arb)."""
+    """Durrleman/Gatheral g(z) of the model slice (>= 0 ⇔ no butterfly arb).
+
+    PENALTY-path g, deliberately different from the diagnostic
+    ``MultiCoreSiv.gatheral_g``: here a trial theta whose raw variance collapses
+    to (or below) the floor keeps its RAW derivatives against the floored value,
+    which makes 1/w huge and g massively negative — a harsh de-facto barrier
+    that charges the wing penalty exactly where a hat is driving variance
+    through zero. The diagnostic instead reports the priced (floored) curve's
+    own functional; collapsed slices fail its separate positivity check."""
     v0, s0, k0, z0, kp, kc = theta[:6]
     v, vz, vzz = siv_base(z, v0, s0, k0, z0, kp, kc)
     for r in range(n_cores):

@@ -146,7 +146,10 @@ def _residuals(
         pa = np.zeros(n_prior)
         pvs = np.zeros(0 if prior_var_swap is None else 1)
         op = np.zeros(n_op)
-    barrier = np.log1p(np.exp(barrier_scale * (a_right - barrier_center)))
+    # Softplus via logaddexp: log1p(exp(x)) overflows to inf past x ~ 709 (a
+    # wild trial theta easily reaches A_R ~ e^20), which poisons trf's cost;
+    # logaddexp(0, x) is the same function evaluated stably (~x for large x).
+    barrier = np.logaddexp(0.0, barrier_scale * (a_right - barrier_center))
     return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa, pvs, op))
 
 

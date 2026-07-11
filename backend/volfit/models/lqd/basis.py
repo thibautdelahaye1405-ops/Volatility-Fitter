@@ -80,9 +80,17 @@ def endpoint_scales(params: LQDParams) -> tuple[float, float]:
 
 
 def lee_psi(p: np.ndarray | float) -> np.ndarray | float:
-    """Lee moment function psi(p) = 2 - 4 (sqrt(p^2 + p) - p)  (eq. lee_psi)."""
+    """Lee moment function psi(p) = 2 - 4 (sqrt(p^2 + p) - p)  (eq. lee_psi).
+
+    Evaluated in the algebraically identical form 2 - 4 / (sqrt(1 + 1/p) + 1),
+    which is stable for extreme p: the naive form loses the +p under the root
+    once p^2 + p rounds to p^2 (p > ~1e15, i.e. a tiny tail scale A) and then
+    returns psi ~ 2 — the model-free ceiling — where the true limit is
+    psi -> 0. p = 0 maps to psi = 2 exactly (1/p = inf -> the correction
+    vanishes), matching the original form."""
     p = np.asarray(p, dtype=float)
-    return 2.0 - 4.0 * (np.sqrt(p * p + p) - p)
+    with np.errstate(divide="ignore"):
+        return 2.0 - 4.0 / (np.sqrt(1.0 + 1.0 / p) + 1.0)
 
 
 def lee_slopes(params: LQDParams) -> tuple[float, float]:

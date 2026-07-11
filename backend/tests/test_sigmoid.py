@@ -163,3 +163,93 @@ def test_smile_model_protocol_conformance():
     assert isinstance(siv, SmileModel)
     assert isinstance(lqd, SmileModel)
     assert isinstance(bm.SVI_RAW, SmileModel)
+
+
+def test_floored_diagnostic_is_priced_curve_functional():
+    """Where the variance floor binds, pricing sees a locally CONSTANT curve, so
+    the reported Durrleman g must be the constant-curve functional (== 1 with
+    zero derivatives), not a mix of floored value and raw derivatives — and the
+    slice must be flagged not-butterfly-free via the positivity check."""
+    # A huge negative hat drives raw v(z) < 0 around its centre.
+    siv = MultiCoreSiv(
+        v0=0.04, s0=0.0, k0=0.02, z0=0.0, kappa_p=3.0, kappa_c=3.0,
+        sigma_ref=0.20, t=0.25, cores=(HatCore(-0.5, -1.0, 0.4, 6.0),),
+    )
+    k = np.linspace(-0.30, 0.30, 201)
+    v, _, _ = siv.variance_z(siv.z(k))
+    binding = v <= siv._V_FLOOR
+    assert binding.any(), "test premise: the floor must bind somewhere"
+    assert not siv.is_butterfly_free(k)
+    g = siv.gatheral_g(k)
+    np.testing.assert_allclose(g[binding], 1.0, rtol=0, atol=1e-12)
+    assert np.all(np.isfinite(g))
+
+
+def test_note03_ww_two_core_example_regression():
+    """Regression lock on Note 03's regenerated worked example: the exact WW
+    target of Docs/notes/figures/gen_siv.py (the GLOBALLY-clean w-space
+    construction), quotes on the note's grid. Locks (loosely,
+    cross-platform): the base misses the shoulders by far more than the
+    two-core fit, and the two-core fit is tight."""
+    a_, b_, sig_ = 0.005, 0.055, 0.30
+    amp_, c_, s_ = 0.007, 0.20, 0.12
+
+    def target_w(k):
+        k = np.asarray(k, dtype=float)
+        w = a_ + b_ * np.sqrt(k * k + sig_ * sig_)
+        for c in (-c_, c_):
+            w = w + amp_ * np.exp(-(((k - c) / s_) ** 2))
+        return w
+
+    t = 0.25
+    k = np.linspace(-0.40, 0.40, 41)
+    w = target_w(k)
+    target_vol = np.sqrt(w / t)
+    base = calibrate_sigmoid(k, w, t, n_cores=0)
+    fit = calibrate_sigmoid(k, w, t, n_cores=2)
+    base_err = np.max(np.abs(base.vol(k) - target_vol))
+    fit_err = np.max(np.abs(fit.vol(k) - target_vol))
+    assert fit_err < 10e-4  # note's fresh run: ~2.6 vol bp; lock at 10 bp
+    assert base_err > 5 * fit_err  # the shoulders are what the cores buy
+
+
+def test_note03_ww_target_globally_clean():
+    """The Note 03 target is GLOBALLY admissible by construction: total
+    variance = hyperbolic base + Gaussian shoulders, so the w-wings are
+    exactly linear with slope b = 0.055 (Lee-admissible for all k) and
+    g -> (4 - b^2)/16 > 0 in both tails. Locks: two interior local maxima
+    (a genuine WW), analytic g > 0 on a wide dense grid, and the two-core
+    fit ALSO butterfly-free on that wide grid."""
+    a_, b_, sig_ = 0.005, 0.055, 0.30
+    amp_, c_, s_ = 0.007, 0.20, 0.12
+
+    def target_wjets(k):
+        k = np.asarray(k, dtype=float)
+        r = np.sqrt(k * k + sig_ * sig_)
+        w = a_ + b_ * r
+        w1 = b_ * k / r
+        w2 = b_ * sig_ * sig_ / r**3
+        for c in (-c_, c_):
+            u = k - c
+            e = amp_ * np.exp(-((u / s_) ** 2))
+            w = w + e
+            w1 = w1 + e * (-2.0 * u / s_**2)
+            w2 = w2 + e * (4.0 * u * u / s_**4 - 2.0 / s_**2)
+        return w, w1, w2
+
+    # Two interior local maxima on the plotted window: a genuine WW.
+    win = np.linspace(-0.45, 0.45, 2001)
+    ww = target_wjets(win)[0]
+    assert int(((ww[1:-1] > ww[:-2]) & (ww[1:-1] > ww[2:])).sum()) == 2
+    # Global cleanliness: dense wide grid + positive analytic tail limit.
+    wide = np.linspace(-12.0, 12.0, 60001)
+    w, w1, w2 = target_wjets(wide)
+    g = (1.0 - wide * w1 / (2.0 * w)) ** 2 - 0.25 * w1**2 * (1.0 / w + 0.25) + 0.5 * w2
+    assert g.min() > 0.0
+    assert (4.0 - b_ * b_) / 16.0 > 0.0
+    # The fitted slice inherits global cleanliness (zero-wing hats + linear base).
+    t = 0.25
+    k = np.linspace(-0.40, 0.40, 41)
+    fit = calibrate_sigmoid(k, target_wjets(k)[0], t, n_cores=2)
+    assert np.max(np.abs(fit.vol(k) - np.sqrt(target_wjets(k)[0] / t))) < 10e-4
+    assert fit.is_butterfly_free(np.linspace(-12.0, 12.0, 20001))

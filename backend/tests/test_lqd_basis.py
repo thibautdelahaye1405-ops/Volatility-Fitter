@@ -55,6 +55,17 @@ def test_svi_fit_lee_slopes_match_note():
     assert beta_r == pytest.approx(bm.SVI_LQD_BETA_RIGHT, abs=2e-7)
 
 
+def test_lee_slopes_stable_for_tiny_nonzero_endpoint_scales():
+    """A tiny-but-nonzero tail scale (A ~ e^{-60} > 0, no underflow) must give a
+    Lee slope near its true limit 0, not near the model-free ceiling 2. The
+    naive psi(p) = 2 - 4 (sqrt(p^2+p) - p) loses the +p once p^2 + p rounds to
+    p^2 (p > ~1e15) and returned ~2; the stable form 2 - 4/(sqrt(1+1/p)+1) does
+    not. (Regression: the underflow guard only caught A == 0.0 exactly.)"""
+    beta_l, beta_r = lee_slopes(LQDParams(L=-60.0, R=-60.0, a=np.zeros(5)))
+    # True slopes ~ 2*A = ~1.75e-26; anything < 1e-6 proves the limit is right.
+    assert 0.0 <= beta_l < 1e-6 and 0.0 <= beta_r < 1e-6
+
+
 def test_lee_slopes_handle_underflowed_endpoint_scales():
     """A degenerate sparse-data fit can drive R/L extreme enough that A_R / A_L
     underflow exp() to 0.0. lee_slopes must take the finite limit (psi(+inf)->0)
