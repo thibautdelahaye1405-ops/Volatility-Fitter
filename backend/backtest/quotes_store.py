@@ -120,6 +120,51 @@ class QuotesFlatFileStore:
         target_ns = _to_ns(ts)
         nbbos = self._reduced_bars(day, scan_roots, target_ns)
         wanted = set(expiries) if expiries else None
+        return self._build_snapshot(ticker, roots_set, wanted, ts, nbbos, exercise_style)
+
+    def chains_at(
+        self,
+        ticker: str,
+        expiries: list[date] | None,
+        instants: list[datetime],
+        option_roots: Iterable[str] | None = None,
+        cache_roots: Iterable[str] | None = None,
+        exercise_style: str = "american",
+    ) -> dict[datetime, ChainSnapshot | None]:
+        """Reconstruct the chain at SEVERAL instants of ONE day, one scan total.
+
+        The intraday-capture entry point (R2 0DTE): the day's quotes file is
+        the OPRA firehose and gzip has no random access, so N ``chain_at``
+        calls would stream it N times. This collapses to "the NBBO at-or-
+        before EACH target instant per contract" in a single scan/COPY (one
+        extra Parquet column, ``target_ns``) and assembles one snapshot per
+        instant. Instants must all fall on the same trading day.
+        """
+        if not instants:
+            return {}
+        days = {t.date() for t in instants}
+        if len(days) != 1:
+            raise ValueError("all instants must fall on one day (one file scan)")
+        day = next(iter(days))
+        roots = [r.upper() for r in (option_roots or [ticker])]
+        roots_set = set(roots)
+        scan_roots = sorted(set(r.upper() for r in (cache_roots or roots)) | roots_set)
+        targets = sorted({_to_ns(t) for t in instants})
+        by_target = self._reduced_bars_multi(day, scan_roots, targets)
+        wanted = set(expiries) if expiries else None
+        return {
+            ts: self._build_snapshot(
+                ticker, roots_set, wanted, ts, by_target.get(_to_ns(ts), []),
+                exercise_style,
+            )
+            for ts in instants
+        }
+
+    def _build_snapshot(
+        self, ticker: str, roots_set: set[str], wanted: set[date] | None,
+        ts: datetime, nbbos: list["_Nbbo"], exercise_style: str,
+    ) -> ChainSnapshot | None:
+        """Collapsed NBBO rows -> one ChainSnapshot (None when unusable)."""
         upper = ticker.upper()
         quotes: list[OptionQuote] = []
         for n in nbbos:
@@ -230,6 +275,65 @@ class QuotesFlatFileStore:
             for r in rows
         ]
 
+    # ------------------------------------------------- multi-instant reduction
+    def _multi_cache_path(self, day: date, roots: list[str], targets: list[int]) -> str | None:
+        """Parquet path for the multi-instant reduction (own tag namespace)."""
+        if self.cache_dir is None:
+            return None
+        tag = hashlib.sha1(
+            (",".join(sorted(roots)) + "@multi:" + ",".join(map(str, targets))).encode()
+        ).hexdigest()[:12]
+        return os.path.join(self.cache_dir, f"{PRODUCT}_{day:%Y-%m-%d}_{tag}.parquet")
+
+    def _reduced_bars_multi(
+        self, day: date, roots: list[str], targets: list[int]
+    ) -> dict[int, list[_Nbbo]]:
+        """Per-target collapsed NBBO rows, from ONE scan of the day's file.
+
+        The join against a VALUES list of target instants multiplies candidate
+        rows before the QUALIFY, but the root filter prunes the firehose first
+        and the reduction still streams — one S3 pass however many instants."""
+        values = ", ".join(f"({t})" for t in targets)
+        select = (
+            "SELECT t.target_ns, q.ticker, q.bid_price, q.ask_price, "
+            "q.bid_size, q.ask_size, q.sip_timestamp "
+            "FROM read_csv_auto(?, sample_size=2000) q "
+            f"JOIN (VALUES {values}) t(target_ns) ON q.sip_timestamp <= t.target_ns "
+            f"WHERE {_root_filter('q.ticker', roots)} "
+            "QUALIFY row_number() OVER "
+            "(PARTITION BY t.target_ns, q.ticker ORDER BY q.sip_timestamp DESC) = 1"
+        )
+        cache = self._multi_cache_path(day, roots, targets)
+        con = self._connect()
+        try:
+            if cache is None:
+                rows = con.execute(select, [self._uri(day)]).fetchall()
+            else:
+                if not os.path.exists(cache) or os.path.getsize(cache) == 0:
+                    os.makedirs(self.cache_dir, exist_ok=True)
+                    con.execute(
+                        f"COPY ({select}) TO '{cache}' (FORMAT PARQUET)", [self._uri(day)]
+                    )
+                rows = con.execute(
+                    "SELECT target_ns, ticker, bid_price, ask_price, bid_size, "
+                    "ask_size, sip_timestamp FROM read_parquet(?)", [cache]
+                ).fetchall()
+        finally:
+            con.close()
+        out: dict[int, list[_Nbbo]] = {}
+        for r in rows:
+            out.setdefault(int(r[0]), []).append(
+                _Nbbo(
+                    ticker=str(r[1]),
+                    bid=_pos_or_none(r[2]),
+                    ask=_pos_or_none(r[3]),
+                    bid_size=int_or_none(r[4]),
+                    ask_size=int_or_none(r[5]),
+                    sip_ns=int(r[6]),
+                )
+            )
+        return out
+
     def _connect(self):
         """A DuckDB connection with httpfs configured for the flat-file bucket."""
         import duckdb
@@ -237,6 +341,11 @@ class QuotesFlatFileStore:
         con = duckdb.connect()
         con.execute("INSTALL httpfs; LOAD httpfs;")
         if not self._source_uri:
+            # The day file is a multi-GB gz STREAM: the 30 s default HTTP
+            # timeout aborts on any stall (seen live: 'Timeout was reached'
+            # mid-scan on a loaded box). Allow long stalls + a few retries.
+            con.execute("SET http_timeout=1800000;")  # 30 min, milliseconds
+            con.execute("SET http_retries=3;")
             host, use_ssl = _split_endpoint(self.endpoint)
             con.execute("SET s3_region='us-east-1';")
             con.execute("SET s3_url_style='path';")

@@ -469,6 +469,27 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   DORMANT (`_LV_VIRTUAL_FRONT_MAX_T=0.0`), builder test-locked. Session
   lesson: check export generatedAt vs commit times — round 4's "still
   bad" was a pre-fix surface; round 5's was REAL and config-dependent.
+- **R2 item 10 part 2 SHIPPED (2026-07-11) — intraday 0DTE capture
+  machinery (`backtest/capture_intraday.py`).** `QuotesFlatFileStore`
+  gains `chains_at` (SEVERAL instants of one day from ONE firehose scan:
+  the per-instant reduction joins a VALUES list of targets and QUALIFYs
+  per (target, contract) — N instants would otherwise cost N multi-GB
+  streams) + a 30-min `http_timeout` / 3 retries (the 30 s default
+  aborted mid-stream, seen live). The campaign module: SPY/QQQ/IWM,
+  default 13 instants/day (10:00→15:45 ET, half-day-clipped via the NYSE
+  session rules), ladder = dailies (DTE ≤ 7) + 2 monthly term anchors
+  ≤ 90d; one resumable JSON fixture per (asset, day) under
+  backtest/fixtures/intraday/ + optional `--db` writing every snapshot
+  into a VolStore WITH the settlement map, so the app's as-of "captured"
+  replay + the intraday clock price real 0DTE chains.
+  tests/test_capture_intraday.py (7, fully offline via source_uri).
+  **The scan itself is a USER'S-WINDOW job** (~hours/day-file on this
+  link, same as the nightly capture; interactive probes get killed):
+  probe = `python -m backtest.capture_intraday --start 2026-07-10 --end
+  2026-07-10 --tickers SPY --db backtest\results\intraday.sqlite` (dot-
+  source restart.local.ps1 first), then the clock validation script
+  (scratchpad\validate_0dte_clock.py pattern: StoredChains provider +
+  intradayClock ON → sub-day t + sane LQD fit on the real 0DTE node).
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent
