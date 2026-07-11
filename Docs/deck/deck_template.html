@@ -479,7 +479,7 @@
 <!-- ============ 05 · EVIDENCE ============================================= -->
 <section class="slide">
   <div class="kicker"><span class="tag">Backtest · 3 regimes</span><span>Validation</span></div>
-  <h1 class="claim">Backtested on real NBBO history: <span class="hl">LQD fits 2–3× tighter than SVI-JW</span> at comparable cost.</h1>
+  <h1 class="claim">Backtested on real NBBO history: <span class="hl">LQD-8…12 fit 2–3× tighter than SVI-JW</span>; the default LQD-6 is ~1.6× tighter at twice SVI's speed.</h1>
   <p class="lede">Offline backtest: historical NBBO quotes (national best bid/offer) replayed through the production calibrators
     over three regimes, on the 8-asset pilot universe (SPX · NDX · RUT · EEM · EFA · AAPL · NVDA · JPM, full expiry ladders).
     <b>In-sample</b> = RMS vol error on the strikes used in the fit; <b>out-of-sample (OOS)</b> = error on held-out strikes — the overfitting
@@ -511,16 +511,18 @@
         <div class="stat"><div class="v c">0</div><div class="l">fit failures across all models and regimes</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
-        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no overfit at any degree</strong>.</li>
+        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no measured overfit over the tested degrees (6–12)</strong>.</li>
         <li class="r">MCS's extra cores buy in-sample error and <strong>give it back out-of-sample</strong> — production caps cores at 2 and regularizes the put wing.</li>
         <li class="a">Fit times are as measured <strong>in this sweep</strong> — it ran before SVI's analytic Jacobian shipped
-          (SVI is ~10 ms since). The <strong>accuracy columns are the durable result</strong>; on speed the honest claim is parity.</li>
+          (SVI is ~10 ms since). The <strong>accuracy columns are the durable result</strong>; on speed the honest claim is
+          low tens of milliseconds, inside the 50 ms rail.</li>
       </ul>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    On replayed market history the house model fits <b>2–3× tighter than the SVI baseline at comparable cost, with twice the
-    parameters and no measured overfit</b> — and the same harness reports the arbitrage metrics alongside the errors.</div>
+    On replayed market history the house model fits <b>up to 2–3× tighter than the SVI baseline (degree 8–12; ~1.6× at the
+    default degree 6) in low tens of milliseconds, with no measured overfit over the tested range</b> — and the same harness
+    reports the arbitrage metrics alongside the errors.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — backtest of 2026-06; a refresh with MCS-2 wing control and SVI's analytic Jacobian is planned</span><span></span></div>
 </section>
 
@@ -554,8 +556,8 @@
         <div class="eqnote">&beta;<sub>L</sub>, &beta;<sub>R</sub> — left/right asymptotic slopes of total variance w(k)/|k|; &psi; — Lee's moment function &psi;(p) = 2&minus;4(&radic;(p&sup2;+p)&minus;p); p — critical moment exponent of S<sub>T</sub>/F<sub>T</sub>; A<sub>L</sub>, A<sub>R</sub> — LQD endpoint scales (quantile tail slopes; A<sub>R</sub> &lt; 1 ⇔ finite forward).</div>
       </div>
       <ul class="points">
-        <li>LQD prices come from a <strong>closed-form asset-share integral</strong> — quotes, densities, quantiles and var-swaps all read off the same fitted object.</li>
-        <li class="g">Tail behaviour is <strong>diagnosed, not assumed</strong>: the endpoint scales A<sub>L</sub>, A<sub>R</sub> and the implied Lee slopes are reported with every fit.</li>
+        <li>LQD prices come from a <strong>single native asset-share quadrature</strong> — quotes, densities, quantiles and var-swaps all read off the same fitted object.</li>
+        <li class="g">Tail <strong>shape is a stated modelling choice</strong> (exponential return tails); the tail <strong>scales are fitted and diagnosed</strong> — A<sub>L</sub>, A<sub>R</sub> and the implied Lee slopes are reported with every fit.</li>
       </ul>
     </div>
   </div>
@@ -584,21 +586,24 @@
         <div class="eqnote">v — ATM variance w(0)/t; &psi; — ATM skew; p, c — put/call wing slopes b(1&minus;&rho;)/&radic;w&#8320;, b(1+&rho;)/&radic;w&#8320;; ṽ — minimum variance; t — expiry; w&#8320; = vt — ATM total variance; a, b, &rho;, m, &sigma; — the raw SVI parameters above.</div>
       </div>
       <ul class="points">
-        <li><strong>Feasible by reparametrization</strong> — softplus/tanh/exp transforms keep every optimizer iterate a valid slice.</li>
+        <li><strong>Structurally valid by reparametrization</strong> — softplus/tanh/exp transforms keep every optimizer iterate a valid hyperbola (b &gt; 0, |ρ| &lt; 1, σ<sub>SVI</sub> &gt; 0); arbitrage cleanliness is fenced separately by soft penalties.</li>
         <li class="g"><strong>Analytic Levenberg–Marquardt Jacobian</strong> — shipped after the backtest showed the default
-          finite-difference gradients were the cost driver: <strong>26.3 → 10.2 ms per fit (~2.6×)</strong>, identical solution.</li>
-        <li class="a">The raw↔JW conversion is exact <strong>on a documented domain</strong> — including the ψ=0 coordinate singularity, stated as a contract instead of hidden.</li>
+          finite-difference gradients were the cost driver: <strong>26.3 → 10.2 ms per fit (~2.6×)</strong>, same solution within fit precision.</li>
+        <li class="a">The raw↔JW conversion is exact <strong>on a documented, test-locked domain</strong> — including the ψ=0 coordinate singularity, stated as a contract instead of hidden.</li>
       </ul>
     </div>
     <div>
-      <div class="figcard"><img src="{{FIG:fig_svi_jw_deck}}" alt="SVI jump-wing handles annotated with skew tangent"></div>
-      <p class="shotcap"><span class="k">The five jump-wing handles on one slice.</span> The level <em>v</em> at the money,
-        the skew ψ drawn as the actual tangent at k = 0, the two asymptotic wing slopes <em>p</em> and <em>c</em>, and the
-        smile minimum ṽ. The desk reads and bumps these; the optimizer never leaves raw coordinates.</p>
+      <div class="figcard"><img src="{{FIG:fig_svi_jw_deck}}" alt="SVI jump-wing handles in displayed units with total-variance inset"></div>
+      <p class="shotcap"><span class="k">The five jump-wing handles, in honest units.</span> The IV panel shows √v at the money,
+        the minimum √ṽ, and the ATM tangent of slope ψ/√τ (ψ itself is time-scaled, not the IV tangent); the wing handles p, c
+        are normalized <em>total-variance</em> slopes, shown on the w(k) inset. JW is the analytical coordinate system —
+        production fits raw SVI and displays model-agnostic ATM handles.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    Full interoperability with the market's standard model — <b>SVI surfaces can be imported, fitted, bumped and exported in the units every counterparty uses</b>.</div>
+    Native fluency in the market's standard model — <b>surfaces are fitted in raw SVI with the exact, domain-proved JW
+    conversion ready for handle-based entry, bumping and export as product features</b> (the conversion ships and is
+    test-locked; the JW workflow UI is roadmap).</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 02 · SVI and jump-wings</span><span></span></div>
 </section>
 
@@ -618,7 +623,7 @@
         <div class="eqnote">g(k) — Durrleman function (g &ge; 0 everywhere ⇔ non-negative density, no butterfly); w, w&prime;, w&Prime; — total variance and its k-derivatives; k — log-moneyness; p, c — JW put/call wing slopes; v — ATM variance; t — expiry; 2 — Lee's cap on the asymptotic variance slope.</div>
       </div>
       <ul class="points">
-        <li><strong>g(k) ≥ 0 is the butterfly test</strong> — reported as a per-fit diagnostic for every model, not just penalized.</li>
+        <li><strong>g(k) ≥ 0 is the butterfly test</strong> — reported as a per-fit diagnostic for every model; the default SVI fit fences parameters (min-variance + Lee) rather than sampling g.</li>
         <li class="g">Penalties are <strong>inactive on clean slices</strong> — a fit that satisfies no-arbitrage pays nothing; enforcement is byte-identical to OFF.</li>
         <li class="r">Even the <strong>measurement</strong> was audited: an earlier arbitrage metric took finite differences of
           reconstructed prices, and its numerical noise flagged <strong>28.3% of provably-clean LQD slices</strong>. The shipped
@@ -631,12 +636,14 @@
     </div>
     <div>
       <div class="figcard"><img src="{{FIG:fig_svi_g}}" alt="Durrleman g(k) diagnostic non-negative"></div>
-      <p class="shotcap"><span class="k">The certificate, plotted.</span> The Durrleman function of a fitted slice staying non-negative across the strike range —
-        the same curve the penalty rows sample during calibration.</p>
+      <p class="shotcap"><span class="k">The diagnostic, plotted.</span> The Durrleman function of a fitted slice staying non-negative
+        on the diagnostic grid. For SVI the fit's fences bound the wing slope and the minimum variance; g(k) is the
+        <em>independent</em> check, computed analytically from the model's own derivatives — the default fit does not sample g rows.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    A surface you can quote from: <b>no butterfly or vertical-spread arbitrage inside any fitted slice, and the diagnostic to prove it per fit</b>.</div>
+    A surface you can quote from with eyes open: <b>LQD is butterfly-free by construction; SVI/MCS are fenced and then
+    measured — residual violations are counted per fit (SVI 9.2% of slices post-fence in the stress replay), never assumed away</b>.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 02 · SVI and jump-wings</span><span></span></div>
 </section>
 
@@ -696,8 +703,8 @@
         <li class="g"><strong>1 · A hard budget.</strong> A hat costs 4 parameters on top of the 6 base ones, so hats are admitted
           only while parameters stay below the quote count — R ≤ (N<sub>quotes</sub>−6)/4 — and production <strong>caps R at 2
           outright</strong>: the backtest showed a third hat buys no out-of-sample accuracy.</li>
-        <li class="v"><strong>2 · A fence where the data ends.</strong> The same Durrleman certificate g(k) used to fence SVI is
-          sampled on a grid reaching <em>past</em> the quoted strikes, and the fit is charged only where g &lt; 0 — twice as hard on
+        <li class="v"><strong>2 · A fence where the data ends.</strong> The same Durrleman diagnostic g(k) used across models is
+          sampled on a grid extending <em>past</em> the quoted strikes, and the fit is charged only where g &lt; 0 — twice as hard on
           the put side, where the census put the violations. The hinge is <strong>exactly zero on a clean fit</strong>: liquid names
           are byte-identical with the fence on or off.</li>
       </ul>
@@ -989,7 +996,7 @@
       <ul class="points">
         <li class="g"><strong>LQD:</strong> structural — the endpoint scales A<sub>L</sub>, A<sub>R</sub> imply the slopes; admissibility is one inequality.</li>
         <li class="a"><strong>SVI:</strong> a soft cap b(1+|ρ|) ≤ 2 in the penalty vocabulary.</li>
-        <li class="v"><strong>MCS:</strong> hats are wing-neutral by construction — the base alone owns the tails.</li>
+        <li class="v"><strong>MCS:</strong> hats are wing-neutral by construction — the base alone owns the tails; the base slopes' Lee admissibility is <em>diagnosed</em>, not enforced.</li>
         <li>The far wing is where models <strong>extrapolate with confidence they don't have</strong> — so extrapolation behaviour is a stated, tested contract per model.</li>
       </ul>
     </div>
@@ -1000,8 +1007,8 @@
       </div>
       <p class="shotcap"><span class="k">Tails, quantified.</span> Left — Lee's ψ(p): the exact map from the number of finite moments to the admissible
         variance slope. Right — how each model extrapolates beyond the last quote. The curves deliberately disagree: past the data,
-        a wing is a modelling <em>choice</em>, not an estimate — what matters is that each model's choice is a stated, tested contract,
-        and that all of them respect Lee's slope-2 ceiling.</p>
+        a wing is a modelling <em>choice</em>, not an estimate — what matters is that each model's Lee status is stated and checked:
+        structural for LQD, soft-capped for SVI, bounded for LV, diagnosed for the MCS base.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
@@ -1051,8 +1058,9 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    No-arbitrage enforcement that <b>never distorts a clean market</b>: violations are repaired where quoted,
-    never invented where extrapolated.</div>
+    No-arbitrage enforcement that <b>never distorts a clean market</b>: violations are repaired where quoted, and never
+    <i>invented</i> from extrapolation. The extrapolated region has its own opt-in machinery — tapered enforcement in the
+    fit and a publish-time wing projection (Notes 09–10).</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 10 · Calendar arbitrage</span><span></span></div>
 </section>
 
@@ -1540,8 +1548,9 @@
         <div class="figcard"><img src="{{FIG:fig_ov_densities}}" alt="Stacked densities all non-negative"></div>
         <div class="figcard"><img src="{{FIG:fig_ov_termvar}}" alt="ATM total variance non-decreasing"></div>
       </div>
-      <p class="shotcap"><span class="k">The two structural guarantees, regenerated on every build.</span> All implied densities non-negative
-        (no butterfly arbitrage) and ATM total variance non-decreasing (no calendar arbitrage) — produced end-to-end by the production
+      <p class="shotcap"><span class="k">Regenerated on every build.</span> All implied densities non-negative
+        — no butterfly arbitrage, by construction. The ATM term-structure panel is a sanity check (slices fitted independently
+        there); full-strike calendar control is its own machinery (Note 10) — produced end-to-end by the production
         calibrator on the notes' reference surface.</p>
     </div>
   </div>

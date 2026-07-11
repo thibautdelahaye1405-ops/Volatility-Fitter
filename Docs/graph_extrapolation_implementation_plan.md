@@ -359,7 +359,9 @@ residual report usable to tune `η/λ/κ/β`.
 
 **Work:**
 - **SVI / Multi-Core SIV:** propagate the same 3 handles, then retarget each model's own
-  ATM `(level, skew, curvature)` (SVI-JW exposes these directly; Sig via a small solve).
+  ATM `(level, skew, curvature)` (via a small solve for both: the JW handles carry level
+  and skew but NOT ATM curvature — the ψ=0 singularity is exactly curvature going
+  unidentified, Note 02).
   Treat the graph output as a **target smile**, fit the model to it.
 - **Local-Vol (the hard case, Amendment G):** **do not** transport native LV params. Use
   the graph-extrapolated parametric smile as a **projection/prior target**, then run an

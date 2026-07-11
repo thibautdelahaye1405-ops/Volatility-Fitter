@@ -38,9 +38,13 @@ object-fit cover (the old single-shot by-design overflow is gone). Slide 12
 (MCS guardrails): rewritten as a numbered 1-2-3 guardrail story (budget /
 fence / proof-by-ablation case panel), leaning on slide 10's Durrleman
 introduction; **the note's fig_siv_g is REPLACED** — the user spotted that
-its g(k) curve is actually negative near k ≈ ±0.13 (min g = −0.38: the
-synthetic WW target itself carries butterfly arb, so the note figure's
-"g ≥ 0" title is false for that fit — Note 03 follow-up). The slide's chart
+its g(k) curve was actually negative near k ≈ ±0.13 (min g = −0.38: that
+revision's synthetic WW target itself carried butterfly arb). RESOLVED at the
+generator 2026-07-09 (window-clean target) and REBUILT 2026-07-11: the target
+is now constructed in total-VARIANCE space (hyperbolic base + Gaussian
+shoulders → exactly linear w-wings, slope 0.055), making the cleanliness
+claim GLOBAL — g > 0 asserted on a dense grid to |k| = 12 plus the positive
+analytic tail limit (4−β²)/16; test-locked in test_sigmoid.py. The slide's chart
 and its ablation panel are now the SAME experiment (user asked for numeric
 consistency): `gen_siv_ablation_deck.py` → `fig_siv_ablation_deck.png`
 re-fits ONE real census node (EFA, as-of 2024-07-29, expiry 2024-08-09, 22

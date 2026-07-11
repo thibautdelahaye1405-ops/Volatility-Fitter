@@ -347,7 +347,7 @@
       <ul class="points">
         <li class="g"><strong>LQD, the house model</strong> — parametrizes the return distribution itself, so the implied density is
           <strong>positive by construction</strong>: no butterfly arbitrage inside a slice, by design rather than by penalty.</li>
-        <li class="a"><strong>SVI-JW, the market standard</strong> — imported, fitted, bumped and exported in the jump-wing units every counterparty uses.</li>
+        <li class="a"><strong>SVI-JW, the market standard</strong> — fitted natively in raw SVI, with the exact jump-wing conversion domain-proved and test-locked (handle-based entry/bump/export: roadmap).</li>
         <li class="v"><strong>Multi-Core Sigmoid, the event model</strong> — fits the W-shaped smiles around earnings that convex
           models cannot reach, with hard guardrails (parameters capped by quote count, arbitrage measured on every fit).</li>
         <li class="c"><strong>Local Vol, the non-parametric surface</strong> — a piecewise-affine local-variance grid calibrated
@@ -450,8 +450,9 @@
         <div class="figcard"><img src="{{FIG:fig_ov_densities}}" alt="Stacked densities all non-negative"></div>
         <div class="figcard"><img src="{{FIG:fig_ov_termvar}}" alt="ATM total variance non-decreasing"></div>
       </div>
-      <p class="shotcap"><span class="k">The two structural guarantees, regenerated on every build.</span> All implied densities
-        non-negative (no butterfly arbitrage) and ATM total variance non-decreasing in maturity (no calendar arbitrage) —
+      <p class="shotcap"><span class="k">Regenerated on every build.</span> All implied densities
+        non-negative — no butterfly arbitrage, by construction. The ATM term-structure panel is a sanity check
+        (slices fitted independently there); full-strike calendar control is its own machinery (Note 10) —
         produced end-to-end by the production calibrator.</p>
     </div>
   </div>
@@ -463,7 +464,7 @@
 <!-- ============ 07 · BACKTEST EVIDENCE =================================== -->
 <section class="slide">
   <div class="kicker"><span class="tag">Backtest · 3 regimes</span><span>Model validation on market history</span></div>
-  <h1 class="claim">Backtested on real NBBO history: <span class="hl">the house model fits 2–3× tighter than SVI-JW</span> at comparable cost.</h1>
+  <h1 class="claim">Backtested on real NBBO history: <span class="hl">the house model at degree 8–12 fits 2–3× tighter than SVI-JW</span>; the shipped default is ~1.6× tighter at twice SVI's speed.</h1>
   <p class="lede">Historical NBBO quotes replayed through the production calibrators over three regimes (Aug-2024 spike,
     high-vol Oct-2022, low-vol Jul-2023) on an 8-asset pilot universe, full expiry ladders. <b>Out-of-sample</b> = error on
     held-out strikes — the overfitting test.</p>
@@ -494,13 +495,13 @@
         <div class="stat"><div class="v c">0</div><div class="l">fit failures across all models and regimes</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
-        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no overfit at any degree</strong>.</li>
+        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no measured overfit over the tested degrees (6–12)</strong>.</li>
         <li class="r">Where a model overfit (MCS's extra cores), the backtest caught it — <strong>production caps and regularizes accordingly</strong>.</li>
       </ul>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
-    On replayed market history the house model fits <b>2–3× tighter than the market-standard baseline, with no measured overfit</b> — and the same harness reports arbitrage metrics alongside the errors.</div>
+    On replayed market history the house model fits <b>up to 2–3× tighter than the market-standard baseline (degree 8–12; ~1.6× at the shipped default), with no measured overfit over the tested range</b> — and the same harness reports arbitrage metrics alongside the errors.</div>
   <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 7</span><span></span></div>
 </section>
 

@@ -53,6 +53,11 @@ Current behavior is broadly:
 - SVI and Multi-Core SIV display overlays currently do not receive the same
   prior-anchor residual directly; they are fitted as display overlays to the
   live quotes and other overlay-supported penalties.
+  **[HISTORICAL — superseded by roadmap Phase 3: the prior-anchor and
+  operator-prior blocks now reach the SVI and MCS overlays too (see
+  `models/{svi_jw,sigmoid}/calibrate.py` and
+  `test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew`);
+  this snapshot describes the pre-Phase-3 state.]**
 
 The important current knobs are:
 

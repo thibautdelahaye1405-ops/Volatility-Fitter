@@ -152,12 +152,16 @@ optionally pinned by wing priors or the var-swap.
 
 ## Slide 9 — SVI conversion singularities in live workflows
 
-**Answer.** The optimizer never leaves raw (a,b,ρ,m,σ) coordinates, kept feasible by
-reparametrization — so live fitting cannot hit a JW singularity. The raw↔JW map is
-used only as a read-out/entry layer and is exact on a documented domain, with the
-ψ = 0 coordinate singularity stated as a contract (Note 02). A further `jw_to_raw`
-input-guard is a queued hardening item from the notes pass. Practical consequence: a
-degenerate JW display is possible in pathological corners, a degenerate *fit* is not.
+**Answer.** The optimizer never leaves raw (a,b,ρ,m,σ) coordinates, kept structurally
+valid by reparametrization — so live fitting cannot hit a JW singularity. The JW map is
+an analytical/benchmark coordinate system, NOT a wired workflow: production stores raw
+SVI and displays model-agnostic ATM handles; `jw_to_raw`'s only caller is a benchmark
+test, there is no backend `raw_to_jw`, and JW entry/bump/export are roadmap. The
+conversion is exact on its documented regular domain — v>0, p,c>0, −p/2<ψ<c/2, ψ≠0,
+ṽ<v — with the ψ=0 (ATM-at-the-vertex) singularity stated as a contract, and the
+domain + failure modes are test-locked as of 2026-07-11 (`test_svi_domain.py`).
+Practical consequence: a degenerate JW *readout* is possible in pathological corners,
+a degenerate *fit* is not.
 
 ---
 

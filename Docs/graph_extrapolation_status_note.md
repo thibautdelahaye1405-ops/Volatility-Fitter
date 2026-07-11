@@ -151,8 +151,8 @@ asymmetry), and the model-agnostic *idea* of propagating a compact handle vector
 
 **Phase 3 — model-agnostic reconstruction.**
 6. SVI/Multi-Core SIV: same 3-handle propagation, then retarget each model's own ATM
-   `(level, skew, curvature)` (SVI-JW already parameterizes these; Sig via a small
-   solve). LQD already done.
+   `(level, skew, curvature)` (a small solve for both — the JW handles carry level and
+   skew but not ATM curvature, Note 02). LQD already done.
 7. Local-Vol surface: handles are not native; reconstruct by re-fitting the affine
    surface to the propagated parametric smile, or transport the LV grid under the
    propagated ATM move (re-uses `affine_transport.py`). This is the hard case.
