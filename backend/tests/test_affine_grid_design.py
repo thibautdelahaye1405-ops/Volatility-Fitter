@@ -469,6 +469,45 @@ def test_pde_dt_refines_only_short_first_expiry():
     assert np.allclose(t_norm, np.array(t_pts))
 
 
+def test_pde_dt_refines_every_short_interval():
+    """Fix #3 extended per-interval (2026-07-11): a short INTER-expiry interval
+    is marched with _PDE_NT_SHORT steps too. Measured on real SPY dailies
+    (07-13/15/17): the 2-day intervals got ONE implicit-Euler step each and
+    the converged-reprice metric read 93/67 bp against 8/12 bp in-operator —
+    the same operator-blindness fix #3 caught on the first interval. An
+    interval already clearing the gate keeps the flat dt ceiling."""
+    from volfit.api.affine_fit import _PDE_NT_SHORT, _X_DX, _pde_grids
+
+    t1, t2, t3 = 2.0 / 365.0, 4.0 / 365.0, 0.25
+    _, t_pts = _pde_grids(np.array([t1, t2, t3]), 0.25, 0.01, _X_DX)
+    n_second = int(np.sum((t_pts > t1 + 1e-12) & (t_pts <= t2 + 1e-12)))
+    assert n_second == _PDE_NT_SHORT  # the 2-day interior interval is refined
+    n_third = int(np.sum((t_pts > t2 + 1e-12) & (t_pts <= t3 + 1e-12)))
+    assert n_third == int(np.ceil((t3 - t2) / 0.01))  # long interval untouched
+    for e in (t1, t2, t3):
+        assert np.isclose(t_pts, e).any()  # every expiry stays a node
+
+
+def test_augment_covers_the_call_side_edge_gap():
+    """The coverage densifier must reach a side whose only vertex sits AT the
+    traded-range edge. On SPY dailies the shared delta axis has x = 1 as the
+    last vertex before a long-maturity node ~4% higher — outside the 2-6 DTE
+    traded range — so the old interior-gap split put all 8 added vertices on
+    the put side, left the upside a single 4%-wide affine segment, and the
+    optimizer pinned the out-of-range vertex at the vol floor (the exported
+    SPY grid: vol(x=1.0409) = 0.050 on every short t-row). The widest-gap
+    scan now includes the segments up to the range edges."""
+    x = np.unique(np.array([np.exp(-0.04), np.exp(-0.02), 1.0, np.exp(0.04)]))
+    k_q = np.linspace(-0.020, 0.014, 9)  # the 4-DTE traded range
+    rows = [("d", 4.0 / 365.0, k_q, (0.09**2) * (4.0 / 365.0) * np.ones(9), None, None)]
+    out = _augment_per_expiry_coverage(x, rows, 8)
+    k_out = np.log(out)
+    in_range = (k_out >= -0.020) & (k_out <= 0.014)
+    assert int(np.count_nonzero(in_range)) >= 8  # the floor is met
+    upside = (k_out > 1e-12) & (k_out <= 0.014)
+    assert int(np.count_nonzero(upside)) >= 2  # and the CALL side got vertices
+
+
 def test_convex_wing_confined_to_quoted_extrapolation():
     """The convex-wing constraint must NOT bite on vertices the quotes already
     constrain — only the unquoted extrapolation tail. With a dense wing (quotes

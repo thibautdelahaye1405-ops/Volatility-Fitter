@@ -354,6 +354,29 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   `state.year_fraction` sites (forwards/carry/dividends/universe metadata)
   stay day-granular by design v1. Options-tab Events group gained the
   toggle + 2 knobs. tests/test_intraday_time.py (12).
+- **LV daily-ladder fixes SHIPPED (2026-07-11, user-reported on live SPY
+  dailies 07-13/15/17 from Massive; LQD fine, LV bad on 07-15/07-17).** TWO
+  root causes, both measured on a captured fixture (scratch
+  lv_benchmark run): **(a) 1-step inter-expiry intervals** — fix #3's dt
+  gate only covered the FIRST interval, so the 2-day 07-13→07-15 and
+  07-15→07-17 intervals got ONE implicit-Euler step each (in-op 8/12 bp,
+  CONVERGED 93/67 bp — the R0-item-2 metric's operator blindness, exactly
+  the parked "per-interval dt refinement" follow-up); the gate now applies
+  to EVERY interval (any interval below _PDE_NT_FIRST_GATE=8 steps marches
+  with _PDE_NT_SHORT=32; ladders whose intervals all clear the gate keep
+  byte-identical grids). **(b) the fix-#1 coverage densifier never reached
+  the call side** — it split the widest gap BETWEEN in-range vertices, but
+  on a 2-6 DTE smile the only call-side vertex is x=1 AT the range edge
+  (the next shared-axis vertex, the long-maturity 40Δ at x≈1.041, is
+  outside), so all 8 added vertices landed on the put side and the
+  optimizer pinned the out-of-range upside vertex at the 5% vol floor (the
+  user's "variance floor" symptom: exported grid vol(1.0409)=0.050 on every
+  short t-row, zigzag near-ATM). The widest-gap scan now includes the
+  segments up to the traded-range edges. AFTER (same fixture): 07-15 conv
+  93→31 bp, 07-17 67→25 bp, surface conv 41→23 bp, nfev 139→112; weekly
+  fixture surface conv 46→41 bp; Bloomberg fixture grids untouched by
+  construction. 2 new locks in test_affine_grid_design.py (29 total).
+  NB: restart the app to pick the fix up, then Calibrate.
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent

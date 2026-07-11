@@ -415,12 +415,21 @@ def _augment_per_expiry_coverage(
     k = np.sort(np.log(x[x > 0.0]))  # work in log-moneyness; x = 1 re-added at end
     for _, _, kk, _, _, _ in rows:
         klo, khi = float(np.min(kk)), float(np.max(kk))
-        # split the widest in-range gap until m_min vertices lie within [klo, khi];
-        # the size guard is a defensive cap against a degenerate tiny range.
+        # Split the widest gap until m_min vertices lie within [klo, khi]; the
+        # size guard is a defensive cap against a degenerate tiny range. The
+        # gap list INCLUDES the segments up to the range edges (2026-07-11): a
+        # side whose only vertex sits at the boundary — the CALL side of a
+        # 2-6 DTE smile, where x = 1 is the edge and the next shared-axis
+        # vertex lies outside the traded range — has no interior gap for
+        # diff() to see, so the old in-range-only split put every added
+        # vertex on the other side (measured: SPY dailies got 8 put-side
+        # vertices, zero in (1.0, khi], and the optimizer pinned the lone
+        # out-of-range upside vertex at the vol floor to bend the 4%-wide
+        # affine segment through the upside quotes).
         while int(np.count_nonzero((k >= klo) & (k <= khi))) < m_min and k.size < 500:
-            seg = k[(k >= klo) & (k <= khi)]
+            seg = np.unique(np.concatenate([[klo], k[(k >= klo) & (k <= khi)], [khi]]))
             if seg.size < 2:
-                break  # < 2 in-range vertices to bisect (degenerate slice)
+                break  # zero-width traded range (degenerate slice)
             g = int(np.argmax(np.diff(seg)))
             mid = 0.5 * (seg[g] + seg[g + 1])
             k = np.unique(np.insert(k, np.searchsorted(k, mid), mid))
@@ -540,28 +549,32 @@ def _pde_grids(
     off the lattice) would land x = 1 between nodes and 422 every fit; the synthetic
     range floors at 2.5 which aligns, which is why this only bit live data.
 
-    Short first expiry (fix #3, the dt analogue of ``_pde_dx``): with the flat
+    Short intervals (fix #3, extended per-interval 2026-07-11): with the flat
     ``dt_max`` ceiling a TRUE weekly got as few as 2 implicit-Euler steps, and
     the payoff-kink smearing of so coarse a march mis-prices even a FLAT 11.5%
     surface by ~240 bp at the 1-week ATM. The calibration then bends theta to
     cancel the operator error — nodal vols ring between the box floor and 4x
     the market (the SPY 2026-07-17 "10% IV floor" symptom: floor-pinned nodes
     reprice to a ~10.9% plateau on a converged march while the market dips to
-    9.3%). When the first expiry would get fewer than ``_PDE_NT_FIRST_GATE``
-    steps, it is marched with ``_PDE_NT_SHORT`` steps instead (~26 bp flat-
-    surface error). Surfaces whose first expiry already clears the gate — every
-    fixture with t1 >= 8 x dt_max, the regime the Phase-0 short-dated diagnosis
-    validated — keep byte-identical grids.
+    9.3%). Fix #3 originally gated only the FIRST interval; the converged-
+    reprice metric (R0 item 2) then measured the SAME failure on every short
+    INTER-expiry interval — a daily ladder gave the 2-day 07-13→07-15 and
+    07-15→07-17 intervals ONE step each (in-op 8/12 bp, converged 93/67 bp).
+    So the gate now applies per interval: ANY interval that would get fewer
+    than ``_PDE_NT_FIRST_GATE`` steps is marched with ``_PDE_NT_SHORT``
+    instead. Surfaces whose every interval clears the gate (all intervals
+    >= 8 x dt_max ≈ 29 days) keep byte-identical grids; the cost is linear in
+    the added steps and only touches ladders with sub-month gaps.
     """
     x_max = max(float(np.exp(k_hi)) * _X_HI_PAD, _X_MAX_MIN)
     n = int(np.ceil(round(x_max / dx, 6)))  # steps to cover x_max
     x_grid = dx * np.arange(n + 1)  # 0, dx, 2dx, ... ; 1.0 = node 1/dx
     t_pts = [0.0]
     prev = 0.0
-    for i, e in enumerate(expiries):
+    for e in expiries:
         n = max(1, int(np.ceil((e - prev) / dt_max)))
-        if i == 0 and n < _PDE_NT_FIRST_GATE:
-            n = _PDE_NT_SHORT  # short-first-expiry dt refinement (docstring)
+        if n < _PDE_NT_FIRST_GATE:
+            n = _PDE_NT_SHORT  # short-interval dt refinement (docstring)
         t_pts.extend(np.linspace(prev, float(e), n + 1)[1:].tolist())
         prev = float(e)
     return x_grid, np.array(t_pts)
