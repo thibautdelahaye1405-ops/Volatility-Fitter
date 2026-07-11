@@ -560,10 +560,12 @@ def calibrate_affine(
             pos = int(np.searchsorted(t_grid, v.t))
             if pos >= t_grid.size or abs(float(t_grid[pos]) - v.t) > 1e-9:
                 raise ValueError("each var-swap expiry must be a t_grid point")
-            lin = None if vs_full.phi_lin_full is None else vs_full.phi_lin_full[: pos + 1]
-            vs_specs.append(
-                (t_grid[: pos + 1], VarSwapSteps(phi_full=vs_full.phi_full[: pos + 1], phi_lin_full=lin))
-            )
+            if vs_full.phi_full is None:  # over-budget lazy steps: nothing to slice,
+                st = vs_full  # the solver evaluates the basis at the t-prefix it is given
+            else:
+                lin = None if vs_full.phi_lin_full is None else vs_full.phi_lin_full[: pos + 1]
+                st = VarSwapSteps(phi_full=vs_full.phi_full[: pos + 1], phi_lin_full=lin)
+            vs_specs.append((t_grid[: pos + 1], st))
     if reg_nodes is not None:
         l_rows = second_difference_rows_spacing(reg_nodes[0], reg_nodes[1], reg_rho)
     else:

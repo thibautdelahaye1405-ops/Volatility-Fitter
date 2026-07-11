@@ -256,13 +256,24 @@ class DupireSteps:
     """
 
     interior_x: np.ndarray  # x[1:-1], the PDE interior nodes
-    phi: list  # phi[n] = hat weights (n_interior x m) at level t[n+1]
+    phi: list | np.ndarray | None  # phi[n] = hat weights (n_interior x m) at level t[n+1]
     active_k: np.ndarray  # active_k[n] = live sensitivity-column count after step n
     #: When the left-wing slope ``a`` is a free parameter, ``phi`` holds the
     #: flat-extrap base (a = 0) and ``phi_lin[n]`` the linear-continuation delta,
     #: so the solver forms phi(a) = phi + a * phi_lin per step (and an analytic
     #: a-sensitivity = phi_lin @ theta). None ⇒ ``a`` is baked into ``phi``.
     phi_lin: list | None = None
+    #: Over-budget SPARSE store (affine_steps.build_sparse_phi): ``phi`` is None
+    #: and each step's basis lives in (n_steps, n_int, nnz) value/column slabs —
+    #: bit-identical rows at a fraction of the dense footprint.
+    phi_vals: np.ndarray | None = None
+    phi_cols: np.ndarray | None = None
+    #: Over-budget LAZY mode (left-lin split only): ``phi``/``phi_lin`` are None
+    #: and the solver re-evaluates ``surface.basis_components`` per step — the
+    #: basis is theta-independent, so holding the ORIGINAL surface keeps its
+    #: cached triangulation across every trial theta.
+    surface: "AffineVarianceSurface | None" = None
+    lazy_left_lin: bool = False
 
 
 def precompute_dupire_steps(
@@ -281,12 +292,51 @@ def precompute_dupire_steps(
     linear-continuation delta (``basis_components``) so the solver can treat the
     slope multiple ``a`` as a free parameter; otherwise ``a`` is baked into the
     stored basis via ``surface.basis`` (the default / fixed-a path).
+
+    Memory guard: the dense store is (n_steps x n_int x m) float64 — on a
+    worst-case universe (short-front dx cap x sub-stepped weekly ladder x dense
+    vertex grid) that is GiB-scale and the allocation fails. Above the budget
+    (affine_steps.phi_budget_bytes, VOLFIT_LV_PHI_DENSE_MB) — or on an actual
+    MemoryError — the common path switches to the exact row-sparse store and
+    the left-lin split to per-step lazy re-evaluation. At or below budget the
+    dense build runs unchanged (byte-identical).
     """
+    from volfit.models.localvol.affine_steps import (
+        build_sparse_phi, lazy_active_schedule, phi_budget_bytes,
+    )
+
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
     interior = x[1:-1]
     m = surface.n_params
     n_steps = t.size - 1
+    est_bytes = n_steps * interior.size * m * 8 * (2 if with_left_lin else 1)
+    if est_bytes <= phi_budget_bytes():
+        try:
+            return _precompute_dense(surface, interior, t, m, n_steps, with_left_lin)
+        except MemoryError:
+            pass  # budget met but the box could not serve it: degrade gracefully
+    if with_left_lin:
+        return DupireSteps(
+            interior_x=interior, phi=None, phi_lin=None,
+            active_k=lazy_active_schedule(surface, interior, t),
+            surface=surface, lazy_left_lin=True,
+        )
+    vals, cols, active_k = build_sparse_phi(surface, interior, t)
+    return DupireSteps(
+        interior_x=interior, phi=None, active_k=active_k, phi_vals=vals, phi_cols=cols
+    )
+
+
+def _precompute_dense(
+    surface: AffineVarianceSurface,
+    interior: np.ndarray,
+    t: np.ndarray,
+    m: int,
+    n_steps: int,
+    with_left_lin: bool,
+) -> DupireSteps:
+    """The historical dense build (unchanged — the in-budget byte-identical path)."""
     # Without the left-wing split, store the per-step basis as ONE contiguous
     # (n_steps, n_int, m) array: the banded march indexes ``phi[n]`` (a 2-D view, so
     # byte-identical), and the Numba vectorized-Thomas march (affine_march) consumes
@@ -374,7 +424,7 @@ def solve_affine_dupire(
     if steps is None:
         steps = precompute_dupire_steps(surface, x, t, with_left_lin=fit_left_a)
     a = float(left_a) if left_a is not None else surface.left_extrap_a
-    use_lin = steps.phi_lin is not None
+    use_lin = steps.phi_lin is not None or steps.lazy_left_lin
     # Crank-Nicolson is used only without the free-left-slope column (which keeps the
     # implicit dU/da recursion); the first ``rann`` steps stay implicit Euler to damp
     # the payoff kink (Rannacher start-up), so CN begins at step index ``rann`` >= 1.
@@ -406,21 +456,35 @@ def solve_affine_dupire(
 
     # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) handles the
     # common hot path — value + theta-sensitivities, implicit Euler, no free left
-    # slope, with the contiguous (n_steps, n_int, m) basis. Everything else (value-
-    # only, Rannacher CN, fit_left_a, or numba unavailable) keeps the banded march.
+    # slope, with the contiguous (n_steps, n_int, m) basis (or its over-budget
+    # sparse slabs). Everything else (value-only, Rannacher CN, fit_left_a, or
+    # numba unavailable) keeps the banded march.
+    sparse_phi = steps.phi_vals is not None
     if engine == "numba" and sensitivities and not fit_left_a and not use_lin \
-            and time_scheme == "implicit" and isinstance(steps.phi, np.ndarray):
-        from volfit.models.localvol.affine_march import march_value_sens, numba_available
+            and time_scheme == "implicit" \
+            and (sparse_phi or isinstance(steps.phi, np.ndarray)):
+        from volfit.models.localvol.affine_march import (
+            march_value_sens, march_value_sens_sparse, numba_available,
+        )
 
         if numba_available():
             want_step = np.full(t.size - 1, -1, dtype=np.int64)
             for p, i in want.items():
                 want_step[p - 1] = i
-            pr, se = march_value_sens(
-                steps.phi, theta, a_m, a_p, a_0, np.diff(t), steps.active_k,
-                want_step, u, exps.size,
-            )
+            if sparse_phi:
+                pr, se = march_value_sens_sparse(
+                    steps.phi_vals, steps.phi_cols, theta, a_m, a_p, a_0,
+                    np.diff(t), steps.active_k, want_step, u, exps.size, m,
+                )
+            else:
+                pr, se = march_value_sens(
+                    steps.phi, theta, a_m, a_p, a_0, np.diff(t), steps.active_k,
+                    want_step, u, exps.size,
+                )
             return AffinePDESolution(x_grid=x, expiries=exps, prices=pr, sens=se)
+
+    if sparse_phi:
+        from volfit.models.localvol.affine_steps import densify_step
 
     phis = steps.phi
     active_k = steps.active_k
@@ -428,8 +492,20 @@ def solve_affine_dupire(
     phi_prev = None  # basis at the old level (= phis[n-1]), for the CN dA^n source
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
-        phi_base = phis[n]  # cached hat weights at the new level (flat-extrap base)
-        phi = phi_base + a * steps.phi_lin[n] if use_lin else phi_base
+        phi_lin_n = None
+        if phis is not None:  # precomputed dense (the in-budget hot path)
+            phi_base = phis[n]  # cached hat weights at the new level (flat-extrap base)
+            if use_lin:
+                phi_lin_n = steps.phi_lin[n]
+        elif sparse_phi:  # over-budget sparse store: rebuild this step bit-identically
+            phi_base = densify_step(steps.phi_vals[n], steps.phi_cols[n], m)
+        elif use_lin:  # over-budget lazy left-lin split: same floats, computed per step
+            phi_base, phi_lin_n = steps.surface.basis_components(
+                steps.interior_x, float(t[n + 1])
+            )
+        else:
+            phi_base = steps.surface.basis(steps.interior_x, float(t[n + 1]))
+        phi = phi_base + a * phi_lin_n if use_lin else phi_base
         nu = phi @ theta
         # Crank-Nicolson on this step? (Rannacher: implicit for the first ``rann``.)
         is_cn = cn_enabled and n >= rann
@@ -466,7 +542,7 @@ def solve_affine_dupire(
             if fit_left_a:
                 # dU/da: same recursion, source (phi_lin @ theta) * gamma; appended
                 # as the m-th column (always live once the wing region is touched).
-                glin = steps.phi_lin[n] @ theta
+                glin = phi_lin_n @ theta
                 idx = np.concatenate([np.arange(k), [m]])
                 src = np.concatenate(
                     [phi[:, :k] * au[:, None], (glin * au)[:, None]], axis=1

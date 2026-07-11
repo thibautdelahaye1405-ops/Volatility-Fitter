@@ -42,8 +42,13 @@ class VarSwapSteps:
     is fitted, else None (``a`` baked into ``phi_full``).
     """
 
-    phi_full: list  # phi_full[n] = (n_x, m) basis at t[n]
+    phi_full: list | None  # phi_full[n] = (n_x, m) basis at t[n]
     phi_lin_full: list | None = None
+    #: Over-budget LAZY mode: ``phi_full`` is None and the solver re-evaluates
+    #: the (theta-independent) basis per level from this surface — holding the
+    #: ORIGINAL instance keeps its cached triangulation across trial thetas.
+    surface: AffineVarianceSurface | None = None
+    lazy_left_lin: bool = False
 
 
 def precompute_varswap_steps(
@@ -53,18 +58,31 @@ def precompute_varswap_steps(
     with_left_lin: bool = False,
 ) -> VarSwapSteps:
     """Build the theta-independent full-grid basis at every time level (reused across
-    trial thetas, like precompute_dupire_steps for the forward march)."""
+    trial thetas, like precompute_dupire_steps for the forward march).
+
+    Same memory guard as the forward march: above the dense-store budget
+    (affine_steps.phi_budget_bytes) — or on an actual MemoryError — return the
+    lazy steps instead of a GiB-scale list of per-level matrices; the solver
+    then computes each level's basis on the fly (identical floats, slower)."""
+    from volfit.models.localvol.affine_steps import phi_budget_bytes
+
     x = np.asarray(x_grid, dtype=float)
     t = np.asarray(t_grid, dtype=float)
+    est_bytes = t.size * x.size * surface.n_params * 8 * (2 if with_left_lin else 1)
+    if est_bytes > phi_budget_bytes():
+        return VarSwapSteps(phi_full=None, surface=surface, lazy_left_lin=with_left_lin)
     phi_full: list = []
     phi_lin_full: list | None = [] if with_left_lin else None
-    for n in range(t.size):
-        if with_left_lin:
-            pb, pl = surface.basis_components(x, float(t[n]))
-            phi_full.append(pb)
-            phi_lin_full.append(pl)
-        else:
-            phi_full.append(surface.basis(x, float(t[n])))
+    try:
+        for n in range(t.size):
+            if with_left_lin:
+                pb, pl = surface.basis_components(x, float(t[n]))
+                phi_full.append(pb)
+                phi_lin_full.append(pl)
+            else:
+                phi_full.append(surface.basis(x, float(t[n])))
+    except MemoryError:  # budget met but the box could not serve it
+        return VarSwapSteps(phi_full=None, surface=surface, lazy_left_lin=with_left_lin)
     return VarSwapSteps(phi_full=phi_full, phi_lin_full=phi_lin_full)
 
 
@@ -92,7 +110,7 @@ def solve_varswap_source(
     a = float(left_a) if left_a is not None else surface.left_extrap_a
     if steps is None:
         steps = precompute_varswap_steps(surface, x, t, with_left_lin=fit_left_a)
-    use_lin = steps.phi_lin_full is not None
+    use_lin = steps.phi_lin_full is not None or steps.lazy_left_lin
 
     n_x = x.size
     h = np.diff(x)
@@ -110,8 +128,16 @@ def solve_varswap_source(
 
     for n in range(t.size - 2, -1, -1):  # solve g^n (time t[n]) from g^{n+1}
         dt = t[n + 1] - t[n]
-        phi_base = steps.phi_full[n]
-        phi = phi_base + a * steps.phi_lin_full[n] if use_lin else phi_base
+        phi_lin_n = None
+        if steps.phi_full is not None:  # precomputed (the in-budget hot path)
+            phi_base = steps.phi_full[n]
+            if use_lin:
+                phi_lin_n = steps.phi_lin_full[n]
+        elif use_lin:  # over-budget lazy: same floats, computed per level
+            phi_base, phi_lin_n = steps.surface.basis_components(x, float(t[n]))
+        else:
+            phi_base = steps.surface.basis(x, float(t[n]))
+        phi = phi_base + a * phi_lin_n if use_lin else phi_base
         nu_full = phi @ theta
         nu = nu_full[1:-1]
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
@@ -142,7 +168,7 @@ def solve_varswap_source(
             rhs_s[0] += dt * lo[0] * sens[0, :m]
             rhs_s[-1] += dt * up[-1] * sens[-1, :m]
             if fit_left_a:
-                glin = steps.phi_lin_full[n] @ theta  # d nu / da on the full grid
+                glin = phi_lin_n @ theta  # d nu / da on the full grid
                 src_a = glin[1:-1] * (stencil_g + 1.0)
                 sens[0, m] += dt * glin[0]
                 sens[-1, m] += dt * glin[-1]
