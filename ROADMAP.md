@@ -393,13 +393,33 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   (monotone under refinement again), SPY dailies surface conv 23→21bp
   (bounds-pinned 19→12), weekly fixture 41→30bp, Bloomberg ~unchanged
   (in-op 2.8→2.9bp — its 27d front is inside the gate, mildly helped).
-  Deliberately NOT shipped after measuring: dt 32→128 and finer dx (2-4×
-  march cost for single-digit bp once tied). The user's "make the [0,2d]
-  grid finer" intuition was inverted: fewer effective DOF there, not
-  more. Lock: test_affine_grid_design.py (ringing collapses when chained,
-  survives untied, normal-front gate intact). NVDA Bloomberg 27d front
-  conv ~124bp = pre-existing separate issue (34 quotes, 8 coarse steps at
-  high vol, clears the dt gate) — candidate for a later dt-per-vol pass.
+  Deliberately NOT shipped after measuring: dt 32→128 (single-digit bp at
+  4× march cost once tied). The user's "make the [0,2d] grid finer"
+  intuition was inverted: fewer effective DOF there, not more. Lock:
+  test_affine_grid_design.py (ringing collapses when chained, survives
+  untied, normal-front gate intact). NVDA Bloomberg 27d front conv ~124bp
+  = pre-existing separate issue (34 quotes, 8 coarse steps at high vol,
+  clears the dt gate) — candidate for a later dt-per-vol pass.
+- **LV daily-ladder round 3 SHIPPED (2026-07-11) — PDE strike-lattice
+  aliasing = the residual "not smooth / monotonicity switching at every
+  quote".** User round 3: SPY 07-13 upside still out-of-band + wiggly,
+  NVDA 07-13 in-band but slope-flipping at every quote — while the
+  calibrated theta rows were near-monotone (NOT surface ringing).
+  Root cause: on 2-DTE dailies the QUOTE spacing is finer than the PDE
+  strike lattice (SPY quotes every 0.13% vs dx 0.25% [the 1/400 cap];
+  NVDA 1.2% vs 1%), and quote/display prices interpolate BETWEEN lattice
+  nodes — at 2-DTE vega that interpolation aliases into ±5-12bp IV
+  wiggle at quote frequency. Fix: `_PDE_DX_SHORT_FRAC` 0.3→0.15 +
+  `_PDE_N_MAX` 400→800 (measured knee: slope switches 7→1 SPY / 9→1
+  NVDA, SPY outside-band 10→5 and rms 9.1→6.5bp; the 0.10×/1600 rung
+  buys nothing at 2.4× the time; cold-fit cost SPY 7.8→11.1s, dailies
+  only). Fixture sweep: weekly surface conv 29.8→22.6bp (cumulative
+  today 46.2→22.6), dailies SPY 20.6→19.4bp, Bloomberg SPY in-op
+  2.9→2.4bp (its 27d front now crosses the refined threshold — an
+  improvement, not a regression; NVDA untouched). Perf rails 23-27% of
+  budget. Remaining honest residual on 2-DTE: ~3-5 SPY quotes with
+  3-7bp-wide bands vs ~6.5bp fit noise = tick-grid data noise (fix-order
+  #3 robust weighting territory, not grid).
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent

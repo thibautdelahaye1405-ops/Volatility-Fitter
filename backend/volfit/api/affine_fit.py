@@ -92,8 +92,15 @@ _X_HI_PAD = 1.4
 #: resolve the SHORTEST expiry's ATM std sigma*sqrt(tau) to this fraction, snapped to
 #: 1/N so x = 1 is node N, never coarser than _X_DX and never finer than 1/_PDE_N_MAX.
 #: A normal surface (shortest expiry not tiny) keeps dx = _X_DX => byte-identical.
-_PDE_DX_SHORT_FRAC = 0.3
-_PDE_N_MAX = 400  # finest PDE strike grid = dx 0.0025 (cost cap)
+#: 0.3 -> 0.15 and cap 400 -> 800 (2026-07-11, the DAILY-ladder smoothness pass):
+#: on 2-DTE dailies the quote spacing is FINER than the lattice (SPY quotes every
+#: 0.13% vs dx 0.25%; NVDA 1.2% vs 1%), and prices at quote strikes interpolate
+#: between lattice nodes — the drawn LV smile wiggled at quote frequency (slope
+#: sign switches 7-9 inside the traded range, alternating in/out of tight bands).
+#: At 0.15x/800 the switches collapse to ~1 and SPY's outside-band count halves
+#: (10 -> 5, rms 9.1 -> 6.5 bp); 0.10x/1600 buys nothing more at 2.4x the time.
+_PDE_DX_SHORT_FRAC = 0.15
+_PDE_N_MAX = 800  # finest PDE strike grid = dx 0.00125 (cost cap)
 #: PDE time step ceiling (each quoted expiry is forced to be a grid node).
 #: Backward-Euler is 1st-order, so it needs the fine 0.01 ceiling for ~1bp accuracy.
 _DT_MAX = 0.01
