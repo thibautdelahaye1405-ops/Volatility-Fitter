@@ -211,20 +211,26 @@ degradation causes. **Gap**: no formal noise-perturbation study of the nodal gri
 candidate for the backtest harness.
 
 **Boundary behavior to trust.** Beyond the last strike node local variance
-extrapolates *flat* on the call side, controlled-linear on the put side only when a
-var-swap identifies the deep tail; the opt-in convexity hinge acts only below the
-deepest observed quote (≤ 5Δ put). Implied wing slopes stay under Lee's cap —
-measured and reported, not assumed. Contract: conservative, stated, and never active
-on quoted strikes (the SPY 25.7 → 2.6 bp confinement case).
+extrapolates *flat* on the call side; on the put side it turns controlled-linear
+either under `convexWing` (fixed multiple 1.5) or when a var-swap identifies the deep
+tail (free slope, bounded [0,20]); the opt-in convexity hinge acts only below the
+deepest observed quote (≤ 5Δ put). On the grid, bounded positive local variance keeps
+implied wings inside Lee's cap; the extrapolation region sits OUTSIDE the positivity
+guarantee (Note 04 states this), and the affine surface currently exposes no per-fit
+Lee-slope fields — wing behavior is a stated contract plus the grid diagnostics.
+Contract: conservative, stated, and never active on quoted strikes (the SPY
+25.7 → 2.6 bp confinement case).
 
 ---
 
 ## Slide 14 — LV solver: diagnostics, hard cases, gradient testing
 
-**Diagnostics a trader sees.** Per-expiry side-channel (`api/affine_diag.py`):
-vertices-in-range (strike under-resolution), vega-floor fraction, PDE steps, prior
-rows — plus solver status, nfev vs cap, active bounds, and wall-time split in the
-backtest metrics; the Quality tab is the publish-readiness screen.
+**Diagnostics — where they live.** The per-expiry cause diagnostics
+(`api/affine_diag.py`: vertices-in-range, vega-floor fraction, PDE steps, prior rows)
+are a pure OFFLINE side-channel, deliberately kept off the API wire — an engineer
+runs them when a fit degrades; they are not fields a trader sees in the app. What the
+app surfaces is the Quality tab (publish readiness, arb flags, RMS incl. the
+converged reprice) plus solver status/nfev in the backtest metrics.
 
 **Hard cases.** Very short expiries: the weekly case file (3 vertices → 108 bp; fix =
 per-expiry coverage floor + maturity-aware step → 23.5 bp, long expiries

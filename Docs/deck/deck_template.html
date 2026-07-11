@@ -755,13 +755,15 @@
         <li><strong>Piecewise affine, concretely:</strong> each rectangle of the maturity × strike grid is split into <strong>two
           triangles</strong>; ν(t,x) is exactly affine on each triangle (a bilinear patch would not be) and continuous across edges.
           The unknowns <em>are</em> the nodal local variances, and every surface value is a convex mix of its triangle's three
-          corners: <strong>positive nodes ⇒ positive surface ⇒ arbitrage-free prices</strong>.</li>
+          corners: <strong>positive nodes ⇒ positive surface on the grid</strong>; the priced output's butterfly and calendar
+          cleanliness is then <strong>measured per fit</strong> (grid diagnostics + a converged-operator reprice), not assumed.</li>
         <li class="g">Quotes are fitted <strong>through the forward PDE</strong> (Andreasen–Huge philosophy): the surface that prices the market is found directly, not bootstrapped slice by slice.</li>
         <li class="a"><strong>Wings:</strong> beyond the last strike node the local variance extrapolates flat (controlled-linear on the put
-          side when a var-swap pins the deep tail); an opt-in <strong>convexity hinge acts only in the extrapolation tail</strong>
-          (≤ 5Δ put, below the deepest quote) — never on quoted strikes.</li>
-        <li class="v"><strong>Lee's bound needs no penalty here</strong> — bounded positive local variance with flat/linear wings keeps the
-          implied wing slopes below Lee's cap of 2, <strong>measured and reported</strong>, not assumed.</li>
+          side under the convex-wing option or when a var-swap pins the deep tail); an opt-in <strong>convexity hinge acts only in the
+          extrapolation tail</strong> (≤ 5Δ put, below the deepest quote) — never on quoted strikes.</li>
+        <li class="v"><strong>Wing behaviour is a stated contract</strong> — bounded positive local variance keeps implied wings inside
+          Lee's cap on the grid; the extrapolation law is documented per regime, and cleanliness is checked on the price grid
+          (the affine surface exposes no per-fit Lee-slope fields).</li>
       </ul>
     </div>
     <div>
@@ -772,7 +774,8 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    <b>The same surface that reprices the vanilla market drives PDE pricing, scenario transport and sticky-local-vol dynamics</b> — one calibrated object behind every view.</div>
+    <b>The surface that reprices the vanilla market drives PDE pricing and the Local Vol views directly</b>; the exact
+    sticky-local-vol scenario runs off a separately extracted parametric-Dupire grid — two stated objects, not one pretending.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 04 · Local volatility</span><span></span></div>
 </section>
 
@@ -795,9 +798,9 @@
           but only <em>monotone</em> when the step is small relative to variance — beyond that, the payoff kink excites its classic
           oscillations, which read as negative densities. The implicit step is monotone at <em>any</em> step size (B⁻¹ ≥ 0 above:
           prices stay ordered and positive), trading one order of time accuracy for that unconditional guarantee.</li>
-        <li class="g"><strong>Exact gradients of the scheme actually solved</strong> — the PDE march itself is differentiated (every
-          sensitivity reuses the price solve's tridiagonal factorization), so the optimizer never sees a finite-difference
-          approximation: fits are ~1.3–1.65× faster <em>and</em> exactly reproducible.</li>
+        <li class="g"><strong>Exact tangent gradients of the scheme actually solved</strong> — the PDE march itself is differentiated (every
+          sensitivity reuses the price solve's tridiagonal factorization), FD-checked; on top, the matrix-free solver adds
+          ~1.3–1.65× where it engages (mid fits with the compiled kernel), at a stated ≤0.25 vol-bp solver tolerance.</li>
         <li class="v"><strong>Compiled inner loop (Numba): 6.5×</strong> the standard LAPACK banded solve, identical to ~1e-15, with a
           plain-NumPy fallback when Numba is absent.</li>
       </ul>
@@ -813,7 +816,7 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    Local vol you can recalibrate <b>inside a trading loop</b> — stable numerics, exact gradients (bump-and-reprice-checked), and diagnostics that name the failure mode when a fit degrades.</div>
+    Local vol you can recalibrate <b>inside a trading loop</b> — stable numerics, exact tangent gradients (bump-and-reprice-checked), and offline per-expiry diagnostics that name the failure mode when a fit degrades.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 04 · Local volatility</span><span></span></div>
 </section>
 

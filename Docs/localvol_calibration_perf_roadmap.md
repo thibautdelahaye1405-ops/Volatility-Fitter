@@ -182,10 +182,12 @@ costlier — when the march dominated. But Stage 6′ showed the per-eval split 
 **optimizer/SVD 52%**, march 32%, assembly 14%: GN's whole point is to AVOID that 52%
 dense SVD, and with the Numba march making each eval cheap, GN's no-SVD evals finally
 win. Re-benchmarked (SPY/NVDA, numba + early-stop): **GN is ~1.3–1.65× faster than TRF**
-(and on SPY gridX=20 it lands a *better* surface). Shipped **opt-in** (`OptionsSettings
-.lvSolver="gn"`, default "trf") because GN converges to a slightly different local
-optimum on stiff real data — surface within ~0.25 vol-bp of TRF (sometimes better),
-but not identical, so the default surface is left unchanged.
+(and on SPY gridX=20 it lands a *better* surface). *(Historical shipping note,
+superseded the same day: initially shipped opt-in with default "trf" because GN
+converges to a slightly different local optimum on stiff real data — surface within
+~0.25 vol-bp of TRF, sometimes better, but not identical. The current shipped
+default IS `lvSolver="gn"`, with that ~0.25 bp trade stated in the schema; band/
+haircut/var-swap/no-numba paths still run TRF.)*
 - **Hardening (the key work):** GN's option-block-misfit trajectory is noisier than
   TRF's monotone trust region, so its early-stop (1) tracks the best among ACCEPTED
   iterates only (never a fluky rejected lsmr trial), (2) counts rejects as no-progress,

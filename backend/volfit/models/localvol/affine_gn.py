@@ -1,17 +1,22 @@
 """Matrix-free Gauss-Newton solver for the affine local-vol calibration (Stage 5).
 
-STATUS (2026-06-20): **explored, NOT viable as a production speed-up at the current
-tensor-grid sizes — kept gated off (``calibrate_affine(gn=...)`` only, no app wiring)
-as a seed for the future ≳1000-vertex non-tensor "bowtie" regime.** On the real
-SPY/NVDA Bloomberg benchmark this LOSES to dense TRF: both solvers run to the
-200-eval cap, so the SVD is *not* the bottleneck at ≤440 vertices (the per-eval PDE
-sensitivity march is, shared by both), and GN's stiff, bound-constrained projected-LM
-needs ~1.7× TRF's evals to reach the same surface (≈339 vs the 200 cap) while its
-tight inner-lsmr makes each eval costlier — net ~1.4× slower (it converges in 8 evals
-only on the clean, zero-residual, in-bounds synthetic case). See
-``Docs/localvol_calibration_perf_roadmap.md`` Stage 5. The robust per-eval win is
-Stage 6 (Numba march). The module + tests below remain correct and are the starting
-point should the bowtie grid (where the SVD genuinely dominates) be built.
+STATUS (current): **SHIPPED as the production DEFAULT** — ``OptionsSettings.lvSolver
+= "gn"`` — gated to the smooth MID fit target with the Numba march active and no
+free-left-slope var-swap path (band/haircut fits, var-swap fits and the banded-march
+fallback run TRF). GN converges to a slightly different local optimum on stiff real
+data (surface within ~0.25 vol-bp of TRF, sometimes better) — the accepted,
+schema-documented trade for ~1.3-1.65x over TRF. Automatic TRF fallback on
+breakdown.
+
+HISTORY (2026-06-20, kept because the lesson generalizes): the FIRST verdict was
+"not viable" — before the compiled march, both solvers ran to the 200-eval cap, the
+per-eval PDE sensitivity march (not the SVD) was the bottleneck at <=440 vertices,
+and GN's stiff projected-LM needed ~1.7x TRF's evals while its tight inner-lsmr made
+each eval costlier (net ~1.4x slower; it converged in 8 evals only on the clean
+zero-residual synthetic). Stage 6' (the Numba march) collapsed the per-eval cost,
+the dense-SVD share came to dominate, and the same solver won — promoted to default
+the same day it re-shipped. See ``Docs/localvol_calibration_perf_roadmap.md``
+Stage 5.
 
 The dense ``scipy.optimize.least_squares(method="trf")`` path (affine_calib) does a
 trust-region **dense SVD of the (M_resid x m) Jacobian every iteration** —

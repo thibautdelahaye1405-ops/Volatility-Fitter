@@ -19,6 +19,8 @@ Outputs:
 from __future__ import annotations
 
 import json
+import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -59,6 +61,15 @@ def truth_surface():
 
 
 def round_trip():
+    """Synthetic quote-repricing round trip.
+
+    Runs the LOW-LEVEL calibrator (TRF, banded march, custom dense grids) — an
+    algorithm check, not the product path or its timing. Besides the quote
+    repricing error it now measures the LOCAL-VARIANCE surface discrepancy on a
+    dense grid over the quote-covered region: sparse vanillas do not uniquely
+    identify the nodal grid, so low quote error is NOT surface recovery — the
+    regularizers select one representative, and the note reports both numbers.
+    """
     truth = truth_surface()
     x_grid = np.linspace(0.2, 3.0, 401)
     t_grid = np.linspace(0.0, 1.0, 201)
@@ -86,7 +97,19 @@ def round_trip():
         px = sol2.price_at(ie, strikes)
         w = implied_total_variance(np.log(strikes), px)
         recovered[float(T)] = (strikes, np.sqrt(w / T))
-    return cal, target, recovered, wall
+
+    # Local-VOL surface discrepancy (vol points) on the quote-covered region.
+    tt = np.linspace(float(EXPIRIES[0]), float(EXPIRIES[-1]), 41)
+    xx = np.linspace(float(strikes[0]), float(strikes[-1]), 51)
+    dvols = []
+    for t in tt:
+        truth_v = truth.variance(xx, float(t))
+        rec_v = cal.surface.variance(xx, float(t))
+        dvols.append(100.0 * (np.sqrt(np.maximum(rec_v, 0.0))
+                              - np.sqrt(np.maximum(truth_v, 0.0))))
+    dvol = np.concatenate(dvols)
+    surf_err = dict(rms=float(np.sqrt(np.mean(dvol**2))), max=float(np.max(np.abs(dvol))))
+    return cal, target, recovered, wall, surf_err
 
 
 def fig_surface(cal):
@@ -121,7 +144,11 @@ def fig_fit(target, recovered):
 
 # ------------------------------------------------------------- benchmark
 def benchmark():
-    """Real production fit over the Bloomberg fixture; returns per-name smiles."""
+    """Real production fit over the Bloomberg fixture (the PRODUCT path:
+    calibrate_affine_surface with the shipped request defaults). Reports the
+    in-operator surface RMS AND the converged-operator reprice (dt/4, dx/2) —
+    the honest quality metric; in-operator residuals are blind to
+    time-discretization error the optimizer compensates."""
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
         from lv_benchmark import build_state
@@ -131,36 +158,60 @@ def benchmark():
         state = build_state()
         out = {}
         for ticker in ("SPY", "NVDA"):
+            t0 = time.perf_counter()
             resp = calibrate_affine_surface(state, ticker, AffineFitRequest())
             out[ticker] = dict(
                 surface_rms_bp=resp.surfaceRmsError * 1e4,
-                smiles=[(s.expiry, s.rmsError * 1e4) for s in resp.smiles],
+                converged_rms_bp=float(resp.rmsConvergedBp),
+                converged_max_bp=float(resp.maxConvergedBp),
+                wall_s=time.perf_counter() - t0,
+                smiles=[
+                    (s.expiry, s.rmsError * 1e4, float(s.rmsConvergedBp))
+                    for s in resp.smiles
+                ],
             )
         return out
     except Exception as exc:  # pragma: no cover
-        print("benchmark skipped:", exc)
+        # LOUD failure: the note must never silently retain stale numbers.
+        import traceback
+
+        print("!" * 72)
+        print("BENCHMARK FAILED — Bloomberg-fixture macros will read UNAVAILABLE")
+        print("   ", type(exc).__name__, exc)
+        traceback.print_exc()
+        print("!" * 72)
         return None
 
 
 def fig_rms(bench):
-    fig, ax = plt.subplots(figsize=(6.9, 3.5))
+    """Grouped per-expiry bars, in-operator AND converged reprice, per name.
+    Expiry axes are per-name (SPY and NVDA ladders differ), so the two names
+    get separate panels with full YYYY-MM-DD context in the panel title year."""
+    fig, axes = plt.subplots(1, 2, figsize=(9.6, 3.6), sharey=True)
     width = 0.38
-    for i, (ticker, c) in enumerate([("SPY", PALETTE["teal"]),
-                                     ("NVDA", PALETTE["rust"])]):
+    for ax, (ticker, c) in zip(axes, [("SPY", PALETTE["teal"]),
+                                      ("NVDA", PALETTE["rust"])]):
         if ticker not in bench:
+            ax.set_title(f"{ticker}: unavailable")
+            ax.set_axis_off()
             continue
         smiles = bench[ticker]["smiles"]
-        labels = [e[5:] for e, _ in smiles]   # MM-DD
-        vals = [r for _, r in smiles]
-        xpos = np.arange(len(vals)) + i * width
-        ax.bar(xpos, vals, width=width, color=c, label=ticker)
-        if i == 0:
-            ax.set_xticks(np.arange(len(vals)) + width / 2)
-            ax.set_xticklabels(labels)
-    ax.set_ylabel("per-expiry RMS (vol bps)")
-    ax.set_xlabel("expiry")
-    ax.legend()
-    ax.set_title("Production local-vol fit, Bloomberg fixture")
+        labels = [e[5:] for e, _, _ in smiles]  # MM-DD; year in the title
+        year = smiles[0][0][:4]
+        in_op = [r for _, r, _ in smiles]
+        conv = [r for _, _, r in smiles]
+        xpos = np.arange(len(in_op))
+        ax.bar(xpos - width / 2, in_op, width=width, color=c, label="in-operator")
+        ax.bar(xpos + width / 2, conv, width=width, color=PALETTE["muted"],
+               label="converged reprice")
+        ax.set_xticks(xpos)
+        ax.set_xticklabels(labels, fontsize=8)
+        ax.set_xlabel(f"expiry ({year})")
+        ax.set_title(ticker)
+        ax.legend(fontsize=8)
+    axes[0].set_ylabel("per-expiry RMS (vol bps)")
+    fig.suptitle("Production local-vol fit, Bloomberg fixture", fontsize=11)
+    fig.tight_layout()
     save(fig, OUT / "fig_lv_rms.pdf")
 
 
@@ -241,10 +292,39 @@ def rescue():
     return counts
 
 
+def _provenance():
+    """Commit/config/runtime provenance stored with every regeneration."""
+    try:
+        commit = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True,
+            cwd=Path(__file__).resolve().parents[3],
+        ).stdout.strip()
+    except Exception:
+        commit = "unknown"
+    try:
+        import numba
+        numba_v = numba.__version__
+    except Exception:
+        numba_v = "absent"
+    import scipy
+    return dict(
+        commit=commit,
+        generated=time.strftime("%Y-%m-%d %H:%M"),
+        python=platform.python_version(),
+        numpy=np.__version__,
+        scipy=scipy.__version__,
+        numba=numba_v,
+        machine=platform.machine(),
+        round_trip_path="low-level calibrate_affine (TRF, banded march, custom grids)",
+        benchmark_path="calibrate_affine_surface, AffineFitRequest() product defaults",
+    )
+
+
 # ------------------------------------------------------------- main
 def main():
     print("Synthetic round trip ...")
-    cal, target, recovered, wall = round_trip()
+    cal, target, recovered, wall, surf_err = round_trip()
     fig_surface(cal)
     fig_fit(target, recovered)
     max_err = max(
@@ -256,34 +336,51 @@ def main():
 
     print("Production Bloomberg benchmark ...")
     bench = benchmark()
+    prov = _provenance()
     L = ["% Auto-generated by gen_lv.py — do not edit."]
     L.append(r"\newcommand{\lvrtmaxerr}{%.1f}" % max_err)
     L.append(r"\newcommand{\lvrtwall}{%.2f}" % wall)
     L.append(r"\newcommand{\lvrtnevals}{%d}" % cal.n_evals)
     L.append(r"\newcommand{\lvrtvtx}{%d}" % cal.surface.theta.size)
+    L.append(r"\newcommand{\lvrtsurfrms}{%.2f}" % surf_err["rms"])
+    L.append(r"\newcommand{\lvrtsurfmax}{%.2f}" % surf_err["max"])
+    L.append(r"\newcommand{\lvgencommit}{%s}" % prov["commit"])
+    L.append(r"\newcommand{\lvgendate}{%s}" % prov["generated"][:10])
     if bench:
         L.append(r"\newcommand{\lvspyrms}{%.1f}" % bench["SPY"]["surface_rms_bp"])
         L.append(r"\newcommand{\lvnvdarms}{%.1f}" % bench["NVDA"]["surface_rms_bp"])
+        L.append(r"\newcommand{\lvspyconv}{%.1f}" % bench["SPY"]["converged_rms_bp"])
+        L.append(r"\newcommand{\lvnvdaconv}{%.1f}" % bench["NVDA"]["converged_rms_bp"])
         fig_rms(bench)
-        rows = [r"\begin{tabular}{lrr}", r"\toprule",
-                r"Name & surface RMS (bp) & worst expiry (bp)\\", r"\midrule"]
+        rows = [r"\begin{tabular}{lrrr}", r"\toprule",
+                r"Name & in-op RMS (bp) & converged RMS (bp) & worst expiry (bp)\\",
+                r"\midrule"]
         for ticker in ("SPY", "NVDA"):
             b = bench[ticker]
-            worst = max(r for _, r in b["smiles"])
-            rows.append(rf"{ticker} & {b['surface_rms_bp']:.1f} & {worst:.1f}\\")
+            worst = max(r for _, r, _ in b["smiles"])
+            rows.append(
+                rf"{ticker} & {b['surface_rms_bp']:.1f} & "
+                rf"{b['converged_rms_bp']:.1f} & {worst:.1f}\\"
+            )
         rows += [r"\bottomrule", r"\end{tabular}"]
         L.append(r"\newcommand{\lvbenchtable}{%s}" % " ".join(rows))
     else:
-        L.append(r"\newcommand{\lvspyrms}{2.8}")
-        L.append(r"\newcommand{\lvnvdarms}{11.7}")
+        # NEVER retain stale numbers: unavailable reads as unavailable.
+        L.append(r"\newcommand{\lvspyrms}{(unavailable)}")
+        L.append(r"\newcommand{\lvnvdarms}{(unavailable)}")
+        L.append(r"\newcommand{\lvspyconv}{(unavailable)}")
+        L.append(r"\newcommand{\lvnvdaconv}{(unavailable)}")
         L.append(r"\newcommand{\lvbenchtable}{(benchmark unavailable)}")
     (OUT / "lv_tables.tex").write_text("\n".join(L) + "\n", encoding="utf-8")
     (OUT / "lv_numbers.json").write_text(
         json.dumps({"round_trip_max_err_bp": max_err, "wall_s": wall,
-                    "n_evals": cal.n_evals, "benchmark": bench}, indent=2),
+                    "n_evals": cal.n_evals,
+                    "surface_recovery_volpts": surf_err,
+                    "benchmark": bench, "provenance": prov}, indent=2),
         encoding="utf-8")
-    print("round-trip max err %.1f bp, wall %.2fs, nevals %d"
-          % (max_err, wall, cal.n_evals))
+    print("round-trip max err %.1f bp (surface diff rms %.2f / max %.2f vol pts), "
+          "wall %.2fs, nevals %d"
+          % (max_err, surf_err["rms"], surf_err["max"], wall, cal.n_evals))
 
 
 if __name__ == "__main__":

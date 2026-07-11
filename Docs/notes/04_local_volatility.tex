@@ -15,32 +15,30 @@
 
 \begin{abstract}
 This note documents the Vol-Fitter's full local-volatility model: a continuous
-piecewise-affine ($P_1$) local-variance surface $\nu_\theta(t,x)$, calibrated
-directly to sparse vanilla and variance-swap quotes through the forward Dupire
-PDE as an implicit pricing map. Unlike the slice models (Notes~01--03) this is a
-genuine two-dimensional surface: strict positivity of the nodal variances makes
-the implied prices butterfly- and calendar-clean up to scheme noise, which the
-model \emph{measures} rather than assumes. We derive the normalized forward
-Dupire equation and prove its arbitrage-propagation property, the $P_1$
-parametrization and its positivity guarantee, and --- the mathematical heart of
-this revision --- the discrete theory: the implicit-Euler step matrix is an
-$M$-matrix, giving a discrete maximum principle, unconditional $\ell^\infty$
-stability and a pivot-free Thomas march, while Crank--Nicolson provably loses
-monotonicity on coarse grids (and was observed to manufacture an arbitrage). We
-derive the discrete tangent and adjoint sensitivities and show both are what
-production actually runs: the matrix-free Gauss--Newton solver touches the
-Jacobian only through the tangent product $Jv$ and the adjoint product
-$J\T w$. The engineering story --- a compiled vectorized-Thomas march
-($\sim6.5\times$), a stall-based early-stop, warm seeds, and the matrix-free GN
-correctly scoped to where the dense SVD actually dominates --- cut the cold fit
-$\sim3$--$6\times$, with recalibrations near-instant. Two case files close the
-loop: the six-day weekly that broke the strike grid ($108\to23.5$ vol bp), and
-the convex-wing constraint that flattened SPY until it was confined to the
-extrapolation tail ($25.7\to2.6$ vol bp). A synthetic round trip recovers a
-known surface to \lvrtmaxerr\ vol bps; the production fit on the static
-Bloomberg fixture reaches \lvspyrms\ vol bps on SPY and \lvnvdarms\ on NVDA.
+piecewise-affine ($P_1$) local-variance surface $\nu_\theta(\tau,x)$,
+calibrated directly to sparse vanilla and variance-swap quotes through the
+forward Dupire PDE as an implicit pricing map. Positivity of the nodal
+variances guarantees a positive surface on the grid's hull; the implicit-Euler
+step matrix is an $M$-matrix, giving a discrete maximum principle and
+unconditional $\ell^\infty$ stability (Crank--Nicolson provably loses
+monotonicity on coarse grids); and butterfly/calendar cleanliness of the
+output is \emph{measured} on the price grid, never assumed. Sensitivities are
+an analytic tangent Jacobian assembled from forward PDE sensitivities; the
+matrix-free Gauss--Newton solver avoids the dense SVD but consumes that same
+Jacobian (the true backward-PDE adjoint derived here remains future theory).
+Engineering --- a compiled vectorized-Thomas march, a stall early-stop, warm
+seeds --- cut the cold fit $\sim3$--$6\times$. Two case files: the six-day
+weekly that broke the strike grid ($108\to23.5$ vol bp) and the convex-wing
+hinge that flattened SPY until confined to the extrapolation tail
+($25.7\to2.6$). Fresh evidence (commit \texttt{\lvgencommit}, \lvgendate):
+the synthetic quotes reprice to \lvrtmaxerr\ vol bp with the local-vol
+surface itself recovered to \lvrtsurfmax\ vol points on the quote-covered
+region; the product-path Bloomberg fit reads \lvspyrms\ (SPY) and
+\lvnvdarms\ (NVDA) vol bp in-operator --- and \lvspyconv\ / \lvnvdaconv\ on
+the \emph{converged} reprice, the honest metric this revision adopts.
 \end{abstract}
 
+\newpage
 \tableofcontents
 \newpage
 
@@ -61,17 +59,30 @@ negative variances and spikes that no downstream PDE survives.
 \begin{invariant}
 \begin{enumerate}[leftmargin=1.6em]
 \item Every optimizer iterate is a genuine, strictly positive local-variance
-surface --- positivity is carried by the \emph{parameters}, never policed by a
-penalty.
+surface \emph{on the grid's hull} --- positivity is carried by the
+\emph{parameters}, never policed by a penalty. (The controlled-linear put
+extrapolation \emph{beyond} the hull is outside this guarantee;
+\cref{sec:p1}.)
 \item The pricing map never differentiates market data: quotes enter only as
 targets of a forward PDE solve.
-\item The discrete prices obey a maximum principle --- the scheme cannot
-manufacture negative densities; the residual scheme noise is \emph{measured}
-by explicit diagnostics, not assumed away.
-\item Every short-dated rescue and speed lever is gated so that surfaces which
-do not need it are byte-identical.
+\item The discrete prices obey a maximum principle --- the scheme is monotone
+and unconditionally $\ell^\infty$-stable. That is stability, not an arbitrage
+proof: butterfly and calendar cleanliness of the output are \emph{measured}
+by explicit grid diagnostics, never assumed.
+\item The short-dated rescues and speed levers are gated; each gate's no-op
+behaviour is \emph{individually} demonstrated (byte-identity where locked as
+such, stated tolerance where not) --- there is no blanket byte-identity
+claim.
 \end{enumerate}
 \end{invariant}
+
+\paragraph{The pipeline in one line.} Normalize and de-Americanize the quotes
+(Notes 05--06) $\to$ build the vertex grid and PDE lattice
+(\cref{sec:p1}) $\to$ march prices and sensitivities forward
+(\cref{sec:pricing,sec:sens}) $\to$ form the residual stack
+(\cref{sec:objective}) $\to$ regularize and optimize under box bounds
+(\cref{sec:solvers}) $\to$ reprice on the \emph{refined} operator
+(the converged metric) $\to$ report the convexity/calendar diagnostics.
 
 The Vol-Fitter therefore follows the Andreasen--Huge philosophy
 \cite{AndreasenHuge2011}: \emph{parametrize} the local variance directly,
@@ -92,33 +103,47 @@ philosophy of Note~01, one dimension up.
 \section{The forward Dupire equation}
 \label{sec:dupire}
 
-\begin{assumption}
+\begin{assumption}[Units and the two clocks]
 \label{ass:units}
 Work in forward-normalized units: $x=K/F_T$ is the normalized strike and
-$c(T,x)$ the normalized call, so deterministic rates, borrow and dividends are
-absorbed into the forward (Note~06). The maturity variable is the
-\emph{event-weighted} variance time $\tau$ of Note~11 --- the diffusion clock
---- and the quotes are de-Americanized mids (Note~05). The model is a pure
-diffusion: no jumps, so a genuine short-dated event spike is only approximated.
+$c(\cdot,x)$ the normalized call, so deterministic rates, borrow and dividends
+are absorbed into the forward (Note~06); the quotes are de-Americanized mids
+(Note~05). Three time objects are distinct: $T$ is the \emph{calendar}
+maturity; $\tau(T)$ is the monotone \emph{event-weighted variance time} of
+Note~11 (the diffusion clock, equal to $T$ when the event clock is off); and
+the model's nodal parameters $\theta$ are local variances \emph{per unit
+variance time} --- the PDE below marches in $\tau$, and every maturity-like
+symbol in this note ($\Delta T=0.01$, the SDE clock, the var-swap integral,
+the time vertices) lives on the $\tau$ axis. In calendar time the same
+dynamics read $\partial_Tc=\tfrac12\,\dot\tau(T)\,\nu(\tau(T),x)\,x^2\,
+\partial_{xx}c$. The model is a pure diffusion: no jumps, so a genuine
+short-dated event spike is only approximated.
 \end{assumption}
 
-Writing local variance $\nu(t,x)=\sigma_{\text{loc}}^2(t,x)$, the forward
-Dupire equation is
+Writing local variance $\nu(\tau,x)=\sigma_{\text{loc}}^2(\tau,x)$ on the
+variance clock, the forward Dupire equation is
 \begin{equation}
-\boxed{\;\partial_T c(T,x)=\tfrac12\,\nu(T,x)\,x^2\,\partial_{xx}c(T,x),\qquad
+\boxed{\;\partial_\tau c(\tau,x)=\tfrac12\,\nu(\tau,x)\,x^2\,\partial_{xx}c(\tau,x),\qquad
 c(0,x)=(1-x)^+.\;}
 \label{eq:dupire}
 \end{equation}
-It is a forward parabolic PDE in $(T,x)$ with the payoff as initial data
-\cite{Dupire1994}. Its structural virtue is that positivity of $\nu$
-\emph{propagates} both static-arbitrage conditions:
+It is a forward parabolic PDE in $(\tau,x)$ with the payoff as initial data
+\cite{Dupire1994}. (Below we write a generic $t$ or $T$ for the marching
+variable where no confusion is possible; it always means $\tau$.) Its
+structural virtue is that positivity of $\nu$ \emph{propagates} both
+static-arbitrage conditions:
 
 \begin{proposition}[Positive local variance propagates no-arbitrage]
 \label{prop:propagate}
 Let $c$ solve \eqref{eq:dupire} with $\nu\ge0$ bounded and the payoff initial
-condition. Then for all $T>0$: (i) $\partial_{xx}c(T,\cdot)\ge0$ (no butterfly
-arbitrage); (ii) $\partial_Tc(T,x)\ge0$ (no calendar arbitrage at fixed
-normalized strike).
+condition. Then for all $\tau>0$: (i) $\partial_{xx}c(\tau,\cdot)\ge0$ (no
+butterfly arbitrage); (ii) $\partial_\tau c(\tau,x)\ge0$ --- monotonicity of
+the \emph{normalized} call at fixed $x=K/F_T$. Under deterministic carry this
+is equivalent to the familiar calendar-spread condition at fixed dollar
+strike $K$: the fixed-$K$ spread maps to the fixed-$x$ one through the
+forward transformation $K\mapsto x=K/F_T$ and the discounting absorbed in the
+normalization (Note~06), so no separate condition is needed --- but the two
+statements are related by that transformation, not identical coordinates.
 \end{proposition}
 
 \begin{proof}[Proof sketch]
@@ -183,22 +208,44 @@ function default used by the golden tests.)
 
 Beyond the lowest strike vertex the surface extrapolates local variance
 linearly with slope \texttt{left\_extrap\_a} times the first interior cell's
-slope --- $a=0$, the hot-path default, is a flat clamp; a free $a$ is fitted
-only when a var-swap quote identifies the deep-put tail (Note~08). The right
-wing is flat-clamped.
+slope. Three regimes: $a=0$, the hot-path default, is a flat clamp;
+\texttt{convexWing=true} sets $a$ to the \emph{fixed} multiple
+\texttt{leftWingSlopeMult} ($1.5$) even without a variance-swap quote; and $a$
+becomes a \emph{free} calibration variable, bounded $[0,20]$, exactly when a
+var-swap quote is present (Note~08). The right wing is flat-clamped.
 
-\begin{remark}[Lee's bound needs no penalty here]
+\begin{caution}[title={Caution: the extrapolation is outside the positivity guarantee}]
+\Cref{prop:nodal} stops at the triangulation hull. Outside it the basis
+carries signed weights and the linear continuation is unconstrained in both
+directions: with $a>0$ and a first cell whose variance \emph{decreases}
+toward $x_{\min}$, the extrapolated variance can go \emph{negative} before
+$x=0$ (pricing floors it, so the priced curve kinks rather than blows up);
+symmetrically, a rising continuation exceeds the nodal cap freely --- the cap
+is deliberately not applied in the extrapolation region
+(\nolinkurl{models/localvol/affine.py}). Every guarantee in this note that
+leans on $\nu\le\nu_{\mathrm{hi}}$ or $\nu>0$ is therefore scoped to the hull
+(or to the flat-wing $a=0$ path, where the clamp inherits the boundary
+vertex's box); an extrapolation-domain positivity constraint is an open
+follow-up.
+\end{caution}
+
+\begin{remark}[Lee's bound, on the hull]
 \label{rem:lee}
-Bounded positive local variance with flat (or controlled-linear) wings bounds
-the total implied variance uniformly in strike --- by comparison with the
-constant-variance diffusion, $w(k,T)\le\nu_{\mathrm{hi}}\,T$ for all $k$ ---
-so the implied wing slope $\dd w/\dd|k|$ decays to zero, strictly inside Lee's
-cap of $2$ (Note~09). Unlike the parametric slices, no wing penalty is needed;
-the slopes are still \emph{measured and reported} by the shared slice
-diagnostics (\nolinkurl{models/diagnostics.py}), not assumed.
+Bounded positive local variance bounds the total implied variance uniformly
+in strike --- by comparison with the constant-variance diffusion,
+$w(k,T)\le\nu_{\mathrm{hi}}\,T$ --- so the implied wing slope
+$\dd w/\dd|k|$ decays to zero, strictly inside Lee's cap of $2$ (Note~09).
+Scope this like everything above: the comparison holds where
+$\nu\le\nu_{\mathrm{hi}}$ holds, i.e.\ on the hull and on the flat-clamped
+wings; a steep free-$a$ put continuation escapes the cap and with it this
+bound. Unlike the parametric slices no wing penalty is carried, and the
+affine surface currently exposes no per-fit Lee-slope fields --- wing
+behaviour is a stated extrapolation contract plus the grid diagnostics of
+\cref{sec:diagnostics}, not a reported slope.
 \end{remark}
 
-\subsection{Grid design}
+\subsection{Grid design, and the short-dated stack}
+\label{sec:griddesign}
 
 The strike vertices are delta-spaced (at the deltas
 $\{0.01,0.02,0.05,0.10,0.25,0.40,0.50\}$ and their call mirrors, sized by the
@@ -210,6 +257,43 @@ carry the term structure. The grid is deliberately modest --- a dozen strike
 vertices, ten in time --- because each vertex is a free parameter and PDE cost
 scales with the grid; the roughness regularizer (\cref{sec:objective}) supplies
 the smoothness a coarse grid would otherwise lack.
+
+The short end has since accreted a full rescue \emph{stack} (the 2026-07-11
+daily-ladder pass, which post-dates and extends the original case file):
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Adaptive variance box.} The cap is
+$\nu_{\mathrm{hi}}=\min(\max(0.36,(\texttt{lvVolCapMult}\cdot
+\sigma_{\max})^2),16)$ as above; the \emph{floor} is now adaptive
+symmetrically, $\nu_{\mathrm{lo}}=\min\big(\text{request floor},\,
+(0.5\,\min_i\sigma_{\mathrm{ATM},i})^2\big)$ --- a low-vol short-dated smile
+needs local vol \emph{below} its minimum implied (implied vol is a path
+average), and the fixed $5\%$ floor was measured riding the box on SPY 2-DTE
+upside quotes. Keyed on ATM implieds deliberately, so a noisy deep-wing quote
+cannot drag the floor down where the box does real stabilization work.
+\item \textbf{PDE strike refinement.} $\Delta x$ refines to
+$0.15\times$ the shortest expiry's ATM $\sigma\sqrt\tau$ (was $0.3\times$),
+snapped so $x=1$ stays a node, capped at $800$ nodes (was $400$): on 2-DTE
+dailies the \emph{quote spacing} is finer than the lattice, and the drawn
+smile wiggled at quote frequency until the step out-resolved it.
+\item \textbf{PDE time refinement.} Any short maturity interval that would
+receive fewer than $8$ implicit steps at the $\Delta\tau=0.01$ ceiling is
+marched with $32$ steps instead (a 2-day interval otherwise gets \emph{one}).
+\item \textbf{Even-gap coverage.} For expiries up to ten days the per-expiry
+count floor is upgraded to an \emph{even-gap} rule --- keep splitting the
+widest boundary-augmented gap until none exceeds
+$\text{range}/(m_{\min}-1)$ --- because the count floor alone is side-blind:
+a downside-heavy axis met it with a single upside vertex and the daily front
+drew a V through its call quotes.
+\item \textbf{Chained front tie.} When the first quoted expiry is below
+$0.08$ years, the front tie chains over \emph{every} vertex row before it
+(quotes pin only the variance integral to $T_1$, so each sub-front row is
+individually unidentified) at an effective weight of at least $1$ (up from
+$10^{-2}$) --- measured $5$--$30$ vol-point ringing between sub-front rows
+collapses, and operator refinement becomes monotone.
+\end{enumerate}
+Each rescue is gated on the regime that needs it; normal surfaces take none
+of these branches (locked byte-identical where a lock exists, e.g.\ the
+coverage floor and $\Delta x$ gates).
 
 %======================================================================
 \section{The discrete pricing map}
@@ -267,9 +351,23 @@ satisfies
 $\min\big(\min_iU^n_i,\,c_{\mathrm{bdry}}\big)\le U^{n+1}_i\le
 \max\big(\max_iU^n_i,\,c_{\mathrm{bdry}}\big)$: the implicit march is
 unconditionally $\ell^\infty$-stable, with no CFL restriction, and cannot
-create new extrema --- in particular it cannot manufacture the oscillations
-that read as negative densities.
+create new extrema.
 \end{corollary}
+
+\begin{remark}[What the $M$-matrix argument does and does not prove]
+\label{rem:mmscope}
+\Cref{prop:mmatrix,cor:dmp} give inverse positivity, order preservation and a
+maximum principle for the call \emph{values}. They do \emph{not} by
+themselves imply nonnegative second differences: a bounded, monotone call
+vector can still be locally concave, so ``the scheme cannot manufacture
+negative densities'' would need a separate convexity-preservation proof for
+the actual stencil and boundary elimination (a discrete Fokker--Planck
+argument), which this note does not carry. The honest statement is the one
+production implements: the scheme is monotone and stable, and butterfly and
+calendar cleanliness are \emph{measured} on the output grid, per fit
+(\cref{sec:diagnostics}); the arbitrage-cleanliness tests in the suite are
+regression checks on selected surfaces, not a general proof.
+\end{remark}
 
 \begin{proof}
 Monotonicity is $B^{-1}\ge0$ applied to $U^n-V^n\ge0$. For the bounds, let
@@ -324,54 +422,98 @@ stays fully implicit, trading one order of time accuracy for
 \subsection{Observation operator and no-arbitrage diagnostics}
 \label{sec:diagnostics}
 
-The observation operator reads the normalized call at each quote's $(T,x)$ off
-the marched solution by interpolation. Because the discrete surface is
-arbitrage-clean only up to scheme noise, the model \emph{measures} the
-residual: a butterfly tolerance on $\partial_{xx}c$ and a calendar tolerance on
-$\partial_Tc$ (both $10^{-8}$), surfaced as diagnostics and gating rather than
-assumed. A separate, finer log-strike Crank--Nicolson/Rannacher validator
-(\texttt{models/localvol/pde.py}; atlas) exists purely to check the production
-march against an independent discretization.
+The observation operator reads the normalized call at each quote's $(\tau,x)$
+off the marched solution by interpolation. Cleanliness of the output is
+\emph{measured}, with the production tolerances stated exactly: the per-expiry
+minimum second difference (butterfly proxy) must be $\ge-10^{-6}$, adjacent
+maturities may not decrease by more than $10^{-9}$ (calendar), and prices must
+sit in $[-10^{-9},\,1+10^{-9}]$ (bounds) --- all three surfaced as diagnostics
+and an \texttt{arbitrageFree} flag. Two further layers: the fit quality is
+additionally repriced on a \emph{converged} operator ($\dd\tau/4$, $\dd x/2$;
+\texttt{rmsConvergedBp}) because in-operator residuals are blind to
+time-discretization error the optimizer compensates; and a separate, finer
+log-strike Crank--Nicolson/Rannacher validator
+(\texttt{models/localvol/pde.py}; atlas) checks the production march against
+an independent discretization.
 
 %======================================================================
 \section{Variance swaps}
 \label{sec:varswap}
 
 A variance-swap quote is the fair strike of realized variance --- for a
-diffusion, the expected integrated local variance to $T$. Two pricers:
+diffusion, determined by the expected integrated local variance to expiry. Two
+distinct objects share the section: the \emph{total} variance
+$I(\tau)=\E\!\int_0^\tau\nu(s,X_s)\dd s$, which is what the residual block
+prices, and the quoted \emph{annualized fair strike} $I(\tau)/\tau$. Two
+pricers:
 \begin{itemize}[leftmargin=1.4em]
 \item \textbf{Static replication} (default): the log-contract weights
 \begin{equation}
-I(T)=2\!\int_0^1\frac{P(T,x)}{x^2}\,\dd x+2\!\int_1^{\infty}\frac{C(T,x)}{x^2}\,\dd x,
+I(\tau)=2\!\int_0^1\frac{P(\tau,x)}{x^2}\,\dd x+2\!\int_1^{\infty}\frac{C(\tau,x)}{x^2}\,\dd x,
 \label{eq:logcontract}
 \end{equation}
-integrated by trapezoid over the \emph{PDE strike grid} itself (from the lowest
-quoted strike to $x_{\max}$) --- no separate replication grid.
+integrated by trapezoid over the \emph{PDE strike grid} itself --- no separate
+replication grid --- with the put leg starting at the \emph{fixed} normalized
+strike $x=0.01$ (\texttt{varswap\_k\_lo}; the $x^{-2}$ weight diverges at
+zero), not at the lowest quoted strike.
 \item \textbf{Source PDE} (opt-in, \texttt{varSwapMethod=source\_pde}): solve
 one \emph{backward} PDE
-$\partial_tg+\tfrac12\nu x^2\partial_{xx}g+\nu=0$, $g(T,\cdot)=0$, and read
-$I(T)=g(0,1)$ --- the Feynman--Kac representation of
-$\E\!\int_0^T\nu(t,X_t)\dd t$. It reuses the same tridiagonal machinery
-marched backward, carries \emph{analytic} sensitivities
+$\partial_tg+\tfrac12\nu x^2\partial_{xx}g+\nu=0$, $g(\tau,\cdot)=0$, and read
+$I(\tau)=g(0,1)$ --- the Feynman--Kac representation of
+$\E\!\int_0^\tau\nu(t,X_t)\dd t$. It reuses the same tridiagonal machinery
+marched backward and carries \emph{analytic} sensitivities
 $\partial I/\partial\theta$ (and $\partial I/\partial a$ for the free left
-slope) through the same multi-RHS trick, and has no $x_{\max}$-truncation
-tail. Note~08 develops both in full.
+slope) through the same multi-RHS trick. Its selling point is stated
+carefully: $g(0,1)$ is determined by the diffusion \emph{around} $x=1$, so it
+is materially less sensitive to the far strike boundary than the
+$x^{-2}$-weighted replication tail --- but it still runs on the finite
+$[0,x_{\max}]$ domain with approximate boundary conditions, so ``no
+truncation tail'' would be too absolute. Note~08 develops both in full.
 \end{itemize}
 
 %======================================================================
-\section{The calibration objective}
+\section{What the data identifies, and the objective}
 \label{sec:objective}
 
-The fit minimizes a stacked, bound-constrained least-squares residual over
-$\theta$:
+\subsection{What the data identifies}
+\label{sec:identify}
+
+Before writing the objective, be honest about the inverse problem. A typical
+fit has $m=n_t\times n_x\approx100$--$200$ nodal parameters (plus the free
+left slope $a$ when a var-swap is quoted) against a few dozen to a couple of
+hundred vanilla quotes concentrated near the money of a handful of expiries
+--- and even where counts balance, vanillas constrain local variance only
+through smoothing integrals along diffusion paths. Sparse vanillas therefore
+do \emph{not} uniquely identify the grid: whole regions (deep wings, the
+sub-front rows, late times beyond the last expiry) are weakly determined,
+and what the calibration returns is one \emph{regularized representative} of
+an equivalence class. Each regularizer picks a direction of that choice: the
+roughness block selects smoothness toward $\theta_{\text{ref}}$, the box
+bounds clip the unidentified extremes, the (chained) front tie pins the
+sub-front rows to the first identified row, the prior baskets pull toward
+yesterday where quotes are silent, and the seed decides which basin a
+non-convex solve lands in. Low \emph{quote} error consequently does not mean
+the latent surface was recovered --- the synthetic example of
+\cref{sec:examples} now measures both numbers separately.
+
+\subsection{The objective}
+
+With unweighted residual blocks $r_\bullet$ (each defined below \emph{without}
+its weight), the fit minimizes a stacked, bound-constrained least-squares
+residual over the decision vector --- $\theta$ alone on the hot path, or
+$(\theta,a)$ with $a\in[0,20]$ when the left slope is fitted (its column
+enters the Jacobian through the extrapolation basis):
 \begin{equation}
-\min_{\theta\in[\nu_{\mathrm{lo}},\nu_{\mathrm{hi}}]^m}\ \tfrac12\Big(
+\min_{\substack{\theta\in[\nu_{\mathrm{lo}},\nu_{\mathrm{hi}}]^m\\ (a\in[0,20])}}
+\ \tfrac12\Big(
 \|r_{\text{opt}}\|^2+\|r_{\text{vs}}\|^2+\|r_{\text{bsk}}\|^2
 +\lambda\|L(\theta-\theta_{\text{ref}})\|^2
 +w_{\text{cvx}}\|r_{\text{cvx}}\|^2+w_{\text{ft}}\|r_{\text{ft}}\|^2\Big),
 \label{eq:lv_objective}
 \end{equation}
-with blocks:
+i.e.\ each weight appears \emph{once}: production stacks the rows
+$\sqrt{w_\bullet}\,r_\bullet$, whose squared norm reproduces
+\eqref{eq:lv_objective} exactly. The blocks:
 \begin{itemize}[leftmargin=1.4em]
 \item \textbf{Option residuals} $r_{\text{opt},q}=(P_q(\theta)-y_q)/\eta_q$ in
 vega-normalized forward-call units, with
@@ -379,24 +521,28 @@ $\eta_q=0.01\max(\text{vega},10^{-3})/\sqrt{\omega_q}$; or the
 bid--ask/haircut band hinge with a small mid anchor of weight $0.05$
 (\texttt{midAnchorWeight}) when band edges are present (Note~07).
 \item \textbf{Var-swap residuals} $r_{\text{vs}}=(I(\theta)-z)/\zeta$ in total
-variance (Note~08).
+variance (Note~08). One scalar per quoted expiry: it constrains the
+\emph{global tail integral} \eqref{eq:logcontract}, biasing the deep-put mass
+in aggregate --- it does not uniquely identify the deep-put tail's shape.
 \item \textbf{Operator baskets} $r_{\text{bsk}}$: the prior-persistence
 operators (Note~13) enter as \emph{signed baskets} of option prices --- one
 residual per ATM/RR/BF operator, preserving the risk-reversal and butterfly
 coupling rather than scattering it into synthetic quotes.
-\item \textbf{Roughness} $\sqrt\lambda\,L(\theta-\theta_{\text{ref}})$: $L$ is
-the \emph{spacing-aware} second difference (cell-width-normalized divided
-differences, reducing to $(1,-2,1)$ on a uniform grid, exact curvature on a
-non-uniform one), with time-vs-strike balance \texttt{gridRegRho}. This is the
-smoothness that lets a coarse grid generalize.
-\item \textbf{Convex wing} (opt-in): a one-sided hinge
-$\sqrt{w_{\text{cvx}}}\,\relu(-D^2\sigma)$ on the nodal local \emph{vols},
-confined to vertices at or below the $5\Delta$ put \emph{and strictly below the
-deepest observed quote} --- the extrapolation tail only
-(\cref{sec:cases}).
-\item \textbf{Front tie} (on by default): a light penalty
-$\sqrt{w_{\text{ft}}}(\theta_{0,:}-\theta_{1,:})$ tying the unconstrained $t=0$
-row to the first data-identified expiry row.
+\item \textbf{Roughness} $L(\theta-\theta_{\text{ref}})$ at weight $\lambda$:
+$L$ is the \emph{spacing-aware} second difference (cell-width-normalized
+divided differences, reducing to $(1,-2,1)$ on a uniform grid, exact
+curvature on a non-uniform one), with time-vs-strike balance
+\texttt{gridRegRho}. This is the smoothness that lets a coarse grid
+generalize.
+\item \textbf{Convex wing} (opt-in) at weight $w_{\text{cvx}}$: a one-sided
+hinge $\relu(-D^2\sigma)$ on the nodal local \emph{vols}, confined to
+vertices at or below the $5\Delta$ put \emph{and strictly below the deepest
+observed quote} --- the extrapolation tail only (\cref{sec:cases}).
+\item \textbf{Front tie} (on by default) at weight $w_{\text{ft}}$: the
+one-sided differences $\theta_{i,:}-\theta_{i+1,:}$ tying the unidentified
+sub-front rows to the first data-identified expiry row --- the single $t=0$
+row normally, the full chain at effective weight $\ge1$ on short fronts
+(\cref{sec:griddesign}).
 \end{itemize}
 
 %======================================================================
@@ -449,7 +595,9 @@ $n$. Then
 =\sum_{n}\lambda^{n}{}\T\,\Delta T\,A[\phi_\ell]\,U^{n},
 \label{eq:adjgrad}
 \end{equation}
-at cost $O(N_TN_x)$ \emph{independent of the parameter count $m$}.
+at cost one backward PDE solve, $O(N_TN_x)$, plus at least $O(m)$ output
+accumulation over \eqref{eq:adjgrad} --- the PDE cost independent of the
+parameter count $m$.
 \end{proposition}
 
 \begin{proof}
@@ -463,27 +611,21 @@ block-bidiagonal system is upper block-bidiagonal, i.e.\ a backward march with
 the \emph{transposed} tridiagonal factors.
 \end{proof}
 
-Production uses \emph{both} routes, each where it is optimal. The
-Gauss--Newton solver needs Jacobian \emph{columns}, so the tangent
-\eqref{eq:tangent} feeds the multi-RHS march; but the solver is matrix-free
---- the \texttt{LinearizedJacobian} operator exposes exactly two products,
-the tangent $Jv$ and the adjoint $J\T w$, and the preconditioned LSMR
-inner solver touches nothing else. The adjoint product identity
-$\inner{Jv,w}=\inner{v,J\T w}$ and the gradient itself are test-locked
+What production actually runs is narrower than the theory above, and the
+distinction matters. Production marches \emph{all} forward sensitivities
+\eqref{eq:tangent}, materializes the dense option Jacobian from them, and
+evaluates both products as matrix products: \texttt{apply\_jacobian} is $Jv$,
+and the transpose product is literally $J\T w$ on the assembled matrix (plus
+a sparse regularization block) --- \emph{not} the backward recursion
+\eqref{eq:adjoint}. The matrix-free GN
+solver's win is therefore purely in the \emph{linear algebra}: it avoids
+forming $J\T J$ and the dense per-iteration SVD, but its data Jacobian is
+still assembled from forward sensitivities at $O(N_TN_x\,m)$ per evaluation.
+The true PDE adjoint of \cref{prop:adjoint} --- which would make gradient
+cost independent of $m$ --- is derived here as future theory and is
+\emph{not currently implemented}. What is test-locked is the implemented
+pair: the product identity $\inner{Jv,w}=\inner{v,J\T w}$ and the gradient
 against finite differences.
-
-\begin{caution}
-The one production crash in this machinery was an interface bug, not a math
-bug: \texttt{LinearizedJacobian} deliberately has no \texttt{.T} attribute (it
-is an operator, not a matrix), and the early-stop handler, reached only on the
-rare GN$\to$TRF fallback path that then stalls, called \texttt{jac.T @ r} to
-compute the final gradient --- an \texttt{AttributeError} in the field (the R1
-backtest finding). The fix dispatches to
-\texttt{apply\_jacobian\_transpose}, and the exact fallback-then-stall path is
-now test-locked. Lesson: an object that \emph{pretends} to be a matrix must
-either implement the whole contract or make each unsupported member fail at
-construction, not mid-fit.
-\end{caution}
 
 %======================================================================
 \section{Solvers and the speed story}
@@ -508,41 +650,52 @@ $\sim1.1$--$1.2\times$ and were shelved.
 
 \begin{perfbox}
 The cold fit is now $\sim3$--$6\times$ faster than the banded baseline,
-recalibrations near-instant. The levers, in order of impact:
+recalibrations near-instant. The levers, each with its honest scope:
 \begin{enumerate}[leftmargin=1.5em]
 \item \textbf{Stall-based early-stop.} Track the option-block misfit and stop
 at the best iterate once it stalls. Fewer evaluations scale march, assembly
 \emph{and} optimizer together: measured $1.45\times$ (SPY, 200$\to$109 evals)
-to $3.3\times$ (NVDA, 200$\to$41), at $+0.10$--$0.25$ vol bp.
+to $3.3\times$ (NVDA, 200$\to$41) --- at a \emph{deliberately accepted}
+$+0.10$--$0.25$ vol bp drift from the full-cap fit. Window $0$ is
+byte-identical.
 \item \textbf{Compiled vectorized-Thomas march.} A \texttt{@njit} no-pivot
 Thomas with the sensitivity columns as the contiguous SIMD inner loop and the
 source fused into the forward sweep: $6.1$--$6.9\times$ the LAPACK banded
-march, exact to $\sim10^{-15}$. The first Numba attempt (column-outer scalar
-Thomas) won only $1.2\times$ --- the lever was the \emph{loop order}, not the
-compiler.
-\item \textbf{Matrix-free Gauss--Newton} (default \texttt{lvSolver=gn}).
-LM-damped projected GN with Jacobi column equilibration and matrix-free LSMR
-on $Jv$/$J\T w$ --- no dense SVD. First judged non-viable; \emph{promoted to
-default} once the march became cheap enough that the SVD share dominated:
-$1.3$--$1.65\times$ over TRF, byte-close surfaces (golden-locked), automatic
-TRF fallback on breakdown.
-\item \textbf{Warm seeds.} Previous-surface seed on recalibration
-($\sim38\times$) and a parametric-Dupire cold seed ($1.3$--$1.8\times$), both
-with $\theta_{\text{ref}}$ held fixed so the regularized optimum is unchanged
-(byte-identity test-locked).
+march \emph{march-only}, exact to $\sim10^{-15}$. The first Numba attempt
+(column-outer scalar Thomas) won only $1.2\times$ --- the lever was the
+\emph{loop order}, not the compiler.
+\item \textbf{Matrix-free Gauss--Newton} (default \texttt{lvSolver=gn}),
+scoped precisely: it engages only for the smooth \emph{mid} fit with the
+Numba kernel active and no free-$a$ var-swap path; band/haircut objectives,
+var-swap fits and the no-Numba path all run TRF. Where it engages:
+$1.3$--$1.65\times$ over TRF with an automatic TRF fallback on breakdown ---
+and the public schema states the accepted trade openly: GN can converge to a
+slightly \emph{different} real-data optimum, up to $\sim0.25$ vol bp (often
+better). The locking tests compare GN and TRF surfaces with tolerances; they
+do not prove an identical optimum.
+\item \textbf{Warm seeds.} Previous-surface seed on recalibration ---
+$\sim38\times$ \emph{on a small synthetic ALPHA test}, qualitatively large on
+real chains --- and a parametric-Dupire cold seed ($1.3$--$1.8\times$).
+$\theta_{\text{ref}}$ is held fixed so the regularized \emph{objective} is
+unchanged; a non-convex bound-constrained solve from a different start is
+still not guaranteed the same solution, and the lock is the objective
+identity plus the observed agreement, not a uniqueness theorem.
 \end{enumerate}
 The order-of-magnitude wins are spent; the remaining levers are incremental.
 \end{perfbox}
 
-\begin{caution}
-Removing the dense SVD made fits \emph{slower} at $\le440$ vertices, because
-there the bottleneck was the march, not the SVD --- the SVD wall is a
-$\gtrsim1000$-vertex (future non-tensor ``bowtie'' grid) phenomenon. The clean
-synthetic benchmark (zero residual, interior optimum) hid this: GN converged
-in 8 evaluations there but blew past the cap on stiff real data. Judge
-speed-ups on real chains; distrust a synthetic-only win. The same benchmark
-discipline later caught the convex-wing regression (\cref{sec:cases}) that a
-synthetic test could never see.
+\begin{caution}[title={Caution (historical, pre-Numba): where GN lost}]
+This paragraph records the \emph{first} GN verdict, before the compiled
+march existed, because its lesson generalizes even though its conclusion was
+superseded by the default-GN promotion above. At that time, removing the
+dense SVD made fits \emph{slower} at $\le440$ vertices, because the
+bottleneck was the march, not the SVD; the clean synthetic benchmark (zero
+residual, interior optimum) hid this --- GN converged in 8 evaluations there
+but blew past the cap on stiff real data. Once the Numba march collapsed the
+per-evaluation cost, the SVD share dominated and the same GN won. The durable
+lessons: judge speed-ups on real chains, distrust a synthetic-only win ---
+the same benchmark discipline later caught the convex-wing regression
+(\cref{sec:cases}) that a synthetic test could never see.
 \end{caution}
 
 %======================================================================
@@ -572,13 +725,18 @@ clipped to the global range, so the weekly's narrow smile landed
 (\texttt{gridXMinPerExpiry}$=8$): split the widest in-range gaps until every
 expiry has $\ge m_{\min}$ vertices inside \emph{its own} traded range ---
 densifying only under-covered short fronts. (ii)~A short-expiry-aware PDE
-step: refine the shared $\Delta x$ to $0.3\times$ the smallest ATM
-$\sigma\sqrt\tau$, snapped so $x=1$ stays a node, clamped to $[1/400,0.01]$.
+step: refine the shared $\Delta x$ to a fraction of the smallest ATM
+$\sigma\sqrt\tau$, snapped so $x=1$ stays a node ($0.3\times$, capped at
+$400$ nodes, at the time of this case; since tightened to $0.15\times/800$ by
+the daily-ladder pass of \cref{sec:griddesign}).
 
 \textbf{Verdict.} $108\to\sim28$ vol bp from the coverage floor alone (the
 short-end noise floor), $23.5$ with the refined step --- now \emph{better}
 than the parametric fit --- while every long expiry and every normal surface
-is byte-identical (both gates test-locked).
+is byte-identical (both gates test-locked). This case is the historical seed
+of the short-end design, not its current entirety: the July-2026 daily-ladder
+stack of \cref{sec:griddesign} (adaptive floor, time refinement, even-gap
+coverage, chained tie) extends it.
 \end{example}
 
 \begin{figure}[H]
@@ -622,14 +780,27 @@ de-Am input, the MCS output, and here the LV extrapolation tail.
 \section{Worked examples}
 \label{sec:examples}
 
-\subsection{Synthetic round trip}
+All numbers here carry provenance: regenerated by
+\nolinkurl{figures/gen_lv.py} at commit \texttt{\lvgencommit}\ (\lvgendate),
+with configuration, runtimes and library versions stored in
+\nolinkurl{figures/lv_numbers.json}.
+
+\subsection{Synthetic quote recovery --- and what it does not show}
 
 A known skewed local-variance surface is priced through the forward PDE,
-quotes are generated at four expiries, and the surface is recovered from a
-\emph{flat} seed by the production calibrator. \Cref{fig:lv} shows the
-recovered surface and the implied-vol fit: truth is recovered to a maximum of
-\lvrtmaxerr\ vol bps in \lvrtnevals\ evaluations (\lvrtwall\,s wall,
-\lvrtvtx\ vertices), the skew faithfully reconstructed.
+quotes are generated at four expiries, and a fit is run from a \emph{flat}
+seed --- through the \emph{low-level} calibrator (TRF, banded march, custom
+dense grids): an algorithm check, not the product path or its timing.
+\Cref{fig:lv} shows the result, and per \cref{sec:identify} we report two
+different numbers. The \emph{quotes} reprice to a maximum of \lvrtmaxerr\ vol
+bp in \lvrtnevals\ evaluations (\lvrtwall\,s wall, \lvrtvtx\ vertices), and
+the broad skew is reconstructed. Separately, the \emph{local-vol surface
+itself} agrees with the truth to \lvrtsurfrms\ vol points RMS
+(\lvrtsurfmax\ max) on a dense grid over the quote-covered region ---
+gratifyingly small here because 44 clean quotes constrain 28 vertices of a
+smooth truth, but it is the measured surface error, not an inference from the
+quote error, and it degrades off the covered region and on sparse real
+chains.
 
 \begin{figure}[H]
 \centering
@@ -641,32 +812,41 @@ recovered surface and the implied-vol fit: truth is recovered to a maximum of
 \includegraphics[width=\textwidth]{fig_lv_fit.pdf}\\[1pt]
 {\footnotesize (b) IV fit, truth vs recovered}
 \end{minipage}
-\caption{Synthetic round trip through the real calibrator: the skewed surface
-is recovered to \lvrtmaxerr\ vol bps from a flat seed.}
+\caption{Synthetic recovery through the low-level calibrator: quotes reprice
+to \lvrtmaxerr\ vol bp; the surface itself agrees to \lvrtsurfmax\ vol points
+(max) on the quote-covered region --- two separately measured numbers.}
 \label{fig:lv}
 \end{figure}
 
 \subsection{The Bloomberg benchmark}
 
-On the static Bloomberg fixture the production fit reaches \lvspyrms\ vol bps
-surface RMS on SPY and \lvnvdarms\ on NVDA (\cref{tab:bench},
-\cref{fig:rms}), with no node at a bound on the easy expiries. The harder NVDA
-short expiries carry the larger residual --- the regime the case file's
-coverage floor addresses.
+On the static Bloomberg fixture the \emph{product-path} fit
+(\texttt{calibrate\_affine\_surface}, shipped request defaults) reads, in
+\emph{two} metrics per name (\cref{tab:bench}, \cref{fig:rms}): the
+in-operator surface RMS --- \lvspyrms\ vol bp on SPY, \lvnvdarms\ on NVDA ---
+and the \emph{converged-operator} reprice ($\dd\tau/4$, $\dd x/2$):
+\lvspyconv\ and \lvnvdaconv. The gap is the point: in-operator residuals are
+blind to time-discretization error the optimizer compensates, so the
+converged number is the honest fit quality, and closing that gap (per-expiry
+$\dd\tau$ refinement on fronts like NVDA's) is the open short-end follow-up.
+The harder NVDA short expiries carry the larger residual in both metrics ---
+the regime the short-dated stack of \cref{sec:griddesign} addresses.
 
 \begin{table}[H]
 \centering
-\caption{Production local-vol fit on the Bloomberg fixture (fresh run).}
+\caption{Product-path local-vol fit on the Bloomberg fixture (fresh run,
+commit \texttt{\lvgencommit}). ``Worst expiry'' is in-operator.}
 \label{tab:bench}
 \lvbenchtable
 \end{table}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.8\textwidth]{fig_lv_rms.pdf}
-\caption{Per-expiry weighted RMS for SPY and NVDA on the Bloomberg fixture.
-The short end is where the residual lives --- and what the coverage floor and
-adaptive PDE step protect.}
+\includegraphics[width=0.95\textwidth]{fig_lv_rms.pdf}
+\caption{Per-expiry RMS for SPY and NVDA on the Bloomberg fixture ---
+in-operator bars beside the converged-operator reprice, per name (expiry
+year in each panel's axis label). The short end is where the residual lives
+in both metrics, and the converged bars are the honest ones.}
 \label{fig:rms}
 \end{figure}
 
@@ -676,89 +856,137 @@ adaptive PDE step protect.}
 
 The $P_1$-positivity guarantee and forward-calibration philosophy are
 Andreasen--Huge; the contributions here are depth and discipline. The
-\emph{vectorized-Thomas Numba march} (loop order as the lever, $6.5\times$);
-the \emph{stall early-stop} that scales the whole fit; the \emph{matrix-free
-GN} first rejected, then correctly promoted when the march made the SVD
-dominant --- with the tangent/adjoint pair of \cref{sec:sens} as its only
-interface to the PDE; the \emph{source-PDE var-swap} with analytic
-sensitivities; and the \emph{measure-first} short-dated diagnosis that
-convicted the strike grid on counts rather than hunches. Each was validated
-against a real benchmark that twice caught regressions a synthetic test would
-have missed. Limitations: a pure diffusion cannot make a true short-dated
-event spike (Note~11's variance clock absorbs scheduled events instead); the
-tensor grid wastes vertices in the corners (the future non-tensor bowtie grid
-is where the GN no-SVD advantage will finally dominate); and the fit, though
-much faster, remains the heaviest computation in the app.
+\emph{vectorized-Thomas Numba march} (loop order as the lever, $6.5\times$
+march-only); the \emph{stall early-stop} that scales the whole fit; the
+\emph{matrix-free GN} first rejected, then correctly promoted when the march
+made the SVD dominant --- consuming the forward-assembled Jacobian through
+the two matrix products of \cref{sec:sens}; the \emph{source-PDE var-swap}
+with analytic sensitivities; and the \emph{measure-first} short-dated
+diagnosis that convicted the strike grid on counts rather than hunches. Each
+was validated against a real benchmark that twice caught regressions a
+synthetic test would have missed.
+
+Two clarifications of scope. First, this note's object is the \emph{direct
+affine fit} --- the surface calibrated to quotes. The application also
+carries a separate \texttt{/localvol} path that \emph{extracts} a
+local-variance grid from the displayed parametric slices via the Dupire
+formula of \cref{app:ref}; it is not merely a validator --- the exact
+sticky-local-vol scenario transport currently prices off that extracted
+grid --- but it is a different object with different error characteristics.
+Second, limitations: a pure diffusion cannot make a true short-dated event
+spike (Note~11's variance clock absorbs scheduled events instead); the
+tensor grid wastes vertices in the corners (the future non-tensor bowtie
+grid is where the GN no-SVD advantage will finally dominate); the true PDE
+adjoint remains unimplemented (\cref{sec:sens}); the extrapolation region
+sits outside the positivity guarantee (\cref{sec:p1}); the converged-reprice
+gap on short fronts is open (\cref{sec:examples}); and the fit, though much
+faster, remains the heaviest computation in the app.
 
 %======================================================================
 \section{Traceability}
 \label{sec:traceability}
 
+Read the anchors for what they lock. The ``arbitrage-clean'' tests are
+\emph{regression checks on selected surfaces}, not proofs of
+\cref{rem:mmscope}'s missing convexity theorem; the ``adjoint'' tests lock
+the \emph{implemented} matrix products of \cref{sec:sens}, not the unbuilt
+backward-PDE recursion; the GN--TRF test compares surfaces \emph{within
+tolerance} (the schema's stated $\sim0.25$ vol bp trade), not to identity;
+the warm-start test locks the unchanged \emph{objective} plus observed
+agreement; and the $108\to23.5$ / $25.7\to2.6$ case-file improvements are
+prose evidence from the incident logs --- the cited tests lock the
+\emph{gates} (confinement, short-front-only densification), not those exact
+numbers.
+
 \begingroup
 \small
-\setlength{\tabcolsep}{3pt}
-\begin{longtable}{@{}p{0.28\textwidth}p{0.14\textwidth}p{0.27\textwidth}p{0.27\textwidth}@{}}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{longtable}{@{}p{0.36\textwidth}p{0.10\textwidth}p{0.50\textwidth}@{}}
 \caption{Claims in this note and the code/tests that lock them.}\\
-\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\toprule Claim & Object & Code anchor \newline \emph{Test anchors}\\ \midrule
 \endfirsthead
-\toprule Claim & Object & Code anchor & Test anchor\\ \midrule
+\toprule Claim & Object & Code anchor \newline \emph{Test anchors}\\ \midrule
 \endhead
-$P_1$ basis: partition of unity; nodal bounds bound the surface &
+$P_1$ basis: partition of unity; nodal bounds bound the surface (hull) &
 \cref{prop:nodal} &
-\nolinkurl{models/localvol/affine.py} &
-\nolinkurl{test_localvol_affine.py::test_basis_partition_of_unity_and_nodal_interpolation}, \nolinkurl{::test_nodal_bounds_imply_surface_bounds}\\
-Calibrated surface is arbitrage-clean; density has no interior zeros &
-\cref{prop:mmatrix,cor:dmp} &
-\nolinkurl{models/localvol/affine.py} &
-\nolinkurl{test_localvol_affine.py::test_calibrated_surface_is_arbitrage_free}, \nolinkurl{test_api_affine.py::test_affine_density_is_clean_no_interior_zeros}\\
+\nolinkurl{models/localvol/affine.py}\newline
+\nolinkurl{test_localvol_affine.py::test_basis_partition_of_unity_and_nodal_interpolation}\newline
+\nolinkurl{::test_nodal_bounds_imply_surface_bounds}\\
+\addlinespace
+Selected calibrated surfaces measure arbitrage-clean (regression, not proof) &
+\cref{rem:mmscope} &
+\nolinkurl{models/localvol/affine.py}\newline
+\nolinkurl{test_localvol_affine.py::test_calibrated_surface_is_arbitrage_free}\newline
+\nolinkurl{test_api_affine.py::test_affine_density_is_clean_no_interior_zeros}\\
+\addlinespace
 Scheme converges (flat + skew round trips) &
 \cref{sec:pricing} &
-\nolinkurl{models/localvol/pde.py} &
-\nolinkurl{test_localvol.py::test_spatial_convergence}, \nolinkurl{::test_skew_dupire_round_trip}\\
+\nolinkurl{models/localvol/pde.py}\newline
+\nolinkurl{test_localvol.py::test_spatial_convergence}\newline
+\nolinkurl{::test_skew_dupire_round_trip}\\
+\addlinespace
 Tangent sensitivities exact vs FD &
 \cref{prop:tangent} &
-\nolinkurl{models/localvol/affine.py} &
+\nolinkurl{models/localvol/affine.py}\newline
 \nolinkurl{test_localvol_affine.py::test_forward_sensitivities_match_finite_differences}\\
-Adjoint product and gradient correct &
-\cref{prop:adjoint} &
-\nolinkurl{models/localvol/affine_gn.py} &
-\nolinkurl{test_affine_gn.py::test_jacobian_transpose_inner_product_identity}, \nolinkurl{::test_gradient_alpha_test}\\
-GN reaches the TRF optimum; fallback-then-stall safe (R1) &
-\cref{sec:sens,sec:solvers} &
-\nolinkurl{models/localvol/affine_gn.py} &
-\nolinkurl{test_affine_gn.py::test_gn_matches_trf_on_golden}, \nolinkurl{::test_gn_trf_fallback_then_stall_returns_surface}\\
+\addlinespace
+Implemented $Jv$/$J\T w$ products and gradient correct (matrix form, not the
+PDE adjoint) &
+\cref{sec:sens} &
+\nolinkurl{models/localvol/affine_gn.py}\newline
+\nolinkurl{test_affine_gn.py::test_jacobian_transpose_inner_product_identity}\newline
+\nolinkurl{::test_gradient_alpha_test}\\
+\addlinespace
+GN matches TRF within tolerance; fallback-then-stall safe (R1) &
+\cref{sec:solvers} &
+\nolinkurl{models/localvol/affine_gn.py}\newline
+\nolinkurl{test_affine_gn.py::test_gn_matches_trf_on_golden}\newline
+\nolinkurl{::test_gn_trf_fallback_then_stall_returns_surface}\\
+\addlinespace
 Numba march $=$ banded march &
 \cref{lst:thomas} &
-\nolinkurl{models/localvol/affine_march.py} &
-\nolinkurl{test_affine_march.py::test_numba_march_matches_banded_prices_and_sens}, \nolinkurl{::test_numba_calibration_matches_banded_surface}\\
+\nolinkurl{models/localvol/affine_march.py}\newline
+\nolinkurl{test_affine_march.py::test_numba_march_matches_banded_prices_and_sens}\newline
+\nolinkurl{::test_numba_calibration_matches_banded_surface}\\
+\addlinespace
 Convex wing confined to the extrapolation tail &
 \cref{sec:cases} &
-\nolinkurl{api/affine_fit.py} (\nolinkurl{_resolve_grid}) &
+\nolinkurl{api/affine_fit.py}\newline
 \nolinkurl{test_affine_grid_design.py::test_convex_wing_confined_to_quoted_extrapolation}\\
+\addlinespace
 Coverage floor / PDE step touch only short fronts &
 \cref{sec:cases} &
-\nolinkurl{api/affine_fit.py} &
-\nolinkurl{test_affine_grid_design.py::test_coverage_floor_densifies_only_the_short_front}, \nolinkurl{::test_pde_dx_refines_only_short_surfaces}\\
-Warm start leaves the optimum unchanged &
+\nolinkurl{api/affine_fit.py}\newline
+\nolinkurl{test_affine_grid_design.py::test_coverage_floor_densifies_only_the_short_front}\newline
+\nolinkurl{::test_pde_dx_refines_only_short_surfaces}\\
+\addlinespace
+Warm start: objective unchanged, evals cut &
 \cref{sec:solvers} &
-\nolinkurl{api/affine_fit.py} &
+\nolinkurl{api/affine_fit.py}\newline
 \nolinkurl{test_affine_warm_start.py::test_recalibration_warm_starts_and_cuts_evals}\\
+\addlinespace
 Source-PDE var swap + free left slope &
 \cref{sec:varswap} &
-\nolinkurl{models/localvol/varswap_pde.py} &
-\nolinkurl{test_varswap_source.py}, \nolinkurl{test_affine_grid_design.py::test_free_a_reduces_varswap_error}\\
+\nolinkurl{models/localvol/varswap_pde.py}\newline
+\nolinkurl{test_varswap_source.py}\newline
+\nolinkurl{test_affine_grid_design.py::test_free_a_reduces_varswap_error}\\
+\addlinespace
 Diagnostics are a pure side-channel &
 \cref{sec:cases} &
-\nolinkurl{api/affine_diag.py} &
+\nolinkurl{api/affine_diag.py}\newline
 \nolinkurl{test_affine_diag.py::test_record_shape_and_purity}\\
+\addlinespace
 Dupire extraction returns NaN on arbitrage &
 \cref{app:ref} &
-\nolinkurl{models/localvol/dupire.py} &
+\nolinkurl{models/localvol/dupire.py}\newline
 \nolinkurl{test_localvol.py::test_dupire_arbitrage_returns_nan}\\
+\addlinespace
 Prior operators enter as signed baskets &
 \cref{sec:objective} &
-\nolinkurl{api/affine_fit.py}, \nolinkurl{affine_calib.py} &
-\nolinkurl{test_affine_basket.py::test_basket_pulls_surface_toward_target}, \nolinkurl{::test_empty_baskets_byte_identical}\\
+\nolinkurl{api/affine_fit.py}, \nolinkurl{affine_calib.py}\newline
+\nolinkurl{test_affine_basket.py::test_basket_pulls_surface_toward_target}\newline
+\nolinkurl{::test_empty_baskets_byte_identical}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -791,14 +1019,20 @@ Prior operators enter as signed baskets &
 \texttt{midAnchorWeight} & $0.05$ & Mid anchor inside the band objective.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden (affine PDE / grid / solver)}}\\ \midrule
-\texttt{varLo} / \texttt{varHi} & $0.0025$ / $0.36$ & Request-level nodal variance box (vol $5\%$/$60\%$) before the adaptive cap.\\
+\texttt{varLo} / \texttt{varHi} & $0.0025$ / $0.36$ & Request-level nodal variance box (vol $5\%$/$60\%$) before the adaptive cap \emph{and floor}.\\
+\texttt{\_LV\_VOL\_FLOOR\_FRAC} & $0.5$ & Adaptive floor: $\nu_{\mathrm{lo}}=\min(\text{request},\,(0.5\min\sigma_{\mathrm{ATM}})^2)$ (\cref{sec:griddesign}).\\
 \texttt{\_X\_DX} / \texttt{\_X\_MAX\_MIN} & $0.01$ / $2.5$ & PDE strike step and minimum $x_{\max}$.\\
 \texttt{\_DT\_MAX} & $0.01$ & Implicit-Euler maturity step ($0.03$ under Rannacher).\\
 \texttt{rannacher\_steps} & $2$ & Implicit start-up steps before CN (opt-in scheme).\\
-\texttt{\_PDE\_DX\_SHORT\_FRAC} / \texttt{\_PDE\_N\_MAX} & $0.3$ / $400$ & Short-dated step: $0.3\,\sigma\sqrt\tau$, clamped $[1/400,0.01]$.\\
+\texttt{\_PDE\_DX\_SHORT\_FRAC} / \texttt{\_PDE\_N\_MAX} & $0.15$ / $800$ & Short-dated step: $0.15\,\sigma\sqrt\tau$, capped at $800$ nodes (was $0.3/400$ before the daily-ladder pass).\\
+\texttt{\_PDE\_NT\_FIRST\_GATE} / \texttt{\_PDE\_NT\_SHORT} & $8$ / $32$ & Short-interval time refinement: $32$ steps whenever the flat ceiling would give $<8$.\\
+\texttt{\_COVERAGE\_GAP\_MAX\_T} & $10/365$ & Expiry age below which the even-gap coverage rule applies (\cref{sec:griddesign}).\\
+\texttt{FRONT\_TIE\_SHORT\_T} / \texttt{FRONT\_TIE\_CHAIN\_WEIGHT} & $0.08$ / $1.0$ & Chained front tie: threshold and minimum effective weight.\\
+\texttt{varswap\_k\_lo} & $0.01$ & Fixed lower strike of the static replication's put leg.\\
 \texttt{\_DELTA\_SET} & 7 deltas & Put deltas $\{1,2,5,10,25,40,50\}\%$ (and call mirrors) spacing the strike axis.\\
 \texttt{\_CONVEX\_WING\_DELTA} & $0.05$ & Wing boundary for the convex hinge ($5\Delta$ put).\\
 \texttt{\_VOL\_TOL} / \texttt{\_VEGA\_FLOOR} & $0.01$ / $10^{-3}$ & Vega normalization of option residuals.\\
+diag tolerances & $-10^{-6}$ / $10^{-9}$ & Butterfly proxy floor; calendar/bounds tolerances (\cref{sec:diagnostics}).\\
 \texttt{x\_scale} / tolerances & \texttt{jac} / $10^{-8}$ & Optimizer scaling; \texttt{max\_nfev} $=200$.\\
 \texttt{\_STALL\_WINDOW/\_RTOL} & $12$ / $5\!\times\!10^{-3}$ & TRF early-stop ($18$ / $3\!\times\!10^{-3}$ under GN).\\
 \texttt{VAR\_FLOOR} & $10^{-6}$ & Dupire-extraction local-variance floor.\\
@@ -829,11 +1063,12 @@ optimum; automatic TRF fallback; sparse CSR regularization block.
 \item \textbf{Warm starts.} Previous-surface recalibration $\sim38\times$;
 parametric-Dupire cold seed $1.3$--$1.8\times$; $\theta_{\text{ref}}$ fixed so
 the optimum is unchanged.
-\item \textbf{Solver scaling and tolerances.} \texttt{x\_scale='jac'} plus
-termination tolerances relaxed $10^{-12}\to10^{-8}$ on the TRF path: the fit
-is governed by quote noise, vega floors and bands, so the tighter tolerance
-only bought iterations --- evaluation count cut, surface identical (the atlas
-records the resulting defaults).
+\item \textbf{Solver scaling and tolerances.} \samepage
+\texttt{x\_scale='jac'} plus termination tolerances relaxed
+$10^{-12}\to10^{-8}$ on the TRF path: the fit is governed by quote noise,
+vega floors and bands, so the tighter tolerance only bought iterations ---
+evaluation count cut, surface identical (the atlas records the resulting
+defaults).
 \item \textbf{Shelved (documented in the perf roadmap):} coarse-grid calibration
 (biases $\theta$ by up to $\sim26$ vol points --- non-viable), first Numba
 attempt (wrong loop order, $1.2\times$), Rannacher/CN ($\sim1.1\times$ and a
@@ -841,6 +1076,19 @@ measured coarse-$x$ arbitrage --- \cref{rem:cn}), GN for the non-smooth band
 objective, thread/process parallelism (GIL-negative). Five dead-ends
 confirming the cost is distributed, not localized.
 \end{enumerate}
+
+\begin{caution}[title={Caution (engineering): the field crash that pretended to be a matrix}]
+The one production crash in this machinery was an interface bug, not a math
+bug: \texttt{LinearizedJacobian} deliberately has no \texttt{.T} attribute
+(it is an operator, not a matrix), and the early-stop handler, reached only
+on the rare GN$\to$TRF fallback path that then stalls, called
+\texttt{jac.T @ r} to compute the final gradient --- an
+\texttt{AttributeError} in the field (the R1 backtest finding). The fix
+dispatches to \texttt{apply\_jacobian\_transpose}, and the exact
+fallback-then-stall path is now test-locked. Lesson: an object that
+\emph{pretends} to be a matrix must either implement the whole contract or
+make each unsupported member fail at construction, not mid-fit.
+\end{caution}
 
 %======================================================================
 \section{Reference implementation: Dupire extraction}

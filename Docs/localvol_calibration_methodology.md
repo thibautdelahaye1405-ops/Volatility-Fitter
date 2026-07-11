@@ -141,10 +141,30 @@ left-wing slope `a` is a free parameter when a var-swap quote is present (analyt
 - **PDE strike step** (`_pde_dx`, **fix #2**): the *fine* PDE lattice (§2) is a
   uniform `dx` shared by all expiries. The fixed `dx = 0.01` under-resolves a
   short-dated density, which concentrates near `x = 1` (a 6-DTE weekly lives in
-  `x ∈ [0.93, 1.06]` — only ~13 nodes). `_pde_dx` refines `dx` to `0.3 ×` the
+  `x ∈ [0.93, 1.06]` — only ~13 nodes). `_pde_dx` refines `dx` to a fraction of the
   smallest ATM `σ√τ` across the lit expiries, **snapped to `1/N`** so the var-swap
-  anchor `x = 1` stays node `N`, clamped to `[1/400, 0.01]`. A normal surface lands
-  back on `0.01` ⇒ byte-identical. Worth ~5–6 bp on a true weekly on top of fix #1.
+  anchor `x = 1` stays node `N`. Originally `0.3 ×` clamped to `[1/400, 0.01]`;
+  **since 2026-07-11 (daily-ladder pass): `0.15 ×`, capped at 800 nodes** — on 2-DTE
+  dailies the quote spacing is finer than the lattice and the drawn smile wiggled at
+  quote frequency until the step out-resolved it. A normal surface lands back on
+  `0.01` ⇒ byte-identical.
+- **2026-07-11 daily-ladder amendments** (the current short-end stack, Note 04 §3):
+  - *Adaptive variance floor*: `ν_lo = min(request floor, (0.5·min ATM σ)²)`
+    (`_LV_VOL_FLOOR_FRAC = 0.5`) — a low-vol short smile needs local vol below its
+    minimum implied; the fixed 5% floor was measured riding the box on SPY 2-DTE
+    upside quotes. ATM-keyed so noisy deep-wing quotes cannot drag the floor.
+  - *PDE time refinement*: any short maturity interval that would receive fewer than
+    8 implicit steps at the `dt = 0.01` ceiling is marched with 32 steps
+    (`_PDE_NT_FIRST_GATE = 8`, `_PDE_NT_SHORT = 32`) — a 2-day interval otherwise
+    gets one.
+  - *Even-gap coverage* (expiries ≤ 10 days, `_COVERAGE_GAP_MAX_T`): the count floor
+    is side-blind, so for short expiries the widest boundary-augmented gap is split
+    until none exceeds `range/(gridXMinPerExpiry − 1)` — the daily front stopped
+    drawing a V through its call quotes.
+  - *Chained front tie* (fronts < 0.08y, `FRONT_TIE_SHORT_T`): the tie extends over
+    every sub-front vertex row at effective weight ≥ 1 (`FRONT_TIE_CHAIN_WEIGHT`,
+    up from the 1e-2 user default) — quotes pin only the variance integral to `T₁`,
+    and the untied rows rang 5–30 vol points against each other.
 - The grid build is one shared `_resolve_grid`, also surfaced read-only on
   `GET /fit/affine/{ticker}/grid-info` so the Options panel shows the exact grid.
 
