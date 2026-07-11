@@ -448,12 +448,12 @@
     <div>
       <div class="figrow">
         <div class="figcard"><img src="{{FIG:fig_ov_densities}}" alt="Stacked densities all non-negative"></div>
-        <div class="figcard"><img src="{{FIG:fig_ov_termvar}}" alt="ATM total variance non-decreasing"></div>
+        <div class="figcard"><img src="{{FIG:fig_ov_stackedvar}}" alt="Stacked total variance non-crossing"></div>
       </div>
-      <p class="shotcap"><span class="k">Regenerated on every build.</span> All implied densities
-        non-negative — no butterfly arbitrage, by construction. The ATM term-structure panel is a sanity check
-        (slices fitted independently there); full-strike calendar control is its own machinery (Note 10) —
-        produced end-to-end by the production calibrator.</p>
+      <p class="shotcap"><span class="k">Regenerated on every build.</span> Left — all implied densities
+        non-negative: no butterfly arbitrage, by construction. Right — stacked <em>total variance</em>, non-crossing
+        at every strike: the actual calendar-arbitrage check, in the same coordinates as the app's Stacked IV tab
+        (measured on independently fitted slices; enforcement is Note 10) — produced end-to-end by the production calibrator.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>

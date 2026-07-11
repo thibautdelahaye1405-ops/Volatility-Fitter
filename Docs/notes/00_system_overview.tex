@@ -125,14 +125,21 @@ existing fit is kept, marked stale, and waits for an explicit Calibrate.
 \end{enumerate}
 \end{invariant}
 
-\Cref{fig:guarantees} shows the per-slice structural guarantee on a four-expiry
-synthetic surface fitted by the production LQD calibrator: every implied density
-is non-negative --- no butterfly arbitrage, by construction. Panel~(c) is an
-\emph{ATM term-structure sanity check}, not a calendar-arbitrage demonstration:
-the four slices here are fitted independently, and calendar freedom requires the
-total-variance ordering $w(k,T_2)\ge w(k,T_1)$ at \emph{every} relevant strike,
-not only ATM. That cross-expiry coupling is what the calendar machinery of
-Note~10 enforces (as a data-confined soft floor) and measures on full grids.
+\Cref{fig:guarantees} shows the two static-arbitrage checks, each in its
+correct coordinates, on a four-expiry synthetic surface fitted by the
+production LQD calibrator. Panel~(b) is the \emph{butterfly} check: every
+implied density is non-negative, by construction. Panel~(c) is the
+\emph{calendar} check: stacked \emph{total variance} $w(k,T)$, where for
+forward-normalized (mean-one) slices absence of calendar arbitrage at fixed
+log-moneyness is exactly the non-crossing ordering $w(k,T_{i+1})\ge w(k,T_i)$
+at \emph{every} $k$ --- the same view the app's Stacked IV tab draws. Two
+tempting substitutes are not checks at all: stacked \emph{vol} smiles carry
+no calendar content ($\sigma$ mixes $w$ with the clock, so clean surfaces
+cross freely in vol), and ATM-only monotonicity is necessary but far from
+sufficient. The four slices here are fitted independently, so the displayed
+dominance is \emph{measured} --- the generator asserts a positive minimum
+inter-expiry gap on the displayed grid before writing the figure --- not
+enforced; the enforcement coupling is Note~10's calendar machinery.
 
 \begin{figure}[H]
 \centering
@@ -146,13 +153,15 @@ Note~10 enforces (as a data-confined soft floor) and measures on full grids.
 \end{minipage}
 \\[6pt]
 \begin{minipage}{0.62\textwidth}\centering
-\includegraphics[width=\textwidth]{fig_ov_termvar.pdf}\\[2pt]
-{\footnotesize (c) ATM total-variance term-structure sanity check}
+\includegraphics[width=\textwidth]{fig_ov_stackedvar.pdf}\\[2pt]
+{\footnotesize (c) Stacked total variance: non-crossing at every $k$}
 \end{minipage}
-\caption{The per-slice no-butterfly guarantee, produced end to end by the
-production LQD fitter on a synthetic calendar-monotone surface (panels a, b),
-plus an ATM term-structure sanity check on independently fitted slices
-(panel c). Full-strike calendar-arbitrage control is Note~10's subject.}
+\caption{The two static-arbitrage checks, produced end to end by the
+production LQD fitter on a synthetic calendar-monotone surface. Panels a, b:
+the fits and their non-negative densities (no butterfly arbitrage, by
+construction). Panel c: stacked total variance, non-crossing at every
+displayed $k$ (no calendar arbitrage there --- measured on independently
+fitted slices; enforcement is Note~10's coupling).}
 \label{fig:guarantees}
 \end{figure}
 
@@ -535,8 +544,9 @@ per-handle updates; caps do not police cross-gains & 15\\
 \section{How the notes are organized}
 \label{sec:org}
 
-The topic notes, 01--15, are standalone and follow a common skeleton, codified
-in \texttt{Docs/notes/STYLE\_GUIDE.md}: an opening that states the
+The topic notes, 01--15, are standalone and follow a common skeleton,
+codified in the series style guide
+(\texttt{Docs/notes/STYLE\_GUIDE.md}): an opening that states the
 \emph{production problem} and the \emph{invariants} being protected (the
 amber box near the top of every note), a theorem-shaped body whose central
 object gets the note's single boxed equation, a worked example or
