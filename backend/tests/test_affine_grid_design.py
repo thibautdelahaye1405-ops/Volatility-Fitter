@@ -393,6 +393,41 @@ def test_front_tie_chains_below_a_short_first_expiry():
     assert spread_normal > 1e-3
 
 
+def test_virtual_front_rows_math_and_dormant_gate():
+    """The hidden numerical front expiry (user-proposed regularizer, measured
+    net-negative and kept DORMANT): the builder maps the front row to
+    (t1/2, k/sqrt(2), w/2) — the self-similar midpoint, same implied vol at the
+    sqrt-time-compressed strike — and the shipped gate (0.0) never activates."""
+    from volfit.api.affine_fit import (
+        _LV_VIRTUAL_FRONT_MAX_T,
+        _virtual_front_rows,
+    )
+    import volfit.api.affine_fit as af
+
+    assert _LV_VIRTUAL_FRONT_MAX_T == 0.0  # dormant by default
+    k = np.linspace(-0.02, 0.014, 9)
+    w = (0.07**2) * (2.0 / 365.0) * np.ones(9)
+    rows = [("2026-07-13", 2.0 / 365.0, k, w, None, "BAND")]
+    assert _virtual_front_rows(rows) == []  # gate 0.0: never active
+
+    old = af._LV_VIRTUAL_FRONT_MAX_T
+    try:
+        af._LV_VIRTUAL_FRONT_MAX_T = 10.0 / 365.0
+        (iso, t_v, k_v, w_v, _, band) = af._virtual_front_rows(rows)[0]
+        assert iso.endswith("|hidden")
+        assert t_v == pytest.approx(1.0 / 365.0)
+        assert np.allclose(k_v, k / np.sqrt(2.0))
+        assert np.allclose(w_v, w / 2.0)
+        assert band == "BAND"  # parent band vols reused verbatim
+        # implied vol is preserved: sqrt((w/2)/(t/2)) == sqrt(w/t)
+        assert np.allclose(np.sqrt(w_v / t_v), np.sqrt(w / (2.0 / 365.0)))
+        # a normal front stays untouched even when the gate is open
+        long_rows = [("e", 0.25, k, (0.2**2) * 0.25 * np.ones(9), None, None)]
+        assert af._virtual_front_rows(long_rows) == []
+    finally:
+        af._LV_VIRTUAL_FRONT_MAX_T = old
+
+
 def _left_wing_vol_curvature(theta_row: np.ndarray) -> float:
     """Min second difference of the VOL row over the left-wing nodes (x < 0.85);
     negative => concave."""

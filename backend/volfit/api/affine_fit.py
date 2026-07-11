@@ -26,6 +26,7 @@ on an actual fit request, never on the smile hot path.
 from __future__ import annotations
 
 import threading
+from dataclasses import replace as dc_replace
 
 import numpy as np
 from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantile)
@@ -140,6 +141,27 @@ _LV_VAR_CEILING = 16.0
 #: local vol below the implieds it averages into). 0.5 keeps every surface with
 #: min implied >= 10% on the legacy 5% request floor (byte-identical).
 _LV_VOL_FLOOR_FRAC = 0.5
+
+#: Hidden numerical FRONT expiry (2026-07-11, daily-ladder pass — DORMANT,
+#: measured net-negative): when the first real expiry is at most this old, the
+#: LV objective gains a VIRTUAL expiry at t1/2 whose synthetic quotes carry
+#: HALF the front's total variance (see _virtual_front_rows for the strike
+#: mapping). A pure numerical auxiliary: no vertex rows, never in smiles /
+#: diagnostics / any reported RMS (all rows-based, like the prior-anchor
+#: synthetic quotes), prices off the same march.
+#: VERDICT on the real SPY/NVDA daily fixture (both strike mappings, weights
+#: 1x-8x): it smooths the nodal local-vol rows slightly but DEGRADES the fit —
+#: the mid-time smile it asserts is a model statement no data supports, and it
+#: competes with the real front quotes through the same theta rows. Fixed-
+#: strike halving: NVDA 2-DTE rms 18.5 -> 50-59 bp. Self-similar (k/sqrt(2)):
+#: NVDA 18.5 -> 32-42 bp, SPY converged rms 10.2 -> 15-18 bp. The useful part
+#: of the idea (removing unidentified sub-t1 freedom) is what the chained
+#: front tie already does without asserting an observable. Kept dormant
+#: (0.0 = never active) so the experiment is one constant away.
+_LV_VIRTUAL_FRONT_MAX_T = 0.0
+#: Tolerance multiplier for the virtual quotes (1.0 = per-quote parity with the
+#: parent front quotes in vol terms; larger = weaker regularizer).
+_LV_VIRTUAL_TOL_MULT = 1.0
 #: Upper bound on the free left-wing slope multiple ``a`` (× the first-cell slope).
 _LEFT_A_MAX = 20.0
 #: Stage 8 early-stop: terminate the cold fit once the best OPTION-BLOCK misfit has
@@ -699,6 +721,38 @@ def _option_quotes(rows, weight_scheme: str = "equal") -> list[OptionQuote]:
     return options
 
 
+def _virtual_front_rows(rows) -> list:
+    """The hidden half-variance sibling of the FRONT expiry, as a fit row.
+
+    See ``_LV_VIRTUAL_FRONT_MAX_T``. Returns ``[]`` unless the front is short.
+    The virtual row reuses the parent's edited strikes and band VOLS verbatim;
+    halving total variance at fixed strike is halving the time at fixed
+    implied vol, so the row is ``(t1/2, k, w/2, parent band)`` — the
+    flat-forward-variance midpoint of the front smile. Routed through
+    ``_option_quotes`` like any real row, so vega scaling, quote weighting and
+    the band objective match the parent quotes exactly.
+    """
+    if not rows:
+        return []
+    front = min(rows, key=lambda r: r[1])
+    iso, t1, k, w, prepared, band = front
+    if t1 > _LV_VIRTUAL_FRONT_MAX_T or np.asarray(k).size < 2:
+        return []
+    # SELF-SIMILAR midpoint, not fixed-strike: quotes sit at k/sqrt(2) with half
+    # the variance (same implied vol at the sqrt-time-compressed strike), so the
+    # virtual smile preserves the front's shape in standardized moneyness.
+    # Fixed-strike halving (IV(t1/2, k) = IV(t1, k)) FLATTENS the midpoint smile
+    # relative to any diffusion — measured: it wrecked the steep-skew NVDA
+    # 2-DTE (rms 18.5 -> 50-59 bp at every weight) while barely moving SPY.
+    scale = 1.0 / np.sqrt(2.0)
+    return [(
+        f"{iso}|hidden", 0.5 * t1,
+        scale * np.asarray(k, dtype=float),
+        0.5 * np.asarray(w, dtype=float),
+        prepared, band,
+    )]
+
+
 def _varswap_quotes(state: AppState, ticker: str, rows, weight_scheme: str) -> list[VarSwapQuote]:
     """Active var-swap quotes per expiry as affine VarSwapQuote targets.
 
@@ -1003,6 +1057,16 @@ def _fit(
     t_nodes, x_nodes, k_hi, convex_cols = _resolve_grid(rows, opts)
 
     options = _option_quotes(rows, state.fit_settings().weightScheme)
+    # Hidden numerical front (see _virtual_front_rows): half-variance sibling
+    # quotes of a SHORT front expiry at t1/2, built by the same quote builder so
+    # vega/weight/band handling matches the parent. Objective-only — rows stay
+    # real, so smiles / diagnostics / every reported RMS never see it.
+    virtual_rows = _virtual_front_rows(rows)
+    if virtual_rows:
+        v_opts = _option_quotes(virtual_rows, state.fit_settings().weightScheme)
+        if _LV_VIRTUAL_TOL_MULT != 1.0:
+            v_opts = [dc_replace(o, tol=o.tol * _LV_VIRTUAL_TOL_MULT) for o in v_opts]
+        options = options + v_opts
     # Prior persistence (mode-routed): strike-gap synthetic quotes OR signed-basket
     # operator targets that keep the RR/BF coupling; empty unless a prior is active.
     prior_opts, prior_baskets, prior_vs = _prior_lv_targets(state, ticker, rows)
@@ -1025,7 +1089,12 @@ def _fit(
     dt_max = _DT_MAX_RANNACHER if time_scheme == "rannacher" else _DT_MAX
     # Fix #2: refine the (shared, uniform) PDE strike step for short-dated surfaces,
     # whose density concentrates near x = 1; byte-identical for normal surfaces.
-    x_grid, t_grid = _pde_grids(expiries, k_hi, dt_max, _pde_dx(rows))
+    # The march grid must HIT the hidden front's t1/2 so its quotes can price
+    # (each sub-interval then clears the per-interval dt gate on its own).
+    march_expiries = expiries
+    if virtual_rows:
+        march_expiries = np.sort(np.append(expiries, [r[1] for r in virtual_rows]))
+    x_grid, t_grid = _pde_grids(march_expiries, k_hi, dt_max, _pde_dx(rows))
     # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) drives the
     # hot path when enabled + importable; it self-restricts to the implicit /
     # no-left-slope case inside solve_affine_dupire and falls back to banded.
