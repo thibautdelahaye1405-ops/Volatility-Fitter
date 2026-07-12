@@ -63,6 +63,25 @@ foreach ($port in 8000, 5173) {
         }
 }
 
+# A denied kill (the app was started by another user/elevation) must not fall
+# through to a doomed relaunch: the new backend can't bind, the readiness probe
+# then reaches the OLD server and the script reports a success that never
+# happened. Give the sockets a moment to release, then insist the ports freed.
+$deadline = (Get-Date).AddSeconds(3)
+foreach ($port in 8000, 5173) {
+    while ($true) {
+        $still = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique
+        if (-not $still) { break }
+        if ((Get-Date) -gt $deadline) {
+            throw ("Port $port is still owned by PID $($still -join ', ') after taskkill - " +
+                   "the kill was denied (app started from another user/elevation?). " +
+                   "Run restart.ps1 from a shell that owns the app, or stop it manually.")
+        }
+        Start-Sleep -Milliseconds 200
+    }
+}
+
 # Sweep strays stranded by EARLIER restarts (before the tree-kill above, the
 # fit pool survived every restart): this repo's venv pythons whose parent is
 # gone and that are not serving anything. Three guards keep it surgical —
@@ -163,3 +182,6 @@ if ($ready) {
     Get-Content $errLog -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
 }
 Write-Host "Restarted: backend -> http://localhost:8000, frontend -> http://localhost:5173"
+# Explicit exit code: taskkill's last native exit code would otherwise leak
+# through as the script's own (observed 128 on a healthy run).
+exit $(if ($ready) { 0 } else { 1 })
