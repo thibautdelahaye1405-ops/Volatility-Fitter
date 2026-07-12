@@ -47,15 +47,43 @@ if (Test-Path $localEnv) {
     . $localEnv
 }
 
-# --- 1. Kill anything on the dev ports -------------------------------------
+# --- 1. Kill anything on the dev ports (whole process TREE) ----------------
+# Stopping only the port owner ORPHANS its children: the backend's calibration
+# fit pool (VOLFIT_CALIB_WORKERS spawn workers) outlives the parent, and each
+# stranded worker pins ~1.4 GB of commit charge — enough restarts and the box
+# exhausts its commit limit (observed 2026-07-11: 16 unkillable strays,
+# 59/64 GB committed, MemoryErrors across the machine). taskkill /T fells the
+# whole tree; the cmd wrapper keeps a long-dead PID from printing an error.
 foreach ($port in 8000, 5173) {
     Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue |
         Select-Object -ExpandProperty OwningProcess -Unique |
         ForEach-Object {
-            Write-Host "Stopping process $_ on port $port"
-            Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue
+            Write-Host "Stopping process tree $_ on port $port"
+            cmd /c "taskkill /PID $_ /T /F >nul 2>&1"
         }
 }
+
+# Sweep strays stranded by EARLIER restarts (before the tree-kill above, the
+# fit pool survived every restart): this repo's venv pythons whose parent is
+# gone and that are not serving anything. Three guards keep it surgical —
+#   * ExecutablePath must equal THIS venv's python (unreadable/null => skipped:
+#     never kill a process that cannot be attributed);
+#   * processes listening on any port are spared (a backend whose launcher
+#     window was closed is orphaned but legitimately serving);
+#   * the parent must be dead (live pools hang off a live serve.py).
+$venvPy = Join-Path $repo ".venv\Scripts\python.exe"
+$listenPids = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object {
+        $_.ExecutablePath -eq $venvPy -and
+        $listenPids -notcontains [int]$_.ProcessId -and
+        -not (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue)
+    } |
+    ForEach-Object {
+        Write-Host "Sweeping orphaned venv python $($_.ProcessId)"
+        cmd /c "taskkill /PID $($_.ProcessId) /F >nul 2>&1"
+    }
 
 # --- 2. Start the backend (uvicorn on :8000) -------------------------------
 # All sources are registered regardless; these flags only FORCE the active one.
