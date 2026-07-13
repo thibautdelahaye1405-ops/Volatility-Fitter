@@ -4,10 +4,14 @@ Rev-6 replacement for the synthetic fig_deam_bias on the de-Am slide. Uses the
 production CRR machinery (volfit.core.american) on the true-weekly Massive
 capture (backend/tests/fixtures/lv_weekly_massive.json, SPY, as-of 2026-06-25):
 for every put of one expiry, invert the observed American mid two ways —
-naively through a EUROPEAN tree (what a fitter that ignores early exercise
-would see) and properly through the AMERICAN tree (the de-Americanized
-European-equivalent vol). The wedge that opens on in-the-money puts IS the
-early-exercise premium, on live market prices.
+naively through the analytic European Black formula (production's inversion,
+what a fitter that ignores early exercise would compute) and properly through
+the AMERICAN tree (the de-Americanized European-equivalent vol). The wedge on
+in-the-money puts is the model-implied IV effect of the early-exercise
+premium, on live market prices. Honesty note (Note 05): production fits the
+OTM side only, so these ITM puts are the discarded twins of fitted OTM calls —
+the chart is a stress exhibit, not the fitted population's exposure (that runs
+a median |effect| of a few bp, tens in the put wing).
 
 Carry note: this delayed-tier capture's parity-implied rate is unphysical
 (negative, clamped), so the carry is supplied: r = 4.3% money-market,
@@ -27,7 +31,6 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.optimize import brentq
 
 REPO = Path(r"C:\Users\thiba\vol-fitter")
 sys.path.insert(0, str(REPO / "Docs" / "notes" / "figures"))  # notes' style.py
@@ -36,7 +39,8 @@ sys.path.insert(0, str(REPO / "backend"))  # lv_benchmark fixture loader
 from style import PALETTE, setup  # noqa: E402
 
 from lv_benchmark import load_benchmark  # noqa: E402
-from volfit.core.american import binomial_price, deamericanize_batch  # noqa: E402
+from volfit.core.american import deamericanize_batch  # noqa: E402
+from volfit.core.black import implied_total_variance  # noqa: E402
 
 setup()
 TEAL, RUST, SLATE = PALETTE["teal"], PALETTE["rust"], PALETTE["muted"]
@@ -47,15 +51,15 @@ EXPIRY = date(2026, 12, 18)
 R, Q = 0.043, 0.012  # supplied carry (see module docstring)
 
 
-def naive_european_iv(mid: float, s: float, k: float, t: float) -> float:
-    """The biased vol: invert the AMERICAN market price through a EUROPEAN tree."""
-    try:
-        return brentq(
-            lambda v: binomial_price(False, s, k, t, v, R, Q, american=False) - mid,
-            1e-3, 3.0, xtol=1e-8,
-        )
-    except ValueError:
-        return np.nan
+def naive_black_iv(mids: np.ndarray, s: float, ks: np.ndarray, t: float) -> np.ndarray:
+    """The biased vols: invert AMERICAN put mids as if European through the
+    analytic Black formula (production's inversion + normalization)."""
+    f = s * float(np.exp((R - Q) * t))
+    d = float(np.exp(-R * t))
+    k = np.log(ks / f)
+    w = implied_total_variance(k, mids / (d * f) + 1.0 - np.exp(k))
+    with np.errstate(invalid="ignore"):
+        return np.sqrt(w / t)
 
 
 def main():
@@ -77,12 +81,15 @@ def main():
     ks, mids = ks[keep], mids[keep]
 
     deam = deamericanize_batch(np.zeros(ks.size, dtype=bool), mids, s, ks, t, R, Q)
-    naive = np.array([naive_european_iv(m, s, float(k), t) for k, m in zip(ks, mids)])
+    naive = naive_black_iv(mids, s, ks, t)
 
     ok = np.isfinite(deam) & np.isfinite(naive)
     ks, deam, naive = ks[ok], deam[ok], naive[ok]
     pct = 100.0 * ks / s
     bias_bp = 1e4 * (naive - deam)
+    itm_mask = pct > 100.0
+    med_itm = float(np.median(bias_bp[itm_mask]))
+    max_bias = float(bias_bp.max())
 
     fig, ax = plt.subplots(figsize=(7.4, 4.5))
     ax.fill_between(pct, 100 * deam, 100 * naive, where=pct >= 100.0,
@@ -95,8 +102,9 @@ def main():
     ax.annotate("ATM", xy=(100.0, 0.02), xycoords=("data", "axes fraction"),
                 xytext=(3, 0), textcoords="offset points", color=SLATE, fontsize=9)
     i = int(np.argmin(np.abs(pct - 124.0)))
-    ax.annotate("the wedge = early-exercise premium\n(median ITM +519 bp, max +817 bp)",
-                xy=(pct[i], 50 * (naive[i] + deam[i])), xytext=(-160, 46),
+    ax.annotate("the wedge = model-implied IV effect of the EEP\n"
+                "(median ITM +%.0f bp, max +%.0f bp)" % (med_itm, max_bias),
+                xy=(pct[i], 50 * (naive[i] + deam[i])), xytext=(-172, 46),
                 textcoords="offset points", color=PALETTE["ink"], fontsize=9,
                 arrowprops=dict(arrowstyle="-", color=SLATE, lw=0.9))
 

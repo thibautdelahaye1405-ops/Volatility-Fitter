@@ -11,11 +11,11 @@ European leg of the same tree, the classic control-variate adjustment
 (market - Am(sigma*) + BS(sigma*)) collapses to BS(sigma*) exactly — i.e.
 the implied sigma* IS the de-Americanized vol.
 
-Model: Cox-Ross-Rubinstein binomial tree with continuous dividend yield q.
-Discrete dividends are the dividends-model work package (data layer); until
-then a yield approximation is the documented compromise. The backward
-induction is vectorized over tree nodes; only the time loop is Python, so a
-500-step tree prices in ~1 ms.
+Model: Cox-Ross-Rubinstein binomial tree with either a continuous dividend
+yield q or a discrete escrowed CASH dividend schedule (``div_times`` /
+``div_amounts``, the `_escrow` lattice; volfit.data.dividends builds the
+forward-consistent schedule). The backward induction is vectorized over tree
+nodes; only the time loop is Python, so a 500-step tree prices in ~1 ms.
 
 Batch variants ([REQ 2026-06-12] realism block): the scalar Brent inversion
 costs ~1 ms of tree evals per iteration, fine for one option but seconds

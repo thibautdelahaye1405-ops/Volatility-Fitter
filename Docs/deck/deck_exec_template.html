@@ -403,8 +403,9 @@
     <div>
       <ul class="points" style="margin-top:4px">
         <li class="g"><strong>De-Americanization</strong> — US-listed quotes embed an early-exercise premium; each is inverted through
-          a binomial tree to its European-equivalent vol. On real SPY data (chart) the in-the-money put premium runs a
-          <strong>median +519 bp</strong> — poison for any fit that ignored it. Compiled kernel: <strong>~60×</strong> on wide chains.</li>
+          a binomial tree to its European-equivalent vol. On real SPY data (chart) the implied-vol effect on in-the-money puts runs a
+          <strong>median +519 bp</strong> — a stress exhibit on the side production discards; the fitted OTM population sees a median
+          ~4 bp, tens in the put wing. Compiled kernel: <strong>~60×</strong> on wide chains.</li>
         <li class="a"><strong>Forwards implied from the chain itself</strong> — put–call parity as a regression; the poorly-identified
           discount is clamped to a physical band. A production case file: a delayed feed's stale pairs tore the ATM smile — the
           clamp healed it, byte-identical on clean chains.</li>
@@ -416,8 +417,9 @@
     <div>
       <div class="figcard" style="width: 84%; margin: 0 auto;"><img src="{{FIG:fig_deam_bias_real}}" alt="Real SPY puts: American mids inverted as European vs de-Americanized"></div>
       <p class="shotcap"><span class="k">Real market data, not a toy.</span> One live SPY expiry (Massive capture, ~6 months): every
-        put mid inverted two ways — as if European (red) vs de-Americanized (teal). Out of the money they agree to a few bp;
-        in the money the wedge is the early-exercise premium — median <b>+519 bp</b>, up to <b>+817 bp</b>.</p>
+        put mid inverted two ways — as if European (red) vs de-Americanized (teal). Out of the money they agree to a few bp; in the
+        money the model-implied IV effect of the premium runs a median <b>+519 bp</b>, up to <b>+814 bp</b> — a stress exhibit on the
+        side production discards; the fitted OTM population sees a median ~4 bp, tens in the put wing.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>

@@ -63,12 +63,16 @@ Euler vs Crank–Nicolson taught (CN monotone only under a step bound, kink
 oscillations; implicit = M-matrix, monotone at any step, one order traded).
 Slide 15: escrowed-spot lattice and the content-digest cache explained; the
 reverted whole-curve repair's CAUSE stated (free global baseline re-tilt →
-sub-penny ATM price moves, large in vol where vega peaks); **synthetic de-Am
-bias chart replaced by a real-data figure** (`gen_deam_real_fig.py` →
-`fig_deam_bias_real.png`: live SPY Massive capture 2026-06-25, Dec-2026
-expiry, every put mid inverted as-European vs de-Americanized — median ITM
-wedge +519 bp, max +817 bp; carry supplied r=4.3%/q=1.2%, the capture's
-parity carry being the slide-16 delayed-feed pathology). Slide 17: time-value
+sub-penny ATM price moves — small in vol, peak ATM vega attenuates a fixed
+price move, but the dense tightly-quoted heavily-weighted core moved at all,
+a visible discontinuity); **synthetic de-Am bias chart replaced by a
+real-data figure** (`gen_deam_real_fig.py` → `fig_deam_bias_real.png`: live
+SPY Massive capture 2026-06-25, Dec-2026 expiry, every put mid inverted
+as-European (analytic Black) vs de-Americanized — median ITM wedge +519 bp,
+max +814 bp, labelled as a stress exhibit: production fits the OTM side, and
+the fitted population's median effect is ~4 bp, tens in the put wing; carry
+supplied r=4.3%/q=1.2%, the capture's parity carry being the slide-16
+delayed-feed pathology). Slide 17: time-value
 weights taught in the eqnote (1-D Voronoi cell defined; TV vs s_i/s̄ pulls;
 uniform-grid ⇒ correction 1). Slide 19: "the differences are the point"
 replaced by the explicit statement (wings are a stated per-model contract,

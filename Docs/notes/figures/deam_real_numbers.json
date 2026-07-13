@@ -1,11 +1,28 @@
 {
-  "median_itm_bias_bp": 519.0473568844538,
-  "max_bias_bp": 816.9469929723622,
-  "n_puts": 120,
+  "stress_all_puts": {
+    "n_puts": 120,
+    "n_itm": 54,
+    "median_itm_bias_bp": 519.1250892787937,
+    "max_bias_bp": 814.1465909463396,
+    "max_bias_strike": 1000.0
+  },
+  "production_selected": {
+    "n_selected": 109,
+    "median_bp": 1.4594177653898255,
+    "abs_median_bp": 4.178656388724722,
+    "max_bp": 59.791725174936914,
+    "put_median_bp": 9.985010784501203,
+    "put_max_bp": 59.791725174936914,
+    "call_median_bp": -2.0773656588297937,
+    "call_max_bp": 1.8756851233342475
+  },
   "spot": 733.93,
+  "forward": 744.9831505592324,
+  "discount": 0.9794792299444591,
   "t_years": 0.4821917808219178,
   "expiry": "2026-12-18",
   "as_of": "2026-06-25",
   "r": 0.043,
-  "q": 0.012
+  "q": 0.012,
+  "naive_leg": "analytic Black inversion (production normalization)"
 }

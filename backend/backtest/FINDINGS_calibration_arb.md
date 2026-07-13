@@ -163,8 +163,10 @@ Original plan:
   genuine (small) arbitrage in the *inputs* fed to **every** model.
 - **First attempt (reverted, `ec68c52`):** a GLOBAL convex projection of the whole
   call curve with a free affine part. Repairing a wing re-tilted the baseline and
-  moved the ATM call price a sub-penny — huge in ATM IV (vega) → the **ATM smile gap
-  seen live on SPY/NVDA**.
+  moved the ATM call price a sub-penny — small in IV terms (peak ATM vega attenuates
+  a fixed price move), but it moved the dense, tightly-quoted, heavily-weighted core
+  at all, opening a visible discontinuity → the **ATM smile gap seen live on
+  SPY/NVDA**.
 - **Redesign (shipped):** `volfit/calib/convex_deam.py` + `quotes.py`. The repair is
   confined to the WINGS and the ATM core (`|z| ≤ Z_CORE=1`) is held **byte-identical**:
   each wing is projected onto `{convex} ∩ {bid/ask band}` (Dykstra alternating

@@ -844,17 +844,19 @@
           depends on (chain, forward, discount, dividends, clock): re-tuning a fit reuses the conversion; trees re-run only on a
           data change.</li>
         <li class="r"><strong>Caution, learned in production:</strong> a whole-curve convexity repair gapped live SPY/NVDA smiles — its
-          free <em>global</em> baseline let a wing repair re-tilt the whole curve, moving ATM prices a sub-penny: negligible in price,
-          large in ATM vol, where vega peaks. Reverted; the shipped repair is <strong>wing-only, band-constrained</strong>, ATM core
-          exactly fixed.</li>
+          free <em>global</em> baseline let a wing repair re-tilt the whole curve, moving ATM prices a sub-penny. Peak ATM vega keeps
+          that small in vol terms, but the repair had moved the dense, tightly-quoted, heavily-weighted core at all — a visible
+          discontinuity. Reverted; the shipped repair is <strong>wing-only, band-constrained</strong>, ATM core exactly fixed.</li>
       </ul>
     </div>
     <div>
       <div class="figcard" style="width: 79%; margin: 0 auto;"><img src="{{FIG:fig_deam_bias_real}}" alt="Real SPY puts: American mids inverted as European vs de-Americanized"></div>
       <p class="shotcap"><span class="k">Real market data, not a toy.</span> One live SPY expiry (Massive capture, Jun 2026, ~6 months):
         every put mid inverted two ways — as if European (red) vs de-Americanized through the tree (teal). Out of the money the two
-        agree to a few bp; in the money the wedge is the early-exercise premium — median <b>+519 bp</b>, up to <b>+817 bp</b> — which
-        would poison any European fit fed the raw quotes.</p>
+        agree to a few bp; in the money the wedge is the model-implied IV effect of the early-exercise premium — median <b>+519 bp</b>,
+        up to <b>+814 bp</b>. Honestly labelled: production fits only the OTM side, so these ITM puts are the discarded twins of fitted
+        OTM calls; the population actually fitted sees a median ~4 bp, up to ~60 bp in the put wing — still material against
+        sub-bp fit budgets.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>

@@ -126,10 +126,12 @@ Code map:
 Important implementation details:
 
 - `backend/volfit/core/american.py` has `DEFAULT_BATCH_STEPS = 192` and
-  `BATCH_BISECTIONS = 45`.
-- `deamericanize_batch` solves, per quote, for the volatility that makes a CRR
-  American price match the observed American price, then returns the
-  corresponding European Black price.
+  `BATCH_BISECTIONS = 24` (45 when this note was written; Stage 1 shipped the
+  reduction — see the status block above).
+- `deamericanize_batch` solves, per quote, for the volatility sigma* that makes
+  a CRR American price match the observed American price, and returns sigma*
+  itself; quote prep (`quotes._early_exercise_premiums`) reprices the European
+  Black leg from it.
 - `quotes._early_exercise_premiums` applies that to bid, mid, and ask by
   subtracting the estimated early-exercise premium.
 - `prepare_quotes` runs de-Am after OTM-side selection but before the later

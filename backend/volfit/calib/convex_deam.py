@@ -10,8 +10,10 @@ to every model.
 
 A first fix projected the WHOLE curve onto the convex cone with a free affine part;
 minimising the global L2 residual to repair a wing also tilted the baseline and
-nudged the ATM call price — a sub-penny move, but huge in ATM IV (vega), the
-"ATM smile gap" seen live on SPY/NVDA. It was reverted.
+nudged the ATM call price. A sub-penny move is SMALL in IV terms at the money (peak
+vega attenuates a fixed price move) — but it moved the dense, tightly-quoted,
+heavily-weighted core at all, opening a visible discontinuity: the "ATM smile gap"
+seen live on SPY/NVDA. It was reverted.
 
 This redesign confines the repair to the wings and **never moves the ATM core**.
 Strikes within ``z_core`` ATM-standard-deviations of the forward are held EXACTLY
