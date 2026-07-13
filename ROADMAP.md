@@ -493,9 +493,17 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   intradayClock ON → sub-day t + sane LQD fit on the real 0DTE node).
 - **USER ACTION PENDING — the 0DTE probe capture.** First attempt
   (2026-07-11 evening) started correctly (creds + S3 fine, COPY began)
-  but the process died minutes in (tmp_*.parquet leftover; harmless —
-  resume treats 0-byte caches as absent). Relaunch in a window that
-  will NOT sleep, with output teed to a log:
+  but died of a DuckDB OOM ("Out of Memory Error: Allocation failure",
+  2 retries then "no usable quotes"): the default memory_limit is 80%
+  of TOTAL RAM (~12.5 GB) while the box had ~1.3 GB physically free, so
+  the multi-instant join+QUALIFY hit a raw allocation failure before
+  DuckDB would spill. **FIXED 2026-07-13 in quotes_store._connect**:
+  memory_limit capped at 4GB (override $env:VOLFIT_DUCKDB_MEM) +
+  explicit temp_directory spill under the cache dir (100GB cap; the
+  0-byte tmp parquet leftover stays harmless — resume treats it as
+  absent). Second probe relaunched 2026-07-13 ~17:04 (pre-fix code,
+  may OOM again; if so just relaunch — the resume picks up the fix).
+  Relaunch in a window that will NOT sleep, with output teed to a log:
   `cd backend; . ..\restart.local.ps1;`
   `..\.venv\Scripts\python -m backtest.capture_intraday --start
   2026-07-10 --end 2026-07-10 --tickers SPY --db

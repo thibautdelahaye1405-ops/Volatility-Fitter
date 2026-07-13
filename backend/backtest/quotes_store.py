@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import tempfile
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Callable, Iterable
@@ -339,6 +340,18 @@ class QuotesFlatFileStore:
         import duckdb
 
         con = duckdb.connect()
+        # OOM guard (2026-07-11 probe died: 'Out of Memory Error: Allocation
+        # failure'): DuckDB's default memory_limit is 80% of TOTAL RAM, far
+        # beyond what this box has physically free, so the multi-instant
+        # join + QUALIFY window hit a raw allocation failure before DuckDB
+        # ever considered spilling. Cap the budget at something the box can
+        # actually deliver and point operator spill at the (roomy) disk.
+        mem = os.environ.get("VOLFIT_DUCKDB_MEM", "4GB")
+        con.execute(f"SET memory_limit='{mem}';")
+        spill = os.path.join(self.cache_dir or tempfile.gettempdir(), "duckdb_spill")
+        os.makedirs(spill, exist_ok=True)
+        con.execute("SET temp_directory=?;", [spill])
+        con.execute("SET max_temp_directory_size='100GB';")
         con.execute("INSTALL httpfs; LOAD httpfs;")
         if not self._source_uri:
             # The day file is a multi-GB gz STREAM: the 30 s default HTTP
