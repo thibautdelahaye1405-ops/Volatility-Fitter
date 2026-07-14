@@ -491,30 +491,34 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   source restart.local.ps1 first), then the clock validation script
   (scratchpad\validate_0dte_clock.py pattern: StoredChains provider +
   intradayClock ON → sub-day t + sane LQD fit on the real 0DTE node).
-- **USER ACTION PENDING — the 0DTE probe capture.** First attempt
-  (2026-07-11 evening) started correctly (creds + S3 fine, COPY began)
-  but died of a DuckDB OOM ("Out of Memory Error: Allocation failure",
-  2 retries then "no usable quotes"): the default memory_limit is 80%
-  of TOTAL RAM (~12.5 GB) while the box had ~1.3 GB physically free, so
-  the multi-instant join+QUALIFY hit a raw allocation failure before
-  DuckDB would spill. **FIXED 2026-07-13 in quotes_store._connect**:
-  memory_limit capped at 4GB (override $env:VOLFIT_DUCKDB_MEM) +
-  explicit temp_directory spill under the cache dir (100GB cap; the
-  0-byte tmp parquet leftover stays harmless — resume treats it as
-  absent). Second probe relaunched 2026-07-13 ~17:04 (pre-fix code,
-  may OOM again; if so just relaunch — the resume picks up the fix).
-  Relaunch in a window that will NOT sleep, with output teed to a log:
-  `cd backend; . ..\restart.local.ps1;`
-  `..\.venv\Scripts\python -m backtest.capture_intraday --start
-  2026-07-10 --end 2026-07-10 --tickers SPY --db
-  backtest\results\intraday.sqlite *>&1 | Tee-Object -FilePath
-  backtest\results\capture_probe.log`
-  The scan is SILENT for hours (one line at completion); liveness = the
-  python process burning CPU + an established HTTPS connection to
-  files.massive.com. Then: `-m backtest.validate_intraday_clock --db
+- **USER ACTION PENDING — the 0DTE probe capture (relaunch #4, via the
+  STALL SUPERVISOR).** Three failed attempts, three distinct root causes,
+  each fixed:
+  #1 2026-07-11 = DuckDB OOM ("Allocation failure": default memory_limit
+  is 80% of TOTAL RAM, box had ~1.3 GB physically free, the end-of-scan
+  join+QUALIFY spike died before spilling) → FIXED `f12c43b`
+  (quotes_store: 4GB cap, $env:VOLFIT_DUCKDB_MEM overrides, +
+  temp_directory spill under _cache, 100GB cap).
+  #2 2026-07-13, 17 h = both attempts streamed ~6.5h/~10.5h then died
+  "Could not resolve hostname" (default HTTP retries fire ~100 ms apart,
+  all burned inside one transient DNS blip) → FIXED `511f805` (retries
+  spaced 10s/20s/40s/…, ~10 min of outage ridden out).
+  #3 2026-07-14 = HARD STALL: half-dead socket (ESTABLISHED, zero read
+  ops), CPU frozen >1 h, DuckDB's http_timeout never fired (it does not
+  cover a mid-body stall) — no in-process cure exists → FIXED by
+  `backtest\run_capture_intraday.ps1` (supervisor: watches the child
+  tree's CPU clock, kills+relaunches after 15 quiet min [-StallMinutes],
+  retries failed exits [-MaxRestarts 6], PYTHONUNBUFFERED so
+  results\capture_probe.run*.out.log streams live; capture resume skips
+  finished days so restarts only re-pay the day in flight).
+  Relaunch (user's window, won't-sleep; creds auto-sourced from
+  restart.local.ps1; NB -DbPath not -Db, which PS reserves):
+  `.\backend\backtest\run_capture_intraday.ps1 -Start 2026-07-10 -End
+  2026-07-10 -Tickers SPY -DbPath backtest\results\intraday.sqlite`
+  Then: `-m backtest.validate_intraday_clock --db
   backtest\results\intraday.sqlite --ticker SPY --ts
-  2026-07-10T16:30:00`. If clean, widen: `--start 2026-06-30 --end
-  2026-07-10 --tickers SPY,QQQ,IWM` (resumable across evenings).
+  2026-07-10T16:30:00`. If clean, widen: `-Start 2026-06-30 -End
+  2026-07-10 -Tickers SPY,QQQ,IWM` (resumable across evenings).
 - **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
   flat files, user's window) + captured-replay validation of the clock on
   real 0DTE chains; absolute-timestamp calendar constraints for adjacent
