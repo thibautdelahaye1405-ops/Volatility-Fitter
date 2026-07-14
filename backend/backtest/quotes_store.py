@@ -357,8 +357,15 @@ class QuotesFlatFileStore:
             # The day file is a multi-GB gz STREAM: the 30 s default HTTP
             # timeout aborts on any stall (seen live: 'Timeout was reached'
             # mid-scan on a loaded box). Allow long stalls + a few retries.
+            # Retries must also RIDE OUT a transient DNS/network outage —
+            # the 2026-07-13 probe streamed for hours, then died with
+            # 'Could not resolve hostname' because the default retry
+            # cadence (~100 ms apart) burns every attempt inside the same
+            # blip. Space them out: 10s, 20s, 40s, ... (~10 min total).
             con.execute("SET http_timeout=1800000;")  # 30 min, milliseconds
-            con.execute("SET http_retries=3;")
+            con.execute("SET http_retries=6;")
+            con.execute("SET http_retry_wait_ms=10000;")
+            con.execute("SET http_retry_backoff=2;")
             host, use_ssl = _split_endpoint(self.endpoint)
             con.execute("SET s3_region='us-east-1';")
             con.execute("SET s3_url_style='path';")
