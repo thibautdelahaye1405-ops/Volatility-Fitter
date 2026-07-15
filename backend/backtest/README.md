@@ -36,6 +36,10 @@ engine but changes none of it.
 | `run_compute.py` | compute-phase driver (parametric sweep + `--lv` surface). |
 | `analyze.py` | model Pareto vs SVI-JW, time attribution, break inventory → markdown. |
 | `ablation_arb.py` | R3 (convex de-Am) × R6 (put-wing penalty) ablation on SIV wing arb. |
+| `capture_intraday.py` | R2-item-10 0DTE capture, flat-file source: N instants/day from ONE `quotes_v1` scan (`chains_at`) — but one day file is ~111 GB, hours of fragile streaming. |
+| `capture_intraday_rest.py` | R2-item-10 0DTE capture, REST source (the light default): same fixture schema/ladder/instants, NBBO per (contract, instant) via `/v3/quotes` with a day-bounded `gte`; ~30 s/instant, per-instant checkpoint. |
+| `run_capture_intraday.ps1` | stall supervisor for the flat-file intraday scan (kills+relaunches a frozen stream). |
+| `validate_intraday_clock.py` | acceptance CLI: replay a captured VolStore snapshot, calibrate every expiry with `intradayClock` ON, require sub-day t + sane fits. |
 
 ## Run / resume (Windows, repo root)
 

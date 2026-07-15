@@ -35,6 +35,12 @@ def validate(db_path: str, ticker: str, ts: datetime) -> int:
         f"quotes={len(snap.quotes)} settlement={'yes' if snap.settlement else 'MISSING'}"
     )
     state = AppState(snap.timestamp.date(), provider=_StoredChains({ticker: snap}))
+    # Select the FULL captured ladder explicitly: the default selection rule
+    # seeds only strictly-future expiries (days > 0, expiry_select.py), which
+    # silently drops the same-day rung — the very 0DTE node under validation.
+    # (In the app the user reaches it via the "0dte" filter chip; replay must
+    # validate what was captured, not what the live seed would pick.)
+    state.set_expiries(ticker, sorted(snap.expiries()))
     state.set_options(state.options().model_copy(update={"intradayClock": True}))
     failures = 0
     for expiry in sorted(snap.expiries()):

@@ -519,14 +519,52 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   backtest\results\intraday.sqlite --ticker SPY --ts
   2026-07-10T16:30:00`. If clean, widen: `-Start 2026-06-30 -End
   2026-07-10 -Tickers SPY,QQQ,IWM` (resumable across evenings).
-- **NEXT (R2 item 10 remaining):** intraday capture campaign (SPY/QQQ/IWM
-  flat files, user's window) + captured-replay validation of the clock on
-  real 0DTE chains; absolute-timestamp calendar constraints for adjacent
-  dailies (same-date AM/PM ordering); temporal-filter tuning for intraday
-  jumps; fast degraded mode; stress-pack exit gates (no NaN on valid
-  quotes, deterministic replay, hard publish failure on unresolved
-  intrinsic/calendar inconsistency, sub-50ms warm slice latency). R2 item
-  11 (joint borrow/de-Am) independent; hosting container spike unblocked.
+- **R2 item 10 part 3 SHIPPED (2026-07-15) — LIGHT REST CAPTURE, first real
+  0DTE day CAPTURED + CLOCK VALIDATED.** The flat-file probe was diagnosed
+  terminal for this link: ONE day of `quotes_v1` is **111.41 GB** (HEAD'd
+  live), so the 6.5/10.5 h streams were dying near the END of an
+  unresumable transfer; run #4 (7/14 16:50) died seconds in (0-byte logs).
+  New `backtest/capture_intraday_rest.py`: same fixture schema / expiry
+  ladder / instants / VolStore persistence as `capture_intraday`, but NBBO
+  per (contract, instant) via REST `/v3/quotes` (`timestamp.lte` +
+  `order=desc&limit=1` = exactly the flat-file at-or-before reduction,
+  plus a day-bounded `timestamp.gte` so a contract not quoted TODAY is
+  absent rather than carrying yesterday's NBBO). Contract discovery via
+  `/v3/reference/options/contracts` windowed around the day close (dailies
+  ±10%, term anchors ±25%); per-instant `.part.json` checkpoint; sibling
+  note vs `rest_quotes.py` (the daily capture's REST source) in the
+  docstring. **SPY 2026-07-10 captured from the agent session in 6.3 min**
+  (13 instants × 2,270 contracts = 29.5k requests, ~29 s/instant, zero
+  429s) → fixture + `results/intraday.sqlite`. `validate_intraday_clock`:
+  **VALIDATION OK at 12:30 ET (0DTE t = 0.1458d = exactly 3.5 h to the
+  16:00 settle; legacy 0.0d unrepresentable) AND at 15:45 ET (t =
+  0.0104d, 15 min out, 7 surviving quotes, sane fit)**; all 8 nodes
+  maxIvErr 80–141 bp. TWO harness fixes en route: (a) the validate CLI now
+  `set_expiries` the FULL captured ladder — `default_selection` seeds only
+  strictly-future expiries (`days > 0`, expiry_select.py) and was silently
+  dropping the same-day rung, so `resolved_forward` hit a missing parity
+  entry ('NoneType' .forward); (b) README module map gained the intraday
+  rows. Tests: test_capture_intraday_rest.py (5, offline MockTransport —
+  schema parity, as-of semantics, zero-bid, checkpoint resume, 429 retry).
+  NOTE for the wider campaign: REST makes SPY/QQQ/IWM × a 2-week window
+  ~20 min/ticker-day-set, so the 111 GB flat-file route is now the
+  fallback, not the plan; `boto3` was installed for the size probe (also
+  enables a resumable ranged download if the firehose is ever truly
+  needed). Day-granular residue spotted for a later pass: the parity
+  discount rate-band clamp + American de-bias in data/forwards.py gate on
+  `(expiry - ref).days > 0`, so a same-day expiry skips both (its D=1.0005
+  passed through unclamped — harmless here, listed for the R2 audit).
+- **NEXT (R2 item 10 remaining):** widen the REST capture (SPY/QQQ/IWM,
+  ~2-week window — cheap now, resumable, agent-runnable) + validate per
+  day; absolute-timestamp calendar constraints for adjacent dailies
+  (same-date AM/PM ordering); temporal-filter tuning for intraday jumps;
+  fast degraded mode; stress-pack exit gates (no NaN on valid quotes,
+  deterministic replay, hard publish failure on unresolved
+  intrinsic/calendar inconsistency, sub-50ms warm slice latency). Product
+  follow-up: decide how 0DTE rungs enter the LIVE universe (the "0dte"
+  filter chip works today; the default seed excludes same-day by design).
+  R2 item 11 (joint borrow/de-Am) independent; hosting container spike
+  unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
