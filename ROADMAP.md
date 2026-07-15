@@ -554,17 +554,47 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   discount rate-band clamp + American de-bias in data/forwards.py gate on
   `(expiry - ref).days > 0`, so a same-day expiry skips both (its D=1.0005
   passed through unclamped — harmless here, listed for the R2 audit).
-- **NEXT (R2 item 10 remaining):** widen the REST capture (SPY/QQQ/IWM,
-  ~2-week window — cheap now, resumable, agent-runnable) + validate per
-  day; absolute-timestamp calendar constraints for adjacent dailies
-  (same-date AM/PM ordering); temporal-filter tuning for intraday jumps;
-  fast degraded mode; stress-pack exit gates (no NaN on valid quotes,
-  deterministic replay, hard publish failure on unresolved
-  intrinsic/calendar inconsistency, sub-50ms warm slice latency). Product
-  follow-up: decide how 0DTE rungs enter the LIVE universe (the "0dte"
-  filter chip works today; the default seed excludes same-day by design).
-  R2 item 11 (joint borrow/de-Am) independent; hosting container spike
-  unblocked.
+- **R2 item 10 CAMPAIGN CAPTURED + VALIDATED (2026-07-15, same session).**
+  Full REST campaign: **SPY/QQQ/IWM × 2026-06-30→07-10 = 24 ticker-days,
+  312 snapshots (13 instants each), ~500k quotes** in `backtest\results\
+  intraday.sqlite` + per-day fixtures. Ops hardening en route (each fixed
+  + committed): REST retries now ride out ~10-min DNS outages (40602e3 —
+  the campaign died live on getaddrinfo, same lesson as 511f805); harness
+  kills long background tasks → `run_capture_rest.ps1` detached relauncher
+  (3c2d47f); per-instant checkpoints made every restart near-free.
+  **Sweep validation (validate_intraday_clock --per-day 3, 72 snapshots):**
+  first pass failed 26 nodes, ALL QQQ — root cause = the parked "backtest
+  tick stamping" follow-up: captured chains had `tick_size=None`, so the
+  schema-v6 3-tick OTM floor was DISABLED and cent-level lottery calls
+  (9-DTE +9..16%% quoted 0.01/0.03) masqueraded as tight IV bands. Fixed
+  e8d10a8 (all three harness snapshot builders stamp US_OPTION_TICK; store
+  backfilled): **26 → 2 failing nodes. SPY/IWM 100%% pass; every 0DTE node
+  prices sub-day; near-settle thin chains SKIPPED calmly (67dbcb7 —
+  resolved_forward now raises a readable UnknownNodeError instead of an
+  AttributeError when parity is missing).** Validation upgrades shipped:
+  campaign sweep mode (57fd710), **band-relative acceptance gate**
+  (6e589b8, BAND_EXCESS_BP=250 — |model−mid| flagged honest wide-market
+  data), sub-day discount clamp (0917850), committed 0DTE fixture gate
+  `test_intraday_0dte.py` (eb56272, 862 real quotes).
+  **The 2 residual failures = ONE finding:** the QQQ 2026-07-17 monthly
+  seen 10-16d out (dense ~150-quote chains, real premiums) carries an
+  upside-wing curvature LQD cannot bend into — bid-ask mode (band-only
+  objective) still escapes by ~380bp, so it is slice CAPACITY, not
+  weighting (the QQQ 06-30 morning-0DTE case from the early sweep cleared
+  once the tick floor engaged). NEXT fix: a fixture-driven short-dated /
+  wing LQD tuning pass (the LV daily-ladder playbook), fixtures ready
+  under backtest\fixtures\intraday\.
+- **NEXT (R2 item 10 remaining):** short-dated/wing LQD capacity pass (the
+  QQQ 07-17 finding above); temporal-filter tuning for intraday jumps (the
+  13-instants×8-days dataset now exists); absolute-timestamp calendar
+  constraints for adjacent dailies (same-date AM/PM ordering); fast
+  degraded mode; remaining stress-pack exit gates (deterministic replay,
+  hard publish failure on unresolved intrinsic/calendar inconsistency,
+  sub-50ms warm slice latency — "no NaN on valid quotes" is now locked by
+  test_intraday_0dte). Product follow-up: decide how 0DTE rungs enter the
+  LIVE universe (the "0dte" filter chip works today; the default seed
+  excludes same-day by design). R2 item 11 (joint borrow/de-Am)
+  independent; hosting container spike unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
