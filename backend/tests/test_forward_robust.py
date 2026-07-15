@@ -122,3 +122,56 @@ def test_unflagged_zero_spread_chain_still_regresses():
     assert f is not None
     assert abs(f.forward / F_TRUE - 1.0) < 1e-3  # regression recovers TRUE carry
     assert f.forward != SPOT and f.discount != 1.0  # the pin did not fire
+
+# ---------------------------------------------------------------- same-day (0DTE)
+
+def _same_day_chain(discount: float, with_settlement: bool) -> ChainSnapshot:
+    """A same-day (0DTE) chain whose parity slope carries ``discount`` exactly:
+    c - p = discount * (F - K) with F = SPOT — noisy-slope 0DTE data in
+    miniature. Optionally stamped with the schema-v7 settlement map."""
+    from volfit.data.expiry_time import settlement_map
+
+    expiry = date(2026, 7, 10)  # a Friday NYSE session
+    ts = datetime(2026, 7, 10, 16, 30)  # 12:30 ET, 3.5h to the 16:00 settle
+    quotes = []
+    for strike in np.arange(95.0, 106.0, 2.5):
+        put = 10.0
+        call = put + discount * (SPOT - float(strike))
+        quotes.append(OptionQuote("X", expiry, float(strike), "C", bid=call - 0.05, ask=call + 0.05, timestamp=ts))
+        quotes.append(OptionQuote("X", expiry, float(strike), "P", bid=put - 0.05, ask=put + 0.05, timestamp=ts))
+    return ChainSnapshot(
+        "X", SPOT, ts, quotes, "european",
+        settlement=settlement_map({expiry}, root="X") if with_settlement else None,
+    )
+
+
+def test_same_day_noisy_discount_clamped_over_subday_horizon():
+    """A same-day expiry used to SKIP the rate-band clamp (day-granular t = 0),
+    letting an absurd discount through — observed live on captured SPY 0DTE
+    (D = 1.0005 ~ -125%/yr over 3.5h). With the settlement instant on the
+    snapshot the clamp now runs over the exact sub-day horizon."""
+    noisy = 1.0005
+    f = implied_forward(_same_day_chain(noisy, with_settlement=True), date(2026, 7, 10), date(2026, 7, 10))
+    assert f is not None
+    t = 3.5 / 24.0 / 365.0
+    assert f.discount <= np.exp(-RATE_MIN * t) + 1e-12  # inside the physical band
+    assert f.discount < noisy  # the absurd slope was actually clamped
+    assert abs(f.forward / SPOT - 1.0) < 5e-3  # forward re-derived off the level
+
+
+def test_same_day_without_settlement_keeps_legacy_skip():
+    """Legacy rows (no settlement map) keep the historical behavior exactly:
+    same-day day-granular t = 0 -> the clamp never runs."""
+    noisy = 1.0005
+    f = implied_forward(_same_day_chain(noisy, with_settlement=False), date(2026, 7, 10), date(2026, 7, 10))
+    assert f is not None
+    assert abs(f.discount - noisy) < 1e-6  # untouched
+
+
+def test_future_expiry_horizon_is_day_granular_byte_identical():
+    """The clamp horizon for any future expiry is the day count — the
+    settlement map must not perturb it (byte-identity of existing fits)."""
+    from volfit.data.forwards import _clamp_horizon
+
+    chain = _chain()
+    assert _clamp_horizon(chain, EXPIRY, REF) == T

@@ -98,6 +98,7 @@ import numpy as np
 
 from volfit.core.american import deamericanize_batch
 from volfit.core.black import black_call
+from volfit.data.expiry_time import exact_year_fraction
 from volfit.data.types import ChainSnapshot
 
 #: Minimum number of strikes with both call and put mids for a valid fit.
@@ -399,6 +400,28 @@ def _forward_at_discount(
     return forward
 
 
+def _clamp_horizon(snapshot: ChainSnapshot, expiry: date, reference_date: date) -> float:
+    """The ACT/365 horizon the discount rate-band clamp is measured over.
+
+    Day-granular for every future expiry (BYTE-IDENTICAL to the historical
+    behavior). A SAME-DAY expiry (days == 0) used to skip the clamp entirely
+    — its day count is zero — which let an absurd parity slope through on
+    exactly the chains where the slope is worst-identified: over the hours
+    to settlement any physical rate gives D ~ 1, yet a real 0DTE regression
+    was observed at D = 1.0005 (~ -125%/yr). When the snapshot carries the
+    schema-v7 settlement instant, measure the clamp over the exact remaining
+    time instead; without one (legacy rows) the clamp stays off as before.
+    The American de-bias keeps its day-granular gate deliberately: EEP over
+    hours is negligible and a CRR tree on t ~ 4e-4 is degenerate."""
+    days = (expiry - reference_date).days
+    if days != 0:
+        return days / 365.0
+    settle = (snapshot.settlement or {}).get(expiry)
+    if settle is None or snapshot.timestamp is None:
+        return 0.0
+    return max(exact_year_fraction(snapshot.timestamp, settle.settle), 0.0)
+
+
 def implied_forward(
     snapshot: ChainSnapshot, expiry: date, reference_date: date | None = None,
 ) -> ImpliedForward | None:
@@ -467,7 +490,7 @@ def implied_forward(
     # (byte-identical); only an absurd discount is bounded, and the forward then
     # re-derived from the well-identified level so it no longer inherits the bad slope.
     if reference_date is not None:
-        t = (expiry - reference_date).days / 365.0
+        t = _clamp_horizon(snapshot, expiry, reference_date)
         if t > 0.0 and np.isfinite(discount):
             d_clamped = min(max(discount, math.exp(-RATE_MAX * t)), math.exp(-RATE_MIN * t))
             if d_clamped != discount:
