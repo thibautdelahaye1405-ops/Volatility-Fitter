@@ -584,17 +584,37 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   once the tick floor engaged). NEXT fix: a fixture-driven short-dated /
   wing LQD tuning pass (the LV daily-ladder playbook), fixtures ready
   under backtest\fixtures\intraday\.
-- **NEXT (R2 item 10 remaining):** short-dated/wing LQD capacity pass (the
-  QQQ 07-17 finding above); temporal-filter tuning for intraday jumps (the
-  13-instants×8-days dataset now exists); absolute-timestamp calendar
-  constraints for adjacent dailies (same-date AM/PM ordering); fast
-  degraded mode; remaining stress-pack exit gates (deterministic replay,
-  hard publish failure on unresolved intrinsic/calendar inconsistency,
-  sub-50ms warm slice latency — "no NaN on valid quotes" is now locked by
-  test_intraday_0dte). Product follow-up: decide how 0DTE rungs enter the
-  LIVE universe (the "0dte" filter chip works today; the default seed
-  excludes same-day by design). R2 item 11 (joint borrow/de-Am)
-  independent; hosting container spike unblocked.
+- **"LQD capacity pass" CLOSED 2026-07-15 (a9cc490) — VERDICT OVERTURNED:
+  the model was right, the tick floor was gameable. CAMPAIGN VALIDATION
+  OK (72 snapshots, 0 failing nodes).** Diagnosis of the 2 residual
+  failures found each was ONE quote: QQQ 10-16 DTE K=835 quoted 0.01×0.07
+  / K=865 quoted 0.02×0.06 amid blanket one-sided $0.03 asks — placeholder
+  markets whose 4-tick MIDS cleared the mid-based 3-tick floor purely on
+  the strength of a junk ask, while the fitted wing agreed with every
+  neighboring ask (that is why bid-ask mode could not "thread" them
+  either: one junk quote is CORRECTLY outvoted — the earlier capacity
+  inference was wrong). Fix: **the tick floor now tests the BID — the
+  side the market commits to** (`quotes.py`; bid ≤ mid so the new rule
+  subsumes the old one and cannot be gamed by a wide ask). Evidence:
+  weekly Massive LV fixture A/B byte-identical; full suite 1121 passed
+  incl. the fragile Bloomberg convexWing locks; both failing nodes → band
+  excess 292→41bp / 494→19bp. Consequence handled: minutes from
+  settlement an entire 0DTE chain can fall to the floor (IWM 07-09
+  15:45) — prepare's "no two-sided OTM quotes" is classified SKIPPED (no
+  fittable market) in the sweep, surfaced in its summary lines. NB the
+  bid floor is a KEPT-SET change on live ticked chains (drops junk-ask
+  wing quotes the mid floor kept) — expected effect is strictly cleaner
+  wings; exact-price pipelines byte-identical by the tick_size gate.
+- **NEXT (R2 item 10 remaining):** temporal-filter tuning for intraday
+  jumps (the 13-instants×8-days dataset now exists); absolute-timestamp
+  calendar constraints for adjacent dailies (same-date AM/PM ordering);
+  fast degraded mode; remaining stress-pack exit gates (deterministic
+  replay, hard publish failure on unresolved intrinsic/calendar
+  inconsistency, sub-50ms warm slice latency — "no NaN on valid quotes"
+  is locked by test_intraday_0dte). Product follow-up: decide how 0DTE
+  rungs enter the LIVE universe (the "0dte" filter chip works today; the
+  default seed excludes same-day by design). R2 item 11 (joint
+  borrow/de-Am) independent; hosting container spike unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
