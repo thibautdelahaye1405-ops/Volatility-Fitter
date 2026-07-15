@@ -130,6 +130,7 @@ def test_run_writes_flatfile_compatible_fixture_and_db(api, tmp_path):
         stored = vs.snapshot_at("SPY", datetime(2026, 7, 10, 23, 59))
     assert stored is not None and stored.settlement
     assert len(stored.quotes) == len(snap["quotes"])
+    assert stored.tick_size == 0.01  # real NBBO -> the OTM tick screen engages
 
 
 def test_asof_semantics_late_contract(api):

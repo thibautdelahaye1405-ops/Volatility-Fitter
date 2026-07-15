@@ -38,7 +38,7 @@ from typing import Callable, Iterable
 
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.occ import parse_option_symbol
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 DEFAULT_ENDPOINT = "files.massive.com"
 DEFAULT_BUCKET = "flatfiles"
@@ -199,6 +199,9 @@ class QuotesFlatFileStore:
         return ChainSnapshot(
             ticker=upper, spot=spot, timestamp=ts, quotes=quotes,
             exercise_style=exercise_style,
+            # Real NBBO — stamp the tick so the OTM tick-noise screen engages
+            # (the live providers all do; None silently disables it).
+            tick_size=US_OPTION_TICK,
         )
 
     # ------------------------------------------------------------- internals

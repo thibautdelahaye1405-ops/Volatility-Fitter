@@ -149,7 +149,7 @@ def _persist_db(db_path: str, ticker: str, doc: dict) -> int:
     Each snapshot carries the per-expiry settlement map, so the intraday
     variance clock prices these chains exactly on replay."""
     from volfit.data.store import VolStore
-    from volfit.data.types import ChainSnapshot, OptionQuote
+    from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
     n = 0
     with VolStore(db_path) as vs:
@@ -168,6 +168,12 @@ def _persist_db(db_path: str, ticker: str, doc: dict) -> int:
             vs.save_snapshot(ChainSnapshot(
                 ticker=ticker, spot=snap["spot"], timestamp=ts, quotes=quotes,
                 exercise_style="american",
+                # Captured chains are REAL NBBO (flat files or REST), so stamp
+                # the tick like every live provider does — without it the
+                # 3-tick OTM band floor is disabled and cent-level lottery
+                # quotes masquerade as tight IV bands (seen on QQQ 9-DTE
+                # +16% calls quoted 0.01/0.03 in the 2026-07 campaign).
+                tick_size=US_OPTION_TICK,
                 settlement=settlement_map(expiries, root=ticker),
             ))
             n += 1

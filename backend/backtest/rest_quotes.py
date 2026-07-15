@@ -21,7 +21,7 @@ import asyncio
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
 from backtest.quotes_store import _parity_spot, _pos_or_none
 
@@ -161,6 +161,9 @@ class RestQuotesClient:
         return ChainSnapshot(
             ticker=ticker.upper(), spot=spot, timestamp=ts, quotes=quotes,
             exercise_style=exercise_style,
+            # Real NBBO — stamp the tick so the OTM tick-noise screen engages
+            # (the live providers all do; None silently disables it).
+            tick_size=US_OPTION_TICK,
         )
 
     async def _get(self, client, url: str, params: dict | None) -> dict:
