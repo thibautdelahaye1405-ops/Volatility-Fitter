@@ -48,8 +48,16 @@ def validate_snapshot(snap, ticker: str) -> tuple[int, list[str], float | None]:
     failures = 0
     lines: list[str] = []
     worst: float | None = None
+    parity = state.forwards(ticker)
     for expiry in sorted(snap.expiries()):
         iso = expiry.isoformat()
+        if expiry not in parity:
+            # A near-settle 0DTE chain can legitimately lose every two-sided
+            # pair (one-sided near-intrinsic quotes): no parity forward = the
+            # node is unfittable DATA, quarantined calmly — not a clock/fit
+            # failure. Surfaced so a suspicious pattern on far nodes shows up.
+            lines.append(f"  {iso}: SKIPPED (no parity forward - thin/one-sided chain)")
+            continue
         legacy_days = state.year_fraction(expiry) * 365.0  # day-granular reference
         try:
             prepared = service.prepared_quotes(state, ticker, expiry)

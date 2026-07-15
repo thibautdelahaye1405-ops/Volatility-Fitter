@@ -1258,6 +1258,16 @@ class AppState(UniverseMixin):
                 rate = self.market_settings(ticker).rate
                 discount = math.exp(-rate * self.year_fraction(expiry))
             return ResolvedForward(expiry, float(policy.manualForward), discount, "manual")
+        if parity is None:
+            # Reachable when a node is selected past the parity gate (e.g. a
+            # near-settle 0DTE chain whose two-sided pairs collapsed, or a
+            # captured-replay ladder selected explicitly): a readable 404 for
+            # the API, a calm named condition for harness callers — never an
+            # AttributeError.
+            raise UnknownNodeError(
+                f"no parity forward for {ticker!r} {expiry.isoformat()} "
+                "(too few two-sided pairs — thin or one-sided chain)"
+            )
         return ResolvedForward(expiry, parity.forward, parity.discount, "parity")
 
     # ------------------------------------------------------------- fit cache

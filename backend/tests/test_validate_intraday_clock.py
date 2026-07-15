@@ -85,3 +85,38 @@ def test_validate_all_failure_prints_detail_and_fails(tmp_path, monkeypatch, cap
     assert "FAILED (boom)" in out  # per-node detail surfaces on failure
     assert "CAMPAIGN VALIDATION FAILED (2 snapshots, 1 failing node(s))" in out
     assert "SPY" not in out  # ticker restriction respected
+
+
+def _one_sided_snapshot(ts: datetime) -> ChainSnapshot:
+    """A same-day chain with NO two-sided pair anywhere (bid missing), the
+    near-settle 0DTE pattern: parity has nothing to regress on."""
+    expiry = ts.date()
+    quotes = [
+        OptionQuote("SPY", expiry, k, cp, bid=None, ask=1.0, last=None,
+                    volume=None, open_interest=None, timestamp=ts)
+        for k in (95.0, 100.0, 105.0) for cp in ("C", "P")
+    ]
+    return ChainSnapshot("SPY", 100.0, ts, quotes, "american")
+
+
+def test_thin_chain_is_skipped_not_failed():
+    """No parity forward = quarantined data, not a clock failure: the node is
+    reported SKIPPED and the snapshot still validates (the IWM near-settle
+    case from the 2026-07-15 early sweep)."""
+    snap = _one_sided_snapshot(datetime(2026, 7, 10, 19, 45))
+    failures, lines, worst = vic.validate_snapshot(snap, "SPY")
+    assert failures == 0 and worst is None
+    assert lines == ["  2026-07-10: SKIPPED (no parity forward - thin/one-sided chain)"]
+
+
+def test_resolved_forward_missing_parity_raises_readable_error():
+    """The production path raises UnknownNodeError (-> a readable 404), never
+    an AttributeError, when a selected node has no parity regression."""
+    from volfit.api.state import AppState, UnknownNodeError
+    from volfit.replay_report import _StoredChains
+
+    snap = _one_sided_snapshot(datetime(2026, 7, 10, 19, 45))
+    state = AppState(snap.timestamp.date(), provider=_StoredChains({"SPY": snap}))
+    state.set_expiries("SPY", sorted(snap.expiries()))
+    with pytest.raises(UnknownNodeError, match="no parity forward"):
+        state.resolved_forward("SPY", date(2026, 7, 10))
