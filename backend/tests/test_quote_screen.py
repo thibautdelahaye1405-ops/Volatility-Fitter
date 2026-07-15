@@ -131,3 +131,23 @@ def test_quality_surfaces_screen_counts_advisory():
     assert isinstance(row.screened, dict) and isinstance(row.vegaFloored, int)
     # Advisory: naming the drops must never create readiness issues.
     assert not any("screen" in i or "quarantine" in i for i in row.issues)
+
+
+def test_tick_floor_tests_the_bid_not_the_mid():
+    """The 3-tick floor is measured on the BID — the side the market commits
+    to. A wing strike quoted 0.01x0.07 or 0.02x0.06 carries a 4-tick mid
+    purely on the strength of a junk ask (the QQQ 0DTE-campaign K=835/K=865
+    cases) and is floored; a 4-tick bid at a similar mid is a real market
+    and is kept; exact-price chains (no tick size) skip the floor."""
+    quotes = _base_quotes(spread=0.02)  # tight base chain: no artifact penny bids
+    quotes.append(_quote(112.5, "C", 0.01, 0.07))  # bid 1 tick: placeholder
+    quotes.append(_quote(113.0, "C", 0.02, 0.06))  # bid 2 ticks: still under the floor
+    quotes.append(_quote(113.5, "C", 0.04, 0.06))  # bid 4 ticks: a market
+    prepared = prepare_quotes(_chain(quotes, tick=0.01), EXPIRY, _fwd(), 0.1)
+    by_strike = {s.strike: s.reason for s in prepared.screened}
+    assert by_strike.get(112.5) == "tick_floor"
+    assert by_strike.get(113.0) == "tick_floor"
+    assert 113.5 not in by_strike
+    # No tick size -> exact-price pipeline: the floor is off, all kept.
+    prepared_exact = prepare_quotes(_chain(quotes), EXPIRY, _fwd(), 0.1)
+    assert all(s.strike not in (112.5, 113.0) for s in prepared_exact.screened)

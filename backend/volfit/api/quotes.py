@@ -83,16 +83,24 @@ Z_MAX = 4.0
 PREFILTER_WING_BUFFER = 1.5
 
 #: Tick-noise price floor, in ticks of the snapshot's venue increment: OTM
-#: quotes whose mid is at or below this many ticks are dropped — a price known
+#: quotes whose BID is at or below this many ticks are dropped — a price known
 #: only to ±half a tick out of ≤3 ticks carries no implied-vol information.
 #: The failure mode it removes is vivid on short-dated wings priced off a
 #: stale/delayed feed: SPY 1-week calls quoted flat at $0.02 across 14 strikes
 #: invert to an IV "ramp" from 11% to 15% with a gap down at every one-tick
 #: step, and the smile fit chases that staircase. The Z_MAX moneyness filter
-#: cannot catch these — on a steep weekly they sit well inside 4 sd. Only
-#: chains from real market feeds carry a ``tick_size`` (see ChainSnapshot);
-#: synthetic / IV-exact chains have no price quantum and skip the floor, so
-#: every exact-price pipeline stays byte-identical.
+#: cannot catch these — on a steep weekly they sit well inside 4 sd.
+#:
+#: Measured on the bid — the side the market COMMITS to — not the mid
+#: (2026-07-15, was mid-based): since bid <= mid the bid test subsumes the
+#: old one, and it closes the hole the 0DTE campaign found: a wing strike
+#: quoted 0.01 x 0.07 (QQQ 10-16 DTE K=835, neighbors asking 0.02-0.03) or
+#: 0.02 x 0.06 carries a mid of 4-5 ticks purely on the strength of a junk
+#: ask, and its "IV" sits vol points above the wing while the fit agrees
+#: with every neighboring ask. Only chains from real market feeds carry a
+#: ``tick_size`` (see ChainSnapshot); synthetic / IV-exact chains have no
+#: price quantum and skip the floor, so every exact-price pipeline stays
+#: byte-identical.
 TICK_FLOOR_TICKS = 3.0
 
 #: Explicit intrinsic tolerance (normalized-call price units) for the
@@ -304,9 +312,9 @@ def prepare_quotes(
                 ScreenedQuote(quote.strike, quote.call_put, k, "missing_or_crossed")
             )
             continue
-        if price_floor is not None and quote.mid <= price_floor:
+        if price_floor is not None and quote.bid <= price_floor:
             screened.append(ScreenedQuote(quote.strike, quote.call_put, k, "tick_floor"))
-            continue  # tick-noise floor: the price quantum dominates the IV
+            continue  # tick-noise floor: the bid is at the quantum, not a market
         rows.append((k, quote.strike, quote.call_put == "C", quote.bid, quote.mid, quote.ask))
 
     if not rows:  # real providers can serve one-sided-only expiries

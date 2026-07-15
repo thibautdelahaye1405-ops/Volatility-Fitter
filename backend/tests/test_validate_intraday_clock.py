@@ -120,3 +120,24 @@ def test_resolved_forward_missing_parity_raises_readable_error():
     state.set_expiries("SPY", sorted(snap.expiries()))
     with pytest.raises(UnknownNodeError, match="no parity forward"):
         state.resolved_forward("SPY", date(2026, 7, 10))
+
+
+def test_all_quotes_screened_is_skipped_not_failed():
+    """Near settlement every OTM quote can sit at the tick floor: parity still
+    resolves (it reads raw mids on both sides), prepare_quotes then raises
+    'no two-sided OTM quotes' - quarantined data, reported SKIPPED (the IWM
+    2026-07-09 19:45 case surfaced by the bid-based floor)."""
+    ts = datetime(2026, 7, 10, 19, 45)
+    expiry = ts.date()
+    quotes = []
+    for k in (95.0, 100.0, 105.0):
+        itm_cp, otm_cp = ("C", "P") if k <= 100.0 else ("P", "C")
+        itm = abs(100.0 - k) + 0.50
+        quotes.append(OptionQuote("SPY", expiry, k, itm_cp, bid=itm - 0.02, ask=itm + 0.02,
+                                  last=None, volume=None, open_interest=None, timestamp=ts))
+        quotes.append(OptionQuote("SPY", expiry, k, otm_cp, bid=0.01, ask=0.02,
+                                  last=None, volume=None, open_interest=None, timestamp=ts))
+    snap = ChainSnapshot("SPY", 100.0, ts, quotes, "american", tick_size=0.01)
+    failures, lines, worst = vic.validate_snapshot(snap, "SPY")
+    assert failures == 0 and worst is None
+    assert any("SKIPPED (no fittable market" in line for line in lines), lines

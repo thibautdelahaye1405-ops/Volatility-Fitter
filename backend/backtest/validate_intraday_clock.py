@@ -92,6 +92,15 @@ def validate_snapshot(snap, ticker: str) -> tuple[int, list[str], float | None]:
                 f"nQ={prepared.k.size:3d} maxIvErr={err:7.1f}bp "
                 f"bandExc={excess:6.1f}bp{note}"
             )
+        except ValueError as exc:
+            if "no two-sided OTM quotes" in str(exc):
+                # Every OTM quote fell to the prep screens (tick floor,
+                # crossed, ...): minutes from settlement a chain can be all
+                # sub-3-tick bids — quarantined data, not a clock failure.
+                lines.append(f"  {iso}: SKIPPED (no fittable market - all quotes screened)")
+            else:
+                failures += 1
+                lines.append(f"  {iso}: FAILED ({exc})")
         except Exception as exc:  # noqa: BLE001 — report, keep validating the rest
             failures += 1
             lines.append(f"  {iso}: FAILED ({exc})")
@@ -145,7 +154,9 @@ def validate_all(db_path: str, tickers: list[str] | None, per_day: int) -> int:
                 total_failures += failures
                 status = "ok" if failures == 0 else f"FAILED ({failures})"
                 worst_txt = "n/a" if worst is None else f"{worst:.1f}bp"
-                print(f"{ticker} {ts}: {len(lines)} nodes, worst {worst_txt} - {status}")
+                n_skip = sum("SKIPPED" in line for line in lines)
+                skip_txt = f", {n_skip} skipped" if n_skip else ""
+                print(f"{ticker} {ts}: {len(lines)} nodes{skip_txt}, worst {worst_txt} - {status}")
                 if failures:
                     print("\n".join(lines))
     print(
