@@ -72,9 +72,15 @@ DEFAULT_WORKERS = 12
 _RETRY_STATUSES = {429, 500, 502, 503, 504}
 
 
-def _get(client: httpx.Client, url: str, params: dict | None, max_tries: int = 6) -> dict:
-    """One GET with backoff on 429/5xx/network errors; raises on other 4xx."""
-    wait = 1.0
+def _get(client: httpx.Client, url: str, params: dict | None, max_tries: int = 9) -> dict:
+    """One GET with backoff on 429/5xx/network errors; raises on other 4xx.
+
+    The backoff must RIDE OUT a transient DNS/network outage — this link
+    drops DNS for minutes at a time (the flat-file path learned the same
+    lesson, commit 511f805; the REST campaign died live on 'getaddrinfo
+    failed' with a ~30 s total budget). Waits 10, 20, 40, 80, 120, 120, ...
+    seconds: ~10 minutes of outage survived per request."""
+    wait = 10.0
     for attempt in range(1, max_tries + 1):
         try:
             resp = client.get(url, params=params)
@@ -82,12 +88,12 @@ def _get(client: httpx.Client, url: str, params: dict | None, max_tries: int = 6
             if attempt == max_tries:
                 raise
             _time.sleep(wait)
-            wait *= 2
+            wait = min(wait * 2.0, 120.0)
             continue
         if resp.status_code in _RETRY_STATUSES and attempt < max_tries:
             retry_after = resp.headers.get("Retry-After")
             _time.sleep(float(retry_after) if retry_after else wait)
-            wait *= 2
+            wait = min(wait * 2.0, 120.0)
             continue
         resp.raise_for_status()
         return resp.json()
@@ -291,7 +297,13 @@ def run(
                 print(f"{ticker} {day}: exists, skipped")
                 continue
             t0 = _time.perf_counter()
-            doc = capture_day_rest(client, ticker, day, times, workers)
+            doc = None
+            for attempt in (1, 2):
+                try:
+                    doc = capture_day_rest(client, ticker, day, times, workers)
+                    break
+                except Exception as exc:  # noqa: BLE001 — outages happen; checkpoint kept
+                    print(f"{ticker} {day}: attempt {attempt} failed: {exc}")
             if doc is None:
                 print(f"{ticker} {day}: no usable quotes")
                 continue
