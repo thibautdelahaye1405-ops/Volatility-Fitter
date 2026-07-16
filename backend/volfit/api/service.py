@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime, time
 
 import numpy as np
 
@@ -1265,6 +1265,32 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
 
 
 # -------------------------------------------------------------- surface fit
+def ordered_expiries(state: AppState, ticker: str, expiries) -> list[date]:
+    """Ascending-maturity order for the calendar-coupling chains (R2 item 10:
+    absolute-timestamp calendar constraints for adjacent dailies).
+
+    Ordered by the schema-v7 settlement INSTANT when the chain carries one —
+    an AM-settled index expiry (09:30 ET) precedes a PM daily (16:00 ET) on
+    the SAME date — falling back to end-of-day for expiries without a
+    settlement record, which reproduces plain date order exactly (settlement
+    instants never cross calendar dates), so every current chain is
+    BYTE-IDENTICAL under this key.
+
+    Known model limit, documented rather than hidden: chains key expiries by
+    DATE, so a genuine same-date AM/PM PAIR (an SPX quarterly colliding with
+    an SPXW EOM) still collapses to one node at ingestion; this seam orders
+    whatever nodes exist, and splitting the pair needs an expiry-key
+    redesign (ROADMAP note)."""
+    snap = state.loaded_snapshot(ticker)
+    settlement = (snap.settlement if snap is not None else None) or {}
+
+    def key(e: date) -> datetime:
+        s = settlement.get(e)
+        return s.settle if s is not None else datetime.combine(e, time.max)
+
+    return sorted(expiries, key=key)
+
+
 def surface_inputs(
     state: AppState, ticker: str, fit_mode: str
 ) -> list[tuple[str, PreparedQuotes]]:
@@ -1280,7 +1306,7 @@ def surface_inputs(
     msg = f"Preparing {ticker} quotes"
     detail = "de-americanizing" if american else ""
     with state.activity.activity("calibrate", msg, detail):
-        for expiry in sorted(forwards):
+        for expiry in ordered_expiries(state, ticker, forwards):
             plan.append((expiry.isoformat(), prepared_quotes(state, ticker, expiry)))
     return plan
 

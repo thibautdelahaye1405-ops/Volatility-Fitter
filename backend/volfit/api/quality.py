@@ -262,7 +262,9 @@ def build_quality_report(
         age_min = ages.get(ticker)
         data_age = (age_min, age_min >= opts.dataAgeRedMin) if age_min is not None else None
         try:
-            forwards = sorted(state.forwards(ticker))
+            # settlement-instant order: the calendar chain below compares each
+            # slice against the previous SETTLING expiry, not just date order
+            forwards = service.ordered_expiries(state, ticker, state.forwards(ticker))
         except Exception:
             continue  # unfetched/unavailable ticker (gated, pre-Fetch): not shown
         rows: list[QualityNode] = []

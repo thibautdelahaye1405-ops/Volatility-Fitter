@@ -49,7 +49,9 @@ def lit_nodes(state: AppState, tickers: list[str] | None = None) -> list[tuple[s
     out: list[tuple[str, str]] = []
     for ticker in chosen:
         try:
-            expiries = sorted(state.forwards(ticker))
+            # settlement-instant order (same-date AM before PM) — the coupled
+            # calibration items consume this list as their ascending-T chain
+            expiries = service.ordered_expiries(state, ticker, state.forwards(ticker))
         except Exception:
             continue  # a ticker unavailable on the active feed is skipped
         for expiry in expiries:
