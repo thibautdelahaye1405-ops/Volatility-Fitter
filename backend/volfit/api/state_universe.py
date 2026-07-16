@@ -81,6 +81,7 @@ class UniverseMixin:
         """Forget every cache entry of a ticker (call under the lock)."""
         self._snapshots.pop(sym, None)
         self._forwards.pop(sym, None)
+        self._joint_carry.pop(sym, None)
         self._available.pop(sym, None)
         self._selected.pop(sym, None)
         self._selection_mode.pop(sym, None)
@@ -239,6 +240,7 @@ class UniverseMixin:
         next access refetches its selected expiries; rebuild the graph."""
         self._snapshots.pop(ticker, None)
         self._forwards.pop(ticker, None)
+        self._joint_carry.pop(ticker, None)
         self._universe = None
 
     def _reconcile_chain_selection(self, ticker: str, new_expiries: list[date]) -> None:
@@ -259,6 +261,7 @@ class UniverseMixin:
         if snap is None or not want.issubset(set(snap.expiries())):
             self._snapshots.pop(ticker, None)  # full atomic re-fetch next access
             self._forwards.pop(ticker, None)
+            self._joint_carry.pop(ticker, None)
             return
         kept = [q for q in snap.quotes if q.expiry in want]
         # Carry ALL chain-level metadata through the prune: dropping zero_carry
@@ -278,6 +281,9 @@ class UniverseMixin:
         fwds = self._forwards.get(ticker)
         if fwds is not None:
             self._forwards[ticker] = {e: f for e, f in fwds.items() if e in want}
+        joint = self._joint_carry.get(ticker)
+        if joint is not None:
+            self._joint_carry[ticker] = {e: j for e, j in joint.items() if e in want}
 
     def set_expiries(self, ticker: str, expiries: list[date]) -> list[date]:
         """Replace a ticker's selected expiries (custom mode). Dates outside the

@@ -39,7 +39,10 @@ CARRY_MIN_STRIKES = 6
 #: regression is too noisy to attribute the forward gap to borrow.
 CARRY_RMS_FRAC = 1e-3
 
-_SOURCE = {"parity": "parity_implied", "manual": "desk", "theoretical": "model"}
+_SOURCE = {
+    "parity": "parity_implied", "manual": "desk", "theoretical": "model",
+    "joint": "joint_deam",  # R2 item 11: the engaged fixed-point forward
+}
 
 
 def implied_borrow_bp(
@@ -70,27 +73,17 @@ def _joint_read(state: AppState, ticker: str, expiry: date) -> dict:
     solve; proportional/mixed-proportional models fall back to the v0 read
     (empty dict) — a proportional dividend is not a cash amount the escrowed
     tree can carry. Best-effort: a solve hiccup must never break the view."""
-    import numpy as np
-
-    from volfit.data.carry_solve import joint_borrow
+    from volfit.data.carry_solve import dividend_legs, joint_borrow
 
     settings = state.market_settings(ticker)
-    div_times = div_amounts = None
-    if settings.dividendMode in ("discrete_absolute", "mixed"):
-        legs = [
-            ((date.fromisoformat(d.exDate) - state.reference_date).days / 365.0, d.amount)
-            for d in settings.dividends
-        ]
-        legs = [(tt, a) for tt, a in legs if tt > 0.0]
-        if legs:
-            div_times = np.array([tt for tt, _ in legs])
-            div_amounts = np.array([a for _, a in legs])
-    elif settings.dividendMode == "discrete_proportional":
+    legs = dividend_legs(settings, state.reference_date)
+    if legs is None:  # proportional dividends: no cash schedule -> v0 read
         return {}
+    dividend_yield, div_times, div_amounts = legs
     try:
         res = joint_borrow(
             state.snapshot(ticker), expiry, state.reference_date,
-            settings.rate, dividend_yield=settings.dividendYield,
+            settings.rate, dividend_yield=dividend_yield,
             div_times=div_times, div_amounts=div_amounts,
         )
     except Exception:  # noqa: BLE001 — advisory surface only
@@ -126,9 +119,14 @@ def _point(
         forward=float(active.forward),
         forwardSource=source,
         discount=float(active.discount),
-        # The discount rides the forward resolution: parity's regressed D, or
-        # the desk-rate fallback under manual/theoretical modes.
-        discountSource="parity_implied" if active.source == "parity" else "desk",
+        # The discount rides the forward resolution: parity's regressed D
+        # (or the joint solve's), or the desk-rate fallback under
+        # manual/theoretical modes.
+        discountSource=(
+            "parity_implied" if active.source == "parity"
+            else "joint_deam" if active.source == "joint"
+            else "desk"
+        ),
         borrowBp=borrow,
         borrowSource="parity_implied" if borrow is not None else "unidentified",
         identifiable=identifiable,

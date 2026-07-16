@@ -156,3 +156,62 @@ def test_carry_view_joint_read_end_to_end():
     # edge is the discrete-dividend case, locked above where dropping the
     # schedule biases the read 3x.
     assert pt.borrowBp is not None and abs(pt.borrowBp - pt.jointBorrowBp) < 20.0
+
+
+# ---------------------------------------------- increment 2: fit-path gate
+def _fit_state(snap):
+    from volfit.api.schemas import MarketSettings
+    from volfit.api.state import AppState
+    from volfit.replay_report import _StoredChains
+
+    state = AppState(REF, provider=_StoredChains({"HTB": snap}))
+    state.set_expiries("HTB", [EXPIRY])
+    state.set_market_settings("HTB", MarketSettings(rate=RATE))
+    return state
+
+
+def test_ordinary_name_byte_identical_with_toggle_on():
+    """THE day-one lock: with jointCarry ON, a name whose converged borrow is
+    below the engage threshold keeps the PARITY forward exactly — resolved
+    forward and prepared arrays bitwise-equal to the toggle-OFF run."""
+    import numpy as np
+
+    from volfit.api import service
+
+    snap = _chain(0.0)  # an ordinary name: no borrow story
+    state_off, state_on = _fit_state(snap), _fit_state(snap)
+    state_on.set_options(state_on.options().model_copy(update={"jointCarry": True}))
+
+    f_off = state_off.resolved_forward("HTB", EXPIRY)
+    f_on = state_on.resolved_forward("HTB", EXPIRY)
+    assert f_on.source == "parity"  # below the engage bar: not overridden
+    assert (f_on.forward, f_on.discount) == (f_off.forward, f_off.discount)
+    p_off = service.prepared_quotes(state_off, "HTB", EXPIRY)
+    p_on = service.prepared_quotes(state_on, "HTB", EXPIRY)
+    assert np.array_equal(p_on.k, p_off.k)
+    assert np.array_equal(p_on.w_mid, p_off.w_mid)  # bitwise, the real bar
+
+
+def test_htb_name_engages_the_joint_forward():
+    from volfit.data.carry_solve import joint_borrow
+
+    snap = _chain(0.03)  # 300 bp: far past the 25 bp engage default
+    state = _fit_state(snap)
+    state.set_options(state.options().model_copy(update={"jointCarry": True}))
+    resolved = state.resolved_forward("HTB", EXPIRY)
+    assert resolved.source == "joint"
+    expected = joint_borrow(snap, EXPIRY, REF, RATE)
+    assert resolved.forward == expected.forward  # the cached read, verbatim
+    # and the toggle actually gates it
+    state_off = _fit_state(snap)
+    assert state_off.resolved_forward("HTB", EXPIRY).source == "parity"
+
+
+def test_joint_carry_knobs_bump_the_options_version():
+    snap = _chain(0.0)
+    state = _fit_state(snap)
+    v0 = state.options_version
+    state.set_options(state.options().model_copy(update={"jointCarry": True}))
+    assert state.options_version == v0 + 1  # resolved forwards feed every fit
+    state.set_options(state.options().model_copy(update={"jointCarryEngageBp": 60.0}))
+    assert state.options_version == v0 + 2

@@ -60,6 +60,27 @@ BISECTIONS = 20
 MIN_PAIRS = 6
 
 
+def dividend_legs(settings, reference_date: date):
+    """(dividend_yield, div_times, div_amounts) from a MarketSettings-shaped
+    object, or None when the model mix is unsupported (a PROPORTIONAL
+    dividend is not a cash amount the escrowed tree can carry — callers fall
+    back to the v0 read). Shared by the carry view and the fit-path gate so
+    both legs always see the same schedule."""
+    if settings.dividendMode == "discrete_proportional":
+        return None
+    div_times = div_amounts = None
+    if settings.dividendMode in ("discrete_absolute", "mixed"):
+        legs = [
+            ((date.fromisoformat(d.exDate) - reference_date).days / 365.0, d.amount)
+            for d in settings.dividends
+        ]
+        legs = [(tt, a) for tt, a in legs if tt > 0.0]
+        if legs:
+            div_times = np.array([tt for tt, _ in legs])
+            div_amounts = np.array([a for _, a in legs])
+    return float(settings.dividendYield), div_times, div_amounts
+
+
 @dataclass(frozen=True)
 class JointBorrowResult:
     """The converged joint read for one expiry, failure accounting included."""

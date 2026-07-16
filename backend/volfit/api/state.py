@@ -229,6 +229,12 @@ class AppState(UniverseMixin):
         self._pending_selections: dict[str, list[date]] = {}
         self._snapshots: dict[str, ChainSnapshot] = {}
         self._forwards: dict[str, dict[date, ImpliedForward]] = {}
+        #: Joint borrow/de-Am fixed-point reads (R2 item 11 increment 2),
+        #: cached per (ticker, expiry) — the solve runs a de-Am per iteration,
+        #: too heavy to repeat per prepared-quotes call. Lives and dies with
+        #: ``_forwards`` (same chain + market-settings inputs); values may be
+        #: None (the solve declined: thin/zero-carry/unsupported dividends).
+        self._joint_carry: dict[str, dict[date, object]] = {}
         self._fit_settings = FitSettings()
         self._settings_version = 0  # bumped on change; part of fit-cache keys
         #: Global meta / UX settings + engine defaults (the Options workspace).
@@ -901,6 +907,10 @@ class AppState(UniverseMixin):
                     # Extrapolated-region tapered enforcement (Notes 09/10
                     # Phase 2) — changes the overlay calibration when on.
                     or options.extrapEnforce != self._options.extrapEnforce
+                    # Joint borrow/de-Am carry (R2 item 11 increment 2) —
+                    # changes the resolved forwards every fit consumes.
+                    or options.jointCarry != self._options.jointCarry
+                    or options.jointCarryEngageBp != self._options.jointCarryEngageBp
                 )
                 if affects_fit:
                     self._options_version += 1
@@ -1008,6 +1018,7 @@ class AppState(UniverseMixin):
         with self._lock:
             self._snapshots.pop(ticker, None)
             self._forwards.pop(ticker, None)
+            self._joint_carry.pop(ticker, None)
             self._data_version[ticker] = self._data_version.get(ticker, 0) + 1
         # Force a provider fetch (in the gated workflow a plain read would not).
         return float(self._fetch_and_cache(ticker).spot)  # warm the new chain
@@ -1094,6 +1105,7 @@ class AppState(UniverseMixin):
                 )
             self._snapshots.pop(ticker, None)
             self._forwards.pop(ticker, None)
+            self._joint_carry.pop(ticker, None)
             self._fits = {k: v for k, v in self._fits.items() if k[0] != ticker}
             self._prepared = {k: v for k, v in self._prepared.items() if k[0] != ticker}
             self._calibrated = {k: v for k, v in self._calibrated.items() if k[0] != ticker}
@@ -1144,6 +1156,8 @@ class AppState(UniverseMixin):
             if settings != old:
                 self._market_settings[ticker] = settings
                 self._forwards_version[ticker] = self._forwards_version.get(ticker, 0) + 1
+                # rate/dividends are joint-carry solve inputs (R2 item 11)
+                self._joint_carry.pop(ticker, None)
         if settings != old:
             self.log_event("market_settings", scope=ticker,
                            payload=_dump_diff(old, settings))
@@ -1238,14 +1252,49 @@ class AppState(UniverseMixin):
         times, amounts = schedule
         return times, amounts, rate
 
+    def joint_carry_read(self, ticker: str, expiry: date):
+        """The cached joint borrow/de-Am fixed-point read for one expiry
+        (R2 item 11) — a JointBorrowResult, or None when the solve declines
+        (thin chain, zero-carry synth, unsupported dividend mix, no spot).
+
+        Cached per (ticker, expiry) and invalidated with the forwards cache
+        and on market-settings changes: the solve runs one de-Am pass per
+        iteration, far too heavy to repeat on every prepared-quotes call."""
+        with self._lock:
+            per = self._joint_carry.setdefault(ticker, {})
+            if expiry in per:
+                return per[expiry]
+        from volfit.data.carry_solve import dividend_legs, joint_borrow
+
+        result = None
+        try:
+            settings = self.market_settings(ticker)
+            legs = dividend_legs(settings, self.reference_date)
+            if legs is not None:
+                dividend_yield, div_times, div_amounts = legs
+                result = joint_borrow(
+                    self.snapshot(ticker), expiry, self.reference_date,
+                    settings.rate, dividend_yield=dividend_yield,
+                    div_times=div_times, div_amounts=div_amounts,
+                )
+        except Exception:  # noqa: BLE001 — a solve hiccup must not break fits
+            result = None
+        with self._lock:
+            self._joint_carry.setdefault(ticker, {})[expiry] = result
+        return result
+
     def resolved_forward(self, ticker: str, expiry: date) -> ResolvedForward:
         """The forward calibration uses for one expiry, per its policy.
 
         "parity" reads the regression (always present: the expiry universe
         is gated on parity fits, see resolve_expiry); "theoretical" prices
         the dividend model; "manual" takes the user's forward with the
-        parity discount (falling back to exp(-rate t) defensively).
-        """
+        parity discount (falling back to exp(-rate t) defensively); with
+        ``jointCarry`` ON, a MATERIAL joint borrow/de-Am read (R2 item 11:
+        converged, |borrow| >= jointCarryEngageBp) overrides the parity
+        route with source "joint" — below the threshold the parity forward
+        is returned EXACTLY, so ordinary names stay byte-identical even
+        with the toggle on."""
         policy = self.forward_policy(ticker, expiry.isoformat())
         parity = self.forwards(ticker).get(expiry)
         if policy.mode == "theoretical":
@@ -1268,6 +1317,17 @@ class AppState(UniverseMixin):
                 f"no parity forward for {ticker!r} {expiry.isoformat()} "
                 "(too few two-sided pairs — thin or one-sided chain)"
             )
+        opts = self.options()
+        if opts.jointCarry:
+            joint = self.joint_carry_read(ticker, expiry)
+            if (
+                joint is not None
+                and joint.converged
+                and abs(joint.borrow_bp) >= opts.jointCarryEngageBp
+            ):
+                return ResolvedForward(
+                    expiry, joint.forward, joint.discount, "joint"
+                )
         return ResolvedForward(expiry, parity.forward, parity.discount, "parity")
 
     # ------------------------------------------------------------- fit cache

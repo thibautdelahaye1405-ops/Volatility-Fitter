@@ -144,6 +144,15 @@ class OptionsSettings(BaseModel):
     #: default (byte-identical); affects calibration -> bumps the options
     #: version. Phase 1 (the Quality tab's advisory measurement) is always on.
     extrapEnforce: bool = False
+    #: R2 item 11 (increment 2): route the JOINT borrow/de-Am fixed point's
+    #: converged (forward, discount) into the resolved forwards the fits
+    #: consume — American chains only, engaged PER EXPIRY and only when the
+    #: converged |borrow| is at least ``jointCarryEngageBp`` (below it the
+    #: parity forward is kept EXACTLY, so ordinary names stay byte-identical
+    #: even with the toggle ON — the item's day-one bar). OFF by default;
+    #: both knobs bump the options version (resolved forwards feed every fit).
+    jointCarry: bool = False
+    jointCarryEngageBp: float = Field(25.0, ge=0.0, le=10000.0)
     #: Master switch for the event-weighted variance clock (volfit.calib.
     #: weighted_time): when on, the ticker's event calendar augments day-weights
     #: so an event before an expiry lowers the working IV at fixed price. Now
