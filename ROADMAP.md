@@ -85,17 +85,18 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ### R2 — Robustness release
 
-10. **0DTE v1 (research grade)**: intraday variance clock (extend the
-    calib/weighted_time.py dual clock to sub-day: remaining trading minutes,
-    session seasonality, close-to-open, scheduled intraday events); new
-    intraday capture campaign via flat files; absolute-timestamp calendar
-    constraints for adjacent dailies; temporal-filter tuning for intraday
-    jumps; fast degraded mode (prior transport + conservative uncertainty,
-    clearly labeled — shares the dark-node uncertainty/provenance machinery).
-    Exit gates run FROM the stress pack: no NaN/IV explosions on valid quotes,
-    deterministic replay, hard publish failure on unresolved intrinsic or
-    calendar inconsistency, sub-50ms warm slice latency, price/band-space
-    quality reporting, next-snapshot held-out vs raw/transport/filter.
+10. ~~**0DTE v1 (research grade)**: intraday variance clock; intraday capture
+    campaign; absolute-timestamp calendar constraints; temporal-filter
+    tuning; fast degraded mode. Exit gates FROM the stress pack: no NaN on
+    valid quotes, deterministic replay, hard publish failure on unresolved
+    intrinsic/calendar inconsistency, sub-50ms warm slice, price/band-space
+    quality, next-snapshot held-out.~~ **COMPLETE 2026-07-16** (see STATUS
+    2026-07-15/16: REST campaign 312 snapshots + sweep 0 failures; session
+    filter clock; settlement-instant ordering; degraded mode v1; the
+    certification case `0dte_exit_gates` locks the acceptance bar).
+    Residual follow-ups, not gates: per-maturity filter handle scales,
+    degraded-v2 uncertainty band, live-universe 0DTE seeding decision,
+    same-date AM/PM expiry-key redesign (rides index-root onboarding).
 11. **Joint borrow/de-Am fixed point** (borrow/divs → de-Am → parity forward →
     updated borrow, iterate): discrete dividends consistent in both legs,
     isolated maturity specials allowed, IV-sensitivity to borrow uncertainty,
@@ -667,15 +668,27 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   green; frontend build + vitest 55 green. **Degraded v2 (recorded, not
   built):** conservative uncertainty BAND around the served prior via the
   idio-floor machinery (needs innovation-history plumbing + a chart band).
-- **NEXT (R2 item 10 remaining):** remaining stress-pack exit gates
-  (deterministic replay, hard publish failure on unresolved
-  intrinsic/calendar inconsistency, sub-50ms warm slice latency — "no NaN
-  on valid quotes" is locked by test_intraday_0dte); per-maturity filter
-  handle scales (the ζ_curv 6.4 residual); degraded v2 band. Product
-  follow-up: decide how 0DTE rungs enter the LIVE universe (the "0dte"
-  filter chip works today; the default seed excludes same-day by design).
-  R2 item 11 (joint borrow/de-Am) independent; hosting container spike
-  unblocked.
+- **EXIT GATES SHIPPED 2026-07-16 (4ad0907) — R2 ITEM 10 COMPLETE.** The
+  three remaining gates, each a lock plus the code it needed: (1)
+  **deterministic replay** — the committed 0DTE fixture calibrates to a
+  BITWISE-identical parameter vector across fresh states (intraday clock
+  ON); (2) **hard publish failure** — `build_surface_export(require_clean=
+  True)` collects per-node blockers (calendarOk beyond tolerance,
+  wingsClean=False core conflicts, unpriceable curve regions w≤0 =
+  intrinsic) and raises `PublishBlockedError` BEFORE any manifest persists
+  → HTTP 409 naming every offending node; `allow_dirty=true` = explicit
+  draft escape (en-route fix: recall_publish used HTTPException without
+  importing it — a latent NameError 500); (3) **sub-50ms warm slice** —
+  perf rail `warm_slice_0dte` (~20 ms measured, 50 ms design target, 3×
+  ceiling). All four locks = certification case **`0dte_exit_gates`**
+  (16 cases now). The other two gate clauses were already locked:
+  price/band-space quality (the band-relative sweep gate) and
+  next-snapshot held-out (the intraday filter harness). Suite 1133 green.
+- **NEXT:** R2 item 11 (joint borrow/de-Am fixed point) or the hosting
+  container spike — both unblocked. Item-10 residual follow-ups (not
+  gates): per-maturity filter handle scales (ζ_curv 6.4), degraded-v2
+  uncertainty band, live-universe 0DTE seeding decision, same-date AM/PM
+  expiry-key redesign (rides index-root onboarding).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
