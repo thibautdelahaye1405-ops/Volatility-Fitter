@@ -258,3 +258,46 @@ def test_endpoint_never_500s():
         body = r.json()
         assert body["active"] is True
         assert len(body["gain"]) == 3
+
+
+# ----------------------------------------------------------- filter clock
+def test_filter_dt_days_calendar_default_is_wall_clock():
+    """Default clock = the legacy wall-clock day count, byte-identical."""
+    from datetime import datetime
+
+    from volfit.api.observation_filter import _filter_dt_days
+    from volfit.api.schemas import OptionsSettings
+
+    opts = OptionsSettings()
+    assert opts.filterClock == "calendar"
+    t0 = datetime(2026, 7, 10, 16, 30).timestamp()
+    t1 = datetime(2026, 7, 10, 17, 0).timestamp()
+    assert _filter_dt_days(opts, t0, t1) == (t1 - t0) / 86400.0
+    assert _filter_dt_days(opts, t1, t0) == 0.0  # never negative
+
+
+def test_filter_dt_days_session_clock_shapes():
+    """Session clock (0DTE campaign evidence): an in-session half hour accrues
+    MORE than its calendar share, an overnight accrues LESS, and a weekend
+    accrues about one overnight (closed days ~ nothing at weight 0)."""
+    from datetime import datetime
+
+    from volfit.api.observation_filter import _filter_dt_days
+    from volfit.api.schemas import OptionsSettings
+
+    opts = OptionsSettings(filterClock="session")  # share .60, weight 0.0
+    cal = OptionsSettings()
+
+    def dt(o, a, b):
+        return _filter_dt_days(o, a.timestamp(), b.timestamp())
+
+    # 30 in-session minutes (14:00 -> 14:30 UTC = 10:00 -> 10:30 ET, a Friday)
+    half_hour = dt(opts, datetime(2026, 7, 10, 14, 0), datetime(2026, 7, 10, 14, 30))
+    assert half_hour > dt(cal, datetime(2026, 7, 10, 14, 0), datetime(2026, 7, 10, 14, 30))
+    assert abs(half_hour - 0.60 * 0.5 / 6.5) < 1e-9
+    # overnight: Thu 15:45 ET -> Fri 10:00 ET accrues less than calendar
+    on = dt(opts, datetime(2026, 7, 9, 19, 45), datetime(2026, 7, 10, 14, 0))
+    assert on < dt(cal, datetime(2026, 7, 9, 19, 45), datetime(2026, 7, 10, 14, 0))
+    # weekend: Fri 15:45 ET -> Mon 10:00 ET ~ one overnight (+ nothing closed)
+    we = dt(opts, datetime(2026, 7, 10, 19, 45), datetime(2026, 7, 13, 14, 0))
+    assert abs(we - on) < 0.05

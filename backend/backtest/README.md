@@ -40,6 +40,7 @@ engine but changes none of it.
 | `capture_intraday_rest.py` | R2-item-10 0DTE capture, REST source (the light default): same fixture schema/ladder/instants, NBBO per (contract, instant) via `/v3/quotes` with a day-bounded `gte`; ~30 s/instant, per-instant checkpoint. |
 | `run_capture_intraday.ps1` | stall supervisor for the flat-file intraday scan (kills+relaunches a frozen stream). |
 | `validate_intraday_clock.py` | acceptance CLI: replay a captured VolStore snapshot, calibrate every expiry with `intradayClock` ON, require sub-day t + sane fits. |
+| `observation_filter_intraday.py` | filter-clock tuning on the 0DTE campaign: `--build` a per-instant measurement table (~940 data-only LQD fits, resumable), `--sweep` the pure Kalman core over (clock, process-bp) configs — zeta per step type is the verdict (found: session share 0.60, non-trading 0.0). |
 
 ## Run / resume (Windows, repo root)
 

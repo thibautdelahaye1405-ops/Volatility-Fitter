@@ -328,6 +328,19 @@ class OptionsSettings(BaseModel):
     #: Maximum data gap (hours) the filter will PREDICT across; a longer gap resets
     #: the state instead (reset_reason="stale"). Default spans a weekend + holiday.
     filterResetHours: float = Field(96.0, gt=0.0, le=720.0)
+    #: Clock the process noise accrues on. "calendar" = wall-clock days (the
+    #: legacy convention — byte-identical default). "session" = the intraday
+    #: variance clock (calib/intraday_time): a session carries
+    #: ``filterSessionShare`` of a day's variance, a non-trading day
+    #: ``filterNonTradingWeight``. Measured on the 2026-07 0DTE campaign
+    #: (backtest/observation_filter_intraday, 936 measurements): 30-min steps
+    #: move ATM 19.5 bp, one overnight 55 bp, a whole WEEKEND also 55 bp — no
+    #: calendar q calibrates all three (best: zeta 1.04/0.53/0.23), while
+    #: share 0.60 / weight 0.0 at q=90 bp gives zeta 0.95/0.89/0.84. The reset
+    #: rule stays on calendar hours (staleness is about data age, not variance).
+    filterClock: Literal["calendar", "session"] = "calendar"
+    filterSessionShare: float = Field(0.60, ge=0.0, le=1.0)
+    filterNonTradingWeight: float = Field(0.0, ge=0.0, le=1.0)
     #: Measurement pass: fit data-only first (persistence priors off) so z_t is a
     #: clean market observation, then run the committed fit as usual. Off = reuse
     #: the committed fit's handles and flag contamination (note §5.1; the same

@@ -206,6 +206,30 @@ def _typical_noise(state: AppState, ticker: str, iso: str, prepared) -> float:
     return mult * float(np.median(half)) if half.size else mult * 10.0 * RMS_FLOOR
 
 
+def _filter_dt_days(opts, ts_prev: float, ts_now: float) -> float:
+    """Elapsed process-noise time between two snapshot epochs, per the clock.
+
+    "calendar" is the legacy wall-clock day count (byte-identical default).
+    "session" accrues on the intraday variance clock — measured on the
+    2026-07 0DTE campaign a closed market adds almost no handle variance (a
+    weekend moves ATM the same 55 bp as one overnight), so sub-day workflows
+    should not pay sqrt(calendar) process noise across nights and weekends.
+    The epochs round-trip through ``datetime.fromtimestamp`` (the exact
+    inverse of the naive ``.timestamp()`` that produced them)."""
+    if ts_now <= ts_prev:
+        return 0.0
+    if opts.filterClock == "session":
+        from datetime import datetime as _dt
+
+        from volfit.calib.intraday_time import intraday_variance_days
+
+        return intraday_variance_days(
+            _dt.fromtimestamp(ts_prev), _dt.fromtimestamp(ts_now),
+            opts.filterSessionShare, opts.filterNonTradingWeight,
+        )
+    return (ts_now - ts_prev) / 86400.0
+
+
 def _prediction_from(
     state: AppState, prev: "NodeFilter", f_now: float, ts_now: float
 ) -> tuple[FilterPrediction, float]:
@@ -220,7 +244,7 @@ def _prediction_from(
     )
     ssr = ssr_of_regime(state.dynamics_regime())
     base_mean = transport_handles(prev.state.mean, h, ssr)
-    dt_days = max(ts_now - prev.state.timestamp, 0.0) / 86400.0
+    dt_days = _filter_dt_days(opts, prev.state.timestamp, ts_now)
     q_diag, q_breakdown = process_noise(
         dt_days,
         h,
