@@ -711,11 +711,24 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   dIV/d-borrow sensitivity diagnostic; (4) held-out parity exit gate +
   known-HTB validation on REAL data (needs an HTB-name capture — GME/AMC
   class); (5) Forwards-tab joint column + confidence.
-- **NEXT:** item-11 increment 2 (gated fit-path carry) or the hosting
-  container spike. Item-10 residual follow-ups (not gates): per-maturity
-  filter handle scales (ζ_curv 6.4), degraded-v2 uncertainty band,
-  live-universe 0DTE seeding decision, same-date AM/PM expiry-key
-  redesign (rides index-root onboarding).
+- **ITEM 11 INCREMENT 2 SHIPPED 2026-07-16 (3642c6b) — gated fit-path
+  joint carry.** `OptionsSettings.jointCarry` (default OFF) +
+  `jointCarryEngageBp` (25 bp), both options-version bumping;
+  `state.joint_carry_read` caches the fixed-point read per (ticker,
+  expiry), invalidated with the forwards cache at every death site + on
+  market-settings changes; `resolved_forward` overrides the parity route
+  with source "joint" ONLY when the read is converged AND material
+  (|borrow| ≥ engage bp) — below the bar the parity object returns
+  EXACTLY, so **ordinary names are byte-identical even with the toggle
+  ON, locked bitwise on prepared arrays from day one** (the item's
+  explicit bar). Carry view maps the engaged source to `joint_deam`
+  provenance. Suite 1143 green.
+- **NEXT (item 11 remaining):** (3) dIV/d-borrow sensitivity diagnostic;
+  (4) held-out parity exit gate + known-HTB validation on REAL data (a
+  GME/AMC-class REST capture, cheap now); (5) Forwards-tab joint column +
+  confidence. Or: the hosting container spike. Item-10 residual
+  follow-ups: per-maturity filter handle scales, degraded-v2 band,
+  live-universe 0DTE seeding, same-date AM/PM expiry-key redesign.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
