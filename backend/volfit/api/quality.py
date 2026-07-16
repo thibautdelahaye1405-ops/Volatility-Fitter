@@ -82,14 +82,19 @@ def _filter_flags(state: AppState, ticker: str, iso: str, fit_mode: str) -> tupl
         return False, False
 
 
-def _no_fit_node(ticker: str, iso: str) -> QualityNode:
+def _no_fit_node(ticker: str, iso: str, degraded: str | None = None) -> QualityNode:
+    # A NAMED degraded condition (unfittable data, e.g. a near-settle 0DTE
+    # chain) is reported as such — a desk reading "no fit" would press
+    # Calibrate again; "degraded: ..." says the market, not the fit, is the
+    # reason. Either way ready=False keeps the publish gate closed.
+    issue = f"degraded: {degraded}" if degraded else "no fit"
     return QualityNode(
         ticker=ticker, expiry=iso, tau=0.0, hasFit=False, stale=False, model="",
         nQuotes=0, rmsBp=0.0, maxIvBp=0.0, atmVol=0.0, skew=0.0,
         leeLeft=0.0, leeRight=0.0, leeOk=True,
         calendarViolation=0.0, calendarOk=True, varSwapQuoted=False,
         filterActive=False, filterContaminated=False,
-        ready=False, issues=["no fit"],
+        ready=False, issues=[issue],
     )
 
 
@@ -280,7 +285,8 @@ def build_quality_report(
             ptr = state.get_calibrated_ptr(ticker, iso, mode)
             record = state.get_fit(ptr[0]) if ptr is not None else None
             if record is None:
-                rows.append(_no_fit_node(ticker, iso))
+                _p, degraded = service.prepare_slice_or_reason(state, ticker, iso)
+                rows.append(_no_fit_node(ticker, iso, degraded))
                 continue  # calendar chain: compare across the gap, keep prev_slice
             node, (n, d) = _node_row(
                 state, ticker, iso, mode, record, prev_slice, prev_display, prev_lee,

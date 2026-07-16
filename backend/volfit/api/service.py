@@ -1057,13 +1057,38 @@ def prepare_slice(state: AppState, ticker: str, expiry_iso: str):
     """Prepare one expiry's quotes in IV space WITHOUT calibrating — for the
     pre-Calibrate display (quote bands + the implied forward). ``None`` when no
     chain has been fetched or the expiry has no implied forward yet."""
+    prepared, _reason = prepare_slice_or_reason(state, ticker, expiry_iso)
+    return prepared
+
+
+#: The named degraded-market conditions (R2 item 10 degraded mode v1): a node
+#: whose preparation fails for one of these is UNFITTABLE DATA — the viewer
+#: serves the transported active prior (the existing dotted overlay) labeled
+#: with the reason, instead of the misleading "no fit yet" cue. Substrings of
+#: the calm errors raised by state.resolved_forward / prepare_quotes.
+_DEGRADED_CONDITIONS = (
+    ("no parity forward", "no_parity_forward"),
+    ("no two-sided OTM quotes", "no_fittable_market"),
+)
+
+
+def prepare_slice_or_reason(state: AppState, ticker: str, expiry_iso: str):
+    """``(prepared, degraded_reason)`` — exactly one of the two is non-None,
+    except the plain not-ready cases (no chain fetched / transient failure)
+    where both are None. The reason is one of the NAMED unfittable-market
+    conditions; anything unnamed stays a legacy silent None (no false
+    "degraded" labels on transient feed misses)."""
     if not state.has_quotes(ticker):
-        return None
+        return None, None
     expiry = state.resolve_expiry(ticker, expiry_iso)
     try:
-        return prepared_quotes(state, ticker, expiry)  # de-Am memoized per node
-    except Exception:
-        return None  # no forward for this expiry yet / degenerate slice
+        return prepared_quotes(state, ticker, expiry), None  # de-Am memoized
+    except Exception as exc:  # noqa: BLE001 — classify the calm named cases
+        msg = str(exc)
+        for needle, reason in _DEGRADED_CONDITIONS:
+            if needle in msg:
+                return None, reason
+        return None, None  # no forward yet / degenerate slice: legacy behavior
 
 
 def _no_fit_prior(
@@ -1097,7 +1122,7 @@ def _no_fit_smile_payload(
     a 'No fit yet — Calibrate' cue instead of charting a phantom fit."""
     expiry = state.resolve_expiry(ticker, expiry_iso)
     iso = expiry.isoformat()
-    prepared = prepare_slice(state, ticker, iso)
+    prepared, degraded = prepare_slice_or_reason(state, ticker, iso)
     session = state.session_if_exists((ticker, iso))
     quotes: list[QuoteBand] = []
     if prepared is not None:
@@ -1151,12 +1176,23 @@ def _no_fit_smile_payload(
         stale=False,
         anchorModel=None,
         surfaceRmsError=0.0,
+        degraded=degraded,
     )
 
 
 def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> SmileData:
     """Assemble the full SmileData payload for one (ticker, expiry) node."""
-    record = fit_or_get(state, ticker, expiry_iso, fit_mode)
+    try:
+        record = fit_or_get(state, ticker, expiry_iso, fit_mode)
+    except Exception as exc:  # noqa: BLE001 — absorb ONLY the named conditions
+        # Degraded mode v1: in the ungated workflow an unfittable chain used to
+        # escape as a raw error (an HTTP 500 on the very nodes a 0DTE desk
+        # watches into the close). The NAMED degraded-market conditions fall
+        # through to the no-fit payload, which serves the dotted transported
+        # prior and labels the reason; anything unnamed keeps raising.
+        if not any(needle in str(exc) for needle, _ in _DEGRADED_CONDITIONS):
+            raise
+        record = None
     if record is None:  # gated workflow, never calibrated -> quotes/prior, no curve
         return _no_fit_smile_payload(state, ticker, expiry_iso, fit_mode)
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()  # session key

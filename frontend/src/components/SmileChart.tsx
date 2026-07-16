@@ -63,7 +63,18 @@ interface SmileChartProps {
    *  the fit's own Jacobian + bid-ask noise): a subtle accent band around the
    *  current fit — "error bars from the quotes". */
   fitBandHalf?: number | null;
+  /** Named degraded-market condition (backend SmileData.degraded): the node's
+   *  DATA is unfittable (e.g. a 0DTE chain minutes from settlement), so the
+   *  cue explains the market — not "press Calibrate" — while the dotted
+   *  transported prior keeps being served. */
+  degraded?: string | null;
 }
+
+/** Human labels for the named degraded-market conditions. */
+const DEGRADED_LABELS: Record<string, string> = {
+  no_parity_forward: "no parity forward",
+  no_fittable_market: "no fittable quotes",
+};
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
 
@@ -128,6 +139,7 @@ export default function SmileChart({
   filterBandHi = null,
   filterPred = null,
   fitBandHalf = null,
+  degraded = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -553,18 +565,22 @@ export default function SmileChart({
                 <path d={modelPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
 
-                {/* Trigger-gated cue: no model curve yet (never calibrated). */}
+                {/* Trigger-gated cue: no model curve yet — never calibrated,
+                    or a NAMED degraded-market condition (unfittable data:
+                    Calibrate would not help, the prior is the surface). */}
                 {model.length === 0 && (
                   <text
                     x={plotW / 2}
                     y={18}
                     textAnchor="middle"
-                    className="fill-slate-500"
+                    className={degraded ? "fill-amber-500" : "fill-slate-500"}
                     style={{ fontSize: 11 }}
                   >
-                    {quotes.length === 0
-                      ? "No quotes — press Fetch"
-                      : "No fit yet — press Calibrate"}
+                    {degraded
+                      ? `Degraded market (${DEGRADED_LABELS[degraded] ?? degraded}) — showing transported prior`
+                      : quotes.length === 0
+                        ? "No quotes — press Fetch"
+                        : "No fit yet — press Calibrate"}
                   </text>
                 )}
 

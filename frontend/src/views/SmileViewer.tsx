@@ -287,6 +287,7 @@ export default function SmileViewer() {
             fitBandHalf={
               smile.diagnostics.atmVolStd != null ? 1.96 * smile.diagnostics.atmVolStd : null
             }
+            degraded={smile.degraded ?? null}
           />
         );
       case "stackeddensity":

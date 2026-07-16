@@ -699,6 +699,14 @@ class SmileData(BaseModel):
     #: smile. Each curve is in its own log-moneyness (sticky-strike => a lateral
     #: shift; sticky-moneyness => the two coincide). None when no spot move.
     anchorModel: list[SmilePoint] | None = None
+    #: Degraded-market condition (R2 item 10 degraded mode v1): the node has no
+    #: fit because its DATA is unfittable for a NAMED reason —
+    #: "no_parity_forward" (too few two-sided pairs for a parity regression) or
+    #: "no_fittable_market" (every OTM quote fell to the prep screens; e.g. a
+    #: 0DTE chain minutes from settlement, all sub-3-tick bids). The viewer
+    #: keeps serving the dotted transported prior and labels the condition
+    #: instead of the misleading "no fit yet" cue. None = plain not-calibrated.
+    degraded: str | None = None
 
 
 # ------------------------------------------------------------------ universe

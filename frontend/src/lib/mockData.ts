@@ -106,6 +106,10 @@ export interface SmileData {
    *  Calibrate button): `model` is empty and the view shows quotes (if fetched)
    *  + the dotted prior (if any). Optional/true for older payloads / mock. */
   hasFit?: boolean;
+  /** Named degraded-market condition ("no_parity_forward" |
+   *  "no_fittable_market"): the node's data is unfittable, the dotted
+   *  transported prior is the served surface and the cue says so. */
+  degraded?: string | null;
   /** Inputs drifted since the last calibration — the displayed fit is frozen
    *  (stale) until an explicit Calibrate. Optional for older payloads / mock. */
   stale?: boolean;
