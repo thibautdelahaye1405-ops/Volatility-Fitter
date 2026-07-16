@@ -630,16 +630,31 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   anchors) — per-maturity handle process scales, an F3-style follow-up;
   the q LEVEL is regime-dependent as always (this one-window read said
   ~90 bp; the daily default 30 bp stands, adaptive inflation spans them).
-- **NEXT (R2 item 10 remaining):** absolute-timestamp calendar constraints
-  for adjacent dailies (same-date AM/PM ordering); fast degraded mode;
-  remaining stress-pack exit gates (deterministic replay, hard publish
-  failure on unresolved intrinsic/calendar inconsistency, sub-50ms warm
-  slice latency — "no NaN on valid quotes" is locked by
+- **SETTLEMENT-INSTANT CALENDAR ORDERING SHIPPED 2026-07-16 (16e98a0).**
+  `service.ordered_expiries` keys every calendar-coupling chain (surface
+  fit plan, coupled Calibrate items, Quality's calendar column) on the
+  schema-v7 settlement INSTANT — AM 09:30 before PM 16:00 on the same
+  date — with an end-of-day fallback reproducing date order exactly:
+  byte-identical for every current chain (settle instants never cross
+  calendar dates; full suite 1125 green incl. the perf rails).
+  tests/test_expiry_order.py (2: byte-identity contract + AM<PM key
+  semantics). **Honest scope**: chains key expiries by DATE, so a genuine
+  same-date AM/PM pair (SPX quarterly vs SPXW EOM) collapses to one node
+  at INGESTION — the seam orders whatever nodes exist; splitting the pair
+  needs an expiry-key redesign ((date, settle-class) through
+  ChainSnapshot/store/fit keys), which is the real prerequisite for
+  index-root universes and should ride the SPX/NDX/RUT onboarding, not
+  this item.
+- **NEXT (R2 item 10 remaining):** fast degraded mode (prior transport +
+  conservative uncertainty, clearly labeled — shares the dark-node
+  machinery); remaining stress-pack exit gates (deterministic replay,
+  hard publish failure on unresolved intrinsic/calendar inconsistency,
+  sub-50ms warm slice latency — "no NaN on valid quotes" is locked by
   test_intraday_0dte); per-maturity filter handle scales (the ζ_curv 6.4
-  residual above). Product follow-up: decide how 0DTE rungs enter the
-  LIVE universe (the "0dte" filter chip works today; the default seed
-  excludes same-day by design). R2 item 11 (joint borrow/de-Am)
-  independent; hosting container spike unblocked.
+  residual). Product follow-up: decide how 0DTE rungs enter the LIVE
+  universe (the "0dte" filter chip works today; the default seed excludes
+  same-day by design). R2 item 11 (joint borrow/de-Am) independent;
+  hosting container spike unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
