@@ -114,11 +114,21 @@ class CarryPoint(BaseModel):
     discount: float
     discountSource: str
     borrowBp: float | None  # continuous implied borrow, bp/yr; None = unidentified
-    borrowSource: str  # "parity_implied" | "unidentified"
+    borrowSource: str  # "parity_implied" | "joint_deam" | "unidentified"
     identifiable: bool  # parity carries information at this expiry
     nStrikes: int = 0  # parity-pair count behind the read
     residualRms: float = 0.0  # parity regression residual (price units)
     nOutliers: int = 0  # parity pairs dropped by the stale screen
+    #: R2 item 11 (joint borrow/de-Am fixed point, GET /carry?joint=true):
+    #: the EEP-consistent borrow — de-Am at the trial carry with the SAME
+    #: dividend schedule in both legs, iterated to the parity/theoretical
+    #: fixed point. None when not requested / not identifiable / the model
+    #: mix is unsupported (proportional dividends fall back to v0). The
+    #: failure accounting is the exit gate's "explicit failure rates".
+    jointBorrowBp: float | None = None
+    jointIterations: int | None = None
+    jointConverged: bool | None = None
+    jointDeamFailures: int | None = None
 
 
 class CarryCurveResponse(BaseModel):

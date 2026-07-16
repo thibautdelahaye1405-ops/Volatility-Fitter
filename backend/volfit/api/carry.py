@@ -63,7 +63,52 @@ def borrow_identified(
     )
 
 
-def _point(state: AppState, ticker: str, expiry: date, zero_carry: bool, spot: float) -> CarryPoint:
+def _joint_read(state: AppState, ticker: str, expiry: date) -> dict:
+    """The R2 item-11 fixed-point borrow for one expiry (opt-in, ?joint=true).
+
+    Continuous + discrete-ABSOLUTE dividend models ride both legs of the
+    solve; proportional/mixed-proportional models fall back to the v0 read
+    (empty dict) — a proportional dividend is not a cash amount the escrowed
+    tree can carry. Best-effort: a solve hiccup must never break the view."""
+    import numpy as np
+
+    from volfit.data.carry_solve import joint_borrow
+
+    settings = state.market_settings(ticker)
+    div_times = div_amounts = None
+    if settings.dividendMode in ("discrete_absolute", "mixed"):
+        legs = [
+            ((date.fromisoformat(d.exDate) - state.reference_date).days / 365.0, d.amount)
+            for d in settings.dividends
+        ]
+        legs = [(tt, a) for tt, a in legs if tt > 0.0]
+        if legs:
+            div_times = np.array([tt for tt, _ in legs])
+            div_amounts = np.array([a for _, a in legs])
+    elif settings.dividendMode == "discrete_proportional":
+        return {}
+    try:
+        res = joint_borrow(
+            state.snapshot(ticker), expiry, state.reference_date,
+            settings.rate, dividend_yield=settings.dividendYield,
+            div_times=div_times, div_amounts=div_amounts,
+        )
+    except Exception:  # noqa: BLE001 — advisory surface only
+        return {}
+    if res is None:
+        return {}
+    return {
+        "jointBorrowBp": res.borrow_bp,
+        "jointIterations": res.iterations,
+        "jointConverged": res.converged,
+        "jointDeamFailures": res.deam_failures,
+    }
+
+
+def _point(
+    state: AppState, ticker: str, expiry: date, zero_carry: bool, spot: float,
+    joint: bool = False,
+) -> CarryPoint:
     parity = state.forwards(ticker).get(expiry)
     theo_forward, _ = state.theoretical_forward_for(ticker, expiry)
     active = state.resolved_forward(ticker, expiry)
@@ -73,7 +118,9 @@ def _point(state: AppState, ticker: str, expiry: date, zero_carry: bool, spot: f
         implied_borrow_bp(parity.forward, theo_forward, t) if identifiable else None
     )
     source = _SOURCE.get(active.source, active.source)
+    extra = _joint_read(state, ticker, expiry) if joint and identifiable else {}
     return CarryPoint(
+        **extra,
         expiry=expiry.isoformat(),
         t=t,
         forward=float(active.forward),
@@ -91,13 +138,17 @@ def _point(state: AppState, ticker: str, expiry: date, zero_carry: bool, spot: f
     )
 
 
-def carry_curve(state: AppState, ticker: str) -> CarryCurveResponse:
-    """Assemble the ticker's carry object from cached state (never fits)."""
+def carry_curve(state: AppState, ticker: str, joint: bool = False) -> CarryCurveResponse:
+    """Assemble the ticker's carry object from cached state (never fits).
+
+    ``joint=True`` additionally runs the R2 item-11 borrow/de-Am fixed point
+    per identifiable expiry (volfit.data.carry_solve) — the EEP-consistent
+    borrow with iteration/failure accounting on each point."""
     snapshot = state.snapshot(ticker)  # UnknownNodeError on bad tickers
     settings = state.market_settings(ticker)
     zero_carry = snapshot.is_zero_carry()
     points = [
-        _point(state, ticker, expiry, zero_carry, float(snapshot.spot))
+        _point(state, ticker, expiry, zero_carry, float(snapshot.spot), joint=joint)
         for expiry in sorted(state.forwards(ticker))
     ]
     has_divs = bool(settings.dividends) or settings.dividendYield != 0.0
