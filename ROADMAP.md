@@ -684,11 +684,38 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   (16 cases now). The other two gate clauses were already locked:
   price/band-space quality (the band-relative sweep gate) and
   next-snapshot held-out (the intraday filter harness). Suite 1133 green.
-- **NEXT:** R2 item 11 (joint borrow/de-Am fixed point) or the hosting
-  container spike — both unblocked. Item-10 residual follow-ups (not
-  gates): per-maturity filter handle scales (ζ_curv 6.4), degraded-v2
-  uncertainty band, live-universe 0DTE seeding decision, same-date AM/PM
-  expiry-key redesign (rides index-root onboarding).
+- **R2 ITEM 11 INCREMENT 1 SHIPPED 2026-07-16 (b02257d) — the joint
+  borrow/de-Am fixed point, measurement-grade.** New
+  `volfit/data/carry_solve.py`: iterate `b ← b + ln(F_theo(b)/F_parity(b))/t`
+  where each pass de-Americanizes the paired mids at the SPLIT carry
+  (rate, dividend yield + borrow, escrowed cash schedule — the SAME
+  schedule in both legs), reprices European on the same tree, regresses
+  parity. **Validated on tree-priced chains (the tree IS the market): a
+  planted 300 bp borrow returns 299.8 bp in 7 iterations vs a 26 bp
+  EEP-bias on the naive raw-parity read; dropping the dividend schedule
+  from the solve while the market priced it biases the read 3× — the
+  "discrete dividends consistent in both legs" clause, demonstrated.**
+  The yield leg is never misread as borrow; European chains short-circuit
+  exactly; per-expiry independence = isolated maturity specials by
+  construction; unsupportable data → None; tree-inversion failures counted
+  explicitly (the exit-gate clause). Trader view: `GET
+  /carry/{ticker}?joint=true` adds jointBorrowBp/Iterations/Converged/
+  DeamFailures per identifiable expiry (proportional dividend models fall
+  back to v0); the default payload is byte-identical. **Honest finding
+  (test-recorded): on FLAT-carry chains v0's `_refine_american`-refined
+  read already ≈ the joint solve — the fixed point's edge is discrete
+  dividends (ex-date exercise timing) and model-split provenance.**
+  Suite 1140 green. **Remaining item-11 increments:** (2) feed the
+  converged (F, D, borrow) into resolved forwards / de-Am in the fit path
+  — GATED, ordinary names byte-identical test-locked from day one; (3)
+  dIV/d-borrow sensitivity diagnostic; (4) held-out parity exit gate +
+  known-HTB validation on REAL data (needs an HTB-name capture — GME/AMC
+  class); (5) Forwards-tab joint column + confidence.
+- **NEXT:** item-11 increment 2 (gated fit-path carry) or the hosting
+  container spike. Item-10 residual follow-ups (not gates): per-maturity
+  filter handle scales (ζ_curv 6.4), degraded-v2 uncertainty band,
+  live-universe 0DTE seeding decision, same-date AM/PM expiry-key
+  redesign (rides index-root onboarding).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
