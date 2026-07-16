@@ -605,16 +605,41 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   bid floor is a KEPT-SET change on live ticked chains (drops junk-ask
   wing quotes the mid floor kept) — expected effect is strictly cleaner
   wings; exact-price pipelines byte-identical by the tick_size gate.
-- **NEXT (R2 item 10 remaining):** temporal-filter tuning for intraday
-  jumps (the 13-instants×8-days dataset now exists); absolute-timestamp
-  calendar constraints for adjacent dailies (same-date AM/PM ordering);
-  fast degraded mode; remaining stress-pack exit gates (deterministic
-  replay, hard publish failure on unresolved intrinsic/calendar
-  inconsistency, sub-50ms warm slice latency — "no NaN on valid quotes"
-  is locked by test_intraday_0dte). Product follow-up: decide how 0DTE
-  rungs enter the LIVE universe (the "0dte" filter chip works today; the
-  default seed excludes same-day by design). R2 item 11 (joint
-  borrow/de-Am) independent; hosting container spike unblocked.
+- **TEMPORAL-FILTER TUNING SHIPPED 2026-07-16 (d16f913) — the filter gains
+  a SESSION variance clock.** New `backtest/observation_filter_intraday.py`
+  (two-phase: `--build` = 936 data-only LQD measurements over the campaign
+  store, resumable; `--sweep` = the pure Kalman core replayed across
+  (clock, process-bp) configs in seconds). **The calendar clock is wrong at
+  sub-day cadence, measured:** transported ATM handle moves are 19.5 bp per
+  30-min step (dailies 22.6 / anchors 17.7), 54.9 bp per overnight, and
+  54.4 bp per WEEKEND — a closed market accrues ~zero handle variance, so
+  no calendar q calibrates all step types (best: ζ_atm 1.04 intraday /
+  0.53 overnight / 0.23 weekend). **The session clock (60%% of a day's
+  variance inside the 6.5h session, non-trading days 0) at q=90 bp/√day
+  calibrates jointly: ζ_atm 0.95 / 0.89 / 0.84.** Production wiring:
+  `OptionsSettings.filterClock` ("calendar" default = byte-identical |
+  "session") + `filterSessionShare` (0.60) / `filterNonTradingWeight`
+  (0.0), riding the EXISTING `intraday_variance_days` in the filter's dt
+  (`api/observation_filter._filter_dt_days`); the stale-reset rule stays on
+  calendar hours (staleness = data age, not variance). Tests: clock unit
+  locks (test_observation_filter_app +2) + options defaults/round-trip.
+  Suite 1122 passed (the graph perf rail failure A/Bs identically on the
+  clean tree = the documented box-load flake). **Residual for a later
+  pass:** skew/curvature ζ ≈ 1.8 / 6.4 at the default per-handle scales,
+  worst on short-dated nodes (30-min curvature std 13.9 dailies vs 3.4
+  anchors) — per-maturity handle process scales, an F3-style follow-up;
+  the q LEVEL is regime-dependent as always (this one-window read said
+  ~90 bp; the daily default 30 bp stands, adaptive inflation spans them).
+- **NEXT (R2 item 10 remaining):** absolute-timestamp calendar constraints
+  for adjacent dailies (same-date AM/PM ordering); fast degraded mode;
+  remaining stress-pack exit gates (deterministic replay, hard publish
+  failure on unresolved intrinsic/calendar inconsistency, sub-50ms warm
+  slice latency — "no NaN on valid quotes" is locked by
+  test_intraday_0dte); per-maturity filter handle scales (the ζ_curv 6.4
+  residual above). Product follow-up: decide how 0DTE rungs enter the
+  LIVE universe (the "0dte" filter chip works today; the default seed
+  excludes same-day by design). R2 item 11 (joint borrow/de-Am)
+  independent; hosting container spike unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
