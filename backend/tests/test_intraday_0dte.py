@@ -69,3 +69,25 @@ def test_same_day_discount_clamped_on_real_chain(stored_snapshot):
     # clamp must have actually engaged, not merely been inside the band.
     assert f.discount < 1.0004
     assert abs(f.forward / stored_snapshot.spot - 1.0) < 5e-3
+
+
+def test_deterministic_replay_bitwise(stored_snapshot):
+    """R2 exit gate: replaying the SAME captured chain in two fresh states
+    (intraday clock ON) reproduces the same-day node's fitted parameter
+    vector BITWISE — no wall-clock, no ordering, no cache leakage."""
+    import numpy as np
+
+    from volfit.api import service
+    from volfit.api.state import AppState
+    from volfit.replay_report import _StoredChains
+
+    def params_once() -> np.ndarray:
+        state = AppState(INSTANT.date(),
+                         provider=_StoredChains({"SPY": stored_snapshot}))
+        state.set_expiries("SPY", sorted(stored_snapshot.expiries()))
+        state.set_options(state.options().model_copy(update={"intradayClock": True}))
+        rec = service.calibrate_node(state, "SPY", "2026-07-10", "mid")
+        return np.asarray(rec.result.params.to_vector(), dtype=float)
+
+    first, second = params_once(), params_once()
+    assert np.array_equal(first, second)  # bitwise, not approx

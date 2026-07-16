@@ -191,6 +191,21 @@ CASES: tuple[CertCase, ...] = (
         "cold-start silent, self-gating across asset kinds.",
         ("tests/test_graph_idio.py",),
     ),
+    CertCase(
+        "0dte_exit_gates", "0DTE exit gates (clock, replay, publish, latency)",
+        "model_stress", "R2 item 10 campaign (2026-07-15/16)",
+        "The intraday campaign's acceptance bar, locked on REAL captured SPY "
+        "0DTE NBBO (862 quotes, 12:30 ET): the same-day node prices sub-day "
+        "(t = 3.5h, never the unrepresentable 0), replays BITWISE across "
+        "fresh states, a publish set with unresolved intrinsic or calendar "
+        "inconsistency FAILS HARD before any manifest persists (HTTP 409), "
+        "and a warm 0DTE slice refit stays inside the 50 ms design target "
+        "(~20 ms measured; rail ceiling 3x for shared runners).",
+        ("tests/test_intraday_0dte.py",
+         "tests/test_export.py::test_publish_blocked_on_calendar_inconsistency",
+         "tests/test_export.py::test_node_blockers_name_intrinsic_and_core_conflicts",
+         "tests/test_perf.py::test_perf_warm_slice_0dte"),
+    ),
 )
 
 

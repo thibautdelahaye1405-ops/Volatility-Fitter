@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from volfit.api.export import build_surface_export, surface_export_csv
+from volfit.api.export import PublishBlockedError, build_surface_export, surface_export_csv
 from volfit.api.export_report import build_quality_report_html
 
 router = APIRouter(tags=["export"])
@@ -35,6 +35,7 @@ def export_surfaces(
     tickers: str | None = None,
     fit_mode: str | None = None,
     project_wings: bool = True,
+    allow_dirty: bool = False,
 ) -> Response:
     """Download the calibrated surfaces (fitted nodes only) + manifest.
 
@@ -42,11 +43,18 @@ def export_surfaces(
     per-node quality); ``format=csv`` flattens the curves for Excel.
     ``project_wings`` (default on) applies the Notes 09/10 Phase-3 publish-time
     wing projection — the published wings are discrete-arb-free, the traded
-    core byte-identical; ``project_wings=false`` exports the raw model wings."""
+    core byte-identical; ``project_wings=false`` exports the raw model wings.
+    A publish set with UNRESOLVED intrinsic or calendar inconsistency FAILS
+    with 409 before anything persists (the R2 exit gate); ``allow_dirty=true``
+    exports the draft artifact with the defects stamped in per-node quality."""
     state = request.app.state.volfit
-    export = build_surface_export(
-        state, fit_mode, _tickers_param(tickers), project_wings=project_wings
-    )
+    try:
+        export = build_surface_export(
+            state, fit_mode, _tickers_param(tickers),
+            project_wings=project_wings, require_clean=not allow_dirty,
+        )
+    except PublishBlockedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     if format == "csv":
         return Response(
             content=surface_export_csv(export),

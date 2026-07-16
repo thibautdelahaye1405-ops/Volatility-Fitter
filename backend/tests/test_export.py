@@ -110,3 +110,51 @@ def test_export_routes_over_http():
     assert r_html.headers["content-type"].startswith("text/html")
     assert "surface quality report" in r_html.text
     assert TICKER in r_html.text and "Publish rule" in r_html.text
+
+
+# ------------------------------------------------- hard publish gate (R2)
+def test_publish_blocked_on_calendar_inconsistency(monkeypatch):
+    """The exit gate: a publish set with an unresolved calendar inconsistency
+    FAILS (PublishBlockedError naming the node) before any manifest persists;
+    require_clean=False still exports the draft. The calendar DETECTOR has its
+    own locks (calib/calendar + quality); poisoned here to isolate the gate."""
+    import pytest
+
+    state = AppState(REF_DATE)
+    isos = _isos(state)
+    for iso in isos[:2]:
+        service.calibrate_node(state, TICKER, iso, "mid")
+
+    real = export.build_quality_report
+
+    def poisoned(state_, mode):
+        report = real(state_, mode)
+        for row in report.nodes:
+            if row.hasFit and row.expiry == isos[1]:
+                row.calendarOk = False
+                row.calendarViolation = 0.005
+        return report
+
+    monkeypatch.setattr(export, "build_quality_report", poisoned)
+    with pytest.raises(export.PublishBlockedError, match="calendar inconsistency"):
+        export.build_surface_export(state, tickers=[TICKER])
+    draft = export.build_surface_export(state, tickers=[TICKER], require_clean=False)
+    assert len(draft.tickers[0].nodes) == 2  # the explicit draft escape hatch
+
+
+def test_node_blockers_name_intrinsic_and_core_conflicts():
+    """The other two blocker classes on a real exported node: an unpriceable
+    curve region (w <= 0 = below intrinsic) and a core calendar conflict the
+    wing projection must not repair (wingsClean=False)."""
+    state = AppState(REF_DATE)
+    iso = _isos(state)[0]
+    service.calibrate_node(state, TICKER, iso, "mid")
+    out = export.build_surface_export(state, tickers=[TICKER])
+    node = out.tickers[0].nodes[0]
+    row = next(r for r in export.build_quality_report(state, "mid").nodes if r.hasFit)
+    assert export._node_blockers(TICKER, row, node) == []  # clean fit: no blockers
+    node.curve[0].w = -1.0
+    node.wingsClean = False
+    blockers = export._node_blockers(TICKER, row, node)
+    assert any("intrinsic" in b for b in blockers)
+    assert any("core calendar conflict" in b for b in blockers)

@@ -31,6 +31,20 @@ from volfit.api.state import AppState
 from volfit.models.projection import ProjectedWings, project_published_wings
 
 
+class PublishBlockedError(ValueError):
+    """The publish set carries UNRESOLVED arbitrage inconsistency (R2 item 10
+    exit gate): publishing must FAIL HARD, not stamp a warning into metadata a
+    downstream consumer may never read. ``blockers`` lists every offending
+    node with its reason; the router maps this to HTTP 409."""
+
+    def __init__(self, blockers: list[str]):
+        self.blockers = list(blockers)
+        super().__init__(
+            "publish blocked: " + "; ".join(self.blockers)
+            + " (pass allow_dirty=true to export a draft artifact anyway)"
+        )
+
+
 class ExportPoint(BaseModel):
     """One model-curve sample: log-moneyness, absolute strike, IV, total var."""
 
@@ -234,17 +248,42 @@ def _export_local_vol(state: AppState, ticker: str) -> ExportLocalVol | None:
     return ExportLocalVol(tNodes=hit.tNodes, xNodes=hit.xNodes, vol=hit.localVol)
 
 
+def _node_blockers(ticker: str, row: QualityNode, node: ExportNode) -> list[str]:
+    """The HARD publish blockers of one exported node (R2 item 10 exit gate):
+    calendar inconsistency beyond tolerance (quality's two-curve check), a
+    core calendar conflict the wing projection must not repair, and an
+    unpriceable curve region (w <= 0 or non-finite = below intrinsic — a
+    finite positive-variance IV point always prices above intrinsic)."""
+    where = f"{ticker} {row.expiry}"
+    out: list[str] = []
+    if not row.calendarOk:
+        out.append(f"{where}: calendar inconsistency ({row.calendarViolation * 1e4:.0f}bp)")
+    if not node.wingsClean:
+        out.append(f"{where}: core calendar conflict at the traded edge")
+    w = np.array([p.w for p in node.curve])
+    iv = np.array([p.iv for p in node.curve])
+    if w.size and (not np.all(np.isfinite(w)) or not np.all(np.isfinite(iv)) or np.any(w <= 0.0)):
+        out.append(f"{where}: unpriceable curve region (intrinsic)")
+    return out
+
+
 def build_surface_export(
     state: AppState,
     fit_mode: str | None = None,
     tickers: list[str] | None = None,
     project_wings: bool = True,
+    require_clean: bool = True,
 ) -> SurfaceExport:
     """Assemble the export from cached fits only (fitted nodes; publish set).
 
     ``project_wings`` (default ON) runs the Notes 09/10 Phase-3 publish-time
     wing projection per ticker in ascending maturity, so the published surface
-    is jointly wing-arb-free; clean wings export byte-identical curves."""
+    is jointly wing-arb-free; clean wings export byte-identical curves.
+
+    ``require_clean`` (default ON — the R2 exit gate) raises
+    ``PublishBlockedError`` listing EVERY node with unresolved intrinsic or
+    calendar inconsistency, BEFORE any manifest is persisted; False exports
+    the draft artifact with the defects still stamped in per-node quality."""
     mode = fit_mode if fit_mode is not None else state.last_fit_mode
     report = build_quality_report(state, mode)
     chosen = set(tickers) if tickers else None
@@ -255,6 +294,7 @@ def build_surface_export(
 
     out: list[ExportTicker] = []
     projected_nodes = 0
+    blockers: list[str] = []
     for ticker, rows in rows_by_ticker.items():
         nodes: list[ExportNode] = []
         prev_pub: tuple[np.ndarray, np.ndarray] | None = None
@@ -267,6 +307,7 @@ def build_surface_export(
                 continue
             node, prev_pub = built
             projected_nodes += int(node.curveProjected)
+            blockers.extend(_node_blockers(ticker, row, node))
             nodes.append(node)
         if not nodes:
             continue
@@ -281,6 +322,10 @@ def build_surface_export(
                 localVol=_export_local_vol(state, ticker),
             )
         )
+    if require_clean and blockers:
+        # The exit gate fires BEFORE any manifest persists: a blocked publish
+        # leaves no lineage row, no artifact, no superseded parent.
+        raise PublishBlockedError(blockers)
     manifest = build_manifest(state, mode, report, [t.ticker for t in out])
     manifest = manifest.model_copy(
         update={"wingProjection": project_wings, "projectedNodes": projected_nodes}

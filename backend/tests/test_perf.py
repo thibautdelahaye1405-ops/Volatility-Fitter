@@ -340,3 +340,26 @@ def test_perf_affine_localvol_gn_heavy(perf_report):
         ),
         repeat=2,
     )
+
+
+# ---------------------------------------------------------------------------
+# 8. Warm 0DTE slice refit — the R2 item-10 latency exit gate. The intraday
+#    workflow's core loop is "one slice's data ticked -> refit it": the DESIGN
+#    TARGET is < 50 ms per warm slice on a quiet box (measured ~20 ms local,
+#    caches warm); the assert ceiling is 3x the target for shared runners.
+BUDGET_MS["warm_slice_0dte"] = 150.0  # design target < 50 ms; ~20 ms local
+
+
+def test_perf_warm_slice_0dte(perf_report):
+    from volfit.calib.weights import resolve_weights
+
+    tau = 3.5 / 24.0 / 365.0  # 12:30 ET -> the 16:00 settle
+    k = np.linspace(-0.02, 0.02, 19)  # a 0DTE book: tight strikes, few quotes
+    iv = 0.16 + 1.2 * k**2 / 0.02 - 0.35 * k
+    w = iv**2 * tau
+    weights = resolve_weights("equal", k, w)
+
+    def fit():
+        calibrate_slice(k, w, t=tau, n_order=6, weights=weights)
+
+    _check(perf_report, "warm_slice_0dte", fit, repeat=9, warmup=2)
