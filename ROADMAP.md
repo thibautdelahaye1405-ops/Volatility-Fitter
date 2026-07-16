@@ -645,16 +645,37 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   ChainSnapshot/store/fit keys), which is the real prerequisite for
   index-root universes and should ride the SPX/NDX/RUT onboarding, not
   this item.
-- **NEXT (R2 item 10 remaining):** fast degraded mode (prior transport +
-  conservative uncertainty, clearly labeled — shares the dark-node
-  machinery); remaining stress-pack exit gates (deterministic replay,
-  hard publish failure on unresolved intrinsic/calendar inconsistency,
-  sub-50ms warm slice latency — "no NaN on valid quotes" is locked by
-  test_intraday_0dte); per-maturity filter handle scales (the ζ_curv 6.4
-  residual). Product follow-up: decide how 0DTE rungs enter the LIVE
-  universe (the "0dte" filter chip works today; the default seed excludes
-  same-day by design). R2 item 11 (joint borrow/de-Am) independent;
-  hosting container spike unblocked.
+- **DEGRADED MODE v1 SHIPPED 2026-07-16 (ec2a620) — unfittable markets are
+  NAMED and keep serving the prior.** Two findings drove the shape: (a) a
+  no-fit node rendered identically whether it was NOT-CALIBRATED-YET or
+  UNFITTABLE DATA (a 0DTE chain minutes from settlement: no parity pairs /
+  every OTM quote at the tick floor) — a desk reads "press Calibrate" and
+  presses it, uselessly; (b) in the UNGATED workflow the named conditions
+  escaped `smile_payload` as raw errors — **an HTTP 500 on exactly the
+  nodes a 0DTE desk watches into the close** (reproduced on the captured
+  IWM 07-09 15:45 chain, then served cleanly end-to-end after the fix).
+  Mechanics: `service.prepare_slice_or_reason` classifies the named
+  conditions (`no_parity_forward` / `no_fittable_market`; unnamed failures
+  keep the legacy silent None — no false labels on transient misses);
+  `SmileData.degraded` rides the payload; `smile_payload` absorbs the
+  named conditions into the no-fit path — which ALREADY serves the dotted
+  transported active prior (`_no_fit_prior`), i.e. the "prior transport"
+  half of degraded mode existed; the viewer cue turns amber ("Degraded
+  market (…) — showing transported prior"); the Quality row reads
+  "degraded: <reason>" with ready=False keeping the publish gate closed.
+  Tests: test_degraded_mode.py (4) + the real-chain end-to-end; suite 1129
+  green; frontend build + vitest 55 green. **Degraded v2 (recorded, not
+  built):** conservative uncertainty BAND around the served prior via the
+  idio-floor machinery (needs innovation-history plumbing + a chart band).
+- **NEXT (R2 item 10 remaining):** remaining stress-pack exit gates
+  (deterministic replay, hard publish failure on unresolved
+  intrinsic/calendar inconsistency, sub-50ms warm slice latency — "no NaN
+  on valid quotes" is locked by test_intraday_0dte); per-maturity filter
+  handle scales (the ζ_curv 6.4 residual); degraded v2 band. Product
+  follow-up: decide how 0DTE rungs enter the LIVE universe (the "0dte"
+  filter chip works today; the default seed excludes same-day by design).
+  R2 item 11 (joint borrow/de-Am) independent; hosting container spike
+  unblocked.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
