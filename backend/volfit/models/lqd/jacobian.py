@@ -32,7 +32,7 @@ from scipy.special import expit
 from volfit.calib.band import band_violation_sign
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, legendre_matrix
 from volfit.models.lqd.interp import hermite_eval
-from volfit.models.lqd.quadrature import _cumquad, _static_grid, build_slice
+from volfit.models.lqd.quadrature import _cumquad, build_slice
 
 #: Endpoint integrability buffer (mirror of quadrature.EPS_AR for the except path).
 from volfit.models.lqd.quadrature import EPS_AR, Z_MAX  # noqa: E402
@@ -56,52 +56,27 @@ def _endpoint_grads(a_left: float, a_right: float, order: int) -> tuple[np.ndarr
     return a_left * d_al, a_right * d_ar
 
 
-def residual_jacobian(
-    theta: np.ndarray,
-    k: np.ndarray,
-    target_price: np.ndarray,
-    inv_vega: np.ndarray,
-    sqrt_weights: np.ndarray,
-    reg: np.ndarray,
-    cal_z: np.ndarray | None,
-    cal_floor: np.ndarray | None,
-    cal_weight: float,
-    price_lo: np.ndarray | None,
-    price_hi: np.ndarray | None,
-    barrier_center: float,
-    barrier_scale: float,
-    mid_anchor_weight: float,
-    var_swap,  # gated None — present so the signature matches _residuals
-    prior_anchor,
-    prior_var_swap,
-    operator_prior,
-    n_points: int,
-) -> np.ndarray:
-    """Analytic Jacobian of ``_residuals`` (var_swap/prior gated off). Rows are
-    stacked [fit, reg, calendar, barrier] in the residual's order; columns are
-    theta = (L, R, a_2..a_N)."""
-    params = LQDParams.from_vector(theta)
-    p = theta.size
-    band_mode = price_lo is not None
-    n_fit = (2 * k.size) if band_mode else k.size
-    n_cal = 0 if cal_z is None else cal_z.size
+def slice_sensitivities(
+    params: LQDParams, n_points: int
+) -> tuple[object, np.ndarray, np.ndarray]:
+    """One quadrature pass plus its theta-sensitivities.
 
+    Returns ``(slice_, d_az, d_dadz)``: the built LQDSlice and the nodal
+    derivatives of the asset-share curve ``a_z`` and its slope ``dA/dz``
+    w.r.t. theta = (L, R, a_2..a_N), stacked as (P, M) arrays. These are all
+    the joint symmetric solver (volfit.calib.symmetric) needs to form
+    dC/dtheta at arbitrary strikes via ``call_price_rows``; ``residual_jacobian``
+    below builds the full single-slice residual Jacobian from the same pass.
+
+    Raises ValueError when A_R >= 1 (same contract as build_slice).
+    """
     a_left, a_right = endpoint_scales(params)
     d_al, d_ar = _endpoint_grads(a_left, a_right, params.order)
 
-    # --- infeasible tail: residual was full(n_fit, 10 + a_right) + reg + barrier
-    if a_right >= 1.0 - EPS_AR:
-        j_fit = np.tile(d_ar, (n_fit, 1))
-        j_cal = np.zeros((n_cal, p))
-        return np.vstack([j_fit, _reg_jac(reg, p), j_cal, _barrier_row(
-            a_right, d_ar, barrier_center, barrier_scale)])
-
-    # --- one quadrature pass + its theta-sensitivities --------------------
     slice_ = build_slice(params, n_points=n_points)
     z, dz = slice_.z, slice_._step
-    z0, z_max = float(z[0]), Z_MAX
+    z_max = Z_MAX
     u = slice_.u
-    _, _, u1mu = _static_grid(z_max, n_points)
     mass_n = -slice_.da_dz                 # e^{Q} u(1-u)
     total = float(np.exp(-slice_.mu))      # mu = -log(total)
     q_bar = slice_.q_z - slice_.mu
@@ -127,14 +102,79 @@ def residual_jacobian(
     # a_z right-tail correction e^{q_z[-1]-z_max}/(1-a_right) (note q_z, not q_bar).
     tail_az = float(np.exp(slice_.q_z[-1] - z_max))
     d_az = rev + (tail_az * (d_qz[:, -1] / (1.0 - a_right) + d_ar / (1.0 - a_right) ** 2))[:, None]
-    d_dadz = -d_massn                                      # nodal derivative of dA/dz
+    return slice_, d_az, -d_massn
+
+
+def call_price_rows(
+    slice_, d_az: np.ndarray, d_dadz: np.ndarray, k: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Normalized call C(k) and its Jacobian dC/dtheta at arbitrary strikes.
+
+    Uses the module-docstring identity: the implicit z_k dependence cancels,
+    so dC/dtheta = hermite_eval(z_k; d_az, d_dadz) at fixed z_k. Returns
+    ``(C, dC)`` with shapes (n,), (n, P).
+    """
+    p = d_az.shape[0]
+    z0, dz = float(slice_.z[0]), slice_._step
+    z_k = slice_.strike_to_z(k)
+    dC = np.array(
+        [hermite_eval(z_k, z0, dz, d_az[j], d_dadz[j]) for j in range(p)]
+    ).T
+    return np.asarray(slice_.call_price(k), dtype=float), dC
+
+
+def residual_jacobian(
+    theta: np.ndarray,
+    k: np.ndarray,
+    target_price: np.ndarray,
+    inv_vega: np.ndarray,
+    sqrt_weights: np.ndarray,
+    reg: np.ndarray,
+    cal_z: np.ndarray | None,
+    cal_floor: np.ndarray | None,
+    cal_weight: float,
+    cal_k: np.ndarray | None,
+    cal_pfloor: np.ndarray | None,
+    cal_taper: np.ndarray | None,
+    price_lo: np.ndarray | None,
+    price_hi: np.ndarray | None,
+    barrier_center: float,
+    barrier_scale: float,
+    mid_anchor_weight: float,
+    var_swap,  # gated None — present so the signature matches _residuals
+    prior_anchor,
+    prior_var_swap,
+    operator_prior,
+    n_points: int,
+) -> np.ndarray:
+    """Analytic Jacobian of ``_residuals`` (var_swap/prior gated off). Rows are
+    stacked [fit, reg, calendar, barrier] in the residual's order; columns are
+    theta = (L, R, a_2..a_N)."""
+    params = LQDParams.from_vector(theta)
+    p = theta.size
+    band_mode = price_lo is not None
+    n_fit = (2 * k.size) if band_mode else k.size
+    n_cal = 0 if cal_z is None else cal_z.size
+    n_calk = 0 if cal_k is None else cal_k.size
+
+    a_left, a_right = endpoint_scales(params)
+    d_al, d_ar = _endpoint_grads(a_left, a_right, params.order)
+
+    # --- infeasible tail: residual was full(n_fit, 10 + a_right) + reg + barrier
+    if a_right >= 1.0 - EPS_AR:
+        j_fit = np.tile(d_ar, (n_fit, 1))
+        j_cal = np.zeros((n_cal + n_calk, p))
+        return np.vstack([j_fit, _reg_jac(reg, p), j_cal, _barrier_row(
+            a_right, d_ar, barrier_center, barrier_scale)])
+
+    # --- one quadrature pass + its theta-sensitivities (shared helper) ----
+    slice_, d_az, d_dadz = slice_sensitivities(params, n_points)
+    z0, dz = float(slice_.z[0]), slice_._step
 
     # --- fit block: dC/dtheta_j = hermite_eval(z_k; d_az[j], d_dadz[j]) ----
-    z_k = slice_.strike_to_z(k)
-    dC = np.array([hermite_eval(z_k, z0, dz, d_az[j], d_dadz[j]) for j in range(p)]).T  # (n_k, P)
+    model_price, dC = call_price_rows(slice_, d_az, d_dadz, k)  # (n_k,), (n_k, P)
     scale = (sqrt_weights * inv_vega)[:, None]
     if band_mode:
-        model_price = slice_.call_price(k)
         sign = band_violation_sign(model_price, price_lo, price_hi)[:, None]
         j_fit = np.vstack([scale * sign * dC, np.sqrt(mid_anchor_weight) * scale * dC])
     else:
@@ -150,7 +190,18 @@ def residual_jacobian(
     else:
         j_cal = np.zeros((0, p))
 
-    return np.vstack([j_fit, _reg_jac(reg, p), j_cal,
+    # --- confined price-floor block: sqrt(w) * taper * relu(pf - C(cal_k)) --
+    # Same dC/dtheta identity as the fit block (implicit z_k dependence drops
+    # out), evaluated at the constraint strikes on the common quote support.
+    if n_calk:
+        c_cal, dC_cal = call_price_rows(slice_, d_az, d_dadz, cal_k)  # (n_calk, P)
+        active = (cal_pfloor - c_cal > 0.0)[:, None]
+        taper = 1.0 if cal_taper is None else cal_taper[:, None]
+        j_calk = np.sqrt(cal_weight) * taper * (-dC_cal) * active
+    else:
+        j_calk = np.zeros((0, p))
+
+    return np.vstack([j_fit, _reg_jac(reg, p), j_cal, j_calk,
                       _barrier_row(a_right, d_ar, barrier_center, barrier_scale)])
 
 

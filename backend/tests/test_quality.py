@@ -102,12 +102,14 @@ def test_calendar_flag_fires_on_reversed_slices():
     far = service.calibrate_node(state, TICKER, isos[2], "mid")
 
     ok_node, _ = quality._node_row(
-        state, TICKER, isos[2], "mid", far, near.result.slice, None, None, 50.0, False
+        state, TICKER, isos[2], "mid", far, near.result.slice, None,
+        near.prepared.k, None, 50.0, False,
     )
     assert ok_node.calendarOk and ok_node.ready
 
     bad_node, _ = quality._node_row(
-        state, TICKER, isos[0], "mid", near, far.result.slice, None, None, 50.0, False
+        state, TICKER, isos[0], "mid", near, far.result.slice, None,
+        far.prepared.k, None, 50.0, False,
     )
     assert bad_node.calendarViolation > 0.0
     assert not bad_node.calendarOk and not bad_node.ready

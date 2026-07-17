@@ -47,9 +47,10 @@ from volfit.api.displayed import (
 )
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import (
-    calendar_floor_targets,
-    calendar_violation,
-    variance_floor_grid_from,
+    calendar_violation_windowed,
+    common_support,
+    confined_calendar_floor,
+    variance_floor_grid_common,
     variance_floor_targets,
 )
 from volfit.api.prior_mode import resolve_prior_mode
@@ -520,6 +521,7 @@ def _slice_task(
     init=None,
     prev: CalibrationResult | None = None,
     prev_display: DisplayFit | None = None,
+    prev_k: np.ndarray | None = None,
     enforce_calendar: bool = False,
     allow_prepass: bool = False,
     with_fit: bool = True,
@@ -534,12 +536,16 @@ def _slice_task(
 
     ``init`` is the LQD warm start (the surface sweep's previous expiry);
     ``prev``/``prev_display`` supply the calendar floors under
-    ``enforce_calendar`` (LQD asset-share floor / model-agnostic variance
-    floor confined to THIS expiry's traded range — outside the quotes both
-    slices are pure extrapolation and a wing mismatch is a phantom violation).
-    ``allow_prepass`` opts the single-node path into the two-pass
-    priorDataOnlyPrepass; ``with_fit=False`` builds an overlay-only task
-    (display_overlay), ``with_overlay=False`` an LQD-only task."""
+    ``enforce_calendar`` — BOTH confined to the common quote support of the
+    two expiries (outside the intersection of the retained spans either slice
+    is pure extrapolation and a wing mismatch is a phantom violation; the
+    published wings are governed by the Notes 09/10 extrap machinery instead).
+    ``prev_k`` is the previous expiry's retained (edited) log-moneyness array
+    for that intersection; None falls back to confining by THIS expiry's span
+    alone (legacy callers). ``allow_prepass`` opts the single-node path into
+    the two-pass priorDataOnlyPrepass; ``with_fit=False`` builds an
+    overlay-only task (display_overlay), ``with_overlay=False`` an LQD-only
+    task."""
     settings = state.fit_settings()
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     weights = resolve_weights(settings.weightScheme, k, w)
@@ -549,9 +555,16 @@ def _slice_task(
 
     calibrate = prepass = None
     if with_fit:
-        cal_z = cal_floor = None
+        cal_k = cal_pfloor = cal_taper = None
         if enforce_calendar and prev is not None:
-            cal_z, cal_floor = calendar_floor_targets(prev.slice)
+            window = common_support(prev_k if prev_k is not None else k, k)
+            confined = (
+                confined_calendar_floor(prev.slice, window)
+                if window is not None
+                else None
+            )
+            if confined is not None:
+                cal_k, cal_pfloor, cal_taper = confined
         base = dict(
             k=k, w_quotes=w, t=prepared.tau, n_order=settings.nOrder,
             weights=weights, reg_lambda=settings.regLambda,
@@ -576,8 +589,9 @@ def _slice_task(
             # Warm start only from a same-order seed (a mismatched order would
             # be the wrong vector length); the prepass seed always matches.
             init=init if getattr(init, "order", None) == settings.nOrder else None,
-            calendar_z=cal_z, calendar_floor=cal_floor,
+            calendar_k=cal_k, calendar_price_floor=cal_pfloor,
             calendar_weight=state.options().calendarWeight,
+            calendar_taper=cal_taper,
             prior_anchor=pt.prior_anchor, prior_var_swap=pt.prior_var_swap,
             operator_prior=pt.operator_prior,
         )
@@ -586,7 +600,14 @@ def _slice_task(
     if with_overlay and settings.model != "lqd":
         o_floor = None
         if enforce_calendar and prev_display is not None:
-            o_floor = variance_floor_targets(prev_display.slice, variance_floor_grid_from(k))
+            # Confined to the COMMON quote support (empty intersection => no
+            # pointwise floor): the later expiry's own span alone still lets a
+            # wider far slice sample the near wing's extrapolation.
+            o_grid = variance_floor_grid_common(
+                prev_k if prev_k is not None else k, k
+            )
+            if o_grid is not None:
+                o_floor = variance_floor_targets(prev_display.slice, o_grid)
         # Tapered extrapolated-region enforcement (Notes 09/10 Phase 2): the
         # envelope geometry is built ONCE from the quotes (+ the previous
         # displayed slice for the calendar floor / slope order); OFF ⇒ None ⇒
@@ -619,6 +640,15 @@ def _slice_task(
     return SliceFitTask(calibrate=calibrate, prepass=prepass, overlay=overlay, want_diag=with_fit)
 
 
+def retained_k(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes
+) -> np.ndarray:
+    """The log-moneyness array a fit of this node actually retains (after quote
+    edits) — the quote-support side of the calendar confinement window."""
+    k, _, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
+    return k
+
+
 def display_overlay(
     state: AppState,
     ticker: str,
@@ -627,6 +657,7 @@ def display_overlay(
     fit_mode: str,
     prev_display: DisplayFit | None = None,
     enforce_calendar: bool = False,
+    prev_k: np.ndarray | None = None,
 ):
     """The non-LQD display overlay for a node (None for LQD), fit to the same
     edited quotes, band and weights the LQD calibration uses.
@@ -638,7 +669,8 @@ def display_overlay(
     omitted (the single-node path) leaves the overlay byte-identical."""
     task = _slice_task(
         state, ticker, iso, prepared, fit_mode,
-        prev_display=prev_display, enforce_calendar=enforce_calendar, with_fit=False,
+        prev_display=prev_display, prev_k=prev_k,
+        enforce_calendar=enforce_calendar, with_fit=False,
     )
     return run_slice_fit(task).display
 
@@ -1356,19 +1388,23 @@ def fit_surface_slice(
     enforce_calendar: bool,
     fit_mode: str = "mid",
     solver_diag: dict | None = None,
+    prev_k: np.ndarray | None = None,
 ) -> CalibrationResult:
     """One step of the calibrate_surface loop: warm start + calendar floor.
 
     Quote-edit sessions apply here too (state/ticker/iso resolve them), so a
-    surface fit honours the user's excluded/amended quotes on every expiry. The
-    calendar floor is keyed on quadrature z-values, not the quote array, so
-    masking quotes leaves it untouched. ``fit_mode`` selects the band objective;
-    the weight scheme follows the fit settings (volfit.calib.weights).
+    surface fit honours the user's excluded/amended quotes on every expiry.
+    ``prev_k`` (the previous expiry's retained quote support) confines the
+    floor to the common support of the two expiries; the floor stays keyed on
+    quadrature z-values, so masking quotes leaves the constraint machinery
+    untouched. ``fit_mode`` selects the band objective; the weight scheme
+    follows the fit settings (volfit.calib.weights).
     """
     task = _slice_task(
         state, ticker, iso, prepared, fit_mode,
         init=prev.params if prev is not None else None,
-        prev=prev, enforce_calendar=enforce_calendar, with_overlay=False,
+        prev=prev, prev_k=prev_k,
+        enforce_calendar=enforce_calendar, with_overlay=False,
     )
     if solver_diag is not None:  # honour a caller-provided side-channel dict
         task = replace(task, want_diag=True)
@@ -1387,6 +1423,7 @@ def fit_and_commit_slice(
     enforce_calendar: bool,
     fit_mode: str = "mid",
     prev_display: DisplayFit | None = None,
+    prev_k: np.ndarray | None = None,
 ) -> FitRecord:
     """Calendar-coupled slice fit (``fit_surface_slice``) PLUS the calibration
     bookkeeping: build the display overlay, cache the record under the canonical
@@ -1408,7 +1445,8 @@ def fit_and_commit_slice(
         task = _slice_task(
             state, ticker, iso, prepared, fit_mode,
             init=prev.params if prev is not None else None,
-            prev=prev, prev_display=prev_display, enforce_calendar=enforce_calendar,
+            prev=prev, prev_display=prev_display, prev_k=prev_k,
+            enforce_calendar=enforce_calendar,
         )
         outcome = fit_pool.execute(task)
     record = FitRecord(prepared=prepared, result=outcome.result, display=outcome.display)
@@ -1460,19 +1498,29 @@ def fit_surface(
     plan = surface_inputs(state, ticker, fit_mode)
     prev: CalibrationResult | None = None
     prev_display: DisplayFit | None = None
+    prev_k: np.ndarray | None = None
     residuals: list[float] = []
     fitted: list[tuple[str, CalibrationResult]] = []
     for index, (iso, prepared) in enumerate(plan):
         record = fit_and_commit_slice(
-            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode, prev_display
+            state, ticker, iso, prepared, prev, enforce_calendar, fit_mode,
+            prev_display, prev_k,
         )
         result = record.result
-        residuals.append(0.0 if prev is None else calendar_violation(prev.slice, result.slice))
+        cur_k = retained_k(state, ticker, iso, prepared)
+        residuals.append(
+            0.0
+            if prev is None
+            else calendar_violation_windowed(
+                prev.slice, result.slice, common_support(prev_k, cur_k)
+            )
+        )
         fitted.append((iso, result))
         if progress is not None:
             progress(iso, index, len(plan), result.max_iv_error * 1e4)
         prev = result
         prev_display = record.display
+        prev_k = cur_k
     return assemble_surface_response(state, ticker, fit_mode, fitted, residuals)
 
 

@@ -3,9 +3,16 @@
 Expiries are fitted nearest to farthest. Each fit after the first carries the
 soft integrated-quantile constraint G_i(alpha) >= G_{i-1}(alpha) against the
 previously fitted slice, and is warm-started from the previous parameters.
-The per-expiry worst calendar residual is reported so that genuinely
-inconsistent input quotes are *visible* rather than silently absorbed
-(the slack interpretation of note eq. slack_calendar).
+
+The constraint is confined to the COMMON quote support of the two adjacent
+expiries (volfit.calib.calendar.confined_calendar_floor): outside the
+intersection of the retained spans both slices are pure extrapolation, and a
+full-grid floor lets an acutely convex short-dated wing drag every later
+expiry off its quotes (the phantom-calendar mechanism, note 10). The reported
+per-expiry calendar residual is confined the same way, so it measures the
+*identified* violation; genuinely inconsistent input quotes stay *visible*
+rather than silently absorbed (the slack interpretation of note eq.
+slack_calendar).
 """
 
 from __future__ import annotations
@@ -14,7 +21,11 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from volfit.calib.calendar import calendar_floor_targets, calendar_violation
+from volfit.calib.calendar import (
+    calendar_violation_windowed,
+    common_support,
+    confined_calendar_floor,
+)
 from volfit.models.lqd.calibrate import CalibrationResult, calibrate_slice
 
 
@@ -32,9 +43,10 @@ class ExpiryQuotes:
 class SurfaceFit:
     """Per-expiry fits (sorted by expiry) plus calendar diagnostics.
 
-    ``calendar_residuals[i]`` is max_alpha (G_{i-1} - G_i) between consecutive
-    fitted slices (first entry is 0); positive values flag remaining calendar
-    violations — with enforcement on they should sit at numerical-slack level.
+    ``calendar_residuals[i]`` is max (G_{i-1} - G_i) between consecutive
+    fitted slices over their common quote support (first entry is 0);
+    positive values flag remaining identified calendar violations — with
+    enforcement on they should sit at numerical-slack level.
     """
 
     expiries: list[float]
@@ -65,10 +77,16 @@ def calibrate_surface(
     residuals: list[float] = [0.0]
 
     prev = None
+    prev_k: np.ndarray | None = None
     for slice_quotes in ordered:
-        cal_z = cal_floor = None
-        if enforce_calendar and prev is not None:
-            cal_z, cal_floor = calendar_floor_targets(prev.slice)
+        window = (
+            common_support(prev_k, slice_quotes.k) if prev_k is not None else None
+        )
+        cal_k = cal_pfloor = cal_taper = None
+        if enforce_calendar and prev is not None and window is not None:
+            confined = confined_calendar_floor(prev.slice, window)
+            if confined is not None:
+                cal_k, cal_pfloor, cal_taper = confined
         result = calibrate_slice(
             slice_quotes.k,
             slice_quotes.w,
@@ -78,14 +96,18 @@ def calibrate_surface(
             reg_lambda=reg_lambda,
             reg_power=reg_power,
             init=prev.params if prev is not None else None,
-            calendar_z=cal_z,
-            calendar_floor=cal_floor,
+            calendar_k=cal_k,
+            calendar_price_floor=cal_pfloor,
             calendar_weight=calendar_weight,
+            calendar_taper=cal_taper,
         )
         if prev is not None:
-            residuals.append(calendar_violation(prev.slice, result.slice))
+            residuals.append(
+                calendar_violation_windowed(prev.slice, result.slice, window)
+            )
         results.append(result)
         prev = result
+        prev_k = slice_quotes.k
 
     return SurfaceFit(
         expiries=[q.t for q in ordered],

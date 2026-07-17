@@ -71,6 +71,9 @@ def _residuals(
     cal_z: np.ndarray | None,
     cal_floor: np.ndarray | None,
     cal_weight: float,
+    cal_k: np.ndarray | None,
+    cal_pfloor: np.ndarray | None,
+    cal_taper: np.ndarray | None,
     price_lo: np.ndarray | None,
     price_hi: np.ndarray | None,
     barrier_center: float,
@@ -94,6 +97,7 @@ def _residuals(
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
     n_cal = 0 if cal_z is None else cal_z.size
+    n_calk = 0 if cal_k is None else cal_k.size
     n_prior = 0 if prior_anchor is None else prior_anchor.k.size
     n_op = 0 if operator_prior is None else len(operator_prior.names)
     band_mode = price_lo is not None
@@ -122,6 +126,18 @@ def _residuals(
             )
         else:
             cal = np.empty(0)
+        # Support-confined price-space floor (volfit.calib.calendar.
+        # confined_calendar_floor): the normalized call must stay at or above
+        # the near expiry's on the common quote support, with the taper fading
+        # the rows beyond it. This is the constraint form that CANNOT be
+        # windowed in G(alpha) space (tail contamination — see that module).
+        if n_calk:
+            taper = 1.0 if cal_taper is None else cal_taper
+            calk = np.sqrt(cal_weight) * taper * np.maximum(
+                cal_pfloor - slice_.call_price(cal_k), 0.0
+            )
+        else:
+            calk = np.empty(0)
         if var_swap is not None:
             # LQD's exact closed-form var-swap (note: var_swap_strike = -2 E[X])
             # is cheap; the generic replication would re-solve implied_w on a
@@ -143,6 +159,7 @@ def _residuals(
         # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
+        calk = np.zeros(n_calk)
         pa = np.zeros(n_prior)
         pvs = np.zeros(0 if prior_var_swap is None else 1)
         op = np.zeros(n_op)
@@ -150,7 +167,93 @@ def _residuals(
     # wild trial theta easily reaches A_R ~ e^20), which poisons trf's cost;
     # logaddexp(0, x) is the same function evaluated stably (~x for large x).
     barrier = np.logaddexp(0.0, barrier_scale * (a_right - barrier_center))
-    return np.concatenate((fit, reg * theta[2:], cal, [barrier], vs, pa, pvs, op))
+    return np.concatenate((fit, reg * theta[2:], cal, calk, [barrier], vs, pa, pvs, op))
+
+
+def prepare_residual_args(
+    k: np.ndarray,
+    w_quotes: np.ndarray,
+    t: float,
+    n_order: int = 6,
+    weights: np.ndarray | None = None,
+    reg_lambda: float = 0.0,
+    reg_power: float = 1.0,
+    calendar_z: np.ndarray | None = None,
+    calendar_floor: np.ndarray | None = None,
+    calendar_weight: float = 1e6,
+    calendar_k: np.ndarray | None = None,
+    calendar_price_floor: np.ndarray | None = None,
+    calendar_taper: np.ndarray | None = None,
+    band: BandTarget | None = None,
+    barrier_center: float = _BARRIER_CENTER,
+    barrier_scale: float = _BARRIER_SCALE,
+    mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    var_swap: VarSwapTarget | None = None,
+    prior_anchor: PriorAnchorTarget | None = None,
+    prior_var_swap: VarSwapTarget | None = None,
+    operator_prior: OperatorPriorTarget | None = None,
+    opt_n_points: int = OPT_N_POINTS,
+) -> tuple[tuple, bool]:
+    """Build the frozen ``_residuals``/``residual_jacobian`` argument tuple for
+    one slice, plus the analytic-Jacobian eligibility flag.
+
+    This is calibrate_slice's preprocessing (quote prices, vega normalizers,
+    band edges, regularization vector) split out so the joint symmetric
+    solver (volfit.calib.symmetric) can stack per-slice residual blocks from
+    the exact same objective a standalone fit uses.
+    """
+    k = np.asarray(k, dtype=float)
+    w_quotes = np.asarray(w_quotes, dtype=float)
+    weights = np.ones_like(k) if weights is None else np.asarray(weights, dtype=float)
+
+    # Quote prices and vega normalizers are fixed during optimization.
+    target_price = black_call(k, w_quotes)
+    sigma = np.sqrt(w_quotes / t)
+    inv_vega = 1.0 / (black_vega_sigma(k, sigma, t) + _VEGA_FLOOR)
+    sqrt_weights = np.sqrt(weights)
+
+    # Band fit: precompute the call-price band edges from the vol band edges.
+    price_lo = price_hi = None
+    if band is not None:
+        price_lo = black_call(k, band.iv_lo**2 * t)
+        price_hi = black_call(k, band.iv_hi**2 * t)
+
+    # Regularization vector aligned with theta[2:] = (a_2, ..., a_N).
+    n_idx = np.arange(2, n_order + 1, dtype=float)
+    reg = np.sqrt(reg_lambda) * np.where(n_idx >= 4, n_idx**reg_power, 0.0)
+
+    # The var-swap and prior-anchor terms are not differentiated analytically
+    # yet, so their presence gates the fit back to the FD Jacobian.
+    use_analytic = (
+        var_swap is None
+        and prior_anchor is None
+        and prior_var_swap is None
+        and operator_prior is None
+    )
+    args = (
+        k,
+        target_price,
+        inv_vega,
+        sqrt_weights,
+        reg,
+        calendar_z,
+        calendar_floor,
+        calendar_weight,
+        calendar_k,
+        calendar_price_floor,
+        calendar_taper,
+        price_lo,
+        price_hi,
+        barrier_center,
+        barrier_scale,
+        mid_anchor_weight,
+        var_swap,
+        prior_anchor,
+        prior_var_swap,
+        operator_prior,
+        opt_n_points,
+    )
+    return args, use_analytic
 
 
 def calibrate_slice(
@@ -165,6 +268,9 @@ def calibrate_slice(
     calendar_z: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    calendar_k: np.ndarray | None = None,
+    calendar_price_floor: np.ndarray | None = None,
+    calendar_taper: np.ndarray | None = None,
     band: BandTarget | None = None,
     barrier_center: float = _BARRIER_CENTER,
     barrier_scale: float = _BARRIER_SCALE,
@@ -181,11 +287,19 @@ def calibrate_slice(
     ``reg_lambda``/``reg_power`` implement the high-order damping
     lam * n^{2r} a_n^2; the first Legendre mode a_2..a_3 is left free.
 
-    ``calendar_z``/``calendar_floor`` (from volfit.calib.calendar_floor_targets)
-    make this slice respect G(alpha) >= floor against the previous expiry; the
-    quadratic slack weight ``calendar_weight`` follows eq. (slack_calendar). The
-    floor is enforced at the constraint z-values, so it is exact regardless of
-    the optimization grid resolution.
+    ``calendar_z``/``calendar_floor`` (volfit.calib.calendar.
+    calendar_floor_targets) make this slice respect the full-grid convex
+    order G(alpha) >= floor against the previous expiry; the quadratic slack
+    weight ``calendar_weight`` follows eq. (slack_calendar). The floor is
+    enforced at the constraint z-values, so it is exact regardless of the
+    optimization grid resolution.
+
+    ``calendar_k``/``calendar_price_floor``/``calendar_taper``
+    (volfit.calib.calendar.confined_calendar_floor) are the SUPPORT-CONFINED
+    alternative: normalized-call ordering C(k) >= floor on the common quote
+    support of the two expiries, with the taper fading the rows beyond it —
+    the production surface path, immune to the phantom-calendar tail drag.
+    Both blocks share ``calendar_weight``; either may be None independently.
 
     ``opt_n_points`` is the quadrature grid used during optimization (default
     OPT_N_POINTS = 2001); the accepted slice is rebuilt at the full N_POINTS for
@@ -219,63 +333,33 @@ def calibrate_slice(
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
-    weights = np.ones_like(k) if weights is None else np.asarray(weights, dtype=float)
-
-    # Quote prices and vega normalizers are fixed during optimization.
-    target_price = black_call(k, w_quotes)
     sigma = np.sqrt(w_quotes / t)
-    inv_vega = 1.0 / (black_vega_sigma(k, sigma, t) + _VEGA_FLOOR)
-    sqrt_weights = np.sqrt(weights)
 
-    # Band fit: precompute the call-price band edges from the vol band edges.
-    price_lo = price_hi = None
-    if band is not None:
-        price_lo = black_call(k, band.iv_lo**2 * t)
-        price_hi = black_call(k, band.iv_hi**2 * t)
-
-    # Regularization vector aligned with theta[2:] = (a_2, ..., a_N).
-    n_idx = np.arange(2, n_order + 1, dtype=float)
-    reg = np.sqrt(reg_lambda) * np.where(n_idx >= 4, n_idx**reg_power, 0.0)
+    # Analytic Jacobian (ROADMAP perf #2) for the var-swap/prior-free residual
+    # configuration (mid or band fit + reg + calendar + barrier) — one quadrature
+    # pass instead of trf's (P+1) finite-difference rebuilds; the frozen
+    # argument tuple is shared with the joint symmetric solver.
+    args, use_analytic = prepare_residual_args(
+        k, w_quotes, t, n_order=n_order, weights=weights,
+        reg_lambda=reg_lambda, reg_power=reg_power,
+        calendar_z=calendar_z, calendar_floor=calendar_floor,
+        calendar_weight=calendar_weight, calendar_k=calendar_k,
+        calendar_price_floor=calendar_price_floor, calendar_taper=calendar_taper,
+        band=band, barrier_center=barrier_center, barrier_scale=barrier_scale,
+        mid_anchor_weight=mid_anchor_weight, var_swap=var_swap,
+        prior_anchor=prior_anchor, prior_var_swap=prior_var_swap,
+        operator_prior=operator_prior, opt_n_points=opt_n_points,
+    )
 
     if init is None:
         w0_guess = float(np.interp(0.0, k, w_quotes))
         init = logistic_init(w0_guess, n_order=n_order)
 
-    # Analytic Jacobian (ROADMAP perf #2) for the var-swap/prior-free residual
-    # configuration (mid or band fit + reg + calendar + barrier) — one quadrature
-    # pass instead of trf's (P+1) finite-difference rebuilds. The var-swap and
-    # prior-anchor terms are not yet differentiated analytically, so those fits
-    # fall back to the finite-difference Jacobian (correct, just not accelerated).
-    use_analytic = (
-        var_swap is None
-        and prior_anchor is None
-        and prior_var_swap is None
-        and operator_prior is None
-    )
     result = least_squares(
         _residuals,
         init.to_vector(),
         jac=residual_jacobian if use_analytic else "2-point",
-        args=(
-            k,
-            target_price,
-            inv_vega,
-            sqrt_weights,
-            reg,
-            calendar_z,
-            calendar_floor,
-            calendar_weight,
-            price_lo,
-            price_hi,
-            barrier_center,
-            barrier_scale,
-            mid_anchor_weight,
-            var_swap,
-            prior_anchor,
-            prior_var_swap,
-            operator_prior,
-            opt_n_points,
-        ),
+        args=args,
         method="trf",
         # 1e-10 is still ~6 orders below the ~5 vol-bp fit budget (the note's own
         # fit reaches ~1.2 bp), so the optimum is unchanged to display precision —

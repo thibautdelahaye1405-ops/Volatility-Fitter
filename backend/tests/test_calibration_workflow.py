@@ -107,9 +107,12 @@ def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
     seen: list[tuple[str, bool, bool]] = []  # (iso, prev_is_none, enforce)
     real = service.fit_and_commit_slice
 
-    def spy(st, tk, iso, prepared, prev, enforce, fit_mode="mid", prev_display=None):
+    def spy(
+        st, tk, iso, prepared, prev, enforce, fit_mode="mid", prev_display=None,
+        prev_k=None,
+    ):
         seen.append((iso, prev is None, enforce))
-        return real(st, tk, iso, prepared, prev, enforce, fit_mode, prev_display)
+        return real(st, tk, iso, prepared, prev, enforce, fit_mode, prev_display, prev_k)
 
     monkeypatch.setattr(service, "fit_and_commit_slice", spy)
 

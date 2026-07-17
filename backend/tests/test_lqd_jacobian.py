@@ -34,9 +34,11 @@ def _theta():
     return th + 0.02 * np.arange(th.size)
 
 
-def _args(cal_z=None, cal_floor=None, plo=None, phi=None):
+def _args(cal_z=None, cal_floor=None, cal_k=None, cal_pfloor=None, cal_taper=None,
+          plo=None, phi=None):
     # trailing None×4 = var_swap, prior_anchor, prior_var_swap, operator_prior
-    return (K, TARGET, INV_VEGA, SW, REG, cal_z, cal_floor, 1e6, plo, phi,
+    return (K, TARGET, INV_VEGA, SW, REG, cal_z, cal_floor, 1e6,
+            cal_k, cal_pfloor, cal_taper, plo, phi,
             0.90, 50.0, 0.05, None, None, None, None, 2001)
 
 
@@ -55,6 +57,22 @@ def test_jacobian_matches_fd_calendar():
     cal_z = np.array([-3.0, -1.0, 0.0, 1.0, 3.0])
     cal_floor = np.array([0.95, 0.7, 0.45, 0.2, 0.02])
     assert _max_rel(_theta(), _args(cal_z=cal_z, cal_floor=cal_floor)) < 1e-3
+
+
+def test_jacobian_matches_fd_confined_price_floor():
+    """The support-confined price-space block (symmetric-surface Phase 0):
+    tapered relu(price_floor - C(k)) rows, active by construction (floor set
+    just above the model's own call curve at the constraint strikes)."""
+    from volfit.models.lqd.basis import LQDParams
+    from volfit.models.lqd.quadrature import build_slice
+
+    theta = _theta()
+    cal_k = np.linspace(-0.2, 0.2, 7)
+    slice_ = build_slice(LQDParams.from_vector(theta))
+    cal_pfloor = np.asarray(slice_.call_price(cal_k)) + 5e-4  # active rows
+    cal_taper = np.linspace(0.3, 1.0, cal_k.size)
+    args = _args(cal_k=cal_k, cal_pfloor=cal_pfloor, cal_taper=cal_taper)
+    assert _max_rel(theta, args) < 1e-3
 
 
 def test_jacobian_matches_fd_band():

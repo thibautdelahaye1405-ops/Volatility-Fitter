@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request, WebSocket
 from volfit.api import service
 from volfit.api.schemas import SurfaceFitRequest, SurfaceFitResponse
 from volfit.api.state import UnknownNodeError
-from volfit.calib.calendar import calendar_violation
+from volfit.calib.calendar import calendar_violation_windowed, common_support
 
 router = APIRouter()
 
@@ -48,12 +48,14 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
 
         prev = None
         prev_display = None
+        prev_k = None
         residuals: list[float] = []
         fitted = []
         for index, (iso, prepared) in enumerate(plan):
             # Calendar-couple + cache + re-point + persist in one worker-thread
             # step (the shared service helper), so progress frames can be awaited
-            # between expiries. ``prev_display`` carries the overlay's calendar floor.
+            # between expiries. ``prev_display`` carries the overlay's calendar
+            # floor; ``prev_k`` the common-support confinement window.
             record = await anyio.to_thread.run_sync(
                 service.fit_and_commit_slice,
                 state,
@@ -64,10 +66,16 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
                 body.enforceCalendar,
                 body.fitMode,
                 prev_display,
+                prev_k,
             )
             result = record.result
+            cur_k = service.retained_k(state, body.ticker, iso, prepared)
             residuals.append(
-                0.0 if prev is None else calendar_violation(prev.slice, result.slice)
+                0.0
+                if prev is None
+                else calendar_violation_windowed(
+                    prev.slice, result.slice, common_support(prev_k, cur_k)
+                )
             )
             fitted.append((iso, result))
             await websocket.send_json(
@@ -81,6 +89,7 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
             )
             prev = result
             prev_display = record.display
+            prev_k = cur_k
 
         response = service.assemble_surface_response(
             state, body.ticker, body.fitMode, fitted, residuals

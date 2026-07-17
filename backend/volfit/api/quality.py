@@ -31,7 +31,7 @@ from volfit.api.schemas_quality import (
     QualityTicker,
 )
 from volfit.api.state import AppState, FitRecord
-from volfit.calib.calendar import calendar_violation
+from volfit.calib.calendar import calendar_violation_windowed, common_support
 from volfit.calib.rms import rms as rms_of_terms
 from volfit.models.diagnostics import extrapolated_arb
 from volfit.models.lqd.atm import atm_handles
@@ -138,6 +138,7 @@ def _node_row(
     record: FitRecord,
     prev_slice,
     prev_display,
+    prev_k,
     prev_lee: tuple[float, float] | None,
     rms_budget_bp: float,
     filter_on: bool,
@@ -151,12 +152,22 @@ def _node_row(
     atm_vol, skew, lee_left, lee_right, max_iv = _node_handles(record)
     lee_ok = max(lee_left, lee_right) <= _LEE_BOUND + _LEE_TOL
     # Calendar convex order vs the previous FITTED expiry, on the LQD backbone
-    # (always present, shared quadrature grid). Fits committed at different
-    # epochs can genuinely cross — exactly what this screen must surface.
+    # (always present, shared quadrature grid), confined to the two expiries'
+    # common quote support — beyond it both wings are extrapolation and a
+    # crossing is not an identified violation (the extrap screen below covers
+    # the published wings). Fits committed at different epochs can genuinely
+    # cross in-support — exactly what this screen must surface.
     violation = 0.0
     if prev_slice is not None:
         try:
-            violation = float(calendar_violation(prev_slice, record.result.slice))
+            window = (
+                common_support(prev_k, record.prepared.k)
+                if prev_k is not None
+                else None
+            )
+            violation = float(
+                calendar_violation_windowed(prev_slice, record.result.slice, window)
+            )
         except Exception:
             violation = 0.0
     cal_ok = violation <= _CAL_TOL
@@ -276,6 +287,7 @@ def build_quality_report(
         num = den = 0.0
         prev_slice = None
         prev_display = None
+        prev_k = None
         prev_lee: tuple[float, float] | None = None
         for expiry in forwards:
             iso = expiry.isoformat()
@@ -289,13 +301,14 @@ def build_quality_report(
                 rows.append(_no_fit_node(ticker, iso, degraded))
                 continue  # calendar chain: compare across the gap, keep prev_slice
             node, (n, d) = _node_row(
-                state, ticker, iso, mode, record, prev_slice, prev_display, prev_lee,
-                rms_budget_bp, filter_on, data_age,
+                state, ticker, iso, mode, record, prev_slice, prev_display, prev_k,
+                prev_lee, rms_budget_bp, filter_on, data_age,
             )
             rows.append(node)
             num += n
             den += d
             prev_slice = record.result.slice
+            prev_k = record.prepared.k
             prev_display = (
                 record.display.slice if record.display is not None else record.result.slice
             )
