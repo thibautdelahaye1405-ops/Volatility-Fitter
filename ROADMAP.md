@@ -723,12 +723,19 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   ON, locked bitwise on prepared arrays from day one** (the item's
   explicit bar). Carry view maps the engaged source to `joint_deam`
   provenance. Suite 1143 green.
-- **NEXT (item 11 remaining):** (3) dIV/d-borrow sensitivity diagnostic;
-  (4) held-out parity exit gate + known-HTB validation on REAL data (a
-  GME/AMC-class REST capture, cheap now); (5) Forwards-tab joint column +
-  confidence. Or: the hosting container spike. Item-10 residual
-  follow-ups: per-maturity filter handle scales, degraded-v2 band,
-  live-universe 0DTE seeding, same-date AM/PM expiry-key redesign.
+- **ITEM 11 INCREMENT 3 SHIPPED 2026-07-17 (209dc52) — dIV/d-borrow
+  sensitivity.** Closed form at fixed strike/price: dσ/db =
+  √t·N(d₁)/φ(d₁) ATM (≈125√t bp per 100 bp borrow), validated vs a full
+  numerical Black re-inversion to 2%; rides every CarryPoint as
+  `ivBorrowSensBpPer100` (cached fit's ATM vol when present, σ→0 limit
+  otherwise — read-only). The materiality number for the strategic
+  publish rule ("material American correction × unidentified carry").
+- **NEXT (item 11 remaining):** (4) held-out parity exit gate +
+  known-HTB validation on REAL data (a GME/AMC-class REST capture, cheap
+  now); (5) Forwards-tab joint column + confidence. Or: the hosting
+  container spike. Item-10 residual follow-ups: per-maturity filter
+  handle scales, degraded-v2 band, live-universe 0DTE seeding, same-date
+  AM/PM expiry-key redesign.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
