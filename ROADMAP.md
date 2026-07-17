@@ -765,12 +765,28 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   bar) — the joint solve's de-Am'd regression could WIDEN
   identifiability on American names, a candidate increment 6. Suite
   1146 green; frontend build + vitest 55 green.
-- **NEXT:** the hosting container spike (the last major unstarted R2+
-  track), or item-11 follow-ons (term-matched rate curve — unlocks the
-  HTB gate re-run; de-Am'd-parity identifiability widening). Item-10
-  residual follow-ups: per-maturity filter handle scales, degraded-v2
-  band, live-universe 0DTE seeding, same-date AM/PM expiry-key
-  redesign.
+- **HOSTING CONTAINER SPIKE SHIPPED 2026-07-17 (cb07cd3).** `deploy/`:
+  two-stage Dockerfile (node builds the bundle → python:3.11-slim +
+  volfit[api]+httpx/yfinance/duckdb; the bundle lands at frontend/dist
+  where the DESKTOP single-origin machinery already resolves it —
+  reused verbatim), state on a /data volume (VOLFIT_DB), HEALTHCHECK =
+  /settings/options (cheap state read, never a feed probe), compose =
+  one service per desk (own volume + env file), client.env.example =
+  the BYO-entitlement surface (gitignored). serve.py gains VOLFIT_HOST/
+  PORT/SERVE_FRONTEND envs, dev defaults byte-identical. Bloomberg
+  deliberately absent from the image (Terminal-bound; those desks run
+  the desktop build). **Validated as far as this Docker-less box
+  allows** (stated in deploy/README): the single-origin path
+  smoke-tested natively (scratch port: / = UI, same-origin API 200) +
+  test_frontend_mount; first `docker build` runs on a Docker-equipped
+  machine, expected rough edges documented (numba/llvmlite wheels on
+  slim, ~1.5 GB image).
+- **NEXT:** first real `docker build` (needs Docker — user's machine or
+  CI); then R3 (functional posterior / active observation selection /
+  learned betas) or item-11 v2 follow-ons (term-matched rate curve,
+  de-Am'd-parity identifiability widening). Item-10 residuals:
+  per-maturity filter handle scales, degraded-v2 band, live-universe
+  0DTE seeding, same-date AM/PM expiry-key redesign.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
