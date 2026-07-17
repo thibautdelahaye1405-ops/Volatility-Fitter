@@ -65,7 +65,7 @@ from volfit.data.carry_solve import (
     joint_borrow,
 )
 from volfit.data.store import VolStore
-from volfit.data.types import ChainSnapshot, OptionQuote
+from volfit.data.types import ChainSnapshot
 
 
 def _subset_chain(snap: ChainSnapshot, expiry: date, keep: np.ndarray) -> ChainSnapshot:

@@ -84,7 +84,7 @@ def _get(client: httpx.Client, url: str, params: dict | None, max_tries: int = 9
     for attempt in range(1, max_tries + 1):
         try:
             resp = client.get(url, params=params)
-        except httpx.HTTPError as exc:
+        except httpx.HTTPError:
             if attempt == max_tries:
                 raise
             _time.sleep(wait)

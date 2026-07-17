@@ -59,9 +59,9 @@ def _easter(year: int) -> date:
     g = (8 * b + 13) // 25
     h = (19 * a + b - d - g + 15) % 30
     i, k = divmod(c, 4)
-    l = (32 + 2 * e + 2 * i - h - k) % 7
-    m = (a + 11 * h + 22 * l) // 451
-    month, day = divmod(h + l - 7 * m + 114, 31)
+    ell = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * ell) // 451
+    month, day = divmod(h + ell - 7 * m + 114, 31)
     return date(year, month, day + 1)
 
 

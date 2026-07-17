@@ -71,7 +71,6 @@ def _borrow_chain(ticker: str, spot: float, borrow: float) -> ChainSnapshot:
 
 
 def test_carry_curve_recovers_planted_borrow(monkeypatch):
-    from volfit.data.provider import SyntheticProvider
 
     borrow = 0.03  # 300 bp hard-to-borrow
     chain = _borrow_chain("ALPHA", 100.0, borrow)

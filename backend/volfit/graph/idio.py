@@ -43,7 +43,7 @@ dark today is floored from the days it was lit — exactly the product story
 from __future__ import annotations
 
 import math
-from typing import Iterable, Mapping
+from typing import Iterable
 
 import numpy as np
 

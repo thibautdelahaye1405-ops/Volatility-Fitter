@@ -17,7 +17,7 @@ import numpy as np
 import pytest
 
 from volfit.core.american import binomial_price_batch
-from volfit.data.carry_solve import MIN_PAIRS, JointBorrowResult, joint_borrow
+from volfit.data.carry_solve import MIN_PAIRS, joint_borrow
 from volfit.data.types import ChainSnapshot, OptionQuote
 
 REF = date(2026, 6, 10)

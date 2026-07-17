@@ -96,7 +96,6 @@ def test_floor_above_pinned_core_reports_not_fully_clean():
     assert out.changed and not out.fully_clean  # core conflict: unrepairable
     assert np.array_equal(out.w[_core()], w[_core()])  # core still pinned
     # Wings capped at the pinned edge value: never above the core anchor.
-    x = np.exp(K)
     c = black_call(K, out.w)
     edge = int(np.flatnonzero(K <= HI + 1e-12)[-1])
     assert np.all(c[K > HI] <= c[edge] + 1e-12)

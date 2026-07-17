@@ -27,7 +27,6 @@ from volfit.graph.idio import (
     apply_idio_floor,
     trailing_idio_sigma,
 )
-from volfit.graph.posterior import GraphPosterior
 from volfit.graph.smile_universe import HandleField
 
 REF_DATE = date(2026, 6, 10)

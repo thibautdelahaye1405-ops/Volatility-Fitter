@@ -45,7 +45,7 @@ import json
 import os
 import re
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import numpy as np
 
