@@ -300,7 +300,11 @@ def node_smile(
     if chart is not None:
         half = Z_95 * sd
         lqd_post = _retarget_slice(chart, post_h, tau)
-        lqd_lo = _retarget_slice(chart, [post_h[0] - half, post_h[1], post_h[2]], tau)
+        # The lowered leg must stay a REACHABLE ATM target: a wide band can
+        # push sigma0 - 1.96 sd negative, and handles[0]^2 tau would silently
+        # square it into a wrong HIGH target — floor it near zero instead.
+        lo_atm = max(post_h[0] - half, 0.05 * max(post_h[0], 1e-6), 1e-4)
+        lqd_lo = _retarget_slice(chart, [lo_atm, post_h[1], post_h[2]], tau)
         lqd_hi = _retarget_slice(chart, [post_h[0] + half, post_h[1], post_h[2]], tau)
         if lqd_post is not None:
             native = _native_slice(model, state.fit_settings(), lqd_post, tau, grid)
@@ -309,6 +313,17 @@ def node_smile(
             lqd_post_curve = _curve(lqd_post, tau, grid)
             lo_c = _curve(lqd_lo, tau, grid) if lqd_lo is not None else []
             hi_c = _curve(lqd_hi, tau, grid) if lqd_hi is not None else []
+            # A leg's Newton can still fail at an extreme band edge (seen on
+            # CI/Linux only: the platform's fit trajectory landed a wider sd
+            # and the payload silently DROPPED the band). The band is a
+            # LEVEL-uncertainty object, so the honest fallback is the same
+            # first-order thing: a parallel vol shift of the posterior.
+            if not lo_c:
+                lo_c = [SmilePoint(k=p.k, vol=max(p.vol - half, 0.0))
+                        for p in lqd_post_curve]
+            if not hi_c:
+                hi_c = [SmilePoint(k=p.k, vol=p.vol + half)
+                        for p in lqd_post_curve]
             if native is not None:
                 band_lo = _shift_band(post_curve, lqd_post_curve, lo_c)
                 band_hi = _shift_band(post_curve, lqd_post_curve, hi_c)

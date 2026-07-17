@@ -49,9 +49,16 @@ def phi_p(u: np.ndarray | float, kappa: np.ndarray | float) -> np.ndarray:
 
 
 def phi_pp(u: np.ndarray | float, kappa: np.ndarray | float) -> np.ndarray:
-    """Phi''_kappa(u) = sech^2(kappa u / 2), eq (Phi-derivatives)."""
+    """Phi''_kappa(u) = sech^2(kappa u / 2), eq (Phi-derivatives).
+
+    Computed as (2 e^{-|x|} / (1 + e^{-2|x|}))^2 — algebraically identical to
+    1/cosh(x)^2 but overflow-SILENT: the naive form runs cosh -> inf -> inf^2
+    at |x| ~ 355 (value still correct, 0.0, but every far-wing eval emits a
+    RuntimeWarning — noisy in vectorized fits on wide slices)."""
     kappa = np.asarray(kappa, dtype=float)
-    return 1.0 / np.cosh(0.5 * kappa * np.asarray(u, dtype=float)) ** 2
+    x = np.abs(0.5 * kappa * np.asarray(u, dtype=float))
+    s = np.exp(-x)
+    return (2.0 * s / (1.0 + s * s)) ** 2
 
 
 # ------------------------------------------------------- one-core SIV base slice

@@ -93,3 +93,31 @@ def test_central_density_nonnegative(primed):
     # an arb-free target should not introduce a sharp concavity near ATM.
     d2 = w[2:] - 2 * w[1:-1] + w[:-2]
     assert np.min(d2) > -1e-2
+
+
+def test_band_survives_a_failed_retarget_leg(primed, monkeypatch):
+    """A band leg's Newton can fail at an extreme edge (seen on CI/Linux only:
+    the platform fit trajectory landed a wider sd) — the payload used to DROP
+    the band silently. The parallel level-shift fallback must keep the band
+    present and aligned with the posterior whenever a posterior curve exists."""
+    import volfit.api.graph_reconstruct as gr
+
+    primed.set_fit_settings(FitSettings(model="sigmoid"))
+    tk, iso = _node(primed, primed.active_tickers()[0])
+
+    real = gr._retarget_slice
+    calls = {"n": 0}
+
+    def flaky(chart, handles, tau):
+        calls["n"] += 1
+        if calls["n"] % 3 == 2:  # the second (lowered) leg of each triple fails
+            return None
+        return real(chart, handles, tau)
+
+    monkeypatch.setattr(gr, "_retarget_slice", flaky)
+    smile = node_smile(primed, tk, iso, GraphExtrapolateRequest())
+    assert len(smile.post) > 0
+    assert len(smile.postBandLo) == len(smile.post)
+    assert len(smile.postBandHi) == len(smile.post)
+    # the fallback band brackets the posterior
+    assert all(lo.vol <= p.vol + 1e-12 for lo, p in zip(smile.postBandLo, smile.post))
