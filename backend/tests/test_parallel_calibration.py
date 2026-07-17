@@ -212,6 +212,38 @@ def test_pooled_execute_matches_inline():
         fit_pool._reset_for_tests()
 
 
+def test_symmetric_surface_phase_a_fans_out_and_matches_inline():
+    """The symmetric surface pipeline fans phase A over the pool (workers >= 2)
+    and commits byte-identical results to the inline cold-start path — the
+    fan-out is pure plumbing (same tasks, same runner), and independence is
+    what makes it legal (no warm-seed / floor threading between expiries)."""
+    import os
+
+    os.environ["VOLFIT_CALIB_WORKERS"] = "2"
+    fit_pool._reset_for_tests()
+    try:
+        state = AppState(REF_DATE)
+        response = service.fit_surface(state, TICKER, "mid", True)
+        assert fit_pool._disabled is False and fit_pool._pool is not None
+
+        # Inline cold-start reference: the SAME tasks on a fresh state.
+        ref = AppState(REF_DATE)
+        plan = service.surface_inputs(ref, TICKER, "mid")
+        assert response.expiries == [iso for iso, _ in plan] and len(plan) >= 2
+        for iso, prepared in plan:
+            task = service._slice_task(
+                ref, TICKER, iso, prepared, "mid", enforce_calendar=True
+            )
+            inline = run_slice_fit(task)
+            rec = service.fit_or_get(state, TICKER, iso, "mid")
+            np.testing.assert_array_equal(
+                rec.result.params.to_vector(), inline.result.params.to_vector()
+            )
+    finally:
+        os.environ["VOLFIT_CALIB_WORKERS"] = "1"
+        fit_pool._reset_for_tests()
+
+
 def test_affine_pooled_matches_inline():
     """The LV (affine) surface calibration crosses the pool byte-identically:
     two fresh states (same cold-start conditions), one fit inline and one via a

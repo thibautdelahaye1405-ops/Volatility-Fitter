@@ -125,6 +125,8 @@ def calibrate_svi(
     calendar_k: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    calendar_k_ceil: np.ndarray | None = None,
+    calendar_ceiling: np.ndarray | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
@@ -152,6 +154,12 @@ def calibrate_svi(
     this slice's total variance at or above the nearer one (no calendar arb).
     Both None (the default) leave the objective byte-identical.
 
+    ``calendar_k_ceil``/``calendar_ceiling`` are the SYMMETRIC counterpart
+    (the symmetric-surface overlay repair): a ceiling from the NEXT, longer
+    expiry's displayed slice, ``sqrt(calendar_weight)*max(w(k) - ceiling, 0)``,
+    so a violating pair splits the correction instead of pushing it all into
+    the far fit. Both None (the default) leave the objective byte-identical.
+
     ``prior_anchor`` (volfit.calib.prior, the strike-gap mode) and
     ``operator_prior`` (volfit.calib.operators, the operator / hybrid modes) add
     the prior-persistence residual blocks — the same semantics LQD receives, so
@@ -178,6 +186,9 @@ def calibrate_svi(
     cal_on = calendar_k is not None and calendar_floor is not None
     cal_k = np.asarray(calendar_k, float) if cal_on else None
     cal_floor = np.asarray(calendar_floor, float) if cal_on else None
+    ceil_on = calendar_k_ceil is not None and calendar_ceiling is not None
+    ceil_k = np.asarray(calendar_k_ceil, float) if ceil_on else None
+    ceil_w = np.asarray(calendar_ceiling, float) if ceil_on else None
     sqrt_cal = np.sqrt(calendar_weight)
 
     def residuals(theta: np.ndarray) -> np.ndarray:
@@ -198,6 +209,10 @@ def calibrate_svi(
             # No calendar arb: total variance must not drop below the nearer expiry.
             cal = sqrt_cal * np.maximum(cal_floor - raw.total_variance(cal_k), 0.0)
             res = np.concatenate((res, cal))
+        if ceil_on:
+            # Symmetric counterpart: must not rise above the LONGER expiry.
+            ceil = sqrt_cal * np.maximum(raw.total_variance(ceil_k) - ceil_w, 0.0)
+            res = np.concatenate((res, ceil))
         if prior_anchor is not None:
             # Strike-gap prior: vega-normalized pull toward the prior's call prices.
             cp = black_call(prior_anchor.k, np.maximum(raw.total_variance(prior_anchor.k), 1e-12))
@@ -248,6 +263,7 @@ def calibrate_svi(
             j = svi_residual_jacobian(
                 theta, k, t, sqrt_weights, band, mid_anchor_weight,
                 penalty_weight, lee_slope_max, cal_k, cal_floor, sqrt_cal,
+                ceil_k, ceil_w,
             )
             if extrap is not None:  # hybrid: FD only the small extrap block
                 j = np.vstack([j, _extrap_fd_jac(theta)])

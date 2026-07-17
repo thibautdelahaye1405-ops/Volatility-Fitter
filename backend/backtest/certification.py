@@ -155,6 +155,22 @@ CASES: tuple[CertCase, ...] = (
         ("tests/test_overlay_calendar.py",),
     ),
     CertCase(
+        "symmetric_calendar", "Acute short expiry vs the calendar ladder",
+        "model_stress", "symmetric-surface redesign (2026-07-17)",
+        "The front-to-back calendar floor compared LQD slices on the full "
+        "tail-dense quantile grid, so an acutely convex short-dated slice "
+        "dragged every later wing off its quotes (repro: far fit 10.6 bp free, "
+        "1095 bp under the full-grid floor, 10.6 bp confined). Confinement "
+        "must live in PRICE space at fixed strike (G(alpha) integrates the "
+        "whole upper tail; a z-windowed floor removes only ~half the drag). "
+        "The symmetric solver fits expiries independently, screens the "
+        "IDENTIFIED violation on common quote support, and jointly repairs "
+        "only violating runs - a genuine violation is shared by quote "
+        "precision instead of bulldozing the far fit, and clean ladders are "
+        "exactly their independent fits.",
+        ("tests/test_calendar_confinement.py", "tests/test_symmetric_surface.py"),
+    ),
+    CertCase(
         "deam_repair_confinement", "American de-bias repair authority",
         "model_stress", "R3 revert ec68c52 + convex de-Am",
         "Extending a price-moving repair beyond the data turned a 27% put "

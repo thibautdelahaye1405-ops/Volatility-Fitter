@@ -77,6 +77,41 @@ def test_svi_floor_crushes_calendar_violation():
     assert bound.max_iv_error > free.max_iv_error
 
 
+def test_svi_ceiling_is_symmetric_counterpart():
+    """The two-sided target (symmetric overlay repair): a ceiling from a
+    LONGER expiry quoted below this slice pulls the fit DOWN — mirroring the
+    floor — and no ceiling is byte-identical."""
+    base = calibrate_svi(K, W_NEAR, t=0.5)
+    same = calibrate_svi(K, W_NEAR, t=0.5, calendar_k_ceil=None, calendar_ceiling=None)
+    np.testing.assert_array_equal(
+        np.array([same.raw.a, same.raw.b, same.raw.rho, same.raw.m, same.raw.sigma]),
+        np.array([base.raw.a, base.raw.b, base.raw.rho, base.raw.m, base.raw.sigma]),
+    )
+    ceil_w = 0.8 * W_NEAR  # the "next" expiry sits BELOW this slice everywhere
+    bound = calibrate_svi(K, W_NEAR, t=0.5, calendar_k_ceil=K, calendar_ceiling=ceil_w)
+    free_over = float(np.max(base.raw.total_variance(K) - ceil_w))
+    bound_over = float(np.max(bound.raw.total_variance(K) - ceil_w))
+    assert free_over > 1e-3  # the ceiling genuinely binds on the free fit
+    assert bound_over < 0.05 * free_over
+    assert bound.max_iv_error > base.max_iv_error  # the fit paid to respect it
+
+
+def test_sigmoid_ceiling_is_symmetric_counterpart():
+    ceil_w = 0.8 * W_NEAR
+    base = calibrate_sigmoid(K, W_NEAR, t=0.5, n_cores=2)
+    same = calibrate_sigmoid(
+        K, W_NEAR, t=0.5, n_cores=2, calendar_k_ceil=None, calendar_ceiling=None
+    )
+    np.testing.assert_array_equal(base.implied_w(K), same.implied_w(K))
+    bound = calibrate_sigmoid(
+        K, W_NEAR, t=0.5, n_cores=2, calendar_k_ceil=K, calendar_ceiling=ceil_w
+    )
+    free_over = float(np.max(base.implied_w(K) - ceil_w))
+    bound_over = float(np.max(bound.implied_w(K) - ceil_w))
+    assert free_over > 1e-3
+    assert bound_over < 0.1 * free_over
+
+
 # --------------------------------------------------------------- sigmoid
 def test_sigmoid_no_floor_is_byte_identical():
     """Passing no calendar floor leaves the Multi-Core SIV fit unchanged."""

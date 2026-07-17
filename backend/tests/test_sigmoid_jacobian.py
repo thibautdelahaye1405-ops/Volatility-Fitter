@@ -25,8 +25,10 @@ BASE = np.array([0.04, 0.01, 0.30, 0.10, 4.0, 3.0])
 HATS = np.array([0.20, -1.0, 0.40, 5.0, -0.15, 1.2, 0.50, 6.0])
 
 
-def _residual(theta, n_cores, vol_q, sqrt_w, band, cal_z, cal_floor, sqrt_cal):
-    """The gated residual (fit + ridge + calendar), same order as calibrate._fit."""
+def _residual(theta, n_cores, vol_q, sqrt_w, band, cal_z, cal_floor, sqrt_cal,
+              ceil_z=None, ceil_w=None):
+    """The gated residual (fit + ridge + calendar floor + ceiling), same order
+    as calibrate._fit."""
     mv = np.sqrt(np.maximum(_eval_v(theta, Z, n_cores), _V_FLOOR))
     if band is None:
         res = sqrt_w * (mv - vol_q)
@@ -37,6 +39,9 @@ def _residual(theta, n_cores, vol_q, sqrt_w, band, cal_z, cal_floor, sqrt_cal):
     if cal_z is not None:
         w = np.maximum(_eval_v(theta, cal_z, n_cores), _V_FLOOR) * T
         res = np.concatenate([res, sqrt_cal * np.maximum(cal_floor - w, 0.0)])
+    if ceil_z is not None:
+        w = np.maximum(_eval_v(theta, ceil_z, n_cores), _V_FLOOR) * T
+        res = np.concatenate([res, sqrt_cal * np.maximum(w - ceil_w, 0.0)])
     return res
 
 
@@ -50,11 +55,14 @@ def _fd(theta, *args, eps=1e-6):
     return j
 
 
-def _check(theta, n_cores, band, cal_z, cal_floor, sqrt_cal):
+def _check(theta, n_cores, band, cal_z, cal_floor, sqrt_cal, ceil_z=None, ceil_w=None):
     vol_q = np.sqrt(np.maximum(_eval_v(theta, Z, n_cores), _V_FLOOR)) + 0.001  # off the model
     sqrt_w = np.ones_like(Z)
-    args = (n_cores, vol_q, sqrt_w, band, cal_z, cal_floor, sqrt_cal)
-    an = siv_residual_jacobian(theta, Z, n_cores, T, sqrt_w, band, MAW, RIDGE, cal_z, cal_floor, sqrt_cal)
+    args = (n_cores, vol_q, sqrt_w, band, cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w)
+    an = siv_residual_jacobian(
+        theta, Z, n_cores, T, sqrt_w, band, MAW, RIDGE, cal_z, cal_floor, sqrt_cal,
+        ceil_z, ceil_w,
+    )
     fd = _fd(theta, *args)
     assert an.shape == fd.shape
     np.testing.assert_allclose(an, fd, rtol=2e-4, atol=2e-6)
@@ -81,3 +89,10 @@ def test_calendar_active():
     cal_z = np.linspace(-1.5, 1.5, 9)
     cal_floor = np.maximum(_eval_v(theta, cal_z, 2), _V_FLOOR) * T + 0.01  # above -> all active
     _check(theta, 2, None, cal_z, cal_floor, np.sqrt(1e6))
+
+
+def test_ceiling_active():
+    theta = np.concatenate([BASE, HATS])
+    ceil_z = np.linspace(-1.5, 1.5, 9)
+    ceil_w = np.maximum(_eval_v(theta, ceil_z, 2), _V_FLOOR) * T - 0.01  # below -> all active
+    _check(theta, 2, None, None, None, np.sqrt(1e6), ceil_z, ceil_w)

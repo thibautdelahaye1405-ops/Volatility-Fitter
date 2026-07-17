@@ -146,6 +146,8 @@ def _fit(
     calendar_k: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    calendar_k_ceil: np.ndarray | None = None,
+    calendar_ceiling: np.ndarray | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
@@ -165,12 +167,17 @@ def _fit(
 
     ``calendar_k``/``calendar_floor`` add the model-agnostic calendar hinge
     against the previous, shorter expiry's total variance (see
-    volfit.calib.calendar.variance_floor_targets); both None leaves the fit
-    byte-identical. The grid k is mapped to z via the same sigma_ref/t scaling.
+    volfit.calib.calendar.variance_floor_targets); ``calendar_k_ceil``/
+    ``calendar_ceiling`` the symmetric CEILING against the next, longer
+    expiry (the symmetric overlay repair's two-sided target). All None leaves
+    the fit byte-identical. Grids k map to z via the same sigma_ref/t scaling.
     """
     cal_on = calendar_k is not None and calendar_floor is not None
     cal_z = np.asarray(calendar_k, float) / (sigma_ref * np.sqrt(t)) if cal_on else None
     cal_floor = np.asarray(calendar_floor, float) if cal_on else None
+    ceil_on = calendar_k_ceil is not None and calendar_ceiling is not None
+    ceil_z = np.asarray(calendar_k_ceil, float) / (sigma_ref * np.sqrt(t)) if ceil_on else None
+    ceil_w = np.asarray(calendar_ceiling, float) if ceil_on else None
     sqrt_cal = np.sqrt(calendar_weight)
 
     def residuals(theta: np.ndarray) -> np.ndarray:
@@ -193,6 +200,10 @@ def _fit(
             # No calendar arb: total variance w = v(z)*t must not drop below floor.
             w_model = np.maximum(_eval_v(theta, cal_z, n_cores), _V_FLOOR) * t
             res = np.concatenate([res, sqrt_cal * np.maximum(cal_floor - w_model, 0.0)])
+        if ceil_on:
+            # Symmetric counterpart: must not rise above the LONGER expiry.
+            w_model = np.maximum(_eval_v(theta, ceil_z, n_cores), _V_FLOOR) * t
+            res = np.concatenate([res, sqrt_cal * np.maximum(w_model - ceil_w, 0.0)])
         if prior_anchor is not None or operator_prior is not None or prior_var_swap is not None:
             def implied_w(kk: np.ndarray) -> np.ndarray:
                 zz = np.asarray(kk, float) / (sigma_ref * np.sqrt(t))
@@ -268,7 +279,7 @@ def _fit(
         def jac(theta: np.ndarray) -> np.ndarray:  # noqa: F811 — gated analytic Jacobian
             j = siv_residual_jacobian(
                 theta, z, n_cores, t, sqrt_w, band, mid_anchor_weight, ridge,
-                cal_z, cal_floor, sqrt_cal,
+                cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w,
             )
             if wing_sqrt_lambda is not None:  # hybrid: FD only the cheap g-penalty rows
                 j = np.vstack([j, _wing_fd_jac(theta)])
@@ -305,6 +316,8 @@ def calibrate_sigmoid(
     calendar_k: np.ndarray | None = None,
     calendar_floor: np.ndarray | None = None,
     calendar_weight: float = 1e6,
+    calendar_k_ceil: np.ndarray | None = None,
+    calendar_ceiling: np.ndarray | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
@@ -375,6 +388,7 @@ def calibrate_sigmoid(
             var_swap=var_swap, sigma_ref=sigma_ref, t=t,
             calendar_k=calendar_k, calendar_floor=calendar_floor,
             calendar_weight=calendar_weight,
+            calendar_k_ceil=calendar_k_ceil, calendar_ceiling=calendar_ceiling,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,
@@ -388,6 +402,7 @@ def calibrate_sigmoid(
             var_swap=var_swap, sigma_ref=sigma_ref, t=t,
             calendar_k=calendar_k, calendar_floor=calendar_floor,
             calendar_weight=calendar_weight,
+            calendar_k_ceil=calendar_k_ceil, calendar_ceiling=calendar_ceiling,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_z=wing_z, wing_sqrt_lambda=wing_sqrt_lambda,

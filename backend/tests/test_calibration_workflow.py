@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import date
 
+import numpy as np
 
 from volfit.api import service
 from volfit.api.state import AppState
@@ -228,6 +229,54 @@ def test_symmetric_repair_recommits_violating_ladder(monkeypatch):
         assert rec is not None and rec.result.max_iv_error > 1e-3  # shared slack
 
 
+def test_symmetric_repair_rebuilds_overlays_two_sided(monkeypatch):
+    """Phase B with a non-LQD display model: the overlay chain is rebuilt with
+    the TWO-SIDED target (floor from the previous display, ceiling from the
+    next), so the violating pair's displays end calendar-consistent on their
+    common support — and the near display gives ground too (the ceiling)."""
+    from volfit.api import surface_symmetric, workflow
+
+    state = _state(auto=False)
+    state.set_fit_settings(state.fit_settings().model_copy(update={"model": "svi"}))
+    isos = [iso for _t, iso in workflow.lit_nodes(state, [TICKER])]
+
+    real_inputs = service.edited_fit_inputs
+
+    def shim(st, tk, iso, prepared, weights):
+        k, w, wt = real_inputs(st, tk, iso, prepared, weights)
+        if iso == isos[1]:
+            w = 0.15 * w  # second expiry sinks below the first: calendar arb
+        return k, w, wt
+
+    monkeypatch.setattr(service, "edited_fit_inputs", shim)
+
+    captured: dict = {}
+    real_b = surface_symmetric.phase_b_repair
+
+    def spy_b(st, tk, fit_mode, ctx):
+        captured["pre"] = [r.display for r in ctx["records"]]
+        captured["repair"] = real_b(st, tk, fit_mode, ctx)
+        captured["post"] = [r.display for r in ctx["records"]]
+        return captured["repair"]
+
+    monkeypatch.setattr(surface_symmetric, "phase_b_repair", spy_b)
+
+    service.fit_surface(state, TICKER, "mid", True)
+    assert captured["repair"] is not None and any(captured["repair"].refit)
+    near, far = captured["post"][0], captured["post"][1]
+    assert near is not None and far is not None
+    # Rebuilt (not the phase-A objects) and calendar-consistent on support.
+    assert near is not captured["pre"][0] and far is not captured["pre"][1]
+    rec0 = service.fit_or_get(state, TICKER, isos[0], "mid")
+    k0 = rec0.prepared.k
+    grid = np.linspace(float(k0.min()), float(k0.max()), 41)
+    gap = float(np.max(near.slice.implied_w(grid) - far.slice.implied_w(grid)))
+    assert gap < 1e-3  # identified overlay violation repaired
+    # Two-sided: the near display absorbed part of the correction (its error
+    # vs its own quotes is no longer ~0, unlike the one-sided floor path).
+    assert near.max_iv_error > 1e-3
+
+
 def test_enforce_calendar_surface_is_arbitrage_free():
     """Running the coupled parametric items yields a calendar-arbitrage-free
     surface: no convex-order violation between consecutive lit expiries."""
@@ -254,7 +303,14 @@ def test_enforce_calendar_threads_prev_overlay_for_non_lqd(monkeypatch):
     from volfit.api import workflow
 
     state = _state(auto=False)
-    state.set_options(state.options().model_copy(update={"enforceCalendar": True}))
+    # The SEQUENTIAL solver's contract (the symmetric path deliberately fits
+    # overlays independently in phase A and rebuilds two-sided in phase B —
+    # covered by test_symmetric_repair_rebuilds_overlays_two_sided).
+    state.set_options(
+        state.options().model_copy(
+            update={"enforceCalendar": True, "surfaceSolver": "sequential"}
+        )
+    )
     state.set_fit_settings(state.fit_settings().model_copy(update={"model": "svi"}))
 
     seen: list[tuple[bool, bool]] = []  # (prev_display_is_none, enforce)

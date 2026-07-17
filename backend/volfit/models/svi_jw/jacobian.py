@@ -58,13 +58,16 @@ def svi_residual_jacobian(
     cal_k: np.ndarray | None,
     cal_floor: np.ndarray | None,
     sqrt_cal: float,
+    ceil_k: np.ndarray | None = None,
+    ceil_w: np.ndarray | None = None,
 ) -> np.ndarray:
     """Analytic Jacobian (n_residuals x 5) of the gated SVI residual.
 
     Rows are assembled in the SAME order as ``calibrate.residuals`` under the analytic
-    gate: the fit block (mid: N rows; band: 2N rows), the two penalty rows, then the
-    calendar rows. The penalty / band / calendar hinges contribute their subgradient
-    (the active linear part, else zero)."""
+    gate: the fit block (mid: N rows; band: 2N rows), the two penalty rows, the
+    calendar floor rows, then the calendar CEILING rows (the symmetric overlay
+    repair's two-sided target). The penalty / band / calendar hinges contribute
+    their subgradient (the active linear part, else zero)."""
     raw = RawSVI(
         a=float(theta[0]), b=float(np.logaddexp(0.0, theta[1])),
         rho=float(np.tanh(theta[2])), m=float(theta[3]), sigma=float(np.exp(theta[4])),
@@ -103,5 +106,11 @@ def svi_residual_jacobian(
         active = (cal_floor - raw.total_variance(cal_k)) > 0.0
         dwc = _dw_dtheta(raw, sig_b, om_rho2, np.asarray(cal_k, float))
         blocks.append((-sqrt_cal * active)[:, None] * dwc)
+
+    # Calendar ceiling: sqrt_cal * max(w(ceil_k) - ceil, 0); subgradient +sqrt_cal*dw.
+    if ceil_k is not None and ceil_w is not None:
+        active = (raw.total_variance(ceil_k) - ceil_w) > 0.0
+        dwc = _dw_dtheta(raw, sig_b, om_rho2, np.asarray(ceil_k, float))
+        blocks.append((sqrt_cal * active)[:, None] * dwc)
 
     return np.vstack(blocks)

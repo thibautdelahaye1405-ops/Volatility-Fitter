@@ -83,6 +83,7 @@ def build_display_fit(
     band: BandTarget | None = None,
     var_swap: VarSwapTarget | None = None,
     calendar_floor: tuple[np.ndarray, np.ndarray] | None = None,
+    calendar_ceiling: tuple[np.ndarray, np.ndarray] | None = None,
     calendar_weight: float = 1e6,
     prior_anchor: PriorAnchorTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
@@ -104,7 +105,10 @@ def build_display_fit(
     ``calendar_floor`` is the ``(k_grid, w_floor)`` pair from
     volfit.calib.calendar.variance_floor_targets (the previous, shorter expiry's
     total variance); when present both overlay families gain the model-agnostic
-    calendar hinge with strength ``calendar_weight``. None leaves the fit
+    calendar hinge with strength ``calendar_weight``. ``calendar_ceiling`` is
+    the symmetric ``(k_grid, w_ceiling)`` counterpart from the NEXT, longer
+    expiry's displayed slice (the symmetric overlay repair's two-sided target,
+    so a violating pair splits the correction). None leaves the fit
     byte-identical (the LQD-only path passes None).
 
     ``prior_anchor`` (strike-gap mode) and ``operator_prior`` (operator / hybrid
@@ -123,6 +127,9 @@ def build_display_fit(
     cal_k = cal_floor = None
     if calendar_floor is not None:
         cal_k, cal_floor = calendar_floor
+    ceil_k = ceil_w = None
+    if calendar_ceiling is not None:
+        ceil_k, ceil_w = calendar_ceiling
     if model == "svi":
         cal = calibrate_svi(
             k, w, t, weights=weights, band=band,
@@ -131,6 +138,7 @@ def build_display_fit(
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
+            calendar_k_ceil=ceil_k, calendar_ceiling=ceil_w,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             extrap=extrap,
@@ -144,6 +152,7 @@ def build_display_fit(
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
             calendar_k=cal_k, calendar_floor=cal_floor, calendar_weight=calendar_weight,
+            calendar_k_ceil=ceil_k, calendar_ceiling=ceil_w,
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             wing_penalty=wing_penalty,

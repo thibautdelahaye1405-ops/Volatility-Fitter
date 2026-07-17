@@ -203,13 +203,29 @@ ladder). Shipped in five phases, all tests green (1198+ suite, new files
   M·phi with phi = (log A_L, log A_R, body a_n) — endpoint-neutral body
   modes; same optimum (test-locked), solver_diag mapped back to canonical
   coordinates. UI: Options → LQD solve coordinates.
-- **Deferred / follow-ups:** overlay (SVI/MCS) joint symmetric repair (the
-  overlay currently keeps the confined sequential floor chain; its own
-  interface rows would reuse the same price-ordering machinery);
-  parallelizing phase A across expiries via the fit pool inside one ticker
-  (independence now allows it; workflow already parallelizes across
-  tickers); certification-pack case registration for the confinement lock;
-  endpoint-coords default flip after a benchmark-pack comparison.
+- **Follow-up batch (same day):**
+  * **Overlay two-sided symmetric repair.** Phase A now fits overlays
+    INDEPENDENTLY (no floor — mirroring the LQD treatment; the sequential
+    solver keeps the floor chain). Both overlay families gained a confined
+    calendar CEILING (`calendar_k_ceil`/`calendar_ceiling` in
+    svi_jw/sigmoid calibrate + analytic Jacobian rows); phase B rebuilds the
+    overlay chain two-sided — floor from the updated previous display,
+    ceiling from the phase-A next display (one-pass lag) — triggered by any
+    LQD repair OR by the independent displays crossing on common support
+    (`_first_overlay_violation`, OVERLAY_TOL_W). A violating overlay pair
+    now SPLITS the correction (E2E-locked: the near display gives ground).
+  * **Phase-A pool fan-out.** With VOLFIT_CALIB_WORKERS >= 2 the symmetric
+    surface fit fans all slice tasks over the fit pool (fit_pool.submit/
+    collect + prewarm), cold-started (single-node semantics), collected and
+    committed in ascending order — byte-identical to inline (spawn-pool
+    test-locked). Serial path unchanged when workers pinned to 1.
+  * **Certification case `symmetric_calendar`** registered (model_stress)
+    over the confinement + symmetric-solver locks.
+- **Still open:** endpoint-coords default flip after a benchmark-pack
+  comparison; live SPY validation pass of the symmetric default;
+  interface-weight constants (IFACE_BASE_WEIGHT / TAIL_ROW_FRAC / seam pad)
+  unstress-tuned — the per-interface irreducible-slack readout is the
+  watchdog; eventual retirement of the sequential path.
 
 ### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + R0 ITEMS 1-2 SHIPPED
 

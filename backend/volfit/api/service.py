@@ -522,6 +522,8 @@ def _slice_task(
     prev: CalibrationResult | None = None,
     prev_display: DisplayFit | None = None,
     prev_k: np.ndarray | None = None,
+    next_display: DisplayFit | None = None,
+    next_k: np.ndarray | None = None,
     enforce_calendar: bool = False,
     allow_prepass: bool = False,
     with_fit: bool = True,
@@ -542,10 +544,13 @@ def _slice_task(
     published wings are governed by the Notes 09/10 extrap machinery instead).
     ``prev_k`` is the previous expiry's retained (edited) log-moneyness array
     for that intersection; None falls back to confining by THIS expiry's span
-    alone (legacy callers). ``allow_prepass`` opts the single-node path into
-    the two-pass priorDataOnlyPrepass; ``with_fit=False`` builds an
-    overlay-only task (display_overlay), ``with_overlay=False`` an LQD-only
-    task."""
+    alone (legacy callers). ``next_display``/``next_k`` (symmetric overlay
+    repair, phase B only) supply the NEXT, longer expiry's displayed slice as
+    a confined variance CEILING for the overlay — the two-sided target that
+    splits a violating pair's correction instead of pushing it all one way.
+    ``allow_prepass`` opts the single-node path into the two-pass
+    priorDataOnlyPrepass; ``with_fit=False`` builds an overlay-only task
+    (display_overlay), ``with_overlay=False`` an LQD-only task."""
     settings = state.fit_settings()
     k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
     weights = resolve_weights(settings.weightScheme, k, w)
@@ -599,7 +604,7 @@ def _slice_task(
 
     overlay = None
     if with_overlay and settings.model != "lqd":
-        o_floor = None
+        o_floor = o_ceil = None
         if enforce_calendar and prev_display is not None:
             # Confined to the COMMON quote support (empty intersection => no
             # pointwise floor): the later expiry's own span alone still lets a
@@ -609,6 +614,12 @@ def _slice_task(
             )
             if o_grid is not None:
                 o_floor = variance_floor_targets(prev_display.slice, o_grid)
+        if enforce_calendar and next_display is not None:
+            c_grid = variance_floor_grid_common(
+                next_k if next_k is not None else k, k
+            )
+            if c_grid is not None:
+                o_ceil = variance_floor_targets(next_display.slice, c_grid)
         # Tapered extrapolated-region enforcement (Notes 09/10 Phase 2): the
         # envelope geometry is built ONCE from the quotes (+ the previous
         # displayed slice for the calendar floor / slope order); OFF ⇒ None ⇒
@@ -627,7 +638,8 @@ def _slice_task(
         overlay = dict(
             model=settings.model, k=k, w=w, t=prepared.tau, weights=weights,
             settings=_overlay_settings(settings), band=band, var_swap=vs,
-            calendar_floor=o_floor, calendar_weight=state.options().calendarWeight,
+            calendar_floor=o_floor, calendar_ceiling=o_ceil,
+            calendar_weight=state.options().calendarWeight,
             prior_anchor=pt.prior_anchor, operator_prior=pt.operator_prior,
             prior_var_swap=pt.prior_var_swap,
             wing_penalty=(state.options().sivWingPenaltyPct / 100.0) * WING_PENALTY_BASE,

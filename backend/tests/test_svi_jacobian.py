@@ -22,8 +22,10 @@ LEE = 2.0
 MAW = 0.05
 
 
-def _residual(theta, k, w_quotes, sqrt_w, band, cal_k, cal_floor, sqrt_cal):
-    """The gated residual (fit + 2 penalties + calendar), same order as calibrate.py."""
+def _residual(theta, k, w_quotes, sqrt_w, band, cal_k, cal_floor, sqrt_cal,
+              ceil_k=None, ceil_w=None):
+    """The gated residual (fit + 2 penalties + calendar floor + ceiling),
+    same order as calibrate.py."""
     raw = _unpack(theta)
     mv = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / T)
     if band is None:
@@ -33,6 +35,8 @@ def _residual(theta, k, w_quotes, sqrt_w, band, cal_k, cal_floor, sqrt_cal):
     res = np.concatenate((fit, _penalties(raw, PW, LEE)))
     if cal_k is not None:
         res = np.concatenate((res, sqrt_cal * np.maximum(cal_floor - raw.total_variance(cal_k), 0.0)))
+    if ceil_k is not None:
+        res = np.concatenate((res, sqrt_cal * np.maximum(raw.total_variance(ceil_k) - ceil_w, 0.0)))
     return res
 
 
@@ -55,11 +59,14 @@ K = np.linspace(-0.4, 0.4, 21)
 ADMISSIBLE = RawSVI(a=0.02, b=0.10, rho=-0.30, m=0.0, sigma=0.20)  # penalties inactive
 
 
-def _check(theta, band, cal_k, cal_floor, sqrt_cal):
+def _check(theta, band, cal_k, cal_floor, sqrt_cal, ceil_k=None, ceil_w=None):
     w_q = ADMISSIBLE.total_variance(K)
     sqrt_w = np.ones_like(K)
-    args = (K, w_q, sqrt_w, band, cal_k, cal_floor, sqrt_cal)
-    an = svi_residual_jacobian(theta, K, T, sqrt_w, band, MAW, PW, LEE, cal_k, cal_floor, sqrt_cal)
+    args = (K, w_q, sqrt_w, band, cal_k, cal_floor, sqrt_cal, ceil_k, ceil_w)
+    an = svi_residual_jacobian(
+        theta, K, T, sqrt_w, band, MAW, PW, LEE, cal_k, cal_floor, sqrt_cal,
+        ceil_k, ceil_w,
+    )
     fd = _fd_jac(theta, *args)
     assert an.shape == fd.shape
     np.testing.assert_allclose(an, fd, rtol=2e-4, atol=2e-6)
@@ -80,6 +87,13 @@ def test_calendar_floor_active():
     cal_k = np.linspace(-0.2, 0.2, 9)
     cal_floor = ADMISSIBLE.total_variance(cal_k) + 0.01  # strictly above -> all active
     _check(_theta(ADMISSIBLE), None, cal_k, cal_floor, np.sqrt(1e6))
+
+
+def test_calendar_ceiling_active():
+    # A ceiling below the model variance -> active ceiling rows (+dw sign).
+    ceil_k = np.linspace(-0.2, 0.2, 9)
+    ceil_w = ADMISSIBLE.total_variance(ceil_k) - 0.01  # strictly below -> all active
+    _check(_theta(ADMISSIBLE), None, None, None, np.sqrt(1e6), ceil_k, ceil_w)
 
 
 def test_lee_penalty_active():

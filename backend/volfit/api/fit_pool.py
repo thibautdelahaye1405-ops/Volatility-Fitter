@@ -138,6 +138,45 @@ def execute(task):
         return run_fit_task(task)
 
 
+class _Done:
+    """Immediate-result stand-in for a pool future (inline fallback path)."""
+
+    def __init__(self, task):
+        self._task = task
+
+    def result(self):
+        return run_fit_task(self._task)
+
+
+def submit(task):
+    """Future-returning variant of ``execute`` for fan-out callers (the
+    symmetric surface's independent phase A): submits to the pool when this
+    thread opted in (``pooled``) and the pool is up, else returns a stand-in
+    that runs the task inline at ``.result()``. Collect with ``collect`` so a
+    worker lost mid-flight falls back to an inline re-run instead of raising."""
+    if not getattr(_use_pool, "on", False) or configured_workers() < 2:
+        return _Done(task)
+    pool = _get_pool()
+    if pool is None:
+        return _Done(task)
+    try:
+        return pool.submit(run_fit_task, task)
+    except (BrokenProcessPool, PicklingError, OSError) as exc:
+        _disable(exc)
+        return _Done(task)
+
+
+def collect(future, task):
+    """Resolve a ``submit`` future; infrastructure failures re-run inline
+    (matching ``execute``'s fallback contract — parallelism is an
+    optimization, never a correctness dependency)."""
+    try:
+        return future.result()
+    except (BrokenProcessPool, PicklingError, OSError) as exc:
+        _disable(exc)
+        return run_fit_task(task)
+
+
 def shutdown() -> None:
     """Tear the pool down (app lifespan close / interpreter exit).
 

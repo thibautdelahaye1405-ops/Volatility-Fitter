@@ -98,11 +98,14 @@ def siv_residual_jacobian(
     cal_z: np.ndarray | None,
     cal_floor: np.ndarray | None,
     sqrt_cal: float,
+    ceil_z: np.ndarray | None = None,
+    ceil_w: np.ndarray | None = None,
 ) -> np.ndarray:
     """Analytic Jacobian (n_residuals x (6+4R)) of the gated SIV residual.
 
     Rows match ``calibrate._fit.residuals`` under the analytic gate: the fit block
-    (mid: N rows; band: 2N rows), the ridge rows, then the calendar rows."""
+    (mid: N rows; band: 2N rows), the ridge rows, the calendar floor rows, then
+    the calendar CEILING rows (the symmetric overlay repair's two-sided target)."""
     v, dv = _model_v_grad(theta, np.asarray(z, float), n_cores)
     model_vol = np.sqrt(np.maximum(v, _V_FLOOR))
     dmv = dv / (2.0 * model_vol)[:, None]
@@ -129,5 +132,12 @@ def siv_residual_jacobian(
         w_model = np.maximum(vc, _V_FLOOR) * t
         active = ((cal_floor - w_model) > 0.0) & (vc > _V_FLOOR)
         blocks.append((-sqrt_cal * t * active)[:, None] * dvc)
+
+    # Ceiling: sqrt_cal * max(v(ceil_z)*t - ceil, 0); subgradient +sqrt_cal*t*dv.
+    if ceil_z is not None and ceil_w is not None:
+        vc, dvc = _model_v_grad(theta, np.asarray(ceil_z, float), n_cores)
+        w_model = np.maximum(vc, _V_FLOOR) * t
+        active = ((w_model - ceil_w) > 0.0) & (vc > _V_FLOOR)
+        blocks.append((sqrt_cal * t * active)[:, None] * dvc)
 
     return np.vstack(blocks)
