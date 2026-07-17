@@ -4,6 +4,7 @@
 // stays under the file-size policy.
 import { useMemo, useState } from "react";
 import GraphAttributionCard from "./GraphAttributionCard";
+import ObservationPlanCard from "./ObservationPlanCard";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
 
 interface ExtrapolateResultsProps {
@@ -49,6 +50,12 @@ export default function ExtrapolateResults({
             {extra.backtest.zetaMean.toFixed(2)} · ζ std {extra.backtest.zetaStd.toFixed(2)}
           </div>
         </div>
+      )}
+
+      {/* Active observation selection (R3 item 13): rank the next quotes once
+          a field has been propagated (the ranking reads the same posterior). */}
+      {extra.nodes !== null && (
+        <ObservationPlanCard body={body} onOpenSmile={onOpenSmile} />
       )}
 
       {/* Attribution card (explainability): why the selected node moved */}

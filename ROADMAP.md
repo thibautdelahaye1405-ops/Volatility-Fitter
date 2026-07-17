@@ -830,12 +830,40 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   sd) already in the bulk payload — a term-view ribbon fed by the graph
   posterior is the natural follow-up (cross-view plumbing, deferred with
   the density chart).
-- **NEXT:** R3 item 13 (active observation selection — prereq item 1
-  DONE, bands now calibrated + functional) or item 14 (learned betas +
-  OT ablation), or item-11 v2 follow-ons (term-matched rate curve,
+- **R3 ITEM 13 SHIPPED (2026-07-17) — active observation selection
+  ("which dark node to quote next"), closed form, no refit.** New
+  `volfit/graph/select.py`: observing candidate c with precision r is a
+  rank-one Schur update of the SOLVED posterior, so the exposure-weighted
+  total variance reduction G(c) = Σᵢ wᵢ(K⁺ᵢc)²/(K⁺cc+1/r) is closed form;
+  the candidate columns K⁺[:,c] come from the covariance-form identity the
+  solver already stores (C, S_y on GraphPosterior) — one m×m solve scores
+  the whole candidate set. **Locked EXACT against a brute-force re-solve
+  with the candidate added as an observation** (variance is value-free, so
+  the comparison is well-posed; test_graph_select.py, rtol 1e-8), plus
+  zero-observation case, middle-of-chain ranking sanity, exposure-weight
+  steering. API: `POST /graph/observation-plan`
+  (GraphObservationPlanRequest = extrapolate knobs + topN +
+  per-ticker exposureWeights) → ranked candidates with selfSdBefore/
+  AfterBp, totalVarReductionPct (share of remaining weighted ATM
+  variance removed), assumedPrecision (candidate's own chain quality
+  when it has a fit — the would-be-lit seam — else today's median lit
+  precision), top-5 beneficiaries with sd before/after.
+  ExtrapolationSolution now retains the increment priors + baseline
+  precisions it solved with (additive). Honesty: gains are MODEL
+  variance; the idio floor is deliberately NOT folded into cross-node
+  gains (idio variance is exactly what observing OTHER nodes cannot
+  remove — quoting the node itself does). UI: "Where to quote next"
+  card in the Propagate results (rank on demand, same request body;
+  tooltip = self pin + beneficiary shrinks; click opens the smile).
+  Note 14: rem:active-selection + traceability row, PDF rebuilt.
+  v2 candidates: sequential greedy top-k plan (re-score after each
+  pick), skew/curv coordinates, network-chart candidate highlight.
+- **NEXT:** R3 item 14 (learned shrunk betas + the OT ablation
+  decision) or item-11 v2 follow-ons (term-matched rate curve,
   de-Am'd-parity identifiability widening). Item-12 residuals:
   density-band chart consumer, graph-posterior term-view ribbon,
   posterior covariance ACROSS nodes for calendar-spread uncertainty.
+  Item-13 residuals: sequential greedy plan, network highlight.
   Item-10 residuals: per-maturity filter handle scales, degraded-v2
   band, live-universe 0DTE seeding, same-date AM/PM expiry-key redesign.
   Registry push for the container image when a registry is chosen (seam

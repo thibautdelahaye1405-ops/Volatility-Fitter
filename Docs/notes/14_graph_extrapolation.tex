@@ -433,6 +433,28 @@ farther along the chain.}
 \label{fig:eta}
 \end{figure}
 
+\begin{remark}[Active observation selection]
+\label{rem:active-selection}
+The covariance form answers a second question for free: \emph{which dark node
+is worth quoting next?} Observing candidate $c$ with precision $r$ is a
+rank-one Schur update of the posterior covariance,
+\[
+K' \;=\; K^+ \;-\; \frac{K^+ e_c\, e_c^{\!\top} K^+}{K^+_{cc}+1/r},
+\qquad\text{so}\qquad
+G(c)\;=\;\sum_i w_i\,\frac{(K^+_{ic})^2}{K^+_{cc}+1/r_c}
+\]
+is the exposure-weighted total variance a single quote at $c$ removes ---
+closed form, no refit. The candidate columns $K^+_{\cdot c}$ come from the
+same identity the solver already uses,
+$K^+_{\cdot c}=K^-_{\cdot c}-C\,S_y^{-1}(C_{c\cdot})^{\!\top}$ with
+$C=K^-_{\cdot S}$ and $S_y$ stored by the update, so scoring the whole
+candidate set costs one $m\times m$ solve
+(\texttt{volfit/graph/select.py}, locked exact against a brute-force re-solve).
+The idio floor of the calibrated-band work is deliberately \emph{not} folded
+into cross-node gains: idio variance is precisely what observing other nodes
+cannot remove --- quoting the node itself does.
+\end{remark}
+
 %======================================================================
 \section{The production spine}
 \label{sec:spine}
@@ -784,6 +806,10 @@ Monte-Carlo; band-only toggle &
 \cref{sec:posterior} (reconstruction remark) &
 \nolinkurl{volfit/models/lqd/band.py}, \nolinkurl{api/graph_band.py} &
 \nolinkurl{test_functional_band.py}, \nolinkurl{test_functional_band_api.py}\\
+Observation-selection gain closed-form $=$ brute-force re-solve &
+\cref{rem:active-selection} &
+\nolinkurl{volfit/graph/select.py}, \nolinkurl{api/graph_select.py} &
+\nolinkurl{test_graph_select.py::test_closed_form_equals_refit}\\
 Held-out nodes predicted, not pinned &
 \cref{sec:backtest} &
 \nolinkurl{api/graph_backtest.py} &

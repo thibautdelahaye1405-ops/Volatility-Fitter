@@ -16,6 +16,7 @@ from volfit.api import (
     graph_extrapolation,
     graph_lv,
     graph_reconstruct,
+    graph_select,
     graph_service,
 )
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse
@@ -32,6 +33,8 @@ from volfit.api.schemas import (
     GraphNodeInfo,
     GraphNodesResponse,
     GraphNodeSmile,
+    GraphObservationPlanRequest,
+    GraphObservationPlanResponse,
     GraphSolveRequest,
     GraphSolveResponse,
 )
@@ -100,6 +103,16 @@ def extrapolate_node_smile(
         )
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.post("/graph/observation-plan", response_model=GraphObservationPlanResponse)
+def observation_plan(
+    body: GraphObservationPlanRequest, request: Request
+) -> GraphObservationPlanResponse:
+    """Rank the non-observed nodes by closed-form exposure-weighted
+    posterior-variance reduction — "which dark node to quote next"
+    (R3 item 13; rank-one Schur on the solved posterior, no refit)."""
+    return graph_select.observation_plan(request.app.state.volfit, body)
 
 
 @router.post("/graph/backtest", response_model=GraphBacktestResponse)

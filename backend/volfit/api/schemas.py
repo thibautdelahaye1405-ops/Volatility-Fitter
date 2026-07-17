@@ -1081,6 +1081,49 @@ class GraphExtrapolateRequest(GraphSolverParams):
     functionalBand: bool = True
 
 
+class GraphObservationPlanRequest(GraphExtrapolateRequest):
+    """POST /graph/observation-plan — "which dark node to quote next" (R3
+    item 13). Solves the same posterior as /graph/extrapolate, then ranks the
+    non-observed nodes by closed-form exposure-weighted posterior-variance
+    reduction (rank-one Schur on the solved posterior — no refit)."""
+
+    topN: int = Field(default=5, ge=1, le=50)
+    #: Per-ticker exposure multipliers (default 1 everywhere): steer the
+    #: ranking toward the books the desk actually holds.
+    exposureWeights: dict[str, float] = {}
+
+
+class GraphObservationBeneficiary(BaseModel):
+    """One node whose ATM band shrinks when the candidate is quoted."""
+
+    ticker: str
+    expiry: str
+    sdBeforeBp: float  # model posterior ATM sd, bp
+    sdAfterBp: float
+
+
+class GraphObservationCandidate(BaseModel):
+    """One ranked next-observation candidate with its closed-form value."""
+
+    ticker: str
+    expiry: str
+    lit: bool  # lit-but-uncalibrated nodes are candidates too
+    selfSdBeforeBp: float  # its own model ATM sd before / after self-quoting
+    selfSdAfterBp: float
+    #: Share (percent) of the universe's remaining exposure-weighted ATM
+    #: variance this single observation removes.
+    totalVarReductionPct: float
+    assumedPrecision: float  # the observation precision the score assumed
+    beneficiaries: list[GraphObservationBeneficiary] = []
+
+
+class GraphObservationPlanResponse(BaseModel):
+    """Ranked observation plan (largest variance reduction first)."""
+
+    candidates: list[GraphObservationCandidate]
+    nCandidates: int  # how many nodes were scored (before topN truncation)
+
+
 class GraphExtrapolateNode(BaseModel):
     """One node's prior -> posterior ATM-handle summary with full provenance.
 

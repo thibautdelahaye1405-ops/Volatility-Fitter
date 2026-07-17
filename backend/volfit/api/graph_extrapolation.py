@@ -239,6 +239,11 @@ class ExtrapolationSolution:
     obs_value_by_idx: dict  # node index -> calibrated handles (3,)
     calibrated: list  # bool per node
     fit_mode: str
+    # The per-handle increment priors + baseline precisions the field was
+    # solved with — retained for closed-form follow-up algebra on the same
+    # posterior (active observation selection, R3 item 13).
+    increment_priors: list = None  # list[IncrementPrior], one per handle
+    baseline_precision: np.ndarray = None  # (N, 3)
 
 
 def solve(
@@ -380,6 +385,8 @@ def solve(
         obs_value_by_idx=calibrated_by_idx,
         calibrated=calibrated,
         fit_mode=fit_mode,
+        increment_priors=increment_priors,
+        baseline_precision=baseline_precision,
     )
 
 
