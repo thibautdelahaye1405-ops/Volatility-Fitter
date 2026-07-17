@@ -215,3 +215,40 @@ def test_joint_carry_knobs_bump_the_options_version():
     assert state.options_version == v0 + 1  # resolved forwards feed every fit
     state.set_options(state.options().model_copy(update={"jointCarryEngageBp": 60.0}))
     assert state.options_version == v0 + 2
+
+
+# ------------------------------------------ increment 3: dIV/d-borrow read
+def test_iv_borrow_sensitivity_matches_numerical_inversion():
+    """The closed form sqrt(t) N(d1)/phi(d1) vs the honest numerical read:
+    shift F by a small borrow bump at FIXED strike and cash price, re-invert
+    the ATM total variance, difference the vols."""
+    from volfit.core.black import black_call, implied_total_variance
+    from volfit.data.carry_solve import iv_borrow_sensitivity_bp
+
+    t, sigma = 0.5, 0.30
+    w = sigma * sigma * t
+    db = 1e-4  # 1 bp borrow bump
+    # Normalized price at ATM; after the bump the SAME cash price D*F*B is
+    # re-read at F' = F e^{-t db}: normalized price scales by F/F', and the
+    # fixed strike sits at k' = ln(K/F') = t*db.
+    price = float(black_call(0.0, w))
+    k_new = t * db
+    w_new = float(implied_total_variance(k_new, price * float(np.exp(-t * db)) ** -1.0))
+    dsigma = float(np.sqrt(w_new / t)) - sigma
+    numerical_bp_per_100 = dsigma / db * 1e2 * 1e4 * 1e-4  # -> vol bp per 100bp
+    closed = iv_borrow_sensitivity_bp(t, sigma)
+    assert closed == pytest.approx(numerical_bp_per_100, rel=0.02)
+    # limit behavior: fit-free read within ~15% and t <= 0 declines
+    assert iv_borrow_sensitivity_bp(t) == pytest.approx(closed, rel=0.15)
+    assert iv_borrow_sensitivity_bp(0.0) is None
+    # scale sanity: ~125*sqrt(t) bp per 100bp at low sigma*sqrt(t)
+    assert iv_borrow_sensitivity_bp(1.0) == pytest.approx(125.3, abs=1.0)
+
+
+def test_carry_payload_carries_the_sensitivity():
+    from volfit.api.carry import carry_curve
+
+    snap = _chain(0.0)
+    state = _fit_state(snap)
+    pt = carry_curve(state, "HTB").points[0]
+    assert pt.ivBorrowSensBpPer100 == pytest.approx(125.3 * np.sqrt(T), rel=0.02)

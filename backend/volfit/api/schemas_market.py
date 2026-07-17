@@ -129,6 +129,12 @@ class CarryPoint(BaseModel):
     jointIterations: int | None = None
     jointConverged: bool | None = None
     jointDeamFailures: int | None = None
+    #: ATM IV moved (vol bp) by 100 bp of borrow at fixed strike/price
+    #: (closed form, carry_solve.iv_borrow_sensitivity_bp) — the trader's
+    #: materiality read: an UNIDENTIFIED borrow matters exactly when this
+    #: times the plausible borrow range is large. Uses the cached fit's ATM
+    #: vol when one exists, the (weakly different) sigma->0 limit otherwise.
+    ivBorrowSensBpPer100: float | None = None
 
 
 class CarryCurveResponse(BaseModel):

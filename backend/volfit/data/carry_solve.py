@@ -60,6 +60,34 @@ BISECTIONS = 20
 MIN_PAIRS = 6
 
 
+def iv_borrow_sensitivity_bp(t: float, atm_vol: float | None = None) -> float | None:
+    """ATM implied vol moved (bp) by 100 bp of borrow, at FIXED strike and
+    price (R2 item 11 increment 3 — "IV-sensitivity to borrow uncertainty").
+
+    Closed form: the forward responds dF = -t F db, and re-inverting an
+    unchanged ATM price gives dsigma/dF = -(dC/dF)/vega, so
+
+        dsigma/db = t F (D N(d1)) / (D F phi(d1) sqrt(t)) = sqrt(t) N(d1)/phi(d1)
+
+    with d1 = sigma sqrt(t)/2 at the money. Per 100 bp of borrow that is
+    ``100 sqrt(t) N(d1)/phi(d1)`` vol bp — ~125 sqrt(t) at low sigma*sqrt(t),
+    growing mildly with it. ``atm_vol=None`` uses the sigma->0 limit (d1=0):
+    the factor is weakly sigma-dependent, so the fit-free read stays honest.
+    This is the trader's materiality number: an UNIDENTIFIED borrow matters
+    exactly when this sensitivity times the plausible borrow range is large
+    (the strategic publish rule's "material x unidentified" product).
+
+    De-Am carry response is deliberately excluded (second order for the
+    diagnostic; the joint solve owns the exact treatment). None when t <= 0.
+    """
+    from volfit.core.black import norm_cdf, norm_pdf
+
+    if t <= 0.0:
+        return None
+    d1 = 0.5 * float(atm_vol or 0.0) * np.sqrt(t)
+    return float(100.0 * np.sqrt(t) * norm_cdf(d1) / norm_pdf(d1))
+
+
 def dividend_legs(settings, reference_date: date):
     """(dividend_yield, div_times, div_amounts) from a MarketSettings-shaped
     object, or None when the model mix is unsupported (a PROPORTIONAL

@@ -98,10 +98,30 @@ def _joint_read(state: AppState, ticker: str, expiry: date) -> dict:
     }
 
 
+def _cached_atm_vol(state: AppState, ticker: str, iso: str) -> float | None:
+    """The node's displayed ATM vol IF a fit is cached — read-only, never fits
+    (the carry view's contract); None sends the sensitivity formula to its
+    sigma->0 limit, which is within ~15% for any realistic sigma*sqrt(t)."""
+    try:
+        ptr = state.get_calibrated_ptr(ticker, iso, state.last_fit_mode)
+        record = state.get_fit(ptr[0]) if ptr is not None else None
+        if record is None:
+            return None
+        if record.display is not None:
+            return float(record.display.handles.atm_vol)
+        from volfit.models.lqd.atm import atm_handles
+
+        return float(atm_handles(record.result.slice, record.prepared.tau).sigma0)
+    except Exception:  # noqa: BLE001 — advisory surface only
+        return None
+
+
 def _point(
     state: AppState, ticker: str, expiry: date, zero_carry: bool, spot: float,
     joint: bool = False,
 ) -> CarryPoint:
+    from volfit.data.carry_solve import iv_borrow_sensitivity_bp
+
     parity = state.forwards(ticker).get(expiry)
     theo_forward, _ = state.theoretical_forward_for(ticker, expiry)
     active = state.resolved_forward(ticker, expiry)
@@ -114,6 +134,9 @@ def _point(
     extra = _joint_read(state, ticker, expiry) if joint and identifiable else {}
     return CarryPoint(
         **extra,
+        ivBorrowSensBpPer100=iv_borrow_sensitivity_bp(
+            t, _cached_atm_vol(state, ticker, expiry.isoformat())
+        ),
         expiry=expiry.isoformat(),
         t=t,
         forward=float(active.forward),
