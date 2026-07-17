@@ -73,21 +73,10 @@ def _joint_read(state: AppState, ticker: str, expiry: date) -> dict:
     solve; proportional/mixed-proportional models fall back to the v0 read
     (empty dict) — a proportional dividend is not a cash amount the escrowed
     tree can carry. Best-effort: a solve hiccup must never break the view."""
-    from volfit.data.carry_solve import dividend_legs, joint_borrow
-
-    settings = state.market_settings(ticker)
-    legs = dividend_legs(settings, state.reference_date)
-    if legs is None:  # proportional dividends: no cash schedule -> v0 read
-        return {}
-    dividend_yield, div_times, div_amounts = legs
-    try:
-        res = joint_borrow(
-            state.snapshot(ticker), expiry, state.reference_date,
-            settings.rate, dividend_yield=dividend_yield,
-            div_times=div_times, div_amounts=div_amounts,
-        )
-    except Exception:  # noqa: BLE001 — advisory surface only
-        return {}
+    # The state-level cache (R2 item 11 increment 2) already owns the legs
+    # resolution and invalidation — the view must NOT re-solve per request
+    # (the fixed point runs a de-Am pass per iteration).
+    res = state.joint_carry_read(ticker, expiry)
     if res is None:
         return {}
     return {
@@ -120,7 +109,7 @@ def _point(
     state: AppState, ticker: str, expiry: date, zero_carry: bool, spot: float,
     joint: bool = False,
 ) -> CarryPoint:
-    from volfit.data.carry_solve import iv_borrow_sensitivity_bp
+    from volfit.data.carry_solve import borrow_noise_floor_bp, iv_borrow_sensitivity_bp
 
     parity = state.forwards(ticker).get(expiry)
     theo_forward, _ = state.theoretical_forward_for(ticker, expiry)
@@ -136,6 +125,10 @@ def _point(
         **extra,
         ivBorrowSensBpPer100=iv_borrow_sensitivity_bp(
             t, _cached_atm_vol(state, ticker, expiry.isoformat())
+        ),
+        borrowNoiseFloorBp=(
+            borrow_noise_floor_bp(parity.residual_rms / spot, t, parity.n_strikes)
+            if identifiable and spot > 0.0 else None
         ),
         expiry=expiry.isoformat(),
         t=t,

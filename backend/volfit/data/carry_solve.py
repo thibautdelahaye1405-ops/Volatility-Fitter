@@ -60,6 +60,20 @@ BISECTIONS = 20
 MIN_PAIRS = 6
 
 
+def borrow_noise_floor_bp(rms_frac: float, t: float, n_pairs: int) -> float | None:
+    """Propagated 1-sigma noise floor on a borrow read (bp/yr): parity
+    regression residuals of ``rms_frac`` (fraction of spot) over ``n_pairs``
+    strikes leave the forward known to ~rms/sqrt(n), and borrow divides that
+    by t — the CONFIDENCE-BY-EXPIRY number (a 1-week expiry cannot pin
+    borrow; a 6-month one on a tight board can). Slightly optimistic: it
+    ignores the regression's intercept/slope leverage on F (~1.5-2x on real
+    boards, measured on the 2026-07 HTB capture). None when t <= 0 or the
+    inputs are degenerate."""
+    if t <= 0.0 or n_pairs <= 0 or not np.isfinite(rms_frac):
+        return None
+    return float(rms_frac / (t * np.sqrt(n_pairs)) * 1e4)
+
+
 def iv_borrow_sensitivity_bp(t: float, atm_vol: float | None = None) -> float | None:
     """ATM implied vol moved (bp) by 100 bp of borrow, at FIXED strike and
     price (R2 item 11 increment 3 — "IV-sensitivity to borrow uncertainty").

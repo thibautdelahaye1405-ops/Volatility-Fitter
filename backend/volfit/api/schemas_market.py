@@ -135,6 +135,11 @@ class CarryPoint(BaseModel):
     #: times the plausible borrow range is large. Uses the cached fit's ATM
     #: vol when one exists, the (weakly different) sigma->0 limit otherwise.
     ivBorrowSensBpPer100: float | None = None
+    #: Propagated 1-sigma noise floor on the borrow read (bp/yr) from the
+    #: parity residuals — the CONFIDENCE-BY-EXPIRY number: a read is only as
+    #: good as rms/(t sqrt(n)), whatever solver produced it. None when the
+    #: expiry cannot carry a read at all.
+    borrowNoiseFloorBp: float | None = None
 
 
 class CarryCurveResponse(BaseModel):

@@ -25,6 +25,20 @@ const selectClass =
 const fmtFwd = (v: number | null | undefined): string =>
   v === null || v === undefined ? "—" : v.toFixed(2);
 
+/** Per-expiry joint-carry read off GET /carry/{ticker}?joint=true (R2 item 11). */
+interface CarryJointPoint {
+  expiry: string;
+  jointBorrowBp: number | null;
+  jointIterations: number | null;
+  jointConverged: boolean | null;
+  jointDeamFailures: number | null;
+  borrowNoiseFloorBp: number | null;
+  ivBorrowSensBpPer100: number | null;
+}
+interface CarryResponse {
+  points: CarryJointPoint[];
+}
+
 export default function ForwardsViewer() {
   const { universe, ticker, setTicker, source, reload } = useSmileSession();
   const { format } = useExpiryFormat();
@@ -36,6 +50,27 @@ export default function ForwardsViewer() {
   const [expiry, setExpiry] = useState<string>("");
   // Bumped to refetch the table after an edit is applied.
   const [nonce, setNonce] = useState(0);
+  // Joint borrow/de-Am fixed point (R2 item 11): opt-in — the solve runs a
+  // de-Am pass per iteration per expiry on first fetch (then state-cached).
+  const [jointOn, setJointOn] = useState(false);
+  const [joint, setJoint] = useState<Record<string, CarryJointPoint>>({});
+
+  useEffect(() => {
+    if (!jointOn || !live || ticker === "") {
+      setJoint({});
+      return;
+    }
+    const controller = new AbortController();
+    api
+      .get<CarryResponse>(`/carry/${ticker}?joint=true`, { signal: controller.signal })
+      .then((res) => {
+        const byExpiry: Record<string, CarryJointPoint> = {};
+        for (const p of res.points) byExpiry[p.expiry] = p;
+        setJoint(byExpiry);
+      })
+      .catch(() => setJoint({}));  // advisory columns: never break the table
+    return () => controller.abort();
+  }, [jointOn, live, ticker, nonce]);
 
   // (Re)load the ticker's forwards table; keep a valid selected expiry.
   useEffect(() => {
@@ -125,6 +160,19 @@ export default function ForwardsViewer() {
             </span>
           </span>
         )}
+        <label
+          className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-slate-400"
+          title="Joint borrow/de-Am fixed point per expiry (R2 item 11): de-Americanize at the split carry, iterate to the parity/theoretical fixed point. Adds Joint and ±σ columns."
+        >
+          <input
+            type="checkbox"
+            checked={jointOn}
+            disabled={!live}
+            onChange={(e) => setJointOn(e.target.checked)}
+            className="accent-accent-500"
+          />
+          Joint carry
+        </label>
       </div>
 
       {/* Forward-curve chart with dividend markers + click-to-add manual divs */}
@@ -151,7 +199,8 @@ export default function ForwardsViewer() {
             <table className="w-full border-collapse font-mono text-[11px] leading-tight">
               <thead className="sticky top-0 z-10 bg-surface-800 text-slate-400">
                 <tr>
-                  {["Expiry", "T", "Parity", "Theo", "Manual", "Active", "Borrow", "Source"].map((h) => (
+                  {["Expiry", "T", "Parity", "Theo", "Manual", "Active", "Borrow",
+                    ...(jointOn ? ["Joint", "±σ"] : []), "Source"].map((h) => (
                     <th
                       key={h}
                       className={[
@@ -196,6 +245,40 @@ export default function ForwardsViewer() {
                         ? `${e.impliedBorrowBp.toFixed(0)} bp`
                         : "—"}
                     </td>
+                    {jointOn && (() => {
+                      const j = joint[e.expiry];
+                      const has = typeof j?.jointBorrowBp === "number";
+                      return (
+                        <>
+                          <td
+                            className={[
+                              "px-2 py-1 text-right",
+                              has && j!.jointConverged === false
+                                ? "text-amber-400"
+                                : "text-slate-300",
+                            ].join(" ")}
+                            title={
+                              has
+                                ? `Joint borrow/de-Am fixed point: ${j!.jointIterations} iterations, ` +
+                                  `${j!.jointConverged ? "converged" : "NOT converged"}, ` +
+                                  `${j!.jointDeamFailures} tree failures. ` +
+                                  `ATM IV sensitivity ${j!.ivBorrowSensBpPer100?.toFixed(0) ?? "—"} bp per 100bp borrow.`
+                                : "No joint read (thin parity / zero-carry / unsupported dividend mix)"
+                            }
+                          >
+                            {has ? `${j!.jointBorrowBp!.toFixed(0)} bp` : "—"}
+                          </td>
+                          <td
+                            className="px-2 py-1 text-right text-slate-500"
+                            title="1σ noise floor on the borrow read (parity residuals / (t·√n)): a read is only as good as this, whatever solver produced it."
+                          >
+                            {typeof j?.borrowNoiseFloorBp === "number"
+                              ? `±${j.borrowNoiseFloorBp.toFixed(0)}`
+                              : "—"}
+                          </td>
+                        </>
+                      );
+                    })()}
                     <td className="px-2 py-1 text-left text-slate-500">{e.activeSource}</td>
                   </tr>
                 ))}

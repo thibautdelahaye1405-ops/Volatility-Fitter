@@ -252,3 +252,24 @@ def test_carry_payload_carries_the_sensitivity():
     state = _fit_state(snap)
     pt = carry_curve(state, "HTB").points[0]
     assert pt.ivBorrowSensBpPer100 == pytest.approx(125.3 * np.sqrt(T), rel=0.02)
+
+
+def test_carry_payload_carries_the_noise_floor():
+    """Confidence by expiry: the 1-sigma borrow noise floor rides every
+    identifiable CarryPoint (increment 5), and scales like rms/(t sqrt(n))."""
+    from volfit.api.carry import carry_curve
+    from volfit.data.carry_solve import borrow_noise_floor_bp
+
+    # European chain: parity is exact, so the v0 identifiability gate passes
+    # (the American b=0 chain's raw-parity rms is EEP-shaped, 10.9bp of spot,
+    # just over v0's conservative 1e-3 bar - documented, not a bug).
+    snap = _chain(0.0, american=False)
+    state = _fit_state(snap)
+    pt = carry_curve(state, "HTB").points[0]
+    assert pt.borrowNoiseFloorBp is not None and pt.borrowNoiseFloorBp >= 0.0
+    # halving t doubles the floor; quadrupling pairs halves it
+    assert borrow_noise_floor_bp(1e-4, 0.25, 16) == pytest.approx(
+        2.0 * borrow_noise_floor_bp(1e-4, 0.5, 16))
+    assert borrow_noise_floor_bp(1e-4, 0.5, 64) == pytest.approx(
+        0.5 * borrow_noise_floor_bp(1e-4, 0.5, 16))
+    assert borrow_noise_floor_bp(1e-4, 0.0, 16) is None
