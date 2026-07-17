@@ -1364,60 +1364,33 @@ and it is benchmarked twice over, in \cref{fig:jacobian}.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_lqd_fresh_jacobian.pdf}
+\includegraphics[width=\textwidth]{fig_lqd_geom_jacobian.pdf}
 \caption{The analytic Jacobian audited against an independent central finite
-difference on the running fit ($\lqdfreshjacnparams$ parameters).  Panel A:
-where each parameter moves prices --- $L$ and $R$ own the wings, each
-Legendre mode paints its own oscillation across the strike ladder.  Panel B:
+difference on the running fit ($\lqdgeomjacnparams$ parameters).  Panel A:
+each column is one parameter's price sensitivity across the strike ladder,
+normalized per column to $[-1,1]$ (the colour scale) --- $L$ and $R$ own the
+wings, and each Legendre mode paints its own oscillation.  Panel B:
 column-wise relative disagreement between the one-pass analytic Jacobian and
-the central difference: at most $\lqdfreshjacmaxrel$, i.e.\ agreement to
-about five significant digits of a derivative computed by a completely
+the central difference: at most $\lqdgeomjacmaxrel$, i.e.\ agreement to
+about five significant digits with a derivative computed by a completely
 different route.}
 \label{fig:jacobian}
 \end{figure}
 
-\subsection{Scope and measured speed-up}
+\subsection{Scope and speed}
 
 The analytic route covers the var-swap-free, prior-free configuration
 (\cref{tab:stack}); other fits fall back to scipy's two-point finite
-difference.  \Cref{tab:timing} and \cref{fig:timing} report a fresh
-measurement: analytic and finite-difference fits reach the same optimum
-(costs agreeing to $\sim10^{-11}$ relative, parameters to
-$\lesssim10^{-5}$) with the analytic Jacobian $1.3$--$1.7\times$ faster
-across $N=6\ldots12$.  Scope of the measurement: it times the least-squares
-residual path on the synthetic benchmark, single-threaded, warm static-grid
-cache, core residual blocks only --- different hardware, cache state, or an
-active optional block moves the ratio.
-
-\begin{table}[H]
-\centering
-\caption{Analytic vs.\ two-point finite-difference Jacobian, fresh run of the
-production calibrator on the SVI-JW benchmark (fastest of three repeats,
-single-threaded, warm cache, core residual blocks only).  $P=N+1$ is the
-parameter count; the cost column confirms the same optimum within tolerance.}
-\label{tab:timing}
-\lqdtimingtable
-\end{table}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.78\textwidth]{fig_lqd_jacobian_timing.pdf}
-\caption{The same measurement drawn: per-fit wall time with the analytic
-one-pass Jacobian vs the $(P{+}1)$-rebuild finite difference, with the ratio
-above each pair.  The win grows with the parameter count, as it must ---
-the analytic pass costs one quadrature regardless of $P$.}
-\label{fig:timing}
-\end{figure}
-
-\begin{heuristic}
-Why only $\sim1.5\times$ and not $\sim P\times$?  Two reasons.  First, the
-cached static grid makes a \emph{repeat} \texttt{build\_slice} cheap, so
-$P+1$ finite-difference rebuilds cost much less than $P+1$ cold builds.
-Second, \texttt{trf} converges here in a handful of iterations, so linear
-algebra and the value evaluation dilute the Jacobian saving.  The structural
-payoff --- a Jacobian that no longer rebuilds the quadrature --- is what
-makes higher-order and surface-wide fits comfortable.
-\end{heuristic}
+difference, correct but not accelerated.  Measured on this repository's
+development machine, the analytic Jacobian reaches the \emph{same} optimum
+as the finite difference (costs agreeing to $\sim10^{-11}$ relative,
+parameters to $\lesssim10^{-5}$) at $1.3$--$1.7\times$ the speed across
+$N=6\ldots12$ --- but wall-clock ratios are machine-, cache- and
+configuration-dependent, so the measurement protocol, the timing table and
+the chart live with the other performance engineering in \cref{app:perf}.
+The structural point is machine-independent: one quadrature pass now serves
+all $P$ columns, where the finite difference rebuilt the pipeline $P+1$
+times.
 
 %======================================================================
 \section{Many expiries: order the ledgers}
@@ -1480,21 +1453,54 @@ so it is exact whatever grid the optimizer runs on
 test: no implied-volatility inversion at any strike, and full meaning
 retained in the far wings, exactly where inversion goes blind.
 
+\Cref{fig:calendar} shows the whole story on fitted slices, and it is worth
+reading deliberately, panel by panel.  Panel A draws the ledgers themselves
+for a legitimate pair: the running example as the far expiry, and a
+quarter-year slice fitted to the same smile shape with proportionally
+smaller variance as the near one.  Both curves start at $G(0)=1$ --- the
+whole mean, since every outcome lies above the 0th percentile --- and both
+fall to zero at $u=1$.  In between, the far curve rides everywhere
+\emph{above} the near one, and the shaded sliver between them is the
+calendar's entire economic content: at every rank, the top $(1-u)$-tranche
+of the longer-dated law carries more of the mean, which by
+\eqref{eq:legendre_dual} is precisely the statement that every call is worth
+more at the longer expiry.  Note how thin the sliver is --- a legitimate
+term structure clears the bar by little, which is why calendar violations
+are so easy to manufacture and so hard to spot by eye.
+
+Panel B plots that sliver directly: the calendar gap
+$G_{\text{far}}(u)-G_{\text{near}}(u)$, which the order \eqref{eq:calendar}
+requires to be non-negative for every rank.  The gap must vanish at both
+ends (at $u=0$ both ledgers equal the common mean; at $u=1$ both are empty),
+so all the information lives in the middle, and three fits are drawn there.
+Green, the legitimate pair: an arch that stays non-negative everywhere
+(minimum $\lqdgeommingaplegit$).  Red, a deliberately crossed pair --- the
+far slice refitted to quotes whose body variance sits $10\%$ \emph{below}
+the near slice while its wings sit above: the gap dips to
+$\lqdgeommingapcross$ around the $u\approx\lqdgeomugapcross$ rank (shaded),
+and that dip is a concrete trade, a calendar spread at the corresponding
+strikes that the crossed surface prices \emph{negative}.  Each smile on its
+own looks perfectly respectable; only the ledger comparison exposes the
+crossing.  Dashed blue, the same crossed quotes refitted \emph{with} the
+production soft floor active: the fit concedes what the quotes demand, the
+gap is pressed against zero from below, and the residual violation is
+$\lqdgeommingaphealed$ --- four orders of magnitude smaller, but not
+exactly zero, because the floor is a finite-weight hinge, not a hard
+constraint.  That residual is the honest signature of \emph{soft}
+enforcement, and it is the subject of the closing paragraph.
+
 \begin{figure}[H]
 \centering
 \includegraphics[width=\textwidth]{fig_lqd_geom_calendar.pdf}
-\caption{Convex order on the ledger, three ways.  Panel A: upper shares of a
-legitimate near/far pair (the running example and a proportionally scaled
-quarter-year slice) --- both start at the common mean and the far curve
-dominates.  Panel B: the calendar gap $G_{\text{far}}-G_{\text{near}}$.
-Green: the legitimate pair stays non-negative (minimum
-$\lqdgeommingaplegit$).  Red: a crafted far slice whose body variance sits
-below the near slice dips to $\lqdgeommingapcross$ near the
-$u\approx\lqdgeomugapcross$ rank --- calendar arbitrage a strike-space
-inspection of two decent-looking smiles would not shout about.  Dashed blue:
-the same crossed quotes refitted with the production soft floor; the
-violation collapses to $\lqdgeommingaphealed$ --- pressed against zero from
-below, visibly soft, visibly working.}
+\caption{Convex order read off the ledger.  Panel A: the upper shares of a
+legitimate near/far pair; the shaded sliver between the curves --- far above
+near at every rank --- is exactly the value ordering of every calendar
+spread.  Panel B: the calendar gap for three fits: the legitimate pair
+(green, minimum $\lqdgeommingaplegit$), a crafted crossed pair (red; the
+shaded dip to $\lqdgeommingapcross$ is a free calendar spread hiding between
+two respectable-looking smiles), and the crossed quotes refitted under the
+production soft floor (dashed blue, residual violation
+$\lqdgeommingaphealed$: pressed to zero, softly).}
 \label{fig:calendar}
 \end{figure}
 
@@ -1514,11 +1520,12 @@ object is the ledger the model already owns.
 \label{sec:cases}
 
 A lecture should end with the machine run end-to-end, and with the operator
-saying plainly what the run does and does not prove.  Both cases here come
-from the generator \texttt{gen\_lqd\_fresh.py} in
-\texttt{Docs/notes/figures} (the running example's numbers also feed
-\texttt{gen\_lqd\_geometry.py}), fitting the production calibrator --- not
-a notebook re-implementation --- against two deterministic targets.  What they prove is \emph{approximation capacity}:
+saying plainly what the run does and does not prove.  Both cases are fitted
+by the production calibrator --- not a notebook re-implementation ---
+against two deterministic targets; of the note's generators in
+\texttt{Docs/notes/figures}, \texttt{gen\_lqd\_fresh.py} computes the quoted
+diagnostics and \texttt{gen\_lqd\_geometry.py} draws the figures from the
+identical fits.  What they prove is \emph{approximation capacity}:
 that the basis can reproduce a known clean curve through option prices and
 back.  What they do not prove is market fit; that evidence, against noisy
 NBBO quotes, lives in the backtest reports (\cref{sec:problem}).
@@ -1559,7 +1566,7 @@ fitted endpoint scales through the maps of \cref{sec:tails}.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_lqd_fresh_spx.pdf}
+\includegraphics[width=\textwidth]{fig_lqd_geom_spx.pdf}
 \caption{The SPX-like case.  Panel A: quote oracle, quotes, and the
 production fit.  Panel B: the error ledger at the quotes --- every residual
 inside $\pm2$ vol bp (shaded), maximum \lqdfreshspxmaxerr\ vol bp against
@@ -1573,7 +1580,7 @@ Lee-consistent extrapolation, not an oracle continuation.}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_lqd_fresh_tails.pdf}
+\includegraphics[width=\textwidth]{fig_lqd_geom_spxtails.pdf}
 \caption{The fitted tails walked through the three links of
 \cref{sec:tails}: endpoint value of $g$ to tail scale ($A_L=\lqdfreshspxAL$,
 $A_R=\lqdfreshspxAR$), tail scale to last finite moment
@@ -1608,7 +1615,7 @@ the extra modes from fitting noise.
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_lqd_fresh_event.pdf}
+\includegraphics[width=\textwidth]{fig_lqd_geom_event.pdf}
 \caption{The event case.  Panel A: the two-regime target smile and the
 $\lqdfresheventorder$-mode production fit --- note the W-shaped body a
 low-order model cannot make.  Panel B: the true mixture density and the LQD
@@ -1638,7 +1645,7 @@ the graph extrapolator of Note~14 propagates.
 \item \textbf{The implicit-root cancellation} (\cref{thm:cancel}).  The
 strike root's dependence on $\theta$ vanishing from the price gradient turns
 a $(P{+}1)$-rebuild finite-difference Jacobian into a one-pass analytic one,
-audited to $\lqdfreshjacmaxrel$ column-wise against central differences.
+audited to $\lqdgeomjacmaxrel$ column-wise against central differences.
 \end{enumerate}
 
 %======================================================================
@@ -1857,6 +1864,44 @@ $10^{-15}$ to $10^{-10}$ stops the optimizer chasing cost reductions
 invisible in the priced surface, saving whole $(P{+}1)$-evaluation
 iterations at no display-precision cost.
 \end{enumerate}
+
+\paragraph{The Jacobian timing measurement.}  Wall-clock speed-ups are
+machine-dependent, so the numbers promised in \cref{sec:jacobian} live here
+with their protocol stated in full.  The generator times the least-squares
+\emph{residual path} (repeated \texttt{calibrate\_slice} calls on the legacy
+SVI-JW synthetic benchmark), fastest of three repeats, single-threaded, warm
+static-grid cache, core residual blocks only; it does not time the public
+calibrate-and-report workflow, and different hardware, a cold cache, or an
+active var-swap/prior block will move the ratio.
+
+\begin{table}[H]
+\centering
+\caption{Analytic vs.\ two-point finite-difference Jacobian, fresh run of the
+production calibrator under the protocol above.  $P=N+1$ is the parameter
+count; the cost column confirms the same optimum within tolerance.}
+\label{tab:timing}
+\lqdtimingtable
+\end{table}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.78\textwidth]{fig_lqd_jacobian_timing.pdf}
+\caption{The same measurement drawn: per-fit wall time with the analytic
+one-pass Jacobian vs the $(P{+}1)$-rebuild finite difference, with the ratio
+above each pair.  The win grows with the parameter count, as it must ---
+the analytic pass costs one quadrature regardless of $P$.}
+\label{fig:timing}
+\end{figure}
+
+\begin{heuristic}
+Why only $\sim1.5\times$ and not $\sim P\times$?  Two reasons.  First, the
+cached static grid makes a \emph{repeat} \texttt{build\_slice} cheap, so
+$P+1$ finite-difference rebuilds cost much less than $P+1$ cold builds.
+Second, \texttt{trf} converges here in a handful of iterations, so linear
+algebra and the value evaluation dilute the Jacobian saving.  The structural
+payoff --- a Jacobian that no longer rebuilds the quadrature --- is what
+makes higher-order and surface-wide fits comfortable.
+\end{heuristic}
 
 %======================================================================
 \section{The synthetic oracles}
