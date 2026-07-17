@@ -1,0 +1,58 @@
+{
+  "target_raw": {
+    "a": 0.010625000000000004,
+    "b": 0.07288689868556626,
+    "rho": -0.5,
+    "m": 0.05830951894845298,
+    "sigma": 0.10099504938362074
+  },
+  "fit_raw": {
+    "a": 0.01062500000000002,
+    "b": 0.07288689868556622,
+    "rho": -0.5000000000000004,
+    "m": 0.05830951894845296,
+    "sigma": 0.10099504938362062
+  },
+  "recovered_jw": {
+    "v": 0.04250000000000001,
+    "psi": -0.25,
+    "p": 0.7499999999999998,
+    "c": 0.2499999999999996,
+    "v_tilde": 0.03400000000000001
+  },
+  "max_iv_error_bp": 5.551115123125783e-13,
+  "jw_roundtrip_max_abs": 3.885780586188048e-16,
+  "recovery_g_min": 0.34345171413693526,
+  "timing": {
+    "analytic_ms": 1.2089000083506107,
+    "fd_ms": 3.062200004933402,
+    "speedup": 2.5330465578467334,
+    "analytic_cost": 3.851859888774472e-33,
+    "fd_cost": 1.1555579666323415e-33,
+    "cost_diff": 2.6963019221421302e-33,
+    "analytic_nfev": 21,
+    "fd_nfev": 22
+  },
+  "rigidity": {
+    "rms_bp": 147.6422332470036,
+    "max_bp": 351.9281385678763
+  },
+  "counterexample": {
+    "min_var": 0.011624903235477872,
+    "lee": 0.1738286,
+    "gmin": -0.03286354386432558,
+    "kmin": 0.879
+  },
+  "historical": {
+    "nodes_per_regime": 1576,
+    "svi_in_bp": 24.3,
+    "svi_oos_bp": 26.8,
+    "arb_fd_pct": 20.8,
+    "arb_analytic_pct": 9.2,
+    "lqd_arb_fd_pct": 28.3,
+    "lqd_arb_analytic_pct": 0.0,
+    "fit_fd_ms": 26.3,
+    "fit_analytic_ms": 10.2,
+    "source": "backend/backtest/FINDINGS_calibration_arb.md and Docs/deck/deck_template.html"
+  }
+}
