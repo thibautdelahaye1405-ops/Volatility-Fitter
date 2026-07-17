@@ -41,6 +41,7 @@ engine but changes none of it.
 | `run_capture_intraday.ps1` | stall supervisor for the flat-file intraday scan (kills+relaunches a frozen stream). |
 | `validate_intraday_clock.py` | acceptance CLI: replay a captured VolStore snapshot, calibrate every expiry with `intradayClock` ON, require sub-day t + sane fits. |
 | `observation_filter_intraday.py` | filter-clock tuning on the 0DTE campaign: `--build` a per-instant measurement table (~940 data-only LQD fits, resumable), `--sweep` the pure Kalman core over (clock, process-bp) configs — zeta per step type is the verdict (found: session share 0.60, non-trading 0.0). |
+| `validate_joint_carry.py` | R2 item-11 exit gates on a captured HTB store: borrow stability in noise-floor units + held-out parity (joint vs implicit forward). 2026-07 verdict in the docstring: floor gate works, flat-rate bias surfaced, held-out inconclusive below thin-board quote noise — gate OPEN pending a rate curve + a liquid HTB episode. |
 
 ## Run / resume (Windows, repo root)
 

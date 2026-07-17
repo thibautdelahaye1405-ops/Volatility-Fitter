@@ -120,7 +120,8 @@ def day_close(client: httpx.Client, ticker: str, day: date) -> float:
 
 
 def discover_contracts(
-    client: httpx.Client, ticker: str, day: date, close: float
+    client: httpx.Client, ticker: str, day: date, close: float,
+    daily_window: float = DAILY_WINDOW, anchor_window: float = ANCHOR_WINDOW,
 ) -> dict[str, tuple[date, float, str]]:
     """OCC ticker -> (expiry, strike, C/P) for the day's board, windowed.
 
@@ -130,9 +131,9 @@ def discover_contracts(
     and deduped by OCC ticker.
     """
     spans = (
-        (day, day + timedelta(days=MAX_DAILY_DTE), DAILY_WINDOW),
+        (day, day + timedelta(days=MAX_DAILY_DTE), daily_window),
         (day + timedelta(days=MAX_DAILY_DTE + 1),
-         day + timedelta(days=TERM_ANCHOR_MAX_DTE), ANCHOR_WINDOW),
+         day + timedelta(days=TERM_ANCHOR_MAX_DTE), anchor_window),
     )
     out: dict[str, tuple[date, float, str]] = {}
     for lo, hi, window in spans:
@@ -197,6 +198,8 @@ def capture_day_rest(
     day: date,
     times: tuple[time, ...] = DEFAULT_TIMES,
     workers: int = DEFAULT_WORKERS,
+    daily_window: float = DAILY_WINDOW,
+    anchor_window: float = ANCHOR_WINDOW,
 ) -> dict | None:
     """One (asset, day)'s intraday snapshots via REST — the fixture document.
 
@@ -207,7 +210,8 @@ def capture_day_rest(
     if not instants:
         return None
     close = day_close(client, ticker, day)
-    contracts = discover_contracts(client, ticker, day, close)
+    contracts = discover_contracts(client, ticker, day, close,
+                                   daily_window, anchor_window)
     keep = set(select_expiries({c[0] for c in contracts.values()}, day))
     kept = sorted(
         (occ, exp, strike, cp)
@@ -272,6 +276,8 @@ def run(
     db_path: str | None = None, force: bool = False,
     workers: int = DEFAULT_WORKERS,
     client: httpx.Client | None = None,
+    daily_window: float = DAILY_WINDOW,
+    anchor_window: float = ANCHOR_WINDOW,
 ) -> list[str]:
     """Capture the window via REST; returns fixture paths written (resumable)."""
     if client is None:
@@ -300,7 +306,8 @@ def run(
             doc = None
             for attempt in (1, 2):
                 try:
-                    doc = capture_day_rest(client, ticker, day, times, workers)
+                    doc = capture_day_rest(client, ticker, day, times, workers,
+                                           daily_window, anchor_window)
                     break
                 except Exception as exc:  # noqa: BLE001 — outages happen; checkpoint kept
                     print(f"{ticker} {day}: attempt {attempt} failed: {exc}")
@@ -333,12 +340,17 @@ def main() -> int:
                     help="also write snapshots into this VolStore (app replay)")
     ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--daily-window", type=float, default=DAILY_WINDOW,
+                    help="moneyness window for the daily ladder (frac of close)")
+    ap.add_argument("--anchor-window", type=float, default=ANCHOR_WINDOW,
+                    help="moneyness window for the term anchors (frac of close)")
     args = ap.parse_args()
     written = run(
         args.start, args.end,
         tickers=tuple(t.strip().upper() for t in args.tickers.split(",")),
         times=_parse_times(args.times),
         db_path=args.db, force=args.force, workers=args.workers,
+        daily_window=args.daily_window, anchor_window=args.anchor_window,
     )
     print(f"wrote {len(written)} fixture file(s) under {FIXTURE_DIR}")
     return 0
