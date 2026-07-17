@@ -730,12 +730,32 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   `ivBorrowSensBpPer100` (cached fit's ATM vol when present, σ→0 limit
   otherwise — read-only). The materiality number for the strategic
   publish rule ("material American correction × unidentified carry").
-- **NEXT (item 11 remaining):** (4) held-out parity exit gate +
-  known-HTB validation on REAL data (a GME/AMC-class REST capture, cheap
-  now); (5) Forwards-tab joint column + confidence. Or: the hosting
-  container spike. Item-10 residual follow-ups: per-maturity filter
-  handle scales, degraded-v2 band, live-universe 0DTE seeding, same-date
-  AM/PM expiry-key redesign.
+- **ITEM 11 INCREMENT 4 SHIPPED 2026-07-17 (9c2e741) — the exit-gate
+  harness ran on REAL HTB data; verdict RECORDED, gate stays OPEN.**
+  `backtest/validate_joint_carry.py` (stability in propagated
+  noise-floor units σ_b ≈ parity-rms/(t√n) + held-out parity, joint vs
+  implicit) over a fresh REST capture: GME + 2026's four
+  highest-short-interest optionable names (TTAN 99.2%/WGS 97.5%/UAA/
+  PLAY, 3 days × 3 instants; capture gained --daily-window/
+  --anchor-window for small-dollar boards). **Findings, honest:** (a)
+  the identifiability floor is CORRECT — ungated 1-3 DTE reads swung
+  −2,572…+15,827 bp (t·b is sub-bp of forward there; skipped as
+  UNIDENTIFIED, the CarryCurve philosophy); (b) GME (median 75 bp) and
+  TTAN (−33 bp) read STABLE within floors; WGS wanders 1.3-2.4× an
+  optimistic floor, consistently NEGATIVE-signed — **a flat desk rate
+  biases the borrow read one-for-one ⇒ item 11 needs a term-matched
+  RATE CURVE input** (new dependency surfaced); (c) held-out parity
+  11/25 = INCONCLUSIVE — the joint-vs-lumped de-Am difference (26 bp
+  synthetic) sits below thin HTB boards' 20-80 bp-of-spot quote noise.
+  Gate re-runs when (a) a rate curve exists and (b) a LIQUID HTB episode
+  is captured (TSLA-class); the fixed point's correctness stays locked
+  synthetically where the market is exact.
+- **NEXT (item 11 remaining):** (5) Forwards-tab joint column +
+  confidence; rate-curve input (the increment-4 dependency — also
+  unlocks the gate re-run). Or: the hosting container spike. Item-10
+  residual follow-ups: per-maturity filter handle scales, degraded-v2
+  band, live-universe 0DTE seeding, same-date AM/PM expiry-key
+  redesign.
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
