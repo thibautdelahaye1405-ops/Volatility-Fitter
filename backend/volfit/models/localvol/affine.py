@@ -107,6 +107,29 @@ class AffineVarianceSurface:
             object.__setattr__(self, "_tri_cache", tri)
         return tri
 
+    def cell_diag_main(self) -> np.ndarray:
+        """Per-cell diagonal orientation of the cached triangulation.
+
+        On a tensor grid every cell's four corners are cocircular, so qhull
+        tie-breaks each rectangle's split; this exposes the choice so a
+        renderer can draw THE pricing triangulation instead of a convention
+        of its own (note rem. degenerate-Delaunay).  Entry [i, j] is True
+        when cell (i, j) is split along the 'main' diagonal
+        (t_i, x_j) -- (t_{i+1}, x_{j+1}), False for the anti diagonal.
+        """
+        n_t, n_x = self.t_nodes.size, self.x_nodes.size
+        edges: set[tuple[int, int]] = set()
+        for s in self._delaunay().simplices:
+            a, b, c = int(s[0]), int(s[1]), int(s[2])
+            edges.add((min(a, b), max(a, b)))
+            edges.add((min(a, c), max(a, c)))
+            edges.add((min(b, c), max(b, c)))
+        out = np.zeros((n_t - 1, n_x - 1), dtype=bool)
+        for i in range(n_t - 1):
+            for j in range(n_x - 1):
+                out[i, j] = (i * n_x + j, (i + 1) * n_x + j + 1) in edges
+        return out
+
     # ----------------------------------------------------------- basis rows
     def _basis_clamped(self, xc: np.ndarray, t: float) -> np.ndarray:
         """Hat-function weights at coordinates ALREADY clamped to the hull.

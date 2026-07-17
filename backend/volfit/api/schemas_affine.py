@@ -104,6 +104,12 @@ class AffineFitResponse(BaseModel):
     tNodes: list[float]  # vertex times (rows of the heatmap)
     xNodes: list[float]  # vertex normalized strikes x = K/F (columns)
     localVol: list[list[float]]  # sqrt(nodal variance), one row per t-node
+    #: Per-cell diagonal of the model's own (qhull) triangulation: True =
+    #: cell (i, j) splits along (t_i, x_j)--(t_{i+1}, x_{j+1}).  Shape
+    #: (len(tNodes)-1) x (len(xNodes)-1).  Lets the viewer draw the PRICING
+    #: triangulation instead of a display convention (Note 04, the
+    #: degenerate-Delaunay remark).  Empty for older payloads / no fit.
+    cellDiagMain: list[list[bool]] = []
     smiles: list[AffineSmile]  # nearest expiry first
     rmsPriceError: float  # normalized-price residual RMS / max over all quotes
     maxPriceError: float

@@ -1282,6 +1282,7 @@ def _fit(
         tNodes=[float(v) for v in t_nodes],
         xNodes=[float(v) for v in x_nodes],
         localVol=[[float(np.sqrt(v)) for v in row] for row in cal.surface.theta],
+        cellDiagMain=[[bool(v) for v in row] for row in cal.surface.cell_diag_main()],
         smiles=smiles,
         rmsPriceError=cal.rms_price_error,
         maxPriceError=cal.max_price_error,

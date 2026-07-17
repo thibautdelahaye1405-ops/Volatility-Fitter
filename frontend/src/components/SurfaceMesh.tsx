@@ -103,6 +103,12 @@ interface SurfaceMeshProps {
    *  geometry of a nodal grid — the LV surface) instead of one quad (default,
    *  the smoother look the IV surfaces keep). */
   triangulate?: boolean;
+  /** With `triangulate`: the model's own per-cell diagonal orientation
+   *  (true = split along (i,j)→(i+1,j+1)), indexed by ORIGINAL grid cell
+   *  [tRow][kCol] — the qhull triangulation the pricing basis uses (Note 04).
+   *  Absent, or where brushing makes mesh columns non-adjacent, cells fall
+   *  back to the main diagonal. */
+  cellDiagMain?: boolean[][];
 }
 
 export default function SurfaceMesh({
@@ -114,6 +120,7 @@ export default function SurfaceMesh({
   countCaption,
   rowXTransform,
   triangulate = false,
+  cellDiagMain,
 }: SurfaceMeshProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -203,7 +210,7 @@ export default function SurfaceMesh({
         vol: vol[i][j],
       })),
     );
-    return { rows, vMin, vMax, xMin: dMin, xMax: dMax, tMin: t[0], tMax: t[t.length - 1] };
+    return { rows, cols, vMin, vMax, xMin: dMin, xMax: dMax, tMin: t[0], tMax: t[t.length - 1] };
   }, [data, kLo, kHi, timeMode, axisMode, rowXTransform]);
 
   const scene = useMemo(() => {
@@ -242,8 +249,11 @@ export default function SurfaceMesh({
 
     const vSpan = mesh.vMax - mesh.vMin || 1;
     // One facet per cell (quad), or — when triangulated — the cell's TWO
-    // triangular facets split along the (i,j) → (i+1,j+1) diagonal, each with
-    // its own colour and paint depth.
+    // triangular facets, split along the diagonal the MODEL's own (qhull)
+    // triangulation chose for that cell when `cellDiagMain` is provided
+    // (falling back to the (i,j) → (i+1,j+1) diagonal otherwise, or when
+    // brushing leaves mesh columns non-adjacent), each with its own colour
+    // and paint depth.
     const quads: { d: string; depth: number; color: string }[] = [];
     const pushFacet = (
       cs: { sx: number; sy: number; depth: number }[],
@@ -264,8 +274,18 @@ export default function SurfaceMesh({
           mesh.rows[i + 1][j + 1].vol, mesh.rows[i + 1][j].vol,
         ];
         if (triangulate) {
-          pushFacet([p00, p01, p11], [v00, v01, v11]);
-          pushFacet([p00, p11, p10], [v00, v11, v10]);
+          const j0 = mesh.cols[j];
+          const mainDiag =
+            cellDiagMain === undefined || mesh.cols[j + 1] !== j0 + 1
+              ? true
+              : (cellDiagMain[i]?.[j0] ?? true);
+          if (mainDiag) {
+            pushFacet([p00, p01, p11], [v00, v01, v11]);
+            pushFacet([p00, p11, p10], [v00, v11, v10]);
+          } else {
+            pushFacet([p00, p01, p10], [v00, v01, v10]);
+            pushFacet([p01, p11, p10], [v01, v11, v10]);
+          }
         } else {
           pushFacet([p00, p01, p11, p10], [v00, v01, v11, v10]);
         }
@@ -278,7 +298,7 @@ export default function SurfaceMesh({
     // formatters don't have to be memo dependencies.
     const anchors = corners.map((c) => ({ x: X(c), y: Y(c) }));
     return { quads, frame, anchors };
-  }, [mesh, yaw, size, zoomF, triangulate]);
+  }, [mesh, yaw, size, zoomF, triangulate, cellDiagMain]);
 
   const fmtV = formatValue ?? formatPct;
   const fmtX = formatX ?? ((v: number) => axisTickLabel(axisMode, v));

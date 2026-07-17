@@ -69,6 +69,11 @@ export interface AffineFitResponse {
   xNodes: number[];
   /** sqrt(nodal variance): one row per t-node, one column per x-node. */
   localVol: number[][];
+  /** Per-cell diagonal of the model's own (qhull) triangulation: true = cell
+   *  (i, j) splits along (t_i, x_j)→(t_{i+1}, x_{j+1}). Shape (tNodes-1) ×
+   *  (xNodes-1). Lets the 3D mesh draw the PRICING triangulation instead of
+   *  a display convention. Optional for older payloads. */
+  cellDiagMain?: boolean[][];
   smiles: AffineSmile[];
   rmsPriceError: number;
   maxPriceError: number;

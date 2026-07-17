@@ -271,3 +271,33 @@ def test_calibrated_surface_is_arbitrage_free(calibration):
     assert dx.max() <= 1e-10  # decreasing in strike
     assert np.diff(dx, axis=1).min() >= -1e-9  # convex in strike
     assert np.diff(prices, axis=0).min() >= -1e-9  # calendar monotone
+
+
+def test_cell_diag_main_matches_the_pricing_triangulation():
+    """cell_diag_main exposes exactly the cached qhull triangulation: every
+    grid cell is split along exactly one diagonal, and the flag says which —
+    so a renderer consuming it draws THE pricing triangulation (the viewer
+    contract behind AffineFitResponse.cellDiagMain)."""
+    from volfit.models.localvol.affine import AffineVarianceSurface
+
+    surf = AffineVarianceSurface(
+        t_nodes=np.array([0.1, 0.25, 0.5, 1.0]),
+        x_nodes=np.array([0.5, 0.7, 0.85, 1.0, 1.15, 1.3, 1.6]),
+        theta=np.full((4, 7), 0.04),
+    )
+    n_t, n_x = 4, 7
+    diag = surf.cell_diag_main()
+    assert diag.shape == (n_t - 1, n_x - 1)
+
+    tri = surf._delaunay()
+    assert len(tri.simplices) == 2 * (n_t - 1) * (n_x - 1)
+    edges = set()
+    for s in tri.simplices:
+        a, b, c = sorted(int(v) for v in s)
+        edges.update({(a, b), (a, c), (b, c)})
+    for i in range(n_t - 1):
+        for j in range(n_x - 1):
+            main = (i * n_x + j, (i + 1) * n_x + j + 1) in edges
+            anti = (i * n_x + j + 1, (i + 1) * n_x + j) in edges
+            assert main != anti  # exactly one diagonal per cell
+            assert bool(diag[i, j]) == main
