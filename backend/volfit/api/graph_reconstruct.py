@@ -31,11 +31,11 @@ from volfit.api.schemas import (
     GraphQuotePoint,
     SmilePoint,
 )
+from volfit.api.graph_band import build_band, curve_points, retarget_slice
 from volfit.api.service import (
     K_DISPLAY_HI,
     K_DISPLAY_LO,
     N_MODEL_POINTS,
-    fill_nonfinite,
     fit_or_get,
     weighted_rms_error,
 )
@@ -49,27 +49,15 @@ from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.ortho import build_atm_coordinates
 from volfit.models.lqd.quadrature import build_slice
 
-Z_95 = 1.96
-
-
 def _display_grid() -> np.ndarray:
     return np.linspace(K_DISPLAY_LO, K_DISPLAY_HI, N_MODEL_POINTS)
 
 
-def _curve(slice_, tau: float, grid: np.ndarray) -> list[SmilePoint]:
-    w = np.maximum(slice_.implied_w(grid), 0.0)
-    vols = fill_nonfinite(np.sqrt(np.maximum(w, 0.0) / tau))  # edge-extend the wings
-    return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
-
-
-def _retarget_slice(chart, handles, tau: float):
-    """The exact arb-free LQD slice at target ATM ``handles`` (w0 = sigma0^2 tau),
-    or None on a Newton failure at extreme handles (a very wide band edge)."""
-    target = np.array([handles[0] * handles[0] * tau, handles[1], handles[2]])
-    try:
-        return build_slice(chart.retarget(target))
-    except RuntimeError:
-        return None
+# The band construction (functional pushforward + the legacy level escape
+# hatch) lives in volfit.api.graph_band; these aliases keep the historical
+# local names used below.
+_curve = curve_points
+_retarget_slice = retarget_slice
 
 
 def _native_slice(model: str, settings, lqd_slice, tau: float, grid: np.ndarray):
@@ -88,17 +76,6 @@ def _native_slice(model: str, settings, lqd_slice, tau: float, grid: np.ndarray)
         return None
     fit = build_display_fit(model, grid[finite], w[finite], tau, None, settings)
     return fit.slice if fit is not None else None
-
-
-def _shift_band(native_post, lqd_post, lqd_band) -> list[SmilePoint]:
-    """Carry the LQD level-uncertainty band onto the native posterior curve: at each
-    k, native_post + (lqd_band - lqd_post). Grids are aligned (same display grid)."""
-    if not native_post or len(native_post) != len(lqd_post) or len(lqd_band) != len(lqd_post):
-        return []
-    return [
-        SmilePoint(k=p.k, vol=float(p.vol + (b.vol - q.vol)))
-        for p, q, b in zip(native_post, lqd_post, lqd_band)
-    ]
 
 
 def _base_slice(state: AppState, ticker: str, iso: str, fit_mode: str):
@@ -282,7 +259,8 @@ def node_smile(
     node = sol.universe.nodes[i]
     meta = sol.priors_meta[i]
     post_h = sol.field.mean[i]
-    sd = float(sol.field.sd[i, 0])
+    sd3 = sol.field.sd[i]
+    sd = float(sd3[0])
     grid = _display_grid()
 
     model = state.fit_settings().model
@@ -291,44 +269,20 @@ def node_smile(
 
     # Reconstruct the LQD target smile (exact handles), then — if the chosen model
     # is SVI / Multi-Core SIV — refit that family to the target so the overlay
-    # matches what the rest of the app draws (plan Phase 9). The band is the LQD
-    # level-uncertainty band carried onto the native curve.
-    post_slice = None
-    post_curve: list[SmilePoint] = []
-    band_lo: list[SmilePoint] = []
-    band_hi: list[SmilePoint] = []
-    if chart is not None:
-        half = Z_95 * sd
-        lqd_post = _retarget_slice(chart, post_h, tau)
-        # The lowered leg must stay a REACHABLE ATM target: a wide band can
-        # push sigma0 - 1.96 sd negative, and handles[0]^2 tau would silently
-        # square it into a wrong HIGH target — floor it near zero instead.
-        lo_atm = max(post_h[0] - half, 0.05 * max(post_h[0], 1e-6), 1e-4)
-        lqd_lo = _retarget_slice(chart, [lo_atm, post_h[1], post_h[2]], tau)
-        lqd_hi = _retarget_slice(chart, [post_h[0] + half, post_h[1], post_h[2]], tau)
-        if lqd_post is not None:
-            native = _native_slice(model, state.fit_settings(), lqd_post, tau, grid)
-            post_slice = native if native is not None else lqd_post
-            post_curve = _curve(post_slice, tau, grid)
-            lqd_post_curve = _curve(lqd_post, tau, grid)
-            lo_c = _curve(lqd_lo, tau, grid) if lqd_lo is not None else []
-            hi_c = _curve(lqd_hi, tau, grid) if lqd_hi is not None else []
-            # A leg's Newton can still fail at an extreme band edge (seen on
-            # CI/Linux only: the platform's fit trajectory landed a wider sd
-            # and the payload silently DROPPED the band). The band is a
-            # LEVEL-uncertainty object, so the honest fallback is the same
-            # first-order thing: a parallel vol shift of the posterior.
-            if not lo_c:
-                lo_c = [SmilePoint(k=p.k, vol=max(p.vol - half, 0.0))
-                        for p in lqd_post_curve]
-            if not hi_c:
-                hi_c = [SmilePoint(k=p.k, vol=p.vol + half)
-                        for p in lqd_post_curve]
-            if native is not None:
-                band_lo = _shift_band(post_curve, lqd_post_curve, lo_c)
-                band_hi = _shift_band(post_curve, lqd_post_curve, hi_c)
-            else:
-                band_lo, band_hi = lo_c, hi_c
+    # matches what the rest of the app draws (plan Phase 9). The band is the
+    # functional pushforward of the full 3-handle posterior (R3 item 12), or the
+    # legacy ATM-level band when ``functionalBand`` is off.
+    pb = build_band(
+        lambda lqd: _native_slice(model, state.fit_settings(), lqd, tau, grid),
+        chart,
+        post_h,
+        sd3,
+        tau,
+        grid,
+        functional=request.functionalBand,
+    )
+    post_slice, post_curve = pb.post_slice, pb.post
+    band_lo, band_hi = pb.band_lo, pb.band_hi
 
     prior_curve = _prior_curve(state, ticker, iso, meta, chart, tau, grid)
 
@@ -359,6 +313,15 @@ def node_smile(
         postSkew=float(post_h[1]),
         postCurv=float(post_h[2]),
         sd=sd,
+        sdSkew=float(sd3[1]),
+        sdCurv=float(sd3[2]),
+        bandKind=pb.kind,
+        varSwapVol=pb.functional.var_swap_vol if pb.functional else None,
+        varSwapVolSd=pb.functional.var_swap_vol_sd if pb.functional else None,
+        tailMassLeft=pb.functional.tail_mass_left if pb.functional else None,
+        tailMassLeftSd=pb.functional.tail_mass_left_sd if pb.functional else None,
+        tailMassRight=pb.functional.tail_mass_right if pb.functional else None,
+        tailMassRightSd=pb.functional.tail_mass_right_sd if pb.functional else None,
         post=post_curve,
         postBandLo=band_lo,
         postBandHi=band_hi,

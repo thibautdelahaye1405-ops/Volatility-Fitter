@@ -799,13 +799,47 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   level-shift fallback, test-forced leg failure lock) + phi_pp made
   overflow-silent. Verdict at b1aa20d: lint, backend py3.11+3.12
   (Linux), perf budgets, frontend build, container — ALL green.
-- **NEXT:** R3 (functional posterior / active observation selection /
-  learned betas) or item-11 v2 follow-ons (term-matched rate curve,
-  de-Am'd-parity identifiability widening). Item-10 residuals:
-  per-maturity filter handle scales, degraded-v2 band, live-universe
-  0DTE seeding, same-date AM/PM expiry-key redesign. Registry push for
-  the container image when a registry is chosen (seam marked in the
-  workflow).
+- **R3 ITEM 12 v1 SHIPPED (2026-07-17) — functional posterior for
+  parametric slices.** New `volfit/models/lqd/band.py`: the delta-method
+  pushforward of the FULL 3-handle posterior covariance through the exact
+  ATM-orthogonal retarget map (the SAME map production reconstructs with —
+  six perturbed slices per node give dIV(k)/dh, d(varswapvol)/dh,
+  d(pdf)/dh and d(tailmass)/dh in one pass; tail mass is EXACT via
+  CDF(k) = u(z_k)). Validated against a Monte-Carlo pushforward of the
+  same posterior (smile sd within [0.85, 1.18] of the sampled spread
+  across the grid, var-swap ±15%, tails ±20% — test_functional_band.py,
+  9). Wiring (new `api/graph_band.py`, band-only by construction —
+  the idio-floor discipline, means byte-identical, locked):
+  `node_smile`'s credible band is now the functional band by DEFAULT
+  (skew/curv uncertainty finally widens the wings; the graph field's
+  per-handle marginals form a diagonal Σ, ATM leg idio-floored as
+  before), `GraphExtrapolateRequest.functionalBand=false` = the legacy
+  ATM-level band exactly (kept verbatim as the escape hatch + the
+  fallback when the pushforward fails); the payload gains
+  sdSkew/sdCurv/bandKind/varSwapVol(+Sd)/tailMassLeft/Right(+Sd). The
+  observation-filter overlay band pushes the filter's FULL 3×3 state
+  covariance (cross-terms included — stored since Note 15 but never
+  drawn) through the same map. Frontend: SmileChart draws the new
+  envelope unchanged (band arrays), GRAPH badge shows var-swap ±1σ
+  (tail masses in the tooltip), Propagate results table gains a ±σ
+  column. Note 14 reconstruction remark + traceability row, PDF rebuilt.
+  Suite 1161 green; frontend build + vitest 55 green. **v1 scope notes:**
+  LV-surface uncertainty CUT (per roadmap); density-band ARRAYS computed
+  + tested in the core module but not yet in a payload (no consumer
+  chart yet); extrapolated-calendar confidence = per-node (t, postAtmVol,
+  sd) already in the bulk payload — a term-view ribbon fed by the graph
+  posterior is the natural follow-up (cross-view plumbing, deferred with
+  the density chart).
+- **NEXT:** R3 item 13 (active observation selection — prereq item 1
+  DONE, bands now calibrated + functional) or item 14 (learned betas +
+  OT ablation), or item-11 v2 follow-ons (term-matched rate curve,
+  de-Am'd-parity identifiability widening). Item-12 residuals:
+  density-band chart consumer, graph-posterior term-view ribbon,
+  posterior covariance ACROSS nodes for calendar-spread uncertainty.
+  Item-10 residuals: per-maturity filter handle scales, degraded-v2
+  band, live-universe 0DTE seeding, same-date AM/PM expiry-key redesign.
+  Registry push for the container image when a registry is chosen (seam
+  marked in the workflow).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

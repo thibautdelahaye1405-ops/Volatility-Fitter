@@ -1072,6 +1072,14 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: legacy bands exactly.
     idioFloor: bool = True
 
+    #: Functional posterior band (R3 item 12, volfit.models.lqd.band): the
+    #: node-smile credible band is the delta-method pushforward of the FULL
+    #: 3-handle posterior covariance through the slice map (skew/curvature
+    #: uncertainty widens the wings), and the payload carries var-swap /
+    #: tail-mass sds from the same pushforward. Band-only (never moves a
+    #: posterior mean); OFF restores the legacy ATM-level band exactly.
+    functionalBand: bool = True
+
 
 class GraphExtrapolateNode(BaseModel):
     """One node's prior -> posterior ATM-handle summary with full provenance.
@@ -1174,8 +1182,18 @@ class GraphNodeSmile(BaseModel):
     postSkew: float
     postCurv: float
     sd: float
+    # Full marginal posterior sds + the functional pushforward (R3 item 12).
+    sdSkew: float | None = None
+    sdCurv: float | None = None
+    bandKind: str = ""  # "functional" | "level" (escape hatch) | "" (no curve)
+    varSwapVol: float | None = None  # var-swap vol of the posterior slice
+    varSwapVolSd: float | None = None  # its delta-method posterior sd
+    tailMassLeft: float | None = None  # P(X <= display k_lo)
+    tailMassLeftSd: float | None = None
+    tailMassRight: float | None = None  # P(X >= display k_hi)
+    tailMassRightSd: float | None = None
     post: list[SmilePoint]  # reconstructed posterior smile
-    postBandLo: list[SmilePoint]  # 95% credible band (ATM-level uncertainty)
+    postBandLo: list[SmilePoint]  # 95% credible band (functional | ATM-level)
     postBandHi: list[SmilePoint]
     prior: list[SmilePoint]  # transported prior smile
     litCalibration: list[SmilePoint]  # the node's own calibration (lit nodes)

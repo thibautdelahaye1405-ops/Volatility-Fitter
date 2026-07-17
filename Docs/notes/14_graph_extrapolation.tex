@@ -503,8 +503,19 @@ chart, $w_0=\sigma_0^2\tau$) into an exact arbitrage-free LQD slice --- shape
 modes untouched, invariant~4 by construction. If the app is displaying SVI or
 Multi-Core SIV, the parametric family is refitted to the reconstructed target so
 the overlay matches the displayed model; for local volatility the reconstruction
-becomes the projection target of an affine LV calibration. The credible band
-rides along from the level handle's marginal variance. Where a dark node does
+becomes the projection target of an affine LV calibration. The credible band is
+the \emph{functional posterior} of the slice (delta method on the slice map,
+\texttt{volfit/models/lqd/band.py}): the full $3\times3$ handle covariance
+$\Sigma$ --- the three marginal posterior variances here; the filter's full
+state covariance in Note~15's overlay --- is pushed through the retarget map by
+central differences along the chart's primary directions, so at every strike
+$\mathrm{Var}[\sigma(k)]=g(k)^{\!\top}\Sigma\,g(k)$ with
+$g(k)=\partial\sigma(k)/\partial h$. Skew and curvature uncertainty widen the
+wings the way a level-only band cannot, and the same six perturbed slices price
+var-swap and tail-mass standard deviations for the payload. Band-only by
+construction (a request flag restores the legacy level band exactly), validated
+against a Monte-Carlo pushforward of the same posterior
+(\texttt{test\_functional\_band.py}). Where a dark node does
 own a few quotes, the reconstruction is scored against them --- weighted RMS,
 inside-spread hit rate, and the standardized residual
 $\zeta=(\text{actual}-\text{posterior mean})/\sqrt{\text{posterior variance}}$
@@ -768,6 +779,11 @@ Reconstruction is arbitrage-free &
 invariant~4 &
 \nolinkurl{api/graph_reconstruct.py} &
 \nolinkurl{test_graph_reconstruct.py}, \nolinkurl{test_graph_lv.py}\\
+Functional posterior band $=$ delta-method pushforward of $\Sigma$; matches
+Monte-Carlo; band-only toggle &
+\cref{sec:posterior} (reconstruction remark) &
+\nolinkurl{volfit/models/lqd/band.py}, \nolinkurl{api/graph_band.py} &
+\nolinkurl{test_functional_band.py}, \nolinkurl{test_functional_band_api.py}\\
 Held-out nodes predicted, not pinned &
 \cref{sec:backtest} &
 \nolinkurl{api/graph_backtest.py} &

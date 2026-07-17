@@ -644,10 +644,15 @@ def filter_diagnostics(state: AppState, ticker: str, expiry: str, fit_mode: str)
 
 def _overlay_curves(state, ticker: str, iso: str, fit_mode: str, holder: NodeFilter):
     """Drawable overlay: the node's LQD backbone retargeted to the posterior m+
-    (exact handles, arb-free — the graph_reconstruct seam), a level credible
-    band at m+ ± 1.96 sd(ATM), and the transported prediction m-. Empty lists
+    (exact handles, arb-free — the graph_reconstruct seam), a 95% credible band,
+    and the transported prediction m-. The band is the functional pushforward of
+    the filter's FULL 3x3 state covariance through the slice map (R3 item 12 —
+    the stored skew/curv variances and cross-terms finally reach the drawing);
+    a failed pushforward falls back to the legacy ATM-level band. Empty lists
     on any failure (the payload is advisory)."""
     from volfit.api import service
+    from volfit.api.schemas import SmilePoint
+    from volfit.models.lqd.band import functional_band
     from volfit.models.lqd.ortho import build_atm_coordinates
     from volfit.models.lqd.quadrature import build_slice as _build
 
@@ -660,26 +665,49 @@ def _overlay_curves(state, ticker: str, iso: str, fit_mode: str, holder: NodeFil
         chart = build_atm_coordinates(record.result.params, tau)
         grid = np.linspace(service.K_DISPLAY_LO, service.K_DISPLAY_HI, service.N_MODEL_POINTS)
 
-        def _curve(handles):
+        def _slice(handles):
             target = np.array(
                 [handles[0] * handles[0] * tau, handles[1], handles[2]]
             )
             try:
-                slice_ = _build(chart.retarget(target))
+                return _build(chart.retarget(target))
             except RuntimeError:  # Newton failure at extreme handles
+                return None
+
+        def _points(slice_):
+            if slice_ is None:
                 return empty
             w = np.maximum(np.asarray(slice_.implied_w(grid), dtype=float), 0.0)
             vols = service.fill_nonfinite(np.sqrt(w / tau))
-            from volfit.api.schemas import SmilePoint
-
             return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
         m_post = holder.state.mean
-        sd_atm = float(np.sqrt(max(holder.state.cov[0, 0], 0.0)))
-        lo = np.array([max(m_post[0] - 1.96 * sd_atm, 1e-4), m_post[1], m_post[2]])
-        hi = np.array([m_post[0] + 1.96 * sd_atm, m_post[1], m_post[2]])
-        pred_c = _curve(holder.prediction.mean) if holder.prediction is not None else empty
-        return _curve(m_post), _curve(lo), _curve(hi), pred_c
+        post_slice = _slice(m_post)
+        post_c = _points(post_slice)
+        lo_c, hi_c = empty, empty
+        fb = (
+            functional_band(chart, m_post, holder.state.cov, tau, grid, reference=post_slice)
+            if post_slice is not None
+            else None
+        )
+        if fb is not None and post_c:
+            half = 1.96 * fb.iv_sd
+            lo_c = [
+                SmilePoint(k=p.k, vol=float(max(p.vol - h, 0.0)))
+                for p, h in zip(post_c, half)
+            ]
+            hi_c = [SmilePoint(k=p.k, vol=float(p.vol + h)) for p, h in zip(post_c, half)]
+        else:  # legacy ATM-level band
+            sd_atm = float(np.sqrt(max(holder.state.cov[0, 0], 0.0)))
+            lo = np.array([max(m_post[0] - 1.96 * sd_atm, 1e-4), m_post[1], m_post[2]])
+            hi = np.array([m_post[0] + 1.96 * sd_atm, m_post[1], m_post[2]])
+            lo_c, hi_c = _points(_slice(lo)), _points(_slice(hi))
+        pred_c = (
+            _points(_slice(holder.prediction.mean))
+            if holder.prediction is not None
+            else empty
+        )
+        return post_c, lo_c, hi_c, pred_c
     except Exception:  # noqa: BLE001 — advisory payload, never raises
         return empty, empty, empty, empty
 

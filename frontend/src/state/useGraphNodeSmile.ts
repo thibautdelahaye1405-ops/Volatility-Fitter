@@ -40,6 +40,17 @@ export interface GraphNodeSmile {
   priorAtmVol: number;
   postAtmVol: number;
   sd: number;
+  // Functional posterior (R3 item 12): full marginal sds + delta-method
+  // pushforward functionals. Null on the legacy level band ("level").
+  sdSkew: number | null;
+  sdCurv: number | null;
+  bandKind: string; // "functional" | "level" | ""
+  varSwapVol: number | null;
+  varSwapVolSd: number | null;
+  tailMassLeft: number | null;
+  tailMassLeftSd: number | null;
+  tailMassRight: number | null;
+  tailMassRightSd: number | null;
   post: SmilePoint[];
   postBandLo: SmilePoint[];
   postBandHi: SmilePoint[];

@@ -416,6 +416,29 @@ export default function SmileViewer() {
                       ` · ζ ${graphOverlay.metrics.standardizedResidual.toFixed(2)}`}
                   </span>
                 )}
+                {/* Functional posterior (R3 item 12): var-swap vol ± 1σ from the
+                    delta-method pushforward; tail masses ride the tooltip. */}
+                {graphOverlay.varSwapVol !== null && graphOverlay.varSwapVolSd !== null && (
+                  <span
+                    className="font-mono text-violet-200/90"
+                    title={
+                      `Posterior var-swap vol ± 1σ (functional band)` +
+                      (graphOverlay.tailMassLeft !== null && graphOverlay.tailMassRight !== null
+                        ? ` · tail mass beyond chart: left ${(graphOverlay.tailMassLeft * 100).toFixed(2)}%` +
+                          (graphOverlay.tailMassLeftSd !== null
+                            ? `±${(graphOverlay.tailMassLeftSd * 100).toFixed(2)}`
+                            : "") +
+                          `, right ${(graphOverlay.tailMassRight * 100).toFixed(2)}%` +
+                          (graphOverlay.tailMassRightSd !== null
+                            ? `±${(graphOverlay.tailMassRightSd * 100).toFixed(2)}`
+                            : "")
+                        : "")
+                    }
+                  >
+                    · VS {(graphOverlay.varSwapVol * 100).toFixed(1)}±
+                    {(graphOverlay.varSwapVolSd * 100).toFixed(1)}%
+                  </span>
+                )}
                 <button
                   title="Dismiss the graph-extrapolation overlay"
                   className="ml-0.5 text-violet-400 hover:text-violet-200"

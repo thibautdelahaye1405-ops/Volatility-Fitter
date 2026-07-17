@@ -110,6 +110,14 @@ export default function ExtrapolateResults({
                       {n.shiftBp >= 0 ? "+" : ""}
                       {n.shiftBp.toFixed(0)}bp
                     </span>
+                    {/* Posterior ATM credible half-width (functional band's
+                        level marginal, idio-floored on dark names). */}
+                    <span
+                      className="w-10 shrink-0 text-right font-mono text-[9px] text-slate-500"
+                      title="Posterior ATM-vol sd (1σ, bp)"
+                    >
+                      ±{(n.sd * 1e4).toFixed(0)}
+                    </span>
                   </button>
                   <button
                     onClick={() => onOpenSmile(n.ticker, n.expiry)}
