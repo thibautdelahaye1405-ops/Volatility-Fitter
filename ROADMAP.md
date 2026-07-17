@@ -781,12 +781,31 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   test_frontend_mount; first `docker build` runs on a Docker-equipped
   machine, expected rough edges documented (numba/llvmlite wheels on
   slim, ~1.5 GB image).
-- **NEXT:** first real `docker build` (needs Docker — user's machine or
-  CI); then R3 (functional posterior / active observation selection /
+- **CI FULLY GREEN 2026-07-17 (b1aa20d) — pushed, plus a Container
+  workflow.** Everything through item 11 + the container spike is on
+  origin/main. New `.github/workflows/container.yml`: builds
+  deploy/Dockerfile (GHA layer cache), boots the image, gates on its
+  own HEALTHCHECK, smokes the single origin — **PASSED first try: the
+  container image is real.** The CI reconciliation (the ruff gate had
+  been red since 07-12, hiding test-step failures): ruff clean
+  (9 errors, incl. E741 `l`→`ell` in the Easter algorithm); duckdb +
+  pyarrow join the test extra (columnar + flat-file reduction get REAL
+  CI coverage); two scipy-version-sensitive affine assertions made
+  cross-version robust (stall window 6; GN small-golden ballpark bound,
+  heavy case keeps the strict contract); and one GENUINE platform find:
+  on Linux the sigmoid graph fit lands a wider posterior sd, the
+  lowered band leg's ATM went infeasible and the payload silently
+  dropped the band — fixed in graph_reconstruct (floored leg + parallel
+  level-shift fallback, test-forced leg failure lock) + phi_pp made
+  overflow-silent. Verdict at b1aa20d: lint, backend py3.11+3.12
+  (Linux), perf budgets, frontend build, container — ALL green.
+- **NEXT:** R3 (functional posterior / active observation selection /
   learned betas) or item-11 v2 follow-ons (term-matched rate curve,
   de-Am'd-parity identifiability widening). Item-10 residuals:
   per-maturity filter handle scales, degraded-v2 band, live-universe
-  0DTE seeding, same-date AM/PM expiry-key redesign.
+  0DTE seeding, same-date AM/PM expiry-key redesign. Registry push for
+  the container image when a registry is chosen (seam marked in the
+  workflow).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 
