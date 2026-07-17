@@ -1,0 +1,74 @@
+name: Container
+
+# The hosting spike's loop, closed in CI (deploy/README.md): build the
+# single-tenant image from deploy/Dockerfile, boot it, wait for its OWN
+# HEALTHCHECK to report healthy, then smoke the single origin — the UI at /
+# and the API on the same origin. Runs only when image-relevant paths change
+# (the build is minutes; numba/scipy wheels dominate), or on demand.
+#
+# Registry push is deliberately deferred: no registry is chosen yet. When one
+# is, add a login step + push:true with tags on version/main — the layer
+# cache below already makes that cheap.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "deploy/**"
+      - ".github/workflows/container.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "deploy/**"
+      - ".github/workflows/container.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  image:
+    name: build + boot smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (loaded locally; GHA layer cache)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          load: true
+          tags: volfit:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Boot + single-origin smoke (synthetic provider)
+        run: |
+          docker run -d --name volfit -p 8000:8000 \
+            -e VOLFIT_PROVIDER=synthetic volfit:ci
+
+          # The image's own HEALTHCHECK (GET /settings/options) is the gate:
+          # poll until healthy, fail loudly on unhealthy/timeout.
+          for i in $(seq 1 45); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' volfit)
+            echo "health: $status"
+            [ "$status" = "healthy" ] && break
+            [ "$status" = "unhealthy" ] && exit 1
+            sleep 2
+          done
+          [ "$(docker inspect -f '{{.State.Health.Status}}' volfit)" = "healthy" ]
+
+          # Single origin: / serves the built UI, the API answers next to it.
+          curl -fsS http://127.0.0.1:8000/ | head -c 200 | grep -qi "<!doctype html"
+          curl -fsS http://127.0.0.1:8000/settings/options | grep -q '"fitMode"'
+
+      - name: Container logs (diagnosis on any outcome)
+        if: always()
+        run: docker logs volfit 2>&1 | tail -n 100 || true
