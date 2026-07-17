@@ -11,7 +11,9 @@ from datetime import date, datetime
 
 import pytest
 
-from backtest.quotes_store import QuotesFlatFileStore, _to_ns
+pytest.importorskip("duckdb")  # flatfiles extra (pyproject): optional, lazily imported
+
+from backtest.quotes_store import QuotesFlatFileStore, _to_ns  # noqa: E402
 
 EXPIRY = date(2024, 8, 16)
 TARGET = datetime(2024, 8, 16, 19, 45, 0)  # 15:45 ET, UTC-naive

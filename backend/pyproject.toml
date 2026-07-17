@@ -26,12 +26,14 @@ api = [
     "uvicorn[standard]>=0.29",
 ]
 # Everything needed to run the full test suite (TestClient needs httpx; the
-# Yahoo provider tests build pandas frames). yfinance is only used by the
+# Yahoo provider tests build pandas frames; the columnar-history tests write
+# real Parquet, so pandas needs an engine). yfinance is only used by the
 # opt-in live test and is intentionally left out of the default CI install.
 test = [
     "pytest>=8.0",
     "httpx>=0.27",
     "pandas>=2.0",
+    "pyarrow>=15",
 ]
 # Live market-data providers (optional, not installed in CI). Massive needs
 # httpx; Bloomberg needs xbbg + blpapi + a running Terminal (blpapi ships on

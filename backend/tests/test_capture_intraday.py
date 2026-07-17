@@ -16,14 +16,16 @@ from datetime import date, datetime, time
 
 import pytest
 
-from backtest.capture_intraday import (
+pytest.importorskip("duckdb")  # flatfiles extra (pyproject): optional, lazily imported
+
+from backtest.capture_intraday import (  # noqa: E402
     DEFAULT_TIMES,
     capture_day,
     run,
     select_expiries,
     session_instants,
 )
-from backtest.quotes_store import QuotesFlatFileStore, _to_ns
+from backtest.quotes_store import QuotesFlatFileStore, _to_ns  # noqa: E402
 
 DAY = date(2024, 8, 16)  # a regular trading Friday
 DAILY = date(2024, 8, 16)  # the 0DTE expiry itself

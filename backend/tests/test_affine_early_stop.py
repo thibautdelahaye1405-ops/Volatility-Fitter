@@ -61,11 +61,14 @@ def test_early_stop_cuts_evals_and_keeps_surface():
     # noisy quotes + very tight scipy tols => trf keeps taking tiny tail steps and
     # runs to the cap (the real-data regime; the synthetic otherwise satisfies ftol
     # and stops on its own), so the stall window is the binding terminator.
+    # Window 6 (not 10): newer scipy (CI 1.18) converges this synthetic in so
+    # few evals that a 10-eval window never accumulates before ftol fires —
+    # the stall path must bind inside the shortest cross-version trajectory.
     flat, options, x_grid, t_grid = _case(noise=2e-3)
     kw = dict(reg_lambda=50.0, bounds=(0.005, 0.20), max_nfev=200,
               xtol=1e-14, ftol=1e-14, gtol=1e-14)
     full = calibrate_affine(flat, options, x_grid, t_grid, **kw)
-    early = calibrate_affine(flat, options, x_grid, t_grid, stall_window=10, stall_rtol=1e-3, **kw)
+    early = calibrate_affine(flat, options, x_grid, t_grid, stall_window=6, stall_rtol=1e-3, **kw)
     assert early.diagnostics.status == 99  # the stall path actually triggered
     assert early.n_evals < full.n_evals  # fewer expensive objective evaluations
     # essentially the same surface (the tail evals it skipped barely moved it)
