@@ -750,9 +750,24 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   Gate re-runs when (a) a rate curve exists and (b) a LIQUID HTB episode
   is captured (TSLA-class); the fixed point's correctness stays locked
   synthetically where the market is exact.
-- **NEXT (item 11 remaining):** (5) Forwards-tab joint column +
-  confidence; rate-curve input (the increment-4 dependency — also
-  unlocks the gate re-run). Or: the hosting container spike. Item-10
+- **ITEM 11 INCREMENT 5 SHIPPED 2026-07-17 (f43f925) — Forwards-tab
+  joint column + confidence by expiry. R2 ITEM 11 v1 COMPLETE** (the
+  five planned increments; the held-out exit gate stays OPEN with its
+  re-run conditions recorded). `CarryPoint.borrowNoiseFloorBp` = the
+  1σ propagated floor rms/(t√n) — the increment-4 lesson
+  institutionalized: every borrow read ships with its confidence.
+  The carry view's joint read rides the increment-2 state cache (no
+  per-request re-solve). Forwards tab: "Joint carry" toggle →
+  /carry?joint=true → Joint column (amber when non-converged; tooltip:
+  iterations, tree failures, dIV/d-borrow sensitivity) + ±σ column.
+  Noted for later: v0's identifiability gate rejects clean zero-borrow
+  AMERICAN chains (EEP-shaped parity rms ~11bp-of-spot vs the 1e-3
+  bar) — the joint solve's de-Am'd regression could WIDEN
+  identifiability on American names, a candidate increment 6. Suite
+  1146 green; frontend build + vitest 55 green.
+- **NEXT:** the hosting container spike (the last major unstarted R2+
+  track), or item-11 follow-ons (term-matched rate curve — unlocks the
+  HTB gate re-run; de-Am'd-parity identifiability widening). Item-10
   residual follow-ups: per-maturity filter handle scales, degraded-v2
   band, live-universe 0DTE seeding, same-date AM/PM expiry-key
   redesign.
