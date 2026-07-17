@@ -41,3 +41,6 @@ Thumbs.db
 # restart.ps1 dot-sources restart.local.ps1 if present; .example is the template.
 restart.local.ps1
 .env.local
+
+# Per-desk container credentials (deploy/client.env.example is the template)
+deploy/client.env

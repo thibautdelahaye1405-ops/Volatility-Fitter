@@ -1,0 +1,24 @@
+# One single-tenant vol-fitter instance (see Dockerfile / README.md).
+#
+#   cp deploy/client.env.example deploy/client.env   # the desk's own creds
+#   docker compose -f deploy/docker-compose.yml up --build
+#
+# Scaling to more desks = more services (volfit-deskB, own volume, own env
+# file, own port) — the deliberate v1 model: no shared state, no auth inside
+# the container, isolation by construction.
+
+services:
+  volfit:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - client.env
+    volumes:
+      - volfit-data:/data
+    restart: unless-stopped
+
+volumes:
+  volfit-data:

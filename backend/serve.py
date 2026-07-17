@@ -223,4 +223,19 @@ def _seed_bloomberg_dividends(state, provider) -> None:
 
 
 if __name__ == "__main__":
-    uvicorn.run(build_app(), host="127.0.0.1", port=8000)
+    # Container/hosting envs (deploy/): bind beyond loopback and serve the
+    # built React bundle single-origin (the desktop.py pattern). Defaults
+    # keep the dev behavior byte-identical: loopback, API-only, Vite separate.
+    app = build_app()
+    if os.environ.get("VOLFIT_SERVE_FRONTEND", "").strip() in ("1", "true", "yes"):
+        from volfit.api.frontend import find_frontend_dist, mount_frontend
+
+        if mount_frontend(app):
+            print(f"Frontend bundle served from {find_frontend_dist()}")
+        else:
+            print("WARNING: VOLFIT_SERVE_FRONTEND set but no frontend/dist bundle found")
+    uvicorn.run(
+        app,
+        host=os.environ.get("VOLFIT_HOST", "127.0.0.1"),
+        port=int(os.environ.get("VOLFIT_PORT", "8000")),
+    )
