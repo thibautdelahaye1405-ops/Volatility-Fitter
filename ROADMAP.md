@@ -888,20 +888,24 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   calendar multiplier raw 0.34 (n=12k, t=44 — the √T calendar rule
   over-propagates ~3× at the daily horizon if the ablation confirms),
   ETF class dormant (prior kept, named reason).
-- **USER ACTION — the item-14 adjudication sweep (your window, ~half a
-  pack sweep; commands + pre-registered decision rule in
-  FINDINGS_graph_loo.md 2026-07-17):** run `_b14_base` /
-  `_b14_learned` / `_b14_ot` with `--pair-start 10`, then
-  `python -m backtest.benchmark_compare --tags
-  _b14_base,_b14_learned,_b14_ot`. Activate learned betas only if the
-  dark-name skill delta is positive in spike and non-negative
-  elsewhere with ζ std not degrading; same bar decides the OT
-  activate-vs-reposition question.
-- **NEXT:** after the item-14 verdict: either activate (production
-  edge-builder consumes the artifact) or record the repositioning;
-  then R4 (graph-coupled temporal state, first hosted instance) or
-  item-11 v2 follow-ons (term-matched rate curve, de-Am'd-parity
-  identifiability widening). Item-12 residuals: density-band chart
+- **PARKED (2026-07-17, user decision) — the item-14 adjudication
+  sweep, for a LATER session.** When resumed: run in the USER'S window
+  (~half a pack sweep, chunked/resumable) `benchmark_pack run
+  --pair-start 10` under tags `_b14_base` / `_b14_learned
+  --beta-table backtest\results\learned_betas.json` / `_b14_ot
+  --lambda 1.0`, then `python -m backtest.benchmark_compare --tags
+  _b14_base,_b14_learned,_b14_ot`. Pre-registered decision rule
+  (FINDINGS_graph_loo.md 2026-07-17): activate learned betas only if
+  the dark-name skill delta is positive in spike and non-negative
+  elsewhere with ζ std not degrading; the same bar decides OT
+  activate-vs-reposition. After the verdict: production edge-builder
+  consumes the artifact, or the repositioning is recorded. NB
+  results\learned_betas.json is gitignored/regenerable — re-run
+  `-m backtest.learn_betas fit` first if absent.
+- **NEXT:** R4 (graph-coupled temporal state, first hosted instance)
+  or item-11 v2 follow-ons (term-matched rate curve, de-Am'd-parity
+  identifiability widening) — or resume the parked item-14
+  adjudication above. Item-12 residuals: density-band chart
   consumer, graph-posterior term-view ribbon, cross-node posterior
   covariance for calendar spreads. Item-13 residuals: sequential
   greedy plan, network highlight. Item-10 residuals: per-maturity
