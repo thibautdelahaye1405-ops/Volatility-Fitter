@@ -877,6 +877,9 @@ class AppState(UniverseMixin):
                     or options.sessionVarShare != self._options.sessionVarShare
                     or options.nonTradingWeight != self._options.nonTradingWeight
                     or options.enforceCalendar != self._options.enforceCalendar
+                    # Symmetric-surface solver switch: changes how the coupled
+                    # surface fit treats the calendar constraint end to end.
+                    or options.surfaceSolver != self._options.surfaceSolver
                     or options.autoLoadPrior != self._options.autoLoadPrior
                     or options.priorAnchorWeightPct != self._options.priorAnchorWeightPct
                     or options.priorAnchorDeltas != self._options.priorAnchorDeltas

@@ -20,6 +20,10 @@ export type WeightScheme = "equal" | "tv_density";
 export interface FitSettings {
   model: FitModel;
   nOrder: number;
+  /** LQD optimization chart: "lr" (historical (L,R,a) vector) or "endpoint"
+   *  ((log A_L, log A_R, a) — endpoint-neutral body modes, so acute central
+   *  convexity can't mechanically drag the asymptotic wings while fitting). */
+  lqdCoords: "lr" | "endpoint";
   regLambda: number;
   regPower: number;
   nCores: number;
@@ -37,6 +41,7 @@ export interface FitSettings {
 export const FIT_DEFAULTS: FitSettings = {
   model: "lqd",
   nOrder: 6,
+  lqdCoords: "lr",
   regLambda: 1e-6,
   regPower: 1.0,
   nCores: 2,

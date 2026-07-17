@@ -40,6 +40,11 @@ export interface OptionsSettings {
   /** Default fit target (Mid / Bid-Ask / Haircut); seeds the session on load. */
   fitMode: FitMode;
   enforceCalendar: boolean;
+  /** Calendar-coupled surface solver: "symmetric" (independent fits + an
+   *  identified-violation screen on common quote support + joint repair of
+   *  violating runs only) vs "sequential" (the historical front-to-back pass
+   *  where each slice inherits the previous one as a hard floor). */
+  surfaceSolver: "symmetric" | "sequential";
   /** Tapered no-arb enforcement in the extrapolated strike region (Notes 09/10
    *  Phase 2): SVI/MCS overlay fits lean on the time-value envelope. Off =
    *  byte-identical fits; the Quality tab's extrap measurement is always on. */
@@ -171,6 +176,7 @@ export interface OptionsSettings {
 export const OPTIONS_DEFAULTS: OptionsSettings = {
   fitMode: "mid",
   enforceCalendar: true,
+  surfaceSolver: "symmetric",
   extrapEnforce: false,
   eventsEnabled: true,
   normalizeEvents: false,

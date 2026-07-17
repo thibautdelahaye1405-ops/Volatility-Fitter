@@ -572,6 +572,7 @@ def _slice_task(
             barrier_center=settings.barrierCenter,
             barrier_scale=settings.barrierScale,
             mid_anchor_weight=settings.midAnchorWeight, var_swap=vs,
+            coords=settings.lqdCoords,
         )
         # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit
         # data-only first so the data-fitted level/shape is the seed, then refit
@@ -722,17 +723,7 @@ def _compute_fit(
         act.detail(f"fitting {_model_label(settings.model)} smile")
         outcome = fit_pool.execute(task)
     record = FitRecord(prepared=prepared, result=outcome.result, display=outcome.display)
-    state.store_fit(key, record)
-    state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(snapshot.spot))
-    history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
-    fit_uncertainty.store(state, ticker, iso, fit_mode, key, record, outcome.solver_diag)
-    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory,
-        from volfit.api import observation_filter  # self-gates on the filter mode
-
-        observation_filter.commit_hook(
-            state, ticker, iso, fit_mode, record, outcome.solver_diag
-        )
-    return record
+    return commit_record(state, ticker, iso, fit_mode, record, outcome.solver_diag)
 
 
 # --------------------------------------------------- fast spot-move transport
@@ -1450,17 +1441,31 @@ def fit_and_commit_slice(
         )
         outcome = fit_pool.execute(task)
     record = FitRecord(prepared=prepared, result=outcome.result, display=outcome.display)
+    return commit_record(state, ticker, iso, fit_mode, record, outcome.solver_diag)
+
+
+def commit_record(
+    state: AppState,
+    ticker: str,
+    iso: str,
+    fit_mode: str,
+    record: FitRecord,
+    solver_diag: dict | None,
+) -> FitRecord:
+    """The calibration bookkeeping shared by every surface path: cache the
+    record under the canonical key, re-point the calibrated pointer, persist,
+    store the fit-uncertainty side channel and run the observation-filter
+    commit hook. Re-committing the same key (the symmetric repair overwriting
+    a phase-A fit) is an ordinary overwrite."""
     key = fit_key(state, ticker, iso, fit_mode)
     state.store_fit(key, record)
     state.set_calibrated_ptr(ticker, iso, fit_mode, key, float(state.snapshot(ticker).spot))
     history.persist_fit(state, ticker, iso, fit_mode, record)  # opt-in, never raises
-    fit_uncertainty.store(state, ticker, iso, fit_mode, key, record, outcome.solver_diag)
-    if outcome.solver_diag is not None:  # observation filter (Note 15) — advisory,
+    fit_uncertainty.store(state, ticker, iso, fit_mode, key, record, solver_diag)
+    if solver_diag is not None:  # observation filter (Note 15) — advisory,
         from volfit.api import observation_filter  # self-gates on the filter mode
 
-        observation_filter.commit_hook(
-            state, ticker, iso, fit_mode, record, outcome.solver_diag
-        )
+        observation_filter.commit_hook(state, ticker, iso, fit_mode, record, solver_diag)
     return record
 
 
@@ -1488,12 +1493,22 @@ def fit_surface(
     enforce_calendar: bool,
     progress=None,
 ) -> SurfaceFitResponse:
-    """Fit all expiries sequentially; cache each so GET /smiles serves them.
+    """Fit all expiries and cache each so GET /smiles serves them.
+
+    With ``enforce_calendar`` and the "symmetric" surface solver (the default,
+    OptionsSettings.surfaceSolver) this routes to the independent-fits +
+    screen + component-repair pipeline (volfit.api.surface_symmetric);
+    otherwise the historical sequential nearest-to-farthest loop below runs.
 
     ``progress(expiry_iso, index, total, max_iv_error_bp)`` is invoked after
-    each expiry fit (the WebSocket route runs this loop itself instead, so
-    its progress events can be awaited between slices).
+    each expiry fit (the WebSocket route threads its frames through it).
     """
+    if enforce_calendar and state.options().surfaceSolver == "symmetric":
+        from volfit.api import surface_symmetric
+
+        return surface_symmetric.fit_surface_symmetric(
+            state, ticker, fit_mode, progress
+        )
     state.set_spot_shift(ticker, 0.0)  # re-anchor: fit at the chain's own spot
     plan = surface_inputs(state, ticker, fit_mode)
     prev: CalibrationResult | None = None

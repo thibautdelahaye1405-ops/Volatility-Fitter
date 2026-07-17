@@ -64,6 +64,12 @@ class FitSettings(BaseModel):
 
     model: Literal["lqd", "svi", "sigmoid"] = "lqd"
     nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
+    #: LQD optimization chart (symmetric-surface Phase 5): "lr" (historical
+    #: (L, R, a) vector — byte-identical default) or "endpoint"
+    #: ((log A_L, log A_R, a) via models.lqd.calibrate.endpoint_transform —
+    #: same family/optimum, but body modes are endpoint-neutral so acute
+    #: central convexity can't mechanically drag the asymptotic wings).
+    lqdCoords: Literal["lr", "endpoint"] = "lr"
     regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
     regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}
     nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)
@@ -137,11 +143,24 @@ class OptionsSettings(BaseModel):
     dataAgeRedMin: float = Field(120.0, ge=5.0, le=10080.0)
     # arbitrage / events / var-swap (wired as global defaults)
     enforceCalendar: bool = True
+    #: Calendar-coupled surface solver (with ``enforceCalendar`` on).
+    #: "symmetric" (production): fit every expiry independently, screen each
+    #: adjacent interface for an IDENTIFIED violation (normalized-call order
+    #: on the common quote support), then jointly Gauss-Newton-repair only the
+    #: violation-connected components — no traversal-order bias, corrections
+    #: allocated by data information (volfit.calib.symmetric). "sequential":
+    #: the historical nearest-to-farthest pass threading the previous slice as
+    #: a one-sided floor. Changes calibration output -> bumps the options
+    #: version.
+    surfaceSolver: Literal["symmetric", "sequential"] = "symmetric"
     #: Tapered no-arb enforcement in the extrapolated strike region (Notes
     #: 09/10 Phase 2, volfit.calib.extrap): the SVI/MCS overlay fits gain a
     #: butterfly hinge on the time-value envelope, a tapered calendar hinge
-    #: vs the previous displayed slice, and the wing-slope-order hinge. OFF by
-    #: default (byte-identical); affects calibration -> bumps the options
+    #: vs the previous displayed slice, and the wing-slope-order hinge. With
+    #: the symmetric surface solver this ALSO arms the LQD tail contract —
+    #: per-interface seam price ordering + linear wing-slope (log endpoint
+    #: scale) ordering rows in the joint repair (volfit.calib.symmetric). OFF
+    #: by default (byte-identical); affects calibration -> bumps the options
     #: version. Phase 1 (the Quality tab's advisory measurement) is always on.
     extrapEnforce: bool = False
     #: R2 item 11 (increment 2): route the JOINT borrow/de-Am fixed point's

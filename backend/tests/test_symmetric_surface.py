@@ -80,8 +80,10 @@ def test_stacked_jacobian_matches_finite_differences():
     near = calibrate_slice(K_GRID, W_NEAR, t=0.5)
     far = calibrate_slice(K_GRID, 0.8 * W_NEAR, t=1.0)
     specs = [_spec(0.5, K_GRID, W_NEAR), _spec(1.0, K_GRID, 0.8 * W_NEAR)]
-    iface = build_interface(specs[0], specs[1])
-    assert iface is not None
+    # tail_contract=True also covers the seam price rows and the linear
+    # wing-slope rows (both active at this violating pair).
+    iface = build_interface(specs[0], specs[1], tail_contract=True)
+    assert iface is not None and iface.seam_k is not None
     # The hinge must be active at the free fits (far sits below near).
     assert interface_violation(near.slice, far.slice, iface) > 1e-3
 
@@ -129,6 +131,39 @@ def test_real_violation_is_shared_symmetrically():
     assert far_err < seq.results[1].max_iv_error
     assert near_err > seq.results[0].max_iv_error
     assert sym.max_calendar_violation < 1e-3
+
+
+def test_tail_contract_orders_the_extrapolated_wings():
+    """extrapolation-guard ON: the acute near slice's steep extrapolated wing
+    (in-support clean, so untouched by default) now triggers the low-dim tail
+    contract — after repair the wings are ordered at the seam and in slope,
+    while the far slice stays on its quotes (a nudge, not the old full-grid
+    bulldozer)."""
+    from volfit.calib.symmetric import calibrate_surface_symmetric as fit_sym
+    from volfit.calib.symmetric import tail_violation
+
+    k_near = np.linspace(-0.06, 0.06, 13)
+    k_far = np.linspace(-0.30, 0.30, 25)
+    w_near = 0.0008 + 0.6 * k_near**2
+    w_far = 0.010 + 0.004 * k_far**2
+    quotes = [
+        ExpiryQuotes(t=0.02, k=k_near, w=w_near),
+        ExpiryQuotes(t=0.25, k=k_far, w=w_far),
+    ]
+    far_free = calibrate_slice(k_far, w_far, t=0.25)
+
+    fit, repair = fit_sym(quotes, tail_contract=True)
+    assert repair.refit == [True, True]  # the wing crossing triggers the solve
+    # The contract is (essentially) met after repair...
+    pair = build_interface(
+        _spec(0.02, k_near, w_near), _spec(0.25, k_far, w_far), tail_contract=True
+    )
+    assert (
+        tail_violation(fit.results[0].slice, fit.results[1].slice, pair) < 5e-4
+    )
+    # ...the far fit stays on its quotes, and the identified region is clean.
+    assert fit.results[1].max_iv_error < far_free.max_iv_error + 2e-4
+    assert fit.max_calendar_violation < 1e-6
 
 
 def test_repair_is_local_to_the_violation_component():

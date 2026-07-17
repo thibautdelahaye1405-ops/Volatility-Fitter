@@ -152,7 +152,64 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## STATUS — updated 2026-07-11 (resume here)
+## STATUS — updated 2026-07-17 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-17b) — SYMMETRIC SURFACE SOLVER (calendar redesign)
+
+User-ratified redesign of the calendar-coupled surface calibration (the
+front-to-back ladder let an acutely convex short expiry drag every later
+wing off its quotes — the Note-10 phantom-calendar mechanism, reproduced at
+10.6bp free / 1095bp full-grid floor / 10.6bp confined on a synthetic acute
+ladder). Shipped in five phases, all tests green (1198+ suite, new files
+`test_calendar_confinement.py`, `test_symmetric_surface.py`,
+`test_lqd_endpoint_coords.py`):
+
+- **Phase 0 — support-confined calendar constraint (always on).** Key
+  finding: confinement CANNOT happen in G(alpha) space (G integrates the
+  whole upper tail; a z-windowed a_z floor removed only ~half the drag) —
+  the confined floor is normalized-call ordering `C_far(k) >= C_near(k)` on
+  the INTERSECTION of retained quote spans, cos²-tapered beyond
+  (`calendar.confined_calendar_floor`; new `calendar_k/price_floor/taper`
+  block in `lqd.calibrate` + analytic rows). Overlay floor now uses
+  `variance_floor_grid_common` (intersection, not the later span). Reported
+  residuals + quality screen are the IDENTIFIED violation
+  (`calendar_violation_windowed`); `prev_k` threads the loops.
+- **Phases 1-2 — symmetric solver, production default**
+  (`OptionsSettings.surfaceSolver = "symmetric"`, bumps options version;
+  "sequential" = legacy path, kept). `volfit/calib/symmetric.py` (+
+  `symmetric_stack.py`): independent fits (warm-seeded) → vega-normalized
+  identified screen per interface → joint Gauss-Newton over
+  VIOLATION-CONNECTED COMPONENTS only — stacked exact per-slice objectives
+  (`prepare_residual_args`) + tapered interface hinge rows,
+  block-bidiagonal analytic Jacobian (`slice_sensitivities` /
+  `call_price_rows` extracted in `lqd/jacobian.py`), weight continuation,
+  component growth, irreducible slack reported per interface. Corrections
+  allocate by data information (liquid slices barely move); clean ladders
+  are EXACTLY their independent fits (fast path, byte-stable). Service
+  pipeline `volfit/api/surface_symmetric.py`: phase-A independent
+  fit+commit per expiry (progress/UX unchanged; overlay keeps its confined
+  sequential floor) + phase-B screen/repair re-commit (fresh solver_diag
+  via `solver_diag_from_theta`); wired into POST/WS fit-surface and the
+  background Calibrate workflow (`_symmetric_ticker_items` + one repair
+  item per ticker). Frontend: Options → Surface solver select.
+- **Phase 3 — low-dim tail contract (rides `extrapEnforce`).** Per
+  interface: 2 seam price-ordering rows just beyond the union of quoted
+  spans + 2 LINEAR wing-slope rows (log A_L/A_R are linear in theta; LQD
+  Lee slopes are monotone in the endpoint scales, so A-ordering IS
+  asymptotic-slope ordering). PAVA dropped deliberately: the component
+  joint solve performs the global reconciliation exactly.
+- **Phase 5 — endpoint coordinates toggle** (`FitSettings.lqdCoords =
+  "endpoint"`, default "lr" byte-identical): exact linear chart theta =
+  M·phi with phi = (log A_L, log A_R, body a_n) — endpoint-neutral body
+  modes; same optimum (test-locked), solver_diag mapped back to canonical
+  coordinates. UI: Options → LQD solve coordinates.
+- **Deferred / follow-ups:** overlay (SVI/MCS) joint symmetric repair (the
+  overlay currently keeps the confined sequential floor chain; its own
+  interface rows would reuse the same price-ordering machinery);
+  parallelizing phase A across expiries via the fit pool inside one ticker
+  (independence now allows it; workflow already parallelizes across
+  tickers); certification-pack case registration for the confinement lock;
+  endpoint-coords default flip after a benchmark-pack comparison.
 
 ### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + R0 ITEMS 1-2 SHIPPED
 

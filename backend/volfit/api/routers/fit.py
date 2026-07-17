@@ -41,6 +41,34 @@ async def fit_surface_ws(websocket: WebSocket) -> None:
     state = websocket.app.state.volfit
     try:
         body = SurfaceFitRequest.model_validate(await websocket.receive_json())
+
+        if body.enforceCalendar and state.options().surfaceSolver == "symmetric":
+            # Symmetric pipeline: the whole run happens on ONE worker thread
+            # (independent fits -> screen -> component repair); each slice's
+            # progress frame is sent live from that thread via the portal.
+            def send_progress(iso: str, index: int, total: int, err_bp: float):
+                anyio.from_thread.run(
+                    websocket.send_json,
+                    {
+                        "type": "progress",
+                        "expiry": iso,
+                        "index": index,
+                        "total": total,
+                        "maxIvErrorBp": err_bp,
+                    },
+                )
+
+            response = await anyio.to_thread.run_sync(
+                service.fit_surface,
+                state,
+                body.ticker,
+                body.fitMode,
+                True,
+                send_progress,
+            )
+            await websocket.send_json({"type": "done", "result": response.model_dump()})
+            return
+
         state.set_spot_shift(body.ticker, 0.0)  # re-anchor: fit at the chain's spot
         plan = await anyio.to_thread.run_sync(
             service.surface_inputs, state, body.ticker, body.fitMode

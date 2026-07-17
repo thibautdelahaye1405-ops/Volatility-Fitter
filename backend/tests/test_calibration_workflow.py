@@ -98,10 +98,12 @@ def test_calibrate_all_skips_lv_when_localvol_disabled(monkeypatch):
 
 
 def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
-    """enforceCalendar ON: calibrate_all's parametric items are calendar-coupled
-    per ticker — each expiry but the first (ascending T) is fitted with the
-    previous, shorter expiry's slice threaded in as the convex-order floor. OFF:
-    the items are INDEPENDENT per node (the coupled helper is never used)."""
+    """enforceCalendar ON + the SEQUENTIAL solver: calibrate_all's parametric
+    items are calendar-coupled per ticker — each expiry but the first
+    (ascending T) is fitted with the previous, shorter expiry's slice threaded
+    in as the convex-order floor. OFF: the items are INDEPENDENT per node (the
+    coupled helper is never used). The symmetric solver's wiring is covered by
+    test_symmetric_solver_items below."""
     from volfit.api import workflow
 
     seen: list[tuple[str, bool, bool]] = []  # (iso, prev_is_none, enforce)
@@ -118,7 +120,11 @@ def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
 
     # ON: coupled. The first expiry has no prior slice; the rest are threaded.
     state = _state(auto=False)
-    state.set_options(state.options().model_copy(update={"enforceCalendar": True}))
+    state.set_options(
+        state.options().model_copy(
+            update={"enforceCalendar": True, "surfaceSolver": "sequential"}
+        )
+    )
     nodes = workflow.lit_nodes(state, [TICKER])
     assert len(nodes) >= 2  # otherwise the coupling is vacuous
     for _label, _phase, thunk in workflow._parametric_items(state, nodes, "mid"):
@@ -137,6 +143,89 @@ def test_enforce_calendar_threads_prev_into_parametric_items(monkeypatch):
     ):
         thunk()
     assert seen == []
+
+
+def test_symmetric_solver_items(monkeypatch):
+    """enforceCalendar ON + the SYMMETRIC solver (default): one independent
+    phase-A fit+commit item per expiry plus a trailing screen/repair item per
+    ticker (volfit.api.surface_symmetric)."""
+    from volfit.api import surface_symmetric, workflow
+
+    fitted: list[str] = []
+    repaired: list[bool] = []
+    real_a = surface_symmetric.phase_a_slice
+    real_b = surface_symmetric.phase_b_repair
+
+    def spy_a(st, tk, iso, prepared, fit_mode, ctx):
+        fitted.append(iso)
+        return real_a(st, tk, iso, prepared, fit_mode, ctx)
+
+    def spy_b(st, tk, fit_mode, ctx):
+        repaired.append(True)
+        return real_b(st, tk, fit_mode, ctx)
+
+    monkeypatch.setattr(surface_symmetric, "phase_a_slice", spy_a)
+    monkeypatch.setattr(surface_symmetric, "phase_b_repair", spy_b)
+
+    state = _state(auto=False)
+    state.set_options(state.options().model_copy(update={"enforceCalendar": True}))
+    assert state.options().surfaceSolver == "symmetric"  # the default
+    nodes = workflow.lit_nodes(state, [TICKER])
+    items = workflow._parametric_items(state, nodes, "mid")
+    assert len(items) == len(nodes) + 1  # per-expiry phase A + one repair item
+    for _label, _phase, thunk in items:
+        thunk()
+    assert fitted == [iso for t, iso in nodes if t == TICKER]
+    assert repaired == [True]
+    # Every node landed committed and displayed (phase A commits as it goes).
+    for _t, iso in nodes:
+        assert service.fit_or_get(state, TICKER, iso, "mid") is not None
+
+
+def test_symmetric_repair_recommits_violating_ladder(monkeypatch):
+    """End-to-end phase B: drag the SECOND expiry's quotes below the first (a
+    hard identified violation), run the symmetric surface fit, and check the
+    violating pair was jointly repaired and re-committed while the rest of the
+    ladder kept its independent fits."""
+    from volfit.api import surface_symmetric, workflow
+
+    state = _state(auto=False)
+    isos = [iso for _t, iso in workflow.lit_nodes(state, [TICKER])]
+    assert len(isos) >= 3
+
+    real_inputs = service.edited_fit_inputs
+
+    def shim(st, tk, iso, prepared, weights):
+        k, w, wt = real_inputs(st, tk, iso, prepared, weights)
+        if iso == isos[1]:
+            w = 0.15 * w  # second expiry sinks below the first: calendar arb
+        return k, w, wt
+
+    monkeypatch.setattr(service, "edited_fit_inputs", shim)
+
+    captured: dict = {}
+    real_b = surface_symmetric.phase_b_repair
+
+    def spy_b(st, tk, fit_mode, ctx):
+        captured["repair"] = real_b(st, tk, fit_mode, ctx)
+        return captured["repair"]
+
+    monkeypatch.setattr(surface_symmetric, "phase_b_repair", spy_b)
+
+    response = service.fit_surface(state, TICKER, "mid", True)
+    repair = captured["repair"]
+    assert repair is not None
+    # Only the violating pair is touched; the rest keep their independent fits.
+    assert repair.refit[:2] == [True, True]
+    assert not any(repair.refit[2:])
+    assert repair.violations_before[0] > 5e-5
+    assert repair.max_slack < 1e-4
+    # The committed surface reports the repaired (identified) residuals.
+    assert max(response.calendarResiduals) < 1e-4
+    # Repaired slices are what GET /smiles now serves (recommit really landed).
+    for iso in isos[:2]:
+        rec = service.fit_or_get(state, TICKER, iso, "mid")
+        assert rec is not None and rec.result.max_iv_error > 1e-3  # shared slack
 
 
 def test_enforce_calendar_surface_is_arbitrage_free():

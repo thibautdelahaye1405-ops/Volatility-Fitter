@@ -170,6 +170,26 @@ def _residuals(
     return np.concatenate((fit, reg * theta[2:], cal, calk, [barrier], vs, pa, pvs, op))
 
 
+def endpoint_transform(n_order: int) -> np.ndarray:
+    """The endpoint-coordinate chart theta = M @ phi (symmetric-surface
+    Phase 5), with phi = (log A_L, log A_R, a_2..a_N).
+
+    log A_L = L + sum a_n and log A_R = R + sum (-1)^n a_n are linear in
+    theta, so the chart is an exact, unit-determinant linear map: holding
+    (phi_0, phi_1) fixed while moving a body mode a_n automatically
+    counter-adjusts (L, R) to keep both endpoint scales — the coefficients
+    that fit acute central convexity can no longer mechanically drag the
+    asymptotic wings. Same model family, same optimum; only the optimizer's
+    trust-region geometry changes.
+    """
+    p = n_order + 1
+    m = np.eye(p)
+    n = np.arange(2, n_order + 1)
+    m[0, 2:] = -1.0
+    m[1, 2:] = -((-1.0) ** n)
+    return m
+
+
 def prepare_residual_args(
     k: np.ndarray,
     w_quotes: np.ndarray,
@@ -281,6 +301,7 @@ def calibrate_slice(
     operator_prior: OperatorPriorTarget | None = None,
     opt_n_points: int = OPT_N_POINTS,
     solver_diag: dict | None = None,
+    coords: str = "lr",
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
@@ -329,7 +350,14 @@ def calibrate_slice(
     solver's solution-point Jacobian / residual / theta and the fit-block row
     count, so the observation filter can form the information matrix J^T W J
     without a second fit (weights/vega scaling are already folded into the
-    rows). Pure side-channel; None (the default) is byte-identical.
+    rows). Pure side-channel; None (the default) is byte-identical. Always
+    recorded in the (L, R, a) coordinates regardless of ``coords``.
+
+    ``coords`` selects the optimization chart: "lr" (historical, the raw
+    (L, R, a) vector — byte-identical default) or "endpoint" (Phase 5:
+    (log A_L, log A_R, a) via ``endpoint_transform`` — same family and same
+    optimum, but body modes are endpoint-neutral so acute central convexity
+    no longer mechanically drags the asymptotic wings during the solve).
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -355,10 +383,23 @@ def calibrate_slice(
         w0_guess = float(np.interp(0.0, k, w_quotes))
         init = logistic_init(w0_guess, n_order=n_order)
 
+    fun, jac_fn, x0, back = _residuals, residual_jacobian, init.to_vector(), None
+    if coords == "endpoint":
+        m = endpoint_transform(n_order)
+
+        def fun(phi, *a, _m=m):  # noqa: E306 — chart wrapper, theta = M phi
+            return _residuals(_m @ phi, *a)
+
+        def jac_fn(phi, *a, _m=m):
+            return residual_jacobian(_m @ phi, *a) @ _m
+
+        x0 = np.linalg.solve(m, init.to_vector())
+        back = m
+
     result = least_squares(
-        _residuals,
-        init.to_vector(),
-        jac=residual_jacobian if use_analytic else "2-point",
+        fun,
+        x0,
+        jac=jac_fn if use_analytic else "2-point",
         args=args,
         method="trf",
         # 1e-10 is still ~6 orders below the ~5 vol-bp fit budget (the note's own
@@ -371,16 +412,24 @@ def calibrate_slice(
         max_nfev=4000,
     )
 
+    # Endpoint chart: map the solution (and its Jacobian, J_theta = J_phi M^-1)
+    # back to the canonical (L, R, a) coordinates every consumer speaks.
+    theta_star = np.asarray(result.x, dtype=float)
+    jac_star = np.asarray(result.jac, dtype=float)
+    if back is not None:
+        theta_star = back @ theta_star
+        jac_star = jac_star @ np.linalg.inv(back)
+
     if solver_diag is not None:
         solver_diag.update(
-            jac=np.asarray(result.jac, dtype=float),
+            jac=jac_star,
             residual=np.asarray(result.fun, dtype=float),
-            theta=np.asarray(result.x, dtype=float).copy(),
+            theta=theta_star.copy(),
             n_fit_rows=int(k.size if band is None else 2 * k.size),
             n_quotes=int(k.size),
         )
 
-    params = LQDParams.from_vector(result.x)
+    params = LQDParams.from_vector(theta_star)
     slice_ = build_slice(params)
     iv_model = np.sqrt(slice_.implied_w(k) / t)
     max_iv_error = float(np.nanmax(np.abs(iv_model - sigma)))

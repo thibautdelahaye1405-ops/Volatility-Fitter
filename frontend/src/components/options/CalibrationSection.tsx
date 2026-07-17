@@ -61,6 +61,23 @@ export default function CalibrationSection({
         onChange={(v) => patch({ enforceCalendar: v })}
       />
       <div className="mt-1 flex items-center justify-between">
+        <span
+          className={rowLabel}
+          title="Symmetric (default): fit every expiry independently, screen adjacent pairs for an identified violation on their common quote support, then jointly repair only the violating runs - no front-to-back bias, corrections shared by quote precision. Sequential: the historical nearest-to-farthest pass where each slice inherits the previous one as a hard floor."
+        >
+          Surface solver
+        </span>
+        <select
+          value={draft.surfaceSolver}
+          disabled={!live || !draft.enforceCalendar}
+          onChange={(e) => patch({ surfaceSolver: e.target.value as "symmetric" | "sequential" })}
+          className={numInput}
+        >
+          <option value="symmetric">Symmetric (screen + joint repair)</option>
+          <option value="sequential">Sequential (front-to-back floor)</option>
+        </select>
+      </div>
+      <div className="mt-1 flex items-center justify-between">
         <span className={rowLabel} title="Quadratic calendar-slack penalty weight (surface fits)">
           Calendar weight
         </span>

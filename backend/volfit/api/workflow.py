@@ -156,6 +156,49 @@ def _independent_ticker_items(
     return [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
 
 
+def _symmetric_ticker_items(
+    state: AppState, ticker: str, isos: list[str], fit_mode: str
+) -> list[tuple[str, str, object]]:
+    """Symmetric-solver calibration items for one ticker (enforceCalendar ON,
+    surfaceSolver "symmetric"): one independent phase-A fit+commit item per
+    expiry (progress keeps node granularity) plus a single trailing screen +
+    component-repair item (volfit.api.surface_symmetric.phase_b_repair) that
+    re-commits only the repaired slices."""
+    from volfit.api import surface_symmetric
+
+    ctx = surface_symmetric.new_context()
+    box: dict = {"plan": None}
+
+    def ensure_plan() -> dict:
+        if box["plan"] is None:
+            state.set_spot_shift(ticker, 0.0)  # re-anchor at the chain's own spot
+            want = set(isos)
+            box["plan"] = {
+                iso: prepared
+                for iso, prepared in service.surface_inputs(state, ticker, fit_mode)
+                if iso in want
+            }
+        return box["plan"]
+
+    def make(iso: str):
+        def thunk() -> None:
+            prepared = ensure_plan().get(iso)
+            if prepared is None:
+                return  # expiry left the chain between build and run
+            surface_symmetric.phase_a_slice(
+                state, ticker, iso, prepared, fit_mode, ctx
+            )
+
+        return thunk
+
+    def repair() -> None:
+        surface_symmetric.phase_b_repair(state, ticker, fit_mode, ctx)
+
+    items = [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
+    items.append((f"{ticker} calendar repair", "Parametric", repair))
+    return items
+
+
 def _coupled_ticker_items(
     state: AppState, ticker: str, isos: list[str], fit_mode: str
 ) -> list[tuple[str, str, object]]:
@@ -219,15 +262,16 @@ def _parametric_groups(
     for t, iso in nodes:  # nodes are nearest-first, so each list is ascending-T
         by_ticker.setdefault(t, []).append(iso)
     coupled = state.options().enforceCalendar
-    return [
-        (
-            ticker,
-            _coupled_ticker_items(state, ticker, isos, fit_mode)
-            if coupled
-            else _independent_ticker_items(state, ticker, isos, fit_mode),
-        )
-        for ticker, isos in by_ticker.items()
-    ]
+    symmetric = coupled and state.options().surfaceSolver == "symmetric"
+
+    def items(ticker: str, isos: list[str]):
+        if symmetric:
+            return _symmetric_ticker_items(state, ticker, isos, fit_mode)
+        if coupled:
+            return _coupled_ticker_items(state, ticker, isos, fit_mode)
+        return _independent_ticker_items(state, ticker, isos, fit_mode)
+
+    return [(ticker, items(ticker, isos)) for ticker, isos in by_ticker.items()]
 
 
 def _parametric_items(

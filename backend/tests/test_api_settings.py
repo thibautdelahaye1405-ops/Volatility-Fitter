@@ -48,6 +48,7 @@ def test_defaults(client):
     assert settings == {
         "model": "lqd",
         "nOrder": 6,
+        "lqdCoords": "lr",
         "regLambda": 1e-6,
         "regPower": 1.0,
         "nCores": 2,

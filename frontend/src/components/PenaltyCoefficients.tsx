@@ -51,8 +51,28 @@ export default function PenaltyCoefficients({ group, draft, onChange, disabled }
   }
 
   // group === "model": only the ACTIVE family's penalty / barrier coefficients.
+  const coordsRow = (
+    <div className="mb-1.5 flex items-center justify-between" key="lqdCoords">
+      <span
+        className={rowLabel}
+        title="LQD optimization chart: Endpoint solves in (log A_L, log A_R, body) - body modes are endpoint-neutral, so acute central convexity can't drag the asymptotic wings while fitting. L/R is the historical raw vector."
+      >
+        LQD solve coordinates
+      </span>
+      <select
+        value={draft.lqdCoords}
+        disabled={disabled}
+        onChange={(e) => onChange({ lqdCoords: e.target.value as "lr" | "endpoint" })}
+        className={numInput + " w-28"}
+      >
+        <option value="lr">L / R (raw)</option>
+        <option value="endpoint">Endpoint</option>
+      </select>
+    </div>
+  );
   const rows: Record<FitModel, ReturnType<typeof Row>[]> = {
     lqd: [
+      coordsRow,
       Row("LQD A_R barrier centre", "A_R soft-barrier centre (eq. right_admissible)", "barrierCenter", 0.05),
       Row("LQD A_R barrier scale", "A_R soft-barrier steepness", "barrierScale", 5),
     ],
