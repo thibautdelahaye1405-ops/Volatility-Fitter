@@ -101,7 +101,10 @@ def reprice_affine_dupire(
     prices = np.empty((exps.size, n_x))
     for n in range(t.size - 1):
         dt = t[n + 1] - t[n]
-        nu = surface.variance(x_int, float(t[n + 1]))  # NEW time level, as the note
+        # NEW time level, as the note; floored at 0 — the left-wing linear
+        # continuation is "linear until zero, then flat" (negative variance is
+        # anti-diffusion and explodes the march; see solve_affine_dupire).
+        nu = np.maximum(surface.variance(x_int, float(t[n + 1])), 0.0)
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
         ab = np.zeros((3, n_x - 2))  # banded (I - dt*A^{n+1}) for solve_banded
         ab[0, 1:] = -dt * up[:-1]

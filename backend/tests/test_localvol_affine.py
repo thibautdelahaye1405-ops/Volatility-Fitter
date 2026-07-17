@@ -301,3 +301,78 @@ def test_cell_diag_main_matches_the_pricing_triangulation():
             anti = (i * n_x + j + 1, (i + 1) * n_x + j) in edges
             assert main != anti  # exactly one diagonal per cell
             assert bool(diag[i, j]) == main
+
+
+# ---------------------------------------------------------------------------
+# Left-wing positivity clamp (SPY live blow-up, 2026-07-17): a bottom strike
+# cell whose variance INCREASES with x extrapolates linearly to nu << 0 below
+# x_nodes[0] when left_extrap_a > 0; negative local variance is anti-diffusion
+# and the implicit march amplified prices to ~1e40-1e52 (all fit metrics NaN).
+# The clamp is "linear until it hits zero, then flat at zero", with
+# dnu/dtheta = dnu/da = 0 on clamped rows so sensitivities stay exact.
+# ---------------------------------------------------------------------------
+
+
+def _wrongway_surface():
+    """Short-dated bottom cell with variance rising in x (the SPY 2026-07-17
+    shape): at x0=0.68 -> x1=0.71 the slope is strongly positive, so the a=1.5
+    linear continuation reaches nu(0) ~ -20 without the clamp."""
+    t_nodes = np.array([0.0, 0.01, 0.1, 0.5])
+    x_nodes = np.array([0.68, 0.7114, 0.85, 1.0, 1.15, 1.4])
+    theta = np.tile(np.array([0.33, 0.74, 0.09, 0.02, 0.02, 0.04]), (4, 1))
+    return AffineVarianceSurface(
+        t_nodes=t_nodes, x_nodes=x_nodes, theta=theta, left_extrap_a=1.5
+    )
+
+
+def test_negative_left_wing_extrapolation_is_clamped_not_explosive():
+    surf = _wrongway_surface()
+    # sanity: the raw basis really extrapolates negative (the failure trigger)
+    assert surf.variance(np.array([0.0]), 0.005)[0] < -1.0
+    x_grid = 0.005 * np.arange(501)  # x=1 on-lattice, deep sub-x0 region
+    t_grid = np.concatenate([[0.0], np.linspace(0.001, 0.5, 120)])
+    exps = [float(t_grid[40]), 0.5]
+    sol = solve_affine_dupire(surf, x_grid, t_grid, exps, sensitivities=True)
+    assert np.all(np.isfinite(sol.prices))
+    assert sol.prices.min() >= -1e-9 and sol.prices.max() <= 1.0 + 1e-9
+    assert np.all(np.isfinite(sol.sens))
+
+    from volfit.models.localvol.reprice import reprice_affine_dupire
+
+    rep = reprice_affine_dupire(surf, x_grid, t_grid, expiries=exps)
+    assert np.all(np.isfinite(rep.prices))
+    assert rep.prices.min() >= -1e-9 and rep.prices.max() <= 1.0 + 1e-9
+
+    from volfit.models.localvol import solve_varswap_source
+
+    w_vs, _ = solve_varswap_source(surf, x_grid, t_grid)
+    assert np.isfinite(w_vs) and w_vs >= 0.0
+
+
+def test_clamped_sensitivities_match_finite_differences():
+    """dU/dtheta stays exact under the clamp (clamped rows carry dnu/dtheta=0)."""
+    surf = _wrongway_surface()
+    x_grid = 0.01 * np.arange(151)
+    t_grid = np.concatenate([[0.0], np.linspace(0.005, 0.5, 40)])
+    exps = [0.5]
+    sol = solve_affine_dupire(surf, x_grid, t_grid, exps, sensitivities=True)
+    rng = np.random.default_rng(7)
+    for l in rng.choice(surf.n_params, size=4, replace=False):
+        eps = 1e-6
+        th_up = surf.theta.copy()
+        th_up.flat[l] += eps
+        up = AffineVarianceSurface(
+            t_nodes=surf.t_nodes, x_nodes=surf.x_nodes,
+            theta=th_up, left_extrap_a=surf.left_extrap_a,
+        )
+        th_dn = surf.theta.copy()
+        th_dn.flat[l] -= eps
+        dn = AffineVarianceSurface(
+            t_nodes=surf.t_nodes, x_nodes=surf.x_nodes,
+            theta=th_dn, left_extrap_a=surf.left_extrap_a,
+        )
+        fd = (
+            solve_affine_dupire(up, x_grid, t_grid, exps).prices[0]
+            - solve_affine_dupire(dn, x_grid, t_grid, exps).prices[0]
+        ) / (2 * eps)
+        assert np.max(np.abs(sol.sens[0, :, l] - fd)) < 1e-6

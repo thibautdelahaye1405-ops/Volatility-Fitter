@@ -530,6 +530,19 @@ def solve_affine_dupire(
             phi_base = steps.surface.basis(steps.interior_x, float(t[n + 1]))
         phi = phi_base + a * phi_lin_n if use_lin else phi_base
         nu = phi @ theta
+        # LEFT-WING POSITIVITY: the linear continuation below x_nodes[0] is
+        # "linear until it hits zero, then flat at zero". A bottom cell whose
+        # variance INCREASES with x (short-dated rows whose lowest vertices sit
+        # far below the traded range, shaped by regularization alone)
+        # extrapolates to nu << 0 at small x, and a negative diffusion
+        # coefficient blows the march up exponentially (SPY live, 2026-07-17:
+        # nu(0) ~ -24 over ~500 fine-grid nodes -> prices ~ 1e52). Clamped
+        # rows get dnu/dtheta = dnu/da = 0, keeping the sensitivities exact
+        # for the clamped surface; healthy fits never clamp (byte-identical).
+        neg = nu < 0.0
+        if np.any(neg):
+            nu = np.where(neg, 0.0, nu)
+            phi = np.where(neg[:, None], 0.0, phi)
         # Crank-Nicolson on this step? (Rannacher: implicit for the first ``rann``.)
         is_cn = cn_enabled and n >= rann
         frac = 0.5 if is_cn else 1.0  # theta-weight on the IMPLICIT (new-level) operator
@@ -565,7 +578,8 @@ def solve_affine_dupire(
             if fit_left_a:
                 # dU/da: same recursion, source (phi_lin @ theta) * gamma; appended
                 # as the m-th column (always live once the wing region is touched).
-                glin = phi_lin_n @ theta
+                # Positivity-clamped rows have dnu/da = 0 (matching the theta rows).
+                glin = np.where(neg, 0.0, phi_lin_n @ theta)
                 idx = np.concatenate([np.arange(k), [m]])
                 src = np.concatenate(
                     [phi[:, :k] * au[:, None], (glin * au)[:, None]], axis=1

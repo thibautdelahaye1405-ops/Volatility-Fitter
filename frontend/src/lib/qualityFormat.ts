@@ -4,8 +4,10 @@ import type { QualityNode } from "../state/useQuality";
 export type SortMode = "exceptions" | "rms" | "node";
 
 /** Format a bp figure: 1 decimal normally, 2 sig figs when sub-0.1 (a
- *  near-exact fit must not display as a fake hard zero). */
-export function fmtBp(value: number): string {
+ *  near-exact fit must not display as a fake hard zero). NaN metrics from a
+ *  diverged fit arrive as null over JSON — render "—" instead of crashing. */
+export function fmtBp(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
   return value >= 0.1 || value === 0 ? value.toFixed(1) : value.toPrecision(2);
 }
 

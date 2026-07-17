@@ -74,16 +74,25 @@ def _march(phi3d, theta, a_m, a_p, a_0, dt, active_k, want_step, u0, n_exp):
     u_new = np.empty(n_x)
     au = np.empty(n_int)
     dp = np.empty((n_int, m))
+    live = np.empty(n_int)  # 0.0 where nu was positivity-clamped (dnu/dtheta = 0)
 
     for n in range(n_steps):
         dtn = dt[n]
-        # nu = phi @ theta  (dense; ~6% of the march, kept simple)
+        # nu = phi @ theta  (dense; ~6% of the march, kept simple), floored at 0:
+        # the left-wing linear continuation is "linear until zero, then flat" —
+        # negative local variance is anti-diffusion and blows the march up
+        # (see solve_affine_dupire). Clamped rows zero their sensitivity source.
         for i in range(n_int):
             s = 0.0
             row = phi3d[n, i]
             for j in range(m):
                 s += row[j] * theta[j]
-            nu[i] = s
+            if s < 0.0:
+                nu[i] = 0.0
+                live[i] = 0.0
+            else:
+                nu[i] = s
+                live[i] = 1.0
         # tridiagonal (I - dt A^{n+1})
         for i in range(n_int):
             sub[i] = -dtn * nu[i] * a_m[i]
@@ -111,7 +120,7 @@ def _march(phi3d, theta, a_m, a_p, a_0, dt, active_k, want_step, u0, n_exp):
         for i in range(n_int):
             au[i] = a_m[i] * u_new[i] + a_0[i] * u_new[i + 1] + a_p[i] * u_new[i + 2]
         invi = inv[0]
-        au0 = dtn * au[0]
+        au0 = dtn * au[0] * live[0]
         prow = phi3d[n, 0]
         srow = sens[1]
         drow = dp[0]
@@ -120,7 +129,7 @@ def _march(phi3d, theta, a_m, a_p, a_0, dt, active_k, want_step, u0, n_exp):
         for i in range(1, n_int):
             invi = inv[i]
             sbi = sub[i]
-            aui = dtn * au[i]
+            aui = dtn * au[i] * live[i]
             prow = phi3d[n, i]
             srow = sens[i + 1]
             dprev = dp[i - 1]
@@ -182,15 +191,22 @@ def _march_sparse(vals3d, cols3d, theta, a_m, a_p, a_0, dt, active_k, want_step,
     u_new = np.empty(n_x)
     au = np.empty(n_int)
     dp = np.empty((n_int, m))
+    live = np.empty(n_int)  # 0.0 where nu was positivity-clamped (dnu/dtheta = 0)
 
     for n in range(n_steps):
         dtn = dt[n]
-        # nu = phi @ theta over the sparse slots only
+        # nu = phi @ theta over the sparse slots only, floored at 0 (the
+        # left-wing "linear until zero, then flat" clamp — see _march).
         for i in range(n_int):
             s = 0.0
             for j in range(nnz):
                 s += vals3d[n, i, j] * theta[cols3d[n, i, j]]
-            nu[i] = s
+            if s < 0.0:
+                nu[i] = 0.0
+                live[i] = 0.0
+            else:
+                nu[i] = s
+                live[i] = 1.0
         # tridiagonal (I - dt A^{n+1})
         for i in range(n_int):
             sub[i] = -dtn * nu[i] * a_m[i]
@@ -218,7 +234,7 @@ def _march_sparse(vals3d, cols3d, theta, a_m, a_p, a_0, dt, active_k, want_step,
         for i in range(n_int):
             au[i] = a_m[i] * u_new[i] + a_0[i] * u_new[i + 1] + a_p[i] * u_new[i + 2]
         invi = inv[0]
-        au0 = dtn * au[0]
+        au0 = dtn * au[0] * live[0]
         srow = sens[1]
         drow = dp[0]
         for col in range(k):
@@ -228,7 +244,7 @@ def _march_sparse(vals3d, cols3d, theta, a_m, a_p, a_0, dt, active_k, want_step,
         for i in range(1, n_int):
             invi = inv[i]
             sbi = sub[i]
-            aui = dtn * au[i]
+            aui = dtn * au[i] * live[i]
             srow = sens[i + 1]
             dprev = dp[i - 1]
             drow = dp[i]

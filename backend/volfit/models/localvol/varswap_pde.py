@@ -139,6 +139,14 @@ def solve_varswap_source(
             phi_base = steps.surface.basis(x, float(t[n]))
         phi = phi_base + a * phi_lin_n if use_lin else phi_base
         nu_full = phi @ theta
+        # Left-wing positivity clamp ("linear until zero, then flat"): negative
+        # extrapolated variance destabilizes the solve and corrupts the
+        # accumulated total variance; clamped rows get dnu/dtheta = dnu/da = 0
+        # (see solve_affine_dupire). Healthy surfaces never clamp.
+        neg = nu_full < 0.0
+        if np.any(neg):
+            nu_full = np.where(neg, 0.0, nu_full)
+            phi = np.where(neg[:, None], 0.0, phi)
         nu = nu_full[1:-1]
         lo, di, up = nu * a_m, nu * a_0, nu * a_p
         ab = np.zeros((3, n_x - 2))  # I - dt A (same banded form as the forward step)
@@ -168,7 +176,8 @@ def solve_varswap_source(
             rhs_s[0] += dt * lo[0] * sens[0, :m]
             rhs_s[-1] += dt * up[-1] * sens[-1, :m]
             if fit_left_a:
-                glin = phi_lin_n @ theta  # d nu / da on the full grid
+                # d nu / da on the full grid; 0 on positivity-clamped rows.
+                glin = np.where(neg, 0.0, phi_lin_n @ theta)
                 src_a = glin[1:-1] * (stencil_g + 1.0)
                 sens[0, m] += dt * glin[0]
                 sens[-1, m] += dt * glin[-1]

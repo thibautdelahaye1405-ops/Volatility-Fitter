@@ -97,3 +97,23 @@ def test_numba_calibration_matches_banded_surface():
     numba = calibrate_affine(flat, options, x_grid, t_grid, engine="numba", **kw)
     assert numba.cost == pytest.approx(banded.cost, rel=1e-4)
     assert np.max(np.abs(numba.surface.theta - banded.surface.theta)) < 1e-3
+
+
+def test_numba_matches_banded_under_left_wing_clamp():
+    """The positivity clamp (negative left-wing extrapolation floored at 0 with
+    dnu/dtheta = 0 on clamped rows) is implemented independently in the banded
+    and numba kernels — they must still agree to rounding."""
+    t_nodes = np.array([0.0, 0.01, 0.1, 0.5])
+    x_nodes = np.array([0.68, 0.7114, 0.85, 1.00, 1.15, 1.40])
+    theta = np.tile(np.array([0.33, 0.74, 0.09, 0.02, 0.02, 0.04]), (4, 1))
+    surf = AffineVarianceSurface(
+        t_nodes=t_nodes, x_nodes=x_nodes, theta=theta, left_extrap_a=1.5
+    )
+    x_grid = 0.005 * np.arange(501)
+    t_grid = np.concatenate([[0.0], np.linspace(0.001, 0.5, 120)])
+    exps = [float(t_grid[40]), 0.5]
+    banded = solve_affine_dupire(surf, x_grid, t_grid, exps, sensitivities=True, engine="banded")
+    numba = solve_affine_dupire(surf, x_grid, t_grid, exps, sensitivities=True, engine="numba")
+    assert np.all(np.isfinite(banded.prices)) and banded.prices.max() <= 1.0 + 1e-9
+    assert np.max(np.abs(numba.prices - banded.prices)) < 1e-11
+    assert np.max(np.abs(numba.sens - banded.sens)) < 1e-9

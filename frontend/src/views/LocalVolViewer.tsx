@@ -92,6 +92,11 @@ const chartMessage = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
 );
 
+/** Whole-bp figure that survives a null/NaN metric (a diverged fit's NaN
+ *  serializes to null over JSON — degrade to "—", never crash the tab). */
+const fmtBp0 = (v: number | null | undefined): string =>
+  v == null || !Number.isFinite(v) ? "—" : v.toFixed(0);
+
 export default function LocalVolViewer() {
   const {
     data, loading, refreshing, error, reload, ticker, setTicker, tickers,
@@ -465,11 +470,11 @@ export default function LocalVolViewer() {
             >
               {data.arbitrageFree ? "arb-free" : `${data.calendarViolations} cal. viol.`}
             </span>
-            rms {data.rmsIvErrorBp.toFixed(0)}
-            {typeof data.rmsConvergedBp === "number"
+            rms {fmtBp0(data.rmsIvErrorBp)}
+            {typeof data.rmsConvergedBp === "number" && Number.isFinite(data.rmsConvergedBp)
               ? ` · conv ${data.rmsConvergedBp.toFixed(0)}`
               : ""}{" "}
-            · max {data.maxIvErrorBp.toFixed(0)} bp
+            · max {fmtBp0(data.maxIvErrorBp)} bp
           </span>
         )}
       </div>
@@ -484,7 +489,7 @@ export default function LocalVolViewer() {
             </h2>
             {smile && PER_EXPIRY[view] && (
               <span className="font-mono text-[11px] text-slate-500">
-                arbitrage-free · max err {smile.maxIvErrorBp.toFixed(0)} bp
+                arbitrage-free · max err {fmtBp0(smile.maxIvErrorBp)} bp
               </span>
             )}
           </div>
@@ -572,7 +577,7 @@ export default function LocalVolViewer() {
                       {formatExpiry(s.expiry, s.t, format)}
                     </td>
                     <td>{s.t.toFixed(2)}</td>
-                    <td>{s.maxIvErrorBp.toFixed(0)}</td>
+                    <td>{fmtBp0(s.maxIvErrorBp)}</td>
                     <td>{(data?.minDensity[i] ?? 0).toFixed(2)}</td>
                   </tr>
                 ))}
@@ -585,7 +590,8 @@ export default function LocalVolViewer() {
 
           {data && (
             <p className="mt-auto shrink-0 text-[10px] text-slate-600">
-              {data.nEvals} PDE solves · price rms {(data.rmsPriceError * 1e4).toFixed(1)} bp
+              {data.nEvals} PDE solves · price rms{" "}
+              {Number.isFinite(data.rmsPriceError) ? (data.rmsPriceError * 1e4).toFixed(1) : "—"} bp
             </p>
           )}
         </aside>
