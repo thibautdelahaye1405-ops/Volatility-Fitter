@@ -230,6 +230,8 @@ def run(
     pair_range: tuple[int, int] | None = None,
     eta_scale: float = 1.0,
     history_rows: list[dict] | None = None,
+    lambda_scale: float = 0.0,
+    nu: float = 0.1,
 ) -> list[dict]:
     """Score consecutive day pairs across the designs and SSR regimes.
 
@@ -241,7 +243,10 @@ def run(
     ``history_rows`` seeds the idio band floor's innovation history with rows
     scored by EARLIER chunks (matched on design/ssr; only rows dated strictly
     before a pair's day-T are ever used), so chunked pack runs reproduce the
-    single-process estimator instead of cold-starting each chunk."""
+    single-process estimator instead of cold-starting each chunk.
+    ``lambda_scale``/``nu`` set the solver's OT flux weight + source allowance
+    (GraphSolverParams; defaults 0.0/0.1 = OT off, byte-identical) — the R3
+    item-14 OT ablation lever."""
     paths = list_fixtures(regime=regime)
     if not paths:
         raise SystemExit(f"no fixtures for regime={regime}")
@@ -280,7 +285,10 @@ def run(
                     _setup_day(state_t, tickers, snaps, r_val, design)
                     sigma, tmap = _baseline_maps(state_t)
                     edges = build_directed_edges(list(sigma), sigma, tmap, cfg)
-                    req = GraphExtrapolateRequest(edges=edges, etaScale=eta_scale)
+                    req = GraphExtrapolateRequest(
+                        edges=edges, etaScale=eta_scale,
+                        lambdaScale=lambda_scale, nu=nu,
+                    )
                     idio_sig = _idio_sigma_map(recs[(design, int(r_val))], d1.isoformat())
                     full = solve(state_t, req, idio_atm_sigma=idio_sig)
                     if full is None:

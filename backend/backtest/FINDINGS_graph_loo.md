@@ -1,5 +1,61 @@
 # Graph leave-one-out — findings
 
+## 2026-07-17 — learned shrunk betas: machinery + first estimation read (R3 item 14)
+
+Machinery shipped (`backtest/learn_betas.py` + `EdgeConfig.overrides` +
+`benchmark_pack --beta-table/--lambda/--nu/--pair-start` + `benchmark_compare`);
+the ADJUDICATION SWEEP HAS NOT RUN YET — nothing below is a production verdict.
+
+**Estimator design.** Ticker-day ATM innovations reconstructed from the stored
+benchmark rows (`-base_atm`, knob-independent so all sweeps pool), median across
+each ticker's scored expiries; vol-normalized by a fit-free per-(regime, ticker)
+ATM scale read from the first estimation day's fixtures. STRICT TIME-SPLIT:
+regressions see only the first half of each regime's day pairs (evalPairStart =
+{high 10, low 9, spike 9} → evaluate with `--pair-start 10`, strictly disjoint
+everywhere). Through-origin OLS, DELIBERATELY predictive (the graph predicts the
+influenced node FROM the observed informer innovation, so the conditional-
+expectation slope — attenuation included — is the decision-relevant beta; a
+noise-corrected structural beta would over-propagate). Hard shrinkage
+(K = 20 equivalent obs) toward the hand-set priors; auto-reject (n < 8, |t| < 2,
+sign flip) reverts a cell to its prior EXACTLY. Locked in
+`tests/test_learn_betas.py` (planted-beta recovery through the normalization,
+poisoned-eval-window leak test, reject rules, override→edge path,
+empty-overrides byte-identity).
+
+**First estimation read (split 0.5, ssr 0, artifact
+`results/learned_betas.json`):**
+
+- index→name, per name: raw 0.22–0.49 (every t ≥ 2.6), shrunk 0.43–0.58 — the
+  hand-set 0.7 looks predictively HIGH at the daily innovation horizon; defensive
+  names (WMT/COST/CVX) read tighter t's than high-idio ones (META/NFLX/TSLA).
+- name↔name same sector: raw 0.76 (n = 756, t = 32) vs prior 0.6 — sector peers
+  carry MORE cross-information than assumed.
+- sector-ETF→name: dormant as designed (no US sector ETF captured) — prior kept,
+  named reason.
+- calendar multiplier on √(T ratio): raw 0.34 (n = 12,062, t = 44, both
+  directions pooled) — daily ATM innovations are far LESS calendar-coherent than
+  the √T rule assumes; if the ablation confirms, the calendar β rule
+  over-propagates along the ladder by ~3×.
+
+**Adjudication runbook (user's window, ~half a normal pack sweep — 10 of 19
+pairs; each variant its own tag):**
+
+    # baseline, evaluation half only
+    python -m backtest.benchmark_pack run --pair-start 10 --tag _b14_base
+    # learned betas, same window
+    python -m backtest.benchmark_pack run --pair-start 10 --tag _b14_learned `
+        --beta-table backtest\results\learned_betas.json
+    # OT ablation (lambda comparable to the kappa belief strength)
+    python -m backtest.benchmark_pack run --pair-start 10 --tag _b14_ot --lambda 1.0
+    # verdict table (skill deltas vs baseline on the SHARED scored set)
+    python -m backtest.benchmark_compare --tags _b14_base,_b14_learned,_b14_ot
+
+Decision rule (pre-registered): activate learned betas only if the liquid_split
+dark-name ATM skill delta is positive in spike AND non-negative in the other two
+regimes with ζ std not degrading; otherwise the artifact stays a diagnostic.
+Same bar for OT (λ=1.0 probe) — else reposition the OT story as Bayesian graph
+propagation (the deck honesty pass already leans that way).
+
 ## 2026-07-09 — full 25-asset benchmark pack (3 regimes)
 
 The full benchmark pack (`backtest/benchmark_pack.py`, 46,995 scored rows:

@@ -66,6 +66,19 @@ def asset_sector(ticker: str) -> str:
 
 
 @dataclass(frozen=True)
+class BetaOverrides:
+    """Learned vol-normalized beta overrides (the backtest.learn_betas artifact,
+    R3 item 14). Every field defaults to "no override": a None/missing entry
+    falls back to the EdgeConfig prior, so an artifact whose cells were all
+    auto-rejected reproduces the default edge list bit-for-bit."""
+
+    index_by_name: dict = field(default_factory=dict)  # name -> learned beta_vn
+    name_beta: float | None = None  # same-sector name<->name class value
+    etf_beta: float | None = None  # sector-ETF -> name class value
+    calendar_mult: float | None = None  # multiplier on the sqrt(T ratio) betas
+
+
+@dataclass(frozen=True)
 class EdgeConfig:
     """Directed-edge weights (conductance / "precision") + vol-normalized betas."""
 
@@ -93,6 +106,9 @@ class EdgeConfig:
     #: relation and no second economic claim is introduced. 0 disables
     #: (reproduces the legacy, disconnected behaviour).
     cross_reverse_frac: float = 1.0
+    #: Learned beta overrides (backtest.learn_betas). None = the analytic
+    #: defaults above, byte-identical.
+    overrides: BetaOverrides | None = None
 
 
 def _clip(beta: float, cfg: EdgeConfig) -> float:
@@ -120,6 +136,8 @@ def build_directed_edges(
     Cross-asset edges connect same-expiry nodes; only single names are *influenced*
     cross-asset (indices / ETFs receive calendar edges only)."""
     cfg = cfg or EdgeConfig()
+    ov = cfg.overrides
+    cal_mult = 1.0 if ov is None or ov.calendar_mult is None else ov.calendar_mult
     edges: list[GraphEdgeInput] = []
 
     # --- calendar: each adjacent expiry pair informs the other (both directions) ---
@@ -131,9 +149,9 @@ def build_directed_edges(
         for a, b in zip(ns[:-1], ns[1:]):  # t[a] <= t[b]
             ta, tb = max(t.get(a, 0.0), 1e-9), max(t.get(b, 0.0), 1e-9)
             # b (long) informs a (short): beta = sqrt(T_to / T_from) = sqrt(tb/ta) >= 1
-            edges.append(_edge(a, b, cfg.cal_weight, _clip(math.sqrt(tb / ta), cfg)))
+            edges.append(_edge(a, b, cfg.cal_weight, _clip(cal_mult * math.sqrt(tb / ta), cfg)))
             # a (short) informs b (long): beta = sqrt(ta/tb) <= 1
-            edges.append(_edge(b, a, cfg.cal_weight, _clip(math.sqrt(ta / tb), cfg)))
+            edges.append(_edge(b, a, cfg.cal_weight, _clip(cal_mult * math.sqrt(ta / tb), cfg)))
 
     # --- cross-asset, same expiry: informer (to) -> influenced single name (from) ---
     by_iso: dict[str, list[NodeKey]] = defaultdict(list)
@@ -150,10 +168,16 @@ def build_directed_edges(
                 kind = asset_kind(informer[0])
                 if kind == "index" and informer[0] in cfg.market_indices:
                     beta_vn, w = cfg.beta_index, cfg.index_weight
+                    if ov is not None:  # learned per-name index beta
+                        beta_vn = ov.index_by_name.get(influenced[0], beta_vn)
                 elif kind == "etf" and asset_sector(informer[0]) == sec:
                     beta_vn, w = cfg.beta_etf, cfg.etf_weight
+                    if ov is not None and ov.etf_beta is not None:
+                        beta_vn = ov.etf_beta
                 elif kind == "name" and asset_sector(informer[0]) == sec:
                     beta_vn, w = cfg.beta_name, cfg.name_weight
+                    if ov is not None and ov.name_beta is not None:
+                        beta_vn = ov.name_beta
                 else:
                     continue  # every other edge: beta 0 (omitted)
                 sig_from = sigma.get(influenced, 0.0)

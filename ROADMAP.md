@@ -858,16 +858,56 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
   Note 14: rem:active-selection + traceability row, PDF rebuilt.
   v2 candidates: sequential greedy top-k plan (re-score after each
   pick), skew/curv coordinates, network-chart candidate highlight.
-- **NEXT:** R3 item 14 (learned shrunk betas + the OT ablation
-  decision) or item-11 v2 follow-ons (term-matched rate curve,
-  de-Am'd-parity identifiability widening). Item-12 residuals:
-  density-band chart consumer, graph-posterior term-view ribbon,
-  posterior covariance ACROSS nodes for calendar-spread uncertainty.
-  Item-13 residuals: sequential greedy plan, network highlight.
-  Item-10 residuals: per-maturity filter handle scales, degraded-v2
-  band, live-universe 0DTE seeding, same-date AM/PM expiry-key redesign.
-  Registry push for the container image when a registry is chosen (seam
-  marked in the workflow).
+- **R3 ITEM 14 MACHINERY SHIPPED (2026-07-17) — learned shrunk betas +
+  the OT ablation levers; ADJUDICATION SWEEP = USER ACTION.** New
+  `backtest/learn_betas.py`: ticker-day ATM innovations reconstructed
+  from the STORED benchmark rows (−base_atm — knob-independent, so all
+  sweeps pool), vol-normalized via a fit-free per-(regime, ticker) scale
+  from the fixtures, STRICT time-split (regressions see only the first
+  half of each regime's day pairs; artifact records evalPairStart →
+  `--pair-start 10` is strictly OOS everywhere), through-origin OLS that
+  is DELIBERATELY predictive (the graph predicts the influenced node
+  from the observed informer innovation — a noise-corrected structural
+  beta would over-propagate), hard shrinkage (K=20 equivalent obs)
+  toward the EdgeConfig priors, auto-reject (n<8, |t|<2, sign flip) =
+  the prior EXACTLY. Versioned artifact `results/learned_betas.json`
+  (raw/shrunk/n/t/reason per cell — the audit trail; regenerable,
+  gitignored). Plumbing: `BetaOverrides` on EdgeConfig (empty overrides
+  = default edges bit-for-bit, test-locked), `benchmark_pack
+  --beta-table/--lambda/--nu/--pair-start` + tag-filtered
+  `load_parts`/`report --tag`, `graph_loo` threads lambdaScale/nu (OT
+  had NEVER been exercised in the harness), new `benchmark_compare
+  --tags` = the verdict table (intersects the tags' scored sets first,
+  skill deltas vs the first tag). tests/test_learn_betas.py (8:
+  planted-beta recovery through the vol-normalization, poisoned-eval-
+  window leak lock, reject rules, artifact→overrides→edges,
+  byte-identity, tag filtering). **First estimation read (FINDINGS
+  2026-07-17, NOT a verdict):** per-name index betas raw 0.22–0.49
+  (shrunk 0.43–0.58; hand-set 0.7 predictively high), sector-peer class
+  raw 0.76 vs prior 0.6 (peers carry MORE information than assumed),
+  calendar multiplier raw 0.34 (n=12k, t=44 — the √T calendar rule
+  over-propagates ~3× at the daily horizon if the ablation confirms),
+  ETF class dormant (prior kept, named reason).
+- **USER ACTION — the item-14 adjudication sweep (your window, ~half a
+  pack sweep; commands + pre-registered decision rule in
+  FINDINGS_graph_loo.md 2026-07-17):** run `_b14_base` /
+  `_b14_learned` / `_b14_ot` with `--pair-start 10`, then
+  `python -m backtest.benchmark_compare --tags
+  _b14_base,_b14_learned,_b14_ot`. Activate learned betas only if the
+  dark-name skill delta is positive in spike and non-negative
+  elsewhere with ζ std not degrading; same bar decides the OT
+  activate-vs-reposition question.
+- **NEXT:** after the item-14 verdict: either activate (production
+  edge-builder consumes the artifact) or record the repositioning;
+  then R4 (graph-coupled temporal state, first hosted instance) or
+  item-11 v2 follow-ons (term-matched rate curve, de-Am'd-parity
+  identifiability widening). Item-12 residuals: density-band chart
+  consumer, graph-posterior term-view ribbon, cross-node posterior
+  covariance for calendar spreads. Item-13 residuals: sequential
+  greedy plan, network highlight. Item-10 residuals: per-maturity
+  filter handle scales, degraded-v2 band, live-universe 0DTE seeding,
+  same-date AM/PM expiry-key redesign. Registry push for the container
+  image when a registry is chosen (seam marked in the workflow).
 
 ### 🧭 SESSION WRAP (2026-07-09) — BENCHMARK VERDICT + LOO TOPOLOGY ROOT CAUSE + LIQUID_SPLIT RESWEEP
 

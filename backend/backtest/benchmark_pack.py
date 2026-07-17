@@ -57,9 +57,12 @@ def _part_path(regime: str, a: int, b: int, tag: str = "") -> str:
     return os.path.join(RESULTS_DIR, f"{regime}_pairs{a:02d}-{b:02d}{tag}.json")
 
 
-def chunk_ranges(n_pairs: int, chunk: int) -> list[tuple[int, int]]:
-    """[(a, b), ...) chunk boundaries covering 0..n_pairs."""
-    return [(a, min(a + chunk, n_pairs)) for a in range(0, n_pairs, chunk)]
+def chunk_ranges(n_pairs: int, chunk: int, start: int = 0) -> list[tuple[int, int]]:
+    """[(a, b), ...) chunk boundaries covering start..n_pairs. A nonzero
+    ``start`` scores the LATER day pairs only — the strict-time-split
+    evaluation window of the learned-beta ablation (learn_betas records the
+    matching evalPairStart)."""
+    return [(a, min(a + chunk, n_pairs)) for a in range(start, n_pairs, chunk)]
 
 
 def _history_seed(regime: str, upto: int, tag: str) -> list[dict]:
@@ -91,35 +94,43 @@ def _history_seed(regime: str, upto: int, tag: str) -> list[dict]:
 def run_regime(
     regime: str, designs, r_values, chunk: int, cfg: EdgeConfig,
     max_pairs: int | None = None, eta_scale: float = 1.0, tag: str = "",
+    pair_start: int = 0, lambda_scale: float = 0.0, nu: float = 0.1,
 ) -> None:
     """Score one regime chunk-by-chunk, skipping chunks whose part file exists."""
     os.makedirs(RESULTS_DIR, exist_ok=True)
     n = _n_pairs(regime)
     if max_pairs is not None:
         n = min(n, max_pairs)
-    for a, b in chunk_ranges(n, chunk):
+    for a, b in chunk_ranges(n, chunk, start=pair_start):
         path = _part_path(regime, a, b, tag)
         if os.path.exists(path):
             print(f"{regime} pairs {a}-{b}: part exists, skipped", flush=True)
             continue
         print(f"{regime} pairs {a}-{b}: scoring…", flush=True)
         rows = run_loo(regime, designs, r_values, None, cfg, pair_range=(a, b),
-                       eta_scale=eta_scale, history_rows=_history_seed(regime, a, tag))
+                       eta_scale=eta_scale, history_rows=_history_seed(regime, a, tag),
+                       lambda_scale=lambda_scale, nu=nu)
         # Provenance stamp: the merge dedups on (regime, day, design, R, node),
         # so rows from differently-knobbed sweeps would otherwise mix silently.
-        rows = [dict(r, eta=eta_scale, indexWeight=cfg.index_weight) for r in rows]
+        rows = [dict(r, eta=eta_scale, indexWeight=cfg.index_weight,
+                     otLambda=lambda_scale,
+                     learnedBetas=cfg.overrides is not None) for r in rows]
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"regime": regime, "pairs": [a, b], "rows": rows}, fh, default=str)
         print(f"{regime} pairs {a}-{b}: {len(rows)} scores -> {path}", flush=True)
 
 
-def load_parts(regime: str | None = None) -> list[dict]:
-    """Merge every part file (optionally one regime) into one row list.
+def load_parts(regime: str | None = None, tag: str | None = None) -> list[dict]:
+    """Merge every part file (optionally one regime / one sweep tag) into one
+    row list.
 
     Rows are DEDUPED on their natural key (regime, day, design, R, node):
     parts written with different chunk sizes or design subsets (a smoke run
     before the full sweep) can overlap on day pairs, and a double-counted
-    node would silently bias every aggregate. First occurrence wins."""
+    node would silently bias every aggregate. First occurrence wins.
+    ``tag`` restricts to one sweep's parts (e.g. "_b14_learned") — REQUIRED
+    when comparing ablations, else first-wins mixes sweeps silently; ``""``
+    selects only untagged parts."""
     if not os.path.isdir(RESULTS_DIR):
         return []
     rows: list[dict] = []
@@ -129,6 +140,11 @@ def load_parts(regime: str | None = None) -> list[dict]:
             continue
         if regime is not None and not name.startswith(regime):
             continue
+        if tag is not None:
+            core = name.split("_pairs", 1)[1][: -len(".json")]  # "00-02" or "00-02_tag"
+            part_tag = core[5:] if len(core) > 5 else ""  # after "aa-bb"
+            if part_tag != tag:
+                continue
         with open(os.path.join(RESULTS_DIR, name), encoding="utf-8") as fh:
             for row in json.load(fh)["rows"]:
                 key = (row.get("regime"), row.get("as_of"), row.get("design"),
@@ -334,13 +350,14 @@ market-vs-prior move.</footer>
 </body></html>"""
 
 
-def write_report() -> tuple[str, str]:
-    rows = load_parts()
+def write_report(tag: str | None = None) -> tuple[str, str]:
+    rows = load_parts(tag=tag)
     if not rows:
         raise SystemExit("no benchmark part files found — run `benchmark_pack run` first")
     os.makedirs(RESULTS_DIR, exist_ok=True)
-    html_path = os.path.join(RESULTS_DIR, "benchmark_report.html")
-    json_path = os.path.join(RESULTS_DIR, "benchmark_pack.json")
+    suffix = tag or ""
+    html_path = os.path.join(RESULTS_DIR, f"benchmark_report{suffix}.html")
+    json_path = os.path.join(RESULTS_DIR, f"benchmark_pack{suffix}.json")
     with open(html_path, "w", encoding="utf-8") as fh:
         fh.write(build_report_html(rows))
     payload = {
@@ -373,21 +390,40 @@ def main() -> int:
     ap.add_argument("--tag", default="",
                     help="part-filename suffix naming this sweep (e.g. _topofix_eta10);"
                          " REQUIRED in practice for a re-run, else old parts skip it")
+    ap.add_argument("--pair-start", type=int, default=0,
+                    help="first day-pair index to score (strict-time-split evaluation"
+                         " window; learn_betas prints the matching evalPairStart)")
+    ap.add_argument("--beta-table", default=None,
+                    help="learned-beta artifact (backtest.learn_betas fit) to inject"
+                         " as edge-beta overrides — the item-14 learned-beta ablation")
+    ap.add_argument("--lambda", dest="lambda_scale", type=float, default=0.0,
+                    help="solver OT flux weight lambdaScale (default 0 = OT off) —"
+                         " the item-14 OT ablation")
+    ap.add_argument("--nu", type=float, default=0.1,
+                    help="OT source/sink allowance (used only when --lambda > 0)")
     args = ap.parse_args()
 
     if args.command == "report":
-        html_path, json_path = write_report()
+        html_path, json_path = write_report(tag=args.tag or None)
         print(f"wrote {html_path}\nwrote {json_path}")
         return 0
 
     designs = tuple(d.strip() for d in args.designs.split(","))
     r_values = tuple(float(r) for r in args.regimes_r.split(","))
     regimes = (args.regime,) if args.regime else REGIMES
+    overrides = None
+    if args.beta_table:
+        from backtest.learn_betas import load_overrides
+
+        overrides = load_overrides(args.beta_table)
+        print(f"learned-beta overrides loaded from {args.beta_table}", flush=True)
     m = args.cross_mult
-    cfg = EdgeConfig(index_weight=2.0 * m, etf_weight=4.0 * m, name_weight=2.0 * m)
+    cfg = EdgeConfig(index_weight=2.0 * m, etf_weight=4.0 * m, name_weight=2.0 * m,
+                     overrides=overrides)
     for regime in regimes:
         run_regime(regime, designs, r_values, args.chunk, cfg, args.max_pairs,
-                   eta_scale=args.eta, tag=args.tag)
+                   eta_scale=args.eta, tag=args.tag, pair_start=args.pair_start,
+                   lambda_scale=args.lambda_scale, nu=args.nu)
     return 0
 
 
