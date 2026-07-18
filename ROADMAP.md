@@ -221,11 +221,25 @@ ladder). Shipped in five phases, all tests green (1198+ suite, new files
     test-locked). Serial path unchanged when workers pinned to 1.
   * **Certification case `symmetric_calendar`** registered (model_stress)
     over the confinement + symmetric-solver locks.
+- **Live SPY validation pass DONE (2026-07-18).** Live Yahoo SPY (spot
+  743.29, 2644 quotes, 8 expiries) fit through the real service path
+  (`service.fit_surface`) under both solvers on the identical snapshot:
+  symmetric == sequential BYTE-FOR-BYTE (max |sym-seq| slice error 0.000 bp,
+  pooled surface RMS 16.01 vs 16.01 bp). Phase B ran and screened a CLEAN
+  ladder (`components=[]`, 0/8 slices repaired, max identified violation
+  0.0) → fast path, so the production-default flip is a verified no-op on
+  clean live data. All calendar residuals ≤ 0 (arb-free). Warm timing
+  symmetric 0.38s vs sequential 0.49s (on par; the cold 3.1s was first-call
+  Numba JIT confound). NB the wing max errors (25–128 bp on the LEAPS rows)
+  are weekend/stale Yahoo wing noise — IDENTICAL across both solvers, i.e. a
+  property of the underlying LQD independent fit, not the symmetric redesign;
+  a weekday tight-NBBO session would fit tighter. Phase-B REPAIR on real data
+  is still un-exercised (SPY is clean) — a messier live ladder would be the
+  next stress. Script: scratchpad `live_spy_symmetric.py`.
 - **Still open:** endpoint-coords default flip after a benchmark-pack
-  comparison; live SPY validation pass of the symmetric default;
-  interface-weight constants (IFACE_BASE_WEIGHT / TAIL_ROW_FRAC / seam pad)
-  unstress-tuned — the per-interface irreducible-slack readout is the
-  watchdog; eventual retirement of the sequential path.
+  comparison; interface-weight constants (IFACE_BASE_WEIGHT / TAIL_ROW_FRAC /
+  seam pad) unstress-tuned — the per-interface irreducible-slack readout is
+  the watchdog; eventual retirement of the sequential path.
 
 ### 🧭 SESSION WRAP (2026-07-10) — ROADMAP v2 ADOPTED + R0 ITEMS 1-2 SHIPPED
 
