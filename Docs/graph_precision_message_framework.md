@@ -772,7 +772,7 @@ with presets:
 | Preset | Value | Source |
 |---|---|---|
 | `desk` | 1.0 | full configured force (the original framework semantics) |
-| `learned` | ≈0.34 calendar, ≈0.55 index→name, ≈0.76 sector peer | `backend/backtest/results/learned_betas.json`, strict time-split predictive OLS |
+| `learned` | ≈0.23 calendar **under the alphaT=1 shape** (0.34 was the √T-shape multiplier — the level is shape-dependent), ≈0.39 index→name raw single-source (0.55 shrunk), ≈0.68–0.76 sector peer | `backend/backtest/results/learned_betas.json` (strict time-split predictive OLS) + `results/message_phase0.json` (all-days design study) |
 
 Rationale: the learned artifact measures raw day-over-day innovation transfer
 far below one (calendar multiplier raw 0.34 on n≈12k pairs, t≈44). Full-force
@@ -865,6 +865,28 @@ p_0\exp\!\left(
 
 The inverse-square-root gap rule is the initial product default; the benchmark
 must decide whether another family is materially better calibrated.
+
+**Initial numeric seeds (Phase 0, 2026-07-18,
+`backtest/results/message_phase0.json`).** Fitting
+\(\operatorname{Var}(e)=(\epsilon_T+\sqrt{\Delta T})/p_{\mathrm{calendar}}\)
+on adjacent-ladder residuals under the alphaT=1 shape (n≈11.7k pairs, all
+three regimes, day horizon, ATM-vol units where 0.01 = 1 vol point):
+
+- \(p_{\mathrm{calendar}}\approx 1.7\times10^{3}\),
+  \(\epsilon_T\approx 0.97\);
+- the residual is nearly **gap-flat** at this horizon (RMS 2.4–2.9 vol
+  points across all gap buckets), i.e. \(\epsilon_T\) dominates — the family
+  degrades gracefully to near-constant precision, and the Phase-4 sweep
+  decides whether the decay term earns its keep;
+- cross-class seeds: index→name residual RMS ≈0.9 vol points
+  (\(p\approx1.3\times10^{4}\)), sector peer ≈1.1 vol points
+  (\(p\approx0.9\times10^{4}\)). Caveat: these are measured on ticker-day
+  **median** innovations; per-expiry cross messages will be noisier, so the
+  seeds are upper bounds on per-edge precision;
+- shape preview: through-origin \(R^2\) is indistinguishable across
+  `alphaT` ∈ {0, 0.5, 1} (0.180/0.181/0.181) once the level refits — the
+  shape is weakly identified at the day horizon and is retained at 1.0 for
+  its semantics pending Phase 4.
 
 ### 9.3 Edge variance interpretation
 
@@ -1215,23 +1237,34 @@ For a dark node connected to at least one lit-informed component:
   internally only when necessary and must not be presented as economic
   confidence.
 
-- **Shrunk presets (\(\rho<1\)):** \(\kappa_i\) is derived from the
-  configured per-class multipliers. Two candidate mechanizations, to be
-  chosen at the Phase-0 exit from the stored benchmark rows:
+- **Shrunk presets (\(\rho<1\)) — mechanization CHOSEN 2026-07-18:
+  node-linked (fixed \(\kappa\), corroboration-adaptive).**
+  \(\kappa_i\) is a fixed per-node constant calibrated once from the
+  receiver's primary relation class,
 
-  1. **Edge-linked (constant transfer).**
-     \(\kappa_i=\sum_j p_{ij}\,(1-\rho_{\mathrm{class}(j)})/\rho_{\mathrm{class}(j)}\).
-     A single-class receiver then transfers exactly
-     \(\rho\,\beta z\) regardless of source count.
-  2. **Node-linked (corroboration-adaptive).** \(\kappa_i\) is a fixed
-     per-node quantity calibrated to the ticker's idiosyncratic innovation
-     variance (the trailing idio machinery of `graph/idio.py` already
-     estimates it), so the effective transfer \(q_i/(\kappa_i+q_i)\)
-     *rises* as independent corroborating sources accumulate.
+  \[
+  \kappa_i=p_{\mathrm{primary}}\,
+  \frac{1-\rho_{\mathrm{class}}}{\rho_{\mathrm{class}}},
+  \]
 
-  The offline discriminating question — does realized transfer increase
-  with source count? — is answerable from the existing 47k stored
-  benchmark rows without any new capture.
+  and is **not** rescaled as corroborating edges arrive. The single-source
+  transfer is exactly \(\rho\,\beta z\); two equal agreeing sources lift it
+  to \(2\rho/(1+\rho)\); the effective transfer \(q_i/(\kappa_i+q_i)\)
+  rises as independent corroboration accumulates.
+
+  Empirical validation (`backtest/results/message_phase0.json`, stored-row
+  study over all three regimes, n≈1000 name-days): single-source
+  index-to-name slope 0.391; the fixed-\(\kappa\) model calibrated on that
+  number alone predicts a two-source (index + sector-peer average) slope of
+  0.563; the measured value is 0.561 — agreement to 0.3% with zero free
+  parameters. The rejected **edge-linked** alternative
+  (\(\kappa_i=\sum_j p_{ij}(1-\rho)/\rho\), constant transfer regardless of
+  source count) is contradicted by the same measurement (+43% corroboration
+  uplift against a 15% pre-registered bar).
+
+  Golden contracts: 21.12 (single-source \(\rho\beta z\)) and the
+  corroboration case \(2\rho/(1+\rho)\) in
+  `tests/fixtures/graph_message_golden.json`.
 
 An explicit `innovationAnchorPrecision` override remains exposed for hybrid
 or stress modes; when set it takes precedence over the derived value.
@@ -1797,9 +1830,13 @@ component solve.
 ### 21.12 Shrunk-mode transfer (added 2026-07-18)
 
 With a single clamped source, amplitude preset \(\rho<1\), and the
-edge-linked anchor of Section 14.2, the posterior mean is
+node-linked anchor of Section 14.2
+(\(\kappa=p_{\mathrm{primary}}(1-\rho)/\rho\), fixed), the posterior mean is
 \(\rho\,\beta z_j\) to machine precision. With \(\rho=1\) the anchor is
-exactly zero and test 21.1 is recovered.
+exactly zero and test 21.1 is recovered. With **two** equal clamped agreeing
+sources and the SAME fixed \(\kappa\), the transfer per unit beta is
+\(2\rho/(1+\rho)\) — the corroboration contract validated on the stored
+rows (0.391 single-source → predicted 0.563 vs measured 0.561).
 
 ### 21.13 Baseline uncertainty enters once (added 2026-07-18)
 
@@ -2252,3 +2289,29 @@ exponents (Section 8.5), baseline-uncertainty placement rule (Section 15.3),
 dead-informer / shrunk-mode / baseline-once goldens (Sections 21.11-21.13),
 band-coverage note (Section 22.3), and two unclosed display-math blocks in
 Sections 15.1-15.2 fixed.
+
+**2026-07-18 — Phase 0 completed** (`backend/backtest/message_phase0.py`,
+artifact `backtest/results/message_phase0.json`; findings in
+`backend/backtest/FINDINGS_message_phase0.md`):
+
+1. **Anchor mechanization chosen: node-linked (fixed \(\kappa\)),**
+   Section 14.2 — the fixed-\(\kappa\) model calibrated on the single-source
+   index slope (0.391) predicts the measured two-source slope to 0.3%
+   (0.563 vs 0.561); corroboration uplift +43% against a 15% bar rejects
+   the edge-linked constant-transfer rule.
+2. **Empirical precision seeds recorded** (Section 9.2): calendar
+   \(p_0\approx1.7\times10^3\), \(\epsilon_T\approx0.97\) (noise nearly
+   gap-flat at the day horizon); index→name \(p\approx1.3\times10^4\);
+   sector peer \(p\approx0.9\times10^4\) (ATM-vol units, ticker-median
+   caveat).
+3. **Learned amplitude presets are shape-dependent** (Section 8.4):
+   calendar level ≈0.23 under alphaT=1 (0.34 was the √T-shape value);
+   shape itself weakly identified at the day horizon (\(R^2\) ties across
+   alphaT ∈ {0, 0.5, 1}).
+4. **Golden fixtures locked** in
+   `backend/tests/fixtures/graph_message_golden.json` +
+   `backend/tests/test_graph_message_golden.py` (24 tests against an
+   independent brute-force Gaussian reference): all Section-21 canonical
+   cases plus dead-informer, repeated-path 5/(3p) vs naive 6/(5p),
+   multi-hop limits, shrunk single-source and corroboration contracts,
+   and global units-invariance.

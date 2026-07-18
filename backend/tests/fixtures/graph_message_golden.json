@@ -1,0 +1,170 @@
+{
+  "description": "Phase-0 golden fixtures for the precision-message graph operator (Docs/graph_precision_message_framework.md, Section 21, amended 2026-07-18). Each case is a tiny Gaussian system built from PAIRWISE relation factors p*(z_receiver - beta*z_informer)^2 plus optional clamps (hard-known lit nodes), finite-precision observations, and innovation anchors. Expected means/variances are exact closed-form numbers agreed BEFORE the operator is implemented; tests/test_graph_message_golden.py checks them against an independent brute-force dense Gaussian reference. Phases 1-2 must reproduce them through graph/message.py + graph/message_posterior.py.",
+  "conventions": {
+    "factor": "one entry = one relation factor precision*(z[receiver] - beta*z[informer])^2; canonical orientation per spec 7.6 (calendar: receiver = shorter maturity)",
+    "q": "receiver conditional precision at a node = sum over incident factors of (precision if node is the receiver, precision*beta^2 if node is the informer) per the spec 7.6 unit mapping",
+    "units_invariance": "scaling ALL precisions (factors + observations + anchors) by c leaves every posterior mean unchanged and divides every variance by c"
+  },
+  "cases": [
+    {
+      "name": "calendar_full_transmission",
+      "spec_ref": "21.1 / 8.2",
+      "nodes": ["A3M", "B6M", "C1Y"],
+      "maturities": {"A3M": 0.25, "B6M": 0.5, "C1Y": 1.0},
+      "factors": [
+        {"receiver": "A3M", "informer": "B6M", "beta": 2.0, "precision": 4.0},
+        {"receiver": "B6M", "informer": "C1Y", "beta": 2.0, "precision": 4.0}
+      ],
+      "clamps": {"B6M": 1.0},
+      "expected": {
+        "mean": {"A3M": 2.0, "C1Y": 0.5},
+        "var": {"A3M": 0.25, "C1Y": 0.0625},
+        "q": {"A3M": 4.0, "C1Y": 16.0}
+      },
+      "note": "alphaT=1 shape betas T_informer/T_receiver in canonical short-receiver orientation; z(6M)=+1 propagates at FULL amplitude: +2.0 to 3M, +0.5 to 1Y. C1Y's q is p*beta^2=16 because the 6M-1Y factor's canonical receiver is 6M (spec 7.6 mapping)."
+    },
+    {
+      "name": "competing_equal",
+      "spec_ref": "21.2 / 10.1",
+      "nodes": ["S3", "R6", "S12"],
+      "factors": [
+        {"receiver": "R6", "informer": "S3", "beta": 1.0, "precision": 4.0},
+        {"receiver": "R6", "informer": "S12", "beta": 1.0, "precision": 4.0}
+      ],
+      "clamps": {"S3": -1.0, "S12": 1.0},
+      "expected": {
+        "mean": {"R6": 0.0},
+        "var": {"R6": 0.125},
+        "q": {"R6": 8.0}
+      },
+      "note": "equal-precision opposing beta-one signals cancel in the mean; conditional precisions ADD (q=2p=8), var=1/(2p)."
+    },
+    {
+      "name": "competing_unequal",
+      "spec_ref": "21.3 / 10.2",
+      "nodes": ["S3", "R6", "S12"],
+      "factors": [
+        {"receiver": "R6", "informer": "S3", "beta": 1.0, "precision": 12.0},
+        {"receiver": "R6", "informer": "S12", "beta": 1.0, "precision": 4.0}
+      ],
+      "clamps": {"S3": -1.0, "S12": 1.0},
+      "expected": {
+        "mean": {"R6": -0.5},
+        "var": {"R6": 0.0625},
+        "q": {"R6": 16.0}
+      },
+      "note": "precision-weighted average (3p*(-1)+p*(+1))/4p = -0.5; q=4p=16."
+    },
+    {
+      "name": "cross_asset_average",
+      "spec_ref": "21.4 / 11.1",
+      "nodes": ["A", "B", "C"],
+      "factors": [
+        {"receiver": "C", "informer": "A", "beta": 1.0, "precision": 4.0},
+        {"receiver": "C", "informer": "B", "beta": 1.0, "precision": 4.0}
+      ],
+      "clamps": {"A": 0.6, "B": 1.4},
+      "expected": {
+        "mean": {"C": 1.0},
+        "var": {"C": 0.125},
+        "q": {"C": 8.0}
+      },
+      "note": "two lit assets, equal precision, beta one: plain average, q=2p."
+    },
+    {
+      "name": "beta_adjusted_competition",
+      "spec_ref": "10.3",
+      "nodes": ["S3", "R6", "S12"],
+      "factors": [
+        {"receiver": "R6", "informer": "S3", "beta": 0.5, "precision": 4.0},
+        {"receiver": "R6", "informer": "S12", "beta": 2.0, "precision": 4.0}
+      ],
+      "clamps": {"S3": -1.0, "S12": 1.0},
+      "expected": {
+        "mean": {"R6": 0.75},
+        "var": {"R6": 0.125},
+        "q": {"R6": 8.0}
+      },
+      "note": "signals average AFTER mapping into receiver units: (0.5*(-1)+2*(+1))/2 = +0.75 — equal raw innovations do NOT cancel when betas differ (alphaT=1 maps 3M and 1Y into 6M with betas 0.5 and 2)."
+    },
+    {
+      "name": "multi_hop_variance",
+      "spec_ref": "21.5 / 21.6 / 13",
+      "nodes": ["A", "B", "C"],
+      "factors": [
+        {"receiver": "B", "informer": "A", "beta": 1.5, "precision": 4.0},
+        {"receiver": "C", "informer": "B", "beta": 0.5, "precision": 8.0}
+      ],
+      "observations": {"A": {"value": 1.0, "precision": 10.0}},
+      "expected": {
+        "mean": {"A": 1.0, "B": 1.5, "C": 0.75},
+        "var": {"A": 0.1, "B": 0.475, "C": 0.24375}
+      },
+      "high_precision_source_limit": {
+        "observation_precision": 1000000000000.0,
+        "var": {"C": 0.1875}
+      },
+      "note": "chain A->B->C: means multiply through betas (1.5, then 0.75 total); Var(C) = (b2 b1)^2 vA + b2^2/p1 + 1/p2 = 0.05625+0.0625+0.125. As the source observation precision -> inf, Var(C) -> b2^2/p1 + 1/p2 = 0.1875 (spec 21.6: high-precision-source limit recovers the pure edge accumulation)."
+    },
+    {
+      "name": "dead_informer",
+      "spec_ref": "21.11 / 7.4",
+      "nodes": ["C", "D"],
+      "factors": [
+        {"receiver": "C", "informer": "A", "beta": 1.5, "precision": 4.0},
+        {"receiver": "C", "informer": "D", "beta": 1.0, "precision": 100.0}
+      ],
+      "clamps": {"A": 0.8},
+      "expected": {
+        "mean": {"C": 1.2, "D": 1.2},
+        "var": {"C": 0.25, "D": 0.26}
+      },
+      "note": "D is dark with no lit path and only a one-way edge into C, configured 25x MORE precise than the lit edge. Pairwise factors give ZERO dilution: mean(C) = 1.5*0.8 = 1.2 exactly and var(C) = 1/p_lit (the D-factor marginalizes away); the joint stays proper (PD). The rejected row-normalized form is improper here, and under a jitter anchor dilutes mean(C) toward p_lit/(p_lit+p_dead)*1.2 ~ 0.046 (spec 7.4 rejection rationale)."
+    },
+    {
+      "name": "shrunk_transfer",
+      "spec_ref": "21.12 / 8.4 / 14.2",
+      "nodes": ["C"],
+      "factors": [
+        {"receiver": "C", "informer": "A", "beta": 2.0, "precision": 4.0}
+      ],
+      "clamps": {"A": 1.0},
+      "rho_cases": [
+        {"rho": 0.34, "kappa": {"C": 7.764705882352941}, "expected_mean": {"C": 0.68}, "expected_var": {"C": 0.085}},
+        {"rho": 1.0, "kappa": {}, "expected_mean": {"C": 2.0}, "expected_var": {"C": 0.25}}
+      ],
+      "note": "node-linked anchor (chosen 2026-07-18, backtest/results/message_phase0.json): kappa is a FIXED per-node constant calibrated from the primary relation class, kappa = p_primary*(1-rho)/rho. Single-source transfer is EXACTLY rho*beta*z (0.34*2*1 = 0.68) with var = rho/p; rho=1 gives kappa=0 and recovers full transmission (case 21.1 semantics)."
+    },
+    {
+      "name": "shrunk_transfer_corroboration",
+      "spec_ref": "21.12 / 14.2",
+      "nodes": ["C"],
+      "factors": [
+        {"receiver": "C", "informer": "A", "beta": 2.0, "precision": 4.0},
+        {"receiver": "C", "informer": "B", "beta": 2.0, "precision": 4.0}
+      ],
+      "clamps": {"A": 1.0, "B": 1.0},
+      "rho_cases": [
+        {"rho": 0.34, "kappa": {"C": 7.764705882352941}, "expected_mean": {"C": 1.0149253731343284}, "expected_var": {"C": 0.06343283582089553}}
+      ],
+      "note": "node-linked corroboration contract: kappa stays FIXED at the single-source calibration (NOT rescaled as edges arrive), so a second equal agreeing source lifts the transfer from rho to 2rho/(1+rho) = 0.5075 per unit beta (mean 2*0.5075 = 1.0149). This is the empirically validated behaviour: stored-row study measured single-source index slope 0.391 -> predicted two-source 0.563 vs measured 0.561. The rejected edge-linked rule (kappa ~ sum of incoming precisions) would pin the transfer at rho regardless of corroboration, contradicting the data."
+    },
+    {
+      "name": "repeated_path_no_double_count",
+      "spec_ref": "21.8 / 16",
+      "nodes": ["A", "B", "T"],
+      "factors": [
+        {"receiver": "B", "informer": "A", "beta": 1.0, "precision": 4.0},
+        {"receiver": "T", "informer": "B", "beta": 1.0, "precision": 4.0},
+        {"receiver": "T", "informer": "A", "beta": 1.0, "precision": 4.0}
+      ],
+      "observations": {"A": {"value": 1.0, "precision": 4.0}},
+      "expected": {
+        "mean": {"A": 1.0, "B": 1.0, "T": 1.0},
+        "var": {"A": 0.25, "T": 0.4166666666666667}
+      },
+      "naive_path_sum_var": {"T": 0.3},
+      "note": "T hears the same uncertain source twice (direct A->T and via B). Global solve: Var(T) = 5/(3p) = 5/12. Naive independent-path precision addition would claim 6/(5p) = 0.3 — falsely tighter. The covariance-aware solve must give 5/12, NOT 0.3. Var(A) stays 1/r = 0.25: uninformed neighbours add nothing back."
+    }
+  ]
+}

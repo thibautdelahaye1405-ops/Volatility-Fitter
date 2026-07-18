@@ -183,10 +183,16 @@ items; absorbs R3 item 14.
 
 **Phases (details + exit gates in the spec §23):**
 
-- **P0 Contract+fixtures** — spec amendments (DONE 2026-07-18); canonical +
-  dead-informer fixtures; anchor mechanization chosen (edge-linked vs
-  node-linked) from the stored ~47k benchmark rows; empirical precision
-  defaults from the same rows.
+- **P0 Contract+fixtures — COMPLETE 2026-07-18** (exit gate MET): spec
+  amendments; golden fixtures `tests/fixtures/graph_message_golden.json` +
+  brute-force reference `tests/test_graph_message_golden.py` (24 green);
+  **anchor mechanization = node-linked (fixed κ)** — validated to 0.3% on
+  stored rows (single-source 0.391 → predicted two-source 0.563 vs measured
+  0.561; +43% corroboration uplift vs 15% bar); empirical seeds: calendar
+  p0≈1.7e3/epsT≈0.97 (noise gap-flat ~2.7 volpts at day horizon), index
+  p≈1.3e4, peer p≈0.9e4; learned calendar amplitude ≈0.23 UNDER alphaT=1
+  (0.34 was √T-shape). Study: `backtest/message_phase0.py` →
+  `results/message_phase0.json`; findings `FINDINGS_message_phase0.md`.
 - **P1 `graph/message.py`** — factor assembly, per-handle calendar
   beta/precision rules, q_i, cycle diagnostic; goldens to machine precision.
 - **P2 `graph/message_posterior.py`** — information-form component solve;
@@ -219,6 +225,37 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-18 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-18c) — MESSAGE ARC PHASE 0 COMPLETE
+
+- **Golden contracts locked before code**: `tests/fixtures/
+  graph_message_golden.json` + `tests/test_graph_message_golden.py` — 24
+  tests against an independent brute-force dense Gaussian reference (NOT
+  the future operator): all §21 canonical cases (full transmission,
+  competing equal/unequal, cross-asset, beta-adjusted +0.75), multi-hop
+  variance identity + high-precision-source limit, dead-informer
+  zero-dilution/properness (the pairwise-vs-row discriminator),
+  repeated-path 5/(3p) vs naive 6/(5p), shrunk single-source ρβz and
+  two-source 2ρ/(1+ρ) corroboration, global units-invariance. Phases 1-2
+  must reproduce these THROUGH `graph/message*.py` against the same file.
+- **Anchor mechanization CHOSEN: node-linked (fixed κ)** via new offline
+  study `backtest/message_phase0.py` (all 3 regimes, ssr=0, n≈1007
+  peer-having name-days): index-only slope 0.391 → fixed-κ model predicts
+  two-source 0.563, measured 0.561 (0.3%, zero free params); uplift +43%
+  ≥ 15% bar. κ_i = p_primary·(1−ρ)/ρ, FIXED at build (not rescaled as
+  edges arrive). Spec §14.2 updated; edge-linked documented as rejected.
+- **Empirical seeds** (spec §9.2): calendar p0≈1690 (1/vol²), epsT≈0.97
+  — residual ~GAP-FLAT (2.4-2.9 volpts) at day horizon, decay term nearly
+  inactive; alphaT shape weakly identified (R² 0.180/0.181/0.181 for
+  0/0.5/1) → keep 1.0 for semantics, P4 sweeps. Cross seeds: index→name
+  rms 0.87 volpts (p≈1.3e4), peer 1.05 (p≈0.9e4) — ticker-median caveat.
+  **Learned calendar amplitude is SHAPE-DEPENDENT: ≈0.23 under alphaT=1**
+  (0.34 was the √T-shape multiplier) — presets table updated (§8.4).
+- Artifacts: `backtest/results/message_phase0.json` (regenerable),
+  `backtest/FINDINGS_message_phase0.md`. Exit gate MET.
+- **NEXT: P1 — `volfit/graph/message.py`** (factor assembly, per-handle
+  calendar beta/precision rules, q_i mapping, cycle diagnostic; goldens to
+  machine precision through the production operator).
 
 ### 🧭 SESSION WRAP (2026-07-18b) — PRECISION-MESSAGE GRAPH ARC RATIFIED
 
