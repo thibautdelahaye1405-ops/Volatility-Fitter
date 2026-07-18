@@ -233,9 +233,18 @@ ladder). Shipped in five phases, all tests green (1198+ suite, new files
   Numba JIT confound). NB the wing max errors (25–128 bp on the LEAPS rows)
   are weekend/stale Yahoo wing noise — IDENTICAL across both solvers, i.e. a
   property of the underlying LQD independent fit, not the symmetric redesign;
-  a weekday tight-NBBO session would fit tighter. Phase-B REPAIR on real data
-  is still un-exercised (SPY is clean) — a messier live ladder would be the
-  next stress. Script: scratchpad `live_spy_symmetric.py`.
+  a weekday tight-NBBO session would fit tighter. Script: scratchpad
+  `live_spy_symmetric.py`.
+  **Extended to a live 8-name sweep same day** (QQQ/IWM/AAPL/NVDA/TSLA/AMD/
+  META/GLD, scratchpad `live_sweep_symmetric.py`): 8/8 fit clean, 8/8
+  arb-free (worst calendar residual ≤ 0 everywhere), 8/8 clean fast path,
+  and symmetric vs sequential agree to ≤ 0.001 bp (worst AMD; sub-micro-vol
+  warm-start trajectory noise, not substantive). **Zero false-positive
+  repairs** across the set. Phase-B REPAIR stays un-exercised on real data —
+  real markets are calendar-consistent, so an engineered violation (the
+  synthetic locks) is the correct and only place it triggers; a live trip
+  would need a genuinely crossed stale board. Verdict: the production-default
+  flip is safe and quiet across a liquidity-spanning live set.
 - **Still open:** endpoint-coords default flip after a benchmark-pack
   comparison; interface-weight constants (IFACE_BASE_WEIGHT / TAIL_ROW_FRAC /
   seam pad) unstress-tuned — the per-interface irreducible-slack readout is
