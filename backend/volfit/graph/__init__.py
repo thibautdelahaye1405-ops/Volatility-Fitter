@@ -18,18 +18,38 @@ from volfit.graph.operators import (
 from volfit.graph.prior import IncrementPrior, build_increment_prior
 from volfit.graph.posterior import GraphPosterior, posterior_update
 from volfit.graph.hyper import marginal_log_likelihood
+from volfit.graph.message import (
+    MessageEdge,
+    MessageOperator,
+    anchor_precisions,
+    build_message_operator,
+    calendar_beta,
+    calendar_message_precision,
+    cycle_beta_products,
+    expand_calendar_ladder,
+    message_edge,
+)
 
 __all__ = [
     "GraphPosterior",
     "IncrementPrior",
+    "MessageEdge",
+    "MessageOperator",
     "SmileGraph",
+    "anchor_precisions",
     "beta_matrix",
     "build_graph",
     "build_increment_prior",
+    "build_message_operator",
+    "calendar_beta",
+    "calendar_message_precision",
+    "cycle_beta_products",
     "directed_residual",
     "directed_residual_beta",
+    "expand_calendar_ladder",
     "incidence_matrix",
     "marginal_log_likelihood",
+    "message_edge",
     "mobility_laplacian",
     "posterior_update",
     "reversible_laplacian",

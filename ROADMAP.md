@@ -193,8 +193,17 @@ items; absorbs R3 item 14.
   p≈1.3e4, peer p≈0.9e4; learned calendar amplitude ≈0.23 UNDER alphaT=1
   (0.34 was √T-shape). Study: `backtest/message_phase0.py` →
   `results/message_phase0.json`; findings `FINDINGS_message_phase0.md`.
-- **P1 `graph/message.py`** — factor assembly, per-handle calendar
-  beta/precision rules, q_i, cycle diagnostic; goldens to machine precision.
+- **P1 `graph/message.py` — COMPLETE 2026-07-19** (exit gate MET; 272
+  lines): MessageEdge + pairwise factor assembly (MessageOperator w/ dense
+  PSD Q_msg, §7.6 q_i mapping, factor triplets kept for P2), calendar
+  beta/precision rules (per-handle alphaT, inverse-sqrt-gap w/ Phase-0
+  seeds, constant, log_distance), expand_calendar_ladder (canonical
+  receiver = shorter T), §14.2 node-linked anchor_precisions (primary =
+  max in-units incident factor), §16.4 cycle_beta_products
+  (union-find-with-offsets gauge sweep — consistent lattice clean,
+  non-reciprocal pair → product β², inconsistent triangle → product 8,
+  nonpositive β → NaN). tests/test_graph_message.py (23) drives ALL
+  Phase-0 goldens THROUGH the operator to 1e-12.
 - **P2 `graph/message_posterior.py`** — information-form component solve;
   **GraphPosterior-compatible adapter** (observed_columns/innovation_cov/
   attribution) so graph_reconstruct/select/backtest work unchanged;
@@ -224,7 +233,41 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-07-18 (resume here)
+## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19) — MESSAGE ARC PHASE 1 COMPLETE
+
+- **`volfit/graph/message.py` SHIPPED** (272 lines, pure NumPy, no API/model
+  imports): `MessageEdge`/`message_edge` (scalar-β broadcast, validation),
+  `build_message_operator` → `MessageOperator` (dense PSD Q_msg from
+  pairwise rank-one factors, §7.6 in-units receiver precisions q_i, factor
+  triplets retained for the P2 information-form assembly),
+  `calendar_beta` (per-handle alphaT), `calendar_message_precision`
+  (inverse_sqrt_gap default with Phase-0 seeds p0=1.7e3/epsT=0.97 +
+  constant + log_distance), `expand_calendar_ladder` (one factor per
+  adjacent pair, canonical receiver = shorter maturity),
+  `anchor_precisions` (§14.2 node-linked κ from the primary in-units
+  incident relation; ρ=1 ⇒ 0 exactly), `cycle_beta_products` (§16.4
+  gauge-potential union-find sweep; catches every inconsistent cycle at
+  its closing edge). Handle units: HANDLE_PRECISION_SCALE = (1, .36,
+  .0036) from the GRAPH_PRIOR_HYPER scale ratios (§9.4). Exported via
+  `volfit.graph` façade.
+- **Exit gate MET**: `tests/test_graph_message.py` (23 tests) reproduces
+  EVERY Phase-0 golden (incl. dead-informer PD + zero-dilution, shrunk
+  ρβz + corroboration 2ρ/(1+ρ) with anchor_precisions cross-derived κ,
+  q contracts) THROUGH the production operator at 1e-12; plus PSD under
+  random signed betas, §8.2 beta example, ladder orientation/reciprocity,
+  precision families, per-handle scaling, cycle diagnostics (clean
+  lattice / triangle product 8 / non-reciprocal pair product 4 / NaN
+  sentinel). Graph subset 186 passed (perf rail excluded from the batch
+  run; passes in isolation — quiet-box caveat).
+- **NEXT: P2 — `volfit/graph/message_posterior.py`**: information-form
+  component solve (Q⁺ = Q_msg + D_κ + HᵀR_dH), no_lit_path handling,
+  marginal variances + exact lit-source attribution via selected solves,
+  GraphPosterior-compatible adapter (observed_columns / innovation_cov /
+  marginal_variance / attribution) so reconstruct/select/backtest seams
+  work unchanged; brute-force covariance reference tests incl.
+  repeated-path, cycles, dead informer, finite source precision.
 
 ### 🧭 SESSION WRAP (2026-07-18c) — MESSAGE ARC PHASE 0 COMPLETE
 
