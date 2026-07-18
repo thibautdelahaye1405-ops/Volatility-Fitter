@@ -2,10 +2,14 @@
 
 ## Current state, target framework, and implementation roadmap
 
-**Status:** design specification  
-**Date:** 2026-07-18  
-**Locked decision:** the default calendar amplitude exponent is
-`alphaT = 1.0`.
+**Status:** design specification — AMENDED 2026-07-18 after codebase review;
+four decisions ratified by the user (amendment log in Section 27)  
+**Date:** 2026-07-18 (amended same day)  
+**Locked decisions:** the calendar amplitude SHAPE exponent is `alphaT = 1.0`;
+the amplitude LEVEL is a per-relation-class multiplier `rho` adjudicated by
+the benchmark (desk preset `rho = 1.0` = full force, implemented via the
+innovation anchor, Section 14); the operator is assembled from per-edge
+pairwise relation factors, not the row-normalized form (Section 7).
 
 ---
 
@@ -46,24 +50,22 @@ semantics:
    edge configuration.
 
 The proposed primary propagation operator is a **precision-message Gaussian
-operator**. For receiver \(i\), informer \(j\), edge precision \(p_{ij}\), and
-handle-specific amplitude \(\beta_{ij}\), define
-
-\[
-q_i = \sum_j p_{ij},
-\qquad
-K_{ij}^{p} = \frac{p_{ij}}{q_i},
-\qquad
-M = I-K^p\!\circ B.
-\]
-
-The propagation precision is
+operator** assembled from per-edge pairwise relation factors *(amended
+2026-07-18; the originally boxed row-normalized form is retained in Section
+7.4 as the rejected alternative)*. For receiver \(i\), informer \(j\), edge
+precision \(p_{ij}\), and handle-specific amplitude \(\beta_{ij}\), each edge
+contributes the Gaussian relation factor
+\(p_{ij}\,(z_i-\beta_{ij}z_j)^2\), and the propagation precision is
 
 \[
 \boxed{
-Q_{\mathrm{msg}} = M^\top D_q M,
+Q_{\mathrm{msg}}
+=
+\sum_{(j\to i)}
+p_{ij}\,
+(e_i-\beta_{ij}e_j)(e_i-\beta_{ij}e_j)^\top,
 \qquad
-D_q=\operatorname{diag}(q_i).
+q_i=\sum_j p_{ij}.
 }
 \]
 
@@ -434,7 +436,10 @@ or distance-based confidence decay. A new operator is warranted.
 
 ## 6. Target semantics
 
-The precision-message mode should satisfy the following invariants.
+The precision-message mode should satisfy the following invariants. *(Stated
+in desk mode, `rho = 1`; under a shrunk amplitude preset Invariant 1's
+transfer becomes \(\rho\,\beta_{ij}z_j\) by the anchor mechanism of Section
+14.2, and the remaining invariants are unchanged.)*
 
 ### Invariant 1: full configured amplitude
 
@@ -516,77 +521,40 @@ z_i
 
 with conditional relation variance \(1/p_{ij}\).
 
-### 7.2 Precision-weighted receiver rule
+### 7.2 Pairwise relation-factor assembly (amended 2026-07-18)
 
-For each receiver, define
-
-\[
-q_i=\sum_jp_{ij},
-\]
-
-and, when \(q_i>0\),
-
-\[
-K^p_{ij}=\frac{p_{ij}}{q_i}.
-\]
-
-The receiver prediction is
-
-\[
-m_i
-=
-\sum_jK^p_{ij}\beta_{ij}z_j
-=
-\frac{\sum_jp_{ij}\beta_{ij}z_j}{q_i}.
-\]
-
-Its conditional residual is
-
-\[
-r_i=z_i-m_i.
-\]
-
-The residual energy is
+Each message edge contributes one Gaussian relation factor. The propagation
+energy is the sum of per-edge residuals,
 
 \[
 \mathcal E_{\mathrm{msg}}(z)
 =
-\sum_{i:q_i>0}q_i r_i^2.
+\sum_{(j\to i)}
+p_{ij}\,(z_i-\beta_{ij}z_j)^2,
 \]
 
-### 7.3 Matrix form and PSD property
-
-Let
-
-\[
-M=I-K^p\!\circ B,
-\qquad
-D_q=\operatorname{diag}(q_i).
-\]
-
-Then
+so the operator is the sum of rank-one factors
 
 \[
 \boxed{
-Q_{\mathrm{msg}}=M^\top D_qM.
+Q_{\mathrm{msg}}
+=
+\sum_{(j\to i)}
+p_{ij}\,
+u_{ij}u_{ij}^\top,
+\qquad
+u_{ij}=e_i-\beta_{ij}e_j.
 }
 \]
 
-For every vector \(z\),
+Positive semidefiniteness is immediate for arbitrary real betas (a sum of
+PSD rank-one terms), and the assembly is sparse by construction: each factor
+touches exactly two nodes.
 
-\[
-z^\top Q_{\mathrm{msg}}z
-=
-\|Mz\|_{D_q}^2
-\ge0.
-\]
+### 7.3 Receiver conditional
 
-Therefore the new operator is symmetric positive semidefinite for arbitrary
-real betas, just like the current directed residual.
-
-### 7.4 Receiver-row factor interpretation
-
-The receiver row contributes the Gaussian factor
+Minimizing the energy over \(z_i\) with the informers held fixed gives the
+receiver conditional
 
 \[
 z_i\mid\{z_j\}
@@ -594,19 +562,65 @@ z_i\mid\{z_j\}
 \mathcal N\!\left(
 \frac{\sum_jp_{ij}\beta_{ij}z_j}{q_i},
 \frac{1}{q_i}
-\right).
+\right),
+\qquad
+q_i=\sum_jp_{ij}.
 \]
 
-This is the direct desk interpretation of the new mode. It is also the exact
-receiver conditional in the canonical one-way fixture where the informers are
-clamped and no other factor contains the receiver.
+This is the direct desk interpretation of the new mode: incoming messages are
+precision-weighted and averaged, and independent incoming conditional
+precisions add. It is the exact receiver conditional in the canonical one-way
+fixture where the informers are clamped and no other factor contains the
+receiver — identical to the conditional produced by the row-normalized form
+below, so **every local golden contract in Section 21 is unchanged by this
+amendment**.
 
-In the full graph, node \(i\) may also appear as an informer in other receiver
-rows. Those additional factors legitimately contribute information about
+In the full graph, node \(i\) may also appear as an informer in other nodes'
+factors. Those additional factors legitimately contribute information about
 \(z_i\). Consequently, the formula above defines the semantics and conditional
-precision of **this receiver row**, while the final node conditional and
+precision of the incoming messages, while the final node conditional and
 marginal precision come from the global posterior. This distinction is
-especially important for bidirectional edges and cycles.
+especially important for explicitly configured reverse edges and cycles.
+
+### 7.4 The rejected row-normalized alternative
+
+The original draft of this specification boxed a row-normalized operator:
+with \(K^p_{ij}=p_{ij}/q_i\) and \(M=I-K^p\!\circ B\),
+
+\[
+Q_{\mathrm{msg}}^{\mathrm{row}}=M^\top D_qM,
+\qquad
+D_q=\operatorname{diag}(q_i),
+\]
+
+whose energy is \(\sum_i q_i\,(z_i-\sum_j K^p_{ij}\beta_{ij}z_j)^2\). Both
+forms produce the identical receiver conditional of Section 7.3, and both are
+PSD. They differ in the joint distribution, and the pairwise form was ratified
+(2026-07-18) for three reasons:
+
+1. **Dead informers.** In the row form the averaging weights \(K^p_{ij}\) are
+   fixed by *configured* precision even when an informer carries no
+   information. A receiver fed by one lit informer and one dark dead-end
+   informer (no lit path, one-way edge) gets an improper posterior — the row
+   residual can be zeroed for any \(z_i\) by moving the free informer — and
+   under a small regularizing anchor the limit *dilutes* the lit message by
+   \(p_{\mathrm{lit}}/(p_{\mathrm{lit}}+p_{\mathrm{dead}})\), violating the
+   spirit of Invariant 1. In the pairwise form, marginalizing an unconstrained
+   informer removes its factor exactly: the lit message passes at full
+   amplitude.
+2. **One relation, one factor.** A bidirectional reciprocal pair collapses to
+   a single factor (Section 7.6), so auto-generated calendar relations cannot
+   double-count precision. In the row form, reverse rows always add energy
+   and the confidence contract needs a separate convention.
+3. **Sparse-ready simplicity.** The factor list is the assembly; there is no
+   normalization coupling between edges into the same receiver.
+
+The joint-behaviour trade-off is acknowledged: at the receiver conditional
+mean the pairwise energy retains the disagreement between messages, so
+observing a receiver's disagreeing informers couples them mildly through the
+receiver, whereas the row form does not. The global Gaussian solve handles
+this correctly in both cases, and the clamped-informer golden fixtures are
+unaffected.
 
 ### 7.5 Conditional versus marginal precision
 
@@ -623,11 +637,37 @@ Three distinct quantities must remain visible:
 Only in the idealized case of known independent informers does final receiver
 precision reduce exactly to \(q_i\).
 
+### 7.6 Canonical orientation and bidirectional relations (added 2026-07-18)
+
+A single factor per relation requires an orientation convention, because
+\(p\,(z_i-\beta z_j)^2\) and \(p'\,(z_j-z_i/\beta)^2\) are the same factor
+shape only under the identity
+
+\[
+p_{\mathrm{rev}}=p_{\mathrm{fwd}}/\beta^2 .
+\]
+
+Conventions locked:
+
+- **Auto-generated reciprocal relations emit ONE factor.** For calendar
+  pairs the canonical receiver is the **shorter maturity**, so the relation
+  noise \(1/p\) is quoted in short-maturity vol units — where moves are
+  largest and desk intuition lives. Cross-asset relations with beta one are
+  orientation-neutral; for beta different from one the canonical receiver is
+  the **target of the configured relation class** (e.g. the constituent in
+  an index-to-constituent rule).
+- **Explicit user edges stay directed as entered.** Entering both directions
+  explicitly creates two factors — that is then a deliberate modeling choice
+  of two distinct relations, and the cycle diagnostics of Section 16 apply.
+- **The receiver diagnostic \(q_i\)** sums the precision of every factor
+  incident to node \(i\), mapped into \(i\)'s units via the identity above
+  when the factor's canonical receiver is the other endpoint.
+
 ---
 
 ## 8. Maturity amplitude
 
-### 8.1 Locked default
+### 8.1 Locked default (maturity shape)
 
 For a calendar edge whose source maturity is \(T_j\) and receiver maturity is
 \(T_i\), define
@@ -718,6 +758,56 @@ With `alphaT = 1`,
 This avoids contradictory gain cycles such as both directions claiming a 2x
 amplification.
 
+### 8.4 Amplitude level multiplier (amended 2026-07-18)
+
+`alphaT = 1.0` locks the maturity **shape** only. The overall amplitude
+**level** is a separate per-relation-class multiplier
+
+\[
+\rho_{\mathrm{class}}\in(0,1],
+\]
+
+with presets:
+
+| Preset | Value | Source |
+|---|---|---|
+| `desk` | 1.0 | full configured force (the original framework semantics) |
+| `learned` | ≈0.34 calendar, ≈0.55 index→name, ≈0.76 sector peer | `backend/backtest/results/learned_betas.json`, strict time-split predictive OLS |
+
+Rationale: the learned artifact measures raw day-over-day innovation transfer
+far below one (calendar multiplier raw 0.34 on n≈12k pairs, t≈44). Full-force
+propagation is correct *conditional on a relation the desk believes*; it is
+predictively wrong as a day-horizon default and would fail the RMS gate of
+Section 22.4. The Phase-4 benchmark sweeps \(\rho\) and picks the shipped
+default; `desk` remains one control away.
+
+**Mechanics.** \(\rho\) must shrink the transfer in *both* directions of a
+relation. Scaling the factor beta (\(\beta\to\rho\beta\)) is wrong — it
+*amplifies* the reverse conditional by \(1/\rho\). Emitting two directed
+shrunk factors is also wrong — it composes to \(2\rho/(1+\rho^2)\ne\rho\)
+and double-counts the relation. The mathematically correct mechanization of
+both-way regression attenuation in a joint Gaussian is a **local innovation
+anchor**: \(\rho\) parameterizes \(\kappa_i>0\) (Section 14.2), and the desk
+preset \(\rho=1\) recovers \(\kappa=0\) exactly, i.e. the unamended
+framework.
+
+### 8.5 Per-handle calendar exponents (added 2026-07-18)
+
+The original draft defined the calendar beta once, implicitly for all three
+handles. ATM level, skew, and curvature need not share the same maturity
+scaling, so the exponent is per-handle:
+
+\[
+\alpha_T^{\sigma},\quad
+\alpha_T^{s},\quad
+\alpha_T^{c},
+\qquad
+\text{all default } 1.0 .
+\]
+
+The Phase-4 benchmark sweeps the skew/curvature exponents separately; the
+defaults change only on adjudicated evidence.
+
 ---
 
 ## 9. Calendar precision and maturity distance
@@ -793,6 +883,25 @@ z_i=\beta_{ij}z_j+\epsilon_{ij},
 \]
 
 This makes multi-hop uncertainty accumulation transparent.
+
+### 9.4 Precision units across handles (added 2026-07-18)
+
+Edge precision has units \(1/z^2\), and the three handles live on very
+different numeric scales (the production per-handle scales are
+\(s=(0.03,\ 0.05,\ 0.5)\) for ATM vol, skew, curvature — see
+`GRAPH_PRIOR_HYPER`). One `messagePrecision` cannot be simultaneously
+calibrated for all three. Convention locked:
+
+- `messagePrecision` is defined in **ATM-vol units**;
+- skew and curvature precisions derive via global per-handle scale
+  multipliers, default \((s_\sigma/s_h)^2\), configurable;
+- per-edge per-handle precision overrides remain possible but are not
+  required by the default rules.
+
+The mean of the precision-weighted average is invariant to a global
+per-handle rescale of all incoming precisions; only the reported conditional
+variance depends on it, so this convention is a units choice, not a
+propagation-semantics choice.
 
 ---
 
@@ -1086,22 +1195,46 @@ then a receiver's conditional mean becomes
 {\kappa_i+\sum_jp_{ij}}.
 \]
 
-This attenuates every valid message.
+This attenuates every valid message. In desk mode (\(\rho=1\)) that is a
+defect and the anchor is zero. In shrunk mode it is **the mechanism**: a
+finite anchor is the mathematically correct way to obtain regression
+attenuation in *both* directions of a relation within one consistent joint
+Gaussian (Section 8.4).
 
-### 14.2 Default in precision-message mode
+### 14.2 Anchor as the amplitude dial (amended 2026-07-18)
 
-For a dark node connected to at least one lit-informed component, the default
-economic innovation-anchor precision should be
+For a dark node connected to at least one lit-informed component:
+
+- **Desk preset (\(\rho=1\)):**
 
 \[
-\boxed{\kappa_i^{\mathrm{msg}}=0.}
+\boxed{\kappa_i^{\mathrm{msg}}=0,}
 \]
 
-A tiny numerical jitter may be used internally only when necessary and must not
-be presented as economic confidence.
+  the original full-force semantics. A tiny numerical jitter may be used
+  internally only when necessary and must not be presented as economic
+  confidence.
 
-An explicit `innovationAnchorPrecision` knob may be exposed for hybrid or
-stress modes, but its default is zero in precision-message mode.
+- **Shrunk presets (\(\rho<1\)):** \(\kappa_i\) is derived from the
+  configured per-class multipliers. Two candidate mechanizations, to be
+  chosen at the Phase-0 exit from the stored benchmark rows:
+
+  1. **Edge-linked (constant transfer).**
+     \(\kappa_i=\sum_j p_{ij}\,(1-\rho_{\mathrm{class}(j)})/\rho_{\mathrm{class}(j)}\).
+     A single-class receiver then transfers exactly
+     \(\rho\,\beta z\) regardless of source count.
+  2. **Node-linked (corroboration-adaptive).** \(\kappa_i\) is a fixed
+     per-node quantity calibrated to the ticker's idiosyncratic innovation
+     variance (the trailing idio machinery of `graph/idio.py` already
+     estimates it), so the effective transfer \(q_i/(\kappa_i+q_i)\)
+     *rises* as independent corroborating sources accumulate.
+
+  The offline discriminating question — does realized transfer increase
+  with source count? — is answerable from the existing 47k stored
+  benchmark rows without any new capture.
+
+An explicit `innovationAnchorPrecision` override remains exposed for hybrid
+or stress modes; when set it takes precedence over the derived value.
 
 ### 14.3 Components without lit observations
 
@@ -1159,6 +1292,7 @@ The posterior mean is
 \boxed{
 \widehat z=(Q^+)^{-1}b^+.
 }
+\]
 
 The posterior covariance is
 
@@ -1184,6 +1318,7 @@ r_s^d
 \frac{1}{p_s^0}
 \right)^{-1}.
 }
+\]
 
 This prevents an uncertain transported prior from producing an artificially
 precise source innovation.
@@ -1210,6 +1345,15 @@ band rule is
 followed by the existing idiosyncratic floor. Correlation between baseline
 error and innovations should be reviewed explicitly before locking this formula
 for historical priors derived from overlapping data.
+
+**Placement rule (locked 2026-07-18):** baseline uncertainty enters exactly
+once per node. For a **lit** source it is folded into the innovation
+observation precision \(r_s^d\) of Section 15.2 and must NOT be added again
+to that node's band. For a **dark** node it enters only through the
+reconstruction band above. A golden test locks that no node receives the
+baseline variance twice. (This mirrors the current production convention,
+where baseline precision enters the predictive covariance and calibration
+precision enters the innovation system, separately.)
 
 ### 15.4 Optional hybrid regularization
 
@@ -1383,12 +1527,15 @@ Proposed new settings:
 ```text
 messagePropagationEnabled
 propagationMode
-calendarBetaExponent         # default 1.0
+calendarBetaExponent         # per-handle triple, defaults 1.0 (Section 8.5)
+calendarAmplitude            # rho_calendar; presets desk=1.0 / learned~0.34
+crossAssetAmplitude          # rho per cross relation class (Section 8.4)
 calendarPrecisionScale
 calendarPrecisionDecay       # default inverse_sqrt_time_gap
 calendarPrecisionEpsilon
 crossAssetPrecisionScale
-innovationAnchorPrecision    # default 0 in message mode
+handlePrecisionScale         # skew/curv precision multipliers (Section 9.4)
+innovationAnchorPrecision    # override; default DERIVED from rho (Section 14.2)
 cycleBetaTolerance
 ```
 
@@ -1505,10 +1652,12 @@ rule, including the three canonical examples in this document.
 ## 21. Golden acceptance tests
 
 The following tests are product contracts, not merely numerical smoke tests.
-The local averaging contracts use directed incoming rows only, with lit sources
-clamped or given effectively infinite observation precision. Separate
-integration tests cover the additional information created by explicitly
-configured reverse rows and cycles.
+The local averaging contracts are stated in **desk mode** (`rho = 1`, zero
+anchor), with lit sources clamped or given effectively infinite observation
+precision; under the pairwise-factor assembly of Section 7.2 they hold
+identically to the original row-form statement. Separate integration tests
+cover the additional information created by explicitly configured reverse
+edges and cycles.
 
 ### 21.1 Full calendar transmission
 
@@ -1637,6 +1786,28 @@ to numerical tolerance.
 `propagationMode="smooth_field"` must reproduce all existing graph means,
 variances, attribution, and API payloads byte-for-byte at the current defaults.
 
+### 21.11 Dead informer (added 2026-07-18)
+
+A receiver fed by one clamped lit informer and one dark informer that has no
+lit path and no other factors must show **zero dilution**: the posterior mean
+equals the lit message \(\beta z_{\mathrm{lit}}\) exactly, the dead
+informer's marginal stays broad, and no improper direction survives in the
+component solve.
+
+### 21.12 Shrunk-mode transfer (added 2026-07-18)
+
+With a single clamped source, amplitude preset \(\rho<1\), and the
+edge-linked anchor of Section 14.2, the posterior mean is
+\(\rho\,\beta z_j\) to machine precision. With \(\rho=1\) the anchor is
+exactly zero and test 21.1 is recovered.
+
+### 21.13 Baseline uncertainty enters once (added 2026-07-18)
+
+Increasing a lit source's baseline uncertainty must widen the innovation
+observation variance (Section 15.2) and must not additionally widen that
+node's reconstruction band; a dark node's band must include the baseline
+term exactly once (Section 15.3).
+
 ---
 
 ## 22. Historical validation plan
@@ -1682,7 +1853,13 @@ Report:
 - result by asset kind, maturity bucket, source count, and graph distance;
 - conditional precision versus realized error;
 - calibration by path length;
-- sensitivity to `alphaT`, precision decay, and anchor precision.
+- sensitivity to `alphaT`, the amplitude multiplier `rho` (desk vs learned vs
+  swept), precision decay, and anchor mechanization (edge-linked vs
+  node-linked, Section 14.2).
+
+Note: 50/80/95% band coverage is **not** computed by the current harness
+(only standardized-residual mean/std); adding it is part of the benchmark
+preparation phase.
 
 ### 22.4 Pre-registered adoption gate
 
@@ -1701,154 +1878,204 @@ Precision-message mode should become the product default only if:
 
 ## 23. Implementation roadmap
 
-### Phase 0 — Contract and fixtures
+*(Amended 2026-07-18 to the ratified ordering: benchmark adjudication moves
+ahead of the frontend build and absorbs the parked R3 item-14 learned-betas
+sweep; the frontend ships the full Section-20 editor in v1.)*
+
+### Phase 0 — Contract, amendments, and fixtures
 
 **Goal:** lock semantics before implementation.
 
 Work:
 
-1. Add this design document to the technical-note index.
-2. Create small deterministic fixtures for the three canonical use cases.
-3. Lock the informer/receiver direction convention.
-4. Lock `alphaT = 1.0` as the default.
-5. Define conditional edge precision versus posterior marginal precision in API
-   terminology.
-6. Decide the initial numeric defaults for calendar precision scale and
-   `epsilonT` from dimensional sanity checks.
+1. Apply the ratified amendments to this document (done 2026-07-18; Section
+   27) and add it to the technical-note index.
+2. Create small deterministic fixtures for the three canonical use cases,
+   plus the dead-informer and bidirectional cases of Sections 7.4/7.6.
+3. Lock the informer/receiver direction convention and the canonical
+   relation orientation (Section 7.6).
+4. `alphaT = 1.0` locked as the shape default; amplitude level `rho` per
+   Section 8.4.
+5. Choose the anchor mechanization (edge-linked vs node-linked, Section
+   14.2) from the stored benchmark rows — does realized transfer rise with
+   source count?
+6. Define conditional edge precision versus posterior marginal precision in
+   API terminology.
+7. Derive initial numeric defaults for calendar precision scale, `epsilonT`,
+   and relation-class precisions **empirically from the ~47k stored
+   benchmark rows** (the learn-betas innovation panel), not from dimensional
+   sanity checks alone.
 
 Exit gate:
 
 - all golden expected means and conditional precisions are agreed before code
-  is written.
+  is written, and the anchor mechanization is chosen.
 
 ### Phase 1 — Core precision-message operator
 
-**Goal:** implement the PSD operator independently of the API.
+**Goal:** implement the PSD operator independently of the API
+(`graph/message.py`, file <= 400 lines).
 
 Work:
 
-1. Add `graph/message.py`.
-2. Implement informer-to-receiver message edges.
-3. Preserve raw edge precisions and receiver sums \(q_i\).
-4. Build \(K^p\), per-handle beta matrices, \(M\), and
-   \(Q_{\mathrm{msg}}=M^\top D_qM\).
-5. Implement calendar beta with default `alphaT=1.0`.
-6. Implement inverse-square-root maturity-gap precision.
-7. Add PSD, reciprocal-beta, and exact local-conditional tests.
+1. `MessageEdge` (informer/receiver, precision, per-handle betas, relation
+   class, precision rule) and relation-rule expansion to a factor list.
+2. Pairwise-factor assembly of \(Q_{\mathrm{msg}}\) (Section 7.2) as
+   triplets — dense materialization at current scale, sparse-ready by
+   construction.
+3. Receiver sums \(q_i\) with the unit mapping of Section 7.6.
+4. Calendar beta with per-handle `alphaT` defaults 1.0 (Section 8.5) and
+   the amplitude-to-anchor derivation (Sections 8.4/14.2).
+5. Inverse-square-root maturity-gap precision plus the Section 9.2
+   alternatives; per-handle precision scaling (Section 9.4).
+6. Cycle beta-product diagnostic on the directed view.
+7. PSD, reciprocal-beta, and exact local-conditional tests.
 
 Exit gate:
 
-- the one-source, competing-source, and cross-asset golden tests pass to
-  machine precision.
+- the one-source, competing-source, cross-asset, and shrunk-mode golden
+  tests pass to machine precision.
 
-### Phase 2 — Precision-form posterior
+### Phase 2 — Information-form posterior
 
-**Goal:** solve the global posterior without a forced zero-innovation anchor.
+**Goal:** solve the global posterior without a forced zero-innovation anchor
+(`graph/message_posterior.py`).
 
 Work:
 
-1. Add component detection and lit-observation anchoring.
-2. Assemble \(Q^+\) and \(b^+\) in information form.
-3. Solve posterior means and marginal variances.
-4. Handle no-lit components explicitly.
+1. Connected-component detection and lit-observation anchoring.
+2. Assemble \(Q^+\) and \(b^+\) in information form; Cholesky solve for
+   means; marginal variances and attribution columns via selected solves.
+3. **`GraphPosterior`-compatible adapter** (`observed`, `observed_columns`,
+   `innovation_cov`, `marginal_variance`, `attribution()`) so
+   `graph_reconstruct`, `graph_select`, and `graph_backtest` work unchanged.
+4. Handle no-lit components explicitly (`no_lit_path`); informer
+   reachability guard (dead informers cannot destabilize a component).
 5. Incorporate finite innovation precision from calibration and baseline
-   uncertainty.
+   uncertainty with the Section 15.3 placement rule.
 6. Reproduce multi-hop mean and variance identities.
-7. Implement exact lit-source attribution.
+7. Exact lit-source attribution.
 
 Exit gate:
 
-- global results match brute-force Gaussian references, including repeated-path
-  and cycle fixtures.
+- global results match brute-force Gaussian references, including
+  repeated-path, cycle, and dead-informer fixtures.
 
-### Phase 3 — Production orchestration
+### Phase 3 — Production orchestration and schema v2
 
 **Goal:** connect the new operator to the existing transported-prior workflow.
 
 Work:
 
-1. Add `propagationMode` to production requests and persisted defaults.
-2. Reuse selected-universe and transported-prior resolution.
-3. Feed real lit calibration innovations into the message posterior.
-4. Reuse handle reconstruction, native-model refit, LV projection, and quote
-   comparison.
-5. Add source/target schema migration without changing legacy edge meaning.
-6. Surface conditional and marginal precision diagnostics.
+1. `propagationMode: smooth_field | precision_messages | hybrid` on requests
+   and persisted defaults, resolved mode-to-flags in the
+   `priorPersistenceMode` style; hybrid stays config-only.
+2. Reuse selected-universe and transported-prior resolution; feed real lit
+   calibration innovations into the message posterior; reuse handle
+   reconstruction, native-model refit, LV projection, quote comparison, and
+   the idio floor.
+3. Message-edge schema v2 with source/informer -> target/receiver naming and
+   blob-level forward migration (legacy rows convert with the documented
+   inversion: new receiver = old `from`, new informer = old `to`; economic
+   meaning preserved, test-locked).
+4. New settings of Section 18.4.
+5. Surface conditional and marginal precision diagnostics plus
+   `no_lit_path` and cycle products on the wire.
+6. Explicit `smooth_field` byte-identity lock at current defaults.
 
 Exit gate:
 
 - one end-to-end production request reproduces every core golden fixture and
-  returns a reconstructed smile.
+  returns a reconstructed smile; the legacy suite is untouched.
 
-### Phase 4 — Edge editor and diagnostics UX
+### Phase 4 — Backtest adjudication (absorbs the parked item-14 sweep)
 
-**Goal:** make the operator directly configurable and explainable.
+**Goal:** decide defaults from held-out evidence, before the frontend
+polishes them.
 
 Work:
 
-1. Add explicit message precision to ticker and expiry matrices.
-2. Display generated directional calendar betas.
-3. Show the default `alphaT=1.0` control.
-4. Show maturity-distance precision and inherited values.
-5. Correct all edge direction arrows and labels.
-6. Add receiver diagnostics and canonical scenario previews.
-7. Preserve the legacy editor for smooth-field mode.
+1. Add precision-message variants and knobs to the benchmark pack CLI
+   (`--mode`, `--alpha-t`, amplitude `--amp-cal/--amp-cross`, precision
+   scale/decay/epsilon), reusing the frozen fixtures — no recapture.
+2. **Add 50/80/95% band coverage, conditional-vs-realized calibration, and
+   path-length calibration to the scored rows** (missing today).
+3. One combined campaign absorbing the parked learned-betas (b14)
+   adjudication: smooth-field {base, learned betas, OT} and
+   precision-message {amplitude in {desk, learned, swept}} × `alphaT`
+   {0, 0.5, 1.0} × decay family, over the three regimes and both
+   full-LOO/liquid-split designs, plus calendar-only and cross-only
+   ablations. Runbook launched from the user's own window.
+4. Validate marginal uncertainty by distance and source count.
+5. Publish a decision table against the pre-registered gate of Section 22.4.
 
 Exit gate:
 
-- a user can configure the three canonical cases in the UI and see their exact
-  expected mean and precision before saving.
+- precision-message mode is activated, retained as opt-in, or rejected, and
+  the default amplitude preset is chosen — from a reproducible benchmark
+  artifact.
 
-### Phase 5 — Unit, integration, and migration hardening
+### Phase 5 — Edge editor and diagnostics UX (full Section-20 scope)
+
+**Goal:** make the operator directly configurable and explainable. May start
+in parallel with the Phase-4 campaign (which runs in the user's window).
+
+Work:
+
+1. Widen the matrix cell model from {weight, single beta} to explicit
+   message precision + three handle betas + relation class +
+   inherited-versus-explicit display; split the matrix editor component to
+   respect the 400-line policy.
+2. Display generated directional calendar betas, maturity-distance
+   precisions, and reciprocal reverse values in the expiry drill-in.
+3. `alphaT` and amplitude-preset controls (desk / learned / custom).
+4. Correct all edge direction arrows and labels; one-way
+   source-to-target UI integration test from payload to posterior effect.
+5. Receiver diagnostics: conditional \(q_i\) versus marginal posterior
+   precision, top source contributions with effective precisions,
+   `no_lit_path` and cycle warnings (most fields already ride the wire
+   unrendered).
+6. Deterministic canonical scenario previews before saving an edge rule.
+7. Preserve the legacy editor for smooth-field mode; vitest coverage for the
+   new components.
+
+Exit gate:
+
+- a user can configure the three canonical cases in the UI and see their
+  exact expected mean and precision before saving.
+
+### Phase 6 — Unit, integration, and migration hardening
 
 **Goal:** prevent semantic drift.
 
 Work:
 
-1. Lock all golden tests in Section 21.
-2. Add API round-trip and persistence tests.
-3. Add one-way source-to-target UI integration tests.
-4. Add malformed, reducible, disconnected, and inconsistent-cycle tests.
-5. Verify `smooth_field` byte identity.
-6. Add numerical conditioning and variance-positivity guards.
+1. Lock all golden tests in Section 21 (including 21.11-21.13).
+2. Add API round-trip and blob-persistence/migration tests.
+3. Add malformed, reducible, disconnected, and inconsistent-cycle tests.
+4. Re-verify `smooth_field` byte identity end to end.
+5. Numerical conditioning and variance-positivity guards.
+6. Register a certification-pack case for the new mode.
 
 Exit gate:
 
-- full backend and frontend suites are green, and legacy persisted graphs load
-  without economic reversal.
+- full backend and frontend suites are green, and legacy persisted graphs
+  load without economic reversal.
 
-### Phase 6 — Backtest adjudication
+### Phase 7 — Sparse production solve (deferred until a universe demands it)
 
-**Goal:** decide defaults from held-out evidence.
-
-Work:
-
-1. Add precision-message variants to the benchmark pack.
-2. Run the three regimes and both full-LOO/liquid-split designs.
-3. Sweep calendar precision scale, distance decay, and `epsilonT`.
-4. Compare `alphaT` values `{0, 0.5, 1.0}` while retaining `1.0` as the product
-   default unless the benchmark rejects it decisively.
-5. Ablate cross-asset precision classes and learned betas.
-6. Validate marginal uncertainty by distance and source count.
-7. Publish a decision table against the pre-registered gate.
-
-Exit gate:
-
-- precision-message mode is activated, retained as opt-in, or rejected based on
-  a reproducible benchmark artifact.
-
-### Phase 7 — Sparse production solve
-
-**Goal:** use the new precision-form structure at large universe scale.
+**Goal:** use the new information-form structure at large universe scale.
+The pairwise assembly is already sparse-ready; the dense path passes the
+existing 1k-node perf rail.
 
 Work:
 
-1. Assemble \(Q^+\) as a sparse matrix.
-2. Use sparse Cholesky or conjugate-gradient solves for means.
-3. Compute observed-source attribution from selected solves.
-4. Compute marginal variances with selected inverse, probing, or bounded
-   approximations.
-5. Add latency and memory rails for 1k, 10k, and target production universes.
+1. Assemble \(Q^+\) as a sparse matrix; sparse Cholesky or
+   conjugate-gradient solves for means.
+2. Observed-source attribution from selected solves; marginal variances via
+   selected inverse, probing, or bounded approximations (also unlocks the
+   `select.py` selected-inverse path).
+3. Latency and memory rails for 1k, 10k, and target production universes.
 
 Exit gate:
 
@@ -1931,10 +2158,12 @@ Safeguards:
 5. Precision-message mode uses precision-weighted averaging, not signal
    addition.
 6. Incoming independent conditional precisions add.
-7. Full-force propagation requires zero default economic innovation-anchor
-   precision on connected dark nodes.
-8. The default calendar amplitude is
-   \(\beta_{i\leftarrow j}=T_j/T_i\), i.e. `alphaT = 1.0`.
+7. Full-force propagation (`rho = 1`, the desk preset) requires zero economic
+   innovation-anchor precision on connected dark nodes; shrunk presets derive
+   a finite anchor from `rho` (Section 14.2).
+8. The default calendar amplitude **shape** is
+   \(\beta_{i\leftarrow j}=(T_j/T_i)^{\alpha_T}\) with `alphaT = 1.0`; the
+   amplitude **level** `rho` is benchmark-adjudicated (Section 8.4).
 9. Whenever reverse calendar relations are generated, their betas are
    reciprocal.
 10. The initial default calendar precision family is inverse square root in
@@ -1947,6 +2176,20 @@ Safeguards:
 14. Precision-message, smooth-field, and hybrid semantics are explicit modes.
 15. Edge direction naming is migrated to unambiguous informer/source and
     receiver/target terminology.
+16. *(2026-07-18)* The operator is assembled from per-edge pairwise relation
+    factors, not the row-normalized form (Section 7.4 records the rejection
+    rationale).
+17. *(2026-07-18)* Auto-generated reciprocal relations emit one factor, in
+    the canonical orientation of Section 7.6.
+18. *(2026-07-18)* `messagePrecision` is defined in ATM-vol units with
+    global per-handle scale multipliers (Section 9.4); calendar exponents
+    are per-handle (Section 8.5).
+19. *(2026-07-18)* Baseline uncertainty enters exactly once per node
+    (Section 15.3 placement rule).
+20. *(2026-07-18)* The adjudication campaign absorbs the parked
+    learned-betas (R3 item-14) sweep into one combined benchmark run, and it
+    runs before the frontend build completes (Phase 4 before/parallel with
+    Phase 5).
 
 ---
 
@@ -1976,3 +2219,36 @@ full configured signal amplitude
 It preserves the strongest parts of the current Bayesian graph workflow while
 making cross-maturity and cross-asset propagation substantially more tunable,
 potent, and explainable.
+
+---
+
+## 27. Amendment log
+
+**2026-07-18 — codebase review + user ratification** (four decisions,
+recorded also in ROADMAP.md and project memory):
+
+1. **Operator form: pairwise relation factors** replace the row-normalized
+   \(M^\top D_qM\) (Sections 1, 7.2-7.4). Identical receiver conditionals —
+   all Section-21 local goldens unchanged — but the row form is improper or
+   diluting under dead informers, opaque under bidirectional double-count,
+   and harder to sparsify. Canonical relation orientation added (Section
+   7.6).
+2. **Amplitude: locked shape, adjudicated level.** `alphaT = 1.0` remains
+   the maturity-shape default; a per-relation-class multiplier `rho`
+   (desk = 1.0, learned ≈ 0.34 calendar / ≈ 0.55 index / ≈ 0.76 peer)
+   is swept by the benchmark, mechanized through the innovation anchor
+   (Sections 8.4, 14.2). Motivated by the learned-betas artifact: raw
+   day-over-day transfer ≈ 0.34 calendar would fail the Section-22.4 RMS
+   gate under full force.
+3. **Phase ordering: adjudication before UI**, absorbing the parked R3
+   item-14 learned-betas sweep into one combined campaign (Section 23,
+   Phase 4). Band coverage added to the harness as part of that phase.
+4. **Frontend v1 ships the full Section-20 editor** (per-edge precision,
+   three handle betas, relation class, inheritance display, receiver
+   diagnostics, scenario previews) — ratified over a diagnostics-first cut.
+
+Editorial: per-handle precision units (Section 9.4), per-handle calendar
+exponents (Section 8.5), baseline-uncertainty placement rule (Section 15.3),
+dead-informer / shrunk-mode / baseline-once goldens (Sections 21.11-21.13),
+band-coverage note (Section 22.3), and two unclosed display-math blocks in
+Sections 15.1-15.2 fixed.

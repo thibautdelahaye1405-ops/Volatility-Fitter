@@ -123,6 +123,10 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
     ablation decision**: demonstrate repeatable incremental value and activate,
     or reposition as Bayesian graph propagation (deck honesty pass already
     leans that way). Expect a modest delta over β=1 — let the pack decide.
+    **[2026-07-18: the adjudication sweep is ABSORBED into the
+    Precision-Message Graph arc, Phase 4 — one combined benchmark campaign;
+    see the arc section below. The learned artifact doubles as the arc's
+    `learned` amplitude presets.]**
 
 ### R4 — State release + first hosted deployment
 
@@ -152,7 +156,89 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## STATUS — updated 2026-07-17 (resume here)
+## PRECISION-MESSAGE GRAPH ARC — adopted 2026-07-18 (current top arc)
+
+Redesign of the graph propagation workflow per
+`Docs/graph_precision_message_framework.md` (design spec, AMENDED 2026-07-18
+— read its §23 roadmap and §27 amendment log first). Mostly backend, with a
+full edge-editor frontend phase. Supersedes-in-priority the remaining R3/R4
+items; absorbs R3 item 14.
+
+**Ratified decisions (2026-07-18 — do not re-litigate):**
+
+- **Operator = pairwise relation factors** `Σ p_ij (z_i − β_ij z_j)²`, NOT
+  the row-normalized MᵀD_qM (identical receiver conditionals; fixes
+  dead-informer dilution; one factor per auto-generated relation, canonical
+  receiver = shorter maturity, `p_rev = p_fwd/β²`).
+- **Amplitude: locked shape, adjudicated level.** `alphaT=1.0` = maturity
+  shape; per-relation-class multiplier `rho` (desk=1.0, learned≈0.34
+  cal/≈0.55 idx/≈0.76 peer from `backtest/results/learned_betas.json`)
+  mechanized via the innovation anchor (κ=0 iff rho=1); Phase-4 benchmark
+  picks the shipped default.
+- **Adjudication before UI, absorbing b14** — one combined campaign
+  (smooth-field {base, learned-β, OT} × precision-message {amplitude,
+  alphaT, decay}), run from the USER'S window (tool background jobs die).
+- **Frontend v1 = full §20 editor** (per-edge precision + 3 handle betas +
+  relation class + inheritance + receiver diagnostics + scenario preview).
+
+**Phases (details + exit gates in the spec §23):**
+
+- **P0 Contract+fixtures** — spec amendments (DONE 2026-07-18); canonical +
+  dead-informer fixtures; anchor mechanization chosen (edge-linked vs
+  node-linked) from the stored ~47k benchmark rows; empirical precision
+  defaults from the same rows.
+- **P1 `graph/message.py`** — factor assembly, per-handle calendar
+  beta/precision rules, q_i, cycle diagnostic; goldens to machine precision.
+- **P2 `graph/message_posterior.py`** — information-form component solve;
+  **GraphPosterior-compatible adapter** (observed_columns/innovation_cov/
+  attribution) so graph_reconstruct/select/backtest work unchanged;
+  no_lit_path; brute-force covariance reference tests.
+- **P3 Orchestration+schema v2** — `propagationMode` Literal (prior_mode.py
+  resolver precedent), fork in `graph_extrapolation.solve`; edge schema
+  source=informer/target=receiver with blob migration (new receiver = old
+  `from`, new informer = old `to` — engine truth `W[from][to]` = "to
+  informs from", test-locked); smooth_field BYTE-IDENTITY locked.
+- **P4 Adjudication** — benchmark_pack CLI knobs; ADD 50/80/95 band
+  coverage + path-length calibration to scored rows (missing today);
+  combined campaign incl. b14; decision table vs pre-registered gate
+  (spec §22.4).
+- **P5 Frontend (full §20)** — may run parallel with P4's user-window
+  sweep; MatrixCell widening, EdgeMatrixEditor split (400-line policy),
+  direction-label fix + one-way UI→posterior integration test, receiver
+  diagnostics (fields already ride the wire unrendered), scenario preview.
+- **P6 Hardening** — §21 locks incl. 21.11-21.13, migration round-trips,
+  certification case.
+- **P7 Sparse solve** — DEFERRED until a universe demands it (dense passes
+  the 1k perf rail; pairwise assembly is sparse-ready).
+
+Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
++ `GraphPosterior` surface are what reconstruct/band/select/backtest read;
+`idio.py` is form-agnostic; edges persist as `app_settings` JSON blobs
+(`_coerce`/`settings_persist` migration precedent, no SQLite bump).
+
+---
+
+## STATUS — updated 2026-07-18 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-18b) — PRECISION-MESSAGE GRAPH ARC RATIFIED
+
+- Design review of `Docs/graph_precision_message_framework.md` against the
+  codebase (4-agent survey: engine math, API seams, frontend, backtest
+  harness). Four decisions ratified by the user (see the arc section above);
+  spec AMENDED in place (its §27 = amendment log): pairwise-factor operator
+  (§7.2-7.6, with the dead-informer rejection rationale), amplitude
+  shape/level split + anchor mechanization (§8.4-8.5, §14.2), per-handle
+  precision units (§9.4), baseline-uncertainty placement rule (§15.3), new
+  goldens 21.11-21.13, re-ordered §23 roadmap (adjudication before UI,
+  absorbs b14). Memory: `graph-precision-message-redesign.md`.
+- Key evidence driving the amplitude decision: learned_betas.json raw
+  day-over-day transfer ≈0.34 calendar (n≈12k, t≈44) / ≈0.46 raw index —
+  full-force defaults would fail the spec's own RMS gate; hence rho
+  adjudicated, desk=1.0 one control away.
+- NEXT: P0 remainder — (a) canonical + dead-informer fixtures, (b) anchor
+  mechanization choice from stored rows (does realized transfer rise with
+  source count?), (c) empirical precision defaults from the same rows.
+  Then P1 `graph/message.py`.
 
 ### 🧭 SESSION WRAP (2026-07-17b) — SYMMETRIC SURFACE SOLVER (calendar redesign)
 
