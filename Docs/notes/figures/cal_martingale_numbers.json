@@ -1,0 +1,21 @@
+{
+  "calmheronodes": 6.0,
+  "calmheromarginbp": 0.9198031476166315,
+  "calmherophantombp": 21.125534603440265,
+  "calmfacesminspread": 0.00047658391407251585,
+  "calmdragfreebp": 10.559393898258996,
+  "calmdragfullbp": 1094.9893665819557,
+  "calmdragwinbp": 228.37153135835035,
+  "calmdragpricebp": 10.55937259888423,
+  "calmviolfree": 0.005848321555074795,
+  "calmviolcured": 3.22459270726827e-06,
+  "calmseqnearbp": 4.812995881248727,
+  "calmseqfarbp": 546.6650848436893,
+  "calmsymnearbp": 414.0403979218349,
+  "calmsymfarbp": 254.30141942993617,
+  "calmphantomwidebp": 150.89671935151094,
+  "calmphantomdatabp": 5.551115123125783e-13,
+  "calmrefagree": 0.0,
+  "calmgencommit": "7933d17",
+  "calmgendate": "2026-07-19"
+}
