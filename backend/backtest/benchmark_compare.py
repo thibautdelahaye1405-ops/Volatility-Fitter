@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime, timezone
 
 from backtest.benchmark_pack import RESULTS_DIR, load_parts, summarize_by
@@ -108,6 +109,13 @@ def main() -> int:
                     help="comma-separated sweep tags; FIRST is the baseline")
     ap.add_argument("--out", default=os.path.join(RESULTS_DIR, "ablation_compare.json"))
     args = ap.parse_args()
+    # The verdict table prints ζ / — / − (U+03B6, U+2014, U+2212); a legacy
+    # Windows console is cp1252 and would UnicodeEncodeError on them AFTER the
+    # multi-hour sweep. Force UTF-8 so the final step never crashes on display.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except (AttributeError, ValueError):
+        pass  # redirected/older stream without reconfigure — best effort
     tags = [t.strip() for t in args.tags.split(",") if t.strip()]
     if len(tags) < 2:
         raise SystemExit("need at least two tags to compare")

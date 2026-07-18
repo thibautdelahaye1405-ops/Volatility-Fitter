@@ -1,5 +1,35 @@
 # Graph leave-one-out — findings
 
+## 2026-07-18 — item-14 adjudication PREPPED + verified end-to-end (still not a verdict)
+
+Prepped the parked adjudication for the user's window. Done + verified here:
+
+- **Artifact regenerated** (`learn_betas fit`) — matches the 2026-07-17 read
+  exactly (index→name raw 0.22–0.49 shrunk 0.43–0.58; sector class raw 0.760
+  n=756 t=32; calendar mult raw 0.338 n=12,062 t=44; ETF class rejected n<8 →
+  prior). eval pair start {high 10, low 9, spike 9} → confirms `--pair-start 10`.
+- **All three variants + the compare smoke-ran** on one OOS pair
+  (spike, liquid_split, pair 10) to de-risk the multi-hour run. The **OT path
+  (`--lambda 1.0`) executed for the first time ever without crashing.**
+- **BUG FIXED — `benchmark_compare` crashed on the LAST step**: it prints
+  ζ/—/− and a cp1252 Windows console UnicodeError'd *after* the sweep (the JSON
+  verdict was still written, but the readable table was lost to a traceback).
+  Now forces `sys.stdout.reconfigure("utf-8")`. Would have bitten the user at
+  the finish line.
+- **`--max-pairs` TRAP** (documented in the runbook): it caps the TOTAL pair
+  count, so `--max-pairs 1 --pair-start 10` scores an EMPTY range and silently
+  no-ops. The real runbook uses `--pair-start 10` alone — do not add
+  `--max-pairs`.
+- **Runbook shipped**: `backtest/run_b14_adjudication.ps1` (regenerate artifact
+  → 3 tagged sweeps → verdict table), pre-registered decision rule inline.
+
+**One-pair PREVIEW (spike/liquid_split/pair 10 — NOT the verdict; the rule
+needs all 3 regimes × pairs 10–18):** learned betas skill +0.159 vs +0.092
+baseline (**Δ +0.067**), ζ std 0.63 (stable) → *leans activate*. OT λ=1.0 skill
++0.008 (**Δ −0.084**, worse) with ζ std blowing out to **1.127** (overconfident)
+→ *leans reposition-as-Bayesian-graph-propagation*, consistent with the deck
+honesty pass. The full sweep decides.
+
 ## 2026-07-17 — learned shrunk betas: machinery + first estimation read (R3 item 14)
 
 Machinery shipped (`backtest/learn_betas.py` + `EdgeConfig.overrides` +

@@ -984,20 +984,26 @@ ladder). Shipped in five phases, all tests green (1198+ suite, new files
   calendar multiplier raw 0.34 (n=12k, t=44 — the √T calendar rule
   over-propagates ~3× at the daily horizon if the ablation confirms),
   ETF class dormant (prior kept, named reason).
-- **PARKED (2026-07-17, user decision) — the item-14 adjudication
-  sweep, for a LATER session.** When resumed: run in the USER'S window
-  (~half a pack sweep, chunked/resumable) `benchmark_pack run
-  --pair-start 10` under tags `_b14_base` / `_b14_learned
-  --beta-table backtest\results\learned_betas.json` / `_b14_ot
-  --lambda 1.0`, then `python -m backtest.benchmark_compare --tags
-  _b14_base,_b14_learned,_b14_ot`. Pre-registered decision rule
-  (FINDINGS_graph_loo.md 2026-07-17): activate learned betas only if
-  the dark-name skill delta is positive in spike and non-negative
-  elsewhere with ζ std not degrading; the same bar decides OT
-  activate-vs-reposition. After the verdict: production edge-builder
-  consumes the artifact, or the repositioning is recorded. NB
-  results\learned_betas.json is gitignored/regenerable — re-run
-  `-m backtest.learn_betas fit` first if absent.
+- **PREPPED + VERIFIED (2026-07-18) — the item-14 adjudication is
+  ready to run in the USER'S window.** One-command runbook
+  `backend\backtest\run_b14_adjudication.ps1` (regenerate artifact →
+  3 tagged sweeps `_b14_base` / `_b14_learned --beta-table` / `_b14_ot
+  --lambda 1.0` at `--pair-start 10` → verdict table), ~half a pack
+  sweep, chunked/resumable. Verified end-to-end here: artifact
+  regenerated (matches the 2026-07-17 read), all three variants +
+  `benchmark_compare` smoke-ran on one OOS pair (**OT's first-ever
+  harness run — no crash**), a `benchmark_compare` cp1252/ζ UnicodeError
+  on the FINAL step FIXED (`sys.stdout.reconfigure("utf-8")`), and the
+  `--max-pairs`/`--pair-start` empty-range trap documented (real run uses
+  `--pair-start` alone). **One-pair PREVIEW (spike/liquid_split, NOT the
+  verdict):** learned Δ+0.067 skill / ζ stable (leans ACTIVATE); OT λ=1.0
+  Δ−0.084 skill / ζ std 0.63→1.13 (leans REPOSITION as Bayesian graph
+  propagation). Pre-registered decision rule (FINDINGS 2026-07-17/18):
+  activate learned betas only if the liquid_split dark-name skill delta is
+  positive in spike and non-negative elsewhere with ζ std not degrading;
+  same bar decides OT activate-vs-reposition. After the verdict: production
+  edge-builder consumes the artifact, or the repositioning is recorded.
+  NB results\learned_betas.json is gitignored/regenerable.
 - **NEXT:** R4 (graph-coupled temporal state, first hosted instance)
   or item-11 v2 follow-ons (term-matched rate curve, de-Am'd-parity
   identifiability widening) — or resume the parked item-14
