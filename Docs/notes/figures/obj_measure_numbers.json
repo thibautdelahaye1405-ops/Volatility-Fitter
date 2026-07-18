@@ -1,0 +1,21 @@
+{
+  "objmunitserrsmall": 3.029965084361775,
+  "objmunitserrbig": 125.45562769892396,
+  "objmmeaserrtv": 0.06235157126238648,
+  "objmmeaserreq": 0.13846646312126631,
+  "objmwingratio": 1.261323826535032,
+  "objmanchor": 0.05,
+  "objmhaircut": 0.005,
+  "objmflexrigid": 6.258038922074549,
+  "objmflexflex": 46.989158939758354,
+  "objmroughmid": 0.176932835892611,
+  "objmroughband": 0.13817644094712023,
+  "objmdialbandzero": 0.0,
+  "objmdialmidzero": 83.91362441193397,
+  "objmdialmidfull": 82.34370479900619,
+  "objmdialbandfull": 82.34370479900619,
+  "objmvalley": 126.0,
+  "objmrefagree": -16.0,
+  "objmgencommit": "666b2dd",
+  "objmgendate": "2026-07-18"
+}

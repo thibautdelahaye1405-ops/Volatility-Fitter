@@ -1,0 +1,74 @@
+{
+  "ww_max_err_bp": 2.5476405656449375,
+  "base_max_err_bp": 153.047161189091,
+  "wing": [
+    -0.01727012555686195,
+    0.017270289924180275
+  ],
+  "capacity": {
+    "Rs": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "ww_err": [
+      153.047161189091,
+      154.6739297163552,
+      2.5476405656449375,
+      2.56197200153796
+    ],
+    "liq_ins": [
+      23.98012804068915,
+      23.883504404203897,
+      22.355639401711755,
+      15.029303419146189
+    ],
+    "liq_true": [
+      23.895092524327833,
+      24.589822668911733,
+      25.47880178475613,
+      37.71691146249995
+    ]
+  },
+  "wingarb": {
+    "g_off_min": -2.4502938626085666,
+    "g_on_min": -0.02924405420438711
+  },
+  "timing": {
+    "analytic_ms": 68.26000000000931,
+    "fd_ms": 161.251400000765,
+    "speedup": 2.362311749205142,
+    "cost_diff": 1.4588651738468156e-15
+  },
+  "target_g_min": 0.25276107175175827,
+  "fit_g_min": 0.27806770026606814,
+  "historical": {
+    "oos_before": 13.99,
+    "oos_after": 13.58,
+    "cost_rtwo": 514,
+    "cost_rthree": 2023,
+    "put_pct": 64,
+    "atm_pct": 4,
+    "worst_z": -3.2,
+    "wing_min_before": -7.9,
+    "wing_min_after": -0.02,
+    "abl_none_g": -30,
+    "abl_none_rms": 92,
+    "abl_repair_rms": 25,
+    "abl_penalty_rms": 749,
+    "abl_both_rms": 225,
+    "abl_flagged_pct": 26,
+    "efa_none_rms": 75,
+    "efa_none_g": -116,
+    "efa_repair_rms": 18,
+    "efa_repair_g": -12,
+    "efa_penalty_rms": 726,
+    "efa_both_rms": 34,
+    "liq_flagged": "17 of 30",
+    "liq_before": 10.9,
+    "liq_after": 36.9,
+    "liq_flagged_pct": 41,
+    "source": "backend/backtest/FINDINGS_calibration_arb.md, ablation_arb.py"
+  }
+}

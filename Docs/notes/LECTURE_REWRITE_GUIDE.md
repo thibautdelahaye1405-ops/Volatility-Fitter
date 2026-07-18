@@ -148,6 +148,12 @@ stated in the prose; bibliography last.
 | 01 LQD | `01_lqd_model_lecture.tex` | distribution-first desk lecture | `gen_lqd_lecture.py` |
 | 01 LQD | `01_lqd_model_percentile_ruler.tex` | monotone transport / rubber ruler | `gen_lqd_fresh.py` |
 | 01 LQD | `01_lqd_model_coordinates.tex` | coordinates; the chart where no-arb is free | `gen_lqd_geometry.py` |
+| 02 SVI | `02_svi_jw_rewrite.tex` | one hyperbola, two languages (raw vs JW charts) | `gen_svi_rewrite.py` |
+| 02 SVI | `02_svi_jw_moments.tex` | the wings and the belly; Lee's moment bound is a tail statement | `gen_svi_moments.py` |
+| 03 MCS | `03_multicore_mcs_corrections.tex` | base and correction; superposition + a tail-silent local basis; capacity control | `gen_mcs_corrections.py` |
 | 04 LV | `04_local_volatility_forward.tex` | read Dupire backward, parameters up | `gen_lv_forward.py` |
+| 05 De-Am | `05_deamericanization_stopping.tex` | optimal stopping; subtracting the unobservable premium | `gen_deam_stopping.py` |
+| 06 Forwards | `06_forwards_dividends_inference.tex` | statistical inference on one straight line; identifiability ladder | `gen_fwd_inference.py` |
+| 07 Objective | `07_calibration_objective_measure.tex` | the objective as units, measure, tolerance | `gen_obj_measure.py` |
 
 None committed; no edition has been declared the replacement of its original.
