@@ -29,12 +29,18 @@ from volfit.graph.message import (
     expand_calendar_ladder,
     message_edge,
 )
+from volfit.graph.message_posterior import (
+    MessagePosterior,
+    message_posterior_update,
+)
 
 __all__ = [
     "GraphPosterior",
     "IncrementPrior",
     "MessageEdge",
     "MessageOperator",
+    "MessagePosterior",
+    "message_posterior_update",
     "SmileGraph",
     "anchor_precisions",
     "beta_matrix",

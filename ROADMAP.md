@@ -204,10 +204,23 @@ items; absorbs R3 item 14.
   non-reciprocal pair → product β², inconsistent triangle → product 8,
   nonpositive β → NaN). tests/test_graph_message.py (23) drives ALL
   Phase-0 goldens THROUGH the operator to 1e-12.
-- **P2 `graph/message_posterior.py`** — information-form component solve;
-  **GraphPosterior-compatible adapter** (observed_columns/innovation_cov/
-  attribution) so graph_reconstruct/select/backtest work unchanged;
-  no_lit_path; brute-force covariance reference tests.
+- **P2 `graph/message_posterior.py` — COMPLETE 2026-07-19** (exit gate
+  MET; 164 lines): information-form per-component solve Q⁺ = Q_msg + D_κ
+  + HᵀR_dH (+ optional hybrid extra term), Cholesky PD guard, no_lit_path
+  components at zero innovation / inf variance (§14.3), zero-beta
+  informer-reachability guard (β=0 factor couples only its receiver →
+  dead informers land in their own component), exact §17 attribution
+  G = Σ⁺HᵀR (contributions sum to shift), posterior_covariance retained
+  for the select/backtest closed-form port. MessagePosterior mirrors the
+  GraphPosterior consumer surface (mean/marginal_variance/
+  marginal_precision/credible_band/observed/attribution) — NB
+  observed_columns/innovation_cov have NO improper-prior equivalent, so
+  graph_select ports via Σ⁺ columns (same rank-one algebra) in P3.
+  tests/test_graph_message_posterior.py (38): every golden vs the
+  brute-force reference at moderate r (1e-11), clamped fixture limits at
+  r=1e9 (1e-6), native-obs fixtures exact (1e-12), consistent-cycle
+  full-amplitude transmission, anchors/hybrid identities, PD-guard,
+  validation.
 - **P3 Orchestration+schema v2** — `propagationMode` Literal (prior_mode.py
   resolver precedent), fork in `graph_extrapolation.solve`; edge schema
   source=informer/target=receiver with blob migration (new receiver = old
@@ -234,6 +247,44 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19b) — MESSAGE ARC PHASE 2 COMPLETE
+
+- **`volfit/graph/message_posterior.py` SHIPPED** (164 lines):
+  `message_posterior_update(operator, observed, innovations, r_d, *,
+  anchor_precision, extra_precision, no_lit_variance)` → `MessagePosterior`.
+  Information-form solve per connected component of the factor support
+  (support built on β≠0 edges — the reachability guard: a zero-beta factor
+  is an anchor on its receiver, its informer decouples into its own
+  component). Observed components: Cholesky PD guard → dense Σ⁺ block,
+  means, marginal variances (positivity-guarded), exact attribution gains
+  G = Σ⁺HᵀR. No-lit components: mean 0 (= transported prior), variance
+  NO_LIT_VARIANCE (inf at this layer; P3 maps through baseline provenance
+  + idio floor), `no_lit_path` tag, zero gains. Consumer surface mirrors
+  GraphPosterior (mean / marginal_variance / marginal_precision /
+  credible_band / observed / attribution with the same return contract);
+  `posterior_covariance` (block-diagonal Σ⁺) is the port surface for the
+  graph_select/backtest closed forms — the covariance-form
+  observed_columns/S_y objects do NOT exist for an improper prior.
+- **Exit gate MET** (38 tests): every golden case agrees with the Phase-0
+  brute-force reference at moderate observation precision to 1e-11 (same
+  model, independent assembly — incl. repeated-path, dead-informer, and
+  shrunk-anchor cases), clamped fixtures reproduce their idealized numbers
+  in the r→∞ limit (r=1e9, 1e-6), native-observation fixtures (multi-hop,
+  repeated-path 5/(3p)) hit fixture numbers at 1e-12, a gauge-consistent
+  directed cycle transmits the observed innovation at full amplitude
+  exactly, desk-mode zero-anchor is a bitwise identity, the hybrid
+  extra-term equals the diagonal-anchor path exactly, and the PD guard
+  raises cleanly on an indefinite system. Combined graph run: 107 passed
+  (message P0-P2 + legacy example/scale/idio).
+- **NEXT: P3 — production orchestration + schema v2**: propagationMode
+  Literal (smooth_field | precision_messages | hybrid) resolved
+  prior_mode.py-style; fork in graph_extrapolation.solve; message-edge
+  schema v2 (source=informer/target=receiver, messagePrecision,
+  relationClass, precisionRule) with blob forward-migration (new receiver
+  = old `from`, new informer = old `to`); §18.4 settings; qIncoming/
+  marginal/no_lit_path/cycle diagnostics on the wire; smooth_field
+  byte-identity lock.
 
 ### 🧭 SESSION WRAP (2026-07-19) — MESSAGE ARC PHASE 1 COMPLETE
 
