@@ -36,22 +36,28 @@ def export_surfaces(
     fit_mode: str | None = None,
     project_wings: bool = True,
     allow_dirty: bool = False,
+    inputs: bool = True,
 ) -> Response:
     """Download the calibrated surfaces (fitted nodes only) + manifest.
 
     ``format=json`` is the full-fidelity artifact (curves, LQD params, LV grid,
-    per-node quality); ``format=csv`` flattens the curves for Excel.
-    ``project_wings`` (default on) applies the Notes 09/10 Phase-3 publish-time
-    wing projection — the published wings are discrete-arb-free, the traded
-    core byte-identical; ``project_wings=false`` exports the raw model wings.
-    A publish set with UNRESOLVED intrinsic or calendar inconsistency FAILS
-    with 409 before anything persists (the R2 exit gate); ``allow_dirty=true``
-    exports the draft artifact with the defects stamped in per-node quality."""
+    per-node quality) and by default embeds its INPUTS — the fetched chains,
+    market settings, prepared quotes and forward provenance — so the file is
+    self-contained for offline recalibration and comparisons; ``inputs=false``
+    keeps the slim artifact. ``format=csv`` flattens the curves for Excel
+    (never embeds). ``project_wings`` (default on) applies the Notes 09/10
+    Phase-3 publish-time wing projection — the published wings are
+    discrete-arb-free, the traded core byte-identical; ``project_wings=false``
+    exports the raw model wings. A publish set with UNRESOLVED intrinsic or
+    calendar inconsistency FAILS with 409 before anything persists (the R2
+    exit gate); ``allow_dirty=true`` exports the draft artifact with the
+    defects stamped in per-node quality."""
     state = request.app.state.volfit
     try:
         export = build_surface_export(
             state, fit_mode, _tickers_param(tickers),
             project_wings=project_wings, require_clean=not allow_dirty,
+            include_inputs=inputs and format != "csv",
         )
     except PublishBlockedError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None

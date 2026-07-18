@@ -82,6 +82,51 @@ def test_csv_flattens_the_json_curves():
     assert first["ready"] in ("0", "1")
 
 
+def test_export_embeds_inputs_by_default():
+    """The JSON artifact is self-contained: full chain + market settings per
+    ticker, prepared quotes + forward provenance per node (default ON)."""
+    import numpy as np
+
+    state = AppState(REF_DATE)
+    isos = _isos(state)
+    for iso in isos[:2]:
+        service.calibrate_node(state, TICKER, iso, "mid")
+    out = export.build_surface_export(state, tickers=[TICKER])
+    m = out.manifest
+    assert m.includesInputs and m.referenceDate == REF_DATE.isoformat()
+
+    tk = out.tickers[0]
+    snap = state.snapshot(TICKER)
+    assert tk.chain is not None and tk.marketSettings is not None
+    assert len(tk.chain.quotes) == len(snap.quotes)  # EVERY fetched contract
+    assert tk.chain.exerciseStyle == snap.exercise_style
+    assert tk.chain.zeroCarry == snap.zero_carry
+    assert tk.chain.quoteColumns[:3] == ["expiry", "strike", "callPut"]
+    assert "rate" in tk.marketSettings and "dividendMode" in tk.marketSettings
+
+    node = tk.nodes[0]
+    assert node.inputs is not None
+    ptr = state.get_calibrated_ptr(TICKER, node.expiry, "mid")
+    prepared = state.get_fit(ptr[0]).prepared
+    assert len(node.inputs.prepared) == prepared.k.size
+    cols = dict(zip(node.inputs.preparedColumns, node.inputs.prepared[0]))
+    assert cols["ivBid"] <= cols["ivMid"] <= cols["ivAsk"]
+    assert abs(cols["strike"] - prepared.forward * np.exp(cols["k"])) < 1e-9
+    assert node.inputs.forwardSource in ("parity", "theoretical", "manual")
+    assert isinstance(node.inputs.screened, list)
+
+
+def test_export_inputs_opt_out_is_slim():
+    state = AppState(REF_DATE)
+    service.calibrate_node(state, TICKER, _isos(state)[0], "mid")
+    out = export.build_surface_export(state, tickers=[TICKER],
+                                      include_inputs=False)
+    assert not out.manifest.includesInputs
+    tk = out.tickers[0]
+    assert tk.chain is None and tk.marketSettings is None
+    assert all(n.inputs is None for n in tk.nodes)
+
+
 def test_export_routes_over_http():
     from fastapi.testclient import TestClient
 
@@ -97,6 +142,12 @@ def test_export_routes_over_http():
     body = r.json()
     assert body["manifest"]["fittedNodes"] > 0
     assert len(body["tickers"]) == len(body["manifest"]["tickers"])
+    # Inputs are embedded by default over HTTP; inputs=false is the slim path.
+    assert body["manifest"]["includesInputs"]
+    assert body["tickers"][0]["chain"] is not None
+    r_slim = client.get("/export/surfaces", params={"inputs": "false"})
+    assert not r_slim.json()["manifest"]["includesInputs"]
+    assert r_slim.json()["tickers"][0]["chain"] is None
 
     r_csv = client.get("/export/surfaces", params={"format": "csv", "tickers": TICKER})
     assert r_csv.status_code == 200

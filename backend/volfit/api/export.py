@@ -25,6 +25,12 @@ from pydantic import BaseModel
 
 import volfit
 from volfit.api import service
+from volfit.api.export_inputs import (
+    ExportChain,
+    ExportNodeInputs,
+    export_chain,
+    export_node_inputs,
+)
 from volfit.api.quality import build_quality_report
 from volfit.api.schemas_quality import QualityNode
 from volfit.api.state import AppState
@@ -82,6 +88,10 @@ class ExportNode(BaseModel):
     #: pinned traded edge — a core calendar conflict the wing projection must
     #: not repair (it belongs to the fit / quality gate).
     wingsClean: bool = True
+    #: The calibration's inputs (prepared quotes, quarantine, forward
+    #: provenance) — embedded by default on JSON exports so the artifact is
+    #: self-contained; None on slim (inputs=false) exports.
+    inputs: ExportNodeInputs | None = None
 
 
 class ExportLocalVol(BaseModel):
@@ -97,6 +107,11 @@ class ExportTicker(BaseModel):
     dataVersion: int
     nodes: list[ExportNode]
     localVol: ExportLocalVol | None = None
+    #: The full normalized chain as fetched (every expiry, schema-v7 metadata)
+    #: and the active market settings (rate, dividend model) — embedded by
+    #: default on JSON exports; None on slim (inputs=false) exports.
+    chain: ExportChain | None = None
+    marketSettings: dict | None = None
 
 
 class ExportManifest(BaseModel):
@@ -126,6 +141,10 @@ class ExportManifest(BaseModel):
     #: mutated; a new publish supersedes it, a recall flips its state.
     manifestId: str | None = None
     parentId: str | None = None
+    #: Self-containment stamps: the valuation date the fits were run against,
+    #: and whether this artifact embeds its inputs (chains + prepared quotes).
+    referenceDate: str | None = None
+    includesInputs: bool = False
 
 
 class SurfaceExport(BaseModel):
@@ -165,6 +184,7 @@ def build_manifest(state: AppState, fit_mode: str, report, tickers: list[str]) -
         fittedNodes=report.summary.fitted,
         litNodes=report.summary.litNodes,
         readyNodes=report.summary.readyNodes,
+        referenceDate=state.reference_date.isoformat(),
     )
 
 
@@ -175,6 +195,7 @@ def _export_node(
     fit_mode: str,
     project: bool = True,
     prev_pub: tuple[np.ndarray, np.ndarray] | None = None,
+    include_inputs: bool = False,
 ) -> tuple[ExportNode, tuple[np.ndarray, np.ndarray]] | None:
     """One fitted node's export payload (None if its cache entry vanished).
 
@@ -234,6 +255,10 @@ def _export_node(
         curve=curve,
         curveProjected=projected.changed,
         wingsClean=projected.fully_clean,
+        inputs=(
+            export_node_inputs(state, ticker, row.expiry, prepared)
+            if include_inputs else None
+        ),
     )
     return node, (k_arr, w_pub)
 
@@ -273,6 +298,7 @@ def build_surface_export(
     tickers: list[str] | None = None,
     project_wings: bool = True,
     require_clean: bool = True,
+    include_inputs: bool = True,
 ) -> SurfaceExport:
     """Assemble the export from cached fits only (fitted nodes; publish set).
 
@@ -283,7 +309,13 @@ def build_surface_export(
     ``require_clean`` (default ON — the R2 exit gate) raises
     ``PublishBlockedError`` listing EVERY node with unresolved intrinsic or
     calendar inconsistency, BEFORE any manifest is persisted; False exports
-    the draft artifact with the defects still stamped in per-node quality."""
+    the draft artifact with the defects still stamped in per-node quality.
+
+    ``include_inputs`` (default ON) embeds the fetched inputs — the full
+    normalized chain, per-ticker market settings, and each node's prepared
+    quotes with forward provenance — so the JSON artifact is self-contained
+    for offline recalibration and comparisons; False keeps the slim artifact
+    (the CSV path always passes False: flat curves only)."""
     mode = fit_mode if fit_mode is not None else state.last_fit_mode
     report = build_quality_report(state, mode)
     chosen = set(tickers) if tickers else None
@@ -302,7 +334,8 @@ def build_surface_export(
         # expiry's published (projected) curve, so the artifact is ordered.
         for row in sorted(rows, key=lambda r: r.tau):
             built = _export_node(state, ticker, row, mode,
-                                 project=project_wings, prev_pub=prev_pub)
+                                 project=project_wings, prev_pub=prev_pub,
+                                 include_inputs=include_inputs)
             if built is None:
                 continue
             node, prev_pub = built
@@ -320,6 +353,11 @@ def build_surface_export(
                 dataVersion=state.data_version(ticker),
                 nodes=nodes,
                 localVol=_export_local_vol(state, ticker),
+                chain=export_chain(snapshot) if include_inputs else None,
+                marketSettings=(
+                    state.market_settings(ticker).model_dump()
+                    if include_inputs else None
+                ),
             )
         )
     if require_clean and blockers:
@@ -328,7 +366,8 @@ def build_surface_export(
         raise PublishBlockedError(blockers)
     manifest = build_manifest(state, mode, report, [t.ticker for t in out])
     manifest = manifest.model_copy(
-        update={"wingProjection": project_wings, "projectedNodes": projected_nodes}
+        update={"wingProjection": project_wings, "projectedNodes": projected_nodes,
+                "includesInputs": include_inputs}
     )
     return _publish(state, SurfaceExport(manifest=manifest, tickers=out))
 
