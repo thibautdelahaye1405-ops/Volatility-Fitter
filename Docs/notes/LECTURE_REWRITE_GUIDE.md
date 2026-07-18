@@ -158,5 +158,6 @@ stated in the prose; bibliography last.
 | 08 Var swaps | `08_varswap_representations.tex` | one number, three integrals: a pairing evaluated in each model's native chart | `gen_vs_representations.py` |
 | 09 Wings | `09_wings_last_quote.tex` | beyond the last quote: prove / choose / police; the limit is not the wing | `gen_wings_lastquote.py` |
 | 10 Calendar | `10_calendar_unnamed_martingale.tex` | the unnamed martingale: Kellerer as the organizing theorem; who pays to restore the order | `gen_cal_martingale.py` |
+| 11 Event clock | `11_event_market_clock.tex` | the market keeps its own clock: DDS license, the crush as a reading error, the calendar as an inverse problem | `gen_event_market_clock.py` |
 
 No edition has been declared the replacement of its original.

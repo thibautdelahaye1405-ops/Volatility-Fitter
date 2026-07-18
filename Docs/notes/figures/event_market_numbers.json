@@ -1,0 +1,19 @@
+{
+  "emcheronodes": 4.0,
+  "emcherodays": 11.798548007073563,
+  "emcheroeventcount": 2.0,
+  "emcherospreadbefore": 126.6476751751583,
+  "emcherospreadafter": 106.00422733620191,
+  "emctauprobe": 0.31095890410958904,
+  "emcdropbp": 35.55839053322707,
+  "emcinterpgapbp": 28.64504114935933,
+  "emcidentshrink": 0.09597283001045953,
+  "emcidentlowfloor": 5.0,
+  "emcidentflat": 0.0,
+  "emcrefagree": 0.0,
+  "emcdays": 365.0,
+  "emcte": 0.25,
+  "emcextra": 4.0,
+  "emcgencommit": "25e72e5",
+  "emcgendate": "2026-07-19"
+}
