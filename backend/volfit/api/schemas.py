@@ -478,6 +478,14 @@ class OptionsSettings(BaseModel):
     graphEtaScale: float = Field(1.0, ge=0.0)
     graphLambdaScale: float = Field(0.0, ge=0.0)
     graphNu: float = Field(0.1, gt=0.0)
+    #: Default propagation operator for the production graph solve (message
+    #: arc P3, Docs/graph_precision_message_framework.md §18.1). The frontend
+    #: seeds its mode selector from this; "smooth_field" is byte-identical to
+    #: the pre-arc behaviour. Old persisted blobs lack the field and coerce to
+    #: the default.
+    graphPropagationMode: Literal[
+        "smooth_field", "precision_messages", "hybrid"
+    ] = "smooth_field"
     # spot-vol dynamics defaults — the Parametric spot-scenario reads these
     # (the regime selector moved entirely to Options). "custom" uses ``ssr``.
     dynamicsRegime: Literal[
@@ -1059,6 +1067,61 @@ class GraphBlockRuleResponse(BaseModel):
     expandedCount: int
 
 
+# ------------------------------------------ precision-message edges (schema v2)
+class GraphMessageEdge(BaseModel):
+    """One precision-message relation factor (message arc, spec §18.2).
+
+    UNAMBIGUOUS direction: the SOURCE (informer) predicts the TARGET
+    (receiver) — ``z_target ≈ beta · z_source`` with conditional relation
+    precision ``messagePrecision`` quoted in the TARGET's ATM-vol units
+    (spec §7.1/§9.4). NB this naming INVERTS the legacy ``GraphEdgeInput``
+    reading, where the engine treats ``to`` as informing ``from``
+    (build.py's ``W[from][to]`` convention) — conversion is explicit and
+    test-locked via ``graph_message.message_edges_from_legacy``.
+
+    ``precisionRule="calendar_distance"`` derives the precision from the
+    §9.2 maturity-gap family at solve time (``messagePrecision`` ignored).
+    """
+
+    sourceTicker: str
+    sourceExpiry: str
+    targetTicker: str
+    targetExpiry: str
+    messagePrecision: float = Field(default=1.0, gt=0.0)
+    betaAtmVol: float = 1.0
+    betaSkew: float = 1.0
+    betaCurv: float = 1.0
+    relationClass: Literal[
+        "calendar", "broad_index", "sector_etf", "sector_peer", "custom"
+    ] = "custom"
+    precisionRule: Literal["explicit", "calendar_distance"] = "explicit"
+
+
+class GraphMessageEdgesResponse(BaseModel):
+    """The persisted precision-message edge rules (GET/PUT /graph/edges/messages)."""
+
+    edges: list[GraphMessageEdge]
+
+
+class GraphMessageEdgesRequest(BaseModel):
+    """Replace the persisted message edges (empty ⇒ back to auto relations)."""
+
+    edges: list[GraphMessageEdge]
+
+
+class GraphCycleFlag(BaseModel):
+    """One inconsistent beta cycle (spec §16.4), reported at the edge whose
+    addition closes it. ``betaProduct`` is the implied product around the
+    cycle; ``0.0`` is the sentinel for a nonpositive beta (impossible as a
+    genuine product of positive betas)."""
+
+    receiverTicker: str
+    receiverExpiry: str
+    informerTicker: str
+    informerExpiry: str
+    betaProduct: float
+
+
 class GraphExtrapolateRequest(GraphSolverParams):
     """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
 
@@ -1098,6 +1161,51 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: tail-mass sds from the same pushforward. Band-only (never moves a
     #: posterior mean); OFF restores the legacy ATM-level band exactly.
     functionalBand: bool = True
+
+    # ---------------- precision-message mode (message arc P3, spec §18) ----
+    #: Propagation operator. "smooth_field" = the legacy increment prior,
+    #: byte-identical at defaults; "precision_messages" = the pairwise
+    #: relation-factor operator (volfit.graph.message); "hybrid" adds the
+    #: legacy directed-smoothness term on top of the message factors
+    #: (explicit opt-in, spec §15.4 — config-only, no UI until validated).
+    propagationMode: Literal[
+        "smooth_field", "precision_messages", "hybrid"
+    ] = "smooth_field"
+
+    #: Explicit message relation factors. Non-empty ⇒ defines the whole
+    #: message topology; empty falls back to the persisted message edges,
+    #: then the auto relations (calendar ladders + same-expiry cross pairs).
+    messageEdges: list[GraphMessageEdge] = []
+
+    #: §8 calendar amplitude SHAPE exponent alphaT (locked default 1.0),
+    #: broadcast to all three handles in v1 (§8.5 per-handle exponents ride
+    #: the Phase-4 sweep).
+    calendarBetaExponent: float = 1.0
+
+    #: §8.4 amplitude LEVEL multipliers rho per relation class, mechanized
+    #: via the §14.2 node-linked anchor. 1.0 = desk full force (zero anchor);
+    #: the learned day-horizon presets are ~0.23 calendar (alphaT=1 shape)
+    #: and ~0.39-0.55 cross (message_phase0 study).
+    calendarAmplitude: float = Field(default=1.0, gt=0.0, le=1.0)
+    crossAmplitude: float = Field(default=1.0, gt=0.0, le=1.0)
+
+    #: §9.2 calendar precision family (Phase-0 empirical seeds).
+    calendarPrecisionScale: float = Field(default=1.7e3, gt=0.0)
+    calendarPrecisionEpsilon: float = Field(default=0.97, gt=0.0)
+    calendarPrecisionDecay: Literal[
+        "inverse_sqrt_gap", "constant", "log_distance"
+    ] = "inverse_sqrt_gap"
+
+    #: Cross-relation message precision (constant rule; Phase-0 index seed).
+    crossPrecisionScale: float = Field(default=1.3e4, gt=0.0)
+
+    #: §14.2 anchor OVERRIDE: a uniform innovation-anchor precision applied
+    #: to every node when set (stress/hybrid use); None ⇒ the anchor is
+    #: DERIVED from the amplitude multipliers (zero in desk mode).
+    innovationAnchorPrecision: float | None = Field(default=None, ge=0.0)
+
+    #: §16.4 cycle-consistency reporting tolerance on |beta product − 1|.
+    cycleBetaTolerance: float = Field(default=0.05, gt=0.0)
 
 
 class GraphObservationPlanRequest(GraphExtrapolateRequest):
@@ -1175,12 +1283,22 @@ class GraphExtrapolateNode(BaseModel):
     baselinePrecision: list[float] = []  # transported-prior baseline precision
     obsPrecision: list[float] | None = None  # lit-node observation precision
     precisionFactors: dict[str, float] = {}  # the scalar factor breakdown
+    # Message-mode diagnostics (arc P3, spec §17): the ATM receiver conditional
+    # incoming precision q_i (§7.6 mapping) and the §14.3 no-lit-path tag.
+    # None in smooth_field mode.
+    qIncoming: float | None = None
+    noLitPath: bool | None = None
 
 
 class GraphExtrapolateResponse(BaseModel):
     """Posterior field over every selected node (production extrapolation)."""
 
     nodes: list[GraphExtrapolateNode]
+    #: Which propagation operator produced this field (message arc P3).
+    propagationMode: str = "smooth_field"
+    #: §16.4 inconsistent beta cycles (message/hybrid modes only; empty when
+    #: the configured betas are gauge-consistent, as the auto relations are).
+    cycleDiagnostics: list[GraphCycleFlag] = []
 
 
 class GraphQuotePoint(BaseModel):

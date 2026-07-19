@@ -44,6 +44,7 @@ from volfit.api.schemas import (
     ForwardPolicy,
     GraphBlockRule,
     GraphEdgeInput,
+    GraphMessageEdge,
     MarketSettings,
     OptionsSettings,
     SmilePoint,
@@ -99,6 +100,7 @@ class Workspace:
         self.filter_states: dict[tuple, object] = {}
         self.graph_edges: list[GraphEdgeInput] = []
         self.graph_block_rule: GraphBlockRule | None = None
+        self.graph_message_edges: list[GraphMessageEdge] = []
         self.market_settings: dict[str, MarketSettings] = {}
         self.events: dict[str, list[EventSpec]] = {}
         self.events_version: dict[str, int] = {}
@@ -147,6 +149,7 @@ def build_doc(state) -> dict:
         policies = dict(ws.forward_policies)
         edges = list(ws.graph_edges)
         rule = ws.graph_block_rule
+        msg_edges = list(ws.graph_message_edges)
         dark = sorted(ws.dark_nodes)
         shifts = dict(ws.spot_shift)
         last_mode = ws.last_fit_mode
@@ -187,6 +190,7 @@ def build_doc(state) -> dict:
         "darkNodes": [list(k) for k in dark],
         "graphEdges": [e.model_dump(mode="json") for e in edges],
         "graphBlockRule": rule.model_dump(mode="json") if rule is not None else None,
+        "graphMessageEdges": [e.model_dump(mode="json") for e in msg_edges],
         "spotShifts": {t: float(v) for t, v in sorted(shifts.items())},
         "lastFitMode": last_mode,
         "filterStates": [
@@ -232,6 +236,9 @@ def restore_doc(state, doc: dict) -> None:
     ]
     rule = doc.get("graphBlockRule")
     ws.graph_block_rule = GraphBlockRule.model_validate(rule) if rule else None
+    ws.graph_message_edges = [
+        GraphMessageEdge.model_validate(e) for e in doc.get("graphMessageEdges", [])
+    ]
     ws.spot_shift = {t: float(v) for t, v in doc.get("spotShifts", {}).items()}
     ws.last_fit_mode = str(doc.get("lastFitMode", "mid"))
     ws.asof = _asof_from(doc.get("asOf") or {}, AsOfSelection)

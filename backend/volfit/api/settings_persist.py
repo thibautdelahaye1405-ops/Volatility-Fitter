@@ -23,6 +23,7 @@ FIT_KEY = "fit_settings"
 OPTIONS_KEY = "options_settings"
 GRAPH_EDGES_KEY = "graph_edges"
 GRAPH_BLOCK_RULE_KEY = "graph_block_rule"
+GRAPH_MESSAGE_EDGES_KEY = "graph_message_edges"
 GRAPH_IDIO_KEY = "graph_idio_history"
 
 
@@ -123,6 +124,31 @@ def save_graph_block_rule(store_path, rule: dict | None) -> bool:
             store.delete_setting(GRAPH_BLOCK_RULE_KEY)
         else:
             store.save_setting(GRAPH_BLOCK_RULE_KEY, rule)
+    return True
+
+
+def load_graph_message_edges(store_path) -> list[dict]:
+    """Read the persisted precision-message edge rules (message arc P3, spec
+    §18.5); [] when absent or unreadable. Stored as ``{"edges": [...]}`` under
+    its OWN key — the legacy smooth-field blob (GRAPH_EDGES_KEY) round-trips
+    untouched and is never reinterpreted."""
+    if store_path is None:
+        return []
+    try:
+        with VolStore(store_path) as store:
+            raw = store.load_setting(GRAPH_MESSAGE_EDGES_KEY)
+    except Exception as exc:  # noqa: BLE001 — restore must never break startup
+        warnings.warn(f"graph-message-edges load failed: {exc}")
+        return []
+    return list(raw.get("edges", [])) if raw else []
+
+
+def save_graph_message_edges(store_path, edges: list[dict]) -> bool:
+    """Persist the precision-message edge rules; False when no store is set."""
+    if store_path is None:
+        return False
+    with VolStore(store_path) as store:
+        store.save_setting(GRAPH_MESSAGE_EDGES_KEY, {"edges": edges})
     return True
 
 

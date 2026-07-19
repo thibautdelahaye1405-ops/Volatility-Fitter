@@ -108,3 +108,56 @@ def observation_gains(
             )
         )
     return out
+
+
+def message_observation_gains(
+    posterior,
+    candidates: np.ndarray,
+    candidate_precision: np.ndarray,
+    weights: np.ndarray | None = None,
+) -> list[ObservationGain]:
+    """Rank-one observation gains on a message-mode posterior (arc P3).
+
+    The covariance-form route above reconstructs K⁺ columns from K⁻/S_y — an
+    object that does not exist for the message operator's improper prior. The
+    information-form posterior carries Σ⁺ directly, and the identical
+    Sherman–Morrison algebra applies to its columns:
+
+        drop_i = (Σ⁺_ic)² / (Σ⁺_cc + 1/r_c).
+
+    ``posterior`` is a MessagePosterior (duck-typed: needs
+    ``posterior_covariance``, ``marginal_variance``, ``observed``). No-lit
+    candidates carry their broad disconnected variance on the diagonal and
+    zero cross-covariance, so observing one collapses its own variance and
+    benefits nobody else — exactly the honest reading."""
+    cand = np.asarray(candidates, dtype=int)
+    r = np.asarray(candidate_precision, dtype=float)
+    if cand.size == 0:
+        return []
+    if r.shape != (cand.size,) or np.any(r <= 0):
+        raise ValueError("candidate_precision must be positive, one per candidate")
+    if np.intersect1d(cand, posterior.observed).size:
+        raise ValueError("candidates must not already be observed")
+    sigma = posterior.posterior_covariance
+    n = sigma.shape[0]
+    w = np.ones(n) if weights is None else np.asarray(weights, dtype=float)
+    if np.any(w < 0):
+        raise ValueError("exposure weights must be non-negative")
+
+    out: list[ObservationGain] = []
+    for j, c in enumerate(cand):
+        var_c = float(posterior.marginal_variance[c])
+        col = sigma[:, c].copy()
+        col[c] = var_c  # the diagonal IS the marginal (no-lit nodes included)
+        denom = var_c + 1.0 / r[j]
+        drop = col**2 / denom
+        out.append(
+            ObservationGain(
+                index=int(c),
+                total_gain=float(w @ drop),
+                self_var_before=var_c,
+                self_var_after=float(max(var_c - drop[c], 0.0)),
+                per_node_var_drop=drop,
+            )
+        )
+    return out

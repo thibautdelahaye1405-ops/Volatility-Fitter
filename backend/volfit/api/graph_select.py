@@ -34,7 +34,7 @@ from volfit.api.schemas import (
 from volfit.api.service import fit_or_get, weighted_rms_error
 from volfit.api.state import AppState
 from volfit.graph import precision as gprec
-from volfit.graph.select import observation_gains
+from volfit.graph.select import message_observation_gains, observation_gains
 
 _ATM = 0  # the coordinate the plan ranks on (the product headline)
 _MAX_BENEFICIARIES = 5
@@ -64,7 +64,8 @@ def observation_plan(
         return GraphObservationPlanResponse(candidates=[], nCandidates=0)
     n = len(sol.universe.nodes)
     post = sol.field.posteriors[_ATM]
-    prior = sol.increment_priors[_ATM]
+    message_mode = sol.message_diagnostics is not None
+    prior = None if message_mode else sol.increment_priors[_ATM]
     p0 = sol.baseline_precision[:, _ATM]
 
     observed = set(int(i) for i in post.observed) if post is not None else set()
@@ -86,7 +87,12 @@ def observation_plan(
         for i, node in enumerate(sol.universe.nodes):
             w[i] = float(request.exposureWeights.get(node.ticker, 1.0))
 
-    gains = observation_gains(prior.covariance, p0, post, cand, r, weights=w)
+    # Message mode has no covariance-form prior — the identical rank-one
+    # algebra runs on the posterior covariance Σ⁺ directly (arc P3).
+    if message_mode:
+        gains = message_observation_gains(post, cand, r, weights=w)
+    else:
+        gains = observation_gains(prior.covariance, p0, post, cand, r, weights=w)
     r_by_idx = {int(c): float(rc) for c, rc in zip(cand, r)}
 
     # Remaining weighted model variance (raw posterior — see module docstring).

@@ -30,6 +30,8 @@ from volfit.api.schemas import (
     GraphEdgesResponse,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
+    GraphMessageEdgesRequest,
+    GraphMessageEdgesResponse,
     GraphNodeInfo,
     GraphNodesResponse,
     GraphNodeSmile,
@@ -140,6 +142,26 @@ def put_graph_edges(body: GraphEdgesRequest, request: Request) -> GraphEdgesResp
 def get_lattice_edges(request: Request) -> GraphEdgesResponse:
     """The auto-lattice edges as editable rows — the editor's 'seed from lattice'."""
     return GraphEdgesResponse(edges=graph_extrapolation.lattice_edges(request.app.state.volfit))
+
+
+@router.get("/graph/edges/messages", response_model=GraphMessageEdgesResponse)
+def get_message_edges(request: Request) -> GraphMessageEdgesResponse:
+    """The persisted precision-message edge rules (schema v2, source=informer →
+    target=receiver); empty ⇒ the message mode builds its auto relations."""
+    return GraphMessageEdgesResponse(
+        edges=request.app.state.volfit.graph_message_edges()
+    )
+
+
+@router.put("/graph/edges/messages", response_model=GraphMessageEdgesResponse)
+def put_message_edges(
+    body: GraphMessageEdgesRequest, request: Request
+) -> GraphMessageEdgesResponse:
+    """Replace the message edge rules (persisted, independent of the legacy
+    smooth-field edge blob). Empty list ⇒ back to the auto relations."""
+    state = request.app.state.volfit
+    state.set_graph_message_edges(body.edges)
+    return GraphMessageEdgesResponse(edges=state.graph_message_edges())
 
 
 @router.get("/graph/edges/blocks", response_model=GraphBlockRuleResponse)

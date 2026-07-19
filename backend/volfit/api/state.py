@@ -31,6 +31,7 @@ from volfit.api.schemas import (
     ForwardPolicy,
     GraphBlockRule,
     GraphEdgeInput,
+    GraphMessageEdge,
     MarketSettings,
     OptionsSettings,
     SmilePoint,
@@ -43,10 +44,12 @@ from volfit.api.settings_persist import (
     load_graph_block_rule,
     load_graph_edges,
     load_graph_idio,
+    load_graph_message_edges,
     save_defaults,
     save_graph_block_rule,
     save_graph_edges,
     save_graph_idio,
+    save_graph_message_edges,
 )
 from volfit.api.workspace import ScopedField, Workspace, build_doc, restore_doc
 from volfit.graph.idio import IdioHistory
@@ -155,6 +158,7 @@ class AppState(UniverseMixin):
     _filter_states = ScopedField("filter_states")
     _graph_edges = ScopedField("graph_edges")
     _graph_block_rule = ScopedField("graph_block_rule")
+    _graph_message_edges = ScopedField("graph_message_edges")
     _market_settings = ScopedField("market_settings")
     _events = ScopedField("events")
     _events_version = ScopedField("events_version")
@@ -273,6 +277,12 @@ class AppState(UniverseMixin):
         #: lives in _graph_edges. None ⇒ no rule (the edge list, if any, is raw).
         self._graph_block_rule: GraphBlockRule | None = _coerce_block_rule(
             load_graph_block_rule(self.store_path)
+        )
+        #: Persisted precision-message edge rules (message arc P3, schema v2 —
+        #: source=informer/target=receiver). Its OWN blob: the legacy edge list
+        #: above is never reinterpreted (spec §18.5). Empty ⇒ auto relations.
+        self._graph_message_edges: list[GraphMessageEdge] = _coerce_message_edges(
+            load_graph_message_edges(self.store_path)
         )
         #: Trailing per-ticker ATM-innovation record feeding the idio band floor
         #: (volfit.graph.idio): every production solve records its lit-node
@@ -1525,6 +1535,21 @@ class AppState(UniverseMixin):
             "graph_edges", payload={"nEdges": len(edges), "rule": rule is not None}
         )
 
+    def graph_message_edges(self) -> list[GraphMessageEdge]:
+        """The persisted precision-message edge rules (empty ⇒ auto relations)."""
+        with self._lock:
+            return list(self._graph_message_edges)
+
+    def set_graph_message_edges(self, edges: list[GraphMessageEdge]) -> None:
+        """Replace the message edge rules and persist them (best-effort).
+
+        Independent of the legacy smooth-field edge list / block rule — the
+        two topologies persist side by side (spec §18.5)."""
+        with self._lock:
+            self._graph_message_edges = list(edges)
+        save_graph_message_edges(self.store_path, [e.model_dump() for e in edges])
+        self.log_event("graph_message_edges", payload={"nEdges": len(edges)})
+
     # ------------------------------------------------------------- audit log
     def log_event(self, action: str, scope: str = "", payload: dict | None = None) -> None:
         """Append-only audit event (governance kernel, R1 item 8).
@@ -1619,6 +1644,18 @@ def _coerce_graph_edges(raw: list[dict]) -> list[GraphEdgeInput]:
     for item in raw:
         try:
             out.append(GraphEdgeInput(**item))
+        except Exception:  # noqa: BLE001 — skip a malformed persisted edge
+            continue
+    return out
+
+
+def _coerce_message_edges(raw: list[dict]) -> list[GraphMessageEdge]:
+    """Validate persisted message-edge dicts, dropping unreadable ones (same
+    degrade-gracefully contract as the legacy edge blob)."""
+    out: list[GraphMessageEdge] = []
+    for item in raw:
+        try:
+            out.append(GraphMessageEdge(**item))
         except Exception:  # noqa: BLE001 — skip a malformed persisted edge
             continue
     return out

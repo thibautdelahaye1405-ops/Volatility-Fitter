@@ -221,11 +221,28 @@ items; absorbs R3 item 14.
   r=1e9 (1e-6), native-obs fixtures exact (1e-12), consistent-cycle
   full-amplitude transmission, anchors/hybrid identities, PD-guard,
   validation.
-- **P3 Orchestration+schema v2** — `propagationMode` Literal (prior_mode.py
-  resolver precedent), fork in `graph_extrapolation.solve`; edge schema
-  source=informer/target=receiver with blob migration (new receiver = old
-  `from`, new informer = old `to` — engine truth `W[from][to]` = "to
-  informs from", test-locked); smooth_field BYTE-IDENTITY locked.
+- **P3 Orchestration+schema v2 — COMPLETE 2026-07-19** (exit gate MET):
+  `propagationMode` Literal on GraphExtrapolateRequest (+ OptionsSettings
+  `graphPropagationMode` persisted default); fork in
+  `graph_extrapolation.solve` (legacy path untouched — full suite 1302
+  green with only the two sanctioned options-snapshot dict updates);
+  new `api/graph_message.py` (235 lines: auto relations = calendar
+  ladders + same-expiry cross pairs, schema-v2 expansion incl.
+  calendar_distance rule, §15.2 r_d harmonic combination, §15.3 band
+  placement, §14.2 anchors from amplitude multipliers + override, §16.4
+  cycle flags); `GraphMessageEdge` schema v2 (source=informer →
+  target=receiver; legacy conversion helper test-locked: new target =
+  old `from`) persisted under its OWN blob `graph_message_edges` (state
+  accessors + workspace doc + GET/PUT /graph/edges/messages); hybrid =
+  message + (ηL_dir^β + λOT) WITHOUT the legacy anchor (≡ message at
+  etaScale=0, test-locked); observation-plan ported via
+  `message_observation_gains` on Σ⁺ columns; wire diagnostics
+  qIncoming/noLitPath per node + propagationMode/cycleDiagnostics on the
+  response. tests/test_graph_message_production.py (17): golden
+  full-amplitude/shrunk/average through the REAL production assembly,
+  §15.2/§15.3 contracts, edge precedence/persistence/workspace
+  round-trip, cycle flags, end-to-end reconstructed smile route w/ mode
+  parity, hybrid identity, message-mode observation plan.
 - **P4 Adjudication** — benchmark_pack CLI knobs; ADD 50/80/95 band
   coverage + path-length calibration to scored rows (missing today);
   combined campaign incl. b14; decision table vs pre-registered gate
@@ -247,6 +264,59 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19c) — MESSAGE ARC PHASE 3 COMPLETE
+
+- **Production orchestration SHIPPED.** `GraphExtrapolateRequest` gains
+  `propagationMode` (smooth_field default = legacy byte-identical) + the
+  §18.4 knobs (calendarBetaExponent, calendar/crossAmplitude,
+  calendarPrecisionScale/Epsilon/Decay, crossPrecisionScale,
+  innovationAnchorPrecision override, cycleBetaTolerance) + `messageEdges`;
+  `OptionsSettings.graphPropagationMode` is the persisted default (frontend
+  seeds it in P5). The fork lives at the increment-prior build in
+  `graph_extrapolation.solve`; everything upstream (universe, transported
+  priors, innovations, data-derived precisions) and downstream
+  (reconstruction, functional band, idio floor, attribution, LOO backtest)
+  is SHARED — `graph_backtest` works in message mode with zero changes.
+- **`api/graph_message.py`** (235 lines): auto relations (calendar ladders,
+  canonical short receiver, §9.2 distance precision w/ Phase-0 seeds;
+  same-expiry cross pairs β=1 lexicographic, constant crossPrecisionScale);
+  schema-v2 expansion (drop-unknown-nodes contract, `calendar_distance`
+  precision rule); §15.2 innovation precision r_d = (1/r_cal + 1/p0)⁻¹;
+  §15.3 band placement (baseline var into r_d for observed nodes, into the
+  band ONCE for everyone else); §14.2 node-linked anchors from the
+  amplitude multipliers (+ uniform override knob); disconnected components
+  at DISCONNECTED_Z_SD = the GRAPH_PRIOR_HYPER per-handle scales; §16.4
+  cycle flags (NaN→0 sentinel on the wire). Explicit legacy import helper
+  `message_edges_from_legacy` — test-locked direction inversion (new
+  target/receiver = old `from`; engine truth "to informs from"); the
+  legacy blob itself is NEVER reinterpreted (§18.5).
+- **Schema v2 persistence**: `GraphMessageEdge` rows persist under their
+  own `graph_message_edges` blob (settings_persist + state accessors +
+  audit event + workspace doc round-trip) with degrade-gracefully
+  coercion; GET/PUT `/graph/edges/messages`. Hybrid mode = message factors
+  + (ηL_dir^β + λOT) WITHOUT the legacy zero-innovation anchor —
+  config-only, ≡ pure message at etaScale=0/lambdaScale=0 (test-locked).
+  Observation plan ported: `message_observation_gains` (graph/select.py)
+  runs the identical rank-one algebra on Σ⁺ columns.
+- **Wire diagnostics**: per-node `qIncoming` (§7.6 ATM conditional) +
+  `noLitPath`; response-level `propagationMode` echo + `cycleDiagnostics`.
+- **Exit gate MET**: tests/test_graph_message_production.py (17) — golden
+  full-amplitude (+2.0/+0.5), shrunk ρβz, cross average, §15.2 weak-prior
+  weakening, §14.3+§15.3 disconnected/band placement, edge precedence +
+  persistence + workspace round-trip, calendar_distance rule, legacy
+  inversion, cycle product 4 flag, END-TO-END reconstructed smile route
+  (241-point curve + attribution from MessagePosterior, mode parity),
+  hybrid≡message identity, message-mode observation plan. FULL suite:
+  1302 passed, 1 skipped (the only edits: the two sanctioned
+  options-snapshot dicts gained `graphPropagationMode`) — the legacy
+  graph suite passed UNMODIFIED = the smooth_field byte-identity lock.
+- **NEXT: P4 — combined adjudication campaign** (absorbs b14): benchmark
+  CLI knobs (--mode/--alpha-t/--amp-cal/--amp-cross/precision family),
+  ADD 50/80/95 band coverage + path-length calibration to graph_loo
+  scoring, variant matrix over the 3 frozen regimes, runbook for the
+  USER'S window, decision table vs the §22.4 pre-registered gate. (P5
+  full-§20 frontend may run in parallel with the campaign.)
 
 ### 🧭 SESSION WRAP (2026-07-19b) — MESSAGE ARC PHASE 2 COMPLETE
 

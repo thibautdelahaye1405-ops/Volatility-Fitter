@@ -28,6 +28,7 @@ from volfit.api.graph_universe import (
     build_selected_universe,
 )
 from volfit.api.schemas import (
+    GraphCycleFlag,
     GraphEdgeInput,
     GraphExtrapolateNode,
     GraphExtrapolateRequest,
@@ -241,9 +242,14 @@ class ExtrapolationSolution:
     fit_mode: str
     # The per-handle increment priors + baseline precisions the field was
     # solved with — retained for closed-form follow-up algebra on the same
-    # posterior (active observation selection, R3 item 13).
+    # posterior (active observation selection, R3 item 13). increment_priors
+    # is None in precision-message mode (the improper message prior has no
+    # covariance form; the observation plan reads Σ⁺ instead).
     increment_priors: list = None  # list[IncrementPrior], one per handle
     baseline_precision: np.ndarray = None  # (N, 3)
+    # Message-mode diagnostics (arc P3); None in smooth_field mode — the
+    # discriminator every consumer branches on.
+    message_diagnostics: object = None  # graph_message.MessageDiagnostics | None
 
 
 def solve(
@@ -334,16 +340,47 @@ def solve(
         else np.empty((0, N_HANDLES))
     )
 
-    increment_priors = _build_increment_priors(universe, request, edges)
-    field = _propagate_field(
-        universe.graph,
-        increment_priors,
-        baseline,
-        baseline_precision,
-        obs_idx,
-        obs_values,
-        obs_precision,
-    )
+    # Propagation fork (arc P3): smooth_field is the untouched legacy path;
+    # precision_messages solves the pairwise-factor operator; hybrid adds the
+    # legacy directed-smoothness/OT term on top of the message factors
+    # (spec §15.4 — WITHOUT the legacy zero-innovation anchor).
+    message_diagnostics = None
+    if request.propagationMode == "smooth_field":
+        increment_priors = _build_increment_priors(universe, request, edges)
+        field = _propagate_field(
+            universe.graph,
+            increment_priors,
+            baseline,
+            baseline_precision,
+            obs_idx,
+            obs_values,
+            obs_precision,
+        )
+    else:
+        from volfit.api.graph_message import solve_message_field
+
+        hybrid_extra = None
+        increment_priors = None
+        if request.propagationMode == "hybrid":
+            increment_priors = _build_increment_priors(universe, request, edges)
+            n = len(universe.nodes)
+            hybrid_extra = [
+                p.precision - np.diag(np.full(n, request.kappaScale / s**2))
+                for p, (s, _eta) in zip(increment_priors, GRAPH_PRIOR_HYPER)
+            ]
+        t_by_node = {node.name: _node_t(state, node.expiry) for node in universe.nodes}
+        field, message_diagnostics = solve_message_field(
+            universe,
+            t_by_node,
+            request,
+            baseline,
+            baseline_precision,
+            obs_idx,
+            obs_values,
+            obs_precision,
+            persisted_edges=state.graph_message_edges(),
+            hybrid_extra=hybrid_extra,
+        )
 
     # Idio band floor (volfit.graph.idio): every node that did NOT contribute an
     # observation (dark, held out, or lit-but-uncalibrated) has its ATM band std
@@ -387,6 +424,7 @@ def solve(
         fit_mode=fit_mode,
         increment_priors=increment_priors,
         baseline_precision=baseline_precision,
+        message_diagnostics=message_diagnostics,
     )
 
 
@@ -402,6 +440,7 @@ def extrapolate(
     base_breakdowns, obs_breakdowns = sol.base_breakdowns, sol.obs_breakdowns
     obs_value_by_idx = sol.obs_value_by_idx
     band_lo, band_hi = field.atm_vol_band()
+    diag = sol.message_diagnostics
 
     nodes = []
     for i, node in enumerate(universe.nodes):
@@ -442,6 +481,25 @@ def extrapolate(
                 bandLo=float(band_lo[i]),
                 bandHi=float(band_hi[i]),
                 innovationBp=innovation_bp,
+                qIncoming=(float(diag.q_incoming[i]) if diag is not None else None),
+                noLitPath=(bool(diag.no_lit_path[i]) if diag is not None else None),
             )
         )
-    return GraphExtrapolateResponse(nodes=nodes)
+    cycle_flags = []
+    if diag is not None:
+        for receiver, informer, product in diag.cycle_flags:
+            cycle_flags.append(
+                GraphCycleFlag(
+                    receiverTicker=receiver[0],
+                    receiverExpiry=receiver[1],
+                    informerTicker=informer[0],
+                    informerExpiry=informer[1],
+                    # 0.0 = the nonpositive-beta sentinel (NaN is not JSON).
+                    betaProduct=float(product) if np.isfinite(product) else 0.0,
+                )
+            )
+    return GraphExtrapolateResponse(
+        nodes=nodes,
+        propagationMode=request.propagationMode,
+        cycleDiagnostics=cycle_flags,
+    )
