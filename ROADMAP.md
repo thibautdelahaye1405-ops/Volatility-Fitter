@@ -316,13 +316,24 @@ items; absorbs R3 item 14.
     cross-asset RECEIVER-row × INFORMER-column ticker matrix (cells
     β+σ, hover sentence, drill-in); |β|-cap warnings. Row-level
     MessageEdgeEditor remains the advanced overrides list.
-  * **U3 Mode-aware what-if (test pulse)**: GraphSolveRequest gains
-    propagationMode (+ message knobs); sandbox message solve in
-    graph_service (message operator over the sandbox universe, typed
-    shifts = innovations, non-persisting); canonical scenario shortcuts
-    (calendar pulse / competing signals / cross basket) + the
-    competing-signals explainer ("signals cancel in mean, reinforce
-    confidence"); smooth-field sandbox path byte-guarded.
+  * **U3 Unified mode-aware what-if (test pulse) — REVISED 2026-07-19:
+    RETIRE the sandbox path instead of retrofitting it** (user decision).
+    Build the what-if ON THE PRODUCTION MACHINERY: GraphExtrapolateRequest
+    gains `syntheticObservations` (typed handle shifts + optional
+    precision); `graph_extrapolation.solve` uses them as the innovations
+    when present (selected universe, transported-prior baselines, ACTIVE
+    operator, `record_graph_innovations` SKIPPED — non-persisting by
+    construction). Semantic change vs the old sandbox, deliberate: what-if
+    runs over the SELECTED universe with prior-anchored baselines, not
+    all-provider nodes with today-fit baselines. Canonical scenario
+    shortcuts (calendar pulse / competing signals / cross basket) + the
+    competing-signals explainer. DEPRECATION not deletion in this arc:
+    the UI stops calling POST /graph/solve; the sandbox endpoints +
+    graph_service stay (their tests still lock the note's golden math);
+    actual removal is a P6-cleanup decision once autotune is re-pointed
+    (η LOO rides the unified endpoint, smooth-field mode only — the knob
+    doesn't exist under messages) and GET /graph/nodes' chart-baseline
+    role is served by a zero-observation production solve.
   * **U4 Message inspector**: incoming-messages table per selected node
     (informer, innovation, β, mapped signal, relationship uncertainty,
     effective precision — client-side from edge rows + response), local
@@ -391,7 +402,13 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   the config-test framing explicit — labeling + non-persistence +
   canonical scenario shortcuts guard the conflation the user's own
   analysis warned about); validation = in-app side-by-side LOO +
-  offline-artifact link.
+  offline-artifact link. **U3 REVISED same day (user): RETIRE the
+  sandbox path rather than retrofit — the unified what-if rides the
+  production solve via `syntheticObservations` on
+  GraphExtrapolateRequest (selected universe, prior baselines, active
+  operator, non-persisting); sandbox endpoints deprecated in-place,
+  removal deferred to P6 cleanup (autotune re-point + /graph/nodes
+  chart-baseline replacement first).**
 - **NEXT SESSION: start P5b at U0 (shell)**. P6 hardening follows the
   arc; the P4 campaign verdict rider (default tagging) lands whenever
   the sweep finishes.
