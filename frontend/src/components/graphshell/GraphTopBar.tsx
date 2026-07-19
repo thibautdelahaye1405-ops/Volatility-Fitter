@@ -56,7 +56,6 @@ export default function GraphTopBar({
   hasResults,
   onClear,
 }: GraphTopBarProps) {
-  const manual = source === "manual";
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-3">
       <label className="flex items-center gap-2 text-xs text-slate-500">
@@ -72,15 +71,11 @@ export default function GraphTopBar({
         />
       </label>
 
-      {/* Propagation operator — manual what-if runs the smooth-field sandbox
-          by construction, so the selector is inert there. */}
+      {/* Propagation operator — mode-aware for BOTH sources since the U3
+          unification (the what-if rides the production solve). */}
       <label
-        className={"flex items-center gap-2 text-xs text-slate-500" + (manual ? " opacity-50" : "")}
-        title={
-          manual
-            ? "Manual what-if runs the smooth-field sandbox; the operator applies to the calibrations source"
-            : "Propagation operator — seeded from Options ▸ Graph"
-        }
+        className="flex items-center gap-2 text-xs text-slate-500"
+        title="Propagation operator — applies to calibrations AND the what-if; seeded from Options ▸ Graph"
       >
         Propagation
         <SegmentedControl
@@ -88,10 +83,8 @@ export default function GraphTopBar({
             { id: "smooth_field" as PropagationMode, label: "Smooth field" },
             { id: "precision_messages" as PropagationMode, label: "Messages" },
           ]}
-          value={manual ? "smooth_field" : mode}
-          onChange={(m) => {
-            if (!manual) setMode(m);
-          }}
+          value={mode}
+          onChange={setMode}
           size="xs"
         />
       </label>

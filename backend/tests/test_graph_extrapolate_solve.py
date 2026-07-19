@@ -181,3 +181,86 @@ def test_route_extrapolate_smoke():
         target = next(n for n in nodes if n["ticker"] == tk and n["expiry"] == iso)
         assert target["calibrated"] is True
         assert "priorSource" in target
+
+
+# ------------------------------------------------ U3 unified what-if pulses
+def test_synthetic_pulse_replaces_the_calibration_feed(primed):
+    """A typed pulse is THE observation set: the pulsed node is pinned to
+    prior + shift (hypothesis-firm), carries the typed innovation, and no
+    other node is an observation — the lit-calibration feed is replaced."""
+    from volfit.api.schemas import SyntheticObservation
+
+    tk = primed.active_tickers()[0]
+    iso = _isos(primed, tk)[1]
+    resp = extrapolate(
+        primed,
+        GraphExtrapolateRequest(
+            syntheticObservations=[
+                SyntheticObservation(ticker=tk, expiry=iso, dAtmVol=0.01)
+            ]
+        ),
+    )
+    by = {(n.ticker, n.expiry): n for n in resp.nodes}
+    pulsed = by[(tk, iso)]
+    assert pulsed.calibrated is True
+    assert pulsed.innovationBp == pytest.approx(100.0, abs=1e-6)
+    assert pulsed.postAtmVol == pytest.approx(pulsed.priorAtmVol + 0.01, abs=5e-4)
+    others = [n for n in resp.nodes if (n.ticker, n.expiry) != (tk, iso)]
+    assert all(not n.calibrated and n.innovationBp is None for n in others)
+    # The pulse propagates: a same-ticker neighbour moves off its prior.
+    neighbour = by[(tk, _isos(primed, tk)[0])]
+    assert abs(neighbour.shiftBp) > 1.0
+
+
+def test_synthetic_pulse_fits_nothing_and_records_nothing(primed, monkeypatch):
+    """The what-if never triggers slice fits and never persists innovations —
+    non-persisting by construction (P5b U3)."""
+    from volfit.api import graph_extrapolation as gx
+    from volfit.api.schemas import SyntheticObservation
+
+    def _no_fit(*a, **k):
+        pytest.fail("what-if must not trigger fit_or_get")
+
+    monkeypatch.setattr(gx, "fit_or_get", _no_fit)
+    monkeypatch.setattr(
+        primed,
+        "record_graph_innovations",
+        lambda *a, **k: pytest.fail("what-if must not record innovations"),
+    )
+    tk = primed.active_tickers()[0]
+    iso = _isos(primed, tk)[0]
+    resp = extrapolate(
+        primed,
+        GraphExtrapolateRequest(
+            syntheticObservations=[
+                SyntheticObservation(ticker=tk, expiry=iso, dAtmVol=0.005)
+            ]
+        ),
+    )
+    assert any(n.calibrated for n in resp.nodes)
+
+
+def test_synthetic_pulse_is_mode_aware(primed):
+    """The same pulse runs the ACTIVE operator: under precision messages the
+    adjacent shorter expiry receives β·z with β = T_informer/T_receiver
+    (αT=1, desk amplitude, consistent routes ⇒ exact transmission)."""
+    from volfit.api.schemas import SyntheticObservation
+
+    tk = primed.active_tickers()[0]
+    isos = _isos(primed, tk)
+    t = {
+        iso: (date.fromisoformat(iso) - REF_DATE).days / 365.25 for iso in isos[:2]
+    }
+    pulse = SyntheticObservation(ticker=tk, expiry=isos[1], dAtmVol=0.01)
+    resp = extrapolate(
+        primed,
+        GraphExtrapolateRequest(
+            flatAtm=True,
+            propagationMode="precision_messages",
+            syntheticObservations=[pulse],
+        ),
+    )
+    by = {(n.ticker, n.expiry): n for n in resp.nodes}
+    assert by[(tk, isos[1])].shiftBp == pytest.approx(100.0, rel=1e-3)
+    beta = t[isos[1]] / t[isos[0]]  # informer = the longer maturity
+    assert by[(tk, isos[0])].shiftBp == pytest.approx(100.0 * beta, rel=0.02)

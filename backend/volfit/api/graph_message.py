@@ -257,6 +257,7 @@ def solve_message_field(
     obs_precision: np.ndarray,
     persisted_edges: list[GraphMessageEdge] | None = None,
     hybrid_extra: list[np.ndarray] | None = None,
+    firm_observations: bool = False,
 ) -> tuple[HandleField, MessageDiagnostics]:
     """The message-mode counterpart of ``_propagate_field`` (§15).
 
@@ -264,8 +265,11 @@ def solve_message_field(
     precisions (N, 3); ``obs_*`` are the lit calibrations (absolute handles)
     with their calibration-only precisions. Edge precedence mirrors the
     legacy path: request.messageEdges → persisted rules → auto relations.
-    Returns the ABSOLUTE handle field (baseline + posterior innovation) plus
-    the wire diagnostics."""
+    ``firm_observations`` (U3 what-if pulses) skips the §15.2 baseline
+    combination — a typed hypothesis carries no baseline noise, so its
+    innovation is observed at the raw pulse precision. Returns the ABSOLUTE
+    handle field (baseline + posterior innovation) plus the wire
+    diagnostics."""
     names = list(universe.names)
     rows = list(request.messageEdges) or list(persisted_edges or []) or None
     edges = (
@@ -274,10 +278,14 @@ def solve_message_field(
         else auto_message_edges(universe, t_by_node, request)
     )
 
-    # §15.2 combined innovation observation precision (lit nodes only).
+    # §15.2 combined innovation observation precision (lit nodes only);
+    # firm (what-if) observations keep their raw pulse precision.
     d = obs_values - baseline[obs_idx] if obs_idx.size else obs_values
-    p0_obs = baseline_precision[obs_idx] if obs_idx.size else obs_precision
-    r_d = 1.0 / (1.0 / obs_precision + 1.0 / p0_obs) if obs_idx.size else obs_precision
+    if firm_observations or not obs_idx.size:
+        r_d = obs_precision
+    else:
+        p0_obs = baseline_precision[obs_idx]
+        r_d = 1.0 / (1.0 / obs_precision + 1.0 / p0_obs)
 
     rho = _amplitude_rho(request)
     mean = np.empty((len(names), N_HANDLES))

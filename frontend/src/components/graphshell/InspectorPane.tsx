@@ -64,7 +64,7 @@ export default function InspectorPane({
       {selected === null ? (
         <p className="mt-1 text-[11px] text-slate-500">
           {manual
-            ? "Manual what-if: click nodes on the canvas to light/dim them; the inspector reads production runs (From calibrations)."
+            ? "What-if: canvas clicks add/remove pulses — select a row in Diagnostics to inspect a node."
             : "Click a node on the canvas — or a row in Diagnostics — to inspect it."}
         </p>
       ) : (

@@ -11,10 +11,12 @@
 //   RIGHT  — Inspector: the selected node (facts + exact attribution).
 //   BOTTOM — drawer: Preview | Diagnostics | Validation | Observation plan.
 //
-// This view requires the live backend (GET /graph/nodes, POST /graph/solve,
-// POST /graph/extrapolate) — there is deliberately no mock fallback.
+// This view requires the live backend (GET /graph/nodes, POST
+// /graph/extrapolate — BOTH observation sources ride the production solve
+// since P5b U3; the what-if ships syntheticObservations, non-persisting) —
+// there is deliberately no mock fallback.
 import { useEffect, useMemo, useState } from "react";
-import GraphNetworkChart from "../components/GraphNetworkChart";
+import CanvasCard from "../components/graphshell/CanvasCard";
 import GraphDrawer, { type DrawerTab } from "../components/graphshell/GraphDrawer";
 import GraphTopBar, { type ObservationSource } from "../components/graphshell/GraphTopBar";
 import InspectorPane from "../components/graphshell/InspectorPane";
@@ -144,10 +146,13 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   );
 
   const manual = source === "manual";
-  const extrapolating = !manual && extraChartNodes !== null;
+  // U3 unification: BOTH sources render the production field. In manual the
+  // lit set stays the EDITABLE pulse set (rings follow the current edits,
+  // which may differ from the last run).
+  const extrapolating = extraChartNodes !== null;
   const chartNodes = extrapolating ? extraChartNodes : graph.nodes;
-  const chartLit = extrapolating ? extraChartLit : manual ? graph.lit : {};
-  const chartResults = manual ? graph.results : extra.results;
+  const chartLit = manual ? graph.lit : extrapolating ? extraChartLit : {};
+  const chartResults = extra.results;
 
   // Solve cinematics: stage the posterior reveal by REAL BFS hop from the lit
   // set over the real edge topology (honest distance, not decoration).
@@ -162,9 +167,9 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     [chartNodes, edges, litKeySet],
   );
   // Wave epoch: bump when a NEW result set lands. Keyed off the underlying
-  // state identities (graph.results / extra.nodes) — extra.results is rebuilt
-  // every render, so watching chartResults directly would loop.
-  const resultsIdentity = manual ? graph.results : extra.nodes;
+  // state identity (extra.nodes) — extra.results is rebuilt every render, so
+  // watching chartResults directly would loop.
+  const resultsIdentity = extra.nodes;
   const [waveEpoch, setWaveEpoch] = useState(0);
   useEffect(() => {
     if (resultsIdentity !== null) setWaveEpoch((v) => v + 1);
@@ -219,23 +224,36 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     if (ticker !== "" && expiry !== "") selectNode(ticker, expiry);
   };
 
-  // Run routing: production extrapolation vs the manual sandbox. After the
-  // attempt, reveal Diagnostics (errors surface in the top bar either way).
+  // The effective run body (U3 unification): manual what-if ships the typed
+  // pulse set as syntheticObservations on the PRODUCTION request — selected
+  // universe, transported-prior baselines, ACTIVE operator, non-persisting.
+  const syntheticObservations = useMemo(
+    () =>
+      Object.entries(graph.lit).map(([key, dAtmVol]) => {
+        const [ticker = "", expiry = ""] = key.split("|");
+        return { ticker, expiry, dAtmVol };
+      }),
+    [graph.lit],
+  );
+  const runBody = useMemo(
+    () => (manual ? { ...extrapolateBody, syntheticObservations } : extrapolateBody),
+    [manual, extrapolateBody, syntheticObservations],
+  );
+
+  // Run routing: one solve either way. After the attempt, reveal Diagnostics
+  // (errors surface in the top bar).
   const litCount0 = Object.keys(graph.lit).length;
   const canRun = manual ? litCount0 > 0 : true;
-  const busy = manual ? graph.solving : extra.running;
+  const busy = extra.running;
   const run = async () => {
-    if (manual) await graph.solve();
-    else await extra.run(extrapolateBody);
+    if (manual && litCount0 === 0) return;
+    await extra.run(runBody);
     setDrawerTab("diagnostics");
     setDrawerOpen(true);
   };
-  const clearField = () => {
-    if (manual) graph.clear();
-    else extra.clear();
-  };
-  const runError = manual ? graph.solveError : extra.error;
-  const hasResults = manual ? graph.results !== null : extra.nodes !== null;
+  const clearField = () => extra.clear();
+  const runError = extra.error;
+  const hasResults = extra.nodes !== null;
 
   /** Relation-editor save: refresh the displayed topology and re-run the
    *  production solve so the field reflects the new relations. */
@@ -256,12 +274,12 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   );
   const inspectorPost = useMemo(
     () =>
-      selected === null || manual
+      selected === null
         ? null
         : (extra.nodes ?? []).find(
             (n) => n.ticker === selected.ticker && n.expiry === selected.expiry,
           ) ?? null,
-    [selected, manual, extra.nodes],
+    [selected, extra.nodes],
   );
 
   // Summary strip: observed / extrapolated counts + the solve's max |shift|.
@@ -322,75 +340,31 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
       <div className="flex min-h-0 flex-1 gap-3">
         <RelationshipsPane
-          source={source}
           graph={graph}
-          messages={!manual && messagesMode}
+          messages={messagesMode}
           crossBeta={crossBeta}
           setCrossBeta={setCrossBeta}
           onEdgesSaved={onEdgesSaved}
         />
 
-        {/* Canvas card (unchanged from the pre-shell workspace) */}
-        <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
-          <div className="mb-2 flex shrink-0 items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
-          </div>
-
-          <div className="min-h-0 flex-1">
-            {(graph.loading || graph.nodes === null) && !extrapolating ? (
-              <div className="flex h-full items-center justify-center text-xs text-slate-500">
-                Fitting baseline nodes… (first load can take a second)
-              </div>
-            ) : (chartNodes ?? []).length === 0 ? (
-              <div className="flex h-full items-center justify-center px-6 text-center text-xs text-slate-500">
-                No calibrated nodes yet — calibrate from the Parametric tab, or
-                press Run to spread the transported priors across the selected
-                universe.
-              </div>
-            ) : (
-              <GraphNetworkChart
-                nodes={chartNodes ?? []}
-                edges={edges}
-                lit={chartLit}
-                results={chartResults}
-                onToggle={onChartToggle}
-                onOpenSmile={openSmile}
-                wave={{
-                  hopOf: hops.hopOf,
-                  revealedHop: timeline.revealedHop,
-                  animating: timeline.animating,
-                  skip: timeline.skip,
-                }}
-                particles={particles}
-                waveEpoch={waveEpoch}
-              />
-            )}
-          </div>
-
-          {/* Interaction hint + visual legend (next to the canvas it explains) */}
-          <div className="mt-1 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-600">
-            <span>
-              {manual
-                ? "Click to light/dim · double-click to open smile · drag to pan, wheel to zoom"
-                : "Click to inspect · double-click to open smile · drag to pan, wheel to zoom"}
-            </span>
-            <span className="ml-auto flex items-center gap-3 text-slate-500">
-              <span className="flex items-center gap-1">
-                <span className="h-2.5 w-2.5 rounded-full border-2 border-amber-400/90" /> observed
-              </span>
-              <span className="flex items-center gap-1">
-                <span
-                  className="h-2 w-8 rounded-sm"
-                  style={{ background: "linear-gradient(90deg, rgb(56 189 248), rgb(100 116 139), rgb(248 113 113))" }}
-                />
-                posterior shift
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="h-3 w-3 rounded-full bg-slate-400/25" /> halo = uncertainty (sd)
-              </span>
-            </span>
-          </div>
-        </div>
+        <CanvasCard
+          loading={(graph.loading || graph.nodes === null) && !extrapolating}
+          nodes={chartNodes ?? []}
+          edges={edges}
+          lit={chartLit}
+          results={chartResults}
+          onToggle={onChartToggle}
+          onOpenSmile={openSmile}
+          wave={{
+            hopOf: hops.hopOf,
+            revealedHop: timeline.revealedHop,
+            animating: timeline.animating,
+            skip: timeline.skip,
+          }}
+          particles={particles}
+          waveEpoch={waveEpoch}
+          manual={manual}
+        />
 
         <InspectorPane
           selected={selected}
@@ -408,7 +382,8 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         source={source}
         graph={graph}
         extra={extra}
-        body={extrapolateBody}
+        body={runBody}
+        nodes={graph.nodes}
         flatAtm={flatAtm}
         setFlatAtm={setFlatAtm}
         selected={selected}

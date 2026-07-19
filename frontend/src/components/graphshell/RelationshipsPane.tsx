@@ -27,14 +27,12 @@ import { api } from "../../state/api";
 import type { UseGraphResult } from "../../state/useGraph";
 import { useMessageEdges, type MessageEdgeRow } from "../../state/useMessageEdges";
 import type { UniverseResponse } from "../../state/useSmile";
-import type { ObservationSource } from "./GraphTopBar";
 
 interface RelationshipsPaneProps {
-  source: ObservationSource;
   graph: UseGraphResult;
   /** True when the message operator drives the production solve. */
   messages: boolean;
-  /** Smooth-field cross-ticker β (calibrations source only). */
+  /** Smooth-field cross-ticker β (rides both sources since U3). */
   crossBeta: number;
   setCrossBeta: (v: number) => void;
   /** Fired after a relation-editor save (parent refreshes topology + re-runs). */
@@ -54,14 +52,12 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 }
 
 export default function RelationshipsPane({
-  source,
   graph,
   messages,
   crossBeta,
   setCrossBeta,
   onEdgesSaved,
 }: RelationshipsPaneProps) {
-  const manual = source === "manual";
   const [editingEdges, setEditingEdges] = useState(false);
   // U1 units lens for the message confidence scales: σ pts (default) vs raw p.
   const [rawUnits, setRawUnits] = useState(false);
@@ -196,24 +192,22 @@ export default function RelationshipsPane({
                 fallback={DEFAULT_CROSS_WEIGHT}
                 onChange={(v) => graph.setParam("crossWeight", v)}
               />
-              {!manual && (
-                <label
-                  className="flex items-center justify-between gap-2 text-xs text-slate-400"
-                  title="Level-transfer slope applied on cross-ticker edges (smooth field)."
-                >
-                  <span>Cross-ticker β</span>
-                  <input
-                    type="number"
-                    step={0.1}
-                    value={crossBeta}
-                    onChange={(e) => {
-                      const v = e.target.valueAsNumber;
-                      if (Number.isFinite(v)) setCrossBeta(v);
-                    }}
-                    className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
-                  />
-                </label>
-              )}
+              <label
+                className="flex items-center justify-between gap-2 text-xs text-slate-400"
+                title="Level-transfer slope applied on cross-ticker edges (smooth field; rides both sources since the U3 unification)."
+              >
+                <span>Cross-ticker β</span>
+                <input
+                  type="number"
+                  step={0.1}
+                  value={crossBeta}
+                  onChange={(e) => {
+                    const v = e.target.valueAsNumber;
+                    if (Number.isFinite(v)) setCrossBeta(v);
+                  }}
+                  className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
+                />
+              </label>
             </>
           )}
         </Card>

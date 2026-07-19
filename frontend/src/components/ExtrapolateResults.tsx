@@ -32,8 +32,8 @@ export default function ExtrapolateResults({
   if (rows.length === 0) {
     return (
       <p className="py-2 text-xs text-slate-500">
-        Press Run to transport the priors and spread the lit calibrations
-        across the universe.
+        Press Run to transport the priors and spread the observations — lit
+        calibrations or what-if pulses — across the selected universe.
       </p>
     );
   }

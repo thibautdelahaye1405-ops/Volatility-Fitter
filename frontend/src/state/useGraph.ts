@@ -1,12 +1,15 @@
 // Data + interaction state for the Graph Viewer.
 //
 // GET /graph/nodes returns the baseline fitted handles (ATM vol/skew/curvature)
-// for every (ticker, expiry) node (fitted on demand, so the first call is slow);
-// POST /graph/solve propagates the lit-node observations through the OT-Bayesian
-// smile graph and returns posterior ATM-vol shifts + uncertainty bands. Live
-// backend only (no mock fallback). The hook is mounted by the GraphViewer view,
-// so lit nodes / results reset on a workspace-tab switch (and re-seed from the
-// shared lit designation + Options graph-prior defaults).
+// for every (ticker, expiry) node (fitted on demand, so the first call is slow).
+// The lit set doubles as the what-if pulse set (P5b U3): the unified test
+// pulse rides POST /graph/extrapolate via syntheticObservations — the old
+// sandbox POST /graph/solve is no longer called from the UI (the endpoint
+// stays for its golden-math tests until the P6 cleanup). Auto-tune still
+// rides its sandbox endpoint until it is re-pointed (P6). Live backend only
+// (no mock fallback). The hook is mounted by the GraphViewer view, so lit
+// nodes reset on a workspace-tab switch (and re-seed from the shared lit
+// designation + Options graph-prior defaults).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 
@@ -28,7 +31,8 @@ interface GraphNodesResponse {
   nodes: GraphNodeBase[];
 }
 
-/** Posterior state of one node after a solve (POST /graph/solve). */
+/** Posterior state of one node on the chart (the production solve mapped via
+ *  useGraphExtrapolation.asSolveNode; historically the sandbox solve shape). */
 export interface GraphSolveNode {
   ticker: string;
   expiry: string;
@@ -41,13 +45,8 @@ export interface GraphSolveNode {
   sd: number;
   bandLo: number;
   bandHi: number;
-  /** True when this node carried a user observation. */
+  /** True when this node carried an observation. */
   observed: boolean;
-}
-
-/** Response of POST /graph/solve. */
-interface GraphSolveResponse {
-  nodes: GraphSolveNode[];
 }
 
 /** Production propagation operator (message arc; hybrid stays config-only). */
@@ -231,22 +230,15 @@ export interface UseGraphResult {
   lightMany: (keys: string[]) => void;
   /** Remove a node from the lit set. */
   unlight: (key: string) => void;
+  /** Replace the whole what-if pulse set (scenario shortcuts). LOCAL only —
+   *  unlike toggleLit this never rewrites the shared lit/dark designation. */
+  replaceLit: (entries: Record<string, number>) => void;
   /** Current solver hyperparameters. */
   params: SolverParams;
   /** Update one solver hyperparameter. */
   setParam: <K extends keyof SolverParams>(key: K, value: SolverParams[K]) => void;
   /** Reset all solver hyperparameters to the default regime. */
   resetParams: () => void;
-  /** POST the lit observations to /graph/solve; no-op with 0 lit nodes. */
-  solve: () => Promise<void>;
-  /** True while a solve is in flight. */
-  solving: boolean;
-  /** Last solve failure, cleared on the next attempt. */
-  solveError: string | null;
-  /** Posterior nodes keyed by nodeKey(), or null before the first solve. */
-  results: Record<string, GraphSolveNode> | null;
-  /** Drop the solve results (keeps the lit set). */
-  clear: () => void;
   /** LOO cross-validate η over the lit set; needs >= 2 lit nodes. */
   autotune: () => Promise<void>;
   /** True while an auto-tune sweep is in flight. */
@@ -266,11 +258,6 @@ export function useGraph(): UseGraphResult {
 
   const [lit, setLit] = useState<Record<string, number>>({});
   const [params, setParams] = useState<SolverParams>(DEFAULT_PARAMS);
-  const [results, setResults] = useState<Record<string, GraphSolveNode> | null>(
-    null,
-  );
-  const [solving, setSolving] = useState(false);
-  const [solveError, setSolveError] = useState<string | null>(null);
   const [autotuning, setAutotuning] = useState(false);
   const [autotuneResult, setAutotuneResult] = useState<AutotuneResult | null>(null);
   const [autotuneError, setAutotuneError] = useState<string | null>(null);
@@ -364,6 +351,10 @@ export function useGraph(): UseGraphResult {
     });
   }, []);
 
+  const replaceLit = useCallback((entries: Record<string, number>) => {
+    setLit({ ...entries });
+  }, []);
+
   const setParam = useCallback(
     <K extends keyof SolverParams>(key: K, value: SolverParams[K]) => {
       setParams((prev) => ({ ...prev, [key]: value }));
@@ -382,25 +373,6 @@ export function useGraph(): UseGraphResult {
       }),
     [lit],
   );
-
-  const solve = useCallback(async (): Promise<void> => {
-    const observations = observationList();
-    if (observations.length === 0) return; // backend requires >= 1
-    setSolving(true);
-    setSolveError(null);
-    try {
-      const res = await api.post<GraphSolveResponse>("/graph/solve", {
-        body: { observations, ...paramsBody(params) },
-      });
-      const map: Record<string, GraphSolveNode> = {};
-      for (const n of res.nodes) map[nodeKey(n.ticker, n.expiry)] = n;
-      setResults(map);
-    } catch (err: unknown) {
-      setSolveError(messageOf(err));
-    } finally {
-      setSolving(false);
-    }
-  }, [observationList, params]);
 
   const autotune = useCallback(async (): Promise<void> => {
     const observations = observationList();
@@ -423,11 +395,6 @@ export function useGraph(): UseGraphResult {
     }
   }, [observationList, params]);
 
-  const clear = useCallback(() => {
-    setResults(null);
-    setSolveError(null);
-  }, []);
-
   return {
     nodes,
     loading,
@@ -438,14 +405,10 @@ export function useGraph(): UseGraphResult {
     setShift,
     lightMany,
     unlight,
+    replaceLit,
     params,
     setParam,
     resetParams,
-    solve,
-    solving,
-    solveError,
-    results,
-    clear,
     autotune,
     autotuning,
     autotuneResult,

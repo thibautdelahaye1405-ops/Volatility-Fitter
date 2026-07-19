@@ -22,7 +22,7 @@ from datetime import date
 
 import numpy as np
 
-from volfit.api.graph_service import GRAPH_PRIOR_HYPER
+from volfit.api.graph_service import GRAPH_PRECISION, GRAPH_PRIOR_HYPER
 from volfit.api.graph_universe import (
     SelectedUniverse,
     build_selected_universe,
@@ -305,40 +305,74 @@ def solve(
     ]
     baseline_precision = np.vstack([b.precision for b in base_breakdowns])
 
-    # Lit nodes with a calibration become observations; dark nodes never do.
-    # Each observation's precision is derived from fit quality + quote coverage.
+    # Observation feed. U3 unified what-if: typed synthetic pulses REPLACE
+    # the lit-calibration innovations when present — any selected node may be
+    # pulsed, no fits are triggered, and the pulse is hypothesis-firm (the
+    # sandbox's GRAPH_PRECISION by default; a typed ATM precision scales the
+    # other handles proportionally). Otherwise: lit nodes with a calibration
+    # become observations (dark nodes never do), each with data-derived
+    # precision from fit quality + quote coverage.
+    synthetic = list(request.syntheticObservations)
     obs_idx_list: list[int] = []
     obs_values_list: list[np.ndarray] = []
     calibrated = [False] * len(universe.nodes)
     obs_breakdowns: dict[int, gprec.PrecisionBreakdown] = {}
     calibrated_by_idx: dict[int, np.ndarray] = {}
-    for i, node in enumerate(universe.nodes):
-        if not node.lit:
-            continue
-        record = fit_or_get(state, node.ticker, node.expiry, fit_mode)
-        if record is None:
-            continue
-        h = atm_handles(build_slice(record.result.params), record.prepared.tau)
-        y = np.array([h.sigma0, h.skew, h.curvature])
-        rms = weighted_rms_error(state, node.ticker, node.expiry, record, fit_mode)
-        n_atm, rel_spread = _quote_stats(record.prepared)
-        obs_breakdowns[i] = gprec.observation_precision(rms, n_atm, rel_spread)
-        calibrated[i] = True
-        calibrated_by_idx[i] = y
-        if node.name in hold_out:  # withheld from the propagation (LOO scoring)
-            continue
-        obs_idx_list.append(i)
-        obs_values_list.append(y)
+    syn_prec_list: list[np.ndarray] = []
+    if synthetic:
+        pulses: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+        for syn in synthetic:
+            name = (syn.ticker, syn.expiry)
+            if name not in universe.graph.index:
+                continue  # outside the selection — dropped (legacy contract)
+            i = universe.graph.index[name]
+            y = baseline[i] + np.array([syn.dAtmVol, syn.dSkew, syn.dCurv])
+            r = (
+                GRAPH_PRECISION.astype(float)
+                if syn.precision is None
+                else GRAPH_PRECISION * (syn.precision / GRAPH_PRECISION[0])
+            )
+            pulses[i] = (y, r)  # duplicate pulses on one node: last wins
+        for i in sorted(pulses):
+            y, r = pulses[i]
+            calibrated[i] = True
+            calibrated_by_idx[i] = y
+            obs_idx_list.append(i)
+            obs_values_list.append(y)
+            syn_prec_list.append(r)
+    else:
+        for i, node in enumerate(universe.nodes):
+            if not node.lit:
+                continue
+            record = fit_or_get(state, node.ticker, node.expiry, fit_mode)
+            if record is None:
+                continue
+            h = atm_handles(build_slice(record.result.params), record.prepared.tau)
+            y = np.array([h.sigma0, h.skew, h.curvature])
+            rms = weighted_rms_error(state, node.ticker, node.expiry, record, fit_mode)
+            n_atm, rel_spread = _quote_stats(record.prepared)
+            obs_breakdowns[i] = gprec.observation_precision(rms, n_atm, rel_spread)
+            calibrated[i] = True
+            calibrated_by_idx[i] = y
+            if node.name in hold_out:  # withheld from the propagation (LOO scoring)
+                continue
+            obs_idx_list.append(i)
+            obs_values_list.append(y)
 
     obs_idx = np.asarray(obs_idx_list, dtype=int)
     obs_values = (
         np.vstack(obs_values_list) if obs_values_list else np.empty((0, N_HANDLES))
     )
-    obs_precision = (
-        np.vstack([obs_breakdowns[i].precision for i in obs_idx_list])
-        if obs_idx_list
-        else np.empty((0, N_HANDLES))
-    )
+    if synthetic:
+        obs_precision = (
+            np.vstack(syn_prec_list) if syn_prec_list else np.empty((0, N_HANDLES))
+        )
+    else:
+        obs_precision = (
+            np.vstack([obs_breakdowns[i].precision for i in obs_idx_list])
+            if obs_idx_list
+            else np.empty((0, N_HANDLES))
+        )
 
     # Propagation fork (arc P3): smooth_field is the untouched legacy path;
     # precision_messages solves the pairwise-factor operator; hybrid adds the
@@ -380,6 +414,9 @@ def solve(
             obs_precision,
             persisted_edges=state.graph_message_edges(),
             hybrid_extra=hybrid_extra,
+            # A what-if pulse defines its innovation directly — there is no
+            # baseline noise in a hypothesis, so §15.2 does not apply.
+            firm_observations=bool(synthetic),
         )
 
     # Idio band floor (volfit.graph.idio): every node that did NOT contribute an
@@ -404,15 +441,17 @@ def solve(
     # node that goes dark on a LATER day gets floored from the days it was lit.
     # Idempotent per (ticker, day, expiry); a no-op without a store on scratch
     # states (the benchmark harness builds throwaway states and feeds the floor
-    # its own strictly-causal history instead).
-    state.record_graph_innovations(
-        {
-            (universe.nodes[i].ticker, universe.nodes[i].expiry): float(
-                y[0] - baseline[i, 0]
-            )
-            for i, y in calibrated_by_idx.items()
-        }
-    )
+    # its own strictly-causal history instead). What-if pulses are NEVER
+    # recorded — non-persisting by construction (P5b U3).
+    if not synthetic:
+        state.record_graph_innovations(
+            {
+                (universe.nodes[i].ticker, universe.nodes[i].expiry): float(
+                    y[0] - baseline[i, 0]
+                )
+                for i, y in calibrated_by_idx.items()
+            }
+        )
     return ExtrapolationSolution(
         universe=universe,
         priors_meta=priors_meta,

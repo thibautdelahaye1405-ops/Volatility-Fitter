@@ -1,19 +1,23 @@
-// Graph shell BOTTOM drawer (P5b U0): Preview | Diagnostics | Validation |
-// Observation plan.
+// Graph shell BOTTOM drawer (P5b U0; test pulse unified in U3): Preview |
+// Diagnostics | Validation | Observation plan.
 //
-//   Preview      — what the next Run will propagate: the manual what-if rows
-//                  (editable shifts) or the calibrations summary + the
+//   Preview      — what the next Run will propagate: the what-if TEST PULSE
+//                  rows (editable shifts + canonical scenario shortcuts;
+//                  non-persisting, runs the ACTIVE operator on the production
+//                  machinery) or the calibrations summary + the
 //                  flat-baselines diagnostic toggle.
 //   Diagnostics  — the post-run field: §16.4 cycle warnings + the per-node
-//                  prior → posterior table (production runs).
+//                  prior → posterior table (both sources — one solve).
 //   Validation   — in-app LOO backtest (RMSE, ζ); the side-by-side mode
 //                  comparison + offline-artifact link is the U7 increment.
-//   Observation plan — "where to quote next" ranking on the solved posterior.
+//   Observation plan — "where to quote next" ranking on the solved posterior
+//                  (rides the SAME body as Run — what-if pulses included).
 //
 // The shell owns tab/open state so a landing run can reveal Diagnostics.
 import ExtrapolateResults from "../ExtrapolateResults";
 import ObservationPlanCard from "../ObservationPlanCard";
-import type { UseGraphResult } from "../../state/useGraph";
+import { buildScenario, SCENARIOS } from "../../lib/whatifScenarios";
+import type { GraphNodeBase, UseGraphResult } from "../../state/useGraph";
 import type {
   ExtrapolateBody,
   UseGraphExtrapolationResult,
@@ -33,8 +37,11 @@ interface GraphDrawerProps {
   source: ObservationSource;
   graph: UseGraphResult;
   extra: UseGraphExtrapolationResult;
-  /** The /graph/extrapolate body (backtest + plan ride the same knobs). */
+  /** The EFFECTIVE run body (manual = knobs + syntheticObservations) —
+   *  backtest + plan ride the same request Run does. */
   body: ExtrapolateBody;
+  /** Baseline universe nodes (scenario shortcuts pick their pulse sets). */
+  nodes: GraphNodeBase[] | null;
   flatAtm: boolean;
   setFlatAtm: (v: boolean) => void;
   selected: { ticker: string; expiry: string } | null;
@@ -53,6 +60,7 @@ export default function GraphDrawer({
   graph,
   extra,
   body,
+  nodes,
   flatAtm,
   setFlatAtm,
   selected,
@@ -66,14 +74,52 @@ export default function GraphDrawer({
   const manual = source === "manual";
   const litEntries = Object.entries(graph.lit).sort(([a], [b]) => a.localeCompare(b));
 
+  // Canonical scenario shortcuts (U3): one click replaces the pulse set.
+  const scenarioButtons = (
+    <div className="mb-2 flex flex-wrap items-center gap-1.5">
+      {SCENARIOS.map((s) => {
+        const entries = nodes === null ? null : buildScenario(s.id, nodes);
+        return (
+          <button
+            key={s.id}
+            disabled={entries === null}
+            onClick={() => {
+              if (entries !== null) graph.replaceLit(entries);
+            }}
+            title={
+              s.description +
+              (entries === null ? " (the selected universe cannot host this scenario)" : "")
+            }
+            className="rounded-md border border-slate-700 bg-surface-800 px-2 py-1 text-[10px] font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {s.label}
+          </button>
+        );
+      })}
+      <span
+        className="text-[9px] text-slate-600"
+        title="Competing signals resolve by precision-weighted averaging: the receiver's mean can cancel while its incoming confidence ADDS (q = Σp) — disagreement never reads as ignorance (§21.2/§21.3)."
+      >
+        ⓘ competing signals average · confidences add
+      </span>
+    </div>
+  );
+
   const preview = manual ? (
-    litEntries.length === 0 ? (
-      <p className="py-2 text-xs text-slate-500">
-        No lit nodes — click nodes in the graph to add observations.
+    <>
+      <p className="mb-2 text-[11px] text-slate-500">
+        Test pulse — typed shifts run the ACTIVE operator over the selected
+        universe on transported-prior baselines.{" "}
+        <span className="text-slate-400">Nothing is persisted.</span>
       </p>
-    ) : (
-      <div className="divide-y divide-slate-800">
-        {litEntries.map(([key, dAtmVol]) => {
+      {scenarioButtons}
+      {litEntries.length === 0 ? (
+        <p className="py-2 text-xs text-slate-500">
+          No pulses — click nodes in the graph or use a scenario shortcut.
+        </p>
+      ) : (
+        <div className="divide-y divide-slate-800">
+          {litEntries.map(([key, dAtmVol]) => {
           const [ticker = "", expiry = ""] = key.split("|");
           return (
             <div key={key} className="flex items-center gap-2 py-1.5">
@@ -103,9 +149,10 @@ export default function GraphDrawer({
               </button>
             </div>
           );
-        })}
-      </div>
-    )
+          })}
+        </div>
+      )}
+    </>
   ) : (
     <div className="space-y-2 text-xs text-slate-400">
       <p className="text-slate-500">
@@ -124,21 +171,10 @@ export default function GraphDrawer({
     </div>
   );
 
-  // Manual results render on the canvas only (sandbox parity); production
-  // runs get the full per-node table.
-  const manualSummary =
-    graph.results === null
-      ? null
-      : Object.values(graph.results).reduce(
-          (acc, n) => ({
-            count: acc.count + 1,
-            maxAbs: Math.max(acc.maxAbs, Math.abs(n.shiftBp)),
-          }),
-          { count: 0, maxAbs: 0 },
-        );
+  // One solve, one table (U3): both sources read the production field.
   const diagnostics = (
     <div className="flex h-full min-h-0 flex-col">
-      {!manual && extra.cycles.length > 0 && (
+      {extra.cycles.length > 0 && (
         <p
           className="mb-2 shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300"
           title="Cycles whose beta product differs from 1 — an internally inconsistent edge configuration (spec §16.4)"
@@ -150,20 +186,12 @@ export default function GraphDrawer({
             .toFixed(2)}
         </p>
       )}
-      {manual ? (
-        <p className="py-2 text-xs text-slate-500">
-          {manualSummary === null
-            ? "Run the what-if to populate the field."
-            : `${manualSummary.count} nodes solved · max |shift| ${manualSummary.maxAbs.toFixed(1)} bp — the posterior field renders on the canvas.`}
-        </p>
-      ) : (
-        <ExtrapolateResults
-          extra={extra}
-          selected={selected}
-          onSelect={onSelect}
-          onOpenSmile={onOpenSmile}
-        />
-      )}
+      <ExtrapolateResults
+        extra={extra}
+        selected={selected}
+        onSelect={onSelect}
+        onOpenSmile={onOpenSmile}
+      />
     </div>
   );
 
@@ -201,15 +229,16 @@ export default function GraphDrawer({
     </div>
   );
 
-  const plan = manual ? (
-    <p className="py-2 text-xs text-slate-500">{switchHint}</p>
-  ) : extra.nodes === null ? (
-    <p className="py-2 text-xs text-slate-500">
-      Run first — the ranking reads the solved posterior.
-    </p>
-  ) : (
-    <ObservationPlanCard body={body} onOpenSmile={onOpenSmile} />
-  );
+  // The plan rides the same body as Run (what-if pulses included, U3): the
+  // ranking answers for the posterior currently on screen.
+  const plan =
+    extra.nodes === null ? (
+      <p className="py-2 text-xs text-slate-500">
+        Run first — the ranking reads the solved posterior.
+      </p>
+    ) : (
+      <ObservationPlanCard body={body} onOpenSmile={onOpenSmile} />
+    );
 
   const content: Record<DrawerTab, React.ReactNode> = {
     preview,

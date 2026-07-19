@@ -65,6 +65,7 @@ function graphStub(over: Partial<UseGraphResult> = {}): UseGraphResult {
   return {
     nodes: [
       { ticker: "SPY", expiry: "2026-07-17", t: 0.02, atmVol: 0.2, skew: 0, curvature: 0, lit: true },
+      { ticker: "SPY", expiry: "2026-10-16", t: 0.25, atmVol: 0.2, skew: 0, curvature: 0, lit: false },
     ],
     loading: false,
     error: null,
@@ -74,6 +75,7 @@ function graphStub(over: Partial<UseGraphResult> = {}): UseGraphResult {
     setShift: vi.fn(),
     lightMany: vi.fn(),
     unlight: vi.fn(),
+    replaceLit: vi.fn(),
     params: {
       etaScale: 1, kappaScale: 1, lambdaScale: 0, nu: 0.1,
       calendarWeight: null, crossWeight: null,
@@ -84,11 +86,6 @@ function graphStub(over: Partial<UseGraphResult> = {}): UseGraphResult {
     },
     setParam: vi.fn(),
     resetParams: vi.fn(),
-    solve: vi.fn().mockResolvedValue(undefined),
-    solving: false,
-    solveError: null,
-    results: null,
-    clear: vi.fn(),
     autotune: vi.fn(),
     autotuning: false,
     autotuneResult: null,
@@ -152,26 +149,41 @@ describe("Graph shell (U0)", () => {
   it("routes Run to the production solve with the request body", async () => {
     renderShell();
     fireEvent.click(screen.getByText("Run"));
+    // Calibrations source: the knobs only — no synthetic pulses on the body.
     expect(extraState.run).toHaveBeenCalledWith(BODY);
-    expect(graphState.solve).not.toHaveBeenCalled();
     // The run reveals Diagnostics once the attempt settles.
     await waitFor(() => expect(screen.getByText(/Press Run to transport/)).toBeTruthy());
   });
 
-  it("routes Run to the sandbox solve for manual what-if", async () => {
+  it("manual what-if ships the pulses as syntheticObservations (U3)", async () => {
     graphState = graphStub({ lit: { "SPY|2026-07-17": 0.02 } });
     renderShell();
     fireEvent.click(screen.getByText("Manual what-if"));
     fireEvent.click(screen.getByText("Run"));
-    expect(graphState.solve).toHaveBeenCalledOnce();
-    expect(extraState.run).not.toHaveBeenCalled();
-    await waitFor(() => expect(screen.getByText(/Run the what-if/)).toBeTruthy());
+    // ONE solve either way — the production endpoint with the typed pulses.
+    expect(extraState.run).toHaveBeenCalledWith({
+      ...BODY,
+      syntheticObservations: [
+        { ticker: "SPY", expiry: "2026-07-17", dAtmVol: 0.02 },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText(/Press Run to transport/)).toBeTruthy());
   });
 
-  it("disables Run in manual mode with no lit nodes", () => {
+  it("scenario shortcuts replace the pulse set (calendar pulse)", () => {
     renderShell();
     fireEvent.click(screen.getByText("Manual what-if"));
-    expect(screen.getByText(/No lit nodes/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Calendar pulse"));
+    // Two SPY rungs in the stub ladder → mid rung = the 0.25y expiry, +1pt.
+    expect(graphState.replaceLit).toHaveBeenCalledWith({ "SPY|2026-10-16": 0.01 });
+    // Cross basket needs a second ticker — disabled on this universe.
+    expect((screen.getByText("Cross basket") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disables Run in manual mode with no pulses", () => {
+    renderShell();
+    fireEvent.click(screen.getByText("Manual what-if"));
+    expect(screen.getByText(/No pulses/)).toBeTruthy();
     expect((screen.getByText("Run") as HTMLButtonElement).disabled).toBe(true);
   });
 

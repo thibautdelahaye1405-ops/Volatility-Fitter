@@ -321,8 +321,11 @@ items; absorbs R3 item 14.
     **DONE 2026-07-19** (see STATUS wrap 2026-07-19i; per-ticker
     overrides are honest REQUEST-level policy — new backend
     CalendarPolicyOverride, not row materialization).
-  * **U3 Unified mode-aware what-if (test pulse) — REVISED 2026-07-19:
-    RETIRE the sandbox path instead of retrofitting it** (user decision).
+  * **U3 Unified mode-aware what-if — DONE 2026-07-19** (see STATUS wrap
+    2026-07-19j; deprecation-not-deletion honored: sandbox endpoints +
+    graph_service stay, autotune + /graph/nodes re-point = P6).
+    Scope as REVISED 2026-07-19 — RETIRE the sandbox path instead of
+    retrofitting it (user decision).
     Build the what-if ON THE PRODUCTION MACHINERY: GraphExtrapolateRequest
     gains `syntheticObservations` (typed handle shifts + optional
     precision); `graph_extrapolation.solve` uses them as the innovations
@@ -387,6 +390,49 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19j) — P5b U3 UNIFIED WHAT-IF SHIPPED (sandbox retired from the UI)
+
+- **Backend `syntheticObservations`** on GraphExtrapolateRequest (typed
+  handle shifts dAtmVol/dSkew/dCurv + optional ATM precision): when
+  non-empty they REPLACE the lit-calibration innovation feed — any
+  selected node may be pulsed (dark included), `fit_or_get` is never
+  called (a what-if triggers no fits), `record_graph_innovations` is
+  SKIPPED (non-persisting by construction, test-locked with spies).
+  Pulses are hypothesis-firm: sandbox GRAPH_PRECISION by default (typed
+  precision scales the other handles proportionally) and message mode
+  SKIPS the §15.2 baseline combination (`firm_observations` — a typed
+  hypothesis carries no baseline noise). Deliberate semantic change vs
+  the old sandbox honored: selected universe + transported-prior
+  baselines + ACTIVE operator. Locks: pulse pins the node + replaces the
+  feed; no-fit/no-record spies; message-mode transmission exactly
+  β=T_inf/T_recv on the adjacent rung.
+- **UI: one solve for both sources.** Manual Run ships the lit set as
+  syntheticObservations on POST /graph/extrapolate; POST /graph/solve is
+  no longer called anywhere in the UI (useGraph's solve machinery
+  deleted; `replaceLit` added — LOCAL only, scenario shortcuts never
+  rewrite the shared lit/dark designation). Propagation selector now
+  mode-aware under manual; cross-β editable in manual; Diagnostics table
+  + Observation plan work for the what-if (plan rides the same body as
+  Run); Inspector post-facts work in manual (attribution card stays
+  calibrations-only — the drill-in GET can't carry the pulse list yet,
+  same query-param constraint as U2 overrides). Canvas hint: "click to
+  pulse/unpulse".
+- **Scenario shortcuts** (lib/whatifScenarios, golden-locked): calendar
+  pulse / competing signals / cross basket on the richest ticker, null
+  (disabled button) when the universe can't host the story; Preview tab
+  gets the test-pulse framing ("Nothing is persisted") + the
+  competing-signals explainer (mean averages, confidences add).
+- CanvasCard extracted from GraphViewer (shell back to 375 lines).
+  vitest 92/92, tsc + build clean, ui_smoke 8/8; backend batch green.
+  NOTE graph_extrapolation.py sits at 493 lines (pre-existing >400).
+- **P6 cleanup pointers**: re-point autotune η-LOO to the unified
+  endpoint (smooth-field only), serve /graph/nodes' chart-baseline role
+  from a zero-observation production solve, then delete the sandbox
+  endpoints + graph_service.
+- NEXT: **U4 message inspector** (incoming-messages table, local
+  consensus vs global posterior + divergence explainer, edge-click
+  inspect, wave relabeled attribution).
 
 ### 🧭 SESSION WRAP (2026-07-19i) — P5b U2 CALENDAR POLICY CARD + VIEWS SHIPPED
 

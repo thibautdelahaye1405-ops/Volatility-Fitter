@@ -1122,6 +1122,27 @@ class GraphCycleFlag(BaseModel):
     betaProduct: float
 
 
+class SyntheticObservation(BaseModel):
+    """One what-if pulse (P5b U3 — the unified mode-aware test pulse).
+
+    Typed handle SHIFTS vs the node's transported prior, driving the
+    production solve in place of the lit-calibration innovations: selected
+    universe, transported-prior baselines, ACTIVE operator, and nothing is
+    fitted or recorded. Any selected node may be pulsed (dark included —
+    "what if we quoted it there"); nodes outside the selection are dropped
+    (the legacy edge-list contract)."""
+
+    ticker: str
+    expiry: str
+    #: Handle shifts vs the transported prior (decimal vol / per-unit-k).
+    dAtmVol: float = 0.0
+    dSkew: float = 0.0
+    dCurv: float = 0.0
+    #: ATM observation precision (1/vol²), or None ⇒ the firm what-if default
+    #: (the sandbox's GRAPH_PRECISION); skew/curv scale proportionally.
+    precision: float | None = Field(default=None, gt=0.0)
+
+
 class CalendarPolicyOverride(BaseModel):
     """Per-ticker calendar-policy override (P5b U2 policy card).
 
@@ -1218,6 +1239,10 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: keep flowing. Per-ticker refinements ride the overrides map.
     calendarEnabled: bool = True
     calendarPolicyOverrides: dict[str, CalendarPolicyOverride] = {}
+
+    #: U3 unified what-if: when non-empty these typed pulses REPLACE the
+    #: lit-calibration innovation feed (no fits triggered, nothing recorded).
+    syntheticObservations: list[SyntheticObservation] = []
 
     @field_validator("calendarPolicyOverrides", mode="before")
     @classmethod
