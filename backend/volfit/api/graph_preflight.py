@@ -363,7 +363,12 @@ def preflight(state: AppState, request: GraphExtrapolateRequest) -> GraphPreflig
             )
     else:
         t_by = {node.name: _node_t(state, node.expiry) for node in universe.nodes}
-        rows = list(request.messageEdges) or state.graph_message_edges() or None
+        persisted = (
+            state.graph_message_draft_edges()
+            if request.useDraftConfig
+            else state.graph_message_edges()
+        )
+        rows = list(request.messageEdges) or persisted or None
         edges = (
             message_edges_from_schema(rows, t_by, request)
             if rows

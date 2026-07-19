@@ -22,6 +22,7 @@ export function buildExtrapolateBody(
   params: SolverParams,
   flatAtm: boolean,
   crossBeta: number | null,
+  useDraftConfig = false,
 ): ExtrapolateBody {
   const body: ExtrapolateBody = {
     etaScale: params.etaScale,
@@ -62,6 +63,8 @@ export function buildExtrapolateBody(
         ]),
       );
     }
+    // U6 run-draft toggle: test-drive the staged config (never an activation).
+    if (useDraftConfig) body.useDraftConfig = true;
   }
   return body;
 }

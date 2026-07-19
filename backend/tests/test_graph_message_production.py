@@ -401,8 +401,12 @@ def test_auto_message_edges_route_and_one_way_direction():
                 "messagePrecision": 1e5, "betaAtmVol": beta,
                 "betaSkew": beta, "betaCurv": beta,
             }
+            # U6 lifecycle: PUT stages the DRAFT; Activate flips the solve.
             assert client.put(
                 "/graph/edges/messages", json={"edges": [row]}
+            ).status_code == 200
+            assert client.post(
+                "/graph/config/messages/activate", json={}
             ).status_code == 200
             resp = client.post(
                 "/graph/extrapolate",
@@ -419,7 +423,8 @@ def test_auto_message_edges_route_and_one_way_direction():
         # the dark posterior follows z_lit / beta (the inverse map).
         lit_b, dark_b = _run(isos[1], isos[0], beta=2.0)
         assert dark_b["shiftBp"] == pytest.approx(0.5 * lit_b["innovationBp"], rel=0.05)
-        client.put("/graph/edges/messages", json={"edges": []})  # clean up
+        client.put("/graph/edges/messages", json={"edges": []})  # clean up (draft)
+        client.post("/graph/config/messages/activate", json={})
 
 
 # --------------------------------------------- U2 calendar policy overrides

@@ -412,7 +412,13 @@ def solve(
             obs_idx,
             obs_values,
             obs_precision,
-            persisted_edges=state.graph_message_edges(),
+            # U6 lifecycle: active rows run production; the run-draft toggle
+            # test-drives the staged config without activating it.
+            persisted_edges=(
+                state.graph_message_draft_edges()
+                if request.useDraftConfig
+                else state.graph_message_edges()
+            ),
             hybrid_extra=hybrid_extra,
             # A what-if pulse defines its innovation directly — there is no
             # baseline noise in a hypothesis, so §15.2 does not apply.

@@ -14,6 +14,9 @@ import type {
   UseGraphExtrapolationResult,
 } from "../state/useGraphExtrapolation";
 import type { PreflightReport, UsePreflightResult } from "../state/usePreflight";
+import type { GraphTopologyResult } from "../state/useGraphTopology";
+import type { MessageConfigEnvelope } from "../state/useMessageConfig";
+import type { MessageEdgeRow } from "../state/useMessageEdges";
 
 const apiGet = vi.fn();
 vi.mock("../state/api", () => ({
@@ -36,9 +39,21 @@ vi.mock("../state/useGraphExtrapolation", async (importOriginal) => ({
   useGraphExtrapolation: () => extraState,
 }));
 
-// Topology fetchers: stable refs (the viewer's edge effect depends on them).
-const emptyEdges = { fetchEdges: vi.fn(() => Promise.resolve([])), fetchLattice: vi.fn(() => Promise.resolve([])) };
-vi.mock("../state/useGraphEdges", () => ({ useGraphEdges: () => emptyEdges }));
+// Topology + U6 config: the hook is stubbed wholesale (its fetch internals
+// have their own contracts); lifecycle ACTIONS are spied, diff math real.
+let topologyState: GraphTopologyResult;
+vi.mock("../state/useGraphTopology", () => ({
+  useGraphTopology: () => topologyState,
+}));
+const activateMock = vi.fn((_notes: string) =>
+  Promise.resolve({ draft: null, active: null }),
+);
+const revertMock = vi.fn(() => Promise.resolve({ draft: null, active: null }));
+vi.mock("../state/useMessageConfig", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/useMessageConfig")>()),
+  activateMessageConfig: (notes: string) => activateMock(notes),
+  revertMessageConfig: () => revertMock(),
+}));
 const emptyMsgEdges = { fetchEdges: vi.fn(() => Promise.resolve([])), fetchAuto: vi.fn(() => Promise.resolve([])) };
 vi.mock("../state/useMessageEdges", () => ({ useMessageEdges: () => emptyMsgEdges }));
 
@@ -161,10 +176,32 @@ function preflightReport(over: Partial<PreflightReport> = {}): PreflightReport {
   };
 }
 
+const CONFIG_ROW: MessageEdgeRow = {
+  sourceTicker: "SPY", sourceExpiry: "2026-10-16",
+  targetTicker: "SPY", targetExpiry: "2026-07-17",
+  messagePrecision: 1700, betaAtmVol: 2, betaSkew: 2, betaCurv: 2,
+  relationClass: "calendar", precisionRule: "explicit",
+};
+
+function envelope(over: Partial<MessageConfigEnvelope> = {}): MessageConfigEnvelope {
+  return {
+    name: "default", version: 1, createdAt: "2026-07-19T10:00:00+00:00",
+    author: "desk", parentVersion: null, notes: "", rows: [CONFIG_ROW],
+    ...over,
+  };
+}
+
 beforeEach(() => {
   graphState = graphStub();
   extraState = extraStub();
   preflightState = { report: null, loading: false, error: null };
+  // Default /universe payload (messages-mode pane fetch); tests override.
+  apiGet.mockResolvedValue({ asOf: "", tickers: [], expiries: {} });
+  topologyState = {
+    edges: [], msgRows: [], persistedRows: [], config: null, refresh: vi.fn(),
+  };
+  activateMock.mockClear();
+  revertMock.mockClear();
 });
 
 afterEach(() => {
@@ -319,6 +356,38 @@ describe("Graph shell (U0)", () => {
     renderShell();
     expect(screen.getByText("2 warnings")).toBeTruthy();
     expect((screen.getByText("Run") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("config chip: dirty draft shows the diff and Activate routes (U6)", async () => {
+    topologyState.config = {
+      active: envelope(),
+      draft: envelope({
+        version: 2, parentVersion: 1,
+        rows: [{ ...CONFIG_ROW, betaAtmVol: 1.5 }],
+      }),
+    };
+    renderShell();
+    // Chip label = active name·version + the dirty marker.
+    fireEvent.click(screen.getByText("draft*"));
+    expect(screen.getByText(/\+0 −0 ~1 vs v1 · stages v2/)).toBeTruthy();
+    fireEvent.click(screen.getByText("Activate"));
+    expect(activateMock).toHaveBeenCalledWith("");
+    await waitFor(() => expect(topologyState.refresh).toHaveBeenCalled());
+  });
+
+  it("run-draft toggle ships useDraftConfig on the run body (U6)", async () => {
+    graphState = graphStub();
+    graphState.params.propagationMode = "precision_messages";
+    topologyState.config = { active: envelope(), draft: envelope({ version: 2 }) };
+    renderShell();
+    fireEvent.click(screen.getByText("config"));
+    fireEvent.click(screen.getByText("Draft"));
+    fireEvent.click(screen.getByText("Run"));
+    await waitFor(() => expect(extraState.run).toHaveBeenCalled());
+    const body = (extraState.run as ReturnType<typeof vi.fn>).mock
+      .lastCall?.[0] as Record<string, unknown>;
+    expect(body.useDraftConfig).toBe(true);
+    expect(body.propagationMode).toBe("precision_messages");
   });
 
   it("edge click opens the relation card in the inspector (U4)", () => {

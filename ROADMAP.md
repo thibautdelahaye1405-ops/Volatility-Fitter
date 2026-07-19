@@ -359,12 +359,14 @@ items; absorbs R3 item 14.
     receivers, conditioning); TopBar chip; Run blocked ONLY on genuine
     blockers, warnings otherwise.~~ **DONE 2026-07-19** (see STATUS
     wrap 2026-07-19m; the dry-run NEVER fits/records — spy-locked).
-  * **U6 Config lifecycle (lightweight)**: `graph_message_config`
+  * ~~**U6 Config lifecycle (lightweight)**: `graph_message_config`
     envelope {name, version, createdAt, author, parentVersion, notes,
     rows} × two slots (draft/active); editor edits the DRAFT; Activate
     (event-log entry) / Revert / diff; solve uses ACTIVE (+ run-draft
     toggle); existing `graph_message_edges` blob migrates to the
-    initial active config.
+    initial active config.~~ **DONE 2026-07-19** (see STATUS wrap
+    2026-07-19n; workspace replay stays byte-identical — active rows
+    keep living in the workspace field).
   * **U7 Validation drawer + plan**: side-by-side current-day LOO
     (transported-prior / smooth-field / precision-messages via the
     existing mode-aware backtest endpoint; RMSE, ζ, cov80/95 client-
@@ -393,6 +395,44 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19n) — P5b U6 CONFIG LIFECYCLE SHIPPED
+
+- **Draft/active envelope** (`graph_message_config` app_settings blob,
+  its own key): {name, version, createdAt, author, parentVersion,
+  notes, rows} × two slots. REPLAY-SAFE DESIGN: the workspace field
+  `graph_message_edges` keeps holding the ACTIVE rows (docs round-trip
+  byte-identically; restore_doc syncs the envelope's active rows, no
+  version bump), the envelope adds lifecycle metadata + the draft.
+  Boot reconcile: blob wins; a legacy-only store MIGRATES once into an
+  initial v1 active ("migrated from graph_message_edges") + clean
+  draft; the legacy blob keeps mirroring active rows (downgrade-safe).
+- **Semantics flipped per the ratified arc**: PUT /graph/edges/messages
+  now STAGES THE DRAFT (editor button relabeled "Save draft"); GET
+  reads draft-else-active; the solve uses ACTIVE rows;
+  `useDraftConfig` on GraphExtrapolateRequest test-drives the staged
+  rows (rides backtest/plan/preflight/drill-in via the body). Activate
+  = event-logged version bump (draft continues as a clean copy staged
+  for v+1); Revert discards. New routes: GET /graph/config/messages +
+  POST activate/revert (activate with no draft = 400). The PUT-then-
+  solve production lock updated to PUT + activate.
+- **Config chip is LIVE** (ConfigChip + useMessageConfig): label =
+  active name·vN (or "auto"), amber "draft*" dirty marker (client diff
+  +a −r ~c by directed relation identity — diff math test-locked),
+  popover with both slots, the Run-solves-with Active|Draft toggle,
+  notes input + Activate/Revert. Topology/matrix/inspector display
+  follows the RUN slot (state/useGraphTopology — extracted from
+  GraphViewer, back to 381 lines). Live visual: seed → Save draft →
+  "config auto draft* (+45 −0 ~0 · stages v1)" → Activate → "config
+  default v1 · draft matches active", buttons correctly disabled.
+- Backend +6 lifecycle tests (stage/activate/version chain, run-draft
+  test drive = exact β·z through the staged rows, revert, one-shot
+  migration, endpoint round-trip incl. 400); frontend diff tests +
+  2 shell locks (dirty chip + Activate routing; run body carries
+  useDraftConfig). vitest 108/108, tsc + build clean, ui_smoke 8/8.
+- NEXT: **U7 validation drawer** (side-by-side current-day LOO across
+  operators + offline-artifact link + plan annotations) — the arc's
+  last increment; then the P6 hardening pass.
 
 ### 🧭 SESSION WRAP (2026-07-19m) — P5b U5 PREFLIGHT SHIPPED
 

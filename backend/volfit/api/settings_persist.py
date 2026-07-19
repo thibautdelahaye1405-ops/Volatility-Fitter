@@ -24,6 +24,7 @@ OPTIONS_KEY = "options_settings"
 GRAPH_EDGES_KEY = "graph_edges"
 GRAPH_BLOCK_RULE_KEY = "graph_block_rule"
 GRAPH_MESSAGE_EDGES_KEY = "graph_message_edges"
+GRAPH_MESSAGE_CONFIG_KEY = "graph_message_config"
 GRAPH_IDIO_KEY = "graph_idio_history"
 
 
@@ -149,6 +150,30 @@ def save_graph_message_edges(store_path, edges: list[dict]) -> bool:
         return False
     with VolStore(store_path) as store:
         store.save_setting(GRAPH_MESSAGE_EDGES_KEY, {"edges": edges})
+    return True
+
+
+def load_graph_message_config(store_path) -> dict | None:
+    """Read the U6 draft/active message-config envelope pair
+    (``{"draft": {...}|None, "active": {...}|None}``); None when absent or
+    unreadable. The legacy GRAPH_MESSAGE_EDGES_KEY blob stays untouched and
+    keeps mirroring the ACTIVE rows for downgrade safety."""
+    if store_path is None:
+        return None
+    try:
+        with VolStore(store_path) as store:
+            return store.load_setting(GRAPH_MESSAGE_CONFIG_KEY)
+    except Exception as exc:  # noqa: BLE001 — restore must never break startup
+        warnings.warn(f"graph-message-config load failed: {exc}")
+        return None
+
+
+def save_graph_message_config(store_path, blob: dict) -> bool:
+    """Persist the U6 config envelope pair; False when no store is set."""
+    if store_path is None:
+        return False
+    with VolStore(store_path) as store:
+        store.save_setting(GRAPH_MESSAGE_CONFIG_KEY, blob)
     return True
 
 

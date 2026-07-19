@@ -31,6 +31,8 @@ from volfit.api.schemas import (
     GraphEdgesResponse,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
+    GraphMessageConfigActivateRequest,
+    GraphMessageConfigResponse,
     GraphMessageEdgesRequest,
     GraphMessageEdgesResponse,
     GraphNodeInfo,
@@ -168,10 +170,10 @@ def get_lattice_edges(request: Request) -> GraphEdgesResponse:
 
 @router.get("/graph/edges/messages", response_model=GraphMessageEdgesResponse)
 def get_message_edges(request: Request) -> GraphMessageEdgesResponse:
-    """The persisted precision-message edge rules (schema v2, source=informer →
-    target=receiver); empty ⇒ the message mode builds its auto relations."""
+    """The DRAFT message-relation rows (falling back to the active config —
+    editing starts from what runs; U6 lifecycle). Empty ⇒ auto relations."""
     return GraphMessageEdgesResponse(
-        edges=request.app.state.volfit.graph_message_edges()
+        edges=request.app.state.volfit.graph_message_draft_edges()
     )
 
 
@@ -179,11 +181,41 @@ def get_message_edges(request: Request) -> GraphMessageEdgesResponse:
 def put_message_edges(
     body: GraphMessageEdgesRequest, request: Request
 ) -> GraphMessageEdgesResponse:
-    """Replace the message edge rules (persisted, independent of the legacy
-    smooth-field edge blob). Empty list ⇒ back to the auto relations."""
+    """Stage rows on the DRAFT config (U6): the solve keeps using the ACTIVE
+    config until Activate. Empty list ⇒ a draft of the auto relations."""
     state = request.app.state.volfit
-    state.set_graph_message_edges(body.edges)
-    return GraphMessageEdgesResponse(edges=state.graph_message_edges())
+    state.set_graph_message_draft(body.edges)
+    return GraphMessageEdgesResponse(edges=state.graph_message_draft_edges())
+
+
+@router.get("/graph/config/messages", response_model=GraphMessageConfigResponse)
+def get_message_config(request: Request) -> GraphMessageConfigResponse:
+    """Both U6 lifecycle slots (draft + active), rows included."""
+    draft, active = request.app.state.volfit.graph_message_config()
+    return GraphMessageConfigResponse(draft=draft, active=active)
+
+
+@router.post("/graph/config/messages/activate", response_model=GraphMessageConfigResponse)
+def activate_message_config(
+    body: GraphMessageConfigActivateRequest, request: Request
+) -> GraphMessageConfigResponse:
+    """Promote the draft to ACTIVE (event-logged); 400 when nothing staged."""
+    state = request.app.state.volfit
+    try:
+        state.activate_message_config(body.notes)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    draft, active = state.graph_message_config()
+    return GraphMessageConfigResponse(draft=draft, active=active)
+
+
+@router.post("/graph/config/messages/revert", response_model=GraphMessageConfigResponse)
+def revert_message_config(request: Request) -> GraphMessageConfigResponse:
+    """Discard the draft — back to a clean copy of the active config."""
+    state = request.app.state.volfit
+    state.revert_message_config()
+    draft, active = state.graph_message_config()
+    return GraphMessageConfigResponse(draft=draft, active=active)
 
 
 @router.get("/graph/edges/messages/auto", response_model=GraphMessageEdgesResponse)

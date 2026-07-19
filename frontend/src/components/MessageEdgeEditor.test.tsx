@@ -87,7 +87,7 @@ describe("MessageEdgeEditor", () => {
     expect((sigma as HTMLInputElement).value).toBe("50");
     // …typing σ = 2 pts stores p = (100/2)² = 2500, locked explicit.
     fireEvent.change(sigma, { target: { value: "2" } });
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.click(screen.getByText("Save draft"));
     await waitFor(() => expect(putEdges).toHaveBeenCalled());
     const saved = putEdges.mock.lastCall?.[0] as MessageEdgeRow[];
     expect(saved[0]?.messagePrecision).toBeCloseTo(2500, 8);
@@ -118,7 +118,7 @@ describe("MessageEdgeEditor", () => {
     const { onSaved } = renderEditor([calRow()]);
     await screen.findByText(/calendar · 1/);
     fireEvent.change(screen.getByTitle("β skew"), { target: { value: "1.25" } });
-    fireEvent.click(screen.getByText("Save"));
+    fireEvent.click(screen.getByText("Save draft"));
     await waitFor(() => expect(putEdges).toHaveBeenCalled());
     const saved = putEdges.mock.lastCall?.[0] as MessageEdgeRow[];
     expect(saved).toHaveLength(1);

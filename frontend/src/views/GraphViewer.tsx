@@ -23,16 +23,18 @@ import GraphTopBar, { type ObservationSource } from "../components/graphshell/Gr
 import InspectorPane from "../components/graphshell/InspectorPane";
 import RelationshipsPane from "../components/graphshell/RelationshipsPane";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
-import { useGraphEdges } from "../state/useGraphEdges";
-import { useMessageEdges, type MessageEdgeRow } from "../state/useMessageEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
+import { useGraphTopology } from "../state/useGraphTopology";
+import {
+  activateMessageConfig,
+  revertMessageConfig,
+} from "../state/useMessageConfig";
 import { usePreflight } from "../state/usePreflight";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
 import { useWaveTimeline } from "../state/useWaveTimeline";
 import { useAttributionParticles } from "../state/useAttributionParticles";
 import { waveHops } from "../lib/graphWave";
-import type { LayoutEdgeIn } from "../lib/graphLayout";
 
 /** Small bordered button, matching the smile toolbar style. */
 const buttonClass =
@@ -53,12 +55,14 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const [source, setSource] = useState<ObservationSource>("calibrations");
 
   // Calibrations-only solver flags (owned here so the drill-in focus can
-  // rebuild the exact request body the shell ran with).
+  // rebuild the exact request body the shell ran with). runDraft (U6) rides
+  // the body so backtest/plan/preflight/drill-in all read the same slot.
   const [flatAtm, setFlatAtm] = useState(false);
   const [crossBeta, setCrossBeta] = useState(1);
+  const [runDraft, setRunDraft] = useState(false);
   const extrapolateBody = useMemo(
-    () => buildExtrapolateBody(graph.params, flatAtm, crossBeta),
-    [graph.params, flatAtm, crossBeta],
+    () => buildExtrapolateBody(graph.params, flatAtm, crossBeta, runDraft),
+    [graph.params, flatAtm, crossBeta, runDraft],
   );
 
   // Shell state: the inspected node/edge and the bottom drawer.
@@ -70,59 +74,13 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("preview");
   const [drawerOpen, setDrawerOpen] = useState(true);
 
-  // The REAL solver topology for the network view: persisted per-edge
-  // overrides when any exist, else the auto-lattice the solver would build.
-  // Under the message operator the displayed topology is the message
-  // relations instead (persisted rules, else the auto relations), mapped
-  // into the chart's stored-edge convention (from = receiver, to = informer)
-  // so the information-flow arrows stay honest. Re-fetched when the edge
-  // editor saves (edgesVersion bump) or the operator changes.
-  const { fetchEdges, fetchLattice } = useGraphEdges();
-  const { fetchEdges: fetchMsgEdges, fetchAuto: fetchMsgAuto } = useMessageEdges();
+  // Topology + U6 config lifecycle (state/useGraphTopology): the chart edges,
+  // the effective relation rows (inspector), the run slot's persisted rows
+  // (matrix provenance) and the config pair (chip).
   const messagesMode = graph.params.propagationMode === "precision_messages";
-  const [edges, setEdges] = useState<LayoutEdgeIn[]>([]);
-  // The EFFECTIVE relation rows (persisted else auto) — the U4 message
-  // inspector reads these raw; the chart reads their LayoutEdgeIn mapping.
-  const [msgRows, setMsgRows] = useState<MessageEdgeRow[]>([]);
-  const [edgesVersion, setEdgesVersion] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const load: Promise<LayoutEdgeIn[]> = messagesMode
-      ? fetchMsgEdges()
-          .then((rows) => (rows.length > 0 ? rows : fetchMsgAuto()))
-          .then((rows) => {
-            if (alive) setMsgRows(rows);
-            return rows.map((r) => ({
-              fromTicker: r.targetTicker,
-              fromExpiry: r.targetExpiry,
-              toTicker: r.sourceTicker,
-              toExpiry: r.sourceExpiry,
-              weight: r.messagePrecision,
-            }));
-          })
-      : fetchEdges()
-          .then((e) => (e.length > 0 ? e : fetchLattice()))
-          .then((e) => {
-            if (alive) setMsgRows([]);
-            return e.map((r) => ({
-              fromTicker: r.fromTicker,
-              fromExpiry: r.fromExpiry,
-              toTicker: r.toTicker,
-              toExpiry: r.toExpiry,
-              weight: r.weight,
-            }));
-          });
-    load
-      .then((e) => {
-        if (alive) setEdges(e);
-      })
-      .catch(() => {
-        /* topology is display-only; the solver builds its own — keep last */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [fetchEdges, fetchLattice, fetchMsgEdges, fetchMsgAuto, messagesMode, edgesVersion]);
+  const topology = useGraphTopology(messagesMode, runDraft);
+  const { edges, msgRows } = topology;
+  const [configBusy, setConfigBusy] = useState(false);
 
   // With the calibrations source the chart is driven by the production solve:
   // the full SELECTED lit+dark universe (prior handles as the baseline), the
@@ -271,11 +229,26 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const runError = extra.error;
   const hasResults = extra.nodes !== null;
 
-  /** Relation-editor save: refresh the displayed topology and re-run the
-   *  production solve so the field reflects the new relations. */
+  /** Relation-editor save (stages the DRAFT since U6): refresh the displayed
+   *  topology/config and re-run — the field only changes when the run slot
+   *  (active, or draft under run-draft) actually moved. */
   const onEdgesSaved = () => {
-    setEdgesVersion((v) => v + 1);
-    if (!manual) void extra.run(extrapolateBody);
+    topology.refresh();
+    if (!manual) void extra.run(runBody);
+  };
+
+  /** U6 lifecycle action wrapper: activate/revert, then refresh + re-solve. */
+  const lifecycle = async (fn: () => Promise<unknown>) => {
+    setConfigBusy(true);
+    try {
+      await fn();
+    } catch {
+      /* the chip re-renders from the refresh either way */
+    } finally {
+      setConfigBusy(false);
+      topology.refresh();
+      if (!manual) void extra.run(runBody);
+    }
   };
 
   // Inspector data for the selected node.
@@ -346,6 +319,14 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         litCount={litCount}
         darkCount={darkCount}
         preflight={preflight}
+        config={{
+          config: topology.config,
+          runDraft,
+          setRunDraft,
+          onActivate: (notes) => void lifecycle(() => activateMessageConfig(notes)),
+          onRevert: () => void lifecycle(revertMessageConfig),
+          busy: configBusy,
+        }}
         summary={summary}
         error={runError}
         canRun={canRun}
@@ -363,6 +344,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           setCrossBeta={setCrossBeta}
           onEdgesSaved={onEdgesSaved}
           openEditorSignal={editorSignal}
+          persistedRows={topology.persistedRows}
         />
 
         <CanvasCard

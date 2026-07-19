@@ -8,6 +8,7 @@
 // on blockers). RIGHT: post-run summary badges, last error, Clear field, and
 // RUN — the workspace's single primary action.
 import { Eraser } from "lucide-react";
+import ConfigChip, { type ConfigChipBundle } from "./ConfigChip";
 import PreflightChip from "./PreflightChip";
 import SegmentedControl from "../SegmentedControl";
 import type { PropagationMode } from "../../state/useGraph";
@@ -33,6 +34,8 @@ interface GraphTopBarProps {
   darkCount: number;
   /** The live dry-run report (U5) — drives the chip; blockers gate Run. */
   preflight: UsePreflightResult;
+  /** The U6 config-lifecycle chip bundle. */
+  config: ConfigChipBundle;
   summary: RunSummary | null;
   /** Last run failure (production or sandbox), or null. */
   error: string | null;
@@ -54,6 +57,7 @@ export default function GraphTopBar({
   litCount,
   darkCount,
   preflight,
+  config,
   summary,
   error,
   canRun,
@@ -95,14 +99,8 @@ export default function GraphTopBar({
         />
       </label>
 
-      {/* Config chip: the persisted relation set. Named draft/active versions
-          arrive with the config-lifecycle increment. */}
-      <span
-        className={chipClass + " cursor-default text-slate-500"}
-        title="Relation configuration — the persisted edge set (edit under Relationships ▸ Edges). Named draft/active versions with activate/revert arrive with the config lifecycle."
-      >
-        config <span className="text-slate-300">saved edges</span>
-      </span>
+      {/* Live config lifecycle (U6): draft/active, diff, Activate/Revert. */}
+      <ConfigChip bundle={config} />
 
       {/* Live preflight (U5): dry-run findings; blockers gate Run. */}
       <PreflightChip preflight={preflight} litCount={litCount} darkCount={darkCount} />

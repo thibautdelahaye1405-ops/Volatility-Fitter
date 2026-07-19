@@ -31,6 +31,7 @@ from volfit.api.schemas import (
     ForwardPolicy,
     GraphBlockRule,
     GraphEdgeInput,
+    GraphMessageConfigEnvelope,
     GraphMessageEdge,
     MarketSettings,
     OptionsSettings,
@@ -44,11 +45,13 @@ from volfit.api.settings_persist import (
     load_graph_block_rule,
     load_graph_edges,
     load_graph_idio,
+    load_graph_message_config,
     load_graph_message_edges,
     save_defaults,
     save_graph_block_rule,
     save_graph_edges,
     save_graph_idio,
+    save_graph_message_config,
     save_graph_message_edges,
 )
 from volfit.api.workspace import ScopedField, Workspace, build_doc, restore_doc
@@ -281,9 +284,39 @@ class AppState(UniverseMixin):
         #: Persisted precision-message edge rules (message arc P3, schema v2 —
         #: source=informer/target=receiver). Its OWN blob: the legacy edge list
         #: above is never reinterpreted (spec §18.5). Empty ⇒ auto relations.
+        #: Since U6 this workspace field holds the ACTIVE config's rows (the
+        #: solve's read path; workspace docs replay it byte-identically).
         self._graph_message_edges: list[GraphMessageEdge] = _coerce_message_edges(
             load_graph_message_edges(self.store_path)
         )
+        #: U6 draft/active config lifecycle (app-level, NOT workspace-scoped):
+        #: {"draft": envelope|None, "active": envelope|None}. At boot the blob
+        #: is authoritative for the active rows; a legacy-only store migrates
+        #: into an initial v1 active + clean draft.
+        self._graph_message_config: dict[str, GraphMessageConfigEnvelope | None] = (
+            _coerce_message_config(load_graph_message_config(self.store_path))
+        )
+        if self._graph_message_config["active"] is not None:
+            self._graph_message_edges = list(
+                self._graph_message_config["active"].rows
+            )
+        elif self._graph_message_edges:
+            migrated = GraphMessageConfigEnvelope(
+                name="default",
+                version=1,
+                createdAt=_config_now(),
+                author="desk",
+                parentVersion=None,
+                notes="migrated from graph_message_edges",
+                rows=list(self._graph_message_edges),
+            )
+            self._graph_message_config = {
+                "draft": migrated.model_copy(deep=True),
+                "active": migrated,
+            }
+            save_graph_message_config(
+                self.store_path, _config_blob(self._graph_message_config)
+            )
         #: Trailing per-ticker ATM-innovation record feeding the idio band floor
         #: (volfit.graph.idio): every production solve records its lit-node
         #: innovations here, and a node that later goes dark gets its credible
@@ -1536,19 +1569,130 @@ class AppState(UniverseMixin):
         )
 
     def graph_message_edges(self) -> list[GraphMessageEdge]:
-        """The persisted precision-message edge rules (empty ⇒ auto relations)."""
+        """The ACTIVE message-relation rows — what the solve uses (empty ⇒
+        auto relations). Lives in the workspace so docs replay it."""
         with self._lock:
             return list(self._graph_message_edges)
 
     def set_graph_message_edges(self, edges: list[GraphMessageEdge]) -> None:
-        """Replace the message edge rules and persist them (best-effort).
-
-        Independent of the legacy smooth-field edge list / block rule — the
-        two topologies persist side by side (spec §18.5)."""
+        """Replace the ACTIVE rows directly (workspace restore / legacy
+        callers) and keep the U6 envelope's active slot in sync WITHOUT a
+        version bump — a restore replays state, it does not activate."""
         with self._lock:
             self._graph_message_edges = list(edges)
+            active = self._graph_message_config["active"]
+            if active is not None:
+                self._graph_message_config["active"] = active.model_copy(
+                    update={"rows": list(edges)}
+                )
         save_graph_message_edges(self.store_path, [e.model_dump() for e in edges])
+        self._persist_message_config()
         self.log_event("graph_message_edges", payload={"nEdges": len(edges)})
+
+    # ------------------------------------------- U6 message-config lifecycle
+    def graph_message_config(
+        self,
+    ) -> tuple[GraphMessageConfigEnvelope | None, GraphMessageConfigEnvelope | None]:
+        """The (draft, active) envelope pair (deep copies)."""
+        with self._lock:
+            d = self._graph_message_config["draft"]
+            a = self._graph_message_config["active"]
+            return (
+                d.model_copy(deep=True) if d is not None else None,
+                a.model_copy(deep=True) if a is not None else None,
+            )
+
+    def graph_message_draft_edges(self) -> list[GraphMessageEdge]:
+        """The DRAFT rows (falling back to active — editing starts from what
+        runs; empty ⇒ auto relations)."""
+        with self._lock:
+            d = self._graph_message_config["draft"]
+            if d is not None:
+                return list(d.rows)
+            return list(self._graph_message_edges)
+
+    def set_graph_message_draft(self, edges: list[GraphMessageEdge]) -> None:
+        """Stage rows on the DRAFT slot (the editor's Save). The active config
+        — and every solve that uses it — is untouched until Activate."""
+        with self._lock:
+            active = self._graph_message_config["active"]
+            self._graph_message_config["draft"] = GraphMessageConfigEnvelope(
+                name=active.name if active is not None else "default",
+                version=(active.version + 1) if active is not None else 1,
+                createdAt=_config_now(),
+                author="desk",
+                parentVersion=active.version if active is not None else None,
+                notes="",
+                rows=list(edges),
+            )
+        self._persist_message_config()
+        self.log_event("graph_message_draft", payload={"nRows": len(edges)})
+
+    def activate_message_config(self, notes: str = "") -> None:
+        """Promote the draft to ACTIVE (the audited lifecycle step): the solve
+        row set flips, the draft stays as a clean copy of the new active.
+        Raises ValueError when nothing is staged."""
+        with self._lock:
+            draft = self._graph_message_config["draft"]
+            if draft is None:
+                raise ValueError("no draft config to activate")
+            active = draft.model_copy(
+                update={"createdAt": _config_now(), "notes": notes or draft.notes}
+            )
+            self._graph_message_config = {
+                "draft": active.model_copy(
+                    update={
+                        "version": active.version + 1,
+                        "parentVersion": active.version,
+                        "notes": "",
+                    },
+                    deep=True,
+                ),
+                "active": active,
+            }
+            self._graph_message_edges = list(active.rows)
+        # Legacy blob keeps mirroring the ACTIVE rows (downgrade safety).
+        save_graph_message_edges(
+            self.store_path, [e.model_dump() for e in active.rows]
+        )
+        self._persist_message_config()
+        self.log_event(
+            "graph_message_config_activate",
+            payload={
+                "name": active.name,
+                "version": active.version,
+                "nRows": len(active.rows),
+            },
+        )
+
+    def revert_message_config(self) -> None:
+        """Discard the draft: it becomes a clean copy of the active config
+        (or empty when nothing was ever activated)."""
+        with self._lock:
+            active = self._graph_message_config["active"]
+            self._graph_message_config["draft"] = (
+                active.model_copy(
+                    update={
+                        "version": active.version + 1,
+                        "parentVersion": active.version,
+                        "notes": "",
+                    },
+                    deep=True,
+                )
+                if active is not None
+                else None
+            )
+        self._persist_message_config()
+        self.log_event("graph_message_config_revert")
+
+    def _persist_message_config(self) -> None:
+        """Best-effort blob write (never breaks the operation being staged)."""
+        try:
+            save_graph_message_config(
+                self.store_path, _config_blob(self._graph_message_config)
+            )
+        except Exception:  # noqa: BLE001 — persistence must not break staging
+            pass
 
     # ------------------------------------------------------------- audit log
     def log_event(self, action: str, scope: str = "", payload: dict | None = None) -> None:
@@ -1659,6 +1803,38 @@ def _coerce_message_edges(raw: list[dict]) -> list[GraphMessageEdge]:
         except Exception:  # noqa: BLE001 — skip a malformed persisted edge
             continue
     return out
+
+
+def _config_now() -> str:
+    """ISO-second UTC stamp for config-envelope writes."""
+    from datetime import timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _coerce_message_config(
+    raw: dict | None,
+) -> dict[str, GraphMessageConfigEnvelope | None]:
+    """Validate the persisted U6 envelope pair; an unreadable slot degrades to
+    None (same contract as every settings blob)."""
+    out: dict[str, GraphMessageConfigEnvelope | None] = {"draft": None, "active": None}
+    for slot in ("draft", "active"):
+        item = (raw or {}).get(slot)
+        if item is None:
+            continue
+        try:
+            out[slot] = GraphMessageConfigEnvelope.model_validate(item)
+        except Exception:  # noqa: BLE001 — skip a malformed persisted slot
+            continue
+    return out
+
+
+def _config_blob(config: dict[str, GraphMessageConfigEnvelope | None]) -> dict:
+    """JSON-safe blob of the envelope pair."""
+    return {
+        slot: (env.model_dump() if env is not None else None)
+        for slot, env in config.items()
+    }
 
 
 def _source_id_of(provider: OptionChainProvider) -> str:

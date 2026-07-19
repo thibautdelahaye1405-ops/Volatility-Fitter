@@ -1112,6 +1112,36 @@ class GraphMessageEdgesRequest(BaseModel):
     edges: list[GraphMessageEdge]
 
 
+class GraphMessageConfigEnvelope(BaseModel):
+    """One slot of the U6 draft/active message-relation config lifecycle.
+
+    ``version`` counts ACTIVATIONS: the draft carries the version it will
+    become; ``parentVersion`` is the active version it was staged from.
+    ``rows`` empty means "the auto relations" (the PUT [] contract)."""
+
+    name: str = "default"
+    version: int = 1
+    createdAt: str = ""  # ISO timestamp of this slot's last write
+    author: str = "desk"
+    parentVersion: int | None = None
+    notes: str = ""
+    rows: list[GraphMessageEdge] = []
+
+
+class GraphMessageConfigResponse(BaseModel):
+    """GET /graph/config/messages — both lifecycle slots (null = never
+    persisted; the solve then builds its auto relations)."""
+
+    draft: GraphMessageConfigEnvelope | None
+    active: GraphMessageConfigEnvelope | None
+
+
+class GraphMessageConfigActivateRequest(BaseModel):
+    """POST /graph/config/messages/activate — promote the draft."""
+
+    notes: str = ""
+
+
 class GraphCycleFlag(BaseModel):
     """One inconsistent beta cycle (spec §16.4), reported at the edge whose
     addition closes it. ``betaProduct`` is the implied product around the
@@ -1246,6 +1276,10 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: U3 unified what-if: when non-empty these typed pulses REPLACE the
     #: lit-calibration innovation feed (no fits triggered, nothing recorded).
     syntheticObservations: list[SyntheticObservation] = []
+
+    #: U6 lifecycle: solve with the DRAFT config's rows instead of the active
+    #: ones (the run-draft toggle) — a test drive, never an activation.
+    useDraftConfig: bool = False
 
     @field_validator("calendarPolicyOverrides", mode="before")
     @classmethod

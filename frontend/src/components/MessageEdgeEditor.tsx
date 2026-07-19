@@ -171,14 +171,15 @@ export default function MessageEdgeEditor({
             className={btn}
             disabled={busy}
             onClick={() => run(putEdges(rows.map((r) => r.row)), { persisted: true })}
+            title="Stage these rows on the DRAFT config — production keeps the active config until you Activate (config chip)"
           >
-            Save
+            Save draft
           </button>
           <button
             className={btn}
             disabled={busy}
             onClick={() => run(putEdges([]), { persisted: true })}
-            title="Clear the persisted rules — the solve builds its auto relations again"
+            title="Stage an empty draft — activating it puts the solve back on the auto relations"
           >
             Reset to auto
           </button>

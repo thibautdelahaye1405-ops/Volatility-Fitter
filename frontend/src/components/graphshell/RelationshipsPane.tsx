@@ -25,7 +25,7 @@ import SolverPanel, {
 } from "../SolverPanel";
 import { api } from "../../state/api";
 import type { UseGraphResult } from "../../state/useGraph";
-import { useMessageEdges, type MessageEdgeRow } from "../../state/useMessageEdges";
+import type { MessageEdgeRow } from "../../state/useMessageEdges";
 import type { UniverseResponse } from "../../state/useSmile";
 
 interface RelationshipsPaneProps {
@@ -39,6 +39,8 @@ interface RelationshipsPaneProps {
   onEdgesSaved: () => void;
   /** Bumped by the shell (inspector "Edit relations") — opens the editor. */
   openEditorSignal?: number;
+  /** The RUN slot's persisted rows (U6; no auto fallback) — matrix cells. */
+  persistedRows: MessageEdgeRow[];
 }
 
 /** Uniform card chrome for the pane sections. */
@@ -60,6 +62,7 @@ export default function RelationshipsPane({
   setCrossBeta,
   onEdgesSaved,
   openEditorSignal,
+  persistedRows,
 }: RelationshipsPaneProps) {
   const [editingEdges, setEditingEdges] = useState(false);
   // The inspector's "Edit relations" drill-in opens the editor from outside.
@@ -70,12 +73,9 @@ export default function RelationshipsPane({
   const [rawUnits, setRawUnits] = useState(false);
 
   // U2 policy-card data (messages mode): the selected universe (ladders for
-  // the calendar view, tickers for the cross matrix) + the persisted message
-  // rows (matrix cells). Refetched after an editor save (dataVersion bump).
-  const { fetchEdges: fetchMsgRows } = useMessageEdges();
+  // the calendar view, tickers for the cross matrix). The matrix rows come
+  // from the SHELL since U6 (the run slot's persisted rows).
   const [policyUniverse, setPolicyUniverse] = useState<UniverseResponse | null>(null);
-  const [msgRows, setMsgRows] = useState<MessageEdgeRow[]>([]);
-  const [dataVersion, setDataVersion] = useState(0);
   useEffect(() => {
     if (!messages) return;
     let alive = true;
@@ -87,17 +87,10 @@ export default function RelationshipsPane({
       .catch(() => {
         /* the cards degrade to knob-only rendering */
       });
-    fetchMsgRows()
-      .then((rows) => {
-        if (alive) setMsgRows(rows);
-      })
-      .catch(() => {
-        /* empty ⇒ cells show the auto defaults */
-      });
     return () => {
       alive = false;
     };
-  }, [messages, dataVersion, fetchMsgRows]);
+  }, [messages]);
 
   // Selected-universe nodes for the relation editors (fallback: sandbox nodes).
   const [universeNodes, setUniverseNodes] = useState<
@@ -187,7 +180,7 @@ export default function RelationshipsPane({
               setParam={graph.setParam}
               raw={rawUnits}
               tickers={policyUniverse?.tickers ?? []}
-              rows={msgRows}
+              rows={persistedRows}
               onDrillIn={() => setEditingEdges(true)}
             />
           ) : (
@@ -263,17 +256,13 @@ export default function RelationshipsPane({
       </div>
 
       {/* Relation editors (modal — the pane is too narrow for a grid). A save
-          refreshes the policy-card data (matrix cells) before the parent
-          re-solves. */}
+          stages the DRAFT (U6); the shell refreshes topology/config data. */}
       {editingEdges &&
         (messages ? (
           <MessageEdgeEditor
             nodes={editorNodes}
             params={graph.params}
-            onSaved={() => {
-              setDataVersion((v) => v + 1);
-              onEdgesSaved();
-            }}
+            onSaved={onEdgesSaved}
             onClose={() => setEditingEdges(false)}
           />
         ) : (

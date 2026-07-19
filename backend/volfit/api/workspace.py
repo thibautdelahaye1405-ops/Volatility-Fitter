@@ -276,6 +276,15 @@ def restore_doc(state, doc: dict) -> None:
         state._selected.clear()
         state._selection_mode.clear()
         state._ws = ws
+        # U6: the config envelope's ACTIVE rows mirror the restored workspace
+        # field (a restore replays state — lifecycle metadata carries on, no
+        # version bump).
+        active = state._graph_message_config.get("active")
+        if active is not None:
+            state._graph_message_config["active"] = active.model_copy(
+                update={"rows": list(ws.graph_message_edges)}
+            )
+    state._persist_message_config()
 
     uni = doc.get("universe") or {}
     if uni.get("tickers"):
