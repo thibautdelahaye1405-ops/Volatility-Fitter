@@ -35,11 +35,11 @@ def _theta():
 
 
 def _args(cal_z=None, cal_floor=None, cal_k=None, cal_pfloor=None, cal_taper=None,
-          plo=None, phi=None):
-    # trailing None×4 = var_swap, prior_anchor, prior_var_swap, operator_prior
+          plo=None, phi=None, vs=None, pvs=None):
+    # trailing slots = var_swap, prior_anchor, prior_var_swap, operator_prior
     return (K, TARGET, INV_VEGA, SW, REG, cal_z, cal_floor, 1e6,
             cal_k, cal_pfloor, cal_taper, plo, phi,
-            0.90, 50.0, 0.05, None, None, None, None, 2001)
+            0.90, 50.0, 0.05, vs, None, pvs, None, 2001)
 
 
 def _max_rel(theta, args):
@@ -112,3 +112,58 @@ def test_analytic_and_fd_fits_agree():
     an = least_squares(_residuals, init, jac=residual_jacobian, **kw)
     fd = least_squares(_residuals, init, jac="2-point", **kw)
     assert an.x == pytest.approx(fd.x, abs=1e-5)
+
+
+# ----------------------------------------------------- var-swap rows (R5)
+
+
+def _vs_targets():
+    from volfit.calib.varswap import VarSwapTarget
+
+    w_atm = float(np.interp(0.0, K, W))
+    vs = VarSwapTarget(total_var=1.15 * w_atm, weight=2.0, t=T)
+    pvs = VarSwapTarget(total_var=0.95 * w_atm, weight=0.7, t=T)
+    return vs, pvs
+
+
+def test_jacobian_matches_fd_varswap_rows():
+    """Market + prior var-swap rows ride the analytic pass: both rows must
+    match the 3-point finite difference like every other block."""
+    vs, pvs = _vs_targets()
+    assert _max_rel(_theta(), _args(vs=vs, pvs=pvs)) < 1e-3
+    assert _max_rel(_theta(), _args(vs=vs)) < 1e-3  # market row alone too
+
+
+def test_varswap_fit_ungated_and_agrees_with_fd():
+    """The var-swap configuration now selects the analytic Jacobian
+    (prepare_residual_args gate) and reaches the FD optimum."""
+    from scipy.optimize import least_squares
+
+    from volfit.models.lqd.calibrate import prepare_residual_args
+
+    vs, _ = _vs_targets()
+    _, use_analytic = prepare_residual_args(K, W, T, n_order=N_ORDER, var_swap=vs)
+    assert use_analytic  # the R5 ungating, locked
+
+    init = logistic_init(float(np.interp(0.0, K, W)), N_ORDER).to_vector()
+    args = _args(vs=vs)
+    kw = dict(args=args, method="trf", xtol=1e-10, ftol=1e-10, gtol=1e-10, max_nfev=4000)
+    an = least_squares(_residuals, init, jac=residual_jacobian, **kw)
+    fd = least_squares(_residuals, init, jac="2-point", **kw)
+    # The soft var-swap row flattens the basin, so parameters may differ
+    # along the ridge direction while the optimum is identical: lock the
+    # cost tightly and the coefficients loosely.
+    assert an.x == pytest.approx(fd.x, abs=1e-4)
+    assert an.cost == pytest.approx(fd.cost, rel=1e-8)
+
+
+def test_infeasible_branch_shape_includes_varswap_rows():
+    """The rejection branch must keep row parity with _residuals when the
+    var-swap rows are present (their penalty value is a constant zero)."""
+    vs, pvs = _vs_targets()
+    theta = _theta()
+    theta[1] = 1.5  # infeasible tail
+    jac = residual_jacobian(theta, *_args(vs=vs, pvs=pvs))
+    res = _residuals(theta, *_args(vs=vs, pvs=pvs))
+    assert jac.shape == (res.size, theta.size)
+    assert np.all(np.isfinite(jac))

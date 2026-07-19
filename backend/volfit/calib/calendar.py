@@ -175,6 +175,24 @@ def calendar_violation_windowed(
     return float(np.max(near.call_price(k) - far.call_price(k)))
 
 
+def calendar_violation_argmax(
+    near: LQDSlice, far: LQDSlice, window: tuple[float, float] | None
+) -> tuple[float, float | None]:
+    """``calendar_violation_windowed`` plus WHERE it is worst (R5: the
+    cheapest offending calendar trade).  Returns ``(violation, k_star)``:
+    the worst identified normalized-price violation and the log-moneyness of
+    the strike where selling the near call against the far one pays most.
+    ``k_star`` is None when there is no window (full-grid diagnostic) or no
+    positive violation — no trade to name."""
+    if window is None:
+        return calendar_violation(near, far), None
+    k = np.linspace(window[0], window[1], CAL_VIOLATION_N)
+    gap = np.asarray(near.call_price(k) - far.call_price(k), dtype=float)
+    j = int(np.argmax(gap))
+    viol = float(gap[j])
+    return viol, (float(k[j]) if viol > 0.0 else None)
+
+
 def calendar_floor(near: LQDSlice, stride: int = CAL_STRIDE, tol: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
     """Constraint data (indices, floor values) for fitting the *next* expiry:
     the later slice must satisfy a_z[idx] >= floor (eq. grid_calendar)."""

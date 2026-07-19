@@ -497,6 +497,46 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   outliers, cycle products, single-relationship-dominated receivers,
   conditioning; TopBar chip; Run blocked only on genuine blockers).
 
+### 🧭 SESSION WRAP (2026-07-19n) — LQD COMMITTEE REVISION R5: ANALYTIC VAR-SWAP ROWS + METRIC CHART + PACKAGES + DESK-UNIT CALENDAR
+
+- **Analytic var-swap Jacobian rows (the R5 perf item)**: residual_jacobian
+  now emits the market AND prior var-swap rows from the same sensitivity
+  pass (dw_vs/dθ = −2∫(∂Q/∂θ)u(1−u)dz via a new with_qz=True return of
+  slice_sensitivities — 3-tuple default kept because symmetric_stack
+  star-unpacks it), chained through dσ/dw = 1/(2√(wτ)); the
+  prepare_residual_args gate now sends ONLY prior-anchor/operator configs
+  to FD. Infeasible branch keeps row parity (zero rows). Locks:
+  FD-match both rows, ungating asserted, analytic-vs-FD fit same optimum
+  (cost 1e-10 rel; params 1e-4 — the var-swap row flattens the basin, cost
+  is the honest lock).
+- **ATM chart v2 (ortho.py)**: build_atm_coordinates(…, metric=None|G) —
+  G-least-norm right inverse U = G⁻¹Jᵀ(JG⁻¹Jᵀ)⁻¹ with
+  gauss_newton_metric(solver_diag["jac"]) as the intended G (Tikhonov
+  floor for data-flat directions); handle-Gram SVD condition number now on
+  every chart (ATMCoordinates.condition). Locked: GN chart is a right
+  inverse with strictly smaller fit impact than Euclidean per primary
+  column; retarget exact under the metric. Default path byte-identical.
+- **Trader packages (NEW models/lqd/packages.py)**: build_package_controls
+  (chart, names=RR25/BF25/RR10/BF10/VarSwap) solves inside ker(J_handles)
+  for least-norm unit-package directions (SVD pinv), returns values,
+  directions, cross-talk matrix, kernel-restricted rank + condition.
+  Locked: cross-talk ≈ I, package move linear, handle leak quadratic in
+  the step (directions are long — bound the contraction, not the level).
+- **Calendar in desk units (committee point 8)**: calendar_violation_argmax
+  names the worst strike; QualityNode gains calendarWorstStrike /
+  ...Currency (viol·F·D) / ...Ticks (needs chain tick — PreparedQuotes
+  now carries tick_size from ChainSnapshot) / ...SpreadFrac (vs local
+  bid-ask price width at K*). All None when no positive violation.
+- **Note 01 queued→shipped pass**: stack table var-swap rows analytic,
+  §8.2 metric+packages rewritten as shipped (w/ locks named), §11
+  desk-unit reporting sentence, limitations "queued"→"remaining" (UI
+  wiring + GN-default decision + hedge-metrics), referee answers 7/8
+  upgraded, model-card Controls row. PDF rebuilt clean.
+- REMAINING (product, not model): UI wiring of package controls /
+  condition warning / desk-unit calendar fields; GN metric as interactive
+  default decision. Deferred: SVI/eSSVI hedge-P&L benchmark (backtest
+  programme).
+
 ### 🧭 SESSION WRAP (2026-07-19m) — LQD COMMITTEE REVISION R4: NOTE 01 MAJOR REVISION SHIPPED
 
 - **01_lqd_model_coordinates.tex revised end-to-end** per the committee

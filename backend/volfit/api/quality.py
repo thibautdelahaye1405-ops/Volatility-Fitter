@@ -31,7 +31,8 @@ from volfit.api.schemas_quality import (
     QualityTicker,
 )
 from volfit.api.state import AppState, FitRecord
-from volfit.calib.calendar import calendar_violation_windowed, common_support
+from volfit.calib.calendar import calendar_violation_argmax, common_support
+from volfit.core.black import black_call
 from volfit.calib.rms import rms as rms_of_terms
 from volfit.models.diagnostics import extrapolated_arb
 from volfit.models.lqd.atm import atm_handles
@@ -157,7 +158,7 @@ def _node_row(
     # crossing is not an identified violation (the extrap screen below covers
     # the published wings). Fits committed at different epochs can genuinely
     # cross in-support — exactly what this screen must surface.
-    violation = 0.0
+    violation, cal_k_star = 0.0, None
     if prev_slice is not None:
         try:
             window = (
@@ -165,12 +166,31 @@ def _node_row(
                 if prev_k is not None
                 else None
             )
-            violation = float(
-                calendar_violation_windowed(prev_slice, record.result.slice, window)
+            violation, cal_k_star = calendar_violation_argmax(
+                prev_slice, record.result.slice, window
             )
         except Exception:
             violation = 0.0
     cal_ok = violation <= _CAL_TOL
+    # R5 (committee point 8): the violation in the units a desk prices —
+    # currency per share, option-price ticks, and fractions of the local
+    # bid-ask spread at the worst strike — plus the strike itself, i.e. the
+    # cheapest offending calendar trade (sell near / buy far at K*).
+    cal_currency = cal_ticks = cal_spread_frac = cal_strike = None
+    if violation > 0.0 and cal_k_star is not None:
+        prep = record.prepared
+        cal_currency = violation * float(prep.forward) * float(prep.discount)
+        cal_strike = float(prep.forward) * float(np.exp(cal_k_star))
+        if prep.tick_size:
+            cal_ticks = cal_currency / float(prep.tick_size)
+        if prep.k.size:
+            j = int(np.argmin(np.abs(prep.k - cal_k_star)))
+            spread = float(
+                black_call(prep.k[j], prep.iv_ask[j] ** 2 * prep.tau)
+                - black_call(prep.k[j], prep.iv_bid[j] ** 2 * prep.tau)
+            )
+            if spread > 0.0:
+                cal_spread_frac = violation / spread
 
     # Extrapolated-region arb (Notes 09/10 Phase 1): measured on the DISPLAYED
     # slice — the published wing — over the time-value envelope; the calendar
@@ -232,6 +252,10 @@ def _node_row(
         leeOk=lee_ok,
         calendarViolation=violation,
         calendarOk=cal_ok,
+        calendarWorstStrike=cal_strike,
+        calendarViolationCurrency=cal_currency,
+        calendarViolationTicks=cal_ticks,
+        calendarViolationSpreadFrac=cal_spread_frac,
         extrapMinG=extrap_min_g,
         extrapOk=extrap_ok,
         extrapCalBp=extrap_cal,

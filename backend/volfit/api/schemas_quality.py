@@ -32,6 +32,13 @@ class QualityNode(BaseModel):
     leeOk: bool
     calendarViolation: float  # worst convex-order violation vs the previous fitted expiry
     calendarOk: bool
+    # --- R5 (committee point 8): the same violation in desk units, plus the
+    # cheapest offending trade. None whenever there is no positive violation
+    # (or the unit is unavailable — e.g. no tick size on synthetic chains).
+    calendarWorstStrike: float | None = None  # K* of the sell-near/buy-far spread
+    calendarViolationCurrency: float | None = None  # per share, discounted
+    calendarViolationTicks: float | None = None  # currency / option tick size
+    calendarViolationSpreadFrac: float | None = None  # vs local bid-ask price width
     # --- extrapolated-region arb (Notes 09/10 Phase 1): MEASURED, advisory only —
     # never gates ``ready``. Envelope = beyond the traded strikes, while the
     # model's own OTM value >= 1 bp of forward ("extrapolated but not worthless").

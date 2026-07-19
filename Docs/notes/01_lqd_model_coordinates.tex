@@ -1350,16 +1350,18 @@ the least-norm right inverse of $J$, so that $JU=I_3$.  The three columns
 of $U$ are the \emph{primary directions}: moving along them changes the
 handles one-for-one, in handle units, with no wasted motion in parameter
 space.  ``Cheapest'', though, is a claim relative to a metric, and the
-metric here is the raw Euclidean one on coefficients --- convenient, but
+default metric is the raw Euclidean one on coefficients --- convenient, but
 \emph{arbitrary}: it is not invariant to rescaling a coordinate, and a unit
-of $a_9$ is not economically a unit of $\log A_L$.  A defensible metric
-would price a move by its effect --- the Gauss--Newton (Fisher) metric
-$J_r\T W J_r$ of the calibration residuals, which the solver already
-computes at convergence, or a hedge-instrument risk metric --- and
-$(JJ\T)^{-1}$ should be formed by SVD with its condition number reported,
-since near-degenerate handle Jacobians occur on thin boards.  Both upgrades
-change $U$, not the chart's logic; they are the production path
-(\cref{sec:limits} tracks the residual gap).
+of $a_9$ is not economically a unit of $\log A_L$.  The defensible metric
+prices a move by its effect, and the chart now takes one: passing the
+Gauss--Newton (Fisher) metric $G=J_r\T J_r$ of the calibration residuals
+(which the solver already reports at convergence) makes
+$U=G^{-1}J\T(JG^{-1}J\T)^{-1}$, the move that hits the requested handles
+while disturbing the \emph{fitted quotes} least --- test-locked to be a
+right inverse with strictly smaller fit impact than the Euclidean columns.
+Either way the handle Gram's SVD condition number is computed and carried
+on the chart, because near-degenerate handle Jacobians occur on thin
+boards and a trader should see the warning, not the crash.
 
 \emph{Question 2: which moves leave the handles alone?}  To first order,
 exactly the kernel of $J$ --- a $(d-3)$-dimensional space.  Collect an
@@ -1369,9 +1371,14 @@ kernel basis is unique only up to rotation and sign, so ``shape direction
 1'' is a session-local label that can rotate between calibrations --- a
 sound interface for interactive sculpting at a frozen reference, not a
 persistent trader coordinate.  The stable vocabulary for persistent
-controls is the market's own: risk reversals, butterflies, wing slope, var
-swap --- quote operators the platform already prices --- with the kernel
-machinery underneath.
+controls is the market's own, and the kernel now speaks it: for a chosen
+package set (25- and 10-delta risk reversals and butterflies, the var
+swap), the implementation solves, inside $\ker J$, for the least-norm
+combination moving \emph{one} package by one unit --- handles fixed to
+first order by construction --- and reports the full cross-talk matrix of
+each control into the others, together with the kernel-restricted package
+Jacobian's rank and condition (on a thin board the packages simply are not
+independently movable, and the print says so rather than pretending).
 
 Gluing the two answers together gives the chart:
 \begin{equation}
@@ -1534,8 +1541,9 @@ rows into the same least-squares problem.  Two properties of the assembly
 are worth carrying away.  Every optional block is byte-identical-to-absent
 when unused (test-locked), so switching a feature off really is off.  And
 the Jacobian column matters operationally: the analytic route of
-\cref{sec:jacobian} covers the first five blocks, while activating \emph{any}
-var-swap or prior block switches the whole fit to scipy's finite-difference
+\cref{sec:jacobian} covers the first five blocks \emph{and} both var-swap
+rows (they ride the same sensitivity pass), while activating a prior-anchor
+or operator block switches the whole fit to scipy's finite-difference
 Jacobian --- correct, merely not accelerated.
 
 \begin{table}[H]
@@ -1556,11 +1564,11 @@ Calendar slack (Note~10) & \texttt{enforceCalendar} $+$ a nearer fitted expiry
 $A_R$ soft barrier & always (one row) & dimensionless & analytic\\
 \midrule
 Market var-swap (Note~08) & \texttt{varSwapEnabled} $+$ an active quote &
-vol & FD fallback\\
+vol & analytic\\
 Prior strike-gap anchor (Note~13) & \texttt{strike\_gap} / \texttt{hybrid}
 tail, active prior & vega-normalized price & FD fallback\\
-Prior var-swap companion (Note~13) & alongside an active prior & vol & FD
-fallback\\
+Prior var-swap companion (Note~13) & alongside an active prior & vol &
+analytic\\
 Operator prior (Note~13) & \texttt{quote\_operator} / \texttt{hybrid}, gated
 per operator & operator units (vol) & FD fallback\\
 Active-filter MAP (Note~15) & filter mode \texttt{active} (rides the operator
@@ -1570,7 +1578,9 @@ block, ungated) & handle units & FD fallback\\
 \caption{The LQD residual stack as production assembles it
 (\texttt{models/lqd/calibrate.py}; prior/filter targets are resolved in
 \texttt{api/service.py}).  ``FD fallback'' means the presence of that block
-switches the entire fit to the finite-difference Jacobian.}
+switches the entire fit to the finite-difference Jacobian --- since this
+revision only the prior-anchor and operator blocks do; both var-swap rows
+ride the analytic pass (\cref{sec:jacobian}).}
 \label{tab:stack}
 \end{table}
 
@@ -1724,14 +1734,16 @@ different route.}
 
 \subsection{Scope and speed}
 
-The analytic route covers the var-swap-free, prior-free configuration
-(\cref{tab:stack}); other fits fall back to scipy's two-point finite
-difference, correct but not accelerated.  (The var-swap row is the cheapest
-missing piece: $\partial w_{\text{vs}}/\partial\theta=
+The analytic route covers every configuration without prior-anchor or
+operator blocks (\cref{tab:stack}); those two fall back to scipy's
+two-point finite difference, correct but not accelerated.  The var-swap
+rows were the cheapest piece and are now in: $\partial
+w_{\text{vs}}/\partial\theta=
 -2\int(\partial Q/\partial\theta)\,u(1-u)\,\dd z$ needs only the nodal
-sensitivities the pass already computes, and ungating it would restore the
-analytic path for the common var-swap-enabled configuration --- queued
-work, stated here so the gate is not mistaken for a difficulty.)  Measured
+quantile sensitivity the pass already computes, one extra chain factor
+$\dd\sigma_{\text{vs}}/\dd w=1/(2\sqrt{w\tau})$, and nothing else --- so
+the common var-swap-enabled configuration keeps the analytic path
+(FD-audited like every other block).  Measured
 on this repository's development machine, the analytic Jacobian reaches the
 \emph{same} optimum as the finite difference (costs agreeing to
 $\sim10^{-11}$ relative, parameters to $\lesssim10^{-5}$) at
@@ -1874,10 +1886,14 @@ the production surface path screens the finished ladder and \emph{jointly}
 repairs any violation-connected group of slices, rather than trusting the
 one-way pass.  And the whole coupling is a user toggle, so off means off.
 Residual violations are measured and reported by the surface diagnostics
-rather than assumed away; the reporting a trading desk actually needs ---
-the worst violation expressed in currency, ticks and fractions of the
-bid--ask spread, with the cheapest offending calendar spread identified ---
-is queued work, recorded in \cref{sec:limits}.  Note~10 develops the
+rather than assumed away --- and, as of this revision, in the units a desk
+prices: alongside the normalized-price violation, each node reports the
+worst-violation strike $K^{\ast}$ (the cheapest sell-near/buy-far calendar
+spread), the violation in currency per share, in option-price ticks (when
+the source chain quotes a tick), and as a fraction of the local bid--ask
+price width at $K^{\ast}$ --- so ``violation $10^{-6}$'' resolves into
+``a tenth of a tick, a fortieth of the spread: unharvestable'' or into a
+number that stops a publish.  Note~10 develops the
 model-agnostic calendar machinery (and the subtlety that the variance floor
 must be confined to the traded strike range); here we record only that for
 LQD the natural constraint object is the ledger the model already owns.
@@ -2166,12 +2182,14 @@ quote's moneyness by $-\delta$, and to first order the fitter reads it as a
 spurious vol move of $(\partial\sigma/\partial k)\,\delta$ plus a density
 translation --- easily misdiagnosed as skew.  Forward hygiene (Note~06) is
 an input contract of this model, not a refinement.
-\item \textbf{Interface gaps, queued.}  The ATM chart's least-norm metric
-should be the Gauss--Newton one and its shape directions should surface as
-market packages (\cref{sec:ortho}); calendar residuals should be reported
-in currency, ticks and spread fractions with the cheapest offending trade
-identified (\cref{sec:calendar}); the analytic Jacobian should cover the
-var-swap row (\cref{sec:jacobian}).  Each is stated where it bites.
+\item \textbf{Interface gaps, remaining.}  The Gauss--Newton chart metric,
+the package controls and the desk-unit calendar reporting are implemented
+and test-locked (\cref{sec:ortho,sec:calendar}), but the interactive
+front-end still drives the Euclidean chart and generic shape sliders ---
+wiring the packages and the condition warning into the user interface, and
+choosing when the GN metric becomes the interactive default, are the
+remaining product decisions.  Hedge-instrument risk metrics beyond
+Gauss--Newton remain unexplored.
 \item \textbf{Unstudied sensitivities.}  There is no dedicated study of
 handle \emph{drift} under rolling recalibration, nor of digital/one-touch
 sensitivities to the interpolation scheme; both are open measurement items,
@@ -2496,9 +2514,10 @@ slopes \emph{with stability fans} (\cref{fig:tailfan}).\\
 (\cref{prop:nobutterfly}); implementation audited to residual arbitrage
 $\lesssim10^{-8}$ of the forward at off-grid strikes
 (\cref{sec:certificate}); martingale error $\sim10^{-16}$.\\
-\textbf{Controls} & ATM retarget (exact); shape modes (session-local);
-ridge $\lambda,r$; barrier; calendar toggle and weight; chart selection
-(logistic default).\\
+\textbf{Controls} & ATM retarget (exact); package controls (RR/BF/var swap,
+handle-neutral, with cross-talk and condition prints); shape modes
+(session-local); ridge $\lambda,r$; barrier; calendar toggle and weight;
+chart selection (logistic default; Gauss--Newton metric available).\\
 \textbf{Not guaranteed} & Calendar order (controlled, not proven,
 \cref{sec:calendar}); tail point estimates (prior-dominated,
 \cref{fig:tailfan}); any dynamics between expiries (\cref{sec:limits});
@@ -2537,11 +2556,14 @@ classes) plus the overflow budget; adaptive refinement remains future work.
 \item \emph{How many starts fail or split on real data?}  Zero of ten, one
 basin, on both the synthetic and live strips (\cref{sec:calib,sec:case_spx})
 --- a measurement to repeat on stressed boards.
-\item \emph{What metric makes a handle move ``cheapest''?}  Named honestly
-as the raw Euclidean one; the Gauss--Newton upgrade is queued
+\item \emph{What metric makes a handle move ``cheapest''?}  The chart now
+takes the Gauss--Newton metric of the fitted residuals (least fit impact),
+with the Euclidean default named as arbitrary and the Gram condition
+reported either way (\cref{sec:ortho}).
+\item \emph{Stable trader packages instead of kernel directions?}  Shipped:
+kernel directions are session-local; RR/BF/var-swap package controls with
+cross-talk, rank and condition are the persistent interface
 (\cref{sec:ortho}).
-\item \emph{Stable trader packages instead of kernel directions?}  Agreed
-and queued; kernel directions demoted to session-local (\cref{sec:ortho}).
 \item \emph{Deterministic fallback for overflow / wall / spikes / cap?}
 Overflow: budgeted rejection (\cref{sec:quadrature}); wall: unreachable in
 the production chart, barrier-priced; spiky densities: ridge + judgment

@@ -53,8 +53,16 @@ def atm_jacobian(params: LQDParams, t: float, step: float = 1e-6) -> np.ndarray:
 class ATMCoordinates:
     """Local coordinate chart theta = theta* + U alpha + V xi around theta*.
 
-    U (d x 3) are least-norm primary directions with J U = I_3; the columns
-    of V (d x (d-3)) are an orthonormal basis of ker J.
+    U (d x 3) are least-norm primary directions with J U = I_3 — least-norm
+    in the chart's ``metric`` (Euclidean by default; the Gauss--Newton
+    information matrix when the caller supplies one, so "cheapest handle
+    move" is priced by fit impact rather than raw coefficient units).  The
+    columns of V (d x (d-3)) are an orthonormal basis of ker J; note the
+    kernel SUBSPACE is metric-independent, but the basis is unique only up
+    to rotation — shape-direction labels are session-local, never persistent
+    trader coordinates.  ``condition`` is the SVD condition number of the
+    3x3 handle Gram matrix: a large value means the handle Jacobian is
+    near-degenerate (thin boards) and primary moves are unreliable.
     """
 
     reference: LQDParams
@@ -63,6 +71,7 @@ class ATMCoordinates:
     jacobian: np.ndarray
     primary: np.ndarray  # U
     shape: np.ndarray  # V
+    condition: float = float("nan")
 
     def theta(self, alpha: np.ndarray, xi: np.ndarray | None = None) -> LQDParams:
         """Map local coordinates (alpha, xi) to a parameter vector."""
@@ -116,24 +125,57 @@ class ATMCoordinates:
         return jac
 
 
-def build_atm_coordinates(params: LQDParams, t: float) -> ATMCoordinates:
+def gauss_newton_metric(residual_jacobian_rows: np.ndarray) -> np.ndarray:
+    """The Gauss--Newton (Fisher) metric G = J_r^T J_r from the calibration
+    residual Jacobian at convergence (weights/vega scaling already folded
+    into the rows — the solver_diag side-channel of calibrate_slice).  Under
+    this metric a "cheapest" handle move is the one that disturbs the fitted
+    quotes least, which is the economically defensible reading."""
+    j = np.asarray(residual_jacobian_rows, dtype=float)
+    return j.T @ j
+
+
+def build_atm_coordinates(
+    params: LQDParams, t: float, metric: np.ndarray | None = None
+) -> ATMCoordinates:
     """Construct the ATM-orthogonal chart at a reference slice.
 
-    U = J^T (J J^T)^{-1} (least-norm right inverse, eq. atm_pinv); V from the
-    QR factorization of the projector onto ker J (eq. projector).
+    Default (``metric=None``): U = J^T (J J^T)^{-1}, the Euclidean
+    least-norm right inverse (eq. atm_pinv) — byte-identical to the
+    historical chart.  With a PSD ``metric`` G (d x d): U = G^{-1} J^T
+    (J G^{-1} J^T)^{-1}, the G-least-norm right inverse — pass
+    ``gauss_newton_metric(solver_diag["jac"])`` to price moves by fit
+    impact.  V from the QR factorization of the projector onto ker J
+    (eq. projector); the handle Gram's SVD condition number is reported on
+    the chart either way.
     """
     jac = atm_jacobian(params, t)
     d = jac.shape[1]
-    gram = jac @ jac.T
-    primary = jac.T @ np.linalg.solve(gram, np.eye(3))
+    if metric is None:
+        gram = jac @ jac.T
+        primary = jac.T @ np.linalg.solve(gram, np.eye(3))
+    else:
+        g = 0.5 * (np.asarray(metric, dtype=float) + np.asarray(metric, dtype=float).T)
+        # Tikhonov floor: the GN metric is singular along data-flat
+        # directions (that is the POINT of the ridge/prior machinery), so
+        # regularize before inverting — the floor only touches directions
+        # the fit does not see.
+        g = g + (1e-8 * max(float(np.trace(g)) / d, 1e-30)) * np.eye(d)
+        ginv_jt = np.linalg.solve(g, jac.T)
+        gram = jac @ ginv_jt
+        primary = ginv_jt @ np.linalg.solve(gram, np.eye(3))
 
     # Orthonormal kernel basis: project out row(J), keep the d-3 significant
-    # directions of the projector's QR factorization.
-    projector = np.eye(d) - jac.T @ np.linalg.solve(gram, jac)
+    # directions of the projector's QR factorization.  (Euclidean projector
+    # regardless of the metric: ker J is the same subspace, and an
+    # orthonormal basis of it is all V promises.)
+    e_gram = jac @ jac.T
+    projector = np.eye(d) - jac.T @ np.linalg.solve(e_gram, jac)
     q, r = np.linalg.qr(projector)
     keep = np.abs(np.diag(r)) > 1e-10
     shape = q[:, keep][:, : d - 3]
 
+    sing = np.linalg.svd(gram, compute_uv=False)
     return ATMCoordinates(
         reference=params,
         t=t,
@@ -141,4 +183,5 @@ def build_atm_coordinates(params: LQDParams, t: float) -> ATMCoordinates:
         jacobian=jac,
         primary=primary,
         shape=shape,
+        condition=float(sing[0] / max(sing[-1], 1e-300)),
     )

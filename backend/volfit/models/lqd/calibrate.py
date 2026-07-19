@@ -229,14 +229,10 @@ def prepare_residual_args(
     n_idx = np.arange(2, n_order + 1, dtype=float)
     reg = np.sqrt(reg_lambda) * np.where(n_idx >= 4, n_idx**reg_power, 0.0)
 
-    # The var-swap and prior-anchor terms are not differentiated analytically
-    # yet, so their presence gates the fit back to the FD Jacobian.
-    use_analytic = (
-        var_swap is None
-        and prior_anchor is None
-        and prior_var_swap is None
-        and operator_prior is None
-    )
+    # The prior-anchor and operator terms are not differentiated analytically
+    # yet, so their presence gates the fit back to the FD Jacobian; the two
+    # var-swap rows are analytic (R5) — they ride the same sensitivity pass.
+    use_analytic = prior_anchor is None and operator_prior is None
     args = (
         k,
         target_price,
@@ -354,10 +350,11 @@ def calibrate_slice(
     w_quotes = np.asarray(w_quotes, dtype=float)
     sigma = np.sqrt(w_quotes / t)
 
-    # Analytic Jacobian (ROADMAP perf #2) for the var-swap/prior-free residual
-    # configuration (mid or band fit + reg + calendar + barrier) — one quadrature
-    # pass instead of trf's (P+1) finite-difference rebuilds; the frozen
-    # argument tuple is shared with the joint symmetric solver.
+    # Analytic Jacobian (ROADMAP perf #2; var-swap rows since R5) for every
+    # configuration without prior-anchor/operator terms (mid or band fit + reg
+    # + calendar + barrier + var-swap) — one quadrature pass instead of trf's
+    # (P+1) finite-difference rebuilds; the frozen argument tuple is shared
+    # with the joint symmetric solver.
     args, use_analytic = prepare_residual_args(
         k, w_quotes, t, n_order=n_order, weights=weights,
         reg_lambda=reg_lambda, reg_power=reg_power,

@@ -18,10 +18,12 @@ g is affine in theta with constant basis ``phi_j`` (dg/dL=1-u, dg/dR=u,
 dg/da_n=P_n(1-2u)), so dQ'/dtheta = Q' phi, and the cumulative quadrature /
 normalisation / asset-share integral differentiate term by term.
 
-Covers the residual configuration with NO var-swap / prior-anchor terms (the
-caller gates on that); handles mid + bid-ask/haircut band fits, the high-order
-regulariser, the soft calendar slack, and the A_R barrier — the full residual
-vector ``calibrate_slice`` builds in that configuration.
+Covers every residual configuration except prior-anchor / operator-prior
+terms (the caller gates on those); handles mid + bid-ask/haircut band fits,
+the high-order regulariser, the soft calendar slack, the A_R barrier, and —
+riding the same pass via the nodal quantile sensitivity — the market and
+prior var-swap rows (committee revision R5: the gate that used to send every
+var-swap-enabled fit to finite differences is lifted).
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ import numpy as np
 from scipy.special import expit
 
 from volfit.calib.band import band_violation_sign
+from volfit.calib.varswap import _W_FLOOR as _VS_W_FLOOR
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, legendre_matrix
 from volfit.models.lqd.interp import hermite_eval
 from volfit.models.lqd.quadrature import _cumquad, build_slice
@@ -57,8 +60,8 @@ def _endpoint_grads(a_left: float, a_right: float, order: int) -> tuple[np.ndarr
 
 
 def slice_sensitivities(
-    params: LQDParams, n_points: int
-) -> tuple[object, np.ndarray, np.ndarray]:
+    params: LQDParams, n_points: int, with_qz: bool = False
+) -> tuple:
     """One quadrature pass plus its theta-sensitivities.
 
     Returns ``(slice_, d_az, d_dadz)``: the built LQDSlice and the nodal
@@ -67,6 +70,9 @@ def slice_sensitivities(
     the joint symmetric solver (volfit.calib.symmetric) needs to form
     dC/dtheta at arbitrary strikes via ``call_price_rows``; ``residual_jacobian``
     below builds the full single-slice residual Jacobian from the same pass.
+    ``with_qz=True`` appends the nodal quantile sensitivity ``d_qz`` (P, M)
+    as a fourth element — the var-swap rows need it (the default stays a
+    3-tuple because the joint stack star-unpacks it into call_price_rows).
 
     Raises ValueError when A_R >= 1 (same contract as build_slice).
     """
@@ -102,6 +108,8 @@ def slice_sensitivities(
     # a_z right-tail correction e^{q_z[-1]-z_max}/(1-a_right) (note q_z, not q_bar).
     tail_az = float(np.exp(slice_.q_z[-1] - z_max))
     d_az = rev + (tail_az * (d_qz[:, -1] / (1.0 - a_right) + d_ar / (1.0 - a_right) ** 2))[:, None]
+    if with_qz:
+        return slice_, d_az, -d_massn, d_qz
     return slice_, d_az, -d_massn
 
 
@@ -147,15 +155,20 @@ def residual_jacobian(
     operator_prior,
     n_points: int,
 ) -> np.ndarray:
-    """Analytic Jacobian of ``_residuals`` (var_swap/prior gated off). Rows are
-    stacked [fit, reg, calendar, barrier] in the residual's order; columns are
-    theta = (L, R, a_2..a_N)."""
+    """Analytic Jacobian of ``_residuals`` (prior-anchor/operator gated off).
+    Rows are stacked [fit, reg, calendar, barrier, var-swap, prior-var-swap]
+    in the residual's order; columns are theta = (L, R, a_2..a_N).  The two
+    var-swap rows ride the same pass: with w_vs = -2 int Q u(1-u) dz (the
+    slice's closed form), d(w_vs)/dtheta = -2 int (dQ/dtheta) u(1-u) dz from
+    the nodal quantile sensitivity, and the vol-space residual chains through
+    d(sigma_vs)/dw = 1/(2 sqrt(w_vs t))."""
     params = LQDParams.from_vector(theta)
     p = theta.size
     band_mode = price_lo is not None
     n_fit = (2 * k.size) if band_mode else k.size
     n_cal = 0 if cal_z is None else cal_z.size
     n_calk = 0 if cal_k is None else cal_k.size
+    n_vs = int(var_swap is not None) + int(prior_var_swap is not None)
 
     a_left, a_right = endpoint_scales(params)
     # Mirror of the _residuals clamp: keep the rejection rows finite for a
@@ -166,10 +179,12 @@ def residual_jacobian(
 
     def infeasible_jac() -> np.ndarray:
         # residual was full(n_fit, 10 + a_right) + reg + zeros(cal) + barrier
+        # + zeros for the var-swap rows (their penalty-branch value is 0).
         j_fit = np.tile(d_ar, (n_fit, 1))
         j_cal = np.zeros((n_cal + n_calk, p))
         return np.vstack([j_fit, _reg_jac(reg, p), j_cal, _barrier_row(
-            a_right, d_ar, barrier_center, barrier_scale)])
+            a_right, d_ar, barrier_center, barrier_scale),
+            np.zeros((n_vs, p))])
 
     # --- infeasible tail (A_R >= 1): reject before building anything -------
     if a_right >= 1.0 - EPS_AR:
@@ -177,7 +192,8 @@ def residual_jacobian(
 
     # --- one quadrature pass + its theta-sensitivities (shared helper) ----
     try:
-        slice_, d_az, d_dadz = slice_sensitivities(params, n_points)
+        slice_, d_az, d_dadz, d_qz = slice_sensitivities(
+            params, n_points, with_qz=True)
     except ValueError:
         # Interior-excursion overflow (quadrature.EXP_BUDGET): same penalty
         # branch as the residual side, so the analytic path never crashes on
@@ -215,8 +231,24 @@ def residual_jacobian(
     else:
         j_calk = np.zeros((0, p))
 
+    # --- var-swap rows (market target, then prior companion; same form) ----
+    j_vs: list[np.ndarray] = []
+    if n_vs:
+        u1mu = slice_.u * expit(-slice_.z)  # u(1-u), wing-stable
+        w_vs = float(slice_.var_swap_strike())
+        dw_vs = -2.0 * np.trapezoid(d_qz * u1mu[None, :], slice_.z, axis=1)
+        for tgt in (var_swap, prior_var_swap):
+            if tgt is None:
+                continue
+            if w_vs <= _VS_W_FLOOR or tgt.weight <= 0.0:
+                j_vs.append(np.zeros((1, p)))  # residual clamped/weightless
+            else:
+                j_vs.append((np.sqrt(tgt.weight) * dw_vs
+                             / (2.0 * np.sqrt(w_vs * tgt.t)))[None, :])
+
     return np.vstack([j_fit, _reg_jac(reg, p), j_cal, j_calk,
-                      _barrier_row(a_right, d_ar, barrier_center, barrier_scale)])
+                      _barrier_row(a_right, d_ar, barrier_center, barrier_scale),
+                      *j_vs])
 
 
 def _reg_jac(reg: np.ndarray, p: int) -> np.ndarray:

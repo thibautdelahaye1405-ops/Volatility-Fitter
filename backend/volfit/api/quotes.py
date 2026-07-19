@@ -180,6 +180,10 @@ class PreparedQuotes:
     #: VEGA_FLOOR_DIAG: their IV residuals are numerically meaningless and
     #: price-space objectives are the honest view (roadmap R1 item 6).
     vega_floored: int = 0
+    #: Option price tick from the source chain (ChainSnapshot.tick_size);
+    #: None on synthetic / IV-exact chains.  Carried so downstream
+    #: diagnostics can express price gaps in ticks (R5 calendar reporting).
+    tick_size: float | None = None
 
     def __post_init__(self) -> None:
         if self.tau <= 0.0:
@@ -438,6 +442,7 @@ def prepare_quotes(
         vega_floored=int(
             np.count_nonzero(black_vega_sigma(ks, iv_mid_s, tv) < VEGA_FLOOR_DIAG)
         ),
+        tick_size=snapshot.tick_size,
     )
 
 
