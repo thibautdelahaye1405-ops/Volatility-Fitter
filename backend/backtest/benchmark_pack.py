@@ -33,7 +33,7 @@ import numpy as np
 import volfit
 
 from backtest.graph_edges import EdgeConfig
-from backtest.graph_loo import HANDLES, run as run_loo
+from backtest.graph_loo import COVERAGE_Z, HANDLES, MessageKnobs, run as run_loo
 from backtest.replay import list_fixtures, load_fixture
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results", "benchmark")
@@ -95,6 +95,7 @@ def run_regime(
     regime: str, designs, r_values, chunk: int, cfg: EdgeConfig,
     max_pairs: int | None = None, eta_scale: float = 1.0, tag: str = "",
     pair_start: int = 0, lambda_scale: float = 0.0, nu: float = 0.1,
+    msg: MessageKnobs | None = None,
 ) -> None:
     """Score one regime chunk-by-chunk, skipping chunks whose part file exists."""
     os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -109,12 +110,17 @@ def run_regime(
         print(f"{regime} pairs {a}-{b}: scoring…", flush=True)
         rows = run_loo(regime, designs, r_values, None, cfg, pair_range=(a, b),
                        eta_scale=eta_scale, history_rows=_history_seed(regime, a, tag),
-                       lambda_scale=lambda_scale, nu=nu)
+                       lambda_scale=lambda_scale, nu=nu, msg=msg)
         # Provenance stamp: the merge dedups on (regime, day, design, R, node),
         # so rows from differently-knobbed sweeps would otherwise mix silently.
-        rows = [dict(r, eta=eta_scale, indexWeight=cfg.index_weight,
+        stamp = dict(eta=eta_scale, indexWeight=cfg.index_weight,
                      otLambda=lambda_scale,
-                     learnedBetas=cfg.overrides is not None) for r in rows]
+                     learnedBetas=cfg.overrides is not None)
+        if msg is not None and msg.mode != "smooth_field":
+            stamp.update(mode=msg.mode, alphaT=msg.alpha_t,
+                         ampCal=msg.amp_cal, ampCross=msg.amp_cross,
+                         calDecay=msg.cal_decay)
+        rows = [dict(r, **stamp) for r in rows]
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"regime": regime, "pairs": [a, b], "rows": rows}, fh, default=str)
         print(f"{regime} pairs {a}-{b}: {len(rows)} scores -> {path}", flush=True)
@@ -192,6 +198,11 @@ def summarize_by(rows: list[dict], keys: tuple[str, ...]) -> list[dict]:
         z = _finite([x.get("zeta") for x in g])
         rec["zeta_mean"] = round(float(z.mean()), 3) if z.size else None
         rec["zeta_std"] = round(float(z.std()), 3) if z.size else None
+        # Band coverage (spec-22.4 gate 4, arc P4): P(|zeta| <= z_p) vs the
+        # nominal 50/80/95% — derivable retroactively from EVERY stored row.
+        za = np.abs(z)
+        for name, zc in COVERAGE_Z.items():
+            rec[name] = round(float(np.mean(za <= zc)), 3) if za.size else None
         out.append(rec)
     return out
 
@@ -224,6 +235,7 @@ _SUMMARY_COLS = (
     ("atm_skill", "ATM skill bp"), ("skew_skill", "Skew skill"), ("curv_skill", "Curv skill"),
     ("wing_graph", "Wing graph bp"), ("wing_base", "Wing prior bp"),
     ("zeta_mean", "ζ mean"), ("zeta_std", "ζ std"),
+    ("cov80", "80% cov"), ("cov95", "95% cov"),
 )
 
 
@@ -321,6 +333,14 @@ def build_report_html(rows: list[dict]) -> str:
             sections.append(
                 _table(summarize_by(full, ("kind", "ssr")), ("kind", "ssr"), ("Kind", "R"))
             )
+        with_hops = [r for r in g if r.get("hops") is not None]
+        if with_hops:
+            sections.append("<h3>By graph distance to the nearest lit source</h3>")
+            sections.append(
+                _table(
+                    summarize_by(with_hops, ("hops", "ssr")), ("hops", "ssr"), ("Hops", "R")
+                )
+            )
     method = (
         "Per consecutive captured day pair (T-1, T): T-1's calibrated surface is frozen as "
         "the prior, transported to day T under the SSR regime R; the lit nodes' calibration "
@@ -401,6 +421,28 @@ def main() -> int:
                          " the item-14 OT ablation")
     ap.add_argument("--nu", type=float, default=0.1,
                     help="OT source/sink allowance (used only when --lambda > 0)")
+    # ---- precision-message variants (message arc P4) ----
+    ap.add_argument("--mode", default="smooth_field",
+                    choices=("smooth_field", "precision_messages", "hybrid"),
+                    help="propagation operator (message arc P4); smooth_field ="
+                         " the legacy path, byte-identical")
+    ap.add_argument("--alpha-t", type=float, default=1.0,
+                    help="calendar amplitude SHAPE exponent alphaT (spec 8.1)")
+    ap.add_argument("--amp-cal", type=float, default=1.0,
+                    help="calendar amplitude LEVEL rho (spec 8.4; learned"
+                         " day-horizon preset ~0.23 under alphaT=1)")
+    ap.add_argument("--amp-cross", type=float, default=1.0,
+                    help="cross-class amplitude LEVEL rho (learned preset ~0.39"
+                         " single-source index; corroboration lifts it)")
+    ap.add_argument("--cal-precision", type=float, default=1.7e3,
+                    help="calendar precision scale p0 (spec 9.2 Phase-0 seed)")
+    ap.add_argument("--cal-epsilon", type=float, default=0.97,
+                    help="calendar precision epsilon_T (spec 9.2 Phase-0 seed)")
+    ap.add_argument("--cal-decay", default="inverse_sqrt_gap",
+                    choices=("inverse_sqrt_gap", "constant", "log_distance"),
+                    help="calendar precision family (spec 9.2)")
+    ap.add_argument("--cross-precision-mult", type=float, default=1.0,
+                    help="multiplier on the Phase-0 cross-class precision seeds")
     args = ap.parse_args()
 
     if args.command == "report":
@@ -420,10 +462,20 @@ def main() -> int:
     m = args.cross_mult
     cfg = EdgeConfig(index_weight=2.0 * m, etf_weight=4.0 * m, name_weight=2.0 * m,
                      overrides=overrides)
+    msg = None
+    if args.mode != "smooth_field":
+        msg = MessageKnobs(
+            mode=args.mode, alpha_t=args.alpha_t,
+            amp_cal=args.amp_cal, amp_cross=args.amp_cross,
+            cal_precision=args.cal_precision, cal_epsilon=args.cal_epsilon,
+            cal_decay=args.cal_decay,
+            cross_precision_mult=args.cross_precision_mult,
+        )
+        print(f"message variant: {msg}", flush=True)
     for regime in regimes:
         run_regime(regime, designs, r_values, args.chunk, cfg, args.max_pairs,
                    eta_scale=args.eta, tag=args.tag, pair_start=args.pair_start,
-                   lambda_scale=args.lambda_scale, nu=args.nu)
+                   lambda_scale=args.lambda_scale, nu=args.nu, msg=msg)
     return 0
 
 

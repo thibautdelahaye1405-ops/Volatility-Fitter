@@ -36,7 +36,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -49,13 +50,41 @@ from volfit.graph.hyper import standardized_residuals
 from volfit.graph.idio import trailing_idio_sigma
 from volfit.models.lqd.ortho import build_atm_coordinates
 
-from backtest.graph_edges import EdgeConfig, asset_kind, build_directed_edges
+from backtest.graph_edges import (
+    EdgeConfig,
+    asset_kind,
+    build_directed_edges,
+    build_message_edges,
+)
 from backtest.replay import list_fixtures, load_fixture
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "results")
 _R_NAME = {0.0: "sticky_moneyness", 1.0: "sticky_strike"}
 ATM_BAND = 0.10  # |k| <= ATM_BAND is the ATM region; beyond it the scored wing.
 HANDLES = ("atm", "skew", "curv")
+#: Band-coverage z-scores (50/80/95%): coverage_p = P(|zeta| <= z_p) — the
+#: spec-22.4 gate-4 calibration readout, derivable from the stored zeta.
+COVERAGE_Z = {"cov50": 0.6745, "cov80": 1.2816, "cov95": 1.9600}
+
+
+@dataclass(frozen=True)
+class MessageKnobs:
+    """Precision-message variant knobs for the adjudication sweep (arc P4).
+
+    ``mode="smooth_field"`` (or ``None`` for the whole object) reproduces the
+    legacy path byte-identically. The amplitude multipliers are the spec-8.4
+    rho dials (learned day-horizon presets: cal 0.23 under alphaT=1, cross
+    0.39 single-source index — the node-linked anchor lifts corroborated
+    receivers automatically, message_phase0 validation)."""
+
+    mode: str = "smooth_field"
+    alpha_t: float = 1.0
+    amp_cal: float = 1.0
+    amp_cross: float = 1.0
+    cal_precision: float = 1.7e3
+    cal_epsilon: float = 0.97
+    cal_decay: str = "inverse_sqrt_gap"
+    cross_precision_mult: float = 1.0
 
 
 # --------------------------------------------------------------- smile wing RMS
@@ -119,6 +148,12 @@ def _score_node(state, full, held, idx, node, truth, fit_mode) -> dict | None:
         "ticker": node.ticker, "expiry": node.expiry, "kind": asset_kind(node.ticker),
         "zeta": round(zeta, 4), "sd": round(sd, 6),
     }
+    # Message-mode diagnostics (arc P4): the receiver conditional incoming
+    # precision (topology-only, identical in the held solve) — the
+    # conditional-vs-realized calibration axis of the spec-22.3 metrics.
+    diag = getattr(full, "message_diagnostics", None)
+    if diag is not None:
+        row["q_in"] = round(float(diag.q_incoming[idx]), 2)
     for h, c in zip(HANDLES, range(3)):
         row[f"res_{h}"] = round(float(post[c] - truth[c]), 6)       # graph residual
         row[f"base_{h}"] = round(float(base[c] - truth[c]), 6)      # baseline residual
@@ -160,13 +195,59 @@ def _idio_sigma_map(entries, today_iso: str) -> dict[str, float]:
     return out
 
 
+# ---------------------------------------------------- graph distance (hops)
+def _adjacency(universe, req) -> dict[int, set[int]]:
+    """Undirected support of the SOLVED topology (node-index keyed): the
+    message rows when the request runs message mode, else the legacy edges."""
+    index = {node.name: i for i, node in enumerate(universe.nodes)}
+    adj: dict[int, set[int]] = defaultdict(set)
+    if req.propagationMode != "smooth_field":
+        pairs = [
+            ((e.targetTicker, e.targetExpiry), (e.sourceTicker, e.sourceExpiry))
+            for e in req.messageEdges
+        ]
+    else:
+        pairs = [
+            ((e.fromTicker, e.fromExpiry), (e.toTicker, e.toExpiry))
+            for e in req.edges
+        ]
+    for a, b in pairs:
+        if a in index and b in index:
+            adj[index[a]].add(index[b])
+            adj[index[b]].add(index[a])
+    return adj
+
+
+def _hops_from_lit(adj: dict, sources: set[int], target: int) -> int | None:
+    """BFS distance from the nearest lit source (None = unreachable) — the
+    spec-22.3 calibration-by-path-length axis."""
+    if target in sources:
+        return 0
+    seen = set(sources)
+    frontier = deque((s, 0) for s in sources)
+    while frontier:
+        node, d = frontier.popleft()
+        for nb in adj.get(node, ()):
+            if nb == target:
+                return d + 1
+            if nb not in seen:
+                seen.add(nb)
+                frontier.append((nb, d + 1))
+    return None
+
+
 # --------------------------------------------------------------- one (pair, R, design)
 def _run_design(
-    state, full, req, design: str, fit_mode: str, idio_sigma: dict[str, float] | None = None
+    state, full, req, design: str, fit_mode: str,
+    idio_sigma: dict[str, float] | None = None, adj: dict | None = None,
 ) -> list[dict]:
     """Score either every validation-clean node (full_loo) or the dark single names
     (liquid_split) for one solved universe."""
     universe = full.universe
+    obs_set = {
+        i for i, node in enumerate(universe.nodes)
+        if node.lit and full.calibrated[i]
+    }
     rows: list[dict] = []
     if design == "liquid_split":
         for i, node in enumerate(universe.nodes):
@@ -180,6 +261,8 @@ def _run_design(
             except Exception:  # noqa: BLE001 — a degenerate node fit is a skipped score
                 continue
             if r is not None:
+                if adj is not None:
+                    r["hops"] = _hops_from_lit(adj, obs_set, i)
                 rows.append(r)
         return rows
     # full_loo: withhold each validation-clean node in turn.
@@ -194,6 +277,8 @@ def _run_design(
         except Exception:  # noqa: BLE001 — a degenerate node fit is a skipped score
             continue
         if r is not None:
+            if adj is not None:
+                r["hops"] = _hops_from_lit(adj, obs_set - {i}, i)
             rows.append(r)
     return rows
 
@@ -232,6 +317,7 @@ def run(
     history_rows: list[dict] | None = None,
     lambda_scale: float = 0.0,
     nu: float = 0.1,
+    msg: MessageKnobs | None = None,
 ) -> list[dict]:
     """Score consecutive day pairs across the designs and SSR regimes.
 
@@ -246,7 +332,10 @@ def run(
     single-process estimator instead of cold-starting each chunk.
     ``lambda_scale``/``nu`` set the solver's OT flux weight + source allowance
     (GraphSolverParams; defaults 0.0/0.1 = OT off, byte-identical) — the R3
-    item-14 OT ablation lever."""
+    item-14 OT ablation lever. ``msg`` selects a precision-message variant
+    (arc P4): the SAME taxonomy expressed as relation factors
+    (``build_message_edges``) solved through the message operator, with the
+    amplitude/precision knobs of MessageKnobs; None/smooth_field = legacy."""
     paths = list_fixtures(regime=regime)
     if not paths:
         raise SystemExit(f"no fixtures for regime={regime}")
@@ -285,15 +374,36 @@ def run(
                     _setup_day(state_t, tickers, snaps, r_val, design)
                     sigma, tmap = _baseline_maps(state_t)
                     edges = build_directed_edges(list(sigma), sigma, tmap, cfg)
-                    req = GraphExtrapolateRequest(
-                        edges=edges, etaScale=eta_scale,
-                        lambdaScale=lambda_scale, nu=nu,
-                    )
+                    if msg is not None and msg.mode != "smooth_field":
+                        req = GraphExtrapolateRequest(
+                            edges=edges,  # hybrid's legacy term; inert in pure message
+                            propagationMode=msg.mode,
+                            messageEdges=build_message_edges(
+                                list(sigma), sigma, tmap, cfg,
+                                alpha_t=msg.alpha_t,
+                                cross_precision_mult=msg.cross_precision_mult,
+                            ),
+                            calendarBetaExponent=msg.alpha_t,
+                            calendarAmplitude=msg.amp_cal,
+                            crossAmplitude=msg.amp_cross,
+                            calendarPrecisionScale=msg.cal_precision,
+                            calendarPrecisionEpsilon=msg.cal_epsilon,
+                            calendarPrecisionDecay=msg.cal_decay,
+                            etaScale=eta_scale,
+                            lambdaScale=lambda_scale, nu=nu,
+                        )
+                    else:
+                        req = GraphExtrapolateRequest(
+                            edges=edges, etaScale=eta_scale,
+                            lambdaScale=lambda_scale, nu=nu,
+                        )
                     idio_sig = _idio_sigma_map(recs[(design, int(r_val))], d1.isoformat())
                     full = solve(state_t, req, idio_atm_sigma=idio_sig)
                     if full is None:
                         continue
-                    for row in _run_design(state_t, full, req, design, full.fit_mode, idio_sig):
+                    adj = _adjacency(full.universe, req)
+                    for row in _run_design(state_t, full, req, design, full.fit_mode,
+                                           idio_sig, adj=adj):
                         out.append(dict(row, regime=regime, as_of=d1.isoformat(),
                                         prior_as_of=d0.isoformat(),
                                         ssr=int(r_val), design=design))
@@ -359,6 +469,11 @@ def summarize(rows: list[dict]) -> list[dict]:
         rec["wing_base"] = _agg([x.get("wing_wing_b") for x in g]).get("median")
         rec["zeta_mean"] = _agg([x["zeta"] for x in g]).get("mean")
         rec["zeta_std"] = _agg([x["zeta"] for x in g]).get("std")
+        # Band coverage (spec-22.4 gate 4): P(|zeta| <= z_p) vs nominal p.
+        z = np.array([x["zeta"] for x in g if x.get("zeta") is not None], float)
+        z = np.abs(z[np.isfinite(z)])
+        for name, zc in COVERAGE_Z.items():
+            rec[name] = round(float(np.mean(z <= zc)), 3) if z.size else None
         out.append(rec)
     return out
 

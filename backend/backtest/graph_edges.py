@@ -124,6 +124,107 @@ def _edge(frm: NodeKey, to: NodeKey, weight: float, beta: float) -> GraphEdgeInp
     )
 
 
+#: Phase-0 empirical cross-class message precision seeds (1/vol^2, ATM-vol
+#: units; backtest/results/message_phase0.json): residual message noise of
+#: 0.87 / 1.05 vol points for index->name / sector-peer relations. The ETF
+#: class was unmeasurable (dormant on this universe) and sits between them.
+MSG_INDEX_PRECISION = 1.3e4
+MSG_PEER_PRECISION = 0.9e4
+MSG_ETF_PRECISION = 1.1e4
+
+
+def build_message_edges(
+    nodes: list[NodeKey],
+    sigma: dict[NodeKey, float],
+    t: dict[NodeKey, float],
+    cfg: EdgeConfig | None = None,
+    alpha_t: float = 1.0,
+    cross_precision_mult: float = 1.0,
+) -> list["GraphMessageEdge"]:
+    """The SAME economic taxonomy as ``build_directed_edges``, expressed as
+    precision-message relation factors (message arc P4) — so the adjudication
+    compares OPERATORS on a like-for-like topology, not topologies.
+
+    One factor per relation (the pairwise operator needs no reverse rows and
+    no ``cross_reverse_frac`` fix — a Gaussian MRF has no transient states):
+
+    * calendar: adjacent selected expiries per ticker, canonical receiver =
+      the SHORTER maturity (spec 7.6), shape beta ``(T_long/T_short)^alpha_t``
+      (raw vol units, same ticker), precision from the spec-9.2 distance rule
+      (``precisionRule="calendar_distance"`` — derived at solve time);
+    * broad_index: market hub informs each single name, ``beta`` =
+      ``sigma_name/sigma_index`` (the unit vol-normalized relation — the
+      amplitude LEVEL rides the request's amplitude multipliers via the
+      spec-14.2 anchor, never the beta);
+    * sector_etf: same-sector ETF informs the name, same beta convention;
+    * sector_peer: one factor per unordered same-sector name pair,
+      lexicographic receiver, ``beta = sigma_receiver/sigma_informer``.
+
+    Betas are clipped to ``cfg.beta_cap`` like the legacy builder."""
+    from volfit.api.schemas import GraphMessageEdge
+
+    cfg = cfg or EdgeConfig()
+    rows: list[GraphMessageEdge] = []
+
+    def _row(recv: NodeKey, inf: NodeKey, p: float, beta: float, cls: str,
+             rule: str = "explicit") -> GraphMessageEdge:
+        b = _clip(beta, cfg)
+        return GraphMessageEdge(
+            sourceTicker=inf[0], sourceExpiry=inf[1],
+            targetTicker=recv[0], targetExpiry=recv[1],
+            messagePrecision=p, betaAtmVol=b, betaSkew=b, betaCurv=b,
+            relationClass=cls, precisionRule=rule,
+        )
+
+    by_ticker: dict[str, list[NodeKey]] = defaultdict(list)
+    for n in nodes:
+        by_ticker[n[0]].append(n)
+    for ns in by_ticker.values():
+        ns.sort(key=lambda n: t.get(n, 0.0))
+        for short, long_ in zip(ns[:-1], ns[1:]):  # t[short] <= t[long_]
+            ts, tl = max(t.get(short, 0.0), 1e-9), max(t.get(long_, 0.0), 1e-9)
+            rows.append(_row(short, long_, 1.0, (tl / ts) ** alpha_t,
+                             "calendar", rule="calendar_distance"))
+
+    by_iso: dict[str, list[NodeKey]] = defaultdict(list)
+    for n in nodes:
+        by_iso[n[1]].append(n)
+    for ns in by_iso.values():
+        names = sorted(n for n in ns if asset_kind(n[0]) == "name")
+        for influenced in names:
+            sec = asset_sector(influenced[0])
+            sig_i = sigma.get(influenced, 0.0)
+            for informer in ns:
+                if informer == influenced:
+                    continue
+                kind = asset_kind(informer[0])
+                sig_j = sigma.get(informer, 0.0)
+                ratio = sig_i / sig_j if sig_j > 0.0 else 1.0
+                if kind == "index" and informer[0] in cfg.market_indices:
+                    rows.append(_row(
+                        influenced, informer,
+                        MSG_INDEX_PRECISION * cross_precision_mult, ratio,
+                        "broad_index",
+                    ))
+                elif kind == "etf" and asset_sector(informer[0]) == sec:
+                    rows.append(_row(
+                        influenced, informer,
+                        MSG_ETF_PRECISION * cross_precision_mult, ratio,
+                        "sector_etf",
+                    ))
+                elif (
+                    kind == "name"
+                    and asset_sector(informer[0]) == sec
+                    and informer > influenced  # one factor per unordered pair
+                ):
+                    rows.append(_row(
+                        influenced, informer,
+                        MSG_PEER_PRECISION * cross_precision_mult, ratio,
+                        "sector_peer",
+                    ))
+    return rows
+
+
 def build_directed_edges(
     nodes: list[NodeKey],
     sigma: dict[NodeKey, float],

@@ -243,10 +243,23 @@ items; absorbs R3 item 14.
   §15.2/§15.3 contracts, edge precedence/persistence/workspace
   round-trip, cycle flags, end-to-end reconstructed smile route w/ mode
   parity, hybrid identity, message-mode observation plan.
-- **P4 Adjudication** — benchmark_pack CLI knobs; ADD 50/80/95 band
-  coverage + path-length calibration to scored rows (missing today);
-  combined campaign incl. b14; decision table vs pre-registered gate
-  (spec §22.4).
+- **P4 Adjudication — MACHINERY COMPLETE 2026-07-19; CAMPAIGN = USER
+  ACTION** (`backtest\run_message_adjudication.ps1` in the user's window,
+  hours): benchmark_pack CLI knobs (--mode/--alpha-t/--amp-cal/--amp-cross/
+  --cal-precision/--cal-epsilon/--cal-decay/--cross-precision-mult) +
+  provenance stamps; `build_message_edges` = SAME taxonomy as the legacy
+  builder expressed as one-factor-per-relation (operators compared, not
+  topologies; Phase-0 precision seeds; no reverse rows needed — a Gaussian
+  MRF has no transient states); NEW metrics: cov50/80/95 band coverage
+  (retroactive from stored ζ) in summarize/summarize_by/report, per-row
+  `hops` (BFS to nearest lit; report gains a by-distance table) + `q_in`;
+  6-variant runbook absorbs b14 (base/learned/msg_desk/msg_learned
+  0.23+0.39/msg_a05/msg_const) over the strict-OOS window w/ the §22.4
+  gate restated; FINDINGS_message_phase4.md prepped w/ decision table.
+  SMOKE (1 pair, spike): 898 rows, stamps+hops+q_in ✓, message-learned
+  full-LOO ATM skill +5.8/+1.8bp vs legacy +0.7/+0.3 on the same pair
+  (ζ std 1.2-1.4 slightly narrow vs legacy over-wide 0.6) — one pair,
+  not a verdict; part deleted. tests/test_message_adjudication.py (5).
 - **P5 Frontend (full §20)** — may run parallel with P4's user-window
   sweep; MatrixCell widening, EdgeMatrixEditor split (400-line policy),
   direction-label fix + one-way UI→posterior integration test, receiver
@@ -264,6 +277,50 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19d) — MESSAGE ARC PHASE 4 MACHINERY COMPLETE
+
+- **⚠️ USER ACTION — the adjudication campaign**: launch
+  `powershell -ExecutionPolicy Bypass -File backend\backtest\run_message_adjudication.ps1`
+  in YOUR OWN window (hours; resumable; tool background jobs get killed).
+  Six variants over the strict-OOS window (pairs ≥ 10), absorbing the
+  parked b14 sweep: `_b14_base`, `_b14_learned`, `_p4_msg_desk` (ρ=1),
+  `_p4_msg_learned` (--amp-cal 0.23 --amp-cross 0.39 — the Phase-0
+  single-source targets; node-linked corroboration lifts multi-source
+  receivers), `_p4_msg_a05` (shape), `_p4_msg_const` (decay). Then
+  benchmark_compare prints the verdict table; record the §22.4 gate
+  decision in `backtest\FINDINGS_message_phase4.md` (decision-table
+  template prepped; desk full-force EXPECTED to lose RMS — it ships
+  opt-in regardless; the gate picks the DEFAULT preset).
+- **Harness machinery SHIPPED**: benchmark_pack CLI message knobs +
+  provenance stamps (mode/alphaT/ampCal/ampCross/calDecay);
+  `graph_edges.build_message_edges` — the SAME taxonomy as the legacy
+  builder (calendar + SPX hub + sector ETF + peers) as one relation
+  factor per relation, canonical orientation, unit vol-normalized betas
+  (amplitude rides the anchors), Phase-0 precision seeds (index 1.3e4 /
+  peer 0.9e4 / ETF 1.1e4), NO reverse rows (a Gaussian MRF has no
+  transient states — the cross_reverse_frac fix is legacy-only);
+  `graph_loo.MessageKnobs` → request assembly (hybrid keeps the legacy
+  edges for its L term).
+- **New adjudication metrics**: cov50/80/95 band coverage = P(|ζ|≤z_p)
+  in graph_loo.summarize + benchmark_pack.summarize_by + the HTML report
+  (80/95 columns) — derivable RETROACTIVELY from every stored row's ζ;
+  per-row `hops` (BFS distance to nearest lit source; full_loo excludes
+  the held-out node from sources; report gains a "By graph distance"
+  table) and `q_in` (receiver conditional precision, message rows) — the
+  path-length and conditional-vs-realized calibration axes of §22.3.
+- **Smoke validated end-to-end** (1 pair 2024-07-30 spike, message
+  learned amps, 898 rows, 0 failures; part deleted to avoid untagged
+  merge collisions): stamps/hops/q_in on every row; single-pair readout
+  (NOT a verdict, recorded in FINDINGS): message full-LOO ATM skill
+  +5.83/+1.85 bp (R0/R1) vs legacy +0.69/+0.26 on the same pair; ζ std
+  1.2-1.4 (slightly narrow) vs legacy 0.6 (over-wide, cov95 0.98).
+- Tests: tests/test_message_adjudication.py (5 — taxonomy/orientation/
+  caps, alpha+precision multipliers, adjacency+hops incl. unreachable,
+  coverage math, knob defaults); harness locks green (27 in the batch).
+- **NEXT**: user runs the campaign → fill the FINDINGS decision table →
+  gate verdict (default amplitude preset + mode default). P5 (full-§20
+  frontend) can proceed in parallel.
 
 ### 🧭 SESSION WRAP (2026-07-19c) — MESSAGE ARC PHASE 3 COMPLETE
 
