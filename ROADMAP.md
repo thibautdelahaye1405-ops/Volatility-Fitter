@@ -281,6 +281,83 @@ items; absorbs R3 item 14.
   one-way UI→posterior integration test (PUT payload direction swap
   inverts β vs 1/β — test-locked). vitest 70/70 green, build clean; all
   files ≤ 400 lines.
+- **P5b UX ARC — ratified 2026-07-19, START IN A FRESH SESSION** ("the
+  frontend should feel like configuring relationships between markets, not
+  tuning a numerical solver" — user's pre-arc UX analysis, gap-analyzed
+  2026-07-19; workflow spine **Configure → Preview → Run → Explain →
+  Validate**). Four ratified decisions: (1) **FULL SHELL FIRST** (user
+  override of light-shell rec); (2) lifecycle = **lightweight
+  draft/active** w/ metadata envelope; (3) test pulse = **mode-aware
+  Manual what-if** (user override of separate-pulse rec — the unified
+  surface MUST keep the config-test vs market-what-if distinction via
+  labeling + non-persistence framing + canonical scenario shortcuts);
+  (4) validation = **in-app side-by-side LOO + offline artifact link**.
+  Increments:
+  * **U0 Shell (first, big)**: GraphViewer → three-pane + drawer + top
+    bar. TOP: mode selector (Smooth field | Precision messages; hybrid
+    stays config-only), config chip (draft/active name+version),
+    Preflight chip, Run. LEFT Relationships: calendar policy card,
+    cross-asset matrix, overrides, advanced (legacy η/κ/λ/ν only under
+    smooth field). CENTER: canvas unchanged. RIGHT Inspector:
+    selected node/edge. BOTTOM drawer tabs: Preview | Diagnostics |
+    Validation | Observation plan. PropagatePanel dissolves into the
+    shell; FEATURE PARITY exit gate (all current actions reachable,
+    vitest + smoke green).
+  * **U1 Language & units**: default confidence input = relationship
+    uncertainty σ_edge = 1/√p in VOL POINTS (raw precision behind a
+    toggle); the three-name taxonomy (Relationship uncertainty p /
+    Incoming message confidence q / Final posterior confidence marginal);
+    sentence tooltips ("SPY 6M informs AAPL 6M: +1.00pt → +0.70pt
+    message, relationship uncertainty 0.80pt"); results in pts/bp.
+  * **U2 Calendar policy card + views**: policy card (enable, shape
+    T_src/T_recv, αT, uncertainty at reference distance, decay rule,
+    LIVE +1pt example via lib/messagePreview); per-ticker policy
+    overrides; calendar LADDER view (3M ← 6M → 1Y with β/σ chips);
+    cross-asset RECEIVER-row × INFORMER-column ticker matrix (cells
+    β+σ, hover sentence, drill-in); |β|-cap warnings. Row-level
+    MessageEdgeEditor remains the advanced overrides list.
+  * **U3 Mode-aware what-if (test pulse)**: GraphSolveRequest gains
+    propagationMode (+ message knobs); sandbox message solve in
+    graph_service (message operator over the sandbox universe, typed
+    shifts = innovations, non-persisting); canonical scenario shortcuts
+    (calendar pulse / competing signals / cross basket) + the
+    competing-signals explainer ("signals cancel in mean, reinforce
+    confidence"); smooth-field sandbox path byte-guarded.
+  * **U4 Message inspector**: incoming-messages table per selected node
+    (informer, innovation, β, mapped signal, relationship uncertainty,
+    effective precision — client-side from edge rows + response), local
+    consensus block (mean, q, conditional σ) vs GLOBAL posterior block
+    (innovation, marginal σ, 95% band) + divergence explainer; prior/
+    post handles, reconstructed smile, exact attribution (evolve
+    GraphAttributionCard), transported-prior comparison; edge-click
+    inspector. Wave relabeled as attribution/influence reveal (never
+    solver chronology).
+  * **U5 Preflight**: backend dry-run endpoint (universe/lit/dark
+    counts, no-lit-path components, missing priors, |β| extremes,
+    σ_edge outliers, cycle products, single-relationship-dominated
+    receivers, conditioning); TopBar chip; Run blocked ONLY on genuine
+    blockers, warnings otherwise.
+  * **U6 Config lifecycle (lightweight)**: `graph_message_config`
+    envelope {name, version, createdAt, author, parentVersion, notes,
+    rows} × two slots (draft/active); editor edits the DRAFT; Activate
+    (event-log entry) / Revert / diff; solve uses ACTIVE (+ run-draft
+    toggle); existing `graph_message_edges` blob migrates to the
+    initial active config.
+  * **U7 Validation drawer + plan**: side-by-side current-day LOO
+    (transported-prior / smooth-field / precision-messages via the
+    existing mode-aware backtest endpoint; RMSE, ζ, cov80/95 client-
+    side) + link to the offline benchmark artifact (the pre-registered
+    multi-regime story stays offline); observation-plan annotations
+    (bridges a no-lit/weakly-connected region, resolves competing
+    signals).
+  * Post-P4-verdict rider: "recommended/default" tagging of the mode +
+    amplitude preset per the §22.4 gate outcome.
+  Already-done overlaps (do NOT rebuild): mode selector + neutral
+  naming, η/κ demotion, direction standardization + chart arrows,
+  β-vs-p separation, editor-local scenario preview (golden-locked),
+  q-vs-marginal wire fields, no-path badge, cycle banner, message-mode
+  observation plan. Superseded: reverse-edge-generation display (one
+  factor per relation + implied-reverse chips).
 - **P6 Hardening** — §21 locks incl. 21.11-21.13, migration round-trips,
   certification case.
 - **P7 Sparse solve** — DEFERRED until a universe demands it (dense passes
@@ -294,6 +371,30 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19f) — P5b UX ARC RATIFIED (fresh session next)
+
+- User shared their pre-arc UX analysis ("configure relationships between
+  markets, not tune a numerical solver"; Configure → Preview → Run →
+  Explain → Validate; three-quantity separation β / p / posterior). Gap
+  analysis against the shipped P5: mode selector, direction fixes, β-p
+  separation, local scenario preview, q/marginal wire fields, cycle
+  banner, message observation plan = DONE; units/naming (σ_edge in vol
+  pts), calendar policy card + ladder + receiver×informer matrix, canvas
+  test pulse, full message inspector, preflight, config lifecycle,
+  validation drawer = the new **P5b UX ARC** (see the arc section above
+  for the full increment list U0-U7). Superseded ideas: reverse-edge
+  display (one-factor-per-relation), Bayesian/non-Bayesian naming
+  caution (already neutral).
+- Four decisions RATIFIED: full shell first (U0); lightweight
+  draft/active lifecycle; test pulse = MODE-AWARE Manual what-if (keep
+  the config-test framing explicit — labeling + non-persistence +
+  canonical scenario shortcuts guard the conflation the user's own
+  analysis warned about); validation = in-app side-by-side LOO +
+  offline-artifact link.
+- **NEXT SESSION: start P5b at U0 (shell)**. P6 hardening follows the
+  arc; the P4 campaign verdict rider (default tagging) lands whenever
+  the sweep finishes.
 
 ### 🧭 SESSION WRAP (2026-07-19e) — MESSAGE ARC PHASE 5 COMPLETE (frontend)
 
