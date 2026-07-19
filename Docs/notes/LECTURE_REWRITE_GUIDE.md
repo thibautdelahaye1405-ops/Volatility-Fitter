@@ -161,6 +161,7 @@ stated in the prose; bibliography last.
 | 11 Event clock | `11_event_market_clock.tex` | the market keeps its own clock: DDS license, the crush as a reading error, the calendar as an inverse problem | `gen_event_market_clock.py` |
 | 12 Spot-vol | `12_spotvol_missing_derivative.tex` | the missing derivative: dynamics unidentified by a snapshot; SSR as the one dial; frozen LV derives its own answer | `gen_ssr_derivative.py` |
 | 13 Prior | `13_prior_flat_directions.tex` | where the likelihood is flat: the prior confined to the null space of today's data; gating vs shrinkage; the proxy's blind spot prosecuted | `gen_prior_flat.py` |
+| 14 Graph | `14_graph_messages.tex` | messages, not smoothness: the revamped precision-message operator — edges as contracts, adjudicated amplitude, the global solve as accountant; documents the NEW system (not a re-angle of the old note) | `gen_graph_messages.py` |
 | 15 Kalman | `15_kalman_computed_trust.tex` | trust is computed, not configured: two honest covariances, the gain as an output, and the ζ audit; session-clock + probe-gate currency | `gen_kalman_trust.py` |
 
 No edition has been declared the replacement of its original.
