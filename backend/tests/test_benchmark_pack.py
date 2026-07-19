@@ -66,7 +66,8 @@ def test_parts_roundtrip_and_resume_skip(tmp_path, monkeypatch, capsys):
     seeds: list[int] = []
 
     def fake_loo(regime, designs, r_values, max_pairs, cfg, pair_range=None,
-                 eta_scale=1.0, history_rows=None, lambda_scale=0.0, nu=0.1):
+                 eta_scale=1.0, history_rows=None, lambda_scale=0.0, nu=0.1,
+                 msg=None):
         calls.append(pair_range)
         seeds.append(len(history_rows or []))
         return [_row(as_of=f"day{pair_range[0]}")]
