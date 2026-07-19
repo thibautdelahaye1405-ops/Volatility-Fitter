@@ -222,7 +222,7 @@ def figure_accountant() -> None:
     ax.semilogx(ratios, pairwise, color=TEAL, lw=2.2,
                 label="pairwise factors (production)")
     ax.semilogx(ratios, rowform, color=RUST, lw=2.0, ls="--",
-                label="row-normalized form (rejected)")
+                label="row-normalized alternative")
     ax.set_ylim(-0.05, 1.15)
     ax.set_xlabel(r"dead informer's configured precision $p_{\mathrm{dead}}/p_{\mathrm{lit}}$")
     ax.set_ylabel(r"receiver transfer $\widehat z_R / z_L$")
@@ -325,7 +325,7 @@ def figure_amplitude() -> None:
     ax.plot(ks, transfer, "o-", ms=6, color=TEAL, lw=2.0,
             label=r"node-linked anchor (production): $k\rho/(1-\rho+k\rho)$")
     ax.axhline(rho, color=RUST, lw=1.7, ls="--",
-               label="edge-linked (constant transfer) — rejected")
+               label="edge-linked alternative (constant transfer)")
     ax.scatter([1, 2], [measured[1], measured[2]], s=90, marker="D",
                color=PALETTE["ink"], zorder=6,
                label="measured on stored rows (Phase 0)")
