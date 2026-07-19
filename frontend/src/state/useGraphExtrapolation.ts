@@ -126,6 +126,8 @@ export interface BacktestNode {
   postAtmVol: number;
   residualBp: number;
   standardizedResidual: number;
+  /** Transported-prior ATM (U7 comparator); absent on older backends. */
+  priorAtmVol?: number | null;
 }
 
 /** Aggregate backtest summary (backend GraphBacktestResponse). */

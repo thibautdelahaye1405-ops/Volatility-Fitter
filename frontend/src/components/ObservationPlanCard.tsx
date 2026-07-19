@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { Crosshair } from "lucide-react";
 import { api } from "../state/api";
+import type { PlanAnnotation } from "../lib/planAnnotations";
 import type { ExtrapolateBody } from "../state/useGraphExtrapolation";
 
 interface Beneficiary {
@@ -35,9 +36,16 @@ interface ObservationPlanCardProps {
   /** The /graph/extrapolate request body (same knobs as the Run). */
   body: ExtrapolateBody;
   onOpenSmile: (ticker: string, expiry: string) => void;
+  /** U7 WHY-annotations for a candidate (bridges / weakly connected /
+   *  resolves competing signals), or undefined for none. */
+  annotate?: (ticker: string, expiry: string) => PlanAnnotation[];
 }
 
-export default function ObservationPlanCard({ body, onOpenSmile }: ObservationPlanCardProps) {
+export default function ObservationPlanCard({
+  body,
+  onOpenSmile,
+  annotate,
+}: ObservationPlanCardProps) {
   const [plan, setPlan] = useState<PlanResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -105,6 +113,16 @@ export default function ObservationPlanCard({ body, onOpenSmile }: ObservationPl
                 <span className="font-medium text-slate-100">{c.ticker}</span>{" "}
                 <span className="font-mono text-[10px] text-slate-500">{c.expiry}</span>
               </button>
+              {/* U7 WHY-badges: what makes this candidate valuable. */}
+              {annotate?.(c.ticker, c.expiry).map((a) => (
+                <span
+                  key={a.id}
+                  title={a.title}
+                  className="shrink-0 cursor-help rounded bg-accent-600/15 px-1 text-[8px] uppercase tracking-wide text-accent-300"
+                >
+                  {a.label}
+                </span>
+              ))}
               <span
                 className="shrink-0 font-mono text-[10px] text-emerald-400"
                 title="Share of the universe's remaining weighted ATM variance this one quote removes"

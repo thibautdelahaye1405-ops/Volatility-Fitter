@@ -8,7 +8,10 @@ named nodes and returns per-node posterior ATM vol with credible bands.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
 
 from volfit.api import (
     graph_backtest,
@@ -227,6 +230,34 @@ def get_auto_message_edges(request: Request) -> GraphMessageEdgesResponse:
     return GraphMessageEdgesResponse(
         edges=auto_message_edge_rows(request.app.state.volfit)
     )
+
+
+#: Offline benchmark-pack artifacts (backtest/results/benchmark). The
+#: pre-registered multi-regime story runs OFFLINE (run_benchmark_pack.ps1);
+#: this route only SERVES the newest emitted HTML so the validation drawer
+#: can link it. Module-level so tests can point it at a temp dir.
+BENCHMARK_ARTIFACT_DIR = (
+    Path(__file__).resolve().parents[3] / "backtest" / "results" / "benchmark"
+)
+
+
+@router.get("/graph/benchmark/artifact")
+def benchmark_artifact() -> FileResponse:
+    """The newest offline benchmark-pack HTML artifact; 404 until a pack ran."""
+    candidates = (
+        sorted(
+            BENCHMARK_ARTIFACT_DIR.glob("*.html"),
+            key=lambda p: p.stat().st_mtime,
+        )
+        if BENCHMARK_ARTIFACT_DIR.is_dir()
+        else []
+    )
+    if not candidates:
+        raise HTTPException(
+            status_code=404,
+            detail="no benchmark artifact — run backend/backtest/run_benchmark_pack.ps1",
+        )
+    return FileResponse(candidates[-1], media_type="text/html")
 
 
 @router.get("/graph/edges/blocks", response_model=GraphBlockRuleResponse)

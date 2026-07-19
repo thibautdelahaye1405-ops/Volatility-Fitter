@@ -29,6 +29,7 @@ import {
   activateMessageConfig,
   revertMessageConfig,
 } from "../state/useMessageConfig";
+import { useLooComparison } from "../state/useLooComparison";
 import { usePreflight } from "../state/usePreflight";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
@@ -213,6 +214,22 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   // Run (fail-open when no report — advisory infra, never a hard dependency).
   const preflight = usePreflight(runBody);
 
+  // U7 side-by-side LOO: mode-forced bodies from the SAME live knobs (only
+  // the operator differs; run-draft applies to the message column only).
+  const loo = useLooComparison();
+  const looBodies = useMemo(
+    () => ({
+      smooth: buildExtrapolateBody(
+        { ...graph.params, propagationMode: "smooth_field" }, flatAtm, crossBeta,
+      ),
+      messages: buildExtrapolateBody(
+        { ...graph.params, propagationMode: "precision_messages" },
+        flatAtm, crossBeta, runDraft,
+      ),
+    }),
+    [graph.params, flatAtm, crossBeta, runDraft],
+  );
+
   // Run routing: one solve either way. After the attempt, reveal Diagnostics
   // (errors surface in the top bar).
   const litCount0 = Object.keys(graph.lit).length;
@@ -392,6 +409,9 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         extra={extra}
         body={runBody}
         nodes={graph.nodes}
+        loo={loo}
+        looBodies={looBodies}
+        msgRows={msgRows}
         flatAtm={flatAtm}
         setFlatAtm={setFlatAtm}
         selected={selected}

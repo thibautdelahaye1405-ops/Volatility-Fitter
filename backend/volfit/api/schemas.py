@@ -1514,6 +1514,9 @@ class GraphBacktestNode(BaseModel):
     postAtmVol: float  # predicted from the other nodes (this one withheld)
     residualBp: float  # (post - calibrated) ATM vol, basis points
     standardizedResidual: float  # zeta under the posterior + obs uncertainty
+    #: The node's transported-prior ATM vol (U7): the client derives the
+    #: no-propagation comparator residual (calibrated − prior) from it.
+    priorAtmVol: float | None = None
 
 
 class GraphBacktestResponse(BaseModel):

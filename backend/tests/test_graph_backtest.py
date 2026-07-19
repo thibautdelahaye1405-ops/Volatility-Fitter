@@ -38,8 +38,35 @@ def test_loo_reports_residuals_and_standardized_residuals(primed):
         assert np.isfinite(n.residualBp)
         assert np.isfinite(n.standardizedResidual)
         assert n.priorSource == "active_transported"
+        # U7: the transported-prior comparator rides every row (the client
+        # derives the no-propagation residual calibrated − prior from it).
+        assert n.priorAtmVol is not None and np.isfinite(n.priorAtmVol)
     assert np.isfinite(resp.rmseBp) and resp.rmseBp >= 0.0
     assert np.isfinite(resp.zetaMean) and resp.zetaStd >= 0.0
+
+
+def test_benchmark_artifact_route(tmp_path, monkeypatch):
+    """U7: the validation drawer's offline-artifact link — 404 until a pack
+    ran, then the NEWEST html."""
+    import volfit.api.routers.graph as graph_router
+
+    monkeypatch.setattr(graph_router, "BENCHMARK_ARTIFACT_DIR", tmp_path / "none")
+    with TestClient(create_app(reference_date=REF_DATE)) as client:
+        assert client.get("/graph/benchmark/artifact").status_code == 404
+
+        art = tmp_path / "bench"
+        art.mkdir()
+        (art / "old.html").write_text("<html>old</html>")
+        (art / "new.html").write_text("<html>new</html>")
+        import os
+        import time
+
+        past = time.time() - 60
+        os.utime(art / "old.html", (past, past))
+        monkeypatch.setattr(graph_router, "BENCHMARK_ARTIFACT_DIR", art)
+        resp = client.get("/graph/benchmark/artifact")
+        assert resp.status_code == 200
+        assert "new" in resp.text
 
 
 def test_bootstrap_nodes_excluded_from_clean_score():

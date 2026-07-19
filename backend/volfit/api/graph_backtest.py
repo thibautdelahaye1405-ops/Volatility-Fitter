@@ -80,6 +80,7 @@ def backtest(state: AppState, request: GraphExtrapolateRequest) -> GraphBacktest
                 postAtmVol=post_atm,
                 residualBp=residual_bp,
                 standardizedResidual=zeta,
+                priorAtmVol=float(full.priors_meta[i].handles[0]),
             )
         )
 

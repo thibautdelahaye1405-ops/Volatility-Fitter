@@ -8,20 +8,25 @@
 //                  flat-baselines diagnostic toggle.
 //   Diagnostics  — the post-run field: §16.4 cycle warnings + the per-node
 //                  prior → posterior table (both sources — one solve).
-//   Validation   — in-app LOO backtest (RMSE, ζ); the side-by-side mode
-//                  comparison + offline-artifact link is the U7 increment.
+//   Validation   — U7: the side-by-side current-day LOO across operators
+//                  (ValidationTab) + the offline benchmark-artifact link.
 //   Observation plan — "where to quote next" ranking on the solved posterior
-//                  (rides the SAME body as Run — what-if pulses included).
+//                  (rides the SAME body as Run — what-if pulses included),
+//                  with U7 WHY-annotations per candidate.
 //
 // The shell owns tab/open state so a landing run can reveal Diagnostics.
 import ExtrapolateResults from "../ExtrapolateResults";
 import ObservationPlanCard from "../ObservationPlanCard";
+import ValidationTab from "./ValidationTab";
+import { planAnnotations } from "../../lib/planAnnotations";
 import { buildScenario, SCENARIOS } from "../../lib/whatifScenarios";
 import type { GraphNodeBase, UseGraphResult } from "../../state/useGraph";
 import type {
   ExtrapolateBody,
   UseGraphExtrapolationResult,
 } from "../../state/useGraphExtrapolation";
+import type { UseLooComparisonResult } from "../../state/useLooComparison";
+import type { MessageEdgeRow } from "../../state/useMessageEdges";
 import type { ObservationSource } from "./GraphTopBar";
 
 export type DrawerTab = "preview" | "diagnostics" | "validation" | "plan";
@@ -42,6 +47,11 @@ interface GraphDrawerProps {
   body: ExtrapolateBody;
   /** Baseline universe nodes (scenario shortcuts pick their pulse sets). */
   nodes: GraphNodeBase[] | null;
+  /** U7 side-by-side LOO state + the mode-forced bodies (shell-built). */
+  loo: UseLooComparisonResult;
+  looBodies: { smooth: ExtrapolateBody; messages: ExtrapolateBody };
+  /** Effective relation rows — the plan's competing-signals annotation. */
+  msgRows: MessageEdgeRow[];
   flatAtm: boolean;
   setFlatAtm: (v: boolean) => void;
   selected: { ticker: string; expiry: string } | null;
@@ -53,7 +63,6 @@ interface GraphDrawerProps {
   setOpen: (v: boolean) => void;
 }
 
-const switchHint = "Switch Observations to “From calibrations” — this reads the production solve.";
 
 export default function GraphDrawer({
   source,
@@ -61,6 +70,9 @@ export default function GraphDrawer({
   extra,
   body,
   nodes,
+  loo,
+  looBodies,
+  msgRows,
   flatAtm,
   setFlatAtm,
   selected,
@@ -195,49 +207,33 @@ export default function GraphDrawer({
     </div>
   );
 
-  const validation = manual ? (
-    <p className="py-2 text-xs text-slate-500">{switchHint}</p>
-  ) : (
-    <div className="space-y-2">
-      <button
-        className="flex items-center justify-center gap-1 rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-        disabled={extra.backtesting}
-        onClick={() => void extra.runBacktest(body)}
-        title="Leave-one-node-out validation of the current knobs"
-      >
-        {extra.backtesting && (
-          <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-500/40 border-t-slate-200" />
-        )}
-        {extra.backtesting ? "Backtesting…" : "Validate (LOO)"}
-      </button>
-      {extra.backtestError !== null && (
-        <p className="text-[10px] text-amber-400">{extra.backtestError}</p>
-      )}
-      {extra.backtest !== null && (
-        <div className="rounded-md border border-slate-800 bg-surface-800/60 p-2 font-mono text-[10px] text-slate-400">
-          <div className="text-slate-300">
-            LOO backtest · {extra.backtest.nScored} scored
-            {extra.backtest.nExcludedBootstrap > 0 &&
-              ` · ${extra.backtest.nExcludedBootstrap} bootstrap excluded`}
-          </div>
-          <div>
-            RMSE {extra.backtest.rmseBp.toFixed(1)} bp · ζ mean{" "}
-            {extra.backtest.zetaMean.toFixed(2)} · ζ std {extra.backtest.zetaStd.toFixed(2)}
-          </div>
-        </div>
-      )}
-    </div>
+  const validation = (
+    <ValidationTab
+      manual={manual}
+      loo={loo}
+      smoothBody={looBodies.smooth}
+      messagesBody={looBodies.messages}
+    />
   );
 
-  // The plan rides the same body as Run (what-if pulses included, U3): the
-  // ranking answers for the posterior currently on screen.
+  // The plan rides the same body as Run (what-if pulses included, U3); U7
+  // annotates each candidate with WHY it is valuable.
+  const messagesOperator = graph.params.propagationMode === "precision_messages";
   const plan =
     extra.nodes === null ? (
       <p className="py-2 text-xs text-slate-500">
         Run first — the ranking reads the solved posterior.
       </p>
     ) : (
-      <ObservationPlanCard body={body} onOpenSmile={onOpenSmile} />
+      <ObservationPlanCard
+        body={body}
+        onOpenSmile={onOpenSmile}
+        annotate={(ticker, expiry) =>
+          planAnnotations(
+            { ticker, expiry }, extra.nodes, msgRows, graph.params, messagesOperator,
+          )
+        }
+      />
     );
 
   const content: Record<DrawerTab, React.ReactNode> = {

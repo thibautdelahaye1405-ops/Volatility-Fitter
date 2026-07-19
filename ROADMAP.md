@@ -367,13 +367,14 @@ items; absorbs R3 item 14.
     initial active config.~~ **DONE 2026-07-19** (see STATUS wrap
     2026-07-19n; workspace replay stays byte-identical — active rows
     keep living in the workspace field).
-  * **U7 Validation drawer + plan**: side-by-side current-day LOO
+  * ~~**U7 Validation drawer + plan**: side-by-side current-day LOO
     (transported-prior / smooth-field / precision-messages via the
     existing mode-aware backtest endpoint; RMSE, ζ, cov80/95 client-
     side) + link to the offline benchmark artifact (the pre-registered
     multi-regime story stays offline); observation-plan annotations
     (bridges a no-lit/weakly-connected region, resolves competing
-    signals).
+    signals).~~ **DONE 2026-07-19 — ARC COMPLETE** (see STATUS wrap
+    2026-07-19o).
   * Post-P4-verdict rider: "recommended/default" tagging of the mode +
     amplitude preset per the §22.4 gate outcome.
   Already-done overlaps (do NOT rebuild): mode selector + neutral
@@ -395,6 +396,42 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19o) — P5b U7 VALIDATION DRAWER SHIPPED · **P5b UX ARC COMPLETE (U0–U7)**
+
+- **Side-by-side current-day LOO** (ValidationTab + useLooComparison):
+  ONE mode-aware backtest endpoint run per operator (sequential — each
+  LOO is a full solve per held-out node), columns = Transported prior |
+  Smooth field | Messages; RMSE + wire ζ mean/std + cov80/cov95
+  computed client-side from |ζ| (test-locked math). The transported-
+  prior comparator derives client-side from the new
+  GraphBacktestNode.priorAtmVol (residual = calibrated − prior; no
+  calibrated uncertainty ⇒ ζ/cov honestly "—"). Footer states the
+  contract: same day/universe/knobs, only the operator differs — the
+  multi-regime verdict stays OFFLINE.
+- **Offline artifact link**: GET /graph/benchmark/artifact serves the
+  newest backtest/results/benchmark/*.html (404 until a pack ran;
+  dir override test-locked) — the drawer links it in a new tab.
+- **Observation-plan annotations** (lib/planAnnotations, test-locked):
+  per-candidate WHY badges — "bridges" (no-lit-path component §14.3),
+  "weakly connected" (q far below the non-observed median), "resolves
+  competing signals" (opposite-sign incoming votes via the U4
+  incomingRelations math). ObservationPlanCard renders them via an
+  annotate callback (card stays decoupled).
+- Backend: priorAtmVol on backtest rows (additive) + the artifact
+  route; +2 tests. Frontend: useLooComparison + planAnnotations suites,
+  shell lock replaced (Compare routes two mode-forced bodies; the
+  run-draft toggle rides the message column only). vitest 114/114, tsc
+  + build clean, ui_smoke 8/8; live visual verified the comparison
+  table + artifact link + ranked plan.
+- **THE P5b ARC IS COMPLETE**: U0 shell → U1 language/units → U2
+  calendar policy + views → U3 unified what-if (sandbox retired from
+  the UI) → U4 message inspector → U5 live preflight → U6 draft/active
+  lifecycle → U7 validation drawer. NEXT: **P6 hardening** (§21 locks
+  incl. 21.11-21.13, migration round-trips, certification case, the
+  U3 rider: autotune re-point + /graph/nodes zero-obs baseline + sandbox
+  deletion) and the P4 campaign verdict rider (default tagging) when
+  the sweep finishes.
 
 ### 🧭 SESSION WRAP (2026-07-19n) — P5b U6 CONFIG LIFECYCLE SHIPPED
 

@@ -15,11 +15,13 @@ import type {
 } from "../state/useGraphExtrapolation";
 import type { PreflightReport, UsePreflightResult } from "../state/usePreflight";
 import type { GraphTopologyResult } from "../state/useGraphTopology";
+import type { UseLooComparisonResult } from "../state/useLooComparison";
 import type { MessageConfigEnvelope } from "../state/useMessageConfig";
 import type { MessageEdgeRow } from "../state/useMessageEdges";
 
 const apiGet = vi.fn();
 vi.mock("../state/api", () => ({
+  API_BASE_URL: "http://localhost:8000",
   api: { get: (...args: unknown[]) => apiGet(...args) },
 }));
 
@@ -56,6 +58,11 @@ vi.mock("../state/useMessageConfig", async (importOriginal) => ({
 }));
 const emptyMsgEdges = { fetchEdges: vi.fn(() => Promise.resolve([])), fetchAuto: vi.fn(() => Promise.resolve([])) };
 vi.mock("../state/useMessageEdges", () => ({ useMessageEdges: () => emptyMsgEdges }));
+let looState: UseLooComparisonResult;
+vi.mock("../state/useLooComparison", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/useLooComparison")>()),
+  useLooComparison: () => looState,
+}));
 
 // Shared-session contexts + cinematics: inert stubs.
 vi.mock("../state/smileSession", () => ({
@@ -200,6 +207,7 @@ beforeEach(() => {
   topologyState = {
     edges: [], msgRows: [], persistedRows: [], config: null, refresh: vi.fn(),
   };
+  looState = { columns: null, running: null, error: null, run: vi.fn().mockResolvedValue(undefined) };
   activateMock.mockClear();
   revertMock.mockClear();
 });
@@ -262,16 +270,21 @@ describe("Graph shell (U0)", () => {
     expect(graphState.unlight).toHaveBeenCalledWith("SPY|2026-07-17");
   });
 
-  it("runs the LOO backtest with the same body and shows progress", () => {
+  it("Validation runs the side-by-side LOO with mode-forced bodies (U7)", () => {
     renderShell();
     fireEvent.click(screen.getByText("Validation"));
-    fireEvent.click(screen.getByText("Validate (LOO)"));
-    expect(extraState.runBacktest).toHaveBeenCalledWith(BODY);
+    fireEvent.click(screen.getByText("Compare operators (LOO)"));
+    const [smooth, messages] = (looState.run as ReturnType<typeof vi.fn>).mock
+      .lastCall as [Record<string, unknown>, Record<string, unknown>];
+    expect(smooth.propagationMode ?? "smooth_field").toBe("smooth_field");
+    expect(messages.propagationMode).toBe("precision_messages");
     cleanup();
-    extraState = extraStub({ backtesting: true });
+    looState = { ...looState, running: "messages" };
     renderShell();
     fireEvent.click(screen.getByText("Validation"));
-    expect((screen.getByText("Backtesting…") as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (screen.getByText(/Scoring messages…/) as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
   it("feeds the Edges matrix from the SELECTED universe, not the sandbox", async () => {
