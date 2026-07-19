@@ -21,12 +21,15 @@ from volfit.api import create_app, priors
 from volfit.api.graph_extrapolation import extrapolate, solve
 from volfit.api.graph_message import (
     DISCONNECTED_Z_SD,
+    auto_message_edges,
     message_edges_from_legacy,
+    message_edges_from_schema,
     solve_message_field,
 )
 from volfit.api.graph_select import observation_plan
 from volfit.api.graph_universe import SelectedNode, SelectedUniverse
 from volfit.api.schemas import (
+    CalendarPolicyOverride,
     GraphEdgeInput,
     GraphExtrapolateRequest,
     GraphMessageEdge,
@@ -417,6 +420,149 @@ def test_auto_message_edges_route_and_one_way_direction():
         lit_b, dark_b = _run(isos[1], isos[0], beta=2.0)
         assert dark_b["shiftBp"] == pytest.approx(0.5 * lit_b["innovationBp"], rel=0.05)
         client.put("/graph/edges/messages", json={"edges": []})  # clean up
+
+
+# --------------------------------------------- U2 calendar policy overrides
+def _two_ticker_universe():
+    """TT and UU, two shared expiries each — 2 calendar rungs + 2 cross pairs."""
+    nodes = (
+        SelectedNode("TT", "A", False),
+        SelectedNode("TT", "B", True),
+        SelectedNode("UU", "A", False),
+        SelectedNode("UU", "B", False),
+    )
+    t_by = {
+        ("TT", "A"): 0.25, ("TT", "B"): 0.5,
+        ("UU", "A"): 0.25, ("UU", "B"): 0.5,
+    }
+    return SelectedUniverse(nodes=nodes, graph=None), t_by
+
+
+def test_calendar_policy_enable_and_per_ticker_overrides():
+    """U2: the global switch kills every calendar factor; per-ticker overrides
+    refine enable / precision scale / shape exponent for one ticker only."""
+    universe, t_by = _two_ticker_universe()
+
+    default = auto_message_edges(universe, t_by, GraphExtrapolateRequest())
+    by_class = {}
+    for e in default:
+        by_class.setdefault(e.relation_class, []).append(e)
+    assert len(by_class["calendar"]) == 2 and len(by_class["custom"]) == 2
+
+    # Global disable: cross keeps flowing, calendar is gone.
+    off = auto_message_edges(
+        universe, t_by, GraphExtrapolateRequest(calendarEnabled=False)
+    )
+    assert [e.relation_class for e in off] == ["custom", "custom"]
+
+    # Per-ticker disable: only TT's ladder is suppressed.
+    tt_off = auto_message_edges(
+        universe, t_by,
+        GraphExtrapolateRequest(
+            calendarPolicyOverrides={"TT": CalendarPolicyOverride(enabled=False)}
+        ),
+    )
+    cal = [e for e in tt_off if e.relation_class == "calendar"]
+    assert len(cal) == 1 and cal[0].receiver[0] == "UU"
+
+    # Per-ticker scale: TT's rung precision doubles, UU's is untouched;
+    # per-ticker shape: TT's beta becomes sqrt(2) while UU keeps 2.
+    tuned = auto_message_edges(
+        universe, t_by,
+        GraphExtrapolateRequest(
+            calendarPolicyOverrides={
+                "TT": CalendarPolicyOverride(precisionScale=3.4e3, betaExponent=0.5)
+            }
+        ),
+    )
+    cal_by_ticker = {
+        e.receiver[0]: e for e in tuned if e.relation_class == "calendar"
+    }
+    assert cal_by_ticker["TT"].precision == pytest.approx(
+        2.0 * cal_by_ticker["UU"].precision, rel=1e-12
+    )
+    assert cal_by_ticker["TT"].beta[0] == pytest.approx(np.sqrt(2.0), rel=1e-12)
+    assert cal_by_ticker["UU"].beta[0] == pytest.approx(2.0, rel=1e-12)
+
+
+def test_calendar_policy_applies_to_persisted_rows():
+    """A policy-disabled ticker suppresses its persisted calendar rows too
+    (explicit AND distance-derived); distance rows derive with the RECEIVER
+    ticker's override scale. Cross-class rows never touch the policy."""
+    _, t_by = _two_ticker_universe()
+    rows = [
+        GraphMessageEdge(
+            sourceTicker="TT", sourceExpiry="B", targetTicker="TT", targetExpiry="A",
+            messagePrecision=999.0, relationClass="calendar",
+            precisionRule="calendar_distance",
+        ),
+        GraphMessageEdge(
+            sourceTicker="TT", sourceExpiry="A", targetTicker="TT", targetExpiry="B",
+            messagePrecision=777.0, relationClass="calendar", precisionRule="explicit",
+        ),
+        GraphMessageEdge(
+            sourceTicker="UU", sourceExpiry="A", targetTicker="TT", targetExpiry="A",
+            messagePrecision=555.0, relationClass="custom", precisionRule="explicit",
+        ),
+    ]
+
+    off = message_edges_from_schema(
+        rows, t_by,
+        GraphExtrapolateRequest(
+            calendarPolicyOverrides={"TT": CalendarPolicyOverride(enabled=False)}
+        ),
+    )
+    assert [e.relation_class for e in off] == ["custom"]
+    assert off[0].precision == 555.0
+
+    scaled = message_edges_from_schema(
+        rows, t_by,
+        GraphExtrapolateRequest(
+            calendarPolicyOverrides={"TT": CalendarPolicyOverride(precisionScale=3.4e3)}
+        ),
+    )
+    base = message_edges_from_schema(rows, t_by, GraphExtrapolateRequest())
+    assert scaled[0].precision == pytest.approx(2.0 * base[0].precision, rel=1e-12)
+    # The explicit calendar row keeps its typed precision under a scale change.
+    assert scaled[1].precision == 777.0 == base[1].precision
+
+
+def test_calendar_policy_rides_the_drill_in_query():
+    """The per-ticker overrides must reach the GET drill-in (query params):
+    the nested map travels as a JSON string and the reconstructed node matches
+    the POST solve under the same policy — knobs on screen = knobs solved."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        tk = "ALPHA"
+        isos = [e["expiry"] for e in client.get("/universe").json()["expiries"][tk]]
+        client.post(f"/calibrate/{tk}/{isos[0]}")
+
+        def _post(extra):
+            resp = client.post(
+                "/graph/extrapolate",
+                json={"propagationMode": "precision_messages", "flatAtm": True, **extra},
+            ).json()
+            return {(n["ticker"], n["expiry"]): n for n in resp["nodes"]}
+
+        base = _post({})[(tk, isos[1])]
+        tuned = _post(
+            {"calendarPolicyOverrides": {tk: {"enabled": False}}}
+        )[(tk, isos[1])]
+        # The override must have teeth, else the GET equality proves nothing.
+        # Consistent betas transmit the same MEAN over any route (§21), so the
+        # observable is the posterior sd: dropping the direct calendar factor
+        # loses incoming precision.
+        assert tuned["sd"] != pytest.approx(base["sd"], abs=1e-12)
+
+        smile = client.get(
+            f"/graph/extrapolate/nodes/{tk}/{isos[1]}",
+            params={
+                "propagationMode": "precision_messages",
+                "flatAtm": True,
+                "calendarPolicyOverrides": '{"ALPHA": {"enabled": false}}',
+            },
+        ).json()
+        assert smile["sd"] == pytest.approx(tuned["sd"], abs=1e-12)
+        assert smile["postAtmVol"] == pytest.approx(tuned["postAtmVol"], abs=1e-12)
 
 
 def test_observation_plan_in_message_mode(primed):

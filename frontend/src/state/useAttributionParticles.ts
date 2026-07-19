@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "./api";
 import { nodeKey } from "./useGraph";
+import type { ExtrapolateBody } from "./useGraphExtrapolation";
 import type { GraphNodeSmile } from "./useGraphNodeSmile";
 
 /** Candidate target node for a particle fan-in (caller pre-sorts by |shift|). */
@@ -37,7 +38,7 @@ const MIN_ABS_BP = 0.1;
 export function useAttributionParticles(
   active: boolean,
   candidates: ParticleCandidate[],
-  body: Record<string, string | number | boolean>,
+  body: ExtrapolateBody,
 ): ParticleSpec[] {
   const [particles, setParticles] = useState<ParticleSpec[]>([]);
 

@@ -14,9 +14,10 @@
 // gated live server it is empty until mid-mode calibrations exist).
 import { useEffect, useMemo, useState } from "react";
 import { Grid3x3 } from "lucide-react";
+import CalendarPolicyCard from "./CalendarPolicyCard";
+import CrossMatrixCard from "./CrossMatrixCard";
 import EdgeMatrixEditor from "../EdgeMatrixEditor";
 import MessageEdgeEditor from "../MessageEdgeEditor";
-import { MessageCalendarSection, MessageCrossSection } from "../MessagePanel";
 import SolverPanel, {
   DEFAULT_CALENDAR_WEIGHT,
   DEFAULT_CROSS_WEIGHT,
@@ -24,6 +25,7 @@ import SolverPanel, {
 } from "../SolverPanel";
 import { api } from "../../state/api";
 import type { UseGraphResult } from "../../state/useGraph";
+import { useMessageEdges, type MessageEdgeRow } from "../../state/useMessageEdges";
 import type { UniverseResponse } from "../../state/useSmile";
 import type { ObservationSource } from "./GraphTopBar";
 
@@ -63,6 +65,36 @@ export default function RelationshipsPane({
   const [editingEdges, setEditingEdges] = useState(false);
   // U1 units lens for the message confidence scales: σ pts (default) vs raw p.
   const [rawUnits, setRawUnits] = useState(false);
+
+  // U2 policy-card data (messages mode): the selected universe (ladders for
+  // the calendar view, tickers for the cross matrix) + the persisted message
+  // rows (matrix cells). Refetched after an editor save (dataVersion bump).
+  const { fetchEdges: fetchMsgRows } = useMessageEdges();
+  const [policyUniverse, setPolicyUniverse] = useState<UniverseResponse | null>(null);
+  const [msgRows, setMsgRows] = useState<MessageEdgeRow[]>([]);
+  const [dataVersion, setDataVersion] = useState(0);
+  useEffect(() => {
+    if (!messages) return;
+    let alive = true;
+    api
+      .get<UniverseResponse>("/universe")
+      .then((u) => {
+        if (alive) setPolicyUniverse(u);
+      })
+      .catch(() => {
+        /* the cards degrade to knob-only rendering */
+      });
+    fetchMsgRows()
+      .then((rows) => {
+        if (alive) setMsgRows(rows);
+      })
+      .catch(() => {
+        /* empty ⇒ cells show the auto defaults */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [messages, dataVersion, fetchMsgRows]);
 
   // Selected-universe nodes for the relation editors (fallback: sandbox nodes).
   const [universeNodes, setUniverseNodes] = useState<
@@ -127,10 +159,12 @@ export default function RelationshipsPane({
       <div className="flex flex-col gap-3">
         <Card title="Calendar">
           {messages ? (
-            <MessageCalendarSection
+            <CalendarPolicyCard
               params={graph.params}
               setParam={graph.setParam}
               raw={rawUnits}
+              tickers={policyUniverse?.tickers ?? []}
+              expiries={policyUniverse?.expiries ?? {}}
             />
           ) : (
             <EdgeWeightInput
@@ -145,10 +179,13 @@ export default function RelationshipsPane({
 
         <Card title="Cross-asset">
           {messages ? (
-            <MessageCrossSection
+            <CrossMatrixCard
               params={graph.params}
               setParam={graph.setParam}
               raw={rawUnits}
+              tickers={policyUniverse?.tickers ?? []}
+              rows={msgRows}
+              onDrillIn={() => setEditingEdges(true)}
             />
           ) : (
             <>
@@ -224,13 +261,18 @@ export default function RelationshipsPane({
         )}
       </div>
 
-      {/* Relation editors (modal — the pane is too narrow for a grid). */}
+      {/* Relation editors (modal — the pane is too narrow for a grid). A save
+          refreshes the policy-card data (matrix cells) before the parent
+          re-solves. */}
       {editingEdges &&
         (messages ? (
           <MessageEdgeEditor
             nodes={editorNodes}
             params={graph.params}
-            onSaved={onEdgesSaved}
+            onSaved={() => {
+              setDataVersion((v) => v + 1);
+              onEdgesSaved();
+            }}
             onClose={() => setEditingEdges(false)}
           />
         ) : (

@@ -1122,6 +1122,20 @@ class GraphCycleFlag(BaseModel):
     betaProduct: float
 
 
+class CalendarPolicyOverride(BaseModel):
+    """Per-ticker calendar-policy override (P5b U2 policy card).
+
+    Unset fields inherit the request-level dials; ``enabled=False``
+    suppresses EVERY calendar-class factor for that ticker — the auto ladder
+    and persisted calendar rows alike (a policy switch, not a row edit)."""
+
+    enabled: bool = True
+    #: §9.2 precision scale override (1/vol²), or None ⇒ inherit.
+    precisionScale: float | None = Field(default=None, gt=0.0)
+    #: §8.1 amplitude shape exponent override, or None ⇒ inherit.
+    betaExponent: float | None = None
+
+
 class GraphExtrapolateRequest(GraphSolverParams):
     """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
 
@@ -1198,6 +1212,23 @@ class GraphExtrapolateRequest(GraphSolverParams):
 
     #: Cross-relation message precision (constant rule; Phase-0 index seed).
     crossPrecisionScale: float = Field(default=1.3e4, gt=0.0)
+
+    #: U2 calendar policy switch: False suppresses every calendar-class
+    #: factor (auto ladders AND persisted calendar rows) — cross relations
+    #: keep flowing. Per-ticker refinements ride the overrides map.
+    calendarEnabled: bool = True
+    calendarPolicyOverrides: dict[str, CalendarPolicyOverride] = {}
+
+    @field_validator("calendarPolicyOverrides", mode="before")
+    @classmethod
+    def _overrides_from_json(cls, v: object) -> object:
+        """The drill-in GET forwards the solver knobs as QUERY params, where a
+        nested map can only travel as a JSON string — accept that form too."""
+        if isinstance(v, str):
+            import json
+
+            return json.loads(v) if v.strip() else {}
+        return v
 
     #: §14.2 anchor OVERRIDE: a uniform innovation-anchor precision applied
     #: to every node when set (stress/hybrid use); None ⇒ the anchor is

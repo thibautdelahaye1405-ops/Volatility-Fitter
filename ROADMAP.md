@@ -311,13 +311,16 @@ items; absorbs R3 item 14.
     sentence tooltips ("SPY 6M informs AAPL 6M: +1.00pt → +0.70pt
     message, relationship uncertainty 0.80pt"); results in pts/bp.~~
     **DONE 2026-07-19** (see STATUS wrap 2026-07-19h).
-  * **U2 Calendar policy card + views**: policy card (enable, shape
+  * ~~**U2 Calendar policy card + views**: policy card (enable, shape
     T_src/T_recv, αT, uncertainty at reference distance, decay rule,
     LIVE +1pt example via lib/messagePreview); per-ticker policy
     overrides; calendar LADDER view (3M ← 6M → 1Y with β/σ chips);
     cross-asset RECEIVER-row × INFORMER-column ticker matrix (cells
     β+σ, hover sentence, drill-in); |β|-cap warnings. Row-level
-    MessageEdgeEditor remains the advanced overrides list.
+    MessageEdgeEditor remains the advanced overrides list.~~
+    **DONE 2026-07-19** (see STATUS wrap 2026-07-19i; per-ticker
+    overrides are honest REQUEST-level policy — new backend
+    CalendarPolicyOverride, not row materialization).
   * **U3 Unified mode-aware what-if (test pulse) — REVISED 2026-07-19:
     RETIRE the sandbox path instead of retrofitting it** (user decision).
     Build the what-if ON THE PRODUCTION MACHINERY: GraphExtrapolateRequest
@@ -384,6 +387,45 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19i) — P5b U2 CALENDAR POLICY CARD + VIEWS SHIPPED
+
+- **Backend calendar policy (new)**: `CalendarPolicyOverride` {enabled,
+  precisionScale?, betaExponent?} + `calendarEnabled` +
+  `calendarPolicyOverrides: dict[ticker, …]` on GraphExtrapolateRequest;
+  `graph_message.calendar_policy_for` resolves per-ticker (global switch
+  gates everything; unset fields inherit). Auto ladders expand under the
+  ticker's effective policy; persisted calendar-class rows are SUPPRESSED
+  by a disabled policy (a policy switch, not a row edit) and
+  calendar_distance rows derive with the receiver ticker's scale.
+  Drill-in GET: FastAPI Depends() silently drops dict fields from query
+  strings, so the overrides map travels as an explicit JSON-string query
+  param merged via model revalidation (schema before-validator) —
+  test-locked by POST-vs-GET sd equality (mean is path-invariant under
+  consistent βs per §21, so the observable is sd). 3 new backend tests.
+- **CalendarPolicyCard** (messages-mode Calendar card): enable switch,
+  U1 knob sections, LIVE +1pt example on the canonical 3M/6M pair
+  (exact §8.2/§9.2 numbers via lib/messagePreview, test-locked string),
+  per-ticker override rows (enable / σ@ref w/ units lens / αT; inherit
+  placeholders), per-ticker LADDER view (β/σ chips, sentence hovers,
+  amber |β|>3 cap warnings — live SPY showed a real β 8.5 rung).
+- **CrossMatrixCard** (messages-mode Cross-asset card): receiver-row ×
+  informer-column ticker matrix; cells β+σ from persisted rows (mean
+  over expiries), implied reverse (⇐ 1/β, p·β²) when only the mirror is
+  persisted, else auto defaults dimmed; U1 sentence hovers; cell click
+  drills into the MessageEdgeEditor. `crossCell` resolution unit-locked.
+- Plumbing: SolverParams += calendarEnabled/calendarOverrides (body
+  ships them message-mode only, non-default only); `ExtrapolateBody =
+  Record<string, unknown>` replaces the scalar body type everywhere;
+  api.ts JSON-stringifies object query params; RelationshipsPane
+  fetches /universe + message rows in messages mode (refetch on editor
+  save); lib/calendarPolicy mirrors expand_calendar_ladder (golden-
+  locked) with BETA_CAP=3.
+- vitest 87/87, tsc + build clean, ui_smoke 8/8, backend message batch
+  green + full suite rerun after edits; live visual verified card,
+  ladder, warnings. NEXT: **U3 unified mode-aware what-if**
+  (syntheticObservations on GraphExtrapolateRequest — retire the
+  sandbox path; see the revised U3 entry above).
 
 ### 🧭 SESSION WRAP (2026-07-19h) — P5b U1 LANGUAGE & UNITS SHIPPED
 

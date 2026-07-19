@@ -96,9 +96,19 @@ def extrapolate_node_smile(
     expiry: str,
     request: Request,
     params: GraphExtrapolateRequest = Depends(),
+    calendarPolicyOverrides: str | None = None,
 ) -> GraphNodeSmile:
     """One node's full reconstructed smile + prior/lit overlays + quote metrics
-    (plan Phase 5, lazy per-node payload). Solver knobs come from query params."""
+    (plan Phase 5, lazy per-node payload). Solver knobs come from query params;
+    the U2 per-ticker policy map is a nested object FastAPI cannot lift from a
+    query string via ``Depends()``, so it travels as an explicit JSON-string
+    param and is merged through model revalidation (the schema's before-
+    validator parses it) — the drill-in must reconstruct with EXACTLY the
+    knobs the solved table used."""
+    if calendarPolicyOverrides:
+        params = GraphExtrapolateRequest.model_validate(
+            {**params.model_dump(), "calendarPolicyOverrides": calendarPolicyOverrides}
+        )
     try:
         return graph_reconstruct.node_smile(
             request.app.state.volfit, ticker, expiry, params

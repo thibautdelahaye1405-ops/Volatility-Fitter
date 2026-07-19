@@ -5,12 +5,13 @@
 // arithmetic, not by fit). Rides the existing per-node drill-in endpoint.
 import { useGraphNodeSmile } from "../state/useGraphNodeSmile";
 import type { GraphAttributionEntry } from "../state/useGraphNodeSmile";
+import type { ExtrapolateBody } from "../state/useGraphExtrapolation";
 
 interface GraphAttributionCardProps {
   ticker: string;
   expiry: string;
   /** The /graph/extrapolate request body (same knobs as the solve on screen). */
-  body: Record<string, string | number | boolean>;
+  body: ExtrapolateBody;
   onClose: () => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
 }

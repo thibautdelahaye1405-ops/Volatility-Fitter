@@ -3,6 +3,7 @@
 // knobs ride as query params (the GET binds GraphExtrapolateRequest from query).
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import type { ExtrapolateBody } from "./useGraphExtrapolation";
 import type { SmilePoint } from "../lib/mockData";
 
 /** Quote-comparison metrics of the reconstruction vs the market. */
@@ -73,7 +74,7 @@ export function useGraphNodeSmile(
   active: boolean,
   ticker: string,
   expiry: string,
-  body: Record<string, string | number | boolean>,
+  body: ExtrapolateBody,
 ): UseGraphNodeSmileResult {
   const [node, setNode] = useState<GraphNodeSmile | null>(null);
   const [loading, setLoading] = useState(false);

@@ -5,13 +5,15 @@
 // (plan Phase 5 live overlay). Cleared when drilling in from the manual sandbox.
 import { createContext, useContext, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import type { ExtrapolateBody } from "./useGraphExtrapolation";
 
 /** The node + request knobs to reconstruct via GET /graph/extrapolate/nodes. */
 export interface GraphFocus {
   ticker: string;
   expiry: string;
-  /** Solver knobs forwarded as query params (eta/kappa/.../flatAtm/crossBeta). */
-  body: Record<string, string | number | boolean>;
+  /** Solver knobs forwarded as query params (eta/kappa/.../flatAtm/crossBeta;
+   *  nested objects like the U2 policy overrides ride as JSON strings). */
+  body: ExtrapolateBody;
 }
 
 interface GraphFocusValue {

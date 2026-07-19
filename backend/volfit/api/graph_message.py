@@ -67,6 +67,27 @@ class MessageDiagnostics:
 
 
 # ------------------------------------------------------------ edge assembly
+def calendar_policy_for(request, ticker: str) -> tuple[bool, float, float]:
+    """Effective per-ticker calendar policy ``(enabled, scale, alpha)``.
+
+    U2 policy resolution: the global ``calendarEnabled`` switch gates
+    everything; a ``calendarPolicyOverrides[ticker]`` entry refines enable /
+    §9.2 precision scale / §8.1 shape exponent for that ticker, unset fields
+    inheriting the request-level dials. ``getattr`` defaults keep hand-built
+    test requests (pre-U2 shape) valid."""
+    override = getattr(request, "calendarPolicyOverrides", {}).get(ticker)
+    enabled = bool(getattr(request, "calendarEnabled", True)) and (
+        override is None or override.enabled
+    )
+    scale = request.calendarPrecisionScale
+    alpha = request.calendarBetaExponent
+    if override is not None and override.precisionScale is not None:
+        scale = override.precisionScale
+    if override is not None and override.betaExponent is not None:
+        alpha = override.betaExponent
+    return enabled, scale, alpha
+
+
 def auto_message_edges(
     universe: SelectedUniverse, t_by_node: dict[NodeId, float], request
 ) -> list[MessageEdge]:
@@ -74,10 +95,11 @@ def auto_message_edges(
 
     Calendar: adjacent selected expiries per ticker, one factor per pair in
     canonical short-receiver orientation (§7.6), precision from the §9.2
-    distance family. Nodes with a non-positive year fraction get no calendar
-    factor (an expired receiver has no maturity shape). Cross: same-expiry
-    ticker pairs, one beta-one factor each (lexicographic orientation,
-    class ``custom``, constant ``crossPrecisionScale``)."""
+    distance family under the ticker's effective policy (U2: global enable +
+    per-ticker overrides). Nodes with a non-positive year fraction get no
+    calendar factor (an expired receiver has no maturity shape). Cross:
+    same-expiry ticker pairs, one beta-one factor each (lexicographic
+    orientation, class ``custom``, constant ``crossPrecisionScale``)."""
     edges: list[MessageEdge] = []
     ladders: dict[str, dict[NodeId, float]] = {}
     by_iso: dict[str, list[NodeId]] = {}
@@ -87,13 +109,14 @@ def auto_message_edges(
             ladders.setdefault(node.ticker, {})[node.name] = t
         by_iso.setdefault(node.expiry, []).append(node.name)
 
-    for maturities in ladders.values():
-        if len(maturities) >= 2:
+    for ticker, maturities in ladders.items():
+        enabled, scale, alpha = calendar_policy_for(request, ticker)
+        if enabled and len(maturities) >= 2:
             edges.extend(
                 expand_calendar_ladder(
                     maturities,
-                    alpha=request.calendarBetaExponent,
-                    scale=request.calendarPrecisionScale,
+                    alpha=alpha,
+                    scale=scale,
                     epsilon=request.calendarPrecisionEpsilon,
                     rule=request.calendarPrecisionDecay,
                 )
@@ -116,7 +139,10 @@ def message_edges_from_schema(
 ) -> list[MessageEdge]:
     """Expand schema-v2 rows into engine factors. Rows naming a node outside
     the selected universe are dropped (the legacy edge-list contract);
-    ``calendar_distance`` rows derive their precision from the §9.2 family."""
+    ``calendar_distance`` rows derive their precision from the §9.2 family
+    under the RECEIVER ticker's effective policy, and a policy-disabled
+    ticker (U2) suppresses its calendar-class rows entirely — persisted rows
+    included (the switch is a policy, not a row edit)."""
     out: list[MessageEdge] = []
     for e in rows:
         receiver = (e.targetTicker, e.targetExpiry)
@@ -125,11 +151,14 @@ def message_edges_from_schema(
             continue
         if receiver not in t_by_node or informer not in t_by_node:
             continue
+        enabled, scale, _alpha = calendar_policy_for(request, e.targetTicker)
+        if e.relationClass == "calendar" and not enabled:
+            continue
         if e.precisionRule == "calendar_distance":
             p = calendar_message_precision(
                 t_by_node[receiver],
                 t_by_node[informer],
-                scale=request.calendarPrecisionScale,
+                scale=scale,
                 epsilon=request.calendarPrecisionEpsilon,
                 rule=request.calendarPrecisionDecay,
             )

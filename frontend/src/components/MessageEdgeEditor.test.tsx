@@ -24,6 +24,7 @@ const PARAMS: SolverParams = {
   alphaT: 1, ampCal: 1, ampCross: 1,
   calPrecision: 1700, calEpsilon: 0.97,
   calDecay: "inverse_sqrt_gap", crossPrecision: 13000,
+  calendarEnabled: true, calendarOverrides: {},
 };
 
 const NODES = [

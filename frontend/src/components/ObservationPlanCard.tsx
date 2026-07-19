@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { Crosshair } from "lucide-react";
 import { api } from "../state/api";
+import type { ExtrapolateBody } from "../state/useGraphExtrapolation";
 
 interface Beneficiary {
   ticker: string;
@@ -31,8 +32,8 @@ interface PlanResponse {
 }
 
 interface ObservationPlanCardProps {
-  /** The /graph/extrapolate request body (same knobs as Propagate). */
-  body: Record<string, string | number | boolean>;
+  /** The /graph/extrapolate request body (same knobs as the Run). */
+  body: ExtrapolateBody;
   onOpenSmile: (ticker: string, expiry: string) => void;
 }
 

@@ -28,8 +28,9 @@ export class ApiError extends Error {
 
 /** Options accepted by the request helper. */
 interface RequestOptions {
-  /** Query-string parameters appended to the URL. */
-  params?: Record<string, string | number | boolean | undefined>;
+  /** Query-string parameters appended to the URL. Objects are serialized as
+   *  JSON strings (the backend parses them back — U2 policy overrides). */
+  params?: Record<string, unknown>;
   /** JSON-serializable request body (POST/PUT only). */
   body?: unknown;
   /** Abort signal for cancellable requests. */
@@ -54,7 +55,11 @@ async function request<T>(
 ): Promise<T> {
   const url = new URL(path, API_BASE_URL);
   for (const [key, value] of Object.entries(options.params ?? {})) {
-    if (value !== undefined) url.searchParams.set(key, String(value));
+    if (value === undefined) continue;
+    url.searchParams.set(
+      key,
+      typeof value === "object" && value !== null ? JSON.stringify(value) : String(value),
+    );
   }
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;

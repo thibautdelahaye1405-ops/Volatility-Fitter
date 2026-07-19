@@ -56,6 +56,16 @@ export type PropagationMode = "smooth_field" | "precision_messages";
 /** §9.2 calendar precision families. */
 export type CalendarDecay = "inverse_sqrt_gap" | "constant" | "log_distance";
 
+/** U2 per-ticker calendar-policy override; null numeric fields inherit the
+ *  request-level dials (mirrors the backend CalendarPolicyOverride). */
+export interface CalendarOverride {
+  enabled: boolean;
+  /** §9.2 precision scale (1/vol²), or null ⇒ inherit. */
+  precisionScale: number | null;
+  /** §8.1 shape exponent αT, or null ⇒ inherit. */
+  betaExponent: number | null;
+}
+
 /**
  * Tunable hyperparameters of the increment prior Q_Δ and the graph edges,
  * mirroring the backend GraphSolverParams schema. Scales multiply the
@@ -89,6 +99,9 @@ export interface SolverParams {
   calDecay: CalendarDecay;
   /** Cross-relation message precision scale (Phase-0 index seed). */
   crossPrecision: number;
+  /** U2 calendar policy: global switch + per-ticker overrides. */
+  calendarEnabled: boolean;
+  calendarOverrides: Record<string, CalendarOverride>;
 }
 
 /** One scored grid point of an auto-tune sweep. */
@@ -121,6 +134,8 @@ const DEFAULT_PARAMS: SolverParams = {
   calEpsilon: 0.97,
   calDecay: "inverse_sqrt_gap",
   crossPrecision: 13000,
+  calendarEnabled: true,
+  calendarOverrides: {},
 };
 
 /** Options graph-prior defaults that seed the solver panel. */

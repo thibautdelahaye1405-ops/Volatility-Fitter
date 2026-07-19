@@ -9,6 +9,11 @@ import { useCallback, useState } from "react";
 import { api } from "./api";
 import { nodeKey, type GraphSolveNode, type SolverParams } from "./useGraph";
 
+/** The /graph/extrapolate request body (solver knobs + production flags).
+ *  Values are JSON-serializable; the U2 policy overrides ride as a nested
+ *  object, hence the loose value type. */
+export type ExtrapolateBody = Record<string, unknown>;
+
 /** Build the /graph/extrapolate request body from the shared solver knobs plus
  *  the production-only flags (flat baselines, cross-ticker beta). Shared by the
  *  Extrapolate panel (run/backtest) and the drill-in focus (node-smile overlay)
@@ -17,8 +22,8 @@ export function buildExtrapolateBody(
   params: SolverParams,
   flatAtm: boolean,
   crossBeta: number | null,
-): Record<string, string | number | boolean> {
-  const body: Record<string, string | number | boolean> = {
+): ExtrapolateBody {
+  const body: ExtrapolateBody = {
     etaScale: params.etaScale,
     kappaScale: params.kappaScale,
     lambdaScale: params.lambdaScale,
@@ -39,6 +44,24 @@ export function buildExtrapolateBody(
     body.calendarPrecisionEpsilon = params.calEpsilon;
     body.calendarPrecisionDecay = params.calDecay;
     body.crossPrecisionScale = params.crossPrecision;
+    // U2 calendar policy — ship only non-default state so an untouched
+    // request stays minimal.
+    if (!params.calendarEnabled) body.calendarEnabled = false;
+    const overrides = Object.entries(params.calendarOverrides).filter(
+      ([, o]) => !o.enabled || o.precisionScale !== null || o.betaExponent !== null,
+    );
+    if (overrides.length > 0) {
+      body.calendarPolicyOverrides = Object.fromEntries(
+        overrides.map(([ticker, o]) => [
+          ticker,
+          {
+            enabled: o.enabled,
+            ...(o.precisionScale !== null ? { precisionScale: o.precisionScale } : {}),
+            ...(o.betaExponent !== null ? { betaExponent: o.betaExponent } : {}),
+          },
+        ]),
+      );
+    }
   }
   return body;
 }

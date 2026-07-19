@@ -14,7 +14,10 @@
 import ExtrapolateResults from "../ExtrapolateResults";
 import ObservationPlanCard from "../ObservationPlanCard";
 import type { UseGraphResult } from "../../state/useGraph";
-import type { UseGraphExtrapolationResult } from "../../state/useGraphExtrapolation";
+import type {
+  ExtrapolateBody,
+  UseGraphExtrapolationResult,
+} from "../../state/useGraphExtrapolation";
 import type { ObservationSource } from "./GraphTopBar";
 
 export type DrawerTab = "preview" | "diagnostics" | "validation" | "plan";
@@ -31,7 +34,7 @@ interface GraphDrawerProps {
   graph: UseGraphResult;
   extra: UseGraphExtrapolationResult;
   /** The /graph/extrapolate body (backtest + plan ride the same knobs). */
-  body: Record<string, string | number | boolean>;
+  body: ExtrapolateBody;
   flatAtm: boolean;
   setFlatAtm: (v: boolean) => void;
   selected: { ticker: string; expiry: string } | null;

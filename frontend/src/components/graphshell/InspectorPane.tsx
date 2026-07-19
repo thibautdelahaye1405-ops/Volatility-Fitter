@@ -8,7 +8,10 @@
 // the U4 increment; edge-click inspection arrives with it.
 import GraphAttributionCard from "../GraphAttributionCard";
 import type { GraphNodeBase } from "../../state/useGraph";
-import type { ExtrapolateNode } from "../../state/useGraphExtrapolation";
+import type {
+  ExtrapolateBody,
+  ExtrapolateNode,
+} from "../../state/useGraphExtrapolation";
 
 interface InspectorPaneProps {
   /** The inspected node, or null (empty state). */
@@ -18,7 +21,7 @@ interface InspectorPaneProps {
   /** Production posterior for the selected node, once a run landed. */
   post: ExtrapolateNode | null;
   /** The /graph/extrapolate body of the run on screen (attribution knobs). */
-  body: Record<string, string | number | boolean>;
+  body: ExtrapolateBody;
   /** Attribution rides the production drill-in — calibrations source only. */
   showAttribution: boolean;
   manual: boolean;
