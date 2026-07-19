@@ -1,10 +1,13 @@
-// Solver hyperparameter panel for the Graph Viewer aside.
+// Legacy solver knobs for the Graph shell's Advanced section (smooth field
+// only — the message operator has no η/κ/λ/ν).
 //
 // Exposes the increment-prior knobs of the OT-Bayesian graph solver
 // (volfit/graph/prior.py) — directed-smoothness reach η, local stiffness κ,
-// optimal-transport flux λ with source allowance ν — plus the two lattice
-// edge weights, and an auto-tune that LOO-cross-validates η over the lit
-// observations. Pure presentation: all state lives in useGraph.
+// optimal-transport flux λ with source allowance ν — and an auto-tune that
+// LOO-cross-validates η over the lit observations. The two lattice edge
+// weights render in the Relationships pane's Calendar / Cross-asset cards
+// (EdgeWeightInput is exported for them). Pure presentation: all state lives
+// in useGraph.
 import type { AutotuneResult, SolverParams } from "../state/useGraph";
 
 interface SolverPanelProps {
@@ -21,8 +24,8 @@ interface SolverPanelProps {
 
 /** Service-default edge weights (volfit/api/service.py); shown as placeholders
  *  and used when the override input is cleared back to the default. */
-const DEFAULT_CALENDAR_WEIGHT = 10;
-const DEFAULT_CROSS_WEIGHT = 2;
+export const DEFAULT_CALENDAR_WEIGHT = 10;
+export const DEFAULT_CROSS_WEIGHT = 2;
 
 const rowLabel = "text-xs text-slate-400";
 
@@ -62,7 +65,7 @@ function LogScaleSlider({
 
 /** Edge-weight override input: shows the default as a placeholder; clearing or
  *  matching the default stores null so the backend reuses its cached graph. */
-function EdgeWeightInput({
+export function EdgeWeightInput({
   label,
   title,
   value,
@@ -180,23 +183,6 @@ export default function SolverPanel({
           className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500 disabled:cursor-not-allowed"
         />
       </div>
-
-      {/* Lattice edge weights */}
-      <p className="mb-1.5 text-[11px] text-slate-500">Edge weights</p>
-      <EdgeWeightInput
-        label="Calendar (same ticker)"
-        title="Weight of within-ticker calendar edges."
-        value={params.calendarWeight}
-        fallback={DEFAULT_CALENDAR_WEIGHT}
-        onChange={(v) => setParam("calendarWeight", v)}
-      />
-      <EdgeWeightInput
-        label="Cross-ticker"
-        title="Weight of equal-expiry edges between tickers."
-        value={params.crossWeight}
-        fallback={DEFAULT_CROSS_WEIGHT}
-        onChange={(v) => setParam("crossWeight", v)}
-      />
 
       {/* Auto-tune η by leave-one-out cross-validation */}
       <button

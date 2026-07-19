@@ -1,32 +1,26 @@
-// Post-propagation results for the calibrations source: LOO backtest chip,
-// per-node prior -> posterior table, and the attribution drill-in card.
-// Extracted from the retired ExtrapolatePanel so the merged Propagate panel
-// stays under the file-size policy.
-import { useMemo, useState } from "react";
-import GraphAttributionCard from "./GraphAttributionCard";
-import ObservationPlanCard from "./ObservationPlanCard";
+// Per-node prior -> posterior table for the production (calibrations) solve —
+// the Diagnostics drawer tab's main body. Selection is LIFTED to the shell:
+// clicking a row selects the node for the right-hand Inspector (attribution +
+// smile drill-in live there); the backtest chip and observation plan render in
+// their own drawer tabs.
+import { useMemo } from "react";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
 
 interface ExtrapolateResultsProps {
   extra: UseGraphExtrapolationResult;
-  /** The /graph/extrapolate request body the table was solved with (the
-   *  attribution card + smile overlay must reconstruct with the same knobs). */
-  body: Record<string, string | number | boolean>;
+  /** The node highlighted in the Inspector, or null. */
+  selected: { ticker: string; expiry: string } | null;
+  /** Row click: select (or re-click to deselect — the shell decides). */
+  onSelect: (ticker: string, expiry: string) => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
-}
-
-/** The node whose attribution card is open, or null. */
-interface SelectedNode {
-  ticker: string;
-  expiry: string;
 }
 
 export default function ExtrapolateResults({
   extra,
-  body,
+  selected,
+  onSelect,
   onOpenSmile,
 }: ExtrapolateResultsProps) {
-  const [selected, setSelected] = useState<SelectedNode | null>(null);
   const rows = useMemo(
     () =>
       (extra.nodes ?? [])
@@ -35,130 +29,97 @@ export default function ExtrapolateResults({
     [extra.nodes],
   );
 
+  if (rows.length === 0) {
+    return (
+      <p className="py-2 text-xs text-slate-500">
+        Press Run to transport the priors and spread the lit calibrations
+        across the universe.
+      </p>
+    );
+  }
+
   return (
     <>
-      {/* Backtest summary */}
-      {extra.backtest !== null && (
-        <div className="mb-3 rounded-md border border-slate-800 bg-surface-800/60 p-2 font-mono text-[10px] text-slate-400">
-          <div className="text-slate-300">
-            LOO backtest · {extra.backtest.nScored} scored
-            {extra.backtest.nExcludedBootstrap > 0 &&
-              ` · ${extra.backtest.nExcludedBootstrap} bootstrap excluded`}
-          </div>
-          <div>
-            RMSE {extra.backtest.rmseBp.toFixed(1)} bp · ζ mean{" "}
-            {extra.backtest.zetaMean.toFixed(2)} · ζ std {extra.backtest.zetaStd.toFixed(2)}
-          </div>
-        </div>
-      )}
-
-      {/* Active observation selection (R3 item 13): rank the next quotes once
-          a field has been propagated (the ranking reads the same posterior). */}
-      {extra.nodes !== null && (
-        <ObservationPlanCard body={body} onOpenSmile={onOpenSmile} />
-      )}
-
-      {/* Attribution card (explainability): why the selected node moved */}
-      {selected !== null && (
-        <GraphAttributionCard
-          ticker={selected.ticker}
-          expiry={selected.expiry}
-          body={body}
-          onClose={() => setSelected(null)}
-          onOpenSmile={onOpenSmile}
-        />
-      )}
-
-      {/* Per-node prior -> posterior table */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {rows.length === 0 ? (
-          <p className="py-2 text-xs text-slate-500">
-            Press Propagate to transport the priors and spread the lit
-            calibrations across the universe.
-          </p>
-        ) : (
-          <div className="divide-y divide-slate-800">
-            {rows.map((n) => {
-              const isSelected =
-                selected !== null &&
-                selected.ticker === n.ticker &&
-                selected.expiry === n.expiry;
-              return (
-                <div
-                  key={`${n.ticker}|${n.expiry}`}
-                  className={`flex w-full items-center gap-2 py-1.5 transition-colors hover:bg-surface-800/40 ${
-                    isSelected ? "bg-surface-800/60" : ""
-                  }`}
+        <div className="divide-y divide-slate-800">
+          {rows.map((n) => {
+            const isSelected =
+              selected !== null &&
+              selected.ticker === n.ticker &&
+              selected.expiry === n.expiry;
+            return (
+              <div
+                key={`${n.ticker}|${n.expiry}`}
+                className={`flex w-full items-center gap-2 py-1.5 transition-colors hover:bg-surface-800/40 ${
+                  isSelected ? "bg-surface-800/60" : ""
+                }`}
+              >
+                <button
+                  onClick={() => onSelect(n.ticker, n.expiry)}
+                  title="Inspect this node (attribution of its move to the lit observations)"
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
                 >
-                  <button
-                    onClick={() =>
-                      setSelected(isSelected ? null : { ticker: n.ticker, expiry: n.expiry })
-                    }
-                    title="Attribute this node's move to the lit observations"
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                  >
-                    <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
-                      <span className="font-medium text-slate-100">{n.ticker}</span>{" "}
-                      <span className="font-mono text-[10px] text-slate-500">{n.expiry}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-300">
+                    <span className="font-medium text-slate-100">{n.ticker}</span>{" "}
+                    <span className="font-mono text-[10px] text-slate-500">{n.expiry}</span>
+                    <span
+                      className={`ml-1 text-[9px] ${n.lit ? "text-amber-400" : "text-slate-600"}`}
+                    >
+                      {n.lit ? "lit" : "dark"}
+                    </span>
+                    {n.noLitPath === true && (
                       <span
-                        className={`ml-1 text-[9px] ${n.lit ? "text-amber-400" : "text-slate-600"}`}
+                        className="ml-1 rounded bg-rose-500/15 px-1 text-[8px] uppercase tracking-wide text-rose-300"
+                        title="No lit path: this node's component has no observation — it stays at its transported prior with explicitly broad uncertainty (spec §14.3)"
                       >
-                        {n.lit ? "lit" : "dark"}
+                        no path
                       </span>
-                      {n.noLitPath === true && (
-                        <span
-                          className="ml-1 rounded bg-rose-500/15 px-1 text-[8px] uppercase tracking-wide text-rose-300"
-                          title="No lit path: this node's component has no observation — it stays at its transported prior with explicitly broad uncertainty (spec §14.3)"
-                        >
-                          no path
-                        </span>
-                      )}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] text-slate-400">
-                      {(n.priorAtmVol * 100).toFixed(1)}→{(n.postAtmVol * 100).toFixed(1)}%
-                    </span>
-                    <span
-                      className={`w-12 shrink-0 text-right font-mono text-[10px] ${
-                        n.shiftBp >= 0 ? "text-emerald-400" : "text-rose-400"
-                      }`}
-                    >
-                      {n.shiftBp >= 0 ? "+" : ""}
-                      {n.shiftBp.toFixed(0)}bp
-                    </span>
-                    {/* Posterior ATM credible half-width (functional band's
-                        level marginal, idio-floored on dark names). In message
-                        mode the tooltip adds the receiver-conditional vs
-                        marginal precision readout (spec §7.5/§17). */}
-                    <span
-                      className="w-10 shrink-0 text-right font-mono text-[9px] text-slate-500"
-                      title={
-                        "Posterior ATM-vol sd (1σ, bp)" +
-                        (n.qIncoming !== null && n.qIncoming !== undefined
-                          ? ` · incoming conditional q ${n.qIncoming.toFixed(0)}` +
-                            ` · marginal π ${(1 / (n.sd * n.sd)).toFixed(0)}` +
-                            " (marginal is authoritative — it folds in source uncertainty and shared routes)"
-                          : "")
-                      }
-                    >
-                      ±{(n.sd * 1e4).toFixed(0)}
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => onOpenSmile(n.ticker, n.expiry)}
-                    title="Open this node's reconstructed smile"
-                    className="shrink-0 text-[11px] text-slate-600 hover:text-slate-300"
+                    )}
+                  </span>
+                  <span className="shrink-0 font-mono text-[10px] text-slate-400">
+                    {(n.priorAtmVol * 100).toFixed(1)}→{(n.postAtmVol * 100).toFixed(1)}%
+                  </span>
+                  <span
+                    className={`w-12 shrink-0 text-right font-mono text-[10px] ${
+                      n.shiftBp >= 0 ? "text-emerald-400" : "text-rose-400"
+                    }`}
                   >
-                    ↗
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                    {n.shiftBp >= 0 ? "+" : ""}
+                    {n.shiftBp.toFixed(0)}bp
+                  </span>
+                  {/* Posterior ATM credible half-width (functional band's
+                      level marginal, idio-floored on dark names). In message
+                      mode the tooltip adds the receiver-conditional vs
+                      marginal precision readout (spec §7.5/§17). */}
+                  <span
+                    className="w-10 shrink-0 text-right font-mono text-[9px] text-slate-500"
+                    title={
+                      "Posterior ATM-vol sd (1σ, bp)" +
+                      (n.qIncoming !== null && n.qIncoming !== undefined
+                        ? ` · incoming conditional q ${n.qIncoming.toFixed(0)}` +
+                          ` · marginal π ${(1 / (n.sd * n.sd)).toFixed(0)}` +
+                          " (marginal is authoritative — it folds in source uncertainty and shared routes)"
+                        : "")
+                    }
+                  >
+                    ±{(n.sd * 1e4).toFixed(0)}
+                  </span>
+                </button>
+                <button
+                  onClick={() => onOpenSmile(n.ticker, n.expiry)}
+                  title="Open this node's reconstructed smile"
+                  className="shrink-0 text-[11px] text-slate-600 hover:text-slate-300"
+                >
+                  ↗
+                </button>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <p className="mt-1 shrink-0 text-[10px] text-slate-600">
-        Click a node to attribute its move · ↗ opens its reconstructed smile.
+        Click a node to inspect it · ↗ opens its reconstructed smile.
       </p>
     </>
   );

@@ -24,8 +24,13 @@ try {
   page.on("pageerror", (err) => pageErrors.push(String(err)));
 
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "networkidle2", timeout: 45000 });
-  const [graphTab] = await page.$$('xpath/.//nav//button[normalize-space()="Graph"]');
-  if (!graphTab) throw new Error("Graph nav button not found");
+  // Graph lives behind the grouped Universe menu (same path as ui_smoke).
+  const [universeMenu] = await page.$$('xpath/.//header//button[contains(normalize-space(), "Universe")]');
+  if (!universeMenu) throw new Error("Universe menu not found");
+  await universeMenu.click();
+  await new Promise((r) => setTimeout(r, 150));
+  const [graphTab] = await page.$$('xpath/.//span[normalize-space()="Graph"]/ancestor::button[1]');
+  if (!graphTab) throw new Error("Graph menu item not found");
   await graphTab.click();
 
   // Wait for the baseline fit: node circles appear inside the chart svg.
@@ -43,8 +48,8 @@ try {
   await new Promise((r) => setTimeout(r, 800)); // settle the fit transform
   await page.screenshot({ path: `${OUT}graph-live-baseline.png` });
 
-  // Propagate (default source: from calibrations) and shoot the posterior.
-  const [propagateBtn] = await page.$$('xpath/.//button[normalize-space()="Propagate"]');
+  // Run (default source: from calibrations) and shoot the posterior.
+  const [propagateBtn] = await page.$$('xpath/.//button[normalize-space()="Run"]');
   if (propagateBtn) {
     const disabled = await propagateBtn.evaluate((b) => b.disabled);
     if (!disabled) {
@@ -52,7 +57,7 @@ try {
       await page.waitForFunction(
         () =>
           [...document.querySelectorAll("button")].some(
-            (b) => b.textContent?.trim() === "Propagate" && !b.disabled,
+            (b) => b.textContent?.trim() === "Run" && !b.disabled,
           ),
         { timeout: 120000 },
       );
@@ -60,8 +65,8 @@ try {
       await page.screenshot({ path: `${OUT}graph-live-wave.png` });
       await new Promise((r) => setTimeout(r, 3000)); // wave + particle show settled
       await page.screenshot({ path: `${OUT}graph-live-solved.png` });
-    } else console.log("Propagate disabled — baseline shot only");
-  } else console.log("Propagate button not found — baseline shot only");
+    } else console.log("Run disabled — baseline shot only");
+  } else console.log("Run button not found — baseline shot only");
 
   // Edge weight matrix modal.
   const [edgesBtn] = await page.$$('xpath/.//button[normalize-space()="Edges"]');

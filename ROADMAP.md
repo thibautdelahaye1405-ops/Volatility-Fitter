@@ -293,7 +293,7 @@ items; absorbs R3 item 14.
   labeling + non-persistence framing + canonical scenario shortcuts);
   (4) validation = **in-app side-by-side LOO + offline artifact link**.
   Increments:
-  * **U0 Shell (first, big)**: GraphViewer → three-pane + drawer + top
+  * ~~**U0 Shell (first, big)**: GraphViewer → three-pane + drawer + top
     bar. TOP: mode selector (Smooth field | Precision messages; hybrid
     stays config-only), config chip (draft/active name+version),
     Preflight chip, Run. LEFT Relationships: calendar policy card,
@@ -302,7 +302,8 @@ items; absorbs R3 item 14.
     selected node/edge. BOTTOM drawer tabs: Preview | Diagnostics |
     Validation | Observation plan. PropagatePanel dissolves into the
     shell; FEATURE PARITY exit gate (all current actions reachable,
-    vitest + smoke green).
+    vitest + smoke green).~~ **DONE 2026-07-19** (see STATUS wrap
+    2026-07-19g; config/Preflight chips are labeled stubs until U6/U5).
   * **U1 Language & units**: default confidence input = relationship
     uncertainty σ_edge = 1/√p in VOL POINTS (raw precision behind a
     toggle); the three-name taxonomy (Relationship uncertainty p /
@@ -382,6 +383,44 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19g) — P5b U0 SHELL SHIPPED
+
+- **GraphViewer is now the three-pane shell** (Configure → Preview → Run →
+  Explain → Validate spine). New `components/graphshell/`:
+  * `GraphTopBar` — observation source + propagation operator selectors
+    (operator inert under manual — the sandbox is smooth-field by
+    construction), config chip + preflight chip (LABELED STUBS: chips
+    exist, the draft/active envelope is U6 and the dry-run endpoint is
+    U5), summary badges, Clear field, **Run** (renamed from Propagate;
+    scripts/graph_visual.mjs updated, and its nav fixed for the grouped
+    Universe menu).
+  * `RelationshipsPane` — Calendar / Cross-asset / Overrides cards +
+    Advanced `<details>`. Messages mode: MessagePanel split into
+    `MessageCalendarSection` (preset, ρ_cal, αT, decay, p₀, ε) and
+    `MessageCrossSection` (ρ_cross, cross precision); smooth field:
+    edge-weight inputs moved OUT of SolverPanel into the cards
+    (EdgeWeightInput exported), cross-ticker β beside them; Advanced
+    (η/κ/λ/ν + auto-tune) renders ONLY under smooth field per the arc.
+    Edges editors unchanged (universe-fed, sandbox fallback — the
+    2026-07-09 regression lock ported).
+  * `InspectorPane` — selected node facts (posterior once run, else
+    baseline handles) + the attribution card. Calibrations canvas
+    single-click now SELECTS for inspection (manual keeps light/dim);
+    diagnostics-row click ditto. Edge-click inspect = U4.
+  * `GraphDrawer` — Preview (manual what-if rows / calibrations blurb +
+    flat-baselines toggle) | Diagnostics (cycle warnings + per-node
+    table; manual = summary only, parity) | Validation (LOO button +
+    chip) | Observation plan. Run auto-reveals Diagnostics.
+- PropagatePanel + its test DELETED (dissolved). ExtrapolateResults
+  slimmed to the table (selection lifted). New parity lock
+  `views/GraphViewer.test.tsx` (mocked hooks; all 7 old locks ported +
+  inspector/drawer). **vitest 72/72, tsc clean, build clean, ui_smoke
+  8/8; live visual against the user's :8000 backend verified all three
+  panes + drawer in both operators (read-only — no Run clicked).**
+- NEXT: **U1 Language & units** (σ_edge = 1/√p in vol points, three-name
+  taxonomy, sentence tooltips), then U2 calendar policy card + views.
+  GraphViewer.tsx sits at 399 lines — extract before adding to it.
 
 ### 🧭 SESSION WRAP (2026-07-19f) — P5b UX ARC RATIFIED (fresh session next)
 

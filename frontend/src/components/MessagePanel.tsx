@@ -1,12 +1,17 @@
-// Message-operator knobs (message arc P5, spec §18.4 / §20.1): the amplitude
-// SHAPE (alphaT) and LEVEL (ρ presets: desk full force / learned day-horizon
-// targets / custom), plus the §9.2 calendar precision family and the cross
-// precision scale. Rendered only when the propagation mode is
-// "precision_messages"; pure presentation — state lives in useGraph params.
+// Message-operator relationship sections (message arc P5 → P5b shell, spec
+// §18.4 / §20.1), split along the Relationships pane's card grammar:
+//
+//   MessageCalendarSection — amplitude preset + calendar level ρ, the SHAPE
+//     exponent alphaT, and the §9.2 calendar precision family (decay, p₀, ε).
+//   MessageCrossSection    — cross-asset level ρ and the cross precision scale.
+//
+// Rendered only when the propagation mode is "precision_messages"; pure
+// presentation — state lives in useGraph params. The full policy card (live
+// +1pt example, per-ticker overrides, ladder/matrix views) is the U2 increment.
 import { AMPLITUDE_PRESETS } from "../lib/messagePreview";
 import type { CalendarDecay, SolverParams } from "../state/useGraph";
 
-interface MessagePanelProps {
+interface MessageSectionProps {
   params: SolverParams;
   setParam: <K extends keyof SolverParams>(key: K, value: SolverParams[K]) => void;
 }
@@ -60,19 +65,20 @@ function NumberRow({
   );
 }
 
-export default function MessagePanel({ params, setParam }: MessagePanelProps) {
+/** Calendar-relation knobs (within-ticker maturity ladder). The amplitude
+ *  preset lives here because it sets BOTH class levels at once. */
+export function MessageCalendarSection({ params, setParam }: MessageSectionProps) {
   const preset = presetOf(params);
   return (
-    <section className="border-t border-slate-800 pt-3">
-      <h3 className="mb-2 text-sm font-semibold text-slate-100">Message operator</h3>
-
+    <div>
       {/* Amplitude LEVEL ρ: desk full force vs the learned day-horizon targets */}
       <div
         className="mb-2 flex items-center justify-between"
         title={
-          "Amplitude level ρ per relation class, mechanized via the innovation anchor. " +
-          "Desk = full configured force (ρ=1); Learned = the day-horizon single-source " +
-          "targets (calendar 0.23, cross 0.39 — corroborating sources lift the transfer)."
+          "Amplitude level ρ per relation class (calendar AND cross-asset), " +
+          "mechanized via the innovation anchor. Desk = full configured force " +
+          "(ρ=1); Learned = the day-horizon single-source targets (calendar " +
+          "0.23, cross 0.39 — corroborating sources lift the transfer)."
         }
       >
         <span className={rowLabel}>Amplitude preset</span>
@@ -100,13 +106,6 @@ export default function MessagePanel({ params, setParam }: MessagePanelProps) {
         value={params.ampCal}
         step={0.01}
         onChange={(v) => setParam("ampCal", Math.min(Math.max(v, 0.01), 1))}
-      />
-      <NumberRow
-        label="ρ cross-asset"
-        title="Cross-class amplitude level (1 = full force; learned single-source ≈ 0.39)."
-        value={params.ampCross}
-        step={0.01}
-        onChange={(v) => setParam("ampCross", Math.min(Math.max(v, 0.01), 1))}
       />
 
       {/* Amplitude SHAPE alphaT */}
@@ -148,6 +147,21 @@ export default function MessagePanel({ params, setParam }: MessagePanelProps) {
         step={0.05}
         onChange={(v) => setParam("calEpsilon", Math.max(v, 0.01))}
       />
+    </div>
+  );
+}
+
+/** Cross-asset relation knobs (equal-expiry edges between tickers). */
+export function MessageCrossSection({ params, setParam }: MessageSectionProps) {
+  return (
+    <div>
+      <NumberRow
+        label="ρ cross-asset"
+        title="Cross-class amplitude level (1 = full force; learned single-source ≈ 0.39)."
+        value={params.ampCross}
+        step={0.01}
+        onChange={(v) => setParam("ampCross", Math.min(Math.max(v, 0.01), 1))}
+      />
       <NumberRow
         label="Cross precision"
         title="Cross-relation message precision (1/vol²; Phase-0 index seed 13000)."
@@ -155,11 +169,10 @@ export default function MessagePanel({ params, setParam }: MessagePanelProps) {
         step={1000}
         onChange={(v) => setParam("crossPrecision", Math.max(v, 1))}
       />
-
       <p className="mt-1 text-[10px] text-slate-600">
         Signals cross edges at the configured amplitude; confidence decays with
         maturity distance. Arrows read informer → receiver.
       </p>
-    </section>
+    </div>
   );
 }
