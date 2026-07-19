@@ -1288,8 +1288,19 @@ ladder). Shipped in five phases, all tests green (1198+ suite, new files
   propagation). Pre-registered decision rule (FINDINGS 2026-07-17/18):
   activate learned betas only if the liquid_split dark-name skill delta is
   positive in spike and non-negative elsewhere with ζ std not degrading;
-  same bar decides OT activate-vs-reposition. After the verdict: production
-  edge-builder consumes the artifact, or the repositioning is recorded.
+  same bar decides OT activate-vs-reposition.
+- **ITEM 14 ADJUDICATED + CLOSED (2026-07-19) — sweep RAN (~14h, user's
+  window; 23,758 OOS scored rows, pairs 10–18).** VERDICT (full detail
+  FINDINGS 2026-07-19): learned betas MET the rule on liquid_split (skill Δ
+  positive in all 6 cells — spike +0.081/+0.026, high +0.063/+0.061, low
+  +0.034/+0.016; ζ std steady) but the gain is fractions of a bp and they
+  REGRESS full_loo hard (Δ −2 to −8.6 bp — smaller-than-prior betas
+  under-propagate a fully-neighbored node). OT λ=1.0 FAILED both axes
+  (negative skill everywhere + ζ std blown to 1.3–2.6). **DECISION (user):
+  RECORD VERDICT, HOLD WIRING** — no production change; `learned_betas.json`
+  stays a diagnostic; edge-builder keeps hand-set priors; OT flux stays OFF,
+  repositioned as Bayesian graph propagation (deck already honest).
+  Activation (blanket or neighbor-support-gated) revisitable later.
   NB results\learned_betas.json is gitignored/regenerable.
 - **NEXT:** R4 (graph-coupled temporal state, first hosted instance)
   or item-11 v2 follow-ons (term-matched rate curve, de-Am'd-parity

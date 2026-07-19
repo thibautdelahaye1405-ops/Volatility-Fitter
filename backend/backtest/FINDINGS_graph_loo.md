@@ -1,5 +1,44 @@
 # Graph leave-one-out — findings
 
+## 2026-07-19 — item-14 VERDICT (full pack, 23,758 OOS scored rows, pairs 10–18)
+
+The adjudication sweep RAN (user's window, ~14h; `ablation_compare.json`).
+Decision rule (pre-registered) evaluated on the **liquid_split dark-name**
+design — the production sparse→dense case.
+
+**Learned betas → ACTIVATE (rule met).** liquid_split skill delta vs baseline
+POSITIVE in all six cells — spike +0.081 / +0.026, high +0.063 / +0.061, low
++0.034 / +0.016 — with ζ std steady (±0.01, no degradation). The win is MODEST
+(fractions of a bp; the dark names sit close to their priors) but consistent
+and calibration-neutral.
+
+**OT (λ=1.0) → REPOSITION as Bayesian graph propagation (rule failed).**
+liquid_split deltas ALL negative (spike −0.066/−0.024, high −0.08/−0.097, low
+−0.018/−0.012) AND ζ std blows out to 1.3–2.6 (from 0.6–1.0) — badly
+overconfident. full_loo the same, harder (Δ −3.3 to −13.6 bp). The OT flux does
+not add value at the daily horizon; do not activate it.
+
+**Material caveat the pre-registration did not anticipate — the full_loo
+regression.** Learned betas REGRESS full_loo skill hard (Δ −2 to −8.6 bp,
+every cell) because they are SMALLER than the hand-set priors (index 0.45 vs
+0.7, calendar 0.34 vs 1.0): less propagation helps the production case
+(liquid_split — a few dark names among rich lit neighbors, avoids
+over-propagating noise) but starves a fully-removed node with no lit neighbor
+(full_loo). Activation is correct FOR THE PRODUCTION USE CASE the rule targets;
+if any production node resembles full_loo (near-zero lit neighbors), the smaller
+betas would under-serve it — a reason to consider gating activation on lit
+neighbor support rather than a blanket flip.
+
+**DECISION (user, 2026-07-19): RECORD VERDICT, HOLD WIRING.** The
+liquid_split gain is fractions of a bp — not worth a production behavior
+change now. `learned_betas.json` stays a DIAGNOSTIC artifact (regenerable via
+`-m backtest.learn_betas fit`); the production edge-builder keeps the hand-set
+priors; the OT flux stays OFF and is repositioned as Bayesian graph
+propagation (the deck honesty pass already leans that way — no deck change
+forced). Activation (blanket or neighbor-gated) can be revisited later if the
+edge story needs the data-driven upgrade for credibility. **Item 14 is
+adjudicated and closed.**
+
 ## 2026-07-18 — item-14 adjudication PREPPED + verified end-to-end (still not a verdict)
 
 Prepped the parked adjudication for the user's window. Done + verified here:
