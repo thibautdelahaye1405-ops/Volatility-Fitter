@@ -26,10 +26,18 @@ interface InspectorPaneProps {
   onOpenSmile: (ticker: string, expiry: string) => void;
 }
 
-/** One label/value fact row. */
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+/** One label/value fact row (title = the taxonomy long-name, if any). */
+function Fact({
+  label,
+  title,
+  children,
+}: {
+  label: string;
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-2 py-0.5 text-[11px]">
+    <div className="flex items-baseline justify-between gap-2 py-0.5 text-[11px]" title={title}>
       <span className="text-slate-500">{label}</span>
       <span className="text-right font-mono text-slate-200">{children}</span>
     </div>
@@ -101,7 +109,20 @@ export default function InspectorPane({
                   {post.shiftBp.toFixed(1)} bp
                 </span>
               </Fact>
-              <Fact label="Posterior sd (1σ)">±{(post.sd * 1e4).toFixed(0)} bp</Fact>
+              <Fact
+                label="Posterior confidence (1σ)"
+                title="Final posterior confidence — the solved marginal sd; folds in source uncertainty and shared routes (authoritative)."
+              >
+                ±{(post.sd * 1e4).toFixed(0)} bp
+              </Fact>
+              {post.qIncoming !== null && (
+                <Fact
+                  label="Incoming confidence q"
+                  title="Incoming message confidence q = Σp — the receiver conditional (§7.6). The final posterior (marginal) above is authoritative."
+                >
+                  {post.qIncoming.toFixed(0)}
+                </Fact>
+              )}
               {post.innovationBp !== null && (
                 <Fact label="Innovation">
                   {post.innovationBp >= 0 ? "+" : ""}

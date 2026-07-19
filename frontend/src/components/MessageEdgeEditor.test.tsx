@@ -65,17 +65,42 @@ function renderEditor(rows: MessageEdgeRow[]) {
 }
 
 describe("MessageEdgeEditor", () => {
-  it("renders persisted rows with informer→receiver direction labels", async () => {
+  it("renders rows with the U1 sentence tooltip (direction + transfer + σ)", async () => {
     renderEditor([calRow()]);
-    // Row label present (its title spells out the direction contract); the
-    // node name also appears in the add-pickers, so assert via the title.
+    // The row label's title is the full relation sentence: +1pt through this
+    // factor transfers ρβ = 2.00 pt; σ_edge = 1/√4 = 50.00 vol pts.
     const row = await screen.findByTitle(
-      "source (informer) → target (receiver): information flows along the arrow",
+      "SPY 12-18 informs SPY 09-18: +1.00 pt → +2.00 pt message · relationship uncertainty 50.00 pt",
     );
     expect(row.textContent).toContain("SPY 12-18");
     expect(row.textContent).toContain("SPY 09-18");
     expect(screen.getByText("source (informer) → target (receiver) · one factor per relation")).toBeTruthy();
     expect(screen.getByText(/calendar · 1/)).toBeTruthy(); // class group header
+  });
+
+  it("defaults to the σ-pts lens and stores raw precision behind it", async () => {
+    const { onSaved } = renderEditor([calRow()]);
+    await screen.findByText(/calendar · 1/);
+    // p=4 reads as σ = 50 pts in the default lens…
+    const sigma = screen.getByTitle(/Distance-derived relationship uncertainty/);
+    expect((sigma as HTMLInputElement).value).toBe("50");
+    // …typing σ = 2 pts stores p = (100/2)² = 2500, locked explicit.
+    fireEvent.change(sigma, { target: { value: "2" } });
+    fireEvent.click(screen.getByText("Save"));
+    await waitFor(() => expect(putEdges).toHaveBeenCalled());
+    const saved = putEdges.mock.lastCall?.[0] as MessageEdgeRow[];
+    expect(saved[0]?.messagePrecision).toBeCloseTo(2500, 8);
+    expect(saved[0]?.precisionRule).toBe("explicit");
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("shows the raw precision behind the units toggle", async () => {
+    renderEditor([calRow()]);
+    await screen.findByText(/calendar · 1/);
+    fireEvent.click(screen.getByText("units: σ pts"));
+    const rawInput = screen.getByTitle(/Distance-derived precision/);
+    expect((rawInput as HTMLInputElement).value).toBe("4");
+    expect(screen.getByText("units: raw p")).toBeTruthy();
   });
 
   it("seeds from the auto relations and marks rows inherited until touched", async () => {

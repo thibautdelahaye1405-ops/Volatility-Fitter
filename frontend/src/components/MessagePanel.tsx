@@ -8,12 +8,19 @@
 // Rendered only when the propagation mode is "precision_messages"; pure
 // presentation — state lives in useGraph params. The full policy card (live
 // +1pt example, per-ticker overrides, ladder/matrix views) is the U2 increment.
+//
+// Confidence scales use the U1 default lens — relationship uncertainty
+// σ = 1/√p in VOL POINTS — with the raw precision behind the pane's units
+// toggle (the `raw` prop).
+import PrecisionField from "./PrecisionField";
 import { AMPLITUDE_PRESETS } from "../lib/messagePreview";
 import type { CalendarDecay, SolverParams } from "../state/useGraph";
 
 interface MessageSectionProps {
   params: SolverParams;
   setParam: <K extends keyof SolverParams>(key: K, value: SolverParams[K]) => void;
+  /** True = show raw precisions (1/vol²); false = σ in vol points (default). */
+  raw: boolean;
 }
 
 const rowLabel = "text-xs text-slate-400";
@@ -67,7 +74,7 @@ function NumberRow({
 
 /** Calendar-relation knobs (within-ticker maturity ladder). The amplitude
  *  preset lives here because it sets BOTH class levels at once. */
-export function MessageCalendarSection({ params, setParam }: MessageSectionProps) {
+export function MessageCalendarSection({ params, setParam, raw }: MessageSectionProps) {
   const preset = presetOf(params);
   return (
     <div>
@@ -133,13 +140,20 @@ export function MessageCalendarSection({ params, setParam }: MessageSectionProps
           <option value="log_distance">log distance</option>
         </select>
       </div>
-      <NumberRow
-        label="Calendar precision p₀"
-        title="Calendar precision scale (1/vol²; Phase-0 empirical seed 1700)."
-        value={params.calPrecision}
-        step={100}
-        onChange={(v) => setParam("calPrecision", Math.max(v, 1))}
-      />
+      <div
+        className="mb-2 flex items-center justify-between"
+        title="Calendar relationship uncertainty at the reference maturity distance (ε + √gap = 1); the §9.2 decay family widens it with the gap."
+      >
+        <span className={rowLabel}>{raw ? "Calendar precision p₀" : "Calendar uncert @ref"}</span>
+        <PrecisionField
+          precision={params.calPrecision}
+          raw={raw}
+          onChange={(p) => setParam("calPrecision", Math.max(p, 1))}
+          className={numCls}
+          titleSigma="Relationship uncertainty σ = 1/√p₀ at the reference distance, vol pts (Phase-0 seed 1700 ≈ 2.43 pt)."
+          titleRaw="Calendar precision scale (1/vol²; Phase-0 empirical seed 1700)."
+        />
+      </div>
       <NumberRow
         label="Calendar ε (√years)"
         title="Caps the precision of near-identical expiries (Phase-0 seed 0.97)."
@@ -152,7 +166,7 @@ export function MessageCalendarSection({ params, setParam }: MessageSectionProps
 }
 
 /** Cross-asset relation knobs (equal-expiry edges between tickers). */
-export function MessageCrossSection({ params, setParam }: MessageSectionProps) {
+export function MessageCrossSection({ params, setParam, raw }: MessageSectionProps) {
   return (
     <div>
       <NumberRow
@@ -162,13 +176,20 @@ export function MessageCrossSection({ params, setParam }: MessageSectionProps) {
         step={0.01}
         onChange={(v) => setParam("ampCross", Math.min(Math.max(v, 0.01), 1))}
       />
-      <NumberRow
-        label="Cross precision"
-        title="Cross-relation message precision (1/vol²; Phase-0 index seed 13000)."
-        value={params.crossPrecision}
-        step={1000}
-        onChange={(v) => setParam("crossPrecision", Math.max(v, 1))}
-      />
+      <div
+        className="mb-2 flex items-center justify-between"
+        title="How uncertain a cross-asset relationship is (one factor, receiver units)."
+      >
+        <span className={rowLabel}>{raw ? "Cross precision" : "Cross uncert (pt)"}</span>
+        <PrecisionField
+          precision={params.crossPrecision}
+          raw={raw}
+          onChange={(p) => setParam("crossPrecision", Math.max(p, 1))}
+          className={numCls}
+          titleSigma="Cross-asset relationship uncertainty σ = 1/√p, vol pts (Phase-0 index seed 13000 ≈ 0.88 pt)."
+          titleRaw="Cross-relation message precision (1/vol²; Phase-0 index seed 13000)."
+        />
+      </div>
       <p className="mt-1 text-[10px] text-slate-600">
         Signals cross edges at the configured amplitude; confidence decays with
         maturity distance. Arrows read informer → receiver.

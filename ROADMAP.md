@@ -304,12 +304,13 @@ items; absorbs R3 item 14.
     shell; FEATURE PARITY exit gate (all current actions reachable,
     vitest + smoke green).~~ **DONE 2026-07-19** (see STATUS wrap
     2026-07-19g; config/Preflight chips are labeled stubs until U6/U5).
-  * **U1 Language & units**: default confidence input = relationship
+  * ~~**U1 Language & units**: default confidence input = relationship
     uncertainty σ_edge = 1/√p in VOL POINTS (raw precision behind a
     toggle); the three-name taxonomy (Relationship uncertainty p /
     Incoming message confidence q / Final posterior confidence marginal);
     sentence tooltips ("SPY 6M informs AAPL 6M: +1.00pt → +0.70pt
-    message, relationship uncertainty 0.80pt"); results in pts/bp.
+    message, relationship uncertainty 0.80pt"); results in pts/bp.~~
+    **DONE 2026-07-19** (see STATUS wrap 2026-07-19h).
   * **U2 Calendar policy card + views**: policy card (enable, shape
     T_src/T_recv, αT, uncertainty at reference distance, decay rule,
     LIVE +1pt example via lib/messagePreview); per-ticker policy
@@ -383,6 +384,35 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19h) — P5b U1 LANGUAGE & UNITS SHIPPED
+
+- **σ_edge lens**: `lib/precisionUnits.ts` (σ_pts = 100/√p, exact
+  round-trip, vitest-locked incl. the arc's canonical sentence) +
+  `components/PrecisionField.tsx` — ONE input, two lenses; the stored/
+  wire value stays raw precision everywhere.
+- **MessageEdgeEditor**: precision column defaults to "uncert (pt)"
+  (σ_edge), raw p behind a header units toggle; implied-reverse chip
+  shows σ/|β| pt under the σ lens; per-row SENTENCE tooltip
+  ("X informs Y: +1.00 pt → +ρβ pt message · relationship uncertainty
+  σ pt" — single-source transfer ρβz per §21.12, ρ from the row's class
+  + amplitude knobs). ScenarioPreview line renamed to the taxonomy
+  ("incoming confidence q", "anchor κ"); its "q 4" golden contract kept.
+- **Relationships pane**: units toggle in the pane header (messages
+  mode); Calendar p₀ → "Calendar uncert @ref" (σ at ε+√gap=1; 1700 ≈
+  2.43 pt), cross precision → "Cross uncert (pt)" (13000 ≈ 0.88 pt).
+- **Taxonomy strings**: results-table sd tooltip + InspectorPane facts
+  now name Relationship uncertainty / Incoming message confidence q /
+  Final posterior confidence (marginal, authoritative); inspector gains
+  the q fact in message mode.
+- vitest 79/79, tsc + build clean, ui_smoke 8/8; live visual verified
+  the pane lens (2.43/0.88 pt) + editor toggle. NOTE: the user's
+  long-running :8000 process predates the message-edges endpoints
+  (GET /graph/edges/messages → 404 live; routes exist in code) —
+  restart the backend to use the relation editor against live data.
+- NEXT: **U2 calendar policy card + views** (policy card w/ live +1pt
+  example via lib/messagePreview, per-ticker overrides, calendar LADDER
+  view, receiver×informer matrix, |β|-cap warnings).
 
 ### 🧭 SESSION WRAP (2026-07-19g) — P5b U0 SHELL SHIPPED
 

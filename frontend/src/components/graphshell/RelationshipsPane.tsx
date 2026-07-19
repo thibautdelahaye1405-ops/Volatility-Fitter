@@ -61,6 +61,8 @@ export default function RelationshipsPane({
 }: RelationshipsPaneProps) {
   const manual = source === "manual";
   const [editingEdges, setEditingEdges] = useState(false);
+  // U1 units lens for the message confidence scales: σ pts (default) vs raw p.
+  const [rawUnits, setRawUnits] = useState(false);
 
   // Selected-universe nodes for the relation editors (fallback: sandbox nodes).
   const [universeNodes, setUniverseNodes] = useState<
@@ -104,7 +106,18 @@ export default function RelationshipsPane({
 
   return (
     <aside className="flex w-72 shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
-      <h3 className="mb-1 text-sm font-semibold text-slate-100">Relationships</h3>
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-100">Relationships</h3>
+        {messages && (
+          <button
+            className="rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[9px] text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
+            onClick={() => setRawUnits((v) => !v)}
+            title="Confidence units: relationship uncertainty σ = 1/√p in vol points (default) vs the raw conditional precision p (1/vol²)"
+          >
+            {rawUnits ? "units: raw p" : "units: σ pts"}
+          </button>
+        )}
+      </div>
       <p className="mb-3 text-[11px] text-slate-500">
         {messages
           ? "How each smile informs its neighbors: calendar and cross-asset message relations."
@@ -114,7 +127,11 @@ export default function RelationshipsPane({
       <div className="flex flex-col gap-3">
         <Card title="Calendar">
           {messages ? (
-            <MessageCalendarSection params={graph.params} setParam={graph.setParam} />
+            <MessageCalendarSection
+              params={graph.params}
+              setParam={graph.setParam}
+              raw={rawUnits}
+            />
           ) : (
             <EdgeWeightInput
               label="Calendar (same ticker)"
@@ -128,7 +145,11 @@ export default function RelationshipsPane({
 
         <Card title="Cross-asset">
           {messages ? (
-            <MessageCrossSection params={graph.params} setParam={graph.setParam} />
+            <MessageCrossSection
+              params={graph.params}
+              setParam={graph.setParam}
+              raw={rawUnits}
+            />
           ) : (
             <>
               <EdgeWeightInput

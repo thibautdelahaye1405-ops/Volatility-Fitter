@@ -2,16 +2,20 @@
 // keep both files under the size policy).
 //
 // Direction is UNAMBIGUOUS everywhere here: source (informer) → target
-// (receiver), arrows drawn in the direction information flows. Calendar rows
+// (receiver), arrows drawn in the direction information flows. Confidence is
+// entered in the U1 default lens — relationship uncertainty σ_edge = 1/√p in
+// VOL POINTS (raw precision behind the editor's units toggle). Calendar rows
 // surface the reciprocal reverse identities (spec §7.6/§8.3): implied reverse
-// amplitude 1/β and implied reverse precision p·β².
+// amplitude 1/β and implied reverse uncertainty σ/|β| (= precision p·β²).
 import { useMemo, useState } from "react";
+import PrecisionField from "./PrecisionField";
 import {
   receiverPreview,
   reverseBeta,
   reversePrecision,
   type PreviewMessage,
 } from "../lib/messagePreview";
+import { fmtSigmaPts, relationSentence } from "../lib/precisionUnits";
 import type { SolverParams } from "../state/useGraph";
 import {
   RELATION_CLASSES,
@@ -36,19 +40,31 @@ export function rhoOf(cls: RelationClass, params: SolverParams): number {
   return cls === "calendar" ? params.ampCal : params.ampCross;
 }
 
-/** One editable relation row. `inherited` = seeded from auto and untouched. */
+/** One editable relation row. `inherited` = seeded from auto and untouched;
+ *  `raw` = show precisions instead of the σ-pts default lens. */
 export function EdgeRow({
   row,
   inherited,
+  params,
+  raw,
   onChange,
   onDelete,
 }: {
   row: MessageEdgeRow;
   inherited: boolean;
+  params: SolverParams;
+  raw: boolean;
   onChange: (patch: Partial<MessageEdgeRow>) => void;
   onDelete: () => void;
 }) {
   const derived = row.precisionRule === "calendar_distance";
+  const sentence = relationSentence({
+    sourceLabel: short(row.sourceTicker, row.sourceExpiry),
+    targetLabel: short(row.targetTicker, row.targetExpiry),
+    beta: row.betaAtmVol,
+    precision: row.messagePrecision,
+    rho: rhoOf(row.relationClass, params),
+  });
   const num = (
     value: number,
     patch: (v: number) => Partial<MessageEdgeRow>,
@@ -71,9 +87,11 @@ export function EdgeRow({
   );
   return (
     <div className="flex items-center gap-1 py-1">
+      {/* Sentence tooltip (U1): what a +1pt informer move does through THIS
+          factor, and how uncertain the relationship is. */}
       <span
         className="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-300"
-        title="source (informer) → target (receiver): information flows along the arrow"
+        title={sentence}
       >
         {short(row.sourceTicker, row.sourceExpiry)}{" "}
         <span className="text-accent-400">→</span>{" "}
@@ -116,23 +134,33 @@ export function EdgeRow({
       >
         {derived ? "dist" : "expl"}
       </button>
-      {num(
-        Math.round(row.messagePrecision),
-        (v) => ({ messagePrecision: v, precisionRule: "explicit" }),
-        100,
-        derived
-          ? "Distance-derived precision (today's value; editing locks it explicit)"
-          : "Conditional relation precision p (receiver ATM-vol units, 1/vol²)",
-      )}
+      <PrecisionField
+        precision={row.messagePrecision}
+        raw={raw}
+        onChange={(p) => onChange({ messagePrecision: p, precisionRule: "explicit" })}
+        className={numCls}
+        titleSigma={
+          derived
+            ? "Distance-derived relationship uncertainty σ = 1/√p, vol pts (today's value; editing locks it explicit)"
+            : "Relationship uncertainty σ_edge = 1/√p (vol pts) — lower = tighter coupling"
+        }
+        titleRaw={
+          derived
+            ? "Distance-derived precision (today's value; editing locks it explicit)"
+            : "Conditional relation precision p (receiver ATM-vol units, 1/vol²)"
+        }
+      />
       {num(row.betaAtmVol, (v) => ({ betaAtmVol: v }), 0.1, "β ATM vol")}
       {num(row.betaSkew, (v) => ({ betaSkew: v }), 0.1, "β skew")}
       {num(row.betaCurv, (v) => ({ betaCurv: v }), 0.1, "β curvature")}
       <span
         className="w-20 shrink-0 truncate text-right font-mono text-[9px] text-slate-600"
-        title="Implied reverse identities of this ONE-factor relation: amplitude 1/β, precision p·β² (spec §7.6/§8.3)"
+        title="Implied reverse identities of this ONE-factor relation: amplitude 1/β, relationship uncertainty σ/|β| (= precision p·β²; spec §7.6/§8.3)"
       >
         ⇐ {reverseBeta(row.betaAtmVol).toFixed(2)} ·{" "}
-        {Math.round(reversePrecision(row.messagePrecision, row.betaAtmVol))}
+        {raw
+          ? Math.round(reversePrecision(row.messagePrecision, row.betaAtmVol))
+          : `${fmtSigmaPts(reversePrecision(row.messagePrecision, row.betaAtmVol))}pt`}
       </span>
       <button
         className="w-4 text-slate-500 hover:text-rose-300"
@@ -154,9 +182,11 @@ export function EdgeRow({
 export function ScenarioPreview({
   rows,
   params,
+  raw,
 }: {
   rows: MessageEdgeRow[];
   params: SolverParams;
+  raw: boolean;
 }) {
   const receivers = useMemo(() => {
     const seen = new Map<string, { ticker: string; expiry: string }>();
@@ -212,7 +242,10 @@ export function ScenarioPreview({
           >
             <span className="min-w-0 truncate font-mono">
               z({short(r.sourceTicker, r.sourceExpiry)}) · β{" "}
-              {r.betaAtmVol.toFixed(2)} · p {Math.round(r.messagePrecision)}
+              {r.betaAtmVol.toFixed(2)} ·{" "}
+              {raw
+                ? `p ${Math.round(r.messagePrecision)}`
+                : `σ ${fmtSigmaPts(r.messagePrecision)}pt`}
             </span>
             <span className="flex items-center gap-1">
               <input
@@ -236,9 +269,11 @@ export function ScenarioPreview({
         <span className="text-accent-300">
           {(out.mean * 100).toFixed(3)} pts
         </span>
-        {" · q "}
-        <span className="text-slate-200">{out.q.toFixed(0)}</span>
-        {" · κ "}
+        <span title="Incoming message confidence q = Σp — the receiver conditional (§7.6)">
+          {" · incoming confidence q "}
+          <span className="text-slate-200">{out.q.toFixed(0)}</span>
+        </span>
+        {" · anchor κ "}
         <span className="text-slate-200">{out.kappa.toFixed(0)}</span>
         {" · cond sd "}
         <span className="text-slate-200">
@@ -246,8 +281,9 @@ export function ScenarioPreview({
         </span>
       </p>
       <p className="mt-1 text-[9px] text-slate-600">
-        Conditional on the typed informers (clamped); the solved field adds
-        source uncertainty and cross-route covariance on top.
+        Conditional on the typed informers (clamped); the FINAL posterior
+        confidence is the solved marginal — it adds source uncertainty and
+        cross-route covariance on top.
       </p>
     </div>
   );

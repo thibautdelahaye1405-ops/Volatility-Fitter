@@ -66,6 +66,9 @@ export default function MessageEdgeEditor({
   const [source, setSource] = useState("");
   const [target, setTarget] = useState("");
   const [cls, setCls] = useState<RelationClass>("custom");
+  // U1 units lens: default = relationship uncertainty σ_edge (vol pts);
+  // the raw conditional precision p sits behind this toggle.
+  const [raw, setRaw] = useState(false);
 
   useEffect(() => {
     fetchEdges()
@@ -140,7 +143,14 @@ export default function MessageEdgeEditor({
             source (informer) → target (receiver) · one factor per relation
           </span>
           <button
-            className="ml-auto text-slate-500 hover:text-slate-200"
+            className="ml-auto rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[9px] text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
+            onClick={() => setRaw((v) => !v)}
+            title="Confidence units: relationship uncertainty σ = 1/√p in vol points (default) vs the raw conditional precision p (1/vol²)"
+          >
+            {raw ? "units: raw p" : "units: σ pts"}
+          </button>
+          <button
+            className="text-slate-500 hover:text-slate-200"
             onClick={onClose}
             title="Close"
           >
@@ -184,7 +194,12 @@ export default function MessageEdgeEditor({
           <span className="flex-1">relation (informer → receiver)</span>
           <span className="w-20">class</span>
           <span className="w-8">rule</span>
-          <span className="w-14 text-right">precision</span>
+          <span
+            className="w-14 text-right"
+            title="Relationship uncertainty σ_edge = 1/√p of this ONE factor (vol pts); toggle for the raw precision p"
+          >
+            {raw ? "precision" : "uncert (pt)"}
+          </span>
           <span className="w-14 text-right">β atm</span>
           <span className="w-14 text-right">β skew</span>
           <span className="w-14 text-right">β curv</span>
@@ -214,6 +229,8 @@ export default function MessageEdgeEditor({
                       key={index}
                       row={entry.row}
                       inherited={entry.inherited}
+                      params={params}
+                      raw={raw}
                       onChange={(patch) => update(index, patch)}
                       onDelete={() =>
                         setRows((r) => r.filter((_, j) => j !== index))
@@ -273,7 +290,7 @@ export default function MessageEdgeEditor({
         </div>
 
         {/* Deterministic scenario preview (the exit-gate surface) */}
-        <ScenarioPreview rows={rows.map((r) => r.row)} params={params} />
+        <ScenarioPreview rows={rows.map((r) => r.row)} params={params} raw={raw} />
       </div>
     </div>
   );

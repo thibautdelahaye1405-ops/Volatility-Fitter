@@ -89,16 +89,17 @@ export default function ExtrapolateResults({
                   </span>
                   {/* Posterior ATM credible half-width (functional band's
                       level marginal, idio-floored on dark names). In message
-                      mode the tooltip adds the receiver-conditional vs
-                      marginal precision readout (spec §7.5/§17). */}
+                      mode the tooltip names the U1 taxonomy: incoming message
+                      confidence q (receiver conditional, §7.6) vs the FINAL
+                      posterior confidence (the marginal — authoritative). */}
                   <span
                     className="w-10 shrink-0 text-right font-mono text-[9px] text-slate-500"
                     title={
-                      "Posterior ATM-vol sd (1σ, bp)" +
+                      "Final posterior confidence — ATM-vol sd (1σ, bp)" +
                       (n.qIncoming !== null && n.qIncoming !== undefined
-                        ? ` · incoming conditional q ${n.qIncoming.toFixed(0)}` +
-                          ` · marginal π ${(1 / (n.sd * n.sd)).toFixed(0)}` +
-                          " (marginal is authoritative — it folds in source uncertainty and shared routes)"
+                        ? ` · incoming message confidence q ${n.qIncoming.toFixed(0)}` +
+                          ` · final posterior (marginal) precision ${(1 / (n.sd * n.sd)).toFixed(0)}` +
+                          " (the marginal is authoritative — it folds in source uncertainty and shared routes)"
                         : "")
                     }
                   >
