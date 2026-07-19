@@ -1,0 +1,8 @@
+{
+ "dtheta": 3.621210931670227e-07,
+ "derr_bp": 9.749797885705291e-05,
+ "dar_rel": 1.0342716495180218e-06,
+ "n_nodes": 12,
+ "source": "tmp/volfit_surfaces_20260718_1324.json (Massive live, 2026-07-18)",
+ "protocol": "standalone haircut-band refit per node, lr vs logistic chart"
+}

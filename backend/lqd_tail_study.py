@@ -115,10 +115,11 @@ def observe(result, t: float) -> dict:
 
 
 def run_study(k, w, t, band=None, n_order: int = 12, reg_lambda: float = 1e-6,
-              seed: int = 20260719) -> dict:
+              reg_power: float = 1.0, seed: int = 20260719) -> dict:
     """The full committee protocol around one baseline configuration."""
     rng = np.random.default_rng(seed)
-    base_kwargs = dict(t=t, n_order=n_order, reg_lambda=reg_lambda, band=band)
+    base_kwargs = dict(t=t, n_order=n_order, reg_lambda=reg_lambda,
+                       reg_power=reg_power, band=band)
 
     def fit(kk, ww, **over):
         kwargs = dict(base_kwargs, **over)

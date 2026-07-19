@@ -457,6 +457,47 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   outliers, cycle products, single-relationship-dominated receivers,
   conditioning; TopBar chip; Run blocked only on genuine blockers).
 
+### 🧭 SESSION WRAP (2026-07-19m) — LQD COMMITTEE REVISION R4: NOTE 01 MAJOR REVISION SHIPPED
+
+- **01_lqd_model_coordinates.tex revised end-to-end** per the committee
+  report (see Docs/notes/reviews/): retitled ("Unconstrained Coordinates
+  for Arbitrage-Free Smiles"), abstract/invariants narrowed + upgraded to
+  the logistic-chart claim; NEW density Prop (exponential-tail class,
+  Wasserstein topology, exclusions named — answers Q2); price-chart
+  "convex cone" → convex set w/ linear inequalities; fair density-chart
+  comparison para; NEW §5.1 endpoint chart + logistic coordinate (decouple
+  demo fig, chart-equivalence macros, remark on what the chart does NOT
+  change); fig:modes moral scoped to the decoupled chart; "nothing can
+  fail" → budgeted-failure para; NEW §7.4 numerical certificate (FC
+  margin, strike-space audit envelope, the found wing bug narrated,
+  beyond-grid asymptote eq); vega-floor regime figure at §7.3; ATM chart
+  metric honesty + session-local kernel labels (§8.2); coefficient
+  non-uniqueness + chart choice + barrier-role paras in §9; warm-start
+  caveats (diffusive scale, event basins); Jacobian O(P n_grid) truthing +
+  var-swap-derivative note; calendar honesty moved up + joint-repair +
+  economic-units queue; SPX case: spxtails caption conditioning-set
+  rewrite + NEW tail-stability study (fan fig + Lee-convergence fig,
+  committee protocol); event case: "W-shaped" retracted (single hump —
+  their small-corrections list was right), N=6 comparator fig w/ L1 +
+  mode-displacement macros; §13 "adopted vs original" w/ Petersen–Müller +
+  metalog citations; §14 limitations += prior-dominated tails, marginals
+  ≠ dynamics, forward-error misreading, queued interface gaps, benchmark
+  scope; perf appendix regenerated SINGLE-RUN (gen_lqd_audit.py emits
+  table+figure together, median±IQR interleaved, retired fastest-of-3);
+  Def 1 boundary derivative; logistic-smile near-symmetry fix; tailmap
+  caption A_L-wall fix; NEW appendices: Model card + Referee Q&A (12
+  answers indexed); listing wing-stable + re-executed vs production
+  (Q 1.2e-12, mu 5.3e-15); traceability += chart/certificate rows.
+- New generators: figures/gen_lqd_audit.py (one-run timing 1.44-1.97x,
+  chart equivalence, cert envelope) + gen_lqd_referee.py (tailfan, Lee,
+  decouple, event-order, vegafloor); artifacts tail_study_note.json +
+  lqd_chart_equivalence_live.json committed. Build: pdflatex x2 clean, 0
+  undefined refs, overfulls <10pt, 49pp; key pages rendered + eyeballed.
+- NEXT: **R5** (ATM chart GN/Fisher metric + RR/BF packages, analytic
+  var-swap derivative, calendar violations in currency/ticks/spread) —
+  then rebuild the note's §8.2/§11 queued-work sentences into shipped
+  claims.
+
 ### 🧭 SESSION WRAP (2026-07-19k) — LQD COMMITTEE REVISION R1+R2: LOGISTIC CHART + WING-ROUNDING FIX + CERTIFICATION BATTERY
 
 Context: Note 01 was reviewed by a bank committee (Head of Quants + senior
