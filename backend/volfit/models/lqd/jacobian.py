@@ -158,17 +158,31 @@ def residual_jacobian(
     n_calk = 0 if cal_k is None else cal_k.size
 
     a_left, a_right = endpoint_scales(params)
+    # Mirror of the _residuals clamp: keep the rejection rows finite for a
+    # wild trial whose endpoint exp overflowed (or went NaN).
+    if not np.isfinite(a_right) or a_right > 1e6:
+        a_right = 1e6
     d_al, d_ar = _endpoint_grads(a_left, a_right, params.order)
 
-    # --- infeasible tail: residual was full(n_fit, 10 + a_right) + reg + barrier
-    if a_right >= 1.0 - EPS_AR:
+    def infeasible_jac() -> np.ndarray:
+        # residual was full(n_fit, 10 + a_right) + reg + zeros(cal) + barrier
         j_fit = np.tile(d_ar, (n_fit, 1))
         j_cal = np.zeros((n_cal + n_calk, p))
         return np.vstack([j_fit, _reg_jac(reg, p), j_cal, _barrier_row(
             a_right, d_ar, barrier_center, barrier_scale)])
 
+    # --- infeasible tail (A_R >= 1): reject before building anything -------
+    if a_right >= 1.0 - EPS_AR:
+        return infeasible_jac()
+
     # --- one quadrature pass + its theta-sensitivities (shared helper) ----
-    slice_, d_az, d_dadz = slice_sensitivities(params, n_points)
+    try:
+        slice_, d_az, d_dadz = slice_sensitivities(params, n_points)
+    except ValueError:
+        # Interior-excursion overflow (quadrature.EXP_BUDGET): same penalty
+        # branch as the residual side, so the analytic path never crashes on
+        # a trial the value path merely rejects.
+        return infeasible_jac()
     z0, dz = float(slice_.z[0]), slice_._step
 
     # --- fit block: dC/dtheta_j = hermite_eval(z_k; d_az[j], d_dadz[j]) ----

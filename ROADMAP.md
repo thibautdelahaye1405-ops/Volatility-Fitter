@@ -473,9 +473,22 @@ violation reporting.
   lock. Quotable envelope (Note 01 question 4): bounds<=1.2e-9 price,
   butterflies<=1e-14, digital<=4e-12, vs-fine<=2.6e-9 — UNIFORM across
   plain/near-wall/wild.
-- Full suite: pre-fix run 1328/1329 (the workspace NaN above); clean rerun
-  with all edits pending at wrap time (spot batches green: certification
-  8/8, charts 8/8, workspace 7/7, api_settings; frontend tsc + 92/92).
+- **Beyond-grid strike asymptote** (found via the functional-band test):
+  display strikes past the grid's quantile range (k=+1.0 is ~17sd out on
+  short-dated fixtures) used to price off the clamped grid edge — the old
+  rounding artifact accidentally kept them positive/theta-responsive; the
+  wing fix exposed the clamp (band Jacobian died at the edge). call_price
+  now prices beyond-range strikes on the slice's OWN exponential asymptote
+  (C = e^{k-z_r} A_R/(1-A_R), mirrored put form left; continuous at the
+  seam with the analytic tail correction, Lee-consistent,
+  theta-responsive). test_functional_band_api's width[-1]>width[atm] lock
+  was amended to its own docstring's semantics (fan-out asserted at the
+  last INSIDE-range strike; beyond-grid width must DIFFER from ATM, not
+  exceed — the old exceed-lock was calibrated against the artifact).
+- Full suite: pre-fix run 1328/1329 (the workspace NaN above); post-fix
+  spot batches green (certification 8/8, charts 8/8, workspace 7/7,
+  functional-band 5/5, api_settings; frontend tsc + vitest 102/102); final
+  full run landed green before commit (see commit message).
 - NEXT (committee arc): **R3 tail-stability study** (jackknife outer
   quotes, N/lambda sweeps, 1-bp perturbations, multi-start; A_L/A_R/Lee/
   var-swap/digital fans + effective-slope-at-delta figure), then **R4 note

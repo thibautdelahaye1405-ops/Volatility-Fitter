@@ -55,18 +55,19 @@ export default function PenaltyCoefficients({ group, draft, onChange, disabled }
     <div className="mb-1.5 flex items-center justify-between" key="lqdCoords">
       <span
         className={rowLabel}
-        title="LQD optimization chart: Endpoint solves in (log A_L, log A_R, body) - body modes are endpoint-neutral, so acute central convexity can't drag the asymptotic wings while fitting. L/R is the historical raw vector."
+        title="LQD optimization chart: Logistic (default) solves in (log A_L, logit A_R, body) - body modes are endpoint-neutral AND the A_R < 1 wall is unreachable, so the solve is genuinely unconstrained. Endpoint is the same without the logit; L/R is the historical raw vector. Same fitted smile in all three, to solver tolerance."
       >
         LQD solve coordinates
       </span>
       <select
         value={draft.lqdCoords}
         disabled={disabled}
-        onChange={(e) => onChange({ lqdCoords: e.target.value as "lr" | "endpoint" })}
+        onChange={(e) => onChange({ lqdCoords: e.target.value as "lr" | "endpoint" | "logistic" })}
         className={numInput + " w-28"}
       >
         <option value="lr">L / R (raw)</option>
         <option value="endpoint">Endpoint</option>
+        <option value="logistic">Logistic</option>
       </select>
     </div>
   );

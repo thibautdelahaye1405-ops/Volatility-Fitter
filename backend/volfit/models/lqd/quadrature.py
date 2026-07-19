@@ -46,6 +46,13 @@ N_POINTS = 8001
 # Right-tail admissibility buffer: A_R must stay below 1 - EPS_AR.
 EPS_AR = 1e-6
 
+# Interior-excursion overflow budget (committee point 5): exp() overflows past
+# ~709.78, so a body blow-up hidden by endpoint cancellation (A_R < 1 while
+# max g is huge) must be refused as a clean ValueError — which the
+# calibrator's penalty branch already catches — never propagated as inf/nan
+# prices. Sane fitted slices sit orders of magnitude below this.
+EXP_BUDGET = 700.0
+
 
 # The quadrature grid (z, u = expit(z), u(1-u)) and the Legendre basis
 # P_n(1-2u) are *parameter-independent*: they depend only on (z_max, n_points)
@@ -58,10 +65,17 @@ EPS_AR = 1e-6
 # an error instead of silently corrupting every future slice that shares them.
 @lru_cache(maxsize=8)
 def _static_grid(z_max: float, n_points: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Cached (z, u, u(1-u)) for the symmetric logit quadrature grid."""
+    """Cached (z, u, u(1-u)) for the symmetric logit quadrature grid.
+
+    u(1-u) is formed as expit(z) * expit(-z): the naive u * (1 - u) collapses
+    to exactly 0 once expit(z) rounds to 1.0 (z > ~36.7, committee point 5),
+    silently zeroing the integrand on the outer grid nodes; each factor here
+    is evaluated on its own accurate side, so the product stays exact into
+    the far wings.
+    """
     z = np.linspace(-z_max, z_max, n_points)
     u = expit(z)
-    u1mu = u * (1.0 - u)
+    u1mu = u * expit(-z)
     for arr in (z, u, u1mu):
         arr.flags.writeable = False
     return z, u, u1mu
@@ -127,9 +141,35 @@ class LQDSlice:
         """
         k_arr = np.asarray(k, dtype=float)
         z_k = self.strike_to_z(k_arr)
-        u_k = expit(z_k)
         a_k = hermite_eval(z_k, float(self.z[0]), self._step, self.a_z, self.da_dz)
-        return a_k - np.exp(k_arr) * (1.0 - u_k)
+        # e^k (1 - u_k) in log space: 1 - expit(z) rounds to exactly 0 for
+        # z > ~36.7 while e^k is enormous there, which used to step the far
+        # right wing up to A(z_k) (committee point 5). log(1 - u) is
+        # -softplus(z), so the product is exp(k - logaddexp(0, z)).
+        c = a_k - np.exp(k_arr - np.logaddexp(0.0, z_k))
+        # Strikes beyond the quantile range of the z grid: strike_to_z clamps
+        # there, so price them on the slice's OWN exponential asymptote
+        # (the same tail form the quadrature's analytic corrections use, so
+        # the seam at Q(+-Z) is continuous): with z_r = Z + (k - Q(Z))/A_R,
+        #   C(k) = e^{k - z_r} A_R / (1 - A_R),
+        # and by the mirrored derivation on the left, with
+        # z_l = -Z + (k - Q(-Z))/A_L,
+        #   P(k) = e^{k + z_l} A_L / (1 + A_L).
+        # Exponents are clipped at 0 only to keep the UNUSED where-branch from
+        # overflowing; in the applied region they are always negative. Keeps
+        # far-display wings positive, Lee-consistent and theta-responsive
+        # (the functional band's Jacobian must not die at the grid edge).
+        if self.a_right > 0.0:
+            z_r = self.z[-1] + (k_arr - self.q_z[-1]) / self.a_right
+            tail_r = np.exp(np.minimum(k_arr - z_r, 0.0)) * (
+                self.a_right / (1.0 - self.a_right))
+            c = np.where(k_arr > self.q_z[-1], tail_r, c)
+        if self.a_left > 0.0:
+            z_l = self.z[0] + (k_arr - self.q_z[0]) / self.a_left
+            tail_l = (1.0 - np.exp(k_arr)) + np.exp(
+                np.minimum(k_arr + z_l, 0.0)) * (self.a_left / (1.0 + self.a_left))
+            c = np.where(k_arr < self.q_z[0], tail_l, c)
+        return c
 
     def put_price(self, k: np.ndarray | float) -> np.ndarray:
         """Normalized put via parity C - P = 1 - e^k."""
@@ -158,7 +198,7 @@ class LQDSlice:
 
     def martingale_check(self) -> float:
         """Numerical value of E[e^X] (should be 1 after normalization)."""
-        mass = np.exp(self.q_z) * self.u * (1.0 - self.u)
+        mass = np.exp(self.q_z) * self.u * expit(-self.z)  # u(1-u), wing-stable
         total = float(np.trapezoid(mass, self.z))
         z_end = self.z[-1]
         total += float(np.exp(self.q_z[-1] - z_end)) / (1.0 - self.a_right)
@@ -171,7 +211,8 @@ class LQDSlice:
         The integrand Q(z) u(1-u) decays like z e^{-|z|}; truncation beyond
         Z_MAX is negligible at double precision.
         """
-        return -2.0 * float(np.trapezoid(self.q_z * self.u * (1.0 - self.u), self.z))
+        u1mu = self.u * expit(-self.z)  # u(1-u), wing-stable
+        return -2.0 * float(np.trapezoid(self.q_z * u1mu, self.z))
 
 
 def build_slice(
@@ -195,12 +236,18 @@ def build_slice(
     g = (1.0 - u) * params.L + u * params.R
     if params.a.size:
         g = g + params.a @ _legendre_grid(z_max, n_points, params.order)[2:]
+    g_max = float(np.max(g))
+    if not np.isfinite(g_max) or g_max > EXP_BUDGET:
+        raise ValueError(f"interior overflow: max g = {g_max:.3g} exceeds the exp budget")
     dq_dz = np.exp(g)  # dQ/dz, eq. (q_logit)
 
     # Anchored quantile Qbar(z) = int_0^z e^{g} ds  (eq. qbar); the grid is
     # symmetric so the anchor z = 0 is the center node.
     q_bar = _cumquad(dq_dz, dx=dz, initial=0.0)
     q_bar = q_bar - q_bar[n_points // 2]
+    q_max = float(np.max(q_bar))
+    if not np.isfinite(q_max) or q_max > EXP_BUDGET:
+        raise ValueError(f"interior overflow: max Qbar = {q_max:.3g} exceeds the exp budget")
 
     # Martingale normalization mu = -log int e^{Qbar} u(1-u) dz  (eq. mu_norm),
     # with the analytic endpoint corrections (eqs. right/left_tail_corr).

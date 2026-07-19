@@ -24,6 +24,7 @@ from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
+from volfit.models.lqd.charts import build_chart, endpoint_transform  # noqa: F401 — endpoint_transform re-exported for back-compat
 from volfit.models.lqd.jacobian import residual_jacobian
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
 
@@ -96,6 +97,11 @@ def _residuals(
     """
     params = LQDParams.from_vector(theta)
     _, a_right = endpoint_scales(params)
+    # A wild trial theta can overflow the endpoint exp to inf (or carry a NaN
+    # through); clamp so the rejection penalty and barrier stay finite — a
+    # non-finite residual poisons trf's step control instead of repelling it.
+    if not np.isfinite(a_right) or a_right > 1e6:
+        a_right = 1e6
     n_cal = 0 if cal_z is None else cal_z.size
     n_calk = 0 if cal_k is None else cal_k.size
     n_prior = 0 if prior_anchor is None else prior_anchor.k.size
@@ -156,7 +162,8 @@ def _residuals(
             # the prior's where the live quotes don't identify them (design note §5).
             op = operator_residuals(slice_.implied_w, operator_prior)
     except ValueError:
-        # Infeasible tail (A_R >= 1): large smooth-ish penalty keeps trf moving back.
+        # Infeasible trial (A_R >= 1, or an interior-excursion overflow —
+        # quadrature.EXP_BUDGET): large finite penalty keeps trf moving back.
         fit = np.full(n_fit, 10.0 + a_right)
         cal = np.zeros(n_cal)
         calk = np.zeros(n_calk)
@@ -168,26 +175,6 @@ def _residuals(
     # logaddexp(0, x) is the same function evaluated stably (~x for large x).
     barrier = np.logaddexp(0.0, barrier_scale * (a_right - barrier_center))
     return np.concatenate((fit, reg * theta[2:], cal, calk, [barrier], vs, pa, pvs, op))
-
-
-def endpoint_transform(n_order: int) -> np.ndarray:
-    """The endpoint-coordinate chart theta = M @ phi (symmetric-surface
-    Phase 5), with phi = (log A_L, log A_R, a_2..a_N).
-
-    log A_L = L + sum a_n and log A_R = R + sum (-1)^n a_n are linear in
-    theta, so the chart is an exact, unit-determinant linear map: holding
-    (phi_0, phi_1) fixed while moving a body mode a_n automatically
-    counter-adjusts (L, R) to keep both endpoint scales — the coefficients
-    that fit acute central convexity can no longer mechanically drag the
-    asymptotic wings. Same model family, same optimum; only the optimizer's
-    trust-region geometry changes.
-    """
-    p = n_order + 1
-    m = np.eye(p)
-    n = np.arange(2, n_order + 1)
-    m[0, 2:] = -1.0
-    m[1, 2:] = -((-1.0) ** n)
-    return m
 
 
 def prepare_residual_args(
@@ -353,11 +340,15 @@ def calibrate_slice(
     rows). Pure side-channel; None (the default) is byte-identical. Always
     recorded in the (L, R, a) coordinates regardless of ``coords``.
 
-    ``coords`` selects the optimization chart: "lr" (historical, the raw
-    (L, R, a) vector — byte-identical default) or "endpoint" (Phase 5:
-    (log A_L, log A_R, a) via ``endpoint_transform`` — same family and same
-    optimum, but body modes are endpoint-neutral so acute central convexity
-    no longer mechanically drags the asymptotic wings during the solve).
+    ``coords`` selects the optimization chart (volfit.models.lqd.charts):
+    "lr" (historical, the raw (L, R, a) vector — the library-level
+    byte-identical default), "endpoint" (Phase 5: (log A_L, log A_R, a),
+    body modes endpoint-neutral so acute central convexity no longer
+    mechanically drags the asymptotic wings during the solve) or "logistic"
+    (the endpoint chart with A_R = expit(rho): the admissibility wall
+    A_R < 1 is unreachable, every chart point is admissible — the
+    production API default). Same family and same objective in all three,
+    so the optimum is chart-independent to solver tolerance.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
@@ -383,18 +374,17 @@ def calibrate_slice(
         w0_guess = float(np.interp(0.0, k, w_quotes))
         init = logistic_init(w0_guess, n_order=n_order)
 
-    fun, jac_fn, x0, back = _residuals, residual_jacobian, init.to_vector(), None
-    if coords == "endpoint":
-        m = endpoint_transform(n_order)
+    chart = build_chart(n_order, coords)
+    fun, jac_fn, x0 = _residuals, residual_jacobian, init.to_vector()
+    if chart is not None:
 
-        def fun(phi, *a, _m=m):  # noqa: E306 — chart wrapper, theta = M phi
-            return _residuals(_m @ phi, *a)
+        def fun(x, *a, _c=chart):  # noqa: E306 — chart wrapper, theta = c(x)
+            return _residuals(_c.to_theta(x), *a)
 
-        def jac_fn(phi, *a, _m=m):
-            return residual_jacobian(_m @ phi, *a) @ _m
+        def jac_fn(x, *a, _c=chart):  # chain rule: J_x = J_theta dtheta/dx
+            return residual_jacobian(_c.to_theta(x), *a) @ _c.dtheta_dx(x)
 
-        x0 = np.linalg.solve(m, init.to_vector())
-        back = m
+        x0 = chart.from_theta(init.to_vector())
 
     result = least_squares(
         fun,
@@ -412,13 +402,14 @@ def calibrate_slice(
         max_nfev=4000,
     )
 
-    # Endpoint chart: map the solution (and its Jacobian, J_theta = J_phi M^-1)
-    # back to the canonical (L, R, a) coordinates every consumer speaks.
-    theta_star = np.asarray(result.x, dtype=float)
+    # Chart solve: map the solution (and its Jacobian) back to the canonical
+    # (L, R, a) coordinates every consumer speaks.
+    x_star = np.asarray(result.x, dtype=float)
     jac_star = np.asarray(result.jac, dtype=float)
-    if back is not None:
-        theta_star = back @ theta_star
-        jac_star = jac_star @ np.linalg.inv(back)
+    theta_star = x_star
+    if chart is not None:
+        theta_star = chart.to_theta(x_star)
+        jac_star = chart.pull_jacobian(jac_star, x_star)
 
     if solver_diag is not None:
         solver_diag.update(

@@ -64,12 +64,15 @@ class FitSettings(BaseModel):
 
     model: Literal["lqd", "svi", "sigmoid"] = "lqd"
     nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
-    #: LQD optimization chart (symmetric-surface Phase 5): "lr" (historical
-    #: (L, R, a) vector — byte-identical default) or "endpoint"
-    #: ((log A_L, log A_R, a) via models.lqd.calibrate.endpoint_transform —
-    #: same family/optimum, but body modes are endpoint-neutral so acute
-    #: central convexity can't mechanically drag the asymptotic wings).
-    lqdCoords: Literal["lr", "endpoint"] = "lr"
+    #: LQD optimization chart (volfit.models.lqd.charts): "lr" (historical
+    #: raw (L, R, a) vector), "endpoint" ((log A_L, log A_R, a) — body modes
+    #: endpoint-neutral so acute central convexity can't mechanically drag
+    #: the asymptotic wings) or "logistic" (endpoint chart with
+    #: A_R = expit(rho): the admissibility wall A_R < 1 is unreachable, the
+    #: chart covers exactly the admissible set — committee revision R1, the
+    #: production default). Same family/objective in all three, so the
+    #: fitted optimum is chart-independent to solver tolerance.
+    lqdCoords: Literal["lr", "endpoint", "logistic"] = "logistic"
     regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
     regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}
     nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)

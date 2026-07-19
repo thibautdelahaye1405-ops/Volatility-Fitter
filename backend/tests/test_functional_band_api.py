@@ -145,9 +145,19 @@ def test_filter_overlay_band_uses_the_full_covariance(primed):
     vols = _vols(post)
     assert np.all(_vols(lo) <= vols + 1e-12)
     assert np.all(vols <= _vols(hi) + 1e-12)
-    # Wing widths exceed the ATM width: skew/curv uncertainty reaches the wings.
+    # Wing widths DIFFER from the ATM width: skew/curv uncertainty reaches the
+    # wings (a level-only band is parallel by construction). Within the
+    # slice's quantile range the band fans out wider than ATM; at display
+    # strikes beyond the quadrature grid's quantile range (k = +1.0 is ~17 sd
+    # out on this short-dated fixture) the smile rides the model's own tail
+    # asymptote, where handle uncertainty honestly NARROWS — the wing belongs
+    # to the tail scale, not the body handles. (The old exceed-assertion at
+    # width[-1] was calibrated against the pre-R1 far-wing pricing artifact.)
     ks = np.array([p.k for p in post])
     atm = int(np.argmin(np.abs(ks)))
     width = _vols(hi) - _vols(lo)
     assert width[0] > width[atm]
-    assert width[-1] > width[atm]
+    slice_ = build_slice(record.result.params)
+    inside = np.nonzero(ks < float(slice_.q_z[-1]))[0]
+    assert width[inside[-1]] > width[atm]
+    assert abs(width[-1] - width[atm]) > 0.2 * width[atm]

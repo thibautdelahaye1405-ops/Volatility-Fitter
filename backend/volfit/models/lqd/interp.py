@@ -45,6 +45,44 @@ def hermite_eval(
     )
 
 
+def hermite_monotone_margin(
+    values: np.ndarray,
+    derivs: np.ndarray,
+    step: float,
+    flat_tol: float = 1e-9,
+) -> float:
+    """Fritsch-Carlson certificate for the uniform-grid cubic Hermite
+    interpolant of an INCREASING function.
+
+    Positive nodal derivatives alone do not preclude segment overshoot; the
+    classical sufficient condition does: on each segment the interpolant is
+    monotone if both endpoint derivatives lie in [0, 3 * secant slope].
+    Returns the worst signed margin of that condition over the ACTIVE
+    segments — positive means certified monotone between nodes everywhere
+    the curve is numerically alive. Segments whose derivatives and secant
+    are all below ``flat_tol`` (the underflowed far tail of the asset-share
+    curve, where round-off noise makes the strict condition meaningless)
+    are instead certified flat-to-tolerance: |value step| <= flat_tol * step.
+    Certify a decreasing curve by passing (-values, -derivs).
+
+    With exact nodal derivatives of a smooth function on the production grid
+    the derivative-to-secant ratio is 1 + O(step^2), far inside the region;
+    asserting this per slice upgrades "monotone at the nodes" to a proof
+    (with the flat_tol caveat stated — the audit phrasing of Note 01).
+    """
+    d = np.asarray(derivs, dtype=float)
+    secant = np.diff(np.asarray(values, dtype=float)) / step
+    d0, d1 = d[:-1], d[1:]
+    margins = np.minimum(
+        np.minimum(d0, d1),
+        np.minimum(3.0 * secant - d0, 3.0 * secant - d1),
+    )
+    active = np.maximum(np.maximum(d0, d1), np.abs(secant)) > flat_tol
+    if not active.any():
+        return float("inf")
+    return float(np.min(margins[active]))
+
+
 def hermite_invert(
     y: np.ndarray,
     x0: float,
