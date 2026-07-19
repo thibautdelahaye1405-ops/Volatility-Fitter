@@ -160,5 +160,6 @@ stated in the prose; bibliography last.
 | 10 Calendar | `10_calendar_unnamed_martingale.tex` | the unnamed martingale: Kellerer as the organizing theorem; who pays to restore the order | `gen_cal_martingale.py` |
 | 11 Event clock | `11_event_market_clock.tex` | the market keeps its own clock: DDS license, the crush as a reading error, the calendar as an inverse problem | `gen_event_market_clock.py` |
 | 12 Spot-vol | `12_spotvol_missing_derivative.tex` | the missing derivative: dynamics unidentified by a snapshot; SSR as the one dial; frozen LV derives its own answer | `gen_ssr_derivative.py` |
+| 13 Prior | `13_prior_flat_directions.tex` | where the likelihood is flat: the prior confined to the null space of today's data; gating vs shrinkage; the proxy's blind spot prosecuted | `gen_prior_flat.py` |
 
 No edition has been declared the replacement of its original.
