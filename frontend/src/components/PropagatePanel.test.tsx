@@ -39,6 +39,9 @@ function graphStub(over: Partial<UseGraphResult> = {}): UseGraphResult {
     params: {
       etaScale: 1, kappaScale: 1, lambdaScale: 0, nu: 0.1,
       calendarWeight: null, crossWeight: null,
+      propagationMode: "smooth_field", alphaT: 1, ampCal: 1, ampCross: 1,
+      calPrecision: 1700, calEpsilon: 0.97,
+      calDecay: "inverse_sqrt_gap", crossPrecision: 13000,
     },
     setParam: vi.fn(),
     resetParams: vi.fn(),
@@ -63,6 +66,7 @@ function extraStub(
     results: null,
     running: false,
     error: null,
+    cycles: [],
     backtest: null,
     backtesting: false,
     backtestError: null,

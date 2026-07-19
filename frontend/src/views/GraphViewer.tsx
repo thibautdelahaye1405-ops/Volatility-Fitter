@@ -18,6 +18,7 @@ import PropagatePanel, { type ObservationSource } from "../components/PropagateP
 import SegmentedControl from "../components/SegmentedControl";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
 import { useGraphEdges } from "../state/useGraphEdges";
+import { useMessageEdges } from "../state/useMessageEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
@@ -59,17 +60,33 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
   // The REAL solver topology for the network view: persisted per-edge
   // overrides when any exist, else the auto-lattice the solver would build.
-  // Re-fetched when the edge editor saves (edgesVersion bump).
+  // Under the message operator the displayed topology is the message
+  // relations instead (persisted rules, else the auto relations), mapped
+  // into the chart's stored-edge convention (from = receiver, to = informer)
+  // so the information-flow arrows stay honest. Re-fetched when the edge
+  // editor saves (edgesVersion bump) or the operator changes.
   const { fetchEdges, fetchLattice } = useGraphEdges();
+  const { fetchEdges: fetchMsgEdges, fetchAuto: fetchMsgAuto } = useMessageEdges();
+  const messagesMode = graph.params.propagationMode === "precision_messages";
   const [edges, setEdges] = useState<LayoutEdgeIn[]>([]);
   const [edgesVersion, setEdgesVersion] = useState(0);
   useEffect(() => {
     let alive = true;
-    fetchEdges()
-      .then((e) => (e.length > 0 ? e : fetchLattice()))
-      .then((e) => {
-        if (alive)
-          setEdges(
+    const load: Promise<LayoutEdgeIn[]> = messagesMode
+      ? fetchMsgEdges()
+          .then((rows) => (rows.length > 0 ? rows : fetchMsgAuto()))
+          .then((rows) =>
+            rows.map((r) => ({
+              fromTicker: r.targetTicker,
+              fromExpiry: r.targetExpiry,
+              toTicker: r.sourceTicker,
+              toExpiry: r.sourceExpiry,
+              weight: r.messagePrecision,
+            })),
+          )
+      : fetchEdges()
+          .then((e) => (e.length > 0 ? e : fetchLattice()))
+          .then((e) =>
             e.map((r) => ({
               fromTicker: r.fromTicker,
               fromExpiry: r.fromExpiry,
@@ -78,6 +95,9 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
               weight: r.weight,
             })),
           );
+    load
+      .then((e) => {
+        if (alive) setEdges(e);
       })
       .catch(() => {
         /* topology is display-only; the solver builds its own — keep last */
@@ -85,7 +105,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     return () => {
       alive = false;
     };
-  }, [fetchEdges, fetchLattice, edgesVersion]);
+  }, [fetchEdges, fetchLattice, fetchMsgEdges, fetchMsgAuto, messagesMode, edgesVersion]);
 
   // With the calibrations source the chart is driven by the production solve:
   // the full SELECTED lit+dark universe (prior handles as the baseline), the

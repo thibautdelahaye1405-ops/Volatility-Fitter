@@ -164,6 +164,17 @@ def put_message_edges(
     return GraphMessageEdgesResponse(edges=state.graph_message_edges())
 
 
+@router.get("/graph/edges/messages/auto", response_model=GraphMessageEdgesResponse)
+def get_auto_message_edges(request: Request) -> GraphMessageEdgesResponse:
+    """The auto relations over the selected universe as editable rows — the
+    message editor's 'seed from auto relations' source."""
+    from volfit.api.graph_message import auto_message_edge_rows
+
+    return GraphMessageEdgesResponse(
+        edges=auto_message_edge_rows(request.app.state.volfit)
+    )
+
+
 @router.get("/graph/edges/blocks", response_model=GraphBlockRuleResponse)
 def get_graph_blocks(request: Request) -> GraphBlockRuleResponse:
     """The persisted ticker-block rule VERBATIM (an empty rule when none is

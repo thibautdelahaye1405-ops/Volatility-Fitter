@@ -374,6 +374,51 @@ def test_hybrid_reduces_to_message_at_zero_smoothness(primed):
     assert [n.model_dump() for n in hyb.nodes] == [n.model_dump() for n in msg.nodes]
 
 
+def test_auto_message_edges_route_and_one_way_direction():
+    """P5 exit-gate lock: (a) the auto-seed route serves the editable auto
+    relations; (b) a ONE-WAY UI payload (PUT /graph/edges/messages) reaches
+    the posterior with the configured informer→receiver direction — swapping
+    source and target inverts the amplitude map (beta vs 1/beta)."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        tk = "ALPHA"
+        isos = [e["expiry"] for e in client.get("/universe").json()["expiries"][tk]]
+        client.post(f"/calibrate/{tk}/{isos[0]}")
+
+        auto = client.get("/graph/edges/messages/auto").json()["edges"]
+        assert auto, "auto relations expected over the selected universe"
+        classes = {e["relationClass"] for e in auto}
+        assert "calendar" in classes
+        cal = [e for e in auto if e["relationClass"] == "calendar"]
+        assert all(e["precisionRule"] == "calendar_distance" for e in cal)
+
+        def _run(source_iso, target_iso, beta):
+            row = {
+                "sourceTicker": tk, "sourceExpiry": source_iso,
+                "targetTicker": tk, "targetExpiry": target_iso,
+                "messagePrecision": 1e5, "betaAtmVol": beta,
+                "betaSkew": beta, "betaCurv": beta,
+            }
+            assert client.put(
+                "/graph/edges/messages", json={"edges": [row]}
+            ).status_code == 200
+            resp = client.post(
+                "/graph/extrapolate",
+                json={"propagationMode": "precision_messages", "flatAtm": True},
+            ).json()
+            by = {(n["ticker"], n["expiry"]): n for n in resp["nodes"]}
+            return by[(tk, isos[0])], by[(tk, isos[1])]
+
+        # A: lit isos[0] INFORMS isos[1] with beta 2 -> receiver ~ 2x innovation.
+        lit_a, dark_a = _run(isos[0], isos[1], beta=2.0)
+        assert dark_a["noLitPath"] is False
+        assert dark_a["shiftBp"] == pytest.approx(2.0 * lit_a["innovationBp"], rel=0.05)
+        # B: swap direction — the dark node now INFORMS the lit receiver, so
+        # the dark posterior follows z_lit / beta (the inverse map).
+        lit_b, dark_b = _run(isos[1], isos[0], beta=2.0)
+        assert dark_b["shiftBp"] == pytest.approx(0.5 * lit_b["innovationBp"], rel=0.05)
+        client.put("/graph/edges/messages", json={"edges": []})  # clean up
+
+
 def test_observation_plan_in_message_mode(primed):
     """The quote-next closed form ports to Σ⁺ columns (graph/select.py)."""
     tk = primed.active_tickers()[0]

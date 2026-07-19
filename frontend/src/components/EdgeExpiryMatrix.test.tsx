@@ -51,7 +51,8 @@ describe("EdgeExpiryMatrix", () => {
 
   it("writes a directed override, mirrored when symmetric", () => {
     const { onChange } = renderMatrix();
-    fireEvent.click(screen.getByTitle("SPY 2026-07-17 → NVDA 2026-09-18"));
+    // Cell titles read receiver ← informer (the engine's direction truth).
+    fireEvent.click(screen.getByTitle("SPY 2026-07-17 ← NVDA 2026-09-18"));
     const weightInput = screen.getByLabelText(/weight/);
     fireEvent.change(weightInput, { target: { value: "5" } });
     let next = onChange.mock.lastCall?.[0] as GraphEdge[];
@@ -74,7 +75,7 @@ describe("EdgeExpiryMatrix", () => {
       edge("2026-07-17", "2026-09-18", 5),
       { ...edge("2026-09-18", "2026-07-17", 5), fromTicker: "NVDA", toTicker: "SPY" },
     ]);
-    fireEvent.click(screen.getByTitle("SPY 2026-07-17 → NVDA 2026-09-18"));
+    fireEvent.click(screen.getByTitle("SPY 2026-07-17 ← NVDA 2026-09-18"));
     fireEvent.click(screen.getByText("Clear"));
     expect(onChange).toHaveBeenCalledWith([]);
   });

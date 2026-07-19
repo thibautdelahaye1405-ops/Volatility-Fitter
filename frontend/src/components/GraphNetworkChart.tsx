@@ -236,14 +236,19 @@ export default function GraphNetworkChart({
             const dimmed = focus !== null && !focus.bundles.has(g.key);
             return (
               <g key={g.key} opacity={dimmed ? 0.15 : 1}>
+                {/* Arrowheads show INFORMATION FLOW (informer → receiver).
+                    Engine truth: a stored (a → b) edge means b informs a, so
+                    flow arrives at the a/path-start end — markerStart (with
+                    auto-start-reverse) points INTO it; (b → a) edges arrive
+                    at the b/path-end — markerEnd. */}
                 <path
                   d={g.d}
                   fill="none"
                   stroke={SLATE_400}
                   strokeWidth={g.width}
                   opacity={hovered ? 0.5 : 0.16}
-                  markerEnd={hovered ? "url(#gnc-arrow)" : undefined}
-                  markerStart={hovered && g.b.bidirectional ? "url(#gnc-arrow)" : undefined}
+                  markerStart={hovered && g.b.hasAb ? "url(#gnc-arrow)" : undefined}
+                  markerEnd={hovered && g.b.hasBa ? "url(#gnc-arrow)" : undefined}
                 />
                 {/* Wide invisible twin so the thin bundle is hoverable */}
                 <path
@@ -259,7 +264,10 @@ export default function GraphNetworkChart({
             );
           })}
 
-          {/* Hovered bundle expanded: its individual directed edges */}
+          {/* Hovered bundle expanded: its individual directed edges. The line
+              runs from → to, but the `to` node INFORMS the `from` node — so
+              the arrowhead sits at the from/start end (auto-start-reverse
+              points it INTO the receiver, along the information flow). */}
           {bundleDetails.map((d, i) => (
             <line
               key={`pd-${i}`}
@@ -268,7 +276,7 @@ export default function GraphNetworkChart({
               strokeWidth={1}
               opacity={0.35}
               pointerEvents="none"
-              markerEnd="url(#gnc-arrow-sm)"
+              markerStart="url(#gnc-arrow-sm)"
             />
           ))}
 

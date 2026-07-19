@@ -105,6 +105,14 @@ export default function ExtrapolateResults({
                       >
                         {n.lit ? "lit" : "dark"}
                       </span>
+                      {n.noLitPath === true && (
+                        <span
+                          className="ml-1 rounded bg-rose-500/15 px-1 text-[8px] uppercase tracking-wide text-rose-300"
+                          title="No lit path: this node's component has no observation — it stays at its transported prior with explicitly broad uncertainty (spec §14.3)"
+                        >
+                          no path
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 font-mono text-[10px] text-slate-400">
                       {(n.priorAtmVol * 100).toFixed(1)}→{(n.postAtmVol * 100).toFixed(1)}%
@@ -118,10 +126,19 @@ export default function ExtrapolateResults({
                       {n.shiftBp.toFixed(0)}bp
                     </span>
                     {/* Posterior ATM credible half-width (functional band's
-                        level marginal, idio-floored on dark names). */}
+                        level marginal, idio-floored on dark names). In message
+                        mode the tooltip adds the receiver-conditional vs
+                        marginal precision readout (spec §7.5/§17). */}
                     <span
                       className="w-10 shrink-0 text-right font-mono text-[9px] text-slate-500"
-                      title="Posterior ATM-vol sd (1σ, bp)"
+                      title={
+                        "Posterior ATM-vol sd (1σ, bp)" +
+                        (n.qIncoming !== null && n.qIncoming !== undefined
+                          ? ` · incoming conditional q ${n.qIncoming.toFixed(0)}` +
+                            ` · marginal π ${(1 / (n.sd * n.sd)).toFixed(0)}` +
+                            " (marginal is authoritative — it folds in source uncertainty and shared routes)"
+                          : "")
+                      }
                     >
                       ±{(n.sd * 1e4).toFixed(0)}
                     </span>

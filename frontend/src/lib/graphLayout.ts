@@ -22,6 +22,10 @@ export interface BundleEdge {
   totalWeight: number;                     // sum of |weight| across all individual edges both directions
   count: number;                           // number of individual cross edges in the bundle
   bidirectional: boolean;                  // true when edges exist in both directions
+  // Direction flags for honest arrowheads (engine truth: an a→b edge means b
+  // INFORMS a, i.e. information flows INTO the a/x1 end of the bundle).
+  hasAb: boolean;                          // an edge stored as (a → b) exists
+  hasBa: boolean;                          // an edge stored as (b → a) exists
   x1: number; y1: number; x2: number; y2: number;  // pod-boundary anchor points (on the circles, along the center line)
 }
 export interface CalendarEdge { ticker: string; fromExpiry: string; toExpiry: string; weight: number; x1: number; y1: number; x2: number; y2: number }
@@ -308,6 +312,7 @@ export function computeGraphLayout(nodes: LayoutNode[], edges: LayoutEdgeIn[]): 
       fromTicker: p.a, toTicker: p.b,
       totalWeight: p.totalWeight, count: p.count,
       bidirectional: p.ab && p.ba,
+      hasAb: p.ab, hasBa: p.ba,
       x1: pa.cx + ux * pa.radius, y1: pa.cy + uy * pa.radius,
       x2: pb.cx - ux * pb.radius, y2: pb.cy - uy * pb.radius,
     };

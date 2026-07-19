@@ -152,6 +152,9 @@ export interface OptionsSettings {
   graphEtaScale: number;
   graphLambdaScale: number;
   graphNu: number;
+  /** Default propagation operator for the production graph solve (message
+   *  arc): smooth_field = legacy byte-identical; hybrid is config-only. */
+  graphPropagationMode: "smooth_field" | "precision_messages" | "hybrid";
   dynamicsRegime: DynamicsRegime;
   ssr: number;
   autoCalibrate: boolean;
@@ -233,6 +236,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   graphEtaScale: 1.0,
   graphLambdaScale: 0.0,
   graphNu: 0.1,
+  graphPropagationMode: "smooth_field",
   dynamicsRegime: "sticky_strike",
   ssr: 2.0,
   autoCalibrate: true,

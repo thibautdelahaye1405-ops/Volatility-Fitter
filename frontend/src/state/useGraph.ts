@@ -50,10 +50,18 @@ interface GraphSolveResponse {
   nodes: GraphSolveNode[];
 }
 
+/** Production propagation operator (message arc; hybrid stays config-only). */
+export type PropagationMode = "smooth_field" | "precision_messages";
+
+/** §9.2 calendar precision families. */
+export type CalendarDecay = "inverse_sqrt_gap" | "constant" | "log_distance";
+
 /**
  * Tunable hyperparameters of the increment prior Q_Δ and the graph edges,
  * mirroring the backend GraphSolverParams schema. Scales multiply the
  * per-handle base regime; weights are null when the service defaults apply.
+ * The message-mode knobs (alphaT / amplitudes / precision family) only ride
+ * the production request when propagationMode = "precision_messages".
  */
 export interface SolverParams {
   /** Directed-smoothness reach η (propagation distance). */
@@ -68,6 +76,19 @@ export interface SolverParams {
   calendarWeight: number | null;
   /** Cross-ticker equal-expiry edge weight, or null for the default (2). */
   crossWeight: number | null;
+  /** Propagation operator (smooth_field = the legacy path, byte-identical). */
+  propagationMode: PropagationMode;
+  /** §8.1 calendar amplitude SHAPE exponent alphaT (locked default 1.0). */
+  alphaT: number;
+  /** §8.4 amplitude LEVEL multipliers ρ (desk = 1; learned ≈ 0.23 / 0.39). */
+  ampCal: number;
+  ampCross: number;
+  /** §9.2 calendar precision family (Phase-0 empirical seeds). */
+  calPrecision: number;
+  calEpsilon: number;
+  calDecay: CalendarDecay;
+  /** Cross-relation message precision scale (Phase-0 index seed). */
+  crossPrecision: number;
 }
 
 /** One scored grid point of an auto-tune sweep. */
@@ -83,7 +104,8 @@ export interface AutotuneResult {
   candidates: AutotuneCandidate[];
 }
 
-/** Default solver regime: legacy behavior (OT off, service edge weights). */
+/** Default solver regime: legacy behavior (OT off, service edge weights,
+ *  smooth-field operator, spec-default message knobs). */
 const DEFAULT_PARAMS: SolverParams = {
   etaScale: 1,
   kappaScale: 1,
@@ -91,6 +113,14 @@ const DEFAULT_PARAMS: SolverParams = {
   nu: 0.1,
   calendarWeight: null,
   crossWeight: null,
+  propagationMode: "smooth_field",
+  alphaT: 1,
+  ampCal: 1,
+  ampCross: 1,
+  calPrecision: 1700,
+  calEpsilon: 0.97,
+  calDecay: "inverse_sqrt_gap",
+  crossPrecision: 13000,
 };
 
 /** Options graph-prior defaults that seed the solver panel. */
@@ -99,6 +129,7 @@ interface GraphPriorDefaults {
   graphEtaScale: number;
   graphLambdaScale: number;
   graphNu: number;
+  graphPropagationMode?: string;
 }
 
 /** Apply the Options graph-prior defaults to untouched solver params. */
@@ -107,9 +138,21 @@ function seedSolverParams(p: SolverParams, o: GraphPriorDefaults): SolverParams 
     p.kappaScale === DEFAULT_PARAMS.kappaScale &&
     p.etaScale === DEFAULT_PARAMS.etaScale &&
     p.lambdaScale === DEFAULT_PARAMS.lambdaScale &&
-    p.nu === DEFAULT_PARAMS.nu;
+    p.nu === DEFAULT_PARAMS.nu &&
+    p.propagationMode === DEFAULT_PARAMS.propagationMode;
+  const mode: PropagationMode =
+    o.graphPropagationMode === "precision_messages"
+      ? "precision_messages"
+      : "smooth_field"; // hybrid stays config-only — never a UI default
   return untouched
-    ? { ...p, kappaScale: o.graphKappaScale, etaScale: o.graphEtaScale, lambdaScale: o.graphLambdaScale, nu: o.graphNu }
+    ? {
+        ...p,
+        kappaScale: o.graphKappaScale,
+        etaScale: o.graphEtaScale,
+        lambdaScale: o.graphLambdaScale,
+        nu: o.graphNu,
+        propagationMode: mode,
+      }
     : p;
 }
 

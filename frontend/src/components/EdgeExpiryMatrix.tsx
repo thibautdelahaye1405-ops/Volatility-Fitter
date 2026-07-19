@@ -108,8 +108,11 @@ export default function EdgeExpiryMatrix({
         <button className={btn} onClick={onBack}>
           ← Matrix
         </button>
-        <span className="text-xs font-semibold text-slate-200">
-          {src} → {dst} <span className="font-normal text-slate-500">per-expiry overrides</span>
+        <span
+          className="text-xs font-semibold text-slate-200"
+          title="Engine convention: the column node INFORMS the row node — arrows read receiver ← informer"
+        >
+          {src} ← {dst} <span className="font-normal text-slate-500">per-expiry overrides</span>
         </span>
         {baseCell !== undefined && baseCell.weight > 0 && (
           <span className="rounded border border-slate-700 bg-surface-800 px-1.5 py-px font-mono text-[10px] text-slate-400">
@@ -120,8 +123,9 @@ export default function EdgeExpiryMatrix({
       </div>
       <p className="mb-2 shrink-0 text-[11px] text-slate-500">
         Faint cells inherit the ticker rule; click any cell to override that one
-        directed edge (⇄ mirrors it). Overrides layer last — they replace the
-        expanded edge outright.
+        directed edge (⇄ mirrors it). Direction: the COLUMN expiry informs the
+        ROW expiry (receiver ← informer). Overrides layer last — they replace
+        the expanded edge outright.
       </p>
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-800">
         <table className="border-separate border-spacing-0 font-mono text-[11px] leading-tight">
@@ -168,7 +172,7 @@ export default function EdgeExpiryMatrix({
                         style={heatStyle(cell, src === dst, maxWeight)}
                         disabled={busy || self}
                         onClick={() => setEditing(key)}
-                        title={self ? "self edge" : `${src} ${se} → ${dst} ${de}`}
+                        title={self ? "self edge" : `${src} ${se} ← ${dst} ${de}`}
                       >
                         {self ? (
                           <span className="text-slate-700">—</span>

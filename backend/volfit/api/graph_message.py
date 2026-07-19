@@ -181,6 +181,41 @@ def _amplitude_rho(request) -> dict[str, float]:
     return rho
 
 
+def auto_message_edge_rows(state) -> list[GraphMessageEdge]:
+    """The auto relations over the CURRENT selected universe as editable
+    schema rows — the message editor's "seed from auto relations"
+    (GET /graph/edges/messages/auto). Calendar rows keep
+    ``precisionRule="calendar_distance"`` (inherited semantics: the shown
+    precision is today's derived value and re-derives on save); cross rows
+    are explicit at the default scale."""
+    from volfit.api.graph_extrapolation import _node_t
+    from volfit.api.graph_universe import build_selected_universe
+    from volfit.api.schemas import GraphExtrapolateRequest
+
+    request = GraphExtrapolateRequest()
+    universe = build_selected_universe(state)
+    if universe.graph is None:
+        return []
+    t_by = {node.name: _node_t(state, node.expiry) for node in universe.nodes}
+    return [
+        GraphMessageEdge(
+            sourceTicker=e.informer[0],
+            sourceExpiry=e.informer[1],
+            targetTicker=e.receiver[0],
+            targetExpiry=e.receiver[1],
+            messagePrecision=e.precision,
+            betaAtmVol=e.beta[0],
+            betaSkew=e.beta[1],
+            betaCurv=e.beta[2],
+            relationClass=e.relation_class,
+            precisionRule=(
+                "calendar_distance" if e.relation_class == "calendar" else "explicit"
+            ),
+        )
+        for e in auto_message_edges(universe, t_by, request)
+    ]
+
+
 # ------------------------------------------------------------------- solve
 def solve_message_field(
     universe: SelectedUniverse,

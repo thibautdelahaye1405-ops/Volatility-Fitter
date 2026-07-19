@@ -71,6 +71,24 @@ export function GraphSection({ draft, patch, live }: SectionProps) {
     <>
       <h3 className={sectionTitle}>Graph</h3>
       <div className="space-y-2">
+        <label className="flex items-center justify-between gap-2 text-xs text-slate-400"
+          title="Default propagation operator (message arc): smooth field = the legacy increment prior, byte-identical; precision messages = the pairwise relation-factor operator. Hybrid is config-only until validated.">
+          <span>Propagation operator</span>
+          <select
+            value={draft.graphPropagationMode}
+            disabled={!live}
+            onChange={(e) =>
+              patch({
+                graphPropagationMode: e.target
+                  .value as typeof draft.graphPropagationMode,
+              })
+            }
+            className="rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <option value="smooth_field">smooth field</option>
+            <option value="precision_messages">precision messages</option>
+          </select>
+        </label>
         <NumberRow label="κ prior strength" value={draft.graphKappaScale} step={0.1} disabled={!live}
           onChange={(v) => patch({ graphKappaScale: v })} />
         <NumberRow label="η reach" value={draft.graphEtaScale} step={0.1} disabled={!live}
@@ -82,8 +100,9 @@ export function GraphSection({ draft, patch, live }: SectionProps) {
       </div>
       <p className="mt-1 text-[10px] text-slate-600">
         Default solver parameters for the graph extrapolator — seed the Graph
-        Viewer's solver panel (κ = stiffness toward the baseline). Per-edge
-        weights are edited in the Universe ▸ Graph workspace.
+        Viewer's solver panel (κ = stiffness toward the baseline; the
+        κ/η/λ/ν knobs drive the smooth-field operator only). Message
+        relations are edited in the Universe ▸ Graph workspace.
       </p>
     </>
   );

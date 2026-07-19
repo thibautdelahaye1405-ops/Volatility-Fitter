@@ -90,9 +90,11 @@ export default function EdgeEditor({ nodes, onSaved, onClose }: EdgeEditorProps)
         <p className="mb-1 truncate text-[10px] text-amber-400/80" title={error}>{error}</p>
       )}
 
-      {/* Header */}
+      {/* Header. Direction truth (volfit/graph/build.py): the SECOND endpoint
+          informs the first — so rows read receiver ← informer, arrow drawn in
+          the direction information flows. */}
       <div className="flex shrink-0 items-center gap-1 px-0.5 text-[9px] uppercase tracking-wide text-slate-500">
-        <span className="flex-1">edge (src → dst)</span>
+        <span className="flex-1">edge (receiver ← informer)</span>
         <span className="w-12 text-right">weight</span>
         <span className="w-12 text-right">β</span>
         <span className="w-4" />
@@ -108,8 +110,11 @@ export default function EdgeEditor({ nodes, onSaved, onClose }: EdgeEditorProps)
           <div className="divide-y divide-slate-800">
             {rows.map((e, i) => (
               <div key={i} className="flex items-center gap-1 py-1">
-                <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-300">
-                  {short(e.fromTicker, e.fromExpiry)} → {short(e.toTicker, e.toExpiry)}
+                <span
+                  className="min-w-0 flex-1 truncate font-mono text-[10px] text-slate-300"
+                  title="The right node INFORMS the left (engine convention); the arrow shows information flow"
+                >
+                  {short(e.fromTicker, e.fromExpiry)} ← {short(e.toTicker, e.toExpiry)}
                 </span>
                 <input
                   type="number" step={1} value={e.weight} className={numCls}
@@ -138,14 +143,14 @@ export default function EdgeEditor({ nodes, onSaved, onClose }: EdgeEditorProps)
         )}
       </div>
 
-      {/* Add edge */}
+      {/* Add edge: the SECOND pick informs the FIRST (receiver ← informer) */}
       <div className="mt-2 flex shrink-0 items-center gap-1 border-t border-slate-800 pt-2">
-        <select className={numCls + " w-auto flex-1"} value={from} onChange={(e) => setFrom(e.target.value)}>
+        <select className={numCls + " w-auto flex-1"} value={from} onChange={(e) => setFrom(e.target.value)} title="Receiver (the influenced node)">
           {nodes.map((n) => (
             <option key={key(n)} value={key(n)}>{short(n.ticker, n.expiry)}</option>
           ))}
         </select>
-        <span className="text-[10px] text-slate-500">→</span>
+        <span className="text-[10px] text-slate-500" title="information flow: the right node informs the left">←</span>
         <select className={numCls + " w-auto flex-1"} value={to} onChange={(e) => setTo(e.target.value)}>
           {nodes.map((n) => (
             <option key={key(n)} value={key(n)}>{short(n.ticker, n.expiry)}</option>

@@ -260,10 +260,27 @@ items; absorbs R3 item 14.
   full-LOO ATM skill +5.8/+1.8bp vs legacy +0.7/+0.3 on the same pair
   (ζ std 1.2-1.4 slightly narrow vs legacy over-wide 0.6) — one pair,
   not a verdict; part deleted. tests/test_message_adjudication.py (5).
-- **P5 Frontend (full §20)** — may run parallel with P4's user-window
-  sweep; MatrixCell widening, EdgeMatrixEditor split (400-line policy),
-  direction-label fix + one-way UI→posterior integration test, receiver
-  diagnostics (fields already ride the wire unrendered), scenario preview.
+- **P5 Frontend (full §20) — COMPLETE 2026-07-19** (exit gate MET; ran in
+  parallel with the user's P4 campaign): propagation-mode SegmentedControl
+  (PropagatePanel, calibrations source; seeded from new
+  OptionsSettings/useOptions `graphPropagationMode` + Options ▸ Graph
+  select); `MessagePanel` (amplitude presets desk/learned/custom + αT +
+  §9.2 precision family); **`MessageEdgeEditor`** (+helpers; full §20
+  scope: per-relation precision, per-handle βatm/βskew/βcurv, relation
+  class, explicit-vs-calendar_distance rule with inherited "auto" badges,
+  implied reverse chips 1/β · p·β², seed-from-auto via new GET
+  /graph/edges/messages/auto, grouped by class) with the deterministic
+  **ScenarioPreview** (§20.4 — `lib/messagePreview.ts` vitest-locked to
+  the golden §21 numbers incl. shrunk ρβz and corroboration 2ρ/(1+ρ));
+  receiver diagnostics (no-path badge + q_in vs marginal-π tooltip in
+  ExtrapolateResults; §16.4 cycle banner); **direction-label fixes**
+  everywhere (EdgeEditor/EdgeExpiryMatrix now read receiver ← informer;
+  EdgeMatrixEditor one-way wording; chart arrowheads flipped to show
+  information flow via BundleEdge.hasAb/hasBa + markerStart); chart
+  topology switches to the message relations in message mode; backend
+  one-way UI→posterior integration test (PUT payload direction swap
+  inverts β vs 1/β — test-locked). vitest 70/70 green, build clean; all
+  files ≤ 400 lines.
 - **P6 Hardening** — §21 locks incl. 21.11-21.13, migration round-trips,
   certification case.
 - **P7 Sparse solve** — DEFERRED until a universe demands it (dense passes
@@ -277,6 +294,58 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19e) — MESSAGE ARC PHASE 5 COMPLETE (frontend)
+
+- **Full §20 editor SHIPPED** (user launched the P4 campaign in their own
+  window; P5 built in parallel as planned). New surfaces:
+  * `state/useMessageEdges.ts` — schema-v2 rows (source=informer →
+    target=receiver) over GET/PUT /graph/edges/messages + the new
+    GET /graph/edges/messages/auto seed route (backend
+    `graph_message.auto_message_edge_rows`; calendar rows keep
+    precisionRule=calendar_distance = inherited semantics).
+  * `components/MessageEdgeEditor(.helpers).tsx` — modal relation editor,
+    grouped by class: precision (explicit vs distance-rule toggle w/
+    "auto" inherited badges), per-handle βatm/βskew/βcurv, relation-class
+    select, implied-reverse chips (1/β, p·β²), add/delete rows, seed from
+    auto, save/reset; plus the deterministic **ScenarioPreview** (§20.4):
+    pick a receiver, type informer innovations, read the EXACT conditional
+    mean/q/κ/sd — `lib/messagePreview.ts` mirrors the operator math and is
+    vitest-locked to the golden §21 numbers (full transmission 2.0/0.5,
+    cancellation, −0.5/4p, +0.75, ρβz 0.68, corroboration 1.0149) = the
+    exit gate.
+  * `components/MessagePanel.tsx` — mode knobs (amplitude presets
+    desk/learned/custom, ρcal/ρcross, αT, §9.2 decay family + scales);
+    replaces the inert smooth-field SolverPanel when the operator is
+    "Messages". Mode SegmentedControl in PropagatePanel (calibrations
+    source), seeded from the new `graphPropagationMode` option (Options ▸
+    Graph select; hybrid deliberately NOT in the UI — config-only).
+  * Receiver diagnostics: "no path" badge (§14.3) + q_incoming-vs-marginal
+    tooltip (§7.5) in ExtrapolateResults; §16.4 cycle-warning banner.
+- **Direction-label corrections** (the §18.3 debt): EdgeEditor and
+  EdgeExpiryMatrix now read receiver ← informer (engine truth "to informs
+  from"), EdgeMatrixEditor documents one-way rules (COLUMN informs ROW),
+  and the network chart's hover arrowheads FLIPPED to show information
+  flow (BundleEdge.hasAb/hasBa + markerStart w/ auto-start-reverse; the
+  per-edge drill-in lines too). Chart topology now displays the message
+  relations when the message operator is active (persisted rules, else
+  auto), mapped into the stored-edge convention so the arrows stay honest.
+- **One-way UI→posterior lock** (backend): PUT /graph/edges/messages with
+  a single directed row, extrapolate, swap source↔target → the dark
+  node's amplitude map inverts (2× vs ½×) — test-locked in
+  test_graph_message_production.py (+ the auto-seed route contract).
+- Tests: vitest 70/70 (new: messagePreview 10 golden locks,
+  MessageEdgeEditor 5; PropagatePanel/EdgeExpiryMatrix stubs updated for
+  the new params/labels); `npm run build` clean; backend production suite
+  18/18. All new/touched files ≤ 400 lines. NB one process slip caught
+  and fixed: a PowerShell -replace bulk edit mojibake'd
+  EdgeExpiryMatrix.test.tsx (the standing "use Edit tool" rule exists for
+  this) — restored from git, redone properly.
+- **NEXT**: P4 campaign verdict (user window; fill
+  FINDINGS_message_phase4.md decision table vs the §22.4 gate, then flip
+  or hold the default amplitude preset / graphPropagationMode) → P6
+  hardening (§21 locks incl. 21.11-21.13 through the API, migration
+  round-trips, certification case).
 
 ### 🧭 SESSION WRAP (2026-07-19d) — MESSAGE ARC PHASE 4 MACHINERY COMPLETE
 

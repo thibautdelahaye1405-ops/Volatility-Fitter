@@ -11,9 +11,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Eraser, FlaskConical, Grid3x3 } from "lucide-react";
 import EdgeMatrixEditor from "./EdgeMatrixEditor";
 import ExtrapolateResults from "./ExtrapolateResults";
+import MessageEdgeEditor from "./MessageEdgeEditor";
+import MessagePanel from "./MessagePanel";
+import SegmentedControl from "./SegmentedControl";
 import SolverPanel from "./SolverPanel";
 import { api } from "../state/api";
-import type { UseGraphResult } from "../state/useGraph";
+import type { PropagationMode, UseGraphResult } from "../state/useGraph";
 import type { UseGraphExtrapolationResult } from "../state/useGraphExtrapolation";
 import type { UniverseResponse } from "../state/useSmile";
 
@@ -69,6 +72,9 @@ export default function PropagatePanel({
   const [editingEdges, setEditingEdges] = useState(false);
 
   const manual = source === "manual";
+  // Message operator active (production source only — the manual sandbox is
+  // smooth-field by construction).
+  const messages = !manual && graph.params.propagationMode === "precision_messages";
   const litEntries = useMemo(
     () => Object.entries(graph.lit).sort(([a], [b]) => a.localeCompare(b)),
     [graph.lit],
@@ -140,6 +146,23 @@ export default function PropagatePanel({
       {/* Calibrations-only knobs */}
       {!manual && (
         <div className="mb-3 space-y-2 text-[11px] text-slate-400">
+          {/* Propagation operator (message arc): smooth field = legacy,
+              byte-identical; messages = the precision-message operator.
+              Hybrid is config-only until validated (spec §20.1). */}
+          <label className="flex items-center justify-between gap-2">
+            <span title="Propagation operator — seeded from Options ▸ Graph">
+              Propagation
+            </span>
+            <SegmentedControl
+              options={[
+                { id: "smooth_field" as PropagationMode, label: "Smooth field" },
+                { id: "precision_messages" as PropagationMode, label: "Messages" },
+              ]}
+              value={graph.params.propagationMode}
+              onChange={(m) => graph.setParam("propagationMode", m)}
+              size="xs"
+            />
+          </label>
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -149,20 +172,36 @@ export default function PropagatePanel({
             />
             Flat baselines (diagnostic)
           </label>
-          <label className="flex items-center justify-between gap-2">
-            <span>Cross-ticker β</span>
-            <input
-              type="number"
-              step={0.1}
-              value={crossBeta}
-              onChange={(e) => {
-                const v = e.target.valueAsNumber;
-                if (Number.isFinite(v)) setCrossBeta(v);
-              }}
-              className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
-            />
-          </label>
+          {!messages && (
+            <label className="flex items-center justify-between gap-2">
+              <span>Cross-ticker β</span>
+              <input
+                type="number"
+                step={0.1}
+                value={crossBeta}
+                onChange={(e) => {
+                  const v = e.target.valueAsNumber;
+                  if (Number.isFinite(v)) setCrossBeta(v);
+                }}
+                className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
+              />
+            </label>
+          )}
         </div>
+      )}
+
+      {/* §16.4 inconsistent-cycle warning (message mode) */}
+      {!manual && extra.cycles.length > 0 && (
+        <p
+          className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300"
+          title="Cycles whose beta product differs from 1 — an internally inconsistent edge configuration (spec §16.4)"
+        >
+          ⚠ {extra.cycles.length} inconsistent beta cycle
+          {extra.cycles.length > 1 ? "s" : ""} · worst product{" "}
+          {extra.cycles
+            .reduce((m, c) => Math.max(m, Math.abs(c.betaProduct)), 0)
+            .toFixed(2)}
+        </p>
       )}
 
       {error !== null && (
@@ -171,18 +210,32 @@ export default function PropagatePanel({
         </p>
       )}
 
-      {/* Edge weight matrix (modal — the aside is too narrow for a grid) */}
-      {editingEdges && (
-        <EdgeMatrixEditor
-          tickers={tickers}
-          nodes={editorNodes}
-          onSaved={() => {
-            onEdgesSaved?.();
-            if (!manual) void extra.run(body);
-          }}
-          onClose={() => setEditingEdges(false)}
-        />
-      )}
+      {/* Edge editors (modal — the aside is too narrow for a grid). The
+          message operator gets its own relation editor (schema v2, one factor
+          per relation); the legacy weight/beta matrix stays the smooth-field
+          surface. */}
+      {editingEdges &&
+        (messages ? (
+          <MessageEdgeEditor
+            nodes={editorNodes}
+            params={graph.params}
+            onSaved={() => {
+              onEdgesSaved?.();
+              void extra.run(body);
+            }}
+            onClose={() => setEditingEdges(false)}
+          />
+        ) : (
+          <EdgeMatrixEditor
+            tickers={tickers}
+            nodes={editorNodes}
+            onSaved={() => {
+              onEdgesSaved?.();
+              if (!manual) void extra.run(body);
+            }}
+            onClose={() => setEditingEdges(false)}
+          />
+        ))}
       {
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {manual ? (
@@ -230,7 +283,9 @@ export default function PropagatePanel({
             <ExtrapolateResults extra={extra} body={body} onOpenSmile={onOpenSmile} />
           )}
 
-          {/* Solver knobs (shared by both sources; auto-tune η lives here) */}
+          {/* Solver knobs (shared by both sources; auto-tune η lives here).
+              Under the message operator the smooth-field knobs are inert, so
+              the message panel replaces them. */}
           <details className="mt-3">
             <summary
               className="cursor-pointer text-[11px] text-slate-500 transition-colors hover:text-slate-300"
@@ -238,16 +293,20 @@ export default function PropagatePanel({
             >
               Solver settings <span className="text-slate-600">· seeded from Options ▸ Graph</span>
             </summary>
-            <SolverPanel
-              params={graph.params}
-              setParam={graph.setParam}
-              resetParams={graph.resetParams}
-              litCount={litEntries.length}
-              autotune={() => void graph.autotune()}
-              autotuning={graph.autotuning}
-              autotuneResult={graph.autotuneResult}
-              autotuneError={graph.autotuneError}
-            />
+            {messages ? (
+              <MessagePanel params={graph.params} setParam={graph.setParam} />
+            ) : (
+              <SolverPanel
+                params={graph.params}
+                setParam={graph.setParam}
+                resetParams={graph.resetParams}
+                litCount={litEntries.length}
+                autotune={() => void graph.autotune()}
+                autotuning={graph.autotuning}
+                autotuneResult={graph.autotuneResult}
+                autotuneError={graph.autotuneError}
+              />
+            )}
           </details>
         </div>
       }
@@ -296,7 +355,11 @@ export default function PropagatePanel({
           <button
             className={buttonClass + (manual ? " flex-1" : "")}
             onClick={() => setEditingEdges((v) => !v)}
-            title="Edit the per-edge graph weights + beta"
+            title={
+              messages
+                ? "Edit the message relations (precision + per-handle β + class)"
+                : "Edit the per-edge graph weights + beta"
+            }
           >
             <Grid3x3 size={12} strokeWidth={1.75} className="opacity-80" />
             {editingEdges ? "Done" : "Edges"}

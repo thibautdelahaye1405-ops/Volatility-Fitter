@@ -193,7 +193,8 @@ export default function EdgeMatrixEditor({
           </button>
         </div>
         <p className="mb-2 shrink-0 text-[11px] text-slate-500">
-          Off-diagonal cells link two tickers expiry-by-expiry (⇄ = both directions);
+          Off-diagonal cells link two tickers expiry-by-expiry (⇄ = both directions;
+          a ONE-way rule means the COLUMN ticker informs the ROW ticker);
           the amber diagonal is each ticker&apos;s own calendar chain. Click a cell to edit.
         </p>
 

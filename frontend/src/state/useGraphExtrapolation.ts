@@ -28,6 +28,18 @@ export function buildExtrapolateBody(
   if (params.calendarWeight !== null) body.calendarWeight = params.calendarWeight;
   if (params.crossWeight !== null) body.crossWeight = params.crossWeight;
   if (crossBeta !== null && crossBeta !== 1) body.crossBeta = crossBeta;
+  // Message-mode knobs ride only when the operator is selected — an untouched
+  // request stays byte-identical to the legacy smooth-field path.
+  if (params.propagationMode !== "smooth_field") {
+    body.propagationMode = params.propagationMode;
+    body.calendarBetaExponent = params.alphaT;
+    body.calendarAmplitude = params.ampCal;
+    body.crossAmplitude = params.ampCross;
+    body.calendarPrecisionScale = params.calPrecision;
+    body.calendarPrecisionEpsilon = params.calEpsilon;
+    body.calendarPrecisionDecay = params.calDecay;
+    body.crossPrecisionScale = params.crossPrecision;
+  }
   return body;
 }
 
@@ -56,10 +68,27 @@ export interface ExtrapolateNode {
   baselinePrecision: number[];
   obsPrecision: number[] | null;
   precisionFactors: Record<string, number>;
+  /** Message-mode diagnostics (spec §17): the ATM receiver conditional
+   *  incoming precision q_i and the §14.3 no-lit-path tag. Null in
+   *  smooth_field mode. */
+  qIncoming: number | null;
+  noLitPath: boolean | null;
+}
+
+/** One inconsistent beta cycle (spec §16.4), flagged at its closing edge;
+ *  betaProduct 0 is the nonpositive-beta sentinel. */
+export interface CycleFlag {
+  receiverTicker: string;
+  receiverExpiry: string;
+  informerTicker: string;
+  informerExpiry: string;
+  betaProduct: number;
 }
 
 interface ExtrapolateResponse {
   nodes: ExtrapolateNode[];
+  propagationMode: string;
+  cycleDiagnostics: CycleFlag[];
 }
 
 /** One held-out node's LOO prediction (backend GraphBacktestNode). */
@@ -109,6 +138,8 @@ export interface UseGraphExtrapolationResult {
   results: Record<string, GraphSolveNode> | null;
   running: boolean;
   error: string | null;
+  /** §16.4 inconsistent-cycle flags of the last solve (empty when clean). */
+  cycles: CycleFlag[];
   backtest: BacktestResult | null;
   backtesting: boolean;
   backtestError: string | null;
@@ -123,6 +154,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
   const [nodes, setNodes] = useState<ExtrapolateNode[] | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cycles, setCycles] = useState<CycleFlag[]>([]);
   const [backtest, setBacktest] = useState<BacktestResult | null>(null);
   const [backtesting, setBacktesting] = useState(false);
   const [backtestError, setBacktestError] = useState<string | null>(null);
@@ -133,6 +165,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
     try {
       const res = await api.post<ExtrapolateResponse>("/graph/extrapolate", { body });
       setNodes(res.nodes);
+      setCycles(res.cycleDiagnostics ?? []);
     } catch (err: unknown) {
       setError(messageOf(err));
     } finally {
@@ -158,6 +191,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
 
   const clear = useCallback(() => {
     setNodes(null);
+    setCycles([]);
     setBacktest(null);
     setError(null);
     setBacktestError(null);
@@ -173,6 +207,7 @@ export function useGraphExtrapolation(): UseGraphExtrapolationResult {
     results,
     running,
     error,
+    cycles,
     backtest,
     backtesting,
     backtestError,
