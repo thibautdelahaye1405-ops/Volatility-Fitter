@@ -45,6 +45,12 @@ import {
   type WaveState,
 } from "./GraphNetworkChart.helpers";
 
+/** Edge-click selection (U4): cross ticker pair or one calendar adjacent
+ *  pair (the consumer resolves canonical orientation). */
+export type GraphEdgeSelection =
+  | { kind: "cross"; a: string; b: string }
+  | { kind: "calendar"; ticker: string; aExpiry: string; bExpiry: string };
+
 interface GraphNetworkChartProps {
   /** Baseline nodes incl. t + lit designation. */
   nodes: GraphNodeBase[];
@@ -58,6 +64,8 @@ interface GraphNetworkChartProps {
   onToggle: (key: string) => void;
   /** Double click: drill into the node's smile. */
   onOpenSmile: (ticker: string, expiry: string) => void;
+  /** Edge click (U4): select a relation for the inspector. */
+  onEdgeClick?: (sel: GraphEdgeSelection) => void;
   /** Reveal-wave state (real BFS hops + timeline); absent = no gating. */
   wave?: WaveState;
   /** Attribution particles (real gain × innovation paths) for the overlay. */
@@ -73,6 +81,7 @@ export default function GraphNetworkChart({
   results,
   onToggle,
   onOpenSmile,
+  onEdgeClick,
   wave,
   particles,
   waveEpoch,
@@ -250,24 +259,26 @@ export default function GraphNetworkChart({
                   markerStart={hovered && g.b.hasAb ? "url(#gnc-arrow)" : undefined}
                   markerEnd={hovered && g.b.hasBa ? "url(#gnc-arrow)" : undefined}
                 />
-                {/* Wide invisible twin so the thin bundle is hoverable */}
+                {/* Hover/click twin: hoverable width; click = relation (U4) */}
                 <path
                   d={g.d}
                   fill="none"
                   stroke="transparent"
                   strokeWidth={g.width + 10}
                   pointerEvents="stroke"
+                  className={onEdgeClick !== undefined ? "cursor-pointer" : undefined}
                   onMouseEnter={() => setHoverBundle(g)}
                   onMouseLeave={() => setHoverBundle(null)}
+                  onClick={() =>
+                    onEdgeClick?.({ kind: "cross", a: g.b.fromTicker, b: g.b.toTicker })
+                  }
                 />
               </g>
             );
           })}
 
-          {/* Hovered bundle expanded: its individual directed edges. The line
-              runs from → to, but the `to` node INFORMS the `from` node — so
-              the arrowhead sits at the from/start end (auto-start-reverse
-              points it INTO the receiver, along the information flow). */}
+          {/* Hovered bundle expanded: individual directed edges (`to` INFORMS
+              `from`; arrowhead at the start end = into the receiver). */}
           {bundleDetails.map((d, i) => (
             <line
               key={`pd-${i}`}
@@ -280,7 +291,7 @@ export default function GraphNetworkChart({
             />
           ))}
 
-          {/* Calendar spines: adjacent maturities within a pod */}
+          {/* Calendar spines (non-filler = real relations; click = U4) */}
           {layout.calendar.map((c) => {
             const touches =
               focus === null ||
@@ -288,14 +299,32 @@ export default function GraphNetworkChart({
                 (c.fromExpiry === hovExpiry || c.toExpiry === hovExpiry));
             const filler = c.weight === 0; // topology filler, no solver weight
             return (
-              <line
-                key={`cal-${c.ticker}-${c.fromExpiry}-${c.toExpiry}`}
-                x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2}
-                stroke={SLATE_400}
-                strokeWidth={1.5}
-                strokeDasharray={filler ? "3 3" : undefined}
-                opacity={(filler ? 0.15 : 0.3) * (touches ? 1 : 0.15)}
-              />
+              <g key={`cal-${c.ticker}-${c.fromExpiry}-${c.toExpiry}`}>
+                <line
+                  x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2}
+                  stroke={SLATE_400}
+                  strokeWidth={1.5}
+                  strokeDasharray={filler ? "3 3" : undefined}
+                  opacity={(filler ? 0.15 : 0.3) * (touches ? 1 : 0.15)}
+                />
+                {!filler && onEdgeClick !== undefined && (
+                  <line
+                    x1={c.x1} y1={c.y1} x2={c.x2} y2={c.y2}
+                    stroke="transparent"
+                    strokeWidth={10}
+                    pointerEvents="stroke"
+                    className="cursor-pointer"
+                    onClick={() =>
+                      onEdgeClick({
+                        kind: "calendar",
+                        ticker: c.ticker,
+                        aExpiry: c.fromExpiry,
+                        bExpiry: c.toExpiry,
+                      })
+                    }
+                  />
+                )}
+              </g>
             );
           })}
 

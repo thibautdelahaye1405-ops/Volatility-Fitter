@@ -342,7 +342,7 @@ items; absorbs R3 item 14.
     (η LOO rides the unified endpoint, smooth-field mode only — the knob
     doesn't exist under messages) and GET /graph/nodes' chart-baseline
     role is served by a zero-observation production solve.
-  * **U4 Message inspector**: incoming-messages table per selected node
+  * ~~**U4 Message inspector**: incoming-messages table per selected node
     (informer, innovation, β, mapped signal, relationship uncertainty,
     effective precision — client-side from edge rows + response), local
     consensus block (mean, q, conditional σ) vs GLOBAL posterior block
@@ -350,7 +350,9 @@ items; absorbs R3 item 14.
     post handles, reconstructed smile, exact attribution (evolve
     GraphAttributionCard), transported-prior comparison; edge-click
     inspector. Wave relabeled as attribution/influence reveal (never
-    solver chronology).
+    solver chronology).~~ **DONE 2026-07-19** (see STATUS wrap
+    2026-07-19l; live check: client q == wire q exactly; reconstructed-
+    smile mini-chart deliberately out — the ↗ drill-in serves it).
   * **U5 Preflight**: backend dry-run endpoint (universe/lit/dark
     counts, no-lit-path components, missing priors, |β| extremes,
     σ_edge outliers, cycle products, single-relationship-dominated
@@ -390,6 +392,101 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19l) — P5b U4 MESSAGE INSPECTOR SHIPPED
+
+- **lib/messageInspector** (golden-locked): `incomingRelations` reads the
+  effective rows toward one receiver — direct AND the ⇐ implied reverse
+  of a one-factor row (1/β, p·β²), distance-rule precisions derived
+  under the U2 receiver-ticker policy (suppressed when disabled),
+  informer innovations from the response; `receiverConsensus` = the
+  EXACT §21 conditional via receiverPreview. LIVE CHECK on the scratch
+  backend: the client-side incoming confidence q matched the wire
+  qIncoming EXACTLY (31887 == 31887) — the mirror math is honest.
+- **InspectorPane/MessageInspector**: incoming-messages table (informer,
+  z, β, mapped β·z vote, σ_edge, sentence hovers, ⇐ marker), local
+  conditional (mean/q/cond σ) vs FINAL posterior (shift, marginal ±,
+  95% band, wire q) + the divergence explainer ("the marginal folds in
+  informer uncertainty and shared routes — trust the final"); node
+  facts gain skew/curv prior→post + transport distance.
+- **Edge-click inspector**: GraphNetworkChart onEdgeClick (cross bundle
+  = ticker pair via the U2 crossCell resolution, both directions;
+  calendar spine = the adjacent pair, persisted-row else auto-policy
+  values, canonical short receiver); relation card in the inspector
+  with sentences, provenance, policy-off notice, and an "Edit
+  relations" drill-in (openEditorSignal → RelationshipsPane).
+- **Wave rider honored**: no user-facing "wave" strings existed; the
+  canvas legend now says "reveal = influence distance ⓘ" with the
+  never-solver-chronology tooltip.
+- vitest 102/102, tsc + build clean, ui_smoke 8/8; frontend-only
+  increment (no backend changes). GraphNetworkChart exactly at the
+  400-line cap — next touch must extract.
+- NEXT: **U5 Preflight** (backend dry-run endpoint: universe/lit/dark
+  counts, no-lit-path components, missing priors, |β| extremes, σ_edge
+  outliers, cycle products, single-relationship-dominated receivers,
+  conditioning; TopBar chip; Run blocked only on genuine blockers).
+
+### 🧭 SESSION WRAP (2026-07-19k) — LQD COMMITTEE REVISION R1+R2: LOGISTIC CHART + WING-ROUNDING FIX + CERTIFICATION BATTERY
+
+Context: Note 01 was reviewed by a bank committee (Head of Quants + senior
+quant + senior trader) — major-revision verdict, preserved verbatim WITH the
+triage in `Docs/notes/reviews/committee_review_note01_2026-07-19.md`. Their
+sharpest structural fix (endpoint-decoupled body modes) was our own Phase 5
+endpoint chart, which the note never presented. Agreed arc: R1 chart
+promotion → R2 numerical certification → R3 tail-stability study → R4 note
+revision → R5 ATM-chart v2 + analytic var-swap derivative + calendar
+violation reporting.
+
+- **R1 SHIPPED — "logistic" optimization chart, production default.** New
+  `volfit/models/lqd/charts.py` (chart factory + OptimizationChart;
+  endpoint_transform moved there, re-exported from calibrate for
+  back-compat): "logistic" = endpoint chart with A_R = expit(rho), so the
+  admissibility wall A_R < 1 is unreachable and the solve runs over
+  genuinely unconstrained R^d (the committee's question 1, answered by
+  construction; barrier kept — same objective in every chart).
+  `FitSettings.lqdCoords` default flipped lr→logistic (schemas + frontend
+  selector gets the third option). Chart-equivalence validated on the
+  reference live fixture, 12 real SPY/NVDA/AAPL nodes × {lr, endpoint,
+  logistic}: worst |dtheta| 3.6e-7, d(maxIVerr) 1e-4 bp, dVarSwap 3e-5 bp.
+- **REAL BUG FOUND+FIXED (committee point 5 verbatim): far-wing rounding
+  collapse.** expit(z) rounds to exactly 1.0 for z > ~36.7, so call_price's
+  `e^k (1-u_k)` leg collapsed to 0 (spurious step up to A(z_k) — material
+  near the wall where those strikes carry C ~ 0.07) and the grid's u(1-u)
+  zeroed the outer ~300 nodes. Fixed in log/split space (call_price via
+  exp(k - logaddexp(0, z)); grid u1mu = expit(z)*expit(-z); martingale/
+  var-swap integrands likewise) — quadrature.py.
+- **Interior-overflow guard (EXP_BUDGET=700)**: endpoint cancellation can
+  keep A_R < 1 while the body blows up e^g or Qbar; build_slice now raises
+  a clean ValueError (penalty branch catches it; analytic Jacobian
+  penalty-branches identically; finite clamp on the rejection rows). This
+  fixed the one full-suite failure the default flip exposed
+  (test_restored_workspace NaN crash: without the wall, trf could wander
+  into overflow that the wall rejection used to intercept accidentally).
+- **R2 SHIPPED — certification battery** `tests/test_lqd_numerical_
+  certification.py`: 60 randomized admissible/near-wall/wild draws via the
+  logistic chart, off-grid audit IN STRIKE SPACE (first battery version
+  audited convexity in log-strike — legitimately concave deep ITM, don't
+  repeat that), K-butterflies at 4 widths, digital bounds (|k|<=3 window),
+  4x-finer-reference agreement, Fritsch-Carlson monotonicity certificate
+  (`interp.hermite_monotone_margin`, flat-to-tolerance semantics for the
+  underflowed far tail), adversarial overflow vectors, far-wing regression
+  lock. Quotable envelope (Note 01 question 4): bounds<=1.2e-9 price,
+  butterflies<=1e-14, digital<=4e-12, vs-fine<=2.6e-9 — UNIFORM across
+  plain/near-wall/wild.
+- Full suite: pre-fix run 1328/1329 (the workspace NaN above); clean rerun
+  with all edits pending at wrap time (spot batches green: certification
+  8/8, charts 8/8, workspace 7/7, api_settings; frontend tsc + 92/92).
+- NEXT (committee arc): **R3 tail-stability study** (jackknife outer
+  quotes, N/lambda sweeps, 1-bp perturbations, multi-start; A_L/A_R/Lee/
+  var-swap/digital fans + effective-slope-at-delta figure), then **R4 note
+  revision** (narrowed claims, endpoint-vanishing basis primary, density
+  proposition, perf appendix regenerated single-run w/ dispersion — table
+  and figure currently from DIFFERENT runs, committee point 9 — small
+  corrections list, Petersen-Muller + metalog citations, model card), then
+  **R5** (ATM chart v2 on the GN/Fisher metric via solver_diag, RR/BF
+  trader packages via calib/operators, analytic var-swap derivative
+  ungating the analytic Jacobian, calendar violations in currency/ticks/
+  spread units).
 
 ### 🧭 SESSION WRAP (2026-07-19j) — P5b U3 UNIFIED WHAT-IF SHIPPED (sandbox retired from the UI)
 

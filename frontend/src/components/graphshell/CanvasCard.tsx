@@ -2,7 +2,7 @@
 // spines, solve cinematics) plus its loading/empty states and the
 // interaction-hint + legend strip. Pure presentation — extracted from
 // GraphViewer to keep the shell orchestrator under the file-size policy.
-import GraphNetworkChart from "../GraphNetworkChart";
+import GraphNetworkChart, { type GraphEdgeSelection } from "../GraphNetworkChart";
 import type { WaveState } from "../GraphNetworkChart.helpers";
 import type { GraphNodeBase, GraphSolveNode } from "../../state/useGraph";
 import type { ParticleSpec } from "../../state/useAttributionParticles";
@@ -21,6 +21,8 @@ interface CanvasCardProps {
   particles: ParticleSpec[];
   waveEpoch: number;
   manual: boolean;
+  /** Edge click (U4): select a relation for the inspector. */
+  onEdgeClick?: (sel: GraphEdgeSelection) => void;
 }
 
 export default function CanvasCard({
@@ -35,6 +37,7 @@ export default function CanvasCard({
   particles,
   waveEpoch,
   manual,
+  onEdgeClick,
 }: CanvasCardProps) {
   return (
     <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
@@ -61,6 +64,7 @@ export default function CanvasCard({
             results={results}
             onToggle={onToggle}
             onOpenSmile={onOpenSmile}
+            onEdgeClick={onEdgeClick}
             wave={wave}
             particles={particles}
             waveEpoch={waveEpoch}
@@ -72,8 +76,16 @@ export default function CanvasCard({
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-600">
         <span>
           {manual
-            ? "Click to pulse/unpulse · double-click to open smile · drag to pan, wheel to zoom"
-            : "Click to inspect · double-click to open smile · drag to pan, wheel to zoom"}
+            ? "Click to pulse/unpulse · click an edge to inspect the relation · double-click to open smile"
+            : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom"}
+        </span>
+        {/* The post-Run reveal is an INFLUENCE visualization (real BFS hops
+            from the observations) — never solver chronology. */}
+        <span
+          className="cursor-help text-slate-600"
+          title="The post-Run reveal stages nodes by their real graph distance (BFS hops) from the observations — an influence/attribution visualization. The posterior itself is solved jointly; the reveal is never solver chronology."
+        >
+          reveal = influence distance ⓘ
         </span>
         <span className="ml-auto flex items-center gap-3 text-slate-500">
           <span className="flex items-center gap-1">

@@ -1,17 +1,21 @@
-// Graph shell RIGHT pane (P5b U0): the inspector for the selected node.
+// Graph shell RIGHT pane (P5b U0; message inspector U4): the inspector for
+// the selected node or edge.
 //
-// Selection comes from the shell (canvas click under the calibrations source,
-// or a Diagnostics-table row). Shows the node's baseline facts, its
-// prior → posterior move once a production run landed, and the exact
-// attribution card (gain × innovation terms — why it moved). The full message
-// inspector (incoming-messages table, local consensus vs global posterior) is
-// the U4 increment; edge-click inspection arrives with it.
+// Selection comes from the shell (canvas node/edge click, or a Diagnostics-
+// table row). Shows the node's baseline facts, its prior → posterior move
+// once a production run landed, the U4 message inspector (incoming-messages
+// table + local consensus vs global posterior + divergence explainer, message
+// mode), and the exact attribution card (gain × innovation terms — why it
+// moved). An edge click swaps in the relation card.
 import GraphAttributionCard from "../GraphAttributionCard";
-import type { GraphNodeBase } from "../../state/useGraph";
+import { EdgeInspectorCard, MessageInspector } from "./MessageInspector";
+import type { GraphNodeBase, SolverParams } from "../../state/useGraph";
 import type {
   ExtrapolateBody,
   ExtrapolateNode,
 } from "../../state/useGraphExtrapolation";
+import type { MessageEdgeRow } from "../../state/useMessageEdges";
+import type { GraphEdgeSelection } from "../GraphNetworkChart";
 
 interface InspectorPaneProps {
   /** The inspected node, or null (empty state). */
@@ -25,6 +29,16 @@ interface InspectorPaneProps {
   /** Attribution rides the production drill-in — calibrations source only. */
   showAttribution: boolean;
   manual: boolean;
+  /** Message operator active (drives the U4 inspector sections). */
+  messages: boolean;
+  /** Effective relation rows (persisted else auto) + the solved nodes. */
+  msgRows: MessageEdgeRow[];
+  allNodes: ExtrapolateNode[] | null;
+  params: SolverParams;
+  /** A canvas edge click, or null; shows the relation card when set. */
+  selectedEdge: GraphEdgeSelection | null;
+  onCloseEdge: () => void;
+  onEditRelations: () => void;
   onClose: () => void;
   onOpenSmile: (ticker: string, expiry: string) => void;
 }
@@ -54,6 +68,13 @@ export default function InspectorPane({
   body,
   showAttribution,
   manual,
+  messages,
+  msgRows,
+  allNodes,
+  params,
+  selectedEdge,
+  onCloseEdge,
+  onEditRelations,
   onClose,
   onOpenSmile,
 }: InspectorPaneProps) {
@@ -61,7 +82,20 @@ export default function InspectorPane({
     <aside className="flex w-80 shrink-0 flex-col overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
       <h3 className="mb-1 text-sm font-semibold text-slate-100">Inspector</h3>
 
-      {selected === null ? (
+      {/* Edge-click relation card (U4) — shown above/instead of node facts. */}
+      {selectedEdge !== null && (
+        <EdgeInspectorCard
+          edge={selectedEdge}
+          rows={msgRows}
+          nodes={allNodes}
+          params={params}
+          messages={messages}
+          onClose={onCloseEdge}
+          onEditRelations={onEditRelations}
+        />
+      )}
+
+      {selected === null && selectedEdge !== null ? null : selected === null ? (
         <p className="mt-1 text-[11px] text-slate-500">
           {manual
             ? "What-if: canvas clicks add/remove pulses — select a row in Diagnostics to inspect a node."
@@ -106,6 +140,12 @@ export default function InspectorPane({
               <Fact label="ATM vol">
                 {(post.priorAtmVol * 100).toFixed(1)}→{(post.postAtmVol * 100).toFixed(1)}%
               </Fact>
+              <Fact label="Skew" title="Prior → posterior skew handle">
+                {post.priorSkew.toFixed(3)}→{post.postSkew.toFixed(3)}
+              </Fact>
+              <Fact label="Curvature" title="Prior → posterior curvature handle">
+                {post.priorCurv.toFixed(3)}→{post.postCurv.toFixed(3)}
+              </Fact>
               <Fact label="Shift">
                 <span className={post.shiftBp >= 0 ? "text-emerald-400" : "text-rose-400"}>
                   {post.shiftBp >= 0 ? "+" : ""}
@@ -134,6 +174,14 @@ export default function InspectorPane({
               )}
               <Fact label="Prior source">{post.priorSource}</Fact>
               {post.priorAsOf !== null && <Fact label="Prior as-of">{post.priorAsOf}</Fact>}
+              {post.transportDistance > 0 && (
+                <Fact
+                  label="Transport"
+                  title="Transported-prior comparison: how far the active prior travelled (spot transport distance) to form this node's baseline."
+                >
+                  {post.transportDistance.toFixed(3)}
+                </Fact>
+              )}
               {post.noLitPath === true && (
                 <p
                   className="mt-1 rounded bg-rose-500/15 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-rose-300"
@@ -154,6 +202,17 @@ export default function InspectorPane({
               </p>
             </div>
           ) : null}
+
+          {/* U4 message inspector: incoming messages + local consensus vs
+              the solved global posterior. */}
+          {messages && post !== null && allNodes !== null && (
+            <MessageInspector
+              receiver={post}
+              rows={msgRows}
+              nodes={allNodes}
+              params={params}
+            />
+          )}
 
           {/* Why it moved: exact gain × innovation attribution. */}
           {showAttribution && (

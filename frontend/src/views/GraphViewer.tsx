@@ -16,6 +16,7 @@
 // since P5b U3; the what-if ships syntheticObservations, non-persisting) —
 // there is deliberately no mock fallback.
 import { useEffect, useMemo, useState } from "react";
+import type { GraphEdgeSelection } from "../components/GraphNetworkChart";
 import CanvasCard from "../components/graphshell/CanvasCard";
 import GraphDrawer, { type DrawerTab } from "../components/graphshell/GraphDrawer";
 import GraphTopBar, { type ObservationSource } from "../components/graphshell/GraphTopBar";
@@ -23,7 +24,7 @@ import InspectorPane from "../components/graphshell/InspectorPane";
 import RelationshipsPane from "../components/graphshell/RelationshipsPane";
 import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
 import { useGraphEdges } from "../state/useGraphEdges";
-import { useMessageEdges } from "../state/useMessageEdges";
+import { useMessageEdges, type MessageEdgeRow } from "../state/useMessageEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
@@ -59,8 +60,12 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     [graph.params, flatAtm, crossBeta],
   );
 
-  // Shell state: the inspected node and the bottom drawer.
+  // Shell state: the inspected node/edge and the bottom drawer.
   const [selected, setSelected] = useState<{ ticker: string; expiry: string } | null>(null);
+  const [selectedEdge, setSelectedEdge] = useState<GraphEdgeSelection | null>(null);
+  // Bumped by the inspector's "Edit relations" — RelationshipsPane opens the
+  // row editor on change.
+  const [editorSignal, setEditorSignal] = useState(0);
   const [drawerTab, setDrawerTab] = useState<DrawerTab>("preview");
   const [drawerOpen, setDrawerOpen] = useState(true);
 
@@ -75,32 +80,37 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const { fetchEdges: fetchMsgEdges, fetchAuto: fetchMsgAuto } = useMessageEdges();
   const messagesMode = graph.params.propagationMode === "precision_messages";
   const [edges, setEdges] = useState<LayoutEdgeIn[]>([]);
+  // The EFFECTIVE relation rows (persisted else auto) — the U4 message
+  // inspector reads these raw; the chart reads their LayoutEdgeIn mapping.
+  const [msgRows, setMsgRows] = useState<MessageEdgeRow[]>([]);
   const [edgesVersion, setEdgesVersion] = useState(0);
   useEffect(() => {
     let alive = true;
     const load: Promise<LayoutEdgeIn[]> = messagesMode
       ? fetchMsgEdges()
           .then((rows) => (rows.length > 0 ? rows : fetchMsgAuto()))
-          .then((rows) =>
-            rows.map((r) => ({
+          .then((rows) => {
+            if (alive) setMsgRows(rows);
+            return rows.map((r) => ({
               fromTicker: r.targetTicker,
               fromExpiry: r.targetExpiry,
               toTicker: r.sourceTicker,
               toExpiry: r.sourceExpiry,
               weight: r.messagePrecision,
-            })),
-          )
+            }));
+          })
       : fetchEdges()
           .then((e) => (e.length > 0 ? e : fetchLattice()))
-          .then((e) =>
-            e.map((r) => ({
+          .then((e) => {
+            if (alive) setMsgRows([]);
+            return e.map((r) => ({
               fromTicker: r.fromTicker,
               fromExpiry: r.fromExpiry,
               toTicker: r.toTicker,
               toExpiry: r.toExpiry,
               weight: r.weight,
-            })),
-          );
+            }));
+          });
     load
       .then((e) => {
         if (alive) setEdges(e);
@@ -345,6 +355,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           crossBeta={crossBeta}
           setCrossBeta={setCrossBeta}
           onEdgesSaved={onEdgesSaved}
+          openEditorSignal={editorSignal}
         />
 
         <CanvasCard
@@ -364,6 +375,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           particles={particles}
           waveEpoch={waveEpoch}
           manual={manual}
+          onEdgeClick={setSelectedEdge}
         />
 
         <InspectorPane
@@ -373,6 +385,13 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           body={extrapolateBody}
           showAttribution={!manual && extra.nodes !== null}
           manual={manual}
+          messages={messagesMode}
+          msgRows={msgRows}
+          allNodes={extra.nodes}
+          params={graph.params}
+          selectedEdge={selectedEdge}
+          onCloseEdge={() => setSelectedEdge(null)}
+          onEditRelations={() => setEditorSignal((v) => v + 1)}
           onClose={() => setSelected(null)}
           onOpenSmile={openSmile}
         />

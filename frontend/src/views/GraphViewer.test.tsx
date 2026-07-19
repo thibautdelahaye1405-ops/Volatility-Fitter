@@ -46,9 +46,22 @@ const timeline = { revealedHop: Infinity, animating: false, skip: () => undefine
 vi.mock("../state/useWaveTimeline", () => ({ useWaveTimeline: () => timeline }));
 vi.mock("../state/useAttributionParticles", () => ({ useAttributionParticles: () => [] }));
 
-// Heavy leaves: the canvas and the drill-in cards have their own tests.
+// Heavy leaves: the canvas and the drill-in cards have their own tests. The
+// mock exposes an edge-click trigger for the U4 relation-card lock.
 vi.mock("../components/GraphNetworkChart", () => ({
-  default: () => <div data-testid="chart" />,
+  default: ({ onEdgeClick }: { onEdgeClick?: (s: unknown) => void }) => (
+    <button
+      data-testid="chart-edge"
+      onClick={() =>
+        onEdgeClick?.({
+          kind: "calendar",
+          ticker: "SPY",
+          aExpiry: "2026-10-16",
+          bExpiry: "2026-07-17",
+        })
+      }
+    />
+  ),
 }));
 vi.mock("../components/GraphAttributionCard", () => ({
   default: () => <div data-testid="attribution" />,
@@ -256,6 +269,17 @@ describe("Graph shell (U0)", () => {
     );
     expect(screen.getByText("Prior source")).toBeTruthy();
     expect(screen.getByTestId("attribution")).toBeTruthy();
+  });
+
+  it("edge click opens the relation card in the inspector (U4)", () => {
+    renderShell();
+    fireEvent.click(screen.getByTestId("chart-edge"));
+    expect(screen.getByText(/Relation · SPY calendar/)).toBeTruthy();
+    // Smooth-field mode: the minimal coupling note (message card needs the
+    // message operator).
+    expect(screen.getByText(/Smooth-field coupling/)).toBeTruthy();
+    fireEvent.click(screen.getByTitle("Close relation card"));
+    expect(screen.queryByText(/Relation · SPY calendar/)).toBeNull();
   });
 
   it("collapses the drawer on an active-tab re-click", () => {

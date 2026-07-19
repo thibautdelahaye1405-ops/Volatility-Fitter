@@ -37,6 +37,8 @@ interface RelationshipsPaneProps {
   setCrossBeta: (v: number) => void;
   /** Fired after a relation-editor save (parent refreshes topology + re-runs). */
   onEdgesSaved: () => void;
+  /** Bumped by the shell (inspector "Edit relations") — opens the editor. */
+  openEditorSignal?: number;
 }
 
 /** Uniform card chrome for the pane sections. */
@@ -57,8 +59,13 @@ export default function RelationshipsPane({
   crossBeta,
   setCrossBeta,
   onEdgesSaved,
+  openEditorSignal,
 }: RelationshipsPaneProps) {
   const [editingEdges, setEditingEdges] = useState(false);
+  // The inspector's "Edit relations" drill-in opens the editor from outside.
+  useEffect(() => {
+    if (openEditorSignal !== undefined && openEditorSignal > 0) setEditingEdges(true);
+  }, [openEditorSignal]);
   // U1 units lens for the message confidence scales: σ pts (default) vs raw p.
   const [rawUnits, setRawUnits] = useState(false);
 
