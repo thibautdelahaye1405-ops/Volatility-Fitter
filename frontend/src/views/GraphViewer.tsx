@@ -26,6 +26,7 @@ import { useGraph, nodeKey, type GraphNodeBase } from "../state/useGraph";
 import { useGraphEdges } from "../state/useGraphEdges";
 import { useMessageEdges, type MessageEdgeRow } from "../state/useMessageEdges";
 import { useGraphExtrapolation, buildExtrapolateBody } from "../state/useGraphExtrapolation";
+import { usePreflight } from "../state/usePreflight";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
 import { useWaveTimeline } from "../state/useWaveTimeline";
@@ -250,10 +251,15 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     [manual, extrapolateBody, syntheticObservations],
   );
 
+  // Live pre-run diagnostics (U5) on the SAME body Run ships; blockers gate
+  // Run (fail-open when no report — advisory infra, never a hard dependency).
+  const preflight = usePreflight(runBody);
+
   // Run routing: one solve either way. After the attempt, reveal Diagnostics
   // (errors surface in the top bar).
   const litCount0 = Object.keys(graph.lit).length;
-  const canRun = manual ? litCount0 > 0 : true;
+  const canRun =
+    (manual ? litCount0 > 0 : true) && preflight.report?.ok !== false;
   const busy = extra.running;
   const run = async () => {
     if (manual && litCount0 === 0) return;
@@ -339,6 +345,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         setMode={(m) => graph.setParam("propagationMode", m)}
         litCount={litCount}
         darkCount={darkCount}
+        preflight={preflight}
         summary={summary}
         error={runError}
         canRun={canRun}

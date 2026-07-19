@@ -13,6 +13,7 @@ import type {
   ExtrapolateNode,
   UseGraphExtrapolationResult,
 } from "../state/useGraphExtrapolation";
+import type { PreflightReport, UsePreflightResult } from "../state/usePreflight";
 
 const apiGet = vi.fn();
 vi.mock("../state/api", () => ({
@@ -22,6 +23,10 @@ vi.mock("../state/api", () => ({
 // Hook stubs: each test assigns graphState/extraState before render.
 let graphState: UseGraphResult;
 let extraState: UseGraphExtrapolationResult;
+let preflightState: UsePreflightResult;
+vi.mock("../state/usePreflight", () => ({
+  usePreflight: () => preflightState,
+}));
 vi.mock("../state/useGraph", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../state/useGraph")>()),
   useGraph: () => graphState,
@@ -148,9 +153,18 @@ function renderShell() {
   render(<GraphViewer onNavigateToSmile={vi.fn()} />);
 }
 
+function preflightReport(over: Partial<PreflightReport> = {}): PreflightReport {
+  return {
+    universeNodes: 2, litCount: 1, darkCount: 1, observationCount: 1,
+    propagationMode: "smooth_field", ok: true, issues: [],
+    ...over,
+  };
+}
+
 beforeEach(() => {
   graphState = graphStub();
   extraState = extraStub();
+  preflightState = { report: null, loading: false, error: null };
 });
 
 afterEach(() => {
@@ -269,6 +283,42 @@ describe("Graph shell (U0)", () => {
     );
     expect(screen.getByText("Prior source")).toBeTruthy();
     expect(screen.getByTestId("attribution")).toBeTruthy();
+  });
+
+  it("preflight blockers gate Run; the chip lists the finding (U5)", () => {
+    preflightState = {
+      report: preflightReport({
+        ok: false,
+        issues: [
+          { severity: "blocker", code: "empty_universe",
+            message: "The selected universe is empty.", count: 1 },
+        ],
+      }),
+      loading: false,
+      error: null,
+    };
+    renderShell();
+    expect((screen.getByText("Run") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByText("1 blocker"));
+    expect(screen.getByText("The selected universe is empty.")).toBeTruthy();
+  });
+
+  it("preflight warnings never gate Run (U5)", () => {
+    preflightState = {
+      report: preflightReport({
+        issues: [
+          { severity: "warning", code: "no_lit_path",
+            message: "3 node(s) stranded.", count: 3 },
+          { severity: "warning", code: "beta_extreme",
+            message: "1 relation beyond the cap.", count: 1 },
+        ],
+      }),
+      loading: false,
+      error: null,
+    };
+    renderShell();
+    expect(screen.getByText("2 warnings")).toBeTruthy();
+    expect((screen.getByText("Run") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("edge click opens the relation card in the inspector (U4)", () => {

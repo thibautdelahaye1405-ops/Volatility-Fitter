@@ -1267,6 +1267,31 @@ class GraphExtrapolateRequest(GraphSolverParams):
     cycleBetaTolerance: float = Field(default=0.05, gt=0.0)
 
 
+class GraphPreflightIssue(BaseModel):
+    """One pre-run finding (P5b U5). ``blocker`` gates Run; warnings/info
+    never do — the arc's ratified contract."""
+
+    severity: Literal["blocker", "warning", "info"]
+    #: Machine tag (e.g. "empty_universe", "no_lit_path", "beta_extreme").
+    code: str
+    message: str
+    count: int = 1
+
+
+class GraphPreflightResponse(BaseModel):
+    """POST /graph/preflight — the dry-run report (nothing fitted/solved/
+    recorded; see volfit/api/graph_preflight.py for the contract)."""
+
+    universeNodes: int
+    litCount: int
+    darkCount: int
+    observationCount: int
+    propagationMode: str
+    #: True when no blocker-severity issue is present.
+    ok: bool
+    issues: list[GraphPreflightIssue]
+
+
 class GraphObservationPlanRequest(GraphExtrapolateRequest):
     """POST /graph/observation-plan — "which dark node to quote next" (R3
     item 13). Solves the same posterior as /graph/extrapolate, then ranks the

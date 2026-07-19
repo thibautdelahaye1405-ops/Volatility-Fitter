@@ -1,14 +1,17 @@
-// Graph shell top bar (P5b U0): the workflow spine's Configure→Run controls.
+// Graph shell top bar (P5b U0; live preflight U5): the workflow spine's
+// Configure→Run controls.
 //
 // LEFT: observation source (calibrations vs manual what-if — unified by the
 // U3 mode-aware what-if), propagation operator (Smooth field | Messages;
-// hybrid stays config-only), the config chip and the Preflight chip — both
-// structural stubs until their increments (U6 lifecycle, U5 dry-run) land.
-// RIGHT: post-run summary badges, last error, Clear field, and RUN — the
-// workspace's single primary action.
+// hybrid stays config-only), the config chip (structural stub until the U6
+// lifecycle) and the LIVE preflight chip (dry-run findings; Run gates only
+// on blockers). RIGHT: post-run summary badges, last error, Clear field, and
+// RUN — the workspace's single primary action.
 import { Eraser } from "lucide-react";
+import PreflightChip from "./PreflightChip";
 import SegmentedControl from "../SegmentedControl";
 import type { PropagationMode } from "../../state/useGraph";
+import type { UsePreflightResult } from "../../state/usePreflight";
 
 /** Where the propagated observations come from. */
 export type ObservationSource = "calibrations" | "manual";
@@ -28,6 +31,8 @@ interface GraphTopBarProps {
   /** Lit/dark composition of the displayed universe. */
   litCount: number;
   darkCount: number;
+  /** The live dry-run report (U5) — drives the chip; blockers gate Run. */
+  preflight: UsePreflightResult;
   summary: RunSummary | null;
   /** Last run failure (production or sandbox), or null. */
   error: string | null;
@@ -48,6 +53,7 @@ export default function GraphTopBar({
   setMode,
   litCount,
   darkCount,
+  preflight,
   summary,
   error,
   canRun,
@@ -98,15 +104,8 @@ export default function GraphTopBar({
         config <span className="text-slate-300">saved edges</span>
       </span>
 
-      {/* Preflight chip: universe composition today; the dry-run checks
-          (no-lit-path components, |β| extremes, conditioning) are the
-          Preflight increment. */}
-      <span
-        className={chipClass + " cursor-default text-slate-500"}
-        title="Universe composition (lit = observed source · dark = extrapolation target — edited in Universe ▸ Selection). Full pre-run checks arrive with Preflight."
-      >
-        {litCount} lit · {darkCount} dark
-      </span>
+      {/* Live preflight (U5): dry-run findings; blockers gate Run. */}
+      <PreflightChip preflight={preflight} litCount={litCount} darkCount={darkCount} />
 
       <div className="ml-auto flex items-center gap-2">
         {summary !== null && (

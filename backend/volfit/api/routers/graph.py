@@ -15,6 +15,7 @@ from volfit.api import (
     graph_blocks,
     graph_extrapolation,
     graph_lv,
+    graph_preflight,
     graph_reconstruct,
     graph_select,
     graph_service,
@@ -37,6 +38,7 @@ from volfit.api.schemas import (
     GraphNodeSmile,
     GraphObservationPlanRequest,
     GraphObservationPlanResponse,
+    GraphPreflightResponse,
     GraphSolveRequest,
     GraphSolveResponse,
 )
@@ -86,6 +88,16 @@ def extrapolate(body: GraphExtrapolateRequest, request: Request) -> GraphExtrapo
     (plan Phase 3): transported priors -> lit-calibration innovations -> graph
     posterior. Distinct from the manual-shift sandbox ``POST /graph/solve``."""
     return graph_extrapolation.extrapolate(request.app.state.volfit, body)
+
+
+@router.post("/graph/preflight", response_model=GraphPreflightResponse)
+def preflight_graph(
+    body: GraphExtrapolateRequest, request: Request
+) -> GraphPreflightResponse:
+    """Pre-run diagnostics (P5b U5): a DRY RUN over the same request Run would
+    ship — nothing fitted, solved, or recorded. Run is blocked only on
+    blocker-severity issues."""
+    return graph_preflight.preflight(request.app.state.volfit, body)
 
 
 @router.get(

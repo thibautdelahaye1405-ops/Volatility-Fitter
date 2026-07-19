@@ -353,11 +353,12 @@ items; absorbs R3 item 14.
     solver chronology).~~ **DONE 2026-07-19** (see STATUS wrap
     2026-07-19l; live check: client q == wire q exactly; reconstructed-
     smile mini-chart deliberately out — the ↗ drill-in serves it).
-  * **U5 Preflight**: backend dry-run endpoint (universe/lit/dark
+  * ~~**U5 Preflight**: backend dry-run endpoint (universe/lit/dark
     counts, no-lit-path components, missing priors, |β| extremes,
     σ_edge outliers, cycle products, single-relationship-dominated
     receivers, conditioning); TopBar chip; Run blocked ONLY on genuine
-    blockers, warnings otherwise.
+    blockers, warnings otherwise.~~ **DONE 2026-07-19** (see STATUS
+    wrap 2026-07-19m; the dry-run NEVER fits/records — spy-locked).
   * **U6 Config lifecycle (lightweight)**: `graph_message_config`
     envelope {name, version, createdAt, author, parentVersion, notes,
     rows} × two slots (draft/active); editor edits the DRAFT; Activate
@@ -392,6 +393,36 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-19 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-19m) — P5b U5 PREFLIGHT SHIPPED
+
+- **POST /graph/preflight** (`volfit/api/graph_preflight.py`): a genuine
+  DRY RUN — nothing fitted, solved, or recorded (spy-locked). Prior
+  presence via the snapshot tiers only (`allow_bootstrap=False` — the
+  bootstrap tier would fit); calibration presence via the calibrated
+  POINTER (never a fit); gated servers count only pointer-backed lit
+  nodes as observations (ungated bootstraps lazily at Run).
+- Checks: counts (universe/lit/dark/observations); the ONE blocker =
+  empty universe; warnings: no observations, missing priors,
+  lit-uncalibrated (warning gated / info ungated), pulses outside the
+  selection, |β| > 3 (worst shown), σ_edge outliers (loose > 10pt /
+  tight < 0.05pt), §16.4 cycle products, no-lit-path components
+  (union-find over the effective relations incl. implied reverse);
+  info: dominated receivers (> 90% of q from one factor), per-ticker
+  calendar-off, conditioning (N ≤ 400 cap, warn > 1e10 on Q+κ+R̂ with
+  the firm observation scale — real r would need fits).
+- **TopBar chip is LIVE** (PreflightChip + usePreflight): auto-refreshes
+  (500ms debounce) on the SAME body Run ships (what-if pulses
+  included); rose/amber/emerald verdict + findings popover; **Run gates
+  ONLY on blockers**, fail-open without a report (older backend). Live
+  visual on a fresh gated scratch server: exactly the right 3 warnings
+  (lit-uncalibrated, no observations, no priors), Run stays enabled.
+- Backend +6 tests (each issue code provoked; fit/record spies), shell
+  +2 locks (blocker gates Run; warnings never do). vitest 104/104, tsc
+  + build clean, ui_smoke 8/8. GraphViewer.tsx again AT the 400 cap.
+- NEXT: **U6 config lifecycle** (graph_message_config envelope
+  draft/active, Activate/Revert/diff, event-log entry, migrate the
+  existing blob) — then U7 validation drawer closes the arc.
 
 ### 🧭 SESSION WRAP (2026-07-19l) — P5b U4 MESSAGE INSPECTOR SHIPPED
 
