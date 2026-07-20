@@ -156,6 +156,34 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
+## DYNAMIC DIRECTED-HARMONIC ARC — proposed 2026-07-20 (Phase 0 executed, ratification pending)
+
+User-authored `Docs/dynamic_directed_harmonic_graph_framework.md`: a layered
+dynamic-harmonic architecture splitting graph semantics into **reciprocal
+harmonic relations** (calendar/symmetric peers — Dirichlet-clamped MRF with
+uncertain-boundary Ω = P⁻¹ + B_S·V_S·B_Sᵀ) and **directed influence arcs**
+(DAG state-space with persistent per-target idiosyncratic residuals, cut at
+the source = exact zero reverse influence, per-handle half-life φ). Directed
+predictions enter the harmonic layer as UNARY anchors — they can never update
+their parents. Supersedes the framework-doc §29.3 ghost draft (residual in
+common-epoch coordinates is the right state object; ghost = parentless
+special case); absorbs §28 (clamp) as its Phase 3.
+
+**Phase 0 EXECUTED 2026-07-20** (decision record in the doc's §17; D2–D6
+await user ratification): β-notation repaired (backspace-mangled `\beta`
+bytes), reverse-precision identity corrected everywhere (`p_rev = p_fwd·β²`
+forward-beta; code was always correct), lease-carries-innovation + diagonal
+R_D correlation caveats written in, and **all §15 goldens locked** in
+`backend/tests/fixtures/graph_dynamic_golden.json` +
+`tests/test_graph_dynamic_golden.py` (18 tests vs self-contained brute-force
+references: causal A/B state machine, Dirichlet/GLS solves — zero
+`volfit.graph` imports). Next: user ratifies D2–D6 → Phase 1
+(`volfit/graph/temporal_state.py`, causal memory with no graph solve), per
+the doc's §17 roadmap. Phases 1–7 must reproduce the locked fixture numbers
+THROUGH the production modules.
+
+---
+
 ## PRECISION-MESSAGE GRAPH ARC — adopted 2026-07-18 (current top arc)
 
 Redesign of the graph propagation workflow per
@@ -169,7 +197,8 @@ items; absorbs R3 item 14.
 - **Operator = pairwise relation factors** `Σ p_ij (z_i − β_ij z_j)²`, NOT
   the row-normalized MᵀD_qM (identical receiver conditionals; fixes
   dead-informer dilution; one factor per auto-generated relation, canonical
-  receiver = shorter maturity, `p_rev = p_fwd/β²`).
+  receiver = shorter maturity, `p_rev = p_fwd·β²` in forward-beta terms —
+  identity prose corrected 2026-07-20, code was always right).
 - **Amplitude: locked shape, adjudicated level.** `alphaT=1.0` = maturity
   shape; per-relation-class multiplier `rho` (desk=1.0, learned≈0.34
   cal/≈0.55 idx/≈0.76 peer from `backtest/results/learned_betas.json`)
@@ -395,7 +424,31 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-07-19 (resume here)
+## STATUS — updated 2026-07-20 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-20) — DYNAMIC-HARMONIC FRAMEWORK PHASE 0 EXECUTED
+
+- User authored `Docs/dynamic_directed_harmonic_graph_framework.md`
+  (directed DAG state layer w/ persistent idio residuals + reciprocal
+  harmonic completion; my review: sound, supersedes the §29.3 ghost
+  draft, absorbs §28 clamp as its Phase 3). Phase 0 executed: decision
+  record D1–D9 added (§17; **D2–D6 need user ratification** — OU/RW
+  transition, hard-vs-Kalman updates by class, innovation-carrying
+  leases, filter-only attribution, diagonal-R_D caveat), β-notation
+  byte repair, reverse-precision identity corrected in framework §7.6 +
+  message.py header + this file (`p_rev = p_fwd·β²` forward-beta; CODE
+  was always correct), §28/§29 supersession statuses + §27 log entry.
+- **Goldens locked before implementation**:
+  `tests/fixtures/graph_dynamic_golden.json` +
+  `tests/test_graph_dynamic_golden.py` — 18 tests vs self-contained
+  brute-force references (causal A/B machine incl. β=1.5 + half-life
+  variants, OU/RW semigroup, precision separation, calendar identity
+  2/1/0.5 + Tz const, harmonic-vs-directed discriminator 2/3-1/3 vs
+  1-0.5, uncertain-boundary GLS chain 1/3·2/3 + star covariance,
+  rebase invalidation). 65 graph tests green (18 new + 47 message).
+- NEXT: ratify D2–D6 → dynamic Phase 1 (temporal_state.py). P6
+  hardening + P4 campaign verdict rider remain queued on the
+  precision-message arc.
 
 ### 🧭 SESSION WRAP (2026-07-19o) — P5b U7 VALIDATION DRAWER SHIPPED · **P5b UX ARC COMPLETE (U0–U7)**
 

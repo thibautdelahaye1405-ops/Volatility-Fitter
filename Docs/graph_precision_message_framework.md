@@ -3,8 +3,10 @@
 ## Current state, target framework, and implementation roadmap
 
 **Status:** design specification — AMENDED 2026-07-18 after codebase review;
-four decisions ratified by the user (amendment log in Section 27)  
-**Date:** 2026-07-18 (amended same day)  
+four decisions ratified by the user (amendment log in Section 27);
+two further amendments PROPOSED 2026-07-20 (Sections 28–29, **DRAFT — not
+yet ratified**; no behaviour changes until the user ratifies)  
+**Date:** 2026-07-18 (amended same day; draft amendments 2026-07-20)  
 **Locked decisions:** the calendar amplitude SHAPE exponent is `alphaT = 1.0`;
 the amplitude LEVEL is a per-relation-class multiplier `rho` adjudicated by
 the benchmark (desk preset `rho = 1.0` = full force, implemented via the
@@ -644,8 +646,16 @@ A single factor per relation requires an orientation convention, because
 shape only under the identity
 
 \[
-p_{\mathrm{rev}}=p_{\mathrm{fwd}}/\beta^2 .
+p_{\mathrm{rev}}=p_{\mathrm{fwd}}\,\beta^2
 \]
+
+(in terms of the FORWARD amplitude \(\beta\); equivalently
+\(p_{\mathrm{rev}} = p_{\mathrm{fwd}} / \beta_{\mathrm{rev}}^2\) with the
+reverse amplitude \(\beta_{\mathrm{rev}} = 1/\beta\)). *Corrected
+2026-07-20: this section previously stated \(p_{\mathrm{fwd}}/\beta^2\) for
+the displayed forms, which mixed the two conventions — expand
+\(p(z_i-\beta z_j)^2 = p\beta^2(z_j - z_i/\beta)^2\). The assembly code was
+always correct (`p` to the receiver, `p·β²` to the informer).*
 
 Conventions locked:
 
@@ -2315,3 +2325,304 @@ artifact `backtest/results/message_phase0.json`; findings in
    cases plus dead-informer, repeated-path 5/(3p) vs naive 6/(5p),
    multi-hop limits, shrunk single-source and corroboration contracts,
    and global units-invariance.
+
+**2026-07-20 — PROPOSED (DRAFT — awaiting user ratification): clamped lit
+boundary (Section 28) + observation aging and sequential consistency
+(Section 29).** Motivated by the directed β-harmonic design review
+(lit-boundary firmness, directional independence, forward-cascade
+comparison) and the asynchronous-lit echo scenario (liquid A lit at
+t=1/2/3, related B lit only at t=2.5). Section 28: `boundaryMode: soft |
+clamped` — exact Gaussian conditioning on fresh lit innovations; zero
+reverse leakage into lit nodes; Section-17 attribution and Section-14.3
+`no_lit_path` preserved; reproduces the forward cascade on boundary-rooted
+trees. Section 29: the `age_days` wiring gap at the Phase-3 observation
+feed, aged ghost observations replacing the cliff at lit→dark transitions,
+the clamp-requires-freshness rule, and the enforced "graph output is never
+prior input" invariant. All defaults unchanged until ratified.
+
+**2026-07-20 (later) — dynamic-framework Phase 0 executed.** The user
+authored `Docs/dynamic_directed_harmonic_graph_framework.md` (layered
+dynamic-harmonic architecture: directed DAG state layer with persistent
+idiosyncratic residuals, cut at the source; reciprocal harmonic completion
+with directed predictions as unary anchors). Its Phase 0 was executed
+against this document: the Section-7.6 reverse-precision identity corrected
+(prose only — `p_rev = p_fwd·β²` in forward-amplitude terms; assembly code
+was always correct), Section 28 marked ABSORBED (→ its Phase 3), Section
+29.3 marked SUPERSEDED (ghosts → persistent residual special case), and the
+dynamic goldens locked in
+`backend/tests/fixtures/graph_dynamic_golden.json`.
+
+---
+
+## 28. Proposed amendment (2026-07-20, DRAFT): clamped lit boundary
+
+**Status update (2026-07-20, later): ABSORBED into
+`Docs/dynamic_directed_harmonic_graph_framework.md`** — the exact partition
+conditioning specified here is Phase 3 of that framework (the Dirichlet
+harmonic solver), with boundary eligibility strengthened from "fresh" to
+"fresh certified" (its Section 4.2). The mathematics and golden contracts
+below remain the reference for that phase; do not implement this section
+standalone.
+
+**Status: PROPOSED — not ratified.** Ships behind `boundaryMode: soft`
+(the ratified Section-15 solve, byte-identical); nothing changes until the
+mode is activated per the Section-18 migration convention.
+
+### 28.1 Motivation
+
+Two desk requirements from the 2026-07-19/20 design review:
+
+1. **Lit nodes are the boundary, not participants.** The desk contract is
+   "the graph never argues with a calibration I can see". Today the
+   published smile at a lit node already comes from its own calibration,
+   but the *posterior field* at lit nodes shrinks toward graph consensus,
+   and — more materially — a lit node's innovation can be pulled by its
+   neighbours before dark nodes inherit it.
+2. **Directional independence where it matters.** Section 16.3 records
+   that no probabilistic model can give fully independent per-direction
+   influence: conditioning always flows information backward. Clamping
+   the lit boundary delivers the desired asymmetry in the dominant case,
+   because liquid informers (indices, front maturities) are almost always
+   lit: a constituent's idiosyncratic innovation can never move a clamped
+   index, exactly and unconditionally.
+
+The soft treatment remains the default and is not deprecated: its
+discounting of poorly calibrated lit nodes through the Section-15.2
+combined precision \(r^d_s\) is a genuine feature under heterogeneous
+quote quality, and it is the only mode whose dark-node bands carry
+lit-source uncertainty.
+
+### 28.2 Semantics
+
+New solver field `boundaryMode: soft | clamped` (request + persisted
+message config, riding the draft/active lifecycle). In clamped mode the
+solve is **exact Gaussian conditioning** on the lit innovations. Let
+\(S\) be the clamped observation set, \(F\) the free nodes, and
+\(Q^{+} = Q_{\mathrm{msg}} + D_\kappa\ (+\ \text{hybrid extra})\):
+
+\[
+\widehat z_S = d_S,
+\qquad
+\widehat z_F = -\,(Q^{+}_{FF})^{-1} Q^{+}_{FS}\, d_S,
+\qquad
+\Sigma_{FF} = (Q^{+}_{FF})^{-1}.
+\]
+
+Conventions locked:
+
+- **Exact partition solve, not large-\(r\).** Clamped is the
+  \(r \to \infty\) limit of the soft solve, but it is implemented by
+  partitioning (better conditioned, and the limit is exact).
+- **Attribution is preserved.** The gain is
+  \(G_F = -(Q^{+}_{FF})^{-1} Q^{+}_{FS}\) with identity rows on \(S\);
+  \(\widehat z_i = \sum_s G_{is} d_s\) still decomposes every dark shift
+  exactly over lit sources (Section 17 contract unchanged).
+- **\(r^d_s\) is retained as a diagnostic** (fit quality, coverage,
+  freshness stay visible per node) but does not enter the clamped mean.
+- **Section 14.3 unchanged:** components with no clamped node stay at
+  zero innovation with broad variance and the `no_lit_path` tag. The
+  Section-14.2 anchor \(\kappa\) still acts on free nodes (amplitude
+  policy unaffected); \(\kappa\) on clamped nodes is inert.
+- **PD guard unchanged in form:** Cholesky on \(Q^{+}_{FF}\) per support
+  component containing a clamped node; the β≠0 informer-reachability rule
+  (Section 23, Phase 2) carries over.
+- **Band placement (Section 15.3) unchanged for dark nodes** (baseline
+  variance added once at reconstruction). Acknowledged trade, stated
+  plainly: clamped bands are *conditional on an exact boundary* — lit
+  calibration uncertainty no longer widens dark bands. Soft mode remains
+  the uncertainty-faithful mode; the validation drawer should compare
+  both.
+- **What-if pulses are clamped too** (a typed hypothesis is exact by
+  construction); the pulse-precision field is ignored in clamped mode and
+  preflight must say so.
+- **LOO:** holding out a lit node moves it from \(S\) to \(F\); it
+  receives a finite predicted band from the remaining boundary, so the
+  validation-drawer contract is unchanged.
+- **Staleness interaction (binding):** only *fresh* observations are
+  clamped — see the Section-29.4 rule. Without it, clamping would make
+  staleness strictly worse.
+
+### 28.3 Relationship to the directed harmonic form
+
+On trees rooted at the boundary, the clamped mean reproduces the directed
+forward cascade exactly: for a chain \(L \to u_1 \to u_2\),
+
+\[
+\widehat z_{u_1} = \beta_1 d_L,
+\qquad
+\widehat z_{u_2} = \beta_2\beta_1 d_L,
+\qquad
+\operatorname{Var}(u_1) = \tfrac{1}{p_1},
+\qquad
+\operatorname{Var}(u_2) = \tfrac{1}{p_2} + \tfrac{\beta_2^2}{p_1},
+\]
+
+i.e. betas multiply in the mean and variance accumulates by the serial
+rule. On converging paths and cycles it remains the joint solve: no
+repeated-path double-counting (Invariant 7), unconditional PSD, no
+spectral-radius condition. This is the precise sense in which clamped mode
+subsumes the harmonic boundary-value formulation while keeping the
+information-conservation guarantees.
+
+### 28.4 Golden contracts (additions to Section 21)
+
+1. **Clamp overrides precision:** a lit node's posterior equals its
+   innovation exactly, for any \(r^d_s\).
+2. **Cascade equivalence:** the Section-28.3 chain, means and variances.
+3. **Zero reverse leakage:** index and constituent both lit, any
+   \((p, \beta)\) — the index posterior is bit-equal to its own
+   innovation regardless of the constituent's.
+4. **Two-boundary average:** a dark node fed by two clamped informers
+   reproduces the Section-7.3 conditional with \(q_i = \sum p\) exactly.
+5. **Soft-limit consistency:** clamped equals the \(r \to \infty\) limit
+   of soft (numerical tolerance).
+6. **LOO band:** a held-out lit node gets the finite \(\Sigma_{FF}\)
+   diagonal, matching a direct conditioning reference.
+
+### 28.5 API, implementation, adjudication
+
+- `boundaryMode` on the graph solve request + message config
+  (draft/active lifecycle); surfaced by the preflight chip, the policy
+  card, and as a policy-matrix row.
+- `message_posterior_update` grows the partition path (reuse support
+  components, PD guard, gain assembly); `smooth_field` is untouched;
+  hybrid clamps on the same \(Q^{+}\).
+- **Adjudication before any default flip:** clamped vs soft on the
+  Phase-4 harness (LOO RMS + Section-22.3 band coverage). Desk preset
+  proposal: clamped.
+
+---
+
+## 29. Proposed amendment (2026-07-20, DRAFT): observation aging and sequential consistency
+
+**Status update (2026-07-20, later): PARTIALLY SUPERSEDED by
+`Docs/dynamic_directed_harmonic_graph_framework.md`** — Section 29.2 (the
+`age_days` wiring fix) survives as Phase-4 work item 1 of that framework;
+Section 29.4's invariants survive as its observation classes and Step 8.
+Section 29.3 (aged ghost observations) is **SUPERSEDED** by the directed
+persistent residual state: an absolute-level ghost double-counts common
+moves, whereas the residual in common-epoch coordinates composes correctly
+with subsequent source moves — a ghost is exactly the residual's
+no-directed-parents special case (`u = d`). See that framework's Section 11
+and Phase-0 decision D7.
+
+**Status: PROPOSED — not ratified.** Governs how lit information decays
+across snapshots. In the standard same-session workflow (fetch →
+calibrate → solve) every observation has age zero and behaviour is
+byte-identical; the changes bind only on genuinely stale inputs.
+
+### 29.1 The asynchronous-lit scenario
+
+Liquid asset A is lit at snapshots \(t_1 < t_2 < t_3\); a closely related
+illiquid B is lit only at \(t_{2.5}\), with a potentially large
+idiosyncratic innovation. Desired behaviour: B follows A while dark; B's
+own reading neither contaminates A nor is cliff-reversed at \(t_3\); it
+decays gracefully toward the A-implied level at a controlled rate.
+
+Findings against the current implementation (verified 2026-07-20):
+
+1. **The echo into A is structurally blocked today.** Innovations are
+   measured against saved-prior transports (the `graph_nodes.py`
+   provenance hierarchy), and prior snapshots contain calibrated fits
+   only — the graph never feeds its own output into a later baseline, so
+   "A gets a large innovation wrongly at \(t_3\)" has no path.
+   Section 29.4 promotes this from an architectural accident to an
+   enforced invariant.
+2. **A stale cached lit fit enters at full freshness.** The Phase-3
+   observation feed calls
+   `observation_precision(rms, n_atm, rel_spread)` without `age_days`
+   (`graph_extrapolation.py`), although the decay curve
+   (`freshness_factor`, `OBS_FRESHNESS_HALFLIFE`) already exists in the
+   shared precision vocabulary. A wiring gap, not a design gap.
+3. **A node leaving the lit set forgets its mean.** Lit-day ATM
+   innovations are recorded only as the idiosyncratic *variance floor*
+   for later dark days; the mean information is discarded, so B
+   cliff-reverts to following A at \(t_3\) — exactly the undesired
+   reversal.
+
+### 29.2 Observation age (wiring fix)
+
+Pass `age_days` — days between the calibration's quote snapshot (the
+data-age slice already computed for readiness) and the valuation date —
+into `observation_precision` at the Phase-3 feed. No new constants:
+`OBS_FRESHNESS_HALFLIFE` governs. Age zero reproduces current behaviour
+exactly; a stale lit fit now competes at decayed precision instead of
+full strength.
+
+### 29.3 Aged ghost observations (mean persistence)
+
+Promote the recorded lit-innovation store from (ATM innovation → variance
+floor) to per-node records \((d^{\mathrm{rec}}, r^{\mathrm{rec}},
+\text{timestamp})\) over all three handles. Solve-time rule: a node that
+is **not** currently lit but holds a record younger than the expiry
+cutoff enters as a soft observation
+
+\[
+y = \text{baseline}_{\text{today}} + d^{\mathrm{rec}},
+\qquad
+r = r^{\mathrm{rec}}\cdot
+\mathrm{freshness}(\text{age};\ \mathrm{OBS\_FRESHNESS\_HALFLIFE}),
+\]
+
+with conventions locked:
+
+- **Ghosts are always soft, never clamped** (Section 29.4).
+- **Innovation-persistence convention:** re-applying \(d^{\mathrm{rec}}\)
+  against today's baseline assumes the baseline transport carries the
+  common move. The residual window-misalignment (common moves
+  double-counted across observation epochs of different ages) is a
+  documented limitation of this amendment, resolved only by the Note-15
+  common-epoch filter direction (Section 29.5).
+- **Expiry:** a ghost is dropped when its decayed precision reaches the
+  observation floor (or a hard age cap); the existing variance floor
+  remains afterwards, so bands stay honest after the mean is forgotten.
+- **LOO:** holding out a node removes its ghost as well.
+- **Contract on the scenario:** at \(t_3\), B's posterior is the
+  precision-weighted compromise between A's fresh signal (full precision)
+  and B's aged \(t_{2.5}\) reading (decayed precision) — partial
+  reversion at the configured half-life, no cliff; A untouched under
+  clamped boundary, gain-bounded under soft.
+
+### 29.4 Locked interaction rules
+
+1. **Clamp requires freshness.** Only observations with age
+   \(\le\) `clampMaxAgeDays` (default: same trading day) are clamped;
+   older lit fits and all ghosts enter softly at decayed precision even
+   when `boundaryMode: clamped`. Without this rule, Section 28 would
+   make staleness strictly worse (a stale reading clamped exact).
+2. **Graph output is never prior input (INVARIANT, enforced).** Prior
+   save/publish must refuse nodes whose surface is graph-extrapolated
+   rather than calibrated. True by construction today (`PriorNode`
+   carries fitted-model params only); the guard makes the property
+   survive future prior modes, and it is certification-lockable.
+
+### 29.5 Out of scope
+
+Common-epoch innovation differencing — timestamped observations, all
+innovations measured over one window — is the Note-15 observation-filter
+direction. This amendment is the graph-side bridge to it, not the filter.
+
+### 29.6 Golden contracts (additions to Section 21)
+
+1. **Age monotonicity:** observation precision strictly decreasing in
+   age down to the floor; age zero byte-identical to today.
+2. **Ghost continuity:** a node going dark with zero elapsed time yields
+   an unchanged posterior (lit observation and ghost coincide).
+3. **Sequential A/B fixture (certification-style):** the Section-29.1
+   timeline as a locked case — no A movement under clamp, B's reversion
+   fraction matches the half-life formula, no cliff at ghost expiry
+   boundaries below tolerance.
+4. **Prior-save guard:** a prior snapshot containing an extrapolated
+   node is refused with an explicit error.
+
+### 29.7 API, implementation, adjudication
+
+- Phase-3 feed: `age_days` plumbed from the data-age slice; ghost
+  injection after the lit loop; record-store schema bump (three handles +
+  precision + timestamp) with migration from the ATM-only floor rows.
+- Config: `clampMaxAgeDays` and the ghost expiry cap in the message
+  config (draft/active lifecycle); preflight surfaces ghost count and
+  oldest age; the message inspector labels ghost observations distinctly.
+- **Adjudication:** the observation half-life swept on the Phase-4
+  harness before any default beyond the wiring fix; the wiring fix
+  itself is a correctness change, presumptively on once ratified.

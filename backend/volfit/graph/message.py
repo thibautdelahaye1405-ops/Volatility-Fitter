@@ -8,7 +8,8 @@ Implements the amended precision-message specification
   sparse-ready by construction (each factor touches two nodes).
 * §7.6  receiver conditional precision ``q_i``: a factor contributes ``p`` to
   its receiver and ``p·β²`` to its informer (the in-units mapping under the
-  canonical one-factor-per-relation convention, ``p_rev = p_fwd / β²``).
+  canonical one-factor-per-relation convention, ``p_rev = p_fwd·β²`` in
+  forward-beta terms — identity corrected 2026-07-20, code unchanged).
 * §8    calendar amplitude ``β = (T_informer / T_receiver)^alphaT`` with
   per-handle exponents (§8.5, all default 1.0).
 * §9.2  calendar precision families; the inverse-sqrt-gap default carries the

@@ -1,0 +1,117 @@
+{
+  "meta": {
+    "source": "Docs/dynamic_directed_harmonic_graph_framework.md (sections 5, 8, 15; Phase-0 decisions D2-D5)",
+    "locked": "2026-07-20 (Phase 0 - BEFORE any implementation)",
+    "note": "Exposition values are handle levels == innovations against a zero baseline (doc section 5.1). Implementation phases must reproduce these numbers THROUGH the production volfit.graph modules against this same file; tests/test_graph_dynamic_golden.py verifies them with self-contained brute-force references."
+  },
+  "async_ab": {
+    "snapshots": [0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0],
+    "obs_a": {"0.0": 10.0, "1.0": 11.0, "2.0": 12.0, "3.0": 13.0, "4.0": 14.0, "5.0": 15.0},
+    "obs_b": {"0.0": 10.0, "3.5": 10.0},
+    "beta": 1.0,
+    "expected_a": [10.0, 10.0, 11.0, 11.0, 12.0, 12.0, 13.0, 13.0, 14.0, 14.0, 15.0],
+    "expected_b": [10.0, 10.0, 11.0, 11.0, 12.0, 12.0, 13.0, 10.0, 11.0, 11.0, 12.0],
+    "expected_update_times": [0.0, 3.5],
+    "expected_u_after_3_5": -3.0,
+    "forbidden_lookahead_u": -3.5,
+    "systematic_prediction_at_3_5": 13.0,
+    "attribution_at_4_0": {"systematic": 14.0, "residual": -3.0, "mark": 11.0}
+  },
+  "async_ab_beta15": {
+    "beta": 1.5,
+    "expected_b": [10.0, 10.0, 11.5, 11.5, 13.0, 13.0, 14.5, 10.0, 11.5, 11.5, 13.0],
+    "expected_u_after_0": -5.0,
+    "expected_u_after_3_5": -9.5,
+    "expected_delta_per_unit_source_move": 1.5
+  },
+  "residual_half_life": {
+    "half_life": 1.0,
+    "expected_u_at_4_5": -1.5,
+    "expected_b_at_4_0": 11.878679656440357,
+    "ou_transition": {
+      "v_plus": 0.04,
+      "v_inf": 0.09,
+      "delta": 0.5,
+      "expected_v_minus": 0.065
+    },
+    "random_walk_transition": {
+      "v_plus": 0.04,
+      "q_rate": 0.02,
+      "delta": 0.5,
+      "expected_v_minus": 0.05
+    }
+  },
+  "precision_separation": {
+    "single": {
+      "beta": 1.2,
+      "m_source": 2.0,
+      "m_residual": -0.5,
+      "v_source": 0.04,
+      "v_residual": 0.01,
+      "p_sweep": [1.0, 10.0, 100.0],
+      "expected_mean": 1.9,
+      "expected_variance": [1.0676, 0.1676, 0.0776]
+    },
+    "multi": {
+      "z_parents": [2.0, -1.0],
+      "beta": [1.0, 1.0],
+      "p": [3.0, 1.0],
+      "v_parents": [0.04, 0.09],
+      "v_residual": 0.01,
+      "expected_weights": [0.75, 0.25],
+      "expected_mean": 1.25,
+      "expected_variance_independent": 0.288125,
+      "parent_correlation": 1.0,
+      "expected_variance_correlated": 0.310625
+    }
+  },
+  "calendar_identity": {
+    "maturities": {"3M": 0.25, "6M": 0.5, "1Y": 1.0},
+    "alpha_t": 1.0,
+    "boundary": {"6M": 1.0},
+    "expected": {"3M": 2.0, "1Y": 0.5},
+    "expected_t_times_z": 0.5,
+    "expected_variance_at_unit_precision": {"3M": 1.0, "1Y": 0.25},
+    "p_invariance_sweep": [[1.0, 1.0], [5.0, 0.3]],
+    "global_rescale": 10.0
+  },
+  "discriminator": {
+    "boundary": {"L": 1.0, "R": 0.0},
+    "edge_precision": 1.0,
+    "expected_harmonic": {"u1": 0.6666666666666666, "u2": 0.3333333333333333},
+    "directed_arcs": [["L", "u1"], ["u1", "u2"], ["R", "u2"]],
+    "expected_directed": {"u1": 1.0, "u2": 0.5}
+  },
+  "boundary_uncertainty": {
+    "chain": {
+      "edge_precision": 1.0,
+      "d_left": 1.0,
+      "d_right": 0.0,
+      "v_left": 1.0,
+      "v_right": 0.0,
+      "expected_mean": 0.3333333333333333,
+      "expected_variance": 0.6666666666666666,
+      "certain_boundary_mean": 0.5,
+      "certain_boundary_variance": 0.5
+    },
+    "star": {
+      "edge_precision": 1.0,
+      "d_left": 1.0,
+      "v_left": 1.0,
+      "expected_means": [1.0, 1.0],
+      "expected_covariance": [[2.0, 1.0], [1.0, 2.0]]
+    }
+  },
+  "disconnected": {
+    "expected_mean": 0.0,
+    "expected_flag": "no_active_observation_path"
+  },
+  "config_rebase": {
+    "beta_old": 1.0,
+    "u_old": -3.0,
+    "beta_new": 1.5,
+    "source_state": 14.0,
+    "expected_mark_after_invalidation": 21.0,
+    "expected_flag": "residual_invalidated"
+  }
+}
