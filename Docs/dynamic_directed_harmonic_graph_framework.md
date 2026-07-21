@@ -2,10 +2,13 @@
 
 ## A stateful framework for asynchronous volatility calibration and dark-node marking
 
-**Status:** design proposal — not yet ratified; Phase 0 executed 2026-07-20
-(decision record in Section 17; golden fixtures locked in
-`backend/tests/fixtures/graph_dynamic_golden.json` — decisions D2–D6 await
-explicit user ratification)
+**Status:** ADOPTED — Phase 0 executed 2026-07-20 (decision record in
+Section 17; golden fixtures locked in
+`backend/tests/fixtures/graph_dynamic_golden.json`); decisions D2–D5
+RATIFIED 2026-07-20 (user proceed instruction), D6 OPEN by design until the
+Phase-3 adjudication. Phase 1 (causal temporal state) SHIPPED 2026-07-21:
+`backend/volfit/graph/temporal_state.py`, exit gate green — the Section-5
+A/B example reproduced by the state objects alone, no graph solve.
 
 **Date:** 2026-07-20
 
@@ -1507,18 +1510,18 @@ update, and attribution.
 - **D1 — notation (APPLIED).** One amplitude symbol: `beta`. The apparent
   `eta`/`beta` split was an encoding mangle (a `\b` escape swallowed as a
   backspace byte); repaired at byte level in this document.
-- **D2 — residual transition family (PROPOSED).** `phi(Delta) = 2^(-Delta/H)`.
+- **D2 — residual transition family (RATIFIED 2026-07-20).** `phi(Delta) = 2^(-Delta/H)`.
   Finite half-life: OU form `Q(Delta) = V_inf (1 - phi(Delta)^2)`; infinite
   half-life: random walk `Q(Delta) = q Delta`. Both are semigroup-consistent
   (two steps of `Delta/2` compose exactly to one step of `Delta`), which the
   goldens verify.
-- **D3 — residual update by class (PROPOSED).** Hard residual update for
+- **D3 — residual update by class (RATIFIED 2026-07-20).** Hard residual update for
   **certified** target observations (required by the Section-5 boxed
   sequence); finite-quality Kalman update for **soft stale** observations.
-- **D4 — leases carry the innovation (PROPOSED).** Stated in Section 4.4: a
+- **D4 — leases carry the innovation (RATIFIED 2026-07-20).** Stated in Section 4.4: a
   carried node propagates `z`, so its mark keeps moving with the transported
   baseline.
-- **D5 — asynchrony attribution convention (PROPOSED).** At a certified
+- **D5 — asynchrony attribution convention (RATIFIED 2026-07-20).** At a certified
   target observation, the full aligned residual is attributed to the target's
   idiosyncratic state in the mean; the source-state ambiguity (the source may
   have moved unobserved since its last print) is acknowledged in variance via

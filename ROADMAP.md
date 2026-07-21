@@ -156,7 +156,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## DYNAMIC DIRECTED-HARMONIC ARC — proposed 2026-07-20 (Phase 0 executed, ratification pending)
+## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phase 1 shipped 2026-07-21)
 
 User-authored `Docs/dynamic_directed_harmonic_graph_framework.md`: a layered
 dynamic-harmonic architecture splitting graph semantics into **reciprocal
@@ -169,18 +169,24 @@ their parents. Supersedes the framework-doc §29.3 ghost draft (residual in
 common-epoch coordinates is the right state object; ghost = parentless
 special case); absorbs §28 (clamp) as its Phase 3.
 
-**Phase 0 EXECUTED 2026-07-20** (decision record in the doc's §17; D2–D6
-await user ratification): β-notation repaired (backspace-mangled `\beta`
-bytes), reverse-precision identity corrected everywhere (`p_rev = p_fwd·β²`
-forward-beta; code was always correct), lease-carries-innovation + diagonal
-R_D correlation caveats written in, and **all §15 goldens locked** in
+**Phase 0 EXECUTED 2026-07-20** (decision record in the doc's §17; **D2–D5
+RATIFIED 2026-07-20**, D6 open by design → Phase-3 adjudication):
+β-notation repaired (backspace-mangled `\beta` bytes), reverse-precision
+identity corrected everywhere (`p_rev = p_fwd·β²` forward-beta; code was
+always correct), lease-carries-innovation + diagonal R_D correlation
+caveats written in, and **all §15 goldens locked** in
 `backend/tests/fixtures/graph_dynamic_golden.json` +
 `tests/test_graph_dynamic_golden.py` (18 tests vs self-contained brute-force
 references: causal A/B state machine, Dirichlet/GLS solves — zero
-`volfit.graph` imports). Next: user ratifies D2–D6 → Phase 1
-(`volfit/graph/temporal_state.py`, causal memory with no graph solve), per
-the doc's §17 roadmap. Phases 1–7 must reproduce the locked fixture numbers
-THROUGH the production modules.
+`volfit.graph` imports). **Phase 1 SHIPPED 2026-07-21**:
+`volfit/graph/temporal_state.py` (causal memory, no topology/solver
+imports; exit gate = A/B example reproduced by the state objects alone,
+17 tests + full suite green). Next: **Phase 2**
+(`volfit/graph/directed_state.py` — DAG validation + topological order,
+multi-parent systematic predictor with parent covariance, cut target
+updates, unary predictive outputs, attribution, residual-surprise χ).
+Phases 2–7 must reproduce the locked fixture numbers THROUGH the
+production modules.
 
 ---
 
@@ -424,7 +430,46 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-07-20 (resume here)
+## STATUS — updated 2026-07-21 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASE 1 SHIPPED (temporal state)
+
+- **D2–D5 RATIFIED 2026-07-20** (user proceed instruction); D6 stays OPEN
+  by design (diagonal vs low-rank joint R_D — Phase-3 adjudication).
+- **`volfit/graph/temporal_state.py`** (pure state layer — no topology, no
+  solver imports; ≤400 lines): `ResidualDynamics` (D2 OU/random-walk,
+  semigroup-consistent, `inf` half-life = random walk, vectorized over the
+  3 handles), `ObservationState.carried_to` leases (D4: innovation carried
+  FLAT so the mark rides the transported baseline; variance +q·Δ;
+  look-ahead guarded), `LeasePolicy.classify` (§4.2 classes — uncertified
+  is NEVER fresh_certified), `residual_measurement(+variance)` (§6.3/D5:
+  e = d − β·m against the CAUSAL source; Var = V_obs + β²V_src + 1/p),
+  `ResidualState.advance/updated_hard/updated_kalman` (hard =
+  diffuse-prior limit mean=e var=Var(e); **Kalman posterior var = K·r
+  stable form — (1−K)·V cancels catastrophically in the diffuse limit**),
+  §10 causal guards (monotone time, advance-before-Kalman, no future
+  observations), `persistable`/`assert_persistable` (§10 Step 8: no
+  actual-observation provenance ⇒ no persistence),
+  `reuse_or_invalidate` (golden 15.13), record round-trips,
+  `migrate_atm_floor_history` (item 7: legacy ATM-only graph-idio rows →
+  wide-variance tagged residuals, latest day wins). Exported via the
+  `volfit.graph` façade.
+- **EXIT GATE GREEN**: `tests/test_graph_temporal_state.py` (17 tests)
+  replays the §5 asynchronous A/B example THROUGH the production state
+  objects alone — no graph solve — against the SAME Phase-0 fixture
+  (β=1 and β=1.5, half-life variant where the stepwise replay must hit
+  the point formula via the D2 semigroup, zero reverse influence, clamp
+  identity β·m+u == d at observation times). FULL suite **1392 passed,
+  1 skipped** (8m46s).
+- NEXT: **dynamic Phase 2** — `volfit/graph/directed_state.py`: directed
+  relation schema + DAG validation + topological order; single/multi-
+  parent systematic predictor with parent covariance (fixture
+  `precision_separation.multi` incl. the correlated-parents case); cut
+  target updates (no parent feedback); unary predictive outputs
+  (m_D, V_D) for the Phase-3 harmonic layer; exact source+residual
+  attribution; residual-surprise χ diagnostics. Exit gate: zero reverse
+  sensitivity exact + directed predictions match independent state-space
+  references (goldens 15.2/15.6/15.10 through the module).
 
 ### 🧭 SESSION WRAP (2026-07-20) — DYNAMIC-HARMONIC FRAMEWORK PHASE 0 EXECUTED
 
