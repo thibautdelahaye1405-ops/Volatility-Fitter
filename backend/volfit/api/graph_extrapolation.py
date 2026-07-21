@@ -312,6 +312,13 @@ def solve(
     # other handles proportionally). Otherwise: lit nodes with a calibration
     # become observations (dark nodes never do), each with data-derived
     # precision from fit quality + quote coverage.
+    # Framework Phase-4 item 1 (age wiring): per-ticker loaded-chain age in
+    # DAYS. Empty when not live (age 0 -> freshness factor 1, byte-identical
+    # in the standard same-session workflow).
+    from volfit.api.data_age import ticker_ages
+
+    obs_ages = {tk: m / 1440.0 for tk, m in ticker_ages(state).items()}
+
     synthetic = list(request.syntheticObservations)
     obs_idx_list: list[int] = []
     obs_values_list: list[np.ndarray] = []
@@ -351,7 +358,9 @@ def solve(
             y = np.array([h.sigma0, h.skew, h.curvature])
             rms = weighted_rms_error(state, node.ticker, node.expiry, record, fit_mode)
             n_atm, rel_spread = _quote_stats(record.prepared)
-            obs_breakdowns[i] = gprec.observation_precision(rms, n_atm, rel_spread)
+            obs_breakdowns[i] = gprec.observation_precision(
+                rms, n_atm, rel_spread, age_days=obs_ages.get(node.ticker, 0.0)
+            )
             calibrated[i] = True
             calibrated_by_idx[i] = y
             if node.name in hold_out:  # withheld from the propagation (LOO scoring)
@@ -389,6 +398,36 @@ def solve(
             obs_idx,
             obs_values,
             obs_precision,
+        )
+    elif request.propagationMode == "layered_dynamic_harmonic":
+        from volfit.api.graph_dynamic import solve_dynamic_field
+
+        increment_priors = None
+        t_by_node = {node.name: _node_t(state, node.expiry) for node in universe.nodes}
+        field, message_diagnostics = solve_dynamic_field(
+            universe,
+            t_by_node,
+            request,
+            baseline,
+            baseline_precision,
+            obs_idx,
+            obs_values,
+            obs_precision,
+            persisted_edges=(
+                state.graph_message_draft_edges()
+                if request.useDraftConfig
+                else state.graph_message_edges()
+            ),
+            firm_observations=bool(synthetic),
+            obs_age_days=np.array(
+                [obs_ages.get(universe.nodes[int(i)].ticker, 0.0) for i in obs_idx]
+            ),
+            # What-if pulses and holdout (LOO) scoring never touch persistent
+            # state (§10 Step 8) — a scoring pass must not update residuals.
+            residual_store=(
+                None if (synthetic or hold_out) else state.graph_dynamic_residuals
+            ),
+            now_day=float(state.reference_date.toordinal()),
         )
     else:
         from volfit.api.graph_message import solve_message_field

@@ -1099,6 +1099,12 @@ class GraphMessageEdge(BaseModel):
     ] = "custom"
     precisionRule: Literal["explicit", "calendar_distance"] = "explicit"
 
+    #: Dynamic-harmonic semantics (framework §9.2/§9.3): None applies the
+    #: class default — calendar/sector_peer/custom → reciprocal_harmonic,
+    #: broad_index/sector_etf → directed_state. Ignored outside
+    #: propagationMode="layered_dynamic_harmonic".
+    relationSemantics: Literal["reciprocal_harmonic", "directed_state"] | None = None
+
 
 class GraphMessageEdgesResponse(BaseModel):
     """The persisted precision-message edge rules (GET/PUT /graph/edges/messages)."""
@@ -1237,7 +1243,7 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: legacy directed-smoothness term on top of the message factors
     #: (explicit opt-in, spec §15.4 — config-only, no UI until validated).
     propagationMode: Literal[
-        "smooth_field", "precision_messages", "hybrid"
+        "smooth_field", "precision_messages", "hybrid", "layered_dynamic_harmonic"
     ] = "smooth_field"
 
     #: Explicit message relation factors. Non-empty ⇒ defines the whole
@@ -1280,6 +1286,16 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: U6 lifecycle: solve with the DRAFT config's rows instead of the active
     #: ones (the run-draft toggle) — a test drive, never an activation.
     useDraftConfig: bool = False
+
+    #: Dynamic-harmonic mode only (framework D2): residual half-life in DAYS
+    #: for persistent target-specific dislocations; None = fully persistent
+    #: (random walk) until the next actual target calibration.
+    residualHalfLifeDays: float | None = Field(default=None, gt=0.0)
+
+    #: Dynamic-harmonic mode only (framework §4.2/D-record): observations
+    #: older than this many days lose hard-boundary status and enter as soft
+    #: aged anchors instead (clamp-requires-freshness rule).
+    clampMaxAgeDays: float = Field(default=1.0, gt=0.0)
 
     @field_validator("calendarPolicyOverrides", mode="before")
     @classmethod

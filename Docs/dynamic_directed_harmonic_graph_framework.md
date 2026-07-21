@@ -25,6 +25,20 @@ in component detection), screened option, strict gauge validation,
 Section-7.7 support detection, attribution adapter; exit gate green
 (goldens 15.9/15.10/15.11/15.12 + mixed-unary and joint-block cases vs
 dense Gaussian references).
+Phase 4 (production orchestration) SHIPPED 2026-07-21:
+`backend/volfit/api/graph_dynamic.py` behind
+`propagationMode="layered_dynamic_harmonic"` — relation semantics per
+Section 9.2 (auto relations stay reciprocal; directed arcs are explicit),
+Section-10 pipeline (residual advance → directed pass → harmonic
+completion), clamp-requires-freshness boundary policy, config-versioned
+residual invalidation, what-if/holdout no-persistence, the age_days
+wiring at the observation feed, and the HandleField/MessagePosterior
+seam so reconstruction/bands/attribution/LOO consume it unchanged. Exit
+gate green: the Section-5 asynchronous replay reproduced END-TO-END
+through the production assembly with persistent state across snapshots;
+full suite 1429 passed (legacy byte-identity). Residual-store
+SQLite/workspace persistence + prior-save certification lock = recorded
+Phase-4 riders.
 
 **Date:** 2026-07-20
 

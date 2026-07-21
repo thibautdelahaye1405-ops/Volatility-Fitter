@@ -321,6 +321,10 @@ class AppState(UniverseMixin):
         #: (volfit.graph.idio): every production solve records its lit-node
         #: innovations here, and a node that later goes dark gets its credible
         #: band floored from the days it was lit. Persisted best-effort.
+        # Dynamic-harmonic persistent residual states (framework §13.5),
+        # keyed by node name (ticker, expiry) -> ResidualState. In-memory v1;
+        # SQLite/workspace persistence is a recorded Phase-4 rider.
+        self.graph_dynamic_residuals: dict = {}
         self._graph_idio: IdioHistory = IdioHistory.from_blob(
             load_graph_idio(self.store_path)
         )

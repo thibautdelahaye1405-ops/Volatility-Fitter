@@ -156,7 +156,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phases 1–3 shipped 2026-07-21)
+## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phases 1–4 shipped 2026-07-21)
 
 User-authored `Docs/dynamic_directed_harmonic_graph_framework.md`: a layered
 dynamic-harmonic architecture splitting graph semantics into **reciprocal
@@ -194,13 +194,26 @@ component; screened vs pure distinction; strict gauge via
 cycle_beta_products; §7.7 support incl. hybrid off-diagonals;
 attribution gain @ source_values == mean; reuses MessageEdge as the
 reciprocal relation type; goldens 15.9-15.12 + mixed-unary + joint vs
-dense references, 13 tests, 323 graph green). Next: **Phase 4**
-(production orchestration per §10: timestamp-causal feed incl. the
-age_days wiring, common-epoch residuals, config versioning/rebase,
-solver+relation-semantics request fields, directed pass → harmonic
-completion, reconstruction/band/attribution/LOO integration, prior-save
-guard, byte-identical legacy). Phases 4–7 must reproduce the locked
-fixture numbers THROUGH the production modules.
+dense references, 13 tests, 323 graph green). **Phase 4 SHIPPED
+2026-07-21**: `volfit/api/graph_dynamic.py` behind
+`propagationMode="layered_dynamic_harmonic"` (schema:
+`relationSemantics` on GraphMessageEdge + `residualHalfLifeDays`/
+`clampMaxAgeDays`; §9.2 class defaults, AUTO relations stay reciprocal —
+directed arcs are explicit config; §10 pipeline residual-advance →
+directed pass → harmonic completion; stale obs demote to soft anchors
+AND compete with their parent prediction; config-version invalidation
+purges the store; what-if + holdout solves never persist; age_days
+wired at the obs feed via data_age.ticker_ages — age 0 in same-session
+flow = byte-identical; residual store = in-memory
+`state.graph_dynamic_residuals` v1). Exit gate: §5 async replay
+END-TO-END through solve_dynamic_field w/ persistent store (10 tests);
+FULL suite 1429 passed / 1 skipped = legacy byte-identity. **Phase-4
+riders (open)**: residual-store SQLite/workspace persistence,
+prior-save certification lock (true by construction today), wire
+diagnostics for residual/χ (Phase 6 UI). Next: **Phase 5 historical
+adjudication** (dynamic modes into the frozen benchmark harness;
+half-life/update-rule/D6 sweeps; §16.3 adoption gate) then Phase 6
+(diagnostics + editor) and Phase 7 (sparse/streaming).
 
 ---
 
@@ -445,6 +458,40 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 ---
 
 ## STATUS — updated 2026-07-21 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-21b) — DYNAMIC-HARMONIC PHASE 4 SHIPPED (production orchestration)
+
+- **`volfit/api/graph_dynamic.py`** behind `propagationMode=
+  "layered_dynamic_harmonic"` — the §10 pipeline through the SAME
+  HandleField/MessagePosterior seam (reconstruction/bands/attribution/
+  LOO consume it unchanged): §15.2 combined r_d; certified lit (age ≤
+  clampMaxAgeDays) = Dirichlet boundary w/ §7.4 Ω variance; stale obs
+  demote to soft anchors and COMPETE with their parent-side prediction
+  (reconstructed via residual_observation with zero obs variance);
+  directed predictions = diagonal unary anchors (D6 joint = Phase-5
+  sweep); residual store advanced under config version, invalidated
+  entries PURGED (15.13); certified target obs update the store via the
+  cut measurement; what-if + holdout never persist. Schema:
+  `relationSemantics` (§9.2 class defaults; auto = all reciprocal),
+  `residualHalfLifeDays`, `clampMaxAgeDays`. Age wiring live at the
+  Phase-3 feed (`observation_precision(..., age_days)` from
+  data_age.ticker_ages; zero in same-session flow).
+- **EXIT GATE GREEN** (tests/test_graph_dynamic_production.py, 10
+  tests): §5 async A/B replay END-TO-END through the production
+  assembly with persistent residual state (β=1 + half-life variants,
+  zero reverse leakage, store carries u=−3·scale w/ provenance);
+  calendar transfer via auto reciprocal relations; cycle rejection;
+  config-change invalidation; stale-demotion compromise. FULL suite
+  **1429 passed / 1 skipped** = legacy byte-identity (item 8).
+- Phase-4 riders (open): residual-store SQLite/workspace persistence
+  (in-memory `state.graph_dynamic_residuals` v1), prior-save
+  certification lock, residual/χ wire diagnostics (Phase 6).
+- NEXT: **Phase 5 historical adjudication** — dynamic modes into the
+  frozen benchmark harness (asynchronous timestamp replay from NBBO
+  captures), sweeps (half-life by class/handle, hard-vs-Kalman, D6
+  diagonal-vs-joint, screened variants), §16.2 metrics (transition
+  discontinuity, impulse response, reverse leakage, coverage), §16.3
+  adoption gate decision table. Campaign runs in the USER'S window.
 
 ### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASES 1+2+3 SHIPPED (temporal state + directed engine + harmonic solver)
 
