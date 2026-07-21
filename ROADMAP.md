@@ -156,7 +156,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phase 1 shipped 2026-07-21)
+## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phases 1–2 shipped 2026-07-21)
 
 User-authored `Docs/dynamic_directed_harmonic_graph_framework.md`: a layered
 dynamic-harmonic architecture splitting graph semantics into **reciprocal
@@ -181,11 +181,18 @@ references: causal A/B state machine, Dirichlet/GLS solves — zero
 `volfit.graph` imports). **Phase 1 SHIPPED 2026-07-21**:
 `volfit/graph/temporal_state.py` (causal memory, no topology/solver
 imports; exit gate = A/B example reproduced by the state objects alone,
-17 tests + full suite green). Next: **Phase 2**
-(`volfit/graph/directed_state.py` — DAG validation + topological order,
-multi-parent systematic predictor with parent covariance, cut target
-updates, unary predictive outputs, attribution, residual-surprise χ).
-Phases 2–7 must reproduce the locked fixture numbers THROUGH the
+17 tests + full suite green). **Phase 2 SHIPPED 2026-07-21**:
+`volfit/graph/directed_state.py` (exact DAG pass; gain rows over
+independent roots ⇒ full parent covariance + structural cut + exact
+attribution; goldens 15.2/15.6/15.10 + §5 A/B through the engine,
+correlated-parents 0.310625 via shared-ancestor gains; 14 tests, all
+310 graph tests green). Next: **Phase 3**
+(`volfit/graph/harmonic_posterior.py` — exact Dirichlet partition solve,
+never large-precision emulation; gauge/positive-beta validation for
+strict harmonic mode; uncertain-boundary Ω = P⁻¹+B_S·V_S·B_Sᵀ; directed
+predictions + stale observations as unary factors; supported-component
+detection; screened option; marginal variance + attribution adapter).
+Phases 3–7 must reproduce the locked fixture numbers THROUGH the
 production modules.
 
 ---
@@ -432,7 +439,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ## STATUS — updated 2026-07-21 (resume here)
 
-### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASE 1 SHIPPED (temporal state)
+### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASES 1+2 SHIPPED (temporal state + directed engine)
 
 - **D2–D5 RATIFIED 2026-07-20** (user proceed instruction); D6 stays OPEN
   by design (diagonal vs low-rank joint R_D — Phase-3 adjudication).
@@ -461,15 +468,38 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   the point formula via the D2 semigroup, zero reverse influence, clamp
   identity β·m+u == d at observation times). FULL suite **1392 passed,
   1 skipped** (8m46s).
-- NEXT: **dynamic Phase 2** — `volfit/graph/directed_state.py`: directed
-  relation schema + DAG validation + topological order; single/multi-
-  parent systematic predictor with parent covariance (fixture
-  `precision_separation.multi` incl. the correlated-parents case); cut
-  target updates (no parent feedback); unary predictive outputs
-  (m_D, V_D) for the Phase-3 harmonic layer; exact source+residual
-  attribution; residual-surprise χ diagnostics. Exit gate: zero reverse
-  sensitivity exact + directed predictions match independent state-space
-  references (goldens 15.2/15.6/15.10 through the module).
+- **`volfit/graph/directed_state.py` (Phase 2)**: DirectedRelation
+  (per-handle β/p, §9.3) + `build_directed_graph` (Kahn topo sort,
+  directed cycles REJECTED per §6.5 v1 policy) + `directed_pass` — the
+  §10 Step-5 sweep. DESIGN: exact linear-Gaussian propagation by **gain
+  rows over independent ROOT variables** (("obs",node) innovations,
+  ("res",node) residual states, ("noise",node) per-target relation
+  noises): shared-ancestor parents come out EXACTLY correlated
+  (`DirectedPass.covariance` — this is what a Phase-3 low-rank joint R_D
+  consumes, D6), attribution = the gain rows (sums to the mean by
+  construction, §6.6), and the cut is STRUCTURAL (the pass only reads
+  parent states). Observed nodes own their value (never blended);
+  missing parents renormalize weights + get recorded; parentless
+  residual = D7 ghost case (prediction from the residual alone);
+  `residual_observation` returns (e, Var(e)) = (d−s, V_obs+Var(s)+1/q)
+  for the temporal_state updates; `residual_surprise` = §12.2 χ.
+- **EXIT GATE GREEN** (tests/test_graph_directed_state.py, 14 tests):
+  zero reverse sensitivity exact (A path bit-identical with/without B's
+  observations); goldens 15.10 (cascade 1/0.5), 15.6 single sweep, and
+  **15.6 correlated-parents 0.310625 reproduced THROUGH shared-ancestor
+  gains** (P2 = 1.5·P1 − 4 via p=1e12 + zero-variance residual shift ⇒
+  cov(P1,P2)=0.06 exactly); §5 A/B sequence β=1/β=1.5/half-life driven
+  end-to-end through engine + temporal_state. All 310 graph tests green.
+- NEXT: **dynamic Phase 3** — `volfit/graph/harmonic_posterior.py`:
+  exact Dirichlet partition (never large-precision emulation; the §28
+  clamp math is the reference), gauge/positive-beta validation for
+  strict harmonic mode, uncertain-boundary Ω = P⁻¹+B_S·V_S·B_Sᵀ
+  (Woodbury-ready), directed predictions + stale observations as UNARY
+  factors (D6 decision point: diagonal vs low-rank joint R_D from
+  DirectedPass.covariance), supported-component detection (§7.7),
+  screened-harmonic option, marginal variance + attribution adapter.
+  Exit gate: goldens 15.9/15.10/15.11/15.12 through the module +
+  mixed-unary cases vs direct Gaussian references.
 
 ### 🧭 SESSION WRAP (2026-07-20) — DYNAMIC-HARMONIC FRAMEWORK PHASE 0 EXECUTED
 

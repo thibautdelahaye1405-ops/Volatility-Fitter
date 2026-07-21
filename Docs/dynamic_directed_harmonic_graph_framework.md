@@ -9,6 +9,13 @@ RATIFIED 2026-07-20 (user proceed instruction), D6 OPEN by design until the
 Phase-3 adjudication. Phase 1 (causal temporal state) SHIPPED 2026-07-21:
 `backend/volfit/graph/temporal_state.py`, exit gate green — the Section-5
 A/B example reproduced by the state objects alone, no graph solve.
+Phase 2 (directed prediction engine) SHIPPED 2026-07-21:
+`backend/volfit/graph/directed_state.py` — exact DAG pass with gain-row
+propagation over independent roots (full parent covariance, structural
+cut, attribution by construction); exit gate green (zero reverse
+sensitivity exact; goldens 15.2/15.6/15.10 and the Section-5 sequence
+reproduced through the engine, including the correlated-parents variance
+via shared-ancestor gains).
 
 **Date:** 2026-07-20
 

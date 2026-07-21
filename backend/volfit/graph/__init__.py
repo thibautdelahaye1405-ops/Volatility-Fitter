@@ -33,6 +33,17 @@ from volfit.graph.message_posterior import (
     MessagePosterior,
     message_posterior_update,
 )
+from volfit.graph.directed_state import (
+    DirectedCycleError,
+    DirectedGraph,
+    DirectedPass,
+    DirectedPrediction,
+    DirectedRelation,
+    build_directed_graph,
+    directed_pass,
+    directed_relation,
+    residual_surprise,
+)
 from volfit.graph.temporal_state import (
     LeasePolicy,
     ObservationState,
@@ -51,6 +62,15 @@ from volfit.graph.temporal_state import (
 )
 
 __all__ = [
+    "DirectedCycleError",
+    "DirectedGraph",
+    "DirectedPass",
+    "DirectedPrediction",
+    "DirectedRelation",
+    "build_directed_graph",
+    "directed_pass",
+    "directed_relation",
+    "residual_surprise",
     "LeasePolicy",
     "ObservationState",
     "PersistenceGuardError",
