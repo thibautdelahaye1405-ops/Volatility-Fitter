@@ -137,6 +137,7 @@ def solve_dynamic_field(
     firm_observations: bool = False,
     obs_age_days: np.ndarray | None = None,
     residual_store: dict | None = None,
+    update_store: bool = True,
     now_day: float = 0.0,
 ) -> tuple[HandleField, MessageDiagnostics]:
     """The §10 Steps 2-6 production solve for one snapshot.
@@ -144,7 +145,11 @@ def solve_dynamic_field(
     Same contract as ``solve_message_field``: absolute handle field out,
     baseline noise combined per §15.2, §15.3 band placement. ``obs_age_days``
     is per-observation data age (None = fresh); ``residual_store`` is the
-    persistent §13.5 state (None = stateless solve, nothing recorded)."""
+    persistent §13.5 state (None = stateless solve, nothing recorded).
+    ``update_store=False`` makes the store READ-ONLY: predictions still use
+    the persisted residuals but nothing is written or purged — the contract
+    for holdout (LOO) scoring and what-if solves, where mutating persistent
+    state would leak the scored day back into it."""
     names = list(universe.names)
     index = {n: i for i, n in enumerate(names)}
     rows = list(request.messageEdges) or list(persisted_edges or [])
@@ -196,7 +201,8 @@ def solve_dynamic_field(
                 residual_store[name], config_version
             )
             if invalidated:
-                del residual_store[name]  # golden 15.13: never silently reused
+                if update_store:  # golden 15.13: never silently reused
+                    del residual_store[name]
             elif name in index:
                 residuals[name] = kept.advance(now_day, dynamics)
 
@@ -299,7 +305,7 @@ def solve_dynamic_field(
             u0 = prior.mean[0] if prior is not None else 0.0
             v0 = prior.variance[0] if prior is not None else 0.0
             chi_by_name[name] = float((e[0] - u0) / math.sqrt(var_e[0] + v0))
-        if residual_store is not None and not firm_observations:
+        if residual_store is not None and update_store and not firm_observations:
             prev = prior if prior is not None else empty_residual(config_version)
             residual_store[name] = prev.updated_hard(
                 e, var_e, now_day, f"cal:{name[0]}:{name[1]}:{now_day}"
@@ -322,11 +328,17 @@ def solve_dynamic_field(
         elif k is not None and (dag.parents.get(name) or name in residuals):
             e, _ = dpass.residual_observation(name, d[k], 1.0 / r_d[k])
             s0 = float(d[k, 0] - e[0])
-            res = residual_store.get(name) if residual_store else None
+            res = (
+                residual_store.get(name)
+                if residual_store and update_store
+                else None
+            )
             u0 = float(res.mean[0]) if res is not None else float(e[0])
         else:
             s0, u0 = 0.0, 0.0
-        res_state = (residual_store or {}).get(name) or residuals.get(name)
+        res_state = (
+            (residual_store or {}).get(name) if update_store else None
+        ) or residuals.get(name)
         per_node[name] = {
             "boundaryClass": cls,
             "systematicAtmVol": s0,

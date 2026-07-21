@@ -85,6 +85,9 @@ class MessageKnobs:
     cal_epsilon: float = 0.97
     cal_decay: str = "inverse_sqrt_gap"
     cross_precision_mult: float = 1.0
+    #: Dynamic-harmonic Phase-5 knob (framework D2): residual half-life in
+    #: days; None = fully persistent. Only read in layered mode.
+    residual_half_life: float | None = None
 
 
 # --------------------------------------------------------------- smile wing RMS
@@ -152,7 +155,7 @@ def _score_node(state, full, held, idx, node, truth, fit_mode) -> dict | None:
     # precision (topology-only, identical in the held solve) — the
     # conditional-vs-realized calibration axis of the spec-22.3 metrics.
     diag = getattr(full, "message_diagnostics", None)
-    if diag is not None:
+    if diag is not None and diag.q_incoming is not None:
         row["q_in"] = round(float(diag.q_incoming[idx]), 2)
     for h, c in zip(HANDLES, range(3)):
         row[f"res_{h}"] = round(float(post[c] - truth[c]), 6)       # graph residual
@@ -362,6 +365,14 @@ def run(
             recs[(r["design"], int(r["ssr"]))].append(
                 (r["as_of"], r["ticker"], r["kind"], float(r["base_atm"]))
             )
+    # Dynamic-harmonic residual stores (framework Phase 5), threaded
+    # CHRONOLOGICALLY per (design, ssr) cell: the day-T full solve updates the
+    # cell's live store; the holdout solves then read a PRE-day-T snapshot so
+    # a held node can never see its own day-T print through its residual.
+    # Inert outside layered mode (nothing ever writes). NB: chunked pack runs
+    # cold-start each chunk's store — run dynamic variants with a LARGE
+    # --chunk so persistence spans the window (see run_dynamic_adjudication).
+    dyn_stores: dict[tuple, dict] = defaultdict(dict)
     for d0, d1 in pairs:
         fx0, fx1 = by_date[d0], by_date[d1]
         tickers = sorted({f.asset for f in fx1})
@@ -389,6 +400,7 @@ def run(
                             calendarPrecisionScale=msg.cal_precision,
                             calendarPrecisionEpsilon=msg.cal_epsilon,
                             calendarPrecisionDecay=msg.cal_decay,
+                            residualHalfLifeDays=msg.residual_half_life,
                             etaScale=eta_scale,
                             lambdaScale=lambda_scale, nu=nu,
                         )
@@ -398,7 +410,12 @@ def run(
                             lambdaScale=lambda_scale, nu=nu,
                         )
                     idio_sig = _idio_sigma_map(recs[(design, int(r_val))], d1.isoformat())
+                    store_cell = dyn_stores[(design, int(r_val))]
+                    pre_store = dict(store_cell)  # frozen states: shallow is safe
+                    state_t.graph_dynamic_residuals = store_cell
                     full = solve(state_t, req, idio_atm_sigma=idio_sig)
+                    # holdout solves read the pre-day-T store, never write it
+                    state_t.graph_dynamic_residuals = pre_store
                     if full is None:
                         continue
                     adj = _adjacency(full.universe, req)

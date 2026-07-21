@@ -423,9 +423,11 @@ def main() -> int:
                     help="OT source/sink allowance (used only when --lambda > 0)")
     # ---- precision-message variants (message arc P4) ----
     ap.add_argument("--mode", default="smooth_field",
-                    choices=("smooth_field", "precision_messages", "hybrid"),
-                    help="propagation operator (message arc P4); smooth_field ="
-                         " the legacy path, byte-identical")
+                    choices=("smooth_field", "precision_messages", "hybrid",
+                             "layered_dynamic_harmonic"),
+                    help="propagation operator (message arc P4 / dynamic arc"
+                         " Phase 5); smooth_field = the legacy path,"
+                         " byte-identical")
     ap.add_argument("--alpha-t", type=float, default=1.0,
                     help="calendar amplitude SHAPE exponent alphaT (spec 8.1)")
     ap.add_argument("--amp-cal", type=float, default=1.0,
@@ -443,6 +445,10 @@ def main() -> int:
                     help="calendar precision family (spec 9.2)")
     ap.add_argument("--cross-precision-mult", type=float, default=1.0,
                     help="multiplier on the Phase-0 cross-class precision seeds")
+    ap.add_argument("--residual-half-life", type=float, default=None,
+                    help="dynamic-harmonic residual half-life in DAYS"
+                         " (framework D2); omit = fully persistent; only read"
+                         " with --mode layered_dynamic_harmonic")
     args = ap.parse_args()
 
     if args.command == "report":
@@ -470,6 +476,7 @@ def main() -> int:
             cal_precision=args.cal_precision, cal_epsilon=args.cal_epsilon,
             cal_decay=args.cal_decay,
             cross_precision_mult=args.cross_precision_mult,
+            residual_half_life=args.residual_half_life,
         )
         print(f"message variant: {msg}", flush=True)
     for regime in regimes:

@@ -422,11 +422,12 @@ def solve(
             obs_age_days=np.array(
                 [obs_ages.get(universe.nodes[int(i)].ticker, 0.0) for i in obs_idx]
             ),
-            # What-if pulses and holdout (LOO) scoring never touch persistent
-            # state (§10 Step 8) — a scoring pass must not update residuals.
-            residual_store=(
-                None if (synthetic or hold_out) else state.graph_dynamic_residuals
-            ),
+            # What-if pulses and holdout (LOO) scoring READ persistent state
+            # (predictions should reflect the stored residuals) but never
+            # write or purge it (§10 Step 8) — a scoring pass must not update
+            # residuals, and a hypothesis is non-persisting by construction.
+            residual_store=state.graph_dynamic_residuals,
+            update_store=not (synthetic or hold_out),
             now_day=float(state.reference_date.toordinal()),
         )
     else:

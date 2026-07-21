@@ -231,6 +231,41 @@ def test_stale_observation_demotes_to_soft_anchor():
     assert BASE - 0.01 < field_stale.mean[1, 0] < BASE + 0.01
 
 
+def test_readonly_store_reads_but_never_writes():
+    """Phase-5 holdout contract: update_store=False solves USE the persisted
+    residual for predictions but neither write, purge, nor invalidate the
+    store — including under a changed config version."""
+    fx = FIXTURE["async_ab"]
+    store: dict = {}
+    request = GraphExtrapolateRequest(messageEdges=[_arrow()], **LAYERED)
+    _replay(request, store)  # leaves u = −3·SCALE
+    frozen = dict(store)
+    universe, t_by = _pair_universe()
+    baseline = np.zeros((2, 3))
+    baseline[:, 0] = BASE
+    field, _ = solve_dynamic_field(
+        universe, t_by, request, baseline, np.full((2, 3), 1e12),
+        np.array([0]), np.array([[BASE + fx["obs_a"]["5.0"] * SCALE, 0, 0]]),
+        np.full((1, 3), 1e12),
+        residual_store=store, update_store=False, now_day=6.0,
+    )
+    # prediction USES the stored dislocation (B = A − 3, not B = A) ...
+    assert field.mean[1, 0] == pytest.approx(
+        BASE + (fx["obs_a"]["5.0"] - 3.0) * SCALE, rel=1e-6
+    )
+    # ... and the store is untouched, even though A was observed
+    assert store == frozen
+    # a changed config must not purge under read-only either
+    changed = GraphExtrapolateRequest(messageEdges=[_arrow(beta=1.5)], **LAYERED)
+    solve_dynamic_field(
+        universe, t_by, changed, baseline, np.full((2, 3), 1e12),
+        np.array([0]), np.array([[BASE + 0.015, 0, 0]]),
+        np.full((1, 3), 1e12),
+        residual_store=store, update_store=False, now_day=6.0,
+    )
+    assert store == frozen
+
+
 def test_wire_decomposition_and_surprise():
     """Phase-6 V0 exit-gate contract: every ATM mark decomposes exactly as
     baseline + systematic + residual + harmonic, and B's t=3.5 dislocation
