@@ -306,6 +306,30 @@ def test_wire_decomposition_and_surprise():
     assert chi_35 == pytest.approx(-3.0 / np.sqrt(2.0), rel=1e-3)
 
 
+def test_prior_save_guard_graph_output_never_prior_input():
+    """Framework §10 Step 8 / §29.4 invariant, certification-locked: a dark
+    node's graph-extrapolated surface never enters a prior snapshot, even
+    right after a solve produced values for it — only lit calibrated nodes
+    are captured."""
+    from datetime import date
+
+    from volfit.api import priors
+    from volfit.api.graph_extrapolation import extrapolate
+    from volfit.api.state import AppState
+
+    state = AppState(date(2026, 6, 10))
+    tk = state.active_tickers()[0]
+    isos = [e.isoformat() for e in sorted(state.forwards(tk))]
+    dark = isos[0]
+    state.set_node_lit(tk, dark, False)
+    extrapolate(state, GraphExtrapolateRequest())  # graph output now exists
+    snap = priors.capture_snapshot(state, tk, "mid", lv=False)
+    assert snap is not None
+    captured = {n.expiry for n in snap.nodes}
+    assert dark not in captured
+    assert captured  # the lit calibrated nodes are still there
+
+
 def test_legacy_defaults_inert():
     """The new schema fields exist but change nothing until the mode is
     selected — a default request still declares smooth_field (byte identity

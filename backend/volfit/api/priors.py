@@ -95,6 +95,13 @@ def capture_snapshot(
     MarketSettings, event calendar) and the affine LV grid if present. Returns
     None when the ticker has no lit nodes to snapshot.
 
+    INVARIANT (dynamic-harmonic framework §10 Step 8, certification-locked):
+    graph output is never prior input. Only lit nodes with an actual
+    calibration record enter a snapshot — a dark node's graph-extrapolated
+    surface can never become a later transported-prior baseline, which is
+    what makes the sequential innovation loop echo-free. Any future prior
+    mode that widens this set must preserve the calibrated-record filter.
+
     ``lv=False`` skips the (expensive) Local-Vol surface capture for callers that
     only consume the parametric backbone (e.g. the temporal prior-mode backtest,
     whose transport reads the LQD nodes) — the default keeps it byte-identical.
