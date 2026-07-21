@@ -16,6 +16,15 @@ cut, attribution by construction); exit gate green (zero reverse
 sensitivity exact; goldens 15.2/15.6/15.10 and the Section-5 sequence
 reproduced through the engine, including the correlated-parents variance
 via shared-ancestor gains).
+Phase 3 (Dirichlet harmonic solver) SHIPPED 2026-07-21:
+`backend/volfit/graph/harmonic_posterior.py` — exact boundary partition
+(never large-precision emulation), Section-7.4 Omega uncertain boundary,
+directed predictions + ghosts as unary factors in BOTH D6 forms
+(independent anchors and the joint correlated block, which participates
+in component detection), screened option, strict gauge validation,
+Section-7.7 support detection, attribution adapter; exit gate green
+(goldens 15.9/15.10/15.11/15.12 + mixed-unary and joint-block cases vs
+dense Gaussian references).
 
 **Date:** 2026-07-20
 

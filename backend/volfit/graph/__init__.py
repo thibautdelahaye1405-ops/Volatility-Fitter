@@ -44,6 +44,11 @@ from volfit.graph.directed_state import (
     directed_relation,
     residual_surprise,
 )
+from volfit.graph.harmonic_posterior import (
+    HarmonicGaugeError,
+    HarmonicPosterior,
+    harmonic_posterior,
+)
 from volfit.graph.temporal_state import (
     LeasePolicy,
     ObservationState,
@@ -71,6 +76,9 @@ __all__ = [
     "directed_pass",
     "directed_relation",
     "residual_surprise",
+    "HarmonicGaugeError",
+    "HarmonicPosterior",
+    "harmonic_posterior",
     "LeasePolicy",
     "ObservationState",
     "PersistenceGuardError",

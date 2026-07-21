@@ -156,7 +156,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phases 1–2 shipped 2026-07-21)
+## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phases 1–3 shipped 2026-07-21)
 
 User-authored `Docs/dynamic_directed_harmonic_graph_framework.md`: a layered
 dynamic-harmonic architecture splitting graph semantics into **reciprocal
@@ -186,14 +186,21 @@ imports; exit gate = A/B example reproduced by the state objects alone,
 independent roots ⇒ full parent covariance + structural cut + exact
 attribution; goldens 15.2/15.6/15.10 + §5 A/B through the engine,
 correlated-parents 0.310625 via shared-ancestor gains; 14 tests, all
-310 graph tests green). Next: **Phase 3**
-(`volfit/graph/harmonic_posterior.py` — exact Dirichlet partition solve,
-never large-precision emulation; gauge/positive-beta validation for
-strict harmonic mode; uncertain-boundary Ω = P⁻¹+B_S·V_S·B_Sᵀ; directed
-predictions + stale observations as unary factors; supported-component
-detection; screened option; marginal variance + attribution adapter).
-Phases 3–7 must reproduce the locked fixture numbers THROUGH the
-production modules.
+310 graph tests green). **Phase 3 SHIPPED 2026-07-21**:
+`volfit/graph/harmonic_posterior.py` (exact Dirichlet partition — §28
+math; Ω = P⁻¹+B_S·V_S·B_Sᵀ uncertain boundary; unary anchors in BOTH D6
+forms — independent + joint correlated block, block unions into ONE
+component; screened vs pure distinction; strict gauge via
+cycle_beta_products; §7.7 support incl. hybrid off-diagonals;
+attribution gain @ source_values == mean; reuses MessageEdge as the
+reciprocal relation type; goldens 15.9-15.12 + mixed-unary + joint vs
+dense references, 13 tests, 323 graph green). Next: **Phase 4**
+(production orchestration per §10: timestamp-causal feed incl. the
+age_days wiring, common-epoch residuals, config versioning/rebase,
+solver+relation-semantics request fields, directed pass → harmonic
+completion, reconstruction/band/attribution/LOO integration, prior-save
+guard, byte-identical legacy). Phases 4–7 must reproduce the locked
+fixture numbers THROUGH the production modules.
 
 ---
 
@@ -439,7 +446,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ## STATUS — updated 2026-07-21 (resume here)
 
-### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASES 1+2 SHIPPED (temporal state + directed engine)
+### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASES 1+2+3 SHIPPED (temporal state + directed engine + harmonic solver)
 
 - **D2–D5 RATIFIED 2026-07-20** (user proceed instruction); D6 stays OPEN
   by design (diagonal vs low-rank joint R_D — Phase-3 adjudication).
@@ -490,16 +497,39 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   gains** (P2 = 1.5·P1 − 4 via p=1e12 + zero-variance residual shift ⇒
   cov(P1,P2)=0.06 exactly); §5 A/B sequence β=1/β=1.5/half-life driven
   end-to-end through engine + temporal_state. All 310 graph tests green.
-- NEXT: **dynamic Phase 3** — `volfit/graph/harmonic_posterior.py`:
-  exact Dirichlet partition (never large-precision emulation; the §28
-  clamp math is the reference), gauge/positive-beta validation for
-  strict harmonic mode, uncertain-boundary Ω = P⁻¹+B_S·V_S·B_Sᵀ
-  (Woodbury-ready), directed predictions + stale observations as UNARY
-  factors (D6 decision point: diagonal vs low-rank joint R_D from
-  DirectedPass.covariance), supported-component detection (§7.7),
-  screened-harmonic option, marginal variance + attribution adapter.
-  Exit gate: goldens 15.9/15.10/15.11/15.12 through the module +
-  mixed-unary cases vs direct Gaussian references.
+- **`volfit/graph/harmonic_posterior.py` (Phase 3)**: `harmonic_posterior`
+  — per-handle, per-component Dirichlet BVP. Exact boundary partition
+  (large-precision emulation never used, §13.2); §7.4 Ω =
+  P⁻¹+B_S·V_S·B_Sᵀ (boundary central values CLAMPED, calibration
+  uncertainty widens + CORRELATES dependents — star fixture Σ=[[2,1],
+  [1,2]] exact); §7.5 unary anchors in **both D6 forms** — independent
+  (mean,var) per node AND a joint correlated block (fed from
+  DirectedPass.covariance; the block unions its nodes into one component
+  so cross-component correlated anchors solve correctly; diagonal-block
+  == independent path verified); boundary wins over unary; §7.6
+  screened (κ ground) vs pure harmonic distinction; §7.2 strict gauge
+  via cycle_beta_products (positive + cycle-consistent betas); §7.7
+  support detection incl. hybrid extra-precision off-diagonals (item 7);
+  attribution contract `gain @ source_values == mean` per node over
+  ("boundary"|"unary", name) sources. Reciprocal relations REUSE
+  MessageEdge (the §7.1 factor is the message factor — one schema, P4
+  orchestration unchanged).
+- **EXIT GATE GREEN** (tests/test_graph_harmonic_posterior.py, 13
+  tests): goldens 15.9 (calendar 2/1/0.5, Tz const, p-invariance,
+  rescale), 15.10 harmonic 2/3-1/3 (≠ directed row — discriminator),
+  15.11 chain 1/3-2/3 + star covariance, 15.12 unsupported (+
+  screen-alone-is-not-support), mixed-unary 5/3 with exact attribution,
+  joint-block vs dense information-form references. 323 graph tests
+  green.
+- NEXT: **dynamic Phase 4** — production orchestration per §10:
+  timestamp-causal observation feed (incl. the age_days wiring at
+  graph_extrapolation.py:354), common-epoch residual construction,
+  relation-config versioning + state rebase, new solver/relation-
+  semantics request fields (schema §9.3, modes §9.1), directed pass →
+  harmonic completion pipeline, reconstruction/band/attribution/LOO
+  integration, prior-save guard, byte-identical legacy mode. Exit gate:
+  end-to-end asynchronous replay reproduces §5 and returns
+  reconstructed, validated smiles.
 
 ### 🧭 SESSION WRAP (2026-07-20) — DYNAMIC-HARMONIC FRAMEWORK PHASE 0 EXECUTED
 
