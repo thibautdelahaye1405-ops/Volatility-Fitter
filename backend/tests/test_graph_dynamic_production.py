@@ -231,6 +231,46 @@ def test_stale_observation_demotes_to_soft_anchor():
     assert BASE - 0.01 < field_stale.mean[1, 0] < BASE + 0.01
 
 
+def test_wire_decomposition_and_surprise():
+    """Phase-6 V0 exit-gate contract: every ATM mark decomposes exactly as
+    baseline + systematic + residual + harmonic, and B's t=3.5 dislocation
+    fires a loud §12.2 residual surprise."""
+    fx = FIXTURE["async_ab"]
+    store: dict = {}
+    request = GraphExtrapolateRequest(messageEdges=[_arrow()], **LAYERED)
+    obs_a = {float(k): v for k, v in fx["obs_a"].items()}
+    obs_b = {float(k): v for k, v in fx["obs_b"].items()}
+    last_a, chi_35, decomp_checked = None, None, 0
+    for t in fx["snapshots"]:
+        if t in obs_a:
+            last_a = BASE + obs_a[t] * SCALE
+        obs = {0: last_a}
+        if t in obs_b:
+            obs[1] = BASE + obs_b[t] * SCALE
+        field, diag = _solve_pair(request, obs, store, now_day=t)
+        for i, name in enumerate([("TA", "E"), ("TB", "E")]):
+            row = diag.per_node[name]
+            total = (
+                row["systematicAtmVol"]
+                + row["residualAtmVol"]
+                + row["harmonicAtmVol"]
+            )
+            assert BASE + total == pytest.approx(field.mean[i, 0], abs=1e-9)
+            decomp_checked += 1
+        if t == 3.5:
+            chi_35 = diag.per_node[("TB", "E")]["residualSurpriseAtm"]
+            assert diag.per_node[("TB", "E")]["boundaryClass"] == "fresh_certified"
+        if t == 4.0:
+            row = diag.per_node[("TB", "E")]
+            assert row["boundaryClass"] == "unobserved"
+            assert row["residualAtmVol"] == pytest.approx(-3 * SCALE, rel=1e-6)
+            assert row["residualAgeDays"] == pytest.approx(0.5)
+    assert decomp_checked == 22
+    # -3 points against sqrt(2) x the 1-point relation noise (1/q = 1e-6 on
+    # the ATM handle, prior residual variance equal): chi = -3/sqrt(2).
+    assert chi_35 == pytest.approx(-3.0 / np.sqrt(2.0), rel=1e-3)
+
+
 def test_legacy_defaults_inert():
     """The new schema fields exist but change nothing until the mode is
     selected — a default request still declares smooth_field (byte identity

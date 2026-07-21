@@ -38,6 +38,8 @@ import math
 
 import numpy as np
 
+from dataclasses import dataclass
+
 from volfit.api.graph_message import (
     DISCONNECTED_Z_SD,
     MessageDiagnostics,
@@ -72,6 +74,15 @@ SEMANTICS_BY_CLASS = {
 
 def row_semantics(row) -> str:
     return row.relationSemantics or SEMANTICS_BY_CLASS[row.relationClass]
+
+
+@dataclass(frozen=True)
+class DynamicDiagnostics(MessageDiagnostics):
+    """Phase-6 V0 wire decomposition (ATM handle, exit-gate contract): every
+    mark explained as baseline + systematic + residual + harmonic. Keys are
+    node names; values are ready-to-splat GraphNode field dicts."""
+
+    per_node: dict = None
 
 
 def _config_version(directed, request) -> str:
@@ -275,22 +286,65 @@ def solve_dynamic_field(
         )
 
     # §10 Step 4 + Step 8: certified target observations update the residual
-    # store through the CUT measurement; predictions never persist.
-    if residual_store is not None and not firm_observations:
-        for k, i in enumerate(obs_idx):
-            if not certified[k]:
-                continue
-            name = names[int(i)]
-            e, var_e = dpass.residual_observation(name, d[k], 1.0 / r_d[k])
-            prev = residuals.get(name, empty_residual(config_version))
+    # store through the CUT measurement; predictions never persist. The same
+    # loop records the §12.2 residual surprise for the wire.
+    chi_by_name: dict = {}
+    for k, i in enumerate(obs_idx):
+        if not certified[k]:
+            continue
+        name = names[int(i)]
+        e, var_e = dpass.residual_observation(name, d[k], 1.0 / r_d[k])
+        prior = residuals.get(name)
+        if prior is not None or dag.parents.get(name):
+            u0 = prior.mean[0] if prior is not None else 0.0
+            v0 = prior.variance[0] if prior is not None else 0.0
+            chi_by_name[name] = float((e[0] - u0) / math.sqrt(var_e[0] + v0))
+        if residual_store is not None and not firm_observations:
+            prev = prior if prior is not None else empty_residual(config_version)
             residual_store[name] = prev.updated_hard(
                 e, var_e, now_day, f"cal:{name[0]}:{name[1]}:{now_day}"
             )
 
-    diagnostics = MessageDiagnostics(
+    # Phase-6 V0: the ATM decomposition mark == baseline + systematic +
+    # residual + harmonic, per node (exit-gate contract).
+    per_node: dict = {}
+    post0 = posteriors[0]
+    for i, name in enumerate(names):
+        k = obs_pos.get(i)
+        if k is not None:
+            cls = "fresh_certified" if certified[k] else "soft_stale"
+        else:
+            cls = "unobserved"
+        pred = dpass.predictions.get(name)
+        if pred is not None:
+            s0 = float(pred.systematic[0])
+            u0 = float(pred.residual_mean[0])
+        elif k is not None and (dag.parents.get(name) or name in residuals):
+            e, _ = dpass.residual_observation(name, d[k], 1.0 / r_d[k])
+            s0 = float(d[k, 0] - e[0])
+            res = residual_store.get(name) if residual_store else None
+            u0 = float(res.mean[0]) if res is not None else float(e[0])
+        else:
+            s0, u0 = 0.0, 0.0
+        res_state = (residual_store or {}).get(name) or residuals.get(name)
+        per_node[name] = {
+            "boundaryClass": cls,
+            "systematicAtmVol": s0,
+            "residualAtmVol": u0,
+            "residualAgeDays": (
+                float(now_day - res_state.observed_at)
+                if res_state is not None and res_state.observed_at is not None
+                else None
+            ),
+            "harmonicAtmVol": float(post0.mean[i] - s0 - u0),
+            "residualSurpriseAtm": chi_by_name.get(name),
+        }
+
+    diagnostics = DynamicDiagnostics(
         mode=request.propagationMode,
         q_incoming=None,
         no_lit_path=posteriors[0].no_lit_path,
         cycle_flags=(),
+        per_node=per_node,
     )
     return HandleField(mean=mean, sd=np.sqrt(var), posteriors=tuple(posteriors)), diagnostics

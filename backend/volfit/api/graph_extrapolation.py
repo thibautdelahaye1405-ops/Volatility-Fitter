@@ -565,8 +565,15 @@ def extrapolate(
                 bandLo=float(band_lo[i]),
                 bandHi=float(band_hi[i]),
                 innovationBp=innovation_bp,
-                qIncoming=(float(diag.q_incoming[i]) if diag is not None else None),
+                qIncoming=(
+                    float(diag.q_incoming[i])
+                    if diag is not None and diag.q_incoming is not None
+                    else None
+                ),
                 noLitPath=(bool(diag.no_lit_path[i]) if diag is not None else None),
+                **(
+                    getattr(diag, "per_node", None) or {}
+                ).get(sol.universe.nodes[i].name, {}),
             )
         )
     cycle_flags = []

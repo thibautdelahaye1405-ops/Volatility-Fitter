@@ -1422,6 +1422,16 @@ class GraphExtrapolateNode(BaseModel):
     # None in smooth_field mode.
     qIncoming: float | None = None
     noLitPath: bool | None = None
+    # Dynamic-harmonic decomposition (framework Phase 6 V0, exit-gate
+    # contract): ATM mark == baseline + systematic + residual + harmonic.
+    # residualSurpriseAtm is the §12.2 chi for certified observed targets.
+    # All None outside layered_dynamic_harmonic mode.
+    boundaryClass: str | None = None
+    systematicAtmVol: float | None = None
+    residualAtmVol: float | None = None
+    residualAgeDays: float | None = None
+    harmonicAtmVol: float | None = None
+    residualSurpriseAtm: float | None = None
 
 
 class GraphExtrapolateResponse(BaseModel):
