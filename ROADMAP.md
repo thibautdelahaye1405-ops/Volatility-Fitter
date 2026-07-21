@@ -486,12 +486,40 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 - Phase-4 riders (open): residual-store SQLite/workspace persistence
   (in-memory `state.graph_dynamic_residuals` v1), prior-save
   certification lock, residual/χ wire diagnostics (Phase 6).
-- NEXT: **Phase 5 historical adjudication** — dynamic modes into the
-  frozen benchmark harness (asynchronous timestamp replay from NBBO
-  captures), sweeps (half-life by class/handle, hard-vs-Kalman, D6
-  diagonal-vs-joint, screened variants), §16.2 metrics (transition
-  discontinuity, impulse response, reverse leakage, coverage), §16.3
-  adoption gate decision table. Campaign runs in the USER'S window.
+- **Phase 6 V0 SHIPPED 2026-07-21 (6d1424c)** — wire decomposition
+  diagnostics: DynamicDiagnostics.per_node → six new optional GraphNode
+  fields (boundaryClass / systematicAtmVol / residualAtmVol /
+  residualAgeDays / harmonicAtmVol / residualSurpriseAtm); decomposition
+  identity mark == baseline+systematic+residual+harmonic locked at every
+  A/B snapshot; χ = −3/√2 exact at the t=3.5 dislocation; ALSO fixed a
+  Phase-4 latent crash (qIncoming indexed None q_incoming in layered
+  mode). Phase-6 UI increments remaining (fresh session each, P5b
+  style): **V1** editor semantics column (reciprocal/directed selector +
+  class-default display + layered mode entry in the SegmentedControl),
+  **V2** node-inspector decomposition panel (the four-part explanation,
+  residual age + χ badge — consumes the V0 fields), **V3** timeline
+  preview (interactive A/B fixture), warnings (cycle / stale residual /
+  config mismatch / no support / large χ) + policy fields in the U6
+  draft/active lifecycle (clampMaxAgeDays, residualHalfLifeDays,
+  semantics defaults). **Phase 5 MACHINERY COMPLETE 2026-07-21
+  (e39b63c); CAMPAIGN = USER ACTION**: launch
+  `powershell -ExecutionPolicy Bypass -File
+  backend\backtest\run_dynamic_adjudication.ps1` in the USER'S window
+  (hours; resumable tagged parts; -Chunk 9 keeps the residual store
+  warm across the OOS window). Variants _p5_dyn_desk/_hl1/_hl5/_hl20;
+  comparators _b14_base + _p4_msg_learned reused from campaign 1
+  (COMPLETED + adjudicated 2026-07-19 — do not re-run). KEY FIX shipped
+  with the machinery: holdout/what-if solves now READ the residual
+  store but never write/purge (update_store=False; a held node reads a
+  PRE-day-T snapshot so its own print can't leak back through its
+  residual — test-locked). full_loo = the lit→dark one-step transition
+  test (residual memory must earn its keep); liquid_split = directed
+  systematic only (names dark all week, no residual by design). §16.3
+  pre-registered gate + decision table in
+  backend/backtest/FINDINGS_dynamic_phase5.md — after the sweep, the
+  agent scores the parts and fills the verdict. Second wave (only if
+  warranted): D6 joint anchors, screened, Kalman-vs-hard.
+  → Phase 7 sparse after the verdict.
 
 ### 🧭 SESSION WRAP (2026-07-21) — DYNAMIC-HARMONIC PHASES 1+2+3 SHIPPED (temporal state + directed engine + harmonic solver)
 
