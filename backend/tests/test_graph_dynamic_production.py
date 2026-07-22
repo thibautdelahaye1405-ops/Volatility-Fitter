@@ -196,6 +196,25 @@ def test_config_change_invalidates_residual():
     )
 
 
+def test_explicit_config_version_survives_beta_drift():
+    """The Phase-5 campaign-1 lesson: data-derived beta re-estimation must
+    NOT wipe temporal memory when the caller pins residualConfigVersion —
+    while the structural default still invalidates on explicit edits
+    (locked by test_config_change_invalidates_residual)."""
+    fx = FIXTURE["async_ab"]
+    store: dict = {}
+    pinned = dict(LAYERED, residualConfigVersion="v-stable")
+    _replay(GraphExtrapolateRequest(messageEdges=[_arrow(beta=1.0)], **pinned), store)
+    assert ("TB", "E") in store  # u = −3·SCALE under the pinned identity
+    drifted = GraphExtrapolateRequest(messageEdges=[_arrow(beta=1.1)], **pinned)
+    field, _ = _solve_pair(
+        drifted, {0: BASE + fx["obs_a"]["5.0"] * SCALE}, store, now_day=6.0
+    )
+    assert ("TB", "E") in store  # memory SURVIVED the re-estimated beta
+    expected = BASE + (1.1 * fx["obs_a"]["5.0"] - 3.0) * SCALE
+    assert field.mean[1, 0] == pytest.approx(expected, rel=1e-6)
+
+
 def test_stateless_and_firm_solves_never_persist():
     request = GraphExtrapolateRequest(messageEdges=[_arrow()], **LAYERED)
     universe, t_by = _pair_universe()

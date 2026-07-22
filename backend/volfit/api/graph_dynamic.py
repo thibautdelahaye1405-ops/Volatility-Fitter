@@ -87,7 +87,15 @@ class DynamicDiagnostics(MessageDiagnostics):
 
 def _config_version(directed, request) -> str:
     """Golden 15.13: the residual state is defined under one relation config.
-    Betas, precisions, topology, and the temporal law are all part of it."""
+    Betas, precisions, topology, and the temporal law are all part of it.
+
+    ``request.residualConfigVersion`` overrides the structural hash: callers
+    with DATA-DERIVED betas (re-estimated every solve) pin a stable identity
+    there, because estimation drift is not a configuration change — without
+    it the store would be purged on every solve and temporal memory could
+    never accumulate (the Phase-5 campaign-1 lesson, 2026-07-22)."""
+    if request.residualConfigVersion:
+        return request.residualConfigVersion
     payload = {
         "directed": sorted(
             (str(r.target), str(r.source), tuple(r.beta), tuple(r.precision))

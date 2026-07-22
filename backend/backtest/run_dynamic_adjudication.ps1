@@ -16,10 +16,10 @@
 # FOUR first-wave variants (second wave — D6 joint anchors, screened,
 # Kalman-vs-hard — only if the verdict warrants):
 #
-#   _p5_dyn_desk   layered, residuals fully persistent (no half-life)
-#   _p5_dyn_hl1    residual half-life 1 day   (fast reversion)
-#   _p5_dyn_hl5    residual half-life 5 days  (the a-priori favourite)
-#   _p5_dyn_hl20   residual half-life 20 days (slow reversion)
+#   _p5b_dyn_desk   layered, residuals fully persistent (no half-life)
+#   _p5b_dyn_hl1    residual half-life 1 day   (fast reversion)
+#   _p5b_dyn_hl5    residual half-life 5 days  (the a-priori favourite)
+#   _p5b_dyn_hl20   residual half-life 20 days (slow reversion)
 #
 # CHUNKING CAVEAT (why -Chunk 9, unlike campaign 1's 2): the layered mode
 # threads a persistent residual store CHRONOLOGICALLY through each chunk's
@@ -76,22 +76,22 @@ $common = @("--pair-start", "$PairStart", "--chunk", "$Chunk", "--designs", $Des
             "--mode", "layered_dynamic_harmonic")
 
 if ($Variants -contains "dyn_desk") {
-    Invoke-Step "sweep: layered, persistent residuals (_p5_dyn_desk)" `
-        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5_dyn_desk") + $common)
+    Invoke-Step "sweep: layered, persistent residuals (_p5b_dyn_desk)" `
+        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5b_dyn_desk") + $common)
 }
 if ($Variants -contains "dyn_hl1") {
-    Invoke-Step "sweep: layered, half-life 1d (_p5_dyn_hl1)" `
-        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5_dyn_hl1",
+    Invoke-Step "sweep: layered, half-life 1d (_p5b_dyn_hl1)" `
+        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5b_dyn_hl1",
            "--residual-half-life", "1") + $common)
 }
 if ($Variants -contains "dyn_hl5") {
-    Invoke-Step "sweep: layered, half-life 5d (_p5_dyn_hl5)" `
-        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5_dyn_hl5",
+    Invoke-Step "sweep: layered, half-life 5d (_p5b_dyn_hl5)" `
+        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5b_dyn_hl5",
            "--residual-half-life", "5") + $common)
 }
 if ($Variants -contains "dyn_hl20") {
-    Invoke-Step "sweep: layered, half-life 20d (_p5_dyn_hl20)" `
-        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5_dyn_hl20",
+    Invoke-Step "sweep: layered, half-life 20d (_p5b_dyn_hl20)" `
+        (@("-m", "backtest.benchmark_pack", "run", "--tag", "_p5b_dyn_hl20",
            "--residual-half-life", "20") + $common)
 }
 

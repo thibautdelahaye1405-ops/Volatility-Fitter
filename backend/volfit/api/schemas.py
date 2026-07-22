@@ -1297,6 +1297,15 @@ class GraphExtrapolateRequest(GraphSolverParams):
     #: aged anchors instead (clamp-requires-freshness rule).
     clampMaxAgeDays: float = Field(default=1.0, gt=0.0)
 
+    #: Dynamic-harmonic mode only (golden 15.13): a STABLE identity for the
+    #: persistent residual store. None (default) = structural hash of the
+    #: directed relations + temporal law, so any explicit beta/topology edit
+    #: invalidates stored residuals. Callers whose betas are RE-ESTIMATED
+    #: from data each solve (the benchmark harness; later the U6 active
+    #: config version) must pin this — daily estimation drift is not a
+    #: configuration change and must not wipe temporal memory.
+    residualConfigVersion: str | None = None
+
     @field_validator("calendarPolicyOverrides", mode="before")
     @classmethod
     def _overrides_from_json(cls, v: object) -> object:

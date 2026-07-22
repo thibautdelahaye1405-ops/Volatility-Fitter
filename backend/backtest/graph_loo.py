@@ -401,6 +401,13 @@ def run(
                             calendarPrecisionEpsilon=msg.cal_epsilon,
                             calendarPrecisionDecay=msg.cal_decay,
                             residualHalfLifeDays=msg.residual_half_life,
+                            # STABLE store identity: the harness's cross betas
+                            # are vol-normalized from each day's data, so the
+                            # structural hash would change daily and purge the
+                            # residual store every pair (campaign-1 lesson).
+                            residualConfigVersion=(
+                                f"p5:{msg.mode}:{msg.residual_half_life}"
+                            ),
                             etaScale=eta_scale,
                             lambdaScale=lambda_scale, nu=nu,
                         )
