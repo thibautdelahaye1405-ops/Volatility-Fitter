@@ -199,6 +199,33 @@ def save_graph_idio(store_path, blob: dict) -> bool:
     return True
 
 
+#: Dynamic-harmonic persistent residual states (framework §13.5) — the
+#: temporal memory that must survive a backend restart (Phase-4 rider).
+GRAPH_DYNAMIC_KEY = "graph_dynamic_residuals"
+
+
+def load_graph_dynamic(store_path) -> dict | None:
+    """Read the persisted dynamic-harmonic residual store; None when absent
+    or unreadable (restore must never break startup)."""
+    if store_path is None:
+        return None
+    try:
+        with VolStore(store_path) as store:
+            return store.load_setting(GRAPH_DYNAMIC_KEY)
+    except Exception as exc:  # noqa: BLE001 — restore must never break startup
+        warnings.warn(f"graph-dynamic-residuals load failed: {exc}")
+        return None
+
+
+def save_graph_dynamic(store_path, blob: dict) -> bool:
+    """Persist the dynamic-harmonic residual store; False when no store."""
+    if store_path is None:
+        return False
+    with VolStore(store_path) as store:
+        store.save_setting(GRAPH_DYNAMIC_KEY, blob)
+    return True
+
+
 def _migrate_options(raw: dict) -> dict:
     """Forward-migrate a persisted OptionsSettings blob (a copy is returned).
 

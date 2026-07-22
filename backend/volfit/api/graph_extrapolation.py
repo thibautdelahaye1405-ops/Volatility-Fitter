@@ -489,6 +489,12 @@ def solve(
     # states (the benchmark harness builds throwaway states and feeds the floor
     # its own strictly-causal history instead). What-if pulses are NEVER
     # recorded — non-persisting by construction (P5b U3).
+    if (
+        request.propagationMode == "layered_dynamic_harmonic"
+        and not synthetic
+        and not hold_out
+    ):
+        state.persist_graph_dynamic_residuals()  # framework §13.5, Phase-4 rider
     if not synthetic:
         state.record_graph_innovations(
             {

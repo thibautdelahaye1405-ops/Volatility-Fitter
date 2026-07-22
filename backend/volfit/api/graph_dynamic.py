@@ -76,6 +76,34 @@ def row_semantics(row) -> str:
     return row.relationSemantics or SEMANTICS_BY_CLASS[row.relationClass]
 
 
+# ------------------------------------------------------- store serialization
+def residual_store_to_blob(store: dict) -> dict:
+    """Persistable form of the §13.5 residual store (Phase-4 rider): plain
+    JSON with string node keys; only ACTUAL-observation-descended states are
+    ever in the store, so persisting it never launders graph output."""
+    return {
+        "v": 1,
+        "records": [
+            {"ticker": name[0], "expiry": name[1], "state": st.to_record()}
+            for name, st in sorted(store.items())
+        ],
+    }
+
+
+def residual_store_from_blob(blob: dict | None) -> dict:
+    """Tolerant inverse of ``residual_store_to_blob`` — a corrupt record is
+    dropped (wide-open cold start beats a crashed startup)."""
+    from volfit.graph.temporal_state import residual_from_record
+
+    out: dict = {}
+    for rec in (blob or {}).get("records", []):
+        try:
+            out[(rec["ticker"], rec["expiry"])] = residual_from_record(rec["state"])
+        except Exception:  # noqa: BLE001 — best-effort restore
+            continue
+    return out
+
+
 @dataclass(frozen=True)
 class DynamicDiagnostics(MessageDiagnostics):
     """Phase-6 V0 wire decomposition (ATM handle, exit-gate contract): every

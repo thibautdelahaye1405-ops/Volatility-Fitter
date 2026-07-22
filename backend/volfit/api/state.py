@@ -44,12 +44,14 @@ from volfit.api.settings_persist import (
     load_defaults,
     load_graph_block_rule,
     load_graph_edges,
+    load_graph_dynamic,
     load_graph_idio,
     load_graph_message_config,
     load_graph_message_edges,
     save_defaults,
     save_graph_block_rule,
     save_graph_edges,
+    save_graph_dynamic,
     save_graph_idio,
     save_graph_message_config,
     save_graph_message_edges,
@@ -322,9 +324,14 @@ class AppState(UniverseMixin):
         #: innovations here, and a node that later goes dark gets its credible
         #: band floored from the days it was lit. Persisted best-effort.
         # Dynamic-harmonic persistent residual states (framework §13.5),
-        # keyed by node name (ticker, expiry) -> ResidualState. In-memory v1;
-        # SQLite/workspace persistence is a recorded Phase-4 rider.
-        self.graph_dynamic_residuals: dict = {}
+        # keyed by node name (ticker, expiry) -> ResidualState. Restored from
+        # the SQLite blob at startup and persisted best-effort after every
+        # real layered solve (persist_graph_dynamic_residuals).
+        from volfit.api.graph_dynamic import residual_store_from_blob
+
+        self.graph_dynamic_residuals: dict = residual_store_from_blob(
+            load_graph_dynamic(store_path)
+        )
         self._graph_idio: IdioHistory = IdioHistory.from_blob(
             load_graph_idio(self.store_path)
         )
@@ -1728,6 +1735,16 @@ class AppState(UniverseMixin):
         before today (the reference date) — the idio band floor's causal input."""
         with self._lock:
             return self._graph_idio.sigma_map(self.reference_date.isoformat())
+
+    def persist_graph_dynamic_residuals(self) -> None:
+        """Best-effort SQLite persistence of the dynamic-harmonic residual
+        store (framework §13.5 / §10 Step 8: only actual-observation state is
+        ever in the store). No-op without a store path (scratch states)."""
+        from volfit.api.graph_dynamic import residual_store_to_blob
+
+        with self._lock:
+            blob = residual_store_to_blob(self.graph_dynamic_residuals)
+        save_graph_dynamic(self.store_path, blob)
 
     def record_graph_innovations(self, items: dict[tuple[str, str], float]) -> None:
         """Record today's lit-node ATM innovations ``{(ticker, expiry): innov}``.

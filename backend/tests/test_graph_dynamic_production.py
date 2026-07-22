@@ -325,6 +325,46 @@ def test_wire_decomposition_and_surprise():
     assert chi_35 == pytest.approx(-3.0 / np.sqrt(2.0), rel=1e-3)
 
 
+def test_residual_store_survives_restart(tmp_path):
+    """Phase-4 rider closed: temporal memory persists through the SQLite
+    blob — a fresh AppState on the same store restores the dislocation, and
+    a corrupt record degrades to a cold start, never a crash."""
+    from datetime import date
+
+    from volfit.api.graph_dynamic import (
+        residual_store_from_blob,
+        residual_store_to_blob,
+    )
+    from volfit.api.settings_persist import load_graph_dynamic
+    from volfit.api.state import AppState
+
+    store: dict = {}
+    request = GraphExtrapolateRequest(messageEdges=[_arrow()], **LAYERED)
+    _replay(request, store)  # leaves u = −3·SCALE for ("TB", "E")
+
+    db = tmp_path / "volfit_test.sqlite"
+    state1 = AppState(date(2026, 6, 10), store_path=db)
+    state1.graph_dynamic_residuals = store
+    state1.persist_graph_dynamic_residuals()
+
+    state2 = AppState(date(2026, 6, 11), store_path=db)
+    restored = state2.graph_dynamic_residuals[("TB", "E")]
+    original = store[("TB", "E")]
+    assert restored.mean == pytest.approx(original.mean, rel=1e-12)
+    assert restored.variance == pytest.approx(original.variance, rel=1e-12)
+    assert restored.observed_at == original.observed_at
+    assert restored.config_version == original.config_version
+    assert restored.source_observation_ids == original.source_observation_ids
+    assert restored.persistable()
+
+    # tolerant restore: a corrupt record is dropped, the rest survive
+    blob = residual_store_to_blob(store)
+    blob["records"].append({"ticker": "BAD", "expiry": "X", "state": {"mean": "junk"}})
+    partial = residual_store_from_blob(blob)
+    assert ("TB", "E") in partial and ("BAD", "X") not in partial
+    assert load_graph_dynamic(None) is None  # scratch states: clean no-op
+
+
 def test_prior_save_guard_graph_output_never_prior_input():
     """Framework §10 Step 8 / §29.4 invariant, certification-locked: a dark
     node's graph-extrapolated surface never enters a prior snapshot, even
