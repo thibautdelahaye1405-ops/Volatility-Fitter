@@ -457,7 +457,37 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-07-21 (resume here)
+## STATUS — updated 2026-07-23 (resume here)
+
+### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
+
+- **Campaign 2 (_p5b_dyn_*) complete + scored** (21,958 intersected OOS
+  rows, 7 arms; ac991b3; full numbers + §16.3 table in
+  backend/backtest/FINDINGS_dynamic_phase5.md). VERDICT: **residual
+  memory has NEGATIVE marginal value at the one-day horizon** — full_loo
+  RMS monotone in half-life (desk 333 → hl1 285 → memoryless 280 bp),
+  optimum H→0; hl1 beats the transported prior only. The layered
+  SPATIAL solve has a real stressed-regime edge (warm full_loo: spike
+  −14.7bp, high −9.2bp vs _b14_base) but a calm-regime cost (+6bp), a
+  liquid_split wing-RMS regression (193 vs 121bp — suspect: harness
+  broadcasts ATM betas to skew/curv handles), and ζ std ~1.7. Gates
+  1/2/4/6 FAIL, 3/5 PASS. **layered_dynamic_harmonic stays opt-in;
+  smooth_field remains the default; message-arc P4 verdict unchanged.**
+- Campaign-1 lesson permanently encoded: residualConfigVersion
+  (4dbd305) — data-derived beta drift must not purge the store; the
+  stale _p5_dyn_* parts served as the memoryless ablation arm.
+- Both P4 riders closed this week: prior-save cert lock (669dfef) +
+  residual-store SQLite persistence (3244ae4).
+- Follow-ups BEFORE any re-adjudication: (1) per-handle directed betas
+  in backtest/graph_edges (wing regression suspect); (2) D6 joint
+  anchors for the ζ narrowness; (3) THE decisive experiment = intraday
+  asynchronous replay (§16.1) — daily granularity cannot see the
+  framework's target regime (sparse mid-session prints vs a moving
+  liquid source).
+- NEXT (unchanged): P6 UI increments V1 (editor semantics) / V2
+  (inspector decomposition) / V3 (timeline + warnings + policy
+  lifecycle) — fresh session each; then Phase 7 sparse only if the
+  mode earns adoption later.
 
 ### 🧭 SESSION WRAP (2026-07-21b) — DYNAMIC-HARMONIC PHASE 4 SHIPPED (production orchestration)
 
