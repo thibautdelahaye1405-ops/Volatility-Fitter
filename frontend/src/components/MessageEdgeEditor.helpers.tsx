@@ -18,9 +18,11 @@ import {
 import { fmtSigmaPts, relationSentence } from "../lib/precisionUnits";
 import type { SolverParams } from "../state/useGraph";
 import {
+  CLASS_DEFAULT_SEMANTICS,
   RELATION_CLASSES,
   type MessageEdgeRow,
   type RelationClass,
+  type RelationSemantics,
 } from "../state/useMessageEdges";
 
 export const numCls =
@@ -38,6 +40,51 @@ export const rowKey = (r: MessageEdgeRow) =>
 /** ρ of a relation class under the current amplitude knobs (spec §8.4). */
 export function rhoOf(cls: RelationClass, params: SolverParams): number {
   return cls === "calendar" ? params.ampCal : params.ampCross;
+}
+
+/** Short display token for a semantics value ("recip ⇄" / "direct →"). */
+export const semanticsLabel = (s: RelationSemantics): string =>
+  s === "directed_state" ? "direct →" : "recip ⇄";
+
+/** The layered-mode semantics selector: auto (class default, displayed) vs an
+ *  explicit override. Kept active in every mode — it edits the persisted row —
+ *  but dimmed outside Layered, where the field has no effect. */
+function SemanticsSelect({
+  row,
+  layered,
+  onChange,
+}: {
+  row: MessageEdgeRow;
+  layered: boolean;
+  onChange: (patch: Partial<MessageEdgeRow>) => void;
+}) {
+  const fallback = CLASS_DEFAULT_SEMANTICS[row.relationClass];
+  const value = row.relationSemantics ?? "auto";
+  const base =
+    "Layered-mode semantics — recip ⇄: reciprocal harmonic completion " +
+    "(information flows both ways); direct →: one-way informer→receiver state " +
+    `relation, ZERO reverse influence. auto = the class default (here ${
+      semanticsLabel(fallback)
+    }).`;
+  return (
+    <select
+      className={selCls + " w-24" + (layered ? "" : " opacity-50")}
+      value={value}
+      title={layered ? base : base + " Takes effect in Layered mode only."}
+      onChange={(e) =>
+        onChange({
+          relationSemantics:
+            e.target.value === "auto"
+              ? null
+              : (e.target.value as RelationSemantics),
+        })
+      }
+    >
+      <option value="auto">auto · {semanticsLabel(fallback)}</option>
+      <option value="reciprocal_harmonic">recip ⇄</option>
+      <option value="directed_state">direct →</option>
+    </select>
+  );
 }
 
 /** One editable relation row. `inherited` = seeded from auto and untouched;
@@ -105,7 +152,7 @@ export function EdgeRow({
       <select
         className={selCls}
         value={row.relationClass}
-        title="Relation class (drives the amplitude multiplier ρ)"
+        title="Relation class (drives the amplitude multiplier ρ and the layered-mode semantics default)"
         onChange={(e) => onChange({ relationClass: e.target.value as RelationClass })}
       >
         {RELATION_CLASSES.map((c) => (
@@ -114,6 +161,11 @@ export function EdgeRow({
           </option>
         ))}
       </select>
+      <SemanticsSelect
+        row={row}
+        layered={params.propagationMode === "layered_dynamic_harmonic"}
+        onChange={onChange}
+      />
       <button
         className={
           "rounded px-1 py-0.5 text-[9px] " +

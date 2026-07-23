@@ -82,16 +82,19 @@ export default function GraphTopBar({
       </label>
 
       {/* Propagation operator — mode-aware for BOTH sources since the U3
-          unification (the what-if rides the production solve). */}
+          unification (the what-if rides the production solve). Layered (the
+          dynamic-harmonic pipeline, P6 V1) is session opt-in per the Phase-5
+          verdict — smooth field stays the default and Options never seeds it. */}
       <label
         className="flex items-center gap-2 text-xs text-slate-500"
-        title="Propagation operator — applies to calibrations AND the what-if; seeded from Options ▸ Graph"
+        title="Propagation operator — applies to calibrations AND the what-if; seeded from Options ▸ Graph. Layered = dynamic-harmonic (directed state + harmonic completion; opt-in)"
       >
         Propagation
         <SegmentedControl
           options={[
             { id: "smooth_field" as PropagationMode, label: "Smooth field" },
             { id: "precision_messages" as PropagationMode, label: "Messages" },
+            { id: "layered_dynamic_harmonic" as PropagationMode, label: "Layered" },
           ]}
           value={mode}
           onChange={setMode}

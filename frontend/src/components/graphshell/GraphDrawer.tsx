@@ -217,8 +217,9 @@ export default function GraphDrawer({
   );
 
   // The plan rides the same body as Run (what-if pulses included, U3); U7
-  // annotates each candidate with WHY it is valuable.
-  const messagesOperator = graph.params.propagationMode === "precision_messages";
+  // annotates each candidate with WHY it is valuable. Layered mode gets the
+  // message-style annotations (same relation config; closest semantics).
+  const messagesOperator = graph.params.propagationMode !== "smooth_field";
   const plan =
     extra.nodes === null ? (
       <p className="py-2 text-xs text-slate-500">

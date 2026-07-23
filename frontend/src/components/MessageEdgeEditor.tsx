@@ -1,6 +1,7 @@
 // Message relation editor (message arc P5 — the full spec-§20 scope): every
 // relation factor is one row with explicit precision, per-handle betas,
-// relation class, and inherited-vs-explicit provenance; grouped by class,
+// relation class, layered-mode semantics (P6 V1: reciprocal ⇄ vs directed →,
+// auto = §9.2 class default) and inherited-vs-explicit provenance; grouped by class,
 // seeded from the auto relations, with the deterministic scenario preview
 // (spec §20.4) showing the exact conditional mean/precision a configuration
 // implies BEFORE saving — the Phase-5 exit gate.
@@ -114,6 +115,7 @@ export default function MessageEdgeEditor({
           betaAtmVol: 1, betaSkew: 1, betaCurv: 1,
           relationClass: cls,
           precisionRule: cls === "calendar" ? "calendar_distance" : "explicit",
+          relationSemantics: null, // auto — the §9.2 class default
         },
       },
     ]);
@@ -134,7 +136,7 @@ export default function MessageEdgeEditor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6">
-      <div className="flex max-h-[85vh] w-[860px] max-w-full flex-col rounded-xl border border-slate-700 bg-surface-900 p-4 shadow-2xl shadow-black/50">
+      <div className="flex max-h-[85vh] w-[960px] max-w-full flex-col rounded-xl border border-slate-700 bg-surface-900 p-4 shadow-2xl shadow-black/50">
         <div className="mb-2 flex shrink-0 items-center gap-2">
           <span className="text-sm font-semibold text-slate-100">
             Message relations
@@ -194,6 +196,12 @@ export default function MessageEdgeEditor({
         <div className="flex shrink-0 items-center gap-1 px-0.5 text-[9px] uppercase tracking-wide text-slate-500">
           <span className="flex-1">relation (informer → receiver)</span>
           <span className="w-20">class</span>
+          <span
+            className="w-24"
+            title="Layered-mode behavior of the factor: reciprocal harmonic (both ways) vs directed one-way state; auto = class default"
+          >
+            semantics
+          </span>
           <span className="w-8">rule</span>
           <span
             className="w-14 text-right"

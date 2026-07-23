@@ -427,6 +427,30 @@ def test_auto_message_edges_route_and_one_way_direction():
         client.post("/graph/config/messages/activate", json={})
 
 
+def test_message_edge_semantics_round_trip():
+    """P6 V1 lock: the editor's layered-mode semantics field survives the
+    PUT→GET draft round trip — an explicit value is kept verbatim, an absent
+    one stays None (= the §9.2 class default resolved at solve time)."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        base = {
+            "sourceTicker": "ALPHA", "sourceExpiry": "2026-08-21",
+            "messagePrecision": 100.0, "betaAtmVol": 1.0,
+            "betaSkew": 1.0, "betaCurv": 1.0, "relationClass": "broad_index",
+        }
+        rows = [
+            {**base, "targetTicker": "BETA", "targetExpiry": "2026-08-21",
+             "relationSemantics": "reciprocal_harmonic"},  # explicit override
+            {**base, "targetTicker": "GAMMA", "targetExpiry": "2026-08-21"},
+        ]
+        assert client.put(
+            "/graph/edges/messages", json={"edges": rows}
+        ).status_code == 200
+        got = client.get("/graph/edges/messages").json()["edges"]
+        sem = {e["targetTicker"]: e["relationSemantics"] for e in got}
+        assert sem == {"BETA": "reciprocal_harmonic", "GAMMA": None}
+        client.put("/graph/edges/messages", json={"edges": []})  # clean up
+
+
 # --------------------------------------------- U2 calendar policy overrides
 def _two_ticker_universe():
     """TT and UU, two shared expiries each — 2 calendar rungs + 2 cross pairs."""

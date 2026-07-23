@@ -49,8 +49,14 @@ export interface GraphSolveNode {
   observed: boolean;
 }
 
-/** Production propagation operator (message arc; hybrid stays config-only). */
-export type PropagationMode = "smooth_field" | "precision_messages";
+/** Production propagation operator (message arc; hybrid stays config-only).
+ *  "layered_dynamic_harmonic" is the dynamic-harmonic pipeline (framework
+ *  §10) — session OPT-IN per the Phase-5 verdict (never a persisted default;
+ *  smooth_field remains the production default). */
+export type PropagationMode =
+  | "smooth_field"
+  | "precision_messages"
+  | "layered_dynamic_harmonic";
 
 /** §9.2 calendar precision families. */
 export type CalendarDecay = "inverse_sqrt_gap" | "constant" | "log_distance";

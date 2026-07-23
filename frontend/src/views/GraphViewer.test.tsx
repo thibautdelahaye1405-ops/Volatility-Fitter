@@ -403,6 +403,32 @@ describe("Graph shell (U0)", () => {
     expect(body.propagationMode).toBe("precision_messages");
   });
 
+  it("layered segment sets the dynamic-harmonic operator (P6 V1)", () => {
+    renderShell();
+    fireEvent.click(screen.getByText("Layered"));
+    expect(graphState.setParam).toHaveBeenCalledWith(
+      "propagationMode",
+      "layered_dynamic_harmonic",
+    );
+  });
+
+  it("layered mode ships propagationMode on the run body and uses the message surfaces", async () => {
+    graphState = graphStub();
+    graphState.params.propagationMode = "layered_dynamic_harmonic";
+    renderShell();
+    // Message-family Relationships pane (layered reuses the relation config).
+    expect(
+      screen.getByText(/How each smile informs its neighbors/),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText("Run"));
+    await waitFor(() => expect(extraState.run).toHaveBeenCalled());
+    const body = (extraState.run as ReturnType<typeof vi.fn>).mock
+      .lastCall?.[0] as Record<string, unknown>;
+    expect(body.propagationMode).toBe("layered_dynamic_harmonic");
+    // The relation knobs ride with the operator (same §9.2 policy family).
+    expect(body.calendarPrecisionScale).toBe(1700);
+  });
+
   it("edge click opens the relation card in the inspector (U4)", () => {
     renderShell();
     fireEvent.click(screen.getByTestId("chart-edge"));

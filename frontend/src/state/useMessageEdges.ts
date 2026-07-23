@@ -17,6 +17,12 @@ export type RelationClass =
 
 export type PrecisionRule = "explicit" | "calendar_distance";
 
+/** Dynamic-harmonic relation semantics (framework §9.2/§9.3) — how a factor
+ *  behaves in layered mode: reciprocal harmonic completion (information flows
+ *  both ways) vs a directed one-way state relation (zero reverse influence).
+ *  Ignored by the smooth-field and message operators. */
+export type RelationSemantics = "reciprocal_harmonic" | "directed_state";
+
 export const RELATION_CLASSES: RelationClass[] = [
   "calendar",
   "broad_index",
@@ -24,6 +30,22 @@ export const RELATION_CLASSES: RelationClass[] = [
   "sector_peer",
   "custom",
 ];
+
+/** §9.2 class defaults applied when a row carries no explicit semantics:
+ *  peers inform each other (reciprocal); an index/ETF informs its members
+ *  one-way (directed). Mirrors the backend GraphMessageEdge contract. */
+export const CLASS_DEFAULT_SEMANTICS: Record<RelationClass, RelationSemantics> = {
+  calendar: "reciprocal_harmonic",
+  broad_index: "directed_state",
+  sector_etf: "directed_state",
+  sector_peer: "reciprocal_harmonic",
+  custom: "reciprocal_harmonic",
+};
+
+/** The semantics a row RESOLVES to in layered mode (explicit or class default). */
+export function effectiveSemantics(row: MessageEdgeRow): RelationSemantics {
+  return row.relationSemantics ?? CLASS_DEFAULT_SEMANTICS[row.relationClass];
+}
 
 /** One relation factor: source (informer) → target (receiver). */
 export interface MessageEdgeRow {
@@ -40,6 +62,9 @@ export interface MessageEdgeRow {
   /** "calendar_distance" = precision derives from the §9.2 maturity-gap rule
    *  at solve time (inherited); "explicit" locks the entered number. */
   precisionRule: PrecisionRule;
+  /** Layered-mode semantics; null/absent = the §9.2 class default
+   *  (CLASS_DEFAULT_SEMANTICS). Persisted with the row either way. */
+  relationSemantics?: RelationSemantics | null;
 }
 
 interface MessageEdgesResponse {

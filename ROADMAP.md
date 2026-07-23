@@ -459,6 +459,35 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ## STATUS — updated 2026-07-23 (resume here)
 
+### 🧭 SESSION WRAP (2026-07-23b) — P6 UI V1 SHIPPED (editor semantics)
+
+- **Layered operator entry**: the TopBar propagation SegmentedControl gains
+  "Layered" (`layered_dynamic_harmonic`) — session OPT-IN per the Phase-5
+  verdict; smooth_field stays the default and Options ▸ Graph never seeds it
+  (seedSolverParams maps anything unknown to smooth_field). Every message
+  surface (topology/policy cards/editor/inspector/plan annotations) treats
+  layered as message-family — framework §9.3: reciprocal relations ARE
+  message factors — via `messagesMode = mode !== "smooth_field"`.
+- **Editor semantics column** (MessageEdgeEditor + helpers): per-row
+  selector auto·⟨class default⟩ / recip ⇄ / direct →, writing
+  `relationSemantics` (null = auto = §9.2 class default:
+  calendar/sector_peer/custom → reciprocal, broad_index/sector_etf →
+  directed); class-default display follows a reclass live; dimmed outside
+  Layered mode (the field persists regardless). CLASS_DEFAULT_SEMANTICS +
+  effectiveSemantics exported from useMessageEdges (V2 will reuse them).
+- Locks: 2 editor vitest (auto label + explicit pick persists; reclass
+  flips the displayed default), 2 shell vitest (segment sets the mode; run
+  body ships layered + the §9.2 knobs), 1 backend lock
+  (test_message_edge_semantics_round_trip: PUT→GET keeps explicit
+  semantics, absent stays None). Frontend 118/118, build + 8-tab UI smoke
+  green; backend untouched except the added test (file 22/22).
+- NEXT: **V2** node-inspector decomposition panel (consumes the P6-V0
+  fields: boundaryClass/systematic/residual/harmonic/χ), then **V3**
+  timeline + warnings + policy lifecycle. The Note 02 bank-committee
+  verdict (Docs/"## Committee verdict on Note 02.md", untracked 2026-07-19)
+  is still UNTRIAGED — deserves its own arc (β=2 cap challenge is
+  production-relevant).
+
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 
 - **Campaign 2 (_p5b_dyn_*) complete + scored** (21,958 intersected OOS

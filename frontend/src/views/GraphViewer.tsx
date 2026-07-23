@@ -77,8 +77,10 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
 
   // Topology + U6 config lifecycle (state/useGraphTopology): the chart edges,
   // the effective relation rows (inspector), the run slot's persisted rows
-  // (matrix provenance) and the config pair (chip).
-  const messagesMode = graph.params.propagationMode === "precision_messages";
+  // (matrix provenance) and the config pair (chip). Layered mode reuses the
+  // message-relation config wholesale (framework §9.3: reciprocal relations
+  // ARE message factors), so every message surface treats it as message-family.
+  const messagesMode = graph.params.propagationMode !== "smooth_field";
   const topology = useGraphTopology(messagesMode, runDraft);
   const { edges, msgRows } = topology;
   const [configBusy, setConfigBusy] = useState(false);

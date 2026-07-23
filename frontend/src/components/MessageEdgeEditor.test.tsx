@@ -150,4 +150,41 @@ describe("MessageEdgeEditor", () => {
     fireEvent.click(screen.getByText("Reset to auto"));
     await waitFor(() => expect(putEdges).toHaveBeenCalledWith([]));
   });
+
+  it("semantics column: auto displays the class default; an explicit pick persists (P6 V1)", async () => {
+    const { onSaved } = renderEditor([calRow()]);
+    await screen.findByText(/calendar · 1/);
+    const sel = screen.getByTitle(/Layered-mode semantics/) as HTMLSelectElement;
+    // Calendar's §9.2 default is reciprocal — shown INSIDE the auto option.
+    expect(sel.value).toBe("auto");
+    expect(sel.options[sel.selectedIndex]?.text).toBe("auto · recip ⇄");
+    fireEvent.change(sel, { target: { value: "directed_state" } });
+    fireEvent.click(screen.getByText("Save draft"));
+    await waitFor(() => expect(putEdges).toHaveBeenCalled());
+    const saved = putEdges.mock.lastCall?.[0] as MessageEdgeRow[];
+    expect(saved[0]?.relationSemantics).toBe("directed_state");
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+  });
+
+  it("semantics auto label follows the relation class (broad_index → directed)", async () => {
+    renderEditor([
+      calRow({
+        sourceTicker: "SPY", targetTicker: "AAPL", targetExpiry: "2026-09-18",
+        relationClass: "broad_index", precisionRule: "explicit",
+      }),
+    ]);
+    await screen.findByText(/broad index · 1/);
+    const sel = screen.getByTitle(/Layered-mode semantics/) as HTMLSelectElement;
+    expect(sel.value).toBe("auto");
+    expect(sel.options[sel.selectedIndex]?.text).toBe("auto · direct →");
+    // Reclassing to a peer relation flips the displayed default to reciprocal.
+    // (The row's class select — the add-relation footer has its own picker;
+    // the row remounts under its new class group, so re-query the select.)
+    fireEvent.change(screen.getByTitle(/Relation class \(drives/), {
+      target: { value: "sector_peer" },
+    });
+    await screen.findByText(/sector peer · 1/);
+    const sel2 = screen.getByTitle(/Layered-mode semantics/) as HTMLSelectElement;
+    expect(sel2.options[sel2.selectedIndex]?.text).toBe("auto · recip ⇄");
+  });
 });
