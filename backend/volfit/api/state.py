@@ -30,6 +30,7 @@ from volfit.api.schemas import (
     FitSettings,
     ForwardPolicy,
     GraphBlockRule,
+    GraphDynamicPolicy,
     GraphEdgeInput,
     GraphMessageConfigEnvelope,
     GraphMessageEdge,
@@ -1624,9 +1625,12 @@ class AppState(UniverseMixin):
 
     def set_graph_message_draft(self, edges: list[GraphMessageEdge]) -> None:
         """Stage rows on the DRAFT slot (the editor's Save). The active config
-        — and every solve that uses it — is untouched until Activate."""
+        — and every solve that uses it — is untouched until Activate. A
+        policy already staged on the draft rides along (P6 V3: rows and
+        policy stage independently, activate together)."""
         with self._lock:
             active = self._graph_message_config["active"]
+            draft = self._graph_message_config["draft"]
             self._graph_message_config["draft"] = GraphMessageConfigEnvelope(
                 name=active.name if active is not None else "default",
                 version=(active.version + 1) if active is not None else 1,
@@ -1635,9 +1639,56 @@ class AppState(UniverseMixin):
                 parentVersion=active.version if active is not None else None,
                 notes="",
                 rows=list(edges),
+                policy=(
+                    draft.policy
+                    if draft is not None and draft.policy is not None
+                    else (active.policy if active is not None else None)
+                ),
             )
         self._persist_message_config()
         self.log_event("graph_message_draft", payload={"nRows": len(edges)})
+
+    def set_graph_message_draft_policy(self, policy: GraphDynamicPolicy) -> None:
+        """Stage the layered-mode policy dials on the DRAFT slot (P6 V3).
+        Rows already staged are kept; with no draft, one is created from the
+        active rows so Activate promotes rows+policy as one version."""
+        with self._lock:
+            active = self._graph_message_config["active"]
+            draft = self._graph_message_config["draft"]
+            rows = (
+                list(draft.rows)
+                if draft is not None
+                else (list(active.rows) if active is not None else [])
+            )
+            self._graph_message_config["draft"] = GraphMessageConfigEnvelope(
+                name=active.name if active is not None else "default",
+                version=(active.version + 1) if active is not None else 1,
+                createdAt=_config_now(),
+                author="desk",
+                parentVersion=active.version if active is not None else None,
+                notes=draft.notes if draft is not None else "",
+                rows=rows,
+                policy=policy,
+            )
+        self._persist_message_config()
+        self.log_event(
+            "graph_message_draft_policy",
+            payload=policy.model_dump(),
+        )
+
+    def graph_message_policy(self, use_draft: bool = False) -> GraphDynamicPolicy | None:
+        """The run slot's layered policy (P6 V3): the ACTIVE envelope's — or
+        the draft's under the run-draft toggle (falling back to active when
+        nothing is staged). None ⇒ pure schema defaults."""
+        with self._lock:
+            draft = self._graph_message_config["draft"]
+            active = self._graph_message_config["active"]
+            slot = draft if (use_draft and draft is not None) else active
+            return (
+                slot.policy.model_copy(deep=True)
+                if slot is not None and slot.policy is not None
+                else None
+            )
 
     def activate_message_config(self, notes: str = "") -> None:
         """Promote the draft to ACTIVE (the audited lifecycle step): the solve

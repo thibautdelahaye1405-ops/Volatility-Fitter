@@ -181,3 +181,109 @@ def test_preflight_endpoint_and_calendar_off(primed):
         assert body["ok"] is True
         assert "calendar_disabled" in {i["code"] for i in body["issues"]}
         assert all(i["severity"] != "blocker" for i in body["issues"])
+
+
+# ------------------------------------------------ P6 V3 layered-mode sweeps
+def _layered(**over):
+    return GraphExtrapolateRequest(
+        propagationMode="layered_dynamic_harmonic", **over
+    )
+
+
+def test_layered_directed_cycle_blocks(primed):
+    """A directed relation cycle is the one thing the layered solve REJECTS
+    (§6.5) — preflight must block Run on it."""
+    tk = primed.active_tickers()[0]
+    isos = _isos(primed, tk)
+    rows = [
+        GraphMessageEdge(
+            sourceTicker=tk, sourceExpiry=isos[0], targetTicker=tk, targetExpiry=isos[1],
+            messagePrecision=1e4, betaAtmVol=1.0, relationClass="broad_index",
+        ),
+        GraphMessageEdge(
+            sourceTicker=tk, sourceExpiry=isos[1], targetTicker=tk, targetExpiry=isos[0],
+            messagePrecision=1e4, betaAtmVol=1.0, relationClass="broad_index",
+        ),
+    ]
+    resp = preflight(primed, _layered(messageEdges=rows))
+    assert resp.ok is False
+    blocker = next(i for i in resp.issues if i.code == "directed_cycle")
+    assert blocker.severity == "blocker"
+    assert blocker.count == 2
+    # The same pair as RECIPROCAL rows is fine (harmonic, not a DAG cycle).
+    recip = [r.model_copy(update={"relationClass": "calendar"}) for r in rows]
+    assert "directed_cycle" not in _codes(preflight(primed, _layered(messageEdges=recip)))
+
+
+def test_layered_directed_support_is_one_way(primed):
+    """§7.7 support replaces the undirected §14.3 sweep: a directed arc
+    transmits source→target only, so support follows the arrow."""
+    tk = primed.active_tickers()[0]
+    isos = _isos(primed, tk)
+    pulse = [SyntheticObservation(ticker=tk, expiry=isos[0], dAtmVol=0.01)]
+    arrow = GraphMessageEdge(
+        sourceTicker=tk, sourceExpiry=isos[0], targetTicker=tk, targetExpiry=isos[1],
+        messagePrecision=1e4, betaAtmVol=1.0, relationClass="broad_index",
+    )
+    resp = preflight(
+        primed, _layered(messageEdges=[arrow], syntheticObservations=pulse)
+    )
+    codes = _codes(resp)
+    assert "no_lit_path" not in codes  # replaced in layered mode
+    supported = next(i for i in resp.issues if i.code == "no_support")
+    assert supported.count == resp.universeNodes - 2  # pulse + arrow target
+    # Reverse the arrow: the observed node cannot support its INFORMER.
+    back = GraphMessageEdge(
+        sourceTicker=tk, sourceExpiry=isos[1], targetTicker=tk, targetExpiry=isos[0],
+        messagePrecision=1e4, betaAtmVol=1.0, relationClass="broad_index",
+    )
+    resp = preflight(
+        primed, _layered(messageEdges=[back], syntheticObservations=pulse)
+    )
+    stranded = next(i for i in resp.issues if i.code == "no_support")
+    assert stranded.count == resp.universeNodes - 1
+
+
+def test_layered_residual_store_sweeps(primed):
+    """Stored residuals under a different config version warn (Run purges
+    them, golden 15.13); random-walk memory older than 30d warns; with a
+    half-life the same age is merely 'effectively decayed' info. The stored
+    residual also counts as SUPPORT (the D7 ghost prediction)."""
+    import numpy as np
+
+    from volfit.graph.temporal_state import empty_residual
+
+    tk = primed.active_tickers()[0]
+    isos = _isos(primed, tk)
+    old_day = float(primed.reference_date.toordinal()) - 40.0
+    primed.graph_dynamic_residuals[(tk, isos[0])] = empty_residual(
+        "some-old-version"
+    ).updated_hard(
+        np.array([0.01, 0.0, 0.0]), np.array([1e-4, 1.0, 1.0]), old_day, "cal:test"
+    )
+    pulse = [SyntheticObservation(ticker=tk, expiry=isos[1], dAtmVol=0.01)]
+    arrow = GraphMessageEdge(
+        sourceTicker=tk, sourceExpiry=isos[1], targetTicker=tk, targetExpiry=isos[2],
+        messagePrecision=1e4, betaAtmVol=1.0, relationClass="broad_index",
+    )
+    resp = preflight(
+        primed, _layered(messageEdges=[arrow], syntheticObservations=pulse)
+    )
+    codes = _codes(resp)
+    assert "residual_config_mismatch" in codes
+    rw = next(i for i in resp.issues if i.code == "stale_residual")
+    assert rw.severity == "warning"  # random walk: never decays
+    # The ghost seeds support: pulse + target + the residual-backed node.
+    supported = next(i for i in resp.issues if i.code == "no_support")
+    assert supported.count == resp.universeNodes - 3
+    # With a half-life, 40d >> 3×2d is merely decayed — info, not warning.
+    resp = preflight(
+        primed,
+        _layered(
+            messageEdges=[arrow],
+            syntheticObservations=pulse,
+            residualHalfLifeDays=2.0,
+        ),
+    )
+    decayed = next(i for i in resp.issues if i.code == "stale_residual")
+    assert decayed.severity == "info"

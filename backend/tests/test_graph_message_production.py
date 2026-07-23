@@ -451,6 +451,73 @@ def test_message_edge_semantics_round_trip():
         client.put("/graph/edges/messages", json={"edges": []})  # clean up
 
 
+def test_dynamic_policy_lifecycle():
+    """P6 V3 lock: policy stages on the DRAFT independently of rows (each
+    staging preserves the other), Activate promotes rows + policy together,
+    and pre-V3 envelopes read back as policy None."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        row = {
+            "sourceTicker": "ALPHA", "sourceExpiry": "2026-08-21",
+            "targetTicker": "BETA", "targetExpiry": "2026-08-21",
+            "messagePrecision": 100.0, "betaAtmVol": 1.0,
+            "betaSkew": 1.0, "betaCurv": 1.0, "relationClass": "broad_index",
+        }
+        client.put("/graph/edges/messages", json={"edges": [row]})
+        policy = {
+            "clampMaxAgeDays": 2.5,
+            "residualHalfLifeDays": 5.0,
+            "semanticsDefaults": {"custom": "directed_state"},
+        }
+        cfg = client.put("/graph/config/messages/policy", json=policy).json()
+        assert cfg["draft"]["policy"]["clampMaxAgeDays"] == 2.5
+        assert len(cfg["draft"]["rows"]) == 1  # rows survived the policy PUT
+        assert cfg["active"] is None  # nothing activated yet
+        # Restaging rows keeps the staged policy (state-layer contract).
+        client.put("/graph/edges/messages", json={"edges": [row, row]})
+        cfg = client.get("/graph/config/messages").json()
+        assert cfg["draft"]["policy"]["residualHalfLifeDays"] == 5.0
+        assert len(cfg["draft"]["rows"]) == 2
+        # Activate promotes both; the clean-copy draft inherits them.
+        client.post("/graph/config/messages/activate", json={})
+        cfg = client.get("/graph/config/messages").json()
+        assert cfg["active"]["policy"]["semanticsDefaults"] == {
+            "custom": "directed_state"
+        }
+        assert cfg["draft"]["policy"]["clampMaxAgeDays"] == 2.5
+
+
+def test_resolve_dynamic_policy_precedence():
+    """P6 V3 lock: unset request dials fill from the config policy; fields
+    the request sent EXPLICITLY always win; no policy = the request object
+    unchanged (byte-identity for untouched deployments)."""
+    from volfit.api.graph_dynamic import resolve_dynamic_policy, row_semantics
+    from volfit.api.schemas import GraphDynamicPolicy, GraphMessageEdge
+
+    pol = GraphDynamicPolicy(
+        clampMaxAgeDays=2.0,
+        residualHalfLifeDays=7.0,
+        semanticsDefaults={"custom": "directed_state"},
+    )
+    req = GraphExtrapolateRequest(propagationMode="layered_dynamic_harmonic")
+    resolved = resolve_dynamic_policy(req, pol)
+    assert resolved.clampMaxAgeDays == 2.0
+    assert resolved.residualHalfLifeDays == 7.0
+    # The semantics defaults reach row classification (custom → directed).
+    row = GraphMessageEdge(
+        sourceTicker="A", sourceExpiry="X", targetTicker="B", targetExpiry="X"
+    )
+    assert row_semantics(row) == "reciprocal_harmonic"
+    assert row_semantics(row, resolved.relationSemanticsDefaults) == "directed_state"
+    # Explicit request fields win over the policy.
+    explicit = GraphExtrapolateRequest(
+        propagationMode="layered_dynamic_harmonic", clampMaxAgeDays=9.0
+    )
+    assert resolve_dynamic_policy(explicit, pol).clampMaxAgeDays == 9.0
+    assert resolve_dynamic_policy(explicit, pol).residualHalfLifeDays == 7.0
+    # No staged policy: the very same request object comes back.
+    assert resolve_dynamic_policy(req, None) is req
+
+
 # --------------------------------------------- U2 calendar policy overrides
 def _two_ticker_universe():
     """TT and UU, two shared expiries each — 2 calendar rungs + 2 cross pairs."""

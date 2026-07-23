@@ -1118,12 +1118,36 @@ class GraphMessageEdgesRequest(BaseModel):
     edges: list[GraphMessageEdge]
 
 
+class GraphDynamicPolicy(BaseModel):
+    """Layered-mode policy dials, versioned WITH the relation config (P6 V3).
+
+    Staged on the DRAFT envelope (PUT /graph/config/messages/policy) and
+    promoted by Activate like the rows. Resolution at solve time: an
+    EXPLICITLY-sent request field wins; otherwise the run slot's (active, or
+    draft under ``useDraftConfig``) envelope policy; otherwise the schema
+    defaults — so an untouched request stays byte-identical until a policy
+    is actually activated."""
+
+    #: §4.2 clamp-requires-freshness: observations older than this many days
+    #: lose hard-boundary status and enter as soft aged anchors.
+    clampMaxAgeDays: float = Field(default=1.0, gt=0.0)
+    #: D2 temporal law: residual half-life in DAYS; None = fully persistent
+    #: (random walk) until the next actual target calibration.
+    residualHalfLifeDays: float | None = Field(default=None, gt=0.0)
+    #: Per-class semantics defaults overriding the §9.2 map for rows whose
+    #: relationSemantics is unset (auto); unset classes keep the §9.2 value.
+    semanticsDefaults: dict[
+        str, Literal["reciprocal_harmonic", "directed_state"]
+    ] = {}
+
+
 class GraphMessageConfigEnvelope(BaseModel):
     """One slot of the U6 draft/active message-relation config lifecycle.
 
     ``version`` counts ACTIVATIONS: the draft carries the version it will
     become; ``parentVersion`` is the active version it was staged from.
-    ``rows`` empty means "the auto relations" (the PUT [] contract)."""
+    ``rows`` empty means "the auto relations" (the PUT [] contract).
+    ``policy`` None means "pure schema defaults" (pre-V3 blobs coerce so)."""
 
     name: str = "default"
     version: int = 1
@@ -1132,6 +1156,7 @@ class GraphMessageConfigEnvelope(BaseModel):
     parentVersion: int | None = None
     notes: str = ""
     rows: list[GraphMessageEdge] = []
+    policy: GraphDynamicPolicy | None = None
 
 
 class GraphMessageConfigResponse(BaseModel):
@@ -1294,8 +1319,18 @@ class GraphExtrapolateRequest(GraphSolverParams):
 
     #: Dynamic-harmonic mode only (framework §4.2/D-record): observations
     #: older than this many days lose hard-boundary status and enter as soft
-    #: aged anchors instead (clamp-requires-freshness rule).
+    #: aged anchors instead (clamp-requires-freshness rule). P6 V3: when the
+    #: request does not send this field explicitly, the run slot's config
+    #: policy (GraphDynamicPolicy) fills it — see resolve_dynamic_policy.
     clampMaxAgeDays: float = Field(default=1.0, gt=0.0)
+
+    #: Dynamic-harmonic mode only (P6 V3, config-policy knob): per-class
+    #: semantics defaults overriding the §9.2 map for rows whose
+    #: relationSemantics is unset. Normally filled from the config policy at
+    #: resolution — sending it explicitly is an API-caller override.
+    relationSemanticsDefaults: (
+        dict[str, Literal["reciprocal_harmonic", "directed_state"]] | None
+    ) = None
 
     #: Dynamic-harmonic mode only (golden 15.13): a STABLE identity for the
     #: persistent residual store. None (default) = structural hash of the

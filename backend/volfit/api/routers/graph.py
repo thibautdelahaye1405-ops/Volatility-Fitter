@@ -31,6 +31,7 @@ from volfit.api.schemas import (
     GraphBlockRule,
     GraphBlockRuleResponse,
     GraphEdgesRequest,
+    GraphDynamicPolicy,
     GraphEdgesResponse,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
@@ -195,6 +196,20 @@ def put_message_edges(
 def get_message_config(request: Request) -> GraphMessageConfigResponse:
     """Both U6 lifecycle slots (draft + active), rows included."""
     draft, active = request.app.state.volfit.graph_message_config()
+    return GraphMessageConfigResponse(draft=draft, active=active)
+
+
+@router.put("/graph/config/messages/policy", response_model=GraphMessageConfigResponse)
+def put_message_policy(
+    body: GraphDynamicPolicy, request: Request
+) -> GraphMessageConfigResponse:
+    """Stage the layered-mode policy dials on the DRAFT config (P6 V3):
+    clampMaxAgeDays, residualHalfLifeDays, per-class semantics defaults.
+    Activate promotes rows + policy together; the solve resolves unset
+    request fields from the ACTIVE policy (draft under run-draft)."""
+    state = request.app.state.volfit
+    state.set_graph_message_draft_policy(body)
+    draft, active = state.graph_message_config()
     return GraphMessageConfigResponse(draft=draft, active=active)
 
 

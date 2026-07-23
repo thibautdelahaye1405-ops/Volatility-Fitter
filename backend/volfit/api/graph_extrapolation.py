@@ -400,10 +400,15 @@ def solve(
             obs_precision,
         )
     elif request.propagationMode == "layered_dynamic_harmonic":
-        from volfit.api.graph_dynamic import solve_dynamic_field
+        from volfit.api.graph_dynamic import resolve_dynamic_policy, solve_dynamic_field
 
         increment_priors = None
         t_by_node = {node.name: _node_t(state, node.expiry) for node in universe.nodes}
+        # P6 V3: dials the request left unset resolve from the run slot's
+        # config policy (explicit request fields win; no policy = defaults).
+        request = resolve_dynamic_policy(
+            request, state.graph_message_policy(request.useDraftConfig)
+        )
         field, message_diagnostics = solve_dynamic_field(
             universe,
             t_by_node,

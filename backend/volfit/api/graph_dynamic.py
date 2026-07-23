@@ -72,8 +72,32 @@ SEMANTICS_BY_CLASS = {
 }
 
 
-def row_semantics(row) -> str:
-    return row.relationSemantics or SEMANTICS_BY_CLASS[row.relationClass]
+def row_semantics(row, defaults: dict | None = None) -> str:
+    """A row's effective semantics: explicit > per-class policy override
+    (P6 V3, ``relationSemanticsDefaults``) > the §9.2 class default."""
+    return (
+        row.relationSemantics
+        or (defaults or {}).get(row.relationClass)
+        or SEMANTICS_BY_CLASS[row.relationClass]
+    )
+
+
+def resolve_dynamic_policy(request, policy):
+    """P6 V3: fill the layered policy dials the request left UNSET from the
+    run slot's config envelope (GraphDynamicPolicy). Explicitly-sent request
+    fields always win; ``policy`` None returns the request unchanged, so an
+    untouched deployment stays byte-identical."""
+    if policy is None:
+        return request
+    sent = request.model_fields_set
+    update: dict = {}
+    if "clampMaxAgeDays" not in sent:
+        update["clampMaxAgeDays"] = policy.clampMaxAgeDays
+    if "residualHalfLifeDays" not in sent:
+        update["residualHalfLifeDays"] = policy.residualHalfLifeDays
+    if "relationSemanticsDefaults" not in sent and policy.semanticsDefaults:
+        update["relationSemanticsDefaults"] = dict(policy.semanticsDefaults)
+    return request.model_copy(update=update) if update else request
 
 
 # ------------------------------------------------------- store serialization
@@ -190,8 +214,13 @@ def solve_dynamic_field(
     index = {n: i for i, n in enumerate(names)}
     rows = list(request.messageEdges) or list(persisted_edges or [])
     if rows:
-        directed_rows = [r for r in rows if row_semantics(r) == "directed_state"]
-        reciprocal_rows = [r for r in rows if row_semantics(r) == "reciprocal_harmonic"]
+        sem_defaults = request.relationSemanticsDefaults
+        directed_rows = [
+            r for r in rows if row_semantics(r, sem_defaults) == "directed_state"
+        ]
+        reciprocal_rows = [
+            r for r in rows if row_semantics(r, sem_defaults) == "reciprocal_harmonic"
+        ]
         reciprocal = (
             message_edges_from_schema(reciprocal_rows, t_by_node, request)
             if reciprocal_rows

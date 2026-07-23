@@ -362,6 +362,15 @@ def preflight(state: AppState, request: GraphExtrapolateRequest) -> GraphPreflig
                 )
             )
     else:
+        layered = request.propagationMode == "layered_dynamic_harmonic"
+        if layered:
+            # P6 V3: fill unset dials from the run slot's config policy, the
+            # same resolution Run applies (explicit request fields win).
+            from volfit.api.graph_dynamic import resolve_dynamic_policy
+
+            request = resolve_dynamic_policy(
+                request, state.graph_message_policy(request.useDraftConfig)
+            )
         t_by = {node.name: _node_t(state, node.expiry) for node in universe.nodes}
         persisted = (
             state.graph_message_draft_edges()
@@ -404,8 +413,16 @@ def preflight(state: AppState, request: GraphExtrapolateRequest) -> GraphPreflig
                         count=len(off),
                     )
                 )
+        if layered:
+            # Layered sweeps (P6 V3): directed cycles / residual store /
+            # directed-aware support — the latter REPLACES the undirected
+            # §14.3 sweep below (a directed arc transmits one way only).
+            from volfit.api.graph_preflight_dynamic import dynamic_issues
 
-    _connectivity_issues(len(names), pairs, observed, issues)
+            dynamic_issues(state, request, names, index, rows, observed, issues)
+
+    if request.propagationMode != "layered_dynamic_harmonic":
+        _connectivity_issues(len(names), pairs, observed, issues)
 
     return GraphPreflightResponse(
         universeNodes=len(names),
