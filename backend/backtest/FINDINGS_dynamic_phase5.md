@@ -65,9 +65,20 @@ the message-arc P4 verdict is unchanged. No production wiring changes.
    SPATIAL-layer issue, not memory. Prime suspect: the harness taxonomy
    broadcasts vol-normalized ATM betas to all three handles, so dark
    skew/curvature predictions from directed anchors are wrong-scale and
-   reconstruction suffers. Needs per-handle beta treatment (framework
-   §14.2 "separate ATM, skew, and curvature beta") before the layered
-   mode can claim smile-level quality.
+   reconstruction suffers.
+   **FIXED IN THE HARNESS 2026-07-23 (partial mitigation, verified):**
+   `build_message_edges` cross rows now carry `shape_beta = 1.0` for
+   skew/curvature while the ATM beta stays vol-normalized (calendar
+   keeps the maturity ratio on all handles). Single-pair smoke (spike
+   2024-08-13, liquid_split, ssr 0, vs the stored `_p5b` rows for the
+   same slice): res_atm bit-identical 196/196 (ATM untouched, as
+   required); wing_full_g 231.8 → 214.0 bp; retarget failures recovered
+   (144 → 166 of 196 nodes computable); skew/curv residual RMS 0.192 →
+   0.186 / 29.1 → 27.8. The REMAINING gap vs baseline transport
+   (~140 bp on that slice) is full-amplitude shape transfer through
+   directed anchors — candidates for a future pass: a shape amplitude
+   below one, or zero cross shape transfer. Existing campaign parts are
+   untouched; any re-adjudication runs on the fixed taxonomy.
 2. **Calibration narrowness (ζ std ~1.7).** The diagonal unary anchors
    (D6 v1) understate dark-node variance when predictions share parents
    — the D6 joint form exists in the solver and is the first candidate.

@@ -167,12 +167,20 @@ def build_message_edges(
     rows: list[GraphMessageEdge] = []
 
     def _row(recv: NodeKey, inf: NodeKey, p: float, beta: float, cls: str,
-             rule: str = "explicit") -> GraphMessageEdge:
+             rule: str = "explicit", shape_beta: float | None = None) -> GraphMessageEdge:
+        """``shape_beta`` overrides the skew/curvature betas (Phase-5 wing
+        fix, 2026-07-23): a vol-normalized ATM ratio is the WRONG scale for
+        shape innovations — cross relations transfer skew/curv at unit beta
+        (framework §14.2 "separate ATM, skew, and curvature beta"), while
+        calendar keeps the maturity-ratio on all handles (§8.5 defaults).
+        Broadcasting the ATM ratio caused the campaign-2 liquid_split wing
+        regression (193 vs 121 bp; FINDINGS_dynamic_phase5.md follow-up 1)."""
         b = _clip(beta, cfg)
+        s = b if shape_beta is None else shape_beta
         return GraphMessageEdge(
             sourceTicker=inf[0], sourceExpiry=inf[1],
             targetTicker=recv[0], targetExpiry=recv[1],
-            messagePrecision=p, betaAtmVol=b, betaSkew=b, betaCurv=b,
+            messagePrecision=p, betaAtmVol=b, betaSkew=s, betaCurv=s,
             relationClass=cls, precisionRule=rule,
         )
 
@@ -204,13 +212,13 @@ def build_message_edges(
                     rows.append(_row(
                         influenced, informer,
                         MSG_INDEX_PRECISION * cross_precision_mult, ratio,
-                        "broad_index",
+                        "broad_index", shape_beta=1.0,
                     ))
                 elif kind == "etf" and asset_sector(informer[0]) == sec:
                     rows.append(_row(
                         influenced, informer,
                         MSG_ETF_PRECISION * cross_precision_mult, ratio,
-                        "sector_etf",
+                        "sector_etf", shape_beta=1.0,
                     ))
                 elif (
                     kind == "name"
@@ -220,7 +228,7 @@ def build_message_edges(
                     rows.append(_row(
                         influenced, informer,
                         MSG_PEER_PRECISION * cross_precision_mult, ratio,
-                        "sector_peer",
+                        "sector_peer", shape_beta=1.0,
                     ))
     return rows
 

@@ -478,12 +478,17 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   stale _p5_dyn_* parts served as the memoryless ablation arm.
 - Both P4 riders closed this week: prior-save cert lock (669dfef) +
   residual-store SQLite persistence (3244ae4).
-- Follow-ups BEFORE any re-adjudication: (1) per-handle directed betas
-  in backtest/graph_edges (wing regression suspect); (2) D6 joint
-  anchors for the ζ narrowness; (3) THE decisive experiment = intraday
-  asynchronous replay (§16.1) — daily granularity cannot see the
-  framework's target regime (sparse mid-session prints vs a moving
-  liquid source).
+- Follow-ups BEFORE any re-adjudication: (1) **per-handle directed
+  betas SHIPPED 2026-07-23** — build_message_edges cross rows now carry
+  shape_beta=1.0 for skew/curv (ATM stays vol-normalized; calendar
+  keeps the T-ratio). Smoke-verified on the stored-slice comparison:
+  res_atm bit-identical 196/196, wing_full_g 231.8→214.0bp, retarget
+  failures 52→30 of 196; PARTIAL mitigation — remaining gap =
+  full-amplitude shape transfer (future: shape amplitude < 1 or zero
+  cross shape transfer); (2) D6 joint anchors for the ζ narrowness;
+  (3) THE decisive experiment = intraday asynchronous replay (§16.1) —
+  daily granularity cannot see the framework's target regime (sparse
+  mid-session prints vs a moving liquid source).
 - NEXT (unchanged): P6 UI increments V1 (editor semantics) / V2
   (inspector decomposition) / V3 (timeline + warnings + policy
   lifecycle) — fresh session each; then Phase 7 sparse only if the
