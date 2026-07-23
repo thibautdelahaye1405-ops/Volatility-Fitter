@@ -333,6 +333,37 @@ describe("Graph shell (U0)", () => {
     );
     expect(screen.getByText("Prior source")).toBeTruthy();
     expect(screen.getByTestId("attribution")).toBeTruthy();
+    // Non-layered run: the wire carried no V0 fields → no decomposition card.
+    expect(screen.queryByTestId("decomposition")).toBeNull();
+  });
+
+  it("layered run surfaces the decomposition card in the inspector (P6 V2)", () => {
+    const n = extraNode({
+      boundaryClass: "fresh_certified",
+      systematicAtmVol: 0.001, residualAtmVol: -0.0003,
+      residualAgeDays: 0.5, harmonicAtmVol: 0.0001,
+      residualSurpriseAtm: -2.1,
+    });
+    graphState = graphStub();
+    graphState.params.propagationMode = "layered_dynamic_harmonic";
+    extraState = extraStub({
+      nodes: [n],
+      results: { "SPY|2026-07-17": {
+        ticker: n.ticker, expiry: n.expiry, t: n.t, baseAtmVol: n.priorAtmVol,
+        postAtmVol: n.postAtmVol, shiftBp: n.shiftBp, sd: n.sd,
+        bandLo: n.bandLo, bandHi: n.bandHi, observed: true,
+      } },
+    });
+    renderShell();
+    fireEvent.click(screen.getByText("Diagnostics"));
+    fireEvent.click(
+      screen.getByTitle(
+        "Inspect this node (attribution of its move to the lit observations)",
+      ),
+    );
+    expect(screen.getByTestId("decomposition")).toBeTruthy();
+    expect(screen.getByText("clamped boundary")).toBeTruthy();
+    expect(screen.getByText(/χ -2\.1/)).toBeTruthy();
   });
 
   it("preflight blockers gate Run; the chip lists the finding (U5)", () => {

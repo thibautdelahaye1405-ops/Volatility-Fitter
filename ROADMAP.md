@@ -459,7 +459,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ## STATUS — updated 2026-07-23 (resume here)
 
-### 🧭 SESSION WRAP (2026-07-23b) — P6 UI V1 SHIPPED (editor semantics)
+### 🧭 SESSION WRAP (2026-07-23b) — P6 UI V1+V2 SHIPPED (editor semantics + inspector decomposition)
 
 - **Layered operator entry**: the TopBar propagation SegmentedControl gains
   "Layered" (`layered_dynamic_harmonic`) — session OPT-IN per the Phase-5
@@ -481,9 +481,24 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (test_message_edge_semantics_round_trip: PUT→GET keeps explicit
   semantics, absent stays None). Frontend 118/118, build + 8-tab UI smoke
   green; backend untouched except the added test (file 22/22).
-- NEXT: **V2** node-inspector decomposition panel (consumes the P6-V0
-  fields: boundaryClass/systematic/residual/harmonic/χ), then **V3**
-  timeline + warnings + policy lifecycle. The Note 02 bank-committee
+- **V2 inspector decomposition (same day)**: graphshell/DecompositionCard —
+  the four-part V0 identity as signed-bp contribution rows w/ diverging
+  bars (baseline % · systematic β·m · residual u + age note · harmonic ·
+  mark footer w/ Σ parts), boundary-class chip (fresh_certified = clamped
+  boundary / soft_stale = soft anchor / unobserved) and the §12.2 χ badge
+  (|χ|>2 rose, >1 amber). ExtrapolateNode gains the six V0 wire fields
+  (OPTIONAL — non-layered fixtures stay minimal; pydantic sends null).
+  Mounted unconditionally in InspectorPane — the card self-hides when the
+  fields are absent, so it appears exactly on layered runs. Locks: 3-card
+  vitest (identity + chips/tones + self-hide) + 2 shell locks (non-layered
+  run has no card; layered run surfaces card/chip/χ through the
+  Diagnostics→inspect flow). Frontend 122/122, build + 8-tab smoke green;
+  zero backend changes (V0 fields already on the wire, spread at
+  graph_extrapolation.py:582).
+- NEXT: **V3** timeline preview (interactive A/B fixture) + warnings
+  (cycle / stale residual / config mismatch / no support / large χ) +
+  policy fields in the U6 draft/active lifecycle (clampMaxAgeDays,
+  residualHalfLifeDays, semantics defaults). The Note 02 bank-committee
   verdict (Docs/"## Committee verdict on Note 02.md", untracked 2026-07-19)
   is still UNTRIAGED — deserves its own arc (β=2 cap challenge is
   production-relevant).

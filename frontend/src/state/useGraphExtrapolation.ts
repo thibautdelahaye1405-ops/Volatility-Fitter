@@ -99,6 +99,17 @@ export interface ExtrapolateNode {
    *  smooth_field mode. */
   qIncoming: number | null;
   noLitPath: boolean | null;
+  /** Dynamic-harmonic decomposition (P6 V0 wire contract): ATM mark ==
+   *  baseline (transported prior) + systematic + residual + harmonic, all
+   *  in vol units; χ = the §12.2 residual surprise for certified observed
+   *  targets. Null/absent outside layered_dynamic_harmonic mode — optional
+   *  so non-layered fixtures stay minimal. */
+  boundaryClass?: string | null;
+  systematicAtmVol?: number | null;
+  residualAtmVol?: number | null;
+  residualAgeDays?: number | null;
+  harmonicAtmVol?: number | null;
+  residualSurpriseAtm?: number | null;
 }
 
 /** One inconsistent beta cycle (spec §16.4), flagged at its closing edge;

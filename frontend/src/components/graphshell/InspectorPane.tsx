@@ -3,10 +3,12 @@
 //
 // Selection comes from the shell (canvas node/edge click, or a Diagnostics-
 // table row). Shows the node's baseline facts, its prior → posterior move
-// once a production run landed, the U4 message inspector (incoming-messages
-// table + local consensus vs global posterior + divergence explainer, message
-// mode), and the exact attribution card (gain × innovation terms — why it
-// moved). An edge click swaps in the relation card.
+// once a production run landed, the P6-V2 layered decomposition card (self-
+// hides unless the run's wire carried the V0 fields), the U4 message
+// inspector (incoming-messages table + local consensus vs global posterior +
+// divergence explainer, message mode), and the exact attribution card (gain ×
+// innovation terms — why it moved). An edge click swaps in the relation card.
+import DecompositionCard from "./DecompositionCard";
 import GraphAttributionCard from "../GraphAttributionCard";
 import { EdgeInspectorCard, MessageInspector } from "./MessageInspector";
 import type { GraphNodeBase, SolverParams } from "../../state/useGraph";
@@ -202,6 +204,11 @@ export default function InspectorPane({
               </p>
             </div>
           ) : null}
+
+          {/* P6 V2: the layered four-part mark explanation (baseline +
+              systematic + residual + harmonic + χ); hidden outside layered
+              runs — the card checks the V0 fields itself. */}
+          {post !== null && <DecompositionCard node={post} />}
 
           {/* U4 message inspector: incoming messages + local consensus vs
               the solved global posterior. */}
