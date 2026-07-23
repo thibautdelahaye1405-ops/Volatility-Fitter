@@ -529,10 +529,37 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   8-tab smoke.
 - NEXT: P6 hardening leftovers from the 2026-07-21b wrap (§21 locks,
   migrations, certification case, autotune re-point + zero-obs baseline
-  + sandbox deletion) — or the **Note 02 bank-committee verdict**
-  (Docs/"## Committee verdict on Note 02.md", untracked 2026-07-19),
-  still UNTRIAGED and production-relevant (β=2 cap challenge); it
-  deserves its own arc like the Note 01 committee review.
+  + sandbox deletion) — or the Note 02 committee arc (triaged below).
+
+### 🧭 SESSION WRAP (2026-07-24) — NOTE 02 COMMITTEE VERDICT TRIAGED
+
+- **Docs/notes/reviews/committee_review_note02_2026-07-24.md** = the
+  verdict verbatim (byte-identical to the user's dropped file, now
+  removed from Docs/ root) + full triage. Every checkable claim
+  VERIFIED: (1) the β=2 counterexample (0.04,2,0,0,0.2) passes BOTH
+  shipped screens with zero penalty yet g(10)=−0.0485 (g<0 at k=5..50)
+  — the note's "non-negative iff β≤2" is false at equality and the
+  shipped cap `_LEE_SLOPE_MAX=2.0` hinges to zero exactly there;
+  (7) the rigidity target has g(0)=−0.0589 (butterfly-arbitrageable);
+  (4) β_R = c√(vτ) follows from the shipped jw_to_raw; (5) the
+  committee's (β_L,β_R,k*,w*,κ*) chart algebra is CORRECT (= the
+  Note-01 R1 logistic-chart playbook); (2) the moment map round-trips
+  Lee's p*=(2−β)²/(8β); 9.2%/24.3/26.8 are hardcoded historical
+  constants in gen_svi_moments.py; jw_to_raw is unguarded; _PENALTY=1e3
+  is unit-mixed. Pushbacks recorded: no JW/moments product surface
+  exists; the acceptance-rule skeleton (publish gates, certification,
+  quarantine, tail certificates) already exists — the new work is the
+  BELLY certificate + certified/repaired/rejected rule.
+- **Proposed workstreams (awaiting ratification)**: R1 strict Lee
+  buffer (2−ε default) + proposition repair + counterexample
+  certification lock; R2 belly certificate + acceptance rule ("an
+  uncertified slice cannot become a mark" — the decisive revision) +
+  projection calendar audit + canonical-object policy; R3 structural
+  chart opt-in + benchmark-adjudicated default; R4 Note 02 revision
+  (moment map, hierarchy relabel, arb-free rigidity benchmark w/
+  comparators, bump-response figure, condition atlas); R5 guarded
+  converter + desk layer + adversarial battery. Deferred: cross-model
+  market evidence (benchmark pack), hedge P&L (standing campaign).
 
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 
