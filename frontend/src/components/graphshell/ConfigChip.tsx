@@ -6,7 +6,12 @@
 // lifecycle actions (event-logged backend-side).
 import { useState } from "react";
 import SegmentedControl from "../SegmentedControl";
-import { configDirty, diffRows, type MessageConfigPair } from "../../state/useMessageConfig";
+import {
+  configDirty,
+  diffRows,
+  policyDirty,
+  type MessageConfigPair,
+} from "../../state/useMessageConfig";
 
 export interface ConfigChipBundle {
   /** The lifecycle pair, or null (older backend / not yet loaded). */
@@ -78,7 +83,9 @@ export default function ConfigChip({ bundle }: { bundle: ConfigChipBundle }) {
                   ? "— (nothing staged)"
                   : dirty && diff !== null
                     ? `+${diff.added} −${diff.removed} ~${diff.changed} vs ` +
-                      `${active === null ? "auto" : `v${active.version}`} · stages v${draft.version}`
+                      `${active === null ? "auto" : `v${active.version}`} · stages v${draft.version}` +
+                      // P6 V3: layered policy dials stage with the draft too.
+                      (policyDirty(config) ? " · policy staged" : "")
                     : "matches active"}
               </p>
 

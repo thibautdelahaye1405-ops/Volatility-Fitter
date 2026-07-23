@@ -57,7 +57,10 @@ vi.mock("../state/useMessageConfig", async (importOriginal) => ({
   revertMessageConfig: () => revertMock(),
 }));
 const emptyMsgEdges = { fetchEdges: vi.fn(() => Promise.resolve([])), fetchAuto: vi.fn(() => Promise.resolve([])) };
-vi.mock("../state/useMessageEdges", () => ({ useMessageEdges: () => emptyMsgEdges }));
+vi.mock("../state/useMessageEdges", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/useMessageEdges")>()),
+  useMessageEdges: () => emptyMsgEdges,
+}));
 let looState: UseLooComparisonResult;
 vi.mock("../state/useLooComparison", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../state/useLooComparison")>()),
@@ -355,15 +358,23 @@ describe("Graph shell (U0)", () => {
       } },
     });
     renderShell();
+    // P6 V3 layered surfaces: the Dynamics policy card (left pane) and the
+    // §5 A/B timeline fixture (Preview tab, the default open tab).
+    expect(screen.getByTestId("dynamics-policy")).toBeTruthy();
+    expect(screen.getByTestId("timeline-preview")).toBeTruthy();
     fireEvent.click(screen.getByText("Diagnostics"));
+    // |χ| = 2.1 > 2 → the loud-surprise banner above the results table.
+    expect(screen.getByText(/1 loud residual surprise/)).toBeTruthy();
+    expect(screen.getByText(/worst χ -2\.1/)).toBeTruthy();
     fireEvent.click(
       screen.getByTitle(
         "Inspect this node (attribution of its move to the lit observations)",
       ),
     );
-    expect(screen.getByTestId("decomposition")).toBeTruthy();
+    const card = screen.getByTestId("decomposition");
     expect(screen.getByText("clamped boundary")).toBeTruthy();
-    expect(screen.getByText(/χ -2\.1/)).toBeTruthy();
+    // Scoped to the card — the diagnostics banner also cites the worst χ.
+    expect(card.textContent).toContain("χ -2.1");
   });
 
   it("preflight blockers gate Run; the chip lists the finding (U5)", () => {

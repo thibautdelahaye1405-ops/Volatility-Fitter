@@ -359,6 +359,8 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
         <RelationshipsPane
           graph={graph}
           messages={messagesMode}
+          layered={graph.params.propagationMode === "layered_dynamic_harmonic"}
+          config={topology.config}
           crossBeta={crossBeta}
           setCrossBeta={setCrossBeta}
           onEdgesSaved={onEdgesSaved}

@@ -17,6 +17,7 @@
 // The shell owns tab/open state so a landing run can reveal Diagnostics.
 import ExtrapolateResults from "../ExtrapolateResults";
 import ObservationPlanCard from "../ObservationPlanCard";
+import TimelinePreview from "./TimelinePreview";
 import ValidationTab from "./ValidationTab";
 import { planAnnotations } from "../../lib/planAnnotations";
 import { buildScenario, SCENARIOS } from "../../lib/whatifScenarios";
@@ -117,7 +118,8 @@ export default function GraphDrawer({
     </div>
   );
 
-  const preview = manual ? (
+  const layered = graph.params.propagationMode === "layered_dynamic_harmonic";
+  const previewBase = manual ? (
     <>
       <p className="mb-2 text-[11px] text-slate-500">
         Test pulse — typed shifts run the ACTIVE operator over the selected
@@ -183,9 +185,42 @@ export default function GraphDrawer({
     </div>
   );
 
+  // P6 V3: the layered operator gets the §5 A/B timeline fixture — temporal
+  // behavior (residual memory + half-life) that a one-snapshot preview
+  // cannot demonstrate.
+  const preview = (
+    <>
+      {previewBase}
+      {layered && <TimelinePreview />}
+    </>
+  );
+
+  // P6 V3: loud §12.2 residual surprises from the last layered run — a node
+  // printed FAR from where its stored memory said it should (|χ| > 2).
+  const loudChi = (extra.nodes ?? []).filter(
+    (n) => n.residualSurpriseAtm != null && Math.abs(n.residualSurpriseAtm) > 2,
+  );
+  const worstChi = loudChi.reduce(
+    (m, n) =>
+      Math.abs(n.residualSurpriseAtm ?? 0) > Math.abs(m)
+        ? (n.residualSurpriseAtm ?? 0)
+        : m,
+    0,
+  );
+
   // One solve, one table (U3): both sources read the production field.
   const diagnostics = (
     <div className="flex h-full min-h-0 flex-col">
+      {loudChi.length > 0 && (
+        <p
+          className="mb-2 shrink-0 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[10px] text-rose-300"
+          title="Residual surprise χ (framework §12.2): how far today's print sits from the node's stored residual memory, in σ. |χ| > 2 = a genuine dislocation — inspect the node's decomposition."
+        >
+          ⚠ {loudChi.length} loud residual surprise
+          {loudChi.length > 1 ? "s" : ""} (|χ| &gt; 2) · worst χ{" "}
+          {worstChi.toFixed(1)}
+        </p>
+      )}
       {extra.cycles.length > 0 && (
         <p
           className="mb-2 shrink-0 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-300"

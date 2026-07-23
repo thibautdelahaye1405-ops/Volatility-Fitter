@@ -459,7 +459,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ## STATUS — updated 2026-07-23 (resume here)
 
-### 🧭 SESSION WRAP (2026-07-23b) — P6 UI V1+V2 SHIPPED (editor semantics + inspector decomposition)
+### 🧭 SESSION WRAP (2026-07-23b) — P6 UI ARC COMPLETE: V1+V2+V3 SHIPPED
 
 - **Layered operator entry**: the TopBar propagation SegmentedControl gains
   "Layered" (`layered_dynamic_harmonic`) — session OPT-IN per the Phase-5
@@ -495,13 +495,44 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   Diagnostics→inspect flow). Frontend 122/122, build + 8-tab smoke green;
   zero backend changes (V0 fields already on the wire, spread at
   graph_extrapolation.py:582).
-- NEXT: **V3** timeline preview (interactive A/B fixture) + warnings
-  (cycle / stale residual / config mismatch / no support / large χ) +
-  policy fields in the U6 draft/active lifecycle (clampMaxAgeDays,
-  residualHalfLifeDays, semantics defaults). The Note 02 bank-committee
-  verdict (Docs/"## Committee verdict on Note 02.md", untracked 2026-07-19)
-  is still UNTRIAGED — deserves its own arc (β=2 cap challenge is
-  production-relevant).
+- **V3 SHIPPED (same day, backend 48cbb46 + frontend)** — three parts:
+  (1) **Config-versioned dynamic policy**: GraphDynamicPolicy
+  (clampMaxAgeDays / residualHalfLifeDays / per-class semanticsDefaults)
+  on the U6 envelope — staged via PUT /graph/config/messages/policy
+  (rows and policy stage independently, Activate promotes both;
+  restaging rows PRESERVES the staged policy); solve + preflight resolve
+  unset request dials from the run slot's policy via
+  resolve_dynamic_policy (model_fields_set — explicit request fields
+  win; no policy = same object, byte-identity); row_semantics gains the
+  per-class override map (request.relationSemanticsDefaults). UI:
+  DynamicsPolicyCard in the Relationships pane (layered only) +
+  "policy staged" marker in the ConfigChip diff; policyDirty folds into
+  configDirty; **V1 gap closed: rowEqual now compares
+  relationSemantics** (a semantics-only edit reads dirty).
+  (2) **Layered preflight warnings** (graph_preflight_dynamic, new
+  module): directed_cycle BLOCKER (§6.5 — Run would fail), no_support
+  directed-aware reachability replacing the undirected §14.3 sweep
+  (arrows transmit one way; stored residuals seed support as D7
+  ghosts), residual_config_mismatch (15.13 purge), stale_residual
+  (RW>30d warning / >3 half-lives info). Post-run: loud-χ banner
+  (|χ|>2, worst cited) in the drawer Diagnostics next to the cycle
+  banner.
+  (3) **Timeline preview**: lib/dynamicTimeline replayAB — the §5
+  async A/B machine client-side, vitest-locked to the SAME golden
+  numbers as graph_dynamic_golden.json (β=1/β=1.5/half-life 1d incl.
+  b@4.0 = 11.87868) — + TimelinePreview (SVG A/B paths, β + half-life
+  knobs, snapshot scrubber, three-part readout systematic+residual=
+  mark, zero-reverse-influence note) mounted in the drawer Preview tab
+  in layered mode.
+  Tests: backend 48 (policy lifecycle/resolution precedence + 3 layered
+  preflight) in the graph set 365 green; frontend 129/129 + build +
+  8-tab smoke.
+- NEXT: P6 hardening leftovers from the 2026-07-21b wrap (§21 locks,
+  migrations, certification case, autotune re-point + zero-obs baseline
+  + sandbox deletion) — or the **Note 02 bank-committee verdict**
+  (Docs/"## Committee verdict on Note 02.md", untracked 2026-07-19),
+  still UNTRIAGED and production-relevant (β=2 cap challenge); it
+  deserves its own arc like the Note 01 committee review.
 
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 

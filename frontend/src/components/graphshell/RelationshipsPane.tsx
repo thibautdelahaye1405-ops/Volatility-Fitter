@@ -16,6 +16,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Grid3x3 } from "lucide-react";
 import CalendarPolicyCard from "./CalendarPolicyCard";
 import CrossMatrixCard from "./CrossMatrixCard";
+import DynamicsPolicyCard from "./DynamicsPolicyCard";
 import EdgeMatrixEditor from "../EdgeMatrixEditor";
 import MessageEdgeEditor from "../MessageEdgeEditor";
 import SolverPanel, {
@@ -25,6 +26,7 @@ import SolverPanel, {
 } from "../SolverPanel";
 import { api } from "../../state/api";
 import type { UseGraphResult } from "../../state/useGraph";
+import type { MessageConfigPair } from "../../state/useMessageConfig";
 import type { MessageEdgeRow } from "../../state/useMessageEdges";
 import type { UniverseResponse } from "../../state/useSmile";
 
@@ -32,6 +34,10 @@ interface RelationshipsPaneProps {
   graph: UseGraphResult;
   /** True when the message operator drives the production solve. */
   messages: boolean;
+  /** Layered mode (P6 V3): adds the Dynamics policy card. */
+  layered?: boolean;
+  /** The U6 lifecycle pair — seeds the Dynamics policy card. */
+  config?: MessageConfigPair | null;
   /** Smooth-field cross-ticker β (rides both sources since U3). */
   crossBeta: number;
   setCrossBeta: (v: number) => void;
@@ -58,6 +64,8 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 export default function RelationshipsPane({
   graph,
   messages,
+  layered = false,
+  config = null,
   crossBeta,
   setCrossBeta,
   onEdgesSaved,
@@ -211,6 +219,13 @@ export default function RelationshipsPane({
             </>
           )}
         </Card>
+
+        {/* Layered-mode policy dials (P6 V3) — staged to the draft config. */}
+        {layered && (
+          <Card title="Dynamics">
+            <DynamicsPolicyCard config={config} onSaved={onEdgesSaved} />
+          </Card>
+        )}
 
         <Card title="Overrides">
           <p className="mb-2 text-[11px] text-slate-500">
