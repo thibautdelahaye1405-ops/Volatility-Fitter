@@ -1,6 +1,84 @@
 # Dynamic-harmonic Phase-5 adjudication — findings & decision table
 
-**Status: AWAITING RE-RUN (campaign 2, tags `_p5b_dyn_*`).**
+**Status: ADJUDICATED 2026-07-23 (campaign 2, tags `_p5b_dyn_*`).
+VERDICT: RECORD, HOLD ADOPTION — the layered mode stays opt-in; no
+default change; residual memory has NEGATIVE marginal value at the
+one-day horizon.**
+
+## Campaign-2 results (21,958 intersected OOS rows across 7 arms)
+
+ATM RMS, bp, all OOS pairs (warm-only in parens — first store-cold date
+per regime excluded):
+
+| arm            | full_loo        | liquid_split |
+|----------------|-----------------|--------------|
+| transported prior | 286.3 (254.5) | 318.0 (282.4) |
+| `_b14_base`    | 279.3 (245.9)   | 317.9 (282.3) |
+| `_p4_msg_learned` | 280.9 (247.4) | 320.1 (283.6) |
+| `_p5_dyn` memoryless | 280.2 (240.7) | 323.9 (284.1) |
+| `_p5b_dyn_desk` (H=∞) | 333.1 (308.0) | 323.9 (284.1) |
+| `_p5b_dyn_hl1` | **285.1 (247.3)** | 323.9 (284.1) |
+| `_p5b_dyn_hl5` | 290.1 (253.7)   | 323.9 (284.1) |
+| `_p5b_dyn_hl20` | 305.5 (273.5)  | 323.9 (284.1) |
+
+Internal consistency: liquid_split identical across all dyn variants and
+equal to the memoryless arm (names dark all week ⇒ no residual exists) —
+the harness fix measured exactly what it should.
+
+### The two headline findings
+
+1. **Residual memory does not earn its keep at the one-day horizon.**
+   full_loo skill is MONOTONE in half-life: desk(∞) 333 → hl20 305 →
+   hl5 290 → hl1 285 → memoryless 280. The optimum is H → 0: a one-day-
+   old idiosyncratic dislocation carries more noise than signal on this
+   universe. hl1 beats the transported prior (−1.2bp) but loses to the
+   smooth-field base (+5.8), the message arm (+4.2), and its own
+   memoryless ablation (+4.9).
+2. **The layered SPATIAL solve has a real stressed-regime edge — and a
+   calm-regime cost.** Memoryless-layered full_loo (warm): spike 271.6
+   vs base 286.3 (−14.7bp), high 205.8 vs 215.0 (−9.2bp), but calm
+   low_jul2023 247.2 vs 241.0 (+6.2bp, and hl1 258.9 is worse still).
+   The directed clamp+cut helps exactly when systematic moves dominate.
+
+## §16.3 decision table (all-pairs, pre-registered)
+
+| gate | criterion                                              | verdict |
+|------|--------------------------------------------------------|---------|
+| 1    | full_loo dark RMS < prior AND base AND msg_learned     | **FAIL** (hl1: beats prior only) |
+| 2    | liquid_split non-degrading vs msg_learned              | **FAIL (marginal)** (+3.8bp; warm ≈ tie +0.5) |
+| 3    | stressed regimes non-degrading                         | PASS (spike/high full_loo IMPROVE vs base+msg) |
+| 4    | ζ std ≈ 1; cov80/cov95 near nominal                    | **FAIL** (hl1 std 1.68, cov80 0.92; base 0.74, msg 2.07) |
+| 5    | reverse leakage zero (structural)                      | PASS (by construction) |
+| 6    | wing RMS non-deteriorating                             | **FAIL** (full_loo 131 vs 126 transport; liquid_split 193 vs 121 — see follow-up) |
+
+**Half-life selection (if forced):** hl1 — but the monotone trend says
+H → 0, i.e. don't carry the state at this horizon.
+
+**DECISION: RECORD VERDICT, HOLD ADOPTION.** `layered_dynamic_harmonic`
+stays a selectable research mode; `smooth_field` remains the default;
+the message-arc P4 verdict is unchanged. No production wiring changes.
+
+## Recorded follow-ups (would need to clear before re-adjudication)
+
+1. **Wing-RMS regression (liquid_split 192.6 vs 121.1 bp, n drop 8682 →
+   7603 = more retarget failures).** Shared by the memoryless arm ⇒ a
+   SPATIAL-layer issue, not memory. Prime suspect: the harness taxonomy
+   broadcasts vol-normalized ATM betas to all three handles, so dark
+   skew/curvature predictions from directed anchors are wrong-scale and
+   reconstruction suffers. Needs per-handle beta treatment (framework
+   §14.2 "separate ATM, skew, and curvature beta") before the layered
+   mode can claim smile-level quality.
+2. **Calibration narrowness (ζ std ~1.7).** The diagonal unary anchors
+   (D6 v1) understate dark-node variance when predictions share parents
+   — the D6 joint form exists in the solver and is the first candidate.
+3. **Scope caveat, honestly stated:** this campaign tests DAILY
+   granularity where every full_loo node relights each day. The
+   framework's target regime — sparse intraday asynchrony (the §5 A/B
+   story: a name lit once mid-session, marked against a moving liquid
+   source) — is NOT what this harness measures. The asynchronous
+   timestamp replay at the finest stored frequency (§16.1) remains the
+   decisive future experiment for the residual state; at day granularity
+   the answer is "don't carry it".
 
 ## Campaign 1 post-mortem (2026-07-22, tags `_p5_dyn_*` — INVALID for the
 ## half-life question, RETAINED as the memoryless-layered ablation arm)
