@@ -561,14 +561,26 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   tests/test_svi_lee_boundary.py → certification case svi_lee_boundary.
   CAVEAT: stores with SAVED fit settings keep the persisted 2.0 until
   re-saved (the dev volfit.sqlite does — re-save Options▸Fit or clear
-  defaults to adopt the buffer). NEXT: **R2 belly certificate +
-  acceptance rule** ("an uncertified slice cannot become a mark") +
-  projection calendar audit + canonical-object policy; then R3
-  structural chart opt-in + benchmark default decision; R4 Note 02
-  revision (moment map, hierarchy relabel, arb-free rigidity benchmark
-  w/ comparators, bump-response figure, condition atlas); R5 guarded
-  converter + desk layer + adversarial battery. Deferred: cross-model
-  market evidence (benchmark pack), hedge P&L (standing campaign).
+  defaults to adopt the buffer). **R2 belly certificate + acceptance
+  rule DONE same day (v1)**: belly_certificate (801-pt Durrleman g on
+  the traded range from model derivatives, ≈0.05ms measured — the
+  affordability challenge answered); NON-advisory in quality
+  (bellyMinG/butterflyCertified, uncertified fails ready) + hard
+  publish blocker (409 naming node + min g; allow_dirty = stamped
+  draft); projectionCalendarWorstBp manifest audit (blocker past 1bp)
+  answers the committee's projection question on every artifact;
+  canonical-object policy in export.py docstring; note stack updated
+  four→five layers ("layer 5 is the gate") + PDF rebuilt. Locks =
+  tests/test_belly_certificate.py (Vogt fails where screens pass /
+  clean+cost rail / end-to-end publish / forced-uncertified 409+draft)
+  = certification case belly_certificate. RIDERS→R3: belly-hinge
+  repair-refit, exact Martini–Mingone cross-check, Quality-view chip.
+  NEXT: **R3 structural chart opt-in** + benchmark default decision;
+  R4 Note 02 revision (moment map, hierarchy relabel, arb-free
+  rigidity benchmark w/ comparators, bump-response figure, condition
+  atlas); R5 guarded converter + desk layer + adversarial battery.
+  Deferred: cross-model market evidence (benchmark pack), hedge P&L
+  (standing campaign).
 
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 

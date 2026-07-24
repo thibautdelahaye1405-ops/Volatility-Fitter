@@ -44,3 +44,5 @@ restart.local.ps1
 
 # Per-desk container credentials (deploy/client.env.example is the template)
 deploy/client.env
+*.sqlite-shm
+*.sqlite-wal

@@ -46,6 +46,14 @@ class QualityNode(BaseModel):
     extrapOk: bool = True  # extrapMinG >= 0 (or no envelope)
     extrapCalBp: float | None = None  # worst calendar crossing vs prev expiry, vol bp
     extrapCalOk: bool = True  # extrapCalBp ~ 0 (or no previous slice)
+    # --- belly butterfly certificate (committee R2 — the acceptance rule):
+    # dense Durrleman g over the TRADED range of the displayed slice, the
+    # region the cheap wing screens miss and the publish projection never
+    # touches. NOT advisory: an uncertified belly fails ``ready`` and
+    # hard-blocks publish — an uncertified slice cannot become a mark.
+    bellyMinG: float | None = None  # worst g over the quoted range
+    bellyArgminK: float | None = None  # where the worst dip sits
+    butterflyCertified: bool = True  # min g >= -tol everywhere (or no belly)
     wingOrderOk: bool | None = None  # asymptotic Lee-slope order vs prev (far >= near)
     varSwapQuoted: bool  # an active var-swap quote participates in this node's fit
     filterActive: bool  # observation filter holds a committed state for this node

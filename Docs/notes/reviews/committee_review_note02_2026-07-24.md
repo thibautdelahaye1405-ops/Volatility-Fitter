@@ -159,13 +159,29 @@ already-built machinery.
    CAVEAT: installs with previously SAVED fit settings keep the persisted
    2.0 (full-snapshot persistence) until re-saved — the dev store
    backend/data/volfit.sqlite is in that state.
-2. **R2 — belly certificate + acceptance rule (the decisive revision).**
-   Post-fit butterfly certificate on model derivatives (dense-grid analytic
-   g; optionally the exact Martini–Mingone domain), benchmarked against the
-   ≈1.8 ms core fit; publish rule: certified / coherently repaired /
-   rejected-with-deterministic-fallback; Quality + publish-gate surfacing;
-   calendar audit of the export wing projection; canonical-object policy
-   note (which object supplies marks/Greeks/moments/export).
+2. **R2 — belly certificate + acceptance rule (DONE 2026-07-24, v1).**
+   `belly_certificate` (models/diagnostics.py): dense 801-point Durrleman-g
+   over the TRADED range from the model's own curve — the region the wing
+   screens miss and the projection never touches. Cost measured ≈0.05 ms
+   per slice (vs the ~1.8 ms fit: the committee's affordability challenge
+   answered with a number). Wired NON-advisory into quality
+   (`bellyMinG`/`bellyArgminK`/`butterflyCertified`; uncertified fails
+   `ready`) and into the export publish gate (`_node_blockers` →
+   PublishBlockedError/409 naming the node + min g; `allow_dirty` still
+   exports a stamped DRAFT). The published-family calendar audit
+   (`projectionCalendarWorstBp` on the manifest, blocker past 1 bp)
+   answers "can the projection introduce calendar crossings?" on every
+   artifact. Canonical-object policy stated in export.py's module
+   docstring (published projected curve = THE object; displayed core
+   byte-identical; lqdParams = fit lineage). Note's four-layer stack
+   updated to five (certificate = the gate). Locks:
+   tests/test_belly_certificate.py (Vogt fails where screens pass; clean
+   certifies + cost rail; end-to-end certify+publish; forced-uncertified
+   409 + draft escape) = certification case **belly_certificate**.
+   Riders → R3: the belly-hinge repair-refit (today: repair = refit with
+   enforcement or fall back; the structural chart changes the same
+   objective) and the exact Martini–Mingone certificate as a
+   cross-check tier; Quality-view UI chip for the verdict.
 3. **R3 — structural chart (β_L, β_R, k\*, w\*, κ\*) as opt-in.**
    Implement with logistic/softplus lifts + equivalence locks vs the
    current chart on clean fits; benchmark on the frozen regimes (in-spread,

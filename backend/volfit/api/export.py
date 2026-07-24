@@ -12,6 +12,17 @@ flat metadata columns). Parquet is a follow-up (pyarrow is not a dependency).
 STRICTLY NO FIT ON READ, like the quality report: only fitted nodes export
 (publish what is calibrated), fetched via the calibrated pointer + fit cache;
 the per-node quality columns are joined from volfit.api.quality.
+
+CANONICAL-OBJECT POLICY (committee R2). The published curve in ``curve`` —
+projected wings included — is THE canonical object: marks, Greeks, risk and
+any downstream consumer read it and nothing else. The displayed in-app core
+is byte-identical to the published core (the projection lifts WINGS only,
+flagged per node via ``curveProjected``); ``lqdParams`` reproduce the
+UNPROJECTED fit (fit lineage, not a second price source). The acceptance
+rule: a slice publishes only when its belly butterfly certificate passes
+(quality's ``butterflyCertified``) and the published family is calendar-
+ordered — an uncertified slice cannot become a mark (PublishBlockedError;
+``allow_dirty`` exports a clearly-stamped DRAFT, never a publish).
 """
 
 from __future__ import annotations
@@ -135,6 +146,10 @@ class ExportManifest(BaseModel):
     #: means every wing was already arb-clean — the projection is a no-op).
     wingProjection: bool = True
     projectedNodes: int = 0
+    #: Committee R2 audit: worst calendar crossing across adjacent PUBLISHED
+    #: curves (vol bp), proving the wing projection introduced none (the
+    #: floor construction makes it 0 by design; > tolerance would BLOCK).
+    projectionCalendarWorstBp: float = 0.0
     #: Governance kernel (R1 item 8): the persisted manifest's content-hash id
     #: and its parent in the publish chain. None when no store is configured —
     #: the artifact then visibly lacks lineage. A published manifest is never
@@ -274,22 +289,62 @@ def _export_local_vol(state: AppState, ticker: str) -> ExportLocalVol | None:
 
 
 def _node_blockers(ticker: str, row: QualityNode, node: ExportNode) -> list[str]:
-    """The HARD publish blockers of one exported node (R2 item 10 exit gate):
-    calendar inconsistency beyond tolerance (quality's two-curve check), a
-    core calendar conflict the wing projection must not repair, and an
-    unpriceable curve region (w <= 0 or non-finite = below intrinsic — a
-    finite positive-variance IV point always prices above intrinsic)."""
+    """The HARD publish blockers of one exported node: calendar inconsistency
+    beyond tolerance (quality's two-curve check), a core calendar conflict the
+    wing projection must not repair, an unpriceable curve region (w <= 0 or
+    non-finite = below intrinsic), and — committee R2, the acceptance rule —
+    an UNCERTIFIED belly (negative Durrleman g inside the traded range, which
+    no wing projection can repair). An uncertified slice cannot become a
+    mark: repair it at the fit (enforcement / refit) or it is rejected here;
+    ``allow_dirty`` still exports a DRAFT artifact with the defect stamped."""
     where = f"{ticker} {row.expiry}"
     out: list[str] = []
     if not row.calendarOk:
         out.append(f"{where}: calendar inconsistency ({row.calendarViolation * 1e4:.0f}bp)")
     if not node.wingsClean:
         out.append(f"{where}: core calendar conflict at the traded edge")
+    if not row.butterflyCertified:
+        min_g = row.bellyMinG if row.bellyMinG is not None else float("nan")
+        out.append(f"{where}: uncertified belly butterfly (min g {min_g:.4f})")
     w = np.array([p.w for p in node.curve])
     iv = np.array([p.iv for p in node.curve])
     if w.size and (not np.all(np.isfinite(w)) or not np.all(np.isfinite(iv)) or np.any(w <= 0.0)):
         out.append(f"{where}: unpriceable curve region (intrinsic)")
     return out
+
+
+#: Tolerance for the post-projection calendar audit (vol bp) — matches the
+#: extrapolated-region advisory tolerance; the projection floors each node on
+#: the previous PUBLISHED curve, so the audit should read ~0 by construction.
+_PROJECTION_CAL_TOL_BP = 1.0
+
+
+def _projection_calendar_audit(
+    published: list[tuple[np.ndarray, np.ndarray, float]],
+) -> float:
+    """Worst calendar crossing across adjacent PUBLISHED curves of one ticker
+    (vol bp at the far expiry's maturity), answering the committee's audit
+    question directly: can the wing projection introduce calendar crossings?
+    The projection's floor construction makes this 0 by design — this audit
+    PROVES it on every artifact rather than asserting it."""
+    worst = 0.0
+    for (k_near, w_near, _t_near), (k_far, w_far, t_far) in zip(published, published[1:]):
+        lo = max(float(k_near.min()), float(k_far.min()))
+        hi = min(float(k_near.max()), float(k_far.max()))
+        if hi <= lo or t_far <= 0.0:
+            continue
+        sel = (k_far >= lo) & (k_far <= hi)
+        if not sel.any():
+            continue
+        w_n = np.interp(k_far[sel], k_near, w_near)
+        gap = (
+            np.sqrt(np.maximum(w_n, 0.0) / t_far)
+            - np.sqrt(np.maximum(w_far[sel], 0.0) / t_far)
+        ) * 1e4
+        gap = gap[np.isfinite(gap)]
+        if gap.size:
+            worst = max(worst, float(gap.max()))
+    return worst
 
 
 def build_surface_export(
@@ -327,9 +382,11 @@ def build_surface_export(
     out: list[ExportTicker] = []
     projected_nodes = 0
     blockers: list[str] = []
+    projection_audit_bp = 0.0
     for ticker, rows in rows_by_ticker.items():
         nodes: list[ExportNode] = []
         prev_pub: tuple[np.ndarray, np.ndarray] | None = None
+        published: list[tuple[np.ndarray, np.ndarray, float]] = []
         # Ascending maturity: each node's calendar floor is the PREVIOUS
         # expiry's published (projected) curve, so the artifact is ordered.
         for row in sorted(rows, key=lambda r: r.tau):
@@ -342,8 +399,18 @@ def build_surface_export(
             projected_nodes += int(node.curveProjected)
             blockers.extend(_node_blockers(ticker, row, node))
             nodes.append(node)
+            published.append((prev_pub[0], prev_pub[1], node.tau))
         if not nodes:
             continue
+        # R2 audit: the published (projected) family must stay calendar-
+        # ordered — a crossing here would be one the projection INTRODUCED.
+        audit_bp = _projection_calendar_audit(published)
+        projection_audit_bp = max(projection_audit_bp, audit_bp)
+        if audit_bp > _PROJECTION_CAL_TOL_BP:
+            blockers.append(
+                f"{ticker}: wing projection introduced a calendar crossing "
+                f"({audit_bp:.1f}bp)"
+            )
         snapshot = state.snapshot(ticker)  # present: the ticker has cached fits
         out.append(
             ExportTicker(
@@ -367,6 +434,7 @@ def build_surface_export(
     manifest = build_manifest(state, mode, report, [t.ticker for t in out])
     manifest = manifest.model_copy(
         update={"wingProjection": project_wings, "projectedNodes": projected_nodes,
+                "projectionCalendarWorstBp": projection_audit_bp,
                 "includesInputs": include_inputs}
     )
     return _publish(state, SurfaceExport(manifest=manifest, tickers=out))

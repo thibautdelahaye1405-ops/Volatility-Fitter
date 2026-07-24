@@ -34,7 +34,7 @@ from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_violation_argmax, common_support
 from volfit.core.black import black_call
 from volfit.calib.rms import rms as rms_of_terms
-from volfit.models.diagnostics import extrapolated_arb
+from volfit.models.diagnostics import belly_certificate, extrapolated_arb
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import lee_slopes
 
@@ -211,6 +211,19 @@ def _node_row(
             extrap_cal_ok = extrap_cal is None or extrap_cal <= _EXTRAP_CAL_TOL_BP
         except Exception:  # the measurement must never break a status read
             pass
+
+    # Belly butterfly certificate (committee R2 — the acceptance rule): dense
+    # Durrleman g over the TRADED range of the displayed slice, the region the
+    # cheap screens fence only from the wings and the publish-time projection
+    # never touches. NOT advisory: an uncertified belly fails readiness and
+    # hard-blocks publish (export._node_blockers).
+    belly = None
+    if kq.size >= 2:
+        try:
+            belly = belly_certificate(disp, float(kq.min()), float(kq.max()))
+        except Exception:  # the certificate must never break a status read
+            pass
+    belly_certified = belly is None or belly.certified
     wing_order: bool | None = None
     if prev_lee is not None:
         wing_order = (
@@ -230,6 +243,10 @@ def _node_row(
         issues.append("Lee wing slope > 2")
     if not cal_ok:
         issues.append("calendar arb vs previous expiry")
+    if not belly_certified:
+        issues.append(
+            f"belly butterfly arb (min g {belly.min_g:.4f} at k {belly.argmin_k:+.2f})"
+        )
     # Data-age staleness (volfit.api.data_age): red-stale live data fails
     # readiness — a fit can be perfect and still be a fit of yesterday's book.
     age_min = data_age[0] if data_age is not None else None
@@ -260,6 +277,9 @@ def _node_row(
         extrapOk=extrap_ok,
         extrapCalBp=extrap_cal,
         extrapCalOk=extrap_cal_ok,
+        bellyMinG=belly.min_g if belly is not None else None,
+        bellyArgminK=belly.argmin_k if belly is not None else None,
+        butterflyCertified=belly_certified,
         wingOrderOk=wing_order,
         varSwapQuoted=_varswap_quoted(state, ticker, iso),
         filterActive=f_active,

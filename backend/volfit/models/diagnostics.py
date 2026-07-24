@@ -169,6 +169,68 @@ def numeric_lee_slopes(slice_: SmileModel) -> tuple[float, float]:
     return _finite(left), _finite(right)
 
 
+# ------------------------------------------------------------ belly certificate
+#: Certificate grid density over the traded range (dense: the Vogt-type belly
+#: dip can be narrow) and the numerical g tolerance — an allowance for the
+#: finite-difference stencil on a smooth model curve, orders below any real
+#: violation (the Axel Vogt dip is -0.033; the committee boundary example
+#: reads -0.0485).
+_CERT_POINTS = 801
+CERT_G_TOL = 1e-4
+
+
+@dataclass(frozen=True)
+class BellyCertificate:
+    """Butterfly certificate of one slice over its TRADED range (committee
+    revision R2: the acceptance rule's core object).
+
+    The belly is exactly the region the cheap screens do not reach (the
+    floor and the strict Lee cap fence the wings) and the publish-time wing
+    projection must never touch (the core stays pinned). ``certified`` means
+    Durrleman g >= -CERT_G_TOL at every grid point — computed from the
+    MODEL's own curve, never by differencing prices (the arb-metric audit
+    rule). An uncertified slice cannot become a mark: the export publish
+    gate turns this verdict into a hard blocker."""
+
+    certified: bool
+    min_g: float
+    argmin_k: float
+    #: Fraction of grid points strictly below -tol (dip width, not just depth).
+    neg_share: float
+    n_grid: int
+
+
+def belly_certificate(
+    slice_: SmileModel, k_lo: float, k_hi: float, g_tol: float = CERT_G_TOL
+) -> BellyCertificate | None:
+    """Dense-grid butterfly certificate over [k_lo, k_hi] (the quoted range).
+
+    None when the range is degenerate (a single-strike node has no belly to
+    certify). Cost is a few dozen microseconds — certification is not
+    operationally expensive (the committee's affordability challenge)."""
+    k_lo, k_hi = float(k_lo), float(k_hi)
+    if not np.isfinite(k_lo) or not np.isfinite(k_hi) or k_hi <= k_lo:
+        return None
+    k = np.linspace(k_lo, k_hi, _CERT_POINTS)
+    g = durrleman_g(slice_, k)
+    finite = np.isfinite(g)
+    if not finite.any():
+        return BellyCertificate(
+            certified=False, min_g=float("-inf"), argmin_k=k_lo,
+            neg_share=1.0, n_grid=int(k.size),
+        )
+    g_f, k_f = g[finite], k[finite]
+    i = int(np.argmin(g_f))
+    min_g = float(g_f[i])
+    return BellyCertificate(
+        certified=bool(min_g >= -g_tol) and bool(finite.all()),
+        min_g=min_g,
+        argmin_k=float(k_f[i]),
+        neg_share=float(np.mean(g_f < -g_tol)),
+        n_grid=int(k.size),
+    )
+
+
 # --------------------------------------------------------------- extrapolated arb
 #: How far past the traded edge the extrapolated-region scan may reach (in k).
 _EXTRAP_REACH = 4.0

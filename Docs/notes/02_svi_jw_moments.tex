@@ -431,9 +431,10 @@ in the belly.  The screens fence the tails; the interior escapes them.}
 The exact butterfly-free domain of raw SVI is known --- Martini and Mingone
 \cite{MartiniMingone2022} characterize it completely --- but it is not one short
 inequality: the test involves parameter rescaling, root finding and a numerical
-minimization.  Vol-Fitter's calibrator does not implement that certified domain.
-It instead \emph{bounds, measures, and optionally repairs} in a stack of four
-layers, at increasing distance from the core fit:
+minimization.  Vol-Fitter's calibrator does not implement that certified domain
+inside the optimizer.  It instead \emph{bounds, measures, certifies, and
+repairs or rejects} in a stack of five layers, at increasing distance from
+the core fit:
 \begin{enumerate}[leftmargin=1.6em]
 \item \textbf{Core screens} (always in the objective): the floor and Lee rows of
 \cref{eq:penalties}, finite-weight, zero on a tail-clean slice.
@@ -448,10 +449,18 @@ enforcement.
 \item \textbf{Publish-time wing projection} (export only; Note~09): a discrete
 projection of the exported wing samples that raises prices only, leaving the
 fitted core pinned.
+\item \textbf{Belly certificate + acceptance rule} (committee revision R2,
+always on): a dense post-fit Durrleman-$g$ certificate over the \emph{traded}
+range --- the region layers 1--4 cannot reach --- computed from the model's
+own derivatives in $\sim$0.05\,ms.  An uncertified belly fails readiness and
+\emph{hard-blocks} publish (HTTP 409); the published family additionally
+carries a calendar audit proving the wing projection introduced no
+crossings.  An uncertified slice cannot become a mark.
 \end{enumerate}
-None of these turns a fitted SVI slice into a certified butterfly-free object;
-together they bound the tails, measure the belly, and clean the boundary where
-extrapolation matters.
+The optimizer itself still roams the unconstrained chart --- a trial iterate
+may be arbitrageable --- but a slice can no longer LEAVE the system as a mark
+without passing the certificate: layers 1--4 bound the tails, measure the
+belly, and clean the published boundary; layer 5 is the gate.
 
 \paragraph{How $g$ is measured is part of the guarantee.}
 An earlier backtest metric evaluated $g$ by finite-differencing
