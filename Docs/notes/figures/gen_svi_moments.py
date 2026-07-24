@@ -646,7 +646,8 @@ def write_numbers(case, timing, rigidity, facts) -> None:
     add(rf"\newcommand{{\svimomlqdarbold}}{{{HISTORICAL['lqd_arb_fd_pct']:.1f}}}")
     add(rf"\newcommand{{\svimomlqdarbnew}}{{{HISTORICAL['lqd_arb_analytic_pct']:.1f}}}")
     add(rf"\newcommand{{\svimompenalty}}{{{_PENALTY:g}}}")
-    add(rf"\newcommand{{\svimomleecap}}{{{_LEE_SLOPE_MAX:.1f}}}")
+    # Two decimals: the default is the strictly buffered 1.95 (committee R1).
+    add(rf"\newcommand{{\svimomleecap}}{{{_LEE_SLOPE_MAX:.2f}}}")
     add(r"\newcommand{\svimomrawtable}{" + tex_table(raw_rows, r"Parameter & Value") + "}")
     add(r"\newcommand{\svimomjwtable}{" + tex_table(jw_rows, r"Handle & Value") + "}")
     (OUT / "svi_moments_tables.tex").write_text("\n".join(macros) + "\n", encoding="utf-8")

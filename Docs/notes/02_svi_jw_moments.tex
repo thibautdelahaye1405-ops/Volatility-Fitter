@@ -33,8 +33,10 @@ and unable to turn twice.  We show that its two asymptotic wing slopes
 $\betL=b(1-\rho)$ and $\betR=b(1+\rho)$ are exactly the object Lee's bound
 constrains, and that the bound lands inside Durrleman's density factor as the
 elementary tail limit $g(\pm\infty)=(4-\beta^2)/16$: the wing slope sets the
-\emph{sign} of the implied density in the tail, and $\beta\le2$ is precisely the
-condition that the tail density stay non-negative.  Every cheap no-arbitrage
+\emph{sign} of the implied density in the tail, and staying \emph{strictly}
+under Lee's $2$ is precisely the condition that the tail density come out
+eventually positive --- the boundary $\beta=2$ itself is a trap
+(\cref{prop:tail}).  Every cheap no-arbitrage
 guarantee raw SVI can give therefore lives in the wings.  The belly is where it
 cannot: a Lee-clean, positive, strictly convex slice (Axel Vogt's classical
 counterexample --- minimum variance \svimomcountermin, larger Lee coefficient
@@ -147,8 +149,10 @@ as $\betL,\betR$, are what Lee's bound touches.  The rest describe the belly.
 \begin{enumerate}[leftmargin=1.6em]
 \item Every finite $\theta\in\R^5$ maps to a smooth raw hyperbola with $b>0$,
 $|\rho|<1$, $s>0$ (\cref{sec:calib}); positivity and no-arbitrage need more.
-\item The two coded screens are \emph{tail} conditions: a non-negative floor
-$\vmin\ge0$ and Lee's wing cap $\max(\betL,\betR)\le2$.  Both are
+\item The two coded screens are cheap global fences: the vertex floor
+$\vmin\ge0$ (a belly condition) and the \emph{strictly buffered} wing cap
+$\max(\betL,\betR)\le\beta_{\max}=\svimomleecap<2$ (the boundary $\beta=2$
+itself admits negative tail density, \cref{prop:tail}).  Both are
 finite-weight soft rows, exactly zero on a clean slice, and they bound but do
 not certify non-negativity of the Black density in the belly.
 \item The raw$\leftrightarrow$JW change of coordinates is exact on the regular
@@ -262,10 +266,19 @@ For a structurally valid positive raw slice,
 \lim_{k\to+\infty}g(k)=\frac{4-\betR^2}{16}.
 \label{eq:gtail}
 \end{equation}
-Hence each tail of the density stays non-negative iff the corresponding wing
-slope satisfies $\beta\le2$, and the call-price boundary
-$\lim_{k\to+\infty}d_+(k)=-\infty$ (equivalently, the normalized call vanishes
-at infinite strike) holds exactly when $\betR<2$.
+Hence for $\beta<2$ the tail of $g$ is eventually positive, for $\beta>2$
+eventually negative --- and \emph{at} $\beta=2$ the limit vanishes and decides
+nothing: the sign falls to the next order.  On a right wing at the boundary,
+$w(k)=2k+\alpha+O(k^{-1})$ (for raw SVI with $\betR=2$, $\alpha=a-2m$),
+\begin{equation}
+g(k)=\frac{\alpha-2}{4k}+O(k^{-2}),
+\label{eq:gboundary}
+\end{equation}
+so the boundary slice carries \emph{negative} tail density whenever
+$\alpha<2$ (mirror statement on the left with $\alpha'=a+2m$).  The
+call-price boundary $\lim_{k\to+\infty}d_+(k)=-\infty$ (equivalently, the
+normalized call vanishes at infinite strike) is strict as well: it holds
+exactly when $\betR<2$.
 \end{proposition}
 
 \begin{proof}
@@ -279,7 +292,12 @@ and $w\sim\betR k$ on the right,
 d_+(k)=\sqrt{k}\Big(-\tfrac{1}{\sqrt{\betR}}+\tfrac{\sqrt{\betR}}{2}\Big)+o(\sqrt k),
 \]
 whose leading coefficient is negative exactly for $\betR<2$; at $\betR=2$ the
-two terms cancel and $d_+\to0$.
+two terms cancel and $d_+\to0$.  For the boundary order, write the right wing
+at $\betR=2$ as $w(k)=2k+\alpha+O(k^{-1})$.  Then
+$kw'/(2w)=\tfrac12-\alpha/(4k)+O(k^{-2})$, so the first bracket of
+\eqref{eq:g} squares to $\tfrac14+\alpha/(4k)$; the middle term is
+$\tfrac14+1/(2k)$ up to $O(k^{-2})$ because $w'^2\to4$ and $1/w=1/(2k)+O(k^{-2})$;
+and $w''$ contributes $O(k^{-3})$.  Subtracting gives \eqref{eq:gboundary}.
 \end{proof}
 
 \Cref{fig:moments} makes the mechanism visible.  The map
@@ -300,6 +318,25 @@ positive tail limit, $\beta=2.3$ falls to its negative one.  The wing slope is
 not cosmetic; it fixes the sign of the density in the tail.}
 \label{fig:moments}
 \end{figure}
+
+\begin{caution}[title={Caution --- the boundary itself is a trap (committee revision R1, 2026-07-24)}]
+Both screens are silent \emph{at} the cap, and \cref{prop:tail} shows the
+limit decides nothing there.  The slice
+$(a,b,\rho,m,s)=(0.04,\,2,\,0,\,0,\,0.2)$ makes it concrete: minimum total
+variance $0.44$ (floor clean), $\betL=\betR=2$ exactly, so a cap at $2$
+charges zero penalty --- yet $\alpha=a-2m=0.04<2$, and by
+\eqref{eq:gboundary} $g(10)\approx-0.0485$: genuinely negative tail density
+behind two passing screens.  This is why the production default cap is
+\emph{strictly buffered}, $\beta_{\max}=\svimomleecap<2$: the buffer restores
+``$\beta\le\beta_{\max}\Rightarrow g$ eventually positive'' and excludes only
+laws whose moment budget beyond the first is already negligible
+($p^\star=(2-\beta)^2/(8\beta)<2\times10^{-4}$ at the buffered cap).  Nor is
+the trap hypothetical: on the reference live surfaces (2026-07-18) one SPY
+expiry fitted under the old cap sat exactly at $b(1+|\rho|)=2.0000$; the
+buffered refit lands at $1.9500$ and moves no quote by more than $0.03$ vol
+bp, while the other eleven nodes are byte-identical.  The counterexample is
+certification-locked (\texttt{svi\_lee\_boundary}).
+\end{caution}
 
 \begin{proposition}[The coded screens, in JW units]
 \label{prop:screensjw}
@@ -350,8 +387,8 @@ Tier & Mathematical statement & Production status\\
 \midrule
 Structural & $b>0$, $|\rho|<1$, $s>0$ & hard, by reparametrization
 (\cref{sec:calib})\\
-Tail-clean & $\wmin\ge0$ and $\max(\betL,\betR)\le2$ & the two soft coded
-screens; zero on a clean slice\\
+Tail-clean & $\wmin\ge0$ and $\max(\betL,\betR)<2$ (strict) & the two soft
+coded screens, fenced at $\beta_{\max}=\svimomleecap$; zero on a clean slice\\
 Butterfly-clean & $g(k)\ge0$ for all $k$ (with the call boundary) & measured,
 not certified by the two screens\\
 Calendar-clean & $w_{T_1}(k)\le w_{T_2}(k)$ for $T_1<T_2$ & soft
@@ -456,7 +493,8 @@ vol$^2$.''  It is deliberately large enough to dominate a violated constraint
 and invisible on a clean one.  It is not a fit-quality dial: raising it cannot
 improve a feasible fit, and lowering it only lets the optimizer wander into the
 arbitrageable cone.  Both fences are also adjustable rather than unconditional
---- the weight can be set to zero, or the cap raised above $2$ --- so they are
+--- the weight can be set to zero, or the cap raised to $2$ and beyond,
+re-opening the boundary trap of \cref{prop:tail} --- so they are
 configuration, not guarantees.
 \end{caution}
 
@@ -959,7 +997,9 @@ overlay.\\
 tail rows \eqref{eq:penalties} (effective $W^2$ in the squared cost; $0$ = fences
 off).\\
 \texttt{leeSlopeMax} $\beta_{\max}$ & \svimomleecap & Lee wing-slope cap on
-$b(1+|\rho|)$; values $>2$ are accepted (a fence, not a guarantee).\\
+$b(1+|\rho|)$; buffered strictly below $2$ by default (the boundary itself
+admits negative tail density); values $\ge2$ are accepted but re-open the
+trap.\\
 \texttt{weightScheme} & \texttt{equal} & Per-quote weights, \texttt{equal} /
 \texttt{tv\_density} (Note~07); arbitrary weights exist only at the low-level
 API.\\

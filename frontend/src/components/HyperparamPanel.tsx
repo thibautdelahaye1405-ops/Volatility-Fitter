@@ -52,7 +52,9 @@ export const FIT_DEFAULTS: FitSettings = {
   barrierCenter: 0.9,
   barrierScale: 50.0,
   sviPenaltyWeight: 1e3,
-  leeSlopeMax: 2.0,
+  // Strictly buffered under Lee's bound of 2 (committee R1: beta = 2 itself
+  // admits negative tail density) — keep in sync with backend FitSettings.
+  leeSlopeMax: 1.95,
   sigmoidRidge: 1e-2,
   midAnchorWeight: 0.05,
 };

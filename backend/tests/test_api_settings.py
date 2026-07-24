@@ -57,7 +57,7 @@ def test_defaults(client):
         "barrierCenter": 0.90,
         "barrierScale": 50.0,
         "sviPenaltyWeight": 1e3,
-        "leeSlopeMax": 2.0,
+        "leeSlopeMax": 1.95,  # buffered under Lee's 2 (committee R1)
         "sigmoidRidge": 1e-2,
         "midAnchorWeight": 0.05,
     }

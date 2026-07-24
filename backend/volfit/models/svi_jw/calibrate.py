@@ -17,8 +17,9 @@ without ever distorting a clean fit (both are exactly zero on an admissible
 slice, e.g. the SPX benchmark of Docs/lqd_model_note.tex section 8):
 
   * non-negative minimum variance  a + b sigma sqrt(1 - rho^2) >= 0;
-  * Lee wing bound  b (1 + |rho|) <= 2  (the asymptotic total-variance slope
-    cannot exceed Lee's moment bound of 2).
+  * Lee wing bound  b (1 + |rho|) <= 2 - eps  (the asymptotic total-variance
+    slope must stay STRICTLY under Lee's moment bound of 2 — the boundary
+    itself admits negative tail density; see _LEE_SLOPE_MAX).
 
 The data-driven initializer reads the smile bottom (argmin of w) for m and a,
 and the two wing slopes for b and rho, so a single LM pass converges on
@@ -45,8 +46,17 @@ from volfit.models.svi_jw.svi import RawSVI
 #: dominate a violated constraint, small in vol^2 units so an admissible fit
 #: (penalty == 0) is untouched.
 _PENALTY = 1e3
-#: Lee's asymptotic total-variance wing-slope bound: w(k)/|k| -> beta <= 2.
-_LEE_SLOPE_MAX = 2.0
+#: Lee's bound is beta <= 2, but the boundary itself is NOT safe (committee
+#: revision R1, 2026-07-24): at beta = 2 the tail limit of Durrleman's g is
+#: (4 - beta^2)/16 = 0 and the sign is decided at the next order,
+#: g ~ (alpha - 2)/(4k) with alpha = a - 2m — e.g. (a,b,rho,m,s) =
+#: (0.04, 2, 0, 0, 0.2) passes BOTH screens with zero penalty yet has
+#: g(10) = -0.0485 (negative tail density). The default cap is therefore
+#: strictly buffered. The buffer costs nothing economically: at 1.95 the
+#: excluded laws have moment budget p* = (2-beta)^2/(8 beta) < 2e-4 beyond
+#: the first moment, and beta < cap restores "g eventually positive".
+LEE_SLOPE_BUFFER = 0.05
+_LEE_SLOPE_MAX = 2.0 - LEE_SLOPE_BUFFER
 
 
 @dataclass(frozen=True)

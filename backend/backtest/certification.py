@@ -121,6 +121,18 @@ CASES: tuple[CertCase, ...] = (
     ),
     # --------------------------------------------------------- model stress
     CertCase(
+        "svi_lee_boundary", "SVI Lee cap at the broken boundary (beta = 2)",
+        "model_stress", "Note 02 committee review, triaged 2026-07-24 (e2e6c9a)",
+        "A slice sitting exactly AT Lee's bound passes the floor and wing "
+        "screens with ZERO penalty yet carries negative tail density "
+        "(committee counterexample: g(10) = -0.0485 with min variance 0.44) "
+        "— the old default cap 2.0 hinged to zero exactly on the broken "
+        "boundary. The default is now strictly buffered (1.95); the locks "
+        "keep the counterexample fenced, the tail limit strictly positive, "
+        "and the historical cap reachable only as explicit configuration.",
+        ("tests/test_svi_lee_boundary.py",),
+    ),
+    CertCase(
         "weekly_lv_resolution", "True-weekly local-vol resolution",
         "model_stress", "fixes #1-#3 (2026-06-25 … cac686c 2026-07-10)",
         "A 1-week SPY expiry fitted 108 bp RMS at default grids: per-expiry "

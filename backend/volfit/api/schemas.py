@@ -84,7 +84,10 @@ class FitSettings(BaseModel):
     barrierCenter: float = Field(0.90, gt=0.0, lt=1.0)  # LQD A_R soft-barrier centre
     barrierScale: float = Field(50.0, gt=0.0)  # LQD A_R soft-barrier steepness
     sviPenaltyWeight: float = Field(1e3, ge=0.0)  # SVI no-arb soft-penalty weight
-    leeSlopeMax: float = Field(2.0, gt=0.0)  # SVI Lee wing-slope bound
+    # SVI Lee wing-slope cap. STRICTLY buffered under Lee's bound of 2 since
+    # committee revision R1 (2026-07-24): beta = 2 itself admits negative
+    # tail density (the hinge was zero exactly on the broken boundary).
+    leeSlopeMax: float = Field(1.95, gt=0.0)
     sigmoidRidge: float = Field(1e-2, ge=0.0)  # Multi-Core SIV hat-amplitude ridge
     midAnchorWeight: float = Field(0.05, ge=0.0)  # band-mode mid anchor (all models)
 

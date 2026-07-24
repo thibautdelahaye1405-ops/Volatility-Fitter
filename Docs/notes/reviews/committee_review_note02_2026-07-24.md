@@ -139,12 +139,26 @@ already-built machinery.
 
 ### Workstreams (proposed order)
 
-1. **R1 — strict Lee buffer + proposition repair (small, do first).**
-   Default `lee_slope_max` → 2 − ε (buffered, configurable; pick ε with a
-   benchmark spot-check since active-cap fits move); restate the
-   proposition (β < 2 eventually positive / β > 2 eventually negative /
-   β = 2 inconclusive, with the counterexample); regenerate figures/macros;
-   certification-lock the counterexample slice (passes both screens, g<0).
+1. **R1 — strict Lee buffer + proposition repair (DONE 2026-07-24).**
+   Default cap = 2 − LEE_SLOPE_BUFFER = **1.95** (calibrate.py, FitSettings,
+   frontend defaults; the backtest harness stays PINNED at 2.0 for
+   part-comparability). Spot-check on the reference live fixture (12 real
+   SPY/NVDA/AAPL nodes): **SPY 2026-08-21 was sitting EXACTLY at wing =
+   2.0000 under the old cap** — the committee's trap was live in
+   production; the buffered refit lands at 1.9500 with max IV change
+   0.03 vol bp, and the other 11 nodes are byte-identical. ε rationale:
+   at 1.95 the excluded laws have moment budget p\* < 2e-4 beyond the
+   first moment, and the tail limit is strictly positive (0.0123).
+   Proposition restated in the note (strict trichotomy + the next-order
+   boundary law g = (α−2)/(4k) with proof + counterexample caution box);
+   intro/invariant/tier-table de-weakened; macros regenerated
+   (\svimomleecap 1.95, fresh single-run timings 1.30/3.12 ms = 2.40×);
+   PDF rebuilt. Locks: tests/test_svi_lee_boundary.py (3 tests: the trap,
+   the buffered defaults everywhere, the fence + explicit-config escape
+   hatch) = certification case **svi_lee_boundary** (model_stress).
+   CAVEAT: installs with previously SAVED fit settings keep the persisted
+   2.0 (full-snapshot persistence) until re-saved — the dev store
+   backend/data/volfit.sqlite is in that state.
 2. **R2 — belly certificate + acceptance rule (the decisive revision).**
    Post-fit butterfly certificate on model derivatives (dense-grid analytic
    g; optionally the exact Martini–Mingone domain), benchmarked against the

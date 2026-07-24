@@ -550,14 +550,23 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   exists; the acceptance-rule skeleton (publish gates, certification,
   quarantine, tail certificates) already exists — the new work is the
   BELLY certificate + certified/repaired/rejected rule.
-- **Proposed workstreams (awaiting ratification)**: R1 strict Lee
-  buffer (2−ε default) + proposition repair + counterexample
-  certification lock; R2 belly certificate + acceptance rule ("an
-  uncertified slice cannot become a mark" — the decisive revision) +
-  projection calendar audit + canonical-object policy; R3 structural
-  chart opt-in + benchmark-adjudicated default; R4 Note 02 revision
-  (moment map, hierarchy relabel, arb-free rigidity benchmark w/
-  comparators, bump-response figure, condition atlas); R5 guarded
+- **Workstreams (arc RATIFIED by user "proceed" 2026-07-24)**: R1 strict
+  Lee buffer + proposition repair — **DONE 2026-07-24**: default cap
+  1.95 = 2 − LEE_SLOPE_BUFFER (calibrate.py + FitSettings + frontend;
+  harness PINNED at 2.0 for part-comparability); spot-check found the
+  trap LIVE (SPY 2026-08-21 sat exactly at wing 2.0000; buffered refit
+  1.9500, ΔIV ≤ 0.03bp, 11/12 nodes byte-identical); note prop restated
+  (strict trichotomy + boundary law (α−2)/(4k) + counterexample caution)
+  + macros/PDF regenerated (fresh timings 2.40×); locks =
+  tests/test_svi_lee_boundary.py → certification case svi_lee_boundary.
+  CAVEAT: stores with SAVED fit settings keep the persisted 2.0 until
+  re-saved (the dev volfit.sqlite does — re-save Options▸Fit or clear
+  defaults to adopt the buffer). NEXT: **R2 belly certificate +
+  acceptance rule** ("an uncertified slice cannot become a mark") +
+  projection calendar audit + canonical-object policy; then R3
+  structural chart opt-in + benchmark default decision; R4 Note 02
+  revision (moment map, hierarchy relabel, arb-free rigidity benchmark
+  w/ comparators, bump-response figure, condition atlas); R5 guarded
   converter + desk layer + adversarial battery. Deferred: cross-model
   market evidence (benchmark pack), hedge P&L (standing campaign).
 

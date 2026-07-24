@@ -32,6 +32,9 @@ from volfit.models.svi_jw import calibrate_svi
 from volfit.models.svi_jw.svi import RawSVI
 
 # Production-default hyperparameters (volfit.api.schemas.FitSettings).
+# NB lee_slope_max stays PINNED at the historical 2.0 here: the harness params
+# are frozen so new parts stay byte-comparable with retained ones (SPEC.md).
+# Production's default moved to the buffered 1.95 (committee R1, 2026-07-24).
 _LQD = dict(reg_lambda=1e-6, reg_power=1.0, barrier_center=0.90, barrier_scale=50.0,
             mid_anchor_weight=0.05)
 _SVI = dict(penalty_weight=1e3, lee_slope_max=2.0, mid_anchor_weight=0.05)
