@@ -88,6 +88,17 @@ class FitSettings(BaseModel):
     # committee revision R1 (2026-07-24): beta = 2 itself admits negative
     # tail density (the hinge was zero exactly on the broken boundary).
     leeSlopeMax: float = Field(1.95, gt=0.0)
+    #: Committee R3: SVI optimization chart. "raw" = the historical
+    #: (a, softplus b, tanh rho, m, log s) vector (default until the
+    #: benchmark adjudication); "structural" = (beta_L, beta_R, k*, w*,
+    #: kappa*) with lifts — every finite iterate strictly positive-floor and
+    #: strictly Lee-clean (the penalties become inert; same fitted smile on
+    #: clean quotes, to solver tolerance).
+    sviChart: Literal["raw", "structural"] = "raw"
+    #: Committee R2 rider: when a display fit fails the belly butterfly
+    #: certificate, refit ONCE with the belly hinge and keep the repair if it
+    #: certifies. Clean first fits never see a second solve.
+    bellyRepair: bool = True
     sigmoidRidge: float = Field(1e-2, ge=0.0)  # Multi-Core SIV hat-amplitude ridge
     midAnchorWeight: float = Field(0.05, ge=0.0)  # band-mode mid anchor (all models)
 

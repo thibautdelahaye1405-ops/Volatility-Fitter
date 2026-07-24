@@ -78,8 +78,27 @@ export default function PenaltyCoefficients({ group, draft, onChange, disabled }
       Row("LQD A_R barrier scale", "A_R soft-barrier steepness", "barrierScale", 5),
     ],
     svi: [
-      Row("SVI no-arb penalty", "Soft no-arbitrage penalty weight (min-var + Lee wing)", "sviPenaltyWeight", 100),
-      Row("SVI Lee slope max", "Lee wing-slope bound b(1+|ρ|) ≤ this", "leeSlopeMax", 0.1),
+      (
+        <div className="mb-1.5 flex items-center justify-between" key="sviChart">
+          <span
+            className={rowLabel}
+            title="SVI optimization chart (committee R3): Raw is the historical (a, b, ρ, m, s) vector with soft feasibility penalties; Structural solves in (β_L, β_R, k*, w*, κ*) — every iterate has a strictly positive variance floor and strictly Lee-clean wings, so the penalties are inert. Same fitted smile on clean quotes, to solver tolerance."
+          >
+            SVI solve chart
+          </span>
+          <select
+            value={draft.sviChart}
+            disabled={disabled}
+            onChange={(e) => onChange({ sviChart: e.target.value as "raw" | "structural" })}
+            className={numInput + " w-28"}
+          >
+            <option value="raw">Raw (a,b,ρ,m,s)</option>
+            <option value="structural">Structural</option>
+          </select>
+        </div>
+      ),
+      Row("SVI no-arb penalty", "Soft no-arbitrage penalty weight (min-var + Lee wing); inert under the Structural chart", "sviPenaltyWeight", 100),
+      Row("SVI Lee slope max", "Lee wing-slope cap b(1+|ρ|) ≤ this — buffered strictly under 2 (the boundary itself admits negative tail density)", "leeSlopeMax", 0.1),
     ],
     sigmoid: [
       Row("MCS hat ridge", "Multi-Core Sigmoid hat-amplitude ridge penalty", "sigmoidRidge", 0.01),

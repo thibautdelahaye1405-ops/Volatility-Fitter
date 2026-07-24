@@ -54,6 +54,10 @@ class QualityNode(BaseModel):
     bellyMinG: float | None = None  # worst g over the quoted range
     bellyArgminK: float | None = None  # where the worst dip sits
     butterflyCertified: bool = True  # min g >= -tol everywhere (or no belly)
+    #: The displayed slice is the CERTIFIED REPAIR refit (the first fit
+    #: failed the certificate; committee acceptance rule leg 2). Purely
+    #: informational — a repaired slice is certified and publishes.
+    bellyRepaired: bool = False
     wingOrderOk: bool | None = None  # asymptotic Lee-slope order vs prev (far >= near)
     varSwapQuoted: bool  # an active var-swap quote participates in this node's fit
     filterActive: bool  # observation filter holds a committed state for this node

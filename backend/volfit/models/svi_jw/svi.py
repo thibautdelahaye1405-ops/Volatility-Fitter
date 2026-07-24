@@ -38,6 +38,19 @@ class RawSVI:
         return self.b * (1.0 - self.rho), self.b * (1.0 + self.rho)
 
 
+def durrleman_g_raw(raw: RawSVI, k: np.ndarray) -> np.ndarray:
+    """Durrleman's g from the slice's CLOSED-FORM derivatives (exact — the
+    production rule: model derivatives, never differenced prices):
+    w' = b(rho + km/R), w'' = b s^2 / R^3 with R = sqrt(km^2 + s^2)."""
+    k = np.asarray(k, dtype=float)
+    km = k - raw.m
+    r = np.sqrt(km * km + raw.sigma**2)
+    w = np.maximum(raw.a + raw.b * (raw.rho * km + r), 1e-12)
+    wp = raw.b * (raw.rho + km / r)
+    wpp = raw.b * raw.sigma**2 / r**3
+    return (1.0 - k * wp / (2.0 * w)) ** 2 - 0.25 * wp * wp * (1.0 / w + 0.25) + 0.5 * wpp
+
+
 @dataclass(frozen=True)
 class SVIJW:
     """SVI-JW parameters: ATM variance v, ATM skew psi, put/call wing slopes

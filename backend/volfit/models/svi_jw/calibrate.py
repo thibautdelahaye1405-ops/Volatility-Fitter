@@ -40,7 +40,8 @@ from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.svi_jw.jacobian import svi_residual_jacobian
-from volfit.models.svi_jw.svi import RawSVI
+from volfit.models.svi_jw.structural import pack_structural, unpack_structural
+from volfit.models.svi_jw.svi import RawSVI, durrleman_g_raw
 
 #: Soft-penalty weight for the two no-arbitrage constraints. Large enough to
 #: dominate a violated constraint, small in vol^2 units so an admissible fit
@@ -57,6 +58,11 @@ _PENALTY = 1e3
 #: the first moment, and beta < cap restores "g eventually positive".
 LEE_SLOPE_BUFFER = 0.05
 _LEE_SLOPE_MAX = 2.0 - LEE_SLOPE_BUFFER
+#: Belly-repair hinge (committee R2/R3 rider): rows penalty_weight *
+#: max(-g + margin, 0) on a grid over the traded range — zero on a certified
+#: slice, and the margin pushes a repaired dip slightly PAST zero so the
+#: certificate's own numerical tolerance passes cleanly.
+_BELLY_MARGIN = 2e-4
 
 
 @dataclass(frozen=True)
@@ -142,6 +148,8 @@ def calibrate_svi(
     prior_var_swap: VarSwapTarget | None = None,
     extrap: "ExtrapTarget | None" = None,
     solver_diag: dict | None = None,
+    chart: str = "raw",
+    belly_grid: np.ndarray | None = None,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -188,11 +196,37 @@ def calibrate_svi(
     solver's solution-point Jacobian / residual / theta and the fit-block row
     count, for the observation filter's information matrix J^T W J. Pure
     side-channel; None (the default) is byte-identical.
+
+    ``chart`` (committee R3): "raw" = the historical (a, softplus b, tanh rho,
+    m, log s) vector (default, byte-identical); "structural" = the
+    (β_L, β_R, k*, w*, κ*) chart of models/svi_jw/structural.py — every finite
+    iterate is strictly positive-floor and strictly Lee-clean, so the two
+    penalty rows are structurally zero and the trial-w clip never fires. The
+    structural chart runs the finite-difference LM path (its raw-recovery
+    chain is not analytically differentiated yet — follow-up if the benchmark
+    adopts it as the default).
+
+    ``belly_grid`` (committee R2 repair rider): a k-grid over the traded range
+    adding the belly butterfly hinge ``penalty_weight * max(-g + margin, 0)``
+    per point (closed-form g). Zero rows on a certified slice; the display
+    path passes it only on a REPAIR refit after a failed certificate, so a
+    clean first fit stays byte-identical.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
     vol_quotes = np.sqrt(w_quotes / t)
     sqrt_weights = np.ones_like(k) if weights is None else np.sqrt(np.asarray(weights, float))
+    # Chart selection (R3): the structural chart honors the SAME configured
+    # cap — its wings live strictly inside (0, lee_slope_max) by the lift.
+    unpack = (
+        _unpack if chart == "raw"
+        else (lambda th: unpack_structural(th, lee_slope_max))
+    )
+    belly_k = (
+        np.asarray(belly_grid, dtype=float)
+        if belly_grid is not None and np.asarray(belly_grid).size
+        else None
+    )
     cal_on = calendar_k is not None and calendar_floor is not None
     cal_k = np.asarray(calendar_k, float) if cal_on else None
     cal_floor = np.asarray(calendar_floor, float) if cal_on else None
@@ -202,7 +236,7 @@ def calibrate_svi(
     sqrt_cal = np.sqrt(calendar_weight)
 
     def residuals(theta: np.ndarray) -> np.ndarray:
-        raw = _unpack(theta)
+        raw = unpack(theta)
         model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)
         if band is None:
             fit = sqrt_weights * (model_vol - vol_quotes)
@@ -211,6 +245,12 @@ def calibrate_svi(
                 model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_weights, mid_anchor_weight
             )
         res = np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
+        if belly_k is not None:
+            # Belly-repair hinge (R2 rider): zero on a certified slice.
+            g = durrleman_g_raw(raw, belly_k)
+            res = np.concatenate(
+                (res, penalty_weight * np.maximum(-g + _BELLY_MARGIN, 0.0))
+            )
         if var_swap is not None:
             res = np.concatenate((res, [varswap_residual(raw.total_variance, var_swap)]))
         if prior_var_swap is not None:  # prior's var-swap level (operator/strike-gap companion)
@@ -246,27 +286,32 @@ def calibrate_svi(
     def _extrap_fd_jac(theta: np.ndarray, eps: float = 1e-6) -> np.ndarray:
         """Central FD of the extrap rows only — the hybrid-Jacobian pattern of
         the MCS wing penalty: the dominant blocks stay analytic."""
-        base = _extrap_rows(_unpack(theta))
+        base = _extrap_rows(unpack(theta))
         jw = np.empty((base.size, theta.size))
         for p in range(theta.size):
             d = np.zeros_like(theta)
             d[p] = eps
             jw[:, p] = (
-                _extrap_rows(_unpack(theta + d)) - _extrap_rows(_unpack(theta - d))
+                _extrap_rows(unpack(theta + d)) - _extrap_rows(unpack(theta - d))
             ) / (2.0 * eps)
         return jw
 
     theta0 = _init_theta(k, w_quotes)
+    if chart != "raw":  # same data-driven start, expressed in the new chart
+        theta0 = pack_structural(_unpack(theta0), lee_slope_max)
     # Analytic Jacobian (R4) for the var-swap/prior-free configuration (mid OR band
     # fit + penalties + calendar) — ~2 evals/step vs scipy's 1+P finite differences.
     # The var-swap / strike-gap / operator-prior blocks are not yet differentiated, so
     # those fits keep the finite-difference LM path (correct, just not accelerated),
-    # exactly as LQD gates its analytic Jacobian.
+    # exactly as LQD gates its analytic Jacobian. The structural chart (R3) and
+    # the belly-repair hinge (R2 rider) also take the FD path for now.
     use_analytic = (
         var_swap is None
         and prior_anchor is None
         and prior_var_swap is None
         and operator_prior is None
+        and chart == "raw"
+        and belly_k is None
     )
     if use_analytic:
         def jac(theta: np.ndarray) -> np.ndarray:
@@ -297,7 +342,7 @@ def calibrate_svi(
             n_fit_rows=int(k.size if band is None else 2 * k.size),
             n_quotes=int(k.size),
         )
-    raw = _unpack(result.x)
+    raw = unpack(result.x)
 
     model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)
     max_iv_error = float(np.max(np.abs(model_vol - vol_quotes))) if k.size else 0.0

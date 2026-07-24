@@ -508,6 +508,8 @@ def _overlay_settings(settings) -> OverlaySettings:
         midAnchorWeight=settings.midAnchorWeight,
         nCores=settings.nCores,
         sigmoidRidge=settings.sigmoidRidge,
+        sviChart=settings.sviChart,
+        bellyRepair=settings.bellyRepair,
     )
 
 

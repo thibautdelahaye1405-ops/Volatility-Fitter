@@ -280,6 +280,10 @@ def _node_row(
         bellyMinG=belly.min_g if belly is not None else None,
         bellyArgminK=belly.argmin_k if belly is not None else None,
         butterflyCertified=belly_certified,
+        bellyRepaired=bool(
+            record.display is not None
+            and getattr(record.display, "belly_repaired", False)
+        ),
         wingOrderOk=wing_order,
         varSwapQuoted=_varswap_quoted(state, ticker, iso),
         filterActive=f_active,

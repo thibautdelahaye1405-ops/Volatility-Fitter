@@ -33,6 +33,7 @@ from volfit.calib.varswap import VarSwapTarget
 from volfit.models.base import SmileModel
 from volfit.models.diagnostics import (
     SliceHandles,
+    belly_certificate,
     numeric_handles,
     numeric_lee_slopes,
     numeric_var_swap_w,
@@ -43,6 +44,11 @@ from volfit.models.svi_jw import calibrate_svi
 #: Models fitted as a display overlay here (LQD is the dedicated default path).
 OVERLAY_MODELS = ("svi", "sigmoid")
 
+#: Belly-repair refit grid density over the traded range (committee R2 rider;
+#: the 801-point certificate re-checks the result — the hinge only needs
+#: enough resolution to see the dip it is repairing).
+_REPAIR_POINTS = 101
+
 
 @dataclass(frozen=True)
 class DisplayFit:
@@ -52,6 +58,8 @@ class DisplayFit:
     var-swap are computed model-agnostically. ``lee_left``/``lee_right`` are
     the total-variance wing slopes; there is no A_L/A_R endpoint-scale concept
     outside LQD, so the smile payload reports those as 0 for an overlay.
+    ``belly_repaired`` (committee R2 rider): the first SVI fit failed the
+    belly certificate and THIS slice is the certified repair refit.
     """
 
     model: str
@@ -61,6 +69,7 @@ class DisplayFit:
     lee_left: float
     lee_right: float
     max_iv_error: float
+    belly_repaired: bool = False
 
 
 def _max_iv_error(slice_: SmileModel, k: np.ndarray, w: np.ndarray, t: float) -> float:
@@ -130,9 +139,10 @@ def build_display_fit(
     ceil_k = ceil_w = None
     if calendar_ceiling is not None:
         ceil_k, ceil_w = calendar_ceiling
+    belly_repaired = False
     if model == "svi":
-        cal = calibrate_svi(
-            k, w, t, weights=weights, band=band,
+        svi_kwargs = dict(
+            weights=weights, band=band,
             penalty_weight=settings.sviPenaltyWeight,
             lee_slope_max=settings.leeSlopeMax,
             mid_anchor_weight=settings.midAnchorWeight,
@@ -142,9 +152,28 @@ def build_display_fit(
             prior_anchor=prior_anchor, operator_prior=operator_prior,
             prior_var_swap=prior_var_swap,
             extrap=extrap,
+            chart=getattr(settings, "sviChart", "raw"),
         )
+        cal = calibrate_svi(k, w, t, **svi_kwargs)
         slice_: SmileModel = cal.raw
         max_err = cal.max_iv_error
+        # Committee R2 repair rider: certified-or-repaired AT the fit, so the
+        # publish gate rejects only what a coherent repair cannot fix. A clean
+        # first fit never sees a second solve (byte-identical path); a failed
+        # repair keeps the FIRST fit — quality reports it uncertified and the
+        # publish gate blocks it.
+        if getattr(settings, "bellyRepair", True) and k.size >= 2:
+            cert = belly_certificate(cal.raw, float(np.min(k)), float(np.max(k)))
+            if cert is not None and not cert.certified:
+                grid = np.linspace(float(np.min(k)), float(np.max(k)), _REPAIR_POINTS)
+                repaired = calibrate_svi(k, w, t, belly_grid=grid, **svi_kwargs)
+                re_cert = belly_certificate(
+                    repaired.raw, float(np.min(k)), float(np.max(k))
+                )
+                if re_cert is not None and re_cert.certified:
+                    slice_ = repaired.raw
+                    max_err = repaired.max_iv_error
+                    belly_repaired = True
     else:  # sigmoid (Multi-Core SIV)
         slice_ = calibrate_sigmoid(
             k, w, t, weights=weights, n_cores=settings.nCores, band=band,
@@ -168,4 +197,5 @@ def build_display_fit(
         lee_left=lee_left,
         lee_right=lee_right,
         max_iv_error=max_err,
+        belly_repaired=belly_repaired,
     )

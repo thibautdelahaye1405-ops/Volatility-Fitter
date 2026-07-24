@@ -182,12 +182,31 @@ already-built machinery.
    enforcement or fall back; the structural chart changes the same
    objective) and the exact Martini–Mingone certificate as a
    cross-check tier; Quality-view UI chip for the verdict.
-3. **R3 — structural chart (β_L, β_R, k\*, w\*, κ\*) as opt-in.**
-   Implement with logistic/softplus lifts + equivalence locks vs the
-   current chart on clean fits; benchmark on the frozen regimes (in-spread,
-   held-out, failure rates, iterations); default decision AFTER evidence
-   (Note 01 R1 precedent). Kills floor/Lee penalties + trial-w clip + W
-   units if adopted.
+3. **R3 — structural chart + belly repair (DONE 2026-07-24, opt-in).**
+   `models/svi_jw/structural.py`: (β_L, β_R, k\*, w\*, κ\*) with
+   logistic(·cap)/softplus/exp lifts — every finite iterate strictly
+   positive-floor and strictly Lee-clean under the R1-buffered cap; the
+   penalty rows are structurally zero and the trial-w clip never fires.
+   `calibrate_svi(chart=...)` via `FitSettings.sviChart` (default "raw"
+   until the benchmark adjudication; FD Jacobian for the structural
+   chart — analytic chain is the adoption follow-up). SPOT-CHECK
+   (reference fixture, 12 real nodes): charts agree to 0.0000 bp
+   wherever the raw chart converged — but the raw chart EXHAUSTED its
+   500-evaluation cap on 5/12 real nodes (challenge 9's concern, live)
+   while the structural chart converged in 30–86 evals on all 12, and
+   was ~3× FASTER overall (82 vs 233 ms) despite FD. Strong prima facie
+   case for the default flip; the frozen-regime benchmark remains the
+   deciding evidence. Also shipped the R2 repair rider:
+   `bellyRepair` (default ON) — a failed certificate triggers ONE
+   belly-hinge refit (`belly_grid` rows `W·max(−g+2e-4, 0)`, closed-form
+   g), kept only if it re-certifies; Vogt-sampled quotes repair to a
+   certified slice at ~460bp worst-quote cost (the slice is
+   pathologically deep); clean first fits never see a second solve.
+   `DisplayFit.belly_repaired` → quality `bellyRepaired`. All 12 real
+   nodes certify (min g +0.026…+0.33). Locks:
+   tests/test_svi_structural_chart.py (chart algebra/round-trip,
+   clean-fit equivalence, fence-without-penalties, Vogt repair
+   end-to-end) — added to the belly_certificate certification case.
 4. **R4 — Note 02 revision.** Proposition fix (R1), the moment map +
    conditioning + moments-only-if-certified policy, hierarchy relabel
    (floor/wing screens; five honest tiers), normalized-vs-actual tails +

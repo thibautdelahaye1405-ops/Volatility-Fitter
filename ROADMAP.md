@@ -573,14 +573,30 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   four→five layers ("layer 5 is the gate") + PDF rebuilt. Locks =
   tests/test_belly_certificate.py (Vogt fails where screens pass /
   clean+cost rail / end-to-end publish / forced-uncertified 409+draft)
-  = certification case belly_certificate. RIDERS→R3: belly-hinge
-  repair-refit, exact Martini–Mingone cross-check, Quality-view chip.
-  NEXT: **R3 structural chart opt-in** + benchmark default decision;
-  R4 Note 02 revision (moment map, hierarchy relabel, arb-free
-  rigidity benchmark w/ comparators, bump-response figure, condition
-  atlas); R5 guarded converter + desk layer + adversarial battery.
-  Deferred: cross-model market evidence (benchmark pack), hedge P&L
-  (standing campaign).
+  = certification case belly_certificate. **R3 structural chart +
+  belly repair DONE same day (opt-in)**: svi_jw/structural.py
+  (β_L,β_R,k*,w*,κ*) w/ lifts honoring the R1-buffered cap —
+  penalties structurally zero, trial-w clip inert;
+  FitSettings.sviChart (default "raw" until benchmark) + UI select;
+  SPOT-CHECK: charts agree 0.0000bp where raw converged, but raw
+  EXHAUSTED its 500-eval cap on 5/12 REAL nodes (challenge 9 live)
+  while structural converged 30-86 evals on all 12 and ran ~3×
+  faster (82 vs 233ms) despite FD — strong prima facie case for the
+  default flip; frozen-regime benchmark = the deciding evidence
+  (user-window sweep). R2 repair rider shipped: bellyRepair default
+  ON — failed certificate → ONE belly-hinge refit (W·max(−g+2e-4,0),
+  closed-form g), kept only if re-certified; Vogt quotes repair to
+  certified at ~460bp worst (pathological depth); clean fits never
+  refit; DisplayFit.belly_repaired → quality bellyRepaired. All 12
+  reference nodes certify (min g +0.026…+0.33). Locks
+  tests/test_svi_structural_chart.py → belly_certificate cert case.
+  NEXT: **R4 Note 02 revision** (moment map, hierarchy relabel,
+  arb-free rigidity benchmark w/ comparators, bump-response figure,
+  condition atlas, five-layer stack text already current); R5 guarded
+  converter + desk layer + adversarial battery; structural-chart
+  default decision via benchmark pack (user window). Deferred:
+  cross-model market evidence (benchmark pack), hedge P&L (standing
+  campaign).
 
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 

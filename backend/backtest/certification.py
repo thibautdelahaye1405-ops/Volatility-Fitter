@@ -127,10 +127,11 @@ CASES: tuple[CertCase, ...] = (
         "passes the floor and Lee screens yet carries negative density in "
         "its belly (min g ~ -0.033). The dense-grid belly certificate (model "
         "derivatives, ~0.05ms) now fails readiness and HARD-BLOCKS publish "
-        "(409) on any uncertified slice; the publish-time wing projection is "
-        "audited to introduce no calendar crossings (manifest "
-        "projectionCalendarWorstBp).",
-        ("tests/test_belly_certificate.py",),
+        "(409) on any uncertified slice; a failed certificate triggers ONE "
+        "belly-hinge repair refit (kept only if it certifies); the publish-"
+        "time wing projection is audited to introduce no calendar crossings "
+        "(manifest projectionCalendarWorstBp).",
+        ("tests/test_belly_certificate.py", "tests/test_svi_structural_chart.py"),
     ),
     CertCase(
         "svi_lee_boundary", "SVI Lee cap at the broken boundary (beta = 2)",

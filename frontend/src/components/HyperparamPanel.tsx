@@ -36,6 +36,13 @@ export interface FitSettings {
   barrierScale: number;
   sviPenaltyWeight: number;
   leeSlopeMax: number;
+  /** SVI optimization chart (committee R3): "raw" (historical, default) or
+   *  "structural" ((β_L, β_R, k*, w*, κ*) — strictly positive floor and
+   *  strictly Lee-clean by construction; same fitted smile on clean quotes). */
+  sviChart: "raw" | "structural";
+  /** Committee R2 rider: refit once with the belly hinge when the butterfly
+   *  certificate fails (clean fits never see a second solve). */
+  bellyRepair: boolean;
   sigmoidRidge: number;
   midAnchorWeight: number;
 }
@@ -55,6 +62,8 @@ export const FIT_DEFAULTS: FitSettings = {
   // Strictly buffered under Lee's bound of 2 (committee R1: beta = 2 itself
   // admits negative tail density) — keep in sync with backend FitSettings.
   leeSlopeMax: 1.95,
+  sviChart: "raw",
+  bellyRepair: true,
   sigmoidRidge: 1e-2,
   midAnchorWeight: 0.05,
 };

@@ -32,6 +32,11 @@ class OverlaySettings:
     midAnchorWeight: float
     nCores: int
     sigmoidRidge: float
+    #: Committee R3: SVI optimization chart ("raw" | "structural").
+    sviChart: str = "raw"
+    #: Committee R2 rider: refit with the belly hinge when the certificate
+    #: fails (clean first fits never see a second solve).
+    bellyRepair: bool = True
 
 
 @dataclass(frozen=True)
