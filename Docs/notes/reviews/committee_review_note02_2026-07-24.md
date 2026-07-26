@@ -207,13 +207,29 @@ already-built machinery.
    tests/test_svi_structural_chart.py (chart algebra/round-trip,
    clean-fit equivalence, fence-without-penalties, Vogt repair
    end-to-end) — added to the belly_certificate certification case.
-4. **R4 — Note 02 revision.** Proposition fix (R1), the moment map +
-   conditioning + moments-only-if-certified policy, hierarchy relabel
-   (floor/wing screens; five honest tiers), normalized-vs-actual tails +
-   5×5 bump-response figure, arb-free rigidity benchmark + comparator
-   panel (LQD/eSSVI/constrained spline), ψ-boundary condition atlas,
-   regenerate evidence from checked-in fixtures where possible (or label
-   historical numbers as such with anchors).
+4. **R4 — Note 02 revision (DONE 2026-07-26).** New generator
+   `gen_svi_committee.py` (4 figures + macros, all from production
+   modules): (a) **moment map** §"The moment map, and when a moment may
+   be shown" — eq. both directions, conditioning figure (|dp\*/dβ| ~
+   1/(2β²) explosion at 0, collapse to p\*=1.6e-4 at the buffered cap),
+   policy = moments certificate-gated like marks; (b) **bump-response
+   matrix** — +Δv moves β_R by +0.0017 and p\*_R by −0.60 with (p,c)
+   fixed: JW = normalized quoting convention, not an orthogonal
+   decomposition (challenge 4 quantified); (c) **arb-free expressiveness
+   benchmark** — martingale two-lognormal mixture (target min g +0.389
+   verified): SVI 118.7bp RMS vs LQD 19.7 / MCS 15.0 (held-out ≈
+   in-sample; all three FITS certify — SVI's miss is expressiveness,
+   not arbitrage); old two-min figure recaptioned honestly (its target
+   has g(0)≈−0.059; measures convexity rigidity only); eSSVI/spline
+   column = recorded outstanding work; (d) **condition atlas** over the
+   (ψ, p+c) wedge w/ the 12 real nodes overlaid — nearest node at
+   |ψ|=0.059 AND short-dated nodes at p+c ~ 10-100 where the chart is
+   ill-conditioned (1e5-1e7) everywhere. Hierarchy relabeled (5 honest
+   tiers; "tail screens" phrasing removed; slogan revised to "fence the
+   floor and the wings; the belly needs a certificate"); structural-
+   chart subsection added to §calibration (spot-check evidence incl.
+   the 5/12 eval-cap exhaustion); historical replay numbers already
+   labeled not-checked-in. PDF rebuilt clean.
 5. **R5 — guarded converter + desk layer + adversarial battery.**
    `jw_to_raw` full-domain validation with structured failure reasons (or
    private); trader-facing conversions (ATM vol convention, RR/BF, delta

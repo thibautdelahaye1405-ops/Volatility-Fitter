@@ -21,6 +21,7 @@ and the interior it does not\\[2pt]
 \begin{document}
 \maketitle
 \input{figures/svi_moments_tables.tex}
+\input{figures/svi_committee_tables.tex}
 
 \begin{abstract}
 A volatility smile answers two questions at once.  Its \emph{wings} report the
@@ -36,8 +37,8 @@ elementary tail limit $g(\pm\infty)=(4-\beta^2)/16$: the wing slope sets the
 \emph{sign} of the implied density in the tail, and staying \emph{strictly}
 under Lee's $2$ is precisely the condition that the tail density come out
 eventually positive --- the boundary $\beta=2$ itself is a trap
-(\cref{prop:tail}).  Every cheap no-arbitrage
-guarantee raw SVI can give therefore lives in the wings.  The belly is where it
+(\cref{prop:tail}).  The cheap guarantees raw SVI can give fence the
+floor and the wings; the belly needs a certificate.  The belly is where it
 cannot: a Lee-clean, positive, strictly convex slice (Axel Vogt's classical
 counterexample --- minimum variance \svimomcountermin, larger Lee coefficient
 \svimomcounterlee, both tails of $g$ at $\approx0.25>0$) still drives $g$ to
@@ -354,9 +355,57 @@ second, $\betL=p\sqrt{w_0}$ and $\betR=c\sqrt{w_0}$ with $w_0=v\tau$
 (\cref{sec:jw}), so $b(1+|\rho|)=\max(\betL,\betR)=\max(p,c)\sqrt{v\tau}$.
 \end{proof}
 
-So a desk can sanity-check a smile before touching the belly: floor
-non-negative, larger wing handle under the cap.  Both are wing statements.  The
-belly is a different matter.
+So a desk can sanity-check a smile in one glance: floor non-negative, larger
+wing handle strictly under the cap.  Read them honestly, though: the cap is a
+\emph{wing} statement, but the floor is attained at the hyperbola's vertex ---
+$\vmin$ is a \emph{belly} handle, and calling both ``tail screens'' (as an
+earlier edition of this note did) made the mathematics internally
+inconsistent.  Neither certifies the interior.
+
+\subsection{The moment map, and when a moment may be shown}
+\label{sec:momentmap}
+
+A note titled ``moments'' owes the reader the actual map.  Lee's
+correspondence between a wing slope and the critical moment is explicit in
+both directions: for $0<\beta\le2$,
+\begin{equation}
+\beta \;=\; 2-4\Big(\sqrt{(p^\star)^2+p^\star}-p^\star\Big),
+\qquad
+p^\star \;=\; \frac{(2-\beta)^2}{8\beta},
+\label{eq:momentmap}
+\end{equation}
+where on the right wing $1+p^\star$ is the critical moment order of $S_T$
+(the mirror convention holds on the left with the negative moments).  The two
+forms round-trip exactly; what \cref{fig:momentmap} adds is the
+\emph{conditioning}, which is where a desk gets hurt.  As $\beta\to0$ the
+budget $p^\star$ explodes and its sensitivity $|\dd p^\star/\dd\beta|\sim
+1/(2\beta^2)$ with it: a flat-ish wing pins essentially \emph{no} upper bound
+on the moments, and small quote-window changes move the inferred moment
+violently.  As $\beta\to2$ the budget collapses to zero --- at the buffered
+production cap the entire budget beyond the first moment is
+$p^\star=\svimompstarcap$, which is why the R1 buffer costs nothing
+economically.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{fig_svimom_momentmap.pdf}
+\caption{The moment map and its conditioning.  Panel A: Lee's budget
+$p^\star=(2-\beta)^2/(8\beta)$ (log scale); the dashed line is the buffered
+production cap $\beta_{\max}$, the dotted line the broken boundary $\beta=2$.
+Panel B: the sensitivity $|\dd p^\star/\dd\beta|$ explodes as $\beta\to0$ ---
+a shallow wing does not identify a moment.}
+\label{fig:momentmap}
+\end{figure}
+
+One more condition is not negotiable.  Lee's formula applies to a genuine
+arbitrage-free distribution; a tail-clean slice with $g<0$ in the belly
+(\cref{sec:belly}) has \emph{no} risk-neutral law, so its wing slopes are not
+the moments of anything.  A fitted $\beta$ is at most a \emph{candidate}
+moment indicator, conditional on the slice passing the global butterfly
+certificate.  Production policy follows: no JW or moment quantity is
+published today (the product caution of \cref{rem:psi0}), and any future
+moment surface is gated on the same belly certificate that gates marks ---
+an uncertified slice can no more display a moment than become a mark.
 
 \paragraph{Exercise 1.}
 Show from \eqref{eq:betas} that $\betL+\betR=2b$ and $\betR-\betL=2b\rho$, so
@@ -386,13 +435,15 @@ gaps between them.
 Tier & Mathematical statement & Production status\\
 \midrule
 Structural & $b>0$, $|\rho|<1$, $s>0$ & hard, by reparametrization
-(\cref{sec:calib})\\
-Tail-clean & $\wmin\ge0$ and $\max(\betL,\betR)<2$ (strict) & the two soft
-coded screens, fenced at $\beta_{\max}=\svimomleecap$; zero on a clean slice\\
-Butterfly-clean & $g(k)\ge0$ for all $k$ (with the call boundary) & measured,
-not certified by the two screens\\
+(\cref{sec:calib}); the structural chart hardens the next two tiers as well\\
+Positive floor & $\wmin>0$ --- a vertex/belly condition & soft coded screen
+(structural under the R3 chart)\\
+Wing-admissible & $\max(\betL,\betR)<2$ strictly & soft screen fenced at
+$\beta_{\max}=\svimomleecap$ (structural under the R3 chart)\\
+Butterfly-clean & $g(k)\ge0$ for all $k$ (with the call boundary) & belly
+CERTIFICATE at publish: uncertified slices are repaired or blocked\\
 Calendar-clean & $w_{T_1}(k)\le w_{T_2}(k)$ for $T_1<T_2$ & soft
-model-agnostic hinge (Note~10); not structural\\
+model-agnostic hinge (Note~10) + published-family audit; not structural\\
 \bottomrule
 \end{tabular}
 \caption{Four tiers of ``valid.''  The first is hard, the second soft and
@@ -402,7 +453,7 @@ tiers two and three: tail-clean, butterfly-dirty.}
 \label{tab:tiers}
 \end{table}
 
-That the tail screens do not reach tier three is not a worry in the abstract ---
+That the cheap screens do not reach tier four is not a worry in the abstract ---
 it is a specific, classical slice.  Axel Vogt's example, reproduced as
 Example~3.1 by Gatheral and Jacquier \cite{GatheralJacquier2014}, is
 \[
@@ -422,9 +473,11 @@ the price.
 \includegraphics[width=\textwidth]{fig_svimom_belly.pdf}
 \caption{The honesty centrepiece.  Panel A: Axel Vogt's slice is positive,
 strictly convex, with a positive minimum and a Lee slope far under the cap ---
-both cheap tail screens pass.  Panel B: its Durrleman factor approaches the
+both cheap screens pass.  Panel B: its Durrleman factor approaches the
 positive tail limits $(4-\beta^2)/16$ on both sides (dotted), yet turns negative
-in the belly.  The screens fence the tails; the interior escapes them.}
+in the belly.  The floor fences the vertex and the caps fence the wings; the
+interior escapes both --- which is exactly what the belly certificate
+(\cref{sec:belly}) now closes at publish time.}
 \label{fig:belly}
 \end{figure}
 
@@ -605,6 +658,37 @@ misreading.}
 \label{tab:handles}
 \end{table}
 
+\paragraph{Normalized indicators are not actual tails.}
+Look again at \eqref{eq:jwunits}: $\betL=p\sqrt{v\tau}$ and
+$\betR=c\sqrt{v\tau}$.  The handles $p,c$ are \emph{normalized} wing
+indicators; the \emph{actual} asymptotic slopes --- the objects Lee's bound
+and the moment map \eqref{eq:momentmap} read --- carry a factor of the
+supposedly belly-only level $v$.  So JW is a useful normalized quoting
+convention, \emph{not} an orthogonal decomposition into independent tails and
+belly: bump the ATM level holding $(p,c)$ fixed and both actual Lee slopes
+move, and the inferred moments with them.  \Cref{fig:bumps} measures the full
+response matrix on the running slice: the $+\Delta v$ row moves $\betR$ by
+$\svimombumpbetaR$ and the right moment budget $p^\star_R$ by
+$\svimombumppstar$ --- with the ``tail handles'' untouched.  Four distinct
+objects, four distinct behaviours: normalized indicators $(p,c)$, actual
+slopes $(\betL,\betR)$, moment exponents $(p^\star)$, and the trader
+quantities (RR/BF) that mix all of them.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{fig_svimom_bumps.pdf}
+\caption{The bump-response matrix (committee revision).  Rows: one bump per
+JW handle ($+0.004$ on $v$, $+0.05$ on $\psi$, $+0.10$ on $p$ and $c$,
+$+0.002$ on $\widetilde v$, from the running slice).  Columns: the response
+of ATM vol, the 25$\Delta$ risk reversal and butterfly (decimal vol), the
+ACTUAL wing slopes $\betL,\betR$, the right moment budget $p^\star_R$, the
+variance floor $w_\star$, and the var-swap vol.  Colour is the sign and
+relative size within each column; the annotation is the raw signed change.
+The off-diagonal structure is the point: no handle owns its row's name ---
+an ATM-level bump is also a tail and moment event.}
+\label{fig:bumps}
+\end{figure}
+
 \subsection{Inverting the handles, and where the belly information is lost}
 \label{sec:inverse}
 
@@ -730,6 +814,39 @@ test-locked.  Any future user-facing JW workflow must validate \eqref{eq:regdom}
 first, treat the singular stratum separately, and use the stable denominator.
 \end{caution}
 
+\paragraph{A condition atlas, with real chains on it.}
+The singular stratum is not the only place the inverse is fragile, and ---
+the committee's sharpest phrasing --- $\psi\approx0$ is \emph{not exotic}:
+ATM sitting at the smile minimum is precisely where a trader would expect
+the coordinates to be simplest.  \Cref{fig:atlas} maps the conditioning of
+the (scaled) jw$\to$raw Jacobian over the $(\psi,\,p+c)$ wedge: the ridge on
+the $\psi=0$ line is the quadratic blind spot ($D=O(\psi^2)$, so
+$v-\vmin=O(\psi^2)$ and quote noise is amplified by $1/\psi^2$); conditioning
+also deteriorates toward the domain boundaries $\psi\to-p/2$ or $c/2$ (where
+$|\chi|\to1$) and as $p+c\to0$.  The overlaid points are the twelve
+reference-fixture nodes (SPY/NVDA/AAPL, Massive 2026-07-18) refitted through
+the production calibrator and read back through the analysis-side
+functionals, and they sharpen the committee's point twice over: the closest
+node comes within $|\psi|=\svimomatlasminpsi$ of the stratum (ordinary
+markets DO graze the blind spot), and because the normalized wing weight
+scales as $\beta/\sqrt{w_0}$, the short-dated nodes sit at $p+c$ of order
+$10$--$100$ where the chart is ill-conditioned ($10^5$--$10^7$)
+\emph{everywhere}, stratum or not.  Any future JW surface must carry this
+atlas's warnings, not just the regular-domain check.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.92\textwidth]{fig_svimom_atlas.pdf}
+\caption{Condition atlas of the jw$\to$raw inverse over the symmetric wedge
+$|\psi|<(p+c)/4$ (log$_{10}$ condition number of the relative-scaled
+Jacobian; $v,\widetilde v,\tau$ fixed at the running slice's values).  The
+dashed line is the singular stratum $\psi=0$; conditioning blows up
+quadratically into it and toward the wedge boundaries.  White dots: the 12
+reference-fixture nodes --- real chains at real maturities, the nearest at
+$|\psi|=\svimomatlasminpsi$.}
+\label{fig:atlas}
+\end{figure}
+
 \paragraph{Exercise 2.}
 On the singular stratum, differentiate the five functionals \eqref{eq:rawtojw}
 with respect to $s$ at fixed $(v,\psi,p,c,\vmin)$ using
@@ -758,9 +875,34 @@ Levenberg--Marquardt (LM) solver never wastes a step on the boundary and never
 proposes a nonsensical hyperbola.  It guarantees no more than structure --- $a$
 stays free, so a trial slice can still carry negative total variance somewhere,
 which the residual handles by flooring $w$ at $10^{-12}$ inside the square root
-(a solver device; \texttt{RawSVI.implied\_vol} itself has no floor).  Tail
+(a solver device; \texttt{RawSVI.implied\_vol} itself has no floor).  Wing
 feasibility is the business of the soft rows \eqref{eq:penalties}; belly
-feasibility is not enforced at all, by design.
+feasibility is not enforced inside the optimizer, by design --- the belly
+certificate gates it at the door instead (\cref{sec:belly}).
+
+\paragraph{The structural chart (committee revision R3, shipped opt-in).}
+There is a chart that guarantees more.  Parameterize the slice by the
+quantities the guarantees are \emph{about} ---
+$(\betL,\betR,k_\star,w_\star,\kappa_\star)$: the two actual wing slopes, the
+vertex location, the minimum total variance, and the vertex curvature
+$\kappa_\star=w''(k_\star)$ --- with the lifts
+$\beta=\beta_{\max}\operatorname{logistic}(\cdot)$,
+$w_\star=\operatorname{softplus}(\cdot)$, $\kappa_\star=e^{(\cdot)}$.  The raw
+recovery is exact ($b=(\betL+\betR)/2$, $\rho=(\betR-\betL)/(\betR+\betL)$,
+$s=b(1-\rho^2)^{3/2}/\kappa_\star$, $m=k_\star+s\rho/\sqrt{1-\rho^2}$,
+$a=w_\star-bs\sqrt{1-\rho^2}$), and now every finite $\theta$ has a strictly
+positive floor and strictly Lee-clean wings: the two penalty rows are
+structurally zero, the trial-$w$ clip never fires, and the unit-mixing
+question about $W$ dissolves.  Shipped as \texttt{sviChart="structural"}
+(\texttt{models/svi\_jw/structural.py}), finite-difference Jacobian for now.
+On the twelve reference-fixture nodes the two charts agree to $0.0000$ vol bp
+wherever the raw chart converged --- but the raw chart \emph{exhausted its
+500-evaluation budget on five of the twelve} while the structural chart
+converged in 30--86 evaluations on all of them and ran $\sim3\times$ faster
+despite the FD Jacobian: the penalty kinks it removes are exactly where LM
+was burning its budget.  The default stays \texttt{"raw"} until the
+frozen-regime benchmark adjudicates the flip --- the same evidence bar the
+LQD logistic chart cleared before becoming a default.
 
 \paragraph{Objective, weights, start.}
 The data term is a plain implied-volatility residual
@@ -931,16 +1073,58 @@ double-hat), or a sharply localized short-dated kink asks the curve to turn more
 than once, and one hyperbola has exactly one belly.  \Cref{fig:rigidity} makes
 the failure quantitative: against a smooth, positive, deliberately two-minimum
 target, production raw SVI returns the best single-belly compromise, missing by
-\svimomrigidrms\ vol bp RMS and \svimomrigidmax\ vol bp at worst.
+\svimomrigidrms\ vol bp RMS and \svimomrigidmax\ vol bp at worst.  Read that
+number for what it is (a committee correction to an earlier edition): the
+two-minimum target is itself \emph{butterfly-arbitrageable} --- its own
+Durrleman factor reads $g(0)\approx-0.059$ --- so an arbitrage-aware family
+\emph{should} refuse to reproduce it exactly, and the miss measures convexity
+rigidity against an illegal shape, not a commercial expressiveness deficit.
+The legal measurement follows below.
 
 \begin{figure}[H]
 \centering
 \includegraphics[width=0.96\textwidth]{fig_svimom_rigidity.pdf}
-\caption{A geometric stress test, not a market smile.  The synthetic target has
-two minima and a central hump; one convex hyperbola cannot follow it and settles
-for the best compromise (A), leaving the structured residual of Panel B.  This
-is the price of the convexity that regularizes ordinary smiles.}
+\caption{A geometric stress test, not a market smile --- and not a legal one:
+the two-minimum target itself violates the butterfly condition
+($g(0)\approx-0.059$), so this figure demonstrates only that one convex
+hyperbola cannot follow a non-convex curve.  The synthetic target has two
+minima and a central hump; SVI settles for the best single-belly compromise
+(A), leaving the structured residual of Panel B.  For the expressiveness
+question asked properly --- against an arbitrage-free target --- see
+\cref{fig:mixture}.}
 \label{fig:rigidity}
+\end{figure}
+
+\paragraph{The benchmark, asked legally.}
+Replace the target with a genuine distribution: a martingale two-lognormal
+mixture (65\% at $\sigma=14\%$, 35\% at $\sigma=42\%$ with the component
+forwards summing to the martingale forward, $\tau=0.25$).  Its smile is
+arbitrage-free \emph{by construction} --- the generator verifies
+$\min g=\svimommixtargetg$ on a dense analytic evaluation before fitting ---
+and its bimodal density asks for exactly the shoulder one hyperbola cannot
+make.  \Cref{fig:mixture} fits the three in-house families on equal footing
+(equal quotes, production calibrators, default settings): raw SVI misses by
+\svimommixsvirms\ vol bp RMS (held-out \svimommixsviho), while LQD fits to
+\svimommixlqdrms\ (held-out \svimommixlqdho) and the Multi-Core Sigmoid to
+\svimommixmcsrms\ (held-out \svimommixmcsho).  All three FITS certify
+butterfly-free (min $g$ of $\svimommixsviming$ / $\svimommixlqdming$ /
+$\svimommixmcsming$): SVI's failure on this target is expressiveness, not
+arbitrage --- its best legal compromise is simply far from a bimodal truth.
+An eSSVI and constrained-spline column belongs in this panel and is
+outstanding work (neither family is implemented in-house); the cross-model
+market evidence rides the benchmark-pack campaigns.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\textwidth]{fig_svimom_mixture.pdf}
+\caption{The arbitrage-free expressiveness benchmark (committee revision).
+Panel A: the mixture target (dots, $\min g=\svimommixtargetg>0$) with the
+three production fits.  Panel B: signed fit errors in vol bp.  One hyperbola
+buys one belly: SVI's \svimommixsvirms\ bp RMS against LQD's
+\svimommixlqdrms\ and MCS's \svimommixmcsrms\ is the honest price of
+convexity on a bimodal law --- measured against a target no arbitrage-aware
+model needs to refuse.}
+\label{fig:mixture}
 \end{figure}
 
 Sparse identification is a second, subtler limitation, and it is where the
@@ -1101,7 +1285,7 @@ Regular inverse domain; $\psi=0$ non-identification; invalid-input behaviour &
 \nolinkurl{::test_psi_zero_stratum_not_identified}\newline
 \nolinkurl{::test_invalid_inputs_fail_loudly_not_plausibly}\\
 \addlinespace
-Tail screens do not certify butterfly freedom (Axel Vogt slice) &
+Cheap screens do not certify butterfly freedom (Axel Vogt slice) &
 \cref{sec:belly} &
 \nolinkurl{models/svi_jw/calibrate.py::_penalties}\newline
 \nolinkurl{test_svi_domain.py::test_core_screens_do_not_certify_butterfly_freedom}\\

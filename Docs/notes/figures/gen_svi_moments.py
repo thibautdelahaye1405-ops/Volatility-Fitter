@@ -2,10 +2,11 @@
 
 Angle: *the wings and the belly.*  A smile's wings are a reading of the
 risk-neutral distribution's tails --- Lee's moment formula caps their slope at
-2 --- and every cheap no-arbitrage guarantee raw SVI can give lives in the
-wings.  The belly (the curvature near the money) is where a Lee-clean slice can
+2 --- and the cheap guarantees raw SVI can give fence the floor and the wings.
+The belly (the curvature near the money) is where a Lee-clean slice can
 still hide butterfly arbitrage and where the jump-wing handles lose
-identification.
+identification; the belly certificate (committee R2) closes that at publish.
+Committee-revision figures (R4) live in gen_svi_committee.py.
 
 Every curve, calibration, conversion and Jacobian comes from production
 modules; the only synthetic objects are the two explicitly-labelled stress

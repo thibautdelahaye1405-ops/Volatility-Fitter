@@ -590,11 +590,20 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   refit; DisplayFit.belly_repaired → quality bellyRepaired. All 12
   reference nodes certify (min g +0.026…+0.33). Locks
   tests/test_svi_structural_chart.py → belly_certificate cert case.
-  NEXT: **R4 Note 02 revision** (moment map, hierarchy relabel,
-  arb-free rigidity benchmark w/ comparators, bump-response figure,
-  condition atlas, five-layer stack text already current); R5 guarded
-  converter + desk layer + adversarial battery; structural-chart
-  default decision via benchmark pack (user window). Deferred:
+  **R4 Note 02 revision DONE 2026-07-26**: gen_svi_committee.py (4
+  figures, production modules only) — moment map §+ fig (p*=1.6e-4 at
+  the buffered cap; moments certificate-gated like marks);
+  bump-response matrix (+Δv → Δβ_R +0.0017, Δp*_R −0.60 w/ (p,c)
+  fixed = challenge 4 quantified); ARB-FREE mixture benchmark (target
+  min g +0.389: SVI 118.7bp vs LQD 19.7 / MCS 15.0, held-out ≈
+  in-sample, all fits certify — expressiveness not arbitrage; old
+  two-min fig recaptioned honestly g(0)≈−0.059); condition atlas w/
+  12 real nodes (nearest |ψ|=0.059; short-dated at p+c 10-100 =
+  ill-conditioned 1e5-1e7 everywhere); 5-tier hierarchy relabel +
+  slogan fix + structural-chart subsection in §calibration; PDF
+  rebuilt. NEXT: **R5** guarded converter + desk layer + adversarial
+  battery; structural-chart default decision via benchmark pack (user
+  window); eSSVI/spline comparator column = outstanding. Deferred:
   cross-model market evidence (benchmark pack), hedge P&L (standing
   campaign).
 
