@@ -810,8 +810,20 @@ $(-p/2,c/2)$ takes the square root of a negative and returns NaNs; $\vmin\ge v$
 returns $s\le0$, not a slice; a near-zero $\psi$ amplifies rounding.  This is
 deliberate --- the only caller feeds it benchmark handles well inside
 \cref{thm:image} --- but it makes the regular domain a \emph{contract}, now
-test-locked.  Any future user-facing JW workflow must validate \eqref{eq:regdom}
-first, treat the singular stratum separately, and use the stable denominator.
+test-locked.  Since committee revision R5 the guarded inverse SHIPS:
+\texttt{jw\_to\_raw\_checked} validates the complete domain and raises a
+structured \texttt{JWDomainError} (reason codes for each inequality, the
+singular stratum rejected explicitly) using the cancellation-resistant
+denominator of Appendix D --- any future user-facing JW workflow goes
+through it, and the unguarded fast path remains only for validated
+benchmark callers.  The desk-unit conversions of the committee's challenge
+11 ship alongside it (\texttt{models/svi\_jw/desk.py}): ATM convention,
+25/10-delta risk reversals and butterflies solved on the model smile, the
+actual wing slopes, the var swap --- and the missing derivative, a
+forward-bump re-read showing exactly which desk quantities a pure $F_T$
+error masquerades as (on a put skew: a phantom ATM \emph{and} risk-reversal
+move).  No JW UI ships; the layer is the contract any future one sits
+behind.
 \end{caution}
 
 \paragraph{A condition atlas, with real chains on it.}

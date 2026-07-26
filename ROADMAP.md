@@ -601,11 +601,22 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   12 real nodes (nearest |ψ|=0.059; short-dated at p+c 10-100 =
   ill-conditioned 1e5-1e7 everywhere); 5-tier hierarchy relabel +
   slogan fix + structural-chart subsection in §calibration; PDF
-  rebuilt. NEXT: **R5** guarded converter + desk layer + adversarial
-  battery; structural-chart default decision via benchmark pack (user
-  window); eSSVI/spline comparator column = outstanding. Deferred:
-  cross-model market evidence (benchmark pack), hedge P&L (standing
-  campaign).
+  rebuilt. **R5 DONE 2026-07-26 — ARC R1-R5 COMPLETE**: jw_to_raw_checked
+  in production (structured JWDomainError codes, stable denominator,
+  ψ=1e-5 round-trip locked); desk layer models/svi_jw/desk.py
+  (DeskTicket 25/10Δ RR/BF via forward Black delta + actual slopes +
+  var swap; forward_bump = the missing derivative — put skew reads a
+  +1% F error as phantom higher-ATM + RR move; k-symmetric smiles have
+  POSITIVE 25Δ RR, the convention subtlety locked); adversarial
+  battery over BOTH charts (1-2 quotes refuse deterministically via
+  new calibrate_svi guard; one-sided/missing-ATM/0DTE-w/|ρ|≈1/
+  duplicates/noise/crossed-band/eval-cap all finite+fenced) =
+  certification case svi_adversarial_inputs (17 tests). REMAINING
+  RIDERS (not arc-blocking): structural-chart default flip via
+  benchmark pack (user window), eSSVI/constrained-spline comparator
+  column, exact Martini–Mingone cross-check tier, Quality-view
+  certificate chip, analytic structural-chart Jacobian, hedge P&L
+  campaign (shared with Note 01 arc).
 
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 

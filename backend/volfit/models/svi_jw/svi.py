@@ -64,8 +64,73 @@ class SVIJW:
     v_tilde: float
 
 
+class JWDomainError(ValueError):
+    """A JW point outside the regular inverse domain (committee R5): the
+    failure is STRUCTURED — ``code`` is machine-readable, the message says
+    which inequality failed and what it means — instead of the unguarded
+    converter's case-dependent NaNs/divisions."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        super().__init__(message)
+
+
+def jw_to_raw_checked(jw: SVIJW) -> RawSVI:
+    """Domain-guarded JW -> raw inverse with a cancellation-resistant
+    denominator (committee R5; the note's Appendix D reference, promoted to
+    production). Validates the COMPLETE regular domain and raises
+    ``JWDomainError`` with a reason code; the singular stratum psi = 0 is
+    rejected explicitly (the regular inverse does not exist there — the
+    belly width is unidentified). The denominator D vanishes quadratically
+    as psi -> 0, so it is evaluated in a form that never subtracts two
+    large near-equal numbers."""
+    if not jw.t > 0.0:
+        raise JWDomainError("nonpositive_tenor", f"tenor t={jw.t} must be > 0")
+    if not jw.v > 0.0:
+        raise JWDomainError("nonpositive_variance", f"ATM variance v={jw.v} must be > 0")
+    if not (jw.p > 0.0 and jw.c > 0.0):
+        raise JWDomainError(
+            "nonpositive_wing", f"wing handles p={jw.p}, c={jw.c} must both be > 0"
+        )
+    if not (-0.5 * jw.p < jw.psi < 0.5 * jw.c):
+        raise JWDomainError(
+            "atm_slope_out_of_range",
+            f"psi={jw.psi} outside (-p/2, c/2)=({-0.5 * jw.p}, {0.5 * jw.c}) — "
+            "|chi| >= 1, no hyperbola matches",
+        )
+    if jw.psi == 0.0:
+        raise JWDomainError(
+            "singular_stratum",
+            "psi = 0 is the singular stratum: the belly width s is "
+            "unidentified there (JW image theorem) — no regular inverse",
+        )
+    if not jw.v_tilde < jw.v:
+        raise JWDomainError(
+            "floor_not_below_level",
+            f"minimum variance v_tilde={jw.v_tilde} must sit strictly below "
+            f"the ATM level v={jw.v}",
+        )
+    w0 = jw.v * jw.t
+    b = 0.5 * np.sqrt(w0) * (jw.p + jw.c)
+    rho = (jw.c - jw.p) / (jw.c + jw.p)
+    chi = rho - 4.0 * jw.psi / (jw.p + jw.c)
+    q_rho, q_chi = np.sqrt(1.0 - rho * rho), np.sqrt(1.0 - chi * chi)
+    # D = (1 - rho*chi)/q_chi - q_rho, rearranged so no two large near-equal
+    # numbers are subtracted; algebraically identical, numerically stable.
+    dq = (chi - rho) * (chi + rho) / (q_rho + q_chi)
+    denom = ((rho - chi) ** 2 + dq**2) / (2.0 * q_chi)
+    width = (w0 - jw.v_tilde * jw.t) / (b * denom)
+    m = chi * width / q_chi
+    a = jw.v_tilde * jw.t - b * width * q_rho
+    return RawSVI(a=float(a), b=float(b), rho=float(rho), m=float(m), sigma=float(width))
+
+
 def jw_to_raw(jw: SVIJW) -> RawSVI:
-    """Convert SVI-JW to raw SVI (note Appendix A, eqs. jw_w0..sigma_solve)."""
+    """Convert SVI-JW to raw SVI (note Appendix A, eqs. jw_w0..sigma_solve).
+
+    UNGUARDED fast path (the note's product caution): callers must feed
+    handles inside the regular domain. Any user-facing workflow goes through
+    ``jw_to_raw_checked`` instead (committee R5)."""
     w0 = jw.v * jw.t
     sqw = np.sqrt(w0)
     b = 0.5 * sqw * (jw.p + jw.c)

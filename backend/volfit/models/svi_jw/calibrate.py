@@ -299,6 +299,15 @@ def calibrate_svi(
     theta0 = _init_theta(k, w_quotes)
     if chart != "raw":  # same data-driven start, expressed in the new chart
         theta0 = pack_structural(_unpack(theta0), lee_slope_max)
+    # Committee R5 (adversarial battery): LM needs at least as many residual
+    # rows as parameters — a 1-2 quote board would crash inside scipy with an
+    # opaque message. Refuse DETERMINISTICALLY with a reason instead (the
+    # caller's fallback policy: keep the last good surface / another family).
+    if residuals(theta0).size < 5:
+        raise ValueError(
+            f"SVI needs at least 3 usable quotes (got {k.size}): "
+            "5 parameters against fewer residual rows is unsolvable"
+        )
     # Analytic Jacobian (R4) for the var-swap/prior-free configuration (mid OR band
     # fit + penalties + calendar) — ~2 evals/step vs scipy's 1+P finite differences.
     # The var-swap / strike-gap / operator-prior blocks are not yet differentiated, so

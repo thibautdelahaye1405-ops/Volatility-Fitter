@@ -230,11 +230,29 @@ already-built machinery.
    chart subsection added to §calibration (spot-check evidence incl.
    the 5/12 eval-cap exhaustion); historical replay numbers already
    labeled not-checked-in. PDF rebuilt clean.
-5. **R5 — guarded converter + desk layer + adversarial battery.**
-   `jw_to_raw` full-domain validation with structured failure reasons (or
-   private); trader-facing conversions (ATM vol convention, RR/BF, delta
-   conventions, sticky rules) gated on JW handles ever shipping; the
-   challenge-9 stress battery as tests + certification case.
+5. **R5 — guarded converter + desk layer + adversarial battery (DONE
+   2026-07-26).** `jw_to_raw_checked` promoted to production
+   (models/svi_jw/svi.py): complete-domain validation with structured
+   `JWDomainError` reason codes (six inequalities incl. the singular
+   stratum, rejected explicitly), the Appendix-D cancellation-resistant
+   denominator (round-trips the five functionals at ψ=1e-5); the
+   unguarded fast path stays documented-unsafe for validated callers.
+   Desk layer (models/svi_jw/desk.py): DeskTicket = ATM convention +
+   25/10Δ RR/BF solved on the model smile via forward Black delta +
+   ACTUAL wing slopes + var-swap vol; `forward_bump` = the committee's
+   missing derivative (a +1% F error on a put skew reads as a phantom
+   HIGHER ATM + RR move — sign verified; a flat smile reads zero; a
+   k-symmetric smile has POSITIVE 25Δ RR, the delta-convention subtlety
+   the layer exists to expose). No JW UI ships; the layer is the
+   contract any future one sits behind. Adversarial battery
+   (challenge 9, BOTH charts): 1-2 quote boards now refuse
+   DETERMINISTICALLY with a reason (calibrate_svi guard — previously a
+   raw scipy crash), one-sided chains / missing ATM / 0DTE-scale w /
+   |ρ|≈1 / duplicate strikes / 50% noise / crossed bands /
+   eval-cap exhaustion all finite + fence-respecting (structural chart:
+   fences exact). Locks: tests/test_svi_desk_and_guards.py +
+   tests/test_svi_adversarial.py (17 tests) = certification case
+   **svi_adversarial_inputs**. Note caution updated; PDF rebuilt.
 
 Deferred: equal-snapshot cross-model market evidence (rides the existing
 benchmark-pack campaigns); hedge-P&L (the standing deferred campaign, shared

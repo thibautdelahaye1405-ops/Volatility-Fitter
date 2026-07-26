@@ -121,6 +121,19 @@ CASES: tuple[CertCase, ...] = (
     ),
     # --------------------------------------------------------- model stress
     CertCase(
+        "svi_adversarial_inputs", "SVI adversarial input battery",
+        "model_stress", "Note 02 committee review R5 (2026-07-26)",
+        "Every adversarial input the committee listed (challenge 9) either "
+        "fits to a finite, fence-respecting slice or refuses with a reason: "
+        "1-2 quote boards refuse deterministically (no scipy crash), "
+        "one-sided chains, missing ATM, 0DTE-scale variance, |rho|~1, "
+        "duplicate strikes, 50% quote noise, crossed bands and evaluation-"
+        "cap exhaustion all stay finite on BOTH charts; the guarded "
+        "jw_to_raw_checked replaces case-dependent NaNs with structured "
+        "domain reasons.",
+        ("tests/test_svi_adversarial.py", "tests/test_svi_desk_and_guards.py"),
+    ),
+    CertCase(
         "belly_certificate", "Uncertified belly cannot become a mark",
         "model_stress", "Note 02 committee review R2 (2026-07-24)",
         "The cheap screens fence only the wings: Axel Vogt's classical slice "
