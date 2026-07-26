@@ -1,15 +1,16 @@
 // Data + interaction state for the Graph Viewer.
 //
-// GET /graph/nodes returns the baseline fitted handles (ATM vol/skew/curvature)
-// for every (ticker, expiry) node (fitted on demand, so the first call is slow).
-// The lit set doubles as the what-if pulse set (P5b U3): the unified test
-// pulse rides POST /graph/extrapolate via syntheticObservations — the old
-// sandbox POST /graph/solve is no longer called from the UI (the endpoint
-// stays for its golden-math tests until the P6 cleanup). Auto-tune still
-// rides its sandbox endpoint until it is re-pointed (P6). Live backend only
-// (no mock fallback). The hook is mounted by the GraphViewer view, so lit
-// nodes reset on a workspace-tab switch (and re-seed from the shared lit
-// designation + Options graph-prior defaults).
+// GET /graph/nodes returns the chart-baseline handles (ATM vol/skew/curvature)
+// for every SELECTED (ticker, expiry) node at its transported-prior baseline —
+// the zero-observation production solve (P6 re-point; the sandbox and its
+// today-fit universe are gone). The lit set doubles as the what-if pulse set
+// (P5b U3): the unified test pulse rides POST /graph/extrapolate via
+// syntheticObservations, and POST /graph/autotune LOO-tunes η on that same
+// production solve (smooth-field only — the button lives in the legacy
+// Advanced section). Live backend only (no mock fallback). The hook is
+// mounted by the GraphViewer view, so lit nodes reset on a workspace-tab
+// switch (and re-seed from the shared lit designation + Options graph-prior
+// defaults).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
 
@@ -370,25 +371,18 @@ export function useGraph(): UseGraphResult {
 
   const resetParams = useCallback(() => setParams(DEFAULT_PARAMS), []);
 
-  /** Lit set as the backend's observation list (absolute handle shifts). */
-  const observationList = useCallback(
-    () =>
-      Object.entries(lit).map(([key, dAtmVol]) => {
-        const [ticker = "", expiry = ""] = key.split("|");
-        return { ticker, expiry, dAtmVol };
-      }),
-    [lit],
-  );
-
   const autotune = useCallback(async (): Promise<void> => {
-    const observations = observationList();
-    if (observations.length < 2) return; // LOO needs >= 2 observations
+    // The lit count is a UX proxy; the backend enforces the real rule
+    // (>= 2 validation-clean calibrated nodes) with a descriptive 400.
+    if (Object.keys(lit).length < 2) return;
     setAutotuning(true);
     setAutotuneError(null);
     try {
-      // Autotune sweeps a leave-one-out grid over eta — slow on big universes.
+      // P6 re-point: the production body (same knobs Run ships under smooth
+      // field); the LOO candidates are the calibrated lit nodes server-side.
+      // Sweeping the eta grid solves the whole universe per held-out node.
       const res = await api.post<AutotuneResult>("/graph/autotune", {
-        body: { observations, ...paramsBody(params) },
+        body: { ...paramsBody(params), propagationMode: "smooth_field" },
         timeoutMs: 300_000,
       });
       setAutotuneResult(res);
@@ -399,7 +393,7 @@ export function useGraph(): UseGraphResult {
     } finally {
       setAutotuning(false);
     }
-  }, [observationList, params]);
+  }, [lit, params]);
 
   return {
     nodes,

@@ -1,8 +1,8 @@
 """Production graph smile-extrapolation service (plan Phases 1-6).
 
-This is the *production* counterpart to ``volfit.api.graph_service`` (which
-stays the manual-shift sandbox, plan Amendment A). The two never share an
-endpoint or semantics:
+Historically the *production* counterpart to the manual-shift sandbox
+(``graph_service``, plan Amendment A; retired in the P6 cleanup — the unified
+what-if rides ``syntheticObservations`` on this same solve). The pipeline:
 
     transported prior -> lit calibration innovation -> graph posterior increment
                       -> dark reconstructed smile    -> quote comparison
@@ -22,7 +22,7 @@ from datetime import date
 
 import numpy as np
 
-from volfit.api.graph_service import GRAPH_PRECISION, GRAPH_PRIOR_HYPER
+from volfit.api.graph_params import GRAPH_PRECISION, GRAPH_PRIOR_HYPER
 from volfit.api.graph_universe import (
     SelectedUniverse,
     build_selected_universe,
@@ -63,13 +63,11 @@ def _calibrated_handles(state: AppState, ticker: str, iso: str, fit_mode: str):
 
 
 def _node_t(state: AppState, iso: str) -> float:
-    """A display calendar year-fraction for a node from its ISO expiry (works for
-    dark, uncalibrated nodes that have no prepared slice)."""
-    try:
-        days = (date.fromisoformat(iso) - state.reference_date).days
-    except ValueError:
-        return 0.0
-    return max(days, 0) / 365.25
+    """A display calendar year-fraction for a node from its ISO expiry — the
+    graph_nodes helper, lazily imported (graph_nodes is a load-time cycle)."""
+    from volfit.api.graph_nodes import node_calendar_t
+
+    return node_calendar_t(state, iso)
 
 
 def _quote_stats(prepared) -> tuple[float, float]:
@@ -113,7 +111,7 @@ def _propagate_field(
 ) -> HandleField:
     """Per-coordinate Gaussian posterior with an EXPLICIT prior baseline.
 
-    Unlike the sandbox ``propagate_handles`` (which centres on today's mid fit),
+    Unlike the library ``propagate_handles`` (which centres on today's mid fit),
     the baseline here is the transported prior, so ``posterior_update``'s
     innovation ``y - baseline`` is exactly the lit-calibration innovation
     ``d = calibrated - transported_prior``. Zero observations is the no-signal
@@ -208,8 +206,8 @@ def _handle_beta_matrices(
 def _build_increment_priors(universe: "SelectedUniverse", request, edges=None):
     """Per-handle increment priors with optional per-edge beta (plan Phase 6/7).
 
-    Mirrors ``graph_service._build_priors`` (the same kappa/eta/lambda regime) but
-    threads each handle's beta matrix into the directed residual ``L_dir^β``."""
+    The graph_params kappa/eta/lambda regime per handle, threading each handle's
+    beta matrix into the directed residual ``L_dir^β``."""
     betas = _handle_beta_matrices(universe, request, edges)
     priors = []
     for c, (s, eta) in enumerate(GRAPH_PRIOR_HYPER):

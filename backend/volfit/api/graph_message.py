@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from volfit.api.graph_service import GRAPH_PRIOR_HYPER
+from volfit.api.graph_params import GRAPH_PRIOR_HYPER
 from volfit.api.graph_universe import SelectedUniverse
 from volfit.api.schemas import GraphEdgeInput, GraphMessageEdge
 from volfit.graph.build import NodeId

@@ -116,45 +116,54 @@ def test_propagation_moves_a_dark_neighbour(state):
     assert np.sign(dark.shiftBp) == np.sign(mean_innov)
 
 
-def test_graph_nodes_empty_before_calibration():
-    """GET /graph/nodes returns 200 with no nodes before anything is calibrated
-    (the gated server) — never a 500 (which the browser shows as 'Failed to fetch')."""
+def test_graph_nodes_serves_the_lattice_before_calibration():
+    """P6 re-point: the chart baseline is the SELECTED universe at its
+    transported-prior baselines. On a gated app before any Fetch/Calibrate the
+    lattice is ALREADY served (selection is cheap metadata) with every node at
+    the last-resort flat baseline — never a 500, and no longer the historical
+    empty list (node membership is selection-driven, not calibration-driven)."""
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
         resp = client.get("/graph/nodes")
         assert resp.status_code == 200
-        assert resp.json()["nodes"] == []
+        nodes = resp.json()["nodes"]
+        assert nodes  # the selected lattice, visible pre-Calibrate
+        for node in nodes:
+            assert node["atmVol"] == pytest.approx(0.20)  # flat last resort
+            assert node["skew"] == 0.0 and node["curvature"] == 0.0
 
 
-def test_graph_nodes_appear_after_calibration_in_viewed_mode():
-    """The sandbox universe rebuilds once calibrations land, in the mode the
-    user is VIEWING. Regression (2026-07-09): the universe was (a) cached empty
-    forever when the Graph tab was opened before the first Calibrate, and (b)
-    hardcoded to mid fits — a haircut-mode session had no Manual what-if nodes
-    at all even after calibrating everything."""
+def test_graph_nodes_membership_survives_calibration_mode():
+    """A haircut-mode gated session keeps its full lattice: membership never
+    depends on which mode (or whether) a node was calibrated, and the baseline
+    stays PRIOR-anchored (flat here — no saved prior) rather than flipping to
+    today's fit. The calibrated mark lives on /graph/extrapolate, not here."""
     with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
-        # Cache the pre-Calibrate (empty) universe, as opening the Graph tab does.
-        assert client.get("/graph/nodes").json()["nodes"] == []
         tk = "ALPHA"
         iso = client.get("/universe").json()["expiries"][tk][1]["expiry"]
+        before = {(n["ticker"], n["expiry"]) for n in client.get("/graph/nodes").json()["nodes"]}
+        assert (tk, iso) in before
         # View + calibrate in a NON-mid mode (viewing records last_fit_mode).
         client.get(f"/smiles/{tk}/{iso}", params={"fit_mode": "haircut"})
         client.post(f"/calibrate/{tk}/{iso}", params={"fit_mode": "haircut"})
         nodes = client.get("/graph/nodes").json()["nodes"]
-        assert (tk, iso) in {(n["ticker"], n["expiry"]) for n in nodes}
+        node = next(n for n in nodes if (n["ticker"], n["expiry"]) == (tk, iso))
+        assert node["atmVol"] == pytest.approx(0.20)  # still the prior baseline
+        assert {(n["ticker"], n["expiry"]) for n in nodes} == before
 
 
 def test_graph_nodes_ignores_inactive_provider_tickers():
     """GET /graph/nodes iterates the ACTIVE universe, not the provider watchlist:
     removing a ticker from the active set (it stays in provider.list_tickers())
-    must not 500 (regression: forwards() on an inactive ticker raised)."""
+    must not 500 and must drop the ticker's nodes immediately (no stale cache —
+    the selected universe is rebuilt per request)."""
     with TestClient(create_app(reference_date=REF_DATE)) as client:
         st = client.app.state.volfit
         dropped = st.active_tickers()[-1]
         st.remove_ticker(dropped)
-        st.universe = None  # force a rebuild over the new active set
         resp = client.get("/graph/nodes")
         assert resp.status_code == 200
-        assert all(n["ticker"] != dropped for n in resp.json()["nodes"])
+        nodes = resp.json()["nodes"]
+        assert nodes and all(n["ticker"] != dropped for n in nodes)
 
 
 def test_known_ticker_accepts_active_and_provider(state):

@@ -22,8 +22,8 @@ interface SolverPanelProps {
   autotuneError: string | null;
 }
 
-/** Service-default edge weights (volfit/api/service.py); shown as placeholders
- *  and used when the override input is cleared back to the default. */
+/** Service-default edge weights (volfit/api/graph_params.py); shown as
+ *  placeholders and used when the override input is cleared back to the default. */
 export const DEFAULT_CALENDAR_WEIGHT = 10;
 export const DEFAULT_CROSS_WEIGHT = 2;
 
@@ -191,7 +191,7 @@ export default function SolverPanel({
         title={
           litCount < 2
             ? "Light at least two nodes to auto-tune η"
-            : "Pick η by leave-one-out cross-validation on the lit nodes"
+            : "Pick η by leave-one-out cross-validation on the calibrated lit nodes (production solve)"
         }
         className="mt-3 flex w-full items-center justify-center gap-2 rounded-md border border-slate-700 bg-surface-800 px-2 py-1.5 text-[11px] font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
       >

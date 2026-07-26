@@ -891,20 +891,10 @@ class TableResponse(BaseModel):
 
 
 # --------------------------------------------------------------- graph solve
-class GraphObservation(BaseModel):
-    """One observed handle shift on a smile node, in absolute handle units."""
-
-    ticker: str
-    expiry: str
-    dAtmVol: float
-    dSkew: float = 0.0
-    dCurv: float = 0.0
-
-
 class GraphSolverParams(BaseModel):
     """Tunable hyperparameters of the increment prior Q_Delta and the graph.
 
-    The three scales multiply the per-handle base regime (service.py
+    The three scales multiply the per-handle base regime (graph_params
     GRAPH_PRIOR_HYPER): ``etaScale`` the directed-smoothness weight eta,
     ``kappaScale`` the local precision kappa (stiffness toward the baseline —
     higher means less propagation), ``lambdaScale`` the optimal-transport flux
@@ -920,44 +910,6 @@ class GraphSolverParams(BaseModel):
     nu: float = Field(default=0.1, gt=0.0)
     calendarWeight: float | None = Field(default=None, gt=0.0)
     crossWeight: float | None = Field(default=None, gt=0.0)
-
-
-class GraphSolveRequest(GraphSolverParams):
-    """Propagate sparse handle observations through the smile universe."""
-
-    observations: list[GraphObservation] = Field(min_length=1)
-
-
-class GraphNodeResult(BaseModel):
-    """Posterior ATM-vol summary for one node of the universe."""
-
-    ticker: str
-    expiry: str
-    t: float
-    baseAtmVol: float
-    postAtmVol: float
-    shiftBp: float
-    sd: float
-    bandLo: float  # 95% credible band on the posterior ATM vol
-    bandHi: float
-    observed: bool
-
-
-class GraphSolveResponse(BaseModel):
-    """Posterior field over every node of the smile universe."""
-
-    nodes: list[GraphNodeResult]
-
-
-class GraphAutotuneRequest(GraphSolverParams):
-    """Pick the propagation reach etaScale by leave-one-out cross-validation.
-
-    Needs at least two observations (LOO holds one out at a time). The other
-    solver knobs are held fixed at the supplied values while eta is tuned;
-    ``etaScale`` on this request is ignored (it is the quantity being chosen).
-    """
-
-    observations: list[GraphObservation] = Field(min_length=2)
 
 
 class AutotuneCandidate(BaseModel):
@@ -1241,9 +1193,10 @@ class CalendarPolicyOverride(BaseModel):
 class GraphExtrapolateRequest(GraphSolverParams):
     """Production prior-anchored extrapolation over the SELECTED lit+dark universe.
 
-    Unlike the sandbox ``GraphSolveRequest``, observations are NOT manually typed:
+    Unlike the retired manual-shift sandbox, observations are NOT manually typed:
     they are derived server-side as ``calibrated_handles - transported_prior_handles``
-    on the lit nodes (plan Amendment A). The solver knobs (eta/kappa/lambda/nu,
+    on the lit nodes (plan Amendment A) — or supplied as ``syntheticObservations``
+    pulses by the unified what-if. The solver knobs (eta/kappa/lambda/nu,
     calendar/cross weights) carry over from ``GraphSolverParams``.
     """
 

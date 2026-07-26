@@ -21,7 +21,10 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api.graph_extrapolation import solve
+from volfit.api.graph_params import AUTOTUNE_ETA_GRID
 from volfit.api.schemas import (
+    AutotuneCandidate,
+    GraphAutotuneResponse,
     GraphBacktestNode,
     GraphBacktestResponse,
     GraphExtrapolateRequest,
@@ -94,4 +97,64 @@ def backtest(state: AppState, request: GraphExtrapolateRequest) -> GraphBacktest
         rmseBp=rmse_bp,
         zetaMean=float(zeta_arr.mean()) if n else 0.0,
         zetaStd=float(zeta_arr.std()) if n else 0.0,
+    )
+
+
+def autotune(state: AppState, request: GraphExtrapolateRequest) -> GraphAutotuneResponse:
+    """Choose etaScale by leave-one-node-out CV on the PRODUCTION solve.
+
+    P6 re-point of the retired sandbox autotune: same AUTOTUNE_ETA_GRID, but
+    the held-out prediction now runs the full production pipeline (transported
+    priors, lit-calibration innovations, data-derived precision) — the tuned
+    reach optimizes exactly the objective the LOO backtest above reports.
+
+    Smooth-field only: eta is the directed-smoothness reach of the increment
+    prior; the knob does not exist under the message operator. ValueError on
+    that (and on a too-small candidate set) — the route maps it to a 400.
+    """
+    if request.propagationMode != "smooth_field":
+        raise ValueError(
+            "autotune tunes the smooth-field reach eta; propagationMode="
+            f"{request.propagationMode!r} has no eta knob"
+        )
+    if request.syntheticObservations:
+        # A pulse is hypothesis-firm on EVERY solve — hold_out only removes
+        # real calibration observations, so LOO over pulses scores nothing.
+        raise ValueError("autotune scores real calibrations, not what-if pulses")
+    full = solve(state, request)
+    if full is None:
+        raise ValueError("empty universe — nothing to tune")
+    universe = full.universe
+    # Same candidate rule as the backtest: calibrated AND validation-clean
+    # (a bootstrap prior would tune eta on a circular today-vs-today score).
+    names = [
+        node.name
+        for i, node in enumerate(universe.nodes)
+        if full.calibrated[i] and full.priors_meta[i].valid_for_validation
+    ]
+    if len(names) < 2:
+        raise ValueError(
+            "autotune needs at least two validation-clean calibrated lit "
+            f"nodes (have {len(names)})"
+        )
+
+    candidates: list[AutotuneCandidate] = []
+    for eta_scale in AUTOTUNE_ETA_GRID:
+        params = request.model_copy(update={"etaScale": float(eta_scale)})
+        sq_sum, scored = 0.0, 0
+        for name in names:
+            held = solve(state, params, hold_out=frozenset({name}))
+            if held is None:
+                continue
+            i = universe.node_index(name)
+            sq_sum += (float(held.field.mean[i, 0]) - float(full.obs_value_by_idx[i][0])) ** 2
+            scored += 1
+        if scored == 0:  # unreachable once `full` solved; keep the 400 honest
+            raise ValueError("leave-one-out solve produced no held-out scores")
+        rmse_bp = float(np.sqrt(sq_sum / scored) * 1e4)
+        candidates.append(AutotuneCandidate(etaScale=float(eta_scale), rmseBp=rmse_bp))
+
+    best = min(candidates, key=lambda c: c.rmseBp)
+    return GraphAutotuneResponse(
+        etaScale=best.etaScale, rmseBp=best.rmseBp, candidates=candidates
     )

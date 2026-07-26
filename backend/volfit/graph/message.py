@@ -43,7 +43,7 @@ N_HANDLES = 3  # (atm_vol, skew, curvature) — the v1 carrier (spec §3.2)
 
 #: §9.4 — edge precision is defined in ATM-vol units; the skew/curvature
 #: fields scale by (s_sigma / s_handle)^2 with the production per-handle
-#: scales s = (0.03, 0.05, 0.5) (api.graph_service.GRAPH_PRIOR_HYPER).
+#: scales s = (0.03, 0.05, 0.5) (api.graph_params.GRAPH_PRIOR_HYPER).
 HANDLE_PRECISION_SCALE: tuple[float, float, float] = (1.0, 0.36, 0.0036)
 
 #: §9.2 Phase-0 empirical seeds (message_phase0.json): Var(e) = (epsT+√ΔT)/p0.

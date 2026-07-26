@@ -37,7 +37,8 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from volfit.api import prior_transport
-from volfit.api.graph_service import GRAPH_PRECISION
+from volfit.api.graph_params import GRAPH_PRECISION
+from volfit.api.schemas import GraphNodeInfo
 from volfit.api.schemas_prior import PriorNode, PriorSurfaceSnapshot
 from volfit.api.service import fit_or_get
 from volfit.api.state import AppState
@@ -257,3 +258,44 @@ def resolve_priors(
         resolve_node_prior(state, node.ticker, node.expiry, **opts)
         for node in universe.nodes
     )
+
+
+def node_calendar_t(state: AppState, iso: str) -> float:
+    """Display calendar year-fraction of an ISO expiry (works for dark,
+    uncalibrated nodes that have no prepared slice). The single source of the
+    `t` served on graph payloads — /graph/nodes and /graph/extrapolate must
+    agree so the canvas and the results table land on the same x."""
+    try:
+        days = (date.fromisoformat(iso) - state.reference_date).days
+    except ValueError:
+        return 0.0
+    return max(days, 0) / 365.25
+
+
+def baseline_node_infos(state: AppState) -> list[GraphNodeInfo]:
+    """GET /graph/nodes: the zero-observation production baseline (P6 re-point).
+
+    The chart lattice is the SELECTED lit+dark universe with every node at its
+    transported-prior baseline x^0 — exactly the zero-observation predictive
+    prior of the production solve (no observations ⇒ mean = baseline), so the
+    canvas, the inspector and the extrapolate table's prior columns agree by
+    construction. Historically this route served the retired sandbox's
+    all-provider today-fit universe; the selection is the product boundary
+    (plan Amendment C), and a node with no prior falls down the usual
+    hierarchy (bootstrap fit, then flat) exactly like a solve would."""
+    from volfit.api.graph_universe import build_selected_universe
+
+    universe = build_selected_universe(state)
+    priors = resolve_priors(state, universe)
+    return [
+        GraphNodeInfo(
+            ticker=node.ticker,
+            expiry=node.expiry,
+            t=node_calendar_t(state, node.expiry),
+            atmVol=float(prior.handles[0]),
+            skew=float(prior.handles[1]),
+            curvature=float(prior.handles[2]),
+            lit=node.lit,
+        )
+        for node, prior in zip(universe.nodes, priors)
+    ]

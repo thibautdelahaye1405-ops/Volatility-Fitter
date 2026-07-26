@@ -1,9 +1,12 @@
-"""Graph routes — universe lattice and sparse-observation propagation.
+"""Graph routes — selected-universe lattice and production extrapolation.
 
-Backs the Graph Viewer: GET /graph/nodes serves the baseline lattice (the
-universe over all tickers x expiries, mid fits, built lazily once — first
-call pays the ~12 slice fits), POST /graph/solve takes handle *shifts* on
-named nodes and returns per-node posterior ATM vol with credible bands.
+Backs the Graph Viewer: GET /graph/nodes serves the chart baseline — the
+SELECTED lit+dark universe at its transported-prior baselines (the
+zero-observation production solve, P6 re-point); POST /graph/extrapolate is
+the production solve; POST /graph/autotune LOO-tunes the smooth-field reach
+eta on that same solve. The manual-shift sandbox (POST /graph/solve,
+graph_service) was retired in the P6 cleanup — the unified what-if rides
+``syntheticObservations`` on the production request instead.
 """
 
 from __future__ import annotations
@@ -18,14 +21,13 @@ from volfit.api import (
     graph_blocks,
     graph_extrapolation,
     graph_lv,
+    graph_nodes,
     graph_preflight,
     graph_reconstruct,
     graph_select,
-    graph_service,
 )
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse
 from volfit.api.schemas import (
-    GraphAutotuneRequest,
     GraphAutotuneResponse,
     GraphBacktestResponse,
     GraphBlockRule,
@@ -39,14 +41,11 @@ from volfit.api.schemas import (
     GraphMessageConfigResponse,
     GraphMessageEdgesRequest,
     GraphMessageEdgesResponse,
-    GraphNodeInfo,
     GraphNodesResponse,
     GraphNodeSmile,
     GraphObservationPlanRequest,
     GraphObservationPlanResponse,
     GraphPreflightResponse,
-    GraphSolveRequest,
-    GraphSolveResponse,
 )
 from volfit.api.state import UnknownNodeError
 
@@ -54,38 +53,25 @@ router = APIRouter()
 
 
 @router.get("/graph/nodes", response_model=GraphNodesResponse)
-def graph_nodes(request: Request) -> GraphNodesResponse:
-    state = request.app.state.volfit
-    universe = graph_service.ensure_universe(state)
-    nodes = [
-        GraphNodeInfo(
-            ticker=smile.name[0],
-            expiry=smile.name[1],
-            t=smile.t,
-            atmVol=float(universe.handles[i, 0]),
-            skew=float(universe.handles[i, 1]),
-            curvature=float(universe.handles[i, 2]),
-            lit=state.node_lit(smile.name[0], smile.name[1]),
-        )
-        for i, smile in enumerate(universe.smiles)
-    ]
-    return GraphNodesResponse(nodes=nodes)
-
-
-@router.post("/graph/solve", response_model=GraphSolveResponse)
-def solve_graph(body: GraphSolveRequest, request: Request) -> GraphSolveResponse:
-    try:
-        return graph_service.solve_graph(request.app.state.volfit, body)
-    except UnknownNodeError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from None
+def get_graph_nodes(request: Request) -> GraphNodesResponse:
+    """The chart-baseline lattice: selected universe, transported-prior handles,
+    fresh per-request lit flags (the designation is never cached here)."""
+    return GraphNodesResponse(
+        nodes=graph_nodes.baseline_node_infos(request.app.state.volfit)
+    )
 
 
 @router.post("/graph/autotune", response_model=GraphAutotuneResponse)
-def autotune_graph(body: GraphAutotuneRequest, request: Request) -> GraphAutotuneResponse:
+def autotune_graph(
+    body: GraphExtrapolateRequest, request: Request
+) -> GraphAutotuneResponse:
+    """LOO-tune the smooth-field reach etaScale on the production solve (the
+    same body Run ships). 400 outside smooth_field (no eta knob) and when
+    fewer than two validation-clean calibrated nodes exist."""
     try:
-        return graph_service.autotune_graph(request.app.state.volfit, body)
-    except UnknownNodeError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from None
+        return graph_backtest.autotune(request.app.state.volfit, body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 @router.post("/graph/extrapolate", response_model=GraphExtrapolateResponse)

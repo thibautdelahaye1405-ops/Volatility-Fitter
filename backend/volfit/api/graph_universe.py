@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from volfit.api.graph_service import (
+from volfit.api.graph_params import (
     CROSS_TICKER_WEIGHT,
     SAME_TICKER_WEIGHT,
-    _lattice_weights,
+    lattice_weights as _lattice_weights,
 )
 from volfit.api.state import AppState
 from volfit.graph.build import NodeId, SmileGraph, build_graph

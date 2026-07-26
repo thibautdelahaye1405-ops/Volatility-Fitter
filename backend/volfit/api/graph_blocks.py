@@ -8,7 +8,7 @@ written), while this module expands it into the per-edge list ``/graph/edges``
 continues to serve — the solver and the network view are unchanged, they only
 ever see expanded ``GraphEdgeInput`` rows.
 
-Expansion mirrors the auto-lattice's pairing (graph_service._lattice_weights):
+Expansion mirrors the auto-lattice's pairing (graph_params.lattice_weights):
 a pair rule links two tickers on every expiry present in BOTH selected ladders
 (both directions when symmetric); a calendar rule links consecutive selected
 expiries within the ticker, in both directions. Explicit overrides layer LAST —

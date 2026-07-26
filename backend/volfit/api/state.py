@@ -2,14 +2,12 @@
 
 Everything heavy is computed at most once: chain snapshots, parity-implied
 forwards, per-(ticker, expiry, fit-mode, session-version) slice calibrations,
-saved priors (display curve + fitted LQD params, so prior densities can be
-rebuilt) and the lazily-built graph smile universe. Chains are fetched once
+and saved priors (display curve + fitted LQD params, so prior densities can
+be rebuilt). Chains are fetched once
 per process (live providers included — a snapshot is one observation) and
 quote edits bump their session's version (a new cache key), so caches never
 need invalidation. A single lock guards the
-mutable dicts because WebSocket surface fits run on worker threads; the
-universe build happens outside that lock (it re-enters the fit cache) and is
-idempotent, so a rare double build is harmless.
+mutable dicts because WebSocket surface fits run on worker threads.
 """
 
 from __future__ import annotations
@@ -430,10 +428,6 @@ class AppState(UniverseMixin):
         #: Explicitly darkened (ticker, ISO) nodes; every node is LIT by default.
         #: Lit = an observed source for the graph solver, dark = extrapolated.
         self._dark_nodes: set[tuple[str, str]] = set()
-        self._universe = None  # volfit.graph.smile_universe.SmileUniverse
-        #: Calibration signature the cached universe was built against
-        #: (see calib_signature); None forces the next ensure_universe build.
-        self._universe_sig = None
         #: Background calibration job manager (the global "Calibrate" action and
         #: the scheduler's auto-calibrate both run through this).
         from volfit.api.jobs import CalibrationJobs
@@ -513,7 +507,6 @@ class AppState(UniverseMixin):
         self._sessions.clear()
         self._varswap_sessions.clear()
         self._filter_states.clear()  # source/as-of switch = the filter's strict reset
-        self._universe = None
 
     #: Cache dicts that ``_clear_chain_caches`` wipes — the live surface state a
     #: transient as-of switch must NOT destroy (see capture/restore below).
@@ -551,7 +544,6 @@ class AppState(UniverseMixin):
             for attr in self._CHAIN_CACHE_ATTRS:
                 setattr(self, attr, dict(saved[attr]))
             self._asof = saved["_asof"]
-            self._universe = None
 
     # -------------------------------------------------------------- workspace
     def workspace_doc(self) -> dict:
@@ -1110,18 +1102,6 @@ class AppState(UniverseMixin):
             return self._calib_epoch
 
     @property
-    def calib_signature(self) -> tuple:
-        """Cheap change-detector over the calibration state the graph sandbox
-        universe is built from: (viewed fit mode, number of calibrated pointers,
-        re-calibration epoch). A first-ever Calibrate grows the count (the epoch
-        deliberately ignores bootstraps), a re-calibration bumps the epoch, and a
-        fit-mode switch changes the mode — any of which must invalidate a cached
-        universe, else the Graph tab serves fits that are no longer on screen
-        (or an EMPTY universe cached before the first Calibrate, forever)."""
-        with self._lock:
-            return (self._last_fit_mode, len(self._calibrated), self._calib_epoch)
-
-    @property
     def last_fit_mode(self) -> str:
         """The fit target the user is currently viewing (recorded on smile fetch)."""
         with self._lock:
@@ -1178,7 +1158,6 @@ class AppState(UniverseMixin):
             if cache is not None:
                 for key in [k for k in cache if k[0] == ticker]:
                     cache.pop(key, None)
-            self._universe = None  # graph universe re-derives from fresh fits
 
     def live_spot(self, ticker: str) -> float:
         """Re-probe the active provider's current spot WITHOUT touching the
@@ -1812,27 +1791,6 @@ class AppState(UniverseMixin):
             blob = self._graph_idio.to_blob() if changed else None
         if blob is not None:
             save_graph_idio(self.store_path, blob)
-
-    # --------------------------------------------------------------- universe
-    @property
-    def universe(self):
-        return self._universe
-
-    @universe.setter
-    def universe(self, value) -> None:
-        self._universe = value
-        if value is None:  # explicit invalidation also drops the build signature
-            self._universe_sig = None
-
-    @property
-    def universe_sig(self) -> tuple | None:
-        """calib_signature the cached universe was built against (None = rebuild)."""
-        return self._universe_sig
-
-    @universe_sig.setter
-    def universe_sig(self, value: tuple | None) -> None:
-        self._universe_sig = value
-
 
 def _coerce_block_rule(raw: dict | None) -> GraphBlockRule | None:
     """Validate a persisted block-rule blob; None on absence or bad data (a stale

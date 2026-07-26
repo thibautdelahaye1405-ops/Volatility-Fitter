@@ -121,6 +121,23 @@ CASES: tuple[CertCase, ...] = (
     ),
     # --------------------------------------------------------- model stress
     CertCase(
+        "graph_precision_messages", "Precision-message graph operator (§21 goldens)",
+        "model_stress", "message framework Phases 0-6 (2026-07-18 … P6 hardening 2026-07-26)",
+        "The Section-21 golden acceptance contracts of the precision-message "
+        "graph — full transmission, competing signals, dead-informer zero "
+        "dilution, shrunk-mode transfer with fixed-kappa corroboration, "
+        "baseline-uncertainty-enters-once — are locked three times over: "
+        "against an independent brute-force Gaussian reference, through the "
+        "production assembly, and through the HTTP API. smooth_field stays "
+        "byte-identical at the defaults, the opt-in layered dynamic-harmonic "
+        "pipeline replays its async A/B exit gate end-to-end, and the config "
+        "lifecycle (draft/active envelope, policy dials, legacy-blob "
+        "migration, corrupt-blob tolerance, workspace replay) round-trips.",
+        ("tests/test_graph_message_golden.py", "tests/test_graph_message_production.py",
+         "tests/test_graph_message_api_golden.py", "tests/test_graph_config_migrations.py",
+         "tests/test_graph_dynamic_production.py"),
+    ),
+    CertCase(
         "svi_adversarial_inputs", "SVI adversarial input battery",
         "model_stress", "Note 02 committee review R5 (2026-07-26)",
         "Every adversarial input the committee listed (challenge 9) either "

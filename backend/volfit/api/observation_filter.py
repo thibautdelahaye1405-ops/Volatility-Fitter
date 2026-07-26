@@ -374,7 +374,7 @@ def _seed(
                 reset_reason=reason,
             )
     from volfit.api.graph_nodes import PRIOR_SOURCE_PRECISION_SCALE
-    from volfit.api.graph_service import GRAPH_PRECISION
+    from volfit.api.graph_params import GRAPH_PRECISION
 
     precision = GRAPH_PRECISION * PRIOR_SOURCE_PRECISION_SCALE["today_bootstrap"]
     return FilterState(

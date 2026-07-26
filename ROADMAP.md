@@ -445,8 +445,9 @@ items; absorbs R3 item 14.
   q-vs-marginal wire fields, no-path badge, cycle banner, message-mode
   observation plan. Superseded: reverse-edge-generation display (one
   factor per relation + implied-reverse chips).
-- **P6 Hardening** — §21 locks incl. 21.11-21.13, migration round-trips,
-  certification case.
+- ~~**P6 Hardening** — §21 locks incl. 21.11-21.13, migration round-trips,
+  certification case.~~ **DONE 2026-07-26** (see STATUS wrap 2026-07-26b:
+  + sandbox retirement, autotune re-point, /graph/nodes zero-obs baseline).
 - **P7 Sparse solve** — DEFERRED until a universe demands it (dense passes
   the 1k perf rail; pairwise assembly is sparse-ready).
 
@@ -473,15 +474,21 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   opt-in / inspector decomposition / dynamics policy + layered warnings +
   A/B timeline). Dynamic-harmonic Phase-5 verdict stands: RECORD, HOLD
   ADOPTION (layered opt-in; smooth_field default).
+- **P6 HARDENING COMPLETE 2026-07-26** (wrap 2026-07-26b below): sandbox
+  retired (graph_service deleted, POST /graph/solve gone, constants live
+  in graph_params.py), autotune re-pointed to production LOO
+  (smooth-field only, 400 otherwise), /graph/nodes = zero-observation
+  production baseline (selected universe, transported-prior handles),
+  §21 goldens incl. 21.11–21.13 locked THROUGH the HTTP API, migration
+  round-trips locked (envelope+policy reboot, workspace reconcile,
+  legacy-blob mirror, corrupt-blob tolerance), certification case
+  `graph_precision_messages` registered (5 lock targets, 77 tests).
 - **Next up (priority order)**:
-  1. P6 hardening leftovers (2026-07-21b wrap): autotune re-point to the
-     unified endpoint, /graph/nodes zero-obs baseline, sandbox deletion,
-     §21 golden locks, migrations, certification case.
-  2. Analytic structural-chart Jacobian (adoption follow-up — the FD
+  1. Analytic structural-chart Jacobian (adoption follow-up — the FD
      path already beats raw's analytic ~3×; pure upside).
-  3. Dynamic-harmonic decisive experiment: INTRADAY async replay (§16.1)
+  2. Dynamic-harmonic decisive experiment: INTRADAY async replay (§16.1)
      — daily granularity cannot see the framework's target regime.
-  4. Riders: eSSVI/constrained-spline comparator column, exact
+  3. Riders: eSSVI/constrained-spline comparator column, exact
      Martini–Mingone cross-check tier, Quality-view certificate chip,
      hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair.
 - **User-side reminders**: re-save Options ▸ Fit (the dev store still
@@ -490,6 +497,66 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-07-26b) — P6 HARDENING SHIPPED (sandbox retired)
+
+- **Sandbox retired**: `volfit/api/graph_service.py` DELETED along with
+  POST /graph/solve and the sandbox schemas (GraphObservation /
+  GraphSolveRequest / GraphNodeResult / GraphSolveResponse /
+  GraphAutotuneRequest); the shared regime constants + lattice builder
+  moved to **`volfit/api/graph_params.py`** (GRAPH_PRIOR_HYPER,
+  GRAPH_PRECISION, SAME/CROSS_TICKER_WEIGHT, AUTOTUNE_ETA_GRID,
+  lattice_weights) — graph_universe/extrapolation/message/nodes/
+  observation_filter re-pointed. AppState dropped the sandbox universe
+  cache (`universe`/`universe_sig`/`calib_signature` gone; the selected
+  universe is rebuilt per request — no cache to go stale). The pure
+  library (smile_universe.propagate_handles + its golden tests +
+  demo.py) is untouched.
+- **Autotune re-pointed** (`graph_backtest.autotune`): POST
+  /graph/autotune now takes the PRODUCTION body (GraphExtrapolateRequest)
+  and LOO-scores the same candidate rule as the backtest
+  (calibrated + validation-clean; bootstrap priors are circular) over
+  AUTOTUNE_ETA_GRID on `graph_extrapolation.solve` hold-outs.
+  Guards → descriptive 400s: non-smooth_field (no eta knob), what-if
+  pulses (hypothesis-firm on every solve — LOO can't hold them out),
+  <2 candidates. Frontend ships `paramsBody + propagationMode:
+  "smooth_field"` (old `observations` list gone).
+- **GET /graph/nodes = zero-observation production baseline**
+  (`graph_nodes.baseline_node_infos`): SELECTED universe at
+  transported-prior handles (same resolve_priors the solve uses, so
+  canvas == extrapolate prior columns EXACTLY — test-locked), fresh
+  per-request lit flags, `node_calendar_t` now the single t source for
+  all graph payloads. SEMANTIC CHANGE (ratified U3/P6 pointer): node
+  membership is selection-driven — the gated app serves the flat-
+  baseline lattice BEFORE any Calibrate (was: empty list), and a
+  haircut-mode session keeps prior-anchored baselines (was: mode-cached
+  today-fits).
+- **Test migration** (survey-driven): test_api_graph.py rewritten to the
+  production path — knob monotonicity (eta/kappa/crossWeight), OT
+  lambda/nu wiring, 422 param guards, pulse absorption, and the
+  dropped-pulse zero-observation contract now lock THROUGH
+  /graph/extrapolate; autotune grid/argmin + three 400s locked; prior
+  round-trip through LOO ≈ sub-bp (capture residual ~0.84bp, asserted
+  < 5bp). /graph/nodes tests rewritten to the new contract.
+- **§21 through the API** (`tests/test_graph_message_api_golden.py`, 7):
+  21.1 (+ precision-moves-bands-not-means), 21.4 average + q=2p, 21.11
+  dead-informer zero dilution + exact Var_D = Var_R + 1/p_dead, 21.12
+  shrunk ρβz + fixed-κ corroboration 2ρ/(1+ρ), 21.13
+  baseline-enters-once off response baselinePrecision, 21.10 HTTP byte
+  identity — explicit messageEdges + firm pulses, flatAtm.
+- **Migration round-trips** (`tests/test_graph_config_migrations.py`, 7):
+  envelope+policy SQLite reboot byte-equality, workspace-doc reconcile
+  (active rows synced, NO version bump, persists a third boot),
+  legacy-blob mirrors ACTIVE rows through the lifecycle
+  (downgrade-safe), junk-JSON blob → warned fallback + self-heal,
+  per-slot degrade, malformed-row drop at migration. Residual-store
+  persistence already locked (test_graph_dynamic_production).
+- **Certification**: `graph_precision_messages` case registered (5 lock
+  targets = message goldens/production/API + config migrations + dynamic
+  production; 77 tests PASS via `-m backtest.certification run`).
+- Full backend suite + frontend 129/129 vitest + build + 8-tab UI smoke
+  green (counts in the commit). NEXT: analytic structural-chart
+  Jacobian, or the intraday async replay (§16.1).
 
 ### 🧭 SESSION WRAP (2026-07-23b) — P6 UI ARC COMPLETE: V1+V2+V3 SHIPPED
 
