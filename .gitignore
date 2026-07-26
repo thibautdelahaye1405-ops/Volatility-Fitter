@@ -46,3 +46,4 @@ restart.local.ps1
 deploy/client.env
 *.sqlite-shm
 *.sqlite-wal
+Docs/notes/build_coordinates/
