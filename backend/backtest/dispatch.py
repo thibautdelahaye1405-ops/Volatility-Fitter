@@ -55,6 +55,13 @@ class ModelSpec:
 #: SIV-4 was dropped (pathologically slow, ~8.6 s/fit, with no precision gain).
 DEFAULT_SWEEP: tuple[ModelSpec, ...] = (
     ModelSpec("svi", "SVI-JW"),  # the baseline
+    # Committee R3 chart-decision arms (run via --models; kept OUT of default
+    # analyses): the raw chart at the production buffered cap, and the
+    # structural (beta_L, beta_R, k*, w*, kappa*) chart at the same cap —
+    # the like-for-like pair the default flip is adjudicated on, with the
+    # frozen SVI-JW (raw @ 2.0) row anchoring against every older part.
+    ModelSpec("svi", "SVI-JW-195", {"lee_slope_max": 1.95}),
+    ModelSpec("svi", "SVI-STRUCT", {"lee_slope_max": 1.95, "chart": "structural"}),
     ModelSpec("lqd", "LQD-6", {"n_order": 6}),
     ModelSpec("lqd", "LQD-8", {"n_order": 8}),
     ModelSpec("lqd", "LQD-10", {"n_order": 10}),
@@ -88,7 +95,9 @@ def _fit_slice(spec: ModelSpec, k, w, weights, tau, band=None) -> tuple[SmileMod
                             weights=weights, band=band, **_LQD)
         return r.slice, getattr(r, "n_evaluations", None)
     if spec.family == "svi":
-        c = calibrate_svi(k, w, tau, weights=weights, band=band, **_SVI)
+        # Per-spec overrides layer on the frozen defaults (the R3 chart arms).
+        c = calibrate_svi(k, w, tau, weights=weights, band=band,
+                          **{**_SVI, **spec.params})
         return c.raw, getattr(c, "n_evaluations", None)
     s = calibrate_sigmoid(k, w, tau, weights=weights, band=band,
                           n_cores=spec.params.get("n_cores", 2), **_SIG)

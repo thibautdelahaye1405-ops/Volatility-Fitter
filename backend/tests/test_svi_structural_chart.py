@@ -62,6 +62,14 @@ def test_chart_round_trip_and_identities():
         back = unpack_structural(pack_structural(raw, _LEE_SLOPE_MAX), _LEE_SLOPE_MAX)
         for f in ("a", "b", "rho", "m", "sigma"):
             assert getattr(back, f) == pytest.approx(getattr(raw, f), rel=1e-9, abs=1e-12)
+    # Saturation lock (round-1 sweep bug): an LM trial ANYWHERE in R^5 —
+    # including exp/logistic under/overflow territory — must map to a finite
+    # admissible slice, never a ZeroDivisionError from a lift hitting 0/inf.
+    for extreme in (1e6, -1e6):
+        raw = unpack_structural(np.full(5, extreme), _LEE_SLOPE_MAX)
+        for f in ("a", "b", "rho", "m", "sigma"):
+            assert np.isfinite(getattr(raw, f))
+        assert raw.sigma > 0.0 and raw.b > 0.0 and abs(raw.rho) < 1.0
 
 
 def test_charts_agree_on_clean_quotes():

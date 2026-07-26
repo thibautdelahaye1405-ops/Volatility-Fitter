@@ -618,6 +618,31 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   certificate chip, analytic structural-chart Jacobian, hedge P&L
   campaign (shared with Note 01 arc).
 
+### 🧭 SESSION WRAP (2026-07-26b) — STRUCTURAL-CHART BENCHMARK ADJUDICATED
+
+- **Two-round sweep DONE** (backtest.run_compute, 3 regimes × mid/haircut,
+  arms SVI-JW@2.0 anchor / SVI-JW-195 / SVI-STRUCT; ~28.8k fits/arm;
+  pre-registered gate + both rounds + artifact analysis in
+  backend/backtest/FINDINGS_svi_chart.md; adjudicator =
+  backtest/analyze_svi_chart.py [tag argv]; results tagged
+  svichart/svichart2, canonical tables untouched; run_compute gained
+  --tag; NB tool background jobs got KILLED mid-sweep — round 2 ran
+  DETACHED via Start-Process + Monitor, the sanctioned pattern).
+- **Round 1: HOLD** (gates 2+4). All 30 structural breaks = ONE bug:
+  exp underflow to float 0.0 in the κ* lift → ZeroDivisionError; fixed
+  by θ-saturation ±80 (every lift strictly interior in float64) +
+  battery lock. **Round 2: HOLD on gate 4 alone** — but the failure is
+  a SURVIVORSHIP ARTIFACT: raw@1.95 converged fits arb at 1.076% vs
+  structural 0.864% (all-converge); raw's headline 0.826% is diluted
+  by its 9,472 EXHAUSTED fits (a third of all fits! arb rate 0.317% —
+  they stop before reaching any optimum). Structural wins every other
+  criterion: precision better/equal in all 12 medians, ZERO breaks (raw
+  6), 594 vs 9,472 exhaustions, ~3× faster.
+- **RECOMMENDATION AWAITING RATIFICATION**: amend gate 4 to converged
+  (or post-repair) populations → flip sviChart default to
+  "structural"; analytic structural Jacobian = adoption follow-up.
+  Until ratified the default stays "raw" (the pre-registered verdict).
+
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 
 - **Campaign 2 (_p5b_dyn_*) complete + scored** (21,958 intersected OOS

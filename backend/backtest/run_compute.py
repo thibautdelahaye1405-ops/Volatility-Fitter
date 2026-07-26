@@ -112,6 +112,9 @@ def main() -> int:
                     help="comma-separated model labels to keep (default: the full "
                          "sweep). e.g. SVI-JW,LQD-6,LQD-8,LQD-10,LQD-12,SIV-0 drops "
                          "the slow, non-viable SIV-1/2/3 for the scaled batches.")
+    ap.add_argument("--tag", default="",
+                    help="suffix for the result files — keeps decision-specific "
+                         "runs (e.g. the R3 chart arms) off the canonical tables")
     args = ap.parse_args()
     weights = [w.strip() for w in args.weights.split(",")]
     fit_modes = [m.strip() for m in args.fit_modes.split(",")]
@@ -147,11 +150,12 @@ def main() -> int:
         print(f"  {as_of}: {len(fixtures)} assets done"
               f"{' (+LV)' if args.lv else ''}", flush=True)
 
+    suffix = f"_{args.tag}" if args.tag else ""
     for (w, m), rows in par.items():
-        base = _write(rows, f"{args.regime}_parametric_{w}_{m}")
+        base = _write(rows, f"{args.regime}_parametric_{w}_{m}{suffix}")
         print(f"wrote {base}.json  ({len(rows)} rows)")
     if args.lv:
-        base = _write(lv_rows, f"{args.regime}_localvol")
+        base = _write(lv_rows, f"{args.regime}_localvol{suffix}")
         print(f"wrote {base}.json  ({len(lv_rows)} rows)")
     return 0
 

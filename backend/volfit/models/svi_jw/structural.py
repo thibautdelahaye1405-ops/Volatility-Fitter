@@ -55,13 +55,23 @@ def _logit(p: float) -> float:
     return float(np.log(p / (1.0 - p)))
 
 
+#: Lift saturation bound: inside ±80 every lift is STRICTLY interior in
+#: float64 (logistic(-80) ~ 1.8e-35 > 0, exp(±80) finite-nonzero, softplus
+#: > 0) — without it an LM trial at theta_4 < -745 underflowed exp to an
+#: exact 0.0 and broke the s = b(1-rho^2)^{3/2}/kappa recovery with a
+#: ZeroDivisionError (all 30 breaks of the round-1 chart sweep). k* is a
+#: genuine location and stays unclipped.
+_THETA_SAT = 80.0
+
+
 def unpack_structural(theta: np.ndarray, cap: float) -> RawSVI:
     """Map (ℓ, r, k*, h, q) to an admissible RawSVI (see module docstring)."""
-    beta_l = cap * _logistic(float(theta[0]))
-    beta_r = cap * _logistic(float(theta[1]))
+    lifted = np.clip(np.asarray(theta, dtype=float), -_THETA_SAT, _THETA_SAT)
+    beta_l = cap * _logistic(float(lifted[0]))
+    beta_r = cap * _logistic(float(lifted[1]))
     k_star = float(theta[2])
-    w_star = _softplus(float(theta[3]))
-    kappa = float(np.exp(theta[4]))
+    w_star = _softplus(float(lifted[3]))
+    kappa = float(np.exp(lifted[4]))
     b = 0.5 * (beta_l + beta_r)
     rho = (beta_r - beta_l) / (beta_r + beta_l)
     one_m_rho2 = 1.0 - rho * rho
