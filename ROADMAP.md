@@ -638,10 +638,12 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   they stop before reaching any optimum). Structural wins every other
   criterion: precision better/equal in all 12 medians, ZERO breaks (raw
   6), 594 vs 9,472 exhaustions, ~3× faster.
-- **RECOMMENDATION AWAITING RATIFICATION**: amend gate 4 to converged
-  (or post-repair) populations → flip sviChart default to
-  "structural"; analytic structural Jacobian = adoption follow-up.
-  Until ratified the default stays "raw" (the pre-registered verdict).
+- **RATIFIED (user, same day) → FLIP EXECUTED (897e010)**: gate 4
+  amended to converged populations (0.822% struct vs 1.076% raw) →
+  sviChart default = "structural" (schemas + frontend + default lock);
+  full suite 1469 green under the flipped default; raw = explicit
+  config/rollback; the harness anchor arm stays raw@2.0 forever.
+  Adoption follow-up: analytic structural-chart Jacobian.
 
 ### 🧭 SESSION WRAP (2026-07-23) — DYNAMIC-HARMONIC PHASE 5 ADJUDICATED: RECORD, HOLD ADOPTION
 
