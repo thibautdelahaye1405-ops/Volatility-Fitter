@@ -23,27 +23,36 @@ re-coordinatization replaces them with five quantities in trader vocabulary ---
 ATM variance, a time-scaled ATM skew, two normalized wing slopes, and the
 minimum variance. Product status up front: JW is the analytical and benchmark
 coordinate system of this note; production fits and stores \emph{raw} SVI and
-displays model-agnostic ATM handles, and five-handle JW entry, bumping and
-export are not yet product features. We give the exact conversion in both
-directions together with its \emph{regular inverse domain}: on $v>0$, $p,c>0$,
-$-p/2<\psi<c/2$, $\psi\ne0$, $\widetilde v<v$ the displayed formulas define
-the unique nonsingular inverse --- while the image also contains the singular
-stratum $\psi=0$ (ATM at the vertex, $\widetilde v=v$), attained by infinitely
-many raw slices, because the handles omit ATM curvature and cannot identify
-$(m,\sigsvi)$ there. The production converter carries \emph{no} guards, so the
-domain is the caller's contract, stated precisely and now test-locked. We
-restate the two \emph{coded} no-arbitrage fences in JW units --- Lee's cap
-becomes $\max(p,c)\sqrt{v\tau}\le2$ and the minimum-variance condition is
-$\widetilde v\ge0$ --- and are precise about what they guarantee: they are
+displays model-agnostic ATM handles. Five-handle JW entry, bumping and export
+are not yet wired UI features, but their required analytics spine now ships:
+a domain-guarded converter with structured failures
+(\texttt{jw\_to\_raw\_checked}) and a desk-unit ticket layer (ATM vol,
+$25/10\Delta$ risk reversals and butterflies, wing slopes, var swap, and the
+forward-error bump). We give the exact conversion in both directions together
+with its \emph{regular inverse domain}: on $v>0$, $p,c>0$, $-p/2<\psi<c/2$,
+$\psi\ne0$, $\widetilde v<v$ the displayed formulas define the unique
+nonsingular inverse --- while the image also contains the singular stratum
+$\psi=0$ (ATM at the vertex, $\widetilde v=v$), attained by infinitely many
+raw slices, because the handles omit ATM curvature and cannot identify
+$(m,\sigsvi)$ there. The benchmark converter carries \emph{no} guards, so the
+domain is the caller's contract, stated precisely and test-locked. We restate
+the two \emph{coded} no-arbitrage fences in JW units --- Lee's cap becomes
+$\max(p,c)\sqrt{v\tau}\le\beta_{\max}$, with the production cap strictly
+buffered at $\beta_{\max}=\svileemax$ because the boundary $\beta=2$ itself
+admits negative tail density --- and are precise about what they guarantee:
 finite-weight, adjustable penalties that do \emph{not} certify Durrleman
 $g\ge0$ (a classical slice passing both while arbitrageable is test-locked).
-The unconstrained reparametrization (softplus / $\tanh$ / $\exp$) lets a plain
-Levenberg--Marquardt solver only ever propose \emph{structurally valid
-hyperbolas}. As in the LQD note, the residual Jacobian is available in closed
-form; a fresh run recovers a benchmark slice through a production
-JW$\to$raw$\to$fit$\to$JW round trip to a fraction of a vol bp, and runs
-\svispeedup$\times$ faster than the finite-difference Jacobian on that
-microbenchmark.
+What \emph{does} certify is the belly butterfly certificate: a dense-grid $g$
+check over the traded range that every displayed slice must pass to be
+publishable, with a one-shot repair refit when it fails. The default
+optimization chart is now \emph{structural} ---
+$(\beta_L,\beta_R,k^*,w^*,\kappa^*)$ under lifts, so every finite iterate is
+strictly floor-positive and strictly Lee-clean and the penalty rows are inert
+--- adopted over the historical raw chart by a two-round pre-registered
+benchmark. Both charts carry closed-form residual Jacobians; a fresh run
+recovers a benchmark slice through a production JW$\to$raw$\to$fit$\to$JW
+round trip to a fraction of a vol bp, and runs \svispeedup$\times$ faster
+than the finite-difference Jacobian on that microbenchmark.
 \end{abstract}
 
 \newpage
@@ -70,15 +79,18 @@ per-parameter costs appear.
 
 \paragraph{Product status.} JW is the trader-oriented \emph{analytical}
 coordinate system used by this note and by the benchmark helper
-(\texttt{jw\_to\_raw}, whose only repository caller is a benchmark test).
-Current production calibration fits and stores \emph{raw} SVI as the selected
-overlay family and displays three model-agnostic numeric handles --- ATM vol,
-skew and curvature, by finite differences of the displayed curve --- for every
-model. There is no backend \texttt{raw\_to\_jw}, no five-handle JW API/UI
-entry, no JW bumping and no JW export; those are candidate features, not
-shipped ones. Keep this in mind whenever the prose below says what a desk
-``quotes'' or ``reads'': it describes the coordinate system, not a wired
-workflow.
+(\texttt{jw\_to\_raw}, unguarded, whose only repository caller is a benchmark
+test). Current production calibration fits and stores \emph{raw} SVI as the
+selected overlay family and displays three model-agnostic numeric handles ---
+ATM vol, skew and curvature, by finite differences of the displayed curve ---
+for every model. There is still no five-handle JW API/UI entry, no JW bumping
+and no JW export in the interface; but the committee revision shipped the
+analytics layer any such workflow is required to sit behind: the
+domain-guarded converter \texttt{jw\_to\_raw\_checked}
+(\cref{sec:domain}) and the desk-unit ticket of \cref{sec:desk}
+(\texttt{models/svi\_jw/desk.py}). Keep this in mind whenever the prose below
+says what a desk ``quotes'' or ``reads'': it describes the coordinate system
+and its shipped analytics, not a wired UI workflow.
 
 SVI is the workhorse of single-slice equity-index fitting because the hyperbola
 \begin{equation}
@@ -114,16 +126,28 @@ Note~10, again as a finite-weight penalty.
 \end{enumerate}
 Raw SVI slices can remain arbitrageable without conditions stronger than
 tier~2 --- this is standard in the SVI literature (Gatheral--Jacquier; the
-full butterfly-domain characterization is Martini--Mingone).
+full butterfly-domain characterization is Martini--Mingone). Production
+therefore adds an \emph{acceptance rule} sitting between tiers 2 and 3: the
+dense-grid belly butterfly \emph{certificate} of \cref{sec:certificate},
+which every displayed slice must pass to count as publish-ready. It certifies
+tier 3 \emph{on the traded range} --- the region the wing screens do not
+reach and the publish-time projection never touches --- not on the whole
+line.
 
 \begin{invariant}
 \begin{enumerate}[leftmargin=1.6em]
 \item The optimizer can only propose structurally valid hyperbolas (tier 1):
-$b\ge0$, $|\rho|<1$, $\sigsvi>0$ hold by reparametrization, not by rejection.
+$b\ge0$, $|\rho|<1$, $\sigsvi>0$ hold by reparametrization, not by rejection
+--- and under the default \emph{structural} chart (\cref{sec:structural})
+every finite iterate is additionally strictly floor-positive and strictly
+Lee-clean, so tier 2 holds by construction and the fences are inert.
 \item The two coded no-arbitrage fences (tier 2) --- non-negative minimum
-variance and the Lee wing cap --- are soft hinges that are \emph{exactly zero}
-on any tier-2-clean slice (byte-identical fits). They bound, but do not
-certify, tier-3 butterfly cleanliness.
+variance and the Lee wing cap, the latter strictly buffered \emph{below}
+Lee's bound --- are soft hinges that are \emph{exactly zero} on any
+tier-2-clean slice (byte-identical fits). They bound, but do not certify,
+tier-3 butterfly cleanliness; the certificate of \cref{sec:certificate} is
+the acceptance rule, and an uncertified displayed slice cannot become a
+mark.
 \item The raw$\leftrightarrow$JW conversion is exact on its \emph{regular}
 domain (\cref{prop:domain}); the converter itself carries no guards, so the
 domain is the caller's contract (test-locked).
@@ -340,18 +364,50 @@ catastrophic cancellation before the limit.
 \end{remark}
 
 \begin{caution}
-The production \texttt{jw\_to\_raw} implements the formulas verbatim with
+The benchmark \texttt{jw\_to\_raw} implements the formulas verbatim with
 \emph{zero} domain checks, and the failure modes differ by case --- none is
 uniformly ``silent'': a scalar $p+c=0$ raises \texttt{ZeroDivisionError};
 $\psi$ outside $(-p/2,c/2)$ takes the square root of a negative and returns
 NaNs (with a runtime warning); $\widetilde v\ge v$ returns $\sigsvi\le0$, not
-a slice; and a near-zero $\psi$ silently amplifies rounding. All of this is
-deliberate --- the converter's only caller feeds it benchmark handles
-comfortably inside \cref{prop:domain} --- but it makes the domain a
-\emph{contract}, not a runtime guarantee. The contract and each failure mode
-are now test-locked (\texttt{test\_svi\_domain.py}); anyone wiring JW handles
-to user input must still validate against \cref{prop:domain} first.
+a slice; and a near-zero $\psi$ silently amplifies rounding. That contract is
+test-locked (\texttt{test\_svi\_domain.py}) --- but production no longer
+relies on the contract alone. Committee revision R5 promoted a guarded
+variant, \texttt{jw\_to\_raw\_checked}: it validates the \emph{complete}
+regular domain of \cref{prop:domain} and raises a structured
+\texttt{JWDomainError} whose machine-readable code names the failed
+inequality (\texttt{nonpositive\_tenor} / \texttt{nonpositive\_variance} /
+\texttt{nonpositive\_wing} / \texttt{atm\_slope\_out\_of\_range} /
+\texttt{singular\_stratum} / \texttt{floor\_not\_below\_level}) instead of
+case-dependent NaNs. It also repairs the numerics near the singular stratum:
+the denominator of \eqref{eq:jw_to_raw_2} vanishes \emph{quadratically} as
+$\psi\to0$, and the checked converter evaluates it in a rearranged,
+algebraically identical form that never subtracts two large near-equal
+numbers, so the inverse stays accurate right up to the explicit rejection.
+Anything user-facing is required to sit behind the checked converter
+(test-locked, \texttt{test\_svi\_desk\_and\_guards.py}); the unguarded one
+remains for the benchmark.
 \end{caution}
+
+\subsection{From handles to desk units}
+\label{sec:desk}
+
+The JW handles are model coordinates in model units --- $v$ a variance,
+$\psi$ a total-volatility slope, $p,c$ normalized variance slopes. A desk
+quotes none of those. The desk-unit ticket (\texttt{models/svi\_jw/desk.py},
+committee R5) converts \emph{any} smile --- raw SVI, LQD or MCS --- into the
+instruments actually traded: the ATM vol $\sqrt{w(0)/t}$; $25\Delta$ and
+$10\Delta$ risk reversals and butterflies, with strikes solved on the model
+smile via the \emph{forward} Black delta $\PhiN(d_+)$ (no rates convention
+--- the fitter works in forward measure throughout); the actual asymptotic
+wing slopes (the Lee objects, not the normalized $p,c$ indicators); and the
+var-swap vol by log-contract replication. The ticket also carries the
+committee's ``missing derivative'': \texttt{forward\_bump} re-reads the same
+ticket after a relative forward error $\dd F/F$ --- a wrong forward shifts
+every log-moneyness by $-\dd F/F$ and is easily misread as skew or wing
+movement, and the bump row shows exactly which desk quantities a pure forward
+mistake moves. This is an analytics layer, not a UI: its role is to be the
+conversion layer that any future JW-handle workflow is \emph{required} to sit
+behind, test-locked now rather than designed later.
 
 %======================================================================
 \section{Static no-arbitrage}
@@ -399,15 +455,45 @@ production rule that came out of that audit is that the diagnostic is always
 computed on model derivatives, never by differencing prices (Note~09 has the
 cross-model treatment).
 
-\subsection{The four production layers}
+\subsection{The belly certificate and the one-shot repair}
+\label{sec:certificate}
+
+The counterexample above is why the certificate exists: the cheap screens
+fence the wings and the floor, and the Vogt-type dip lives exactly where they
+do not reach --- the \emph{belly} of the traded range. Committee revision R2
+promoted the check itself to the acceptance rule. On every displayed slice,
+whatever its model, production evaluates Durrleman $g$ on an 801-point grid
+over the traded strike range --- from the model's own derivatives, never by
+differencing prices --- and certifies the slice iff $g\ge-10^{-4}$ at every
+grid point (a finite-difference-stencil allowance, orders below any real
+violation: the Vogt dip is $-0.033$, the Lee-boundary example of
+\cref{sec:penalties} is $-0.0485$). The certificate costs a few dozen
+microseconds, so affordability is no argument against running it on every
+fit. Its verdict has teeth: an uncertified slice fails publish-readiness and
+hard-blocks export with an HTTP~409 --- \emph{an uncertified slice cannot
+become a mark}. And failure is not terminal: when a first SVI fit fails the
+certificate, the calibrator refits \emph{once} with a belly hinge sampled on
+the traded-range grid and keeps the repair only if it certifies
+(\texttt{bellyRepair}, on by default); clean first fits never see a second
+solve. The certification case \texttt{belly\_certificate} locks the pipeline
+end to end, Vogt slice included.
+
+\subsection{The six production layers}
 \label{sec:layers}
 
-What production actually runs is a stack of four distinct layers, in
+What production actually runs is a stack of six distinct layers, in
 increasing distance from the core fit:
 \begin{enumerate}[leftmargin=1.6em]
 \item \textbf{Core fences} (always in the objective): the min-variance and
 Lee penalty rows of \cref{sec:penalties} --- finite-weight, configurable,
-zero on a clean slice.
+zero on a clean slice, and \emph{structurally} zero under the default
+structural chart (\cref{sec:structural}).
+\item \textbf{Belly certificate} (always on; \cref{sec:certificate}): the
+dense-grid acceptance rule on the traded range --- fails readiness and
+hard-blocks publish on an uncertified slice.
+\item \textbf{One-shot belly repair} (\texttt{bellyRepair}, default on): a
+single refit with the belly hinge when the certificate fails, kept only if
+the repair certifies.
 \item \textbf{Extrapolated-region enforcement} (\texttt{extrapEnforce},
 default \emph{off}; Notes 09--10): opt-in tapered residual rows on the
 extrapolated strike region --- a Durrleman-$g$ hinge on the slice's own
@@ -420,11 +506,13 @@ reports remaining extrapolated-region $g<0$ per fit --- measurement, not
 enforcement.
 \item \textbf{Publish-time wing projection} (export-only; Note 09 Phase 3): a
 discrete projection of the exported wing samples that raises prices only,
-leaving the fitted core pinned.
+leaving the fitted core pinned --- audited to introduce no calendar
+crossings (the manifest's \texttt{projectionCalendarWorstBp}).
 \end{enumerate}
-None of these layers turns a fitted SVI slice into a certified butterfly-free
-object; together they bound, measure, and clean at the boundary where it
-matters.
+No single layer turns a fitted SVI slice into an everywhere-certified
+butterfly-free object; together they fence (1), certify the traded range with
+teeth (2--3), bound and measure beyond it (4--5), and clean at the boundary
+(6).
 
 \begin{proposition}[The enforced conditions, in JW units]
 \label{prop:jwnoarb}
@@ -433,7 +521,9 @@ on the trader handles: the minimum-variance condition
 $a+b\sigsvi\sqrt{1-\rho^2}\ge0$ is exactly $\widetilde v\ge0$, and Lee's cap
 $b(1+|\rho|)\le\beta_{\max}$ is exactly
 \[
-\max(p,c)\,\sqrt{vt}\ \le\ \beta_{\max}\ (=2).
+\max(p,c)\,\sqrt{vt}\ \le\ \beta_{\max}
+\qquad(\text{Lee's bound is }2;\ \text{the production cap is }\svileemax,
+\ \cref{sec:penalties}).
 \]
 \end{proposition}
 
@@ -464,11 +554,23 @@ boundary:
 \end{equation}
 with residual multiplier $W=\svipenalty$ and Lee cap
 $\beta_{\max}=\svileemax$. The first prevents \emph{negative total variance at
-the minimum}; the second enforces Lee's bound that the asymptotic
-total-variance slope cannot exceed $2$. Because both vanish on a clean fit, a
-tier-2-clean smile (such as the benchmark of \cref{sec:example}) is
-byte-identical with or without them --- they are a feasibility fence, not a
-regularizer.
+the minimum}; the second caps the asymptotic total-variance slope. Because
+both vanish on a clean fit, a tier-2-clean smile (such as the benchmark of
+\cref{sec:example}) is byte-identical with or without them --- they are a
+feasibility fence, not a regularizer.
+
+The cap's default is deliberately \emph{not} Lee's bound of $2$, and the
+reason is a committee finding worth a paragraph. A slice sitting exactly
+\emph{at} $\beta=2$ passes the floor and wing screens with zero penalty ---
+the hinge is zero precisely on the boundary --- yet already carries negative
+tail density: the committee's counterexample reads $g(10)=-0.0485$ with
+minimum total variance $0.44$. The boundary itself is broken, and the trap
+was \emph{live}: before the buffer, a production SPY wing sat at exactly
+$2.0000$, and the buffered refit moved the fitted IVs by $0.03$ vol bp ---
+the fence moved, the smile did not. The default cap is therefore strictly
+buffered at $\svileemax$; the historical $2.0$ is reachable only as explicit
+configuration, and the certification case \texttt{svi\_lee\_boundary} keeps
+the counterexample fenced and the tail limit strictly positive.
 
 \begin{caution}
 Read the semantics of $W$ carefully: it multiplies the \emph{residual} rows in
@@ -482,15 +584,16 @@ fit quality: raising it cannot improve a feasible fit, and lowering it only
 lets the optimizer wander into the arbitrageable cone. Both fences are also
 \emph{adjustable}, not unconditional: a user can set
 \texttt{sviPenaltyWeight}$\,=0$ (fences off) or pick a \texttt{leeSlopeMax}
-above $2$, so they are configuration, not guarantees. Note~09 develops the
-Lee bound across all the models; here it is one of these two hinges.
+at or above $2$ --- restoring the broken boundary --- so they are
+configuration, not guarantees. Note~09 develops the Lee bound across all the
+models; here it is one of these two hinges.
 \end{caution}
 
 %======================================================================
 \section{Calibration}
 \label{sec:calib}
 
-\subsection{Unconstrained reparametrization}
+\subsection{The raw chart: unconstrained reparametrization}
 
 Rather than run a bound-constrained optimizer, the Vol-Fitter reparametrizes so
 that \emph{every} point of $\R^5$ maps to a \emph{structurally valid raw
@@ -509,7 +612,69 @@ nonsensical hyperbola. It guarantees no more than that: $a$ stays free, so an
 optimizer iterate can still carry negative total variance somewhere (the vol
 conversion floors $w$ at $10^{-12}$ so the residual stays evaluable), and
 arbitrage cleanliness is the business of the fences of \cref{sec:noarb}, which
-remain soft.
+remain soft. This is the historical \emph{raw} chart
+(\texttt{sviChart="raw"}), kept as explicit configuration for comparability
+and rollback; the shipped default is the structural chart below.
+
+\subsection{The structural chart (the default)}
+\label{sec:structural}
+
+The committee's chart parameterizes the slice by the quantities the
+guarantees are \emph{about} --- the two actual asymptotic wing slopes, the
+vertex location, the minimum total variance, and the vertex curvature ---
+each lifted so that every finite optimizer vector is admissible
+(\texttt{models/svi\_jw/structural.py}):
+\begin{equation}
+\beta_L=\beta_{\max}\operatorname{logistic}(\ell),\quad
+\beta_R=\beta_{\max}\operatorname{logistic}(r),\quad
+k^*\ \text{free},\quad
+w^*=\operatorname{softplus}(h)>0,\quad
+\kappa^*=e^{q}>0,
+\label{eq:structural}
+\end{equation}
+with $\beta_{\max}$ the buffered Lee cap of \cref{sec:penalties}, so both
+wings are \emph{strictly} Lee-clean at every iterate. Raw recovery is exact:
+\begin{equation}
+b=\tfrac{\beta_L+\beta_R}{2},\quad
+\rho=\tfrac{\beta_R-\beta_L}{\beta_R+\beta_L},\quad
+\sigsvi=\frac{b(1-\rho^2)^{3/2}}{\kappa^*},\quad
+m=k^*+\frac{\sigsvi\rho}{\sqrt{1-\rho^2}},\quad
+a=w^*-b\sigsvi\sqrt{1-\rho^2}.
+\label{eq:structural_inverse}
+\end{equation}
+Under this chart the floor and Lee penalty rows are \emph{structurally} zero
+and the trial-variance clip never fires ($w(k)\ge w^*>0$ everywhere): tier 2
+holds by construction and the fences become inert bookkeeping. It does
+\emph{not} certify $g\ge0$ --- the belly certificate of
+\cref{sec:certificate} remains the acceptance authority.
+
+The default was flipped to structural by a two-round \emph{pre-registered}
+benchmark (ratified 2026-07-26; the adjudication lives in
+\nolinkurl{backtest/FINDINGS_svi_chart.md}), and its decisive finding is a
+caution for anyone comparing fitting charts.
+On $\sim$29k real fits per arm the raw chart's \emph{headline} arbitrage
+incidence looked lower --- but a third of its fits ($9{,}472$) had exhausted
+the 500-evaluation budget before reaching any optimum, and those unfinished
+fits, whose arb rate reads $0.317\%$ precisely \emph{because} they are
+unfinished, diluted the average: a survivorship artifact in reverse.
+Conditioned on convergence, raw reads $1.076\%$ genuine-arb incidence against
+structural's $0.864\%$ (all structural fits converge; $0.822\%$ on the
+matched converged population), with structural better or equal in all 12
+regime-precision medians, zero structural breaks, $594$ vs $9{,}472$
+evaluation-cap exhaustions, and $\sim3\times$ faster wall-clock. The offline
+backtest's frozen \texttt{SVI-JW} arm stays raw at cap $2.0$ forever, for
+comparability of its historical parts.
+
+One numerical honesty note from the adoption follow-up: lifting through
+logistics puts the chart's edges at floating-point saturation, and two latent
+boundary bugs surfaced only when the analytic Jacobian landed. A wing
+saturated against an $O(1)$ other can round $\rho$ to an exact $\pm1$ ---
+collapsing $\sigsvi$ to $0$ and $m$ to NaN --- and $\operatorname{logistic}(x)$
+rounds to exactly $1.0$ for $x\gtrsim37$, landing a wing exactly \emph{at}
+the cap and breaking the strict-fence contract. Both are closed structurally:
+the lifts are clipped one ulp inside $1$, and $1-\rho^2$ is computed by the
+exact identity $4\beta_L\beta_R/(\beta_L+\beta_R)^2$, which never rounds to
+zero.
 
 \subsection{Objective, weights and the data-driven start}
 
@@ -521,9 +686,20 @@ the calibrator's low-level API also accepts arbitrary $\omega_i$ (e.g.\
 vega$^2$, used by tests and research scripts), but that is a code capability,
 not a surfaced setting. The initializer is geometric and reads the smile
 directly: the argmin of $w$ seeds $(a,m)$, and the two finite wing slopes seed
-$(b,\rho)$ via \eqref{eq:svi_wings}, then the reparametrization
-\eqref{eq:reparam} is inverted to get $\theta_0$. On a liquid smile a single LM
-pass converges from this start.
+$(b,\rho)$ via \eqref{eq:svi_wings}, then the active chart is inverted to get
+$\theta_0$ (the structural chart re-expresses the \emph{same} data-driven
+start). On a liquid smile a single LM pass converges from this start.
+
+One adversarial guard sits before any solve: with fewer than three usable
+quotes the calibrator \emph{refuses deterministically with a reason} --- five
+parameters against fewer residual rows would otherwise crash inside scipy
+with an opaque message --- and the caller's fallback policy (keep the last
+good surface, or another family) takes over. The full adversarial battery
+--- one-sided chains, missing ATM, 0DTE-scale variance, $|\rho|\to1$,
+duplicate strikes, $50\%$ quote noise, crossed bands, evaluation-cap
+exhaustion --- fits finite and fence-respecting or refuses with a reason on
+\emph{both} charts; it is certification case
+\texttt{svi\_adversarial\_inputs}.
 
 \subsection{The analytic Jacobian, derived}
 \label{sec:jacobian}
@@ -565,9 +741,22 @@ the min-variance row differentiates
 $-(a+b\sigsvi\sqrt{1-\rho^2})$ --- e.g.\ its $\theta_\rho$ entry is
 $+Wb\sigsvi\rho\sqrt{1-\rho^2}$ after \eqref{eq:reparam_chain} --- and the
 Lee row differentiates $b(1+|\rho|)$ with the $\operatorname{sign}(\rho)$
-subgradient for $|\rho|$. The calibrator uses this Jacobian whenever no
-var-swap or prior block is present; those blocks are not differentiated and
-switch the fit to scipy's finite differences, exactly as in LQD. With
+subgradient for $|\rho|$.
+
+The structural chart runs the \emph{same} rows through one more layer: the
+residual Jacobian is assembled in raw-parameter space and pushed through the
+closed-form $5\times5$ chain matrix
+$\partial(a,b,\rho,m,\sigsvi)/\partial(\ell,r,k^*,h,q)$
+(\texttt{structural\_chain}), which mirrors the lift exactly, including the
+saturation-clip subgradients (a clipped column is zero). Measured on the
+adoption A/B against the finite-difference structural path: identical smiles
+(ATM equal to $10^{-6}$, same maximum IV error) at $2.1$--$2.4\times$
+wall-clock, with $\text{nfev}\le26$ against the FD range of $30$--$86$. Both
+charts share the same gate: the calibrator uses the analytic Jacobian
+whenever no var-swap or prior block is present; those blocks are not
+differentiated and switch the fit to scipy's finite differences (LQD, by
+contrast, now differentiates its var-swap rows analytically --- Note~01),
+and the belly-repair hinge also takes the FD path (repair refits only). With
 \texttt{extrapEnforce} on, the fit is \emph{hybrid}: the rows above stay
 analytic and only the small extrapolation block is finite-differenced.
 
@@ -635,7 +824,10 @@ $b(1+\rho)=\sviwingR$ (call), and --- the point of the exercise --- the recovere
 jump-wing handles (\cref{tab:svi_jw}) reproduce the original
 $(0.0425,-0.25,0.75,0.25,0.034)$ to display precision. The conversion
 \eqref{eq:jw_def}--\eqref{eq:jw_to_raw_2} is therefore exact on this
-benchmark, not approximate. \Cref{fig:fit}(a) shows the fit and
+benchmark, not approximate. (The generator runs the raw chart; on clean
+quotes like these the structural chart reaches the same optimum to solver
+tolerance --- chart choice moves the trust-region geometry, not the target
+--- which is test-locked.) \Cref{fig:fit}(a) shows the fit and
 \cref{fig:fit}(b) the Durrleman function staying non-negative on the
 diagnostic grid $k\in[-0.45,0.40]$.
 
@@ -683,12 +875,16 @@ is precisely why the app offers the other models.
 \label{sec:original}
 
 SVI and the jump-wing handles are due to Gatheral; the arbitrage-free analysis is
-Gatheral--Jacquier and Durrleman. The implementation choices worth noting are the
-\emph{structural-validity-by-reparametrization} \eqref{eq:reparam} (the solver
-cannot leave tier 1 except through the two soft economic fences), the
-\emph{exact raw$\leftrightarrow$JW conversion with a proved regular domain}
-(the analytical spine of this note and the benchmark; not yet a wired trader
-workflow --- see \cref{sec:why}), and the \emph{analytic LM Jacobian} that
+Gatheral--Jacquier and Durrleman. The implementation choices worth noting are
+the \emph{structural chart} \eqref{eq:structural} (the optimizer's
+coordinates are the very quantities the guarantees are about, so tier 2 holds
+at every iterate and was adopted by a pre-registered benchmark, not by
+taste), the \emph{certificate-gated acceptance rule} of
+\cref{sec:certificate} (the cheap screens fence, the certificate decides ---
+an uncertified slice cannot become a mark), the \emph{exact
+raw$\leftrightarrow$JW conversion with a proved regular domain and a guarded
+production inverse} (\cref{prop:domain}; not yet a wired trader workflow ---
+see \cref{sec:why}), and the \emph{analytic LM Jacobian on both charts} that
 makes SVI the speed peer of the other models.
 
 Limitations, stated plainly. Raw SVI total variance is \emph{one globally
@@ -787,6 +983,45 @@ Prior blocks reach the SVI overlay &
 \cref{sec:calib} &
 \nolinkurl{models/svi_jw/calibrate.py}\newline
 \nolinkurl{test_prior_parametric.py::test_operator_prior_pulls_all_models_toward_prior_skew}\\
+\addlinespace
+Structural chart: ratified default; round trip exact; fenced without
+penalties; charts agree on clean quotes &
+\cref{sec:structural} &
+\nolinkurl{models/svi_jw/structural.py}\newline
+\nolinkurl{test_svi_structural_chart.py::test_structural_is_the_ratified_default}\newline
+\nolinkurl{::test_chart_round_trip_and_identities}\newline
+\nolinkurl{::test_structural_chart_is_fenced_without_penalties}\newline
+\nolinkurl{::test_charts_agree_on_clean_quotes}\\
+\addlinespace
+Belly certificate: Vogt slice fails where screens pass; uncertified blocks
+publish; repair certifies &
+\cref{sec:certificate} &
+\nolinkurl{models/diagnostics.py::belly_certificate}\newline
+\nolinkurl{test_belly_certificate.py::test_vogt_slice_fails_certificate_where_screens_pass}\newline
+\nolinkurl{::test_uncertified_belly_blocks_publish}\newline
+\nolinkurl{test_svi_structural_chart.py::test_vogt_quotes_are_repaired_and_certified}\\
+\addlinespace
+Lee cap strictly buffered; $\beta=2$ boundary admits negative tail density &
+\cref{sec:penalties} &
+\nolinkurl{models/svi_jw/calibrate.py}\newline
+\nolinkurl{test_svi_lee_boundary.py::test_beta2_boundary_admits_negative_tail_density}\newline
+\nolinkurl{::test_default_cap_is_strictly_buffered}\newline
+\nolinkurl{::test_fit_toward_the_boundary_is_fenced_at_the_buffer}\\
+\addlinespace
+Adversarial battery: finite or refuses with a reason, both charts &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/calibrate.py}\newline
+\nolinkurl{test_svi_adversarial.py::test_three_quotes_fits_and_two_refuses}\newline
+\nolinkurl{::test_evaluation_cap_exhaustion_is_honest}\\
+\addlinespace
+Guarded converter: structured failures, stable near the stratum; desk
+ticket and forward bump &
+\cref{sec:domain}, \cref{sec:desk} &
+\nolinkurl{models/svi_jw/svi.py::jw_to_raw_checked}\newline
+\nolinkurl{test_svi_desk_and_guards.py::test_guarded_converter_structured_failures}\newline
+\nolinkurl{::test_guarded_converter_is_stable_near_the_stratum}\newline
+\nolinkurl{::test_desk_ticket_reads_the_instruments}\newline
+\nolinkurl{::test_forward_bump_moves_desk_quantities_on_a_skewed_smile}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -803,12 +1038,20 @@ Prior blocks reach the SVI overlay &
 \toprule Knob & Default & Role\\ \midrule
 \endhead
 \multicolumn{3}{l}{\emph{Surfaced (FitSettings / OptionsSettings)}}\\ \midrule
+\texttt{sviChart} & \texttt{structural} & Optimization chart
+(\cref{sec:structural}): every iterate strictly floor-positive and strictly
+Lee-clean, penalties inert; \texttt{raw} = the historical vector, kept for
+comparability and rollback.\\
+\texttt{bellyRepair} & on & One-shot belly-hinge repair refit when the
+certificate fails; the repair is kept only if it certifies
+(\cref{sec:certificate}).\\
 \texttt{sviPenaltyWeight} $W$ & \svipenalty & Residual multiplier of the two
 soft no-arbitrage rows \eqref{eq:svi_penalties} (effective $W^2$ in the
 squared cost; $0$ = fences off).\\
-\texttt{leeSlopeMax} $\beta_{\max}$ & \svileemax & Lee wing-slope cap; the
-asymptotic total-variance slope $b(1+|\rho|)$ may not exceed it (values
-$>2$ are accepted --- a fence, not a guarantee).\\
+\texttt{leeSlopeMax} $\beta_{\max}$ & \svileemax & Lee wing-slope cap,
+strictly buffered under Lee's bound --- $\beta=2$ itself admits negative
+tail density (\cref{sec:penalties}); values $\ge2$ are accepted as explicit
+configuration and restore the broken boundary.\\
 \texttt{midAnchorWeight} & $0.05$ & Mid anchor weight in the band-fit objective
 (Note~07).\\
 \texttt{weightScheme} & \texttt{equal} & Per-quote weights, \texttt{equal} /
@@ -858,6 +1101,14 @@ linear solve.
 \item \textbf{Geometric warm start.} Reading $(a,m)$ from the vertex and
 $(b,\rho)$ from the wing slopes lands $\theta_0$ close enough that liquid smiles
 converge in a single pass.
+\item \textbf{Structural-chain Jacobian} (adoption follow-up, 2026-07-26).
+The structural chart's rows are assembled in raw space and pushed through the
+closed-form $5\times5$ chain matrix; measured on the adoption A/B: identical
+smiles at $2.1$--$2.4\times$ over the FD structural path (lab
+$4.74\to1.98$\,ms, boundary-pull $2.67\to1.29$\,ms, Vogt $1.73\to0.81$\,ms),
+$\text{nfev}\le26$ vs $30$--$86$. Even before this, the structural chart was
+$\sim3\times$ faster than raw on real nodes --- raw burns its evaluation
+budget on a third of real fits (\cref{sec:structural}).
 \end{enumerate}
 
 %======================================================================

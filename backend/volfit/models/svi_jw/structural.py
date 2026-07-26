@@ -21,9 +21,10 @@ Raw recovery is exact (the committee algebra, verified in the triage):
 Under this chart the floor and Lee penalty rows are structurally zero and the
 trial-w clip never fires (w(k) ≥ w* > 0 everywhere) — the fences become
 inert bookkeeping. It does NOT guarantee g ≥ 0: the belly certificate
-(models/diagnostics, R2) remains the acceptance authority. Opt-in via
-FitSettings.sviChart ("raw" stays the default until the benchmark
-adjudication — the Note 01 R1 precedent).
+(models/diagnostics, R2) remains the acceptance authority. PRODUCTION
+DEFAULT since the benchmark adjudication (FINDINGS_svi_chart.md, ratified
+2026-07-26); "raw" remains explicit configuration for comparability and
+rollback, and the backtest harness's frozen SVI-JW arm stays raw@2.0.
 """
 
 from __future__ import annotations

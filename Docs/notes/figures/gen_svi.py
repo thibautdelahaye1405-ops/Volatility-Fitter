@@ -212,7 +212,7 @@ def main():
     L.append(r"\newcommand{\sviwingL}{%.4f}" % sl_l)
     L.append(r"\newcommand{\sviwingR}{%.4f}" % sl_r)
     L.append(r"\newcommand{\svipenalty}{%g}" % _PENALTY)
-    L.append(r"\newcommand{\svileemax}{%.1f}" % _LEE_SLOPE_MAX)
+    L.append(r"\newcommand{\svileemax}{%.4g}" % _LEE_SLOPE_MAX)
     # raw param table
     rt = [r"\begin{tabular}{lr}", r"\toprule", r"Parameter & Value\\", r"\midrule"]
     for name, val in [("a", raw.a), ("b", raw.b), (r"\rho", raw.rho),
