@@ -489,9 +489,14 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   TWO float-boundary saturation bugs in the chart lift (ρ-quotient
   rounding to ±1.0 → σ=0/m=NaN; logistic rounding to 1.0 → wing == cap
   exactly, breaking the strict fence).
+- **Intraday async replay MACHINERY COMPLETE 2026-07-27** (wrap
+  2026-07-27a below; §16.1 decisive experiment): backtest/graph_intraday
+  harness + pre-registered gate (FINDINGS_dynamic_intraday.md) +
+  launcher run_dynamic_intraday.ps1. **CAMPAIGN = USER ACTION** (run the
+  launcher in YOUR window; ~hours; resumable; then
+  `-m backtest.graph_intraday report` and fill the gate table).
 - **Next up (priority order)**:
-  1. Dynamic-harmonic decisive experiment: INTRADAY async replay (§16.1)
-     — daily granularity cannot see the framework's target regime.
+  1. Intraday campaign adjudication (after the user-window sweep).
   2. Riders: eSSVI/constrained-spline comparator column, exact
      Martini–Mingone cross-check tier, Quality-view certificate chip,
      hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair.
@@ -501,6 +506,54 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-07-27a) — INTRADAY ASYNC REPLAY MACHINERY (§16.1)
+
+- **`backtest/graph_intraday.py`** — the decisive experiment campaign 2
+  deferred to: asynchronous timestamp replay at the finest stored
+  frequency over `results/intraday.sqlite` (SPY/QQQ/IWM × 8 sessions ×
+  13 instants). Day's FIRST instant frozen as the prior; each later
+  instant a full rebuilt state (intraday clock ON, persistence off)
+  solved with the arm under test; residual stores threaded
+  chronologically per (design, target) cell, reset per day. Designs:
+  **async_once** (target lit only at --lit-idx, scored dark pre/post —
+  the §5 A/B story) + **async_dark** (never lit — the memory-free
+  control; once-minus-dark on matched rows isolates the residual state).
+  Target rotates over non-hub tickers; **hub SPY relabelled a DIRECTED
+  broad_index informer** (hub_directed) so the DAG cut + residual
+  machinery runs as designed; peers/calendar reciprocal. Same-day rungs
+  excluded (t=0 degenerate). Parts per (tag, day), resumable;
+  `report` aggregates + §16.2 persistence buckets by elapsed-since-lit.
+- **Two production seams** (both default-None byte-identical,
+  test-locked): `solve(now_day=...)` — fractional residual clock (the
+  day-ordinal default collapses within-session Δt to 0, half-life could
+  never act); `solve(obs_ages_days=...)` — certification-age override.
+  The smoke found the second one the hard way: replay states are
+  as_of-mode "live", so ticker_ages measured the stored chains against
+  the WALL CLOCK (~27 days) → nothing certified → no residual ever
+  recorded → async_once ≡ async_dark byte-identical. With
+  `obs_ages_days={}` (stored chains are fresh AS OF their instant) the
+  store fills and the smoke shows the §5 effect: post-lit marks differ
+  from the dark control by up to 106bp, improving every matched row.
+- **Pre-registered gate** (FINDINGS_dynamic_intraday.md): 7 arms
+  (base/msg/layered-memoryless/desk/hl 1.0/0.1/0.02 days), gate A
+  (interior optimum in H exists intraday) ∧ B (beats base+msg) ∧ D
+  (calibrated bands) declares the residual state VALUABLE — re-opening
+  §16.3 with intraday evidence, never flipping a default by itself;
+  fail closes the residual question at every measured horizon.
+  E = async_dark invariance across layered arms (internal consistency).
+- **Locks** (tests/test_graph_intraday_replay.py, 9): schedule/phase/
+  bucket/hub-relabel/frac-day helpers; now_day threads fractional stamps
+  into the store; obs-age override gates certification both ways;
+  default seams byte-identical vs the wire; miniature end-to-end replay
+  (carried store moves a dark target's marks); φ(0.1d)=1/2 decay.
+- **CAMPAIGN = USER ACTION**: `run_dynamic_intraday.ps1` (resumable,
+  ~hours, YOUR window), then `-m backtest.graph_intraday report` and
+  fill the gate table. Optional richer universe: capture_intraday_rest
+  proved on single names (GME/PLAY/... in htb.sqlite) — names campaign
+  = new capture (creds) + same launcher w/ -Db/-Tickers; NB the intraday
+  capture ladder is 0-7 DTE + 2 monthly anchors (term-ladder capture =
+  separate extension if ever needed).
 
 ### 🧭 SESSION WRAP (2026-07-26c) — ANALYTIC STRUCTURAL-CHART JACOBIAN
 

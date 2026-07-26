@@ -255,6 +255,8 @@ def solve(
     request: GraphExtrapolateRequest,
     hold_out: frozenset = frozenset(),
     idio_atm_sigma: dict[str, float] | None = None,
+    now_day: float | None = None,
+    obs_ages_days: dict[str, float] | None = None,
 ) -> ExtrapolationSolution | None:
     """Run the production prior-anchored solve (plan Phase 3/4); None if empty.
 
@@ -268,6 +270,20 @@ def solve(
     (volfit.graph.idio); None pulls the state's recorded history (production),
     the offline harness passes its own strictly-causal estimate. Band-only:
     posterior means are identical with or without it.
+
+    ``now_day`` is the layered mode's residual clock, in (possibly FRACTIONAL)
+    days; None = the reference date's ordinal — the production day-resolution
+    default, byte-identical. The intraday async replay (framework §16.1) passes
+    the instant's fractional day so residual age and half-life decay act
+    WITHIN a session; ignored outside layered mode.
+
+    ``obs_ages_days`` overrides the per-ticker observation age (days) that
+    gates boundary certification and the freshness precision factor; None =
+    ``data_age.ticker_ages`` (production). A replay state's chains are served
+    from storage, so the live-mode age would be measured against the WALL
+    CLOCK — weeks, demoting every anchor; the harness passes ``{}`` because a
+    stored instant's chains are fresh AS OF that instant (§16.1 causality is
+    relative to the replay clock, not to today).
     """
     # Local import avoids a module-load cycle (graph_nodes imports us for typing).
     from volfit.api.graph_nodes import resolve_priors
@@ -315,7 +331,11 @@ def solve(
     # in the standard same-session workflow).
     from volfit.api.data_age import ticker_ages
 
-    obs_ages = {tk: m / 1440.0 for tk, m in ticker_ages(state).items()}
+    obs_ages = (
+        {tk: m / 1440.0 for tk, m in ticker_ages(state).items()}
+        if obs_ages_days is None
+        else obs_ages_days
+    )
 
     synthetic = list(request.syntheticObservations)
     obs_idx_list: list[int] = []
@@ -431,7 +451,9 @@ def solve(
             # residuals, and a hypothesis is non-persisting by construction.
             residual_store=state.graph_dynamic_residuals,
             update_store=not (synthetic or hold_out),
-            now_day=float(state.reference_date.toordinal()),
+            now_day=(
+                float(state.reference_date.toordinal()) if now_day is None else now_day
+            ),
         )
     else:
         from volfit.api.graph_message import solve_message_field
