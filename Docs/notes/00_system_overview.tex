@@ -25,8 +25,12 @@ walks the end-to-end compute pipeline (fetch $\to$ forwards/carry $\to$ prepare
 [de-Americanize, screen, weight] $\to$ fit $\to$ views $+$ graph), catalogues
 what the application can do, and ends with an index of the \emph{principal
 calibration controls}, cross-linked to the topic notes that derive each knob.
-It is the front door: read it once, then any other note in the series stands
-alone.
+One claim organizes the whole series: every guarantee is graded and
+\emph{executable} --- structural where a model can carry it, certified at the
+publish gate where it cannot, measured everywhere else --- and the production
+incidents that taught each design rule are frozen as named certification cases
+that re-run on demand. It is the front door: read it once, then any other note
+in the series stands alone.
 \end{abstract}
 
 \tableofcontents
@@ -49,12 +53,17 @@ log-quantile-density model (Note~01), \emph{SVI / SVI-JW} (Note~02), and the
 apart: the \emph{piecewise-affine local-volatility surface} (Note~04), a
 \emph{jointly} calibrated maturity~$\times$~strike grid whose unknown is
 piecewise-affine local \emph{variance}, priced through the Dupire PDE. On
-arbitrage the honest statement is graded: LQD is butterfly-free \emph{by
-construction}; the LV surface is structurally arbitrage-clean (positive local
-variance); SVI and MCS are \emph{soft-fenced} by sampled penalties and
-explicitly diagnosed --- a penalty reduces but does not guarantee zero residual
-violation, and the measured residual rates are reported per fit rather than
-assumed away.
+arbitrage the honest statement is graded --- structural, certified, measured.
+LQD is butterfly-free \emph{by construction} and the LV surface is
+structurally arbitrage-clean (positive local variance); SVI and MCS are
+\emph{soft-fenced} by sampled penalties, which reduce but do not guarantee
+zero residual violation; and the grading no longer stops there: every
+\emph{displayed} slice, whatever its model, must pass a dense-grid belly
+\emph{butterfly certificate} over its traded range --- Durrleman
+$g\ge-10^{-4}$ on an 801-point grid, computed from the model's own
+derivatives in a few dozen microseconds --- before it counts as publishable;
+an uncertified slice cannot become a mark (Note~02). Residual violation
+rates are still measured and reported per fit, never assumed away.
 \item \textbf{A professional desk workflow.} Real bid/ask handling (fit to mid,
 to the bid--ask band, or to a haircut band), var-swap targets, density-corrected
 weighting, event time dilation, dividend and forward treatment, spot--vol
@@ -69,9 +78,13 @@ three modes: \texttt{off} (byte-identical to the feature never existing),
 \texttt{active} is off by default and still carries a documented shock-day lag.
 \item \textbf{Graph smile-extrapolation.} The headline differentiator (Note~14):
 a transported prior plus the lit-node calibration innovation are propagated
-through a \emph{directed Bayesian graph} --- optionally optimal-transport
-regularized; the OT term is off by default ($\lambda=0$) --- to reconstruct the
-\emph{dark} nodes.
+through a \emph{directed Bayesian graph} to reconstruct the \emph{dark} nodes.
+The propagation operator is itself a menu --- the default
+\texttt{smooth\_field} increment prior, an opt-in pairwise
+\emph{precision-message} operator, and an opt-in layered dynamic-harmonic
+pipeline --- with an optional optimal-transport regularization, off by default
+($\lambda=0$). The defaults here were chosen by held-out adjudication, not
+preference (\cref{sec:graph}).
 \end{enumerate}
 
 \begin{heuristic}
@@ -104,11 +117,13 @@ posteriori), GN (Gauss--Newton), NBBO (national best bid/offer).
 \begin{invariant}
 The system-wide contracts every note protects, stated once:
 \begin{enumerate}[leftmargin=1.6em]
-\item \textbf{Arbitrage-cleanliness is structural where possible, measured
-where not.} LQD and the LV surface are clean by construction; SVI/MCS are
-fenced by penalties that are exactly zero on admissible slices --- which bounds
-but does not eliminate residual violation --- and the residual rates are
-reported by explicit per-fit diagnostics, never assumed away.
+\item \textbf{Arbitrage-cleanliness is structural where possible, certified
+at the gate, measured always.} LQD and the LV surface are clean by
+construction; SVI/MCS are fenced by penalties that are exactly zero on
+admissible slices --- which bounds but does not eliminate residual violation;
+the belly butterfly certificate hard-blocks readiness and publish for
+\emph{any} uncertified displayed slice; and the residual rates are reported
+by explicit per-fit diagnostics, never assumed away.
 \item \textbf{Every feature is strictly additive.} Bands, var-swap targets,
 calendar coupling, the event clock, priors, betas, the wing penalty, the
 observation filter: each is byte-identical to its absence when off --- and
@@ -342,6 +357,26 @@ the propagation (with an optional optimal-transport regularization, off by
 default: \texttt{graphLambdaScale}$\,=0$) and the leave-one-out backtest that
 measures its skill.
 
+The propagation operator is versioned and adjudicated, and its history is a
+small case study in how defaults are set here. The default,
+\texttt{smooth\_field}, is the increment prior of Note~14, byte-identical at
+its defaults to the solver the backtests validated. Two richer operators ship
+as explicit opt-ins. \texttt{precision\_messages} replaces the smoothness
+field by pairwise \emph{relation factors} (calendar ladders, index$\to$name
+pairs) whose per-edge precisions are first-class policy objects with their own
+editor, live preflight and draft/active lifecycle; its golden acceptance
+contracts --- full transmission, competing signals, dead-informer zero
+dilution, baseline-uncertainty-enters-once --- are locked three times over,
+against a brute-force Gaussian reference, through the production assembly, and
+through the HTTP API. The layered dynamic-harmonic pipeline adds temporal,
+directed and harmonic structure on top of the messages; its pre-registered A/B
+campaign returned a \emph{negative} verdict at the daily horizon (residual
+memory monotone against the half-life, optimum $H\to0$), so it stays opt-in
+--- the verdict is recorded, not overwritten, an instance of the ``measure
+first'' rule of \cref{sec:rules}. Even the in-app autotune is the production
+leave-one-out harness, scoring candidate reach $\eta$ on real hold-outs rather
+than on a synthetic sandbox.
+
 Two scoring conventions, used everywhere the graph is evaluated: \emph{skill}
 is the reduction in held-out ATM error versus the transported-prior baseline,
 in ATM vol bps --- positive means the graph beat mechanical transport; $\zeta$
@@ -415,7 +450,8 @@ Capability & Summary & Note\\
 \endhead
 LQD smile model & Arbitrage-free-by-construction log-quantile density;
 analytic Jacobian & 01\\
-SVI / SVI-JW & Raw and jump-wing SVI with no-arb penalty and Lee cap & 02\\
+SVI / SVI-JW & Raw and jump-wing SVI; structural chart, buffered Lee cap,
+belly certificate + one-shot repair & 02\\
 Multi-Core Sigmoid (MCS) & Sigmoid base + zero-wing hats for WW/event smiles & 03\\
 Local volatility & Jointly calibrated piecewise-affine local-\emph{variance}
 surface (Dupire); GN/Numba calibration & 04\\
@@ -428,7 +464,8 @@ Calendar arbitrage & Convex-order soft hinge, model-agnostic & 10\\
 Event variance clock & Dual calendar/variance time, day-weighted events & 11\\
 Spot--vol dynamics & Sticky strike/moneyness/local-vol, SSR transport & 12\\
 Prior persistence & 7-mode Bayesian menu, precision gate, two-pass & 13\\
-Graph extrapolation & Transported prior + directed increments + backtest & 14\\
+Graph extrapolation & Transported prior + directed increments; opt-in
+precision messages + layered dynamics; LOO backtest & 14\\
 Observation Kalman filter & Per-handle temporal denoising of the ATM handles;
 one-stage MAP active mode & 15\\
 \bottomrule
@@ -441,8 +478,9 @@ quote bands in normalized or fixed strike, quantile and density functions, term
 structure and event-dilated calendar in vol and variance, var-swap levels,
 interactive quote select/erase/amend, universe selection, lit/dark node maps,
 and the graph editor. The Quality tab aggregates publish-readiness per node
-(fit quality, arbitrage diagnostics, data-age staleness) and drives the
-export/reporting path. Data plumbing (providers --- including Massive intraday
+(fit quality, arbitrage diagnostics --- including the belly certificate ---
+and data-age staleness) and drives the export/reporting path; the same gates
+feed the client-facing certification report (\cref{sec:rules}). Data plumbing (providers --- including Massive intraday
 history via flat files where entitled --- as-of replay, dividend editor,
 persistence of named universes and fit history) is described in the project
 README rather than in this mathematical series.
@@ -453,7 +491,10 @@ desk-scale: validation ran on a 25-asset, three-regime benchmark, and the graph
 solver is dense --- comfortable to a few thousand nodes; a sparse solver is
 deferred until a universe needs it. The server is a single-process application
 state, deployed hosted single-tenant first; market-data entitlements are
-bring-your-own. Sub-daily expiries (0DTE) are research-grade, not certified.
+bring-your-own. Sub-daily expiries (0DTE) are research/replay-grade --- their exit gates
+(bitwise replay, hard publish block, warm-slice latency) are
+certification-locked, but live 0DTE is a post-hosting, client-entitled
+feature.
 The app fits, extrapolates and publishes vanilla implied-vol surfaces: it does
 not price or risk-manage exotics, route orders, or forecast --- dividends,
 borrow and forwards are inputs or option-implied estimates, never predictions.
@@ -498,22 +539,39 @@ filter against honest held-out baselines (Notes~13--15).
 
 \Cref{tab:casefiles} indexes the production incidents documented across the
 series --- the fastest way to learn the system is arguably to read these
-first.
+first. The index is not only documentation. Incidents marked $\dagger$ are
+registered, essentially verbatim, as named cases of the \emph{certification
+pack} (\texttt{backend/backtest/certification.py}): 22 cases across three
+dimensions --- market regimes, data failures, model stress --- each pointing
+at the pytest locks that regression-guard it forever, so validation and
+production share one definition instead of drifting apart. One command
+(\texttt{python -m backtest.certification run}) re-executes every lock and
+emits a client-facing HTML report. In this series a case file is an
+\emph{executable} object: the fastest way to learn the system is to read the
+incidents, and the fastest way to trust it is to run them.
 
 \begin{longtable}{p{0.52\textwidth}p{0.30\textwidth}r}
 \caption{Case-file index: production incidents and their lessons.}\label{tab:casefiles}\\
 \toprule Incident & Lesson & Note\\ \midrule
 \endfirsthead \toprule Incident & Lesson & Note\\ \midrule \endhead
+The Lee cap that sat exactly on the broken boundary ($\beta=2$ passes the
+floor and wing screens with zero penalty yet $g(10)=-0.0485$; a live SPY
+wing sat at $2.0000$ --- cap now $1.95$)\,$\dagger$ &
+a fence must not end on the broken boundary & 02, 09\\
+The certified-looking slice with a negative belly (Axel Vogt's classical
+parameters pass every wing screen; $\min g\approx-0.033$ mid-range ---
+now the 801-point certificate gates publish)\,$\dagger$ &
+screens fence the wings; certify the belly & 02\\
 The six-day weekly that broke the LV strike grid (fit RMS
-$108\to23.5$ vol bp after the fix) &
+$108\to23.5$ vol bp after the fix)\,$\dagger$ &
 measure first; per-expiry coverage floors & 04\\
 The convex wing that flattened SPY (fit RMS $25.7\to2.6$ vol bp once the
-constraint left the quoted range) &
+constraint left the quoted range)\,$\dagger$ &
 constraints stay off quoted territory & 04\\
-The reverted global de-Am repair (ATM smile gap) &
+The reverted global de-Am repair (ATM smile gap)\,$\dagger$ &
 repairs need confined authority & 05\\
 The delayed feed that gapped the ATM smile (discount clamp; failed
-rate-anchor) & trust the well-identified parameter & 06\\
+rate-anchor)\,$\dagger$ & trust the well-identified parameter & 06\\
 The fit that took minutes (var-swap replication in the Jacobian) &
 native-object routing & 08\\
 The MCS that invented a put wing (R3$\times$R6 ablation, in-sample RMS:
@@ -521,15 +579,22 @@ input repair alone $92\to25$ vol bp, output penalty alone $749$, both
 together $225$ with the violation gone) & input repair and output penalty
 compose & 09, 03\\
 The phantom calendar (NVDA/SPY flattened; the $151$-vol-bp flattening
-reproduced, then $\to0$ under confinement) &
+reproduced, then $\to0$ under confinement)\,$\dagger$ &
 the confinement principle & 10, 09\\
 The jump the strike anchor damped (operators persist shape) &
 persist shape, not level & 13\\
 The backtest that confirmed the hybrid default ($\sim$32 vol bp better on
 the held-out wing, 1117 nodes) & defaults are chosen by held-out
 evidence & 13\\
-The transient-name topology defect (cross-asset skill exactly $0.000$ bp) &
+The transient-name topology defect (cross-asset skill exactly $0.000$ bp)\,$\dagger$ &
 exact zeros are disconnection, not damping & 14\\
+The chart benchmark whose headline favoured the wrong arm (the raw SVI
+chart's lower arb rate was a survivorship artifact of its non-converged
+third; conditioned on convergence, the structural chart won every regime
+median) & condition on convergence before comparing arms & 02\\
+The A/B campaign whose arms were byte-identical (a config-hash change
+silently purged the residual store on every pair, so all four variants
+collapsed to the control) & an ablation must first prove its arms differ & 14\\
 The close-strike contradiction vs.\ the true gap (per-handle Kalman gains
 level/skew/curvature $=0.80/0.72/0.03$: high where quotes contradict, near
 zero where they are simply absent) & noise is not a gap: filter and prior
@@ -560,7 +625,13 @@ through the shared \texttt{figures/style.py} and their captions state the
 lesson, not the axes. Notes cross-reference each other (this note's
 \cref{tab:caps} is the index) but never depend on one another's internals.
 Numbers and plots are \emph{measured}, not copied: where a fresh run differs
-from an older design note, the fresh run wins. This overview is the deliberate
+from an older design note, the fresh run wins. Beyond the reference series,
+most topics also carry one or more standalone \emph{lecture editions} ---
+second tellings from a fresh angle (Note~01's percentile ruler, Note~02's two
+languages and its moment map, Note~14's three priors for a dark universe,
+\dots) --- written to the register codified in
+\texttt{Docs/notes/LECTURE\_REWRITE\_GUIDE.md}; the numbered notes remain the
+normative reference. This overview is the deliberate
 exception to the skeleton --- it is a map, not a theorem, so it carries no
 boxed central equation, no traceability table and no performance or
 reference-implementation appendix; its single appendix is the control index
@@ -601,7 +672,12 @@ Parameter & Default & Role & Note\\
 \texttt{sigmoidRidge} & $10^{-2}$ & MCS hat-amplitude ridge & 03\\
 \texttt{sivWingPenaltyPct} & $100$ & MCS put-wing Durrleman penalty ($0=$ off) & 03\\
 \texttt{sviPenaltyWeight} & $10^{3}$ & SVI no-arbitrage penalty & 02\\
-\texttt{leeSlopeMax} & $2.0$ & SVI Lee wing-slope cap & 02, 09\\
+\texttt{leeSlopeMax} & $1.95$ & SVI Lee wing-slope cap, strictly buffered
+under Lee's bound ($2.0$ = the broken boundary, explicit config only) & 02, 09\\
+\texttt{sviChart} & \texttt{structural} & SVI optimization chart (every
+iterate fence-clean); \texttt{raw} = historical rollback & 02\\
+\texttt{bellyRepair} & on & one-shot belly-hinge repair refit when the
+certificate fails (kept only if it certifies) & 02\\
 \texttt{fitMode} & \texttt{mid} & mid / bidask / haircut & 07\\
 \texttt{weightScheme} & \texttt{equal} & equal / tv-density weights & 07\\
 \texttt{haircut} & $0.005$ & band haircut (vol) & 07\\
@@ -610,7 +686,13 @@ Parameter & Default & Role & Note\\
 \texttt{varSwapWeightPct} & $10\%$ & var-swap budget & 08\\
 \texttt{varSwapMethod} & \texttt{static} & LV model var-swap: strike replication /
 source PDE & 08\\
+\texttt{jointCarry} / \texttt{jointCarryEngageBp} & off / $25$ & joint
+borrow/de-Am fixed-point forwards, engaged per expiry above the borrow gate
+(below it the parity forward is kept exactly) & 05, 06\\
 \texttt{enforceCalendar} & on & ascending-$T$ calendar coupling of Calibrate & 10\\
+\texttt{surfaceSolver} & \texttt{symmetric} & calendar coupling: screen +
+joint GN repair of violating runs (\texttt{sequential} = legacy one-sided
+floor) & 10\\
 \texttt{calendarWeight} & $10^{6}$ & calendar soft-constraint penalty & 10\\
 \texttt{extrapEnforce} & off & tapered no-arb enforcement in the extrapolated
 region (advisory measurement always on) & 09, 10\\
@@ -658,7 +740,12 @@ data-only, then refit) & 13\\
 \texttt{graphLambdaScale} $\lambda$ & $0.0$ & graph OT regularization ($0=$ OT
 term off) & 14\\
 \texttt{graphNu} $\nu$ & $0.1$ & graph UOT source allowance & 14\\
+\texttt{graphPropagationMode} & \texttt{smooth\_field} & propagation-operator
+seed (\texttt{precision\_messages} / \texttt{hybrid} opt-ins; the layered
+dynamic-harmonic pipeline is a per-request opt-in) & 14\\
 \texttt{idioFloor} & on & dark-node idiosyncratic credible-band floor & 14\\
+\texttt{functionalBand} & on & full 3-handle posterior covariance pushed
+through the slice map: smile band, var-swap and tail-mass sds (band-only) & 14\\
 \texttt{observationFilterMode} & \texttt{off} & filter off / overlay / active (MAP) & 15\\
 \texttt{filterCovarianceMode} & \texttt{jacobian} & measurement-covariance route & 15\\
 \texttt{filterProcessVolBpSqrtDay} & $30$ & ATM clock process noise (bp/$\sqrt{\text{day}}$) & 15\\
@@ -669,6 +756,9 @@ term off) & 14\\
 \texttt{filterAdaptiveSigma} & $3$ & innovation-gated adaptive $Q$ ($0=$ off) & 15\\
 \texttt{filterMaxGain} & $1.0$ & per-handle own-gain safety cap & 15\\
 \texttt{filterResetHours} & $96$ & maximum data gap predicted across & 15\\
+\texttt{filterClock} & \texttt{calendar} & filter time base;
+\texttt{session} = intraday session clock (a session carries $0.60$ of a
+day's variance, non-trading days $0$) & 15\\
 \texttt{filterDataOnlyPrepass} & off & strictly persistence-free measurement & 15\\
 \texttt{autoCalibrate} & on (gated live server: off) & fetch$\to$fit workflow
 gate; off = fits wait for explicit Calibrate & ---\\
@@ -692,6 +782,8 @@ Constant & Default & Role & Note\\
 \texttt{Z\_MAX} / \texttt{N\_POINTS} & $40$ / $8001$ & LQD quadrature grid & 01\\
 \texttt{OPT\_N\_POINTS} & $2001$ & LQD optimization grid & 01\\
 \texttt{EPS\_AR} & $10^{-6}$ & LQD $A_R<1$ buffer & 01\\
+\texttt{\_CERT\_POINTS} / \texttt{CERT\_G\_TOL} & $801$ / $10^{-4}$ &
+belly-certificate grid and $g$ tolerance & 02\\
 \texttt{DEFAULT\_N\_K} & $1201$ & LV \emph{validator/reprice} PDE strike nodes
 (the affine calibration march has its own grid) & 04\\
 \texttt{DEFAULT\_DT\_MAX} & $1/400$ & LV validator/reprice PDE max time step & 04\\
