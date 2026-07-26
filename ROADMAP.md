@@ -457,7 +457,39 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-07-23 (resume here)
+## STATUS — updated 2026-07-26 (resume here)
+
+### 📌 WHERE THINGS STAND (2026-07-26, consolidated)
+
+- **Note 02 committee arc R1–R5 COMPLETE + adjudicated** (wraps below):
+  strict Lee buffer 1.95 (52c3eff, trap was LIVE on SPY) → belly
+  certificate + "an uncertified slice cannot become a mark" publish gate
+  (7104822) → structural chart + belly repair (52e4827) → note revision
+  w/ 4 committee figures (80686f6) → guarded converter + desk layer +
+  adversarial battery (5b14fc4) → two-round pre-registered benchmark
+  (29acf72) → **sviChart default = "structural", RATIFIED + FLIPPED
+  (897e010), full suite 1469 green under the flipped default**.
+- **P6 UI arc V1–V3 COMPLETE 2026-07-23/24** (editor semantics + Layered
+  opt-in / inspector decomposition / dynamics policy + layered warnings +
+  A/B timeline). Dynamic-harmonic Phase-5 verdict stands: RECORD, HOLD
+  ADOPTION (layered opt-in; smooth_field default).
+- **Next up (priority order)**:
+  1. P6 hardening leftovers (2026-07-21b wrap): autotune re-point to the
+     unified endpoint, /graph/nodes zero-obs baseline, sandbox deletion,
+     §21 golden locks, migrations, certification case.
+  2. Analytic structural-chart Jacobian (adoption follow-up — the FD
+     path already beats raw's analytic ~3×; pure upside).
+  3. Dynamic-harmonic decisive experiment: INTRADAY async replay (§16.1)
+     — daily granularity cannot see the framework's target regime.
+  4. Riders: eSSVI/constrained-spline comparator column, exact
+     Martini–Mingone cross-check tier, Quality-view certificate chip,
+     hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair.
+- **User-side reminders**: re-save Options ▸ Fit (the dev store still
+  pins leeSlopeMax 2.0 from before R1; pre-R3 stores adopt the
+  structural default automatically); restart the long-running :8000
+  (everything since R1); certification pack now has 3 new cases
+  (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
+  `-m backtest.certification run` refreshes the client-facing report.
 
 ### 🧭 SESSION WRAP (2026-07-23b) — P6 UI ARC COMPLETE: V1+V2+V3 SHIPPED
 
