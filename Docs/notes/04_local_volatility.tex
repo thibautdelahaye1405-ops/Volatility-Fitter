@@ -431,10 +431,14 @@ sit in $[-10^{-9},\,1+10^{-9}]$ (bounds) --- all three surfaced as diagnostics
 and an \texttt{arbitrageFree} flag. Two further layers: the fit quality is
 additionally repriced on a \emph{converged} operator ($\dd\tau/4$, $\dd x/2$;
 \texttt{rmsConvergedBp}) because in-operator residuals are blind to
-time-discretization error the optimizer compensates; and a separate, finer
-log-strike Crank--Nicolson/Rannacher validator
-(\texttt{models/localvol/pde.py}; atlas) checks the production march against
-an independent discretization.
+time-discretization error the optimizer compensates --- the optimizer bends
+$\theta$ to cancel the discretization error, so the in-operator number can
+read flattering while the converged one does not, and the exposure is
+certification-locked: a deliberately coarsened march \emph{must} be revealed
+by the converged metric (certification case \texttt{lv\_operator\_blindness},
+\nolinkurl{test_lv_reprice.py}); and a separate, finer log-strike
+Crank--Nicolson/Rannacher validator (\texttt{models/localvol/pde.py}; atlas)
+checks the production march against an independent discretization.
 
 %======================================================================
 \section{Variance swaps}
@@ -736,7 +740,8 @@ than the parametric fit --- while every long expiry and every normal surface
 is byte-identical (both gates test-locked). This case is the historical seed
 of the short-end design, not its current entirety: the July-2026 daily-ladder
 stack of \cref{sec:griddesign} (adaptive floor, time refinement, even-gap
-coverage, chained tie) extends it.
+coverage, chained tie) extends it. The incident is registered as
+certification case \texttt{weekly\_lv\_resolution}.
 \end{example}
 
 \begin{figure}[H]
@@ -771,7 +776,8 @@ $5\Delta$ put \emph{and strictly below the deepest observed quote} --- the
 extrapolation tail only.
 
 \textbf{Verdict.} SPY $25.7\to2.6$ vol bp, NVDA unchanged; the confinement is
-test-locked. The lesson echoes Notes~05 and~09: \emph{a shape constraint must
+test-locked and registered as certification case \texttt{convex\_wing\_tail}.
+The lesson echoes Notes~05 and~09: \emph{a shape constraint must
 not be imposed where the data already speaks} --- the same principle, at the
 de-Am input, the MCS output, and here the LV extrapolation tail.
 \end{example}
@@ -977,6 +983,11 @@ Diagnostics are a pure side-channel &
 \nolinkurl{api/affine_diag.py}\newline
 \nolinkurl{test_affine_diag.py::test_record_shape_and_purity}\\
 \addlinespace
+Converged reprice reveals what in-operator hides (coarse march exposed) &
+\cref{sec:diagnostics} &
+\nolinkurl{models/localvol/reprice.py}\newline
+\nolinkurl{test_lv_reprice.py::test_refined_march_approaches_black_where_coarse_is_way_off}\\
+\addlinespace
 Dupire extraction returns NaN on arbitrage &
 \cref{app:ref} &
 \nolinkurl{models/localvol/dupire.py}\newline
@@ -1036,6 +1047,9 @@ diag tolerances & $-10^{-6}$ / $10^{-9}$ & Butterfly proxy floor; calendar/bound
 \texttt{x\_scale} / tolerances & \texttt{jac} / $10^{-8}$ & Optimizer scaling; \texttt{max\_nfev} $=200$.\\
 \texttt{\_STALL\_WINDOW/\_RTOL} & $12$ / $5\!\times\!10^{-3}$ & TRF early-stop ($18$ / $3\!\times\!10^{-3}$ under GN).\\
 \texttt{VAR\_FLOOR} & $10^{-6}$ & Dupire-extraction local-variance floor.\\
+\texttt{VOLFIT\_LV\_PHI\_DENSE\_MB} & $512$\,MB & Dense per-step
+sensitivity-basis budget; above it the exact sparse store takes over
+(\cref{app:perf}).\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden (separate log-strike validator, \texttt{pde.py})}}\\ \midrule
 \texttt{DEFAULT\_N\_K} / \texttt{DEFAULT\_DT\_MAX} & $1201$ / $1/400$ & Validator grid.\\
@@ -1069,12 +1083,30 @@ $10^{-12}\to10^{-8}$ on the TRF path: the fit is governed by quote noise,
 vega floors and bands, so the tighter tolerance only bought iterations ---
 evaluation count cut, surface identical (the atlas records the resulting
 defaults).
+\item \textbf{Sensitivity-basis memory guard.} The $\theta$-independent
+per-step hat basis is stored as one dense
+$(n_{\text{steps}},n_{\text{interior}},m)$ tensor --- the fastest layout for
+the compiled march --- but a worst-case universe (short front at the $1/800$
+$\dd x$ cap, weekly ladder, dense chain) makes it gigabytes and the
+allocation \emph{fails outright}. Above a budget
+(\texttt{VOLFIT\_LV\_PHI\_DENSE\_MB}, default $512$\,MB) the build switches
+to an exact row-sparse store ($\le8$ value/column slots per interior node,
+$\sim30$--$60\times$ smaller) with a Numba scatter; at or below the budget
+the dense path is byte-identical to the historical behaviour, and the
+over-budget cases previously \emph{crashed}, so they carry no byte-identity
+obligation (they match to solver rounding;
+\nolinkurl{models/localvol/affine_steps.py}).
 \item \textbf{Shelved (documented in the perf roadmap):} coarse-grid calibration
 (biases $\theta$ by up to $\sim26$ vol points --- non-viable), first Numba
 attempt (wrong loop order, $1.2\times$), Rannacher/CN ($\sim1.1\times$ and a
 measured coarse-$x$ arbitrage --- \cref{rem:cn}), GN for the non-smooth band
-objective, thread/process parallelism (GIL-negative). Five dead-ends
-confirming the cost is distributed, not localized.
+objective, thread/process parallelism \emph{within one fit} (GIL-negative).
+Five dead-ends confirming the per-fit cost is distributed, not localized.
+Across fits the story differs: the background Calibrate ships slice fits
+\emph{and} per-ticker LV fits to a process pool
+(\texttt{VOLFIT\_CALIB\_WORKERS}, default cpu$-1$ capped at $8$; $0/1$ =
+serial), with fits byte-identical either way --- parallelism pays between
+independent solves, not inside one.
 \end{enumerate}
 
 \begin{caution}[title={Caution (engineering): the field crash that pretended to be a matrix}]
