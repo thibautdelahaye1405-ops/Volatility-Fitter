@@ -39,7 +39,10 @@ from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual
 from volfit.core.black import black_call, black_vega_sigma
-from volfit.models.svi_jw.jacobian import svi_residual_jacobian
+from volfit.models.svi_jw.jacobian import (
+    svi_residual_jacobian,
+    svi_residual_jacobian_structural,
+)
 from volfit.models.svi_jw.structural import pack_structural, unpack_structural
 from volfit.models.svi_jw.svi import RawSVI, durrleman_g_raw
 
@@ -201,10 +204,9 @@ def calibrate_svi(
     m, log s) vector (default, byte-identical); "structural" = the
     (β_L, β_R, k*, w*, κ*) chart of models/svi_jw/structural.py — every finite
     iterate is strictly positive-floor and strictly Lee-clean, so the two
-    penalty rows are structurally zero and the trial-w clip never fires. The
-    structural chart runs the finite-difference LM path (its raw-recovery
-    chain is not analytically differentiated yet — follow-up if the benchmark
-    adopts it as the default).
+    penalty rows are structurally zero and the trial-w clip never fires. Both
+    charts run the ANALYTIC Jacobian under the same gate (the structural
+    chain matrix is closed-form since the adoption follow-up, 2026-07-26).
 
     ``belly_grid`` (committee R2 repair rider): a k-grid over the traded range
     adding the belly butterfly hinge ``penalty_weight * max(-g + margin, 0)``
@@ -308,23 +310,28 @@ def calibrate_svi(
             f"SVI needs at least 3 usable quotes (got {k.size}): "
             "5 parameters against fewer residual rows is unsolvable"
         )
-    # Analytic Jacobian (R4) for the var-swap/prior-free configuration (mid OR band
-    # fit + penalties + calendar) — ~2 evals/step vs scipy's 1+P finite differences.
-    # The var-swap / strike-gap / operator-prior blocks are not yet differentiated, so
-    # those fits keep the finite-difference LM path (correct, just not accelerated),
-    # exactly as LQD gates its analytic Jacobian. The structural chart (R3) and
-    # the belly-repair hinge (R2 rider) also take the FD path for now.
+    # Analytic Jacobian (R4; structural chain added as the R3 adoption follow-up)
+    # for the var-swap/prior-free configuration (mid OR band fit + penalties +
+    # calendar) — ~2 evals/step vs scipy's 1+P finite differences. The var-swap /
+    # strike-gap / operator-prior blocks are not yet differentiated, so those fits
+    # keep the finite-difference LM path (correct, just not accelerated), exactly
+    # as LQD gates its analytic Jacobian. The belly-repair hinge (R2 rider, repair
+    # refits only) also takes the FD path for now.
     use_analytic = (
         var_swap is None
         and prior_anchor is None
         and prior_var_swap is None
         and operator_prior is None
-        and chart == "raw"
+        and chart in ("raw", "structural")
         and belly_k is None
     )
     if use_analytic:
+        jac_fn = (
+            svi_residual_jacobian if chart == "raw" else svi_residual_jacobian_structural
+        )
+
         def jac(theta: np.ndarray) -> np.ndarray:
-            j = svi_residual_jacobian(
+            j = jac_fn(
                 theta, k, t, sqrt_weights, band, mid_anchor_weight,
                 penalty_weight, lee_slope_max, cal_k, cal_floor, sqrt_cal,
                 ceil_k, ceil_w,

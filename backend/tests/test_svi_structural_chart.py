@@ -81,6 +81,24 @@ def test_chart_round_trip_and_identities():
         assert raw.sigma > 0.0 and raw.b > 0.0 and abs(raw.rho) < 1.0
 
 
+def test_asymmetric_wing_saturation_stays_admissible():
+    """Jacobian-lock discovery (2026-07-26): ONE wing saturated against an
+    O(1) other rounds the rho quotient to an exact ±1.0 in float64 — the old
+    1 − rho² then collapsed to 0 (sigma = 0, breaking the chart's σ > 0, and
+    m = k* + 0·(1/0) = NaN). The product identity 4·β_L·β_R/S² keeps every
+    finite theta admissible; the rho FIELD stays strictly interior."""
+    for theta in (
+        np.array([-200.0, 0.3, 0.1, -0.5, 0.0]),
+        np.array([0.3, -200.0, -0.1, 0.5, 3.0]),
+        np.array([-85.0, 40.0, 0.0, 0.0, -40.0]),
+    ):
+        raw = unpack_structural(theta, _LEE_SLOPE_MAX)
+        for f in ("a", "b", "rho", "m", "sigma"):
+            assert np.isfinite(getattr(raw, f))
+        assert raw.sigma > 0.0 and raw.b > 0.0 and abs(raw.rho) < 1.0
+        assert raw.b * (1.0 + abs(raw.rho)) < _LEE_SLOPE_MAX
+
+
 def test_charts_agree_on_clean_quotes():
     """Chart equivalence (the Note 01 R1 lock pattern): on clean quotes the
     optimum is chart-independent — both fits reproduce the same smile to

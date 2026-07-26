@@ -483,12 +483,16 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   round-trips locked (envelope+policy reboot, workspace reconcile,
   legacy-blob mirror, corrupt-blob tolerance), certification case
   `graph_precision_messages` registered (5 lock targets, 77 tests).
+- **Analytic structural-chart Jacobian DONE 2026-07-26** (wrap
+  2026-07-26c below): closed-form 5×5 chain d(raw)/dθ, same analytic
+  gate as raw, identical smiles at 2.1–2.4× wall-clock; found + fixed
+  TWO float-boundary saturation bugs in the chart lift (ρ-quotient
+  rounding to ±1.0 → σ=0/m=NaN; logistic rounding to 1.0 → wing == cap
+  exactly, breaking the strict fence).
 - **Next up (priority order)**:
-  1. Analytic structural-chart Jacobian (adoption follow-up — the FD
-     path already beats raw's analytic ~3×; pure upside).
-  2. Dynamic-harmonic decisive experiment: INTRADAY async replay (§16.1)
+  1. Dynamic-harmonic decisive experiment: INTRADAY async replay (§16.1)
      — daily granularity cannot see the framework's target regime.
-  3. Riders: eSSVI/constrained-spline comparator column, exact
+  2. Riders: eSSVI/constrained-spline comparator column, exact
      Martini–Mingone cross-check tier, Quality-view certificate chip,
      hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair.
 - **User-side reminders**: re-save Options ▸ Fit (the dev store still
@@ -497,6 +501,44 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-07-26c) — ANALYTIC STRUCTURAL-CHART JACOBIAN
+
+- **`structural_chain`** (models/svi_jw/structural.py): the closed-form
+  5×5 chain d(a,b,ρ,m,σ)/d(ℓ,r,k*,h,q) — committee algebra
+  differentiated (∂ρ/∂β_wing = ∓2β_other/S², ∂m/∂ρ = s/u^{3/2} via
+  u+ρ²=1, κ-column collapses to (bs√u, −sρ/√u, −s)); mirrors
+  unpack_structural EXACTLY incl. ±80 clip subgradients (clipped
+  column = 0). **`svi_residual_jacobian_structural`** (jacobian.py):
+  gated rows assembled in RAW parameter space then pushed through the
+  chain; penalty rows kept for row-order fidelity (structurally inert —
+  the fence is the chart). calibrate_svi's analytic gate widens to
+  `chart in ("raw","structural")`; raw's Jacobian path UNTOUCHED
+  (benchmark harness pins raw; byte-identity preserved trivially).
+- **TWO float-boundary chart bugs found by the lock + FIXED** (both
+  saturation rounding in the lift, latent since R3): (i) one wing
+  saturated (ℓ≈−80) against an O(1) other made the ρ quotient ROUND to
+  an exact ±1.0 → 1−ρ² = 0 → σ = 0 (breaking the chart's σ>0) and
+  m = k*+0·(1/0) = NaN; (ii) logistic(x) rounds to 1.0 for x ≳ 37 →
+  wing lands exactly AT the cap, breaking the battery's strict-fence
+  contract (`wing < cap`, R5 _assert_sane). Fix: `_wing_geometry` —
+  logistics clipped one ulp inside 1 (`_INTERIOR_ONE`) and 1−ρ²
+  computed by the EXACT identity 4β_Lβ_R/S² (never rounds to 0);
+  ρ field clipped strictly interior. Locks:
+  test_asymmetric_wing_saturation_stays_admissible + saturation-column
+  zeros in the chain tests.
+- **A/B (old FD structural vs analytic, same boards)**: identical
+  smiles (ATM equal to 1e-6, same max_iv_error) at 2.1–2.4×
+  wall-clock — lab 4.74→1.98ms, boundary-pull 2.67→1.29ms, Vogt
+  1.73→0.81ms; nfev ≤ 26 everywhere (FD spot-check range was 30-86).
+- **Locks** (tests/test_svi_structural_jacobian.py, 10): chain vs FD at
+  20 generic points + the fitted slice + saturation columns; full gated
+  Jacobian vs FD (mid / band / active floor / active ceiling);
+  penalty-row structural inertness (rows AND Jacobian rows zero);
+  calibrator adoption (clean-board fit < 30 evals, < 0.01bp). Battery +
+  chart + belly + Lee-boundary + desk suites green (45).
+- The belly-repair hinge (repair refits only) and the var-swap/prior
+  blocks stay FD — same gating as raw.
 
 ### 🧭 SESSION WRAP (2026-07-26b) — P6 HARDENING SHIPPED (sandbox retired)
 
