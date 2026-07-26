@@ -62,7 +62,8 @@ export const FIT_DEFAULTS: FitSettings = {
   // Strictly buffered under Lee's bound of 2 (committee R1: beta = 2 itself
   // admits negative tail density) — keep in sync with backend FitSettings.
   leeSlopeMax: 1.95,
-  sviChart: "raw",
+  // Structural is the ratified default (2026-07-26 benchmark adjudication).
+  sviChart: "structural",
   bellyRepair: true,
   sigmoidRidge: 1e-2,
   midAnchorWeight: 0.05,

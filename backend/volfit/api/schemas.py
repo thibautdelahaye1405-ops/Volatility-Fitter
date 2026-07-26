@@ -88,13 +88,16 @@ class FitSettings(BaseModel):
     # committee revision R1 (2026-07-24): beta = 2 itself admits negative
     # tail density (the hinge was zero exactly on the broken boundary).
     leeSlopeMax: float = Field(1.95, gt=0.0)
-    #: Committee R3: SVI optimization chart. "raw" = the historical
-    #: (a, softplus b, tanh rho, m, log s) vector (default until the
-    #: benchmark adjudication); "structural" = (beta_L, beta_R, k*, w*,
-    #: kappa*) with lifts — every finite iterate strictly positive-floor and
-    #: strictly Lee-clean (the penalties become inert; same fitted smile on
-    #: clean quotes, to solver tolerance).
-    sviChart: Literal["raw", "structural"] = "raw"
+    #: Committee R3: SVI optimization chart. "structural" =
+    #: (beta_L, beta_R, k*, w*, kappa*) with lifts — every finite iterate
+    #: strictly positive-floor and strictly Lee-clean, the penalties inert.
+    #: DEFAULT since the benchmark adjudication (ratified 2026-07-26,
+    #: FINDINGS_svi_chart.md): better/equal precision in all 12 regime
+    #: medians, zero breaks, 594 vs 9,472 eval-cap exhaustions, ~3x faster;
+    #: the raw chart's lower headline arb rate was a survivorship artifact
+    #: of its non-converged third. "raw" = the historical vector, kept for
+    #: comparability and rollback.
+    sviChart: Literal["raw", "structural"] = "structural"
     #: Committee R2 rider: when a display fit fails the belly butterfly
     #: certificate, refit ONCE with the belly hinge and keep the repair if it
     #: certifies. Clean first fits never see a second solve.

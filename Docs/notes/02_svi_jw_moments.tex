@@ -912,9 +912,17 @@ wherever the raw chart converged --- but the raw chart \emph{exhausted its
 500-evaluation budget on five of the twelve} while the structural chart
 converged in 30--86 evaluations on all of them and ran $\sim3\times$ faster
 despite the FD Jacobian: the penalty kinks it removes are exactly where LM
-was burning its budget.  The default stays \texttt{"raw"} until the
-frozen-regime benchmark adjudicates the flip --- the same evidence bar the
-LQD logistic chart cleared before becoming a default.
+was burning its budget.  The frozen-regime benchmark confirmed it at scale
+($\sim$29k fits per arm, three regimes, pre-registered gate; two rounds ---
+the first flushed out and fixed a lift-saturation bug): precision better or
+equal in all twelve medians, ZERO hard breaks, 594 vs 9{,}472
+evaluation-cap exhaustions (the raw chart fails to converge on a THIRD of
+real fits), and among fits that actually converge a LOWER butterfly-arb
+incidence (0.82\% vs 1.08\% --- the raw chart's cleaner headline was a
+survivorship artifact of its non-converged third).  The structural chart is
+the production default since 2026-07-26 (\texttt{sviChart}); the raw vector
+remains explicit configuration --- the same evidence bar, and the same
+outcome, as the LQD logistic chart.
 
 \paragraph{Objective, weights, start.}
 The data term is a plain implied-volatility residual
@@ -1205,6 +1213,10 @@ off).\\
 $b(1+|\rho|)$; buffered strictly below $2$ by default (the boundary itself
 admits negative tail density); values $\ge2$ are accepted but re-open the
 trap.\\
+\texttt{sviChart} & \texttt{structural} & Optimization chart:
+\texttt{structural} $(\betL,\betR,k_\star,w_\star,\kappa_\star)$ makes the
+floor and the cap structural (benchmark-ratified default, 2026-07-26);
+\texttt{raw} is the historical vector, kept for comparability.\\
 \texttt{weightScheme} & \texttt{equal} & Per-quote weights, \texttt{equal} /
 \texttt{tv\_density} (Note~07); arbitrary weights exist only at the low-level
 API.\\

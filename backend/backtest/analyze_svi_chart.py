@@ -113,18 +113,45 @@ def adjudicate(cells: dict) -> tuple[bool, list[str]]:
             f"GATE 3 FAIL aggregate: eval-cap exhaustions "
             f"{tot_exh['SVI-STRUCT']} vs {tot_exh['SVI-JW-195']} (not fewer)"
         )
-    r195 = tot_arb["SVI-JW-195"][0] / max(tot_arb["SVI-JW-195"][1], 1)
-    rst = tot_arb["SVI-STRUCT"][0] / max(tot_arb["SVI-STRUCT"][1], 1)
+    # Gate 4 AS AMENDED (ratified 2026-07-26, FINDINGS_svi_chart.md): score
+    # arb incidence on CONVERGED populations — the original all-fits form
+    # compared unlike populations (raw's headline was diluted by its
+    # non-converged third, whose 0.317% rate is fits stopping before any
+    # optimum). The round-1/2 tables above keep the raw-form numbers for
+    # the record.
+    r195 = _converged_arb_rate("SVI-JW-195")
+    rst = _converged_arb_rate("SVI-STRUCT")
     if rst > r195 + 1e-9:
         ok = False
         reasons.append(
-            f"GATE 4 FAIL aggregate: genuine-arb rate {rst:.3%} vs {r195:.3%}"
+            f"GATE 4 FAIL (amended, converged): arb {rst:.3%} vs {r195:.3%}"
         )
     reasons.append(
         f"aggregate: exhaustions {tot_exh['SVI-STRUCT']} (struct) vs "
-        f"{tot_exh['SVI-JW-195']} (raw@1.95); arb rate {rst:.3%} vs {r195:.3%}"
+        f"{tot_exh['SVI-JW-195']} (raw@1.95); CONVERGED arb rate "
+        f"{rst:.3%} vs {r195:.3%}"
     )
     return ok, reasons
+
+
+def _converged_arb_rate(arm: str) -> float:
+    """Genuine-arb incidence among the arm's CONVERGED fits (nfev < cap)."""
+    hits = total = 0
+    for regime in REGIMES:
+        for mode in MODES:
+            path = os.path.join(
+                RESULTS_DIR,
+                f"{regime}_parametric_tv_density_{mode}_{RESULTS_TAG}.json",
+            )
+            with open(path, encoding="utf-8") as fh:
+                for r in json.load(fh):
+                    if (
+                        r.get("model") == arm and r.get("ok")
+                        and (r.get("n_eval") or 0) < EVAL_CAP
+                    ):
+                        hits += bool(r.get("arb_real"))
+                        total += 1
+    return hits / max(total, 1)
 
 
 def main() -> int:

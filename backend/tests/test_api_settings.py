@@ -58,7 +58,7 @@ def test_defaults(client):
         "barrierScale": 50.0,
         "sviPenaltyWeight": 1e3,
         "leeSlopeMax": 1.95,  # buffered under Lee's 2 (committee R1)
-        "sviChart": "raw",  # structural chart is opt-in until the benchmark (R3)
+        "sviChart": "structural",  # ratified default (2026-07-26 benchmark)
         "bellyRepair": True,  # certified-or-repaired at the fit (R2 rider)
         "sigmoidRidge": 1e-2,
         "midAnchorWeight": 0.05,

@@ -98,14 +98,23 @@ gate 1 corroborates). Like-for-like — converged against converged —
 the structural chart has the LOWER arb rate, on top of winning every
 other criterion. Gate 4 as pre-registered compares unlike populations.
 
-## Recommendation (2026-07-26 — awaiting user ratification)
+## Recommendation → RATIFIED (user, 2026-07-26)
 
-The pre-registered verdict stands as recorded: HOLD. But the evidence
-reads FLIP: the single failing criterion measures raw-chart
-non-convergence, not a structural-chart defect, and the marginal arb
-incidence it penalizes is precisely what the R2 belly certificate
-repairs-or-blocks downstream in production (the harness fits without
-the display path's repair). Proposed amendment, for ratification:
-score gate 4 on CONVERGED populations (or post-repair), under which
-round 2 passes all four gates → default `sviChart="structural"`, with
-the analytic structural Jacobian as the adoption follow-up.
+The pre-registered round-2 verdict was recorded as HOLD; the gate-4
+amendment (score arb incidence on CONVERGED populations — the original
+form compared unlike populations) was proposed and **ratified by the
+user the same day**. Under the amended gate, round 2 passes all four:
+
+- converged genuine-arb rate **0.822% (structural) vs 1.076% (raw)**;
+- precision better/equal in all 12 medians; zero breaks; 594 vs 9,472
+  exhaustions; ~3× faster.
+
+**DECISION: `sviChart` defaults to `"structural"`** (schemas.FitSettings
++ frontend FIT_DEFAULTS + settings-snapshot and default locks). The raw
+chart remains explicit configuration for comparability and rollback;
+the backtest harness's frozen `SVI-JW` arm stays raw@2.0 forever (part
+comparability). Adoption follow-up: the analytic structural-chart
+Jacobian (the FD path is already ~3× faster than raw's analytic one —
+the follow-up is pure upside). `analyze_svi_chart.adjudicate` now
+scores the AMENDED gate; the round-1/2 tables retain the original-form
+numbers for the record.

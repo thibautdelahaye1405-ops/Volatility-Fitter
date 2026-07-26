@@ -39,6 +39,15 @@ def _settings(**over) -> OverlaySettings:
     return OverlaySettings(**base)
 
 
+def test_structural_is_the_ratified_default():
+    """The benchmark adjudication (FINDINGS_svi_chart.md, ratified
+    2026-07-26): sviChart defaults to the structural chart everywhere a
+    default is declared; raw stays available as explicit configuration."""
+    from volfit.api.schemas import FitSettings
+
+    assert FitSettings().sviChart == "structural"
+
+
 def test_chart_round_trip_and_identities():
     """pack ∘ unpack is the identity, and the chart's coordinates ARE the
     guaranteed quantities: w* equals the slice's minimum total variance and
