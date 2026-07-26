@@ -34,11 +34,15 @@ implied-variance wings that sit automatically inside Lee's moment bounds; one
 explicit integrability condition $A_R<1$ guarantees a finite forward. We give
 the full pricing equations, the tail and Lee-slope analysis, the exact
 analytic ATM level/skew/curvature handles, the trader-facing ATM-orthogonal
-chart, and the calibration objective with its soft tail barrier. A dedicated
-section derives the model's \emph{analytic residual Jacobian} --- a clean
-cancellation identity that removes the finite-difference quadrature rebuild and
-is, to our knowledge, the original engineering contribution of this
-implementation. Every figure and table is generated fresh by the production
+chart with its market-package shape controls, and the calibration objective
+with its soft tail barrier and its three optimization charts --- the default
+\emph{logistic} chart maps the admissibility wall to infinity, so the
+optimizer roams an unconstrained space that covers exactly the admissible
+slices. A dedicated section derives the model's \emph{analytic residual
+Jacobian} --- a clean cancellation identity that removes the
+finite-difference quadrature rebuild, covers every production residual block
+except the prior terms, and is, to our knowledge, the original engineering
+contribution of this implementation. Every figure and table is generated fresh by the production
 calibrator on \emph{synthetic approximation benchmarks} (market-fit evidence
 lives in the backtest reports): the seven-parameter fit to an SPX-like SVI-JW
 target reaches a maximum implied-volatility error of \lqdsvimaxerr\ volatility
@@ -77,7 +81,9 @@ implied volatility.''
 butterfly-freedom is structural, never a penalty
 (\cref{prop:nobutterfly}).
 \item The only hard admissibility condition is $A_R<1$ (a finite forward),
-guarded by a smooth barrier before the wall.
+guarded by a smooth barrier before the wall --- and, in the default logistic
+optimization chart, the wall is not even reachable: every unconstrained
+iterate is an admissible slice (\cref{sec:charts}).
 \item The martingale normalization is a single scalar shift: it changes
 neither the density's shape, its tails, nor its positivity.
 \item The ATM handles $(\sigma_0,s_0,\kappa_0)$ are exact closed-form
@@ -217,6 +223,13 @@ the shift enforces $\E[Y]=1$. The call is the expectation of $(Y-e^k)^+$ under
 this law, so monotonicity and convexity in strike follow from \eqref{eq:BL}. No
 separate positivity inequality is ever checked.
 \end{proof}
+
+One cross-series remark. The application separately runs a dense-grid belly
+\emph{butterfly certificate} on every displayed slice, whatever its model,
+and hard-blocks publish on failure (Note~02 --- the penalty-fenced overlay
+families genuinely need it). For an LQD slice the certificate is a measured
+confirmation of \cref{prop:nobutterfly}, not a constraint the optimizer ever
+feels.
 
 \subsection{The logit coordinate and stable integration}
 \label{sec:logit}
@@ -548,6 +561,36 @@ retargeting as an operation that can fail near the wall, not as a total map on
 handle space.
 \end{caution}
 
+\subsection{Shape controls in market vocabulary}
+\label{sec:packages}
+
+The chart's kernel basis $V$ is unique only up to rotation: ``shape
+direction~1'' can rotate or flip between calibrations --- a sound interface
+for one-session sculpting, not a persistent trader control. The stable
+vocabulary is the market's own quote packages. For the package vector
+$P(\theta)=(\text{RR25},\text{BF25},\text{RR10},\text{BF10},\text{VarSwap})$,
+evaluated on the slice's own smile, restrict its Jacobian to $\ker J$ and take
+the least-norm kernel combination that moves \emph{one} package by one unit
+while the handles stay put to first order,
+\begin{equation}
+\xi_i=\argmin_{\xi}\;|\xi|
+\quad\text{s.t.}\quad
+\Big(\tfrac{\partial P}{\partial\theta}\,V\Big)\xi=e_i,
+\end{equation}
+so $V\xi_i$ is ``one unit of package $i$, handles fixed, minimal shape
+motion'' (\texttt{models/lqd/packages.py}). The accompanying
+\emph{cross-talk matrix} prints how much each package direction moves the
+\emph{other} packages --- the honest statement of how independent the
+controls really are on a given slice: they are exactly independent only to
+first order and only at full kernel rank, and the rank and SVD condition are
+reported rather than assumed. Orthogonal to this, the chart's notion of
+``least norm'' is itself a choice: passing the Gauss--Newton (Fisher) metric
+$G=J_r\T J_r$ of the converged fit re-prices moves by \emph{fit impact} ---
+the cheapest handle move becomes the one that disturbs the fitted quotes
+least, which is the economically defensible reading. The Euclidean metric
+remains the default (byte-identical to the historical chart); promoting the
+GN metric to default is an open decision, not a shipped one.
+
 %======================================================================
 \section{Calibration of one expiry}
 \label{sec:calib}
@@ -561,7 +604,8 @@ the calibrator minimizes
 +\lambda\sum_{n\ge4}n^{2r}a_n^2,
 \label{eq:calib_objective}
 \end{equation}
-as a bound-free nonlinear least-squares problem (scipy \texttt{trf}). The
+as a bound-free nonlinear least-squares problem (scipy \texttt{trf}, in the
+active optimization chart of \cref{sec:charts}). The
 high-order ridge $\lambda\,n^{2r}a_n^2$ is optional and suppresses oscillation in
 sparse markets; it deliberately leaves the first body modes $a_2,a_3$ free. The
 hard admissibility condition is $A_R<1-\eps_R$ for a small buffer $\eps_R$. There
@@ -585,6 +629,40 @@ rises steeply near the wall, pushing the fit back \emph{before} it reaches the
 hard rejection. When a trial $\theta$ does cross $A_R\ge1$, the price block is
 replaced by a large smooth-in-$A_R$ penalty $10+A_R$ so the trust region still
 has a gradient pointing back to feasibility.
+
+\subsection{The optimization charts}
+\label{sec:charts}
+
+The minimization variable need not be $\theta$ itself. Production offers
+three \emph{charts} over the same model family
+(\texttt{lqdCoords}; \texttt{models/lqd/charts.py}). A chart changes the
+optimizer's trust-region geometry, never the objective, so the fitted optimum
+is chart-independent to solver tolerance and the canonical storage and wire
+format stay $\theta=(L,R,a_2,\dots,a_N)$ everywhere:
+\begin{itemize}[leftmargin=1.4em]
+\item \texttt{lr} --- the historical identity chart: optimize $\theta$
+itself.
+\item \texttt{endpoint} --- $\phi=(\log A_L,\log A_R,a_2,\dots,a_N)$, an
+exact unit-determinant \emph{linear} map: holding the first two coordinates
+fixed while moving a body mode automatically counter-adjusts $(L,R)$ to keep
+both endpoint scales, so the coefficients that fit acute central convexity
+can no longer mechanically drag the asymptotic wings while the solver moves.
+\item \texttt{logistic} (the default) --- the endpoint chart with the right
+tail pushed through the logistic, $A_R=\expit(\rho)$. The wall $A_R=1$ maps
+to $\rho=+\infty$: \emph{every} finite iterate is an admissible slice, so
+the chart covers exactly the admissible set and the least-squares problem is
+genuinely unconstrained. Near the wall the chart compresses
+($\dd\log A_R/\dd\rho=1-A_R\to0$), damping trust-region steps precisely
+where the raw charts need the soft barrier; far below the wall
+$\rho\approx\log A_R$ and the two charts agree to first order.
+\end{itemize}
+The analytic Jacobian of \cref{sec:jacobian} rides along by the chain rule
+(the chart maps are linear, plus one diagonal logistic factor). One numerical
+footnote keeps the claim honest: the logistic removes the \emph{mathematical}
+wall, not the floating-point one --- beyond $\rho\approx36$, $A_R$ rounds to
+exactly $1.0$ in double precision, so the \texttt{EPS\_AR} buffer remains the
+hard numerical guard and the barrier \eqref{eq:barrier}, part of the
+objective in every chart, keeps the optimizer clear of that region.
 
 \subsection{Initialization}
 
@@ -610,9 +688,11 @@ data block, the ridge, the calendar slack, the barrier, and the optional
 var-swap/prior blocks. Every optional block is byte-identical-to-absent when
 unused (test-locked), and each connects this note to the rest of the series.
 The Jacobian column matters operationally: the analytic route of
-\cref{sec:jacobian} covers the first five blocks; activating \emph{any}
-var-swap or prior block switches the whole fit to scipy's finite-difference
-Jacobian (correct, merely not accelerated).
+\cref{sec:jacobian} covers every block except the prior-anchor and operator
+rows --- the market and prior var-swap rows ride the same sensitivity pass
+since committee revision R5 --- so only a prior-anchor or operator block
+switches the whole fit to scipy's finite-difference Jacobian (correct, merely
+not accelerated).
 
 \begin{table}[H]
 \centering\small
@@ -628,15 +708,16 @@ Band data block (hinge $+$ mid anchor; Note~07) & \texttt{fitMode}
 High-order ridge & \texttt{regLambda}$>0$ (rows $n\ge4$) & coefficient units &
 analytic\\
 Calendar slack (Note~10) & \texttt{enforceCalendar} $+$ a nearer fitted expiry
-& asset share (normalized price) & analytic\\
+& normalized price at fixed strike, support-confined and tapered
+(\cref{sec:calendar}) & analytic\\
 $A_R$ soft barrier & always (one row) & dimensionless & analytic\\
-\midrule
 Market var-swap (Note~08) & \texttt{varSwapEnabled} $+$ an active quote &
-vol & FD fallback\\
+vol & analytic (R5)\\
+\midrule
 Prior strike-gap anchor (Note~13) & \texttt{strike\_gap} / \texttt{hybrid}
 tail, active prior & vega-normalized price & FD fallback\\
-Prior var-swap companion (Note~13) & alongside an active prior & vol & FD
-fallback\\
+Prior var-swap companion (Note~13) & alongside an active prior & vol &
+analytic (R5)\\
 Operator prior (Note~13) & \texttt{quote\_operator} / \texttt{hybrid}, gated
 per operator & operator units (vol) & FD fallback\\
 Active-filter MAP (Note~15) & filter mode \texttt{active} (rides the operator
@@ -664,9 +745,13 @@ whose integrand decays like $z\,e^{-|z|}$
 honest. First, this is a \emph{direct native one-dimensional quadrature},
 dramatically cheaper than the generic strike replication of Note~08 --- which
 would re-solve implied variance on a strike grid at every Jacobian column and
-turn a millisecond fit into minutes --- but activating the var-swap block also
-disables the analytic Jacobian (\cref{tab:stack}), so a var-swap fit is
-\emph{not} literally as cheap as a mid fit. Second, the identity prices the
+turn a millisecond fit into minutes. The row also stays on the analytic
+Jacobian path (committee revision R5):
+$\partial w_{\text{vs}}/\partial\theta
+=-2\int(\partial Q/\partial\theta)\,\Lambda(1-\Lambda)\,\dd z$ rides the
+nodal quantile sensitivities the pass of \cref{sec:jacobian} already owns, so
+the historical gate that sent every var-swap-enabled fit to finite
+differences is lifted. Second, the identity prices the
 log contract: its correspondence with a realized-variance swap assumes the
 continuous-monitoring, continuous-path (diffusion) convention; jumps and
 discrete sampling require the usual corrections, which are outside this
@@ -679,11 +764,11 @@ model's scope.
 The dominant cost of \eqref{eq:calib_objective} used to be the Jacobian: scipy
 rebuilt the entire quadrature pipeline $P+1$ times per iteration to finite
 difference it ($P=d=N+1$ parameters). The Vol-Fitter instead propagates the
-analytic Jacobian of the \emph{core} residual stack --- the mid or band data
-block, ridge, calendar slack and barrier rows of \cref{tab:stack} --- in
-\emph{one} quadrature pass; a fit with any var-swap or prior block active falls
-back to finite differences. The key is a cancellation identity, and it is the
-cleanest piece of mathematics in the implementation.
+analytic Jacobian of the residual stack --- the mid or band data block,
+ridge, calendar slack, barrier and var-swap rows of \cref{tab:stack} --- in
+\emph{one} quadrature pass; only a fit with a prior-anchor or operator block
+active falls back to finite differences. The key is a cancellation identity,
+and it is the cleanest piece of mathematics in the implementation.
 
 \subsection{The cancellation identity}
 
@@ -761,16 +846,21 @@ $\partial(e^{Q}u(1-u))/\partial\theta_j$ plus its right-tail correction, and the
 nodal $\partial A_z/\partial\theta_j$ is just $-\partial(e^{Q}u(1-u))/\partial\theta_j$.
 The remaining residual blocks differentiate trivially: the band hinge multiplies
 $\dd C/\dd\theta$ by the violation sign, the ridge block is $\diag(\text{reg})$ on
-the $a$-columns, the calendar slack is $\sqrt{\text{cal wt}}\,(-\dd A/\dd\theta)$
-on the active constraints, and the barrier row is
-$\expit\!\big(s(A_R-c)\big)\,s\,\partial A_R/\partial\theta$.
+the $a$-columns, the confined calendar rows \eqref{eq:cal_rows} are
+$\sqrt{w_{\text{cal}}}\,\mathrm{taper}_m\,(-\dd C/\dd\theta)$ at the active
+strikes (the legacy quantile form differentiates as $-\dd A/\dd\theta$ at its
+active $z$-nodes), the var-swap rows ride
+$\partial w_{\text{vs}}/\partial\theta
+=-2\int(\partial Q/\partial\theta)\,\Lambda(1-\Lambda)\,\dd z$, and the
+barrier row is $\expit\!\big(s(A_R-c)\big)\,s\,\partial A_R/\partial\theta$.
 
 \subsection{Scope and measured speed-up}
 
-The analytic Jacobian covers the configuration with \emph{no} var-swap or prior
-blocks (the var-swap and prior-anchor terms are not yet differentiated
-analytically; those fits fall back to scipy's two-point finite difference ---
-correct, merely not accelerated). \Cref{tab:timing} reports a fresh comparison:
+The analytic Jacobian covers every configuration without prior-anchor or
+operator rows; committee revision R5 lifted the historical var-swap gate (the
+market and prior var-swap rows ride the same sensitivity pass), leaving only
+the prior terms on scipy's two-point finite difference --- correct, merely
+not accelerated. \Cref{tab:timing} reports a fresh comparison:
 the analytic and finite-difference fits reach the same fitted solution within
 the stated tolerances (costs agreeing to $\sim11$ significant figures,
 relative difference $\sim10^{-11}$) while the analytic Jacobian is
@@ -825,25 +915,73 @@ G_i(\alpha):=\int_\alpha^1 e^{Q_i(u)}\dd u\;\le\;G_j(\alpha)\quad\forall\alpha\i
 \label{eq:calendar}
 \end{equation}
 with equality at $\alpha=0$. This is exactly the upper asset share of
-\eqref{eq:asset_share} read at quantile level, so it is already on the grid. The
-surface is built nearest-to-farthest: each new slice is fitted subject to
-$G_i(\alpha_m)\ge G_{i-1}(\alpha_m)-\eps_m$ on a dense $\alpha$-grid, where
-$\eps_m\ge0$ is a per-node slack tolerance --- production currently runs
-$\eps_m=0$ (no tolerance) --- enforced as the soft calendar slack of
-\eqref{eq:calib_objective} (penalty weight \texttt{calendarWeight}), with the
-constraint evaluated at $z$-values so it is exact regardless of the
-optimization grid. The quantile constraint is better conditioned than a grid of
-call inequalities because it never inverts $Q$ at a strike and stays meaningful
-in the wings where IV inversion is ill-conditioned.
+\eqref{eq:asset_share} read at quantile level, so it is already on the grid ---
+and that convenience turned out to be a trap worth documenting.
+
+\begin{example}[title={Case file: the acute weekly that bulldozed the ladder}]
+\textbf{Setup.} An acutely convex short-dated slice (an event week) at the
+front of an otherwise consistent ladder, surface coupling on --- the
+certification reproduction. \textbf{Failure mode.} Every longer-dated fit
+came off its quotes: the far expiry fitted $10.6$ vol bp free and $1095$ vol
+bp under the coupling. \textbf{Diagnosis.} The floor was sampled in
+$G$-space on the full grid. $G(\alpha)$ integrates the \emph{whole upper
+tail}, so a comparison at any $\alpha$ leaks the near slice's extrapolated
+wing into the constraint --- the confinement principle of Note~09 violated
+in quantile coordinates. Nor is a $z$-windowed $G$ floor a fix: it removes
+only about half the drag, because the integral inside the window still
+carries the tail. \textbf{Fix.} Enforcement moved to \emph{price space at
+fixed strike}, confined to the common quote support (below).
+\textbf{Verdict.} The far fit returned to $10.6$ vol bp with the identified
+violation still repaired; the certification case
+\texttt{symmetric\_calendar} locks the reproduction.
+\end{example}
+
+Production therefore enforces the ordering as \emph{support-confined price
+rows}: on a tapered strike grid $k_m$ spanning the two slices' common quote
+support, the later slice carries hinge rows
+\begin{equation}
+\sqrt{w_{\text{cal}}}\;\mathrm{taper}_m\,
+\big(C_{\text{near}}(k_m)-C_{\text{far}}(k_m)\big)^{+},
+\label{eq:cal_rows}
+\end{equation}
+with $w_{\text{cal}}=$ \texttt{calendarWeight}
+(\texttt{calib/calendar.py::confined\_calendar\_floor}); the taper fades the
+active set smoothly as quoted spans shift between refits, and the rows sit on
+the analytic-Jacobian path like every other core block. The full-grid
+quantile floor survives as a legacy threading form and a diagnostic, not as
+the production constraint.
+
+Two orchestrations consume these rows (\texttt{surfaceSolver}). The
+\emph{sequential} build --- nearest-to-farthest, each new slice fitted
+against its predecessor's floor --- is the historical construction, kept as
+an explicit option; its defect is traversal-order bias: the first slice is
+immutable and every later slice absorbs its errors. The production default
+is the \emph{symmetric} solver (\texttt{calib/symmetric.py}): fit every
+expiry \emph{independently}; \emph{screen} each adjacent interface for an
+\emph{identified} violation --- normalized-call ordering on the common quote
+support, vega-normalized so the number reads as a vol gap; then jointly
+Gauss--Newton-repair only the \emph{violation-connected components},
+stacking each member slice's own standalone residual blocks plus the tapered
+interface rows \eqref{eq:cal_rows}. Because every slice keeps its own quote
+weights, the correction is allocated by information: a liquid slice barely
+moves, an unsupported acute tail absorbs it. A clean ladder is \emph{exactly}
+its independent fits, and if an interface stays violated after weight
+escalation the remainder is \emph{irreducible slack} --- genuinely
+inconsistent inputs --- reported per interface, never silently flattened
+into the rest of the ladder.
 
 Honesty about the guarantee: this is \emph{control}, not a theorem. The hinge
 carries a finite weight, so a hard-pressed fit can retain a small violation
 rather than destroy the quote fit; the whole coupling is a user toggle
 (\texttt{enforceCalendar}) and off means off; and residual calendar violations
-are \emph{measured and reported} by the surface diagnostics rather than assumed
-away. Note~10 develops the model-agnostic calendar machinery (and the subtlety
-that the variance floor must be confined to the traded log-$k$ range); here we
-only record that for LQD the constraint is the native object $A(z)$.
+are \emph{measured and reported} rather than assumed away --- since committee
+revision R5 in desk units too: the quality report prints the worst identified
+violation together with the strike where selling the near call against the
+far one pays most, converted to currency per contract, ticks and fraction of
+the quoted spread (\texttt{calendar\_violation\_argmax}). Note~10 develops
+the model-agnostic calendar machinery; here we only record that for LQD the
+natively \emph{measured} object is the asset share $A(z)$, while the
+\emph{enforced} object is the confined price row \eqref{eq:cal_rows}.
 
 %======================================================================
 \section{Worked examples}
@@ -970,6 +1108,12 @@ that the graph extrapolator propagates in Note~14.
 root's dependence on $\theta$ vanishing from the price gradient is what turns a
 $P+1$-rebuild finite-difference Jacobian into a one-pass analytic one; the
 benchmark reaches the same fitted solution within the stated tolerance.
+\item \textbf{The logistic admissibility chart} (\cref{sec:charts}).
+Reparametrizing the right tail through $A_R=\expit(\rho)$ maps the
+integrability wall to infinity, so the calibrator becomes a genuinely
+unconstrained least-squares problem over \emph{exactly} the admissible
+slices --- with trust-region steps automatically compressed where the wall
+used to be.
 \end{enumerate}
 
 %======================================================================
@@ -1069,6 +1213,21 @@ Orthogonal chart: shape moves preserve handles; retarget exact &
 \nolinkurl{test_lqd_ortho.py::test_shape_move_leaves_handles_nearly_unchanged}\newline
 \nolinkurl{::test_retarget_hits_exact_handles}\\
 \addlinespace
+Package controls move one package with handles fixed; GN metric prices moves
+by fit impact &
+\cref{sec:packages} &
+\nolinkurl{models/lqd/packages.py}\newline
+\nolinkurl{test_lqd_r5_controls.py::test_package_controls_move_their_package_and_not_the_handles}\newline
+\nolinkurl{::test_gauss_newton_chart_is_a_right_inverse_with_less_fit_impact}\\
+\addlinespace
+Optimization charts: body modes endpoint-neutral; logistic cannot reach the
+wall; same optimum in every chart &
+\cref{sec:charts} &
+\nolinkurl{models/lqd/charts.py}\newline
+\nolinkurl{test_lqd_endpoint_coords.py::test_body_modes_are_endpoint_neutral}\newline
+\nolinkurl{::test_logistic_chart_cannot_reach_the_wall}\newline
+\nolinkurl{::test_logistic_fit_reaches_the_lr_optimum}\\
+\addlinespace
 Analytic Jacobian matches FD (mid, band, calendar); fits agree &
 \cref{thm:cancel} &
 \nolinkurl{models/lqd/jacobian.py}\newline
@@ -1076,6 +1235,20 @@ Analytic Jacobian matches FD (mid, band, calendar); fits agree &
 \nolinkurl{::test_jacobian_matches_fd_band}\newline
 \nolinkurl{::test_jacobian_matches_fd_calendar}\newline
 \nolinkurl{::test_analytic_and_fd_fits_agree}\\
+\addlinespace
+Var-swap rows on the analytic path; var-swap fit agrees with FD &
+\cref{sec:varswap} &
+\nolinkurl{models/lqd/jacobian.py}\newline
+\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_varswap_rows}\newline
+\nolinkurl{::test_varswap_fit_ungated_and_agrees_with_fd}\\
+\addlinespace
+Calendar floor confined to price space on common support; symmetric repair
+leaves clean ladders untouched; desk-unit violation print &
+\cref{sec:calendar} &
+\nolinkurl{calib/symmetric.py}\newline
+\nolinkurl{test_calendar_confinement.py}\newline
+\nolinkurl{test_symmetric_surface.py}\newline
+\nolinkurl{test_lqd_r5_controls.py::test_calendar_argmax_names_the_cheapest_trade}\\
 \addlinespace
 Barrier finite for wild trial parameters &
 \eqref{eq:barrier} &
@@ -1129,6 +1302,11 @@ Knob & Default & Role\\
 \texttt{nOrder} $N$ & $6$ & Legendre expansion order; $7$ parameters at $N=6$.
 Schema range $4\le N\le16$: $6$ for ordinary slices, $8$--$14$ for
 scheduled-event slices.\\
+\texttt{lqdCoords} & \texttt{logistic} & Optimization chart
+(\cref{sec:charts}): \texttt{lr} raw $\theta$; \texttt{endpoint}
+$(\log A_L,\log A_R,a)$; \texttt{logistic} pushes $A_R$ through
+$\expit(\rho)$ so the wall is unreachable. Optimum chart-independent to
+solver tolerance.\\
 \texttt{regLambda} $\lambda$ & $10^{-6}$ & High-order ridge coefficient in
 \eqref{eq:calib_objective}; suppresses oscillation in sparse data.\\
 \texttt{regPower} $r$ & $1.0$ & Ridge exponent in $n^{2r}a_n^2$; larger $r$
@@ -1180,8 +1358,8 @@ Jacobian reuses.
 instead of $P+1$ finite-difference rebuilds, reaching the same fitted solution
 within tolerance (relative cost agreement $\sim10^{-11}$), measured
 $1.3$--$1.7\times$ on the residual-path benchmark of \cref{tab:timing} and
-structurally more on heavier configurations. Gated to the var-swap/prior-free
-configuration.
+structurally more on heavier configurations. Gated only on the prior-anchor
+and operator blocks; the var-swap gate was lifted in committee revision R5.
 \item \textbf{Looser tolerances.} Dropping \texttt{trf} tolerances from
 $10^{-15}$ to $10^{-10}$ stops the optimizer chasing a $10^{-15}$ cost reduction
 that is invisible in the priced surface, saving whole $(P+1)$-eval iterations at
