@@ -230,9 +230,12 @@ Approaching the wall is legal but expensive.  As $\lambda_+\uparrow1$, far
 right states carry more and more of the mean.  The normalizer, tail quadrature,
 price evaluation, and parameter sensitivities become numerically ill
 conditioned before the mathematical boundary is reached.  Production
-therefore adds a soft turn ahead of the hard wall and rejects
-$\lambda_+\ge1-10^{-6}$ as a numerical safety buffer.  Neither control changes
-the mathematical boundary at one.
+therefore adds a soft turn ahead of the hard wall, and --- in the shipped
+optimization coordinate, which passes $\lambda_+$ through a logistic ---
+sends the wall itself to infinity, so no trial can reach it at all; the
+soft turn stays on as a price on near-infinite forwards.  In the raw
+coordinates a numerical safety buffer rejects $\lambda_+\ge1-10^{-6}$.
+Neither control changes the mathematical boundary at one.
 \end{caution}
 
 \subsection{The density falls out of the ruler}
@@ -668,12 +671,17 @@ The residual stack adds controls, each with a distinct economic meaning:
   spread, while retaining a gentle midpoint anchor;
 \item a ridge on modes $n\ge4$ discourages oscillatory speed profiles that
   sparse quotes cannot identify;
-\item a one-sided soft barrier turns the optimizer away before
-  $\lambda_+=1$;
+\item a one-sided soft barrier prices, rather than prevents, a near-infinite
+  forward (in the shipped coordinate the wall is unreachable anyway);
 \item optional priors stabilize weakly identified tails or preserve continuity
   with the previous fit;
-\item optional calendar rows penalize crossings of upper-share ledgers;
-\item optional log-contract and ATM/RR/BF operator rows express desk views.
+\item optional calendar rows penalize adjacent-expiry order violations, read
+  at fixed strikes over the common quote support (\cref{thm:calendar} says
+  what they protect; the discussion following it says why the rows live in
+  price space rather than the ledger);
+\item an optional log-contract row expresses a var-swap view (and rides the
+  analytic derivative pass); optional ATM/RR/BF operator rows express desk
+  views.
 \end{itemize}
 The hard martingale wall remains hard.  Every other row is a weighted modelling
 choice and should be reported as such.
@@ -746,7 +754,15 @@ $\delta H$ is
 \label{eq:primary_move}
 \end{equation}
 Any vector in $\ker D$ is a first-order shape move: it changes the smile while
-leaving ATM level, skew, and curvature fixed to first order.
+leaving ATM level, skew, and curvature fixed to first order.  Two production
+refinements deserve a sentence each.  ``Minimum-norm'' is minimum in
+\emph{some} metric, and the Euclidean coefficient metric --- the default ---
+is an admitted convention; a Gauss--Newton metric that prices a move by its
+effect on the fitted quotes is also available.  And the kernel is not left
+as anonymous coefficient directions: its persistent vocabulary is the
+market's own --- 25- and 10-delta risk reversals and butterflies and the var
+swap, solved inside $\ker D$ as named package controls with an explicit
+cross-talk matrix and a kernel-restricted condition print.
 
 \begin{assumption}[Regular handle point]
 \label{ass:regular}
@@ -996,11 +1012,31 @@ spread.  A dense logit grid makes such a crossing harder to miss; only a
 continuum certificate rules it out mathematically.
 \end{example}
 
-Production evaluates \eqref{eq:G_identity} on a finite logit grid and adds
-finite-weight hinge residuals for negative gaps.  This is effective calendar
-\emph{control}, not a structural guarantee.  It protects listed expiries at
-sampled ranks; it does not certify every rank, arbitrary interpolation between
-expiries, or models with inconsistent forward measures.
+The theorem says what to \emph{measure}; production learned, at measured
+cost, that it is not the thing to \emph{enforce}.  The integrated
+percentile $\mathcal G_T(p)$ sums the whole upper tail, so a hinge that
+compares two ledgers at any single rank drags both slices' extrapolated
+wings into the constraint --- a fit can be pushed around by strikes nobody
+quoted, and on an acute short-dated pair the phantom drag from a full-grid
+ledger floor measured two orders of magnitude above the uncoupled fit.
+Nor does a denser rank grid help: the leak is in the integral, not the
+sampling.  What removes it is \emph{confinement} --- reading the same
+ordering as finite-weight hinge rows on normalized call prices at fixed
+strikes over the two slices' common quote support (Note~10 owns the
+incident and its certification lock).  That is what production enforces;
+the ledger comparison \eqref{eq:G_identity} survives as the wing-dense
+\emph{diagnostic}, exact at every rank precisely because no optimizer is
+listening to it.  Either way this is calendar \emph{control}, not a
+structural guarantee: finite rows, finite weights, and nothing certified
+between expiries or across inconsistent forward measures.
+
+One more production sentence completes the picture.  The surface is no
+longer stitched nearest-to-farthest: every expiry is fitted independently,
+the finished ladder is screened interface by interface, and only a
+violation-connected group of slices is re-solved \emph{jointly} --- so a
+clean ladder is exactly its independent fits, and a correction lands where
+the quotes are thinnest rather than wherever the sweep happened to arrive
+last.  The one-way sweep survives as explicit legacy configuration.
 
 \subsection{The native log contract}
 
@@ -1057,8 +1093,15 @@ ATM level, skew, curvature
   quadrature and root solves are still required.\\
 Calendar freedom
 & Soft in production
-& Exact if \eqref{eq:convex_order} holds for all ranks; production samples
-  finitely and uses finite weights.\\
+& Exact if \eqref{eq:convex_order} holds for all ranks; production enforces
+  at fixed strikes over the common quote support, with finite weights, and
+  reports residual violations in desk units (worst strike, currency, ticks,
+  spread fraction).\\
+Display and publish
+& Gated above this note
+& A structurally clean slice can still be withheld by the surface-level
+  butterfly certificate (Note~02); that gate is upstream of everything
+  here.\\
 Unimodality or economic plausibility
 & Not guaranteed
 & Positive density can be oscillatory or multimodal.\\
@@ -1136,8 +1179,11 @@ near the hard wall, as they should.
 The tabulated $x_j=m+b_j$ is strictly increasing.  Production uses piecewise
 cubic Hermite interpolants supplied with the analytic nodal slopes
 $x'=v$ and $G'=-e^x\rho$.  This gives fourth-order local accuracy, but it is
-not a Fritsch--Carlson monotonicity guarantee \cite{fritschcarlson};
-monotonicity between nodes is therefore a numerical audit on the chosen grid.
+not by itself a Fritsch--Carlson monotonicity guarantee \cite{fritschcarlson};
+production therefore runs the Fritsch--Carlson sufficient condition per slice
+as a cheap vectorized scan --- with exact nodal derivatives the
+derivative-to-secant ratio is $1+O(h^2)$, far inside the sufficient region ---
+which upgrades ``increasing at the nodes'' to ``increasing between them.''
 Strike inversion starts from a monotone linear-table seed and applies a small
 fixed number of clipped Newton updates.
 
@@ -1215,7 +1261,7 @@ production parameterization separates a linear endpoint chord:
 h(p)=(1-p)L+pR+\sum_{n=2}^{N}a_nP_n(1-2p).
 \label{eq:production_profile}
 \end{equation}
-The charts are exactly equivalent:
+The two conventions are exactly equivalent:
 \begin{equation}
 d_0=\frac{L+R}{2},\qquad
 d_1=\frac{L-R}{2},\qquad
@@ -1230,6 +1276,16 @@ not by themselves the true endpoint log-speeds.  Those are
 \log\lambda_+&=R+\sum_{n=2}^{N}(-1)^na_n.
 \label{eq:production_right_endpoint}
 \end{align}
+This linear map is more than a footnote: it is exactly what the shipped
+\emph{optimization} chart inverts.  Production offers three coordinate
+systems over the same family --- the raw chord coefficients above, an
+endpoint chart that takes the true endpoint log-speeds
+$(\log\lambda_-,\log\lambda_+,a_2,\dots)$ themselves as coordinates so
+that body curvature cannot mechanically drag the wings, and the shipped
+default, which additionally passes $\lambda_+$ through a logistic so the
+martingale wall sits at infinity and the admissible set is the whole of
+$\R^d$.  The fitted optimum is chart-independent to solver tolerance; what
+changes is which mistakes are structurally impossible.
 
 \begin{table}[H]
 \centering
@@ -1285,19 +1341,33 @@ high-mode ridge
 & regularizer
 & Penalizes weakly identified coefficients, normally beginning at degree
   four.\\
+optimization coordinate
+& chart selection
+& Raw chord, endpoint-speed, or logistic endpoint charts over the same
+  family; the shipped logistic chart makes the $\lambda_+$ wall
+  unreachable.\\
+surface orchestration
+& solver selection
+& Independent fits, interface screen, joint repair of violating groups
+  (shipped default); one-way nearest-to-farthest sweep as explicit
+  legacy.\\
 right-tail turn and weight
 & soft barrier
-& Discourages $\lambda_+$ before the hard martingale wall at one.\\
+& Prices $\lambda_+$ near the martingale wall at one; in the shipped chart
+  the wall itself cannot be reached.\\
 parameter prior
 & regularizer
 & Stabilizes tails, warm starts, or continuity when data are sparse.\\
 ATM/RR/BF operator targets
 & optional views
-& Add quote-operator prior rows.  Exact level/skew/curvature retargeting is the
-  separate local Newton chart of \cref{sec:handles}.\\
-calendar grid and weight
+& Add quote-operator prior rows.  Exact level/skew/curvature retargeting is
+  the separate local Newton chart of \cref{sec:handles}; the handle-neutral
+  RR/BF/var-swap \emph{package} moves inside the kernel are a third,
+  distinct mechanism.\\
+calendar rows and weight
 & soft surface control
-& Penalize negative adjacent-expiry gaps in \eqref{eq:G_identity}.\\
+& Penalize adjacent-expiry order violations at fixed strikes on the common
+  quote support; the ledger \eqref{eq:G_identity} stays diagnostic.\\
 log-contract target
 & optional view
 & Target \eqref{eq:log_contract} without strike-strip extrapolation.\\
@@ -1351,9 +1421,10 @@ Moment/Lee map
 Analytic Jacobian \eqref{eq:analytic_price_jacobian}
 & calibration Jacobian
 & central finite differences; see \cref{fig:jacobian}\\
-Calendar ledger \eqref{eq:G_identity}
+Calendar order: confined price rows, symmetric repair
 & joint residual stack
-& sampled adjacent-expiry gap reports\\
+& \nolinkurl{calib/calendar.py} / \nolinkurl{calib/symmetric.py};
+  ledger \eqref{eq:G_identity} gap reports stay diagnostic\\
 Log contract \eqref{eq:log_contract}
 & log-contract view
 & direct law integral versus option-strip benchmark\\
@@ -1394,10 +1465,13 @@ updates often save more time than a more exotic optimizer.
   create moderate $h$ in the quote window and extreme endpoints.  Inspect
   endpoint speeds directly.
 \item \textbf{Grid convergence.}  A good quote residual on one grid is not a
-  numerical certificate.  Refit or at least reprice on a refined grid.
-\item \textbf{Fallback derivatives.}  Core price, band, ridge, barrier, and
-  calendar rows admit analytic or elementary derivatives.  Optional blocks
-  not covered by the analytic path may still trigger finite differences.
+  numerical certificate.  Production compares against a refined reference
+  quadrature as part of its shipped audit battery; do the same for any
+  derived quantity.
+\item \textbf{Fallback derivatives.}  Core price, band, ridge, barrier,
+  calendar, and both log-contract rows admit analytic or elementary
+  derivatives; only the prior-anchor and operator blocks fall back to
+  finite differences.
 \end{itemize}
 
 \begin{perfbox}
@@ -1465,11 +1539,17 @@ def call_prices(z, x, upper_share, log_strikes):
     return share(roots) - np.exp(log_strikes) * (1.0 - exercise_p)
 \end{lstlisting}
 
-Two details are deliberately omitted from the listing.  First, truncating
+Three details are deliberately omitted from the listing.  First, truncating
 $z$ without the analytic tail corrections in \cref{app:numerics} biases the
-mean and far-wing prices.  Second, a production implementation should evaluate
-the admissibility condition before exponentials overflow, then use scaled or
-log-domain accumulation near the boundary.
+mean and far-wing prices.  Second, a production implementation should
+evaluate the admissibility condition before exponentials overflow, then use
+scaled or log-domain accumulation near the boundary.  Third, the cash leg
+as written carries a floating-point wing trap the audit battery caught:
+past $|z|\approx36.7$, \texttt{expit(z)} rounds to exactly one, the cash
+term $e^{k}(1-\Lambda(z_k))$ collapses to zero, and the far right wing
+steps up to the bare share --- production evaluates the cash leg in log
+space (\texttt{exp(k - logaddexp(0, z))}) for exactly this reason, and
+forms $u(1-u)$ as \texttt{expit(z)*expit(-z)} in the same spirit.
 
 \begin{example}[title={What to test before optimizing}]
 For a random interior coefficient vector: refine the grid; check
