@@ -420,6 +420,44 @@ entry never refits the rest of the universe (invariant~4); an empty
 calendar short-circuits to $\tau=T$ and the pipeline is byte-identical
 (invariant~2).
 
+\subsection{Below one day: the session clock}
+\label{sec:sessionclock}
+
+The thesis of this note does not stop at the day boundary: below one
+day, the market's clock is not calendar-proportional either, and the
+machinery for reading it is shipped, not hypothetical.  With the
+intraday clock enabled (a surfaced toggle, off by default and
+byte-identical off), two things change.  First, \emph{where maturity
+ends}: each node is valued from the chain snapshot's timestamp to the
+expiry's exact \emph{settlement instant} --- the stored settlement map,
+with exchange session rules as fallback --- so a same-day expiry prices
+over its remaining hours rather than an unrepresentable zero of
+calendar days.  Second, \emph{how a day accrues}: variance time flows
+through a session-weighted profile in which a fraction of each trading
+day's variance (default $6.5/24$) accrues during the exchange session
+and a non-trading calendar day carries weight one.  Those two defaults
+are not a claim about the physics; they are a \emph{nesting} property,
+chosen so that any close-to-close span of $N$ calendar days integrates
+to exactly $N$ day-weights --- the legacy convention recovered to the
+day, so switching the clock on changes sub-day reads and nothing else.
+The physics lives in the research settings: session shares near
+$0.7$--$0.9$ make a live same-day expiry's clock ``remaining trading
+minutes'' and the overnight cheap.
+
+The measured case for a non-proportional sub-day clock is the weekend.
+Across the stored intraday filter campaign, a thirty-minute session
+step moves ATM volatility about $19.5$ bp --- while one overnight and
+an entire three-day weekend \emph{both} move it about $55$ bp.  No
+clock proportional to elapsed calendar time can calibrate all three
+numbers at once; a session-weighted one can.  Two honest scope
+statements complete the picture.  The in-session profile is uniform in
+this version --- the U-shaped open/close seasonality is a documented
+follow-up, deliberately not yet a knob.  And the elegant part costs
+nothing: an event's date is already stored as a year fraction, so once
+the clock's base is sub-day, a \emph{fractional} event date composes
+with \eqref{eq:clock} unchanged --- an 08:30 CPI print becomes a
+genuine intraday event with no new event machinery at all.
+
 \begin{remark}[One production clock, one legacy clock, one unit trap]
 \label{rem:twoclocks}
 Two dilation clocks exist in the codebase and must not be conflated.
@@ -436,20 +474,17 @@ When in doubt, the production semantics is the one \cref{lst:clock}
 and its tests lock.
 \end{remark}
 
-\begin{remark}[The intraday hook, and the other clock in the building]
+\begin{remark}[The other clock in the building]
 \label{rem:intraday}
-Two refinements post-date the original design.  First, the clock's base
-need not be the calendar-day count: an intraday session profile can
-supply the accrued day-weight while the event cutoff stays on calendar
-time, which makes a \emph{fractional} event date meaningful --- an
-08:30 CPI print is now a genuine intraday event.  Second, the
-observation filter of Note~15 carries its own \emph{session clock} for
-a different question entirely: how much handle drift to expect
-\emph{between two snapshots} (a weekend moves ATM like one overnight).
-That clock budgets process noise between fits; this note's clock
-dilates maturity within one fit.  They share the intraday primitive and
-nothing else --- separate toggles, separate subsystems, no
-interaction.
+The observation filter of Note~15 carries its own \emph{session clock}
+for a different question entirely: how much handle drift to expect
+\emph{between two snapshots} (a weekend moves ATM about as much as one
+overnight).  That clock budgets process noise between fits; this note's
+clock dilates maturity within one fit.  They share the intraday
+primitive and nothing else --- separate toggles, separate subsystems,
+different default shares tuned for different properties (the filter's
+share is $0.60$ with closed days at weight zero; this note's is the
+nesting pair of \cref{sec:sessionclock}), and no interaction.
 \end{remark}
 
 %======================================================================
@@ -517,6 +552,15 @@ table speaks configuration.
 $\tau=T$ everywhere.\\
 \texttt{normalizeEvents} & \texttt{false} & The one-year budget
 normalization \eqref{eq:normalize}.\\
+\texttt{intradayClock} & \texttt{false} & Sub-day maturity: settlement-
+instant valuation plus the session-weighted profile
+(\cref{sec:sessionclock}); byte-identical off.\\
+\texttt{sessionVarShare} & $6.5/24$ & In-session share of a trading
+day's variance; the default is the flat-density value that nests the
+legacy day convention.  Read only while the intraday clock is on.\\
+\texttt{nonTradingWeight} & $1.0$ & Day-weight of a non-trading calendar
+day --- the weekend-effect research lever.  Read only while the intraday
+clock is on.\\
 per-ticker calendar & empty & \texttt{EventSpec}$(t_e>0,\ N_e\ge0,$
 label$)$, $N_e$ in \emph{extra equivalent days}; persisted per ticker
 (its own endpoint and version), not in the global options.\\
@@ -534,8 +578,9 @@ and sparse.\\
 \texttt{min\_event\_days} & $0.5$ & Sparsity threshold: smaller solved
 events are dropped.\\
 \texttt{max\_event\_days} & $1825$ & Solver box bound per event.\\
-\texttt{base\_days} & \texttt{None} & Intraday hook: session-profile
-day-weights replace the calendar base (\cref{rem:intraday}).\\
+\texttt{base\_days} & \texttt{None} & Internal carrier of
+\texttt{intradayClock}: the session-profile day-weights that replace the
+calendar base (\cref{sec:sessionclock}).\\
 \bottomrule
 \end{longtable}
 
@@ -543,7 +588,10 @@ day-weights replace the calendar base (\cref{rem:intraday}).\\
 negligible; with no events $\tau=T$ and the feature costs exactly
 nothing.  The auto-calibrator is one bounded quasi-Newton solve over a
 handful of variables, interactive.  A calendar edit refits one ticker
-(per-ticker events version in the fit key).
+(per-ticker events version in the fit key).  Figures and macros were
+generated at commit \texttt{\emcgencommit} on \emcgendate; the session
+clock's weekend evidence (\cref{sec:sessionclock}) is quoted from the
+stored intraday filter campaign, not regenerated here.
 
 %======================================================================
 \section{Traceability}
@@ -565,6 +613,14 @@ invariant~2 &
 \nolinkurl{volfit/calib/weighted_time.py}\newline
 \nolinkurl{tests/test_weighted_time.py::test_no_events_is_identity};
 \nolinkurl{::test_no_event_byte_identical}\\
+\addlinespace
+Session clock: settlement instant, nesting profile, off = byte-identical &
+\cref{sec:sessionclock} &
+\nolinkurl{volfit/calib/intraday_time.py},
+\nolinkurl{volfit/data/expiry_time.py}\newline
+\nolinkurl{tests/test_intraday_time.py};
+\nolinkurl{tests/test_intraday_0dte.py};
+certification case \texttt{0dte\_exit\_gates}\\
 \addlinespace
 Event adds day weights before its date only &
 \eqref{eq:clock} &
