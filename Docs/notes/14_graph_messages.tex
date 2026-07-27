@@ -52,11 +52,14 @@ posterior is the accountant: repeated routes from one source are priced
 jointly ($\gmrepeatvar/p$ where naive per-message accounting claims
 $\gmnaivevar/p$), disconnected components honestly keep zero innovation
 and broad bands, and baseline uncertainty enters exactly once per node.
-Activation as the product default is governed by a pre-registered
-six-condition benchmark gate whose adjudication campaign is in flight as
-this note is written; until that verdict, precision messages are an
-explicit mode switch away, beside a byte-locked global-smoothing
-alternative (\cref{app:smooth}).
+Activation as the product default was governed by evidence, and the
+evidence is in: the pre-registered six-condition daily benchmark gate did
+\emph{not} clear (gates 1, 4 and 6 failed, recorded verbatim in
+\cref{sec:gate}), yet the default flipped to precision messages on
+2026-07-27 --- on the intraday async replay, where the two operators
+finally separate and the smoothing alternative is measured nearly inert.
+The smoothing mode remains byte-locked beside this one
+(\cref{app:smooth}), as the wire default and the explicit rollback.
 \end{abstract}
 
 \newpage
@@ -119,10 +122,12 @@ graph distance and informer uncertainty; reported confidence is always
 the \emph{marginal} posterior precision, never a conditional.
 \item The output retargets into the arbitrage-free smile machinery of
 Note~01; the graph never emits a raw curve.
-\item Mode and default changes are explicit and evidence-gated: the
-shipped default is chosen by the pre-registered benchmark gate of
-\cref{sec:gate}, and an alternative smoothing mode ships byte-locked
-beside this one (\cref{app:smooth}).
+\item Mode and default changes are explicit and evidence-gated: a
+default moves only on \emph{recorded} held-out evidence --- and the
+record that moves it may be a different horizon than the gate that was
+written, as it was here (\cref{sec:gate}: the daily gate failed and is
+recorded verbatim; the flip rests on the intraday separation).  The
+smoothing mode ships byte-locked beside this one (\cref{app:smooth}).
 \end{enumerate}
 \end{invariant}
 
@@ -527,7 +532,8 @@ are priced jointly: on the triangle fixture (source observed at finite
 precision $p$, one direct and one two-leg route) the global posterior
 variance is $\gmrepeatvar/p$, where naive per-message accounting ---
 the \cref{eq:hops} effective precisions added as if independent ---
-claims $\gmnaivevar/p$, overstating precision by $39\%$.  Competing
+claims $\gmnaivevar/p$, overstating precision by a factor of
+$\gmrepeatratio$.  Competing
 messages vote: equal opposing signals cancel to $\gmcompetecancel$ at
 \emph{doubled} conditional precision $2p$ (disagreement is not
 silence); a $3p$ source outvotes to $\gmcompeteout$; and under
@@ -545,8 +551,8 @@ message toward zero as a silent neighbour's \emph{configured} precision
 grows; the pairwise factor marginalizes the dead informer away exactly.
 B: repeated routes from one source --- the global posterior variance
 ($\gmrepeatvar/p$) against naive independent-message accounting
-($\gmnaivevar/p$): path counting would fabricate a $39\%$ precision
-overstatement.}
+($\gmnaivevar/p$): path counting would fabricate a
+$\gmrepeatratio\times$ precision overstatement.}
 \label{fig:accountant}
 \end{figure}
 
@@ -646,7 +652,14 @@ band-variance accounting.  \texttt{propagationMode} selects
 \texttt{precision\_messages}, the smoothing alternative of
 \cref{app:smooth}, or \texttt{hybrid} (message factors plus an
 explicit smoothing term; config-only, locked to coincide with pure
-messages when its weight is zero).
+messages when its weight is zero); the wire enum also carries the
+layered dynamic-harmonic mode, an opt-in documented in the companion
+edition.  One scope sentence prevents a misreading: two keys carry two
+defaults.  The \emph{wire} default on a bare solve request stays the
+smoothing mode --- workspace replay, the byte-identity locks and the
+backtest harness are untouched --- while the \emph{Options} default,
+the one the application seeds and a desk actually runs, is precision
+messages since 2026-07-27 (\cref{sec:gate}).
 
 \subsection{The edge schema and the editor}
 
@@ -742,29 +755,53 @@ regimes with honest bands after the idio floor
 (\cref{app:smooth}) --- so graph extrapolation as such is not the
 hypothesis under test; the operator's marginal value is.
 
-\textbf{The pre-registered gate.}
+\textbf{The pre-registered gate, and its recorded verdict.}
 \label{sec:gate}
-Precision messages become the product default \emph{only if}, on the
+The gate was written before the sweep ran: precision messages become
+the product default \emph{only if}, on the
 frozen three-regime fixtures over the strict out-of-sample window, a
-combined adjudication campaign shows: material liquid-split dark-name
+combined adjudication campaign shows material liquid-split dark-name
 skill over both the transported prior and the smoothing mode; no
 degradation in the stressed regimes; no calm-regime harm beyond
 tolerance; standardized residuals near unit scale with 80/95\% band
 coverage near nominal after the idio floor; no unstable cycles; and no
 wing-RMS deterioration.  Expectations were recorded before the sweep:
-the \texttt{desk} preset is \emph{expected} to lose day-horizon RMS
+the \texttt{desk} preset was \emph{expected} to lose day-horizon RMS
 (it is a belief mode and ships regardless); the \texttt{learned}
-preset is the candidate; a constant-precision ablation probes whether
-the gap-flat noise makes the decay term superfluous.  A single-pair
-smoke of the full production path is recorded with the explicit caveat
-that one pair is not a verdict (message-learned full-LOO ATM skill
-$+\gmsmokemsgfull/+\gmsmokemsgfullr$ bp against the smoothing mode's
-$+\gmsmokelegfull/+\gmsmokelegfullr$, message bands slightly narrow at
-$\zeta$ std \gmsmokemsgzeta\ where the smoothing mode's ran wide at
-\gmsmokelegzeta).  The campaign is running as this note is written;
-its decision table will be filled from the artifact, not from
-enthusiasm, and until then the message mode is one explicit switch
-away from the shipped default.
+preset was the candidate; a constant-precision ablation probed whether
+the gap-flat noise makes the decay term superfluous.  (An earlier
+single-pair smoke, retained in the artifact, seeded expectations; one
+pair is not a verdict and it was not treated as one.)
+
+The campaign ran, the table filled, and \emph{at the daily horizon the
+gate did not clear}.  Recorded verbatim: gate~1 failed (skill positive
+everywhere, $+0.35$ to $+2.01$ bp, material nowhere), gate~4 failed
+($\zeta$ std $2.29$ against the base arm's over-wide $0.84$, 95\%
+coverage $0.908$ --- the message bands are overconfident), gate~6
+failed marginally (wing medians $105.2$ against the legacy arm's
+$99.6$); gates 2, 3 and 5 passed.  At one-day granularity the message
+operator is statistically indistinguishable from the smoothing mode on
+RMS --- the 2026-07-19 hold, now in the pre-registered table.
+
+The default flipped anyway, on 2026-07-27, and the basis is the part
+that matters: \emph{not} this gate but the intraday async replay
+(the companion campaign's artifact), where the two operators finally
+separate.  Replaying real intraday sessions through the production
+solvers, the smoothing mode is nearly inert --- $168.6$ bp against a
+pure-transport baseline of $172.7$, its innovations shrunk to nothing
+by the zero-innovation anchor at day-scale $\kappa/\eta$ --- while the
+message operator carries the signal at $65.8$ bp with $\zeta$ std
+$0.88$, 95\% coverage $0.964$, and no wing regression.  The flip was
+user-ratified with the failed daily table on the record; it moves the
+\emph{Options} default only (the wire default and every byte-identity
+lock keep the smoothing mode), amplitude defaults stay at desk
+strength (the intraday evidence was measured there), and a store that
+ever saved Options keeps its explicit value until re-saved.  The known
+daily-horizon characteristics the default now carries are stated
+plainly rather than argued away: graph credible bands narrow by a
+factor of about two, and wing medians about $+5$ bp against the legacy
+arm --- the recorded price of an operator whose value lives below the
+day.
 
 %======================================================================
 \section{What is genuinely original here}
@@ -784,19 +821,25 @@ preference.  \emph{The dead-informer analysis}
 every local conditional, surfaced and used to choose the factor form.
 \emph{Honesty rules as first-class machinery}: no-lit-path components
 left improper on purpose, baseline uncertainty placed exactly once,
-attribution by source never by path.  And \emph{evidence discipline}:
-default status is decided by a pre-registered benchmark gate, with the
-in-flight campaign's expectations recorded before its results.
+attribution by source never by path.  And \emph{evidence discipline},
+now demonstrated rather than promised: the pre-registered gate was
+honoured \emph{by publishing its failure} --- the daily table records
+three failed gates verbatim, and the default moved on different,
+recorded evidence rather than on a quietly amended criterion
+(\cref{sec:gate}).
 
 %======================================================================
 \section{Limitations}
 \label{sec:limits}
 
-Where the guarantees stop.  \emph{The adjudication is not in}: every
-mean-semantics contract here is exact, but whether message propagation
-\emph{predicts better} than the smoothing alternative is precisely
-what the running campaign decides, and this note refuses to pre-empt
-it --- as of this writing the shipped default is the smoothing mode.
+Where the guarantees stop.  \emph{The daily horizon is a tie, and the
+default owns that}: at one-day granularity the message operator is
+statistically indistinguishable from the smoothing alternative on RMS,
+with overconfident bands ($\zeta$ std near $2$) and mildly worse wings
+--- the recorded reason the daily gate failed
+(\cref{sec:gate}).  The flip rests entirely on the intraday
+separation, and the daily calibration repair (joint anchors, baseline
+placement) is open work.
 \emph{Correlated informers overstate conditional precision}: $q_i$
 adds configured precisions as if sources were conditionally
 independent; the global solve prices shared \emph{routes} correctly,
@@ -831,7 +874,8 @@ table speaks configuration.
 with its appendix).}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
-\texttt{graphPropagationMode} & \texttt{precision\_messages} & The mode
+\texttt{graphPropagationMode} & \texttt{precision\_\allowbreak
+messages} & The mode
 fork: \texttt{precision\_messages} / \texttt{smooth\_field}
 (\cref{app:smooth}, explicit rollback) / \texttt{hybrid} (config-only).
 The daily gate (\cref{sec:gate}) did not clear; the default was flipped
@@ -936,11 +980,15 @@ of all of them.
 \item \textbf{Adjudication runs where long jobs survive}: the campaign
 executes from the user's own shell (chunked, resumable parts beside
 the frozen fixtures); tool-spawned background jobs are killed on this
-box --- a recorded operational constraint.
+box --- a recorded operational constraint.  Both adjudication
+campaigns --- the daily message gate and the intraday async replay ---
+ran this way, each with its own launcher.
 \item No benchmark in this note was re-timed; figures and macros were
 generated at commit \texttt{\gmgencommit} on \gmgendate, golden
 numbers through the production modules and empirical numbers from the
-stored design-study artifact.
+stored design-study artifact.  The campaign verdicts and the default
+flip quoted in \cref{sec:gate} are current as of 2026-07-27, from the
+two findings records anchored in \cref{app:trace}.
 \end{enumerate}
 
 %======================================================================
@@ -1005,6 +1053,20 @@ Adjudication harness variants, coverage metrics, decision table &
 \nolinkurl{backtest/run_message_adjudication.ps1},
 \nolinkurl{backtest/graph_edges.py} &
 \nolinkurl{test_message_adjudication.py}\\
+Filled daily decision table; the 2026-07-27 flip record &
+\cref{sec:gate} &
+\nolinkurl{backtest/FINDINGS_message_phase4.md} &
+--- (a findings record, quoted verbatim)\\
+Intraday async replay: the separation the flip rests on &
+\cref{sec:gate} &
+\nolinkurl{backtest/FINDINGS_dynamic_intraday.md},
+\nolinkurl{backtest/graph_intraday.py} &
+\nolinkurl{test_graph_intraday_replay.py}\\
+Mode semantics certification (A/B arms byte-identical off) &
+\cref{sec:gate} &
+\nolinkurl{backtest/certification.py} &
+certification case\newline
+\texttt{graph\_\allowbreak precision\_\allowbreak messages}\\
 Design study (anchor choice, seeds, learned levels) &
 \cref{sec:amplitude,sec:precision} &
 \nolinkurl{backtest/message_phase0.py} &
