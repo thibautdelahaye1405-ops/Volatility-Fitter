@@ -99,6 +99,20 @@
   --color-accent-500: #0284c7;
   --color-accent-600: #075985;
 
+  /* Overlay badges & status accents (GRAPH / FILTER pills, preflight chips,
+   * status dots): the dark theme's light tints (…-200/300/400) have almost no
+   * contrast on white cards — deepen them here so every such utility flips for
+   * free, per this file's no-per-component-migration rule. */
+  --color-violet-200: #4c1d95;
+  --color-violet-300: #5b21b6;
+  --color-violet-400: #6d28d9;
+  --color-teal-200: #115e59;
+  --color-teal-300: #0f766e;
+  --color-teal-400: #0d9488;
+  --color-amber-200: #92400e;
+  --color-amber-300: #b45309;
+  --color-amber-400: #d97706;
+
   color-scheme: light;
 }
 
