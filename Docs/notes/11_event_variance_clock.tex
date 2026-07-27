@@ -29,11 +29,17 @@ the one-year variance budget is unchanged, making events \emph{redistribute}
 variance within the year rather than add it. The calendar can be typed in or
 \emph{auto-calibrated}: a solver places events so the event-time forward
 variance is as flat as possible, inferring the calendar from the term
-structure's kinks, after which it is editable. With no events the variance clock
-collapses to calendar time and every downstream fit is byte-identical to the
-plain pipeline. A worked example shows a $4$-extra-day earnings event lifting
-short-dated implied vol and decaying away, with a working-vol drop of
-\evtdropbp\ vol bps at a fixed expiry just past the event.
+structure's kinks, after which it is editable. Below one day the clock
+continues: an opt-in \emph{intraday session clock} values each node from the
+snapshot timestamp to the expiry's exact settlement instant and splits each
+trading day's variance between session and overnight --- at its default
+parameters it nests the legacy day convention exactly, and the research
+levers make a live 0DTE's clock ``remaining trading minutes''. With no
+events the variance clock collapses to calendar time and every downstream
+fit is byte-identical to the plain pipeline. A worked example shows a
+$4$-extra-day earnings event lifting short-dated implied vol and decaying
+away, with a working-vol drop of \evtdropbp\ vol bps at a fixed expiry just
+past the event.
 \end{abstract}
 
 \tableofcontents
@@ -72,6 +78,9 @@ table --- reads the \emph{same} $\tau$; there is one variance clock per node,
 not one per view.
 \item Editing the calendar refits only the affected ticker (per-ticker events
 version).
+\item Below one day: the intraday session clock is off by default
+(byte-identical), and even \emph{on}, its default parameters nest the
+legacy integer-day convention exactly (\cref{sec:intraday}).
 \end{enumerate}
 \end{invariant}
 
@@ -209,6 +218,46 @@ like any hand-entered one (\nolinkurl{calib/event_autocalib.py},
 \nolinkurl{api/event_autocalib.py}).
 
 %======================================================================
+\section{Below one day: the intraday session clock}
+\label{sec:intraday}
+
+The day-granular clock is meaningless at hours to expiry: a 0DTE's remaining
+life is set by the wall clock and by \emph{how} variance accrues through a
+trading day. The opt-in intraday clock (\texttt{intradayClock}, off by
+default and byte-identical off; \nolinkurl{calib/intraday_time.py}) extends
+the day-weight convention below one day in two moves. First, \emph{valuation
+instants become exact}: each node is valued from the chain snapshot's
+timestamp to the expiry's \emph{settlement instant} --- the schema-v7
+settlement map, with NYSE session rules (holidays, half-days, DST-correct ET
+boundaries) as the fallback --- so a same-day expiry prices at $t=3.5$ hours
+rather than the unrepresentable zero (certification case
+\texttt{0dte\_exit\_gates}). Second, \emph{within} a trading day the day's
+weight is split piecewise-uniformly: a fraction \texttt{sessionVarShare} of
+the day's variance accrues during the exchange session (half-day sessions
+scale it), the remainder overnight, and a non-trading calendar day carries
+\texttt{nonTradingWeight} --- the weekend-effect research lever.
+
+The defaults are chosen for a nesting property, not a view:
+$\texttt{sessionVarShare}=6.5/24$ is the \emph{flat-density} share, and with
+$\texttt{nonTradingWeight}=1$ any close-to-close span of $N$ calendar days
+integrates to exactly $N$ day-weights --- the legacy convention, recovered
+to the day. The research values are where the physics lives: shares of
+$\sim0.7$--$0.9$ concentrate variance in trading hours, making a live
+0DTE's clock ``remaining trading minutes'' with a cheap overnight and a
+cheap weekend. The evidence for wanting them is measured, not assumed: on
+the 2026-07 intraday campaign (936 filter measurements, Note~15's session
+clock --- the same physics consumed by the observation filter), 30-minute
+steps moved ATM vol by $19.5$ bp while one overnight and a \emph{whole
+weekend} both moved it $\approx55$ bp --- no calendar-proportional clock
+can calibrate all three at once. Two scope notes: the in-session profile is
+uniform in v1 (the U-shaped open/close seasonality is a documented
+follow-up, deliberately not a knob yet), and scheduled \emph{intraday}
+events need no new machinery --- \texttt{EventSpec} times are year
+fractions, so once the clock is sub-day an 08:30 CPI print is simply an
+event whose fractional time sits mid-morning, composing with
+\eqref{eq:clock} unchanged.
+
+%======================================================================
 \section{What is original here}
 \label{sec:original}
 
@@ -267,6 +316,12 @@ eventless &
 \cref{sec:thread} &
 \nolinkurl{calib/event_autocalib.py}, \nolinkurl{api/event_autocalib.py} &
 \nolinkurl{test_event_autocalib.py::test_spike_is_flattened}, \nolinkurl{::test_flat_input_stays_eventless}\\
+\addlinespace
+Intraday clock nests the legacy convention at defaults; sub-day settlement
+valuation (cert.\ \texttt{0dte\_exit\_gates}) &
+\cref{sec:intraday} &
+\nolinkurl{calib/intraday_time.py}, \nolinkurl{data/expiry_time.py} &
+\nolinkurl{test_intraday_time.py}, \nolinkurl{test_intraday_0dte.py}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -285,6 +340,14 @@ eventless &
 \texttt{normalizeEvents} & off & Rescale all days to a fixed $365$ one-year budget \eqref{eq:normalize}.\\
 \texttt{maxExpiry} & --- & Auto-calibrate horizon: one candidate event per
 expiry at or before it (\cref{sec:thread}).\\
+\texttt{intradayClock} & off & Sub-day settlement-instant valuation $+$
+session-weighted intraday accrual (\cref{sec:intraday}); byte-identical
+off.\\
+\texttt{sessionVarShare} & $6.5/24$ & In-session share of a trading day's
+variance; the default is the flat-density value that nests the legacy day
+convention.\\
+\texttt{nonTradingWeight} & $1.0$ & Day-weight of a non-trading calendar day
+(the weekend-effect lever); $1.0$ keeps the legacy three-full-days weekend.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
 \texttt{DAYS\_PER\_YEAR} & $\evtdays$ & Calendar-to-variance day conversion.\\
