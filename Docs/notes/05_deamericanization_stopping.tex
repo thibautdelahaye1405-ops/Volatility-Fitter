@@ -342,6 +342,12 @@ tight relative spreads live --- and run the tick-noise and missing-side
 screens; then, on American chains only, de-Americanize each surviving mid;
 convert to normalized calls and total variance; optionally repair wing
 convexity (\cref{sec:convex}); hand the result to the model layer.  The
+tick screen deserves its one sentence, because it earned a certification
+case: on real-feed chains, an OTM quote whose \emph{bid} --- not its mid ---
+is worth no more than three ticks is dropped, since a couple of ticks
+carries no volatility information and was measured whipsawing the fitted
+wings; the tick size is persisted with the snapshot so a replay screens
+identically (case \texttt{tick\_noise\_quotes}).  The
 implementation lives in \texttt{volfit/api/quotes.py}; everything below is
 the mathematics of its three de-Am moves.
 
@@ -578,6 +584,15 @@ ATM-kink case file of Note~06); only then does the \emph{precise}
 per-quote de-Americanization of this note run, under the refined carry.
 The refinement needs the carry to a few bp, not the quote to sub-bp, so it
 runs fewer bisections at coarser tolerance.
+
+One step deeper exists as an explicit opt-in.  The joint borrow/de-Am
+fixed point of Note~06 iterates the full loop --- borrow and dividends
+into the de-Americanization, the de-Americanized board into the parity
+forward, the forward back into the borrow --- with the same dividend
+schedule riding both legs, and feeds the converged $(\fwd,D)$ into fits
+per expiry only when the implied borrow clears a $25$\,bp materiality
+gate; below the gate the parity forward is kept exactly, so ordinary
+names are byte-identical even with the toggle on.  It ships default-off.
 \end{remark}
 
 %======================================================================
@@ -804,7 +819,10 @@ and is \emph{free across an entire calibration sweep} --- a
 complexity-class change, worth more than any constant factor the kernel
 can buy.  A conservative pre-screen (non-positive bids, a buffered wing
 cut) additionally drops quotes that cannot survive the static bounds
-before any tree prices them, and is output-preserving by construction.
+before any tree prices them, and is output-preserving by construction; the
+three-tick OTM bid floor of \cref{sec:pipeline} is the separate,
+deliberately non-output-preserving screen --- it genuinely removes quotes,
+and says so.
 
 %======================================================================
 \section{The wings: an approximate projection}
@@ -857,8 +875,23 @@ this incident.
 aimed at a region the data cannot pin down must be structurally incapable
 of moving the region it can.}  Note~04's convex-wing case file and
 Note~09's tapered enforcement are the same principle wearing other
-clothes.
+clothes.  The revert and the confined repair's clean-chain no-op are
+locked together as certification case \texttt{deam\_repair\_confinement}.
 \end{example}
+
+\begin{remark}[Duplicate strikes: a field hardening worth naming]
+\label{rem:dupstrikes}
+One further wing-repair input deserves its own sentence rather than an
+appendix clause.  Overlapping weekly and monthly listings can hand the
+projection two quotes at \emph{identical} strikes; the core-anchor
+\emph{slope} --- a divided difference across the core boundary --- then
+divides by zero, and the resulting crash killed whole backtest day-pairs
+before it was traced.  The anchor now reads the nearest strictly distinct
+strike; clean chains are byte-identical, and the scenario is locked as
+certification case \texttt{duplicate\_strikes}.  The general lesson is the
+quiet one: \emph{a formula's implicit genericity assumption (``strikes are
+distinct'') is an input contract, and real feeds violate it}.
+\end{remark}
 
 The shipped repair (\texttt{volfit/calib/convex\_deam.py}) is therefore
 \emph{wing-only, band-constrained} and --- honestly --- \emph{approximate}.
@@ -1024,7 +1057,9 @@ deterministic scheduled cash-dividend path (escrowed, forward-consistent
 via \cref{eq:alpha}) \emph{or} an equivalent continuous-carry fallback,
 with a CRR diffusion between ex-dates.  It does not model dividend jumps,
 uncertain dividend timing or amounts, stochastic rates, or stochastic
-borrow.  And $\sigma^*$ is only as good as the resolved forward and
+borrow --- though a \emph{deterministic} borrow does now feed this
+machinery through the opt-in fixed point of \cref{rem:circular}.  And
+$\sigma^*$ is only as good as the resolved forward and
 dividend inputs (Note~06): the method removes the \emph{early-exercise}
 bias; it cannot repair a wrong forward.
 \end{caution}
@@ -1103,6 +1138,9 @@ escrow PV & --- & Discrete-cash escrowed-spot lattice, forward-consistent
 rescale \cref{eq:alpha}, cap $\alpha\le5$.\\
 pre-screen buffer & $1.5\times$ & Wing buffer for the conservative
 bid/bounds pre-screen (output-preserving).\\
+\texttt{TICK\_FLOOR\_TICKS} & $3$ & OTM bid floor in ticks on real-feed
+chains (\cref{sec:pipeline}); tick size persisted with the snapshot;
+certification case \texttt{tick\_noise\_quotes}.\\
 prepared-quote key & --- & Cache key: (ticker, expiry, raw-chain
 version, forward, discount, dividend digest, $t$, $\tau$, as-of).\\
 \texttt{convex\_deam} & \texttt{true} & Enable the wing-only convex
@@ -1230,7 +1268,8 @@ convex curve leaving the core anchor, written as an affine part plus
 nonnegative hinge knots, so $\delta_j\ge0$ \emph{is} the convexity
 constraint.  The production module composes \texttt{convex\_fit} with the
 bid/ask clip inside the capped Dykstra alternation of \cref{sec:convex}
-and additionally handles duplicate strikes and the core/wing gating ---
+and additionally handles duplicate strikes (\cref{rem:dupstrikes}) and the
+core/wing gating ---
 none of which is shown.  Both listings were executed against their
 production counterparts on the demo wing of \cref{fig:convex} before this
 note was committed: agreement to $10^{\deamstrefagree}$ (floating-point
