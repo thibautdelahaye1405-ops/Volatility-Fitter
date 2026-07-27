@@ -65,7 +65,23 @@ Graph/filter screenshots are still the 2026-07-08 staged captures — captions
 were rewritten to stop describing the retired sandbox ("manual what-if")
 and stay UI-agnostic; a recapture on the P5b three-pane shell is the
 recorded follow-up, as is the exec-cut refresh (deck_exec_template.html is
-now BEHIND the full deck). NB: today's headless-Edge/Node font metrics
+now BEHIND the full deck).
+
+**Rev-7 addendum (2026-07-27 evening): fresh SPY 3D triangulated LV shot.**
+Slide 13 (Local Vol model) now shows `assets/shots/localvol_mesh3d.png` — the
+Local Vol workspace's default "LV surface" render, the 3D triangulated
+σ²_loc(x,t) mesh (11×17 vertices, every triangle one exact affine element),
+captured from a LIVE Massive session 2026-07-27 (arb-free badge, rms 2 /
+conv 20 / max 9 bp, 55 PDE solves, 0.3 bp price RMS). Pipeline:
+`desktop.py` server mode :8001 (massive provider, scratch VOLFIT_DB,
+VOLFIT_CALIB_WORKERS=2) → `stage_market.py` → **`capture_lv3d.mjs`** (new,
+persisted here; copy into frontend\ to run like the other capture scripts).
+GOTCHA: the TopBar nav is now GROUPED (Surfaces ▾ / Universe ▾ / Quality) —
+the old `clickTab("Local Vol")` helper in capture_market.mjs no longer finds
+leaf workspaces; capture_lv3d.mjs has the two-step `openWorkspace(group,
+leaf)` helper, and capture_market.mjs/capture_graph.mjs will need the same
+fix before any full recapture. The old `localvol_heatmap.png` stays in
+assets (unused by the template). NB: today's headless-Edge/Node font metrics
 render ~5-10% taller than the rev-6 baseline — every slide was re-trimmed
 against verify_deck.mjs; residual flag = slide 10 at 6px (margin overhang,
 screenshot-confirmed clean).

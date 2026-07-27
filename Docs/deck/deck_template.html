@@ -768,10 +768,11 @@
       </ul>
     </div>
     <div>
-      <div class="shot"><img src="{{IMG:localvol_heatmap}}" alt="Local-vol surface heatmap"></div>
-      <p class="shotcap"><span class="k">Local Vol workspace — live SPY (Massive feed).</span> The calibrated nodal local-vol
-        heatmap over maturity × strike, with the arbitrage badge, per-expiry error table and var-swap panel. Smile, densities,
-        term structure and implied-vol surface views are all reconstructed from this one calibrated object.</p>
+      <div class="shot"><img src="{{IMG:localvol_mesh3d}}" alt="SPY 3D triangulated local-variance surface"></div>
+      <p class="shotcap"><span class="k">Local Vol workspace — live SPY (Massive feed, 2026-07-27).</span> The calibrated object
+        itself: the 3D triangulated σ²<sub>loc</sub>(x,t) mesh, 11×17 vertices — <em>every visible triangle is one exact affine
+        element</em>. Badge: arb-free; in-operator RMS 2 bp, converged-operator reprice 20 bp, max 9 bp; 55 PDE solves at 0.3 bp
+        price RMS. Smile, density, term and IV-surface views all reconstruct from this one surface.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
