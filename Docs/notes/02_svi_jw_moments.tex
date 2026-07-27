@@ -149,13 +149,16 @@ as $\betL,\betR$, are what Lee's bound touches.  The rest describe the belly.
 \begin{invariant}
 \begin{enumerate}[leftmargin=1.6em]
 \item Every finite $\theta\in\R^5$ maps to a smooth raw hyperbola with $b>0$,
-$|\rho|<1$, $s>0$ (\cref{sec:calib}); positivity and no-arbitrage need more.
+$|\rho|<1$, $s>0$ (\cref{sec:calib}); and under the default structural chart
+the floor and the cap hold by construction too --- only butterfly-freedom
+still needs the certificate.
 \item The two coded screens are cheap global fences: the vertex floor
 $\vmin\ge0$ (a belly condition) and the \emph{strictly buffered} wing cap
 $\max(\betL,\betR)\le\beta_{\max}=\svimomleecap<2$ (the boundary $\beta=2$
 itself admits negative tail density, \cref{prop:tail}).  Both are
-finite-weight soft rows, exactly zero on a clean slice, and they bound but do
-not certify non-negativity of the Black density in the belly.
+finite-weight soft rows, exactly zero on a clean slice --- structurally
+inert, not merely vanishing, under the default chart --- and they bound but
+do not certify non-negativity of the Black density in the belly.
 \item The raw$\leftrightarrow$JW change of coordinates is exact on the regular
 domain of \cref{thm:image}; the singular stratum it omits is a loss of
 \emph{belly} information (\cref{rem:psi0}).
@@ -437,19 +440,20 @@ Tier & Mathematical statement & Production status\\
 Structural & $b>0$, $|\rho|<1$, $s>0$ & hard, by reparametrization
 (\cref{sec:calib}); the structural chart hardens the next two tiers as well\\
 Positive floor & $\wmin>0$ --- a vertex/belly condition & soft coded screen
-(structural under the R3 chart)\\
+(structural under the default chart)\\
 Wing-admissible & $\max(\betL,\betR)<2$ strictly & soft screen fenced at
-$\beta_{\max}=\svimomleecap$ (structural under the R3 chart)\\
+$\beta_{\max}=\svimomleecap$ (structural under the default chart)\\
 Butterfly-clean & $g(k)\ge0$ for all $k$ (with the call boundary) & belly
 CERTIFICATE at publish: uncertified slices are repaired or blocked\\
 Calendar-clean & $w_{T_1}(k)\le w_{T_2}(k)$ for $T_1<T_2$ & soft
 model-agnostic hinge (Note~10) + published-family audit; not structural\\
 \bottomrule
 \end{tabular}
-\caption{Four tiers of ``valid.''  The first is hard, the second soft and
-confined to the tails, and the last two require conditions no single raw
-coefficient box supplies.  The counterexample below sits in the gap between
-tiers two and three: tail-clean, butterfly-dirty.}
+\caption{Five tiers of ``valid.''  The first is hard; the second is a
+\emph{belly} condition and the third a tail condition, both soft in the raw
+chart and structural in the default one; the last two require conditions no
+single coefficient box supplies.  The counterexample below sits in the gap
+between tiers three and four: tail-clean, butterfly-dirty.}
 \label{tab:tiers}
 \end{table}
 
@@ -554,10 +558,15 @@ a dimensionless slope --- so $W$ is a residual multiplier, not a ``weight in
 vol$^2$.''  It is deliberately large enough to dominate a violated constraint
 and invisible on a clean one.  It is not a fit-quality dial: raising it cannot
 improve a feasible fit, and lowering it only lets the optimizer wander into the
-arbitrageable cone.  Both fences are also adjustable rather than unconditional
---- the weight can be set to zero, or the cap raised to $2$ and beyond,
-re-opening the boundary trap of \cref{prop:tail} --- so they are
-configuration, not guarantees.
+arbitrageable cone.  Both fences are also adjustable rather than unconditional,
+though the plumbing of the adjustment is chart-dependent: under the raw
+rollback chart, setting the weight to zero disables the rows and raising the
+cap to $2$ and beyond re-opens the boundary trap of \cref{prop:tail};
+under the default structural chart the rows are structurally inert
+(zeroing $W$ changes nothing), and \texttt{leeSlopeMax} is instead the
+\emph{lift's ceiling} --- raising it to $2$ re-opens the same trap through a
+different door, by letting the wing reach the boundary structurally.
+Either way they are configuration, not guarantees.
 \end{caution}
 
 %======================================================================
@@ -823,7 +832,12 @@ actual wing slopes, the var swap --- and the missing derivative, a
 forward-bump re-read showing exactly which desk quantities a pure $F_T$
 error masquerades as (on a put skew: a phantom ATM \emph{and} risk-reversal
 move).  No JW UI ships; the layer is the contract any future one sits
-behind.
+behind.  The same revision added an adversarial input battery run on
+\emph{both} optimizer charts --- crossed quotes, duplicate strikes,
+one-sided boards, saturated wings --- and a deterministic refusal for
+boards with fewer than three usable quotes: five parameters fitted to two
+points is not a smile, and the calibrator now says so instead of
+improvising one.
 \end{caution}
 
 \paragraph{A condition atlas, with real chains on it.}
@@ -892,7 +906,7 @@ feasibility is the business of the soft rows \eqref{eq:penalties}; belly
 feasibility is not enforced inside the optimizer, by design --- the belly
 certificate gates it at the door instead (\cref{sec:belly}).
 
-\paragraph{The structural chart (committee revision R3, shipped opt-in).}
+\paragraph{The structural chart (committee revision R3, the shipped default).}
 There is a chart that guarantees more.  Parameterize the slice by the
 quantities the guarantees are \emph{about} ---
 $(\betL,\betR,k_\star,w_\star,\kappa_\star)$: the two actual wing slopes, the
@@ -906,23 +920,44 @@ $a=w_\star-bs\sqrt{1-\rho^2}$), and now every finite $\theta$ has a strictly
 positive floor and strictly Lee-clean wings: the two penalty rows are
 structurally zero, the trial-$w$ clip never fires, and the unit-mixing
 question about $W$ dissolves.  Shipped as \texttt{sviChart="structural"}
-(\texttt{models/svi\_jw/structural.py}), finite-difference Jacobian for now.
+(\texttt{models/svi\_jw/structural.py}), with a closed-form Jacobian since
+2026-07-26 --- the fourth layer of \cref{sec:jacobian}, measured
+$2.1$--$2.4\times$ over the finite-difference path it replaced.
 On the twelve reference-fixture nodes the two charts agree to $0.0000$ vol bp
 wherever the raw chart converged --- but the raw chart \emph{exhausted its
 500-evaluation budget on five of the twelve} while the structural chart
 converged in 30--86 evaluations on all of them and ran $\sim3\times$ faster
-despite the FD Jacobian: the penalty kinks it removes are exactly where LM
+even before its analytic Jacobian landed: the penalty kinks it removes are
+exactly where LM
 was burning its budget.  The frozen-regime benchmark confirmed it at scale
 ($\sim$29k fits per arm, three regimes, pre-registered gate; two rounds ---
-the first flushed out and fixed a lift-saturation bug): precision better or
+the first flushed out and fixed a lift-saturation bug, an LM trial
+underflowing $e^{\theta}$ to an exact zero and dividing by it): precision
+better or
 equal in all twelve medians, ZERO hard breaks, 594 vs 9{,}472
 evaluation-cap exhaustions (the raw chart fails to converge on a THIRD of
 real fits), and among fits that actually converge a LOWER butterfly-arb
 incidence (0.82\% vs 1.08\% --- the raw chart's cleaner headline was a
-survivorship artifact of its non-converged third).  The structural chart is
+survivorship artifact of its non-converged third).  One honesty detail of
+the adjudication itself: the pre-registered round-two verdict was recorded
+as HOLD, because the original gate scored arbitrage incidence on unlike
+populations; the amendment --- score converged against converged --- was
+proposed and ratified the same day, and only then did round two pass all
+four gates.  The record keeps both readings.  The structural chart is
 the production default since 2026-07-26 (\texttt{sviChart}); the raw vector
 remains explicit configuration --- the same evidence bar, and the same
 outcome, as the LQD logistic chart.
+
+Strictness in exact arithmetic is not strictness in float64, and the
+analytic-Jacobian lock exposed two latent boundary leaks worth their own
+sentence.  A logistic evaluated at a modestly large argument rounds to
+exactly $1.0$, parking a wing exactly \emph{at} the cap --- the fence the
+chart exists to keep strict; and with one wing saturated against an
+ordinary other, the quotient for $\rho$ rounds to $\pm1$, making
+$1-\rho^2$ an exact zero, the width zero, and $m$ a NaN.  Production clips
+the logistic one ulp inside $1$ and computes $1-\rho^2$ by the exact
+product identity $4\betL\betR/(\betL+\betR)^2$ --- a fence that silently
+stops being strict is precisely this note's kind of failure.
 
 \paragraph{Objective, weights, start.}
 The data term is a plain implied-volatility residual
@@ -936,11 +971,12 @@ argmin of the quoted $w$ seeds $(a,m)$, and two finite-span wing slopes seed
 $(b,\rho)$ through \eqref{eq:betas}, after which \eqref{eq:reparam} is inverted
 for $\theta_0$.  On a liquid smile a single LM pass converges.
 
-\subsection{The analytic Jacobian, in three layers}
+\subsection{The analytic Jacobian, in four layers}
 \label{sec:jacobian}
 
 The residual Jacobian is worth deriving, because it is what makes SVI the speed
-peer of the other models.  It is three chain-rule layers.  First, the
+peer of the other models.  It is three chain-rule layers on the raw chart,
+plus a fourth for the default one.  First, the
 raw-parameter partials of the hyperbola, with $x,r$ from \eqref{eq:short}:
 \begin{equation}
 \frac{\partial w}{\partial a}=1,\quad
@@ -966,9 +1002,23 @@ zeroed wherever the $w\le10^{-12}$ floor is active.  Third, the reparametrizatio
 The hinge rows follow the subgradient convention ``active linear part, else
 zero'': the floor row differentiates $-(a+b\,s\,q)$, the Lee row differentiates
 $b(1+|\rho|)$ with the $\sgn(\rho)$ subgradient (zero at $\rho=0$), and each is a
-zero row where its violation is not strictly positive.  The calibrator uses this
-closed form whenever no var-swap or prior block is present; those blocks are not
-differentiated and revert the fit to finite differences, exactly as in LQD.
+zero row where its violation is not strictly positive.
+
+The fourth layer serves the default structural chart, and it is one matrix.
+The residual Jacobian above is assembled in raw-parameter space; the
+structural chart multiplies it by the closed-form $5\times5$ chain matrix
+$\partial(a,b,\rho,m,s)/\partial\theta$ (\texttt{structural\_chain}), which
+mirrors the lift \emph{exactly} --- including its $\pm80$ saturation clip,
+whose clipped coordinate contributes a zero column because the lift is
+locally constant there.  Nothing is re-differentiated; both charts run the
+same rows under the same gate, and the closed form removes the $1+P$
+residual evaluations per LM step the structural chart's finite-difference
+path had been paying (measured $2.1$--$2.4\times$ on identical smiles).
+The calibrator uses the
+closed form whenever no var-swap or prior block is present; those blocks are
+not
+differentiated and revert the fit to finite differences --- for SVI, unlike
+LQD, whose var-swap rows are native.
 Under extrapolation enforcement the fit is \emph{hybrid}: the rows above stay
 analytic and only the small extrapolation block is finite-differenced.
 
@@ -1029,7 +1079,9 @@ miss is an implementation error.  Take $\tau=0.5$ and the jump-wing handles
 $(v,\psi,p,c,\vmin)=(0.0425,-0.25,0.75,0.25,0.034)$.  The \emph{production}
 \texttt{jw\_to\_raw} builds the target raw slice
 $(a,b,\rho,m,s)\approx(0.010625,0.07289,-0.5,0.05831,0.10100)$; we sample 25
-noise-free quotes on $[-0.35,0.30]$, refit production raw SVI from the geometric
+noise-free quotes on $[-0.35,0.30]$, refit with the production calibrator on
+the raw chart (named explicitly, since ``default'' now means structural) from
+the geometric
 start, and read the handles back --- a genuine JW$\to$raw$\to$fit$\to$JW loop
 whose forward leg is shipped code.
 
@@ -1123,7 +1175,9 @@ arbitrage-free \emph{by construction} --- the generator verifies
 $\min g=\svimommixtargetg$ on a dense analytic evaluation before fitting ---
 and its bimodal density asks for exactly the shoulder one hyperbola cannot
 make.  \Cref{fig:mixture} fits the three in-house families on equal footing
-(equal quotes, production calibrators, default settings): raw SVI misses by
+(equal quotes, production calibrators; the SVI leg runs the raw chart, the
+generator's pre-flip footing --- chart choice moves convergence, not the
+geometric limitation this figure isolates): raw SVI misses by
 \svimommixsvirms\ vol bp RMS (held-out \svimommixsviho), while LQD fits to
 \svimommixlqdrms\ (held-out \svimommixlqdho) and the Multi-Core Sigmoid to
 \svimommixmcsrms\ (held-out \svimommixmcsho).  All three FITS certify
@@ -1173,12 +1227,19 @@ and JW are due to Gatheral, the arbitrage-free theory to Gatheral--Jacquier and
 Durrleman, the wing bound to Lee, and the exact butterfly domain to
 Martini--Mingone.  The reading offered here --- \emph{wings as a moment reading
 of the tails, belly as the interior the cheap screens cannot reach} --- is a
-framing, not a theorem.  The implementation choices worth flagging are three:
-\emph{structural validity by reparametrization} \eqref{eq:reparam}, so the solver
-cannot leave tier one except through the two soft tail fences; the \emph{exact
+framing, not a theorem.  The implementation choices worth flagging are four:
+the \emph{structural chart} (\cref{sec:calib}), which parameterizes the slice
+by the screened quantities themselves so the floor and cap hold at every
+iterate by construction --- the shipped default, ratified by a
+pre-registered benchmark whose headline lesson was statistical
+(survivorship) rather than numerical; \emph{structural validity by
+reparametrization} \eqref{eq:reparam} on the rollback chart, so even there
+the solver
+cannot leave tier one except through the two soft fences; the \emph{exact
 raw$\leftrightarrow$JW conversion with a proved regular domain and an identified
-belly blind spot} (\cref{thm:image}, \cref{rem:psi0}); and the \emph{analytic LM
-Jacobian} that makes SVI the speed peer of the other overlays.
+belly blind spot} (\cref{thm:image}, \cref{rem:psi0}); and the \emph{analytic
+LM Jacobians on both charts} that make SVI the speed peer of the other
+overlays.
 
 Limitations, stated plainly, because a lecture that sells a model without drawing
 its boundary is an advertisement.  Raw SVI total variance is one globally convex
@@ -1327,12 +1388,32 @@ Clean fits untouched by the fences (benchmark is tail-clean) &
 \nolinkurl{test_svi_calibrate.py::test_respects_lee_wing_bound}\newline
 \nolinkurl{::test_min_variance_non_negative}\\
 \addlinespace
-Analytic Jacobian matches FD, penalty rows active or not &
+Analytic Jacobian matches FD, penalty rows active or not; row parity on
+both charts &
 \cref{sec:jacobian} &
 \nolinkurl{models/svi_jw/jacobian.py}\newline
 \nolinkurl{test_svi_jacobian.py::test_mid_fit_admissible}\newline
 \nolinkurl{::test_lee_penalty_active}\newline
-\nolinkurl{::test_min_variance_penalty_active}\\
+\nolinkurl{::test_min_variance_penalty_active}\newline
+\nolinkurl{test_svi_structural_jacobian.py}\\
+\addlinespace
+Structural chart: lift, exact recovery, inert fences; benchmark verdict &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/structural.py}\newline
+\nolinkurl{test_svi_structural_chart.py}\newline
+\nolinkurl{backtest/FINDINGS_svi_chart.md}\\
+\addlinespace
+Adversarial battery on both charts; deterministic $<3$-quote refusal &
+\cref{sec:calib} &
+\nolinkurl{models/svi_jw/calibrate.py}\newline
+\nolinkurl{test_svi_adversarial.py}\newline
+certification case \texttt{svi\_adversarial\_inputs}\\
+\addlinespace
+Guarded inverse and desk-unit ticket &
+\cref{thm:image} &
+\nolinkurl{models/svi_jw/svi.py::jw_to_raw_checked},
+\nolinkurl{models/svi_jw/desk.py}\newline
+\nolinkurl{test_svi_desk_and_guards.py}\\
 \addlinespace
 Calendar hinge rows correct; off is byte-identical &
 \cref{sec:calib} &
