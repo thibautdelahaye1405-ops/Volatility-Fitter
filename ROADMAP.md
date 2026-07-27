@@ -489,23 +489,63 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   TWO float-boundary saturation bugs in the chart lift (ρ-quotient
   rounding to ±1.0 → σ=0/m=NaN; logistic rounding to 1.0 → wing == cap
   exactly, breaking the strict fence).
-- **Intraday async replay MACHINERY COMPLETE 2026-07-27** (wrap
-  2026-07-27a below; §16.1 decisive experiment): backtest/graph_intraday
-  harness + pre-registered gate (FINDINGS_dynamic_intraday.md) +
-  launcher run_dynamic_intraday.ps1. **CAMPAIGN = USER ACTION** (run the
-  launcher in YOUR window; ~hours; resumable; then
-  `-m backtest.graph_intraday report` and fill the gate table).
+- **Intraday async replay CAMPAIGN ADJUDICATED 2026-07-27** (§16.1;
+  machinery wrap 2026-07-27a, verdict wrap 2026-07-27b below;
+  FINDINGS_dynamic_intraday.md): **RECORD, HOLD adoption — but the
+  residual MECHANISM is validated for the first time**: interior
+  half-life optimum H* ≈ 0.1d (73.7bp vs memoryless 80.6 vs desk 108.1),
+  OU-shaped persistence skill (18.1→2.5bp across elapsed buckets),
+  calibrated bands (ζ 0.80, cov95 0.973). Gate B failed: the static
+  precision-message operator beats every layered arm (65.8bp) — the
+  layered SPATIAL carrier is the bottleneck, not the memory. desk(H=∞)
+  proven harmful (ζ 2.75, late-bucket −54bp): the decay is load-bearing.
+  Decisive next experiment (recorded, not scheduled): the NAMES-universe
+  campaign (SPY→NVDA/AAPL capture + same launcher) where the directed
+  cut has a fair shot at earning its structural cost.
 - **Next up (priority order)**:
-  1. Intraday campaign adjudication (after the user-window sweep).
-  2. Riders: eSSVI/constrained-spline comparator column, exact
+  1. Riders: eSSVI/constrained-spline comparator column, exact
      Martini–Mingone cross-check tier, Quality-view certificate chip,
      hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair.
+  2. (Optional, user-gated) intraday NAMES campaign — capture recipe in
+     FINDINGS_dynamic_intraday.md.
 - **User-side reminders**: re-save Options ▸ Fit (the dev store still
   pins leeSlopeMax 2.0 from before R1; pre-R3 stores adopt the
   structural default automatically); restart the long-running :8000
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-07-27b) — INTRADAY CAMPAIGN ADJUDICATED (§16.1)
+
+- **56 parts, 7 arms × 8 sessions, 13,356 scored rows/arm** (user-window
+  sweep via run_dynamic_intraday.ps1, both R). Post-phase pooled ATM RMS
+  (async_once): transport 172.7 / base 168.6 / **msg 65.8** / layered
+  memoryless 80.6 / desk(∞) 108.1 / hl1 75.6 / **hl0.1 73.7** / hl0.02
+  77.1.
+- **Gate verdicts** (pre-registered rule A∧B∧D): A PASS — genuine
+  INTERIOR optimum at H*≈0.1d (~2.4h), robust per-R, the structure daily
+  granularity provably could not exhibit; C PASS — memory skill vs the
+  memoryless ablation decays 18.1→10.0→6.4→2.5bp across elapsed
+  buckets (hl1 overshoots −3.1 late; desk collapses −54.4 w/ ζ 2.75,
+  cov95 0.54 — carrying a residual FLAT is harmful at every horizon,
+  the OU decay is load-bearing); D PASS marginal-conservative (hl01
+  ζ 0.80, cov80 0.879, cov95 0.973 — the benign side; campaign 2 was
+  1.68 OVERconfident); E PASS (all five layered arms byte-equal on
+  async_dark — internal consistency exact); **B FAIL** — msg beats every
+  layered arm on the same rows (both targets; IWM decisively 63.0 vs
+  76.3, QQQ close 68.6 vs 70.9). **DECISION: RECORD, HOLD** — layered
+  stays opt-in, smooth_field default, no production change.
+- **The composed picture across both campaigns**: the residual's value
+  lives INSIDE the session (≈2.4h half-life) and is gone by the next day
+  (campaign 2's H→0) — the mechanism is right; the layered spatial
+  carrier costs more (~13-15bp vs msg on dark rows) than memory recovers
+  (~7bp pooled). On three near-exchangeable broad ETFs the directed cut
+  discards target→hub information reciprocal pooling keeps — this
+  universe maximally punishes directedness by construction, hence the
+  recorded (not scheduled) NAMES follow-up. Also recorded: smooth_field
+  nearly inert intraday (168.6 vs transport 172.7 — intraday innovations
+  ride the message/layered operators); no wing regression (hl01 median
+  48.1 vs base 50.6 — the campaign-2 shape_beta fix held intraday).
 
 ### 🧭 SESSION WRAP (2026-07-27a) — INTRADAY ASYNC REPLAY MACHINERY (§16.1)
 
