@@ -530,6 +530,28 @@ If the display model changes, the filtered handle state may persist (it is
 model-agnostic), but model-specific parameters do not.
 \end{description}
 
+Below one day, $\Delta t$ itself is a modelling choice, surfaced as
+\texttt{filterClock}. The default, \texttt{calendar}, counts calendar hours
+--- byte-identical to the legacy convention. The opt-in \emph{session}
+clock reweights elapsed time so a
+trading session carries \texttt{filterSessionShare} ($0.60$) of a day's
+variance and a non-trading calendar day carries
+\texttt{filterNonTradingWeight} ($0$) --- the filter-side twin of Note~11's
+intraday variance clock, same physics, consumed here as the prediction's
+$\Delta t$. The motivation is measured, not aesthetic. On the 2026-07
+intraday campaign ($936$ measurements; harness
+\nolinkurl{backend/backtest/observation_filter_intraday.py}), $30$-minute
+steps moved ATM vol by $19.5$ bp while one
+overnight \emph{and one whole weekend} both moved it $\approx55$ bp --- no
+calendar-proportional $q$ can calibrate all three step types at once (the
+best calendar configuration reads $\zeta$ std $1.04/0.53/0.23$ across them,
+i.e.\ honest intraday, badly overwide overnight and weekend), while the
+session clock at share $0.60$, weight $0$ and $q=90$ bp reads
+$0.95/0.89/0.84$ --- jointly calibrated. One deliberate asymmetry: the
+\emph{reset} rule of \cref{sec:lifecycle} stays on calendar hours ---
+staleness is a statement about data age, not about variance accrual, and a
+quiet weekend must still count toward \texttt{filterResetHours}.
+
 \begin{caution}
 Do not filter native local-vol parameters. The local-vol grid (Note~04) is a
 projection machinery with its own PDE stability and no-arbitrage constraints.
@@ -962,7 +984,10 @@ before the measurement exists, so active mode lags genuine shocks
 extended to the fit path. Short-dated nodes ($\le30$ DTE) are dominated by quote and
 de-Americanization noise; the shipped $\sqrt{30/\mathrm{DTE}}$ noise floor
 sizes $R_t$ honestly there, but honest uncertainty is not signal --- the
-short end remains the filter's weakest bucket. The state is per-node: a graph-coupled filter
+short end remains the filter's weakest bucket, and the per-handle clock
+scales are global: the intraday campaign measured a curvature $\zeta$ std
+near $6.4$ on short-dated nodes even with the session clock calibrated for
+ATM, so \emph{per-maturity handle scales} are the recorded follow-up. The state is per-node: a graph-coupled filter
 (Note~14's block covariance with time dynamics) is deferred until the
 single-node filter has earned trust. And the measurement carrier is the LQD
 backbone: a displayed model whose handles disagree with the backbone's inherits
@@ -1019,6 +1044,11 @@ Temporal backtest protocol, scenarios and $\zeta$ scoring &
 \cref{sec:backtest} &
 \nolinkurl{backend/backtest/observation_filter.py} &
 \nolinkurl{test_filter_backtest.py}\\
+Session clock: $\Delta t$ shapes; calendar default byte-identical &
+\cref{sec:prediction} &
+\nolinkurl{volfit/calib/intraday_time.py},
+\nolinkurl{api/observation_filter.py} &
+\nolinkurl{test_observation_filter_app.py} (session-clock shapes)\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -1065,7 +1095,16 @@ path only (the active MAP prior precedes the measurement).\\
 at $1.0$ it never binds (own-gains sit in $(0,1)$ by construction).\\
 \texttt{filterResetHours} & $96$ & Maximum data gap the filter predicts
 across; longer gaps reset as \texttt{stale} (the default spans a weekend plus
-a holiday).\\
+a holiday). Always counted in \emph{calendar} hours, whatever the clock.\\
+\texttt{filterClock} & \texttt{calendar} & Prediction time base
+(\cref{sec:prediction}): \texttt{session} = the intraday session clock,
+jointly calibrated on the 0DTE campaign; \texttt{calendar} is byte-identical
+to the legacy convention.\\
+\texttt{filterSessionShare} & $0.60$ & Session share of a trading day's
+variance on the session clock (half-days scale).\\
+\texttt{filterNonTradingWeight} & $0.0$ & Day-weight of a non-trading
+calendar day on the session clock (a weekend is worth one overnight, as
+measured).\\
 \texttt{filterDataOnlyPrepass} & off & Opt-in extra data-only fit so $z_t$ is
 strictly persistence-free; off reuses the committed fit and flags
 contamination instead.\\
