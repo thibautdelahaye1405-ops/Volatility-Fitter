@@ -376,20 +376,21 @@
     and IWM are dark. SPY's whole surface reprices +150 bp.</p>
   <div class="steps" style="grid-template-columns: repeat(4, 1fr); margin: 0 0 20px;">
     <div class="step"><div class="n">1 · Lit move</div><div class="t">Every SPY quote mid is amended <b>+150 bp</b>, then SPY's four expiries are genuinely recalibrated on the shifted quotes — <b>real fits, not typed shifts</b></div></div>
-    <div class="step"><div class="n">2 · Innovation</div><div class="t">Innovation = new fit − transported prior, per handle: <b>+97…+151 bp of ATM news</b> across SPY's expiry ladder. Only this <b>change</b> propagates — never vol levels</div></div>
-    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news diffuses along calendar and cross-asset edges; each dark node blends it with its own prior by <b>Bayesian precision weights</b> — a deliberate fraction, with widened uncertainty</div></div>
-    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+43…+79 bp of ATM vol</b> (≈½ the SPY news), inside a <b>±1.9–2.0 vol-pt</b> 95% credible band (±1.96σ) they can be judged against later</div></div>
+    <div class="step"><div class="n">2 · Innovation</div><div class="t">Innovation = new fit − transported prior, per handle: <b>+97…+152 bp of ATM news</b> across SPY's expiry ladder. Only this <b>change</b> propagates — never vol levels</div></div>
+    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news flows along calendar and cross-asset <b>message factors</b>; each dark node inherits by the desk contract amplitude β, weighted by <b>measured trust</b> — with widened uncertainty</div></div>
+    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+66…+124 bp of ATM vol</b> (≈0.8× the SPY news), inside a <b>±1.1–1.6 vol-pt</b> 95% credible band (±1.96σ) they can be judged against later</div></div>
   </div>
   <div class="cols" style="flex:1">
     <div>
       <div class="shot" style="height: 430px; background:#EEF2F7;"><img src="{{IMG:graph_lattice_content}}" style="object-fit: contain; height: 100%; width: 100%;" alt="Graph lattice: SPY lit, dark names inherit"></div>
       <p class="shotcap"><span class="k">The lattice after propagation.</span> SPY's four lit nodes (amber rings) shift
-        <b>+77…+140 bp</b>; every dark node inherits <b>+43…+79 bp</b> — per node, per expiry, largest where SPY's own move was largest.</p>
+        <b>+77…+135 bp</b>; every dark node inherits <b>+66…+124 bp</b> — per node, per expiry, largest where SPY's own move was largest.</p>
     </div>
     <div>
       <div class="shot"><img src="{{IMG:smile_hero_wide}}" alt="Dark NVDA smile reconstructed with credible band"></div>
-      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior, <b>+57 bp</b> above
-        the node's own last calibration (blue), with its 95% band. The badge carries the audit trail (source nodes, gain × innovation).</p>
+      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior, <b>+92 bp</b> above
+        its transported prior (blue: the node's own last calibration), with its 95% band. The attribution decomposes the move
+        exactly into its sources (gain × innovation).</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>

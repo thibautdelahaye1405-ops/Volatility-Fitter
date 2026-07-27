@@ -12,9 +12,9 @@ Usage:  python Docs\\deck\\stage_graph.py [http://127.0.0.1:8001]
 
 Recipe (Docs/deck/README.md steps 1-3 + 5), idempotent:
   1. universe = SPY QQQ AAPL NVDA IWM, everything LIT (rerun-safe)
-  2. options: observation filter ACTIVE, graph-prior defaults eta 10 /
-     lambda 0.1 / nu 0.1 (these seed the Graph tab's Solver panel), LV off
-     (not needed for graph shots — keeps the three calibrations fast)
+  2. options: observation filter OFF for the graph story, LV off
+     (not needed for graph shots — keeps the three calibrations fast);
+     graphPropagationMode stays at its default (precision_messages)
   3. fetch spots + options; calibrate #0 (seeds the filter state + baselines)
   4. save priors, then FETCH priors (activates them — without the fetch the
      extrapolation falls back to today_bootstrap and every innovation is 0)
@@ -22,14 +22,17 @@ Recipe (Docs/deck/README.md steps 1-3 + 5), idempotent:
   6. amend EVERY SPY quote mid +150 bp; calibrate #1 (the big lit innovation)
   7. nudge one near-ATM SPY quote +10 bp more; calibrate #2 (a realistic
      small innovation so the filter overlay / gains table look sensible)
-  8. POST /graph/extrapolate with the deck knobs (eta 10, kappa 1,
-     lambda 0.1, nu 0.1, cross-ticker edge weight 100) and PRINT the per-node
-     shifts/bands + the NVDA hero-node reconstruction metrics + the SPY
-     filter diagnostics — the numbers the slide captions cite.
+  8. POST /graph/extrapolate under the PRODUCTION DEFAULT operator —
+     propagationMode=precision_messages with desk amplitudes (the 2026-07-27
+     Options default; every other wire field stays at its default) — and PRINT
+     the per-node shifts/bands + the NVDA hero-node reconstruction metrics +
+     the SPY filter diagnostics: the numbers the slide captions cite.
 
-NOTE: the capture script must still set the cross-ticker edge weight (30) in
-the UI Solver panel — edge weights are UI state, only eta/kappa/lambda/nu are
-seeded from the Options graph-prior defaults. capture_graph.mjs does this.
+REV-7 NOTE (2026-07-27): the demo previously ran the legacy smooth_field
+operator with amplified knobs (eta 10, cross weight 100). The staged solve now
+runs the shipped default (precision messages, desk contract amplitudes), so
+the screenshots show the operator the deck describes and the printed caption
+numbers come from the message solve.
 
 Stdlib only (urllib), no dependencies.
 """
@@ -49,19 +52,12 @@ DARK_TICKERS = ["QQQ", "AAPL", "NVDA", "IWM"]
 SHIFT_VOL = 0.0150   # +150 bp on every SPY quote mid
 NUDGE_VOL = 0.0010   # +10 bp second-pass nudge for the filter story
 
-#: Solver knobs of the deck's propagation (README step 3: eta 10x = slider 1.0,
-#: lambda 0.1, cross-ticker weight 100). Must match capture_graph.mjs.
-#: eta 10 sits on the flat part of the LOO autotune curve (eta 4 -> 118.4 bp,
-#: eta 10 -> 118.5 bp on this staging) and gives a dark posterior gain of ~0.5
-#: (NVDA +43...+79 bp on a +95...+143 bp SPY innovation) instead of the ~0.25
-#: the rev-4 deck showed with eta 3.16 / cross 30, which read as too timid.
+#: The staged solve runs the PRODUCTION DEFAULT operator: precision messages
+#: with desk contract amplitudes (calendar shape (T_j/T_i)^1, cross beta 1.0).
+#: Every other wire field keeps its GraphExtrapolateRequest default, so the
+#: printed caption numbers match what the graph shell shows out of the box.
 KNOBS = {
-    "etaScale": 10.0,
-    "kappaScale": 1.0,
-    "lambdaScale": 0.1,
-    "nu": 0.1,
-    "crossWeight": 100.0,
-    "flatAtm": False,
+    "propagationMode": "precision_messages",
 }
 
 CALIBRATION_TIMEOUT_S = 30 * 60
@@ -156,17 +152,12 @@ def stage_options(filter_mode: str = "off") -> None:
     filter shots."""
     opts = req("GET", "/settings/options")
     opts["observationFilterMode"] = filter_mode
-    opts["graphEtaScale"] = KNOBS["etaScale"]
-    opts["graphKappaScale"] = KNOBS["kappaScale"]
-    opts["graphLambdaScale"] = KNOBS["lambdaScale"]
-    opts["graphNu"] = KNOBS["nu"]
     opts["localVolEnabled"] = False  # graph shots don't need LV; 3x faster staging
     res = req("PUT", "/settings/options", opts)
     log(
         "options staged: filter="
-        f"{res['observationFilterMode']}, graph eta/kappa/lambda/nu = "
-        f"{res['graphEtaScale']}/{res['graphKappaScale']}/"
-        f"{res['graphLambdaScale']}/{res['graphNu']}, LV={res['localVolEnabled']}"
+        f"{res['observationFilterMode']}, propagationMode="
+        f"{res.get('graphPropagationMode')}, LV={res['localVolEnabled']}"
     )
 
 

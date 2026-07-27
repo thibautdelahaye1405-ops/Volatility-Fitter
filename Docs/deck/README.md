@@ -83,6 +83,33 @@ leaf)` helper, and capture_market.mjs/capture_graph.mjs will need the same
 fix before any full recapture. The old `localvol_heatmap.png` stays in
 assets (unused by the template).
 
+**Graph/filter screenshots RECAPTURED on the three-pane shell (2026-07-27
+night).** stage_graph.py now runs the staged extrapolation under the
+PRODUCTION DEFAULT operator (`propagationMode=precision_messages`, desk
+amplitudes — the smooth-field eta/cross knobs are gone from the recipe), and
+capture_graph.mjs was rewritten for the P5b shell: grouped nav
+(Universe ▾ → Graph), "Run" instead of "Propagate", results in the bottom
+drawer's Diagnostics tab (NB re-clicking the active drawer tab COLLAPSES the
+drawer — don't click Diagnostics after a Run), the unified what-if via the
+drawer Preview tab's "Cross basket" scenario shortcut, the "Message
+relations" editor as the new edge_editor shot (seed from auto relations
+first; rows are divs, not a table — wait on `div.fixed select` count),
+Options behind the brand menu (σ VolFit ▾ → Options; match the item's inner
+`span.flex-1`), filter_panel = the `#opt-filter` card,
+options_calibration_crop = the `#opt-prior` card (the old composite
+Calibration card was split). New staged caption numbers (printed by
+stage_graph + re-queried post-nudge): SPY lit innovations **+97…+152 bp**,
+lit posterior +77…+135 bp, dark nodes inherit **+66…+124 bp (mean +99,
+≈0.8× the news — the desk contract at full transmission)** inside
+±1.1–1.6 vol-pt 95% bands; hero NVDA 6M **+92 bp**, sd 63 bp, ζ −1.47 vs
+the deliberately-unmoved quotes, attribution SPY 6M +55 / 12M +23 / 3M +9 /
+1M +5 (sums exactly); filter badge K = 0.36/0.00/0.00, ρ = 1.43 (unchanged
+from the old session, coincidentally). Both templates' captions updated;
+both decks rebuilt/verified/exported. UI NIT (recorded): the violet GRAPH
+badge on the Parametric smile renders LOW-CONTRAST in the light theme (the
+amber FILTER badge is fine) — the smile_hero badge text is faint; a
+light-theme styling fix in SmileViewer would improve future captures.
+
 **Exec cut refreshed to rev 7 (2026-07-27 evening)** — the 12-slide
 `deck_exec_template.html` now matches the full deck: rev-7 title chips
 (1,635 tests / 22-case cert pack / 3 regimes + intraday), structural-chart +

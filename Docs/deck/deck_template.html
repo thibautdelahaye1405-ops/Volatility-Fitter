@@ -398,20 +398,21 @@
     each arrow in this picture.</b></p>
   <div class="steps" style="grid-template-columns: repeat(4, 1fr); margin: 0 0 20px;">
     <div class="step"><div class="n">1 · Lit move</div><div class="t">Every SPY quote mid is amended <b>+150 bp</b>, then SPY's four expiries are genuinely recalibrated on the shifted quotes — <b>real fits, not typed shifts</b></div></div>
-    <div class="step"><div class="n">2 · Innovation</div><div class="t">Innovation = new fit − transported prior, per handle: <b>+97…+151 bp of ATM news</b> across SPY's expiry ladder. Only this <b>change</b> propagates — never vol levels</div></div>
-    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news diffuses along calendar and cross-asset edges; each dark node blends it with its own prior by <b>Bayesian precision weights</b> — a deliberate fraction, with widened uncertainty</div></div>
-    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+43…+79 bp of ATM vol</b> (≈½ the SPY news), inside a <b>±1.9–2.0 vol-pt</b> 95% credible band (±1.96σ) they can be judged against later</div></div>
+    <div class="step"><div class="n">2 · Innovation</div><div class="t">Innovation = new fit − transported prior, per handle: <b>+97…+152 bp of ATM news</b> across SPY's expiry ladder. Only this <b>change</b> propagates — never vol levels</div></div>
+    <div class="step"><div class="n">3 · Propagation</div><div class="t">The news flows along calendar and cross-asset <b>message factors</b>; each dark node inherits by the desk contract amplitude β, weighted by <b>measured trust</b> — with widened uncertainty</div></div>
+    <div class="step fix"><div class="n">4 · Dark posterior</div><div class="t">NVDA's unquoted smiles lift <b>+66…+124 bp of ATM vol</b> (≈0.8× the SPY news), inside a <b>±1.1–1.6 vol-pt</b> 95% credible band (±1.96σ) they can be judged against later</div></div>
   </div>
   <div class="cols" style="flex:1">
     <div>
       <div class="shot" style="height: 430px; background:#EEF2F7;"><img src="{{IMG:graph_lattice_content}}" style="object-fit: contain; height: 100%; width: 100%;" alt="Graph lattice: SPY lit +77…+140 bp, dark names inherit +43…+79 bp"></div>
       <p class="shotcap"><span class="k">The lattice after propagation.</span> SPY's four lit nodes (amber rings) shift
-        <b>+77…+140 bp</b>; every dark node inherits <b>+43…+79 bp</b> — per node, per expiry, largest where SPY's own move was largest.</p>
+        <b>+77…+135 bp</b>; every dark node inherits <b>+66…+124 bp</b> — per node, per expiry, largest where SPY's own move was largest.</p>
     </div>
     <div>
       <div class="shot"><img src="{{IMG:smile_hero_wide}}" alt="Dark NVDA smile reconstructed with credible band"></div>
-      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior, <b>+57 bp</b> above
-        the node's own last calibration (blue), with its 95% band. The badge carries the audit trail (source nodes, gain × innovation).</p>
+      <p class="shotcap"><span class="k">One dark smile, opened.</span> NVDA six-month: violet — the graph posterior, <b>+92 bp</b> above
+        its transported prior (blue: the node's own last calibration), with its 95% band. The attribution decomposes the move
+        exactly into its sources (gain × innovation).</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
@@ -1221,7 +1222,7 @@
     </div>
     <div>
       <div class="shot"><img src="{{IMG:options_calibration_crop}}" alt="Calibration settings with prior persistence panel and diagnostics"></div>
-      <p class="shotcap"><span class="k">The audit surface.</span> The Calibration card: prior mode (Hybrid), tail-anchor and operator strength,
+      <p class="shotcap"><span class="k">The audit surface.</span> The Prior-persistence card: mode (Hybrid), tail-anchor and operator strength,
         operator selection (ATM/RR/BF/VarSwap), gate parameters, the two-pass "don't damp signal" option — and the live per-expiry prior diagnostics table.</p>
     </div>
   </div>
@@ -1344,9 +1345,10 @@
     </div>
     <div>
       <div class="shot"><img src="{{IMG:graph_sandbox}}" alt="Graph lattice"></div>
-      <p class="shotcap"><span class="k">The lattice (controlled demo session).</span> Tickers × expiries, lit (calibrated) nodes ringed amber.
-        A unified what-if lets a trader light nodes, pulse hypothetical innovations and watch the posterior field respond before
-        committing anything; production runs replace the pulses with real calibration innovations.</p>
+      <p class="shotcap"><span class="k">The lattice (controlled demo session).</span> Tickers × expiries in the three-pane shell,
+        pulsed nodes ringed amber. A unified what-if lets a trader pulse hypothetical innovations — here a +1 vol-pt cross-basket
+        pulse on AAPL — and watch the posterior field respond before committing anything; production runs replace pulses with real
+        calibration innovations.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
@@ -1391,10 +1393,10 @@
         <span class="ci"><span class="sw" style="background:#F87171; height:10px; width:4px"></span>bid/ask quotes (not used — node is dark)</span>
       </div>
       <p class="shotcap"><span class="k">A dark node, reconstructed (controlled demo: only SPY is lit, its quote mids amended +150 bp).</span>
-        NVDA's six-month smile is unquoted in this session. The violet posterior lifts it <b>+57 bp</b> off its transported prior by the
-        graph-propagated innovation, inside a stated credible band — with per-node provenance in the badge. The untouched NVDA quotes
-        deliberately did <em>not</em> move, so the posterior disagrees with them by design — by about half its own stated band
-        (standardized residual ζ = −0.56): the uncertainty is honest about exactly this risk.</p>
+        NVDA's six-month smile is unquoted in this session. The violet posterior lifts it <b>+92 bp</b> off its transported prior, and
+        the attribution decomposes the move <em>exactly</em>: SPY 6M +55, 12M +23, 3M +9, 1M +5 bp. The untouched NVDA quotes
+        deliberately did <em>not</em> move, so the posterior disagrees with them by design (ζ = −1.47, inside its stated 95% band):
+        the uncertainty is honest about exactly this risk.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
@@ -1429,9 +1431,9 @@
     </div>
     <div>
       <div class="shot"><img src="{{IMG:edge_editor}}" alt="Per-edge graph editor"></div>
-      <p class="shotcap"><span class="k">The edge editor (controlled demo session).</span> The persisted per-edge view over the
-        selected universe: seeded defaults, editable weights and β, cross-ticker toggles — opened directly from the
-        Extrapolate panel that consumes it.</p>
+      <p class="shotcap"><span class="k">The relation editor (controlled demo session).</span> One Gaussian factor per relation —
+        class, semantics, rule, uncertainty in σ points, per-handle β with its implied reverse — seeded from the auto relations
+        (calendar ladders + same-expiry cross pairs) and staged to the draft config the lifecycle chip activates.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>

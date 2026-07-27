@@ -1,16 +1,19 @@
 // Deck screenshot capture — GRAPH + FILTER session (synthetic, staged by
 // stage_graph.py against the same :8001 server).
 //
+// REV 7 (2026-07-27): rewritten for the three-pane graph shell (P5b U0-U7 +
+// V1-V3) and the grouped TopBar nav. The solve runs the production default
+// operator (precision messages; the Propagation segment is set explicitly).
+//
 // Run from frontend\ (puppeteer-core is installed there):
-//     node ..\Docs\deck\capture_graph.mjs [http://127.0.0.1:8001]
+//     node .\capture_graph.mjs [http://127.0.0.1:8001]
 //
-// Shots: graph_extrapolate, graph_lattice_crop, edge_editor, graph_sandbox,
-// smile_hero, filter_smile, filter_panel, options_calibration_crop.
-//
-// The Solver-panel eta/kappa/lambda/nu are seeded from the Options graph-prior
-// defaults (stage_graph.py set eta 3.16 / lambda 0.1), but the CROSS-TICKER
-// EDGE WEIGHT (30) is UI-only state — this script sets it in the Solver panel
-// before pressing Propagate, so the UI solve matches the staged knobs.
+// Shots: graph_extrapolate (full shell, post-Run), graph_lattice_content
+// (canvas card clip), edge_editor (the "Message relations" policy editor),
+// graph_sandbox (unified what-if, Cross-basket scenario), smile_hero (full
+// Parametric view w/ GRAPH overlay), smile_hero_wide (chart-card clip),
+// filter_smile, filter_panel (#opt-filter card), options_calibration_crop
+// (#opt-prior card — the prior-persistence panel + diagnostics).
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,13 +23,6 @@ const BASE = (process.argv[2] ?? "http://127.0.0.1:8001").replace(/\/$/, "");
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SHOTS = path.join(HERE, "assets", "shots");
-
-// Solver knobs (must match stage_graph.py KNOBS): eta slider is log10-scaled,
-// so 10^1 = 10x (the slider max). Lambda slider is linear. Cross weight is a
-// number input.
-const ETA_SLIDER = "1";
-const LAMBDA_SLIDER = "0.1";
-const CROSS_WEIGHT = "100";
 
 const log = (m) => console.log(`[capture_graph] ${m}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -51,31 +47,71 @@ async function waitFor(page, fn, desc, timeout = 120000, ...args) {
   }
 }
 
-async function clickTab(page, label) {
-  const ok = await page.evaluate((label) => {
+/** Grouped TopBar nav: open the group dropdown, then pick the leaf. */
+async function openWorkspace(page, group, leaf) {
+  const okGroup = await page.evaluate((group) => {
     const btns = [...document.querySelectorAll('nav[aria-label="Workspaces"] button')];
-    const b = btns.find((b) => b.textContent.trim() === label);
-    if (!b || b.disabled) return false;
+    const b = btns.find((b) => b.textContent.trim().startsWith(group));
+    if (!b) return false;
     b.click();
     return true;
-  }, label);
-  if (!ok) throw new Error(`tab "${label}" not found or disabled`);
-  log(`tab -> ${label}`);
-  await sleep(500);
+  }, group);
+  if (!okGroup) throw new Error(`nav group "${group}" not found`);
+  await sleep(400);
+  const okLeaf = await page.evaluate((leaf) => {
+    const btns = [...document.querySelectorAll('nav[aria-label="Workspaces"] button')].filter(
+      (b) => b.offsetParent !== null,
+    );
+    const b = btns.find((b) => b.textContent.trim() === leaf && !b.disabled);
+    if (!b) return false;
+    b.click();
+    return true;
+  }, leaf);
+  if (!okLeaf) throw new Error(`workspace "${leaf}" not found in "${group}"`);
+  log(`workspace -> ${group} · ${leaf}`);
+  await sleep(600);
 }
 
+/** Brand menu (σ VolFit ▾) → item by its inner span text ("Options", "View"). */
+async function openBrandMenuItem(page, item) {
+  const okTrig = await page.evaluate(() => {
+    const b = [...document.querySelectorAll("header button, button")].find(
+      (b) => b.getAttribute("title") === "Settings & app menu" && b.offsetParent !== null,
+    );
+    if (!b) return false;
+    b.click();
+    return true;
+  });
+  if (!okTrig) throw new Error("brand menu trigger not found");
+  await sleep(400);
+  const okItem = await page.evaluate((item) => {
+    const btns = [...document.querySelectorAll("button")].filter((b) => b.offsetParent !== null);
+    const b = btns.find((b) => {
+      const span = b.querySelector("span.flex-1");
+      return span && span.textContent.trim() === item;
+    });
+    if (!b) return false;
+    b.click();
+    return true;
+  }, item);
+  if (!okItem) throw new Error(`brand menu item "${item}" not found`);
+  log(`brand menu -> ${item}`);
+  await sleep(600);
+}
+
+/** Click the first VISIBLE button matching exact trimmed text (or title). */
 async function clickButton(page, text, { contains = false, title = null } = {}) {
   const ok = await page.evaluate(
     (text, contains, title) => {
       const btns = [...document.querySelectorAll("button")].filter(
-        (b) => b.offsetParent !== null,
+        (b) => b.offsetParent !== null && b.getAttribute("aria-hidden") !== "true",
       );
       const b = btns.find((b) => {
         if (title !== null) return b.getAttribute("title") === title;
         const t = b.textContent.trim();
         return contains ? t.includes(text) : t === text;
       });
-      if (!b) return false;
+      if (!b || b.disabled) return false;
       b.click();
       return true;
     },
@@ -83,7 +119,7 @@ async function clickButton(page, text, { contains = false, title = null } = {}) 
     contains,
     title,
   );
-  if (!ok) throw new Error(`button "${title ?? text}" not found`);
+  if (!ok) throw new Error(`button "${title ?? text}" not found or disabled`);
   log(`click -> ${title ?? text}`);
   await sleep(400);
 }
@@ -125,31 +161,6 @@ async function setSelect(page, finder, { value = null, index = null } = {}) {
   await sleep(600);
 }
 
-/** Set a React-controlled <input> (range or number) found inside the element
- *  carrying `containerTitle` as its title attribute (SolverPanel rows). */
-async function setInputByContainerTitle(page, containerTitle, value) {
-  const ok = await page.evaluate(
-    (containerTitle, value) => {
-      const host = document.querySelector(`[title="${containerTitle}"]`);
-      const input = host ? host.querySelector("input") : null;
-      if (!input || input.offsetParent === null) return false;
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      ).set;
-      setter.call(input, value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      return true;
-    },
-    containerTitle,
-    value,
-  );
-  if (!ok) throw new Error(`input under [title="${containerTitle}"] not found`);
-  log(`input [${containerTitle.slice(0, 40)}…] -> ${value}`);
-  await sleep(300);
-}
-
 async function shotFull(page, name) {
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
   log(`SHOT ${name}.png (full viewport)`);
@@ -174,26 +185,13 @@ async function shotElement(page, name, markFn, ...args) {
   log(`SHOT ${name}.png (element clip)`);
 }
 
-/** Toggle the "Solver settings" <details> in the Propagate panel. */
-async function clickSolverSettings(page) {
-  const ok = await page.evaluate(() => {
-    const s = [...document.querySelectorAll("summary")].find(
-      (s) => s.textContent.trim() === "Solver settings",
-    );
-    if (!s) return false;
-    s.click();
-    return true;
-  });
-  if (!ok) throw new Error('"Solver settings" summary not found');
-  await sleep(400);
-}
-
-/** Wait for the Extrapolate results table (rows with lit/dark chips). */
+/** Wait for extrapolation result rows (lit/dark chips) in the bottom drawer's
+ *  Diagnostics tab (it opens automatically after a Run). */
 async function waitResultsRows(page, minRows = 8, timeout = 300000) {
   await waitFor(
     page,
     (minRows) => {
-      const chips = [...document.querySelectorAll("aside span")].filter((s) => {
+      const chips = [...document.querySelectorAll("main span")].filter((s) => {
         const t = s.textContent.trim();
         return t === "dark" || t === "lit";
       });
@@ -237,9 +235,9 @@ async function main() {
     );
     await page.evaluate(() => document.fonts.ready);
 
-    // --- Graph tab: baseline lattice (first load fits every node) ----------
+    // --- Graph workspace: baseline lattice renders before any Run ----------
     current = "graph_load";
-    await clickTab(page, "Graph");
+    await openWorkspace(page, "Universe", "Graph");
     await waitFor(
       page,
       () => document.querySelectorAll("main svg circle").length >= 10,
@@ -248,36 +246,21 @@ async function main() {
     );
     await sleep(1500);
 
-    // Solver knobs: eta + lambda should be pre-seeded from Options (staged),
-    // but set all three explicitly so the capture is self-sufficient.
-    current = "solver_knobs";
-    await clickSolverSettings(page); // open
-    await setInputByContainerTitle(
-      page,
-      "Directed-smoothness weight: how far an observation propagates.",
-      ETA_SLIDER, // log10 slider: 0.5 -> 3.16x
-    );
-    await setInputByContainerTitle(
-      page,
-      "Optimal-transport flux weight; 0 disables the OT term.",
-      LAMBDA_SLIDER,
-    );
-    await setInputByContainerTitle(
-      page,
-      "Weight of equal-expiry edges between tickers.",
-      CROSS_WEIGHT,
-    );
-    await clickSolverSettings(page); // close for a clean panel
+    // Propagation = Messages (the production default; set explicitly so the
+    // capture is self-sufficient), Observations = From calibrations.
+    current = "segments";
+    await clickButton(page, "Messages");
+    await clickButton(page, "From calibrations");
 
-    // --- Propagate (From calibrations is the default source) ---------------
+    // --- Run: the calibrations solve (drawer flips to Diagnostics) ----------
     current = "graph_extrapolate";
-    await clickButton(page, "Propagate");
+    await clickButton(page, "Run");
     await waitResultsRows(page);
-    await sleep(8000); // let the BFS reveal wave + attribution particles play out
+    await sleep(8000); // BFS reveal wave + attribution particles
     await shotFull(page, "graph_extrapolate");
 
-    current = "graph_lattice_crop";
-    await shotElement(page, "graph_lattice_crop", () => {
+    current = "graph_lattice_content";
+    await shotElement(page, "graph_lattice_content", () => {
       const h = [...document.querySelectorAll("main h2")].find(
         (h) => h.textContent.trim() === "Smile universe",
       );
@@ -287,22 +270,29 @@ async function main() {
       return true;
     });
 
-    // --- edge_editor: the Edges modal (matrix + per-edge overrides) --------
+    // --- edge_editor: the "Message relations" policy editor -----------------
     current = "edge_editor";
     await clickButton(page, "Edges");
     await waitFor(
       page,
       () =>
-        [...document.querySelectorAll("h3")].some((h) => h.textContent.trim() === "Edge weights") &&
-        document.querySelectorAll("table tbody tr").length >= 3,
-      "edge-weights matrix modal",
+        [...document.querySelectorAll("span")].some(
+          (s) => s.textContent.trim() === "Message relations",
+        ),
+      "Message relations editor modal",
+    );
+    await clickButton(page, "Seed from auto relations");
+    await waitFor(
+      page,
+      () => document.querySelectorAll("div.fixed select").length >= 10,
+      "seeded message-relation rows (per-row class selects)",
     );
     await sleep(900);
     await shotElement(page, "edge_editor", () => {
-      const h = [...document.querySelectorAll("h3")].find(
-        (h) => h.textContent.trim() === "Edge weights",
+      const s = [...document.querySelectorAll("span")].find(
+        (s) => s.textContent.trim() === "Message relations",
       );
-      const modal = h ? h.closest('[class*="rounded-xl"]') : null;
+      const modal = s ? s.closest('[class*="rounded-xl"]') : null;
       if (!modal) return false;
       modal.setAttribute("data-shot-target", "1");
       return true;
@@ -310,53 +300,60 @@ async function main() {
     await clickButton(page, "", { title: "Close" });
     await sleep(500);
 
-    // --- graph_sandbox: Manual what-if with a typed +2.0pt shift -----------
+    // --- graph_sandbox: unified what-if (Cross basket scenario) -------------
     current = "graph_sandbox";
     await clickButton(page, "Manual what-if");
+    await sleep(400);
+    // Drawer -> Preview tab (post-Run it sits on Diagnostics).
+    await clickButton(page, "Preview");
     await waitFor(
       page,
       () =>
-        [...document.querySelectorAll("aside input[type=number]")].filter(
-          (i) => i.offsetParent !== null,
-        ).length >= 1,
-      "manual lit-node shift rows",
+        [...document.querySelectorAll("button")].some(
+          (b) => b.textContent.trim() === "Cross basket" && b.offsetParent !== null,
+        ),
+      "what-if scenario shortcuts",
     );
-    // First lit row: set the observation to +2.0 vol pts for a visible field.
-    const setShift = await page.evaluate(() => {
-      const input = [...document.querySelectorAll("aside .divide-y input[type=number]")].find(
-        (i) => i.offsetParent !== null,
-      );
-      if (!input) return false;
-      const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
-        "value",
-      ).set;
-      setter.call(input, "2");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      return true;
-    });
-    if (!setShift) throw new Error("manual shift input not found");
-    await clickButton(page, "Propagate");
-    await sleep(8000); // solve + reveal wave
+    await clickButton(page, "Cross basket");
+    await sleep(600);
+    await clickButton(page, "Run");
+    await sleep(9000); // solve + reveal wave
     await shotFull(page, "graph_sandbox");
 
-    // --- smile_hero: dark NVDA node's reconstructed smile ------------------
-    current = "smile_hero";
+    // --- back to the calibrations solve for the hero node -------------------
+    current = "hero_resolve";
     await clickButton(page, "From calibrations");
-    await waitResultsRows(page); // the earlier extrapolation results persist
+    await sleep(400);
+    await clickButton(page, "Run");
+    await waitResultsRows(page);
+    await sleep(2500);
+
+    // --- smile_hero: dark NVDA node's reconstructed smile -------------------
+    // NB: the drawer is ALREADY on Diagnostics after a Run (auto-switch);
+    // clicking the active tab again would collapse the drawer.
+    current = "smile_hero";
+    await sleep(500);
     const heroRow = await page.evaluate(() => {
-      // Rows: aside entries with an ↗ open-smile button; pick the middle NVDA one.
-      const opens = [...document.querySelectorAll(
-        'button[title="Open this node\'s reconstructed smile"]',
-      )].filter((b) => b.closest("div")?.textContent.includes("NVDA"));
+      const rowText = (b) => {
+        // climb a few ancestors to reach the full row (the button's immediate
+        // div may be just the trailing control cluster)
+        let el = b;
+        for (let i = 0; i < 4 && el; i++) {
+          if (el.textContent.includes("NVDA")) return el.textContent;
+          el = el.parentElement;
+        }
+        return "";
+      };
+      const opens = [
+        ...document.querySelectorAll('button[title="Open this node\'s reconstructed smile"]'),
+      ].filter((b) => b.offsetParent !== null && rowText(b) !== "");
       if (opens.length === 0) return null;
       const target = opens[Math.floor(opens.length / 2)];
-      const label = target.closest("div")?.textContent.trim().slice(0, 60) ?? "?";
+      const label = rowText(target).trim().slice(0, 60);
       target.click();
       return label;
     });
-    if (heroRow === null) throw new Error("no NVDA row in the Extrapolate results panel");
+    if (heroRow === null) throw new Error("no NVDA row in the Diagnostics drawer");
     log(`opened hero node: ${heroRow}`);
     await waitFor(
       page,
@@ -369,7 +366,16 @@ async function main() {
     await sleep(1800); // band fill + error-bar settle
     await shotFull(page, "smile_hero");
 
-    // --- filter_smile: SPY smile with the filter posterior overlay ---------
+    current = "smile_hero_wide";
+    await shotElement(page, "smile_hero_wide", () => {
+      const cards = [...document.querySelectorAll('main [class*="rounded-xl"]')];
+      const el = cards.find((c) => c.querySelector("svg") && c.clientWidth > 900);
+      if (!el) return false;
+      el.setAttribute("data-shot-target", "1");
+      return true;
+    });
+
+    // --- filter_smile: SPY smile with the filter posterior overlay ----------
     current = "filter_smile";
     await clickButton(page, "", { title: "Dismiss the graph-extrapolation overlay" });
     await sleep(400);
@@ -384,7 +390,7 @@ async function main() {
       },
       "SPY expiry ladder",
     );
-    await setSelect(page, { label: "Expiry" }, { index: 2 });
+    await setSelect(page, { label: "Expiry" }, { index: 2 }); // the nudged expiry
     await waitFor(
       page,
       () => [...document.querySelectorAll("span")].some((s) => s.textContent.trim() === "FILTER"),
@@ -394,50 +400,35 @@ async function main() {
     await sleep(1500);
     await shotFull(page, "filter_smile");
 
-    // --- filter_panel: Options -> Observation-filter section (element clip) -
+    // --- Options (brand menu): filter panel + prior-persistence card --------
     current = "filter_panel";
-    await clickTab(page, "Options");
-    await waitFor(
-      page,
-      () => [...document.querySelectorAll("main span")].some((s) => s.textContent.trim() === "Observation filter"),
-      "observation-filter panel",
-    );
+    await openBrandMenuItem(page, "Options");
+    await waitFor(page, () => !!document.querySelector("#opt-filter"), "Options view (#opt-filter)");
     await page.evaluate(() => {
-      const s = [...document.querySelectorAll("main span")].find(
-        (s) => s.textContent.trim() === "Observation filter",
-      );
-      s?.scrollIntoView({ block: "center" });
+      document.querySelector("#opt-filter")?.scrollIntoView({ block: "center" });
     });
     await waitFor(
       page,
-      () => {
-        const s = [...document.querySelectorAll("main span")].find(
-          (s) => s.textContent.trim() === "Observation filter",
-        );
-        const panel = s?.closest("div.border-t");
-        return !!panel && panel.querySelectorAll("table tbody tr").length >= 2;
-      },
+      () => document.querySelectorAll("#opt-filter table tbody tr").length >= 2,
       "filter diagnostics table rows",
       180000,
     );
     await sleep(900);
     await shotElement(page, "filter_panel", () => {
-      const s = [...document.querySelectorAll("main span")].find(
-        (s) => s.textContent.trim() === "Observation filter",
-      );
-      const panel = s ? s.closest("div.border-t") : null;
-      if (!panel) return false;
-      panel.setAttribute("data-shot-target", "1");
+      const card = document.querySelector("#opt-filter");
+      if (!card) return false;
+      card.setAttribute("data-shot-target", "1");
       return true;
     });
 
-    // --- options_calibration_crop: the whole Calibration card --------------
+    // --- options_calibration_crop: the Prior persistence card ---------------
     current = "options_calibration_crop";
+    await page.evaluate(() => {
+      document.querySelector("#opt-prior")?.scrollIntoView({ block: "center" });
+    });
+    await sleep(600);
     await shotElement(page, "options_calibration_crop", () => {
-      const h = [...document.querySelectorAll("main h3")].find(
-        (h) => h.textContent.trim() === "Calibration",
-      );
-      const card = h ? h.closest('[class*="rounded-xl"]') : null;
+      const card = document.querySelector("#opt-prior");
       if (!card) return false;
       card.setAttribute("data-shot-target", "1");
       return true;
