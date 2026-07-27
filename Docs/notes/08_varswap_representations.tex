@@ -293,9 +293,12 @@ $\partial_{KK}C$ (Breeden--Litzenberger).
 
 The pairing has moved again: not payoff against terminal law, but
 generator against \emph{occupation measure}.  One backward solve reads
-off the number at $(0,1)$; no strike grid is inverted, and --- unlike the
-strike side, which formally integrates to $K=\infty$ --- nothing depends
-on truncating a strike domain.  The three representations are collected
+off the number at $(0,1)$; no strike grid is inverted, and $g(0,1)$ is
+determined by the diffusion \emph{around} $x=1$, so the read is far less
+sensitive to coarsening or truncating the strike grid in the wings than
+the $K^{-2}$-weighted replication tail --- but the solve still runs on a
+finite domain with approximate boundary conditions, so ``no truncation
+dependence'' would be too absolute (Note~04 states the same scope).  The three representations are collected
 in the note's central identity:
 \begin{equation}
 \boxed{\;
@@ -565,12 +568,14 @@ backward sweep $\approx$ one extra value solve, plus $m$ extra
 right-hand sides on factored tridiagonal systems ($O(n_x m)$ per step)
 for the full gradient.  The route that was retired --- replication over
 an inversion-priced smile --- was $O(\text{\vsrpoints})$ root-finds per
-Jacobian \emph{column}: the measured $158$-second fit.  What remains
-deliberately unoptimized: with a var-swap target the parametric models
-currently switch to a finite-difference Jacobian for the whole residual
-stack (each column re-evaluates a cheap closed form, so the cost is
-benign); wiring the var-swap row into the analytic Jacobian is deferred
-work (\cref{app:perf}).
+Jacobian \emph{column}: the measured $158$-second fit.  The Jacobian
+story is now asymmetric and worth stating exactly: for LQD the var-swap
+derivative is native --- $\partial\wvs/\partial\theta$ rides the analytic
+sensitivity pass the fit already owns, so a var-swap-targeted LQD fit
+never falls back --- while a var-swap target on SVI or MCS still switches
+those fits to a finite-difference Jacobian (each column re-evaluates a
+cheap closed form, so the cost is benign); wiring their rows analytically
+remains deferred (\cref{app:perf}).
 \end{perfbox}
 
 \paragraph{Exercise 2.}
@@ -776,6 +781,12 @@ checked against a mathematically distinct route of the same number
 \vsrheroagreebp\ bp) --- representations are cheap redundancy, and
 redundancy is how a pricing library audits itself.
 \end{enumerate}
+One capstone completes the redundancy story from the model's side: the
+functional posterior band (Note~14's machinery) pushes a fitted slice's
+handle covariance through to a var-swap \emph{standard deviation}, so a
+targeted quote can be read against the fit's own uncertainty rather than
+as a bare number --- the fair strike arrives with an error bar computed
+from the same fit it summarizes.
 
 %======================================================================
 \section{Limitations}
@@ -807,8 +818,9 @@ through the weight, and accept the option-side concessions of
 \cref{fig:pull}A.  \emph{Provenance is the user's problem}: var-swap
 quotes are OTC marks, not exchange prints; the machinery applies
 whatever level is set, one per node, with no staleness screen of its
-own.  And the parametric models' Jacobian falls back to finite
-differences when a target is active --- cheap here, but a deliberate,
+own.  And the Jacobian asymmetry: the LQD var-swap row is analytic ---
+that deferral closed --- while SVI and MCS still fall back to finite
+differences when a target is active, cheap here but a deliberate,
 documented deferral (\cref{app:perf}).
 
 \appendix
@@ -877,13 +889,18 @@ multi-RHS at $O(n_x m)$ per step; verified against finite differences
 at \vsrsensabs\ (\cref{fig:audit}A).  Basis precomputation is
 $\theta$-independent and shares the forward solver's memory-budget
 guard.  The static route remains the shipped default; the source PDE is
-the faster alternative on fine strike grids and is truncation-free in
-strike.
-\item \textbf{Deferred, deliberately:} the parametric models switch to a
-finite-difference Jacobian whenever a var-swap (or prior var-swap)
-target is active --- each column re-evaluates only cheap closed
-forms, so the observed cost is benign; wiring the target row into the
-analytic Jacobians is the remaining lever, shelved until it earns its
+the wing-robust alternative a coarsened calibration grid needs ---
+local around $x=1$, on a finite domain with approximate boundaries
+(the scope stated in \cref{sec:three}).
+\item \textbf{Landed (LQD):} the var-swap and prior var-swap rows ride
+the analytic Jacobian --- the derivative is the same quadrature applied
+to the basis responses, so the deferral closed at zero marginal
+complexity once the sensitivity pass existed.
+\item \textbf{Deferred, deliberately (SVI/MCS):} those models still
+switch to a finite-difference Jacobian whenever a var-swap (or prior
+var-swap) target is active --- each column re-evaluates only cheap
+closed forms, so the observed cost is benign; wiring their target rows
+into the analytic Jacobians remains shelved until it earns its
 complexity.
 \end{enumerate}
 
@@ -906,6 +923,12 @@ Penalty pulls every model's fair strike toward the quote &
 \eqref{eq:resid} &
 \nolinkurl{volfit/calib/varswap.py}\newline
 \nolinkurl{tests/test_varswap.py::test_penalty_pulls_model_varswap_toward_quote_all_models}\\
+\addlinespace
+LQD var-swap rows ride the analytic Jacobian (no FD fallback) &
+\eqref{eq:lqd_vs} &
+\nolinkurl{volfit/models/lqd/jacobian.py}\newline
+\nolinkurl{tests/test_lqd_jacobian.py::test_jacobian_matches_fd_varswap_rows};
+\nolinkurl{::test_varswap_fit_ungated_and_agrees_with_fd}\\
 \addlinespace
 No target / disabled is byte-identical &
 invariant~2 &
