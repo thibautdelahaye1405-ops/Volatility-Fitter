@@ -49,8 +49,13 @@ indexes/ETFs --- the product case --- gain $+8$ to $+14$ bps in the
 August-2024 spike and $+3.8$ to $+7.2$ fully out-of-sample in the October-2022
 bear, with unbiased standardized residuals ($\bar\zeta\approx0$). A case file
 documents the harness topology defect that had previously masked the
-cross-asset path entirely. A traceability table ties every claim to its module
-and test.
+cross-asset path entirely. The solver documented here is the default
+\texttt{smooth\_field} operator; the shipped menu also carries an opt-in
+pairwise \emph{precision-message} operator and an opt-in layered
+dynamic-harmonic pipeline, both held-out-adjudicated and both documented
+from scratch in this note's companion editions --- the menu and its recorded
+verdicts are \cref{sec:menu}. A traceability table ties every claim to its
+module and test.
 \end{abstract}
 
 \tableofcontents
@@ -669,7 +674,8 @@ reverse edge --- the name informs its index/ETF informer --- with the
 \emph{inverse} amplitude $\beta$, so both directions encode the same linear
 relation and no second economic claim is introduced; names become recurrent
 and their conductance is nonzero. Setting the fraction to $0$ reproduces the
-legacy disconnected topology (test-locked).
+legacy disconnected topology (test-locked). The incident is certification
+case \texttt{graph\_dark\_disconnection}.
 
 \subsection{The 25-asset verdict on fully-dark names}
 \label{sec:loo-25}
@@ -715,8 +721,57 @@ prior. Because a dark node's baseline precision enters only its band variance
 so the skill column above is unchanged; validated offline on the stored
 benchmark rows, the two calm cells moved
 $\operatorname{std}\zeta\;1.91\to1.02$ and $1.85\to1.03$ with the stressed
-cells intact. Widening the \emph{skew and curvature} bands in idiosyncratic
-tape remains the open residual.
+cells intact (certification case \texttt{dark\_band\_honesty}). Widening the
+\emph{skew and curvature} bands in idiosyncratic tape remains the open
+residual.
+
+%======================================================================
+\section{The operator menu, and how its defaults were chosen}
+\label{sec:menu}
+
+Everything above is the default propagation operator ---
+\texttt{smooth\_field}, the increment prior \eqref{eq:Qdelta}, byte-identical
+at its defaults to the solver the backtests validated. It is one entry in a
+shipped menu (\texttt{propagationMode}), and the menu's history is worth
+recording because every default in it was set by held-out adjudication, not
+preference.
+
+\texttt{precision\_messages} replaces the smoothness field by pairwise
+\emph{relation factors} --- calendar ladders and index$\to$name pairs whose
+per-edge precisions are first-class policy objects with their own editor,
+live preflight and a draft/active lifecycle. Its golden acceptance contracts
+--- full transmission, competing signals, dead-informer zero dilution,
+shrunk-mode transfer with fixed-$\kappa$ corroboration,
+baseline-uncertainty-enters-once --- are locked three times over: against a
+brute-force Gaussian reference, through the production assembly, and through
+the HTTP API; the configuration lifecycle (draft/active envelope, legacy-blob
+migration, corrupt-blob tolerance) round-trips under test. All of it is
+certification case \texttt{graph\_precision\_messages}. The companion
+\emph{messages} edition of this note documents the operator from scratch;
+the \emph{three priors} edition tells all three modes as one story.
+
+\texttt{layered\_dynamic\_harmonic} adds temporal, directed and harmonic
+structure on top of the messages, with a persistent residual store (SQLite,
+restored at application startup, corrupt-tolerant). Its adoption status is a
+case study in recorded verdicts. The pre-registered \emph{daily} campaign
+returned a negative: residual memory is monotone against the half-life at
+the one-day horizon (optimum $H\to0$), with a layered spatial edge in
+stressed regimes but a calm-regime cost --- verdict RECORD, HOLD. The
+decisive \emph{intraday} follow-up (asynchronous replay over an ETF
+triangle) then split the question properly: the residual \emph{mechanism} is
+real in-session --- an interior optimum near $H^*\approx0.1$ day ($73.7$ bp
+against the memoryless arm's $80.6$), genuine OU persistence, calibrated
+$\zeta\approx0.8$ --- but the plain precision-message carrier read $65.8$
+bp and beat \emph{every} layered arm: the bottleneck is the spatial
+carrier, not the memory, and the residual's value dies inside the session.
+Layered therefore stays opt-in; the recorded follow-up is a names campaign
+(index $\to$ single names). One invariant binds all three modes to Note~13's
+provenance rules: \emph{graph output is never prior input} --- only lit,
+actually-calibrated nodes enter a prior snapshot, so the propagation loop
+cannot echo. And even the in-app autotune obeys the same discipline: it is
+the production leave-one-out harness scoring \texttt{etaScale} on real
+hold-outs (\cref{app:perf}), not a synthetic sandbox --- the sandbox solver
+that once served this purpose has been deleted outright.
 
 %======================================================================
 \section{What is original here}
@@ -823,6 +878,23 @@ disconnected topology &
 \cref{sec:loo-casefile} &
 \nolinkurl{EdgeConfig.cross_reverse_frac} &
 \nolinkurl{test_graph_loo_backtest.py::test_index_to_name_direction_and_vol_normalization}\\
+\addlinespace
+Message operator: goldens locked vs brute force, production, and the HTTP
+API; config lifecycle round-trips (cert.\
+\texttt{graph\_precision\_messages}) &
+\cref{sec:menu} &
+\nolinkurl{volfit/graph/message.py} &
+\nolinkurl{test_graph_message_golden.py},
+\nolinkurl{test_graph_message_api_golden.py},
+\nolinkurl{test_graph_config_migrations.py}\\
+Autotune is the production LOO; guards return descriptive 400s &
+\cref{app:perf} &
+\nolinkurl{api/graph_backtest.py}, \nolinkurl{api/graph_params.py} &
+\nolinkurl{test_api_graph.py} (grid/argmin $+$ three 400s)\\
+Layered residual store persists and restores; prior-save guard (echo-free) &
+\cref{sec:menu} &
+\nolinkurl{api/graph_dynamic.py}, \nolinkurl{api/priors.py} &
+\nolinkurl{test_graph_dynamic_production.py}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -852,6 +924,12 @@ Auto-lattice edge trusts (calendar vs cross-ticker). \emph{Not} the LQD
 calendar-slack penalty of Note~10, which shares the name
 \texttt{calendarWeight} in \texttt{OptionsSettings}.\\
 \texttt{flatAtm} & \texttt{false} & Allow the flat-ATM diagnostic baseline.\\
+\texttt{propagationMode} & \texttt{smooth\_field} & The operator menu
+(\cref{sec:menu}): \texttt{precision\_messages} / \texttt{hybrid} /
+\texttt{layered\_dynamic\_harmonic} opt-ins. The message operator's policy
+knobs (amplitudes, precision families, calendar policy, message edges) ride
+the request/policy envelope; the \emph{messages} edition carries their
+atlas.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
 \texttt{GRAPH\_PRIOR\_HYPER} & $(s_h,\eta_h)$ & Per-handle scale and base
@@ -887,10 +965,17 @@ $\gg10^3$.
 \item \textbf{$\beta\equiv1$ golden.} The per-edge beta machinery is
 byte-identical to the plain directed rule at $\beta=1$ (test-locked), so it is
 strictly additive.
-\item \textbf{$\eta$ autotune.} \texttt{POST /graph/autotune} chooses
-\texttt{etaScale} by leave-one-out cross-validation over the seven-point grid
-$\{0.1,0.25,0.5,1,2,4,10\}$ --- the $O(7\,n_{\text{obs}}N^3)$ cost the sparse
-path targets.
+\item \textbf{$\eta$ autotune $=$ the production LOO.}
+\texttt{POST /graph/autotune} takes the \emph{production} request body and
+scores \texttt{etaScale} by the same leave-one-out rule as the backtest ---
+calibrated, validation-clean hold-outs through the production solve --- over
+the seven-point grid $\{0.1,0.25,0.5,1,2,4,10\}$
+(\texttt{AUTOTUNE\_ETA\_GRID}, \nolinkurl{api/graph_params.py}). Guards
+return descriptive 400s rather than nonsense tunes: a
+non-\texttt{smooth\_field} mode (no $\eta$ knob), active what-if pulses
+(hypothesis-firm on every solve, so LOO cannot hold them out), or fewer than
+two candidates. The $O(7\,n_{\text{obs}}N^3)$ cost is what the sparse path
+targets.
 \end{enumerate}
 
 %======================================================================
