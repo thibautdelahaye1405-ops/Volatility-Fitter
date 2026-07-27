@@ -290,15 +290,15 @@
 <!-- ============ 01 · TITLE ============================================== -->
 <section class="slide title active">
   <div class="brand">Vol-Fitter</div>
-  <h1>Arbitrage-aware volatility surfaces,<br>with <span class="hl">graph propagation</span> to the smiles nobody quotes.</h1>
-  <p class="sub">A volatility workstation that turns sparse, noisy option markets into explainable,
-    arbitrage-clean surfaces with uncertainty — and propagates liquid-name information across
-    expiries and assets.</p>
+  <h1>Certified volatility surfaces,<br>with <span class="hl">graph propagation</span> to the smiles nobody quotes.</h1>
+  <p class="sub">A volatility workstation that turns sparse, noisy option markets into certified,
+    arbitrage-clean surfaces with honest uncertainty — and propagates liquid-name information across
+    expiries and assets, with exact attribution.</p>
   <div class="chips">
     <span class="chip"><b>4</b> smile models, one calibration spine</span>
-    <span class="chip"><b>16</b> technical notes, equation-anchored</span>
-    <span class="chip"><b>969</b> tests green</span>
-    <span class="chip">backtested on <b>3</b> historical regimes</span>
+    <span class="chip"><b>1,635</b> tests green (1,506 backend · 129 UI)</span>
+    <span class="chip"><b>22</b>-case certification pack, client-facing</span>
+    <span class="chip">backtested on <b>3</b> regimes + an intraday campaign</span>
   </div>
   <div class="titleshots">
     <div class="titleshot"><span class="shotlbl">Graph propagation</span><img src="{{IMG:graph_extrapolate}}" alt="Graph extrapolation workspace"></div>
@@ -379,7 +379,8 @@
         <tr><td>Local Vol</td><td>fully non-parametric — a piecewise-affine local-variance grid calibrated to observed option prices through the pricing PDE, driving the surface directly without modeling the IV curve</td></tr>
       </table>
       <ul class="points" style="margin-top:14px">
-        <li class="v"><strong>Arbitrage-cleanliness is structural where possible, measured where not</strong> — LQD and Local Vol are clean by construction; SVI/MCS are fenced by penalties that vanish on admissible slices.</li>
+        <li class="v"><strong>Every guarantee is graded and executable</strong> — structural where the model provides it (LQD, Local Vol),
+          <strong>certified at publish</strong> where it does not (SVI/MCS carry a dense-grid butterfly certificate; an uncertified slice cannot become a mark), measured everywhere.</li>
       </ul>
     </div>
   </div>
@@ -431,7 +432,7 @@
     <div class="g"><div class="t"><span class="m">Posterior</span> · credible band</div><div class="d">The estimate after combining sources (prior + news), with its uncertainty. A dark node's posterior comes with a band it can be <b>judged against later</b>.</div></div>
     <div class="g"><div class="t"><span class="m">RMS · bp</span></div><div class="d">Fit error = <b>root-mean-square implied-vol error</b>, in vol basis points (1 bp = 0.01 vol point). 10 bp ≈ tighter than most quoted spreads.</div></div>
     <div class="g"><div class="t"><span class="m">ζ</span> (standardized residual)</div><div class="d">Error divided by its own predicted uncertainty — computed wherever the system quotes a band: graph reconstructions, the LOO backtest, the observation filter. If the bands are honest, ζ ≈ standard normal: <b>mean 0 (unbiased), std 1 (calibrated)</b>.</div></div>
-    <div class="g"><div class="t"><span class="m">Static no-arbitrage</span></div><div class="d">What "arbitrage-free" means here: <b>butterfly-clean within each slice, calendar-clean across expiries</b>. Not a claim about dynamic or model risk.</div></div>
+    <div class="g"><div class="t"><span class="m">Static no-arbitrage</span> · certified</div><div class="d">What "arbitrage-free" means here: <b>butterfly-clean within each slice, calendar-clean across expiries</b> — and <b>certified</b>: a dense-grid check on every fit, hard-gating publish. Not a claim about dynamic or model risk.</div></div>
   </div>
   <div class="foot"><span>Vol-Fitter · capabilities</span><span></span></div>
 </section>
@@ -457,10 +458,10 @@
       </div>
       <ul class="points">
         <li class="g"><strong>Butterfly-free by construction</strong> — the density is an exponential; no penalty needed within a slice.</li>
-        <li class="a">One hard constraint only: <strong>A<sub>R</sub> &lt; 1</strong> — the right tail scale
-          A<sub>R</sub> = exp(R + &Sigma;<sub>n</sub>(&minus;1)<sup>n</sup>a<sub>n</sub>) — exactly a finite forward; Lee slopes come out structural, not tuned.</li>
-        <li class="v"><strong>Analytic Jacobian via implicit-root cancellation</strong> — two model evaluations per optimizer step
-          regardless of degree: a 13-parameter LQD (degree 12) fits in SVI's ~30 ms league.</li>
+        <li class="a">One hard constraint only: <strong>A<sub>R</sub> &lt; 1</strong> (a finite forward) — the default chart maps the
+          wall to infinity, <strong>A<sub>R</sub> = expit(&rho;)</strong> (adopted from a bank-committee review). Lee slopes come out structural.</li>
+        <li class="v"><strong>Analytic Jacobian via implicit-root cancellation</strong> — measured <strong>1.4–2.0× vs finite
+          differences</strong> across degrees 6–12; a 13-parameter LQD fits in tens of milliseconds.</li>
       </ul>
     </div>
     <div>
@@ -578,43 +579,43 @@
       <div class="eqblock">
         <div class="eqtitle">Raw SVI — what the optimizer sees</div>
         <div class="eq">{{EQ:svi_raw}}</div>
-        <div class="eqnote">w(k) — total implied variance &sigma;&sup2;<sub>BS</sub>T; k — log-moneyness ln(K/F); a — level; b — overall wing steepness; &rho; &isin; (&minus;1,1) — tilt (wing asymmetry); m — vertex shift in k; &sigma; — vertex rounding width.</div>
+        <div class="eqnote">w(k) — total implied variance; k — log-moneyness ln(K/F); a — level; b — wing steepness; &rho; — tilt; m — vertex shift; &sigma; — vertex rounding.</div>
       </div>
       <div class="eqblock core">
-        <div class="eqtitle">Jump-wing handles — what humans see (exact, lossless on its domain)</div>
+        <div class="eqtitle">Jump-wing handles — what humans see</div>
         <div class="eq">{{EQ:svi_jw}}</div>
-        <div class="eqnote">v — ATM variance w(0)/t; &psi; — ATM skew; p, c — put/call wing slopes b(1&minus;&rho;)/&radic;w&#8320;, b(1+&rho;)/&radic;w&#8320;; ṽ — minimum variance; t — expiry; w&#8320; = vt — ATM total variance; a, b, &rho;, m, &sigma; — the raw SVI parameters above.</div>
+        <div class="eqnote">v — ATM variance w(0)/t; &psi; — ATM skew; p, c — put/call wing slopes; ṽ — minimum variance; t — expiry; w&#8320; = vt; a, b, &rho;, m, &sigma; — the raw parameters above.</div>
       </div>
       <ul class="points">
-        <li><strong>Structurally valid by reparametrization</strong> — softplus/tanh/exp transforms keep every optimizer iterate a valid hyperbola (b &gt; 0, |ρ| &lt; 1, σ<sub>SVI</sub> &gt; 0); arbitrage cleanliness is fenced separately by soft penalties.</li>
-        <li class="g"><strong>Analytic Levenberg–Marquardt Jacobian</strong> — shipped after the backtest showed the default
-          finite-difference gradients were the cost driver: <strong>26.3 → 10.2 ms per fit (~2.6×)</strong>, same solution within fit precision.</li>
-        <li class="a">The raw↔JW conversion is exact <strong>on a documented, test-locked domain</strong> — including the ψ=0 coordinate singularity, stated as a contract instead of hidden.</li>
+        <li><strong>Fitted in a structural chart</strong> — lifted coordinates keep every iterate a valid hyperbola with wings
+          <em>strictly inside</em> the Lee fence. Default by a two-round <strong>pre-registered ~28,800-fit benchmark</strong>:
+          all 12 precision medians better-or-equal, zero breaks, ~3× faster (raw exhausted its eval budget on ~33% of fits).</li>
+        <li class="g"><strong>Analytic Jacobians on both charts</strong> — raw <strong>26.3 → 10.2 ms (~2.6×)</strong>; structural
+          <strong>2.1–2.4× again</strong> at identical smiles — deriving it flushed out two latent float-boundary bugs.</li>
+        <li class="a">The raw↔JW conversion is exact <strong>on a guarded domain</strong>, with a <strong>desk ticket layer</strong>: 25Δ/10Δ RR/BF, forward bumps.</li>
       </ul>
     </div>
     <div>
-      <div class="figcard"><img src="{{FIG:fig_svi_jw_deck}}" alt="SVI jump-wing handles in displayed units with total-variance inset"></div>
+      <div class="figcard" style="width: 76%; margin: 0 auto;"><img src="{{FIG:fig_svi_jw_deck}}" alt="SVI jump-wing handles in displayed units with total-variance inset"></div>
       <p class="shotcap"><span class="k">The five jump-wing handles, in honest units.</span> The IV panel shows √v at the money,
-        the minimum √ṽ, and the ATM tangent of slope ψ/√τ (ψ itself is time-scaled, not the IV tangent); the wing handles p, c
-        are normalized <em>total-variance</em> slopes, shown on the w(k) inset. JW is the analytical coordinate system —
-        production fits raw SVI and displays model-agnostic ATM handles.</p>
+        the minimum √ṽ, and the ATM tangent of slope ψ/√τ; the wing handles p, c are normalized <em>total-variance</em> slopes, on
+        the w(k) inset. JW is the trader coordinate system — production fits the structural chart (raw = the explicit rollback).</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    Native fluency in the market's standard model — <b>surfaces are fitted in raw SVI with the exact, domain-proved JW
-    conversion ready for handle-based entry, bumping and export as product features</b> (the conversion ships and is
-    test-locked; the JW workflow UI is roadmap).</div>
+    Native fluency in the market's standard model — <b>fitted in a benchmark-ratified structural chart, with the
+    domain-guarded JW conversion and a desk-unit ticket layer (RR/BF, forward bumps) shipped and test-locked</b>.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 02 · SVI and jump-wings</span><span></span></div>
 </section>
 
 <!-- ============ 08 · NO-ARB PENALTIES ====================================== -->
 <section class="slide">
-  <div class="kicker"><span class="tag">Models · SVI-JW</span><span>Arbitrage fencing</span></div>
-  <h1 class="claim">Keeping SVI arbitrage-free: soft penalties that are <span class="hlc">exactly zero on admissible slices</span>.</h1>
-  <p class="lede">Two classical conditions keep a single smile arbitrage-free: the <b>Durrleman function g(k) ≥ 0</b>
-    (equivalent to a non-negative implied density — no butterfly arbitrage) and <b>Lee's bound</b> capping how fast the wings may
-    grow. SVI does not satisfy them automatically, so the calibrator fences it. Scope, stated precisely: <b>static</b> cleanliness —
-    butterfly here, calendar on a later slide — not dynamic completeness.</p>
+  <div class="kicker"><span class="tag">Models · SVI-JW</span><span>Arbitrage discipline: fenced, then certified</span></div>
+  <h1 class="claim">SVI cleanliness is not assumed: <span class="hlc">fence the floor and the wings — the belly gets a certificate</span>.</h1>
+  <p class="lede">Two classical conditions keep a smile arbitrage-free: the <b>Durrleman function g(k) ≥ 0</b> (non-negative
+    density — no butterfly) and <b>Lee's bound</b> on wing growth. SVI satisfies neither automatically — and a bank-committee
+    review proved the sharpest failure: a fit can pass every parameter fence and still hide <b>belly</b> arbitrage
+    (<b>9.2% of historical fits did</b>). The answer became a design rule: <b>an uncertified slice cannot become a mark.</b></p>
   <div class="cols">
     <div>
       <div class="eqblock core">
@@ -623,28 +624,31 @@
         <div class="eqnote">g(k) — Durrleman function (g &ge; 0 everywhere ⇔ non-negative density, no butterfly); w, w&prime;, w&Prime; — total variance and its k-derivatives; k — log-moneyness; p, c — JW put/call wing slopes; v — ATM variance; t — expiry; 2 — Lee's cap on the asymptotic variance slope.</div>
       </div>
       <ul class="points">
-        <li><strong>g(k) ≥ 0 is the butterfly test</strong> — reported as a per-fit diagnostic for every model; the default SVI fit fences parameters (min-variance + Lee) rather than sampling g.</li>
-        <li class="g">Penalties are <strong>inactive on clean slices</strong> — a fit that satisfies no-arbitrage pays nothing; enforcement is byte-identical to OFF.</li>
-        <li class="r">Even the <strong>measurement</strong> was audited: an earlier arbitrage metric took finite differences of
-          reconstructed prices, and its numerical noise flagged <strong>28.3% of provably-clean LQD slices</strong>. The shipped
-          metric evaluates g(k) analytically on the model's own density — the true rate reads 0.0%.</li>
+      <ul class="points">
+        <li><strong>The belly certificate:</strong> an 801-point g(k) scan on <em>every</em> fit — microseconds — with a one-shot
+          belly repair, kept only if it certifies. Publish is <strong>hard-blocked (HTTP 409)</strong> on an uncertified slice.</li>
+        <li class="g"><strong>Fences at a buffered Lee cap 1.95</strong> — at β = 2 exactly a slice passes every screen yet prices
+          negative tail density; the buffer closed a <strong>live trap</strong> (a real SPY LEAP sat on the old wall).</li>
+        <li class="r">Even the <strong>measurement</strong> was audited: a finite-difference metric flagged <strong>28.3% of
+          provably-clean LQD slices</strong>; the shipped metric evaluates g(k) analytically — true rate 0.0%.</li>
       </ul>
       <div class="statrow">
-        <div class="stat"><div class="v g">28.3% → 0.0%</div><div class="l">LQD "butterfly-arb rate" once measured analytically instead of by finite differences</div></div>
-        <div class="stat"><div class="v c">g(k)</div><div class="l">reported on every fit — cleanliness is a number, not a claim</div></div>
+        <div class="stat"><div class="v c">801-pt</div><div class="l">certificate on every fit — publish 409s without it</div></div>
+        <div class="stat"><div class="v g">28.3% → 0.0%</div><div class="l">LQD "arb rate" once measured analytically</div></div>
       </div>
     </div>
     <div>
-      <div class="figcard"><img src="{{FIG:fig_svi_g}}" alt="Durrleman g(k) diagnostic non-negative"></div>
-      <p class="shotcap"><span class="k">The diagnostic, plotted.</span> The Durrleman function of a fitted slice staying non-negative
-        on the diagnostic grid. For SVI the fit's fences bound the wing slope and the minimum variance; g(k) is the
-        <em>independent</em> check, computed analytically from the model's own derivatives — the default fit does not sample g rows.</p>
+      <div class="figcard" style="width: 88%; margin: 0 auto;"><img src="{{FIG:fig_svi_g}}" alt="Durrleman g(k) diagnostic non-negative"></div>
+      <p class="shotcap"><span class="k">The diagnostic, plotted.</span> A fitted slice's Durrleman function staying non-negative.
+        The fences bound the wings and the floor; the certificate is the <em>independent</em> check — on an arbitrage-free mixture
+        target all three models certify while SVI misses by <b>118.7 bp</b> RMS vs LQD <b>19.7</b> / MCS <b>15.0</b>: the miss is
+        expressiveness, not arbitrage.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    A surface you can quote from with eyes open: <b>LQD is butterfly-free by construction; SVI/MCS are fenced and then
-    measured — residual violations are counted per fit (SVI 9.2% of slices post-fence in the stress replay), never assumed away</b>.</div>
-  <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 02 · SVI and jump-wings</span><span></span></div>
+    A surface you can quote from with eyes open: <b>LQD is butterfly-free by construction; SVI/MCS are fenced, then certified
+    per fit — and the certificate, not a policy document, is what gates publish</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 02 · SVI and jump-wings (committee review in repo)</span><span></span></div>
 </section>
 
 <!-- ============ 09 · MULTI-CORE SIV ======================================== -->
@@ -673,7 +677,7 @@
         <div class="eqnote">B — hat kernel: 1 at its centre c, vanishing (with its derivatives) in both wings; h — half-width; &kappa; — steepness; u = z &minus; c.</div>
       </div>
       <ul class="points">
-        <li><strong>Hats never move the wings</strong> (zero-wing lemma): B decays to zero on both sides, so humps and notches leave the asymptotic slopes untouched.</li>
+        <li><strong>Hats never move the wings</strong> (zero-wing lemma) — analytic Jacobian <strong>3.4× vs FD</strong>; a W the base misses by 153 vol bp fits to <strong>2.55</strong>.</li>
       </ul>
     </div>
     <div>
@@ -752,18 +756,15 @@
         <div class="eqnote">c(T,x) — forward-normalized call price; T — maturity (event-weighted variance time); x = K/F<sub>T</sub> — normalized strike; &nu;(T,x) = &sigma;&sup2;<sub>loc</sub> — the local variance being calibrated; (1&minus;x)&#8314; — payoff initial condition.</div>
       </div>
       <ul class="points">
-        <li><strong>Piecewise affine, concretely:</strong> each rectangle of the maturity × strike grid is split into <strong>two
-          triangles</strong>; ν(t,x) is exactly affine on each triangle (a bilinear patch would not be) and continuous across edges.
-          The unknowns <em>are</em> the nodal local variances, and every surface value is a convex mix of its triangle's three
-          corners: <strong>positive nodes ⇒ positive surface on the grid</strong>; the priced output's butterfly and calendar
-          cleanliness is then <strong>measured per fit</strong> (grid diagnostics + a converged-operator reprice), not assumed.</li>
+        <li><strong>Piecewise affine, concretely:</strong> each grid rectangle splits into <strong>two triangles</strong>; ν(t,x) is
+          exactly affine per triangle (bilinear would not be), continuous across edges. Every surface value is a convex mix of three
+          nodal variances: <strong>positive nodes ⇒ positive surface</strong>; butterfly and calendar cleanliness of the priced
+          output is <strong>measured per fit</strong>, not assumed.</li>
         <li class="g">Quotes are fitted <strong>through the forward PDE</strong> (Andreasen–Huge philosophy): the surface that prices the market is found directly, not bootstrapped slice by slice.</li>
-        <li class="a"><strong>Wings:</strong> beyond the last strike node the local variance extrapolates flat (controlled-linear on the put
-          side under the convex-wing option or when a var-swap pins the deep tail); an opt-in <strong>convexity hinge acts only in the
-          extrapolation tail</strong> (≤ 5Δ put, below the deepest quote) — never on quoted strikes.</li>
-        <li class="v"><strong>Wing behaviour is a stated contract</strong> — bounded positive local variance keeps implied wings inside
-          Lee's cap on the grid; the extrapolation law is documented per regime, and cleanliness is checked on the price grid
-          (the affine surface exposes no per-fit Lee-slope fields).</li>
+        <li class="a"><strong>Wings:</strong> beyond the last strike node the local variance extrapolates flat; an opt-in
+          <strong>convexity hinge acts only in the extrapolation tail</strong> (≤ 5Δ put, below the deepest quote) — never on quoted strikes.</li>
+        <li class="v"><strong>Wing behaviour is a stated contract</strong> — bounded positive local variance keeps implied wings
+          inside Lee's cap on the grid; cleanliness is checked on the price grid, per regime.</li>
       </ul>
     </div>
     <div>
@@ -794,19 +795,17 @@
         <div class="eqnote">U<sup>n</sup> — grid call prices at time level n; B = I &minus; &Delta;T·A — implicit-step matrix (an M-matrix: B&#8315;&sup1; &ge; 0 ⇒ ordered, positive prices); &Delta;T — time step; A — tridiagonal discretization of &frac12;&nu;x&sup2;&part;<sub>xx</sub> (&nu; local variance, x normalized strike).</div>
       </div>
       <ul class="points">
-        <li><strong>Why implicit Euler and not Crank–Nicolson?</strong> Crank–Nicolson, the textbook scheme, is more accurate per step
-          but only <em>monotone</em> when the step is small relative to variance — beyond that, the payoff kink excites its classic
-          oscillations, which read as negative densities. The implicit step is monotone at <em>any</em> step size (B⁻¹ ≥ 0 above:
-          prices stay ordered and positive), trading one order of time accuracy for that unconditional guarantee.</li>
-        <li class="g"><strong>Exact tangent gradients of the scheme actually solved</strong> — the PDE march itself is differentiated (every
-          sensitivity reuses the price solve's tridiagonal factorization), FD-checked; on top, the matrix-free solver adds
-          ~1.3–1.65× where it engages (mid fits with the compiled kernel), at a stated ≤0.25 vol-bp solver tolerance.</li>
-        <li class="v"><strong>Compiled inner loop (Numba): 6.5×</strong> the standard LAPACK banded solve, identical to ~1e-15, with a
-          plain-NumPy fallback when Numba is absent.</li>
+        <li><strong>Why implicit Euler and not Crank–Nicolson?</strong> CN is more accurate per step but only <em>monotone</em> under
+          a step bound — beyond it the payoff kink excites oscillations that read as negative densities. The implicit step is
+          monotone at <em>any</em> step (B⁻¹ ≥ 0: prices stay ordered, positive), one order of accuracy traded for the guarantee.</li>
+        <li class="g"><strong>Exact tangent gradients of the scheme actually solved</strong> — the march itself is differentiated
+          (every sensitivity reuses the price solve's factorization), FD-checked; a matrix-free solver adds ~1.3–1.65× where it engages.</li>
+        <li class="v"><strong>Compiled inner loop (Numba): ~6×</strong> the LAPACK banded solve, identical to ~1e-15, NumPy fallback —
+          plus a stall early-stop worth another 1.5–3× on cold fits.</li>
       </ul>
       <div class="statrow">
-        <div class="stat"><div class="v c">6.5×</div><div class="l">PDE march speed-up (Numba vs banded LAPACK)</div></div>
-        <div class="stat"><div class="v g">108 → 23.5 bp</div><div class="l">six-day weekly rescued by strike-grid diagnosis (case file)</div></div>
+        <div class="stat"><div class="v c">~6×</div><div class="l">PDE march (Numba vs LAPACK)</div></div>
+        <div class="stat"><div class="v g">108 → 23.5 bp</div><div class="l">six-day weekly rescued by grid diagnosis</div></div>
       </div>
     </div>
     <div>
@@ -836,17 +835,16 @@
         <div class="eqnote">A — observed American option price; CRR<sub>Am</sub>(&sigma;) — American value from the Cox–Ross–Rubinstein binomial tree at vol &sigma; (given spot, strike, expiry, rate, dividends); &sigma;* — the root, returned as the European-equivalent Black vol.</div>
       </div>
       <ul class="points">
-        <li><strong>The tree only prices the American/European difference</strong> — its discretization error largely cancels in that
-          difference (the control-variate role). Discrete cash dividends use an <strong>escrowed-spot lattice</strong>: the tree diffuses
-          the spot net of the present value of future dividends (cash drops would otherwise stop it recombining) and adds them back
-          at each node, so exercise is checked against the true cum-dividend spot.</li>
-        <li class="g"><strong>Compiled CRR kernel (Numba): ~60×</strong> on wide chains — cached under a digest of the only inputs de-Am
-          depends on (chain, forward, discount, dividends, clock): re-tuning a fit reuses the conversion; trees re-run only on a
-          data change.</li>
-        <li class="r"><strong>Caution, learned in production:</strong> a whole-curve convexity repair gapped live SPY/NVDA smiles — its
-          free <em>global</em> baseline let a wing repair re-tilt the whole curve, moving ATM prices a sub-penny. Peak ATM vega keeps
-          that small in vol terms, but the repair had moved the dense, tightly-quoted, heavily-weighted core at all — a visible
-          discontinuity. Reverted; the shipped repair is <strong>wing-only, band-constrained</strong>, ATM core exactly fixed.</li>
+        <li><strong>The tree only prices the American/European difference</strong> — discretization error largely cancels in that
+          difference (the control-variate role). Discrete cash dividends use an <strong>escrowed-spot lattice</strong>: the tree
+          diffuses spot net of future-dividend PV (cash drops would stop it recombining), added back per node so exercise is checked
+          against the true cum-dividend spot.</li>
+        <li class="g"><strong>Compiled CRR kernel (Numba): ~3 ms where NumPy takes ~350 ms</strong> on a ~300-quote chain — cached
+          under a digest of the only inputs de-Am depends on: re-tuning a fit reuses the conversion; trees re-run only on a data change.</li>
+        <li class="r"><strong>Caution, learned in production:</strong> a whole-curve convexity repair gapped live SPY/NVDA smiles —
+          its free <em>global</em> baseline let a wing repair re-tilt the curve, moving the dense, heavily-weighted ATM core a
+          sub-penny: a visible discontinuity. Reverted; the shipped repair is <strong>wing-only, band-constrained</strong>, ATM core
+          exactly fixed.</li>
       </ul>
     </div>
     <div>
@@ -868,26 +866,27 @@
 <section class="slide">
   <div class="kicker"><span class="tag">Quote preparation</span><span>Forwards &amp; dividends · case file inside</span></div>
   <h1 class="claim">Forwards are implied from the chain itself — and the <span class="hlc">worst-identified parameter is clamped</span>, not trusted.</h1>
-  <p class="lede">Every implied vol depends on the forward F and the discount factor D used to compute it. Both are estimated
-    from the option chain itself — put–call parity holds model-free, so a regression of C−P on the strike recovers them with no
-    external curve. The catch: the regression <b>slope</b> (the discount) is poorly identified on noisy chains, and an error
-    there drags the forward and tears the ATM smile.</p>
+  <p class="lede">Every implied vol stands on a forward F and a discount D. Both are estimated from the chain itself — put–call
+    parity holds model-free, so regressing C−P on strike recovers them with no external curve. The catch: the <b>slope</b>
+    (the discount) is poorly identified on noisy chains, and an error there drags the forward and tears the ATM smile.</p>
   <div class="cols">
     <div>
       <div class="eqblock core">
         <div class="eqtitle">Put–call parity as a regression — slope is the discount, level is the forward</div>
         <div class="eq">{{EQ:parity}}</div>
-        <div class="eqnote">C(K), P(K) — call/put mid prices at strike K; D = e<sup>&minus;rT</sup> — discount factor (= minus the regression slope); F — forward (= intercept / discount); a, b — intercept and slope of the least-squares line C&minus;P = a + bK.</div>
+        <div class="eqnote">C(K), P(K) — call/put mids; D = e<sup>&minus;rT</sup> — discount (= minus the slope); F — forward (= intercept / discount); a, b — the least-squares line C&minus;P = a + bK.</div>
       </div>
       <div class="case">
         <div class="lbl">Case file — the delayed feed that gapped the ATM smile</div>
-        <p>A delayed data tier quoted stale pairs; the parity <b>slope</b> drifted to discounts above 1 (negative rates),
-          dragging the forward and tearing a gap into the ATM smile. Fix: <b>clamp the implied rate to a physical band</b> and
-          re-derive the forward from the well-identified price level. Clean chains are byte-identical; the broken feed heals.</p>
+        <p>A delayed tier quoted stale pairs; the parity <b>slope</b> drifted to discounts above 1 (negative rates), dragging the
+          forward and tearing the ATM smile. Fix: <b>clamp the implied rate to a physical band</b>, re-derive the forward from the
+          well-identified level. Clean chains byte-identical; the broken feed heals.</p>
       </div>
       <ul class="points">
-        <li class="g">Four dividend modes (yield, discrete cash, blends) + a de-bias loop that <strong>holds the discount fixed</strong> while removing American bias from the parity inputs.</li>
-        <li class="a"><strong>Zero-carry synthesized chains carry no parity signal at all</strong> — flagged at ingestion and pinned to F = spot, D = 1 (badged), never regressed; their spurious carry stays in-band, so only the pin catches it.</li>
+        <li class="g">Four dividend modes; a de-bias loop removes American bias with the discount held fixed.</li>
+        <li class="a"><strong>Zero-carry synthesized chains carry no parity signal</strong> — flagged at ingestion, pinned to F = spot, D = 1 (badged), never regressed.</li>
+        <li class="v"><strong>Borrow, solved jointly (opt-in):</strong> a de-Am ↔ parity fixed point (2–4 iterations) with closed-form
+          IV-vs-borrow sensitivity; thin boards read <strong>"unidentified"</strong>, never an invented borrow.</li>
       </ul>
     </div>
     <div>
@@ -933,14 +932,15 @@
       </div>
     </div>
     <div>
-      <div class="figcard" style="width: 81%; margin: 0 auto;"><img src="{{FIG:fig_obj_band_deck}}" alt="Band objective: noisy wing mids drag the mid fit; the band fit stays a smooth smile"></div>
+      <div class="figcard" style="width: 76%; margin: 0 auto;"><img src="{{FIG:fig_obj_band_deck}}" alt="Band objective: noisy wing mids drag the mid fit; the band fit stays a smooth smile"></div>
       <p class="shotcap"><span class="k">Same model, same settings — only the target differs.</span> Noisy wing mids
         (stale prints inside wide spreads): the <b>fit to mids</b> (dashed) chases them into kinks; the
         <b>fit to the band</b> (teal) stays a smooth smile inside every quoted spread.</p>
       <ul class="points" style="margin-top:12px">
-        <li class="g"><strong>The haircut target</strong> shrinks every band by a fixed vol margin before fitting: tight ATM spreads
-          collapse onto the mid (the fit follows mids where they are informative); wide wing spreads keep a meaningful band (the fit
-          only stays inside it). One dial spans mid-fitting and band-fitting.</li>
+        <li class="g"><strong>The haircut target</strong> shrinks every band by a fixed vol margin: tight ATM spreads collapse onto
+          the mid, wide wing spreads keep a meaningful band — one dial spans mid- and band-fitting.</li>
+        <li class="a"><strong>Every excluded quote is named</strong> — a seven-reason quarantine + a 3-tick deep-OTM floor on the
+          <em>bid</em>; the drop list ships with the export.</li>
       </ul>
     </div>
   </div>
@@ -971,6 +971,7 @@
       </div>
       <ul class="points">
         <li class="g">Per-node quote with its own <strong>undo/redo session</strong>, shared by Parametric and Local Vol; weight set as a % of total quote weight; byte-identical when off.</li>
+        <li class="v">The var-swap penalty now rides the <strong>analytic-Jacobian path</strong> (closed-form derivative for LQD) — the target no longer costs the fit its speed.</li>
       </ul>
     </div>
     <div>
@@ -1000,7 +1001,9 @@
       </div>
       <ul class="points">
         <li class="g"><strong>LQD:</strong> structural — the endpoint scales A<sub>L</sub>, A<sub>R</sub> imply the slopes; admissibility is one inequality.</li>
-        <li class="a"><strong>SVI:</strong> a soft cap b(1+|ρ|) ≤ 2 in the penalty vocabulary.</li>
+        <li class="a"><strong>SVI:</strong> a strict fence at a <strong>buffered cap 1.95</strong> — at Lee's bound exactly (β = 2) a
+          slice can pass every screen yet price negative tail density, so the cap sits strictly inside; the buffer closed a live trap
+          (a real SPY LEAP sat exactly on the old wall at 2.0).</li>
         <li class="v"><strong>MCS:</strong> hats are wing-neutral by construction — the base alone owns the tails; the base slopes' Lee admissibility is <em>diagnosed</em>, not enforced.</li>
         <li>The far wing is where models <strong>extrapolate with confidence they don't have</strong> — so extrapolation behaviour is a stated, tested contract per model.</li>
       </ul>
@@ -1057,8 +1060,11 @@
         </div>
       </div>
       <ul class="points">
-        <li class="g">The hinge is <strong>exactly zero on admissible surfaces</strong> — calendar enforcement is byte-identical to OFF when the surface is clean.</li>
-        <li class="v">Same machinery, model-agnostic: LQD enforces via asset-share exactly; SVI/MCS via the total-variance floor.</li>
+        <li class="g">The hinge is <strong>exactly zero on admissible surfaces</strong> — calendar enforcement is byte-identical to OFF when the surface is clean; the same machinery is model-agnostic.</li>
+        <li class="v">The default surface solver is <strong>symmetric</strong>: every expiry fits independently, interfaces are screened
+          for <em>identified</em> violations on common quote support, and only violation-connected runs are jointly repaired — no
+          traversal-order bias; clean ladders are exactly their independent fits (a far fit read 10.6 bp free, <strong>1,095 bp</strong>
+          under a naive full-grid floor, 10.6 bp confined — now a certification case).</li>
       </ul>
     </div>
   </div>
@@ -1088,6 +1094,9 @@
         <li class="g">One clock per node, shared by <strong>every view</strong>: fits, local vol, term structure, tables.</li>
         <li class="v"><strong>Auto-calibrate</strong> places events so event-time forward variance is flat — the calendar is inferred from the term structure, then editable.</li>
         <li class="a">Empty calendar ⇒ τ = t, <strong>byte-identical</strong> — the feature costs nothing when unused.</li>
+        <li class="g"><strong>Below one day, the same idea continues:</strong> an opt-in intraday session clock accrues variance
+          through the trading session to the exact settlement instant (NYSE calendar, half-days included) — the 0DTE extension,
+          validated on a 312-snapshot intraday capture.</li>
       </ul>
     </div>
     <div>
@@ -1156,18 +1165,19 @@
       <div class="eqblock core">
         <div class="eqtitle">One universal residual shape — model vs transported prior, per feature</div>
         <div class="eq">{{EQ:prior_residual}}</div>
-        <div class="eqnote">r<sub>j</sub> — penalty row for feature j; O<sub>j</sub> — feature functional (delta-located call price, ATM/RR/BF/var-swap basket, or smile factor), applied to today's model and to the transported prior; &lambda;<sub>j</sub> — gated weight; scale<sub>j</sub> — the feature's natural scale.</div>
+        <div class="eqnote">r<sub>j</sub> — penalty row for feature j; O<sub>j</sub> — feature functional (ATM/RR/BF/var-swap basket, smile factor, or delta-located price), applied to today's model and the transported prior; &lambda;<sub>j</sub> — gated weight; scale<sub>j</sub> — natural scale.</div>
       </div>
       <div class="eqblock">
         <div class="eqtitle">The activation gate — exactly zero where data is sufficient</div>
         <div class="eq">{{EQ:prior_gate}}</div>
-        <div class="eqnote">gap — prior activation in [0,1] (1 = data silent, exactly 0 once identified); &pi;<sup>obs</sup> — observed precision of the feature (its quote support today); &pi;<sup>req</sup> — required precision threshold; &gamma; — sharpness of the on/off edge.</div>
+        <div class="eqnote">gap — prior activation in [0,1] (1 = data silent, exactly 0 once identified); &pi;<sup>obs</sup> / &pi;<sup>req</sup> — observed vs required feature precision; &gamma; — sharpness of the on/off edge.</div>
       </div>
       <ul class="points">
         <li class="g"><strong>No-damp guarantee</strong> — a feature today's quotes identify precisely is never pulled toward yesterday (proved, and test-locked).</li>
-        <li class="v"><strong>Skew and curvature are remembered as baskets</strong> — risk-reversal / butterfly combinations that are
-          unchanged when the whole smile shifts level — so after an overnight jump the fit keeps yesterday's <em>shape</em> without
-          fighting the new level. "Shape, not level" is a property of the construction, not a slogan.</li>
+        <li class="v"><strong>Skew and curvature are remembered as baskets</strong> — RR/BF combinations unchanged when the whole
+          smile shifts level — so after an overnight jump the fit keeps yesterday's <em>shape</em> without fighting the new level.</li>
+        <li class="a"><strong>Echo-proof:</strong> graph output is never prior input — only lit, calibrated nodes enter a prior
+          snapshot (certification-locked).</li>
       </ul>
     </div>
     <div>
@@ -1223,29 +1233,29 @@
 <section class="slide">
   <div class="kicker"><span class="tag">Dynamics</span><span>The observation filter — noise vs news</span></div>
   <h1 class="claim">The observation filter — a Kalman filter in handle space — separates <span class="hlc">quote noise from genuine surface motion</span>.</h1>
-  <p class="lede">Two consecutive calibrations never agree — some of the difference is the market moving, most is quote noise.
-    The filter tells them apart the way navigation systems do: each calibration is a noisy <b>measurement</b> of the true handles
-    (ATM vol, skew, curvature); yesterday's filtered state, moved by the SSR transport, is the <b>prediction</b>; the two are
-    blended by relative precision. The blend weights are the <b>Kalman gains K ∈ [0,1]</b>: K = 1 "believe today fully",
-    K = 0 "today is noise". (The prior of the previous slides fills gaps <em>within</em> a fit; the filter works <em>across time</em>.)</p>
+  <p class="lede">Two consecutive calibrations never agree — some is the market moving, most is quote noise. Each calibration is a
+    noisy <b>measurement</b> of the true handles (ATM vol, skew, curvature); yesterday's filtered state, moved by the SSR transport,
+    is the <b>prediction</b>; relative precision blends them via the <b>Kalman gains K ∈ [0,1]</b> — K = 1 "believe today fully",
+    K = 0 "today is noise".</p>
   <div class="cols">
     <div>
       <div class="eqblock core">
         <div class="eqtitle">The update — relative precision decides how much of today to believe</div>
         <div class="eq">{{EQ:kalman_update}}</div>
-        <div class="eqnote">m&#8315;, P&#8315; — predicted (transported) handle mean/covariance; z — noisy handle observation from today's quotes; H — observation operator; R — measurement covariance; S — innovation covariance; K — Kalman gain; m&#8314;, P&#8314; — filtered mean/covariance; I — identity.</div>
+        <div class="eqnote">m&#8315;, P&#8315; — predicted (transported) handle mean/covariance; z — noisy handle observation; H — observation operator; R — measurement covariance; S — innovation covariance; K — Kalman gain; m&#8314;, P&#8314; — filtered mean/covariance.</div>
       </div>
       <div class="eqblock">
         <div class="eqtitle">Active mode — a one-stage MAP fit (provably no double-counting)</div>
         <div class="eq">{{EQ:kalman_map}}</div>
-        <div class="eqnote">&theta; — model parameters; L<sub>quote</sub> — misfit to today's quotes; H(&theta;) — handle coordinates read off the model; m&#8315;, P&#8315; — Kalman prediction mean/covariance (penalty weighted by (P&#8315;)&#8315;&sup1;); L<sub>intrinsic</sub> — the model's own regularizers; L<sub>persist,&perp;</sub> — persistence on coordinates the filter does not carry.</div>
+        <div class="eqnote">&theta; — model parameters; L<sub>quote</sub> — misfit to today's quotes; H(&theta;) — handle read-off; m&#8315;, P&#8315; — prediction mean/covariance (penalty weight (P&#8315;)&#8315;&sup1;); L<sub>intrinsic</sub> — model regularizers; L<sub>persist,&perp;</sub> — persistence on coordinates the filter does not carry.</div>
       </div>
       <ul class="points">
-        <li><strong>Both noise levels are measured, not assumed:</strong> today's measurement noise is the fit's own reported
-          uncertainty, widened whenever its residuals run worse than usual; the drift allowance ("process noise") was set by
-          backtest, not taste.</li>
-        <li class="g"><strong>The drift allowance is adaptive:</strong> on genuine shocks it opens up so the filter follows the market
-          (prediction errors of 39–79 bp fall to 5–8 bp) — and stays closed on quiet days, so marks do not wander.</li>
+        <li><strong>Both noise levels are measured, not assumed:</strong> today's noise is the fit's own reported uncertainty, widened
+          when its residuals run worse than usual; the drift allowance was set by backtest, not taste.</li>
+        <li class="g"><strong>The drift allowance is adaptive:</strong> on genuine shocks it opens so the filter follows the market
+          (prediction errors of 39–79 bp fall to 5–8 bp) — and stays closed on quiet days.</li>
+        <li class="v"><strong>Two clocks for the prediction law:</strong> calendar (default) or an opt-in session clock — an overnight
+          and a whole <em>weekend</em> both move ATM ≈ 55 bp, 30 session minutes 19.5 bp; only a session clock fits all three.</li>
       </ul>
     </div>
     <div>
@@ -1310,28 +1320,32 @@
 <!-- ============ 25 · GRAPH CONCEPT ========================================= -->
 <section class="slide">
   <div class="kicker"><span class="tag">Graph</span><span>The propagation layer — concept</span></div>
-  <h1 class="claim">Graph extrapolation: the universe is a <span class="hl">graph of smiles</span> — calendar edges within a name, cross-asset edges across names.</h1>
+  <h1 class="claim">Graph extrapolation: the universe is a <span class="hl">graph of smiles</span> — with three propagation modes, ordered by how much they assert.</h1>
   <p class="lede">Nodes are (underlying, expiry) smiles. <b>Lit</b> nodes have usable quotes and get calibrated; <b>dark</b> nodes
     do not — they are the point of the exercise. Edges say which smiles should co-move: adjacent expiries of one name
-    (calendar edges) and same-tenor smiles of related names (cross-asset edges).</p>
+    (calendar edges) and same-tenor smiles of related names (cross-asset edges). What flows over them is a choice of
+    <b>assertion</b>: smoothness, contracts, or dependencies.</p>
   <div class="cols">
     <div>
       <div class="eqblock core">
-        <div class="eqtitle">Row-stochastic kernel, conductances, and the β-weighted directed Laplacian</div>
+        <div class="eqtitle">The smooth-field mode: row-stochastic kernel, conductances, β-weighted directed Laplacian</div>
         <div class="eq">{{EQ:graph_kernel}}</div>
         <div class="eqnote">w<sub>ij</sub> &ge; 0 — raw weight "node j informs node i"; K — row-stochastic trust kernel; &pi; — stationary distribution of K (&Pi; = diag &pi;); c<sub>ij</sub> — reversibilized conductance; &beta; — per-edge amplitude matrix (K&#8728;&beta; — entrywise product); L<sub>dir</sub><sup>&beta;</sup> — &beta;-weighted directed Laplacian; I — identity.</div>
       </div>
       <ul class="points">
         <li>Nodes are <strong>(underlying, expiry)</strong> smiles; the lattice is what the desk already draws on a whiteboard — SPY 1M talks to SPY 3M and to QQQ 1M.</li>
-        <li class="v">The Laplacian regularizes <strong>increments, not levels</strong> — "no change from the transported prior" is always the default; the graph never invents a move.</li>
-        <li class="a"><strong>Lit vs dark is a per-node switch</strong> — the same universe object drives calibration, the graph, and the UI matrix.</li>
+        <li class="v"><strong>Three modes, one solver family:</strong> <em>smooth field</em> (assert smoothness — the Laplacian above),
+          <em>precision messages</em> (assert relations — <strong>the production default since 2026-07-27</strong>), and
+          <em>layered dynamic-harmonic</em> (assert dependencies — research-grade, deliberately opt-in). Mode changes are explicit
+          and evidence-gated.</li>
+        <li class="a">All three regularize <strong>increments, not levels</strong> — "no change from the transported prior" is always the default; the graph never invents a move. Lit vs dark is a per-node switch on one universe object.</li>
       </ul>
     </div>
     <div>
-      <div class="shot"><img src="{{IMG:graph_sandbox}}" alt="Graph sandbox lattice"></div>
+      <div class="shot"><img src="{{IMG:graph_sandbox}}" alt="Graph lattice"></div>
       <p class="shotcap"><span class="k">The lattice (controlled demo session).</span> Tickers × expiries, lit (calibrated) nodes ringed amber.
-        The "manual what-if" mode lets a trader light nodes, type hypothetical ATM shifts and watch the posterior field respond —
-        the "from calibrations" mode replaces hand-typed shifts with real calibration innovations.</p>
+        A unified what-if lets a trader light nodes, pulse hypothetical innovations and watch the posterior field respond before
+        committing anything; production runs replace the pulses with real calibration innovations.</p>
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
@@ -1341,29 +1355,31 @@
 
 <!-- ============ 26 · GRAPH HERO ============================================ -->
 <section class="slide">
-  <div class="kicker"><span class="tag">Graph</span><span>The propagation layer — mechanics</span></div>
-  <h1 class="claim">In the graph update, dark smiles move by <span class="hl">innovation</span> — not by copying liquid names' levels.</h1>
+  <div class="kicker"><span class="tag">Graph</span><span>The propagation layer — the default operator</span></div>
+  <h1 class="claim">The default operator: <span class="hl">every edge is a contract</span> — precision messages, with exact attribution.</h1>
   <p class="lede"><b>Innovation</b> = what today's calibration says minus what yesterday's spot-transported surface predicted —
-    the genuine news in a lit name. Only that increment propagates through the graph; levels never do. So a dark node keeps its
-    own personality (its transported prior) and inherits only its neighbours' <em>surprises</em>, with uncertainty attached.</p>
+    the genuine news in a lit name. Only that increment propagates; levels never do. In the default
+    <b>precision-message</b> mode, each edge is one Gaussian pairwise factor: an <b>amplitude β</b> (the contract — how many units
+    of the neighbour's move a node inherits) and a <b>precision p</b> (the trust — measured, never asserted). Amplitude and trust
+    never mix.</p>
   <div class="cols">
     <div>
       <div class="eqblock core">
-        <div class="eqtitle">Increment precision — three beliefs, one Gaussian prior</div>
-        <div class="eq">{{EQ:graph_precision}}</div>
-        <div class="eqnote">Q<sub>&delta;</sub> — precision of the Gaussian prior on the increment field z ~ N(0, Q<sub>&delta;</sub>&#8315;&sup1;); D<sub>&kappa;</sub> = diag(&kappa;) — per-node move-alone cost; &eta; — directed-prediction weight; L<sub>dir</sub><sup>&beta;</sup> — &beta;-weighted directed Laplacian; &lambda; — optimal-transport flux weight; A<sub>&rho;</sub> — mobility Laplacian; &nu; — source/sink allowance.</div>
+        <div class="eqtitle">One pairwise relation factor per edge — PSD for any amplitude, sparse by construction</div>
+        <div class="eq">{{EQ:graph_msg}}</div>
+        <div class="eqnote">Q<sub>msg</sub> — message precision (Gaussian prior on the innovation field); E — edge set; p<sub>ij</sub> — edge precision (trust, measured from data); &beta;<sub>ij</sub> — edge amplitude (the contract); e<sub>i</sub> — coordinate selector of node i; calendar amplitude (T<sub>j</sub>/T<sub>i</sub>)<sup>&alpha;T</sup> with &alpha;<sub>T</sub> = 1 — constant total-variance transport along the ladder.</div>
       </div>
       <div class="eqblock">
-        <div class="eqtitle">Conditioning on lit innovations — covariance-form update</div>
-        <div class="eq">{{EQ:graph_update}}</div>
-        <div class="eqnote">S — lit-node set; H<sub>S</sub> — selector of lit coordinates; d<sub>S</sub> — observed lit innovations; R = diag(r<sub>s</sub>) — observation precisions; &mu;&#8315;, K&#8315; — prior mean/covariance of the increment field; S<sub>y</sub> — innovation covariance; &alpha; — innovation weights; &mu;&#8314;, K&#8314; — posterior mean/covariance.</div>
+        <div class="eqtitle">Information-form posterior — and per-source gain rows that sum to the move exactly</div>
+        <div class="eq">{{EQ:graph_msg_post}}</div>
+        <div class="eqnote">Q&#8314; — posterior precision; D<sub>&kappa;</sub> — per-node anchor to the transported prior ("no news" ⇒ no move); H, R<sub>d</sub> — lit-node selector and observation precisions; d — observed lit innovations; ẑ — posterior innovation field; g<sub>s</sub> — per-source gain rows: every dark move decomposes into named lit-node contributions, summing exactly by construction.</div>
       </div>
       <ul class="points">
-        <li class="a"><strong>κ</strong> anchors every node to its <em>transported prior</em> — "no news" means no move.</li>
-        <li class="v"><strong>η</strong> propagates lit-node innovations along directed calendar and cross-asset edges.</li>
-        <li class="c"><strong>λ</strong> regularizes the flow as an optimal-transport flux — moves stay economically local.</li>
-        <li class="g"><strong>Containment:</strong> innovations enter weighted by the lit fit's own precision — a noisy, wide-band
-          calibration propagates weakly, so one bad lit node cannot drag its neighbourhood.</li>
+        <li class="v"><strong>Factors, not averages:</strong> a dark node in the middle of a chain cannot dilute a message — the
+          "dead informer" case is a golden test, not a hope.</li>
+        <li class="g"><strong>Containment:</strong> innovations enter weighted by the lit fit's own precision; components with no lit
+          path stay at <em>zero</em> innovation with deliberately wide bands — no artificial precision is invented. Every observed
+          component is verified positive-definite before a number leaves the solver.</li>
       </ul>
     </div>
     <div>
@@ -1394,16 +1410,20 @@
   <div class="cols even">
     <div>
       <ul class="points" style="margin-top:4px">
-        <li class="v"><strong>Per-edge β</strong> scales how much of a neighbor's innovation a node inherits — index→name edges can
-          carry β &gt; 1 (levered names) or β &lt; 1 (defensive). Today β is <strong>seeded at 1 and desk-set</strong>; historical estimation is a roadmap item.</li>
-        <li><strong>Calendar and cross-ticker edge weights</strong> are two visible dials, not buried constants; η is <strong>auto-tunable by leave-one-out</strong> over the lit nodes.</li>
-        <li class="g">The persisted <strong>edge editor</strong> seeds a default graph from the universe and lets the desk add, remove, or reweight relationships — the graph is a persisted desk view (per-edge version history is a roadmap item).</li>
+        <li class="v"><strong>Per-edge β</strong> scales how much of a neighbour's innovation a node inherits — index→name edges can
+          carry β &gt; 1 (levered names) or β &lt; 1 (defensive). The calendar <em>shape</em> is locked ((T<sub>j</sub>/T<sub>i</sub>)<sup>&alpha;T</sup>);
+          the <em>level</em> is desk-set at 1.0, with historically-learned presets selectable.</li>
+        <li class="g"><strong>Edge policies are first-class objects</strong> — a policy card with <strong>live preflight</strong>
+          (blockers named before any solve), a draft→active lifecycle, a per-edge message inspector, and a validation drawer that runs
+          the production LOO side-by-side before adoption.</li>
+        <li><strong>The reach autotune is the production LOO harness itself</strong> — the tuned dial optimizes exactly the objective
+          the backtest reports (the old synthetic sandbox tuner was deleted outright).</li>
         <li class="c">Every dark-node move <strong>decomposes exactly</strong>: the attribution card lists per-neighbour contributions (gain × innovation) that sum to the posterior shift — test-locked, not approximate.</li>
         <li class="a">Confidence honesty is a stated caution: bands come from the <strong>marginal posterior covariance</strong>, never the precision diagonal.</li>
       </ul>
       <div class="statrow">
-        <div class="stat"><div class="v vl">β per edge</div><div class="l">directed, PSD-safe (proved), persisted with the universe</div></div>
-        <div class="stat"><div class="v c">LOO η</div><div class="l">propagation reach cross-validated on the lit nodes, one click</div></div>
+        <div class="stat"><div class="v vl">β per edge</div><div class="l">directed, PSD-safe for any amplitude (proved), persisted with the universe</div></div>
+        <div class="stat"><div class="v c">LOO reach</div><div class="l">cross-validated on the lit nodes, one click, production objective</div></div>
       </div>
     </div>
     <div>
@@ -1424,7 +1444,7 @@
   <h1 class="claim">Graph skill is <span class="hl">demonstrated on held-out history — including fully-dark names</span> in the regimes that matter.</h1>
   <p class="lede"><b>Leave-one-out (LOO)</b>: pretend a lit node is dark, let the graph reconstruct it from the others, then
     compare to the calibration it actually had. The baseline to beat is the mechanical alternative — just spot-transporting
-    yesterday's surface. "Skill" = how much closer the graph gets. 25 assets × 3 historical regimes, ~47k held-out scores.</p>
+    yesterday's surface. "Skill" = how much closer the graph gets. 25 assets × 3 historical regimes, 47,393 held-out scores.</p>
   <div class="cols even">
     <div>
       <div class="statrow" style="margin-top:0">
@@ -1433,8 +1453,13 @@
       </div>
       <ul class="points" style="margin-top:20px">
         <li class="g"><strong>Neighbour-supported holdouts: decisive skill, calendar-driven</strong> — indexes +10…+76 bp, ETFs +3…+7 bp across all three regimes (ranges bracket the SSR transport assumptions).</li>
-        <li class="a"><strong>Honest scope:</strong> in the Jul-2023 calm the dark-name skill is ≈0 (never negative) — single-name moves there are earnings-idiosyncratic, and there is no systematic signal to carry; that regime's dark-name bands read overconfident (ζ std ~1.9, flagged with a fix queued). Everywhere else ζ ≈ 0, std 0.70–1.10.</li>
-        <li class="v">Backtesting is <strong>one click in the panel</strong> — the same LOO that validated the method runs on the desk's own universe, on demand.</li>
+        <li class="a"><strong>Honest scope:</strong> the dark-name numbers are at assertive reach (η 10, cross-conductance ×25 — tuned on
+          the spike; the shipped default reach is deliberately timid, ≈+0.1 bp). Reach is a desk dial, and the one-click LOO is how a
+          desk picks it with evidence. In the Jul-2023 calm the skill is ≈0 (never negative) — earnings-idiosyncratic tape carries no
+          systematic signal.</li>
+        <li class="v"><strong>The bands are honest in every regime:</strong> after an idiosyncratic band floor (a name's band can never
+          fall below ~0.55× its own trailing innovation RMS), ζ std reads ~1.0 in all three regimes — the calm cell's 1.9 overconfidence
+          was found by this audit and fixed by it.</li>
       </ul>
     </div>
     <div>
@@ -1450,7 +1475,81 @@
   <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 14 · Graph extrapolation</span><span></span></div>
 </section>
 
-<!-- ============ 29 · WORKSTATION TOUR ====================================== -->
+<!-- ============ 29 · GRAPH ADJUDICATION ==================================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Graph</span><span>The propagation layer — how defaults are decided</span></div>
+  <h1 class="claim">Defaults flip on <span class="hl">pre-registered evidence</span> — the message operator earned its seat in an intraday replay.</h1>
+  <p class="lede">Every propagation default faces a gate <b>written before the sweep runs</b>, and holds are recorded as loudly as
+    wins. The deciding campaign: an <b>asynchronous intraday replay</b> over 8 captured sessions of an SPY/QQQ/IWM triangle
+    (312 NBBO snapshots, 13 instants a day) — one ticker is relit mid-session and its dark neighbours are scored before and after,
+    13,356 rows per arm.</p>
+  <div class="cols even">
+    <div>
+      <table class="evi">
+        <tr><th>propagation arm</th><th>ATM RMS bp</th><th>ζ std</th><th>95% cov</th></tr>
+        <tr><td>pure transport (no graph)</td><td class="m">172.7</td><td class="m">—</td><td class="m">—</td></tr>
+        <tr><td>smooth field</td><td class="m">168.6</td><td class="m">0.57</td><td class="m">1.00</td></tr>
+        <tr class="win"><td>precision messages</td><td class="m">65.8</td><td class="m">0.88</td><td class="m">0.96</td></tr>
+        <tr><td>layered · best memory (½-life ≈ 2.4 h)</td><td class="m">73.7</td><td class="m">0.80</td><td class="m">0.97</td></tr>
+        <tr><td>layered · undecayed memory (H = ∞)</td><td class="m">108.1</td><td class="m">2.75</td><td class="m">0.54</td></tr>
+      </table>
+      <p class="shotcap" style="margin-top:10px"><span class="k">Dark-neighbour ATM error after the mid-session repricing.</span>
+        The smooth field is nearly inert intraday (its day-scale anchors shrink intraday innovations to nothing); the message
+        operator carries the news at 2.6× lower error with honest bands — the separation the default flip was ratified on.</p>
+    </div>
+    <div>
+      <ul class="points" style="margin-top:4px">
+        <li class="v"><strong>The flip, scoped precisely:</strong> precision messages became the workstation default on 2026-07-27,
+          user-ratified on this separation; the smooth field remains the explicit rollback and the untouched replay/harness default —
+          byte-identity locks intact.</li>
+        <li class="a"><strong>Its own daily-horizon gate table is filled and published:</strong> at one-day granularity the gain is
+          real but immaterial (+0.4…+2.0 bp) and the graph credible bands read overconfident (ζ ~2) — recorded verbatim; band
+          calibration is the named next fix, not a footnote.</li>
+        <li class="g"><strong>The layered mode was validated and still held:</strong> its residual memory shows a genuine interior
+          optimum (½-life ≈ 2.4 h, persistence skill decaying 18 → 2.5 bp, calibrated ζ 0.80) — but the static message operator beat
+          every layered arm, so it stays opt-in. The verdict, the reason, and the decisive follow-up experiment are all on file.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Model governance you can diff: <b>gates written before the sweep, RECORD/HOLD verdicts, explicit rollbacks</b> — the
+    propagation layer is adjudicated with the same discipline as the fits.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities — Technical Note 14 · Graph extrapolation (campaign findings in repo)</span><span></span></div>
+</section>
+
+<!-- ============ 30 · UNCERTAINTY AS AN OUTPUT ============================== -->
+<section class="slide">
+  <div class="kicker"><span class="tag">Product</span><span>Uncertainty as an output</span></div>
+  <h1 class="claim">Every mark ships with its error bar — and the posterior answers <span class="hlc">"what should we quote next?"</span></h1>
+  <p class="lede">Uncertainty here is not a shaded region drawn after the fact — it is computed from the same objects that price,
+    audited in backtests, and turned into product features of its own.</p>
+  <div class="gloss">
+    <div class="g"><div class="t"><span class="m">Functional credible bands</span></div><div class="d">The full 3-handle posterior
+      covariance is pushed through the slice map (delta-method): skew and curvature uncertainty <b>widen the wings</b>, level
+      uncertainty widens the money — and the same six perturbed slices price <b>var-swap and tail-mass standard deviations</b>
+      carried on every payload.</div></div>
+    <div class="g"><div class="t"><span class="m">Error bars from the quotes</span></div><div class="d">Every calibration keeps its
+      solver Jacobian; with the <b>bid–ask half-spread as the stated per-quote noise</b>, each fit prices its own parameter and
+      handle uncertainty — even with the filter off. Advisory by construction: it never touches a calibration.</div></div>
+    <div class="g"><div class="t"><span class="m">Observation planning</span> · closed form</div><div class="d">A rank-one update of
+      the graph posterior ranks every candidate dark node by <b>expected variance reduction</b> — "which node is most worth a
+      quote" — with <b>no refit and no re-solve</b>, optionally exposure-weighted. One endpoint, computed from what the solver
+      already knows.</div></div>
+    <div class="g"><div class="t"><span class="m">ζ, the audit</span></div><div class="d">Every band the system quotes is scored in
+      backtests by standardized residuals. Band honesty (ζ std ≈ 1) is a <b>tracked, certified metric</b> — and dishonest cells get
+      fixed (the calm-regime idio floor), not excused.</div></div>
+  </div>
+  <div class="statrow">
+    <div class="stat"><div class="v vl">±1.96σ</div><div class="l">credible band on every dark reconstruction — judged against realized calibrations later</div></div>
+    <div class="stat"><div class="v c">0</div><div class="l">refits or re-solves to rank every "quote next" candidate — rank-one algebra on the posterior</div></div>
+    <div class="stat"><div class="v g">ζ ≈ 1</div><div class="l">band honesty held in every backtested regime, locked by the certification pack</div></div>
+  </div>
+  <div class="strip"><span class="lbl">Trading relevance</span>
+    Uncertainty is not decoration: <b>bands gate publishing, weight the graph's trust, and rank the desk's next quote</b>.</div>
+  <div class="foot"><span>Vol-Fitter · capabilities — Technical Notes 13–15 · uncertainty stack</span><span></span></div>
+</section>
+
+<!-- ============ 31 · WORKSTATION TOUR ====================================== -->
 <section class="slide">
   <div class="kicker"><span class="tag">Product</span><span>The workstation today</span></div>
   <h1 class="claim">Everything above ships in a <span class="hlc">working workstation</span> — eight workspaces, live against three data feeds.</h1>
@@ -1478,7 +1577,7 @@
         <div class="node" style="text-align:left"><div class="t">2 · Calibrate</div><div class="d">background per-ticker groups on a process pool (~2× warm) — byte-identical to serial</div></div>
         <div class="node" style="text-align:left"><div class="t">3 · Inspect &amp; adjust</div><div class="d">smiles, densities, term, LV; amend quotes, var-swaps, events, priors, filter</div></div>
         <div class="node" style="text-align:left"><div class="t">4 · Propagate</div><div class="d">graph extrapolation over the dark universe, LOO-checked</div></div>
-        <div class="node em" style="text-align:left"><div class="t">5 · Gate &amp; publish</div><div class="d">per-node RMS budgets, arb flags, staleness — then JSON/CSV surface export + HTML report for downstream systems</div></div>
+        <div class="node em" style="text-align:left"><div class="t">5 · Gate &amp; publish</div><div class="d">per-node RMS budgets, butterfly certificates, data-age staleness — an uncertified belly or red-stale chain hard-blocks publish (HTTP 409, before any lineage is written); then JSON/CSV export + HTML report</div></div>
       </div>
     </div>
     <div>
@@ -1489,7 +1588,9 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    The question "can we publish this surface?" gets <b>a per-node answer with named exceptions</b> — the runbook a vol desk actually operates.</div>
+    The question "can we publish this surface?" gets <b>a per-node answer with named exceptions — and hard blocks with reasons,
+    not warnings</b>; degraded chains serve the transported prior <i>labelled with why</i>, never a silent blank. The runbook a
+    vol desk actually operates.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — product</span><span></span></div>
 </section>
 
@@ -1503,24 +1604,24 @@
     kernel compilation — each cached thereafter).</p>
   <div class="statrow" style="margin-top:6px">
     <div class="stat"><div class="v c">96 → 35 ms</div><div class="l">LQD slice fit (2.7×) — "the atom of every parametric fit"</div></div>
-    <div class="stat"><div class="v g">~60×</div><div class="l">de-Americanization (Numba CRR kernel, wide chains)</div></div>
-    <div class="stat"><div class="v vl">6.5×</div><div class="l">LV PDE march (Numba vectorized Thomas vs LAPACK banded)</div></div>
-    <div class="stat"><div class="v am">2.6× / 2–2.8×</div><div class="l">SVI / MCS analytic Jacobians vs finite differences</div></div>
-    <div class="stat"><div class="v c">2.1×</div><div class="l">warm parallel background calibration (per-ticker process pool)</div></div>
+    <div class="stat"><div class="v g">~3 ms</div><div class="l">de-Americanization of a ~300-quote chain (Numba CRR; ~350 ms NumPy)</div></div>
+    <div class="stat"><div class="v vl">~10 ms</div><div class="l">structural SVI fit — 3× vs raw, analytic Jacobian 2.1–2.4× again</div></div>
+    <div class="stat"><div class="v am">~20 ms</div><div class="l">warm 0DTE slice against a 50 ms design rail</div></div>
+    <div class="stat"><div class="v c">~0.7 s</div><div class="l">graph posterior at 1,000 nodes (&lt; 1 s target)</div></div>
   </div>
   <div class="cols" style="margin-top:26px">
     <div>
       <ul class="points">
-        <li><strong>Measure first</strong> is a design rule: every headline number above began as a profile, shipped as a fix, and is locked by a perf rail in the test suite (7 perf tests).</li>
-        <li class="g"><strong>Analytic everywhere it pays</strong> — LQD's implicit-root Jacobian, SVI/MCS Jacobians, the FD-free arbitrage metric, closed-form var-swaps.</li>
-        <li class="v"><strong>Graceful degradation</strong> — every Numba kernel has a NumPy fallback that agrees to rounding; missing numba never breaks a fit.</li>
+        <li><strong>Measure first</strong> is a design rule: every headline number above began as a profile, shipped as a fix, and is locked by a perf rail in the test suite (9 perf tests, budgets stated with hardware and cache state).</li>
+        <li class="g"><strong>Analytic everywhere it pays</strong> — LQD's implicit-root Jacobian, SVI Jacobians on both charts, MCS (3.4×), the FD-free arbitrage metric, closed-form var-swaps — and a vectorized safeguarded-Newton vol inverter worth ~39× on a curve render.</li>
+        <li class="v"><strong>Compiled kernels with graceful degradation</strong> — the LV march (~6× vs LAPACK banded, identical to ~1e-15) and the CRR tree run under Numba, each with a NumPy fallback; missing numba never breaks a fit.</li>
       </ul>
     </div>
     <div>
       <ul class="points">
         <li class="a"><strong>Caches are content-addressed</strong> — de-Am results keyed by chain digest; fit-tuning never re-pays preparation; invalidation is per-ticker, never global.</li>
-        <li><strong>Failed optimizations are recorded too</strong> — thread parallelism (a net loss under Python's global interpreter lock) and coarse-grid warm starts (they broke the affine surface) were measured, rejected, and documented so they are not retried.</li>
-        <li class="g">Background calibration is <strong>byte-identical to serial</strong> — speed never changes a number.</li>
+        <li><strong>Failed optimizations are recorded too</strong> — thread parallelism (a net loss under Python's global interpreter lock), coarse-grid warm starts (they broke the affine surface), and the Rannacher time scheme (~1.1× net, and non-monotone) were measured, rejected, and documented so they are not retried.</li>
+        <li class="g">Per-ticker process-pool calibration (~2× warm) is <strong>byte-identical to serial</strong> — speed never changes a number.</li>
       </ul>
     </div>
   </div>
@@ -1533,19 +1634,27 @@
 <!-- ============ 32 · DISCIPLINE ============================================ -->
 <section class="slide">
   <div class="kicker"><span class="tag">Engineering</span><span>Why the numbers can be trusted</span></div>
-  <h1 class="claim">Every claim in this deck traces to <span class="hlc">an equation, a module, and a test</span>.</h1>
-  <p class="lede">Provenance of everything shown: market-facing screenshots are a <b>live Massive session (2026-07-08)</b>;
-    the graph and filter screenshots are <b>staged synthetic demos and their captions say so</b>; backtest numbers are
-    <b>historical NBBO replay</b> (Massive/Polygon flat files). Nothing in this deck is a mock-up.</p>
+  <h1 class="claim">Every claim traces to <span class="hlc">an equation, a module, and a test</span> — and due diligence is a download, not a promise.</h1>
+  <p class="lede">Provenance of everything shown: market-facing screenshots are a <b>live Massive session</b>; the graph and filter
+    screenshots are <b>staged synthetic demos and their captions say so</b>; backtest numbers are <b>historical NBBO replay</b>
+    (Massive/Polygon flat files). Nothing in this deck is a mock-up.</p>
   <div class="cols">
     <div>
       <ul class="points" style="margin-top:4px">
-        <li><strong>A 969-test suite, green on 2026-07-08</strong> — <code>pytest backend/tests -q</code> — including
-          golden tests that pin the code to the notes' equations, byte-identity locks on every OFF toggle, and
-          finite-difference-agreement guards on every analytic Jacobian.</li>
-        <li class="v"><strong>16 technical notes</strong> (Notes 00–15) with a fixed contract: one boxed central equation, an invariant box, a traceability table (claim → equation → module → test), and an executed ≤ 50-line reference implementation.</li>
-        <li class="g"><strong>Numbers are measured, not copied</strong> — every figure and table in the notes is regenerated by the production code at build time; a drifting number fails the build, not the reader.</li>
-        <li class="r"><strong>Eight production case files</strong> — indexed in Note 00 — record what broke, why, and which design rule it produced. The deck quoted four of them.</li>
+        <li><strong>1,506 backend + 129 UI tests, green on 2026-07-27</strong> — golden tests pin the code to the notes' equations,
+          byte-identity locks guard every OFF toggle, finite-difference guards every analytic Jacobian.</li>
+        <li class="g"><strong>A 22-case certification pack, 22/22 green (report regenerated 2026-07-27)</strong> — every production
+          incident frozen as a named case (market regimes × data failures × model stress) that runs the <em>same</em> pytest locks
+          the suite runs, and emits a client-facing HTML/JSON report. Validation and production share definitions instead of drifting apart.</li>
+        <li class="v"><strong>16 technical notes + 19 lecture editions</strong> with a fixed contract: boxed central equation,
+          invariant box, traceability table (claim → equation → module → test), executed reference implementation — every figure
+          regenerated by production code, so a drifting number fails the build, not the reader.</li>
+        <li class="r"><strong>Two bank-committee-style reviews</strong> (LQD, SVI) sit in the repo verbatim with their triage; the
+          sharpest demand — <em>"an uncertified slice cannot become a mark"</em> — shipped as the publish gate. Production case files
+          record what broke, why, and the design rule it produced.</li>
+        <li class="a"><strong>A governance kernel:</strong> append-only event log (every quote edit, override and publish, with actor),
+          hash-chained publish manifests (supersede / recall — never delete), and a one-command replay-to-tolerance report,
+          test-enforced at 10⁻⁹ IV.</li>
       </ul>
     </div>
     <div>
@@ -1561,7 +1670,8 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Trading relevance</span>
-    Model governance comes built in: <b>an auditor can walk from any surface number back to the equation and the test that guards it</b>.</div>
+    Model governance comes built in: <b>an auditor can walk from any published surface back to its inputs, its equation, its test —
+    and regenerate the certification report themselves</b>.</div>
   <div class="foot"><span>Vol-Fitter · capabilities — engineering · Technical Note 00 · System overview (case-file index)</span><span></span></div>
 </section>
 
@@ -1572,8 +1682,12 @@
   <div class="cols">
     <div>
       <ul class="points" style="margin-top:4px">
-        <li class="g"><strong>Recently landed</strong> — parallel background calibration (~2× warm, byte-identical), the Quality publish-gate dashboard, surface export/publish, per-node graph attribution, the full 25-asset × 3-regime benchmark pack (~47k held-out scores, including the fully-dark cross-asset validation), a frontend test harness (unit + headless-UI smoke).</li>
-        <li class="v"><strong>Next</strong> — calm-regime dark-name band widening (the one overconfident cell in the benchmark), the deployment-model decision.</li>
+        <li class="g"><strong>Recently landed</strong> — the 22-case certification pack (client-facing), the belly-certificate publish
+          gate, the structural SVI chart + analytic Jacobians, the symmetric surface solver, the precision-message propagation default
+          (evidence-gated), the 0DTE research stack (intraday capture, session clocks, degraded mode, 50 ms rail), the joint borrow
+          solve v1, functional bands + closed-form observation planning.</li>
+        <li class="v"><strong>Next</strong> — hosted single-tenant packaging (the settled deployment model), daily-horizon graph-band
+          calibration (the recorded ζ~2 fix), the index→single-names intraday campaign, an eSSVI comparator column, a hedge-P&amp;L campaign.</li>
         <li><strong>Then</strong> — portfolio/P&amp;L views, multi-user data services, enterprise entitlements.</li>
       </ul>
     </div>
@@ -1581,10 +1695,12 @@
       <ul class="points" style="margin-top:4px">
         <li class="a"><strong>Stated limits today</strong> — single-process serving; largest exercised end-to-end: the 25-asset
           capture universe offline, ~30-node universes live; beyond ~2–3k nodes the sparse graph solver is wanted (deferred
-          deliberately); fully-dark cross-asset skill is demonstrated in stressed regimes, measured ≈0 in calm idiosyncratic tape.</li>
-        <li><strong>Data</strong> — Yahoo (free), Massive/Polygon (delayed + flat-file history), Bloomberg (Terminal) behind one provider contract with health lights and as-of replay.</li>
-        <li class="g"><strong>Outputs today</strong> — JSON/CSV surface export with a manifest, an HTML fit report, and the full REST API;
-          <strong>not yet</strong>: portfolio Greeks/P&amp;L, multi-user entitlements. Deployment: dev server or single-file desktop build.</li>
+          deliberately — the message operator is sparse-ready by construction); fully-dark cross-asset skill is demonstrated at
+          assertive reach in stressed regimes, measured ≈0 in calm idiosyncratic tape.</li>
+        <li><strong>Data</strong> — Yahoo (free), Massive/Polygon (delayed + flat-file history), Bloomberg (Terminal) behind one provider contract with health lights and as-of replay; bring-your-own-entitlement by design.</li>
+        <li class="g"><strong>Outputs today</strong> — JSON/CSV surface export with a hash-chained manifest, an HTML fit report, the
+          certification and replay reports, and the full REST API; <strong>not yet</strong>: portfolio Greeks/P&amp;L, multi-user
+          entitlements. Deployment: dev server or single-file desktop build.</li>
       </ul>
     </div>
   </div>
@@ -1597,10 +1713,10 @@
 <section class="slide close">
   <div class="brand">Vol-Fitter</div>
   <h1>One <span class="hl">shared handle system</span> — models, priors, filter and graph speaking the same
-    coordinates — so sparse smiles can be marked, with stated uncertainty.</h1>
+    coordinates — so every smile can be marked, certified, and defended.</h1>
   <p class="sub">Four arbitrage-aware smile models · trading-grade quote preparation · Bayesian memory and Kalman filtering
-    in one coordinate system · a graph layer, validated on neighbour-supported holdouts, that carries information to the
-    smiles nobody quotes. Backtested on three historical regimes. Auditable to the equation. Running today.</p>
+    in one coordinate system · a propagation layer with exact attribution, adjudicated by pre-registered backtests, carrying
+    information to the smiles nobody quotes. 1,600+ tests. A 22-case certification pack. Auditable to the equation. Running today.</p>
 </section>
 
 </div>

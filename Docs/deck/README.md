@@ -21,14 +21,54 @@ CAVEAT (learned building it): assembling templates with PowerShell 5.1 needs
 explicit UTF-8 reads (`[IO.File]::ReadAllText(..., UTF8)`) — default
 `Get-Content` reads ANSI and every em-dash ships as mojibake.
 
-**Current state: full 36-slide deck, rev 6** (also exported as
+**Current state: full 38-slide deck, rev 7 (2026-07-27)** (also exported as
 `volfitter_deck.pdf`, one page per slide) — opening (problem, architecture,
 worked dark-smile walkthrough, glossary), models (LQD ×2, backtest evidence,
 SVI ×2, MCS ×2, Local Vol ×2), trading realism (de-Am, forwards, objective,
 var-swaps, wings, calendar case file, event clock), dynamics (SSR, priors ×2,
-Kalman filter ×2), the graph section (concept, hero, edges, LOO validation),
-and product close (workstation tour, quality/runbook, performance, discipline,
-roadmap, closing statement).
+Kalman filter ×2), the graph section (concept, precision-message operator,
+edges/policy, LOO validation, **adjudication/evidence-gated defaults — NEW**),
+**uncertainty-as-an-output — NEW**, and product close (workstation tour,
+quality/runbook, performance, discipline/governance, roadmap, closing).
+
+Rev-7 changes (2026-07-27): **full consistency + sales pass against the
+2026-07 state of the codebase and notes.** Headline updates: test chip
+1,635 (1,506 backend + 129 UI, live-counted); NEW 22-case certification-pack
+chip (`-m backtest.certification run` re-run 2026-07-27, 22/22 green,
+client-facing HTML/JSON regenerated); SVI slides rewritten around the
+committee arc (structural chart default + two-round pre-registered benchmark
+numbers, analytic Jacobians on both charts 2.6×/2.1–2.4×, buffered Lee cap
+1.95 + live SPY LEAP trap, 801-pt belly certificate + publish-409
+"an uncertified slice cannot become a mark", 118.7/19.7/15.0 bp mixture
+benchmark); LQD slide gets the committee logistic chart (A_R = expit(ρ)) and
+measured 1.4–2.0× Jacobian; graph section rebuilt for the THREE-mode story
+with `precision_messages` as the Options default (flip 3418101; wire default
+still smooth_field — stated on-slide), new equation SVGs
+`assets/eq/graph_msg.svg` + `graph_msg_post.svg` (rendered latex+dvisvgm,
+fill=currentColor patched), the +8…+14 bp dark-name claim now carries its
+honest scope (η 10 / cross ×25 tuned on the spike; production reach ≈+0.1 bp;
+ζ ~1 in every regime post idio floor), and a NEW adjudication slide (intraday
+async-replay arm table 172.7/168.6/65.8/73.7/108.1 bp + daily-gate honesty +
+layered RECORD/HOLD). NEW "uncertainty as an output" slide (functional
+delta-method bands, fit error bars from bid-ask noise, closed-form
+observation planning, ζ audit). Forwards adds the joint-borrow fixed point;
+objective adds the 7-reason quarantine + 3-tick bid floor; calendar adds the
+symmetric solver (10.6/1,095/10.6 case); event clock + filter add the
+session clocks (filter default = calendar, stated); prior adds the echo-free
+invariant. Performance stats refreshed (~3 ms de-Am vs ~350 ms NumPy, ~10 ms
+structural SVI, ~20 ms warm 0DTE vs 50 ms rail, ~0.7 s graph @1k, ~6× LV
+march, 39× vol inverter, Rannacher/threads/coarse-grid rejected-optimizations
+list). Discipline slide now leads with certification + governance kernel +
+committee reviews + replay 1e-9 (test bar). Roadmap/close refreshed
+(hosted single-tenant next; deck's "22/22 green" claim dated 2026-07-27).
+Graph/filter screenshots are still the 2026-07-08 staged captures — captions
+were rewritten to stop describing the retired sandbox ("manual what-if")
+and stay UI-agnostic; a recapture on the P5b three-pane shell is the
+recorded follow-up, as is the exec-cut refresh (deck_exec_template.html is
+now BEHIND the full deck). NB: today's headless-Edge/Node font metrics
+render ~5-10% taller than the rev-6 baseline — every slide was re-trimmed
+against verify_deck.mjs; residual flag = slide 10 at 6px (margin overhang,
+screenshot-confirmed clean).
 
 Rev-6 changes (2026-07-09): **clarity pass on the model/quote-prep slides**
 (user feedback: slides must stand alone for a reader who has NOT read the
