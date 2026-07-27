@@ -92,6 +92,17 @@ HISTORICAL = {
     "source": "backend/backtest/FINDINGS_calibration_arb.md and Docs/deck/deck_template.html",
 }
 
+# Chart-benchmark adjudication (round 2, converged-population amendment
+# ratified 2026-07-26).  Recorded verdict numbers, never recomputed here.
+CHART_BENCHMARK = {
+    "struct_arb_pct": 0.822,
+    "raw_arb_pct": 1.076,
+    "struct_exhausted": 594,
+    "raw_exhausted": 9472,
+    "speedup": 3,
+    "source": "backend/backtest/FINDINGS_svi_chart.md (round 2, amended gate 4)",
+}
+
 
 def panel_tag(ax, label: str) -> None:
     """Panel label inside the axes, clear of long lecture-style titles."""
@@ -646,7 +657,12 @@ def write_numbers(case: dict, timing: dict, rigidity: dict, counter_result: dict
     add(rf"\newcommand{{\svirwlqdarbold}}{{{HISTORICAL['lqd_arb_fd_pct']:.1f}}}")
     add(rf"\newcommand{{\svirwlqdarbnew}}{{{HISTORICAL['lqd_arb_analytic_pct']:.1f}}}")
     add(rf"\newcommand{{\svirwpenalty}}{{{_PENALTY:g}}}")
-    add(rf"\newcommand{{\svirwleecap}}{{{_LEE_SLOPE_MAX:.1f}}}")
+    add(rf"\newcommand{{\svirwleecap}}{{{_LEE_SLOPE_MAX:.4g}}}")
+    add(rf"\newcommand{{\svirwchartstructarb}}{{{CHART_BENCHMARK['struct_arb_pct']:.3f}}}")
+    add(rf"\newcommand{{\svirwchartrawarb}}{{{CHART_BENCHMARK['raw_arb_pct']:.3f}}}")
+    add(rf"\newcommand{{\svirwchartexhstruct}}{{{CHART_BENCHMARK['struct_exhausted']:,}}}")
+    add(rf"\newcommand{{\svirwchartexhraw}}{{{CHART_BENCHMARK['raw_exhausted']:,}}}")
+    add(rf"\newcommand{{\svirwchartspeed}}{{{CHART_BENCHMARK['speedup']:d}}}")
     add(r"\newcommand{\svirwrawtable}{" + tex_table(raw_rows, r"Parameter & Value") + "}")
     add(r"\newcommand{\svirwjwtable}{" + tex_table(jw_rows, r"Handle & Value") + "}")
     (OUT / "svi_rewrite_tables.tex").write_text("\n".join(macros) + "\n", encoding="utf-8")
@@ -662,6 +678,7 @@ def write_numbers(case: dict, timing: dict, rigidity: dict, counter_result: dict
         "rigidity": {"rms_bp": rigidity["rms_bp"], "max_bp": rigidity["max_bp"]},
         "counterexample": counter_result,
         "historical": HISTORICAL,
+        "chart_benchmark": CHART_BENCHMARK,
     }
     (OUT / "svi_rewrite_numbers.json").write_text(
         json.dumps(payload, indent=2), encoding="utf-8"
@@ -680,11 +697,21 @@ def main() -> None:
         SVIJW(t=0.25, v=0.09, psi=0.10, p=0.40, c=0.60, v_tilde=0.07),
         SVIJW(t=2.0, v=0.03, psi=-0.05, p=0.30, c=0.28, v_tilde=0.028),
     ]
+    from volfit.models.svi_jw.svi import jw_to_raw_checked as jw_to_raw_checked_prod
+
     for point in reference_cases:
         prod, ref = jw_to_raw(point), jw_to_raw_checked(point)
         np.testing.assert_allclose(
             [ref.a, ref.b, ref.rho, ref.m, ref.sigma],
             [prod.a, prod.b, prod.rho, prod.m, prod.sigma],
+            rtol=2e-12, atol=2e-13,
+        )
+        # The guarded production converter (committee R5) must agree too —
+        # it is the reference listing promoted to production.
+        checked = jw_to_raw_checked_prod(point)
+        np.testing.assert_allclose(
+            [ref.a, ref.b, ref.rho, ref.m, ref.sigma],
+            [checked.a, checked.b, checked.rho, checked.m, checked.sigma],
             rtol=2e-12, atol=2e-13,
         )
 

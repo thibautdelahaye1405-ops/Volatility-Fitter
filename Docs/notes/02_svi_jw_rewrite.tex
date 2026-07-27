@@ -37,8 +37,12 @@ conflated: convexity of total variance, positive/Lee-clean wings, non-negative
 Black density, and calendar ordering.  In particular, the two production
 screens are not a butterfly certificate: the Axel Vogt slice has positive
 minimum variance and Lee coefficient \svirwcounterlee, yet reaches
-$g=\svirwcounterg$.  Finally we derive the unconstrained calibration map and
-analytic Jacobian, trace the optional residual blocks, and run a production
+$g=\svirwcounterg$; production therefore measures every displayed slice with
+an explicit density certificate rather than trusting the screens.  Finally we
+derive the calibration maps --- the historical unconstrained raw chart and the
+structural chart that now fits by default, whose coordinates are the certified
+quantities themselves --- together with the analytic Jacobian, trace the
+optional residual blocks, and run a production
 JW$\to$raw$\to$fit$\to$JW laboratory round trip with
 \svirwmaxerr\ volatility-basis-point maximum error.  Eight generated figures
 make the geometry, singularity, arbitrage gap, calibration check, speed result,
@@ -91,7 +95,7 @@ The width is denoted by $s$ so that $\sigma$ remains available for implied
 volatility; the production dataclass calls this field \texttt{sigma}.  The
 standard raw tuple is $(a,b,\rho,m,s)$ with
 \begin{equation}
-b>0,qquad |\rho|<1,qquad s>0.
+b>0,\qquad |\rho|<1,\qquad s>0.
 \label{eq:rw_structural}
 \end{equation}
 Raw SVI was introduced by Gatheral and became a market standard because its
@@ -107,10 +111,16 @@ Their regular inverse is exact only on the domain proved in
 \cref{thm:rw_image}.
 \item The coded minimum and Lee rows are configurable soft screens.  They do
 not certify non-negative density, and the calendar rows do not certify global
-cross-expiry order.
-\item Production fits and stores raw SVI.  JW is presently an analytical and
-test coordinate system: there is no runtime five-handle entry, bump, or export
-workflow.
+cross-expiry order.  Non-negative density on the traded range is instead
+measured by a separate certificate that gates every displayed and published
+slice (\cref{sec:rw_noarb}).
+\item Production fits and stores raw SVI; by shipped default the optimizer
+works in the structural chart of \cref{sec:rw_structural}, with the
+unconstrained raw chart retained as explicit rollback.  JW remains an
+analytical and reading coordinate system: there is no runtime five-handle
+entry, bump, or export workflow, though the guarded converter and the
+desk-unit ticket that any such workflow must sit behind are shipped and
+test-locked (\cref{sec:rw_inverse}).
 \end{enumerate}
 \end{invariant}
 
@@ -136,7 +146,7 @@ minimum.
 
 Put
 \begin{equation}
-x=k-m,qquad r=\sqrt{x^2+s^2},\qquad q=\sqrt{1-\rho^2}.
+x=k-m,\qquad r=\sqrt{x^2+s^2},\qquad q=\sqrt{1-\rho^2}.
 \label{eq:rw_short}
 \end{equation}
 These are the only local abbreviations needed for the raw geometry.
@@ -219,7 +229,7 @@ trader the ATM level or ATM skew directly.
 The clean way to introduce SVI-JW is to forget the raw coefficients for a
 moment and measure the curve itself.  Let
 \begin{equation}
-w_0=w(0)>0,qquad \wmin=\min_k w(k).
+w_0=w(0)>0,\qquad \wmin=\min_k w(k).
 \label{eq:rw_w0}
 \end{equation}
 
@@ -245,8 +255,8 @@ by $t$ without changing the underlying slice.
 
 The displayed meanings follow immediately:
 \begin{equation}
-I(0)=\sqrt v,qquad I'(0)=\frac{\psi}{\sqrt\tau},qquad
-\betL=p\sqrt{v\tau},\qquad \betR=c\sqrt{v\tau},qquad
+I(0)=\sqrt v,\qquad I'(0)=\frac{\psi}{\sqrt\tau},\qquad
+\betL=p\sqrt{v\tau},\qquad \betR=c\sqrt{v\tau},\qquad
 I(\kmin)=\sqrt{\vmin}\quad\text{if }\vmin\ge0.
 \label{eq:rw_jw_display}
 \end{equation}
@@ -313,13 +323,13 @@ Reading JW from raw is just evaluation.  Going the other way is more
 interesting because the five measurements must reconstruct a whole
 hyperbola.  Let
 \begin{equation}
-w_0=v\tau,qquad
+w_0=v\tau,\qquad
 \chi=\frac{m}{\sqrt{m^2+s^2}}.
 \label{eq:rw_chi}
 \end{equation}
 The wings first determine the scale and tilt:
 \begin{equation}
-b=\frac{\sqrt{w_0}}{2}(p+c),qquad
+b=\frac{\sqrt{w_0}}{2}(p+c),\qquad
 \rho=\frac{c-p}{c+p}.
 \label{eq:rw_inv_wings}
 \end{equation}
@@ -364,16 +374,16 @@ $b>0$, $|\rho|<1$, $s>0$, and $w_0>0$.
 \begin{enumerate}[leftmargin=1.6em]
 \item A JW point has a unique regular inverse if and only if
 \begin{equation}
-v>0,qquad p>0,quad c>0,qquad
--\frac p2<\psi<\frac c2,qquad
-\psi\ne0,qquad \vmin<v.
+v>0,\qquad p>0,\quad c>0,\qquad
+-\frac p2<\psi<\frac c2,\qquad
+\psi\ne0,\qquad \vmin<v.
 \label{eq:rw_regular_domain}
 \end{equation}
 On this set, \eqref{eq:rw_inv_wings}--\eqref{eq:rw_inverse} return that inverse.
 \item The image also contains the singular stratum
 \begin{equation}
-v>0,qquad p>0,quad c>0,qquad
-\psi=0,qquad \vmin=v.
+v>0,\qquad p>0,\quad c>0,\qquad
+\psi=0,\qquad \vmin=v.
 \label{eq:rw_singular_domain}
 \end{equation}
 Every point on this stratum is represented by infinitely many raw slices.
@@ -405,7 +415,7 @@ $\vmin=v$.  Conversely, fix any $v,p,c$ satisfying
 \eqref{eq:rw_singular_domain}.  Equations \eqref{eq:rw_inv_wings} determine
 $b,\rho$.  For \emph{any} $s>0$, set
 \begin{equation}
-m=\frac{\rho s}{\sqrt{1-\rho^2}},qquad
+m=\frac{\rho s}{\sqrt{1-\rho^2}},\qquad
 a=v\tau-bs\sqrt{1-\rho^2}.
 \label{eq:rw_singular_family}
 \end{equation}
@@ -479,14 +489,35 @@ cancellation but cannot restore a coordinate that the handles do not identify.
 
 \begin{caution}
 The production \texttt{jw\_to\_raw} function implements the direct formulas
-without domain guards and has no runtime API/UI caller; tests and document
-generators call it with controlled inputs.  Inputs strictly outside the skew
-band typically generate NaNs, skew-band endpoints create zero denominators,
-and $\vmin\ge v$ returns a degenerate or negative width.  Any future user-facing
-JW workflow should validate \eqref{eq:rw_regular_domain}, treat
-\eqref{eq:rw_singular_domain} separately, and use a cancellation-resistant
-denominator such as \eqref{eq:rw_D_stable}.
+without domain guards; it is the fast path for callers that already hold a
+regular-domain point.  Inputs strictly outside the skew band typically
+generate NaNs, skew-band endpoints create zero denominators, and
+$\vmin\ge v$ returns a degenerate or negative width.  Production therefore
+also ships a guarded converter, \texttt{jw\_to\_raw\_checked}, which is this
+section made executable: it validates every inequality of
+\eqref{eq:rw_regular_domain} in the order the theorem establishes them,
+rejects the singular stratum \eqref{eq:rw_singular_domain} explicitly
+(no numerical rearrangement can select the missing curvature), evaluates the
+denominator in the cancellation-resistant form \eqref{eq:rw_D_stable}, and on
+failure raises a structured domain error whose machine-readable code names
+the violated inequality --- six codes, one per row of the theorem's domain ---
+instead of a case-dependent NaN.  Any user-facing five-handle workflow is
+required to sit behind it.
 \end{caution}
+
+The checked converter answers ``is this JW point a smile?''; a desk also
+needs the converse reading ``what does this smile quote as?''.  A shipped
+desk-unit ticket converts any fitted slice into the instruments actually
+traded: ATM volatility, 25- and 10-delta risk reversals and butterflies with
+strikes solved on the model smile via the forward Black delta, the two
+\emph{actual} asymptotic wing coefficients (the moment objects of
+\cref{sec:rw_noarb}, not the normalized $p,c$), and the var-swap volatility.
+A companion bump row re-reads the same ticket after a relative forward error
+$\dd F/F$: a wrong forward shifts every log-moneyness in unison and is easily
+misread as skew or wing movement, and the ticket shows exactly which desk
+quantities it moves.  Together the two functions are the conversion layer any
+future JW entry workflow must pass through; both are test-locked now rather
+than designed later.
 
 %======================================================================
 \section{Convex total variance is not an arbitrage certificate}
@@ -507,14 +538,16 @@ It helps to keep four levels separate.
 Level & Mathematical statement & Production status\\
 \midrule
 Raw structure & $b>0$, $|\rho|<1$, $s>0$ & hard reparametrization for finite latent coordinates\\
-Positive/Lee interior & $\wmin>0$, $\betL<2$, $\betR<2$ & weak closure screened softly: $\wmin\ge0$, $\max(\betL,\betR)\le2$\\
-Butterfly clean & non-negative Black density and correct call boundary & measured; not certified by the two core rows\\
+Positive/Lee interior & $\wmin>0$, $\betL<2$, $\betR<2$ & hard under the default structural chart ($\wmin>0$, $\max(\betL,\betR)<\svirwleecap$); soft screens under the raw rollback chart\\
+Butterfly clean & non-negative Black density and correct call boundary & measured by the display certificate; not certified by the two core rows\\
 Calendar clean & $w_{T_1}(k)\le w_{T_2}(k)$ for every $k$ when $T_1<T_2$ & finite-weight rows on selected grids; not structural\\
 \bottomrule
 \end{tabular}
-\caption{Four increasingly strong meanings of ``valid.''  The first is hard,
-the second is softly screened, and the last two require conditions beyond a
-single raw coefficient box.}
+\caption{Four increasingly strong meanings of ``valid.''  The first is hard;
+the second became hard when the default fit chart moved to structural
+coordinates (\cref{sec:rw_structural}); the last two require conditions
+beyond a single coefficient box, and the third is measured by an explicit
+certificate at the display gate.}
 \label{tab:rw_validity}
 \end{table}
 
@@ -568,7 +601,7 @@ For raw SVI, Lee's wing bound appears directly in $g$.
 \label{prop:rw_g_tails}
 For a structurally valid positive raw slice,
 \begin{equation}
-\lim_{k\to-\infty}g(k)=\frac{4-\betL^2}{16},qquad
+\lim_{k\to-\infty}g(k)=\frac{4-\betL^2}{16},\qquad
 \lim_{k\to+\infty}g(k)=\frac{4-\betR^2}{16}.
 \label{eq:rw_g_tails}
 \end{equation}
@@ -603,7 +636,7 @@ theorem.
 \label{prop:rw_screens_jw}
 The minimum and Lee quantities satisfy
 \begin{equation}
-\wmin=\vmin\tau,qquad
+\wmin=\vmin\tau,\qquad
 \max(\betL,\betR)=\max(p,c)\sqrt{v\tau}.
 \label{eq:rw_screens_jw}
 \end{equation}
@@ -617,6 +650,18 @@ $\beta_{\max}=\svirwleecap$.
 The first identity is the definition of $\vmin$.  The second follows from
 $p=\betL/\sqrt{w_0}$, $c=\betR/\sqrt{w_0}$, and $w_0=v\tau$.
 \end{proof}
+
+The default cap deserves one more sentence, because its value is a lesson in
+hinge design.  \Cref{prop:rw_g_tails} shows that the boundary ray
+$\betR=2$ is itself broken: the far-call boundary condition fails there and
+the tail limit of $g$ is zero.  A hinge whose cap sits exactly at $2$ charges
+nothing precisely on that broken boundary, so an optimizer pressed by the
+data can park a wing at $2.0000$ and pay no penalty --- which a live SPY
+expiry was later found doing.  The shipped cap is therefore buffered strictly
+inside Lee's bound, at $\beta_{\max}=\svirwleecap$; refitting the incident
+slice under the buffer moved the displayed smile by well under a tenth of a
+volatility basis point, and the boundary trap is locked as a named
+certification case.
 
 The screens are necessary ingredients, not sufficient ones.  The sharpest
 way to see the gap is a slice that passes both.
@@ -633,6 +678,14 @@ is only \svirwcounterlee.  Both production core screens pass comfortably.
 Nevertheless $g$ reaches \svirwcounterg\ near $k=\svirwcounterk$, so the
 Black density is negative there.  Strict convexity of $w$ has not protected
 strike convexity of the call price.
+
+The story now has a production ending.  A slice like this no longer reaches
+a user unflagged: the display certificate below samples $g$ densely on the
+traded range and fails it, readiness reports the failure, the publish gate
+refuses the surface, and with automatic repair enabled the fitter re-solves
+once with a belly hinge and keeps the result only if it certifies.  The
+screens still pass --- that is the permanent lesson --- but they are no
+longer the last line.
 \end{example}
 
 \begin{figure}[H]
@@ -649,12 +702,22 @@ Martini and Mingone give a full characterization of the no-butterfly raw-SVI
 domain \cite{MartiniMingone2022}.  It is exact but not a single short inequality:
 the practical test involves parameter rescaling, root finding, and numerical
 minimization.  Vol-Fitter's current raw-SVI calibrator does not implement that
-certified domain.  It instead bounds, measures, and optionally repairs through
-four separate layers.
+certified domain.  It instead bounds, certifies on the traded range, repairs,
+measures, and projects through six separate layers.
 
 \begin{enumerate}[leftmargin=1.6em]
 \item \textbf{Core screens.}  Every fit appends the two minimum/Lee hinge rows
 of \eqref{eq:rw_core_rows} below.
+\item \textbf{The display certificate.}  Every slice a user sees is
+re-measured by a dense sampling of Durrleman's $g$ --- 801 points across the
+traded strike range, from the closed-form derivatives --- before it counts as
+ready.  A failing slice fails readiness, and the publish gate refuses the
+surface outright.  This is a certificate about the sampled grid on the traded
+range, stated as such; it is the layer that catches the counterexample below.
+\item \textbf{Automatic repair.}  When the certificate fails, the fitter
+re-solves once with an explicit belly hinge and keeps the repair only if the
+repaired slice certifies.  Clean first fits never see a second solve.  The
+repair is currently implemented for SVI only.
 \item \textbf{Optional extrapolation enforcement.}  With
 \texttt{extrapEnforce} on, tapered rows penalize sampled $g<0$, calendar
 crossings against the previous displayed slice, and inconsistent wing order in
@@ -668,9 +731,10 @@ model-agnostic discrete wing projection of Note~09 while leaving the fitted core
 fixed.
 \end{enumerate}
 
-No item in that list silently upgrades the raw fit to a global certificate.
-The exact criterion remains \cref{prop:rw_durrleman}; the production layers
-state what they sample or alter.
+No item in that list silently upgrades the raw fit to a global certificate on
+the whole line.  The exact criterion remains \cref{prop:rw_durrleman}; the
+production layers state what they sample or alter, and the certificate scopes
+its promise to the traded range where the money is.
 
 The two core residuals are
 \begin{equation}
@@ -695,19 +759,24 @@ for arbitrary data.
 \section{How production fits the slice}
 \label{sec:rw_calibration}
 
-The optimizer never works directly with a bounded raw vector.  It receives
-$\theta\in\R^5$ and maps
+The optimizer never works directly with a bounded raw vector: it fits in an
+unconstrained chart of $\R^5$ and maps back.  Production ships two such
+charts.  The historical \emph{raw chart} receives $\theta\in\R^5$ and maps
 \begin{equation}
-a=\theta_1,qquad
+a=\theta_1,\qquad
 b=\operatorname{softplus}(\theta_2),\qquad
 \rho=\tanh(\theta_3),\qquad
-m=\theta_4,qquad
+m=\theta_4,\qquad
 s=e^{\theta_5}.
 \label{eq:rw_reparam}
 \end{equation}
 For every finite $\theta$ in exact arithmetic, $b>0$, $|\rho|<1$, and $s>0$.
 This is the hard structural guarantee.  It says nothing about $\wmin$, $g$, or
-calendar order.
+calendar order.  The shipped default is a second, \emph{structural} chart
+whose coordinates are the screened quantities themselves; we construct it in
+\cref{sec:rw_structural}, after seeing what the residual stack asks any chart
+to carry.  The raw chart remains available as explicit configuration --- for
+comparability with historical benchmarks, and as rollback.
 
 \subsection{One residual stack}
 
@@ -800,7 +869,10 @@ sampled calendar floor.  A var-swap target or persistence-prior block switches
 the whole fit to finite differences because those rows are not differentiated
 there.  Extrapolation enforcement keeps a hybrid Jacobian: the dominant core
 remains analytic and only the small extrapolation block is centrally
-finite-differenced.
+finite-differenced.  Both optimizer charts run this same analytic machinery:
+the structural chart of \cref{sec:rw_structural} multiplies the raw-space
+Jacobian by a closed-form $5\times5$ chain matrix rather than
+re-differentiating anything.
 
 \begin{table}[H]
 \centering
@@ -827,7 +899,8 @@ performance statement, not an arbitrage statement.}
 The solver remains Levenberg--Marquardt.  A tested switch to trust-region
 reflective was slower on noisy real chains because it took more iterations
 through hinge changes; the useful change was the Jacobian, not the optimizer.
-On the generated 25-quote case, a warmed median-of-five run measures
+On the generated 25-quote case, run in the raw chart for continuity with the
+historical benchmarks, a warmed median-of-five run measures
 \svirwfdms\,ms with finite differences and \svirwanalyticms\,ms analytically,
 a \svirwspeedup$\times$ speed-up with objective costs agreeing to
 \svirwcostdiff.  The separately recorded spike-regime measurement was
@@ -843,9 +916,88 @@ the second is a dated historical benchmark recorded in
 \caption{The analytic Jacobian removes repeated residual evaluations rather
 than changing the optimizer.  The fresh synthetic timing (A) and the historical
 real-node timing (B) have different scales and provenance, but both isolate the
-same implementation change.}
+same implementation change.  Both panels time the raw chart; the default
+structural chart of \cref{sec:rw_structural} is benchmarked separately.}
 \label{fig:rw_timing}
 \end{figure}
+
+\subsection{The structural chart: fitting in the screened coordinates}
+\label{sec:rw_structural}
+
+The raw chart guarantees the hyperbola's structure and nothing else.  The two
+quantities the screens police --- the minimum and the wing coefficients ---
+are left to soft hinge rows, and nothing prevents a trial, or a converged
+fit, from sitting exactly on a hinge; the boundary incident of
+\cref{prop:rw_screens_jw} was precisely that.  The alternative is to
+parameterize the slice by the policed quantities themselves, so that the
+inequalities live in the chart rather than in the penalty.  Production's
+default chart describes the slice by
+$(\betL,\betR,\kmin,\wmin,\kappa_\star)$ --- the two wing coefficients, the
+vertex location, the minimum total variance, and the vertex curvature
+$\kappa_\star=w''(\kmin)$ --- and lifts the constrained four:
+\begin{equation}
+\betL=\beta_{\max}\operatorname{logistic}(\theta_1),\qquad
+\betR=\beta_{\max}\operatorname{logistic}(\theta_2),\qquad
+\wmin=\operatorname{softplus}(\theta_4),\qquad
+\kappa_\star=e^{\theta_5},
+\label{eq:rw_structural_lift}
+\end{equation}
+with the vertex location $\kmin=\theta_3$ entering unlifted, and
+$\beta_{\max}=\svirwleecap$ the buffered Lee cap.  Every finite $\theta$
+now has strictly Lee-clean wings, a strictly positive minimum, and strict
+convexity at the vertex --- by construction, not by penalty.
+
+Recovering the raw coordinates is \cref{prop:rw_geometry} read backwards.
+The wings give scale and tilt exactly as in \eqref{eq:rw_inv_wings}; the
+vertex curvature, evaluated from \eqref{eq:rw_derivatives} at
+$r=s/\sqrt{1-\rho^2}$, is $\kappa_\star=b(1-\rho^2)^{3/2}/s$, which
+determines the width; and the vertex equations \eqref{eq:rw_minimum} then
+release $m$ and $a$:
+\begin{equation}
+b=\frac{\betL+\betR}{2},\quad
+\rho=\frac{\betR-\betL}{\betR+\betL},\quad
+s=\frac{b(1-\rho^2)^{3/2}}{\kappa_\star},\quad
+m=\kmin+\frac{s\rho}{\sqrt{1-\rho^2}},\quad
+a=\wmin-bs\sqrt{1-\rho^2}.
+\label{eq:rw_structural_inverse}
+\end{equation}
+Two consequences follow immediately.  The two core rows of
+\eqref{eq:rw_core_rows} are structurally zero at every iterate, and the
+trial-variance floor of the residual never fires, because
+$w(k)\ge\wmin>0$ everywhere: the fences become inert bookkeeping.  What the
+chart does \emph{not} buy is $g\ge0$ --- the Vogt slice of
+\cref{fig:rw_arbitrage} passes wings and minimum with room to spare --- so
+the display certificate remains the acceptance authority.
+
+\begin{remark}[Strict in $\R$, not yet strict in float64]
+The chart's inequalities are strict for every finite real $\theta$, and both
+statements failed in IEEE-754 before the analytic-Jacobian lock exposed them.
+A logistic evaluated at a modestly large argument rounds to exactly $1.0$,
+parking a wing exactly \emph{at} the cap --- the boundary the chart exists to
+keep strict; and with one wing saturated against an ordinary other, the
+quotient for $\rho$ rounds to $\pm1$, making $1-\rho^2$ an exact zero, the
+width zero, and $m$ a NaN.  Production clips the logistic one ulp inside $1$
+and computes $1-\rho^2$ by the exact product identity
+$4\betL\betR/(\betL+\betR)^2$.  \emph{A chart proved strict in exact
+arithmetic must be re-proved in floating point.}
+\end{remark}
+
+The default was not flipped on elegance.  A two-round pre-registered
+benchmark over roughly twenty-nine thousand real-chain fits adjudicated the
+two charts, and its headline lesson is statistical rather than numerical: the
+raw chart's apparently lower aggregate arbitrage rate was a survivorship
+artifact.  A third of the raw arm's fits exhausted the evaluation cap before
+converging, and those unconverged fits --- rarely arbitrage-flagged, because
+they never reached any optimum --- diluted its rate.  Compared converged
+against converged, the structural chart is cleaner
+(\svirwchartstructarb\% versus \svirwchartrawarb\% genuine-arbitrage
+incidence), matches or beats every precision median, never hard-breaks,
+exhausts the evaluation cap \svirwchartexhstruct\ times against
+\svirwchartexhraw, and fits roughly \svirwchartspeed$\times$ faster.  On
+that record the default was ratified; the raw chart stays as explicit
+rollback, and the frozen benchmark arm of the backtest harness deliberately
+keeps it for continuity.  The laboratory figures of this note run the raw
+chart for the same reason.
 
 %======================================================================
 \section{Laboratory case: JW to raw to fit to JW}
@@ -964,14 +1116,16 @@ Claim or feature & Status & Qualification\\
 \midrule
 raw SVI evaluation & shipped & runtime model uses \texttt{RawSVI}\\
 raw SVI fit and storage & shipped & selected overlay is calibrated and stored in raw coordinates\\
-five-handle JW entry/bump/export & not shipped & JW converter is used by tests and document generators, not runtime UI/API\\
+structural fit chart & shipped default & wings, minimum, and vertex convexity strict by construction; raw chart is explicit rollback\\
+five-handle JW entry/bump/export & not shipped & guarded converter and desk-unit ticket shipped and test-locked as the mandatory gateway; no runtime UI/API entry yet\\
 raw $\leftrightarrow$ JW equivalence & exact & unique only on \eqref{eq:rw_regular_domain}; singular on \eqref{eq:rw_singular_domain}\\
 structural raw inequalities & hard & for finite latent coordinates in exact arithmetic\\
-minimum and Lee controls & soft & configurable finite-weight residuals on the weak closure\\
+minimum and Lee controls & soft under raw chart & buffered cap $\beta_{\max}=\svirwleecap$; structurally inert under the default chart\\
+butterfly freedom on the traded range & certificate-gated & 801-point $g$ certificate gates readiness and publish; optional one-shot certified repair (SVI only)\\
 global butterfly freedom & not guaranteed & requires \cref{prop:rw_durrleman}; counterexample is test-locked\\
 global calendar freedom & not guaranteed & sampled finite-weight floors reduce crossings\\
 one minimum and linear wings & structural & strength for regular smiles, limitation for event/WW shapes\\
-analytic core Jacobian & shipped & optional var-swap/prior blocks revert to FD; extrapolation is hybrid\\
+analytic core Jacobian & shipped & both charts; optional var-swap/prior blocks revert to FD; extrapolation is hybrid\\
 \bottomrule
 \end{tabular}
 \caption{The shortest reliable summary of what the model, coordinate chart,
@@ -1019,6 +1173,29 @@ Regular round trips and singular $\psi=0$ family &
 Selected unguarded-converter failure cases &
 \cref{tab:rw_boundaries} &
 \nolinkurl{tests/test_svi_domain.py::test_invalid_inputs_fail_loudly_not_plausibly}\\
+\addlinespace
+Guarded converter and desk-unit ticket &
+\cref{sec:rw_inverse} &
+\nolinkurl{models/svi_jw/svi.py::jw_to_raw_checked}\newline
+\nolinkurl{models/svi_jw/desk.py}\newline
+\nolinkurl{tests/test_svi_desk_and_guards.py}\\
+\addlinespace
+Structural chart lift, inert screens, chain Jacobian &
+\cref{sec:rw_structural} &
+\nolinkurl{models/svi_jw/structural.py}\newline
+\nolinkurl{tests/test_svi_structural_chart.py}\newline
+\nolinkurl{tests/test_svi_structural_jacobian.py}\\
+\addlinespace
+Buffered Lee cap and boundary incident &
+\cref{prop:rw_screens_jw} &
+\nolinkurl{tests/test_svi_lee_boundary.py}\newline
+certification case \texttt{svi\_lee\_boundary}\\
+\addlinespace
+Display certificate gates readiness and publish &
+\cref{sec:rw_noarb} &
+\nolinkurl{models/diagnostics.py::belly_certificate}\newline
+\nolinkurl{tests/test_belly_certificate.py}\newline
+certification case \texttt{belly\_certificate}\\
 \addlinespace
 Minimum/Lee screens do not certify $g\ge0$ &
 \cref{fig:rw_arbitrage} &
@@ -1098,8 +1275,10 @@ here identify the entry points relevant to this calibrator.
 \multicolumn{3}{@{}l}{\emph{FitSettings: direct and shared slice controls}}\\
 \midrule
 \texttt{model} & \texttt{lqd} & Set to \texttt{svi} to display the raw-SVI overlay.\\
+\texttt{sviChart} & \texttt{structural} & Optimizer chart \eqref{eq:rw_structural_lift}; \texttt{raw} is the historical vector \eqref{eq:rw_reparam}, kept for comparability and rollback.\\
+\texttt{bellyRepair} & true & One-shot certified repair refit when the display certificate fails; clean fits never see a second solve.\\
 \texttt{sviPenaltyWeight} & \svirwpenalty & Residual multiplier $W$ in \eqref{eq:rw_core_rows}; $0$ disables both core screens.\\
-\texttt{leeSlopeMax} & \svirwleecap & Weak cap $\beta_{\max}$; values above the theoretical Lee bound are accepted by the schema.\\
+\texttt{leeSlopeMax} & \svirwleecap & Buffered cap $\beta_{\max}$, strictly inside Lee's bound of $2$ (the boundary itself is broken); values above the bound are accepted by the schema.\\
 \texttt{weightScheme} & \texttt{equal} & Unit or time-value-density quote weights.  Arbitrary low-level arrays are also accepted.\\
 \texttt{haircut} & $0.005$ & Absolute-vol tightening used only in haircut band mode.\\
 \texttt{midAnchorWeight} & $0.05$ & Small mid anchor appended in bid--ask and haircut modes.\\
@@ -1121,7 +1300,8 @@ $b=\operatorname{softplus}(\theta_2)$ & --- & Enforces $b>0$ for finite $\theta_
 $\rho=\tanh(\theta_3)$ & --- & Enforces $|\rho|<1$ for finite $\theta_3$.\\
 $s=e^{\theta_5}$ & --- & Enforces $s>0$ for finite $\theta_5$.\\
 LM tolerances & $10^{-15}$ & \texttt{xtol}, \texttt{ftol}, and \texttt{gtol}.\\
-trial-$w$ floor & $10^{-12}$ & Keeps IV residuals finite on negative-variance trial slices; not part of \texttt{RawSVI.implied\_vol}.\\
+trial-$w$ floor & $10^{-12}$ & Keeps IV residuals finite on negative-variance trial slices; never fires under the structural chart; not part of \texttt{RawSVI.implied\_vol}.\\
+certificate grid & 801 pts, tol $10^{-4}$ & Traded-range Durrleman certificate gating readiness and publish for any displayed model.\\
 \bottomrule
 \end{longtable}
 
@@ -1162,10 +1342,14 @@ numerical rearrangement can select a unique missing curvature.
 
 The following file is imported and executed by
 \texttt{figures/gen\_svi\_rewrite.py}.  Before figures are written, its checked
-inverse is compared with production \texttt{jw\_to\_raw} on three regular-domain
-cases to relative tolerance $2\times10^{-12}$.  The inverse uses the stable
-denominator \eqref{eq:rw_D_stable}; the reverse map is exactly the functional
-definition \eqref{eq:rw_raw_to_jw}.
+inverse is compared with production \texttt{jw\_to\_raw} \emph{and} with the
+guarded production converter \texttt{jw\_to\_raw\_checked} on three
+regular-domain cases to relative tolerance $2\times10^{-12}$.  The inverse uses
+the stable denominator \eqref{eq:rw_D_stable}; the reverse map is exactly the
+functional definition \eqref{eq:rw_raw_to_jw}.  Historical note: this listing
+predates the guarded production converter, which adopted its domain checks and
+stable denominator wholesale --- the reference map was, in effect, promoted to
+production.
 
 \lstinputlisting[caption={Executable raw/JW reference maps used by this note.},
 label={lst:rw_reference}]{figures/svi_rewrite_reference.py}

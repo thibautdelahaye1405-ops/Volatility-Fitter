@@ -24,9 +24,9 @@
   "jw_roundtrip_max_abs": 3.885780586188048e-16,
   "recovery_g_min": 0.34345171413693526,
   "timing": {
-    "analytic_ms": 1.2089000083506107,
-    "fd_ms": 3.062200004933402,
-    "speedup": 2.5330465578467334,
+    "analytic_ms": 1.1775000020861626,
+    "fd_ms": 3.693699953146279,
+    "speedup": 3.136900166965771,
     "analytic_cost": 3.851859888774472e-33,
     "fd_cost": 1.1555579666323415e-33,
     "cost_diff": 2.6963019221421302e-33,
@@ -54,5 +54,13 @@
     "fit_fd_ms": 26.3,
     "fit_analytic_ms": 10.2,
     "source": "backend/backtest/FINDINGS_calibration_arb.md and Docs/deck/deck_template.html"
+  },
+  "chart_benchmark": {
+    "struct_arb_pct": 0.822,
+    "raw_arb_pct": 1.076,
+    "struct_exhausted": 594,
+    "raw_exhausted": 9472,
+    "speedup": 3,
+    "source": "backend/backtest/FINDINGS_svi_chart.md (round 2, amended gate 4)"
   }
 }
