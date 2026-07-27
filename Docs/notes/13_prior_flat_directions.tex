@@ -392,9 +392,9 @@ price identifiability in one language and cannot silently drift apart.
 \paragraph{Exercise 2.}
 A risk-reversal has call-leg support $s_c=6$ and put-leg support
 $s_p=0.1$.  Compute $\pi(\text{RR})$ from \eqref{eq:harmonic}
-($\approx0.098$: the gate is nearly fully open at
-$\pi_{\mathrm{req}}=1$), then let $s_p\to0$ and confirm the basket is
-unidentified regardless of $s_c$.  Repeat for the butterfly with
+($\approx0.098$ --- so at any requirement $\pi_{\mathrm{req}}$ of order
+one the gate is nearly fully open), then let $s_p\to0$ and confirm the
+basket is unidentified regardless of $s_c$.  Repeat for the butterfly with
 abundant ATM support and conclude the factor-of-four of
 \cref{rem:bfrr}.
 
@@ -704,6 +704,20 @@ a provenance source (\texttt{saved} / \texttt{15min} / \texttt{close}
 cache --- a fetched prior can never silently coexist with fits made
 under the old one.
 
+One provenance rule outranks the others, because it guards the loop
+this note's own machinery invites.  \emph{Graph output is never prior
+input}: only lit nodes with an actual calibration record enter a prior
+snapshot, and a dark node's graph-extrapolated surface can never become
+a later transported-prior baseline.  The rule matters most where the
+temptation is greatest --- \texttt{graph\_only} mode routes the prior
+into the graph baseline of Note~14, and without this filter the loop
+would echo: today's extrapolation would seed tomorrow's prior, which
+seeds the next extrapolation, and the graph would gradually be
+listening to itself.  In this note's language, the prior may speak only
+where today is silent --- and a surface that was itself inferred from
+neighbours has nothing of its own to say.  The invariant is
+certificate-locked (the prior-save guard).
+
 %======================================================================
 \section{Reading the gates: diagnostics}
 \label{sec:diagnostics}
@@ -886,7 +900,8 @@ their median improvement is exactly zero, the inertness of
 proxy closes their gates and the fit is prior-free.  The recorded
 knob sweep from the same campaign found neither the kernel bandwidth
 nor the var-swap probe a productive lever; both stayed at their
-defaults ($0.06$ and $1.4$ ATM standard deviations).
+defaults (the atlas rows \texttt{DEFAULT\_BANDWIDTH} and
+\texttt{\_VARSWAP\_PROBE\_STD}).
 
 \textbf{Lesson.}  The backtest \emph{confirmed} rather than changed
 the configuration: operators to avoid damping (previous case file),
@@ -939,8 +954,9 @@ per node without residue.
 Where the guarantees stop.  \emph{The information model is diagonal}
 (\cref{ass:diag}): support prices legs independently, ignoring the
 covariance a smooth smile induces between neighbouring strikes, and
-\texttt{priorOperatorCovarianceMode} accepts \texttt{full} but only
-\texttt{diagonal} is implemented.  \emph{The proxy overstates
+\texttt{priorOperatorCovarianceMode} accepts \texttt{full}, which busts
+the fit cache and changes nothing else --- only the diagonal covariance
+is ever built or persisted.  \emph{The proxy overstates
 coverage near the band edge} (\cref{sec:blind}); the exact remedy
 costs a second fit and is opt-in, and the shipped compensation is a
 second mechanism, not a sharper measure.  \emph{One scalar
@@ -993,8 +1009,9 @@ $\pi_{\mathrm{req}}$ (one scalar for all operators).\\
 \texttt{priorOperatorBandwidth} $b$ & $0.06$ & Quote-support kernel
 bandwidth; also the factor stencil step.\\
 \texttt{priorOperatorCovarianceMode} & \texttt{diagonal} & Declared
-\texttt{diagonal}/\texttt{full}; only \texttt{diagonal} is
-implemented.\\
+\texttt{diagonal}/\texttt{full}; \texttt{full} is cache-key only ---
+it busts fits and changes nothing else, only the diagonal covariance is
+ever persisted.\\
 \texttt{collarSign} & \texttt{call\_put} & RR orientation
 ($\pm(\sigma_c-\sigma_p)$).\\
 \texttt{priorFactorSet} & ATM, skew, curv, VS & Factors to persist.\\
@@ -1063,6 +1080,11 @@ note was re-timed.  Figures and macros were generated at commit
 \endfirsthead
 \toprule Claim & Object & Code anchor & Test anchor\\ \midrule
 \endhead
+Echo-free prior save: graph output never becomes prior input &
+\cref{sec:transport} &
+\nolinkurl{volfit/api/priors.py} &
+\nolinkurl{test_graph_dynamic_production.py::test_prior_save_guard_graph_output_never_prior_input}\\
+\addlinespace
 Gate: zero past requirement, monotone, $\gamma$ sharpens &
 \cref{def:gate} &
 \nolinkurl{calib/precision.py} &
