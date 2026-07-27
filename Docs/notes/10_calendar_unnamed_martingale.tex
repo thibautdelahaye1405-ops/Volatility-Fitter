@@ -306,9 +306,9 @@ So face (iii) needs no new computation: every built slice carries
 $A(z)$ on the shared quadrature grid, and the full-surface calendar
 diagnostic is an elementwise comparison of two arrays, with constraint
 points automatically dense in the wings (the grid is uniform in $z$,
-not $k$).  As a \emph{fit-time} constraint the same face enters as a
-soft squared hinge on a strided subgrid ($\sim$320 of the $8001$
-nodes),
+not $k$).  As a \emph{fit-time} constraint the same face \emph{used to}
+enter as a soft squared hinge on a strided subgrid ($\sim$320 of the
+$8001$ nodes),
 \begin{equation}
 \sqrt{W_{\mathrm{cal}}}\,
 \max\!\big(A_{T_1}(z_m)-A_{T_2}(z_m),\,0\big),
@@ -318,9 +318,11 @@ nodes),
 keyed on the constraint $z$-\emph{coordinates}, so a slice calibrated
 on a coarser optimization grid enforces it by Hermite evaluation,
 bit-for-bit equivalent to the node-indexed form on the native grid.
-Where this face is \emph{confined} rather than taken on the full grid,
-production deliberately abandons it for face (i) --- \cref{sec:where}
-measures why.
+Hold \eqref{eq:slack} in mind as the \emph{historical} enforcement form
+--- it is the one \cref{sec:where} convicts.  Production has abandoned
+this face for enforcement entirely and keeps it as the free, wing-dense
+\emph{diagnostic} it is perfectly suited to be; the quantile form
+survives only as a legacy threading option.
 
 \subsection{SVI and MCS: face (iv) against the displayed neighbour}
 
@@ -338,7 +340,10 @@ refit cannot break the pair from above).  The production plumbing is
 the part that took care: the floor needs the previous displayed slice,
 so the calendar toggle threads it in ascending maturity through
 \emph{every} path that fits a slice --- the single-slice overlay, the
-commit path, the full-surface loop and the coupled workflow.  Wherever
+commit path, the full-surface loop and the coupled workflow (this is the
+sequential solver's route; under the shipped symmetric default the
+surface's interfaces carry the confined price rows of
+\cref{sec:coordinate}).  Wherever
 the floor is absent (toggle off, or the first expiry) the residual
 block is absent too: byte-identical, test-locked per model and per
 path.
@@ -394,7 +399,9 @@ empty-quotes fallback), and in current production on the
 quotes by \calmphantomwidebp\ vol bp; under the confined grid by
 \calmphantomdatabp\ --- indistinguishable from the unconstrained fit.
 Test-locked, including the assertion that the scenario is consistent on
-data and inconsistent only in extrapolation.
+data and inconsistent only in extrapolation, and registered in the named
+certification pack as \texttt{calendar\_phantom} --- the founding
+incident keeps its own lock.
 \end{example}
 
 \begin{figure}[H]
@@ -556,9 +563,10 @@ Confinement enforces \emph{nothing} outside the traded span, and the
 region just past the last quote is not worthless --- options there
 still carry premium, and a calendar inversion between two \emph{stated}
 wing contracts (Note~09) is a real inconsistency even if no quote
-witnesses it.  What that region deserves is an explicitly flagged open
-problem (2026-07), and production currently answers it in three
-graduated phases.  \emph{Measure} (always on): the quality report
+witnesses it.  What that region deserves remains an explicitly flagged
+open problem (2026-07) on \emph{doctrine}; the \emph{machinery} has
+shipped in three graduated phases, certification-locked together as case
+\texttt{extrap\_wing\_contracts}.  \emph{Measure} (always on): the quality report
 computes, over the \emph{time-value envelope} --- strikes beyond the
 traded span where the model's own OTM value still exceeds a basis point
 of forward --- the worst Durrleman $g$, the worst calendar crossing
@@ -579,8 +587,10 @@ in ascending maturity; the repair only ever raises wing prices, a clean
 wing exports byte-identically, fits and in-app views are untouched, and
 a floor exceeding the pinned traded edge (a \emph{core} calendar
 conflict, the fit's business, not the exporter's) is capped and flagged
-rather than silently repaired.  A repair moves prices, so its
-\emph{authority} is confined to the wings even though the constraints
+rather than silently repaired.  The export manifest audits the repair
+via \texttt{projectionCalendarWorstBp} --- the field that licenses a
+price-moving repair at the boundary at all.  A repair moves prices, so
+its \emph{authority} is confined to the wings even though the constraints
 it restores extend there --- Note~09's refinement, applied.
 
 %======================================================================
@@ -630,9 +640,11 @@ stochastic rates break the equivalence between calendar spreads and
 the normalized comparison; discrete cash dividends already break the
 cash-strike form.  \emph{LV's structural cleanliness is a continuum
 statement} policed by a discrete diagnostic, not a proof about the
-scheme.  And \emph{the extrapolated region remains an open problem}
+scheme.  And \emph{the extrapolated region remains an open doctrine
+question}
 (\cref{sec:extrap}): measured always, leaned on only opt-in, repaired
-only at the published boundary.
+only at the published boundary --- the machinery itself is shipped and
+certification-locked.
 \appendix
 %======================================================================
 \section{Hyperparameter atlas}
@@ -746,7 +758,8 @@ fits clean, wide grid flattens &
 \cref{fig:phantom} &
 \nolinkurl{volfit/calib/calendar.py}\newline
 \nolinkurl{tests/test_overlay_calendar.py::test_far_above_near_inside_data_but_not_in_wings};
-\nolinkurl{::test_wide_grid_breaks_svi_but_data_grid_does_not}\\
+\nolinkurl{::test_wide_grid_breaks_svi_but_data_grid_does_not};
+certification case \texttt{calendar\_phantom}\\
 \addlinespace
 Price-space confinement kills the drag; support/taper geometry &
 \cref{fig:drag} &
