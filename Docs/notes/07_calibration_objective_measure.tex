@@ -109,6 +109,9 @@ silently re-tunes the data-versus-regularization balance.
 the band never pushes, it only stops punishing.
 \item The reported RMS is the distance to the objective that was actually
 minimized, under the weights that were actually used.
+\item No quote is dropped silently: every screen names its reason, and
+naming a drop never changes it --- the kept and dropped sets are
+byte-identical to the pre-quarantine pipeline (\cref{sec:quarantine}).
 \end{enumerate}
 \end{invariant}
 
@@ -144,6 +147,41 @@ $(x)_+$ & $\max(x,0)$\\
 $\omega$ --- total variance $\tvar$ keeps sole claim to a $w$-like glyph.}
 \label{tab:ledger}
 \end{table}
+
+%======================================================================
+\section{Before the objective: which quotes enter at all}
+\label{sec:quarantine}
+
+The three decisions this lecture studies --- units, measure, tolerance ---
+all presuppose a sample.  There is a fourth decision, taken earlier and
+easy to leave undocumented: which quotes the objective is allowed to see.
+The screens' \emph{mechanics} belong to the data layer (Note~05 owns the
+tick floor and the de-Americanization hygiene); what belongs to this note
+is the \emph{contract} that none of them acts silently.  Every dropped
+quote carries a machine-readable reason, one of seven:
+\texttt{missing\_or\_crossed} (no two-sided market), \texttt{tick\_floor}
+(an OTM bid worth no more than three ticks --- ticks, not volatility,
+because that is the unit in which the information dies),
+\texttt{nonpositive\_bid} (an unclearable lower bound),
+\texttt{below\_intrinsic} (a side at or below intrinsic value ---
+near-zero time value, no stable implied volatility exists),
+\texttt{price\_bound} (a side at or above the upper static bound),
+\texttt{iv\_unresolvable} (inside the bounds but the inversion fails), and
+\texttt{wing} (beyond the standardized-moneyness filter).  The counts are
+surfaced per slice as \emph{advisories}, never a readiness gate: a thin
+board is a fact to display, not a failure to manufacture.
+
+One constant in that list is a design statement worth a paragraph.  The
+intrinsic classification tolerance is exactly zero
+(\texttt{INTRINSIC\_TOL}$=0$): the taxonomy \emph{names} drops the
+pipeline was already making, and naming a drop must not change it --- the
+kept and dropped sets are byte-identical to the pre-taxonomy pipeline.  A
+diagnostic that alters what it observes has stopped being a diagnostic;
+holding the tolerance at zero is what keeps the quarantine an observation
+rather than an intervention.  The complementary question --- what about
+quotes that are \emph{kept} but whose residual unit is failing --- is
+answered inside the units discussion of \cref{sec:units}, where it
+belongs.
 
 %======================================================================
 \section{Units: the residual as a change of coordinates}
@@ -221,7 +259,14 @@ The floor $\eta$ is the deliberate exception to the dictionary: where
 vega falls below it --- strikes several standard deviations out --- the
 denominator stops shrinking, which caps the vol-amplification of a price
 error and quietly down-weights quotes whose vol content is numerically
-vacuous.
+vacuous.  Production does not stop at down-weighting; it \emph{counts}:
+per slice, a diagnostic reports how many kept quotes have Black vega
+below $10^{-3}$ (a separate, coarser threshold than $\eta$).  Where the
+count is material --- very short-dated slices --- an IV-space residual
+is numerically meaningless, and the vega-normalized \emph{price}
+objectives (LQD, LV) are the authoritative view.  That is this note's
+thesis applied to itself: the residual's unit is a claim, and the
+diagnostic reports where the claim thins out.
 
 \begin{figure}[H]
 \centering
@@ -592,8 +637,9 @@ to within the spread'' in two orthogonal dials.
 Where the design's guarantees stop.  The objective carries \emph{no
 robust loss}: outside the band the hinge grows quadratically, so a
 single insane quote retains full quadratic leverage --- by design, the
-defence against outliers lives upstream, in the data layer's screens and
-quarantines (Notes~05 and 06), not in the loss.  The Gaussian reading of
+defence against outliers lives upstream, in the quarantine of
+\cref{sec:quarantine} (screen mechanics in Notes~05 and 06), not in the
+loss.  The Gaussian reading of
 least squares is a choice, not a fact about markets; so is the
 time-value measure --- a vega-squared measure is equally defensible and
 one model family carries it internally --- and declaring the measure is
@@ -631,7 +677,15 @@ anchor strength vs the unit hinge.\\
 multiplier $s_i/\bar s$ (truncated quadrature).\\
 $\eps$ & $10^{-12}$ & Floor on time value / spacing.\\
 $\eta$ (vega floor) & $10^{-4}$ & Floor on Black vega in
-\eqref{eq:vega}.\\
+\eqref{eq:vega} --- the \emph{residual} floor; distinct from the
+diagnostic threshold below.\\
+\texttt{VEGA\_FLOOR\_DIAG} & $10^{-3}$ & Per-quote vega threshold of the
+kept-quote incidence count (\cref{sec:units}); diagnostic only.\\
+\texttt{TICK\_FLOOR\_TICKS} & $3$ & OTM bid floor in ticks on real-feed
+chains --- mechanics in Note~05, reason taxonomy here
+(\cref{sec:quarantine}).\\
+\texttt{INTRINSIC\_TOL} & $0$ & Intrinsic classification tolerance; zero
+by design so naming a drop changes no fit (\cref{sec:quarantine}).\\
 \bottomrule
 \end{longtable}
 
@@ -654,6 +708,27 @@ scheme or mode bumps the options version and triggers exactly one refit.
 \endfirsthead
 \toprule Claim & Object & Code anchor \newline \emph{Test anchor}\\ \midrule
 \endhead
+Clean chains quarantine nothing (taxonomy is observation, not
+intervention) &
+\cref{sec:quarantine} &
+\nolinkurl{volfit/api/quotes.py}\newline
+\nolinkurl{tests/test_quote_screen.py::test_clean_chain_screens_nothing}\\
+\addlinespace
+Seven-reason taxonomy; tick-floor and crossed reasons named &
+\cref{sec:quarantine} &
+\nolinkurl{volfit/api/quotes.py}\newline
+\nolinkurl{tests/test_quote_screen.py::test_tick_floor_and_crossed_reasons}\\
+\addlinespace
+Screen counts surfaced as advisories, never a readiness gate &
+\cref{sec:quarantine} &
+\nolinkurl{volfit/api/quality.py}\newline
+\nolinkurl{tests/test_quote_screen.py::test_quality_surfaces_screen_counts_advisory}\\
+\addlinespace
+Vega-floor incidence counts \emph{kept} quotes below $10^{-3}$ &
+\cref{sec:units} &
+\nolinkurl{volfit/api/quotes.py}\newline
+\nolinkurl{tests/test_quote_screen.py::test_vega_floor_diagnostic_counts_kept_quotes}\\
+\addlinespace
 Density-corrected weights match the design note's worked example &
 \eqref{eq:tvweights} &
 \nolinkurl{volfit/calib/weights.py}\newline
