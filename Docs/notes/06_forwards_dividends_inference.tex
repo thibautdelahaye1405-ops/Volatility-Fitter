@@ -122,6 +122,10 @@ also quote $\mathrm{bid}=\mathrm{ask}$ yet their mids carry genuine parity
 information.
 \item Editing a name's rate or dividends refits only that name: one
 ticker's noise never touches the universe.
+\item Borrow is read only where identifiable --- \texttt{unidentified} is
+an explicit state, never a silent zero --- and the joint fixed point feeds
+fits only through an explicit toggle behind a materiality gate; below the
+gate the parity forward is kept exactly (\cref{sec:borrow}).
 \end{enumerate}
 \end{invariant}
 
@@ -330,7 +334,11 @@ accordingly.
 
 The device is Bayesian in spirit if not in ceremony: a hard prior on the
 rate, $r\in[\fwdratemin\%,\fwdratemax\%]$, applied only when a reference
-date pins the year fraction.  Clean chains sit strictly inside the band
+date pins the year fraction.  The year fraction itself is settlement-aware
+down to the sub-day: a same-day expiry is clamped over the hours to its
+settlement instant rather than an unrepresentable zero, while chains
+without settlement metadata keep the legacy whole-day skip --- both paths
+test-locked.  Clean chains sit strictly inside the band
 and pass byte-identically (invariant~1).  When the clamp bites, the
 discount is set to the band edge --- and the forward must then be
 re-estimated, because $\hat F=\hat a/\hat D$ would inherit the very slope
@@ -412,7 +420,8 @@ whenever it is physical.
 unclamped, byte-identical; stale-wing chains that break the raw
 regression stay sane; zero-spread close-like marks still resolve; with no
 reference date the clamp correctly stands down.  The residual ATM jitter
-on the delayed feed is feed noise, not the forward.
+on the delayed feed is feed noise, not the forward.  The scenario is
+registered as certification case \texttt{stale\_crossed\_markets}.
 \end{example}
 
 \paragraph{Exercise 2.}
@@ -503,7 +512,7 @@ read.
 $F=S$, $D=1$ on both resolution paths; an \emph{unflagged} zero-spread
 chain still regresses and recovers its true carry; the flag round-trips
 through the store.  The recurring SPY forward incident is closed at the
-root.
+root, and registered as certification case \texttt{zero\_carry\_chains}.
 \end{example}
 
 The pin completes an epistemic ladder that is worth stating as the
@@ -640,11 +649,28 @@ discount held throughout.}
 The estimation lens has one more thing to say, about the carry component
 this note has so far bundled silently into $q$: the \emph{borrow} $b$,
 the financing spread on hard-to-borrow names,
-$q=q_{\mathrm{div}}+b$.  Production carries a joint solver --- the same
-fixed-point pattern as \cref{sec:debias}, iterating the borrow until the
-de-Americanized, European-repriced board's parity forward matches the
-theoretical forward at carry $q_{\mathrm{div}}+b$ --- but the honest
-question, in this note's language, is whether $b$ is \emph{identified} at
+$q=q_{\mathrm{div}}+b$.  Before the estimation question, name the object
+that carries the answer.  Production's carry is not a scalar but a
+versioned per-expiry decomposition --- discount, dividends, borrow ---
+in which \emph{every leg carries a source tag}: observed, desk-supplied,
+parity-implied, or \texttt{unidentified}.  The last tag is a design
+decision, not an apology; the identifiability verdict below is rendered
+per expiry, and an expiry the board cannot resolve says so instead of
+saying zero.
+
+On top of that object sits a joint solver --- the same fixed-point pattern
+as \cref{sec:debias}, iterating the borrow until the de-Americanized,
+European-repriced board's parity forward matches the theoretical forward
+at carry $q_{\mathrm{div}}+b$, with the \emph{same} dividend schedule
+riding both legs so the early-exercise premium cannot leak twice.  The
+solver works: on a synthetic chain with a planted $300$\,bp borrow the
+fixed point returns $299.8$ (the regression lock admits $20$; the naive
+read is required to be at least twice as far), contracting in two to four
+iterations to a parity gap below a tenth of a basis point; an ordinary
+name converges immediately to the naive read, and a European chain
+short-circuits in one step.  The honest
+question, in this note's language, is therefore not whether $b$ can be
+\emph{computed} but whether it is \emph{identified} at
 all.  Two closed forms answer it, both shipped as diagnostics.
 
 First, materiality.  At fixed strike and price, a borrow shift moves the
@@ -670,15 +696,27 @@ b_{\min}\approx\frac{\mathrm{rms}/S}{t\,\sqrt n}
 is the smallest borrow the board can resolve --- \fwdinfbfloorq\ bp at
 three months and \fwdinfbfloory\ bp at a year for ten basis points of
 quote noise, but \fwdinfbfloorwy\ bp at a year on a fifty-bp-noise board,
-and hundreds at a week on any board (\cref{fig:borrow}B).  The production
-constant states its own honesty: the floor ignores the regression's
+and hundreds at a week on any board (\cref{fig:borrow}B).  The floor
+ships under its own name --- \texttt{borrowNoiseFloorBp}, riding the carry
+payload per expiry and drawn as the $\pm\sigma$ columns of the Forwards
+view --- and it states its own honesty: it ignores the regression's
 leverage on $F$, measured at another $1.5$--$2\times$ on real boards.
 The conclusion \eqref{eq:dsigdb} and \eqref{eq:floor} force is the
 strategic one: borrow \emph{matters} (large $\partial\sigma/\partial b$)
 exactly where it may not be \emph{measurable} (floor above the
 plausible borrow), and a publishable borrow read exists only where the
-sensitivity-times-uncertainty product clears the floor.  That gate is
-open work: on the real hard-to-borrow captures, a flat financing rate
+sensitivity-times-uncertainty product clears the floor.
+
+What shipped therefore splits into two consumption paths, and the split is
+the section's practical conclusion.  \emph{Measurement is always on}: the
+Forwards view shows the joint read beside the naive one, with iteration
+and tree-failure counts, the source tags, and the noise floor.
+\emph{Fitting is an explicit opt-in}: the converged $(F,D)$ enters fits
+only through a toggle, engaged per expiry only when the implied borrow
+clears a $25$\,bp materiality gate --- below it the parity forward is
+kept exactly, so ordinary names are byte-identical even with the toggle
+on.  The \emph{publishing} gate for the borrow read itself remains open
+work: on the real hard-to-borrow captures, a flat financing rate
 biases the borrow one-for-one (a rate \emph{curve} is the missing input),
 and held-out validation sits below thin-board noise --- measured
 conclusions, recorded with the machinery, waiting on better inputs rather
@@ -776,6 +814,9 @@ theoretical forward / trees.\\
 $(\text{ex-date},\text{amount})$ schedule; mixed-mode horizon.\\
 \texttt{jointCarry} & \texttt{false} & Gated fit-path joint borrow
 (\cref{sec:borrow}); ordinary names byte-identical with the toggle on.\\
+\texttt{jointCarryEngageBp} & $25$ & Borrow materiality gate: the fit path
+engages per expiry only above it; below, the parity forward is kept
+exactly.  American chains only.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden (parity fit / clamp)}}\\ \midrule
 \texttt{RATE\_MIN/MAX} & $[\fwdratemin\%,\fwdratemax\%]$ & Physical band
