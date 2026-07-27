@@ -403,6 +403,16 @@ database with history, and the active prior carries a provenance source
 per-ticker monotone version that busts the fit cache --- a fetched prior can
 never silently coexist with fits made under the old one.
 
+One provenance invariant deserves its own sentence, because it is what keeps
+the whole persistence loop honest: \emph{graph output is never prior input}
+(certification-locked). Only lit nodes with an actual calibration record
+enter a prior snapshot --- a dark node's graph-extrapolated surface can
+never become a later transported-prior baseline. Without this filter the
+loop would echo: today's extrapolation would seed tomorrow's prior, which
+seeds the next extrapolation, and the graph would gradually be listening to
+itself. Any future prior mode that widens the snapshot set must preserve
+the calibrated-record filter.
+
 %======================================================================
 \section{Diagnostics}
 \label{sec:diagnostics}
@@ -628,6 +638,10 @@ Persistence round-trip; transported identity &
 \cref{sec:transport} &
 \nolinkurl{api/priors.py}, \nolinkurl{api/prior_transport.py} &
 \nolinkurl{test_priors.py::test_priors_persist_across_restart}, \nolinkurl{::test_transported_prior_identity_and_shift}\\
+Graph output is never prior input (echo-free loop) &
+\cref{sec:transport} &
+\nolinkurl{api/priors.py} &
+\nolinkurl{test_graph_dynamic_production.py} (prior-save guard)\\
 \bottomrule
 \end{longtable}
 \endgroup
