@@ -164,7 +164,12 @@ In words: the forward and discount are resolved first (put--call parity plus the
 American de-bias of \cref{sec:carry}); the OTM side of the book is kept --- puts
 for $K<\fwd$, calls for $K\ge\fwd$, because the OTM option carries the vega and
 the tight relative spread --- and tick-noise / missing-side screens run; then, on
-American chains only, each surviving \emph{mid} is de-Americanized.
+American chains only, each surviving \emph{mid} is de-Americanized. The tick
+screen deserves its one sentence: on real-feed chains an OTM quote whose
+\emph{bid} is worth no more than three ticks is dropped --- a couple of ticks
+carries no volatility information and whipsawed the wings --- with the tick
+size persisted alongside the snapshot so replays screen identically
+(certification case \texttt{tick\_noise\_quotes}).
 
 \subsection{One root per strike, spread preserved}
 \label{sec:eephat}
@@ -292,7 +297,14 @@ money, a rate bisection that zeroes that gap (the joint $(r,\fwd)$ refinement;
 the ATM-kink case file of Note~06). Only then does the \emph{precise} per-quote
 de-Americanization of this note run, under the refined carry. The refinement
 uses fewer bisections and a coarser tolerance than quote prep --- it needs the
-carry to a few bps, not the quote to sub-bp.
+carry to a few bps, not the quote to sub-bp. One step deeper exists as an
+explicit opt-in: the \emph{joint borrow/de-Am fixed point} of Note~06
+(\texttt{jointCarry}) iterates the full loop --- borrow and dividends into
+de-Am, de-Am into the parity forward, the forward back into borrow --- to
+convergence, and routes the converged $(\fwd,D)$ into the fits per expiry
+\emph{only} when the implied borrow clears a materiality gate; below it the
+parity forward is kept exactly, so ordinary names are byte-identical even
+with the toggle on.
 \end{remark}
 
 %======================================================================
@@ -515,7 +527,9 @@ unnecessary coherent shift --- and the discontinuity it opened against
 neighbouring untouched quotes --- surfaced immediately as a visible ATM smile
 gap on live SPY and NVDA. It was reverted. The lesson is about \emph{locality},
 not vega: a repair aimed at the wings must be structurally incapable of moving
-the trusted core, hence invariant~4.
+the trusted core, hence invariant~4. The revert and the confined repair's
+clean-chain no-op are locked together as certification case
+\texttt{deam\_repair\_confinement}.
 \end{caution}
 
 The shipped repair (\texttt{volfit/calib/convex\_deam.py}) is therefore
@@ -566,6 +580,15 @@ the put-wing penalty of Note~03 (a Durrleman-style $g\ge0$ constraint on the
 \emph{output} smile) rather than duplicating it: the de-Am repair removes the
 arbitrage at the \emph{source}, and running both attains the penalty's
 arbitrage removal at a fraction of its standalone in-sample cost.
+
+One boundary hardening came from the field rather than the design. Multiple
+listings can quote the \emph{same strike} (weekly and monthly series
+overlapping), which puts two identical abscissae into the wing projection ---
+and the core-anchor \emph{slope}, a divided difference across the boundary,
+divided by zero: the crash killed whole backtest day-pairs before it was
+traced. The anchor slope now reads the nearest \emph{strictly distinct}
+strike, clean chains are byte-identical, and the case is certification-locked
+(\texttt{duplicate\_strikes}).
 
 %======================================================================
 \section{Real-chain evidence, honestly labelled}
@@ -797,9 +820,16 @@ Kernel $=$ NumPy fallback to tree rounding (incl.\ cash dividends) & --- &
 \texttt{volfit/core/american\_numba.py} & \texttt{tests/test\_american\_numba.py}\\
 Prepared-quote cache: invalidation table & --- &
 \texttt{volfit/api/service.py} & \texttt{tests/test\_prepared\_cache\_key.py}\\
-Wing repair: ATM core byte-identical, band-stay, convexity gate &
+Wing repair: ATM core byte-identical, band-stay, convexity gate; duplicate
+strikes do not crash the anchor slope (cert.\ \texttt{duplicate\_strikes}) &
 \eqref{eq:bfly_strike}, \eqref{eq:convex_sets} &
-\texttt{volfit/calib/convex\_deam.py} & \texttt{tests/test\_convex\_deam.py}\\
+\texttt{volfit/calib/convex\_deam.py} & \texttt{tests/test\_convex\_deam.py}
+(duplicate-strike lock included)\\
+Tick floor drops few-tick OTM quotes; tick size persists with the snapshot
+(cert.\ \texttt{tick\_noise\_quotes}) &
+--- &
+\texttt{volfit/api/quotes.py} &
+\texttt{tests/test\_quotes\_deam.py} (tick-floor lock)\\
 Joint $(r,\fwd)$ American de-bias joins the ATM sides & --- &
 \texttt{volfit/data/forwards.py} & \texttt{tests/test\_forward\_debias.py}\\
 \bottomrule
