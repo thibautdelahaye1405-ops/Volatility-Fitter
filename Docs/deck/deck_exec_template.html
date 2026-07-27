@@ -290,15 +290,15 @@
 <!-- ============ 01 · TITLE ============================================== -->
 <section class="slide title active">
   <div class="brand">Vol-Fitter</div>
-  <h1>Arbitrage-aware volatility surfaces,<br>with <span class="hl">graph propagation</span> to the smiles nobody quotes.</h1>
-  <p class="sub">A volatility workstation that turns sparse, noisy option markets into explainable,
-    arbitrage-clean surfaces with uncertainty — and propagates liquid-name information across
-    expiries and assets. <b>The 12-slide executive cut</b>; a 36-slide technical deck stands behind every claim.</p>
+  <h1>Certified volatility surfaces,<br>with <span class="hl">graph propagation</span> to the smiles nobody quotes.</h1>
+  <p class="sub">A volatility workstation that turns sparse, noisy option markets into certified,
+    arbitrage-clean surfaces with honest uncertainty — and propagates liquid-name information across
+    expiries and assets, with exact attribution. <b>The 12-slide executive cut</b>; a 38-slide technical deck stands behind every claim.</p>
   <div class="chips">
     <span class="chip"><b>4</b> smile models, one calibration spine</span>
-    <span class="chip"><b>16</b> technical notes, equation-anchored</span>
-    <span class="chip"><b>969</b> tests green</span>
-    <span class="chip">backtested on <b>3</b> historical regimes</span>
+    <span class="chip"><b>1,635</b> tests green (1,506 backend · 129 UI)</span>
+    <span class="chip"><b>22</b>-case certification pack, client-facing</span>
+    <span class="chip">backtested on <b>3</b> regimes + an intraday campaign</span>
   </div>
   <div class="titleshots">
     <div class="titleshot"><span class="shotlbl">Graph propagation</span><img src="{{IMG:graph_extrapolate}}" alt="Graph extrapolation workspace"></div>
@@ -347,7 +347,9 @@
       <ul class="points">
         <li class="g"><strong>LQD, the house model</strong> — parametrizes the return distribution itself, so the implied density is
           <strong>positive by construction</strong>: no butterfly arbitrage inside a slice, by design rather than by penalty.</li>
-        <li class="a"><strong>SVI-JW, the market standard</strong> — fitted natively in raw SVI, with the exact jump-wing conversion domain-proved and test-locked (handle-based entry/bump/export: roadmap).</li>
+        <li class="a"><strong>SVI-JW, the market standard</strong> — fitted in a benchmark-ratified structural chart (every iterate a
+          valid hyperbola, wings strictly inside the Lee fence), with a per-fit <strong>butterfly certificate</strong> that
+          hard-gates publish: an uncertified slice cannot become a mark.</li>
         <li class="v"><strong>Multi-Core Sigmoid, the event model</strong> — fits the W-shaped smiles around earnings that convex
           models cannot reach, with hard guardrails (parameters capped by quote count, arbitrage measured on every fit).</li>
         <li class="c"><strong>Local Vol, the non-parametric surface</strong> — a piecewise-affine local-variance grid calibrated
@@ -405,7 +407,7 @@
         <li class="g"><strong>De-Americanization</strong> — US-listed quotes embed an early-exercise premium; each is inverted through
           a binomial tree to its European-equivalent vol. On real SPY data (chart) the implied-vol effect on in-the-money puts runs a
           <strong>median +519 bp</strong> — a stress exhibit on the side production discards; the fitted OTM population sees a median
-          ~4 bp, tens in the put wing. Compiled kernel: <strong>~60×</strong> on wide chains.</li>
+          ~4 bp, tens in the put wing. Compiled kernel: <strong>~3 ms where NumPy takes ~350 ms</strong>.</li>
         <li class="a"><strong>Forwards implied from the chain itself</strong> — put–call parity as a regression; the poorly-identified
           discount is clamped to a physical band. A production case file: a delayed feed's stale pairs tore the ATM smile — the
           clamp healed it, byte-identical on clean chains.</li>
@@ -434,17 +436,18 @@
   <div class="cols">
     <div>
       <ul class="points" style="margin-top:4px">
-        <li class="g"><strong>Cleanliness is a number, not a claim</strong> — every fit reports its butterfly diagnostic (the
-          Durrleman g(k), proportional to the implied probability density); calendar consistency is checked in total variance
-          across expiries.</li>
+        <li class="g"><strong>Cleanliness is a number, then a certificate</strong> — every fit reports its butterfly diagnostic
+          (the Durrleman g(k)); SVI/MCS carry an 801-point dense-grid <strong>certificate</strong>, and publish is hard-blocked
+          (HTTP 409) on an uncertified slice — a bank-committee review's sharpest demand, shipped.</li>
         <li class="v"><strong>Penalties are exactly zero on clean surfaces</strong> — enforcement is byte-identical to OFF when the
           market is admissible: a clean fit is never distorted.</li>
         <li class="r"><strong>Production case files became design rules</strong> — a calendar check sampled in unquoted strikes
           manufactured 151 bp of phantom penalty and flattened far-dated fits (fix: constraints confined to the traded range);
           the event model once invented a put wing on illiquid chains (fix: a measured, ablation-tested fence). Both are
-          documented and test-locked.</li>
-        <li class="a"><strong>Wings obey moment logic</strong> — every model's tail extrapolation is a stated contract under
-          Lee's universal slope cap; deep OTM marks inherit discipline from theory, not from the last two quotes.</li>
+          certification cases now.</li>
+        <li class="a"><strong>Wings obey moment logic</strong> — every model's tail extrapolation is a stated contract under Lee's
+          universal cap, fenced at a <strong>buffered 1.95</strong>: at the bound exactly a slice can pass every screen yet price
+          negative tail density.</li>
       </ul>
     </div>
     <div>
@@ -549,23 +552,26 @@
 <section class="slide">
   <div class="kicker"><span class="tag">Graph</span><span>The differentiator, validated</span></div>
   <h1 class="claim">The propagation layer carries <span class="hl">news, never levels</span>, to unquoted smiles — and is validated by leave-one-out on history.</h1>
-  <p class="lede">Nodes are (underlying, expiry) smiles; edges couple adjacent expiries and related names. Only calibration
-    <b>innovations</b> propagate, weighted by each lit fit's own precision — a dark node keeps its own personality and inherits its
-    neighbours' surprises, with uncertainty attached. <b>Leave-one-out (LOO)</b>: pretend a lit node is dark, reconstruct it from
-    the others, compare to the calibration it actually had.</p>
+  <p class="lede">Nodes are (underlying, expiry) smiles; edges couple adjacent expiries and related names. In the default
+    <b>precision-message</b> mode each edge is one Gaussian pairwise factor — an amplitude (the contract) and a precision (the
+    trust, measured) — and only calibration <b>innovations</b> propagate, with <b>exact per-source attribution</b>: every dark move
+    decomposes into named lit-node contributions. <b>Leave-one-out (LOO)</b>: pretend a lit node is dark, reconstruct it, compare
+    to the calibration it actually had.</p>
   <div class="cols even">
     <div>
       <div class="statrow" style="margin-top:0">
-        <div class="stat"><div class="v vl">+8…+14 bp</div><div class="l">fully-dark single names behind lit indexes/ETFs — Aug-2024 spike, the product case</div></div>
-        <div class="stat"><div class="v g">+3.8…+7.2 bp</div><div class="l">same, fully out-of-sample (Oct-2022 bear) — 25 assets × 3 regimes, ~47k held-out scores</div></div>
+        <div class="stat"><div class="v vl">+8…+14 bp</div><div class="l">fully-dark single names behind lit indexes/ETFs — Aug-2024 spike, at assertive reach (25 assets × 3 regimes, 47k scores)</div></div>
+        <div class="stat"><div class="v g">65.8 vs 168.6 bp</div><div class="l">intraday replay: message operator vs smooth field after a mid-session repricing — the pre-registered evidence the default flipped on</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
         <li class="g"><strong>Decisive skill where the graph has support</strong> — neighbour-supported indexes +10…+76 bp,
-          ETFs +3…+7 bp across all three regimes; unbiased bands (ζ ≈ 0, std 0.70–1.10 in stress).</li>
-        <li class="a"><strong>Honest scope</strong> — in calm, earnings-idiosyncratic tape the dark-name skill is ≈0 (never
-          negative): there is no systematic signal to carry, and that regime's bands read overconfident (flagged, fix queued).</li>
+          ETFs +3…+7 bp across all three regimes; bands honest in <em>every</em> regime (ζ std ~1 after the idiosyncratic floor).</li>
+        <li class="a"><strong>Honest scope</strong> — the dark-name numbers are at assertive reach (tuned on the spike; the shipped
+          default is deliberately timid), and in calm, idiosyncratic tape the skill is ≈0, never negative. Reach is a desk dial;
+          the one-click LOO is how a desk picks it with evidence.</li>
         <li class="v"><strong>Every edge is a number a trader can defend</strong> — weights and per-edge β ("NVDA moves 1.3× QQQ")
-          live in a persisted editor, and the same LOO backtest re-certifies the graph on the desk's own universe, one click.</li>
+          live in a persisted policy editor with live preflight — and defaults flip only on pre-registered gates, with holds
+          recorded as loudly as wins.</li>
       </ul>
     </div>
     <div>
@@ -577,7 +583,7 @@
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
     The graph formalizes what traders do informally — <b>"SPY repriced, so my dark midcap should too, a little"</b> — with a posterior and a band instead of a hunch.</div>
-  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 27–30</span><span></span></div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 27–32</span><span></span></div>
 </section>
 
 <!-- ============ 10 · THE PRODUCT ========================================= -->
@@ -588,13 +594,13 @@
     <div class="cell"><div class="shot"><img src="{{IMG:densities}}" alt=""></div><div class="cap">Stacked densities <span>— every expiry ≥ 0: no butterfly arb, at a glance</span></div></div>
     <div class="cell"><div class="shot"><img src="{{IMG:stacked_iv}}" alt=""></div><div class="cap">Stacked total variance <span>— non-crossing: no calendar arb</span></div></div>
     <div class="cell"><div class="shot"><img src="{{IMG:surface}}" alt=""></div><div class="cap">3D IV surface <span>— rotatable σ(k,T) mesh</span></div></div>
-    <div class="cell"><div class="shot"><img src="{{IMG:localvol_ivsurface}}" alt=""></div><div class="cap">Local Vol views <span>— surface, smiles, tables off one calibrated object</span></div></div>
+    <div class="cell"><div class="shot"><img src="{{IMG:localvol_mesh3d}}" alt=""></div><div class="cap">3D triangulated local vol <span>— live SPY σ²_loc mesh; every triangle one exact affine element</span></div></div>
     <div class="cell"><div class="shot"><img src="{{IMG:universe}}" alt=""></div><div class="cap">Universe manager <span>— catalogue, expiries, lit/dark matrix, saved universes</span></div></div>
     <div class="cell"><div class="shot"><img src="{{IMG:logq}}" alt=""></div><div class="cap">Log quantile density <span>— the model's native coordinate, charted</span></div></div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
     Parametric · Local Vol · Forwards · Options · Graph · Quality · Universe · View — <b>every claim in this deck is a screen a trader can open</b>, live against Yahoo, Bloomberg or Massive.</div>
-  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 31</span><span></span></div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 33</span><span></span></div>
 </section>
 
 <!-- ============ 11 · RUNBOOK & PERFORMANCE =============================== -->
@@ -603,8 +609,8 @@
   <h1 class="claim">A daily runbook ending at a <span class="hlc">publish gate</span> — fast enough to sit inside the quote loop.</h1>
   <div class="statrow" style="margin-top:6px">
     <div class="stat"><div class="v c">7.6 s warm</div><div class="l">full 30-node universe recalibration (96.6 s cold), laptop-class hardware</div></div>
-    <div class="stat"><div class="v g">~35 ms</div><div class="l">one smile fit — the atom of every parametric calibration</div></div>
-    <div class="stat"><div class="v vl">~60× · 6.5×</div><div class="l">compiled de-Americanization · local-vol PDE march</div></div>
+    <div class="stat"><div class="v g">~35 ms</div><div class="l">one smile fit — the atom of every parametric calibration (~20 ms warm 0DTE)</div></div>
+    <div class="stat"><div class="v vl">~3 ms · ~6×</div><div class="l">compiled de-Americanization (vs ~350 ms NumPy) · local-vol PDE march</div></div>
     <div class="stat"><div class="v am">byte-identical</div><div class="l">parallel background calibration vs serial — speed never changes a number</div></div>
   </div>
   <div class="cols" style="margin-top:24px">
@@ -614,7 +620,7 @@
         <div class="node" style="text-align:left"><div class="t">2 · Calibrate</div><div class="d">background per-ticker groups on a process pool (~2× warm)</div></div>
         <div class="node" style="text-align:left"><div class="t">3 · Inspect &amp; adjust</div><div class="d">smiles, densities, term, LV; amend quotes, var-swaps, events, priors, filter</div></div>
         <div class="node" style="text-align:left"><div class="t">4 · Propagate</div><div class="d">graph extrapolation over the dark universe, LOO-checked</div></div>
-        <div class="node em" style="text-align:left"><div class="t">5 · Gate &amp; publish</div><div class="d">per-node RMS budgets, arb flags, staleness — then JSON/CSV export + HTML report for downstream systems</div></div>
+        <div class="node em" style="text-align:left"><div class="t">5 · Gate &amp; publish</div><div class="d">per-node RMS budgets, butterfly certificates, data-age staleness — hard 409 blocks with reasons; then JSON/CSV export + HTML report</div></div>
       </div>
     </div>
     <div>
@@ -625,8 +631,10 @@
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
-    <b>The runbook a vol desk actually operates</b> — and every performance number states its hardware and cache state, held by perf rails in the test suite.</div>
-  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 32–33</span><span></span></div>
+    <b>The runbook a vol desk actually operates</b> — every performance number states its hardware and cache state, held by perf
+    rails in the suite; a <b>22-case certification pack</b> (22/22 green, client-facing report) freezes every historical bug as a
+    named, re-runnable case.</div>
+  <div class="foot"><span>Vol-Fitter · executive summary — full deck: slides 34–37</span><span></span></div>
 </section>
 
 <!-- ============ 12 · CLOSE =============================================== -->
@@ -634,10 +642,10 @@
   <div class="brand">Vol-Fitter</div>
   <h1>A professional-grade fitter, plus the <span class="hl">graph propagation layer</span> sparse volatility markets are missing.</h1>
   <p class="sub">Four arbitrage-aware smile models · trading-grade quote preparation · Bayesian memory and Kalman filtering in one
-    coordinate system · a graph layer, validated on held-out nodes, that carries information to the smiles nobody quotes.
-    969 tests green · 16 equation-anchored technical notes · backtested on three historical regimes — every number in this deck
-    traces to an equation, a module, and a test. <b>The modeling stack is built and validated; what remains is productization,
-    not invention.</b></p>
+    coordinate system · a propagation layer with exact attribution, adjudicated by pre-registered backtests, that carries
+    information to the smiles nobody quotes. 1,600+ tests green · a 22-case client-facing certification pack · 16 technical notes
+    + 19 lecture editions · backtested on three regimes and an intraday campaign — every number traces to an equation, a module,
+    and a test. <b>The modeling stack is built and validated; what remains is productization, not invention.</b></p>
 </section>
 
 </div>

@@ -81,7 +81,20 @@ the old `clickTab("Local Vol")` helper in capture_market.mjs no longer finds
 leaf workspaces; capture_lv3d.mjs has the two-step `openWorkspace(group,
 leaf)` helper, and capture_market.mjs/capture_graph.mjs will need the same
 fix before any full recapture. The old `localvol_heatmap.png` stays in
-assets (unused by the template). NB: today's headless-Edge/Node font metrics
+assets (unused by the template).
+
+**Exec cut refreshed to rev 7 (2026-07-27 evening)** — the 12-slide
+`deck_exec_template.html` now matches the full deck: rev-7 title chips
+(1,635 tests / 22-case cert pack / 3 regimes + intraday), structural-chart +
+belly-certificate SVI framing (slides 3/6, buffered Lee 1.95), compiled
+de-Am ~3 ms vs ~350 ms, graph slide rebuilt (precision-message default,
+exact attribution, assertive-reach scope on the +8…+14 bp stat, the
+65.8-vs-168.6 bp intraday stat, ζ~1-every-regime post idio floor,
+evidence-gated defaults), montage LV cell swapped to the fresh
+`localvol_mesh3d` shot, runbook slide gains the certificate publish gate +
+cert-pack strip, close updated, and every footer remapped to the 38-slide
+numbering (27–32 / 33 / 34–37). Verifies with ZERO clip flags; PDF
+re-exported. NB: today's headless-Edge/Node font metrics
 render ~5-10% taller than the rev-6 baseline — every slide was re-trimmed
 against verify_deck.mjs; residual flag = slide 10 at 6px (margin overhang,
 screenshot-confirmed clean).
