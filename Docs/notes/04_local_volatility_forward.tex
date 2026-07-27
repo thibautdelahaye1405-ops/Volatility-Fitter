@@ -548,8 +548,11 @@ everything follows from it:
 For any $\Delta\tau>0$ the scheme \eqref{eq:implicit} is \emph{monotone}
 ($U^{n}\ge V^{n}$ with the same boundary data implies $U^{n+1}\ge V^{n+1}$)
 and satisfies
-$\min(\min_iU^{n}_i,c_{\mathrm{bdry}})\le U^{n+1}_i\le
-\max(\max_iU^{n}_i,c_{\mathrm{bdry}})$: the march is unconditionally
+\[
+\min\big(\min\nolimits_iU^{n}_i,\,c_{\mathrm{bdry}}\big)\ \le\ U^{n+1}_i\ \le\
+\max\big(\max\nolimits_iU^{n}_i,\,c_{\mathrm{bdry}}\big):
+\]
+the march is unconditionally
 $\ell^{\infty}$-stable, with no CFL restriction, and cannot create new
 extrema.
 \end{corollary}
@@ -664,7 +667,11 @@ discretization will happily bend its parameters to cancel the operator's
 fit; only the refined reprice estimates the distance to the true prices.
 (In the inverse-problems literature this is a cousin of the ``inverse
 crime'' --- validating a reconstruction with the same operator that
-produced it.)  Second, an independent discretization --- a finer
+produced it.)  The exposure is certification-locked: a deliberately
+coarsened march \emph{must} be revealed by the converged metric
+(\texttt{rmsConvergedBp}, reported beside \texttt{arbitrageFree} with every
+fit; case \texttt{lv\_operator\_blindness}).  Second, an independent
+discretization --- a finer
 log-strike Crank--Nicolson/Rannacher scheme --- cross-checks the march:
 two different solvers agreeing is evidence; one solver agreeing with
 itself is not.
@@ -1029,8 +1036,9 @@ the smallest ATM $\sigma\sqrt\tau$, snapped so $x=1$ stays a node
 \textbf{Verdict.}  $108\to\sim28$ vol bp from the coverage floor alone,
 $23.5$ with the refined step --- now \emph{better} than the parametric fit
 --- while every long expiry and every normal surface is unchanged to the
-byte (both gates test-locked).  The general lesson is
-\cref{sec:grid}'s sampling principle wearing production clothes: \emph{a
+byte (both gates test-locked, and the incident is registered in the named
+certification pack as \texttt{weekly\_lv\_resolution}).  The general lesson
+is \cref{sec:grid}'s sampling principle wearing production clothes: \emph{a
 lattice that does not resolve the data's length scale fits an alias, not
 the data} --- and the way to find such a bug is to count, not to guess.
 \end{example}
@@ -1070,10 +1078,11 @@ territory.
 tail only.
 
 \textbf{Verdict.}  SPY $25.7\to2.6$ vol bp, NVDA unchanged; the confinement
-is test-locked.  The lesson echoes Notes~05 and 09: \emph{a shape
-constraint must not be imposed where the data already speaks} --- the same
-principle at the de-Am input, the MCS output, and here the LV extrapolation
-tail.
+is test-locked and registered as certification case
+\texttt{convex\_wing\_tail}.  The lesson echoes Notes~05 and 09: \emph{a
+shape constraint must not be imposed where the data already speaks} --- the
+same principle at the de-Am input, the MCS output, and here the LV
+extrapolation tail.
 \end{example}
 
 %======================================================================
@@ -1267,6 +1276,9 @@ scaling; \texttt{max\_nfev} $=200$.\\
 \texttt{\_STALL\_WINDOW/\_RTOL} & $12$ / $5\times10^{-3}$ & TRF early-stop
 ($18$ / $3\times10^{-3}$ under GN).\\
 \texttt{VAR\_FLOOR} & $10^{-6}$ & Dupire-extraction local-variance floor.\\
+\texttt{VOLFIT\_LV\_PHI\_DENSE\_MB} & $512$\,MB & Dense per-step
+sensitivity-basis budget; above it the exact row-sparse store ($\le8$ slots
+per node) takes over (\cref{app:perf}).\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden (separate log-strike validator,
 \texttt{pde.py})}}\\ \midrule
@@ -1312,13 +1324,27 @@ termination tolerances relaxed $10^{-12}\to10^{-8}$ on the TRF path: the
 fit is governed by quote noise, vega floors and bands, so the tighter
 tolerance only bought iterations --- evaluation count cut, surface
 identical.
+\item \textbf{Sensitivity-basis memory guard.}  The $\theta$-independent
+per-step hat basis is naturally one dense
+$(n_{\text{steps}},n_{\text{interior}},m)$ tensor; on large grids it
+outgrew memory and \emph{crashed} rather than slowed.  Above a budget
+(\texttt{VOLFIT\_LV\_PHI\_DENSE\_MB}, default $512$\,MB) the build switches
+to an exact row-sparse store --- at most eight value/column slots per
+interior node, some $30$--$60\times$ smaller --- scattered by a Numba
+kernel.  At or below budget the dense path is byte-identical; the
+over-budget cases carried no byte-identity obligation, because they used
+to die.
 \item \textbf{Shelved} (documented in the perf roadmap): coarse-grid
 calibration (biases $\theta$ by up to $\sim26$ vol points ---
 non-viable); the first Numba attempt (wrong loop order, $1.2\times$);
 Rannacher/CN ($\sim1.1\times$ and a measured coarse-$x$ arbitrage,
 \cref{sec:cn}); GN for the non-smooth band objective; thread/process
-parallelism (GIL-negative).  Five dead ends confirming the cost is
-distributed, not localized.
+parallelism \emph{within one fit} (GIL-negative).  Five dead ends
+confirming the cost of a single fit is distributed, not localized.
+\emph{Across} fits the story differs: the background Calibrate ships slice
+fits and per-ticker LV fits to a process pool
+(\texttt{VOLFIT\_CALIB\_WORKERS}; serial and pooled runs byte-identical)
+--- parallelism pays between independent solves, not inside one.
 \end{enumerate}
 
 \begin{caution}[title={Caution (engineering): the field crash that
