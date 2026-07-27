@@ -105,10 +105,14 @@ lit posterior +77…+135 bp, dark nodes inherit **+66…+124 bp (mean +99,
 the deliberately-unmoved quotes, attribution SPY 6M +55 / 12M +23 / 3M +9 /
 1M +5 (sums exactly); filter badge K = 0.36/0.00/0.00, ρ = 1.43 (unchanged
 from the old session, coincidentally). Both templates' captions updated;
-both decks rebuilt/verified/exported. UI NIT (recorded): the violet GRAPH
-badge on the Parametric smile renders LOW-CONTRAST in the light theme (the
-amber FILTER badge is fine) — the smile_hero badge text is faint; a
-light-theme styling fix in SmileViewer would improve future captures.
+both decks rebuilt/verified/exported. UI NIT — FIXED (0f4adeb): the violet/teal/amber
+…-200/300/400 text tiers had no light-theme overrides, so the GRAPH/FILTER
+badges rendered washed-out on white; [data-theme=light] now deepens those
+tiers in index.css (Tailwind v4 var-based utilities flip for free) and all
+graph/filter shots were retaken with crisp badges. NB a server reboot does
+NOT faithfully restore the staged session (0 lit / NO PATH on restart) —
+re-run stage_graph.py before any recapture; the synthetic session is
+deterministic, so the staged numbers reproduce exactly.
 
 **Exec cut refreshed to rev 7 (2026-07-27 evening)** — the 12-slide
 `deck_exec_template.html` now matches the full deck: rev-7 title chips
