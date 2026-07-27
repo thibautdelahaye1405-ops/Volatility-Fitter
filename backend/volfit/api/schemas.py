@@ -500,12 +500,18 @@ class OptionsSettings(BaseModel):
     graphNu: float = Field(0.1, gt=0.0)
     #: Default propagation operator for the production graph solve (message
     #: arc P3, Docs/graph_precision_message_framework.md §18.1). The frontend
-    #: seeds its mode selector from this; "smooth_field" is byte-identical to
-    #: the pre-arc behaviour. Old persisted blobs lack the field and coerce to
-    #: the default.
+    #: seeds its mode selector from this. DEFAULT = "precision_messages"
+    #: (USER-RATIFIED FLIP 2026-07-27, FINDINGS_message_phase4.md: the daily
+    #: §22.4 gate did not clear, but intraday the legacy operator is nearly
+    #: inert — 168.6bp vs 172.7 transport — while messages carry the signal
+    #: at 65.8bp). "smooth_field" stays explicit configuration/rollback, and
+    #: remains the WIRE default on GraphExtrapolateRequest (replay,
+    #: byte-identity locks and the backtest harness are untouched). Old
+    #: persisted blobs lack the field and coerce to the default; a store
+    #: that ever saved Options pins its explicit value until re-save.
     graphPropagationMode: Literal[
         "smooth_field", "precision_messages", "hybrid"
-    ] = "smooth_field"
+    ] = "precision_messages"
     # spot-vol dynamics defaults — the Parametric spot-scenario reads these
     # (the regime selector moved entirely to Options). "custom" uses ``ssr``.
     dynamicsRegime: Literal[

@@ -740,9 +740,11 @@ data-only, then refit) & 13\\
 \texttt{graphLambdaScale} $\lambda$ & $0.0$ & graph OT regularization ($0=$ OT
 term off) & 14\\
 \texttt{graphNu} $\nu$ & $0.1$ & graph UOT source allowance & 14\\
-\texttt{graphPropagationMode} & \texttt{smooth\_field} & propagation-operator
-seed (\texttt{precision\_messages} / \texttt{hybrid} opt-ins; the layered
-dynamic-harmonic pipeline is a per-request opt-in) & 14\\
+\texttt{graphPropagationMode} & \texttt{precision\_messages} &
+propagation-operator seed (flipped 2026-07-27 on the intraday replay
+evidence; \texttt{smooth\_field} = explicit rollback, \texttt{hybrid}
+config-only; the layered dynamic-harmonic pipeline is a per-request
+opt-in) & 14\\
 \texttt{idioFloor} & on & dark-node idiosyncratic credible-band floor & 14\\
 \texttt{functionalBand} & on & full 3-handle posterior covariance pushed
 through the slice map: smile band, var-swap and tail-mass sds (band-only) & 14\\

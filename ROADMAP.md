@@ -502,10 +502,25 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   Decisive next experiment (recorded, not scheduled): the NAMES-universe
   campaign (SPY→NVDA/AAPL capture + same launcher) where the directed
   cut has a fair shot at earning its structural cost.
+- **MESSAGE-MODE DEFAULT FLIPPED 2026-07-27 (USER-RATIFIED; wrap
+  2026-07-27c below)**: `OptionsSettings.graphPropagationMode` default =
+  `precision_messages`. The §22.4 P4 decision table was FILLED from the
+  stored 2026-07-19 sweep parts first (21,962 intersected rows: gates
+  1/4/6 fail at the daily horizon — recorded verbatim in
+  FINDINGS_message_phase4.md); the flip is ratified on the INTRADAY
+  separation (msg 65.8bp vs smooth_field 168.6 ≈ inert). Scope: OPTIONS
+  default only — the WIRE default stays smooth_field (replay,
+  §21.10 byte-identity locks, harness untouched); desk amplitudes;
+  smooth_field = explicit rollback. The P5b "recommended-mode tagging"
+  rider is SUPERSEDED by the flip. CAVEAT: a store that ever saved
+  Options pins its explicit smooth_field until Options ▸ Graph re-save;
+  the long-running :8000 needs a restart.
 - **Next up (priority order)**:
   1. Riders: eSSVI/constrained-spline comparator column, exact
      Martini–Mingone cross-check tier, Quality-view certificate chip,
-     hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair.
+     hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair;
+     daily-horizon message-band calibration (ζ~2 — D6 joint anchors are
+     the recorded candidate, now default-relevant).
   2. (Optional, user-gated) intraday NAMES campaign — capture recipe in
      FINDINGS_dynamic_intraday.md.
 - **User-side reminders**: re-save Options ▸ Fit (the dev store still
@@ -514,6 +529,39 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-07-27c) — §22.4 TABLE FILLED + MESSAGE-MODE DEFAULT FLIP
+
+- **The never-filled P4 decision table is now filled** from the stored
+  2026-07-19 tagged parts (intersected natural keys, 21,962 OOS rows;
+  FINDINGS_message_phase4.md): msg_learned liquid_split skill
+  +0.35…+2.01bp (positive every regime×R cell, material in none;
+  gate 1 FAIL), ζ std 2.29/2.07 w/ cov95 0.908 (overconfident; gate 4
+  FAIL), wing median 105.2 vs base-arm 99.6 (gate 6 marginal FAIL);
+  gates 2/3/5 pass; msg_desk confirmed the expected RMS loser (−21bp
+  spike/R0); αT and decay ablations inert at the day horizon. The
+  2026-07-19 hold is thereby recorded in its own pre-registered table.
+- **THE FLIP (user-ratified 2026-07-27, with the daily verdict on the
+  table)**: `OptionsSettings.graphPropagationMode` default →
+  `precision_messages`; basis = the intraday async-replay separation
+  (smooth_field 168.6bp ≈ transport 172.7 — the zero-innovation anchor
+  at day-scale κ/η shrinks intraday innovations to nothing; messages
+  65.8bp, ζ 0.88, cov95 0.964, no wing regression). Scope mirrors the
+  sviChart precedent: the OPTIONS default (UI seed) only — the WIRE
+  default on GraphExtrapolateRequest stays smooth_field, so bare API
+  solves, workspace replay, §21.10 byte-identity locks and the whole
+  backtest harness are untouched; amplitude defaults stay desk 1.0 (the
+  intraday-validated configuration; learned 0.23/0.39 selectable);
+  smooth_field = explicit rollback. Changes: schemas.py OptionsSettings
+  + frontend useOptions DEFAULTS mirror + test_api_options default
+  snapshot + Notes 00/14 defaults tables. Honest characteristics the
+  default now carries at the DAILY horizon, recorded: ζ~2 graph bands +
+  wing ~+5bp vs legacy (repair candidates: D6 joint anchors, §15.2
+  placement). P5b "recommended-mode tagging" rider superseded.
+- Backend options+graph batches 67 green, frontend 129/129 + build +
+  8-tab smoke; full suite in the commit. USER-side: re-save Options ▸
+  Graph on stores that persisted an explicit smooth_field; restart the
+  long-running :8000.
 
 ### 🧭 SESSION WRAP (2026-07-27b) — INTRADAY CAMPAIGN ADJUDICATED (§16.1)
 

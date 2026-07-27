@@ -236,7 +236,9 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   graphEtaScale: 1.0,
   graphLambdaScale: 0.0,
   graphNu: 0.1,
-  graphPropagationMode: "smooth_field",
+  // USER-RATIFIED FLIP 2026-07-27 (FINDINGS_message_phase4.md): messages is
+  // the product default; smooth_field stays explicit configuration/rollback.
+  graphPropagationMode: "precision_messages",
   dynamicsRegime: "sticky_strike",
   ssr: 2.0,
   autoCalibrate: true,

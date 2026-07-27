@@ -831,10 +831,14 @@ table speaks configuration.
 with its appendix).}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
-\texttt{graphPropagationMode} & \texttt{smooth\_field} & The mode fork:
-\texttt{precision\_messages} / \texttt{smooth\_field}
-(\cref{app:smooth}) / \texttt{hybrid} (config-only).  The default is
-gate-adjudicated (\cref{sec:gate}).\\
+\texttt{graphPropagationMode} & \texttt{precision\_messages} & The mode
+fork: \texttt{precision\_messages} / \texttt{smooth\_field}
+(\cref{app:smooth}, explicit rollback) / \texttt{hybrid} (config-only).
+The daily gate (\cref{sec:gate}) did not clear; the default was flipped
+2026-07-27 on the intraday async-replay separation, where the smoothing
+operator is nearly inert (its zero-innovation anchor at day-scale
+stiffness shrinks intraday innovations to nothing) while messages carry
+them at amplitude $\rho\beta$.\\
 \texttt{calendarBetaExponent} & $1.0$ (per handle) & The amplitude
 shape $\alpha_T$ of \eqref{eq:beta}.\\
 \texttt{calendarAmplitude} & $1.0$ & Calendar level $\rho$; presets
