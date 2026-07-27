@@ -53,7 +53,13 @@ there are no quotes to miss --- and show up later as a mispriced tail
 somewhere else. Two distinct things can go wrong: the \emph{asymptotic} slope
 can violate Lee's model-free bound (an arbitrage against the existence of any
 law), and the \emph{finite} wing can lose density positivity even with an
-admissible slope (a butterfly arbitrage in the extrapolated region).
+admissible slope (a butterfly arbitrage in the extrapolated region). This
+note owns the strike axis \emph{beyond} the quotes; its complement on the
+traded range is Note~02's belly butterfly certificate, which hard-gates
+publish. Together the coverage is complete: certificate on the traded range
+(with teeth), advisory measurement and optional tapered enforcement beyond
+it, and a wing-only projection at publish --- no part of the displayed
+strike axis is uninspected.
 
 \begin{invariant}
 \begin{enumerate}[leftmargin=1.6em]
@@ -172,9 +178,17 @@ $\beta_L=b(1-\rho)$ and $\beta_R=b(1+\rho)$ in closed form
 ($=(\sviwingLraw,\sviwingRraw)$ on the benchmark parameters). Lee's bound is
 the explicit inequality $b(1+|\rho|)\le2$, enforced as a soft hinge
 $\max\big(b(1+|\rho|)-\beta_{\max},0\big)$ at weight $10^3$ alongside the
-min-variance penalty (cap \texttt{leeSlopeMax}$\,=2$). On any admissible
-smile both penalties are exactly zero; they only fence the optimizer out of
-the inadmissible region.
+min-variance penalty. The cap $\beta_{\max}$ is deliberately \emph{not} the
+bound itself: \texttt{leeSlopeMax} defaults to $1.95$, strictly buffered,
+because the boundary case is broken --- a slice sitting exactly \emph{at}
+$\beta=2$ passes the hinge with zero penalty yet already carries negative
+tail density (the committee counterexample reads $g(10)=-0.0485$, and the
+trap was live on a production SPY wing; certification case
+\texttt{svi\_lee\_boundary}, Note~02). \Cref{lem:psi}'s ceiling is a
+necessary condition, and a fence must not end on its broken boundary. On a
+strictly admissible smile both penalties are exactly zero, and under the
+default structural chart (Note~02) both wings are strictly below the cap at
+every iterate --- the fence is inert by construction.
 
 \subsection{Multi-Core Sigmoid (MCS): inherited wings}
 
@@ -420,15 +434,20 @@ crossings and wing-slope order over the time-value envelope, advisory only
 (\texttt{extrapEnforce}, OFF by default) adds exactly these three hinges to
 the SVI/MCS overlay fits, budgeted in vol units at a fraction of the data
 weight so it leans without outvoting quotes; the far-field calendar order is
-enforced through the SCALAR wing-slope condition, never pointwise. Note~10's
+enforced through the SCALAR wing-slope condition, never pointwise --- and
+under the symmetric surface solver the same toggle arms the LQD \emph{tail
+contract}: per-interface seam price ordering plus linear wing-slope
+(log-endpoint-scale) ordering rows in the joint repair (Note~10). Note~10's
 matching remark carries the mechanism and the measured lean/cost trade.
 Phase 3 (2026-07-10): the publish-time wing-only projection --- exported
 curve samples lifted onto the discrete arbitrage-free cone in OTM-price
 space, traded core pinned byte-identically, fits and in-app views untouched
 (\nolinkurl{volfit/models/projection.py}); the projection is a repair, so
 its \emph{authority} is confined to the wings per \cref{sec:principle} even
-though the constraints it restores extend there. Note~10's remark carries
-the mechanism.}
+though the constraints it restores extend there, and it is audited to
+introduce no calendar crossings (the manifest's
+\texttt{projectionCalendarWorstBp}). The three phases are certification case
+\texttt{extrap\_wing\_contracts}.}
 \end{remark}
 
 %======================================================================
@@ -500,6 +519,17 @@ LV convex wing confined to tail &
 \cref{sec:principle} &
 \nolinkurl{api/affine_fit.py} &
 \nolinkurl{test_affine_grid_design.py::test_convex_wing_confined_to_quoted_extrapolation}\\
+\addlinespace
+Lee cap strictly buffered ($\beta=2$ boundary broken; cert.\
+\texttt{svi\_lee\_boundary}) &
+\cref{sec:models} &
+\nolinkurl{models/svi_jw/calibrate.py} &
+\nolinkurl{test_svi_lee_boundary.py}\\
+Extrapolated-region phases 1--3 (cert.\ \texttt{extrap\_wing\_contracts}) &
+\cref{rem:softwings} &
+\nolinkurl{models/projection.py}, \nolinkurl{calib/extrap.py} &
+\nolinkurl{test_wing_projection.py}, \nolinkurl{test_extrap_enforce.py},
+\nolinkurl{test_diagnostics.py}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -518,7 +548,9 @@ LV convex wing confined to tail &
 (\% of the $10^3$ base weight); $0$ disables.\\
 \texttt{nCores} & $2$ (max $2$) & MCS core count, schema-clamped
 (\cref{sec:r6}).\\
-\texttt{leeSlopeMax} & $2.0$ & SVI Lee cap $b(1+|\rho|)\le\beta_{\max}$.\\
+\texttt{leeSlopeMax} & $1.95$ & SVI Lee cap $b(1+|\rho|)\le\beta_{\max}$,
+strictly buffered under Lee's bound ($\beta=2$ is the broken boundary;
+\cref{sec:models}).\\
 \texttt{sviPenaltyWeight} & $10^3$ & Weight of the SVI Lee / min-variance
 penalties.\\
 \texttt{leftWingSlopeMult} & $1.5$ & LV left extrapolation slope seed; free
