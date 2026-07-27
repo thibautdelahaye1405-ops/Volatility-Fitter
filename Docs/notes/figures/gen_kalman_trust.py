@@ -355,12 +355,18 @@ def figure_clock() -> None:
                 if r["clock"] == "calendar"}
     bps = sorted({bp for bp, _ in cal_rows})
     best_bp = min(bps, key=lambda bp: abs(cal_rows[(bp, "intraday")]["zeta_std"][0] - 1.0))
+    ses_q_bp = 90.0  # the session-clock sweep point the note quotes
     ses_rows = {r["step"]: r for r in sweep
-                if r["clock"] == "session60w0" and r["process_bp"] == 90.0}
+                if r["clock"] == "session60w0" and r["process_bp"] == ses_q_bp}
     steps = ("intraday", "overnight", "weekend")
     z_cal = [cal_rows[(best_bp, s)]["zeta_std"][0] for s in steps]
     z_ses = [ses_rows[s]["zeta_std"][0] for s in steps]
     macro("ktrcalbestq", "%.0f", best_bp)
+    macro("ktrsesbestq", "%.0f", ses_q_bp)
+    # Per-handle zetas on the 30-minute cadence at the session-clock point:
+    # the recorded per-maturity handle-scales follow-up quotes these.
+    macro("ktrzsesskew", "%.1f", ses_rows["intraday"]["zeta_std"][1])
+    macro("ktrzsescurv", "%.1f", ses_rows["intraday"]["zeta_std"][2])
     for s, zc, zs in zip(("intra", "overnight", "weekend"), z_cal, z_ses):
         macro("ktrzcal" + s, "%.2f", zc)
         macro("ktrzses" + s, "%.2f", zs)

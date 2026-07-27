@@ -455,7 +455,7 @@ One more honesty term, measured before it was priced: below $30$ days
 to expiry the thinned-vs-full ATM discrepancy runs $2$--$3\times$ the
 stated half-spread (short-end quote and de-Americanization noise --- the
 Note~04/05 diagnosis, not a filter defect).  The stated noise is
-therefore scaled by $\sqrt{30\,\mathrm{DTE}/\mathrm{DTE}}$ below $30$
+therefore scaled by $\sqrt{30/\mathrm{DTE}}$ below $30$
 DTE (never below one), applied consistently to $R_t$, the active MAP
 weights and the posterior unwhitening.
 
@@ -541,7 +541,11 @@ thirty-minute campaign (three tickers, eight days spanning the July-4th
 closure) measures the failure directly.  On those tables the median
 absolute ATM move is \ktrmoveintra\ bp per thirty-minute session step,
 \ktrmoveovernight\ bp across one overnight --- and \ktrmoveweekend\ bp
-across the entire three-day holiday closure.  \emph{A closed market
+across the entire three-day holiday closure.  (Provenance note: these
+are this note's per-pair medians over the stored per-day tables; the
+campaign's coarser headline aggregation, quoted in Note~11, reads
+roughly $19.5/55/55$ --- different pooling, same ordering, same
+lesson.)  \emph{A closed market
 adds nothing an overnight does not already contain.}  A calendar clock
 must therefore be wrong at some cadence: whatever $q$ it picks, it pays
 three-plus days of variance across a closure that delivers one
@@ -552,10 +556,12 @@ overnight's worth.  The audit shows exactly that
 ($\zeta$ std \ktrzcalovernight\ overnight, \ktrzcalweekend\ across the
 weekend --- error bars three and four times too wide).  The shipped
 session clock --- $60\%$ of a day's variance in the exchange
-session, closed days at weight zero, the intraday variance clock of the
-0DTE machinery --- calibrates all three cadences at once
+session, closed days at weight zero; these are the \emph{filter's} own
+share and weight, and Note~11's maturity clock deliberately carries
+different defaults tuned for a nesting property --- calibrates all
+three cadences at once
 ($\zeta$ std \ktrzsesintra/\ktrzsesovernight/\ktrzsesweekend\ at
-$q=90$ bp).  The default remains \texttt{calendar} (byte-identical to
+$q=\ktrsesbestq$ bp).  The default remains \texttt{calendar} (byte-identical to
 the pre-clock filter; the session clock is the sub-day workflow's
 setting), and the \emph{reset} rule deliberately stays on calendar
 hours: staleness is about data age, not variance accrual.
@@ -570,7 +576,8 @@ through the three-day closure; the session clock (share $0.60$, closed
 days $0$) stops, because measured smiles do too.  B: the consequence in
 the audit currency: no calendar $q$ is calibrated at every cadence ---
 the best one is right intraday and $3$--$4\times$ overdispersed into
-closures --- while the session clock at $q=90$ bp holds $\zeta$ std near
+closures --- while the session clock at $q=\ktrsesbestq$ bp holds
+$\zeta$ std near
 $1$ across all three.}
 \label{fig:clock}
 \end{figure}
@@ -990,7 +997,8 @@ currently right, and a shrunk-correlation update is a live research
 item, not a closed door.  \emph{The session clock is measured but not
 default}: calendar remains the byte-identical default, and the
 campaign's residual is real --- at the default per-handle scales the
-skew and curvature $\zeta$ run $1.8$ and $6.4$ on the thirty-minute
+skew and curvature $\zeta$ run \ktrzsesskew\ and \ktrzsescurv\ on the
+thirty-minute
 cadence, worst on short-dated nodes, so per-maturity handle scales are
 the recorded follow-up.  \emph{The fit-path surprise gate is shipped
 but not yet sweep-validated}: the harness's synthetic shock cannot see
