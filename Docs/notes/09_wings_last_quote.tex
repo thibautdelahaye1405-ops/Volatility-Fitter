@@ -98,10 +98,18 @@ sits a region the mathematics deliberately leaves open: within the
 admissible cone, the data cannot choose the wing, so the model must
 (\cref{sec:choose}).
 
+One boundary fixes this note's scope.  This note owns the strike axis
+\emph{beyond} the quotes; its complement on the traded range is Note~02's
+belly butterfly certificate, which hard-gates readiness and publish for
+any displayed slice.  Together the coverage is complete: certificate with
+teeth where the money is, this note's prove/choose/police machinery where
+the quotes end.
+
 \begin{invariant}
 \begin{enumerate}[leftmargin=1.6em]
 \item Every displayed wing is Lee-admissible: $\beta\le2$, structurally
-where possible, by a soft cap otherwise.
+where possible, and by a soft cap \emph{strictly buffered under the
+ceiling} otherwise (\cref{sec:choose}).
 \item Single-slice (butterfly) constraints \emph{extend} into the wings;
 two-slice (calendar) constraints are \emph{confined} to the traded range
 (\cref{sec:confine}).
@@ -202,7 +210,10 @@ wings approach the ceiling from below --- but the exact ray
 $\tvar=2k$ is itself already inadmissible at large $k$.  A model that
 caps its wing \emph{at} $2$ must therefore approach the cap, never sit
 on it; the LQD guard below ($\AR<1$ strictly) is this remark in
-production form.
+production form --- and the SVI cap's $0.05$ buffer
+(\cref{sec:choose}) is the same remark on the other model, bought after
+a production SPY wing sat at exactly $2.0000$ (certification case
+\texttt{svi\_lee\_boundary}).
 \end{remark}
 
 \subsection{Lee's moment formula}
@@ -320,7 +331,8 @@ opinion.  Choosing a model \emph{is} choosing an extrapolation law.}
 \begin{table}[H]
 \centering
 \caption{Analytic asymptotic wing slopes on the benchmark window (fresh
-production fits); all far below the ceiling $2$.}
+production fits); all far below the operative cap $1.95$, itself strictly
+below the ceiling $2$.}
 \label{tab:betas}
 \begin{tabular}{lrrl}
 \toprule
@@ -365,10 +377,19 @@ $\tvar(k)\sim b(1\mp\rho)|k|$, so $\bL=b(1-\rho)$ and $\bR=b(1+\rho)$
 in closed form.  Lee's bound is then one explicit inequality,
 $b(1+|\rho|)\le2$, enforced as a soft hinge
 $\max\big(b(1+|\rho|)-\beta_{\max},0\big)$ at weight $10^{3}$ alongside
-the min-variance penalty (cap default $2$).  On any admissible smile
+the min-variance penalty --- with cap default $1.95$, deliberately
+\emph{not} the bound itself.  A hinge whose cap sits exactly at $2$
+charges nothing precisely on the broken boundary ray
+(\cref{rem:boundary}), and a live SPY expiry was found parked at wing
+slope $2.0000$ paying no penalty; the buffered cap closed that trap, and
+the incident is locked as certification case \texttt{svi\_lee\_boundary}.
+On any admissible smile
 both hinges are exactly zero --- they fence the optimizer out of the
 inadmissible region without touching admissible fits; the benchmark fit
-sits at $b(1+|\rho|)=\wlqsvicap$, far from the fence.
+sits at $b(1+|\rho|)=\wlqsvicap$, far from the fence.  Under the default
+structural fit chart (Note~02) the fence is not even reachable: both
+wings are strictly below the cap at every iterate by construction, and
+the hinge survives as the raw rollback chart's guard.
 
 \subsection{MCS: inherited wings, and what inheritance does not buy}
 
@@ -445,8 +466,9 @@ From the raw-SVI asymptotics $\tvar(k)\to b\big(\rho(k-m)+|k-m|\big)+a$
 derive $\bL=b(1-\rho)$, $\bR=b(1+\rho)$, and hence the cap
 $b(1+|\rho|)\le2$.  Verify from \cref{tab:betas} that the benchmark
 fit's cap value is \wlqsvicap, and compute how much steeper the market's
-put skew would have to be --- at this $b$ --- before the fence at $2$
-activates.
+put skew would have to be --- at this $b$ --- before the fence at the
+shipped cap $1.95$ activates.  Then repeat the computation at $2$, and
+say why the difference is not cosmetic (\cref{rem:boundary}).
 
 \paragraph{Exercise 2.}
 The hero slice's put slope is $\bL=\wlqherobetaL$.  Invert the Lee map
@@ -710,13 +732,21 @@ gating readiness.  Phase~2, an opt-in tapered enforcement (off by
 default) adds exactly those three hinges to the SVI/MCS overlay fits,
 budgeted in vol units at a fraction of the data weight so it leans
 without outvoting quotes; the far-field calendar order is enforced
-through the \emph{scalar} wing-slope condition, never pointwise.
+through the \emph{scalar} wing-slope condition, never pointwise --- and
+the same toggle arms the LQD surface's per-interface tail contract under
+the symmetric solver: two seam price rows just beyond the span union and
+two wing-slope-order rows, so the toggle is not overlay-only.
 Phase~3, a publish-time wing-only projection lifts exported curve
 samples onto the discrete arbitrage-free cone in OTM-price space, traded
 core pinned byte-identically, fits and in-app views untouched --- a
 repair, so its \emph{authority} is confined to the wings even though the
-constraints it restores extend there.  Note~10's matching remark
-carries the mechanism and the measured lean/cost trade.
+constraints it restores extend there; the export manifest audits it via
+\texttt{projectionCalendarWorstBp}, the field that licenses a
+price-moving repair at the boundary at all.  Note~10's matching remark
+carries the mechanism and the measured lean/cost trade.  All three
+phases are certification-locked together as case
+\texttt{extrap\_wing\_contracts}; what stays open is doctrine, not
+machinery.
 \end{remark}
 
 %======================================================================
@@ -753,7 +783,8 @@ but nothing bounds the base slopes into the Lee cone --- the diagnosis
 lives in the quality report, not the optimizer.  \emph{The ceiling is
 open at the top} (\cref{rem:boundary}): a model pinned exactly at
 $\beta=2$ is already wrong, which is why the LQD barrier keeps
-$\AR<1$ strictly and the SVI cap is a fence, not a target.  \emph{The
+$\AR<1$ strictly and the SVI cap is a fence set strictly inside the cone
+($1.95$), not a target.  \emph{The
 historical numbers are population-specific}: the census asymmetry
 ($64\%$ put wing) and the ablation grid were measured on the illiquid
 single-name population of one backtest campaign; the hinge's put-side
@@ -766,7 +797,9 @@ hinge's Jacobian is hybrid}: the $49$ finite-differenced rows are cheap,
 but a fully analytic $g$-row Jacobian remains undone.  And
 \emph{confinement is binary} (\cref{rem:softwings}): the
 near-extrapolation region --- real premium, no quotes --- currently gets
-measurement (Phase~1) and opt-in leaning (Phase~2), not settled
+measurement (Phase~1), opt-in leaning (Phase~2) and boundary repair at
+publish (Phase~3), all three certification-locked
+(\texttt{extrap\_wing\_contracts}) --- but not settled
 doctrine.
 
 \appendix
@@ -786,7 +819,9 @@ table speaks configuration.
 (\% of the $10^{3}$ base weight); $0$ disables.\\
 \texttt{nCores} & $2$ (max $2$) & MCS core count, schema-clamped
 (\cref{sec:police}).\\
-\texttt{leeSlopeMax} & $2.0$ & SVI Lee cap $b(1+|\rho|)\le\beta_{\max}$.\\
+\texttt{leeSlopeMax} & $1.95$ & SVI Lee cap $b(1+|\rho|)\le\beta_{\max}$,
+strictly buffered under Lee's bound ($\beta=2$ is the broken boundary,
+\cref{rem:boundary}; cert.\ \texttt{svi\_lee\_boundary}).\\
 \texttt{sviPenaltyWeight} & $10^{3}$ & Weight of the SVI Lee /
 min-variance hinges.\\
 \texttt{leftWingSlopeMult} & $1.5$ & LV left extrapolation slope seed;
@@ -866,6 +901,20 @@ LQD structural Lee slopes; underflow-safe &
 \nolinkurl{volfit/models/lqd/basis.py}\newline
 \nolinkurl{tests/test_lqd_basis.py::test_svi_fit_lee_slopes_match_note};
 \nolinkurl{::test_lee_slopes_handle_underflowed_endpoint_scales}\\
+\addlinespace
+Buffered SVI cap: the $\beta=2$ boundary trap is closed &
+\cref{rem:boundary} &
+\nolinkurl{volfit/models/svi_jw/calibrate.py}\newline
+\nolinkurl{tests/test_svi_lee_boundary.py};
+certification case \texttt{svi\_lee\_boundary}\\
+\addlinespace
+Three extrapolated-region phases (measure / lean / repair) &
+\cref{rem:softwings} &
+\nolinkurl{volfit/calib/extrap.py} /
+\nolinkurl{volfit/models/projection.py}\newline
+\nolinkurl{tests/test_extrap_enforce.py};
+\nolinkurl{tests/test_wing_projection.py};
+certification case \texttt{extrap\_wing\_contracts}\\
 \addlinespace
 SVI Lee cap enforced &
 \cref{sec:choose} &
