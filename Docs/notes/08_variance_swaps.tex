@@ -54,6 +54,10 @@ the $1/K^2$ weighting placing most of the mass in the \emph{wings}. This is exac
 why a var-swap quote is informative: it constrains the total variance, a global
 moment that a handful of near-the-money option quotes barely touch. A smile can fit
 every quoted strike and still carry the wrong wing mass; the var-swap quote pins it.
+Two conventions keep the identity honest: ``fair strike equals expected total
+variance'' is the continuous-monitoring, continuous-path (diffusion) reading
+--- jumps and discrete sampling require the usual corrections, outside this
+machinery's scope (the same caveat Note~01 attaches to its closed form).
 
 \begin{heuristic}
 Think of the var-swap as a single, very reliable ``wing quote''. Liquid options
@@ -122,7 +126,9 @@ LQD/LV:
 The weight $\omega_{\text{vs}}$ is set to a chosen fraction (\texttt{varSwapWeightPct},
 default $10\%$) of the node's summed option-quote weight, so the var-swap
 contributes a controlled share of the total objective rather than an absolute,
-scale-dependent amount.
+scale-dependent amount. The same residual form serves the prior-persistence
+\emph{var-swap companion} (Note~13), which pulls toward yesterday's fair
+strike where today's quotes are silent.
 
 \begin{figure}[H]
 \centering
@@ -177,13 +183,23 @@ w_{\text{vs}}^{\text{LQD}}=-2\,\E[X]=-2\!\int_{-\infty}^{\infty}Q(z)\,\Lambda(z)
 \end{equation}
 whose integrand decays like $z\,e^{-|z|}$. No inversion, no extra grid --- it is
 essentially free. \Cref{tab:vs} confirms it agrees with the generic replication to
-\vsagreebp\ vol bps, validating both.
+\vsagreebp\ vol bps, validating both. Since committee revision R5 the
+\emph{derivative} is native too:
+$\partial w_{\text{vs}}/\partial\theta
+=-2\int(\partial Q/\partial\theta)\,\Lambda(1-\Lambda)\,\dd z$ rides the
+analytic Jacobian's existing nodal quantile sensitivities (Note~01), so a
+var-swap-targeted LQD fit no longer even falls back to finite differences ---
+value and gradient are both closed-form.
 
 \subsection{SVI and MCS: arithmetic curves}
 
 For SVI and Multi-Core Sigmoid (MCS) the total variance $w(k)$ is closed-form arithmetic
 (a hyperbola, or a log-cosh sum), so the replication \eqref{eq:repl} is cheap
 directly --- no inversion is needed because $w(k)$ is evaluated, not solved.
+(The \emph{evaluation} is cheap; the var-swap block still switches these two
+fits to the finite-difference Jacobian --- Note~02 --- which is affordable at
+five or $6+4R$ parameters in a way it never was for the inversion-heavy
+route.)
 
 \subsection{Local volatility: the source PDE}
 
@@ -196,9 +212,22 @@ backward parabolic solve,
 \label{eq:source_pde}
 \end{equation}
 with analytic sensitivities $\partial I/\partial\theta$ from the same multi-RHS
-machinery as the value solve, and --- unlike the replication --- no dependence on
-the truncation $x_{\max}$. It is gated by \texttt{varSwapMethod} (default
-\texttt{static} replication; the source PDE is the faster alternative).
+machinery as the value solve. Its virtue is stated carefully: $g(0,1)$ is
+determined by the diffusion \emph{around} $x=1$, so it is far less sensitive
+to coarsening or truncating the strike grid in the wings than the
+$K^{-2}$-weighted replication tail --- but it still runs on a finite domain
+with approximate boundary conditions, so ``no truncation dependence'' would
+be too absolute (Note~04 states the same scope). It is gated by
+\texttt{varSwapMethod} (default \texttt{static}; the source PDE is the
+wing-robust alternative a coarsened calibration grid needs; the parametric
+models always use the static replication).
+
+A var-swap quote also changes the LV fit's \emph{parameter set}: it frees
+the left-wing extrapolation slope $a$ as a bounded calibration variable
+(Note~04). The coupling is the economics of the instrument --- the quote
+constrains the global deep-put mass, and the freed slope is exactly the
+surface's degree of freedom for meeting it (test-locked: freeing $a$
+reduces the var-swap error).
 
 %======================================================================
 \section{Worked example}
@@ -249,7 +278,11 @@ sensitivities --- is what makes a var-swap target affordable \emph{inside} the
 optimizer loop rather than as a slow post-hoc check; and the \emph{relative}
 weighting (a fraction of the node's option weight) keeps the target scale-free
 across nodes with very different quote counts. Together they make one extra global
-constraint cost essentially nothing.
+constraint cost essentially nothing. The model-side error bar now exists
+too: the functional posterior band (Note~14) pushes a fitted slice's
+three-handle covariance through to a var-swap standard deviation, so a
+targeted quote can be read against the fit's own uncertainty rather than as
+a bare number.
 
 %======================================================================
 \section{Traceability}
@@ -292,6 +325,16 @@ LQD closed form (the case-file fix) &
 \eqref{eq:lqd_vs} &
 \nolinkurl{models/lqd/quadrature.py::var_swap_strike} &
 \nolinkurl{test_varswap.py} (all-models pull), agreement figure \vsagreebp\ bp\\
+\addlinespace
+LQD var-swap rows on the analytic Jacobian (R5) &
+\cref{sec:cheap} &
+\nolinkurl{models/lqd/jacobian.py} &
+\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_varswap_rows},
+\nolinkurl{::test_varswap_fit_ungated_and_agrees_with_fd}\\
+Freeing the left slope reduces the var-swap error (LV) &
+\cref{sec:cheap} &
+\nolinkurl{models/localvol/affine.py} &
+\nolinkurl{test_affine_grid_design.py::test_free_a_reduces_varswap_error}\\
 \bottomrule
 \end{longtable}
 \endgroup
