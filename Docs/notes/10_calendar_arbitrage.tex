@@ -24,9 +24,16 @@ curves ordered, and total implied variance non-decreasing at every fixed
 log-moneyness --- and, by Kellerer's theorem, exactly the condition for the
 fitted surface to be consistent with \emph{some} martingale. Two
 enforcements follow. For LQD the integrated upper-quantile curve \emph{is}
-the asset-share integral every built slice already carries, so the
-constraint is an elementwise array comparison; expiries are fitted
-nearest-to-farthest under a soft slack. For the SVI and Multi-Core Sigmoid
+the asset-share integral every built slice already carries --- a beautiful
+identity that turned out to be a trap when used for \emph{enforcement}:
+$G(\alpha)$ integrates the whole upper tail, so a $G$-space floor leaks the
+extrapolated wing back into the constraint, and an acutely convex front
+expiry dragged a far fit from $10.6$ to $1095$ vol bp before enforcement
+moved to \emph{support-confined price rows} at fixed strike, consumed by
+the default \emph{symmetric} solver --- independent fits, an
+identified-violation screen on common quote support, and a joint repair of
+only the violating runs (the sequential nearest-to-farthest build survives
+as explicit configuration). For the SVI and Multi-Core Sigmoid
 (MCS) overlays a \emph{model-agnostic} hinge enforces
 $w_{\text{far}}(k)\ge w_{\text{near}}(k)$ directly (the local-vol surface
 needs neither: positivity of its local variance is calendar-cleanliness,
@@ -72,7 +79,10 @@ conflict, and the diagnostic reports what slack was used.
 \item \texttt{enforceCalendar} off, or no previous slice, is byte-identical
 to independent fits.
 \item The constraint is sampled only where \emph{both} slices are pinned by
-data --- the confinement principle (Note~09).
+data --- the confinement principle (Note~09) --- and, for the LQD pair
+constraint, in \emph{price} space at fixed strike: a quantile-space
+comparison integrates the tail and re-imports the wing
+(\cref{sec:lqd}).
 \end{enumerate}
 \end{invariant}
 
@@ -127,7 +137,7 @@ implying a negative forward variance between them.
 \end{heuristic}
 
 %======================================================================
-\section{The LQD-exact enforcement}
+\section{The LQD constraint: an exact identity, and the space enforcement needs}
 \label{sec:lqd}
 
 \begin{proposition}[The asset share is the integrated quantile curve]
@@ -150,22 +160,61 @@ $A(z)$ --- they are the same object.
 \end{proof}
 
 So \cref{thm:faces}(iii) needs no new computation: every built slice already
-carries $A(z)$ on the shared quadrature grid, and the calendar constraint is
-an elementwise comparison of two arrays --- no quantile inversion, no
-per-strike call comparison --- with constraint points automatically dense in
-the wings (the grid is uniform in $z$, not $k$).
+carries $A(z)$ on the shared quadrature grid, and the calendar
+\emph{measurement} is an elementwise comparison of two arrays --- no
+quantile inversion, no per-strike call comparison --- with points
+automatically dense in the wings (the grid is uniform in $z$, not $k$).
+That is exactly what makes it the right \emph{diagnostic} --- and exactly
+what made it the wrong \emph{constraint}.
 
-The surface is fitted nearest-to-farthest. The constraint subgrid takes
-every \calstride th node ($\sim320$ points on the $8001$-node grid), and
-each new slice carries the soft squared-hinge slack
+For enforcement the identity is a trap, and the trap fired in production.
+The historical form threaded each new slice against its predecessor's floor
+on every \calstride th grid node,
 \begin{equation}
 \sqrt{W_{\text{cal}}}\,\max\!\big(A_i(z_m)-A_j(z_m),\,0\big),
 \qquad W_{\text{cal}}=\texttt{calendarWeight}=10^6,
 \label{eq:slack}
 \end{equation}
-keyed on the constraint $z$-\emph{coordinates}, so a slice calibrated on a
-coarser optimization grid enforces it by Hermite evaluation, bit-for-bit
-equivalent to the node-indexed form on the native grid.
+keyed on the constraint $z$-coordinates (Hermite-evaluated, exact on any
+optimization grid). But $G(\alpha)=A(z_\alpha)$ integrates the \emph{whole
+upper tail}: a comparison at any single $\alpha$ carries the near slice's
+extrapolated wing inside the integral, so the floor re-imports precisely
+the no-data region that \cref{sec:phantom}'s confinement had evicted ---
+the same lesson, one coordinate system over. The incident that convicted
+it: an acutely convex short-dated slice (an event week) dragged a far
+expiry from $10.6$ vol bp free to $1095$ under the full-grid floor, and a
+$z$-windowed $G$ floor removes only about half the drag, because the
+integral inside the window still carries the tail. Note~01 tells the full
+case file; certification case \texttt{symmetric\_calendar} locks the
+reproduction. The production constraint is therefore sampled in \emph{price
+space at fixed strike}, confined to the two slices' common quote support
+with a smooth taper,
+\begin{equation}
+\sqrt{W_{\text{cal}}}\;\mathrm{taper}_m\,
+\big(C_{\text{near}}(k_m)-C_{\text{far}}(k_m)\big)^{+},
+\label{eq:price_rows}
+\end{equation}
+(\nolinkurl{calib/calendar.py::confined_calendar_floor}); the quantile form
+\eqref{eq:slack} survives as a legacy threading option and as the free
+wing-dense diagnostic.
+
+Orchestration changed with the coordinates. The historical build ---
+nearest-to-farthest, each slice fitted against its predecessor's floor ---
+is traversal-order biased: the first slice is immutable and every later
+slice absorbs its errors. The production default is the \emph{symmetric}
+solver (\texttt{surfaceSolver=symmetric}, \nolinkurl{calib/symmetric.py}):
+fit every expiry independently, \emph{screen} each adjacent interface for
+an \emph{identified} violation --- normalized-call ordering on the common
+quote support, vega-normalized so the number reads as a vol gap --- and
+jointly Gauss--Newton-repair only the violation-connected components,
+stacking each member's own residual blocks plus the tapered interface rows
+\eqref{eq:price_rows}. A clean ladder is exactly its independent fits; a
+violation that survives weight escalation is \emph{irreducible slack} ---
+genuinely inconsistent inputs, reported per interface, never silently
+flattened. And the report speaks desk units: the worst identified violation
+comes with the strike where selling the near call against the far one pays
+most, converted to currency per contract, ticks and fraction of the quoted
+spread (\nolinkurl{calendar_violation_argmax}).
 
 %======================================================================
 \section{The model-agnostic enforcement}
@@ -356,13 +405,17 @@ short one (violation \calviolfree); the calendar floor cures it
 The convex-order characterization is classical; the contributions are
 implementation. Recognizing that the LQD asset share \emph{is} the
 integrated upper-quantile curve (\cref{prop:GisA}) makes the calendar
-constraint a free elementwise comparison rather than a grid of inverted
-call inequalities. Extending one calendar treatment to every parametric
-overlay through the total-variance floor \eqref{eq:wfloor} --- threaded
-ascending-$T$ through every calibration path --- gives the surface a uniform
-guarantee regardless of which model draws each slice. And the phantom
-calendar of \cref{sec:phantom} is the incident that crystallized the
-confinement principle now applied in three other places (Notes 04, 05, 09).
+\emph{measurement} a free elementwise comparison rather than a grid of
+inverted call inequalities. Extending one calendar treatment to every
+parametric overlay through the total-variance floor \eqref{eq:wfloor} ---
+threaded ascending-$T$ through every calibration path --- gives the surface
+a uniform guarantee regardless of which model draws each slice. And this
+note carries the confinement principle's \emph{two} founding incidents,
+which together sharpen it: the phantom calendar of \cref{sec:phantom}
+taught \emph{where} a two-curve constraint may be sampled (the traded
+range), and the acute weekly of \cref{sec:lqd} taught in \emph{which space}
+(price at fixed strike --- any integrated coordinate smuggles the tail back
+in). Confinement is a statement about range \emph{and} representation.
 
 %======================================================================
 \section{Traceability}
@@ -409,6 +462,16 @@ Coupled surface arbitrage-free &
 \cref{thm:faces} &
 \nolinkurl{api/workflow.py} &
 \nolinkurl{test_calibration_workflow.py::test_enforce_calendar_surface_is_arbitrage_free}\\
+\addlinespace
+Price-space confinement (cert.\ \texttt{symmetric\_calendar}); symmetric
+repair leaves clean ladders untouched &
+\eqref{eq:price_rows} &
+\nolinkurl{calib/calendar.py}, \nolinkurl{calib/symmetric.py} &
+\nolinkurl{test_calendar_confinement.py}, \nolinkurl{test_symmetric_surface.py}\\
+Desk-unit violation print names the cheapest offending trade &
+\cref{sec:lqd} &
+\nolinkurl{calib/calendar.py} &
+\nolinkurl{test_lqd_r5_controls.py} (calendar-argmax lock)\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -425,9 +488,13 @@ Coupled surface arbitrage-free &
 \multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
 \texttt{enforceCalendar} & \texttt{true} & Master toggle for calendar
 coupling (all calibration paths).\\
+\texttt{surfaceSolver} & \texttt{symmetric} & Screen $+$ joint GN repair of
+violation-connected runs (\cref{sec:lqd}); \texttt{sequential} = the legacy
+nearest-to-farthest threading.\\
 \texttt{calendarWeight} $W_{\text{cal}}$ & $10^{6}$ & Soft-hinge penalty
-strength. \emph{Not} the graph's edge-trust \texttt{calendarWeight} of
-Note~14, which shares the name.\\
+strength (confined price rows, interface rows, overlay floor). \emph{Not}
+the graph's edge-trust \texttt{calendarWeight} of Note~14, which shares the
+name.\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
 \texttt{CAL\_STRIDE} & $25$ & LQD constraint subgrid stride ($\sim320$
