@@ -27,6 +27,8 @@ $backend = Split-Path $PSScriptRoot
 $repo = Split-Path $backend
 $python = Join-Path $repo '.venv\Scripts\python.exe'
 $env:PYTHONUNBUFFERED = '1'
+# `-m backtest.graph_intraday` resolves the package from the working directory.
+Push-Location $backend
 
 # Arm -> (mode, half-life, memoryless) per the pre-registered table.
 $armSpec = @{
@@ -39,23 +41,28 @@ $armSpec = @{
     'intra_dyn_hl002' = @('layered_dynamic_harmonic', '0.02', $false)
 }
 
-foreach ($arm in ($Arms -split ',')) {
-    $arm = $arm.Trim()
-    if (-not $armSpec.ContainsKey($arm)) { throw "unknown arm '$arm'" }
-    $mode, $hl, $memoryless = $armSpec[$arm]
-    Write-Host ('=== {0}: mode={1} hl={2} memoryless={3}' -f $arm, $mode, $hl, $memoryless)
-    $argList = @('-m', 'backtest.graph_intraday', 'run',
-        '--tag', $arm, '--mode', $mode,
-        '--tickers', $Tickers, '--hub', $Hub,
-        '--regimes-r', $RegimesR, '--lit-idx', $LitIdx)
-    if ($Db) { $argList += @('--db', $Db) }
-    if ($null -ne $hl) { $argList += @('--half-life', $hl) }
-    if ($memoryless) { $argList += '--memoryless' }
-    & $python @argList
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host ('{0} exited {1} - rerun this script to resume (finished days skip)' `
-            -f $arm, $LASTEXITCODE)
-        exit $LASTEXITCODE
+try {
+    foreach ($arm in ($Arms -split ',')) {
+        $arm = $arm.Trim()
+        if (-not $armSpec.ContainsKey($arm)) { throw "unknown arm '$arm'" }
+        $mode, $hl, $memoryless = $armSpec[$arm]
+        Write-Host ('=== {0}: mode={1} hl={2} memoryless={3}' -f $arm, $mode, $hl, $memoryless)
+        $argList = @('-m', 'backtest.graph_intraday', 'run',
+            '--tag', $arm, '--mode', $mode,
+            '--tickers', $Tickers, '--hub', $Hub,
+            '--regimes-r', $RegimesR, '--lit-idx', $LitIdx)
+        if ($Db) { $argList += @('--db', $Db) }
+        if ($null -ne $hl) { $argList += @('--half-life', $hl) }
+        if ($memoryless) { $argList += '--memoryless' }
+        & $python @argList
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host ('{0} exited {1} - rerun this script to resume (finished days skip)' `
+                -f $arm, $LASTEXITCODE)
+            exit $LASTEXITCODE
+        }
     }
+    Write-Host 'All arms complete. Aggregate with: python -m backtest.graph_intraday report'
 }
-Write-Host 'All arms complete. Aggregate with: python -m backtest.graph_intraday report'
+finally {
+    Pop-Location
+}
