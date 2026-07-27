@@ -149,7 +149,10 @@ wing slopes regardless of $R$.
 \item The model reports its own butterfly diagnostic $g$ per fit; it is
 \emph{not} arbitrage-free by construction, and the put-wing hinge rows are
 exactly zero on any clean slice --- penalty off is byte-identical, penalty on
-over a clean slice unchanged to solver tolerance.
+over a clean slice unchanged to solver tolerance.  At the product boundary
+the same diagnostic acquires teeth: a dense traded-range certificate gates
+readiness and publish for the displayed slice, MCS included
+(\cref{sec:noarb}).
 \item The parameters are a means, not the object: hats are non-unique by design,
 and only the fitted \emph{curve} is contractual (\cref{sec:calib}).
 \end{enumerate}
@@ -358,7 +361,11 @@ construction}.  A signed hat can drive the raw variance negative (there is no
 positivity penalty in the fit) or, more commonly, break convexity locally, so
 the equivalence ``$g\ge0\iff$ non-negative density'' comes with conditions worth
 stating: it presumes $v_R>0$, a smooth slice, and appropriate wings, and on a
-finite grid $g$ is a \emph{diagnostic}, never a global certificate.
+finite grid $g$ is a \emph{diagnostic}, never a global certificate.  That is
+a statement about the whole real line; on the traded range, a dense sampling
+of the same functional is exactly what production now enforces as a gate,
+and the distinction between the two scopes is drawn at the end of this
+section.
 
 \begin{remark}[Which curve's $g$?]
 Positivity and the floor interact in code.  Pricing floors the variance at
@@ -431,12 +438,22 @@ magnitude --- the backtest measured a median wing $\min g$ moving from
 $\approx\mcscorrwingminbefore$ to $\approx\mcscorrwingminafter$.
 \end{heuristic}
 
-Beyond the core diagnostic and this penalty, two further layers stand at
-increasing distance from the fit: an always-on advisory that measures the
-remaining extrapolated-region $g<0$ per fit, and an export-only wing projection
-that raises exported prices to convexity while leaving the fitted core pinned
-(Note~09).  None of them turns a fitted MCS slice into a certified
-butterfly-free object; together they bound, measure, and clean at the boundary.
+Beyond the core diagnostic and this penalty, three further layers stand at
+increasing distance from the fit.  An always-on advisory measures the
+remaining extrapolated-region $g<0$ per fit.  An export-only wing projection
+raises exported prices to convexity while leaving the fitted core pinned
+(Note~09).  And --- the layer with teeth --- every slice a user sees is
+re-measured by the display \emph{certificate}: Durrleman's $g$ from the
+analytic jets, sampled at 801 points across the traded strike range with
+tolerance $g\ge-10^{-4}$; a failing slice fails readiness, and the publish
+gate refuses the surface outright.  The certificate is a statement about the
+sampled grid on the traded range, no more --- but within that scope it is
+binding, for MCS exactly as for the other families.  What MCS does
+\emph{not} yet have is the automatic certified \emph{repair} refit that SVI
+runs when its certificate fails; that asymmetry is an open rider, and until
+it closes the fitter's defences here are the calibration bounds, the
+amplitude ridge, the put-wing regularizer, and the certificate's hard gate
+itself.
 
 %======================================================================
 \section{Calibration}
@@ -497,7 +514,9 @@ fit (Note~07), var-swap target (Note~08), the model-agnostic calendar hinge
 (Note~10), prior persistence (Note~13), the put-wing regularizer
 \eqref{eq:wingpen}, and the default-off tapered extrapolated-region fences
 (Notes~09--10) --- each byte-identical to its own absence, so the sigmoid
-overlay is no longer a prior exception.
+overlay is no longer a prior exception.  The one block MCS does \emph{not}
+get is the automatic certified belly repair that SVI runs when the display
+certificate fails --- the open rider of \cref{sec:noarb}.
 
 \begin{perfbox}
 The dominant cost of an $R$-core fit is the $(6+4R+1)$-evaluation
@@ -565,9 +584,10 @@ concrete on real data: on liquid index chains the extra cores chase quote noise
 and manufacture butterfly arbitrage (the analytic diagnostic flags $g<0$ on a
 majority of nodes at $R\ge2$ on dense data), while the base $R=0$ behaves
 comparably to SVI.  The honest marginal number for the third core, from the
-spike replay: out-of-sample RMS \mcscorroosbefore$\to$\mcscorroosafter\ bp --- a
-$0.41$ bp gain --- for roughly four times the fit cost
-($\mcscorrcostrtwo\to\mcscorrcostrthree$\,ms in that harness) and worse arbitrage.
+spike replay: out-of-sample RMS \mcscorroosbefore$\to$\mcscorroosafter\ bp ---
+a gain of a fraction of a basis point --- for roughly the fourfold fit cost
+the two harness timings show
+($\mcscorrcostrtwo\to\mcscorrcostrthree$\,ms) and worse arbitrage.
 Not negative precision, but nowhere near worth it.  Hence the hard cap at two,
 on top of the identifiability cap, the amplitude ridge, and the $g$ diagnostic.
 
@@ -683,8 +703,10 @@ the density is the Breeden--Litzenberger second derivative of price, not a
 re-reading of the vol curve.)
 
 Limitations, stated plainly.  MCS is \emph{not} arbitrage-free by construction:
-signed hats can drive variance negative or break convexity, so $g$ is a reported
-diagnostic and the wing penalty a soft, non-guaranteeing fence
+signed hats can drive variance negative or break convexity; the wing penalty
+is a soft, non-guaranteeing fence, and while the traded-range certificate now
+hard-gates what a user can see or publish, MCS still lacks the automatic
+certified repair SVI carries when that gate fails --- its open rider
 (\cref{sec:noarb}).  Its wings are wing-\emph{neutral}, not Lee-guaranteed:
 admissibility of the preserved base slopes is a separate check
 \eqref{eq:betak}.  It over-fits liquid data when the slider is pushed, which is
@@ -767,7 +789,12 @@ evidence for these figures --- the regenerated two-core example has its own lock
 The penalty rows are locked with stated tolerances: penalty-off is
 byte-identical; penalty-on over a clean slice is unchanged to $10^{-9}$
 relative; and the repair test accepts a repaired $\min g\ge-0.05$, not exactly
-zero.  A finite diagnostic grid is not a global proof.
+zero.  Two tolerances now coexist and must not be conflated: the $-0.05$
+above is the \emph{wing-repair regression} bar (orders of magnitude better
+than the injected violation), while the display \emph{certificate} of
+\cref{sec:noarb} demands $g\ge-10^{-4}$ at all 801 traded-range points
+before a slice is publishable.  A finite diagnostic grid is not a global
+proof.
 
 \begingroup
 \small
@@ -817,6 +844,14 @@ Surfaced slider clamped to two (schema boundary, every parse) &
 \cref{sec:calib} &
 \nolinkurl{api/schemas.py}\newline
 \nolinkurl{test_siv_wing_penalty.py::test_cores_clamped_to_two}\\
+\addlinespace
+Traded-range certificate gates readiness and publish for displayed MCS
+slices &
+\cref{sec:noarb} &
+\nolinkurl{models/diagnostics.py::belly_certificate}\newline
+\nolinkurl{api/quality.py} /
+\nolinkurl{tests/test_belly_certificate.py}\newline
+certification case \texttt{belly\_certificate}\\
 \addlinespace
 Put-wing hinge repairs wing arb (to $\min g\ge-0.05$); clean slices unchanged
 ($10^{-9}$ rel); off by library default (byte-identical) &
