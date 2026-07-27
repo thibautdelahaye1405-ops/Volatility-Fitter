@@ -306,9 +306,12 @@ Note~14 &
 \endgroup
 
 \noindent One honest gap: the local-vol \emph{view}'s composite transport
-(\nolinkurl{api/affine_transport.py}) has no dedicated unit test --- its three
-ingredients (curve rule, quote rule, grid rule) are each locked above, and the
-composition is covered only at the API level.
+(\nolinkurl{api/affine_transport.py}) still has no dedicated unit test ---
+its three
+ingredients (curve rule, quote rule, grid rule) are each locked above, and
+an end-to-end integration test
+(\nolinkurl{test_affine_lv_surface_transports_without_refit}) drives the
+full composite through the API; the unit-level lock remains open.
 
 \appendix
 %======================================================================

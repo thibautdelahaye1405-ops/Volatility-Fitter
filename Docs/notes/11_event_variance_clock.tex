@@ -335,8 +335,11 @@ valuation (cert.\ \texttt{0dte\_exit\_gates}) &
 \caption{Event-clock hyperparameters.}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
-\multicolumn{3}{l}{\emph{Surfaced (OptionsSettings)}}\\ \midrule
-\texttt{events} & empty & List of \texttt{EventSpec}$(t_e,N_e,\text{label})$; $N_e$ = extra equivalent days.\\
+\multicolumn{3}{l}{\emph{Surfaced}}\\ \midrule
+\texttt{events} & empty & List of
+\texttt{EventSpec}$(t_e,N_e,\text{label})$; $N_e$ = extra equivalent days.
+Persisted \emph{per ticker} (its own endpoint and version), not in the
+global options.\\
 \texttt{normalizeEvents} & off & Rescale all days to a fixed $365$ one-year budget \eqref{eq:normalize}.\\
 \texttt{maxExpiry} & --- & Auto-calibrate horizon: one candidate event per
 expiry at or before it (\cref{sec:thread}).\\

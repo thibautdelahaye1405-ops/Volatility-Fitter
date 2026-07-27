@@ -49,10 +49,13 @@ indexes/ETFs --- the product case --- gain $+8$ to $+14$ bps in the
 August-2024 spike and $+3.8$ to $+7.2$ fully out-of-sample in the October-2022
 bear, with unbiased standardized residuals ($\bar\zeta\approx0$). A case file
 documents the harness topology defect that had previously masked the
-cross-asset path entirely. The solver documented here is the default
-\texttt{smooth\_field} operator; the shipped menu also carries an opt-in
-pairwise \emph{precision-message} operator and an opt-in layered
-dynamic-harmonic pipeline, both held-out-adjudicated and both documented
+cross-asset path entirely. The solver documented here is the
+\texttt{smooth\_field} operator --- the wire default, byte-identity anchor
+and explicit rollback; the desk-facing options default has been the
+pairwise \emph{precision-message} operator since 2026-07-27, and the menu
+also carries an opt-in layered
+dynamic-harmonic pipeline --- all held-out-adjudicated and the richer two
+documented
 from scratch in this note's companion editions --- the menu and its recorded
 verdicts are \cref{sec:menu}. A traceability table ties every claim to its
 module and test.
@@ -729,9 +732,10 @@ residual.
 \section{The operator menu, and how its defaults were chosen}
 \label{sec:menu}
 
-Everything above is the default propagation operator ---
-\texttt{smooth\_field}, the increment prior \eqref{eq:Qdelta}, byte-identical
-at its defaults to the solver the backtests validated. It is one entry in a
+Everything above is the \texttt{smooth\_field} operator ---
+the increment prior \eqref{eq:Qdelta}, byte-identical
+at its defaults to the solver the backtests validated; the wire default on
+a bare solve request, and the explicit rollback. It is one entry in a
 shipped menu (\texttt{propagationMode}), and the menu's history is worth
 recording because every default in it was set by held-out adjudication, not
 preference.
@@ -746,9 +750,19 @@ baseline-uncertainty-enters-once --- are locked three times over: against a
 brute-force Gaussian reference, through the production assembly, and through
 the HTTP API; the configuration lifecycle (draft/active envelope, legacy-blob
 migration, corrupt-blob tolerance) round-trips under test. All of it is
-certification case \texttt{graph\_precision\_messages}. The companion
+certification case \texttt{graph\_precision\_messages}.  Its own
+pre-registered \emph{daily} gate did not clear (an RMS tie with narrow
+bands, recorded verbatim in the findings file), yet on 2026-07-27 the
+desk-facing \emph{options} default flipped to this operator --- on the
+intraday async replay, where the smoothness field measures nearly inert
+(its zero-innovation anchor at day-scale stiffness shrinks intraday
+innovations to nothing) while the messages carry the signal at $65.8$ bp
+with honest bands; the wire default, replay and every byte-identity lock
+keep \texttt{smooth\_field}.  The companion
 \emph{messages} edition of this note documents the operator from scratch;
-the \emph{three priors} edition tells all three modes as one story.
+the \emph{three priors} edition tells all three modes as one story ---
+and since 2026-07-27 the lecture editions are the prevailing notes, with
+this numbered series kept as reference.
 
 \texttt{layered\_dynamic\_harmonic} adds temporal, directed and harmonic
 structure on top of the messages, with a persistent residual store (SQLite,
@@ -924,9 +938,12 @@ Auto-lattice edge trusts (calendar vs cross-ticker). \emph{Not} the LQD
 calendar-slack penalty of Note~10, which shares the name
 \texttt{calendarWeight} in \texttt{OptionsSettings}.\\
 \texttt{flatAtm} & \texttt{false} & Allow the flat-ATM diagnostic baseline.\\
-\texttt{propagationMode} & \texttt{smooth\_field} & The operator menu
+\texttt{propagationMode} & \texttt{smooth\_field} & The operator menu on
+the wire
 (\cref{sec:menu}): \texttt{precision\_messages} / \texttt{hybrid} /
-\texttt{layered\_dynamic\_harmonic} opt-ins. The message operator's policy
+\texttt{layered\_dynamic\_harmonic}.  The \emph{options} key
+\texttt{graphPropagationMode} seeds \texttt{precision\_messages} since
+2026-07-27. The message operator's policy
 knobs (amplitudes, precision families, calendar policy, message edges) ride
 the request/policy envelope; the \emph{messages} edition carries their
 atlas.\\

@@ -79,9 +79,10 @@ three modes: \texttt{off} (byte-identical to the feature never existing),
 \item \textbf{Graph smile-extrapolation.} The headline differentiator (Note~14):
 a transported prior plus the lit-node calibration innovation are propagated
 through a \emph{directed Bayesian graph} to reconstruct the \emph{dark} nodes.
-The propagation operator is itself a menu --- the default
-\texttt{smooth\_field} increment prior, an opt-in pairwise
-\emph{precision-message} operator, and an opt-in layered dynamic-harmonic
+The propagation operator is itself a menu --- the pairwise
+\emph{precision-message} operator (the options default since 2026-07-27),
+the \texttt{smooth\_field} increment prior (the wire default and explicit
+rollback), and an opt-in layered dynamic-harmonic
 pipeline --- with an optional optimal-transport regularization, off by default
 ($\lambda=0$). The defaults here were chosen by held-out adjudication, not
 preference (\cref{sec:graph}).
@@ -358,21 +359,30 @@ default: \texttt{graphLambdaScale}$\,=0$) and the leave-one-out backtest that
 measures its skill.
 
 The propagation operator is versioned and adjudicated, and its history is a
-small case study in how defaults are set here. The default,
-\texttt{smooth\_field}, is the increment prior of Note~14, byte-identical at
-its defaults to the solver the backtests validated. Two richer operators ship
-as explicit opt-ins. \texttt{precision\_messages} replaces the smoothness
+small case study in how defaults are set here.
+\texttt{precision\_messages} --- the options default since 2026-07-27 ---
+replaces the smoothness
 field by pairwise \emph{relation factors} (calendar ladders, index$\to$name
 pairs) whose per-edge precisions are first-class policy objects with their own
 editor, live preflight and draft/active lifecycle; its golden acceptance
 contracts --- full transmission, competing signals, dead-informer zero
 dilution, baseline-uncertainty-enters-once --- are locked three times over,
 against a brute-force Gaussian reference, through the production assembly, and
-through the HTTP API. The layered dynamic-harmonic pipeline adds temporal,
-directed and harmonic structure on top of the messages; its pre-registered A/B
-campaign returned a \emph{negative} verdict at the daily horizon (residual
-memory monotone against the half-life, optimum $H\to0$), so it stays opt-in
---- the verdict is recorded, not overwritten, an instance of the ``measure
+through the HTTP API.  Its own pre-registered \emph{daily} gate did not
+clear (RMS tie, narrow bands, recorded verbatim); the default moved on the
+intraday async replay, where the smoothness field measures nearly inert
+while the messages carry the signal --- and \texttt{smooth\_field}, the
+increment prior of Note~14 and the solver the backtests validated, stays as
+the wire default, the byte-identity anchor and the explicit rollback.
+The layered dynamic-harmonic pipeline adds temporal,
+directed and harmonic structure on top of the messages; its pre-registered
+daily A/B
+campaign returned a \emph{negative} verdict at that horizon (residual
+memory monotone against the half-life, optimum $H\to0$), and the intraday
+replay then \emph{validated} the memory mechanism (interior optimum near a
+tenth of a day, OU-shaped decay) while measuring its directed spatial
+carrier behind the messages on the ETF triangle --- so it stays opt-in,
+both verdicts recorded, not overwritten, an instance of the ``measure
 first'' rule of \cref{sec:rules}. Even the in-app autotune is the production
 leave-one-out harness, scoring candidate reach $\eta$ on real hold-outs rather
 than on a synthetic sandbox.
@@ -625,13 +635,15 @@ through the shared \texttt{figures/style.py} and their captions state the
 lesson, not the axes. Notes cross-reference each other (this note's
 \cref{tab:caps} is the index) but never depend on one another's internals.
 Numbers and plots are \emph{measured}, not copied: where a fresh run differs
-from an older design note, the fresh run wins. Beyond the reference series,
-most topics also carry one or more standalone \emph{lecture editions} ---
-second tellings from a fresh angle (Note~01's percentile ruler, Note~02's two
+from an older design note, the fresh run wins. Every topic also carries one
+or more standalone \emph{lecture editions} ---
+tellings from a fresh angle (Note~01's percentile ruler, Note~02's two
 languages and its moment map, Note~14's three priors for a dark universe,
 \dots) --- written to the register codified in
-\texttt{Docs/notes/LECTURE\_REWRITE\_GUIDE.md}; the numbered notes remain the
-normative reference. This overview is the deliberate
+\texttt{Docs/notes/LECTURE\_REWRITE\_GUIDE.md}.  As of 2026-07-27 the
+lecture editions are the \emph{prevailing} technical notes --- audited
+against the code to the same standard --- and the numbered series,
+this overview included, is kept as reference.  This overview is the deliberate
 exception to the skeleton --- it is a map, not a theorem, so it carries no
 boxed central equation, no traceability table and no performance or
 reference-implementation appendix; its single appendix is the control index
@@ -740,7 +752,7 @@ data-only, then refit) & 13\\
 \texttt{graphLambdaScale} $\lambda$ & $0.0$ & graph OT regularization ($0=$ OT
 term off) & 14\\
 \texttt{graphNu} $\nu$ & $0.1$ & graph UOT source allowance & 14\\
-\texttt{graphPropagationMode} & \texttt{precision\_messages} &
+\texttt{graphPropagationMode} & \texttt{precision\_\allowbreak messages} &
 propagation-operator seed (flipped 2026-07-27 on the intraday replay
 evidence; \texttt{smooth\_field} = explicit rollback, \texttt{hybrid}
 config-only; the layered dynamic-harmonic pipeline is a per-request

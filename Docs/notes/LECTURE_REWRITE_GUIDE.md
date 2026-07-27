@@ -165,4 +165,8 @@ stated in the prose; bibliography last.
 | 14 Graph | `14_graph_three_priors.tex` | three priors for a dark universe: the propagation-mode fork as an assertion dial (smoothness → contracts → dependencies); layered = the desk's native tongue (direction/memory/rigidity), smooth field = fewest assumptions + adjudicated default, messages = the contract middle; async A/B story as the separating example; live app screenshots (first edition to embed them) | `gen_graph_three_priors.py` |
 | 15 Kalman | `15_kalman_computed_trust.tex` | trust is computed, not configured: two honest covariances, the gain as an output, and the ζ audit; session-clock + probe-gate currency | `gen_kalman_trust.py` |
 
-No edition has been declared the replacement of its original.
+Since 2026-07-27 the lecture editions are the **prevailing** technical
+notes — each audited against the code to the same standard as the numbered
+series (see the lecture-notes consistency pass) — and the numbered
+originals are kept as reference. A new rewrite still needs a genuinely new
+angle.

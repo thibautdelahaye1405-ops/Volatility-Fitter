@@ -120,9 +120,11 @@ gains, so production runs the update per handle. A second,
 \KalStepsVTwo-step sweep with the adaptive clock on then scored active mode
 itself: the one-stage MAP is the best denoiser wherever denoising is the job
 --- on high-vol contradiction days \KalActContraHigh\ vs \KalRawContraHigh\ bp
-for the raw fit it consumes --- and its one measured weakness, shock lag
-(the adaptive clock is overlay-only), is the flagged item before any
-active-by-default.
+for the raw fit it consumes --- and its one measured weakness, shock lag,
+has since received its shipped fix (a fit-path surprise gate: a fit-free
+ATM probe for the level row, the previous step's realized innovation for
+the shape rows); full-regime validation of that gate is the flagged item
+before any active-by-default.
 \end{abstract}
 
 \tableofcontents
@@ -931,13 +933,18 @@ blend (\KalActContraSpike\ vs \KalOvlContraSpike\ bp) though not the raw fit
 (\KalRawContraSpike\ bp) --- all with honest uncertainty ($\zeta$ std
 \KalActZetaMin--\KalActZetaMax\ over those cells). Fitting quotes and
 prediction jointly beats blending them after the fact, exactly as
-\cref{prop:nodouble} says it should. The measured weakness is the shock
+\cref{prop:nodouble} says it should. The measured weakness was the shock
 scenario (\KalActShockSpike--\KalActShockHigh\ bp lag in the spike and
 high-vol regimes): the MAP prior weight is fixed before the measurement
-exists, so the innovation-gated adaptive $Q$ --- overlay-only by
-construction --- cannot open for it. Extending the gate to the active path
-(gating on the previous step's innovation, or a cheap ATM pre-probe) is
-\emph{the} remaining item before any active-by-default discussion.
+exists, so the original innovation-gated adaptive $Q$ --- overlay-only by
+construction --- could not open for it. That extension has since shipped:
+the active path prices surprise \emph{before} fitting, gating the level
+row on a fit-free ATM probe and the shape rows on the previous step's
+realized innovation.  Its evidence is unit-level --- the harness's
+synthetic shock perturbs the thinned fit inputs, not the prepared mids
+the probe reads, so the existing sweep under-reports it by construction
+--- and a full-regime validation is \emph{the} remaining item before any
+active-by-default discussion.
 
 %======================================================================
 \section{What is original here}
@@ -978,10 +985,10 @@ door. The clock process noise is a fixed scalar; the shipped
 innovation-gated adaptive $Q$ (\cref{sec:backtest}) recovers genuine jumps,
 but it inherits the measurement's trustworthiness --- on wide-spread
 illiquid chains it deliberately stays quiet, so those names still lag real
-moves --- and it is overlay-only: the active MAP's prior weight is fixed
-before the measurement exists, so active mode lags genuine shocks
-(\KalActShockSpike--\KalActShockHigh\ bp in the v2 sweep) until the gate is
-extended to the fit path. Short-dated nodes ($\le30$ DTE) are dominated by quote and
+moves.  The fit-path extension of the gate has shipped (probe-gated level,
+innovation-gated shape); the recorded active-mode shock lag
+(\KalActShockSpike--\KalActShockHigh\ bp in the v2 sweep) predates it, and
+the gate's full-regime validation is still pending. Short-dated nodes ($\le30$ DTE) are dominated by quote and
 de-Americanization noise; the shipped $\sqrt{30/\mathrm{DTE}}$ noise floor
 sizes $R_t$ honestly there, but honest uncertainty is not signal --- the
 short end remains the filter's weakest bucket, and the per-handle clock

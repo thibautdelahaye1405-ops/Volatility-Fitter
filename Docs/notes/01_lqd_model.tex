@@ -1441,7 +1441,9 @@ def build_slice(z, L, R, a):
 def call_price(k, z, u, Q, A):
     # C(k) = A(z_k) - e^k (1 - u_k)
     zk = np.interp(k, Q, z)                  # invert Q(z_k) = k
-    return np.interp(zk, z, A) - np.exp(k)*(1 - expit(zk))
+    # cash leg in log space: (1 - expit(zk)) rounds to 0 past zk ~ 36.7
+    # and steps the far wing; production uses exp(k - logaddexp(0, zk))
+    return np.interp(zk, z, A) - np.exp(k - np.logaddexp(0.0, zk))
 \end{lstlisting}
 
 \begin{thebibliography}{9}
