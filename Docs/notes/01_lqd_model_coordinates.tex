@@ -1078,8 +1078,8 @@ are smooth enough for clean finite-difference Greeks; the strike root
 $Q(z_k)=k$ can be polished by Newton on the interpolant to machine
 precision (which is what will make the ATM handles of \cref{sec:handles}
 \emph{exact} rather than grid-limited); and because Hermite interpolation
-returns the nodal value exactly at a node, a constraint expressed at grid
-$z$-values --- the calendar floor of \cref{sec:calendar} --- matches its
+returns the nodal value exactly at a node, any diagnostic expressed at grid
+$z$-values --- the ledger comparison of \cref{sec:calendar} --- matches its
 node-indexed form bit for bit, whatever grid the optimizer runs on.
 
 \begin{perfbox}
@@ -1188,8 +1188,8 @@ call-price bounds \lqdrefcertbounds, butterflies (four widths)
 \lqdrefcertfly, digitals \lqdrefcertdig, and agreement with a $4\times$
 finer reference quadrature at random sub-grid strikes \lqdrefcertfine\ ---
 one tolerance set, \emph{uniform across the classes}, quotable as: the
-implementation's residual arbitrage is bounded by about $10^{-9}$ of the
-forward.
+implementation's residual arbitrage is bounded below $10^{-8}$ of the
+forward (the worst measured class sits at \lqdrefcertfine).
 
 \paragraph{What the audit caught.}  Run first against an earlier build, the
 same battery failed --- and the failure is worth a paragraph precisely
@@ -1560,7 +1560,7 @@ Band data block (hinge $+$ mid anchor; Note~07) & \texttt{fitMode}
 High-order ridge & \texttt{regLambda}$>0$ (rows $n\ge4$) & coefficient units &
 analytic\\
 Calendar slack (Note~10) & \texttt{enforceCalendar} $+$ a nearer fitted expiry
-& upper share (normalized price) & analytic\\
+& normalized price at fixed strike, support-confined and tapered & analytic\\
 $A_R$ soft barrier & always (one row) & dimensionless & analytic\\
 \midrule
 Market var-swap (Note~08) & \texttt{varSwapEnabled} $+$ an active quote &
@@ -1598,9 +1598,13 @@ a single quadrature on the grid the slice already owns, with integrand
 decaying like $z\,e^{-|z|}$ (\texttt{quadrature.py::var\_swap\_strike}).  Two
 qualifications keep the claim honest.  First, this native route is
 dramatically cheaper than the generic strike replication of Note~08 --- which
-would re-solve implied variance on a strike grid at every Jacobian column
---- but activating the var-swap block also forfeits the analytic Jacobian
-(\cref{tab:stack}), so a var-swap fit is not literally as cheap as a mid fit.
+would re-solve implied variance on a strike grid at every Jacobian column ---
+and, since the sensitivity pass of \cref{sec:jacobian} already owns the nodal
+quantile derivatives, the row's own gradient
+$\partial w_{\text{vs}}/\partial\theta
+=-2\int(\partial Q/\partial\theta)\,u(1-u)\,\dd z$
+rides the analytic Jacobian too (\cref{tab:stack}): a var-swap fit really is
+as cheap as a mid fit.
 Second, the identity prices the \emph{log contract}: its correspondence with
 a realized-variance swap assumes continuous monitoring of a continuous
 (diffusive) path; jumps and discrete sampling take the usual corrections,
@@ -1614,8 +1618,8 @@ The dominant cost of \eqref{eq:calib_objective} used to be the Jacobian:
 scipy rebuilt the entire quadrature pipeline $P+1$ times per iteration to
 finite-difference it, with $P=N+1$ the parameter count.  The Vol-Fitter
 instead propagates the analytic Jacobian of the core residual stack --- data
-block (mid or band), ridge, calendar slack, barrier --- in \emph{one}
-quadrature pass.  The key is a cancellation identity, and it is the cleanest
+block (mid or band), ridge, calendar slack, barrier, and both var-swap rows
+--- in \emph{one} quadrature pass.  The key is a cancellation identity, and it is the cleanest
 piece of mathematics in the implementation.
 
 \subsection{The cancellation identity}
@@ -1812,15 +1816,24 @@ continuum of option inequalities has become the pointwise ordering of two
 curves that are already on the grid --- the same ledger that priced the
 calls and carried the Jacobian, now doing its third job.
 
-Enforcement follows the geometry.  The surface is built
-nearest-to-farthest: each new slice is fitted subject to
-$G_j(u_m)\ge G_i(u_m)$ on a dense rank grid (per-node slack tolerance zero
-in production), as the soft calendar block of \cref{tab:stack} with penalty
-weight \texttt{calendarWeight}; the constraint is evaluated at $z$-values,
-so it is exact whatever grid the optimizer runs on
-(\cref{sec:quadrature}).  Rank space is also the better-conditioned place to
-test: no implied-volatility inversion at any strike, and full meaning
-retained in the far wings, exactly where inversion goes blind.
+Enforcement, however, deliberately does \emph{not} follow the geometry, and
+the reason is a lesson worth stating carefully.  The ledger comparison is
+exact as a \emph{measurement} --- rank space needs no implied-volatility
+inversion at any strike and keeps full meaning in the far wings, exactly
+where inversion goes blind --- but as a \emph{constraint} it is a trap:
+$G(u)$ integrates the entire upper tail, so comparing two ledgers at any
+single rank drags both slices' extrapolated wings into the constraint, and
+a fit can be pushed around by wings nobody quoted.  On an acute short-dated
+pair the coupled drag from a full-grid ledger floor measured two orders of
+magnitude above the uncoupled fit, and vanished again once the same
+ordering was read at fixed strikes; Note~10 owns that incident and its
+certification lock.  Production therefore enforces the order as the soft
+calendar block of \cref{tab:stack} in \emph{price} space: tapered hinge
+rows on $C_{\text{near}}(k_m)-C_{\text{far}}(k_m)$ at fixed strikes over
+the two slices' common quote support, with penalty weight
+\texttt{calendarWeight}.  The ledger keeps its two other jobs --- pricing
+and the Jacobian --- and remains the wing-dense \emph{diagnostic}; what it
+no longer does is push the optimizer.
 
 \Cref{fig:calendar} shows the whole story on fitted slices, and it is worth
 reading deliberately, panel by panel.  Panel A draws the ledgers themselves
@@ -1850,13 +1863,17 @@ $\lqdgeommingapcross$ around the $u\approx\lqdgeomugapcross$ rank (shaded),
 and that dip is a concrete trade, a calendar spread at the corresponding
 strikes that the crossed surface prices \emph{negative}.  Each smile on its
 own looks perfectly respectable; only the ledger comparison exposes the
-crossing.  Dashed blue, the same crossed quotes refitted \emph{with} the
-production soft floor active: the fit concedes what the quotes demand, the
-gap is pressed against zero from below, and the residual violation is
+crossing.  Dashed blue, the same crossed quotes refitted with a soft
+\emph{ledger-space} floor active --- the historical enforcement route,
+retired for production in favour of the confined price rows above, but
+still the cleanest illustration of what any finite-weight hinge does: the
+fit concedes what the quotes demand, the gap is pressed against zero from
+below, and the residual violation is
 $\lqdgeommingaphealed$ --- four orders of magnitude smaller, but not
-exactly zero, because the floor is a finite-weight hinge, not a hard
+exactly zero, because a floor with finite weight is a hinge, not a hard
 constraint.  That residual is the honest signature of \emph{soft}
-enforcement, and it is the subject of the closing paragraph.
+enforcement, whichever space carries the rows, and it is the subject of the
+closing paragraph.
 
 \begin{figure}[H]
 \centering
@@ -1867,9 +1884,12 @@ near at every rank --- is exactly the value ordering of every calendar
 spread.  Panel B: the calendar gap for three fits: the legitimate pair
 (green, minimum $\lqdgeommingaplegit$), a crafted crossed pair (red; the
 shaded dip to $\lqdgeommingapcross$ is a free calendar spread hiding between
-two respectable-looking smiles), and the crossed quotes refitted under the
-production soft floor (dashed blue, residual violation
-$\lqdgeommingaphealed$: pressed to zero, softly).}
+two respectable-looking smiles), and the crossed quotes refitted under a
+soft ledger-space floor (dashed blue, residual violation
+$\lqdgeommingaphealed$: pressed to zero, softly).  The dashed curve
+illustrates hinge mechanics; production enforcement has since moved to
+support-confined price rows, for the tail-contamination reason the text
+records.}
 \label{fig:calendar}
 \end{figure}
 
@@ -1882,9 +1902,12 @@ violation rather than destroy the quote fit (the dashed curve of
 \cref{fig:calendar} retains exactly $\lqdgeommingaphealed$).  A sequential
 sweep constrains each expiry against an already-fitted neighbour, so
 refitting an early expiry can stale every later constraint --- which is why
-the production surface path screens the finished ladder and \emph{jointly}
-repairs any violation-connected group of slices, rather than trusting the
-one-way pass.  And the whole coupling is a user toggle, so off means off.
+the production surface path fits every expiry independently, screens the
+finished ladder, and \emph{jointly} repairs any violation-connected group
+of slices rather than trusting a one-way pass (the symmetric solver, the
+shipped default; the nearest-to-farthest sequential sweep survives as
+explicit legacy configuration).  And the whole coupling is a user toggle,
+so off means off.
 Residual violations are measured and reported by the surface diagnostics
 rather than assumed away --- and, as of this revision, in the units a desk
 prices: alongside the normalized-price violation, each node reports the
@@ -1894,9 +1917,11 @@ the source chain quotes a tick), and as a fraction of the local bid--ask
 price width at $K^{\ast}$ --- so ``violation $10^{-6}$'' resolves into
 ``a tenth of a tick, a fortieth of the spread: unharvestable'' or into a
 number that stops a publish.  Note~10 develops the
-model-agnostic calendar machinery (and the subtlety that the variance floor
-must be confined to the traded strike range); here we record only that for
-LQD the natural constraint object is the ledger the model already owns.
+model-agnostic calendar machinery, the confinement incident, and its
+certification lock; here we record only that for LQD the natural
+\emph{measurement} object is the ledger the model already owns --- and that
+production learned, at measured cost, not to let the measurement double as
+the constraint.
 
 %======================================================================
 \section{Case files}
@@ -2284,10 +2309,14 @@ Double-hat event smile: bimodal density recovered &
 \nolinkurl{models/lqd/calibrate.py}\newline
 \nolinkurl{test_lqd_pricing.py::test_double_hat_density_is_bimodal}\\
 \addlinespace
-Calendar floor exact at constraint $z$-values &
+Support-confined price floor; symmetric screen-and-repair surface path &
 \eqref{eq:calendar} &
 \nolinkurl{calib/calendar.py}\newline
-\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_calendar}\\
+\nolinkurl{calib/symmetric.py}\newline
+\nolinkurl{test_lqd_jacobian.py::test_jacobian_matches_fd_calendar}\newline
+\nolinkurl{test_calendar_confinement.py} /
+\nolinkurl{test_symmetric_surface.py}\newline
+certification case \texttt{symmetric\_calendar}\\
 \addlinespace
 Endpoint/logistic charts: roundtrip, wall unreachable, chart-independent
 optimum (incl.\ a 12-node live SPY/NVDA/AAPL validation,
@@ -2388,9 +2417,10 @@ analytic Jacobian reuses.
 \item \textbf{Analytic Jacobian} (\cref{sec:jacobian}).  One quadrature pass
 instead of $P+1$ finite-difference rebuilds, reaching the same fitted
 solution within tolerance (relative cost agreement $\sim10^{-11}$), measured
-$1.3$--$1.7\times$ on the residual-path benchmark of \cref{tab:timing} and
-structurally more on heavier configurations.  Gated to the
-var-swap/prior-free configuration.
+$\lqdrefspeedmin$--$\lqdrefspeedmax\times$ on the residual-path benchmark of
+\cref{tab:timing} and structurally more on heavier configurations.  Gated to
+the prior-anchor/operator-free configuration; both var-swap rows ride the
+analytic pass.
 \item \textbf{Looser tolerances.}  Dropping \texttt{trf} tolerances from
 $10^{-15}$ to $10^{-10}$ stops the optimizer chasing cost reductions
 invisible in the priced surface, saving whole $(P{+}1)$-evaluation
@@ -2411,7 +2441,8 @@ solve per Jacobian, then eleven \emph{interleaved} analytic/FD solves
 (interleaving makes slow machine drift hit both estimators equally);
 single-threaded, warm static-grid cache; iteration counts reported because
 \texttt{trf} may take different step sequences under the two Jacobians.
-Different hardware, a cold cache, or an active var-swap/prior block will
+Different hardware, a cold cache, or extra residual rows (an active
+prior-anchor or operator block forces the finite-difference route) will
 move the ratios.
 
 \begin{table}[H]
@@ -2505,8 +2536,8 @@ log-forward return, parametrized by the log quantile density
 \eqref{eq:lqd_main}; $P=N+1$ parameters, $N\in[4,16]$.\\
 \textbf{Inputs} & De-Americanized quotes $(k_i,\sigma_i)$ in forward
 moneyness (forward hygiene is an input contract, Note~06); optional band
-edges, weights, calendar floor from a nearer expiry, var-swap and prior
-targets.\\
+edges, weights, calendar interface rows against an adjacent expiry,
+var-swap and prior targets.\\
 \textbf{Outputs} & Call/put prices, implied variance, density, CDF, exact
 ATM handles $(\sigma_0,s_0,\kappa_0)$, var-swap strike, tail scales and Lee
 slopes \emph{with stability fans} (\cref{fig:tailfan}).\\
@@ -2529,7 +2560,9 @@ sub-vega-floor quotes fitted in price regime (\cref{fig:vegafloor}).\\
 \textbf{Approval scope} & Marking liquid and moderately sparse equity
 smiles; research-grade tails.  Equal-footing market benchmarks vs
 SVI-class fitters and hedge-P\&L evidence live in the backtest programme
-and are \emph{not} claimed here.\\
+and are \emph{not} claimed here.  A structurally clean slice can still be
+withheld from display or publish by the surface-level butterfly
+certificate (Note~02); that gate sits above this note.\\
 \bottomrule
 \end{tabular}
 \endgroup
