@@ -13,20 +13,9 @@
 \maketitle
 
 \input{figures/lqd_tables.tex}
-\IfFileExists{figures/lqd_lecture_tables.tex}{
-  \input{figures/lqd_lecture_tables.tex}
-}{
-  \newcommand{\lqdlecturescale}{0.078}
-  \newcommand{\lqdlectureexpiry}{0.5}
-  \newcommand{\lqdlecturemu}{-0.010028}
-  \newcommand{\lqdlectureatm}{19.20}
-  \newcommand{\lqdlectureuatm}{0.5321}
-  \newcommand{\lqdlectureAL}{0.078}
-  \newcommand{\lqdlectureAR}{0.078}
-  \newcommand{\lqdlecturebetaL}{0.0375}
-  \newcommand{\lqdlecturebetaR}{0.0406}
-  \newcommand{\lqdlecturemart}{0.00e+00}
-}
+% A missing generated-tables file is a build error by design: every quoted
+% number must come from the generator, never from a frozen fallback.
+\input{figures/lqd_lecture_tables.tex}
 
 \begin{abstract}
 A smile is a probability distribution wearing option-market clothes.  The LQD
@@ -129,7 +118,11 @@ $q(u)=Q'(u)$ its quantile density.  LQD stands for
 \end{equation}
 Here $P_n$ is the $n$th Legendre polynomial.  The shipped order $N=6$ has the
 seven coefficients $(L,R,a_2,\ldots,a_6)$; the API accepts
-$4\le N\le16$.
+$4\le N\le16$.  One scope remark before the ideas: $(L,R,a)$ is how a slice
+is \emph{stored} and how this lecture will reason; the optimizer is free to
+run in any of three equivalent coordinate systems over the same family, and
+the shipped one differs from the storage chart in exactly the two places
+where the raw coordinates invite mistakes (\cref{sec:tails,sec:numerics}).
 
 There are only three ideas in \eqref{eq:lqd}.
 \begin{enumerate}[leftmargin=1.6em]
@@ -144,7 +137,9 @@ the endpoints.
 One warning is worth placing beside the definition.  $L$ and $R$ are convenient
 low-order endpoint \emph{coordinates}; once $a_n\ne0$, they are not the log tail
 scales.  Every Legendre mode reaches both endpoints.  The actual tail handles
-$A_L,A_R$ will appear in \cref{sec:tails}.
+$A_L,A_R$ will appear in \cref{sec:tails} --- and this warning is exactly why
+the shipped optimization chart puts $(\log A_L,\log A_R)$ on the axes instead
+of $(L,R)$, so that bending the body cannot mechanically drag the wings.
 
 The full pipeline is
 \[
@@ -429,11 +424,16 @@ $A_L>0$ already makes $r=1$ integrable there.
 
 \begin{caution}
 $A_R=1$ is not a regularization preference.  At that wall the normalized
-underlying has infinite mean, so no finite forward exists.  Production keeps a
-$10^{-6}$ buffer, rejects $A_R\ge1-10^{-6}$, and adds a soft barrier centred at
-\lqdbarriercenter\ to turn the optimizer back before rejection.  The barrier is
-smooth inside the feasible region; the switch to the infeasible penalty branch
-is not an algebraic continuation through the wall.
+underlying has infinite mean, so no finite forward exists.  In the raw
+coordinate charts production keeps a $10^{-6}$ buffer, rejects
+$A_R\ge1-10^{-6}$, and adds a soft barrier centred at
+\lqdbarriercenter\ to turn the optimizer back before rejection; the barrier
+is smooth inside the feasible region, and the switch to the infeasible
+penalty branch is not an algebraic continuation through the wall.  In the
+shipped optimization chart the question does not arise: $A_R$ enters
+through a logistic, so the wall sits at infinite chart distance and no
+trial can reach it --- the barrier stays on there too, no longer as a
+fence but as a price on economically implausible near-infinite forwards.
 \end{caution}
 
 \subsection{From critical moments to Lee slopes}
@@ -580,6 +580,16 @@ On benchmark slices this is much more accurate than a table lookup; it should
 not be advertised as a universal extrapolator outside the finite grid or as an
 algebraic proof of machine precision for arbitrary coefficients.
 
+Two floating-point guards survive in \emph{every} coordinate chart and are
+worth naming, because they are what actually rejects a wild trial once the
+wall is unreachable.  An interior overflow budget on the unnormalized
+quantile rejects coefficient vectors whose exponentials would overflow
+before any price is formed --- a clean refusal, not a fake surface.  And the
+logistic itself rounds: past $|z|\approx36.7$, \texttt{expit(z)} is exactly
+one in double precision, so the cash leg of the call is evaluated in log
+space and $u(1-u)$ is formed as $\Lambda(z)\Lambda(-z)$ rather than
+$u(1-u)$ --- otherwise the far wing of the price curve steps visibly.
+
 \begin{perfbox}
 The arrays $(z,u,u(1-u))$ and the Legendre matrix depend only on grid size and
 model order.  They are cached and returned read-only.  Calibration reforms only
@@ -682,8 +692,9 @@ coefficient vector.
 \section{A local chart in trader coordinates}
 \label{sec:chart}
 
-Let $\theta=(L,R,a_2,\ldots,a_N)\in\R^d$ and collect the internal chart handles
-as
+Let $\theta=(L,R,a_2,\ldots,a_N)\in\R^d$ --- the storage coordinates; the
+handle analysis below is insensitive to which of the three optimization
+charts carries the fit --- and collect the internal chart handles as
 \begin{equation}
 H(\theta)=(w_0,s_0,\kappa_0).
 \end{equation}
@@ -695,7 +706,9 @@ in units.
 \label{ass:rank}
 At the reference slice $\theta^*$, the Jacobian
 $J=\partial H/\partial\theta\in\R^{3\times d}$ has full row rank three and is
-not numerically ill-conditioned in the chosen Euclidean coefficient metric.
+not numerically ill-conditioned in the chosen Euclidean coefficient metric
+--- the default, and an admitted convention; a Gauss--Newton metric that
+prices a move by its effect on the fitted quotes is also available.
 \end{assumption}
 
 Under \cref{ass:rank}, let $J^\dagger=J\T(JJ\T)^{-1}$ be the least-norm right
@@ -707,9 +720,15 @@ local displacement can be written
 \end{equation}
 To first order, $\alpha\in\R^3$ moves the three trader handles one-for-one,
 while the shape coordinate $\xi\in\R^{d-3}$ leaves them unchanged:
-$J J^\dagger=I_3$ and $JV=0$.  In code, an SVD/QR construction is preferable
-near weak rank because it exposes the small singular values rather than hiding
-them in $(JJ\T)^{-1}$.
+$J J^\dagger=I_3$ and $JV=0$.  In code, an SVD/QR construction is what
+production uses near weak rank, because it exposes the small singular values
+rather than hiding them in $(JJ\T)^{-1}$ --- the handle Gram's condition
+number is computed and carried on the chart.  The kernel, finally, is not
+left anonymous: alongside session-local shape sliders, production names
+persistent \emph{package} directions inside $\ker J$ --- 25- and 10-delta
+risk reversals and butterflies and the var swap --- solved with an explicit
+cross-talk matrix and a kernel-restricted condition print, so the
+``shape'' a desk moves is the market's own vocabulary.
 
 For a finite move, first-order orthogonality is not enough.  Production holds
 $\xi$ fixed and solves the three-dimensional nonlinear equation
@@ -771,11 +790,14 @@ b(\theta)=\log\!\left(1+
 \qquad c=\lqdbarriercenter,\quad s_b=\lqdbarrierscale.
 \label{eq:barrier}
 \end{equation}
-It is evaluated with a stable \texttt{logaddexp}.  When a trial reaches the
-buffered hard wall $A_R\ge1-10^{-6}$, slice construction is skipped and the
-price block is replaced by a large penalty increasing with $A_R$.  Thus an
-infeasible trust-region trial does not produce a fake option surface; it
-receives a direction back toward feasibility.
+It is evaluated with a stable \texttt{logaddexp}.  In the raw coordinate
+charts, when a trial reaches the buffered hard wall $A_R\ge1-10^{-6}$, slice
+construction is skipped and the price block is replaced by a large penalty
+increasing with $A_R$: an infeasible trust-region trial does not produce a
+fake option surface; it receives a direction back toward feasibility.  In
+the shipped logistic chart no trial can reach the wall, and the refusal
+that survives in every chart is the interior overflow budget of
+\cref{sec:numerics}.
 
 \subsection{Initialization and warm starts}
 
@@ -787,8 +809,11 @@ L=R=\log s_{\rm init},\qquad a_n=0.
 \end{equation}
 As the logistic example showed, this is a scale heuristic rather than an exact
 ATM match.  In a surface sweep, the fitted shorter expiry is usually a much
-better initializer for the next expiry.  The production workflow therefore
-fits nearest to farthest and warm-starts sequentially.  A data-only prepass can
+better initializer for the next expiry, so the production sweep \emph{seeds}
+nearest to farthest.  Seeding is not solving: the surface itself is fitted
+expiry-by-expiry independently, then screened and jointly repaired where
+adjacent slices conflict (\cref{sec:calendar}) --- warm-start order is a
+convergence heuristic, not a constraint topology.  A data-only prepass can
 also supply the measurement stage for the persistence and filtering machinery
 of Notes~13 and 15.
 
@@ -808,20 +833,21 @@ Block & Activation & Scale & Jacobian\\
 \midrule
 Mid or band quote data & selected fit mode & vega-normalized price & analytic\\
 High-order ridge & $\lambda>0$ & coefficient residual & analytic\\
-Calendar hinge & nearer fitted expiry available and control on & asset share &
-analytic\\
+Calendar hinge & nearer fitted expiry available and control on & normalized
+price at fixed strike, support-confined & analytic\\
 $A_R$ barrier & always & dimensionless & analytic\\
+Market var-swap & active quote and toggle & volatility & analytic\\
+Prior var-swap & active companion prior & volatility & analytic\\
 \midrule
-Market var-swap & active quote and toggle & volatility & FD\\
 Strike-gap prior & active prior mode & vega-normalized price & FD\\
-Prior var-swap & active companion prior & volatility & FD\\
 Operator/filter prior & gated prior or active filter & handle/operator units &
 FD\\
 \bottomrule
 \end{tabular}
 \caption{The production residual stack.  FD denotes scipy's two-point
-finite-difference Jacobian; activating any var-swap or prior block switches the
-entire solve to that route.}
+finite-difference Jacobian; activating a prior-anchor or operator block
+switches the entire solve to that route.  Both var-swap rows ride the
+analytic sensitivity pass (\cref{sec:varswap}).}
 \label{tab:stack}
 \end{table}
 
@@ -831,7 +857,10 @@ entire solve to that route.}
 
 The first test is deliberately synthetic.  It asks whether seven LQD
 parameters can approximate a clean, familiar equity-index shape; it is not a
-claim about live market fit.  At $\tau=0.5$, the target is raw SVI
+claim about live market fit.  At $\tau=0.5$, the target is the legacy
+raw-SVI regression fixture (the older five-parameter benchmark; the running
+example of the sibling editions has since moved on, but this oracle stays
+frozen so its locked numbers stay comparable):
 \begin{equation}
 w_{\rm SVI}(k)
 =a+b\left\{\rho(k-m)+\sqrt{(k-m)^2+\sigma_{\rm SVI}^2}\right\},
@@ -1040,7 +1069,8 @@ calendar and barrier rows then add elementary derivatives.
 The theorem is exact for the continuous integrals.  The production price and
 gradient use separately constructed Hermite interpolants, so an off-node
 comparison inherits a small discretization mismatch.  The tested claim is
-numerical: on mid, band and calendar residual stacks the analytic Jacobian
+numerical: on mid, band, calendar and var-swap residual stacks the analytic
+Jacobian
 agrees with a three-point finite difference to relative tolerance $10^{-3}$,
 and analytic and two-point-FD fits reach coefficient vectors within about
 $10^{-5}$ and costs agreeing near $10^{-11}$ relative.
@@ -1049,8 +1079,9 @@ $10^{-5}$ and costs agreeing near $10^{-11}$ relative.
 \centering
 \includegraphics[width=0.88\textwidth]{fig_lqd_jacobian_timing.pdf}
 \caption{The envelope cancellation removes repeated quadrature builds.  On the
-warm-cache optimizer-core benchmark, the analytic route is
-$1.34$--$1.71\times$ faster over $N=6,\ldots,12$ and reaches the same optimum
+warm-cache optimizer-core benchmark, the analytic route is measured faster at
+every order $N=6,\ldots,12$ (each per-order ratio is annotated on its bar)
+and reaches the same optimum
 within the tested tolerances.  These bars exclude the final full-grid rebuild
 and reporting work, so they are not end-to-end API latency.}
 \label{fig:jacobian_timing}
@@ -1095,24 +1126,39 @@ G_{T_1}(\alpha)\le G_{T_2}(\alpha)
 with equality at $\alpha=0$.  In LQD, $G_T(\Lambda(z))$ is exactly the asset
 share $\mathcal A_T(z)$ already present on the pricing grid.
 
-Production fits nearest to farthest.  When calendar control is on, a new slice
-receives hinge residuals whenever its asset share falls below the previous
-slice at sampled logit nodes.  The comparison is expressed at $z$ values, so
-the same locations can be evaluated on either the optimization or reporting
-grid.
+What production \emph{enforces} is deliberately not the share comparison.
+The asset share integrates the entire upper tail, so a hinge that compares
+two shares at any rank imports both slices' extrapolated wings into the
+constraint --- a fit can be dragged by strikes nobody quoted, and on an
+acute short-dated pair the phantom drag from a full-grid share floor
+measured two orders of magnitude above the uncoupled fit (Note~10 owns the
+incident and its certification lock).  When calendar control is on, the
+order is instead read where it is identified: as tapered hinge rows on the
+two slices' normalized calls at fixed strikes over their common quote
+support, with the share comparison retained as the wing-dense
+\emph{diagnostic} it is exactly suited to be.
 
 \begin{caution}
 The mathematical condition \eqref{eq:convex_order} is a continuum condition.
 Production samples it, assigns a finite penalty weight, and allows the control
 to be switched off.  It is therefore calendar \emph{control}, not a hard
-guarantee.  A later independent single-expiry refit has no neighbouring-slice
-context and can also break a previously coupled surface.  Diagnostics must
-measure the final call ordering rather than infer it from the workflow.
+guarantee.  Nor is the surface a one-way construction: every expiry is
+fitted independently, the finished ladder is screened interface by
+interface, and only a violation-connected group of slices is re-solved
+jointly (the symmetric surface solver, the shipped default; the sequential
+nearest-to-farthest sweep survives as explicit legacy configuration whose
+defect is exactly the traversal-order bias a one-way pass builds in).
+Diagnostics measure the final call ordering rather than inferring it from
+the workflow --- and report residual violations in desk units: the
+worst-violation strike, currency per contract, ticks, and the fraction of
+the local quoted spread.
 \end{caution}
 
 Note~10 treats the model-agnostic calendar problem in detail.  LQD's advantage
-is not a stronger theorem; it is that the natural convex-order object is already
-one of its cumulative pricing arrays.
+is not a stronger theorem; it is that the natural convex-order object is
+already one of its cumulative pricing arrays --- an advantage of
+\emph{measurement}, which production learned not to confuse with an
+advantage of enforcement.
 
 %======================================================================
 \section{The native log-contract route}
@@ -1134,10 +1180,13 @@ double precision.
 
 Equation \eqref{eq:varswap} prices a log contract.  Identifying it with a
 realized-variance swap assumes the usual continuous-monitoring, continuous-path
-convention.  Jumps and discrete sampling require corrections.  Activating the
-market var-swap residual also switches the whole calibration to the
-finite-difference Jacobian because this optional block has not yet been added
-to the analytic route.
+convention.  Jumps and discrete sampling require corrections.  The residual
+row is as cheap as it looks: since the analytic sensitivity pass already
+carries the nodal quantile derivatives, the row's own gradient
+$\partial w_{\rm vs}/\partial\theta
+=-2\int(\partial Q/\partial\theta)\,\Lambda(1-\Lambda)\,\dd z$
+is one more quadrature on the same grid, so a var-swap-enabled fit keeps the
+analytic Jacobian route.
 
 %======================================================================
 \section{What is guaranteed, and what is merely hoped for}
@@ -1156,14 +1205,19 @@ Non-negative continuous density & Structural & For every finite coefficient
 vector; numerical pricing is still finite precision.\\
 One-expiry butterfly freedom & Structural after normalization & Requires a
 finite forward and correct normalized units.\\
-Finite forward & If and only if $A_R<1$ mathematically & Code uses the buffer
-$A_R<1-10^{-6}$.\\
+Finite forward & If and only if $A_R<1$ mathematically & Raw charts use the
+buffer $A_R<1-10^{-6}$; the shipped logistic chart cannot reach the wall at
+all.\\
 Exponential $X$ tails and Lee-consistent wings & Structural & A modelling
 choice; finite strikes weakly identify the scales.\\
 ATM level, skew and curvature & Analytic slice identities & Conditional on the
 numerically built slice; not raw-coefficient closed forms.\\
 \midrule
-Calendar freedom & Not structural & Sampled, finite-weight, optional control.\\
+Calendar freedom & Not structural & Support-confined price rows, finite
+weight, optional; residual violations reported in desk units, not assumed
+away.\\
+Display and publish & Gated above this note & A clean slice can still be
+withheld by the surface-level butterfly certificate (Note~02).\\
 Economically plausible density & Not guaranteed & High order can fit noise or
 invent modes while remaining positive.\\
 Atoms at zero or elsewhere & Not represented & The law is continuous; sharp
@@ -1276,10 +1330,12 @@ Analytic Jacobian and fit agreement &
 \nolinkurl{backend/volfit/models/lqd/jacobian.py}\newline
 \nolinkurl{backend/tests/test_lqd_jacobian.py}\\
 \addlinespace
-Soft nearest-to-farthest calendar control &
+Support-confined price floor and symmetric surface repair &
 \eqref{eq:convex_order} &
 \nolinkurl{backend/volfit/calib/calendar.py}\newline
-\nolinkurl{backend/volfit/calib/surface.py}\\
+\nolinkurl{backend/volfit/calib/symmetric.py}\newline
+\nolinkurl{backend/tests/test_calendar_confinement.py}\newline
+certification case \texttt{symmetric\_calendar}\\
 \addlinespace
 Active-time annualization and normalized quote preparation &
 \eqref{eq:variables}--\eqref{eq:call_expectation} &
@@ -1319,6 +1375,9 @@ Knob & Default & Role\\
 \midrule
 \texttt{nOrder} $N$ & $6$ & Highest Legendre degree; $N+1$ parameters.
 Schema range $4\le N\le16$.\\
+\texttt{lqdCoords} & \texttt{logistic} & Optimization chart: raw \texttt{lr},
+endpoint-speed, or the logistic tail coordinate that puts the $A_R$ wall out
+of reach; the fitted optimum is chart-independent to solver tolerance.\\
 \texttt{regLambda} $\lambda$ & $10^{-6}$ & Application default for the
 high-order ridge.  The direct \texttt{calibrate\_slice} function defaults to
 zero.\\
@@ -1340,7 +1399,7 @@ $z=0$ is a node.\\
 \texttt{OPT\_N\_POINTS} & \lqdoptpts & Coarse grid used during optimization;
 accepted parameters are rebuilt at $8001$.\\
 \texttt{EPS\_AR} & $10^{-6}$ & Buffer in the code bound
-$A_R<1-\texttt{EPS\_AR}$.\\
+$A_R<1-\texttt{EPS\_AR}$ (raw charts; the logistic chart needs no buffer).\\
 \texttt{\_VEGA\_FLOOR} $\eta$ & $10^{-4}$ & Floor in vega-normalized quote
 residuals.\\
 Hermite--Newton steps & $4$ & Fixed safeguarded iterations after the linear
@@ -1369,8 +1428,9 @@ Exact nodal $Q_z$ and $\mathcal A_z$ provide cubic-Hermite pricing, smoother
 off-grid Greeks and the interpolation data reused by the analytic Jacobian.
 \item \textbf{Differentiate the cumulative objects.}
 \Cref{thm:envelope} eliminates the strike-root derivative.  The measured
-$1.34$--$1.71\times$ optimizer-core speed-up in \cref{fig:jacobian_timing}
-compares warm cached runs with only analytic-supported residual blocks active.
+optimizer-core speed-ups in \cref{fig:jacobian_timing} (per-order ratios
+annotated on the bars)
+compare warm cached runs with only analytic-supported residual blocks active.
 \item \textbf{Stop below economic resolution.}
 Trust-region tolerances of $10^{-10}$ avoid iterations spent chasing numerical
 changes far below a volatility basis point.  Tightening them to $10^{-15}$ did
@@ -1453,6 +1513,8 @@ def build(theta, z):
     signs = (-1.0) ** np.arange(2, len(a) + 2)
     A_R = np.exp(R + signs @ a)
     if A_R >= 1:
+        # pedagogical raise; the shipped chart makes this unreachable by
+        # passing A_R through a logistic instead
         raise ValueError("infinite forward")
 
     dz, Z = z[1] - z[0], z[-1]
@@ -1474,7 +1536,9 @@ def build(theta, z):
 
 def call(k, z, u, Q, A):
     zk = np.interp(k, Q, z)
-    return np.interp(zk, z, A) - np.exp(k)*(1-expit(zk))
+    # cash leg in log space: (1 - expit(zk)) rounds to 0 past zk ~ 36.7,
+    # stepping the far wing; exp(k - logaddexp(0, zk)) is the stable form
+    return np.interp(zk, z, A) - np.exp(k - np.logaddexp(0.0, zk))
 \end{lstlisting}
 
 \begin{thebibliography}{9}
