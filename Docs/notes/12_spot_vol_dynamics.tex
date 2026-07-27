@@ -319,8 +319,12 @@ composition is covered only at the API level.
 \caption{Spot--vol-dynamics hyperparameters.}\label{tab:atlas}\\
 \toprule Knob & Default & Role\\ \midrule
 \endfirsthead \toprule Knob & Default & Role\\ \midrule \endhead
-\texttt{ssr} & $2.0$ & SSR value or named regime (\texttt{sticky\_moneyness} /
-\texttt{sticky\_strike} / \texttt{sticky\_local\_vol} / \texttt{sticky\_local\_vol\_grid}).\\
+\texttt{dynamicsRegime} & \texttt{sticky\_strike} & Named regime seed for the
+spot scenario: \texttt{sticky\_moneyness} / \texttt{sticky\_strike} /
+\texttt{sticky\_local\_vol} / \texttt{sticky\_local\_vol\_grid} /
+\texttt{custom}.\\
+\texttt{ssr} & $2.0$ & Numeric SSR of the \texttt{custom} regime only ---
+inert under any named regime.\\
 $R$ regime map & $\{0,1,2,2\}$ & SSR of the four named regimes.\\
 ATM re-anchor & off & Optional exact linear SSR for large moves ($\sigma_0+R\kappa_T h_T$).\\
 \bottomrule
