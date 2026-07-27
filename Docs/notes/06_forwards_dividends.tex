@@ -4,7 +4,7 @@
 \graphicspath{{figures/}}
 
 \title{\textbf{Forwards, Discounting and Dividends}\\[2pt]
-\large Parity-implied forwards, a robustness clamp, the zero-carry pin, and American de-bias\\[2pt]
+\large Parity-implied forwards, a robustness clamp, the zero-carry pin, American de-bias, and the joint borrow solve\\[2pt]
 \normalsize Vol-Fitter Technical Notes, No.~06}
 \author{Vol-Fitter}
 \date{\today}
@@ -34,7 +34,13 @@ the clamp cannot catch this case because the spurious implied rates stay inside
 the physical band. Dividends enter as a discrete
 escrowed cash schedule or a continuous yield, and a coarse \emph{American de-bias}
 iterates the carry to the fixed point that reconciles the de-Americanized puts and
-calls, with the discount held. A worked example recovers a known forward to the
+calls, with the discount held. Above the de-bias sits the \emph{joint borrow
+solve}: a fixed point that splits the carry into rate, dividends and borrow
+with the same dividend schedule in both legs, recovers a planted $300$ bp
+borrow where the naive read is EEP-biased, reports \texttt{unidentified}
+explicitly where a thin board carries no defensible read, and feeds fits only
+through an explicit toggle behind a materiality gate --- ordinary names
+byte-identical either way. A worked example recovers a known forward to the
 cent and shows the clamp catching a noisy slope.
 \end{abstract}
 
@@ -79,6 +85,10 @@ is never inferred from zero spreads --- EOD close marks also quote
 $\text{bid}=\text{ask}$ yet their mids carry genuine parity information.
 \item Editing a name's rate or dividends bumps only that ticker's forwards
 version: one name's noise never refits the universe.
+\item Borrow is read only where identifiable --- \texttt{unidentified} is an
+explicit state, never a silent zero --- and the joint fixed point feeds fits
+only through an explicit toggle behind a materiality gate
+(\cref{sec:borrow}); below the gate the parity forward is kept exactly.
 \end{enumerate}
 \end{invariant}
 
@@ -186,7 +196,8 @@ unclamped (byte-identical); stale-wing chains that break the unclamped
 regression stay sane under the clamp; zero-spread close-like data still
 resolves; and with no reference date (year fraction unknown) the clamp
 correctly stands down. The residual ATM jitter that remains on the delayed
-feed is feed noise, not the forward.
+feed is feed noise, not the forward. Certification case
+\texttt{stale\_crossed\_markets}.
 \end{example}
 
 \begin{figure}[H]
@@ -257,7 +268,8 @@ read.
 $D=1$ on both the reference-date and legacy paths (the flag, not the clamp,
 decides); an \emph{unflagged} zero-spread chain still regresses and recovers
 its true carry; the flag round-trips through the store. The recurring SPY
-forward incident is closed at the root.
+forward incident is closed at the root. Certification case
+\texttt{zero\_carry\_chains}.
 \end{example}
 
 The pin completes an epistemic ladder: the regression extracts the forward
@@ -316,6 +328,81 @@ full-precision per-quote de-Americanization downstream. The discount is left
 exactly as the raw parity gave it.
 
 %======================================================================
+\section{Borrow: the joint carry solve}
+\label{sec:borrow}
+
+The forward's carry is not one number. The production carry object
+(\texttt{CarryCurve}, \texttt{api/carry.py}) is a versioned per-expiry
+decomposition into discount, dividends and \emph{borrow}, each leg carrying a
+source tag --- observed, desk-supplied, parity-implied, or
+\texttt{unidentified} --- and the last tag is a design decision, not an
+apology: on single names the common, calm state of the borrow leg is
+\emph{unidentified}, and the honest read is to say so explicitly rather than
+report a silent zero. The identifiability verdict is per expiry (a thin board
+carries no defensible borrow read), and the response counts identified and
+unidentified expiries separately.
+
+Where a name \emph{is} hard to borrow, the naive read
+$b=\log(F_{\text{theo}}/F_{\text{parity}})/t$ off raw American mids is
+EEP-contaminated \emph{twice}: the parity regression runs on American prices
+whose early-exercise premium depends on the very borrow being measured, and
+the de-Americanization inside the forward uses a lumped carry that mistimes
+exercise around discrete ex-dates. The \emph{joint fixed point}
+(\texttt{data/carry\_solve.py}) closes the loop with the carry split and the
+\emph{same} dividend schedule in both legs:
+\begin{equation}
+b_0=0;\qquad
+\text{repeat}\ \left\{
+\begin{aligned}
+&\text{de-Americanize the paired mids at }(r,\ q=b_i,\ \text{cash schedule}),\\
+&\text{reprice European, regress parity}\ \to\ F_{\text{parity}}(b_i),\\
+&g=\tfrac{1}{t}\log\!\big(F_{\text{theo}}(b_i)/F_{\text{parity}}\big),\qquad
+b_{i+1}=b_i+g,
+\end{aligned}\right.
+\label{eq:carry_fixed_point}
+\end{equation}
+until $|g|<10^{-5}$ (0.1 bp). At the true borrow the de-Americanized call and
+put vols agree, parity holds at the theoretical forward, and the gap
+vanishes; the update is exact in $b$ up to the weak EEP-dependence of
+$F_{\text{parity}}$ on $b$, so it contracts in 2--4 iterations. On a
+synthetic chain with a planted $300$ bp borrow the solve returns within a
+couple of bp of the plant (the lock admits $20$; the naive read is required
+to be at least twice as far); on an ordinary name ($b\approx0$, no
+dividends) it converges immediately to the v0 read, and on a European chain
+it short-circuits exactly in one step --- all test-locked.
+
+Two consumption paths, deliberately separated. \emph{Measurement} is always
+on: the Forwards tab's carry view shows the joint read beside the naive one,
+with iteration and tree-failure counts (the exit gate's explicit failure
+rates). \emph{Fitting} from it is an explicit opt-in
+(\texttt{jointCarry}, default off): when on, the converged $(F,D)$ replaces
+the parity pair in the resolved forwards --- American chains only, engaged
+\emph{per expiry}, and only when the converged $|b|$ clears the materiality
+gate \texttt{jointCarryEngageBp} ($25$ bp). Below the gate the parity
+forward is kept \emph{exactly}, so ordinary names are byte-identical even
+with the toggle on --- the item's day-one bar, test-locked.
+
+The trader-facing derivative comes with the read. A closed form for
+$\partial\text{IV}/\partial b$
+(\nolinkurl{carry_solve.iv_borrow_sensitivity_bp}, quoted per $100$ bp of
+borrow and verified against numerical re-inversion) prices what a borrow
+error \emph{buys in smile}, and a per-expiry
+\texttt{borrowNoiseFloorBp} states the borrow move that would shift IVs by
+less than quote noise --- below the floor, a borrow ``signal'' is not one.
+Both ride the carry payload as the $\pm\sigma$ columns of the Forwards tab.
+
+Honesty about the exit gate, which remains \emph{open}. On real
+hard-to-borrow names the identifiability floor behaves correctly (thin
+boards read unidentified, as they should); but a \emph{flat} risk-free rate
+biases the borrow read one-for-one --- a rate error is indistinguishable
+from a borrow error at a single expiry, so a genuine term structure of rates
+is the v2 prerequisite --- and the held-out validation is inconclusive below
+thin-board noise. The verdict is recorded, not oversold: the joint solve is
+measurement-grade everywhere, fit-grade only behind its gate, and the
+strategic publish-block policy engages only on the conjunction of a material
+American correction with an unidentified carry.
+
+%======================================================================
 \section{What is original here}
 \label{sec:original}
 
@@ -329,8 +416,14 @@ information at all, so the honest forward is the chain's own construction
 convention, recognized by an explicit ingestion-time flag rather than any
 inference from the prices. The \emph{de-bias} closes the forward/de-Am
 circularity at the fixed point that quote prep actually uses, with the discount
-held so the two corrections do not fight. All three are byte-identical on clean
-data, so the robustness costs nothing when it is not needed.
+held so the two corrections do not fight. And the \emph{joint borrow solve}
+extends the ladder one rung up: where parity is informative \emph{and} the
+name is hard to borrow, it extracts more (a split carry, EEP-consistent in
+both legs); where the board cannot support the read, it says
+\texttt{unidentified} out loud. All of it is byte-identical on clean data,
+so the robustness costs nothing when it is not needed --- the whole note is
+one principle applied at four rungs: trust each parameter exactly as far as
+the data identifies it.
 
 %======================================================================
 \section{Traceability}
@@ -389,6 +482,25 @@ Per-ticker forwards version scoping &
 invariant~5 &
 \nolinkurl{api/state.py} &
 \nolinkurl{test_api_forwards.py::test_parity_defaults_cover_the_ladder}\\
+\addlinespace
+Joint borrow fixed point: planted $300$ bp recovered, naive read worse;
+dividends ride both legs &
+\eqref{eq:carry_fixed_point} &
+\nolinkurl{data/carry_solve.py} &
+\nolinkurl{test_carry_solve.py::test_planted_borrow_recovered_where_naive_read_is_biased},
+\nolinkurl{::test_discrete_dividends_ride_both_legs}\\
+Ordinary names byte-identical with \texttt{jointCarry} on; HTB engages the
+joint forward &
+\cref{sec:borrow} &
+\nolinkurl{api/service.py} &
+\nolinkurl{test_carry_solve.py::test_ordinary_name_byte_identical_with_toggle_on},
+\nolinkurl{::test_htb_name_engages_the_joint_forward}\\
+$\partial\text{IV}/\partial b$ closed form matches numerical re-inversion;
+payload carries it &
+\cref{sec:borrow} &
+\nolinkurl{data/carry_solve.py} &
+\nolinkurl{test_carry_solve.py::test_iv_borrow_sensitivity_matches_numerical_inversion},
+\nolinkurl{::test_carry_payload_carries_the_sensitivity}\\
 \bottomrule
 \end{longtable}
 \endgroup
@@ -407,8 +519,20 @@ invariant~5 &
 \texttt{MarketSettings.rate} $r$ & --- & Risk-free rate for the theoretical forward / tree.\\
 \texttt{dividendMode} & \texttt{continuous} & \texttt{continuous} yield or \texttt{discrete\_absolute} cash.\\
 \texttt{dividends} & empty & Discrete $(\text{ex-date},\text{amount})$ schedule.\\
+\texttt{jointCarry} & off & Route the joint fixed point's converged $(F,D)$
+into the resolved forwards (\cref{sec:borrow}); American chains, per expiry.\\
+\texttt{jointCarryEngageBp} & $25$ & Borrow materiality gate; below it the
+parity forward is kept exactly (ordinary names byte-identical).\\
 \midrule
 \multicolumn{3}{l}{\emph{Hidden}}\\ \midrule
+\texttt{TOL} / \texttt{MAX\_ITER} & $10^{-5}$ / $8$ & Joint-solve convergence
+(0.1 bp) and iteration cap.\\
+\texttt{BORROW\_CAP} & $2.0$ & Physical bound on $|b|$; past $200\%$/yr the
+solve reports non-convergence rather than chasing garbage.\\
+\texttt{N\_STEPS} / \texttt{BISECTIONS} & $96$ / $20$ & Joint-solve tree
+resolution (a level read, like the de-bias).\\
+\texttt{MIN\_PAIRS} & $6$ & Minimum same-strike pairs for the joint
+regression.\\
 \texttt{RATE\_MIN/MAX} & $[\fwdratemin\%,\fwdratemax\%]$ & Physical band for the parity-implied rate (clamp).\\
 \texttt{FWD\_CLAMP\_LOG} & $0.5$ & Sanity bound on $|\log(F/S)|$; else fall back to spot.\\
 \texttt{MIN\_PAIRED\_STRIKES} & $3$ & Minimum paired strikes for a parity fit.\\
