@@ -1,9 +1,16 @@
-# Phase-4 adjudication — precision-message operator (PREP; sweep NOT run yet)
+# Phase-4 adjudication — precision-message operator
 
-Status 2026-07-19: **machinery shipped + smoke-validated; the multi-hour
-campaign is a USER action** (`backtest\run_message_adjudication.ps1` in your
-own PowerShell window — tool background jobs get killed on this box).
-Nothing below is a verdict until the sweep populates the tags.
+**Status 2026-07-27: TABLE FILLED from the stored 2026-07-19 sweep parts
+(intersected natural keys, 21,962 OOS rows). The §22.4 gate did NOT clear
+at the daily horizon (gates 1, 4, 6 fail — see the filled table). The
+default was nonetheless FLIPPED to `precision_messages` on 2026-07-27 by
+USER RATIFICATION, on the strength of the intraday async-replay
+separation (FINDINGS_dynamic_intraday.md: msg 65.8bp vs smooth_field
+168.6bp vs transport 172.7 — the legacy operator is nearly inert
+intraday) — recorded below with full caveats.**
+
+Status 2026-07-19 (historical): machinery shipped + smoke-validated; the
+multi-hour campaign was run in the user's window the same day.
 
 ## What ships in this phase
 
@@ -84,18 +91,68 @@ Read: on THIS pair the message operator's mean skill dominates while its
 bands run slightly narrow (zeta std 1.2-1.4) where the legacy's ran wide
 (0.6, cov95 0.98 vs nominal 0.95). The full OOS sweep decides.
 
-## Decision table (FILL AFTER THE SWEEP)
+## Decision table (FILLED 2026-07-27 from the stored parts; intersected
+## keys, 21,962 rows; skill = base RMS − graph RMS, bp; liquid_split
+## unless noted; R-bracket = R0 / R1)
 
-| variant | liquid_split ATM skill (spike / high / low, R-bracket) | zeta std | cov95 | verdict |
-|---|---|---|---|---|
-| _b14_base | | | | baseline |
-| _b14_learned | | | | |
-| _p4_msg_desk | | | | expected RMS loser; opt-in preset |
-| _p4_msg_learned | | | | THE candidate |
-| _p4_msg_a05 | | | | shape ablation |
-| _p4_msg_const | | | | decay ablation |
+| variant | spike | high | low | zeta std | cov80 | cov95 | verdict |
+|---|---|---|---|---|---|---|---|
+| `_b14_base` | +0.08 / +0.03 | +0.09 / +0.10 | +0.02 / +0.01 | 0.84 | 0.973 | 0.987 | baseline (over-wide bands) |
+| `_b14_learned` | +0.17 / +0.06 | +0.15 / +0.16 | +0.05 / +0.03 | 0.83 | 0.973 | 0.987 | fractions-of-a-bp; item-14 hold stands |
+| `_p4_msg_desk` | −21.15 / +6.51 | +6.41 / +8.99 | −12.47 / +1.21 | 1.81 | 0.875 | 0.945 | expected RMS loser confirmed; opt-in preset |
+| `_p4_msg_learned` | +2.01 / +0.74 | +1.03 / +0.44 | +0.75 / +0.35 | 2.29 | 0.816 | 0.908 | THE candidate — gates 1/4/6 fail |
+| `_p4_msg_a05` | +2.03 / +0.75 | +1.03 / +0.43 | +0.76 / +0.36 | 2.27 | 0.817 | 0.910 | shape ≈ inert at day horizon |
+| `_p4_msg_const` | +2.02 / +0.74 | +1.03 / +0.45 | +0.76 / +0.36 | 2.32 | 0.815 | 0.907 | decay ≈ inert at day horizon |
 
-Fill from `results/benchmark/ablation_compare.json` +
-`python -m backtest.benchmark_pack report --tag <tag>`; then record the
-gate verdict here and flip (or don't) `OptionsSettings.graphPropagationMode`
-/ the amplitude preset defaults in a dedicated commit.
+full_loo pooled RMS (bp): base 280.8 / msg_learned 281.7 (skill vs
+transport +7.0 vs +8.9). Wing medians (liquid_split): base arm 99.6 vs
+its baseline 97.6; msg_learned 105.2 vs 97.3.
+
+### §22.4 gate verdict at the DAILY horizon (recorded)
+
+| gate | criterion | verdict |
+|---|---|---|
+| 1 | material liquid_split skill vs prior AND base | **FAIL** (+0.35…+2.01bp — positive everywhere, material nowhere) |
+| 2 | stressed regimes non-degrading | PASS |
+| 3 | calm regime not negative | PASS (+0.35/+0.75) |
+| 4 | ζ ≈ 1, coverage near nominal | **FAIL** (ζ std 2.29/2.07, cov95 0.908 — overconfident; base is over-wide 0.84) |
+| 5 | no unstable cycles | PASS (empty by construction) |
+| 6 | wing RMS non-deteriorating | **MARGINAL FAIL** (median 105.2 vs base-arm 99.6, +5.6bp) |
+
+**Daily-horizon conclusion (what the 2026-07-19 hold already said,
+now recorded in the pre-registered table): at one-day granularity the
+message operator is statistically indistinguishable from smooth_field
+on RMS, with overconfident bands and mildly worse wings — the gate does
+not clear.**
+
+## THE FLIP (2026-07-27, user-ratified)
+
+`OptionsSettings.graphPropagationMode` default: `smooth_field` →
+`precision_messages`. Basis: NOT this gate (which failed at the daily
+horizon and is recorded verbatim above) but the intraday async-replay
+campaign (FINDINGS_dynamic_intraday.md), where the operators separate
+decisively — smooth_field is nearly inert (168.6bp vs 172.7 transport;
+intraday innovations are shrunk to nothing by the zero-innovation
+anchor at day-scale κ/η), while the message operator carries the signal
+(65.8bp, ζ 0.88, cov95 0.964, no wing regression). The user ratified the
+flip 2026-07-27 with the daily verdict on the table.
+
+Scope (mirrors the sviChart flip precedent):
+
+- The flip is the OPTIONS default (what Options ▸ Graph seeds and the
+  UI runs). The WIRE default (`GraphExtrapolateRequest.propagationMode`)
+  stays `smooth_field`: bare API solves, workspace replay, the §21.10
+  byte-identity locks and the whole backtest harness are untouched —
+  smooth_field remains explicit configuration and the rollback.
+- Amplitude defaults stay at desk (1.0): the intraday evidence was
+  measured at desk amplitude; the learned preset (0.23/0.39) remains
+  selectable and its daily numbers are in the table above.
+- Persisted stores with an EXPLICIT graphPropagationMode keep their
+  value (the leeSlopeMax precedent): a dev store that ever saved
+  Options pins smooth_field until Options ▸ Graph is re-saved.
+- Known characteristics the default now carries at the daily horizon,
+  stated plainly: ζ std ~2 (bands narrow — the graph credible bands, not
+  fit quality) and wing medians ~+5bp vs the legacy arm. The intraday
+  horizon shows the reverse ordering. Follow-ups that would repair the
+  daily calibration: the D6 joint anchors and the §15.2/§21.13 baseline
+  placement are already recorded candidates in the dynamic findings.
