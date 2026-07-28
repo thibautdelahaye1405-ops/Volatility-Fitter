@@ -306,5 +306,16 @@ with the un-staged / un-cropped variants).
 
 The deck's palette/typography rules live in `deck_template.html`'s CSS tokens.
 Numbers on the evidence slide come from
-`backend/backtest/results/spike_aug2024_parametric_tv_density_mid_report.md`
-and `FINDINGS_graph_loo.md`.
+`backend/backtest/results/spike_aug2024_parametric_tv_density_mid_slide7refresh_report.md`
+(the 2026-07-28 slide-7 refresh: 25 assets, current calibrators — SVI raw@1.95
+w/ analytic Jacobian, LQD 6-12, MCS-2; run via `-m backtest.run_compute
+--regime spike_aug2024 --weights tv_density --fit-modes mid --models
+SVI-JW,LQD-6,LQD-8,LQD-10,LQD-12,SIV-2 --tag slide7refresh` ~100 min, then
+`-m backtest.analyze --results ...json`; results dir is gitignored — re-run to
+regenerate) and `FINDINGS_graph_loo.md`. **Slide-7 refresh DONE 2026-07-28**:
+evidence.svg redrawn (y-axis rescaled to 36 bp, MCS-2 labelled), table/tiles/
+bullets/strips updated in BOTH decks. The story changed with the broader
+universe: LQD-12 = 0.48× SVI in-RMS at the SAME ~30 ms (was 0.31× at 8 assets),
+LQD arb rate 0.0% vs SVI 1.9%, MCS-2 in 14.1 / OOS 25.1 (guardrails story
+intact), 1 fit failure in 28,776 (raw-SVI overflow). The old "2-3× tighter,
+twice the speed" phrasing is RETIRED — do not reintroduce it.

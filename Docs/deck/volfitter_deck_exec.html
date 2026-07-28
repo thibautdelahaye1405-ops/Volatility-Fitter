@@ -470,22 +470,22 @@
 <!-- ============ 07 · BACKTEST EVIDENCE =================================== -->
 <section class="slide">
   <div class="kicker"><span class="tag">Backtest · 3 regimes</span><span>Model validation on market history</span></div>
-  <h1 class="claim">Backtested on real NBBO history: <span class="hl">the house model at degree 8–12 fits 2–3× tighter than SVI-JW</span>; the shipped default is ~1.6× tighter at twice SVI's speed.</h1>
-  <p class="lede">Historical NBBO quotes replayed through the production calibrators over three regimes (Aug-2024 spike,
-    high-vol Oct-2022, low-vol Jul-2023) on an 8-asset pilot universe, full expiry ladders. <b>Out-of-sample</b> = error on
-    held-out strikes — the overfitting test.</p>
+  <h1 class="claim">Backtested on real NBBO history: <span class="hl">the house model halves the market standard's error at the same speed</span> — arbitrage-free in every fit.</h1>
+  <p class="lede">Historical NBBO quotes replayed through the current production calibrators on the <b>full 25-asset capture
+    universe</b> (4,796 nodes in the Aug-2024 spike shown; refreshed 2026-07-28). <b>Out-of-sample</b> = error on held-out
+    strikes — the overfitting test.</p>
   <div class="cols even">
     <div>
       <div class="chartcard">
-        <div class="ct">Fit error vs fit time — spike regime (Aug 2024), 1,576 nodes</div>
-        <div class="cs">Lower-left is better · filled = in-sample RMS · hollow = out-of-sample · times pre-date SVI's analytic Jacobian (now ~10 ms)</div>
+        <div class="ct">Fit error vs fit time — spike regime (Aug 2024), 4,796 nodes · 25 assets</div>
+        <div class="cs">Lower-left is better · filled = in-sample RMS · hollow = out-of-sample · current calibrators (analytic Jacobians)</div>
         <div class="legend">
-          <span class="li"><span class="sw" style="background:var(--s-lqd)"></span>LQD (deg 8–12)</span>
+          <span class="li"><span class="sw" style="background:var(--s-lqd)"></span>LQD (deg 6–12)</span>
           <span class="li"><span class="sw" style="background:var(--s-svi)"></span>SVI-JW</span>
           <span class="li"><span class="sw" style="background:var(--s-siv)"></span>Multi-Core Sigmoid (MCS)</span>
           <span class="li"><span class="sw ring"></span>out-of-sample</span>
         </div>
-        ﻿<svg viewBox="0 0 640 430" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Inter, system-ui, sans-serif" role="img" aria-label="Scatter: fit error versus fit time for six models; LQD cluster is lower-left (better) of SVI-JW; SIV is far right with a large out-of-sample gap.">
+        <svg viewBox="0 0 640 430" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Inter, system-ui, sans-serif" role="img" aria-label="Scatter: fit error versus fit time for six models on the 25-asset spike-regime sweep; the LQD ladder sits directly below SVI-JW at the same fit time (half the error); MCS-2 is far right with a large out-of-sample gap.">
   <!-- grid -->
   <g stroke="#DCE4EE" stroke-width="1">
     <line x1="70" y1="360" x2="610" y2="360"/>
@@ -506,64 +506,64 @@
   <!-- y ticks -->
   <g fill="#8A99AD" font-size="13" text-anchor="end">
     <text x="58" y="364">0</text>
-    <text x="58" y="281.5">7</text>
-    <text x="58" y="199">14</text>
-    <text x="58" y="116.5">21</text>
-    <text x="58" y="34">28</text>
+    <text x="58" y="281.5">9</text>
+    <text x="58" y="199">18</text>
+    <text x="58" y="116.5">27</text>
+    <text x="58" y="34">36</text>
   </g>
   <!-- axis titles -->
   <text x="340" y="412" fill="#44556A" font-size="14" text-anchor="middle">median fit time per slice (ms, log scale)</text>
   <text x="16" y="195" fill="#44556A" font-size="14" text-anchor="middle" transform="rotate(-90 16 195)">weighted RMS vol error (bp)</text>
   <!-- better annotation -->
-  <text x="120" y="336" fill="#8A99AD" font-size="14" font-style="italic">&#8601; better</text>
+  <text x="100" y="336" fill="#8A99AD" font-size="14" font-style="italic">&#8601; better</text>
 
-  <!-- SVI-JW -->
+  <!-- SVI-JW (raw @1.95 harness baseline) -->
   <g>
-    <title>SVI-JW — in-sample 24.3 bp, OOS 26.8 bp, 45.5 ms</title>
-    <line x1="213.4" y1="73.7" x2="213.4" y2="44.4" stroke="#8A99AD" stroke-width="1.2"/>
-    <circle cx="213.4" cy="44.4" r="6" fill="none" stroke="#D97706" stroke-width="2.5"/>
-    <circle cx="213.4" cy="73.7" r="7.5" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
-    <text x="230" y="66" fill="#44556A" font-size="15" font-weight="600">SVI-JW</text>
-  </g>
-
-  <!-- LQD cluster -->
-  <g>
-    <title>LQD-8 — in-sample 10.2 bp, OOS 12.2 bp, 24.5 ms</title>
-    <line x1="154.8" y1="240.3" x2="154.8" y2="216.7" stroke="#8A99AD" stroke-width="1.2"/>
-    <circle cx="154.8" cy="216.7" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
-    <circle cx="154.8" cy="240.3" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
-    <text x="140" y="230" fill="#44556A" font-size="15" text-anchor="end">LQD-8</text>
-  </g>
-  <g>
-    <title>LQD-10 — in-sample 8.4 bp, OOS 10.4 bp, 27.7 ms</title>
-    <line x1="166.5" y1="260.6" x2="166.5" y2="238.0" stroke="#8A99AD" stroke-width="1.2"/>
-    <circle cx="166.5" cy="238.0" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
-    <circle cx="166.5" cy="260.6" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
-  </g>
-  <g>
-    <title>LQD-12 — in-sample 7.6 bp, OOS 9.8 bp, 31.5 ms</title>
-    <line x1="178.6" y1="270.7" x2="178.6" y2="244.3" stroke="#8A99AD" stroke-width="1.2"/>
-    <circle cx="178.6" cy="244.3" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
-    <circle cx="178.6" cy="270.7" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
-    <text x="196" y="305" fill="#0B1520" font-size="15" font-weight="600">LQD-12</text>
-    <line x1="185" y1="278" x2="196" y2="296" stroke="#8A99AD" stroke-width="1"/>
+    <title>SVI-JW — in-sample 28.9 bp, OOS 33.3 bp, 28.9 ms</title>
+    <line x1="170.5" y1="95.2" x2="170.5" y2="54.7" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="170.5" cy="54.7" r="6" fill="none" stroke="#D97706" stroke-width="2.5"/>
+    <circle cx="170.5" cy="95.2" r="7.5" fill="#D97706" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="152" y="84" fill="#44556A" font-size="15" font-weight="600" text-anchor="end">SVI-JW</text>
   </g>
 
-  <!-- SIV -->
+  <!-- LQD ladder: same fit time as SVI, error falling with degree -->
   <g>
-    <title>SIV-2 — in-sample 9.2 bp, OOS 14.0 bp, 514 ms</title>
-    <line x1="443.0" y1="251.5" x2="443.0" y2="195.1" stroke="#8A99AD" stroke-width="1.2"/>
-    <circle cx="443.0" cy="195.1" r="6" fill="none" stroke="#8B5CF6" stroke-width="2.5"/>
-    <circle cx="443.0" cy="251.5" r="7.5" fill="#8B5CF6" stroke="#FFFFFF" stroke-width="2"/>
-    <text x="420" y="276" fill="#44556A" font-size="15">SIV-2</text>
+    <title>LQD-6 — in-sample 21.8 bp, OOS 27.2 bp, 32.7 ms</title>
+    <line x1="182.2" y1="159.9" x2="182.2" y2="110.6" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="182.2" cy="110.6" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="182.2" cy="159.9" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="200" y="150" fill="#44556A" font-size="15">LQD-6</text>
   </g>
   <g>
-    <title>SIV-3 — in-sample 9.0 bp, OOS 13.6 bp, 2023 ms</title>
-    <line x1="572.7" y1="253.7" x2="572.7" y2="200.0" stroke="#8A99AD" stroke-width="1.2"/>
-    <circle cx="572.7" cy="200.0" r="6" fill="none" stroke="#8B5CF6" stroke-width="2.5"/>
-    <circle cx="572.7" cy="253.7" r="7.5" fill="#8B5CF6" stroke="#FFFFFF" stroke-width="2"/>
-    <text x="550" y="278" fill="#44556A" font-size="15">SIV-3</text>
-    <text x="510" y="175" fill="#8B5CF6" font-size="13.5" font-style="italic" text-anchor="middle">OOS gap = overfit</text>
+    <title>LQD-8 — in-sample 16.9 bp, OOS 22.0 bp, 28.8 ms</title>
+    <line x1="170.1" y1="205.1" x2="170.1" y2="158.5" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="170.1" cy="158.5" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="170.1" cy="205.1" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="152" y="209" fill="#44556A" font-size="15" text-anchor="end">LQD-8</text>
+  </g>
+  <g>
+    <title>LQD-10 — in-sample 14.8 bp, OOS 20.1 bp, 30.1 ms</title>
+    <line x1="174.3" y1="224.7" x2="174.3" y2="176.2" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="174.3" cy="176.2" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="174.3" cy="224.7" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+  </g>
+  <g>
+    <title>LQD-12 — in-sample 14.0 bp, OOS 19.3 bp, 33.7 ms</title>
+    <line x1="185.0" y1="232.1" x2="185.0" y2="183.5" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="185.0" cy="183.5" r="6" fill="none" stroke="#059669" stroke-width="2.5"/>
+    <circle cx="185.0" cy="232.1" r="7.5" fill="#059669" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="205" y="262" fill="#0B1520" font-size="15" font-weight="600">LQD-12</text>
+    <line x1="190" y1="239" x2="204" y2="253" stroke="#8A99AD" stroke-width="1"/>
+  </g>
+
+  <!-- MCS-2 (SIV-2): buys in-sample, gives it back out-of-sample -->
+  <g>
+    <title>MCS-2 — in-sample 14.1 bp, OOS 25.1 bp, 247.8 ms</title>
+    <line x1="373.9" y1="230.7" x2="373.9" y2="130.2" stroke="#8A99AD" stroke-width="1.2"/>
+    <circle cx="373.9" cy="130.2" r="6" fill="none" stroke="#8B5CF6" stroke-width="2.5"/>
+    <circle cx="373.9" cy="230.7" r="7.5" fill="#8B5CF6" stroke="#FFFFFF" stroke-width="2"/>
+    <text x="390" y="240" fill="#44556A" font-size="15">MCS-2</text>
+    <text x="420" y="112" fill="#8B5CF6" font-size="13.5" font-style="italic" text-anchor="middle">OOS gap = overfit</text>
   </g>
 </svg>
       </div>
@@ -571,23 +571,25 @@
     <div>
       <table class="evi">
         <tr><th>model</th><th>in-RMS bp</th><th>OOS bp</th><th>fit ms</th><th>vs SVI</th></tr>
-        <tr><td><span class="dot" style="background:var(--s-svi)"></span>SVI-JW</td><td class="m">24.3</td><td class="m">26.8</td><td class="m">45.5</td><td class="m">1.00×</td></tr>
-        <tr><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-8</td><td class="m">10.2</td><td class="m">12.2</td><td class="m">24.5</td><td class="m">0.42×</td></tr>
-        <tr class="win"><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-12</td><td class="m">7.6</td><td class="m">9.8</td><td class="m">31.5</td><td class="m">0.31×</td></tr>
-        <tr><td><span class="dot" style="background:var(--s-siv)"></span>MCS-3</td><td class="m">9.0</td><td class="m">13.6</td><td class="m">2023</td><td class="m">0.37×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-svi)"></span>SVI-JW</td><td class="m">28.9</td><td class="m">33.3</td><td class="m">28.9</td><td class="m">1.00×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-8</td><td class="m">16.9</td><td class="m">22.0</td><td class="m">28.8</td><td class="m">0.58×</td></tr>
+        <tr class="win"><td><span class="dot" style="background:var(--s-lqd)"></span>LQD-12</td><td class="m">14.0</td><td class="m">19.3</td><td class="m">33.7</td><td class="m">0.48×</td></tr>
+        <tr><td><span class="dot" style="background:var(--s-siv)"></span>MCS-2</td><td class="m">14.1</td><td class="m">25.1</td><td class="m">247.8</td><td class="m">0.49×</td></tr>
       </table>
       <div class="statrow">
-        <div class="stat"><div class="v g">0.31–0.45×</div><div class="l">LQD-12 error vs SVI, consistent across all three regimes</div></div>
-        <div class="stat"><div class="v c">0</div><div class="l">fit failures across all models and regimes</div></div>
+        <div class="stat"><div class="v g">0.48×</div><div class="l">LQD-12 error vs SVI, at the same fit time (33.7 vs 28.9 ms)</div></div>
+        <div class="stat"><div class="v c">0.0%</div><div class="l">butterfly-arb rate across all 19,184 LQD fits (SVI baseline: 1.9%)</div></div>
       </div>
       <ul class="points" style="margin-top:20px">
-        <li class="g">Out-of-sample tracks in-sample for LQD — <strong>no measured overfit over the tested degrees (6–12)</strong>.</li>
-        <li class="r">Where a model overfit (MCS's extra cores), the backtest caught it — <strong>production caps and regularizes accordingly</strong>.</li>
+        <li class="g">OOS error <strong>improves monotonically through degree 12</strong> — no measured overfit in the tested range.</li>
+        <li class="r">Where a model overfits (MCS-2's cores: 14.1 in-sample, 25.1 OOS), the backtest caught it — <strong>production caps and regularizes accordingly</strong>.</li>
       </ul>
     </div>
   </div>
   <div class="strip"><span class="lbl">Why it matters</span>
-    On replayed market history the house model fits <b>up to 2–3× tighter than the market-standard baseline (degree 8–12; ~1.6× at the shipped default), with no measured overfit over the tested range</b> — and the same harness reports arbitrage metrics alongside the errors.</div>
+    On replayed market history the house model fits <b>~2× tighter than the market-standard baseline at the same ~30 ms,
+    butterfly-arb-free in every one of its fits, with no measured overfit</b> — and the same harness reports arbitrage metrics
+    alongside the errors.</div>
   <div class="foot"><span>Vol-Fitter · executive summary — full deck: slide 7</span><span></span></div>
 </section>
 
