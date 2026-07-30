@@ -30,7 +30,7 @@ spec, "State and invalidation").
 | Field | Type / range | Default | Role |
 |---|---|---|---|
 | `model` | `lqd` \| `svi` \| `sigmoid` | `lqd` | Smile family charted by the Parametric workspace. LQD is *always* fitted under the hood so density/term/local-vol/graph views stay LQD-based; SVI and Multi-Core SIV ("sigmoid") are overlays calibrated to the same quotes. |
-| `nOrder` | int 4–16 | 6 | LQD Legendre body order N. |
+| `nOrder` | int 4–24 | 16 | LQD Legendre body order N. Raised from 6/cap 16 (2026-07-30): N≤12 leaves an equioscillating truncation residual (±20bp) at the smile shoulder on low-vol names whose quoted strip spans ±4σ (SPY LEAPs); at 24 the shoulder error reaches spread level. The *effective* per-slice order is additionally capped by the quote count (two quotes per parameter: N+1 ≤ quotes/2, never below min(nOrder, 6)): thin books keep their historical N=6 fits, stay data-identified (error bars never saturate), and avoid the measured trf latency meander of over-parameterized short-dated books (seconds at N≥12 on a 19-quote 0DTE book). |
 | `lqdCoords` | `lr` \| `endpoint` \| `logistic` | `logistic` | LQD optimization chart. `logistic` = endpoint chart with the right tail scale mapped through a logistic, so the admissibility wall is unreachable and the chart covers exactly the admissible set (production default). `endpoint` = (log A_L, log A_R, a) with body modes endpoint-neutral. `lr` = historical raw vector. Same family/objective in all three — the fitted optimum is chart-independent to solver tolerance. |
 | `regLambda` | float 0–1 | 1e-6 | LQD high-order ridge: penalty λ·n^{2r}·a_n². |
 | `regPower` | float 0–4 | 1.0 | The r in n^{2r}. |

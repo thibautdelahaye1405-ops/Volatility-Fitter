@@ -1299,9 +1299,13 @@ Knob & Default & Role\\
 \endhead
 \multicolumn{3}{l}{\emph{Surfaced (FitSettings)}}\\
 \midrule
-\texttt{nOrder} $N$ & $6$ & Legendre expansion order; $7$ parameters at $N=6$.
-Schema range $4\le N\le16$: $6$ for ordinary slices, $8$--$14$ for
-scheduled-event slices.\\
+\texttt{nOrder} $N$ & $16$ & Legendre expansion order; $N+1$ parameters.
+Schema range $4\le N\le24$ (default raised from $6$, cap from $16$,
+2026-07-30): low-vol names whose quoted strip spans $\pm4\sigma$ leave a
+$\pm20$bp equioscillating shoulder residual below $N\approx16$. Effective
+per-slice order is quote-count-capped (two quotes per parameter,
+$N+1\le\text{quotes}/2$, never below $\min(N,6)$) so thin books keep their
+historical $N=6$ fits and avoid the over-parameterized latency meander.\\
 \texttt{lqdCoords} & \texttt{logistic} & Optimization chart
 (\cref{sec:charts}): \texttt{lr} raw $\theta$; \texttt{endpoint}
 $(\log A_L,\log A_R,a)$; \texttt{logistic} pushes $A_R$ through

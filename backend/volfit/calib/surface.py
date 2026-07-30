@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from volfit.calib.calendar import (
+    calendar_grid_nodes,
     calendar_violation_windowed,
     common_support,
     confined_calendar_floor,
@@ -84,7 +85,9 @@ def calibrate_surface(
         )
         cal_k = cal_pfloor = cal_taper = None
         if enforce_calendar and prev is not None and window is not None:
-            confined = confined_calendar_floor(prev.slice, window)
+            confined = confined_calendar_floor(
+                prev.slice, window, n=calendar_grid_nodes(n_order)
+            )
             if confined is not None:
                 cal_k, cal_pfloor, cal_taper = confined
         result = calibrate_slice(

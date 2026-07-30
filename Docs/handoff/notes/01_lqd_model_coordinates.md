@@ -927,7 +927,7 @@ The knobs *specific to* the LQD slice, with defaults and roles. Surfaced knobs a
 
 | Knob | Default | Role |
 |---|---|---|
-| `nOrder` $N$ | $6$ | Legendre expansion order; $7$ parameters at $N=6$. Schema range $4\le N\le16$: $6$ for ordinary slices, $8$–$14$ for scheduled-event slices. |
+| `nOrder` $N$ | $16$ | Legendre expansion order; $N+1$ parameters. Schema range $4\le N\le24$ (default raised from $6$, cap from $16$, 2026-07-30): low-vol names whose quoted strip spans $\pm4\sigma$ (SPY LEAPs) leave a $\pm20$bp equioscillating shoulder residual below $N\approx16$; $N=20$–$24$ reaches spread level. Effective per-slice order is quote-count-capped (two quotes per parameter: $N+1\le\text{quotes}/2$, never below $\min(N,6)$) so thin books keep their historical $N=6$ fits, every $\theta$-direction stays data-identified, and short-dated books avoid the over-parameterized trf latency meander. |
 | `regLambda` $\lambda$ | $10^{-6}$ | High-order ridge coefficient in equation (40); suppresses oscillation in sparse data. |
 | `regPower` $r$ | $1.0$ | Ridge exponent in $n^{2r}a_n^2$; larger $r$ penalizes high modes harder. |
 | `barrierCenter` $c$ | 0.90 | Centre of the $A_R$ softplus barrier, equation (41); engages before the $A_R=1$ wall. |

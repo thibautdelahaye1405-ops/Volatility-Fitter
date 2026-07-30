@@ -45,6 +45,7 @@ pytestmark = pytest.mark.perf
 # real algorithmic regression.
 BUDGET_MS = {
     "lqd_slice_fit": 350.0,         # ~35 ms local (was ~95; grid/Simpson cache + 2001-node opt grid)
+    "lqd_slice_fit_default": 350.0,  # ~29 ms local; same strip at the shipped default order (16)
     "graph_update_1k": 2500.0,      # ~700 ms local; Phase-4 target < 1 s @ 1k nodes
     "localvol_forward": 250.0,      # ~20 ms local; CN Dupire forward, 2 expiries
     "deamericanize_chain": 1800.0,  # ~3 ms numba / ~350 ms numpy fallback; ~80-quote CRR de-Am
@@ -109,6 +110,26 @@ def test_perf_lqd_slice_fit(perf_report):
         perf_report,
         "lqd_slice_fit",
         lambda: calibrate_slice(k, w_quotes, t=bm.SVI_T, n_order=6),
+        repeat=15,
+    )
+
+
+def test_perf_lqd_slice_fit_default_order(perf_report):
+    """The same strip at the SHIPPED default order (nOrder=16, guard-free at
+    40 quotes) — the rail the historical n_order=6 one no longer covers. High
+    orders can meander in trf's ridge-flat valley on exactly-representable
+    targets (see service.effective_lqd_order), so this locks the dense-book
+    default path specifically."""
+    from volfit.api.service import effective_lqd_order
+
+    k = np.linspace(*bm.SVI_FIT_RANGE, 40)
+    w_quotes = bm.SVI_RAW.total_variance(k)
+    n = effective_lqd_order(16, k.size)
+    assert n == 16  # 40 quotes leave the shipped default uncapped
+    _check(
+        perf_report,
+        "lqd_slice_fit_default",
+        lambda: calibrate_slice(k, w_quotes, t=bm.SVI_T, n_order=n),
         repeat=15,
     )
 
@@ -348,6 +369,7 @@ def test_perf_affine_localvol_gn_heavy(perf_report):
 #    TARGET is < 50 ms per warm slice on a quiet box (measured ~20 ms local,
 #    caches warm); the assert ceiling is 3x the target for shared runners.
 BUDGET_MS["warm_slice_0dte"] = 150.0  # design target < 50 ms; ~20 ms local
+BUDGET_MS["warm_slice_0dte_default"] = 150.0  # same book via the shipped-default order guard
 
 
 def test_perf_warm_slice_0dte(perf_report):
@@ -363,3 +385,26 @@ def test_perf_warm_slice_0dte(perf_report):
         calibrate_slice(k, w, t=tau, n_order=6, weights=weights)
 
     _check(perf_report, "warm_slice_0dte", fit, repeat=9, warmup=2)
+
+
+def test_perf_warm_slice_0dte_default_order(perf_report):
+    """The same 0DTE book through the SHIPPED default path: nOrder=16 capped
+    by the quote-count guard to N=8 (~20 ms local). Uncapped, this exact book
+    meanders for SECONDS at N>=12 (trf chases 1e-12 cost in the ridge-flat
+    valley of an exactly-representable target) — the guard IS the latency
+    protection, and this rail locks it."""
+    from volfit.api.service import effective_lqd_order
+    from volfit.calib.weights import resolve_weights
+
+    tau = 3.5 / 24.0 / 365.0
+    k = np.linspace(-0.02, 0.02, 19)
+    iv = 0.16 + 1.2 * k**2 / 0.02 - 0.35 * k
+    w = iv**2 * tau
+    weights = resolve_weights("equal", k, w)
+    n = effective_lqd_order(16, k.size)
+    assert n == 8  # 19 quotes cap the shipped default to two quotes per param
+
+    def fit():
+        calibrate_slice(k, w, t=tau, n_order=n, weights=weights)
+
+    _check(perf_report, "warm_slice_0dte_default", fit, repeat=9, warmup=2)

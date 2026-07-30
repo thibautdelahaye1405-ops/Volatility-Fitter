@@ -49,7 +49,9 @@ export interface FitSettings {
 
 export const FIT_DEFAULTS: FitSettings = {
   model: "lqd",
-  nOrder: 6,
+  // Default 16 / slider cap 24 — keep in sync with backend FitSettings
+  // (le=24): low-vol wide-z names need the extra shoulder resolution.
+  nOrder: 16,
   lqdCoords: "logistic",
   regLambda: 1e-6,
   regPower: 1.0,
@@ -214,7 +216,7 @@ export default function HyperparamPanel({ group, draft, patch, disabled }: Hyper
           <input
             type="range"
             min={4}
-            max={12}
+            max={24}
             step={1}
             value={draft.nOrder}
             disabled={disabled}

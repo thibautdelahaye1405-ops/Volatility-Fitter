@@ -125,6 +125,18 @@ CAL_PRICE_N = 49
 CAL_VIOLATION_N = 201
 
 
+def calendar_grid_nodes(n_order: int, base: int = CAL_PRICE_N) -> int:
+    """Constraint-node count that oversamples a degree-``n_order`` slice.
+
+    Four nodes per Legendre degree: a fixed grid enforces the calendar floor
+    only AT its nodes, and a high-order slice has enough curvature to slip a
+    violation between them (caught later by the CAL_VIOLATION_N diagnostic
+    but invisible to the constraint rows). Never below the historical
+    ``base``, so fits at the legacy orders are byte-identical.
+    """
+    return max(int(base), 4 * int(n_order) + 1)
+
+
 def tapered_support_grid(
     window: tuple[float, float], n: int
 ) -> tuple[np.ndarray, np.ndarray]:

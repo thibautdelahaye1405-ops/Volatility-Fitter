@@ -42,7 +42,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from volfit.calib.calendar import common_support, tapered_support_grid
+from volfit.calib.calendar import calendar_grid_nodes, common_support, tapered_support_grid
 from volfit.calib.symmetric_stack import (  # noqa: F401 — public re-exports
     SLOPE_TOL,
     TAIL_ROW_FRAC,
@@ -107,7 +107,12 @@ def build_interface(
     window = common_support(near.k, far.k)
     if window is None:
         return None
-    grid, taper = tapered_support_grid(window, IFACE_N)
+    # Oversample the pair's highest Legendre order so a degree-N slice cannot
+    # keep an ordering violation between constraint nodes (33 = legacy N<=8).
+    order = max(
+        int(near.fit_kwargs.get("n_order", 6)), int(far.fit_kwargs.get("n_order", 6))
+    )
+    grid, taper = tapered_support_grid(window, calendar_grid_nodes(order, IFACE_N))
     if grid.size == 0:
         return None
     w_far = np.interp(grid, far.k, far.w)

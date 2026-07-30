@@ -47,7 +47,7 @@ def test_defaults(client):
     settings = client.get("/settings/fit").json()
     assert settings == {
         "model": "lqd",
-        "nOrder": 6,
+        "nOrder": 16,  # raised from 6 with the le=24 cap (SPY shoulder truncation)
         "lqdCoords": "logistic",
         "regLambda": 1e-6,
         "regPower": 1.0,
@@ -71,7 +71,7 @@ def test_put_changes_subsequent_fits(client):
 
     response = client.put(
         "/settings/fit",
-        json={"model": "lqd", "nOrder": 6, "regLambda": 0.5, "regPower": 2.0},
+        json={"model": "lqd", "nOrder": 16, "regLambda": 0.5, "regPower": 2.0},
     )
     assert response.status_code == 200
     assert response.json()["regLambda"] == 0.5
@@ -83,7 +83,7 @@ def test_put_changes_subsequent_fits(client):
     # Back to defaults: the fit returns to the original quality.
     client.put(
         "/settings/fit",
-        json={"model": "lqd", "nOrder": 6, "regLambda": 1e-6, "regPower": 1.0},
+        json={"model": "lqd", "nOrder": 16, "regLambda": 1e-6, "regPower": 1.0},
     )
     assert _fit_rms_bp(client, expiry) == pytest.approx(rms_default, abs=1e-9)
 

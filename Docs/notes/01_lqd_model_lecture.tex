@@ -1373,8 +1373,11 @@ Knob & Default & Role\\
 \endhead
 \multicolumn{3}{l}{\emph{Surfaced in FitSettings}}\\
 \midrule
-\texttt{nOrder} $N$ & $6$ & Highest Legendre degree; $N+1$ parameters.
-Schema range $4\le N\le16$.\\
+\texttt{nOrder} $N$ & $16$ & Highest Legendre degree; $N+1$ parameters.
+Schema range $4\le N\le24$ (default/cap raised 2026-07-30 for low-vol
+wide-$z$ shoulder resolution); effective per-slice order is
+quote-count-capped (two quotes per parameter, $N+1\le\text{quotes}/2$,
+never below $\min(N,6)$).\\
 \texttt{lqdCoords} & \texttt{logistic} & Optimization chart: raw \texttt{lr},
 endpoint-speed, or the logistic tail coordinate that puts the $A_R$ wall out
 of reach; the fitted optimum is chart-independent to solver tolerance.\\

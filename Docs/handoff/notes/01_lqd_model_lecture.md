@@ -932,7 +932,7 @@ Table 5 lists the controls native to LQD. Shared quote, band, calendar, var-swap
 
 | Knob | Default | Role |
 |---|---|---|
-| `nOrder` $N$ | $6$ | Highest Legendre degree; $N+1$ parameters. Schema range $4\le N\le16$. |
+| `nOrder` $N$ | $16$ | Highest Legendre degree; $N+1$ parameters. Schema range $4\le N\le24$ (default/cap raised 2026-07-30 for low-vol wide-$z$ shoulder resolution); effective per-slice order is quote-count-capped (two quotes per parameter: $N+1\le\text{quotes}/2$, never below $\min(N,6)$). |
 | `lqdCoords` | `logistic` | Optimization chart: raw `lr`, endpoint-speed, or the logistic tail coordinate that puts the $A_R$ wall out of reach; the fitted optimum is chart-independent to solver tolerance. |
 | `regLambda` $\lambda$ | $10^{-6}$ | Application default for the high-order ridge. The direct `calibrate_slice` function defaults to zero. |
 | `regPower` $r$ | $1.0$ | Ridge power in $\lambda n^{2r}a_n^2$ for $n\ge4$. |

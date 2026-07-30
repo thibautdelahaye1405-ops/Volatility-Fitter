@@ -145,7 +145,7 @@ A *curated* index of the principal tunable parameters: surfaced (the user-facing
 | Parameter | Default | Role | Note |
 |---|---|---|---|
 | `model` | `lqd` | smile family: `lqd` / `svi` / `sigmoid` (MCS) | 01–03 |
-| `nOrder` | $6$ | LQD Legendre order | 01 |
+| `nOrder` | $16$ | LQD Legendre order (range $4$–$24$) | 01 |
 | `regLambda` / `regPower` | $10^{-6}$ / $1$ | LQD high-order ridge | 01 |
 | `barrierCenter` / `barrierScale` | $0.90$ / $50$ | LQD $A_R$ barrier | 01 |
 | `nCores` | $2$ | MCS hat count (schema-clamped at 2) | 03 |

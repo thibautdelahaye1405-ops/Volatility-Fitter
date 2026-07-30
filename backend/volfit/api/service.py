@@ -47,6 +47,7 @@ from volfit.api.displayed import (
 )
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import (
+    calendar_grid_nodes,
     calendar_violation_windowed,
     common_support,
     confined_calendar_floor,
@@ -105,6 +106,34 @@ K_DISPLAY_HI = 1.0
 #: hyperparameter panel PUT /settings/fit overrides them per AppState).
 REG_LAMBDA = 1e-6
 REG_POWER = 1.0
+
+#: Quote-count guard on the LQD order: params N+1 <= quotes/2 (two quotes per
+#: parameter). Two measured failure modes above that ratio, both on thin books
+#: at the raised default order (16): (a) identification — on a 14-quote chain
+#: the delta-method error bars (api.fit_uncertainty) are healthy at params <=
+#: quotes - 4 and saturate the 0.1 variance ceiling by params = quotes - 1;
+#: (b) LATENCY — on the 19-quote 0DTE book the solver meanders in the
+#: ridge-flat valley (params/quotes 0.47 -> 7 evals / 20ms; 0.58 -> 63 evals /
+#: 166ms; 0.68 -> 2568 evals / 7.6s), destroying the <50ms warm-slice gate.
+LQD_QUOTES_PER_PARAM = 2
+
+#: The guard never caps below the historical default order — sparse books
+#: (e.g. a 9-quote weekly) have always fitted at N=6 and the tail-reach /
+#: functional-band behavior of those fits is locked by tests and priors.
+LQD_ORDER_GUARD_FLOOR = 6
+
+
+def effective_lqd_order(n_order: int, n_quotes: int) -> int:
+    """The slice's usable Legendre order: the configured ``n_order`` capped so
+    that params N+1 <= n_quotes / LQD_QUOTES_PER_PARAM. The cap never reduces
+    the order below min(n_order, 6) — thin books keep their historical N=6
+    fits — so it only moderates the HIGH default/cap (16/24) on chains too
+    sparse to identify that many modes quickly (0DTE, thin weeklies; the
+    wide-z 100+-quote LEAP surfaces that need the shoulder resolution are
+    untouched)."""
+    n_order = int(n_order)
+    capped = min(n_order, int(n_quotes) // LQD_QUOTES_PER_PARAM - 1)
+    return max(min(n_order, LQD_ORDER_GUARD_FLOOR), capped)
 
 #: Friendly model names for the engine-activity narration (status bar).
 _MODEL_LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "Multi-Core Sigmoid"}
@@ -562,18 +591,21 @@ def _slice_task(
 
     calibrate = prepass = None
     if with_fit:
+        n_order = effective_lqd_order(settings.nOrder, k.size)
         cal_k = cal_pfloor = cal_taper = None
         if enforce_calendar and prev is not None:
             window = common_support(prev_k if prev_k is not None else k, k)
             confined = (
-                confined_calendar_floor(prev.slice, window)
+                confined_calendar_floor(
+                    prev.slice, window, n=calendar_grid_nodes(settings.nOrder)
+                )
                 if window is not None
                 else None
             )
             if confined is not None:
                 cal_k, cal_pfloor, cal_taper = confined
         base = dict(
-            k=k, w_quotes=w, t=prepared.tau, n_order=settings.nOrder,
+            k=k, w_quotes=w, t=prepared.tau, n_order=n_order,
             weights=weights, reg_lambda=settings.regLambda,
             reg_power=settings.regPower, band=band,
             barrier_center=settings.barrierCenter,
@@ -596,7 +628,7 @@ def _slice_task(
             base,
             # Warm start only from a same-order seed (a mismatched order would
             # be the wrong vector length); the prepass seed always matches.
-            init=init if getattr(init, "order", None) == settings.nOrder else None,
+            init=init if getattr(init, "order", None) == n_order else None,
             calendar_k=cal_k, calendar_price_floor=cal_pfloor,
             calendar_weight=state.options().calendarWeight,
             calendar_taper=cal_taper,

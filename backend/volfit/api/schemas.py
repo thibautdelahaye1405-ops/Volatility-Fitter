@@ -63,7 +63,11 @@ class FitSettings(BaseModel):
     """
 
     model: Literal["lqd", "svi", "sigmoid"] = "lqd"
-    nOrder: int = Field(6, ge=4, le=16)  # Legendre order N of the LQD slice
+    # Legendre order N of the LQD slice. Default 16: N=6-12 leaves an
+    # equioscillating truncation residual at the smile shoulder on low-vol
+    # wide-z names (SPY LEAPs: +-20bp vs 3bp spreads); the cap 24 is where the
+    # shoulder error reaches spread level on the reference SPY surface.
+    nOrder: int = Field(16, ge=4, le=24)
     #: LQD optimization chart (volfit.models.lqd.charts): "lr" (historical
     #: raw (L, R, a) vector), "endpoint" ((log A_L, log A_R, a) — body modes
     #: endpoint-neutral so acute central convexity can't mechanically drag
