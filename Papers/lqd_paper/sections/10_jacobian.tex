@@ -1,0 +1,161 @@
+%======================================================================
+\section{The analytic Jacobian}
+\label{sec:jacobian}
+
+A least-squares solver spends most of its time on the Jacobian: with
+$P=N+1$ parameters, finite-differencing the residuals rebuilds the entire
+slice $P+1$ times per iteration.  The ledger removes the rebuilds.  The
+key is a cancellation identity, and it is the cleanest piece of
+mathematics in the implementation.
+
+\subsection{The envelope-cancellation theorem}
+
+The priced call \eqref{eq:call} depends on $\theta$ twice: explicitly
+through the curves $x$ and $G$, and implicitly through the strike root
+$z_k(\theta)$ solving $x(z_k;\theta)=k$.  A naive gradient must
+differentiate the root.  It need not.
+
+\begin{theorem}[Envelope cancellation]
+\label{thm:envelope}
+For every admissible $\theta$, every strike $k$, and every coordinate
+$\theta_j$,
+\begin{equation}
+\frac{\partial c(k;\theta)}{\partial\theta_j}
+=\left.\frac{\partial G(z;\theta)}{\partial\theta_j}
+\right|_{z=z_k(\theta)} :
+\label{eq:envelope}
+\end{equation}
+the implicit dependence through the strike root contributes nothing.
+\end{theorem}
+
+\begin{proof}
+Differentiate $c=G(z_k;\theta)-e^{k}\big(1-\Lambda(z_k)\big)$ in
+$\theta_j$, writing the root's motion explicitly:
+\[
+\frac{\partial c}{\partial\theta_j}
+=\frac{\partial G}{\partial\theta_j}\Big|_{z_k}
++\Big[\,G'(z_k)+e^{k}\rho(z_k)\Big]
+\frac{\partial z_k}{\partial\theta_j} .
+\]
+By \eqref{eq:ledgerprops}, $G'(z)=-e^{x(z)}\rho(z)$, and at the root
+$e^{x(z_k)}=e^{k}$, so the bracket is
+$-e^{k}\rho(z_k)+e^{k}\rho(z_k)=0$.
+\end{proof}
+
+\begin{remark}
+This is an envelope argument.  The call is an integral whose lower limit
+sits exactly where its integrand --- the payoff $e^{x(t)}-e^{k}$ against
+the rank measure --- vanishes: the exercise boundary is, by definition,
+the point of indifference, so moving it is free to first order.  It is
+the same mechanism by which the early-exercise boundary drops out of
+American-option sensitivities.  The reader may also recognize
+\eqref{eq:cprime} as the case ``$\theta_j=k$'' of the same computation.
+\end{remark}
+
+\subsection{One pass for all columns}
+
+With the root frozen by \cref{thm:envelope}, differentiating the build is
+mechanical, because $g$ is \emph{affine} in $\theta$: its coordinate
+derivatives are the fixed basis functions
+\[
+\frac{\partial g}{\partial L}=1-u,
+\qquad
+\frac{\partial g}{\partial R}=u,
+\qquad
+\frac{\partial g}{\partial a_n}=P_n(1-2u),
+\]
+cached once per grid.  Write $\bar{x}$ for the unshifted transport and
+$I$ for the normalizing integral of \cref{prop:shift}.  Then, for each
+coordinate $\theta_j$ (all integrals over the fixed grid):
+\begin{align}
+\frac{\partial \bar{x}(z)}{\partial\theta_j}
+&=\int_0^{z}e^{g(\Lambda(t))}\,
+\frac{\partial g}{\partial\theta_j}\big(\Lambda(t)\big)\,\dd t
+&&\text{(cumulative pass 1)}
+\label{eq:pass1}\\
+\frac{\partial m}{\partial\theta_j}
+&=-\frac{1}{I}\int_{-\infty}^{\infty}
+e^{\bar{x}(z)}\,\frac{\partial\bar{x}(z)}{\partial\theta_j}\,
+\rho(z)\,\dd z
+&&\text{(one dot product)}
+\label{eq:pass2}\\
+\frac{\partial G(z)}{\partial\theta_j}
+&=\int_z^{\infty}e^{x(t)}
+\Big(\frac{\partial m}{\partial\theta_j}
++\frac{\partial\bar{x}(t)}{\partial\theta_j}\Big)\rho(t)\,\dd t
+&&\text{(cumulative pass 2, from the right).}
+\label{eq:pass3}
+\end{align}
+Every step is a cumulative integral of arrays already in hand, because
+differentiation commutes with integration and the exponential
+differentiates into itself times a cached basis column.  The integrand of
+\eqref{eq:pass3}, negated, is also the nodal derivative
+$\partial G'/\partial\theta_j$ --- exactly the value/derivative pair the
+Hermite interpolation of \cref{sec:computation} wants, so the
+interpolated Jacobian has the same fourth-order accuracy as the
+interpolated price.  The remaining residual rows differentiate in one
+line each: the ridge is diagonal, the band hinge multiplies
+\eqref{eq:envelope} by the violation sign, the barrier row is a scalar
+chain through $\partial\lambda_+/\partial\theta
+=\lambda_+\cdot(0,1,1,-1,\dots)$, and the var-swap row is
+\begin{equation}
+\frac{\partial w_{\mathrm{vs}}}{\partial\theta_j}
+=-2\int_{-\infty}^{\infty}
+\Big(\frac{\partial m}{\partial\theta_j}
++\frac{\partial\bar{x}(z)}{\partial\theta_j}\Big)\rho(z)\,\dd z,
+\label{eq:varswaprow}
+\end{equation}
+riding the same pass --- a var-swap-targeted fit costs the same as a
+plain one.
+
+\subsection{Complexity, and the measured speedup}
+
+Honesty about what was gained.  The analytic pass computes $P$ cumulative
+sensitivity integrals on one build: cost $O(P\,n_{\mathrm{grid}})$.  The
+finite difference computes $P+1$ \emph{complete} builds --- each with its
+normalization, exponentials, and root solves --- also
+$O(P\,n_{\mathrm{grid}})$ in symbols.  The analytic route removes the
+rebuild constant, not the linear-in-$P$ scaling; the honest claim is a
+constant-factor win, and it is measured, not asserted.  On the reference
+implementation, timed by the protocol of \cref{sec:computation} (median
+and interquartile range over interleaved analytic/finite-difference
+solves in a single run, never best-of-$n$), the analytic Jacobian reaches
+the same optimum --- costs agreeing to \MacJacSameOptCost\ relative,
+parameters to \MacJacSameOptParams\ --- at
+\MacJacSpeedupMin--\MacJacSpeedupMax$\times$
+the finite-difference speed across the order range
+(\cref{tab:timing}).  Correctness is audited independently of speed:
+\cref{fig:jacobian} compares every column of the analytic Jacobian
+against a central finite difference on a fitted slice; the worst relative
+disagreement across all strikes and parameters is \MacJacFdMaxRel\ ---
+of the size of the central difference's own truncation error at the
+audit step, so the comparison bounds the analytic route by the
+reference's resolution, not by any detected defect.
+
+One honesty note on exactness.  \Cref{thm:envelope} is exact for the
+continuous objects.  The implementation interpolates $x$ and $G$ as two
+separate Hermite interpolants, so between nodes the interpolated price is
+not algebraically the integral of the interpolated quantile, and the
+implemented gradient inherits that (small, fourth-order) mismatch.  The
+operational claim is therefore \emph{benchmarked agreement}
+(\cref{fig:jacobian}), not algebraic identity --- the same
+theorem-plus-certificate posture the paper takes everywhere
+(\cref{sec:computation}).
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_jacobian.pdf}
+\caption{The analytic Jacobian audited against an independent central
+finite difference, on the fitted SPY December 2026 slice.  Panel A: each
+column is one parameter's price sensitivity across the strike ladder
+(columns normalized to $[-1,1]$): the chord coordinates $L$ and $R$ weight
+the wings, each Legendre mode paints its own oscillation across the body,
+and every body column also reaches the wings through the endpoint coupling
+\eqref{eq:endpoints}.  Panel B: column-wise relative disagreement between
+the one-pass analytic Jacobian \eqref{eq:pass1}--\eqref{eq:pass3} and the
+central difference; the worst entry is \MacJacFdMaxRel, at the level of
+the finite difference's own truncation error --- agreement with a
+derivative computed by a completely different route, to that route's own
+resolution.}
+\label{fig:jacobian}
+\end{figure}

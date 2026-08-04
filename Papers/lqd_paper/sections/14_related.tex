@@ -1,0 +1,90 @@
+%======================================================================
+\section{Related work}
+\label{sec:related}
+
+The ingredients of this paper are classical, and it is worth saying
+precisely which shelf each came from and what, if anything, is new in
+the assembly.
+
+\emph{Densities from option prices.}  That the call curve's second
+strike derivative is the risk-neutral density is Breeden and
+Litzenberger's \citep{BreedenLitzenberger1978}; the static no-arbitrage
+characterization of call quotes used in \cref{def:slice} is classical
+and is stated compactly by Carr and Madan \citep{CarrMadan2005}.  This
+paper's \eqref{eq:bl_division} is the same identity read in the model's
+coordinates, where it costs one division.
+
+\emph{Wing asymptotics.}  The moment formula bounding wing slopes is
+Lee's \citep{Lee2004}; the upgrade from $\limsup$ to limits under
+regular variation is Benaim and Friz's \citep{BenaimFriz2009}.  The
+contribution here is only the closed composition
+\eqref{eq:leeclosed} --- the model's tail coordinates happen to make
+Lee's formula an explicit two-parameter map --- and the effective-slope
+honesty figure.
+
+\emph{Implied-volatility parametrizations.}  SVI
+\citep{Gatheral2004} and its surface extension SSVI
+\citep{GatheralJacquier2014} are the industry benchmarks for the
+volatility chart, with explicitly characterized (but parameter-coupled)
+no-arbitrage regions; Fengler's arbitrage-free smoothing
+\citep{Fengler2009} represents the spline-with-constraints tradition in
+the price chart.  Both approaches place validity in the optimizer;
+the present model places it in the coordinates.  The trade is not free
+--- SVI's five parameters are quotable desk vocabulary in a way sixteen
+Legendre coefficients are not --- and \cref{sec:atm} plus the package
+machinery of \cref{app:implementation} are the model's answer, not a
+dismissal of the need.
+
+\emph{Quantile-based modeling.}  Modeling distributions through
+quantile functions goes back at least to Parzen \citep{Parzen1979} and
+is developed monographically by Gilchrist \citep{Gilchrist2000}; Keelin's
+metalog family \citep{Keelin2016} builds flexible unbounded
+distributions as polynomial expansions of the quantile function itself
+and is the closest relative in the applied literature.  The two design
+differences are load-bearing: LQD expands the \emph{logarithm} of the
+quantile density --- so monotonicity is structural at every order,
+where the metalog must verify feasibility of its coefficient vector ---
+and it carries the $-\log u-\log(1-u)$ skeleton explicitly, so the
+expansion coefficients control tails through two endpoint values with
+the martingale condition solvable by one shift.  In functional data
+analysis, Petersen and M\"uller \citep{PetersenMuller2016} use the same
+log-quantile-density transform to map density-valued data to an
+unconstrained Hilbert space --- the identical unconstrainedness
+argument, made for statistical rather than arbitrage reasons; this
+paper adds the financial boundary conditions (martingale normalization,
+the $\lambda_+<1$ wall, Lee consistency) and the pricing calculus.
+
+\emph{Variance swaps and the log contract.}  The log-contract
+replication is Neuberger's \citep{Neuberger1994}, its dealer-standard
+exposition Demeterfi, Derman, Kamal, and Zou's
+\citep{DemeterfiDermanKamalZou1999}, and the general payoff-replication
+frame Carr and Madan's \citep{CarrMadan1998}.  Here the fitted law is
+explicit, so \eqref{eq:varswap} integrates the density directly rather
+than replicating across a strip.
+
+\emph{Calendar order.}  That call-price domination with equal means is
+convex order, and that convex-ordered marginals are exactly those a
+martingale can traverse, is Strassen's and Kellerer's
+\citep{Strassen1965,Kellerer1972}.  \Cref{thm:ledgerorder} restates the
+first fact as a pointwise comparison of the model's native
+computational object; the conjugate-duality proof is elementary and
+surely folklore in some notation, but the author has not found the
+ledger form stated.
+
+\emph{Numerics.}  Monotone cubic interpolation certificates are Fritsch
+and Carlson's \citep{FritschCarlson1980}; floating-point discipline
+follows Higham \citep{Higham2002}; the solver is the trust-region
+reflective method \citep{BranchColemanLi1999} as implemented in SciPy
+\citep{SciPy2020}.
+
+What, then, is claimed as new?  Not the transform, not the moment
+formula, not the conjugacy of calls and tail expectations.  The claims
+are architectural: the separation of validity, information, and
+convention into structure, audit, and disclosed choices respectively;
+the single-ledger organization in which pricing, differentiation
+(\cref{thm:envelope}), density, variance swap, and calendar order are
+five reads of one array; the closed ATM microscope \eqref{eq:atm_w}
+with the skew-as-digital-mismatch reading; and the certificate-plus-audit
+doctrine of \cref{sec:computation} by which the discretization earns
+the continuous theorems.  Readers are invited to judge the assembly,
+since every part has prior art somewhere.

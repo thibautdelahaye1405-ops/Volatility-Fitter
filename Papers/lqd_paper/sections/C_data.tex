@@ -1,0 +1,76 @@
+%======================================================================
+\section{Data and reproducibility}
+\label{app:data}
+
+\subsection{The frozen snapshot}
+
+Every real-market number and figure in the paper derives from one frozen
+JSON artifact, captured once and never refetched:
+
+\begin{itemize}[leftmargin=1.6em]
+\item \emph{Source}: a delayed consolidated US listed-options feed;
+after-hours book of the Monday 2026-08-03 US session (reference date
+2026-08-03, capture timestamp 2026-08-04 02:08 UTC).
+\item \emph{Universe}: SPY (spot \MacSpySpot) and NVDA (spot
+\MacNvdaSpot), eight expiries each, 2026-08-05 through 2027-12-17 ---
+maturities from \MacNvdaOneDayDays\ calendar days to
+\MacNvdaLongTYears\ years.  \MacSnapNodeCount\ fitted nodes in total.
+\item \emph{Fit recipe} (stamped in the file's manifest): LQD at order
+$N=16$ under the guard \eqref{eq:orderguard}, logistic chart, haircut
+target \eqref{eq:haircut} with $h=0.005$, equal quote weights, ridge
+$\alpha=10^{-6}$, $\nu=1$, calendar rows \eqref{eq:calrows} active.  No
+per-node tuning of any kind.
+\item \emph{Quality}: all lit nodes fitted and ready; median quote-fit
+rms \MacSnapMedianRmsBp\ vol bp, worst \MacSnapWorstRmsBp\ vol bp (the
+shortest NVDA node).
+\item \emph{Self-containment}: the file embeds the normalized chains,
+per-node prepared quotes with forward and discount provenance, fitted
+parameters, and fitted curves --- everything needed to re-run any fit or
+re-price any figure offline, with no feed access.
+\end{itemize}
+
+One family-level advisory is disclosed rather than suppressed, because
+\cref{sec:calendar} uses it as a live illustration: a full-grid
+\emph{vol-space} calendar audit at equal log-moneyness (both legs read
+on the far node's clock) flags a \MacCalGapVolBp\ vol bp crossing
+between the two shortest SPY expiries --- two and four calendar days
+from the reference date --- at $k=\MacCalGapArgmaxK$, far outside the
+pair's common quote span $[\MacCalSpanLo,\MacCalSpanHi]$, where the
+call prices are \MacCalendarCallShort\ and \MacCalendarCallLong\ of
+forward (bounded by \MacCalWingPriceOrder).  A price-space audit over
+all adjacent pairs on the full display grid finds a worst violation of
+\MacCalPriceGridWorst\ of forward --- round-off.  Per-node quality is
+clean; the crossing lives entirely in the extrapolated region that
+\cref{sec:calcontrol} deliberately declines to constrain.
+
+\subsection{Synthetic benchmarks}
+
+Two synthetic targets appear in \cref{sec:examples}.  The
+\emph{double-hump} target is a two-component lognormal mixture in the
+gross return, martingale-normalized, with component weights, centers,
+and widths fixed in the figure-generation script and printed in the
+figure captions' companion macro file; it is quoted as noiseless implied
+volatilities on a realistic strike ladder, so it measures approximation
+capacity, not market fit.  The \emph{constant-speed} audit needs no
+target data at all: it compares the implementation against the closed
+forms of \cref{sec:constspeed}.
+
+\subsection{Regeneration}
+
+All figures and every data-derived number in the text (as LaTeX macros)
+are produced by a single generator script that reads only the frozen
+snapshot and the synthetic specifications --- never the network.  Real
+nodes are rebuilt from their frozen coefficient vectors, not refitted,
+and the rebuild is gated: the rebuilt display curves reproduce the
+frozen ones to \MacRebuildWorstBp\ vol bp worst-case across all
+\MacSnapNodeCount\ nodes, so every figure prices off exactly the
+published fits.
+Regenerating the paper is: run the generator (one pass, deterministic,
+fixed seeds for the audit battery), then compile.  Timing tables are the
+exception to determinism in value but not in protocol: they rerun the
+interleaved median/IQR measurement of \cref{sec:computation} on the
+build machine, and are expected to differ across machines --- the text
+quotes them only with that caveat.  The snapshot file itself is the
+citable artifact: refetching from the feed would produce a different
+book and different (if statistically similar) numbers, and no claim in
+the paper depends on which day was frozen.

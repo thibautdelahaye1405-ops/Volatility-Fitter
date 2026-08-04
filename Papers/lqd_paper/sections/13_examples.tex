@@ -1,0 +1,225 @@
+%======================================================================
+\section{Examples}
+\label{sec:examples}
+
+All real-market examples in the paper are fitted from one frozen
+snapshot: SPY and NVDA listed options, eight expiries each, from
+\MacNvdaOneDayDays\ calendar days to \MacNvdaLongTYears\ years, captured
+after the close of the 2026-08-03 US session from a delayed consolidated
+feed, with spots $\MacSpySpot$ (SPY) and $\MacNvdaSpot$ (NVDA).  Fits
+use the haircut target \eqref{eq:haircut}, the logistic chart, the
+shipped order $N=16$ under the guard \eqref{eq:orderguard}, and the
+calendar rows \eqref{eq:calrows}; nothing was tuned per example.  One
+consequence of the recipe should be recalled from
+\cref{sec:calibration} before reading the figures: SPY spreads are all
+tighter than the haircut width, so every SPY band degenerates to a mid
+target and the SPY panels draw raw bid--ask quotes, while the NVDA
+nodes carry live bands.  Across all \MacSnapNodeCount\ fitted nodes the
+median quote-fit error is \MacSnapMedianRmsBp\ vol bp and the worst
+\MacSnapWorstRmsBp\ vol bp (the shortest NVDA node, discussed below).
+Provenance, quality counts, and regeneration instructions are in
+\cref{app:data}; the synthetic examples of this section are exactly
+specified there as well.
+
+\subsection{The SPY gallery}
+
+\Cref{fig:spy_gallery} shows all eight SPY expiries: quotes as raw
+bid--ask whiskers with their mids, fitted slices through them,
+per-expiry error annotated.  The gallery's purpose is not to impress
+with residuals --- a flexible basis fitting tight liquid mids
+\emph{should} produce small residuals --- but to exhibit the shape
+vocabulary of one underlier across maturities:
+the steep short-dated put skew relaxing into the long-dated smile, the
+at-the-money level drifting with the term structure, the wings beyond
+the outer quotes following the two-parameter exponential-tail prior of
+\cref{sec:tails}.  Median error across the eight slices is
+\MacSpyGalleryMedianRmsBp\ vol bp, worst \MacSpyGalleryWorstRmsBp.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_spy_gallery.pdf}
+\caption{Eight SPY expiries from the frozen snapshot, fitted with one
+recipe.  Each panel: raw bid--ask quotes (whiskers) and mids, fitted
+LQD slice (line), per-expiry rms in vol bp (annotation).  The haircut
+bands do not appear because none survive on SPY --- every spread is
+tighter than $2h$, so the fit target is the mid everywhere
+(\cref{sec:calibration}).  Quoted strike coverage shrinks and steepens
+toward the short end; everything beyond the outermost quotes in each
+panel is the model's exponential-tail extrapolation, labeled as prior,
+not data, per \cref{sec:tails}.}
+\label{fig:spy_gallery}
+\end{figure}
+
+\subsection{One node under the microscope}
+
+\Cref{fig:spy_node} takes the December 2026 SPY expiry --- the slice
+already used in \cref{fig:lqdchart,fig:butterfly,fig:jacobian} --- and
+reads it three ways: fit against the raw bid--ask quotes, residual
+ladder in vol bp per strike, and the fitted density against an
+ATM-matched normal.  The node fits \MacSpyDecNQuotes\ quotes to
+\MacSpyDecRmsBp\ vol bp rms.  Its exact handles (\cref{prop:atm}): ATM
+volatility \MacSpyDecAtmVolPct\%, skew $\sigma'(0)=\MacSpyDecSkew$,
+curvature $\sigma''(0)=\MacSpyDecCurv$.  The fitted forward rank is
+$u_*=\MacSpyDecForwardRankPct$ --- below one half, and, what actually
+carries the skew, below the matched flat-Black percentile $\PhiN(d)$:
+this is the digital mismatch $\Delta<0$ of \cref{prop:atm} in live
+numbers, one sign with the measured $\sigma'(0)<0$, and the contrast
+with the symmetric slice of \cref{sec:ledger} (whose forward rank sits
+\emph{above} one half with $\Delta\approx0$) shows which effect owns
+which comparison: the martingale shift moves $u_*$ against one half,
+the skew moves it against $\PhiN(d)$, and the second comparison is the
+one the smile trades on.  The var-swap strike \eqref{eq:varswap} is
+\MacSpyDecVarSwapPct\%, well above the ATM volatility --- as expected
+for a slice with this much left tail, since the log contract weights
+exactly the wings the smile lifts.  The density panel shows where that
+premium lives: mass moved from the right shoulder into the left tail
+relative to the matched normal.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_spy_node.pdf}
+\caption{The SPY December 2026 node.  Panel A: raw bid--ask quotes and
+the fitted slice (no haircut bands survive on SPY ---
+\cref{sec:calibration}).  Panel B: the residual ladder --- signed fit
+error versus mid in vol bp at each quote, drawn inside the bid--ask
+envelope; rms \MacSpyDecRmsBp\ vol bp.  Panel C: the fitted density
+against a normal matched at the money: the skew is a transfer of mass
+into the left tail, paid for by a thinner right shoulder --- the same
+fact the negative digital mismatch $\Delta<0$ of \cref{prop:atm} states
+in one number.}
+\label{fig:spy_node}
+\end{figure}
+
+\paragraph{A ticket priced by hand.}
+The ledger makes a price auditable with a pencil, which is worth doing
+once in public, on a contract that actually trades.  On this node,
+price the listed December \MacTicketStrike\ call: log-moneyness
+$k=\MacTicketK$ against the node's forward.  The strike root gives rank
+$u_k=\MacTicketRankPct$: the option finishes in the money with
+probability $1-u_k$.  The two ledger entries \eqref{eq:call} read
+$G(z_k)=\MacTicketShare$ --- the share of the forward carried by
+outcomes above the strike --- and
+$e^{k}(1-u_k)=\MacTicketCash$ --- the strike bill paid on that event ---
+so
+\[
+c(\MacTicketK)=\MacTicketShare-\MacTicketCash=\MacTicketPrice,
+\]
+or \MacTicketDollarPrice\ per share in dollars through the node's
+forward and discount, for an implied volatility of \MacTicketIvPct\%.
+Reproducing these five numbers from the snapshot file is a one-screen
+exercise and the fastest full-stack audit of an implementation the
+author knows.
+
+\subsection{NVDA, including the shortest node}
+
+Single-name smiles are heavier-tailed and coarser-quoted --- and, per
+\cref{sec:calibration}, NVDA is where the haircut band mechanics
+actually engage, with roughly half the quotes carrying live bands on
+the featured nodes.  \Cref{fig:nvda_nodes} shows two NVDA expiries: the
+shortest node (\MacNvdaOneDayDays\ calendar days from the reference
+date) and the longest, December 2027.
+The long node behaves like SPY's slices with wider tails
+(\cref{fig:tails}): \MacNvdaLongNQuotes\ quotes, rms
+\MacNvdaLongRmsBp\ vol bp, fitted at full order.  The shortest node is
+the order guard \eqref{eq:orderguard} working in public:
+\MacNvdaOneDayNQuotes\ retained quotes admit effective order
+$N_{\mathrm{eff}}=\MacNvdaOneDayEffOrder$, and the fit lands at
+\MacNvdaOneDayRmsBp\ vol bp rms --- the largest error in the snapshot,
+on the thinnest, jumpiest strip, with the fewest parameters: exactly
+where a fitter should be least confident, and visibly so in the
+figure's wider bands.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_nvda_nodes.pdf}
+\caption{Two NVDA nodes from the same recipe, with the haircut bands
+live (unlike SPY's, NVDA's spreads are wide enough to survive the
+shrink \eqref{eq:haircut}).  Left: the shortest expiry
+(\MacNvdaOneDayDays\ calendar days) --- \MacNvdaOneDayNQuotes\ quotes,
+order-guarded to $N_{\mathrm{eff}}=\MacNvdaOneDayEffOrder$, rms
+\MacNvdaOneDayRmsBp\ vol bp; the guard trades inter-quote flexibility
+for stability on a strip that cannot support sixteen modes
+(\cref{sec:orderguard}).  Right: the December 2027 expiry at full order
+--- \MacNvdaLongNQuotes\ quotes, rms \MacNvdaLongRmsBp\ vol bp --- with
+the single-name tail scales visibly heavier than SPY's
+(\cref{fig:tails}).}
+\label{fig:nvda_nodes}
+\end{figure}
+
+\subsection{Order control: the synthetic double-hump}
+
+What does basis order buy?  \Cref{sec:validity} said the family can
+approximate bimodal laws; this example measures it.  The target is a
+known mixture of two lognormal components (parameters in
+\cref{app:data}), martingale-normalized, quoted as noiseless implied
+volatilities on a realistic strike grid --- an approximation benchmark,
+not a market fit.  At $N=16$ the fit reproduces the target smile to
+\MacHumpFitRmsBp\ vol bp rms (maximum error \MacDhMaxErrBpHigh\ vol bp)
+and recovers the bimodal density \emph{faithfully}: modes at
+\MacDhModeLeft\ and \MacDhModeRight\ against the true
+\MacDhTrueModeLeft\ and \MacDhTrueModeRight, trough and asymmetry
+intact (\cref{fig:doublehump}).  At $N=6$ (\cref{fig:order_control})
+the smile moves little --- the two fits agree in implied volatility to
+\MacHumpIvAgreeBp\ vol bp on a dense grid, with the larger gaps sitting
+out in the wings beyond the quoted ladder --- and the density keeps
+both modes (\MacDhModeCountLow, at this mixture separation) but is
+\emph{distorted}: the peaks overshoot, the trough is half-filled, the
+mode locations drift.  The honest scalar carrier of the difference is
+the $L^1$ distance to the true density, which more than doubles:
+\MacHumpLOneNSixteen\ at $N=16$ against \MacHumpLOneNSix\ at $N=6$.
+
+The pair of figures is the paper's cleanest exhibit on information
+versus convention.  The \emph{quotes} barely distinguish the two fits;
+the \emph{densities} differ measurably --- not, at this separation, by
+the existence of the modes, but by their fidelity: shape, depth, and
+placement of the structure between the quotes.  Below the quote
+spacing, that fidelity is chosen by the basis order, not by the market
+--- so a desk that trades density-sensitive structures (digitals,
+tight butterflies) around events should set $N$ as a conscious
+convention, and a desk that only reads smiles may never notice the
+difference.  Order is power to assert structure between quotes; the
+guard of \cref{sec:orderguard} caps that power when quotes are few.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_doublehump.pdf}
+\caption{The double-hump benchmark at $N=16$.  Panel A: target implied
+volatilities from the bimodal mixture and the fitted slice ---
+agreement to \MacHumpFitRmsBp\ vol bp rms; note the smile shows
+bimodality only as gentle shoulder structure.  Panel B: the true
+mixture density (shaded) and the fitted LQD density (dashed): both
+modes, the trough, and the asymmetry are recovered, with fitted mode
+locations \MacDhModeLeft\ / \MacDhModeRight\ against the true
+\MacDhTrueModeLeft\ / \MacDhTrueModeRight; positivity was never at risk
+while the high modes carved the trough.}
+\label{fig:doublehump}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_order_control.pdf}
+\caption{The same target at $N=6$.  Panel A: the $N=6$ and $N=16$
+smiles nearly coincide (maximum gap \MacHumpIvAgreeBp\ vol bp, the
+larger gaps beyond the quoted ladder) --- the quotes can barely tell
+the fits apart.  Panel B: the densities can: the $N=6$ fit keeps both
+modes but overshoots the peaks, half-fills the trough, and drifts the
+mode locations --- $L^1$ error to the truth \MacHumpLOneNSix\ against
+\MacHumpLOneNSixteen\ at $N=16$, more than double.  Between the quotes,
+order is a convention, and this is what choosing it asserts.}
+\label{fig:order_control}
+\end{figure}
+
+\subsection{The exact audit}
+
+The fifth example is the oldest kind: against Euler.
+\Cref{fig:exact} (\cref{sec:constspeed}) already confronted the
+implementation with the constant-speed slice's closed forms across the
+admissible scale range --- transport map to \MacExactMapWorst, shift to
+\MacExactMuWorst\ (growing lawfully toward the wall), martingale check
+to \MacExactMartWorst.  The example is listed again here because of
+what it covers: quadrature, tail corrections, normalization,
+interpolation, and root-solving in one line of algebra with no free
+parameters.  A wrong grid constant, a mis-anchored cumulative sum, or a
+stale cache moves any of these agreements by many orders of magnitude;
+it is the cheapest regression test the model owns, and the recommended
+first test of any reimplementation from this paper.

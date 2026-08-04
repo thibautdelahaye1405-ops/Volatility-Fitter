@@ -1,0 +1,172 @@
+%======================================================================
+\section{Implementation}
+\label{app:implementation}
+
+This annex records the reference implementation in enough detail to
+reproduce it: the build pipeline, call evaluation, the analytic
+sensitivity pass, and the monotonicity certificate, as lightly adapted
+NumPy-style code in the paper's notation, followed by the defaults
+table and practical recommendations.  The snippets favor clarity over
+micro-optimization but preserve every numerically load-bearing line.
+
+\subsection{The slice build}
+
+\begin{lstlisting}[caption={One slice build: \(\theta\to(x,x',G,G')\) on
+the fixed grid.  Comments give the paper's equation numbers.}]
+# Cached, parameter-independent (read-only): grid z, ranks u = expit(z),
+# weight rho = expit(z)*expit(-z)   # never u*(1-u): rank saturation
+# and the Legendre matrix Pmat[n, j] = P_n(1 - 2 u_j).
+
+def build(theta, grid):
+    L, R, a = theta.L, theta.R, theta.a
+    g = (1 - grid.u)*L + grid.u*R + a @ grid.Pmat        # eq. (lqd)
+    if g.max() > 700.0 or not np.isfinite(g).all():
+        raise InteriorOverflow                            # catalogue #2
+    dx = np.exp(g)                                        # x'(z), eq. (speed)
+    xbar = cumulative_simpson(dx, dx=grid.dz, anchor=grid.mid)
+    if xbar.max() > 700.0:
+        raise InteriorOverflow
+    lam_m, lam_p = np.exp(g[0]), np.exp(g[-1])            # eq. (speeds)
+    if lam_p >= 1.0 - 1e-6:
+        raise InadmissibleTail                            # the wall
+    mass = np.exp(xbar) * grid.rho
+    I = trapz(mass, dx=grid.dz) \
+        + np.exp(xbar[-1] - grid.z_max) / (1.0 - lam_p) \
+        + np.exp(xbar[0]  - grid.z_max) / (1.0 + lam_m)       # eq. (tailcorr)
+    m = -np.log(I)                                        # prop. (shift)
+    x = m + xbar
+    dG = -np.exp(x) * grid.rho                            # G'(z)
+    G = reverse_cumulative(-dG, dx=grid.dz) \
+        + np.exp(x[-1] - grid.z_max) / (1.0 - lam_p)          # right tail
+    return Slice(x=x, dx=dx, G=G, dG=dG, m=m,
+                 lam=(lam_m, lam_p), theta=theta)
+\end{lstlisting}
+
+Both curves carry exact nodal derivatives, so off-grid reads are cubic
+Hermite --- fourth-order, no spline solve, nodal values reproduced
+exactly at nodes.
+
+\subsection{Call evaluation}
+
+\begin{lstlisting}[caption={Pricing one strike: two ledger entries, the
+cash leg in log space, and the beyond-grid asymptote.}]
+def call_price(slc, k, grid):
+    if k > slc.x[-1]:                                     # beyond grid, right
+        z_r = grid.z_max + (k - slc.x[-1]) / slc.lam[1]       # eq. (beyondgrid)
+        return np.exp(k - z_r) * slc.lam[1] / (1.0 - slc.lam[1])
+    if k < slc.x[0]:                                      # beyond grid, left:
+        return 1.0 - np.exp(k) + call_asymptote_left(slc, k, grid)  # parity
+    z_k = hermite_root(slc.x, slc.dx, k)                  # Newton-polished
+    G_k = hermite_eval(slc.G, slc.dG, z_k)
+    cash = np.exp(k - np.logaddexp(0.0, z_k))             # e^k (1-u_k), stable
+    return G_k - cash                                     # eq. (call)
+\end{lstlisting}
+
+The one line a porter will be tempted to simplify is the \texttt{cash}
+line.  Do not: \texttt{exp(k)*(1-expit(z))} is exactly the rank-saturation
+bug of \cref{sec:computation}, invisible until a near-wall slice is
+priced at a far strike, then worth \MacAuditPreFixFly\ of forward in
+phantom butterfly.
+
+\subsection{The analytic sensitivity pass}
+
+\begin{lstlisting}[caption={All Jacobian columns in one pass over the
+build's arrays; eqs.\ (pass1)--(pass3) and (varswaprow).}]
+def sensitivities(slc, grid):
+    # basis[j] = d g / d theta_j on the grid: (1-u), u, P_n(1-2u)
+    B = np.vstack([1 - grid.u, grid.u, grid.Pmat])         # (P, n_grid)
+    dxbar = cumulative_simpson(slc.dx * B, dx=grid.dz,
+                               anchor=grid.mid, axis=1)    # pass 1
+    w = np.exp(slc.x) * grid.rho                           # e^x rho, reused
+    dm = -(w @ dxbar.T) * grid.dz_weights_total            # pass 2 (dot)
+    dQ = dm[:, None] + dxbar                               # d x / d theta
+    integ = w[None, :] * dQ                                # d(e^x rho)/d theta
+    dG = reverse_cumulative(integ, dx=grid.dz, axis=1)     # pass 3
+    dvs = -2.0 * trapz(dQ * grid.rho, dx=grid.dz, axis=1)  # var-swap row
+    return dG, -integ, dvs      # nodal values, nodal slopes, w_vs row
+
+def dprice_dtheta(slc, sens, k):
+    z_k = hermite_root(slc.x, slc.dx, k)
+    return hermite_eval(sens.dG, sens.dGslope, z_k)        # thm (envelope)
+\end{lstlisting}
+
+By \cref{thm:envelope} the strike root is \emph{not} differentiated ---
+the columns are read off the nodal ledger sensitivities at a frozen
+root.  Tail-correction terms of \eqref{eq:tailcorr} contribute their own
+derivatives through $\bar{x}(\pm Z)$ and
+$\partial\lambda_\pm/\partial\theta=\lambda_\pm\cdot(1,0,1,1,\dots)$ /
+$\lambda_\pm\cdot(0,1,1,-1,\dots)$; they are two extra scalar rows per
+column and are elided above for space, not optional in practice.
+
+\subsection{The monotonicity certificate}
+
+\begin{lstlisting}[caption={Fritsch--Carlson margin for a Hermite
+interpolant with nodal derivatives \texttt{d} and values \texttt{y}.}]
+def monotone_margin(y, d, dz, flat_tol=1e-9):
+    s = np.diff(y) / dz                       # secant slopes
+    d0, d1 = d[:-1], d[1:]
+    active = ~((np.abs(s) < flat_tol) & (np.abs(d0) < flat_tol)
+               & (np.abs(d1) < flat_tol))     # underflowed-flat segments
+    m = np.minimum.reduce([d0, d1, 3*s - d0, 3*s - d1])
+    return m[active].min()                    # certified iff > 0
+\end{lstlisting}
+
+Increasing curves are certified directly, decreasing ones (the ledger)
+by negation; segments below \texttt{flat\_tol} are certified
+flat-to-tolerance, a stated caveat of the certificate.
+
+\subsection{Defaults}
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Quantity & Default & Quantity & Default\\
+\midrule
+Basis order $N$ & $16$ (cap $24$) & Order guard & \eqref{eq:orderguard},
+floor $\min(N,6)$\\
+Grid half-width $Z_{\max}$ & $40$ & Grid points & $8001$ (opt.\ $2001$)\\
+Wall guard & $\lambda_+\le1-10^{-6}$ & Overflow budget & $\max g,\ \max\bar
+x\le700$\\
+Ridge $\alpha$, power $\nu$ & $10^{-6}$, $1$ (rows $n\ge4$) & Vega floor
+$\eta$ & $10^{-4}$\\
+Barrier & $\log(1+e^{50(\lambda_+-0.90)})$ & Haircut $h$ & $0.005$ (vol)\\
+Solver & trust-region LSQ & Tolerances & $10^{-10}$
+(x/f/g), max $4000$ evals\\
+Chart & logistic ($\lambda_+=\expit\xi$) & Calendar nodes &
+$\max(49,\,4N+1)$, $\cos^2$ taper\\
+Belly certificate & $801$ pts, $g_{\mathrm{D}}\ge-10^{-4}$ & Cold start &
+$s=\sqrt{3w_0}/\pi$\\
+\bottomrule
+\end{tabular}
+\caption{Reference-implementation defaults.  Solver tolerances sit
+roughly six orders below the typical vol-bp fit budget: tight enough to
+be irrelevant to quality, loose enough to stop the trust region
+polishing noise.}
+\label{tab:defaults}
+\end{table}
+
+\subsection{Practical recommendations}
+
+\begin{enumerate}[leftmargin=1.6em]
+\item Port the constant-speed audit first (\cref{sec:constspeed}); it
+catches grid, anchoring, normalization, and interpolation errors in one
+closed-form comparison.
+\item Keep the two cumulative curves and their nodal derivatives
+together as one object; every consumer (pricing, Jacobian, density,
+calendar, certificates) reads that object and nothing else.
+\item Never expose raw $(L,R)$ as user-facing tail controls; expose
+$(\log\lambda_-,\log\lambda_+)$ through the endpoint chart, or the
+market-package layer if a desk vocabulary is wanted.  The reference
+implementation additionally provides a local chart whose leading
+coordinates are the exact ATM handles (built by right-inverting the
+handle Jacobian, with the remaining directions spanning its kernel) and
+delta-method uncertainty bands priced from the same sensitivity pass;
+both are conveniences over this paper's objects, not new theory.
+\item Run the certificates in production, not in development: the
+Fritsch--Carlson margin and belly certificate are microseconds to
+milliseconds, and the day they fail is the day they pay for themselves.
+\item When the audit and a theorem disagree, believe the audit and find
+the floating-point failure; \cref{sec:computation}'s catalogue is the
+complete list of the ones found so far.
+\end{enumerate}

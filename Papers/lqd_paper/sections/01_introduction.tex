@@ -1,0 +1,142 @@
+%======================================================================
+\section{Introduction}
+\label{sec:intro}
+
+The problem treated here is easily stated.  A listed option market quotes,
+for one underlying asset and one expiry, the prices of calls and puts at a
+few dozen strikes.  A fitter must produce from these quotes a complete curve
+--- an implied volatility at every strike --- that reproduces the quotes to
+within their own uncertainty, extends beyond them sensibly, and can be
+differentiated, integrated, and compared across expiries by every system
+downstream.  The problem looks like curve fitting.  It is not, and the
+difference is the subject of this paper.
+
+Consider the canonical failure.  A fitter parametrizes implied volatility
+$\sigma(k)$ by some pleasant smooth curve, fits seven liquid strikes, and
+reports residuals of a fraction of a basis point.  A risk system then
+differentiates the fitted call prices twice with respect to strike ---
+because that second derivative \emph{is} the risk-neutral probability
+density, as \cref{sec:constraints} recalls --- and finds it negative between
+two quoted strikes.  The fitted surface now prices a butterfly spread --- a
+static portfolio of three vanilla options --- at a negative premium: the
+fitter is offering free money, and reporting a negative probability.
+Nothing failed numerically.  The parametrization simply did not know that a
+smile is not free to be an arbitrary curve: it must be a probability
+distribution seen through the Black formula, and the set of such curves has
+a boundary that a generic parametric family crosses without noticing.
+
+The standard remedy is to keep the pleasant curve and police the boundary:
+evaluate a density proxy on a grid of strikes, penalize negativity, and hope
+the optimizer terminates inside the feasible set.  This works, mostly, and
+costs steadily.  The constraint is global and nonlinear in the parameters,
+so it is re-checked at every strike and every iterate; the optimizer spends
+its effort crawling along the boundary, where penalty gradients fight data
+gradients; and in sparse or stressed markets --- precisely when a fitter is
+most needed --- the boundary is where the solution wants to live.
+
+This paper starts from a different question: \emph{in which representation
+is validity free?}  That is, for which coordinates on the space of smiles is
+every coordinate vector automatically arbitrage-free, so that nothing is
+policed and the optimizer roams an open set?  The answer developed here is
+the \emph{log-quantile-density} (LQD) model: write the log-forward return as
+a monotone transport of a fixed logistic random variable, and parametrize
+the \emph{logarithm of the transport speed} by a polynomial in the rank.
+Positivity of the density is then structural --- an exponential is positive
+--- the unit-mean condition is absorbed by one scalar shift, and the single
+remaining condition, one inequality on one number, is removed by a final
+change of variable.  The precise scope should be stated at once, because it
+is the paper's first honesty obligation: the construction furnishes
+\emph{unconstrained coordinates for a flexible exponential-tail class of
+distributions}, not coordinates for the space of all smiles.  Atoms, bounded
+support, density gaps, and Gaussian or faster tails lie outside the family;
+\cref{sec:validity} says exactly what is covered and what is approximated.
+
+\subsection{Three concerns, separated}
+
+The design principle organizing the paper is that a smile fitter must manage
+three separable concerns, and that the representation should separate them.
+
+\begin{enumerate}[leftmargin=1.6em]
+\item \textbf{Validity} --- no static arbitrage.  In the LQD representation
+this is a property of the coordinates, not of the optimizer: every point of
+the open parameter set is a genuine probability measure with unit mean
+(\cref{sec:validity}).  There is no positivity penalty anywhere in the
+construction, because there is nothing to penalize.
+\item \textbf{Information} --- what the quoted strip actually determines.
+The body of the distribution is pinned by quotes; the far tails are selected
+by the basis, the regularization, and the endpoint coupling.  The paper says
+this out loud and quantifies it: the moment strip and Lee slopes are exact
+functions of two fitted numbers (\cref{sec:tails}), but those numbers are
+priors dressed as parameters, and the honest deliverable at a traded strike
+is the effective wing slope, which differs from the asymptotic limit by
+economically large factors --- in either direction, on one and the same
+fitted slice (\cref{fig:lee}).
+\item \textbf{Convention} --- what the fitter chooses where the data is
+silent.  Basis order, ridge weight, the optimization chart, the scope of
+calendar enforcement: each is an explicit, auditable choice, orthogonal to
+validity (\cref{sec:calibration,sec:calendar,sec:computation}).  A
+convention defended as a theorem is a future incident; the paper labels its
+conventions as such.
+\end{enumerate}
+
+One computational object carries all of this, and it plays the role in this
+paper that a single unifying quantity plays in any theory worth the name.
+Define the \emph{upper-share ledger}
+\[
+G(z)\;=\;\int_z^{\infty}e^{x(t)}\,\rho(t)\,\dd t ,
+\]
+the share of the (unit) forward carried by outcomes above the $z$-th
+log-odds level; here $x$ is the transport map and $\rho$ the logistic
+density, both defined in \cref{sec:model}.  Five computations that are
+usually five pieces of software are five uses of this one array:
+\begin{itemize}[leftmargin=1.4em]
+\item \emph{pricing}: a call is the difference of two ledger entries
+(\cref{sec:ledger});
+\item \emph{differentiation}: the parameter Jacobian of every price follows
+from an exact cancellation --- the strike root's motion drops out --- so one
+quadrature pass differentiates the whole fit (\cref{sec:jacobian});
+\item \emph{density}: the Breeden--Litzenberger density is one division of
+arrays already on the grid (\cref{sec:ledger});
+\item \emph{the variance swap}: the log-contract strike is the first moment
+of the same build (\cref{sec:ledger});
+\item \emph{calendar order}: two expiries are free of calendar arbitrage
+precisely when their ledgers are pointwise ordered --- a theorem proved both
+ways by conjugate duality (\cref{sec:calendar}).
+\end{itemize}
+
+\subsection{Contributions and route}
+
+The ingredients are classical: Breeden and Litzenberger's density
+identity~\citep{BreedenLitzenberger1978}, Lee's moment
+formula~\citep{Lee2004}, quantile-function modeling in the statistical
+tradition of Parzen~\citep{Parzen1979} and Gilchrist~\citep{Gilchrist2000},
+the log-quantile-density transform studied by Petersen and
+M\"uller~\citep{PetersenMuller2016}, and the log
+contract~\citep{Neuberger1994}.  The contribution claimed is the
+\emph{separation of concerns} --- validity structural, information audited,
+convention explicit --- and the \emph{single-ledger computation} that makes
+the separation cheap enough for production use.  Along the way the paper
+proves the statements a referee would otherwise have to take on faith: the
+finite-forward wall (\cref{prop:wall}), butterfly-freedom
+(\cref{prop:noarb}), a universality proposition with its exclusions stated
+(\cref{prop:universal}), closed-form tail-scale-to-Lee-slope maps
+(\cref{prop:leeclosed}), exact at-the-money level, skew, and curvature with
+the skew exhibited as a digital mismatch (\cref{prop:atm}), the
+envelope-cancellation theorem behind the analytic Jacobian
+(\cref{thm:envelope}), and the equivalence of calendar order with ledger
+order (\cref{thm:ledgerorder}).
+
+The paper is written for a reader who knows the Black--Scholes formula and
+nothing else about smile modeling.  \Cref{sec:constraints} assembles the
+constraint set; \cref{sec:heuristic} builds the representation from a
+heuristic about ranks and returns; \cref{sec:model,sec:validity} define the
+family and prove validity; \cref{sec:tails} treats tails and moments;
+\cref{sec:ledger,sec:atm} develop the ledger and the at-the-money
+microscope; \cref{sec:calibration,sec:jacobian,sec:calendar} cover
+calibration, differentiation, and the calendar; \cref{sec:computation}
+gives the numerical analysis, including the certificates by which the
+discretization earns the continuous theorems; \cref{sec:examples} works
+real-market and synthetic examples from one frozen data snapshot;
+\cref{sec:related,sec:limits} position the work and state its limits.
+Implementation detail is confined to \cref{app:implementation}; deferred
+proofs to \cref{app:proofs}; data provenance to \cref{app:data}.

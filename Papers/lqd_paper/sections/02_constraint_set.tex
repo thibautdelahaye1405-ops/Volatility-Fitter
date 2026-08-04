@@ -1,0 +1,179 @@
+%======================================================================
+\section{The constraint set}
+\label{sec:constraints}
+
+\subsection{Normalized units}
+
+Fix one underlying and one expiry $T$.  Everything deterministic ---
+discounting, forwards, carry --- divides out before modeling begins.  Let
+$F$ be the forward price to $T$ and $D$ the discount factor; we work under
+the $T$-forward measure with the \emph{log-forward return} and \emph{gross
+return}
+\begin{equation}
+X=\log\frac{S_T}{F},
+\qquad
+Y=e^{X}=\frac{S_T}{F} .
+\label{eq:Xdef}
+\end{equation}
+Strikes are quoted in log-moneyness $k=\log(K/F)$, and the
+\emph{normalized call} is
+\begin{equation}
+c(k)=\E\big[(e^{X}-e^{k})^{+}\big],
+\qquad
+\E[e^{X}]=1 .
+\label{eq:calldef}
+\end{equation}
+The second equality is the martingale (forward) condition: the forward is
+the mean of the terminal spot under its own measure.  A dollar quote
+$c^{\$}$ converts by $c=c^{\$}/(DF)$, and nothing further about rates or
+carry appears in the paper; deterministic carry is a standing assumption,
+revisited only when expiries are coupled in \cref{sec:calendar}.  The
+normalized put is $P(k)=\E[(e^{k}-e^{X})^{+}]$; put--call parity is
+$c(k)-P(k)=1-e^{k}$.
+
+One symbol of time suffices, but it must be the right one.  Desks
+distinguish the expiry date, its calendar year fraction, and the
+\emph{variance time} --- calendar time possibly dilated around scheduled
+events so that implied variance accrues at the market's rate rather than the
+clock's.  Everything in this paper that multiplies a variance, scales a
+vega, or annualizes a number uses the variance time, written $\tau$; when no
+event dilation is in force, $\tau$ is the calendar fraction, and nothing
+below depends on which convention feeds it.  Total implied variance at
+log-moneyness $k$ is $w(k)=\sigma^{2}(k)\,\tau$, with $\sigma$ the Black
+implied volatility defined through the normalized Black call
+\begin{equation}
+\Black(k,w)=\PhiN(d_{+})-e^{k}\,\PhiN(d_{-}),
+\qquad
+d_{\pm}=-\frac{k}{\sqrt{w}}\pm\frac{\sqrt{w}}{2},
+\label{eq:black}
+\end{equation}
+by the root $\Black\big(k,w(k)\big)=c(k)$ \citep{Black1976}.  A
+\emph{volatility basis point} (vol bp) is $10^{-4}$ in volatility.
+
+\subsection{Statics: what a slice must satisfy}
+
+The reason a smile is not free to be an arbitrary curve is one integration
+by parts away.  Write the call as a function of the normalized strike
+$y=e^{k}$.  When $Y$ has a density $f_Y$,
+\begin{equation}
+\frac{\partial c}{\partial y}=-\Prob(Y>y),
+\qquad
+\frac{\partial^{2}c}{\partial y^{2}}=f_Y(y)\;\ge\;0 .
+\label{eq:BL}
+\end{equation}
+This is the Breeden--Litzenberger identity
+\citep{BreedenLitzenberger1978}: the call curve determines the
+distribution, and every property of the call curve that a static portfolio
+can monetize is a property of the distribution.  A \emph{butterfly} of
+half-width $\delta$ --- long one call at $y-\delta$, long one at
+$y+\delta$, short two at $y$ --- costs
+$c(y-\delta)-2c(y)+c(y+\delta)$, and by \eqref{eq:BL} its price per
+$\delta^{2}$ converges to the density at $y$.  A negative butterfly
+price is a negative density, exactly.
+
+\begin{definition}[Arbitrage-free slice]
+\label{def:slice}
+A \emph{slice} is a call curve $c(k)$ of the form \eqref{eq:calldef} for
+some law of $X$ with $\E[e^{X}]=1$.  Equivalently, for laws with a density
+on $(0,\infty)$: as a function of the strike $y=e^{k}$, $c$ is decreasing
+and convex, $(1-y)^{+}\le c(y)\le 1$, the slope lies in $[-1,0]$ with
+$c'(y)\to-1$ as $y\to0^{+}$ (anything shallower at zero strike would put
+mass at $S_T=0$), and $c(y)\to0$ as $y\to\infty$
+\citep{CarrMadan2005}.
+\end{definition}
+
+The space of slices is therefore, up to these boundary conditions, the
+space of mean-one probability laws on $(0,\infty)$.  That is the object a
+fitter must parametrize.  Note one caveat now, because it recurs: convexity
+holds in the strike $y$, \emph{not} in log-moneyness $k$.  In $k$ the
+chain rule inserts factors of $e^{k}$, and a deep in-the-money call is
+legitimately concave in $k$.  Audits that check convexity must check it in
+the right variable (\cref{sec:computation}).
+
+\subsection{Why these constraints are awkward in volatility space}
+
+Every trader quotes $\sigma(k)$, so the temptation is to parametrize it
+directly; SVI \citep{Gatheral2004,GatheralJacquier2014} is the outstanding
+example.  The cost appears when \eqref{eq:BL} is translated into the
+volatility chart.  Substituting $c=\Black(k,w(k))$ and differentiating
+twice through the Black formula, the density of $X$ factors exactly as
+\begin{equation}
+f_X(k)\;=\;g_{\mathrm{D}}(k)\,
+\frac{\phin\big(d_-(k,w(k))\big)}{\sqrt{w(k)}},
+\qquad
+g_{\mathrm{D}}(k)=
+\Big(1-\frac{k\,w'(k)}{2w(k)}\Big)^{2}
+-\frac{w'(k)^{2}}{4}\Big(\frac{1}{w(k)}+\frac14\Big)
++\frac{w''(k)}{2},
+\label{eq:durrleman}
+\end{equation}
+with $d_-$ as in \eqref{eq:black}: no-arbitrage in the volatility chart
+is $g_{\mathrm{D}}(k)\ge0$ for all $k$, the condition studied by
+Gatheral and Jacquier \citep[\S2]{GatheralJacquier2014}.  The
+factorization fixes the normalization of $g_{\mathrm{D}}$, and two
+checkpoints let a reader verify it without redoing the two-page
+differentiation.  For a flat smile ($w'=w''=0$), $g_{\mathrm{D}}\equiv1$
+and \eqref{eq:durrleman} reduces to the Black density of $X$ exactly.
+And at the money, substituting the exact derivatives of
+\cref{sec:atm} gives $g_{\mathrm{D}}(0)=\sqrt{w_0}\,f_X(0)/\phin(d)\ge0$
+--- the identity \eqref{eq:durrleman} read backwards at one point.
+Three features make the condition $g_{\mathrm{D}}\ge0$
+expensive to live with.  It is \emph{global}: a violation can appear at any
+$k$, including between quotes, so it must be monitored on a grid.  It is
+\emph{nonlinear} in the parameters, entering through $w$, $w'$, and $w''$
+simultaneously, so no useful parametric family satisfies it identically.
+And it is \emph{coupled}: the martingale condition and the wing growth
+bounds (\cref{sec:tails}) constrain the same parameters from other
+directions at the same time.  The volatility chart is the most convenient
+to quote and the most expensive to police.  The representation problem of
+this paper is to find the chart where the policing cost is zero, and the
+next section builds it from first principles.
+
+\subsection{The notation ledger}
+
+The paper insists on few symbols.  \Cref{tab:ledger} lists them all; no
+ledger symbol is reused with a second meaning (bound variables local to
+a single derivation, such as the butterfly half-width $\delta$ above or
+the substitutions inside one proof, stay local and never enter the
+ledger).
+
+\begin{table}[htbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llll@{}}
+\toprule
+$X,\ Y=e^{X}$ & log-forward return; gross return &
+$u,\ z=\logit u$ & rank; log-odds \\[2pt]
+$k;\ c(k),\ P(k)$ & log-moneyness; norm.\ call, put &
+$\Lambda,\ \rho$ & logistic CDF, density \\[2pt]
+$Q,\ q=Q'$ & quantile of $X$; quantile density &
+$g$ & log transport speed (in rank) \\[2pt]
+$x(z),\ m$ & transport map; martingale shift &
+$G$ & upper-share ledger \\[2pt]
+$w,\ \sigma,\ \tau$ & total variance $\sigma^{2}\tau$; vol; variance time &
+$\theta=(L,R,a)$ & coefficients; $P_n$ Legendre \\[2pt]
+$\lambda_-,\ \lambda_+$ & endpoint speeds $e^{g(0)},\,e^{g(1)}$ &
+$\beta,\ \Psi,\ r$ & Lee slope; Lee map; moment order \\[2pt]
+$\Black(k,w)$ & normalized Black call \eqref{eq:black} &
+$d=\sqrt{w_0}/2$ & ATM Black argument \\[2pt]
+$u_k,\ z_k$ & rank and log-odds of strike $k$ &
+$u_*,\ f_*,\ \Delta$ & forward rank; ATM density; digital gap \\[2pt]
+$\alpha,\ \nu$ & ridge weight, ridge power &
+$\eta,\ h$ & vega floor; haircut half-width \\[2pt]
+$\xi$ & logistic-chart coordinate, $\lambda_+=\expit\xi$ &
+$N,\ Z_{\max}$ & basis order; quadrature half-width \\
+\bottomrule
+\end{tabular}
+\caption{Every recurring symbol in the paper.  $\PhiN$ and $\phin$ are the
+standard normal CDF and PDF; $\expit(z)=1/(1+e^{-z})$ and $\logit$ is its
+inverse.  One differentiation convention holds throughout: a \emph{prime}
+denotes the derivative of a function of one variable ($c'$, $w'$,
+$\sigma'$, $G'$); a \emph{subscripted} $\partial$ denotes a partial
+derivative of a function of several variables ($\partial_k\Black$,
+$\partial c/\partial\theta_j$).  $Z$ is the logistic score variable of
+\cref{sec:model}; $Z_{\max}$, and nothing else, is the quadrature
+half-width in log-odds.  $g_{\mathrm{D}}$ \eqref{eq:durrleman} is the
+volatility-chart density factor, distinct from the model's log-speed
+$g$.}
+\label{tab:ledger}
+\end{table}

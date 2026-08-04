@@ -1,0 +1,130 @@
+%======================================================================
+\section{The at-the-money microscope}
+\label{sec:atm}
+
+A desk reads a smile through three numbers: the at-the-money volatility,
+its slope in log-moneyness (the skew), and its curvature.  For most
+parametrizations these are obtained by fitting, plotting, and finite
+differencing.  For the LQD slice they are \emph{exact closed-form
+functionals} of three numbers read off the law at a single point, and the
+skew formula carries an interpretation worth the whole section.
+
+Throughout, primes on $c$, $w$, $\sigma$ denote $k$-derivatives evaluated
+at $k=0$; the three law-side inputs are
+\begin{equation}
+c_0=c(0)=G(z_*)-\big(1-u_*\big),
+\qquad
+u_*=\Lambda(z_*),
+\qquad
+f_*=f_X(0)=\frac{\rho(z_*)}{x'(z_*)},
+\label{eq:atm_inputs}
+\end{equation}
+where $z_*=z_0$ is the root $x(z_*)=0$: the ATM call, the \emph{rank of
+the forward}, and the ATM return density.  By
+\eqref{eq:cprime}--\eqref{eq:csecond}, $c'(0)=-(1-u_*)$ and
+$c''(0)=f_*-(1-u_*)$.
+
+\begin{proposition}[Exact ATM handles]
+\label{prop:atm}
+Let $w_0$ solve $2\PhiN(\sqrt{w_0}/2)-1=c_0$, i.e.
+$w_0=4\big[\PhiN^{-1}\big(\tfrac{1+c_0}{2}\big)\big]^{2}$, and write
+$d=\sqrt{w_0}/2$ and
+\begin{equation}
+\Delta\;=\;u_*-\PhiN(d)
+\label{eq:digitalgap}
+\end{equation}
+for the \emph{digital mismatch}.  Then the total-variance smile $w(k)$
+defined by $\Black(k,w(k))=c(k)$ satisfies, at $k=0$,
+\begin{align}
+w(0)&=w_0,
+\qquad
+w'(0)=\frac{2\sqrt{w_0}}{\phin(d)}\,\Delta,
+\label{eq:atm_w}\\
+w''(0)&=\frac{2\sqrt{w_0}}{\phin(d)}\,f_*\;-\;2
+\;+\;\Big(\frac{1}{2w_0}+\frac18\Big)\,w'(0)^{2},
+\label{eq:atm_wpp}
+\end{align}
+and in volatility units, with $\sigma(k)=\sqrt{w(k)/\tau}$,
+\begin{equation}
+\sigma(0)=\sqrt{\frac{w_0}{\tau}},
+\qquad
+\sigma'(0)=\frac{\Delta}{\phin(d)\sqrt{\tau}},
+\qquad
+\sigma''(0)=\frac{1}{\sqrt{\tau}}
+\left[\frac{f_*}{\phin(d)}-\frac{1}{\sqrt{w_0}}
++\frac{\sqrt{w_0}}{4}\Big(\frac{\Delta}{\phin(d)}\Big)^{2}\right].
+\label{eq:atm_sigma}
+\end{equation}
+\end{proposition}
+
+The derivation is implicit differentiation of the identity
+$\Black(k,w(k))=c(k)$ through the Black formula, using the five ATM Black
+partials; it is mechanical and two pages long, so it lives in
+\cref{app:proofs}.  What belongs here is the one-line heart of it.
+Differentiating once,
+$\partial_k\Black+\partial_w\Black\,w'(0)=c'(0)$, with
+$\partial_k\Black=-\big(1-\PhiN(d)\big)$ and
+$\partial_w\Black=\phin(d)/(2\sqrt{w_0})$ at the money; solving,
+\begin{equation}
+w'(0)
+=\frac{c'(0)-\partial_k\Black}{\partial_w\Black}
+=\frac{-(1-u_*)+\big(1-\PhiN(d)\big)}{\phin(d)/(2\sqrt{w_0})}
+=\frac{2\sqrt{w_0}}{\phin(d)}\big(u_*-\PhiN(d)\big).
+\label{eq:skewderivation}
+\end{equation}
+
+\paragraph{The skew is a digital mismatch.}
+Equation \eqref{eq:skewderivation} says something that deserves plain
+language, and the reading must be established with signs in hand rather
+than by rhetoric.  $-e^{-k}c'(k)$ is the price of the digital call ---
+the probability of finishing above the strike --- so $1-u_*$ is the
+\emph{model's} at-the-money digital, while $1-\PhiN(d)$ is the digital
+of the flat-smile Black model matched to the same ATM price.  Their
+difference is exactly the negative of \eqref{eq:digitalgap}:
+\[
+\Delta=u_*-\PhiN(d)
+=\big(1-\PhiN(d)\big)-\big(1-u_*\big)
+=\text{(Black digital)}-\text{(model digital)} ,
+\]
+and by \eqref{eq:atm_w} the total-variance skew is the positive factor
+$2\sqrt{w_0}/\phin(d)$ times $\Delta$.  Three sign checks pin the
+orientation.  \emph{The null case}: if the law is exactly the matched
+Black lognormal, $X\sim\mathcal N(-w_0/2,\,w_0)$, then
+$u_*=\Prob(X\le0)=\PhiN(\sqrt{w_0}/2)=\PhiN(d)$ identically, so
+$\Delta=0$ and the smile is flat at the money --- the formula contains
+its own benchmark.  \emph{The skewed case}: a fitted equity-index slice
+tilts down to the right, $\sigma'(0)<0$, so by \eqref{eq:atm_sigma}
+$\Delta<0$: the model's ATM digital is \emph{rich} relative to
+flat-Black, i.e.\ the forward sits at a \emph{lower} model rank than
+the matched flat-Black percentile, $u_*<\PhiN(d)$.  The distributional
+mechanism is the crash tail: the law buys its fat left tail by parking
+the compensating probability just above the forward, so more outcomes
+finish above the forward --- and fewer below --- than the matched
+lognormal would allow.  (Note what is \emph{not} claimed: $u_*$ may sit
+on either side of one half --- $\PhiN(d)>\tfrac12$ always, and $\Delta<0$
+only places $u_*$ below $\PhiN(d)$; the fitted SPY node of
+\cref{sec:examples} has $u_*$ below one half as well, while the
+symmetric slice of \cref{sec:ledger} has $u_*$ above one half with
+$\Delta$ near zero.)  \emph{The general rule}:
+$\operatorname{sign}\sigma'(0)=\operatorname{sign}\Delta$ --- an upward
+tilt is exactly a cheap model digital, a downward tilt exactly a rich
+one.  The skew is not a shape parameter of a curve; it is a statement
+about where the forward sits in the distribution.  The curvature
+\eqref{eq:atm_wpp} adds exactly one more distributional fact, the ATM
+density $f_*$.  Level, digital, density: three numbers of the law, three
+handles of the smile, no asymptotic expansion and no finite difference
+anywhere.
+
+Two practical notes close the section.  First, exactness matters
+operationally: the handles feed risk systems and cross-expiry logic, and a
+handle computed by finite-differencing a plotted curve inherits the
+plotting grid; \eqref{eq:atm_w}--\eqref{eq:atm_sigma} inherit only the
+root solve, which is polished to machine precision
+(\cref{sec:computation}).  Second, the identities run in both directions:
+given target handles $(\sigma(0),\sigma'(0),\sigma''(0))$ one can solve
+the three equations for $(c_0,u_*,f_*)$ and use them as calibration
+targets --- the reference implementation exposes this as a local chart
+around a fitted slice whose first three coordinates \emph{are} the
+handles, built from the Jacobian of \cref{sec:jacobian}
+(\cref{app:implementation}); the paper does not develop that machinery
+further.

@@ -1,0 +1,1102 @@
+{
+ "ToyScale": {
+  "value": "0.081250",
+  "meaning": "constant speed s solved to exactly 20% ATM at 6 months",
+  "section": "toy"
+ },
+ "ToyMu": {
+  "value": "-0.010883",
+  "meaning": "martingale shift m of the toy slice",
+  "section": "toy"
+ },
+ "ToyAtmPercentile": {
+  "value": "53.34",
+  "meaning": "percentile rank of the forward (k = 0) on the toy, %",
+  "section": "toy"
+ },
+ "ToyOtmPercentile": {
+  "value": "79.65",
+  "meaning": "percentile rank of the k = 0.10 strike on the toy, %",
+  "section": "toy"
+ },
+ "ToyShareOtm": {
+  "value": "0.247221",
+  "meaning": "upper-share ledger entry G(z_k) at k = 0.10 on the toy",
+  "section": "toy"
+ },
+ "ToyCashOtm": {
+  "value": "0.224876",
+  "meaning": "cash leg e^k (1 - u_k) at k = 0.10 on the toy",
+  "section": "toy"
+ },
+ "ToyCallOtm": {
+  "value": "0.022345",
+  "meaning": "normalized call C(0.10) on the toy",
+  "section": "toy"
+ },
+ "ToyIvOtmPct": {
+  "value": "20.60",
+  "meaning": "implied vol at k = 0.10 on the toy, %",
+  "section": "toy"
+ },
+ "ExactMuWorst": {
+  "value": "\\ensuremath{3.0\\times10^{-9}}",
+  "meaning": "worst |m - closed form| across constant speeds s in [0.05, 0.95]",
+  "section": "exact"
+ },
+ "ExactMapWorst": {
+  "value": "\\ensuremath{1.1\\times10^{-11}}",
+  "meaning": "worst transport-map linearity error across the same speeds",
+  "section": "exact"
+ },
+ "ExactMartWorst": {
+  "value": "\\ensuremath{3.3\\times10^{-16}}",
+  "meaning": "worst |E e^X - 1| across the same constant-speed slices",
+  "section": "exact"
+ },
+ "ColdStartMismatchPct": {
+  "value": "-7.9",
+  "meaning": "ATM variance mismatch of the variance-matched cold start at 20% vol, %",
+  "section": "exact"
+ },
+ "SpyGalleryMedianRmsBp": {
+  "value": "3.6",
+  "meaning": "median rms across the eight SPY expiries, vol bp",
+  "section": "spy"
+ },
+ "SpyGalleryWorstRmsBp": {
+  "value": "7.5",
+  "meaning": "worst rms across the eight SPY expiries, vol bp",
+  "section": "spy"
+ },
+ "SpyDecMedianSpreadBp": {
+  "value": "4",
+  "meaning": "median quoted bid-ask spread, vol bp",
+  "section": "spy"
+ },
+ "SpyDecBandLivePct": {
+  "value": "0",
+  "meaning": "share of quotes whose haircut band does NOT degenerate to mid, %",
+  "section": "spy"
+ },
+ "SpyDecExpiry": {
+  "value": "2026-12-18",
+  "meaning": "expiry date",
+  "section": "spy"
+ },
+ "SpyDecDays": {
+  "value": "137",
+  "meaning": "calendar days to expiry",
+  "section": "spy"
+ },
+ "SpyDecTYears": {
+  "value": "0.3753",
+  "meaning": "year fraction t",
+  "section": "spy"
+ },
+ "SpyDecForward": {
+  "value": "767.92",
+  "meaning": "forward F",
+  "section": "spy"
+ },
+ "SpyDecNQuotes": {
+  "value": "94",
+  "meaning": "calibration quotes retained",
+  "section": "spy"
+ },
+ "SpyDecOrder": {
+  "value": "16",
+  "meaning": "effective Legendre order N after the quote-count guard",
+  "section": "spy"
+ },
+ "SpyDecRmsBp": {
+  "value": "3.3",
+  "meaning": "rms fit error vs mid, vol bp (frozen quality stat)",
+  "section": "spy"
+ },
+ "SpyDecAtmVolPct": {
+  "value": "14.76",
+  "meaning": "ATM implied vol, %",
+  "section": "spy"
+ },
+ "SpyDecAl": {
+  "value": "0.432",
+  "meaning": "left endpoint scale lambda_-",
+  "section": "spy"
+ },
+ "SpyDecAr": {
+  "value": "0.066",
+  "meaning": "right endpoint scale lambda_+",
+  "section": "spy"
+ },
+ "SpyDecBetaLeft": {
+  "value": "0.179",
+  "meaning": "left Lee wing slope beta_-",
+  "section": "spy"
+ },
+ "SpyDecBetaRight": {
+  "value": "0.034",
+  "meaning": "right Lee wing slope beta_+",
+  "section": "spy"
+ },
+ "SpyDecVarSwapPct": {
+  "value": "19.84",
+  "meaning": "var-swap vol from the ledger first moment, %",
+  "section": "spy"
+ },
+ "SpyDecRecomputedRmsBp": {
+  "value": "3.3",
+  "meaning": "rms vs mid recomputed from the rebuilt slice, vol bp",
+  "section": "spy"
+ },
+ "NvdaOneDayMedianSpreadBp": {
+  "value": "99",
+  "meaning": "median quoted bid-ask spread, vol bp",
+  "section": "nvda"
+ },
+ "NvdaOneDayBandLivePct": {
+  "value": "47",
+  "meaning": "share of quotes whose haircut band does NOT degenerate to mid, %",
+  "section": "nvda"
+ },
+ "NvdaOneDayExpiry": {
+  "value": "2026-08-05",
+  "meaning": "expiry date",
+  "section": "nvda"
+ },
+ "NvdaOneDayDays": {
+  "value": "2",
+  "meaning": "calendar days to expiry",
+  "section": "nvda"
+ },
+ "NvdaOneDayTYears": {
+  "value": "0.0055",
+  "meaning": "year fraction t",
+  "section": "nvda"
+ },
+ "NvdaOneDayForward": {
+  "value": "206.77",
+  "meaning": "forward F",
+  "section": "nvda"
+ },
+ "NvdaOneDayNQuotes": {
+  "value": "17",
+  "meaning": "calibration quotes retained",
+  "section": "nvda"
+ },
+ "NvdaOneDayOrder": {
+  "value": "7",
+  "meaning": "effective Legendre order N after the quote-count guard",
+  "section": "nvda"
+ },
+ "NvdaOneDayRmsBp": {
+  "value": "24.6",
+  "meaning": "rms fit error vs mid, vol bp (frozen quality stat)",
+  "section": "nvda"
+ },
+ "NvdaOneDayAtmVolPct": {
+  "value": "43.28",
+  "meaning": "ATM implied vol, %",
+  "section": "nvda"
+ },
+ "NvdaOneDayAl": {
+  "value": "0.053",
+  "meaning": "left endpoint scale lambda_-",
+  "section": "nvda"
+ },
+ "NvdaOneDayAr": {
+  "value": "0.021",
+  "meaning": "right endpoint scale lambda_+",
+  "section": "nvda"
+ },
+ "NvdaOneDayBetaLeft": {
+  "value": "0.026",
+  "meaning": "left Lee wing slope beta_-",
+  "section": "nvda"
+ },
+ "NvdaOneDayBetaRight": {
+  "value": "0.010",
+  "meaning": "right Lee wing slope beta_+",
+  "section": "nvda"
+ },
+ "NvdaOneDayVarSwapPct": {
+  "value": "46.54",
+  "meaning": "var-swap vol from the ledger first moment, %",
+  "section": "nvda"
+ },
+ "NvdaLongMedianSpreadBp": {
+  "value": "100",
+  "meaning": "median quoted bid-ask spread, vol bp",
+  "section": "nvda"
+ },
+ "NvdaLongBandLivePct": {
+  "value": "52",
+  "meaning": "share of quotes whose haircut band does NOT degenerate to mid, %",
+  "section": "nvda"
+ },
+ "NvdaLongExpiry": {
+  "value": "2027-12-17",
+  "meaning": "expiry date",
+  "section": "nvda"
+ },
+ "NvdaLongDays": {
+  "value": "501",
+  "meaning": "calendar days to expiry",
+  "section": "nvda"
+ },
+ "NvdaLongTYears": {
+  "value": "1.3726",
+  "meaning": "year fraction t",
+  "section": "nvda"
+ },
+ "NvdaLongForward": {
+  "value": "218.91",
+  "meaning": "forward F",
+  "section": "nvda"
+ },
+ "NvdaLongNQuotes": {
+  "value": "69",
+  "meaning": "calibration quotes retained",
+  "section": "nvda"
+ },
+ "NvdaLongOrder": {
+  "value": "16",
+  "meaning": "effective Legendre order N after the quote-count guard",
+  "section": "nvda"
+ },
+ "NvdaLongRmsBp": {
+  "value": "7.4",
+  "meaning": "rms fit error vs mid, vol bp (frozen quality stat)",
+  "section": "nvda"
+ },
+ "NvdaLongAtmVolPct": {
+  "value": "41.53",
+  "meaning": "ATM implied vol, %",
+  "section": "nvda"
+ },
+ "NvdaLongAl": {
+  "value": "1.421",
+  "meaning": "left endpoint scale lambda_-",
+  "section": "nvda"
+ },
+ "NvdaLongAr": {
+  "value": "0.225",
+  "meaning": "right endpoint scale lambda_+",
+  "section": "nvda"
+ },
+ "NvdaLongBetaLeft": {
+  "value": "0.435",
+  "meaning": "left Lee wing slope beta_-",
+  "section": "nvda"
+ },
+ "NvdaLongBetaRight": {
+  "value": "0.128",
+  "meaning": "right Lee wing slope beta_+",
+  "section": "nvda"
+ },
+ "NvdaLongVarSwapPct": {
+  "value": "46.82",
+  "meaning": "var-swap vol from the ledger first moment, %",
+  "section": "nvda"
+ },
+ "NvdaOneDayParams": {
+  "value": "8",
+  "meaning": "parameter count P = N + 1 on the guarded 1-day node",
+  "section": "nvda"
+ },
+ "SpyDecMomentLeft": {
+  "value": "2.32",
+  "meaning": "last finite moment order of the left tail, 1/lambda_-",
+  "section": "tails"
+ },
+ "SpyDecMomentRight": {
+  "value": "14.08",
+  "meaning": "last finite moment order of the right tail, 1/lambda_+ - 1",
+  "section": "tails"
+ },
+ "NvdaLongMomentLeft": {
+  "value": "0.70",
+  "meaning": "last finite moment order of the left tail, 1/lambda_-",
+  "section": "tails"
+ },
+ "NvdaLongMomentRight": {
+  "value": "3.43",
+  "meaning": "last finite moment order of the right tail, 1/lambda_+ - 1",
+  "section": "tails"
+ },
+ "SpyDecEffTenDeltaLeft": {
+  "value": "0.125",
+  "meaning": "effective slope w(k)/|k| at the left-wing 10-delta strike",
+  "section": "lee"
+ },
+ "SpyDecTenDeltaKLeft": {
+  "value": "-0.181",
+  "meaning": "log-moneyness of the left-wing 10-delta strike",
+  "section": "lee"
+ },
+ "SpyDecEffOneDeltaLeft": {
+  "value": "0.125",
+  "meaning": "effective slope w(k)/|k| at the left-wing 1-delta strike",
+  "section": "lee"
+ },
+ "SpyDecOneDeltaKLeft": {
+  "value": "-0.599",
+  "meaning": "log-moneyness of the left-wing 1-delta strike",
+  "section": "lee"
+ },
+ "SpyDecEffTenDeltaRight": {
+  "value": "0.058",
+  "meaning": "effective slope w(k)/|k| at the right-wing 10-delta strike",
+  "section": "lee"
+ },
+ "SpyDecTenDeltaKRight": {
+  "value": "0.101",
+  "meaning": "log-moneyness of the right-wing 10-delta strike",
+  "section": "lee"
+ },
+ "SpyDecEffOneDeltaRight": {
+  "value": "0.036",
+  "meaning": "effective slope w(k)/|k| at the right-wing 1-delta strike",
+  "section": "lee"
+ },
+ "SpyDecOneDeltaKRight": {
+  "value": "0.203",
+  "meaning": "log-moneyness of the right-wing 1-delta strike",
+  "section": "lee"
+ },
+ "SpyDecOneDeltaShareLeft": {
+  "value": "70",
+  "meaning": "left 1-delta effective slope as % of the Lee limit",
+  "section": "lee"
+ },
+ "SpyDecOneDeltaShareRight": {
+  "value": "105",
+  "meaning": "right 1-delta effective slope as % of the Lee limit",
+  "section": "lee"
+ },
+ "DhOrderHigh": {
+  "value": "16",
+  "meaning": "order of the resolving double-hump fit",
+  "section": "doublehump"
+ },
+ "DhOrderLow": {
+  "value": "6",
+  "meaning": "order of the smoothing comparator fit",
+  "section": "doublehump"
+ },
+ "DhNQuotes": {
+  "value": "41",
+  "meaning": "quotes in the double-hump strip",
+  "section": "doublehump"
+ },
+ "DhMaxErrBpHigh": {
+  "value": "11.32",
+  "meaning": "max IV error of the N = 16 double-hump fit, vol bp",
+  "section": "doublehump"
+ },
+ "DhRmsBpHigh": {
+  "value": "4.83",
+  "meaning": "rms IV error of the N = 16 double-hump fit, vol bp",
+  "section": "doublehump"
+ },
+ "DhModeCountHigh": {
+  "value": "2",
+  "meaning": "modes of the N = 16 recovered density",
+  "section": "doublehump"
+ },
+ "DhModeLeft": {
+  "value": "-0.099",
+  "meaning": "left mode location of the N = 16 recovered density",
+  "section": "doublehump"
+ },
+ "DhModeRight": {
+  "value": "0.088",
+  "meaning": "right mode location of the N = 16 recovered density",
+  "section": "doublehump"
+ },
+ "DhTrueModeLeft": {
+  "value": "-0.101",
+  "meaning": "left mode of the true mixture density",
+  "section": "doublehump"
+ },
+ "DhTrueModeRight": {
+  "value": "0.089",
+  "meaning": "right mode of the true mixture density",
+  "section": "doublehump"
+ },
+ "DhMaxErrBpLow": {
+  "value": "26.6",
+  "meaning": "max IV error of the N = 6 comparator, vol bp",
+  "section": "doublehump"
+ },
+ "DhRmsBpLow": {
+  "value": "12.7",
+  "meaning": "rms IV error of the N = 6 comparator, vol bp",
+  "section": "doublehump"
+ },
+ "DhIvGapBp": {
+  "value": "41.8",
+  "meaning": "max |N16 - N6| implied-vol gap on the dense grid, vol bp",
+  "section": "doublehump"
+ },
+ "DhLOneHigh": {
+  "value": "0.047",
+  "meaning": "L1 distance of the N = 16 density to the truth",
+  "section": "doublehump"
+ },
+ "DhLOneLow": {
+  "value": "0.108",
+  "meaning": "L1 distance of the N = 6 density to the truth",
+  "section": "doublehump"
+ },
+ "DhModeCountLow": {
+  "value": "2",
+  "meaning": "modes of the N = 6 recovered density",
+  "section": "doublehump"
+ },
+ "DhValleyPeakTrue": {
+  "value": "0.33",
+  "meaning": "valley-to-peak density ratio (true density)",
+  "section": "doublehump"
+ },
+ "DhValleyPeakHigh": {
+  "value": "0.39",
+  "meaning": "valley-to-peak density ratio (high density)",
+  "section": "doublehump"
+ },
+ "DhValleyPeakLow": {
+  "value": "0.40",
+  "meaning": "valley-to-peak density ratio (low density)",
+  "section": "doublehump"
+ },
+ "JacobianMaxRelErr": {
+  "value": "\\ensuremath{3.7\\times10^{-6}}",
+  "meaning": "worst column relative error, analytic vs central FD",
+  "section": "jacobian"
+ },
+ "JacobianParams": {
+  "value": "17",
+  "meaning": "parameter count P on the audited node",
+  "section": "jacobian"
+ },
+ "JacobianStrikes": {
+  "value": "94",
+  "meaning": "quoted strikes on the audited node",
+  "section": "jacobian"
+ },
+ "CalendarGapBp": {
+  "value": "1840.6",
+  "meaning": "recomputed worst vol-space calendar gap of the 1d/3d pair, bp",
+  "section": "calendar"
+ },
+ "CalendarManifestGapBp": {
+  "value": "1840.6",
+  "meaning": "the same gap as stored by the production exit gate, bp",
+  "section": "calendar"
+ },
+ "CalendarGapK": {
+  "value": "0.981",
+  "meaning": "log-moneyness of the worst vol-space gap",
+  "section": "calendar"
+ },
+ "CalendarSpanLo": {
+  "value": "-0.028",
+  "meaning": "lower edge of the pair's common quote span",
+  "section": "calendar"
+ },
+ "CalendarSpanHi": {
+  "value": "0.016",
+  "meaning": "upper edge of the pair's common quote span",
+  "section": "calendar"
+ },
+ "CalendarCallShort": {
+  "value": "\\ensuremath{5.4\\times10^{-107}}",
+  "meaning": "short-dated normalized call at the gap strike",
+  "section": "calendar"
+ },
+ "CalendarCallLong": {
+  "value": "\\ensuremath{1.6\\times10^{-26}}",
+  "meaning": "longer-dated normalized call at the gap strike",
+  "section": "calendar"
+ },
+ "CalendarPriceWorst": {
+  "value": "\\ensuremath{2.2\\times10^{-15}}",
+  "meaning": "worst price-space calendar violation across adjacent SPY pairs on the display grid (negative = none)",
+  "section": "calendar"
+ },
+ "CalendarShortExpiry": {
+  "value": "2026-08-05",
+  "meaning": "short leg of the forensic pair",
+  "section": "calendar"
+ },
+ "CalendarLongExpiry": {
+  "value": "2026-08-07",
+  "meaning": "long leg of the forensic pair",
+  "section": "calendar"
+ },
+ "ButterflyMin": {
+  "value": "\\ensuremath{1.3\\times10^{-2}}",
+  "meaning": "smallest discrete butterfly value on the audited strip",
+  "section": "butterfly"
+ },
+ "ButterflyWidth": {
+  "value": "0.01",
+  "meaning": "butterfly half-structure width in strike/forward units",
+  "section": "butterfly"
+ },
+ "ButterflyDensityRelErrPct": {
+  "value": "1.49",
+  "meaning": "worst relative gap butterflies vs continuous density, %",
+  "section": "butterfly"
+ },
+ "RefDate": {
+  "value": "2026-08-03",
+  "meaning": "snapshot reference date (US session of record)",
+  "section": "snapshot"
+ },
+ "SpySpot": {
+  "value": "757.67",
+  "meaning": "SPY spot",
+  "section": "snapshot"
+ },
+ "NvdaSpot": {
+  "value": "206.80",
+  "meaning": "NVDA spot",
+  "section": "snapshot"
+ },
+ "NodeCount": {
+  "value": "16",
+  "meaning": "fitted nodes in the snapshot",
+  "section": "snapshot"
+ },
+ "MedianRmsBp": {
+  "value": "5.9",
+  "meaning": "median per-node rms fit error, vol bp",
+  "section": "snapshot"
+ },
+ "WorstRmsBp": {
+  "value": "24.6",
+  "meaning": "worst per-node rms fit error, vol bp",
+  "section": "snapshot"
+ },
+ "WorstRmsNode": {
+  "value": "NVDA 2026-08-05",
+  "meaning": "node carrying the worst rms",
+  "section": "snapshot"
+ },
+ "HaircutVolPt": {
+  "value": "0.5",
+  "meaning": "haircut band shrink, vol points",
+  "section": "snapshot"
+ },
+ "SnapshotOrder": {
+  "value": "16",
+  "meaning": "configured Legendre order N (per-slice quote guard applies)",
+  "section": "snapshot"
+ },
+ "RebuildWorstBp": {
+  "value": "0.000",
+  "meaning": "worst |rebuilt - frozen| display-curve IV gap, vol bp",
+  "section": "snapshot"
+ },
+ "CertSlices": {
+  "value": "27",
+  "meaning": "randomized slices in the reduced audit battery",
+  "section": "certification"
+ },
+ "CertOrdersList": {
+  "value": "4, 8, and 16",
+  "meaning": "orders covered by the battery",
+  "section": "certification"
+ },
+ "CertWorstBounds": {
+  "value": "\\ensuremath{1.1\\times10^{-11}}",
+  "meaning": "worst violation of the no-arbitrage call bounds",
+  "section": "certification"
+ },
+ "CertWorstButterfly": {
+  "value": "\\ensuremath{8.2\\times10^{-13}}",
+  "meaning": "worst negative strike-space butterfly",
+  "section": "certification"
+ },
+ "CertWorstDigital": {
+  "value": "\\ensuremath{1.5\\times10^{-12}}",
+  "meaning": "worst digital (call-spread slope) violation",
+  "section": "certification"
+ },
+ "CertGridAgree": {
+  "value": "\\ensuremath{2.3\\times10^{-9}}",
+  "meaning": "worst 8001-vs-32001-point grid price disagreement",
+  "section": "certification"
+ },
+ "TimingAnalyticMedNSix": {
+  "value": "15.9",
+  "meaning": "median analytic-Jacobian fit time at N = 6, ms",
+  "section": "timing"
+ },
+ "TimingAnalyticIqrNSix": {
+  "value": "0.5",
+  "meaning": "IQR of the analytic fit time at N = 6, ms",
+  "section": "timing"
+ },
+ "TimingFdMedNSix": {
+  "value": "22.5",
+  "meaning": "median finite-difference fit time at N = 6, ms",
+  "section": "timing"
+ },
+ "TimingFdIqrNSix": {
+  "value": "2.7",
+  "meaning": "IQR of the finite-difference fit time at N = 6, ms",
+  "section": "timing"
+ },
+ "TimingSpeedupNSix": {
+  "value": "1.41",
+  "meaning": "FD / analytic median speed-up at N = 6",
+  "section": "timing"
+ },
+ "TimingAnalyticMedNTwelve": {
+  "value": "26.0",
+  "meaning": "median analytic-Jacobian fit time at N = 12, ms",
+  "section": "timing"
+ },
+ "TimingAnalyticIqrNTwelve": {
+  "value": "2.1",
+  "meaning": "IQR of the analytic fit time at N = 12, ms",
+  "section": "timing"
+ },
+ "TimingFdMedNTwelve": {
+  "value": "43.8",
+  "meaning": "median finite-difference fit time at N = 12, ms",
+  "section": "timing"
+ },
+ "TimingFdIqrNTwelve": {
+  "value": "3.2",
+  "meaning": "IQR of the finite-difference fit time at N = 12, ms",
+  "section": "timing"
+ },
+ "TimingSpeedupNTwelve": {
+  "value": "1.68",
+  "meaning": "FD / analytic median speed-up at N = 12",
+  "section": "timing"
+ },
+ "TimingAnalyticMedNSixteen": {
+  "value": "28.9",
+  "meaning": "median analytic-Jacobian fit time at N = 16, ms",
+  "section": "timing"
+ },
+ "TimingAnalyticIqrNSixteen": {
+  "value": "0.5",
+  "meaning": "IQR of the analytic fit time at N = 16, ms",
+  "section": "timing"
+ },
+ "TimingFdMedNSixteen": {
+  "value": "50.9",
+  "meaning": "median finite-difference fit time at N = 16, ms",
+  "section": "timing"
+ },
+ "TimingFdIqrNSixteen": {
+  "value": "3.9",
+  "meaning": "IQR of the finite-difference fit time at N = 16, ms",
+  "section": "timing"
+ },
+ "TimingSpeedupNSixteen": {
+  "value": "1.76",
+  "meaning": "FD / analytic median speed-up at N = 16",
+  "section": "timing"
+ },
+ "TimingReps": {
+  "value": "9",
+  "meaning": "interleaved solves per arm after warm-up",
+  "section": "timing"
+ },
+ "TimingQuoteCount": {
+  "value": "40",
+  "meaning": "quotes in the timing strip",
+  "section": "timing"
+ },
+ "TicketStrike": {
+  "value": "800",
+  "meaning": "strike of the worked SPY December call",
+  "section": "ticket"
+ },
+ "TicketK": {
+  "value": "0.0409",
+  "meaning": "log-moneyness of the worked strike",
+  "section": "ticket"
+ },
+ "TicketPercentilePct": {
+  "value": "65.27",
+  "meaning": "percentile rank u of the worked strike, %",
+  "section": "ticket"
+ },
+ "TicketShare": {
+  "value": "0.378366",
+  "meaning": "upper-share ledger entry G(z_k)",
+  "section": "ticket"
+ },
+ "TicketCash": {
+  "value": "0.361834",
+  "meaning": "cash leg e^k (1 - u_k)",
+  "section": "ticket"
+ },
+ "TicketCall": {
+  "value": "0.016532",
+  "meaning": "normalized call = ledger entry minus cash leg",
+  "section": "ticket"
+ },
+ "TicketCallDollars": {
+  "value": "12.70",
+  "meaning": "the same call in dollars per share (times the forward)",
+  "section": "ticket"
+ },
+ "TicketIvPct": {
+  "value": "13.37",
+  "meaning": "implied vol of the worked strike, %",
+  "section": "ticket"
+ },
+ "CliffLoRatio": {
+  "value": "0.47",
+  "meaning": "params/quotes ratio at N = 7 on the 17-quote NVDA 1d node",
+  "section": "cliff"
+ },
+ "CliffLoEvals": {
+  "value": "14",
+  "meaning": "solver residual evaluations at N = 7",
+  "section": "cliff"
+ },
+ "CliffLoMs": {
+  "value": "25 ms",
+  "meaning": "median warm fit wall time at N = 7",
+  "section": "cliff"
+ },
+ "CliffMidRatio": {
+  "value": "0.59",
+  "meaning": "params/quotes ratio at N = 9 on the 17-quote NVDA 1d node",
+  "section": "cliff"
+ },
+ "CliffMidEvals": {
+  "value": "15",
+  "meaning": "solver residual evaluations at N = 9",
+  "section": "cliff"
+ },
+ "CliffMidMs": {
+  "value": "25 ms",
+  "meaning": "median warm fit wall time at N = 9",
+  "section": "cliff"
+ },
+ "CliffHiRatio": {
+  "value": "0.71",
+  "meaning": "params/quotes ratio at N = 11 on the 17-quote NVDA 1d node",
+  "section": "cliff"
+ },
+ "CliffHiEvals": {
+  "value": "9",
+  "meaning": "solver residual evaluations at N = 11",
+  "section": "cliff"
+ },
+ "CliffHiMs": {
+  "value": "30 ms",
+  "meaning": "median warm fit wall time at N = 11",
+  "section": "cliff"
+ },
+ "FitMsZeroDte": {
+  "value": "24 ms",
+  "meaning": "median warm fit of the NVDA 1d node at its guarded order N = 7",
+  "section": "cliff"
+ },
+ "FitMsOrderSixteen": {
+  "value": "42 ms",
+  "meaning": "median warm fit of SPY Dec (94 quotes) at N = 16",
+  "section": "cliff"
+ },
+ "BellyCertMs": {
+  "value": "1.5 ms",
+  "meaning": "median wall time of the 801-point belly certificate on the SPY Dec traded range",
+  "section": "incidents"
+ },
+ "AuditPreFixFly": {
+  "value": "\\ensuremath{1.9\\times10^{-2}}",
+  "meaning": "worst butterfly violation with the naive e^k(1-u) cash leg past the expit rounding point",
+  "section": "incidents"
+ },
+ "AuditPostFixFly": {
+  "value": "\\ensuremath{0}",
+  "meaning": "same strikes and stencil with the production log-space leg",
+  "section": "incidents"
+ },
+ "PhantomDragFromBp": {
+  "value": "10.6",
+  "meaning": "worst far-quote error with the support-confined price floor, vol bp (acute synthetic pair)",
+  "section": "incidents"
+ },
+ "PhantomDragToBp": {
+  "value": "1095.0",
+  "meaning": "worst far-quote error with the calendar floor on the FULL z-grid ledger, vol bp (same pair)",
+  "section": "incidents"
+ },
+ "TwoGridParamAgree": {
+  "value": "\\ensuremath{1.4\\times10^{-6}}",
+  "meaning": "max |dtheta| between 2001- and 8001-point optimization grids, SPY Dec",
+  "section": "incidents"
+ },
+ "ChartEquivParamAgree": {
+  "value": "\\ensuremath{2.2\\times10^{-7}}",
+  "meaning": "max |dtheta| between the lr and logistic charts, SPY Dec",
+  "section": "incidents"
+ },
+ "JacSameOptParams": {
+  "value": "\\ensuremath{3.7\\times10^{-7}}",
+  "meaning": "max |dtheta| between analytic- and FD-Jacobian optima, orders 6/12/16",
+  "section": "incidents"
+ },
+ "JacSameOptCost": {
+  "value": "\\ensuremath{1.7\\times10^{-10}}",
+  "meaning": "max relative cost gap between analytic- and FD-Jacobian optima",
+  "section": "incidents"
+ },
+ "MultiStartCount": {
+  "value": "10",
+  "meaning": "randomized starts per node in the basin audit",
+  "section": "multistart"
+ },
+ "MultiStartNodes": {
+  "value": "2",
+  "meaning": "nodes audited (SPY Dec and the long NVDA node)",
+  "section": "multistart"
+ },
+ "MultiStartBasins": {
+  "value": "1",
+  "meaning": "distinct optima found (worst node); 1 = single basin",
+  "section": "multistart"
+ },
+ "MultiStartWorstDTheta": {
+  "value": "\\ensuremath{2.3\\times10^{-6}}",
+  "meaning": "worst max |dtheta| within the main cluster",
+  "section": "multistart"
+ },
+ "MultiStartWorstDIvBp": {
+  "value": "0.00",
+  "meaning": "worst spread of max-IV-error across starts, vol bp",
+  "section": "multistart"
+ },
+ "SnapNodeCount": {
+  "value": "16",
+  "meaning": "total fitted nodes (alias)",
+  "section": "aliases"
+ },
+ "SnapMedianRmsBp": {
+  "value": "5.9",
+  "meaning": "median per-node rms, vol bp (alias)",
+  "section": "aliases"
+ },
+ "SnapWorstRmsBp": {
+  "value": "24.6",
+  "meaning": "worst per-node rms, vol bp (alias)",
+  "section": "aliases"
+ },
+ "AuditSliceCount": {
+  "value": "27",
+  "meaning": "randomized-audit slice count (alias)",
+  "section": "aliases"
+ },
+ "AuditBoundsWorst": {
+  "value": "\\ensuremath{1.1\\times10^{-11}}",
+  "meaning": "worst call-bound violation (alias)",
+  "section": "aliases"
+ },
+ "AuditFlyWorst": {
+  "value": "\\ensuremath{8.2\\times10^{-13}}",
+  "meaning": "worst butterfly violation (alias)",
+  "section": "aliases"
+ },
+ "AuditDigitalWorst": {
+  "value": "\\ensuremath{1.5\\times10^{-12}}",
+  "meaning": "worst digital violation (alias)",
+  "section": "aliases"
+ },
+ "AuditGridAgreeWorst": {
+  "value": "\\ensuremath{2.3\\times10^{-9}}",
+  "meaning": "worst 8001-vs-32001-grid price disagreement (alias)",
+  "section": "aliases"
+ },
+ "CalGapVolBp": {
+  "value": "1840.6",
+  "meaning": "vol-space order-audit worst gap (alias)",
+  "section": "aliases"
+ },
+ "CalPriceGridWorst": {
+  "value": "\\ensuremath{2.2\\times10^{-15}}",
+  "meaning": "worst price-space violation, adjacent pairs on the display grid (alias)",
+  "section": "aliases"
+ },
+ "GuardQuoteCountZeroDte": {
+  "value": "17",
+  "meaning": "quote count of the order-guard study node = NVDA 1d (alias)",
+  "section": "aliases"
+ },
+ "GuardEffOrderZeroDte": {
+  "value": "7",
+  "meaning": "guarded effective order on that node (alias)",
+  "section": "aliases"
+ },
+ "NvdaOneDayEffOrder": {
+  "value": "7",
+  "meaning": "NVDA 1d guarded effective order (alias)",
+  "section": "aliases"
+ },
+ "TicketPrice": {
+  "value": "0.016532",
+  "meaning": "ticket normalized call price (alias)",
+  "section": "aliases"
+ },
+ "HumpIvAgreeBp": {
+  "value": "41.8",
+  "meaning": "double-hump max N16-vs-N6 IV gap, vol bp (alias)",
+  "section": "aliases"
+ },
+ "HumpLOneNSixteen": {
+  "value": "0.047",
+  "meaning": "L1 density error at N = 16 (alias)",
+  "section": "aliases"
+ },
+ "HumpLOneNSix": {
+  "value": "0.108",
+  "meaning": "L1 density error at N = 6 (alias)",
+  "section": "aliases"
+ },
+ "JacFdMaxRel": {
+  "value": "\\ensuremath{3.7\\times10^{-6}}",
+  "meaning": "worst analytic-vs-central-FD relative disagreement (alias)",
+  "section": "aliases"
+ },
+ "ExactMaxErr": {
+  "value": "\\ensuremath{3.0\\times10^{-9}}",
+  "meaning": "worst |m, x(z)| error vs closed forms over the scale sweep",
+  "section": "aliases"
+ },
+ "JacSpeedupMin": {
+  "value": "1.41",
+  "meaning": "min median analytic-vs-FD speedup across orders",
+  "section": "aliases"
+ },
+ "JacSpeedupMax": {
+  "value": "1.76",
+  "meaning": "max median analytic-vs-FD speedup across orders",
+  "section": "aliases"
+ },
+ "CalGapArgmaxK": {
+  "value": "+0.981",
+  "meaning": "argmax log-moneyness of the calendar order-audit gap (signed)",
+  "section": "aliases"
+ },
+ "CalSpanLo": {
+  "value": "-0.028",
+  "meaning": "common quote span, lower edge (signed)",
+  "section": "aliases"
+ },
+ "CalSpanHi": {
+  "value": "+0.016",
+  "meaning": "common quote span, upper edge (signed)",
+  "section": "aliases"
+ },
+ "CalWingPriceOrder": {
+  "value": "\\ensuremath{10^{-26}}",
+  "meaning": "order of magnitude bounding BOTH calls at the gap strike (the larger of the two; they are 1.6e-26 and 5.4e-107)",
+  "section": "aliases"
+ },
+ "HumpFitRmsBp": {
+  "value": "4.8",
+  "meaning": "double-hump N = 16 rms fit error, vol bp (1dp alias)",
+  "section": "aliases"
+ },
+ "TicketRankPct": {
+  "value": "65.27\\%",
+  "meaning": "ticket exercise percentile, rendered with %",
+  "section": "aliases"
+ },
+ "TicketDollarPrice": {
+  "value": "\\$12.70",
+  "meaning": "ticket dollar price per share (call x forward)",
+  "section": "aliases"
+ },
+ "TimingRows": {
+  "value": "Analytic Jacobian & 6 & 15.9\\,ms & 0.5\\,ms & 1.41$\\times$\\\\ Finite difference & 6 & 22.5\\,ms & 2.7\\,ms & ---\\\\ Analytic Jacobian & 12 & 26.0\\,ms & 2.1\\,ms & 1.68$\\times$\\\\ Finite difference & 12 & 43.8\\,ms & 3.2\\,ms & ---\\\\ Analytic Jacobian & 16 & 28.9\\,ms & 0.5\\,ms & 1.76$\\times$\\\\ Finite difference & 16 & 50.9\\,ms & 3.9\\,ms & ---",
+  "meaning": "tab:timing body rows (Configuration & Order & Median & IQR & vs. FD)",
+  "section": "aliases"
+ },
+ "SpyLamL": {
+  "value": "0.432",
+  "meaning": "left endpoint scale lambda- of SPY 2026-12-18",
+  "section": "aliases"
+ },
+ "SpyLamR": {
+  "value": "0.066",
+  "meaning": "right endpoint scale lambda+ of SPY 2026-12-18",
+  "section": "aliases"
+ },
+ "SpyBetaL": {
+  "value": "0.179",
+  "meaning": "left Lee slope of SPY 2026-12-18",
+  "section": "aliases"
+ },
+ "SpyBetaR": {
+  "value": "0.034",
+  "meaning": "right Lee slope of SPY 2026-12-18",
+  "section": "aliases"
+ },
+ "NvdaLamL": {
+  "value": "1.421",
+  "meaning": "left endpoint scale lambda- of NVDA 2027-12-17",
+  "section": "aliases"
+ },
+ "NvdaLamR": {
+  "value": "0.225",
+  "meaning": "right endpoint scale lambda+ of NVDA 2027-12-17",
+  "section": "aliases"
+ },
+ "NvdaBetaL": {
+  "value": "0.435",
+  "meaning": "left Lee slope of NVDA 2027-12-17",
+  "section": "aliases"
+ },
+ "NvdaBetaR": {
+  "value": "0.128",
+  "meaning": "right Lee slope of NVDA 2027-12-17",
+  "section": "aliases"
+ },
+ "SpyDecSkew": {
+  "value": "-0.430",
+  "meaning": "SPY Dec exact ATM skew sigma'(0), vol per log-moneyness",
+  "section": "aliases"
+ },
+ "SpyDecCurv": {
+  "value": "4.40",
+  "meaning": "SPY Dec exact ATM curvature sigma''(0)",
+  "section": "aliases"
+ },
+ "SpyDecForwardRankPct": {
+  "value": "41.31\\%",
+  "meaning": "SPY Dec forward rank u* at k = 0, with %",
+  "section": "aliases"
+ },
+ "LeeRatioTenDeltaPut": {
+  "value": "0.70",
+  "meaning": "SPY Dec effective-slope / Lee-limit ratio at the tendeltaput",
+  "section": "aliases"
+ },
+ "LeeRatioOneDeltaPut": {
+  "value": "0.70",
+  "meaning": "SPY Dec effective-slope / Lee-limit ratio at the onedeltaput",
+  "section": "aliases"
+ },
+ "LeeRatioTenDeltaCall": {
+  "value": "1.69",
+  "meaning": "SPY Dec effective-slope / Lee-limit ratio at the tendeltacall",
+  "section": "aliases"
+ },
+ "LeeRatioOneDeltaCall": {
+  "value": "1.05",
+  "meaning": "SPY Dec effective-slope / Lee-limit ratio at the onedeltacall",
+  "section": "aliases"
+ }
+}

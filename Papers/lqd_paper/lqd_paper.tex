@@ -1,0 +1,278 @@
+% =====================================================================
+% lqd_paper.tex — master file.
+% Build: pdflatex twice (+ bibtex).  Figures land in figures/ as PDF;
+% every \includegraphics is guarded, so the paper builds with or without
+% them.  All data-derived numbers are macros from figures/paper_macros.tex
+% (generated separately); \providecommand fallbacks below keep the build
+% green when that file is absent.
+% =====================================================================
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1.05in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs,array,multirow}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,citecolor=blue!50!black,
+  urlcolor=blue!50!black}
+\usepackage{cleveref}
+\allowdisplaybreaks
+
+\graphicspath{{figures/}}
+
+% ------------------------------------------------------------------ listings
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+\lstdefinestyle{paper}{
+  language=Python, basicstyle=\ttfamily\small,
+  commentstyle=\itshape\color{black!55},
+  backgroundcolor=\color{codebg}, frame=single,
+  rulecolor=\color{black!15}, breaklines=true, showstringspaces=false,
+  xleftmargin=1.4em}
+\lstset{style=paper}
+
+% ------------------------------------------------------------------ theorems
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ------------------------------------------------------------------ notation
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\PhiN}{\Phi}
+\newcommand{\phin}{\varphi}
+\newcommand{\Black}{B}
+\DeclareMathOperator{\expit}{expit}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand{\half}{\tfrac12}
+\newcommand{\1}{\mathbf{1}}
+
+% ------------------------------------------------------------------ figure guard
+% Every figure inclusion goes through \paperfig{width}{file}: a missing
+% PDF renders as a labeled placeholder box, never an error.
+\newcommand{\paperfig}[2]{%
+  \IfFileExists{figures/#2}%
+    {\includegraphics[width=#1]{#2}}%
+    {\fbox{\parbox[c][0.30\textwidth][c]{0.92\textwidth}{\centering
+      \ttfamily [figure placeholder: \detokenize{#2} not yet built]}}}}
+
+% ------------------------------------------------------------------ data macros
+% Generated numbers.  The generator writes figures/paper_macros.tex; every
+% data-derived number in the text is one of these macros.  The fallbacks
+% render a visible [?] so an unbuilt draft is legible and honest.
+\IfFileExists{figures/paper_macros.tex}{\input{figures/paper_macros.tex}}{}
+\newcommand{\MacFallback}[1]{\textbf{[#1?]}}
+% --- snapshot-level
+\providecommand{\MacSpySpot}{\MacFallback{SpySpot}}
+\providecommand{\MacNvdaSpot}{\MacFallback{NvdaSpot}}
+\providecommand{\MacSnapNodeCount}{\MacFallback{SnapNodeCount}}
+\providecommand{\MacSnapMedianRmsBp}{\MacFallback{SnapMedianRmsBp}}
+\providecommand{\MacSnapWorstRmsBp}{\MacFallback{SnapWorstRmsBp}}
+\providecommand{\MacRebuildWorstBp}{\MacFallback{RebuildWorstBp}}
+% --- constant-speed audit + toy ticket
+\providecommand{\MacExactMapWorst}{\MacFallback{ExactMapWorst}}
+\providecommand{\MacExactMuWorst}{\MacFallback{ExactMuWorst}}
+\providecommand{\MacExactMartWorst}{\MacFallback{ExactMartWorst}}
+\providecommand{\MacColdStartMismatchPct}{\MacFallback{ColdStartMismatchPct}}
+\providecommand{\MacToyScale}{\MacFallback{ToyScale}}
+\providecommand{\MacToyMu}{\MacFallback{ToyMu}}
+\providecommand{\MacToyAtmPercentile}{\MacFallback{ToyAtmPercentile}}
+\providecommand{\MacToyOtmPercentile}{\MacFallback{ToyOtmPercentile}}
+\providecommand{\MacToyShareOtm}{\MacFallback{ToyShareOtm}}
+\providecommand{\MacToyCashOtm}{\MacFallback{ToyCashOtm}}
+\providecommand{\MacToyCallOtm}{\MacFallback{ToyCallOtm}}
+\providecommand{\MacToyIvOtmPct}{\MacFallback{ToyIvOtmPct}}
+\providecommand{\MacButterflyDensityRelErrPct}{\MacFallback{ButterflyDensityRelErrPct}}
+% --- tails / Lee (deep-dive nodes)
+\providecommand{\MacSpyLamL}{\MacFallback{SpyLamL}}
+\providecommand{\MacSpyLamR}{\MacFallback{SpyLamR}}
+\providecommand{\MacSpyBetaL}{\MacFallback{SpyBetaL}}
+\providecommand{\MacSpyBetaR}{\MacFallback{SpyBetaR}}
+\providecommand{\MacNvdaLamL}{\MacFallback{NvdaLamL}}
+\providecommand{\MacNvdaLamR}{\MacFallback{NvdaLamR}}
+\providecommand{\MacNvdaBetaL}{\MacFallback{NvdaBetaL}}
+\providecommand{\MacNvdaBetaR}{\MacFallback{NvdaBetaR}}
+\providecommand{\MacLeeRatioTenDeltaPut}{\MacFallback{LeeRatioTenDeltaPut}}
+\providecommand{\MacLeeRatioOneDeltaPut}{\MacFallback{LeeRatioOneDeltaPut}}
+\providecommand{\MacLeeRatioTenDeltaCall}{\MacFallback{LeeRatioTenDeltaCall}}
+\providecommand{\MacLeeRatioOneDeltaCall}{\MacFallback{LeeRatioOneDeltaCall}}
+\providecommand{\MacNvdaLongMomentLeft}{\MacFallback{NvdaLongMomentLeft}}
+% --- calibration / order guard
+\providecommand{\MacGuardQuoteCountZeroDte}{\MacFallback{GuardQuoteCountZeroDte}}
+\providecommand{\MacGuardEffOrderZeroDte}{\MacFallback{GuardEffOrderZeroDte}}
+\providecommand{\MacCliffLoRatio}{\MacFallback{CliffLoRatio}}
+\providecommand{\MacCliffLoEvals}{\MacFallback{CliffLoEvals}}
+\providecommand{\MacCliffLoMs}{\MacFallback{CliffLoMs}}
+\providecommand{\MacCliffMidRatio}{\MacFallback{CliffMidRatio}}
+\providecommand{\MacCliffMidEvals}{\MacFallback{CliffMidEvals}}
+\providecommand{\MacCliffMidMs}{\MacFallback{CliffMidMs}}
+\providecommand{\MacCliffHiRatio}{\MacFallback{CliffHiRatio}}
+\providecommand{\MacCliffHiEvals}{\MacFallback{CliffHiEvals}}
+\providecommand{\MacCliffHiMs}{\MacFallback{CliffHiMs}}
+% --- band degeneracy (live example) + multi-start audit
+\providecommand{\MacSpyDecBandLivePct}{\MacFallback{SpyDecBandLivePct}}
+\providecommand{\MacSpyDecMedianSpreadBp}{\MacFallback{SpyDecMedianSpreadBp}}
+\providecommand{\MacNvdaOneDayBandLivePct}{\MacFallback{NvdaOneDayBandLivePct}}
+\providecommand{\MacNvdaLongBandLivePct}{\MacFallback{NvdaLongBandLivePct}}
+\providecommand{\MacNvdaLongMedianSpreadBp}{\MacFallback{NvdaLongMedianSpreadBp}}
+\providecommand{\MacMultiStartCount}{\MacFallback{MultiStartCount}}
+\providecommand{\MacMultiStartNodes}{\MacFallback{MultiStartNodes}}
+\providecommand{\MacMultiStartBasins}{\MacFallback{MultiStartBasins}}
+\providecommand{\MacMultiStartWorstDTheta}{\MacFallback{MultiStartWorstDTheta}}
+\providecommand{\MacMultiStartWorstDIvBp}{\MacFallback{MultiStartWorstDIvBp}}
+% --- Jacobian
+\providecommand{\MacJacSpeedupMin}{\MacFallback{JacSpeedupMin}}
+\providecommand{\MacJacSpeedupMax}{\MacFallback{JacSpeedupMax}}
+\providecommand{\MacJacFdMaxRel}{\MacFallback{JacFdMaxRel}}
+\providecommand{\MacJacSameOptCost}{\MacFallback{JacSameOptCost}}
+\providecommand{\MacJacSameOptParams}{\MacFallback{JacSameOptParams}}
+% --- calendar
+\providecommand{\MacCalGapVolBp}{\MacFallback{CalGapVolBp}}
+\providecommand{\MacCalGapArgmaxK}{\MacFallback{CalGapArgmaxK}}
+\providecommand{\MacCalSpanLo}{\MacFallback{CalSpanLo}}
+\providecommand{\MacCalSpanHi}{\MacFallback{CalSpanHi}}
+\providecommand{\MacCalWingPriceOrder}{\MacFallback{CalWingPriceOrder}}
+\providecommand{\MacCalendarCallShort}{\MacFallback{CalendarCallShort}}
+\providecommand{\MacCalendarCallLong}{\MacFallback{CalendarCallLong}}
+\providecommand{\MacCalPriceGridWorst}{\MacFallback{CalPriceGridWorst}}
+\providecommand{\MacPhantomDragFromBp}{\MacFallback{PhantomDragFromBp}}
+\providecommand{\MacPhantomDragToBp}{\MacFallback{PhantomDragToBp}}
+% --- computation / audit / timing
+\providecommand{\MacAuditSliceCount}{\MacFallback{AuditSliceCount}}
+\providecommand{\MacAuditBoundsWorst}{\MacFallback{AuditBoundsWorst}}
+\providecommand{\MacAuditFlyWorst}{\MacFallback{AuditFlyWorst}}
+\providecommand{\MacAuditDigitalWorst}{\MacFallback{AuditDigitalWorst}}
+\providecommand{\MacAuditGridAgreeWorst}{\MacFallback{AuditGridAgreeWorst}}
+\providecommand{\MacAuditPreFixFly}{\MacFallback{AuditPreFixFly}}
+\providecommand{\MacAuditPostFixFly}{\MacFallback{AuditPostFixFly}}
+\providecommand{\MacBellyCertMs}{\MacFallback{BellyCertMs}}
+\providecommand{\MacFitMsOrderSixteen}{\MacFallback{FitMsOrderSixteen}}
+\providecommand{\MacFitMsZeroDte}{\MacFallback{FitMsZeroDte}}
+\providecommand{\MacTwoGridParamAgree}{\MacFallback{TwoGridParamAgree}}
+\providecommand{\MacChartEquivParamAgree}{\MacFallback{ChartEquivParamAgree}}
+\providecommand{\MacCertOrdersList}{\MacFallback{CertOrdersList}}
+\providecommand{\MacTimingQuoteCount}{\MacFallback{TimingQuoteCount}}
+\providecommand{\MacTimingRows}{\multicolumn{5}{c}{\MacFallback{TimingRows}}}
+% --- examples
+\providecommand{\MacSpyGalleryMedianRmsBp}{\MacFallback{SpyGalleryMedianRmsBp}}
+\providecommand{\MacSpyGalleryWorstRmsBp}{\MacFallback{SpyGalleryWorstRmsBp}}
+\providecommand{\MacSpyDecRmsBp}{\MacFallback{SpyDecRmsBp}}
+\providecommand{\MacSpyDecNQuotes}{\MacFallback{SpyDecNQuotes}}
+\providecommand{\MacSpyDecAtmVolPct}{\MacFallback{SpyDecAtmVolPct}}
+\providecommand{\MacSpyDecSkew}{\MacFallback{SpyDecSkew}}
+\providecommand{\MacSpyDecCurv}{\MacFallback{SpyDecCurv}}
+\providecommand{\MacSpyDecVarSwapPct}{\MacFallback{SpyDecVarSwapPct}}
+\providecommand{\MacSpyDecForwardRankPct}{\MacFallback{SpyDecForwardRankPct}}
+\providecommand{\MacTicketRankPct}{\MacFallback{TicketRankPct}}
+\providecommand{\MacTicketShare}{\MacFallback{TicketShare}}
+\providecommand{\MacTicketCash}{\MacFallback{TicketCash}}
+\providecommand{\MacTicketPrice}{\MacFallback{TicketPrice}}
+\providecommand{\MacTicketIvPct}{\MacFallback{TicketIvPct}}
+\providecommand{\MacTicketDollarPrice}{\MacFallback{TicketDollarPrice}}
+\providecommand{\MacTicketK}{\MacFallback{TicketK}}
+\providecommand{\MacTicketStrike}{\MacFallback{TicketStrike}}
+\providecommand{\MacNvdaOneDayDays}{\MacFallback{NvdaOneDayDays}}
+\providecommand{\MacNvdaLongTYears}{\MacFallback{NvdaLongTYears}}
+\providecommand{\MacDhMaxErrBpHigh}{\MacFallback{DhMaxErrBpHigh}}
+\providecommand{\MacDhModeCountLow}{\MacFallback{DhModeCountLow}}
+\providecommand{\MacDhModeLeft}{\MacFallback{DhModeLeft}}
+\providecommand{\MacDhModeRight}{\MacFallback{DhModeRight}}
+\providecommand{\MacDhTrueModeLeft}{\MacFallback{DhTrueModeLeft}}
+\providecommand{\MacDhTrueModeRight}{\MacFallback{DhTrueModeRight}}
+\providecommand{\MacNvdaOneDayNQuotes}{\MacFallback{NvdaOneDayNQuotes}}
+\providecommand{\MacNvdaOneDayEffOrder}{\MacFallback{NvdaOneDayEffOrder}}
+\providecommand{\MacNvdaOneDayRmsBp}{\MacFallback{NvdaOneDayRmsBp}}
+\providecommand{\MacNvdaLongNQuotes}{\MacFallback{NvdaLongNQuotes}}
+\providecommand{\MacNvdaLongRmsBp}{\MacFallback{NvdaLongRmsBp}}
+\providecommand{\MacHumpFitRmsBp}{\MacFallback{HumpFitRmsBp}}
+\providecommand{\MacHumpIvAgreeBp}{\MacFallback{HumpIvAgreeBp}}
+\providecommand{\MacHumpLOneNSixteen}{\MacFallback{HumpLOneNSixteen}}
+\providecommand{\MacHumpLOneNSix}{\MacFallback{HumpLOneNSix}}
+
+% =====================================================================
+\title{\textbf{The Log-Quantile-Density Model of the Volatility Smile:\\
+Validity, Information, and Convention}}
+\author{Thibaut Delahaye}
+\date{August 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+A volatility smile is a probability distribution read through the Black
+formula, and a smile fitter must manage three separable concerns: that its
+output is a genuine distribution (validity), that the fitted curve reflects
+what the quotes actually determine (information), and that everything the
+quotes do not determine is chosen openly (convention).  Most parametrizations
+entangle the three.  This paper develops a representation that separates
+them.  The model writes the log-forward return as a monotone transport of a
+logistic variable, with the logarithm of the transport speed a polynomial in
+the rank; equivalently, it models the log quantile density as two universal
+boundary terms plus a Legendre expansion.  Validity becomes structural: every
+point of the open parameter set prices from a positive density with unit
+mean, the single arbitrage condition being one inequality, $\lambda_+<1$,
+which a logistic reparametrization removes entirely.  The two endpoint
+values of the expansion are the exponential tail scales; they fix the exact
+strip of finite moments and, through Lee's moment formula, the asymptotic
+wing slopes in closed form.  One computational object carries the model: the
+upper-share ledger $G(z)=\int_z^\infty e^{x(t)}\rho(t)\,\dd t$.  Pricing is
+two ledger entries; the parameter Jacobian follows from an exact
+envelope-cancellation identity on the same array; the risk-neutral density
+is one division; the variance-swap strike is the first moment of the same
+build; and absence of calendar arbitrage between expiries is the pointwise
+ordering of two ledgers, proved both ways by conjugate duality.  The paper
+is equally explicit about what is not claimed: the coordinates are
+unconstrained for a flexible exponential-tail class, not for all smiles;
+fitted tail parameters are priors selected jointly by basis, ridge, and
+endpoint coupling, not observations; calendar enforcement is a control, not
+a theorem; and the continuous theorems are earned by the discretization only
+through explicit certificates and a randomized audit whose worst violations
+are measured, not assumed.  All market examples are fitted from one frozen
+snapshot of listed equity options, and every reported number regenerates
+from that file.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\input{sections/01_introduction}
+\input{sections/02_constraint_set}
+\input{sections/03_heuristic}
+\input{sections/04_model}
+\input{sections/05_validity}
+\input{sections/06_tails_moments}
+\input{sections/07_ledger}
+\input{sections/08_atm}
+\input{sections/09_calibration}
+\input{sections/10_jacobian}
+\input{sections/11_calendar}
+\input{sections/12_computation}
+\input{sections/13_examples}
+\input{sections/14_related}
+\input{sections/15_limitations}
+
+\appendix
+\input{sections/A_implementation}
+\input{sections/B_proofs}
+\input{sections/C_data}
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

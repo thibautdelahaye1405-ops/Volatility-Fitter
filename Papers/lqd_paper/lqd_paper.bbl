@@ -1,0 +1,135 @@
+\begin{thebibliography}{22}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Benaim and Friz(2009)]{BenaimFriz2009}
+Shalom Benaim and Peter Friz.
+\newblock Regular variation and smile asymptotics.
+\newblock \emph{Mathematical Finance}, 19\penalty0 (1):\penalty0 1--12, 2009.
+
+\bibitem[Black(1976)]{Black1976}
+Fischer Black.
+\newblock The pricing of commodity contracts.
+\newblock \emph{Journal of Financial Economics}, 3\penalty0 (1--2):\penalty0
+  167--179, 1976.
+
+\bibitem[Branch et~al.(1999)Branch, Coleman, and Li]{BranchColemanLi1999}
+Mary~Ann Branch, Thomas~F. Coleman, and Yuying Li.
+\newblock A subspace, interior, and conjugate gradient method for large-scale
+  bound-constrained minimization problems.
+\newblock \emph{SIAM Journal on Scientific Computing}, 21\penalty0
+  (1):\penalty0 1--23, 1999.
+
+\bibitem[Breeden and Litzenberger(1978)]{BreedenLitzenberger1978}
+Douglas~T. Breeden and Robert~H. Litzenberger.
+\newblock Prices of state-contingent claims implicit in option prices.
+\newblock \emph{Journal of Business}, 51\penalty0 (4):\penalty0 621--651, 1978.
+
+\bibitem[Carr and Madan(1998)]{CarrMadan1998}
+Peter Carr and Dilip~B. Madan.
+\newblock Towards a theory of volatility trading.
+\newblock In Robert~A. Jarrow, editor, \emph{Volatility: New Estimation
+  Techniques for Pricing Derivatives}, pages 417--427. Risk Books, London,
+  1998.
+
+\bibitem[Carr and Madan(2005)]{CarrMadan2005}
+Peter Carr and Dilip~B. Madan.
+\newblock A note on sufficient conditions for no arbitrage.
+\newblock \emph{Finance Research Letters}, 2\penalty0 (3):\penalty0 125--130,
+  2005.
+
+\bibitem[Demeterfi et~al.(1999)Demeterfi, Derman, Kamal, and
+  Zou]{DemeterfiDermanKamalZou1999}
+Kresimir Demeterfi, Emanuel Derman, Michael Kamal, and Joseph Zou.
+\newblock A guide to volatility and variance swaps.
+\newblock \emph{Journal of Derivatives}, 6\penalty0 (4):\penalty0 9--32, 1999.
+
+\bibitem[Fengler(2009)]{Fengler2009}
+Matthias~R. Fengler.
+\newblock Arbitrage-free smoothing of the implied volatility surface.
+\newblock \emph{Quantitative Finance}, 9\penalty0 (4):\penalty0 417--428, 2009.
+
+\bibitem[Fritsch and Carlson(1980)]{FritschCarlson1980}
+Frederick~N. Fritsch and Ralph~E. Carlson.
+\newblock Monotone piecewise cubic interpolation.
+\newblock \emph{SIAM Journal on Numerical Analysis}, 17\penalty0 (2):\penalty0
+  238--246, 1980.
+
+\bibitem[Gatheral(2004)]{Gatheral2004}
+Jim Gatheral.
+\newblock A parsimonious arbitrage-free implied volatility parameterization
+  with application to the valuation of volatility derivatives.
+\newblock Presentation at Global Derivatives \& Risk Management, Madrid, 2004.
+
+\bibitem[Gatheral and Jacquier(2014)]{GatheralJacquier2014}
+Jim Gatheral and Antoine Jacquier.
+\newblock Arbitrage-free {SVI} volatility surfaces.
+\newblock \emph{Quantitative Finance}, 14\penalty0 (1):\penalty0 59--71, 2014.
+
+\bibitem[Gilchrist(2000)]{Gilchrist2000}
+Warren~G. Gilchrist.
+\newblock \emph{Statistical Modelling with Quantile Functions}.
+\newblock Chapman \& Hall/CRC, Boca Raton, 2000.
+
+\bibitem[Higham(2002)]{Higham2002}
+Nicholas~J. Higham.
+\newblock \emph{Accuracy and Stability of Numerical Algorithms}.
+\newblock SIAM, Philadelphia, second edition, 2002.
+
+\bibitem[Keelin(2016)]{Keelin2016}
+Thomas~W. Keelin.
+\newblock The metalog distributions.
+\newblock \emph{Decision Analysis}, 13\penalty0 (4):\penalty0 243--277, 2016.
+
+\bibitem[Kellerer(1972)]{Kellerer1972}
+Hans~G. Kellerer.
+\newblock {M}arkov-{K}omposition und eine {A}nwendung auf {M}artingale.
+\newblock \emph{Mathematische Annalen}, 198:\penalty0 99--122, 1972.
+
+\bibitem[Lee(2004)]{Lee2004}
+Roger~W. Lee.
+\newblock The moment formula for implied volatility at extreme strikes.
+\newblock \emph{Mathematical Finance}, 14\penalty0 (3):\penalty0 469--480,
+  2004.
+
+\bibitem[Neuberger(1994)]{Neuberger1994}
+Anthony Neuberger.
+\newblock The log contract.
+\newblock \emph{Journal of Portfolio Management}, 20\penalty0 (2):\penalty0
+  74--80, 1994.
+
+\bibitem[Parzen(1979)]{Parzen1979}
+Emanuel Parzen.
+\newblock Nonparametric statistical data modeling.
+\newblock \emph{Journal of the American Statistical Association}, 74\penalty0
+  (365):\penalty0 105--121, 1979.
+
+\bibitem[Petersen and M{\"u}ller(2016)]{PetersenMuller2016}
+Alexander Petersen and Hans-Georg M{\"u}ller.
+\newblock Functional data analysis for density functions by transformation to a
+  {H}ilbert space.
+\newblock \emph{Annals of Statistics}, 44\penalty0 (1):\penalty0 183--218,
+  2016.
+
+\bibitem[Strassen(1965)]{Strassen1965}
+Volker Strassen.
+\newblock The existence of probability measures with given marginals.
+\newblock \emph{Annals of Mathematical Statistics}, 36\penalty0 (2):\penalty0
+  423--439, 1965.
+
+\bibitem[Villani(2003)]{Villani2003}
+C{\'e}dric Villani.
+\newblock \emph{Topics in Optimal Transportation}, volume~58 of \emph{Graduate
+  Studies in Mathematics}.
+\newblock American Mathematical Society, Providence, 2003.
+
+\bibitem[Virtanen et~al.(2020)Virtanen, Gommers, Oliphant, et~al.]{SciPy2020}
+Pauli Virtanen, Ralf Gommers, Travis~E. Oliphant, et~al.
+\newblock {SciPy} 1.0: Fundamental algorithms for scientific computing in
+  {P}ython.
+\newblock \emph{Nature Methods}, 17:\penalty0 261--272, 2020.
+
+\end{thebibliography}

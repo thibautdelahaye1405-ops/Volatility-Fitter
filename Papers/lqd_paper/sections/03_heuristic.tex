@@ -1,0 +1,153 @@
+%======================================================================
+\section{Heuristic: from ranks to returns}
+\label{sec:heuristic}
+
+The construction rests on one elementary change of viewpoint, and it is
+worth presenting slowly, because everything after it is bookkeeping.
+
+\subsection{A distribution is a rule assigning returns to ranks}
+
+A probability law for the return $X$ is usually pictured as a density: how
+much probability sits near each return level.  Invert the picture.  Order
+all possible outcomes from worst to best and index them by their
+\emph{rank} $u\in(0,1)$: $u=0.01$ is the first percentile, $u=0.5$ the
+median, $u=0.99$ the ninety-ninth.  The law is then completely described by
+the rule that assigns to each rank the return realized there,
+\begin{equation}
+u\;\longmapsto\;Q(u),
+\label{eq:Qdef}
+\end{equation}
+the \emph{quantile function}, the inverse of the CDF.  If $U$ is uniform on
+$(0,1)$ then $X=Q(U)$ has exactly the law described --- this is the
+inverse-CDF construction used by every random-number generator.  Two facts
+make the rank picture attractive for our problem.  First, the horizontal
+axis is \emph{universal}: every law, however wild, is a rule on the same
+interval $(0,1)$, and the uniform weight on ranks is the same for all of
+them --- ranks are born normalized, so ``total probability one'' is not a
+constraint but a tautology.  Second, the entire content of ``being a
+probability law on returns'' collapses to a single property: $Q$ must be
+\emph{increasing}.  Nothing else.
+
+Monotonicity is a far better constraint to own than positivity of a second
+derivative, because it is destroyed by one differentiation, not two.  Let
+\begin{equation}
+q(u)=Q'(u)
+\label{eq:qdef}
+\end{equation}
+be the \emph{quantile density}: the spacing of returns per unit of rank.
+Then $Q$ increasing $\iff$ $q>0$ $\iff$ $\log q$ is an arbitrary real
+function.  Modeling $\log q$ therefore removes the last pointwise
+constraint.  The quantity $\log q$ has a physical reading that will guide
+every design choice below: it is the \emph{log-speed} at which the return
+axis is traversed as the rank advances.  Where the speed is low, ranks are
+packed into a narrow band of returns --- high probability density; where
+the speed is high, a few ranks are stretched across a wide band ---
+low density.  Indeed, differentiating $F_X(Q(u))=u$,
+\begin{equation}
+f_X\big(Q(u)\big)=\frac{1}{q(u)} :
+\label{eq:reciprocal}
+\end{equation}
+density is the reciprocal of speed.  A model of $\log q$ is a model of the
+distribution in which positivity of the density can never fail, for the
+same reason $e^{t}$ can never be negative.
+
+\subsection{The two singularities, and the coordinate that removes both}
+
+The speed $q$ cannot be an arbitrary \emph{bounded} function, because an
+unbounded law must escape to $\pm\infty$ as $u\to0$ or $1$: the integral of
+$q$ over $(0,1)$ is the total return range, infinite for any law with
+unbounded support.  So $\log q$ must diverge at both endpoints, and the
+divergence is not a nuisance to be squashed but a structure to be
+normalized.  Ask how fast the divergence is for the benchmark laws.  For a
+standard Gaussian, $q(u)=1/\phin(\PhiN^{-1}(u))$, which blows up like
+$1/(u\sqrt{2\log(1/u)})$ as $u\to0$ (using the Gaussian tail equivalent
+$\PhiN(x)\sim\phin(x)/|x|$ as $x\to-\infty$, so
+$\phin(\PhiN^{-1}(u))\sim u\,|\PhiN^{-1}(u)|\sim u\sqrt{2\log(1/u)}$) ---
+essentially $1/u$, with a slowly varying correction.  For an exponential tail, $q(u)$ blows up like a
+constant times $1/u$ exactly.  The pattern is general: the endpoint
+divergences of $\log q$ are, at leading order, $-\log u$ at the left end
+and $-\log(1-u)$ at the right, with the law's individual character riding
+on a lower-order remainder.  For exponential tails the remainder is
+\emph{bounded} --- it tends to the logarithm of the tail scale --- while
+for the Gaussian it still drifts to $-\infty$, slowly.  Boundedness of the
+remainder is precisely what will delimit the model's class
+(\cref{prop:universal}).
+
+This suggests separating skeleton from flesh,
+\begin{equation}
+\log q(u)\;=\;\underbrace{-\log u-\log(1-u)}_{\text{universal skeleton}}
+\;+\;g(u),
+\label{eq:skeleton}
+\end{equation}
+and modeling only the smooth part $g$.  There is a cleaner way to say the
+same thing, and it is the form the whole computational apparatus will use.
+Change the rank coordinate to \emph{log-odds},
+\begin{equation}
+z=\logit u=\log\frac{u}{1-u},
+\qquad
+u=\Lambda(z)=\frac{1}{1+e^{-z}},
+\label{eq:logodds}
+\end{equation}
+so that $z=0$ is the median and $z=\pm\log 9\approx\pm2.20$ are the 90th
+and 10th percentiles: equal steps in $z$ multiply the odds $u/(1-u)$ by a
+constant factor.  The derivative of the map is
+$\dd u/\dd z=\Lambda(z)\big(1-\Lambda(z)\big)=\rho(z)$, the logistic
+density, which decays like $e^{-|z|}$ in both directions.  Now compute the
+speed of the return assignment \emph{per unit of log-odds}:
+\begin{equation}
+\frac{\dd Q}{\dd z}
+=q(u)\,\frac{\dd u}{\dd z}
+=\frac{e^{g(u)}}{u(1-u)}\cdot u(1-u)
+=e^{g(u)} .
+\label{eq:speed}
+\end{equation}
+Both endpoint singularities cancel identically.  In the log-odds coordinate
+the quantile of any law in our class is the integral of a smooth, strictly
+positive, \emph{bounded} function --- the exponential of the very $g$ we
+chose to model.  The coordinate $z$ does for ranks what the logarithm does
+for prices: it moves the interesting boundary behavior to a place where it
+is linear.
+
+\subsection{The model in one sentence}
+
+Assemble the pieces.  Take $Z$ a standard logistic variable (that is,
+$Z=\logit U$ for $U$ uniform --- CDF $\Lambda$, density $\rho$), and define
+the return by transporting $Z$ through the integrated speed:
+\begin{equation}
+X=x(Z),
+\qquad
+x(z)=m+\int_0^{z}e^{g(\Lambda(t))}\,\dd t ,
+\label{eq:transport_heur}
+\end{equation}
+with $g$ a polynomial of modest degree in the rank and $m$ the scalar that
+makes $\E[e^{X}]=1$.  The map $x$ is strictly increasing whatever the
+polynomial, so $X$ always has a genuine law; the density is positive by
+\eqref{eq:reciprocal}; the mass is normalized because ranks are; the mean
+condition costs one scalar.  What the polynomial's two endpoint values
+control --- the asymptotic speeds $e^{g(0)}$ and $e^{g(1)}$ --- turns out
+to be exactly the exponential decay scales of the two return tails, and the
+single validity condition of the entire construction will be the
+requirement that the right tail decay fast enough to give $e^{X}$ a finite
+mean.  \Cref{fig:transport} draws the three objects for the simplest
+possible choice, $g$ constant: the logistic score with its percentile
+marks, the resulting affine transport with the strike roots of two options
+marked on it, and the flat-at-the-money smile it prices.  The next section
+states the definition precisely and dispatches the constant-speed case in
+closed form.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_transport.pdf}
+\caption{The transport view for a constant-speed slice.  Panel A: the
+logistic score density $\rho(z)$ on the log-odds line; the marked ticks are
+the 1st, 10th, 50th, 90th, and 99th percentiles --- every percentile of an
+unbounded law at a finite coordinate.  Panel B: the transport map $x(z)$,
+an exact straight line when the log-speed $g$ is constant; the dots mark
+the strike roots $z_k$ solving $x(z_k)=k$ for the at-the-money strike
+$k=0$ and one out-of-the-money strike --- the two options priced by hand
+on this very slice in \cref{sec:ledger}.  Panel C: the implied-volatility smile of this slice ---
+flat at the money and gently convex, because exponential return tails carry
+more far-strike value than the log-normal's, which the Black formula can
+only express as higher implied volatility.}
+\label{fig:transport}
+\end{figure}
