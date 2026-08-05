@@ -56,7 +56,11 @@ Lead and Spawn multiple sub-specialized sub-agents
 
 Development state & how to resume :
 
-READ ROADMAP.md FIRST — its "STATUS" section at the top says exactly what is
+BOOK sessions ("continue the book" / "next chapter"): read ONLY
+Papers/book/ROADMAP.md and follow its context-hygiene rules — do NOT load
+the app roadmap, backtests, or engineering history into a book session.
+
+APP sessions: READ ROADMAP.md FIRST — its "STATUS" section at the top says exactly what is
 done, what is next (in priority order), and all environment caveats.
 When the user says "continue implementing the roadmap", work down that
 STATUS "Next up" list, keeping the same conventions already in the code:
