@@ -1,5 +1,4 @@
-% The LQD paper — monograph-chapter edition. Figures and macros are produced
-% by scripts/gen_figures.py from the frozen snapshot in data/.
+% Parallel monograph-style rewrite. The original paper is not modified.
 \documentclass[11pt,a4paper]{article}
 
 \usepackage[margin=1.0in]{geometry}
@@ -21,7 +20,7 @@
 \usepackage{cleveref}
 \allowdisplaybreaks
 
-\graphicspath{{figures/}}
+\graphicspath{{../lqd_paper/figures/}}
 \captionsetup{font=small,labelfont=bf}
 \setlist{itemsep=2pt,topsep=4pt}
 \setcounter{tocdepth}{1}
@@ -58,14 +57,14 @@
 \newcommand{\1}{\mathbf{1}}
 
 \newcommand{\paperfig}[2]{%
-  \IfFileExists{figures/#2}%
+  \IfFileExists{../lqd_paper/figures/#2}%
     {\includegraphics[width=#1]{#2}}%
     {\fbox{\parbox[c][0.24\textwidth][c]{0.92\textwidth}{\centering
       \ttfamily [missing figure: \detokenize{#2}]}}}}
 
-% Every empirical value in the text is a macro generated from the frozen
-% snapshot by scripts/gen_figures.py; none is typed by hand.
-\InputIfFileExists{figures/paper_macros.tex}{}{}
+% All empirical values are generated from the frozen snapshot used by the
+% original paper. The parallel rewrite reads, but does not modify, that file.
+\InputIfFileExists{../lqd_paper/figures/paper_macros.tex}{}{}
 
 \title{\textbf{The Log-Quantile-Density Model of the Volatility Smile:\\
 Validity, Information, and Convention}}
@@ -110,6 +109,6 @@ same representation.
 \input{sections/C_data}
 
 \bibliographystyle{plainnat}
-\bibliography{references}
+\bibliography{../lqd_paper/references}
 
 \end{document}

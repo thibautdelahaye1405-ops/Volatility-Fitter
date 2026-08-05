@@ -1,13 +1,13 @@
 This is BibTeX, Version 0.99d
 Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
-The top-level auxiliary file: lqd_paper.aux
+The top-level auxiliary file: lqd_paper_rewrite.aux
 Reallocating 'name_of_file' (item size: 1) to 9 items.
 The style file: plainnat.bst
-Reallocating 'name_of_file' (item size: 1) to 11 items.
-Database file #1: references.bib
+Reallocating 'name_of_file' (item size: 1) to 24 items.
+Database file #1: ../lqd_paper/references.bib
 You've used 16 entries,
             2773 wiz_defined-function locations,
-            712 strings with 7144 characters,
+            712 strings with 7173 characters,
 and the built_in function-call counts, 6483 in all, are:
 = -- 611
 > -- 244
