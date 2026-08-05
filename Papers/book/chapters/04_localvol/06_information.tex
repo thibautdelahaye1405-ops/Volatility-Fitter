@@ -1,0 +1,103 @@
+\section{What the quotes determine}
+\label{sec:lvinfo}
+
+Before writing an objective function, a chapter should ask whether the
+problem it is about to pose has one answer.  This one does not, in three
+distinct ways --- one about resolution, one about averages, one about
+whole regions of the field --- and each dictates a piece of the
+calibration's design.
+
+\paragraph{The length scale.}
+Everything interesting about a smile at maturity $\tau$ happens within a
+few multiples of the diffusive width $\sigma\sqrt{\tau}$ of the money.
+This single quantity dictates where both grids of
+\cref{sec:lvsheet,sec:lvlattice} must put their points.  \emph{Vertex
+placement}: strike columns are spaced by delta --- a fixed ladder of
+exercise probabilities mapped through $\PhiN^{-1}$, rather than fixed
+steps of strike --- so parameter density follows where optionality
+lives.  \emph{Vertex coverage}: an axis sized by
+the longest expiry undersamples a short one, whose entire smile can fall
+between two columns --- a two-day smile at $20\%$ volatility is about
+$1.5\%$ wide, an order of magnitude narrower than a one-year smile --- so
+every expiry must be guaranteed several columns \emph{within its own}
+range, spread evenly across it.  \emph{Lattice steps}: the same width
+bounds the strike step from above, and if the \emph{quote} spacing is
+finer than the lattice step, the fitted smile oscillates at quote
+frequency until the lattice out-resolves it.  A grid that does not resolve
+the data's length scale fits an alias, not the data; the exact placement
+rules used in this chapter are collected in \cref{app:lvnumerics}.
+
+\paragraph{An averaging fact, and the floor.}
+At the money, implied and local variance are related as average to
+integrand.  If the field near the money depends only on time,
+$v(\tau,y)\approx v(\tau,1)$, the model is Black--Scholes with a
+time-dependent volatility and \emph{exactly}
+$w(0,\tau)=\int_0^{\tau}v(s,1)\,\dd s$; in general this holds to leading
+order near the money.  An average can only be matched by an integrand that
+crosses it: whenever the ATM term structure is \emph{increasing}, early
+local variance must sit strictly \emph{below} the shortest implied
+variance.  A parameter floor set carelessly --- say at a round $5\%$
+volatility --- therefore makes some low-volatility short-dated term
+structures literally unfittable, with the optimizer pinned to the box and
+the misfit looking like a mystery.  The box of \cref{prop:lvnodal} must be
+generous and \emph{adaptive}: a cap a fixed multiple of the largest
+implied volatility in view, a floor a fraction of the \emph{smallest ATM}
+implied --- keyed to ATM quotes deliberately, so that one noisy deep-wing
+print cannot lower the floor where it does real stabilizing work.
+
+\paragraph{Rows the quotes cannot see.}
+The quotes at the first expiry $\tau_1$ pin --- through the averaging fact
+--- only the \emph{integral} of local variance over $[0,\tau_1]$.  Any
+vertex row strictly inside that interval is individually unidentified: the
+optimizer can ring one row up and the next down at no cost in fit, and
+under noise it will (this is precisely how the rippled fit of
+\cref{fig:lvwrongway} spent its freedom at the shortest expiry, wandering
+\MacLvWrongEdgePts\ volatility points at a span edge held by a single
+quote).  The cure is not more data but a declared prior: tie each sub-front
+row to the first identified row --- the \emph{front tie} of
+\cref{sec:lvcalib} --- turning an unidentified subspace into a stated
+constant continuation.
+
+\paragraph{Two sheets, one quote set.}
+The three paragraphs above are instances of one geometry, and it is better
+seen than told.  A fit like this chapter's carries a couple of hundred
+nodal parameters, and even when the quotes outnumber them several-fold
+--- nearly five to one on the frozen SPY chain of \cref{sec:lvexamples},
+between two and three on NVDA --- the quotes cluster near the money of a
+handful of expiries, and a vanilla constrains local variance only through
+a smoothing integral along diffusion paths.  Whole regions of the sheet
+(deep wings, sub-front rows, times beyond the last expiry) are therefore
+weakly determined no matter how the counting goes.  \Cref{fig:lvidentify} makes it concrete on the synthetic
+running example: pushing the sheet's unquoted deep-put column (at
+$y=\MacLvIdentColY$, below every quoted strike) down by
+\MacLvIdentMovePts\ full volatility points changes the reprice of the
+entire quote set by at most \MacLvIdentMaxDiffBp\ bp ---
+\MacLvIdentRmsDiffBp\ bp rms --- concentrated in the longest expiry's
+lowest strikes, the only quotes whose diffusion reaches the moved column
+at all.  A thousand basis points of surface, twenty of quotes.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_lv_identify.pdf}
+\caption{What sparse quotes do not see.  (a)~The calibrated synthetic
+sheet at $\tau=0.5$ (solid) and the same sheet with its unquoted deep-put
+column pushed down by \MacLvIdentMovePts\ volatility points (dashed); the
+shaded band is the quoted region, where the two are indistinguishable.
+(b)~The absolute reprice change at every quote of every expiry: at most
+\MacLvIdentMaxDiffBp\ bp, and only where the longest expiry's lowest
+strikes feel the moved column.  Low quote error is \emph{not} surface
+recovery.}
+\label{fig:lvidentify}
+\end{figure}
+
+The consequence is philosophical and operational at once.  What a
+calibration returns is one \emph{representative} of an equivalence class
+of sheets the data cannot distinguish, and every device in the next
+section's objective is a declared choice of representative: the roughness
+term selects the smoothest member near a reference, the box clips the
+unidentified extremes, the front tie pins the rows below the first expiry,
+and the seed decides which basin a non-convex search lands in.  None of
+this is hidden tuning; it is the ``convention'' column of the book's
+thesis, operating inside a calibration.  The worked example of
+\cref{sec:lvexamples} accordingly reports quote error and surface error as
+two separate numbers.

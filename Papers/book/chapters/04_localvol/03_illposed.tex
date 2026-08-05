@@ -1,0 +1,87 @@
+\section{The wrong direction}
+\label{sec:lvillposed}
+
+Formula \eqref{eq:lvextract} invites a procedure: interpolate the quoted
+smile, differentiate it twice in strike and once in maturity, divide.  On a
+continuum of exact prices this is a theorem.  On a real chain --- a few
+dozen noisy quotes per expiry --- it fails, and the failure is structural,
+not bad luck.
+
+Quantify it.  Suppose each quoted total variance carries an error of size
+$\varepsilon$, and strikes are spaced $\Delta k$ apart.  A second difference
+estimates curvature as
+\[
+\partial_{kk}w\;\approx\;
+\frac{w(k-\Delta k)-2\,w(k)+w(k+\Delta k)}{\Delta k^{2}},
+\]
+and the worst configuration of errors --- alternating signs, which is
+exactly what a bid--ask bounce produces --- enters this estimate at size
+$4\varepsilon/\Delta k^{2}$.  The noise is amplified by the \emph{inverse square}
+of the strike spacing: a finer quote grid makes the estimate worse, without
+bound.  There is no stable limit to converge to; numerical differentiation
+of noisy data is the canonical ill-posed operation.  And the place this
+amplified noise lands could not be worse chosen: by \eqref{eq:lvratio} the
+curvature sits inside $g_{\rm D}$, the sign-carrying factor of the
+risk-neutral density.  The first
+time the noise pushes the estimated density through zero, the extraction
+returns a \emph{negative variance} --- not a large error but a
+non-object, which no pricing equation, no simulation and no risk system
+downstream can absorb.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_lv_wrongway.pdf}
+\caption{The same synthetic market, read both ways.  Quotes are generated
+from a known smooth field (dashed) and carry a deterministic alternating
+$\pm$\MacLvWrongRippleBp\,bp volatility ripple --- a stylized bid--ask
+bounce.  (a)~The extraction \eqref{eq:lvratio} from the noisy quotes at
+$\tau=0.25$.  From 13 quotes per expiry it saw\-tooths between
+\MacLvWrongCoarseMinPct\% and \MacLvWrongMaxSpikePct\% around a true ATM
+level of \MacLvWrongTruthAtmPct\%; from 31 quotes of the \emph{same}
+market --- finer $\Delta k$, same $\pm$\MacLvWrongRippleBp\,bp ---
+it fails outright at \MacLvWrongNBad\ strikes (crosses: negative variance
+or negative density), exactly the $4\varepsilon/\Delta k^{2}$ scaling at work.
+(b)~The same 31-quote noisy chains handed to the forward calibration of
+this chapter: an admissible surface by construction, within
+\MacLvWrongFwdMaxPts\ volatility points of the truth along the plotted
+cross-sections, with reprice residuals of rms
+\MacLvWrongQuoteRmsBp\,bp --- the scale of the ripple itself.  The noise
+stays in the residual, where it belongs.}
+\label{fig:lvwrongway}
+\end{figure}
+
+\Cref{fig:lvwrongway} performs the experiment on a synthetic market whose
+answer is known (the field and quote recipe are in \cref{app:lvnumerics}).
+The left panel is the naive pipeline at two quote densities and needs
+little commentary beyond its caption: refining the strike grid, which
+improves every well-posed computation, makes this one \emph{worse},
+quadratically, until half the strikes report that no diffusion exists.
+The right panel previews the alternative developed in the rest of the
+chapter.  The same noisy quotes are handed to a calibration that never
+differentiates them; every iterate it produces is a genuine positive
+field; and the fitted surface tracks the truth through the quoted region
+while its residuals absorb the ripple.  One caveat, quantified now and
+explained in \cref{sec:lvinfo}: at the edges of the shortest expiry's
+quoted span, where a single rippled quote is the only witness, the fitted
+field wanders by as much as \MacLvWrongEdgePts\ volatility points.  Noise
+rejection is a property of dense data and declared smoothing.
+
+The repair is a change of role, not of formula, and it is due to Dupire's
+equation being read in its \emph{forward} direction, as Andreasen and Huge
+taught \citep{AndreasenHuge2011}.  Decide that the unknown is the field
+$v$ itself.  Parametrize it.  Price it through \eqref{eq:lvdupire} ---
+which differentiates only the smooth numerical solution, never the data
+--- and ask an optimizer for the positive field whose prices meet the
+quotes.  Positivity is imposed on the \emph{parameters}, so every iterate
+of the search is an admissible diffusion before any quote is consulted.
+Readers of Chapters~2--3 will recognize the design: it is the same
+constraint-elimination idea that built the LQD chart and the structural
+SVI chart (\cref{sec:charts,sec:svistructural}), one dimension up ---
+choose the coordinates in which the constraint set is trivial, and let the
+pricing map do the hard work.  Three questions remain, and they organize
+the rest of the chapter: what parametrization makes positivity trivial in
+two dimensions (\cref{sec:lvsheet}); what discretization of
+\eqref{eq:lvdupire} keeps \cref{prop:lvpropagate} alive on a finite grid
+(\cref{sec:lvlattice}); and what, exactly, the quotes determine about the
+field once the formula \eqref{eq:lvextract} is off the table
+(\cref{sec:lvinfo}).

@@ -1,0 +1,37 @@
+% Chapter 4 — local volatility.
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch04/gen_figures.py from data/ (frozen snapshot + deterministic
+% synthetics).  Notation additions are recorded in NOTATION.md.
+\renewcommand{\figdir}{figures/ch04}
+\chapter[Local volatility]{Local Volatility}
+\label{ch:lv}
+
+\chaptersynopsis{Chapters~2 and~3 fitted one law per expiry and let a
+calendar condition relate neighbors.  This chapter asks for more: one
+diffusion whose marginal laws are all of the surface's laws at once.  The
+Dupire equation supplies it, and in the volatility chart its coefficient is
+a ratio of the two objects the static chapters policed --- the calendar
+increment over the Durrleman factor --- so the field exists exactly where
+the surface is valid.  Read as a formula, the ratio divides two derivatives
+of noisy data and fails structurally; read as a pricing map, it poses a
+well-behaved inverse problem: a piecewise-affine sheet whose positivity is
+a box constraint on finitely many numbers, priced by a monotone implicit
+march whose step matrix is an M-matrix, and differentiated exactly behind
+the same factorization.  The quotes do not determine the sheet --- two
+surfaces ten volatility points apart reprice the same quote set within a
+fraction of a spread --- so calibration returns a declared representative
+of an equivalence class, and what the discretization leaks is measured,
+never assumed.}
+
+\input{chapters/04_localvol/01_field}
+\input{chapters/04_localvol/02_equation}
+\input{chapters/04_localvol/03_illposed}
+\input{chapters/04_localvol/04_sheet}
+\input{chapters/04_localvol/05_lattice}
+\input{chapters/04_localvol/06_information}
+\input{chapters/04_localvol/07_calibration}
+\input{chapters/04_localvol/08_examples}
+
+\begin{chapterappendices}
+\input{chapters/04_localvol/A_numerics}
+\end{chapterappendices}

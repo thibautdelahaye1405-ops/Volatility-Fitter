@@ -74,6 +74,36 @@ normalized call `c`). Chapter-3 *constructions* use calligraphic letters.
 | `TV(k), TV_i` | time value: normalized OTM option price at a strike |
 | `C_i, \|C_i\|` | quote i's Voronoi cell on the strike axis and its width |
 
+## Chapter 4 — local volatility
+
+Bare `v` is claimed here for the local-variance field (it was free: the JW
+handles are always subscripted `v_J`, `ṽ_J`). The strike axis reuses Ch. 2's
+`y = e^k`. Calligraphic letters name the chapter's operators; composite step
+symbols `Δτ, Δy` do not collide with Ch. 2's bare `Δ` (digital gap).
+
+| Symbol | Meaning |
+|---|---|
+| `v(τ, y)` | local-variance field (σ_loc² per unit variance time) |
+| `σ_loc = √v` | local volatility (prose; never a formula symbol) |
+| `f(τ, y)` | density of Y_τ (Ch. 2's density with the maturity explicit) |
+| `𝓛` | Dupire generator ½ v y² ∂_yy, and its lattice discretization |
+| `𝓜 = I − Δτ 𝓛` | implicit step matrix (an M-matrix) |
+| `U^n` | lattice call values after step n |
+| `Δτ, Δy` | lattice steps (`Δy_i^±` the non-uniform gaps) |
+| `(τ_i, y_j), θ_ℓ, n_θ` | vertex grid; nodal local variances (θ in its Ch. 3 ledger role: optimization-chart coordinates); vertex count |
+| `ℋ_ℓ` | hat (tent) basis function of vertex ℓ |
+| `v_lo, v_hi` | nodal variance box |
+| `a` | left-wing continuation slope multiple (LQD coefficients stay `a_n`) |
+| `Γ` | spacing-aware second-difference (curvature) operator on the vertex grid |
+| `λ, λ_0` | roughness weight; front-tie weight (endpoint speeds stay `λ±`) |
+| `θ_ref` | roughness reference sheet |
+| `η_q` | per-quote vega scale (Ch. 2's vega floor `η`, per quote) |
+| `s_ℓ^n` | tangent sensitivities ∂U^n/∂θ_ℓ (SVI's `s_S` stays subscripted-S) |
+| `N_τ, N_y` | lattice step and node counts (vertex counts stay `n_τ, n_y`) |
+| `b^n` | boundary data entering step n through the stencil's boundary columns |
+| `p^n` | adjoint lattice states (App. 4.A only; normalized put stays `P`) |
+| `𝒥, 𝒪_n` | scalar objective; observation rows (App. 4.A adjoint only) |
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,

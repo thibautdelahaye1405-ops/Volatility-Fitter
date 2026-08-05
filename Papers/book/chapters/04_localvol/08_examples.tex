@@ -1,0 +1,136 @@
+\section{Examples and the contract}
+\label{sec:lvexamples}
+
+All fits in this section use one protocol --- the grids of
+\cref{sec:lvinfo}, the objective of \cref{sec:lvcalib}, every constant
+recorded in \cref{app:lvnumerics} --- applied unchanged to a synthetic
+market whose answer is known and to the book's frozen SPY and NVDA
+chains.  No fit is tuned separately.
+
+\subsection{The round trip, and its two separate numbers}
+
+The synthetic market prices a known smooth field through an
+\emph{independent} dense scheme (so the exercise cannot flatter the
+chapter's march by validating it against itself), quotes it at four
+expiries, and hands the \MacLvRtNQuotes\ clean quotes to the calibration
+from a flat seed.  Per \cref{sec:lvinfo}, the result is two numbers, not
+one.  The \emph{quotes} reprice to \MacLvRtRmsErrBp\,bp rms and
+\MacLvRtMaxErrBp\,bp at worst --- the fit is essentially exact in the
+space the optimizer sees.  Separately, the \emph{field itself} agrees with
+the truth to \MacLvRtSurfRmsPts\ volatility points rms on the
+quote-covered region, with a maximum of \MacLvRtSurfMaxPts\ points ---
+more than a hundred times the quote error, concentrated exactly where
+\cref{fig:lvidentify} said the quotes do not look: between expiries and
+near the span edges (\cref{fig:lvrecovery}b).  Both numbers are honest;
+only reporting the first would not be.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_lv_recovery.pdf}
+\caption{The synthetic round trip.  (a)~Target quotes (dots) and the
+recovered fit (lines) at the four expiries: rms \MacLvRtRmsErrBp\,bp, max
+\MacLvRtMaxErrBp\,bp.  (b)~The second number: $|$fitted $-$ true$|$ local
+volatility over the quote-covered region, quote positions dotted.  The
+error lives between the expiries and at the edges of the quoted spans ---
+largest where the nearest quote is farthest.}
+\label{fig:lvrecovery}
+\end{figure}
+
+\subsection{The frozen chains}
+
+The real test fits one sheet per underlier to every prepared mid quote of
+the snapshot's eight expiries at once: \MacLvSpyQuotes\ quotes against
+\MacLvSpyVtx\ nodal variances for SPY, \MacLvNvdaQuotes\ against
+\MacLvNvdaVtx\ for NVDA.  \Cref{fig:lvsheet} already showed the SPY sheet
+itself; \cref{fig:lvfit} shows four of its expiries against the quotes,
+priced by the \emph{one} calibrated diffusion --- a two-day smile and a
+year-and-a-half LEAP from the same list of positive numbers.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_lv_fit.pdf}
+\caption{Four SPY expiries priced by the single calibrated sheet, against
+the frozen quotes (dots: mids; whiskers: bid--ask).  Panel titles give the
+expiry and its distance; annotations the per-expiry rms on the fitting
+operator.}
+\label{fig:lvfit}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_lv_rms.pdf}
+\caption{Per-expiry rms for SPY (a) and NVDA (b), on the fitting operator
+(grey) and on the refined operator (blue), log scale.  The refined bars
+are the ones to read: the gap between the pairs is the compensated
+discretization error of \cref{sec:lvlattice}, and it owns the short end.}
+\label{fig:lvrms}
+\end{figure}
+
+\Cref{fig:lvrms} reports the chapter's two metrics side by side.  On the
+fitting operator the surfaces read \MacLvSpyRmsBp\,bp (SPY) and
+\MacLvNvdaRmsBp\,bp (NVDA) rms across all quotes --- NVDA's wider spreads
+and harder short-dated smiles carry more residual everywhere.  Repriced on
+the refined operator the same surfaces read \MacLvSpyConvBp\ and
+\MacLvNvdaConvBp\,bp, and the worst single expiry --- in both names the
+one-day front --- reads \MacLvSpyWorstConvBp\ and
+\MacLvNvdaWorstConvBp\,bp.  The gap between the paired bars is the point,
+and it is the operator's blind spot of \cref{sec:lvlattice} made
+quantitative: the optimizer partially cancels the coarse march's error at
+the expiries it is fitted on, the in-operator residual flatters
+accordingly, and the number to quote is the refined one.  Where the two
+agree (the long end) the fit is genuinely converged; where they diverge
+(day-scale maturities) the remaining error is discretization, not
+disagreement with the quotes.  The measured cleanliness of
+\cref{rem:lvscope} completes the report: across every expiry of both
+calibrated sheets, the minimum divided second difference of the marched
+prices is \MacLvSpyButterflyMin\ (SPY) and \MacLvNvdaButterflyMin\ (NVDA),
+and the minimum adjacent-expiry increment is \MacLvSpyCalendarMin\ and
+\MacLvNvdaCalendarMin\ --- solver rounding, on both counts, as
+\cref{prop:lvpropagate} predicts and \cref{rem:lvscope} declines to assume.
+
+\subsection{The contract}
+\label{sec:lvcontract}
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.31\textwidth}
+>{\raggedright\arraybackslash}p{0.31\textwidth}
+>{\raggedright\arraybackslash}p{0.30\textwidth}@{}}
+\toprule
+\textbf{Structural} & \textbf{Numerically controlled} &
+\textbf{Outside the claim}\\
+\midrule
+Box bounds imply a positive field on the hull; a positive field implies
+butterfly-free, calendar-ordered marginals (\cref{prop:lvnodal,%
+prop:lvpropagate}); every optimizer iterate is an admissible diffusion &
+Butterfly, calendar and bound cleanliness of the marched prices, measured
+per fit; refined-operator reprice beside the in-operator residual &
+Convexity preservation of the discrete scheme as a theorem; the
+extrapolation region beyond the hull, where basis weights are signed\\[4pt]
+Monotone, unconditionally $\ell^\infty$-stable march
+(\cref{prop:lvmmatrix,cor:lvdmp}); exact tangent Jacobian from the same
+factorization (\cref{prop:lvtangent}) & Tangent columns audited against
+finite differences; an independent discretization cross-checks the march &
+Uniqueness of the calibrated sheet: the data determines an equivalence
+class, the conventions of \cref{sec:lvcalib} a representative\\[4pt]
+Bounded field $\Rightarrow$ implied variance bounded in strike, strictly
+inside Lee's cap on the hull (\cref{rem:lvlee}) & Grid placement rules
+resolving each expiry's $\sigma\sqrt\tau$; adaptive variance box keyed to
+ATM quotes & Jumps and scheduled-event spikes (the clock, Chapter~8);
+spot--volatility dynamics (Chapter~9); the deep-put tail's shape without a
+variance-swap quote (Chapter~5)\\
+\bottomrule
+\end{tabular}
+\caption{The local-volatility model contract: theorem, numerical control,
+and excluded scope.}
+\label{tab:lvcontract}
+\end{table}
+
+The chapter's separation thesis reads off the table.  \emph{Validity} is
+structural and cheap: a box.  \emph{Information} is scarcer than the
+formula \eqref{eq:lvextract} pretends: quotes determine the field only
+through smoothing integrals, and only where they exist.  \emph{Convention}
+fills the rest --- roughness, reference, tie, wing, seed.  The calibration
+does not eliminate those choices; it declares them, measures what the
+discretization leaks, and reports the error twice: once as the optimizer
+saw it, once as it is.

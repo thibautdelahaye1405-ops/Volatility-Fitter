@@ -1,0 +1,232 @@
+{
+ "LvRatioBadSharePct": {
+  "value": "0.5",
+  "meaning": "share of displayed (k, tau) cells where the Dupire ratio is inadmissible (negative calendar increment or g_D <= 0)",
+  "section": "ratio"
+ },
+ "LvRatioBadQuotedSharePct": {
+  "value": "0.00",
+  "meaning": "same share restricted to the common quoted support of each expiry pair",
+  "section": "ratio"
+ },
+ "LvRatioLocMinPct": {
+  "value": "9.0",
+  "meaning": "smallest extracted local vol (%) on the common quoted support",
+  "section": "ratio"
+ },
+ "LvRatioLocMaxPct": {
+  "value": "61.5",
+  "meaning": "largest extracted local vol (%) on the common quoted support",
+  "section": "ratio"
+ },
+ "LvLatImplMinDens": {
+  "value": "0.0012",
+  "meaning": "min discrete density under fully implicit Euler (plot window)",
+  "section": "lattice"
+ },
+ "LvLatCnMinDens": {
+  "value": "-36",
+  "meaning": "min discrete density under undamped Crank-Nicolson (plot window)",
+  "section": "lattice"
+ },
+ "LvLatCflBound": {
+  "value": "0.0003",
+  "meaning": "CN monotonicity bound 2 dy^2/(v y^2) at the money on this lattice (the marching step 0.01 exceeds it)",
+  "section": "lattice"
+ },
+ "LvWrongMaxSpikePct": {
+  "value": "73",
+  "meaning": "largest extracted local vol (%) in the naive pipeline",
+  "section": "wrongway"
+ },
+ "LvWrongNBad": {
+  "value": "14",
+  "meaning": "strikes at which the naive extraction returns negative variance or a nonpositive Durrleman factor",
+  "section": "wrongway"
+ },
+ "LvWrongFwdMaxPts": {
+  "value": "12.9",
+  "meaning": "max |fitted - true| local vol (vol points) along the two plotted cross-sections of the forward fit to the noisy quotes",
+  "section": "wrongway"
+ },
+ "LvWrongRippleBp": {
+  "value": "50",
+  "meaning": "amplitude (vol bp) of the deterministic alternating ripple",
+  "section": "wrongway"
+ },
+ "LvIdentMovePts": {
+  "value": "10",
+  "meaning": "vol points taken off the unquoted deep-put column",
+  "section": "identify"
+ },
+ "LvIdentColY": {
+  "value": "0.45",
+  "meaning": "strike of the moved vertex column",
+  "section": "identify"
+ },
+ "LvIdentMaxDiffBp": {
+  "value": "22.6",
+  "meaning": "largest reprice change (vol bp) across every quote",
+  "section": "identify"
+ },
+ "LvIdentRmsDiffBp": {
+  "value": "2.5",
+  "meaning": "rms reprice change (vol bp) across every quote",
+  "section": "identify"
+ },
+ "LvInflMaxRel": {
+  "value": "\\ensuremath{1.1\\times10^{-8}}",
+  "meaning": "worst relative disagreement, analytic tangent vs central FD, over all vertices and expiries",
+  "section": "influence"
+ },
+ "LvInflVtx": {
+  "value": "50",
+  "meaning": "vertex count of the synthetic sheet",
+  "section": "influence"
+ },
+ "LvRtMaxErrBp": {
+  "value": "1.8",
+  "meaning": "max quote reprice error (vol bp), clean synthetic round trip",
+  "section": "recovery"
+ },
+ "LvRtRmsErrBp": {
+  "value": "0.6",
+  "meaning": "rms quote reprice error (vol bp), clean synthetic round trip",
+  "section": "recovery"
+ },
+ "LvRtSurfRmsPts": {
+  "value": "0.78",
+  "meaning": "rms |fit - truth| local vol (vol points), quote-covered region",
+  "section": "recovery"
+ },
+ "LvRtSurfMaxPts": {
+  "value": "3.10",
+  "meaning": "max |fit - truth| local vol (vol points), quote-covered region",
+  "section": "recovery"
+ },
+ "LvRtNQuotes": {
+  "value": "124",
+  "meaning": "synthetic quote count (four expiries)",
+  "section": "recovery"
+ },
+ "LvRtEvals": {
+  "value": "20",
+  "meaning": "objective evaluations of the synthetic fit",
+  "section": "recovery"
+ },
+ "LvWrongQuoteRmsBp": {
+  "value": "49",
+  "meaning": "reprice rms (vol bp) of the forward fit to the rippled quotes: the noise stays in the residual, not the surface",
+  "section": "wrongway"
+ },
+ "LvWrongEdgePts": {
+  "value": "22",
+  "meaning": "max |fitted - true| local vol (vol points) anywhere on the common quoted support: the short-expiry span edges, where single rippled quotes meet weakly identified vertices",
+  "section": "wrongway"
+ },
+ "LvSheetRows": {
+  "value": "9",
+  "meaning": "SPY sheet maturity rows",
+  "section": "sheet"
+ },
+ "LvSheetCols": {
+  "value": "24",
+  "meaning": "SPY sheet strike columns",
+  "section": "sheet"
+ },
+ "LvSheetVtx": {
+  "value": "216",
+  "meaning": "SPY sheet vertex count (= calibration parameters)",
+  "section": "sheet"
+ },
+ "LvSpyRmsBp": {
+  "value": "2.7",
+  "meaning": "SPY all-quote rms (vol bp), fitting operator",
+  "section": "table"
+ },
+ "LvSpyConvBp": {
+  "value": "13.6",
+  "meaning": "SPY all-quote rms (vol bp), refined operator",
+  "section": "table"
+ },
+ "LvSpyWorstConvBp": {
+  "value": "28.2",
+  "meaning": "SPY worst per-expiry refined-operator rms (vol bp)",
+  "section": "table"
+ },
+ "LvSpyVtx": {
+  "value": "216",
+  "meaning": "SPY sheet vertex count",
+  "section": "table"
+ },
+ "LvSpyQuotes": {
+  "value": "1026",
+  "meaning": "SPY quote count (all expiries)",
+  "section": "table"
+ },
+ "LvSpyEvals": {
+  "value": "116",
+  "meaning": "SPY objective evaluations (cold fit)",
+  "section": "table"
+ },
+ "LvNvdaRmsBp": {
+  "value": "16.1",
+  "meaning": "NVDA all-quote rms (vol bp), fitting operator",
+  "section": "table"
+ },
+ "LvNvdaConvBp": {
+  "value": "46.1",
+  "meaning": "NVDA all-quote rms (vol bp), refined operator",
+  "section": "table"
+ },
+ "LvNvdaWorstConvBp": {
+  "value": "116.9",
+  "meaning": "NVDA worst per-expiry refined-operator rms (vol bp)",
+  "section": "table"
+ },
+ "LvNvdaVtx": {
+  "value": "207",
+  "meaning": "NVDA sheet vertex count",
+  "section": "table"
+ },
+ "LvNvdaQuotes": {
+  "value": "506",
+  "meaning": "NVDA quote count (all expiries)",
+  "section": "table"
+ },
+ "LvNvdaEvals": {
+  "value": "94",
+  "meaning": "NVDA objective evaluations (cold fit)",
+  "section": "table"
+ },
+ "LvSpyButterflyMin": {
+  "value": "\\ensuremath{-8.5\\times10^{-13}}",
+  "meaning": "SPY min divided second difference of the marched prices over every expiry (butterfly proxy)",
+  "section": "table"
+ },
+ "LvSpyCalendarMin": {
+  "value": "\\ensuremath{-8.9\\times10^{-16}}",
+  "meaning": "SPY min adjacent-expiry increment of the marched prices at fixed y (calendar proxy)",
+  "section": "table"
+ },
+ "LvNvdaButterflyMin": {
+  "value": "\\ensuremath{-2.1\\times10^{-13}}",
+  "meaning": "NVDA min divided second difference of the marched prices over every expiry (butterfly proxy)",
+  "section": "table"
+ },
+ "LvNvdaCalendarMin": {
+  "value": "\\ensuremath{-7.8\\times10^{-16}}",
+  "meaning": "NVDA min adjacent-expiry increment of the marched prices at fixed y (calendar proxy)",
+  "section": "table"
+ },
+ "LvWrongCoarseMinPct": {
+  "value": "13",
+  "meaning": "smallest valid extracted local vol (%) in the 13-quote arm",
+  "section": "wrongway"
+ },
+ "LvWrongTruthAtmPct": {
+  "value": "23",
+  "meaning": "true ATM local vol (%) at tau = 0.25",
+  "section": "wrongway"
+ }
+}

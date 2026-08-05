@@ -1,0 +1,152 @@
+\section{Pricing on the lattice}
+\label{sec:lvlattice}
+
+\subsection{The implicit march and its M-matrix}
+
+The forward equation is solved on a strike grid over $[0,y_{\max}]$ with
+Dirichlet boundaries $c(\cdot,0)=1$ and $c(\cdot,y_{\max})=0$, by
+\emph{fully implicit} Euler steps, the field evaluated at the new time
+level.  On a possibly non-uniform grid with gaps
+$\Delta y_i^-=y_i-y_{i-1}$ and $\Delta y_i^+=y_{i+1}-y_i$, the discrete
+generator $\mathcal L$ encoding $\tfrac12 v y^{2}\partial_{yy}$ has the
+three-point stencil
+\begin{equation}
+\mathcal L_{i,i\mp1}
+=\frac{v_i\,y_i^{2}}{(\Delta y_i^-+\Delta y_i^+)\,\Delta y_i^{\mp}}\;\ge0,
+\qquad
+\mathcal L_{ii}=-\big(\mathcal L_{i,i-1}+\mathcal L_{i,i+1}\big),
+\label{eq:lvstencil}
+\end{equation}
+and each step solves one tridiagonal system,
+\begin{equation}
+\mathcal M^{n+1}U^{n+1}=U^{n}+(\text{boundary terms}),
+\qquad
+\mathcal M^{n+1}=I-\Delta\tau\,\mathcal L^{n+1}.
+\label{eq:lvstep}
+\end{equation}
+Now the promised discipline: does this discretization \emph{inherit}
+\cref{prop:lvpropagate}, or merely approximate it?  The answer runs through
+one classical linear-algebra fact, and it is worth seeing how little is
+needed.
+
+\begin{proposition}[The step matrix is an M-matrix]
+\label{prop:lvmmatrix}
+For any $v\ge0$ and any $\Delta\tau>0$, the matrix
+$\mathcal M=I-\Delta\tau\mathcal L$ of \eqref{eq:lvstep} has positive
+diagonal, non-positive off-diagonals, and each diagonal entry exceeds the
+absolute sum of its row's off-diagonals by at least $1$ (exactly $1$ at
+fully interior rows).  Hence $\mathcal M$ is a strictly diagonally
+dominant nonsingular M-matrix, and $\mathcal M^{-1}\ge0$ elementwise.
+\end{proposition}
+
+\begin{proof}
+Read the sign pattern off \eqref{eq:lvstencil}: the off-diagonals of
+$\mathcal M$ are $-\Delta\tau\mathcal L_{i,i\mp1}\le0$, the diagonal is
+$1+\Delta\tau(\mathcal L_{i,i-1}+\mathcal L_{i,i+1})\ge1$, and the
+dominance gap is the $1$ of the identity at interior rows, more where a
+stencil arm reaches a boundary column.  This is the defining pattern of
+a nonsingular M-matrix, and M-matrices are inverse-positive
+\citep{BermanPlemmons1994}.  (Concretely: Jacobi iteration for
+$\mathcal M u=b$ with $b\ge0$ keeps nonnegative iterates and converges by
+dominance, so $u\ge0$.)
+\end{proof}
+
+$\mathcal M^{-1}\ge0$ is the discrete ghost of the heat kernel being
+positive, and everything follows from it:
+
+\begin{corollary}[Discrete maximum principle, unconditionally]
+\label{cor:lvdmp}
+For any $\Delta\tau>0$ the scheme \eqref{eq:lvstep} is \emph{monotone} ---
+$U^{n}\ge V^{n}$ with the same boundary data implies $U^{n+1}\ge V^{n+1}$
+--- and every step keeps the values between the extremes of the previous
+step and the boundary data: the march is unconditionally
+$\ell^{\infty}$-stable, with no step-size restriction, and cannot create
+new extrema.
+\end{corollary}
+
+\begin{proof}
+Monotonicity is $\mathcal M^{-1}\ge0$ applied to $U^{n}-V^{n}\ge0$.  For
+the upper bound, let $M_\ast$ be the larger of $\max_iU^{n}_i$ and the
+boundary values: because the interior rows of $\mathcal M$ sum to $1$ once
+the boundary columns are included, the constant vector obeys
+$\mathcal M(M_\ast\1)\ge M_\ast\1$ against the right-hand side of
+\eqref{eq:lvstep}, and inverse positivity turns that into
+$U^{n+1}\le M_\ast\1$.  The lower bound is symmetric.
+\end{proof}
+
+\begin{remark}[What the M-matrix argument does and does not prove]
+\label{rem:lvscope}
+\Cref{prop:lvmmatrix,cor:lvdmp} control the call \emph{values}: order
+preservation, boundedness, no invented extrema.  They do not by themselves
+give nonnegative second differences --- a bounded monotone vector can
+still be locally concave --- so ``the scheme cannot manufacture negative
+densities'' would require a separate convexity-preservation proof for the
+actual stencil and boundary treatment, which this chapter does not claim.
+What can be claimed is what the reference implementation does: the scheme
+is monotone and stable by theorem, and the butterfly and calendar
+cleanliness of the \emph{output} is measured on the price grid with every
+fit.  \Cref{sec:lvexamples} reports the measured minima for the chapter's
+two calibrated sheets; they sit at the scale of solver rounding.
+\end{remark}
+
+\subsection{Why not Crank--Nicolson}
+
+First-order accuracy in time looks like a price worth negotiating, and
+Crank--Nicolson --- replace \eqref{eq:lvstep} by
+$(I-\tfrac{\Delta\tau}{2}\mathcal L)U^{n+1}
+=(I+\tfrac{\Delta\tau}{2}\mathcal L)U^{n}$ --- is the standard
+second-order offer.  Look at what it costs.  The implicit factor is still
+an M-matrix, but monotonicity now also needs the \emph{explicit} factor to
+be nonnegative, and its diagonal is
+$1-\tfrac{\Delta\tau}{2}(\mathcal L_{i,i-1}+\mathcal L_{i,i+1})$:
+nonnegative only under the CFL-like bound
+\begin{equation}
+\Delta\tau\;\le\;\frac{2}{\mathcal L_{i,i-1}+\mathcal L_{i,i+1}}
+\;=\;\frac{2\,\Delta y^{2}}{v_i\,y_i^{2}}
+\quad\text{(uniform grid)}.
+\label{eq:lvcfl}
+\end{equation}
+Refining the strike grid --- which \cref{sec:lvinfo} will show short-dated
+smiles \emph{require} --- tightens this bound quadratically.  At a $40\%$
+local volatility on a $\Delta y=0.005$ lattice the bound is
+$\MacLvLatCflBound$ years, more than thirty times smaller than the
+standard $0.01$ marching step: monotone Crank--Nicolson on realistic
+lattices is simply not on offer.  When the bound is violated the scheme
+remains second-order \emph{accurate} but is no longer \emph{monotone}, and
+the payoff kink at $y=1$ excites the classic oscillation.
+\Cref{fig:lvmonotone} shows what that means for the object we care about:
+the discrete density.  Damped start-up steps (a few implicit steps before
+switching to Crank--Nicolson) are the standard repair
+\citep{GilesCarter2006}; the reference implementation's default declines
+the negotiation altogether and trades one order of time accuracy for
+\cref{cor:lvdmp}.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.9\textwidth}{fig_lv_monotone.pdf}
+\caption{Monotonicity is a property of the scheme, not of luck.  The same
+flat $40\%$ surface, the same $\Delta y=0.005$ lattice, marched to
+$\tau=0.1$ in ten steps by the same solver.  Implicit Euler: a clean bell
+of second differences, minimum \MacLvLatImplMinDens\ in the plotted window
+--- \cref{cor:lvdmp} at work.  Undamped Crank--Nicolson: the kink
+oscillation swings the discrete density to \MacLvLatCnMinDens\ ---
+butterflies invented out of nothing by a scheme that is, in the textbook
+sense, the more accurate one.}
+\label{fig:lvmonotone}
+\end{figure}
+
+\subsection{Reading out, and the operator's blind spot}
+
+The observation operator is plain: the normalized call at a quote's
+$(\tau,y)$ is read off the marched solution by interpolation, at maturities
+that are forced to be lattice time-nodes.  One subtlety deserves a
+principle of its own, because it is general to inverse problems.  An
+optimizer facing a \emph{fixed} discretization will happily bend its
+parameters to cancel the operator's own discretization error, so the
+in-operator residual systematically flatters the fit --- validating a
+reconstruction with the operator that produced it is the inverse-problems
+``inverse crime''.  The chapter's protocol therefore reprices every fit on
+a \emph{refined} operator (half the strike step, four times the time
+steps) and reports both numbers.  The gap between them is not noise; it is
+the measured size of the compensation, and \cref{sec:lvexamples} will show
+it is the dominant error term at the short end.

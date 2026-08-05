@@ -1,0 +1,142 @@
+\section{A sheet with finitely many parameters}
+\label{sec:lvsheet}
+
+\subsection{Positivity as a box}
+
+The unknown is now a positive function of two variables --- an
+infinite-dimensional object with a one-sided constraint, which sounds no
+easier than where we started.  The move that makes it finite is standard
+in finite elements, and its payoff here is larger than convenience.
+
+\begin{definition}[$P_1$ local-variance sheet]
+\label{def:lvsheet}
+Fix vertices $(\tau_i,y_j)$, $i=1..n_\tau$, $j=1..n_y$, on a tensor grid,
+triangulated by splitting each rectangular cell along one diagonal
+(Delaunay, \cref{rem:lvdiag}).  The local variance is the continuous
+piecewise-affine interpolant
+\begin{equation}
+v_\theta(\tau,y)=\sum_{\ell=1}^{n_\theta}\theta_\ell\,
+\mathcal H_\ell(\tau,y),\qquad n_\theta=n_\tau n_y,
+\label{eq:lvp1}
+\end{equation}
+where $\mathcal H_\ell$ is the hat function of vertex $\ell$ ---
+barycentric on each triangle, equal to $1$ at its own vertex and $0$ at
+every other --- and the parameters $\theta_\ell=v(\tau_i,y_j)>0$ are the
+\emph{nodal local variances}, indexed flat as $\theta_\ell$ or by row and
+column as $\theta_{i,j}$, whichever is convenient.
+\end{definition}
+
+Why affine, and why triangles?  Because affine interpolation is a
+\emph{convex combination}: on each triangle, $v_\theta$ is a weighted
+average of its three vertex values with nonnegative barycentric weights
+summing to one.  Averages cannot escape the range of what they average,
+which is the whole theorem:
+
+\begin{proposition}[Nodal bounds are surface bounds]
+\label{prop:lvnodal}
+If $v_{\rm lo}\le\theta_\ell\le v_{\rm hi}$ for all $\ell$, then
+$v_{\rm lo}\le v_\theta(\tau,y)\le v_{\rm hi}$ everywhere on the
+triangulation's hull.
+\end{proposition}
+
+Positivity of a surface has been reduced to positivity of finitely many
+numbers --- a box constraint, which every least-squares solver handles
+natively, with no penalty terms.  This is the
+promised chart, one dimension up: as in the LQD chart of Chapter~2 and the
+structural chart of \cref{sec:svistructural}, the coordinates are chosen so
+that every point of the parameter box is a valid object, and the optimizer
+never needs to know a constraint existed.  Combined with
+\cref{prop:lvpropagate}, the chain of guarantees is complete before any
+data arrives: box $\Rightarrow$ positive field $\Rightarrow$ butterfly-free,
+calendar-ordered surface.  \Cref{fig:lvsheet} shows the object itself ---
+the sheet this chapter will calibrate to the frozen SPY chains in
+\cref{sec:lvexamples} --- and \cref{fig:lvbasis} takes it apart.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.9\textwidth}{fig_lv_sheet.pdf}
+\caption{The model, drawn: the calibrated SPY local-volatility sheet of
+\cref{sec:lvexamples} (\MacLvSheetRows\ maturity rows $\times$
+\MacLvSheetCols\ strike columns, \MacLvSheetVtx\ vertices), with the
+triangulation the pricing basis actually uses.  Every triangle is a region
+where local variance is an affine function of $(\tau,y)$; every dot is one
+calibration parameter.  The put-side wall, the short-end structure and the
+quiet call-side plain are all just nodal values: the whole surface is this
+list of positive numbers, nothing else.}
+\label{fig:lvsheet}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_lv_basis.pdf}
+\caption{The anatomy of the sheet, on a small demonstration grid.  (a)~The
+triangulated vertex grid; the shaded star of triangles is the support of
+one vertex's hat function --- the entire region of the surface its
+parameter influences.  The cell diagonals are not uniformly oriented; that
+is real (\cref{rem:lvdiag}).  (b)~A strike cross-section along a vertex
+row: each hat is $1$ at its own vertex, $0$ at every other, affine
+between, and they sum to $1$ identically --- the partition of unity behind
+\cref{prop:lvnodal}.}
+\label{fig:lvbasis}
+\end{figure}
+
+\begin{remark}[Which diagonal, and does it matter]
+\label{rem:lvdiag}
+On a tensor grid every cell is a rectangle, and a rectangle's corners are
+cocircular --- the degenerate case in which both diagonals are equally
+Delaunay.  A triangulation routine therefore tie-breaks cell by cell,
+deterministically but by no designed convention, and
+\cref{fig:lvsheet,fig:lvbasis} draw the resulting patchwork faithfully.
+The choice is second-order small: the two candidate interpolants of a cell
+agree at all four corners and along all four edges, and differ in the
+interior by at most half the cell's twist,
+$\big(\theta_{i,j}+\theta_{i+1,j+1}-\theta_{i,j+1}-\theta_{i+1,j}\big)/2$,
+at the center --- zero whenever the nodal values are locally bilinear.  It
+is nonetheless a convention, and the reference implementation pins it: the
+triangulation is computed once, cached, and the same triangles price every
+iterate.
+\end{remark}
+
+\subsection{Beyond the hull: the wing contract}
+
+The grid must end somewhere, and pricing does not.  Below the lowest
+strike column the sheet continues local variance \emph{linearly}, with
+slope $a$ times the slope of the first interior cell; above the highest
+column it is clamped flat.  Three regimes for $a$ are meaningful: $a=0$,
+the default, clamps the put wing flat as well; a fixed multiple keeps an
+unquoted put wing rising; and $a$ is released to the optimizer exactly
+when a variance-swap quote is present --- the one instrument in the
+problem that genuinely carries information about the deep-put tail, as
+Chapter~5 will show.
+
+\begin{remark}[The extrapolation sits outside the positivity guarantee]
+\label{rem:lvhull}
+\Cref{prop:lvnodal} stops at the hull, because outside it interpolation
+becomes extrapolation and the basis weights turn \emph{signed}: an
+extrapolated value is no longer an average.  With $a>0$ and a first cell
+whose variance decreases toward the boundary, the linear continuation can
+reach zero before $y=0$ (pricing floors it, so the priced curve kinks
+rather than blows up), and a rising continuation exceeds $v_{\rm hi}$
+freely.  Every guarantee in this chapter that leans on the box is
+therefore scoped to the hull and to the flat-clamped wings.  The wing is a
+disclosed convention --- the same epistemic status as the tail conventions
+of Chapters~2--3, and the chapter's contract table records it.
+\end{remark}
+
+\begin{remark}[Lee's bound, inherited]
+\label{rem:lvlee}
+Bounded local variance bounds the smile.  The marched call is
+\emph{monotone in the field}: for $\delta v\ge0$ the exact difference
+$c_{v+\delta v}-c_{v}$ solves
+$\partial_\tau s=\tfrac12 (v+\delta v)\, y^2\partial_{yy}s
++\tfrac12\,\delta v\,y^{2}\partial_{yy}c_{v}$, whose source is
+nonnegative by \cref{prop:lvpropagate} and whose propagator preserves
+sign --- so the difference is nonnegative.  When the wings are clamped,
+$v\le v_{\rm hi}$ holds on the whole strike line, so the surface is
+dominated by the constant-variance model:
+$w(k,\tau)\le v_{\rm hi}\,\tau$ for \emph{every} $k$.  Total implied
+variance is then bounded in strike, its wing slope decays to zero, and
+the surface sits strictly inside Lee's cap of $2$ --- automatically,
+where Chapter~3 had to legislate a cap (\cref{sec:svilee}).  A steep
+free-$a$ continuation escapes $v_{\rm hi}$ and with it this bound.
+\end{remark}

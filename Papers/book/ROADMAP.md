@@ -68,8 +68,8 @@ local volatility placed among the models (author's decision).
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | 01 | **DONE** (`Papers/lqd_paper/`, 36 pp) |
 | 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | **DONE** (2026-08-05, ~19 pp) |
-| 4  | Local volatility | 04 | next |
-| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending |
+| 4  | Local volatility | 04 | **DONE** (2026-08-05, ~20 pp) |
+| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | next |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | pending |
 | 7  | Removing early exercise | 05 | pending |
@@ -169,7 +169,7 @@ app terms, note references); one fresh-reader pass addressed.
 
 ## Chapter briefs
 
-### Ch. 3 — Families in the volatility chart: SVI-JW and superposition (NEXT)
+### Ch. 3 — Families in the volatility chart: SVI-JW and superposition
 
 Sources: `Docs/notes/02_svi_jw.tex`, `02_svi_jw_moments.tex`,
 `02_svi_jw_rewrite.tex`; `03_multicore_siv.tex`,
@@ -358,3 +358,23 @@ keeping Chapter 2 self-contained.
   subscript-J, MCS uses ζ/𝒜/𝓑/γ (z, Φ, B, α were taken); moment budget
   reuses Ch.2's r±* = Ψ⁻¹(β).  Fresh-reader pass run; math verified by
   the lead.  Next: Chapter 4 (local volatility).
+- 2026-08-05 (later): Chapter 4 written (`chapters/04_localvol/`, 8
+  sections + appendix 4.A, ~20 pp, pages 59–78 of the 82-page build).
+  Spine: field → forward equation derived from the density with the
+  chart identity v = ∂τw/g_D (numerator = calendar, denominator =
+  butterfly: the field exists iff the surface is valid, evaluated on the
+  frozen SPY surface as fig 4.1) → ill-posedness of extraction (two
+  quote densities, one ripple) → P1 sheet with box-bound validity → the
+  M-matrix implicit march + CN counterexample → identifiability (two
+  sheets one quote set) → objective/tangent/adjoint → examples +
+  contract.  10 figures + 46 macros from `scripts/ch04/gen_figures.py`
+  (frozen snapshot + deterministic synthetics; REAL whole-surface fits:
+  SPY 216 vertices/1026 quotes 2.7 bp in-operator vs 13.6 bp refined,
+  NVDA 16.1/46.1 — the operator gap is deliberately part of the story;
+  measured butterfly/calendar minima at rounding scale).  Notation: bare
+  v (local variance), y reused from Ch. 2, calligraphic 𝓛/𝓜/ℋ/𝒥/𝒪,
+  Γ roughness, λ/λ₀ weights, s_ℓ/p adjoint pairs — all ledgered.
+  Fresh-reader pass (sub-agent, 18 findings) fully addressed — the one
+  real proof gap was the θ-dependent boundary term in the
+  tangent/adjoint propositions, now stated boundary-inclusively.  Math
+  verified by the lead.  Next: Chapter 5 (variance swaps and wings).

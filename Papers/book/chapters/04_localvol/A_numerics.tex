@@ -1,0 +1,137 @@
+\section{Numerical facts and the chapter protocol}
+\label{app:lvnumerics}
+
+\subsection{The protocol}
+\label{app:lvprotocol}
+
+Every fit in this chapter --- synthetic and real --- uses the following
+recipe; no constant is tuned per name.
+
+\emph{Vertex grid.}  Maturity rows at $\tau=0$ and at every quoted expiry.
+Strike columns delta-spaced: the ladder of put deltas
+$\{1,2,5,10,25,40\}\%$, their call mirrors, and the money, mapped to
+strikes through
+$y=\exp\big(\sigma_A\sqrt{\tau_{\max}}\;\PhiN^{-1}(\cdot)\big)$ with
+$\sigma_A$ the longest expiry's ATM volatility; the two end columns are
+extended to cover the pooled quoted range, so no quote falls outside the
+hull.  Coverage rule: every expiry must own at least $6$ columns inside
+its own traded range, enforced by splitting the widest
+boundary-augmented gap until none exceeds one fifth of the range
+(\cref{sec:lvinfo}); this is what densifies the short-dated money in
+\cref{fig:lvsheet}.
+
+\emph{Lattice.}  Strike step
+$\Delta y=\min\big(0.01,\;0.15\,\min_e\sigma_e\sqrt{\tau_e}\big)$, capped
+at $800$ nodes over $[0,\,\max(2.5,\,1.05\,y_{n_y})]$ with $y_{n_y}$ the
+highest vertex column, and $y=1$ a node; every quoted expiry is a time
+node and each maturity interval receives
+$\max(8,\lceil\Delta\tau_{\rm int}/0.01\rceil)$ implicit steps.
+The refined (audit) operator halves the strike step and quadruples each
+interval's step count.
+
+\emph{Box and objective.}  Adaptive box
+$v_{\rm lo}=\min\big(0.0025,\,(\tfrac12\min_e\sigma_{{\rm ATM},e})^{2}\big)$,
+$v_{\rm hi}=\min\big(\max(0.36,\,(3\,\sigma_{\max})^{2}),\,16\big)$ ---
+the floor a fraction of the smallest ATM implied per the averaging fact,
+the cap a multiple of the largest implied in view.  Seed and reference
+$\theta^{0}=\theta_{\rm ref}$ flat at the median ATM variance.  Weights
+$\lambda=10^{-2}$, $\lambda_0=1$; residual scale $\eta_q$ equal to one
+volatility percent of the quote's Black vega, floored at $10^{-3}$.  The
+snapshot carries no variance-swap quotes, so the wing multiple stays at
+its default $a=0$ (flat clamp) throughout.
+
+\emph{Solver.}  Trust-region reflective least squares
+\citep{BranchColemanLi1999} with the analytic Jacobian of
+\cref{prop:lvtangent}, termination tolerances $10^{-8}$, at most $200$
+objective evaluations; the fits of \cref{sec:lvexamples} converged in
+\MacLvSpyEvals\ (SPY), \MacLvNvdaEvals\ (NVDA) and \MacLvRtEvals\
+(synthetic) evaluations from their flat seeds.
+
+\subsection{The synthetic market}
+\label{app:lvsynthetic}
+
+The running example's truth is the smooth skewed field
+\[
+\sigma_{\rm loc}(\tau,y)
+=0.21-0.10\,\tanh\!\Big(\frac{y-1}{0.22}\Big)
++0.03\,e^{-2\tau},
+\qquad v=\sigma_{\rm loc}^{2},
+\]
+priced by an \emph{independently implemented} dense march (uniform
+$\Delta y=0.0025$ on $[0,3]$, $\Delta\tau=0.002$, fully implicit) --- a
+second discretization on different grids, so the round trip of
+\cref{fig:lvrecovery} cross-checks the chapter's march rather than
+validating it against itself.  Quotes are read at the four expiries
+$\tau\in\{0.10,0.25,0.50,1.00\}$, at $31$ strikes per expiry uniform in
+the standardized moneyness $\zeta\in[-2.2,2.2]$ of \cref{sec:mcs}, with
+$\sigma_{\rm ref}=0.24$, i.e.\ $k=0.24\sqrt{\tau}\,\zeta$ (the coarse arm
+of \cref{fig:lvwrongway}a uses $13$).  The ``noise'' of
+\cref{sec:lvillposed} is a deterministic alternating
+$\pm50$\,bp volatility ripple --- no randomness anywhere in the chapter's
+figures.  The synthetic sheet has rows $\{0\}\cup\{\text{expiries}\}$ and
+the delta-spaced columns at scale $0.24$ plus one deliberate deep-put
+column at $y=\MacLvIdentColY$ for the experiment of
+\cref{fig:lvidentify}; its box is $[0.005,0.36]$.
+
+\subsection{The adjoint}
+\label{app:lvadjoint}
+
+The tangent route of \cref{prop:lvtangent} prices the Jacobian at
+$O(N_\tau N_y\,n_\theta)$ per evaluation, for a march of $N_\tau$ steps on
+$N_y$ lattice nodes.  The classical alternative makes the cost of a
+\emph{gradient} independent of $n_\theta$; deriving it costs a few lines,
+so the chapter records it for the grids on which it will one day pay.
+
+\begin{proposition}[Adjoint: one backward sweep]
+\label{prop:lvadjoint}
+Let $\mathcal J(\theta)$ be a scalar objective depending on the march
+through the observed values $\mathcal O_nU^{n}$, with $\mathcal O_n$ fixed
+observation rows.  Define adjoint states by the backward recursion
+\begin{equation}
+(\mathcal M^{n})^{\!\top}p^{n}
+=\mathcal O_n^{\top}\,
+\frac{\partial\mathcal J}{\partial(\mathcal O_nU^{n})}+p^{\,n+1},
+\qquad p^{\,N+1}=0 .
+\label{eq:lvadjoint}
+\end{equation}
+Then
+\begin{equation}
+\frac{\partial\mathcal J}{\partial\theta_\ell}
+=\sum_{n}\Delta\tau\,(p^{n})^{\!\top}\,
+\mathcal L[\mathcal H_\ell]\,U^{n},
+\label{eq:lvadjgrad}
+\end{equation}
+with the boundary-inclusive product of \cref{prop:lvtangent}, at the cost
+of one backward solve, $O(N_\tau N_y)$, plus the $O(n_\theta)$
+accumulation of \eqref{eq:lvadjgrad}.
+\end{proposition}
+
+\begin{proof}
+Form the Lagrangian
+$\mathfrak{L}=\mathcal J-\sum_n (p^{n})^{\top}
+\big(\mathcal M^{n}U^{n}-U^{n-1}-b^{n}\big)$, with $b^{n}$ the boundary
+terms of \cref{prop:lvtangent}.  Stationarity in each $U^{n}$ --- which
+appears in step $n$'s system and in step $n{+}1$'s right-hand side ---
+gives \eqref{eq:lvadjoint}; the $\theta$-derivative of $\mathfrak{L}$ then
+retains the explicit dependence of $\mathcal M^{n}$ and $b^{n}$, which
+combine as in \cref{prop:lvtangent} into the boundary-inclusive
+\eqref{eq:lvadjgrad}.  Structurally this is summation by parts: the
+transpose of a lower block-bidiagonal system is upper block-bidiagonal,
+i.e.\ a backward march with transposed tridiagonal factors.
+\end{proof}
+
+\subsection{Measured cleanliness}
+\label{app:lvdiag}
+
+The diagnostics quoted in \cref{sec:lvexamples} are computed on the
+fitting operator's price grid: the butterfly proxy is the minimum divided
+second difference $\big(U_{i+1}-U_i\big)/\Delta y_i^{+}
+-\big(U_i-U_{i-1}\big)/\Delta y_i^{-}$ over all interior nodes and all
+expiries; the calendar proxy is the minimum of
+$U^{(e+1)}-U^{(e)}$ over adjacent expiries at fixed $y$ (the lattice
+prices are already in the normalized units of \cref{sec:calendar}, so the
+fixed-$y$ comparison is the right one); and the bounds check verifies
+$0\le U\le1$ to the same tolerance.  For both calibrated sheets all three
+sit at solver rounding (\cref{sec:lvexamples}); they are measured per fit
+precisely because \cref{rem:lvscope} declines to promote them to a
+theorem.
