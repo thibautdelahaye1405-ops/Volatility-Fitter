@@ -67,8 +67,8 @@ local volatility placed among the models (author's decision).
 | 1  | Introduction | replaces Note 00; write LAST | pending (last) |
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | 01 | **DONE** (`Papers/lqd_paper/`, 36 pp) |
-| 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | next |
-| 4  | Local volatility | 04 | pending |
+| 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | **DONE** (2026-08-05, ~19 pp) |
+| 4  | Local volatility | 04 | next |
 | 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | pending |
@@ -86,9 +86,17 @@ input as a hypothesis. Note 07 is absorbed: objective/bands/vega weights are
 in Chapter 2 §6; quote-quality and weighting-scheme material goes to Part II
 and Chapter 10.
 
-## Book infrastructure (first task of the NEXT session, ~1h, before Ch. 3)
+## Book infrastructure (DONE 2026-08-05)
 
-`Papers/book/` becomes the single master:
+`Papers/book/` is the single master.  Build: `pdflatex book && bibtex book
+&& pdflatex book && pdflatex book` from `Papers/book/` (no latexmk on this
+machine).  Fast single-chapter builds: uncomment `\includeonly` in
+book.tex.  Chapter figures: `scripts/chNN/gen_figures.py` (repo venv)
+emits `figures/chNN/*.pdf` + a per-chapter macros file; ch03's store is
+`figures/ch03/_macros_store.json` (same `--only` mechanics as ch02).
+Per-chapter lettered appendices via the `chapterappendices` environment
+(sections number 2.A, 3.A, ...; cref says "Appendix").  Each chapter file
+opens with `\renewcommand{\figdir}{figures/chNN}`.  As originally planned:
 
 1. `book.tex`: `\documentclass{book}` (or memoir), the Chapter-2 preamble
    generalized (same macros: \E, \Prob, \dd, \PhiN, \phin, \Black, \expit,
@@ -327,7 +335,10 @@ Replaces Note 00. Content: the problem (finitely many noisy prices; a
 surface of laws must be published); the separation thesis; what is assumed
 of the reader (Black–Scholes, calculus, probability at first-course level);
 the book's map with one paragraph per chapter; the notation ledger; the data
-statement (one frozen snapshot threads every example). Some of Chapter 2 §1
+statement (one frozen snapshot threads every example). Must also DEFINE the
+recurring device "the reference implementation" (Ch. 2 and Ch. 3 both use
+it as an unnamed actor — the fresh-reader pass flagged the dangling
+referent) and, if useful, desk vocabulary the chapters assume sparingly. Some of Chapter 2 §1
 (the smile-as-law argument) may migrate here at that point — decide then,
 keeping Chapter 2 self-contained.
 
@@ -336,3 +347,14 @@ keeping Chapter 2 self-contained.
 - 2026-08-04: structure decided with the author (mapping, order, master,
   data policy); Chapter 2 complete as `Papers/lqd_paper/` (36 pp,
   monograph-chapter edition). Next: book infrastructure + Chapter 3.
+- 2026-08-05: book master built (`book.tex`, ch2 retrofit verbatim under a
+  \chapter heading with the abstract as synopsis, data/figures/scripts
+  copied, NOTATION.md ledger, ch1 stub, 2.A-2.C lettered appendices;
+  builds clean).  Chapter 3 written: 8 sections + appendix 3.A, ~19 pp,
+  10 figures + 69 macros from `scripts/ch03/gen_figures.py` (frozen
+  snapshot + deterministic synthetics; three-family comparison refits
+  LQD/SVI/MCS on the same mid quotes — protocol in appendix 3.A).
+  Notation resolved in NOTATION.md: raw SVI subscript-S, JW handles
+  subscript-J, MCS uses ζ/𝒜/𝓑/γ (z, Φ, B, α were taken); moment budget
+  reuses Ch.2's r±* = Ψ⁻¹(β).  Fresh-reader pass run; math verified by
+  the lead.  Next: Chapter 4 (local volatility).

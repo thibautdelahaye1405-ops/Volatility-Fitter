@@ -1,0 +1,132 @@
+% ============================================================================
+% The Volatility Book — master document.
+%
+% Working title (placeholder until the introduction is written):
+%   The Volatility Surface as a Field of Probability Laws
+%
+% Build (this machine has no latexmk):  pdflatex book && bibtex book &&
+% pdflatex book && pdflatex book, run from Papers/book/.
+%
+% Fast single-chapter builds: uncomment \includeonly below.  Figures and every
+% empirical number come from the per-chapter generators in scripts/chNN/,
+% which read ONLY the frozen data in data/ (see data/README.md).
+% Notation is governed by NOTATION.md: a chapter adds symbols there before
+% using them and never redefines an existing one.
+% ============================================================================
+\documentclass[11pt,a4paper]{book}
+
+\usepackage[margin=1.0in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{bm}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs,array,multirow}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,citecolor=blue!50!black,
+  urlcolor=blue!50!black}
+\usepackage{cleveref}
+\allowdisplaybreaks
+
+\captionsetup{font=small,labelfont=bf}
+\setlist{itemsep=2pt,topsep=4pt}
+\setcounter{tocdepth}{1}
+
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+\lstdefinestyle{paper}{
+  language=Python,basicstyle=\ttfamily\footnotesize,
+  commentstyle=\itshape\color{black!55},
+  backgroundcolor=\color{codebg},frame=single,
+  rulecolor=\color{black!15},breaklines=true,showstringspaces=false,
+  xleftmargin=1.2em}
+\lstset{style=paper}
+
+% Theorem environments are numbered per chapter, book-wide.
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[chapter]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\theoremstyle{remark}
+\newtheorem{remark}[theorem]{Remark}
+
+% ----------------------------------------------------------- shared macros
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\Prob}{\mathbb{P}}
+\newcommand{\dd}{\mathrm{d}}
+\newcommand{\PhiN}{\Phi}
+\newcommand{\phin}{\varphi}
+\newcommand{\Black}{B}
+\DeclareMathOperator{\expit}{expit}
+\DeclareMathOperator{\logit}{logit}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newcommand{\1}{\mathbf{1}}
+
+% Each chapter file opens with \renewcommand{\figdir}{figures/chNN}; figures
+% are then included by bare filename, so filenames stay chapter-local.
+\newcommand{\figdir}{figures}
+\newcommand{\paperfig}[2]{%
+  \IfFileExists{\figdir/#2}%
+    {\includegraphics[width=#1]{\figdir/#2}}%
+    {\fbox{\parbox[c][0.24\textwidth][c]{0.92\textwidth}{\centering
+      \ttfamily [missing figure: \detokenize{#2}]}}}}
+
+% A short italic synopsis under each chapter heading (the book-class
+% replacement for the standalone papers' abstracts).
+\newcommand{\chaptersynopsis}[1]{%
+  \begin{quote}\small\itshape #1\end{quote}\medskip}
+
+% Lettered per-chapter appendices: sections number 2.A, 2.B, ... and
+% cross-references to labels defined inside say "Appendix".
+\newenvironment{chapterappendices}{%
+  \setcounter{section}{0}%
+  \renewcommand{\thesection}{\thechapter.\Alph{section}}%
+  \crefalias{section}{appendix}%
+}{}
+
+% Every empirical value in the text is a macro generated from the frozen
+% data by the per-chapter figure scripts; none is typed by hand.  The \Mac
+% namespace is book-global: new chapters prefix their macros by subject
+% (\MacSvi..., \MacMcs..., ...) and must not collide.
+\InputIfFileExists{figures/ch02/paper_macros.tex}{}{}
+\InputIfFileExists{figures/ch03/ch03_macros.tex}{}{}
+
+% Uncomment for a fast single-chapter build (page/ref numbers come from the
+% last full run's .aux files):
+% \includeonly{chapters/03_svi_mcs/chapter}
+
+\title{\textbf{The Volatility Surface as a Field of Probability Laws}\\[1ex]
+\large A working draft}
+\author{Thibaut Delahaye}
+\date{August 2026}
+
+\begin{document}
+\frontmatter
+\maketitle
+\tableofcontents
+
+\mainmatter
+\include{chapters/01_introduction/chapter}
+
+\part{Models}
+\include{chapters/02_lqd/chapter}
+\include{chapters/03_svi_mcs/chapter}
+
+% Part II — The Observation: chapters 6-8.  Part III — Dynamics and
+% Inference: chapters 9-11.  The \part headings enter with their first
+% chapter so the table of contents never advertises empty parts.
+
+\backmatter
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

@@ -1,0 +1,347 @@
+{
+ "SviSpyRmsBp": {
+  "value": "7.5",
+  "meaning": "SVI structural-chart mid fit rms on SPY Dec-2026, vol bp",
+  "section": "handles"
+ },
+ "SviSpyAtmVolPct": {
+  "value": "14.89",
+  "meaning": "sqrt(v_J), ATM implied vol of the SVI fit, percent",
+  "section": "handles"
+ },
+ "SviSpyPsi": {
+  "value": "-0.2634",
+  "meaning": "psi_J of the SPY fit",
+  "section": "handles"
+ },
+ "SviSpyP": {
+  "value": "1.384",
+  "meaning": "p_J of the SPY fit",
+  "section": "handles"
+ },
+ "SviSpyC": {
+  "value": "0.724",
+  "meaning": "c_J of the SPY fit",
+  "section": "handles"
+ },
+ "SviSpyMinVolPct": {
+  "value": "12.41",
+  "meaning": "sqrt(vtilde_J), minimum implied vol, percent",
+  "section": "handles"
+ },
+ "SviSpyBetaL": {
+  "value": "0.126",
+  "meaning": "actual left wing slope",
+  "section": "handles"
+ },
+ "SviSpyBetaR": {
+  "value": "0.066",
+  "meaning": "actual right wing slope",
+  "section": "handles"
+ },
+ "SviSpyTangent": {
+  "value": "-0.430",
+  "meaning": "plotted ATM IV tangent slope psi_J/sqrt(tau)",
+  "section": "handles"
+ },
+ "SviBoundaryGTen": {
+  "value": "-0.0485",
+  "meaning": "g_D(10) of the boundary slice (a=0.04, b=2, rho=0, m=0, s=0.2)",
+  "section": "lee"
+ },
+ "SviPstarCap": {
+  "value": "\\ensuremath{1.6\\times10^{-4}}",
+  "meaning": "moment budget p* remaining at the buffered cap beta_max",
+  "section": "lee"
+ },
+ "SviBetaMax": {
+  "value": "1.95",
+  "meaning": "the buffered wing-slope cap of the reference implementation",
+  "section": "lee"
+ },
+ "SviVogtWmin": {
+  "value": "0.0116",
+  "meaning": "Vogt minimum total variance",
+  "section": "vogt"
+ },
+ "SviVogtLee": {
+  "value": "0.174",
+  "meaning": "Vogt larger wing slope (far under the cap)",
+  "section": "vogt"
+ },
+ "SviVogtGmin": {
+  "value": "-0.033",
+  "meaning": "Vogt minimum of g_D (the belly violation)",
+  "section": "vogt"
+ },
+ "SviVogtKdip": {
+  "value": "0.88",
+  "meaning": "log-moneyness of the Vogt g_D dip",
+  "section": "vogt"
+ },
+ "SviVogtTail": {
+  "value": "0.25",
+  "meaning": "Vogt right tail limit of g_D (positive)",
+  "section": "vogt"
+ },
+ "SviStratumSpread": {
+  "value": "\\ensuremath{1.1\\times10^{-17}}",
+  "meaning": "max spread of the five handles across the three stratum slices",
+  "section": "stratum"
+ },
+ "SviChartAgreeBp": {
+  "value": "0.00",
+  "meaning": "max |structural - raw chart| IV gap on SPY Dec, vol bp",
+  "section": "structural"
+ },
+ "SviSpyKstar": {
+  "value": "0.108",
+  "meaning": "structural vertex location k* of the SPY fit",
+  "section": "structural"
+ },
+ "SviSpyWstar": {
+  "value": "0.0058",
+  "meaning": "structural floor w* of the SPY fit",
+  "section": "structural"
+ },
+ "SviSpyKappastar": {
+  "value": "0.397",
+  "meaning": "structural vertex curvature kappa* of the SPY fit",
+  "section": "structural"
+ },
+ "McsTargetGmin": {
+  "value": "0.277",
+  "meaning": "min g_D of the WW target on |k|<=12 (analytic jets)",
+  "section": "mcs"
+ },
+ "McsTargetTailG": {
+  "value": "0.250",
+  "meaning": "analytic tail limit of the WW target's g_D",
+  "section": "mcs"
+ },
+ "McsBaseMaxErrBp": {
+  "value": "118.2",
+  "meaning": "max IV miss of the convex base (M=0) on the WW target, vol bp",
+  "section": "mcs"
+ },
+ "McsFullMaxErrBp": {
+  "value": "0.7",
+  "meaning": "max IV miss of the M=2 fit on the WW target, vol bp",
+  "section": "mcs"
+ },
+ "McsFitGmin": {
+  "value": "0.420",
+  "meaning": "min g_D of the M=2 fit on |k|<=2 (analytic jets)",
+  "section": "mcs"
+ },
+ "McsCores": {
+  "value": "2",
+  "meaning": "cores actually placed by the M=2 fit",
+  "section": "mcs"
+ },
+ "CmpMixTargetGmin": {
+  "value": "0.369",
+  "meaning": "min g_D of the mixture target on the quoted range (exact density)",
+  "section": "mixture"
+ },
+ "CmpMixLqdRms": {
+  "value": "3.6",
+  "meaning": "LQD rms on the mixture target, vol bp",
+  "section": "mixture"
+ },
+ "CmpMixLqdGmin": {
+  "value": "0.371",
+  "meaning": "LQD min g_D on the quoted range, mixture fit",
+  "section": "mixture"
+ },
+ "CmpMixSviRms": {
+  "value": "166.4",
+  "meaning": "SVI rms on the mixture target, vol bp",
+  "section": "mixture"
+ },
+ "CmpMixSviGmin": {
+  "value": "0.431",
+  "meaning": "SVI min g_D on the quoted range, mixture fit",
+  "section": "mixture"
+ },
+ "CmpMixMcsRms": {
+  "value": "87.3",
+  "meaning": "MCS rms on the mixture target, vol bp",
+  "section": "mixture"
+ },
+ "CmpMixMcsGmin": {
+  "value": "-0.066",
+  "meaning": "MCS min g_D on the quoted range, mixture fit",
+  "section": "mixture"
+ },
+ "CmpSpyLqdRms": {
+  "value": "3.4",
+  "meaning": "LQD rms on SPY Dec-2026 mid quotes, vol bp",
+  "section": "node"
+ },
+ "CmpSpyLqdGmin": {
+  "value": "0.192",
+  "meaning": "LQD min g_D on the SPY Dec traded range",
+  "section": "node"
+ },
+ "CmpSpyLqdBetaL": {
+  "value": "0.178",
+  "meaning": "LQD left wing slope, SPY Dec fit",
+  "section": "node"
+ },
+ "CmpSpyLqdBetaR": {
+  "value": "0.034",
+  "meaning": "LQD right wing slope, SPY Dec fit",
+  "section": "node"
+ },
+ "CmpSpyLqdPar": {
+  "value": "17",
+  "meaning": "LQD free parameters on SPY Dec",
+  "section": "node"
+ },
+ "CmpSpySviRms": {
+  "value": "7.5",
+  "meaning": "SVI rms on SPY Dec-2026 mid quotes, vol bp",
+  "section": "node"
+ },
+ "CmpSpySviGmin": {
+  "value": "0.199",
+  "meaning": "SVI min g_D on the SPY Dec traded range",
+  "section": "node"
+ },
+ "CmpSpySviBetaL": {
+  "value": "0.126",
+  "meaning": "SVI left wing slope, SPY Dec fit",
+  "section": "node"
+ },
+ "CmpSpySviBetaR": {
+  "value": "0.066",
+  "meaning": "SVI right wing slope, SPY Dec fit",
+  "section": "node"
+ },
+ "CmpSpySviPar": {
+  "value": "5",
+  "meaning": "SVI free parameters on SPY Dec",
+  "section": "node"
+ },
+ "CmpSpyMcsRms": {
+  "value": "5.6",
+  "meaning": "MCS rms on SPY Dec-2026 mid quotes, vol bp",
+  "section": "node"
+ },
+ "CmpSpyMcsGmin": {
+  "value": "-0.001",
+  "meaning": "MCS min g_D on the SPY Dec traded range",
+  "section": "node"
+ },
+ "CmpSpyMcsBetaL": {
+  "value": "0.117",
+  "meaning": "MCS left wing slope, SPY Dec fit",
+  "section": "node"
+ },
+ "CmpSpyMcsBetaR": {
+  "value": "0.054",
+  "meaning": "MCS right wing slope, SPY Dec fit",
+  "section": "node"
+ },
+ "CmpSpyMcsPar": {
+  "value": "14",
+  "meaning": "MCS free parameters on SPY Dec",
+  "section": "node"
+ },
+ "CmpNodes": {
+  "value": "16",
+  "meaning": "nodes in the three-family comparison",
+  "section": "table"
+ },
+ "CmpTabLqdMedRms": {
+  "value": "7.3",
+  "meaning": "LQD median rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabLqdWorstRms": {
+  "value": "34.0",
+  "meaning": "LQD worst rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabLqdMedGmin": {
+  "value": "0.184",
+  "meaning": "LQD median traded-range min g_D across the 16 nodes",
+  "section": "table"
+ },
+ "CmpTabLqdWorstGmin": {
+  "value": "0.112",
+  "meaning": "LQD worst traded-range min g_D across the 16 nodes",
+  "section": "table"
+ },
+ "CmpTabLqdNegNodes": {
+  "value": "0",
+  "meaning": "LQD nodes with a negative traded-range margin",
+  "section": "table"
+ },
+ "CmpTabSviMedRms": {
+  "value": "19.0",
+  "meaning": "SVI median rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabSviWorstRms": {
+  "value": "68.0",
+  "meaning": "SVI worst rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabSviMedGmin": {
+  "value": "0.173",
+  "meaning": "SVI median traded-range min g_D across the 16 nodes",
+  "section": "table"
+ },
+ "CmpTabSviWorstGmin": {
+  "value": "0.091",
+  "meaning": "SVI worst traded-range min g_D across the 16 nodes",
+  "section": "table"
+ },
+ "CmpTabSviNegNodes": {
+  "value": "0",
+  "meaning": "SVI nodes with a negative traded-range margin",
+  "section": "table"
+ },
+ "CmpTabMcsMedRms": {
+  "value": "11.8",
+  "meaning": "MCS median rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabMcsWorstRms": {
+  "value": "38.5",
+  "meaning": "MCS worst rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabMcsMedGmin": {
+  "value": "-0.026",
+  "meaning": "MCS median traded-range min g_D across the 16 nodes",
+  "section": "table"
+ },
+ "CmpTabMcsWorstGmin": {
+  "value": "-0.143",
+  "meaning": "MCS worst traded-range min g_D across the 16 nodes",
+  "section": "table"
+ },
+ "CmpTabMcsNegNodes": {
+  "value": "10",
+  "meaning": "MCS nodes with a negative traded-range margin",
+  "section": "table"
+ },
+ "CmpTabMcszeroMedRms": {
+  "value": "18.1",
+  "meaning": "MCS base (R=0) median rms across the 16 nodes, vol bp",
+  "section": "table"
+ },
+ "CmpTabMcszeroMedGmin": {
+  "value": "0.179",
+  "meaning": "MCS base (R=0) median traded-range min g_D",
+  "section": "table"
+ },
+ "CmpTabMcszeroNegNodes": {
+  "value": "0",
+  "meaning": "MCS base (R=0) nodes with a negative traded-range margin",
+  "section": "table"
+ }
+}

@@ -1,0 +1,40 @@
+% Chapter 2 — the log-quantile-density model.  Retrofit of the standalone
+% paper Papers/lqd_paper/ (which remains the frozen standalone artifact);
+% the section files here are verbatim copies, assembled under a \chapter
+% heading with the paper's abstract as the chapter synopsis.  Figures and
+% macros regenerate via scripts/ch02/gen_figures.py from data/.
+\renewcommand{\figdir}{figures/ch02}
+\chapter[The log-quantile-density model]{The Log-Quantile-Density Model of
+the Volatility Smile}
+\label{ch:lqd}
+
+\chaptersynopsis{A volatility smile is a probability law expressed through
+the Black formula.  This chapter constructs that law directly.  The
+log-forward return is written as a monotone transport of a logistic variable,
+and the logarithm of the transport speed is expanded in Legendre polynomials
+of the percentile rank.  Monotonicity, positive density, and unit mass are
+then automatic; a scalar shift imposes the martingale condition, and the sole
+remaining requirement is that the right endpoint speed be smaller than one.
+The endpoint speeds give the exact moment strip and the asymptotic Lee
+slopes.  A single tail integral, the upper-share ledger, yields option
+prices, the density, the analytic calibration Jacobian, the variance-swap
+strike, and a complete test for calendar order.  The construction separates
+what follows from probability, what is learned from quoted options, and what
+must be supplied by modeling convention.  Theory, computation, and market
+examples are developed from the same representation.}
+
+\input{chapters/02_lqd/01_smiles_as_laws}
+\input{chapters/02_lqd/02_quantile_transport}
+\input{chapters/02_lqd/03_validity}
+\input{chapters/02_lqd/04_tails}
+\input{chapters/02_lqd/05_ledger_calculus}
+\input{chapters/02_lqd/06_calibration}
+\input{chapters/02_lqd/07_numerical_realization}
+\input{chapters/02_lqd/08_calendar}
+\input{chapters/02_lqd/09_examples_contract}
+
+\begin{chapterappendices}
+\input{chapters/02_lqd/A_proofs}
+\input{chapters/02_lqd/B_implementation}
+\input{chapters/02_lqd/C_data}
+\end{chapterappendices}

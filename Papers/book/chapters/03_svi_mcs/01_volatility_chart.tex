@@ -1,0 +1,94 @@
+\section{Working in the volatility chart}
+\label{sec:svichart}
+
+Chapter~\ref{ch:lqd} built a smile by choosing a probability law and reading
+prices off it.  Validity was settled before calibration began: every
+admissible coordinate vector was a law, and the Durrleman function
+$g_{\rm D}$ of \eqref{eq:durrleman} was an identity rather than a
+constraint.  The cost was indirection.  The coordinates $(L,R,a_n)$ describe
+a transport speed in rank, and none of them is a quantity a trading desk
+quotes.
+
+This chapter takes the opposite route, which is also the industry's.  Write
+the total implied variance $w(k)$ down directly, as a formula in
+log-moneyness, with parameters chosen for legibility.  The gain is
+immediate: the curve is the object everyone looks at, evaluation is one
+line, and the parameters can be tied to the vocabulary of the desk --- ATM
+level, skew, wing weights.  The cost is exactly the one
+\cref{sec:intro} identified when it introduced $g_{\rm D}$: a direct
+volatility model moves through a space that contains invalid curves, so
+validity must now be policed --- partly by inequalities the optimizer
+respects, partly by checks it cannot avoid.  The purpose of this chapter is
+to develop that trade honestly on the two families of the reference
+implementation that live in the volatility chart: SVI with its jump-wing
+reading, and the Multi-Core Sigmoid built by superposition.
+
+The chart serves two audiences with opposite tastes.  An optimizer wants a
+formula that evaluates in one pass, differentiates in closed form, and
+behaves sensibly outside the quoted strikes.  A desk asks where ATM
+volatility sits, how steeply the smile leaves the money, how heavy each
+wing is, and where the curve bottoms.  The stochastic-volatility-inspired
+(SVI) family of Gatheral \citep{Gatheral2004} answers the first request
+with a tilted hyperbola,
+\begin{equation}
+\boxed{\;w(k)=a_S+b_S\Big\{\rho_S(k-m_S)+\sqrt{(k-m_S)^2+s_S^2}\Big\},\;}
+\label{eq:svi}
+\end{equation}
+five parameters under the structural conditions $b_S>0$, $|\rho_S|<1$,
+$s_S>0$.  The subscript $S$ keeps the book's ledger unambiguous: bare
+$\rho$ is the logistic density of \cref{sec:model} and bare $m$ its
+martingale shift.  The desk's request is answered by a second coordinate
+system on the same curve, the jump-wing handles of
+\cref{sec:svijw}.  The two are exact re-parameterizations of one another on
+a domain that \cref{thm:jwimage} makes precise.
+
+What ``valid'' means must now be graded, because different conditions are
+supplied by different mechanisms.  Five graded statements recur throughout
+the chapter, collected once in \cref{tab:tiers}.  The first is guaranteed
+by the optimization chart; the next two are inequalities cheap enough to
+enforce during calibration; the fourth is the full butterfly condition
+$g_{\rm D}\ge0$ of \eqref{eq:durrleman}, which no inexpensive screen
+implies --- \cref{sec:svibelly} exhibits the classical slice that passes
+every screen and fails it; the fifth couples expiries and is the subject of
+\cref{sec:calendar}, whose hinge applies to these families unchanged.
+
+\begin{table}[htbp]
+\centering\small
+\setlength{\tabcolsep}{5pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{0.20\textwidth}p{0.40\textwidth}p{0.32\textwidth}@{}}
+\toprule
+Condition & Mathematical statement & Supplied by\\
+\midrule
+Structural & $b_S>0$, $|\rho_S|<1$, $s_S>0$ & the optimization chart
+(\cref{sec:svicalib})\\
+Positive floor & $\min_k w(k)\ge0$ & a hinge penalty; structural under the
+structural chart\\
+Wing-admissible & $\max(\beta_L,\beta_R)\le\beta_{\max}<2$ & a hinge
+penalty; structural under the structural chart\\
+Butterfly-free & $g_{\rm D}(k)\ge0$ for all $k$ & \emph{not} implied by the
+rows above; checked on a dense grid (\cref{sec:svibelly})\\
+Calendar-ordered & $w_{\tau_1}(k)\le w_{\tau_2}(k)$, $\tau_1<\tau_2$ & the
+coupling of \cref{sec:calendar}, applied model-agnostically\\
+\bottomrule
+\end{tabular}
+\caption{Five grades of validity for a slice written directly in the
+volatility chart.  In Chapter~\ref{ch:lqd} the first four held by
+construction; here each must be attributed to the mechanism that supplies
+it, and the fourth is the one no cheap mechanism reaches.}
+\label{tab:tiers}
+\end{table}
+
+The chapter runs as follows.  \Cref{sec:svigeom} establishes the geometry
+of the hyperbola \eqref{eq:svi} --- including the rigidity that will later
+motivate superposition.  \Cref{sec:svilee} reads the wings through Lee's
+moment bound and locates that bound inside $g_{\rm D}$; the boundary case
+produces the first failure.  \Cref{sec:svibelly} shows that the interior
+escapes every wing condition.  \Cref{sec:svijw} develops the jump-wing
+coordinates and proves exactly where they invert.  \Cref{sec:svicalib}
+turns to calibration: the measure the objective integrates against, and
+the chart that makes the enforced inequalities structural.
+\Cref{sec:mcs} constructs the Multi-Core Sigmoid by superposition of a
+convex base and tail-silent kernels.  \Cref{sec:comparison} then puts LQD,
+SVI, and MCS on the same frozen quotes under one protocol and lets each
+family's contract show.

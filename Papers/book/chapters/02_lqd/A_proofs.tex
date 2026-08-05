@@ -1,0 +1,224 @@
+\section{Proofs deferred from the main text}
+\label{app:proofs}
+
+\subsection{Derivation of the volatility-space density factor}
+\label{app:durrlemanproof}
+
+Let $c(k)=\Black(k,w(k))$.  For general $(k,w)$, the identity
+$e^k\phin(d_-)=\phin(d_+)$ gives
+\[
+\partial_k\Black=-e^k\PhiN(d_-),\qquad
+\partial_w\Black=\frac{\phin(d_+)}{2\sqrt w}.
+\]
+The second partials required by the chain rule are
+\begin{align*}
+\partial_{kk}\Black
+&=-e^k\PhiN(d_-)+\frac{\phin(d_+)}{\sqrt w},\\
+\partial_{kw}\Black
+&=\frac{d_+\phin(d_+)}{2w},\\
+\partial_{ww}\Black
+&=-\frac{d_+\phin(d_+)}{2\sqrt w}\,\partial_wd_+
+-\frac{\phin(d_+)}{4w^{3/2}},
+\qquad
+\partial_wd_+=\frac{k}{2w^{3/2}}+\frac1{4\sqrt w}.
+\end{align*}
+
+Differentiate $c(k)$ twice and subtract the first derivative:
+\[
+c''-c'=(\partial_{kk}\Black-\partial_k\Black)
++(2\partial_{kw}\Black-\partial_w\Black)w'
++\partial_{ww}\Black(w')^2+\partial_w\Black w''.
+\]
+Factor $\phin(d_+)/\sqrt w$.  Since
+$d_+=-k/\sqrt w+\sqrt w/2$,
+\[
+2\partial_{kw}\Black-\partial_w\Black
+=-\frac{k\phin(d_+)}{w^{3/2}},
+\]
+and a direct multiplication gives
+\[
+d_+\partial_wd_+=-\frac{k^2}{2w^2}+\frac18.
+\]
+Therefore
+\begin{align*}
+c''-c'
+&=\frac{\phin(d_+)}{\sqrt w}
+\left[1-\frac{kw'}w
++\left(\frac{k^2}{4w^2}-\frac1{4w}-\frac1{16}\right)(w')^2
++\frac{w''}{2}\right]\\
+&=\frac{\phin(d_+)}{\sqrt w}
+\left[\left(1-\frac{kw'}{2w}\right)^2
+-\frac{(w')^2}{4}\left(\frac1w+\frac14\right)+\frac{w''}{2}\right].
+\end{align*}
+Finally, $f_X(k)=e^{-k}(c''-c')$ and
+$e^{-k}\phin(d_+)=\phin(d_-)$, which proves \eqref{eq:durrleman}.
+
+\subsection{Proof of the ATM formulas}
+\label{app:atmproof}
+
+The smile is defined by $\Black(k,w(k))=c(k)$.  Put
+$w_0=w(0)$ and $d=\sqrt{w_0}/2$.  The identity
+$e^k\phin(d_-)=\phin(d_+)$ follows from $d_+^2-d_-^2=-2k$ and gives
+\[
+\partial_k\Black=-e^k\PhiN(d_-),
+\qquad
+\partial_w\Black=\frac{\phin(d_+)}{2\sqrt w}.
+\]
+Differentiating once more and evaluating at $(0,w_0)$ gives
+\begin{equation}
+\begin{aligned}
+\partial_k\Black&=-(1-\PhiN(d)),
+&\partial_w\Black&=\frac{\phin(d)}{2\sqrt{w_0}},\\
+\partial_{kk}\Black&=-(1-\PhiN(d))+\frac{\phin(d)}{\sqrt{w_0}},
+&\partial_{kw}\Black&=\frac{\phin(d)}{4\sqrt{w_0}},\\
+\partial_{ww}\Black&=-\frac{\phin(d)}{4w_0^{3/2}}
+-\frac{\phin(d)}{16\sqrt{w_0}}.
+\end{aligned}
+\label{eq:blackpartials}
+\end{equation}
+
+By \eqref{eq:cprime}--\eqref{eq:bl_division},
+\[
+c'(0)=-(1-u_*),\qquad c''(0)=f_*-(1-u_*).
+\]
+One derivative of the defining identity gives
+$\partial_k\Black+\partial_w\Black\,w'(0)=c'(0)$, hence
+\[
+w'(0)=\frac{-(1-u_*)+(1-\PhiN(d))}{\phin(d)/(2\sqrt{w_0})}
+=\frac{2\sqrt{w_0}}{\phin(d)}\Delta.
+\]
+
+Two derivatives give
+\[
+\partial_{kk}\Black+2\partial_{kw}\Black\,w'
++\partial_{ww}\Black\,(w')^2+\partial_w\Black\,w''=c''.
+\]
+Solving at the money and using \eqref{eq:blackpartials},
+\begin{align*}
+w''(0)
+&=\frac{2\sqrt{w_0}}{\phin(d)}\Bigg[
+f_*+\Delta-\frac{\phin(d)}{\sqrt{w_0}}
+-\frac{\phin(d)}{2\sqrt{w_0}}w'(0)\\
+&\hspace{35mm}
++\left(\frac{\phin(d)}{4w_0^{3/2}}
++\frac{\phin(d)}{16\sqrt{w_0}}\right)w'(0)^2\Bigg]\\
+&=\frac{2\sqrt{w_0}}{\phin(d)}f_*-2
++\left(\frac1{2w_0}+\frac18\right)w'(0)^2.
+\end{align*}
+The terms linear in $\Delta$ cancel because
+$w'(0)=2\sqrt{w_0}\Delta/\phin(d)$.
+
+Finally, $\sigma=\sqrt{w/\tau}$ gives
+\[
+\sigma'=\frac{w'}{2\sqrt{\tau w}},
+\qquad
+\sigma''=\frac{w''}{2\sqrt{\tau w}}
+-\frac{(w')^2}{4\sqrt\tau\,w^{3/2}}.
+\]
+Substitution yields \eqref{eq:atm_sigma1}--\eqref{eq:atm_sigma}.
+
+\subsection{Proof of universality and the closure dichotomy}
+\label{app:universalproof}
+
+Let $g^*$ satisfy \cref{prop:universal}, write
+$\lambda_+^*=e^{g^*(1)}<1$, and fix
+$\bar\lambda\in(\lambda_+^*,1)$.
+
+\paragraph{Polynomial approximation.}
+By Weierstrass there are polynomials $p_N$ with
+$\varepsilon_N=\|p_N-g^*\|_\infty\to0$.  Every polynomial of degree at most
+$N$ is represented by the endpoint chord and $P_2,\ldots,P_N$.  For all
+large $N$,
+\[
+p_N(1)\le g^*(1)+\varepsilon_N<\log\bar\lambda<0,
+\]
+so the approximating slice is admissible.
+
+\paragraph{Transport convergence and a common envelope.}
+Let $\bar x_N$ be the corresponding unshifted transport.  On every finite
+$z$-interval,
+\[
+|\bar x_N(z)-\bar x^*(z)|
+\le(e^{\varepsilon_N}-1)e^{\|g^*\|_\infty}|z|,
+\]
+and therefore $\bar x_N\to\bar x^*$ locally uniformly.  Continuity of $g^*$
+at the right endpoint gives $z_0$ such that, for all large $N$,
+$e^{p_N(\Lambda(z))}\le\bar\lambda$ when $z\ge z_0$.  Hence a constant
+$C_1$, independent of $N$, satisfies
+\begin{equation}
+e^{\bar x_N(z)}\le C_1e^{\bar\lambda z}\quad(z\ge0),
+\qquad
+e^{\bar x_N(z)}\le C_1\quad(z\le0).
+\label{eq:envelopeB}
+\end{equation}
+
+\paragraph{Normalizers, shifts, and quantiles.}
+The functions $e^{\bar x_N}\rho$ converge pointwise and, by
+\eqref{eq:envelopeB}, are dominated by integrable multiples of
+$e^{(\bar\lambda-1)z}$ on the right and $e^z$ on the left.  Dominated
+convergence gives $I_N\to I^*$, so $m_N=-\log I_N\to m^*$.  Thus
+$x_N\to x^*$ locally uniformly and $Q_N\to Q^*$ uniformly on compact
+subsets of $(0,1)$.
+
+\paragraph{Uniform convergence of calls.}
+Couple all laws with one uniform rank and let
+$Y_N=e^{Q_N(U)}$, $Y^*=e^{Q^*(U)}$.  Since positive-part payoffs are
+one-Lipschitz,
+\[
+\sup_k|c_N(k)-c^*(k)|\le\E|Y_N-Y^*|.
+\]
+The integrand converges pointwise.  The envelope above and boundedness of
+$m_N$ give a constant $C_2$ such that
+$e^{Q_N(u)}\le C_2\{1+(1-u)^{-\bar\lambda}\}$.  This is integrable, so the
+calls converge uniformly.
+
+\paragraph{Wasserstein convergence.}
+The quantile coupling is optimal on the line:
+\[
+W_p(Y_N,Y^*)^p=\int_0^1|e^{Q_N(u)}-e^{Q^*(u)}|^p\,\dd u.
+\]
+For $1\le p<1/\lambda_+^*$ choose
+$\bar\lambda\in(\lambda_+^*,1/p)$.  The integrand is dominated by a
+multiple of $1+(1-u)^{-p\bar\lambda}$, proving the claim by dominated
+convergence.
+
+\paragraph{Finite-order exclusions.}
+At finite order, $x_N'$ is positive and continuous.  The quantile is a
+strictly increasing homeomorphism from $(0,1)$ onto $\R$; it can neither
+jump, remain flat, nor terminate.  This excludes atoms, density gaps, bounded
+support, and mass at zero.  A Gaussian-or-faster tail would require
+$g(u)\to-\infty$ at an endpoint, which no polynomial can do.
+
+\paragraph{Uniform closure away from the wall.}
+Suppose admissible $g_N$ converge uniformly to $g_\infty$.  Necessarily
+$g_\infty(1)\le0$.  If $g_\infty(1)<0$, the preceding dominated-convergence
+argument applies with $g_\infty$ as target.  The limit retains a positive
+continuous density and exponential tails.
+
+\paragraph{The boundary branch.}
+If $g_\infty(1)=0$, weak convergence may fail.  For
+$g_N\equiv\log(1-1/N)$, the solvable slice gives
+\[
+I_N=\frac{\pi(1-1/N)}{\sin(\pi/N)}\longrightarrow\infty,
+\qquad m_N=-\log I_N\longrightarrow-\infty.
+\]
+Every fixed-rank quantile tends to $-\infty$, so mass escapes.
+
+Assume instead that the laws converge weakly.  The shifts are bounded above
+because every normalizer has a positive central contribution.  They are
+bounded below because $m_N\to-\infty$ along a subsequence would contradict
+tightness.  Every convergent subsequence of shifts then yields
+\[
+Q_\infty(u)=m_\infty+
+\int_0^{\logit u}e^{g_\infty(\Lambda(t))}\,\dd t.
+\]
+Weak convergence identifies this quantile uniquely, so the full shift
+sequence converges.  The limiting speed is continuous and bounded away from
+zero; hence the limit has full support and a strictly positive continuous
+density, and all geometric exclusions remain.
+
+The right endpoint speed is one.  For each $\delta>0$ it is eventually at
+least $1-\delta$, so the argument of \cref{prop:strip} gives
+$\E[e^{rX}]=\infty$ for every $r>1$.  Fatou also gives
+$\E[e^X]\le\liminf_N\E[e^{X_N}]=1$, with equality not guaranteed.  This is
+the boundary law in \cref{prop:universal}.

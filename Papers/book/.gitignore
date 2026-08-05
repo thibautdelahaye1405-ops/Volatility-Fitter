@@ -1,0 +1,12 @@
+# LaTeX build artifacts (the PDF is committed; intermediates are not).
+*.aux
+*.log
+*.out
+*.toc
+*.blg
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+chapters/**/*.aux
+__pycache__/
+*.bbl

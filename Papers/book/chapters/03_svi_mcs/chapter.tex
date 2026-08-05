@@ -1,0 +1,39 @@
+% Chapter 3 — families in the volatility chart (SVI-JW and superposition).
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch03/gen_figures.py from data/ (frozen snapshot + deterministic
+% synthetics).  Notation additions are recorded in NOTATION.md.
+\renewcommand{\figdir}{figures/ch03}
+\chapter[Families in the volatility chart]{Families in the Volatility
+Chart: SVI-JW and Superposition}
+\label{ch:svi}
+
+\chaptersynopsis{Chapter~2 built the law first and read the smile off it.
+This chapter works the other way, directly in the volatility chart, as
+the industry does.  The gain is legibility: SVI draws one expiry as a
+tilted hyperbola whose jump-wing reading is the desk's vocabulary, and
+the Multi-Core Sigmoid adds local body detail by superposing kernels
+that are provably silent in both tails.  The price is that validity must
+now be policed.  The wing slopes are a moment reading capped strictly
+inside Lee's bound --- the bound itself admits negative tail density ---
+while the interior escapes every wing condition, as a classical
+counterexample shows, and is decided by a dense-grid check instead.  The
+jump-wing coordinates invert exactly on a proved domain and lose exactly
+the interior curvature on its singular stratum.  A structural
+optimization chart makes the enforced inequalities hold at every iterate
+by construction.  The chapter closes with the three families of this
+book fitted to the same frozen quotes under one protocol: fit quality,
+validity margin, and tail behavior, with no family winning every
+column.}
+
+\input{chapters/03_svi_mcs/01_volatility_chart}
+\input{chapters/03_svi_mcs/02_hyperbola}
+\input{chapters/03_svi_mcs/03_wings_lee}
+\input{chapters/03_svi_mcs/04_belly}
+\input{chapters/03_svi_mcs/05_jw_handles}
+\input{chapters/03_svi_mcs/06_calibration}
+\input{chapters/03_svi_mcs/07_superposition}
+\input{chapters/03_svi_mcs/08_comparison}
+
+\begin{chapterappendices}
+\input{chapters/03_svi_mcs/A_protocol}
+\end{chapterappendices}

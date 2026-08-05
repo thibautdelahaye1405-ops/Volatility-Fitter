@@ -1,0 +1,99 @@
+\section{Numerical realization}
+\label{sec:numerics}
+
+The theorems of the preceding sections concern the continuous objects $x$
+and $G$; the fitter computes with discrete realizations of them.  One grid
+build produces every array used above, analytic corrections handle what lies
+beyond the grid, and two certificates verify that discretization has
+preserved what the theory guarantees.
+
+\subsection{One grid build}
+
+All integrals use a symmetric log-odds grid
+$[-Z_{\max},Z_{\max}]$, with $Z_{\max}=40$.  Optimization uses 2001 nodes;
+the accepted slice is rebuilt on 8001 nodes.  A build performs four operations:
+evaluate $g$, integrate $e^g$ cumulatively to form $\bar x$, compute the
+martingale shift, and integrate $e^x\rho$ backward to form $G$.  Exact nodal
+derivatives $x'=e^g$ and $G'=-e^x\rho$ accompany the values.  Cubic Hermite
+interpolation then gives fourth-order off-grid evaluation and a
+Newton-polished strike root.
+
+The missing logistic tails are integrated analytically.  To leading order,
+\begin{equation}
+\int_{Z_{\max}}^\infty e^{\bar x}\rho\,\dd z
+\simeq\frac{e^{\bar x(Z_{\max})-Z_{\max}}}{1-\lambda_+},
+\qquad
+\int_{-\infty}^{-Z_{\max}}e^{\bar x}\rho\,\dd z
+\simeq\frac{e^{\bar x(-Z_{\max})-Z_{\max}}}{1+\lambda_-}.
+\label{eq:tailcorr}
+\end{equation}
+For a strike beyond the right return grid, continue the root along the tail
+asymptote,
+\[
+z_R(k)=Z_{\max}+\frac{k-x(Z_{\max})}{\lambda_+}.
+\]
+Both the ledger and cash leg are then single exponentials.  Their difference
+is
+\begin{equation}
+c(k)\simeq e^{k-z_R(k)}\frac{\lambda_+}{1-\lambda_+}.
+\label{eq:beyondgrid}
+\end{equation}
+The left-wing continuation follows from parity.
+
+To derive the factor in \eqref{eq:beyondgrid}, restart the right-tail
+correction at $z_R(k)$, where $x=k$.  The asset leg is approximately
+$e^{k-z_R(k)}/(1-\lambda_+)$ and the cash leg is $e^{k-z_R(k)}$.
+Subtraction leaves $\lambda_+/(1-\lambda_+)$.  The continuation is therefore
+the tail form of the same asset-minus-cash identity \eqref{eq:call}, not an
+independent wing model.
+
+Three floating-point rules are essential.  First, compute
+$\rho(z)=\expit(z)\expit(-z)$ rather than $u(1-u)$, since $u$ rounds to one
+for large positive $z$.  Compute the cash leg as
+$\exp\{k-\log(1+e^{z_k})\}$ using a stable log-sum-exp.  Second, reject a
+trial if an interior value of $g$ or $\bar x$ exceeds the exponent budget,
+even when the endpoints are admissible.  Third, evaluate the Lee function at
+large $r$ in the rationalized form
+\begin{equation}
+\Psi(r)=2-\frac4{\sqrt{1+1/r}+1},
+\label{eq:leestable}
+\end{equation}
+which avoids subtracting nearly equal large numbers.  The full build and
+sensitivity pseudocode appear in \cref{app:implementation}.
+
+\subsection{Certificates}
+\label{sec:certificates}
+
+The continuous theorems concern $x$ and $G$; numerical prices use their
+interpolants.  Two inexpensive certificates connect the two levels.  On each
+Hermite segment, the Fritsch--Carlson inequalities require both endpoint
+derivatives to lie between zero and three times the secant slope
+\citep{FritschCarlson1980}.  Applying them to $x$ and $-G$ certifies monotone
+interpolation; segments below round-off are declared flat to a stated
+tolerance.  Across the traded strike span, the analytic derivatives of
+$w(k)$ are also inserted in \eqref{eq:durrleman} on a dense grid and required
+to satisfy $g_{\rm D}\ge-10^{-4}$.
+
+An independent randomized battery prices \MacAuditSliceCount\ admissible
+slices across several orders and stress classes at sub-grid strikes.  Its
+worst errors in call bounds, butterflies, digitals, and agreement with a
+four-times-finer grid are respectively
+\MacAuditBoundsWorst, \MacAuditFlyWorst, \MacAuditDigitalWorst, and
+\MacAuditGridAgreeWorst\ in normalized price.  The exact constant-speed test
+of \cref{fig:exact} independently checks transport, normalization, tail
+correction, and root evaluation.  These numerical tests do not create
+validity; they verify that the discrete realization has preserved it to the
+reported tolerance.
+
+The two-grid rebuild supplies a final resolution check.  Parameters fitted on
+2001 nodes and refitted on 8001 nodes agree to \MacTwoGridParamAgree.  The
+accepted vector is rebuilt once on the dense grid, so prices, densities, ATM
+handles, and calendar ledgers all read the same final discrete object.
+
+These diagnostics answer different questions and should not be collapsed
+into one flag.  Quote residuals measure agreement with the strip; effective
+order and ridge describe the asserted inter-quote structure; endpoint speeds
+describe the extrapolation and its moment budget; monotonicity and belly
+margins certify that discretization preserved validity; calendar gaps
+describe compatibility across expiries.  A fit can be excellent on one axis
+and weak on another.

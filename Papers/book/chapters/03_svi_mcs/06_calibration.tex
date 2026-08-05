@@ -1,0 +1,181 @@
+\section{Calibration in the chart}
+\label{sec:svicalib}
+
+Chapter~\ref{ch:lqd} settled the anatomy of a slice objective --- units,
+band targets, regularization (\cref{sec:calibration}).  Working in the
+volatility chart changes two of the choices, and this section treats them
+in turn.  The residual can now live directly in implied volatility, since
+the model produces $w(k)$ without an inversion: with quotes
+$(k_i,\sigma_i)$ and weights $\mu_i$, the data term is
+\begin{equation}
+\sum_i \mu_i\,\big(I(k_i;\theta)-\sigma_i\big)^2,
+\qquad I(k;\theta)=\sqrt{w(k;\theta)/\tau},
+\label{eq:sviobjective}
+\end{equation}
+optionally replaced by the band or haircut targets of \eqref{eq:band} and
+\eqref{eq:haircut} evaluated in volatility space.  And the chart itself
+becomes a decision, because the coordinates no longer guarantee validity
+for free.
+
+\subsection{The measure a fit integrates against}
+\label{sec:sviweights}
+
+Idealize \eqref{eq:sviobjective} as a continuum problem: minimize
+$\int(I-\sigma)^2\,\dd\mu(k)$ for some measure $\mu$ on the strike axis.
+A finite quote set turns the integral into a sum, and the weights are the
+quadrature rule.  Equal weights make $\mu$ the empirical measure of the
+\emph{listing} --- the exchange's strike schedule, dense at the money and
+sparse in the wings.  That measure was chosen by a listings committee: a
+tight cluster of near-duplicate ATM quotes outvotes an isolated wing quote
+by sheer count, and the fit inherits the strike schedule as an accidental
+prior.  Adding more ATM listings, which adds information, then makes the
+fitted wings \emph{worse}.
+
+A declared alternative weights strike ranges by the time value they
+carry, $\dd\mu=\mathrm{TV}(k)\,\dd k$, where $\mathrm{TV}(k)$ is the
+normalized price of the out-of-the-money option at $k$ --- the part of
+the premium that is genuinely optionality rather than intrinsic value,
+the natural gauge of how much economic content a strike carries.  Let
+$C_i$ be quote $i$'s cell in the
+Voronoi partition of the quoted interval --- half the gap to each
+neighbor, one-sided at the ends --- with width $|C_i|$.  The scheme
+\begin{equation}
+\mu_i\;\propto\;\mathrm{TV}_i\,|C_i|
+\label{eq:tvweights}
+\end{equation}
+is then a genuine discretization of the declared measure.
+
+\begin{proposition}[Weights as a quadrature]
+\label{prop:quadrature}
+For any continuous integrand $f$, the sum $\sum_i\mathrm{TV}_i|C_i|f(k_i)$
+is a Riemann sum of $\int\mathrm{TV}(k)f(k)\,\dd k$ over the Voronoi
+partition, converging under refinement.  In particular the weighted loss
+with \eqref{eq:tvweights} discretizes the continuum time-value objective;
+on a uniform strike grid all $|C_i|$ coincide and the scheme reduces to
+pure time-value weighting.
+\end{proposition}
+
+\begin{proof}
+The cells partition the quoted interval and $k_i\in C_i$, so the sum is a
+Riemann sum over that partition; refinement convergence is the standard
+statement.  The uniform case is arithmetic.
+\end{proof}
+
+Two conventions keep the quadrature usable on real ladders, both stated
+once.  The cell of an isolated far-wing quote can be arbitrarily wide, so
+the width factor is capped (the reference implementation uses ten times
+the mean spacing): beyond the cap the scheme deliberately
+under-integrates the deep wing rather than let one quote carry a tenth of
+the objective.  And the weights are normalized to unit mean, so switching
+schemes redistributes the data term without rescaling it against the
+regularization.  The chapter's comparisons use equal weights throughout
+--- the point here is not that one measure is right, but that a weight
+vector \emph{is} a measure, and should be chosen as one.
+
+\subsection{Two charts}
+\label{sec:svistructural}
+
+The optimizer never handles a constrained vector.  In the historical
+chart, $\theta\in\R^5$ maps to
+\begin{equation}
+a_S=\theta_1,\quad
+b_S=\operatorname{softplus}(\theta_2),\quad
+\rho_S=\tanh(\theta_3),\quad
+m_S=\theta_4,\quad
+s_S=e^{\theta_5},
+\label{eq:rawlift}
+\end{equation}
+with $\operatorname{softplus}(\theta)=\log(1+e^{\theta})$, so every
+finite $\theta$ is a structurally valid hyperbola --- the first row of
+\cref{tab:tiers} and nothing more.  The floor can still go
+negative and a wing can still exceed the cap; those are fenced by the
+hinge rows \eqref{eq:svipenalties}, which the optimizer can trade against
+the data term.  This is the same constraint-elimination idea as the
+logistic chart of \cref{sec:charts}, applied to the weaker guarantee.
+
+The idea extends to the conditions the hinges police.  Parameterize the
+slice by the quantities the inequalities are \emph{about} --- the two wing
+slopes, the vertex location, the floor, and the vertex curvature --- each
+lifted so that every finite coordinate is admissible:
+\begin{equation}
+\beta_L=\beta_{\max}\Lambda(\theta_1),\quad
+\beta_R=\beta_{\max}\Lambda(\theta_2),\quad
+k^*=\theta_3,\quad
+w^*=\operatorname{softplus}(\theta_4),\quad
+\kappa^*=e^{\theta_5},
+\label{eq:structlift}
+\end{equation}
+with $\Lambda$ the logistic function of \cref{sec:intro}.  The raw
+parameters are recovered exactly by inverting \cref{prop:svigeom}:
+\begin{equation}
+b_S=\frac{\beta_L+\beta_R}{2},\quad
+\rho_S=\frac{\beta_R-\beta_L}{\beta_R+\beta_L},\quad
+s_S=\frac{b_S(1-\rho_S^2)^{3/2}}{\kappa^*},\quad
+m_S=k^*+\frac{s_S\rho_S}{\sqrt{1-\rho_S^2}},\quad
+a_S=w^*-b_Ss_S\sqrt{1-\rho_S^2}.
+\label{eq:structinv}
+\end{equation}
+Under this \emph{structural chart} every finite iterate has
+$w(k)\ge w^*>0$ and both wings strictly inside $(0,\beta_{\max})$: the
+second and third rows of \cref{tab:tiers} hold by construction, and the
+hinge rows \eqref{eq:svipenalties} are identically zero along the entire
+optimization path.  What the chart does \emph{not} deliver is the fourth
+row --- the Vogt slice of \cref{sec:svibelly} is reachable in either
+chart, and the dense-grid check remains the deciding instance.  The two
+charts describe the same family, and on the SPY December quotes they
+reach the same slice to $\MacSviChartAgreeBp$ vol bp
+(\cref{fig:svistructural}); what changes is the geometry the solver
+works in, with the kinks of the hinge rows removed exactly where a
+trust-region step would otherwise stall on them.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.97\textwidth}{fig_svi_structural.pdf}
+\caption{The structural chart.  (a)~The wing lift
+$\beta=\beta_{\max}\Lambda(\theta)$: every finite coordinate lands
+strictly between $0$ and $\beta_{\max}$, itself strictly below Lee's
+bound --- admissibility is a property of the chart, not a constraint on
+the step.  (b)~The five structural coordinates read on the SPY December
+fit: vertex $(k^*,w^*)=(\MacSviSpyKstar,\MacSviSpyWstar)$, osculating
+parabola of curvature $\kappa^*=\MacSviSpyKappastar$, and the two
+asymptote slopes.  The optimizer moves exactly the quantities the
+inequalities constrain.}
+\label{fig:svistructural}
+\end{figure}
+
+\subsection{The residual Jacobian, in layers}
+\label{sec:svijacobian}
+
+The least-squares solvers of both charts consume an analytic Jacobian,
+and it assembles by the chain rule in three layers.  The raw-parameter
+partials of the hyperbola follow from \eqref{eq:svi} with
+\eqref{eq:svishort}:
+\begin{equation}
+\frac{\partial w}{\partial a_S}=1,\quad
+\frac{\partial w}{\partial b_S}=\rho_Sx+r,\quad
+\frac{\partial w}{\partial\rho_S}=b_Sx,\quad
+\frac{\partial w}{\partial m_S}=-b_S\Big(\rho_S+\frac{x}{r}\Big),\quad
+\frac{\partial w}{\partial s_S}=\frac{b_Ss_S}{r}.
+\label{eq:svipartials}
+\end{equation}
+The data rows live in volatility, so each is scaled by
+\begin{equation}
+\frac{\partial I}{\partial w}=\frac{1}{2\sqrt{w\tau}}=\frac{1}{2\tau I}.
+\label{eq:ivchain}
+\end{equation}
+Finally the lift: for \eqref{eq:rawlift} the three nontrivial factors are
+\begin{equation}
+\frac{\dd b_S}{\dd\theta_2}=1-e^{-b_S},\qquad
+\frac{\dd\rho_S}{\dd\theta_3}=1-\rho_S^2,\qquad
+\frac{\dd s_S}{\dd\theta_5}=s_S,
+\label{eq:liftchain}
+\end{equation}
+while the structural chart pushes the same raw-space rows through the
+closed-form $5\times5$ matrix
+$\partial(a_S,b_S,\rho_S,m_S,s_S)/\partial\theta$ obtained by
+differentiating \eqref{eq:structinv} along \eqref{eq:structlift}.  Hinge
+rows contribute their linear part where the violation is strictly
+positive and a zero row otherwise.  Nothing here is deep; the point of
+recording the layers is that the chart is a change of variables like any
+other, and its cost is one matrix product per iterate rather than a
+constrained solver.

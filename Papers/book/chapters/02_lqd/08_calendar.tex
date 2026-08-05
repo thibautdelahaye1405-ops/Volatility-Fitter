@@ -1,0 +1,153 @@
+\section{Calendar order}
+\label{sec:calendar}
+
+Butterfly freedom is a property of one marginal law.  A surface also requires
+later expiries to dominate earlier ones in convex order.  Under deterministic
+rates and carry, this comparison has a simple form in normalized units.
+
+\begin{lemma}[Calendar ordering at equal log-moneyness]
+\label{lem:caljensen}
+Let $F_{0,t}$ be the deterministic forward curve and suppose
+$M_t=S_t/F_{0,t}$ is a positive martingale.  For $T_1<T_2$ and every $k$,
+the normalized calls satisfy
+\begin{equation}
+c_1(k)\le c_2(k).
+\label{eq:calreq}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+Since $M_{T_i}=S_{T_i}/F_i=Y_i$, conditional Jensen gives
+\[
+\begin{aligned}
+c_2(k)
+&=\E[(M_{T_2}-e^k)^+]\\
+&\ge\E[(\E[M_{T_2}\mid\mathcal F_{T_1}]-e^k)^+]
+=\E[(M_{T_1}-e^k)^+]=c_1(k).
+\end{aligned}
+\]
+\end{proof}
+
+Equal $k$ means strikes $K_i=F_i e^k$, which are generally different dollar
+strikes.  The comparison is a forward-scaled calendar relation, not the usual
+listed equal-strike spread.  In probability language, the laws of $Y_i$ have
+equal means and increase in convex order.
+
+The scaling is essential.  A violation at $k$ is monetized by shorting
+$1/(D_1F_1)$ calls at $K_1=F_1e^k$ and buying $1/(D_2F_2)$ calls at
+$K_2=F_2e^k$.  After normalization both payoffs are convex functions of the
+common martingale $M_t$.  Without deterministic carry, one must first specify
+the numeraire and the objects being compared; equal log-moneyness alone is not
+a model-free calendar relation.
+
+\subsection{Calls and ledgers are conjugate}
+
+\begin{lemma}[Ledger--call conjugacy]
+\label{lem:conjugacy}
+For any admissible slice,
+\begin{equation}
+\begin{aligned}
+c(k)&=\max_{z\in[-\infty,\infty]}
+\{G(z)-e^k(1-\Lambda(z))\},\\
+G(z)&=\min_{k\in[-\infty,\infty]}
+\{c(k)+e^k(1-\Lambda(z))\}.
+\end{aligned}
+\label{eq:conjugacy}
+\end{equation}
+The optimizers are $z=z_k$ and $k=x(z)$, respectively.
+\end{lemma}
+
+\begin{proof}
+For fixed $k$,
+\[
+G(z)-e^k(1-\Lambda(z))
+=\int_z^\infty(e^{x(t)}-e^k)\rho(t)\,\dd t.
+\]
+The integrand is negative before $z_k$ and positive after it.  Starting the
+integral at $z_k$ therefore maximizes it and gives the call price.  The first
+identity implies
+$c(k)+e^k(1-\Lambda(z))\ge G(z)$ for every $k$, with equality at
+$k=x(z)$, proving the second.
+\end{proof}
+
+Geometrically, the first identity scans all possible exercise ranks.  Before
+$z_k$, the integral includes outcomes where the payoff is negative; after
+$z_k$, it discards outcomes where the payoff is positive.  The strike root is
+the unique point of tangency between call and ledger descriptions.  The
+second identity reconstructs the ledger from the full call curve, so no
+information is lost in changing representation.
+
+\begin{theorem}[Calendar order is ledger order]
+\label{thm:ledgerorder}
+For two admissible mean-one slices,
+\begin{equation}
+c_1(k)\le c_2(k)\ \text{for all }k
+\quad\Longleftrightarrow\quad
+G_1(z)\le G_2(z)\ \text{for all }z.
+\label{eq:ledgerorder}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+If $G_1\le G_2$, the maximum representation in \eqref{eq:conjugacy} gives
+$c_1\le c_2$.  If $c_1\le c_2$, the minimum representation gives
+$G_1\le G_2$.  Both implications are pointwise.
+\end{proof}
+
+Thus the continuum of calendar inequalities is equivalent to ordering two
+arrays already produced by the slice builds.  This is also the classical
+convex-order criterion: by the results of Strassen and Kellerer, a family of
+equal-mean laws increasing in convex order can be realized as the marginals of
+a martingale \citep{Strassen1965,Kellerer1972}.
+
+This is an existence statement.  Ordered ledgers make the marginal laws
+compatible with some martingale dynamics; they neither select that dynamics
+nor determine forward smiles.  The calendar problem treated here is exactly
+the static marginal problem.
+
+\subsection{A support-confined control}
+\label{sec:calcontrol}
+
+The theorem is an exact diagnostic.  A finite calibration requires a chosen
+enforcement rule.  When fitting a farther expiry after a nearer one, the
+reference objective adds
+\begin{equation}
+\sqrt{w_{\rm cal}}\,\zeta_m
+\{c_{\rm near}(k_m)-c_{\rm far}(k_m)\}^+
+\label{eq:calrows}
+\end{equation}
+on a grid of strikes in the intersection of their quoted spans.  The weights
+$\zeta_m$ taper to zero with a $\cos^2$ profile over the outer fifteen percent
+of that span.  The number of nodes is $\max(49,4N+1)$.
+
+The rows are imposed in price space, not ledger space.  A ledger value at
+one rank integrates the entire upper tail, so constraining it couples the
+quoted region of one expiry to the unquoted continuation of another: the
+ledger is ideal for diagnosis precisely because it sees the whole law, and
+unsuitable as a constraint for the same reason.  In a reproduced stress
+comparison, a full-grid ledger floor moved the worst quote error from
+\MacPhantomDragFromBp\ to \MacPhantomDragToBp\ vol bp; fixed-strike call
+rows, each a specified payoff in the common quoted region, localize the
+control.  The weight is finite, and any remaining violation is reported as a
+price gap and as a fraction of the local bid--ask width.  Calendar order is
+thus controlled on common quoted support; outside it, the ledger comparison
+remains a diagnostic of the extrapolations.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.92\textwidth}{fig_calendar.pdf}
+\caption{Calendar order in the frozen SPY sample.  Left: total variance is
+ordered through maturity at representative log-moneyness values.  Right: the
+two shortest expiries are ordered on their common quoted span, while a
+volatility-space crossing appears only in a numerically empty far wing.  The
+price-space gap there is at round-off scale.}
+\label{fig:calendar}
+\end{figure}
+
+For the two shortest SPY expiries, a full-grid volatility audit flags a
+\MacCalGapVolBp\ vol-bp crossing at $k=\MacCalGapArgmaxK$, far outside the
+common quote span $[\MacCalSpanLo,\MacCalSpanHi]$.  The corresponding calls
+are \MacCalendarCallShort\ and \MacCalendarCallLong\ of forward.  A direct
+price audit finds a worst violation of only \MacCalPriceGridWorst.  The
+crossing is a disagreement between extrapolations in a region where Black
+inversion is ill-conditioned, not an economically available calendar trade.

@@ -1,0 +1,201 @@
+\section{A smile is a probability law}
+\label{sec:intro}
+
+A listed option market gives finitely many prices.  A smile model must turn
+them into a complete curve: a price and an implied volatility at every strike,
+including strikes that were not quoted.  The completed curve will be
+differentiated for digitals and densities, integrated for variance contracts,
+and compared with curves at other expiries.  It is therefore not enough to
+draw a smooth line through the quotes.
+
+The obstruction is elementary.  The second strike derivative of a call price
+is a probability density.  A curve that fits every quote can nevertheless
+make this derivative negative between two quotes.  It then assigns a negative
+price to a butterfly and a negative mass to an interval of terminal prices.
+No numerical routine has malfunctioned; the curve was allowed to leave the
+space of probability laws.
+
+The useful question is thus not ``which curve fits well?'' but ``in which
+coordinates is every fitted curve already a law?''  The answer developed here
+uses quantiles.  In rank coordinates, unit mass is automatic and positive
+density reduces to monotonicity.  Taking the logarithm of the quantile speed
+removes even that constraint.  The resulting log-quantile-density (LQD)
+family provides unconstrained coordinates for a broad class of mean-one laws
+with exponential log-return tails.
+
+\subsection{Normalized market}
+
+Fix one expiry $T$.  Let $F$ be its forward and $D$ its discount factor.  Under
+the $T$-forward measure define
+\begin{equation}
+X=\log\frac{S_T}{F},\qquad Y=e^X=\frac{S_T}{F},\qquad \E[Y]=1.
+\label{eq:Xdef}
+\end{equation}
+The last equality is the martingale condition.  Write
+$k=\log(K/F)$ for log-moneyness.  Normalized call and put prices are
+\begin{equation}
+c(k)=\E[(Y-e^k)^+],\qquad P(k)=\E[(e^k-Y)^+],
+\qquad c(k)-P(k)=1-e^k.
+\label{eq:calldef}
+\end{equation}
+A dollar price is $DF$ times its normalized price.
+
+Let $\tau$ denote variance time: calendar time, possibly adjusted for the
+desk's event-time convention.  Total implied variance is
+$w(k)=\sigma(k)^2\tau$.  The normalized Black call is
+\begin{equation}
+\Black(k,w)=\PhiN(d_+)-e^k\PhiN(d_-),
+\qquad d_\pm=-\frac{k}{\sqrt w}\pm\frac{\sqrt w}{2},
+\label{eq:black}
+\end{equation}
+and $w(k)$ is the root of $\Black(k,w(k))=c(k)$
+\citep{Black1976}.  Rates and carry have now disappeared from the single-slice
+problem.
+
+\subsection{The static constraint set}
+
+Use normalized strike $y=e^k$.  If $Y$ has density $f_Y$, differentiation of
+the payoff gives
+\begin{equation}
+\frac{\partial c}{\partial y}=-\Prob(Y>y),
+\qquad
+\frac{\partial^2c}{\partial y^2}=f_Y(y)\ge0.
+\label{eq:BL}
+\end{equation}
+This is the Breeden--Litzenberger identity
+\citep{BreedenLitzenberger1978}.  It identifies the geometry of the call curve
+with the law of $Y$: decreasing slope is a digital probability and convexity
+is positive density.
+
+The identity can be read using traded portfolios.  For a strike spacing
+$\delta$, the symmetric butterfly
+\[
+c(y-\delta)-2c(y)+c(y+\delta)
+\]
+is the price of a long call below, a long call above, and two short calls at
+the center.  Dividing by $\delta^2$ and shrinking the spacing recovers
+$f_Y(y)$.  A negative second difference is therefore not merely undesirable
+curvature; it is a negative price for a nonnegative terminal payoff.  The
+probability statement and the static-arbitrage statement are the same.
+
+\begin{definition}[Arbitrage-free slice]
+\label{def:slice}
+An arbitrage-free slice is a call curve of the form \eqref{eq:calldef} for a
+positive random variable $Y$ with $\E[Y]=1$.  When $Y$ has a density, this is
+equivalent to a decreasing convex function of strike $y$ satisfying
+\[
+(1-y)^+\le c(y)\le1,\qquad -1\le c'(y)\le0,\qquad
+c(y)\longrightarrow0\quad(y\to\infty),
+\]
+with $c'(y)\to-1$ as $y\downarrow0$ when there is no mass at zero.
+\end{definition}
+
+Each boundary condition has a probabilistic source.  The upper bound follows
+from $(Y-y)^+\le Y$ and $\E[Y]=1$.  The lower bound is Jensen's inequality,
+$(\E[Y]-y)^+\le\E[(Y-y)^+]$.  The slope is a survival probability and must
+lie between $-1$ and zero.  Finally, calls vanish at infinite strike because
+the integrable random variable $Y$ carries no mean mass arbitrarily far in
+its tail.  A valid call curve is thus exactly a compact encoding of a
+mean-one law.
+
+Convexity belongs to $y$, not to $k$.  Indeed,
+\[
+\frac{\partial^2c}{\partial k^2}
+=e^k\{e^kf_Y(e^k)-\Prob(Y>e^k)\},
+\]
+which is negative far in the left wing for any ordinary density.  A convexity
+test performed in log-strike will therefore reject correct call curves.
+
+The same constraint becomes less transparent in volatility coordinates.
+Differentiating $c(k)=\Black(k,w(k))$ twice yields
+\begin{equation}
+f_X(k)=g_{\rm D}(k)\frac{\phin(d_-(k,w(k)))}{\sqrt{w(k)}},
+\quad
+g_{\rm D}(k)=
+\left(1-\frac{k w'}{2w}\right)^2
+-\frac{(w')^2}{4}\left(\frac1w+\frac14\right)+\frac{w''}{2}.
+\label{eq:durrleman}
+\end{equation}
+Thus a volatility curve is butterfly-free precisely when
+$g_{\rm D}(k)\ge0$ for all $k$ \citep{GatheralJacquier2014}.  The condition is
+global, nonlinear, and involves two derivatives.  Direct volatility models
+must enforce it; the representation below makes it an identity.
+
+This explains why good residuals alone are weak evidence.  Quotes constrain
+only finitely many values of $w$.  The function $g_{\rm D}$ also depends on
+the slope and curvature between them, and may become negative in a narrow
+unquoted interval.  Increasing the strike grid reduces but does not remove
+the logical problem: the optimizer still moves in a space containing invalid
+curves.  The quantile construction reverses the order of work.  It first
+chooses a law and only then asks which smile the Black formula assigns to it.
+
+Two checks fix the normalization in \eqref{eq:durrleman}.  If the smile is
+flat, $w'=w''=0$, so $g_{\rm D}\equiv1$ and the remaining factor is exactly
+the Black density of $X$.  At the money, the identities derived later in
+\cref{sec:ledger} give
+$g_{\rm D}(0)=\sqrt{w_0}f_X(0)/\phin(\sqrt{w_0}/2)$.  Thus
+$g_{\rm D}\ge0$ is not a penalty formula: it is positive density written in
+the volatility chart.
+
+\subsection{Notation ledger}
+
+The construction uses three horizontal axes.  Strike $y$ is the axis on which
+calls are convex; log-moneyness $k=\log y$ is the market axis; rank $u$ and
+log-odds $z$ are the model axes.  For a rank $u\in(0,1)$, the \emph{odds} are
+$u/(1-u)$ and the \emph{log-odds} are
+\[
+z=\log\frac{u}{1-u}.
+\]
+The function taking rank to log-odds is called the \emph{logit}:
+$\logit(u)=\log\{u/(1-u)\}$.  It maps $(0,1)$ bijectively onto $\R$; its
+inverse is the logistic function $\Lambda(z)=1/(1+e^{-z})$.  Thus $u$ and $z$
+record the same percentile on two different scales.  The recurring notation
+is collected below.
+
+\begin{table}[htbp]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llll@{}}
+\toprule
+$X$, $Y=e^X$ & log and gross forward return &
+$u$, $z=\logit u$ & rank and log-odds\\
+$k$, $y=e^k$ & log and normalized strike &
+$\Lambda$, $\rho$ & logistic CDF and density\\
+$c$, $P$ & normalized call and put &
+$Q$, $q=Q'$ & quantile and quantile density\\
+$w=\sigma^2\tau$ & total implied variance &
+$g$ & smooth log-speed in rank\\
+$x$, $m$ & transport and martingale shift &
+$G$ & upper-share ledger\\
+$L,R,a_n$ & polynomial coordinates &
+$\lambda_-,\lambda_+$ & endpoint speeds\\
+$u_k,z_k$ & strike rank and log-odds &
+$u_*,f_*,\Delta$ & ATM rank, density, digital gap\\
+$\beta_L,\beta_R$ & Lee wing slopes &
+$N,Z_{\max}$ & basis order and grid half-width\\
+\bottomrule
+\end{tabular}
+\caption{Notation used throughout the chapter.  A prime denotes an ordinary
+derivative of a one-variable function; $\partial$ denotes a partial
+derivative.  The time $\tau$ is always variance time.}
+\label{tab:notation}
+\end{table}
+
+\subsection{What the chapter separates}
+
+Three questions recur, and they should not be confused.  \emph{Validity} asks
+whether a parameter vector defines a probability law.  \emph{Information}
+asks which features of that law are determined by the quoted strip.
+\emph{Convention} selects the remainder: basis order, regularization, tail
+coordinates, and the scope of calendar control.  The LQD coordinates settle
+the first question structurally.  The later sections measure the second and
+state the third explicitly.
+
+The development is progressive.  \Cref{sec:model} constructs the coordinates.
+\Cref{sec:validity,sec:tails} establish their probabilistic content.
+\Cref{sec:ledger} derives prices and local smile quantities from one integral.
+\Cref{sec:calibration} turns the representation into a fitter,
+\cref{sec:numerics} into a computation, and \cref{sec:calendar} into a
+surface.  \Cref{sec:examples} then shows what the construction says on market
+and synthetic data.  Proofs and implementation details are collected in the
+appendices.

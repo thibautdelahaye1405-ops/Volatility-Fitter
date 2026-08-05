@@ -1,0 +1,101 @@
+\section{One hyperbola}
+\label{sec:svigeom}
+
+Everything in the next three sections rests on closed-form facts about
+\eqref{eq:svi}.  Write
+\begin{equation}
+x_S=k-m_S,\qquad r_S=\sqrt{x_S^2+s_S^2},\qquad q_S=\sqrt{1-\rho_S^2}
+\label{eq:svishort}
+\end{equation}
+(the subscripts keep the ledger's $x$ and the moment order $r$ of
+\eqref{eq:lee} untouched).
+
+\begin{proposition}[Geometry of one slice]
+\label{prop:svigeom}
+Under $b_S>0$, $|\rho_S|<1$, $s_S>0$, the slice \eqref{eq:svi} is strictly
+convex with a single minimum:
+\begin{align}
+w'(k)&=b_S\Big(\rho_S+\frac{x_S}{r_S}\Big), &
+w''(k)&=\frac{b_S\,s_S^2}{r_S^3}>0,
+\label{eq:svideriv}\\
+k^*&=m_S-\frac{s_S\rho_S}{q_S}, &
+w^*&=w(k^*)=a_S+b_S\,s_S\,q_S .
+\label{eq:svivertex}
+\end{align}
+Its far field is two straight rays:
+\begin{equation}
+w(k)=\beta_L|k|+O(1)\ (k\to-\infty),\qquad
+w(k)=\beta_R\,k+O(1)\ (k\to+\infty),
+\label{eq:sviwings}
+\end{equation}
+with
+\[
+\beta_L=b_S(1-\rho_S),\qquad \beta_R=b_S(1+\rho_S).
+\]
+The curvature at the vertex is
+$\kappa^*=w''(k^*)=b_S\,q_S^{3}/s_S$.
+\end{proposition}
+
+\begin{proof}
+Differentiating \eqref{eq:svi} gives \eqref{eq:svideriv}; $b_S,s_S>0$ make
+$w''>0$ everywhere, so any stationary point is the unique global minimum.
+Setting $w'=0$ gives $x_S/r_S=-\rho_S$, hence
+$x_S^2(1-\rho_S^2)=\rho_S^2s_S^2$ with $x_S$ of the opposite sign to
+$\rho_S$, i.e.\ $x_S=-s_S\rho_S/q_S$ and $r_S=s_S/q_S$; substituting
+yields \eqref{eq:svivertex} and $\kappa^*=b_Ss_S^2(q_S/s_S)^3$.  In either
+wing $r_S=|x_S|+O(1/|x_S|)$, which gives \eqref{eq:sviwings}.
+\end{proof}
+
+The formula reads as a rounded hinge.  Far from the vertex the hinge has
+forgotten its rounding and shows two straight rays, of slope $\beta_L$ on
+the left and $\beta_R$ on the right; the tilt $\rho_S$ divides a fixed
+total steepness $\beta_L+\beta_R=2b_S$ between the two sides, with
+$\rho_S<0$ --- the equity put skew --- making the left ray steeper.  Near
+the vertex, $s_S$ decides how sharply one ray turns into the other, $m_S$
+places the turn, and $a_S$ raises the whole curve.  \Cref{fig:svizoo}
+sweeps each role in isolation.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_svi_zoo.pdf}
+\caption{The reach of the family \eqref{eq:svi}, one parameter at a time
+around a common slice.  (a)~The tilt $\rho_S$ redistributes a fixed total
+steepness between the wings.  (b)~The width $s_S$ rounds the vertex without
+moving the rays.  (c)~The steepness $b_S$ opens or closes both wings
+together.  Every member is one convex curve with one minimum.}
+\label{fig:svizoo}
+\end{figure}
+
+Two consequences of \cref{prop:svigeom} organize the rest of the chapter.
+
+First, the tails collapse to two numbers.  As $|k|$ grows, $w(k)/|k|$
+converges to $\beta_L$ on the put side and $\beta_R$ on the call side, and
+no other feature of the slice survives to infinity.  Whatever the market's
+tails are worth, this family records them in $(\beta_L,\beta_R)$ alone ---
+which is precisely the pair that Lee's moment bound constrains, and
+\cref{sec:svilee} develops that correspondence.
+
+Second, strict convexity is a rigidity.  One hyperbola has one belly and
+one monotone turn of the slope, from $-\beta_L$ up to $+\beta_R$, and this
+excludes a shape that markets do produce.
+
+\begin{proposition}[A convex slice cannot carry a W]
+\label{prop:convexww}
+A convex function on an interval has no interior strict local maximum.
+Hence a total-variance curve with a central trough flanked by two shoulders
+--- an interior local maximum on each side --- is not representable by any
+globally convex slice, in particular by \eqref{eq:svi}.
+\end{proposition}
+
+\begin{proof}
+Convexity makes the one-sided derivatives non-decreasing; a strict interior
+maximum would force the derivative to pass from positive to negative,
+contradicting monotonicity.  By \cref{prop:svigeom}, $w''>0$ everywhere for
+the family \eqref{eq:svi}.
+\end{proof}
+
+On a liquid index chain this rigidity is a virtue: it forbids the wiggles
+that quote noise would otherwise carve into the curve.  Ahead of a
+scheduled event, or in a name with bimodal positioning, it is a ceiling ---
+the smile genuinely turns more than once, and the family cannot follow.
+\Cref{sec:mcs} removes the ceiling without giving up the wings.

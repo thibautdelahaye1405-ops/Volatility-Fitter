@@ -1,0 +1,194 @@
+\section{Tails, moments, and wings}
+\label{sec:tails}
+
+The endpoint speeds introduced in \eqref{eq:speeds} have an exact
+probabilistic meaning.  This section follows the chain
+\[
+\text{endpoint speed}\longrightarrow
+\text{tail scale}\longrightarrow
+\text{finite moments}\longrightarrow
+\text{asymptotic smile slope}.
+\]
+
+\subsection{Endpoint speeds are tail scales}
+
+\begin{proposition}[Exponential tails]
+\label{prop:tails}
+For every admissible LQD slice there are constants $K_\pm>0$ such that
+\begin{equation}
+\Prob(X>x)\sim K_+e^{-x/\lambda_+}\quad(x\to+\infty),
+\qquad
+\Prob(X<x)\sim K_-e^{x/\lambda_-}\quad(x\to-\infty).
+\label{eq:exptails}
+\end{equation}
+Equivalently,
+$\Prob(Y>y)\sim K_+y^{-1/\lambda_+}$ and
+$\Prob(Y<y)\sim K_-y^{1/\lambda_-}$.
+\end{proposition}
+
+\begin{proof}
+On the right, \eqref{eq:asymptotes} gives
+$x(z)=m+b_++\lambda_+z+O(e^{-z})$.  Its inverse satisfies
+\[
+z(x)=\frac{x-m-b_+}{\lambda_+}+O(e^{-z(x)}).
+\]
+Since $1-\Lambda(z)\sim e^{-z}$,
+\[
+\Prob(X>x)=1-\Lambda(z(x))
+\sim e^{(m+b_+)/\lambda_+}e^{-x/\lambda_+}.
+\]
+The left tail is identical after reversing signs.
+\end{proof}
+
+The gross return therefore has power tails, while the log-return has
+exponential tails.  The two endpoint coefficients control extrapolation in a
+directly readable unit: log-return distance per $e$-fold reduction in tail
+probability.
+
+\subsection{The moment strip}
+
+Every expectation may be written either in rank or log-odds:
+\begin{equation}
+\E[h(X)]=\int_0^1h(Q(u))\,\dd u
+=\int_{-\infty}^{\infty}h(x(z))\rho(z)\,\dd z.
+\label{eq:rankintegral}
+\end{equation}
+
+\begin{proposition}[Moment strip]
+\label{prop:strip}
+For an admissible LQD slice,
+\begin{equation}
+\E[e^{rX}]<\infty
+\quad\Longleftrightarrow\quad
+-\frac1{\lambda_-}<r<\frac1{\lambda_+}.
+\label{eq:strip}
+\end{equation}
+Consequently the last finite positive moment of $Y$ beyond the first and the
+last finite inverse moment are
+\[
+r_+^*=\frac1{\lambda_+}-1,
+\qquad
+r_-^*=\frac1{\lambda_-}.
+\]
+\end{proposition}
+
+\begin{proof}
+In \eqref{eq:rankintegral}, the right-tail integrand for $h(x)=e^{rx}$ is
+asymptotic to $e^{(r\lambda_+-1)z}$; the left-tail integrand is asymptotic to
+$e^{(r\lambda_-+1)z}$.  Integrability gives exactly
+\eqref{eq:strip}, with divergence at both boundary values.
+\end{proof}
+
+The martingale condition is the point $r=1$.  It lies inside the strip exactly
+when $\lambda_+<1$, so normalization, the finite-forward wall, and the first
+moment are three forms of the same fact.
+
+The asymmetry of the strip is financially important.  A large $\lambda_-$
+may eliminate low-order inverse moments of $Y$ without threatening the
+forward; negative log-returns contribute at most one to $Y$.  A comparable
+right-tail scale would destroy the first positive moment and hence the
+forward itself.  For the long NVDA example, $\lambda_->1$, so even
+$\E[Y^{-1}]$ diverges, while $\E[Y]=1$ remains exact.
+
+\subsection{Closed Lee slopes}
+
+Lee's moment formula \citep{Lee2004} relates the critical moments to the
+asymptotic slopes of total implied variance:
+\begin{equation}
+\beta_R=\limsup_{k\to+\infty}\frac{w(k)}k=\Psi(r_+^*),
+\qquad
+\beta_L=\limsup_{k\to-\infty}\frac{w(k)}{|k|}=\Psi(r_-^*),
+\label{eq:lee}
+\end{equation}
+where
+\[
+\Psi(r)=2-4(\sqrt{r^2+r}-r),\qquad r\ge0.
+\]
+
+\begin{proposition}[Speed-to-slope maps]
+\label{prop:leeclosed}
+The LQD wing slopes are
+\begin{equation}
+\beta_R=\frac{2\lambda_+}{(1+\sqrt{1-\lambda_+})^2},
+\qquad
+\beta_L=\frac{2\lambda_-}{(1+\sqrt{1+\lambda_-})^2}.
+\label{eq:leeclosed}
+\end{equation}
+Both maps increase with their endpoint speed.  For small speeds,
+$\beta_\pm\sim\lambda_\pm/2$; as $\lambda_+\uparrow1$, $\beta_R\uparrow2$.
+For LQD slices the limsups in \eqref{eq:lee} are ordinary limits.
+\end{proposition}
+
+\begin{proof}
+Substitute $r_+^*=1/\lambda_+-1$ and $r_-^*=1/\lambda_-$ into $\Psi$ and
+rationalize.  For example, with $s=\sqrt{1-\lambda_+}$,
+\[
+\Psi(1/\lambda_+-1)=2-\frac{4s}{1+s}
+=\frac{2\lambda_+}{(1+s)^2}.
+\]
+The left formula is obtained with $t=\sqrt{1+\lambda_-}$.  Monotonicity and
+limits follow from the final expressions.  By \cref{prop:tails}, the return
+tails are regularly varying; the Benaim--Friz refinement of Lee's formula
+therefore gives convergence rather than only a limsup
+\citep{BenaimFriz2009}.
+\end{proof}
+
+For completeness, the left algebra is
+\[
+\Psi(1/\lambda_-)
+=2-\frac{4(\sqrt{1+\lambda_-}-1)}{\lambda_-}
+=\frac{2\lambda_-}{(1+\sqrt{1+\lambda_-})^2}.
+\]
+The formulas expose two useful scales.  When $\lambda$ is small, the wing
+slope is about half the endpoint speed.  On the right, the map reaches Lee's
+model-free ceiling $2$ exactly when the first moment reaches its boundary.
+The tail coordinate and the no-arbitrage wing bound meet at the same point.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_tails.pdf}
+\caption{The tail chain.  Left: endpoint speed determines the last finite
+moment; the right map reaches the finite-forward wall at $\lambda_+=1$.
+Center: Lee's moment-to-slope function.  Right: the closed compositions in
+\eqref{eq:leeclosed}.  Markers show the fitted SPY December 2026 and NVDA
+December 2027 slices.}
+\label{fig:tails}
+\end{figure}
+
+The marked market slices occupy only a small part of the admissible range.
+For SPY December 2026 the endpoint speeds are
+$\lambda_-=\MacSpyLamL$ and $\lambda_+=\MacSpyLamR$, giving slopes
+$\beta_L=\MacSpyBetaL$ and $\beta_R=\MacSpyBetaR$.  The long NVDA slice has
+$\lambda_-=\MacNvdaLamL$ and $\lambda_+=\MacNvdaLamR$, with slopes
+$\MacNvdaBetaL$ and $\MacNvdaBetaR$.  The heavier single-name tails appear
+as larger endpoint speeds before the smile is ever plotted.
+
+\subsection{The limit and the traded wing}
+
+The numbers $\beta_\pm$ describe limits, not quoted strikes.  If
+$w(k)=\beta|k|+b+o(1)$, then $w(k)/|k|=\beta+b/|k|+o(1/|k|)$ and may approach
+its limit from either side.  The sign of the intercept $b$ is not fixed.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.86\textwidth}{fig_lee.pdf}
+\caption{Effective variance slopes for the fitted SPY December 2026 slice.
+The left wing lies below its Lee limit at the marked deltas, while the right
+wing lies above.  The asymptotic slopes are boundary conditions for
+extrapolation; they are not substitutes for prices at finite strikes.}
+\label{fig:lee}
+\end{figure}
+
+No finite option strip identifies an asymptotic decay rate by itself.  In a
+fit, $\lambda_\pm$ are selected jointly by the outer quotes, basis order,
+regularization, and endpoint coordinates.  The model makes this choice
+low-dimensional and interpretable, but it does not turn extrapolation into
+observation.
+
+The finite-strike discrepancy is large enough to matter.  On the SPY slice
+in \cref{fig:lee}, the effective right slope is
+\MacLeeRatioTenDeltaCall\ times its limit at ten delta and
+\MacLeeRatioOneDeltaCall\ times at one delta.  On the left, the corresponding
+ratios are \MacLeeRatioTenDeltaPut\ and \MacLeeRatioOneDeltaPut, both below
+one.  A limiting slope can therefore overstate one traded wing and understate
+the other on the same fitted law.

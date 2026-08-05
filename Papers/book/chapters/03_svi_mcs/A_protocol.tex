@@ -1,0 +1,101 @@
+\section{Comparison protocol and numerical notes}
+\label{app:protocol}
+
+\subsection*{Protocol}
+
+Every number and figure in this chapter is produced by one deterministic
+script from the frozen snapshot of \cref{app:data} and the fixed synthetic
+constructions below; nothing is typed by hand.  The three-family
+comparison of \cref{sec:comparison} calibrates each family to the same
+mid quotes of each node with equal unit-mean weights:
+
+\begin{itemize}
+\item \textbf{LQD}: order 16 reduced by the guard \eqref{eq:orderguard},
+logistic tail chart, ridge $\alpha=10^{-6}$ with $\nu=1$ --- the recipe of
+\cref{sec:calibration} with the mid objective.
+\item \textbf{SVI}: the structural chart \eqref{eq:structlift} with
+$\beta_{\max}=\MacSviBetaMax$ and hinge multiplier $W=10^{3}$ (the rows
+are structurally zero in this chart; the multiplier matters only for the
+historical chart \eqref{eq:rawlift}).
+\item \textbf{MCS}: $R=2$ under the cap \eqref{eq:idcap}, amplitude ridge
+$10^{-2}$, and a one-sided hinge on sampled $g_{\rm D}$ over a grid
+extending two $\zeta$-units past the quoted range, weighted double on the
+put side --- a soft fence with the same status as
+\eqref{eq:svipenalties}: zero on any admissible fit.  Kernel centers may
+roam half a unit past the quoted range; half-widths are confined to
+$[0.15,1.5]$ and steepnesses to $[1,12]$ in $\zeta$-units.  The base is
+fitted first, kernels are seeded greedily on the largest residuals with
+a masked neighborhood so two kernels cannot seed one feature, and a
+joint refinement follows.
+\end{itemize}
+
+The validity margin is $\min g_{\rm D}$ over $801$ equally spaced points
+spanning exactly the node's quoted log-moneyness range.
+
+\subsection*{Evaluating $g_{\rm D}$ per family}
+
+Each family's Durrleman factor is computed from its own analytic
+structure, never by differencing prices --- a finite difference of
+reconstructed prices carries curvature noise at exactly the scale the
+diagnostic measures.  For SVI, $(w,w',w'')$ are the closed forms
+\eqref{eq:svideriv}.  For MCS, the $\zeta$-space derivatives of
+\eqref{eq:mcsmodel} are analytic (second differences of
+\eqref{eq:acosh}) and convert by $w'=\sqrt\tau\,V'/\sigma_{\rm ref}$,
+$w''=V''/\sigma_{\rm ref}^2$.  For LQD no derivatives are needed at all:
+\eqref{eq:durrleman} states
+$f_X(k)=g_{\rm D}(k)\,\phin(d_-)/\sqrt{w}$, so
+\[
+g_{\rm D}(k)=\frac{f_X(k)\,\sqrt{w(k)}}{\phin\!\big(d_-(k,w(k))\big)},
+\qquad d_-=-\frac{k}{\sqrt w}-\frac{\sqrt w}{2},
+\]
+with $f_X$ the slice's explicit density --- the identity that defined
+$g_{\rm D}$ is run backwards.  For the mixture target of
+\cref{fig:cmpmixture} the same identity is used with the exact mixture
+density, which is how the target's own margin is known rather than
+estimated.
+
+\subsection*{Synthetic constructions}
+
+The W-shaped target of \cref{fig:mcsmech} is built in total variance so
+that its wings are asymptotically linear and its derivatives are exact:
+\[
+w(k)=0.008+0.012\sqrt{k^2+0.15^2}
++0.0025\big(e^{-\{(k-0.28)/0.11\}^2}+e^{-\{(k+0.28)/0.11\}^2}\big),
+\qquad \tau=0.25,
+\]
+sampled at $61$ equally spaced quotes on $[-0.5,0.5]$.  Gaussians vanish
+with all derivatives, so both wings carry the asymptotic slope $0.012$
+--- far under Lee's bound --- and the tail limit of $g_{\rm D}$ is
+$(4-0.012^2)/16=\MacMcsTargetTailG$; the script verifies
+$\min g_{\rm D}=\MacMcsTargetGmin>0$ on a dense grid to $|k|=12$ from the
+analytic derivatives before any figure is written.  A target built carelessly in
+volatility space with linear volatility tails would violate Lee far
+outside the plotted window: total variance would grow quadratically.
+Certify a synthetic target the same way as a fit, globally, or it
+certifies nothing.
+
+The mixture target is the two-lognormal law of \cref{sec:comparison}:
+weights $(0.65,0.35)$, volatilities $(0.14,0.42)$, second component
+forward $0.85$ and the first fixed by the martingale identity
+$0.65\,f_1+0.35\cdot0.85=1$ (so $f_1=1.0808$), $\tau=0.25$, quoted at
+$25$ strikes on $k\in[-0.5,0.4]$ through exact Black inversion of the
+mixture call.
+
+\subsection*{Floating-point strictness}
+
+The structural chart's guarantee --- wings strictly inside
+$(0,\beta_{\max})$, floor strictly positive --- is a statement about real
+numbers, and float64 does not honor it automatically.  Two boundary
+effects deserve record.  A logistic lift evaluated at a moderately large
+coordinate rounds to exactly $1$, parking a wing exactly at the cap; the
+implementation clips the lift one unit in the last place inside $1$.
+And when one wing saturates against an ordinary other, the quotient for
+$\rho_S$ in \eqref{eq:structinv} can round to $\pm1$, making
+$1-\rho_S^2$ an exact zero and $m_S$ undefined; the implementation
+computes it by the algebraically identical product form
+\[
+1-\rho_S^2=\frac{4\,\beta_L\beta_R}{(\beta_L+\beta_R)^2},
+\]
+which never rounds to zero for admissible wings.  A chart whose
+strictness silently fails at the boundary reproduces exactly the failure
+mode it was built to remove.

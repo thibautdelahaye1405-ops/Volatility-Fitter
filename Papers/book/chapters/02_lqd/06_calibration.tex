@@ -1,0 +1,181 @@
+\section{Calibration}
+\label{sec:calibration}
+
+Validity has already been settled by the coordinates.  Calibration may
+therefore concentrate on information: selecting, among admissible laws, one
+that represents the quoted strip without inventing unsupported detail.
+
+\subsection{A one-expiry objective}
+
+Suppose a slice contains quotes $(k_i,\sigma_i)$ with
+$w_i=\sigma_i^2\tau$.  The reference fit minimizes
+\begin{equation}
+\sum_i\left(
+\frac{c(k_i;\theta)-\Black(k_i,w_i)}
+     {\partial_\sigma\Black(k_i,w_i)+\eta}
+\right)^2
++\alpha\sum_{n\ge4}n^{2\nu}a_n^2.
+\label{eq:objective}
+\end{equation}
+Each element of \eqref{eq:objective} answers one practical problem.  The
+residual is computed in price, so implied-volatility inversion stays outside
+the optimization loop, where it cannot fail on an exploratory trial point.
+Division by the Black vega $\partial_\sigma\Black=\phin(d_+)\sqrt\tau$ makes
+a central residual a volatility error --- the unit in which quotes are
+judged --- while the floor $\eta$ lets the metric degrade to a scaled price
+error where vega vanishes, instead of assigning unbounded weight to a
+negligible option.  The $n^{2\nu}$ ridge makes fine modes progressively more
+expensive but leaves $a_2$ and $a_3$, the main curvature and asymmetry
+modes, unpenalized.
+
+The reference objective also contains a smooth row
+$\log(1+e^{50(\lambda_+-0.90)})$.  The admissibility chart already prevents
+the wall from being reached; this row is instead an explicit prior against a
+nearly exhausted right-tail moment budget.
+
+A quoted option is an interval, not necessarily a point.  Three targets are
+useful.  A \emph{mid} fit uses \eqref{eq:objective} directly.  A \emph{band}
+fit uses the outside-band hinge together with a weak mid anchor.  If
+$[p_i^{\rm lo},p_i^{\rm hi}]$ is the price band and $\phi_i$ the vega
+normalizer, its two residuals are
+\begin{equation}
+\frac{(c_i-p_i^{\rm hi})^++(p_i^{\rm lo}-c_i)^+}{\phi_i},
+\qquad
+\sqrt{0.05}\frac{c_i-p_i^{\rm mid}}{\phi_i}.
+\label{eq:band}
+\end{equation}
+The squared hinge is continuously differentiable at a band edge, and the
+weak mid row --- its weight deliberately small --- selects one point when a
+wide band leaves a flat valley of equally admissible laws.
+A \emph{haircut} fit first shrinks the volatility band by $h$:
+\begin{equation}
+\sigma_i^{\rm lo}=\min(\sigma_i^{\rm bid}+h,\sigma_i^{\rm mid}),
+\qquad
+\sigma_i^{\rm hi}=\max(\sigma_i^{\rm mid},\sigma_i^{\rm ask}-h).
+\label{eq:haircut}
+\end{equation}
+If the original spread is narrower than $2h$, the band collapses to the mid
+instead of changing orientation.  This occurs for every SPY quote in the
+frozen sample; the wider NVDA spreads retain live bands.
+
+The two underliers illustrate both regimes.  The SPY December node has median
+spread \MacSpyDecMedianSpreadBp\ vol bp, far inside the default
+$2h=100$ vol-bp width, and none of its haircut bands survives.  Its figures
+therefore show raw bid--ask intervals around a mid fit.  On the featured NVDA
+nodes, \MacNvdaOneDayBandLivePct\% and \MacNvdaLongBandLivePct\% of the
+bands remain live.  The same rule becomes a mid target on a liquid index and a
+genuine interval target on the wider single-name book.
+
+The informational division can be read by location.  Between liquid quotes a
+small change in the law moves observed prices and is strongly penalized: the
+strip determines the call curve there, and with it the ATM level, skew,
+curvature, and low-order moments.  Near the edge of the strip, data and
+regularization share control; beyond the outer quote, the endpoint speeds
+and the ridge supply most of the continuation.  The curve itself is smooth
+--- what changes gradually is the source of information, a transition made
+visible by plotting quote locations with the density as in
+\cref{fig:lqdchart}.  Tail coordinates, ridge, and basis order should be
+reported with a fit because they make these choices.
+
+\subsection{Order and starting values}
+\label{sec:orderguard}
+
+At order $N$ the model has $N+1$ parameters.  The reference implementation
+uses the effective order
+\begin{equation}
+N_{\rm eff}=\max\left(
+\min\left(N,\left\lfloor\frac{n_q}{2}\right\rfloor-1\right),
+\min(N,6)\right),
+\label{eq:orderguard}
+\end{equation}
+where $n_q$ is the quote count.  The cap keeps the parameter count well below
+the number of observations; the floor leaves thin strips enough shape to form
+a usable smile.  The rule is an identification convention, not a validity
+condition.  Changing it changes inter-quote density detail while every
+resulting slice remains arbitrage-free.
+
+Away from the floor, \eqref{eq:orderguard} requires roughly two quotes per
+body degree of freedom.  This is not a theorem about optimal smoothing; it is
+a guard against inferring one oscillatory direction from each noisy
+observation.  On the shortest NVDA slice,
+\MacGuardQuoteCountZeroDte\ quotes give
+$N_{\rm eff}=\MacGuardEffOrderZeroDte$.  The fit remains visibly less certain
+there rather than borrowing high-order detail from the basis.
+
+Cold starts use the constant-speed value \eqref{eq:coldstart}.  In a maturity
+sweep, the previous expiry supplies a warm start.  A multi-start check on the
+featured SPY and NVDA nodes used \MacMultiStartCount\ randomized starts per
+node and found \MacMultiStartBasins\ basin, with worst fit-quality spread
+\MacMultiStartWorstDIvBp\ vol bp.  This supports the starting rule on those
+slices; event-dominated books may still require a broader search.
+
+\subsection{Coordinates for optimization}
+\label{sec:charts}
+
+Three charts describe the same polynomial family.
+
+\begin{enumerate}
+\item The \emph{raw chart} is $(L,R,a_2,\ldots,a_N)$.  It is simple, but
+\eqref{eq:endpoints} couples body modes to both tails.
+\item The \emph{endpoint chart} is
+$(\log\lambda_-,\log\lambda_+,a_2,\ldots,a_N)$.  Solving
+\eqref{eq:endpoints} for $(L,R)$ is linear.  Equivalently, each body basis
+function is replaced by an endpoint-vanishing combination.  Body moves then
+hold both tail scales fixed.
+\item The \emph{logistic chart}, the reference default, writes
+$\lambda_+=\expit\xi$ with $\xi\in\R$.  Every finite coordinate vector is
+admissible, and
+\begin{equation}
+\frac{\dd\log\lambda_+}{\dd\xi}=1-\lambda_+.
+\label{eq:chartcompression}
+\end{equation}
+Steps shrink smoothly as the wall is approached.
+\end{enumerate}
+
+The endpoint-vanishing body functions are explicit:
+\begin{equation}
+\widetilde P_n(u)=P_n(1-2u)-(1-u)-(-1)^nu,\qquad n\ge2.
+\label{eq:endpointbasis}
+\end{equation}
+They satisfy $\widetilde P_n(0)=\widetilde P_n(1)=0$.  A tail policy can
+therefore set $(\lambda_-,\lambda_+)$ while calibration adjusts the body in a
+subspace that cannot move either endpoint.
+
+The objective is identical in all three charts.  Fits in the frozen sample
+agree across charts to \MacChartEquivParamAgree\ in the recovered raw
+parameters.  In floating point, $\expit\xi$ eventually rounds to one, so the
+implementation also enforces $\lambda_+\le1-10^{-6}$.
+
+\subsection{Calibration sequence}
+
+The complete one-slice calculation is short enough to state as an algorithm.
+
+\begin{enumerate}
+\item Convert strikes and prices to $(k_i,c_i)$ using the node's forward and
+discount factor.  Map bid and ask volatilities through Black once to construct
+price bands and compute the quote vegas used for normalization.
+\item Choose the effective order from \eqref{eq:orderguard} and select mid,
+band, or haircut residuals.  This fixes the data part of the objective before
+optimization begins.
+\item Construct a cold start from the ATM variance using
+\eqref{eq:coldstart}, or map the previous expiry into the endpoint chart for a
+warm start.  In either case, convert to logistic coordinates so all finite
+trial vectors are admissible.
+\item At each trust-region step, build $(x,x',G,G')$ on the fixed grid of
+\cref{sec:numerics}, price every quote by \eqref{eq:call}, and obtain the
+whole residual Jacobian from \eqref{eq:pass1}--\eqref{eq:pass3}.  Failed
+exponent-budget trials return a large residual rather than an undefined
+price.
+\item After convergence, rebuild the accepted parameters on the dense grid.
+Evaluate ATM handles, tail moments, Lee slopes, the log-contract variance, and
+the numerical certificates (\cref{sec:certificates}) from this one final
+object.
+\item If the slice belongs to a maturity sequence, add calendar rows against
+the accepted nearer slice and repeat.  Report any residual common-support
+gap in normalized price units.
+\end{enumerate}
+
+This order matters.  Market conventions are fixed before the solve;
+probability validity holds during the solve; diagnostics are computed after
+the solve from the same law that produced the quoted prices.  No separate
+post-processing smoother is inserted between calibration and publication.
