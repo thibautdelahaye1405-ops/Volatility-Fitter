@@ -1,9 +1,11 @@
 # The Volatility Book — roadmap
 
 This file is the ONLY entry point for book sessions. A session that works on
-a chapter reads: (1) this file, (2) the style contract below, (3) the source
-notes listed in its chapter brief, (4) Chapter 2 (`Papers/lqd_paper/`) as the
-style exemplar. Nothing else.
+a chapter reads: (1) this file, (2) the pedagogy contract below, (3) the
+source notes listed in its chapter brief, (4) the most recently REVISED
+chapter as the tone exemplar (until one exists, the contract itself
+governs — do NOT imitate the density of Chapters 2–4 as they stand).
+Nothing else.
 
 ## Context hygiene (read this first, every session)
 
@@ -24,6 +26,22 @@ the prose. Therefore:
   implementation". No product names, no repo paths, no internal note
   citations — public literature only.
 
+## Status (2026-08-05, author feedback)
+
+The author reviewed Chapters 3–4 and rejected their register: too dense,
+too clever, not readable for someone meeting the subject for the first
+time. The style contract below was rewritten in response — it OVERRIDES
+the earlier "monograph" register, and Chapter 2 is NO LONGER the style
+exemplar. Next, in order:
+
+1. Revise Chapters 3 and 4 to the new contract (full rewrite of the
+   prose as lessons; the mathematics, figures and macros stand).
+2. Chapter 5 onward, written under the new contract from the start.
+
+Chapter 2 keeps its monograph register for now (it doubles as the
+standalone paper); whether to soften it inside the book is the author's
+decision, to be raised at introduction time.
+
 ## The book
 
 Working title: *The Volatility Surface as a Field of Probability Laws*
@@ -35,26 +53,61 @@ separates, for its subject, what follows from probability (validity), what
 the market determines (information), and what the modeler must choose and
 disclose (convention).
 
-Register: self-contained chapters of a polished textbook. Voice: a blend of
-Shannon, Einstein, Turing, and Milnor; the pedagogical standard is El
-Karoui–Geman–Rochet, "Changes of Numeraire, Changes of Measure, and Option
-Pricing". Concretely (learned on Chapter 2, enforce everywhere):
+## The pedagogy contract (rewritten 2026-08-05 — this governs)
 
-1. Plain declarative prose; every abstraction followed immediately by a
-   concrete instance. Derive, don't assert; a proof ≤ half a page stays in
-   the text, longer proofs go to the chapter appendix.
-2. NO audit rhetoric, NO defensiveness, NO repeated caveats. A limitation is
-   stated once, as mathematics, where it arises (the model contract table at
-   a chapter's end may collect scope in one place). "Honesty" is shown, not
-   discussed.
-3. One notation ledger for the whole book (see below). One boxed display per
-   chapter at most. Primes for one-variable derivatives, ∂ for partials.
-4. Every empirical number is a generated macro; nothing data-derived is
-   typed by hand. Figures come from one deterministic per-chapter script
-   reading frozen data.
-5. Concise and progressive: a chapter should run 15–25 pages, sections
-   single-subject, transitions explicit ("we now have X; the next question
-   is Y").
+The reader: smart, motivated, but NEW to this. Black–Scholes, calculus and
+probability at first-course level; no prior exposure to smile modeling, to
+the literature, or to this project. They have read the earlier chapters
+once, not memorized them. The standard is a patient lecture in writing:
+simple words, concrete examples, every step shown, nothing performed.
+
+A chapter is a LESSON, never a rephrase of the source notes or papers.
+The notes are a quarry for facts, derivations, constants and figure ideas
+— their structure, sentences and density must not survive into the book.
+
+1. Plan as a lesson. Before drafting, write the 3–5 things the reader
+   must be able to explain or do after the chapter (as a comment block at
+   the top of chapter.tex). Everything in the chapter serves one of them.
+   Whatever serves none is CUT, not compressed.
+2. One idea per paragraph. Short declarative sentences. If a sentence
+   needs a second reading, split it. At most one aside per paragraph; no
+   sentence with three clauses strung on em-dashes.
+3. Concrete before abstract. Introduce every new object on the smallest
+   example that shows it — three quotes, a 2×3 grid, one worked number —
+   before the general definition. The reader should be able to compute
+   along on paper.
+4. Say why, plainly, before and after. Before a derivation: one or two
+   sentences on what is about to be shown and why it matters. After:
+   restate the result in words a beginner could repeat to a colleague.
+   Signposts are plain ("We now know X. The next question is Y.").
+5. Show the algebra. Any step a first-course reader could not reproduce
+   is written out. "Integrating by parts twice" is displayed lines, not a
+   phrase.
+6. Re-introduce terms. Every term of art (convex order, vega, Tikhonov,
+   monotone scheme, ...) gets a one-line plain-language reminder at first
+   use in EACH chapter, even if defined earlier. Keep the symbol count
+   low: a symbol used fewer than three times should be words instead.
+7. Plain beats memorable. At most one aphorism per chapter. Cut any
+   phrase that performs rather than teaches.
+8. Repetition is a feature. Open each section with one sentence of where
+   we are; close with one sentence of what we now have. Restate a key
+   fact when it is used pages after its proof.
+9. A limitation is stated once, in one sentence, where it bites; the
+   chapter's contract table collects scope. No stacked caveats, no audit
+   rhetoric — and no cleverness about honesty either.
+10. Fewer figures, walked slowly. 5–8 per chapter, and the text walks
+    each panel ("in panel (a), the orange curve is ...; notice ...").
+    A figure the text does not walk is cut.
+
+Page budget: 15–22 pages at the new, roomier prose density — fewer topics
+per chapter, not smaller writing.
+
+Mechanics (unchanged): derive, don't assert; proofs ≤ half a page stay in
+the text, longer ones go to the chapter appendix. One notation ledger for
+the whole book (NOTATION.md); one boxed display per chapter at most;
+primes for one-variable derivatives, ∂ for partials. Every empirical
+number is a generated macro; figures come from one deterministic
+per-chapter script reading frozen data.
 
 ## Structure (decided 2026-08-04 with the author)
 
@@ -67,9 +120,9 @@ local volatility placed among the models (author's decision).
 | 1  | Introduction | replaces Note 00; write LAST | pending (last) |
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | 01 | **DONE** (`Papers/lqd_paper/`, 36 pp) |
-| 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | **DONE** (2026-08-05, ~19 pp) |
-| 4  | Local volatility | 04 | **DONE** (2026-08-05, ~20 pp) |
-| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | next |
+| 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | drafted 2026-08-05; **REVISION REQUIRED** (pedagogy contract) |
+| 4  | Local volatility | 04 | drafted 2026-08-05; **REVISION REQUIRED** (pedagogy contract) |
+| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending (after the 3–4 revision) |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | pending |
 | 7  | Removing early exercise | 05 | pending |
@@ -143,29 +196,44 @@ frozen files only.
 
 1. Read: this roadmap → the chapter brief below → the source notes (all
    listed editions; they are alternative expositions of the same material —
-   mine all, follow none) → skim Chapter 2 for voice and conventions.
-2. Plan the chapter: section spine (6–9 sections + optional chapter
-   appendix), the 6–12 figures, the macros needed. The spine of the LQD
-   chapter (object → validity → structure → computation → examples →
-   contract) adapts to most subjects but must not be forced.
+   mine all, follow none, and let none of their density through).
+2. Plan the chapter as a lesson: FIRST the 3–5 lesson goals (recorded as a
+   comment block in chapter.tex), then a section spine (5–8 sections +
+   optional chapter appendix), the 5–8 figures, the macros needed. The
+   briefs' "Keep" lists below are ceilings, not floors — cut freely; what
+   serves no lesson goal goes.
 3. Draft. Writer may be the lead or one writer sub-agent (brief it with the
-   style contract verbatim; forbid the excluded context explicitly).
+   pedagogy contract verbatim; forbid the excluded context explicitly).
 4. Figures: one deterministic script `scripts/chNN/gen_figures.py` reading
    frozen data; emits `figures/chNN/` PDFs + a macros file the chapter
-   inputs. Match Chapter 2's visual conventions (restrained palette, (a)/(b)
-   panel titles, units on axes, rms annotations where relevant).
-5. Review, lean: ONE fresh-reader pass (student persona: knows Black-Scholes
-   and the PREVIOUS chapters only — chapters must be self-contained given
-   the book so far) + the lead's own math verification of every derivation.
-   The full multi-round machinery of Chapter 2 is not repeated unless the
-   chapter's mathematics is genuinely new rather than re-derived.
+   inputs. Match the established visual conventions (restrained palette,
+   (a)/(b) panel titles, units on axes, rms annotations where relevant).
+5. Review: ONE fresh-reader pass with a NEWCOMER persona — first-course
+   Black–Scholes only, no smile-modeling background, has read the previous
+   chapters once. Their report must give, per section: (i) a one-sentence
+   summary in their own words, (ii) the first place they got lost or had
+   to re-read. Plus the lead's own math verification of every derivation.
 6. Build the whole book (all chapters), check cross-references and the
    notation ledger, commit.
 
-Definition of done: compiles in the book master; 15–25 pp; every derivation
-verified by the lead; zero hand-typed empirical numbers; notation ledger
-updated; no excluded-context leakage (grep the chapter for "production",
-app terms, note references); one fresh-reader pass addressed.
+Definition of done: compiles in the book master; 15–22 pp; the lesson
+goals are stated and each is met; every derivation verified by the lead;
+every "lost" or "re-read" point from the newcomer pass resolved (rewrite
+until the persona can summarize every section in one plain sentence);
+zero hand-typed empirical numbers; notation ledger updated; no
+excluded-context leakage (grep the chapter for "production", app terms,
+note references).
+
+## Revision procedure (Chapters 3 and 4)
+
+Goal: same mathematics, same figures, same macros — new prose, written as
+lessons under the pedagogy contract. Per chapter: write the lesson goals
+first; re-draft section by section (do not patch sentences — patching
+preserves the old density); cut material that serves no goal (move it to
+the appendix or drop it; the figure scripts stay untouched either way);
+walk every kept figure panel by panel; then run the newcomer pass and the
+definition of done above. Expect the revised chapters to carry FEWER
+remarks and asides and MORE worked steps than the drafts.
 
 ## Chapter briefs
 
@@ -378,3 +446,10 @@ keeping Chapter 2 self-contained.
   real proof gap was the θ-dependent boundary term in the
   tangent/adjoint propositions, now stated boundary-inclusively.  Math
   verified by the lead.  Next: Chapter 5 (variance swaps and wings).
+- 2026-08-05 (author review): the author rejected the register of
+  Chapters 3–4 — too dense, not pedagogical, unreadable for a newcomer,
+  and too close to a rephrase of the source material.  The style
+  contract was rewritten as the pedagogy contract above; Chapter 2 is no
+  longer the style exemplar; Chapters 3–4 are queued for a full prose
+  revision (math/figures/macros stand); Chapter 5 waits until after that
+  revision so it can imitate a revised chapter's tone.
