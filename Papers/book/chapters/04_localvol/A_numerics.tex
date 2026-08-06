@@ -9,31 +9,39 @@ recipe; no constant is tuned per name.
 
 \emph{Vertex grid.}  Maturity rows at $\tau=0$ and at every quoted expiry.
 Strike columns delta-spaced: the ladder of put deltas
-$\{1,2,5,10,25,40\}\%$, their call mirrors, and the money, mapped to
+$\{1,2,5,10,25,40\}\%$, the same ladder mirrored on the call side, and
+the money, mapped to
 strikes through
 $y=\exp\big(\sigma_A\sqrt{\tau_{\max}}\;\PhiN^{-1}(\cdot)\big)$ with
 $\sigma_A$ the longest expiry's ATM volatility; the two end columns are
 extended to cover the pooled quoted range, so no quote falls outside the
 hull.  Coverage rule: every expiry must own at least $6$ columns inside
-its own traded range, enforced by splitting the widest
-boundary-augmented gap until none exceeds one fifth of the range
-(\cref{sec:lvinfo}); this is what densifies the short-dated money in
+its own traded range (\cref{sec:lvinfo}), enforced as follows: list
+the columns falling inside the expiry's range together with the
+range's two endpoints, and while the widest gap between consecutive
+entries exceeds one fifth of the range, split that gap with a new
+column; this is what densifies the short-dated money in
 \cref{fig:lvsheet}.
 
 \emph{Lattice.}  Strike step
-$\Delta y=\min\big(0.01,\;0.15\,\min_e\sigma_e\sqrt{\tau_e}\big)$, capped
-at $800$ nodes over $[0,\,\max(2.5,\,1.05\,y_{n_y})]$ with $y_{n_y}$ the
-highest vertex column, and $y=1$ a node; every quoted expiry is a time
-node and each maturity interval receives
+\[
+\Delta y=\min\big(0.01,\;0.15\,\min_e\sigma_e\sqrt{\tau_e}\big),
+\]
+capped at $800$ nodes over $[0,\,\max(2.5,\,1.05\,y_{n_y})]$ with
+$y_{n_y}$ the highest vertex column, and $y=1$ a node; every quoted
+expiry is a time node and each maturity interval receives
 $\max(8,\lceil\Delta\tau_{\rm int}/0.01\rceil)$ implicit steps.
 The refined (audit) operator halves the strike step and quadruples each
 interval's step count.
 
 \emph{Box and objective.}  Adaptive box
-$v_{\rm lo}=\min\big(0.0025,\,(\tfrac12\min_e\sigma_{{\rm ATM},e})^{2}\big)$,
-$v_{\rm hi}=\min\big(\max(0.36,\,(3\,\sigma_{\max})^{2}),\,16\big)$ ---
-the floor a fraction of the smallest ATM implied per the averaging fact,
-the cap a multiple of the largest implied in view.  Seed and reference
+\[
+v_{\rm lo}=\min\big(0.0025,\,(\tfrac12\min_e\sigma_{{\rm ATM},e})^{2}\big),
+\qquad
+v_{\rm hi}=\min\big(\max(0.36,\,(3\,\sigma_{\max})^{2}),\,16\big)
+\]
+--- the floor a fraction of the smallest ATM implied per the averaging
+fact, the cap a multiple of the largest implied in view.  Seed and reference
 $\theta^{0}=\theta_{\rm ref}$ flat at the median ATM variance.  Weights
 $\lambda=10^{-2}$, $\lambda_0=1$; residual scale $\eta_q$ equal to one
 volatility percent of the quote's Black vega, floored at $10^{-3}$.  The
@@ -81,6 +89,12 @@ $O(N_\tau N_y\,n_\theta)$ per evaluation, for a march of $N_\tau$ steps on
 $N_y$ lattice nodes.  The classical alternative makes the cost of a
 \emph{gradient} independent of $n_\theta$; deriving it costs a few lines,
 so the chapter records it for the grids on which it will one day pay.
+The derivation follows the standard optimal-control pattern ---
+adjoin the marching constraints with multiplier vectors $p^{n}$, the
+\emph{adjoint states}, require stationarity, and read the result as a
+backward march; a reader meeting adjoints for the first time can treat
+\eqref{eq:lvadjoint}--\eqref{eq:lvadjgrad} as a recipe and check it
+numerically against the tangent Jacobian.
 
 \begin{proposition}[Adjoint: one backward sweep]
 \label{prop:lvadjoint}
@@ -107,7 +121,8 @@ accumulation of \eqref{eq:lvadjgrad}.
 \end{proposition}
 
 \begin{proof}
-Form the Lagrangian
+Form the Lagrangian (fraktur $\mathfrak L$, kept visually apart from
+the stencil operator $\mathcal L$)
 $\mathfrak{L}=\mathcal J-\sum_n (p^{n})^{\top}
 \big(\mathcal M^{n}U^{n}-U^{n-1}-b^{n}\big)$, with $b^{n}$ the boundary
 terms of \cref{prop:lvtangent}.  Stationarity in each $U^{n}$ --- which

@@ -1,70 +1,107 @@
 \section{One diffusion for the whole surface}
 \label{sec:lvfield}
 
-The static chapters treated an expiry as a law.  Chapter~2 built the law
-first and read the smile off it; Chapter~3 worked in the volatility chart
-and policed validity there.  Either way, a fitted surface is at this point a
-\emph{family} of laws, one per expiry, related pairwise by the calendar
-comparison of \cref{sec:calendar}: at equal log-moneyness, later normalized
-calls dominate earlier ones, which is convex order of the normalized
-returns.  Convex order is exactly the condition under which the family is
-jointly realizable: by Kellerer's theorem \citep{Kellerer1972}, \emph{some}
-martingale has these marginals.  But Kellerer's theorem is an existence
-statement.  It does not say which martingale, it does not give the process
-any structure a computation could use, and it leaves open what additional
-information a particular choice smuggles in.
+Chapters~2 and~3 both ended in the same place.  Each expiry of a fitted
+surface carries its own probability law for the return: Chapter~2 built
+the law first and read the smile from it, Chapter~3 wrote the smile
+directly and then checked that it described a law.  Between neighboring
+expiries one further condition held, the calendar order of
+\cref{sec:calendar}: at the same log-moneyness, the later normalized
+call is worth at least the earlier one.  A surface, so far, is a stack
+of laws, related two at a time.
 
-Dupire's observation \citep{Dupire1994} resolves all three questions inside
-one class.  Adopt, as a standing hypothesis, the deterministic-carry
-setting of \cref{sec:calendar}, under which $Y_\tau=S_\tau/F_{0,\tau}$ is a
-single positive martingale whose time-$\tau$ marginal is Chapter~2's
-normalized return for the expiry-$\tau$ slice.  Consider diffusions of the
-form
+This chapter asks for more.  Is there one random process --- one model
+of the underlying's path --- whose distribution at each expiry is
+exactly the law that expiry's smile encodes?  If there is, the surface
+stops being a stack and becomes a single object: one dynamics, and
+every European price of every maturity comes out of it.
+
+Half of the answer is already known.  Recall two terms from Chapter~2.
+Calendar order across all adjacent pairs is \emph{convex order} of the
+normalized returns --- later laws are more spread out.  And a
+\emph{martingale} is a process with no drift: its expected future
+value, given everything known today, is today's value.  A theorem of
+Kellerer \citep{Kellerer1972} says these two notions meet exactly: if
+the family of laws is in convex order, then \emph{some} martingale has
+these laws as its distributions at the given dates.  But the theorem is
+pure existence.  It does not name the martingale, it gives it no
+structure a computation could use, and it does not say what extra
+information any particular choice smuggles in.
+
+Dupire's observation \citep{Dupire1994} answers all three objections at
+once, by restricting attention to one concrete class of processes.
+Work in the normalized units the book has used since
+\cref{sec:calendar}: $Y_\tau=S_\tau/F_{0,\tau}$ is the underlying
+divided by its forward.  Dividing by the forward is what strips the
+drift: the forward is the expected future level under the pricing law
+(with deterministic carry, as \cref{sec:calendar} assumed), so the
+ratio starts at $1$ and has no tendency to grow or shrink --- it is a
+positive martingale worth $1$ at time zero.  And $\tau$ is variance
+time, the maturity variable the book has quoted variance against since
+Chapter~2, so that a slice's total implied variance is
+$w=\sigma^{2}\tau$.  The reader knows the Black--Scholes
+dynamics $\dd Y=\sigma Y\dd W$, with one constant volatility.  Now let
+the volatility depend on where the process is and on when it is there:
 \begin{equation}
 \dd Y_\tau=\sqrt{v(\tau,Y_\tau)}\;Y_\tau\,\dd W_\tau,\qquad Y_0=1,
 \label{eq:lvsde}
 \end{equation}
-where $v(\tau,y)\ge0$ is a deterministic field, the \emph{local
-variance}; its square root $\sigma_{\rm loc}=\sqrt v$ is the local
-volatility.  Within
-this class the correspondence between coefficient and marginals is exact in
-both directions: the field determines every marginal law by solving a
-forward equation, and the marginals determine the field by a pointwise
-formula, wherever the density is positive.  A valid surface is therefore
-not merely \emph{consistent with} some model --- it \emph{is} the
-coefficient field of one canonical model, written in different coordinates.
-This chapter is about that change of coordinates: how to compute it, why
-the obvious way of computing it fails on real data, and what a market's
-finitely many quotes do and do not say about the field.
+where $v(\tau,y)\ge0$ is a fixed, deterministic function of two
+variables.  The function $v$ is called the \emph{local variance}; its
+square root $\sigma_{\rm loc}=\sqrt v$ is the \emph{local volatility}.
+It is a field: a whole surface of variances, one for every (time,
+level) pair, laid out in advance.  When the process visits level $y$
+at time $\tau$, it diffuses at exactly the rate the field prescribes
+there.  Nothing else is random: the field is the entire model.
 
-Two remarks bound the object's ambitions before we start.  First, the
-diffusion \eqref{eq:lvsde} is a \emph{representative}, not a discovery.  By
-Gy\"ongy's theorem \citep{Gyongy1986}, any It\^o martingale (under mild
-regularity) with the same marginals is mimicked by \eqref{eq:lvsde} with
-$v(\tau,y)$ equal to the conditional expectation of its instantaneous
-variance given $Y_\tau=y$: the local-volatility model is the Markovian
-projection common to every dynamics the statics allow.  Statements that
-depend only on marginal laws --- every European price, every quantity of
-Chapters~2--3 --- are safe; statements about joint laws, such as how the
-smile moves when the spot moves, are not determined by the surface at all
-and are postponed to Chapter~9.  Second, the class \eqref{eq:lvsde}
-contains no jumps.  A genuine discontinuity --- an earnings gap, a
-scheduled announcement --- can only be imitated by a burst of diffusive
-variance; scheduled events belong to a change of clock, which is
-Chapter~8's subject.  Throughout this chapter $\tau$ is the
-variance time used since Chapter~2, $y=e^{k}$ the normalized strike, and
-$c(\tau,y)$ the normalized call: rates, borrow and dividends live inside
-the forward (Chapter~6), and the field $v$ is variance per unit variance
-time.
+Within this class, the vague question above has an exact answer, in
+both directions.  Given the field, one linear equation --- derived in
+the next section --- produces the marginal law of every maturity at
+once.  Given the surface, a pointwise formula recovers the field,
+wherever the implied density is positive.  A valid surface is
+therefore not merely \emph{consistent with} some model.  It \emph{is}
+the coefficient field of one canonical model, written in different
+coordinates.  This chapter is about that change of coordinates: how to
+compute it, why the obvious way of computing it fails on real data,
+and what a market's finitely many quotes do and do not say about the
+field.
+
+Before starting, be clear about what the object is not, on two counts.
+First, the diffusion \eqref{eq:lvsde} is a \emph{representative}, not a
+discovery.  A theorem of Gy\"ongy \citep{Gyongy1986} says that any
+well-behaved martingale with the same marginal laws --- however wild
+its own volatility, random or path-dependent --- is \emph{mimicked} by
+\eqref{eq:lvsde}: take $v(\tau,y)$ to be the average instantaneous
+variance of that process over the paths that sit at $y$ at time
+$\tau$, and the diffusion reproduces every one of its marginals.  Many
+different dynamics share one field.  Anything that depends only on the
+marginal laws --- every European price, every quantity of
+Chapters~2--3 --- is therefore safe to compute in the model.  Anything
+that depends on the joint law across dates --- above all, how the
+smile moves when the spot moves --- is not determined by the surface
+at all.  That question is postponed to Chapter~9, and no computation
+in this chapter will touch it.
+
+Second, the class \eqref{eq:lvsde} contains no jumps.  Every path is
+continuous, so a genuine gap --- an earnings night, a scheduled
+announcement --- can only be imitated by a brief burst of very large
+diffusive variance.  The honest treatment of scheduled events is a
+change of clock, and it waits for Chapter~8.  Throughout this chapter,
+rates, dividends and borrow --- the cost of shorting the stock ---
+live inside the forward as usual
+(Chapter~6 makes that precise), $y=e^{k}$ is the normalized strike,
+$c(\tau,y)$ is the normalized call, and the field $v$ is variance per
+unit of variance time.
 
 The plan follows the two directions of the correspondence.
-\Cref{sec:lveq} derives the forward equation, shows that positivity of the
-field propagates both static no-arbitrage families at once, and identifies
-the inverse formula as a ratio of two objects the reader already owns.
-\Cref{sec:lvillposed} demonstrates why that formula must not be applied to
-data.  \Cref{sec:lvsheet,sec:lvlattice} build the objects that replace it:
-a finite-dimensional field whose validity is a box constraint, and a
-discretization that inherits the continuous theorem instead of merely
-approximating it.  \Cref{sec:lvinfo} asks what the quotes actually
-determine, and \cref{sec:lvcalib,sec:lvexamples} assemble the calibration
-and run it on the book's frozen data.
+\Cref{sec:lveq} derives the forward equation, shows that a nonnegative
+field makes the whole surface arbitrage-free automatically, and turns
+the equation around into the extraction formula --- whose two
+ingredients will be exactly the two validity conditions of the static
+chapters.  \Cref{sec:lvillposed} shows why the extraction formula must
+never be applied to market quotes.  \Cref{sec:lvsheet,sec:lvlattice}
+build the alternative: a field with finitely many positive parameters,
+and a pricing scheme that keeps the theory's guarantees on a finite
+grid.  \Cref{sec:lvinfo} asks what the quotes actually determine about
+the field, and \cref{sec:lvcalib,sec:lvexamples} assemble the
+calibration and run it on the book's frozen data.

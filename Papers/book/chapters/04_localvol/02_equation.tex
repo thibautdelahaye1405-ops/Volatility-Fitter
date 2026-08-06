@@ -3,8 +3,11 @@
 
 \subsection{Forward: from the field to every marginal}
 
-Fix a bounded measurable field $v\ge0$ and let $Y$ solve \eqref{eq:lvsde}.
-Everything follows from watching the call price evolve in maturity.
+Fix a bounded measurable field $v\ge0$ and let $Y$ solve
+\eqref{eq:lvsde}.  We now derive the equation that the normalized call
+satisfies as a function of maturity.  It is the computational engine of
+the whole chapter: solve it once, marching left to right in maturity,
+and every expiry's smile comes out along the way.
 
 \begin{proposition}[The forward Dupire equation]
 \label{prop:lvforward}
@@ -21,161 +24,278 @@ Then the normalized call $c(\tau,y)=\E[(Y_\tau-y)^+]$ satisfies
 \end{proposition}
 
 \begin{proof}
-By It\^o's formula, the density satisfies the Fokker--Planck equation
-$\partial_\tau f=\tfrac12\,\partial_{yy}\!\big(v y^{2}f\big)$ in the weak
-sense.  Integrate it against the payoff:
+The proof has three steps: find the equation the density obeys,
+integrate that equation against the call payoff, and move the
+derivatives across.
+
+\emph{Step 1: the density.}  Apply It\^o's formula to $\Xi(Y_\tau)$,
+for a smooth function $\Xi$ --- recall that It\^o adds a second-order
+term to the ordinary chain rule, because the squared increment
+$(\dd Y)^2$ accumulates at the rate $v\,Y^{2}\,\dd\tau$ here:
+\[
+\dd\,\Xi(Y_\tau)
+=\Xi'(Y_\tau)\,\sqrt{v}\,Y_\tau\,\dd W_\tau
++\tfrac12\,v(\tau,Y_\tau)\,Y_\tau^{2}\,\Xi''(Y_\tau)\,\dd\tau .
+\]
+Take expectations.  The $\dd W$ term has mean zero, and writing the
+remaining expectations against the density $f$,
+\[
+\frac{\dd}{\dd\tau}\int_0^\infty \Xi(y)\,f(\tau,y)\,\dd y
+=\tfrac12\int_0^\infty v(\tau,y)\,y^{2}\,\Xi''(y)\,f(\tau,y)\,\dd y .
+\]
+Let $\Xi$ vanish outside a bounded set away from $0$, and integrate
+the right side by parts twice, moving both derivatives off $\Xi$
+and onto $v y^{2}f$ (no boundary terms, since $\Xi$ vanishes near
+the ends):
+\[
+\int v\,y^{2}f\,\Xi''\,\dd y
+=-\int \partial_y\big(v\,y^{2}f\big)\,\Xi'\,\dd y
+=\int \partial_{yy}\big(v\,y^{2}f\big)\,\Xi\,\dd y .
+\]
+This holds for every such $\Xi$; and if the two integrands differed
+anywhere, choosing a $\Xi$ concentrated near that point would break
+the equality.  So they agree:
+\[
+\partial_\tau f=\tfrac12\,\partial_{yy}\big(v\,y^{2}f\big).
+\]
+This is the \emph{Fokker--Planck equation} --- the equation every
+diffusion's density obeys; the two displays above are its entire
+derivation.
+
+\emph{Step 2: integrate against the payoff.}  The call is
+$c(\tau,y_0)=\int_0^\infty(y-y_0)^{+}f(\tau,y)\,\dd y$; differentiating
+under the integral sign (which the decay hypothesis licenses),
 \[
 \partial_\tau c(\tau,y_0)
 =\int_0^\infty (y-y_0)^{+}\,\partial_\tau f(\tau,y)\,\dd y
 =\tfrac12\int_0^\infty (y-y_0)^{+}\,
-  \partial_{yy}\big(v y^{2}f\big)\,\dd y .
+  \partial_{yy}\big(v\,y^{2}f\big)\,\dd y .
 \]
-Integrating by parts twice moves the two derivatives onto the payoff,
-whose derivatives in $y$ are the step $\1_{\{y>y_0\}}$ and then the point
-mass $\delta_{y_0}$, while the boundary terms vanish by the decay
-hypothesis.  What remains is
-$\tfrac12\,v(\tau,y_0)\,y_0^{2}f(\tau,y_0)$, and
-$f(\tau,y_0)=\partial_{yy}c(\tau,y_0)$ is the density identity of
-\cref{sec:intro}.  The initial condition is $Y_0=1$.
+
+\emph{Step 3: move the derivatives onto the payoff.}  Integrate by
+parts once.  The payoff's derivative in $y$ is the step function
+$\1_{\{y>y_0\}}$ --- slope $0$ below the strike, $1$ above --- and the
+boundary term $(y-y_0)^{+}\,\partial_y(vy^{2}f)$ vanishes at both ends
+by the decay hypothesis:
+\[
+\tfrac12\int_0^\infty (y-y_0)^{+}\,\partial_{yy}\big(v y^{2}f\big)\,\dd y
+=-\tfrac12\int_{y_0}^\infty \partial_y\big(v\,y^{2}f\big)\,\dd y .
+\]
+The remaining integral is elementary: it integrates an exact derivative,
+and $v y^{2}f$ vanishes at the far end, so
+\[
+-\tfrac12\int_{y_0}^\infty \partial_y\big(v\,y^{2}f\big)\,\dd y
+=-\tfrac12\Big[v\,y^{2}f\Big]_{y_0}^{\infty}
+=\tfrac12\,v(\tau,y_0)\,y_0^{2}\,f(\tau,y_0).
+\]
+Finally, recall the density identity of \cref{sec:intro}:
+differentiating the call twice in strike returns the density,
+$f(\tau,y_0)=\partial_{yy}c(\tau,y_0)$.  Substituting gives
+\eqref{eq:lvdupire}.  The initial condition is $Y_0=1$, whose call is
+$(1-y)^{+}$.
 \end{proof}
 
-Equation \eqref{eq:lvdupire} is a \emph{forward} parabolic equation in the
-strike variable with the payoff as initial data: heat flow, with
-$\tfrac12 v y^{2}$ as a spatially varying conductivity.  One field, one
-linear march, and every marginal law of the surface comes out at once ---
-this is the computational engine of the whole chapter.  The analogy with
-heat is not decoration; it is the source of every structural property we
-will use.  Heat flow spreads bumps and never sharpens them, and spreading,
-translated into option language, is exactly the no-arbitrage direction:
+Read \eqref{eq:lvdupire} as a physics problem.  It is a heat equation
+in the \emph{strike} variable: the call price plays the temperature,
+the payoff $(1-y)^{+}$ is the initial temperature profile, maturity
+plays the role of time, and $\tfrac12 v y^{2}$ is the conductivity of
+the material at position $y$ and time $\tau$.  One field, one linear
+march, and every marginal law of the surface comes out at once.  The
+analogy is not decoration; it is the source of every structural
+property this chapter uses.  Heat flow spreads bumps and never sharpens
+them, and ``spreading'', translated into option language, is exactly
+the no-arbitrage direction.  The next proposition makes that precise,
+and it is the reason this chapter can \emph{promise} validity rather
+than police it.  (One name in it deserves its reminder: a
+\emph{butterfly} is the three-strike spread whose payoff is a tent, and
+its price is a second difference of call prices --- so ruling out
+negative butterfly prices is exactly the condition
+$\partial_{yy}c\ge0$, a nonnegative implied density.)
 
 \begin{proposition}[Positive local variance propagates no-arbitrage]
 \label{prop:lvpropagate}
 Let $c$ solve \eqref{eq:lvdupire} with $v\ge0$ bounded.  Then for every
 $\tau>0$: (i) $\partial_{yy}c(\tau,\cdot)\ge0$ --- each slice is
-butterfly-free; (ii) $\partial_\tau c(\tau,y)\ge0$ --- the normalized call
-is non-decreasing in maturity at fixed $y$, which is the calendar order of
-\cref{sec:calendar}.
+butterfly-free; (ii) $\partial_\tau c(\tau,y)\ge0$ --- the normalized
+call is non-decreasing in maturity at fixed $y$, which is the calendar
+order of \cref{sec:calendar}.
 \end{proposition}
 
 \begin{proof}[Proof sketch]
-Differentiating \eqref{eq:lvdupire} twice in $y$ shows that
-$f=\partial_{yy}c$ satisfies
+Differentiate \eqref{eq:lvdupire} twice in $y$: the function
+$f=\partial_{yy}c$ --- by Step~3's density identity, the same $f$ as
+in \cref{prop:lvforward} --- satisfies
 $\partial_\tau f=\tfrac12\,\partial_{yy}(v y^{2}f)$ --- the
-Fokker--Planck equation again --- with initial datum
-$\partial_{yy}(1-y)^{+}=\delta_{1}\ge0$.  Such equations preserve
-nonnegativity: probabilistically, $f(\tau,\cdot)$ \emph{is} the density of
-the diffusion \eqref{eq:lvsde} started at $1$; analytically, apply the
-parabolic maximum principle to the adjoint equation.  With $f\ge0$
-established, (ii) is \eqref{eq:lvdupire} itself:
+Fokker--Planck equation of Step~1 again --- with initial datum
+$\partial_{yy}(1-y)^{+}$, the unit point mass at $y=1$: at $\tau=0$
+all the probability sits at $Y=1$.  Equations of this type preserve
+nonnegativity.  Probabilistically there is nothing to prove:
+$f(\tau,\cdot)$ \emph{is} the density of the diffusion
+\eqref{eq:lvsde} started at $1$, and densities are nonnegative.
+Analytically, the same fact is the parabolic maximum principle,
+which we quote from PDE theory.  With $f\ge0$ established, part~(ii)
+is the equation \eqref{eq:lvdupire} itself read as a sign statement:
 $\partial_\tau c=\tfrac12 v y^{2}f\ge0$.
 \end{proof}
 
-Pause on what this proposition buys, because it is the entire strategy of
-the chapter.  In Chapters~2 and~3, validity was work: the LQD chart made
-butterfly freedom an identity within one slice, the volatility chart had to
-police $g_{\rm D}\ge0$, and calendar order across slices was in both cases
-a separate condition.  Here, positivity of \emph{one} function of two
-variables propagates \emph{both} families across the whole surface, for
-free, forever.  The rest of the chapter is the discipline of not
-squandering that theorem: choose a parametrization in which $v>0$ is
-trivial to enforce (\cref{sec:lvsheet}), choose a discretization that
-inherits the maximum principle rather than merely approximating it
-(\cref{sec:lvlattice}), and then measure what little the finite grid leaks
-instead of assuming the theorem carried over.
+Pause on what this proposition buys, because it is the strategy of the
+entire chapter.  In Chapters~2 and~3, validity was work, done slice by
+slice: Chapter~2's LQD chart (its log-quantile-density coordinates, in
+which every parameter choice is automatically a law) made butterfly
+freedom an identity within one
+expiry, the volatility chart had to police $g_{\rm D}\ge0$, and
+calendar order across expiries was in both cases a separate condition.
+Here, one sign condition on one function of two variables delivers both
+families of conditions, across the whole surface, automatically.  The
+rest of the chapter is organized around protecting that gain.
+Choose a parametrization in which $v>0$ is trivial to enforce
+(\cref{sec:lvsheet}).  Choose a discretization that \emph{inherits} the
+proposition on a finite grid, rather than merely approximating it
+(\cref{sec:lvlattice}).  Then measure what little the finite grid
+leaks, instead of assuming it leaks nothing (\cref{sec:lvexamples}).
 
 \subsection{Backward: from the surface to the field}
 
-Read \eqref{eq:lvdupire} the other way.  If the surface is given, the field
-is determined pointwise,
+We now know how a field produces a surface.  Read the equation the
+other way.  If the surface is given --- so that both derivatives of $c$
+are known --- then \eqref{eq:lvdupire} can simply be solved for the
+coefficient:
 \begin{equation}
 v(\tau,y)=\frac{\partial_\tau c(\tau,y)}
 {\tfrac12\,y^{2}\,\partial_{yy}c(\tau,y)},
 \label{eq:lvextract}
 \end{equation}
-wherever the density in the denominator is positive.  This is the promised
-uniqueness: within the class \eqref{eq:lvsde}, at most one field is
-consistent with a given surface, and \eqref{eq:lvextract} computes it.  The
-same formula becomes most instructive in the volatility chart.
+wherever the density in the denominator is positive.  This is the
+uniqueness half of the correspondence: within the class
+\eqref{eq:lvsde}, at most one field is consistent with a given surface,
+and \eqref{eq:lvextract} computes it pointwise.  The formula becomes
+most instructive when translated into the coordinates of Chapter~3 ---
+the volatility chart, where a surface is the total-variance function
+$w(k,\tau)$.
 
 \begin{proposition}[The field in the volatility chart]
 \label{prop:lvratio}
 Write the surface in implied form, $c=\Black(k,w(k,\tau))$ with
-$w(\cdot,\tau)$ the total-variance slice.  Then \eqref{eq:lvextract} reads
+$w(\cdot,\tau)$ the total-variance slice.  Then \eqref{eq:lvextract}
+reads
 \begin{equation}
 v(\tau,e^{k})=\frac{\partial_\tau w(k,\tau)}{g_{\rm D}(k)},
 \label{eq:lvratio}
 \end{equation}
-with $g_{\rm D}$ the Durrleman factor of \eqref{eq:durrleman}, evaluated on
-the slice at maturity $\tau$ \citep{Gatheral2006}.
+with $g_{\rm D}$ the Durrleman factor of \eqref{eq:durrleman},
+evaluated on the slice at maturity $\tau$ \citep{Gatheral2006}.
 \end{proposition}
 
 \begin{proof}
-Numerator: at fixed $k$, $\partial_\tau c=\partial_w\Black\cdot
-\partial_\tau w$.  With $d_\pm=-k/\sqrt w\pm\sqrt w/2$ one has
-$d_+^{2}-d_-^{2}=(d_++d_-)(d_+-d_-)=-2k$, hence
-$\phin(d_+)=e^{k}\phin(d_-)$, and
+Compute the numerator and the denominator of \eqref{eq:lvextract} in
+turn.
+
+\emph{Numerator.}  At fixed $k$, the call is the Black function of the
+slice's total variance, so by the chain rule
+$\partial_\tau c=\partial_w\Black\cdot\partial_\tau w$.  The
+derivative $\partial_w\Black$ is the vega of the Black formula in
+total-variance units --- the sensitivity of the price to the variance
+the formula is fed --- and it is worth computing once in full.  The
+normalized call is $\Black=\PhiN(d_+)-e^{k}\PhiN(d_-)$ with
+$d_\pm=-k/\sqrt w\pm\sqrt w/2$.  The two arguments satisfy
+\[
+d_+-d_-=\sqrt w,\qquad d_++d_-=-\frac{2k}{\sqrt w},
+\qquad\text{so}\qquad
+d_+^{2}-d_-^{2}=(d_++d_-)(d_+-d_-)=-2k .
+\]
+Because $\phin(d)=e^{-d^{2}/2}/\sqrt{2\pi}$, the ratio of the two
+normal densities is
+\[
+\frac{\phin(d_+)}{\phin(d_-)}
+=\exp\!\Big(\!-\tfrac{d_+^{2}-d_-^{2}}{2}\Big)=e^{k},
+\qquad\text{i.e.}\qquad \phin(d_+)=e^{k}\phin(d_-).
+\]
+Now differentiate $\Black$ in $w$ and use this identity:
 \[
 \partial_w\Black
 =\phin(d_+)\,\partial_w d_+-e^{k}\phin(d_-)\,\partial_w d_-
 =\phin(d_+)\,\partial_w(d_+-d_-)
+=\phin(d_+)\,\partial_w\sqrt w
 =\frac{e^{k}\phin(d_-)}{2\sqrt w}.
 \]
-Denominator: $\partial_{yy}c=f(\tau,y)=f_X(k)/y$ by the change of variable
-$y=e^{k}$, and \eqref{eq:durrleman} gives
-$f_X(k)=g_{\rm D}(k)\,\phin(d_-)/\sqrt w$.  Substituting both into
-\eqref{eq:lvextract},
+
+\emph{Denominator.}  Two facts convert $\partial_{yy}c$ into chart
+language.  First, the density of $Y$ transforms into the density of
+the log return $X=\log Y$ by the usual change of variables: with
+$y=e^{k}$, $f(\tau,y)=f_X(k)/y$ (the factor $1/y$ is
+$\dd y=y\,\dd k$).  Second --- this is \eqref{eq:durrleman}, quoted
+from Chapter~2 --- the log-return density of a slice with total
+variance $w$ is
 \[
-v=\frac{e^{k}\phin(d_-)\,\partial_\tau w/\sqrt w}
-       {y^{2}\,f_X(k)/y}
- =\frac{\phin(d_-)\,\partial_\tau w}{\sqrt w\,f_X(k)}
- =\frac{\partial_\tau w}{g_{\rm D}(k)}.\qedhere
+f_X(k)=g_{\rm D}(k)\,\frac{\phin(d_-)}{\sqrt w},
 \]
+where $g_{\rm D}$ is the Durrleman function: up to the positive factor
+$\phin(d_-)/\sqrt w$, it \emph{is} the probability density the smile
+implies, so $g_{\rm D}\ge0$ is exactly the butterfly condition
+Chapter~3 policed.  The denominator of \eqref{eq:lvextract} is then
+\[
+\tfrac12\,y^{2}\,\partial_{yy}c
+=\tfrac12\,y^{2}\,f(\tau,y)
+=\tfrac12\,y\,f_X(k)
+=\tfrac12\,e^{k}\,g_{\rm D}(k)\,\frac{\phin(d_-)}{\sqrt w}.
+\]
+Divide numerator by denominator: the factors $e^{k}$, $\phin(d_-)$ and
+$2\sqrt w$ all cancel, leaving
+$v=\partial_\tau w/g_{\rm D}$.
 \end{proof}
 
-The reader has met both halves of this ratio before, as the two families of
-static validity.  The numerator is the calendar increment: nonnegative
-exactly when adjacent slices are ordered in the sense of
-\cref{sec:calendar}.  The denominator is positive density written in the
-volatility chart, the object Chapter~3 policed slice by slice.  So
-\eqref{eq:lvratio} is a compatibility theorem disguised as a formula:
-\emph{a local-volatility field exists precisely where the surface is
-valid}, and each mode of static arbitrage corresponds to its own sign
-failure --- a calendar violation makes the numerator negative, a butterfly
-violation the denominator.  This chapter therefore takes as input
-hypothesis what Chapters~2--3 produced as output: slices that are
-butterfly-free and calendar-ordered, in the normalized units of
-\cref{sec:calendar}.  Where the hypothesis fails, no field exists and
-\eqref{eq:lvratio} says so by changing sign.
+The reader has met both halves of this ratio before, as the two
+families of static validity.  The numerator is the calendar increment:
+it is nonnegative exactly when the slices around maturity $\tau$ are
+calendar-ordered in the sense of \cref{sec:calendar}.  The denominator
+is the butterfly factor: it is nonnegative exactly when the slice at
+$\tau$ implies a genuine (nonnegative) density.  So \eqref{eq:lvratio}
+is more than a formula; it is a compatibility statement.  \emph{A
+local-volatility field exists precisely where the surface is valid},
+and each mode of static arbitrage has its own place to fail: a
+calendar violation makes the numerator negative, a butterfly violation
+the denominator.  This chapter therefore takes as its input hypothesis
+what Chapters~2--3 produced as output: slices that are butterfly-free
+and calendar-ordered, in the normalized units of \cref{sec:calendar}.
+Where the hypothesis fails, no field exists, and \eqref{eq:lvratio}
+says so by changing sign.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_lv_ratio.pdf}
-\caption{The field as a ratio, on the frozen SPY surface (stored per-expiry
-fits of the snapshot, total variance interpolated linearly in $\tau$
-between the eight expiries; horizontal bars mark each expiry's quoted
-span).  (a)~The calendar increment $\partial_\tau w$: piecewise constant in
-$\tau$ by construction, steepening toward the short-dated put side.
-(b)~The Durrleman factor of each slice.  (c)~Their ratio, as local
-volatility: the put wall, the quiet call side, and the short-dated
-structure.  Grey cells are inadmissible (a negative numerator or
-denominator): they amount to \MacLvRatioBadSharePct\% of the displayed
-mesh, all in extrapolated territory --- restricted to the common quoted
-support of each expiry pair the share is
-\MacLvRatioBadQuotedSharePct\%, and the extracted local volatility there
-ranges from \MacLvRatioLocMinPct\% to \MacLvRatioLocMaxPct\%.  Validity
-where the data speaks, sign failures where conventions extrapolate: the
-ratio is already a diagnostic instrument.}
+\caption{The field as a ratio, on the frozen SPY surface (stored
+per-expiry fits of the snapshot, total variance interpolated linearly
+in $\tau$ between the eight expiries; horizontal bars mark each
+expiry's quoted span).  (a)~The calendar increment $\partial_\tau w$.
+(b)~The Durrleman factor of each slice.  (c)~Their ratio, displayed as
+local volatility; grey cells have a negative numerator or denominator
+and are inadmissible.}
 \label{fig:lvratio}
 \end{figure}
 
-\Cref{fig:lvratio} evaluates the ratio on the book's frozen SPY surface ---
-the eight fitted slices of the snapshot, interpolated linearly in total
-variance between expiries.  The exercise makes three points at once.  The
-field inherits recognizable structure from the smile: a steep put-side wall,
-a quiet call side, short-dated sharpness.  The two sign conditions are
-visibly the binding ones: every inadmissible cell in the picture sits
-outside the common quoted support of the expiries that bracket it, in
-territory owned by extrapolation conventions rather than prices.  And the
-ratio was computed here from \emph{fitted, smooth} slices --- an operation
-this chapter endorses.  What it must never be applied to is the market's
-raw quotes, and the next section shows why.
+\Cref{fig:lvratio} evaluates the ratio on the book's frozen SPY
+surface --- the snapshot's eight fitted slices, with total variance
+interpolated linearly in $\tau$ between expiries.  Walk its three
+panels left to right.  Panel~(a) is the numerator: the calendar
+increment $\partial_\tau w$, piecewise constant in $\tau$ because the
+interpolation between expiries is linear, and largest toward the
+short-dated put side, where the smile grows fastest with maturity.
+Panel~(b) is the denominator: each slice's Durrleman factor, the
+implied-density factor of the chart.  Panel~(c) is their ratio,
+displayed as local volatility $\sqrt v$: a steep put-side wall, a
+quiet call side, sharp structure at the short end --- the field
+inherits the smile's features in recognizable form, and where the data
+speaks the extracted values range from \MacLvRatioLocMinPct\% to
+\MacLvRatioLocMaxPct\%.  The grey cells are the diagnostic part of the
+picture: there one of the two signs fails and no local variance
+exists.  They amount to \MacLvRatioBadSharePct\% of the displayed
+mesh, and every one of them sits \emph{outside} the common quoted
+support of the two expiries that bracket it --- restricted to the
+quoted region the share is \MacLvRatioBadQuotedSharePct\% --- in
+territory owned by extrapolation conventions rather than by prices.
+
+One caution closes the section.  The surface in this figure is fitted
+and smooth, and evaluating the ratio on a fitted surface is a
+legitimate operation --- it is how the figure was drawn.  What must
+never be done is to apply the formula to the market's raw quotes.  The
+next section shows why.

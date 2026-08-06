@@ -32,14 +32,14 @@ The author reviewed Chapters 3–4 and rejected their register: too dense,
 too clever, not readable for someone meeting the subject for the first
 time. The style contract below was rewritten in response — it OVERRIDES
 the earlier "monograph" register, and Chapter 2 is NO LONGER the style
-exemplar. Chapter 3 has since been revised to the new contract
-(2026-08-05, later the same day) and is now the TONE EXEMPLAR for
-future chapters. Next, in order:
+exemplar. Both queued revisions are now done: Chapter 3 was revised to
+the new contract on 2026-08-05, Chapter 4 on 2026-08-06 (each with a
+newcomer fresh-reader pass, all stumble points resolved). Chapter 4 is
+the most recently revised chapter and therefore the TONE EXEMPLAR.
+Next:
 
-1. Revise Chapter 4 to the new contract (full rewrite of the prose as
-   lessons; the mathematics, figures and macros stand — same procedure
-   as the Chapter 3 revision, see the progress log).
-2. Chapter 5 onward, written under the new contract from the start.
+1. Chapter 5 (variance swaps and wings), written under the new
+   contract from the start, imitating the revised Chapter 4's tone.
 
 Chapter 2 keeps its monograph register for now (it doubles as the
 standalone paper); whether to soften it inside the book is the author's
@@ -124,8 +124,8 @@ local volatility placed among the models (author's decision).
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | 01 | **DONE** (`Papers/lqd_paper/`, 36 pp) |
 | 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | **DONE** (revised to the pedagogy contract 2026-08-05; tone exemplar) |
-| 4  | Local volatility | 04 | drafted 2026-08-05; **REVISION REQUIRED** (pedagogy contract) |
-| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending (after the Ch. 4 revision) |
+| 4  | Local volatility | 04 | **DONE** (revised to the pedagogy contract 2026-08-06; tone exemplar) |
+| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending (next) |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | pending |
 | 7  | Removing early exercise | 05 | pending |
@@ -474,3 +474,31 @@ keeping Chapter 2 self-contained.
   not length, was the complaint), appendix 62–64; full book builds
   clean at 88 pp, no undefined refs, ch3 overfulls cleared.  Next:
   Chapter 4 revision, imitating Chapter 3's revised tone.
+- 2026-08-06: Chapter 4 REVISED to the pedagogy contract — full prose
+  rewrite as a lesson, all 8 sections + synopsis; mathematics, figures
+  (10, every panel walked in the body, incl. a per-panel progression
+  walk of fig 4.8), macros (all 46 still in use), and labels unchanged.
+  Lesson goals recorded as the comment block in chapter.tex.
+  Additions: Fokker–Planck derived in full (Itô → test function →
+  double integration by parts, each displayed), vega identity and
+  chart-ratio cancellation displayed, worked 4ε/Δk² noise computation
+  with plugged numbers, g_D recalled with its formula where the noise
+  lands, non-uniform stencil derived by Taylor, self-contained Jacobi
+  proof of inverse positivity, boundary vector b^n displayed once and
+  reused by both proofs that lean on it, tangent product-rule
+  derivation displayed, plain-word reminders for every term of art
+  (butterfly, Dirichlet, M-matrix, monotone, CFL, Tikhonov, vega,
+  Gauss–Newton, adjoint, vanilla, LEAP, variance swap, delta ladder,
+  alias, hull, tensor grid, Delaunay).  One aphorism kept (the
+  two-sheets experiment); the rest of the performing phrases made
+  plain.  Symbol repairs: test function is Ξ (both phi glyphs were in
+  service; ledgered), M_* → U_* (vs the step matrix 𝓜), the ones
+  vector vs the indicator disambiguated, 𝔏 vs 𝓛 flagged, §4.6
+  volatility-vs-variance units made explicit.  Fixed en route: two
+  appendix overfulls (long inline formulas displayed).  Newcomer
+  fresh-reader pass run (sub-agent persona): all 9 files summarizable
+  in one sentence, ~20 stumble points ALL resolved; math re-verified
+  by the lead.  Main text pp. 65–86 (≈22 pp), appendix 87–89; full
+  book builds clean at 94 pp, no undefined refs, no ch4 overfulls.
+  Ch. 4 is now the tone exemplar.  Next: Chapter 5 (variance swaps
+  and wings), new contract from the start.

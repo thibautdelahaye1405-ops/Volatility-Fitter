@@ -103,6 +103,7 @@ symbols `Δτ, Δy` do not collide with Ch. 2's bare `Δ` (digital gap).
 | `b^n` | boundary data entering step n through the stencil's boundary columns |
 | `p^n` | adjoint lattice states (App. 4.A only; normalized put stays `P`) |
 | `𝒥, 𝒪_n` | scalar objective; observation rows (App. 4.A adjoint only) |
+| `Ξ` | smooth test function in the Fokker–Planck derivation (proof-local, §4.2; chosen because both phi glyphs are in service) |
 
 ## Reservation rules
 

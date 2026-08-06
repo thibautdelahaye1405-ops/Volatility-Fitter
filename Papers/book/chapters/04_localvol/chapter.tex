@@ -2,26 +2,55 @@
 % Sections live in this directory; figures and macros regenerate via
 % scripts/ch04/gen_figures.py from data/ (frozen snapshot + deterministic
 % synthetics).  Notation additions are recorded in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract, 2026-08-05).  After this chapter the
+% reader can:
+%   1. Write down the forward (Dupire) equation, derive it from the
+%      density of a diffusion, and read the extraction formula
+%      v = d_tau w / g_D as calendar increment over butterfly factor:
+%      a local-volatility field exists exactly where the surface is
+%      valid.
+%   2. Explain, with the 4*eps/(Delta k)^2 computation, why extracting
+%      the field by differentiating quoted data fails structurally --- a
+%      finer quote grid makes it worse --- and state the repair: make
+%      the field the unknown, price it forward, never differentiate the
+%      data.
+%   3. Explain how the piecewise-affine sheet turns positivity of a
+%      surface into a box on finitely many numbers (a weighted average
+%      cannot leave the range of what it averages), and why the box
+%      makes every optimizer iterate an arbitrage-free surface.
+%   4. Say what a monotone scheme is, prove that the implicit step
+%      matrix is an M-matrix (and why Crank--Nicolson is declined), and
+%      explain how the same factorization also prices every derivative
+%      the optimizer needs.
+%   5. Explain why the quotes do not determine the sheet (length scale,
+%      averaging, invisible rows, the two-sheets experiment), and read a
+%      calibration report as two separate numbers --- quote error and
+%      surface error --- with the conventions (roughness, reference,
+%      front tie, wing, seed) declared as the choice of representative.
+% Every section serves one of these five goals; material that served
+% none was cut or moved to Appendix 4.A in the 2026-08-05 revision.
 \renewcommand{\figdir}{figures/ch04}
 \chapter[Local volatility]{Local Volatility}
 \label{ch:lv}
 
-\chaptersynopsis{Chapters~2 and~3 fitted one law per expiry and let a
-calendar condition relate neighbors.  This chapter asks for more: one
-diffusion whose marginal laws are all of the surface's laws at once.  The
-Dupire equation supplies it, and in the volatility chart its coefficient is
-a ratio of the two objects the static chapters policed --- the calendar
-increment over the Durrleman factor --- so the field exists exactly where
-the surface is valid.  Read as a formula, the ratio divides two derivatives
-of noisy data and fails structurally; read as a pricing map, it poses a
-well-behaved inverse problem: a piecewise-affine sheet whose positivity is
-a box constraint on finitely many numbers, priced by a monotone implicit
-march whose step matrix is an M-matrix, and differentiated exactly behind
-the same factorization.  The quotes do not determine the sheet --- two
-surfaces ten volatility points apart reprice the same quote set within a
-fraction of a spread --- so calibration returns a declared representative
-of an equivalence class, and what the discretization leaks is measured,
-never assumed.}
+\chaptersynopsis{Chapters~2 and~3 gave each expiry its own probability
+law and used a calendar condition to keep neighboring expiries
+consistent.  This chapter asks for more: one model that carries every
+expiry of the surface at once.  The Dupire equation provides it.  Its
+coefficient --- the local volatility --- turns out to be a ratio of the
+two quantities the earlier chapters already policed: the calendar
+increment on top, the butterfly factor below.  So the field exists
+exactly where the surface is valid.  Computing the field, however,
+splits into a wrong way and a right way.  Read as a formula, the ratio
+asks for two derivatives of noisy quotes, and fails no matter how good
+the data gets.  Read as a pricing model, it poses a well-behaved
+fitting problem: a sheet of positive numbers on a grid, priced by a
+stable marching scheme, differentiated exactly, and fitted to the
+quotes like every other model in this book.  The chapter builds that
+fit slowly, shows why the quotes alone cannot pin the sheet down, and
+ends by fitting the book's frozen SPY and NVDA chains with one sheet
+each.}
 
 \input{chapters/04_localvol/01_field}
 \input{chapters/04_localvol/02_equation}

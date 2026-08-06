@@ -3,59 +3,87 @@
 
 \subsection{The objective}
 
-The pieces assemble into a bound-constrained least-squares problem over
-the nodal variances:
+The pieces now assemble into a bound-constrained least-squares problem
+over the nodal variances:
 \begin{equation}
 \min_{\theta\in[v_{\rm lo},\,v_{\rm hi}]^{n_\theta}}
 \;\tfrac12\Big(
 \sum_{q}r_q(\theta)^{2}
 \;+\;\lambda\,\big\|\Gamma(\theta-\theta_{\rm ref})\big\|^{2}
 \;+\;\lambda_0\,\big\|\theta_{1,\cdot}-\theta_{2,\cdot}\big\|^{2}
-\Big),
+\Big).
 \label{eq:lvobjective}
 \end{equation}
-whose three blocks have each been argued for already.
+Its three blocks, in order: a data term, a roughness penalty, and a
+tie between the first two vertex rows --- $\theta_{1,\cdot}$ is the
+$\tau=0$ row, $\theta_{2,\cdot}$ the row at the first quoted expiry.
+Each block was argued for before it was written down; we
+take them in turn.
 
-The \emph{data block} compares the marched call $c_\theta$ at quote $q$'s
-coordinates with the quoted one, in vega units:
-$r_q=\big(c_\theta(\tau_q,y_q)-c_q\big)/\eta_q$, with $\eta_q$ one
-volatility percent of the quote's vega, floored (the same device as
+The \emph{data block} compares the marched call $c_\theta$ at quote
+$q$'s coordinates with the quoted one, in volatility units:
+$r_q=\big(c_\theta(\tau_q,y_q)-c_q\big)/\eta_q$, where $\eta_q$ is one
+volatility percent of the quote's vega, floored.  Recall what vega is:
+the derivative of the Black price with respect to implied volatility
+--- the exchange rate between price units and volatility units.
+Dividing each price error by it makes every residual read as a
+volatility error, so a deep wing's tiny price errors and the money's
+large ones compete on the same scale; the floor (the same device as
 Chapter~2's vega floor $\eta$; this chapter's constant is in
-\cref{app:lvnumerics}).
-This is the residual design of \cref{sec:calibration} --- solve in price
-space, measure in volatility space --- carried over;
-when band edges rather than mids are trusted, the band objective of that
-section applies verbatim.  The \emph{roughness block} is Tikhonov
-regularization with a curvature seminorm: $\Gamma$ takes second divided
-differences along strike within each maturity row and along time within
-each strike column, normalized by the local vertex spacing so that a
-tightly spaced money column is not penalized more than a wide wing one
-(it reduces to the $(1,-2,1)$ stencil on a uniform grid).  It pulls toward
-a reference sheet $\theta_{\rm ref}$ --- flat, at the median ATM variance,
-in this chapter's protocol --- and it is the declared answer to
-\cref{sec:lvinfo}: of the equivalence class the data allows, return the
-smoothest member near the reference.  The \emph{front tie} at weight
-$\lambda_0$ pins the $\tau=0$ row to the first quoted row, closing the
-unidentified sub-front subspace.  Two further row types plug into the same
-stack when their instruments are present, and are only named here: a
-variance-swap quote adds one scalar residual per quoted expiry,
-constraining the deep-put tail integral that vanillas cannot see
-(Chapter~5 develops the integral, and it is exactly the instrument that
-justifies releasing the wing slope $a$ of \cref{rem:lvhull}); and prior
-structures from a previous fit enter as reference terms in the same
-$\Gamma$-and-$\theta_{\rm ref}$ position (Chapter~10 develops when and how
-much to trust them).
+\cref{app:lvnumerics}) keeps the scale from vanishing where vega does.
+This is the residual design of \cref{sec:calibration} --- solve in
+price space, measure in volatility space --- carried over unchanged,
+and when band edges rather than mids are trusted, the band objective
+of that section --- residuals measured to the nearest bid--ask band
+edge, zero inside the band --- applies verbatim.
+
+The \emph{roughness block} $\lambda\|\Gamma(\theta-\theta_{\rm ref})\|^{2}$
+is Tikhonov regularization --- the standard name for adding a penalty
+so that, among sheets fitting the data equally well, the optimizer
+returns the smoothest.  The operator $\Gamma$ takes second divided
+differences along strike within each maturity row and along time
+within each strike column --- the discrete curvature of the sheet ---
+normalized by the local vertex spacing, so that a tightly spaced money
+column is not penalized more than a wide wing one (on a uniform grid
+it reduces to the $(1,-2,1)$ stencil).  The penalty pulls toward a
+reference sheet $\theta_{\rm ref}$ --- flat, at the median ATM
+variance, in this chapter's protocol --- and it is the declared answer
+to \cref{sec:lvinfo}: of the equivalence class the data allows, return
+the smoothest member near the reference.
+
+The \emph{front tie}, at weight $\lambda_0$, pins the $\tau=0$ row to
+the first quoted row, closing the invisible sub-front subspace of
+\cref{sec:lvinfo}.
+
+Two further row types plug into the same stack when their instruments
+are present, and are only named here.  A variance-swap quote adds one
+scalar residual per quoted expiry, constraining the deep-put tail
+integral that vanillas cannot see --- Chapter~5 develops the integral,
+and it is exactly the instrument that justifies releasing the wing
+slope $a$ of \cref{rem:lvhull}.  And prior structures from a previous
+fit enter as reference terms in the same
+$\Gamma$-and-$\theta_{\rm ref}$ position --- Chapter~10 develops when
+and how much to trust them.
 
 \subsection{Every derivative from the same factorization}
 
-A least-squares solver lives on Jacobians, and a PDE-implicit pricing map
-sounds like finite-difference territory: $n_\theta$ rebuilds of the march
-per iteration.  It is not, for the same structural reason that served the
-earlier chapters: the map from parameters to operator is \emph{linear}.
-By \eqref{eq:lvp1}, $\mathcal L(\theta)$ is linear in $\theta$ with
-$\partial\mathcal L/\partial\theta_\ell=\mathcal L[\mathcal H_\ell]$ ---
-the stencil \eqref{eq:lvstencil} with the field $v$ replaced by the hat
-function $\mathcal H_\ell$.
+A least-squares solver runs on the Jacobian: the matrix of derivatives
+of every residual with respect to every parameter.  For a model priced
+by a PDE march, the naive route is finite differences --- perturb
+$\theta_\ell$, re-march the surface, subtract --- which costs
+$n_\theta$ extra marches per iteration, hundreds here.  The sheet's
+structure gives something better: \emph{exact} derivatives, for the
+price of extra right-hand sides through a factorization already
+computed.  The key is linearity.  By \eqref{eq:lvp1} the field depends
+linearly on $\theta$, so the discrete generator does too, and its
+derivative in one parameter is itself a stencil:
+\[
+\frac{\partial\mathcal L}{\partial\theta_\ell}
+=\mathcal L[\mathcal H_\ell],
+\]
+the stencil \eqref{eq:lvstencil} with the field $v$ replaced by the
+single hat function $\mathcal H_\ell$ --- zero outside vertex $\ell$'s
+star of triangles.
 
 \begin{proposition}[Tangent: same factor, extra right-hand sides]
 \label{prop:lvtangent}
@@ -75,52 +103,82 @@ $\partial_\tau s_\ell=\tfrac12 v y^{2}\partial_{yy}s_\ell
 
 \begin{proof}
 Write one step over the interior unknowns as
-$\mathcal M^{n+1}U^{n+1}=U^{n}+b^{n+1}$, where $b^{n+1}$ carries the
-Dirichlet data through the stencil's boundary columns --- and therefore
-depends on $\theta$ through the field at the boundary-adjacent nodes.
-Differentiating in $\theta_\ell$ and using
+$\mathcal M^{n+1}U^{n+1}=U^{n}+b^{n+1}$, with $b^{n+1}$ the boundary
+vector displayed after \eqref{eq:lvstep} --- it carries the
+Dirichlet values through the stencil's boundary columns, and
+therefore depends on $\theta$ through the field at boundary-adjacent
+nodes.  Differentiate the whole equation with respect to
+$\theta_\ell$, using the product rule on the left:
+\[
+\Big(\partial_{\theta_\ell}\mathcal M^{n+1}\Big)U^{n+1}
++\mathcal M^{n+1}s^{n+1}_\ell
+=s^{n}_\ell+\partial_{\theta_\ell}b^{n+1}.
+\]
+By linearity,
 $\partial_{\theta_\ell}\mathcal M^{n+1}
-=-\Delta\tau\,\mathcal L[\mathcal H_\ell]$ (exact by linearity) gives
-\eqref{eq:lvtangent}, the interior product
-$\mathcal L[\mathcal H_\ell]U^{n+1}$ and the derivative of $b^{n+1}$
-combining into the boundary-inclusive product, because the boundary values
-themselves do not move with $\theta$.
+=-\Delta\tau\,\mathcal L[\mathcal H_\ell]$ exactly --- no
+approximation is involved.  Move it to the right-hand side:
+\[
+\mathcal M^{n+1}s^{n+1}_\ell
+=s^{n}_\ell
++\Delta\tau\,\mathcal L[\mathcal H_\ell]\,U^{n+1}
++\partial_{\theta_\ell}b^{n+1},
+\]
+and the last two terms combine into the boundary-inclusive product of
+the statement, because the boundary \emph{values} themselves ($1$ and
+$0$) do not move with $\theta$ --- only the stencil weights through
+which they enter do.  The start is $s^{0}_\ell=0$: the payoff does not
+depend on the field.
 \end{proof}
 
-Read \eqref{eq:lvtangent} twice.  As a computation: every sensitivity
-marches behind the \emph{same} tridiagonal factorization as the value
-solve, so the entire $n_\theta$-column Jacobian costs one factorization
-plus $n_\theta$ extra back-substitutions per step --- the columns form a
-block of right-hand sides that a solver processes together.  As
-probability: the source term says vertex $\ell$ influences a price exactly
-through the diffusion's visits to $\ell$'s star of triangles, weighted by
-the convexity it finds there.  \Cref{fig:lvinfluence} shows both readings
-on the synthetic running example: the influence of one interior vertex is
-a cone --- zero at the expiry \emph{before} the vertex's time, which the
-march cannot reach backward; sharpest near its own maturity; spreading and
-flattening as the diffusion forgets where it collected its variance ---
-and every analytic column agrees with a central finite difference of the
-full march to \MacLvInflMaxRel\ in relative terms.
+Read \eqref{eq:lvtangent} twice.  As a computation: the sensitivity
+system has the \emph{same} matrix $\mathcal M^{n+1}$ as the value
+system --- only the right-hand side differs --- so every sensitivity
+marches behind the same tridiagonal factorization as the value solve.
+The entire $n_\theta$-column Jacobian costs one factorization plus
+$n_\theta$ extra back-substitutions per step; the columns form a block
+of right-hand sides that a solver processes together.  As probability:
+the source term says that vertex $\ell$ influences a price exactly
+through the diffusion's visits to $\ell$'s star of triangles, weighted
+by the convexity $\partial_{yy}c$ it finds there.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_lv_influence.pdf}
 \caption{The tangent system, seen and audited.  (a)~Sensitivity of the
-priced call curve to the single vertex at $(\tau,y)=(0.25,1)$, across the
-four quoted expiries: zero at $\tau=0.10$ (an earlier expiry cannot feel a
-later vertex), a sharp cone at $\tau=0.25$, spreading thereafter.
-(b)~Every analytic column of the Jacobian against a central finite
-difference of the full march, over all \MacLvInflVtx\ vertices: worst
-relative disagreement \MacLvInflMaxRel.}
+priced call curve to the single vertex at $(\tau,y)=(0.25,1)$, across
+the four quoted expiries.  (b)~Every analytic column of the Jacobian
+against a central finite difference of the full march, over all
+\MacLvInflVtx\ vertices: worst relative disagreement
+\MacLvInflMaxRel.}
 \label{fig:lvinfluence}
 \end{figure}
 
+\Cref{fig:lvinfluence} shows both readings on the synthetic market.
+In panel~(a), the sensitivity of the priced call curve to the single
+vertex at $(\tau,y)=(0.25,1)$, plotted across the four quoted
+expiries.  At $\tau=0.10$ the curve is identically zero: an earlier
+expiry cannot feel a later vertex, because the march has not reached
+it yet.  At $\tau=0.25$, the vertex's own maturity, the sensitivity is
+a sharp cone centered on its strike.  At the two later expiries the
+cone spreads and flattens: the diffusion gradually forgets where it
+collected its variance.  In panel~(b), the audit: every analytic
+Jacobian column is compared against a central finite difference of the
+full march, over all \MacLvInflVtx\ vertices, and the worst relative
+disagreement is \MacLvInflMaxRel.  The derivative is exact, not
+approximate.
+
 The optimization itself is then standard machinery used plainly: a
 trust-region reflective least-squares iteration on
-\eqref{eq:lvobjective}, box bounds handled natively
-\citep{BranchColemanLi1999}, the analytic Jacobian of
-\cref{prop:lvtangent} supplied at every iterate, and a flat seed at the
-reference sheet.  For the tangent route the Jacobian cost grows linearly
-with $n_\theta$; the classical adjoint alternative --- one backward sweep
-per objective, cost independent of the parameter count --- is derived in
-\cref{app:lvnumerics} for the reader who will need it at larger grids.
+\eqref{eq:lvobjective} --- a method of the Gauss--Newton family
+(linearize the residuals at the current iterate, solve the resulting
+linear least squares, repeat) that handles
+box bounds natively, shrinking its steps rather than leaving the box
+\citep{BranchColemanLi1999} --- with the analytic Jacobian of
+\cref{prop:lvtangent} supplied at every iterate and a flat seed at the
+reference sheet.  The tangent route's Jacobian cost grows linearly
+with $n_\theta$; the classical \emph{adjoint} alternative --- run the
+march backward once through its transposed steps, collecting the whole
+gradient in a single sweep, at a cost independent of the
+parameter count --- is derived in \cref{app:lvnumerics} for the reader
+who will need it at larger grids.
