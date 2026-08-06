@@ -1,14 +1,22 @@
 \section{Trader coordinates: the jump-wing handles}
 \label{sec:svijw}
 
-The raw quintuple $(a_S,b_S,\rho_S,m_S,s_S)$ is an excellent computational
-coordinate system and a poor market language: no single coordinate is
-``the level'' or ``the skew,'' and each of $b_S$, $\rho_S$, $s_S$ moves a
-wing and the interior at once.  The jump-wing (JW) coordinates of
-\citet{GatheralJacquier2014} re-read the same curve through five
-functionals chosen to match the desk's questions, and --- the reading this
-section presses --- they sort into \emph{three interior handles and two
-tail handles}.
+The raw quintuple $(a_S,b_S,\rho_S,m_S,s_S)$ is an excellent
+computational coordinate system and a poor market language.  No single
+coordinate is ``the level'' or ``the skew,'' and each of $b_S$,
+$\rho_S$, $s_S$ moves a wing and the interior at once.  The jump-wing
+(JW) coordinates of \citet{GatheralJacquier2014} re-read the same curve
+through five quantities chosen to match the desk's questions.  (The
+name is inherited, not descriptive: the coordinates arose from reading
+wing behavior in stochastic-volatility models with jumps; nothing in
+this section requires jumps.)  This
+section defines them, shows how to read them without mixing up their
+units, and then answers the harder question: given five quoted handles,
+can the hyperbola be reconstructed --- and when it cannot, what
+information was lost?
+
+A useful way to remember the five handles: three of them describe the
+\emph{interior} of the smile and two describe its \emph{tails}.
 
 \begin{definition}[Jump-wing handles]
 \label{def:jw}
@@ -25,7 +33,17 @@ c_J=\frac{\beta_R}{\sqrt{w_0}}}_{\text{tails}}.
 \end{equation}
 \end{definition}
 
-Substituting \eqref{eq:svi} gives the closed forms
+In words: $v_J$ is the ATM variance per year, $\psi_J$ is the ATM slope
+(of total volatility $\sqrt w$, not of $w$ --- this matters below),
+$\tilde v_J$ is the smile's minimum variance per year, and $p_J$, $c_J$
+are the put and call wing slopes, each divided by $\sqrt{w_0}$.
+
+For the family \eqref{eq:svi} all five have closed forms.  Four are
+immediate from \cref{prop:svigeom}; the ATM slope takes two lines.
+Since $(\sqrt w)'=w'/(2\sqrt w)$, and at $k=0$ the shorthands
+\eqref{eq:svishort} read $x_S=-m_S$ and $r_S=\sqrt{m_S^2+s_S^2}$,
+formula \eqref{eq:svideriv} gives
+$w'(0)=b_S\big(\rho_S-m_S/\sqrt{m_S^2+s_S^2}\big)$, hence
 \begin{equation}
 v_J=\frac{w_0}{\tau},\quad
 \psi_J=\frac{b_S}{2\sqrt{w_0}}\Big(\rho_S-\frac{m_S}{\sqrt{m_S^2+s_S^2}}\Big),\quad
@@ -34,9 +52,17 @@ c_J=\frac{b_S(1+\rho_S)}{\sqrt{w_0}},\quad
 \tilde v_J=\frac{w^*}{\tau},
 \label{eq:rawtojw}
 \end{equation}
-with $w^*$ from \eqref{eq:svivertex}.  Each handle lives in its own units,
-and misreading them is the most common JW error.  With
-$I(k)=\sqrt{w(k)/\tau}$ the working implied volatility,
+with $w^*$ from \eqref{eq:svivertex}.
+
+\subsection*{Reading the handles in their own units}
+
+Each handle lives in its own units, and misreading them is the most
+common JW error, so we spell the dictionary out.  Write
+$I(k)=\sqrt{w(k)/\tau}$ for the implied-volatility curve.  Then
+$I(0)=\sqrt{w_0/\tau}=\sqrt{v_J}$; differentiating,
+$I'(0)=w'(0)/(2\sqrt{\tau w_0})=(\sqrt w)'(0)/\sqrt\tau=\psi_J/\sqrt\tau$;
+and inverting the definitions of the wing handles,
+$\beta_L=p_J\sqrt{w_0}=p_J\sqrt{v_J\tau}$ and likewise for $\beta_R$:
 \begin{equation}
 I(0)=\sqrt{v_J},\qquad
 I'(0)=\frac{\psi_J}{\sqrt\tau},\qquad
@@ -45,89 +71,135 @@ I'(0)=\frac{\psi_J}{\sqrt\tau},\qquad
 \beta_R=c_J\sqrt{v_J\tau}.
 \label{eq:jwunits}
 \end{equation}
-So $v_J$ and $\tilde v_J$ are variances --- the IV chart shows their
-square roots; $\psi_J$ is the ATM slope of total \emph{volatility}
-$\sqrt w$, and the plotted tangent is $\psi_J/\sqrt\tau$; and $p_J,c_J$
-are \emph{normalized} total-variance wing slopes, not slopes of the IV
-curve.  \Cref{fig:svihandles} annotates a fitted slice --- SPY December
-2026 from the frozen snapshot, the book's recurring node --- in exactly
-these units: the fit carries
-$\sqrt{v_J}=\MacSviSpyAtmVolPct\%$, tangent slope $\MacSviSpyTangent$,
-floor $\sqrt{\tilde v_J}=\MacSviSpyMinVolPct\%$, and wing handles
-$(p_J,c_J)=(\MacSviSpyP,\MacSviSpyC)$.
+So: $v_J$ and $\tilde v_J$ are variances, and what an
+implied-volatility chart shows is their square roots.  $\psi_J$ is the
+ATM slope of total \emph{volatility}, so the tangent drawn on the IV
+chart has slope $\psi_J/\sqrt\tau$.  And $p_J$, $c_J$ are
+\emph{normalized} total-variance wing slopes --- they are not slopes of
+the IV curve at all.
+
+\Cref{fig:svihandles} annotates a fitted slice in exactly these units.
+The data is the SPY December 2026 expiry of the frozen snapshot ---
+the fixed market capture, described in \cref{app:data}, from which
+every empirical example in this book is drawn --- and this particular
+(asset, expiry) pair, a \emph{node} in the book's vocabulary, will
+recur through the chapter.  The fit misses the quotes by
+$\MacSviSpyRmsBp$ vol bp on average (a \emph{vol bp} is one hundredth
+of a volatility percentage point, the book's unit of fit error), and
+carries $\sqrt{v_J}=\MacSviSpyAtmVolPct\%$, tangent slope
+$\MacSviSpyTangent$, floor
+$\sqrt{\tilde v_J}=\MacSviSpyMinVolPct\%$, and wing handles
+$(p_J,c_J)=(\MacSviSpyP,\MacSviSpyC)$.  Panel~(a) is the
+implied-volatility chart, where the three \emph{interior} handles are
+read: the orange dots are the mid quotes, the blue curve is the SVI
+fit, the two dotted horizontals mark the level $\sqrt{v_J}$ and the
+floor $\sqrt{\tilde v_J}$, and the dashed line through the money is the
+ATM tangent, of slope $\psi_J/\sqrt\tau$ --- negative, as an equity
+skew requires.  Panel~(b) switches to the total-variance chart, the
+only place the two \emph{tail} handles can be read honestly: the two
+dashed rays are the asymptotes, of slopes $\beta_L=p_J\sqrt{v_J\tau}$
+and $\beta_R=c_J\sqrt{v_J\tau}$.  Plotting all five handles on one IV
+axis would give the wing handles units they do not have.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{0.97\textwidth}{fig_svi_handles.pdf}
-\caption{The five handles in their honest units, on the SVI fit of the SPY
-December 2026 quotes (rms $\MacSviSpyRmsBp$ vol bp).  (a)~The three
+\caption{The five handles in their honest units, on the SVI fit of the
+SPY December 2026 quotes (rms $\MacSviSpyRmsBp$ vol bp).  (a)~The three
 interior handles are read on the IV chart: the level $\sqrt{v_J}$, the
 minimum $\sqrt{\tilde v_J}$, and the ATM tangent of slope
 $\psi_J/\sqrt\tau$.  (b)~The two tail handles are read on the
 total-variance chart, as the slopes $\beta_L=p_J\sqrt{v_J\tau}$ and
-$\beta_R=c_J\sqrt{v_J\tau}$ of the asymptotes.  Plotting all five on one
-IV axis would give the wing handles units they do not have.}
+$\beta_R=c_J\sqrt{v_J\tau}$ of the asymptotes.}
 \label{fig:svihandles}
 \end{figure}
 
 One caution before inverting.  The tail handles are \emph{normalized}
-indicators: by \eqref{eq:jwunits} the actual asymptotic slopes --- the
-objects Lee's bound and the moment map \eqref{eq:momentmap} read --- carry
-a factor $\sqrt{v_J\tau}$ of the supposedly interior level.  Raising
-$v_J$ with $(p_J,c_J)$ held fixed steepens both actual wings and moves the
-inferred moments.  JW is a quoting convention adapted to the desk, not an
-orthogonal decomposition of the slice into independent interior and tail
-degrees of freedom.
+indicators: by \eqref{eq:jwunits}, the actual asymptotic slopes --- the
+objects Lee's bound and the moment budget \eqref{eq:momentmap} read ---
+carry a factor $\sqrt{v_J\tau}$ of the supposedly interior level.
+Raise $v_J$ with $(p_J,c_J)$ held fixed and both actual wings steepen,
+moving the inferred moments.  JW is a quoting convention adapted to the
+desk, not a decomposition of the slice into independent interior and
+tail degrees of freedom.
 
 \subsection{Inverting the handles}
 
-Reading \eqref{eq:rawtojw} off a fitted slice is evaluation.  The
-interesting direction is the reverse: reconstructing the hyperbola from
-five quoted handles.  The two tail handles fix the scale and the tilt,
+Reading \eqref{eq:rawtojw} off a fitted slice is mere evaluation.  The
+interesting direction is the reverse: a desk quotes five handles ---
+can we reconstruct the hyperbola?  We build the inverse in three steps
+and watch where it can break.
+
+\emph{Step 1: the tail handles fix the scale and the tilt.}  From
+\eqref{eq:rawtojw}, $p_J\sqrt{w_0}=b_S(1-\rho_S)$ and
+$c_J\sqrt{w_0}=b_S(1+\rho_S)$.  Adding and subtracting,
 \begin{equation}
 b_S=\frac{\sqrt{w_0}}{2}(p_J+c_J),\qquad
-\rho_S=\frac{c_J-p_J}{c_J+p_J},\qquad w_0=v_J\tau ;
+\rho_S=\frac{c_J-p_J}{c_J+p_J},\qquad w_0=v_J\tau .
 \label{eq:invwings}
 \end{equation}
-the ATM slope fixes the normalized vertex displacement
+
+\emph{Step 2: the ATM slope fixes where the vertex sits.}  The
+combination of $m_S$ and $s_S$ that appears in $\psi_J$ is the
+\emph{normalized vertex displacement}
+$\chi:=m_S/\sqrt{m_S^2+s_S^2}\in(-1,1)$.  Solve \eqref{eq:rawtojw} for
+it: $\psi_J=\tfrac{b_S}{2\sqrt{w_0}}(\rho_S-\chi)$ and
+$b_S/\sqrt{w_0}=(p_J+c_J)/2$ give
 \begin{equation}
-\chi:=\frac{m_S}{\sqrt{m_S^2+s_S^2}}=\rho_S-\frac{4\psi_J}{p_J+c_J},
+\chi=\rho_S-\frac{4\psi_J}{p_J+c_J}.
 \label{eq:chidef}
 \end{equation}
-and the gap between level and floor then sets the width.  Evaluating
-\eqref{eq:svi} at $k=0$ and at the vertex gives the two identities
+
+\emph{Step 3: the gap between level and floor sets the width.}
+Evaluate \eqref{eq:svi} at the money and at the vertex:
 \begin{equation}
 w_0=a_S+b_S\Big(\sqrt{m_S^2+s_S^2}-\rho_Sm_S\Big),
 \qquad
-w^*=a_S+b_S\,s_S\sqrt{1-\rho_S^2};
+w^*=a_S+b_S\,s_S\sqrt{1-\rho_S^2}.
 \label{eq:twoids}
 \end{equation}
-since $m_S=\chi s_S/\sqrt{1-\chi^2}$ makes
-$\sqrt{m_S^2+s_S^2}=s_S/\sqrt{1-\chi^2}$, subtracting the second from the
-first leaves $w_0-\tilde v_J\tau=b_S\,s_S\,\mathcal{D}$ with
+By the definition of $\chi$, $m_S=\chi s_S/\sqrt{1-\chi^2}$ and hence
+$\sqrt{m_S^2+s_S^2}=s_S/\sqrt{1-\chi^2}$.  Subtract the second identity
+from the first: the unknown $a_S$ cancels, and
+\[
+w_0-w^*
+=b_S\,s_S\Big(\frac{1-\rho_S\chi}{\sqrt{1-\chi^2}}
+-\sqrt{1-\rho_S^2}\Big)
+=b_S\,s_S\,\mathcal{D},
+\]
+where we name the bracket
 \begin{equation}
 \mathcal{D}(\rho_S,\chi)
-=\frac{1-\rho_S\chi}{\sqrt{1-\chi^2}}-\sqrt{1-\rho_S^2},
+=\frac{1-\rho_S\chi}{\sqrt{1-\chi^2}}-\sqrt{1-\rho_S^2}.
 \label{eq:Ddef}
 \end{equation}
-so that
+Since $w_0-w^*=(v_J-\tilde v_J)\tau$, the width and the remaining two
+parameters follow:
 \begin{equation}
 s_S=\frac{(v_J-\tilde v_J)\,\tau}{b_S\,\mathcal{D}},\qquad
 m_S=\frac{\chi\,s_S}{\sqrt{1-\chi^2}},\qquad
 a_S=\tilde v_J\tau-b_S\,s_S\sqrt{1-\rho_S^2}.
 \label{eq:jwinverse}
 \end{equation}
-The denominator's sign is Cauchy--Schwarz.  Applied to the unit vectors
-$(\rho_S,\sqrt{1-\rho_S^2})$ and $(\chi,\sqrt{1-\chi^2})$,
+
+The whole inverse therefore stands or falls with the sign of the
+denominator $\mathcal{D}$, and that sign is a disguised
+Cauchy--Schwarz inequality.  Consider the two unit vectors
+$(\rho_S,\sqrt{1-\rho_S^2})$ and $(\chi,\sqrt{1-\chi^2})$ --- two
+points on the upper half of the unit circle.  Their dot product is at
+most $1$:
 \begin{equation}
 \rho_S\chi+\sqrt{1-\rho_S^2}\sqrt{1-\chi^2}\;\le\;1,
 \quad\text{i.e.}\quad
 \mathcal{D}\;\ge\;0,
 \label{eq:Dpos}
 \end{equation}
-with equality exactly when the vectors coincide, $\chi=\rho_S$.  This
-single inequality gives both the domain and the singularity of the
-coordinate system.
+(multiply the definition \eqref{eq:Ddef} through by the positive
+$\sqrt{1-\chi^2}$ to see the two statements are the same), with
+equality exactly when the two vectors coincide --- that is, when
+$\chi=\rho_S$, which by \eqref{eq:chidef} means $\psi_J=0$.  This
+single inequality gives both the domain of the coordinate system and
+its one singularity.
 
 \begin{theorem}[The image of the jump-wing map]
 \label{thm:jwimage}
@@ -142,66 +214,120 @@ v_J>0,\qquad p_J>0,\ c_J>0,\qquad
 \psi_J\ne0,\qquad \tilde v_J<v_J .
 \label{eq:regdom}
 \end{equation}
-\item The image also contains the stratum $\psi_J=0$, $\tilde v_J=v_J$
-(with $v_J,p_J,c_J>0$), every point of which is attained by infinitely
+\item The image also contains the \emph{stratum} $\psi_J=0$,
+$\tilde v_J=v_J$ (with $v_J,p_J,c_J>0$) --- a lower-dimensional sheet
+of handle points --- every point of which is attained by infinitely
 many slices.  There are no other image points.
 \end{enumerate}
 \end{theorem}
 
 \begin{proof}
 If $p_J,c_J>0$ then \eqref{eq:invwings} gives $b_S>0$ and
-$\rho_S\in(-1,1)$; conversely every admissible slice has $p_J,c_J>0$.
-From \eqref{eq:chidef}, using $(\rho_S-1)(p_J+c_J)=-2p_J$ and
-$(\rho_S+1)(p_J+c_J)=2c_J$,
+$\rho_S\in(-1,1)$; conversely every admissible slice has $p_J,c_J>0$
+because $b_S>0$ and $|\rho_S|<1$ make both $\beta_L,\beta_R>0$.
+
+Next, the band on $\psi_J$ is exactly the condition $|\chi|<1$, which
+keeps $m_S$ finite in \eqref{eq:jwinverse}.  To see the equivalence,
+note from \eqref{eq:invwings} that
 \[
-|\chi|<1
-\iff \rho_S-1<\frac{4\psi_J}{p_J+c_J}<\rho_S+1
-\iff -\frac{p_J}{2}<\psi_J<\frac{c_J}{2},
+\rho_S-1=\frac{(c_J-p_J)-(c_J+p_J)}{c_J+p_J}=\frac{-2p_J}{p_J+c_J},
+\qquad
+\rho_S+1=\frac{2c_J}{p_J+c_J},
 \]
-which keeps $m_S$ finite.  By \eqref{eq:Dpos}, $\mathcal{D}>0$ exactly
-when $\chi\ne\rho_S$, i.e.\ $\psi_J\ne0$; then $s_S>0$ in
-\eqref{eq:jwinverse} requires $v_J>\tilde v_J$.  Each failure breaks a
-requirement: one of $p_J,c_J\le0$ forces $b_S\le0$ or $|\rho_S|\ge1$;
-$\psi_J$ outside the band sends $|\chi|\ge1$; $\psi_J=0$ annihilates
-$\mathcal{D}$; $\tilde v_J\ge v_J$ makes $s_S\le0$.  For the stratum:
-$\psi_J=0$ gives $\chi=\rho_S$, which by \eqref{eq:svivertex} puts the
-vertex at $k^*=0$, so the floor is attained at the money and
-$\tilde v_J=v_J$ automatically.  Conversely fix $(v_J,p_J,c_J)$ on the
-stratum; \eqref{eq:invwings} sets $(b_S,\rho_S)$, and for \emph{every}
-$s_S>0$ the slice with $m_S=\rho_S s_S/\sqrt{1-\rho_S^2}$ and
-$a_S=v_J\tau-b_Ss_S\sqrt{1-\rho_S^2}$ reproduces the same five handles.
+so, by \eqref{eq:chidef},
+\begin{align*}
+|\chi|<1
+&\iff \rho_S-1<\frac{4\psi_J}{p_J+c_J}<\rho_S+1\\
+&\iff -\frac{2p_J}{p_J+c_J}<\frac{4\psi_J}{p_J+c_J}<\frac{2c_J}{p_J+c_J}
+\iff -\frac{p_J}{2}<\psi_J<\frac{c_J}{2}.
+\end{align*}
+By \eqref{eq:Dpos}, $\mathcal{D}>0$ exactly when $\chi\ne\rho_S$,
+i.e.\ $\psi_J\ne0$; and then $s_S>0$ in \eqref{eq:jwinverse} requires
+$v_J>\tilde v_J$.  So on the domain \eqref{eq:regdom} the three steps
+produce a unique admissible slice, and each failure of \eqref{eq:regdom}
+breaks a requirement: $p_J\le0$ or $c_J\le0$ forces $b_S\le0$ or
+$|\rho_S|\ge1$; $\psi_J$ outside the band sends $|\chi|\ge1$;
+$\psi_J=0$ annihilates $\mathcal{D}$; $\tilde v_J\ge v_J$ makes
+$s_S\le0$.
+
+For the stratum: $\psi_J=0$ gives $\chi=\rho_S$, i.e.\
+$m_S/\sqrt{m_S^2+s_S^2}=\rho_S$, which solves to
+$m_S=s_S\rho_S/\sqrt{1-\rho_S^2}$; substituting into
+\eqref{eq:svivertex},
+\[
+k^*=m_S-\frac{s_S\rho_S}{q_S}
+=\frac{s_S\rho_S}{\sqrt{1-\rho_S^2}}-\frac{s_S\rho_S}{\sqrt{1-\rho_S^2}}
+=0
+\]
+--- the smile bottoms exactly at the money --- so the floor is
+attained there and $\tilde v_J=v_J$ automatically.  Conversely, fix $(v_J,p_J,c_J)$ on the
+stratum.  Then \eqref{eq:invwings} sets $(b_S,\rho_S)$, and for
+\emph{every} width $s_S>0$, the slice with
+$m_S=\rho_S s_S/\sqrt{1-\rho_S^2}$ and
+$a_S=v_J\tau-b_Ss_S\sqrt{1-\rho_S^2}$ reproduces the same five handles:
+one handle set, a one-parameter family of slices.
 \end{proof}
 
 \begin{remark}[The blind spot is the interior curvature]
 \label{rem:stratum}
-The free width on the stratum is not an abstract degeneracy.  There the
-vertex sits at the money, the handles pin the level and both tails, and
-what they omit is exactly how sharply the curve turns through its bottom:
-by \eqref{eq:svivertex} the vertex curvature $\kappa^*=b_Sq_S^3/s_S$ runs
-through every positive value as $s_S$ does.  \Cref{fig:svistratum}(b)
-draws three slices sharing one handle quintuple.  Nor is the failure
-confined to the stratum itself: $\mathcal{D}$ vanishes at $\chi=\rho_S$
-together with its first $\chi$-derivative, and a direct differentiation
-of \eqref{eq:Ddef} gives
-$\partial^2\mathcal{D}/\partial\chi^2=(1-\rho_S^2)^{-3/2}$ there, so to
-second order,
+The free width on the stratum is not an abstract degeneracy; it is a
+specific piece of missing information.  On the stratum the vertex sits
+at the money, the handles pin the level and both tails --- and what
+they omit is exactly how sharply the curve turns through its bottom.
+By \eqref{eq:svivertex} the vertex curvature is
+$\kappa^*=b_Sq_S^3/s_S$, which runs through every positive value as the
+free width $s_S$ does.
+
+Nor is the failure confined to the stratum itself; it is felt nearby.
+Differentiate \eqref{eq:Ddef} in $\chi$ (quotient rule, then simplify
+the numerator):
+\[
+\frac{\partial\mathcal{D}}{\partial\chi}
+=\frac{-\rho_S(1-\chi^2)+\chi(1-\rho_S\chi)}{(1-\chi^2)^{3/2}}
+=\frac{\chi-\rho_S}{(1-\chi^2)^{3/2}},
+\]
+which vanishes at $\chi=\rho_S$: the denominator is flat there, not
+just zero.  Differentiate once more by the product rule,
+\[
+\frac{\partial^2\mathcal{D}}{\partial\chi^2}
+=(1-\chi^2)^{-3/2}+3\chi\,(\chi-\rho_S)\,(1-\chi^2)^{-5/2},
+\]
+and evaluate at $\chi=\rho_S$, where the second term drops:
+$\partial^2\mathcal{D}/\partial\chi^2=(1-\rho_S^2)^{-3/2}$.  So by
+Taylor expansion, and then substituting
+$\chi-\rho_S=-4\psi_J/(p_J+c_J)$ from \eqref{eq:chidef},
 \begin{equation}
 \mathcal{D}
 \sim\frac{(\chi-\rho_S)^2}{2\,(1-\rho_S^2)^{3/2}}
 =\frac{8\,\psi_J^2}{(p_J+c_J)^2(1-\rho_S^2)^{3/2}},
-\qquad\psi_J\to0,
+\qquad\psi_J\to0.
 \label{eq:Dasym}
 \end{equation}
-so the denominator vanishes \emph{quadratically}: near the stratum,
-recovering a finite width forces $v_J-\tilde v_J=O(\psi_J^2)$, quote noise
-in the handles is amplified by $1/\psi_J^2$, and a direct evaluation of
-\eqref{eq:Ddef} subtracts two nearly equal numbers.  An implementation can
-remove the cancellation by evaluating an algebraically identical form; no
-rearrangement can restore a curvature the handles never carried.  The
-stratum is not exotic --- ATM sitting at the smile's minimum is where a
-desk would expect the coordinates to be simplest, and fitted index slices
-pass close to it.
+The denominator closes \emph{quadratically} in $\psi_J$.  Three
+consequences, in increasing order of practical pain: near the stratum,
+a finite width forces the gap $v_J-\tilde v_J$ to be of order
+$\psi_J^2$, so the two handles carry nearly the same number; quote
+noise in the handles is amplified by $1/\psi_J^2$ in the recovered
+width; and a direct evaluation of \eqref{eq:Ddef} subtracts two nearly
+equal numbers, losing precision exactly where precision is scarce.  An
+implementation can remove that last cancellation by evaluating an
+algebraically identical form --- but no rearrangement can restore a
+curvature the handles never carried.  And the stratum is not exotic:
+ATM sitting at the smile's minimum is where a desk would expect the
+coordinates to be simplest, and fitted index slices pass close to it.
 \end{remark}
+
+\Cref{fig:svistratum} draws the two halves of the remark.  In
+panel~(a), the denominator $\mathcal{D}$ is plotted against $\psi_J$ at
+fixed $(p_J,c_J)$ (blue): it closes at $\psi_J=0$, and the dashed curve
+--- the quadratic asymptote \eqref{eq:Dasym} --- hugs it near the
+origin, confirming that the closing is quadratic, not linear.  In
+panel~(b), three slices share one handle quintuple
+$(v_J,0,p_J,c_J,v_J)$ on the stratum: same level, same asymptotes,
+visibly different turns through the bottom, one per width $s_S$.  The
+script verifies that the three slices agree on all five handles to
+$\MacSviStratumSpread$ --- machine precision --- so nothing about the
+handles distinguishes curves the eye tells apart at a glance.
 
 \begin{figure}[htbp]
 \centering
@@ -216,16 +342,17 @@ slices: $\MacSviStratumSpread$).}
 \label{fig:svistratum}
 \end{figure}
 
-The screens of \cref{sec:svibelly} translate directly into this
-vocabulary, which is convenient for checking a quoted handle set before
-any conversion: the floor condition is $\tilde v_J\ge0$; the domain
-condition is $-p_J/2<\psi_J<c_J/2$; and since
-$b_S(1+|\rho_S|)=\max(\beta_L,\beta_R)=\max(p_J,c_J)\sqrt{w_0}$ by
-\eqref{eq:invwings} and \eqref{eq:jwunits}, the cap \eqref{eq:leecap}
-reads
+We close the section with a practical dividend.  The validity screens
+of \cref{tab:tiers} translate directly into handle vocabulary, so a
+quoted handle set can be sanity-checked before any conversion: the
+floor condition is $\tilde v_J\ge0$; the domain condition is
+$-p_J/2<\psi_J<c_J/2$; and since
+$\max(\beta_L,\beta_R)=\max(p_J,c_J)\sqrt{w_0}$ by \eqref{eq:jwunits},
+the wing cap \eqref{eq:leecap} reads
 \begin{equation}
 \max(p_J,c_J)\,\sqrt{v_J\tau}\;\le\;\beta_{\max}.
 \label{eq:jwcap}
 \end{equation}
 None of the three certifies the interior, for the reason
-\cref{sec:svibelly} established.
+\cref{sec:svibelly} established: the belly answers to no cheap
+inequality, in any coordinate system.

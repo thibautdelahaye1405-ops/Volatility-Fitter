@@ -2,28 +2,50 @@
 % Sections live in this directory; figures and macros regenerate via
 % scripts/ch03/gen_figures.py from data/ (frozen snapshot + deterministic
 % synthetics).  Notation additions are recorded in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract, 2026-08-05).  After this chapter the
+% reader can:
+%   1. Write down the SVI formula, say in one sentence what each of its
+%      five parameters does to the curve, and find the vertex and the two
+%      wing slopes by differentiating the formula.
+%   2. Explain why a total-variance wing slope can never exceed 2, why the
+%      working cap sits strictly inside 2 (the boundary slice whose tail
+%      density is negative), and read a fitted slope as a statement about
+%      moments through r* = (2-b)^2/(8b).
+%   3. Explain why a slice can pass the floor and wing checks and still
+%      fail to be a probability law (the Vogt slice), and state the
+%      division of labor: cheap fences during the fit, one dense-grid
+%      check after it.
+%   4. Convert between raw SVI and the jump-wing handles in both
+%      directions, say where the conversion fails (psi_J = 0) and what
+%      the handles lose there (the curvature at the bottom of the smile).
+%   5. Explain how the Multi-Core Sigmoid adds detail to the body of a
+%      smile without moving its wings (a second difference of an
+%      asymptotically affine primitive), and why that extra capacity must
+%      be rationed (the gallery: better fits, failed validity).
+% Every section serves one of these five goals; material that served none
+% was cut or moved to Appendix 3.A in the 2026-08-05 revision.
 \renewcommand{\figdir}{figures/ch03}
 \chapter[Families in the volatility chart]{Families in the Volatility
 Chart: SVI-JW and Superposition}
 \label{ch:svi}
 
-\chaptersynopsis{Chapter~2 built the law first and read the smile off it.
-This chapter works the other way, directly in the volatility chart, as
-the industry does.  The gain is legibility: SVI draws one expiry as a
-tilted hyperbola whose jump-wing reading is the desk's vocabulary, and
-the Multi-Core Sigmoid adds local body detail by superposing kernels
-that are provably silent in both tails.  The price is that validity must
-now be policed.  The wing slopes are a moment reading capped strictly
-inside Lee's bound --- the bound itself admits negative tail density ---
-while the interior escapes every wing condition, as a classical
-counterexample shows, and is decided by a dense-grid check instead.  The
-jump-wing coordinates invert exactly on a proved domain and lose exactly
-the interior curvature on its singular stratum.  A structural
-optimization chart makes the enforced inequalities hold at every iterate
-by construction.  The chapter closes with the three families of this
-book fitted to the same frozen quotes under one protocol: fit quality,
-validity margin, and tail behavior, with no family winning every
-column.}
+\chaptersynopsis{Chapter~2 built a probability law first and read the
+smile from it.  This chapter does what the industry does instead: it
+writes the smile down directly, as a formula for total implied variance.
+The gain is legibility.  The SVI formula draws one expiry's smile with
+five parameters, and its jump-wing version speaks the desk's own
+vocabulary of level, skew, and wings.  The price is that a formula for a
+curve is not automatically a probability law, so validity must now be
+checked rather than inherited.  The chapter develops SVI slowly: the
+geometry of the curve, why its wing slopes are capped strictly inside
+Lee's bound of two, why passing the cheap checks does not yet make a
+slice a law, how the trader coordinates work and exactly where they
+fail, and how to calibrate so that the cheap conditions hold at every
+step.  It then builds the Multi-Core Sigmoid, which adds local detail to
+the body of a smile without touching its wings, and closes by fitting
+both families and Chapter~2's model to the same frozen quotes, so that
+each family's strengths and blind spots show in the same three numbers.}
 
 \input{chapters/03_svi_mcs/01_volatility_chart}
 \input{chapters/03_svi_mcs/02_hyperbola}

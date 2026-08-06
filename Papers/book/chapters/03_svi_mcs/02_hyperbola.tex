@@ -1,19 +1,45 @@
-\section{One hyperbola}
+\section{One hyperbola, five parameters}
 \label{sec:svigeom}
 
-Everything in the next three sections rests on closed-form facts about
-\eqref{eq:svi}.  Write
+We have a formula, \eqref{eq:svi}, and a claim that its five parameters
+are legible.  This section earns the claim: every geometric feature of
+the curve --- where it bottoms, how it curves there, how steep each wing
+is --- comes out in closed form.
+
+Start by computing, because the formula is friendlier than it looks.
+Take
+\[
+a_S=0.01,\qquad b_S=0.10,\qquad \rho_S=-0.4,\qquad m_S=0,\qquad
+s_S=0.2,
+\]
+with a quarter year of variance time, $\tau=0.25$.  At the money,
+$k=0$, the square root is $\sqrt{0^2+0.2^2}=0.2$, so
+\[
+w(0)=0.01+0.10\,(-0.4\cdot0+0.2)=0.030,
+\]
+and the implied volatility is $\sqrt{0.030/0.25}=\sqrt{0.120}\approx
+34.6\%$.  Further out on the call side, at $k=0.3$: the square root is
+$\sqrt{0.09+0.04}\approx0.361$, so
+$w(0.3)=0.01+0.10\,(-0.12+0.361)\approx0.0341$, an implied volatility of
+about $36.9\%$.  And at $k=-0.3$:
+$w(-0.3)=0.01+0.10\,(0.12+0.361)\approx0.0581$, about $48.2\%$.  The
+left side came out much higher than the right.  That is the equity put
+skew, and it entered through the sign of $\rho_S$: a negative tilt makes
+the put side steep and the call side shallow.  Everything else in this
+section is this computation done once and for all, in general.
+
+For the general statement, three shorthands keep the algebra readable:
 \begin{equation}
 x_S=k-m_S,\qquad r_S=\sqrt{x_S^2+s_S^2},\qquad q_S=\sqrt{1-\rho_S^2}
 \label{eq:svishort}
 \end{equation}
-(the subscripts keep the ledger's $x$ and the moment order $r$ of
-\eqref{eq:lee} untouched).
+(the subscripts keep Chapter~\ref{ch:lqd}'s transport $x$ and the moment
+order $r$ of \eqref{eq:lee} untouched).
 
 \begin{proposition}[Geometry of one slice]
 \label{prop:svigeom}
-Under $b_S>0$, $|\rho_S|<1$, $s_S>0$, the slice \eqref{eq:svi} is strictly
-convex with a single minimum:
+Under $b_S>0$, $|\rho_S|<1$, $s_S>0$, the slice \eqref{eq:svi} is
+strictly convex with a single minimum:
 \begin{align}
 w'(k)&=b_S\Big(\rho_S+\frac{x_S}{r_S}\Big), &
 w''(k)&=\frac{b_S\,s_S^2}{r_S^3}>0,
@@ -32,70 +58,127 @@ with
 \[
 \beta_L=b_S(1-\rho_S),\qquad \beta_R=b_S(1+\rho_S).
 \]
-The curvature at the vertex is
-$\kappa^*=w''(k^*)=b_S\,q_S^{3}/s_S$.
+The curvature at the vertex is $\kappa^*=w''(k^*)=b_S\,q_S^{3}/s_S$.
 \end{proposition}
 
 \begin{proof}
-Differentiating \eqref{eq:svi} gives \eqref{eq:svideriv}; $b_S,s_S>0$ make
-$w''>0$ everywhere, so any stationary point is the unique global minimum.
-Setting $w'=0$ gives $x_S/r_S=-\rho_S$, hence
-$x_S^2(1-\rho_S^2)=\rho_S^2s_S^2$ with $x_S$ of the opposite sign to
-$\rho_S$, i.e.\ $x_S=-s_S\rho_S/q_S$ and $r_S=s_S/q_S$; substituting
-yields \eqref{eq:svivertex} and $\kappa^*=b_Ss_S^2(q_S/s_S)^3$.  In either
-wing $r_S=|x_S|+O(1/|x_S|)$, which gives \eqref{eq:sviwings}.
+Differentiate \eqref{eq:svi} once and twice in $k$, using
+$r_S'=x_S/r_S$:
+\[
+w'=b_S\Big(\rho_S+\frac{x_S}{r_S}\Big),
+\qquad
+w''=b_S\,\frac{r_S-x_S\cdot(x_S/r_S)}{r_S^2}
+=b_S\,\frac{r_S^2-x_S^2}{r_S^3}
+=\frac{b_S\,s_S^2}{r_S^3},
+\]
+which is \eqref{eq:svideriv}; it is positive because $b_S,s_S>0$, so the
+curve is strictly convex and any stationary point is the unique global
+minimum.  To find that point, set $w'=0$, i.e.\ $x_S/r_S=-\rho_S$.
+Square both sides and use $r_S^2=x_S^2+s_S^2$:
+\[
+x_S^2=\rho_S^2\,(x_S^2+s_S^2)
+\quad\Longrightarrow\quad
+x_S^2\,(1-\rho_S^2)=\rho_S^2 s_S^2
+\quad\Longrightarrow\quad
+|x_S|=\frac{s_S|\rho_S|}{q_S}.
+\]
+Since $r_S>0$, the equation $x_S/r_S=-\rho_S$ forces $x_S$ to have the
+sign opposite to $\rho_S$, so $x_S=-s_S\rho_S/q_S$ and hence
+$k^*=m_S-s_S\rho_S/q_S$.  At this point
+\[
+r_S=\sqrt{\frac{s_S^2\rho_S^2}{q_S^2}+s_S^2}
+=s_S\,\frac{\sqrt{\rho_S^2+q_S^2}}{q_S}
+=\frac{s_S}{q_S},
+\]
+because $\rho_S^2+q_S^2=1$.  Substituting into \eqref{eq:svi},
+\[
+w^*=a_S+b_S\Big(-\frac{s_S\rho_S^2}{q_S}+\frac{s_S}{q_S}\Big)
+=a_S+b_S\,s_S\,\frac{1-\rho_S^2}{q_S}
+=a_S+b_S\,s_S\,q_S,
+\]
+which is \eqref{eq:svivertex}, and plugging $r_S=s_S/q_S$ into
+\eqref{eq:svideriv} gives
+$\kappa^*=b_S s_S^2\,(q_S/s_S)^3=b_S q_S^3/s_S$.  Finally, in either
+wing $|x_S|\to\infty$ and
+$r_S=|x_S|\sqrt{1+s_S^2/x_S^2}=|x_S|+O(1/|x_S|)$; substituting
+$r_S\approx|x_S|$ into \eqref{eq:svi} leaves
+$w\approx a_S+b_S(\rho_S x_S+|x_S|)$, whose slope in $k$ is
+$b_S(\rho_S+1)=\beta_R$ on the right and whose slope in $|k|$ is
+$b_S(1-\rho_S)=\beta_L$ on the left --- which is \eqref{eq:sviwings}.
 \end{proof}
 
-The formula reads as a rounded hinge.  Far from the vertex the hinge has
-forgotten its rounding and shows two straight rays, of slope $\beta_L$ on
-the left and $\beta_R$ on the right; the tilt $\rho_S$ divides a fixed
-total steepness $\beta_L+\beta_R=2b_S$ between the two sides, with
-$\rho_S<0$ --- the equity put skew --- making the left ray steeper.  Near
-the vertex, $s_S$ decides how sharply one ray turns into the other, $m_S$
-places the turn, and $a_S$ raises the whole curve.  \Cref{fig:svizoo}
-sweeps each role in isolation.
+In words: the curve is a rounded hinge.  Far from the vertex it is two
+straight rays, of slope $\beta_L$ on the left and $\beta_R$ on the
+right.  The tilt $\rho_S$ divides a fixed total steepness
+$\beta_L+\beta_R=2b_S$ between the two sides --- our worked slice had
+$\beta_L=0.10\times1.4=0.14$ and $\beta_R=0.06$, steep left, shallow
+right.  Near the vertex, $s_S$ decides how sharply one ray turns into
+the other, $m_S$ slides the turn left or right, and $a_S$ lifts the
+whole curve.  (For the worked slice, \eqref{eq:svivertex} puts the
+vertex at $k^*=0-0.2\cdot(-0.4)/\sqrt{0.84}\approx0.087$, with
+$w^*=0.01+0.10\cdot0.2\cdot0.917\approx0.028$ --- slightly right of the
+money, slightly below $w(0)$, as a left-steep curve requires.)
+
+\Cref{fig:svizoo} sweeps the three shape parameters one at a time around
+a common slice, and each panel isolates one of the readings above.  In
+panel~(a), only $\rho_S$ varies: watch the left and right rays trade
+steepness while their total stays fixed --- the vertex drifts, but the
+outer geometry only tilts.  In panel~(b), only $s_S$ varies: the rays do
+not move at all, and the curves differ only in how tightly they round
+the corner between them.  In panel~(c), only $b_S$ varies: both rays
+open or close together, like scissors.  Every member, in every panel, is
+one convex curve with one minimum.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_svi_zoo.pdf}
 \caption{The reach of the family \eqref{eq:svi}, one parameter at a time
-around a common slice.  (a)~The tilt $\rho_S$ redistributes a fixed total
-steepness between the wings.  (b)~The width $s_S$ rounds the vertex without
-moving the rays.  (c)~The steepness $b_S$ opens or closes both wings
-together.  Every member is one convex curve with one minimum.}
+around a common slice.  (a)~The tilt $\rho_S$ redistributes a fixed
+total steepness between the wings.  (b)~The width $s_S$ rounds the
+vertex without moving the rays.  (c)~The steepness $b_S$ opens or closes
+both wings together.  Every member is one convex curve with one
+minimum.}
 \label{fig:svizoo}
 \end{figure}
 
-Two consequences of \cref{prop:svigeom} organize the rest of the chapter.
+We now have the whole geometry.  Two consequences of it organize the
+rest of the chapter.
 
 First, the tails collapse to two numbers.  As $|k|$ grows, $w(k)/|k|$
-converges to $\beta_L$ on the put side and $\beta_R$ on the call side, and
-no other feature of the slice survives to infinity.  Whatever the market's
-tails are worth, this family records them in $(\beta_L,\beta_R)$ alone ---
-which is precisely the pair that Lee's moment bound constrains, and
-\cref{sec:svilee} develops that correspondence.
+tends to $\beta_L$ on the put side and $\beta_R$ on the call side, and
+no other feature of the slice survives to infinity.  Whatever the
+market's tails are worth, this family records them in
+$(\beta_L,\beta_R)$ alone.  That is exactly the pair that Lee's moment
+bound constrains, and \cref{sec:svilee} develops the correspondence.
 
 Second, strict convexity is a rigidity.  One hyperbola has one belly and
-one monotone turn of the slope, from $-\beta_L$ up to $+\beta_R$, and this
-excludes a shape that markets do produce.
+one monotone turn of the slope, from $-\beta_L$ up to $+\beta_R$.  This
+excludes a shape that markets do produce: the W, a central trough with a
+raised shoulder on each side.
 
 \begin{proposition}[A convex slice cannot carry a W]
 \label{prop:convexww}
 A convex function on an interval has no interior strict local maximum.
-Hence a total-variance curve with a central trough flanked by two shoulders
---- an interior local maximum on each side --- is not representable by any
-globally convex slice, in particular by \eqref{eq:svi}.
+Hence a total-variance curve with a central trough flanked by two
+shoulders --- an interior local maximum on each side --- is not
+representable by any globally convex slice, in particular by
+\eqref{eq:svi}.
 \end{proposition}
 
 \begin{proof}
-Convexity makes the one-sided derivatives non-decreasing; a strict interior
-maximum would force the derivative to pass from positive to negative,
-contradicting monotonicity.  By \cref{prop:svigeom}, $w''>0$ everywhere for
-the family \eqref{eq:svi}.
+For a convex function the derivative (or, where it fails to exist, the
+one-sided derivatives) is non-decreasing.  At a strict interior local
+maximum the derivative would have to pass from positive, on the way up,
+to negative, on the way down --- a decrease, contradicting monotonicity.
+By \cref{prop:svigeom}, $w''>0$ everywhere for the family
+\eqref{eq:svi}, so the family is convex and the exclusion applies to it.
 \end{proof}
 
-On a liquid index chain this rigidity is a virtue: it forbids the wiggles
-that quote noise would otherwise carve into the curve.  Ahead of a
-scheduled event, or in a name with bimodal positioning, it is a ceiling ---
-the smile genuinely turns more than once, and the family cannot follow.
-\Cref{sec:mcs} removes the ceiling without giving up the wings.
+Whether this rigidity helps or hurts depends on the smile in front of
+you.  On a liquid index chain it helps: it forbids the wiggles that
+quote noise would otherwise carve into the fitted curve.  Ahead of a
+scheduled event, or in a single stock (a \emph{name}, in desk speech)
+whose holders are split between two scenarios, it is a ceiling --- the
+market's smile genuinely turns more than once, and the family cannot
+follow it.  \Cref{sec:mcs} removes the ceiling without giving up the
+wings.

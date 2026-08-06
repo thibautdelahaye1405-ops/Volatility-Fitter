@@ -32,10 +32,13 @@ The author reviewed Chapters 3–4 and rejected their register: too dense,
 too clever, not readable for someone meeting the subject for the first
 time. The style contract below was rewritten in response — it OVERRIDES
 the earlier "monograph" register, and Chapter 2 is NO LONGER the style
-exemplar. Next, in order:
+exemplar. Chapter 3 has since been revised to the new contract
+(2026-08-05, later the same day) and is now the TONE EXEMPLAR for
+future chapters. Next, in order:
 
-1. Revise Chapters 3 and 4 to the new contract (full rewrite of the
-   prose as lessons; the mathematics, figures and macros stand).
+1. Revise Chapter 4 to the new contract (full rewrite of the prose as
+   lessons; the mathematics, figures and macros stand — same procedure
+   as the Chapter 3 revision, see the progress log).
 2. Chapter 5 onward, written under the new contract from the start.
 
 Chapter 2 keeps its monograph register for now (it doubles as the
@@ -120,9 +123,9 @@ local volatility placed among the models (author's decision).
 | 1  | Introduction | replaces Note 00; write LAST | pending (last) |
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | 01 | **DONE** (`Papers/lqd_paper/`, 36 pp) |
-| 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | drafted 2026-08-05; **REVISION REQUIRED** (pedagogy contract) |
+| 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | **DONE** (revised to the pedagogy contract 2026-08-05; tone exemplar) |
 | 4  | Local volatility | 04 | drafted 2026-08-05; **REVISION REQUIRED** (pedagogy contract) |
-| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending (after the 3–4 revision) |
+| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending (after the Ch. 4 revision) |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | pending |
 | 7  | Removing early exercise | 05 | pending |
@@ -453,3 +456,21 @@ keeping Chapter 2 self-contained.
   longer the style exemplar; Chapters 3–4 are queued for a full prose
   revision (math/figures/macros stand); Chapter 5 waits until after that
   revision so it can imitate a revised chapter's tone.
+- 2026-08-05 (later): Chapter 3 REVISED to the pedagogy contract — full
+  prose rewrite as a lesson, all 8 sections + synopsis; mathematics,
+  figures (10, every panel now walked in the body text), macros, and
+  labels unchanged.  Lesson goals recorded as the comment block in
+  chapter.tex.  Additions: worked numeric slice opens §3.2; every proof
+  step displayed (wing limits, boundary expansion, Ψ inversion, χ band,
+  𝒟 derivatives, structural inversion, kernel curvature); plain-word
+  reminders for every term of art; Table 3.1 pre-glossed.  Moved to
+  App. 3.A: the Jacobian-layers subsection (labels intact).  Fixed en
+  route: the appendix's `R=2` → `M=2` (ledger collision), a corrupted
+  `\rm` in §3.8, and a false "seventeen-strike" claim (the node has 94
+  prepared quotes — checked against the frozen snapshot).  Newcomer
+  fresh-reader pass run (sub-agent persona): all sections summarizable,
+  ~20 stumble points ALL resolved; math re-verified by the lead.  Main
+  text pp. 39–61 (≈23 pp, one over the guideline — accepted; density,
+  not length, was the complaint), appendix 62–64; full book builds
+  clean at 88 pp, no undefined refs, ch3 overfulls cleared.  Next:
+  Chapter 4 revision, imitating Chapter 3's revised tone.

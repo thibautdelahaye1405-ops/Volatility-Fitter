@@ -1,21 +1,51 @@
-\section{Wings are tails: Lee's bound inside the density factor}
+\section{Why the wing slopes are capped}
 \label{sec:svilee}
 
-Why should a wing slope be capped at all?  Because it is a moment
-barometer.  Lee's formula \eqref{eq:lee} ties the asymptotic slope of total
-variance to the critical moment order of the gross return: on the right
-wing $\beta_R=\Psi(r_+^*)$, where $1+r_+^*$ is the largest finite moment of
-$Y$ and $\Psi(r)=2-4(\sqrt{r^2+r}-r)$.  As the law loses its moments,
-$r_+^*\downarrow0$ and $\Psi\uparrow2$: a wing steeper than $2$ is the tail
-of no probability law at all.  For LQD the correspondence was a closed
-formula in the endpoint speeds (\cref{prop:leeclosed}); for a family whose
-wings are exactly linear it is a sharp, checkable inequality on two
-parameters, $\max(\beta_L,\beta_R)\le2$.
+We know from \cref{sec:svigeom} that the family's tails collapse to the
+two slopes $(\beta_L,\beta_R)$.  \Cref{tab:tiers} promised a cap on
+those slopes.  This section explains where the cap comes from, why it is
+set strictly \emph{inside} the theoretical bound rather than at it, and
+what a fitted slope does and does not say about the return
+distribution.
 
-The cleanest way to watch the bound bite is to follow it into the function
-that tests for arbitrage.  The Durrleman factor \eqref{eq:durrleman} mixes
-$w$, $w'$, and $w''$; in the wings of the family \eqref{eq:svi} the mixture
-simplifies to a limit that depends on the slope alone.
+The starting point is Lee's moment formula, met in
+Chapter~\ref{ch:lqd} as \eqref{eq:lee}.  In plain terms: the steeper a
+wing of total variance, the fatter the corresponding tail of the return
+law, and ``fatter'' is measured by which moments still exist.  Recall
+the actors.  $Y$ is the gross forward return of Chapter~\ref{ch:lqd}
+--- the underlying's final level divided by its forward price, the
+random variable behind every smile in this book.  Its moments
+$\E[Y^{r}]$ make sense for \emph{any} real exponent $r$, not just
+integers, and for a fat-tailed law they stop being finite beyond some
+critical exponent.  Write $1+r_+^*$ for that critical exponent:
+$\E[Y^{1+r}]$ is finite for $r<r_+^*$ and infinite for $r>r_+^*$.
+(The subscript $+$ marks the right tail; a mirror image $r_-^*$
+governs the left.)  Lee's formula ties the right wing to this critical
+exponent: $\beta_R=\Psi(r_+^*)$, where
+\[
+\Psi(r)=2-4\big(\sqrt{r^2+r}-r\big).
+\]
+The function $\Psi$ decreases: more finite moments mean a shallower
+wing.  As the law loses its moments, $r_+^*\downarrow0$ and
+$\Psi\uparrow2$.  So the number $2$ is a wall: a wing of total variance
+steeper than $2$ is the tail of no probability law at all.  For LQD the
+correspondence between tails and moments was a closed formula in the
+endpoint speeds (\cref{prop:leeclosed}).  For a family whose wings are
+exactly straight lines it is even simpler --- a checkable inequality on
+two parameters, $\max(\beta_L,\beta_R)\le2$.
+
+That inequality looks like the whole story.  It is not, and the cleanest
+way to see why is to follow the bound into the function that actually
+tests for arbitrage.  Recall the Durrleman function of
+\eqref{eq:durrleman} --- up to a positive factor it is the probability
+density the smile implies, so a valid smile needs $g_{\rm D}\ge0$:
+\[
+g_{\rm D}(k)=\Big(1-\frac{k\,w'}{2w}\Big)^{2}
+-\frac{(w')^2}{4}\Big(\frac1w+\frac14\Big)+\frac{w''}{2}.
+\]
+It mixes $w$, $w'$, and $w''$.  Deep in the wings of the family
+\eqref{eq:svi}, however, all three are controlled by the slope alone,
+and the mixture settles to a limit.
 
 \begin{proposition}[The wing slope sets the sign of the tail density]
 \label{prop:gtail}
@@ -26,94 +56,184 @@ For a slice \eqref{eq:svi} with $w>0$,
 \label{eq:gtail}
 \end{equation}
 Hence for $\beta<2$ the corresponding tail of $g_{\rm D}$ is eventually
-positive and for $\beta>2$ eventually negative.  At $\beta_R=2$ the limit
-vanishes and the sign falls to the next order: the right wing is
+positive and for $\beta>2$ eventually negative.  At $\beta_R=2$ the
+limit vanishes and the sign falls to the next order: the right wing is
 $w(k)=2k+(a_S-2m_S)+O(k^{-1})$, and
 \begin{equation}
 g_{\rm D}(k)=\frac{(a_S-2m_S)-2}{4k}+O(k^{-2}),
 \label{eq:gboundary}
 \end{equation}
 so the boundary slice carries negative tail density whenever
-$a_S-2m_S<2$.  The mirror statement holds on the left with the intercept
-$a_S+2m_S$.
+$a_S-2m_S<2$.  The mirror statement holds on the left with the
+intercept $a_S+2m_S$.
 \end{proposition}
 
 \begin{proof}
-In either wing $w\sim\beta|k|$, $|w'|\to\beta$, and $w''\to0$ by
-\eqref{eq:svideriv}.  The first bracket of \eqref{eq:durrleman} tends to
-$1-\tfrac12=\tfrac12$, so its square tends to $\tfrac14$; the middle term
-tends to $\beta^2/16$ because $1/w\to0$; the last term vanishes.  This
-gives \eqref{eq:gtail}.  For the boundary order, expand \eqref{eq:svi} on
-the right with $b_S(1+\rho_S)=2$:
+Work on the right wing; the left is symmetric.  There, by
+\cref{prop:svigeom}, $w=\beta k+O(1)$ with $\beta=\beta_R$,
+$w'\to\beta$, and $w''\to0$.  Take the three terms of $g_{\rm D}$ in
+turn:
 \[
-w(k)=2k+(a_S-2m_S)+\frac{b_Ss_S^2}{2k}+O(k^{-2}),
-\qquad
-w'(k)=2+O(k^{-2}).
+\frac{k\,w'}{2w}\longrightarrow\frac{k\,\beta}{2\,\beta k}=\frac12,
+\qquad\text{so}\qquad
+\Big(1-\frac{k\,w'}{2w}\Big)^{2}\longrightarrow\frac14;
 \]
-Then $kw'/(2w)=\tfrac12\{1-(a_S-2m_S)/(2k)\}+O(k^{-2})$, so the first
-bracket squares to $\tfrac14+(a_S-2m_S)/(4k)+O(k^{-2})$; the middle term is
-$\tfrac14\,w'^2\{1/w+\tfrac14\}=\tfrac14+1/(2k)+O(k^{-2})$ because
-$w'^2\to4$ and $1/w=1/(2k)+O(k^{-2})$; and $w''=O(k^{-3})$.  Subtracting
-gives \eqref{eq:gboundary}.
+\[
+\frac{(w')^2}{4}\Big(\frac1w+\frac14\Big)
+\longrightarrow\frac{\beta^2}{4}\Big(0+\frac14\Big)=\frac{\beta^2}{16},
+\]
+because $w\to\infty$ kills the $1/w$; and $w''/2\to0$.  Adding the
+three limits gives $\tfrac14-\beta^2/16=(4-\beta^2)/16$, which is
+\eqref{eq:gtail}.
+
+For the boundary case set $b_S(1+\rho_S)=2$ and expand one order
+deeper.  With $x_S=k-m_S$,
+\[
+r_S=x_S\sqrt{1+s_S^2/x_S^2}
+=x_S+\frac{s_S^2}{2x_S}+O(x_S^{-3}),
+\]
+so
+\[
+w=a_S+b_S(\rho_S x_S+r_S)
+=a_S+2\,(k-m_S)+\frac{b_S s_S^2}{2k}+O(k^{-2})
+=2k+(a_S-2m_S)+O(k^{-1}),
+\]
+and differentiating, $w'=2+O(k^{-2})$.  The intercept $a_S-2m_S$
+recurs below; we carry it written out.  First term: dividing numerator
+and denominator by $4k$,
+\[
+\frac{k\,w'}{2w}
+=\frac{2k+O(k^{-1})}{4k+2(a_S-2m_S)+O(k^{-1})}
+=\frac12\,\Big(1-\frac{a_S-2m_S}{2k}\Big)+O(k^{-2})
+=\frac12-\frac{a_S-2m_S}{4k}+O(k^{-2}),
+\]
+so
+\[
+\Big(1-\frac{k\,w'}{2w}\Big)^{2}
+=\Big(\frac12+\frac{a_S-2m_S}{4k}\Big)^{2}+O(k^{-2})
+=\frac14+\frac{a_S-2m_S}{4k}+O(k^{-2}).
+\]
+Second term: $(w')^2/4=1+O(k^{-2})$ and
+$1/w=1/(2k)+O(k^{-2})$, so
+\[
+\frac{(w')^2}{4}\Big(\frac1w+\frac14\Big)
+=\frac14+\frac{1}{2k}+O(k^{-2}).
+\]
+Third term: $w''=O(k^{-3})$.  Subtracting,
+\[
+g_{\rm D}(k)
+=\frac{a_S-2m_S}{4k}-\frac{1}{2k}+O(k^{-2})
+=\frac{(a_S-2m_S)-2}{4k}+O(k^{-2}),
+\]
+which is \eqref{eq:gboundary}.
 \end{proof}
 
-The proposition says two distinct things, and the second is easy to miss.
-Below the bound, the tail of the implied density is eventually positive ---
-the wing condition genuinely protects the far tail.  \emph{At} the bound,
-it protects nothing: the limit is zero, and the $1/k$ term decides.  A
-concrete slice makes the boundary failure explicit.  Take
-$(a_S,b_S,\rho_S,m_S,s_S)=(0.04,\,2,\,0,\,0,\,0.2)$: its minimum total
-variance is $0.44$, comfortably positive, and both wings sit exactly at
-$\beta=2$, so any constraint of the form $\beta\le2$ is satisfied with
-equality and charges nothing.  Yet $a_S-2m_S=0.04<2$, and by
-\eqref{eq:gboundary} the density is negative throughout the far tail ---
-$g_{\rm D}(10)=\MacSviBoundaryGTen$ on this slice.  A constraint written
-with Lee's constant as its right-hand side therefore admits laws that are
-not laws.
+The proposition says two things, and the second is the one that is easy
+to miss.  Below the bound, the tail of the implied density is
+eventually positive: the wing condition genuinely protects the far
+tail.  \emph{At} the bound, it protects nothing.  The limit is zero,
+and the sign is decided by the $1/k$ term --- that is, by the
+intercept, which no condition of the form $\beta\le2$ even looks at.
 
-The reference implementation draws the consequence as a convention, stated
-here once: the enforced cap is strictly inside the bound,
+A concrete slice makes the boundary failure explicit, and it is worth
+computing along.  Take
+\[
+(a_S,b_S,\rho_S,m_S,s_S)=(0.04,\ 2,\ 0,\ 0,\ 0.2).
+\]
+With $\rho_S=0$ and $m_S=0$ the curve is symmetric, and its minimum,
+at $k=0$, is $w^*=0.04+2\cdot0.2=0.44$ --- comfortably positive, so the
+floor condition holds.  Both wings have slope $b_S(1\pm0)=2$, so a
+constraint written as $\beta\le2$ is satisfied (with equality) and
+raises no objection.  Yet the intercept is $a_S-2m_S=0.04$, far below
+$2$, so \eqref{eq:gboundary} makes the tail density negative at every
+large strike --- at $k=10$ the predicted leading term is
+$(0.04-2)/40\approx-0.049$, and the exact value on this slice is
+$g_{\rm D}(10)=\MacSviBoundaryGTen$.  A constraint that uses Lee's
+constant as its right-hand side therefore admits curves that are not
+the smile of any law.
+
+The reference implementation draws the consequence as a convention,
+stated once: the enforced cap sits strictly inside the bound,
 \begin{equation}
 \max(\beta_L,\beta_R)\;\le\;\beta_{\max},\qquad
 \beta_{\max}=\MacSviBetaMax<2 .
 \label{eq:leecap}
 \end{equation}
-What does the buffer exclude?  Inverting $\Psi$ gives the \emph{moment
-budget} at slope $\beta$,
+
+Is the buffer expensive?  To answer, invert Lee's formula and ask which
+laws a slope just under $2$ still allows.  Set $\beta=\Psi(r)$ and
+solve for $r$.  Writing $\sqrt{r^2+r}-r=(2-\beta)/4$, move $r$ across
+and square:
+\[
+r^2+r=\Big(r+\frac{2-\beta}{4}\Big)^{2}
+=r^2+2r\,\frac{2-\beta}{4}+\Big(\frac{2-\beta}{4}\Big)^{2}
+\quad\Longrightarrow\quad
+r\,\Big(1-\frac{2-\beta}{2}\Big)=\frac{(2-\beta)^2}{16},
+\]
+and since $1-(2-\beta)/2=\beta/2$, this gives the \emph{moment budget}
+at slope $\beta$:
 \begin{equation}
 r^*=\Psi^{-1}(\beta)=\frac{(2-\beta)^2}{8\beta},
 \label{eq:momentmap}
 \end{equation}
-the number of moments beyond the first that a wing of slope $\beta$ still
-permits.  At the cap, $r^*=\MacSviPstarCap$: the laws excluded by the
-buffer are those whose entire moment budget beyond the mean is smaller
-than two parts in ten thousand.  The cap costs essentially nothing in
-distributional scope and restores the implication ``wing-admissible
-$\Rightarrow$ tail density eventually positive.''
+the number of moments beyond the first that a wing of slope $\beta$
+still permits.  At the cap,
+$r^*=(0.05)^2/(8\times1.95)=\MacSviPstarCap$: the only laws the buffer
+excludes are those whose entire moment budget beyond the mean is
+smaller than about two parts in ten thousand.  The cap costs
+essentially nothing in distributional scope, and it restores the
+implication the boundary slice broke: wing-admissible now implies that
+the tail density is eventually positive.
 
-The map \eqref{eq:momentmap} also says when a fitted wing may be read as a
-moment estimate, because its conditioning is extreme at both ends.
-Differentiating, $\dd r^*/\dd\beta=-(4-\beta^2)/(8\beta^2)$, which behaves
-as $-1/(2\beta^2)$ for small $\beta$: a shallow wing pins essentially no
-upper bound on the moments, and small changes in the fitted slope move the
-inferred moment violently.  As $\beta\to2$ the budget collapses to zero.
-A fitted $\beta$ is a candidate moment reading only in the middle of the
-range --- and only for a slice that is actually a law, which is the
-subject of the next section.  \Cref{fig:svilee} draws all three parts of
-the story.
+The map \eqref{eq:momentmap} also tells us when a fitted wing may be
+read as a moment estimate, because its sensitivity is extreme at both
+ends of the range.  Expand the quotient:
+\[
+r^*=\frac{4-4\beta+\beta^2}{8\beta}
+=\frac{1}{2\beta}-\frac12+\frac{\beta}{8},
+\qquad\text{so}\qquad
+\frac{\dd r^*}{\dd\beta}=-\frac{1}{2\beta^2}+\frac18
+=-\frac{4-\beta^2}{8\beta^2}.
+\]
+For small $\beta$ the derivative behaves as $-1/(2\beta^2)$: a shallow
+wing pins essentially no bound on the moments, and a small change in
+the fitted slope moves the inferred moment violently.  As $\beta\to2$
+the budget collapses to zero.  A fitted $\beta$ is a usable moment
+reading only in the middle of the range --- and only for a slice that
+actually is a law, which is the subject of the next section.
+
+\Cref{fig:svilee} draws the three parts of the story.  In panel~(a),
+the tail limit \eqref{eq:gtail} is plotted against the slope $\beta$: a
+downward parabola that crosses zero exactly at $\beta=2$ (dotted
+vertical line), with the working cap $\beta_{\max}=\MacSviBetaMax$
+marked dashed just inside it.  Left of the crossing the far tail is
+positive; right of it, negative; at it, undecided.  Panel~(b) shows the
+boundary slice of the worked example: its Durrleman function (orange)
+is negative at every plotted strike, creeping up toward zero from below
+exactly as the $1/k$ law \eqref{eq:gboundary} prescribes --- while the
+same slice with its wings brought back to the cap (blue) is positive
+and settles at the limit $(4-\beta_{\max}^2)/16$ (dotted horizontal).
+Panel~(c) plots the moment budget \eqref{eq:momentmap} on a log scale:
+it explodes as $\beta\to0$ --- shallow wings say nothing about moments
+--- and collapses at the cap, where the marked point sits at
+$r^*=\MacSviPstarCap$.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_svi_lee.pdf}
 \caption{Lee's bound inside the density factor.  (a)~The tail limit
-\eqref{eq:gtail} is a downward parabola crossing zero exactly at
-$\beta=2$; the dashed line is the working cap $\beta_{\max}=\MacSviBetaMax$.
-(b)~The boundary slice of the text: at $\beta_R=2$ (orange) the tail
-density is negative at every plotted strike, approaching zero from below
-as \eqref{eq:gboundary} prescribes; the same slice with its wings at the
-cap (blue) turns positive and settles at the limit
-$(4-\beta_{\max}^2)/16$ (dotted).  (c)~The moment budget
-\eqref{eq:momentmap} on a log scale: it explodes as $\beta\to0$ and
-collapses at the cap (marked point, $r^*=\MacSviPstarCap$).}
+\eqref{eq:gtail} against the wing slope: a downward parabola crossing
+zero exactly at $\beta=2$; the dashed line is the working cap
+$\beta_{\max}=\MacSviBetaMax$.  (b)~The boundary slice of the text: at
+$\beta_R=2$ (orange) the tail density is negative at every plotted
+strike, approaching zero from below as \eqref{eq:gboundary} prescribes;
+the same slice with its wings at the cap (blue) turns positive and
+settles at the limit $(4-\beta_{\max}^2)/16$ (dotted).  (c)~The moment
+budget \eqref{eq:momentmap} on a log scale: it explodes as $\beta\to0$
+and collapses at the cap (marked point, $r^*=\MacSviPstarCap$).}
 \label{fig:svilee}
 \end{figure}
+
+We now know that the floor guards the vertex and the cap guards the
+tails.  The next question is what guards everything in between --- and
+the answer, for now, is nothing.

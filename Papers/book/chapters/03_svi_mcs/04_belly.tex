@@ -1,30 +1,52 @@
-\section{The belly escapes}
+\section{What the inequalities do not check: the belly}
 \label{sec:svibelly}
 
-The word ``convex'' hides two different second derivatives.  The family
-\eqref{eq:svi} has $w''>0$ by construction; a butterfly spread tests the
-convexity of the option \emph{price} in strike, which is the sign of
-$g_{\rm D}$, and $g_{\rm D}$ mixes $w$, $w'$, and $w''$.  In the wings the
-two notions agree --- \cref{prop:gtail} showed the sign of $g_{\rm D}$
-there is Lee's --- but in the interior they need not.  The floor condition
-of \cref{tab:tiers} fences the vertex, the cap \eqref{eq:leecap} fences
-the wings, and between them lies a region neither condition reaches.
+The floor condition of \cref{tab:tiers} guards the vertex, and the cap
+\eqref{eq:leecap} guards the wings.  This section shows that the region
+between them --- the belly of the smile --- is guarded by neither, on a
+concrete slice that passes every cheap test and still fails to be a
+law.
 
-That the gap is real, and not a defect of any particular fitting code, is
-a classical example due to Vogt, reproduced as Example~3.1 by
-\citet{GatheralJacquier2014}:
+The root of the problem is that the word ``convex'' hides two different
+second derivatives.  The family \eqref{eq:svi} has $w''>0$ by
+construction: the \emph{variance curve} is convex in log-moneyness.
+What no-arbitrage requires is different: the \emph{option price} must be
+convex in the strike.  A butterfly spread --- buy one option at
+$K-\delta$, sell two at $K$, buy one at $K+\delta$ --- has a nonnegative
+payoff, so its price must be nonnegative, and that price is (up to
+scale) the second difference of the call price in strike.  Price
+convexity is what the sign of $g_{\rm D}$ tests, and $g_{\rm D}$ mixes
+$w$, $w'$, and $w''$.  In the wings the two notions of convexity agree
+--- \cref{prop:gtail} showed that the sign of $g_{\rm D}$ out there is
+decided by the wing slope.  In the interior they need not agree.
+
+That the gap is real, and not a defect of some particular fitting code,
+is shown by a classical example due to Vogt, reproduced as Example~3.1
+by \citet{GatheralJacquier2014}:
 \[
 (a_S,b_S,\rho_S,m_S,s_S)=(-0.0410,\ 0.1331,\ 0.3060,\ 0.3586,\ 0.4153).
 \]
-Its minimum total variance is $w^*=\MacSviVogtWmin$, so the floor is
-clean.  Its larger wing slope is $\MacSviVogtLee$, an order of magnitude
-under the cap, and by \eqref{eq:gtail} both tails of $g_{\rm D}$ settle
-near $\MacSviVogtTail$ --- the slice is impeccable everywhere the two
-inequalities look.  Yet $g_{\rm D}$ dips to $\MacSviVogtGmin$ near
-$k=\MacSviVogtKdip$, squarely between the two clean tails: the implied
-density is negative there, and the slice prices a butterfly below zero.
-\Cref{fig:svivogt} shows both halves.  Strict convexity of $w$ did not
-protect strike-convexity of the price.
+Score this slice against \cref{tab:tiers}, row by row.  The structural
+conditions hold: $b_S>0$, $|\rho_S|<1$, $s_S>0$.  The floor holds: the
+minimum total variance, from \eqref{eq:svivertex}, is
+$w^*=\MacSviVogtWmin$, safely positive.  The wings hold with an
+enormous margin: the larger slope is
+$\max(\beta_L,\beta_R)=\MacSviVogtLee$, an order of magnitude below the
+cap, and by \eqref{eq:gtail} both tails of $g_{\rm D}$ settle near
+$\MacSviVogtTail$ --- clean, positive tail density on both sides.
+Everywhere the cheap inequalities look, this slice is impeccable.
+
+Yet it is not a law.  In the interior, $g_{\rm D}$ dips to
+$\MacSviVogtGmin$ near $k=\MacSviVogtKdip$ --- squarely between the two
+clean tails.  The implied density is negative there, which means the
+slice prices some butterfly below zero.  \Cref{fig:svivogt} shows both
+halves of the verdict.  In panel~(a), the total-variance curve itself:
+smooth, convex, floor marked, nothing visibly wrong --- this is the
+point; the defect is invisible in the chart everyone looks at.  In
+panel~(b), the same slice's Durrleman function: it approaches the
+positive limit \eqref{eq:gtail} on both sides, exactly as the wing
+analysis promises, and turns negative in between.  The wing conditions
+fence the tails; the belly escapes them.
 
 \begin{figure}[htbp]
 \centering
@@ -32,52 +54,64 @@ protect strike-convexity of the price.
 \caption{The Vogt slice.  (a)~Total variance: the floor is positive and
 both wing slopes are far below the cap --- every inequality of
 \cref{tab:tiers} up to wing-admissibility holds strictly.  (b)~Its
-Durrleman factor approaches the positive tail limits \eqref{eq:gtail} on
-both sides yet turns negative in the interior.  The wing conditions fence
-the tails; the belly escapes them.}
+Durrleman function approaches the positive tail limits \eqref{eq:gtail}
+on both sides yet turns negative in the interior.  The wing conditions
+fence the tails; the belly escapes them.}
 \label{fig:svivogt}
 \end{figure}
 
-Could the gap be closed by a better inequality?  In principle yes: the
-exact butterfly-free domain of \eqref{eq:svi} has been characterized
-completely by \citet{MartiniMingone2022}.  But the characterization is not
-one short inequality --- it involves a parameter rescaling, root finding,
-and a numerical minimization --- and it is specific to this five-parameter
-family, with no analogue for the superposition family of \cref{sec:mcs}.
-The reference implementation therefore adopts the same division of labor
-for every family in the volatility chart, and it is worth stating as the
-chapter's second convention.  During optimization, the floor and cap enter
-as two hinge rows appended to the residual,
+Could a better inequality close the gap?  In principle, yes: the exact
+butterfly-free domain of the five SVI parameters has been characterized
+completely by \citet{MartiniMingone2022}.  But the characterization is
+not one short inequality --- it involves a parameter rescaling, root
+finding, and a numerical minimization --- and it is specific to this
+five-parameter family, with no analogue for the superposition family of
+\cref{sec:mcs}.  A family-by-family exact domain is not a strategy a
+multi-family fitter can build on.
+
+The reference implementation adopts a different division of labor for
+every family in the volatility chart, and it is the chapter's second
+convention.  \emph{During} the fit, the floor and the cap are enforced
+inside the least-squares residual --- the stacked vector of per-quote
+misfits that the optimizer drives toward zero --- by appending two
+cheap penalty rows to it:
 \begin{equation}
 W\,\max\!\big(-(a_S+b_Ss_Sq_S),\,0\big),
 \qquad
 W\,\max\!\big(b_S(1+|\rho_S|)-\beta_{\max},\,0\big),
 \label{eq:svipenalties}
 \end{equation}
-with a multiplier $W$ large enough to dominate a violation; both rows are
-exactly zero on a slice satisfying the two inequalities, so a clean fit is
-identical with or without them.  After optimization, the full condition is
-checked where the inexpensive rows cannot reach: $g_{\rm D}$ is evaluated
-from the model's own derivatives --- never by differencing prices --- on a
-dense grid across the traded strike range, and the slice is accepted only
-if the sampled minimum clears a small numerical tolerance.  This is the
-same posture as the numerical certificates of \cref{sec:certificates}: an
-analytic guarantee where one exists, and where it does not, a computed
-check on the finished object, with its scope --- the sampled grid on the
-traded range, not the whole line --- stated rather than implied.  The
-minimum of $g_{\rm D}$ over that grid is the \emph{validity margin} that
-the comparison of \cref{sec:comparison} reports for every fit of every
+with $W$ a multiplier large enough to dominate any violation.  Read the
+two rows: the first is active only when the floor $w^*=a_S+b_Ss_Sq_S$
+of \eqref{eq:svivertex} goes negative, the second only when the larger
+wing $b_S(1+|\rho_S|)$ exceeds the cap.  A row of this shape is called
+a \emph{hinge}: it is exactly zero whenever its inequality holds, so a
+clean fit is identical with or without it, and it only pushes back when
+the optimizer strays.  \emph{After} the fit, the condition the hinges
+cannot see is checked where it lives: $g_{\rm D}$ is evaluated on a
+dense grid of strikes across the traded range --- always from the
+model's own derivatives \eqref{eq:svideriv}, never by differencing
+prices, which would inject curvature noise at exactly the scale being
+measured --- and the slice is accepted only if the sampled minimum
+clears a small tolerance.  This is the same posture as the numerical
+certificates of \cref{sec:certificates}: an analytic guarantee where
+one exists, and where it does not, a computed check on the finished
+object, with its scope (the sampled grid on the traded range, not the
+whole line) stated rather than implied.  The minimum of $g_{\rm D}$
+over that grid is called the fit's \emph{validity margin}; the
+comparison of \cref{sec:comparison} reports it for every fit of every
 family.
 
-The division matters in both directions.  The condition
-$g_{\rm D}\ge0$ \emph{can} be pushed into the optimizer as one more soft
-row --- a hinge on sampled values of $g_{\rm D}$ over a grid --- and the
-superposition family of \cref{sec:mcs}, whose kernels can bend the
-density where a hyperbola cannot, carries exactly such a row
-(\cref{app:protocol}).  But a finite-weight hinge is a fence, not a
-proof: it is traded against the data term, it vanishes only where the
-sampled values already satisfy the inequality, and \cref{sec:comparison}
-shows fits that fail the final check with the fence active.  Conversely,
-trusting any of the fences alone would publish the Vogt slice.  Fence
-cheaply, then check completely: the fences keep the optimizer in the
-region where the check usually passes, and the check decides.
+One could try to push the butterfly condition into the optimizer too,
+as a hinge on sampled values of $g_{\rm D}$ over a grid --- and the
+superposition family of \cref{sec:mcs}, whose localized bump
+corrections (its \emph{kernels}, built there) can bend the density in
+ways a hyperbola cannot, carries exactly such a row
+(\cref{app:protocol}).  It helps, but it settles nothing: a
+finite-weight hinge is traded against the data term like any other
+residual row, so it discourages violations without excluding them, and
+\cref{sec:comparison} shows fits that fail the final check with that
+hinge active.  In the other direction, trusting the cheap fences alone
+would publish the Vogt slice.  So the division stands: fence cheaply
+during the fit to keep the optimizer in the region where the check
+usually passes --- and let the check decide.

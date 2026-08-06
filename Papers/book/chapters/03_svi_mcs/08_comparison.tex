@@ -1,69 +1,91 @@
 \section{Three families on the same quotes}
 \label{sec:comparison}
 
-The chapter closes by putting the three families side by side on the same
-data: the frozen snapshot of \cref{app:data}, all \MacCmpNodes\ nodes,
-under one protocol.  Each family is calibrated by the reference
-implementation to the same mid quotes with equal weights --- LQD at order
-16 under the guard \eqref{eq:orderguard} in its logistic chart, SVI in
-the structural chart of \cref{sec:svistructural}, and MCS at its capacity
-$M=2$ under \eqref{eq:idcap} --- and each fit reports the same three
-quantities: the rms distance to the quotes, the validity margin
-$\min g_{\rm D}$ over a dense grid on the traded range, and its wing
-slopes.  Every Durrleman factor is evaluated from the family's own
-analytic structure; \cref{app:protocol} records the details.  The point
-of the exercise is not a ranking.  It is to watch each family's contract
---- what it guarantees, what it must have checked --- show up in numbers.
+The chapter closes by putting the three families side by side on the
+same data: the frozen snapshot of \cref{app:data}, all \MacCmpNodes\
+nodes, under one protocol.  Each family is calibrated by the reference
+implementation to the same mid quotes with equal weights.  LQD runs at
+polynomial order 16 --- its capacity dial, cut back by the guard
+\eqref{eq:orderguard} on thin chains --- in its own
+constraint-eliminating coordinates (the logistic chart of
+\cref{sec:charts}); SVI runs in the structural chart of
+\cref{sec:svistructural}; MCS runs at $M=2$.  Each fit reports the
+same three quantities: the rms
+distance to the quotes, the validity margin $\min g_{\rm D}$ over a
+dense grid on the traded range, and its wing slopes.  Every Durrleman
+function is evaluated from the family's own analytic structure;
+\cref{app:protocol} records the details.  The point of the exercise is
+not a ranking.  It is to watch each family's contract --- what it
+guarantees, what it must have checked --- show up in numbers.
 
 \subsection{The December node and the SPY gallery}
 
-\Cref{fig:cmpnode} shows the SPY December 2026 slice.  The three fitted
-curves are indistinguishable at chart scale; the information is in the
-residual panel.  LQD tracks the mid quotes at $\MacCmpSpyLqdRms$ vol bp
-rms with an unstructured residual.  SVI carries $\MacCmpSpySviRms$ vol bp
-with the long-wavelength wave of a five-parameter curve absorbing a
-seventeen-strike skew --- the visible cost of parsimony.  MCS at $M=2$
-sits between, $\MacCmpSpyMcsRms$ vol bp, its two kernels spent on the
-largest features of the SVI-shaped residual.  All three agree on the
-wings to within a few hundredths of slope
-($\beta_R=\MacCmpSpyLqdBetaR$, $\MacCmpSpySviBetaR$, and
-$\MacCmpSpyMcsBetaR$ respectively), which is the pattern \cref{sec:tails}
-led us to expect: no finite strip identifies an asymptotic slope by
-itself, and three different conventions continue similar evidence three
-different ways.
+\Cref{fig:cmpnode} shows the SPY December 2026 slice, the node the
+chapter has used throughout.  In panel~(a), the orange dots are the
+mid quotes with their bid--ask band, and the three fitted curves ---
+LQD in green, SVI in blue, MCS in violet --- overlie so closely that
+at chart scale they read as one curve inside the band.  Whatever
+separates the families, it is not visible here.  Panel~(b) is where
+the information lives: it plots each family's \emph{residuals},
+quote by quote, against the mids.  Now the three separate cleanly.
+LQD tracks the quotes at $\MacCmpSpyLqdRms$ vol bp rms with a residual
+that looks like noise --- no structure left.  SVI carries
+$\MacCmpSpySviRms$ vol bp, and its residual is not noise: it is one
+slow wave across the strike range, the visible signature of a
+five-parameter curve absorbing a whole quoted skew --- the cost of
+parsimony made concrete.  MCS at $M=2$ sits between, at
+$\MacCmpSpyMcsRms$ vol bp: its two kernels have spent themselves on
+the two largest features of the SVI-shaped wave.
+
+The three fits also agree on the wings to within a few hundredths of
+slope --- $\beta_R=\MacCmpSpyLqdBetaR$, $\MacCmpSpySviBetaR$, and
+$\MacCmpSpyMcsBetaR$ respectively --- and it is worth pausing on why
+this is expected rather than reassuring.  \Cref{sec:tails} made the
+point for LQD: no finite strip of quotes identifies an asymptotic
+slope by itself; a fitted wing is the model's convention continuing
+the last quoted evidence.  Here, three different conventions continue
+similar evidence in similar ways.  The agreement measures the
+evidence, not the truth of any family's tails.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{0.97\textwidth}{fig_cmp_node.pdf}
 \caption{Three families, one protocol, on SPY December 2026.  (a)~The
-fitted curves overlie at chart scale inside the bid--ask band.  (b)~The
-residuals against the mid quotes separate them: LQD
+fitted curves overlie at chart scale inside the bid--ask band.
+(b)~The residuals against the mid quotes separate them: LQD
 ($\MacCmpSpyLqdRms$ bp rms, \MacCmpSpyLqdPar\ parameters), MCS
 ($\MacCmpSpyMcsRms$ bp, \MacCmpSpyMcsPar), SVI ($\MacCmpSpySviRms$ bp,
 \MacCmpSpySviPar).  More coordinates buy a whiter residual.}
 \label{fig:cmpnode}
 \end{figure}
 
-\Cref{fig:cmpgallery} extends the reading to the eight SPY expiries, and
-its second panel is the one to study.  On fit quality the ordering is
-stable: LQD, then MCS, then SVI, with the gap widening at the long end
-where the skew's shape departs furthest from a hyperbola.  On the
-validity margin the picture inverts.  LQD's margin is positive on every
-node --- \cref{prop:noarb} made that structural, and the panel is simply
-the numerical trace of a theorem.  SVI's margin is positive on every
-node as well, not by theorem but by rigidity: five parameters fitted to
-a liquid convex smile have no capacity left to bend the density
-negative.  MCS at $M=2$ fails the check on most of the SPY expiries ---
-its own sampled hinge on $g_{
-m D}$ notwithstanding, the concrete form
-of \cref{sec:svibelly}'s warning that a finite-weight fence bends the
-optimum without bounding it.  Its kernels, having no genuine local features to explain on a liquid index
-smile, chase quote noise, and the manufactured curvature surfaces as a
-negative $g_{\rm D}$ dip --- typically in the thinly quoted region where
-no data resists it.  Across all \MacCmpNodes\ nodes the medians read:
+\Cref{fig:cmpgallery} extends the reading to all eight SPY expiries.
+Panel~(a) plots fit quality by expiry, and the ordering is stable
+everywhere: LQD, then MCS, then SVI, with SVI's gap widening at the
+long end, where the skew's shape departs furthest from a hyperbola.
+More parameters fit better, uniformly --- no surprise.  Panel~(b) is
+the panel to study: the validity margin $\min g_{\rm D}$ by expiry,
+with the zero line marked.  The picture inverts.  LQD's margin is
+positive on every node --- \cref{prop:noarb} made that structural, so
+this panel is simply the numerical trace of a theorem.  SVI's margin
+is positive on every node as well, and it cannot be by theorem --- the
+Vogt slice of \cref{sec:svibelly} is proof that the family contains
+invalid members.  It is by rigidity: five parameters fitted to a
+liquid convex smile have no capacity left over to bend the density
+negative.  MCS at
+$M=2$ fails the check on most of the SPY expiries --- even though its
+own optimizer carries a sampled hinge on $g_{\rm D}$
+(\cref{app:protocol}), the concrete form of \cref{sec:svibelly}'s
+warning that a finite-weight fence discourages violations without
+excluding them.  Its kernels, finding no genuine local features on a
+liquid index smile, chase quote noise, and the manufactured curvature
+surfaces as a negative dip of $g_{\rm D}$ --- typically in the thinly
+quoted region, where no data resists it.
+
+Across all \MacCmpNodes\ nodes (both names), the medians read:
 \begin{center}
 \small
-\setlength{\tabcolsep}{6pt}
+\setlength{\tabcolsep}{5pt}
 \renewcommand{\arraystretch}{1.2}
 \begin{tabular}{@{}lcccc@{}}
 \toprule
@@ -77,58 +99,82 @@ $\MacCmpTabSviMedGmin$ & \MacCmpTabSviNegNodes\ of \MacCmpNodes\\
 MCS, $M=2$ & \MacCmpTabMcsMedRms & \MacCmpTabMcsWorstRms &
 $\MacCmpTabMcsMedGmin$ & \MacCmpTabMcsNegNodes\ of \MacCmpNodes\\
 MCS, $M=0$ (base only) & \MacCmpTabMcszeroMedRms & --- &
-$\MacCmpTabMcszeroMedGmin$ & \MacCmpTabMcszeroNegNodes\ of \MacCmpNodes\\
+$\MacCmpTabMcszeroMedGmin$ & \MacCmpTabMcszeroNegNodes\ of
+\MacCmpNodes\\
 \bottomrule
 \end{tabular}
 \end{center}
-The last row isolates the dial: withdrawing the kernels returns the
-margins to uniformly positive and the fit quality to SVI's level.
-Capacity is not free and not fatal --- it is a choice, and on these
-chains the correct choice is zero.
+Read the two MCS rows against each other: they isolate the dial.
+Withdraw the kernels and the margins return to uniformly positive
+while the fit quality falls back to SVI's level.  Capacity is neither
+free nor fatal --- it is a choice, and on these liquid chains the
+correct choice is zero.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{0.97\textwidth}{fig_cmp_gallery.pdf}
-\caption{The SPY gallery under one protocol.  (a)~Fit quality by expiry:
-more parameters fit better, uniformly.  (b)~The validity margin by
-expiry: LQD is positive by construction, SVI by rigidity, and MCS at
-$M=2$ --- its kernels chasing noise on a smile with no genuine local
-features --- fails the dense-grid check on most nodes.  The two panels
-together are the chapter's thesis in one figure: in the volatility
-chart, fit quality and validity are separate accounts.}
+\caption{The SPY gallery under one protocol.  (a)~Fit quality by
+expiry: more parameters fit better, uniformly.  (b)~The validity
+margin by expiry: LQD is positive by construction, SVI by rigidity,
+and MCS at $M=2$ --- its kernels chasing noise on a smile with no
+genuine local features --- fails the dense-grid check on most nodes.
+The two panels together are the chapter's thesis in one figure: in the
+volatility chart, fit quality and validity are separate accounts.}
 \label{fig:cmpgallery}
 \end{figure}
 
 \subsection{Expressiveness measured on a legal target}
 
-The gallery shows what excess capacity does where it is not needed.  The
-complementary question --- what rigidity costs where capacity \emph{is}
-needed --- must be asked against a target that an arbitrage-aware family
-is allowed to reproduce.  A two-lognormal mixture supplies one: weights
-$0.65$ and $0.35$, component volatilities $14\%$ and $42\%$, second
-component forward $0.85$ and the first fixed by the martingale identity
-($f_1=1.081$), quarter year to expiry.  Its law is genuine by construction, and the exact
-density gives $\min g_{\rm D}=\MacCmpMixTargetGmin$ on the quoted range
---- bimodal, but strictly admissible.  \Cref{fig:cmpmixture} fits the
-three families to its smile.  LQD follows the two modes at
-$\MacCmpMixLqdRms$ vol bp with margin $\MacCmpMixLqdGmin$.  SVI misses by
-$\MacCmpMixSviRms$ vol bp --- \cref{prop:convexww} in numbers, one belly
-against two modes --- while remaining perfectly valid
-($\min g_{\rm D}=\MacCmpMixSviGmin$): the failure is expressiveness, not
-arbitrage.  MCS halves SVI's miss to $\MacCmpMixMcsRms$ vol bp but
-overdrives its kernels into a small violation
-($\MacCmpMixMcsGmin$): on this target its capacity is necessary yet
-still needs its checks.  No family wins all three columns, which is the
-result.
+The gallery shows what excess capacity does where it is not needed.
+The complementary question --- what rigidity costs where capacity
+\emph{is} needed --- has to be asked carefully.  It would prove
+nothing to fit a W-shaped curve that no law can produce; the target
+must itself be a genuine law, so that an arbitrage-aware family is
+allowed to reproduce it.
+
+A mixture of two lognormals supplies one.  Take component weights
+$0.65$ and $0.35$ and component volatilities $14\%$ and $42\%$ ---
+a calm scenario and a stressed one --- with a quarter year to expiry.
+Give the stressed component a forward of $0.85$; the martingale
+identity (the weighted forwards must average to one) then fixes the
+calm component's forward:
+\[
+0.65\,f_1+0.35\times0.85=1
+\quad\Longrightarrow\quad
+f_1=\frac{1-0.2975}{0.65}=1.081 .
+\]
+This law is genuine by construction --- a mixture of laws is a law ---
+and because its density is known exactly, its own Durrleman minimum
+can be computed rather than estimated: $\min g_{\rm
+D}=\MacCmpMixTargetGmin$ on the quoted range.  Bimodal, but strictly
+admissible.
+
+\Cref{fig:cmpmixture} fits the three families to this smile.  In
+panel~(a), the target smile (orange dots) shows the two-mode
+signature, and the three fitted curves now visibly separate --- unlike
+on the index node, chart scale is enough.  LQD (green) follows the two
+modes at quote scale.  SVI (blue) cuts through them with its single
+belly.  MCS (violet) recovers most of the shape.  Panel~(b) makes the
+comparison quantitative with the signed errors.  LQD fits at
+$\MacCmpMixLqdRms$ vol bp with margin $\MacCmpMixLqdGmin$.  SVI misses
+by $\MacCmpMixSviRms$ vol bp --- a structured, two-lobed error of
+about two volatility points, which is \cref{prop:convexww} in numbers:
+one belly cannot seat two modes.  Note what SVI's failure is
+\emph{not}: its margin is $\MacCmpMixSviGmin$, perfectly valid.
+Rigidity fails at expressiveness, not at arbitrage.  MCS halves SVI's
+miss to $\MacCmpMixMcsRms$ vol bp, but overdrives its kernels into a
+small violation ($\MacCmpMixMcsGmin$): on this target its capacity is
+genuinely needed --- and still needs its check.  No family wins all
+three columns, which is the result.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{0.97\textwidth}{fig_cmp_mixture.pdf}
 \caption{The rigidity question asked legally: a bimodal but strictly
-admissible mixture law ($\min g_{\rm D}=\MacCmpMixTargetGmin$).  (a)~The
-smile and the three fits.  (b)~Signed errors: SVI's single belly leaves
-a $\pm$two-vol-point structured miss; MCS halves it; LQD follows the
-modes at quote scale.}
+admissible mixture law ($\min g_{\rm D}=\MacCmpMixTargetGmin$).
+(a)~The smile and the three fits.  (b)~Signed errors: SVI's single
+belly leaves a $\pm$two-vol-point structured miss; MCS halves it; LQD
+follows the modes at quote scale.}
 \label{fig:cmpmixture}
 \end{figure}
 
@@ -160,24 +206,27 @@ What convention supplies & order, ridge, tail chart & $\beta_{\max}$,
 chart, weights & $M$, ridge, weights\\
 \bottomrule
 \end{tabular}
-\caption{What each family guarantees, what must be checked, and what the
-modeler chooses.  The families do not dominate one another; they
+\caption{What each family guarantees, what must be checked, and what
+the modeler chooses.  The families do not dominate one another; they
 allocate the same difficulty differently.}
 \label{tab:svicontract}
 \end{table}
 
-The comparison, the mixture, and the gallery say one thing three ways,
-and it is the chapter's summary.  Working in the volatility chart does
-not remove the constraint that a smile be a probability law; it moves
-the constraint from the coordinates into the process --- inequalities
-the chart can absorb, a check the chart cannot, and capacity that must
-be governed because nothing structural governs it.  What the chart buys
-in exchange is legibility: coordinates a desk can quote, wings that are
-two readable numbers, corrections that are local by construction.
-Chapter~\ref{ch:lqd} and this one are therefore not competitors but the
-two poles of one design axis --- validity built into the coordinates
-versus coordinates built for the reader --- and the choice between them
-allocates difficulty; it does not eliminate it.  The next chapter moves
-to a third position on the same axis: local volatility, where the
-modeled object is neither a law nor a curve but the field consistent
-with all of them at once.
+The node, the gallery, and the mixture say one thing three ways, and
+it is the chapter's summary.  Working in the volatility chart does not
+remove the constraint that a smile be a probability law.  It moves the
+constraint out of the coordinates and into the process: some of it
+becomes inequalities a chart can absorb (the floor, the cap), some of
+it becomes a check no chart absorbs (the butterfly grid), and some of
+it becomes capacity that must be rationed because nothing structural
+rations it (the cores).  What the chart buys in exchange is
+legibility: coordinates a desk can quote, wings that are two readable
+numbers, corrections that are local by construction.
+Chapter~\ref{ch:lqd} and this chapter are therefore not competitors
+but two poles of one design axis --- validity built into the
+coordinates at the price of legibility, or coordinates built for the
+reader at the price of policing.  The choice of chart allocates the
+difficulty; it does not remove it.  The next chapter moves to a third
+position on the same axis: local volatility, where the modeled object
+is neither a law nor a curve but the field consistent with all of them
+at once.

@@ -1,33 +1,43 @@
 \section{Superposition: capacity without touching the wings}
 \label{sec:mcs}
 
-\Cref{prop:convexww} left a gap: some smiles --- ahead of a binary event,
-or in a name with bimodal positioning --- carry a central trough with a
-shoulder on each side, and no globally convex slice can follow them.  The
-design problem is sharper than ``add flexibility.''  The wings are the
-solved part of the curve: Lee's bound caps them, the quoted wing strikes
-pin them, and \cref{sec:svilee} showed the tail of the density reads them
-alone.  What is missing is detail in the \emph{body}, and the correction
-that supplies it must not move the wings at all.
+\Cref{prop:convexww} left a gap: some smiles --- ahead of a binary
+event, or in a name whose holders are split between two scenarios ---
+carry a central trough with a shoulder on each side, and no globally
+convex slice can follow them.  We now fill the gap.  But the design
+problem is sharper than ``add flexibility.''  The wings are the
+\emph{solved} part of the curve: Lee's bound caps them, the outermost
+quotes pin them, and \cref{sec:svilee} showed that the tail density
+reads them alone.  What is missing is detail in the \emph{body}, and
+whatever supplies it must not move the wings at all.
 
-The Multi-Core Sigmoid (MCS) solves this by superposition: a convex base
-that owns the wings, plus localized corrections that are silent --- in
-value, slope, \emph{and} curvature --- in both tails.  The construction
-rests on one elementary mechanism, developed first.
+The Multi-Core Sigmoid (MCS) meets this specification by
+superposition: a convex base curve that owns the wings, plus localized
+corrections that are silent --- in value, in slope, \emph{and} in
+curvature --- in both tails.  The whole construction rests on one
+elementary mechanism, and we build it first.
 
 \subsection{The base}
 
-Work in the standardized moneyness
+The family works in a standardized moneyness
 \begin{equation}
 \zeta=\frac{k}{\sigma_{\rm ref}\sqrt\tau},
 \label{eq:zetadef}
 \end{equation}
 where $\sigma_{\rm ref}$ is a reference volatility fixed before the fit
-(the quoted volatility nearest the money), so $\zeta$ measures moneyness
-in standard deviations and the parameters are roughly scale-free across
-expiries.  Displacements along this axis are written $\bar\zeta$
-(measured from a center fixed by context, so the ledger's rank $u$ stays
-untouched).  The convexity primitive is the log-cosh
+(the quoted volatility nearest the money).  The scaling makes $\zeta$
+count moneyness in standard deviations, so parameters mean roughly the
+same thing at every expiry: with $\sigma_{\rm ref}=20\%$ and
+$\tau=0.25$, one $\zeta$-unit is $0.20\times0.5=0.10$ of
+log-moneyness; at $\tau=1$ it is $0.20$.  Displacements along this
+axis are written $\bar\zeta$: the base below measures its displacement
+from its center $\zeta_0$, a kernel from its own center $\zeta_r$, and
+$\bar\zeta$ always denotes the distance from the center at hand.  (The
+symbol $\zeta$ is new to this chapter's ledger;
+Chapter~\ref{ch:lqd}'s $z$ is the log-odds of rank, an unrelated
+object.)
+
+The convexity primitive of the family is the log-cosh:
 \begin{equation}
 \mathcal{A}_\kappa(\bar\zeta)=\frac{4}{\kappa^2}\log\cosh\frac{\kappa\bar\zeta}{2},
 \qquad
@@ -36,35 +46,56 @@ untouched).  The convexity primitive is the log-cosh
 \mathcal{A}_\kappa''(\bar\zeta)=\operatorname{sech}^2\frac{\kappa\bar\zeta}{2},
 \label{eq:acosh}
 \end{equation}
-a smooth, even, convex softening of the absolute value.  Two facts about
-it carry the section.  Near the origin
+a smooth, even, convex softening of the absolute value, with $\kappa$
+setting how fast the softening straightens out.  Two facts about it
+carry the whole section.  Near the origin, $\log\cosh$ of a small
+argument is half its square, so
 $\mathcal{A}_\kappa(\bar\zeta)=\bar\zeta^2/2+O(\bar\zeta^4)$: a rounded
-vertex.  Far out it is \emph{asymptotically affine},
+vertex, of unit curvature whatever $\kappa$.  Far out it is
+\emph{asymptotically affine} --- straight line plus a vanishing
+remainder.  To see this, write
+\[
+\cosh x=\frac{e^{x}+e^{-x}}{2}=\frac{e^{|x|}}{2}\big(1+e^{-2|x|}\big)
+\quad\Longrightarrow\quad
+\log\cosh x=|x|-\log2+\log\!\big(1+e^{-2|x|}\big),
+\]
+and the last term dies exponentially; scaling by $4/\kappa^2$ at
+argument $\kappa\bar\zeta/2$,
 \begin{equation}
 \mathcal{A}_\kappa(\bar\zeta)=\frac{2}{\kappa}|\bar\zeta|
--\frac{4}{\kappa^2}\log2+o(1),
+-\frac{4}{\kappa^2}\log2+o(1).
 \label{eq:affine}
 \end{equation}
-since $\log\cosh x=|x|-\log2+\log(1+e^{-2|x|})$.  The base models
-annualized variance $V(\zeta)=w/\tau$ as
+
+The base models annualized variance $V(\zeta)=w/\tau$ as level plus
+tilt plus one rounded hinge:
 \begin{equation}
 V_{\rm base}(\zeta)=V_0+V_1(\zeta-\zeta_0)
-+V_2\,\mathcal{A}_{\kappa_i}(\zeta-\zeta_0),
++V_2\,\mathcal{A}_{\kappa}(\zeta-\zeta_0),
 \qquad
-\kappa_i=\begin{cases}\kappa_P,&\zeta<\zeta_0,\\
+\kappa=\begin{cases}\kappa_P,&\zeta<\zeta_0,\\
 \kappa_C,&\zeta\ge\zeta_0,\end{cases}
 \label{eq:mcsbase}
 \end{equation}
 six parameters: level $V_0$, slope $V_1$, and convexity amplitude
-$V_2\ge0$ at the center $\zeta_0$, with separate put and call
-steepnesses.  Because $\mathcal{A}_\kappa$ and $\mathcal{A}_\kappa'$
-vanish at the origin and $\mathcal{A}_\kappa''(0)=1$ whatever $\kappa$,
-the curve is $C^2$ across $\zeta_0$ even though the steepness switches
-there: the asymmetry lies in how fast each wing straightens, not in a
-kink or a curvature jump.  By \eqref{eq:affine} the asymptotic slopes of
-$V_{\rm base}$ are $V_1-2V_2/\kappa_P$ on the left and
-$V_1+2V_2/\kappa_C$ on the right; converting through \eqref{eq:zetadef}
-and $w=\tau V$, the total-variance wing slopes in $k$ are
+$V_2\ge0$ at the center $\zeta_0$, with separate put-side and call-side
+steepnesses $\kappa_P$, $\kappa_C$.  Switching the steepness at
+$\zeta_0$ costs no smoothness: $\mathcal{A}_\kappa$ and
+$\mathcal{A}_\kappa'$ both vanish at the origin, and
+$\mathcal{A}_\kappa''(0)=1$ for \emph{every} $\kappa$, so value, slope,
+and curvature all match across the switch --- the curve is $C^2$, and
+the asymmetry lies only in how fast each side straightens.
+
+The wings of the base follow from \eqref{eq:affine}.  As
+$\zeta\to+\infty$ the hinge contributes slope $2V_2/\kappa_C$, so
+$V_{\rm base}$ has asymptotic slope $V_1+2V_2/\kappa_C$; on the left,
+$V_1-2V_2/\kappa_P$, typically negative --- the put wing rises as
+$\zeta$ falls.  To convert to the total-variance slopes that Lee's
+bound reads, two bookkeeping steps: the map
+$w(k)=\tau V(k/(\sigma_{\rm ref}\sqrt\tau))$ contributes a chain-rule
+factor $\tau/(\sigma_{\rm ref}\sqrt\tau)=\sqrt\tau/\sigma_{\rm ref}$;
+and on the put side the convention of \eqref{eq:sviwings} measures the
+slope in $|k|$, which flips the sign of the falling left slope:
 \begin{equation}
 \beta_P=\frac{\sqrt\tau}{\sigma_{\rm ref}}
 \Big(\frac{2V_2}{\kappa_P}-V_1\Big),
@@ -73,13 +104,30 @@ and $w=\tau V$, the total-variance wing slopes in $k$ are
 \Big(V_1+\frac{2V_2}{\kappa_C}\Big).
 \label{eq:mcsbetak}
 \end{equation}
-These six numbers set the wings; the design goal is that nothing added
-later moves them.
+These six numbers set the wings.  The design goal for everything added
+next is that nothing moves them.
 
 \subsection{A kernel that vanishes to second order}
 
-The correction kernel is the normalized centered second difference of the
-same primitive: with $\bar\zeta=\zeta-\zeta_r$,
+Here is the mechanism.  A centered second difference --- value at the
+left, minus twice the value at the center, plus value at the right ---
+annihilates affine functions exactly: for any straight line
+$L(\bar\zeta)=\text{const}+\text{slope}\cdot\bar\zeta$,
+\[
+L(\bar\zeta-\ell)-2L(\bar\zeta)+L(\bar\zeta+\ell)
+=\big(-\ell\cdot\text{slope}\big)+\big(+\ell\cdot\text{slope}\big)=0
+\qquad\text{identically.}
+\]
+Now take the second difference of a function that is \emph{almost}
+affine far out --- such as $\mathcal{A}_\kappa$, by \eqref{eq:affine}.
+Far out, the second difference sees an affine function plus an
+exponentially small remainder, and returns the remainder alone: a bump
+that dies in both tails.  Near the center, where $\mathcal{A}_\kappa$
+is genuinely curved, the second difference is not zero --- that is the
+bump itself.
+
+The correction kernel is exactly this, normalized: with
+$\bar\zeta=\zeta-\zeta_r$,
 \begin{equation}
 \mathcal{B}_{\zeta_r,\ell_r,\kappa_r}(\zeta)
 =\frac{\mathcal{A}_{\kappa_r}(\bar\zeta-\ell_r)
@@ -88,11 +136,13 @@ same primitive: with $\bar\zeta=\zeta-\zeta_r$,
 {2\,\mathcal{A}_{\kappa_r}(\ell_r)},
 \label{eq:hatdef}
 \end{equation}
-centered at $\zeta_r$, of half-width $\ell_r$ and steepness $\kappa_r$,
-normalized so that $\mathcal{B}(\zeta_r)=1$ (the numerator at
-$\bar\zeta=0$ is $2\mathcal{A}_{\kappa_r}(\ell_r)$ because $\mathcal{A}$
-is even with $\mathcal{A}(0)=0$).  Its derivatives are the same second
-difference of $\mathcal{A}'$ and $\mathcal{A}''$ over the same
+centered at $\zeta_r$, of half-width $\ell_r$ and steepness $\kappa_r$.
+The normalizer makes the peak height exactly one --- at
+$\bar\zeta=0$ the numerator is
+$2\mathcal{A}_{\kappa_r}(\ell_r)$, because $\mathcal{A}$ is even with
+$\mathcal{A}(0)=0$ --- so a kernel's amplitude will read directly as a
+variance displacement.  Its derivatives are the same second difference
+applied to $\mathcal{A}'$ and $\mathcal{A}''$, over the same
 normalizer.
 
 \begin{lemma}[Zero wings]
@@ -102,30 +152,40 @@ $\zeta\to\pm\infty$.
 \end{lemma}
 
 \begin{proof}
-A centered second difference annihilates affine functions: for any
-affine $L$,
-$L(\bar\zeta-\ell)-2L(\bar\zeta)+L(\bar\zeta+\ell)=0$ identically.  By
-\eqref{eq:affine}, $\mathcal{A}_\kappa$ is affine plus $o(1)$ in each
-tail, so its second difference tends to zero there.  The same argument
-applies to $\mathcal{A}'$, which tends to the constants $\pm2/\kappa$
-(affine of zero slope), and to $\mathcal{A}''$, which decays.
+By \eqref{eq:affine}, $\mathcal{A}_\kappa$ is affine plus $o(1)$ in
+each tail; a centered second difference annihilates the affine part
+exactly (the computation displayed above), so what remains tends to
+zero.  The same argument covers the derivatives:
+$\mathcal{A}'_\kappa$ tends to the constants $\pm2/\kappa$ in the
+tails --- affine of zero slope --- so its second difference also tends
+to zero, and $\mathcal{A}''_\kappa$ itself decays.
 \end{proof}
 
-The lemma is the whole design, and it does not depend on the log-cosh:
-\emph{any} asymptotically affine primitive yields a tail-silent kernel by
-the same second difference.  The log-cosh is a convenience --- the model
-and its Jacobian share one set of derivatives, the kernel has unit height
-so its amplitude reads directly as a variance displacement, and the
-half-width and steepness are separate dials where a Gaussian bump has
-one.  At its center,
-$\mathcal{B}''(\zeta_r)
-=\{\operatorname{sech}^2(\kappa_r\ell_r/2)-1\}/\mathcal{A}_{\kappa_r}(\ell_r)<0$,
-so a positive multiple is locally concave --- a shoulder --- and a
-negative multiple digs a notch.
+The lemma is the entire design, and notice that it does not depend on
+the log-cosh: \emph{any} asymptotically affine primitive yields a
+tail-silent kernel by the same second difference.  The log-cosh is a
+convenience --- the model and its derivatives share one set of
+formulas \eqref{eq:acosh}, the unit peak makes amplitudes readable,
+and the half-width $\ell_r$ and steepness $\kappa_r$ are separate
+dials where a Gaussian bump has only one width.  One more reading will
+be used below: the kernel's curvature at its own center.  Apply the
+second difference to $\mathcal{A}''$ from \eqref{eq:acosh} at
+$\bar\zeta=0$, using that $\mathcal{A}''$ is even with
+$\mathcal{A}''(0)=1$:
+\[
+\mathcal{B}''(\zeta_r)
+=\frac{\mathcal{A}''_{\kappa_r}(-\ell_r)-2\mathcal{A}''_{\kappa_r}(0)
++\mathcal{A}''_{\kappa_r}(\ell_r)}{2\,\mathcal{A}_{\kappa_r}(\ell_r)}
+=\frac{\operatorname{sech}^2(\kappa_r\ell_r/2)-1}
+{\mathcal{A}_{\kappa_r}(\ell_r)}<0,
+\]
+negative because $\operatorname{sech}^2<1$ away from zero.  So a
+\emph{positive} multiple of $\mathcal{B}$ is locally concave --- it
+builds a shoulder --- and a negative multiple digs a notch.
 
 \subsection{The model, and what the superposition preserves}
 
-The MCS slice is the base plus $M$ signed kernels,
+The MCS slice is the base plus $M$ signed kernels:
 \begin{equation}
 V_M(\zeta)=V_{\rm base}(\zeta)
 +\sum_{r=1}^{M}\gamma_r\,\mathcal{B}_{\zeta_r,\ell_r,\kappa_r}(\zeta),
@@ -133,75 +193,95 @@ V_M(\zeta)=V_{\rm base}(\zeta)
 w(k)=\tau\,V_M\!\Big(\frac{k}{\sigma_{\rm ref}\sqrt\tau}\Big),
 \label{eq:mcsmodel}
 \end{equation}
-with $6+4M$ parameters.  By \cref{lem:zerowing}, every member of the
-family has the same asymptotic wings as its base, whatever $M$:
-expressiveness in the body and control of the tails are decoupled by
-construction.  \Cref{fig:mcsmech} shows the mechanism end to end on a
+with $6+4M$ parameters ($6$ for the base; center, half-width,
+steepness, and amplitude $\gamma_r$ per kernel).  By
+\cref{lem:zerowing}, every member of the family has the same
+asymptotic wings as its base, whatever $M$: expressiveness in the body
+and control of the tails are decoupled by construction.
+
+\Cref{fig:mcsmech} shows the mechanism end to end, on a synthetic
 target built to be globally admissible --- a hyperbolic total-variance
 base with two Gaussian shoulders, asymptotically linear wings, and
-$\min g_{\rm D}=\MacMcsTargetGmin$ verified from the analytic
-derivatives on a dense grid to $|k|=12$, with the positive tail limit
-\eqref{eq:gtail} taking over beyond.  The convex base alone ($M=0$)
-misses the shoulders by $\MacMcsBaseMaxErrBp$ vol bp, and the residual it
-leaves is structured: two localized features, not noise.  Two kernels
-reduce the miss to $\MacMcsFullMaxErrBp$ vol bp, and the fitted slice
-remains butterfly-free ($\min g_{\rm D}=\MacMcsFitGmin$ on the wide
-diagnostic grid).
+$\min g_{\rm D}=\MacMcsTargetGmin$ verified from analytic derivatives
+on a dense grid out to $|k|=12$ (\cref{app:protocol} records the
+construction and why a target must be certified this carefully).
+Panel~(a) shows the primitive $\mathcal{A}_\kappa$ merging with its
+affine asymptote \eqref{eq:affine}: within a couple of units the two
+are indistinguishable, and only the rounded vertex tells them apart
+--- this exponential merging is what the kernel will inherit as tail
+silence.  Panel~(b) shows one kernel \eqref{eq:hatdef}: a unit-height
+bump (blue) whose slope (orange) and curvature both die visibly in the
+tails --- silent to all three orders, as \cref{lem:zerowing} proved.
+Panel~(c) runs the fit on the W-shaped target (orange dots).  The
+convex base alone ($M=0$) cannot reach the two shoulders ---
+\cref{prop:convexww} forbids it --- and misses by
+$\MacMcsBaseMaxErrBp$ vol bp, leaving a residual that is not noise but
+two localized features.  Adding two kernels (centers dotted) seats
+both shoulders and cuts the miss to $\MacMcsFullMaxErrBp$ vol bp,
+while the fitted slice remains butterfly-free:
+$\min g_{\rm D}=\MacMcsFitGmin$ on the wide diagnostic grid.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_mcs_mechanism.pdf}
-\caption{Superposition in three steps.  (a)~The log-cosh primitive merges
-with its affine asymptote \eqref{eq:affine}; only the rounded vertex
-differs.  (b)~The centered second difference \eqref{eq:hatdef}: a
-unit-height bump whose value, slope, and curvature all decay --- the
+\caption{Superposition in three steps.  (a)~The log-cosh primitive
+merges with its affine asymptote \eqref{eq:affine}; only the rounded
+vertex differs.  (b)~The centered second difference \eqref{eq:hatdef}:
+a unit-height bump whose value, slope, and curvature all decay --- the
 correction is silent in the wings to all three orders
 (\cref{lem:zerowing}).  (c)~A W-shaped target (dots): the convex base
 misses both shoulders by $\MacMcsBaseMaxErrBp$ vol bp exactly as
-\cref{prop:convexww} requires; two signed kernels (centers dotted) seat
-them, reducing the miss to $\MacMcsFullMaxErrBp$ vol bp while the wings
---- and the fitted slice's admissibility --- are preserved.}
+\cref{prop:convexww} requires; two signed kernels (centers dotted)
+seat them, reducing the miss to $\MacMcsFullMaxErrBp$ vol bp while the
+wings --- and the fitted slice's admissibility --- are preserved.}
 \label{fig:mcsmech}
 \end{figure}
 
-Two honest boundaries of the construction, each one sentence.
-\emph{Wing-neutral is weaker than wing-admissible}: the kernels preserve
-the base slopes \eqref{eq:mcsbetak}, but nothing in the family forces
-those slopes into $[0,2]$ --- admissibility of the base is a separate
-condition, checked like any other.  And \emph{the family is not
-arbitrage-free by construction}: a signed kernel can drive variance
-negative or break price convexity locally, so the dense-grid check of
-\cref{sec:svibelly} decides for MCS exactly as it does for SVI, and the
-parameters $(\gamma_r,\zeta_r,\ell_r,\kappa_r)$ are means rather than
-objects --- two overlapping kernels can trade amplitude, so only the
-fitted curve is comparable across fits.
+Two boundaries of the construction, each stated once.
+\emph{Wing-neutral is weaker than wing-admissible}: the kernels
+preserve the base's slopes \eqref{eq:mcsbetak}, but nothing in the
+family forces those slopes under the cap --- the base is screened like
+any other slice.  And \emph{the family is not arbitrage-free by
+construction}: a signed kernel can drive variance negative or break
+price convexity locally, so the dense-grid check of \cref{sec:svibelly}
+decides for MCS exactly as it does for SVI --- and since two
+overlapping kernels can trade amplitude without changing the curve,
+the fitted parameters are means to an end, and only the fitted curve
+is comparable across fits.
 
 \subsection{Capacity and its governance}
 \label{sec:mcscapacity}
 
-The number of cores $M$ is the family's capacity dial, and counting
+The number of cores $M$ is the family's capacity dial.  Counting
 degrees of freedom already bounds it: $6+4M$ parameters against $n_q$
 quotes requires
 \begin{equation}
 M\;\le\;\Big\lfloor\frac{n_q-6}{4}\Big\rfloor
 \label{eq:idcap}
 \end{equation}
-for the fit to be determined at all, the analogue for this family of the
-order guard \eqref{eq:orderguard}.  But identification is the weaker
-constraint.  A kernel is a local feature detector, and on a smile that
-has no local features it will find quote noise instead: the fit error
-against the quotes falls while the error against the underlying curve
-rises, and the manufactured curvature appears exactly where
-\cref{sec:svibelly} taught us to look --- in the sparsely quoted region,
-as a negative dip of $g_{\rm D}$.  \Cref{sec:comparison} measures this on
-the frozen snapshot: at $M=2$ on a liquid index chain the family fits the
-mid quotes better than SVI on every node while failing the validity
-check on most of them; at $M=0$ the margins are uniformly clean and the
-fit quality is SVI's.  The capacity is real and so is its price.  The
-reference implementation therefore treats $M$ as a governed dial ---
-capped by \eqref{eq:idcap}, ridged in amplitude, and reserved for smiles
-that are genuinely non-convex --- rather than a default.  The calibration
-itself is layered to match the model's structure: the base is fitted
-first, the kernels are then seeded on the largest remaining residuals
-(one feature each), and a final joint refinement adjusts all $6+4M$
-parameters together.
+for the fit to be determined at all --- the analogue, for this family,
+of the LQD order guard \eqref{eq:orderguard}.  A thin chain with
+fifteen quotes, for instance, admits at most
+$\lfloor(15-6)/4\rfloor=2$ cores.
+
+But identification is the weaker constraint, and the stronger one is
+worth stating in words.  A kernel is a local feature detector.  On a
+smile that has genuine local features --- an event trough, a second
+mode --- it finds them.  On a smile that has none, it finds quote noise
+instead: the error against the quotes falls while the error against
+the underlying smile rises, and the manufactured curvature shows up
+exactly where \cref{sec:svibelly} taught us to look --- as a negative
+dip of $g_{\rm D}$ in a sparsely quoted region, where no data resists
+it.  \Cref{sec:comparison} measures this on the frozen snapshot: at
+$M=2$ on liquid index chains, MCS fits the mid quotes better than SVI
+on every node and fails the validity check on most of them; at $M=0$
+the margins are uniformly clean and the fit quality is SVI's.  The
+capacity is real, and so is its price.
+
+The reference implementation therefore treats $M$ as a governed dial
+--- capped by \eqref{eq:idcap}, ridged in amplitude, and reserved for
+smiles that are genuinely non-convex --- rather than as a default.
+The calibration is layered to match the model's structure: fit the
+base first; seed kernels one at a time on the largest remaining
+residual features; then refine all $6+4M$ parameters jointly
+(\cref{app:protocol} records the settings).
