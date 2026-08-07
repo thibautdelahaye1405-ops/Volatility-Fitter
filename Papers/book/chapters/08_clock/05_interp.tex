@@ -1,0 +1,114 @@
+\section{The curve between the quotes}
+\label{sec:clkinterp}
+
+We can now read quoted expiries on the right clock.  But a board
+quotes a handful of maturities, and half the daily uses of a term
+structure need values \emph{between} them: plotting a dense curve,
+marking an unlisted maturity, feeding a model that wants variance at
+arbitrary dates.  Between the quotes something must be assumed, and
+this section shows that the assumption is the clock choice again ---
+in the sharpest form the chapter has to offer.
+
+The rule the clock recommends is simple.  Interpolate \emph{total
+variance}, not volatility --- variance is the additive quantity, the
+thing that accumulates day by day, while a volatility is a ratio and
+ratios do not add.  And interpolate it \emph{linearly in $\tau$}:
+between two quoted expiries, let $w$ grow at a constant rate per
+variance day.  Constant accrual per unit of the market's clock is
+exactly the steady-diffusion picture of \cref{sec:clkwalk}, restated
+between quotes; the alternative --- linear in $t$, constant accrual
+per calendar day --- is the same picture on the wrong clock, and we
+are about to measure the difference.
+
+Build the test so that the truth is known.  A synthetic name runs at
+a flat $30\%$ clock volatility --- the previous section's name ---
+with one event worth \MacClkClockExtraDays\ extra days at day
+\MacClkInterpEventDay.  Three expiries are quoted: 7, 30 and 90 days.
+The event falls \emph{between} the second and third quotes: no quoted
+expiry sits near it on either side.  Generate the three quotes from
+the construction ($w=(0.30)^2\tau$ at each), then hand them --- plus
+the event calendar --- to the two interpolation rules and ask each
+for the whole dense curve.
+
+\Cref{fig:clkinterp}(a) shows both answers as volatility readings
+against calendar days.  Both curves pass through the three quoted
+dots --- at a quote there is nothing to interpolate, so the rules
+cannot disagree there.  Between 7 and 30 days they also agree: no
+event inside, so a variance day is a calendar day and the two rules
+coincide.  Everything happens between 30 and 90.  The blue curve ---
+linear in $\tau$ --- runs flat at $30\%$ to day \MacClkInterpEventDay,
+jumps as the event enters the maturity, and decays along the hump
+shape of \cref{sec:clkcrush}: it reproduces the generating truth
+exactly (to \MacClkInterpExactBp\ vol bp --- exactness is by
+construction here, since the quotes sit on a curve that is itself
+linear in $\tau$; the honest general statement closes the section).
+The orange dashed curve --- linear in $t$ --- takes the interval's
+total variance budget, which is correct at both endpoints, and
+spreads it \emph{evenly across all sixty calendar days}.  The event's
+four days of variance are smeared over the whole bracket.
+
+Where does the smear hurt, and by how much?  Work the two sides of
+the event date; the reading at maturity $T$ (in days) is
+$30\%\times\sqrt{x(T)/T}$ with $x(T)$ the interpolated variance-day
+count.  First the bracket's budget.  By the clock
+\eqref{eq:clkclock}, the 30-day quote carries $x(30)=30$ variance
+days and the 90-day quote carries $x(90)=90+4=94$ --- the event is
+inside it --- so the bracket holds $94-30=64$ variance days over
+$60$ calendar days, and the calendar rule pays them out evenly:
+$\tfrac{64}{60}$ variance days per calendar day.  Just \emph{before} day 45, the truth carries no event:
+$x_{\rm true}=45$.  The calendar rule has been paying the event out
+steadily since day 30, so it carries
+$x_{\rm cal}=30+15\cdot\tfrac{64}{60}=46$ --- one phantom variance
+day --- and reads
+$30\%\sqrt{46/45}=30.33\%$: \MacClkInterpOverBp\ vol bp of phantom
+volatility at a maturity that contains no event at all.  Just
+\emph{after} day 45, the truth jumps to $x_{\rm true}=49$ while the
+calendar rule still shows $x_{\rm cal}=46$, three days short, and
+reads $30\%\sqrt{46/45}$ against a truth of $30\%\sqrt{49/45}$:
+\MacClkInterpUnderBp\ vol bp \emph{too low} on the first maturities
+that do contain the event.  Panel~(b) plots this error across the
+whole axis: zero wherever a quote or an eventless bracket pins the
+rules together, a sawtooth around the event --- climbing to
+$+\MacClkInterpOverBp$, snapping to $-\MacClkInterpUnderBp$, decaying
+back to zero at the 90-day quote.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_interp.pdf}
+\caption{Interpolate in the clock, not the calendar (three quotes,
+flat $30\%$ clock truth, event of \MacClkClockExtraDays\ extra days at
+day \MacClkInterpOverDay).  (a)~Linear-in-$\tau$ (blue) reproduces the
+truth exactly; linear-in-$t$ (orange, dashed) smears the event across
+the whole 30--90-day bracket.  Both pass through every quote.
+(b)~The calendar rule's reading error: $+\MacClkInterpOverBp$ vol bp
+of phantom volatility just before the event date,
+$-\MacClkInterpUnderBp$ vol bp just past it.}
+\label{fig:clkinterp}
+\end{figure}
+
+Both signs are money.  A desk asked to price an option expiring the
+day before the event --- an expiry that dodges it --- off the
+calendar-interpolated curve quotes essentially the full
+\MacClkInterpOverBp\ bp of volatility that does not exist; asked for
+one expiring the day after, the one instrument whose whole point is
+carrying the event, it quotes nearly the full \MacClkInterpUnderBp\
+bp too little.  The errors sit precisely at the maturities an event
+trader cares about, they point in opposite directions across one
+calendar day, and no quoted expiry ever reveals them --- the rules
+agree wherever a price exists.  Interpolation error between quotes
+is invisible until it is traded against.
+
+The honest general statement: on a real board the truth between
+quotes is not known, and linear-in-$\tau$ is itself a convention ---
+the cleanest available, being the constant-accrual statement on the
+market's own clock, but a convention nonetheless.  What it
+guarantees, and what the calendar rule cannot, is that \emph{known}
+events stop leaking into maturities that do not contain them.  The
+guarantee is two lines of algebra: between two quotes, $w$ is linear
+in $\tau$, and by \eqref{eq:clkclock} $\tau$ grows linearly in $t$
+except at an event date, where it jumps by $N_e/365$ --- so,
+composed, the dense variance curve is linear in calendar time within
+each stretch, pays each event's variance as a jump exactly at its
+date, and changes slope only at the quotes.  The remaining question --- where the calendar's dates
+and sizes come from --- is the chapter's last construction, and its
+most delicate.

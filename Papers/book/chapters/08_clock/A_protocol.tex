@@ -1,0 +1,71 @@
+\section{Protocol: data, constructions, and solver constants}
+\label{app:clkprotocol}
+
+Every number and figure in this chapter regenerates from one
+deterministic script reading the frozen snapshot
+(\texttt{scripts/ch08/gen\_figures.py}); nothing is refetched, and no
+smile is refitted.  This appendix records the constructions.
+
+\paragraph{The ATM ladders (\cref{fig:clkboard,fig:clkread}).}
+For each (ticker, expiry) node of the frozen snapshot, the
+at-the-money total variance $w_i$ is read from the node's prepared
+mid quotes by linear interpolation of $w=\sigma^2 t$ in log-moneyness
+$k$ at $k=0$, using the node's stored resolved forward (Chapter~6's
+object) to define $k$.  No smoothing, no fitting: two bracketing
+quotes decide each ladder point.  The maturities $t_i$ are the
+snapshot's calendar year fractions.  Both names quote the same eight
+expiries --- 2026-08-05, 08-07, 08-21, 09-18, 12-18, then 2027-03-19,
+09-17 and 12-17: from the 2026-08-03 valuation date, 2, 4, 18, 46,
+137, 228, 410 and 501 calendar days.  The NVDA 2-day node is the
+snapshot's shortest and noisiest (Chapter~2's gallery); its ATM read
+is used as stored, and none of the chapter's conclusions rests on it
+alone.
+
+\paragraph{The walk (\cref{fig:clkwalk}).}
+\MacClkWalkDays\ trading days; ordinary daily return standard
+deviation \MacClkWalkDailyPct\% ($\Delta w_i$ constant); the event
+day (index \MacClkWalkEventDay) carries \MacClkWalkEventUnits\ ordinary
+days' variance.  \MacClkWalkPaths\ paths from a fixed-seed generator
+(seed 8) --- the chapter's only randomness; the envelopes are
+computed, not simulated.
+
+\paragraph{The worked calendar
+(\cref{fig:clkclock,fig:clkcrush,fig:clkinterp}).}
+One event, $N_e=\MacClkClockExtraDays$ extra days at day
+\MacClkClockEventDay\ (\cref{fig:clkclock,fig:clkcrush}) or day
+\MacClkInterpOverDay\ (\cref{fig:clkinterp}); flat clock volatility
+$30\%$ where prices are needed; quoted expiries weekly to eight weeks
+(\cref{fig:clkcrush}) or at $\{7,30,90\}$ days
+(\cref{fig:clkinterp}).  The interpolation exhibit's quotes sit
+exactly on $w=\sigma^2\tau$, so the linear-in-$\tau$ rule reproduces
+the generator to \MacClkInterpExactBp\ vol bp by construction; the
+figure's content is the calendar rule's deviation from it.
+
+\paragraph{The solver (\cref{eq:clkobj};
+\cref{fig:clkident,fig:clkread}).}
+Reference weights $\lambda_{\rm mono}=1$,
+$\lambda_{\rm sparse}=10^{-3}$, $\lambda_{\rm ridge}=10^{-4}$; one
+candidate per interval, dated mid-interval
+(\cref{prop:clkident} makes the date a convention); box bounds
+$0\le N_i\le1825$ days (a wide safety box, never active in any run
+of this chapter); minimization by a standard bounded quasi-Newton
+routine from a zero start; solved events below $0.5$ day dropped.
+The audit boards of \cref{fig:clkident}: the dense board's expiries
+are $\{7,14,28,56,91,182,365\}$ days with the planted event at day
+40, the quarterly board's $\{91,182,273,365\}$ days with the event
+at day 120.  The scaling law of \cref{sec:clkinverse} deliberately
+drops its constants (term counts, day conversions), so these weights
+reproduce the measured shrinkage scale --- \MacClkIdentShrinkWeakD\
+day at $20\%$ on the dense board --- through the audit, not through
+the formula; the audit is the reference.  The NVDA hero run of \cref{fig:clkread}(a) allows
+candidates at expiries through 2026-12-18 (the horizon); the
+panel~(b) and SPY runs allow candidates at every expiry.  Spreads
+are max-minus-min of the forward-variance ladder, quoted in variance
+bp; the in-horizon spread uses the intervals up to the horizon.
+
+\paragraph{Units.}
+Throughout the chapter: one variance bp is $10^{-4}$ of total
+variance (or of a forward-variance rate per year); one vol bp is
+$10^{-4}$ of absolute volatility; days convert to years at
+$365$ calendar days per year, the same convention as the clock
+\eqref{eq:clkclock}.

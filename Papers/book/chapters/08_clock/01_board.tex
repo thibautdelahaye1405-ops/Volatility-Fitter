@@ -1,0 +1,149 @@
+\section{Three expiries and a broken ruler}
+\label{sec:clkboard}
+
+Part~II has been rebuilding the observation, one input at a time.
+Chapter~6 fitted the forward and the discount; Chapter~7 removed the
+early-exercise right and handed every quote back as a European price.
+One input has ridden along unexamined since Chapter~2: the maturity
+variable $\tau$ that sits under every total variance $w=\sigma^2\tau$.
+The book has been calling it \emph{variance time} from the start ---
+while quietly setting it equal to the calendar, since no chapter yet
+had a reason to distinguish them.  Chapter~7 closed by naming the
+debt: ``two clocks this book has so far been allowed to conflate,
+because its frozen data happens to agree on both.''  This chapter is
+about the days when they disagree.
+
+Start with real prices, because the disagreement is sitting in the
+book's own frozen data.  The snapshot behind every chapter --- the
+Monday evening of 2026-08-03 --- carries two names, and so far the
+chapters have worked mostly on SPY.  Turn instead to NVDA, the
+snapshot's single-stock name, and read its at-the-money implied
+volatility across the eight quoted expiries --- the readings computed
+as $\sqrt{w/t}$, total variance over calendar time, which this
+chapter will call the \emph{calendar reading} and write
+$\sigma_{\rm cal}$.  (At the money means at $k=0$, the forward; the
+precise read-off rule is one line in
+appendix~\ref{app:clkprotocol}, which also lists the eight expiry
+dates.  As before, one \emph{vol bp} is $10^{-4}$ of absolute
+volatility; one \emph{variance bp} is $10^{-4}$ of total variance.)
+Three of the eight readings make the puzzle by themselves:
+\[
+\underbrace{\MacClkBoardVolFourDPct\%}_{\text{4 days}}
+\qquad
+\underbrace{\MacClkBoardVolEighteenDPct\%}_{\text{18 days}}
+\qquad
+\underbrace{\MacClkBoardVolFortySixDPct\%}_{\text{46 days}} .
+\]
+The same underlier, the same afternoon, three expiries two and four
+weeks apart --- and the middle one is quoted
+\MacClkBoardDipBp\ vol bp below the shortest.  Is NVDA's volatility
+falling or rising with maturity?  The honest answer is that the
+question is broken, and the goal of this section is to see why.
+
+Ask the question in the right units.  A volatility is a rate; before
+trusting a rate, look at the quantity it is the rate \emph{of}.  The
+quantity is total implied variance $w=\sigma^2 t$ --- for now we write
+$t$, the calendar year fraction of Chapter~6, because the calendar is
+the only clock we have so far.  The three expiries carry
+\[
+w(\text{4d})=\MacClkBoardWFourBp,\qquad
+w(\text{18d})=\MacClkBoardWEighteenBp,\qquad
+w(\text{46d})=\MacClkBoardWFortySixBp
+\quad\text{variance bp.}
+\]
+Now do the division a first course would do: variance gained per
+calendar day, interval by interval.  Between the 4-day and the 18-day
+expiries, \MacClkBoardLullDays\ calendar days pass, so
+\[
+\frac{\MacClkBoardWEighteenBp-\MacClkBoardWFourBp}
+     {\MacClkBoardLullDays}
+=\MacClkBoardLullPerDay\ \text{variance bp per day;}
+\]
+between the 18-day and the 46-day expiries, \MacClkBoardHotDays\ days
+pass, and
+\[
+\frac{\MacClkBoardWFortySixBp-\MacClkBoardWEighteenBp}
+     {\MacClkBoardHotDays}
+=\MacClkBoardHotPerDay\ \text{variance bp per day.}
+\]
+The days are not alike.  A day in the second window carries
+\MacClkBoardHotOverLull\ times the variance of a day in the first.
+And the second window is not anonymous.  The 18-day expiry is
+August~21; the 46-day expiry is September~18; and NVDA reports
+earnings once a quarter, on a schedule published well in advance,
+with the next report due in late August --- after the first of those
+dates, before the second.  The market is quoting exactly what it
+believes: the report's day will move the stock like several ordinary
+days, every expiry that \emph{contains} that day inherits its
+variance, and the expiry that \emph{dodges} it --- August~21 --- gets
+to be cheap.
+
+\Cref{fig:clkboard} shows the whole board.  In panel~(a), the orange
+curve is the calendar reading $\sigma_{\rm cal}$ of all eight
+expiries against calendar days to expiry, on a logarithmic axis.
+Notice the shape around the annotated dip: the two shortest expiries
+(2 and 4 days, both before August~21) read above $43\%$, the 18-day
+expiry reads \MacClkBoardVolEighteenDPct\%, and the 46-day expiry
+recovers most of the drop, at \MacClkBoardVolFortySixDPct\%.
+Further out, the curve wanders rather than trends --- the highest
+reading on the whole board belongs to the 228-day expiry.  Read as
+``the market's forecast of NVDA's volatility as a function of
+horizon,'' the curve is erratic.  Panel~(b) draws the same eight
+quotes as what they actually pin down: accrual rates
+$\Delta w_i/\Delta t_i$, as horizontal steps --- one step per
+interval, the first interval running from the valuation date (where
+accrued variance is zero) to the first expiry, each later one
+between consecutive expiries.  (This per-interval rate is called
+\emph{forward variance}, and \cref{sec:clkinverse} gives it a symbol
+and a starring role.)  The two computations above are the third and
+fourth steps: the low step is the pre-report lull, and the shaded
+interval --- the one containing the scheduled report --- runs hot.
+Panel~(b) is panel~(a) with the division done honestly: nothing here
+is erratic, it is one hot window sitting among cooler ones.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_board.pdf}
+\caption{The opening puzzle (NVDA, frozen snapshot of 2026-08-03).
+(a)~At-the-money implied volatility against calendar days to expiry:
+the 18-day expiry --- the one that expires \emph{before} the scheduled
+late-August earnings report --- is quoted \MacClkBoardDipBp\ vol bp
+below the 4-day reading.  (b)~The same board as accrual rates: total
+variance gained per calendar year in each interval between consecutive
+expiries.  The interval that contains the report (shaded) accrues
+\MacClkBoardHotOverLull$\times$ the variance per day of the lull
+interval before it.}
+\label{fig:clkboard}
+\end{figure}
+
+Why call this a \emph{broken ruler} rather than an interesting market
+fact?  Because of what it does to every tool the book has built.  Each
+single-expiry fit of Part~I is untouched --- a smile model fits its own
+expiry's quotes and never asks how fast variance accrued on the way ---
+but everything that couples expiries inherits the kink.  A
+term-structure view drawn through these readings shows volatility
+falling four points in two weeks and then climbing back, which no
+trader believes is a forecast.  An interpolation between the quoted
+expiries must invent readings for unlisted maturities, and
+\cref{sec:clkinterp} shows the calendar-clock rule inventing them
+badly.  The local volatility field of Chapter~4 consumes
+$\partial_\tau w$ directly --- its numerator \emph{is} the accrual
+rate of panel~(b).  Even the calendar-order condition of Chapter~2
+(total variance non-decreasing in maturity at fixed $k$) offers no
+comfort: it holds on this board, and the board is still a mess to
+read, because order says nothing about the accrual being bunched
+into one window.
+
+There are two ways to respond.  One is to enrich the model: add a jump
+of random size at the report date, price options on the mixture, and
+carry the machinery of jump models from here on.  That road is real
+but expensive, and this book does not take it (\cref{sec:clkfrozen}
+says where it lives in the literature).  The other response is older
+and much cheaper: keep the model, change the \emph{clock}.  If an
+earnings day is worth several ordinary days of variance, then measure
+time in units in which it \emph{is} several days.  On that clock,
+variance accrues at a steady rate again, and the constant-rate
+diffusion picture --- the one behind every formula in this book ---
+fits without a fight.  The next section shows that this is not a
+trick: it is how the mathematics of martingales says time should be
+measured in the first place.

@@ -1,0 +1,297 @@
+{
+ "ClkBoardVolTwoDPct": {
+  "value": "43.48",
+  "meaning": "NVDA 2-day calendar ATM vol (%)",
+  "section": "board"
+ },
+ "ClkBoardVolFourDPct": {
+  "value": "43.13",
+  "meaning": "NVDA 4-day calendar ATM vol (%)",
+  "section": "board"
+ },
+ "ClkBoardVolEighteenDPct": {
+  "value": "38.84",
+  "meaning": "NVDA 18-day calendar ATM vol (%)",
+  "section": "board"
+ },
+ "ClkBoardVolFortySixDPct": {
+  "value": "42.29",
+  "meaning": "NVDA 46-day calendar ATM vol (%)",
+  "section": "board"
+ },
+ "ClkBoardDipBp": {
+  "value": "429",
+  "meaning": "drop from the 4-day to the 18-day reading (vol bp)",
+  "section": "board"
+ },
+ "ClkBoardWFourBp": {
+  "value": "20.4",
+  "meaning": "ATM total variance at the Four-day expiry (var bp)",
+  "section": "board"
+ },
+ "ClkBoardWEighteenBp": {
+  "value": "74.4",
+  "meaning": "ATM total variance at the Eighteen-day expiry (var bp)",
+  "section": "board"
+ },
+ "ClkBoardWFortySixBp": {
+  "value": "225.4",
+  "meaning": "ATM total variance at the FortySix-day expiry (var bp)",
+  "section": "board"
+ },
+ "ClkBoardLullDays": {
+  "value": "14",
+  "meaning": "calendar days in the lull interval (4d -> 18d)",
+  "section": "board"
+ },
+ "ClkBoardHotDays": {
+  "value": "28",
+  "meaning": "calendar days in the earnings interval (18d -> 46d)",
+  "section": "board"
+ },
+ "ClkBoardLullPerDay": {
+  "value": "3.86",
+  "meaning": "lull interval: variance bp accrued per calendar day",
+  "section": "board"
+ },
+ "ClkBoardHotPerDay": {
+  "value": "5.39",
+  "meaning": "earnings interval: variance bp accrued per calendar day",
+  "section": "board"
+ },
+ "ClkBoardHotOverLull": {
+  "value": "1.40",
+  "meaning": "ratio of the two accrual rates",
+  "section": "board"
+ },
+ "ClkBoardLullFwd": {
+  "value": "0.1408",
+  "meaning": "lull interval forward variance per calendar year",
+  "section": "board"
+ },
+ "ClkBoardHotFwd": {
+  "value": "0.1969",
+  "meaning": "earnings interval forward variance per calendar year",
+  "section": "board"
+ },
+ "ClkWalkDays": {
+  "value": "30",
+  "meaning": "trading days simulated",
+  "section": "walk"
+ },
+ "ClkWalkEventDay": {
+  "value": "20",
+  "meaning": "index of the event day",
+  "section": "walk"
+ },
+ "ClkWalkEventUnits": {
+  "value": "5",
+  "meaning": "day-units of variance on the event day",
+  "section": "walk"
+ },
+ "ClkWalkDailyPct": {
+  "value": "2",
+  "meaning": "one ordinary day's return sd (%)",
+  "section": "walk"
+ },
+ "ClkWalkEnvKinkPct": {
+  "value": "1.08",
+  "meaning": "envelope jump across the event day (% points)",
+  "section": "walk"
+ },
+ "ClkWalkPaths": {
+  "value": "5",
+  "meaning": "paths drawn",
+  "section": "walk"
+ },
+ "ClkClockEventDay": {
+  "value": "10",
+  "meaning": "worked calendar: event date in calendar days",
+  "section": "clock"
+ },
+ "ClkClockExtraDays": {
+  "value": "4",
+  "meaning": "worked calendar: extra equivalent days N_e",
+  "section": "clock"
+ },
+ "ClkClockPeakRatio": {
+  "value": "1.183",
+  "meaning": "reading ratio sqrt(tau/t) at the event-day expiry",
+  "section": "clock"
+ },
+ "ClkClockPeakPct": {
+  "value": "18.3",
+  "meaning": "the same peak as a percent lift of the reading",
+  "section": "clock"
+ },
+ "ClkClockRatioTwoWeeks": {
+  "value": "1.134",
+  "meaning": "reading ratio at the 14-day expiry (the hand example)",
+  "section": "clock"
+ },
+ "ClkClockNormFactor": {
+  "value": "0.9892",
+  "meaning": "normalization factor 365/(365+4) for the worked calendar",
+  "section": "clock"
+ },
+ "ClkCrushTermPeakPct": {
+  "value": "35.5",
+  "meaning": "term-structure hump peak at the event-day expiry (%)",
+  "section": "crush"
+ },
+ "ClkCrushRampStartPct": {
+  "value": "34.0",
+  "meaning": "day-0 calendar reading of the day-14 expiry (%)",
+  "section": "crush"
+ },
+ "ClkCrushPeakPct": {
+  "value": "42.4",
+  "meaning": "last pre-event calendar reading of the day-14 expiry (%)",
+  "section": "crush"
+ },
+ "ClkCrushPostPct": {
+  "value": "30.0",
+  "meaning": "morning-after calendar reading (%)",
+  "section": "crush"
+ },
+ "ClkCrushDropBp": {
+  "value": "1243",
+  "meaning": "the overnight crush of the reading (vol bp)",
+  "section": "crush"
+ },
+ "ClkInterpExactBp": {
+  "value": "0.00",
+  "meaning": "max |linear-in-tau minus generator| reading gap (vol bp)",
+  "section": "interp"
+ },
+ "ClkInterpOverBp": {
+  "value": "33",
+  "meaning": "max phantom vol BEFORE the event (vol bp)",
+  "section": "interp"
+ },
+ "ClkInterpOverDay": {
+  "value": "45",
+  "meaning": "calendar day of the max overshoot",
+  "section": "interp"
+ },
+ "ClkInterpUnderBp": {
+  "value": "97",
+  "meaning": "max understatement PAST the event (vol bp)",
+  "section": "interp"
+ },
+ "ClkInterpUnderDay": {
+  "value": "45",
+  "meaning": "calendar day of the max understatement",
+  "section": "interp"
+ },
+ "ClkIdentShrinkStrongD": {
+  "value": "0.03",
+  "meaning": "max shrinkage, dense board at 40% vol (planted >= 2d)",
+  "section": "ident"
+ },
+ "ClkIdentShrinkWeakD": {
+  "value": "0.40",
+  "meaning": "max shrinkage, dense board at 20% vol (planted >= 2d)",
+  "section": "ident"
+ },
+ "ClkIdentBlindD": {
+  "value": "2.5",
+  "meaning": "largest planted event the quarterly 20% board misses (days)",
+  "section": "ident"
+ },
+ "ClkIdentFlatDays": {
+  "value": "0.000",
+  "meaning": "days installed on a flat 20% ladder (exactly zero)",
+  "section": "ident"
+ },
+ "ClkIdentWallWeeklyPct": {
+  "value": "12",
+  "meaning": "lowest vol at which the dense board sees a 2-day event (%)",
+  "section": "ident"
+ },
+ "ClkIdentWallQuarterlyPct": {
+  "value": "22",
+  "meaning": "lowest vol at which the quarterly board sees it (%)",
+  "section": "ident"
+ },
+ "ClkReadHeroEarnD": {
+  "value": "7.3",
+  "meaning": "extra days the year-end solve puts on the earnings interval",
+  "section": "read"
+ },
+ "ClkReadHeroTotalD": {
+  "value": "8.6",
+  "meaning": "total extra days installed by the year-end solve",
+  "section": "read"
+ },
+ "ClkReadHeroShortD": {
+  "value": "1.3",
+  "meaning": "extra days on the two short-dated intervals combined",
+  "section": "read"
+ },
+ "ClkReadHeroSpreadBeforeBp": {
+  "value": "560",
+  "meaning": "in-horizon forward-variance spread before (var bp)",
+  "section": "read"
+ },
+ "ClkReadHeroSpreadAfterBp": {
+  "value": "299",
+  "meaning": "in-horizon forward-variance spread after (var bp)",
+  "section": "read"
+ },
+ "ClkReadHeroFlatLevel": {
+  "value": "0.1409",
+  "meaning": "level the three pre-earnings intervals meet at (var/yr)",
+  "section": "read"
+ },
+ "ClkReadHeroEarnAfter": {
+  "value": "0.1559",
+  "meaning": "earnings interval forward variance after the solve (var/yr)",
+  "section": "read"
+ },
+ "ClkReadFullTotalD": {
+  "value": "250",
+  "meaning": "total extra days installed with candidates everywhere",
+  "section": "read"
+ },
+ "ClkReadFullSpreadBeforeBp": {
+  "value": "1444",
+  "meaning": "full-board spread before (var bp)",
+  "section": "read"
+ },
+ "ClkReadFullSpreadAfterBp": {
+  "value": "44",
+  "meaning": "full-board spread after (var bp)",
+  "section": "read"
+ },
+ "ClkReadFullMarchD": {
+  "value": "112",
+  "meaning": "extra days the unrestricted solve puts on Dec->Mar alone",
+  "section": "read"
+ },
+ "ClkReadSpyTotalD": {
+  "value": "0.9",
+  "meaning": "total extra days installed on the SPY board",
+  "section": "read"
+ },
+ "ClkReadSpySpreadBp": {
+  "value": "253",
+  "meaning": "SPY forward-variance spread left in place (var bp)",
+  "section": "read"
+ },
+ "ClkInterpEventDay": {
+  "value": "45",
+  "meaning": "event date of the interpolation construction (calendar day)",
+  "section": "interp"
+ },
+ "ClkReadSpyMidVolPct": {
+  "value": "15",
+  "meaning": "SPY median forward variance quoted as a volatility (%)",
+  "section": "read"
+ },
+ "ClkReadSpyDecBp": {
+  "value": "2",
+  "meaning": "largest decrease anywhere in SPY's calendar ladder (var bp)",
+  "section": "read"
+ }
+}

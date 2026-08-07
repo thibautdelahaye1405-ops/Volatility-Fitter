@@ -1,0 +1,200 @@
+\section{The day-weighted clock}
+\label{sec:clkclock}
+
+We now know the market keeps its own clock, and that a desk can only
+carry a forecast of its schedule.  This section builds that forecast
+in the simplest currency a trading desk speaks: \emph{days}.
+
+Each scheduled event --- an earnings report, a central-bank decision,
+a court ruling --- is recorded as a pair $(t_e, N_e)$: its date
+$t_e$, a calendar year fraction like any expiry's, and its size
+$N_e$, the number of \emph{extra} equivalent days the event is worth.
+Mind the word extra: an earnings day with $N_e=4$ counts as five
+ordinary days of variance --- its own one, plus four extra.  The
+walk's event day in \cref{sec:clkwalk}, five variance units in one
+calendar day, is in this currency an event of size $N_e=4$; the
+five-unit-wide strip of \cref{fig:clkwalk}(b) and the four-day jump
+about to appear in \cref{fig:clkclock}(a) describe the same event in
+the two bookkeepings.  Given a calendar of such events, the variance
+time of maturity $t$ is defined by counting days:
+\begin{equation}
+\boxed{\;\tau_{\rm days}(t)\;=\;365\,t
+\;+\!\!\sum_{t_e\le t}\!N_e,
+\qquad
+\tau(t)\;=\;\frac{\tau_{\rm days}(t)}{365}.\;}
+\label{eq:clkclock}
+\end{equation}
+The sum runs over events at or before $t$: an expiry pays for exactly
+the events it contains.  With an empty calendar, $\tau(t)=t$ --- the
+convention every previous chapter ran under, now visible as the
+special case.
+
+Compute one by hand.  Take a 14-day expiry and a single event worth
+$N_e=\MacClkClockExtraDays$ extra days, scheduled
+\MacClkClockEventDay\ days out.  The event is inside the expiry, so
+\[
+\tau_{\rm days}=14+\MacClkClockExtraDays=18,
+\qquad
+\tau=\frac{18}{365}=0.0493,
+\]
+against a calendar $t=14/365=0.0384$.  Eighteen variance days will
+elapse in fourteen calendar days.  For an expiry of 9 days --- one
+that \emph{dodges} the event --- the sum is empty and
+$\tau_{\rm days}=9$: nothing changes.  That is the whole mechanism;
+everything else in the chapter is consequences.
+
+\Cref{fig:clkclock}(a) draws \eqref{eq:clkclock} for this calendar.
+The blue line is $\tau_{\rm days}$ against calendar days: it tracks
+the dashed calendar diagonal exactly until day \MacClkClockEventDay,
+jumps by \MacClkClockExtraDays\ days there, and runs \emph{parallel}
+to the diagonal afterwards --- an event shifts the clock once and is
+never paid for again.  (The dotted variant is the normalized clock,
+explained at the end of this section; at this zoom it hugs the plain
+one.)  Panel~(b) is read after the proposition below.
+
+What may a change of clock do, and what may it never do?  The answer
+deserves to be a proposition, because it is the safety case for
+everything that follows.  Recall two terms from Chapter~2, one line
+each: a smile is \emph{butterfly-valid} when its implied density is
+nonnegative --- the Durrleman check $g_D\ge0$ of \eqref{eq:durrleman}
+--- and two expiries are in \emph{calendar order} when total variance
+does not decrease with maturity at fixed log-moneyness
+(\cref{sec:calendar}).
+
+\begin{proposition}[Relabeling time: invariance and covariance]
+\label{prop:clkgauge}
+Let $\tau(\cdot)$ be any strictly increasing relabeling of maturity
+with $\tau(0)=0$ --- in particular the clock \eqref{eq:clkclock}.
+Then:
+\begin{enumerate}[label=(\roman*)]
+\item option prices, and with them every total variance $w(k)$ and
+the terminal law of each expiry, are unchanged;
+\item butterfly validity of each smile and calendar order across
+smiles are unchanged;
+\item the volatility reading is \emph{covariant} --- it does not stay
+fixed but transforms with the clock, by a known factor:
+$\sigma=\sqrt{w/\tau}=\sigma_{\rm cal}\sqrt{t/\tau}$;
+\item the accrual rate between consecutive expiries is covariant in
+the same sense, by the interval's clock ratio:
+$\Delta w/\Delta\tau
+=(\Delta w/\Delta t)\cdot(\Delta t/\Delta\tau)$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+A relabeling attaches new time coordinates to the same expiries; no
+random variable, no expectation, and no price changes, which is (i).
+Butterfly validity is a property of one expiry's law, unchanged by
+(i); calendar order compares the same pairs $w(k,T_1)\le w(k,T_2)$ in
+the same order because the relabeling is strictly increasing, which
+is (ii).  For (iii) and (iv), divide the same invariant quantities
+($w$, $\Delta w$) by the relabeled denominators and cancel:
+$\sqrt{w/\tau}=\sqrt{w/t}\cdot\sqrt{t/\tau}$, and likewise for the
+ratios of increments.
+\end{proof}
+
+Everything a desk can trade sits in the invariant column; everything
+the clock touches is a \emph{reading}.  Part~(iv) looks like bare
+cancellation, and that is exactly its content: the increments
+$\Delta w$ carry all the information, and a clock change re-divides
+them without adding any --- a fact \cref{sec:clkinverse} will lean
+on.  In particular, installing an event can never move a price and
+never create an arbitrage --- not because an implementation is
+careful, but because the clock enters the mathematics in exactly one
+place: as a denominator.
+
+Part (iii) is worth turning around, because it is the formula desks
+feel.  Fix an expiry $t$ and insert one event of $N_e$ extra days
+before it.  Total variance $w$ is pinned by the price, so the clock
+reading drops by exactly the ratio of the two clocks:
+\begin{equation}
+\sigma
+=\sigma_{\rm cal}\sqrt{\frac{t}{\tau}}
+=\sigma_{\rm cal}\sqrt{\frac{365\,t}{365\,t+N_e}} .
+\label{eq:clkcrush}
+\end{equation}
+Keep the direction straight, once, on the hand example.  The clock
+reading is the \emph{smaller} number: \eqref{eq:clkcrush} multiplies
+the calendar reading by $\sqrt{14/18}$, taking $34.0\%$ down to
+$30.0\%$.  Turned over, the calendar reading is the clock reading
+\emph{lifted} by
+$\sqrt{18/14}=\MacClkClockRatioTwoWeeks$: the same pair of numbers,
+the same price.  How big is the effect in general?  For an event small
+against the maturity ($N_e\ll365\,t$), expand the square root with
+the binomial approximation $\sqrt{1+x}\approx1+\tfrac{x}{2}$, whose
+error is of order $x^2$:
+\[
+\frac{\sigma_{\rm cal}}{\sigma}
+=\sqrt{1+\frac{N_e}{365\,t}}
+\;\approx\;1+\frac{N_e}{2\cdot365\,t}.
+\]
+The lift of the calendar reading scales like $N_e$ over \emph{twice
+the calendar days to expiry}: four extra days lift a one-year reading
+by about half a percent of itself ($4/730$), and a two-week reading
+by roughly a seventh ($4/28$; the exact lift is
+$\MacClkClockRatioTwoWeeks-1$, a touch less).  Events are a
+short-maturity phenomenon --- exactly where desks watch implied
+volatility most closely.
+
+Now read \cref{fig:clkclock}(b), which plots the lift direction: the
+blue curve is $\sigma_{\rm cal}/\sigma=\sqrt{\tau/t}$ across
+expiries, for the same one-event calendar.  Expiries before day
+\MacClkClockEventDay\ dodge the event: the ratio is exactly one.  The
+expiry \emph{on} the event date pays the full toll,
+$\sqrt{14/10}=\MacClkClockPeakRatio$ --- the annotated peak.  Past it
+the ratio decays toward one as the event becomes a smaller and
+smaller fraction of the maturity.  The dashed curve is the
+small-event approximation just derived: generous at the peak, where
+$N_e$ is anything but small against $365\,t$, still visibly above
+the exact curve out to about a month, and indistinguishable beyond.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_clock.pdf}
+\caption{The day-weighted clock, one event of
+\MacClkClockExtraDays\ extra days at day \MacClkClockEventDay.
+(a)~$\tau_{\rm days}(t)$: the calendar diagonal, a jump of
+\MacClkClockExtraDays\ days at the event, parallel growth after; the
+normalized variant (dotted) rescales the whole line by
+\MacClkClockNormFactor.  (b)~The reading ratio
+$\sigma_{\rm cal}/\sigma=\sqrt{\tau/t}$ across expiries: one before
+the event, a peak of \MacClkClockPeakRatio\ at the event-day expiry,
+decay like $1+N_e/(2\cdot365\,t)$ (dashed) beyond it.}
+\label{fig:clkclock}
+\end{figure}
+
+One bookkeeping choice completes the clock.  As defined,
+\eqref{eq:clkclock} makes a year with events \emph{longer} than 365
+variance days: the events add variance on top of an unchanged
+baseline.  Some desks prefer the opposite convention: the year's
+total budget is what it is, and events say \emph{when} it accrues,
+not that there is more of it.  The normalized clock implements that
+by rescaling all days --- ordinary and event alike --- by one factor
+that restores the annual budget:
+\begin{equation}
+\tau_{\rm days}(t)\;\longmapsto\;
+\tau_{\rm days}(t)\cdot
+\frac{365}{365+\sum_{t_e\le1}N_e},
+\label{eq:clknorm}
+\end{equation}
+where the sum in the denominator collects the events of the first
+year ($t_e\le1$).  For the worked calendar the factor is
+$365/369=\MacClkClockNormFactor$ --- the dotted line of
+panel~(a).  Under \eqref{eq:clknorm} the one-year variance time, and
+with it the one-year volatility reading, exactly match a no-event
+year.  Sub-year readings shift slightly: the rescaling makes every
+day worth a little less than before, so a maturity that dodges all
+events now counts marginally fewer variance days, while the events'
+\emph{relative} weight within the year is exactly what it was.
+Neither convention is more correct:
+un-normalized treats events as extra variance against a
+one-per-day baseline, normalized treats the annual budget as known
+and the events as its scheduled lumps.  What matters --- the book's
+recurring refrain --- is that the choice is stated.  The chapter's
+contract table records it, and the whole rest of the chapter runs
+un-normalized.
+
+We now own the clock: a desk-sized object --- a list of dated day
+counts --- that turns the erratic readings of \cref{sec:clkboard}
+into steady ones without touching a single price.  The next section
+watches it work through the week every option trader knows best.

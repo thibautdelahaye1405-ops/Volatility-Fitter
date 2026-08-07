@@ -30,20 +30,26 @@ the prose. Therefore:
 
 The pedagogy contract governs (rewritten 2026-08-05 after the author
 rejected Chapters 3–4's original register; both were fully revised).
-Chapters 5–7 were written under the contract from the start (newcomer
-fresh-reader pass run on each, all findings resolved).  Chapter 7
+Chapters 5–8 were written under the contract from the start (newcomer
+fresh-reader pass run on each, all findings resolved).  Chapter 8
 (2026-08-07) is the most recent chapter held to the contract; with
-Chapters 4–6 it serves as TONE EXEMPLAR.
+Chapters 4–7 it serves as TONE EXEMPLAR.  Part II is COMPLETE.
 Next:
 
-1. Chapter 8 (the market's clock) — sources: the two Note 11 editions.
-   Chapter 7 planted the hook (its closing line: two clocks the book
-   has conflated because the frozen data agrees on both; "the next
-   chapter is about the days when they disagree"), and Chapters 6–7
-   established calendar-t financing vs variance-τ conventions.  Data:
-   the ONE anticipated supplement (an NVDA earnings-week capture) OR a
-   synthetic event construction if no supplement is available at
-   writing time — do NOT refetch anything else.
+1. Chapter 9 (spot–vol dynamics: the missing derivative) — sources:
+   the two Note 12 editions.  Chapter 8 planted the hook (its closing
+   line: the surface gives every derivative in the strike direction
+   and none in the spot direction).  Data: scenario figures from the
+   frozen surface; synthetic constructions preferred — no supplement
+   anticipated, do NOT refetch anything.
+
+NOTE (Ch. 8 data decision, 2026-08-07): the anticipated NVDA
+earnings-week supplement was NOT needed and was not fetched — the
+frozen snapshot's own NVDA board carries the earnings signature (the
+18-day expiry dips 429 vol bp below the 4-day; the (Aug 21, Sep 18]
+interval runs 1.40× the lull's accrual), and the chapter reads the
+clock off that board plus deterministic synthetics.  The data policy's
+supplement allowance rolls forward unused.
 
 Chapter 2 keeps its monograph register for now (it doubles as the
 standalone paper); whether to soften it inside the book is the author's
@@ -133,7 +139,7 @@ local volatility placed among the models (author's decision).
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | **DONE** (written under the pedagogy contract 2026-08-06; tone exemplar with Chs. 4–5) |
 | 7  | Removing early exercise | 05 | **DONE** (written under the pedagogy contract 2026-08-07; tone exemplar with Chs. 4–6) |
-| 8  | The market's clock | 11 | pending |
+| 8  | The market's clock | 11 | **DONE** (written under the pedagogy contract 2026-08-07; tone exemplar with Chs. 4–7) |
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics: the missing derivative | 12 | pending |
 | 10 | Inference under weak information: filtering and priors | 15 + 13 | pending |
@@ -636,3 +642,58 @@ keeping Chapter 2 self-contained.
   independently, CV identity, recombination display, escrow rescale).
   Full book builds clean at 150 pp, no undefined refs, no ch7
   overfulls.  Next: Chapter 8 (the market's clock).
+- 2026-08-07 (later): Chapter 8 WRITTEN under the pedagogy contract
+  from the start (`chapters/08_clock/`, 7 sections + appendix 8.A,
+  ~15 pp main text, book pages 145–161 of the 169-page build; closes
+  Part II).  The anticipated NVDA supplement was NOT needed: the
+  frozen snapshot's own NVDA board carries the earnings kink (18-day
+  expiry 429 vol bp under the 4-day; the earnings-bearing interval
+  accrues 1.40× the pre-report lull, 5.39 vs 3.86 var bp/day —
+  hand-walked in §8.1).  Spine: the real-board puzzle (three
+  readings, accrual rates per interval) → the discrete
+  budget-not-schedule computation (independent normal days; one
+  seeded walk on two rulers, envelope kink 1.08%) + DDS stated with
+  accumulated variance 𝒞(s) defined before the theorem →
+  the day-weighted clock (boxed τ_days = 365t + ΣN_e; hand example
+  14+4; relabeling proposition: prices/butterfly/calendar-order
+  invariant, readings covariant √(t/τ); crush factor + binomial
+  expansion N_e/(2·365t); normalization 365/369) → the synthetic
+  earnings week (term hump peak 35.5%; fixed-expiry ramp
+  34.0→42.4% then −1243 bp overnight, "no unscheduled price move"
+  language harmonized everywhere) → interpolate-in-τ (three quotes,
+  event between them; calendar rule smears +33/−97 vol bp; jump-at-
+  event-date guarantee derived in two lines) → the inverse problem
+  (𝓕_i = Δw_i/Δτ_i; J(N) four terms each explained; events can only
+  pull their own interval down; within-interval date
+  non-identifiability proposition; shrinkage derivation with the
+  N≥0 clipping stated; λ_sparse·Δτ²/σ⁴ law; planted-event audit —
+  shrink 0.03/0.40 d at 40/20%, quarterly board blind to 2.5 d,
+  materiality walls 12%/22%, flat ladder → exactly 0) → the frozen
+  boards (year-end horizon: +7.3 d on NVDA's earnings interval,
+  in-horizon spread 560→299 var bp, live ℓ1 shrinkage visible;
+  no-horizon overreach: 250 d installed, ladder forced flat 1444→44
+  — "the horizon and the review are the method"; SPY control: 0.9 d,
+  median forward-vol 15%, rising ladder left standing) + below-one-
+  day/French–Roll + Clark/Ané–Geman/Bergomi lineage + contract
+  table.  7 figures + 59 macros from `scripts/ch08/gen_figures.py`
+  (frozen ATM ladders — NO smile refits; self-contained clock +
+  solver in figlib implementing exactly the displayed J(N); the
+  seeded walk is the chapter's only randomness).  Notation added
+  BEFORE writing (t_e/N_e, τ_days, σ_cal, 𝒞(s), Z, 𝓕_i, J,
+  λ_mono/sparse/ridge); references +Dambis, Dubins–Schwarz,
+  Revuz–Yor, Clark 1973, Ané–Geman, French–Roll, Bergomi.  Newcomer
+  fresh-reader pass run (sub-agent persona): all 9 files
+  summarizable, ~40 findings (headliners: "prices unmoved" vs
+  scheduled-decay contradiction harmonized; the 5-units-vs-4-extra
+  event bookkeeping bridged explicitly in §8.3; the crush factor's
+  direction pinned on the hand example; 𝒞 defined before the DDS
+  statement + growth condition explained; Black-inversion
+  time-blindness justified via eq:black's d±(w); shrinkage
+  derivation's flat-at-truth assumption argued and the clipping
+  paragraph added; "weekly board" renamed dense; appendix's wrong
+  "1-day node" → 2-day + full expiry list added; 94=90+4 derived;
+  SPY "15%" now macro-backed) ALL resolved; math verified line by
+  line by the lead (accrual arithmetic, √-ratios, interpolation
+  walk, ∂𝓕/∂N, shrinkage calculus, every macro recomputed).  Full
+  book builds clean at 169 pp, no undefined refs, no ch8 overfulls.
+  Next: Chapter 9 (spot–vol dynamics: the missing derivative).

@@ -171,6 +171,27 @@ times in display math would violate the contract's symbol budget).
 Note on `E`: italic `E` is always a PRICE in this book; the expectation
 operator stays blackboard `𝔼`.  Stated once at first use in §7.1.
 
+## Chapter 8 — the market's clock
+
+The chapter separates the two clocks the book has so far run together:
+`t` (Ch. 6's calendar year fraction) and `τ` (variance time, in use since
+Ch. 2).  Bare `σ` remains what it has always been — `√(w/τ)`, the
+volatility read on the variance clock; the *calendar reading* gets its own
+marked symbol.  The path vocabulary (`Y_s`, `v_s`, `W_s`) is Ch. 5 §5.1's,
+unchanged.
+
+| Symbol | Meaning |
+|---|---|
+| `t_e, N_e` | one scheduled event: its date (calendar year fraction) and its size in *extra equivalent days* (composite subscripts, as `N_t`) |
+| `τ_days(t)` | the variance clock in day units, `365 t + Σ_{t_e ≤ t} N_e`; then `τ(t) = τ_days(t)/365` (word subscript, self-naming) |
+| `σ_cal` | the calendar reading `√(w/t)` (word subscript; never bare σ) |
+| `𝒞(s)` | accumulated instantaneous variance `∫₀ˢ v_r dr` — the market's own clock (§8.2; free calligraphic letter) |
+| `Z` | the standard Brownian motion of the time-change theorem (§8.2 only; Ch. 2 reserved only the composite `Z_max`, lowercase `z` stays log-odds) |
+| `𝓕_i` | forward variance of expiry interval i, `Δw_i/Δτ_i` (calligraphic — `f`, `f*`, `f_i`, `f(τ,y)` are all taken; glossed against the forward `F` at first use) |
+| `Δw_i, Δt_i, Δτ_i` | ladder increments between consecutive quoted expiries (composites, the Ch. 4 `Δτ, Δy` pattern; bare `Δ` stays the digital gap) |
+| `J(N)` | the clock-calibration objective over the vector `N = (N_1, …)` of candidate event sizes (bare `J` was free) |
+| `λ_mono, λ_sparse, λ_ridge` | its penalty weights (word subscripts; sign- and number-subscripted `λ±`, `λ_0` stay Ch. 2's and Ch. 4's) |
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,

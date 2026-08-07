@@ -1,0 +1,73 @@
+% Chapter 8 — the market's clock.
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch08/gen_figures.py from data/ (the frozen snapshot's ATM
+% ladders -- no smile is refitted) plus deterministic synthetic
+% constructions.  Notation additions are in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract).  After this chapter the reader can:
+%   1. Explain that an implied volatility is a fraction -- a
+%      price-determined total variance divided by a chosen clock -- and
+%      prove that relabeling the clock changes readings but never prices,
+%      butterfly validity, or calendar order.
+%   2. Compute the day-weighted variance clock by hand from an event
+%      calendar, and the crush factor sqrt(t/tau); explain the overnight
+%      vol crush as a scheduled reading correction, not a price move.
+%   3. Interpolate a term structure linearly in tau and say exactly what
+%      the calendar-clock interpolation invents between quotes.
+%   4. Set up the inverse problem of reading a clock off prices --
+%      flatten event-time forward variance under a sparsity charge --
+%      and state its honest limits: dates inside an interval are
+%      unidentified, sizes are shrunk, and small events are invisible on
+%      quiet or coarse boards.
+%   5. Diagnose a real board: locate the earnings interval in the frozen
+%      NVDA ladder, explain why the index board solves to almost nothing,
+%      and know when to stop believing the solver.
+% Every section serves one of these five goals.
+\renewcommand{\figdir}{figures/ch08}
+\chapter[The market's clock]{The Market's Clock}
+\label{ch:clock}
+\chaptermark{The market's clock}
+
+\chaptersynopsis{Since Chapter~2 every smile in this book has carried a
+maturity variable $\tau$ called variance time, and every chapter so far
+has quietly set it equal to the calendar.  This chapter earns the
+distinction.  A scheduled event --- an earnings report, a macro print
+--- packs several ordinary days' variance into one calendar day, and a
+volatility read against the calendar then misbehaves in a recognizable
+way: the frozen NVDA board opens the chapter with an 18-day expiry
+quoted below both of its neighbours --- more than four volatility
+points below the shorter one.
+Nothing is wrong with those prices.  The lesson is that implied
+volatility is a fraction --- a price-determined total variance divided
+by a clock --- and the clock is a modeling choice.  A short computation
+with independent normal days shows that the law at expiry knows only
+the variance budget, not its schedule; a classical theorem extends this
+to every continuous martingale.  The chapter then builds the
+day-weighted event clock, proves that relabeling time preserves prices,
+butterfly validity and calendar order while volatility readings scale
+by exactly $\sqrt{t/\tau}$, and works through an earnings week on paper
+--- the famous overnight volatility crush appears as a scheduled
+correction of a reading, with no price moving at all.  The clock then
+earns its keep twice: dense term-structure curves must be interpolated
+on it, or a known event smears into phantom volatility at unquoted
+maturities; and the clock itself can be read off the board's own
+prices, by asking which small, sparse set of events makes forward
+variance per clock unit as flat as possible.  That inverse problem has
+measured limits --- shrinkage, a materiality wall, dates that no data
+can pin inside an interval --- and the chapter closes by running it on
+the frozen boards: the solver hands NVDA's earnings interval about
+seven extra days, hands the index board almost nothing, and, if
+allowed candidates everywhere, flattens genuine term structure too.
+The calendar it installs is an estimate to review, not an oracle.}
+
+\input{chapters/08_clock/01_board}
+\input{chapters/08_clock/02_walk}
+\input{chapters/08_clock/03_clock}
+\input{chapters/08_clock/04_crush}
+\input{chapters/08_clock/05_interp}
+\input{chapters/08_clock/06_inverse}
+\input{chapters/08_clock/07_frozen}
+
+\begin{chapterappendices}
+\input{chapters/08_clock/A_protocol}
+\end{chapterappendices}

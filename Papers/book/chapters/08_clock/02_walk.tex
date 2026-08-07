@@ -1,0 +1,184 @@
+\section{The walk keeps its own clock}
+\label{sec:clkwalk}
+
+We know what the board says: some days carry more variance than
+others.  This section shows that the mathematics has a natural home
+for that fact.  The claim to be earned, first in a discrete
+computation a first course can check and then as a named theorem, is
+this: \emph{the law of the underlying at expiry depends on the days
+only through their total variance --- the budget --- and not on how
+that budget is scheduled.}  Once that is true, ``which clock to use''
+becomes a genuine choice, because the prices cannot object.
+
+Do the discrete case honestly.  Let the log return of the underlying
+over trading day $i$ be a random shock $\varepsilon_i$, normally
+distributed with mean zero and variance $\Delta w_i$ --- day $i$'s
+contribution to the total.  (Mean zero is a deliberate
+simplification: it drops the $-\tfrac12$ drift correction Chapter~5
+derived, which shifts the mean and not the variance; the correction
+reappears, intact, in the continuous computation below.)  Let the
+days be independent: today's surprise does not read yesterday's.  After $n$ days the cumulative log return is the sum
+$\varepsilon_1+\cdots+\varepsilon_n$, and two first-course facts
+finish the argument.  A sum of independent normals is normal.  And
+its variance is the sum of the variances:
+\[
+\operatorname{Var}\!\big(\varepsilon_1+\cdots+\varepsilon_n\big)
+=\Delta w_1+\Delta w_2+\cdots+\Delta w_n .
+\]
+The right-hand side is a \emph{sum}, and sums do not care about order
+or arrangement.  Put the big day first, last, or in the middle; split
+it into two medium days; the terminal law is the same normal with the
+same variance.  The law at expiry knows the budget, not the schedule.
+
+Make it concrete with the numbers this section's figure uses:
+\MacClkWalkDays\ trading days, each ordinary day's shock worth
+$\MacClkWalkDailyPct\%$ of standard deviation --- that is,
+$(\MacClkWalkDailyPct\%)^2$ of variance --- and one scheduled event on
+day \MacClkWalkEventDay\ carrying \MacClkWalkEventUnits\ ordinary
+days' variance in one calendar day.  Take one ordinary day's variance
+as the unit.  The \MacClkWalkDays\ days are 29 ordinary ones plus the
+event day; the ordinary days contribute one unit each and the event
+day contributes \MacClkWalkEventUnits, so the terminal standard
+deviation is
+\[
+\MacClkWalkDailyPct\%\times
+\sqrt{\underbrace{29\times1}_{\text{ordinary days}}
++\underbrace{1\times\MacClkWalkEventUnits}_{\text{the event day}}}
+=\MacClkWalkDailyPct\%\times\sqrt{34},
+\]
+and it would be $\MacClkWalkDailyPct\%\times\sqrt{34}$ with the event
+on day 3, day 20, or day 30.  An option struck on the terminal level
+--- any option, since Chapter~2 taught that a full strike ladder pins
+the terminal law and nothing more --- cannot tell those calendars
+apart.
+
+But something \emph{can} tell them apart: any reading that divides by
+elapsed calendar time.  \Cref{fig:clkwalk} shows the same simulated
+walk twice.  In panel~(a), the horizontal axis is the trading day.
+The blue band with grey edges is the $\pm1$-standard-deviation
+envelope, $\pm\MacClkWalkDailyPct\%\sqrt{\text{variance so far}}$:
+the statistical corridor the walk lives in.  Follow the band's upper edge
+with your eye: it grows like a square root, then takes a visible
+step up at the dotted line --- day \MacClkWalkEventDay, where one
+day adds five days' variance --- and resumes its square-root growth
+from a higher base.  The kink is the calendar clock failing to keep
+pace with the walk.  In panel~(b), the \emph{same} paths are drawn
+against a different horizontal axis: accumulated variance, measured
+in \emph{variance days} --- ordinary days count one, the event day
+counts \MacClkWalkEventUnits.  The event day is now simply a wider
+slot on the axis (the orange strip), the envelope is one smooth
+square root from end to end, and nothing about the walk marks the
+event at all.  Same randomness, same terminal law; the kink lived in
+the ruler.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_walk.pdf}
+\caption{One walk, two rulers (\MacClkWalkPaths\ simulated paths, one
+highlighted; construction and seed in
+appendix~\ref{app:clkprotocol}).  (a)~Against the trading-day index,
+the $\pm1$-sd envelope (grey edges, blue band) kinks at the event
+day: day \MacClkWalkEventDay\ carries \MacClkWalkEventUnits\ days'
+variance.  (b)~Against accumulated variance the event day is a wider
+slot on the axis (the orange strip), and the envelope is one smooth
+square root.  The walk itself never noticed the event's position;
+only the ruler did.}
+\label{fig:clkwalk}
+\end{figure}
+
+The continuous version of this bookkeeping is a classical theorem.
+Chapter~5 wrote the underlying's motion as a diffusion,
+$\dd Y_s=\sqrt{v_s}\,Y_s\,\dd W_s$ --- $Y$ the forward-normalized
+level, $W$ a Brownian motion (the continuous limit of an unbiased
+random walk), $v_s$ the instantaneous variance, the squared
+volatility the process runs at instant $s$ (\cref{sec:vsnumber}).
+There the time variable was variance time itself; run it now on the
+\emph{calendar}, where $v_s$ is free to schedule itself unevenly ---
+quiet Tuesdays, a violent earnings evening.  Chapter~5's It\^o
+computation \eqref{eq:vsito} splits the log return into a drift and a
+martingale part --- a \emph{martingale} being, as before, a process
+with no drift, whose expected future value is its current value:
+\[
+\log Y_t
+=\underbrace{\int_0^{t}\sqrt{v_s}\,\dd W_s}_{\textstyle M_t,
+\ \text{the martingale part}}
+\;-\;\frac12\underbrace{\int_0^{t}v_s\,\dd s}_{\textstyle
+\mathcal{C}(t),\ \text{accumulated variance}} .
+\]
+The second integral, written $\mathcal{C}(t)$, is the continuous
+analogue of ``variance days'': the running total of instantaneous
+variance, growing fast through violent stretches and slowly through
+quiet ones.  It is the clock the market itself keeps.  For a general
+continuous martingale --- one not handed to us as an integral against
+a Brownian motion --- the accumulated variance is defined directly
+from the path, as the small-step limit of the sum of squared
+increments; for our $M_t=\int_0^t\sqrt{v_s}\,\dd W_s$ that limit is
+exactly the $\mathcal{C}(t)=\int_0^t v_s\,\dd s$ above.  With the
+term defined, the theorem says the martingale part is nothing but a
+Brownian motion read on that clock:
+
+\begin{theorem}[Dambis; Dubins--Schwarz
+\citep{Dambis1965,DubinsSchwarz1965}]
+\label{thm:clkdds}
+Let $M$ be a continuous martingale with $M_0=0$ whose accumulated
+variance $\mathcal{C}$ grows without bound.  Then there is a standard
+Brownian motion $Z$ such that
+\[
+M_t \;=\; Z_{\mathcal{C}(t)}\qquad\text{for all }t .
+\]
+\end{theorem}
+
+Two remarks keep the statement honest at this book's level.  The
+growth condition just ensures the relabeled clock runs on forever, so
+that $Z$ is a full Brownian motion; it is harmless here, where the
+market keeps moving past any one expiry.  And the delicate step ---
+reading a Brownian motion at the \emph{random} time $\mathcal{C}(t)$
+and getting the original martingale back --- is precisely what the
+proof establishes, by a careful change-of-time argument in the
+standard reference \citep[Ch.~V]{RevuzYor1999}.  We use the
+statement, not the proof.
+What it buys us is the discrete computation again, now for every
+continuous martingale at once: running the motion to calendar date
+$t$, the log return is
+$\log Y_t=Z_{\mathcal{C}(t)}-\tfrac12\mathcal{C}(t)$, so when the
+schedule $v_s$ is deterministic the terminal law is normal with
+variance $\mathcal{C}(t)$ --- the budget --- and mean
+$-\tfrac12\mathcal{C}(t)$, no matter how the accrual was arranged
+along the way.  The market keeps one clock, $\mathcal{C}$; the
+calendar is a second clock that we brought.
+
+Now say what this means for implied volatility, in one careful
+paragraph.  A quoted option price, pushed through the Black formula
+of Chapter~2, delivers a \emph{total variance} $w(k)$ --- and that
+inversion never asks about time at all.  This is worth pausing on,
+because a first course writes Black--Scholes with $\sigma$ and $T$ as
+separate inputs.  Chapter~2's normalized form \eqref{eq:black} shows
+they never act separately: the formula is $B(k,w)$ with
+$d_\pm=-k/\sqrt{w}\pm\sqrt{w}/2$, and maturity enters only through
+the product $w=\sigma^2\tau$.  Everything after the inversion is
+division: quoting the same $w$ as a volatility requires choosing a
+clock and computing $\sqrt{w/\text{clock}}$.  Divide by the calendar
+$t$ and we write
+\[
+\sigma_{\rm cal}=\sqrt{w/t}\,;
+\]
+divide by a clock $\tau$ built to follow the market's own accrual
+schedule and we get $\sigma=\sqrt{w/\tau}$ --- which is precisely the
+$\sigma$ this book has used since Chapter~2, where $w=\sigma^2\tau$
+was the founding convention.  Until today the two clocks agreed,
+because no event calendar was in force; the NVDA board is where they
+part.  The dip of \cref{sec:clkboard} is now diagnosed: the 18-day
+expiry dodges a scheduled burst of $\mathcal{C}$, its $w$ is
+accordingly modest, and dividing that modest $w$ by an
+\emph{undiscounted} 18 days of calendar produces a number that looks
+like a volatility collapse.  The prices are consistent; the reading
+$\sigma_{\rm cal}$ is the artifact.
+
+One honest boundary before building the clock.  The theorem licenses
+a \emph{relabeling} of time; it does not predict $\mathcal{C}$.  The
+market's clock is random --- nobody knows Tuesday's variance in
+advance --- and what a fitting desk can carry is a deterministic
+\emph{forecast of its schedule}: ordinary days advance the clock at
+rate one, scheduled event days advance it by more.  Building that
+forecast, as a small object a desk can quote and edit, is the next
+section's job.

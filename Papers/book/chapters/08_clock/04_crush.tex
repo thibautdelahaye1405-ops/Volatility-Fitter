@@ -1,0 +1,98 @@
+\section{An earnings week on paper}
+\label{sec:clkcrush}
+
+The clock is built; watch it explain the most famous pattern in
+listed options.  Every trader knows the shape: implied volatility on
+a name climbs into its earnings date, day after day, and collapses
+the morning after --- the \emph{vol crush}.  The usual telling makes
+it sound like a repricing, as if the market changed its mind
+overnight.  This section constructs an earnings week where the market
+never changes its mind about anything, and the whole pattern appears
+anyway --- in the readings.
+
+The construction could not be plainer.  A synthetic name runs at a
+flat clock volatility of $30\%$ --- on the variance clock, every
+expiry, every day, $\sigma=30\%$ exactly --- with one scheduled event
+worth \MacClkClockExtraDays\ extra days at day \MacClkClockEventDay.
+All prices follow from Chapter~2's formulas with
+$w(t)=(0.30)^2\,\tau(t)$ and the clock \eqref{eq:clkclock}; there is
+no other input.  Whatever patterns appear below are therefore not
+market opinions: they are arithmetic.
+
+\Cref{fig:clkcrush}(a) is the view across expiries, priced at the
+start of the week.  The blue line is the clock reading: flat at
+$30\%$ by construction.  The orange curve is the calendar reading
+$\sigma_{\rm cal}(t)=\sigma\sqrt{\tau(t)/t}$ of the \emph{same
+prices}, with dots at the weekly listed expiries.  Expiries before
+day \MacClkClockEventDay\ dodge the event and read exactly $30\%$ ---
+the annotated 7-day dot.  The expiry on the event day pays the whole
+toll at its shortest possible maturity and reads
+\MacClkCrushTermPeakPct\% --- the hump's peak, the ratio
+\MacClkClockPeakRatio\ of \cref{fig:clkclock}(b) applied to $30\%$.
+(The peak falls between listed expiries; the weekly dots at days 7
+and 14 straddle it.)  Beyond it the hump decays as the event thins
+out over more calendar: by eight weeks the reading is within about a
+point of the clock's.  This
+is the shape the NVDA board of \cref{sec:clkboard} showed in the
+wild, reproduced here from a two-line construction --- with the dip
+now explained as the dodging expiries' side of the hump.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_crush.pdf}
+\caption{An earnings week on paper: flat $30\%$ clock volatility, one
+event of \MacClkClockExtraDays\ extra days at day
+\MacClkClockEventDay.  (a)~Across expiries: the calendar reading
+(orange, weekly dots) is flat at $30\%$ where expiries dodge the
+event, peaks at \MacClkCrushTermPeakPct\% for the expiry on the event
+date, and decays; the clock reading (blue) is flat by construction.
+(b)~One expiry (day 14) re-read each morning: the calendar reading
+ramps from \MacClkCrushRampStartPct\% to \MacClkCrushPeakPct\% as the
+event's four extra days weigh on fewer and fewer remaining calendar
+days, then gives them up overnight --- $-$\MacClkCrushDropBp\ vol bp
+--- when the event resolves.  No price surprised anyone at any
+point.}
+\label{fig:clkcrush}
+\end{figure}
+
+Panel~(b) is the view a desk actually watches: one fixed expiry ---
+day 14, chosen to contain the event --- re-read every morning as the
+week passes.  On valuation day $s$ the remaining calendar is $14-s$
+days while the event is still ahead, so the remaining variance days
+are $(14-s)+\MacClkClockExtraDays$, and the calendar reading of the
+unchanged $30\%$ clock volatility is
+\[
+\sigma_{\rm cal}(s)
+=30\%\times\sqrt{\frac{18-s}{14-s}}\,.
+\]
+Both the numerator and the denominator lose one day per morning, so
+the \emph{fixed} four-day premium weighs on a shrinking base and the
+ratio climbs: $30\%\sqrt{18/14}=\MacClkCrushRampStartPct\%$ on day
+zero, then day by day up the staircase of panel~(b), reaching
+$30\%\sqrt{8/4}=30\%\sqrt{2}=\MacClkCrushPeakPct\%$ on the last
+morning before the report --- four calendar days left, eight variance
+days.  That evening the event resolves.  The next morning one more
+night has passed, so three calendar days remain, and the sum in
+\eqref{eq:clkclock} no longer contains the event: three variance days
+over three calendar days, and the reading is exactly $30\%$.  The
+crush: $-$\MacClkCrushDropBp\ vol bp
+overnight (computed unrounded: the peak is $30\sqrt2=42.43\%$), the
+entire climb surrendered at once, and at no point did any price do
+anything unscheduled.  The hump is a property of the ruler, not of
+the prices.
+
+Be precise about ``unscheduled,'' because the word carries the whole
+claim.  Prices \emph{do} change across the event night: the option
+sheds the event's variance as it is realized, exactly as it sheds an
+ordinary day's time value.  That is scheduled decay --- known to the
+dollar in advance, priced from the start --- not news.  What the
+construction lacks, and what the clock deliberately does not model,
+is the \emph{surprise}: the realized move itself.  On a real board
+the report's outcome repositions the whole surface; the clock only
+ever reprices the schedule.  And the clock is a forecast --- if the
+market decides mid-week that this quarter's report is worth six
+extra days rather than four, the calendar's $N_e$ must be
+re-estimated, and the reading of \emph{that} change is a genuine
+repricing, not an artifact.  What the ruler explains is the part
+every calendar-clock chart gets wrong on schedule: the climb and the
+crush.

@@ -1,0 +1,221 @@
+\section{Reading the clock off prices}
+\label{sec:clkinverse}
+
+Everything so far consumed a calendar: someone typed in ``four extra
+days on August~26,'' and the clock did the rest.  For scheduled
+earnings that is the right workflow --- the dates are published, and
+a desk should use them.  But the sizes $N_e$ are nobody's published
+number, and the board's own prices carry an opinion about them: we
+\emph{saw} that opinion in \cref{fig:clkboard}(b), where one interval
+accrued \MacClkBoardHotOverLull$\times$ the variance per day of its
+neighbour.  This section turns that observation into an estimator ---
+read the calendar \emph{off} the prices --- and, just as importantly,
+measures what such an estimator can and cannot promise.
+
+Set up the objects.  The data is the quoted ladder: expiries
+$t_1<\cdots<t_n$ with at-the-money total variances $w_1,\dots,w_n$
+(the same per-interval increments $\Delta w_i=w_i-w_{i-1}$,
+$\Delta t_i=t_i-t_{i-1}$ as before, with $w_0=t_0=0$).  The unknowns
+are candidate event sizes: one candidate per interval, $N_i\ge0$
+extra days somewhere inside interval $i$ --- where exactly inside
+turns out not to matter, and a proposition below says why.  Given a
+candidate vector $N=(N_1,\dots,N_n)$, each interval's width on the
+variance clock is
+\[
+\Delta\tau_i=\Delta t_i+\frac{N_i}{365},
+\]
+and the chapter's central diagnostic gets its symbol: the
+\emph{forward variance} of interval $i$,
+\[
+\mathcal{F}_i=\frac{\Delta w_i}{\Delta\tau_i}
+\]
+--- variance accrued per variance-clock year between two consecutive
+expiries.  (Calligraphic $\mathcal{F}$; the roman $F$ remains the
+forward price of Chapter~6.)  Two structural facts, each one line of
+algebra, shape everything.
+
+\emph{First: the data half of $\mathcal{F}_i$ is untouchable.}  The
+increments $\Delta w_i$ are fixed by prices
+(\cref{prop:clkgauge}(i)), and the calendar widths $\Delta t_i$ by
+the listing.  The candidate $N$ enters only through the denominators
+--- an estimator of the clock adjusts how the accrual is
+\emph{divided}, never how much accrual there \emph{is}.
+
+\emph{Second: an event can only pull its own interval down.}
+Interval $j$'s width $\Delta\tau_j$ contains only interval $j$'s own
+candidate --- an event in interval $i$ shifts the running clock
+$\tau$ of every later expiry equally at both endpoints, so every
+other width is unchanged.  And $N_i$ can only \emph{increase}
+$\Delta\tau_i$, hence only \emph{decrease} $\mathcal{F}_i$.  The
+estimator can lower a spike toward its neighbours; it cannot raise a
+valley.  Its entire vocabulary is ``this interval's days were worth
+more than ordinary days.''
+
+Now the estimator itself.  On the market's own clock, accrual should
+be steady (\cref{sec:clkwalk}); so ask for the candidate vector that
+makes the $\mathcal{F}_i$ ladder \emph{as flat as possible} --- while
+insisting, because many candidate vectors flatten almost equally
+well, that events be few and small.  Formally, minimize over
+$N\ge0$:
+\begin{equation}
+J(N)=\sum_{i<n}\big(\mathcal{F}_{i+1}-\mathcal{F}_i\big)^2
++\lambda_{\rm mono}\sum_{i<n}
+\big(\!\min(\mathcal{F}_{i+1}-\mathcal{F}_i,\,0)\big)^2
++\lambda_{\rm sparse}\sum_i\frac{N_i}{365}
++\lambda_{\rm ridge}\sum_i\Big(\frac{N_i}{365}\Big)^{2}.
+\label{eq:clkobj}
+\end{equation}
+Read the four terms one at a time.  The first is the flatness ideal:
+squared steps of the forward-variance ladder.  The second charges
+\emph{decreases} again, on top.  Why single out decreases?  Because a
+genuine pre-event board leaves a specific signature: the event
+interval spikes above both neighbours, so the ladder rises into it
+and falls out of it.  Lowering that one interval repairs both edges
+at once.  An ordinary \emph{upward-sloping} term structure, by
+contrast, has no falling edges at all --- markets show that shape
+constantly, no event caused it, and the extra charge makes sure the
+solver is not tempted to ``repair'' it.  The third term is the cost
+of speech: a charge on each installed day, linear in $N_i$.  Linear,
+not squared, and the difference matters.  Chapter~2's calibration
+carried a \emph{ridge} penalty --- a squared-size charge --- and a
+squared charge shrinks everything a little while zeroing nothing;
+a linear charge (with $N_i\ge0$ it is exactly the absolute-value
+penalty statisticians call $\ell_1$, or \emph{sparsity}) prefers
+exact zeros, paying for an event only where the flatness gain clears
+a threshold.  The last term is a tiny squared charge that keeps the
+optimization well conditioned; it never decides anything.  The minimization is a small bounded solve ---
+$n$ variables, reference weights and the routine in
+appendix~\ref{app:clkprotocol} --- and solved events below half a day
+are dropped as noise.
+
+Before trusting any output, be precise about what the data can
+identify at all.
+
+\begin{proposition}[Dates inside an interval are not identified]
+\label{prop:clkident}
+Every quantity the pipeline consumes --- fits, readings,
+interpolation, the objective \eqref{eq:clkobj} --- depends on the
+event calendar only through the clock values $\tau(t_1),\dots,
+\tau(t_n)$ at the quoted expiries, hence only through the per-interval
+totals $N_i=\sum_{t_e\in(t_{i-1},t_i]}N_e$.  Consequently two events
+inside the same interval are indistinguishable from one event of
+their combined size placed anywhere in that interval, and an event's
+date becomes identified only when a listed expiry separates it from
+its neighbours.
+\end{proposition}
+
+\begin{proof}
+The clock \eqref{eq:clkclock} at a quoted expiry $t_i$ is
+$365\,t_i+\sum_{t_e\le t_i}N_e$: it reads the calendar only through
+cumulative sums up to quoted dates.  Two calendars with the same
+per-interval totals give the same sums at every $t_i$, hence the same
+$\tau(t_i)$, the same $\Delta\tau_i$, and the same value of every
+quantity listed.  The date within an interval never enters.
+\end{proof}
+
+So the solver's placement of its candidate --- mid-interval, by
+convention --- is exactly that: a convention, recorded in the
+contract table, not an estimate.  When the report date is public,
+type it in; the \emph{size} is what the board can be asked for.
+
+What can the size estimator promise?  \Cref{fig:clkident} is the
+audit, run on boards where the truth is planted: a flat clock
+volatility, one event of known size, solve
+\eqref{eq:clkobj}, compare.  Panel~(a) plots recovered against
+planted size on three boards.  On a dense board --- expiries from a
+week to a year, listed like a liquid single name's --- at $40\%$
+volatility, the curve is the diagonal to the eye: recovery within
+\MacClkIdentShrinkStrongD\ days at every planted size of two days
+and up.  On the same board at index-like $20\%$ volatility, the
+curve runs parallel to the diagonal but below it, short by up to
+\MacClkIdentShrinkWeakD\ days.  And on a coarse quarterly board at
+$20\%$, the curve is \emph{zero} until the planted event exceeds
+\MacClkIdentBlindD\ days, then rises roughly parallel, several days
+short.  (On every board the toe of the curve --- planted events
+under a day or so --- reports as exactly zero; the last paragraph of
+the derivation below says why.)  Three behaviours, one mechanism,
+and it is worth deriving because it is the honest price tag of the
+sparsity charge.
+
+Work on the audit's configuration: one live candidate $N$ (the
+others parked at zero, where the audit's solve indeed leaves them)
+against a planted truth $N^\ast$.  Two facts start the derivation.
+On this board the flatness part of \eqref{eq:clkobj} is
+\emph{minimized exactly at the truth}: the generator's ladder is flat
+by construction, so installing $N=N^\ast$ restores a perfectly flat
+$\mathcal{F}$ and no other value does better.  And near its minimum a
+smooth function is a parabola: value flat at $N^\ast$, some curvature
+$J''$, giving $\tfrac12 J''\,(N-N^\ast)^2$.  Adding the per-day
+charge $(\lambda_{\rm sparse}/365)\,N$ tilts the parabola, and
+setting the derivative to zero moves its minimum:
+\[
+J''(\widehat N-N^\ast)+\frac{\lambda_{\rm sparse}}{365}=0
+\qquad\Longrightarrow\qquad
+\widehat N=N^\ast-\frac{\lambda_{\rm sparse}}{365\,J''}.
+\]
+Every sparsity-charged estimator shrinks; the shortfall is the
+charge over the curvature.  And the curvature is where the market
+enters.  The candidate moves the objective only through its own
+interval's forward variance, at rate
+\[
+\frac{\partial\mathcal{F}_i}{\partial N_i}
+=-\frac{\Delta w_i}{\Delta\tau_i^{2}}\cdot\frac{1}{365}
+=-\frac{\mathcal{F}_i}{365\,\Delta\tau_i},
+\]
+so the flatness curvature is of the order of the square of that
+rate, $J''\sim\big(\mathcal{F}_i/(365\,\Delta\tau_i)\big)^2$, up to
+the count of squared terms touched.  Since $\mathcal{F}_i$ is of
+order $\sigma^2$, the shrinkage scales like
+\[
+N^\ast-\widehat N
+\;\sim\;\lambda_{\rm sparse}\,
+\frac{\Delta\tau_i^{2}}{\sigma^{4}}
+\]
+--- inversely with the \emph{fourth} power of the board's volatility,
+and directly with the \emph{square} of the interval's width, with the
+day-count conversions and term counts absorbed into the
+proportionality (the audit's measured pair,
+\MacClkIdentShrinkStrongD\ against \MacClkIdentShrinkWeakD\ days,
+carries rounding at the small end).  Halve the volatility and the
+shrinkage grows roughly sixteenfold; stretch the bracketing interval
+from a month to a quarter and it grows another order of magnitude.
+
+One mechanical fact completes the picture.  The estimate is
+constrained to $N\ge0$ and solved events below half a day are
+dropped, so whenever the shifted optimum $\widehat N$ lands at or
+below that floor, the solver reports \emph{exactly zero} --- the flat
+toes at the left of panel~(a), and the walls of panel~(b), are this
+clipping in action, not a failure to compute.  Panel~(b) shows the
+consequence directly: fix the planted event at 2 days and sweep the
+board's volatility.  The dense board starts seeing the event at
+about \MacClkIdentWallWeeklyPct\% volatility; the quarterly board not
+until about \MacClkIdentWallQuarterlyPct\%.  Below the wall the
+flatness gain a small event offers cannot clear the per-day charge,
+and the solver --- correctly, by its own lights --- says nothing.
+One more audit line completes the promise: handed a perfectly flat
+ladder, the solver installs exactly \MacClkIdentFlatDays\ days.  A
+sparsity prior's virtue is precisely that silence is its default.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_ident.pdf}
+\caption{The planted-event audit.  (a)~Recovered vs planted size:
+near-exact on the dense $40\%$ board (shrinkage
+$\le\MacClkIdentShrinkStrongD$\,d for planted sizes of 2\,d and up),
+shrunk by up to \MacClkIdentShrinkWeakD\,d at $20\%$, and blind below
+\MacClkIdentBlindD\,d on a quarterly $20\%$ board --- the
+$\lambda_{\rm sparse}\,\Delta\tau^2/\sigma^4$ law at work, with the
+$N\ge0$ clipping flattening every curve's toe.  (b)~A fixed 2-day
+event against board volatility: the dense board's materiality wall
+sits near \MacClkIdentWallWeeklyPct\%, the quarterly board's near
+\MacClkIdentWallQuarterlyPct\%.}
+\label{fig:clkident}
+\end{figure}
+
+We now know the estimator's character.  It reads exactly the kinks
+the clock was built to explain; it can only pull hot intervals down;
+it shrinks what it reports and stays silent below a wall it computes
+from the board's own volatility and spacing; and it cannot date an
+event more finely than the listing brackets it.  What it has never
+been told is \emph{why} an interval runs hot.  The last section runs
+it on the real frozen boards and confronts that limit directly.

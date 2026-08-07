@@ -1,0 +1,223 @@
+\section{The clock of the frozen board}
+\label{sec:clkfrozen}
+
+The estimator is audited; point it at the real data.  This section
+runs \eqref{eq:clkobj} on the two frozen ladders --- NVDA, where the
+chapter began, and SPY --- and reads the results with the discipline
+\cref{sec:clkinverse} paid for.
+
+\Cref{fig:clkread}(a) is the disciplined run.  Candidates are allowed
+at the first five expiries --- through December 2026, a
+\emph{horizon} choice disclosed in the contract --- while the later
+intervals carry no candidates and hold the ladder's far end in place
+(they sit beyond the panel's right edge; panel~(b) shows them).  The orange steps are the calendar ladder of
+\cref{fig:clkboard}(b); the blue steps are the same increments
+divided by the solved clock.  The solver spends its budget exactly
+where the chapter has been pointing: \MacClkReadHeroEarnD\ extra days
+on the earnings-bearing interval (shaded), a combined
+\MacClkReadHeroShortD\ days on the two short-dated intervals at the
+left edge --- the board's hot Monday-to-Friday opening, a real if
+modest acceleration --- and nothing anywhere else:
+\MacClkReadHeroTotalD\ days in total.  Look at what the blue ladder
+does.  (Units, once: both ladders are variance per year of their own
+clock --- calendar year for orange, solved variance year for blue.)
+The three intervals before the report meet at
+\MacClkReadHeroFlatLevel\ --- the solver has equalized the
+pre-earnings stretch --- and the earnings interval comes down from
+\MacClkBoardHotFwd\ to \MacClkReadHeroEarnAfter, most of the
+way to its neighbours but not all of it: the per-day charge keeps the
+last few days unbought, the live shrinkage of
+\cref{fig:clkident}(a) on a real board.  The December interval is
+untouched --- orange peeking out behind blue --- and the in-horizon
+spread of the ladder tightens from \MacClkReadHeroSpreadBeforeBp\ to
+\MacClkReadHeroSpreadAfterBp\ variance bp.
+
+Now read panel~(a) honestly, in two directions.  What the solver has
+genuinely done is recover, \emph{from prices alone}, that the window
+between August~21 and September~18 carries about seven ordinary days
+more variance than its calendar length --- with no access to a news
+feed.  The public schedule says why: NVDA's quarterly report sits in
+that window.  But the solver does not know that, and cannot.  It
+reads kinks; earnings, a product launch, a macro date, or a
+genuinely lumpy term structure all look identical through
+\eqref{eq:clkobj}.  The installed calendar is an \emph{estimate of
+sizes at conventional dates}, to be reviewed against the public
+schedule --- not an oracle that discovered earnings.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_clk_read.pdf}
+\caption{Reading the frozen boards' clocks (forward variance per
+calendar year, orange, vs per solved variance year, blue).
+(a)~NVDA with candidates through year-end: \MacClkReadHeroEarnD\
+extra days land on the earnings interval (shaded),
+\MacClkReadHeroShortD\ on the short end, none elsewhere; the
+pre-report intervals equalize at \MacClkReadHeroFlatLevel\ and the
+in-horizon spread tightens from \MacClkReadHeroSpreadBeforeBp\ to
+\MacClkReadHeroSpreadAfterBp\ variance bp.  (b)~NVDA with candidates
+everywhere: \MacClkReadFullTotalD\ days installed, the ladder forced
+flat (\MacClkReadFullSpreadBeforeBp\ to
+\MacClkReadFullSpreadAfterBp\ variance bp) --- including
+\MacClkReadFullMarchD\ days against a single ordinary interval.
+(c)~SPY: \MacClkReadSpyTotalD\ day installed in total; the rising
+ladder is left standing.}
+\label{fig:clkread}
+\end{figure}
+
+Panel~(b) shows what happens when that review is skipped.  Same
+board, same objective, but candidates at every expiry and no horizon.
+The solver installs \MacClkReadFullTotalD\ extra days and flattens
+the entire ladder, from a spread of \MacClkReadFullSpreadBeforeBp\
+variance bp to \MacClkReadFullSpreadAfterBp\ --- including
+\MacClkReadFullMarchD\ days against the December-to-March interval
+alone, an ordinary three-month stretch whose elevated accrual is some
+mixture of two more earnings reports and genuine term-structure
+shape.  Nothing malfunctioned.  Handed enough candidates, the
+flatness ideal is achievable, and the objective achieves it --- by
+telling the clock story about \emph{everything}.  A perfectly flat
+blue ladder is the optimizer satisfied, not the truth found; the
+solver has no way to say ``this interval is hot for a reason the
+clock should not absorb.''  The horizon of panel~(a), and the human
+review of what it installs, are not decorations on the method ---
+they are the method.
+
+Panel~(c) is the control experiment the chapter owes the reader:
+the index board.  SPY's calendar ladder rises steadily --- the
+familiar upward term structure; its largest decrease anywhere is
+\MacClkReadSpyDecBp\ variance bp --- and the solver, run with no
+horizon at all, installs \MacClkReadSpyTotalD\ day in total, leaving
+the ladder's \MacClkReadSpySpreadBp-variance-bp spread standing.
+Both halves of the design show up in that restraint.  The
+monotonicity charge in \eqref{eq:clkobj} fires only on
+\emph{decreases} of forward variance, and this ladder has
+essentially none; and at the index's forward volatilities --- the
+board's median is \MacClkReadSpyMidVolPct\% --- the $\sigma^4$
+materiality wall of \cref{sec:clkinverse} prices small events out
+entirely.  A diversified index dilutes any
+single name's report to a fraction of a day; the solver's silence on
+SPY is the audit's flat-ladder promise kept on real data.  The
+single name keeps an event clock; the index keeps the calendar.
+
+Three paragraphs of scope complete the chapter's subject.  First,
+below one day.  This chapter's smallest unit of time is the day, and
+that too is a convention: variance does not accrue evenly
+\emph{within} a day either.  The classic evidence is the weekend ---
+measured across decades, an exchange holiday adds far less variance
+than a trading day, because most variance arrives while markets
+trade \citep{FrenchRoll1986} --- and the same asymmetry separates a
+session hour from an overnight gap.  The day-weight idea continues
+below the day boundary without new machinery: a day becomes a
+profile (so much of its weight during the session, so much
+overnight), and a scheduled morning print --- a CPI release at 8:30
+--- is simply an event whose date $t_e$ is a fraction of a day,
+entering \eqref{eq:clkclock} unchanged.  The reference implementation
+carries such a sub-day clock; this book stops at day granularity,
+stated here once.
+
+Second, what the clock does not model.  The clock is a deterministic
+forecast of the schedule of variance; it prices the \emph{anticipated}
+part of an event and is silent on the realized surprise, on random
+event sizes, and on volatility that is itself dynamic --- the
+stochastic-volatility world, where an event is a random burst rather
+than a known dilation.  That is model territory, developed in
+\citet{Bergomi2016}, and it is the road this book declined at the end
+of \cref{sec:clkboard}: richer, costlier, and unnecessary for the
+readings this chapter set out to repair.
+
+Third, where the idea comes from.  Reading asset prices on a
+non-calendar clock is one of the oldest ideas in the subject:
+\citet{Clark1973} explained heavy-tailed daily returns by
+subordinating a Brownian motion to a transaction-volume clock, and
+\citet{AneGeman2000} showed returns recover normality when read on
+such an activity clock --- the empirical cousins of
+\cref{thm:clkdds}.  This chapter's contribution to the reader is the
+desk-sized version: a clock parameterized in days, priced into
+readings by \cref{prop:clkgauge}, and estimable from the board with
+stated limits.
+
+\subsection{The contract}
+\label{sec:clkcontract}
+
+The chapter closes as the others do: three columns of decreasing
+strength --- proved, measured, chosen.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:clkcontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Checked} & \textbf{Convention}\\
+\midrule
+The law at expiry knows the variance budget, not its schedule ---
+exactly, for independent normal days; for every continuous martingale
+by \cref{thm:clkdds} (cited). &
+The walk of \cref{fig:clkwalk}: envelope kink
+\MacClkWalkEnvKinkPct\% on the calendar axis, one smooth square root
+on the variance axis. &
+The clock $\tau$ is a deterministic forecast of the schedule;
+realized surprises and random event sizes are out of scope
+(\citealp{Bergomi2016}).\\
+\addlinespace
+Relabeling time (\cref{prop:clkgauge}): prices, butterfly validity
+and calendar order invariant; readings covariant by
+$\sqrt{t/\tau}$, interval rates by $\Delta t/\Delta\tau$. &
+The worked week (\cref{fig:clkcrush}): ramp
+\MacClkCrushRampStartPct\% to \MacClkCrushPeakPct\%, overnight crush
+$-$\MacClkCrushDropBp\ vol bp, no unscheduled price move; the NVDA
+dip (\MacClkBoardDipBp\ vol bp) diagnosed as the dodging expiry. &
+Event currency: extra equivalent days $N_e$ per event, 365 days per
+year; normalization \eqref{eq:clknorm} off throughout (a stated
+budget choice).\\
+\addlinespace
+Linear-in-$\tau$ interpolation bends the dense curve at the
+calendar's dates and nowhere else (\cref{sec:clkinterp}). &
+The smear (\cref{fig:clkinterp}): $+\MacClkInterpOverBp$ vol bp
+phantom before the event, $-\MacClkInterpUnderBp$ past it, zero at
+every quote. &
+Total variance linear in $\tau$ between quotes --- the
+constant-accrual convention on the market's clock.\\
+\addlinespace
+Dates inside an interval are not identified
+(\cref{prop:clkident}); an event can only lower its own interval's
+$\mathcal{F}_i$. &
+The audit (\cref{fig:clkident}): shrinkage
+\MacClkIdentShrinkStrongD/\MacClkIdentShrinkWeakD\,d at
+$40\%/20\%$, quarterly wall at \MacClkIdentBlindD\,d, flat ladder
+$\to$ \MacClkIdentFlatDays\ days. &
+Candidate placement mid-interval; solver weights, half-day drop
+threshold and horizon (appendix~\ref{app:clkprotocol}); solved sizes
+are shrunk estimates.\\
+\addlinespace
+--- (this row is empirical by design) &
+The frozen boards (\cref{fig:clkread}): \MacClkReadHeroEarnD\ days
+onto NVDA's earnings interval (spread
+\MacClkReadHeroSpreadBeforeBp$\to$\MacClkReadHeroSpreadAfterBp\ var
+bp); the no-horizon run's \MacClkReadFullTotalD-day overreach; SPY
+left at \MacClkReadSpyTotalD\ day. &
+The installed calendar is reviewed against the public schedule
+before use; the solver measures how much, never why.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Step back to the book's thesis, one last time for Part~II.
+\emph{Validity} was \cref{prop:clkgauge}: a clock is a relabeling,
+and relabelings can never touch prices, densities, or order --- the
+entire construction is arbitrage-proof by arithmetic.
+\emph{Information} was what the board genuinely pins down: total
+variances at quoted expiries, hence per-interval accrual rates ---
+and, through the inverse problem, event \emph{sizes} above a
+computable wall, but never dates inside an interval and never causes.
+\emph{Convention} was everything else, each piece now on the table:
+the day currency, the normalization choice, the interpolation rule,
+the candidate placement, the solver's weights and horizon.  With this
+chapter, Part~II's work is complete: the raw board has been turned
+into forwards and discounts (Chapter~6), European prices
+(Chapter~7), and now readings on an honest clock --- the observation
+is fully prepared.  What Part~III asks is what none of this statics
+can answer: when the spot moves, what happens to the smile?  The
+surface gives every derivative in the strike direction and none in
+the spot direction --- a missing derivative, and the next chapter is
+about the conventions that supply it.
