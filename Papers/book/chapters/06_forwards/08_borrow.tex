@@ -1,0 +1,209 @@
+\section{The residual rate: borrow, at the edge of identifiability}
+\label{sec:fwdborrow}
+
+The carry now has two named parts, rate and dividends.  On most
+names, that is the whole story.  On some it is not, and the leftover
+has a name and a market of its own.
+
+To sell a stock short, one must first \emph{borrow} the shares, and
+the lender charges a fee.  For most large names the fee is a few
+basis points and nobody prices it.  But when a stock is crowded on
+the short side --- \emph{hard to borrow}, in desk language --- the
+fee can run to hundreds or thousands of basis points a year, and it
+enters the forward through the same replication logic as everything
+else in this chapter --- from both sides.  The arbitrage that keeps
+the forward from sitting too \emph{low} requires selling the stock
+and buying it forward, and that arbitrageur pays the fee: the
+forward can sink below its frictionless level by the fee before
+pushing it back turns a profit.  And the fee pulls from above too:
+whoever \emph{holds} the stock can lend it out and collect the same
+fee, so holding shares unlent while the forward trades higher leaves
+money on the table, and competition among lenders presses the
+forward down to the fee-adjusted level.  (In practice lendable
+supply and fee splits leave a band rather than a line; the equation
+below reads as its middle.)  Writing $b$ for the borrow rate, the
+carried forward becomes
+\begin{equation}
+F=S\,e^{(r-q_d-b)\,t}
+\qquad\Longleftrightarrow\qquad
+b=r-q_d-\frac1t\log\frac FS .
+\label{eq:fwdborrowdef}
+\end{equation}
+Read the second form as a measurement recipe: given the rate, the
+dividend model, and the parity-fitted forward, the borrow is the
+carry \emph{residual} --- the rate left over when the named parts are
+subtracted.  Nothing new has to be fitted; the chapter's line already
+contains the number.  The question, in this chapter's spirit, is not
+whether $b$ can be computed --- it always can --- but whether the
+computation \emph{means} anything.  Two closed forms answer that, one
+for the stakes and one for the precision, and the chapter has already
+built both.
+
+\emph{Materiality.}  A borrow error is a carry error, and a carry
+error reaches the smile through the forward it misplaces:
+by \eqref{eq:fwdborrowdef}, a shift $\delta b$ moves $\log F$ by
+$-t\,\delta b$ --- the sign says a costlier borrow lowers the
+forward; the size is what matters here --- and
+\cref{sec:fwdskew}'s conversion \eqref{eq:fwddsig}
+turns that into implied volatility.  At the money,
+\begin{equation}
+\bigg|\frac{\dd\sigma}{\dd b}\bigg|
+=t\cdot\frac{\PhiN(d_+)}{\phin(d_+)\sqrt\tau}
+\;\approx\;1.25\,\sqrt t
+\qquad(\text{clocks agreeing, }d_+\text{ small}),
+\label{eq:fwdbsens}
+\end{equation}
+about $125\sqrt t$ volatility basis points per hundred basis points
+of borrow.  \Cref{fig:fwdborrow}(a) draws the exact curve at a flat
+\MacFwdBorrowSigmaPct\% volatility: \MacFwdBorrowSensQBp\ vol bp at
+three months, \MacFwdBorrowSensYBp\ at a year.  On a genuinely
+hard-to-borrow name, the borrow is not a financing footnote; it is a
+first-order input to the smile's \emph{level}, on par with the
+volatility quotes themselves.
+
+\emph{Precision.}  How well does the board pin the residual?  By
+\cref{prop:fwdols}, the parity forward is known to about
+$\varepsilon\sqrt2/\sqrt n$ in dollars --- the level line --- hence
+to $\varepsilon\sqrt2/(\sqrt n\,S)$ as a relative error, taking
+$DF\approx S$ for this back-of-envelope.  Inverting
+\eqref{eq:fwdborrowdef}, a borrow perturbs the log-forward through
+the factor $t$, so the forward's noise divides by $t$ on its way to
+$b$: the smallest borrow the board can distinguish from zero is
+\begin{equation}
+b_{\min}
+\;\approx\;\frac{\varepsilon\sqrt2}{\sqrt n\;S\;t}.
+\label{eq:fwdfloor}
+\end{equation}
+This is the borrow's \emph{identifiability floor} --- one standard
+error of the residual, so ``resolve'' here means the one-sigma
+convention --- and its shape is the now-familiar $1/t$: precisely
+the amplification that made short-dated parity rates meaningless in
+\cref{sec:fwdident} makes short-dated borrow reads meaningless too.
+\Cref{fig:fwdborrow}(b) draws \eqref{eq:fwdfloor} for a board sized
+like a typical single name rather than the running board ---
+\MacFwdBorrowNPairs\ pairs, quote noise stated in basis points of
+spot; constants in appendix \ref{app:fwdprotocol} --- at two noise
+levels, against the shaded range of borrow fees typical of genuinely
+hard names.  Read it
+maturity by maturity.  At one week, even a clean board resolves
+nothing finer than \MacFwdBorrowFloorWeekBp\,bp --- larger than most
+hard-to-borrow fees themselves, so a week-dated ``borrow read'' is
+noise wearing a suit.  At three months and ten basis points of quote
+noise the floor is \MacFwdBorrowFloorQBp\,bp; at a year it is
+\MacFwdBorrowFloorYBp\,bp on a clean board and
+\MacFwdBorrowFloorWideYBp\,bp on a noisy one --- comfortably below
+the shaded band.  A borrow read is a measurement exactly where its
+floor sits under the fee it claims to measure; elsewhere it is a
+guess dressed in the estimator's output format.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_borrow.pdf}
+\caption{The borrow's two closed forms (flat
+\MacFwdBorrowSigmaPct\% volatility, \MacFwdBorrowNPairs\ paired
+strikes).  (a)~Materiality \eqref{eq:fwdbsens}: ATM implied vol
+moved per 100\,bp of borrow --- \MacFwdBorrowSensQBp\ vol bp at
+three months, \MacFwdBorrowSensYBp\ at a year.  (b)~Precision
+\eqref{eq:fwdfloor}: the identifiability floor at two quote-noise
+levels, against typical hard-to-borrow fee levels (shaded).  A read
+is publishable where the floor clears the band.}
+\label{fig:fwdborrow}
+\end{figure}
+
+The tension between the two panels is the section's conclusion, and
+it is a design principle rather than a formula.  Borrow matters most
+at the short end of a stressed name --- exactly where
+\eqref{eq:fwdfloor} says it cannot be measured from one chain.  The
+honest output of an estimator in that position is not a number but a
+declared state: \emph{unidentified}, reported as such, with the floor
+that justifies it --- never a silent zero, which is also a borrow
+estimate, just an undeclared one.  The reference implementation
+carries its carry as a per-expiry decomposition in which every leg is
+tagged with its source --- measured, supplied, or unidentified ---
+and lets a fit consume a borrow only where the read clears both its
+floor and a materiality gate.  Two caveats bound the whole
+enterprise, each one sentence.  A flat rate error is indistinguishable
+from a borrow error at a single expiry --- both are carry --- so
+splitting them honestly needs an external rate curve, and
+\eqref{eq:fwdborrowdef} inherits any rate bias one for one.  And on
+American chains the early-exercise premium moves with the very carry
+being solved for, so the borrow and the de-Americanization must close
+jointly --- one more reason this chapter hands its output to
+Chapter~7 rather than declaring victory.
+
+\subsection{The contract}
+\label{sec:fwdcontract}
+
+The chapter closes the way the earlier ones do, with its contract ---
+three columns of decreasing strength.  The first holds by theorem.
+The second is measured, on the frozen chain or on the stated boards,
+and the chapter quoted every number.  The third is convention:
+chosen, stated, and owed to the user, because no data selects it.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:fwdcontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Checked} & \textbf{Convention}\\
+\midrule
+Parity \eqref{eq:fwdparity}: European call and put prices determine
+$(F,D)$ as one line's coefficients, model-free. &
+The frozen node's line is straight to \MacFwdLineStraightPct\% of
+its range over \MacFwdLineNPairs\ strikes
+(\cref{fig:fwdline}a). &
+Mids as the regression target, and the both-sides-live pairing rule;
+fit-to-bid/ask variants change the observable, not the identity.\\
+\addlinespace
+Error bars \eqref{eq:fwdolssd}--\eqref{eq:fwddecomp}: level
+$\sim\varepsilon/\sqrt n$, slope $\sim\varepsilon/\sqrt{S_{KK}}$
+amplified by $1/t$; the two uncorrelated. &
+Predicted vs measured on \MacFwdIdentTrials\ trials:
+\MacFwdIdentRatePredBp\,bp vs \MacFwdIdentRateSdBp\,bp (rate),
+\MacFwdIdentFwdPredBp\,bp vs \MacFwdIdentFwdSdBp\,bp (forward)
+(\cref{fig:fwdident}). &
+The noise model itself (independent, homoskedastic mids) --- adequate
+for design decisions, not a law.\\
+\addlinespace
+The lever identity \eqref{eq:fwdlever}: a level estimator transmits a
+discount error through $\bar K_\mu-F$ only. &
+\MacFwdLeverNaiveBpPerPct\ / \MacFwdLeverUnifBpPerPct\ /
+\MacFwdLeverKernBpPerPct\,bp per percent for the three estimators
+(\cref{fig:fwdlever}). &
+The trim's thresholds, the rate band's endpoints, the kernel's width
+and spot centering; all inert on clean chains.  Coherent staleness
+(\cref{rem:fwdmask}) is bounded, not detected.\\
+\addlinespace
+Escrow \eqref{eq:fwdescrow}--\eqref{eq:fwdyield} and the elasticity
+split \eqref{eq:fwdelas}: cash $>1$, proportional and yield $=1$. &
+Sawtooth vs flat yield \MacFwdDivQeqPct\%; elasticity
+\MacFwdDivElasTwoYr\ at two years, closed form on top of the bump
+measurement (\cref{fig:fwddivs}). &
+The dividend convention per name --- a risk decision
+(\cref{sec:fwddivs}), disclosed, never inferred from one chain.\\
+\addlinespace
+The conversion \eqref{eq:fwddsig} and its corollaries: ATM gap
+\eqref{eq:fwdgap}, borrow materiality \eqref{eq:fwdbsens}, floor
+\eqref{eq:fwdfloor}. &
+\MacFwdSkewGapBp\ vol bp of gap per \MacFwdSkewBumpBp\,bp of forward
+error on the frozen node; the naive American-mid forward would
+imprint \MacFwdSkewNaiveGapBp\ vol bp (\cref{fig:fwdskew}). &
+Below its floor a borrow is reported \emph{unidentified}, never
+zero; a read enters fits only past a declared materiality gate.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Step back to the book's thesis, one last time for this chapter.
+Validity was parity itself --- an arbitrage statement no model can
+opt out of.  Information was distributed exactly as
+\cref{prop:fwdols} said it would be: abundant in the line's level,
+scarce in its slope, absent past the borrow's floor.  Convention was
+everything the data could not select --- the rate band, the dividend
+model, the declared treatment of what cannot be measured.  One
+contamination ran through the chapter unresolved: the American bow of
+\cref{fig:fwdline}(b), tolerated here, priced in
+\cref{sec:fwdskew}, and entangled with the borrow just above.  The
+next chapter removes it.

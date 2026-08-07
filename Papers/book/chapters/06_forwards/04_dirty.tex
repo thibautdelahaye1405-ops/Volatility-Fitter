@@ -1,0 +1,95 @@
+\section{Estimating on a dirty chain}
+\label{sec:fwdtrim}
+
+The noise model of \cref{sec:fwdident} was polite: every quote wrong
+by a little, none wrong by a lot.  Real chains are not polite.  A
+quote can be \emph{stale} --- last updated minutes ago, while the
+market moved --- or \emph{crossed} --- its bid above its ask, a pair
+no live market would let stand --- or simply wrong, and one such
+point is not two cents off the line but a dollar off.  This section adds the
+classical defense, watches it work, and then --- more important ---
+finds its blind spot.
+
+The defense is an \emph{iterated trim}, and it is standard robust
+statistics rather than anything of ours \citep{RousseeuwLeroy1987}.
+Fit the line.  Compute the residuals.  Estimate their typical size
+robustly --- take the median of the absolute residuals and multiply by
+$1.4826$, the constant that makes this estimator agree with the
+standard deviation on clean Gaussian data, so one huge outlier cannot
+inflate the scale used to judge it; floor the estimate at one basis
+point of spot so a suspiciously perfect board does not set an
+impossibly strict bar.  Call the result $\hat\sigma$.  Drop every
+pair whose residual exceeds $4\hat\sigma$, refit, and repeat --- at
+most three rounds, and never below three surviving pairs, since two
+points can always draw a perfect line.  On a clean board the loop
+finds nothing, drops nothing, and returns the plain fit bit for bit;
+the defense costs nothing when it is not needed.
+
+\Cref{fig:fwdtrim} stages the intended failure on the running board.
+One deep put, at strike 75, is stale: its quoted mid is too high by
+\$\MacFwdTrimStaleDollars, so $\Pi(75)$ sits
+\$\MacFwdTrimStaleDollars\ below the line.  In
+panel~(a) the corrupted point is ringed; the fitted line shown is the
+trimmed one, and the eye confirms there was never any doubt about
+where the line should go.  Panel~(b) shows the residuals against that
+trimmed fit, with the $\pm4\hat\sigma$ band shaded: every clean point
+lives inside a band a few cents tall, and the stale put stands roughly
+\MacFwdTrimSigmaOut\ robust sigmas outside it.  It is dropped in the
+first round (\MacFwdTrimNOut\ point trimmed), and the refit recovers
+the true forward to \MacFwdTrimErrBp\,bp.
+
+The raw fit's damage, before the trim, is itself a lesson in
+\cref{sec:fwdident}'s asymmetry.  The untrimmed line's forward is off
+by only \MacFwdTrimRawErrBp\,bp --- one gross point among
+\MacFwdIdentNStrikes\ barely moves the level --- but its implied rate
+comes out at \MacFwdTrimRawRatePct\%\ against a true $4\%$.  Even vandalism obeys the proposition: the damage
+concentrates in the slope.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_trim.pdf}
+\caption{The trim doing its job (running board, one staged stale
+put).  (a)~The corrupted point (ringed) sits visibly off the line;
+the trimmed fit ignores it.  (b)~Residuals against the trimmed fit:
+the clean points live in the shaded $\pm4\hat\sigma$ band, cents
+tall; the stale quote stands $\approx\MacFwdTrimSigmaOut\,\hat\sigma$
+out and is dropped in one round.  The refit is exact to
+\MacFwdTrimErrBp\,bp.}
+\label{fig:fwdtrim}
+\end{figure}
+
+\begin{remark}[what the trim cannot see: coherent staleness]
+\label{rem:fwdmask}
+A residual trim detects points that disagree with the consensus line.
+Stale points that agree \emph{with each other} are a different
+animal.  Rerun the experiment with a coherent failure: instead of one
+random error, let the \MacFwdMaskNWing\ lowest strikes --- the deep
+put wing, exactly the quotes that update least often --- all go stale
+\emph{together}, their prices recomputed at a financing rate
+\MacFwdMaskDeltaRatePct\%\ away from the truth, as if that whole wing
+last traded under yesterday's funding.  Each stale quote is now consistent with its stale
+neighbors, the blended least-squares line splits the difference
+between the two regimes, and the residuals spread out enough that
+\emph{nothing} exceeds $4\hat\sigma$: the trim flags
+\MacFwdMaskNOut\ points.  This is the \emph{masking} phenomenon of
+robust statistics \citep{RousseeuwLeroy1987} --- contamination that
+moves the consensus toward itself hides from any test built on
+distance to the consensus.  The fitted rate lands at
+\MacFwdMaskRatePct\%\ against a true $4\%$: badly wrong, yet entirely
+plausible --- no test on the rate's \emph{value} would blink at it.  What survives is, once again, the level:
+the forward moves only \MacFwdMaskFwdErrBp\,bp, because
+\MacFwdMaskNWing\ stale quotes on one wing tilt the line without
+lifting its center much.  Coherent staleness looks, from inside the
+chain, exactly like a change in the financing rate; it cannot be
+detected there, only bounded --- and the bound is
+\cref{prop:fwdols}'s asymmetry itself.
+\end{remark}
+
+Where we stand: the trim removes quotes that betray themselves;
+coherent staleness does not betray itself, corrupts the slope, and
+spares the level.  So the slope needs protection that does not come
+from the chain at all: prior knowledge of where a rate can plausibly
+live.  The next section builds that defense --- and is honest about
+its reach.  It stops slopes that leave the plausible range; the
+masking experiment's slope, plausible by construction, is beyond any
+within-chain repair, and stays bounded rather than fixed.

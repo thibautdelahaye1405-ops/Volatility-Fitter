@@ -26,21 +26,23 @@ the prose. Therefore:
   implementation". No product names, no repo paths, no internal note
   citations — public literature only.
 
-## Status (2026-08-05, author feedback)
+## Status (2026-08-06)
 
-The author reviewed Chapters 3–4 and rejected their register: too dense,
-too clever, not readable for someone meeting the subject for the first
-time. The style contract below was rewritten in response — it OVERRIDES
-the earlier "monograph" register, and Chapter 2 is NO LONGER the style
-exemplar. Both queued revisions are done (Ch. 3 on 2026-08-05, Ch. 4 on
-2026-08-06, each with a newcomer fresh-reader pass), and Chapter 5 was
-written under the contract from the start on 2026-08-06 (newcomer pass
-run, all findings resolved). Chapter 5 is the most recent chapter held
-to the contract and, with revised Chapter 4, serves as TONE EXEMPLAR.
+The pedagogy contract governs (rewritten 2026-08-05 after the author
+rejected Chapters 3–4's original register; both were fully revised).
+Chapters 5 and 6 were written under the contract from the start
+(newcomer fresh-reader pass run on each, all findings resolved).
+Chapter 6 (2026-08-06) opens Part II and is the most recent chapter
+held to the contract; with Chapters 4–5 it serves as TONE EXEMPLAR.
 Next:
 
-1. Chapter 6 (forwards, dividends, and carry) — opens Part II — written
-   under the contract from the start, imitating Chapters 4–5's tone.
+1. Chapter 7 (removing early exercise) — sources: the two Note 05
+   editions — written under the contract from the start.  Chapter 6
+   planted its hooks: the residual bow of fig 6.1(b), the 68 bp
+   naive-vs-resolved forward gap on the running node, and the
+   borrow/de-Am joint-closure caveat in §6.8 all point at Ch. 7.
+   The frozen snapshot's chains are American and carry the stored
+   resolved forwards per node — the natural data spine.
 
 Chapter 2 keeps its monograph register for now (it doubles as the
 standalone paper); whether to soften it inside the book is the author's
@@ -128,7 +130,7 @@ local volatility placed among the models (author's decision).
 | 4  | Local volatility | 04 | **DONE** (revised to the pedagogy contract 2026-08-06; tone exemplar) |
 | 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | **DONE** (written under the pedagogy contract 2026-08-06; tone exemplar with revised Ch. 4) |
 | **Part II — The observation** | | | |
-| 6  | Forwards, dividends, and carry | 06 | pending |
+| 6  | Forwards, dividends, and carry | 06 | **DONE** (written under the pedagogy contract 2026-08-06; tone exemplar with Chs. 4–5) |
 | 7  | Removing early exercise | 05 | pending |
 | 8  | The market's clock | 11 | pending |
 | **Part III — Dynamics and inference** | | | |
@@ -536,3 +538,46 @@ keeping Chapter 2 self-contained.
   line by the lead.  Full book builds clean at 112 pp, no undefined
   refs, no ch5 overfulls.  Next: Chapter 6 (forwards, dividends,
   and carry), opening Part II.
+- 2026-08-06 (later): Chapter 6 WRITTEN under the pedagogy contract
+  from the start (`chapters/06_forwards/`, 8 sections + appendix
+  6.A, ~15 pp main text, book pages 109–125 of the 132-page build;
+  opens Part II with the \part{The Observation} heading).  Spine:
+  parity derived from a static portfolio + a two-strike hand solve
+  (D=0.98, F=101.50 exact by construction) → the line fitted on the
+  REAL frozen SPY Dec-2026 raw chain (first chapter to read the
+  snapshot's embedded chains at quote level: 158 pairs, straight to
+  0.35% of an $850 range, residuals a dollar-scale early-exercise
+  bow = the Ch. 7 hook; naive root 68 bp under the stored resolved
+  forward) → the identifiability proposition (OLS level/slope sds,
+  uncorrelated, error decomposition with the F−K̄ lever; MC audit
+  6.3 vs 6.4 bp rate / 0.57 vs 0.57 bp forward; 1/t amplification,
+  63 bp at t=0.05) → the trim + the MASKING experiment (5-strike
+  coherent stale wing: 0 trimmed, rate plausible-but-wrong at
+  1.7%, forward moves 13 bp) → the rate band as a prior + the
+  lever-arm identity (naive 50 / uniform 5.4 / spot-kernel 0.31 bp
+  per % of rate error) → dividends (escrow + proportional
+  reinvestment bookkeeping displayed; the sawtooth vs the honest
+  discriminator, spot elasticity S/(S−PV)=1.053 at 2y) → the
+  dσ/dlogF derivation at fixed price (numerator collapses to
+  Φ(d+); put side sign-flips; ATM gap ≈ 2.5δ/√τ = 41 vol bp per
+  10 bp on the node; the naive forward would imprint 278 vol bp)
+  → borrow as the residual carry (two-sided fee argument;
+  materiality 65/136 vol bp per 100 bp at 3m/1y vs the
+  identifiability floor 13/3.2 bp, 164 bp at one week; report
+  unidentified, never zero) + the contract table.  7 figures + 67
+  macros from `scripts/ch06/gen_figures.py` (frozen snapshot raw
+  chains + stored LQD fit via ch03 figlib; deterministic synthetic
+  boards; the single seeded MC is the chapter's only randomness).
+  Notation added BEFORE writing (S, K, t, sans-serif 𝖢/𝖯 raw-quote
+  convention, Π, ε, n, K̄_μ, S_KK, hats, r, q_d, d_i/t_i, f_i, PV,
+  b/b_min); references +Hull2018, Stoll1969, SeberLee2003,
+  RousseeuwLeroy1987.  Newcomer fresh-reader pass run (sub-agent
+  persona): all 10 files summarizable, 30 findings (term-of-art
+  discipline, hand-typed number echoes → macros, one muddled
+  identifiability parenthetical rewritten as a like-with-like
+  relative comparison, the §6.4→6.5 transition overpromise, the
+  borrow equality earned from both sides, silent signs made
+  explicit) ALL resolved; math verified line by line by the lead
+  (incl. reproducing every generated number from the closed
+  forms).  Full book builds clean at 132 pp, no undefined refs, no
+  ch6 overfulls.  Next: Chapter 7 (removing early exercise).

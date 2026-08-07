@@ -1,0 +1,327 @@
+{
+ "FwdLineNPairs": {
+  "value": "158",
+  "meaning": "paired strikes on the running node's raw chain",
+  "section": "line"
+ },
+ "FwdLineSpanDollars": {
+  "value": "850",
+  "meaning": "range of the observable Pi across the board (dollars)",
+  "section": "line"
+ },
+ "FwdLineRmsDollars": {
+  "value": "2.97",
+  "meaning": "rms residual of the naive parity line (dollars)",
+  "section": "line"
+ },
+ "FwdLineResidMaxDollars": {
+  "value": "4.8",
+  "meaning": "largest single residual of the naive line (dollars)",
+  "section": "line"
+ },
+ "FwdLineStraightPct": {
+  "value": "0.35",
+  "meaning": "rms residual as a percentage of the observable's range",
+  "section": "line"
+ },
+ "FwdLineFNaive": {
+  "value": "762.71",
+  "meaning": "naive whole-chain parity root (dollars)",
+  "section": "line"
+ },
+ "FwdLineFResolved": {
+  "value": "767.92",
+  "meaning": "the reference implementation's resolved forward (dollars)",
+  "section": "line"
+ },
+ "FwdLineGapBp": {
+  "value": "68",
+  "meaning": "resolved-minus-naive forward gap (bp of forward)",
+  "section": "line"
+ },
+ "FwdLineRateNaivePct": {
+  "value": "-0.24",
+  "meaning": "implied rate of the naive slope (percent)",
+  "section": "line"
+ },
+ "FwdLineSpotDollars": {
+  "value": "757.67",
+  "meaning": "SPY spot on the snapshot date (dollars)",
+  "section": "line"
+ },
+ "FwdIdentTrials": {
+  "value": "2000",
+  "meaning": "Monte Carlo trials in the identifiability audit",
+  "section": "ident"
+ },
+ "FwdIdentEpsCents": {
+  "value": "2",
+  "meaning": "quote-noise sd per mid (cents)",
+  "section": "ident"
+ },
+ "FwdIdentNStrikes": {
+  "value": "25",
+  "meaning": "paired strikes on the running synthetic board",
+  "section": "ident"
+ },
+ "FwdIdentRootSkk": {
+  "value": "90",
+  "meaning": "root strike dispersion sqrt(S_KK) (strike-dollars)",
+  "section": "ident"
+ },
+ "FwdIdentRateSdBp": {
+  "value": "6.3",
+  "meaning": "measured sd of the implied rate (bp)",
+  "section": "ident"
+ },
+ "FwdIdentRatePredBp": {
+  "value": "6.4",
+  "meaning": "predicted sd of the implied rate (bp)",
+  "section": "ident"
+ },
+ "FwdIdentFwdSdBp": {
+  "value": "0.57",
+  "meaning": "measured sd of the forward (bp of F)",
+  "section": "ident"
+ },
+ "FwdIdentFwdPredBp": {
+  "value": "0.57",
+  "meaning": "predicted sd of the forward (bp of F)",
+  "section": "ident"
+ },
+ "FwdIdentRatio": {
+  "value": "11",
+  "meaning": "rate-to-forward scatter ratio (both in bp)",
+  "section": "ident"
+ },
+ "FwdIdentShortT": {
+  "value": "0.05",
+  "meaning": "year fraction of the short-dated variant",
+  "section": "ident"
+ },
+ "FwdIdentShortRateSdBp": {
+  "value": "63",
+  "meaning": "measured rate sd on the short-dated variant (bp)",
+  "section": "ident"
+ },
+ "FwdIdentLeverDollars": {
+  "value": "1.51",
+  "meaning": "lever arm F minus mean strike on the running board (dollars)",
+  "section": "ident"
+ },
+ "FwdTrimStaleDollars": {
+  "value": "1.20",
+  "meaning": "size of the staged stale-put error (dollars)",
+  "section": "trim"
+ },
+ "FwdTrimRawRatePct": {
+  "value": "4.8",
+  "meaning": "implied rate of the raw (untrimmed) fit (percent)",
+  "section": "trim"
+ },
+ "FwdTrimRawErrBp": {
+  "value": "4",
+  "meaning": "forward error of the raw fit (bp, absolute)",
+  "section": "trim"
+ },
+ "FwdTrimErrBp": {
+  "value": "0.1",
+  "meaning": "forward error after the trim (bp, absolute)",
+  "section": "trim"
+ },
+ "FwdTrimNOut": {
+  "value": "1",
+  "meaning": "points trimmed in the staged single-outlier experiment",
+  "section": "trim"
+ },
+ "FwdTrimSigmaOut": {
+  "value": "120",
+  "meaning": "the stale quote's distance in robust sigmas",
+  "section": "trim"
+ },
+ "FwdMaskDeltaRatePct": {
+  "value": "2",
+  "meaning": "carry error of the coherent stale wing (percent)",
+  "section": "trim"
+ },
+ "FwdMaskNWing": {
+  "value": "5",
+  "meaning": "number of coherently stale wing quotes",
+  "section": "trim"
+ },
+ "FwdMaskNOut": {
+  "value": "0",
+  "meaning": "points trimmed in the masking experiment",
+  "section": "trim"
+ },
+ "FwdMaskRatePct": {
+  "value": "1.7",
+  "meaning": "implied rate under coherent staleness (percent)",
+  "section": "trim"
+ },
+ "FwdMaskFwdErrBp": {
+  "value": "13",
+  "meaning": "forward error under coherent staleness (bp, absolute)",
+  "section": "trim"
+ },
+ "FwdLeverNaiveBpPerPct": {
+  "value": "50.0",
+  "meaning": "forward error per 1% rate error, intercept-over-slope (bp)",
+  "section": "lever"
+ },
+ "FwdLeverUnifBpPerPct": {
+  "value": "5.4",
+  "meaning": "forward error per 1% rate error, uniform level mean (bp)",
+  "section": "lever"
+ },
+ "FwdLeverKernBpPerPct": {
+  "value": "0.31",
+  "meaning": "forward error per 1% rate error, spot-kernel level mean (bp)",
+  "section": "lever"
+ },
+ "FwdLeverKbarDollars": {
+  "value": "112.5",
+  "meaning": "mean strike of the asymmetric board (dollars)",
+  "section": "lever"
+ },
+ "FwdLeverKbarKernDollars": {
+  "value": "102.1",
+  "meaning": "kernel-weighted mean strike (dollars)",
+  "section": "lever"
+ },
+ "FwdLeverFwdDollars": {
+  "value": "101.5",
+  "meaning": "true forward of the asymmetric board (dollars)",
+  "section": "lever"
+ },
+ "FwdDivCashDollars": {
+  "value": "0.65",
+  "meaning": "quarterly cash dividend of the running schedule (dollars)",
+  "section": "divs"
+ },
+ "FwdDivFirstDays": {
+  "value": "30",
+  "meaning": "days to the first ex-date",
+  "section": "divs"
+ },
+ "FwdDivToothPct": {
+  "value": "7.9",
+  "meaning": "annualized implied yield just after the first ex-date enters (%)",
+  "section": "divs"
+ },
+ "FwdDivQeqPct": {
+  "value": "2.59",
+  "meaning": "one-year equivalent continuous yield of the cash schedule (%)",
+  "section": "divs"
+ },
+ "FwdDivElasTwoYr": {
+  "value": "1.053",
+  "meaning": "cash-schedule spot elasticity at two years",
+  "section": "divs"
+ },
+ "FwdDivPvTwoYr": {
+  "value": "5.01",
+  "meaning": "present value of the cash schedule to two years (dollars)",
+  "section": "divs"
+ },
+ "FwdSkewBumpBp": {
+  "value": "10",
+  "meaning": "imposed forward error (bp of F)",
+  "section": "skew"
+ },
+ "FwdSkewGapBp": {
+  "value": "41",
+  "meaning": "ATM put-call IV gap per 10 bp of forward error (vol bp)",
+  "section": "skew"
+ },
+ "FwdSkewPutTenBp": {
+  "value": "11",
+  "meaning": "IV change at k = -0.10, put side (vol bp)",
+  "section": "skew"
+ },
+ "FwdSkewCallTenBp": {
+  "value": "9",
+  "meaning": "IV change magnitude at k = +0.10, call side (vol bp)",
+  "section": "skew"
+ },
+ "FwdSkewNaiveGapBp": {
+  "value": "278",
+  "meaning": "ATM gap the naive Section-6.2 forward would imprint (vol bp)",
+  "section": "skew"
+ },
+ "FwdBorrowSigmaPct": {
+  "value": "20",
+  "meaning": "flat ATM vol of the borrow illustration (%)",
+  "section": "borrow"
+ },
+ "FwdBorrowNPairs": {
+  "value": "20",
+  "meaning": "paired strikes behind the floor formula",
+  "section": "borrow"
+ },
+ "FwdBorrowSensQBp": {
+  "value": "65",
+  "meaning": "ATM vol per 100 bp of borrow at three months (vol bp)",
+  "section": "borrow"
+ },
+ "FwdBorrowSensYBp": {
+  "value": "136",
+  "meaning": "ATM vol per 100 bp of borrow at one year (vol bp)",
+  "section": "borrow"
+ },
+ "FwdBorrowFloorQBp": {
+  "value": "13",
+  "meaning": "identifiability floor at three months, 10 bp noise (bp)",
+  "section": "borrow"
+ },
+ "FwdBorrowFloorYBp": {
+  "value": "3.2",
+  "meaning": "identifiability floor at one year, 10 bp noise (bp)",
+  "section": "borrow"
+ },
+ "FwdBorrowFloorWideYBp": {
+  "value": "16",
+  "meaning": "identifiability floor at one year, 50 bp noise (bp)",
+  "section": "borrow"
+ },
+ "FwdBorrowFloorWeekBp": {
+  "value": "164",
+  "meaning": "identifiability floor at one week, 10 bp noise (bp)",
+  "section": "borrow"
+ },
+ "FwdLinePiMaxDollars": {
+  "value": "609",
+  "meaning": "largest portfolio price on the board (dollars)",
+  "section": "line"
+ },
+ "FwdLinePiMinAbsDollars": {
+  "value": "242",
+  "meaning": "magnitude of the most negative portfolio price (dollars)",
+  "section": "line"
+ },
+ "FwdLineGapDollars": {
+  "value": "5.2",
+  "meaning": "resolved-minus-naive forward gap (dollars)",
+  "section": "line"
+ },
+ "FwdLeverUnifLeverDollars": {
+  "value": "11.0",
+  "meaning": "lever arm of the uniform level mean (dollars)",
+  "section": "lever"
+ },
+ "FwdLeverKernLeverDollars": {
+  "value": "0.6",
+  "meaning": "lever arm of the spot-kernel level mean (dollars)",
+  "section": "lever"
+ },
+ "FwdIdentCleanFwdErrBp": {
+  "value": "0.15",
+  "meaning": "clean rounded-board forward recovery error (bp, absolute)",
+  "section": "ident"
+ },
+ "FwdIdentCleanRateErrBp": {
+  "value": "1.0",
+  "meaning": "clean rounded-board rate recovery error (bp, absolute)",
+  "section": "ident"
+ }
+}

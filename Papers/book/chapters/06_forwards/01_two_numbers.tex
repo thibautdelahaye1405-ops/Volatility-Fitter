@@ -1,0 +1,115 @@
+\section{Two numbers under every smile}
+\label{sec:fwdtwo}
+
+Part~I built three families of smile models, and all three lived in the
+same coordinates.  A strike $K$ entered as its log-moneyness
+$k=\log(K/F)$; a dollar price entered divided by $DF$
+(\cref{sec:intro}).  Two numbers sat under every
+computation: the \emph{forward} $F$, the price agreed today for
+delivery of the underlying at expiry, and the \emph{discount factor}
+$D$, the value today of one dollar paid at expiry.  Part~I treated
+both as given.  This chapter asks where they come from.
+
+The honest answer is that, for a single stock or an ETF, neither is
+quoted.  There is no screen showing ``the forward of SPY for December
+2026''.  There is a spot price, and there is the option chain itself:
+for each strike, a call and a put.  The forward and the discount must
+be \emph{estimated} from those option prices --- which makes them
+fitted quantities, with error bars, exactly like the smile parameters
+they will later support.  That change of status is the subject of the
+chapter, and it opens Part~II's theme: before a model can be fitted,
+the observation itself has to be built, and every step of that
+construction is either measured from the data or chosen and disclosed.
+
+The estimate rests on one identity.  Fix an expiry and a strike $K$,
+and write $\mathsf{C}(K)$ and $\mathsf{P}(K)$ for the dollar mid
+prices of the call and the put there --- sans-serif letters, here and
+for the rest of the book, mark a raw market quote, as opposed to the
+normalized model prices $c$ and $P$ of Chapter~2.  Assume for now that both options are \emph{European} --- exercisable
+only at expiry, in the standard vocabulary; \cref{sec:fwdline} meets
+the American reality.  Consider the portfolio that is long the call
+and short the put, and follow it to expiry.  If the underlying finishes at $S_T$ above $K$, the call pays
+$S_T-K$ and the put pays nothing; if it finishes below, the call pays
+nothing and the short put costs $K-S_T$.  In both cases the portfolio
+delivers
+\[
+(S_T-K)^+-(K-S_T)^+=S_T-K ,
+\]
+the payoff of a forward contract struck at $K$.  What is that worth
+today?  Price the two pieces separately.  The constant $-K$ is easy: a
+sure payment of $K$ at expiry is worth $DK$ now, so the piece
+contributes $-DK$.  For the $S_T$ piece, use the definition of the
+forward price: a forward contract struck at $F$ costs \emph{nothing}
+to enter --- that is what makes $F$ the forward price --- and it pays
+$S_T-F$.  Prices of payoffs add, so the value of receiving $S_T$
+minus the value of receiving the constant $F$ equals the value of
+receiving $S_T-F$, which is zero.  Receiving $S_T$ is therefore worth
+exactly what receiving $F$ is worth: $DF$.  The portfolio's price today must therefore be
+\begin{equation}
+\Pi(K)\;\equiv\;\mathsf{C}(K)-\mathsf{P}(K)\;=\;D\,(F-K).
+\label{eq:fwdparity}
+\end{equation}
+This is \emph{put--call parity} \citep{Stoll1969,Hull2018}.  Chapter~2
+already carried its normalized form --- the rightmost identity of
+eq.~\ref{eq:calldef}, $c(k)-P(k)=1-e^k$; multiplying it by $DF$ and
+writing $K=Fe^k$ recovers \eqref{eq:fwdparity} exactly.  Note what the
+derivation did \emph{not} use: no model of how the underlying moves,
+no volatility, no distribution.  Parity is a validity statement in the
+sense of the book's thesis --- any European call and put prices that
+violate it admit an arbitrage, whatever the model.
+
+Now read \eqref{eq:fwdparity} the other way.  The right-hand side is a
+straight line in $K$, with slope $-D$ and root $F$.  The left-hand
+side is observable: one number per strike, computed from quotes.  So
+the chain itself draws a line, and the two numbers Part~I assumed are
+that line's two coefficients.  Estimating $(F,D)$ means fitting a
+straight line --- nothing more exotic than that.
+
+Before any general machinery, solve the smallest possible case by
+hand.  Suppose an expiry half a year away quotes two usable strikes,
+and the portfolio prices come out as
+\[
+\Pi(90)=11.27,\qquad \Pi(110)=-8.33
+\]
+(constructed numbers, chosen to come out exactly; appendix
+\ref{app:fwdprotocol}).  Two points determine the line.  The slope is
+\[
+\frac{\Pi(110)-\Pi(90)}{110-90}
+=\frac{-8.33-11.27}{20}
+=\frac{-19.60}{20}
+=-0.98 ,
+\]
+so the discount is $D=0.98$.  The intercept --- the line's value at
+$K=0$ --- is $\Pi(90)+D\cdot90=11.27+88.20=99.47$, and by
+\eqref{eq:fwdparity} the intercept equals $DF$, so
+\[
+F=\frac{99.47}{0.98}=101.50 .
+\]
+Finally, the discount converts to an interest rate.  Writing $t$ for
+the \emph{calendar} year fraction to expiry ($t=0.5$ here) and
+$D=e^{-rt}$,
+\[
+r=-\frac{\log D}{t}=-\frac{\log 0.98}{0.5}\approx 4.04\% .
+\]
+Two portfolio prices --- four option quotes --- have produced a
+forward, a discount, and an interest rate, out of prices alone.  This is worth pausing on: the option
+market carries its own funding information, and the fitter never needs
+an external rate feed to normalize a smile.
+
+One clock deserves a sentence before we go on.  The book has used
+$\tau$, variance time, since Chapter~2, and this chapter introduces
+$t$, the calendar year fraction.  They are different objects with
+different jobs: variance accrues on the market's clock (Chapter~8
+makes that precise), but discounting and \emph{carry} --- the growth
+rate that links spot to forward, given its full content in
+\cref{sec:fwddivs} --- accrue on the calendar: a dollar earns
+interest on weekends too.  In everything below, $D=e^{-rt}$ and the
+carry exponents use $t$; total variance $w=\sigma^2\tau$ keeps
+$\tau$.  In this chapter's data the two clocks
+happen to agree numerically, so nothing subtle hides in the figures;
+the distinction starts to matter in Chapter~8.
+
+We now know what the two numbers are and that the chain determines
+them.  The next question is what happens with a real chain: many
+strikes, quoted with noise, where the line must be fitted rather than
+solved.

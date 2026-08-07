@@ -1,0 +1,65 @@
+% Chapter 6 — forwards, dividends, and carry.  Opens Part II.
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch06/gen_figures.py from data/ (frozen snapshot raw chains +
+% deterministic synthetic boards).  Notation additions are in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract).  After this chapter the reader can:
+%   1. Derive put-call parity from a static portfolio, explain why the
+%      forward and the discount are FITTED quantities rather than inputs,
+%      and solve a two-strike example by hand.
+%   2. Derive the least-squares error bars of the parity line's level and
+%      slope, predict the rate and forward scatter on a stated board, and
+%      explain the asymmetry: the level is measured by every quote, the
+%      slope is teased out of differences and then amplified by 1/t.
+%   3. Match a defense to each failure of real data: the residual trim for
+%      incoherent stale quotes, a prior band on the rate plus a level
+%      re-derivation (the lever-arm identity) for absurd slopes -- state
+%      what neither catches, and why every device is inert on clean data.
+%   4. Write the carry's decomposition: derive the escrowed forward for
+%      cash dividends and the spot elasticity that separates the dividend
+%      conventions; decide from the two closed forms (materiality dsig/db
+%      against the noise floor b_min) whether a borrow read is a
+%      measurement or a guess.
+%   5. Derive dsigma/dlogF at fixed price on each side of the money and
+%      explain how a forward error masquerades as an ATM gap plus a skew
+%      move, with the size measured on the frozen node.
+% Every section serves one of these five goals.
+\renewcommand{\figdir}{figures/ch06}
+\chapter[Forwards, dividends, and carry]{Forwards, Dividends, and Carry}
+\label{ch:fwd}
+\chaptermark{Forwards, dividends, and carry}
+
+\chaptersynopsis{Part~I fitted smiles in normalized coordinates: every
+strike was measured against a forward $F$, every price against a
+discount $D$, and both were treated as known.  Neither is quoted
+anywhere.  This chapter earns them.  Put--call parity makes the pair
+the two coefficients of one straight line through the option quotes
+themselves, so estimating $(F,D)$ is a regression --- and the chapter
+reads the whole problem as a statistician would.  The line determines
+its level superbly and its slope poorly: on a stated test board the
+forward is pinned to a fraction of a basis point while the implied
+rate wanders by an order of magnitude more, and every safeguard the
+chapter builds is matched to that asymmetry --- a trim for outliers,
+a prior band for runaway rates, and a re-derivation of the forward
+from the part of the data that stays trustworthy.
+Dividends then give the \emph{carry} --- the growth rate linking
+spot to forward --- its content, and the choice among dividend
+conventions turns out to be a risk decision, not a cosmetic one.  The stakes are measured at the end: a forward error read back
+through the Black formula imprints a put--call gap at the money and a
+fake skew --- on the frozen node, tens of volatility basis points for
+every ten basis points of forward error --- and the borrow --- the fee for
+shorting a stock, the carry's last component --- is identifiable only
+where a closed-form noise floor says the board can resolve it.}
+
+\input{chapters/06_forwards/01_two_numbers}
+\input{chapters/06_forwards/02_line}
+\input{chapters/06_forwards/03_identify}
+\input{chapters/06_forwards/04_dirty}
+\input{chapters/06_forwards/05_prior}
+\input{chapters/06_forwards/06_dividends}
+\input{chapters/06_forwards/07_wrong_forward}
+\input{chapters/06_forwards/08_borrow}
+
+\begin{chapterappendices}
+\input{chapters/06_forwards/A_protocol}
+\end{chapterappendices}

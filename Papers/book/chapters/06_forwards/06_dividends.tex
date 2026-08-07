@@ -1,0 +1,154 @@
+\section{Dividends: what the carry contains}
+\label{sec:fwddivs}
+
+So far the pair $(F,D)$ has been estimated without asking what makes
+$F$ differ from spot in the first place.  This section opens that
+box, because two later needs depend on it: the borrow of
+\cref{sec:fwdborrow} is defined as what remains of the carry after
+dividends are accounted for, and Chapter~7's early-exercise machinery
+runs on a dividend model as its fuel.
+
+Call \emph{carry} the growth rate the market charges between spot and
+forward: the number $\log(F/S)/t$.  For a stock that pays nothing,
+carry is just the rate --- $F=Se^{rt}$, because the alternative to
+agreeing on delivery is to buy the stock today with borrowed money,
+and the borrowing costs $r$.  Dividends change the arithmetic: whoever
+holds the stock until expiry \emph{collects} them, and the forward
+buyer does not, so their value is subtracted from what delivery is
+worth.  How exactly it is subtracted depends on how the dividends are
+modeled, and there are three standard conventions.
+
+\emph{Discrete cash.}  The stock will pay fixed dollar amounts $d_i$
+at \emph{ex-dates} $t_i\le t$ --- the dates from which a buyer of the
+stock no longer receives the next dividend, so the price drops by
+roughly the payment as each arrives.  (Both symbols are always
+subscripted; the upright $\dd$ of an integral is unrelated.)  Replicate delivery: buy the stock
+today for $S$, borrow the money, hold to expiry.  Along the way each
+dividend $d_i$ arrives and can be lent out from its ex-date onward,
+growing to $d_ie^{r(t-t_i)}$ by expiry.  The all-in cost of delivering
+the stock at expiry is therefore the financed purchase minus the
+collected, reinvested dividends:
+\begin{equation}
+F=Se^{rt}-\sum_i d_i\,e^{r(t-t_i)}
+=\Big(S-\sum_i d_i\,e^{-rt_i}\Big)e^{rt}.
+\label{eq:fwdescrow}
+\end{equation}
+The second form is the useful one: spot minus the \emph{present value}
+of the dividend schedule, carried forward at the rate.  This is called
+the escrowed-dividend forward --- as if the dividends were set aside
+in escrow at time zero.
+
+\emph{Discrete proportional.}  Each ex-date the price drops not by a
+fixed dollar amount but by a fixed \emph{fraction} $f_i$ of whatever
+the stock is worth that day.  The replication changes in one place:
+reinvest each dividend into the stock itself rather than lending it.
+Follow one ex-date to see the bookkeeping.  Just before it, a share
+is worth some price $S^-$; the holder receives $f_iS^-$ in cash, and
+the price drops to $(1-f_i)S^-$.  Spending the cash on shares at the
+dropped price buys
+\[
+\frac{f_iS^-}{(1-f_i)S^-}=\frac{f_i}{1-f_i}
+\quad\text{new shares per share held,}
+\]
+multiplying the holding by
+$1+\tfrac{f_i}{1-f_i}=\tfrac{1}{1-f_i}$.  Each ex-date therefore
+cancels one factor $(1-f_i)$: start with $\prod_i(1-f_i)$ of a share
+today and exactly one share exists at expiry.  The cost today is
+$S\prod_i(1-f_i)$, and
+\begin{equation}
+F=S\,\prod_i\big(1-f_i\big)\,e^{rt}.
+\label{eq:fwdprop}
+\end{equation}
+
+\emph{Continuous yield.}  Smear the proportional drops into a
+constant leak $q_d$ (subscripted --- bare $q$ is Chapter~2's quantile
+density): the limit of \eqref{eq:fwdprop} with many small events is
+\begin{equation}
+F=S\,e^{(r-q_d)\,t}.
+\label{eq:fwdyield}
+\end{equation}
+This is the cheapest convention, and the one the running board has
+been using since \cref{sec:fwdline}.
+
+Which convention should a modeler pick?  At first sight it barely
+matters.  \Cref{fig:fwddivs}(a) shows the chapter's running schedule
+--- \$\MacFwdDivCashDollars\ per quarter on a \$100 stock, first
+ex-date \MacFwdDivFirstDays\ days out --- through the lens of the
+\emph{implied dividend yield}: the constant $q_d$ that would produce
+the same forward at each maturity, $q_d(T)=r-\log(F(T)/S)/T$.  The
+cash schedule draws a sawtooth.  Each vertical jump is one ex-date
+entering the horizon: just after the first one enters, a single
+\$\MacFwdDivCashDollars\ payment thirty days away annualizes to
+\MacFwdDivToothPct\% --- violent at the short end, where dividing by a
+small $T$ amplifies everything (the same $1/t$ the rate suffered in
+\cref{sec:fwdident}).  By a year the teeth have shrunk toward the flat
+equivalent yield of \MacFwdDivQeqPct\% drawn dashed, and the two
+conventions price long-dated forwards almost alike.  If the term
+structure of $F$ were the whole story, the choice would be cosmetic.
+
+It is not, and panel~(b) shows the honest discriminator: what happens
+to the forward when \emph{spot moves}.  Differentiate each convention
+in $S$ at a fixed schedule.  For the yield and proportional forms,
+\eqref{eq:fwdyield} and \eqref{eq:fwdprop}, $F$ is proportional to
+$S$, so
+\[
+\frac{\partial\log F}{\partial\log S}=1 :
+\]
+the forward rides spot one for one.  For the cash form, write
+$\mathrm{PV}=\sum_id_ie^{-rt_i}$ for the schedule's present value;
+then $F=(S-\mathrm{PV})\,e^{rt}$ with $\mathrm{PV}$ \emph{fixed in
+dollars}, and
+\begin{equation}
+\frac{\partial\log F}{\partial\log S}
+=S\,\frac{\partial}{\partial S}\log\big(S-\mathrm{PV}\big)
+=\frac{S}{S-\mathrm{PV}}\;>\;1 .
+\label{eq:fwdelas}
+\end{equation}
+A cash schedule does not scale with the stock, so on a rally the
+forward outruns spot: the dividends claim a fixed slice, and the
+slice matters relatively less as the pie grows.  Panel~(b) plots this
+\emph{spot elasticity} against maturity.  The cash staircase climbs
+--- each step one more ex-date inside the horizon --- reaching
+$S/(S-\mathrm{PV})=\MacFwdDivElasTwoYr$ at two years, where the
+escrowed value is $\mathrm{PV}=\$\MacFwdDivPvTwoYr$; the dotted line
+is the closed form
+\eqref{eq:fwdelas} and the solid one a direct bump measurement, in
+agreement.  The proportional and yield conventions sit at exactly
+one, at every maturity.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_divs.pdf}
+\caption{Dividend conventions on the running schedule
+(\$\MacFwdDivCashDollars\ quarterly, first ex-date
+\MacFwdDivFirstDays\ days out).  (a)~Implied dividend yield of the
+cash schedule against maturity: a sawtooth, each tooth one ex-date
+entering the horizon, spiking to \MacFwdDivToothPct\% at the short
+end; dashed, the flat equivalent yield \MacFwdDivQeqPct\%.
+(b)~The spot elasticity \eqref{eq:fwdelas}: cash climbs to
+\MacFwdDivElasTwoYr\ by two years (dotted: closed form; solid:
+measured by bumping spot); proportional and yield sit at exactly
+one.}
+\label{fig:fwddivs}
+\end{figure}
+
+Why does an elasticity deserve this much attention in a chapter about
+statics?  Because the smile is drawn against $F$.  When spot moves and
+the surface is transported to the new spot --- the scenario logic
+Chapter~9 develops --- every strike's log-moneyness
+$k=\log(K/F)$ moves by \emph{minus} however much $\log F$ moves, and
+\eqref{eq:fwdelas} says the dividend convention decides that
+amount.  Two modelers with identical fits
+today, one carrying cash dividends and one a yield, will disagree
+about which strike is at the money \emph{after} a two-percent rally
+--- a risk disagreement, not a pricing one.  The dividend model is
+thus a convention in the full sense this book gives the word: not
+inferable from today's chain (panel~(a) showed the term structures
+nearly agree), consequential for what the desk does next
+(panel~(b)), and therefore to be stated, not assumed silently.
+
+The carry now has two named parts --- rate and dividends --- and the
+chapter can ask its last estimation question: whether what is left
+over, the borrow, can be measured at all.  One tool is still missing:
+how a carry error shows up \emph{in the smile}.  That tool is the
+next section, and it doubles as the payoff of the whole chapter.

@@ -1,0 +1,172 @@
+\section{What the line identifies well, and what poorly}
+\label{sec:fwdident}
+
+The estimator \eqref{eq:fwdols} recovers a clean board's truth.  This
+section asks the sharper question: with quote noise of a stated size,
+how precise is each of the two fitted numbers?  The answer is lopsided
+--- and the lopsidedness explains every safeguard built later in the
+chapter, so we derive it slowly and then verify it by simulation.
+
+First the noise model.  Let each quoted mid --- each
+$\mathsf{C}(K_i)$ and each $\mathsf{P}(K_i)$ --- carry an independent
+error of standard deviation $\varepsilon$, a couple of cents on a liquid
+board.  The observable is the difference of two mids, and independent
+errors add in variance, so each $\Pi_i$ carries error of standard
+deviation $\sqrt{\varepsilon^2+\varepsilon^2}=\varepsilon\sqrt2$.  Write $n$ for the number
+of paired strikes, $\bar K=\frac1n\sum_iK_i$ for their mean, and
+\[
+S_{KK}=\sum_{i=1}^n\big(K_i-\bar K\big)^2
+\]
+for the \emph{strike dispersion} --- the sum of squared distances of
+the strikes from their center, the number that measures how wide a
+lever the board gives the slope.
+
+\begin{proposition}[error bars of the parity line]
+\label{prop:fwdols}
+Fit $\Pi_i=a+bK_i$ by least squares under the noise model above.
+Then the fitted slope and the fitted \emph{level at the center},
+$\widehat{\Pi(\bar K)}$, are uncorrelated, with standard deviations
+\begin{equation}
+\operatorname{sd}\big(\hat D\big)
+=\frac{\varepsilon\sqrt2}{\sqrt{S_{KK}}},
+\qquad
+\operatorname{sd}\big(\widehat{\Pi(\bar K)}\big)
+=\frac{\varepsilon\sqrt2}{\sqrt n}.
+\label{eq:fwdolssd}
+\end{equation}
+The induced first-order errors on the market parameters are
+\begin{equation}
+\delta\hat r=-\frac{\delta\hat D}{D\,t},
+\qquad
+\delta\hat F
+=\underbrace{\frac{\delta\widehat{\Pi(\bar K)}}{D}}_{\text{level
+noise}}
+\;-\;\underbrace{(F-\bar K)\,\frac{\delta\hat D}{D}}_{\text{slope
+noise}\times\text{lever}} .
+\label{eq:fwddecomp}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Center the regressor: put $x_i=K_i-\bar K$, so that $\sum_ix_i=0$ and
+the model reads $\Pi_i=\alpha+bx_i$ with $\alpha=a+b\bar K$ --- the
+line's value at the center, so $\hat\alpha$ is exactly the
+$\widehat{\Pi(\bar K)}$ of the statement.  Least squares on orthogonal columns
+separates: minimizing $\sum_i(\Pi_i-\alpha-bx_i)^2$ over $(\alpha,b)$
+gives
+\[
+\hat\alpha=\frac1n\sum_i\Pi_i,
+\qquad
+\hat b=\frac{\sum_ix_i\Pi_i}{\sum_ix_i^2}
+=\frac{\sum_ix_i\Pi_i}{S_{KK}} .
+\]
+Each is a fixed linear combination of the noisy $\Pi_i$, so their
+variances follow from the noise model directly:
+\[
+\operatorname{var}(\hat\alpha)=\frac{2\varepsilon^2}{n},
+\qquad
+\operatorname{var}(\hat b)
+=\frac{\sum_ix_i^2\,(2\varepsilon^2)}{S_{KK}^2}
+=\frac{2\varepsilon^2}{S_{KK}},
+\]
+and their covariance is
+$\sum_i\frac1n\cdot\frac{x_i}{S_{KK}}\,(2\varepsilon^2)=0$ because
+$\sum_ix_i=0$.  Since $\hat D=-\hat b$, the first half of
+\eqref{eq:fwdolssd} follows.  For \eqref{eq:fwddecomp}: the rate map
+is $\hat r=-\log\hat D/t$, and differentiating gives
+$\delta\hat r=-\delta\hat D/(D t)$.  The root satisfies
+$\hat F=\bar K+\hat\alpha/\hat D$ exactly --- the fitted line passes
+through $(\bar K,\hat\alpha)$ and falls with slope $-\hat D$, so it
+crosses zero $\hat\alpha/\hat D$ to the right of $\bar K$.
+Differentiate in the two independent errors, using
+$\alpha=D(F-\bar K)$ for the true values:
+\[
+\delta\hat F
+=\frac{\delta\hat\alpha}{D}
+-\frac{\alpha}{D^2}\,\delta\hat D
+=\frac{\delta\hat\alpha}{D}
+-(F-\bar K)\,\frac{\delta\hat D}{D}. \qedhere
+\]
+\end{proof}
+
+Now put the running board's numbers into
+\eqref{eq:fwdolssd}--\eqref{eq:fwddecomp}, because the asymmetry
+\emph{is} the story.  The board has $n=\MacFwdIdentNStrikes$ strikes
+and $\sqrt{S_{KK}}\approx\MacFwdIdentRootSkk$ strike-dollars, against
+$\sqrt n=5$.  With $\varepsilon$ of \MacFwdIdentEpsCents\ cents:
+\[
+\operatorname{sd}(\hat D)
+=\frac{0.0283}{\MacFwdIdentRootSkk}
+\approx3.1\times10^{-4},
+\qquad
+\operatorname{sd}(\hat r)
+=\frac{3.1\times10^{-4}}{0.9802\times0.5}
+\approx6.4\times10^{-4},
+\]
+more than six basis points of rate scatter from two cents of quote
+noise.  The forward, by contrast, is dominated by the level term:
+\[
+\operatorname{sd}(\hat F)
+\approx\frac{\varepsilon\sqrt2}{\sqrt n\;D}
+=\frac{0.0283}{5\times0.9802}
+\approx0.6\text{ cents},
+\]
+about half a basis point of a \$100 forward --- and the lever term
+adds almost nothing, because on this board
+$F-\bar K=\$\MacFwdIdentLeverDollars$: the slope's error reaches the
+forward only through that short lever.  So the same two cents of
+noise leave the forward \MacFwdIdentRatio\ times better determined
+than the rate --- rate basis points absolute, forward basis points
+relative, each parameter judged against its own scale, as the
+\cref{sec:fwdline} convention set out.  Why is the slope the delicate
+direction?  Compare the two errors as \emph{fractions of the numbers
+they perturb}.  The slope's absolute error is tiny, but the slope
+itself is a discount near one, so relatively it is
+$3.1\times10^{-4}/0.98\approx3.2$\,bp; the level's error sits on a
+level of $DF\approx\$100$, so relatively it is
+$0.006/100\approx0.6$\,bp.  The design already favors the level by a
+factor $F\sqrt n/\sqrt{S_{KK}}\approx5.6$.  Then the maps out of the
+line finish the job in opposite directions: the level passes to the
+forward almost unchanged, while the slope's error is divided by
+$D\,t$ on its way to the rate --- doubling the gap at $t=0.5$, and
+worse the shorter the expiry, since $\delta\hat r$ carries $1/t$.
+
+\Cref{fig:fwdident} is the audit.  It runs \MacFwdIdentTrials\ noisy
+copies of the running board --- fresh two-cent noise on every mid,
+fitted by \eqref{eq:fwdols} each time --- and histograms the two
+errors.  In panel~(a), the implied rate: the measured scatter is
+\MacFwdIdentRateSdBp\,bp against the predicted
+\MacFwdIdentRatePredBp\,bp, the dashed lines marking the prediction of
+\eqref{eq:fwdolssd}.  In panel~(b), the forward: measured
+\MacFwdIdentFwdSdBp\,bp of $F$ against predicted
+\MacFwdIdentFwdPredBp\,bp.  The formulas are not asymptotic decoration;
+they are the histograms' widths.  And the $1/t$ amplification is real:
+rerunning the same experiment with the expiry moved from half a year
+to $t=\MacFwdIdentShortT$ --- less than three weeks --- leaves the
+forward essentially unchanged but blows the rate scatter up to
+\MacFwdIdentShortRateSdBp\,bp.  A short-dated parity slope is close to
+meaningless as a rate estimate, and nothing about that is fixable by
+fitting harder: it is the design of the data, not the algorithm.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_ident.pdf}
+\caption{The identifiability asymmetry, measured
+(\MacFwdIdentTrials\ trials of \MacFwdIdentEpsCents-cent noise on the
+running board, prediction of \cref{prop:fwdols} in dashed lines).
+(a)~The implied rate scatters by \MacFwdIdentRateSdBp\,bp (predicted
+\MacFwdIdentRatePredBp\,bp).  (b)~The forward scatters by
+\MacFwdIdentFwdSdBp\,bp (predicted \MacFwdIdentFwdPredBp\,bp).  Same
+line, same noise: the level is measured by every quote, the slope is
+teased out of small differences and then divided by $t$.}
+\label{fig:fwdident}
+\end{figure}
+
+This section's fact is worth restating in one plain sentence, because
+the next two sections are both consequences of it: \emph{the parity
+line's level --- and with it the forward --- is nearly noiseless,
+while its slope --- and with it the discount and the rate --- is the
+worst-determined object in the problem.}  A defense built for real
+chains should therefore spend its suspicion on the slope and its
+trust on the level.  The next section starts with the failures that
+hit both: quotes that are not merely noisy but wrong.

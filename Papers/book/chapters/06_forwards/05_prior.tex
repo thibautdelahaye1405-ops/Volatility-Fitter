@@ -1,0 +1,142 @@
+\section{A prior on the rate, and the lever-arm identity}
+\label{sec:fwdclamp}
+
+Here is where the chapter stands.  The slope is the fragile parameter
+(\cref{sec:fwdident}); some failures corrupt it without tripping any
+alarm inside the chain (\cref{rem:fwdmask}).  On a slow or stale data
+feed the corruption can go further than the staged examples: the
+fitted discount drifts above one, which means a \emph{negative}
+implied rate on an ordinary US equity chain.  The question this section answers is
+what to do when the data's least reliable parameter contradicts
+something we know from outside the data.
+
+The answer is a prior --- prior knowledge, imposed as a hard
+constraint.  A financing rate for a US equity has a physical range:
+not below zero by percents, not above by tens.  Fix a band of
+plausible rates (its endpoints are a disclosed convention, reviewed
+like any other; the reference implementation ships a wide one) and
+apply one rule:
+\emph{if the fitted rate $\hat r$ falls inside the band, keep the
+regression's answer untouched; if it falls outside, stop trusting the
+slope} --- set the discount to the band's edge, the nearest value
+prior knowledge allows.  Clean chains sit strictly inside the band
+and pass bit for bit, like the trim before: the device only exists on
+demonstrably bad inputs.
+
+But rejecting the slope creates an obligation.  The forward estimate
+$\hat F=\hat a/\hat D$ has the rejected slope in its denominator; if
+$\hat D$ was untrustworthy, so is $\hat F$ computed from it.  The
+forward must be re-derived from what is still trustworthy --- the
+level --- and \emph{how} to do that well is a small piece of
+mathematics worth isolating, because it explains a design choice that
+looks arbitrary otherwise.
+
+Solve \eqref{eq:fwdparity} for $F$ one strike at a time: on a
+noiseless board, $F=K_i+\Pi_i/D$ for every $i$.  So given any
+discount $D'$ --- possibly the clamped one, possibly wrong --- a
+whole family of \emph{level estimators} is available: pick weights
+$\mu_i\ge0$ summing to one ($\mu_i$ in its Chapter~3 role, a weight
+per quote) and average,
+\[
+\hat F_\mu(D')=\sum_i\mu_i\Big(K_i+\frac{\Pi_i}{D'}\Big).
+\]
+The question is how much a wrong $D'$ hurts, and the answer is exact
+and short.
+
+\begin{proposition}[the lever arm of a level estimator]
+\label{prop:fwdlever}
+On a noiseless board obeying \eqref{eq:fwdparity},
+\begin{equation}
+\hat F_\mu(D')-F
+=\Big(1-\frac{D}{D'}\Big)\big(\bar K_\mu-F\big),
+\qquad
+\bar K_\mu=\sum_i\mu_iK_i .
+\label{eq:fwdlever}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Substitute the truth $\Pi_i=D(F-K_i)$ into one term of the average:
+\[
+K_i+\frac{\Pi_i}{D'}
+=K_i+\frac{D}{D'}(F-K_i)
+=K_i\Big(1-\frac{D}{D'}\Big)+\frac{D}{D'}\,F .
+\]
+Averaging with the weights $\mu_i$ replaces $K_i$ by $\bar K_\mu$:
+\[
+\hat F_\mu(D')
+=\bar K_\mu\Big(1-\frac{D}{D'}\Big)+\frac{D}{D'}\,F
+=F+\Big(1-\frac{D}{D'}\Big)\big(\bar K_\mu-F\big). \qedhere
+\]
+\end{proof}
+
+Read \eqref{eq:fwdlever} in words: the transmitted error is the
+relative discount error times $\bar K_\mu-F$, the distance from the
+estimator's center of weight to the forward.  That distance is a
+\emph{lever arm}.  Where an estimator centers its strikes decides how
+much a wrong discount can hurt it --- and the modeler chooses the
+center.
+
+\Cref{fig:fwdlever} measures the identity on a deliberately
+asymmetric board (strikes from 85 to 140, so that averages are
+pulled away from the money; constants in appendix
+\ref{app:fwdprotocol}), imposing rate errors of up to two percent and
+re-deriving the forward three ways.  In panel~(a), the three curves.
+The steep one is the regression reading $\hat a/D'$.  It belongs to
+the family too, in a degenerate way: the intercept $\hat a$ is the
+fitted line's value extrapolated to strike \emph{zero} --- a strike
+no board quotes --- so reading $\hat a/D'$ amounts to placing all
+the weight at that phantom point, $\bar K_\mu=0$.  Its lever arm is
+then $F$ itself, the worst available, and it transmits
+\MacFwdLeverNaiveBpPerPct\,bp of forward error per percent of rate
+error.  The middle curve is the uniform average over the board: its lever is
+$\bar K-F$ --- mean strike \$\MacFwdLeverKbarDollars\ against forward
+\$\MacFwdLeverFwdDollars, a
+\$\MacFwdLeverUnifLeverDollars\ arm --- transmitting
+\MacFwdLeverUnifBpPerPct\,bp per percent: better by an order of
+magnitude, but only by the accident of where the board happens to
+center.  The flat curve is the estimator
+the reference implementation uses when its band bites: weights
+concentrated \emph{at the money} by a Gaussian kernel in
+log-moneyness (centered at spot --- the one anchor that needs no
+estimate), whose center of weight lands at
+\$\MacFwdLeverKbarKernDollars: a lever of
+\$\MacFwdLeverKernLeverDollars, transmitting
+\MacFwdLeverKernBpPerPct\,bp per percent.  The open circles confirm
+the middle curve against \eqref{eq:fwdlever} evaluated directly ---
+identity, not approximation.  Panel~(b) simply draws the three lever
+arms on a log scale: \$\MacFwdLeverFwdDollars\ versus
+\$\MacFwdLeverUnifLeverDollars\ versus
+\$\MacFwdLeverKernLeverDollars.  The design lesson is compact: \emph{the clamp can
+afford to be crude about the rate because the level estimator it
+hands the problem to barely feels the rate at all.}  A last-resort
+guard remains behind it --- if even the level answer lands absurdly
+far from spot, the estimate falls back to spot itself and says so ---
+and on such a chain no smile should be published at all.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_lever.pdf}
+\caption{The lever-arm identity \eqref{eq:fwdlever} on the asymmetric
+board.  (a)~Forward error transmitted by an imposed rate error, for
+the three level estimators; circles are the identity evaluated
+directly.  (b)~Their lever arms $|\bar K_\mu-F|$: the regression
+reading levers on $F$ itself
+(\MacFwdLeverNaiveBpPerPct\,bp per percent), the uniform mean on the
+board's accidental centering (\MacFwdLeverUnifBpPerPct), the
+spot-centered kernel on under a dollar
+(\MacFwdLeverKernBpPerPct).}
+\label{fig:fwdlever}
+\end{figure}
+
+One honest caveat closes the section.  The band is a prior, and a
+prior can be wrong: a regime of genuinely negative dollar rates would
+sit outside it, and the device would then clamp away information
+rather than noise.  That is the standing trade of this chapter ---
+stated once here, collected in the contract table of
+\cref{sec:fwdborrow}.  What we now have is a defense in two layers,
+each matched to a failure mode and each inert on clean data: the trim
+for quotes that betray themselves, the band plus the short-lever
+re-derivation for slopes that go absurd.  Between them sits the
+failure neither catches --- coherent, plausible staleness --- bounded
+by the level's robustness and nothing else.

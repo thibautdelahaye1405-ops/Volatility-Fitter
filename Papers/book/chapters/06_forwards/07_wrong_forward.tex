@@ -1,0 +1,160 @@
+\section{What a wrong forward does to the smile}
+\label{sec:fwdskew}
+
+The chapter opened by claiming that a small forward error is a large
+smile error.  Every tool needed to prove that claim is now on the
+table, and the proof is a short computation with a memorable shape.
+
+Set the scene precisely.  The market's quotes are what they are; the
+error lives in the modeler's head.  The true forward is $F$, but the
+smile is built at a misread forward $F'=Fe^{\delta}$ --- $\delta$ is
+the relative error, a few basis points.  Every dollar quote is then
+pushed through the Black formula at the wrong normalization: the
+strike's log-moneyness is computed as $k'=\log(K/F')=k-\delta$, and
+the price is divided by $DF'$ instead of $DF$.  The discount is read
+correctly throughout --- the forward error is the subject.  The
+question: how far does the re-implied volatility move, per unit of
+$\delta$?
+
+Take a call first.  Its dollar price, held fixed, is
+$DF\,\Black(k,w)$ with the normalized Black call of Chapter~2
+(eq.~\ref{eq:black}),
+\[
+\Black(k,w)=\PhiN(d_+)-e^k\PhiN(d_-),
+\qquad
+d_\pm=-\frac{k}{\sqrt w}\pm\frac{\sqrt w}{2},
+\]
+where $\PhiN$ and $\phin$ are, as throughout the book, the standard
+normal distribution function and density.  The call's two partial
+derivatives were computed once in Chapter~2's appendix, and this
+chapter reuses them:
+\[
+\partial_k\Black=-e^k\,\PhiN(d_-),
+\qquad
+\partial_w\Black=\frac{\phin(d_+)}{2\sqrt w}.
+\]
+Differentiate the fixed dollar price along the misreading.  Three
+things move at once: the prefactor $F$ (its log by $\dd\delta$), the
+moneyness $k$ (by $\dd k=-\dd\delta$), and the implied total variance
+$w$ (by whatever it must, to keep the price fixed).  To first order,
+\[
+0=\frac{\dd\big[F\,\Black(k,w)\big]}{F}
+=\Black\,\dd\delta
++\partial_k\Black\,\dd k
++\partial_w\Black\,\dd w
+=\big(\Black-\partial_k\Black\big)\,\dd\delta
++\partial_w\Black\,\dd w ,
+\]
+so
+\[
+\dd w
+=-\frac{\Black-\partial_k\Black}{\partial_w\Black}\,\dd\delta .
+\]
+The numerator collapses --- this is the pleasant step:
+\[
+\Black-\partial_k\Black
+=\PhiN(d_+)-e^k\PhiN(d_-)+e^k\PhiN(d_-)
+=\PhiN(d_+),
+\]
+and inserting $\partial_w\Black$ --- the price's sensitivity to
+total variance, the object desks call the (Black) \emph{vega} when
+quoted per unit of volatility ---
+\[
+\dd w=-\frac{2\sqrt w\;\PhiN(d_+)}{\phin(d_+)}\,\dd\delta .
+\]
+Convert to volatility: $\sigma=\sqrt{w/\tau}$, so
+$\dd\sigma=\dd w/(2\sqrt{w\tau})$, and the $\sqrt w$ cancels:
+\begin{equation}
+\frac{\dd\sigma}{\dd\delta}\bigg|_{\text{call}}
+=-\frac{\PhiN(d_+)}{\phin(d_+)\,\sqrt\tau},
+\qquad
+\frac{\dd\sigma}{\dd\delta}\bigg|_{\text{put}}
+=+\frac{\PhiN(-d_+)}{\phin(d_+)\,\sqrt\tau}.
+\label{eq:fwddsig}
+\end{equation}
+The put case is the same computation run on the normalized put
+$P=\Black+e^k-1$ (parity again): its numerator is
+$P-\partial_kP=\Black-\partial_k\Black-1=\PhiN(d_+)-1=-\PhiN(-d_+)$,
+which flips the sign and swaps $\PhiN(d_+)$ for $\PhiN(-d_+)$.
+
+Before the figure, read \eqref{eq:fwddsig} at the money, where
+$k=0$ and $d_+=\sqrt w/2$ is small: both $\PhiN(d_+)$ and
+$\PhiN(-d_+)$ are close to $\tfrac12$, and
+$\phin(d_+)\approx\phin(0)=0.399$.  A forward misread \emph{up} by
+$\delta$ therefore moves the two sides in opposite directions ---
+call vols down, put vols up, each by about
+$\tfrac12\delta/(0.4\sqrt\tau)$.  Now recall how a smile is
+assembled from quotes: at each strike the market's liquid side is the
+\emph{out-of-the-money} (OTM) option --- the put below the money, the
+call above --- so the drawn curve switches sides at $k=0$, and the
+opposite moves become a \emph{jump} there, of size
+\begin{equation}
+\text{ATM gap}
+\;\approx\;\frac{\delta}{\phin(0)\sqrt\tau}
+\;\approx\;\frac{2.5\,\delta}{\sqrt\tau} .
+\label{eq:fwdgap}
+\end{equation}
+The intuition for the two directions is worth one sentence each.
+Thinking the forward is higher makes the call look closer to the
+money than it is, and a closer-to-the-money option carrying the same
+price must carry \emph{less} volatility; the same misreading pushes
+the put deeper out of the money, and a deeper option at an unchanged
+price must carry \emph{more}.
+
+\Cref{fig:fwdskew} draws both halves of the story on the running
+node's fitted smile --- the frozen SPY December 2026 fit of the
+earlier chapters, $\delta$ set to \MacFwdSkewBumpBp\,bp.  Panel~(a)
+is the closed form \eqref{eq:fwddsig} across the quoted span, scaled
+to vol basis points per \MacFwdSkewBumpBp\,bp of forward error: the
+put side (positive curve) and call side (negative curve) approach the
+money from opposite signs, and both fade toward the wings --- far
+from the money an option's price responds weakly to the forward
+relative to how strongly it responds to volatility, so the damage
+concentrates exactly where the book is most liquid.  Panel~(b) is the
+measurement: every out-of-the-money quote on the node re-implied at
+the bumped forward, minus its true volatility.  The orange curve is
+the measurement; it lands on the dotted linearization so exactly
+that the two read as one curve --- and it shows the two symptoms a
+desk would actually see.  At the money, the advertised jump:
+\MacFwdSkewGapBp\ vol basis points of put--call gap for
+\MacFwdSkewBumpBp\ basis points of forward error ---
+\eqref{eq:fwdgap} with the node's numbers.  Away from the money, a tilt: the put wing lifted by
+\MacFwdSkewPutTenBp\,bp at $k=-0.10$, the call wing dropped by
+\MacFwdSkewCallTenBp\,bp at $k=+0.10$.  Lifted left wing, lowered
+right wing --- that is precisely what a steepening of the skew looks
+like.  A desk that trusts its forward would read this picture as the
+market repricing crash risk; the correct reading is a data error
+\$\MacFwdLineGapDollars\ wide.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_skew.pdf}
+\caption{A forward error of \MacFwdSkewBumpBp\,bp on the running
+node's smile.  (a)~The closed form \eqref{eq:fwddsig}: put side up,
+call side down, both largest near the money.  (b)~Every OTM quote
+re-implied at the bumped forward (orange; dotted: the linearization):
+an ATM put--call gap of \MacFwdSkewGapBp\ vol bp plus a wing tilt
+that reads exactly as a skew move.}
+\label{fig:fwdskew}
+\end{figure}
+
+Now close the loop the chapter opened in \cref{sec:fwdline}.  There,
+the naive whole-chain regression on the real (American) node missed
+the resolved forward by \MacFwdLineGapBp\,bp --- five dollars,
+invisible in price space.  Push that error through
+\eqref{eq:fwdgap}: it imprints an ATM put--call gap of about
+\MacFwdSkewNaiveGapBp\ vol basis points --- nearly three volatility
+\emph{points} of artificial structure at the most liquid point of the
+surface, dwarfing the few-basis-point fit errors Part~I worked to
+achieve.  This is why the forward cannot be an afterthought: every
+error in it is repaid, amplified, at the money.  And it is why the
+early-exercise bow of \cref{fig:fwdline}(b) must be removed rather
+than tolerated --- the task Chapter~7 takes up.
+
+One tool from this section travels forward.  Equation
+\eqref{eq:fwddsig} converts \emph{any} carry-side error into smile
+units: a rate error, a dividend error, or --- next section --- a
+borrow error, each reaching the smile through the forward it
+misplaces.  The chapter's last question is whether that final
+component of carry can be measured well enough to be worth carrying
+at all.

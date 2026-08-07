@@ -121,6 +121,35 @@ are recalled, never redefined.  New symbols:
 | `k̄, c̄, s̄` | the last quoted call-side log-strike, the normalized call there, and the last secant slope in strike — bars mean "frozen at the last quote" (§5.5; the put side is mirrored in words; `ȳ = e^k̄`) |
 | `w^+(k), w^-(k)` | upper and lower edges of the envelope of admissible completions beyond the last quote (§5.5) |
 
+## Chapter 6 — forwards, dividends, and carry
+
+Part II works on raw dollar quotes, before normalization is available.  New
+convention introduced here: an upright sans-serif letter marks a *raw market
+quote* (`𝖢(K)`, `𝖯(K)`); Ch. 2's normalized `c`, `P` are unchanged.  Hats
+mark least-squares estimates (`F̂`, `D̂`, `r̂`).  Reserved letters are
+never reused bare: the regressed observable is `Π` (not the reserved `y`),
+the dividend yield is `q_d` (bare `q` stays the quantile density), cash
+dividends are `d_i` (the differential stays upright `\dd`).
+
+| Symbol | Meaning |
+|---|---|
+| `S` | spot — today's traded level (`Y = S_T/F` keeps its Ch. 2 role) |
+| `K` | dollar strike (`k = log(K/F)` connects to the normalized ledger) |
+| `t` | calendar year fraction to expiry (`T` stays the expiry date; `τ` stays variance time; discounting and carry always accrue on `t` — Ch. 8 separates the two clocks) |
+| `𝖢(K), 𝖯(K)` | observed dollar call / put mid at strike K (sans-serif = raw quote) |
+| `Π(K) = 𝖢 − 𝖯` | price of the parity portfolio (long call, short put) — the regressed observable |
+| `ε` | quote-noise standard deviation of one mid (dollars) |
+| `n` | number of paired strikes in a parity fit |
+| `K̄`, `K̄_μ` | mean strike; μ-weighted mean strike (μ_i in its Ch. 3 role: per-quote weights) |
+| `S_KK` | strike dispersion `Σ_i (K_i − K̄)²` (regression sum of squares) |
+| `F̂, D̂, r̂` | least-squares estimates of forward, discount, implied rate |
+| `r` | implied rate `−log D/t` (Ch. 2's `r±*` is always starred) |
+| `q_d` | dividend yield (continuous-mode carry; subscripted — bare `q` reserved) |
+| `d_i, t_i` | cash dividend amounts and their ex-date year fractions (always subscripted) |
+| `f_i` | proportional dividend fractions (always subscripted; the densities `f*`, `f(τ,y)` keep their Ch. 2/4 roles) |
+| `PV` | present value of a dividend schedule (roman, two letters — `V` stays MCS's) |
+| `b, b_min` | borrow spread (residual carry); its identifiability floor |
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,

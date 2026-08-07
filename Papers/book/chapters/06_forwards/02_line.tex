@@ -1,0 +1,120 @@
+\section{One straight line, drawn by a real chain}
+\label{sec:fwdline}
+
+We know the chain draws a line.  This section fits it on the book's
+data and meets the two facts that shape the whole chapter: the line is
+astonishingly straight, and its residuals are not noise.
+
+With more than two strikes the line is overdetermined, and the natural
+fit is least squares: choose the slope and intercept that minimize the
+sum of squared residuals across strikes.  Write the fitted intercept
+as $\hat a$ and the fitted slope as $\hat b$; then, reading
+\eqref{eq:fwdparity} backwards as in the hand example,
+\begin{equation}
+\hat D=-\hat b,
+\qquad
+\hat F=\frac{\hat a}{\hat D},
+\qquad
+\hat r=-\frac{\log\hat D}{t}.
+\label{eq:fwdols}
+\end{equation}
+Hats, here and from now on, mark estimates --- numbers computed from
+quotes, as opposed to the true $(F,D)$ the market is carrying.  The
+whole estimator is four lines of arithmetic; there is nothing else
+inside it.
+
+\Cref{fig:fwdline} runs it on the running node --- SPY December 2026,
+the same (underlier, expiry) pair every chapter has used --- taking
+mid prices from the frozen snapshot's raw chain and keeping the
+\MacFwdLineNPairs\ strikes where both the call and the put quote a
+live bid.  Panel~(a) shows the observable: $\Pi(K)$ against $K$,
+falling from $+\$\MacFwdLinePiMaxDollars$ deep in the left wing to
+$-\$\MacFwdLinePiMinAbsDollars$ at the top of the board, a range of
+\$\MacFwdLineSpanDollars.  Through
+that range the points hug the fitted line so tightly that the eye
+cannot separate them from it: the rms residual is
+\$\MacFwdLineRmsDollars, which is \MacFwdLineStraightPct\% of the
+observable's range.  The open circle marks the fitted root
+$\hat F=\MacFwdLineFNaive$: the strike at which a call and a put cost
+the same, which is by \eqref{eq:fwdparity} the forward estimate.
+Parity, a theorem about prices that nobody enforces centrally, is
+visibly enforced by the market to \MacFwdLineStraightPct\% of the
+observable's own range.
+
+Panel~(b) is the same fit with the line subtracted, and it carries the
+section's real lesson.  If the residuals were quote noise they would
+look like the cent-scale jitter of the hand example --- a fuzz around
+zero with no shape.  Instead they \emph{bow}: a smooth arch, dollars deep at both wings,
+cresting at $+\$\MacFwdLineResidMaxDollars$ near the money ---
+hundreds of times the \emph{tick}, the one-cent minimum increment a
+quote can move by --- with every point sitting on the arch rather
+than scattered around it.  A systematic shape in residuals means a
+systematic error in the model of the observation --- and the model
+here was equation \eqref{eq:fwdparity}, which prices \emph{European}
+options.  SPY's listed options are American: each one carries the
+extra right to exercise early, that right has value, and the value is
+not the same for the call and the put at a given strike.  The mids on
+the line are therefore each shifted by a smooth, strike-dependent
+premium the European identity knows nothing about.  Chapter~7 is
+devoted to measuring and removing that premium; this chapter only
+needs to know it is there.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_fwd_line.pdf}
+\caption{The parity line on the running node (SPY December 2026,
+\MacFwdLineNPairs\ paired strikes from the frozen chain).
+(a)~$\Pi(K)=\mathsf{C}-\mathsf{P}$ against strike: a straight line to
+\MacFwdLineStraightPct\% of its \$\MacFwdLineSpanDollars\ range, with
+the fitted root $\hat F$ circled.  (b)~The residuals bow smoothly ---
+dollars, not cents, and all of one shape: the early-exercise premium
+of American quotes, the subject of Chapter~7.  The naive root and the
+reference implementation's resolved forward differ by
+\MacFwdLineGapBp\,bp.}
+\label{fig:fwdline}
+\end{figure}
+
+The bow has a consequence the figure also shows.  Because the
+contamination is asymmetric --- deep in-the-money puts carry much more
+early-exercise value than calls do --- it does not average away; it
+tilts the fitted line and drags the root.  The reference
+implementation --- the working software whose conventions the book's
+figures audit --- deals with this by de-Americanizing the quotes
+before regressing (Chapter~7's machinery); its resolved forward for
+this node, stored with the snapshot, is $F=\MacFwdLineFResolved$,
+sitting \MacFwdLineGapBp\ basis points above the naive root
+$\hat F=\MacFwdLineFNaive$.  (A \emph{basis point}, bp, is $10^{-4}$
+throughout: of the forward when we compare forwards, of the rate when
+we compare rates --- that one is absolute --- and later a \emph{vol}
+bp, $10^{-4}$ of implied volatility.)  Both vertical lines are drawn in
+panel~(b); at the scale of the strike axis they almost coincide, and
+that is worth noticing too --- \MacFwdLineGapBp\,bp is
+\$\MacFwdLineGapDollars\ on a spot of \$\MacFwdLineSpotDollars,
+invisible in price space.
+\Cref{sec:fwdskew} will show the same five dollars is anything but
+invisible in volatility space.  Until then the chapter works on
+European boards, where \eqref{eq:fwdparity} is exact, and returns to
+American data only when the estimation theory is in hand.
+
+For that theory we need a controlled instrument: a board whose true
+$(F,D)$ we \emph{know}, so that estimator errors can be measured
+rather than argued about.  The chapter's \emph{running board} is
+synthetic and European: spot $S=100$, rate $r=4\%$, a $1\%$ continuous
+dividend yield (dividends enter properly in \cref{sec:fwddivs}), half
+a year to expiry, and \MacFwdIdentNStrikes\ strikes from 70 to 130
+every $2.5$, each mid priced by the Black formula at a flat $22\%$
+volatility and rounded to the cent (all constants in appendix
+\ref{app:fwdprotocol}).  Its true forward is
+$F=Se^{(r-q_d)t}=101.51$, where $q_d$ is the dividend yield --- take
+the yield-in-the-exponent form on faith for two more sections;
+\cref{sec:fwddivs} derives it.  Its true discount is
+$D=e^{-rt}=0.9802$.  On this board the least-squares fit recovers the
+forward to \MacFwdIdentCleanFwdErrBp\,bp and the rate to
+\MacFwdIdentCleanRateErrBp\,bp --- the cent rounding is the only
+noise.  The interesting question is not whether it recovers
+them but \emph{how unequally well} it recovers the two, and that
+question gets its own section.
+
+We now have the estimator \eqref{eq:fwdols}, a real chain where the
+line holds to \MacFwdLineStraightPct\% of its range, and a clean board with known
+truth.  Next: the error bars.

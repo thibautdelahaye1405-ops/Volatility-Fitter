@@ -1,0 +1,82 @@
+\section{Numerical protocol}
+\label{app:fwdprotocol}
+
+Every measured number in the chapter --- every fit result, scatter,
+gap, share, or error --- comes from one deterministic generator and
+enters the text as a generated macro.  Three kinds of numbers are
+typed instead, deliberately: the constants of the constructions
+themselves (the boards, schedules, and noise levels below, which
+\emph{define} the experiments); arithmetic the reader is meant to
+reproduce by hand (the two-strike solve of \cref{sec:fwdtwo}, whose
+portfolio prices were placed exactly on the line with $D=0.98$ and
+$F=101.50$, and the plug-in evaluations of
+\cref{sec:fwdident,sec:fwdskew,sec:fwdborrow}); and stated
+approximation constants such as $\phin(0)=0.399$.  Everything else
+derives from the frozen snapshot or from the boards, in the order
+the chapter uses them.
+
+\emph{The real chain (\cref{fig:fwdline,fig:fwdskew}).}  The raw SPY
+chain embedded in the book's frozen snapshot, December 2026 expiry.
+A strike enters the parity fit when both its call and its put quote a
+live (positive) bid; the observable is the difference of the two
+mids, $\Pi=\mathsf{C}-\mathsf{P}$ with each mid the bid--ask
+midpoint.  The naive fit is plain least squares over all surviving
+pairs.  The \emph{resolved} forward quoted beside it is the one
+stored with the snapshot --- the reference implementation's
+resolution for that node, which de-Americanizes quotes before
+regressing (Chapter~7) --- and the smile used in
+\cref{fig:fwdskew} is the node's stored fit from the same snapshot.
+The re-implied volatilities of \cref{fig:fwdskew}(b) solve the
+one-dimensional Black inversion by bracketing to machine tolerance,
+put side for $k<0$ and call side for $k>0$; in this data the
+calendar and variance clocks coincide, as \cref{sec:fwdtwo} noted.
+
+\emph{The running board
+(\cref{fig:fwdident,fig:fwdtrim}).}  European and synthetic: spot
+$S=100$, rate $r=4\%$, continuous dividend yield $q_d=1\%$, flat
+volatility $22\%$, half a year to expiry; strikes from 70 to 130
+every 2.5 (25 pairs); every mid priced by the Black formula and
+rounded to the cent.  The identifiability audit adds independent
+Gaussian noise of standard deviation two cents to every call and put
+mid separately, refits \eqref{eq:fwdols}, and repeats for 2{,}000
+trials from a fixed-seed generator --- the chapter's only use of
+randomness; the short-dated variant repeats the experiment at
+$t=0.05$.  (The noise rides on top of the board's cent rounding,
+which adds $\approx0.3$ cents in quadrature; the predictions ignore
+it, and the measured--predicted agreement shows how little it
+matters.)  Predictions come from
+\eqref{eq:fwdolssd}--\eqref{eq:fwddecomp} with the board's
+$n$, $S_{KK}$, and truth.
+
+\emph{Trim and masking (\cref{fig:fwdtrim},
+\cref{rem:fwdmask}).}  The trim is the loop of \cref{sec:fwdtrim}
+verbatim: robust scale $1.4826\times$ the median absolute residual,
+floored at one basis point of spot; threshold four robust sigmas; at
+most three rounds; never below three surviving pairs.  The staged
+failure marks the strike-75 put mid \$1.20 high.  The masking
+variant re-prices the five lowest strikes at a financing rate two
+percent above the truth: their portfolio differences $\Pi$ are
+recomputed exactly at the stale $(F',D')$ and rounded to the cent
+directly (the difference, not the two mids --- immaterial at this
+size, noted for exactness), and the identical trim runs.
+
+\emph{The lever board (\cref{fig:fwdlever}).}  Same construction,
+strikes from 85 to 140, prices kept exact (no rounding) so the
+figure isolates the identity \eqref{eq:fwdlever}.  Imposed rate
+errors span $\pm2\%$.  The kernel estimator weights each strike by a
+Gaussian in $\log(K/S)$ of width $0.10$, centered at spot.
+
+\emph{Dividends (\cref{fig:fwddivs}).}  The schedule pays \$0.65
+each quarter, first ex-date 30 days out, horizon 2.5 years, at
+$r=4\%$; the proportional variant converts each payment to the
+fraction $0.65/100$ of the prevailing level; the flat yield is the
+schedule's one-year equivalent.  Elasticities are measured by
+recomputing each convention's forward under a one-basis-point spot
+bump, against the closed form \eqref{eq:fwdelas}.
+
+\emph{Borrow (\cref{fig:fwdborrow}).}  Closed forms only:
+\eqref{eq:fwdbsens} at a flat $20\%$ volatility, and
+\eqref{eq:fwdfloor} with $n=20$ paired strikes at quote noise of 10
+and 50 basis points of spot.  The shaded hard-to-borrow range,
+100--1{,}000\,bp per year, is an illustrative convention of the
+figure, not an estimate.
