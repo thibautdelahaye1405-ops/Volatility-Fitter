@@ -1,0 +1,170 @@
+\section{The smallest possible market: a two-step tree}
+\label{sec:deamtree}
+
+We need a machine that evaluates the best-plan value
+\eqref{eq:deamstop}.  What makes the problem interesting is that at
+every moment the holder compares ``stop now'' --- whose value,
+intrinsic, is trivial --- against ``continue'', whose value is a
+conditional expectation of everything that may happen later.  The
+simplest honest machine for carrying such expectations is the binomial
+tree of Cox, Ross and Rubinstein \citep{CoxRossRubinstein1979}, and it
+is small enough that this section builds one from scratch and solves
+it by hand.
+
+Chop the calendar time to expiry into $N_t$ steps of length $\Delta
+t=t/N_t$.  Over one step, let the spot do one of exactly two things:
+multiply by $e^{\sigma\sqrt{\Delta t}}$ (an ``up'' move) or by its
+reciprocal $e^{-\sigma\sqrt{\Delta t}}$ (a ``down'' move).  Why this
+particular size?  Because each step then moves the \emph{log} of the
+spot by $\pm\sigma\sqrt{\Delta t}$, contributing $\sigma^2\Delta t$ of
+squared log-move; over $N_t$ independent steps the contributions add
+to $\sigma^2 t$ --- the total variance a volatility $\sigma$ is
+supposed to generate over $t$ years of calendar time.  One matching
+condition down, one to go: the up-move probability $p$ is fixed by
+requiring the tree to grow the spot at the carry --- the rate $r-q_d$
+that links spot to forward, with $q_d$ the dividend yield exactly as
+in Chapter~6:
+\begin{equation}
+p\,e^{\sigma\sqrt{\Delta t}}+(1-p)\,e^{-\sigma\sqrt{\Delta t}}
+=e^{(r-q_d)\Delta t}
+\qquad\Longrightarrow\qquad
+p=\frac{e^{(r-q_d)\Delta t}-e^{-\sigma\sqrt{\Delta t}}}
+       {e^{\sigma\sqrt{\Delta t}}-e^{-\sigma\sqrt{\Delta t}}}\,.
+\label{eq:deamprob}
+\end{equation}
+For $p$ to be a probability we need $0<p<1$, which by
+\eqref{eq:deamprob} says the carry factor must land strictly between
+the down and up factors:
+\[
+e^{-\sigma\sqrt{\Delta t}}<e^{(r-q_d)\Delta t}<e^{\sigma\sqrt{\Delta t}}
+\quad\Longleftrightarrow\quad
+|r-q_d|\,\Delta t<\sigma\sqrt{\Delta t}
+\quad\Longleftrightarrow\quad
+\sigma>|r-q_d|\sqrt{t/N_t}\,.
+\]
+The one-step move must be able to outrun the drift.  Plug in working
+numbers --- a carry gap of $4\%$, half a year, and $N_t=256$, the
+depth the chapter uses when it inverts whole chains
+(appendix~\ref{app:deamprotocol}) --- and the floor is
+$0.04\sqrt{0.5/256}\approx0.18\%$ of volatility: the condition
+excludes nothing any equity board quotes, but the inversion of
+\cref{sec:deamsub} keeps its brackets above it so that every tree it
+prices is a valid one.
+
+Two structural facts make the lattice cheap.  Multiplication commutes,
+so up-then-down and down-then-up land on the same spot: after $n$
+steps of which $j$ were up, the spot is
+$S\,e^{(2j-n)\sigma\sqrt{\Delta t}}$, and layer $n$ holds only $n+1$
+distinct values (the tree \emph{recombines}).  And the value can be
+computed backward.  At expiry the option is worth its payoff at each
+terminal node.  One layer earlier, the holder at node $j$ compares
+stopping against continuing, and continuing is worth the discounted
+$p$-average of the two successor values.  Writing $A^{(n)}_j$ for the
+American value at layer $n$, node $j$:
+\begin{equation}
+A^{(N_t)}_j=\text{payoff}_j,
+\qquad
+A^{(n)}_j=\max\Big\{\text{intrinsic}^{(n)}_j,\;
+e^{-r\Delta t}\big(p\,A^{(n+1)}_{j+1}+(1-p)\,A^{(n+1)}_{j}\big)\Big\}.
+\label{eq:deamroll}
+\end{equation}
+This is dynamic programming in its plainest form: start where the
+answer is known and walk backward, letting each node pick the better
+of its two options.  Delete the $\max$ against intrinsic and the same
+recursion prices the European twin $E^{(n)}_j$ --- the two legs of
+\cref{sec:deamright}'s decomposition come from one lattice, differing
+by a single comparison.  Readers of Chapter~4 will recognize the
+family: each value is a nonnegative combination of the next layer's,
+and $\max$ preserves order, so the rollback is a monotone scheme ---
+raise any input and no output falls --- which is the discrete reason
+tree prices are stable and free of invented oscillation.
+
+Now solve one completely.  Take an American put with $S=100$, $K=105$,
+$\sigma=30\%$, half a year to expiry, $r=6\%$, no dividends, and just
+$N_t=2$ steps --- the smallest tree in which early exercise can
+happen strictly inside the lattice.  The step is $\Delta t=0.25$.  The
+up factor is $e^{0.30\sqrt{0.25}}=e^{0.15}=\MacDeamTreeUpFactor$; the
+down factor is its reciprocal $\MacDeamTreeDownFactor$.  The one-step
+carry factor is $e^{0.06\times0.25}=\MacDeamTreeGrowth$ and the
+one-step discount is $e^{-0.015}=\MacDeamTreeStepDisc$.  The
+up-probability \eqref{eq:deamprob} comes out
+\[
+p=\frac{\MacDeamTreeGrowth-\MacDeamTreeDownFactor}
+       {\MacDeamTreeUpFactor-\MacDeamTreeDownFactor}
+ =\MacDeamTreeProbUp .
+\]
+The spot lattice is: after one step, $\MacDeamTreeSpotUp$ or
+$\MacDeamTreeSpotDown$; after two, $\MacDeamTreeSpotUU$, back to
+$100.00$, or $\MacDeamTreeSpotDD$.  The terminal payoffs of the
+$K=105$ put are $0$, $\MacDeamTreePayUD$ and $\MacDeamTreePayDD$.
+Follow \cref{fig:deamtree}(a) node by node.  At the up node
+(spot $\MacDeamTreeSpotUp$), continuing is worth
+\[
+\MacDeamTreeStepDisc\times
+\big(\MacDeamTreeProbUp\times0
++\MacDeamTreeProbDown\times\MacDeamTreePayUD\big)=\MacDeamTreeContUp ,
+\]
+and the put is out of the money there (intrinsic $0$), so the node's
+value is $\MacDeamTreeContUp$.  At the down node (spot
+$\MacDeamTreeSpotDown$) --- the orange node, and the whole lesson ---
+continuing is worth
+\[
+\MacDeamTreeStepDisc\times\big(\MacDeamTreeProbUp\times\MacDeamTreePayUD
++\MacDeamTreeProbDown\times\MacDeamTreePayDD\big)=\MacDeamTreeContDown ,
+\]
+but exercising pays $105-\MacDeamTreeSpotDown=\MacDeamTreeIntrDown$
+immediately.  The holder exercises: the node is worth
+$\MacDeamTreeIntrDown$, and the best plan has stopped strictly before
+expiry.  Rolling back once more, the root is worth
+\[
+\MacDeamTreeStepDisc\times\big(\MacDeamTreeProbUp\times\MacDeamTreeContUp
++\MacDeamTreeProbDown\times\MacDeamTreeIntrDown\big)=\MacDeamTreeRootAm ,
+\]
+comfortably above the root's own intrinsic of $5$.  Now delete the
+$\max$ and reprice: the down node keeps its continuation value
+$\MacDeamTreeValDownEu$, and the root comes out
+$\MacDeamTreeRootEu$.  The difference,
+\[
+A-E=\MacDeamTreeRootAm-\MacDeamTreeRootEu=\MacDeamTreePremTwoStep ,
+\]
+is the first early-exercise premium this book has computed by hand ---
+earned entirely at one node, where interest on the strike beat the
+remaining time value.  Every number above is
+reproducible with a pocket calculator, and checking one or two is the
+best way to make the rollback \eqref{eq:deamroll} feel inevitable.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_tree.pdf}
+\caption{(a)~The hand-solved two-step American put ($S=100$, $K=105$,
+$\sigma=30\%$, $t=0.5$, $r=6\%$): spot above each node, option value
+inside it.  At the orange node intrinsic $\MacDeamTreeIntrDown$ beats
+continuation $\MacDeamTreeContDown$ and the best plan stops early;
+the European twin keeps $\MacDeamTreeValDownEu$ there, and the root
+difference is the premium $\MacDeamTreePremTwoStep$.  (b)~Convergence
+of the same put's price in the step count (even $N_t$, against an
+$N_t=4001$ reference): both legs converge like $1/N_t$ (the dotted
+guide) with an oscillatory fine structure, and the \emph{difference}
+$A-E$ (green) runs below either leg --- in the median across depths
+beyond $64$, \MacDeamConvRatio$\times$ smaller.}
+\label{fig:deamtree}
+\end{figure}
+
+Two steps prove the mechanism; accuracy needs more.  Panel~(b) of
+\cref{fig:deamtree} reprices the same put at even step counts from $2$
+to $400$ and plots the absolute error against a deep reference tree.
+Read three things off it.  Both the American and the European leg
+converge like $1/N_t$ --- halve the step, halve the error --- with an
+oscillatory fine structure that is a known cosmetic feature of
+binomial lattices (the strike weaves between node levels as $N_t$
+changes).  At the whole-chain working depth $N_t=256$ the American
+leg is within \MacDeamConvAmErrCents\ cents of converged.  And the green
+curve --- the error of the \emph{difference} $A-E$ --- runs below
+either leg's, in the median \MacDeamConvRatio$\times$ smaller: the
+two legs share one lattice, so most of their discretization error is
+common and cancels in the subtraction.  Keep that asymmetry in mind;
+it is the quiet reason the next section's method reports cleaner
+numbers than a $1/N_t$ scheme has any right to.
+
+We can now price the stopping right to known accuracy.  The next
+question is how to remove it from a quote we did not price ourselves.

@@ -1,0 +1,124 @@
+\section{A price with an extra right}
+\label{sec:deamright}
+
+Chapter~6 ended with a debt.  The parity line on the running node ---
+SPY December 2026, the (underlier, expiry) pair every chapter has
+worked on --- was almost perfectly straight: its residuals ran to
+\MacFwdLineStraightPct\% of the full range the observable spans.
+But those residuals were not noise.  They bowed, cresting at
+$+\$\MacFwdLineResidMaxDollars$ near the money, hundreds of times the
+one-cent tick (\cref{fig:fwdline}b).  Chapter~6 identified the culprit
+in one sentence --- SPY's listed options are American --- and promised
+that this chapter would measure and remove it.  We now pay the debt.
+
+Start with the vocabulary, because everything follows from it.  A
+\emph{European} option can be exercised only at expiry; every model in
+Part~I priced European options, as terminal expectations under one
+probability law (Chapter~2).  An \emph{American} option can be
+exercised at any moment its holder chooses, up to and including
+expiry.  US-listed single-stock and ETF options --- the raw quotes
+$\mathsf{C}(K)$, $\mathsf{P}(K)$ this book's frozen chains carry ---
+are American.  Index options, and the synthetic test boards the book
+constructs for itself, are European; for them, every step in this
+chapter leaves the quotes untouched.
+
+The extra right cannot make the option cheaper.  Whatever plan a
+European holder has --- namely, wait to expiry --- an American holder
+may copy; the American holder simply has more plans to choose from,
+and the best of a larger set of plans is worth at least the best of a
+smaller one.  Write $A(\sigma)$ for the model price of one American
+option as a function of the volatility $\sigma$, everything else (its
+strike, expiry, and carry) held fixed, and $E(\sigma)$ for its
+\emph{European twin}: the same contract with the early-exercise right
+removed.  Then
+\[
+A(\sigma)\;\ge\;E(\sigma),
+\]
+and the difference $A-E$ --- the \emph{early-exercise premium}, the
+dollar value of the right itself --- is never negative.  It is often
+exactly zero, and \cref{sec:deamwhere} proves where.  By the same
+larger-set logic, an American price can never sit below the option's
+\emph{intrinsic value} --- what exercising this instant would pay,
+$(S-K)^+$ for a call and $(K-S)^+$ for a put --- because ``exercise
+this instant'' is itself one of the holder's plans.
+\Cref{sec:deamwhere} makes both statements precise.  One notation
+note, once: italic $E$ is always a \emph{price} in this book; the
+expectation operator keeps its blackboard $\E$.  The premium itself
+gets no symbol --- we write $A-E$, or say ``the premium''.
+
+Here is why the premium matters to a volatility fitter.  The market
+prints one number per quote: the American price.  It does not print
+$E$, and it does not print the premium; the decomposition is real but
+unobservable, quote by quote.  Part~I's machinery inverts a
+\emph{European} price into an implied volatility --- that is what the
+Black formula's argument is --- so feeding it an American mid hands it
+a price that is too high for what it thinks it is pricing.  The
+inversion has no slot for the premium, so it books the whole excess as
+volatility, and the smile comes out biased upward.
+
+How badly?  Recall the dictionary from Chapter~6: a price error
+$\Delta P$ moves an inverted volatility by roughly $\Delta
+P/\text{vega}$, where \emph{vega} --- the price sensitivity to
+volatility, $\partial C/\partial\sigma = DF\,\phin(d_+)\sqrt{\tau}$
+for the dollar call, with $d_\pm$ the Black formula's usual arguments
+(first courses write $d_1$, $d_2$) --- peaks at the money and
+collapses both deep in the money and far out of it.  A premium of fixed dollar size therefore
+reads as a \emph{large} phantom volatility exactly where vega is
+small: deep in the money.  The damage is measured in vol basis points
+(one vol bp is $10^{-4}$ of absolute volatility, as in Chapter~6) not
+because the dollars are large --- they are cents to a few dollars ---
+but because the wings divide by a small vega.
+
+\Cref{fig:deamwedge} runs the whole experiment on a synthetic board
+where the truth is known: American calls on a stock paying a $6\%$
+dividend yield against a $2\%$ rate, half a year to expiry, priced by
+this chapter's tree at a true volatility of exactly $25\%$ (all
+constants in appendix~\ref{app:deamprotocol}; why dividends make call
+premiums live is \cref{sec:deamwhere}'s subject).  In panel~(a), the
+orange curve is the naive reading: each American price handed to the
+analytic European inversion.  At the forward the phantom is already
+\MacDeamWedgeAtmBiasBp\ vol bp; moving into the money it grows without
+mercy, reaching \MacDeamWedgeMaxBiasBp\ vol bp at the deepest strike.
+The blue curve is the subtraction this chapter builds
+(\cref{sec:deamsub}): it returns a flat $25\%$ across the board, to an
+rms of \MacDeamWedgeRootRmsBp\ vol bp.  Notice where the blue curve
+\emph{stops}: below \$\MacDeamMapCallBdryPct\ there are no blue points
+at all, because
+there the price has collapsed onto its exercise floor and contains no
+volatility to recover --- the dead zone \cref{sec:deamwhere} maps and
+\cref{sec:deamsub} handles honestly.  Panel~(b) shows the premium
+itself in dollars: at most \$\MacDeamWedgeMaxPremiumDollars, largest
+deep in the money and fading through the forward (dashed line) toward
+zero out of the money.  Hold the two panels side by side: a two-dollar
+premium and a four-thousand-basis-point lie.  The quote is not wrong;
+the model reading it is.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_wedge.pdf}
+\caption{The naive reading of American prices (synthetic calls, $6\%$
+dividend yield against a $2\%$ rate, true volatility $25\%$, half a
+year).  (a)~The same converged tree prices inverted two ways: the naive
+European inversion books the premium as volatility --- up to
+\MacDeamWedgeMaxBiasBp\ vol bp deep in the money --- while the
+de-Americanization of \cref{sec:deamsub} recovers the flat truth (rms
+\MacDeamWedgeRootRmsBp\ vol bp); below \$\MacDeamMapCallBdryPct\ the
+price equals its exercise floor and no volatility exists to recover.  (b)~The premium
+$A-E$ in dollars: at most \$\MacDeamWedgeMaxPremiumDollars.  Cents to
+dollars on the left panel's axis become thousands of vol bp on the
+right of panel (a) because the wings divide by a small vega.}
+\label{fig:deamwedge}
+\end{figure}
+
+The chapter now walks the repair from first principles.
+\Cref{sec:deamwhere} proves where the premium lives, so we know where
+work is needed before doing any.  \Cref{sec:deamtree} builds the
+pricing machine --- a binomial tree small enough to solve by hand.
+\Cref{sec:deamsub} performs the subtraction and accounts for its
+errors.  \Cref{sec:deamdivs} handles dividends, which enter as dates,
+not rates.  \Cref{sec:deamloop} closes the loop with Chapter~6 ---
+the forward needed the de-Americanization that needed the forward ---
+and reproduces the residual bow.  \Cref{sec:deammatters} measures what
+all of it is worth on the frozen gallery, on the population a fit
+actually consumes and on the one it discards, and writes the
+chapter's contract.

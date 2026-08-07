@@ -1,0 +1,377 @@
+{
+ "DeamWedgeMaxBiasBp": {
+  "value": "3872",
+  "meaning": "largest naive-inversion bias across the board (vol bp)",
+  "section": "wedge"
+ },
+ "DeamWedgeMaxPremiumDollars": {
+  "value": "2.35",
+  "meaning": "largest early-exercise premium on the board (dollars)",
+  "section": "wedge"
+ },
+ "DeamWedgeAtmBiasBp": {
+  "value": "92",
+  "meaning": "naive bias at the strike nearest the forward (vol bp)",
+  "section": "wedge"
+ },
+ "DeamWedgeRootRmsBp": {
+  "value": "0.7",
+  "meaning": "rms error of the recovered sigma* across the board (vol bp; scalar-depth inversion of converged-tree quotes)",
+  "section": "wedge"
+ },
+ "DeamWedgeForward": {
+  "value": "98.02",
+  "meaning": "forward of the running synthetic board (dollars)",
+  "section": "wedge"
+ },
+ "DeamWexAmDollars": {
+  "value": "11.7856",
+  "meaning": "worked strike: American tree price at the true vol (dollars)",
+  "section": "wedge"
+ },
+ "DeamWexEuDollars": {
+  "value": "11.2725",
+  "meaning": "worked strike: European leg at the same vol (dollars)",
+  "section": "wedge"
+ },
+ "DeamWexPremiumDollars": {
+  "value": "0.5131",
+  "meaning": "worked strike: the premium A - E (dollars)",
+  "section": "wedge"
+ },
+ "DeamWexPremiumPct": {
+  "value": "4.4",
+  "meaning": "worked strike: premium as a share of the option's value (%)",
+  "section": "wedge"
+ },
+ "DeamWexNaivePct": {
+  "value": "27.19",
+  "meaning": "worked strike: naive European implied vol (%)",
+  "section": "wedge"
+ },
+ "DeamWexBiasBp": {
+  "value": "219",
+  "meaning": "worked strike: naive bias over the true 25% (vol bp)",
+  "section": "wedge"
+ },
+ "DeamWexRootPct": {
+  "value": "25.00",
+  "meaning": "worked strike: the recovered de-Americanized root (%)",
+  "section": "wedge"
+ },
+ "DeamMapPutBdryPct": {
+  "value": "129",
+  "meaning": "put plateau onset at t=0.5 (strike, % of spot)",
+  "section": "map"
+ },
+ "DeamMapCallBdryPct": {
+  "value": "78",
+  "meaning": "call plateau onset at t=0.5 (strike, % of spot)",
+  "section": "map"
+ },
+ "DeamMapPutMaxDollars": {
+  "value": "8.35",
+  "meaning": "largest put premium on the map (dollars per 100 spot)",
+  "section": "map"
+ },
+ "DeamMapCallMaxDollars": {
+  "value": "6.65",
+  "meaning": "largest call premium on the map (dollars per 100 spot)",
+  "section": "map"
+ },
+ "DeamMapMertonMaxDollars": {
+  "value": "\\ensuremath{0}",
+  "meaning": "largest |A-E| for no-dividend calls anywhere on the grid (dollars; Merton's theorem measured)",
+  "section": "map"
+ },
+ "DeamTreeUpFactor": {
+  "value": "1.1618",
+  "meaning": "hand tree: up factor exp(sigma sqrt(dt))",
+  "section": "lattice"
+ },
+ "DeamTreeDownFactor": {
+  "value": "0.8607",
+  "meaning": "hand tree: down factor 1/u",
+  "section": "lattice"
+ },
+ "DeamTreeProbUp": {
+  "value": "0.5128",
+  "meaning": "hand tree: risk-neutral up probability",
+  "section": "lattice"
+ },
+ "DeamTreeGrowth": {
+  "value": "1.0151",
+  "meaning": "hand tree: one-step growth factor exp(r dt)",
+  "section": "lattice"
+ },
+ "DeamTreeStepDisc": {
+  "value": "0.9851",
+  "meaning": "hand tree: one-step discount factor exp(-r dt)",
+  "section": "lattice"
+ },
+ "DeamTreeSpotUp": {
+  "value": "116.18",
+  "meaning": "hand tree: spot at the up node",
+  "section": "lattice"
+ },
+ "DeamTreeSpotDown": {
+  "value": "86.07",
+  "meaning": "hand tree: spot at the down node",
+  "section": "lattice"
+ },
+ "DeamTreeSpotUU": {
+  "value": "134.99",
+  "meaning": "hand tree: spot after two up moves",
+  "section": "lattice"
+ },
+ "DeamTreeSpotDD": {
+  "value": "74.08",
+  "meaning": "hand tree: spot after two down moves",
+  "section": "lattice"
+ },
+ "DeamTreePayUD": {
+  "value": "5.00",
+  "meaning": "hand tree: terminal payoff at the middle node",
+  "section": "lattice"
+ },
+ "DeamTreePayDD": {
+  "value": "30.92",
+  "meaning": "hand tree: terminal payoff at the double-down node",
+  "section": "lattice"
+ },
+ "DeamTreeContUp": {
+  "value": "2.40",
+  "meaning": "hand tree: continuation value at the up node",
+  "section": "lattice"
+ },
+ "DeamTreeContDown": {
+  "value": "17.37",
+  "meaning": "hand tree: continuation value at the down node",
+  "section": "lattice"
+ },
+ "DeamTreeIntrDown": {
+  "value": "18.93",
+  "meaning": "hand tree: intrinsic value at the down node",
+  "section": "lattice"
+ },
+ "DeamTreeRootAm": {
+  "value": "10.30",
+  "meaning": "hand tree: American value at the root",
+  "section": "lattice"
+ },
+ "DeamTreeRootEu": {
+  "value": "9.55",
+  "meaning": "hand tree: European value at the root",
+  "section": "lattice"
+ },
+ "DeamTreeValDownEu": {
+  "value": "17.37",
+  "meaning": "hand tree: European value at the down node",
+  "section": "lattice"
+ },
+ "DeamTreePremTwoStep": {
+  "value": "0.75",
+  "meaning": "hand tree: the two-step premium A - E",
+  "section": "lattice"
+ },
+ "DeamConvAmErrCents": {
+  "value": "0.10",
+  "meaning": "American price error at N_t=256 (cents)",
+  "section": "lattice"
+ },
+ "DeamConvPremErrCents": {
+  "value": "0.11",
+  "meaning": "error of the difference A-E at N_t=256 (cents)",
+  "section": "lattice"
+ },
+ "DeamConvRatio": {
+  "value": "3",
+  "meaning": "median ratio of American-leg to difference error, N_t>=64",
+  "section": "lattice"
+ },
+ "DeamRootQuoteOtm": {
+  "value": "0.61",
+  "meaning": "converged put price at K=80 (dollars)",
+  "section": "root"
+ },
+ "DeamRootQuoteItm": {
+  "value": "12.34",
+  "meaning": "converged put price at K=110 (dollars)",
+  "section": "root"
+ },
+ "DeamRootPlateauGapCents": {
+  "value": "0.00",
+  "meaning": "time value of the K=160 put at the true vol (cents): the quote IS the intrinsic floor",
+  "section": "root"
+ },
+ "DeamRootDeepIntr": {
+  "value": "60",
+  "meaning": "intrinsic value of the deep put (dollars)",
+  "section": "root"
+ },
+ "DeamEscrowFwd": {
+  "value": "94.99",
+  "meaning": "forward of the cash schedule at t=0.5 (dollars)",
+  "section": "escrow"
+ },
+ "DeamEscrowQeqPct": {
+  "value": "12.29",
+  "meaning": "yield matching that forward at t=0.5 (%/yr)",
+  "section": "escrow"
+ },
+ "DeamEscrowFlatQPct": {
+  "value": "6.14",
+  "meaning": "the schedule's one-year-equivalent flat yield (%/yr)",
+  "section": "escrow"
+ },
+ "DeamEscrowRatioMax": {
+  "value": "3.1",
+  "meaning": "largest cash-to-yield premium ratio on panel (a), where the yield premium exceeds one cent",
+  "section": "escrow"
+ },
+ "DeamEscrowCashPreExMax": {
+  "value": "\\ensuremath{0}",
+  "meaning": "largest cash-model premium before the ex-date (dollars; Merton verbatim)",
+  "section": "escrow"
+ },
+ "DeamEscrowFlatPreExMax": {
+  "value": "0.65",
+  "meaning": "largest flat-yield premium before the ex-date (dollars; invented)",
+  "section": "escrow"
+ },
+ "DeamBowNPairs": {
+  "value": "158",
+  "meaning": "paired strikes on the running node (as in fig. 6.1)",
+  "section": "bow"
+ },
+ "DeamBowNKept": {
+  "value": "123",
+  "meaning": "pairs where both legs inverted (plateau lanes dropped)",
+  "section": "bow"
+ },
+ "DeamBowNDropped": {
+  "value": "35",
+  "meaning": "pairs dropped: at least one leg on the intrinsic plateau",
+  "section": "bow"
+ },
+ "DeamBowMatchRmsDollars": {
+  "value": "0.17",
+  "meaning": "rms mismatch between measured residuals and the predicted arch (dollars)",
+  "section": "bow"
+ },
+ "DeamBowRmsBeforeDollars": {
+  "value": "2.97",
+  "meaning": "rms residual of the naive line (dollars; fig. 6.1's 2.97)",
+  "section": "bow"
+ },
+ "DeamBowRmsAfterDollars": {
+  "value": "0.17",
+  "meaning": "rms residual after de-Americanization (dollars)",
+  "section": "bow"
+ },
+ "DeamBowFNaive": {
+  "value": "762.71",
+  "meaning": "naive parity root (dollars)",
+  "section": "bow"
+ },
+ "DeamBowFDeam": {
+  "value": "768.20",
+  "meaning": "de-Americanized parity root after two passes (dollars)",
+  "section": "bow"
+ },
+ "DeamBowFResolved": {
+  "value": "767.92",
+  "meaning": "the snapshot's stored resolved forward (dollars)",
+  "section": "bow"
+ },
+ "DeamBowGapToResolvedBp": {
+  "value": "4",
+  "meaning": "de-Americanized root vs stored forward (bp of forward)",
+  "section": "bow"
+ },
+ "DeamBowPassDeltaBp": {
+  "value": "2.6",
+  "meaning": "movement of the root between pass 1 and pass 2 (bp)",
+  "section": "bow"
+ },
+ "DeamBowNaiveGapBp": {
+  "value": "68",
+  "meaning": "naive root vs stored forward (bp; fig. 6.1's 68)",
+  "section": "bow"
+ },
+ "DeamGalSelN": {
+  "value": "93",
+  "meaning": "fitted quotes on the running node (inverted both ways)",
+  "section": "gallery"
+ },
+ "DeamGalSelMedianBp": {
+  "value": "3.6",
+  "meaning": "running node: median |wedge| on fitted quotes (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalSelMaxBp": {
+  "value": "61",
+  "meaning": "running node: worst fitted-quote wedge (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalSelPutMedianBp": {
+  "value": "11.2",
+  "meaning": "running node: median wedge, fitted puts (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalSelCallMedianBp": {
+  "value": "-1.7",
+  "meaning": "running node: median wedge, fitted calls (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalItmN": {
+  "value": "12",
+  "meaning": "discarded ITM puts that still invert (running node)",
+  "section": "gallery"
+ },
+ "DeamGalItmDead": {
+  "value": "35",
+  "meaning": "discarded ITM puts on the intrinsic plateau (no inversion)",
+  "section": "gallery"
+ },
+ "DeamGalItmMedianBp": {
+  "value": "161",
+  "meaning": "running node: median |wedge| on discarded ITM puts (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalItmMaxBp": {
+  "value": "448",
+  "meaning": "running node: worst discarded-ITM-put wedge (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalWorstMedianBp": {
+  "value": "6.8",
+  "meaning": "largest per-expiry fitted median across the gallery (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalWorstMaxBp": {
+  "value": "221",
+  "meaning": "largest single fitted-quote wedge across the gallery (vol bp)",
+  "section": "gallery"
+ },
+ "DeamGalShortMedianBp": {
+  "value": "1.32",
+  "meaning": "shortest expiry's fitted median wedge (vol bp)",
+  "section": "gallery"
+ },
+ "DeamTblDepthMedianBp": {
+  "value": "2.0",
+  "meaning": "median |sigma*| shift, tree depth 256 vs 128, running node fitted quotes (vol bp)",
+  "section": "table"
+ },
+ "DeamTblDepthMaxBp": {
+  "value": "8",
+  "meaning": "worst such shift (vol bp)",
+  "section": "table"
+ },
+ "DeamTreeProbDown": {
+  "value": "0.4872",
+  "meaning": "hand tree: down probability 1 - p",
+  "section": "lattice"
+ }
+}

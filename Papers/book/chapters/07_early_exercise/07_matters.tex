@@ -1,0 +1,192 @@
+\section{How much it matters, honestly}
+\label{sec:deammatters}
+
+The single most misquotable number in this subject is ``the effect of
+de-Americanization'' with the population left unsaid.  On one and the
+same expiry it is a few basis points, or hundreds, depending on which
+quotes you average over --- and both numbers are true.  This section
+measures both on the frozen gallery --- the snapshot's eight SPY
+expiries --- so the reader owns the distinction, then writes the
+chapter's contract.
+
+First, name the populations.  A fitting desk reads the
+\emph{out-of-the-money side} of the board: puts below the forward,
+calls at or above it.  The reason is worth one careful sentence,
+because it is \emph{not} that the out-of-the-money option has more
+vega --- at any one strike the call and the put have exactly the same
+vega, since parity ties their prices by a volatility-free line.  It
+is that the out-of-the-money leg packs that same vega into a small
+price with a tight spread, while its in-the-money twin dilutes it
+through a wider spread on a bigger price and, by parity, says nothing
+the other leg has not already said.  The book's frozen chains follow
+that convention.  So the
+number that describes a fit's exposure is the wedge --- naive minus
+de-Americanized implied volatility, quote by quote --- \emph{on the
+out-of-the-money side}; the wedge on the discarded in-the-money side
+is a stress exhibit about quotes the fit never touches.
+
+\Cref{fig:deamgallery}(a) shows the fitted side of the running node,
+quote by quote (\MacDeamGalSelN\ quotes; construction in
+appendix~\ref{app:deamprotocol}).  Walk the two halves separately.
+The calls (blue, $k\ge0$) sit within a few basis points of zero,
+median $\MacDeamGalSelCallMedianBp$ vol bp --- and the sign deserves
+a sentence: a \emph{negative} wedge cannot be a negative premium
+(\cref{prop:deamdom} forbids one); it is the finite tree's
+European-leg gap from \cref{sec:deamsub}'s budget, the numerical
+floor of the method showing through where the true premium is
+essentially zero.  The puts (orange, $k<0$) are the real payload:
+a few basis points out in the wing, rising steadily toward the money
+and reaching \MacDeamGalSelMaxBp\ vol bp just below $k=0$.  That
+rise has a clean reason worth owning.  The fitting coordinate $k$
+measures moneyness against the \emph{forward}, but the exercise
+right compares strike against the \emph{spot} --- and between the
+spot and the forward (\MacFwdLineSpotDollars\ to
+$\MacDeamBowFResolved$ here) sits a band of strikes whose puts are
+out of the money to the fit and already in the money to the holder:
+real intrinsic today, real premium, at nearly full vega.  The two
+coordinate systems disagree exactly there, and the wedge marks the
+spot.  Median over the whole fitted node:
+\MacDeamGalSelMedianBp\ vol bp --- small, but not small against the
+sub-basis-point error budgets Part~I's fits run on.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_gallery.pdf}
+\caption{What the subtraction is worth, on the population that
+counts.  (a)~The running node's fitted (out-of-the-money) quotes:
+calls hug zero (median $\MacDeamGalSelCallMedianBp$ vol bp --- the
+tree's European-leg gap, not a negative premium); puts rise toward
+the money, to \MacDeamGalSelMaxBp\ vol bp in the band between spot
+and forward where the fit's coordinate and the exercise right
+disagree.  (b)~Eight SPY expiries: the fitted-population median
+grows from \MacDeamGalShortMedianBp\ vol bp at one day to
+\MacDeamGalWorstMedianBp\ at the long end (filled), worst single
+fitted quote \MacDeamGalWorstMaxBp\ (open); the discarded
+in-the-money puts of the running node (orange square) run a median
+of \MacDeamGalItmMedianBp\ vol bp --- a different population, an
+order of magnitude away.}
+\label{fig:deamgallery}
+\end{figure}
+
+Panel~(b) sweeps the whole SPY gallery, one point per expiry.  The
+fitted-population median (filled circles) grows with maturity, from
+\MacDeamGalShortMedianBp\ vol bp on the one-day board to
+\MacDeamGalWorstMedianBp\ at the long end --- exactly the maturity
+dependence the premium map of \cref{fig:deammap} promised, more
+calendar for the rate to work on --- and the worst single fitted
+quote (open circles) reaches \MacDeamGalWorstMaxBp\ vol bp, always
+in the put band just described.  The orange square is the other
+population: the running node's \emph{discarded} in-the-money puts.
+Of those, \MacDeamGalItmDead\ sit on the intrinsic floor with no
+volatility to read at all --- the same \MacDeamGalItmDead\
+floor-bound puts whose pairs dropped out of \cref{sec:deamloop}'s
+refit --- and
+the \MacDeamGalItmN\ that do invert carry a median wedge of
+\MacDeamGalItmMedianBp\ vol bp, up to \MacDeamGalItmMaxBp.  An order
+of magnitude separates the two populations.  When someone quotes
+``the de-Americanization effect'', ask which book they averaged
+over; when this book quotes one, the population is in the sentence.
+
+One last disclosure before the contract, about what the subtraction
+leaves behind.  Each root \eqref{eq:deamroot} is solved strike by
+strike --- no coupling across strikes --- and the clamp
+\eqref{eq:deamhat} nudges each strike from one side only.  Nothing in
+that construction \emph{enforces} coherence across strikes, and
+Chapter~2 taught what coherence means here: the call curve convex in
+strike, because its second derivative is the density.  On a liquid
+board the incoherence injected by noise and clamping hides below the
+quoted spread; on a sparse wing it can surface as a small
+\emph{butterfly violation} --- a locally non-convex stretch of the
+call curve, hence a patch of negative implied density --- handed to
+the model layer as input.  The reference
+implementation, when it repairs such a wing, does so under two
+self-imposed rules that are really one rule --- \emph{a repair aimed
+where the data is weak must be structurally unable to move where the
+data is strong}: wings only, never the near-money core, and never
+outside the quoted band.  This book's fitting chapters assumed
+arbitrage-aware inputs; this is the sentence that says who cleans
+them.
+
+\subsection{The contract}
+\label{sec:deamcontract}
+
+The chapter closes as the others do: three columns of decreasing
+strength --- proved, measured, chosen.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:deamcontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Checked} & \textbf{Convention}\\
+\midrule
+Dominance (\cref{prop:deamdom}): $A\ge E$, $A\ge$ intrinsic.
+Merton (\cref{thm:deammerton}): no dividends, no call premium.
+Deep puts must pay (\cref{prop:deamput}). &
+No-dividend call premium exactly zero over the whole mapped grid;
+plateau onsets at $t=0.5$: puts beyond \MacDeamMapPutBdryPct\%,
+calls below \MacDeamMapCallBdryPct\% of spot (\cref{fig:deammap}). &
+The map's exhibit constants (a $25\%$ volatility, the plateau
+tolerance) --- illustrations, not estimates.\\
+\addlinespace
+Monotonicity of $A(\sigma)$ (cited): off the plateau, the root
+$\sigma^*$ of \eqref{eq:deamroot} is unique when it exists. &
+The synthetic board: truth recovered flat to
+\MacDeamWedgeRootRmsBp\ vol bp rms; the $K=90$ case file,
+$+\MacDeamWexBiasBp$ vol bp naive against an exact root
+(\cref{fig:deamwedge}, \cref{sec:deamsub}). &
+Depth $N_t$, bracket, and bisection count
+(appendix~\ref{app:deamprotocol}); halving the depth measurably moves
+$\sigma^*$ (\MacDeamTblDepthMedianBp/\MacDeamTblDepthMaxBp\ vol bp
+median/worst) --- a numerical-target dial, disclosed.\\
+\addlinespace
+The control-variate identity \eqref{eq:deamcv}: at the root, quote
+minus model premium \emph{is} the European leg, exactly. &
+The bow: measured residuals equal the predicted premium difference
+to \$\MacDeamBowMatchRmsDollars\ rms; the line straightens
+(\$\MacDeamBowRmsBeforeDollars\ to \$\MacDeamBowRmsAfterDollars);
+the root lands \MacDeamBowGapToResolvedBp\ bp from the stored
+forward (\cref{fig:deambow}). &
+Exact in the model only \citep{Burkovska2018}: the lattice diffusion,
+the deterministic dividend path, the one-sided clamp
+\eqref{eq:deamhat} all ride into $\sigma^*$.\\
+\addlinespace
+The premium prices dividend \emph{dates}: zero before an ex-date
+(\cref{thm:deammerton} verbatim), a jump across it
+(\cref{sec:deamdivs}). &
+Cash schedule vs matched-forward smear:
+\MacDeamEscrowRatioMax$\times$ at one forward;
+\$\MacDeamEscrowFlatPreExMax\ of premium invented pre-ex-date by the
+flat smear (\cref{fig:deamescrow}). &
+The dividend convention per name --- Chapter~6's risk decision ---
+and the escrow rescale \eqref{eq:deamalpha} tying it to the fitted
+forward. \\
+\addlinespace
+The plateau is an information boundary: a quote at its exercise
+floor determines no volatility (\cref{sec:deamsub}). &
+\MacDeamGalItmDead\ of the running node's discarded in-the-money
+puts sit at the floor; fitted vs discarded medians
+\MacDeamGalSelMedianBp\ vs \MacDeamGalItmMedianBp\ vol bp
+(\cref{fig:deamgallery}). &
+A failed root reports \emph{no volatility}, never a number; any
+quoted ``de-Am effect'' names its population.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Step back to the book's thesis.  \emph{Validity} was the stopping
+theory: dominance and Merton's theorem hold for every model, and no
+inversion may return a negative premium or read volatility off an
+exercise floor.  \emph{Information} was the geography --- the premium
+identified off the plateau, unidentifiable on it --- and the honest
+bookkeeping of populations: a few basis points where the fit lives,
+hundreds where it does not.  \emph{Convention} was everything inside
+the subtraction: the lattice, the dividend calendar, the clamp, the
+depth, the disclosed rate.  Chapter~6 fitted the observation's frame;
+this chapter removed the one right the frame could not see.  Every
+tree in it marched on calendar time $t$, while the smile's variance
+kept its own clock $\tau$ --- two clocks this book has so far been
+allowed to conflate, because its frozen data happens to agree on
+both.  The next chapter is about the days when they disagree.

@@ -1,0 +1,96 @@
+\section{Numerical protocol}
+\label{app:deamprotocol}
+
+Every measured number in the chapter is computed by one deterministic
+program and inserted into the text mechanically --- nothing empirical
+is typed by hand --- and the chapter uses no randomness anywhere.  Three kinds of numbers are typed instead, deliberately: the
+constants of the constructions themselves (the boards and schedules
+below, which \emph{define} the experiments); arithmetic the reader is
+meant to reproduce by hand (the two-step tree of \cref{sec:deamtree},
+whose inputs are stated there, and plug-in evaluations such as the
+drift floor $0.04\sqrt{0.5/256}\approx0.18\%$); and universal
+constants of the method (the bisection count and bracket below).
+Everything else derives from the frozen snapshot or from the stated
+constructions.
+
+\emph{Trees.}  All trees are Cox--Ross--Rubinstein with the moves and
+probability of \cref{sec:deamtree}.  Depths: $N_t=501$ for
+single-quote exhibits (the worked strike, the root-map curves, the
+escrow figure), $N_t=256$ for whole-chain inversions (the loop
+and the gallery), $N_t=4001$ for converged reference prices (the
+synthetic ``quotes'' of \cref{fig:deamwedge,fig:deamroot} and the
+convergence reference of \cref{fig:deamtree}b).  The bisection
+bracket is $[\max(10^{-4},\,1.5\,|r-q_d|\sqrt{t/N_t}),\,4.0]$ --- the
+floor sits $1.5\times$ above the drift condition --- with $48$
+halvings; a quote below intrinsic, above its static cap ($S$ for a
+call, $K$ for a put), or not bracketed --- the intrinsic plateau ---
+returns no root, and the quote is reported as carrying no premium
+estimate and no volatility.
+
+\emph{The wedge board (\cref{fig:deamwedge},
+\cref{sec:deamsub}'s case file).}  American calls: $S=100$, $r=2\%$,
+dividend yield $q_d=6\%$, true volatility $25\%$, $t=0.5$, strikes
+$60$ to $140$ every $2.5$.  ``Quotes'' are converged-tree American
+prices at the true volatility; the naive curve inverts them through
+the analytic European Black formula at the board's forward and
+discount; the de-Americanized curve solves \eqref{eq:deamroot} at
+depth $501$.  The case file's strike is $K=90$.
+
+\emph{The premium map (\cref{fig:deammap}).}  Fixed $\sigma=25\%$;
+strikes $55\%$ to $165\%$ of spot, maturities $0.05$ to $1.5$ years;
+puts at $r=4\%$, $q_d=0$; calls at $r=2\%$, $q_d=6\%$; whole-chain
+depth.
+A node is on the intrinsic plateau when the American price exceeds a
+\emph{positive} intrinsic value by less than $\$0.001$ per $100$ of
+spot.  The Merton check reprices the call panel at $q_d=0$ over
+three maturities and records the largest $|A-E|$ anywhere.
+
+\emph{The hand tree (\cref{fig:deamtree}).}  American put, $S=100$,
+$K=105$, $\sigma=30\%$, $t=0.5$, $r=6\%$, $q_d=0$, $N_t=2$; every
+node value is a generated number.  The convergence panel reprices the
+same put at even depths $2$--$62$ and depths $64$--$420$ in steps of
+six, against the $N_t=4001$ reference (the reference is odd, but at
+that depth the odd/even alternation sits far below the panel's
+scale).
+
+\emph{The root map (\cref{fig:deamroot}).}  American puts, $S=100$,
+$r=4\%$, $q_d=0$, $t=0.5$, strikes $80/110/160$, volatilities $2\%$
+to $90\%$ at depth $501$; quotes for the two rootable strikes are
+converged prices at $25\%$; the deep strike's quote is its intrinsic
+floor, which the converged price matches to
+\MacDeamRootPlateauGapCents\ cents.
+
+\emph{The escrow comparison (\cref{fig:deamescrow}).}  One cash
+dividend $d_1=\$6$ at $t_1=0.35$ years, $S=100$, $r=2\%$,
+$\sigma=25\%$.  Panel (a): calls at $t=0.5$, strikes $60$ to $115$;
+the smooth-yield comparator uses the $q_d$ that reproduces the
+escrowed forward at $t=0.5$ exactly.  Panel (b): the $K=85$ call at
+expiries $0.05$ to $1.0$ in steps of $0.025$; the comparator holds
+the schedule's one-year-equivalent flat yield at every expiry.  The
+quoted ratio maximum is taken where the comparator's premium exceeds
+one cent.
+
+\emph{The real chain (\cref{fig:deambow,fig:deamgallery}).}  The raw
+SPY chains embedded in the frozen snapshot; a strike pairs into the
+parity board when both legs quote a live (positive) bid, mids are
+bid--ask midpoints --- Chapter~6's rules verbatim.  Carry convention
+for every real-chain tree: the rate is the stated money-market
+constant $r=4.3\%$ per year, continuously compounded, for the
+snapshot date (the board's own fitted slope,
+$\MacFwdLineRateNaivePct\%$, is discarded per
+\cref{sec:fwdclamp}); the dividend carry is
+$q_d=r-\log(F/S)/t$ from the working forward, so the tree's forward
+matches it exactly; the discount used by the naive European
+comparator is $e^{-rt}$ under the same convention.  The loop of
+\cref{sec:deamloop} starts from the naive fitted forward, and each
+pass de-Americanizes at the whole-chain depth and refits the line on
+the pairs whose two legs both rooted.  The gallery's fitted population per
+expiry: the out-of-the-money side (puts strictly below the resolved
+forward, calls at or above), live bid, inside the wing cut
+$|\log(K/F)|\le4\,\sigma_{\text{atm}}\sqrt{t}$, with
+$\sigma_{\text{atm}}$ the node's prepared mid volatility nearest the
+money; the naive leg inverts the same mid through the analytic Black
+formula at the node's resolved forward.  The stress population is
+the running node's puts with $K$ above the resolved forward.  The
+depth-sensitivity row of the contract repeats the running node's
+fitted inversion at $N_t=128$ and compares roots lane by lane.

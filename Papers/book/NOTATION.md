@@ -150,6 +150,27 @@ dividends are `d_i` (the differential stays upright `\dd`).
 | `PV` | present value of a dividend schedule (roman, two letters — `V` stays MCS's) |
 | `b, b_min` | borrow spread (residual carry); its identifiability floor |
 
+## Chapter 7 — removing early exercise
+
+The chapter deliberately introduces almost nothing.  The observed American
+mids are Ch. 6's raw quotes `𝖢(K)`, `𝖯(K)`; the carry pair `(r, q_d)` and
+calendar `t` are Ch. 6's.  The early-exercise premium has NO symbol: it is
+always written `A − E` or named in words (a symbol used fewer than three
+times in display math would violate the contract's symbol budget).
+
+| Symbol | Meaning |
+|---|---|
+| `A(σ)` | American model (tree) price of one option as a function of σ, all else fixed |
+| `E(σ)` | its European twin: the same tree with the stopping right removed |
+| `A_j^{(n)}, E_j^{(n)}` | node values on tree layer n, node j (§7.3 rollback) |
+| `σ*` | the de-Americanized volatility: the root of A(σ*) = quoted mid (star = distinguished value, as `u*`, `f*`) |
+| `p` | CRR up-move probability (Ch. 3's JW slope stays `p_J`; Ch. 4's adjoint states stay `p^n`) |
+| `N_t, Δt` | tree step count on the calendar clock and the step `t/N_t` (Ch. 4's `N_τ, Δτ` pattern; `Δt` composite, no clash with bare `Δ`) |
+| `ϑ, 𝒯` | a stopping time; the set of stopping times on [0, t] (§7.2 only; `ϑ` is vartheta, kept visually apart from Ch. 3–4's `θ`) |
+
+Note on `E`: italic `E` is always a PRICE in this book; the expectation
+operator stays blackboard `𝔼`.  Stated once at first use in §7.1.
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,

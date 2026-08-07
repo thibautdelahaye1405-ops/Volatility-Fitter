@@ -1,0 +1,200 @@
+\section{The subtraction}
+\label{sec:deamsub}
+
+We can price the stopping right at any volatility we choose.  The
+market, meanwhile, hands us one American mid per quote and tells us
+nothing else.  This section removes the right from the quote, and the
+whole method fits in one line:
+\begin{equation}
+\boxed{\;\text{find }\sigma^*\ \text{such that}\
+A(\sigma^*)=\mathsf{C}(K)\ \text{(or } \mathsf{P}(K)\text{)},\
+\text{then report }\sigma^*.\;}
+\label{eq:deamroot}
+\end{equation}
+In words: turn the tree's volatility dial until its \emph{American}
+price reproduces the quoted mid, and hand the dial's position to
+Part~I as if it had come from a European quote.  This is the standard
+desk repair, called \emph{de-Americanization}, and its properties ---
+pragmatic, fast, exact inside the model and only there --- were
+studied critically by \citet{Burkovska2018}.  The rest of the section
+explains why the line works, when it fails, and what each error costs.
+
+\subsection{Why the root is the right volatility}
+
+At first sight \eqref{eq:deamroot} looks like it answers the wrong
+question: we wanted the premium subtracted, and instead we matched an
+American price.  The resolution is an identity.  At the root, add and
+subtract the tree's European leg:
+\begin{equation}
+\underbrace{\mathsf{C}(K)}_{\text{the quote}}
+-\underbrace{\big[A(\sigma^*)-E(\sigma^*)\big]}_{\text{the model's
+premium at }\sigma^*}
+=E(\sigma^*),
+\label{eq:deamcv}
+\end{equation}
+which holds \emph{exactly}, because $A(\sigma^*)$ equals the quote by
+construction.  Read it right to left: the volatility $\sigma^*$ that
+reprices the American quote is, at the same time, the volatility at
+which the \emph{European} tree price equals the quote minus the
+model's premium.  Solving \eqref{eq:deamroot} therefore \emph{is}
+subtracting a premium --- the model's --- and the subtraction is
+honest to the extent the model's premium matches the market's.  Inside
+the model it matches perfectly; outside, the difference between the
+true premium and the modelled one (a different diffusion, a different
+dividend path) passes straight into $\sigma^*$.  That is the method's
+one irreducible approximation, and the chapter's contract
+(\cref{sec:deammatters}) states it rather than hiding it.
+
+There is a second, quieter cancellation, and it is why a $1/N_t$
+scheme can serve error budgets below a volatility basis point --- the
+standard Part~I's fits are held to.  The tree is wrong about
+\emph{both} of its legs by discretization; but the two legs share one
+lattice, so most of that error is common --- \cref{fig:deamtree}(b)
+measured the difference $A-E$ converging
+\MacDeamConvRatio$\times$ cleaner than either leg in the median.
+This pairing has a name worth knowing: the tree acts as a
+\emph{control variate} --- the statistician's term for computing an
+error-prone quantity twice, once on each side of a subtraction, so
+that the shared error cancels in the difference.  What the pairing
+cannot cancel is the European leg's own residual gap against the
+analytic Black price, and that gap is what survives into the reported
+volatility.  The budget below prices it.
+
+\subsection{When the root exists, and the honest failure when it
+does not}
+
+Rooting a scalar equation is legitimate when the function is monotone,
+and here it is a theorem: in the Black--Scholes model, the value of an
+American option with convex payoff is nondecreasing in the volatility
+--- convexity of the payoff propagates to the value function of the
+stopping problem, and more volatility then means more value
+\citep{ElKarouiJeanblancShreve1998}.  Away from the intrinsic floor
+the monotonicity is strict, so when a root of \eqref{eq:deamroot}
+exists it is unique.  The theorem is about the continuous problem, not
+about any finite tree; the working method leans on something weaker
+and verifiable --- \emph{bisection}, which needs only a bracket
+$[\sigma_{\text{lo}},\sigma_{\text{hi}}]$ with the quote between
+$A(\sigma_{\text{lo}})$ and $A(\sigma_{\text{hi}})$, and halves it
+until the root is pinned (the bracket floor sits above
+\cref{sec:deamtree}'s drift condition; all constants in
+appendix~\ref{app:deamprotocol}).
+
+``When a root exists'' is not decoration.  \Cref{fig:deamroot} draws
+the map $\sigma\mapsto A(\sigma)$ for three American puts under a
+$4\%$ rate at half a year.  For the out-of-the-money strike ($K=80$)
+and the moderately in-the-money one ($K=110$), the curve rises
+strictly and crosses its quote --- the dots, priced at a true $25\%$
+--- exactly once: the roots are the open circles, and both recover
+$25\%$.  The deep strike ($K=160$) is another animal.  Its curve
+\emph{starts} on the intrinsic floor of \$\MacDeamRootDeepIntr\ ---
+at the true volatility, the converged price carries
+\MacDeamRootPlateauGapCents\ cents of time value; the quote \emph{is}
+the floor, to the cent --- and only lifts off the floor at
+volatilities roughly double the market's.  A quote sitting \emph{at}
+that floor is never strictly crossed from above: there is no root,
+because there is no volatility in the price to find.  This is
+\cref{sec:deamwhere}'s dead zone met in the flesh, and the honest
+output is a refusal --- ``this quote determines no volatility'' ---
+not a number.  The refusal costs nothing downstream: a quote with no
+volatility content had nothing to contribute to a volatility fit.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_root.pdf}
+\caption{The map $\sigma\mapsto A(\sigma)$ for three American puts
+($S=100$, $r=4\%$, $t=0.5$).  The $K=80$ and $K=110$ curves cross
+their quotes (dots, priced at a true $25\%$) exactly once --- the
+open-circled roots.  The $K=160$ curve starts \emph{on} the intrinsic
+floor (dashed): at the true volatility the price carries
+\MacDeamRootPlateauGapCents\ cents of time value, the quote equals
+the floor, and no root exists --- the quote determines no
+volatility, and the method says so rather than inventing one.}
+\label{fig:deamroot}
+\end{figure}
+
+\subsection{From the root to the prepared quote}
+
+One root per strike is also one \emph{premium estimate} per strike:
+by \eqref{eq:deamcv}, the model premium at the root is
+\begin{equation}
+\max\big(\mathsf{C}(K)-E(\sigma^*),\,0\big),
+\label{eq:deamhat}
+\end{equation}
+where the clamp at zero is \cref{prop:deamdom} enforced against
+noise --- the true premium cannot be negative, so a negative estimate
+is quote or tree noise, not information.  The same single estimate is
+subtracted from the bid, the mid, and the ask alike, so the quoted
+dollar spread --- the market's own statement of uncertainty, which
+Chapter~6 was careful to preserve --- survives the surgery untouched.
+The shifted band then flows on exactly as Part~I assumed:
+parity conversion to a normalized call (Chapter~2's price in units of
+$DF$), inversion to total variance, fitting.  A quote whose root find failed keeps its raw band and an
+estimate of zero; the ordinary European sanity filters decide its
+fate.
+
+One remark about clocks, before the clocks chapter makes it a theme.
+The root $\sigma^*$ is a \emph{calendar-clock} Black volatility: the
+tree marched on $t$, where discounting and carry live.  What Part~I
+actually consumes is the total variance $w$ --- Chapter~2's
+$\sigma^2\tau$ --- inverted from the de-Americanized \emph{price},
+and a price is clock-free: only the
+reported quotient $\sigma=\sqrt{w/\tau}$ depends on which time
+$\tau$ one divides by.  In this book's frozen data the two clocks
+agree to the day, so nothing subtle hides in the figures; Chapter~8
+is about the cases where they do not.
+
+\subsection{One strike, by the numbers}
+
+Return to the worked board of \cref{fig:deamwedge} and pull out the
+$K=90$ call ($S=100$, $r=2\%$, $q_d=6\%$, true $\sigma=25\%$, half a
+year; single-quote tree depth in appendix~\ref{app:deamprotocol}).
+The tree prices
+\[
+A=\MacDeamWexAmDollars,
+\qquad
+E=\MacDeamWexEuDollars,
+\qquad
+A-E=\MacDeamWexPremiumDollars :
+\]
+with a $6\%$ yield to capture against a $2\%$ rate, the stopping
+right is genuinely valuable on an in-the-money call ---
+\MacDeamWexPremiumPct\% of this option's worth sits in the premium.
+Hand $A$ to the analytic European inversion and it returns
+$\sigma_{\text{naive}}=\MacDeamWexNaivePct\%$ --- a
+$+\MacDeamWexBiasBp$ vol bp phantom, the premium booked as
+volatility.  Solve \eqref{eq:deamroot} instead and the root comes
+back $\sigma^*=\MacDeamWexRootPct\%$: the truth, to bisection
+tolerance.
+
+\subsection{The error budget}
+
+The reported $\sigma^*$ carries four error sources; they scale
+differently and are worth separating once.
+\begin{itemize}[leftmargin=1.6em,itemsep=2pt]
+\item \emph{Bisection tolerance.}  The working inversion runs $48$
+halvings of a bracket at most $4.0$ wide:
+$4\cdot2^{-48}\approx1.4\times10^{-14}$ of volatility.  Nothing.
+\item \emph{The finite tree.}  The control-variate pairing protects
+the root, but the European-leg gap against analytic Black survives.  Its
+honest, measured size on real data: halving the whole-chain depth from
+$N_t=256$ to $128$ moves the de-Americanized volatilities of the
+frozen running node's fitted quotes by \MacDeamTblDepthMedianBp\ vol
+bp in the median and \MacDeamTblDepthMaxBp\ at worst --- so depth is
+a numerical-target dial with measurable stakes, not a free speed
+knob.  Its small systematic footprint reappears, labelled, in
+\cref{sec:deammatters}.
+\item \emph{The carry.}  The tree runs on Chapter~6's $(F,D)$ and
+dividend model, and $\sigma^*$ inherits them at full strength: the
+method removes the early-exercise bias and cannot repair a wrong
+forward.  (Circularly, the forward was fitted from American quotes
+--- \cref{sec:deamloop} untangles that loop.)
+\item \emph{The model.}  The lattice diffusion between dividend
+dates, the deterministic dividend path of \cref{sec:deamdivs}, and
+the one-sided clamp \eqref{eq:deamhat} are modelling choices.  Exact
+in the model, approximate outside it; disclosed in the contract.
+\end{itemize}
+
+We now own the subtraction end to end: a root, its meaning as a
+premium removal, its unique-existence theorem, its honest refusal,
+and its priced errors.  What we have not yet earned is the tree's
+\emph{carry input} when real cash dividends are on the calendar.

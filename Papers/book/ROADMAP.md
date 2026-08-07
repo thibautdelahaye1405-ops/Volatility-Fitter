@@ -26,23 +26,24 @@ the prose. Therefore:
   implementation". No product names, no repo paths, no internal note
   citations — public literature only.
 
-## Status (2026-08-06)
+## Status (2026-08-07)
 
 The pedagogy contract governs (rewritten 2026-08-05 after the author
 rejected Chapters 3–4's original register; both were fully revised).
-Chapters 5 and 6 were written under the contract from the start
-(newcomer fresh-reader pass run on each, all findings resolved).
-Chapter 6 (2026-08-06) opens Part II and is the most recent chapter
-held to the contract; with Chapters 4–5 it serves as TONE EXEMPLAR.
+Chapters 5–7 were written under the contract from the start (newcomer
+fresh-reader pass run on each, all findings resolved).  Chapter 7
+(2026-08-07) is the most recent chapter held to the contract; with
+Chapters 4–6 it serves as TONE EXEMPLAR.
 Next:
 
-1. Chapter 7 (removing early exercise) — sources: the two Note 05
-   editions — written under the contract from the start.  Chapter 6
-   planted its hooks: the residual bow of fig 6.1(b), the 68 bp
-   naive-vs-resolved forward gap on the running node, and the
-   borrow/de-Am joint-closure caveat in §6.8 all point at Ch. 7.
-   The frozen snapshot's chains are American and carry the stored
-   resolved forwards per node — the natural data spine.
+1. Chapter 8 (the market's clock) — sources: the two Note 11 editions.
+   Chapter 7 planted the hook (its closing line: two clocks the book
+   has conflated because the frozen data agrees on both; "the next
+   chapter is about the days when they disagree"), and Chapters 6–7
+   established calendar-t financing vs variance-τ conventions.  Data:
+   the ONE anticipated supplement (an NVDA earnings-week capture) OR a
+   synthetic event construction if no supplement is available at
+   writing time — do NOT refetch anything else.
 
 Chapter 2 keeps its monograph register for now (it doubles as the
 standalone paper); whether to soften it inside the book is the author's
@@ -131,7 +132,7 @@ local volatility placed among the models (author's decision).
 | 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | **DONE** (written under the pedagogy contract 2026-08-06; tone exemplar with revised Ch. 4) |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | **DONE** (written under the pedagogy contract 2026-08-06; tone exemplar with Chs. 4–5) |
-| 7  | Removing early exercise | 05 | pending |
+| 7  | Removing early exercise | 05 | **DONE** (written under the pedagogy contract 2026-08-07; tone exemplar with Chs. 4–6) |
 | 8  | The market's clock | 11 | pending |
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics: the missing derivative | 12 | pending |
@@ -581,3 +582,57 @@ keeping Chapter 2 self-contained.
   (incl. reproducing every generated number from the closed
   forms).  Full book builds clean at 132 pp, no undefined refs, no
   ch6 overfulls.  Next: Chapter 7 (removing early exercise).
+- 2026-08-07: Chapter 7 WRITTEN under the pedagogy contract from the
+  start (`chapters/07_early_exercise/`, 7 sections + appendix 7.A,
+  ~15 pp main text, book pages 127–143 of the 150-page build).
+  Spine: the observation is an American price (A ≥ E; the premium
+  A − E deliberately has NO symbol — rule 6) → where the premium
+  lives (Merton proved slowly via Jensen + martingale spot; the
+  deep-put threshold S < K(1−e^{−rt}) as a corrected
+  strictly-beats-the-European-plan proposition; the premium MAP with
+  measured intrinsic-plateau boundaries 129%/78% of spot at t=½ and
+  the Merton check EXACTLY zero) → a two-step CRR tree hand-solved
+  (moment-matched p displayed with explicit exponentials — u, d never
+  become symbols; obstacle binds at the down node, premium 0.75;
+  even-N convergence panel shows the difference A−E converging 3×
+  cleaner: the control-variate seed) → the subtraction (boxed root
+  find A(σ*)=𝖢(K); the add-and-subtract identity; monotonicity cited
+  with honest scope; the intrinsic-plateau NO-ROOT refusal drawn;
+  worked strike +219 bp naive vs exact 25.00% root; budget with
+  measured depth sensitivity 2.0/8 bp for 256→128) → dividends as
+  dates (recombination-breakage display, escrowed lattice,
+  forward-consistent rescale; the premium is EXACTLY zero pre-ex-date
+  and JUMPS across it ≈ dividend × P(ITM) — a $6 heavy-payer board;
+  the flat smear invents $0.65 where the truth is zero, 3.1× at a
+  matched forward) → the Chapter-6 loop closed as a two-pass fixed
+  point on the running node (rate pinned 4.3% by convention since the
+  board's own slope says −0.24%; 123/158 pairs invert, 35 on the
+  floor; the fig 6.1(b) BOW REPRODUCED by the tree to $0.17 rms = the
+  leftover noise; line straightens $2.97→$0.17; fitted forward
+  762.71→768.20, 4 bp from the stored 767.92 vs 68 bp naive — the
+  residual read as the dividend-convention gap) → how much it matters
+  (fitted vs discarded populations: SPY gallery medians 1.32→6.8 bp
+  across 8 expiries, worst fitted quote 221 bp in the spot–forward
+  put band — the fit-coordinate-vs-exercise-right disagreement made
+  explicit — against 161 bp median / 448 max on discarded ITM puts;
+  wing butterfly disclosure; contract table).  7 figures + 75 macros
+  from `scripts/ch07/gen_figures.py` (self-contained CRR engine —
+  scalar, batch with per-lane σ bisection, escrowed; frozen snapshot
+  raw chains via ch03/ch06 figlib loaders; NO randomness anywhere).
+  Notation added BEFORE writing (A(σ), E(σ), σ*, p, N_t, Δt, ϑ, 𝒯;
+  italic E = price vs blackboard 𝔼 noted); references +CRR, Merton,
+  Peskir–Shiryaev, El Karoui–Jeanblanc–Shreve, Burkovska et al.
+  Newcomer fresh-reader pass run (sub-agent persona): all sections
+  summarizable, ~25 findings (one GENUINE math defect — Prop 7.3
+  claimed "beats every waiting plan" while the proof gives
+  beats-the-European-plan — fixed; "control variate"/"batch
+  depth"/"time value"/"butterfly violation" glossed; the §7.6
+  root-vs-forward word collision renamed throughout incl. the figure
+  callout; the inverted 41-bp exchange-rate phrasing replaced by
+  Ch. 6's own macros; the OTM-side vega rationale corrected to
+  same-vega-tighter-package; six multi-clause sentences split) ALL
+  resolved; math verified line by line by the lead (vega identity,
+  Jensen chain, drift floor, every hand-tree number recomputed
+  independently, CV identity, recombination display, escrow rescale).
+  Full book builds clean at 150 pp, no undefined refs, no ch7
+  overfulls.  Next: Chapter 8 (the market's clock).

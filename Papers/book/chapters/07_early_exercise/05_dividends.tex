@@ -1,0 +1,139 @@
+\section{A dividend is a date, not a rate}
+\label{sec:deamdivs}
+
+So far the tree has run on a smooth carry: the pair $(r,q_d)$ implied
+by Chapter~6's fitted forward, with the dividend yield $q_d$ draining
+value out of the spot continuously.  For the \emph{European} leg that
+is often good enough --- a European price cares about the forward at
+expiry, and Chapter~6 showed how to make any dividend convention
+reproduce the right forward.  The \emph{stopping right} is pickier.
+\Cref{sec:deamwhere} located the call-side premium in capturing a
+dividend by exercising \emph{before its ex-date} --- the last moment
+the stock still carries the payment.  A date, not a rate.  This
+section teaches the tree about dates, and measures what smearing them
+into a rate gets wrong.
+
+The obvious construction fails, instructively.  Take the lattice of
+\cref{sec:deamtree} and simply subtract the cash amount $d_1$ ---
+Chapter~6's subscripted dividend symbol, not the Black argument
+$d_\pm$ --- from every node at the ex-date.  Recombination dies on the spot: follow the
+two two-step paths that should meet, with an ex-date between the
+steps, writing $\mathrm{u}=e^{\sigma\sqrt{\Delta t}}$ just for this
+display:
+\[
+\text{up, drop, then down: } (S\mathrm{u}-d_1)/\mathrm{u} = S -
+d_1/\mathrm{u},
+\qquad
+\text{down, drop, then up: } (S/\mathrm{u}-d_1)\,\mathrm{u} = S -
+d_1\mathrm{u} .
+\]
+The multiplicative moves scale the subtracted cash differently on
+each path, the two nodes no longer coincide, and the lattice explodes
+from $n+1$ nodes per layer into $2^{N_t}$ distinct paths --- from a
+few hundred values to more than there are atoms in a spreadsheet.
+
+The classical repair is the \emph{escrowed spot}
+\citep{Hull2018}.  Split the stock into the part that will be paid out
+and the part that will not: set aside (``escrow'') the present value
+of the scheduled dividends, and let only the remainder diffuse.  The
+diffusing base starts at
+\[
+X_0 \;=\; S-\mathrm{PV}_0,
+\qquad
+\mathrm{PV}_0=\textstyle\sum_i d_i\,e^{-r t_i},
+\]
+with cash amounts $d_i$ at ex-date year fractions $t_i\le t$, exactly
+Chapter~6's schedule objects.  The base lattice is purely
+multiplicative --- it recombines, cash never touches it --- and the
+\emph{true} spot at any node is reconstructed when needed: base value
+plus the present value of the dividends \emph{not yet paid} at that
+layer's date.  The exercise comparison in \eqref{eq:deamroll} tests
+intrinsic against that true cum-dividend spot, so the holder's
+decision sees every upcoming payment; at expiry every scheduled
+dividend has been paid and the payoff reads the bare base.  One
+honest label: under escrow the thing that diffuses lognormally is the
+dividend-stripped spot, so the model's spot distribution is a
+\emph{displaced} lognormal --- a slightly different law than the
+smooth-carry tree at the same forward.  That is a modelling choice
+inside the premium, and it goes in the contract with the others.
+
+One consistency condition ties the schedule to Chapter~6, and it must
+hold \emph{exactly}: the escrowed tree's forward,
+$(S-\mathrm{PV}_0)\,e^{rt}$, has to reproduce the fitted forward $F$
+--- otherwise the premium machine and the parity line disagree about
+the same chain.  When the forecast schedule misses by a little, the
+repair follows Chapter~6's escrow lesson --- the \emph{timing} is the
+forecast's, the \emph{amounts} bend to the market --- by rescaling
+every cash amount by the common factor
+\begin{equation}
+\frac{S-F e^{-rt}}{\sum_i d_i\,e^{-r t_i}}\,,
+\label{eq:deamalpha}
+\end{equation}
+which is exactly the ratio that makes the escrowed forward land on
+$F$.  (A nonsensical factor --- negative, or far from one --- is a
+sign the schedule itself is wrong, and rejects it.)
+
+Now the measurement: what does the date-aware tree know that the
+smeared one cannot?  \Cref{fig:deamescrow} prices a deliberately
+heavy payer --- one \$6 dividend on a \$100 stock, ex-date at $0.35$
+years, against a $2\%$ rate --- both ways.  In panel~(a), fix the
+expiry at $t=0.5$ and hand both models the \emph{same} forward
+(\$\MacDeamEscrowFwd; the matching smooth yield is
+$q_d=\MacDeamEscrowQeqPct\%$).  The premiums still disagree ---
+everywhere, and by up to \MacDeamEscrowRatioMax$\times$ where both
+are meaningfully positive.  Matching the forward is not enough,
+because the premium prices the \emph{timing} of the payout: a lump
+of value leaving at one date is worth more to an exerciser --- who
+can position just ahead of it --- than the same value bleeding out
+smoothly.
+
+Panel~(b) is the sharper exhibit.  Fix the in-the-money $K=85$ call
+and sweep the \emph{expiry} across the ex-date.  The date-aware
+premium (blue) is \emph{exactly zero} --- machine zero,
+$\MacDeamEscrowCashPreExMax$ --- for every expiry before $0.35$:
+an option that expires before the ex-date has no dividend inside its
+life to capture, so \cref{thm:deammerton} applies verbatim.  At the
+ex-date the premium does not fade in; it \emph{jumps}.  The reason is
+worth one plain sentence: for an expiry just past the date, the
+holder can exercise the instant before the stock goes ex and collect
+the full cum-dividend intrinsic, while the European twin must ride
+through the drop --- so crossing the date hands the best plan, at
+once, roughly the dividend times the probability of finishing in the
+money (the panel's jump is a little under \$5 of the \$6, this call
+being deep but not certain).  The smeared comparator (green, the schedule's
+one-year-equivalent flat yield $q_d=\MacDeamEscrowFlatQPct\%$)
+misses both regimes: before the date it \emph{invents}
+\$\MacDeamEscrowFlatPreExMax\ of premium where the truth is exactly
+zero, and after the date it underprices the lump it spread out.  A
+dividend forecast, for the stopping right, is a calendar --- the
+amounts matter, and the dates matter separately.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_escrow.pdf}
+\caption{One \$6 cash dividend, ex-date $0.35$ years, $r=2\%$,
+$\sigma=25\%$.  (a)~Calls at $t=0.5$ under the escrowed schedule
+versus the smooth yield matched to the \emph{same} forward
+(\$\MacDeamEscrowFwd): equal forwards, unequal premiums --- up to
+\MacDeamEscrowRatioMax$\times$ --- because the premium prices the
+payout's timing.  (b)~The $K=85$ call across expiries: the date-aware
+premium is exactly zero before the ex-date (nothing inside the
+option's life to capture: \cref{thm:deammerton} verbatim) and jumps
+across it; the flat smear ($q_d=\MacDeamEscrowFlatQPct\%$) invents
+\$\MacDeamEscrowFlatPreExMax\ of premium where the truth is zero and
+underprices the lump after.}
+\label{fig:deamescrow}
+\end{figure}
+
+For the frozen SPY chains that thread this book, the chapter's own
+real-data figures run the smooth-carry tree with the
+forward-consistent $q_d$: an ETF's quarterly dividends are small, and
+the fitted forward already carries their information.  The residual
+cost of that convention is measured, not assumed, in the next section
+--- a few basis points of forward.  For a single name with heavy
+dates, the escrowed tree is the honest default, and either choice
+rides into $\sigma^*$ as part of the model.
+
+We now have the machine, the subtraction, and the carry.  One debt to
+Chapter~6 remains --- the forward that all of this runs on was itself
+fitted from American quotes.

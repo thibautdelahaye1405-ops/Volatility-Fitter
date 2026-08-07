@@ -1,0 +1,71 @@
+% Chapter 7 — removing early exercise.
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch07/gen_figures.py from data/ (frozen snapshot raw chains --
+% American-style, with stored resolved forwards -- plus deterministic
+% synthetic constructions).  Notation additions are in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract).  After this chapter the reader can:
+%   1. Explain why a listed American quote is worth at least its European
+%      twin, and prove where the premium is exactly zero (Merton's
+%      no-dividend call) and where it must be positive (the deep put
+%      threshold S < K(1 - e^{-rt})) -- mapping the quote plane before
+%      any computation.
+%   2. Build a binomial tree from two matching conditions, hand-solve a
+%      two-step American put with the obstacle max, and explain why
+%      dropping the max prices the European twin.
+%   3. Explain de-Americanization as one root find per quote (A(sigma*) =
+%      quoted mid) and why it works -- the market's premium cancels
+%      against the model's, and the tree's own bias largely cancels
+%      between its two legs -- plus its honest failure: a quote at the
+%      intrinsic floor determines no volatility.
+%   4. Derive the escrowed lattice for cash dividends (recombination
+%      argument + forward consistency with Chapter 6's fitted F) and
+%      explain why a smeared yield misprices the stopping right: the
+%      premium is zero before an ex-date and jumps across it.
+%   5. Close Chapter 6's loop: resolve the parity/de-Americanization
+%      circularity as a two-pass fixed point, reproduce fig. 6.1(b)'s
+%      residual bow from the tree, and size the effect honestly --
+%      fitted population vs discarded population -- on the frozen gallery.
+% Every section serves one of these five goals.
+\renewcommand{\figdir}{figures/ch07}
+\chapter[Removing early exercise]{Removing Early Exercise}
+\label{ch:deam}
+\chaptermark{Removing early exercise}
+
+\chaptersynopsis{Chapter~6 fitted the forward and the discount from the
+option chain and left one contamination standing: the residuals of the
+parity line bowed, dollars deep, because listed equity options carry a
+right the European pricing identity knows nothing about --- the right to
+exercise early.  This chapter measures that right and subtracts it.  A
+little optimal-stopping theory maps where the right has value before
+anything is computed: never for a call on a name that pays no dividends
+(a theorem of Merton's), always for a deep enough put under a positive
+rate, and nowhere at all in the dead zone where a price equals its
+exercise floor and carries no volatility information.  A two-step
+binomial tree, solved by hand, prices the right; the removal is then one
+root find per quote --- find the volatility at which the tree's American
+price equals the quoted mid, and report that volatility as the European
+equivalent.  The subtraction is a controlled cancellation: the market's
+premium cancels against the model's, and most of the tree's own
+discretization error cancels between its American and European legs.
+Dividends enter as dates, not rates --- the premium is exactly zero
+before an ex-date and jumps across it, which no smeared yield can
+reproduce.  The chapter closes Chapter~6's loop on the frozen SPY node:
+the parity residual bow is reproduced by the tree to the noise level,
+the de-Americanized line comes out straight, and its root lands within a
+few basis points of the stored resolved forward.  On the quotes a fit
+actually consumes, the whole effect is a few volatility basis points ---
+on the discarded deep in-the-money side it is a hundred or more, and
+knowing which number to quote is part of the lesson.}
+
+\input{chapters/07_early_exercise/01_extra_right}
+\input{chapters/07_early_exercise/02_where}
+\input{chapters/07_early_exercise/03_tree}
+\input{chapters/07_early_exercise/04_subtraction}
+\input{chapters/07_early_exercise/05_dividends}
+\input{chapters/07_early_exercise/06_loop}
+\input{chapters/07_early_exercise/07_matters}
+
+\begin{chapterappendices}
+\input{chapters/07_early_exercise/A_protocol}
+\end{chapterappendices}

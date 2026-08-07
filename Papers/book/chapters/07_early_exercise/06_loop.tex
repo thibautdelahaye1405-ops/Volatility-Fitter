@@ -1,0 +1,119 @@
+\section{The loop with Chapter~6, closed}
+\label{sec:deamloop}
+
+Here is the circle we have been walking around.  To run the tree, we
+need the carry --- Chapter~6's pair $(F,D)$, the forward and the
+discount factor.  Chapter~6 fitted them from put--call parity.  But
+parity, as derived in \cref{sec:fwdtwo}, is a statement about
+\emph{European} portfolios, and the quotes on the line were American:
+each mid shifted by its own premium, more on the put side than the
+call side, which is exactly why the residuals bowed and the naive
+fitted forward sat \MacDeamBowNaiveGapBp\ bp low.  (Basis points of
+\emph{forward} in this section, not of volatility --- we are back on
+Chapter~6's ground.)  So the subtraction needs the forward, and the
+forward needs the subtraction.  Neither comes first.
+
+The resolution is the standard one for a fixed point: start with the
+biased answer and iterate, because each half-step improves the input
+to the other.  Concretely, on the running node's board of
+\MacDeamBowNPairs\ paired strikes:
+\begin{enumerate}[leftmargin=1.8em,itemsep=2pt]
+\item \emph{Pass one.}  Take the naive fitted forward
+$\hat F=\MacDeamBowFNaive$ from \cref{fig:fwdline} as the starting
+carry.  De-Americanize every quote on the board --- both legs of
+every pair --- through \eqref{eq:deamroot}, and subtract each leg's
+premium estimate \eqref{eq:deamhat} from its mid.  Refit the parity
+line \emph{on the de-Americanized mids}.  The fitted forward moves.
+\item \emph{Pass two.}  Rebuild the carry from the new forward and do
+it again.  This time the fitted forward moves by only
+\MacDeamBowPassDeltaBp\ bp --- the loop has converged for any purpose
+in this book, and a third pass is not worth its arithmetic.
+\end{enumerate}
+One input is deliberately \emph{not} taken from the board: the rate.
+Chapter~6 proved the line's slope is the poorly identified
+coefficient, and this board makes the point personally --- its fitted
+slope implies $r=\MacFwdLineRateNaivePct\%$, a negative rate in
+mid-2026, which is noise wearing a suit.  Following
+\cref{sec:fwdclamp}'s discipline, the rate is pinned by a disclosed
+convention (a money-market $4.3\%$; appendix~\ref{app:deamprotocol})
+and the \emph{level} --- the well-measured number --- carries the
+information, through $q_d=r-\log(F/S)/t$.
+
+Not every pair survives the loop, and the dropouts are old friends:
+on \MacDeamBowNDropped\ of the \MacDeamBowNPairs\ pairs, the deep
+in-the-money put sits on its intrinsic floor --- \cref{sec:deamsub}'s
+no-root lane, live on a real board --- so no premium can be measured
+there and the pair is left out of the refit.  The
+\MacDeamBowNKept\ both-leg pairs that remain are the population of
+\cref{fig:deambow}.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_bow.pdf}
+\caption{Chapter~6's debt, paid (SPY December 2026,
+\MacDeamBowNKept\ of \MacDeamBowNPairs\ pairs; the rest sit on the
+intrinsic floor).  (a)~The measured parity residuals against the
+tree's premium difference, both detrended by their own line: the dots
+sit on the curve to \$\MacDeamBowMatchRmsDollars\ rms --- the bow
+\emph{is} the premium difference.  (b)~Residuals after subtracting
+each leg's premium: rms \$\MacDeamBowRmsBeforeDollars\ down to
+\$\MacDeamBowRmsAfterDollars, and the refitted forward (blue) lands
+\MacDeamBowGapToResolvedBp\ bp from the snapshot's stored resolved
+forward (dotted) --- against \MacDeamBowNaiveGapBp\ bp for the naive
+one (dashed).}
+\label{fig:deambow}
+\end{figure}
+
+Panel~(a) settles an account left open since \cref{fig:fwdline}(b).
+The orange dots are the measured residuals of the parity line on the
+kept pairs.  The blue curve is \emph{the model's prediction of them}:
+the tree's premium difference, call leg minus put leg, at each pair's
+own fitted volatilities.  It is detrended by its own least-squares
+line, exactly as the measured residuals are, because a parity
+regression absorbs anything affine --- only the arch can survive it.
+(For the same reason the arch here is shallower than
+\cref{fig:fwdline}(b)'s: the line is refitted on the kept pairs
+alone, which reshuffles how much of the bow the affine part absorbs;
+the shape, not the split, carries the information.)  The dots
+sit on the curve, to an rms of \$\MacDeamBowMatchRmsDollars\ --- the
+same size as the quote noise left over in panel~(b), which is to say:
+to within what this board can measure at all, the bow is
+\emph{entirely} the premium difference.  The shape now reads itself.
+At low strikes the calls are deep in the money, but SPY's dividend
+carry is mild against the rate, so the call premium stays small ---
+Merton's logic with a small leak.  At high strikes the put premium
+grows dollar-deep and drags $\mathsf{C}-\mathsf{P}$ \emph{down};
+after the fitted line absorbs the overall tilt, what remains is
+precisely the arch Chapter~6 could describe but not explain.
+
+Panel~(b) completes the repair.  With each leg's premium subtracted,
+the residuals collapse from \$\MacDeamBowRmsBeforeDollars\ rms to
+\$\MacDeamBowRmsAfterDollars\ --- from a structured bow, dollars
+deep, to unstructured cent-scale noise --- and the refitted forward
+moves from $\MacDeamBowFNaive$ to $\MacDeamBowFDeam$.  That lands
+\MacDeamBowGapToResolvedBp\ bp from $\MacDeamBowFResolved$, the
+forward stored with the book's frozen snapshot --- the resolution the
+reference implementation (Chapter~6's working software, whose
+conventions the book's figures audit) computed with its own discrete
+dividend schedule.  Read that residual gap for what it is: the
+distance between two disclosed dividend conventions
+(\cref{sec:deamdivs}), not an unexplained error --- and compare it
+with the \MacDeamBowNaiveGapBp\ bp the naive forward was carrying.
+Chapter~6 measured, on this very node, what such basis points cost if
+ignored: \MacFwdSkewGapBp\ vol bp of put--call gap at the money for
+every \MacFwdSkewBumpBp\ bp of forward error, so the naive forward
+would imprint \MacFwdSkewNaiveGapBp\ vol bp of artificial smile
+structure (\cref{sec:fwdskew}'s own number).  The loop is not
+bookkeeping; it is where the smile's raw material gets clean.
+
+One extension is beyond this chapter, and Chapter~6 already flagged
+it: on a genuinely hard-to-borrow name, the borrow $b$ enters the
+carry, the carry moves the premium, and the premium moves the fitted
+forward that identifies the borrow --- \cref{sec:fwdborrow}'s closing
+caveat.  The resolution is this section's loop with one more unknown
+riding inside it, and it inherits \cref{sec:fwdborrow}'s
+identifiability floors --- the smallest borrow a board's noise lets
+it distinguish from zero --- unchanged: below the floor, the jointly
+closed answer is still \emph{unidentified}, reported as such.  On ordinary
+names --- the frozen board included --- the borrow leg is immaterial
+and the two passes above are the whole story.

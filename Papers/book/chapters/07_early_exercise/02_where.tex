@@ -1,0 +1,180 @@
+\section{Where the premium lives}
+\label{sec:deamwhere}
+
+We know the premium biases the naive reading.  Before removing it, it
+pays to know where it is --- because over much of the strike--maturity
+plane it is \emph{exactly zero}, and the theory that says so is short
+enough to carry in full.
+
+First the formal object.  A \emph{stopping time} is a rule for
+choosing when to act that may use only what has happened so far ---
+``exercise the first time the stock drops below $80$'' is a stopping
+time; ``exercise at the low of the path'' is not, because recognizing
+the low requires seeing the future.  Write $\mathcal{T}$ for the set
+of all stopping times $\vartheta$ taking values in $[0,t]$.  The
+American value is the value of the \emph{best plan}:
+\begin{equation}
+A=\sup_{\vartheta\in\mathcal{T}}
+\E\!\left[e^{-r\vartheta}\,
+\text{payoff}(S_\vartheta)\right],
+\label{eq:deamstop}
+\end{equation}
+with the payoff $(S_\vartheta-K)^+$ for a call and $(K-S_\vartheta)^+$
+for a put.  The expectation is under the risk-neutral law ---
+Chapter~2's pricing measure, and the only fact about it this section
+uses is that it grows the spot at the carry, the rate the forward
+implies.  Discounting runs at the rate $r$ on the calendar clock $t$,
+as all financing has since Chapter~6 \citep{PeskirShiryaev2006}.
+
+\begin{proposition}[Dominance, both ways]
+\label{prop:deamdom}
+$A\ge E$, and $A\ge$ intrinsic; hence the premium $A-E$ is never
+negative, and an American quote never sits below its exercise floor.
+\end{proposition}
+
+\begin{proof}
+The plans ``always wait to expiry'' ($\vartheta\equiv t$) and
+``exercise immediately'' ($\vartheta\equiv0$) are both stopping times.
+The first values the European twin; the second values the intrinsic.
+A supremum is at least every member of its feasible set.
+\end{proof}
+
+One line, but it already fixes two working conventions.  Because the
+true premium cannot be negative, a negative \emph{estimate} of it can
+be clamped to zero with a clear conscience (\cref{sec:deamsub}).  And
+an American quote \emph{below} intrinsic is not a puzzle about
+premiums --- it is a broken price, to be discarded, not interpreted.
+The substantive question is when the inequality $A\ge E$ is an
+equality: when is the extra right worth nothing?
+
+\begin{theorem}[Merton: no dividends, no call premium]
+\label{thm:deammerton}
+For a call on an underlying that pays no dividends, with $r\ge0$,
+early exercise is never strictly better than waiting: $A=E$
+\citep{Merton1973}.
+\end{theorem}
+
+\begin{proof}
+Consider the option at any interior moment, with spot $s$ and time $u>0$
+still to run, and compare exercising now against one specific
+alternative plan: waiting to the end.  Waiting is worth the European
+call value, and three displayed steps bound it from below.  The hinge
+function $x\mapsto(x-K)^+$ is convex, so by Jensen's inequality ---
+the average of a convex function is at least the function of the
+average ---
+\[
+e^{-ru}\,\E\big[(S_u-K)^+ \,\big|\, S_0=s\big]
+\;\ge\;
+e^{-ru}\big(\E[S_u\,|\,S_0=s]-K\big)^{+}.
+\]
+With no dividends, the risk-neutral spot grows at the full rate $r$
+(nothing leaks out of the stock): $\E[S_u\,|\,S_0=s]=s\,e^{ru}$.
+Substituting,
+\[
+e^{-ru}\big(s\,e^{ru}-K\big)^{+}
+=\big(s-Ke^{-ru}\big)^{+}
+\;\ge\; s-K,
+\]
+where the last inequality holds because $Ke^{-ru}\le K$, and it is
+\emph{strict} whenever $r>0$ and $u>0$.  So at every interior moment,
+the value of waiting strictly exceeds $s-K$, which is everything
+exercising now can pay.  Exercising early forfeits value at every
+opportunity; the best plan in \eqref{eq:deamstop} is
+$\vartheta\equiv t$, and that plan is the European contract.
+\end{proof}
+
+In words a colleague could repeat: exercising a call early hands over
+the strike $K$ today when the contract only ever requires handing it
+over at expiry --- giving up the interest on the strike --- and
+collects a stock that, paying no dividends, was growing at the full
+rate anyway.  There is nothing to gain and interest to lose.  The
+right is legally present and economically worthless.
+
+Puts are different, and the same interest-on-the-strike logic now
+works \emph{for} exercising.
+
+\begin{proposition}[Deep puts must carry a premium]
+\label{prop:deamput}
+For a put with $r>0$, the premium is strictly positive deep enough in
+the money: whenever $S<K\,(1-e^{-rt})$, exercising now strictly beats
+waiting to expiry, so $A>E$.
+\end{proposition}
+
+\begin{proof}
+A put can never pay more than $K$, and it pays at expiry, so its
+European value is capped by the discounted strike: $E\le Ke^{-rt}$.
+Deep enough in the money, the intrinsic value exceeds that cap:
+\[
+K-S\;>\;Ke^{-rt}
+\quad\Longleftrightarrow\quad
+S\;<\;K\big(1-e^{-rt}\big).
+\]
+There, $A\ge K-S>Ke^{-rt}\ge E$: the exercise-now plan strictly beats
+the European plan, and the premium $A-E$ is positive.
+\end{proof}
+
+Read the trade-off plainly.  The put holder deep in the money is
+essentially sure to receive $K$; receiving it \emph{now} rather than
+at expiry earns the interest.  Waiting to the end pays only the
+option's remaining \emph{time value} --- its price in excess of
+intrinsic --- which deep in the money shrinks toward zero while the
+interest does not.  The threshold in the proposition is
+crude --- it only proves the exercise region is nonempty --- but the
+mechanism is exact, and it has a mirror image: a \emph{dividend} is
+value the \emph{call} holder collects only by exercising before the
+stock goes ex-dividend, so dividends (or any carry $q_d$ exceeding
+$r$) open an exercise region on deep in-the-money calls.
+\Cref{sec:deamdivs} prices that mechanism properly.
+
+\Cref{fig:deammap} draws the whole geography, computed by the tree of
+\cref{sec:deamtree} at a fixed $25\%$ volatility.  Panel~(a) maps the
+put premium $A-E$ in dollars over strike (as a percentage of spot) and
+maturity, at $r=4\%$ with no dividends.  Two features to notice.
+The premium concentrates deep in the money and grows with maturity ---
+more calendar for the interest to accrue over --- reaching
+\$\MacDeamMapPutMaxDollars\ per hundred dollars of spot at the top
+right.  And the orange edge marks something stronger than a large
+premium: to its right the price \emph{equals} intrinsic, to the
+plateau tolerance stated in appendix~\ref{app:deamprotocol} --- at
+half a year, every strike beyond $\MacDeamMapPutBdryPct\%$ of spot.
+In that dead zone --- the intrinsic \emph{plateau}, and the chapter
+will use both names: the price sits flat on its floor there --- the
+quote is the exercise floor and nothing else: no volatility enters
+it, so no volatility can be read out of it.
+\Cref{sec:deamsub} shows how the inversion recognizes the zone and
+refuses it honestly.  Panel~(b) runs the mirror image --- calls under
+the running example's $6\%$ dividend yield against a $2\%$ rate ---
+and the picture flips left to right: the premium sits on deep
+in-the-money calls, and the dead zone opens below
+$\MacDeamMapCallBdryPct\%$ of spot.  One number is deliberately absent
+from the figure: on the same grid with the dividend yield set to zero,
+the largest call premium anywhere is
+$\MacDeamMapMertonMaxDollars$ --- not small, \emph{zero}: at every
+node of every tree the waiting value exceeded intrinsic, the exercise
+comparison never once engaged, and the American and European
+recursions returned identical arrays.  That is \cref{thm:deammerton},
+measured.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_deam_map.pdf}
+\caption{The premium $A-E$ (dollars per 100 spot) over the quote
+plane, at a fixed $25\%$ volatility.  (a)~Puts at $r=4\%$, no
+dividends: the premium loads on deep in-the-money strikes and long
+maturities; right of the orange edge the price equals intrinsic ---
+at $t=0.5$, beyond $\MacDeamMapPutBdryPct\%$ of spot --- and carries
+no volatility information.  (b)~Calls under a $6\%$ dividend yield
+against a $2\%$ rate: the mirror image, dead zone below
+$\MacDeamMapCallBdryPct\%$ of spot.  With the dividend yield set to
+zero the call premium is exactly zero everywhere on the grid:
+Merton's theorem, measured.}
+\label{fig:deammap}
+\end{figure}
+
+We now know the premium's address: deep in-the-money puts under
+positive rates, deep in-the-money calls around dividends, growing
+with maturity, zero for no-dividend calls, and --- past the plateau
+--- replaced by a dead zone where the quote has nothing to say about
+volatility.  What we lack is a machine that prices the best-plan value
+\eqref{eq:deamstop} at will.  Building one small enough to run by
+hand is the next section's job.
