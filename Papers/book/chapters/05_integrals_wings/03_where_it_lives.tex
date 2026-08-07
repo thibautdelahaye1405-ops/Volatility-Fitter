@@ -1,0 +1,107 @@
+\section{Where the number lives}
+\label{sec:vslives}
+
+We can compute the fair strike three ways and get one answer per
+model.  \Cref{fig:vspins} showed that different models give different
+answers.  This section locates the disagreement on the strike axis,
+and the location explains everything.
+
+The tool is the accrual function.  Write $\mathcal{S}(k)$ for the
+share of the strike-side integral \eqref{eq:vsrepl} accrued by strikes
+up to $k$: run the integral from the far left to $k$, divide by the
+whole.  Then $\mathcal{S}$ climbs from $0$ to $1$, and reading it at
+two strikes tells you what fraction of the fair strike lives between
+them.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_vs_share.pdf}
+\caption{Where the fair strike accrues.  (a)~The accrual share
+$\mathcal{S}(k)$ on the running slice, with the quoted span shaded and
+its endpoints dotted: the span carries \MacVsShareQuotedPct\% of the
+integral, so \MacVsShareBeyondPct\% accrues where there are no quotes
+at all.  (b)~The beyond-quotes share for all sixteen frozen nodes
+(the snapshot's stored fits), against maturity: from
+\MacVsShareGalleryMinPct\% to \MacVsShareGalleryMaxPct\%, growing with
+maturity for SPY.}
+\label{fig:vsshare}
+\end{figure}
+
+\Cref{fig:vsshare}(a) draws $\mathcal{S}$ on the running slice, with
+the quoted span shaded.  Follow the curve from the left.  It is
+essentially flat until $k\approx-1$: the very deep puts, for all their
+$1/K^{2}$ weighting, carry prices too small to matter.  It then climbs
+steeply through the belly --- $|k|\le0.10$ alone accrues
+\MacVsShareAtmPct\% of the number --- and flattens again on the call
+side, where prices die quickly.  The two dots mark the edges of the
+quoted span: between them the market's quotes constrain the integrand
+directly, and that stretch carries \MacVsShareQuotedPct\% of the
+integral.  The remaining \MacVsShareBeyondPct\% accrues at strikes
+where no quote exists --- where the integrand is whatever the fitted
+model's continuation says it is.  About a fifth of this traded number
+is, on this node, pure extrapolation.
+
+Panel~(b) repeats the measurement across the whole frozen gallery ---
+all sixteen (underlier, expiry) nodes of the book's snapshot, each
+read from the fit it was published with (the snapshot's stored fits;
+\cref{app:vsprotocol} records the provenance) and each with its own
+quoted span.  The beyond-quotes share runs from
+\MacVsShareGalleryMinPct\% to \MacVsShareGalleryMaxPct\%.  The
+pattern is worth reading.  What protects a node is not how many
+quotes it has but how many \emph{widths of the smile} its quoted span
+covers.  A strike matters through its standardized distance from the
+money, $k/(\sigma\sqrt\tau)$ with $\sigma$ that expiry's ATM implied
+volatility: the smile's natural width is $\sigma\sqrt\tau$, and a
+quoted span of roughly fixed width in $k$ covers fewer of those
+widths as $\sqrt\tau$ grows.  SPY's long-dated spans cover fewer, and
+the unquoted share climbs steadily with maturity toward a quarter of
+the number; the marked running node sits at \MacVsShareBeyondPct\%.
+NVDA's quoted spans are generous relative to its volatility and its
+share stays under ten percent.
+
+Now put the two exhibits of the chapter together.
+\Cref{fig:vspins}(b) showed three models disagreeing on the fair
+strike by up to \MacVsPinsMaxGapBp\ vol bp while agreeing on the
+quoted span to \MacVsPinsBellyAgreeBp\ bp.  \Cref{fig:vsshare} says
+the disagreement has exactly one place to live: the
+\MacVsShareBeyondPct\% of the integral that accrues beyond the
+quotes.  The same comparison runs across model chapters: Chapter~4's
+whole-surface sheet, fitted to the same mid quotes, implies
+$\sigma_{\rm vs}=\MacVsFieldSvsPct\%$ at this expiry ---
+\MacVsLvGapBp\ vol bp from the running slice's
+\MacVsThreeSvsPct\%.  None of these models is wrong.  Each reprices
+the quotes; the quotes simply do not decide the number.  A fit error
+of a few basis points \emph{per quote} coexists with a fair-strike
+spread ten times larger, because the fair strike reads a region the
+fit error never visits.
+
+This is the chapter's instance of a distinction the book keeps
+returning to.  What the quotes pin --- the belly, the well-quoted
+central stretch of strikes --- is information.  What they leave free
+--- the wings' share --- is not noise around zero; it is a quantity
+the model must supply, and different structural choices supply
+different amounts.  \Cref{sec:vsceiling,sec:vsenvelope} will show
+that the freedom is bounded: no admissible continuation --- none that
+still prices a genuine law --- can push the share arbitrarily high.
+But within those bounds, the number is chosen, not estimated.
+
+One consequence deserves a paragraph before we turn to the bounds,
+because it changes how a desk should read the instrument.  A traded
+var-swap quote is one \emph{observation} of precisely the combination
+of unquoted prices the listed strikes leave loose.  Chapter~2's
+calibration objective (\cref{sec:calibration}) accommodates it
+directly: the model's own fair strike --- computed by whichever route
+of \cref{sec:vsthree} is native --- becomes one more residual against
+the quoted level, in volatility units, with a weight the modeler
+declares; the derivative of $w_{\rm vs}$ in the model's parameters
+comes in closed form by the linearity of \cref{sec:vsthree}
+(Chapter~2 already recorded it as \cref{eq:varswaprow}).  Weighted
+softly, the quote bargains with the options rather than overruling
+them, and it spends its influence exactly where \cref{fig:vsshare}
+says its information lives: in the wings.  A desk that has such a
+quote should use it; the sections that follow are addressed to the
+more common case where it does not.
+
+We now know where the number lives and why fitted models disagree
+about it.  The next two sections establish what no model, and no
+market, can do in that region.

@@ -1,0 +1,104 @@
+\section{Proofs and numerical protocol}
+\label{app:vsprotocol}
+
+\subsection{The backward equation for the expected remaining variance}
+
+\Cref{sec:vsthree} stated that
+$\mathcal{W}(s,y)=\E[\int_s^{\tau}v(r,Y_r)\,\dd r\,|\,Y_s=y]$
+solves the backward problem \eqref{eq:vssource}.  Here is the
+derivation, in two steps the chapter has already rehearsed.
+
+First, a martingale.  Consider the running quantity
+\[
+M_s=\int_0^{s}v(r,Y_r)\,\dd r+\mathcal{W}(s,Y_s),
+\]
+the variance accumulated so far plus the expectation of what remains.
+Write $\mathcal{F}_s$ for the information available at time $s$.
+Conditioning the total $\int_0^{\tau}v\,\dd r$ on $\mathcal{F}_s$
+splits it into exactly these two pieces --- the first is known at
+time $s$, and the second is its conditional expectation by the Markov
+property of the diffusion.  So
+$M_s=\E[\int_0^{\tau}v\,\dd r\,|\,\mathcal{F}_s]$: every $M_s$ is a
+conditional expectation of one fixed random variable, and such a
+family is a martingale by the tower property --- conditioning $M_t$
+on the smaller information set $\mathcal{F}_s$ ($s<t$) collapses it
+back to $M_s$, which is exactly the martingale identity
+$\E[M_t\,|\,\mathcal{F}_s]=M_s$.
+
+Second, It\^o.  Assume $\mathcal{W}$ is smooth and apply It\^o's
+formula to $\mathcal{W}(s,Y_s)$ with $\dd Y=\sqrt{v}\,Y\dd W$, using
+$(\dd W)^2=\dd s$ as in \cref{sec:vsnumber}:
+\[
+\dd\mathcal{W}(s,Y_s)
+=\Big[\partial_s\mathcal{W}
++\tfrac12\,v(s,Y_s)\,Y_s^{2}\,\partial_{yy}\mathcal{W}\Big]\dd s
++\partial_y\mathcal{W}\,\sqrt{v}\,Y_s\,\dd W_s ,
+\]
+so that
+\[
+\dd M_s
+=\Big[v+\partial_s\mathcal{W}
++\tfrac12\,v\,Y_s^{2}\,\partial_{yy}\mathcal{W}\Big]\dd s
++\partial_y\mathcal{W}\,\sqrt{v}\,Y_s\,\dd W_s .
+\]
+A martingale has no drift, so the bracket must vanish at every state
+the process can reach --- which is the PDE of \eqref{eq:vssource}.
+The terminal condition $\mathcal{W}(\tau,\cdot)=0$ holds because
+nothing remains at expiry, and evaluating the definition at
+$(s,y)=(0,1)$ gives
+$\mathcal{W}(0,1)=\E[\int_0^{\tau}v\,\dd r]=w_{\rm vs}$.
+
+\subsection{Numerical protocol}
+
+Every empirical number in the chapter comes from one deterministic
+generator reading the book's frozen snapshot; none is typed by hand.
+The conventions, in the order the chapter uses them.
+
+\emph{Fits.}  The running node is SPY December 2026.  Its three
+family fits are Chapter~3's comparison protocol applied verbatim
+(\cref{sec:comparison}): the same mid quotes, equal weights, each
+family's reference settings.  The gallery and term-structure figures
+(\cref{fig:vsshare}b and~\ref{fig:vsterm}) instead read the
+snapshot's \emph{stored} surface fits --- the calibration the surface
+was published with, under the fit recipe of \cref{sec:calibration}
+--- because those are calendar-coupled across expiries, which is
+what a term-structure exhibit should show.
+
+\emph{The strike-side quadrature.}  Equation \eqref{eq:vsrepl} is
+evaluated by a trapezoid on $k\in[-6,6]$ with $4001$ points --- a
+finer copy of the $801$-point grid the reference implementation uses
+inside its optimizer loop; the total variance inside the Black
+call is floored at $10^{-12}$.  At these settings the quadrature
+error is far below every number quoted.  The law-side integral rides
+each slice's own fixed log-odds grid.
+
+\emph{The field-side audit.}  The sheet is Chapter~4's whole-surface
+SPY calibration, unchanged.  Both of its var-swap routes run on an
+audit lattice with the calibration lattice's strike step, widened to
+strike ratio $12$ so the static replication sees the entire wing the
+extrapolated field implies; the put leg is cut off below strike
+ratio $0.01$ (moving the cutoff to $0.001$ changes nothing at the
+quoted precision).  Both routes are first-order in the time step, so
+the audit reports the pair of reads at the march's own step and at an
+eightfold refinement; the gap halves with the step, as first order
+promises.
+
+\emph{The envelope.}  The drawn cone is built from the Black prices
+of the last two call-side quote \emph{mids}.  The per-family
+clearances are measured against each family's \emph{own} cone ---
+the same construction fed that family's fitted call values at the
+same two strikes --- because \cref{prop:vscone} constrains a
+completion relative to its own belly; nonnegativity of all six
+clearances is the proposition confirmed numerically.  Clearances are
+measured on $\bar k+0.05\le k\le1.8$; beyond $1.8$ the flattest
+wing's call price falls under the double-precision floor and its
+Black inversion is noise.
+
+\emph{The hat.}  The counterexample of \cref{fig:winglimit} adds one
+kernel of \cref{eq:hatdef} with half-width $0.55$ and steepness $4$
+in standardized moneyness, centered $1.4$ standardized units past
+the last put-side quote.  Its amplitude is the smallest entry of a
+fixed ladder ($5$, $10$, $20$, $35$, $55$ percent of the base
+variance at the center) that drives the minimum of $g_{\rm D}$ below
+$-0.05$ while total variance stays positive.  Realized wing slopes
+are measured by finite differences of $w$ at $|k|=8$.

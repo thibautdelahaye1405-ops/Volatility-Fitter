@@ -1,0 +1,175 @@
+\section{One number for the whole smile}
+\label{sec:vsnumber}
+
+Chapters~2--4 built three ways of fitting one expiry's smile, and each
+chapter ended the same way: with a curve that reprices every quote to a
+few basis points.  This section introduces a single number, attached to
+the whole smile at once, that will spend the rest of the chapter
+testing those curves in the region the quotes never reach.
+
+The number comes from a real instrument.  A \emph{variance swap} is a
+contract on how much the underlying actually moves.  Over the life of
+the contract, each day's log-return is squared, the squares are summed,
+and at expiry the buyer receives that realized sum and pays a fixed
+amount agreed at the start.  The fixed amount is called the
+\emph{strike} of the swap, and the strike at which the contract is
+worth zero today is the \emph{fair strike}.  Quoting desks publish fair
+strikes the way they publish option prices.  So the fair strike is not
+a modeling construct: it is a market number, one per (underlier,
+expiry), and a fitted smile implies a value for it.
+
+To compute that implied value, work in the book's standing units.  The
+underlying is measured as $Y=S/F$, the level divided by the forward, so
+$Y$ starts at $1$ and is a positive martingale --- a process with no
+drift, whose expected future value is its current value
+(\cref{sec:lvfield}).  Time is variance time $\tau$ --- the maturity
+variable the book has quoted variance against since Chapter~2, whose
+clock Chapter~8 will make precise --- so a smile's total implied
+variance at log-moneyness $k$ is $w(k)=\sigma(k)^2\tau$, with
+$\sigma(k)$ the implied volatility there.  Let the martingale move as
+a diffusion,
+\[
+\dd Y_s=\sqrt{v_s}\;Y_s\,\dd W_s,
+\]
+where $s$ runs from $0$ to the expiry $\tau$ and $v_s$ is the
+\emph{instantaneous variance} at time $s$ --- the squared volatility
+the process is running at that instant.  In the representative model of
+Chapter~4, $v_s$ is the field evaluated along the path,
+$v_s=v(s,Y_s)$; but nothing below needs that: $v_s$ may be any
+reasonable random process.  As the monitoring interval shrinks, the
+sum of squared returns converges to the accumulated instantaneous
+variance, so in these units the realized variance the swap pays is
+the integral $\int_0^{\tau}v_s\,\dd s$, and the fair strike is its
+expected value under the pricing law --- the law the smile encodes,
+the same one behind every expectation in this book.  (Two conventions
+separate this from the listed contract, and it is worth stating them
+once, here.  The contract sums squared \emph{daily} returns while the
+integral monitors continuously, and the contract's clock is the
+calendar while ours is variance time; both refinements have standard
+corrections and Chapter~8 returns to the clock.  A third gap ---
+paths that jump --- is genuine and reappears in the chapter's closing
+table of guarantees, \cref{sec:vscontract}.)
+
+The expected value looks like it should depend on the whole path law
+of $Y$.  It does not, and the two-line computation that shows this is
+the heart of the chapter.  Apply It\^o's formula --- the chain rule
+for diffusions, which adds a second-derivative term --- to $\log Y_s$,
+using the multiplication rule $(\dd W_s)^2=\dd s$, so that
+$(\dd Y_s)^2=v_s Y_s^2\,\dd s$:
+\begin{equation}
+\dd \log Y_s=\frac{\dd Y_s}{Y_s}
+-\frac12\,\frac{(\dd Y_s)^2}{Y_s^2}
+=\sqrt{v_s}\,\dd W_s-\frac12\,v_s\,\dd s .
+\label{eq:vsito}
+\end{equation}
+Integrate from $0$ to $\tau$ and use $\log Y_0=0$:
+\[
+\log Y_\tau=\int_0^{\tau}\sqrt{v_s}\,\dd W_s
+-\frac12\int_0^{\tau}v_s\,\dd s .
+\]
+Now take expectations.  The first integral is a stochastic integral
+against a Brownian motion, and such integrals have expectation zero ---
+they are the running gains of a bet with no edge.  Writing
+$X=\log Y_\tau$ for the terminal log-return, the surviving terms
+rearrange to
+\begin{equation}
+w_{\rm vs}
+\;=\;\E\!\left[\int_0^{\tau}v_s\,\dd s\right]
+\;=\;-2\,\E[X].
+\label{eq:vslogcontract}
+\end{equation}
+The expected realized variance equals minus twice the expected
+log-return.  The right-hand side no longer mentions the path: it is a
+property of the \emph{terminal law alone}, the same law every smile of
+this book encodes.  A path-dependent payoff has been priced by a
+European one --- the payoff $-2\log y$, called the \emph{log
+contract}.  Chapter~2 already met this number in passing, as
+\eqref{eq:varswap}; this chapter is about taking it seriously.  We
+write $w_{\rm vs}$ for the fair strike in total-variance units and
+$\sigma_{\rm vs}=\sqrt{w_{\rm vs}/\tau}$ for the same number quoted as
+a volatility.
+
+Before asking what the number says about a real smile, compute it once
+by hand on the simplest smile there is.  Suppose the smile is flat:
+$w(k)=w_0$ at every strike.  A flat smile means the law of $X$ is
+exactly the one Black--Scholes assumes, a normal with variance $w_0$.
+Its mean is pinned by the martingale condition
+$\E[e^X]=\E[Y_\tau]=Y_0=1$: for a normal with mean $\mu_X$ and
+variance $w_0$, the standard identity
+$\E[e^X]=e^{\mu_X+w_0/2}$ forces
+\[
+\mu_X+\frac{w_0}{2}=0
+\qquad\Longrightarrow\qquad
+\E[X]=-\frac{w_0}{2},
+\]
+and \eqref{eq:vslogcontract} gives
+\begin{equation}
+w_{\rm vs}=-2\,\E[X]=w_0 .
+\label{eq:vsflat}
+\end{equation}
+On a flat smile the fair strike \emph{equals} the ATM total variance,
+exactly.  This small computation earns its keep twice over.  It is a
+sanity check --- a variance swap on a constant-volatility world is
+worth that variance.  And it is a decomposition: whatever a real fair
+strike shows \emph{beyond} the ATM level is entirely a statement about
+the smile's departure from flatness --- its curvature and, above all,
+its wings.  \Cref{sec:vsterm} will measure that excess on real data
+and find it worth hundreds of basis points.
+
+Why the wings, specifically?  Look at the shape of the payoff.  The
+function $-2\log y$ is large where $y$ is far from $1$, and it grows
+without bound as $y\to0$.  At the same time the martingale condition
+$\E[e^X]=1$ forces a balance: a law cannot put weight on large upside
+without compensating weight below, and every rearrangement of tail
+mass moves $\E[X]$.  The fair strike therefore loads exactly on the
+part of the law the quoted strikes describe least --- a suspicion the
+next two sections make precise and then quantify.
+
+\Cref{fig:vspins} shows why the number deserves a chapter.  It fits
+the three families of Part~I --- LQD from Chapter~2, SVI and MCS from
+Chapter~3 --- to the same \MacVsPinsNQuotes\ mid quotes (bid--ask
+midpoints) of the book's running node: the (underlier, expiry) pair
+SPY December 2026 that Chapters~2--4 kept returning to.  The fits
+follow Chapter~3's comparison protocol (\cref{sec:comparison}) ---
+same quotes, equal weights, each family's reference settings.  In
+panel~(a), the quoted span: the three fitted curves pass through the
+same quotes and through each other --- the worst fit error of any
+family is \MacVsPinsWorstRmsBp\,bp, and no two of the curves are ever
+farther than \MacVsPinsBellyAgreeBp\,bp apart on the span (one vol bp
+is $10^{-4}$ of absolute volatility, the chapter's unit for
+volatility distances).  By every measure the data offers, the three models
+are the same smile.  In panel~(b), the same three fits drawn wide, in
+total variance, with the quoted span shaded: outside the shading the
+curves separate --- each family continues the smile according to its
+own structure --- and the legend prints each family's implied fair
+strike.  The three values of $\sigma_{\rm vs}$ span
+\MacVsPinsMaxGapBp\ vol bp: LQD says \MacVsPinsLqdPct\%, SVI says
+\MacVsPinsSviPct\%, MCS says \MacVsPinsMcsPct\%.  Nothing has gone
+wrong.  Three valid laws thread the same quotes and integrate to
+different numbers.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_vs_pins.pdf}
+\caption{Three families, one quote set, three fair strikes (SPY
+December 2026, \MacVsPinsNQuotes\ quotes).  (a)~On the quoted span the
+LQD, SVI and MCS fits agree with the quotes and with each other to
+\MacVsPinsBellyAgreeBp\,bp.  (b)~In total variance, wide: beyond the
+shaded quoted span the three curves separate, and their fair var-swap
+strikes differ by up to \MacVsPinsMaxGapBp\ vol bp.}
+\label{fig:vspins}
+\end{figure}
+
+We now have the chapter's protagonist and its puzzle.  The fair strike
+is one market-traded number that the whole smile determines --- and
+that fitted smiles, in perfect agreement wherever quotes exist, do not
+agree on.  The plan follows the thesis of the book.
+\Cref{sec:vsthree} computes the number exactly, in each model's own
+coordinates, and checks that all routes agree on one model at a time.
+\Cref{sec:vslives} locates the disagreement: it lives precisely in the
+share of the integral that accrues beyond the last quote.
+\Cref{sec:vsceiling,sec:vsenvelope} then prove what \emph{can} be said
+with no quotes at all --- a ceiling and an envelope --- and
+\cref{sec:vswingchoice,sec:vsterm} treat what remains inside those
+bounds for what it is: a convention to be stated, policed at finite
+strikes, and kept consistent across the term structure.

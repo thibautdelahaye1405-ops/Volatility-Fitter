@@ -1,0 +1,130 @@
+\section{The wing as a stated choice}
+\label{sec:vswingchoice}
+
+Inside the envelope the data has no further opinion, yet every fitted
+model draws exactly one curve there.  What selects the curve is the
+model's structure --- decisions made when the family was designed,
+long before this node's quotes arrived.  This section reads those
+decisions off the three families, states them as contracts, and then
+demolishes a comfortable inference about them.
+
+Recall the three families' wings; each was derived in its own chapter,
+and here they only need to be set side by side.  The LQD slice of
+Chapter~2 has exponential log-return tails \emph{by construction}, and
+its wing slopes are closed functions of its two endpoint speeds
+(\cref{prop:leeclosed}): admissibility is structural, no cap or check
+required.  The SVI slice of Chapter~3 has exactly straight
+total-variance wings, $\beta_{L,R}=b_S(1\mp\rho_S)$ --- the
+$S$-subscripts mark Chapter~3's raw SVI parameters
+(\cref{prop:svigeom}) --- and its calibration fences them with a cap
+set strictly inside the ceiling (\cref{eq:leecap}): strictly, because
+\cref{sec:vsceiling} showed the boundary ray itself is inadmissible.  The MCS
+slice of Chapter~3 splits the job: its base owns the wings
+(\cref{eq:mcsbetak}), and its hats are built to vanish at large
+strikes, so adding hats cannot move the slopes --- but nothing in the
+family \emph{forces} the base's slopes into the admissible cone;
+their admissibility is diagnosed after the fit, not enforced during
+it.  On the running node the three contracts print the slopes of
+\cref{tab:vswings}: every wing far below the ceiling, and the put
+slopes several times the call slopes.  That asymmetry is the equity
+skew --- the standing pattern that downside strikes carry more
+implied variance than upside ones --- read here in its asymptotic
+form.
+
+\begin{table}[htbp]
+\centering
+\caption{The three wing contracts on the running node.  Slopes are
+asymptotic total-variance wing slopes; all sit far inside the ceiling
+of \cref{prop:vsceiling}.}
+\label{tab:vswings}
+\begin{tabular}{lccl}
+\toprule
+Family & $\beta_L$ (put) & $\beta_R$ (call) & how the wing is governed\\
+\midrule
+LQD & \MacWingBetaLqdL & \MacWingBetaLqdR &
+structural: exponential tails, slopes from \cref{prop:leeclosed}\\
+SVI & \MacWingBetaSviL & \MacWingBetaSviR &
+capped: straight wings under \cref{eq:leecap}\\
+MCS & \MacWingBetaMcsL & \MacWingBetaMcsR &
+inherited: base wings, hats neutral; diagnosed, not enforced\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Three families, three slopes per side, all admissible --- and all
+different, as \cref{fig:vsenvelope}(b) drew.  It bears saying plainly:
+past the last quote, the divergence between the families is not an
+error to be averaged away.  Choosing a family \emph{is} choosing an
+extrapolation law.  What a careful fitter owes its user is not
+agreement in the wings --- nothing can supply that --- but a stated
+contract: which curve will be drawn, governed by what mechanism, with
+what guarantee.
+
+There is, however, a gap in those guarantees, and it is the section's
+second lesson.  All three contracts of \cref{tab:vswings} speak about
+\emph{slopes} --- asymptotic statements, properties of the limit
+$k\to\infty$.  The comfortable inference is: admissible slopes,
+therefore admissible wing.  It is false, and one deliberate
+construction shows why.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_wing_limit.pdf}
+\caption{The limit is not the wing.  One zero-wing hat is added to
+the fitted MCS slice, centered beyond the last put-side quote.
+(a)~Total variance: the two curves are indistinguishable except for
+the small bump at the hat; the measured far-field wing slopes change
+by \MacWingHatSlopeDiff\ --- an exact zero in double precision.
+(b)~The density factor $g_{\rm D}$: the hat drives it to
+\MacWingHatGmin\ at $k=\MacWingHatKmin$, negative density at a finite
+strike, while the fitted slice (solid) stays nonnegative to rounding
+(worst \MacWingHatBaseGmin).}
+\label{fig:winglimit}
+\end{figure}
+
+Take the fitted MCS slice of the running node and add one more of its
+own hat kernels (\cref{eq:hatdef}) --- amplitude negative, centered
+just beyond the last put-side quote, where quotes no longer object.
+\Cref{fig:winglimit}(a) shows the smile before and after: the two
+curves coincide to the eye everywhere except a small dent near
+$k=\MacWingHatKmin$, and the wings are untouched --- measuring the
+realized slope far out, the change is \MacWingHatSlopeDiff, an exact
+zero at double precision.  The inheritance contract has done its job
+perfectly.  Panel~(b) shows what the contract never promised.  Recall
+the Durrleman factor $g_{\rm D}$ from \cref{eq:durrleman}: up to a
+positive factor it is the probability density the smile implies, so a
+valid smile needs $g_{\rm D}\ge0$ everywhere.  The fitted slice
+(solid) keeps it nonnegative across the range --- its worst value is
+\MacWingHatBaseGmin, zero at rounding scale.  The hatted slice
+(dashed) plunges to $g_{\rm D}=\MacWingHatGmin$ at
+$k=\MacWingHatKmin$: negative probability, a butterfly arbitrage,
+parked at a finite strike in the extrapolated region --- with both
+asymptotic slopes exactly as admissible as before.  The dent sits in
+the quiet stretch just outside the quoted span, precisely where no
+quote penalizes it and no slope condition sees it.  Asymptotic
+admissibility and finite-strike admissibility are independent, and
+the second needs its own police.
+
+The demonstration settles how the extrapolated region must be
+policed, and the rule is worth stating because it cuts both ways.
+Conditions that are properties of a \emph{single} curve --- density
+positivity above, call convexity --- must be checked \emph{into} the
+wings: one law is being asserted there, the condition needs no second
+curve to compare against, and abandoning it past the last quote is
+exactly how the hat's dent would go unnoticed.  Conditions that
+\emph{compare two} curves are different.  Chapter~2's calendar
+control (\cref{eq:calrows}) already made the choice: it enforces the
+order between neighboring expiries only on the span where quotes pin
+both curves.  Beyond that span, both curves are chosen conventions
+--- two entries of \cref{tab:vswings}, possibly from different rows.
+A calendar inversion there --- the later expiry's curve dipping below
+the earlier one's at some unquoted strike --- is a disagreement
+between two fictions, not evidence of mispricing; enforcing the order
+there would bend the fits where the data \emph{does} live in order to
+reconcile them where it does not.  One
+curve: extend the check.  Two curves: confine it to common data.
+
+The chapter's statics are now complete for a single expiry: the
+number, its three computations, its unquoted share, the proved
+envelope, and the disclosed choice within it.  One dimension remains
+--- maturity.

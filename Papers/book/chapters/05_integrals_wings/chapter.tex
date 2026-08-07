@@ -1,0 +1,66 @@
+% Chapter 5 — integrals and wings: variance swaps beyond the last quote.
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch05/gen_figures.py from data/ (frozen snapshot + deterministic
+% constructions).  Notation additions are recorded in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract).  After this chapter the reader can:
+%   1. Say what a variance swap pays, derive the log-contract identity
+%      w_vs = -2 E[X] with Ito's formula, and explain — by computing the
+%      flat-smile case where w_vs = w(0) exactly — why everything the
+%      fair strike says beyond the ATM level is about curvature and
+%      wings.
+%   2. Compute the same number in all three of Part I's charts — against
+%      option prices (spanning), against the law (the rank integral of
+%      Chapter 2), along paths against the local-variance field — prove
+%      the three integrals agree, and explain which chart makes the
+%      computation one quadrature (the chart where the pairing is
+%      linear).
+%   3. Quantify where the number lives: the accrual share beyond the
+%      last quote on real nodes; explain why fits that agree at every
+%      quote still disagree on the fair strike, and what a traded
+%      var-swap quote adds.
+%   4. Derive the model-free ceiling beta <= 2 from "the far
+%      out-of-the-money call must become worthless", and build the
+%      envelope of admissible completions from the last two quotes (a
+%      price-space cone whose Black-chart image is a total-variance fan
+%      with the ceiling as its top edge).
+%   5. Read a drawn wing as a disclosed convention: each family's stated
+%      wing contract inside the envelope, why admissible slopes do not
+%      make an admissible finite wing, and why the calendar condition
+%      orders the fair strike's term structure (negative forward
+%      variance = calendar arbitrage of the integral).
+% Every section serves one of these five goals.
+\renewcommand{\figdir}{figures/ch05}
+\chapter[Integrals and wings: variance swaps beyond the last quote]{Integrals
+and Wings: Variance Swaps Beyond the Last Quote}
+\label{ch:vs}
+\chaptermark{Integrals and wings}
+
+\chaptersynopsis{The three model chapters each ended with a fitted curve
+that reprices every quote.  This chapter asks a harder question of those
+curves: what do they say where there are no quotes?  The probe is a
+single traded number, the fair strike of a variance swap.  It is an
+integral of the whole smile, it can be computed exactly in each of Part
+I's three coordinate systems, and on the book's frozen data --- the one
+market snapshot every example reads --- a fifth of it comes from
+strikes beyond the last quote.  Models that agree to basis points at
+every quote therefore disagree on it.  The chapter measures that
+disagreement, proves the two model-free facts that bound it --- a
+ceiling on how steep any wing can be, and an envelope, fanning out from
+the last quote, that no arbitrage-free continuation can leave --- and
+shows why everything inside the envelope is a choice the modeler must
+make and disclose.  It closes with the term structure: the calendar
+condition of Chapter~2 forces the fair strike to grow with maturity, so
+the integral inherits the order the surface already keeps.}
+
+\input{chapters/05_integrals_wings/01_one_number}
+\input{chapters/05_integrals_wings/02_three_integrals}
+\input{chapters/05_integrals_wings/03_where_it_lives}
+\input{chapters/05_integrals_wings/04_ceiling}
+\input{chapters/05_integrals_wings/05_envelope}
+\input{chapters/05_integrals_wings/06_wing_choice}
+\input{chapters/05_integrals_wings/07_term_structure}
+
+\begin{chapterappendices}
+\input{chapters/05_integrals_wings/A_protocol}
+\end{chapterappendices}

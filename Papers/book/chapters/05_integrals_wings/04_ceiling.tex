@@ -1,0 +1,199 @@
+\section{The ceiling}
+\label{sec:vsceiling}
+
+A fifth of the fair strike accrues where nothing is quoted.  Before
+deciding what a model \emph{should} draw there, establish what any
+model \emph{may} draw there.  This section proves the one bound that
+holds with no data at all: a universal ceiling on how steeply total
+variance can grow with strike.
+
+Recall the objects.  The wing slopes of a smile are its asymptotic
+growth rates in total variance,
+\[
+\beta_R=\limsup_{k\to+\infty}\frac{w(k)}{k},
+\qquad
+\beta_L=\limsup_{k\to-\infty}\frac{w(k)}{|k|},
+\]
+the same $\beta_L,\beta_R$ carried since \cref{sec:tails} (a limsup is
+the largest value a ratio keeps returning to; for every smile in this
+book the ratios simply converge).  The claim is that no admissible
+smile --- no smile that prices a positive law with mean one --- can
+have either slope above $2$.
+
+The proof rests on one physical fact and one computation.  The fact:
+a call at an absurdly high strike must be worth almost nothing.
+Formally, $c(k)=\E[(Y-e^{k})^{+}]$, the payoff is dominated by $Y$
+itself (which has finite mean) and falls to zero pointwise as
+$k\to\infty$, so dominated convergence gives
+\begin{equation}
+c(k)\longrightarrow0
+\qquad(k\to+\infty).
+\label{eq:vscalldies}
+\end{equation}
+The computation: what the Black function does when total variance
+grows along a ray.  Fix a slope $\beta>0$ and evaluate
+$\Black(k,\beta k)$ for large $k$.  The Black arguments (from
+\cref{eq:black}) are $d_{\pm}=-k/\sqrt{w}\pm\sqrt{w}/2$; substituting
+$w=\beta k$,
+\begin{equation}
+d_{+}=\sqrt{k}\left(\frac{\sqrt\beta}{2}-\frac{1}{\sqrt\beta}\right),
+\qquad
+d_{-}=-\sqrt{k}\left(\frac{1}{\sqrt\beta}+\frac{\sqrt\beta}{2}\right).
+\label{eq:vsray}
+\end{equation}
+Everything hinges on the sign of the parenthesis in $d_{+}$:
+multiplying $\sqrt\beta/2>1/\sqrt\beta$ through by $\sqrt\beta$ shows
+it is positive exactly when $\beta>2$.  So as $k\to\infty$, $d_{+}$
+runs to $+\infty$ for $\beta>2$, to $-\infty$ for $\beta<2$, and sits
+at exactly $0$ for $\beta=2$.
+
+The second Black term dies in every case.  The tool is the normal
+tail bound $\PhiN(d)\le\phin(d)/|d|$ for $d<0$, with $\PhiN,\phin$
+the standard normal distribution function and density.  Its one-line
+proof: for $t\le d<0$ the ratio $t/d$ is at least $1$, so
+\[
+\PhiN(d)=\int_{-\infty}^{d}\phin(t)\,\dd t
+\le\int_{-\infty}^{d}\frac{t}{d}\,\phin(t)\,\dd t
+=\frac{\phin(d)}{|d|},
+\]
+the last step because $t\phin(t)$ integrates to $-\phin(d)$.
+Applying the bound,
+\[
+\log\big(e^{k}\PhiN(d_{-})\big)
+\le k-\frac{d_{-}^{2}}{2}-\log\big(|d_{-}|\sqrt{2\pi}\big),
+\qquad
+\frac{d_{-}^{2}}{2}
+=\frac{k}{2}\left(\frac{1}{\beta}+1+\frac{\beta}{4}\right),
+\]
+and the coefficient of $k$ collects to
+\begin{equation}
+1-\frac12\left(\frac1\beta+1+\frac\beta4\right)
+=\frac{4\beta-4-\beta^{2}}{8\beta}
+=-\frac{(\beta-2)^{2}}{8\beta}\;\le\;0 ,
+\label{eq:vsdecay}
+\end{equation}
+strictly negative except at $\beta=2$, where the $\log|d_{-}|$ term
+still drives the bound to $-\infty$.  Hence
+$e^{k}\PhiN(d_{-})\to0$ along every ray, and
+\begin{equation}
+\Black(k,\beta k)=\PhiN(d_{+})-e^{k}\PhiN(d_{-})
+\;\longrightarrow\;
+\begin{cases}
+0, & \beta<2,\\[2pt]
+\tfrac12, & \beta=2,\\[2pt]
+1, & \beta>2 .
+\end{cases}
+\label{eq:vsraylimits}
+\end{equation}
+
+\begin{proposition}[The model-free ceiling]
+\label{prop:vsceiling}
+For any admissible smile, $\beta_L\le2$ and $\beta_R\le2$.
+\end{proposition}
+
+\begin{proof}
+Right wing.  Suppose $\beta_R>2$ and pick $\beta$ strictly between $2$
+and $\beta_R$.  By the definition of the limsup there are arbitrarily
+large strikes with $w(k)\ge\beta k$.  The Black function increases in
+its variance argument, so at those strikes
+$c(k)=\Black(k,w(k))\ge\Black(k,\beta k)$, and by
+\eqref{eq:vsraylimits} the right side approaches $1$.  A smile that
+steep prices calls that refuse to become worthless, contradicting
+\eqref{eq:vscalldies}.
+
+Left wing.  The mirror argument runs through the put, measured per
+unit of strike: $P(k)/e^{k}=\E[(1-Y e^{-k})^{+}]$, which by dominated
+convergence tends to $\Prob(Y=0)$ as $k\to-\infty$ --- and
+$\Prob(Y=0)=1$ is impossible for a law with $\E[Y]=1$.  It remains to
+show a left ray of slope $\beta>2$ forces that limit to be $1$.
+Parity turns the Black call into the Black put per unit of strike,
+\[
+\frac{P(k)}{e^{k}}
+=\frac{\Black(k,w)-1+e^{k}}{e^{k}}
+=\PhiN(-d_{-})-e^{-k}\,\PhiN(-d_{+}),
+\]
+and along $w=\beta|k|$ (so $k=-|k|$) the arguments
+\eqref{eq:vsray} give
+\[
+-d_{-}=\sqrt{|k|}\left(\frac{\sqrt\beta}{2}-\frac{1}{\sqrt\beta}\right),
+\qquad
+-d_{+}=-\sqrt{|k|}\left(\frac{1}{\sqrt\beta}+\frac{\sqrt\beta}{2}\right):
+\]
+exactly the two expressions of the right-wing computation with the
+roles of the arguments exchanged.  So for $\beta>2$ the first term
+$\PhiN(-d_{-})\to1$, and the second, $e^{|k|}\PhiN(-d_{+})$, dies by
+the same exponent $-(\beta-2)^{2}/(8\beta)$ as in
+\eqref{eq:vsdecay}.  Hence $P(k)/e^{k}\to1$, the contradiction.
+\end{proof}
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.9\textwidth}{fig_vs_ceiling.pdf}
+\caption{The ceiling, computed.  The normalized Black call along
+total-variance rays $w=\beta k$, against log-strike on a log axis.
+Below the ceiling the call dies (at $k=400$ the $\beta=1.6$ ray reads
+\MacVsRayBelowLim); above it the call saturates at forward value
+(\MacVsRayAboveLim\ for $\beta=2.4$); on the boundary ray it creeps up
+to one half (\MacVsRayAtLim\ at the right edge).  Only the dying
+curves are smiles of any law.}
+\label{fig:vsceiling}
+\end{figure}
+
+\Cref{fig:vsceiling} draws the computation.  Each curve is
+$\Black(k,\beta k)$ for one slope, out to $k=400$ on a logarithmic
+strike axis --- far past anything tradeable, because the convergence
+is slow and honesty requires showing it.  The three regimes of
+\eqref{eq:vsraylimits} separate cleanly: the $\beta<2$ curves sink to
+zero (the $\beta=1.6$ ray reads \MacVsRayBelowLim\ at the right
+edge), the $\beta>2$ curves climb toward one (\MacVsRayAboveLim\ for
+$\beta=2.4$), and the dashed boundary ray $\beta=2$ creeps up to one
+half --- there $\PhiN(d_{+})$ equals $\tfrac12$ exactly at every
+strike, and what remains is the second term dying at its slow
+boundary rate, leaving \MacVsRayAtLim\ at the right edge.  Notice
+that the boundary ray also violates
+\eqref{eq:vscalldies}: a call permanently worth half the forward is no
+better than one worth the whole forward.  The ceiling is therefore a
+\emph{supremum, not a member}: an admissible smile can approach slope
+$2$ from below, but no admissible smile lies on the ray itself.
+Chapter~3 met the same phenomenon inside the density factor: at
+$\beta=2$ the leading tail term of $g_{\rm D}$ vanishes, and whether
+the far density is positive is decided by the next, smaller term ---
+one the slope condition never examines --- which is why the working
+cap of \cref{eq:leecap} sits strictly inside the bound.
+\Cref{sec:vsenvelope} will meet the same phenomenon a third time, as
+the top edge of the envelope.
+
+The ceiling says how steep a wing \emph{cannot} be.  Lee's moment
+formula --- stated in Chapter~2 as \cref{eq:lee} --- says how steep it
+\emph{is}: $\beta=\Psi(r^{*})$, with
+$\Psi(r)=2-4(\sqrt{r^{2}+r}-r)$, where $r^{*}$ is the tail's critical
+moment order and $\Psi$ decreases from $\Psi(0)=2$.  The two results
+are faces of one mechanism, and the computation above quietly
+contained the link.  For $\beta<2$ the surviving Black term is
+$\PhiN(d_{+})$ with $d_{+}\to-\infty$, and the same tail bound gives
+its decay exponent:
+\[
+\frac{d_{+}^{2}}{2}
+=\frac{k}{2}\left(\frac{1}{\sqrt\beta}-\frac{\sqrt\beta}{2}\right)^{2}
+=\frac{k\,(2-\beta)^{2}}{8\beta}
+\;\Longrightarrow\;
+\PhiN(d_{+})\approx e^{-k\,(2-\beta)^{2}/(8\beta)}=K^{-r},
+\quad
+r=\frac{(2-\beta)^{2}}{8\beta},
+\]
+up to algebraic factors --- and this $r$ is exactly the moment budget
+$\Psi^{-1}(\beta)$ that Chapter~3 computed in \cref{eq:momentmap}.
+The bridge between call decay and moments is elementary: whenever
+$Y\ge K$ one has $(Y-K)^{+}\le Y\le Y\,(Y/K)^{r}$, so a finite moment
+caps the call, $\E[(Y-K)^{+}]\le\E[Y^{1+r}]\,K^{-r}$ --- more finite
+moments force faster call decay, and (this is Lee's harder half) the
+converse holds too.  A wing of slope
+$\beta$ prices calls that decay with power $r$; call decay and finite
+moments carry the same information; so slope pins moments and moments
+pin slope.  Steeper wings, fatter tails, fewer moments --- one dial.
+
+What mathematics gives, then, is a cone: every admissible wing lies
+between slope $0$ and slope $2$, and its slope names its tail's moment
+order.  What mathematics does not give is a selection.  The next
+section sharpens the cone into a finite-strike envelope anchored at
+the last quote --- and shows that it, too, refuses to select.

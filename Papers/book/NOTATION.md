@@ -105,6 +105,22 @@ symbols `Δτ, Δy` do not collide with Ch. 2's bare `Δ` (digital gap).
 | `𝒥, 𝒪_n` | scalar objective; observation rows (App. 4.A adjoint only) |
 | `Ξ` | smooth test function in the Fokker–Planck derivation (proof-local, §4.2; chosen because both phi glyphs are in service) |
 
+## Chapter 5 — integrals and wings (variance swaps beyond the last quote)
+
+The chapter is mostly a consumer of earlier ledgers: `w, σ, τ, k, y, c, P,
+B, Q, Λ, ρ, x, m, G, λ±, r±*, Ψ, g_D, β_L, β_R, β, β_max, v(τ,y), f(τ,y)`
+are recalled, never redefined.  New symbols:
+
+| Symbol | Meaning |
+|---|---|
+| `w_vs` | fair variance-swap strike in total-variance units (`w_{\rm vs}`; first written in Ch. 2 eq. (varswap), adopted book-wide here) |
+| `σ_vs = √(w_vs/τ)` | the same number quoted as a volatility |
+| `v_τ` | instantaneous variance along the path (§5.1 derivation; in Ch. 4's representative model it is the field `v` evaluated on the path — the subscript marks a process, the parenthesized `v(τ,y)` stays the field) |
+| `𝒲(τ,y)` | expected remaining variance to expiry (the field-side backward function; Ch. 3's scalar hinge multiplier `W` and Wasserstein `W_p` are unrelated) |
+| `𝒮(k)` | cumulative accrual of the strike-side var-swap integral up to log-strike `k`, as a share of `w_vs` (§5.3) |
+| `k̄, c̄, s̄` | the last quoted call-side log-strike, the normalized call there, and the last secant slope in strike — bars mean "frozen at the last quote" (§5.5; the put side is mirrored in words; `ȳ = e^k̄`) |
+| `w^+(k), w^-(k)` | upper and lower edges of the envelope of admissible completions beyond the last quote (§5.5) |
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,

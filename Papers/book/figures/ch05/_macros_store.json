@@ -1,0 +1,232 @@
+{
+ "VsShareQuotedPct": {
+  "value": "81.6",
+  "meaning": "share of the running slice's var-swap integral accrued on the quoted span (%)",
+  "section": "share"
+ },
+ "VsShareBeyondPct": {
+  "value": "18.4",
+  "meaning": "share accrued beyond the quoted span (%)",
+  "section": "share"
+ },
+ "VsShareAtmPct": {
+  "value": "52.4",
+  "meaning": "share accrued in |k| <= 0.10 (%)",
+  "section": "share"
+ },
+ "VsShareGalleryMinPct": {
+  "value": "3.0",
+  "meaning": "smallest beyond-quotes share across the 16 frozen nodes (%)",
+  "section": "share"
+ },
+ "VsShareGalleryMaxPct": {
+  "value": "22.9",
+  "meaning": "largest beyond-quotes share across the 16 frozen nodes (%)",
+  "section": "share"
+ },
+ "VsRayBelowLim": {
+  "value": "0.001",
+  "meaning": "B(k, 1.6 k) at k = 400 (heads to 0)",
+  "section": "ceiling"
+ },
+ "VsRayAtLim": {
+  "value": "0.486",
+  "meaning": "B(k, 2 k) at k = 400 (tends to 1/2; the second Black term dies only like 1/sqrt(k) on the boundary ray)",
+  "section": "ceiling"
+ },
+ "VsRayAboveLim": {
+  "value": "0.995",
+  "meaning": "B(k, 2.4 k) at k = 400 (heads to 1)",
+  "section": "ceiling"
+ },
+ "WingEnvKbar": {
+  "value": "0.264",
+  "meaning": "last quoted call-side log-moneyness on the running node",
+  "section": "envelope"
+ },
+ "WingEnvCbar": {
+  "value": "\\ensuremath{1.17\\times10^{-4}}",
+  "meaning": "normalized call at the last quote (of forward)",
+  "section": "envelope"
+ },
+ "WingEnvKzero": {
+  "value": "0.350",
+  "meaning": "log-moneyness where the lower envelope edge reaches zero",
+  "section": "envelope"
+ },
+ "WingEnvTopAgree": {
+  "value": "\\ensuremath{1.1\\times10^{-10}}",
+  "meaning": "closed-form upper edge vs production inversion at k = 30 (total variance)",
+  "section": "envelope"
+ },
+ "WingEnvTopSlopeDeep": {
+  "value": "1.14",
+  "meaning": "upper-edge slope dw+/dk at k = 30 (heads to 2)",
+  "section": "envelope"
+ },
+ "WingEnvClearLqdLo": {
+  "value": "0.0016",
+  "meaning": "min clearance of the LQD wing above its own cone's lower edge",
+  "section": "envelope"
+ },
+ "WingEnvClearLqdHi": {
+  "value": "0.0016",
+  "meaning": "min clearance of the LQD wing below its own cone's upper edge",
+  "section": "envelope"
+ },
+ "WingEnvClearSviLo": {
+  "value": "0.0010",
+  "meaning": "min clearance of the SVI wing above its own cone's lower edge",
+  "section": "envelope"
+ },
+ "WingEnvClearSviHi": {
+  "value": "0.0012",
+  "meaning": "min clearance of the SVI wing below its own cone's upper edge",
+  "section": "envelope"
+ },
+ "WingEnvClearMcsLo": {
+  "value": "0.0010",
+  "meaning": "min clearance of the MCS wing above its own cone's lower edge",
+  "section": "envelope"
+ },
+ "WingEnvClearMcsHi": {
+  "value": "0.0013",
+  "meaning": "min clearance of the MCS wing below its own cone's upper edge",
+  "section": "envelope"
+ },
+ "WingBetaLqdL": {
+  "value": "0.178",
+  "meaning": "LQD left (put) asymptotic total-variance wing slope",
+  "section": "table"
+ },
+ "WingBetaLqdR": {
+  "value": "0.034",
+  "meaning": "LQD right (call) asymptotic total-variance wing slope",
+  "section": "table"
+ },
+ "WingBetaSviL": {
+  "value": "0.126",
+  "meaning": "SVI left (put) asymptotic total-variance wing slope",
+  "section": "table"
+ },
+ "WingBetaSviR": {
+  "value": "0.066",
+  "meaning": "SVI right (call) asymptotic total-variance wing slope",
+  "section": "table"
+ },
+ "WingBetaMcsL": {
+  "value": "0.117",
+  "meaning": "MCS left (put) asymptotic total-variance wing slope",
+  "section": "table"
+ },
+ "WingBetaMcsR": {
+  "value": "0.054",
+  "meaning": "MCS right (call) asymptotic total-variance wing slope",
+  "section": "table"
+ },
+ "WingHatSlopeDiff": {
+  "value": "\\ensuremath{0}",
+  "meaning": "measured realized wing-slope change from adding the hat (far-field finite difference at |k| = 8)",
+  "section": "limit"
+ },
+ "WingHatGmin": {
+  "value": "-0.30",
+  "meaning": "worst Durrleman factor after the hat",
+  "section": "limit"
+ },
+ "WingHatKmin": {
+  "value": "-0.55",
+  "meaning": "log-moneyness of the worst dent",
+  "section": "limit"
+ },
+ "WingHatBaseGmin": {
+  "value": "-0.001",
+  "meaning": "worst Durrleman factor of the fitted slice on the same range",
+  "section": "limit"
+ },
+ "VsTermSpySpreadBp": {
+  "value": "671",
+  "meaning": "largest SPY fair-strike spread over ATM vol (vol bp)",
+  "section": "term"
+ },
+ "VsTermNvdaSpreadBp": {
+  "value": "529",
+  "meaning": "largest NVDA fair-strike spread over ATM vol (vol bp)",
+  "section": "term"
+ },
+ "VsTermIncMinVarBp": {
+  "value": "1.1",
+  "meaning": "smallest adjacent-expiry increment of w_vs across both names (variance bp)",
+  "section": "term"
+ },
+ "VsTermFwdVolMinPct": {
+  "value": "13.9",
+  "meaning": "smallest SPY forward variance between expiries, as a forward vol (%)",
+  "section": "term"
+ },
+ "VsThreeSvsPct": {
+  "value": "19.83",
+  "meaning": "running slice fair var-swap vol, strike-side replication (%)",
+  "section": "three"
+ },
+ "VsAgreeRankBp": {
+  "value": "0.10",
+  "meaning": "law-side closed form vs strike-side replication (vol bp)",
+  "section": "three"
+ },
+ "VsFieldSvsPct": {
+  "value": "19.70",
+  "meaning": "SPY sheet fair var-swap vol at the running expiry, field side (%)",
+  "section": "three"
+ },
+ "VsAgreeFieldBp": {
+  "value": "2.9",
+  "meaning": "field-side backward solve vs the sheet's own strike-side replication, time step refined 8x (vol bp)",
+  "section": "three"
+ },
+ "VsLvGapBp": {
+  "value": "13.7",
+  "meaning": "sheet vs running slice fair-strike gap (vol bp) \u2014 the identifiability gap",
+  "section": "three"
+ },
+ "VsAgreeFieldCoarseBp": {
+  "value": "23.2",
+  "meaning": "the same two reads at the march's own time step (vol bp)",
+  "section": "three"
+ },
+ "VsPinsNQuotes": {
+  "value": "94",
+  "meaning": "prepared quotes on the running SPY December 2026 node",
+  "section": "pins"
+ },
+ "VsPinsLqdPct": {
+  "value": "19.83",
+  "meaning": "LQD fair var-swap vol on the running node (%)",
+  "section": "pins"
+ },
+ "VsPinsSviPct": {
+  "value": "19.33",
+  "meaning": "SVI fair var-swap vol on the running node (%)",
+  "section": "pins"
+ },
+ "VsPinsMcsPct": {
+  "value": "19.25",
+  "meaning": "MCS fair var-swap vol on the running node (%)",
+  "section": "pins"
+ },
+ "VsPinsMaxGapBp": {
+  "value": "58.2",
+  "meaning": "largest pairwise fair-strike gap across families (vol bp)",
+  "section": "pins"
+ },
+ "VsPinsBellyAgreeBp": {
+  "value": "13.3",
+  "meaning": "worst pairwise IV distance on the quoted span (vol bp)",
+  "section": "pins"
+ },
+ "VsPinsWorstRmsBp": {
+  "value": "7.5",
+  "meaning": "worst per-family rms fit error on the node (vol bp)",
+  "section": "pins"
+ }
+}

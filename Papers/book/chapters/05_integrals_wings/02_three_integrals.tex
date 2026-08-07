@@ -1,0 +1,273 @@
+\section{Three integrals for one number}
+\label{sec:vsthree}
+
+We have one number, $w_{\rm vs}=-2\,\E[X]$, defined by the terminal
+law.  But the three model families of Part~I hold that law in three
+different coordinate systems --- three \emph{charts}, in the word
+Chapter~3 introduced for a choice of coordinates: Chapter~3's families
+state the \emph{smile} $w(k)$, Chapter~2's model states the \emph{law}
+itself through its quantile, and Chapter~4's model states the
+\emph{field} $v(\tau,y)$ that generates every law at once.  This
+section derives one exact integral for $w_{\rm vs}$ in each chart.
+The three integrals look nothing alike, and watching them return the
+same number --- to a tenth of a basis point --- is the section's
+payoff.
+
+\subsection{Against option prices}
+
+The first route rewrites the expectation of \emph{any} smooth payoff as
+a portfolio of the options themselves.
+
+\begin{proposition}[Spanning]
+\label{prop:vsspanning}
+Let $\varphi$ be twice continuously differentiable on $(0,\infty)$ and
+let $Y>0$ have $\E[Y]=1$.  Write $c$ and $P$ for the normalized call
+and put at strike $K$, i.e.\ $c=\E[(Y-K)^+]$ and $P=\E[(K-Y)^+]$.
+Then, whenever the integrals converge,
+\begin{equation}
+\E[\varphi(Y)]
+=\varphi(1)
++\int_0^{1}\varphi''(K)\,P(K)\,\dd K
++\int_1^{\infty}\varphi''(K)\,c(K)\,\dd K .
+\label{eq:vsspanning}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+The claim reduces to a pointwise identity: for every $y>0$,
+\begin{equation}
+\varphi(y)=\varphi(1)+\varphi'(1)(y-1)
++\int_0^{1}\varphi''(K)(K-y)^+\dd K
++\int_1^{\infty}\varphi''(K)(y-K)^+\dd K .
+\label{eq:vspointwise}
+\end{equation}
+Check it for $y\ge1$; the case $y<1$ is the mirror image.  For
+$y\ge1$ the put-type kernel $(K-y)^+$ vanishes on $K\le1$, and the
+call-type kernel is nonzero only for $K\in[1,y]$, so the right-hand
+side's integrals reduce to $\int_1^{y}\varphi''(K)(y-K)\,\dd K$.
+Integrate by parts once, differentiating $(y-K)$:
+\[
+\int_1^{y}\varphi''(K)(y-K)\,\dd K
+=\Big[\varphi'(K)(y-K)\Big]_1^{y}
++\int_1^{y}\varphi'(K)\,\dd K
+=-\varphi'(1)(y-1)+\varphi(y)-\varphi(1).
+\]
+Substituting back into \eqref{eq:vspointwise} cancels everything but
+$\varphi(y)$.  Now set $y=Y$ in \eqref{eq:vspointwise} and take
+expectations.  The linear term carries $\E[Y]-1=0$ and dies; the two
+kernels become put and call prices.
+\end{proof}
+
+In words: any smooth payoff is a constant, plus a forward position,
+plus a strip of puts below the forward and calls above it, held in
+amounts given by the payoff's second derivative.  The identity is
+completely model-free --- it never asks where the prices came from.
+
+Now specialize to the log contract, $\varphi(y)=-2\log y$.  Then
+$\varphi(1)=0$ and $\varphi''(y)=2/y^{2}$, so
+\eqref{eq:vsspanning} reads
+\[
+w_{\rm vs}
+=2\int_0^{1}\frac{P(K)}{K^{2}}\,\dd K
++2\int_1^{\infty}\frac{c(K)}{K^{2}}\,\dd K .
+\]
+Every strike appears, weighted by $1/K^{2}$: the variance swap is a
+strip of out-of-the-money options, densest below the forward.  For
+computation it is tidier in log-moneyness.  Substitute $K=e^{k}$,
+$\dd K=e^{k}\dd k$, and index the same prices by log-strike, writing
+$c(k)$ for $c(e^{k})$ and likewise for the put; each $1/K^{2}\,\dd K$
+becomes $e^{-k}\dd k$.  Now recall put--call parity in normalized
+units ($P(k)=c(k)+(e^{k}-1)$, from \cref{eq:calldef}) and write
+$(x)^-=\min(x,0)$ for the negative part.  On the call leg ($k>0$) the
+quantity $e^{k}-1$ is positive, so $(e^{k}-1)^-=0$ and the bracket
+below is just the call; on the put leg ($k<0$) it is negative, so
+$(e^{k}-1)^-=e^{k}-1$ and the bracket is $c(k)+(e^{k}-1)=P(k)$,
+exactly the put parity demands.  One bracket therefore covers both
+legs, and the two integrals merge into one integral over the smile:
+\begin{equation}
+w_{\rm vs}
+=2\int_{-\infty}^{\infty}
+\Big[\Black\big(k,w(k)\big)+(e^{k}-1)^-\Big]\,e^{-k}\,\dd k ,
+\label{eq:vsrepl}
+\end{equation}
+where $\Black$ is the Black call function of \cref{eq:black}, so
+$\Black(k,w(k))=c(k)$ is the smile's call price.  Equation
+\eqref{eq:vsrepl} consumes nothing but the total-variance curve
+$w(k)$.  Any model that can state its smile can be integrated --- this
+is the natural route for SVI and MCS, whose $w(k)$ is a formula.
+
+\subsection{Against the law}
+
+The second route never leaves the law.  The mean of any function of
+$X$ can be taken in rank coordinates --- this is
+\cref{eq:rankintegral}, the change of variables under which Chapter~2
+built everything: if $U$ is uniform on $(0,1)$ then $Q(U)$ has the law
+of $X$, so integrating the quantile function $Q$ over ranks
+\emph{is} taking the mean.  Applying this to
+$w_{\rm vs}=-2\,\E[X]$ gives Chapter~2's \cref{eq:varswap}:
+\begin{equation*}
+w_{\rm vs}
+=-2\int_0^{1}Q(u)\,\dd u
+=-2\int_{-\infty}^{\infty}x(z)\,\rho(z)\,\dd z ,
+\end{equation*}
+where the second form substitutes the log-odds coordinate $z$, with
+$x(z)$ the transport and $\rho$ the logistic density
+(\cref{sec:model}).  For an LQD slice --- one expiry's fitted law ---
+this is one dot product against arrays the slice has already built on
+the fixed log-odds grid every slice carries: no Black function, no
+inversion, no new grid.  The integrand $-2\,x(z)\rho(z)$ decays like
+$|z|e^{-|z|}$ --- Chapter~2's exponential tails make the transport
+asymptotically linear in $z$, and the logistic weight supplies the
+$e^{-|z|}$ --- so the slice's grid exhausts it.
+
+\subsection{Along paths}
+
+The third route uses neither prices nor the terminal law, but the
+field.  Return to the left-hand side of \eqref{eq:vslogcontract},
+the expected accumulated variance, in the representative model of
+Chapter~4 where $v_s=v(s,Y_s)$.  The expectation of a time integral is
+the time integral of expectations, and each instant's expectation is
+an integral against that instant's density $f(s,y)$ --- the marginal
+density of $Y_s$ that \cref{sec:lveq} evolved with the forward
+equation:
+\begin{equation}
+w_{\rm vs}
+=\E\!\left[\int_0^{\tau}v(s,Y_s)\,\dd s\right]
+=\int_0^{\tau}\!\E\big[v(s,Y_s)\big]\,\dd s
+=\int_0^{\tau}\!\!\int_0^{\infty}v(s,y)\,f(s,y)\,\dd y\,\dd s .
+\label{eq:vsoccupation}
+\end{equation}
+Read the double integral as a pairing of two surfaces: the field
+$v(s,y)$, against the sheet of densities $f(s,y)$ that says how much
+time the paths spend at each level.  The density sheet is called the
+\emph{occupation measure} of the diffusion, and \eqref{eq:vsoccupation}
+says the fair strike is the field averaged over where the paths
+actually go.
+
+Computing \eqref{eq:vsoccupation} does not require assembling $f$.
+Define the \emph{expected remaining variance}
+\[
+\mathcal{W}(s,y)
+=\E\!\left[\int_s^{\tau}v(r,Y_r)\,\dd r\;\Big|\;Y_s=y\right],
+\]
+the fair strike of a swap started at time $s$ from level $y$.  It
+satisfies a backward equation of exactly the form Chapter~4 marched,
+with the field itself as a source term:
+\begin{equation}
+\partial_s\mathcal{W}
++\tfrac12\,v(s,y)\,y^{2}\,\partial_{yy}\mathcal{W}
++v(s,y)=0,
+\qquad
+\mathcal{W}(\tau,\cdot)=0,
+\qquad
+w_{\rm vs}=\mathcal{W}(0,1).
+\label{eq:vssource}
+\end{equation}
+The derivation is two applications of ideas already in hand ---
+It\^o's formula and the martingale property --- and is written out in
+\cref{app:vsprotocol}.  Operationally: one backward sweep of the same
+solver Chapter~4 marched forward, adding
+$v\,\Delta s$ at each step, and the number is read off at the spot.
+This is the natural route for the local-volatility model, which owns
+neither a smile formula nor a terminal quantile --- but owns the
+field.
+
+\subsection{One number}
+
+Collecting the three routes with the definition they all serve:
+\begin{equation}
+\boxed{\;
+w_{\rm vs}
+=-2\,\E[X]
+=2\!\int_{\R}\!\Big[\Black\big(k,w(k)\big)+(e^{k}-1)^-\Big]e^{-k}\dd k
+=-2\!\int_{\R}x(z)\,\rho(z)\,\dd z
+=\int_0^{\tau}\!\!\int v\,f\,\dd y\,\dd s .
+\;}
+\label{eq:vsmaster}
+\end{equation}
+One number; an integral against the smile, an integral against the
+law, an integral against the field.  Each equality is a theorem, so
+any two routes evaluated on the same model must agree --- and
+checking that they do is a free, end-to-end audit of an
+implementation.  (Route two costs one \emph{quadrature} --- one
+numerical integral --- and the audits below are limited only by
+quadrature accuracy.)
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_vs_three.pdf}
+\caption{One number, three integrands.  (a)~The strike-side integrand
+of \eqref{eq:vsrepl} on the running LQD slice; the orange ticks mark
+the quoted strikes, and the shaded area is $w_{\rm vs}$.  (b)~The
+law-side integrand $-2\,x(z)\rho(z)$ on the same slice's log-odds
+grid; the signed area is the same number to \MacVsAgreeRankBp\ vol bp.
+(c)~The field route on Chapter~4's calibrated SPY sheet: the local
+volatility as a heatmap, the occupation measure as white density
+contours funnelling out of the spot, and the marker at
+$(y,\tau)=(1,0)$ where the backward solve \eqref{eq:vssource} reads
+off the number.}
+\label{fig:vsthree}
+\end{figure}
+
+\Cref{fig:vsthree} draws the three integrands for real fitted objects,
+and it repays a slow look.  In panel~(a), the strike side on the
+running LQD slice of \cref{fig:vspins}: the integrand of
+\eqref{eq:vsrepl} peaks near the money --- the $e^{-k}$ weight decays,
+but the option prices it multiplies decay much faster --- and the
+orange ticks show how little of the strike axis the quotes occupy.
+The area under this curve is the fair strike,
+$\sigma_{\rm vs}=\MacVsThreeSvsPct\%$.  In panel~(b), the law side of
+the \emph{same} slice: the integrand $-2\,x(z)\rho(z)$ against
+log-odds.  It has two lobes, because $-2x(z)$ is positive on the
+downside ranks ($x<0$) and negative on the upside: the green lobe is
+downside outcomes pushing the fair strike up, the orange lobe upside
+outcomes pulling it down.  The lobes are visibly unequal --- that
+asymmetry is the skew --- and their \emph{signed} area agrees with
+panel~(a)'s area to \MacVsAgreeRankBp\ vol bp: two utterly different
+integrals, one number, the agreement limited only by quadrature.  In
+panel~(c), the field route on a different model of the same market:
+Chapter~4's SPY sheet, the field fitted to all eight expiries at
+once.  The heatmap is the calibrated
+local volatility; the white contours are the occupation measure ---
+the densities $f(s,y)$ fanning out of the spot as time runs up the
+axis --- and the pairing \eqref{eq:vsoccupation} weighs the heatmap by
+the contours.  The marker at the origin of the fan is where
+\eqref{eq:vssource} reads the answer.
+
+The field route's audit deserves its own sentence, because it teaches
+the same lesson as Chapter~4's two operators.  On the sheet, the
+strike-side route \eqref{eq:vsrepl} and the field-side route
+\eqref{eq:vssource} are both computed by finite differences, and both
+carry a first-order bias in the time step.  At the march's own step
+the two reads differ by \MacVsAgreeFieldCoarseBp\ vol bp; refine the
+step eightfold and the gap collapses to \MacVsAgreeFieldBp\ vol bp,
+halving with each halving of the step.  The mathematics says the
+integrals are equal; the computation agrees --- in the limit, at the
+first-order rate the schemes promise, and measuring that convergence
+is the audit.
+
+One structural observation organizes all of this, and it is worth
+stating because it predicts which route each model finds cheap.  The
+fair strike is \emph{linear} in the option prices and \emph{linear}
+in the quantile $Q$ --- both appear under plain integral signs in
+\eqref{eq:vsmaster} --- so a model whose own coordinates are one of
+those objects gets the number, and by the same linearity its
+parameter derivatives, for the price of one quadrature: LQD holds
+$Q$, and the law route is a dot product.  It is \emph{not} linear in
+the smile $w(k)$ --- the smile enters \eqref{eq:vsrepl} through the
+nonlinear Black function --- so a model whose coordinates are the
+smile must pay the Black evaluations: cheap when $w(k)$ is a formula,
+as for SVI and MCS, and expensive precisely when the smile must be
+\emph{solved for} point by point.  The field route's economy has a
+third source.  Its pairing \eqref{eq:vsoccupation} is against an
+occupation measure the field itself generates, so the number is not
+linear in $v$.  What saves it is \eqref{eq:vssource}:
+$\mathcal{W}$ solves a \emph{linear} equation in which $v$ enters
+only as a coefficient and a source, so the number still costs one
+backward sweep.  This section's rule, stated once: \emph{evaluate a
+shared functional in each model's own chart}.  It stands behind
+every route above.
+
+We can now compute the number exactly, in any model, and trust the
+result.  The next question is what part of it the quotes actually pin
+down.

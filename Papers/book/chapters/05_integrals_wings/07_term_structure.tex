@@ -1,0 +1,171 @@
+\section{The ordered term structure, and the contract}
+\label{sec:vsterm}
+
+Everything so far concerned one expiry.  A surface carries a fair
+strike per expiry, and the last question is how the family of numbers
+$w_{\rm vs}(\tau)$ behaves across maturities.  The answer is that the
+calendar condition of Chapter~2 orders it --- and the proof is a
+three-line reuse of the spanning identity.
+
+Recall the condition.  A surface is calendar-ordered when, at every
+log-moneyness, the later expiry's normalized call is worth at least
+the earlier one's: $c_1(k)\le c_2(k)$ for all $k$
+(\cref{eq:calreq}).  Chapter~2 showed this is the same as
+\emph{convex order} of the two laws --- every convex payoff is priced
+at least as high under the later law --- and, by Kellerer's theorem,
+exactly the condition for some martingale to have these two laws as
+its distributions at the two expiries
+(\cref{thm:ledgerorder,sec:calendar}).
+
+\begin{proposition}[Calendar order integrates]
+\label{prop:vsterm}
+If two admissible mean-one slices satisfy $c_1(k)\le c_2(k)$ for all
+$k$, then $w_{\rm vs,1}\le w_{\rm vs,2}$.
+\end{proposition}
+
+\begin{proof}
+Puts inherit the order from calls: at a common strike $K$, parity
+gives $P=c+K-1$ for both slices, so $c_1\le c_2$ implies
+$P_1\le P_2$.  Now write each fair strike through
+\cref{prop:vsspanning} with $\varphi(y)=-2\log y$, whose second
+derivative $\varphi''(K)=2/K^{2}$ is positive:
+\[
+w_{\rm vs}
+=2\int_0^{1}\frac{P(K)}{K^{2}}\,\dd K
++2\int_1^{\infty}\frac{c(K)}{K^{2}}\,\dd K .
+\]
+Every integrand of slice~2 dominates the corresponding integrand of
+slice~1, so the integrals are ordered.
+\end{proof}
+
+The same argument proves more: \emph{any} payoff with
+$\varphi''\ge0$ --- any convex payoff --- has its price ordered by
+the calendar, which is just convex order saying its own name.  The
+variance swap is the special case a desk trades directly, and for it
+the order has a market reading.  The difference
+$w_{\rm vs}(\tau_2)-w_{\rm vs}(\tau_1)$ is the \emph{forward
+variance} between the two dates --- the variance a client buys by
+holding the long swap against the short one.  \Cref{prop:vsterm}
+says a calendar-ordered surface never prices forward variance below
+zero; a violation would let a desk lock in variance at a negative
+price, which is the calendar arbitrage of Chapter~2 restated for the
+integral.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_vs_term.pdf}
+\caption{The integral's term structure on the frozen gallery (stored
+surface fits).  (a)~SPY in total variance: the fair strike
+$w_{\rm vs}$ and the ATM total variance $w(0)$ both rise with
+maturity, and the gap between them widens.  (b)~Both names in
+volatility units: the fair-strike vol rides above the ATM vol
+everywhere, by up to \MacVsTermSpySpreadBp\ vol bp for SPY and
+\MacVsTermNvdaSpreadBp\ for NVDA.  NVDA's vol \emph{levels} are not
+monotone in maturity --- the order lives in total variance, panel
+(a)'s units, not in vol.}
+\label{fig:vsterm}
+\end{figure}
+
+\Cref{fig:vsterm} reads the term structure off the frozen gallery ---
+the snapshot's stored surface fits, the same objects as
+\cref{fig:vsshare}(b).  In panel~(a), SPY in total variance: the
+orange curve is $w_{\rm vs}(\tau)$, the blue is the ATM total
+variance $w(0)(\tau)$, both increasing.  Across every adjacent pair
+of expiries, in both names, the fair strike's increment is positive
+--- the smallest measured increment is $+\MacVsTermIncMinVarBp$
+variance bp (a variance bp is $10^{-4}$ of total variance, the
+sibling of the vol bp of \cref{sec:vsnumber}), between the two front
+expiries a day apart, and the smallest forward variance, expressed as
+a forward volatility, is
+\MacVsTermFwdVolMinPct\% --- so the published surface keeps the order
+\cref{prop:vsterm} demands, with its thinnest margin exactly where
+maturities crowd together.  Panel~(a) shows something else: the
+\emph{gap} between the curves widens with maturity.  By the
+flat-smile computation \eqref{eq:vsflat}, that gap is precisely the
+part of the fair strike owed to the smile's departure from flatness,
+and it compounds with maturity just as the unquoted share of
+\cref{fig:vsshare}(b) did --- the two figures are the same fact in
+two currencies.
+
+Panel~(b) restates the term structure in the units desks quote,
+volatility, for both names.  The fair-strike vol $\sigma_{\rm vs}$
+rides above the ATM vol at every expiry --- by up to
+\MacVsTermSpySpreadBp\ vol bp at SPY's long end and
+\MacVsTermNvdaSpreadBp\ for NVDA.  On a flat smile the two curves
+would coincide; the spread \emph{is} the priced skew and wing mass,
+and a desk can read it directly as what convexity in the smile costs.
+One trap is visible and worth flagging: NVDA's vol curves are not
+monotone in maturity, and nothing is wrong --- the calendar orders
+\emph{total variance}, panel~(a)'s units, and a falling vol term
+structure is perfectly consistent with rising total variance.
+Ordering vols is not a no-arbitrage condition; ordering their
+$\sigma^{2}\tau$ is.
+
+\subsection{The contract}
+\label{sec:vscontract}
+
+The chapter closes the way the model chapters do, with its contract
+--- three columns of decreasing strength.  The first holds by
+theorem.  The second is measured on the book's frozen data, and the
+chapter quoted every number.  The third is convention: chosen, stated,
+and owed to the user, because no data selects it.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:vscontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Checked (frozen data)} & \textbf{Convention}\\
+\midrule
+The identity chain \eqref{eq:vsmaster}: one fair strike, three exact
+integrals (smile, law, field). &
+Law vs strike route on one slice: \MacVsAgreeRankBp\ vol bp; field vs
+strike route on one sheet: \MacVsAgreeFieldCoarseBp\ vol bp at the
+march's step, \MacVsAgreeFieldBp\ at an eightfold refinement. &
+Which route a model evaluates (its native chart), and the reading of
+the fair strike: diffusion paths, continuous monitoring, variance
+time.  Jumps sit outside the identity
+\eqref{eq:vslogcontract}.\\
+\addlinespace
+The ceiling (\cref{prop:vsceiling}): no admissible wing steeper than
+$2$; the boundary ray itself inadmissible. &
+Fitted slopes (\cref{tab:vswings}): all wings far inside the
+ceiling. &
+The wing drawn \emph{within} the cone: each family's stated
+mechanism --- structural, capped, or inherited-and-diagnosed.\\
+\addlinespace
+The envelope (\cref{prop:vscone}): every completion between the
+convex floor and the monotone cap; top edge climbs at the ceiling
+\eqref{eq:vstopslope}. &
+All three families' wings clear their cones (clearances of
+\cref{sec:vsenvelope}); the hatted counterexample caught by the
+extended $g_{\rm D}$ check, slopes unmoved
+(\cref{fig:winglimit}). &
+Where conditions are enforced: one-curve checks extended into the
+wings; two-curve (calendar) checks confined to common quote support
+(\cref{eq:calrows}).\\
+\addlinespace
+Calendar order integrates (\cref{prop:vsterm}): the fair strike's
+term structure is nondecreasing; forward variance is nonnegative. &
+Smallest measured increment across both names:
+$+\MacVsTermIncMinVarBp$ variance bp; smallest forward vol
+\MacVsTermFwdVolMinPct\%. &
+The weight given a traded var-swap quote when one exists: one more
+residual in the objective of \cref{sec:calibration}, at a declared
+strength.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Step back, once, to the book's thesis.  The fair strike is a single
+number in which the three ingredients the thesis separates are
+unusually easy to see.  Validity supplied the theorems: the identity
+chain, the ceiling, the envelope, the order.  Information is the
+quoted belly's \MacVsShareQuotedPct\%.  Convention is the rest ---
+the wing contract that completes the integral, disclosed in a table
+rather than hidden in an extrapolation routine.  Part~I is now
+complete: laws, smiles, fields, and the integrals that test them.
+Everything so far took the forward and the discount for granted at
+every expiry.  Part~II starts by earning them.

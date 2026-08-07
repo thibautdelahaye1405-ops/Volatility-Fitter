@@ -1,0 +1,196 @@
+\section{The envelope of admissible completions}
+\label{sec:vsenvelope}
+
+The ceiling constrains slopes at infinity.  A desk's question is more
+concrete: the quotes end at some strike --- what prices may an
+honest model print at the strikes just past it?  This section answers
+with an envelope: two curves, computable from the last two quotes,
+between which every admissible continuation must run.
+
+Fix the setting on the call side (the put side mirrors it).  A slice
+has been fitted through the quotes; call everything up to the last
+quoted strike \emph{the belly} and regard it as settled.  Bars mark
+quantities frozen at the last quote: $\bar k$ is the last quoted
+log-strike, $\bar y=e^{\bar k}$ the strike itself, and
+$\bar c=c(\bar y)$ the normalized call there.  Write $y_1$ for the
+second-to-last quoted strike; the \emph{last secant slope} is the
+price change per unit of strike across the final quoted interval,
+\[
+\bar s=\frac{c(\bar y)-c(y_1)}{\bar y-y_1}\;<\;0 .
+\]  A
+\emph{completion} is any way of continuing the call curve to
+strikes beyond $\bar y$ so that the whole curve still prices a law.
+Chapter~2 established what that requires
+(\cref{sec:intro,eq:BL}): as a function of strike, the call curve of
+a law is nonincreasing, and it is convex --- its second derivative
+\emph{is} the density, so convexity is positivity of probability.
+And by \eqref{eq:vscalldies} it must eventually reach zero.
+
+Those three properties already imply the envelope.
+
+\begin{proposition}[The admissible cone]
+\label{prop:vscone}
+Every admissible completion satisfies, for all $y\ge\bar y$,
+\begin{equation}
+\max\!\big(0,\;\bar c+\bar s\,(y-\bar y)\big)
+\;\le\;c(y)\;\le\;\bar c .
+\label{eq:vscone}
+\end{equation}
+The lower edge is itself an admissible completion; the upper edge is
+approached by admissible completions but attained by none.
+\end{proposition}
+
+\begin{proof}
+Write the completion through its slope: $c(y)=\bar c+\int_{\bar
+y}^{y}c'(t)\,\dd t$.  Convexity of the whole curve says $c'$ is
+nondecreasing; in particular, for a convex function a chord's slope
+never exceeds the slope just past its right endpoint, so applying
+this to the chord over $[y_1,\bar y]$ gives $c'(\bar y^{+})\ge\bar
+s$, hence $c'(t)\ge\bar s$ for all $t\ge\bar y$.  Monotonicity says
+$c'\le0$.  Integrating the two slope bounds gives
+$\bar c+\bar s(y-\bar y)\le c(y)\le\bar c$, and prices are
+nonnegative, which is \eqref{eq:vscone}.
+
+For the lower edge, let the slope stay exactly at $\bar s$ until the
+line reaches zero, at the strike
+\begin{equation}
+y_0=\bar y-\frac{\bar c}{\bar s},
+\label{eq:vsyzero}
+\end{equation}
+and stay at zero after.  Slopes step from $\bar s$ up to $0$, so the
+curve is convex and nonincreasing, and it reaches zero: admissible.
+Its kink at $y_0$ is a point mass --- the law parks all remaining
+upside probability at the single strike $y_0$ and owns nothing
+beyond.  For the upper edge, a concrete family does the work.  For
+small $\alpha>0$ consider the completion
+$c(y)=\bar c\,(y/\bar y)^{-\alpha}$: it is decreasing and convex, it
+tends to zero, and it joins the belly with a convex kink at $\bar y$
+(its opening slope $-\alpha\bar c/\bar y$ is closer to zero than
+$\bar s$, and slopes may jump upward at a kink).  Being decreasing,
+convex and vanishing at infinity, it is the call curve of a genuine
+law (\cref{sec:intro}), one that pushes its remaining mass to ever
+higher strikes as $\alpha$ shrinks.  As $\alpha\to0$ these curves
+approach the constant $\bar c$ at every strike --- but the constant
+itself never reaches zero, so it is not admissible.
+\end{proof}
+
+Pause on what the proposition says.  At any strike beyond the last
+quote, the admissible call prices fill an interval: from a linear
+descent that hits zero --- at $y_0$, which \eqref{eq:vsyzero}
+computes from two quotes --- up to (but excluding) the last quoted
+price itself.  On the running node the numbers are stark: the last
+call-side quote sits at $\bar k=\MacWingEnvKbar$, worth
+$\bar c=\MacWingEnvCbar$ of the forward, and the lower edge reaches
+zero at $k=\MacWingEnvKzero$.  The data permits the smile to
+\emph{end} --- price zero, no law beyond --- less than a tenth of a
+log-unit past the last quote.  It also permits a wing that is still
+worth nearly the full $\bar c$ a log-unit out.  Everything between is
+allowed.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_vs_envelope.pdf}
+\caption{The envelope of admissible completions (running node, call
+side).  (a)~Price space: the fitted belly (black) through the last
+quote mids (orange), and the cone \eqref{eq:vscone} beyond the last
+quote: the dashed monotone cap at $\bar c$, the convex floor
+descending at the secant slope $\bar s$, reaching zero at
+$y_0$ (dot).  (b)~The same cone mapped through the Black chart: the
+shaded fan $[w^{-},w^{+}]$ of admissible total-variance completions,
+with the three families' fitted wings threading it.}
+\label{fig:vsenvelope}
+\end{figure}
+
+\Cref{fig:vsenvelope}(a) draws the cone in price space on the running
+node.  The black curve is the fitted belly, ending at the last quote;
+prices here are a few $10^{-4}$ of the forward, so the axis is in
+those units.  From the endpoint two edges open: the dashed horizontal
+--- the \emph{monotone cap}, prices may not rise --- and the
+descending line --- the \emph{convex floor}: prices may never fall
+faster than the last secant slope, so the straight continuation at
+$\bar s$, dying into the axis at $y_0$ (dot), is the steepest descent
+any completion is allowed.  The shaded region between them is every
+call price any law consistent with the belly can print.
+
+Panel~(b) shows the same cone where this book draws smiles: in total
+variance.  The Black function is increasing in $w$, so the price
+interval \eqref{eq:vscone} maps strike by strike onto an interval
+$[w^{-}(k),\,w^{+}(k)]$, the \emph{fan}: $w^{-}$ is the implied
+variance of the descending line (zero once the line dies), $w^{+}$
+that of the constant $\bar c$.  The fan is vast.  By $k=1$ the
+admissible total variance runs from $0$ to several times the ATM
+level; the three families' wings --- the same three fits of
+\cref{fig:vspins} --- thread it in a narrow bundle near the bottom.
+Numerically, each family's wing clears the floor and cap of its
+\emph{own} cone --- the cone rebuilt from that family's fitted call
+values at the same two strikes, since \cref{prop:vscone} constrains a
+completion relative to its own belly (\cref{app:vsprotocol}) --- with
+room to spare: worst clearances
+\MacWingEnvClearLqdLo/\MacWingEnvClearSviLo/\MacWingEnvClearMcsLo\
+below and
+\MacWingEnvClearLqdHi/\MacWingEnvClearSviHi/\MacWingEnvClearMcsHi\
+above, in total variance.  That is \cref{prop:vscone} confirmed on
+real fits.
+The bundle's narrowness against the fan's width restates
+\cref{sec:vslives}: the models' structural choices are far more
+selective than the data's constraints.
+
+The fan's top edge has a closed form, and deriving it closes the loop
+with \cref{sec:vsceiling}.  The upper edge holds the call at the
+constant $\bar c$, so $w^{+}(k)$ solves
+$\Black(k,w)=\bar c$.  Suppose for a moment the second Black term is
+negligible; then $\PhiN(d_{+})=\bar c$, i.e.\
+$d_{+}=q$ with $q=\PhiN^{-1}(\bar c)$ (a negative number --- on the
+running node $\bar c=\MacWingEnvCbar$, far below one half).  Unpack
+$d_{+}$:
+\[
+\frac{\sqrt w}{2}-\frac{k}{\sqrt w}=q
+\qquad\Longrightarrow\qquad
+w-2q\sqrt w-2k=0
+\qquad\Longrightarrow\qquad
+\sqrt{w^{+}(k)}=q+\sqrt{q^{2}+2k},
+\]
+taking the positive root of the quadratic in $\sqrt w$.  The neglected
+term justifies itself with unexpected grace.  The two Black arguments
+always differ by $\sqrt w$, so along this solution
+$d_{-}=d_{+}-\sqrt w=q-\sqrt{w}$, and
+\[
+\frac{d_{-}^{2}}{2}
+=\frac{q^{2}-2q\sqrt w+w}{2}
+=\frac{q^{2}+2k}{2}
+\qquad\Longrightarrow\qquad
+\log\big(e^{k}\PhiN(d_{-})\big)
+\le k-\frac{q^{2}+2k}{2}
+=-\frac{k}{2}-\frac{q^{2}}{2},
+\]
+using the quadratic itself in the middle step, and the tail bound of
+\cref{sec:vsceiling} (whose $-\log|d_{-}|$ term only strengthens the
+inequality) in the last: the correction decays like $e^{-k/2}$,
+exponentially small.  (At $k=30$ the closed form agrees with a full
+Black inversion by the reference implementation --- the working code
+behind every number in this book --- to \MacWingEnvTopAgree\ in
+total variance.)  Differentiating the closed
+form gives the edge's slope,
+\begin{equation}
+\frac{\dd w^{+}}{\dd k}
+=2\big(q+\sqrt{q^{2}+2k}\big)\cdot\frac{1}{\sqrt{q^{2}+2k}}
+=2+\frac{2q}{\sqrt{q^{2}+2k}}
+\;\longrightarrow\;2
+\qquad(k\to\infty),
+\label{eq:vstopslope}
+\end{equation}
+rising monotonically (recall $q<0$, and the negative term shrinks) ---
+it reads \MacWingEnvTopSlopeDeep\ at $k=30$ --- and approaching $2$
+from below, never reaching it.  The top edge
+of the finite-strike envelope is the ceiling of
+\cref{prop:vsceiling}, met for the third time and in its sharpest
+form: the steepest admissible completion climbs at slope
+$2-2|q|/\sqrt{q^{2}+2k}$, a curve that grazes the ceiling
+asymptotically while staying strictly under it --- the supremum, not
+a member, made into a formula.
+
+The section's summary is uncomfortable and important.  Between the
+floor and the cap, mathematics is silent: every curve in the fan
+prices a legitimate law consistent with everything quoted.  The data
+cannot choose.  The model must --- and the next section is about
+doing that in the open.

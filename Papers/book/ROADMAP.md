@@ -32,14 +32,15 @@ The author reviewed Chapters 3–4 and rejected their register: too dense,
 too clever, not readable for someone meeting the subject for the first
 time. The style contract below was rewritten in response — it OVERRIDES
 the earlier "monograph" register, and Chapter 2 is NO LONGER the style
-exemplar. Both queued revisions are now done: Chapter 3 was revised to
-the new contract on 2026-08-05, Chapter 4 on 2026-08-06 (each with a
-newcomer fresh-reader pass, all stumble points resolved). Chapter 4 is
-the most recently revised chapter and therefore the TONE EXEMPLAR.
+exemplar. Both queued revisions are done (Ch. 3 on 2026-08-05, Ch. 4 on
+2026-08-06, each with a newcomer fresh-reader pass), and Chapter 5 was
+written under the contract from the start on 2026-08-06 (newcomer pass
+run, all findings resolved). Chapter 5 is the most recent chapter held
+to the contract and, with revised Chapter 4, serves as TONE EXEMPLAR.
 Next:
 
-1. Chapter 5 (variance swaps and wings), written under the new
-   contract from the start, imitating the revised Chapter 4's tone.
+1. Chapter 6 (forwards, dividends, and carry) — opens Part II — written
+   under the contract from the start, imitating Chapters 4–5's tone.
 
 Chapter 2 keeps its monograph register for now (it doubles as the
 standalone paper); whether to soften it inside the book is the author's
@@ -125,7 +126,7 @@ local volatility placed among the models (author's decision).
 | 2  | The log-quantile-density model | 01 | **DONE** (`Papers/lqd_paper/`, 36 pp) |
 | 3  | Families in the volatility chart: SVI-JW and superposition | 02 + 03 (+ objective material from 07 not already in Ch. 2) | **DONE** (revised to the pedagogy contract 2026-08-05; tone exemplar) |
 | 4  | Local volatility | 04 | **DONE** (revised to the pedagogy contract 2026-08-06; tone exemplar) |
-| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | pending (next) |
+| 5  | Integrals and wings: variance swaps beyond the last quote | 08 + 09 (+ cross-expiry statics remainder of 10) | **DONE** (written under the pedagogy contract 2026-08-06; tone exemplar with revised Ch. 4) |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | 06 | pending |
 | 7  | Removing early exercise | 05 | pending |
@@ -502,3 +503,36 @@ keeping Chapter 2 self-contained.
   book builds clean at 94 pp, no undefined refs, no ch4 overfulls.
   Ch. 4 is now the tone exemplar.  Next: Chapter 5 (variance swaps
   and wings), new contract from the start.
+- 2026-08-06 (later): Chapter 5 WRITTEN under the pedagogy contract
+  from the start (`chapters/05_integrals_wings/`, 7 sections +
+  appendix 5.A, ~17 pp, book pages 89–105 of the 112-page build).
+  Spine: the instrument and the log-contract identity w_vs = −2E[X]
+  (Itô derived slowly; flat-smile w_vs = w(0) computed by hand) →
+  three integrals for one number (spanning proved; Ch. 2's rank
+  integral referenced; the field route by Fubini + backward source
+  equation, Feynman–Kac proof in 5.A) → the accrual share (18.4% of
+  the running node's integral beyond the quotes; gallery 3–23%) →
+  the model-free ceiling β ≤ 2 proved from "the far call must die"
+  (both wings displayed; the boundary ray inadmissible; the decay
+  exponent recovering Ch. 3's moment budget) → the envelope of
+  admissible completions (price-space cone from the last two quotes;
+  Black-chart fan; closed-form top edge √w⁺ = q + √(q²+2k) with
+  slope → 2 — the ceiling as the fan's top edge) → the wing as a
+  stated choice (three family contracts, the hat counterexample:
+  slope change exactly 0.0, g_D −0.30 at finite strike; one-curve
+  checks extend, two-curve confined) → the ordered term structure
+  (calendar order integrates via the same spanning identity; frozen
+  gallery monotone, min increment +1.1 var bp) + the contract table.
+  7 figures + 46 macros from `scripts/ch05/gen_figures.py` (reuses
+  Ch. 3's fit protocol and Ch. 4's LV protocol verbatim via shared
+  figlib imports; field-side audit on a widened lattice at dt and
+  dt/8 — 23.2 → 2.9 vol bp, first-order convergence shown; ceiling
+  panel evaluated in log space).  Notation added to NOTATION.md
+  before writing (w_vs, σ_vs, v_τ, 𝒲, 𝒮, bars-at-the-last-quote,
+  w±).  Newcomer fresh-reader pass run (sub-agent persona): all 9
+  files summarizable, ~35 findings (terms, symbols, skipped steps,
+  re-read sentences, one genuine directional error in the
+  convex-floor figure walk) ALL resolved; math verified line by
+  line by the lead.  Full book builds clean at 112 pp, no undefined
+  refs, no ch5 overfulls.  Next: Chapter 6 (forwards, dividends,
+  and carry), opening Part II.
