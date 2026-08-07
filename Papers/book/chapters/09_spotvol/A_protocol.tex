@@ -1,0 +1,81 @@
+\section{Protocol: data, constructions, and solver constants}
+\label{app:ssrprotocol}
+
+Every number and figure in this chapter regenerates from one
+deterministic script reading the frozen snapshot
+(\texttt{scripts/ch09/gen\_figures.py}); nothing is refetched, no
+smile is refitted, and nothing anywhere in the chapter is random.
+
+\paragraph{Frozen smiles
+(\cref{fig:ssrquestion,fig:ssrsigns,fig:ssrdial,fig:ssrdelta};
+panel~(c) of \cref{fig:ssrhalf}; \cref{fig:ssrscenario}).}
+All real-data curves are the snapshot's \emph{stored} haircut LQD
+fits --- Chapter~2's model, in the bid--ask-shrinking (``haircut'')
+fit mode of the recipe stamped in the snapshot manifest --- rebuilt
+from the stored parameters: the same objects every earlier chapter's
+gallery used.  The hero node is SPY December 2026
+(\MacSsrHeroDays\ days).  The ATM skew $s_0$ of a fitted curve is a
+central difference of the fitted volatility at
+$k=\pm10^{-3}$.  The marked strike of
+\cref{fig:ssrquestion,fig:ssrdelta} is $k=-0.10$ in today's label.
+Figure spans stay inside each node's prepared-quote span, with two
+disclosed exceptions on the two shortest expiries of
+\cref{fig:ssrscenario}, discussed in \cref{sec:ssrboard}.
+
+\paragraph{Delta conventions (\cref{fig:ssrdelta,fig:ssrscenario}).}
+Deltas are forward (Black) deltas, the discount factor set aside; one
+delta point is $10^{-2}$ of delta.  $d_+$ is evaluated on the node's
+own fitted smile, $d_+=-k/\sqrt{w}+\sqrt{w}/2$.  The 25-delta put
+strike of \cref{fig:ssrscenario}(b) solves $\PhiN(d_+)=0.75$ on the
+fitted smile (put forward delta $-0.25$); the gap plotted there is
+eq.~\eqref{eq:ssrgap} with each node's own $(\tau, s_0)$.
+
+\paragraph{The synthetic fields
+(\cref{fig:ssrhalf}(a,b); \cref{fig:ssrreprice}).}
+Time-homogeneous local-variance fields on the normalized strike axis
+$y=K/F_{\mathrm{old}}$, zero carry, variance time equal to calendar
+time.  Volatility form $\sqrt{v}$, with $x=\log y$:
+straight-in-log $0.20+bx$; straight-in-dollar $0.20+b(y-1)$; bent
+$0.20+bx+cx^{2}$, with $b=\MacSsrHalfSlopeLoc$ and $c=0.5$.  All are
+clamped to $[0.08,\,0.60]$; over every span drawn or read in the
+chapter the clamps are inactive, except the dollar-strike field's
+lower clamp in the last few points of
+\cref{fig:ssrreprice}(a)'s dashed curve.
+
+\paragraph{Pricing and inversion.}
+Chapter~4's fully implicit forward-equation marcher (appendix~4.A's
+scheme, the same code the Chapter~4--5 figures used) on a uniform
+strike grid $y\in[0,4]$ with $\Delta y=0.002$ (the grid contains
+$y=1$ exactly) and time step $\Delta\tau=5\times10^{-4}$, refined to
+$1.25\times10^{-4}$ for the basis-point-scale panels
+(\cref{fig:ssrreprice}(a,b)).  Implied variances are recovered from
+the marched call prices by bisection on the normalized Black formula,
+at grid-node strikes only --- no interpolation touches any reported
+number, and the at-the-money read sits on the $y=1$ node.  A moved
+scenario reprices with the coefficient $v(y\,e^{H})$: the frozen
+field read at the same absolute strikes under the new normalization.
+
+\paragraph{Reading the realized ratio (\cref{fig:ssrreprice}(c)).}
+$\sigma_{\mathrm{atm}}$ and $s_0(\tau)$ are the value and slope at
+$k=0$ of a quadratic fitted to the smile's grid nodes with
+$\lvert k\rvert\le0.03$; $\widehat{\mathcal{R}}(\tau)$ is then the
+displayed quotient at maturities
+$\{0.05,0.10,0.15,0.25,0.40,0.60,0.85,1.15,1.50\}$.  Marching-step
+audit: halving to quartering the time step moves the bent field's
+ratio at $\tau=\MacSsrRepTcmp$ by \MacSsrRepAuditPct\% --- the
+reported digits are converged.
+
+\paragraph{The board scenario (\cref{fig:ssrscenario}).}
+Move $H=-0.05$ applied uniformly to all eight SPY expiries.  The
+transported ATM value of a node is the exact transport: the node's
+stored fitted curve read at $k=H$, plus
+$(\mathcal{R}-1)s_0(T)H$.  On the 2-day and 4-day nodes the $k=H$
+read lies beyond the prepared-quote span (their quotes end at
+$-2.8\%$ and $-4.5\%$ log-moneyness respectively), so those reads
+consume the fitted model's published wing, as disclosed in
+\cref{sec:ssrboard}.
+
+\paragraph{Units.}
+As throughout the book: one vol bp is $10^{-4}$ of absolute
+volatility; volatility points are $10^{-2}$; delta points are
+$10^{-2}$ of delta.  Days convert to years at 365.

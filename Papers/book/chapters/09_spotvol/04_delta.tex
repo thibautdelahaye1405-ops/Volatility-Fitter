@@ -1,0 +1,132 @@
+\section{The price of the choice: delta}
+\label{sec:ssrdelta}
+
+We have a one-dial family of transports, and a claim from
+\cref{sec:ssrmissing} to make good: the dial is a hedge ratio.  This
+section derives the delta correction each regime implies and evaluates
+it on the frozen node.  Two small reminders before the computation.
+\emph{Vega} is an option price's sensitivity to its implied
+volatility.  And on this board variance time equals calendar time ---
+Chapter~8 ran its clock solver on SPY and found nothing to install ---
+so $\tau=t$ throughout, and we write $\tau$.
+
+Start with the object the transport controls directly: the volatility
+of a \emph{fixed strike}.  Compose the two rules of
+\cref{def:ssrsigns}.  A strike with today's label $k_{0}$ has
+tomorrow's label $k_{0}-H$ (quote rule), and the transported curve
+evaluated there (curve rule, i.e.\ \eqref{eq:ssrshift}) gives
+\begin{equation}
+\sigma_{K}^{\mathrm{new}}
+=\sigma_{\mathrm{new}}(k_{0}-H)
+=\sigma_{\mathrm{old}}\big((k_{0}-H)+H\big)+(\mathcal{R}-1)s_0H
+=\sigma_{K}^{\mathrm{old}}+(\mathcal{R}-1)\,s_0\,H .
+\label{eq:ssrstrike}
+\end{equation}
+The re-index and the label slide cancel \emph{exactly} --- no
+first-order expansion was needed --- and what is left is the level.  A
+fixed strike's volatility responds at the rate $(\mathcal{R}-1)s_0$
+per unit log-forward move, at every strike: zero under sticky-strike
+(by construction), $-s_0$ under sticky-moneyness, $+s_0$ under
+sticky-local-vol.  This is the missing derivative of the chapter's
+title, made explicit: choose $\mathcal{R}$ and you have chosen
+$\dd\sigma_K/\dd\log F$.
+
+Now push it into the delta.  A dollar call is
+$C=D\,F\,\Black(k,w)$, with $\Black$ the normalized Black call of
+Chapter~2 (eq.~\ref{eq:black}) and $w=\sigma_K^2\tau$ the strike's
+total implied variance; the discount $D$ rides along untouched and we
+set it aside, quoting deltas in the forward (Black) convention.
+Differentiate along the move.  Three things change at once: the
+prefactor $F$, the label $k=\log(K/F)$ (down by $\dd\log F$), and ---
+this is the new part --- the volatility, by \eqref{eq:ssrstrike}.  Per
+unit of $\dd\log F$, and dividing by $F$ to convert to a delta (since
+$\dd F=F\,\dd\log F$),
+\[
+\Delta_{\mathrm{tot}}
+=\Black-\partial_k \Black
++\partial_w \Black\;\frac{\dd w}{\dd\log F}.
+\]
+Both Black partial derivatives were computed in Chapter~2's appendix
+and recalled in Chapter~6, which also performed the collapse the
+first two terms need: $\Black-\partial_k\Black=\PhiN(d_+)$, the Black
+forward delta.  For the third term, differentiate
+$w=\sigma_K^{2}\tau$ and insert \eqref{eq:ssrstrike} together with
+the vega formula $\partial_w \Black=\phin(d_+)/(2\sqrt{w})$:
+\[
+\frac{\dd w}{\dd\log F}
+=2\sigma_K\tau\,(\mathcal{R}-1)s_0,
+\qquad
+\partial_w \Black\;\frac{\dd w}{\dd\log F}
+=\frac{\phin(d_+)}{2\sqrt{w}}\;2\sigma_K\tau\,(\mathcal{R}-1)s_0
+=\phin(d_+)\sqrt{\tau}\,(\mathcal{R}-1)s_0,
+\]
+where the last step used $\sqrt{w}=\sigma_K\sqrt{\tau}$: the
+volatility cancels.  Together,
+\begin{equation}
+\Delta_{\mathrm{tot}}
+=\PhiN(d_+)+\phin(d_+)\,\sqrt{\tau}\,(\mathcal{R}-1)\,s_0 .
+\label{eq:ssrdelta}
+\end{equation}
+Read it in words: the true delta is the Black delta plus a smile
+correction --- the normal density at $d_+$, times the square root of
+maturity, times the fixed-strike volatility response the regime
+implies.  Between the extreme named regimes the correction swings from
+$-\phin(d_+)\sqrt{\tau}\,s_0$ to $+\phin(d_+)\sqrt{\tau}\,s_0$, so the
+$\mathcal{R}=0$ versus $\mathcal{R}=2$ gap is
+\begin{equation}
+\text{delta gap}
+=2\,\phin(d_+)\,\sqrt{\tau}\,\lvert s_0\rvert ,
+\label{eq:ssrgap}
+\end{equation}
+a pure product of three quantities the desk already knows.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_delta.pdf}
+\caption{One book, three deltas (frozen hero node,
+eq.~\eqref{eq:ssrdelta}).  (a)~Total forward call delta across strikes
+under the three regimes; at the marked $k=-0.10$ strike --- a
+\MacSsrDeltaMarkPutDelta-delta put --- the $\mathcal{R}=0$ and
+$\mathcal{R}=2$ answers are \MacSsrDeltaGapPts\ delta points apart.
+(b)~The gap \eqref{eq:ssrgap} across strikes: a scaled vega profile,
+peaking at \MacSsrDeltaMaxPts\ delta points at the money.}
+\label{fig:ssrdelta}
+\end{figure}
+
+\Cref{fig:ssrdelta} evaluates both formulas on the frozen node, whose
+skew is $s_0=\MacSsrHeroSkew$.  In panel~(a), each curve is
+$\Delta_{\mathrm{tot}}$ across strikes for one regime, in delta points
+(hundredths).  The three curves tell one story with three endings:
+the sticky-moneyness delta is the largest and the sticky-local-vol
+delta the smallest --- at every strike, since the correction
+$\phin(d_+)\sqrt{\tau}(\mathcal{R}-1)s_0$ carries one sign across the
+axis.  The ordering is worth one plain sentence.  Under sticky-local-vol a falling market raises this put's
+volatility (eq.~\eqref{eq:ssrstrike} with $\mathcal{R}=2$,
+$s_0H>0$ when $H<0$); a long call at that strike therefore loses
+less on the way down than Black alone predicts, which is the same as
+saying its effective delta is smaller.  At the marked strike --- ten
+percent below the money, a \MacSsrDeltaMarkPutDelta-delta put in
+Black's own units --- the vertical bracket measures the disagreement:
+\MacSsrDeltaGapPts\ delta points between the two outer regimes, on the
+same book, against the same fitted surface.  A desk running a hundred
+such contracts hedges a difference of \MacSsrDeltaGapPts\ underlying
+units, purely on the choice of dial.
+
+Panel~(b) plots the gap \eqref{eq:ssrgap} across strikes, and its
+shape should look familiar: $\phin(d_+)$ is (up to normalization) the
+vega profile, so the gap is vega rescaled by the skew.  It peaks at
+the money --- \MacSsrDeltaMaxPts\ delta points on this node --- and
+fades in the far wings, where prices respond too weakly to volatility
+for the regime to matter.  Notice what the peak location means: the
+regime choice is \emph{most} consequential exactly where the book is
+most liquid and the desk feels most confident.  The dashed vertical
+marks the panel~(a) strike: at \MacSsrDeltaGapPts\ points it is
+nowhere near the worst case.
+
+We now know what the dial costs: double-digit delta points through the
+liquid belly of an ordinary index node.  \Cref{rem:ssrident} says the
+surface cannot set the dial.  The natural next question is whether
+anything else in this book can.  One object can try: the one model of
+Part~I that carries every expiry at once, Chapter~4's local-volatility
+field.  Holding \emph{it} fixed while spot moves produces a transport
+with no dial at all --- that is the next section.

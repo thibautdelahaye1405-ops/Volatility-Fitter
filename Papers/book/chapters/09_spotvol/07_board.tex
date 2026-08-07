@@ -1,0 +1,174 @@
+\section{Scenarios on the frozen board}
+\label{sec:ssrboard}
+
+The machinery is complete; point it at the real data.  This section
+runs one scenario --- the forward down $\MacSsrScenMovePct\%$ ---
+across the entire frozen SPY board, all eight expiries, under the
+three named regimes, and reads the results with everything the
+chapter has taught.  Each expiry is transported with its \emph{own}
+skew $s_0(T)$, read from its own stored fit, and the ATM value after
+the move is the exact transport: the node's fitted curve read at
+$k=H$, plus the level $(\mathcal{R}-1)s_0(T)H$.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_scenario.pdf}
+\caption{The frozen SPY board under a $-\MacSsrScenMovePct\%$
+scenario.  (a)~ATM implied volatility by expiry (log time axis):
+today (orange) and the three transported boards.  The two-day node
+moves from \MacSsrScenShortTodayPct\% to
+\MacSsrScenShortRzeroPct/\MacSsrScenShortReindexPct/\MacSsrScenShortRtwoPct\%
+under $\mathcal{R}=0/1/2$ --- its skew is
+$s_0=\MacSsrScenShortSkew$.  (b)~The $\mathcal{R}=0$ vs
+$\mathcal{R}=2$ delta gap \eqref{eq:ssrgap} at each expiry's 25-delta
+put: from \MacSsrScenGapShortPts\ delta points at two days to
+\MacSsrScenGapLongPts\ at the far end.}
+\label{fig:ssrscenario}
+\end{figure}
+
+Walk \cref{fig:ssrscenario}(a) from right to left.  At the long end
+the board barely notices the regime: the December 2027 skew is gentle
+($s_0(T)=\MacSsrScenLongSkew$), and even the sticky-local-vol
+response is about \MacSsrScenLongAtmMovePts\ volatility points.  Moving left, the three
+transported curves fan apart, slowly and then violently.  At the
+two-day node, today's ATM reading of \MacSsrScenShortTodayPct\%
+becomes \MacSsrScenShortRzeroPct\% under sticky-moneyness,
+\MacSsrScenShortReindexPct\% under sticky-strike, and
+\MacSsrScenShortRtwoPct\% under sticky-local-vol --- a spread of
+twenty-one volatility points on one node, from one tick.  The whole
+spread is one number's doing: the two-day skew is
+$s_0=\MacSsrScenShortSkew$ --- a two-day smile prices a
+$\MacSsrScenMovePct\%$ move as a catastrophe, and its put wing is
+priced accordingly --- and every formula in this chapter multiplies
+that skew by the move.
+
+Two honest observations about the same panel.  First, look closely at
+the short end of the sticky-moneyness curve: it does \emph{not} sit on
+today's orange curve, though ``the smile rides the forward''
+suggests it should.  The exact transport reads each node's own curve
+at $k=H$, and on a two-day smile the point five percent below the
+money is far up the put wing --- the curvature term of
+\cref{fig:ssrdial}(b), grown large because short-dated smiles are
+sharply curved.  Even the mildest regime moves short-dated ATM
+readings on a move this size.  Second, on the two shortest expiries
+that $k=H$ read lies \emph{beyond the last quoted strike} --- the
+two-day node's quotes stop less than three percent from the money.
+What the transport consumes there is the fitted model's published
+wing: Chapter~5's disclosed completion, not a quoted value.  A
+scenario engine cannot avoid this --- a five-percent question to a
+two-day smile is a question about its wing --- but a desk should know
+which of its scenario numbers stand on quotes and which on
+convention.
+
+Panel~(b) prices the same fan in the units of \cref{sec:ssrdelta}:
+the $\mathcal{R}=0$ versus $\mathcal{R}=2$ delta gap
+\eqref{eq:ssrgap}, evaluated at each expiry's 25-delta put --- the
+standard liquid put benchmark; its strike solves
+$\PhiN(d_+)=0.75$ on the node's own fitted smile.  The gap runs from
+\MacSsrScenGapShortPts\ delta points at two days, through
+\MacSsrScenGapHeroPts\ at the running December 2026 node, to
+\MacSsrScenGapLongPts\ at the end of the board.  It \emph{grows} with
+maturity on this board: the gap is
+$2\phin(d_+)\sqrt{\tau}\,\lvert s_0\rvert$, and SPY's skew decays more
+slowly than $1/\sqrt{\tau}$ across these expiries (scaled by
+$1/\sqrt{\tau}$ from the two-day node's \MacSsrScenShortSkew, the
+skew would have fallen to $-\MacSsrScenRootScaledSkew$ by the
+December 2026 expiry; the fitted value there is \MacSsrHeroSkew), so
+the maturity factor wins.  There is no safe corner: the choice of
+dial is worth roughly ten to twenty delta points on the benchmark put
+at \emph{every} expiry of an ordinary index board.
+
+One paragraph on validity, where it bites.  A transported smile is a
+new smile, and nothing in \eqref{eq:ssrshift} re-checks the butterfly
+or calendar conditions of Chapter~2: for small moves the transported
+surface inherits validity to first order, but at scenario sizes the
+outputs should be re-audited before anything downstream consumes them
+--- and there is a matching theorem: an arbitrage-free dynamics cannot
+move the smile by level shifts alone indefinitely
+\citep{RogersTehranchi2010}, so every rule in this chapter is a local
+scenario device, not a global model.  The one output that is
+arbitrage-free by construction is the frozen-field \emph{reprice} of
+\cref{sec:ssrfield}, because it prices an actual model rather than
+transporting a curve.
+
+\subsection{The contract}
+\label{sec:ssrcontract}
+
+The chapter closes as the others do: three columns of decreasing
+strength --- proved, measured, chosen.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:ssrcontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Measured} & \textbf{Convention}\\
+\midrule
+A snapshot does not identify dynamics: every dial value prices
+today's quotes identically (\cref{rem:ssrident}). &
+The fan of tomorrows on the frozen node: \MacSsrMarkSpreadBp\ vol bp
+at one strike for a $\MacSsrFanMovePct\%$ move
+(\cref{fig:ssrquestion}). &
+The dial $\mathcal{R}$ itself: assumed, not estimated --- nothing in
+this chapter regresses realized smile moves on skew.\\
+\addlinespace
+Shape preservation leaves one free level; ATM response
+$\mathcal{R}s_0H$ (\cref{prop:ssratm}); fixed-strike response
+$(\mathcal{R}-1)s_0H$, exactly \eqref{eq:ssrstrike}. &
+The common second-order bend of every regime:
+\MacSsrDialBendBp\ vol bp at $H=-6\%$ (\cref{fig:ssrdial}). &
+The transport is first-order and shape-frozen: no convexity response;
+vertical level chosen over horizontal slide (equivalent at first
+order).\\
+\addlinespace
+Total delta $\PhiN(d_+)+\phin(d_+)\sqrt{\tau}(\mathcal{R}-1)s_0$;
+regime gap $2\phin(d_+)\sqrt{\tau}\lvert s_0\rvert$
+\eqref{eq:ssrdelta}--\eqref{eq:ssrgap}. &
+\MacSsrDeltaGapPts\ delta points at the
+\MacSsrDeltaMarkPutDelta-delta put, \MacSsrDeltaMaxPts\ at the money
+(\cref{fig:ssrdelta}); \MacSsrScenGapShortPts--\MacSsrScenGapLongPts\
+points across the board (\cref{fig:ssrscenario}). &
+Deltas quoted in the forward (Black) convention, discount set aside;
+$\tau=t$ on this board (Chapter~8's SPY finding).\\
+\addlinespace
+The half-rule $s_0=b/2$; frozen-field ATM response $2s_0H$; the
+relabeling \eqref{eq:ssrell} and its expansion
+\eqref{eq:ssrellexp}; the grid rule \eqref{eq:ssrgrid} generating the
+dial. &
+Half-rule ratio \MacSsrHalfRatio; ATM move \MacSsrHalfAtmMoveBp\ vs
+predicted \MacSsrHalfAtmPredBp\ vol bp (\cref{fig:ssrhalf});
+$\widehat{\mathcal{R}}$ flat at \MacSsrRepFlatShort\ for the straight
+field, $2+2cH/b$ (\MacSsrRepBentMean, \MacSsrRepBentBigMean) for the
+bent one (\cref{fig:ssrreprice}). &
+The frozen field is an approximate premise: measured markets sit
+below $\mathcal{R}=2$ \citep{Bergomi2016}; the wings of the
+answer depend on field shape the quotes do not pin down.\\
+\addlinespace
+--- (this row is empirical by design) &
+The board scenario: two-day ATM spread
+\MacSsrScenShortRzeroPct--\MacSsrScenShortRtwoPct\%; short-expiry
+reads beyond the last quote (\cref{fig:ssrscenario}). &
+Scenario reads on the two shortest expiries consume the published
+wing (Chapter~5's disclosed completion); transported surfaces are to
+be re-audited before downstream use \citep{RogersTehranchi2010}.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Step back to the book's thesis one more time.  \emph{Validity} in
+this chapter is modest and structural: transports preserve
+arbitrage-freeness only locally, and the one globally safe path is to
+move the model, not the curve.  \emph{Information} is the chapter's
+sharpest lesson, because here the information runs out: today's
+surface determines every strike derivative and no spot derivative
+(\cref{rem:ssrident}) --- and even the regime that derives its answer
+inherits the field's under-determination in the wings.
+\emph{Convention} is therefore load-bearing as nowhere else in this
+book: the dial is a disclosed choice, worth double-digit delta points,
+that no snapshot can audit.  What \emph{could} audit it is time ---
+watching how smiles actually move as spot moves, tick after tick, and
+weighing each new observation against what the transported surface
+expected.  Weighing new evidence against a moving prior is a filtering
+problem, and it is the subject of the next chapter.

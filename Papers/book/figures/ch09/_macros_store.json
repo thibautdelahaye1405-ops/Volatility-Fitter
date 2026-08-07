@@ -1,0 +1,257 @@
+{
+ "SsrHeroDays": {
+  "value": "137",
+  "meaning": "hero node: calendar days to expiry",
+  "section": "question"
+ },
+ "SsrHeroAtmPct": {
+  "value": "14.8",
+  "meaning": "hero node ATM implied vol, %",
+  "section": "question"
+ },
+ "SsrHeroSkew": {
+  "value": "-0.430",
+  "meaning": "hero node ATM skew s0 (vol per unit log-moneyness)",
+  "section": "question"
+ },
+ "SsrFanMovePct": {
+  "value": "4",
+  "meaning": "the fan's forward move magnitude, % (down)",
+  "section": "question"
+ },
+ "SsrMarkVolPct": {
+  "value": "20.1",
+  "meaning": "today's vol at the marked k=-0.10 strike, %",
+  "section": "question"
+ },
+ "SsrMarkSpreadBp": {
+  "value": "344",
+  "meaning": "spread of the marked strike's vol across regimes at the fan move, vol bp",
+  "section": "question"
+ },
+ "SsrSignMovePct": {
+  "value": "4",
+  "meaning": "the sign figure's move, % (up)",
+  "section": "signs"
+ },
+ "SsrSignQuoteVolPct": {
+  "value": "14.0",
+  "meaning": "vol of the tracked fixed strike, %",
+  "section": "signs"
+ },
+ "SsrDialLevelBp": {
+  "value": "172",
+  "meaning": "the uniform level (R-1)s0H at the fan move for R=2, vol bp",
+  "section": "dial"
+ },
+ "SsrDialAtmMoveBp": {
+  "value": "344",
+  "meaning": "linear ATM response R s0 H at the fan move for R=2, vol bp",
+  "section": "dial"
+ },
+ "SsrDialBendBp": {
+  "value": "54",
+  "meaning": "second-order ATM bend at H=-6% (same for every regime), vol bp",
+  "section": "dial"
+ },
+ "SsrDeltaGapPts": {
+  "value": "14.4",
+  "meaning": "R=0 vs R=2 total-delta gap at the marked strike, delta pts",
+  "section": "delta"
+ },
+ "SsrDeltaMaxPts": {
+  "value": "21.0",
+  "meaning": "largest regime delta gap across the span, delta pts",
+  "section": "delta"
+ },
+ "SsrDeltaMarkPutDelta": {
+  "value": "19",
+  "meaning": "Black forward put delta magnitude at the marked strike, pts",
+  "section": "delta"
+ },
+ "SsrHalfSlopeLoc": {
+  "value": "-0.35",
+  "meaning": "generator vol slope per unit log-strike",
+  "section": "half"
+ },
+ "SsrHalfSlopeImp": {
+  "value": "-0.175",
+  "meaning": "measured implied ATM skew of the generator at tau=0.10",
+  "section": "half"
+ },
+ "SsrHalfRatio": {
+  "value": "0.499",
+  "meaning": "measured implied-to-local slope ratio at tau=0.10",
+  "section": "half"
+ },
+ "SsrHalfAtmMoveBp": {
+  "value": "+140",
+  "meaning": "measured ATM change after the frozen-field -4% move, vol bp",
+  "section": "half"
+ },
+ "SsrHalfAtmPredBp": {
+  "value": "+140",
+  "meaning": "half-rule prediction 2 s0 H, vol bp",
+  "section": "half"
+ },
+ "SsrHalfGapPutBp": {
+  "value": "122",
+  "meaning": "relabeling-vs-linear gap at k=-0.24 under a -5% move, bp",
+  "section": "half"
+ },
+ "SsrHalfGapCallBp": {
+  "value": "162",
+  "meaning": "relabeling-vs-linear gap at k=+0.15 under a -5% move, bp",
+  "section": "half"
+ },
+ "SsrHalfMoveWingPct": {
+  "value": "5",
+  "meaning": "the wing-gap panel's move magnitude, %",
+  "section": "half"
+ },
+ "SsrRepRespMovePct": {
+  "value": "5",
+  "meaning": "panel (b) response-comparison move magnitude, % (down)",
+  "section": "reprice"
+ },
+ "SsrRepRatioMovePct": {
+  "value": "2",
+  "meaning": "panel (c) realized-ratio move magnitude, % (down)",
+  "section": "reprice"
+ },
+ "SsrRepTcmp": {
+  "value": "0.25",
+  "meaning": "maturity of the two-field comparison, years",
+  "section": "reprice"
+ },
+ "SsrRepAtmLogBp": {
+  "value": "+175",
+  "meaning": "log-strike field: repriced ATM response to the move, vol bp",
+  "section": "reprice"
+ },
+ "SsrRepAtmDlrBp": {
+  "value": "+170",
+  "meaning": "dollar-strike field: repriced ATM response to the move, vol bp",
+  "section": "reprice"
+ },
+ "SsrRepSepPutBp": {
+  "value": "26",
+  "meaning": "wing separation of the two answers at k=-0.30, vol bp",
+  "section": "reprice"
+ },
+ "SsrRepSepCallBp": {
+  "value": "36",
+  "meaning": "wing separation of the two answers at k=+0.30, vol bp",
+  "section": "reprice"
+ },
+ "SsrRepFlatShort": {
+  "value": "2.00",
+  "meaning": "straight-line field: realized ratio at the shortest maturity",
+  "section": "reprice"
+ },
+ "SsrRepFlatLong": {
+  "value": "2.00",
+  "meaning": "straight-line field: realized ratio at the longest maturity",
+  "section": "reprice"
+ },
+ "SsrRepFlatSpread": {
+  "value": "0.001",
+  "meaning": "straight-line field: max-min spread of the ratio across maturities",
+  "section": "reprice"
+ },
+ "SsrRepBentMean": {
+  "value": "2.06",
+  "meaning": "bent field: mean realized ratio across maturities at H=-2%",
+  "section": "reprice"
+ },
+ "SsrRepBentBigMean": {
+  "value": "2.11",
+  "meaning": "bent field: mean realized ratio across maturities at H=-4%",
+  "section": "reprice"
+ },
+ "SsrRepBentPred": {
+  "value": "2.06",
+  "meaning": "closed-form prediction 2+2cH/b at H=-2%",
+  "section": "reprice"
+ },
+ "SsrRepBentBigPred": {
+  "value": "2.11",
+  "meaning": "closed-form prediction 2+2cH/b at H=-4%",
+  "section": "reprice"
+ },
+ "SsrRepAuditPct": {
+  "value": "0.00",
+  "meaning": "dt-audit: relative change of the bent field's ratio at the comparison maturity between dt and dt/4, %",
+  "section": "reprice"
+ },
+ "SsrScenMovePct": {
+  "value": "5",
+  "meaning": "the board scenario's move magnitude, % (down)",
+  "section": "scenario"
+ },
+ "SsrScenShortDays": {
+  "value": "2",
+  "meaning": "shortest board expiry, days",
+  "section": "scenario"
+ },
+ "SsrScenShortSkew": {
+  "value": "-2.10",
+  "meaning": "shortest expiry's ATM skew s0",
+  "section": "scenario"
+ },
+ "SsrScenShortAtmMovePts": {
+  "value": "21.0",
+  "meaning": "shortest expiry: spread of the ATM readings between R=0 and R=2 under the scenario (= 2|s0 H|), vol pts",
+  "section": "scenario"
+ },
+ "SsrScenLongAtmMovePts": {
+  "value": "2.9",
+  "meaning": "longest expiry's linear R=2 ATM response to the scenario (2|s0 H|), vol pts",
+  "section": "scenario"
+ },
+ "SsrScenGapShortPts": {
+  "value": "9.9",
+  "meaning": "25-delta-put delta gap at the shortest expiry, delta pts",
+  "section": "scenario"
+ },
+ "SsrScenGapLongPts": {
+  "value": "21.6",
+  "meaning": "25-delta-put delta gap at the longest expiry, delta pts",
+  "section": "scenario"
+ },
+ "SsrScenGapHeroPts": {
+  "value": "16.7",
+  "meaning": "25-delta-put delta gap at the hero expiry, delta pts",
+  "section": "scenario"
+ },
+ "SsrScenShortTodayPct": {
+  "value": "9.6",
+  "meaning": "shortest expiry: today's ATM vol, %",
+  "section": "scenario"
+ },
+ "SsrScenShortReindexPct": {
+  "value": "25.7",
+  "meaning": "shortest expiry: the re-index read sigma_old(H) (= sticky-strike ATM after the move), %",
+  "section": "scenario"
+ },
+ "SsrScenShortRzeroPct": {
+  "value": "15.2",
+  "meaning": "shortest expiry: sticky-moneyness ATM after the move, %",
+  "section": "scenario"
+ },
+ "SsrScenShortRtwoPct": {
+  "value": "36.2",
+  "meaning": "shortest expiry: sticky-local-vol ATM after the move, %",
+  "section": "scenario"
+ },
+ "SsrScenLongSkew": {
+  "value": "-0.29",
+  "meaning": "longest expiry's ATM skew s0",
+  "section": "scenario"
+ },
+ "SsrScenRootScaledSkew": {
+  "value": "0.25",
+  "meaning": "the two-day skew scaled by sqrt(tau) to the hero maturity (the 1/sqrt(tau)-decay prediction), absolute value",
+  "section": "scenario"
+ }
+}

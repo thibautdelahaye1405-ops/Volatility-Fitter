@@ -1,0 +1,200 @@
+\section{The wings belong to the field, and the ratio measured}
+\label{sec:ssrfield}
+
+The last section left a tie to break: two closed forms, one frozen
+field, and only a computation can adjudicate.  This section runs the
+computation --- and finds that the question was subtler than the tie.
+The experiment needs fields whose shape we control exactly, so it runs
+in the synthetic world, with every construction stated (grid and
+solver details in appendix~\ref{app:ssrprotocol}).
+
+Take \emph{two} time-homogeneous fields, built to agree at the money:
+both have volatility $20\%$ at the forward, and both have log-slope
+$b=\MacSsrHalfSlopeLoc$ there.  They differ only in what ``a straight
+skew'' means:
+\begin{align*}
+\sqrt{v}(y)&=0.20+b\,\log y
+&&\text{(straight in \emph{log}-strike)},\\
+\sqrt{v}(y)&=0.20+b\,(y-1)
+&&\text{(straight in \emph{dollar} strike)}.
+\end{align*}
+\Cref{fig:ssrreprice}(a) draws both (dashed) with the smiles each
+produces today at $\tau=\MacSsrRepTcmp$ (solid), priced through the
+forward equation as before.  Walk the panel from the money outward.
+At $k=0$ the four curves agree by construction.  The dashed fields
+separate quickly --- straight in one chart is curved in the other ---
+but the two \emph{solid} curves stay nearly on top of each other
+across the whole span: the smiles differ only through second-order
+averaging effects, a few tens of basis points at the edges.  Squint,
+and today's market looks the same under either field.  Chapter~4
+proved this is no accident: many sheets reprice the same quotes.  The
+two fields here are a minimal, fully explicit instance of that
+ambiguity.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_reprice.pdf}
+\caption{The reprice adjudicates (synthetic fields, forward-equation
+pricing throughout).  (a)~Two fields (dashed) sharing ATM value and
+ATM slope, one straight in log-strike, one in dollar strike, and
+their nearly indistinguishable smiles today at
+$\tau=\MacSsrRepTcmp$ (solid).  (b)~Each field frozen, the forward
+moved $-\MacSsrRepRespMovePct\%$, both surfaces repriced: the smile
+changes agree at the money (\MacSsrRepAtmLogBp\ and
+\MacSsrRepAtmDlrBp\ vol bp --- the half-rule) and part in the wings,
+by \MacSsrRepSepPutBp\ vol bp at $k=-0.30$ and \MacSsrRepSepCallBp\
+at $k=+0.30$: flat response against tilted response.  (c)~The
+realized ratio $\widehat{\mathcal{R}}(\tau)$ of the reprice: the
+straight field pins $2.00$ at every maturity (spread
+\MacSsrRepFlatSpread); bending the field lifts the ratio to the
+computable level $2+2cH/b$ (dotted guides): \MacSsrRepBentMean\
+measured against \MacSsrRepBentPred\ predicted at
+$H=-\MacSsrRepRatioMovePct\%$, \MacSsrRepBentBigMean\ against
+\MacSsrRepBentBigPred\ at $H=-4\%$.}
+\label{fig:ssrreprice}
+\end{figure}
+
+Now freeze each field and run the same scenario: forward down
+$\MacSsrRepRespMovePct\%$, reprice, and record how the smile
+\emph{changed} --- $\sigma_{\mathrm{new}}(k)-\sigma_{\mathrm{old}}(k)$,
+each curve against its own before, both in prevailing moneyness.
+Panel~(b) shows the two answers.  At the money they coincide to a few
+basis points: \MacSsrRepAtmLogBp\ vol bp for the log-strike field,
+\MacSsrRepAtmDlrBp\ for the dollar-strike one, both the half-rule's
+$2s_0H$ in action.  (Even the small difference is explainable rather
+than numerical: the dollar field's exact ATM answer is
+$b(e^{H}-1)$ rather than $bH$, a distinction of second order in the
+move.)  Away from the money the two answers have visibly different
+\emph{shapes}.  The log-strike field answers with an almost uniform
+lift --- the flat blue line: its smile slides up as a block, which is
+precisely what the linear $\mathcal{R}=2$ transport
+\eqref{eq:ssrshift} builds.  The dollar-strike field answers with a
+tilt --- the violet curve, rising from the put side to the call side
+--- and the tilt is worth deriving, because a naive read of the
+expansion \eqref{eq:ssrellexp} points the wrong way: the displacement
+$(1+e^{-k})H$ is \emph{largest} on the put wing, yet the response
+there is \emph{smallest}.  Two lines resolve it.  By the midpoint
+rule, the dollar-straight field's own smile today is
+\[
+\sigma_{\mathrm{old}}(k)\approx 0.20+\tfrac{b}{2}\big(e^{k}-1\big),
+\qquad\text{with local slope}\qquad
+\sigma_{\mathrm{old}}'(k)\approx \tfrac{b}{2}\,e^{k} :
+\]
+straight in dollars is curved in log-moneyness, and the slope fades
+on the put side.  The response at a fixed label is displacement times
+slope,
+\[
+\sigma_{\mathrm{old}}'(k)\,(1+e^{-k})\,H
+\;\approx\;\tfrac{b}{2}\,e^{k}\,(1+e^{-k})\,H
+\;=\;\tfrac{b}{2}\,(1+e^{k})\,H ,
+\]
+so the large displacement lands on the flat part of the curve and
+the product tilts the \emph{other} way: proportional to $1+e^{k}$,
+smallest on the put side --- the violet shape, and exactly what the
+relabeling \eqref{eq:ssrell} builds when applied to this smile.  (At
+$k=0$ the product is $bH=2s_0H$ again.)  By $k=\pm0.30$ the two
+fields' answers are \MacSsrRepSepPutBp\ and \MacSsrRepSepCallBp\ vol
+bp apart.  One note of honesty on those two numbers: the first-order
+logic just traced puts the separation near \MacSsrRepSepPutBp\ vol bp
+on \emph{both} wings; the call side's excess is each field's own
+second-order response to a move this large --- the reprice keeps
+score exactly where the expansions stop.
+
+So the tie from \cref{sec:ssrhalf} dissolves rather than resolves:
+\emph{each} closed form is the exact first-order answer --- for a
+different field.  Two fields that today's quotes can barely tell apart
+give measurably different tomorrows in the wings.  The conclusion
+deserves plain words, because it is the chapter's deepest point.
+\textbf{At the money, the frozen-field answer is universal}: twice the
+skew, no matter the field's shape --- that is the half-rule, and every
+construction in this chapter reproduces it.  \textbf{In the wings, the
+answer belongs to the field}, and Chapter~4 showed the quotes do not
+pin the field down there (\cref{sec:lvinfo}).  The missing derivative, chased into the
+one regime that promised to derive it, reappears one level deeper: the
+model answers, but only as precisely as the data determined the model.
+
+\medskip
+
+The frozen field also completes the dial in a satisfying way.  All
+three named regimes --- not just $\mathcal{R}=2$ --- can be written as
+one rule about \emph{how the field follows the spot}.  Let the field's
+strike axis be relabeled, per unit move, by
+\begin{equation}
+x\;\longmapsto\;x-\tfrac{\mathcal{R}}{2}\,H
+\qquad\text{in prevailing log-moneyness }x=\log y .
+\label{eq:ssrgrid}
+\end{equation}
+For $\mathcal{R}=2$ this is $x\mapsto x-H$: exactly the label change
+of a field frozen in absolute strike (the quote rule of
+\cref{def:ssrsigns}, applied to the field's nodes).  For
+$\mathcal{R}=0$ the labels do not move: the field rides with the
+forward.  For $\mathcal{R}=1$ it follows halfway.  The consistency
+check takes two lines through the half-rule.  Relabeling by
+\eqref{eq:ssrgrid} means the field seen in prevailing coordinates is
+$\sqrt{v}_{\mathrm{new}}(x)=\sqrt{v}_{\mathrm{old}}
+(x+\tfrac{\mathcal{R}}{2}H)$, so the new ATM implied volatility ---
+the field's value at the new money, by the chord average --- is
+\[
+\sigma_{\mathrm{atm}}^{\mathrm{new}}
+\approx\sigma_{0}+b\,\tfrac{\mathcal{R}}{2}H
+=\sigma_{0}+\mathcal{R}\,s_0\,H ,
+\]
+using $b=2s_0$.  One relabeling rule for the field generates the
+entire dial of \cref{sec:ssrdial}; the stickiness debate is a debate
+about how many halves of the move the generator follows.
+
+\medskip
+
+Finally, make the section's title quantitative: measure the ratio as
+an \emph{output}.  Define the realized ratio of a reprice,
+\[
+\widehat{\mathcal{R}}(\tau)
+=\frac{\sigma_{\mathrm{atm}}^{\mathrm{new}}(\tau)
+-\sigma_{\mathrm{atm}}^{\mathrm{old}}(\tau)}{s_0(\tau)\,H},
+\]
+the hat marking, as in Chapter~6, a measured estimate: everything on
+the right comes out of the pricer.  Panel~(c) of
+\cref{fig:ssrreprice} plots it across maturities from $0.05$ to $1.5$
+years.  For the straight log-strike field at
+$H=-\MacSsrRepRatioMovePct\%$, the curve is a ruler:
+$\widehat{\mathcal{R}}$ from \MacSsrRepFlatShort\ at the shortest
+maturity to \MacSsrRepFlatLong\ at the longest, with a total spread of
+\MacSsrRepFlatSpread\ across the whole range.  For this construction,
+$2$ is not merely a short-maturity limit --- at first order in the
+skew the frozen field pays out double at \emph{every} maturity, and
+the measurement confirms it to the third digit.  The
+maturity-independence has a one-sentence reason: at first order the
+numerator (the ATM response) is an average of the field's slope over
+the neighbourhood the paths visit around the money, the denominator
+(the skew) is \emph{half the same average}, and the quotient cancels
+whatever maturity dependence the average carries.  Then bend the
+field:
+add curvature $c\,(\log y)^2$ with $c=0.5$ to the straight generator.
+The ratio lifts off $2$ --- to \MacSsrRepBentMean\ at
+$H=-\MacSsrRepRatioMovePct\%$ and \MacSsrRepBentBigMean\ at
+$H=-4\%$ --- and stays flat in maturity.  The lift is not mysterious;
+it is one more chord average.  At the new money the bent generator
+reads $\sigma_{0}+bH+cH^{2}$, while the bent field's implied skew is
+still $b/2$ --- the curvature term's chord average is $ck^{2}/3$,
+whose slope vanishes at the money --- so
+\[
+\widehat{\mathcal{R}}
+=\frac{bH+cH^{2}}{(b/2)\,H}
+=2+\frac{2c}{b}\,H ,
+\]
+and the dotted guides in the panel sit at exactly these levels:
+predicted \MacSsrRepBentPred\ and \MacSsrRepBentBigPred, measured
+\MacSsrRepBentMean\ and \MacSsrRepBentBigMean.  The ratio is a genuine
+output: it reports the field's shape (through $c/b$) and the size of
+the move (through $H$), neither of which the constant ``$2$'' of the
+regime's name can see.
+
+One honest boundary closes the section.  The frozen field is itself a
+hypothesis about the world, and empirically it is not quite right:
+measured markets move their smiles by \emph{less} than the frozen
+field predicts --- short-dated skew-stickiness ratios sit between the
+sticky-strike and sticky-local-vol answers \citep{Bergomi2016}.  The
+reprice is the exact consequence of an approximate premise.  That is
+why this regime is one setting of the dial and not the dial's
+replacement: it answers precisely, and the desk must still decide
+whether to believe the premise.

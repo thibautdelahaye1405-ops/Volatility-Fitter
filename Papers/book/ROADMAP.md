@@ -2,9 +2,7 @@
 
 This file is the ONLY entry point for book sessions. A session that works on
 a chapter reads: (1) this file, (2) the pedagogy contract below, (3) the
-source notes listed in its chapter brief, (4) the most recently REVISED
-chapter as the tone exemplar (until one exists, the contract itself
-governs — do NOT imitate the density of Chapters 2–4 as they stand).
+source notes listed in its chapter brief, (4) chapters 3-4 as the tone exemplar 
 Nothing else.
 
 ## Context hygiene (read this first, every session)
@@ -30,18 +28,21 @@ the prose. Therefore:
 
 The pedagogy contract governs (rewritten 2026-08-05 after the author
 rejected Chapters 3–4's original register; both were fully revised).
-Chapters 5–8 were written under the contract from the start (newcomer
-fresh-reader pass run on each, all findings resolved).  Chapter 8
-(2026-08-07) is the most recent chapter held to the contract; with
-Chapters 4–7 it serves as TONE EXEMPLAR.  Part II is COMPLETE.
+Chapters 5–9 were written under the contract from the start (newcomer
+fresh-reader pass run on each, all findings resolved).  Chapter 9
+(2026-08-07) is the most recent chapter held to the contract;
+Chapters 3–4 serve as TONE EXEMPLAR.  Part II is COMPLETE; Part III
+is OPEN (the \part{Dynamics and Inference} heading entered book.tex
+with Chapter 9).
 Next:
 
-1. Chapter 9 (spot–vol dynamics: the missing derivative) — sources:
-   the two Note 12 editions.  Chapter 8 planted the hook (its closing
-   line: the surface gives every derivative in the strike direction
-   and none in the spot direction).  Data: scenario figures from the
-   frozen surface; synthetic constructions preferred — no supplement
-   anticipated, do NOT refetch anything.
+1. Chapter 10 (inference under weak information: filtering and
+   priors) — sources: the two Note 15 editions + the two Note 13
+   editions (merged chapter; the brief below gives the merge's
+   logic).  Chapter 9 planted the hook (its closing line: weighing
+   new evidence against a moving prior is a filtering problem).
+   Data: synthetic + frozen-snapshot illustrations only — no
+   supplement anticipated, do NOT refetch anything.
 
 NOTE (Ch. 8 data decision, 2026-08-07): the anticipated NVDA
 earnings-week supplement was NOT needed and was not fetched — the
@@ -141,7 +142,7 @@ local volatility placed among the models (author's decision).
 | 7  | Removing early exercise | 05 | **DONE** (written under the pedagogy contract 2026-08-07; tone exemplar with Chs. 4–6) |
 | 8  | The market's clock | 11 | **DONE** (written under the pedagogy contract 2026-08-07; tone exemplar with Chs. 4–7) |
 | **Part III — Dynamics and inference** | | | |
-| 9  | Spot–vol dynamics: the missing derivative | 12 | pending |
+| 9  | Spot–vol dynamics: the missing derivative | 12 | **DONE** (written under the pedagogy contract 2026-08-07; opens Part III) |
 | 10 | Inference under weak information: filtering and priors | 15 + 13 | pending |
 | 11 | The graph: one surface from a sparse universe | 14 | pending |
 
@@ -697,3 +698,70 @@ keeping Chapter 2 self-contained.
   walk, ∂𝓕/∂N, shrinkage calculus, every macro recomputed).  Full
   book builds clean at 169 pp, no undefined refs, no ch8 overfulls.
   Next: Chapter 9 (spot–vol dynamics: the missing derivative).
+- 2026-08-07 (later): Chapter 9 WRITTEN under the pedagogy contract
+  from the start (`chapters/09_spotvol/`, 7 sections + appendix 9.A,
+  ~15 pp main text, book pages 165–182 of the 191-page build; OPENS
+  Part III with the \part{Dynamics and Inference} heading).  Spine:
+  the missing derivative (a snapshot does not identify dynamics —
+  every strike derivative known, no spot derivative; the fan of
+  tomorrows on the frozen hero node, 344 vol bp at one strike for a
+  4% move) → the sign discipline (quote rule k−H vs curve rule k+H,
+  both hand-derived at F=100→104.08; the log-move wording convention
+  stated once) → the one-dial transport (shape preservation ⇒
+  re-index + one level; boxed σ_new(k)=σ_old(k+H)+(ℛ−1)s₀H; ATM
+  response ℛs₀H proved; Derman regimes at ℛ=0/1/2; six-number toy
+  table on a straight smile; the common second-order bend 54 bp at
+  −6% = the smile's own curvature) → the delta stakes (fixed-strike
+  response (ℛ−1)s₀ EXACT by rule composition; Δ_tot =
+  Φ(d₊)+φ(d₊)√τ(ℛ−1)s₀ derived with the σ-cancellation displayed;
+  gap 2φ(d₊)√τ|s₀| = 14.4 delta pts at the 19-delta put, 21.0 ATM on
+  the hero node s₀=−0.430) → the frozen field (half-rule derived by
+  chord average and MEASURED: implied/local slope ratio 0.499 at
+  τ=0.10 on a synthetic straight field priced through ch4's marcher;
+  frozen-move ATM +140 bp = 2s₀H to the bp; the midpoint relabeling
+  ℓ(k,H)=log(e^H(1+e^k)−1) derived from shared dollar midpoints,
+  expansion (1+e^{−k})H, put wing reads 2.35H vs call 1.74H) → the
+  wings belong to the field (the chapter's DEEPEST payoff, a
+  deliberate refinement of the note's story: two fields sharing ATM
+  value+slope — log-affine vs dollar-affine — produce near-twin
+  todays and visibly different tomorrows; repriced responses flat vs
+  tilted ∝(1+e^k), separations 26/36 bp at ±0.30 under −5%; the
+  displacement-times-fading-slope trace DISPLAYED so eq (ssrellexp)
+  cannot mislead; grid rule x→x−(ℛ/2)H generating the whole dial;
+  realized ratio ℛ̂(τ) measured: 2.00 FLAT at every maturity for the
+  straight field (spread 0.001 — first-order maturity-independence,
+  with the averages-cancel reason given), bent field lifts to
+  2+2cH/b: 2.06/2.11 measured vs 2.06/2.11 predicted at −2%/−4%; the
+  note's "hugging the short-maturity limit" story corrected to the
+  measurable statement) → the board scenario (−5% across all eight
+  SPY expiries by the exact per-node transport: two-day ATM 9.6% →
+  15.2/25.7/36.2% under ℛ=0/1/2, s₀=−2.10; sticky-moneyness moves
+  short ATMs too — the curvature term grown large; 2d/4d reads
+  disclosed as published-wing consumption per ch5; 25-delta-put gap
+  9.9→21.6 pts, GROWING in maturity since the skew decays slower
+  than 1/√τ — macro-backed 0.25-vs-0.430 comparison; validity
+  paragraph with Rogers–Tehranchi; contract table) + the ch10 hook
+  (weighing new evidence against a moving prior = filtering).  7
+  figures + 51 macros from `scripts/ch09/gen_figures.py` (stored
+  haircut LQD fits only — NOTHING refitted; ch4's pde1d marcher
+  imported for the synthetic frozen-field worlds; NO randomness
+  anywhere; dt-audit 0.00%).  Notation added BEFORE writing (H move
+  — lowercase h stays haircut; calligraphic ℛ — roman R stays LQD's;
+  s₀/s₀(T); ℓ(k,H); ℛ̂ hat-estimate; Δ_tot composite; σ_old/new word
+  subscripts); references +Derman 1999, Hagan et al 2002,
+  Berestycki–Busca–Florent 2002, Rogers–Tehranchi 2010.  Newcomer
+  fresh-reader pass run (sub-agent persona): all 9 files
+  summarizable, 45 findings (headliners: the (1+e^k)-tilt trace was
+  missing and eq (ssrellexp) actively misled — now displayed; the
+  36-bp call-side separation unreachable by first-order logic — now
+  honestly attributed to second order; midpoint rule used before
+  stated — bridge added; "to first order" moved INSIDE the ℛ=0
+  bullet; log-move wording convention stated once; vega attribution
+  harmonized ch2-appendix/ch6; macro meaning of the 21-pt spread
+  corrected; fan ordering, arrow placement, readout strikes, |H|
+  signs, harmonic gloss, haircut gloss ALL fixed) ALL resolved; math
+  verified line by line by the lead (toy table, delta chain, ℓ
+  expansion constants, gap arithmetic at both strikes, b(e^H−1) vs
+  bH, 2+2cH/b at both moves, √τ-scaling of the board skews).  Full
+  book builds clean at 191 pp, no undefined refs, no ch9 overfulls.
+  Next: Chapter 10 (filtering and priors, Notes 15+13 merged).

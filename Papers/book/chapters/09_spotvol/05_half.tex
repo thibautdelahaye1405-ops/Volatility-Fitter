@@ -1,0 +1,176 @@
+\section{The regime that answers: freezing the field}
+\label{sec:ssrhalf}
+
+Every value of the dial so far is an assumption.  This section builds
+the one transport in the book that is \emph{derived}.  The ingredient
+is Chapter~4's local-volatility field: one function $v(y)$ of the
+normalized strike $y=K/F$ --- a local variance at every level the
+underlying might visit --- chosen so that the model reprices every
+expiry of the surface at once.  (Chapter~4 wrote $v(\tau,y)$; the
+fields of this section and the next are deliberately
+time-homogeneous, so $v$ depends on the level alone.)  Now make one
+hypothesis: \emph{the field is a property of the underlying at
+absolute price levels}.  If the local volatility at $\$650$ is high,
+it is high because of what the market believes about the world at
+$\$650$ --- not because of where spot happens to stand today.  Under
+that hypothesis, when spot moves, the field \emph{stays where it is}
+in absolute strike, and the new smile is whatever the frozen field
+reprices to.  (Mechanically: after the forward moves to
+$F_{\mathrm{old}}e^{H}$, the same absolute strikes carry the same
+local variances under new labels, so the normalized coefficient is
+read as $v(y\,e^{H})$ --- the quote rule of \cref{def:ssrsigns},
+applied to the field.)  No dial is left: the transport is a
+computation.
+
+The computation has a famous shortcut, and the shortcut explains the
+number $2$ that has been hanging over the chapter since
+\cref{sec:ssrdial}.  For short maturities, an option's implied
+volatility is approximately an \emph{average of the local volatility
+along the way from the money to the strike}: the price is built from
+paths that drift from spot toward the strike, sampling the field as
+they go.  (Made precise, the right average is a \emph{harmonic} one --- the
+reciprocal of the averaged reciprocal --- along the connecting chord,
+a result of \citet{BerestyckiBuscaFlorent2002}; the midpoint reading
+used below goes back to \citet{HaganKumarLesniewskiWoodward2002}.
+The distinctions do not matter here: to first order in the field's
+slope every such average agrees, and first order is all the half-rule
+needs.)  Write the field in
+volatility form and in log-moneyness, $\sqrt{v}$ as a function of
+$x=\log y$, and take it to be a straight line with slope $b$ near the
+money.  Then the chord average is elementary:
+\[
+\sigma(k)\;\approx\;\frac{1}{k}\int_{0}^{k}
+\big(\sigma_{0}+b\,x\big)\,\dd x
+=\sigma_{0}+\frac{b}{2}\,k
+\qquad\Longrightarrow\qquad
+s_0=\frac{b}{2}.
+\]
+This is the \textbf{half-rule}: \emph{the implied skew is half the
+field's slope}.  The market's smile shows half of what the generator
+carries, because each strike only averages the field part of the way
+out.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_half.pdf}
+\caption{The frozen field's answer (synthetic straight-line field;
+panel~(c) the frozen hero smile).  (a)~The generator (dashed, slope
+\MacSsrHalfSlopeLoc) and the implied smile it produces at
+$\tau=0.10$ (blue, measured slope \MacSsrHalfSlopeImp): the half-rule,
+measured ratio \MacSsrHalfRatio.  (b)~The field frozen in absolute
+strike, the forward moved $-4\%$: the implied ATM rises
+\MacSsrHalfAtmMoveBp\ vol bp against the half-rule's prediction
+$2s_0H=\MacSsrHalfAtmPredBp$ vol bp.  (c)~The two closed-form
+transports on the real node at $H=-\MacSsrHalfMoveWingPct\%$: midpoint
+relabeling minus linear $\mathcal{R}=2$ transport, zero at the money,
+$+\MacSsrHalfGapPutBp$/$-\MacSsrHalfGapCallBp$ vol bp in the wings.}
+\label{fig:ssrhalf}
+\end{figure}
+
+The rule is not folklore; it is measurable.  \Cref{fig:ssrhalf}(a)
+shows a synthetic world built for exactly this test: a
+time-homogeneous field whose volatility is a straight line in
+log-strike with slope \MacSsrHalfSlopeLoc\ (dashed), and the implied
+smile obtained by actually pricing through the forward equation with
+Chapter~4's marching scheme and inverting Black (blue), at maturity
+$\tau=0.10$.  The measured implied slope is \MacSsrHalfSlopeImp\ ---
+ratio \MacSsrHalfRatio\ to the generator.  Half, to a tenth of a
+percent, with no fitting anywhere.
+
+Now freeze and move.  Let the forward move by $H$ --- take $H<0$, a
+drop --- and hold the field.  At the \emph{new} money, the implied
+volatility averages the field around the new spot, so it reads the
+straight generator there:
+\[
+\sigma_{\mathrm{atm}}^{\mathrm{new}}
+\approx\sigma_{0}+b\,H
+=\sigma_{0}+2\,s_0\,H ,
+\]
+an \emph{increase} for a drop, since $b$ and $H$ are both negative.
+The ATM reading slides along the \emph{generator's} slope $b$ --- and
+the smile only ever showed half of $b$.  The frozen field therefore
+moves the ATM volatility by \emph{twice the skew} per unit move:
+$\mathcal{R}=2$, derived.  The overshoot of
+\cref{sec:ssrdial}'s taxonomy is the market paying out the half of the
+slope the smile had been holding back.  Panel~(b) runs the experiment
+in the synthetic world: forward down $4\%$, field untouched, both
+smiles repriced through the forward equation.  The implied curve
+slides up its generator; the measured ATM change is
+\MacSsrHalfAtmMoveBp\ vol bp against the half-rule's
+$2s_0H=\MacSsrHalfAtmPredBp$ vol bp.  Exact to the basis point.
+
+At the money, then, the frozen field's answer is settled.  Away from
+the money one can push the same logic further and ask for a closed
+form: which \emph{old} smile point should tomorrow's smile at label
+$k$ read?  The tool is the \emph{midpoint rule}, and it is one line
+from what was just derived: for a straight-line field, the average
+along the chord equals the field's value at the chord's
+\emph{midpoint}, so the implied volatility at strike $K$ reflects the
+field near the dollar midpoint $(F+K)/2$.  Two (forward, strike)
+pairs that share a midpoint therefore share a reading.
+Tomorrow's pair is $(F_{\mathrm{old}}e^{H},\,K)$ with
+$K=F_{\mathrm{old}}e^{H}e^{k}$; the old strike $K''$ sharing its
+midpoint solves
+\[
+\frac{F_{\mathrm{old}}+K''}{2}
+=\frac{F_{\mathrm{old}}e^{H}+K}{2}
+\qquad\Longrightarrow\qquad
+K''=F_{\mathrm{old}}\big(e^{H}(1+e^{k})-1\big),
+\]
+and its old label is the log of that ratio:
+\begin{equation}
+\ell(k,H)=\log\!\big(e^{H}(1+e^{k})-1\big),
+\qquad
+w_{\mathrm{new}}(k)=w_{\mathrm{old}}\big(\ell(k,H)\big)
+\label{eq:ssrell}
+\end{equation}
+--- the \emph{midpoint relabeling}, written in total variance (the
+chart Chapter~2 fits in; at a single maturity the volatility form
+says the same thing, since $\sigma=\sqrt{w/\tau}$).  Check
+it at zero move: $\ell(k,0)=\log(1+e^{k}-1)=k$, the identity.  Expand
+it in the move: differentiating,
+\[
+\frac{\partial\ell}{\partial H}
+=\frac{e^{H}(1+e^{k})}{e^{H}(1+e^{k})-1},
+\qquad
+\frac{\partial\ell}{\partial H}\bigg|_{H=0}
+=\frac{1+e^{k}}{e^{k}}
+=1+e^{-k},
+\]
+so
+\begin{equation}
+\ell(k,H)=k+\big(1+e^{-k}\big)H+O(H^{2}) .
+\label{eq:ssrellexp}
+\end{equation}
+At the money, $\ell(0,H)\approx 2H$: the new smile reads the old curve
+\emph{two} units of moneyness per unit of move --- the half-rule's
+factor again, now recovered from pure geometry, which is a
+reassuring consistency check.  Away from the money the displacement
+$(1+e^{-k})H$ is strike-dependent: at $k=-0.3$ it is $2.35\,H$, at
+$k=+0.3$ only $1.74\,H$.  The put wing reads farther along the old
+curve than the call wing does.
+
+That strike dependence is exactly what the linear transport
+\eqref{eq:ssrshift} at $\mathcal{R}=2$ flattens into one uniform
+level.  So the frozen-field idea now has \emph{two} closed-form
+candidates: the linear transport, and the relabeling
+\eqref{eq:ssrell}.  Panel~(c) of \cref{fig:ssrhalf} measures their
+disagreement on the real frozen node, for a
+$-\MacSsrHalfMoveWingPct\%$ move: the difference is zero at the money
+--- both say $2s_0H$ there --- and grows into the wings, to
+$+\MacSsrHalfGapPutBp$ vol bp at the span's put edge ($k=-0.24$) and
+$-\MacSsrHalfGapCallBp$ at its call edge ($k=+0.15$).  (The
+asymmetric span is not a whim: it is the widest window on which the
+relabeling's read-back point $\ell(k,H)$ stays inside the node's own
+quoted strikes; appendix~\ref{app:ssrprotocol}.)
+
+Which one is the frozen field's true answer?  Here the chapter owes
+the reader a confession about the derivation just given.  The
+half-rule was derived by averaging along a chord in
+\emph{log}-strike; the relabeling by matching midpoints in
+\emph{dollar} strike.  At the money, at first order, the choice of
+chart cannot matter --- both gave $2s_0H$.  In the wings the two
+charts stop agreeing, and neither rule of thumb outranks the other.
+The honest arbiter is the computation itself: reprice the frozen field
+and see.  That is the next section --- and the answer turns out to
+depend on something today's smile does not show.

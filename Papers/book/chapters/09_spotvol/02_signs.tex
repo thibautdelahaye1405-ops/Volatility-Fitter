@@ -1,0 +1,110 @@
+\section{Two coordinate systems, one discipline}
+\label{sec:ssrsigns}
+
+Before any rule can be written down, one piece of bookkeeping must be
+fixed, because it is where nearly every practical error in smile
+transport lives.  The market trades \emph{strikes}: dollar levels,
+printed on contracts, unchanged when the underlying moves.  The book
+draws \emph{smiles}: curves in log-moneyness $k=\log(K/F)$, measured
+against the forward.  When the forward moves, every strike stays put
+and every label changes.  Two coordinate systems, one of which just
+slid under the other.
+
+Fix the conventions once, and hold them for the whole chapter.
+
+\begin{definition}[Sign conventions]
+\label{def:ssrsigns}
+(i)~The move is $H=\log(F_{\mathrm{new}}/F_{\mathrm{old}})$: positive
+when the forward rises.  (ii)~Log-moneyness $k=\log(K/F)$ is always
+measured against the \emph{prevailing} forward: today's curve uses
+today's forward, tomorrow's curve uses tomorrow's.  (iii)~A
+transported \emph{curve} is a function of new moneyness; a transported
+\emph{quote} --- a fixed strike --- is a point whose moneyness label
+changes.
+\end{definition}
+
+One wording convention travels with (i), stated once for the whole
+chapter: a ``four percent move'' always means the \emph{log} move
+$H=\pm0.04$ --- so a $4\%$ rise lands the forward at
+$100\,e^{0.04}=104.08$, not $104$ --- and, likewise, a strike ``ten
+percent below the money'' means $k=-0.10$.
+
+Now do the two computations these conventions force, by hand.  Let
+today's forward be $F=100$ and let it rise
+$\MacSsrSignMovePct\%$, so $H=+0.04$ and
+$F_{\mathrm{new}}=100\,e^{0.04}=104.08$.
+
+First, follow one \emph{quote}.  The strike $K=100$ has today's label
+$k=\log(100/100)=0$: it is at the money.  Tomorrow its label is
+\[
+k_{\mathrm{new}}
+=\log\!\frac{100}{104.08}
+=\log\!\frac{K}{F_{\mathrm{old}}e^{H}}
+=k-H=-0.04 .
+\]
+A fixed strike's label slides \emph{down} by the move: the
+\textbf{quote rule}, $k\mapsto k-H$.  This is just relabeling; no
+price and no volatility has been touched.
+
+Second, build the new \emph{curve}, under the simplest hypothesis a
+desk uses: every fixed strike keeps yesterday's volatility
+(``sticky-strike'').  To evaluate the new curve at new label $k$, ask
+which strike now sits there.  It is $K=F_{\mathrm{new}}e^{k}$, and its
+\emph{old} label was
+\[
+\log\!\frac{K}{F_{\mathrm{old}}}
+=\log\!\frac{F_{\mathrm{new}}e^{k}}{F_{\mathrm{old}}}
+=k+H .
+\]
+That strike's volatility is unchanged, so the new curve reads the old
+curve there:
+\begin{equation}
+\sigma_{\mathrm{new}}(k)=\sigma_{\mathrm{old}}(k+H)
+\qquad\text{(sticky-strike)} .
+\label{eq:ssrcurverule}
+\end{equation}
+The \textbf{curve rule} reads \emph{forward}, at $k+H$ --- a plus ---
+while the quote rule slides labels to $k-H$ --- a minus.  Both signs
+are correct, and they point in opposite directions in $k$.  This is
+the trap.  Swap either sign and the transported smile's skew response
+flips; the error is silent, because the resulting picture still looks
+like a plausible smile.  The discipline is to derive each sign the way
+we just did --- ``which strike sits here now?''\ for curves, ``where
+did my strike's label go?''\ for quotes --- and never to guess.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_signs.pdf}
+\caption{The two signs on one $+\MacSsrSignMovePct\%$ move (frozen
+hero smile, sticky-strike).  The fixed strike whose fitted volatility
+is \MacSsrSignQuoteVolPct\% keeps that volatility while its label
+slides
+left to $k-H$ (filled to open circle: the quote rule).  The new curve
+(blue) at any label $k$ reads the old curve (orange) at $k+H$ (filled
+to open square: the curve rule).  Opposite directions, both correct.}
+\label{fig:ssrsigns}
+\end{figure}
+
+\Cref{fig:ssrsigns} draws both rules on the frozen node's smile under
+the same $+\MacSsrSignMovePct\%$ move.  The orange curve is today's
+smile; the blue curve is the sticky-strike tomorrow, the whole shape
+carried left by the re-indexing \eqref{eq:ssrcurverule}.  Follow the
+circles first: the strike carrying \MacSsrSignQuoteVolPct\% sits at
+label $+0.02$ today (filled circle) and at $-0.02$ tomorrow (open
+circle), at exactly the same height --- same volatility, new label,
+the quote rule.  Now follow the squares: to know tomorrow's curve at
+label $-0.08$, walk \emph{right} by $H$ to the old curve at $-0.04$
+(filled square) and carry that value across (open square) --- the
+curve rule.  The circles move one way, the squares' reading goes the
+other, and the figure is worth returning to whenever a sign feels
+doubtful.
+
+One more reading of \eqref{eq:ssrcurverule} is worth a sentence,
+because it explains the name of the whole subject.  Under
+sticky-strike the curve slides along the strike axis; under the
+opposite pure hypothesis --- the smile is a fixed function of
+moneyness, ``sticky-moneyness'' --- the curve would not move at all in
+$k$.  Real desks argue precisely about how sticky the smile is in
+which coordinate.  The conventions are now fixed; the next section
+shows that, once shapes are preserved, the entire argument collapses
+to a single number.

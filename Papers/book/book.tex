@@ -104,6 +104,7 @@
 \InputIfFileExists{figures/ch06/ch06_macros.tex}{}{}
 \InputIfFileExists{figures/ch07/ch07_macros.tex}{}{}
 \InputIfFileExists{figures/ch08/ch08_macros.tex}{}{}
+\InputIfFileExists{figures/ch09/ch09_macros.tex}{}{}
 
 % Uncomment for a fast single-chapter build (page/ref numbers come from the
 % last full run's .aux files):
@@ -133,9 +134,10 @@
 \include{chapters/07_early_exercise/chapter}
 \include{chapters/08_clock/chapter}
 
-% Part III — Dynamics and Inference: chapters 9-11.  The \part headings
-% enter with their first chapter so the table of contents never
-% advertises empty parts.
+\part{Dynamics and Inference}
+\include{chapters/09_spotvol/chapter}
+
+% Part III continues with chapters 10-11.
 
 \backmatter
 \bibliographystyle{plainnat}

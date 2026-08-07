@@ -192,6 +192,28 @@ unchanged.
 | `J(N)` | the clock-calibration objective over the vector `N = (N_1, …)` of candidate event sizes (bare `J` was free) |
 | `λ_mono, λ_sparse, λ_ridge` | its penalty weights (word subscripts; sign- and number-subscripted `λ±`, `λ_0` stay Ch. 2's and Ch. 4's) |
 
+## Chapter 9 — spot–vol dynamics (the missing derivative)
+
+The scenario chapter works on one surface read at two forwards.  The move
+symbol is capital `H` (lowercase `h` stays Ch. 2's haircut); the regime
+dial is calligraphic `ℛ` (roman `R` stays an LQD polynomial coordinate).
+Word subscripts mark the two states of a transported curve, following
+Ch. 8's word-subscript pattern; hats mark measured estimates (Ch. 6).
+
+| Symbol | Meaning |
+|---|---|
+| `H` | log-forward move of a scenario, `log(F_new/F_old)`, positive up |
+| `σ_old(k), σ_new(k)` | the smile before / after the move, each in its own prevailing log-moneyness (`w_old, w_new` in total-variance form) |
+| `s_0`, `s_0(T)` | ATM skew `∂_k σ\|_{k=0}` of a slice (of the slice at maturity T when several are in play); SVI's width `s_S`, Ch. 4's tangents `s_ℓ^n`, Ch. 5's secant `s̄` are unrelated and all marked |
+| `ℛ` | the skew-stickiness ratio (SSR): the ATM-vol response per unit skew per unit log-forward move — the linear transport's one dial |
+| `ℛ̂(T)` | the realized ratio measured from a frozen-field reprice (hat = estimate) |
+| `ℓ(k, H)` | the frozen-field displacement map `log(e^H(1+e^k) − 1)` (midpoint relabeling; MCS's half-width `ℓ_r` is subscripted, Ch. 4's `s_ℓ^n` uses ℓ as an index) |
+| `Δ_tot` | total forward delta of a call: Black `Φ(d_+)` plus the smile response (composite subscript, the `Δw_i` pattern; bare `Δ` stays the digital gap) |
+
+Reused without change: `v(y)` (Ch. 4's local-variance field; the synthetic
+generator of §9.5–9.6 is time-homogeneous, so `v` is a function of `y`
+alone), `d_±`, `Φ`, `φ`, `B`, `w`, `σ`, `τ`, `k`, `y`, `F`, `S`, `t`.
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,

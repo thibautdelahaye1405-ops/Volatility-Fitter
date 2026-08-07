@@ -1,0 +1,181 @@
+\section{One free dial}
+\label{sec:ssrdial}
+
+We know the bookkeeping; now build the rule.  The guiding idea is
+modest: for small moves, a transport should not invent new smile
+\emph{shape} --- no quotes have printed that would justify a new
+shape.  A curve can be changed in only two ways without changing its
+shape: slide its argument, or add a constant.  A shape-preserving
+transport is therefore
+\[
+\sigma_{\mathrm{new}}(k)
+=\sigma_{\mathrm{old}}(k+aH)+bH
+\]
+for two numbers $a$ and $b$ per unit move.  The slide is fixed by
+anchoring the family to the one hypothesis whose meaning is
+operational: if the level term is zero, the transport should be
+exactly sticky-strike --- volatilities pinned to strikes, the pure
+re-indexing \eqref{eq:ssrcurverule} of the last section.  That sets
+$a=1$.  What remains free is one number: the level.
+
+Write $s_0$ for the \emph{ATM skew}: the slope of the smile at the
+money, $s_0=\partial_k\sigma|_{k=0}$, in volatility per unit of
+log-moneyness.  On the frozen hero node $s_0=\MacSsrHeroSkew$: the
+fitted curve loses about four volatility points per ten percent of
+moneyness as $k$ rises through zero.  The natural yardstick for the
+level is then $s_0H$ --- the skew times the move, the amount of
+volatility the smile's own tilt attaches to a move of size $H$.
+Writing the level as $(\mathcal{R}-1)\,s_0H$, a multiple of that
+yardstick --- the reason for the $-1$ appears in one moment --- gives
+the chapter's transport, its one boxed display:
+\begin{equation}
+\boxed{\;\sigma_{\mathrm{new}}(k)
+=\sigma_{\mathrm{old}}(k+H)+(\mathcal{R}-1)\,s_0\,H .\;}
+\label{eq:ssrshift}
+\end{equation}
+
+The dial $\mathcal{R}$ earns its name at the money.
+
+\begin{proposition}[ATM response]
+\label{prop:ssratm}
+Under \eqref{eq:ssrshift}, the at-the-money volatility responds to the
+move by
+\[
+\sigma_{\mathrm{new}}(0)-\sigma_{\mathrm{old}}(0)
+=\mathcal{R}\,s_0\,H+O(H^{2}) ,
+\qquad\text{hence}\qquad
+\mathcal{R}
+=\frac{\dd\sigma_{\mathrm{atm}}/\dd\log F}{s_0} .
+\]
+\end{proposition}
+
+\begin{proof}
+Evaluate \eqref{eq:ssrshift} at $k=0$ and expand the re-indexed term
+to first order in $H$:
+\[
+\sigma_{\mathrm{new}}(0)
+=\sigma_{\mathrm{old}}(H)+(\mathcal{R}-1)s_0H
+=\sigma_{\mathrm{old}}(0)+s_0H+(\mathcal{R}-1)s_0H+O(H^{2})
+=\sigma_{\mathrm{old}}(0)+\mathcal{R}s_0H+O(H^{2}) .
+\]
+The second equality is the point: the re-indexing alone already moves
+the ATM reading by $s_0H$, because sliding along a tilted curve
+changes the value at the money.  The level term adds the rest.
+\end{proof}
+
+So $\mathcal{R}$ is the fraction of the skew realized as ATM movement
+per unit log-forward move.  The literature calls this the
+\emph{skew-stickiness ratio} \citep{Bergomi2016}, and the classical
+taxonomy of \citet{Derman1999} names three of its values.  Read them
+through a falling market, since $s_0<0$: the forward drops
+($H<0$), and the question is what the ATM volatility does.
+\begin{itemize}
+\item $\mathcal{R}=0$, \emph{sticky-moneyness}: to first order the
+ATM volatility does not move; the whole smile rides with the forward
+as a fixed function of moneyness.  (``To first order'' is doing real
+work in this bullet --- \cref{sec:ssrboard} shows a case where the
+leftover curvature term is worth volatility points.)
+\item $\mathcal{R}=1$, \emph{sticky-strike}: the ATM volatility rises
+to the value the old smile assigned to the new ATM strike --- each
+strike kept its volatility, and the money walked down the skew to a
+higher reading.
+\item $\mathcal{R}=2$, \emph{sticky-local-vol}: the ATM volatility
+rises \emph{twice} as far --- it overshoots the old curve.  The name,
+and why two is the natural value for it, is the business of
+\cref{sec:ssrhalf}.
+\end{itemize}
+A plain reading of the dial: $\mathcal{R}$ asks how much of the skew
+is a forecast.  The skew says lower strikes carry higher volatility.
+When spot actually goes lower, $\mathcal{R}$ is the fraction of that
+promised extra volatility that the at-the-money reading actually
+collects.
+
+Compute the whole transport once by hand, on a toy smile where every
+number is two-digit arithmetic.  Let today's smile be the straight
+line $\sigma_{\mathrm{old}}(k)=0.20-0.15\,k$ (so $s_0=-0.15$, and the
+ATM volatility is $20\%$), let $F=100$, and let the forward rise
+$4\%$ ($H=+0.04$), as in \cref{sec:ssrsigns}.  (The taxonomy above
+read the market \emph{downward}; the toy runs it \emph{upward}, so
+every intuition from the bullets flips sign --- what rose there falls
+here.)  Then
+$\sigma_{\mathrm{old}}(H)=0.20-0.15\times0.04=0.194=19.4\%$ and
+$s_0H=-0.15\times0.04=-0.006$, i.e.\ $-60$ vol bp, and
+\eqref{eq:ssrshift} gives, at the new money
+($k=0$) and at the old strike $K=100$ (new label $k=-H$, so the
+re-indexed term is $\sigma_{\mathrm{old}}(0)$):
+\[
+\begin{array}{lcc}
+ & \text{ATM (strike }104.08\text{)} & \text{strike }100\\[2pt]
+\mathcal{R}=0\ \text{(sticky-moneyness)} & 20.0\% & 20.6\%\\
+\mathcal{R}=1\ \text{(sticky-strike)}    & 19.4\% & 20.0\%\\
+\mathcal{R}=2\ \text{(sticky-local-vol)} & 18.8\% & 19.4\%
+\end{array}
+\]
+Check each against the two rules.  The ATM column is
+$20\%+\mathcal{R}s_0H$: unchanged, down $60$ bp, down $120$ bp ---
+\cref{prop:ssratm} exactly, since the toy smile has no curvature.  The
+strike-$100$ column is $20\%+(\mathcal{R}-1)s_0H$: under
+sticky-moneyness the strike is now below the money and picks up the
+skew's $60$ bp; under sticky-strike it keeps $20\%$ by construction;
+under sticky-local-vol it \emph{loses} $60$ bp, because the level term
+pushes the whole curve past it.  The reader should reproduce all six
+numbers on paper before going on; everything later in the chapter is
+this computation with real curves.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_dial.pdf}
+\caption{The dial (frozen hero smile).  (a)~The transport
+\eqref{eq:ssrshift} built in its two moves for $\mathcal{R}=2$,
+$H=-\MacSsrFanMovePct\%$: the dashed curve is the pure re-index
+$\sigma_{\mathrm{old}}(k+H)$; the arrows add the uniform level
+$(\mathcal{R}-1)s_0H=+\MacSsrDialLevelBp$ vol bp.  (b)~The exact ATM
+response of the transport against the move for the three regimes
+(solid), with the linear law $\mathcal{R}s_0H$ dotted: the slopes are
+$\mathcal{R}s_0$, and all three curves share one bend --- at
+$H=-6\%$ it is worth \MacSsrDialBendBp\ vol bp --- which is the
+smile's own curvature entering through the re-index term.}
+\label{fig:ssrdial}
+\end{figure}
+
+\Cref{fig:ssrdial} shows the same construction on the real node.  In
+panel~(a), the orange curve is today's smile and the dashed grey curve
+is the pure re-index $\sigma_{\mathrm{old}}(k+H)$ for a
+$-\MacSsrFanMovePct\%$ move: the shape has slid bodily to the left,
+and at the money it already reads higher --- that is the $s_0H$ from
+the proof above.  The three arrows --- drawn at three different strikes to show the
+lift is the same everywhere --- then add the level
+$(\mathcal{R}-1)s_0H$, here $+\MacSsrDialLevelBp$ vol bp for
+$\mathcal{R}=2$, lifting the dashed curve to the violet one.  Every
+transported smile in this chapter is those two moves and nothing else.
+Panel~(b) plots the exact ATM change $\sigma_{\mathrm{new}}(0)-
+\sigma_{\mathrm{old}}(0)$ against the move for the three regimes, with
+the straight lines $\mathcal{R}s_0H$ dotted on top.  Near zero move
+the three solid curves are the three lines: slope $\mathcal{R}s_0$,
+\cref{prop:ssratm}.  Away from zero they all bend by the same amount
+--- \MacSsrDialBendBp\ vol bp at $H=-6\%$ --- and the bend has nothing
+to do with $\mathcal{R}$: it is
+$\tfrac12\sigma_{\mathrm{old}}''(0)H^{2}$, the smile's own curvature
+picked up by the re-index term --- the \MacSsrDialBendBp\ vol bp is
+that term measured on the fitted curve, and it is the first
+$O(H^2)$ the proposition swept aside.  The same term explains a detail the sharp-eyed reader
+may have caught in \cref{fig:ssrquestion}(a): the sticky-moneyness
+tomorrow does not lie exactly on today's curve, though the words ``the
+smile is a fixed function of moneyness'' say it should.  The transport
+\eqref{eq:ssrshift} realizes each regime to first order in the move,
+and its second-order honesty is exactly this one curvature term.
+
+Two remarks close the section.  First, the level did not have to be
+vertical: one could instead slide the argument farther,
+$\sigma_{\mathrm{old}}(k+\mathcal{R}H)$, and match the same ATM
+response.  The two versions differ by curvature times $H^{2}$ --- the
+same second order the transport already declines to model --- so the
+choice between them is a convention, and this book's is
+\eqref{eq:ssrshift}.  Second, the dial is not unconstrained folklore:
+within one-factor stochastic-volatility models --- models in which a
+single random factor drives the volatility --- short-dated smiles
+force $\mathcal{R}$ between the sticky-strike and sticky-local-vol
+values \citep{Bergomi2016}, so the named regimes bracket the
+modeling mainstream.  What no model choice can escape is
+\cref{rem:ssrident}: today's surface prices every $\mathcal{R}$
+identically.  The next section computes what the choice costs.

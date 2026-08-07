@@ -1,0 +1,109 @@
+\section{The derivative the surface does not carry}
+\label{sec:ssrmissing}
+
+Take stock of what the book can now do.  Part~II turned a raw board
+into a clean observation: Chapter~6 fitted the forward and the
+discount, Chapter~7 removed the early-exercise right, Chapter~8 put
+the readings on an honest clock.  Part~I turned such observations into
+surfaces: at every quoted expiry, a fitted smile, a full probability
+law.  All of it is a photograph.  Every object was built from the
+prices of one afternoon, at one level of the underlying.
+
+Look at how much the photograph contains.  Differentiate a fitted
+smile's call prices once in strike and you get the digital price ---
+the probability of finishing below the strike (Chapter~2 built its
+whole model on this).  Differentiate twice and you get the density.
+Differentiate total variance in maturity and you get the forward
+variance of Chapter~8.  In the surface's own coordinates --- strike
+and expiry --- every derivative is available, exact, and priced.
+Chapter~8 closed on precisely this point, and it is the one aphorism
+this chapter allows itself: the surface gives every derivative in the
+strike direction and none in the spot direction.
+
+Here is the question that needs the missing direction.  The frozen SPY
+December 2026 smile --- the book's running node, \MacSsrHeroDays\ days
+to expiry, ATM volatility \MacSsrHeroAtmPct\% --- was fitted at the
+snapshot's forward.  Suppose the next tick takes the forward down
+$\MacSsrFanMovePct\%$.  What is the new smile, \emph{now}?  No new
+option quotes have printed yet, and a desk cannot wait for a
+recalibration to know its risk.  It needs a rule that turns the old
+smile plus the move into a new smile.
+
+The uncomfortable fact is that today's prices do not contain that
+rule.
+
+\begin{remark}[A snapshot does not identify dynamics]
+\label{rem:ssrident}
+Every price quoted today is an integral against today's laws: Chapter~2
+wrote each vanilla as an expectation under its expiry's distribution,
+and the fit determined those distributions.  A \emph{dynamics} is a
+different kind of object: an assignment of a whole surface to each
+future level of the underlying.  Consistency with today's quotes
+constrains that assignment at exactly one point --- today's level,
+where it must reproduce today's surface --- and nowhere else.  To see
+this concretely, take any family of arbitrage-free surfaces that
+passes through today's surface.  Declaring ``after a move of size $H$
+the surface is the family member at $H$'' \emph{is} choosing a
+dynamics.  Every instrument quoted today is priced identically under
+every such declaration, so today's quotes cannot rank them.  The
+derivative of the smile along spot is extra structure.  The market data of one afternoon cannot supply
+it; the desk must choose it, or derive it from a model --- which is
+where this chapter ends up in \cref{sec:ssrhalf}.
+\end{remark}
+
+The choice would not matter much if it only changed a chart between
+ticks.  It matters because it is a \emph{hedge ratio}.  The spot
+sensitivity of an option has two parts: the Black delta --- the
+sensitivity at frozen volatility --- plus vega times the very
+derivative the surface does not carry (vega, recall, is the price's
+sensitivity to volatility).  Two desks holding the same option against
+the same fitted surface, but assuming different smile responses, will
+compute different deltas and trade different hedges.
+\Cref{sec:ssrdelta} prices the disagreement on the frozen node: about
+\MacSsrDeltaGapPts\ delta points at an ordinary put strike.  Nothing
+about the choice is cosmetic.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_ssr_question.pdf}
+\caption{The missing derivative (frozen SPY December 2026 node).
+(a)~Today's fitted smile (orange, with the prepared mid quotes as
+dots) and three candidate smiles after a $-\MacSsrFanMovePct\%$
+forward move, drawn with the transport built in
+\cref{sec:ssrdial} --- all three consistent with every price in
+panel~(a)'s dots.  (b)~The volatility of one fixed strike (today's
+$k=-0.10$ put, fitted today at \MacSsrMarkVolPct\%) against the move
+size,
+under the three rules: at a $-\MacSsrFanMovePct\%$ move the answers
+sit \MacSsrMarkSpreadBp\ vol bp apart.}
+\label{fig:ssrquestion}
+\end{figure}
+
+\Cref{fig:ssrquestion} draws the predicament before any machinery.  In
+panel~(a), the orange curve is today's fitted smile with its prepared
+mid quotes (``prepared'' in Part~II's sense: the cleaned, forwarded,
+Europeanized observation); the three thinner curves are three
+candidate tomorrows after a $-\MacSsrFanMovePct\%$ forward move, each
+produced by one of the standard rules this chapter will build, and
+each labeled with the name a desk would use.  They stack in the order
+of the eventual dial --- after this \emph{down} move the
+sticky-local-vol tomorrow sits highest, sticky-moneyness lowest,
+sticky-strike between, at every strike drawn --- for reasons
+\cref{sec:ssrdial} derives.  Nothing in the orange dots prefers one
+of the three: they are different completions of the same photograph
+(\cref{rem:ssrident}).  Panel~(b) reads the same disagreement at a
+single fixed strike --- the put ten percent below the money, whose
+fitted volatility today is \MacSsrMarkVolPct\%.  Each rule makes that strike's tomorrow
+volatility a straight line in the move size; the lines share only the
+point at zero move.  At $-\MacSsrFanMovePct\%$ they span
+\MacSsrMarkSpreadBp\ vol bp (a vol bp, as throughout the book, is
+$10^{-4}$ of absolute volatility) --- three and a half volatility
+points for the same strike, same surface, same tick.
+
+We now know what is missing and why it must be chosen.  The rest of
+the chapter builds the choices properly: first the bookkeeping that
+keeps signs honest (\cref{sec:ssrsigns}), then the one-parameter family
+of rules and its dial (\cref{sec:ssrdial}), then the price tag in
+delta (\cref{sec:ssrdelta}), and then the one construction in this
+book that \emph{answers} the question instead of asking it
+(\cref{sec:ssrhalf,sec:ssrfield}).
