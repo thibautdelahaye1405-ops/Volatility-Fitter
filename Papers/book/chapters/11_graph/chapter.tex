@@ -9,26 +9,26 @@
 %   1. State smile extrapolation as inference on INCREMENTS: every node
 %      carries Chapter 10's transported baseline, the graph infers only
 %      each node's innovation against it, so "no move" is the default
-%      and lit data must earn every departure.
+%      and every departure is priced by the lit innovations.
 %   2. Read and write an edge as a Gaussian contract: amplitude says
 %      what the implied move is, precision says how much the relation
 %      is trusted, and the two never mix -- derive the receiver's
 %      precision-weighted average and the chain law (amplitudes
 %      multiply, variances add; distance taxes the band, never the
 %      mean).
-%   3. Defend the joint solve's accounting: a silent neighbour costs
+%   3. State the joint solve's accounting: a silent neighbour costs
 %      nothing (why one factor per relation, not one averaging row per
 %      receiver), one source is counted once however many routes carry
 %      it (the triangle: 5/3p against 6/5p), reported confidence is
 %      the marginal, and a component with no lit path keeps its
-%      baseline and an honest band.
-%   4. Shrink honestly: partial transfer enters as a zero-innovation
-%      anchor, never by scaling the amplitude (both wrong
-%      mechanizations derived away), and corroborating sources lift
-%      the transfer by the law kp/(kappa + kp).
+%      baseline under a stated default band.
+%   4. Shrink through the anchor: partial transfer enters as a
+%      zero-innovation anchor, never by scaling the amplitude (both
+%      wrong mechanizations derived away), and corroborating sources
+%      lift the transfer by the law kp/(kappa + kp).
 %   5. Decompose what a dark node believes into baseline + systematic
 %      + residual, complete a sparse universe end to end on the frozen
-%      boards, and audit the published bands with std(Z) = 1.
+%      boards, and test the published bands with std(Z) = 1.
 % Every section serves one of these five goals.
 \renewcommand{\figdir}{figures/ch11}
 \chapter[The graph: one surface from a sparse universe]{The Graph: One
@@ -41,8 +41,8 @@ it, check it, filter it.  But a desk does not own one smile --- it
 owns a universe of them, one node per underlier and expiry, and on
 any given morning only a handful are richly quoted (\emph{lit}, in
 this chapter's vocabulary).  The rest still
-need surfaces.  This final chapter completes the book's machinery by
-letting the quoted nodes inform the unquoted ones.  The object is a
+need surfaces.  This final chapter lets the quoted nodes inform the
+unquoted ones.  The object is a
 graph: nodes are the smiles, and each edge is a \emph{contract} ---
 a statement that one node's move implies another's, at a stated
 amplitude and a stated trust, and the two never mix: amplitude
@@ -50,13 +50,14 @@ prices the implied move, trust prices the band.  What the graph
 infers is not levels but \emph{innovations} --- each node's departure
 from its own transported baseline, Chapter~10's prior made
 universal --- so the default answer everywhere is ``nothing changed,''
-and lit data must earn every departure.  The whole-universe solve is
+and every departure is priced by the lit innovations.  The
+whole-universe solve is
 one least-squares objective, the same precision-weighted average as
 Chapter~10's filter with many unknowns at once, and its accounting
-can be defended line by line: trusting a neighbour that has nothing
+holds line by line: trusting a neighbour that has nothing
 to say costs a live message nothing, one
 source is counted once however many routes carry it, and the
-published confidence honestly includes the informers' own doubt.  A dark node's answer
+published confidence includes the informers' own doubt.  A dark node's answer
 then decomposes into three parts of decreasing evidence --- its
 baseline, what the lit universe implies through the contracts, and
 its own remembered dislocation, decaying on a stated half-life.  The
@@ -64,7 +65,7 @@ chapter ends where the book must: a twenty-node universe built from
 the frozen boards, eight nodes lit, and the withheld December smile
 of the second name reconstructed --- from its neighbours alone --- to
 within a fraction of a volatility point of quotes it never saw, under
-an error bar that an audit certifies.}
+an error bar that passes the standardized-error test.}
 
 \input{chapters/11_graph/01_dark}
 \input{chapters/11_graph/02_contract}

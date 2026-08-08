@@ -1,15 +1,15 @@
-"""F4: the accountant -- silent neighbours cost nothing; one source is one.
+"""F4: silent neighbours cost nothing, and one source is one.
 
-Panel (a): the dead-informer case file.  A receiver trusts two informers
+Panel (a): the dead-informer fixture.  A receiver trusts two informers
 equally; one is lit, the other is a dark dead end.  The factor assembly
 transfers the whole message no matter how much trust the dead informer was
 configured to carry; the row-normalized averaging assembly destroys the
 live signal as that configured trust grows.
 
-Panel (b): the repeated-route case file.  One source, observed at finite
+Panel (b): the repeated-route fixture.  One source, observed at finite
 precision, reaches the target directly and through a middle node.  The
 joint solve prices the two routes' shared origin: marginal variance
-5/(3p).  Counting the routes as independent messages claims 6/(5p).
+5/(3p).  Counting the routes as independent messages yields 6/(5p).
 """
 
 from __future__ import annotations
@@ -88,7 +88,7 @@ def fig_gr_account() -> str:
     STORE.add("account", "GrRepeatJoint", num(joint, 3),
               "joint marginal variance at the target, 1/p units (5/3)")
     STORE.add("account", "GrRepeatNaive", num(naive, 3),
-              "naive per-route variance claim, 1/p units (6/5)")
+              "naive per-route variance, 1/p units (6/5)")
     STORE.add("account", "GrRepeatOverstatePct",
               num(100.0 * (joint / naive - 1.0), 0),
               "precision overstatement of per-route accounting, percent")

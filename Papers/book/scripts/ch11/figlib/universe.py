@@ -46,7 +46,7 @@ NAMES = ["SPY", "NVDA", "sister", "blend"]
 REAL = {"SPY": EXPIRIES, "NVDA": EXPIRIES}
 SYN = {"sister": SYN_EXPIRIES, "blend": SYN_EXPIRIES}
 
-# Stated construction parameters (all disclosed in the chapter appendix).
+# Stated construction parameters (all listed in the chapter appendix).
 ANCHOR_MOVE = 0.80        # vol points at SPY December
 TRUE_BETA = {"SPY": 1.0, "NVDA": 1.6, "sister": 1.44, "blend": 1.2}
 SCATTER_SD = 0.30         # per-node idiosyncratic scatter, vol points
@@ -71,12 +71,12 @@ LIT = [("SPY", e) for e in EXPIRIES] + [
     ("NVDA", "2026-09-18"), ("NVDA", "2027-03-19"),
 ]
 
-OVERTRUST = 25.0          # the dishonest arm: edge precisions x 25
+OVERTRUST = 25.0          # the overtrusting arm: edge precisions x 25
 
 
 @dataclass(frozen=True)
 class UNode:
-    """One universe node: identity, maturity, and its handle bookkeeping."""
+    """One universe node: identity, maturity, and its handle state."""
 
     name: str
     expiry: str
@@ -171,7 +171,7 @@ def relation_var(beta: float, extra: float = 0.0) -> float:
 
 
 def problem(trust_scale: float = 1.0):
-    """The morning's solve as a solver.Problem (honest arm at scale 1)."""
+    """The morning's solve as a solver.Problem (stated arm at scale 1)."""
     import solver
 
     nodes = build()
@@ -208,7 +208,7 @@ def solve_morning(trust_scale: float = 1.0):
 
 
 def audit_std(post) -> float:
-    """std of the standardized dark-node errors (the chapter's audit)."""
+    """std of the standardized dark-node errors (the chapter's Z test)."""
     nodes = build()
     z = [(n.theta_true - post.mean[i]) / np.sqrt(post.var[i])
          for i, n in enumerate(nodes) if not n.lit]

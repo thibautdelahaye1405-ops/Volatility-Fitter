@@ -1,12 +1,12 @@
-\section{The accountant: what the joint solve refuses to invent}
+\section{Silent neighbours, repeated routes, and empty components}
 \label{sec:graccount}
 
 An operator that fills a whole universe from a handful of numbers had
-better not manufacture information.  This section stress-tests
-\cref{eq:grjoint} against the three classic ways a propagation scheme
-can cheat: paying attention to a neighbour that knows nothing,
-counting one source several times because several routes carry it, and
-inventing signal where no path to data exists.  Each test has a sharp
+better not manufacture information.  This section tests
+\cref{eq:grjoint} in the three configurations where a propagation
+scheme can do so: a neighbour that knows nothing,
+one source counted several times because several routes carry it, and
+signal invented where no path to data exists.  Each test has a sharp
 answer, and one of them will force a genuine design decision.
 
 \subsection{The silent neighbour}
@@ -79,7 +79,7 @@ tie-break the desk never chose, decaying to
 (the violet curve of \cref{fig:graccount}(a)).  Configuring trust in
 a neighbour that says nothing \emph{destroys} a live signal.
 
-The lesson generalizes well beyond this example, so state it plainly:
+The lesson generalizes well beyond this example:
 \emph{the joint form of an operator is a modelling decision, even when
 every local conditional agrees}
 \citep{Koller2009,Pearl1988}.  The book's assembly is therefore one
@@ -97,7 +97,7 @@ averaging assembly (violet) leaves the posterior improper, and a
 vanishing ridge then retains only \MacGrDeadAvgEq\ at equal trust,
 decaying toward zero.  (b)~One source, two routes: the joint solve
 prices the target's variance at $5/(3p)$; treating the two routes as
-independent messages claims $6/(5p)$ --- a
+independent messages yields $6/(5p)$ --- a
 \MacGrRepeatOverstatePct\% precision overstatement, because both
 routes share the source's own doubt.}
 \label{fig:graccount}
@@ -105,7 +105,7 @@ routes share the source's own doubt.}
 
 \subsection{One source, two routes}
 
-The second cheat is subtler.  Let one source $S$ be observed --- at
+The second test is subtler.  Let one source $S$ be observed --- at
 \emph{finite} precision $p$, so its own value is uncertain --- and let
 its message reach a target $T$ twice: directly, and through a middle
 node $M$.  All three relations carry precision $p$ and amplitude one.
@@ -113,7 +113,7 @@ Intuition from \cref{eq:grchain} prices each route as a message: the
 direct route delivers the source's value with variance
 $1/p+1/p=2/p$ (the source's own doubt plus one relation's noise); the
 two-leg route delivers it with variance $3/p$.  Two messages, so add
-their precisions: $p/2+p/3=5p/6$, a claimed variance of
+their precisions: $p/2+p/3=5p/6$, a variance of
 $6/(5p)=\MacGrRepeatNaive/p$ at the target.
 
 The joint solve disagrees.  Assemble \cref{eq:grjoint} for the
@@ -130,17 +130,17 @@ $p$ to the top-left entry and each relation its $2\times2$ block:
 =\frac{5}{3p},
 \]
 the middle expression being the cofactor rule for one diagonal entry
-of the inverse.  The honest variance is
+of the inverse.  The joint variance is
 $\MacGrRepeatJoint/p$ --- not $\MacGrRepeatNaive/p$.  Per-route
-accounting claims precision $5p/6$ where the truth is $3p/5$: an
-overstatement of \MacGrRepeatOverstatePct\% of the honest figure, and
+accounting states precision $5p/6$ where the truth is $3p/5$: an
+overstatement of \MacGrRepeatOverstatePct\% of the joint figure, and
 the error has a name: the two routes
-are not independent witnesses, because both carry the \emph{same}
+are not independent messages, because both carry the \emph{same}
 source's doubt.  However many wires fan out of one uncertain node,
 that node's own variance crosses every one of them; it can never be
 diversified away by adding routes.  The joint solve keeps the
-covariance the per-route bookkeeping forgot.
-\Cref{fig:graccount}(b) shows the two claims side by side.
+covariance that per-route accounting forgot.
+\Cref{fig:graccount}(b) shows the two figures side by side.
 
 The practical consequence is a rule for \emph{attribution}.  The
 posterior mean is linear in the observations --- solving the normal
@@ -150,11 +150,11 @@ residual-offset terms of \cref{sec:grbelieve} (the anchors, aiming at
 zero, shape the matrix but add no term), where $\mathcal{K}_{is}$ is
 the derivative of node $i$'s posterior with respect to lit node $s$'s
 measurement.  This matrix is Chapter~10's gain
-$\mathcal{K}$ grown to universe size, and it decomposes every filled
+$\mathcal{K}$ at universe size, and it decomposes every filled
 node over the lit \emph{sources}, exactly and additively.  Ask
 ``which routes carried it?''\ and the question has no well-posed
 answer --- route contributions overlap, as the triangle just showed.
-Ask ``which sources earned it?''\ and the answer is a row of
+Ask ``how much came from each source?''\ and the answer is a row of
 $\mathcal{K}$.  Attribution is by source, never by path.
 
 \subsection{No path, no signal}
@@ -164,16 +164,16 @@ some cluster of nodes connected to each other but to no lit node.
 Restricted to it, the objective \cref{eq:grjoint} sees contracts only:
 every term is a difference, so adding one constant to the whole
 cluster changes nothing --- the objective is flat, the information
-matrix singular, the posterior improper.  The machinery must
-\emph{refuse}: no solve, no invented number.  The honest publication
-for such a component is the one \cref{sec:grdark} already named ---
-each node's baseline, unchanged ($\Theta=0$), under a stated, wide
+matrix is singular on that component, and no posterior exists there.
+The solver returns, for such a component, exactly what
+\cref{sec:grdark} prescribed for a morning with no evidence ---
+each node's baseline, unchanged ($\Theta=0$), under a stated default
 band (one typical morning's move is the reference implementation's
-convention), with a flag saying \emph{no lit path} rather than a
-number pretending to be inference.  Silence honestly labelled is a
-feature; the alternative --- regularizing the singularity away and
-publishing the result --- is the averaging assembly's mistake wearing
-a different hat.
+convention), with a flag marking the component as having no lit
+path.  The alternative --- regularizing the singularity away and
+publishing the result --- is the averaging assembly's mistake in
+another form: a tie-break the desk never chose, published as
+inference.
 
 The accounting holds: silent neighbours cost nothing, sources are
 counted once, absence is labelled absence.  What the contracts still

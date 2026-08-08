@@ -1,6 +1,6 @@
 # Chapter 11 macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/ch11/gen_figures.py` into `ch11_macros.tex`. Last write 2026-08-07.
+Emitted by `scripts/ch11/gen_figures.py` into `ch11_macros.tex`. Last write 2026-08-08.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -27,7 +27,7 @@ Emitted by `scripts/ch11/gen_figures.py` into `ch11_macros.tex`. Last write 2026
 | `\MacGrDeadAvgHigh` | `0.00` | averaging-assembly transfer at 1000x dead trust |
 | `\MacGrDeadPairMin` | `1.0000` | factor-assembly transfer, minimum across the trust sweep |
 | `\MacGrRepeatJoint` | `1.667` | joint marginal variance at the target, 1/p units (5/3) |
-| `\MacGrRepeatNaive` | `1.200` | naive per-route variance claim, 1/p units (6/5) |
+| `\MacGrRepeatNaive` | `1.200` | naive per-route variance, 1/p units (6/5) |
 | `\MacGrRepeatOverstatePct` | `39` | precision overstatement of per-route accounting, percent |
 | `\MacGrAnchorLawGap` | `\ensuremath{2.5\times10^{-9}}` | max gap between the solver's transfer and kp/(kappa+kp) |
 | `\MacGrStoryDeskB` | `11.0` | the desk path's B mark at t=4 (dislocation kept) |

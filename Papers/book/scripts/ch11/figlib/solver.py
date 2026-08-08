@@ -74,9 +74,9 @@ class Posterior:
 def solve(prob: Problem) -> Posterior:
     """Assemble the information form and solve it (one connected component).
 
-    Raises if the information matrix is singular -- the chapter's honest
-    no-lit-path components are handled by the caller, which reports the
-    baseline and a stated broad band instead of solving.
+    Raises if the information matrix is singular -- no-lit-path
+    components are handled by the caller, which reports the
+    baseline and a stated default band instead of solving.
     """
     n = prob.n
     info = np.zeros((n, n))
@@ -118,7 +118,7 @@ def averaging_solve(n: int, factors: list[Factor],
     Each receiver is charged once, at its total incoming precision q_i, for
     deviating from its precision-weighted forecast.  A tiny anchor keeps the
     solve proper (the alternative is improper whenever an informer is free).
-    Returns the posterior mean only -- the foil never earns a band.
+    Returns the posterior mean only -- the foil is not given a band.
     """
     info = np.full((n, n), 0.0)
     rhs = np.zeros(n)

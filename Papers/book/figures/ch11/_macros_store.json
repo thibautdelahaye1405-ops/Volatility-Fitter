@@ -116,7 +116,7 @@
  },
  "GrRepeatNaive": {
   "value": "1.200",
-  "meaning": "naive per-route variance claim, 1/p units (6/5)",
+  "meaning": "naive per-route variance, 1/p units (6/5)",
   "section": "account"
  },
  "GrRepeatOverstatePct": {

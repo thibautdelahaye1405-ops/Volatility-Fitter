@@ -1,11 +1,11 @@
-"""F7: the universe completed -- skill, the withheld smile, and the audit.
+"""F7: the universe completed -- skill, the withheld smile, and the Z test.
 
 Panel (a): per-dark-node reconstruction error against the baseline error
 (log-log; the diagonal is 'no better than riding the prior').  Panel (b):
 the withheld NVDA December node -- the real frozen quotes this node's
 reconstruction never saw, against yesterday's baseline and the graph's
-retargeted smile with its floored band.  Panel (c): the audit -- std of
-the standardized dark-node errors under the overtrusting arm, the stated
+retargeted smile with its floored band.  Panel (c): the standardized-error
+test -- std of the dark-node Z under the overtrusting arm, the stated
 precisions, and the stated precisions with the idiosyncratic floor.
 """
 
@@ -102,7 +102,7 @@ def fig_gr_complete() -> str:
     ax.legend(loc="upper right", fontsize=6.8)
     panel(ax, "b", "the withheld NVDA December node")
 
-    # (c) the audit.
+    # (c) the standardized-error test.
     z_ot = universe.audit_std(post_ot)
     z_stated = universe.audit_std(post)
     z_fl = [(n.theta_true - post.mean[j]) / np.sqrt(post.var[j] + floor)
@@ -119,7 +119,7 @@ def fig_gr_complete() -> str:
     ax.set_xticklabels(["over-\ntrust", "stated", "stated\n+ floor"],
                        fontsize=7.5)
     ax.set_ylabel(r"std of $\mathcal{Z}$ (dark nodes)")
-    panel(ax, "c", "the audit")
+    panel(ax, "c", "the standardized-error test")
 
     figstyle.save(fig, "fig_gr_complete")
 
@@ -148,7 +148,7 @@ def fig_gr_complete() -> str:
     STORE.add("complete", "GrNvdaDecQuotes", str(node.n_quotes),
               "prepared quote count at the withheld NVDA December node")
 
-    # Attribution at the withheld node: every posterior point earned.
+    # Attribution at the withheld node: every posterior point assigned.
     obs = universe.observations()
     keys = list(obs)
     contrib = post.gains[i] * np.array([obs[k] for k in keys])

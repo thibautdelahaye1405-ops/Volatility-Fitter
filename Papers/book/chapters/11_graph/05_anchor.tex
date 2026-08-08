@@ -6,8 +6,8 @@ informer is $\beta$ points at the receiver, however far the message
 travels.  That is the right semantics \emph{conditional on the
 relation as asserted} --- but a desk often wants to assert less.
 Related names do not, on average, transfer each other's moves one for
-one; a prudent configuration wants a stated fraction through, with
-``no move'' keeping some claim on the receiver.  The question of this
+one; a desk wants a stated fraction through, with
+``no move'' keeping some weight at the receiver.  The question of this
 section is how to say ``believe it, but not at full force'' without
 breaking anything already built.  Two natural answers are provably
 wrong, and working through them is the fastest way to trust the third.
@@ -38,7 +38,7 @@ and the reverse factor predicts the informer at half of
 fixed at $m$ (\emph{clamped}: treated as observed exactly, a
 certified print), and give the reverse factor the units-matched
 precision $p'=p\beta^{2}$ of \cref{sec:gredge} so that neither
-direction is favoured by bookkeeping.  The receiver then minimizes
+direction is favoured by the units.  The receiver then minimizes
 \[
 p\,\bigl(\Theta_i-\tfrac12\beta m\bigr)^{2}
 +p\beta^{2}\bigl(m-\tfrac12\Theta_i/\beta\bigr)^{2}.
@@ -54,7 +54,7 @@ Set the derivative in $\Theta_i$ to zero:
 \]
 Eighty percent through, not fifty --- and on top of the wrong number,
 the relation has been entered twice, which \cref{sec:graccount}
-already convicted.  (The general shrink $s$ transfers
+already ruled out.  (The general shrink $s$ transfers
 $2s/(1+s^{2})$; setting $2s/(1+s^{2})=s$ --- asking the configured
 shrink to be the delivered one --- forces $s=\pm1$: full force, or a
 sign flip.  No genuine shrink survives.)
@@ -62,7 +62,7 @@ sign flip.  No genuine shrink survives.)
 \subsection{The anchor}
 
 The consistent mechanization does not touch the relation at all.  It
-adds a new, honest belief \emph{about the node}: a zero-innovation
+adds a new belief \emph{about the node}: a zero-innovation
 pseudo-observation --- ``absent evidence, this node does not move'' ---
 at a stated precision $\kappa_i$.  This is the middle term of
 \cref{eq:grjoint}, switched on at last, and it is Chapter~10's
@@ -91,15 +91,15 @@ completed square:
 \end{equation}
 Read \cref{eq:grcorr} at $\kappa_i=3p$: one source pushes a quarter
 through; two sources, $2/5$; three, one half; corroboration keeps
-climbing toward one.  Independent agreeing voices \emph{earn} force
-against the anchor --- which is how a prudent default coexists with
+climbing toward one.  Independent agreeing sources gain force
+against the anchor --- which is how a cautious default coexists with
 conviction when the whole neighbourhood moves together.
 \Cref{fig:granchor} draws the law for three anchor settings, with the
 chapter's solver run at each point --- the sources clamped, as the
 law's hypothesis requires: the dots sit on the curves to
 \MacGrAnchorLawGap.  (Unclamped sources carry their own doubt, and
 the transfer then sits below these curves --- the marginal-variance
-lesson of \cref{sec:grmeet}, unchanged.)  One subtlety is disclosed rather than hidden:
+lesson of \cref{sec:grmeet}, unchanged.)  One subtlety needs stating:
 $\kappa_i$ is \emph{fixed per node} --- one belief about the node,
 sized off its primary relation (its highest-precision incident edge,
 read in the node's own units) --- not rescaled as further edges
@@ -123,10 +123,10 @@ relation itself.}
 \label{fig:granchor}
 \end{figure}
 
-The dial exists, and it is honest: amplitude still prices what a move
+The dial exists: amplitude still prices what a move
 means, trust still prices how tightly a relation binds, and the
 anchor prices how strongly a node holds to its baseline against its
-neighbours' claims.  All three are separately stated and separately
-auditable.  What none of them yet captures is \emph{time} --- a node
+neighbours' messages.  All three are separately stated numbers.
+What none of them yet captures is \emph{time} --- a node
 that was seen dislocated an hour ago, and has been dark since.  That
 is the last ingredient.

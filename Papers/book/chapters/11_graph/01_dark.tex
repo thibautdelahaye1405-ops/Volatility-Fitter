@@ -72,7 +72,7 @@ broad repricing, largest at the short end.}
 
 The oldest answer to a dark node is to copy a nearby smile --- take the
 index smile at the same expiry, add a fixed spread, publish.  Copying
-fails on three counts, and naming them tells us what the machinery
+fails on three counts, and naming them tells us what the graph
 must do instead.  First, it throws away the dark node's own
 information: the sister name has a perfectly good smile from
 yesterday, whose shape --- its skew, its wings, its own level --- is far
@@ -86,7 +86,7 @@ The repairs, in order.  The dark node's own information is exactly
 what \cref{ch:infer} already maintains: every node --- lit or dark ---
 carries a \emph{baseline}, yesterday's posterior transported to
 today's market by Chapter~9's rule, with a variance grown on
-Chapter~8's clock.  This is the division of labour promised at the end
+Chapter~8's clock.  This is the division of labour drawn at the end
 of \cref{sec:infaudit}: persistence supplies each dark node's
 baseline; what it cannot supply is this morning's \emph{news}.  So the
 graph should not build dark smiles from scratch --- it should only move
@@ -95,7 +95,7 @@ unknown is not the dark node's handle but its \emph{innovation}, the
 same departure-from-baseline that panel~(b) measures at the lit nodes.
 Write $\Theta_i$ for that unknown at node $i$ --- capital theta, one
 number per node for now.  If the morning's evidence says nothing about
-node $i$, the honest answer is $\Theta_i=0$: publish the baseline,
+node $i$, then $\Theta_i=0$: publish the baseline,
 unchanged.  Everything the graph adds is a departure from zero that
 the lit innovations must pay for.
 
@@ -104,9 +104,9 @@ The second repair --- how related --- is the subject of
 and a stated trust on each edge.  The third --- uncertainty --- runs
 through the whole chapter: every filled node will report a variance,
 the variance will widen with distance from the lit set, and
-\cref{sec:grcomplete} will hold the machinery to Chapter~10's audit:
-the standardized errors $\mathcal{Z}$ of \cref{eq:infz} must scatter
-with standard deviation one.
+\cref{sec:grcomplete} runs Chapter~10's standardized-error test on
+the published bands: the standardized errors $\mathcal{Z}$ of
+\cref{eq:infz} must scatter with standard deviation one.
 
 \subsection{The carrier, and the scope of one number}
 
@@ -118,7 +118,7 @@ skew $s_0$, and the curvature (which, as in Chapter~10, keeps no
 symbol and is named in words) --- the same compact, model-agnostic
 state that \cref{sec:inffilter} filtered, and for the same reasons:
 they are comparable across nodes, stable in meaning, and they retarget
-into an arbitrage-free smile through the machinery of Part~I, so the
+into an arbitrage-free smile through Part~I's fits, so the
 graph never publishes a raw curve.  Everything a smile is beyond its
 three handles --- its wings above all --- simply rides the baseline:
 the graph moves the belly and only the belly, the same division of
@@ -127,8 +127,8 @@ the graph as its own scalar field with its own edge parameters.  The
 chapter therefore develops everything for \emph{one} scalar field ---
 $\Theta_i$, in volatility points --- and the staged morning is
 constructed to move levels only (its skew and curvature fields carry
-zero innovation everywhere and are not solved), so that one field is
-the whole story; where a handle-specific point matters, it is
+zero innovation everywhere and are not solved), so one field
+suffices; where a handle-specific point matters, it is
 flagged.  We now know
 what the graph must infer.  The next question is what one edge is
 allowed to say.

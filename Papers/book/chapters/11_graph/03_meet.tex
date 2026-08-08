@@ -85,7 +85,11 @@ Take the mean and the variance of both sides:
 \end{equation}
 Amplitudes \emph{multiply} along the chain; relation variances
 \emph{accumulate}, each mapped into the terminal node's units by the
-amplitudes it still has to cross.  Nothing shrinks the mean:
+amplitudes it still has to cross.  (In Chapter~10's electrical
+picture: the hops are resistors in series --- each adds its
+resistance, the variance, to the total --- while a receiver's several
+informers in \cref{eq:grcond} are resistors in parallel, their
+conductances, the precisions, adding.)  Nothing shrinks the mean:
 distance taxes the band, never the mean.  A desk that wants remote
 messages damped must therefore say so explicitly --- that is
 \cref{sec:granchor}'s subject --- because the contracts alone will
@@ -147,7 +151,7 @@ the variance of a difference of independent estimates is the sum of
 their variances (the same propagation Chapter~6 used for its error
 bars): $\mathcal{V}_{\mathrm{obs},s}
 =\mathcal{V}_{\mathrm{fit},s}+\mathcal{V}_{\mathrm{base},s}$.  A
-node's baseline uncertainty enters the machinery exactly once.  For a
+node's baseline uncertainty enters the objective exactly once.  For a
 lit node it is folded into $\mathcal{V}_{\mathrm{obs}}$, as just
 shown.  For a dark node the mechanism is at the other end of the
 pipeline: the published handle is baseline plus posterior innovation,
@@ -157,7 +161,7 @@ $\mathcal{V}^{+}_i+\mathcal{V}_{\mathrm{base},i}$ --- the addition
 made once, at publication.  Never both routes, and never twice.
 
 Why is minimizing \cref{eq:grjoint} the right thing to do?  Because it
-is \cref{ch:infer}'s update, grown up.
+is \cref{ch:infer}'s update at universe scale.
 Proposition~\ref{prop:infmap} proved the scalar case: minimizing a sum
 of precision-weighted squares in one unknown \emph{is} the filter
 update, and the objective's second derivative there came out as twice
@@ -213,15 +217,15 @@ $\hat\Theta^{+}_B=\beta d$: the contract at full amplitude.)
 Now the caution.  The \emph{diagonal of the information matrix} at
 $B$ reads $p$ --- call its reciprocal the \emph{conditional} variance,
 because it answers ``how pinned is $B$ \emph{with $A$ held fixed}?''
-The marginal variance $1/p+\beta^{2}v$ is larger, and it is the honest
-one: $A$ is not fixed --- it is itself uncertain, and $B$ inherits
-that.  The gap between the two is exactly $\beta^{2}v$, the informer's
-own doubt.  Reported confidence in this book is \emph{always the
-marginal}; quoting the conditional overstates certainty most at
-exactly the dark nodes whose informers are themselves uncertain ---
-the nodes the machinery exists for.
+The marginal variance $1/p+\beta^{2}v$ is larger, and it is the
+correct one: $A$ is not fixed --- it is itself uncertain, and $B$
+inherits that.  The gap between the two is exactly $\beta^{2}v$, the
+informer's own doubt.  Reported confidence in this book is
+\emph{always the marginal}; quoting the conditional overstates
+certainty most at exactly the dark nodes whose informers are
+themselves uncertain --- the nodes the graph exists for.
 
 The objective is written and its output understood.  What remains is
-to check that it \emph{accounts} honestly --- that no configuration
+to check the accounting --- that no configuration
 mistake, no silent neighbour, no duplicated route can manufacture
 information.  That is the next section.

@@ -267,7 +267,7 @@ namesakes (the `λ_j`, `p_J` pattern).
 | `ℐ⁺` | the universe's posterior information matrix — the Hessian of the joint objective (Ch. 10's `ℐ` at universe scale) |
 | `𝒦_{is}` | attribution gain: the weight of lit source s in node i's posterior (Ch. 10's scalar gain `𝒦`, now source-indexed; rows sum the posterior exactly) |
 | `𝒰_i` | node i's persisted idiosyncratic dislocation (the residual state; roman `u` stays Ch. 2's rank) |
-| `t_{1/2}` | the residual half-life (composite on Ch. 6's calendar `t`, physics convention), quoted on whatever clock the elapsed time uses — days in the universe construction, hours in the toy story |
+| `t_{1/2}` | the residual half-life (composite on Ch. 6's calendar `t`, physics convention), quoted on whatever clock the elapsed time uses — days in the universe construction, hours in the toy example |
 | — | `𝒵`, `s₀`, `σ(0)`, `H`, `ℛ`, `τ`, `w` are reused with their existing meanings; the three ATM handles stay named in words |
 
 ## Reservation rules

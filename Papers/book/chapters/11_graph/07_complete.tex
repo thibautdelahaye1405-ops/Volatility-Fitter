@@ -43,10 +43,10 @@ essentially on the line, and the called-out one is the extreme:
 truth barely moved (baseline error
 \MacGrCalmBase\ points) while its private draw fought the systematic,
 and the graph, correctly reporting the systematic, missed by
-\MacGrCalmGraph.  Those dots are the mechanism's honest scope printed
+\MacGrCalmGraph.  Those dots print the mechanism's scope
 on one chart: the graph carries \emph{shared} repricing; it cannot
-manufacture a node's private move, and on a morning that is all
-private moves its honest answer degrades to ``no change'' --- which is
+know a node's private move, and on a morning that is all
+private moves its answer degrades to ``no change'' --- which is
 the baseline, not a disaster.
 
 \begin{figure}[htbp]
@@ -60,8 +60,9 @@ private moves.
 (b)~The withheld NVDA December node: yesterday's baseline (dashed),
 the graph's retargeted reconstruction with its
 $\pm\MacGrNvdaDecBand$-point band (blue, shaded), and the frozen
-quotes the reconstruction never saw (orange).  (c)~The audit: std of
-the standardized dark-node errors --- overtrusted precisions fail at
+quotes the reconstruction never saw (orange).  (c)~The
+standardized-error test: std of
+the dark-node $\mathcal{Z}$ --- overtrusted precisions fail at
 \MacGrAuditOver; stated precisions read \MacGrAuditStated; adding the
 idiosyncratic floor lands \MacGrAuditFloor, against the dotted target
 of one.}
@@ -74,20 +75,20 @@ board --- \MacGrNvdaDecQuotes\ prepared quotes the solver never saw.  The dashed
 green curve is its baseline: yesterday's smile, which this morning's
 repricing has left \MacGrNvdaDecTrue\ points too low.  The blue curve
 is the reconstruction: the posterior innovation
-$\hat\Theta^{+}=\MacGrNvdaDecPost$ points --- earned, per the
-attribution rule of \cref{sec:graccount}, as
+$\hat\Theta^{+}=\MacGrNvdaDecPost$ points --- attributed, by the
+rule of \cref{sec:graccount}, as
 \MacGrNvdaDecFromNvda\ from the two lit NVDA neighbours,
 \MacGrNvdaDecFromSpy\ from the six lit index nodes, and
 \MacGrNvdaDecFromRes\ routed through the sister's carried residual ---
-applied to the baseline and retargeted through Part~I's machinery
+applied to the baseline and retargeted through Part~I's fits
 into an arbitrage-free smile (the retarget reproduces the shifted
 target to \MacGrRetargetRmsBp\ volatility basis points rms, so
 validity costs essentially nothing).  The orange dots are the withheld
 quotes.  The reconstruction lands within a fraction of a point of a
-smile it never saw, and --- the part that matters as much --- its
-shaded $\pm\MacGrNvdaDecBand$-point band \emph{contains} the miss.
-The true innovation was \MacGrNvdaDecTrue; the posterior said
-\MacGrNvdaDecPost\ and owned the difference.
+smile it never saw, and its
+shaded $\pm\MacGrNvdaDecBand$-point band \emph{contains} the miss:
+the true innovation was \MacGrNvdaDecTrue, the posterior said
+\MacGrNvdaDecPost, and the band covers the difference.
 
 The sister board shows the third prior doing its work.  At the dark
 sister September node, solving the same morning \emph{without} the
@@ -102,33 +103,33 @@ it moved it toward the truth.  Yesterday afternoon's one thin print is still
 paying for marks this morning, at a stated, decaying weight, not
 forever.
 
-\subsection{The audit, and one honest repair}
+\subsection{The standardized-error test, and the idiosyncratic floor}
 
-Chapter~10 ended by demanding that any machinery publishing
-uncertainty be audited: the standardized errors
+Chapter~10 adopted std$(\mathcal{Z})=1$ as the acceptance test for
+any method that publishes uncertainty: the standardized errors
 $\mathcal{Z}=(\text{truth}-\hat\Theta^{+})/\sqrt{\mathcal{V}}$ of
 \cref{eq:infz} should scatter with standard deviation one.
-Panel~(c) runs that audit over the twelve dark nodes, three ways.
+Panel~(c) runs the test over the twelve dark nodes, three ways.
 First, an \emph{overtrusting} arm --- every relation precision
 multiplied by twenty-five, the configuration mistake of a desk that
 states conviction it does not have: std$(\mathcal{Z})
 =\MacGrAuditOver$, bars several times too narrow, Chapter~10's
-starved-filter failure in graph clothes.  Second, the \emph{stated}
+starved-filter failure at graph scale.  Second, the \emph{stated}
 precisions: \MacGrAuditStated\ --- better, but still above one, and
 the excess is diagnosable.  The edges into one receiver were priced
 as if their noises were independent, but every one of them shares the
 \emph{receiver's own} idiosyncratic scatter; adding their precisions
-therefore over-credits the neighbourhood, by exactly the mechanism of
-the repeated-route case file (\cref{sec:graccount}) acting through
+therefore over-credits the neighbourhood, by exactly the
+repeated-route mechanism of \cref{sec:graccount} acting through
 the node itself.  Third, the repair: a node's neighbours can never
-know its private scatter, so the published band can never honestly be
+know its private scatter, so the published band can never be
 narrower than it --- add the node's own scatter variance to the band
 (the \emph{idiosyncratic floor}; it touches no mean, only bands).
-The audit lands at \MacGrAuditFloor.  A twelve-residual audit is a
-coarse instrument, but the ordering it prints is the lesson:
-overconfidence is a configuration property, honesty is checkable, and
-the checks are the same ones Chapter~10 taught --- run at universe
-scale.
+The test lands at \MacGrAuditFloor.  Twelve residuals make a
+coarse instrument, but the ordering is the lesson:
+overconfidence is a configuration property, stated variances are
+testable, and the test is the one Chapter~10 taught --- run at
+universe scale.
 
 \subsection{The chapter's contract}
 
@@ -159,7 +160,7 @@ averaging \MacGrDeadAvgEq\ at equal trust, decaying to
 \MacGrDeadAvgHigh\ (\cref{fig:graccount}). &
 One factor per relation; a bidirectional pair is one fact, not two.\\
 \addlinespace
-The triangle: joint variance $5/(3p)$ against the per-route claim
+The triangle: joint variance $5/(3p)$ against the per-route figure
 $6/(5p)$. &
 The \MacGrRepeatOverstatePct\% precision overstatement
 (\cref{fig:graccount}). &
@@ -182,8 +183,8 @@ The half-life $t_{1/2}$, the one-way cut at the source, and the
 handles-only carrier (wings ride the baseline) are stated policies.\\
 \addlinespace
 --- (this row is empirical by design) &
-The audit: std$(\mathcal{Z})$ \MacGrAuditOver\ overtrusted /
-\MacGrAuditStated\ stated / \MacGrAuditFloor\ floored
+The standardized-error test: std$(\mathcal{Z})$ \MacGrAuditOver\
+overtrusted / \MacGrAuditStated\ stated / \MacGrAuditFloor\ floored
 (\cref{fig:grcomplete}c). &
 The idiosyncratic floor: a band never narrower than the node's own
 scatter; mean-invariant by construction.\\
@@ -191,20 +192,22 @@ scatter; mean-invariant by construction.\\
 \end{tabular}
 \end{table}
 
-Hold the chapter against the book's thesis one last time.
+Step back to the book's thesis one last time.
 \emph{Validity} is inherited by construction: the graph moves handles,
-and every published smile is retargeted through Part~I's machinery ---
+and every published smile is retargeted through Part~I's fits ---
 the universe never contains a curve that fails its own chapter-2
 checks.  \emph{Information} is the chapter's whole subject, made
 geographic: the lit innovations are the morning's entire evidence, and
-the machinery's discipline is a list of refusals --- to move without
-being paid, to hear a silent neighbour, to count one source twice, to
-report conditional confidence as marginal, to invent signal where no
-path exists.  \emph{Convention} is everything else, and every piece of
-it is a stated, auditable number: the amplitudes, the relation
+the objective has the properties the chapter proved --- no move
+without a lit innovation to pay for it, no transfer from a silent
+neighbour, one count per source however many routes carry it,
+marginal --- never conditional --- confidence, and no posterior at all
+on a component with no lit path.  \emph{Convention} is everything
+else, and every piece of
+it is a stated number: the amplitudes, the relation
 precisions, the anchor, the half-life, the floor.  Posterior equals
-data where data speaks; structure where data is silent; and
-uncertainty always, audited.
+data where data speaks; structure where data is silent; and a
+stated, tested band over both.
 
 \subsection{The end of the book}
 
@@ -214,22 +217,22 @@ publish something as ambitious as a \emph{field of probability laws}
 --- a law for every underlier, every expiry, every strike, every
 morning.  The chapters built the answer in layers.  A single smile
 became a probability law with checkable validity (Part~I).  The
-observation itself was earned --- forwards, exercise rights, the
-market's own clock (Part~II).  The surface was given dynamics, and
-inference under weak information --- the filter, the prior, the gate
---- taught one discipline above all: say what the data determined,
+observation itself had to be inferred --- forwards, exercise rights,
+the market's own clock (Part~II).  The surface was given dynamics,
+and inference under weak information --- the filter, the prior, the
+gate --- kept one rule above all: say what the data determined,
 say what convention filled in, and price the difference
 (Part~III).  This chapter assembled all of it into the object the
 predicament actually demands: not one smile but a universe of them,
 sparse data and all, each law published with its provenance --- this
-much from today's quotes, this much from the structure the desk
-asserted and disclosed, this much from a remembered dislocation on a
-stated clock, and a band, audited, over all of it.  That a
+much from today's quotes, this much from the relations the desk
+asserted, this much from a remembered dislocation on a
+stated clock, and a band, tested, over all of it.  That a
 twenty-node universe with eight lit nodes can hand back a withheld
 December smile to within a fraction of a volatility point is not a
-conjuring trick; it is bookkeeping --- Gaussian, checkable, and honest
-about every assumption it spends.  The surface was never one object.
+conjuring trick; it is Gaussian accounting --- every assumption
+stated, every source counted once.  The surface was never one object.
 It is a field of laws, held together by everything a desk knows and
 everything it is willing to say --- and the whole of this book has
-been the discipline of keeping those two accounts separate, and
+been keeping those two accounts separate, and
 adding them up correctly.

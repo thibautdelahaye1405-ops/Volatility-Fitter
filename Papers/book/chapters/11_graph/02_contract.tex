@@ -7,8 +7,8 @@ moves a point.''  ``A six-month move of one point is a two-point move
 at three months.''  Each sentence has two independent clauses hiding
 in it: \emph{how large} the implied move is, and \emph{how much the
 speaker trusts the relation}.  A trader can assert a large amplitude
-with little confidence, or a modest amplitude with great confidence.
-Any encoding that forces the two into one number will betray one of
+with little confidence, or a small amplitude with great confidence.
+Any encoding that forces the two into one number loses one of
 them.
 
 So an edge carries two numbers.  The relation ``node $j$ informs node
@@ -40,7 +40,7 @@ time.  Suppose a piece of news adds the same amount of total variance
 $\delta w$ to every expiry --- the natural first model of a systematic
 repricing: the market now expects one more shock's worth of variance,
 and every expiry that contains the shock inherits all of it (this is
-Chapter~8's event logic wearing scenario clothes).  Differentiate
+Chapter~8's event logic applied to a scenario).  Differentiate
 $w=\sigma^{2}\tau$ at fixed $\tau$:
 \[
 \delta w \;=\; 2\,\sigma\,\tau\,\delta\sigma
@@ -69,7 +69,7 @@ $+1\times(0.5/0.25)=+2$ points at 3M and $+1\times(0.5/1.0)=+0.5$ at
 bigger share of a smaller $w$ --- which is precisely what
 \cref{fig:gruniverse}(b) showed on the real board.  Note also the
 built-in consistency: $\beta_{ij}\beta_{ji}
-=(\tau_j/\tau_i)(\tau_i/\tau_j)=1$, so a ladder cannot claim
+=(\tau_j/\tau_i)(\tau_i/\tau_j)=1$, so a ladder cannot assert
 amplification in both directions, and around any cycle of calendar
 edges the amplitudes telescope to one.  (Asserted cross-name
 amplitudes carry no such guarantee; a loop of them that fails to
@@ -95,22 +95,22 @@ p_{\,\text{reverse}}=\beta^{2}\,p .
 The reverse reading of the contract carries the reciprocal amplitude
 $1/\beta$ --- as it must --- and a precision rescaled by $\beta^{2}$,
 because the same uncertainty is being quoted in different units.  This
-is bookkeeping, not a second belief.  The convention that keeps it
+is a change of units, not a second belief.  The convention that keeps it
 tidy (the \emph{canonical orientation}) is to quote each calendar
 relation with the \emph{shorter} maturity as receiver: relation noise
 is then stated in short-dated volatility points, where moves are
-largest and desk intuition lives.  One consequence is worth saying
-now, because \cref{sec:grbelieve} will lean on it: a contract is
+largest and desk intuition lives.  One consequence, which
+\cref{sec:grbelieve} will lean on: a contract is
 symmetric information.  If the relation between $A$ and $B$ is
 trusted tightly, it is trusted tightly \emph{in both directions} ---
 observing $B$ legitimately updates $A$.  The arrow in a diagram
-chooses units and bookkeeping; it does not create one-way inference.
+chooses units; it does not create one-way inference.
 Making influence genuinely one-way is a different, stronger assertion,
-and it costs machinery this section does not have.
+and it takes a mechanism this section does not have.
 
 \subsection{The contract, tested}
 
-\Cref{fig:grcontract} runs the two-dial claim through the chapter's
+\Cref{fig:grcontract} runs the two-dial contract through the chapter's
 solver on the clean ladder, 6M lit at $+1$ point, sweeping the
 relation precision across three decades.  In panel~(a), the posterior
 means at 3M and 1Y sit at exactly $+2.00$ and $+0.50$ --- the
