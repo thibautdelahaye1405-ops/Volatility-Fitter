@@ -298,7 +298,7 @@ Structure: three parts, eleven chapters.
 | 4  | Local volatility | done | DONE 2026-08-08 |
 | 5  | Integrals and wings | done | DONE 2026-08-08 |
 | **Part II — The observation** | | | |
-| 6  | Forwards, dividends, and carry | done | pending (moderate) |
+| 6  | Forwards, dividends, and carry | done | DONE 2026-08-08 |
 | 7  | Removing early exercise | done | pending (moderate) |
 | 8  | The market's clock | done | pending (moderate) |
 | **Part III — Dynamics and inference** | | | |
@@ -391,3 +391,23 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   changed in either chapter, so no figures regenerated.  Build: 231
   pages, boundaries unchanged (65/89/109), 1 pre-existing overfull,
   no undefined refs.  Next: Chapter 6 (moderate).
+- 2026-08-08 (third session): Chapter 6 re-registered (moderate).
+  Banned-grep zero (the one surviving "earns" is literal interest
+  accrual — "a dollar earns", kept).  The flagged spots: "the honest
+  discriminator" -> the quantity that separates the conventions; the
+  masking-experiment close redrafted to mechanism (quotes whose
+  residuals expose them / leaves no residual; "builds that defense
+  and is honest about its reach" -> builds that safeguard, with a
+  stated reach); "the identifiability audit" renamed the
+  identifiability experiment (text + appendix + figlib meaning
+  string, fig_fwd_ident re-run seeded, values byte-identical);
+  borrow section: "noise wearing a suit" -> noise, "guess dressed in
+  the estimator's output format" -> a guess in a measurement's
+  format, "honest output" -> correct output, "two caveats bound the
+  whole enterprise" -> two limits bound the estimator, "declaring
+  victory" dropped; "disclosed" -> stated (3 sites); "owed to the
+  user" dropped from the contract intro.  Build: 231 pages,
+  boundaries unchanged (109/127), 1 pre-existing overfull, no
+  undefined refs.  Next: Chapter 7 (moderate — "honest" and
+  refuse/disclose concentrated in §7.4 no-root and §7.7
+  fitted-vs-discarded).
