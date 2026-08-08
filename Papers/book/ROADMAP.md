@@ -38,11 +38,23 @@ protocol-protected identifiers (labels, macro names, file/function
 names — logged per chapter below).  Every figure and number
 regenerates from the frozen data.
 
-What remains is OPTIONAL polish, none of it started: a fresh-reader
-pass over Chapter 1 (the only chapter never read by a newcomer
-persona); a front-matter pass (the title page still carries the
-"A working draft" tag; no preface, no index); and publication
-mechanics.  Take these up only if the author asks.
+What remains is OPTIONAL polish: a fresh-reader pass over Chapter 1
+(the only chapter never read by a newcomer persona), and publication
+mechanics (copyright page, an index if a publisher wants one, print
+geometry).  Take these up only if the author asks.  The front-matter
+pass ran 2026-08-08 (tenth session): the "A working draft" tag is
+dropped from the title page; a one-page Preface
+(chapters/00_frontmatter/preface.tex) sits before the Contents at
+p. iii — short by design, it defers to Chapter 1 and carries NO
+acknowledgements (none invented; the author adds his own); blank
+verso pages carry no header/folio (the emptypage idiom inlined in
+book.tex — emptypage.sty is not on this machine); ch. 1 §1.2
+retitled "Why probability laws" (its ToC line duplicated ch. 2
+§2.1's title verbatim).  The INDEX decision: none in this edition —
+a subject index means an \index{} pass through finished chapters
+and belongs to publication mechanics, not to the draft.  Build: 237
+pages (preface iii, Contents v, main matter unmoved: intro p. 1,
+ch. 2 p. 9), 1 pre-existing overfull (ch. 3), no undefined refs.
 
 The paragraphs below are kept as the arc's record.  On 2026-08-08
 the author reviewed the full
@@ -605,3 +617,9 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   undefined refs.  Remaining (optional, only on request): a
   fresh-reader pass over ch. 1; front-matter (drop the draft tag,
   preface, index); publication mechanics.
+- 2026-08-08 (tenth session): front-matter pass (record in the
+  Status block above).  Draft tag dropped; Preface written (one
+  page, no invented acknowledgements, listed in the ToC); blank
+  versos cleaned via the inlined emptypage idiom; ch. 1 §1.2
+  retitled "Why probability laws"; index deliberately deferred to
+  publication.  237 pages, main matter unmoved.
