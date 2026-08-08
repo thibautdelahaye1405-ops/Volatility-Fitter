@@ -51,7 +51,7 @@
  },
  "FwdIdentTrials": {
   "value": "2000",
-  "meaning": "Monte Carlo trials in the identifiability audit",
+  "meaning": "Monte Carlo trials in the identifiability experiment",
   "section": "ident"
  },
  "FwdIdentEpsCents": {

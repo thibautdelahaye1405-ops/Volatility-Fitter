@@ -9,7 +9,7 @@ Run from anywhere with the project virtual environment:
 Inputs: the frozen snapshot ``data/lqd_paper_snapshot_20260804_0208.json``
 (raw dollar chains, node metadata, the stored LQD fit of the running node)
 plus the deterministic synthetic boards of appendix 6.A (the only randomness
-is the seeded generator of the identifiability audit).
+is the seeded generator of the identifiability experiment).
 Outputs: ``figures/ch06/fig_*.pdf``, ``figures/ch06/ch06_macros.tex`` (every
 number the chapter quotes), ``figures/ch06/MACROS.md``.  Fully deterministic.
 """

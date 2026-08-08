@@ -5,8 +5,8 @@ So far the pair $(F,D)$ has been estimated without asking what makes
 $F$ differ from spot in the first place.  This section opens that
 box, because two later needs depend on it: the borrow of
 \cref{sec:fwdborrow} is defined as what remains of the carry after
-dividends are accounted for, and Chapter~7's early-exercise machinery
-runs on a dividend model as its fuel.
+dividends are accounted for, and Chapter~7's early-exercise removal
+takes a dividend model as its input.
 
 Call \emph{carry} the growth rate the market charges between spot and
 forward: the number $\log(F/S)/t$.  For a stock that pays nothing,
@@ -84,10 +84,11 @@ small $T$ amplifies everything (the same $1/t$ the rate suffered in
 \cref{sec:fwdident}).  By a year the teeth have shrunk toward the flat
 equivalent yield of \MacFwdDivQeqPct\% drawn dashed, and the two
 conventions price long-dated forwards almost alike.  If the term
-structure of $F$ were the whole story, the choice would be cosmetic.
+structure of $F$ were all the convention touched, the choice would be
+cosmetic.
 
-It is not, and panel~(b) shows the honest discriminator: what happens
-to the forward when \emph{spot moves}.  Differentiate each convention
+It is not, and panel~(b) shows the quantity that separates the
+conventions: what happens to the forward when \emph{spot moves}.  Differentiate each convention
 in $S$ at a fixed schedule.  For the yield and proportional forms,
 \eqref{eq:fwdyield} and \eqref{eq:fwdprop}, $F$ is proportional to
 $S$, so
@@ -105,7 +106,7 @@ dollars}, and
 \label{eq:fwdelas}
 \end{equation}
 A cash schedule does not scale with the stock, so on a rally the
-forward outruns spot: the dividends claim a fixed slice, and the
+forward outruns spot: the dividends take a fixed slice, and the
 slice matters relatively less as the pie grows.  Panel~(b) plots this
 \emph{spot elasticity} against maturity.  The cash staircase climbs
 --- each step one more ex-date inside the horizon --- reaching

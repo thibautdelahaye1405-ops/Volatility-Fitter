@@ -2,7 +2,7 @@
 \label{sec:fwdborrow}
 
 The carry now has two named parts, rate and dividends.  On most
-names, that is the whole story.  On some it is not, and the leftover
+names they exhaust it.  On some they do not, and the leftover
 has a name and a market of its own.
 
 To sell a stock short, one must first \emph{borrow} the shares, and
@@ -88,13 +88,13 @@ hard names.  Read it
 maturity by maturity.  At one week, even a clean board resolves
 nothing finer than \MacFwdBorrowFloorWeekBp\,bp --- larger than most
 hard-to-borrow fees themselves, so a week-dated ``borrow read'' is
-noise wearing a suit.  At three months and ten basis points of quote
+noise.  At three months and ten basis points of quote
 noise the floor is \MacFwdBorrowFloorQBp\,bp; at a year it is
 \MacFwdBorrowFloorYBp\,bp on a clean board and
 \MacFwdBorrowFloorWideYBp\,bp on a noisy one --- comfortably below
 the shaded band.  A borrow read is a measurement exactly where its
-floor sits under the fee it claims to measure; elsewhere it is a
-guess dressed in the estimator's output format.
+floor sits under the fee it measures; elsewhere it is a
+guess in a measurement's format.
 
 \begin{figure}[htbp]
 \centering
@@ -114,22 +114,22 @@ The tension between the two panels is the section's conclusion, and
 it is a design principle rather than a formula.  Borrow matters most
 at the short end of a stressed name --- exactly where
 \eqref{eq:fwdfloor} says it cannot be measured from one chain.  The
-honest output of an estimator in that position is not a number but a
-declared state: \emph{unidentified}, reported as such, with the floor
+correct output of an estimator in that position is not a number but a
+declared state: \emph{unidentified}, with the floor
 that justifies it --- never a silent zero, which is also a borrow
 estimate, just an undeclared one.  The reference implementation
 carries its carry as a per-expiry decomposition in which every leg is
 tagged with its source --- measured, supplied, or unidentified ---
 and lets a fit consume a borrow only where the read clears both its
-floor and a materiality gate.  Two caveats bound the whole
-enterprise, each one sentence.  A flat rate error is indistinguishable
+floor and a materiality gate.  Two limits bound the estimator,
+each one sentence.  A flat rate error is indistinguishable
 from a borrow error at a single expiry --- both are carry --- so
-splitting them honestly needs an external rate curve, and
+splitting them needs an external rate curve, and
 \eqref{eq:fwdborrowdef} inherits any rate bias one for one.  And on
 American chains the early-exercise premium moves with the very carry
 being solved for, so the borrow and the de-Americanization must close
 jointly --- one more reason this chapter hands its output to
-Chapter~7 rather than declaring victory.
+Chapter~7.
 
 \subsection{The contract}
 \label{sec:fwdcontract}
@@ -138,7 +138,7 @@ The chapter closes the way the earlier ones do, with its contract ---
 three columns of decreasing strength.  The first holds by theorem.
 The second is measured, on the frozen chain or on the stated boards,
 and the chapter quoted every number.  The third is convention:
-chosen, stated, and owed to the user, because no data selects it.
+chosen and stated, because no data selects it.
 
 \begin{table}[htbp]
 \centering
@@ -182,7 +182,7 @@ Sawtooth vs flat yield \MacFwdDivQeqPct\%; elasticity
 \MacFwdDivElasTwoYr\ at two years, closed form on top of the bump
 measurement (\cref{fig:fwddivs}). &
 The dividend convention per name --- a risk decision
-(\cref{sec:fwddivs}), disclosed, never inferred from one chain.\\
+(\cref{sec:fwddivs}), stated, never inferred from one chain.\\
 \addlinespace
 The conversion \eqref{eq:fwddsig} and its corollaries: ATM gap
 \eqref{eq:fwdgap}, borrow materiality \eqref{eq:fwdbsens}, floor

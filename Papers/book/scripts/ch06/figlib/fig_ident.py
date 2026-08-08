@@ -92,7 +92,7 @@ def fig_fwd_ident() -> str:
     figstyle.save(fig, "fig_fwd_ident")
 
     STORE.add("ident", "FwdIdentTrials", str(TRIALS),
-              "Monte Carlo trials in the identifiability audit")
+              "Monte Carlo trials in the identifiability experiment")
     STORE.add("ident", "FwdIdentEpsCents", num(100 * EPS, 0),
               "quote-noise sd per mid (cents)")
     STORE.add("ident", "FwdIdentNStrikes", str(bd.K.size),

@@ -14,7 +14,7 @@ Two kinds of input, per the book's data policy:
   known forward and discount, used wherever a figure must compare an
   estimator against the truth.  Construction constants are those stated in
   appendix 6.A.  The only randomness anywhere is the seeded generator of
-  the identifiability audit (fig_fwd_ident).
+  the identifiability experiment (fig_fwd_ident).
 """
 
 from __future__ import annotations

@@ -37,7 +37,7 @@ def num(x: float, nd: int = 2) -> str:
 
 
 def sci(x: float, nd: int = 1) -> str:
-    """m x 10^e in ensuremath form for tiny audit-scale numbers."""
+    """m x 10^e in ensuremath form for tiny error-scale numbers."""
     x = float(x)
     if x == 0.0:
         return r"\ensuremath{0}"

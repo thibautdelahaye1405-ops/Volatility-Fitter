@@ -1,6 +1,6 @@
 # Chapter 6 macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/ch06/gen_figures.py` into `ch06_macros.tex`. Last write 2026-08-06.
+Emitted by `scripts/ch06/gen_figures.py` into `ch06_macros.tex`. Last write 2026-08-08.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -30,7 +30,7 @@ Emitted by `scripts/ch06/gen_figures.py` into `ch06_macros.tex`. Last write 2026
 | `\MacFwdIdentRootSkk` | `90` | root strike dispersion sqrt(S_KK) (strike-dollars) |
 | `\MacFwdIdentShortRateSdBp` | `63` | measured rate sd on the short-dated variant (bp) |
 | `\MacFwdIdentShortT` | `0.05` | year fraction of the short-dated variant |
-| `\MacFwdIdentTrials` | `2000` | Monte Carlo trials in the identifiability audit |
+| `\MacFwdIdentTrials` | `2000` | Monte Carlo trials in the identifiability experiment |
 | `\MacFwdMaskDeltaRatePct` | `2` | carry error of the coherent stale wing (percent) |
 | `\MacFwdMaskFwdErrBp` | `13` | forward error under coherent staleness (bp, absolute) |
 | `\MacFwdMaskNOut` | `0` | points trimmed in the masking experiment |

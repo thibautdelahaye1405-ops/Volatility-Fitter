@@ -13,7 +13,7 @@ something we know from outside the data.
 The answer is a prior --- prior knowledge, imposed as a hard
 constraint.  A financing rate for a US equity has a physical range:
 not below zero by percents, not above by tens.  Fix a band of
-plausible rates (its endpoints are a disclosed convention, reviewed
+plausible rates (its endpoints are a stated convention, reviewed
 like any other; the reference implementation ships a wide one) and
 apply one rule:
 \emph{if the fitted rate $\hat r$ falls inside the band, keep the
@@ -129,14 +129,13 @@ spot-centered kernel on under a dollar
 \label{fig:fwdlever}
 \end{figure}
 
-One honest caveat closes the section.  The band is a prior, and a
+One limitation closes the section.  The band is a prior, and a
 prior can be wrong: a regime of genuinely negative dollar rates would
 sit outside it, and the device would then clamp away information
-rather than noise.  That is the standing trade of this chapter ---
-stated once here, collected in the contract table of
-\cref{sec:fwdborrow}.  What we now have is a defense in two layers,
+rather than noise.  The contract table of \cref{sec:fwdborrow}
+records this.  What we now have is a safeguard in two layers,
 each matched to a failure mode and each inert on clean data: the trim
-for quotes that betray themselves, the band plus the short-lever
-re-derivation for slopes that go absurd.  Between them sits the
+for quotes whose residuals expose them, the band plus the short-lever
+re-derivation for runaway slopes.  Between them sits the
 failure neither catches --- coherent, plausible staleness --- bounded
 by the level's robustness and nothing else.

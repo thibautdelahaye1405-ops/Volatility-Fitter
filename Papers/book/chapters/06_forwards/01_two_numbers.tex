@@ -10,7 +10,7 @@ delivery of the underlying at expiry, and the \emph{discount factor}
 $D$, the value today of one dollar paid at expiry.  Part~I treated
 both as given.  This chapter asks where they come from.
 
-The honest answer is that, for a single stock or an ETF, neither is
+For a single stock or an ETF, neither is
 quoted.  There is no screen showing ``the forward of SPY for December
 2026''.  There is a spot price, and there is the option chain itself:
 for each strike, a call and a put.  The forward and the discount must
@@ -19,7 +19,7 @@ fitted quantities, with error bars, exactly like the smile parameters
 they will later support.  That change of status is the subject of the
 chapter, and it opens Part~II's theme: before a model can be fitted,
 the observation itself has to be built, and every step of that
-construction is either measured from the data or chosen and disclosed.
+construction is either measured from the data or chosen and stated.
 
 The estimate rests on one identity.  Fix an expiry and a strike $K$,
 and write $\mathsf{C}(K)$ and $\mathsf{P}(K)$ for the dollar mid
@@ -65,7 +65,7 @@ the chain itself draws a line, and the two numbers Part~I assumed are
 that line's two coefficients.  Estimating $(F,D)$ means fitting a
 straight line --- nothing more exotic than that.
 
-Before any general machinery, solve the smallest possible case by
+Before the general method, solve the smallest possible case by
 hand.  Suppose an expiry half a year away quotes two usable strikes,
 and the portfolio prices come out as
 \[
