@@ -88,7 +88,7 @@ def vertex_grid(nodes: list[data4.Node]) -> tuple[np.ndarray, np.ndarray]:
 
 def pde_grids(nodes: list[data4.Node], y_nodes: np.ndarray,
               refine: int = 1) -> tuple[np.ndarray, np.ndarray]:
-    """(y_grid, t_grid) of the lattice; ``refine`` > 1 is the audit operator
+    """(y_grid, t_grid) of the lattice; ``refine`` > 1 is the refined operator
     (strike step / refine, time steps x refine^2 -- e.g. refine=2 gives
     dy/2 and 4x the steps)."""
     width = min(atm_vol(n) * np.sqrt(n.t) for n in nodes)

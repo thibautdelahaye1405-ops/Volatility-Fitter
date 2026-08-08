@@ -6,7 +6,7 @@ same restrained colorblind-safe palette, serif STIX text at 9 pt, and the
 model draws in the model blue, quotes and observed objects in the data
 orange, the synthetic truth (and any comparator curve) in the aqua, and
 heatmap panels use 'cividis' for magnitudes with inadmissible cells masked in
-light grey (signed audit panels keep Chapter 2's 'RdBu_r' precedent).
+light grey (signed check panels keep Chapter 2's 'RdBu_r' precedent).
 """
 
 from __future__ import annotations

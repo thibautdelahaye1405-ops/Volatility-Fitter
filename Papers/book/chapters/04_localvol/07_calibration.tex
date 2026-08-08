@@ -145,7 +145,7 @@ by the convexity $\partial_{yy}c$ it finds there.
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_lv_influence.pdf}
-\caption{The tangent system, seen and audited.  (a)~Sensitivity of the
+\caption{The tangent system, seen and checked.  (a)~Sensitivity of the
 priced call curve to the single vertex at $(\tau,y)=(0.25,1)$, across
 the four quoted expiries.  (b)~Every analytic column of the Jacobian
 against a central finite difference of the full march, over all
@@ -162,13 +162,13 @@ expiry cannot feel a later vertex, because the march has not reached
 it yet.  At $\tau=0.25$, the vertex's own maturity, the sensitivity is
 a sharp cone centered on its strike.  At the two later expiries the
 cone spreads and flattens: the diffusion gradually forgets where it
-collected its variance.  In panel~(b), the audit: every analytic
+collected its variance.  In panel~(b), the check: every analytic
 Jacobian column is compared against a central finite difference of the
 full march, over all \MacLvInflVtx\ vertices, and the worst relative
 disagreement is \MacLvInflMaxRel.  The derivative is exact, not
 approximate.
 
-The optimization itself is then standard machinery used plainly: a
+The optimization itself is then standard: a
 trust-region reflective least-squares iteration on
 \eqref{eq:lvobjective} --- a method of the Gauss--Newton family
 (linearize the residuals at the current iterate, solve the resulting

@@ -3,7 +3,7 @@
 F6 (identifiability): two local-volatility surfaces -- the calibrated
 synthetic fit, and the same surface with its unquoted deep-put column pushed
 down by ten vol points -- reprice the same quote set within a few vol bp.
-F7 (influence): the tangent system, seen and audited: the sensitivity of the
+F7 (influence): the tangent system, seen and checked: the sensitivity of the
 priced call curve to one interior vertex is a spreading cone, and every
 analytic column agrees with a central finite difference of the full march.
 """
@@ -113,7 +113,7 @@ def fig_lv_influence() -> str:
     ax.legend(loc="upper right", fontsize=6.8)
     figstyle.panel(ax, "a", r"influence of the vertex at $(\tau,y)=(0.25,1)$")
 
-    # FD audit of every column, at every expiry, over the whole grid; the
+    # FD check of every column, at every expiry, over the whole grid; the
     # normalization is the Jacobian's global scale (a per-column scale would
     # divide near-zero columns by their own noise).
     h = 1e-5

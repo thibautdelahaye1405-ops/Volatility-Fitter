@@ -74,7 +74,7 @@ b^{n+1}_i=0\ \text{ at every other row}
 --- the far boundary would contribute through its own stencil arm, but
 its pinned value is $0$.
 
-Now the promised discipline.  \Cref{prop:lvpropagate} was proved for
+Now the discrete side.  \Cref{prop:lvpropagate} was proved for
 the continuous equation.  Does the discrete march \emph{inherit} it
 --- no invented negative densities, no broken calendar order --- or
 merely approximate it, with errors of unknown sign?  The answer runs
@@ -168,7 +168,7 @@ themselves give nonnegative second differences --- a bounded monotone
 vector can still be locally concave --- so ``the scheme cannot
 manufacture negative densities'' would need a separate
 convexity-preservation proof for the actual stencil and boundary
-treatment, and this chapter does not claim one.  What it does instead
+treatment, and this chapter does not prove one.  What it does instead
 is measure: the scheme is monotone and stable by theorem, and the
 butterfly and calendar cleanliness of the \emph{output} is checked on
 the price grid with every fit.  \Cref{sec:lvexamples} reports the

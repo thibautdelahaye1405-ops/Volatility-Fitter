@@ -96,7 +96,7 @@ def fig_lv_wrongway() -> str:
     ax.legend(loc="upper right", fontsize=6.8)
     figstyle.panel(ax, "b", "the same quotes, read forward")
 
-    # global honesty numbers: the residual keeps the noise, the edges wander
+    # global summary numbers: the residual keeps the noise, the edges wander
     err_bp = np.abs(fit.quote_err_bp())
     edge_max = 0.0
     for tau in np.linspace(lvfits.SYN_T[0], lvfits.SYN_T[-1], 31):
