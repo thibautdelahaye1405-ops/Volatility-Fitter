@@ -300,7 +300,7 @@ Structure: three parts, eleven chapters.
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | done | DONE 2026-08-08 |
 | 7  | Removing early exercise | done | DONE 2026-08-08 |
-| 8  | The market's clock | done | pending (moderate) |
+| 8  | The market's clock | done | DONE 2026-08-08 |
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics | done | pending (moderate) |
 | 10 | Filtering and priors | done | pending (heavy) |
@@ -433,3 +433,25 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   (moderate — the planted-event study is NAMED an audit; rename per
   the table; "honest" in the inverse-problem and frozen-boards
   sections).
+- 2026-08-08 (fifth session): Chapter 8 re-registered (moderate).
+  Banned-grep zero (the many "earnings" hits are the corporate event,
+  untouched).  The planted-event AUDIT is now the planted-event STUDY
+  everywhere — caption, derivation prose ("the study's
+  configuration/measured pair"), contract cell ("The study", same
+  width — no overfull risk), appendix ("the study is the reference"),
+  figlib docstrings; "the estimator is audited" -> is measured.
+  "This chapter earns the distinction" -> separates them; "the claim
+  to be earned" -> the fact to establish; "do the discrete case
+  honestly" -> in full; "honest boundary/limits/general statement" ->
+  scope words; "the honest price tag" -> the cost; "the audit's
+  flat-ladder promise kept" -> the study's flat-ladder result
+  repeated; "telling the clock story about everything" ->
+  attributing everything to the clock; "bookkeeping(s)" ->
+  additivity (walk) / currencies (clock, matching the chapter's own
+  "in this currency") / counting choice (normalization); "an honest
+  clock" -> the market's clock (the chapter title); "disciplined
+  run" -> the run with a horizon.  No figure text changed, no
+  regeneration.  Build: 231 pages, boundaries unchanged (145/165),
+  1 pre-existing overfull, no undefined refs.  Next: Chapter 9
+  (moderate — "honest" in the wings/field sections; audit language
+  around the dt-check).
