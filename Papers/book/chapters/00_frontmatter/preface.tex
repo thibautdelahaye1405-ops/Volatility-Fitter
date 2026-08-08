@@ -1,0 +1,32 @@
+% Front matter — the preface.  Short by design: the introduction owns
+% the problem, the thesis, the reader contract, the data statement and
+% the map; the preface says only what a reader should know before the
+% table of contents.  No acknowledgements are invented here; the author
+% adds them if and when he wants them.
+\chapter*{Preface}
+\markboth{Preface}{Preface}
+\addcontentsline{toc}{chapter}{Preface}
+
+This book is about publishing implied-volatility surfaces from listed
+option quotes: models in which every fitted curve is a probability
+law, the preparation of the quotes those models consume, and
+inference for the mornings when the quotes run short.  It was written
+alongside a working system --- the \emph{reference implementation}
+that the text names throughout --- and that origin sets its
+character.  Every construction in the book runs; every figure and
+every empirical number regenerates from one frozen snapshot of market
+data; and wherever mathematics ends and choice begins, the choice is
+stated as one.
+
+The book reads in order.  Each chapter assumes the ones before it,
+read once, and the examples compound deliberately: the December smile
+fitted in Part~I is still at work in the final chapter, where a
+solver that never saw it reconstructs it from its neighbours.  The
+introduction states the problem, the thesis that organizes every
+chapter, what is assumed of the reader, and the map of what follows.
+
+\vspace{2\baselineskip}
+\begin{flushright}
+Thibaut Delahaye\\
+August 2026
+\end{flushright}

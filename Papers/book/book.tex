@@ -38,6 +38,13 @@
 \setlist{itemsep=2pt,topsep=4pt}
 \setcounter{tocdepth}{1}
 
+% Blank verso pages inserted by \cleardoublepage carry no header or folio
+% (the emptypage idiom, inlined -- the package is not on this machine).
+\makeatletter
+\renewcommand{\cleardoublepage}{\clearpage\if@twoside\ifodd\c@page\else
+  \hbox{}\thispagestyle{empty}\newpage\if@twocolumn\hbox{}\newpage\fi\fi\fi}
+\makeatother
+
 \definecolor{codebg}{rgb}{0.97,0.97,0.97}
 \lstdefinestyle{paper}{
   language=Python,basicstyle=\ttfamily\footnotesize,
@@ -112,14 +119,15 @@
 % last full run's .aux files):
 % \includeonly{chapters/03_svi_mcs/chapter}
 
-\title{\textbf{The Volatility Surface as a Field of Probability Laws}\\[1ex]
-\large A working draft}
+\title{\textbf{The Volatility Surface as a Field of Probability Laws}}
 \author{Thibaut Delahaye}
 \date{August 2026}
 
 \begin{document}
 \frontmatter
 \maketitle
+\input{chapters/00_frontmatter/preface}
+\cleardoublepage
 \tableofcontents
 
 \mainmatter
