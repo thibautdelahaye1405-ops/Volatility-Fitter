@@ -1,0 +1,258 @@
+\section{Counting once, and checking the bars}
+\label{sec:infaudit}
+
+Two matters remain, and they are the chapter's bookkeeping and its
+conscience: how to let the filter steer a real calibration without
+counting any quote twice, and how to test --- against data --- that
+the whole construction's stated uncertainty is true.
+
+\subsection{One objective, one count}
+
+\Cref{sec:inffilter} computed the update \emph{after} a data-only
+fit: fit the quotes, read the handle, combine with the prediction.
+When the filter is allowed to steer the fit itself, a tempting
+implementation is fatal: build the posterior from today's quotes,
+then feed that posterior back into the same fit as one more prior
+row \emph{alongside those same quotes}.  The quotes then speak twice
+--- once through the likelihood, once smuggled inside the
+``prior'' --- and the published uncertainty is too small by exactly
+the double count.  The correct implementation is a single objective:
+today's quote rows, plus \emph{one} extra row per handle anchoring
+the model's handle to the prediction $\hat O^{-}$ at weight
+$1/\mathcal{V}^{-}$ --- the row form \cref{eq:infrow} with the
+prediction as target.  That this is the \emph{same} answer as the
+two-step update is a one-line calculation worth displaying:
+
+\begin{proposition}[The joint fit is the filter]
+\label{prop:infmap}
+For a handle observed directly, the minimizer over $O$ of the joint
+objective
+\[
+\frac{\bigl(O-\hat O_{\mathrm{obs}}\bigr)^2}{\mathcal{V}_{\mathrm{obs}}}
++\frac{\bigl(O-\hat O^{-}\bigr)^2}{\mathcal{V}^{-}}
+\]
+is the posterior $\hat O^{+}$ of \cref{eq:infupdate}, and the
+objective's second derivative is twice the posterior precision
+$1/\mathcal{V}^{+}$.
+\end{proposition}
+
+\begin{proof}
+Set the derivative in $O$ to zero:
+\[
+\frac{2\bigl(O-\hat O_{\mathrm{obs}}\bigr)}{\mathcal{V}_{\mathrm{obs}}}
++\frac{2\bigl(O-\hat O^{-}\bigr)}{\mathcal{V}^{-}}=0
+\;\Longrightarrow\;
+O\Bigl(\tfrac{1}{\mathcal{V}_{\mathrm{obs}}}+\tfrac{1}{\mathcal{V}^{-}}\Bigr)
+=\frac{\hat O_{\mathrm{obs}}}{\mathcal{V}_{\mathrm{obs}}}
++\frac{\hat O^{-}}{\mathcal{V}^{-}},
+\]
+the precision-weighted average --- which \cref{sec:inffilter}
+already showed equals
+$\hat O^{-}+\mathcal{K}(\hat O_{\mathrm{obs}}-\hat O^{-})$.  The
+second derivative is
+$2(1/\mathcal{V}_{\mathrm{obs}}+1/\mathcal{V}^{-})=2/\mathcal{V}^{+}$
+by \cref{eq:infprecadd}.
+\end{proof}
+
+So the filter, done inside the objective, is one ungated row per
+handle --- and the accounting rule follows: once the fit is
+committed, its handles \emph{are} the posterior, and no second
+update may be applied against the same quotes.  Note the word
+\emph{ungated}: the prediction row carries its covariance weight
+always, closed gates or no.  This is the chapter's two instruments
+meeting in one objective, each keyed to its own symptom --- the
+prior rows of \cref{sec:infgate} act where quotes are \emph{absent}
+(their gate reads support), the filter row acts because quotes are
+\emph{noisy} (its weight reads a variance) --- and they must not
+overlap, because both pull toward the same transported yesterday.
+Yesterday enters once.  When the filter runs, its prediction rows
+\emph{are} yesterday's belly --- level, skew, curvature, transported
+and priced --- so the shape baskets of
+\cref{sec:infprice,sec:infcoords}, which carry that same yesterday
+in other clothes, stand down; what persistence keeps is only what
+the filter state does not transport: the deep-tail anchors beyond
+the last basket leg, and --- for a node with no quotes at all ---
+the baseline the next chapter builds.  Anchoring the same handle to
+yesterday twice --- once through $\hat O^{-}$, once through a
+persistence row --- would count yesterday twice, the mirror image of
+the quote double count.
+
+\subsection{The audit: were the error bars true?}
+
+A filter can always make charts smoother.  Whether it is
+\emph{right} is a different question, and it has a precise form:
+the posterior comes with a stated variance, so the construction
+claims that its errors, divided by their claimed scale, are of size
+one.  Define the \emph{standardized error}
+\begin{equation}
+\mathcal{Z}
+=\frac{\text{truth}-\hat O^{+}}{\sqrt{\mathcal{V}^{+}}},
+\label{eq:infz}
+\end{equation}
+whose standard deviation should be $1$ if the error bars mean what
+they say.  The test statistic is that standard deviation, taken over
+a run of days: std$(\mathcal{Z})$ well above one convicts the filter
+of overconfidence (bars too narrow); well below one, of timidity
+(bars too wide).  The audit needs a truth to compare against, so it runs
+wherever one exists --- held-out quotes on real history, or, as
+here, a synthetic world where the truth is known exactly.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_flt_audit.pdf}
+\caption{The audit on a seeded synthetic history
+(\MacFiltAuditDays\ days; the true level diffuses at
+\MacFiltAuditQTrueBp\ bp/$\sqrt{\text{day}}$ and jumps
+$+\MacFiltAuditShockPts$ points twice; observations carry honestly
+stated noise, wide on every seventh day).  (a)~A window around a
+jump: the honest-budget filter (blue, with its $\pm1$-sd band)
+follows in two days; the starved budget (violet) crawls.  (b)~The
+audit curve: std of $\mathcal{Z}$ against the assumed walk scale ---
+starved budgets sit far above the dotted target of $1$
+(\MacFiltAuditZstdStarved\ at $10$~bp), the true scale reads
+\MacFiltAuditZstdHonest.  (c)~Mean error against days since the
+jump: starved \MacFiltAuditDayZeroStarved\ points on the day and
+still \MacFiltAuditDayThreeStarved\ three days later; honest
+\MacFiltAuditDayZeroHonest\ then pennies; the surprise widening cuts the
+jump-day error to \MacFiltAuditDayZeroGate.}
+\label{fig:infaudit}
+\end{figure}
+
+\Cref{fig:infaudit} runs the audit end to end on a seeded synthetic
+history --- \MacFiltAuditDays\ days in which the true level
+diffuses at exactly $\MacFiltAuditQTrueBp$ bp per square-root day,
+jumps $+\MacFiltAuditShockPts$ volatility points on two days, and is
+observed daily through honestly-stated noise
+(Appendix~\ref{app:infprotocol} lists the generator).  The same
+scalar filter \cref{eq:infupdate} is run with different assumed walk
+scales $q_{\mathrm{walk}}$, and every claim of the last two sections
+becomes measurable.
+
+Panel~(a) is the texture.  Around the first jump, the
+honest-budget filter (blue, its one-standard-deviation band shaded)
+tracks the truth within about two days, its band wide enough to
+contain its own errors.  The starved filter --- walk scale a third
+of the truth --- is the violet curve: it enters the jump with a
+narrow band, trusts its prediction too much, and crawls toward the
+new level for a week.
+
+Panel~(b) is the chapter's verdict in one curve: the standard
+deviation of $\mathcal{Z}$, \cref{eq:infz}, against the assumed
+walk scale.  At the true scale the curve sits near the dotted
+target ---
+std$(\mathcal{Z})=\MacFiltAuditZstdHonest$, the small excess being
+the two jumps, which the plain clock term does not model; switch the
+surprise widening on and it drops to \MacFiltAuditZstdGated.  To the
+left the curve climbs steeply: at a third of the true scale the
+standardized errors have standard deviation
+\MacFiltAuditZstdStarved\ --- the filter's stated bars are three
+times too narrow.  And panel~(c) shows the same starved filter's
+\emph{speed}: \MacFiltAuditDayZeroStarved\ points of error on the
+jump day, still \MacFiltAuditDayThreeStarved\ points three days
+later, against the honest budget's
+\MacFiltAuditDayZeroHonest-then-pennies, and
+\MacFiltAuditDayZeroGate\ on the day with the surprise widening.  This
+is the general lesson, and it is worth stating plainly because
+intuition suggests the opposite: shrinking the prediction budget does
+not make a filter cautious.  It makes it \emph{overconfident and
+slow at once} --- sure of a surface it updates too slowly --- the
+worst available combination, and the audit catches both symptoms in
+one statistic.
+
+\subsection{The contract}
+
+The chapter closes as the others do: three columns of decreasing
+strength --- proved, measured, chosen.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:infcontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Measured} & \textbf{Convention}\\
+\midrule
+The no-damp guarantee: a closed gate contributes nothing, for every
+parameter vector (\cref{prop:infnodamp}). &
+The flat valley: \MacPriorFlatValleyBp\ bp of rms movement across a
+\MacPriorFlatPinSpanPts-point wing sweep on the thinned morning;
+the full chain's V (\cref{fig:infflat}). &
+The required precision, the gate exponent $\gamma$, and the prior
+budget: set by judgment, disclosed, not derived.\\
+\addlinespace
+The harmonic law and the dead-leg rule; the RR/BF factor of
+\MacPriorBasketFactor\ (\cref{prop:infharmonic}). &
+Gates computed on the staged mornings: ATM
+\MacPriorJumpGateAtm, moderate RR \MacPriorJumpGateRr\
+(\cref{fig:infjump}). &
+Support \cref{eq:infsupport} is a kernel proxy for identification;
+it over-credits one bandwidth past the last quote
+(\cref{sec:infblind}).\\
+\addlinespace
+Baskets annihilate the level direction; per-leg anchors penalize it
+(\cref{prop:infnull}). &
+The overnight experiment: basket wing error
+\MacPriorJumpBasketErrDeep\ points, anchor
+\MacPriorJumpAnchorErrDeep, data-only \MacPriorJumpDataErrDeep\
+(\cref{fig:infjump}). &
+Deep-tail anchors persist absolute prices beyond the last basket
+leg: right when the level is stable, wrong across a jump ---
+confined there by design.\\
+\addlinespace
+The update \cref{eq:infupdate} is the precision-weighted average;
+the joint fit reproduces it exactly (\cref{prop:infmap}). &
+The stale-strike morning: gains
+\MacFiltCaseGainLevel/\MacFiltCaseGainSkew/\MacFiltCaseGainCurv\
+computed from stated variances (\cref{fig:infupdate}). &
+The state is three ATM handles, combined per handle: estimated
+cross-handle correlations are deliberately not spent
+(\cref{sec:inffilter}).\\
+\addlinespace
+The quadratic contract: observation variance is stated noise
+squared, propagated (\cref{eq:infinfo}--\cref{eq:infdelta}). &
+Slope \MacFiltCovarSlope\ in log--log; the contradiction sweep:
+curvature gain \MacFiltCovarGainCurvClean$\to$%
+\MacFiltCovarGainCurvKinked\ with the level barely moved
+(\cref{fig:infcovar}). &
+The prediction budget \cref{eq:infpred}: walk scale, market-clock
+$\Delta t_{\mathrm{days}}$, transport and event widenings, the
+surprise widening's threshold --- each an empirical commitment.\\
+\addlinespace
+--- (this row is empirical by design) &
+The audit: std$(\mathcal{Z})$
+\MacFiltAuditZstdStarved\ starved vs \MacFiltAuditZstdHonest\
+honest (\MacFiltAuditZstdGated\ gated); jump-day errors
+\MacFiltAuditDayZeroStarved/\MacFiltAuditDayZeroHonest/%
+\MacFiltAuditDayZeroGate\ points (\cref{fig:infaudit}). &
+std$(\mathcal{Z})=1$ is the acceptance test this book adopts for any
+machinery that publishes uncertainty.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Step back to the book's thesis.  \emph{Validity} in this chapter is
+inherited, not new: every fit underneath carries the arbitrage
+machinery of Part~I, and the filtered state is read off
+arbitrage-checked smiles.  \emph{Information} is the chapter's
+subject made explicit: for the first time the book has measured not
+just what the data says but where it says \emph{nothing} --- the
+flat valley --- and where it speaks with a noisy voice --- the
+inflated budget.  \emph{Convention} is what fills the remainder,
+and the chapter's discipline is that every convention entered
+through a stated, auditable quantity: a gate with a dead zone, a
+variance with a units contract, a walk scale that an audit can
+convict.  Posterior equals data where the data speaks, and
+yesterday --- transported, priced, and counted once --- where it
+does not: the thesis of this book, made dynamic.
+
+One boundary remains, and it is the book's last.  Everything here
+is \emph{per node}: one smile, its own yesterday, its own morning.
+But a desk's universe is not a list of unrelated smiles --- it is a
+web of underliers and expiries whose laws move together, and a
+morning that is sparse on one node is often rich on its neighbours.
+What a lit node learns should reach the dark ones, at a price set
+by how related they are --- the same precision language, now
+flowing across a graph.  Building that graph, and completing a
+whole universe of smiles from a sparse set of observed ones, is the
+final chapter.

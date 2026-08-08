@@ -1,0 +1,83 @@
+% Chapter 10 — inference under weak information: filtering and priors.
+% Sections live in this directory; figures and macros regenerate via
+% scripts/ch10/gen_figures.py from data/ (the frozen snapshot's SPY node,
+% thinned to stage a sparse morning) plus deterministic synthetic
+% constructions; the audit figure's seeded walk is the chapter's only
+% randomness.  Notation additions are in NOTATION.md.
+%
+% LESSON GOALS (pedagogy contract).  After this chapter the reader can:
+%   1. Diagnose underdetermination: explain why every curve that fits a
+%      sparse morning's band equally well is equally supported by the
+%      data -- the likelihood has flat directions -- and measure where
+%      the flatness lives (the pinned-wing profile; quote support).
+%   2. Explain how yesterday enters today's fit as pseudo-observation
+%      rows, and why the honest weight is a gate with a dead zone
+%      (exactly zero where data identifies a coordinate), not a ridge
+%      that biases everything a little; prove the no-damp guarantee.
+%   3. Price the identifiability of a smile functional: the harmonic
+%      law for baskets, the dead-leg rule, the RR/BF factor of four --
+%      and choose coordinates so the prior cannot damp what the data
+%      measured (baskets annihilate the level direction).
+%   4. Run the same reasoning in time: the filter on the ATM handles,
+%      with the update a precision-weighted average whose gain is a
+%      computed OUTPUT of two variances -- a measurement variance built
+%      from the fit's own information in stated noise (inflated by
+%      realized contradiction) and a prediction variance grown on the
+%      market's clock.
+%   5. Verify honesty: fitting today's quotes with the prediction as
+%      one extra row IS the filter update (quotes counted once), and
+%      the audit statistic Z -- the standardized error -- tests whether
+%      the stated uncertainty is true: a starved budget makes a filter
+%      overconfident AND slow.
+% Every section serves one of these five goals.
+\renewcommand{\figdir}{figures/ch10}
+\chapter[Inference under weak information: filtering and priors]{Inference
+  Under Weak Information: Filtering and Priors}
+\label{ch:infer}
+\chaptermark{Filtering and priors}
+
+\chaptersynopsis{Chapter~9 ended on a promise: watching how new
+evidence lands on a transported surface is a filtering problem.  This
+chapter keeps that promise, and it starts one step earlier, with a
+static question that every fitter faces before any dynamics: what
+does a thin morning of quotes actually determine?  On the book's
+frozen SPY node, thinned to its at-the-money band, the answer is
+measured directly --- the fitting error does not move at all while
+the unquoted wing is dragged across twelve volatility points.  The
+likelihood is flat along whole directions, and something other than
+the data must choose along them.  The chapter builds the two
+instruments that make that choice honestly.  In \emph{parameter
+space}: yesterday's surface enters today's fit as extra
+least-squares rows, admitted through a gate that is exactly zero
+wherever today's quotes identify a coordinate --- a dead zone,
+proved, not a small bias.  Each persisted quantity is priced for
+identifiability before it is admitted, and the persisted coordinates
+are chosen --- risk reversals and butterflies, not absolute wing
+prices --- so that a market-wide level jump cannot be damped.  In \emph{time}: the smile's
+ATM handles become a filtered state; yesterday's estimate, transported
+by Chapter~9's rule, meets today's noisy reading, and the update is a
+precision-weighted average whose gain nobody sets by hand --- it is
+computed from two variances, each built honestly: the observation's
+from the fit's own information in stated bid--ask units, inflated
+when the chain contradicts itself, and the prediction's from a
+budget accrued on Chapter~8's clock.  The two instruments
+answer different questions --- absence and noise --- and the chapter
+keeps them separate all the way to the accounting identity that
+prevents a quote from being counted twice.  The closing audit is the
+chapter's standard of truth: the standardized error $\mathcal{Z}$
+should scatter with standard deviation one if the stated error bars
+mean what they say, and on a seeded synthetic history a starved
+prediction budget fails that audit in both directions at once ---
+overconfident about a surface it updates too slowly.}
+
+\input{chapters/10_inference/01_flat}
+\input{chapters/10_inference/02_gate}
+\input{chapters/10_inference/03_price}
+\input{chapters/10_inference/04_coords}
+\input{chapters/10_inference/05_filter}
+\input{chapters/10_inference/06_budgets}
+\input{chapters/10_inference/07_audit}
+
+\begin{chapterappendices}
+\input{chapters/10_inference/A_protocol}
+\end{chapterappendices}

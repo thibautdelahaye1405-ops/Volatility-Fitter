@@ -1,0 +1,180 @@
+\section{Choosing coordinates: shape, not level}
+\label{sec:infcoords}
+
+The gate acts coordinate by coordinate.  That makes the choice of
+coordinates load-bearing: gating can only keep yesterday out of what
+today has measured if ``measured'' and ``unmeasured'' land in
+\emph{different} coordinates.  This section proves that the trader's
+baskets achieve exactly that separation, and then watches the proof
+work in a controlled overnight experiment.
+
+\subsection{What a penalty can damp}
+
+Consider one basket $O=\sum_a\omega_a\sigma(k_a)$ over $L$ legs,
+and compare two ways of persisting the same yesterday values: one
+\emph{basket row},
+$\sqrt{\lambda}\,\bigl(\sum_a\omega_a\sigma_a-\sum_a\omega_a
+\sigma_a^{\mathrm{prior}}\bigr)$, against $L$ \emph{per-leg rows},
+$\sqrt{\lambda_a}\,(\sigma_a-\sigma_a^{\mathrm{prior}})$ --- here
+$\sigma_a$ stands for the fitted volatility at leg $a$, the
+quantities the rows actually constrain.
+
+\begin{proposition}[Baskets annihilate the level direction]
+\label{prop:infnull}
+The basket row is unchanged by every joint move
+$\delta\in\R^L$ of the leg volatilities with
+$\sum_a\omega_a\delta_a=0$ --- an $(L-1)$-dimensional family of
+moves.  For the risk reversal ($\omega=(+1,-1)$) and the butterfly
+($\omega=(\tfrac12,\tfrac12,-1)$) the coefficients sum to zero, so
+this family contains the \emph{uniform lift} $\delta=(1,\dots,1)$:
+adding the same amount to every leg leaves both rows exactly
+unchanged.  The per-leg rows, by contrast, are unchanged only by
+$\delta=0$; under a uniform lift of size $t$ their summed squared
+cost grows as $t^2\sum_a\lambda_a$.
+\end{proposition}
+
+\begin{proof}
+The basket row depends on the leg volatilities only through the
+single number $\sum_a\omega_a\sigma_a$; any move $\delta$ with
+$\sum_a\omega_a\delta_a=0$ leaves that number, hence the row, fixed.
+The condition is one linear equation on $\delta\in\R^L$, so its
+solutions form an $(L-1)$-dimensional space.  For RR,
+$\sum_a\omega_a=1-1=0$; for BF,
+$\tfrac12+\tfrac12-1=0$; in both cases $\delta=(1,\dots,1)$
+satisfies the condition.  For the per-leg rows, the uniform lift
+changes row $a$ by $\sqrt{\lambda_a}\,t$, so the summed squared cost
+is $t^2\sum_a\lambda_a$, zero only at $t=0$.
+\end{proof}
+
+Read as market language: a risk reversal and a butterfly are
+statements about \emph{shape} --- they are blind, by construction, to
+the overall volatility level.  Persisting yesterday's shape through
+baskets therefore exerts \emph{no} force against a market-wide level
+move, while persisting yesterday's wing \emph{prices} strike by
+strike fights such a move with weight equal to the full budget.  The
+same information, expressed in different coordinates, either
+respects a level jump or damps it.
+
+\subsection{The overnight experiment}
+
+\Cref{fig:infjump} runs the proposition as an experiment
+(constants in Appendix~\ref{app:infprotocol}).  Yesterday's smile is
+a smooth curve with a genuine wing --- skew and curvature both
+nonzero.  Overnight the market jumps: today's true smile is
+yesterday's \emph{lifted bodily by \MacPriorJumpPts\ volatility
+points}, shape unchanged.  Today's quotes cover only the
+at-the-money band, fifteen mids at stated noise of 30~bp.  The same
+flexible spline family of \cref{sec:infflat} is fitted three ways:
+with no prior at all; with gated \emph{shape baskets}; and with
+\emph{absolute anchors} --- yesterday's wing volatilities imposed
+directly at four wing strikes, the seemingly natural ``hold the
+wings at yesterday'' rule.  The basket prior is built exactly by the
+rules of the last two sections, with no hand in it: five candidate
+rows (the level, and a risk reversal and a butterfly at each of the
+leg pairs $\pm0.20$ and $\pm0.30$), each priced by the harmonic law,
+each gated, and a fixed budget split over the open gates in
+proportion to their values.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_flt_jump.pdf}
+\caption{Coordinates decide what gets damped (controlled
+\MacPriorJumpPts-point overnight level jump; quotes only in the
+shaded band, truth dashed, yesterday dotted).  (a)~Three fits of the
+same morning: data only (orange), gated shape baskets (blue),
+absolute anchors (violet).  (b)~The same three curves as errors
+against today's lifted truth: the basket fit tracks zero across the
+whole wing (\MacPriorJumpBasketErrDeep\ points at $k=-0.30$); the
+anchor fit converges to the dotted ``yesterday's level'' line ---
+clinging, \MacPriorJumpAnchorErrDeep\ points low; the data-only fit
+misses by \MacPriorJumpDataErrDeep\ points.}
+\label{fig:infjump}
+\end{figure}
+
+Walk panel~(a).  The orange dots are the morning; the dashed ink
+curve is today's truth, the dotted grey curve yesterday's smile,
+four points below it everywhere.  The data-only fit (orange curve)
+matches the band and then extrapolates by its smoothness rule alone:
+straight, missing the true wing's own curvature by
+\MacPriorJumpDataErrDeep\ volatility points at $k=-0.30$ --- the
+flapping of \cref{sec:infflat}, now with a truth to be wrong
+against.  The violet curve is the anchor fit: it matches the band
+too (the anchors sit outside it), but its wing bends down to
+yesterday's \emph{absolute} values.  The blue curve is the basket
+fit: it rides today's level --- which it learned from the band ---
+and rebuilds the wing as ``today's level plus yesterday's shape,''
+landing on the dashed truth.
+
+Panel~(b) replots the three fits as errors against today's truth,
+which makes the mechanism quantitative.  The blue basket curve hugs
+zero across the entire drawn range,
+\MacPriorJumpBasketErrDeep\ points off at the deep readout.  The
+violet anchor curve descends, in the wings, toward the dotted line
+at $-\MacPriorJumpPts$ points --- yesterday's level exactly: the
+anchors have reconstructed \emph{yesterday's} wing under
+\emph{today's} market, \MacPriorJumpAnchorErrDeep\ points wrong.
+That is \cref{prop:infnull} in the flesh: absolute price rows
+penalize the uniform lift, so they spend their budget pulling the
+smile back down; basket rows are invariant under the lift, so their
+entire budget goes into shape.
+
+Two computed details close the case.  First, no damping: the basket
+fit's at-the-money level agrees with the data-only fit's to
+\MacPriorJumpAtmGapBp\ vol bp --- a fifteenth of the
+\MacPriorJumpPts-hundred-bp jump.  Even that residue is indirect:
+by \cref{prop:infnull} the basket rows exert exactly zero force
+along the lift, but they do repaint the wings, and the smoothness
+rule leaks a little of the repainting back into the band.  Second,
+no hand-tuning: all five gates were computed, not set.  The
+at-the-money support on this morning is
+$\mathcal{Q}(0)=\MacPriorJumpSuppAtm$, far past the requirement, so
+the level row's gate is $\operatorname{gate}=\MacPriorJumpGateAtm$
+--- the prior contains \emph{no} row that could contest the level
+even in principle (\cref{prop:infnodamp}).  The moderate-wing risk
+reversal's gate stands open at \MacPriorJumpGateRr\ --- while the
+moderate-wing \emph{butterfly's} is \MacPriorJumpGateBfMod: on the
+same legs, its factor-of-four cheaper information price
+(\cref{prop:infharmonic}) already clears the requirement, so the
+gate drops it.  The deep-wing pair, dark to every measure, enters
+essentially fully open (\MacPriorJumpGateRrDeep\ and
+\MacPriorJumpGateBfDeep).  The budget concentrated itself on
+exactly the three coordinates this morning left dark.
+
+\subsection{The division of labour}
+
+The experiment also shows why absolute anchors survive at all.  The
+basket fit reconstructed the wing because the wing's \emph{shape
+relative to the band} was yesterday's to give and the legs were
+reachable.  But a basket needs its money-side reference: beyond the
+last leg pair, in the truly deep tail, shape baskets run out --- and
+\cref{sec:infblind}'s kernel bleed makes their gates unreliable
+just past the band edge besides.  There, and only there, absolute
+anchors are the tool, and they are placed by a different test than
+the gate's.  Instead of radiated support, each candidate anchor
+strike is scored by its \emph{coverage deficit}: compare the quote
+mass actually present in that strike's own neighbourhood against
+the mass a desired even coverage of the smile would put there, and
+give the anchor weight only in proportion to the shortfall.  A
+dense band a few strikes away contributes nothing to a wing
+anchor's neighbourhood, so this test --- unlike the kernel sum of
+\cref{eq:infsupport} --- cannot be talked out of a deficit by
+nearby liquidity; where quotes already meet the desired coverage
+the deficit, and the anchor, is zero.  The anchors then hold the
+deep tail at yesterday's transported prices.  Their known cost is
+exactly what panel~(b) displays --- across a level jump the deep
+tail is pulled toward yesterday's absolute prices --- and the
+division of labour confines that cost to strikes where no
+alternative information exists at all.  Shape on baskets as far as
+legs reach; absolute anchors only beyond; the level always to the
+market.
+
+Half of the chapter's program is now complete, and it is worth
+saying in one sentence what has been built: \emph{along each
+coordinate, the published smile is today's data where today's data
+speaks, and yesterday's transported value where it does not, with
+``speaks'' priced per functional and the handover proved not to
+touch the identified coordinates}.  What this half cannot handle is
+a morning whose quotes are present but sick --- dense, well inside
+every gate's requirement, and internally contradictory.  For that,
+the prior is the wrong instrument entirely, and time is the right
+one.

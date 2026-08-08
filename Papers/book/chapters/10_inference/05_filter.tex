@@ -1,0 +1,188 @@
+\section{The same question in time: the filter}
+\label{sec:inffilter}
+
+Here is the morning the gate cannot help with.  A one-month smile
+has nine near-the-money quotes --- dense, liquid, well past every
+requirement, so every gate of \cref{sec:infgate} is closed, and
+rightly so.  But one of the nine is stale: its market moved and the
+quote did not.  Chase the mids literally and the fit grows a
+curvature kink that nobody traded.  This is not a gap --- the region
+is superbly observed by count --- and using the prior to pull the
+curvature back would violate the very guarantee
+\cref{prop:infnodamp} establishes.  The problem is not absence of
+data; it is \emph{noise} in data that is present.  The right
+instrument treats today's reading as one more noisy estimate of a
+moving quantity, to be weighed --- not vetoed --- against what
+yesterday leads us to expect.  That instrument is the filter
+\citep{Kalman1960,AndersonMoore1979}, and after
+\cref{sec:infcombine} it can be assembled in a page.
+
+\subsection{The state, and the cycle}
+
+What should be filtered?  Not raw option mids: contracts appear and
+disappear, the out-of-the-money side flips when the forward moves,
+and a smoothed vector of raw volatilities has no arbitrage
+guarantee.  The reference implementation filters the smile's three
+\emph{ATM handles} --- the level $\sigma(0)$, the skew $s_0$
+(Chapter~9's ATM slope), and the curvature (the second derivative of
+the fitted volatility at the money) --- read off a fitted,
+arbitrage-checked smile.  Three numbers, model-agnostic, stable in
+meaning from day to day: a small state that summarizes what the
+belly of the smile is doing.
+
+Each handle then lives the same three-step cycle at every snapshot.
+Write $O$ for the handle's true (unknown) value today.
+
+\emph{Predict.}  Yesterday's combined estimate is pushed to today's
+market.  Chapter~9 built exactly this transport: for a log-forward
+move $H$ under the regime dial $\mathcal{R}$, the level moves by
+$\mathcal{R}\,s_0H$, the skew by curvature times $H$, the curvature
+is carried unchanged.  The transported value is the
+\emph{prediction} $\hat O^{-}$, with a variance
+$\mathcal{V}^{-}$ that must account for everything that can have
+happened since yesterday (\cref{sec:infbudgets} builds it).
+
+\emph{Observe.}  Today's prepared quotes are fitted --- data only,
+no temporal prior --- and the handle is read off the fit: the
+\emph{observation} $\hat O_{\mathrm{obs}}$, with a variance
+$\mathcal{V}_{\mathrm{obs}}$ that must reflect how precisely, and
+how consistently, today's quotes actually pin this handle
+(\cref{sec:infbudgets} again).
+
+\emph{Update.}  Two independent, unbiased estimates of the same
+number, with variances: this is \cref{sec:infcombine} verbatim.
+The precision-weighted average, rearranged into its standard form,
+is the update:
+\begin{equation}
+\boxed{\;
+\begin{aligned}
+\mathcal{K}
+&=\frac{\mathcal{V}^{-}}{\mathcal{V}^{-}+\mathcal{V}_{\mathrm{obs}}}
+\;\in(0,1),\\
+\hat O^{+}
+&=\hat O^{-}+\mathcal{K}\,\bigl(\hat O_{\mathrm{obs}}-\hat O^{-}\bigr),\\
+\mathcal{V}^{+}
+&=(1-\mathcal{K})\,\mathcal{V}^{-}.
+\end{aligned}
+\;}
+\label{eq:infupdate}
+\end{equation}
+The first line defines the \emph{gain} $\mathcal{K}$: the fraction
+of the surprise the update accepts.  The second applies it to the
+\emph{innovation} $\hat O_{\mathrm{obs}}-\hat O^{-}$ --- the gap
+between what arrived and what was expected.  The third is the
+posterior variance; it deserves its two lines of algebra.
+Precisions add, \cref{eq:infprecadd}, so
+\[
+\frac{1}{\mathcal{V}^{+}}
+=\frac{1}{\mathcal{V}^{-}}+\frac{1}{\mathcal{V}_{\mathrm{obs}}}
+=\frac{\mathcal{V}^{-}+\mathcal{V}_{\mathrm{obs}}}
+{\mathcal{V}^{-}\mathcal{V}_{\mathrm{obs}}}
+\quad\Longrightarrow\quad
+\mathcal{V}^{+}
+=\frac{\mathcal{V}_{\mathrm{obs}}}
+{\mathcal{V}^{-}+\mathcal{V}_{\mathrm{obs}}}\,\mathcal{V}^{-}
+=(1-\mathcal{K})\,\mathcal{V}^{-},
+\]
+and the posterior mean, checked the same way, is
+$\mathcal{V}^{+}\bigl(\hat O^{-}/\mathcal{V}^{-}
++\hat O_{\mathrm{obs}}/\mathcal{V}_{\mathrm{obs}}\bigr)
+=\hat O^{-}+\mathcal{K}(\hat O_{\mathrm{obs}}-\hat O^{-})$.
+Tomorrow, $\hat O^{+}$ and $\mathcal{V}^{+}$ become the input to the
+next predict step, and the cycle repeats.
+
+\subsection{The dial nobody may own}
+
+Pause on what \cref{eq:infupdate} does \emph{not} contain.  Every
+fitter that carries state through time owns, somewhere, a dial
+marked \emph{trust}: how far should this morning's quotes move
+yesterday's surface?  The tempting implementation is a slider ---
+tuned by hand, per desk, per mood.  In \cref{eq:infupdate} that
+dial is the gain, and the gain is not a setting: it is an
+\emph{output}, the ratio of two variances.  Every design question
+about trust becomes a question about building
+$\mathcal{V}^{-}$ and $\mathcal{V}_{\mathrm{obs}}$ honestly ---
+which is auditable --- rather than about where to set a slider ---
+which is not.  When both variances tell the truth, the dial turns
+itself: a noisy morning arrives with a large
+$\mathcal{V}_{\mathrm{obs}}$ and is barely admitted; a clean morning
+after a quiet night arrives against a small $\mathcal{V}^{-}$...
+and the update follows the market.  The gate of
+\cref{sec:infgate} and the gain of \cref{eq:infupdate} are the
+same philosophy on the two sides of the chapter: the first answers
+``\emph{where} did the market not speak?''\ with a dead zone; the
+second answers ``the market spoke here --- \emph{how noisy was its
+voice?}''\ with a ratio that is never zero and never one.
+
+\subsection{The stale strike, filtered}
+
+Now run the morning that opened this section through
+\cref{eq:infupdate}, handle by handle.  The prediction ---
+yesterday's state, transported --- says level $20.0\%$, skew
+$-0.35$, curvature $0.10$, with standard deviations
+$(0.30\%,\ 0.08,\ 0.05)$.  Today's data-only fit reads level
+$20.4\%$, skew $-0.37$, curvature $0.55$: a plausible level move, a
+plausible skew --- and a curvature five times the prediction,
+manufactured by the one stale strike.  The observation variances,
+built by the machinery of the next section, come out as standard
+deviations $(0.15\%,\ 0.05,\ 0.30)$: level and skew tight, curvature
+wide, because the cluster that produced it contradicts itself.  Take
+these six variances as given for one page; \emph{building} them is
+\cref{sec:infbudgets}'s whole subject.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_flt_update.pdf}
+\caption{The stale-strike morning through the scalar update
+\cref{eq:infupdate}, one handle per row.  (a)~Each handle drawn on
+its own normalized segment from prediction (circle, at 0) to
+observation (square, at 1); the posterior (diamond) sits at exactly
+its gain.  The level moves 80\% of the way to the market; the
+curvature kink is admitted at less than 3\%.  (b)~The three computed
+gains.  Nobody set anything: the gains are ratios of stated
+variances.}
+\label{fig:infupdate}
+\end{figure}
+
+\Cref{fig:infupdate}(a) draws each handle on a normalized segment:
+prediction at zero, observation at one, so that --- by the second
+line of \cref{eq:infupdate} --- the posterior's position \emph{is}
+its gain, and \cref{eq:infupdate} can be checked by eye.  The level,
+predicted to $0.30\%$ and observed to $0.15\%$, carries gain
+$\mathcal{K}=0.09/(0.09+0.0225)=\MacFiltCaseGainLevel$ (the worked
+number of \cref{sec:infcombine}): the posterior,
+\MacFiltCasePostLevelPct\%, sits four-fifths of the way to the
+market, with posterior standard deviation
+\MacFiltCasePostSdLevelBp\ bp.  The skew behaves likewise at gain
+\MacFiltCaseGainSkew\ (posterior \MacFiltCasePostSkew).  The
+curvature is the story: prediction ten times tighter than the
+observation, gain
+$\mathcal{K}=0.05^2/(0.05^2+0.30^2)=\MacFiltCaseGainCurv$, posterior
+\MacFiltCasePostCurv\ --- the five-fold kink is not vetoed by any
+rule; it is \emph{priced}, and at that price the update accepts
+under three percent of it.  Panel~(b) collects the three gains as
+bars: trust, computed per handle, unequal because the evidence is
+unequal.
+
+One remark on dimensions before moving on.  The three handles were
+updated \emph{separately} --- three scalar filters side by side.  A
+full three-dimensional update also exists, in which the handles'
+estimated correlations let one handle's innovation move another's
+posterior; it is the optimal version when the stated correlations
+are true.  The danger is that on a coarse chain they are not:
+with few strikes, level and curvature are estimated \emph{jointly}
+rather than separately, and the correlation entries of the
+observation covariance are then precisely its least reliable
+numbers.  Spent at face value, they let a junk curvature innovation
+drag the level along with it.  A per-handle update makes that
+failure structurally impossible --- each scalar posterior lies
+between its own prediction and its own observation, full stop.  The
+reference implementation therefore combines per handle; the
+discarded cross-handle information is real, and this is the
+disclosed price of not spending unreliable correlations.
+
+Everything now rests on the two variances that fed
+\cref{eq:infupdate}.  Where does
+$\mathcal{V}_{\mathrm{obs}}$ come from, such that a
+self-contradictory cluster shows up as a wide one?  And what makes
+$\mathcal{V}^{-}$ grow honestly between snapshots?

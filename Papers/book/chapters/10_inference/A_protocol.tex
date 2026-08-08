@@ -1,0 +1,111 @@
+\section{Protocol: data and constants}
+\label{app:infprotocol}
+
+Every number and figure in this chapter regenerates from one
+deterministic script reading the frozen snapshot
+(\texttt{scripts/ch10/gen\_figures.py}); nothing is refetched and no
+stored fit is altered.  The audit figure's seeded walk is the
+chapter's only randomness.
+
+\paragraph{The staged morning (\cref{fig:infflat,fig:infbasket}).}
+The real-data exhibit is the book's canonical SPY December 2026 node
+(\MacPriorFlatHeroDays\ days, \MacPriorFlatNFull\ prepared quotes),
+thinned to the \MacPriorFlatNThin\ quotes with
+$\lvert k\rvert\le0.10$.  Each quote's stated noise is its bid--ask
+half-spread in volatility, floored at one vol bp.
+
+\paragraph{The spline family
+(\cref{fig:infflat,fig:infjump}).}
+The deliberately flexible family is a natural cubic spline in $k$
+--- linear in its knot values, so every least-squares statement in
+the chapter is exact rather than linearized.  Its knots sit at
+\[
+k\in\{-0.36,-0.30,-0.22,-0.15,-0.09,-0.04,0,0.04,0.09,0.15,0.26\}
+\]
+for the profile experiment and at
+\[
+k\in\{-0.30,-0.20,-0.12,-0.05,0,0.05,0.12,0.20,0.30\}
+\]
+for the overnight experiment.  A mild second-difference penalty on
+the knot values (weights $0.5$ and $3.0$ respectively, in whitened
+units) keeps the unquoted knots finite; it is the ``smoothness
+rule'' named in the text.
+
+\paragraph{The pinned-wing profile (\cref{fig:infflat}).}
+For each imposed value the fitted volatility at $k=-0.30$ is
+constrained by one row at effectively infinite weight ($10^{12}$)
+and the family is refitted; the plotted statistic is the plain rms
+of (fit $-$ mid) over the fitted quote set, in vol bp.  The sweep
+runs \MacPriorFlatPinLoPct--\MacPriorFlatPinHiPct\% in 25 steps.
+The ensemble sentence in \cref{sec:infflat} refits the thinned band
+with the reference implementation under Chapter~3's protocol: one
+family at three resolutions and two ridge strengths, plus the two
+other parametric families --- eight fits, wing readings compared at
+$k=-0.30$.
+
+\paragraph{Support and gates
+(\cref{eq:infsupport,eq:infgate}; \cref{fig:infgate,fig:infbasket}).}
+Kernel bandwidth $0.06$ in log-moneyness throughout; fit weights
+normalized to average one; required precision
+$\mathcal{I}_{\mathrm{req}}=1$ (``one effective quote''); gate
+exponent $\gamma=1$ except where \cref{fig:infgate}(a) varies it.
+\Cref{fig:infbasket}(a) spreads nine equally-weighted quotes
+uniformly over $[-W,W]$ and sweeps the half-width $W$; the wing legs
+sit at $\pm\MacPriorBasketLeg$.
+
+\paragraph{The overnight experiment (\cref{fig:infjump}).}
+Yesterday's smile is $0.20-0.35k+0.80k^2$; today's truth adds
+\MacPriorJumpPts\ points uniformly.  Today's quotes: 15 mids of the
+truth at equal spacing on $[-0.10,0.10]$, stated noise 30~bp.  Shape
+baskets: five candidate rows (level; risk reversal and butterfly at
+leg pairs $\pm0.20$ and $\pm0.30$), targets evaluated on yesterday's
+curve; each row is priced by
+\cref{eq:infharmonic}, gated by \cref{eq:infgate}
+($\mathcal{I}_{\mathrm{req}}=1$, $\gamma=1$), and a total budget
+worth twenty clean quotes is split over the open gates in proportion
+to their values --- the closed level and moderate-butterfly rows
+(gates \MacPriorJumpGateAtm\ and \MacPriorJumpGateBfMod) are
+dropped.  Absolute anchors: yesterday's volatilities imposed at the
+four wing strikes, the same total budget split equally.  Errors are
+read at $k=-0.30$.
+
+\paragraph{The observation budget (\cref{fig:infcovar}).}
+A synthetic chain of \MacFiltCovarNq\ quotes at equal spacing on
+$[-0.25,0.25]$, truth $0.20-0.30k+0.60k^2$, base noise 30~bp,
+fitted by the quadratic family $\theta_0+\theta_1k+\theta_2k^2$
+whose parameters are the handles (curvature $=2\theta_2$), so
+\cref{eq:infinfo,eq:infdelta} are exact.  The realized-misfit
+multiple is
+$\max\bigl(1,\ \chi^2/(m-d)\bigr)$ capped at $25$, with $\chi^2$
+the sum of squared whitened quote residuals, $m$ the quote count
+and $d$ the parameter count.  Panel~(b) kinks the two adjacent
+strikes nearest $k=+0.03$ by $\pm\epsilon$ with $\epsilon$ swept to
+three vol points, and evaluates gains against a stated prediction
+budget of $(60\,\text{bp},\ 0.03,\ 0.15)$ per handle sd --- the
+level entry is a four-day-old state under the walk scale of
+\cref{fig:infaudit} ($\sqrt{4}\times30$~bp).
+
+\paragraph{The stale-strike vignette (\cref{fig:infupdate}).}
+Stated moments as printed in \cref{sec:inffilter}; the update is
+\cref{eq:infupdate} verbatim, per handle.
+
+\paragraph{The audit world (\cref{fig:infaudit}).}
+Seed $20260807$ (NumPy default generator).  Truth: level starts at
+$20\%$ and takes \MacFiltAuditDays\ daily Gaussian steps of sd
+\MacFiltAuditQTrueBp\ bp, plus $+\MacFiltAuditShockPts$-point jumps
+after days 151 and 320.  Observations: truth plus Gaussian noise of
+sd 30~bp, except every seventh (``wide-spread'') day at 100~bp ---
+neither jump day is a wide day --- and the filter is always told the
+true per-day noise.  Filters: \cref{eq:infupdate} with
+$\mathcal{V}^{-}=\mathcal{V}^{+}_{\mathrm{prev}}+q_{\mathrm{walk}}^2$
+per day; the starved run uses $q_{\mathrm{walk}}=10$~bp, the honest
+run \MacFiltAuditQTrueBp~bp; the surprise-widened run multiplies
+$\mathcal{V}^{-}$ by $(\text{standardized innovation}/3)^2$, capped
+at $25$, when the innovation exceeds $3$ standardized units.
+$\mathcal{Z}$ is computed against the known truth from day two on;
+panel~(c) averages absolute errors over the two jumps.
+
+\paragraph{Reproduction.}
+\texttt{python scripts/ch10/gen\_figures.py} rebuilds every figure
+PDF and the macro file \texttt{figures/ch10/ch10\_macros.tex};
+\texttt{-{}-only} rebuilds one target.

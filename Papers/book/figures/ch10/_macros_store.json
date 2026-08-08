@@ -1,0 +1,272 @@
+{
+ "PriorFlatNThin": {
+  "value": "31",
+  "meaning": "quotes kept in the staged morning (|k| <= 0.10)",
+  "section": "flat"
+ },
+ "PriorFlatNFull": {
+  "value": "94",
+  "meaning": "quotes on the full frozen chain",
+  "section": "flat"
+ },
+ "PriorFlatHeroDays": {
+  "value": "137",
+  "meaning": "days to expiry of the running node",
+  "section": "flat"
+ },
+ "PriorFlatPinLoPct": {
+  "value": "24",
+  "meaning": "lowest imposed wing vol (%)",
+  "section": "flat"
+ },
+ "PriorFlatPinHiPct": {
+  "value": "36",
+  "meaning": "highest imposed wing vol (%)",
+  "section": "flat"
+ },
+ "PriorFlatPinSpanPts": {
+  "value": "12",
+  "meaning": "span of the imposed wing sweep (vol points)",
+  "section": "flat"
+ },
+ "PriorFlatValleyBp": {
+  "value": "0.02",
+  "meaning": "total variation of the thinned-morning rms across the sweep",
+  "section": "flat"
+ },
+ "PriorFlatBandRmsBp": {
+  "value": "1.0",
+  "meaning": "thinned-morning band rms at the valley floor (bp)",
+  "section": "flat"
+ },
+ "PriorFlatVHalfPts": {
+  "value": "0.5",
+  "meaning": "full-chain V half-width at +5 bp of rms (vol points)",
+  "section": "flat"
+ },
+ "PriorFlatEnsembleSpreadPts": {
+  "value": "0.3",
+  "meaning": "wing spread of eight reference-implementation band fits",
+  "section": "flat"
+ },
+ "PriorFlatSuppAtm": {
+  "value": "21.0",
+  "meaning": "quote support at the money on the staged morning",
+  "section": "flat"
+ },
+ "PriorFlatSuppWing": {
+  "value": "0.01",
+  "meaning": "quote support at k = -0.30 on the staged morning",
+  "section": "flat"
+ },
+ "PriorGateRidgeSharePct": {
+  "value": "33",
+  "meaning": "posterior share a unit-weight ridge owns at twice the required precision",
+  "section": "gate"
+ },
+ "PriorBasketRrDead": {
+  "value": "0.10",
+  "meaning": "RR precision with call support 6, put support 0.1",
+  "section": "basket"
+ },
+ "PriorBasketCrossRr": {
+  "value": "0.17",
+  "meaning": "band half-width where the RR basket reaches the requirement",
+  "section": "basket"
+ },
+ "PriorBasketCrossBf": {
+  "value": "0.09",
+  "meaning": "band half-width where the BF basket reaches the requirement",
+  "section": "basket"
+ },
+ "PriorBasketFactor": {
+  "value": "4",
+  "meaning": "BF-to-RR precision ratio on the same symmetric legs",
+  "section": "basket"
+ },
+ "PriorBasketLeg": {
+  "value": "0.18",
+  "meaning": "wing-leg location of the sweep's baskets",
+  "section": "basket"
+ },
+ "PriorJumpPts": {
+  "value": "4",
+  "meaning": "overnight level jump (vol points)",
+  "section": "jump"
+ },
+ "PriorJumpBasketErrDeep": {
+  "value": "0.28",
+  "meaning": "shape-basket fit |error| vs lifted truth at k=-0.30 (pts)",
+  "section": "jump"
+ },
+ "PriorJumpAnchorErrDeep": {
+  "value": "4.5",
+  "meaning": "absolute-anchor fit |error| vs lifted truth at k=-0.30 (pts)",
+  "section": "jump"
+ },
+ "PriorJumpDataErrDeep": {
+  "value": "6.4",
+  "meaning": "data-only fit |error| vs lifted truth at k=-0.30 (pts)",
+  "section": "jump"
+ },
+ "PriorJumpAtmGapBp": {
+  "value": "26.9",
+  "meaning": "ATM gap between shape-basket and data-only fits (vol bp)",
+  "section": "jump"
+ },
+ "PriorJumpGateAtm": {
+  "value": "0.00",
+  "meaning": "computed gate of the level row on the staged morning",
+  "section": "jump"
+ },
+ "PriorJumpGateRr": {
+  "value": "0.68",
+  "meaning": "computed gate of the moderate-wing RR row",
+  "section": "jump"
+ },
+ "PriorJumpSuppAtm": {
+  "value": "9.8",
+  "meaning": "ATM quote support on the staged morning",
+  "section": "jump"
+ },
+ "FiltCaseGainLevel": {
+  "value": "0.80",
+  "meaning": "computed gain of the ATM level",
+  "section": "update"
+ },
+ "FiltCaseGainSkew": {
+  "value": "0.72",
+  "meaning": "computed gain of the skew",
+  "section": "update"
+ },
+ "FiltCaseGainCurv": {
+  "value": "0.027",
+  "meaning": "computed gain of the curvature",
+  "section": "update"
+ },
+ "FiltCasePostLevelPct": {
+  "value": "20.32",
+  "meaning": "posterior ATM level (%)",
+  "section": "update"
+ },
+ "FiltCasePostSkew": {
+  "value": "-0.364",
+  "meaning": "posterior skew",
+  "section": "update"
+ },
+ "FiltCasePostCurv": {
+  "value": "0.112",
+  "meaning": "posterior curvature",
+  "section": "update"
+ },
+ "FiltCasePostSdLevelBp": {
+  "value": "13",
+  "meaning": "posterior ATM sd (vol bp)",
+  "section": "update"
+ },
+ "FiltCovarSlope": {
+  "value": "1.000",
+  "meaning": "log-log slope of ATM observation sd in stated noise",
+  "section": "covar"
+ },
+ "FiltCovarNq": {
+  "value": "21",
+  "meaning": "synthetic chain quote count",
+  "section": "covar"
+ },
+ "FiltCovarBaseSdBp": {
+  "value": "9.8",
+  "meaning": "clean-chain ATM observation sd (vol bp) at 30 bp noise",
+  "section": "covar"
+ },
+ "FiltCovarGainCurvClean": {
+  "value": "0.85",
+  "meaning": "curvature gain on the clean chain",
+  "section": "covar"
+ },
+ "FiltCovarGainCurvKinked": {
+  "value": "0.33",
+  "meaning": "curvature gain at the 3-point kink",
+  "section": "covar"
+ },
+ "FiltCovarGainLevelClean": {
+  "value": "0.97",
+  "meaning": "level gain on the clean chain",
+  "section": "covar"
+ },
+ "FiltCovarGainLevelKinked": {
+  "value": "0.77",
+  "meaning": "level gain at the 3-point kink",
+  "section": "covar"
+ },
+ "FiltCovarMultMax": {
+  "value": "11",
+  "meaning": "misfit multiple at the 3-point kink (after the cap)",
+  "section": "covar"
+ },
+ "FiltAuditDays": {
+  "value": "500",
+  "meaning": "length of the synthetic history (days)",
+  "section": "audit"
+ },
+ "FiltAuditQTrueBp": {
+  "value": "30",
+  "meaning": "true walk scale (vol bp per sqrt day)",
+  "section": "audit"
+ },
+ "FiltAuditShockPts": {
+  "value": "5",
+  "meaning": "jump size (vol points)",
+  "section": "audit"
+ },
+ "FiltAuditZstdStarved": {
+  "value": "3.0",
+  "meaning": "std of Z under the starved budget (10 bp)",
+  "section": "audit"
+ },
+ "FiltAuditZstdHonest": {
+  "value": "1.14",
+  "meaning": "std of Z under the honest budget (30 bp)",
+  "section": "audit"
+ },
+ "FiltAuditZstdGated": {
+  "value": "1.01",
+  "meaning": "std of Z under the gated honest budget",
+  "section": "audit"
+ },
+ "FiltAuditDayZeroStarved": {
+  "value": "3.8",
+  "meaning": "starved-budget |error| on the jump day (pts)",
+  "section": "audit"
+ },
+ "FiltAuditDayZeroHonest": {
+  "value": "2.0",
+  "meaning": "honest-budget |error| on the jump day (pts)",
+  "section": "audit"
+ },
+ "FiltAuditDayZeroGate": {
+  "value": "0.49",
+  "meaning": "gated-budget |error| on the jump day (pts)",
+  "section": "audit"
+ },
+ "FiltAuditDayThreeStarved": {
+  "value": "1.6",
+  "meaning": "starved-budget |error| three days after the jump (pts)",
+  "section": "audit"
+ },
+ "PriorJumpGateBfMod": {
+  "value": "0.00",
+  "meaning": "computed gate of the moderate-wing BF row",
+  "section": "jump"
+ },
+ "PriorJumpGateRrDeep": {
+  "value": "1.00",
+  "meaning": "computed gate of the deep-wing RR row",
+  "section": "jump"
+ },
+ "PriorJumpGateBfDeep": {
+  "value": "0.99",
+  "meaning": "computed gate of the deep-wing BF row",
+  "section": "jump"
+ }
+}

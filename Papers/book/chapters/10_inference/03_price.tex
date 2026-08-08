@@ -1,0 +1,165 @@
+\section{The information price of a functional}
+\label{sec:infprice}
+
+The gate needs a precision per persisted coordinate.  This section
+prices it --- first for a single strike, then for the composite
+objects a desk actually persists --- and meets, honestly, the one
+place where the price is misquoted.
+
+\subsection{Legs and baskets}
+
+For the fitted volatility at one location $k_a$ --- call it a
+\emph{leg} --- the natural currency is the quote support
+$\mathcal{Q}_a=\mathcal{Q}(k_a)$ of \cref{eq:infsupport}: the
+effective number of quotes sitting on that leg.  More effective
+quotes, proportionally more precision; this is the usual
+$1/n$ law of averaging $n$ measurements, taken as the working model.
+
+But a desk does not think in isolated strikes.  Its vocabulary is
+composite: the at-the-money level; the \emph{risk reversal}, the
+volatility of a call-side strike minus that of a put-side strike ---
+the trader's one-number summary of skew; the \emph{butterfly}, the
+average of the two wing volatilities minus the level --- the
+one-number summary of curvature.  Each is a \emph{signed basket} of
+legs,
+\begin{equation}
+O=\sum_a \omega_a\,\sigma(k_a),
+\label{eq:infbasket}
+\end{equation}
+with fixed coefficients $\omega_a$: the level has one leg with
+$\omega=1$; the risk reversal has $\omega=(+1,-1)$ on its two wing
+legs; the butterfly has
+$\omega=(\tfrac12,\tfrac12,-1)$ on wing, wing, and money.  What is
+the precision of a basket, given the support of its legs?
+
+\begin{proposition}[The harmonic law]
+\label{prop:infharmonic}
+Suppose each leg volatility is estimable from today's quotes with
+variance proportional to $1/\mathcal{Q}_a$, independently across
+legs.  Then the implied estimate of the basket \cref{eq:infbasket}
+has precision (in the same proportionality)
+\begin{equation}
+\mathcal{I}(O)
+=\Bigl(\sum_a\frac{\omega_a^2}{\mathcal{Q}_a}\Bigr)^{\!-1}.
+\label{eq:infharmonic}
+\end{equation}
+In particular, one unquoted leg ($\mathcal{Q}_a\to0$) drives
+$\mathcal{I}(O)\to0$ regardless of how well the other legs are
+quoted.
+\end{proposition}
+
+The reciprocal-of-summed-reciprocals shape is a (weighted) harmonic
+mean of the legs' supports --- hence the name the chapter uses,
+\emph{the harmonic law} --- and harmonic means are dominated by
+their smallest entry, which is the dead-leg rule in one phrase.
+
+\begin{proof}
+For independent estimates, the variance of a linear combination is
+the coefficient-squared-weighted sum of variances:
+\[
+\operatorname{Var}\Bigl(\sum_a\omega_a\hat\sigma_a\Bigr)
+=\sum_a\omega_a^2\operatorname{Var}(\hat\sigma_a)
+\propto\sum_a\frac{\omega_a^2}{\mathcal{Q}_a}.
+\]
+Precision is the reciprocal.  As any one $\mathcal{Q}_a\to0$, the
+corresponding term $\omega_a^2/\mathcal{Q}_a\to\infty$, so the sum
+diverges and $\mathcal{I}(O)\to0$
+\citep[the standard sampling theory of a linear functional;][]{LehmannCasella1998}.
+\end{proof}
+
+The law has two consequences worth computing by hand.
+
+\emph{The dead-leg rule.}  Take a risk reversal whose call leg is
+well quoted, $\mathcal{Q}_{\mathrm{call}}=6$, but whose put leg has
+almost nothing, $\mathcal{Q}_{\mathrm{put}}=0.1$.  Then
+\[
+\mathcal{I}(\mathrm{RR})
+=\frac{1}{\tfrac{1}{6}+\tfrac{1}{0.1}}
+=\frac{1}{0.167+10}
+=\MacPriorBasketRrDead .
+\]
+Six quotes' worth of call-side evidence buys almost nothing: the
+basket is a \emph{difference}, and a difference is only as known as
+its least-known part.  At any requirement of order one, this basket's
+gate stands essentially fully open --- correctly, because a risk
+reversal with a missing put leg is a number the morning does not
+know.
+
+\emph{The factor of four.}  Now suppose both wing legs have the same
+support $\mathcal{Q}$, while the money leg is quoted so densely that
+its term in \cref{eq:infharmonic} contributes essentially nothing.
+The risk reversal's coefficients are $\pm1$:
+$\mathcal{I}(\mathrm{RR})=1/(2/\mathcal{Q})=\mathcal{Q}/2$.  The
+butterfly's wing coefficients are $\tfrac12$, and they enter
+\cref{eq:infharmonic} \emph{squared}:
+$\mathcal{I}(\mathrm{BF})\approx1/(2\cdot\tfrac14/\mathcal{Q})
+=2\mathcal{Q}$.  The same legs make the butterfly
+\MacPriorBasketFactor\ times easier to identify than the risk
+reversal.  Identifiability belongs to the functional, not to the
+strikes: two baskets over identical legs can sit on opposite sides
+of the requirement, and the gate --- which acts per functional ---
+will treat them differently, exactly as it should.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_flt_basket.pdf}
+\caption{The information price of a basket
+(\cref{eq:infharmonic} on the support measure
+\cref{eq:infsupport}).  (a)~A fixed budget of nine quotes spreads
+over a widening band; the wing legs sit at
+$\pm\MacPriorBasketLeg$ (dashed vertical).  The at-the-money leg is
+identified from the first moment and slowly \emph{loses} precision as
+the fixed budget thins; the butterfly crosses the dotted requirement
+at half-width \MacPriorBasketCrossBf, the risk reversal only at
+\MacPriorBasketCrossRr\ --- and both begin to rise before the band
+actually reaches the legs, the kernel bleed discussed in the text.
+(b)~The dead-leg rule: call-leg support fixed at six, put-leg support
+swept to zero --- the basket's precision collapses with its weakest
+leg, the butterfly running \MacPriorBasketFactor$\times$ above the
+risk reversal throughout (its half-coefficients enter the harmonic
+law squared, and the abundant money leg adds almost nothing).}
+\label{fig:infbasket}
+\end{figure}
+
+\Cref{fig:infbasket} computes both effects.  In panel~(a), nine
+quotes --- the size of the sparse morning cluster that returns in
+\cref{sec:inffilter} --- are spread uniformly over a band whose
+half-width grows along the horizontal axis, and the three baskets'
+precisions are drawn against it.  The orange curve (the level) starts
+high and \emph{declines}: a fixed budget spread ever wider leaves
+fewer effective quotes at the money.  The green curve (butterfly) and
+blue curve (risk reversal) start dark and rise as the band approaches
+their $\pm\MacPriorBasketLeg$ legs, the butterfly crossing the
+requirement first --- at half-width \MacPriorBasketCrossBf\ against
+the risk reversal's \MacPriorBasketCrossRr\ --- and both roll over
+and decline again once further widening only thins the legs.
+Panel~(b) is the dead-leg rule as a curve: with the call leg held at
+support six, the basket precisions fall to zero with the put leg's
+support, the butterfly running \MacPriorBasketFactor$\times$ above
+the risk reversal throughout.
+
+\subsection{Where the price is misquoted}
+\label{sec:infblind}
+
+One honest caveat belongs here, because this is where it bites.
+Support is a kernel sum, and a kernel radiates: quotes up to a
+bandwidth away from a leg still credit it.  In panel~(a) both wing
+baskets begin to rise --- and the butterfly actually crosses its
+requirement --- \emph{before} the quoted band reaches the legs.  The
+proxy declares a leg identified when the nearest quotes are still a
+bandwidth short of it, which is precisely the region just beyond the
+last quote that a wing prior exists to protect.  So the gate, fed by
+support, can close on functionals the morning has not truly
+measured.  The consequence is a design rule rather than a repair:
+gated shape baskets cannot be the only mechanism holding a dark
+wing, and \cref{sec:infcoords} pairs them with anchors placed by a
+coverage test that does not radiate (the test is defined there).  The exact alternative ---
+measure each functional's realized precision from a data-only fit,
+then gate on that --- exists and costs one extra fit; the support
+proxy is the price of gating before fitting.
+
+We can now price any persisted functional and gate it.  What remains
+open is the most consequential choice: \emph{which} functionals to
+persist.  The next section shows that this choice --- mere
+coordinates, seemingly --- decides whether the prior can damp a
+market move.

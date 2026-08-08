@@ -28,21 +28,24 @@ the prose. Therefore:
 
 The pedagogy contract governs (rewritten 2026-08-05 after the author
 rejected Chapters 3–4's original register; both were fully revised).
-Chapters 5–9 were written under the contract from the start (newcomer
-fresh-reader pass run on each, all findings resolved).  Chapter 9
+Chapters 5–10 were written under the contract from the start (newcomer
+fresh-reader pass run on each, all findings resolved).  Chapter 10
 (2026-08-07) is the most recent chapter held to the contract;
-Chapters 3–4 serve as TONE EXEMPLAR.  Part II is COMPLETE; Part III
-is OPEN (the \part{Dynamics and Inference} heading entered book.tex
-with Chapter 9).
+Chapters 3–4 serve as TONE EXEMPLAR.  Parts I–II are COMPLETE;
+Part III has Chapters 9–10 done and Chapter 11 remaining (211-page
+build).
 Next:
 
-1. Chapter 10 (inference under weak information: filtering and
-   priors) — sources: the two Note 15 editions + the two Note 13
-   editions (merged chapter; the brief below gives the merge's
-   logic).  Chapter 9 planted the hook (its closing line: weighing
-   new evidence against a moving prior is a filtering problem).
-   Data: synthetic + frozen-snapshot illustrations only — no
-   supplement anticipated, do NOT refetch anything.
+1. Chapter 11 (the graph: one surface from a sparse universe) —
+   sources: the three Note 14 editions (brief below).  Chapter 10
+   planted the hook (its closing paragraph: per-node inference,
+   with the universe's coupling — precision flowing across a graph
+   — left to the final chapter), and its §10.7 division of labour
+   already names the "dark-node baseline" Chapter 11 must build.
+   Data: synthetic universe built FROM the frozen snapshot's two
+   names plus synthetic neighbors — no refetching.
+2. Then Chapter 1 (introduction, written LAST) + the title decision
+   and the Chapter-2 register question (see below).
 
 NOTE (Ch. 8 data decision, 2026-08-07): the anticipated NVDA
 earnings-week supplement was NOT needed and was not fetched — the
@@ -143,7 +146,7 @@ local volatility placed among the models (author's decision).
 | 8  | The market's clock | 11 | **DONE** (written under the pedagogy contract 2026-08-07; tone exemplar with Chs. 4–7) |
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics: the missing derivative | 12 | **DONE** (written under the pedagogy contract 2026-08-07; opens Part III) |
-| 10 | Inference under weak information: filtering and priors | 15 + 13 | pending |
+| 10 | Inference under weak information: filtering and priors | 15 + 13 | **DONE** (written under the pedagogy contract 2026-08-07) |
 | 11 | The graph: one surface from a sparse universe | 14 | pending |
 
 Note 10 (calendar) is absorbed: its theory (convex order ⇔ ledger order,
@@ -765,3 +768,77 @@ keeping Chapter 2 self-contained.
   bH, 2+2cH/b at both moves, √τ-scaling of the board skews).  Full
   book builds clean at 191 pp, no undefined refs, no ch9 overfulls.
   Next: Chapter 10 (filtering and priors, Notes 15+13 merged).
+- 2026-08-07 (later): Chapter 10 WRITTEN under the pedagogy contract
+  from the start (`chapters/10_inference/`, 7 sections + appendix
+  10.A, ~17 pp main text, book pages 183–199 of the 211-page build;
+  Notes 15+13 merged per the brief: two instruments for one
+  predicament — the data underdetermines the state).  Spine: the
+  flat directions MEASURED on the frozen SPY node (band-thinned to
+  31/94 quotes; pinned-wing profile likelihood: rms moves 0.02 bp
+  across a 12-point imposed-wing sweep vs the full chain's sharp V
+  half-width 0.5 pts at +5 bp; the ensemble garnish — eight
+  reference fits agree within 0.3 pts: "agreement between
+  conventions is not information"; quote support Q(k) as the cheap
+  proxy) → yesterday as pseudo-observation rows + the activation
+  gate (precision-weighted average derived by minimizing the convex
+  combination's variance, worked 20.0±0.30 vs 20.4±0.15 → 20.32;
+  ridge disqualified by its everywhere-positive posterior share —
+  33% at twice the requirement — vs the gate's dead zone; no-damp
+  proposition with the 3-line structural proof) → the information
+  price (harmonic law + proof, dead-leg 1/(1/6+1/0.1)=0.10, RR/BF
+  factor of four derived; the kernel-bleed blind spot stated where
+  it bites — BF crosses at half-width 0.09, RR at 0.17 with legs at
+  0.18) → coordinates (baskets annihilate the level direction,
+  proof; the 4-point overnight jump experiment with ALL FIVE
+  candidate rows gated by the chapter's own budget-split rule —
+  gates 0.00/0.68/0.00/1.00/0.99, the moderate BF closed by its own
+  factor-of-four; basket wing error 0.28 pts vs anchor 4.5 (clings
+  to yesterday) vs data-only 6.4; ATM gap 26.9 bp against a 400 bp
+  jump; the coverage-deficit test defined for the deep-tail
+  anchors) → the filter (state = ATM handles; predict via ch9's
+  transport; the boxed scalar update derived from §10.2 with the
+  posterior-variance algebra displayed; "the dial nobody may own";
+  the stale-strike vignette computed: gains 0.80/0.72/0.027,
+  posterior 20.32%/−0.364/0.112, ±13 bp; per-handle-vs-matrix
+  remark) → two honest budgets (information matrix with the
+  one-parameter covariance derivation displayed; delta method;
+  quadratic contract slope 1.000; realized-misfit multiple —
+  curvature gain 0.85→0.33 while level 0.97→0.77 with the
+  one-multiple honesty stated; prediction budget on ch8's clock;
+  surprise WIDENING — renamed from "gate" to avoid the collision)
+  → counting once + the audit (joint-fit-equals-filter proposition;
+  yesterday-enters-once inventory reconciling the basket rows with
+  the filter state; std(Z) audit on the seeded 500-day world: 3.0
+  starved / 1.14 honest / 1.01 widened; jump-day error
+  3.8/2.0/0.49 pts — "overconfident and slow at once"; contract
+  table; hook to ch11).  7 figures + 54 macros from
+  `scripts/ch10/gen_figures.py` (frozen snapshot via ch03's
+  loader/fit protocol; self-contained spline/least-squares/gate/
+  filter machinery in figlib implementing exactly the displayed
+  equations; the seeded audit walk is the chapter's only
+  randomness).  Notation added BEFORE writing (O, Ô⁻/Ô_obs/Ô⁺ with
+  calligraphic-V variances, gain 𝒦, support 𝒬, basket ω_a,
+  information ℐ at two scales, gate(·)/γ, row weights λ_j, audit 𝒵
+  — MCS owns ζ, q_walk, Δt_days; handles named in words, curvature
+  symbol-free per rule 6); references +Kalman 1960, Anderson–Moore,
+  Gelman et al., Lehmann–Casella, Tikhonov–Arsenin.  Newcomer
+  fresh-reader pass run (sub-agent persona): all 9 files
+  summarizable, 19 findings ALL resolved (headliners: the §10.7 row
+  inventory omitted the shape baskets' fate — now "yesterday enters
+  once" reconciles them; the jump experiment's flat per-row prior
+  weights contradicted §10.2's budget-split rule — the SCRIPT was
+  changed to implement the displayed rule, which closed the
+  moderate BF gate by the factor of four and improved the exhibit;
+  the coverage test was undefined — now defined as a deficit vs
+  desired coverage; the information-matrix inverse asserted — now
+  derived in the one-parameter case; the 60-bp prediction-budget
+  arithmetic fixed to a four-day state; "surprise gate" renamed
+  widening; spline/knots/kernel/likelihood/ill-posed glossed;
+  "barely moves" honesty; process→prediction budget unified) plus
+  every per-section stumble; math verified line by line by the lead
+  (combination algebra, gate shares, harmonic worked numbers,
+  nullspace proof, update/posterior-variance algebra, vignette
+  gains and posteriors, covariance slope, MAP identity).  Full book
+  builds clean at 211 pp, no undefined refs, no ch10 overfulls.
+  Next: Chapter 11 (the graph: one surface from a sparse universe)
+  — the book's final content chapter, then Chapter 1.

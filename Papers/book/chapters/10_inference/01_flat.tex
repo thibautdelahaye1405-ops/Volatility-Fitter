@@ -1,0 +1,139 @@
+\section{What a sparse morning does not determine}
+\label{sec:infflat}
+
+Chapter~9 closed with a moving prior: a surface transported to the
+new spot, waiting to be compared with fresh evidence.  Before
+building the machinery that weighs the two, it pays to ask a static
+question --- one that needs no dynamics at all.  Take one morning's
+quotes, alone.  How much of the smile do they actually determine?
+
+The book's running node answers concretely.  The frozen SPY December
+2026 chain carries \MacPriorFlatNFull\ prepared quotes
+(\MacPriorFlatHeroDays\ days to expiry).  Keep only the
+\MacPriorFlatNThin\ quotes inside the at-the-money band
+$\lvert k\rvert\le0.10$ and set the rest aside.  This staged morning
+is not artificial meanness: on an illiquid name, or in the first
+minutes of a session, a band like this is all the market offers,
+and the desk still needs a whole smile --- the wings included ---
+to price, hedge, and feed every integral of Chapter~5.
+
+What can the band say about the wing?  Here is a direct experiment,
+run with a deliberately flexible curve family --- a \emph{spline},
+which is just a smooth curve pieced together from cubic polynomials
+and controlled by its values at a handful of chosen strikes (the
+\emph{knots}; the exact knots and the small smoothness penalty are
+in Appendix~\ref{app:infprotocol}) --- so that no parametric habit
+answers in the data's place.  Fit the \MacPriorFlatNThin\ band quotes, but
+\emph{impose} the wing: pin the fitted volatility at $k=-0.30$ to a
+chosen value, and refit.  Sweep the pinned value from
+\MacPriorFlatPinLoPct\% to \MacPriorFlatPinHiPct\% --- a span of
+\MacPriorFlatPinSpanPts\ volatility points --- and record, for each
+imposed wing, how well the curve fits the quotes it was actually
+given.  Each quote's misfit is measured against that quote's own
+stated noise, the bid--ask half-spread; ``fits the band'' always
+means ``fits within the noise the market itself states.''
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_flt_flat.pdf}
+\caption{What a sparse morning does not determine (frozen SPY
+December 2026 node, \MacPriorFlatNThin\ quotes kept in the shaded
+band).  (a)~Five fits of the same band, each with the wing volatility
+at $k=-0.30$ (dotted vertical) pinned to a different imposed value;
+through the band they are one curve.  (b)~The root-mean-square quote
+error against the imposed wing value: on the thinned morning
+(orange) it varies by \MacPriorFlatValleyBp\ vol bp across the whole
+twelve-point sweep --- flat; on the full \MacPriorFlatNFull-quote
+chain (ink) the same sweep meets a sharp V.  (c)~The quote-support
+profile $\mathcal{Q}(k)$ of \cref{eq:infsupport} for both quote sets:
+the thinned morning's support collapses outside the band, exactly
+where panel~(b)'s valley is flat.}
+\label{fig:infflat}
+\end{figure}
+
+\Cref{fig:infflat} shows the result, and it is worth walking slowly.
+In panel~(a), the orange dots are the morning's quotes and the five
+curves are five fits, each pinned to a different wing value ---
+$26\%$ up to $34\%$ at $k=-0.30$.  Through the shaded band the five
+curves lie on top of one another; to the left they fan apart by
+eight volatility points.  Panel~(b) makes the visual precise.  The
+orange line is the fitting error of the band quotes, in vol bp, as
+the imposed wing sweeps across its twelve-point range: it moves by
+\MacPriorFlatValleyBp\ vol bp in total --- the band cannot tell the
+imposed wings apart.  The ink line repeats the identical sweep on
+the \emph{full} chain, where real quotes sit at $k=-0.30$: now the
+error climbs steeply away from one preferred value, and an imposed
+wing only half a volatility point off already costs five bp of
+fitting error (\MacPriorFlatVHalfPts\ points is the half-width at
+that cost).  Same family, same sweep, same machinery --- the only
+difference is which quotes exist.
+
+This deserves a name.  Think of the fit's objective --- the sum of
+squared, noise-scaled quote errors --- as a landscape over all
+candidate curves.  (Statisticians call the corresponding probability
+of the data the \emph{likelihood}; for Gaussian noise the objective
+is its negative logarithm, so ``the likelihood is flat'' and ``the
+objective is flat'' say the same thing, and the chapter uses both.)  A \emph{flat direction} is a way of changing the
+curve that does not change the objective at all: the data assigns
+the same score to every curve along it.  Panel~(b)'s orange line
+exhibits one flat direction explicitly (move the wing, hold the
+band), and there are many more --- every reshaping of the smile
+outside the band, and finer wiggles between quotes inside it.
+Statisticians say the wing is \emph{unidentified}: no amount of
+reweighting or clever optimization extracts from these quotes a
+number the quotes do not contain.
+
+Two remarks before anything is built on this.
+
+First, agreement between models is not evidence.  Refit the same
+thinned band with the reference implementation's three parametric
+families at several resolutions and smoothing strengths ---
+eight fits in all --- and their wing readings at $k=-0.30$ land
+within \MacPriorFlatEnsembleSpreadPts\ volatility points of one
+another.  Eight rules agreeing looks like knowledge; panel~(b) says
+the quotes would have accepted any answer across a twelve-point
+range.  The agreement reflects a shared habit of smooth
+extrapolation, a convention baked into every one of those families
+--- not information.  A desk that reads consensus wings as measured
+wings is mistaking its tools for its data.
+
+Second, flatness is measurable in advance, cheaply.  The profile
+experiment is exact but costs a refit per candidate value.  A proxy
+does almost as well: count how many quotes sit \emph{near} a given
+strike.  Define the \emph{quote support} at log-moneyness $k$ as
+the kernel-weighted count --- a \emph{kernel} being nothing more
+than a smooth bump, here a Gaussian, that decides how much a quote
+at some distance still counts ---
+\begin{equation}
+\mathcal{Q}(k)
+=\sum_{i}\exp\!\left(-\frac{(k_i-k)^2}{2\cdot0.06^2}\right),
+\label{eq:infsupport}
+\end{equation}
+where the sum runs over the morning's quote locations $k_i$ (when
+quotes carry unequal fit weights, each term is multiplied by its
+weight, normalized to average one).  A quote sitting exactly at $k$
+contributes one; a quote a few bandwidths of $0.06$ away contributes
+essentially nothing.  Panel~(c) plots $\mathcal{Q}$ for both quote
+sets on a logarithmic axis: the full chain holds double-digit
+support everywhere the book has ever read that smile, while the
+thinned morning's support falls off a cliff at the band edge ---
+$\mathcal{Q}(0)=\MacPriorFlatSuppAtm$ at the money,
+$\mathcal{Q}(-0.30)=\MacPriorFlatSuppWing$ in the wing.  Where
+support is large the profile is a V; where it vanishes the profile
+is flat.  Support is a proxy, not a theorem --- \cref{sec:infprice}
+returns to exactly how far it can be trusted --- but it prices the
+geometry of panel~(b) without a single refit.
+
+We now know precisely what is missing: along the flat directions
+the data has no opinion, and yet a published smile must take a
+value there.  \emph{Something} always chooses --- a family's tail
+habit, a smoothness penalty, a default.  The thesis of this book
+says the choice should be disclosed and defensible, and the most
+defensible candidate is obvious: yesterday's surface, which was
+fitted to a full chain and has merely aged a day.  The rest of the
+chapter builds the two instruments that let yesterday speak
+\emph{only} where today is silent or noisy.  \Cref{sec:infgate}
+through \cref{sec:infcoords} work in parameter space: where may a
+prior pull at all?  \Cref{sec:inffilter} through \cref{sec:infaudit}
+work in time: when today's data is present but noisy, how hard may
+yesterday's prediction resist it?

@@ -1,0 +1,205 @@
+\section{Yesterday as evidence: rows and the gate}
+\label{sec:infgate}
+
+We know where the data is silent.  This section builds the mechanism
+that lets yesterday fill the silence --- and proves that the
+mechanism cannot touch anything the data has measured.
+
+\subsection{Two estimates of one number}
+\label{sec:infcombine}
+
+Start with the smallest possible case, because the whole chapter is
+this case repeated.  Suppose two independent, unbiased estimates of
+the same unknown quantity are on the table --- say yesterday's
+(transported) reading of some smile feature, and today's data-only
+reading --- with known variances $\mathcal{V}_1$ and $\mathcal{V}_2$.
+(``Unbiased'' means each is right on average; ``variance'' is the
+familiar mean squared error of an estimate around the truth.)  How
+should they be combined?  Try a weighted average with weight $a$ on
+the first,
+\[
+\text{combined}=a\cdot\text{first}+(1-a)\cdot\text{second}.
+\]
+Because the two are independent and unbiased, the combination is
+unbiased for every $a$, and its variance is
+\[
+a^2\,\mathcal{V}_1+(1-a)^2\,\mathcal{V}_2 .
+\]
+Minimize over $a$: differentiate and set to zero,
+\[
+2a\,\mathcal{V}_1-2(1-a)\,\mathcal{V}_2=0
+\qquad\Longrightarrow\qquad
+a=\frac{\mathcal{V}_2}{\mathcal{V}_1+\mathcal{V}_2}.
+\]
+Each estimate is weighted by the \emph{other's} variance ---
+equivalently, by its own \emph{precision}, the reciprocal
+$1/\mathcal{V}$ of its variance: dividing numerator and denominator
+by $\mathcal{V}_1\mathcal{V}_2$,
+\[
+a=\frac{\mathcal{V}_2}{\mathcal{V}_1+\mathcal{V}_2}
+=\frac{1/\mathcal{V}_1}{1/\mathcal{V}_1+1/\mathcal{V}_2}.
+\]  Substituting the optimal $a$, the combined variance is
+\begin{equation}
+\mathcal{V}_{\mathrm{comb}}
+=\frac{\mathcal{V}_1\,\mathcal{V}_2}{\mathcal{V}_1+\mathcal{V}_2},
+\qquad\text{i.e.}\qquad
+\frac{1}{\mathcal{V}_{\mathrm{comb}}}
+=\frac{1}{\mathcal{V}_1}+\frac{1}{\mathcal{V}_2}:
+\label{eq:infprecadd}
+\end{equation}
+precisions add.  A worked number to keep: yesterday says $20.0\%$
+with standard deviation $0.30\%$; today's fit says $20.4\%$ with
+standard deviation $0.15\%$.  Variances $0.09$ and $0.0225$ (in
+$\%^2$); weight on yesterday $0.0225/0.1125=0.20$; combination
+$0.20\times20.0+0.80\times20.4=20.32\%$.  Today, four times as
+precise in variance, gets $80\%$ of the say.  These particular
+numbers return in \cref{sec:inffilter}.
+
+This is ordinary Bayesian updating in its simplest clothing: the
+first estimate plays the \emph{prior} (what was believed before
+today's data), the second the data, and the combination is the
+\emph{posterior} (the belief after).  The share of the posterior
+owned by the prior is
+\begin{equation}
+\text{prior share}
+=\frac{1/\mathcal{V}_1}{1/\mathcal{V}_1+1/\mathcal{V}_2},
+\label{eq:infshare}
+\end{equation}
+its precision divided by the total.  Keep \cref{eq:infshare} in
+sight; the whole design question of this section is what that share
+should be when the ``data'' side is a whole fit rather than one
+number.
+
+\subsection{The prior as extra rows}
+
+How does yesterday enter a real calibration?  Chapters 2--4 fitted a
+parameter vector $\theta$ (the model's coordinates, in whatever
+chart) by least squares over quote equations.  The prior joins the
+same objective as \emph{pseudo-observations}: pick a set of smile
+functionals $O_j$ --- a functional here is just a number read off a
+smile, such as the fitted volatility at one strike, or a difference
+of two such volatilities --- evaluate each on yesterday's transported
+surface to get a target $\hat O_j^{-}$, and append one row per
+functional:
+\begin{equation}
+\text{row } j:\qquad
+\sqrt{\lambda_j}\,\bigl(O_j(\theta)-\hat O_j^{-}\bigr),
+\label{eq:infrow}
+\end{equation}
+carried at weight $\lambda_j\ge0$ alongside the quote rows.  (The
+minus superscript marks a value believed \emph{before} today's data;
+it will do heavy duty from \cref{sec:inffilter} on.)  Squared and
+summed with the data misfit, such a row is exactly the prior side of
+\cref{eq:infshare} for the coordinate $O_j$, with prior precision
+$\lambda_j$.  Everything therefore reduces to one question: what
+should $\lambda_j$ be?
+
+\subsection{The design fork: a ridge, or a gate}
+
+The familiar answer is a \emph{ridge} --- Tikhonov regularization, a
+fixed small $\lambda_j$ for every row, the standard cure for
+ill-posed fitting (a problem is ill-posed when its data do not
+determine a unique, stable answer; Chapter~4's extraction was one,
+and Chapter~4 used exactly this cure on the local-volatility sheet)
+\citep{Tikhonov1977}.  For the present purpose the ridge has a
+disqualifying property.  By \cref{eq:infshare}, a fixed
+$\lambda>0$ owns the share $\lambda/(\lambda+\mathcal{I})$ of
+\emph{every} coordinate, where $\mathcal{I}$ is the precision with
+which today's data pins that coordinate.  The share shrinks as the
+data improves --- but it never reaches zero.  A ridge biases the
+superbly-quoted at-the-money level toward yesterday exactly as
+surely as it stabilizes the dark wing, only less.  If yesterday's
+level was $20\%$ and today's true level is $24\%$, a ridge pulls
+today's published level below $24\%$ --- it \emph{damps} a genuine
+move the market has plainly made.  For a fitter whose first duty is
+to report what the market says, that is not a small flaw; it rules
+the ridge out.
+
+What is wanted instead is a weight that depends on the data: full
+strength where the data is silent, and \emph{exactly zero} --- not
+merely small --- once the data identifies the coordinate.  The
+reference implementation uses one function for this everywhere:
+
+\begin{definition}[Activation gate]
+\label{def:infgate}
+For an identification precision $\mathcal{I}\ge0$, a required
+precision $\mathcal{I}_{\mathrm{req}}>0$, and a sharpness exponent
+$\gamma>0$,
+\begin{equation}
+\operatorname{gate}(\mathcal{I})
+=\Bigl(\min\bigl(\max\bigl(1-\mathcal{I}/\mathcal{I}_{\mathrm{req}},
+\,0\bigr),\,1\bigr)\Bigr)^{\gamma}.
+\label{eq:infgate}
+\end{equation}
+\end{definition}
+
+Read it from the inside out: $1-\mathcal{I}/\mathcal{I}_{\mathrm{req}}$
+is the shortfall of precision below the requirement; the
+$\max(\cdot,0)$ clips it at zero once the requirement is met; the
+$\min(\cdot,1)$ caps it at one when there is no data at all; and the
+exponent $\gamma$ shapes how fast the gate closes as data
+accumulates.  Each persisted row then receives
+$\lambda_j\propto\operatorname{gate}(\mathcal{I}_j)$: a fixed
+budget of prior weight is split across the rows in proportion to
+their gate values, and a row whose gate is zero is simply dropped.
+
+\begin{proposition}[The no-damp guarantee]
+\label{prop:infnodamp}
+If coordinate $j$ satisfies
+$\mathcal{I}_j\ge\mathcal{I}_{\mathrm{req}}$, then
+$\operatorname{gate}(\mathcal{I}_j)=0$, hence $\lambda_j=0$, and row
+$j$ of \cref{eq:infrow} is the zero function of $\theta$.  The
+objective, its gradient, and every downstream quantity are then
+independent of the prior value $\hat O_j^{-}$.  In particular, when
+every gate is closed the fit is the prior-free fit.
+\end{proposition}
+
+\begin{proof}
+With $\lambda_j=0$ the row is $\sqrt{0}\cdot(O_j(\theta)-\hat
+O_j^{-})=0$ identically: it contributes zero to the objective and a
+zero row to the derivative stack, for every $\theta$.  Nothing that
+is computed from the objective can depend on $\hat O_j^{-}$ through
+a row that is identically zero.
+\end{proof}
+
+The proof is three lines because the content is structural, not
+analytic: the gate does not make the prior's influence small where
+data speaks --- it makes the prior \emph{absent} there.  That is the
+difference between gating and shrinkage, and it turns ``do not damp
+the signal'' from a preference into a property of the objective.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_flt_gate.pdf}
+\caption{The gate, and why a ridge cannot replace it.  (a)~The gate
+\cref{eq:infgate} for three sharpness exponents, against precision in
+units of the requirement: all three reach exactly zero at the dotted
+requirement line and stay there --- the dead zone.  (b)~The share of
+the posterior owned by the prior, \cref{eq:infshare}, with prior
+weight $\lambda$ fixed for the ridge (dashed) and gated (solid), both
+at unit budget: at twice the required precision the ridge still owns
+\MacPriorGateRidgeSharePct\% of the coordinate; the gated prior owns
+exactly nothing.}
+\label{fig:infgate}
+\end{figure}
+
+\Cref{fig:infgate} draws both halves of the argument.  In
+panel~(a), the three curves are the gate at $\gamma=0.5$, $1$, and
+$2$; all three start at one where the data says nothing, descend as
+precision builds, and hit zero exactly at the required precision ---
+after which they stay at zero, which is the whole point.  The
+exponent only shapes the descent: $\gamma=2$ releases the prior
+early, $\gamma=0.5$ holds on longer.  Panel~(b) translates gates
+into posterior shares via \cref{eq:infshare}.  The dashed curve is
+the ridge: at a precision of twice the requirement --- a coordinate
+the data pins twice as well as demanded --- the ridge still owns
+\MacPriorGateRidgeSharePct\% of the answer.  The solid curve is the
+gated prior: identical in the dark, and exactly zero past the
+requirement.  Same stabilization where it is wanted, none where it
+is not.
+
+We now have the mechanism and its guarantee.  What the gate consumes
+is a precision $\mathcal{I}_j$ per persisted functional --- a number
+that must be produced cheaply, before fitting, for functionals more
+interesting than a single strike.  Producing it is the next
+section's job.

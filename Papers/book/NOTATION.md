@@ -214,6 +214,37 @@ Reused without change: `v(y)` (Ch. 4's local-variance field; the synthetic
 generator of §9.5–9.6 is time-homogeneous, so `v` is a function of `y`
 alone), `d_±`, `Φ`, `φ`, `B`, `w`, `σ`, `τ`, `k`, `y`, `F`, `S`, `t`.
 
+## Chapter 10 — inference under weak information (filtering and priors)
+
+The chapter estimates smile *functionals* under weak data.  Estimates carry
+hats (Ch. 6's convention); the superscripts `−`/`+` mark the two sides of a
+filter update (before / after today's evidence).  Calligraphic letters are
+distinct glyphs from their italic namesakes (the `𝒮`/`S`, `𝒲`/`W`
+precedent).  The transport that moves yesterday's state to today reuses
+Ch. 9's `H`, `ℛ`, `s₀` unchanged; the fit's parameter vector is Ch. 3's `θ`;
+the stated per-quote noise reuses Ch. 6's `ε_i`, here read in vol units
+(the bid–ask half-spread on the vol axis; same role, the smile's chart).
+
+| Symbol | Meaning |
+|---|---|
+| `O`, `O_j` | a smile functional (a handle, a signed basket, an anchor price); `j` indexes the persisted set (roman capital O was free) |
+| `Ô⁻, 𝒱⁻` | the prediction: yesterday's estimate of `O` transported to today, and its variance |
+| `Ô_obs, 𝒱_obs` | today's data-only estimate of `O` and its variance (the observation) |
+| `Ô⁺, 𝒱⁺` | the combined (posterior) estimate and its variance |
+| `𝒦` | the gain `𝒱⁻/(𝒱⁻+𝒱_obs)` — the weight the update puts on today (calligraphic; `K` stays the dollar strike) |
+| `𝒬(k), 𝒬_a` | quote support: the effective number of quotes at log-moneyness `k` / on leg `a` (calligraphic; `Q` stays the quantile function) |
+| `ω_a` | the signed coefficients of a basket `O = Σ_a ω_a σ(k_a)` (always subscripted; kept apart from `w` by the subscript and context) |
+| `ℐ(O)`, `ℐ_θ` | identification precision of a functional; the fit's observed information matrix over `θ` (script I, free; one letter for one concept at two scales) |
+| `gate(·)`, `γ` | the activation gate (named operator, like `expit`); its sharpness exponent (bare `γ` was free — MCS's amplitudes are always `γ_r`) |
+| `λ_j` | the gated weight of persisted row `j` (always row-indexed; bare `λ` stays Ch. 4's roughness weight, the Ch. 8 subscripted-λ pattern) |
+| `𝒵` | the standardized error `(truth − Ô⁺)/√𝒱⁺` — the audit statistic (calligraphic; Ch. 8's Brownian `Z` unaffected; the note-literature's ζ is taken by MCS) |
+| `q_walk` | the walk scale of the prediction budget: how far a handle diffuses per √day (word subscript; bare `q` stays the quantile density — the `σ_cal` pattern) |
+| `Δt_days` | elapsed time between two snapshots, in days (composite word subscript; Ch. 7's tree step `Δt` unaffected) |
+
+The three ATM handles filtered in the examples are named in words (level,
+skew, curvature); the level is `σ(0)`, the skew is Ch. 9's `s₀`, and the
+curvature carries no symbol (used fewer than three times in display math).
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,
