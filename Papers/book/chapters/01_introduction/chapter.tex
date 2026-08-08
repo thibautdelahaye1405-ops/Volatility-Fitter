@@ -1,11 +1,328 @@
-% Chapter 1 — Introduction.  Written LAST (see ROADMAP.md): it will state the
-% problem, the validity/information/convention thesis, the reader contract,
-% the book map, the notation ledger, and the data statement.
+% Chapter 1 — Introduction.  Written last (2026-08-08), read first.
+% No figures, no macros: the introduction quotes no measured number.
+%
+% LESSON GOALS (pedagogy contract).  After this chapter the reader can:
+%   1. State the predicament: a market quotes finitely many noisy
+%      prices; a desk must publish a field of probability laws -- a law
+%      for every underlier, every expiry, every strike, every morning.
+%   2. Read an option board as a probability statement (the
+%      Breeden-Litzenberger identity, one display deep; Chapter 2 in
+%      full).
+%   3. Sort any statement a surface makes into validity (probability),
+%      information (the quotes), or convention (a stated choice).
+%   4. Know what the book assumes of them, what "the reference
+%      implementation" names, and which one frozen snapshot threads
+%      every example.
+%   5. Navigate: know which chapter answers which question.
 \chapter{Introduction}
 \label{ch:introduction}
 
-[This chapter is written last.  It will state the problem --- finitely many
-noisy option prices, from which a surface of probability laws must be
-published --- and the thesis that organizes every chapter: the separation of
-what follows from probability, what the market determines, and what the
-modeler must choose and disclose.]
+\section{The predicament}
+\label{sec:introproblem}
+
+An equity-options desk publishes, every morning, an implied-volatility
+surface for each name it trades: at every expiry a curve of
+volatilities across strikes --- a \emph{smile} --- and, expiry by
+expiry, the name's \emph{surface}.  Everything downstream consumes
+these surfaces: client quotes, hedge ratios, risk aggregation,
+scenario engines.  And they are consumed at every strike, including
+the strikes nobody quoted today.
+
+What the market supplies falls short of that in three ways.  It is
+finite: a listed board quotes a ladder of strikes at a handful of
+expiries, and nothing between or beyond.  It is noisy: a quote is a
+bid and an ask, two prices with the truth somewhere in the spread;
+some quotes are stale, and a few are simply wrong.  And it is
+unevenly spread: on a liquid index board the ladder is dense near the
+money, a few strikes further out the spreads widen, and on most of a
+desk's universe --- a thin name that has not traded today, a long
+tenor with four resting quotes --- the board is nearly silent.
+Whole surfaces on one side; finitely many noisy prices on the other.
+
+The published object is also more than a sheet of numbers.  A smile,
+read through the Black formula, is a probability law for the
+underlying at that expiry --- the next section says how --- so a
+surface is a family of laws, and a desk's universe of surfaces is a
+\emph{field of probability laws}: the object of this book's title.
+The predicament, stated once: a market that quotes finitely many
+noisy prices, and a desk that must nevertheless publish something as
+ambitious as a field of probability laws --- a law for every
+underlier, every expiry, every strike, every morning.  Everything in
+this book serves that publication.
+
+\section{A smile is a probability law}
+\label{sec:introlaw}
+
+Fix one expiry $T$ and one name, and let $\mu$ be the law of the
+underlying price $S_T$ at that expiry (under the pricing measure; the
+distinction does not matter for this section).  A call struck at $K$
+pays $(S_T-K)^+$, so its forward price is the average of the payoff
+over $\mu$,
+\[
+C(K)=\int (s-K)^{+}\,\mu(\dd s),
+\]
+and differentiating under the integral, twice, in the strike,
+\begin{equation}
+\frac{\partial C}{\partial K}=-\,\mu\bigl((K,\infty)\bigr),
+\qquad
+\frac{\partial^{2} C}{\partial K^{2}}=\text{the density of } S_T
+\text{ at } K.
+\label{eq:introBL}
+\end{equation}
+A complete call curve at one expiry therefore \emph{is} the law of
+the underlying at that expiry, in price coordinates: the slope reads
+off digital probabilities, the curvature reads off the density.  The
+identity is due to \citet{BreedenLitzenberger1978}, and it has a
+traded counterpart: a negative second difference of call prices is a
+butterfly --- a nonnegative payoff --- with a negative price.  The
+probability statement and the no-arbitrage statement are the same
+statement.  Chapter~2 develops both in full.
+
+Implied volatility enters as a change of coordinates, not as a model.
+The market's convention is to state a call's price as the volatility
+number that reproduces it through the Black formula
+\citep{Black1976}; price and implied volatility are two coordinates
+for one quantity, and the Black formula is the chart between them.
+Nothing in this convention assumes the Black model describes the
+underlying: the formula is a one-to-one relabeling, used because in
+volatility units the prices of different strikes, expiries and names
+become comparable at a glance.  The smile is the law of
+\cref{eq:introBL} drawn in the market's preferred coordinates.
+
+Across expiries the family of laws has one requirement of its own:
+in total-variance units a later expiry must lie above an earlier one
+--- \emph{calendar order}, derived in Chapter~2 --- or a calendar
+spread of options acquires a negative price.  A field of laws is not
+a stack of independent curves.
+
+\section{Validity, information, convention}
+\label{sec:introthesis}
+
+The thesis that organizes every chapter is a separation.  Everything
+a published surface asserts sorts into three bins, of decreasing
+strength, and the book's work --- subject by subject, number by
+number --- is keeping the bins separate.
+
+\emph{Validity} is what probability alone demands.  A call curve must
+be decreasing and convex (the density of \cref{eq:introBL} is
+nonnegative); the law must carry unit mass and price the forward
+correctly; across expiries the surface must keep calendar order.  A
+published surface that fails one of these is not a cautious surface
+or an aggressive one --- it is not a family of laws at all, and it
+hands its consumers arbitrage: nonnegative payoffs at negative
+prices.  Validity is therefore not a quality to trade off against
+fit.  Part~I builds coordinates in which most of it holds
+structurally, so that every curve a fit can produce is already a law.
+
+\emph{Information} is what today's quotes determine, and how
+precisely.  It is always finite, and it runs out closer than
+intuition suggests: on the book's own data, a measurable share of a
+variance-swap strike accrues beyond the last quoted strike
+(Chapter~5); a morning thinned to its at-the-money band says nothing
+at all about the wing (Chapter~10); and no snapshot, however dense,
+determines how the smile responds when the spot moves (Chapter~9).
+Where information ends is itself measurable, and the book measures it
+repeatedly --- with error bars whose own correctness is tested.
+
+\emph{Convention} is everything the published object needs beyond the
+first two bins: the wing beyond the last quote, the clock that turns
+calendar days into variance time, the smile's response to a spot
+move, the weight of yesterday against a thin morning, the asserted
+relations between names.  A convention is not a flaw; an unstated one
+is.  The book's treatment of a convention is always the same: derive
+what can be derived, bound what can be bounded, and state the
+remainder as a named choice with its consequences measured.
+
+Each content chapter closes by sorting its own subject into a
+three-column table --- proved, measured, chosen --- and Part~III adds
+the test that disciplines the middle column: a stated variance must
+match the realized errors (the standardized-error test of
+Chapter~10, $\mathrm{std}(\mathcal{Z})=1$), and the book applies it
+to every construction that publishes uncertainty.
+
+\section{The reader, and how the book reads}
+\label{sec:introreader}
+
+The reader assumed here is smart, motivated, and new to this subject:
+calculus and probability at first-course level, and the
+Black--Scholes formula seen once.  No prior exposure to volatility
+modeling is assumed.  Each chapter assumes the earlier ones, read
+once.
+
+The writing follows from that assumption.  Every derivation a
+first-course reader could not reproduce is written out --- completing
+a square, inverting a $2\times2$ matrix, differentiating under an
+integral.  The smallest example comes first: three quotes, a two-node
+graph, one worked number the reader can check by hand.  Figures are
+walked panel by panel in the text.  Terms of art are re-introduced
+with a one-line reminder at first use in each chapter, so no chapter
+must be read with a glossary open.
+
+Notation is kept on a ledger: a symbol, once given a meaning, keeps
+it for the whole book, and no symbol is redefined.  Standing
+conventions: primes denote one-variable derivatives and $\partial$
+partial ones; $t$ is calendar time and $\tau$ is \emph{variance
+time}, equal to the calendar until Chapter~8 separates them;
+\emph{precision} always means one over a variance.
+
+The subject is the published surface, not derivative pricing at
+large.  Stochastic-volatility and jump models, exotic payoffs, and
+hedging beyond delta stay outside the book; where a dynamic
+assumption is unavoidable (Chapter~9), it enters as a stated
+transport rule, derived where it can be and named a convention where
+it cannot.
+
+\section{The reference implementation, and one morning of data}
+\label{sec:introimpl}
+
+Two standing facts about the book's examples.
+
+First, every construction in this book runs.  Alongside the text
+stands one code base --- called throughout \emph{the reference
+implementation} --- in which each model, solver and test of the book
+exists as working code, and from which every figure and every
+empirical number in the text regenerates.  The text names it as an
+actor for a specific reason.  Mathematics does not force every choice
+a working system must make: a floor on an eigenvalue, a default
+variance, a cap on an inflation multiple, a tie-break among equal
+minima.  Such choices are conventions, and conventions live in
+implementations, not in theorems.  When a chapter writes ``the
+reference implementation floors the small eigenvalues,'' it is
+stating such a choice --- a working default, named so that it can be
+adopted, replaced, or tested.
+
+Second, one market snapshot threads every example: the listed option
+boards of two names --- the S\&P~500 ETF (SPY) and NVIDIA (NVDA) ---
+captured in one session in August 2026, eight expiries each, with
+the full chains and quotes embedded, then frozen.  Nothing in the
+book refetches data, and every figure regenerates from that one
+file.  One dataset, used throughout, lets the examples compound: the
+December index smile fitted in Part~I is the smile whose
+variance-swap strike Chapter~5 integrates, whose forward Chapter~6
+re-derives from the quotes, whose transported image Chapter~9 moves,
+and whose thinned morning Chapter~10 fits; the December NVDA smile
+is the one Chapter~11 withholds from its solver and reconstructs
+from the node's neighbours.  A number met twice can be checked
+twice.
+
+\section{The map}
+\label{sec:intromap}
+
+\paragraph{Part I --- Models.}
+Four chapters build and probe the single-name surface: three ways to
+complete finitely many quotes into a law, and one measurement of what
+the completions say where no quote reaches.
+
+Chapter~2 builds the law first.  The log-return is written as a
+monotone transport of a logistic variable, and the logarithm of the
+transport speed is expanded in polynomials of the percentile rank:
+positive density and unit mass are then automatic, one scalar shift
+imposes the martingale condition, and validity is structural rather
+than checked.  The same representation yields prices, densities, the
+moment strip and the wing slopes, an analytic calibration Jacobian,
+and a complete calendar test.
+
+Chapter~3 does what the industry does instead: it writes the smile
+down directly, as a five-parameter formula for total variance (SVI),
+restated in the trader's coordinates of level, skew and wings.  The
+gain is legibility; the cost is that a formula for a curve is not
+automatically a law, so validity must now be checked rather than
+inherited.  The chapter maps exactly where the checks bind, adds a
+superposition family that gives the body of a smile local detail
+without touching its wings, and closes by fitting both families and
+Chapter~2's model to the same frozen quotes.
+
+Chapter~4 asks for one model that carries every expiry at once.
+Dupire's local volatility supplies it: a field whose value is a
+ratio of the two quantities the earlier chapters already police ---
+the calendar increment above, the butterfly factor below.  Read as a
+formula, the ratio differentiates noisy quotes twice and fails no
+matter how good the data gets; read as a pricing model --- a
+positive sheet on a grid, a stable marching scheme, exact
+derivatives --- it becomes a well-posed fit like every other in the
+book.
+
+Chapter~5 probes the fitted curves where there are no quotes.  The
+probe is one traded number, the fair strike of a variance swap: an
+integral of the whole smile, a measurable share of which accrues
+beyond the last quoted strike.  Models that agree to basis points at
+every quote disagree on it.  Two model-free facts bound the
+disagreement --- a ceiling on how steep any wing can be, and an
+envelope, fanning out from the last quote, that no arbitrage-free
+continuation can leave --- and everything inside the envelope is a
+choice the modeler must make and state.
+
+\paragraph{Part II --- The observation.}
+Part~I treated the quotes as ready.  Part~II prepares them.
+
+Chapter~6 infers the forward and the discount factor, which are
+quoted nowhere.  Put--call parity makes the pair the two
+coefficients of one straight line through the option quotes, so the
+inference is a regression --- one that determines its level superbly
+and its slope poorly, an asymmetry every safeguard in the chapter is
+matched to.  Dividend conventions turn out to be risk decisions, and
+the stakes are measured in the only units that matter here: a small
+forward error, read back through the Black formula, imprints a fake
+skew of tens of volatility basis points.
+
+Chapter~7 measures and subtracts the right that listed equity
+options carry and the European identities know nothing about: early
+exercise.  Optimal-stopping theory maps where the right has value
+before anything is computed; a binomial tree prices it; the removal
+is one root find per quote, a controlled cancellation in which the
+market's premium cancels against the model's.  Dividends enter as
+dates, not rates.  The chapter closes Chapter~6's loop: the bow that
+early exercise had left in the parity residuals is reproduced by the
+tree and removed.
+
+Chapter~8 separates variance time from the calendar.  A scheduled
+event --- an earnings report --- packs several ordinary days'
+variance into one calendar day, and the law at expiry knows only the
+variance budget, not its schedule.  The day-weighted event clock
+relabels time so that prices, validity and calendar order are
+untouched while volatility readings rescale exactly; the famous
+overnight earnings crush becomes a scheduled correction of a
+reading, with no price moving.  The clock can even be read off the
+board's own prices --- within measured limits the chapter is
+explicit about.
+
+\paragraph{Part III --- Dynamics and inference.}
+The field so far is a photograph.  Part~III sets it in motion and
+then confronts it with sparse mornings.
+
+Chapter~9 takes the derivative the photograph does not contain: the
+smile's response to a spot move.  Through today's surface pass many
+admissible tomorrows, and no quoted price separates them --- yet the
+true delta of every option depends on the choice.  The candidate
+rules are organized by one dial, the skew-stickiness ratio
+$\mathcal{R}$, and the one regime that derives its answer instead of
+assuming it --- repricing under a frozen local-volatility field ---
+gives $\mathcal{R}=2$ as a consequence, not a convention.  The
+stakes, measured across the frozen board, are worth double-digit
+delta points.
+
+Chapter~10 is inference under weak information, one node at a time.
+It measures where a sparse morning's likelihood is flat; lets
+yesterday enter today's fit through a gate that is exactly zero
+wherever the data identifies a coordinate; prices the
+identifiability of any smile functional by a harmonic law; and, in
+time, filters the smile's handles with a gain that is computed, not
+set --- the ratio of two variance budgets, one built from the fit's
+own information, one grown on the market's clock.  It ends with the
+accounting identity that counts each quote once, and with the book's
+acceptance test: the standardized error $\mathcal{Z}$ scatters with
+standard deviation one exactly when the stated variances match the
+realized errors.
+
+Chapter~11 assembles everything into the object the predicament
+demands: a universe of nodes, mostly dark, completed from the few
+that are lit.  Each edge of the graph is a two-number contract ---
+amplitude prices the implied move, trust prices the band --- and the
+whole-universe solve is a single least-squares objective,
+Chapter~10's update at universe scale, whose accounting holds line
+by line.  A dark node's answer decomposes into baseline, systematic
+and residual, and the closing exhibit reconstructs a withheld
+December smile from its neighbours, to within a fraction of a
+volatility point of quotes the solver never saw, under a band that
+passes the standardized-error test.  Its final pages return to the
+predicament of \cref{sec:introproblem} --- which is where we begin.
