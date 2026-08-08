@@ -24,19 +24,34 @@ poison for the prose.  Therefore:
   implementation".  No product names, no repo paths, no internal note
   citations — public literature only.
 
-## Status (2026-08-08)
+## Status (2026-08-08 — THE BOOK IS COMPLETE)
 
-Content is COMPLETE: Chapters 2–11 are written, the mathematics is
-verified, every figure and number regenerates from the frozen data,
-and the build is 231 pages.  The chapters are well organized.
+Content AND style are COMPLETE.  Chapters 2–11 are written and
+re-registered to the style contract below (the full revision arc ran
+2026-08-08, chapters in book order, one commit each); Chapter 1 (the
+introduction) was written last, under the contract, on 2026-08-08;
+the title is DECIDED with the author: *The Volatility Surface as a
+Field of Probability Laws*.  The build is 235 pages (introduction
+pp. 1–8, ch. 2 at p. 9), one pre-existing 1.03pt overfull in ch. 3,
+no undefined references, banned-grep zero everywhere except
+protocol-protected identifiers (labels, macro names, file/function
+names — logged per chapter below).  Every figure and number
+regenerates from the frozen data.
 
-The prose is not done.  On 2026-08-08 the author reviewed the full
+What remains is OPTIONAL polish, none of it started: a fresh-reader
+pass over Chapter 1 (the only chapter never read by a newcomer
+persona); a front-matter pass (the title page still carries the
+"A working draft" tag; no preface, no index); and publication
+mechanics.  Take these up only if the author asks.
+
+The paragraphs below are kept as the arc's record.  On 2026-08-08
+the author reviewed the full
 build and rejected the REGISTER the text drifted into: audit rhetoric,
 a defensive stance ("honest", "audit", promises, claims, stacked
 caveats, discussions of controls), and vague terminology.  The style
 contract below was rewritten to make the target register explicit and
-checkable.  Every chapter now gets a style revision pass — mathematics,
-figures, macros and labels stand; the prose is re-registered, shortened
+checkable.  Every chapter then got a style revision pass — mathematics,
+figures, macros and labels stand; the prose was re-registered, shortened
 and simplified.
 
 Measured drift (case-insensitive counts over each chapter's .tex
@@ -277,9 +292,8 @@ Facts a session needs without re-deriving them.  Pages refer to the
 
 ## The book
 
-Working title: *The Volatility Surface as a Field of Probability
-Laws* (placeholder — decide at introduction time).  Author: Thibaut
-Delahaye.
+Title (DECIDED with the author, 2026-08-08): *The Volatility Surface
+as a Field of Probability Laws*.  Author: Thibaut Delahaye.
 
 Thesis (the thread every chapter serves): an implied-volatility
 surface is a family of probability laws read through the Black
@@ -291,7 +305,7 @@ Structure: three parts, eleven chapters.
 
 | Ch | Title (working) | Content | Style pass |
 |----|----------------|---------|------------|
-| 1  | Introduction | write LAST, after the style arc | — |
+| 1  | Introduction | DONE 2026-08-08 (written last) | written to the contract |
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | done | DONE 2026-08-08 |
 | 3  | SVI-JW and superposition | done | DONE 2026-08-08 |
@@ -333,19 +347,20 @@ only.  The style arc adds NO new data and NO new numbers — if a
 rewritten sentence needs a number that is not a macro, the sentence
 is wrong, not the macro set.
 
-## Chapter 1 — Introduction (write after the style arc)
+## Chapter 1 — Introduction (DONE 2026-08-08)
 
-Content: the problem (finitely many noisy prices; a surface of laws
-must be published); the separation thesis (validity / information /
-convention); what is assumed of the reader; the book's map, one
-paragraph per chapter; the notation ledger; the data statement (one
-frozen snapshot threads every example).  Must DEFINE the recurring
-device "the reference implementation" (used since Chapter 2 as an
-unnamed actor).  Chapter 11's closing pages return to the
-introduction's opening problem — write Chapter 1 so that it poses
-exactly that problem.  Decide the title with the author.  Some of
-Chapter 2 §1 (the smile-as-law argument) may migrate here — decide
-then, keeping Chapter 2 self-contained.
+Written to this spec: the problem (§1.1 poses exactly the predicament
+ch. 11's closing pages return to, same cadence); the separation
+thesis (§1.3); the reader and reading conventions incl. the notation
+ledger (§1.4); the reference implementation DEFINED and the frozen-
+data statement (§1.5); the map, one paragraph per chapter in three
+parts (§1.6, ending "— which is where we begin").  §1.2 states the
+smile-as-law reading in one display (Breeden–Litzenberger) and
+points to Chapter 2; NOTHING migrated out of Chapter 2 §1 — it stays
+self-contained (decision recorded here).  No figures, no macros: the
+introduction quotes no measured number (qualitative allusions only).
+Labels: sec:intro{problem,law,thesis,reader,impl,map} (ch. 2's
+sec:intro was taken).  Title decided the same session.
 
 ## Progress log
 
@@ -560,3 +575,33 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   data statement, DEFINE "the reference implementation"; ch. 11's
   closing pages return to exactly the problem ch. 1 poses) — plus
   the title decision WITH the author.
+- 2026-08-08 (ninth session): Chapter 1 WRITTEN and the TITLE
+  DECIDED — THE ARC, AND THE BOOK, ARE COMPLETE.  Title (author's
+  choice among four candidates, working title confirmed): *The
+  Volatility Surface as a Field of Probability Laws*; book.tex
+  header comment updated (the \title was already this text; the
+  "A working draft" tag stays for now).  Chapter 1 (~7pp, six
+  sections, no figures, no macros — no measured number quoted):
+  §1.1 the predicament, landing on the title phrase and matching
+  ch. 11's closing callback verbatim in cadence; §1.2 the
+  Breeden–Litzenberger reading in one display + Black-formula-as-
+  chart, ch. 2 pointed to and left self-contained (no migration —
+  decision recorded in the Chapter 1 section); §1.3 the three bins
+  with one example each from the book's own measurements, the
+  proved/measured/chosen tables announced, std(𝒵)=1 named as the
+  book's acceptance test; §1.4 reader contract, writing rules,
+  notation ledger conventions, and the scope paragraph (no
+  stochastic-vol/exotics/hedging-beyond-delta); §1.5 the reference
+  implementation DEFINED (conventions live in implementations, not
+  theorems; named so a choice can be adopted, replaced, or tested)
+  + the frozen-snapshot statement and the compounding argument
+  (the December smiles' six reappearances listed); §1.6 the map,
+  one paragraph per chapter from the chapters' own synopses,
+  closing "— which is where we begin."  One aphorism total ("A
+  convention is not a flaw; an unstated one is").  Banned-grep on
+  ch. 1: zero (two "earnings" = the corporate event, exempt as in
+  ch. 8).  Build: 235 pages (intro pp. 1–8, ch. 2 at p. 9, ch. 11
+  ends p. 225), 1 pre-existing overfull (ch. 3, unchanged), no
+  undefined refs.  Remaining (optional, only on request): a
+  fresh-reader pass over ch. 1; front-matter (drop the draft tag,
+  preface, index); publication mechanics.
