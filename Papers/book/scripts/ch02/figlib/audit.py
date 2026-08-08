@@ -104,7 +104,7 @@ def certification() -> str:
                     - np.asarray(fine.call_price(kk))))))
 
     STORE.add("certification", "CertSlices", str(n_slices),
-              "randomized slices in the reduced audit battery")
+              "randomized slices in the reduced test battery")
     STORE.add("certification", "CertOrdersList", "4, 8, and 16",
               "orders covered by the battery")
     STORE.add("certification", "CertWorstBounds", sci(worst["bounds"]),

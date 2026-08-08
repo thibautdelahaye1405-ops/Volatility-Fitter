@@ -144,10 +144,11 @@ price-space gap there is at round-off scale.}
 \label{fig:calendar}
 \end{figure}
 
-For the two shortest SPY expiries, a full-grid volatility audit flags a
-\MacCalGapVolBp\ vol-bp crossing at $k=\MacCalGapArgmaxK$, far outside the
-common quote span $[\MacCalSpanLo,\MacCalSpanHi]$.  The corresponding calls
-are \MacCalendarCallShort\ and \MacCalendarCallLong\ of forward.  A direct
-price audit finds a worst violation of only \MacCalPriceGridWorst.  The
+For the two shortest SPY expiries, a full-grid check of volatility order
+flags a \MacCalGapVolBp\ vol-bp crossing at $k=\MacCalGapArgmaxK$, far
+outside the common quote span $[\MacCalSpanLo,\MacCalSpanHi]$.  The
+corresponding calls are \MacCalendarCallShort\ and \MacCalendarCallLong\ of
+forward.  The same check on prices finds a worst violation of only
+\MacCalPriceGridWorst.  The
 crossing is a disagreement between extrapolations in a region where Black
 inversion is ill-conditioned, not an economically available calendar trade.

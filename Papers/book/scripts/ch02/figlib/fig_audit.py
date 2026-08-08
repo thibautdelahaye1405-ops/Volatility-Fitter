@@ -73,17 +73,17 @@ def fig_jacobian() -> str:
     axes[1].set_xticks(np.arange(theta.size), labels, fontsize=6.0)
     axes[1].set_xlabel("parameter")
     axes[1].set_ylabel("column relative error vs central FD")
-    panel(axes[1], "b", "an independent derivative audit")
+    panel(axes[1], "b", "an independent derivative check")
 
     save(fig, "fig_jacobian")
 
     STORE.add("jacobian", "JacobianMaxRelErr", sci(float(rel_err.max())),
               "worst column relative error, analytic vs central FD")
     STORE.add("jacobian", "JacobianParams", str(theta.size),
-              "parameter count P on the audited node")
+              "parameter count P on the test node")
     STORE.add("jacobian", "JacobianStrikes", str(k.size),
-              "quoted strikes on the audited node")
-    return f"jacobian audit: max column rel err {rel_err.max():.1e}"
+              "quoted strikes on the test node")
+    return f"jacobian check: max column rel err {rel_err.max():.1e}"
 
 
 def fig_butterfly() -> str:
@@ -134,7 +134,7 @@ def fig_butterfly() -> str:
 
     rel = np.abs(fly - f_strike) / np.maximum(f_strike, 1e-12)
     STORE.add("butterfly", "ButterflyMin", sci(float(fly.min())),
-              "smallest discrete butterfly value on the audited strip")
+              "smallest discrete butterfly value on the test strip")
     STORE.add("butterfly", "ButterflyWidth", num(width, 2),
               "butterfly half-structure width in strike/forward units")
     STORE.add("butterfly", "ButterflyDensityRelErrPct",

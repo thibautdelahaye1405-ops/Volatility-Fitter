@@ -30,7 +30,7 @@ specifications.  Real nodes are rebuilt from the frozen coefficients rather
 than refitted, and the rebuilt curves agree with the stored curves to
 \MacRebuildWorstBp\ vol bp in the worst case.  The script emits both the 14
 figure PDFs and the LaTeX macro file supplying every empirical value in the
-chapter.  Randomized audits use fixed seeds.  Timing values follow a fixed
+chapter.  Randomized batteries use fixed seeds.  Timing values follow a fixed
 interleaved protocol but vary with the machine.
 
 The synthetic double-hump target is a fixed two-component lognormal mixture,
@@ -43,6 +43,6 @@ create a different dataset and is not part of reproduction.
 One family-level diagnostic is retained with the data.  The two shortest SPY
 expiries cross in implied-volatility space only far outside their common quote
 span, at call prices near numerical zero.  Their direct normalized call prices
-remain ordered to \MacCalPriceGridWorst\ on the audited grid.  Keeping both
+remain ordered to \MacCalPriceGridWorst\ on the full grid.  Keeping both
 measurements makes the support-confinement example of \cref{sec:calendar}
 reproducible without interpreting the picture by eye.

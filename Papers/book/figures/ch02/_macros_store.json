@@ -476,12 +476,12 @@
  },
  "JacobianParams": {
   "value": "17",
-  "meaning": "parameter count P on the audited node",
+  "meaning": "parameter count P on the test node",
   "section": "jacobian"
  },
  "JacobianStrikes": {
   "value": "94",
-  "meaning": "quoted strikes on the audited node",
+  "meaning": "quoted strikes on the test node",
   "section": "jacobian"
  },
  "CalendarGapBp": {
@@ -536,7 +536,7 @@
  },
  "ButterflyMin": {
   "value": "\\ensuremath{1.3\\times10^{-2}}",
-  "meaning": "smallest discrete butterfly value on the audited strip",
+  "meaning": "smallest discrete butterfly value on the test strip",
   "section": "butterfly"
  },
  "ButterflyWidth": {
@@ -601,7 +601,7 @@
  },
  "CertSlices": {
   "value": "27",
-  "meaning": "randomized slices in the reduced audit battery",
+  "meaning": "randomized slices in the reduced test battery",
   "section": "certification"
  },
  "CertOrdersList": {
@@ -856,12 +856,12 @@
  },
  "MultiStartCount": {
   "value": "10",
-  "meaning": "randomized starts per node in the basin audit",
+  "meaning": "randomized starts per node in the basin search",
   "section": "multistart"
  },
  "MultiStartNodes": {
   "value": "2",
-  "meaning": "nodes audited (SPY Dec and the long NVDA node)",
+  "meaning": "nodes tested (SPY Dec and the long NVDA node)",
   "section": "multistart"
  },
  "MultiStartBasins": {
@@ -896,7 +896,7 @@
  },
  "AuditSliceCount": {
   "value": "27",
-  "meaning": "randomized-audit slice count (alias)",
+  "meaning": "randomized-battery slice count (alias)",
   "section": "aliases"
  },
  "AuditBoundsWorst": {
@@ -921,7 +921,7 @@
  },
  "CalGapVolBp": {
   "value": "1840.6",
-  "meaning": "vol-space order-audit worst gap (alias)",
+  "meaning": "vol-space order-check worst gap (alias)",
   "section": "aliases"
  },
  "CalPriceGridWorst": {
@@ -986,7 +986,7 @@
  },
  "CalGapArgmaxK": {
   "value": "+0.981",
-  "meaning": "argmax log-moneyness of the calendar order-audit gap (signed)",
+  "meaning": "argmax log-moneyness of the calendar order-check gap (signed)",
   "section": "aliases"
  },
  "CalSpanLo": {

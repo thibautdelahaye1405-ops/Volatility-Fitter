@@ -82,9 +82,9 @@ def multistart() -> str:
                      f" main spread {spread:.1e}, dIV {div_bp:.2f} bp")
 
     STORE.add("multistart", "MultiStartCount", str(N_STARTS),
-              "randomized starts per node in the basin audit")
+              "randomized starts per node in the basin search")
     STORE.add("multistart", "MultiStartNodes", "2",
-              "nodes audited (SPY Dec and the long NVDA node)")
+              "nodes tested (SPY Dec and the long NVDA node)")
     STORE.add("multistart", "MultiStartBasins", str(worst_basins),
               "distinct optima found (worst node); 1 = single basin")
     STORE.add("multistart", "MultiStartWorstDTheta", sci(worst_dtheta),

@@ -74,12 +74,12 @@ tolerance.  Across the traded strike span, the analytic derivatives of
 $w(k)$ are also inserted in \eqref{eq:durrleman} on a dense grid and required
 to satisfy $g_{\rm D}\ge-10^{-4}$.
 
-An independent randomized battery prices \MacAuditSliceCount\ admissible
+An independent randomized battery prices \MacCertSlices\ admissible
 slices across several orders and stress classes at sub-grid strikes.  Its
 worst errors in call bounds, butterflies, digitals, and agreement with a
 four-times-finer grid are respectively
-\MacAuditBoundsWorst, \MacAuditFlyWorst, \MacAuditDigitalWorst, and
-\MacAuditGridAgreeWorst\ in normalized price.  The exact constant-speed test
+\MacCertWorstBounds, \MacCertWorstButterfly, \MacCertWorstDigital, and
+\MacCertGridAgree\ in normalized price.  The exact constant-speed test
 of \cref{fig:exact} independently checks transport, normalization, tail
 correction, and root evaluation.  These numerical tests do not create
 validity; they verify that the discrete realization has preserved it to the

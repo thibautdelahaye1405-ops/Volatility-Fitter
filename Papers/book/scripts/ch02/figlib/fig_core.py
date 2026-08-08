@@ -185,7 +185,7 @@ def fig_exact() -> str:
     axes[0].set_xlabel(r"constant speed $s$")
     axes[0].set_ylabel("absolute error")
     axes[0].legend(loc="upper left", fontsize=7.0)
-    panel(axes[0], "a", r"audit against $m_s = -\log\frac{\pi s}{\sin \pi s}$")
+    panel(axes[0], "a", r"error against $m_s = -\log\frac{\pi s}{\sin \pi s}$")
 
     axes[1].plot(100.0 * atm_vols, mismatch, color=PALETTE["model"])
     axes[1].axhline(0.0, color=PALETTE["muted"], lw=0.7)
@@ -208,5 +208,5 @@ def fig_exact() -> str:
     STORE.add("exact", "ColdStartMismatchPct", num(mid, 1),
               "ATM variance mismatch of the variance-matched cold start"
               " at 20% vol, %")
-    return (f"exact audit: mu err {err_mu.max():.1e}, map err "
+    return (f"exact check: mu err {err_mu.max():.1e}, map err "
             f"{err_map.max():.1e}, cold start {mid:+.1f}%")

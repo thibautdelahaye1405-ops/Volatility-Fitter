@@ -1,6 +1,6 @@
 # Macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/gen_figures.py` into `paper_macros.tex`. Last write 2026-08-03.
+Emitted by `scripts/gen_figures.py` into `paper_macros.tex`. Last write 2026-08-07.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -109,10 +109,10 @@ Emitted by `scripts/gen_figures.py` into `paper_macros.tex`. Last write 2026-08-
 | `\MacDhValleyPeakLow` | `0.40` | valley-to-peak density ratio (low density) |
 | `\MacDhValleyPeakTrue` | `0.33` | valley-to-peak density ratio (true density) |
 | `\MacJacobianMaxRelErr` | `\ensuremath{3.7\times10^{-6}}` | worst column relative error, analytic vs central FD |
-| `\MacJacobianParams` | `17` | parameter count P on the audited node |
-| `\MacJacobianStrikes` | `94` | quoted strikes on the audited node |
+| `\MacJacobianParams` | `17` | parameter count P on the test node |
+| `\MacJacobianStrikes` | `94` | quoted strikes on the test node |
 | `\MacButterflyDensityRelErrPct` | `1.49` | worst relative gap butterflies vs continuous density, % |
-| `\MacButterflyMin` | `\ensuremath{1.3\times10^{-2}}` | smallest discrete butterfly value on the audited strip |
+| `\MacButterflyMin` | `\ensuremath{1.3\times10^{-2}}` | smallest discrete butterfly value on the test strip |
 | `\MacButterflyWidth` | `0.01` | butterfly half-structure width in strike/forward units |
 | `\MacCalendarCallLong` | `\ensuremath{1.6\times10^{-26}}` | longer-dated normalized call at the gap strike |
 | `\MacCalendarCallShort` | `\ensuremath{5.4\times10^{-107}}` | short-dated normalized call at the gap strike |
@@ -134,7 +134,7 @@ Emitted by `scripts/gen_figures.py` into `paper_macros.tex`. Last write 2026-08-
 | `\MacTicketStrike` | `800` | strike of the worked SPY December call |
 | `\MacCertGridAgree` | `\ensuremath{2.3\times10^{-9}}` | worst 8001-vs-32001-point grid price disagreement |
 | `\MacCertOrdersList` | `4, 8, and 16` | orders covered by the battery |
-| `\MacCertSlices` | `27` | randomized slices in the reduced audit battery |
+| `\MacCertSlices` | `27` | randomized slices in the reduced test battery |
 | `\MacCertWorstBounds` | `\ensuremath{1.1\times10^{-11}}` | worst violation of the no-arbitrage call bounds |
 | `\MacCertWorstButterfly` | `\ensuremath{8.2\times10^{-13}}` | worst negative strike-space butterfly |
 | `\MacCertWorstDigital` | `\ensuremath{1.5\times10^{-12}}` | worst digital (call-spread slope) violation |
@@ -176,17 +176,17 @@ Emitted by `scripts/gen_figures.py` into `paper_macros.tex`. Last write 2026-08-
 | `\MacPhantomDragToBp` | `1095.0` | worst far-quote error with the calendar floor on the FULL z-grid ledger, vol bp (same pair) |
 | `\MacTwoGridParamAgree` | `\ensuremath{1.4\times10^{-6}}` | max \|dtheta\| between 2001- and 8001-point optimization grids, SPY Dec |
 | `\MacMultiStartBasins` | `1` | distinct optima found (worst node); 1 = single basin |
-| `\MacMultiStartCount` | `10` | randomized starts per node in the basin audit |
-| `\MacMultiStartNodes` | `2` | nodes audited (SPY Dec and the long NVDA node) |
+| `\MacMultiStartCount` | `10` | randomized starts per node in the basin search |
+| `\MacMultiStartNodes` | `2` | nodes tested (SPY Dec and the long NVDA node) |
 | `\MacMultiStartWorstDIvBp` | `0.00` | worst spread of max-IV-error across starts, vol bp |
 | `\MacMultiStartWorstDTheta` | `\ensuremath{2.3\times10^{-6}}` | worst max \|dtheta\| within the main cluster |
 | `\MacAuditBoundsWorst` | `\ensuremath{1.1\times10^{-11}}` | worst call-bound violation (alias) |
 | `\MacAuditDigitalWorst` | `\ensuremath{1.5\times10^{-12}}` | worst digital violation (alias) |
 | `\MacAuditFlyWorst` | `\ensuremath{8.2\times10^{-13}}` | worst butterfly violation (alias) |
 | `\MacAuditGridAgreeWorst` | `\ensuremath{2.3\times10^{-9}}` | worst 8001-vs-32001-grid price disagreement (alias) |
-| `\MacAuditSliceCount` | `27` | randomized-audit slice count (alias) |
-| `\MacCalGapArgmaxK` | `+0.981` | argmax log-moneyness of the calendar order-audit gap (signed) |
-| `\MacCalGapVolBp` | `1840.6` | vol-space order-audit worst gap (alias) |
+| `\MacAuditSliceCount` | `27` | randomized-battery slice count (alias) |
+| `\MacCalGapArgmaxK` | `+0.981` | argmax log-moneyness of the calendar order-check gap (signed) |
+| `\MacCalGapVolBp` | `1840.6` | vol-space order-check worst gap (alias) |
 | `\MacCalPriceGridWorst` | `\ensuremath{2.2\times10^{-15}}` | worst price-space violation, adjacent pairs on the display grid (alias) |
 | `\MacCalSpanHi` | `+0.016` | common quote span, upper edge (signed) |
 | `\MacCalSpanLo` | `-0.028` | common quote span, lower edge (signed) |

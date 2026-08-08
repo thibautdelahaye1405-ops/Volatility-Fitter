@@ -133,7 +133,7 @@ def fig_calendar() -> str:
                  color=PALETTE["ink"])
     axes[1].axvline(forensic["gap_k"], color=PALETTE["muted"], lw=0.8, ls=":")
     axes[1].annotate(
-        f"audit gap {forensic['gap_bp']:.0f} bp; both calls\n$\\leq$ "
+        f"order gap {forensic['gap_bp']:.0f} bp; both calls\n$\\leq$ "
         f"{max(forensic['call_short'], forensic['call_long']):.0e}$\\,F$ "
         "— beyond double-\nprecision resolution",
         (forensic["gap_k"], end_vol[long_.expiry]), xytext=(-14, -66),

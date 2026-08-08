@@ -33,13 +33,13 @@ _PURE = [
     ("SnapNodeCount", "NodeCount", "total fitted nodes (alias)"),
     ("SnapMedianRmsBp", "MedianRmsBp", "median per-node rms, vol bp (alias)"),
     ("SnapWorstRmsBp", "WorstRmsBp", "worst per-node rms, vol bp (alias)"),
-    ("AuditSliceCount", "CertSlices", "randomized-audit slice count (alias)"),
+    ("AuditSliceCount", "CertSlices", "randomized-battery slice count (alias)"),
     ("AuditBoundsWorst", "CertWorstBounds", "worst call-bound violation (alias)"),
     ("AuditFlyWorst", "CertWorstButterfly", "worst butterfly violation (alias)"),
     ("AuditDigitalWorst", "CertWorstDigital", "worst digital violation (alias)"),
     ("AuditGridAgreeWorst", "CertGridAgree",
      "worst 8001-vs-32001-grid price disagreement (alias)"),
-    ("CalGapVolBp", "CalendarGapBp", "vol-space order-audit worst gap (alias)"),
+    ("CalGapVolBp", "CalendarGapBp", "vol-space order-check worst gap (alias)"),
     ("CalPriceGridWorst", "CalendarPriceWorst",
      "worst price-space violation, adjacent pairs on the display grid (alias)"),
     ("GuardQuoteCountZeroDte", "NvdaOneDayNQuotes",
@@ -114,7 +114,7 @@ def aliases() -> str:
               "max median analytic-vs-FD speedup across orders")
     STORE.add("aliases", "CalGapArgmaxK",
               f"{_parse(STORE.value('CalendarGapK')):+.3f}",
-              "argmax log-moneyness of the calendar order-audit gap (signed)")
+              "argmax log-moneyness of the calendar order-check gap (signed)")
     STORE.add("aliases", "CalSpanLo",
               f"{_parse(STORE.value('CalendarSpanLo')):+.3f}",
               "common quote span, lower edge (signed)")

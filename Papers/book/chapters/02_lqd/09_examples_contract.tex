@@ -159,8 +159,8 @@ order.
 \subsection{The contract}
 \label{sec:limits}
 
-Two things remain: how to read a fitted slice, and what precisely is
-claimed.
+Two things remain: how to read a fitted slice, and what the results do
+and do not cover.
 
 A fitted slice should be read in the same order as the theory.  First inspect quote residuals over the retained span.  Then read the
 three ATM handles as local level, digital, and density information.  Next
@@ -177,11 +177,11 @@ calendar diagnostic from being mistaken for a directly observed quote.
 >{\raggedright\arraybackslash}p{0.30\textwidth}@{}}
 \toprule
 \textbf{Structural} & \textbf{Numerically controlled} &
-\textbf{Outside the claim}\\
+\textbf{Outside the scope}\\
 \midrule
 Positive density, unit mean, and butterfly-free calls for every admissible
 slice & Interpolation monotonicity, traded-range density, and randomized
-price audits & Atoms, mass at zero, density gaps, bounded support, and
+price checks & Atoms, mass at zero, density gaps, bounded support, and
 Gaussian-or-faster tails\\[4pt]
 Exact exponential tail scales, moment strip, and Lee limits & Tail
 quadrature, exponent budgets, grid convergence, and finite-strike wing prices

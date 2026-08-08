@@ -1,7 +1,7 @@
 \section{Numerical implementation}
 \label{app:implementation}
 
-This appendix records the load-bearing parts of a reference implementation.
+This appendix records the core of a reference implementation.
 The pseudocode follows the notation of the chapter; tail-sensitivity terms and
 error handling are described after the listings.
 
@@ -256,8 +256,8 @@ The exact timings depend on hardware and caches.  The portable facts are the
 $O(Pn_{\rm grid})$ analytic complexity and the removal of repeated builds.
 The reported medians and interquartile ranges come from a single run that
 alternates analytic and finite-difference solves after warm-up.  Alternation
-reduces drift from cache state and background load; medians avoid a
-best-of-$n$ claim.  A timing table should always travel with its grid size,
+reduces drift from cache state and background load; medians avoid
+best-of-$n$ selection.  A timing table should always travel with its grid size,
 quote count, order, solver tolerances, and machine context.
 
 For a new implementation, the shortest reliable porting sequence is:

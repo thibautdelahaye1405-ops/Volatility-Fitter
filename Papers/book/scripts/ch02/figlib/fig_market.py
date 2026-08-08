@@ -41,7 +41,7 @@ def _draw_quotes(ax, node: data.Node, band: bool) -> None:
     """Quote mids as dots; whiskers = haircut band (live) or raw bid-ask.
 
     On SPY every haircut band degenerates to the mid (spreads sit far
-    inside 2h), so the honest picture there is the raw bid-ask whisker;
+    inside 2h), so the informative picture there is the raw bid-ask whisker;
     on NVDA the haircut band is alive and is what the calibrator saw.
     """
     lo = node.band_lo if band else node.iv_bid
