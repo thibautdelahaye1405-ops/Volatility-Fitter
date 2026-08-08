@@ -295,8 +295,8 @@ Structure: three parts, eleven chapters.
 | **Part I — Models** | | | |
 | 2  | The log-quantile-density model | done | DONE 2026-08-08 |
 | 3  | SVI-JW and superposition | done | DONE 2026-08-08 |
-| 4  | Local volatility | done | pending (light) |
-| 5  | Integrals and wings | done | pending (light) |
+| 4  | Local volatility | done | DONE 2026-08-08 |
+| 5  | Integrals and wings | done | DONE 2026-08-08 |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | done | pending (moderate) |
 | 7  | Removing early exercise | done | pending (moderate) |
@@ -376,3 +376,18 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   `v` entry reworded; the 𝒵 entries stay for the ch. 10 session.
   Build: 231 pages, chapter boundaries unchanged, 1 overfull
   (pre-existing), no undefined refs.  Next: Chapter 4 (light).
+- 2026-08-08 (second session): Chapters 4 and 5 re-registered (light).
+  Banned-grep zero (incl. refuse*/disclose* replace-on-sight) in both
+  chapters' .tex.  Ch. 4: the "promise/promised" section transitions
+  reworked (validity structural rather than policed; "the promised
+  discipline" -> the discrete side); "honest caveat" -> one limit of
+  the repair; captions "audited" -> "checked"; the refined "(audit)"
+  operator loses the parenthetical (ch. 5's appendix follows).
+  Ch. 5: the three-route agreement language moves from audit to
+  test/check; "refuses to select" -> bounds without selecting;
+  "honesty requires showing it" -> showing it takes that range;
+  "disclose/disclosed" -> state/stated throughout; "Part II starts by
+  earning them" -> inferring them from the quotes.  NO figure text
+  changed in either chapter, so no figures regenerated.  Build: 231
+  pages, boundaries unchanged (65/89/109), 1 pre-existing overfull,
+  no undefined refs.  Next: Chapter 6 (moderate).
