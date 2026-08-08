@@ -302,7 +302,7 @@ Structure: three parts, eleven chapters.
 | 7  | Removing early exercise | done | DONE 2026-08-08 |
 | 8  | The market's clock | done | DONE 2026-08-08 |
 | **Part III — Dynamics and inference** | | | |
-| 9  | Spot–vol dynamics | done | pending (moderate) |
+| 9  | Spot–vol dynamics | done | DONE 2026-08-08 |
 | 10 | Filtering and priors | done | pending (heavy) |
 | 11 | The graph | done | pending (heavy) |
 
@@ -455,3 +455,26 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   1 pre-existing overfull, no undefined refs.  Next: Chapter 9
   (moderate — "honest" in the wings/field sections; audit language
   around the dt-check).
+- 2026-08-08 (sixth session): Chapter 9 re-registered (moderate — the
+  last moderate chapter; Part I-III up to ch. 9 now done).  Banned-
+  grep zero except the protocol-protected macro NAME
+  \MacSsrRepAuditPct (no alias layer in ch. 9; prose around it says
+  "marching-step check").  Section retitles: §9.2 "Two coordinate
+  systems, two sign rules" (was "one discipline"), §9.4 "The stakes
+  of the choice: delta" (was "The price of the choice").  The
+  dt-check: "audit" -> check in the appendix and the figlib meaning
+  string; fig_ssr_reprice re-run (deterministic, values
+  byte-identical).  "An honest clock" -> the market's clock (ch. 8
+  continuity, 2 sites); "owes the reader a confession" -> the two
+  derivations do not share a chart; "note of honesty" -> note of
+  precision; "second-order honesty" -> second-order error; "the
+  honest arbiter" -> the arbiter; "bookkeeping" -> sign conventions;
+  "discipline" -> rule; "load-bearing" -> carries more weight;
+  "re-audited" -> re-checked; "no snapshot can audit" -> can test.
+  Build: 231 pages, boundaries unchanged (165/183), 1 pre-existing
+  overfull, no undefined refs.  Next: Chapter 10 (HEAVY — the frame
+  "two honest budgets"/"the audit: were the error bars true?"/"the
+  dial nobody may own" re-registers per the renaming table; 𝒵
+  becomes the standardized-error test everywhere; the audit figure's
+  panel titles and caption regenerate; §10.7 redrafted from the
+  identities up; NOTATION.md 𝒵 meaning text in the same session).
