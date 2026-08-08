@@ -16,9 +16,9 @@ growth rates in total variance,
 \]
 the same $\beta_L,\beta_R$ carried since \cref{sec:tails} (a limsup is
 the largest value a ratio keeps returning to; for every smile in this
-book the ratios simply converge).  The claim is that no admissible
-smile --- no smile that prices a positive law with mean one --- can
-have either slope above $2$.
+book the ratios simply converge).  No admissible smile --- no smile
+that prices a positive law with mean one --- can have either slope
+above $2$.
 
 The proof rests on one physical fact and one computation.  The fact:
 a call at an absurdly high strike must be worth almost nothing.
@@ -98,7 +98,7 @@ large strikes with $w(k)\ge\beta k$.  The Black function increases in
 its variance argument, so at those strikes
 $c(k)=\Black(k,w(k))\ge\Black(k,\beta k)$, and by
 \eqref{eq:vsraylimits} the right side approaches $1$.  A smile that
-steep prices calls that refuse to become worthless, contradicting
+steep prices calls that never become worthless, contradicting
 \eqref{eq:vscalldies}.
 
 Left wing.  The mirror argument runs through the put, measured per
@@ -142,7 +142,7 @@ curves are smiles of any law.}
 \Cref{fig:vsceiling} draws the computation.  Each curve is
 $\Black(k,\beta k)$ for one slope, out to $k=400$ on a logarithmic
 strike axis --- far past anything tradeable, because the convergence
-is slow and honesty requires showing it.  The three regimes of
+is slow and showing it takes that range.  The three regimes of
 \eqref{eq:vsraylimits} separate cleanly: the $\beta<2$ curves sink to
 zero (the $\beta=1.6$ ray reads \MacVsRayBelowLim\ at the right
 edge), the $\beta>2$ curves climb toward one (\MacVsRayAboveLim\ for
@@ -196,4 +196,4 @@ What mathematics gives, then, is a cone: every admissible wing lies
 between slope $0$ and slope $2$, and its slope names its tail's moment
 order.  What mathematics does not give is a selection.  The next
 section sharpens the cone into a finite-strike envelope anchored at
-the last quote --- and shows that it, too, refuses to select.
+the last quote --- and shows that it, too, bounds without selecting.

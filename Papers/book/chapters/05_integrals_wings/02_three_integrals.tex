@@ -34,7 +34,7 @@ Then, whenever the integrals converge,
 \end{proposition}
 
 \begin{proof}
-The claim reduces to a pointwise identity: for every $y>0$,
+The proposition reduces to a pointwise identity: for every $y>0$,
 \begin{equation}
 \varphi(y)=\varphi(1)+\varphi'(1)(y-1)
 +\int_0^{1}\varphi''(K)(K-y)^+\dd K
@@ -188,10 +188,10 @@ w_{\rm vs}
 One number; an integral against the smile, an integral against the
 law, an integral against the field.  Each equality is a theorem, so
 any two routes evaluated on the same model must agree --- and
-checking that they do is a free, end-to-end audit of an
+checking that they do is a free, end-to-end test of an
 implementation.  (Route two costs one \emph{quadrature} --- one
-numerical integral --- and the audits below are limited only by
-quadrature accuracy.)
+numerical integral --- and the agreement checks below are limited only
+by quadrature accuracy.)
 
 \begin{figure}[htbp]
 \centering
@@ -234,7 +234,7 @@ axis --- and the pairing \eqref{eq:vsoccupation} weighs the heatmap by
 the contours.  The marker at the origin of the fan is where
 \eqref{eq:vssource} reads the answer.
 
-The field route's audit deserves its own sentence, because it teaches
+The field route's check deserves its own sentence, because it teaches
 the same lesson as Chapter~4's two operators.  On the sheet, the
 strike-side route \eqref{eq:vsrepl} and the field-side route
 \eqref{eq:vssource} are both computed by finite differences, and both
@@ -243,8 +243,8 @@ the two reads differ by \MacVsAgreeFieldCoarseBp\ vol bp; refine the
 step eightfold and the gap collapses to \MacVsAgreeFieldBp\ vol bp,
 halving with each halving of the step.  The mathematics says the
 integrals are equal; the computation agrees --- in the limit, at the
-first-order rate the schemes promise, and measuring that convergence
-is the audit.
+schemes' first-order rate, and measuring that convergence is the
+check.
 
 One structural observation organizes all of this, and it is worth
 stating because it predicts which route each model finds cheap.  The
@@ -252,7 +252,7 @@ fair strike is \emph{linear} in the option prices and \emph{linear}
 in the quantile $Q$ --- both appear under plain integral signs in
 \eqref{eq:vsmaster} --- so a model whose own coordinates are one of
 those objects gets the number, and by the same linearity its
-parameter derivatives, for the price of one quadrature: LQD holds
+parameter derivatives, from one quadrature: LQD holds
 $Q$, and the law route is a dot product.  It is \emph{not} linear in
 the smile $w(k)$ --- the smile enters \eqref{eq:vsrepl} through the
 nonlinear Black function --- so a model whose coordinates are the

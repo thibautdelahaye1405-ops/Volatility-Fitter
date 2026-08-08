@@ -72,16 +72,16 @@ call is floored at $10^{-12}$.  At these settings the quadrature
 error is far below every number quoted.  The law-side integral rides
 each slice's own fixed log-odds grid.
 
-\emph{The field-side audit.}  The sheet is Chapter~4's whole-surface
-SPY calibration, unchanged.  Both of its var-swap routes run on an
-audit lattice with the calibration lattice's strike step, widened to
-strike ratio $12$ so the static replication sees the entire wing the
-extrapolated field implies; the put leg is cut off below strike
+\emph{The field-side check.}  The sheet is Chapter~4's whole-surface
+SPY calibration, unchanged.  Both of its var-swap routes run on a
+dedicated lattice with the calibration lattice's strike step, widened
+to strike ratio $12$ so the static replication sees the entire wing
+the extrapolated field implies; the put leg is cut off below strike
 ratio $0.01$ (moving the cutoff to $0.001$ changes nothing at the
 quoted precision).  Both routes are first-order in the time step, so
-the audit reports the pair of reads at the march's own step and at an
-eightfold refinement; the gap halves with the step, as first order
-promises.
+the check reports the pair of reads at the march's own step and at an
+eightfold refinement; the gap halves with the step, at the
+first-order rate.
 
 \emph{The envelope.}  The drawn cone is built from the Black prices
 of the last two call-side quote \emph{mids}.  The per-family

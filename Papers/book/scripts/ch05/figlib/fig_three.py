@@ -2,7 +2,7 @@
 
 The strike and law panels live on the running LQD slice (Ch. 3 protocol fit);
 the field panel lives on Chapter 4's calibrated whole-surface SPY sheet.  The
-field-side value (backward source solve) is audited against the same sheet's
+field-side value (backward source solve) is checked against the same sheet's
 own strike-side replication on its lattice — production code on both routes.
 """
 
