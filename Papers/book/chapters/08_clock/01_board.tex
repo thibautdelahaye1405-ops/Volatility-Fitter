@@ -37,7 +37,7 @@ Three of the eight readings make the puzzle by themselves:
 The same underlier, the same afternoon, three expiries two and four
 weeks apart --- and the middle one is quoted
 \MacClkBoardDipBp\ vol bp below the shortest.  Is NVDA's volatility
-falling or rising with maturity?  The honest answer is that the
+falling or rising with maturity?  The answer is that the
 question is broken, and the goal of this section is to see why.
 
 Ask the question in the right units.  A volatility is a rate; before
@@ -98,8 +98,9 @@ between consecutive expiries.  (This per-interval rate is called
 and a starring role.)  The two computations above are the third and
 fourth steps: the low step is the pre-report lull, and the shaded
 interval --- the one containing the scheduled report --- runs hot.
-Panel~(b) is panel~(a) with the division done honestly: nothing here
-is erratic, it is one hot window sitting among cooler ones.
+Panel~(b) is panel~(a) with the division done interval by interval:
+nothing here is erratic, it is one hot window sitting among cooler
+ones.
 
 \begin{figure}[htbp]
 \centering
@@ -136,7 +137,7 @@ into one window.
 
 There are two ways to respond.  One is to enrich the model: add a jump
 of random size at the report date, price options on the mixture, and
-carry the machinery of jump models from here on.  That road is real
+price with jump models from here on.  That road is real
 but expensive, and this book does not take it (\cref{sec:clkfrozen}
 says where it lives in the literature).  The other response is older
 and much cheaper: keep the model, change the \emph{clock}.  If an

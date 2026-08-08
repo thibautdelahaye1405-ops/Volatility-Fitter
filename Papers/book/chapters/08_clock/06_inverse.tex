@@ -10,7 +10,7 @@ number, and the board's own prices carry an opinion about them: we
 accrued \MacClkBoardHotOverLull$\times$ the variance per day of its
 neighbour.  This section turns that observation into an estimator ---
 read the calendar \emph{off} the prices --- and, just as importantly,
-measures what such an estimator can and cannot promise.
+measures what such an estimator can and cannot deliver.
 
 Set up the objects.  The data is the quoted ladder: expiries
 $t_1<\cdots<t_n$ with at-the-money total variances $w_1,\dots,w_n$
@@ -118,8 +118,8 @@ convention --- is exactly that: a convention, recorded in the
 contract table, not an estimate.  When the report date is public,
 type it in; the \emph{size} is what the board can be asked for.
 
-What can the size estimator promise?  \Cref{fig:clkident} is the
-audit, run on boards where the truth is planted: a flat clock
+What can the size estimator deliver?  \Cref{fig:clkident} is the
+planted-event study: a flat clock
 volatility, one event of known size, solve
 \eqref{eq:clkobj}, compare.  Panel~(a) plots recovered against
 planted size on three boards.  On a dense board --- expiries from a
@@ -134,11 +134,11 @@ $20\%$, the curve is \emph{zero} until the planted event exceeds
 short.  (On every board the toe of the curve --- planted events
 under a day or so --- reports as exactly zero; the last paragraph of
 the derivation below says why.)  Three behaviours, one mechanism,
-and it is worth deriving because it is the honest price tag of the
+and it is worth deriving because it is the cost of the
 sparsity charge.
 
-Work on the audit's configuration: one live candidate $N$ (the
-others parked at zero, where the audit's solve indeed leaves them)
+Work on the study's configuration: one live candidate $N$ (the
+others parked at zero, where the solve indeed leaves them)
 against a planted truth $N^\ast$.  Two facts start the derivation.
 On this board the flatness part of \eqref{eq:clkobj} is
 \emph{minimized exactly at the truth}: the generator's ladder is flat
@@ -174,7 +174,7 @@ N^\ast-\widehat N
 --- inversely with the \emph{fourth} power of the board's volatility,
 and directly with the \emph{square} of the interval's width, with the
 day-count conversions and term counts absorbed into the
-proportionality (the audit's measured pair,
+proportionality (the study's measured pair,
 \MacClkIdentShrinkStrongD\ against \MacClkIdentShrinkWeakD\ days,
 carries rounding at the small end).  Halve the volatility and the
 shrinkage grows roughly sixteenfold; stretch the bracketing interval
@@ -192,14 +192,14 @@ about \MacClkIdentWallWeeklyPct\% volatility; the quarterly board not
 until about \MacClkIdentWallQuarterlyPct\%.  Below the wall the
 flatness gain a small event offers cannot clear the per-day charge,
 and the solver --- correctly, by its own lights --- says nothing.
-One more audit line completes the promise: handed a perfectly flat
-ladder, the solver installs exactly \MacClkIdentFlatDays\ days.  A
+One more line of the study completes the picture: handed a perfectly
+flat ladder, the solver installs exactly \MacClkIdentFlatDays\ days.  A
 sparsity prior's virtue is precisely that silence is its default.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_clk_ident.pdf}
-\caption{The planted-event audit.  (a)~Recovered vs planted size:
+\caption{The planted-event study.  (a)~Recovered vs planted size:
 near-exact on the dense $40\%$ board (shrinkage
 $\le\MacClkIdentShrinkStrongD$\,d for planted sizes of 2\,d and up),
 shrunk by up to \MacClkIdentShrinkWeakD\,d at $20\%$, and blind below

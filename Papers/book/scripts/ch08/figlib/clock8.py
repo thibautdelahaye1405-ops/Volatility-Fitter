@@ -5,7 +5,7 @@ day-weighted variance clock tau(t), interval forward variances F_i =
 dw_i/dtau_i, and the calibration objective J(N) with its flatness,
 monotonicity, sparsity and ridge terms -- so every figure exercises the
 displayed mathematics and nothing else.  Constants are the reference
-values disclosed in appendix 8.A.
+values stated in appendix 8.A.
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def solve(t, w, horizon: float | None = None):
 
     ``horizon`` limits candidates to expiries at or before it (the first
     interval past the horizon then anchors the tail); solved events below
-    MIN_DAYS are dropped, as disclosed.  Returns the full-length N vector.
+    MIN_DAYS are dropped, as stated.  Returns the full-length N vector.
     """
     t = np.asarray(t, dtype=float)
     active = (

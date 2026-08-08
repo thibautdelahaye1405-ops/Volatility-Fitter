@@ -1,14 +1,14 @@
 \section{The clock of the frozen board}
 \label{sec:clkfrozen}
 
-The estimator is audited; point it at the real data.  This section
+The estimator is measured; point it at the real data.  This section
 runs \eqref{eq:clkobj} on the two frozen ladders --- NVDA, where the
-chapter began, and SPY --- and reads the results with the discipline
-\cref{sec:clkinverse} paid for.
+chapter began, and SPY --- and reads the results within the limits
+\cref{sec:clkinverse} measured.
 
-\Cref{fig:clkread}(a) is the disciplined run.  Candidates are allowed
+\Cref{fig:clkread}(a) is the run with a horizon.  Candidates are allowed
 at the first five expiries --- through December 2026, a
-\emph{horizon} choice disclosed in the contract --- while the later
+\emph{horizon} choice recorded in the contract --- while the later
 intervals carry no candidates and hold the ladder's far end in place
 (they sit beyond the panel's right edge; panel~(b) shows them).  The orange steps are the calendar ladder of
 \cref{fig:clkboard}(b); the blue steps are the same increments
@@ -32,7 +32,7 @@ untouched --- orange peeking out behind blue --- and the in-horizon
 spread of the ladder tightens from \MacClkReadHeroSpreadBeforeBp\ to
 \MacClkReadHeroSpreadAfterBp\ variance bp.
 
-Now read panel~(a) honestly, in two directions.  What the solver has
+Now read panel~(a) in two directions.  What the solver has
 genuinely done is recover, \emph{from prices alone}, that the window
 between August~21 and September~18 carries about seven ordinary days
 more variance than its calendar length --- with no access to a news
@@ -74,7 +74,7 @@ alone, an ordinary three-month stretch whose elevated accrual is some
 mixture of two more earnings reports and genuine term-structure
 shape.  Nothing malfunctioned.  Handed enough candidates, the
 flatness ideal is achievable, and the objective achieves it --- by
-telling the clock story about \emph{everything}.  A perfectly flat
+attributing \emph{everything} to the clock.  A perfectly flat
 blue ladder is the optimizer satisfied, not the truth found; the
 solver has no way to say ``this interval is hot for a reason the
 clock should not absorb.''  The horizon of panel~(a), and the human
@@ -95,7 +95,7 @@ board's median is \MacClkReadSpyMidVolPct\% --- the $\sigma^4$
 materiality wall of \cref{sec:clkinverse} prices small events out
 entirely.  A diversified index dilutes any
 single name's report to a fraction of a day; the solver's silence on
-SPY is the audit's flat-ladder promise kept on real data.  The
+SPY is the study's flat-ladder result repeated on real data.  The
 single name keeps an event clock; the index keeps the calendar.
 
 Three paragraphs of scope complete the chapter's subject.  First,
@@ -106,7 +106,7 @@ measured across decades, an exchange holiday adds far less variance
 than a trading day, because most variance arrives while markets
 trade \citep{FrenchRoll1986} --- and the same asymmetry separates a
 session hour from an overnight gap.  The day-weight idea continues
-below the day boundary without new machinery: a day becomes a
+below the day boundary without new structure: a day becomes a
 profile (so much of its weight during the session, so much
 overnight), and a scheduled morning print --- a CPI release at 8:30
 --- is simply an event whose date $t_e$ is a fraction of a day,
@@ -182,7 +182,7 @@ constant-accrual convention on the market's clock.\\
 Dates inside an interval are not identified
 (\cref{prop:clkident}); an event can only lower its own interval's
 $\mathcal{F}_i$. &
-The audit (\cref{fig:clkident}): shrinkage
+The study (\cref{fig:clkident}): shrinkage
 \MacClkIdentShrinkStrongD/\MacClkIdentShrinkWeakD\,d at
 $40\%/20\%$, quarterly wall at \MacClkIdentBlindD\,d, flat ladder
 $\to$ \MacClkIdentFlatDays\ days. &
@@ -215,7 +215,7 @@ the day currency, the normalization choice, the interpolation rule,
 the candidate placement, the solver's weights and horizon.  With this
 chapter, Part~II's work is complete: the raw board has been turned
 into forwards and discounts (Chapter~6), European prices
-(Chapter~7), and now readings on an honest clock --- the observation
+(Chapter~7), and now readings on the market's clock --- the observation
 is fully prepared.  What Part~III asks is what none of this statics
 can answer: when the spot moves, what happens to the smile?  The
 surface gives every derivative in the strike direction and none in

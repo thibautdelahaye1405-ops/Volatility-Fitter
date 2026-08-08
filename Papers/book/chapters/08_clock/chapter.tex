@@ -16,7 +16,7 @@
 %      the calendar-clock interpolation invents between quotes.
 %   4. Set up the inverse problem of reading a clock off prices --
 %      flatten event-time forward variance under a sparsity charge --
-%      and state its honest limits: dates inside an interval are
+%      and state its limits: dates inside an interval are
 %      unidentified, sizes are shrunk, and small events are invisible on
 %      quiet or coarse boards.
 %   5. Diagnose a real board: locate the earnings interval in the frozen
@@ -30,8 +30,8 @@
 
 \chaptersynopsis{Since Chapter~2 every smile in this book has carried a
 maturity variable $\tau$ called variance time, and every chapter so far
-has quietly set it equal to the calendar.  This chapter earns the
-distinction.  A scheduled event --- an earnings report, a macro print
+has quietly set it equal to the calendar.  This chapter separates
+them.  A scheduled event --- an earnings report, a macro print
 --- packs several ordinary days' variance into one calendar day, and a
 volatility read against the calendar then misbehaves in a recognizable
 way: the frozen NVDA board opens the chapter with an 18-day expiry
@@ -48,7 +48,7 @@ butterfly validity and calendar order while volatility readings scale
 by exactly $\sqrt{t/\tau}$, and works through an earnings week on paper
 --- the famous overnight volatility crush appears as a scheduled
 correction of a reading, with no price moving at all.  The clock then
-earns its keep twice: dense term-structure curves must be interpolated
+serves twice: dense term-structure curves must be interpolated
 on it, or a known event smears into phantom volatility at unquoted
 maturities; and the clock itself can be read off the board's own
 prices, by asking which small, sparse set of events makes forward

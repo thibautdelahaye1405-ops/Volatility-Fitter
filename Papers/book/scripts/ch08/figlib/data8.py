@@ -5,7 +5,7 @@ since Chapter 2 (``data/lqd_paper_snapshot_20260804_0208.json``), through
 Chapter 3's node loader.  Chapter 8 needs one number per (ticker, expiry)
 node: the at-the-money total implied variance, read from the prepared mid
 quotes by linear interpolation of w in log-moneyness at k = 0 (the plain
-rule disclosed in appendix 8.A).  Nothing is refetched and no smile is
+rule stated in appendix 8.A).  Nothing is refetched and no smile is
 refitted -- the clock story runs entirely on the ATM ladder.
 """
 

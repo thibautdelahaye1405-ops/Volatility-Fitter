@@ -3,14 +3,14 @@
 
 We know what the board says: some days carry more variance than
 others.  This section shows that the mathematics has a natural home
-for that fact.  The claim to be earned, first in a discrete
+for that fact.  The fact to establish, first in a discrete
 computation a first course can check and then as a named theorem, is
 this: \emph{the law of the underlying at expiry depends on the days
 only through their total variance --- the budget --- and not on how
 that budget is scheduled.}  Once that is true, ``which clock to use''
 becomes a genuine choice, because the prices cannot object.
 
-Do the discrete case honestly.  Let the log return of the underlying
+Do the discrete case in full.  Let the log return of the underlying
 over trading day $i$ be a random shock $\varepsilon_i$, normally
 distributed with mean zero and variance $\Delta w_i$ --- day $i$'s
 contribution to the total.  (Mean zero is a deliberate
@@ -86,7 +86,7 @@ only the ruler did.}
 \label{fig:clkwalk}
 \end{figure}
 
-The continuous version of this bookkeeping is a classical theorem.
+The continuous version of this additivity is a classical theorem.
 Chapter~5 wrote the underlying's motion as a diffusion,
 $\dd Y_s=\sqrt{v_s}\,Y_s\,\dd W_s$ --- $Y$ the forward-normalized
 level, $W$ a Brownian motion (the continuous limit of an unbiased
@@ -128,7 +128,7 @@ M_t \;=\; Z_{\mathcal{C}(t)}\qquad\text{for all }t .
 \]
 \end{theorem}
 
-Two remarks keep the statement honest at this book's level.  The
+Two remarks set the statement's scope at this book's level.  The
 growth condition just ensures the relabeled clock runs on forever, so
 that $Z$ is a full Brownian motion; it is harmless here, where the
 market keeps moving past any one expiry.  And the delicate step ---
@@ -174,7 +174,7 @@ accordingly modest, and dividing that modest $w$ by an
 like a volatility collapse.  The prices are consistent; the reading
 $\sigma_{\rm cal}$ is the artifact.
 
-One honest boundary before building the clock.  The theorem licenses
+One boundary before building the clock.  The theorem licenses
 a \emph{relabeling} of time; it does not predict $\mathcal{C}$.  The
 market's clock is random --- nobody knows Tuesday's variance in
 advance --- and what a fitting desk can carry is a deterministic

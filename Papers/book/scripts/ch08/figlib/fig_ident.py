@@ -1,4 +1,4 @@
-"""F6 -- what the inverse problem can promise: the planted-event audit.
+"""F6 -- what the inverse problem can deliver: the planted-event study.
 
 Synthetic boards whose truth is known: a flat clock volatility plus one
 planted event, solved by the chapter's calibrator.
@@ -55,7 +55,7 @@ def fig_clk_ident() -> str:
         for label, days, ev, sig, _, _ in boards
     }
 
-    # Macro'd audit facts.
+    # Macro'd study facts.
     strong = curves["dense, 40% vol"]
     weak = curves["dense, 20% vol"]
     quart = curves["quarterly, 20% vol"]
