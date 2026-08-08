@@ -303,7 +303,7 @@ Structure: three parts, eleven chapters.
 | 8  | The market's clock | done | DONE 2026-08-08 |
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics | done | DONE 2026-08-08 |
-| 10 | Filtering and priors | done | pending (heavy) |
+| 10 | Filtering and priors | done | DONE 2026-08-08 |
 | 11 | The graph | done | pending (heavy) |
 
 ## Infrastructure and build
@@ -478,3 +478,42 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   becomes the standardized-error test everywhere; the audit figure's
   panel titles and caption regenerate; §10.7 redrafted from the
   identities up; NOTATION.md 𝒵 meaning text in the same session).
+- 2026-08-08 (seventh session): Chapter 10 re-registered (the first
+  HEAVY pass).  Banned-grep zero except protocol-protected NAMES
+  (labels sec:/fig:infaudit, macros \MacFiltAudit*, file/function
+  fig_audit/fig_flt_audit, store key "audit" — the ch. 9
+  \MacSsrRepAuditPct precedent).  Renaming table applied in full:
+  §10.6 "Two variance budgets", §10.7 "Counting once, and testing the
+  stated variances", §10.5.2 "The gain is computed, not set", §10.7.2
+  "The standardized-error test" — the 𝒵 device is the
+  standardized-error test everywhere, and "consistent" is defined at
+  its first use (std(𝒵)=1: stated variances match realized errors);
+  the audit-run naming became mechanism naming (starved / true-scale
+  / widened).  Synopsis rewritten (no promise-kept frame); §10.7
+  redrafted from the identities up ("bookkeeping and conscience"
+  opener cut; the quote double count stated as mechanism;
+  "verdict"/"smuggled" gone); the "dial marked trust" paragraph
+  rebuilt around the gain as an output with definitions (§10.6) and
+  a test (§10.7).  "Honest budget / honesty points / honest repair /
+  convicts / disclosed / claims / admits" all replaced by mechanism;
+  "in other clothes" -> in other coordinates; "load-bearing" ->
+  decisive; the dangling "flapping" -> the flat directions.  ADDED
+  the canonical electrical picture (one analogy, two halves):
+  precisions add = conductances in parallel (§10.2.1), the harmonic
+  law = resistances in series, a dead leg = a near-infinite resistor
+  (§10.3.1).  Four figures regenerated for rendered text only
+  (fig_flt_gate "owns" -> carries in callout/ylabel; fig_flt_update
+  panel (b) "trust, computed per handle" -> "gains computed, not
+  set"; fig_flt_covar "turns the dial itself" -> "lowers the gain";
+  fig_flt_audit legends "honest budget" -> "true-scale budget" +
+  panel (b) "the audit curve" -> "the standardized-error test" +
+  meaning strings) — every macro value byte-identical, seed
+  untouched.  NOTATION.md: both 𝒵 meaning texts reworded (ch. 10
+  entry + the ch. 11 intro's "same audit statistic").  Build: 231
+  pages, boundaries unchanged (183/203), 1 pre-existing overfull
+  (ch. 3), no undefined refs.  Next: Chapter 11 (HEAVY, one session
+  — rename §11.4 and the §11.7 subsections per the table; the
+  synopsis, the "accountant" frame, the "refusals" list and the
+  closing pages carry most of the drift; fig_gr_complete panel (c)
+  title regenerates; the closing pages re-registered to end the book
+  like Milnor's last page, not a summation to the jury).
