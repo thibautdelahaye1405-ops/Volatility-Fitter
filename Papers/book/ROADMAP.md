@@ -299,7 +299,7 @@ Structure: three parts, eleven chapters.
 | 5  | Integrals and wings | done | DONE 2026-08-08 |
 | **Part II — The observation** | | | |
 | 6  | Forwards, dividends, and carry | done | DONE 2026-08-08 |
-| 7  | Removing early exercise | done | pending (moderate) |
+| 7  | Removing early exercise | done | DONE 2026-08-08 |
 | 8  | The market's clock | done | pending (moderate) |
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics | done | pending (moderate) |
@@ -411,3 +411,25 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   undefined refs.  Next: Chapter 7 (moderate — "honest" and
   refuse/disclose concentrated in §7.4 no-root and §7.7
   fitted-vs-discarded).
+- 2026-08-08 (fourth session): Chapter 7 re-registered (moderate).
+  Banned-grep zero.  The no-root device is now a FLAG throughout
+  ("honest output is a refusal" -> the output is a flag; "refuses it
+  honestly" -> returns a flag instead of a number; "its honest
+  refusal" -> its no-root flag; §7.4 subsection retitled "When the
+  root exists, and when it does not").  §7.7 retitled "How much it
+  matters, by population" — the population device replaces the
+  "honestly" framing; "honest bookkeeping of populations" -> the
+  measured split of populations.  "The subtraction is honest" ->
+  exact (its precise meaning); escrow "honest label/default" ->
+  point of precision / correct default; "promised ... we now pay the
+  debt" -> indicative; "clear conscience" -> without loss; "noise
+  wearing a suit" -> noise (second occurrence book-wide); "disclosed"
+  -> stated (5 sites); literal "a dollar earns interest" instances
+  kept.  One contract cell shortened ("a numerical-target dial", the
+  "stated" dropped as redundant in the Convention column) to stay at
+  the pre-existing single overfull.  No figure text changed, no
+  regeneration.  Build: 231 pages, boundaries unchanged (127/145),
+  1 pre-existing overfull, no undefined refs.  Next: Chapter 8
+  (moderate — the planted-event study is NAMED an audit; rename per
+  the table; "honest" in the inverse-problem and frozen-boards
+  sections).
