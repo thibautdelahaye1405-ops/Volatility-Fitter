@@ -47,7 +47,10 @@ a=\frac{\mathcal{V}_2}{\mathcal{V}_1+\mathcal{V}_2}
 =\frac{1}{\mathcal{V}_1}+\frac{1}{\mathcal{V}_2}:
 \label{eq:infprecadd}
 \end{equation}
-precisions add.  A worked number to keep: yesterday says $20.0\%$
+precisions add.  (An electrical picture, exact in form: read each
+variance as a resistance and each precision as a conductance;
+independent estimates combine like resistors wired in parallel, and
+conductances in parallel add.)  A worked number to keep: yesterday says $20.0\%$
 with standard deviation $0.30\%$; today's fit says $20.4\%$ with
 standard deviation $0.15\%$.  Variances $0.09$ and $0.0225$ (in
 $\%^2$); weight on yesterday $0.0225/0.1125=0.20$; combination
@@ -55,11 +58,11 @@ $0.20\times20.0+0.80\times20.4=20.32\%$.  Today, four times as
 precise in variance, gets $80\%$ of the say.  These particular
 numbers return in \cref{sec:inffilter}.
 
-This is ordinary Bayesian updating in its simplest clothing: the
+This is ordinary Bayesian updating in its simplest case: the
 first estimate plays the \emph{prior} (what was believed before
 today's data), the second the data, and the combination is the
-\emph{posterior} (the belief after).  The share of the posterior
-owned by the prior is
+\emph{posterior} (the belief after).  The prior's share of the
+posterior is
 \begin{equation}
 \text{prior share}
 =\frac{1/\mathcal{V}_1}{1/\mathcal{V}_1+1/\mathcal{V}_2},
@@ -103,17 +106,16 @@ determine a unique, stable answer; Chapter~4's extraction was one,
 and Chapter~4 used exactly this cure on the local-volatility sheet)
 \citep{Tikhonov1977}.  For the present purpose the ridge has a
 disqualifying property.  By \cref{eq:infshare}, a fixed
-$\lambda>0$ owns the share $\lambda/(\lambda+\mathcal{I})$ of
+$\lambda>0$ carries the share $\lambda/(\lambda+\mathcal{I})$ of
 \emph{every} coordinate, where $\mathcal{I}$ is the precision with
 which today's data pins that coordinate.  The share shrinks as the
 data improves --- but it never reaches zero.  A ridge biases the
-superbly-quoted at-the-money level toward yesterday exactly as
+densely-quoted at-the-money level toward yesterday exactly as
 surely as it stabilizes the dark wing, only less.  If yesterday's
 level was $20\%$ and today's true level is $24\%$, a ridge pulls
 today's published level below $24\%$ --- it \emph{damps} a genuine
-move the market has plainly made.  For a fitter whose first duty is
-to report what the market says, that is not a small flaw; it rules
-the ridge out.
+move the market has plainly made.  A fitter must report what the
+market says; damping a measured move rules the ridge out.
 
 What is wanted instead is a weight that depends on the data: full
 strength where the data is silent, and \emph{exactly zero} --- not
@@ -174,12 +176,12 @@ the signal'' from a preference into a property of the objective.
 \caption{The gate, and why a ridge cannot replace it.  (a)~The gate
 \cref{eq:infgate} for three sharpness exponents, against precision in
 units of the requirement: all three reach exactly zero at the dotted
-requirement line and stay there --- the dead zone.  (b)~The share of
-the posterior owned by the prior, \cref{eq:infshare}, with prior
+requirement line and stay there --- the dead zone.  (b)~The prior's
+share of the posterior, \cref{eq:infshare}, with prior
 weight $\lambda$ fixed for the ridge (dashed) and gated (solid), both
-at unit budget: at twice the required precision the ridge still owns
-\MacPriorGateRidgeSharePct\% of the coordinate; the gated prior owns
-exactly nothing.}
+at unit budget: at twice the required precision the ridge still
+carries \MacPriorGateRidgeSharePct\% of the coordinate; the gated
+prior carries exactly nothing.}
 \label{fig:infgate}
 \end{figure}
 
@@ -192,7 +194,7 @@ exponent only shapes the descent: $\gamma=2$ releases the prior
 early, $\gamma=0.5$ holds on longer.  Panel~(b) translates gates
 into posterior shares via \cref{eq:infshare}.  The dashed curve is
 the ridge: at a precision of twice the requirement --- a coordinate
-the data pins twice as well as demanded --- the ridge still owns
+the data pins twice as well as demanded --- the ridge still carries
 \MacPriorGateRidgeSharePct\% of the answer.  The solid curve is the
 gated prior: identical in the dark, and exactly zero past the
 requirement.  Same stabilization where it is wanted, none where it

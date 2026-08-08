@@ -71,7 +71,7 @@ def fig_flt_update() -> str:
         ax_b.annotate(f"{g:.2f}", (i, g + 0.03), ha="center", fontsize=8.0)
     ax_b.set_ylim(0, 1.0)
     ax_b.set_ylabel(r"gain $\mathcal{K}$")
-    figstyle.panel(ax_b, "b", "trust, computed per handle")
+    figstyle.panel(ax_b, "b", "gains computed, not set")
 
     figstyle.save(fig, "fig_flt_update")
 

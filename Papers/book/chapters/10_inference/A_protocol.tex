@@ -4,8 +4,8 @@
 Every number and figure in this chapter regenerates from one
 deterministic script reading the frozen snapshot
 (\texttt{scripts/ch10/gen\_figures.py}); nothing is refetched and no
-stored fit is altered.  The audit figure's seeded walk is the
-chapter's only randomness.
+stored fit is altered.  The seeded walk of \cref{fig:infaudit} is
+the chapter's only randomness.
 
 \paragraph{The staged morning (\cref{fig:infflat,fig:infbasket}).}
 The real-data exhibit is the book's canonical SPY December 2026 node
@@ -89,7 +89,7 @@ level entry is a four-day-old state under the walk scale of
 Stated moments as printed in \cref{sec:inffilter}; the update is
 \cref{eq:infupdate} verbatim, per handle.
 
-\paragraph{The audit world (\cref{fig:infaudit}).}
+\paragraph{The synthetic history (\cref{fig:infaudit}).}
 Seed $20260807$ (NumPy default generator).  Truth: level starts at
 $20\%$ and takes \MacFiltAuditDays\ daily Gaussian steps of sd
 \MacFiltAuditQTrueBp\ bp, plus $+\MacFiltAuditShockPts$-point jumps
@@ -98,8 +98,8 @@ sd 30~bp, except every seventh (``wide-spread'') day at 100~bp ---
 neither jump day is a wide day --- and the filter is always told the
 true per-day noise.  Filters: \cref{eq:infupdate} with
 $\mathcal{V}^{-}=\mathcal{V}^{+}_{\mathrm{prev}}+q_{\mathrm{walk}}^2$
-per day; the starved run uses $q_{\mathrm{walk}}=10$~bp, the honest
-run \MacFiltAuditQTrueBp~bp; the surprise-widened run multiplies
+per day; the starved run uses $q_{\mathrm{walk}}=10$~bp, the
+true-scale run \MacFiltAuditQTrueBp~bp; the surprise-widened run multiplies
 $\mathcal{V}^{-}$ by $(\text{standardized innovation}/3)^2$, capped
 at $25$, when the innovation exceeds $3$ standardized units.
 $\mathcal{Z}$ is computed against the known truth from day two on;

@@ -61,7 +61,7 @@
  },
  "PriorGateRidgeSharePct": {
   "value": "33",
-  "meaning": "posterior share a unit-weight ridge owns at twice the required precision",
+  "meaning": "posterior share a unit-weight ridge carries at twice the required precision",
   "section": "gate"
  },
  "PriorBasketRrDead": {
@@ -226,12 +226,12 @@
  },
  "FiltAuditZstdHonest": {
   "value": "1.14",
-  "meaning": "std of Z under the honest budget (30 bp)",
+  "meaning": "std of Z at the true walk scale (30 bp)",
   "section": "audit"
  },
  "FiltAuditZstdGated": {
   "value": "1.01",
-  "meaning": "std of Z under the gated honest budget",
+  "meaning": "std of Z at the true scale with the surprise widening",
   "section": "audit"
  },
  "FiltAuditDayZeroStarved": {
@@ -241,12 +241,12 @@
  },
  "FiltAuditDayZeroHonest": {
   "value": "2.0",
-  "meaning": "honest-budget |error| on the jump day (pts)",
+  "meaning": "true-scale |error| on the jump day (pts)",
   "section": "audit"
  },
  "FiltAuditDayZeroGate": {
   "value": "0.49",
-  "meaning": "gated-budget |error| on the jump day (pts)",
+  "meaning": "surprise-widened |error| on the jump day (pts)",
   "section": "audit"
  },
  "FiltAuditDayThreeStarved": {

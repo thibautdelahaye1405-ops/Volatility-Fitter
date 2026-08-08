@@ -237,7 +237,7 @@ the stated per-quote noise reuses Ch. 6's `ε_i`, here read in vol units
 | `ℐ(O)`, `ℐ_θ` | identification precision of a functional; the fit's observed information matrix over `θ` (script I, free; one letter for one concept at two scales) |
 | `gate(·)`, `γ` | the activation gate (named operator, like `expit`); its sharpness exponent (bare `γ` was free — MCS's amplitudes are always `γ_r`) |
 | `λ_j` | the gated weight of persisted row `j` (always row-indexed; bare `λ` stays Ch. 4's roughness weight, the Ch. 8 subscripted-λ pattern) |
-| `𝒵` | the standardized error `(truth − Ô⁺)/√𝒱⁺` — the audit statistic (calligraphic; Ch. 8's Brownian `Z` unaffected; the note-literature's ζ is taken by MCS) |
+| `𝒵` | the standardized error `(truth − Ô⁺)/√𝒱⁺` — the statistic of the standardized-error test: std(𝒵) = 1 when stated variances match realized errors (calligraphic; Ch. 8's Brownian `Z` unaffected; the note-literature's ζ is taken by MCS) |
 | `q_walk` | the walk scale of the prediction budget: how far a handle diffuses per √day (word subscript; bare `q` stays the quantile density — the `σ_cal` pattern) |
 | `Δt_days` | elapsed time between two snapshots, in days (composite word subscript; Ch. 7's tree step `Δt` unaffected) |
 
@@ -249,8 +249,8 @@ curvature carries no symbol (used fewer than three times in display math).
 
 The chapter runs Chapter 10's inference over a whole universe of nodes at
 once, and it deliberately writes itself in Chapter 10's alphabet: hats mark
-estimates, word-subscripted `𝒱`s are variances, `𝒵` is the same audit
-statistic, and `ℐ` appears at its third scale (a functional, a fit, now a
+estimates, word-subscripted `𝒱`s are variances, `𝒵` is the same
+standardized error, and `ℐ` appears at its third scale (a functional, a fit, now a
 universe).  New objects are the innovation field and the edge vocabulary.
 Node pairs are always subscripted `ij` (receiver first: "`j` informs `i`"),
 which is what keeps the edge letters apart from their bare reserved

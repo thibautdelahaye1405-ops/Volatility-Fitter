@@ -3,8 +3,8 @@
 
 The gate needs a precision per persisted coordinate.  This section
 prices it --- first for a single strike, then for the composite
-objects a desk actually persists --- and meets, honestly, the one
-place where the price is misquoted.
+objects a desk actually persists --- and locates the one place
+where the price is misquoted.
 
 \subsection{Legs and baskets}
 
@@ -51,7 +51,11 @@ quoted.
 The reciprocal-of-summed-reciprocals shape is a (weighted) harmonic
 mean of the legs' supports --- hence the name the chapter uses,
 \emph{the harmonic law} --- and harmonic means are dominated by
-their smallest entry, which is the dead-leg rule in one phrase.
+their smallest entry, which is the dead-leg rule in one phrase.  In
+the electrical picture of \cref{sec:infcombine}, a basket wires its
+legs' resistances in series: the total resistance is the sum, and
+one broken leg --- a near-infinite resistor --- cuts the whole
+circuit.
 
 \begin{proof}
 For independent estimates, the variance of a linear combination is
@@ -141,7 +145,7 @@ the risk reversal throughout.
 \subsection{Where the price is misquoted}
 \label{sec:infblind}
 
-One honest caveat belongs here, because this is where it bites.
+The support proxy has one failure mode, and it binds exactly here.
 Support is a kernel sum, and a kernel radiates: quotes up to a
 bandwidth away from a leg still credit it.  In panel~(a) both wing
 baskets begin to rise --- and the butterfly actually crosses its
@@ -156,7 +160,7 @@ wing, and \cref{sec:infcoords} pairs them with anchors placed by a
 coverage test that does not radiate (the test is defined there).  The exact alternative ---
 measure each functional's realized precision from a data-only fit,
 then gate on that --- exists and costs one extra fit; the support
-proxy is the price of gating before fitting.
+proxy is the cost of gating before fitting.
 
 We can now price any persisted functional and gate it.  What remains
 open is the most consequential choice: \emph{which} functionals to

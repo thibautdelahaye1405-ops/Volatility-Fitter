@@ -1,4 +1,4 @@
-"""Chapter 10's self-contained estimation machinery.
+"""Chapter 10's self-contained estimation routines.
 
 Implements exactly the objects the chapter displays -- nothing more:
 
@@ -12,8 +12,8 @@ Implements exactly the objects the chapter displays -- nothing more:
     whitened least squares, gated prior rows, and the observed information
     matrix -- the delta-method variance of any linear handle is exact here.
 
-Everything is deterministic; the audit figure's seeded walk lives in
-fig_audit.py, not here.
+Everything is deterministic; the seeded walk lives in fig_audit.py,
+not here.
 """
 
 from __future__ import annotations

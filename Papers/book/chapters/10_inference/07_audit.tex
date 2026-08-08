@@ -1,27 +1,26 @@
-\section{Counting once, and checking the bars}
+\section{Counting once, and testing the stated variances}
 \label{sec:infaudit}
 
-Two matters remain, and they are the chapter's bookkeeping and its
-conscience: how to let the filter steer a real calibration without
-counting any quote twice, and how to test --- against data --- that
-the whole construction's stated uncertainty is true.
+Two matters remain: how to let the filter steer a real calibration
+without counting any quote twice, and how to test --- against data
+--- that the stated variances match the realized errors.
 
 \subsection{One objective, one count}
 
 \Cref{sec:inffilter} computed the update \emph{after} a data-only
 fit: fit the quotes, read the handle, combine with the prediction.
 When the filter is allowed to steer the fit itself, a tempting
-implementation is fatal: build the posterior from today's quotes,
+implementation is wrong: build the posterior from today's quotes,
 then feed that posterior back into the same fit as one more prior
-row \emph{alongside those same quotes}.  The quotes then speak twice
---- once through the likelihood, once smuggled inside the
-``prior'' --- and the published uncertainty is too small by exactly
+row \emph{alongside those same quotes}.  The quotes then enter twice
+--- once through the likelihood, once again inside the
+``prior'' --- and the published variance is too small by exactly
 the double count.  The correct implementation is a single objective:
 today's quote rows, plus \emph{one} extra row per handle anchoring
 the model's handle to the prediction $\hat O^{-}$ at weight
 $1/\mathcal{V}^{-}$ --- the row form \cref{eq:infrow} with the
 prediction as target.  That this is the \emph{same} answer as the
-two-step update is a one-line calculation worth displaying:
+two-step update is a one-line calculation:
 
 \begin{proposition}[The joint fit is the filter]
 \label{prop:infmap}
@@ -69,7 +68,7 @@ Yesterday enters once.  When the filter runs, its prediction rows
 \emph{are} yesterday's belly --- level, skew, curvature, transported
 and priced --- so the shape baskets of
 \cref{sec:infprice,sec:infcoords}, which carry that same yesterday
-in other clothes, stand down; what persistence keeps is only what
+in other coordinates, are dropped; what persistence keeps is only what
 the filter state does not transport: the deep-tail anchors beyond
 the last basket leg, and --- for a node with no quotes at all ---
 the baseline the next chapter builds.  Anchoring the same handle to
@@ -77,87 +76,85 @@ yesterday twice --- once through $\hat O^{-}$, once through a
 persistence row --- would count yesterday twice, the mirror image of
 the quote double count.
 
-\subsection{The audit: were the error bars true?}
+\subsection{The standardized-error test}
 
-A filter can always make charts smoother.  Whether it is
-\emph{right} is a different question, and it has a precise form:
-the posterior comes with a stated variance, so the construction
-claims that its errors, divided by their claimed scale, are of size
-one.  Define the \emph{standardized error}
+A filter always makes charts smoother.  Whether its stated
+uncertainty is correct is a separate question, and it has a precise
+form: if the posterior variance is correct, the error divided by
+its stated scale has standard deviation one.  Define the
+\emph{standardized error}
 \begin{equation}
 \mathcal{Z}
 =\frac{\text{truth}-\hat O^{+}}{\sqrt{\mathcal{V}^{+}}},
 \label{eq:infz}
 \end{equation}
-whose standard deviation should be $1$ if the error bars mean what
-they say.  The test statistic is that standard deviation, taken over
-a run of days: std$(\mathcal{Z})$ well above one convicts the filter
-of overconfidence (bars too narrow); well below one, of timidity
-(bars too wide).  The audit needs a truth to compare against, so it runs
-wherever one exists --- held-out quotes on real history, or, as
-here, a synthetic world where the truth is known exactly.
+and take its standard deviation over a run of days.  A stated
+variance with std$(\mathcal{Z})=1$ is called \emph{consistent}:
+it matches the realized errors.  A value well above one
+means the filter is overconfident (bars too narrow); well below
+one, conservative (bars too wide).  The test needs a truth to
+compare against, so it runs wherever one exists --- held-out quotes
+on real history, or, as here, a synthetic world where the truth is
+known exactly.
 
 \begin{figure}[htbp]
 \centering
 \paperfig{\textwidth}{fig_flt_audit.pdf}
-\caption{The audit on a seeded synthetic history
+\caption{The standardized-error test on a seeded synthetic history
 (\MacFiltAuditDays\ days; the true level diffuses at
 \MacFiltAuditQTrueBp\ bp/$\sqrt{\text{day}}$ and jumps
-$+\MacFiltAuditShockPts$ points twice; observations carry honestly
-stated noise, wide on every seventh day).  (a)~A window around a
-jump: the honest-budget filter (blue, with its $\pm1$-sd band)
-follows in two days; the starved budget (violet) crawls.  (b)~The
-audit curve: std of $\mathcal{Z}$ against the assumed walk scale ---
-starved budgets sit far above the dotted target of $1$
-(\MacFiltAuditZstdStarved\ at $10$~bp), the true scale reads
-\MacFiltAuditZstdHonest.  (c)~Mean error against days since the
-jump: starved \MacFiltAuditDayZeroStarved\ points on the day and
-still \MacFiltAuditDayThreeStarved\ three days later; honest
-\MacFiltAuditDayZeroHonest\ then pennies; the surprise widening cuts the
-jump-day error to \MacFiltAuditDayZeroGate.}
+$+\MacFiltAuditShockPts$ points twice; the filter is told the true
+observation noise, wide on every seventh day).  (a)~A window around
+a jump: the filter run at the true walk scale (blue, with its
+$\pm1$-sd band) follows in two days; the starved budget (violet)
+crawls.  (b)~The test curve: std of $\mathcal{Z}$ against the
+assumed walk scale --- starved budgets sit far above the dotted
+target of $1$ (\MacFiltAuditZstdStarved\ at $10$~bp), the true
+scale reads \MacFiltAuditZstdHonest.  (c)~Mean error against days
+since the jump: starved \MacFiltAuditDayZeroStarved\ points on the
+day and still \MacFiltAuditDayThreeStarved\ three days later; the
+true scale \MacFiltAuditDayZeroHonest\ then pennies; the surprise
+widening cuts the jump-day error to \MacFiltAuditDayZeroGate.}
 \label{fig:infaudit}
 \end{figure}
 
-\Cref{fig:infaudit} runs the audit end to end on a seeded synthetic
+\Cref{fig:infaudit} runs the test end to end on a seeded synthetic
 history --- \MacFiltAuditDays\ days in which the true level
 diffuses at exactly $\MacFiltAuditQTrueBp$ bp per square-root day,
 jumps $+\MacFiltAuditShockPts$ volatility points on two days, and is
-observed daily through honestly-stated noise
+observed daily through noise whose true scale the filter is told
 (Appendix~\ref{app:infprotocol} lists the generator).  The same
 scalar filter \cref{eq:infupdate} is run with different assumed walk
-scales $q_{\mathrm{walk}}$, and every claim of the last two sections
-becomes measurable.
+scales $q_{\mathrm{walk}}$, and every statement of the last two
+sections becomes measurable.
 
-Panel~(a) is the texture.  Around the first jump, the
-honest-budget filter (blue, its one-standard-deviation band shaded)
+Panel~(a) shows the first jump up close.  The filter run at the
+true walk scale (blue, its one-standard-deviation band shaded)
 tracks the truth within about two days, its band wide enough to
 contain its own errors.  The starved filter --- walk scale a third
 of the truth --- is the violet curve: it enters the jump with a
-narrow band, trusts its prediction too much, and crawls toward the
-new level for a week.
+narrow band, weights its prediction too heavily, and crawls toward
+the new level for a week.
 
-Panel~(b) is the chapter's verdict in one curve: the standard
-deviation of $\mathcal{Z}$, \cref{eq:infz}, against the assumed
-walk scale.  At the true scale the curve sits near the dotted
-target ---
+Panel~(b) is the test itself: the standard deviation of
+$\mathcal{Z}$, \cref{eq:infz}, against the assumed walk scale.  At
+the true scale the curve sits near the dotted target ---
 std$(\mathcal{Z})=\MacFiltAuditZstdHonest$, the small excess being
-the two jumps, which the plain clock term does not model; switch the
-surprise widening on and it drops to \MacFiltAuditZstdGated.  To the
+the two jumps, which the plain clock term does not model; with the
+surprise widening on it drops to \MacFiltAuditZstdGated.  To the
 left the curve climbs steeply: at a third of the true scale the
 standardized errors have standard deviation
-\MacFiltAuditZstdStarved\ --- the filter's stated bars are three
-times too narrow.  And panel~(c) shows the same starved filter's
+\MacFiltAuditZstdStarved\ --- the stated bars are three times too
+narrow.  And panel~(c) shows the same starved filter's
 \emph{speed}: \MacFiltAuditDayZeroStarved\ points of error on the
 jump day, still \MacFiltAuditDayThreeStarved\ points three days
-later, against the honest budget's
-\MacFiltAuditDayZeroHonest-then-pennies, and
-\MacFiltAuditDayZeroGate\ on the day with the surprise widening.  This
-is the general lesson, and it is worth stating plainly because
-intuition suggests the opposite: shrinking the prediction budget does
-not make a filter cautious.  It makes it \emph{overconfident and
-slow at once} --- sure of a surface it updates too slowly --- the
-worst available combination, and the audit catches both symptoms in
-one statistic.
+later, against \MacFiltAuditDayZeroHonest-then-pennies at the true
+scale, and \MacFiltAuditDayZeroGate\ on the day with the surprise
+widening.  The general lesson runs against intuition: shrinking the
+prediction budget does not make a filter cautious.  It makes the
+filter \emph{overconfident and slow at once} --- sure of a surface
+it updates too slowly --- and std$(\mathcal{Z})$ registers both
+symptoms in one number.
 
 \subsection{The contract}
 
@@ -179,7 +176,7 @@ The flat valley: \MacPriorFlatValleyBp\ bp of rms movement across a
 \MacPriorFlatPinSpanPts-point wing sweep on the thinned morning;
 the full chain's V (\cref{fig:infflat}). &
 The required precision, the gate exponent $\gamma$, and the prior
-budget: set by judgment, disclosed, not derived.\\
+budget: set by judgment, stated, not derived.\\
 \addlinespace
 The harmonic law and the dead-leg rule; the RR/BF factor of
 \MacPriorBasketFactor\ (\cref{prop:infharmonic}). &
@@ -220,31 +217,31 @@ $\Delta t_{\mathrm{days}}$, transport and event widenings, the
 surprise widening's threshold --- each an empirical commitment.\\
 \addlinespace
 --- (this row is empirical by design) &
-The audit: std$(\mathcal{Z})$
+The standardized-error test: std$(\mathcal{Z})$
 \MacFiltAuditZstdStarved\ starved vs \MacFiltAuditZstdHonest\
-honest (\MacFiltAuditZstdGated\ gated); jump-day errors
+at the true scale (\MacFiltAuditZstdGated\ widened); jump-day errors
 \MacFiltAuditDayZeroStarved/\MacFiltAuditDayZeroHonest/%
 \MacFiltAuditDayZeroGate\ points (\cref{fig:infaudit}). &
 std$(\mathcal{Z})=1$ is the acceptance test this book adopts for any
-machinery that publishes uncertainty.\\
+method that publishes uncertainty.\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 Step back to the book's thesis.  \emph{Validity} in this chapter is
 inherited, not new: every fit underneath carries the arbitrage
-machinery of Part~I, and the filtered state is read off
+constraints of Part~I, and the filtered state is read off
 arbitrage-checked smiles.  \emph{Information} is the chapter's
-subject made explicit: for the first time the book has measured not
-just what the data says but where it says \emph{nothing} --- the
-flat valley --- and where it speaks with a noisy voice --- the
-inflated budget.  \emph{Convention} is what fills the remainder,
-and the chapter's discipline is that every convention entered
-through a stated, auditable quantity: a gate with a dead zone, a
-variance with a units contract, a walk scale that an audit can
-convict.  Posterior equals data where the data speaks, and
-yesterday --- transported, priced, and counted once --- where it
-does not: the thesis of this book, made dynamic.
+subject made explicit: the chapter measured not just what the data
+says but where it says \emph{nothing} --- the flat valley --- and
+where it speaks with a noisy voice --- the inflated observation
+variance.  \emph{Convention} fills the remainder, and every
+convention here enters through a stated, testable quantity: a gate
+with a dead zone, a variance in stated-noise units, a walk scale
+the standardized-error test can reject.  Posterior equals data
+where the data speaks, and yesterday --- transported, priced, and
+counted once --- where it does not: the thesis of this book, made
+dynamic.
 
 One boundary remains, and it is the book's last.  Everything here
 is \emph{per node}: one smile, its own yesterday, its own morning.

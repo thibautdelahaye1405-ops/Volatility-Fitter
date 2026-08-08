@@ -3,7 +3,7 @@
 
 Chapter~9 closed with a moving prior: a surface transported to the
 new spot, waiting to be compared with fresh evidence.  Before
-building the machinery that weighs the two, it pays to ask a static
+building the update that weighs the two, it pays to ask a static
 question --- one that needs no dynamics at all.  Take one morning's
 quotes, alone.  How much of the smile do they actually determine?
 
@@ -11,11 +11,11 @@ The book's running node answers concretely.  The frozen SPY December
 2026 chain carries \MacPriorFlatNFull\ prepared quotes
 (\MacPriorFlatHeroDays\ days to expiry).  Keep only the
 \MacPriorFlatNThin\ quotes inside the at-the-money band
-$\lvert k\rvert\le0.10$ and set the rest aside.  This staged morning
-is not artificial meanness: on an illiquid name, or in the first
-minutes of a session, a band like this is all the market offers,
-and the desk still needs a whole smile --- the wings included ---
-to price, hedge, and feed every integral of Chapter~5.
+$\lvert k\rvert\le0.10$ and set the rest aside.  On an illiquid
+name, or in the first minutes of a session, a band like this is all
+the market offers, and the desk still needs a whole smile --- the
+wings included --- to price, hedge, and feed every integral of
+Chapter~5.
 
 What can the band say about the wing?  Here is a direct experiment,
 run with a deliberately flexible curve family --- a \emph{spline},
@@ -51,8 +51,7 @@ where panel~(b)'s valley is flat.}
 \label{fig:infflat}
 \end{figure}
 
-\Cref{fig:infflat} shows the result, and it is worth walking slowly.
-In panel~(a), the orange dots are the morning's quotes and the five
+\Cref{fig:infflat} shows the result.  In panel~(a), the orange dots are the morning's quotes and the five
 curves are five fits, each pinned to a different wing value ---
 $26\%$ up to $34\%$ at $k=-0.30$.  Through the shaded band the five
 curves lie on top of one another; to the left they fan apart by
@@ -65,7 +64,7 @@ the \emph{full} chain, where real quotes sit at $k=-0.30$: now the
 error climbs steeply away from one preferred value, and an imposed
 wing only half a volatility point off already costs five bp of
 fitting error (\MacPriorFlatVHalfPts\ points is the half-width at
-that cost).  Same family, same sweep, same machinery --- the only
+that cost).  Same family, same sweep, same objective --- the only
 difference is which quotes exist.
 
 This deserves a name.  Think of the fit's objective --- the sum of
@@ -121,15 +120,15 @@ $\mathcal{Q}(0)=\MacPriorFlatSuppAtm$ at the money,
 $\mathcal{Q}(-0.30)=\MacPriorFlatSuppWing$ in the wing.  Where
 support is large the profile is a V; where it vanishes the profile
 is flat.  Support is a proxy, not a theorem --- \cref{sec:infprice}
-returns to exactly how far it can be trusted --- but it prices the
-geometry of panel~(b) without a single refit.
+returns to exactly where it fails --- but it prices the geometry of
+panel~(b) without a single refit.
 
 We now know precisely what is missing: along the flat directions
 the data has no opinion, and yet a published smile must take a
 value there.  \emph{Something} always chooses --- a family's tail
 habit, a smoothness penalty, a default.  The thesis of this book
-says the choice should be disclosed and defensible, and the most
-defensible candidate is obvious: yesterday's surface, which was
+calls such a choice a convention, to be stated as one, and the
+natural candidate is obvious: yesterday's surface, which was
 fitted to a full chain and has merely aged a day.  The rest of the
 chapter builds the two instruments that let yesterday speak
 \emph{only} where today is silent or noisy.  \Cref{sec:infgate}

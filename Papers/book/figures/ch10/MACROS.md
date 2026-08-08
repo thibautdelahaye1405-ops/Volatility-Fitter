@@ -1,6 +1,6 @@
 # Chapter 10 macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/ch10/gen_figures.py` into `ch10_macros.tex`. Last write 2026-08-07.
+Emitted by `scripts/ch10/gen_figures.py` into `ch10_macros.tex`. Last write 2026-08-08.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -16,7 +16,7 @@ Emitted by `scripts/ch10/gen_figures.py` into `ch10_macros.tex`. Last write 2026
 | `\MacPriorFlatSuppWing` | `0.01` | quote support at k = -0.30 on the staged morning |
 | `\MacPriorFlatVHalfPts` | `0.5` | full-chain V half-width at +5 bp of rms (vol points) |
 | `\MacPriorFlatValleyBp` | `0.02` | total variation of the thinned-morning rms across the sweep |
-| `\MacPriorGateRidgeSharePct` | `33` | posterior share a unit-weight ridge owns at twice the required precision |
+| `\MacPriorGateRidgeSharePct` | `33` | posterior share a unit-weight ridge carries at twice the required precision |
 | `\MacPriorBasketCrossBf` | `0.09` | band half-width where the BF basket reaches the requirement |
 | `\MacPriorBasketCrossRr` | `0.17` | band half-width where the RR basket reaches the requirement |
 | `\MacPriorBasketFactor` | `4` | BF-to-RR precision ratio on the same symmetric legs |
@@ -49,12 +49,12 @@ Emitted by `scripts/ch10/gen_figures.py` into `ch10_macros.tex`. Last write 2026
 | `\MacFiltCovarNq` | `21` | synthetic chain quote count |
 | `\MacFiltCovarSlope` | `1.000` | log-log slope of ATM observation sd in stated noise |
 | `\MacFiltAuditDayThreeStarved` | `1.6` | starved-budget \|error\| three days after the jump (pts) |
-| `\MacFiltAuditDayZeroGate` | `0.49` | gated-budget \|error\| on the jump day (pts) |
-| `\MacFiltAuditDayZeroHonest` | `2.0` | honest-budget \|error\| on the jump day (pts) |
+| `\MacFiltAuditDayZeroGate` | `0.49` | surprise-widened \|error\| on the jump day (pts) |
+| `\MacFiltAuditDayZeroHonest` | `2.0` | true-scale \|error\| on the jump day (pts) |
 | `\MacFiltAuditDayZeroStarved` | `3.8` | starved-budget \|error\| on the jump day (pts) |
 | `\MacFiltAuditDays` | `500` | length of the synthetic history (days) |
 | `\MacFiltAuditQTrueBp` | `30` | true walk scale (vol bp per sqrt day) |
 | `\MacFiltAuditShockPts` | `5` | jump size (vol points) |
-| `\MacFiltAuditZstdGated` | `1.01` | std of Z under the gated honest budget |
-| `\MacFiltAuditZstdHonest` | `1.14` | std of Z under the honest budget (30 bp) |
+| `\MacFiltAuditZstdGated` | `1.01` | std of Z at the true scale with the surprise widening |
+| `\MacFiltAuditZstdHonest` | `1.14` | std of Z at the true walk scale (30 bp) |
 | `\MacFiltAuditZstdStarved` | `3.0` | std of Z under the starved budget (10 bp) |

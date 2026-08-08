@@ -1,9 +1,9 @@
 """Figure 10.2 -- the activation gate and why a ridge cannot replace it.
 
 Panel (a): the gate for three sharpness exponents; past the requirement the
-prior weight is exactly zero.  Panel (b): the share of the posterior owned
-by the prior -- a fixed-precision ridge keeps a share everywhere; the gated
-prior owns exactly nothing once the coordinate is identified.
+prior weight is exactly zero.  Panel (b): the prior's share of the
+posterior -- a fixed-precision ridge keeps a share everywhere; the gated
+prior carries exactly nothing once the coordinate is identified.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def fig_flt_gate() -> str:
     ax_a.legend(loc="upper right")
     figstyle.panel(ax_a, "a", "the gate: a dead zone, not a small weight")
 
-    # (b) posterior share owned by the prior.
+    # (b) the prior's share of the posterior.
     ridge_share = LAM / (LAM + prec)
     gated_share = np.where(
         prec + LAM * estimation.gate(prec, REQUIRED, 1.0) > 0,
@@ -59,7 +59,7 @@ def fig_flt_gate() -> str:
     ax_b.axvline(REQUIRED, color=PALETTE["muted"], lw=0.9, ls=":")
     i2 = int(np.argmin(np.abs(prec - 2.0)))
     figstyle.callout(
-        ax_b, f"ridge still owns\n{100 * ridge_share[i2]:.0f}% here",
+        ax_b, f"ridge still carries\n{100 * ridge_share[i2]:.0f}% here",
         (2.0, ridge_share[i2]), (1.35, 0.55),
     )
     figstyle.callout(
@@ -67,7 +67,7 @@ def fig_flt_gate() -> str:
     )
     ax_b.set_xlabel(r"identification precision $\mathcal{I}$ "
                     r"(units of $\mathcal{I}_{\mathrm{req}}$)")
-    ax_b.set_ylabel("share of the posterior owned by the prior")
+    ax_b.set_ylabel("the prior's share of the posterior")
     ax_b.set_ylim(-0.03, 1.05)
     ax_b.legend(loc="upper right")
     figstyle.panel(ax_b, "b", "gating versus shrinkage")
@@ -75,6 +75,6 @@ def fig_flt_gate() -> str:
     figstyle.save(fig, "fig_flt_gate")
 
     STORE.add("gate", "PriorGateRidgeSharePct", num(100 * ridge_share[i2], 0),
-              "posterior share a unit-weight ridge owns at twice the "
+              "posterior share a unit-weight ridge carries at twice the "
               "required precision")
     return f"ridge share at 2x requirement: {100 * ridge_share[i2]:.0f}%"

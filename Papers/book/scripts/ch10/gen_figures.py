@@ -8,8 +8,8 @@ Run from anywhere with the project virtual environment:
 
 Inputs: the frozen snapshot ``data/lqd_paper_snapshot_20260804_0208.json``
 (the thinned-morning ensemble refits its canonical SPY node under Chapter
-3's protocol) plus deterministic synthetic constructions; the audit
-figure's seeded walk is the chapter's only randomness.
+3's protocol) plus deterministic synthetic constructions; the seeded
+walk in fig_audit.py is the chapter's only randomness.
 Outputs: ``figures/ch10/fig_*.pdf``, ``figures/ch10/ch10_macros.tex`` (every
 number the chapter quotes), ``figures/ch10/MACROS.md``.
 """

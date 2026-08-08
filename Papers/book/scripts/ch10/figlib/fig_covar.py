@@ -24,7 +24,7 @@ TRUTH = (0.20, -0.30, 0.60)     # sigma(k) = a + b k + c k^2
 NOISE = 0.0030                  # base stated per-quote noise (30 vol bp)
 INFL_CAP = 25.0
 # The stated prediction budget (per-handle sd): a four-day-old state under
-# the audit's walk scale reads the level to sqrt(4)*30 = 60 bp; the
+# fig_audit's walk scale reads the level to sqrt(4)*30 = 60 bp; the
 # curvature diffuses little.
 SD_PRED = np.array([0.0060, 0.03, 0.15])
 KINK_PAIR = (12, 13)            # adjacent strikes kinked +/- eps
@@ -95,7 +95,7 @@ def fig_flt_covar() -> str:
         (1e2 * kinks[i_end] - 1.4, gain_curv[i_end] - 0.16),
     )
     ax_b.legend(loc="lower left")
-    figstyle.panel(ax_b, "b", "a contradiction turns the dial itself")
+    figstyle.panel(ax_b, "b", "a contradiction lowers the gain")
 
     figstyle.save(fig, "fig_flt_covar")
 

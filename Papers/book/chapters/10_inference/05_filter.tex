@@ -91,28 +91,28 @@ $\mathcal{V}^{+}\bigl(\hat O^{-}/\mathcal{V}^{-}
 Tomorrow, $\hat O^{+}$ and $\mathcal{V}^{+}$ become the input to the
 next predict step, and the cycle repeats.
 
-\subsection{The dial nobody may own}
+\subsection{The gain is computed, not set}
 
 Pause on what \cref{eq:infupdate} does \emph{not} contain.  Every
-fitter that carries state through time owns, somewhere, a dial
-marked \emph{trust}: how far should this morning's quotes move
-yesterday's surface?  The tempting implementation is a slider ---
-tuned by hand, per desk, per mood.  In \cref{eq:infupdate} that
-dial is the gain, and the gain is not a setting: it is an
-\emph{output}, the ratio of two variances.  Every design question
-about trust becomes a question about building
-$\mathcal{V}^{-}$ and $\mathcal{V}_{\mathrm{obs}}$ honestly ---
-which is auditable --- rather than about where to set a slider ---
-which is not.  When both variances tell the truth, the dial turns
-itself: a noisy morning arrives with a large
-$\mathcal{V}_{\mathrm{obs}}$ and is barely admitted; a clean morning
-after a quiet night arrives against a small $\mathcal{V}^{-}$...
-and the update follows the market.  The gate of
-\cref{sec:infgate} and the gain of \cref{eq:infupdate} are the
-same philosophy on the two sides of the chapter: the first answers
-``\emph{where} did the market not speak?''\ with a dead zone; the
-second answers ``the market spoke here --- \emph{how noisy was its
-voice?}''\ with a ratio that is never zero and never one.
+fitter that carries state through time answers, somewhere, one
+question: how far should this morning's quotes move yesterday's
+surface?  The tempting implementation is a hand-set weight ---
+tuned per desk, per mood.  In \cref{eq:infupdate} that weight is
+the gain, and the gain is not a setting: it is an \emph{output},
+the ratio of two variances.  The design question is therefore not
+where to set the gain but how to build $\mathcal{V}^{-}$ and
+$\mathcal{V}_{\mathrm{obs}}$ --- two quantities with definitions,
+which \cref{sec:infbudgets} gives, and a test, which
+\cref{sec:infaudit} gives.  When both variances match what they
+measure, the gain follows the market: a noisy morning arrives with
+a large $\mathcal{V}_{\mathrm{obs}}$ and is barely admitted; a
+clean morning after a quiet night arrives against a small
+$\mathcal{V}^{-}$ and is taken nearly whole.  The gate of
+\cref{sec:infgate} and the gain of \cref{eq:infupdate} divide the
+chapter's work: the gate answers ``\emph{where} did the market not
+speak?''\ with a dead zone; the gain answers ``the market spoke
+here --- \emph{how noisy was its voice?}''\ with a ratio that is
+never zero and never one.
 
 \subsection{The stale strike, filtered}
 
@@ -124,7 +124,7 @@ $(0.30\%,\ 0.08,\ 0.05)$.  Today's data-only fit reads level
 $20.4\%$, skew $-0.37$, curvature $0.55$: a plausible level move, a
 plausible skew --- and a curvature five times the prediction,
 manufactured by the one stale strike.  The observation variances,
-built by the machinery of the next section, come out as standard
+built in the next section, come out as standard
 deviations $(0.15\%,\ 0.05,\ 0.30)$: level and skew tight, curvature
 wide, because the cluster that produced it contradicts itself.  Take
 these six variances as given for one page; \emph{building} them is
@@ -139,8 +139,7 @@ its own normalized segment from prediction (circle, at 0) to
 observation (square, at 1); the posterior (diamond) sits at exactly
 its gain.  The level moves 80\% of the way to the market; the
 curvature kink is admitted at less than 3\%.  (b)~The three computed
-gains.  Nobody set anything: the gains are ratios of stated
-variances.}
+gains: ratios of stated variances, computed, not set.}
 \label{fig:infupdate}
 \end{figure}
 
@@ -155,13 +154,13 @@ number of \cref{sec:infcombine}): the posterior,
 market, with posterior standard deviation
 \MacFiltCasePostSdLevelBp\ bp.  The skew behaves likewise at gain
 \MacFiltCaseGainSkew\ (posterior \MacFiltCasePostSkew).  The
-curvature is the story: prediction ten times tighter than the
+curvature is where the stale strike lands: prediction ten times tighter than the
 observation, gain
 $\mathcal{K}=0.05^2/(0.05^2+0.30^2)=\MacFiltCaseGainCurv$, posterior
 \MacFiltCasePostCurv\ --- the five-fold kink is not vetoed by any
 rule; it is \emph{priced}, and at that price the update accepts
 under three percent of it.  Panel~(b) collects the three gains as
-bars: trust, computed per handle, unequal because the evidence is
+bars: computed per handle, unequal because the evidence is
 unequal.
 
 One remark on dimensions before moving on.  The three handles were
@@ -178,11 +177,11 @@ drag the level along with it.  A per-handle update makes that
 failure structurally impossible --- each scalar posterior lies
 between its own prediction and its own observation, full stop.  The
 reference implementation therefore combines per handle; the
-discarded cross-handle information is real, and this is the
-disclosed price of not spending unreliable correlations.
+discarded cross-handle information is real, and it is the cost of
+not spending unreliable correlations.
 
 Everything now rests on the two variances that fed
 \cref{eq:infupdate}.  Where does
 $\mathcal{V}_{\mathrm{obs}}$ come from, such that a
 self-contradictory cluster shows up as a wide one?  And what makes
-$\mathcal{V}^{-}$ grow honestly between snapshots?
+$\mathcal{V}^{-}$ grow at the right rate between snapshots?

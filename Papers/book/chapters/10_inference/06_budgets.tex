@@ -1,11 +1,11 @@
-\section{Two honest budgets}
+\section{Two variance budgets}
 \label{sec:infbudgets}
 
 The update was one boxed display; the work is the two variances it
 consumes.  This section builds each from first principles --- the
 observation's from the fit itself, the prediction's from the clock
---- because any dishonesty in either budget becomes, through
-\cref{eq:infupdate}, a wrong gain with nobody's hand on it.
+--- because an error in either budget becomes, through
+\cref{eq:infupdate}, a wrong gain.
 
 \subsection{The observation budget: what did the market pin down?}
 
@@ -76,10 +76,10 @@ geometry of the strike grid kept.  (One guard on the inverse: a
 parameter direction the quotes do not touch makes
 $\mathcal{I}_\theta$ nearly singular, and a naive inverse would
 assign that direction either an infinite variance --- harmless ---
-or, after aggressive rounding, \emph{zero}, which is the one lie a
-filter must never inherit; the reference implementation floors the
-small eigenvalues so unidentified directions come out
-large-but-finite.)
+or, after aggressive rounding, \emph{zero}: a stated certainty
+about a direction the data never measured; the reference
+implementation floors the small eigenvalues so unidentified
+directions come out large-but-finite.)
 
 \begin{figure}[htbp]
 \centering
@@ -101,17 +101,17 @@ prediction --- falls far less, from \MacFiltCovarGainLevelClean\ to
 \label{fig:infcovar}
 \end{figure}
 
-Two disciplines make \cref{eq:infdelta} honest in practice, and
+Two conditions tie \cref{eq:infdelta} to the market, and
 \cref{fig:infcovar} measures both.
 
 \emph{Units.}  Information is only information \emph{in stated
 noise}.  If the fit's weights are merely relative --- equal weights,
 say --- then \cref{eq:infinfo} silently prices every quote as if its
 noise were one full volatility point, and the resulting
-``covariance'' is fiction.  The whitening by the actual
-$\varepsilon_i$ is what ties the budget to the market's own stated
-uncertainty, and it implies a checkable contract: variance is noise
-\emph{squared}, propagated.  Panel~(a) of \cref{fig:infcovar} checks
+``covariance'' is wrong by the square of the mis-statement.  The
+whitening by the actual $\varepsilon_i$ is what ties the budget to
+the market's own stated uncertainty, and it implies a checkable
+contract: variance is noise \emph{squared}, propagated.  Panel~(a) of \cref{fig:infcovar} checks
 it on a synthetic \MacFiltCovarNq-quote chain, sweeping the stated
 noise and recomputing \cref{eq:infdelta}: the ATM observation
 standard deviation follows with log--log slope \MacFiltCovarSlope.
@@ -121,8 +121,8 @@ not by tuning.
 
 \emph{Consistency.}  Geometry is not agreement.
 Equations~\cref{eq:infinfo}--\cref{eq:infdelta} see \emph{where} the
-quotes sit and how noisy each claims to be --- but not whether they
-agree with one another.  The stale-strike morning of
+quotes sit and how noisy each is stated to be --- but not whether
+they agree with one another.  The stale-strike morning of
 \cref{sec:inffilter} is exactly that gap: plenty of quotes, fine
 stated noise, and a cluster that cannot all be right at once.  The
 fix reads the fit's own residuals.  After fitting, compute the
@@ -130,9 +130,9 @@ average of the squared whitened residuals --- each quote's misfit
 divided by its stated noise, squared, averaged over the quotes
 (less a small correction for the parameters fitted; the exact
 expression is in Appendix~\ref{app:infprotocol}).  If the quotes
-scatter as their stated noise claims, this average is close to one.
-If it comes out at, say, eleven, the chain is misbehaving eleven
-times worse than it admits --- and the observation variance is
+scatter as their stated noise says, this average is close to one.
+If it comes out at, say, eleven, the chain scatters eleven times
+worse than its stated noise --- and the observation variance is
 multiplied by that realized-misfit multiple (floored at one, capped
 so a single broken chain cannot poison the state).  Panel~(b) shows
 the mechanism end to end: two adjacent strikes are kinked apart by a
@@ -145,11 +145,12 @@ kink) and the curvature gain collapses from
 the level gain --- a handle this chain reads to
 \MacFiltCovarBaseSdBp\ bp against a much wider prediction --- falls
 far less, from \MacFiltCovarGainLevelClean\ to
-\MacFiltCovarGainLevelKinked.  The one multiple distrusts the whole
-chain, and it bites hardest where the observation was weakest
-relative to its prediction.  No threshold fired and no rule named
-``stale strike'': the contradiction raised the stated variance, and
-the gain, a ratio of variances, turned itself.
+\MacFiltCovarGainLevelKinked.  The one multiple widens every
+handle's observation variance at once, and it bites hardest where
+the observation was weakest relative to its prediction.  No
+threshold fired and no rule named ``stale strike'': the
+contradiction raised the stated variance, and the gain, a ratio of
+variances, followed.
 
 \subsection{The prediction budget: how far can the smile have walked?}
 
@@ -167,15 +168,15 @@ starting from yesterday's posterior variance.  The second term is
 the \emph{clock term}: surfaces diffuse, and a handle drifts about
 $q_{\mathrm{walk}}$ per square-root day --- the square-root scaling
 of any diffusion, Chapter~8's accrual logic applied to the handle
-itself.  Two honesty points live inside it.  The elapsed time
+itself.  Two of its inputs need stating.  The elapsed time
 $\Delta t_{\mathrm{days}}$ should be counted on the market's clock,
 not the wall's: Chapter~8 measured that a closed weekend moves the
 smile about as much as one overnight, so a calendar count pays three
 days of variance for one overnight's worth of movement and no
 single $q_{\mathrm{walk}}$ can then be right at every cadence.  And
 the scale $q_{\mathrm{walk}}$ itself is an empirical commitment ---
-the audit of \cref{sec:infaudit} is precisely the instrument that
-convicts a wrong one.  The remaining widenings are event-shaped and
+the standardized-error test of \cref{sec:infaudit} is precisely the
+instrument that detects a wrong one.  The remaining widenings are event-shaped and
 listed in words: a spot move of size $H$ adds transport uncertainty
 in proportion to $\lvert H\rvert$ (the transported prediction leans
 on Chapter~9's dial, which is itself a convention); a scheduled
@@ -186,9 +187,10 @@ pretending continuity.
 One last mechanism guards the tails of real life.  A genuine
 five-point overnight jump is, under a $30$-bp-per-$\sqrt{\text{day}}$
 budget, a surprise of tens of standard deviations; a filter that
-believes its budget will crawl toward it for days.  The honest
-repair is not a bigger everyday budget --- that would fail the
-audit in the other direction --- but a \emph{surprise widening}:
+believes its budget will crawl toward it for days.  The repair is
+not a bigger everyday budget --- that would fail the
+standardized-error test in the other direction --- but a
+\emph{surprise widening}:
 when the standardized innovation
 $\lvert\hat O_{\mathrm{obs}}-\hat O^{-}\rvert
 /\sqrt{\mathcal{V}^{-}+\mathcal{V}_{\mathrm{obs}}}$ exceeds a few
@@ -198,6 +200,6 @@ data.  (A widening, not another gate: nothing here switches off ---
 a variance is enlarged.)  Below its threshold the update is
 untouched; and a \emph{contradictory} chain does not trip it,
 because its own inflated $\mathcal{V}_{\mathrm{obs}}$ already
-shrinks the standardized innovation --- the two honesty mechanisms
+shrinks the standardized innovation --- the two widenings
 compose rather than compete.  \Cref{sec:infaudit} measures all of
 this.
