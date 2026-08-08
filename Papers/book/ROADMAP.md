@@ -304,7 +304,7 @@ Structure: three parts, eleven chapters.
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics | done | DONE 2026-08-08 |
 | 10 | Filtering and priors | done | DONE 2026-08-08 |
-| 11 | The graph | done | pending (heavy) |
+| 11 | The graph | done | DONE 2026-08-08 |
 
 ## Infrastructure and build
 
@@ -517,3 +517,46 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   closing pages carry most of the drift; fig_gr_complete panel (c)
   title regenerates; the closing pages re-registered to end the book
   like Milnor's last page, not a summation to the jury).
+- 2026-08-08 (eighth session): Chapter 11 re-registered — THE STYLE
+  ARC'S CHAPTER PASSES (2–11) ARE COMPLETE.  Banned-grep zero except
+  protected NAMES (label sec:infaudit refs, \MacGrAudit* macros,
+  universe.audit_std / fig file names).  Renaming table applied:
+  §11.4 "Silent neighbours, repeated routes, and empty components"
+  (was "The accountant: what the joint solve refuses to invent"),
+  §11.7.2 "The standardized-error test, and the idiosyncratic floor"
+  (was "The audit, and one honest repair"); "the audit" is the
+  standardized-error test everywhere; the no-lit-path REFUSAL became
+  the mechanism (objective flat, information matrix singular on the
+  component, solver returns baseline + stated default band + flag);
+  the closing thesis "list of refusals" became stated properties of
+  the objective (no move without a lit innovation, no transfer from
+  a silent neighbour, one count per source, marginal confidence, no
+  posterior on an unlit component).  Scrubs: "lit data must earn
+  every departure" -> every departure is priced by the lit
+  innovations (synopsis + goals); "betray/cheat/convicted/
+  disclosed/prudent/claim(s)" -> mechanism words; "event logic
+  wearing scenario clothes" -> applied to a scenario; "in graph
+  clothes" -> at graph scale; "grown up" -> at universe scale;
+  "load-bearing sentence" -> the policy is one sentence; "the
+  story" (vague-list) -> the example throughout §11.6 (+ NOTATION
+  t_1/2 entry); "case file" -> fixture/mechanism; "worth
+  saying/stating" meta cut.  The closing pages keep their shape,
+  re-registered: "the observation was earned" -> had to be
+  inferred; "taught one discipline" -> kept one rule; "a band,
+  audited" -> a band, tested; the final sentence ends on "keeping
+  those two accounts separate, and adding them up correctly"
+  (Gaussian accounting — every assumption stated, every source
+  counted once).  ADDED the electrical picture's ch. 11 half (one
+  flagged parenthetical at the chain law: hops = resistors in
+  series, a receiver's informers = parallel conductances).  Two
+  figures regenerated (fig_gr_complete panel (c) "the audit" ->
+  "the standardized-error test"; fig_gr_account meaning-string
+  sync) — every macro value byte-identical, seed untouched.
+  Build: 231 pages, boundaries unchanged (183/203/221), 1
+  pre-existing overfull (ch. 3), no undefined refs.  Next (final):
+  Chapter 1 — the introduction, written fresh under the contract
+  (content spec in "Chapter 1" section above: the problem, the
+  separation thesis, the reader, the map, the notation ledger, the
+  data statement, DEFINE "the reference implementation"; ch. 11's
+  closing pages return to exactly the problem ch. 1 poses) — plus
+  the title decision WITH the author.
