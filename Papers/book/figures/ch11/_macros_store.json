@@ -1,0 +1,262 @@
+{
+ "GrNodeCount": {
+  "value": "20",
+  "meaning": "universe node count",
+  "section": "universe"
+ },
+ "GrLitCount": {
+  "value": "8",
+  "meaning": "lit nodes this morning",
+  "section": "universe"
+ },
+ "GrDarkCount": {
+  "value": "12",
+  "meaning": "dark nodes this morning",
+  "section": "universe"
+ },
+ "GrAnchorMovePts": {
+  "value": "0.80",
+  "meaning": "the constructed systematic move at the SPY December anchor",
+  "section": "universe"
+ },
+ "GrScatterSd": {
+  "value": "0.30",
+  "meaning": "per-node idiosyncratic scatter sd, vol points",
+  "section": "universe"
+ },
+ "GrObsSd": {
+  "value": "0.10",
+  "meaning": "lit observation noise sd, vol points",
+  "section": "universe"
+ },
+ "GrBetaNvda": {
+  "value": "1.6",
+  "meaning": "NVDA's stated beta on the index",
+  "section": "universe"
+ },
+ "GrBetaSister": {
+  "value": "1.44",
+  "meaning": "the sister's true beta on the index",
+  "section": "universe"
+ },
+ "GrBetaBlend": {
+  "value": "1.2",
+  "meaning": "the blend's stated beta on the index",
+  "section": "universe"
+ },
+ "GrSpyShortObs": {
+  "value": "+6.17",
+  "meaning": "measured innovation at the lit 18-day SPY node, vol pts",
+  "section": "universe"
+ },
+ "GrSpyDecObs": {
+  "value": "+0.86",
+  "meaning": "measured innovation at the lit SPY December node, vol pts",
+  "section": "universe"
+ },
+ "GrNvdaSepObs": {
+  "value": "+4.30",
+  "meaning": "measured innovation at the lit NVDA September node, vol pts",
+  "section": "universe"
+ },
+ "GrContractFlat": {
+  "value": "\\ensuremath{3.3\\times10^{-9}}",
+  "meaning": "max deviation of the swept posterior means from +2.00 / +0.50",
+  "section": "contract"
+ },
+ "GrContractSdRatio": {
+  "value": "2.00",
+  "meaning": "measured 3M/1Y posterior sd ratio (the beta-squared units law)",
+  "section": "contract"
+ },
+ "GrVoteCancel": {
+  "value": "+0.00",
+  "meaning": "equal-trust beta-one opposing signals at the 6M receiver",
+  "section": "meet"
+ },
+ "GrVoteOut": {
+  "value": "-0.50",
+  "meaning": "the 3p short leg outvotes: 6M posterior",
+  "section": "meet"
+ },
+ "GrVoteBeta": {
+  "value": "+0.75",
+  "meaning": "same signals under calendar betas: receiver-unit average",
+  "section": "meet"
+ },
+ "GrHopGap": {
+  "value": "\\ensuremath{2.2\\times10^{-16}}",
+  "meaning": "max gap between solved chain sds and the accumulation law",
+  "section": "meet"
+ },
+ "GrHopMean": {
+  "value": "+1.00",
+  "meaning": "posterior mean at hop six (undamped)",
+  "section": "meet"
+ },
+ "GrDeadPairMin": {
+  "value": "1.0000",
+  "meaning": "factor-assembly transfer, minimum across the trust sweep",
+  "section": "account"
+ },
+ "GrDeadAvgEq": {
+  "value": "0.40",
+  "meaning": "averaging-assembly transfer at equal configured trust",
+  "section": "account"
+ },
+ "GrDeadAvgHigh": {
+  "value": "0.00",
+  "meaning": "averaging-assembly transfer at 1000x dead trust",
+  "section": "account"
+ },
+ "GrRepeatJoint": {
+  "value": "1.667",
+  "meaning": "joint marginal variance at the target, 1/p units (5/3)",
+  "section": "account"
+ },
+ "GrRepeatNaive": {
+  "value": "1.200",
+  "meaning": "naive per-route variance claim, 1/p units (6/5)",
+  "section": "account"
+ },
+ "GrRepeatOverstatePct": {
+  "value": "39",
+  "meaning": "precision overstatement of per-route accounting, percent",
+  "section": "account"
+ },
+ "GrAnchorLawGap": {
+  "value": "\\ensuremath{2.5\\times10^{-9}}",
+  "meaning": "max gap between the solver's transfer and kp/(kappa+kp)",
+  "section": "anchor"
+ },
+ "GrStorySnapA": {
+  "value": "10.0",
+  "meaning": "the snapshot solve's A mark at t=3.5 (dragged to the print)",
+  "section": "story"
+ },
+ "GrStorySnapB": {
+  "value": "14.0",
+  "meaning": "the snapshot solve's B mark at t=4 (dislocation erased)",
+  "section": "story"
+ },
+ "GrStoryDeskB": {
+  "value": "11.0",
+  "meaning": "the desk path's B mark at t=4 (dislocation kept)",
+  "section": "story"
+ },
+ "GrRmsGraph": {
+  "value": "0.47",
+  "meaning": "dark-node rms error of the graph posterior, vol pts",
+  "section": "complete"
+ },
+ "GrRmsBase": {
+  "value": "3.01",
+  "meaning": "dark-node rms error of riding the baseline, vol pts",
+  "section": "complete"
+ },
+ "GrAuditOver": {
+  "value": "6.1",
+  "meaning": "std(Z) under 25x overtrusted relation precisions",
+  "section": "complete"
+ },
+ "GrAuditStated": {
+  "value": "1.55",
+  "meaning": "std(Z) under stated precisions, no floor",
+  "section": "complete"
+ },
+ "GrAuditFloor": {
+  "value": "1.08",
+  "meaning": "std(Z) with the idiosyncratic floor added to the bands",
+  "section": "complete"
+ },
+ "GrNvdaDecPost": {
+  "value": "+1.39",
+  "meaning": "posterior innovation at the withheld NVDA December node",
+  "section": "complete"
+ },
+ "GrNvdaDecTrue": {
+  "value": "+1.08",
+  "meaning": "true innovation at the withheld NVDA December node",
+  "section": "complete"
+ },
+ "GrNvdaDecBand": {
+  "value": "0.38",
+  "meaning": "floored posterior sd at the withheld node, vol pts",
+  "section": "complete"
+ },
+ "GrRetargetRmsBp": {
+  "value": "1.2",
+  "meaning": "rms gap between the retargeted smile and the shifted target, vol bp",
+  "section": "complete"
+ },
+ "GrNvdaDecQuotes": {
+  "value": "167",
+  "meaning": "prepared quote count at the withheld NVDA December node",
+  "section": "complete"
+ },
+ "GrNvdaDecFromNvda": {
+  "value": "+1.04",
+  "meaning": "contribution of the two lit NVDA neighbours, vol pts",
+  "section": "complete"
+ },
+ "GrNvdaDecFromSpy": {
+  "value": "+0.30",
+  "meaning": "contribution of the six lit index nodes, vol pts",
+  "section": "complete"
+ },
+ "GrNvdaDecFromRes": {
+  "value": "+0.05",
+  "meaning": "contribution routed through the sister's carried residual",
+  "section": "complete"
+ },
+ "GrCalmBase": {
+  "value": "0.21",
+  "meaning": "baseline error at the called-out idiosyncratic node",
+  "section": "complete"
+ },
+ "GrCalmGraph": {
+  "value": "0.97",
+  "meaning": "graph error at the called-out idiosyncratic node",
+  "section": "complete"
+ },
+ "GrSkillBetter": {
+  "value": "10",
+  "meaning": "dark nodes where the graph beats the baseline",
+  "section": "complete"
+ },
+ "GrSkillWorse": {
+  "value": "2",
+  "meaning": "dark nodes where riding the baseline would have been better",
+  "section": "complete"
+ },
+ "GrShortDarkTrue": {
+  "value": "+9.47",
+  "meaning": "true innovation at the dark 18-day NVDA node",
+  "section": "complete"
+ },
+ "GrShortDarkPost": {
+  "value": "+10.19",
+  "meaning": "posterior at the dark 18-day NVDA node",
+  "section": "complete"
+ },
+ "GrSisterCarried": {
+  "value": "-0.69",
+  "meaning": "the sister's carried dislocation this morning, vol pts",
+  "section": "complete"
+ },
+ "GrSisterSepPost": {
+  "value": "+2.96",
+  "meaning": "posterior at the dark sister September node",
+  "section": "complete"
+ },
+ "GrSisterSepSys": {
+  "value": "+3.79",
+  "meaning": "its lit-source (systematic) part",
+  "section": "complete"
+ },
+ "GrSisterSepTrue": {
+  "value": "+2.92",
+  "meaning": "true innovation at the sister September node",
+  "section": "complete"
+ }
+}

@@ -1,0 +1,132 @@
+\section{Less than full force: anchors and corroboration}
+\label{sec:granchor}
+
+The contracts so far transfer at full amplitude: one point at the
+informer is $\beta$ points at the receiver, however far the message
+travels.  That is the right semantics \emph{conditional on the
+relation as asserted} --- but a desk often wants to assert less.
+Related names do not, on average, transfer each other's moves one for
+one; a prudent configuration wants a stated fraction through, with
+``no move'' keeping some claim on the receiver.  The question of this
+section is how to say ``believe it, but not at full force'' without
+breaking anything already built.  Two natural answers are provably
+wrong, and working through them is the fastest way to trust the third.
+
+\subsection{Two wrong ways}
+
+Suppose the desk wants \emph{half} the message through.
+
+\emph{Wrong way one: scale the amplitude.}  Replace $\beta$ by
+$\tfrac12\beta$ in the factor.  The forward reading now transfers
+half, as intended.  But \cref{sec:gredge} showed that one factor
+carries \emph{two} readings, and the reverse reading of
+$p\,(\Theta_i-\tfrac12\beta\,\Theta_j)^{2}$ has amplitude
+\[
+\frac{1}{\tfrac12\beta}=\frac{2}{\beta}:
+\]
+twice the original reverse amplitude.  The shrink attenuates one
+direction by \emph{amplifying} the other --- a receiver's print would
+now move its informer at double force.  Attenuation is not a property
+a single symmetric factor can have; scaling $\beta$ just relocates
+the excess.
+
+\emph{Wrong way two: two directed shrunk factors.}  Then write two
+factors, one per direction, each shrunk by the same half: the forward
+factor predicts the receiver at $\tfrac12\beta$ per informer point,
+and the reverse factor predicts the informer at half of
+\emph{its} reading, $\tfrac12\Theta_i/\beta$.  Hold the informer
+fixed at $m$ (\emph{clamped}: treated as observed exactly, a
+certified print), and give the reverse factor the units-matched
+precision $p'=p\beta^{2}$ of \cref{sec:gredge} so that neither
+direction is favoured by bookkeeping.  The receiver then minimizes
+\[
+p\,\bigl(\Theta_i-\tfrac12\beta m\bigr)^{2}
++p\beta^{2}\bigl(m-\tfrac12\Theta_i/\beta\bigr)^{2}.
+\]
+Set the derivative in $\Theta_i$ to zero:
+\[
+\bigl(\Theta_i-\tfrac12\beta m\bigr)
+-\tfrac12\beta\bigl(m-\tfrac12\Theta_i/\beta\bigr)=0
+\;\Longrightarrow\;
+\Theta_i\bigl(1+\tfrac14\bigr)=\beta m
+\;\Longrightarrow\;
+\Theta_i=\tfrac{4}{5}\,\beta m .
+\]
+Eighty percent through, not fifty --- and on top of the wrong number,
+the relation has been entered twice, which \cref{sec:graccount}
+already convicted.  (The general shrink $s$ transfers
+$2s/(1+s^{2})$; setting $2s/(1+s^{2})=s$ --- asking the configured
+shrink to be the delivered one --- forces $s=\pm1$: full force, or a
+sign flip.  No genuine shrink survives.)
+
+\subsection{The anchor}
+
+The consistent mechanization does not touch the relation at all.  It
+adds a new, honest belief \emph{about the node}: a zero-innovation
+pseudo-observation --- ``absent evidence, this node does not move'' ---
+at a stated precision $\kappa_i$.  This is the middle term of
+\cref{eq:grjoint}, switched on at last, and it is Chapter~10's
+device: yesterday entering the objective as one extra row
+(\cref{sec:infgate}), here with the transported baseline itself as
+the target, since $\Theta_i=0$ \emph{means} ``publish the baseline.''
+With one clamped source sending message $m$ at precision $p$, the
+receiver minimizes $p(\Theta_i-m)^{2}+\kappa_i\Theta_i^{2}$, and
+completing the square gives
+\[
+\hat\Theta^{+}_i=\frac{p}{p+\kappa_i}\,m .
+\]
+Half through: set $\kappa_i=p$.  A quarter: $\kappa_i=3p$.  The
+shrink lives in a \emph{node} belief, so it cannot break the
+relation's reciprocity, cannot double-count it, and composes with
+everything already proved.
+
+What happens when several sources agree?  With $k$ clamped agreeing
+sources, all at precision $p$ and amplitude one, rule
+\cref{eq:grcond} says the messages average to their common value $m$
+at conditional precision $kp$; the anchor then shrinks by the same
+completed square:
+\begin{equation}
+\hat\Theta^{+}_i=\frac{kp}{kp+\kappa_i}\,m .
+\label{eq:grcorr}
+\end{equation}
+Read \cref{eq:grcorr} at $\kappa_i=3p$: one source pushes a quarter
+through; two sources, $2/5$; three, one half; corroboration keeps
+climbing toward one.  Independent agreeing voices \emph{earn} force
+against the anchor --- which is how a prudent default coexists with
+conviction when the whole neighbourhood moves together.
+\Cref{fig:granchor} draws the law for three anchor settings, with the
+chapter's solver run at each point --- the sources clamped, as the
+law's hypothesis requires: the dots sit on the curves to
+\MacGrAnchorLawGap.  (Unclamped sources carry their own doubt, and
+the transfer then sits below these curves --- the marginal-variance
+lesson of \cref{sec:grmeet}, unchanged.)  One subtlety is disclosed rather than hidden:
+$\kappa_i$ is \emph{fixed per node} --- one belief about the node,
+sized off its primary relation (its highest-precision incident edge,
+read in the node's own units) --- not rescaled as further edges
+arrive.  Tie $\kappa_i$ proportionally to the node's total incoming
+precision instead, and \cref{eq:grcorr}'s ratio freezes at its
+one-source value: a legal prior, but one that flatly denies
+corroboration.  Which behaviour a desk wants is a statement about the
+world, and the fixed anchor --- corroboration lifts transfer --- is the
+convention this book adopts.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.8\textwidth}{fig_gr_anchor.pdf}
+\caption{The corroboration law \cref{eq:grcorr}: transfer per unit
+message against the number of agreeing sources, for anchor settings
+$\kappa/p=0$ (full force), $1$ (half through at one source) and $3$
+(a quarter through at one source).  Curves are the law; dots are the
+chapter's solver, agreeing to \MacGrAnchorLawGap.  Corroborating
+voices climb through the anchor; the anchor never touches the
+relation itself.}
+\label{fig:granchor}
+\end{figure}
+
+The dial exists, and it is honest: amplitude still prices what a move
+means, trust still prices how tightly a relation binds, and the
+anchor prices how strongly a node holds to its baseline against its
+neighbours' claims.  All three are separately stated and separately
+auditable.  What none of them yet captures is \emph{time} --- a node
+that was seen dislocated an hour ago, and has been dark since.  That
+is the last ingredient.

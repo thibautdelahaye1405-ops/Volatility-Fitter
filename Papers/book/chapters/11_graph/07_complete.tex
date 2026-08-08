@@ -1,0 +1,235 @@
+\section{The universe completed}
+\label{sec:grcomplete}
+
+Now run everything at once on the universe of
+\cref{fig:gruniverse}.  The experiment is constructed \emph{backward}
+from the frozen data, so that the truth at every dark real node is the
+actual frozen board.  The construction has three ingredients.  A
+systematic repricing: the index's ATM volatility moves
+\MacGrAnchorMovePts\ points at its December node, scaled across
+maturities by the constant-variance-injection shape of
+\cref{sec:gredge} and per name by its stated beta (\MacGrBetaNvda\
+for NVDA, \MacGrBetaSister\ for the sister, \MacGrBetaBlend\ for the
+blend).  A seeded idiosyncratic scatter of \MacGrScatterSd\ points at
+every node --- each node's private move.  And the sister's carried
+dislocation, \MacGrSisterCarried\ points this morning.  The three
+together are the true innovation field; yesterday is then
+\emph{defined} as today's truth minus that field.  The solver is
+shown only yesterday, the \MacGrLitCount\ lit measurements (truth
+plus \MacGrObsSd\ points of stated observation noise), and the
+contracts, whose stated relation noise is the construction's own
+scatter, propagated.  Every number is deterministic given the one
+seeded draw; Appendix~\ref{app:grprotocol} lists the recipe.  The
+\MacGrDarkCount\ dark nodes are the held-out truths.
+
+\subsection{Reading the completed board}
+
+Start with the aggregate: across the twelve dark nodes, riding the
+baselines --- publishing yesterday unchanged --- errs by
+\MacGrRmsBase\ volatility points rms; the graph posterior errs by
+\MacGrRmsGraph.  The gap is this morning's systematic content, and the
+individual nodes in \cref{fig:grcomplete}(a) show where it lives.
+Each dot is one dark node, its baseline error on the horizontal axis
+and its graph error on the vertical; the dotted diagonal is ``no
+better than riding the prior.''  \MacGrSkillBetter\ of the twelve sit
+below the diagonal --- most far below.  The extreme case is the dark
+18-day NVDA node: its true innovation was \MacGrShortDarkTrue\ points
+(the short end of a repricing morning), the baseline missed by all of
+it, and the graph --- hearing the lit index board and NVDA's own lit
+neighbours --- reconstructed \MacGrShortDarkPost.  The
+\MacGrSkillWorse\ dots at or above the diagonal are both sister
+nodes whose mornings were dominated by their own scatter; one sits
+essentially on the line, and the called-out one is the extreme:
+truth barely moved (baseline error
+\MacGrCalmBase\ points) while its private draw fought the systematic,
+and the graph, correctly reporting the systematic, missed by
+\MacGrCalmGraph.  Those dots are the mechanism's honest scope printed
+on one chart: the graph carries \emph{shared} repricing; it cannot
+manufacture a node's private move, and on a morning that is all
+private moves its honest answer degrades to ``no change'' --- which is
+the baseline, not a disaster.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_gr_complete.pdf}
+\caption{The universe completed.  (a)~Per-dark-node errors: graph
+against baseline, log--log; the diagonal is ``no better than the
+prior.''  \MacGrSkillBetter\ of twelve nodes sit below it; the nodes at or
+above it had idiosyncratic mornings, and the graph cannot know
+private moves.
+(b)~The withheld NVDA December node: yesterday's baseline (dashed),
+the graph's retargeted reconstruction with its
+$\pm\MacGrNvdaDecBand$-point band (blue, shaded), and the frozen
+quotes the reconstruction never saw (orange).  (c)~The audit: std of
+the standardized dark-node errors --- overtrusted precisions fail at
+\MacGrAuditOver; stated precisions read \MacGrAuditStated; adding the
+idiosyncratic floor lands \MacGrAuditFloor, against the dotted target
+of one.}
+\label{fig:grcomplete}
+\end{figure}
+
+Panel~(b) is the chapter's --- and the book's --- closing exhibit.  The
+NVDA December node is dark this morning; its truth is the real frozen
+board --- \MacGrNvdaDecQuotes\ prepared quotes the solver never saw.  The dashed
+green curve is its baseline: yesterday's smile, which this morning's
+repricing has left \MacGrNvdaDecTrue\ points too low.  The blue curve
+is the reconstruction: the posterior innovation
+$\hat\Theta^{+}=\MacGrNvdaDecPost$ points --- earned, per the
+attribution rule of \cref{sec:graccount}, as
+\MacGrNvdaDecFromNvda\ from the two lit NVDA neighbours,
+\MacGrNvdaDecFromSpy\ from the six lit index nodes, and
+\MacGrNvdaDecFromRes\ routed through the sister's carried residual ---
+applied to the baseline and retargeted through Part~I's machinery
+into an arbitrage-free smile (the retarget reproduces the shifted
+target to \MacGrRetargetRmsBp\ volatility basis points rms, so
+validity costs essentially nothing).  The orange dots are the withheld
+quotes.  The reconstruction lands within a fraction of a point of a
+smile it never saw, and --- the part that matters as much --- its
+shaded $\pm\MacGrNvdaDecBand$-point band \emph{contains} the miss.
+The true innovation was \MacGrNvdaDecTrue; the posterior said
+\MacGrNvdaDecPost\ and owned the difference.
+
+The sister board shows the third prior doing its work.  At the dark
+sister September node, solving the same morning \emph{without} the
+carried dislocation publishes $\MacGrSisterSepSys$ points --- the
+systematic message alone.  With the residual carried
+(\MacGrSisterCarried\ at the morning's decay), the published mark is
+$\MacGrSisterSepPost$, against a truth of \MacGrSisterSepTrue.  The
+residual channel moved the mark by roughly eight tenths of a point
+--- slightly more than the carried value itself, because the
+dislocation also echoes back through the sister's own ladder --- and
+it moved it toward the truth.  Yesterday afternoon's one thin print is still
+paying for marks this morning, at a stated, decaying weight, not
+forever.
+
+\subsection{The audit, and one honest repair}
+
+Chapter~10 ended by demanding that any machinery publishing
+uncertainty be audited: the standardized errors
+$\mathcal{Z}=(\text{truth}-\hat\Theta^{+})/\sqrt{\mathcal{V}}$ of
+\cref{eq:infz} should scatter with standard deviation one.
+Panel~(c) runs that audit over the twelve dark nodes, three ways.
+First, an \emph{overtrusting} arm --- every relation precision
+multiplied by twenty-five, the configuration mistake of a desk that
+states conviction it does not have: std$(\mathcal{Z})
+=\MacGrAuditOver$, bars several times too narrow, Chapter~10's
+starved-filter failure in graph clothes.  Second, the \emph{stated}
+precisions: \MacGrAuditStated\ --- better, but still above one, and
+the excess is diagnosable.  The edges into one receiver were priced
+as if their noises were independent, but every one of them shares the
+\emph{receiver's own} idiosyncratic scatter; adding their precisions
+therefore over-credits the neighbourhood, by exactly the mechanism of
+the repeated-route case file (\cref{sec:graccount}) acting through
+the node itself.  Third, the repair: a node's neighbours can never
+know its private scatter, so the published band can never honestly be
+narrower than it --- add the node's own scatter variance to the band
+(the \emph{idiosyncratic floor}; it touches no mean, only bands).
+The audit lands at \MacGrAuditFloor.  A twelve-residual audit is a
+coarse instrument, but the ordering it prints is the lesson:
+overconfidence is a configuration property, honesty is checkable, and
+the checks are the same ones Chapter~10 taught --- run at universe
+scale.
+
+\subsection{The chapter's contract}
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{The chapter's contract.}
+\label{tab:grcontract}
+\begin{tabular}{p{0.31\textwidth}p{0.31\textwidth}p{0.30\textwidth}}
+\toprule
+\textbf{Proved} & \textbf{Measured} & \textbf{Convention}\\
+\midrule
+The receiver conditional \cref{eq:grcond} and the chain law
+\cref{eq:grchain}: messages average by precision; amplitudes
+multiply, variances accumulate, and no distance haircut exists. &
+The contract sweep: means flat at the configured amplitudes to
+\MacGrContractFlat; bands falling as $1/\sqrt{p}$; the chain matching
+the accumulation law to \MacGrHopGap\ (\cref{fig:grcontract,fig:grmeet}). &
+The calendar amplitude \cref{eq:grcalbeta} adopts the flat-vol
+maturity-ratio reading; cross-name amplitudes are stated desk
+judgments.\\
+\addlinespace
+Eliminating a free informer removes its factor exactly; the averaging
+assembly is improper and poisons the live message
+(\cref{sec:graccount}). &
+The dead-informer sweep: factor transfer \MacGrDeadPairMin\ flat;
+averaging \MacGrDeadAvgEq\ at equal trust, decaying to
+\MacGrDeadAvgHigh\ (\cref{fig:graccount}). &
+One factor per relation; a bidirectional pair is one fact, not two.\\
+\addlinespace
+The triangle: joint variance $5/(3p)$ against the per-route claim
+$6/(5p)$. &
+The \MacGrRepeatOverstatePct\% precision overstatement
+(\cref{fig:graccount}). &
+Attribution is by source ($\mathcal{K}_{is}$), never by path.\\
+\addlinespace
+The corroboration law \cref{eq:grcorr}; amplitude scaling and
+doubled shrunk factors both fail (\cref{sec:granchor}). &
+Solver on the law to \MacGrAnchorLawGap\ (\cref{fig:granchor}). &
+The anchor $\kappa_i$ --- how strongly a node holds its baseline ---
+is a stated, fixed-per-node commitment.\\
+\addlinespace
+No constant amplitude imitates a decaying dislocation (the
+$0.5$-versus-$0.75$ contradiction); mean reversion can only close a
+gap, never deepen it (\cref{sec:grbelieve}). &
+The staged universe: dark rms \MacGrRmsGraph\ against the baseline's
+\MacGrRmsBase; the withheld December node reconstructed to
+\MacGrNvdaDecPost\ against \MacGrNvdaDecTrue\ under a
+\MacGrNvdaDecBand-point band (\cref{fig:grcomplete}). &
+The half-life $t_{1/2}$, the one-way cut at the source, and the
+handles-only carrier (wings ride the baseline) are stated policies.\\
+\addlinespace
+--- (this row is empirical by design) &
+The audit: std$(\mathcal{Z})$ \MacGrAuditOver\ overtrusted /
+\MacGrAuditStated\ stated / \MacGrAuditFloor\ floored
+(\cref{fig:grcomplete}c). &
+The idiosyncratic floor: a band never narrower than the node's own
+scatter; mean-invariant by construction.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Hold the chapter against the book's thesis one last time.
+\emph{Validity} is inherited by construction: the graph moves handles,
+and every published smile is retargeted through Part~I's machinery ---
+the universe never contains a curve that fails its own chapter-2
+checks.  \emph{Information} is the chapter's whole subject, made
+geographic: the lit innovations are the morning's entire evidence, and
+the machinery's discipline is a list of refusals --- to move without
+being paid, to hear a silent neighbour, to count one source twice, to
+report conditional confidence as marginal, to invent signal where no
+path exists.  \emph{Convention} is everything else, and every piece of
+it is a stated, auditable number: the amplitudes, the relation
+precisions, the anchor, the half-life, the floor.  Posterior equals
+data where data speaks; structure where data is silent; and
+uncertainty always, audited.
+
+\subsection{The end of the book}
+
+Close the loop.  This book opened with a predicament: a market that
+quotes finitely many noisy prices, and a desk that must nevertheless
+publish something as ambitious as a \emph{field of probability laws}
+--- a law for every underlier, every expiry, every strike, every
+morning.  The chapters built the answer in layers.  A single smile
+became a probability law with checkable validity (Part~I).  The
+observation itself was earned --- forwards, exercise rights, the
+market's own clock (Part~II).  The surface was given dynamics, and
+inference under weak information --- the filter, the prior, the gate
+--- taught one discipline above all: say what the data determined,
+say what convention filled in, and price the difference
+(Part~III).  This chapter assembled all of it into the object the
+predicament actually demands: not one smile but a universe of them,
+sparse data and all, each law published with its provenance --- this
+much from today's quotes, this much from the structure the desk
+asserted and disclosed, this much from a remembered dislocation on a
+stated clock, and a band, audited, over all of it.  That a
+twenty-node universe with eight lit nodes can hand back a withheld
+December smile to within a fraction of a volatility point is not a
+conjuring trick; it is bookkeeping --- Gaussian, checkable, and honest
+about every assumption it spends.  The surface was never one object.
+It is a field of laws, held together by everything a desk knows and
+everything it is willing to say --- and the whole of this book has
+been the discipline of keeping those two accounts separate, and
+adding them up correctly.

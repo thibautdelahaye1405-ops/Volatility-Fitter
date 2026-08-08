@@ -1,0 +1,185 @@
+\section{What a dark node believes: baseline, systematic, residual}
+\label{sec:grbelieve}
+
+Everything so far solves \emph{one instant}: whoever is lit right now
+speaks, and the universe rearranges.  But a trading day is not an
+instant, and the sharpest test of the machinery is a node that was
+seen --- briefly, tellingly --- and has been dark since.  This section
+works that test on the smallest example that contains it, and the
+answer will organize everything a dark node knows into three parts.
+
+\subsection{A morning, replayed by hand}
+
+Two assets.  $A$ is liquid and prints every hour: its handle reads
+$10,11,12,13,14,15$ at hours $0$ through $5$ (toy numbers, in handle
+points).  $B$ is thin: it prints $10$ at hour $0$ and then only once
+more, $10$ again, at hour $3.5$.  The desk believes $B$ follows $A$
+one for one --- amplitude one --- and believes the influence runs one
+way: $A$ is the market, $B$ a satellite.  What should $B$'s published
+mark do?
+
+Walk it as a trader would.  From hour $0$ to $3$, $B$ is dark and
+nothing distinguishes it from its $A$-driven prediction, so it rides
+the relation: $10,11,12,13$.  At hour $3.5$, $B$ prints $10$ while the
+freshest $A$ information says $13$.  The print is a fact; publish it.
+But it also \emph{teaches} something: relative to what $A$ implies,
+$B$ is dislocated by $10-13=-3$ points.  When $A$ ticks to $14$ at
+hour $4$ and $B$ is dark again, the desk does not throw that lesson
+away: the mark should be $14-3=11$ --- following $A$'s move at full
+amplitude \emph{from the dislocated level}.  The blue staircase of
+\cref{fig:grstory}(a) is this path.
+
+Now hand the same tape to the machinery of
+\cref{sec:grmeet} run afresh at each instant, with whoever is printing
+right at that moment as the lit set.  (The story is walked in raw
+levels for readability; against a flat baseline of $10$, a level is
+its innovation plus ten, and with amplitude one the two solves differ
+by that constant shift and nothing else.)  The dashed violet path is
+what comes back, and it is wrong twice, in instructive ways.  At hour
+$3.5$, only $B$ is lit --- and the solve drags $A$ down to
+\MacGrStorySnapA: the contract read backwards is exactly as precise as
+read forwards (\cref{sec:gredge}), and with nothing else lit, one
+satellite print legitimately marks down the index.  At hour $4$, only
+$A$ is lit --- and $B$ snaps to \MacGrStorySnapB: the solve holds no
+record that $B$ ever disagreed, so the dislocation is erased by the
+next source tick, where the desk path stands at \MacGrStoryDeskB.
+Nothing is broken in the algebra.  The solver answered exactly the
+question it was asked --- ``what do the contracts and \emph{this
+instant's} prints imply?'' --- and the desk was asking a different
+question, one whose answer needs two things a per-instant solve does
+not have: \emph{direction} and \emph{memory}.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_gr_story.pdf}
+\caption{The asynchronous pair.  (a)~$A$ prints hourly (ink); $B$
+prints twice (orange squares).  The desk path (blue) rides the
+relation between prints, learns the $-3$-point dislocation at the
+$3.5$-hour print, and keeps it: $14-3=11$ at hour $4$.  The
+per-instant solve (dashed violet) drags $A$ to the print at hour
+$3.5$ (no direction) and erases the dislocation at hour $4$ (no
+memory).  (b)~The carried dislocation under three half-lives: what
+$t_{1/2}$ asserts is how long a private dislocation stays believed.}
+\label{fig:grstory}
+\end{figure}
+
+\subsection{No amplitude can fake a memory}
+
+Before adding machinery, close one tempting escape.  After the print,
+could a softer \emph{amplitude} give the desk a gentler path than the
+staircase?  Following $A$ at a constant fraction $\beta$ from the
+printed level publishes, at hour $t$,
+\[
+B=10+\beta\,\bigl(A_t-13\bigr):
+\]
+a fixed share of $A$'s move since the print, forever.  Now suppose
+the desk's instinct is that the share should \emph{change} as the
+print goes stale --- wishing, say, for half of $A$'s move by hour $4$
+but three quarters of it by hour $5$: marks of $10.5$ and $11.5$.
+Match each wish separately:
+\[
+10+\beta\,(14-13)=10.5
+\;\Longrightarrow\;
+\beta=0.5,
+\qquad
+10+\beta\,(15-13)=11.5
+\;\Longrightarrow\;
+\beta=0.75 .
+\]
+No constant amplitude grants both: a share that varies with elapsed
+time is not an amplitude at all --- it is a \emph{state} of the node,
+evolving on its own clock.  The coherent version of ``the print goes
+stale'' is a dislocation that decays: publish
+$B=A_t-3\cdot2^{-\text{elapsed}/t_{1/2}}$, the remembered $-3$
+fading with a stated half-life.  Such paths start on the staircase
+and drift \emph{up} toward the full relation as the memory fades ---
+and that direction is forced.  At hour $4$, for every half-life,
+\[
+14-3\cdot2^{-0.5/t_{1/2}}\;\ge\;14-3=11 :
+\]
+forgetting a dislocation can only close the gap toward $A$, never
+deepen it.  So no half-life --- and, by the contradiction above, no
+amplitude either --- holds the hour-$4$ mark below $11$; the
+half-way wish of $10.5$ is thereby diagnosed rather than granted,
+since it asks to undo part of a move the desk itself asserted at
+amplitude one.  The menu after a print is exactly one dial wide:
+from the flat staircase (never forget) to an instant snap-back
+(forget at once), parametrized by the half-life.
+
+\subsection{The residual state}
+
+So give each node the state the story demands.  Write $\mathcal{U}_i$
+for node $i$'s \emph{persisted dislocation}: the part of its last
+actual observation that its informers did not explain, measured at the
+print as the gap between the print and the contemporaneous
+systematic prediction ($10-13=-3$ in the story).  Between
+observations the dislocation is believed with a stated memory,
+\begin{equation}
+\mathcal{U}_i(\text{now})
+=\mathcal{U}_i(\text{print})\cdot
+2^{-\Delta t_{\mathrm{days}}/t_{1/2}},
+\label{eq:grdecay}
+\end{equation}
+a half-life decay on the elapsed time, with elapsed time and
+half-life quoted on one clock --- the universe construction uses
+days, the story above ran in hours.  (And the \emph{variance} of the
+carried value grows as it ages: the longer since the print, the less
+certain what remains of it.)  Panel~(b) of \cref{fig:grstory} draws
+the decay for three settings of the dial on the story's hourly clock:
+half an hour (a dislocation is short-lived noise), two hours, and
+never-forget; the staged universe of \cref{sec:grcomplete} runs the
+same dial in days, its sister name carrying a two-day half-life.  The
+half-life is not estimated from anything in this book --- it is a
+stated desk commitment, exactly like the anchor $\kappa$, and the
+audit of \cref{sec:grcomplete} is what holds it honest.
+
+How does the state enter the solve?  Through the contract, as an
+offset: a node carrying a dislocation obeys its relations \emph{from
+the dislocated level}, so the factor becomes
+\[
+p_{ij}\,\bigl(\Theta_i-\beta_{ij}\Theta_j-\mathcal{U}_i\bigr)^{2},
+\]
+with the carried $\mathcal{U}_i$ from \cref{eq:grdecay} and its grown
+variance widening the relation noise.  Everything else --- the
+assembly, the accounting, the anchors --- is unchanged.
+
+Direction is the remaining assertion, and it is worth stating exactly
+because the algebra cannot supply it.  When $B$'s surprising print
+arrived, the desk revised \emph{B's} state only --- it did not mark
+the index down.  That is a structural claim about the world
+(influence flows one way), and \cref{sec:gredge} showed a symmetric
+contract cannot express it: tight trust binds both directions.  The
+reference implementation therefore cuts the update at the source.
+Concretely: a satellite's print enters the machinery as a measurement
+of its \emph{own} residual --- the gap between the print and the
+contemporaneous systematic prediction is booked into
+$\mathcal{U}$ --- and not as an observation row of \cref{eq:grjoint},
+which the joint solve would propagate backward into the informer.
+This is a stated policy layered on top of the Gaussian, not a
+consequence of it.  This book keeps to the policy's one load-bearing sentence: a
+dark universe must never let its thinnest member mark down its
+benchmark.
+
+\subsection{Three priors, one belief}
+
+Step back and collect what a single dark node now knows, because it
+has become a complete inventory.  Its published handle is
+\[
+\text{baseline}
+\;+\;
+\underbrace{\text{systematic}}_{\text{the graph's message}}
+\;+\;
+\underbrace{\text{residual}}_{\text{its own memory}},
+\]
+three parts of decreasing evidence, each with its own uncertainty and
+its own clock.  The \emph{baseline} is Chapter~10's: yesterday's
+posterior, transported by Chapter~9, its variance grown on
+Chapter~8's clock --- what the node would publish if the universe said
+nothing.  The \emph{systematic} part is this chapter's: what the lit
+universe's innovations imply through the contracts, at the amplitudes
+asserted, shrunk by the anchor, priced by the accountant.  The
+\emph{residual} is the node's own remembered dislocation, decaying on
+its half-life.  Nothing else enters, and each part is separately
+auditable --- which is the property that lets \cref{sec:grcomplete}
+print, for any published mark, exactly where every point of it came
+from.  The machinery is complete; it remains to run it.

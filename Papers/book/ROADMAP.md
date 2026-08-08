@@ -28,24 +28,19 @@ the prose. Therefore:
 
 The pedagogy contract governs (rewritten 2026-08-05 after the author
 rejected Chapters 3–4's original register; both were fully revised).
-Chapters 5–10 were written under the contract from the start (newcomer
-fresh-reader pass run on each, all findings resolved).  Chapter 10
-(2026-08-07) is the most recent chapter held to the contract;
-Chapters 3–4 serve as TONE EXEMPLAR.  Parts I–II are COMPLETE;
-Part III has Chapters 9–10 done and Chapter 11 remaining (211-page
-build).
+Chapters 5–11 were written under the contract from the start (newcomer
+fresh-reader pass run on each, all findings resolved).  Chapters 3–4
+serve as TONE EXEMPLAR.  Parts I–III are COMPLETE — every content
+chapter (2–11) is written; the 2026-08-07 build is 231 pages.
 Next:
 
-1. Chapter 11 (the graph: one surface from a sparse universe) —
-   sources: the three Note 14 editions (brief below).  Chapter 10
-   planted the hook (its closing paragraph: per-node inference,
-   with the universe's coupling — precision flowing across a graph
-   — left to the final chapter), and its §10.7 division of labour
-   already names the "dark-node baseline" Chapter 11 must build.
-   Data: synthetic universe built FROM the frozen snapshot's two
-   names plus synthetic neighbors — no refetching.
-2. Then Chapter 1 (introduction, written LAST) + the title decision
-   and the Chapter-2 register question (see below).
+1. Chapter 1 (introduction, written LAST) + the title decision
+   and the Chapter-2 register question (see below).  Chapter 11's
+   closing pages return to "the introduction's promise" — write
+   Chapter 1 so it makes that promise (the predicament: finitely
+   many noisy prices, a field of laws to publish), and so it
+   defines "the reference implementation" (the dangling referent
+   flagged since the Ch. 2–3 fresh-reader passes).
 
 NOTE (Ch. 8 data decision, 2026-08-07): the anticipated NVDA
 earnings-week supplement was NOT needed and was not fetched — the
@@ -147,7 +142,7 @@ local volatility placed among the models (author's decision).
 | **Part III — Dynamics and inference** | | | |
 | 9  | Spot–vol dynamics: the missing derivative | 12 | **DONE** (written under the pedagogy contract 2026-08-07; opens Part III) |
 | 10 | Inference under weak information: filtering and priors | 15 + 13 | **DONE** (written under the pedagogy contract 2026-08-07) |
-| 11 | The graph: one surface from a sparse universe | 14 | pending |
+| 11 | The graph: one surface from a sparse universe | 14 | **DONE** (written under the pedagogy contract 2026-08-07; closes Part III and the book's content) |
 
 Note 10 (calendar) is absorbed: its theory (convex order ⇔ ledger order,
 conjugate duality, Kellerer existence) is in Chapter 2 §8; Chapter 5 picks
@@ -842,3 +837,81 @@ keeping Chapter 2 self-contained.
   builds clean at 211 pp, no undefined refs, no ch10 overfulls.
   Next: Chapter 11 (the graph: one surface from a sparse universe)
   — the book's final content chapter, then Chapter 1.
+- 2026-08-07 (later): Chapter 11 WRITTEN under the pedagogy contract
+  from the start (`chapters/11_graph/`, 7 sections + appendix 11.A,
+  ~17 pp main text, book pages 203–221 of the 231-page build; closes
+  Part III and the book's content chapters).  Sources: the three
+  Note 14 editions mined per the brief — precision messages as the
+  main line, the "three priors" recast as the dark-node
+  decomposition (baseline + systematic + residual); smooth-field
+  operator machinery, mode-menu/campaign history, the gauge
+  proposition, measured transfer levels and observation selection
+  all CUT.  Spine: the staged universe (twenty nodes built FROM the
+  frozen SPY+NVDA boards at the six ≥18-day expiries plus two
+  synthetic names — sister and blend — by stated recipes; 8 lit; the
+  morning constructed BACKWARD so dark real nodes score against the
+  actual frozen board) → the edge as a two-number contract (calendar
+  amplitude τ_j/τ_i derived from constant total-variance injection;
+  reverse-reading units law p_rev = β²p; sweep: means flat to
+  3.3e-9, sds 1/√p, 3M/1Y sd ratio exactly 2.00) → messages meet
+  (precision-weighted vote derived; chain law — amplitudes multiply,
+  variances accumulate, distance taxes the band never the mean (the
+  chapter's one aphorism); the boxed universe objective as
+  prop:infmap grown to a vector; the 2×2 hand inversion recovering
+  the chain law and the marginal-vs-conditional caution) → the
+  accountant (dead informer: Schur elimination removes a free
+  informer's factor exactly, while the row-normalized averaging
+  assembly is improper and a vanishing ridge keeps only 0.40 by a
+  minimum-norm tie-break now derived in text — the joint form is a
+  modelling decision; the triangle 5/(3p) vs naive 6/(5p), 39%
+  precision overstatement; attribution 𝒦_is per source never per
+  path; no-lit-path refusal) → anchors and corroboration (both
+  wrong mechanizations derived away — β-scaling flips attenuation
+  into reverse amplification, doubled shrunk factors pass 2s/(1+s²);
+  the zero-innovation anchor κ_i; corroboration law kp/(κ+kp),
+  solver dots on the law to 2.5e-9) → what a dark node believes
+  (the asynchronous A/B staircase: a per-instant symmetric solve
+  drags the index to a satellite print and erases the learned
+  dislocation; no constant amplitude fakes a memory — the
+  0.5-vs-0.75 contradiction, with the softened wish now DIAGNOSED
+  against the ≥11 decay bound rather than posited; the residual
+  state 𝒰_i with half-life entering contracts as an offset; the
+  cut-at-source stated as policy with its factor-level mechanism)
+  → the universe completed (dark rms 0.47 vs baseline 3.01;
+  withheld NVDA December node: posterior +1.39 vs truth +1.08
+  under a 0.38-pt floored band, attribution +1.04 NVDA neighbours /
+  +0.30 index / +0.05 residual channel — summing exactly —
+  retargeted through the Ch. 2 family to 1.2 vol bp; sister
+  decomposition +3.79 systematic → +2.96 with the carried residual
+  vs truth +2.92; audit std(𝒵) 6.1 overtrusted / 1.55 stated /
+  1.08 floored — the correlated-informers overstatement diagnosed
+  and repaired by the idiosyncratic floor) + the contract table +
+  the book's closing pages (returning to the promise Chapter 1 must
+  make).  7 figures + 52 macros from `scripts/ch11/gen_figures.py`
+  (self-contained message solver in figlib implementing exactly the
+  displayed objective; frozen snapshot via the ch3/ch9 loaders —
+  stored fits only, nothing refetched; ONE seeded scatter draw is
+  the chapter's only randomness).  Notation added BEFORE writing
+  (Θ_i innovation field; p_ij, β_ij always node-pair-subscripted;
+  κ_i anchor; ℐ⁺; 𝒦_is; 𝒰_i; t_{1/2}; Ch. 10's hats/𝒱/𝒵 reused).
+  References +Rasmussen–Williams, Koller–Friedman, Pearl, Rue–Held.
+  Newcomer fresh-reader pass run (sub-agent persona): all 9 files
+  summarizable, 45 findings ALL resolved (headliners: the
+  appendix's "sixteen real nodes" arithmetic error → twelve; the
+  half-life unit clash between the hourly story and the daily
+  universe — one-clock rule stated, figure relabelled in hours;
+  the figure-contradicted "NVDA nodes moved by more" plural; the
+  dark-node 𝒱_base placement promised but never shown — the
+  at-publication mechanism added; the sister dislocation −0.80
+  coinciding with the 0.80 anchor move → reparameterized to −0.90
+  and every number regenerated; the blend's cross arrows bowed so
+  they visibly bypass the sister row; "in production" → "on a live
+  desk").  Math verified line by line by the lead (the 2×2 inverse,
+  both Schur eliminations incl. the rank-one annihilation, the
+  triangle cofactor, both wrong-way rejections, the corroboration
+  law, the staircase bounds; the 10-of-12 skill count re-verified
+  after the reparameterization).  Full book builds clean at 231 pp
+  under the canonical jobname, no undefined refs, no ch11
+  overfulls, excluded-context grep clean.  Parts I–III COMPLETE.
+  Next: Chapter 1 (introduction) + the title decision and the
+  Chapter-2 register question.

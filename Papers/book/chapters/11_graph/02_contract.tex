@@ -1,0 +1,148 @@
+\section{An edge is a contract}
+\label{sec:gredge}
+
+What does a desk actually believe when it draws an edge?  Listen to
+the sentences.  ``The sister moves nine tenths of a point when NVDA
+moves a point.''  ``A six-month move of one point is a two-point move
+at three months.''  Each sentence has two independent clauses hiding
+in it: \emph{how large} the implied move is, and \emph{how much the
+speaker trusts the relation}.  A trader can assert a large amplitude
+with little confidence, or a modest amplitude with great confidence.
+Any encoding that forces the two into one number will betray one of
+them.
+
+So an edge carries two numbers.  The relation ``node $j$ informs node
+$i$'' is the statement
+\begin{equation}
+\Theta_i \;=\; \beta_{ij}\,\Theta_j \;+\; \text{noise},
+\qquad
+\text{noise mean }0,\ \text{variance } 1/p_{ij}.
+\label{eq:gredge}
+\end{equation}
+The \emph{amplitude} $\beta_{ij}$ says what the receiver's move should
+be per unit of the informer's move --- it is the finance ``beta,''
+deliberately: the move-per-move slope a desk quotes between related
+assets --- and it prices the \emph{mean}.  The \emph{relation
+precision} $p_{ij}$ says how tightly the relation is believed ---
+precision is one over variance, as everywhere since
+\cref{sec:infgate} --- and it prices the \emph{band}.  Amplitude and
+trust never mix: that is the contract, and this section and the next
+make it hold exactly, not approximately.
+
+\subsection{Where a calendar amplitude comes from}
+
+Cross-name amplitudes are desk judgments (a name's beta to its
+index).  Calendar amplitudes --- between two expiries of one name ---
+can be \emph{derived}, and the derivation is two lines.  Recall the
+chart identity in force since Chapter~2: a slice's total implied
+variance is $w=\sigma^{2}\tau$, volatility squared times variance
+time.  Suppose a piece of news adds the same amount of total variance
+$\delta w$ to every expiry --- the natural first model of a systematic
+repricing: the market now expects one more shock's worth of variance,
+and every expiry that contains the shock inherits all of it (this is
+Chapter~8's event logic wearing scenario clothes).  Differentiate
+$w=\sigma^{2}\tau$ at fixed $\tau$:
+\[
+\delta w \;=\; 2\,\sigma\,\tau\,\delta\sigma
+\qquad\Longrightarrow\qquad
+\delta\sigma \;=\; \frac{\delta w}{2\,\sigma\,\tau}.
+\]
+The same $\delta w$ lands on every expiry, so the \emph{volatility}
+moves scale as
+\[
+\frac{\delta\sigma_i}{\delta\sigma_j}
+=\frac{\sigma_j\,\tau_j}{\sigma_i\,\tau_i}
+\;\approx\;\frac{\tau_j}{\tau_i},
+\]
+the approximation being a flat volatility term structure
+($\sigma_i\approx\sigma_j$).  The chapter's calendar contracts adopt
+the clean form as the stated convention:
+\begin{equation}
+\beta_{ij}=\frac{\tau_j}{\tau_i}
+\qquad\text{(calendar edges; constant total-variance injection)}.
+\label{eq:grcalbeta}
+\end{equation}
+Read it on a clean ladder of three expiries with $\tau=0.25$, $0.5$
+and $1.0$ (variance time, as always) --- call the nodes 3M, 6M and 1Y.  A $+1$-point move at 6M implies
+$+1\times(0.5/0.25)=+2$ points at 3M and $+1\times(0.5/1.0)=+0.5$ at
+1Y.  Short-dated volatility swings hardest --- the same $\delta w$ is a
+bigger share of a smaller $w$ --- which is precisely what
+\cref{fig:gruniverse}(b) showed on the real board.  Note also the
+built-in consistency: $\beta_{ij}\beta_{ji}
+=(\tau_j/\tau_i)(\tau_i/\tau_j)=1$, so a ladder cannot claim
+amplification in both directions, and around any cycle of calendar
+edges the amplitudes telescope to one.  (Asserted cross-name
+amplitudes carry no such guarantee; a loop of them that fails to
+multiply to one asserts contradictory scalings, and the solve of the
+next section will then split the difference somewhere the desk did not
+choose.  The reference implementation flags such loops rather than
+solving through them silently.)
+
+\subsection{One relation, two readings}
+
+Statement \cref{eq:gredge} is written with $i$ as receiver, but a
+relation between two nodes is one fact, not two.  Rewrite the same
+noise term in the other node's units: if
+$\Theta_i-\beta\,\Theta_j$ has variance $1/p$, then dividing by
+$\beta$ shows that
+\[
+\Theta_j-\frac{1}{\beta}\,\Theta_i
+\quad\text{has variance}\quad
+\frac{1}{\beta^{2}}\cdot\frac{1}{p}
+\qquad\Longrightarrow\qquad
+p_{\,\text{reverse}}=\beta^{2}\,p .
+\]
+The reverse reading of the contract carries the reciprocal amplitude
+$1/\beta$ --- as it must --- and a precision rescaled by $\beta^{2}$,
+because the same uncertainty is being quoted in different units.  This
+is bookkeeping, not a second belief.  The convention that keeps it
+tidy (the \emph{canonical orientation}) is to quote each calendar
+relation with the \emph{shorter} maturity as receiver: relation noise
+is then stated in short-dated volatility points, where moves are
+largest and desk intuition lives.  One consequence is worth saying
+now, because \cref{sec:grbelieve} will lean on it: a contract is
+symmetric information.  If the relation between $A$ and $B$ is
+trusted tightly, it is trusted tightly \emph{in both directions} ---
+observing $B$ legitimately updates $A$.  The arrow in a diagram
+chooses units and bookkeeping; it does not create one-way inference.
+Making influence genuinely one-way is a different, stronger assertion,
+and it costs machinery this section does not have.
+
+\subsection{The contract, tested}
+
+\Cref{fig:grcontract} runs the two-dial claim through the chapter's
+solver on the clean ladder, 6M lit at $+1$ point, sweeping the
+relation precision across three decades.  In panel~(a), the posterior
+means at 3M and 1Y sit at exactly $+2.00$ and $+0.50$ --- the
+configured amplitudes --- across the entire sweep; the largest
+deviation anywhere is \MacGrContractFlat\ points, solver arithmetic
+rather than economics.  Turning the trust dial by a factor of a
+thousand leaves the answer where the amplitude put it: amplitude is
+not a function of confidence.  Panel~(b) shows
+what the trust dial \emph{does} govern: the posterior standard
+deviations fall exactly as $1/\sqrt{p}$ (the dotted reference line lies
+on the 3M curve).  And the two curves sit a fixed factor apart --- the
+measured 3M/1Y ratio is \MacGrContractSdRatio\ --- which is the units
+law just derived, in two steps the reader can retrace.  The 6M--1Y
+relation is quoted with 6M as receiver at amplitude $2$, noise
+variance $1/p$; its reverse reading, the one the 1Y node hears,
+carries precision $\beta^{2}p=4p$, hence standard deviation
+$\tfrac12\cdot1/\sqrt{p}$ --- half the 3M node's $1/\sqrt{p}$.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_gr_contract.pdf}
+\caption{The contract on the clean ladder (3M/6M/1Y, 6M lit at $+1$
+volatility point, calendar amplitudes \cref{eq:grcalbeta}).
+(a)~Posterior means at the two dark nodes against the relation
+precision: flat at the configured $+2.00$ and $+0.50$ across three
+decades (maximum deviation \MacGrContractFlat).  (b)~Posterior
+standard deviations: falling as $1/\sqrt{p}$ (dotted), with the 1Y
+band exactly half the 3M band --- the same relation noise read in
+1Y units.  Amplitude prices the mean; trust prices the band.}
+\label{fig:grcontract}
+\end{figure}
+
+We now know what one edge says.  A universe, though, gives every node
+several edges, and several lit nodes speak at once.  The next section
+lets the messages meet.

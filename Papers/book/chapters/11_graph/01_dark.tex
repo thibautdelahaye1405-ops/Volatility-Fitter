@@ -1,0 +1,134 @@
+\section{A universe, mostly dark}
+\label{sec:grdark}
+
+Start from what the book can already do.  Given one expiry's quotes,
+Part~I fits an arbitrage-free smile.  Part~II prepares the quotes that
+feed it.  Chapters~9 and~10 gave each smile a life in time: a transport
+rule for the day's spot move, and a filter that weighs each morning's
+noisy reading against yesterday's transported estimate.  All of it is
+\emph{per node}: one underlier, one expiry, its own quotes, its own
+yesterday.
+
+Now widen the lens.  A desk quotes options on hundreds of underliers,
+each with a dozen expiries.  Call each (underlier, expiry) pair a
+\emph{node}: one smile, one probability law.  On a normal morning a few
+nodes are \emph{lit} --- the index expiries and a handful of large
+names trade densely enough for a full, trustworthy calibration --- and
+the rest are \emph{dark}: a thin name that has not traded today, a far
+tenor with four stale quotes, a weekly that printed twice before
+lunch.  The dark nodes still need surfaces.  Client quotes, risk
+reports and scenario engines do not pause because the tape is thin.
+
+The chapter's universe is drawn in \cref{fig:gruniverse}(a).  It is
+built from the book's frozen data plus two synthetic names, and it is
+small enough to read whole: twenty nodes in four rows.  The top two
+rows are real --- the frozen SPY and NVDA boards, six expiries each,
+from 18~days to 501~days.  (The two sub-week expiries of the frozen
+boards are left out.  The next section will relate expiries through
+the ratio of their maturities; across a two-day gap that ratio is
+really a statement about scheduled events, and Chapter~8 taught which
+clock such nodes actually live on.)  The bottom two rows are synthetic names built from
+the real boards by stated recipes --- a \emph{sister} name constructed
+beside NVDA, and a \emph{blend} constructed between the two boards ---
+four middle expiries each; Appendix~\ref{app:grprotocol} gives the
+recipes.  Filled orange nodes are lit this morning: the whole index
+board, and two expiries of NVDA.  Open nodes are dark: \MacGrDarkCount\
+of the \MacGrNodeCount, including the sister and blend boards in their
+entirety.  The grey segments and arrows are the \emph{edges} --- who is
+believed to inform whom --- and the rest of the chapter is about what,
+exactly, an edge should say.
+
+Panel~(b) shows the morning itself.  Each lit node was calibrated, and
+each calibration is compared with what \cref{ch:infer} would have
+predicted for that node --- yesterday's estimate, transported to today.
+The gap is the \emph{innovation}, the same word and the same object as
+in the filter update \cref{eq:infupdate}: the part of today that
+yesterday did not predict.  This particular morning carries a broad
+repricing, largest by far at the short end: the index printed
+\MacGrSpyDecObs\ volatility points at the December node (137~days)
+and fully \MacGrSpyShortObs\ at 18~days, with only its 410-day node
+ticking slightly down; and NVDA's lit 46-day node printed
+\MacGrNvdaSepObs\ --- a high-beta name amplifying the index's move at
+that expiry.  Short-dated volatility swinging hardest in a general
+repricing is exactly what Chapter~8's clock leads one to expect, and
+\cref{sec:gredge} will turn that expectation into an amplitude.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_gr_universe.pdf}
+\caption{The staged universe.  (a)~Twenty nodes in four rows: the real
+SPY and NVDA boards (six expiries each) and two synthetic names built
+from them.  Filled orange nodes are lit this morning
+(\MacGrLitCount\ of \MacGrNodeCount); open nodes are dark.  Grey
+segments are calendar edges within a name; arrows are cross-name
+edges, pointing from the informing name to the informed one.
+(b)~The eight lit innovations: each lit node's calibrated handle minus
+its transported baseline, in volatility points.  The morning is a
+broad repricing, largest at the short end.}
+\label{fig:gruniverse}
+\end{figure}
+
+\subsection{What would be wrong with copying?}
+
+The oldest answer to a dark node is to copy a nearby smile --- take the
+index smile at the same expiry, add a fixed spread, publish.  Copying
+fails on three counts, and naming them tells us what the machinery
+must do instead.  First, it throws away the dark node's own
+information: the sister name has a perfectly good smile from
+yesterday, whose shape --- its skew, its wings, its own level --- is far
+better than the index's shape with a spread.  Second, it has no notion
+of \emph{how related} two nodes are: a copy is a copy, whether the
+names move in lockstep or barely at all.  Third, it reports no
+uncertainty: the copied smile arrives with the same face whether the
+source is next door or three hops away.
+
+The repairs, in order.  The dark node's own information is exactly
+what \cref{ch:infer} already maintains: every node --- lit or dark ---
+carries a \emph{baseline}, yesterday's posterior transported to
+today's market by Chapter~9's rule, with a variance grown on
+Chapter~8's clock.  This is the division of labour promised at the end
+of \cref{sec:infaudit}: persistence supplies each dark node's
+baseline; what it cannot supply is this morning's \emph{news}.  So the
+graph should not build dark smiles from scratch --- it should only move
+them, and only as far as the lit evidence warrants.  Formally: the
+unknown is not the dark node's handle but its \emph{innovation}, the
+same departure-from-baseline that panel~(b) measures at the lit nodes.
+Write $\Theta_i$ for that unknown at node $i$ --- capital theta, one
+number per node for now.  If the morning's evidence says nothing about
+node $i$, the honest answer is $\Theta_i=0$: publish the baseline,
+unchanged.  Everything the graph adds is a departure from zero that
+the lit innovations must pay for.
+
+The second repair --- how related --- is the subject of
+\cref{sec:gredge,sec:grmeet}: relatedness becomes a stated amplitude
+and a stated trust on each edge.  The third --- uncertainty --- runs
+through the whole chapter: every filled node will report a variance,
+the variance will widen with distance from the lit set, and
+\cref{sec:grcomplete} will hold the machinery to Chapter~10's audit:
+the standardized errors $\mathcal{Z}$ of \cref{eq:infz} must scatter
+with standard deviation one.
+
+\subsection{The carrier, and the scope of one number}
+
+One decision before the mathematics: \emph{what} moves along the
+edges?  Not raw option prices (contracts differ node to node), and not
+whole curves (a curve is not a number).  The reference implementation
+propagates the smile's three ATM handles --- the level $\sigma(0)$, the
+skew $s_0$, and the curvature (which, as in Chapter~10, keeps no
+symbol and is named in words) --- the same compact, model-agnostic
+state that \cref{sec:inffilter} filtered, and for the same reasons:
+they are comparable across nodes, stable in meaning, and they retarget
+into an arbitrage-free smile through the machinery of Part~I, so the
+graph never publishes a raw curve.  Everything a smile is beyond its
+three handles --- its wings above all --- simply rides the baseline:
+the graph moves the belly and only the belly, the same division of
+labour \cref{sec:infaudit} drew for persistence.  Each handle travels
+the graph as its own scalar field with its own edge parameters.  The
+chapter therefore develops everything for \emph{one} scalar field ---
+$\Theta_i$, in volatility points --- and the staged morning is
+constructed to move levels only (its skew and curvature fields carry
+zero innovation everywhere and are not solved), so that one field is
+the whole story; where a handle-specific point matters, it is
+flagged.  We now know
+what the graph must infer.  The next question is what one edge is
+allowed to say.

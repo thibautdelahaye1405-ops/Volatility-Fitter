@@ -1,0 +1,227 @@
+\section{Messages meet: the universe as one objective}
+\label{sec:grmeet}
+
+One edge makes a prediction.  A universe makes many at once: a dark
+node may hear its calendar neighbour on each side and its index
+besides, and the informers need not agree.  This section derives the
+rule by which messages combine, first locally at one receiver, then
+globally as a single least-squares objective for the whole universe
+--- which will turn out to be \cref{ch:infer}'s update with many
+unknowns at once.
+
+\subsection{Two informers vote}
+
+Each contract \cref{eq:gredge} is a quadratic penalty: believing the
+relation at precision $p_{ij}$ means charging
+$p_{ij}(\Theta_i-\beta_{ij}\Theta_j)^{2}$ for deviating from it, the
+same precision-as-weight convention as every least-squares row since
+Chapter~2.  Fix the informers for a moment and collect the terms that
+involve one receiver $\Theta_i$:
+\[
+\sum_j p_{ij}\bigl(\Theta_i-\beta_{ij}\Theta_j\bigr)^{2}.
+\]
+This is a quadratic in $\Theta_i$, so complete the square.  Expanding
+and gathering,
+\[
+\sum_j p_{ij}\Theta_i^{2}
+-2\,\Theta_i\sum_j p_{ij}\beta_{ij}\Theta_j+\cdots
+=\Bigl(\textstyle\sum_j p_{ij}\Bigr)
+\Bigl(\Theta_i-\frac{\sum_j p_{ij}\,\beta_{ij}\Theta_j}
+{\sum_j p_{ij}}\Bigr)^{2}+\cdots,
+\]
+where the dots are terms free of $\Theta_i$.  Read the completed
+square:
+\begin{equation}
+\Theta_i \,\big|\, \text{informers}
+\;\sim\;
+\text{mean } \frac{\sum_j p_{ij}\,\beta_{ij}\Theta_j}{\sum_j p_{ij}},
+\qquad
+\text{variance } \frac{1}{\sum_j p_{ij}}.
+\label{eq:grcond}
+\end{equation}
+Incoming messages --- each informer's move, mapped into the receiver's
+units by its amplitude --- are precision-weighted and \emph{averaged};
+the precisions themselves \emph{add}.  This is exactly the combination
+rule of \cref{sec:infcombine} (two estimates of one number, weighted
+by precision), meeting us again at a graph node.  Disagreement is
+therefore a vote, never a sum: two opposing messages do not cancel
+into silence --- they cancel into a confident zero.
+
+\Cref{fig:grmeet}(a) runs three votes through the solver on the clean
+ladder, with the 6M node dark and its neighbours lit at $-1$ (3M) and
+$+1$ (1Y) volatility points.  First bar: amplitudes set to one and
+equal trust --- the receiver lands at exactly
+$\MacGrVoteCancel$, and its error bar is \emph{tighter} than a single
+informer would leave it, because precisions added ($2p$) even as the
+means cancelled.  Second bar: the short leg's trust raised to $3p$ ---
+the vote goes to the louder voice,
+$(3p\cdot(-1)+p\cdot(+1))/(4p)=\MacGrVoteOut$.  Third bar: equal
+trust again but the \emph{calendar} amplitudes of
+\cref{eq:grcalbeta} --- the same raw signals now read, in 6M units, as
+$0.5\times(-1)=-0.5$ and $2\times(+1)=+2$, and their average is
+$\MacGrVoteBeta$.  The receiver hears predictions in its own units,
+not raw levels; equal-and-opposite cancellation was a statement about
+amplitude-one edges, not a law.
+
+\subsection{A chain: the mean crosses, the band pays}
+
+Now let a message travel.  Chain two contracts,
+$\Theta_B=\beta_1\Theta_A+\varepsilon_1$ and
+$\Theta_C=\beta_2\Theta_B+\varepsilon_2$, with the noises independent
+of each other and of $\Theta_A$.  Substitute the first into the
+second:
+\[
+\Theta_C=\beta_2\beta_1\,\Theta_A
++\beta_2\,\varepsilon_1+\varepsilon_2 .
+\]
+Take the mean and the variance of both sides:
+\begin{equation}
+\E[\Theta_C]=\beta_2\beta_1\,\E[\Theta_A],
+\qquad
+\operatorname{Var}(\Theta_C)
+=(\beta_2\beta_1)^{2}\operatorname{Var}(\Theta_A)
++\frac{\beta_2^{2}}{p_1}+\frac{1}{p_2}.
+\label{eq:grchain}
+\end{equation}
+Amplitudes \emph{multiply} along the chain; relation variances
+\emph{accumulate}, each mapped into the terminal node's units by the
+amplitudes it still has to cross.  Nothing shrinks the mean:
+distance taxes the band, never the mean.  A desk that wants remote
+messages damped must therefore say so explicitly --- that is
+\cref{sec:granchor}'s subject --- because the contracts alone will
+never do it silently.
+
+Panel~(b) of \cref{fig:grmeet} is \cref{eq:grchain} on a six-hop
+amplitude-one chain with the far end lit at $+1$: the posterior mean
+arrives at hop six at exactly $\MacGrHopMean$ --- undamped --- while
+the band grows hop by hop, and the dotted curve, the closed-form
+accumulation $\sqrt{\smash[b]{\mathcal{V}_{\mathrm{obs}}+k/p}}$ after
+$k$ hops, lies on the solved band to machine precision (largest gap
+\MacGrHopGap).  Compare this against \cref{fig:grcontract}: the two
+figures are the same statement --- trust moves bands, amplitude moves
+means --- read along a chain instead of across a dial.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_gr_meet.pdf}
+\caption{Messages meeting.  (a)~The 6M receiver hears its lit
+neighbours at $\mp1$ volatility point, three ways: equal trust at
+amplitude one (exact cancellation, under a band tighter than either
+informer alone would leave --- precisions added even as the means
+cancelled); the short leg at $3p$ (the louder voice wins,
+$\MacGrVoteOut$); equal trust under calendar amplitudes (the same
+signals map to $-0.5$ and $+2$ in receiver units before averaging:
+$\MacGrVoteBeta$).  Whiskers are $\pm1$ posterior sd.  (b)~A six-hop
+chain, far end lit at $+1$: the mean crosses every hop undamped while
+the band accumulates exactly the chain law \cref{eq:grchain} (dotted).}
+\label{fig:grmeet}
+\end{figure}
+
+\subsection{The whole universe in one objective}
+
+Local rules in hand, the global solve is now one display.  Collect
+every belief the morning holds: the contracts, one quadratic each; the
+lit observations, one row each; and (from \cref{sec:granchor}, zero
+until then) an anchor per node.  The graph posterior is the minimizer
+of
+\begin{equation}
+\boxed{\;
+J(\Theta)
+=\underbrace{\sum_{\text{edges}}
+p_{ij}\bigl(\Theta_i-\beta_{ij}\Theta_j\bigr)^{2}}_{\text{contracts}}
+\;+\;
+\underbrace{\sum_{i}\kappa_i\,\Theta_i^{2}}_{\text{anchors}}
+\;+\;
+\underbrace{\sum_{s\ \text{lit}}
+\frac{\bigl(\Theta_s-\hat\Theta_{\mathrm{obs},s}\bigr)^{2}}
+{\mathcal{V}_{\mathrm{obs},s}}}_{\text{observations}} .
+\;}
+\label{eq:grjoint}
+\end{equation}
+Here $\hat\Theta_{\mathrm{obs},s}$ is lit node $s$'s measured
+innovation --- panel~(b) of \cref{fig:gruniverse} --- and
+$\mathcal{V}_{\mathrm{obs},s}$ its variance.  One point of accounting
+before using it: an innovation is a \emph{difference} of two
+estimates, the calibrated handle minus the transported baseline, and
+the variance of a difference of independent estimates is the sum of
+their variances (the same propagation Chapter~6 used for its error
+bars): $\mathcal{V}_{\mathrm{obs},s}
+=\mathcal{V}_{\mathrm{fit},s}+\mathcal{V}_{\mathrm{base},s}$.  A
+node's baseline uncertainty enters the machinery exactly once.  For a
+lit node it is folded into $\mathcal{V}_{\mathrm{obs}}$, as just
+shown.  For a dark node the mechanism is at the other end of the
+pipeline: the published handle is baseline plus posterior innovation,
+another difference-shaped sum of two estimates, so the published band
+carries both variances,
+$\mathcal{V}^{+}_i+\mathcal{V}_{\mathrm{base},i}$ --- the addition
+made once, at publication.  Never both routes, and never twice.
+
+Why is minimizing \cref{eq:grjoint} the right thing to do?  Because it
+is \cref{ch:infer}'s update, grown up.
+Proposition~\ref{prop:infmap} proved the scalar case: minimizing a sum
+of precision-weighted squares in one unknown \emph{is} the filter
+update, and the objective's second derivative there came out as twice
+the posterior precision.  Equation \cref{eq:grjoint} is the same
+statement with a vector of unknowns: its matrix of second derivatives
+is twice the universe's \emph{information matrix} $\mathcal{I}^{+}$
+--- the same factor of two, now entrywise.  This is Chapter~10's
+letter $\mathcal{I}$ at its third scale: there it priced one
+functional's identifiability, then served as a whole fit's information
+matrix; here it is a universe's.  The standard Gaussian facts
+follow \citep{RasmussenWilliams2006,RueHeld2005}: the posterior mean
+$\hat\Theta^{+}$ solves the normal equations
+$\mathcal{I}^{+}\hat\Theta^{+}=b$, where $b$ collects the observation
+targets (the anchors aim at zero, so they shape $\mathcal{I}^{+}$
+only), and the \emph{marginal} posterior
+variance of node $i$ is the $i$-th diagonal entry of the inverse,
+$\mathcal{V}^{+}_i=(\mathcal{I}^{+})^{-1}_{ii}$.
+
+\subsection{A two-node universe, by hand}
+
+The smallest example already contains the two facts a reader must
+carry out of this section.  One lit node $A$ (observed at
+$\hat\Theta_{\mathrm{obs}}=d$ with variance $v$), one dark node $B$,
+one contract $\Theta_B=\beta\Theta_A+\text{noise}$ at precision $p$.
+The objective \cref{eq:grjoint} is
+$(\Theta_A-d)^{2}/v+p(\Theta_B-\beta\Theta_A)^{2}$, and its
+information matrix, differentiating twice with respect to
+$(\Theta_A,\Theta_B)$, is
+\[
+\mathcal{I}^{+}
+=\begin{pmatrix}1/v+p\beta^{2} & -p\beta\\[2pt] -p\beta & p\end{pmatrix},
+\qquad
+\det\mathcal{I}^{+}
+=\frac{p}{v}+p^{2}\beta^{2}-p^{2}\beta^{2}
+=\frac{p}{v},
+\]
+so, inverting the $2\times2$ matrix,
+\[
+(\mathcal{I}^{+})^{-1}
+=\frac{v}{p}\begin{pmatrix}p & p\beta\\[2pt]
+p\beta & 1/v+p\beta^{2}\end{pmatrix}
+=\begin{pmatrix}v & \beta v\\[2pt]
+\beta v & \dfrac{1}{p}+\beta^{2}v\end{pmatrix}.
+\]
+Read the two diagonal entries.  The lit node keeps its observation
+variance $v$.  The dark node's marginal variance is
+$1/p+\beta^{2}v$ --- the relation's own noise, plus the informer's
+uncertainty mapped through the amplitude: precisely the chain law
+\cref{eq:grchain} recovered from the joint solve.  (The mean,
+solving the normal equations, is $\hat\Theta^{+}_A=d$,
+$\hat\Theta^{+}_B=\beta d$: the contract at full amplitude.)
+
+Now the caution.  The \emph{diagonal of the information matrix} at
+$B$ reads $p$ --- call its reciprocal the \emph{conditional} variance,
+because it answers ``how pinned is $B$ \emph{with $A$ held fixed}?''
+The marginal variance $1/p+\beta^{2}v$ is larger, and it is the honest
+one: $A$ is not fixed --- it is itself uncertain, and $B$ inherits
+that.  The gap between the two is exactly $\beta^{2}v$, the informer's
+own doubt.  Reported confidence in this book is \emph{always the
+marginal}; quoting the conditional overstates certainty most at
+exactly the dark nodes whose informers are themselves uncertain ---
+the nodes the machinery exists for.
+
+The objective is written and its output understood.  What remains is
+to check that it \emph{accounts} honestly --- that no configuration
+mistake, no silent neighbour, no duplicated route can manufacture
+information.  That is the next section.

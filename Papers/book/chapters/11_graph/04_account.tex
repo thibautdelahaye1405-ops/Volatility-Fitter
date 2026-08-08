@@ -1,0 +1,182 @@
+\section{The accountant: what the joint solve refuses to invent}
+\label{sec:graccount}
+
+An operator that fills a whole universe from a handful of numbers had
+better not manufacture information.  This section stress-tests
+\cref{eq:grjoint} against the three classic ways a propagation scheme
+can cheat: paying attention to a neighbour that knows nothing,
+counting one source several times because several routes carry it, and
+inventing signal where no path to data exists.  Each test has a sharp
+answer, and one of them will force a genuine design decision.
+
+\subsection{The silent neighbour}
+
+Set up the smallest troubling case.  A receiver trusts two informers
+at equal precision: one is lit; the other is \emph{dead} --- a dark
+dead-end with no observation and no other relations, this morning's
+equivalent of an unplugged microphone.  What should the lit message
+transfer?
+
+Everything.  The dead informer knows nothing, so configuring trust in
+it should cost nothing.  And in the objective \cref{eq:grjoint} that
+is automatic, for a reason worth displaying.  First recall the tool:
+eliminating a variable from a quadratic --- minimizing it out ---
+replaces the remaining variables' information block by its
+\emph{Schur complement}: the receiver's own entry, minus (its
+coupling to the eliminated variable) times (the inverse of that
+variable's entry) times (the coupling back) --- the matrix version of
+completing the square.  Now apply it.  The dead informer
+$\Theta_D$ appears in exactly one term,
+$p\,(\Theta_R-\Theta_D)^{2}$, whose information block on the pair
+$(\Theta_R,\Theta_D)$ is
+\[
+p\begin{pmatrix}1&-1\\-1&1\end{pmatrix};
+\qquad\text{eliminating } \Theta_D \text{ leaves }
+\Theta_R \text{'s entry at}\quad
+p-p\cdot\frac{1}{p}\cdot p=0 .
+\]
+The complement is exactly zero: a factor
+whose informer is otherwise free constrains the receiver \emph{not at
+all}.  The dead branch evaporates, the live factor
+$p(\Theta_R-\Theta_A)^{2}$ is untouched, and the receiver takes the
+whole message.  \Cref{fig:graccount}(a): across four decades of
+configured dead-informer trust, the transfer is
+\MacGrDeadPairMin\ --- flat, at unity.
+
+Now the design decision the test exposes.  There is a natural-looking
+alternative way to assemble the same beliefs: instead of one square
+per relation, charge each receiver \emph{once} for deviating from its
+precision-weighted forecast \cref{eq:grcond} --- a single row
+$q\,(\Theta_R-\tfrac12\Theta_A-\tfrac12\Theta_D)^{2}$ with
+$q=2p$, in our equal-trust case.  Locally the two assemblies are
+indistinguishable: both produce exactly the receiver conditional
+\cref{eq:grcond}, so no one-node test can tell them apart.  But they
+differ as \emph{joint} distributions, and the dead informer finds the
+difference.  The averaging row's information matrix is the rank-one
+form $q\,cc^{\!\top}$ with $c=(1,-\tfrac12,-\tfrac12)$ on
+$(\Theta_R,\Theta_A,\Theta_D)$, and eliminating $\Theta_D$ from it
+annihilates the \emph{entire row}:
+\[
+q\begin{pmatrix}1&-\tfrac12\\[1pt]-\tfrac12&\tfrac14\end{pmatrix}
+-\frac{1}{q/4}\,
+q^{2}\begin{pmatrix}\tfrac14&-\tfrac18\\[1pt]-\tfrac18&\tfrac1{16}
+\end{pmatrix}
+=0 .
+\]
+The dead informer sat inside the same square as the live message, so
+removing it removed the receiver's tie to the live informer too.  The
+posterior is left \emph{improper} --- flat along a direction through
+the live signal --- and any small regularization then picks an
+arbitrary point on the flat.  Concretely, add a vanishing ridge
+$\varepsilon\,\Theta^{2}$ to every node: the ridge resolves the flat
+direction at its smallest-norm point.  At equal trust, with the live
+informer at the unit message, the flat is
+$\Theta_R=\tfrac12+\tfrac12\Theta_D$, and minimizing
+$\Theta_R^{2}+\Theta_D^{2}$ along it gives $\Theta_D=-\tfrac15$,
+$\Theta_R=\MacGrDeadAvgEq$ --- forty percent of the message, from a
+tie-break the desk never chose, decaying to
+\MacGrDeadAvgHigh\ as the silent neighbour's configured trust grows
+(the violet curve of \cref{fig:graccount}(a)).  Configuring trust in
+a neighbour that says nothing \emph{destroys} a live signal.
+
+The lesson generalizes well beyond this example, so state it plainly:
+\emph{the joint form of an operator is a modelling decision, even when
+every local conditional agrees}
+\citep{Koller2009,Pearl1988}.  The book's assembly is therefore one
+factor per relation --- which is also why a relation entered in both
+directions must be recognized as \emph{one} fact (the two readings of
+\cref{sec:gredge}), not two facts whose precisions add.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_gr_account.pdf}
+\caption{Two accounting tests.  (a)~The silent neighbour: the factor
+assembly transfers the whole lit message no matter how much trust the
+dead informer carries (blue, flat at \MacGrDeadPairMin); the
+averaging assembly (violet) leaves the posterior improper, and a
+vanishing ridge then retains only \MacGrDeadAvgEq\ at equal trust,
+decaying toward zero.  (b)~One source, two routes: the joint solve
+prices the target's variance at $5/(3p)$; treating the two routes as
+independent messages claims $6/(5p)$ --- a
+\MacGrRepeatOverstatePct\% precision overstatement, because both
+routes share the source's own doubt.}
+\label{fig:graccount}
+\end{figure}
+
+\subsection{One source, two routes}
+
+The second cheat is subtler.  Let one source $S$ be observed --- at
+\emph{finite} precision $p$, so its own value is uncertain --- and let
+its message reach a target $T$ twice: directly, and through a middle
+node $M$.  All three relations carry precision $p$ and amplitude one.
+Intuition from \cref{eq:grchain} prices each route as a message: the
+direct route delivers the source's value with variance
+$1/p+1/p=2/p$ (the source's own doubt plus one relation's noise); the
+two-leg route delivers it with variance $3/p$.  Two messages, so add
+their precisions: $p/2+p/3=5p/6$, a claimed variance of
+$6/(5p)=\MacGrRepeatNaive/p$ at the target.
+
+The joint solve disagrees.  Assemble \cref{eq:grjoint} for the
+triangle --- ordering the nodes $(S,M,T)$, the observation contributes
+$p$ to the top-left entry and each relation its $2\times2$ block:
+\[
+\mathcal{I}^{+}
+=p\begin{pmatrix}3&-1&-1\\-1&2&-1\\-1&-1&2\end{pmatrix},
+\qquad
+\det=3p^{3},
+\qquad
+\mathcal{V}^{+}_T
+=\frac{p^{2}\det\begin{pmatrix}3&-1\\-1&2\end{pmatrix}}{3p^{3}}
+=\frac{5}{3p},
+\]
+the middle expression being the cofactor rule for one diagonal entry
+of the inverse.  The honest variance is
+$\MacGrRepeatJoint/p$ --- not $\MacGrRepeatNaive/p$.  Per-route
+accounting claims precision $5p/6$ where the truth is $3p/5$: an
+overstatement of \MacGrRepeatOverstatePct\% of the honest figure, and
+the error has a name: the two routes
+are not independent witnesses, because both carry the \emph{same}
+source's doubt.  However many wires fan out of one uncertain node,
+that node's own variance crosses every one of them; it can never be
+diversified away by adding routes.  The joint solve keeps the
+covariance the per-route bookkeeping forgot.
+\Cref{fig:graccount}(b) shows the two claims side by side.
+
+The practical consequence is a rule for \emph{attribution}.  The
+posterior mean is linear in the observations --- solving the normal
+equations, $\hat\Theta^{+}_i=\sum_s
+\mathcal{K}_{is}\,\hat\Theta_{\mathrm{obs},s}$ plus the
+residual-offset terms of \cref{sec:grbelieve} (the anchors, aiming at
+zero, shape the matrix but add no term), where $\mathcal{K}_{is}$ is
+the derivative of node $i$'s posterior with respect to lit node $s$'s
+measurement.  This matrix is Chapter~10's gain
+$\mathcal{K}$ grown to universe size, and it decomposes every filled
+node over the lit \emph{sources}, exactly and additively.  Ask
+``which routes carried it?''\ and the question has no well-posed
+answer --- route contributions overlap, as the triangle just showed.
+Ask ``which sources earned it?''\ and the answer is a row of
+$\mathcal{K}$.  Attribution is by source, never by path.
+
+\subsection{No path, no signal}
+
+The last test needs no algebra.  Take a component of the graph ---
+some cluster of nodes connected to each other but to no lit node.
+Restricted to it, the objective \cref{eq:grjoint} sees contracts only:
+every term is a difference, so adding one constant to the whole
+cluster changes nothing --- the objective is flat, the information
+matrix singular, the posterior improper.  The machinery must
+\emph{refuse}: no solve, no invented number.  The honest publication
+for such a component is the one \cref{sec:grdark} already named ---
+each node's baseline, unchanged ($\Theta=0$), under a stated, wide
+band (one typical morning's move is the reference implementation's
+convention), with a flag saying \emph{no lit path} rather than a
+number pretending to be inference.  Silence honestly labelled is a
+feature; the alternative --- regularizing the singularity away and
+publishing the result --- is the averaging assembly's mistake wearing
+a different hat.
+
+The accounting holds: silent neighbours cost nothing, sources are
+counted once, absence is labelled absence.  What the contracts still
+lack is any way to say the one thing every desk eventually asks for
+--- ``believe the relation, but not at full force.''  That dial is
+next.

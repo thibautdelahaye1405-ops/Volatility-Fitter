@@ -1,0 +1,93 @@
+\section{The construction protocol}
+\label{app:grprotocol}
+
+Every number in this chapter regenerates from one deterministic script
+reading the frozen snapshot; this appendix records the recipe.
+
+\paragraph{The universe.}
+Twelve real nodes: the frozen SPY and NVDA boards at the six expiries
+of 18~days and beyond (variance times $0.049$ to $1.373$); the two
+sub-week expiries are excluded because maturity-ratio amplitudes
+across day-scale gaps are statements about Chapter~8's event clock,
+which this chapter does not model.  Each real node's true handle level
+is the ATM volatility of the snapshot's stored haircut fit --- the
+same stored smiles Chapter~9 transported.  Four synthetic nodes per
+synthetic name, at the four middle expiries: the \emph{sister}'s true
+level is NVDA's minus $2.0$ points; the \emph{blend}'s is the
+SPY/NVDA average plus $0.5$.  Twenty nodes in all.
+
+\paragraph{The staged morning.}
+The true innovation field is
+\[
+\Theta^{*}_{(\text{name},T)}
+=b_{\text{name}}\cdot
+\MacGrAnchorMovePts\cdot\frac{\tau_{\text{Dec}}}{\tau_T}
+\;+\;\varepsilon_{(\text{name},T)}
+\;+\;\mathcal{U}\cdot\1_{\{\text{name}=\text{sister}\}},
+\]
+with betas $b=(1,\MacGrBetaNvda,\MacGrBetaSister,\MacGrBetaBlend)$
+for (SPY, NVDA, sister, blend) --- so the asserted
+sister${\leftarrow}$NVDA edge at $\beta=0.9$ is exactly consistent,
+$0.9\times1.6=1.44$ --- i.i.d.\ scatter
+$\varepsilon\sim\mathcal{N}(0,\MacGrScatterSd^{2})$ from one seeded
+draw (seed 11711 --- the chapter's only randomness), and the sister's
+carried dislocation $\mathcal{U}=\MacGrSisterCarried$: a $-0.90$-point
+dislocation measured at a print $0.75$~days ago, decayed by
+\cref{eq:grdecay} at the stated half-life $t_{1/2}=2$~days.
+Yesterday's handle at every node is defined as truth minus
+$\Theta^{*}$; the constructed overnight moves no forwards, so
+Chapter~9's transport is the identity and the baselines are exact
+(the $\mathcal{V}_{\mathrm{base}}$ term of
+\cref{sec:grmeet}'s observation rule is zero in this construction; on
+a live desk it is not).
+
+\paragraph{What the solver sees.}
+The baselines; the eight lit measurements
+$\hat\Theta_{\mathrm{obs},s}=\Theta^{*}_s+
+\mathcal{N}(0,\MacGrObsSd^{2})$ (a second seeded draw) at the six SPY
+nodes and the NVDA 46- and 228-day nodes, with
+$\mathcal{V}_{\mathrm{obs}}=\MacGrObsSd^{2}$; and the contracts.
+Calendar edges join adjacent expiries within each name, quoted with
+the shorter maturity as receiver at the amplitude
+\cref{eq:grcalbeta}; cross edges join NVDA${\leftarrow}$SPY
+($\beta=\MacGrBetaNvda$), sister${\leftarrow}$NVDA ($\beta=0.9$,
+carrying the residual offset of \cref{sec:grbelieve}, with the
+residual's growth since the print --- standard deviation
+$0.20$~points --- widening the stated relation noise) and
+blend${\leftarrow}$SPY
+($\beta=\MacGrBetaBlend$) at shared expiries.  Every stated relation
+variance is the construction's own scatter propagated through the
+edge, $\MacGrScatterSd^{2}(1+\beta_{ij}^{2})$.  The anchors
+$\kappa_i$ are zero: in this constructed world the relations
+genuinely transfer at full force, so a shrink would misstate the
+world --- a live desk, less sure of its relations, would set
+$\kappa>0$ as \cref{sec:granchor} prescribes.  The overtrusting audit
+arm multiplies every relation precision by $25$.
+
+\paragraph{The solve and the outputs.}
+The posterior minimizes \cref{eq:grjoint} exactly as displayed ---
+the information matrix is assembled term by term, the normal
+equations are solved densely, marginal variances are the diagonal of
+the inverse, and the attribution $\mathcal{K}_{is}$ is the
+derivative of the posterior in each lit measurement.  The
+dark-node errors, the skill scatter, the audit statistics and the
+decomposition numbers of \cref{sec:grcomplete} all read off this one
+solve (plus the no-residual and overtrusted variants).  The withheld
+NVDA December reconstruction applies the posterior level innovation
+to the baseline smile and retargets by refitting the Chapter-2 family
+(order 16, the ridge of Chapter~3's protocol) to the shifted curve on
+the node's own strike grid; the quoted \MacGrRetargetRmsBp-basis-point
+rms is the gap between the refit and the shifted target.  The
+figure's band is the floored marginal,
+$\pm\sqrt{\smash[b]{\mathcal{V}^{+}+\MacGrScatterSd^{2}}}$.
+
+\paragraph{The toy exhibits.}
+The ladder of \cref{fig:grcontract,fig:grmeet}, the dead-informer and
+triangle fixtures of \cref{fig:graccount}, the corroboration sweep of
+\cref{fig:granchor} and the asynchronous pair of \cref{fig:grstory}
+are pure synthetic constructions with the parameters printed in the
+text; each runs through the same solver as the universe (the
+averaging assembly of \cref{sec:graccount} is implemented once,
+with a $10^{-8}$ ridge, for the foil).  No fixture number is typed by
+hand: every value the text quotes is emitted by the figure script as
+a macro.

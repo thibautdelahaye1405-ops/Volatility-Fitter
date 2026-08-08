@@ -245,6 +245,31 @@ The three ATM handles filtered in the examples are named in words (level,
 skew, curvature); the level is `σ(0)`, the skew is Ch. 9's `s₀`, and the
 curvature carries no symbol (used fewer than three times in display math).
 
+## Chapter 11 — the graph (one surface from a sparse universe)
+
+The chapter runs Chapter 10's inference over a whole universe of nodes at
+once, and it deliberately writes itself in Chapter 10's alphabet: hats mark
+estimates, word-subscripted `𝒱`s are variances, `𝒵` is the same audit
+statistic, and `ℐ` appears at its third scale (a functional, a fit, now a
+universe).  New objects are the innovation field and the edge vocabulary.
+Node pairs are always subscripted `ij` (receiver first: "`j` informs `i`"),
+which is what keeps the edge letters apart from their bare reserved
+namesakes (the `λ_j`, `p_J` pattern).
+
+| Symbol | Meaning |
+|---|---|
+| `Θ_i` | the innovation field: node i's handle move against its transported baseline (capital theta — Ch. 3's optimization coordinate `θ` is lowercase and does not appear in this chapter) |
+| `Θ̂_obs,s`, `Θ̂⁺_i` | the measured innovation at a lit node s; the posterior estimate at any node (Ch. 10's hat convention) |
+| `𝒱_obs,s`, `𝒱_base,i`, `𝒱⁺_i` | word-subscripted variances (Ch. 10's pattern): of a lit measurement, of a node's baseline, and the marginal posterior variance |
+| `p_{ij}` | relation (edge) precision, always node-pair-subscripted (Ch. 7's CRR `p` stays bare; Ch. 3's `p_J` stays letter-subscripted) |
+| `β_{ij}` | relation amplitude, always node-pair-subscripted — the finance "beta", deliberately (the wing slopes stay `β_L, β_R, β_max`; Ch. 3's bare generic `β` does not appear in this chapter) |
+| `κ_i` | anchor precision: the weight of a node's zero-innovation pseudo-observation (Ch. 3's `κ*`, `κ_P`, `κ_C` stay starred/letter-subscripted; the ATM curvature handle remains word-named, as in Ch. 10) |
+| `ℐ⁺` | the universe's posterior information matrix — the Hessian of the joint objective (Ch. 10's `ℐ` at universe scale) |
+| `𝒦_{is}` | attribution gain: the weight of lit source s in node i's posterior (Ch. 10's scalar gain `𝒦`, now source-indexed; rows sum the posterior exactly) |
+| `𝒰_i` | node i's persisted idiosyncratic dislocation (the residual state; roman `u` stays Ch. 2's rank) |
+| `t_{1/2}` | the residual half-life (composite on Ch. 6's calendar `t`, physics convention), quoted on whatever clock the elapsed time uses — days in the universe construction, hours in the toy story |
+| — | `𝒵`, `s₀`, `σ(0)`, `H`, `ℛ`, `τ`, `w` are reused with their existing meanings; the three ATM handles stay named in words |
+
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,
