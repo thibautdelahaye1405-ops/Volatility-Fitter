@@ -76,7 +76,7 @@ normalized call `c`). Chapter-3 *constructions* use calligraphic letters.
 
 ## Chapter 4 — local volatility
 
-Bare `v` is claimed here for the local-variance field (it was free: the JW
+Bare `v` is assigned here to the local-variance field (it was free: the JW
 handles are always subscripted `v_J`, `ṽ_J`). The strike axis reuses Ch. 2's
 `y = e^k`. Calligraphic letters name the chapter's operators; composite step
 symbols `Δτ, Δy` do not collide with Ch. 2's bare `Δ` (digital gap).

@@ -293,8 +293,8 @@ Structure: three parts, eleven chapters.
 |----|----------------|---------|------------|
 | 1  | Introduction | write LAST, after the style arc | — |
 | **Part I — Models** | | | |
-| 2  | The log-quantile-density model | done | pending (light) |
-| 3  | SVI-JW and superposition | done | pending (light) |
+| 2  | The log-quantile-density model | done | DONE 2026-08-08 |
+| 3  | SVI-JW and superposition | done | DONE 2026-08-08 |
 | 4  | Local volatility | done | pending (light) |
 | 5  | Integrals and wings | done | pending (light) |
 | **Part II — The observation** | | | |
@@ -363,3 +363,16 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   growth 2 → 11 confirms the author's reading).  Roadmap rewritten
   from scratch around the revision arc: chapters 2–11 in book
   order, then Chapter 1.
+- 2026-08-08: Chapters 2 and 3 re-registered (light scrubs).
+  Banned-grep zero in both chapters' .tex and figure text.  Ch. 2:
+  the five \MacAudit* aliases in §7 switched to their canonical
+  \MacCert* names (values identical; alias layer untouched);
+  fig_exact / fig_jacobian / fig_butterfly / fig_calendar
+  regenerated for re-worded panel titles and one annotation —
+  every macro value byte-identical, timing block not re-run.
+  Ch. 3: synopsis tightened; isolated hits scrubbed ("promised",
+  "honest units", "earns the claim", "machinery", "bookkeeping",
+  "at the price of").  NOTATION.md: one banned word in the ch. 4
+  `v` entry reworded; the 𝒵 entries stay for the ch. 10 session.
+  Build: 231 pages, chapter boundaries unchanged, 1 overfull
+  (pre-existing), no undefined refs.  Next: Chapter 4 (light).
