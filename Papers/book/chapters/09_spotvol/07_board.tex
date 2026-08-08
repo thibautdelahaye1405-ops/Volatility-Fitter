@@ -1,7 +1,7 @@
 \section{Scenarios on the frozen board}
 \label{sec:ssrboard}
 
-The machinery is complete; point it at the real data.  This section
+The transport and its dial are complete; point them at the real data.  This section
 runs one scenario --- the forward down $\MacSsrScenMovePct\%$ ---
 across the entire frozen SPY board, all eight expiries, under the
 three named regimes, and reads the results with everything the
@@ -42,7 +42,7 @@ $\MacSsrScenMovePct\%$ move as a catastrophe, and its put wing is
 priced accordingly --- and every formula in this chapter multiplies
 that skew by the move.
 
-Two honest observations about the same panel.  First, look closely at
+Two observations about the same panel.  First, look closely at
 the short end of the sticky-moneyness curve: it does \emph{not} sit on
 today's orange curve, though ``the smile rides the forward''
 suggests it should.  The exact transport reads each node's own curve
@@ -54,7 +54,7 @@ readings on a move this size.  Second, on the two shortest expiries
 that $k=H$ read lies \emph{beyond the last quoted strike} --- the
 two-day node's quotes stop less than three percent from the money.
 What the transport consumes there is the fitted model's published
-wing: Chapter~5's disclosed completion, not a quoted value.  A
+wing: Chapter~5's stated completion, not a quoted value.  A
 scenario engine cannot avoid this --- a five-percent question to a
 two-day smile is a question about its wing --- but a desk should know
 which of its scenario numbers stand on quotes and which on
@@ -82,7 +82,7 @@ One paragraph on validity, where it bites.  A transported smile is a
 new smile, and nothing in \eqref{eq:ssrshift} re-checks the butterfly
 or calendar conditions of Chapter~2: for small moves the transported
 surface inherits validity to first order, but at scenario sizes the
-outputs should be re-audited before anything downstream consumes them
+outputs should be re-checked before anything downstream consumes them
 --- and there is a matching theorem: an arbitrage-free dynamics cannot
 move the smile by level shifts alone indefinitely
 \citep{RogersTehranchi2010}, so every rule in this chapter is a local
@@ -151,8 +151,8 @@ The board scenario: two-day ATM spread
 \MacSsrScenShortRzeroPct--\MacSsrScenShortRtwoPct\%; short-expiry
 reads beyond the last quote (\cref{fig:ssrscenario}). &
 Scenario reads on the two shortest expiries consume the published
-wing (Chapter~5's disclosed completion); transported surfaces are to
-be re-audited before downstream use \citep{RogersTehranchi2010}.\\
+wing (Chapter~5's stated completion); transported surfaces are to
+be re-checked before downstream use \citep{RogersTehranchi2010}.\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -165,9 +165,10 @@ sharpest lesson, because here the information runs out: today's
 surface determines every strike derivative and no spot derivative
 (\cref{rem:ssrident}) --- and even the regime that derives its answer
 inherits the field's under-determination in the wings.
-\emph{Convention} is therefore load-bearing as nowhere else in this
-book: the dial is a disclosed choice, worth double-digit delta points,
-that no snapshot can audit.  What \emph{could} audit it is time ---
+\emph{Convention} therefore carries more weight here than anywhere
+else in this
+book: the dial is a stated choice, worth double-digit delta points,
+that no snapshot can test.  What \emph{could} test it is time ---
 watching how smiles actually move as spot moves, tick after tick, and
 weighing each new observation against what the transported surface
 expected.  Weighing new evidence against a moving prior is a filtering

@@ -1,6 +1,6 @@
 # Chapter 9 macro inventory (auto-generated -- do not edit)
 
-Emitted by `scripts/ch09/gen_figures.py` into `ch09_macros.tex`. Last write 2026-08-07.
+Emitted by `scripts/ch09/gen_figures.py` into `ch09_macros.tex`. Last write 2026-08-08.
 
 | Macro | Value | Meaning |
 |---|---|---|
@@ -28,7 +28,7 @@ Emitted by `scripts/ch09/gen_figures.py` into `ch09_macros.tex`. Last write 2026
 | `\MacSsrHalfSlopeLoc` | `-0.35` | generator vol slope per unit log-strike |
 | `\MacSsrRepAtmDlrBp` | `+170` | dollar-strike field: repriced ATM response to the move, vol bp |
 | `\MacSsrRepAtmLogBp` | `+175` | log-strike field: repriced ATM response to the move, vol bp |
-| `\MacSsrRepAuditPct` | `0.00` | dt-audit: relative change of the bent field's ratio at the comparison maturity between dt and dt/4, % |
+| `\MacSsrRepAuditPct` | `0.00` | dt-check: relative change of the bent field's ratio at the comparison maturity between dt and dt/4, % |
 | `\MacSsrRepBentBigMean` | `2.11` | bent field: mean realized ratio across maturities at H=-4% |
 | `\MacSsrRepBentBigPred` | `2.11` | closed-form prediction 2+2cH/b at H=-4% |
 | `\MacSsrRepBentMean` | `2.06` | bent field: mean realized ratio across maturities at H=-2% |

@@ -16,7 +16,7 @@
 %      sigma_new(k) = sigma_old(k+H) + (R-1) s0 H from
 %      shape preservation, and read R as the skew-stickiness ratio,
 %      with the named regimes at R = 0, 1, 2.
-%   3. Compute the price of the choice: the fixed-strike response
+%   3. Compute the stakes of the choice: the fixed-strike response
 %      (R-1) s0, the total delta Phi(d+) + phi(d+) sqrt(tau) (R-1) s0,
 %      and the R=0-vs-R=2 gap 2 phi(d+) sqrt(tau) |s0|, evaluated on
 %      the frozen SPY node.
@@ -38,7 +38,7 @@
 \chaptermark{The missing derivative}
 
 \chaptersynopsis{Part~II closed with the observation fully prepared:
-forwards, European prices, an honest clock.  Part~I turned such
+forwards, European prices, the market's clock.  Part~I turned such
 observations into surfaces.  Everything so far is a photograph taken
 at one spot.  This chapter is about the first question the photograph
 cannot answer: when the underlying moves, what happens to the smile?
@@ -62,7 +62,7 @@ local-volatility field in absolute strike and reprice.  A short
 computation --- the half-rule --- shows the implied skew is half the
 field's slope, so the frozen field moves the ATM vol by twice the skew:
 $\mathcal{R}=2$ is a consequence, not a convention.  Beyond the money
-the consequence is subtler and more honest: two fields that agree
+the consequence is subtler: two fields that agree
 wherever today's quotes look produce visibly different tomorrows in
 the wings, so the wings of the answer belong to the field --- which
 Chapter~4 showed the quotes do not pin down.  Repricing measures the

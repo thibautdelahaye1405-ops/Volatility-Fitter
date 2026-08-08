@@ -181,7 +181,7 @@
  },
  "SsrRepAuditPct": {
   "value": "0.00",
-  "meaning": "dt-audit: relative change of the bent field's ratio at the comparison maturity between dt and dt/4, %",
+  "meaning": "dt-check: relative change of the bent field's ratio at the comparison maturity between dt and dt/4, %",
   "section": "reprice"
  },
  "SsrScenMovePct": {

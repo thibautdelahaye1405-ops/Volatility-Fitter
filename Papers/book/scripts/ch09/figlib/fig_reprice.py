@@ -112,9 +112,9 @@ def fig_ssr_reprice() -> str:
     sep_put = float(abs(d_log[0] - d_dlr[0]))
     sep_call = float(abs(d_log[-1] - d_dlr[-1]))
 
-    # dt-audit at the comparison maturity for the bent field.
+    # dt-check at the comparison maturity for the bent field.
     res_fine = synthlv.realized_ratio("bent", _H_RATIO, dt=_DT_FINE)
-    audit = abs(res_fine[_T_CMP]["ratio"] - res_bent[_T_CMP]["ratio"])
+    check = abs(res_fine[_T_CMP]["ratio"] - res_bent[_T_CMP]["ratio"])
 
     STORE.add("reprice", "SsrRepRespMovePct", f"{abs(100*_H_RESP):.0f}",
               "panel (b) response-comparison move magnitude, % (down)")
@@ -148,8 +148,8 @@ def fig_ssr_reprice() -> str:
     STORE.add("reprice", "SsrRepBentBigPred", num(pred_big, 2),
               "closed-form prediction 2+2cH/b at H=-4%")
     STORE.add("reprice", "SsrRepAuditPct",
-              num(100.0 * audit / res_bent[_T_CMP]["ratio"], 2),
-              "dt-audit: relative change of the bent field's ratio at the "
+              num(100.0 * check / res_bent[_T_CMP]["ratio"], 2),
+              "dt-check: relative change of the bent field's ratio at the "
               "comparison maturity between dt and dt/4, %")
     return (f"ATM {atm_log:+.0f}/{atm_dlr:+.0f} bp, "
             f"sep {sep_put:.0f}/{sep_call:.0f} bp, "
