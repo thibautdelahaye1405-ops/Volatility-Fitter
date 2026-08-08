@@ -33,8 +33,8 @@ One input is deliberately \emph{not} taken from the board: the rate.
 Chapter~6 proved the line's slope is the poorly identified
 coefficient, and this board makes the point personally --- its fitted
 slope implies $r=\MacFwdLineRateNaivePct\%$, a negative rate in
-mid-2026, which is noise wearing a suit.  Following
-\cref{sec:fwdclamp}'s discipline, the rate is pinned by a disclosed
+mid-2026, which is noise.  Following
+\cref{sec:fwdclamp}'s rule, the rate is pinned by a stated
 convention (a money-market $4.3\%$; appendix~\ref{app:deamprotocol})
 and the \emph{level} --- the well-measured number --- carries the
 information, through $q_d=r-\log(F/S)/t$.
@@ -94,9 +94,9 @@ moves from $\MacDeamBowFNaive$ to $\MacDeamBowFDeam$.  That lands
 \MacDeamBowGapToResolvedBp\ bp from $\MacDeamBowFResolved$, the
 forward stored with the book's frozen snapshot --- the resolution the
 reference implementation (Chapter~6's working software, whose
-conventions the book's figures audit) computed with its own discrete
+conventions the book's figures follow) computed with its own discrete
 dividend schedule.  Read that residual gap for what it is: the
-distance between two disclosed dividend conventions
+distance between two stated dividend conventions
 (\cref{sec:deamdivs}), not an unexplained error --- and compare it
 with the \MacDeamBowNaiveGapBp\ bp the naive forward was carrying.
 Chapter~6 measured, on this very node, what such basis points cost if
@@ -104,16 +104,16 @@ ignored: \MacFwdSkewGapBp\ vol bp of put--call gap at the money for
 every \MacFwdSkewBumpBp\ bp of forward error, so the naive forward
 would imprint \MacFwdSkewNaiveGapBp\ vol bp of artificial smile
 structure (\cref{sec:fwdskew}'s own number).  The loop is not
-bookkeeping; it is where the smile's raw material gets clean.
+a formality; it is where the smile's raw material gets clean.
 
 One extension is beyond this chapter, and Chapter~6 already flagged
 it: on a genuinely hard-to-borrow name, the borrow $b$ enters the
 carry, the carry moves the premium, and the premium moves the fitted
 forward that identifies the borrow --- \cref{sec:fwdborrow}'s closing
-caveat.  The resolution is this section's loop with one more unknown
+limit.  The resolution is this section's loop with one more unknown
 riding inside it, and it inherits \cref{sec:fwdborrow}'s
 identifiability floors --- the smallest borrow a board's noise lets
 it distinguish from zero --- unchanged: below the floor, the jointly
 closed answer is still \emph{unidentified}, reported as such.  On ordinary
 names --- the frozen board included --- the borrow leg is immaterial
-and the two passes above are the whole story.
+and the two passes above suffice.

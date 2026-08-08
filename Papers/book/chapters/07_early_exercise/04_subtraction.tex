@@ -38,7 +38,7 @@ reprices the American quote is, at the same time, the volatility at
 which the \emph{European} tree price equals the quote minus the
 model's premium.  Solving \eqref{eq:deamroot} therefore \emph{is}
 subtracting a premium --- the model's --- and the subtraction is
-honest to the extent the model's premium matches the market's.  Inside
+exact to the extent the model's premium matches the market's.  Inside
 the model it matches perfectly; outside, the difference between the
 true premium and the modelled one (a different diffusion, a different
 dividend path) passes straight into $\sigma^*$.  That is the method's
@@ -60,8 +60,7 @@ cannot cancel is the European leg's own residual gap against the
 analytic Black price, and that gap is what survives into the reported
 volatility.  The budget below prices it.
 
-\subsection{When the root exists, and the honest failure when it
-does not}
+\subsection{When the root exists, and when it does not}
 
 Rooting a scalar equation is legitimate when the function is monotone,
 and here it is a theorem: in the Black--Scholes model, the value of an
@@ -93,9 +92,9 @@ the floor, to the cent --- and only lifts off the floor at
 volatilities roughly double the market's.  A quote sitting \emph{at}
 that floor is never strictly crossed from above: there is no root,
 because there is no volatility in the price to find.  This is
-\cref{sec:deamwhere}'s dead zone met in the flesh, and the honest
-output is a refusal --- ``this quote determines no volatility'' ---
-not a number.  The refusal costs nothing downstream: a quote with no
+\cref{sec:deamwhere}'s dead zone met in the flesh, and the
+output is a flag --- ``this quote determines no volatility'' ---
+not a number.  The flag costs nothing downstream: a quote with no
 volatility content had nothing to contribute to a volatility fit.
 
 \begin{figure}[htbp]
@@ -176,7 +175,7 @@ halvings of a bracket at most $4.0$ wide:
 $4\cdot2^{-48}\approx1.4\times10^{-14}$ of volatility.  Nothing.
 \item \emph{The finite tree.}  The control-variate pairing protects
 the root, but the European-leg gap against analytic Black survives.  Its
-honest, measured size on real data: halving the whole-chain depth from
+measured size on real data: halving the whole-chain depth from
 $N_t=256$ to $128$ moves the de-Americanized volatilities of the
 frozen running node's fitted quotes by \MacDeamTblDepthMedianBp\ vol
 bp in the median and \MacDeamTblDepthMaxBp\ at worst --- so depth is
@@ -191,10 +190,10 @@ forward.  (Circularly, the forward was fitted from American quotes
 \item \emph{The model.}  The lattice diffusion between dividend
 dates, the deterministic dividend path of \cref{sec:deamdivs}, and
 the one-sided clamp \eqref{eq:deamhat} are modelling choices.  Exact
-in the model, approximate outside it; disclosed in the contract.
+in the model, approximate outside it; stated in the contract.
 \end{itemize}
 
-We now own the subtraction end to end: a root, its meaning as a
-premium removal, its unique-existence theorem, its honest refusal,
-and its priced errors.  What we have not yet earned is the tree's
+We now have the subtraction end to end: a root, its meaning as a
+premium removal, its unique-existence theorem, its no-root flag,
+and its priced errors.  What remains is the tree's
 \emph{carry input} when real cash dividends are on the calendar.

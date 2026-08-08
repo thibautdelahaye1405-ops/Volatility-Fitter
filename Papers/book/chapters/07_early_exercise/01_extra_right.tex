@@ -8,8 +8,8 @@ worked on --- was almost perfectly straight: its residuals ran to
 But those residuals were not noise.  They bowed, cresting at
 $+\$\MacFwdLineResidMaxDollars$ near the money, hundreds of times the
 one-cent tick (\cref{fig:fwdline}b).  Chapter~6 identified the culprit
-in one sentence --- SPY's listed options are American --- and promised
-that this chapter would measure and remove it.  We now pay the debt.
+in one sentence: SPY's listed options are American.  This chapter
+measures and removes it.
 
 Start with the vocabulary, because everything follows from it.  A
 \emph{European} option can be exercised only at expiry; every model in
@@ -49,7 +49,7 @@ gets no symbol --- we write $A-E$, or say ``the premium''.
 Here is why the premium matters to a volatility fitter.  The market
 prints one number per quote: the American price.  It does not print
 $E$, and it does not print the premium; the decomposition is real but
-unobservable, quote by quote.  Part~I's machinery inverts a
+unobservable, quote by quote.  Part~I's fitters invert a
 \emph{European} price into an implied volatility --- that is what the
 Black formula's argument is --- so feeding it an American mid hands it
 a price that is too high for what it thinks it is pricing.  The
@@ -86,7 +86,7 @@ rms of \MacDeamWedgeRootRmsBp\ vol bp.  Notice where the blue curve
 at all, because
 there the price has collapsed onto its exercise floor and contains no
 volatility to recover --- the dead zone \cref{sec:deamwhere} maps and
-\cref{sec:deamsub} handles honestly.  Panel~(b) shows the premium
+\cref{sec:deamsub} flags rather than inverts.  Panel~(b) shows the premium
 itself in dollars: at most \$\MacDeamWedgeMaxPremiumDollars, largest
 deep in the money and fading through the forward (dashed line) toward
 zero out of the money.  Hold the two panels side by side: a two-dollar

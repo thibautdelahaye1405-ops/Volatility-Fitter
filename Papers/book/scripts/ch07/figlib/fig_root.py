@@ -1,4 +1,4 @@
-"""Figure 7.4: the inversion is well posed -- and where it honestly fails."""
+"""Figure 7.4: the inversion is well posed -- and where no root exists."""
 
 from __future__ import annotations
 

@@ -36,7 +36,7 @@ SNAPSHOT = data3.SNAPSHOT
 RUNNING = data3.SPY_DEC
 
 # The stated money-market rate convention for the snapshot date (per year,
-# continuously compounded).  A constant of the construction, disclosed in
+# continuously compounded).  A constant of the construction, stated in
 # appendix 7.A -- NOT a fitted number; see the chapter's Section 7.6.
 R_CONV = 0.043
 
