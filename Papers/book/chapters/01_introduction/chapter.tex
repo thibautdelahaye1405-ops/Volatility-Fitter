@@ -33,10 +33,12 @@ finite: a listed board quotes a ladder of strikes at a handful of
 expiries, and nothing between or beyond.  It is noisy: a quote is a
 bid and an ask, two prices with the truth somewhere in the spread;
 some quotes are stale, and a few are simply wrong.  And it is
-unevenly spread: on a liquid index board the ladder is dense near the
-money, a few strikes further out the spreads widen, and on most of a
-desk's universe --- a thin name that has not traded today, a long
-tenor with four resting quotes --- the board is nearly silent.
+unevenly spread: on a liquid index board the ladder is dense near
+the \emph{money} (the strikes around the current price), a few
+strikes further out the spreads widen, and on most of a
+desk's universe --- a thin name that has not traded today, a
+long-dated expiry with four resting quotes --- the board is nearly
+silent.
 Whole surfaces on one side; finitely many noisy prices on the other.
 
 The published object is also more than a sheet of numbers.  A smile,
@@ -53,15 +55,20 @@ this book serves that publication.
 \section{Why probability laws}
 \label{sec:introlaw}
 
-Fix one expiry $T$ and one name, and let $\mu$ be the law of the
-underlying price $S_T$ at that expiry (under the pricing measure; the
-distinction does not matter for this section).  A call struck at $K$
-pays $(S_T-K)^+$, so its forward price is the average of the payoff
-over $\mu$,
+Fix one expiry $T$ and one name.  A call struck at $K$ pays
+$(S_T-K)^{+}$ at expiry --- the excess, if any, of the underlying's
+price over the strike.  Its \emph{forward} price --- paid at expiry
+rather than today, the convention that keeps discounting out of this
+section --- is an average of that payoff over a probability law
+$\mu$ for $S_T$,
 \[
-C(K)=\int (s-K)^{+}\,\mu(\dd s),
+C(K)=\int (s-K)^{+}\,\mu(\dd s).
 \]
-and differentiating under the integral, twice, in the strike,
+The law $\mu$ is the \emph{pricing measure}, defined by exactly this
+property: it is the law under which quoted prices are averages ---
+not anyone's forecast of $S_T$, a difference that does not matter in
+this section.  Differentiating under the integral, twice, in the
+strike,
 \begin{equation}
 \frac{\partial C}{\partial K}=-\,\mu\bigl((K,\infty)\bigr),
 \qquad
@@ -73,8 +80,10 @@ A complete call curve at one expiry therefore \emph{is} the law of
 the underlying at that expiry, in price coordinates: the slope reads
 off digital probabilities, the curvature reads off the density.  The
 identity is due to \citet{BreedenLitzenberger1978}, and it has a
-traded counterpart: a negative second difference of call prices is a
-butterfly --- a nonnegative payoff --- with a negative price.  The
+traded counterpart: a negative second difference of call prices ---
+the cost of buying one call just below $K$, one just above, and
+selling two at $K$ --- is a \emph{butterfly}: a nonnegative payoff
+with a negative price.  The
 probability statement and the no-arbitrage statement are the same
 statement.  Chapter~2 develops both in full.
 
@@ -90,9 +99,11 @@ become comparable at a glance.  The smile is the law of
 \cref{eq:introBL} drawn in the market's preferred coordinates.
 
 Across expiries the family of laws has one requirement of its own:
-in total-variance units a later expiry must lie above an earlier one
---- \emph{calendar order}, derived in Chapter~2 --- or a calendar
-spread of options acquires a negative price.  A field of laws is not
+in \emph{total-variance} units (squared volatility times time to
+expiry) a later expiry must lie above an earlier one
+--- \emph{calendar order}, derived in Chapter~2 --- or a
+\emph{calendar spread} (sell the earlier expiry, buy the later)
+acquires a negative price.  A field of laws is not
 a stack of independent curves.
 
 \section{Validity, information, convention}
@@ -116,10 +127,13 @@ structurally, so that every curve a fit can produce is already a law.
 
 \emph{Information} is what today's quotes determine, and how
 precisely.  It is always finite, and it runs out closer than
-intuition suggests: on the book's own data, a measurable share of a
-variance-swap strike accrues beyond the last quoted strike
+intuition suggests: on the book's own data, a measurable share of
+the fair price of a \emph{variance swap} --- a contract on realized
+volatility, priced by an integral over the whole smile --- accrues
+beyond the last quoted strike
 (Chapter~5); a morning thinned to its at-the-money band says nothing
-at all about the wing (Chapter~10); and no snapshot, however dense,
+at all about the \emph{wings} --- the far strikes on either side
+(Chapter~10); and no snapshot, however dense,
 determines how the smile responds when the spot moves (Chapter~9).
 Where information ends is itself measurable, and the book measures it
 repeatedly --- with error bars whose own correctness is tested.
@@ -167,7 +181,8 @@ time}, equal to the calendar until Chapter~8 separates them;
 
 The subject is the published surface, not derivative pricing at
 large.  Stochastic-volatility and jump models, exotic payoffs, and
-hedging beyond delta stay outside the book; where a dynamic
+hedging beyond delta --- the option's first-order hedge ratio ---
+stay outside the book; where a dynamic
 assumption is unavoidable (Chapter~9), it enters as a stated
 transport rule, derived where it can be and named a convention where
 it cannot.
@@ -202,7 +217,7 @@ variance-swap strike Chapter~5 integrates, whose forward Chapter~6
 re-derives from the quotes, whose transported image Chapter~9 moves,
 and whose thinned morning Chapter~10 fits; the December NVDA smile
 is the one Chapter~11 withholds from its solver and reconstructs
-from the node's neighbours.  A number met twice can be checked
+from its neighbours.  A number met twice can be checked
 twice.
 
 \section{The map}
@@ -213,14 +228,14 @@ Four chapters build and probe the single-name surface: three ways to
 complete finitely many quotes into a law, and one measurement of what
 the completions say where no quote reaches.
 
-Chapter~2 builds the law first.  The log-return is written as a
-monotone transport of a logistic variable, and the logarithm of the
-transport speed is expanded in polynomials of the percentile rank:
-positive density and unit mass are then automatic, one scalar shift
-imposes the martingale condition, and validity is structural rather
-than checked.  The same representation yields prices, densities, the
-moment strip and the wing slopes, an analytic calibration Jacobian,
-and a complete calendar test.
+Chapter~2 builds the law first.  Instead of a formula for the
+smile, it writes a formula for the law behind it, through the
+quantile function --- the inverse of the cumulative distribution, a
+rising curve --- in coordinates where rising is automatic: positive
+density and unit mass then cost nothing, one scalar shift sets the
+mean to the forward, and validity is structural rather than checked.
+The same representation yields prices, densities, the tails, an
+exact Jacobian for fitting, and a complete calendar test.
 
 Chapter~3 does what the industry does instead: it writes the smile
 down directly, as a five-parameter formula for total variance (SVI),
@@ -235,9 +250,11 @@ Chapter~2's model to the same frozen quotes.
 Chapter~4 asks for one model that carries every expiry at once.
 Dupire's local volatility supplies it: a field whose value is a
 ratio of the two quantities the earlier chapters already police ---
-the calendar increment above, the butterfly factor below.  Read as a
-formula, the ratio differentiates noisy quotes twice and fails no
-matter how good the data gets; read as a pricing model --- a
+the calendar increment in the numerator, the butterfly factor in
+the denominator.  Read as a
+formula, the ratio takes second derivatives of noisy quotes ---
+differencing divides the noise by the squared strike spacing ---
+and fails at any market noise level; read as a pricing model --- a
 positive sheet on a grid, a stable marching scheme, exact
 derivatives --- it becomes a well-posed fit like every other in the
 book.
@@ -263,7 +280,7 @@ and its slope poorly, an asymmetry every safeguard in the chapter is
 matched to.  Dividend conventions turn out to be risk decisions, and
 the stakes are measured in the only units that matter here: a small
 forward error, read back through the Black formula, imprints a fake
-skew of tens of volatility basis points.
+skew of tens of volatility basis points (hundredths of a percent).
 
 Chapter~7 measures and subtracts the right that listed equity
 options carry and the European identities know nothing about: early
@@ -280,8 +297,9 @@ event --- an earnings report --- packs several ordinary days'
 variance into one calendar day, and the law at expiry knows only the
 variance budget, not its schedule.  The day-weighted event clock
 relabels time so that prices, validity and calendar order are
-untouched while volatility readings rescale exactly; the famous
-overnight earnings crush becomes a scheduled correction of a
+untouched while volatility readings rescale exactly; the overnight
+earnings crush --- the scheduled drop in implied volatility once
+the report is out --- becomes a correction of a
 reading, with no price moving.  The clock can even be read off the
 board's own prices --- within measured limits the chapter is
 explicit about.
@@ -299,14 +317,16 @@ $\mathcal{R}$, and the one regime that derives its answer instead of
 assuming it --- repricing under a frozen local-volatility field ---
 gives $\mathcal{R}=2$ as a consequence, not a convention.  The
 stakes, measured across the frozen board, are worth double-digit
-delta points.
+points of delta.
 
-Chapter~10 is inference under weak information, one node at a time.
+Chapter~10 is inference under weak information, one smile at a time.
 It measures where a sparse morning's likelihood is flat; lets
 yesterday enter today's fit through a gate that is exactly zero
 wherever the data identifies a coordinate; prices the
-identifiability of any smile functional by a harmonic law; and, in
-time, filters the smile's handles with a gain that is computed, not
+identifiability of any smile functional by a harmonic law (a
+combination is only as known as its least-known part); and, in
+time, filters the smile's \emph{handles} --- its level, slope and
+curvature at the money --- with a gain that is computed, not
 set --- the ratio of two variance budgets, one built from the fit's
 own information, one grown on the market's clock.  It ends with the
 accounting identity that counts each quote once, and with the book's
@@ -315,7 +335,9 @@ standard deviation one exactly when the stated variances match the
 realized errors.
 
 Chapter~11 assembles everything into the object the predicament
-demands: a universe of nodes, mostly dark, completed from the few
+demands: a universe of \emph{nodes} --- one per (underlier, expiry)
+pair, one smile each --- mostly dark (unquoted this morning),
+completed from the few
 that are lit.  Each edge of the graph is a two-number contract ---
 amplitude prices the implied move, trust prices the band --- and the
 whole-universe solve is a single least-squares objective,
