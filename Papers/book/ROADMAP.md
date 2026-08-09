@@ -48,10 +48,37 @@ listed in the ToC (p. 227); and print geometry is DECIDED: the
 screen edition keeps symmetric 1in A4 margins, with a commented
 one-line toggle in book.tex for bound copies (inner=1.15in/
 outer=0.85in — same text width, so enabling it does NOT reflow
-pagination).  The INDEX decision is held: none in this edition
-(the roadmap's own condition was "if a publisher wants one" and
-there is no publisher; a curated \index{} pass over ten finished
-chapters is a dedicated session — run it only if the author asks).  The fresh-reader pass on
+pagination).
+
+ONE SESSION REMAINS — the INDEX PASS, requested by the author
+2026-08-09, to run fresh.  Brief for that session:
+
+- Goal: a curated subject index for the 237pp book, appended as
+  back matter after the Bibliography and listed in the ToC.
+- Mechanics: use classic makeidx (LaTeX base — do NOT use imakeidx,
+  this machine is missing optional packages; emptypage.sty was
+  absent too).  \usepackage{makeidx} + \makeindex in the preamble,
+  \printindex (+ \phantomsection\addcontentsline) after the
+  bibliography.  Build gains a step: pdflatex, bibtex,
+  makeindex book.idx, then pdflatex x2.
+- Tagging: \index{...} entries across chapters 1–11, roughly 10–25
+  per chapter: each term of art at its defining site plus major
+  returns; the recurring devices under their CANONICAL post-arc
+  names (standardized-error test, consistent variance, the gate,
+  the harmonic law, counting once — NEVER the pre-arc vocabulary);
+  named results via their authors (Breeden–Litzenberger, Dupire,
+  Merton, Lee, Kalman).  Subentries sparingly; cross-references
+  ("see") only where the book itself renames.
+- Constraints: \index tags typeset nothing — prose byte-identical
+  around them, pagination of chapters 1–11 MUST NOT move (verify
+  boundaries 1/9/…/207 and the Bibliography at 227 after the
+  build; the book grows only by the index pages at the end).
+  Place each tag directly after its word, before punctuation, no
+  added spaces.  Entry wording obeys the register (banned list
+  applies to index entries).
+- Done: clean build with the extra makeindex step, boundaries
+  unmoved, index entries spot-checked against their pages, commit
+  ("feat(book): the index"), roadmap + memory closed out again.  The fresh-reader pass on
 Chapter 1 ran 2026-08-08 (eleventh session): a newcomer-persona
 sub-agent read the preface + ch. 1 cold (first-course calculus/
 probability, Black–Scholes seen once, no other chapters), reported
