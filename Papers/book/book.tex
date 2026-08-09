@@ -15,6 +15,10 @@
 % ============================================================================
 \documentclass[11pt,a4paper]{book}
 
+% Print geometry: the screen edition keeps symmetric 1in margins.  For a
+% bound print run, swap in the asymmetric variant below: +0.15in toward
+% the spine, text width unchanged, so pagination does not reflow.
+% \usepackage[inner=1.15in,outer=0.85in]{geometry}
 \usepackage[margin=1.0in]{geometry}
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{bm}
@@ -30,7 +34,13 @@
 \usepackage[numbers,sort&compress]{natbib}
 \usepackage{hyperref}
 \hypersetup{colorlinks=true,linkcolor=blue!55!black,citecolor=blue!50!black,
-  urlcolor=blue!50!black}
+  urlcolor=blue!50!black,
+  pdftitle={The Volatility Surface as a Field of Probability Laws},
+  pdfauthor={Thibaut Delahaye},
+  pdfsubject={Implied-volatility surfaces from listed option quotes:
+    models, observation, dynamics and inference},
+  pdfkeywords={implied volatility, volatility surface, option pricing,
+    calibration, filtering, graphical models}}
 \usepackage{cleveref}
 \allowdisplaybreaks
 
@@ -126,6 +136,19 @@
 \begin{document}
 \frontmatter
 \maketitle
+
+% Copyright page, on the verso of the title page.
+\thispagestyle{empty}
+\vspace*{\fill}
+\noindent{\small
+\textit{The Volatility Surface as a Field of Probability Laws}\\[0.6ex]
+Copyright \textcopyright{} 2026 Thibaut Delahaye.  All rights
+reserved.\\[1.2ex]
+First edition, August 2026.\\[1.2ex]
+Typeset by the author in \LaTeX.  Every figure and every empirical
+number in the text is generated from one frozen market-data snapshot
+(August 2026) by the book's reference implementation.\par}
+
 \input{chapters/00_frontmatter/preface}
 \cleardoublepage
 \tableofcontents
@@ -150,6 +173,9 @@
 \include{chapters/11_graph/chapter}
 
 \backmatter
+\cleardoublepage
+\phantomsection
+\addcontentsline{toc}{chapter}{Bibliography}
 \bibliographystyle{plainnat}
 \bibliography{references}
 
