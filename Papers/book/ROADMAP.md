@@ -38,9 +38,20 @@ protocol-protected identifiers (labels, macro names, file/function
 names — logged per chapter below).  Every figure and number
 regenerates from the frozen data.
 
-What remains is OPTIONAL: publication mechanics only (copyright
-page, an index if a publisher wants one, print geometry).  Take
-these up only if the author asks.  The fresh-reader pass on
+NOTHING REMAINS on the roadmap.  The publication-mechanics pass ran
+2026-08-09 (twelfth session, commit 93968e6): a copyright page now
+sits on the title's verso (©, all rights reserved, "First edition,
+August 2026", a typeset-and-reproducibility note — no ISBN and no
+publisher line, none exist); the PDF carries document metadata
+(title/author/subject/keywords via hyperref); the Bibliography is
+listed in the ToC (p. 227); and print geometry is DECIDED: the
+screen edition keeps symmetric 1in A4 margins, with a commented
+one-line toggle in book.tex for bound copies (inner=1.15in/
+outer=0.85in — same text width, so enabling it does NOT reflow
+pagination).  The INDEX decision is held: none in this edition
+(the roadmap's own condition was "if a publisher wants one" and
+there is no publisher; a curated \index{} pass over ten finished
+chapters is a dedicated session — run it only if the author asks).  The fresh-reader pass on
 Chapter 1 ran 2026-08-08 (eleventh session): a newcomer-persona
 sub-agent read the preface + ch. 1 cold (first-course calculus/
 probability, Black–Scholes seen once, no other chapters), reported
@@ -652,3 +663,9 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   intro still pp. 1–8, ch. 2 at p. 9, 1 pre-existing overfull
   (ch. 3), no undefined refs.  The book now has no open items
   beyond publication mechanics.
+- 2026-08-09 (twelfth session): publication-mechanics pass (record
+  in the Status block above): copyright verso, PDF metadata,
+  Bibliography in the ToC, print-geometry toggle prepared, index
+  decision held.  Build: 237 pages, boundaries unmoved, metadata
+  verified in the PDF's Info dictionary, 1 pre-existing overfull
+  (ch. 3), no undefined refs.  THE ROADMAP IS CLOSED.
