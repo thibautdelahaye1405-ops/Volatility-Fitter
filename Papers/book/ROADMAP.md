@@ -38,10 +38,31 @@ protocol-protected identifiers (labels, macro names, file/function
 names — logged per chapter below).  Every figure and number
 regenerates from the frozen data.
 
-What remains is OPTIONAL polish: a fresh-reader pass over Chapter 1
-(the only chapter never read by a newcomer persona), and publication
-mechanics (copyright page, an index if a publisher wants one, print
-geometry).  Take these up only if the author asks.  The front-matter
+What remains is OPTIONAL: publication mechanics only (copyright
+page, an index if a publisher wants one, print geometry).  Take
+these up only if the author asks.  The fresh-reader pass on
+Chapter 1 ran 2026-08-08 (eleventh session): a newcomer-persona
+sub-agent read the preface + ch. 1 cold (first-course calculus/
+probability, Black–Scholes seen once, no other chapters), reported
+16 stumbles and a positive verdict (no blockers; the dominant
+disease was terms of art arriving before the gloss §1.4 itself
+promises).  Fourteen edits were proposed to the author; ELEVEN were
+approved and applied (commit 06ad2f3): the preface's December-smile
+sentence made factually precise (two smiles, not one — SPY threads
+5–10, NVDA is withheld in 11); §1.2's pricing measure defined by
+its property (prices are averages under it) and the false "so"
+repaired; the butterfly portfolio built in one clause; glosses at
+first use for money, wings, total variance, calendar spread,
+variance swap, delta, handles, nodes, volatility basis points;
+"tenor" dropped; the ch. 2 map blurb rewritten newcomer-readable
+(quantile function, not transport-of-logistic vocabulary); the
+ch. 4 blurb's "fails no matter how good the data gets" given its
+mechanism (noise over squared strike spacing) and
+numerator/denominator wording; the harmonic law glossed; "famous"
+crush dropped.  THREE were DECLINED by the author — do not re-apply
+them: no Black-vs-Black–Scholes bridging clause in §1.2 (P2), no
+smile-shape/implied-vol parenthetical at first use in §1.1 (P6), no
+European/American gloss in the ch. 7 blurb (P12).  The front-matter
 pass ran 2026-08-08 (tenth session): the "A working draft" tag is
 dropped from the title page; a one-page Preface
 (chapters/00_frontmatter/preface.tex) sits before the Contents at
@@ -623,3 +644,11 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   versos cleaned via the inlined emptypage idiom; ch. 1 §1.2
   retitled "Why probability laws"; index deliberately deferred to
   publication.  237 pages, main matter unmoved.
+- 2026-08-08 (eleventh session): fresh-reader pass on ch. 1 —
+  proposals to the author, eleven approved and applied, three
+  declined (full record in the Status block above; declined = P2
+  Black-vs-BS bridge, P6 smile parenthetical, P12
+  European/American gloss — do not re-apply).  Build: 237 pages,
+  intro still pp. 1–8, ch. 2 at p. 9, 1 pre-existing overfull
+  (ch. 3), no undefined refs.  The book now has no open items
+  beyond publication mechanics.
