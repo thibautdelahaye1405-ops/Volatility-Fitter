@@ -14,6 +14,19 @@ monotone interpolation through
 
 with analytic tail corrections (eqs. right/left_tail_corr).
 Equation references are to Docs/lqd_model_note.tex.
+
+Generalized tails (book ch. 2, Papers/book/chapters/02_lqd): per-side
+exponents alpha_-/alpha_+ in [0, 1/2] slow the transport through the
+parameter-independent log gauges (eq. xspeed),
+
+    dQ/dz = exp{ g - alpha_- log l_-(z) - alpha_+ log l_+(z) },
+
+interpolating the tails from exponential (alpha = 0, this module's original
+model, byte-identical code path) to Gaussian rate (alpha = 1/2). For
+alpha > 0 the closed-form tail corrections are replaced by log-domain
+quadrature of the power continuation (volfit.models.lqd.tails) behind the
+saddle guard x'(Z) <= 1 - eps (eq. operationaltailguard), and the lambda_+
+< 1 wall no longer applies (eq. martcondition).
 """
 
 from __future__ import annotations
@@ -27,6 +40,14 @@ from scipy.special import expit
 from volfit.core.black import implied_total_variance
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, g_eval, legendre_matrix
 from volfit.models.lqd.interp import hermite_eval, hermite_invert
+from volfit.models.lqd.tails import (
+    EPS_TAIL,
+    continuation_speed,
+    left_tail_put,
+    right_tail_call,
+    tail_mass_left,
+    tail_mass_right,
+)
 
 try:  # 4th-order cumulative quadrature (scipy >= 1.12); trapezoid fallback.
     from scipy.integrate import cumulative_simpson as _cumquad
@@ -90,6 +111,28 @@ def _legendre_grid(z_max: float, n_points: int, n_max: int) -> np.ndarray:
     return leg
 
 
+def _softplus(t: np.ndarray) -> np.ndarray:
+    """log(1 + e^t), evaluated per side in its stable regime."""
+    return np.maximum(t, 0.0) + np.log1p(np.exp(-np.abs(t)))
+
+
+@lru_cache(maxsize=8)
+def _log_gauges(z_max: float, n_points: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cached log tail gauges (log l_-, log l_+) on the static grid.
+
+    l_∓(Lambda(z)) = 1 + softplus(∓z) (eq. ellgauges in the logit
+    coordinate). Parameter-independent, so they are cached alongside the
+    static grid; the tail exponents simply scale them inside the one exp()
+    that builds dQ/dz (eq. xspeed). Read-only like the other cached arrays.
+    """
+    z, _, _ = _static_grid(z_max, n_points)
+    lm = np.log1p(_softplus(-z))
+    lp = np.log1p(_softplus(z))
+    for arr in (lm, lp):
+        arr.flags.writeable = False
+    return lm, lp
+
+
 @dataclass(frozen=True)
 class LQDSlice:
     """A fully built (normalized) LQD slice ready for pricing.
@@ -148,26 +191,39 @@ class LQDSlice:
         # -softplus(z), so the product is exp(k - logaddexp(0, z)).
         c = a_k - np.exp(k_arr - np.logaddexp(0.0, z_k))
         # Strikes beyond the quantile range of the z grid: strike_to_z clamps
-        # there, so price them on the slice's OWN exponential asymptote
-        # (the same tail form the quadrature's analytic corrections use, so
-        # the seam at Q(+-Z) is continuous): with z_r = Z + (k - Q(Z))/A_R,
+        # there, so price them on the slice's OWN tail continuation (the same
+        # form the quadrature's tail corrections use, so the seam at Q(+-Z)
+        # is continuous). Exponential subclass (alpha = 0, byte-identical
+        # path): with z_r = Z + (k - Q(Z))/A_R,
         #   C(k) = e^{k - z_r} A_R / (1 - A_R),
         # and by the mirrored derivation on the left, with
         # z_l = -Z + (k - Q(-Z))/A_L,
         #   P(k) = e^{k + z_l} A_L / (1 + A_L).
+        # For alpha > 0 the root is the power form (eq. rightroot) and the
+        # price eq. beyondgrid, both under eq. rightcontinuation (tails.py).
         # Exponents are clipped at 0 only to keep the UNUSED where-branch from
         # overflowing; in the applied region they are always negative. Keeps
-        # far-display wings positive, Lee-consistent and theta-responsive
+        # far-display wings positive, wing-law-consistent and theta-responsive
         # (the functional band's Jacobian must not die at the grid edge).
         if self.a_right > 0.0:
-            z_r = self.z[-1] + (k_arr - self.q_z[-1]) / self.a_right
-            tail_r = np.exp(np.minimum(k_arr - z_r, 0.0)) * (
-                self.a_right / (1.0 - self.a_right))
+            if self.params.alpha_right == 0.0:
+                z_r = self.z[-1] + (k_arr - self.q_z[-1]) / self.a_right
+                tail_r = np.exp(np.minimum(k_arr - z_r, 0.0)) * (
+                    self.a_right / (1.0 - self.a_right))
+            else:
+                tail_r = right_tail_call(
+                    k_arr, float(self.q_z[-1]), self.a_right,
+                    self.params.alpha_right, float(self.z[-1]))
             c = np.where(k_arr > self.q_z[-1], tail_r, c)
         if self.a_left > 0.0:
-            z_l = self.z[0] + (k_arr - self.q_z[0]) / self.a_left
-            tail_l = (1.0 - np.exp(k_arr)) + np.exp(
-                np.minimum(k_arr + z_l, 0.0)) * (self.a_left / (1.0 + self.a_left))
+            if self.params.alpha_left == 0.0:
+                z_l = self.z[0] + (k_arr - self.q_z[0]) / self.a_left
+                tail_l = (1.0 - np.exp(k_arr)) + np.exp(
+                    np.minimum(k_arr + z_l, 0.0)) * (self.a_left / (1.0 + self.a_left))
+            else:
+                tail_l = (1.0 - np.exp(k_arr)) + left_tail_put(
+                    k_arr, float(self.q_z[0]), self.a_left,
+                    self.params.alpha_left, float(self.z[-1]))
             c = np.where(k_arr < self.q_z[0], tail_l, c)
         return c
 
@@ -190,10 +246,19 @@ class LQDSlice:
 
         f_X(Q(u)) = 1 / q(u) = u (1-u) e^{-g(u)}; positivity is structural.
         Evaluated in log space so the far tails do not underflow to zero.
+        For alpha > 0, log x' = g - a_- log l_- - a_+ log l_+ (eq. xspeed):
+        the gauge terms raise the density where the transport slows.
         """
         g = g_eval(self.params, self.u)
         # log u = -log(1 + e^{-z}),  log(1-u) = -log(1 + e^{z}).
         log_pdf = -np.logaddexp(0.0, -self.z) - np.logaddexp(0.0, self.z) - g
+        if self.params.alpha_left != 0.0 or self.params.alpha_right != 0.0:
+            lm, lp = _log_gauges(float(self.z[-1]), self.z.size)
+            log_pdf = (
+                log_pdf
+                + self.params.alpha_left * lm
+                + self.params.alpha_right * lp
+            )
         return self.q_z, np.exp(log_pdf)
 
     def martingale_check(self) -> float:
@@ -201,8 +266,16 @@ class LQDSlice:
         mass = np.exp(self.q_z) * self.u * expit(-self.z)  # u(1-u), wing-stable
         total = float(np.trapezoid(mass, self.z))
         z_end = self.z[-1]
-        total += float(np.exp(self.q_z[-1] - z_end)) / (1.0 - self.a_right)
-        total += float(np.exp(self.q_z[0] - z_end)) / (1.0 + self.a_left)
+        if self.params.alpha_right == 0.0:
+            total += float(np.exp(self.q_z[-1] - z_end)) / (1.0 - self.a_right)
+        else:
+            total += float(self.a_z[-1])  # the stored normalized right tail mass
+        if self.params.alpha_left == 0.0:
+            total += float(np.exp(self.q_z[0] - z_end)) / (1.0 + self.a_left)
+        else:
+            total += tail_mass_left(
+                float(self.q_z[0]), self.a_left, self.params.alpha_left, float(z_end)
+            )
         return total
 
     def var_swap_strike(self) -> float:
@@ -222,12 +295,24 @@ def build_slice(
 ) -> LQDSlice:
     """Run the quadrature pipeline of note section 5.2 for one parameter set.
 
-    Raises ValueError when the right integrability condition A_R < 1 fails
-    (eq. AR_condition): the forward would be infinite.
+    Raises ValueError when the right integrability condition fails: in the
+    exponential subclass (alpha_+ = 0) that is A_R < 1 (eq. AR_condition —
+    the forward would be infinite); for alpha_+ > 0 the forward is always
+    finite (eq. martcondition) and the refusal is instead the numerical
+    saddle guard x'(Z) <= 1 - eps (eq. operationaltailguard) — never a
+    silent truncation of mass that peaks beyond the grid.
     """
     a_left, a_right = endpoint_scales(params)
-    if a_right >= 1.0 - EPS_AR:
-        raise ValueError(f"A_R = {a_right:.6f} violates the integrability bound A_R < 1")
+    al, ar = params.alpha_left, params.alpha_right
+    if ar == 0.0:
+        if a_right >= 1.0 - EPS_AR:
+            raise ValueError(f"A_R = {a_right:.6f} violates the integrability bound A_R < 1")
+    elif continuation_speed(a_right, ar, z_max) > 1.0 - EPS_TAIL:
+        raise ValueError(
+            "tail saddle guard: continuation speed x'(Z) = "
+            f"{continuation_speed(a_right, ar, z_max):.6f} is within "
+            f"{EPS_TAIL} of the martingale saddle x' = 1"
+        )
 
     # Static grid and Legendre basis are cached on (z_max, n_points[, order]);
     # only the parameter-dependent combination g(u) is formed per call.
@@ -236,6 +321,12 @@ def build_slice(
     g = (1.0 - u) * params.L + u * params.R
     if params.a.size:
         g = g + params.a @ _legendre_grid(z_max, n_points, params.order)[2:]
+    if al != 0.0 or ar != 0.0:
+        # Generalized tails: the gauges fold into the ONE exponent that
+        # builds the speed (eq. xspeed). alpha = 0 skips this entirely —
+        # no pow, no reordered float ops (byte-identity is test-locked).
+        lm, lp = _log_gauges(z_max, n_points)
+        g = g - al * lm - ar * lp
     g_max = float(np.max(g))
     if not np.isfinite(g_max) or g_max > EXP_BUDGET:
         raise ValueError(f"interior overflow: max g = {g_max:.3g} exceeds the exp budget")
@@ -249,12 +340,22 @@ def build_slice(
     if not np.isfinite(q_max) or q_max > EXP_BUDGET:
         raise ValueError(f"interior overflow: max Qbar = {q_max:.3g} exceeds the exp budget")
 
-    # Martingale normalization mu = -log int e^{Qbar} u(1-u) dz  (eq. mu_norm),
-    # with the analytic endpoint corrections (eqs. right/left_tail_corr).
+    # Martingale normalization mu = -log int e^{Qbar} u(1-u) dz  (eq. mu_norm)
+    # with the tail corrections: closed forms in the exponential subclass
+    # (eqs. right/left_tail_corr), log-domain quadrature of the power
+    # continuation for alpha > 0 (eq. rightcontinuation and its mirror).
     mass = np.exp(q_bar) * u1mu
     total = float(np.trapezoid(mass, z))
-    total += float(np.exp(q_bar[-1] - z_max)) / (1.0 - a_right)
-    total += float(np.exp(q_bar[0] - z_max)) / (1.0 + a_left)
+    if ar == 0.0:
+        corr_r = float(np.exp(q_bar[-1] - z_max)) / (1.0 - a_right)
+    else:
+        corr_r = tail_mass_right(float(q_bar[-1]), a_right, ar, z_max)
+    if al == 0.0:
+        corr_l = float(np.exp(q_bar[0] - z_max)) / (1.0 + a_left)
+    else:
+        corr_l = tail_mass_left(float(q_bar[0]), a_left, al, z_max)
+    total += corr_r
+    total += corr_l
     mu = -np.log(total)
     q_z = mu + q_bar
 
@@ -262,7 +363,10 @@ def build_slice(
     # cumulative quadrature plus the right tail correction.
     mass_n = mass * np.exp(mu)
     rev = _cumquad(mass_n[::-1], dx=dz, initial=0.0)[::-1]
-    a_z = rev + float(np.exp(q_z[-1] - z_max)) / (1.0 - a_right)
+    if ar == 0.0:
+        a_z = rev + float(np.exp(q_z[-1] - z_max)) / (1.0 - a_right)
+    else:
+        a_z = rev + corr_r * float(np.exp(mu))
 
     return LQDSlice(
         params=params,

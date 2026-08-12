@@ -113,6 +113,21 @@ changes anywhere.
 
 ## Phase 1 — Generalized tail core (model layer)
 
+**Status: DONE 2026-08-12.** Shipped as specced: alphas ride `LQDParams` as
+validated config fields (`to_vector`/`from_vector` untouched — theta length
+locked by test); the gauges fold into the ONE exponent that builds dQ/dz
+(cached log-gauge arrays; α = 0 skips the branch — byte-identity is
+test-locked across arrays, prices, density and the full suite's golden
+fits); α > 0 tail masses/roots/prices live in the new
+`volfit/models/lqd/tails.py` (log-domain Gauss–Legendre under the power
+continuation, saddle guard as a build refusal, wall confined to α+ = 0);
+`lee_slopes` branches to 0 and `wing_law()` exposes (class, exponent,
+coefficient) per side. Goldens: `tests/test_generalized_tails.py` — the
+α± = 1/2 constant-speed slice at λ = s/√2 checked against
+scipy.integrate.quad (transport, both tail masses, beyond-grid calls),
+martingale/symmetry/density, wing constant 2λ² = s², moment-domain flip
+read off far-price decay, α-continuity, asymmetric mixes.
+
 - `LQDParams` (`models/lqd/basis.py`) gains `alpha_left / alpha_right`
   **as model config, NOT theta components** — `to_vector`/`from_vector`
   unchanged, so the observation-filter state dimension, prior wire vectors,
@@ -153,6 +168,11 @@ Exit: `build_slice`/`call_price`/`density`/`var_swap_strike` correct for all
   rows in the endpoint chart (generalize `endpoint_rows` /
   seam-and-slope tail rows in `symmetric_stack.py` to the α-aware wing
   law); exact ties delegated to the Phase 0 certificate.
+- **Rider from Phase 1 (recorded 2026-08-12):** the Phase 0 certificate's
+  analytic tail candidates/order clause still assume the exponential
+  (α = 0) continuation — generalize `calendar_certificate._tail_candidates`
+  to the power continuation (equal-α pairs: same crossing structure in the
+  (z+1)^{1−α} variable) before α > 0 stacks can reach quality/publish.
 - Untouched: order guard, ridge, band/haircut machinery, prior anchors.
 
 Exit: full stack fit under a nonzero α scenario on the reference fixture;

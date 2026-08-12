@@ -519,12 +519,17 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
      implementation arc — "continue the roadmap" resumes at
-     Phase 1 (generalized tail core, model layer). Phase 0 DONE
+     Phase 2 (calibration & policy layer: FitSettings alphas,
+     charts, jacobian gauge pass, λ± stack rows). Phase 0 DONE
      2026-08-12 (wrap 2026-08-12a below): the exact full-line
      calendar certificate is live as the acceptance/publish
      authority (calib/calendar_certificate.py; quality ledger*
      fields; export minAdjacentLedgerGap + certificate blocker;
-     cert case full_line_calendar_certificate)**:
+     cert case full_line_calendar_certificate). Phase 1 DONE
+     2026-08-12 (wrap 2026-08-12b below): generalized tail core
+     in the model layer (alphas as LQDParams config, gauge-folded
+     speed, tails.py continuation machinery, wing_law; Gaussian
+     golden battery; α=0 byte-identical, suite 1535 green)**:
      two-sided tail exponents α± ∈ [0, 1/2] (exponential → Gaussian-rate,
      asymmetric; per-underlier COMMON across expiries; FIXED outside the
      optimizer — scenario policy) + the exact full-line calendar
@@ -547,6 +552,52 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-12b) — TAILS+CALENDAR ARC PHASE 1: GENERALIZED TAIL CORE (MODEL LAYER)
+
+- **`LQDParams` gains `alpha_left`/`alpha_right`** — validated config
+  fields ([0, 1/2], NaN rejected), NOT theta components: `to_vector`/
+  `from_vector` untouched, so the filter state dimension, prior wire
+  vectors and graph handle Jacobians are untouched at any α (test-locked).
+- **The gauges fold into the one exponent that builds dQ/dz**
+  (eq. xspeed): cached parameter-independent log-gauge arrays
+  (ℓ∓ = 1 + softplus(∓z)) scaled by the exponents inside the existing
+  exp() — the α = 0 path skips the branch entirely: byte-identity locked
+  over every stored array, priced curve, density and the whole suite's
+  golden fits (1535 green, zero modified).
+- **New `volfit/models/lqd/tails.py`**: the α > 0 continuation machinery —
+  log-domain Gauss–Legendre tail masses under the (z+1)^{1−α} power
+  continuation (eq. rightcontinuation; closed forms remain exactly the
+  α = 0 code), the power-form strike root (eq. rightroot), beyond-grid
+  prices (eq. beyondgrid), and the saddle guard (eq. operationaltailguard)
+  enforced as a clean build refusal: x'(Z) ≤ 1 − 1e-3 — never a silent
+  truncation. Wall semantics: λ+ < 1 applies ONLY at α+ = 0
+  (eq. martcondition) — λ+ = 1.2 builds fine at α+ = 0.25 and refuses at
+  α+ = 0 (both locked).
+- **`lee_slopes` branches to exactly 0 for α > 0; new `wing_law()`**
+  descriptor per side: exponential (coeff = Lee slope) / intermediate
+  (exponent (1−2α)/(1−α), coeff ½(λ/(1−α))^{1/(1−α)}) / gaussian
+  (constant 2λ²) — the plotting/symmetric-row abstraction Phase 2/3 build
+  on.
+- **Gaussian golden battery** (`tests/test_generalized_tails.py`, 16
+  tests): the constant-speed α± = 1/2 slice at λ = s/√2 against
+  scipy.integrate.quad — transport probes ≤ 1e-8, both tail masses rel
+  1e-9 (and a_z[-1] IS the stored normalized right mass), beyond-grid
+  calls vs the exact continuation integral, martingale 1 ± 1e-9, exact
+  transport antisymmetry, symmetric positive density integrating to 1,
+  var-swap = −2μ identity, wing constant 2λ² = s²; α-continuity on the
+  strip (1e-6 ≈ 0 in price, Lee slope flips by design); moment-domain
+  flip read off far-call decay (log-slope 6 vs 68 at k = 3→4); asymmetric
+  α mixes. NOTE (recorded): the constant-g α = 1/2 law matches the normal
+  in the TAIL (that is the λ = s/√2 statement); its body is narrower —
+  var-swap ≈ s²/2 here, not s². Phase 2's scenario instrument fits g to
+  quotes, so this is a property of the bare reference slice, not a defect.
+- Phase 2 rider recorded in the spec: the calendar certificate's analytic
+  tail candidates still assume the exponential (α = 0) continuation —
+  generalize alongside the λ± stack rows when α > 0 pairs can reach
+  production.
+- Suite: 1535 passed, 1 skipped (+16 = exactly the new battery; nothing
+  else changed). Perf rails green (α = 0 calibration path untouched).
 
 ### 🧭 SESSION WRAP (2026-08-12a) — TAILS+CALENDAR ARC PHASE 0: EXACT FULL-LINE CALENDAR CERTIFICATE
 

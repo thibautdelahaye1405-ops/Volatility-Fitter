@@ -5,6 +5,10 @@ Equation references are to Docs/lqd_model_note.tex:
   - smooth part g(u)        eq. (g_def)
   - endpoint scales A_L/A_R eqs. (AL), (AR)
   - Lee wing slopes         eqs. (lee_psi), (betaL), (betaR)
+Generalized tails (book ch. 2, Papers/book/chapters/02_lqd):
+  - tail exponents alpha_-/alpha_+  eqs. (skeleton), (xspeed)
+  - sublinear wing law              eq. (rightsublinearwing)
+  - moment boundaries               eq. (momentboundaries)
 """
 
 from __future__ import annotations
@@ -20,14 +24,29 @@ class LQDParams:
 
     `a[i]` holds the Legendre coefficient a_{i+2}; the model order is
     N = len(a) + 1 (so seven parameters means N = 6).
+
+    ``alpha_left``/``alpha_right`` are the per-side tail exponents of the
+    generalized family (book ch. 2 eq. skeleton): 0 keeps the exponential
+    tail exactly (today's model), 1/2 is Gaussian rate. They are MODEL
+    CONFIG, not theta components — ``to_vector``/``from_vector`` do not
+    carry them, so the observation-filter state dimension, prior wire
+    vectors and graph handle Jacobians are untouched at any alpha, and they
+    are never estimated in-solver (the alpha -> 0 limit is nonuniform; the
+    arc's ratified fixed-alpha scenario policy).
     """
 
     L: float
     R: float
     a: np.ndarray = field(default_factory=lambda: np.zeros(5))
+    alpha_left: float = 0.0
+    alpha_right: float = 0.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "a", np.asarray(self.a, dtype=float))
+        for name in ("alpha_left", "alpha_right"):
+            alpha = getattr(self, name)
+            if not (0.0 <= alpha <= 0.5):  # also rejects NaN
+                raise ValueError(f"{name} = {alpha!r} outside the tail range [0, 1/2]")
 
     @property
     def order(self) -> int:
@@ -96,7 +115,10 @@ def lee_psi(p: np.ndarray | float) -> np.ndarray | float:
 def lee_slopes(params: LQDParams) -> tuple[float, float]:
     """Asymptotic total-variance wing slopes (beta_L, beta_R).
 
-    beta_L = psi(1 / A_L), beta_R = psi(1 / A_R - 1)  (eqs. betaL, betaR).
+    beta_L = psi(1 / A_L), beta_R = psi(1 / A_R - 1)  (eqs. betaL, betaR) in
+    the exponential subclass. A POSITIVE tail exponent makes every moment on
+    that side finite (book ch. 2 prop. strip), so its Lee slope is exactly 0
+    — the wing then grows sublinearly per ``wing_law``.
 
     A_L / A_R are exp(...) so mathematically > 0, but a degenerate sparse-data
     fit (e.g. a far-dated node with few quotes) can drive the exponent extreme
@@ -105,11 +127,59 @@ def lee_slopes(params: LQDParams) -> tuple[float, float]:
     ZeroDivisionError, which 500s the smile endpoint on an otherwise-usable fit.
     """
     a_l, a_r = endpoint_scales(params)
-    beta_l = float(lee_psi(1.0 / a_l)) if a_l > 0.0 else 0.0
-    if a_r >= 1.0:
+    if params.alpha_left > 0.0:
+        beta_l = 0.0
+    else:
+        beta_l = float(lee_psi(1.0 / a_l)) if a_l > 0.0 else 0.0
+    if params.alpha_right > 0.0:
+        beta_r = 0.0
+    elif a_r >= 1.0:
         beta_r = 2.0
     elif a_r > 0.0:
         beta_r = float(lee_psi(1.0 / a_r - 1.0))
     else:  # A_R underflowed to 0: psi(+inf) -> 0
         beta_r = 0.0
     return beta_l, beta_r
+
+
+@dataclass(frozen=True)
+class WingLaw:
+    """Asymptotic law of one total-variance wing (book ch. 2).
+
+    ``exponential`` (alpha = 0):      w(k) ~ coeff * |k|   (coeff = the Lee
+    slope, eq. leeclosed); ``intermediate`` (0 < alpha < 1/2):
+    w(k) ~ coeff * |k|^exponent with exponent = (1-2a)/(1-a) in (0, 1)
+    (eq. rightsublinearwing); ``gaussian`` (alpha = 1/2): w(k) -> coeff
+    = 2 lambda^2, the variance of the matching Gaussian tail.
+    """
+
+    tail_class: str  # "exponential" | "intermediate" | "gaussian"
+    exponent: float  # (1 - 2 alpha) / (1 - alpha); 1 at alpha = 0, 0 at 1/2
+    coeff: float
+
+
+def _one_wing_law(alpha: float, lam: float, lee_beta: float) -> WingLaw:
+    if alpha == 0.0:
+        return WingLaw(tail_class="exponential", exponent=1.0, coeff=lee_beta)
+    exponent = (1.0 - 2.0 * alpha) / (1.0 - alpha)
+    coeff = 0.5 * (lam / (1.0 - alpha)) ** (1.0 / (1.0 - alpha))
+    cls = "gaussian" if alpha == 0.5 else "intermediate"
+    return WingLaw(tail_class=cls, exponent=exponent, coeff=coeff)
+
+
+def wing_law(params: LQDParams) -> tuple[WingLaw, WingLaw]:
+    """Per-side asymptotic wing descriptors (left, right).
+
+    The plotting / symmetric-tail-row abstraction over the alpha branches:
+    everything downstream that used to reason from the Lee slopes alone can
+    read (class, exponent, coefficient) instead — eq. rightsublinearwing
+    evaluated at this slice's tail scales, collapsing to the exact Lee
+    conversion (eq. leeclosed) in the exponential subclass and to the
+    constant 2 lambda^2 at Gaussian rate.
+    """
+    a_l, a_r = endpoint_scales(params)
+    beta_l, beta_r = lee_slopes(params)
+    return (
+        _one_wing_law(params.alpha_left, a_l, beta_l),
+        _one_wing_law(params.alpha_right, a_r, beta_r),
+    )
