@@ -1,0 +1,252 @@
+\section{The model: stretch probability rank}
+\label{sec:model}
+
+\subsection{Quantiles and transport speed}
+
+Let $Q(u)$ be the quantile function of $X$.  If $U$ is uniform on $(0,1)$,
+then $Q(U)$ has that law.  Write $q(u)=Q'(u)$ for the quantile density.
+Differentiating $F_X(Q(u))=u$ gives
+\begin{equation}
+f_X(Q(u))=\frac1{q(u)}.
+\label{eq:reciprocal}
+\end{equation}
+The derivative $q$ measures log-return distance per unit of percentile rank.
+Small $q$ compresses many ranks into a narrow return interval and creates
+high density; large $q$ spreads the same probability over a wider interval
+and creates low density.  A strictly positive $q$ makes $Q$ strictly
+increasing.  Parameterizing $\log q$ makes that positivity automatic.
+
+The original LQD model starts from
+\begin{equation}
+q(u)=\frac{e^{g(u)}}{u(1-u)}.
+\label{eq:originalskeleton}
+\end{equation}
+The factors $u(1-u)$ make $q$ diverge at both endpoints, giving unbounded
+support.  They also cancel the derivative of the logistic map.  Since
+$\dd u/\dd z=u(1-u)$,
+\begin{equation}
+\frac{\dd Q}{\dd z}=e^{g(\Lambda(z))}.
+\label{eq:originalspeed}
+\end{equation}
+Thus $g$ is the logarithm of the speed at which log-return moves along the
+log-odds line.  If $g$ tends to a constant in a tail, that speed tends to a
+positive constant and the log-return tail is exponential.
+
+To permit lighter tails, slow the transport gradually at extreme ranks.
+Introduce the positive logarithmic gauges
+\begin{equation}
+\ell_-(u)=1-\log u,
+\qquad
+\ell_+(u)=1-\log(1-u).
+\label{eq:ellgauges}
+\end{equation}
+They behave like $\log(1/u)$ on the left and
+$\log(1/(1-u))$ on the right.  Choose tail exponents
+$\alpha_-,\alpha_+\in[0,1/2]$ and set
+\begin{equation}
+\log q(u)=
+-\log u-\log(1-u)
+-\alpha_-\log\ell_-(u)-\alpha_+\log\ell_+(u)+g(u).
+\label{eq:skeleton}
+\end{equation}
+Equivalently,
+\begin{equation}
+q(u)=\frac{e^{g(u)}}
+{u(1-u)\ell_-(u)^{\alpha_-}\ell_+(u)^{\alpha_+}}.
+\label{eq:lqdform}
+\end{equation}
+This replaces the left endpoint factor $u$ by
+$u\{\log(1/u)\}^{\alpha_-}$ to leading order, and does the analogous thing
+on the right.
+
+Because $\dd u/\dd z=u(1-u)$, the two leading endpoint singularities cancel:
+\begin{equation}
+\frac{\dd Q}{\dd z}
+=\frac{e^{g(\Lambda(z))}}
+{\ell_-(\Lambda(z))^{\alpha_-}
+ \ell_+(\Lambda(z))^{\alpha_+}}.
+\label{eq:speed}
+\end{equation}
+The endpoint singularities have disappeared.  The distribution is obtained
+by integrating an ordinary positive function on the real line.  Setting
+$\alpha_-\!=\!\alpha_+\!=\!0$ recovers the original model.  Increasing one
+exponent slows the corresponding extreme transport and lightens that tail.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_transport.pdf}
+\caption{The transport construction in the exponential-tail subclass with
+constant speed.  Left: logistic log-odds and five percentile marks.  Center:
+an increasing map from log-odds to log-return; strike roots are read on this
+map.  Right: the implied-volatility smile obtained by pricing the resulting
+law.  The first two panels define the model; the last changes coordinates.}
+\label{fig:transport}
+\end{figure}
+
+\subsection{A complete slice}
+
+The function $g$ controls the body of the law.  A low-degree polynomial is
+enough for smooth smiles and keeps the number of effective shapes visible.
+Shifted Legendre polynomials are orthogonal under uniform rank, so their
+coefficients are substantially better scaled than raw powers of $u$.
+
+\begin{definition}[Generalized LQD slice]
+\label{def:lqd}
+Fix $N\ge2$, tail exponents $\alpha_\pm\in[0,1/2]$, and coefficients
+$\theta=(L,R,a_2,\ldots,a_N)$.  Define
+\begin{equation}
+g(u)=(1-u)L+uR+\sum_{n=2}^N a_nP_n(1-2u).
+\label{eq:gpoly}
+\end{equation}
+\begin{equation}
+x'(z)=\frac{e^{g(\Lambda(z))}}
+{\ell_-(\Lambda(z))^{\alpha_-}
+ \ell_+(\Lambda(z))^{\alpha_+}}.
+\label{eq:xspeed}
+\end{equation}
+\begin{equation}
+\boxed{\quad X=x(Z),\qquad
+x(z)=m+\int_0^z x'(t)\,\dd t,\qquad Z\sim\Lambda.\quad}
+\label{eq:lqd}
+\end{equation}
+The shift $m$ is chosen, when possible, so that $\E[e^X]=1$.
+\end{definition}
+
+For every finite coefficient vector, $x'(z)>0$.  Since $\alpha_\pm<1$, the
+integral of $x'$ diverges at both ends, so $x$ is a smooth increasing
+bijection from $\R$ to $\R$.  Consequently
+\begin{equation}
+F_X(x(z))=\Lambda(z),\qquad
+f_X(x(z))=\frac{\rho(z)}{x'(z)}>0.
+\label{eq:density}
+\end{equation}
+The map cannot fold, stop, or reverse.  The density is positive before any
+market quote is fitted.  The parameters now have three distinct roles:
+\begin{itemize}
+\item $\alpha_\pm$ select the two asymptotic tail classes;
+\item the endpoint values of $g$ set the two tail scales;
+\item the remaining coefficients shape the distribution between the tails.
+\end{itemize}
+
+The endpoint coefficients are
+\begin{equation}
+\lambda_-=e^{g(0)}
+=\exp\left(L+\sum_{n\ge2}a_n\right),\qquad
+\lambda_+=e^{g(1)}
+=\exp\left(R+\sum_{n\ge2}(-1)^na_n\right).
+\label{eq:endpoints}
+\end{equation}
+When $\alpha_\pm=0$, these numbers are the limiting transport speeds.  For
+$\alpha_\pm>0$, the speeds tend to zero and $\lambda_\pm$ multiply their
+power-law decay in $|z|$.  In both cases $\lambda_\pm$ are tail scales, while
+$\alpha_\pm$ determine the type of tail.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_modes.pdf}
+\caption{Three Legendre perturbations of one exponential-tail reference law.
+Left: their action on the log-speed $g$.  Center: the implied-volatility
+response.  Right: the density response.  Raising $g$ stretches return space
+and lowers density at the affected ranks.  Even modes act on both sides; odd
+modes transfer shape from one side to the other.}
+\label{fig:modes}
+\end{figure}
+
+Raw Legendre coefficients move both the body and the endpoint scales.  That
+mixing is inconvenient in calibration.  Replace them by the
+endpoint-vanishing modes
+\begin{equation}
+\widetilde P_n(u)=P_n(1-2u)-(1-u)-(-1)^nu,\qquad n\ge2.
+\label{eq:endpointbasis}
+\end{equation}
+They satisfy $\widetilde P_n(0)=\widetilde P_n(1)=0$.  The equivalent
+parameter vector $(\log\lambda_-,\log\lambda_+,a_2,\ldots,a_N)$ lets an
+optimizer change body shape without silently changing the asymptotic tails.
+
+\subsection{One shift matches the forward}
+
+The transport fixes the shape of the log-return law but leaves its location
+free.  Translating every log-return by the same number changes neither ranks,
+density shape, nor tail class.  Use this one degree of freedom to impose
+$\E[e^X]=1$.
+
+Let
+\[
+\bar x(z)=\int_0^zx'(t)\,\dd t,
+\qquad
+I=\int_{-\infty}^{\infty}e^{\bar x(z)}\rho(z)\,\dd z.
+\]
+
+\begin{proposition}[The forward condition]
+\label{prop:shift}
+If $I<\infty$, the unique martingale shift is $m=-\log I$.  Moreover,
+\begin{equation}
+I<\infty
+\quad\Longleftrightarrow\quad
+\alpha_+>0\ \text{or}\ (\alpha_+=0\ \text{and}\ \lambda_+<1).
+\label{eq:martcondition}
+\end{equation}
+\end{proposition}
+
+\begin{proof}
+Since $X=m+\bar x(Z)$, $\E[e^X]=e^mI$, which gives the unique shift.
+If $\alpha_+>0$, then $\bar x(z)=O(z^{1-\alpha_+})=o(z)$ while
+$\rho(z)\sim e^{-z}$, so the right integrand is integrable.  If
+$\alpha_+=0$, then $\bar x(z)=\lambda_+z+O(1)$ and the integrand is
+asymptotic to a constant times $e^{(\lambda_+-1)z}$.  The left integrand is
+always integrable because $\bar x(z)\le0$ for $z\le0$ and
+$\rho(z)\sim e^z$.
+\end{proof}
+
+Only the right tail can make the forward infinite.  In the exponential-tail
+subclass its scale must satisfy the exact wall $\lambda_+<1$.  Every strictly
+lighter right tail has a finite forward for any finite $\lambda_+$.  The jump
+at $\alpha_+=0$ is mathematical, not conventional: any positive exponent
+eventually beats a linear exponential rate.  The convergence is slow when
+the exponent is small, which matters numerically in \cref{sec:numerics}.
+
+\subsection{Two reference laws anchor the model}
+\label{sec:reference-laws}
+
+Set $\alpha_\pm=0$, $L=R=\log s$, and $a_n=0$, with $0<s<1$.  Then
+$x(z)=m+sz$ and $X$ is logistic with scale $s$.  Its moment-generating
+function is
+\begin{equation}
+\E[e^{tZ}]
+=\int_0^1\left(\frac{u}{1-u}\right)^t\dd u
+=\Gamma(1+t)\Gamma(1-t)
+=\frac{\pi t}{\sin(\pi t)},\qquad |t|<1.
+\label{eq:mgf}
+\end{equation}
+Hence
+\begin{equation}
+m=-\log\frac{\pi s}{\sin(\pi s)},
+\qquad \operatorname{Var}(X)=\frac{\pi^2s^2}{3}.
+\label{eq:logisticreference}
+\end{equation}
+Every quantity is explicit, so this law is the primary end-to-end test of an
+implementation: transport, normalization, moments, strike roots, prices, and
+densities must all agree with it.
+
+At the lighter endpoint of the tail range, a normal law
+$X\sim N(-s^2/2,s^2)$ has
+\[
+q(u)\sim\frac{s}{u\sqrt{2\log(1/u)}}\quad(u\downarrow0),
+\]
+and the symmetric right relation.  With $\alpha_\pm=1/2$, the function $g$
+obtained from \eqref{eq:skeleton} has finite endpoint limits.  Polynomial
+LQD log-speeds can therefore approximate the normal law without forcing
+$g$ to diverge at either endpoint.  The logistic and normal laws are not
+competing calibrations; they are exact benchmarks for the two ends of the
+tail range developed next.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.92\textwidth}{fig_exact.pdf}
+\caption{The constant-speed logistic slice as an implementation test.  Left:
+computed transport and martingale shift errors against
+\eqref{eq:logisticreference}.  Right: the variance-matched cold start and its
+small-variance ATM bias.  The test exercises transport integration,
+normalization, tail treatment, and strike inversion with known answers.}
+\label{fig:exact}
+\end{figure}

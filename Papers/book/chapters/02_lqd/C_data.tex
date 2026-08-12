@@ -1,48 +1,22 @@
 \section{Data and reproducibility}
 \label{app:data}
 
-Every empirical number and figure is generated from one frozen JSON snapshot,
-captured after the 2026-08-03 US session from a delayed consolidated US
-listed-options feed.  The file contains SPY and NVDA chains for eight expiries
-each, with spots \MacSpySpot\ and \MacNvdaSpot, together with forwards,
-discount factors, prepared quotes, fitted parameters, and display curves.
-Maturities run from \MacNvdaOneDayDays\ calendar days to
-\MacNvdaLongTYears\ years.
+Every empirical number and inherited market figure in this alternative chapter
+comes from the frozen JSON snapshot used by the book.  It contains SPY and
+NVDA option chains for eight expiries each from the 2026-08-03 US session,
+together with forwards, discount factors, retained quotes, fitted coefficients,
+and display curves.  Reproduction requires no live market-data connection.
 
-The snapshot is self-contained.  For each node it records the normalized
-chain, forward and discount provenance, retained quote set, fitted raw
-parameters, and diagnostic curves.  Reproduction therefore requires neither
-credentials nor a market-data connection.  The capture timestamp, reference
-date, and session are part of the manifest, so a later book cannot silently
-replace the one used for the chapter.
+The stored fits use $\alpha_-=\alpha_+=0$.  They are rebuilt from the frozen
+coefficients rather than refitted, so their prices and all macros remain those
+of the published snapshot.  They were fitted one expiry at a time, before the
+joint full-line calendar solve of \cref{sec:globalcalendarfit}; the synthetic
+stack of \cref{fig:calendarglobal}, not the frozen surface, illustrates that
+solve.  The two new figures in this version are synthetic:
+\cref{fig:tailfamily} plots the derived asymptotic rates, and
+\cref{fig:calendarglobal} plots an exactly specified constant-speed LQD
+maturity stack.  Neither introduces market observations.
 
-The manifest records the common fitting recipe: order 16 under
-\eqref{eq:orderguard}, logistic chart, haircut $h=0.005$, equal quote weights,
-ridge $\alpha=10^{-6}$ with $\nu=1$, and calendar rows active.  All
-\MacSnapNodeCount\ nodes were fitted; none was tuned individually.
-The shortest NVDA node has the largest residual, consistent with its sparse
-and steep quote strip.  SPY bands collapse to mids under the haircut rule;
-NVDA retains interval targets.  These states are stored per quote rather than
-reconstructed from rounded display values.
-
-The figure generator reads only this snapshot and fixed synthetic
-specifications.  Real nodes are rebuilt from the frozen coefficients rather
-than refitted, and the rebuilt curves agree with the stored curves to
-\MacRebuildWorstBp\ vol bp in the worst case.  The script emits both the 14
-figure PDFs and the LaTeX macro file supplying every empirical value in the
-chapter.  Randomized batteries use fixed seeds.  Timing values follow a fixed
-interleaved protocol but vary with the machine.
-
-The synthetic double-hump target is a fixed two-component lognormal mixture,
-martingale-normalized and sampled on a realistic strike ladder.  The
-constant-speed benchmark requires no data and is evaluated directly from
-\eqref{eq:mgf}.  Regeneration consists of running the figure generator and
-then compiling the present manuscript.  Refetching the market feed would
-create a different dataset and is not part of reproduction.
-
-One family-level diagnostic is retained with the data.  The two shortest SPY
-expiries cross in implied-volatility space only far outside their common quote
-span, at call prices near numerical zero.  Their direct normalized call prices
-remain ordered to \MacCalPriceGridWorst\ on the full grid.  Keeping both
-measurements makes the support-confinement example of \cref{sec:calendar}
-reproducible without interpreting the picture by eye.
+Tail-policy comparisons recalibrate every exponent scenario under the same
+quotes and joint calendar constraints.  Changing $\alpha_\pm$ at fixed body
+coefficients is only a local sensitivity.

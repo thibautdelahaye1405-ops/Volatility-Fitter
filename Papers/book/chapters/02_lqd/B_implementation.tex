@@ -1,271 +1,201 @@
-\section{Numerical implementation}
+\section{Implementation blueprint}
 \label{app:implementation}
 
-This appendix records the core of a reference implementation.
-The pseudocode follows the notation of the chapter; tail-sensitivity terms and
-error handling are described after the listings.
+The listings record the numerical core.  They omit only ordinary exception
+handling and the choice of quadrature library.
 
-\subsection{Slice build}
+\subsection{Stable grid quantities}
 
-\begin{lstlisting}[caption={Build the transport and ledger on one fixed grid.}]
-def build(theta, grid):
-    L, R, a = theta.L, theta.R, theta.a
-    g = (1 - grid.u)*L + grid.u*R + a @ grid.Pmat
-    if not finite(g) or max(g) > 700:
-        raise InteriorOverflow
+The endpoint gauges should be evaluated from log-odds, not from rounded ranks:
+\begin{equation}
+\ell_-(\Lambda(z))=1+\log(1+e^{-z}),
+\qquad
+\ell_+(\Lambda(z))=1+\log(1+e^z).
+\label{eq:stablegauges}
+\end{equation}
+Both logarithms use a softplus routine.  This remains accurate when
+$\Lambda(z)$ has rounded to zero or one.
 
-    dx = exp(g)                         # x'(z)
+\begin{lstlisting}[caption={Build one generalized LQD slice.}]
+def build(theta, alpha, grid):
+    # Endpoint chart: log lambda-, right-tail coordinate, body modes.
+    lam_m, lam_p, a = decode_endpoint_chart(theta, alpha)
+    L, R = raw_chord(lam_m, lam_p, a)
+
+    u = expit(grid.z)
+    ell_m = 1 + softplus(-grid.z)
+    ell_p = 1 + softplus( grid.z)
+    rho = expit(grid.z) * expit(-grid.z)
+
+    g = (1-u)*L + u*R + a @ grid.Pmat
+    log_dx = g - alpha.minus*log(ell_m) \
+               - alpha.plus *log(ell_p)
+    check_exponent_budget(log_dx)
+    dx = exp(log_dx)
+
+    if alpha.plus == 0 and lam_p >= 1 - wall_eps:
+        raise InadmissibleForward
+    if dx[-1] > 1 - tail_eps:
+        raise RemoteSaddleBeyondGrid
+
     xbar = cumulative_simpson(dx, anchor=grid.mid)
-    if max(xbar) > 700:
-        raise InteriorOverflow
+    check_exponent_budget(xbar)
 
-    lam_m, lam_p = exp(g[0]), exp(g[-1])
-    if lam_p >= 1 - 1e-6:
-        raise InadmissibleTail
-
-    mass = exp(xbar) * grid.rho
-    I = integrate(mass) \
-        + exp(xbar[-1] - grid.zmax)/(1 - lam_p) \
-        + exp(xbar[0]  - grid.zmax)/(1 + lam_m)
+    I = integrate(exp(xbar)*rho)
+    I += left_tail_mass(xbar[0], theta, alpha, grid)
+    I += right_tail_mass(xbar[-1], theta, alpha, grid)
     m = -log(I)
     x = m + xbar
 
-    dG = -exp(x) * grid.rho             # G'(z)
-    G = reverse_integrate(-dG) \
-        + exp(x[-1] - grid.zmax)/(1 - lam_p)
+    dG = -exp(x)*rho
+    G = reverse_integrate(-dG)
+    G += right_tail_mass(x[-1], theta, alpha, grid)
     return Slice(x=x, dx=dx, G=G, dG=dG,
-                 m=m, lam=(lam_m, lam_p), theta=theta)
+                 m=m, lam=(lam_m, lam_p),
+                 alpha=alpha, theta=theta)
 \end{lstlisting}
 
-The cached density must be computed as
-\texttt{expit(z)*expit(-z)}.  Forming \texttt{u*(1-u)} loses the right tail
-when \texttt{u} rounds to one.  Both $x$ and $G$ carry their exact nodal
-derivatives, so a cubic Hermite representation needs no global spline solve.
+The two tail-mass functions use the continuation
+\eqref{eq:rightcontinuation} and its left counterpart.  For
+$\alpha=0$ they use \eqref{eq:tailcorr}.  For $\alpha>0$ they integrate in
+log space after the change $z=Z_{\max}+t$.  All tail corrections and their
+parameter derivatives enter both the primal build and the sensitivity pass.
 
-The median is the natural anchor for the cumulative transport.  It fixes
-$\bar x(0)=0$ and lets a single forward cumulative sum build the positive
-half-line while the same stencil, reversed, builds the negative half-line.
-The additive freedom is then carried entirely by $m$.  Simpson quadrature is
-fourth order on the uniform grid; the Hermite interpolant has the same local
-order because both values and exact nodal derivatives are available.
-
-The grid does not truncate the probability law.  From
-\eqref{eq:asymptotes}, on the right
-\[
-e^{\bar x(z)}\rho(z)
-=e^{b_++(\lambda_+-1)z}\{1+O(e^{-z})\}.
-\]
-Integrating its leading term from $Z_{\max}$ gives the first correction in
-\eqref{eq:tailcorr}; the relative error is $O(e^{-Z_{\max}})$.  The left
-correction follows from
-$e^{\bar x(z)}\rho(z)\sim e^{b_-+(\lambda_-+1)z}$.
-The factor $1-\lambda_+$ in the right denominator is also a numerical warning:
-tail mass becomes increasingly sensitive as the finite-forward wall is
-approached.
+The median anchor fixes $\bar x(0)=0$.  Simpson quadrature is fourth order on
+the uniform grid.  Exact nodal derivatives make the cubic Hermite
+representation fourth order off grid without a global spline solve.
 
 \subsection{Call evaluation}
 
-\begin{lstlisting}[caption={Evaluate a normalized call.}]
+\begin{lstlisting}[caption={Evaluate one normalized call.}]
 def call_price(slc, k, grid):
     if k > slc.x[-1]:
-        z = grid.zmax + (k - slc.x[-1]) / slc.lam[1]
-        return exp(k - z) * slc.lam[1] / (1 - slc.lam[1])
-    if k < slc.x[0]:
-        return 1 - exp(k) + put_asymptote_left(slc, k, grid)
+        z = right_tail_root(slc, k, grid)  # analytic tail continuation
+        share = right_ledger_tail(slc, z, grid)
+        cash = exp(k - softplus(z))
+        return share - cash
 
-    z = hermite_root(slc.x, slc.dx, k)
+    if k < slc.x[0]:
+        put = left_put_tail(slc, k, grid)
+        return 1 - exp(k) + put
+
+    z = bracketed_hermite_root(slc.x, slc.dx, k)
     share = hermite_eval(slc.G, slc.dG, z)
-    cash = exp(k - logaddexp(0, z))       # e^k(1-Lambda(z))
+    cash = exp(k - softplus(z))
     return share - cash
 \end{lstlisting}
 
-The log-space cash expression is essential.  The algebraically simpler
-\texttt{exp(k)*(1-expit(z))} becomes zero after rank saturation and can create
-a spurious upward step in the far call wing.
-
-The two branches beyond the return grid are part of the same law.  On the
-right, \eqref{eq:beyondgrid} continues the exact power tail.  On the left,
-put asymptotics are computed first and call parity is applied.  This avoids
-subtracting two quantities close to one when a deep in-the-money call is
-evaluated directly.
+The right branch uses the same tail law as the martingale normalizer.  A
+separate volatility extrapolation would generally break the density and
+calendar identities.
 
 \subsection{Sensitivity pass}
 
-\begin{lstlisting}[caption={All raw-coordinate Jacobian columns on one build.}]
+\begin{lstlisting}[caption={All fixed-tail parameter sensitivities.}]
 def sensitivities(slc, grid):
-    # rows: dg/dL, dg/dR, dg/da_2, ..., dg/da_N
-    B = vstack([1-grid.u, grid.u, grid.Pmat])
+    # Rows are derivatives of g in the chosen coefficient chart.
+    B = basis_columns_in_chart(slc.theta, grid.u)
     dxbar = cumulative_simpson(slc.dx * B,
                                anchor=grid.mid, axis=1)
     weight = exp(slc.x) * grid.rho
     dm = -integrate(weight * dxbar, axis=1)
+    add_tail_derivatives_to_shift(dm, slc, grid)
     dx = dm[:, None] + dxbar
 
     integrand = weight[None, :] * dx
     dG = reverse_integrate(integrand, axis=1)
+    add_tail_derivatives_to_ledger(dG, slc, grid)
     dG_slope = -integrand
     dvs = -2 * integrate(dx * grid.rho, axis=1)
-    return dG, dG_slope, dvs
+    return Sensitivities(dG=dG, dG_slope=dG_slope, dvs=dvs)
 
 def price_jacobian_row(slc, sens, k):
-    z = hermite_root(slc.x, slc.dx, k)
+    z = strike_root(slc, k)
     return hermite_eval(sens.dG, sens.dG_slope, z)
 \end{lstlisting}
 
-The derivatives of the two tail corrections in \eqref{eq:tailcorr} must also
-be included.  They use the endpoint sensitivities
-\[
-\partial\lambda_-/\partial\theta
-=\lambda_-(1,0,1,1,\ldots),
-\qquad
-\partial\lambda_+/\partial\theta
-=\lambda_+(0,1,1,-1,\ldots).
-\]
-Derivatives in the endpoint or logistic chart follow by multiplication with
-the corresponding chart Jacobian.
+The martingale derivative is
+$\partial m=-\int e^x\partial\bar x\,\rho\,\dd z$, including both tail
+pieces.  Envelope cancellation then turns the ledger sensitivity at the
+strike root directly into the call sensitivity.
 
-The analytic pass performs one cumulative integral for each basis column, one
-normalization dot product, and one reverse cumulative integral.  Its work is
-$O(Pn_{\rm grid})$ and its storage may be either
-$O(Pn_{\rm grid})$, when all columns are retained, or $O(n_{\rm grid})$ per
-streamed column.  Finite differences have the same formal order but repeat
-normalization, ledger construction, and every strike root $P+1$ times.
-Envelope cancellation removes the roots from the analytic derivative and is
-therefore responsible for most of the measured constant-factor gain.
+\subsection{Full-line calendar constraints}
 
-\subsection{Interpolation certificate}
+During the joint maturity fit, maintain a small active set of ranks for every
+adjacent expiry pair.
 
-\begin{lstlisting}[caption={Fritsch--Carlson margin for a uniform-grid
-Hermite interpolant.}]
-def monotone_margin(y, d, dz, flat_tol=1e-9):
-    sec = diff(y) / dz
-    d0, d1 = d[:-1], d[1:]
-    active = ~((abs(sec) < flat_tol) &
-               (abs(d0) < flat_tol) &
-               (abs(d1) < flat_tol))
-    margin = minimum.reduce([d0, d1,
-                             3*sec-d0, 3*sec-d1])
-    return min(margin[active])
+\begin{lstlisting}[caption={Exchange algorithm for global calendar order.}]
+def fit_surface(nodes):
+    active = initial_calendar_ranks(nodes)
+    while True:
+        surface = constrained_joint_solve(nodes, active)
+        worst = full_line_calendar_minima(surface)
+        if worst.value >= -calendar_tol:
+            return surface
+        active[worst.pair].add(worst.rank)
+
+def full_line_calendar_minima(surface):
+    out = []
+    for near, far in adjacent_pairs(surface):
+        roots = all_piecewise_cubic_roots(far.x - near.x)
+        roots += analytic_tail_roots(far, near)
+        points = [-inf] + roots + [inf]
+        gaps = [0.0] \
+             + [far.ledger(z) - near.ledger(z) for z in roots] \
+             + [0.0]
+        out.append(min_with_location(gaps, points))
+    return min(out)
 \end{lstlisting}
 
-An increasing interpolant is certified when the returned margin is positive.
-Apply the same routine to $-G$.  Segments excluded by
-\texttt{flat\_tol} are recorded as flat to tolerance rather than strictly
-monotone.
+If the difference of the two cubic transports vanishes on an entire segment,
+the ledger gap is constant there by \eqref{eq:calgapderivative}; either
+endpoint represents the segment.  Tail root isolation uses
+\eqref{eq:rightcontinuation}.  The final certificate is rerun on the
+publication grid and with tighter tail quadrature than the optimizer uses.
 
-For a cubic Hermite segment, let $s$ be its secant slope and $d_0,d_1$ its
-endpoint derivatives.  The sufficient Fritsch--Carlson box is
-\[
-0\le d_0\le3s,\qquad 0\le d_1\le3s.
-\]
-The routine returns the minimum distance to the four faces of this box.  A
-positive number is therefore not merely a pass flag but a margin.  For smooth
-functions sampled on a fine grid, $d_i/s=1+O(h^2)$, so the certificate should
-clear the boundary comfortably.  A small margin is a useful indication of
-under-resolution even before monotonicity fails.
+\subsection{Failure tests}
 
-Monotonicity of $x$ and $G$ is not by itself a convexity certificate for the
-interpolated call.  The separate belly test uses the exact factorization
-\eqref{eq:durrleman}: analytic $w,w',w''$ are evaluated at 801 points across
-the retained strike span and $g_{\rm D}$ must exceed $-10^{-4}$.  Since a flat
-smile has $g_{\rm D}=1$, the tolerance permits a negative density component no
-larger than $10^{-4}$ of the local Black density factor.  The threshold is
-therefore dimensionless and interpretable.
-
-\subsection{Floating-point failure catalogue}
-
-Four failures deserve explicit tests.
-
+The implementation treats the following states separately.
 \begin{enumerate}
-\item \emph{Rank saturation.}  For $z$ near 37, double precision rounds
-$\expit z$ to one.  Any formula that subsequently forms $1-u$ loses the
-right-tail probability.  Use $\expit(-z)$ directly and keep the cash leg in
-log space.
-\item \emph{Interior overflow.}  Admissible endpoints do not bound a
-polynomial between them.  Large Legendre coefficients can make $g$ exceed the
-exponent range in the body while $g(0)$ and $g(1)$ remain moderate.  The build
-must inspect the full grid and reject the trial before exponentiation.
-\item \emph{Near-wall cancellation.}  Normalization and right-tail prices
-contain $1/(1-\lambda_+)$.  The logistic chart slows parameter steps near the
-wall, while the hard guard leaves a finite numerical margin.
-\item \emph{Lee cancellation.}  In the textbook expression for $\Psi(r)$,
-$\sqrt{r^2+r}-r$ subtracts nearly equal quantities for large $r$.  Use the
-rationalized form \eqref{eq:leestable}, with the limiting value zero handled
-explicitly as $r\to\infty$.
+\item \emph{Rank saturation:} use \eqref{eq:stablegauges}, two-sided logistic
+factors, and log-space cash legs.
+\item \emph{Interior overflow:} inspect the full arrays of $g$, $\log x'$,
+and $\bar x$ before exponentiation; admissible endpoints do not bound body
+modes.
+\item \emph{Exponential-tail wall:} for $\alpha_+=0$, keep
+$\lambda_+\le1-\varepsilon_{\rm wall}$ in a logistic chart.
+\item \emph{Remote light-tail saddle:} for $\alpha_+>0$, apply
+\eqref{eq:operationaltailguard} or use a saddle-centered quadrature.
+\item \emph{Near-zero option prices:} compare calls and calendars in log space
+and obtain plotted remote implied variance from the analytic wing law.
+\item \emph{Calendar gaps:} a finite penalty is not an acceptance test; the
+quantile-root certificate must pass for every adjacent expiry pair.
 \end{enumerate}
 
-Cached, parameter-independent grid arrays should be read-only.  An accidental
-in-place modification of ranks, logistic weights, or basis values otherwise
-corrupts every later slice without necessarily producing an exception.
+\subsection{Reference defaults}
 
-\subsection{Validation stack}
-
-The solvable slice tests the most code with the least ambiguity.  Across
-$s\in[0.05,0.95]$, compare the computed transport with $m+sz$, the shift with
-$-\log(\pi s/\sin\pi s)$, and the martingale integral with one.  The observed
-worst errors are \MacExactMapWorst, \MacExactMuWorst, and
-\MacExactMartWorst.  The shift error grows toward the wall because the
-normalizing integrand decays at rate $1-s$.
-
-The randomized battery serves a different purpose.  It samples several basis
-orders, ordinary slices, near-wall slices, and slices with large interior
-modes.  Strikes are placed between grid nodes, and convexity is checked in
-normalized strike rather than log-strike.  A four-times-finer independent
-build provides a reference price.  Together with the interpolation and belly
-certificates, this separates algebraic validity, interpolation validity, and
-grid accuracy.
-
-\subsection{Reference defaults and timing}
-
-\begin{table}[htbp]
-\centering\small
+\begin{center}
+\small
 \begin{tabular}{@{}llll@{}}
 \toprule
 Quantity & Default & Quantity & Default\\
 \midrule
-Basis order $N$ & $16$ (cap $24$) & Order guard & \eqref{eq:orderguard}\\
-Grid & $[-40,40]$ & Nodes & $8001$ (fit: $2001$)\\
-Wall guard & $\lambda_+\le1-10^{-6}$ & Exponent budget & $700$\\
-Ridge $(\alpha,\nu)$ & $(10^{-6},1)$, $n\ge4$ & Vega floor $\eta$ & $10^{-4}$\\
-Tail barrier & center $0.90$, slope $50$ & Haircut $h$ & $0.005$ vol\\
-Solver & trust-region LSQ & Tolerances & $10^{-10}$\\
-Chart & logistic & Calendar nodes & $\max(49,4N+1)$\\
-Belly check & $801$ points & Cold start & $\sqrt{3w_0}/\pi$\\
+Basis order $N$ & 16 (cap 24) & Order guard & \eqref{eq:orderguard}\\
+Grid & $[-40,40]$ & Nodes & 8001 (fit: 2001)\\
+Tail exponents & stated scenarios & Exponential wall & $1-10^{-6}$\\
+Remote-saddle margin & $10^{-4}$ & Exponent budget & 700\\
+Ridge $(\omega_{\rm reg},\nu)$ & $(10^{-6},1)$ & Vega floor $\eta$ & $10^{-4}$\\
+Haircut $h$ & 0.005 volatility & Solver & constrained trust region\\
+Slice check & 801 strikes & Calendar check & all quantile crossings\\
+Optimization tolerance & $10^{-10}$ & Publication rebuild & fourfold check\\
 \bottomrule
 \end{tabular}
-\caption{Reference implementation defaults.}
+\captionof{table}{Reference numerical defaults.  Tail exponents and their maturity
+policy are model inputs and are therefore reported with the fit.}
 \label{tab:defaults}
-\end{table}
+\end{center}
 
-\begin{table}[htbp]
-\centering\small
-\begin{tabular}{@{}lrrrr@{}}
-\toprule
-Configuration & Order & Median & IQR & vs. finite difference\\
-\midrule
-\MacTimingRows\\
-\bottomrule
-\end{tabular}
-\caption{Single-slice calibration times from one interleaved run.  The last
-column is the median finite-difference time divided by the median analytic
-time for the same configuration.}
-\label{tab:timing}
-\end{table}
-
-The exact timings depend on hardware and caches.  The portable facts are the
-$O(Pn_{\rm grid})$ analytic complexity and the removal of repeated builds.
-The reported medians and interquartile ranges come from a single run that
-alternates analytic and finite-difference solves after warm-up.  Alternation
-reduces drift from cache state and background load; medians avoid
-best-of-$n$ selection.  A timing table should always travel with its grid size,
-quote count, order, solver tolerances, and machine context.
-
-For a new implementation, the shortest reliable porting sequence is:
-\begin{enumerate}
-\item reproduce the constant-speed normalizer and transport;
-\item implement the stable cash leg and tail corrections;
-\item keep $(x,x',G,G')$ as one immutable slice object;
-\item add the envelope sensitivity pass;
-\item run monotonicity, Durrleman, and randomized sub-grid checks on every
-release.
-\end{enumerate}
+The shortest porting sequence is: reproduce the logistic reference law;
+reproduce a normal law with $\alpha_\pm=1/2$; implement the stable cash leg
+and both tail continuations; add the analytic sensitivity pass; then add the
+one-slice and full-line calendar certificates.

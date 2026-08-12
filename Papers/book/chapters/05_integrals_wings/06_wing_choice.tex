@@ -106,23 +106,25 @@ admissibility and finite-strike admissibility are independent, and
 the second needs its own police.
 
 The demonstration settles how the extrapolated region must be
-policed, and the rule is worth stating because it cuts both ways.
-Conditions that are properties of a \emph{single} curve --- density
-positivity above, call convexity --- must be checked \emph{into} the
-wings: one law is being asserted there, the condition needs no second
-curve to compare against, and abandoning it past the last quote is
-exactly how the hat's dent would go unnoticed.  Conditions that
-\emph{compare two} curves are different.  Chapter~2's calendar
-control (\cref{eq:calrows}) already made the choice: it enforces the
-order between neighboring expiries only on the span where quotes pin
-both curves.  Beyond that span, both curves are chosen conventions
---- two entries of \cref{tab:vswings}, possibly from different rows.
-A calendar inversion there --- the later expiry's curve dipping below
-the earlier one's at some unquoted strike --- is a disagreement
-between two fictions, not evidence of mispricing; enforcing the order
-there would bend the fits where the data \emph{does} live in order to
-reconcile them where it does not.  One
-curve: extend the check.  Two curves: confine it to common data.
+policed.  Conditions that are properties of a \emph{single} curve ---
+density positivity above, call convexity --- must be checked
+\emph{into} the wings: one law is being asserted there, the condition
+needs no second curve to compare against, and abandoning it past the
+last quote is exactly how the hat's dent would go unnoticed.
+Conditions that \emph{compare two} curves reach exactly as far as the
+curves are published.  A calendar inversion at an unquoted strike is
+a disagreement between two chosen conventions --- two entries of
+\cref{tab:vswings}, possibly from different rows --- but both
+conventions are published prices, and an inversion between published
+prices is a calendar spread with a negative price.  Chapter~2 draws
+the consequence for a model defined on the whole line: the maturity
+stack is fitted jointly under the full-line ledger constraint
+(\cref{eq:globalledgerconstraint}), with one tail policy stated for
+the stack (\cref{eq:tailscalecalendar}), so the wings inherit the
+order from that policy rather than from a quote.  A model left
+undefined beyond its quotes has nothing to order there; a model that
+publishes its wings must order them.  One curve: extend the check.
+Two curves: state one tail policy, then extend it too.
 
 The chapter's statics are now complete for a single expiry: the
 number, its three computations, its unquoted share, the proved

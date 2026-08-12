@@ -21,7 +21,9 @@ chapter.
 | `x`, `m` | transport and martingale shift |
 | `G` | upper-share ledger |
 | `L, R, a_n` | LQD polynomial coordinates |
-| `λ₋, λ₊` | endpoint speeds |
+| `λ₋, λ₊` | tail scales (the limiting transport speeds when `α_± = 0`) |
+| `α₋, α₊` | tail exponents in `[0, 1/2]` (0 = exponential log-return tail, 1/2 = Gaussian rate) |
+| `ℓ₋, ℓ₊` | endpoint gauges `1 − log u`, `1 − log(1−u)` (sign-subscripted; Ch. 9's displacement `ℓ(k,H)` and MCS's `ℓ_r` unaffected) |
 | `u_k, z_k` | strike rank and log-odds |
 | `u*, f*, Δ` | ATM rank, density, digital gap |
 | `β_L, β_R` | Lee wing slopes (left/right, in total variance per \|k\|) |
@@ -30,7 +32,9 @@ chapter.
 | `δ` | butterfly half-width (certificate check) |
 | `h` | haircut (band shrink, vol points) |
 | `η` | vega floor |
-| `α, ν` | ridge weight and power |
+| `ω_reg, ν` | ridge weight and power (word-subscripted; Ch. 10's basket coefficients `ω_a` unaffected) |
+| `p, A` | tail power `1/(1−α)` and its rate constant (§2.3 and App. 2.A only; Ch. 7's tree price `A(σ)` and CRR `p` are unrelated) |
+| `ΔG(z)` | adjacent ledger gap `G₂ − G₁` (composite, the `Δw_i` pattern) |
 | `Ψ` | (reserved by Ch. 2) |
 
 Also in general use from Chapter 2 on: `B` the Black call formula, `Φ`, `φ`
@@ -273,8 +277,8 @@ namesakes (the `λ_j`, `p_J` pattern).
 ## Reservation rules
 
 - Never reuse: `X, Y, u, z, k, y, c, P, w, σ, τ, Λ, ρ, Q, q, g, x, m, G, L,
-  R, a_n, λ±, u_k, z_k, u*, f*, Δ, β_L, β_R, N, Z_max, Ψ, r±*, ξ, g_D, δ,
-  h, η, α, ν` (Chapter 2) — nor Chapter 3's additions above.
+  R, a_n, λ±, α±, ℓ±, u_k, z_k, u*, f*, Δ, β_L, β_R, N, Z_max, Ψ, r±*, ξ,
+  g_D, δ, h, η, ω_reg, ν` (Chapter 2) — nor Chapter 3's additions above.
 - Greek letters still free after Ch. 2+3: ι, π (as constant only), υ
   (avoid — reads as u); capitals Θ (careful vs θ), Ξ, Π, Σ (avoid —
   sums), Υ, Ω, Γ (bare; Ch. 3 does not use it).

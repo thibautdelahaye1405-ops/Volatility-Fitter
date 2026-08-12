@@ -1,0 +1,169 @@
+\section{Calibration}
+\label{sec:calibration}
+
+The coordinates make every trial slice a positive-density law.  Calibration
+therefore has a narrower task: select, among those laws, one that explains the
+quotes without inventing unsupported detail between or beyond them.  Four
+inputs govern that selection: the quoted price bands, basis order, smoothness
+penalty, and tail policy.
+
+\subsection{Use price residuals, measured in volatility units}
+
+Suppose the retained quotes are $(k_i,\sigma_i)$ and
+$w_i=\sigma_i^2\tau$.  The basic one-slice objective is
+\begin{equation}
+\sum_i\left(
+\frac{c(k_i;\theta)-\Black(k_i,w_i)}
+{\partial_\sigma\Black(k_i,w_i)+\eta}
+\right)^2
++\omega_{\rm reg}\sum_{n\ge4}n^{2\nu}a_n^2.
+\label{eq:objective}
+\end{equation}
+Here $\partial_\sigma\Black=\phin(d_+)\sqrt\tau$ is normalized Black vega,
+the first-order change in price for a one-unit change in volatility, and
+$\eta>0$ is a vega floor.  The numerator remains a price difference, so the
+optimizer never inverts an implied volatility.  Dividing by vega merely
+expresses a central price error in the volatility units used by the market.
+In a remote wing, the floor prevents a nearly worthless option from receiving
+an unbounded weight.
+
+The ridge starts at $n=4$.  The modes $a_2$ and $a_3$ carry the main
+curvature and asymmetry; higher modes describe progressively finer rank
+structure.  The factor $n^{2\nu}$ makes fine oscillation increasingly
+expensive while leaving the leading smile shape largely data-driven.
+
+An option quote is usually a bid--ask interval.  If
+$[p_i^{\rm lo},p_i^{\rm hi}]$ is the normalized price band and $\phi_i$ the
+vega normalizer, a band fit uses
+\begin{equation}
+\frac{(c_i-p_i^{\rm hi})^++(p_i^{\rm lo}-c_i)^+}{\phi_i},
+\qquad
+\sqrt{0.05}\frac{c_i-p_i^{\rm mid}}{\phi_i}.
+\label{eq:band}
+\end{equation}
+The first residual is zero inside the spread.  The weak second term selects a
+stable center when many laws lie inside a wide band.
+
+A volatility haircut $h$ shrinks unreliable band edges toward the mid:
+\begin{equation}
+\sigma_i^{\rm lo}=\min(\sigma_i^{\rm bid}+h,\sigma_i^{\rm mid}),
+\qquad
+\sigma_i^{\rm hi}=\max(\sigma_i^{\rm mid},\sigma_i^{\rm ask}-h).
+\label{eq:haircut}
+\end{equation}
+If the original spread is narrower than $2h$, the interval collapses to the
+mid.  In the frozen sample this occurs for every featured SPY quote, while
+many wider NVDA bands remain active.
+
+\subsection{How many modes the strip can support}
+\label{sec:orderguard}
+
+More modes always improve the best in-sample fit; they do not necessarily
+improve the inferred density.  At order $N$ the model has $N+1$ body and
+endpoint parameters.  A practical effective order is
+\begin{equation}
+N_{\rm eff}=\max\left(
+\min\left(N,\left\lfloor\frac{n_q}{2}\right\rfloor-1\right),
+\min(N,6)\right),
+\label{eq:orderguard}
+\end{equation}
+where $n_q$ is the quote count.  Away from the floor, this keeps roughly two
+quotes per shape degree of freedom.  The rule controls identification; it is
+not a no-arbitrage condition.  A larger order can change digitals and narrow
+butterflies between quotes while leaving vanilla residuals almost unchanged.
+
+The quoted ranks make the same point directly.  After a preliminary fit,
+record
+\[
+[u_{\min},u_{\max}]
+=\left[\min_iF_X(k_i),\max_iF_X(k_i)\right].
+\]
+Modes acting mainly outside this interval are chosen by the ridge and the
+tail policy, not by quoted options.  Reporting this interval states which part
+of the fitted distribution is directly informed by the market.
+
+\subsection{Optimization coordinates}
+\label{sec:charts}
+
+Use the endpoint chart
+$(\log\lambda_-,\log\lambda_+,a_2,\ldots,a_N)$ with the modes
+\eqref{eq:endpointbasis}.  Body moves then leave both tail coefficients fixed.
+
+The right endpoint chart depends on the selected tail exponent:
+\begin{equation}
+\lambda_+=
+\begin{cases}
+\expit\xi,&\alpha_+=0,\\
+e^\xi,&\alpha_+>0.
+\end{cases}
+\label{eq:rightchart}
+\end{equation}
+The first branch makes the finite-forward wall unreachable.  The second is
+unconstrained because every positive moment exists.  A separate moment prior
+may still cap $\lambda_+$ for numerical or risk purposes.
+
+The raw coefficients $L$ and $R$ follow from the endpoint equations
+\eqref{eq:endpoints}.  This conversion is linear once the body coefficients
+are fixed.  Analytic derivatives in the endpoint chart are obtained by
+multiplying the raw-coordinate Jacobian by this small chart Jacobian.
+
+\subsection{Choose the tail class outside the optimizer}
+\label{sec:alphapolicy}
+
+The exponent $\alpha$ changes the asymptotic class, not merely the local wing
+slope.  Over any finite strike range, a sufficiently small positive $\alpha$
+can resemble $\alpha=0$ while implying that every moment is finite and the
+Lee slope is zero.  Listed vanilla options usually identify tail scale much
+more strongly than tail class.  Unconstrained per-slice estimation is
+therefore ill-conditioned.
+
+The implementation uses one of three policies:
+\begin{enumerate}
+\item $\alpha_-=\alpha_+=0$ for exponential log-return tails and power gross-
+return tails;
+\item fixed exponents chosen for an asset class or product, with separate
+left and right values allowed;
+\item a small grid of exponent scenarios, each recalibrated, with downstream
+prices reported across the scenarios.
+\end{enumerate}
+The preferred practice is to calibrate a small number of stated tail
+scenarios and compare the downstream quantities that depend on them.  Within
+one underlier, exponents are held common across expiry unless a monotone
+term-structure rule is imposed.  This also stabilizes full-line calendar
+order; \cref{sec:calendar} gives the exact restriction.
+
+\subsection{Starting values and solve sequence}
+
+For $\alpha_\pm=0$, the constant-speed seed
+\begin{equation}
+s=\frac{\sqrt{3w_0}}{\pi}
+\label{eq:coldstart}
+\end{equation}
+matches log-return variance.  It is about eight percent low in ATM implied
+variance at small $w_0$, so it is only a starting value.  For other tail
+exponents, set all body modes to zero and solve one scalar equation for the
+common endpoint level that matches the ATM call.  This costs one-dimensional
+root finding and avoids an arbitrary variance proxy.
+
+A complete slice fit follows six steps:
+\begin{enumerate}
+\item infer $F$ and $D$, convert strikes to $k_i$, and convert bid, mid, and
+ask volatilities to normalized prices once;
+\item fix $(\alpha_-,\alpha_+)$, select $N_{\rm eff}$, and construct the
+residual rows and weights;
+\item initialize the endpoint chart from the scalar reference slice or from
+the preceding expiry;
+\item at each step, build $(x,x',G,G')$ on one grid, price every quote with
+\eqref{eq:call}, and obtain the Jacobian from
+\eqref{eq:pass1}--\eqref{eq:pass3};
+\item rebuild the accepted parameters on the publication grid and compute ATM
+handles, moments, wing asymptotics, variance-swap strike, and numerical
+certificates from that object;
+\item for several expiries, replace independent sequential fits by the joint
+calendar-constrained solve of \cref{sec:globalcalendarfit}.
+\end{enumerate}
+
+Market conventions are fixed before optimization.  Every trial slice remains
+a law.  All reported quantities are read from the same final accepted object;
+there is no second smoothing or extrapolation layer that can alter its
+density, moments, or tails.

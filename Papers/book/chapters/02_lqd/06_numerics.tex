@@ -1,0 +1,141 @@
+\section{Numerical realization}
+\label{sec:numerics}
+
+The mathematical model lives on the whole log-odds line.  A computer stores a
+finite central grid, so the two tails must be continued analytically.  The
+important design rule is consistency: normalization, strike roots, prices,
+and calendar tests must all use the same continuation.  One slice build then
+produces the transport, density ingredients, ledger, and sensitivity arrays.
+
+\subsection{The central grid}
+
+Use a symmetric grid $[-Z_{\max},Z_{\max}]$.  At each node compute
+$u=\Lambda(z)$, the two gauges \eqref{eq:ellgauges}, $g(u)$, and $x'(z)$ from
+\eqref{eq:xspeed}.  Cumulative quadrature anchored at $z=0$ gives
+$\bar x=x-m$.  The martingale integral gives $m$.  Reverse cumulative
+quadrature gives $G$.
+
+The reference sizes are 2001 nodes during optimization and 8001 nodes for the
+accepted slice, with $Z_{\max}=40$.  Cubic Hermite interpolation uses the exact
+nodal derivatives
+\begin{equation}
+x'(z)>0,
+\qquad G'(z)=-e^{x(z)}\rho(z)<0.
+\label{eq:nodalderivatives}
+\end{equation}
+A bracketed Hermite root followed by one Newton step gives $z_k$.
+
+Three expressions need special numerical treatment.  First,
+\[
+\rho(z)=\expit(z)\expit(-z),
+\]
+because $1-\expit(z)$ rounds to zero in the positive tail.  Second, the cash
+leg is
+\[
+e^k(1-\Lambda(z_k))
+=\exp\{k-\log(1+e^{z_k})\},
+\]
+evaluated with a log-sum-exp routine.  Third, trial points are rejected before
+exponentiation if any grid value of $g$, $x$, or a sensitivity exponent exceeds
+the floating-point budget.
+
+\subsection{Tail continuation}
+
+For $z>Z_{\max}$, the leading transport continuation is
+\begin{equation}
+x_R(z)=x(Z_{\max})+
+\frac{\lambda_+}{1-\alpha_+}
+\left[(z+1)^{1-\alpha_+}
+-(Z_{\max}+1)^{1-\alpha_+}\right].
+\label{eq:rightcontinuation}
+\end{equation}
+The corresponding approximate root for $k>x(Z_{\max})$ is
+\begin{equation}
+z_R(k)+1=\left[(Z_{\max}+1)^{1-\alpha_+}
++\frac{(1-\alpha_+)(k-x(Z_{\max}))}{\lambda_+}
+\right]^{1/(1-\alpha_+)}.
+\label{eq:rightroot}
+\end{equation}
+The formulas reduce to a straight line when $\alpha_+=0$.  The left
+continuation is obtained by replacing $z+1$ by $1-z$ and reversing the sign of
+the transport increment.
+
+In the exponential subclass, the leading missing martingale masses are
+\begin{equation}
+\int_{Z_{\max}}^\infty e^{\bar x}\rho\,\dd z
+\simeq\frac{e^{\bar x(Z_{\max})-Z_{\max}}}{1-\lambda_+},
+\qquad
+\int_{-\infty}^{-Z_{\max}} e^{\bar x}\rho\,\dd z
+\simeq\frac{e^{\bar x(-Z_{\max})-Z_{\max}}}{1+\lambda_-}.
+\label{eq:tailcorr}
+\end{equation}
+For $\alpha_+>0$, the right correction is evaluated by one-dimensional
+log-domain quadrature under \eqref{eq:rightcontinuation}.  Its endpoint
+approximation is
+\begin{equation}
+\int_{Z_{\max}}^\infty e^{x(z)}\rho(z)\,\dd z
+\simeq
+\frac{e^{x(Z_{\max})-Z_{\max}}}{1-x'(Z_{\max})},
+\label{eq:lighttailcorr}
+\end{equation}
+provided $x'(Z_{\max})<1$.  The left denominator is
+$1+x'(-Z_{\max})$.
+
+The condition in \eqref{eq:lighttailcorr} is numerical, not probabilistic.  A
+positive tail exponent guarantees a finite forward, yet the normalizing
+integrand can first grow and only decay at an extremely remote rank.  More
+precisely, if $x'(Z_{\max})>1$, it grows until the saddle $x'(z)=1$.  A
+production implementation must either locate that saddle and use scaled
+quadrature around it, or enforce the operational guard
+\begin{equation}
+x'(Z_{\max})\le1-\varepsilon_{\rm tail}.
+\label{eq:operationaltailguard}
+\end{equation}
+The reference implementation uses the guard.  It excludes laws whose forward
+is finite in theory but numerically determined by ranks far beyond the grid.
+
+For a strike beyond the right grid, evaluate the ledger under the same tail
+continuation and subtract the logistic cash leg.  In the far limit,
+\begin{equation}
+c(k)\simeq e^{k-z_R(k)}
+\frac{x'(z_R(k))}{1-x'(z_R(k))}.
+\label{eq:beyondgrid}
+\end{equation}
+At $\alpha_+=0$, this becomes
+$e^{k-z_R(k)}\lambda_+/(1-\lambda_+)$.  Deep left calls are evaluated as a
+small put plus parity, avoiding subtraction of two numbers close to one.
+
+\subsection{Numerical certificates}
+\label{sec:certificates}
+
+The continuous formulas are arbitrage-free; a poorly resolved interpolation
+can still violate their monotonicity on a computer.  Four independent checks
+are applied to every accepted slice.
+
+\begin{enumerate}
+\item On every cubic Hermite segment for $x$, verify the Fritsch--Carlson box
+\[
+0\le d_0\le3s,\qquad 0\le d_1\le3s,
+\]
+where $s$ is the secant slope and $d_0,d_1$ are endpoint derivatives.  Apply
+the same check to $-G$ \citep{FritschCarlson1980}.
+\item Across the retained strike range, compute analytic $w,w',w''$ and
+insert them in \eqref{eq:durrleman}.  Require
+$g_{\rm D}\ge-\varepsilon_{\rm dens}$, where the tolerance is stated in units
+of the local Black density factor.
+\item Rebuild on a grid with four times as many nodes.  Compare prices,
+densities, ATM handles, and the martingale integral at off-grid strikes and
+ranks.
+\item Test tail formulas separately in the exponential logistic reference
+law and in a Gaussian-rate reference obtained from
+$X\sim N(-s^2/2,s^2)$ with $\alpha_\pm=1/2$.
+\end{enumerate}
+
+The Hermite box is sufficient rather than necessary.  Its smallest remaining
+margin detects under-resolution before monotonicity is visibly lost.
+
+The accepted parameter vector is rebuilt once on the publication grid.
+Prices, densities, ATM handles, variance-swap values, and calendar ledgers all
+read that same immutable object.  Quote residuals measure market fit; basis
+order and tail exponents record modeling choices; numerical margins measure
+the reliability of the stored representation.  They are reported separately.

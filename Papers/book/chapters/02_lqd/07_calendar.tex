@@ -1,0 +1,208 @@
+\section{Calendar order on the whole line}
+\label{sec:calendar}
+
+One-expiry validity removes butterfly arbitrage.  A surface must also order
+expiries: moving expiry later cannot make a normalized call less valuable when
+the underlying forward-normalized price is a martingale.  Because every LQD
+slice defines a price at every strike, the requirement applies on the whole
+strike line, not only where two expiries happen to have quotes.
+
+\subsection{The calendar inequality}
+
+\begin{lemma}[Equal-log-moneyness calendar order]
+\label{lem:caljensen}
+Assume deterministic rates and carry.  Let $F_{0,t}$ be the forward curve and
+$M_t=S_t/F_{0,t}$ a positive martingale.  For $T_1<T_2$ and every
+$k\in\R$,
+\begin{equation}
+c_1(k)\le c_2(k).
+\label{eq:calreq}
+\end{equation}
+\end{lemma}
+
+\begin{proof}
+With $Y_i=M_{T_i}$, conditional Jensen gives
+\[
+\begin{aligned}
+c_2(k)
+&=\E[(M_{T_2}-e^k)^+]\\
+&\ge\E[(\E[M_{T_2}\mid\mathcal F_{T_1}]-e^k)^+]
+=\E[(M_{T_1}-e^k)^+]=c_1(k).
+\end{aligned}
+\]
+\end{proof}
+
+Equal $k$ means equal strike divided by forward, so the cash strikes are
+$K_i=F_i e^k$ and are generally different.  The two laws of $Y_i$ have the
+same mean, while the farther law is more dispersed in the precise sense of
+convex order.  If carry is stochastic, the numeraire and the objects compared
+must be specified before using this relation.
+
+Black call price is strictly increasing in $w$ at every finite $k$.  Hence
+\begin{equation}
+c_1(k)\le c_2(k)\quad\Longleftrightarrow\quad
+w_1(k)\le w_2(k).
+\label{eq:calendarvarianceequiv}
+\end{equation}
+Thus the visual desk rule for a stacked total-variance chart is exact:
+farther-expiry curves must lie above nearer-expiry curves at every
+log-moneyness.
+
+\subsection{Move the calendar test from strike to rank}
+
+Calls from two expiries reach a given strike at different ranks.  Directly
+comparing them therefore mixes the two transport maps.  The ledger places all
+expiries on the same probability-rank axis.  The following conjugacy shows
+that no information is lost by making this change.
+
+\begin{lemma}[Ledger--call conjugacy]
+\label{lem:conjugacy}
+For every admissible slice,
+\begin{equation}
+\begin{aligned}
+c(k)&=\max_{z\in[-\infty,\infty]}
+\{G(z)-e^k(1-\Lambda(z))\},\\
+G(z)&=\min_{k\in[-\infty,\infty]}
+\{c(k)+e^k(1-\Lambda(z))\}.
+\end{aligned}
+\label{eq:conjugacy}
+\end{equation}
+The optimizers are $z=z_k$ and $k=x(z)$.
+\end{lemma}
+
+\begin{proof}
+For fixed $k$,
+\[
+G(z)-e^k(1-\Lambda(z))
+=\int_z^\infty(e^{x(t)}-e^k)\rho(t)\,\dd t.
+\]
+The integrand is negative before $z_k$ and positive after it.  Starting the
+integral at $z_k$ maximizes the expression and gives the call.  The first
+identity implies
+$c(k)+e^k(1-\Lambda(z))\ge G(z)$, with equality at $k=x(z)$, which gives the
+second identity.
+\end{proof}
+
+\begin{theorem}[Calendar order is ledger order]
+\label{thm:ledgerorder}
+For two admissible mean-one slices,
+\begin{equation}
+c_1(k)\le c_2(k)\ \text{for every }k\in\R
+\quad\Longleftrightarrow\quad
+G_1(z)\le G_2(z)\ \text{for every }z\in\R.
+\label{eq:ledgerorder}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+If $G_1\le G_2$, take maxima in the first line of
+\eqref{eq:conjugacy}.  If $c_1\le c_2$, take minima in the second line.
+\end{proof}
+
+The theorem says that checking all strikes is exactly the same as checking all
+ranks.  The ledger axis is common across expiries and the slice builder already
+stores it, making it the natural coordinate for both calibration constraints
+and the final certificate.  Ordered marginals are compatible with at least
+one martingale by the theorems of Strassen and Kellerer
+\citep{Strassen1965,Kellerer1972}.  The marginal surface does not select that
+martingale dynamics.
+
+\subsection{Full-line constraints in calibration}
+\label{sec:globalcalendarfit}
+
+A constraint restricted to the common quoted span controls an interpolant
+there; it says nothing about the published extrapolation.  That restriction is
+appropriate only for a model deliberately left undefined outside the quoted
+span.  An LQD slice is defined on all of $\R$, so the accepted maturity stack
+imposes
+\begin{equation}
+G_{j+1}(z)-G_j(z)\ge0
+\qquad\text{for every }z\in\R
+\label{eq:globalledgerconstraint}
+\end{equation}
+for every adjacent pair of expiries.
+
+The expiries are fitted jointly because changing either member of an adjacent
+pair changes the calendar gap.  The data term is the sum of the slice
+objectives.  The inequalities \eqref{eq:globalledgerconstraint} are hard
+constraints, not residuals whose violation can be traded against a slightly
+better quote fit.  Standard constrained solvers use the analytic ledger
+sensitivities from \eqref{eq:pass3}; a least-squares implementation may use the
+active-set exchange described below.  In either case, acceptance requires the
+full-line certificate.
+
+Global control necessarily couples unquoted wings across maturity because
+those wings belong to the published surface.  Choose the tail policy for the
+stack before fitting.  With common tail exponents, eventual calendar order
+requires
+\begin{equation}
+\lambda_{-,j+1}\ge\lambda_{-,j},
+\qquad
+\lambda_{+,j+1}\ge\lambda_{+,j},
+\label{eq:tailscalecalendar}
+\end{equation}
+apart from exact ties, where the next asymptotic constant decides the order.
+These inequalities are imposed in the endpoint chart.  If exponents vary by
+expiry, the farther law cannot have a lighter asymptotic tail: on either side
+$\alpha_{\pm,j+1}>\alpha_{\pm,j}$ forces a calendar reversal sufficiently far
+out.  Common $\alpha_\pm$ across a maturity stack is the simpler policy.
+
+If the hard constraints are inconsistent with the quote bands, no law stack
+can satisfy both those bands and the selected tail policy.  The meaningful
+diagnostic is the smallest quote-band relaxation needed for feasibility.
+Shrinking the calendar domain would merely hide the inconsistency outside the
+chosen interval.
+
+\subsection{A complete calendar certificate}
+\label{sec:calendarcertificate}
+
+The all-line constraint still appears infinite-dimensional.  The transport
+geometry reduces it to finitely many evaluations.  Let
+\[
+\Delta G(z)=G_2(z)-G_1(z).
+\]
+At both endpoints $\Delta G$ tends to zero.  Its derivative has a simple sign:
+\begin{equation}
+(\Delta G)'(z)=\rho(z)\{e^{x_1(z)}-e^{x_2(z)}\}.
+\label{eq:calgapderivative}
+\end{equation}
+Thus the ledger gap can turn only where the two quantile curves cross.  Between
+two consecutive crossings it is monotone.  Every possible negative minimum
+therefore occurs at a crossing or in an analytic tail.
+
+This gives a finite certificate for the stored surface:
+\begin{enumerate}
+\item isolate every root of $x_{j+1}-x_j$ on the central grid; for cubic
+Hermite transports this is a cubic root problem on each segment;
+\item evaluate $G_{j+1}-G_j$ at those roots and at the two grid boundaries;
+\item continue both transports with \eqref{eq:rightcontinuation} and its left
+analogue, isolate any tail roots, and evaluate the ledger gap there;
+\item check the limiting tail order from the exponents, endpoint coefficients,
+and, in a tie, the asymptotic constants.
+\end{enumerate}
+Nonnegative values at all these candidate minima prove
+\eqref{eq:globalledgerconstraint} on the whole real line.  This is a finite
+certificate of a continuum property; no arbitrary strike cutoff is involved.
+
+During calibration, the current violating minimum is added to the active
+constraint set.  This exchange step is repeated until the certificate finds
+no negative minimum.  In practice the active ranks are few because adjacent
+smooth quantile curves cross only a few times.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.94\textwidth}{fig_calendar_global.pdf}
+\caption{A globally ordered synthetic LQD maturity stack.  Left: total
+variance at four expiries; the curves do not cross.  Right: adjacent ledger
+gaps on the common rank axis; each remains nonnegative and returns to zero at
+both endpoints.  The displayed curves illustrate the order; the quantile-root
+test certifies it on the full line.}
+\label{fig:calendarglobal}
+\end{figure}
+
+At extreme strikes, both Black price and vega can underflow while the implied
+variance remains finite.  A publication chart therefore evaluates remote
+wings from \eqref{eq:leeclosed} or \eqref{eq:rightsublinearwing}, matched to
+the central inversion, rather than inverting numerically zero prices.  The
+chart then displays the globally certified surface instead of numerical noise
+from an ill-conditioned inverse.

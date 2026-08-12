@@ -24,7 +24,36 @@ poison for the prose.  Therefore:
   implementation".  No product names, no repo paths, no internal note
   citations — public literature only.
 
-## Status (2026-08-08 — THE BOOK IS COMPLETE)
+## Status (2026-08-12 — CHAPTER 2 REPLACED; the index pass still pending)
+
+CHAPTER 2 WAS REPLACED 2026-08-12 (thirteenth session) by the author's
+rewrite (staged under `chapters/lqd_chapter_rewrite/`, kept as the
+delivery snapshot).  The new chapter adds (1) the generalized
+two-sided tail family: exponents α± ∈ [0,1/2] interpolate from
+exponential (α=0) to Gaussian-rate (α=1/2) log-return tails,
+asymmetrically, with the normalizer, moment domain, Lee/sublinear
+wing laws and numerics derived for the full family; and (2) calendar
+order ON THE WHOLE LINE: ledger order ⇔ call order (the conjugacy
+theorem), joint fitting under hard full-line ledger constraints, and
+a finite certificate at the quantile-curve crossings.  The frozen
+fits keep α±=0; the two new figures are synthetic
+(scripts/ch02/gen_figures_tails.py); every other figure and macro is
+byte-identical.  Cross-chapter repairs in the same session: ch. 5's
+two-curve/wing-choice paragraph and contract cell REDRAFTED (the old
+text defended span-confined calendar checks — the new ch. 2 reverses
+that policy), eq:rankintegral retargeted to eq:generalpayoff,
+"exponential tails" scoped to the subclass; NOTATION.md updated
+(α± tail exponents; ℓ± gauges; ridge renamed ω_reg — α is no longer
+the ridge weight; ΔG ledger gap).  Build: 231 pages, boundaries
+intro 1–8 / ch2 9–36 / 37 / 63 / 87 / 107 / 125 / 143 / 163 / 181 /
+201, Bibliography 221; no undefined refs; the single pre-existing
+ch. 3 overfull; banned-grep zero.  The INDEX-PASS brief below stands,
+with its page anchors read from THIS build (boundaries above — the
+old 1/9/…/207/227 anchors are stale); the tag list should also cover
+the new devices (tail exponent, the ledger, ledger order, the
+calendar certificate).
+
+## Status (2026-08-08 — content + style complete; superseded above)
 
 Content AND style are COMPLETE.  Chapters 2–11 are written and
 re-registered to the style contract below (the full revision arc ran
@@ -696,3 +725,28 @@ history — `git log --follow Papers/book/ROADMAP.md`, through commit
   decision held.  Build: 237 pages, boundaries unmoved, metadata
   verified in the PDF's Info dictionary, 1 pre-existing overfull
   (ch. 3), no undefined refs.  THE ROADMAP IS CLOSED.
+- 2026-08-12 (thirteenth session): CHAPTER 2 REPLACED by the
+  author's rewrite (generalized tail family α±, full-line calendar
+  order; full record in the top Status block).  The draft was
+  reviewed line by line before integration: every derivation
+  verified (Lee closed forms, ATM handles, sublinear wing law,
+  moment domain, envelope cancellation, ledger–call conjugacy,
+  tail corrections) — no mathematical errors; banned-grep zero as
+  delivered.  Amendments applied at integration: the calendar gap
+  renamed H(z) → ΔG(z) (ch. 9 reserves H for the log-forward move);
+  one scope sentence added to app. 2.C (the frozen fits are
+  per-expiry and predate the joint full-line solve — the synthetic
+  stack, not the frozen surface, illustrates it); two doubled
+  percent signs fixed in §2.8 (\MacSpyDecForwardRankPct and
+  \MacTicketRankPct carry \% in the macro — the doubling was
+  inherited from the OLD chapter, which printed 41.31%% in every
+  prior build).  Cross-chapter: ch. 5 06_wing_choice two-curve
+  paragraph redrafted to the full-line policy, 07_term_structure
+  contract cell updated (both cited the dropped eq:calrows),
+  02_three_integrals retargeted to eq:generalpayoff and its
+  exponential-tail sentence scoped to the subclass.  Labels: all
+  other cross-chapter targets are preserved by the new chapter.
+  Build: 231 pages (ch. 2 four book-pages shorter), boundaries in
+  the Status block, no undefined refs, 1 pre-existing overfull
+  (ch. 3).  REMAINING: the index pass (brief above, page anchors
+  refreshed).

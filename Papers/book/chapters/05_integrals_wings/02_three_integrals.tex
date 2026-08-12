@@ -100,7 +100,7 @@ is the natural route for SVI and MCS, whose $w(k)$ is a formula.
 
 The second route never leaves the law.  The mean of any function of
 $X$ can be taken in rank coordinates --- this is
-\cref{eq:rankintegral}, the change of variables under which Chapter~2
+\cref{eq:generalpayoff}, the change of variables under which Chapter~2
 built everything: if $U$ is uniform on $(0,1)$ then $Q(U)$ has the law
 of $X$, so integrating the quantile function $Q$ over ranks
 \emph{is} taking the mean.  Applying this to
@@ -116,8 +116,9 @@ $x(z)$ the transport and $\rho$ the logistic density
 this is one dot product against arrays the slice has already built on
 the fixed log-odds grid every slice carries: no Black function, no
 inversion, no new grid.  The integrand $-2\,x(z)\rho(z)$ decays like
-$|z|e^{-|z|}$ --- Chapter~2's exponential tails make the transport
-asymptotically linear in $z$, and the logistic weight supplies the
+$|z|e^{-|z|}$ --- Chapter~2's exponential-tail subclass makes the
+transport asymptotically linear in $z$ (lighter tail exponents make
+it grow slower still), and the logistic weight supplies the
 $e^{-|z|}$ --- so the slice's grid exhausts it.
 
 \subsection{Along paths}
