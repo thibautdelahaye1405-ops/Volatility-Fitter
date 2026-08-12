@@ -41,8 +41,22 @@ from volfit.models.lqd.quadrature import build_slice
 TAIL_ROW_FRAC = 0.25
 #: Wing-slope ordering tolerance in log endpoint-scale units (log A_L/log A_R
 #: are linear in theta; LQD's Lee slopes are monotone in the endpoint scales,
-#: so A-ordering IS asymptotic-slope ordering).
+#: so A-ordering IS asymptotic-slope ordering). Generalized tails: with the
+#: COMMON per-underlier exponents of the arc's ratified policy, the wing-law
+#: coefficient (eq. rightsublinearwing) is monotone in the tail scale at
+#: every alpha, so these same rows ARE the eq. tailscalecalendar lambda_+-/
+#: monotonicity rows — no alpha-specific rows are needed; exact ties are
+#: delegated to the full-line calendar certificate (Phase 0).
 SLOPE_TOL = 1e-6
+
+
+def _spec_params(theta: np.ndarray, fit_kwargs: dict) -> LQDParams:
+    """theta -> LQDParams carrying the spec's fixed tail exponents."""
+    return LQDParams(
+        L=float(theta[0]), R=float(theta[1]), a=theta[2:].copy(),
+        alpha_left=fit_kwargs.get("alpha_left", 0.0),
+        alpha_right=fit_kwargs.get("alpha_right", 0.0),
+    )
 
 
 @dataclass(frozen=True)
@@ -83,9 +97,15 @@ def endpoint_rows(order: int) -> tuple[np.ndarray, np.ndarray]:
     return c_l, c_r
 
 
-def _try_build(theta: np.ndarray, n_points: int):
+def _try_build(theta: np.ndarray, n_points: int, alphas: tuple[float, float]):
     try:
-        return build_slice(LQDParams.from_vector(theta), n_points=n_points)
+        return build_slice(
+            LQDParams(
+                L=float(theta[0]), R=float(theta[1]), a=theta[2:].copy(),
+                alpha_left=alphas[0], alpha_right=alphas[1],
+            ),
+            n_points=n_points,
+        )
     except ValueError:  # infeasible tail: the slice's own block pushes back
         return None
 
@@ -124,6 +144,7 @@ def stacked_functions(
     args = [p[0] for p in prepared]
     analytic = [p[1] for p in prepared]
     opt_n = [a[-1] for a in args]  # opt_n_points is the last prepared arg
+    alphas = [a[-2] for a in args]  # (alpha_left, alpha_right), second-to-last
     n_rows = [int(_residuals(thetas0[i], *args[i]).size) for i in range(m)]
     p_len = [t.size for t in thetas0]
     row_off = np.concatenate(([0], np.cumsum(n_rows)))
@@ -170,7 +191,7 @@ def stacked_functions(
     def fun(x: np.ndarray) -> np.ndarray:
         thetas = split(x)
         parts = [_residuals(thetas[i], *args[i]) for i in range(m)]
-        slices = [_try_build(thetas[i], opt_n[i]) for i in range(m)]
+        slices = [_try_build(thetas[i], opt_n[i], alphas[i]) for i in range(m)]
         for j, iface in enumerate(ifaces):
             if iface is None:
                 continue
@@ -209,7 +230,14 @@ def stacked_functions(
             )
             out[row_off[i]: row_off[i + 1], col_off[i]: col_off[i + 1]] = block
             try:
-                sens.append(slice_sensitivities(LQDParams.from_vector(thetas[i]), opt_n[i]))
+                sens.append(slice_sensitivities(
+                    LQDParams(
+                        L=float(thetas[i][0]), R=float(thetas[i][1]),
+                        a=thetas[i][2:].copy(),
+                        alpha_left=alphas[i][0], alpha_right=alphas[i][1],
+                    ),
+                    opt_n[i],
+                ))
             except ValueError:
                 sens.append(None)
         r = int(row_off[-1])
@@ -296,7 +324,7 @@ def solver_diag_from_theta(theta: np.ndarray, spec: SliceSpec) -> dict:
 def result_from_theta(theta: np.ndarray, spec: SliceSpec) -> CalibrationResult:
     """Package a jointly solved slice as a standard CalibrationResult (full
     quadrature grid + the same max-IV-error diagnostic calibrate_slice reports)."""
-    params = LQDParams.from_vector(theta)
+    params = _spec_params(np.asarray(theta, dtype=float), spec.fit_kwargs)
     slice_ = build_slice(params)
     sigma = np.sqrt(np.asarray(spec.w, dtype=float) / spec.t)
     iv_model = np.sqrt(slice_.implied_w(spec.k) / spec.t)

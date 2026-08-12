@@ -26,13 +26,39 @@ from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales
 from volfit.models.lqd.charts import build_chart, endpoint_transform  # noqa: F401 — endpoint_transform re-exported for back-compat
 from volfit.models.lqd.jacobian import residual_jacobian
-from volfit.models.lqd.quadrature import LQDSlice, build_slice
+from volfit.models.lqd.quadrature import Z_MAX, LQDSlice, build_slice
+from volfit.models.lqd.tails import EPS_TAIL
 
 # Soft-barrier location/steepness for A_R: starts pushing back well before
 # the hard integrability bound A_R < 1 so finite-difference Jacobians stay smooth.
 _BARRIER_CENTER = 0.90
 _BARRIER_SCALE = 50.0
 _VEGA_FLOOR = 1e-4
+
+
+def _alpha_barrier(center: float, scale: float, alpha_right: float) -> tuple[float, float]:
+    """Map the A_R soft barrier into the alpha_+ > 0 subclass.
+
+    The alpha = 0 barrier guards the finite-forward wall at lambda_+ = 1;
+    with a light right tail the refusal moves to the saddle guard
+    lambda_sad = (1 - eps)(Z+1)^alpha (eq. operationaltailguard). Scaling
+    the center up and the steepness down by that same factor keeps the
+    barrier's RELATIVE position and stiffness in lambda; alpha = 0 returns
+    the inputs untouched (byte-identity)."""
+    if alpha_right == 0.0:
+        return center, scale
+    f = (1.0 - EPS_TAIL) * (Z_MAX + 1.0) ** alpha_right
+    return center * f, scale / f
+
+
+def _params_from(theta: np.ndarray, alphas: tuple[float, float]) -> LQDParams:
+    """theta -> LQDParams carrying the FIXED tail exponents (the alphas are
+    policy config, never optimizer coordinates — they ride beside the vector,
+    exactly as ``LQDParams.from_vector`` leaves them at zero)."""
+    return LQDParams(
+        L=float(theta[0]), R=float(theta[1]), a=theta[2:].copy(),
+        alpha_left=alphas[0], alpha_right=alphas[1],
+    )
 
 # Grid size for the *optimization* slices (the ~900 finite-difference Jacobian
 # evaluations). The Simpson quadrature error of the 2001-node grid is already
@@ -84,6 +110,7 @@ def _residuals(
     prior_anchor: PriorAnchorTarget | None,
     prior_var_swap: VarSwapTarget | None,
     operator_prior: OperatorPriorTarget | None,
+    alphas: tuple[float, float],
     n_points: int,
 ) -> np.ndarray:
     """Stacked fit + regularization + calendar + barrier residuals.
@@ -93,9 +120,14 @@ def _residuals(
     price space — the band edges are the call prices at the band vols, so the
     monotone vega scaling keeps it ~ a vol-space band fit. A ``var_swap`` target
     adds one vol-space penalty pulling the slice's fair var-swap to the quote
-    (volfit.calib.varswap).
+    (volfit.calib.varswap). ``alphas`` are the FIXED per-side tail exponents
+    (generalized-tails arc: policy inputs, never optimized — at (0, 0) every
+    expression below is byte-identical to the historical objective; for
+    alpha_+ > 0 the barrier center/scale arrive pre-mapped by
+    ``_alpha_barrier`` and the saddle guard rides the same ValueError penalty
+    branch the wall used).
     """
-    params = LQDParams.from_vector(theta)
+    params = _params_from(theta, alphas)
     _, a_right = endpoint_scales(params)
     # A wild trial theta can overflow the endpoint exp to inf (or carry a NaN
     # through); clamp so the rejection penalty and barrier stay finite — a
@@ -200,6 +232,8 @@ def prepare_residual_args(
     prior_var_swap: VarSwapTarget | None = None,
     operator_prior: OperatorPriorTarget | None = None,
     opt_n_points: int = OPT_N_POINTS,
+    alpha_left: float = 0.0,
+    alpha_right: float = 0.0,
 ) -> tuple[tuple, bool]:
     """Build the frozen ``_residuals``/``residual_jacobian`` argument tuple for
     one slice, plus the analytic-Jacobian eligibility flag.
@@ -208,7 +242,16 @@ def prepare_residual_args(
     band edges, regularization vector) split out so the joint symmetric
     solver (volfit.calib.symmetric) can stack per-slice residual blocks from
     the exact same objective a standalone fit uses.
+
+    ``alpha_left``/``alpha_right`` are the fixed tail exponents (generalized
+    tails arc): they ride the args tuple as one (alpha_left, alpha_right)
+    element in the SECOND-TO-LAST position — ``opt_n_points`` stays last,
+    which the joint stack indexes (``args[-1]``). For alpha_+ > 0 the A_R
+    soft barrier is re-pointed at the saddle guard via ``_alpha_barrier``.
     """
+    barrier_center, barrier_scale = _alpha_barrier(
+        barrier_center, barrier_scale, alpha_right
+    )
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
     weights = np.ones_like(k) if weights is None else np.asarray(weights, dtype=float)
@@ -254,6 +297,7 @@ def prepare_residual_args(
         prior_anchor,
         prior_var_swap,
         operator_prior,
+        (alpha_left, alpha_right),
         opt_n_points,
     )
     return args, use_analytic
@@ -285,8 +329,20 @@ def calibrate_slice(
     opt_n_points: int = OPT_N_POINTS,
     solver_diag: dict | None = None,
     coords: str = "lr",
+    alpha_left: float = 0.0,
+    alpha_right: float = 0.0,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
+
+    ``alpha_left``/``alpha_right`` are the FIXED per-side tail exponents of
+    the generalized family (book ch. 2; the arc's ratified scenario policy):
+    they select the tail class for every iterate and the returned fit, are
+    never optimizer coordinates, and OVERRIDE whatever a warm-start ``init``
+    carries (the seed only supplies theta through ``to_vector``). (0, 0) —
+    the default — is byte-identical to the historical objective; for
+    alpha_+ > 0 the A_R wall/barrier semantics move to the saddle guard and
+    a "logistic" chart request degrades to the endpoint chart
+    (eq. rightchart).
 
     ``reg_lambda``/``reg_power`` implement the high-order damping
     lam * n^{2r} a_n^2; the first Legendre mode a_2..a_3 is left free.
@@ -365,13 +421,14 @@ def calibrate_slice(
         mid_anchor_weight=mid_anchor_weight, var_swap=var_swap,
         prior_anchor=prior_anchor, prior_var_swap=prior_var_swap,
         operator_prior=operator_prior, opt_n_points=opt_n_points,
+        alpha_left=alpha_left, alpha_right=alpha_right,
     )
 
     if init is None:
         w0_guess = float(np.interp(0.0, k, w_quotes))
         init = logistic_init(w0_guess, n_order=n_order)
 
-    chart = build_chart(n_order, coords)
+    chart = build_chart(n_order, coords, alpha_right=alpha_right)
     fun, jac_fn, x0 = _residuals, residual_jacobian, init.to_vector()
     if chart is not None:
 
@@ -417,7 +474,7 @@ def calibrate_slice(
             n_quotes=int(k.size),
         )
 
-    params = LQDParams.from_vector(theta_star)
+    params = _params_from(theta_star, (alpha_left, alpha_right))
     slice_ = build_slice(params)
     iv_model = np.sqrt(slice_.implied_w(k) / t)
     max_iv_error = float(np.nanmax(np.abs(iv_model - sigma)))

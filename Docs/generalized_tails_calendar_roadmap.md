@@ -154,6 +154,31 @@ Exit: `build_slice`/`call_price`/`density`/`var_swap_strike` correct for all
 
 ## Phase 2 — Calibration & policy layer
 
+**Status: DONE 2026-08-12** (including the Phase 1 certificate rider).
+Shipped as specced: `FitSettings.tailAlphaLeft/Right` (0 default, [0, ½],
+settings version keys the fit cache) packaged at `_slice_task`; alphas ride
+`calibrate_slice`/`prepare_residual_args` as one args-tuple element
+(second-to-last — `opt_n_points` stays last for the joint stack) and
+override any warm-start seed; the "logistic" chart degrades to the endpoint
+chart at α+ > 0 (eq. rightchart); the A_R soft barrier is re-pointed at the
+saddle guard by `_alpha_barrier` (α = 0 untouched); the analytic Jacobian's
+body pass was already α-correct (it reads the slice's own dq_dz — g is
+affine in θ, gauges θ-independent) and the tail-correction rows branch to
+the power-continuation (T, ∂T/∂λ) quadratures (`tails.tail_mass_and_dlam_*`),
+with the saddle guard mirrored in the infeasible pre-check; the stack's
+seam-and-slope rows ARE the λ± monotonicity rows at common α (wing-law
+coefficient monotone in λ at fixed α — documented at `SLOPE_TOL`), with
+alphas threaded through `SliceSpec.fit_kwargs` → `_spec_params`. The
+certificate rider shipped: `_tail_candidates` runs the power-continuation
+crossing + quadrature masses for equal-α pairs and decides the order clause
+by exponents alone for unequal-α pairs (outside the ratified policy).
+Locks: `tests/test_generalized_tails_calib.py` (12) — FD agreement at
+α ≠ 0 incl. beyond the old wall, saddle mirror, barrier remap, chart
+degradation + chart-independence of the α optimum, α = 0 kwargs
+byte-identity, Gaussian-rate fit, common-α stack certifying through the
+power tails, FitSettings bounds + service packaging round-trip.
+Per-underlier α scope rides Phase 3's panel (recorded in the schema).
+
 - `FitSettings` (`api/schemas.py`): `tailAlphaLeft`, `tailAlphaRight`
   (default 0.0, bounds [0, 0.5]), persisted per underlier (settings
   persistence + options-version bump, `api/state.py` pattern). Applied at
@@ -173,6 +198,7 @@ Exit: `build_slice`/`call_price`/`density`/`var_swap_strike` correct for all
   (α = 0) continuation — generalize `calendar_certificate._tail_candidates`
   to the power continuation (equal-α pairs: same crossing structure in the
   (z+1)^{1−α} variable) before α > 0 stacks can reach quality/publish.
+  **DONE 2026-08-12** (shipped with this phase — see the status block).
 - Untouched: order guard, ridge, band/haircut machinery, prior anchors.
 
 Exit: full stack fit under a nonzero α scenario on the reference fixture;

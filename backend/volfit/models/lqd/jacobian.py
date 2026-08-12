@@ -36,6 +36,12 @@ from volfit.calib.varswap import _W_FLOOR as _VS_W_FLOOR
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, legendre_matrix
 from volfit.models.lqd.interp import hermite_eval
 from volfit.models.lqd.quadrature import _cumquad, build_slice
+from volfit.models.lqd.tails import (
+    EPS_TAIL,
+    continuation_speed,
+    tail_mass_and_dlam_left,
+    tail_mass_and_dlam_right,
+)
 
 #: Endpoint integrability buffer (mirror of quadrature.EPS_AR for the except path).
 from volfit.models.lqd.quadrature import EPS_AR, Z_MAX  # noqa: E402
@@ -94,20 +100,42 @@ def slice_sensitivities(
     qbar = np.array([_cumquad(row, dx=dz, initial=0.0) for row in dq_phi])
     qbar -= qbar[:, center][:, None]                       # anchored, (P, M)
 
-    # d(total)/dtheta: body integral + the two analytic tail corrections.
+    # d(total)/dtheta: body integral + the two tail corrections. In the
+    # exponential subclass these are the closed forms; for alpha > 0 the
+    # correction is the power-continuation quadrature T(lambda, xbar_end)
+    # (volfit.models.lqd.tails), whose theta-dependence enters only through
+    # the boundary anchor (dT = T qbar_end) and the tail scale
+    # (dT = (dT/dlam) dlam/dtheta) — the same structure as the closed forms.
     d_total = np.trapezoid(mass[None, :] * qbar, z, axis=1)
-    tail_r = float(np.exp(q_bar[-1] - z_max))
-    tail_l = float(np.exp(q_bar[0] - z_max))
-    d_total += tail_r * (qbar[:, -1] / (1.0 - a_right) + d_ar / (1.0 - a_right) ** 2)
-    d_total += tail_l * (qbar[:, 0] / (1.0 + a_left) - d_al / (1.0 + a_left) ** 2)
+    t_r = dt_r = 0.0  # alpha_+ > 0 tail mass and its lambda-sensitivity
+    if params.alpha_right == 0.0:
+        tail_r = float(np.exp(q_bar[-1] - z_max))
+        d_total += tail_r * (qbar[:, -1] / (1.0 - a_right) + d_ar / (1.0 - a_right) ** 2)
+    else:
+        t_r, dt_r = tail_mass_and_dlam_right(
+            float(q_bar[-1]), a_right, params.alpha_right, z_max)
+        d_total += t_r * qbar[:, -1] + dt_r * d_ar
+    if params.alpha_left == 0.0:
+        tail_l = float(np.exp(q_bar[0] - z_max))
+        d_total += tail_l * (qbar[:, 0] / (1.0 + a_left) - d_al / (1.0 + a_left) ** 2)
+    else:
+        t_l, dt_l = tail_mass_and_dlam_left(
+            float(q_bar[0]), a_left, params.alpha_left, z_max)
+        d_total += t_l * qbar[:, 0] + dt_l * d_al
     d_mu = -d_total / total                                # (P,)
 
     d_qz = d_mu[:, None] + qbar                            # (P, M)
     d_massn = mass_n[None, :] * d_qz                       # d(e^{Q}u(1-u))/dtheta
     rev = np.array([_cumquad(row[::-1], dx=dz, initial=0.0)[::-1] for row in d_massn])
-    # a_z right-tail correction e^{q_z[-1]-z_max}/(1-a_right) (note q_z, not q_bar).
-    tail_az = float(np.exp(slice_.q_z[-1] - z_max))
-    d_az = rev + (tail_az * (d_qz[:, -1] / (1.0 - a_right) + d_ar / (1.0 - a_right) ** 2))[:, None]
+    if params.alpha_right == 0.0:
+        # a_z right-tail correction e^{q_z[-1]-z_max}/(1-a_right) (q_z, not q_bar).
+        tail_az = float(np.exp(slice_.q_z[-1] - z_max))
+        d_az = rev + (tail_az * (d_qz[:, -1] / (1.0 - a_right)
+                                 + d_ar / (1.0 - a_right) ** 2))[:, None]
+    else:
+        # Normalized addon e^{mu} T: d = e^{mu}(d_qz_end T + (dT/dlam) dlam).
+        emu = float(np.exp(slice_.mu))
+        d_az = rev + (emu * (t_r * d_qz[:, -1] + dt_r * d_ar))[:, None]
     if with_qz:
         return slice_, d_az, -d_massn, d_qz
     return slice_, d_az, -d_massn
@@ -153,6 +181,7 @@ def residual_jacobian(
     prior_anchor,
     prior_var_swap,
     operator_prior,
+    alphas: tuple[float, float],
     n_points: int,
 ) -> np.ndarray:
     """Analytic Jacobian of ``_residuals`` (prior-anchor/operator gated off).
@@ -161,8 +190,15 @@ def residual_jacobian(
     var-swap rows ride the same pass: with w_vs = -2 int Q u(1-u) dz (the
     slice's closed form), d(w_vs)/dtheta = -2 int (dQ/dtheta) u(1-u) dz from
     the nodal quantile sensitivity, and the vol-space residual chains through
-    d(sigma_vs)/dw = 1/(2 sqrt(w_vs t))."""
-    params = LQDParams.from_vector(theta)
+    d(sigma_vs)/dw = 1/(2 sqrt(w_vs t)). ``alphas`` are the fixed tail
+    exponents — NO alpha columns (the arc's fixed-alpha policy); the body
+    pass is alpha-correct automatically because it reads the slice's own
+    dq_dz (g is affine in theta and the gauges are theta-independent), and
+    the tail-correction terms branch inside ``slice_sensitivities``."""
+    params = LQDParams(
+        L=float(theta[0]), R=float(theta[1]), a=theta[2:].copy(),
+        alpha_left=alphas[0], alpha_right=alphas[1],
+    )
     p = theta.size
     band_mode = price_lo is not None
     n_fit = (2 * k.size) if band_mode else k.size
@@ -186,8 +222,14 @@ def residual_jacobian(
             a_right, d_ar, barrier_center, barrier_scale),
             np.zeros((n_vs, p))])
 
-    # --- infeasible tail (A_R >= 1): reject before building anything -------
-    if a_right >= 1.0 - EPS_AR:
+    # --- infeasible tail: reject before building anything. The wall applies
+    # only in the exponential subclass; for alpha_+ > 0 the refusal is the
+    # saddle guard (eq. operationaltailguard), mirrored here so the analytic
+    # path answers the same trials the residual's penalty branch rejects.
+    if alphas[1] == 0.0:
+        if a_right >= 1.0 - EPS_AR:
+            return infeasible_jac()
+    elif continuation_speed(a_right, alphas[1], Z_MAX) > 1.0 - EPS_TAIL:
         return infeasible_jac()
 
     # --- one quadrature pass + its theta-sensitivities (shared helper) ----

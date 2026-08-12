@@ -114,16 +114,28 @@ class OptimizationChart:
         return (jac_x / d) @ self.m_inv
 
 
-def build_chart(n_order: int, coords: str) -> OptimizationChart | None:
+def build_chart(
+    n_order: int, coords: str, alpha_right: float = 0.0
+) -> OptimizationChart | None:
     """Chart factory for ``calibrate_slice(coords=...)``.
 
     Returns None for the identity "lr" chart (callers keep the raw path);
     raises on an unknown name so a typo cannot silently fit in the wrong
     coordinates.
+
+    The right endpoint coordinate depends on the tail exponent (book ch. 2
+    eq. rightchart): at alpha_+ = 0 the logistic chart makes the
+    finite-forward wall lambda_+ < 1 unreachable; at alpha_+ > 0 every
+    positive moment exists, the wall is gone, and the right coordinate is
+    the UNCONSTRAINED log lambda_+ — i.e. the "logistic" request degrades
+    exactly to the endpoint chart (the saddle guard is a numerical refusal
+    handled by the soft barrier + penalty branch, not a chart wall).
     """
     if coords == "lr":
         return None
     if coords not in ("endpoint", "logistic"):
         raise ValueError(f"unknown LQD coords chart: {coords!r}")
+    if coords == "logistic" and alpha_right > 0.0:
+        coords = "endpoint"  # eq. rightchart, second branch
     m = endpoint_transform(n_order)
     return OptimizationChart(name=coords, m=m, m_inv=np.linalg.inv(m))

@@ -100,6 +100,53 @@ def tail_mass_left(xbar_start: float, lam: float, alpha: float, z_max: float) ->
     return float(np.exp(m) * np.dot(w, np.exp(expo - m)))
 
 
+def tail_mass_and_dlam_right(
+    xbar_end: float, lam: float, alpha: float, z_max: float
+) -> tuple[float, float]:
+    """(T, dT/dlam) of the right tail mass, on the same quadrature nodes.
+
+    The lambda-sensitivity of the analytic Jacobian's tail-correction rows
+    (models.lqd.jacobian): d(exponent)/dlam = ((z+1)^p - (Z+1)^p)/p under
+    eq. rightcontinuation, so the derivative integral rides the same
+    log-domain pass at one extra dot product. (The map scale depends on lam,
+    but the integrand being integrated IS dT/dlam — any fixed change of
+    variables evaluates it exactly; there is no Leibniz term.)
+    """
+    xp = continuation_speed(lam, alpha, z_max)
+    scale = 1.0 / (1.0 - xp)
+    t, w = _unit_gauss(TAIL_QUAD_N)
+    zz = z_max + scale * t / (1.0 - t)
+    p = 1.0 - alpha
+    b = ((zz + 1.0) ** p - (z_max + 1.0) ** p) / p
+    expo = xbar_end + lam * b - zz + np.log(scale) - 2.0 * np.log1p(-t)
+    m = float(np.max(expo))
+    e = np.exp(expo - m)
+    return (
+        float(np.exp(m) * np.dot(w, e)),
+        float(np.exp(m) * np.dot(w, b * e)),
+    )
+
+
+def tail_mass_and_dlam_left(
+    xbar_start: float, lam: float, alpha: float, z_max: float
+) -> tuple[float, float]:
+    """(T, dT/dlam) of the left tail mass (mirror; dT/dlam <= 0 — a heavier
+    left scale pushes the quantile down and shrinks the dollar mass)."""
+    xp = continuation_speed(lam, alpha, z_max)
+    scale = 1.0 / (1.0 + xp)
+    t, w = _unit_gauss(TAIL_QUAD_N)
+    zz = -z_max - scale * t / (1.0 - t)
+    p = 1.0 - alpha
+    b = ((1.0 - zz) ** p - (z_max + 1.0) ** p) / p
+    expo = xbar_start - lam * b + zz + np.log(scale) - 2.0 * np.log1p(-t)
+    m = float(np.max(expo))
+    e = np.exp(expo - m)
+    return (
+        float(np.exp(m) * np.dot(w, e)),
+        float(-np.exp(m) * np.dot(w, b * e)),
+    )
+
+
 def right_root(
     k: np.ndarray, q_end: float, lam: float, alpha: float, z_max: float
 ) -> np.ndarray:

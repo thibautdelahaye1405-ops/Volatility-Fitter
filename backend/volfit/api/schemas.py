@@ -79,6 +79,15 @@ class FitSettings(BaseModel):
     lqdCoords: Literal["lr", "endpoint", "logistic"] = "logistic"
     regLambda: float = Field(1e-6, ge=0.0, le=1.0)  # lam * n^{2r} a_n^2 damping
     regPower: float = Field(1.0, ge=0.0, le=4.0)  # the r in n^{2r}
+    #: Generalized LQD tails (book ch. 2; tails+calendar arc Phase 2): fixed
+    #: per-side tail exponents in [0, 1/2] — 0 = exponential (the historical
+    #: model, byte-identical default), 1/2 = Gaussian rate, asymmetric values
+    #: allowed. POLICY inputs (the scenario instrument), never optimized: the
+    #: alpha -> 0 limit is nonuniform, so per-slice estimation is
+    #: ill-conditioned by construction. LQD-only (overlays ignore them);
+    #: per-underlier presets ride the Phase 3 hyper-parameters panel.
+    tailAlphaLeft: float = Field(0.0, ge=0.0, le=0.5)
+    tailAlphaRight: float = Field(0.0, ge=0.0, le=0.5)
     nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)
     haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
     weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights

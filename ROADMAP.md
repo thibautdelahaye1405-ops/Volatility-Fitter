@@ -519,17 +519,24 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
      implementation arc — "continue the roadmap" resumes at
-     Phase 2 (calibration & policy layer: FitSettings alphas,
-     charts, jacobian gauge pass, λ± stack rows). Phase 0 DONE
-     2026-08-12 (wrap 2026-08-12a below): the exact full-line
-     calendar certificate is live as the acceptance/publish
-     authority (calib/calendar_certificate.py; quality ledger*
-     fields; export minAdjacentLedgerGap + certificate blocker;
-     cert case full_line_calendar_certificate). Phase 1 DONE
-     2026-08-12 (wrap 2026-08-12b below): generalized tail core
-     in the model layer (alphas as LQDParams config, gauge-folded
-     speed, tails.py continuation machinery, wing_law; Gaussian
-     golden battery; α=0 byte-identical, suite 1535 green)**:
+     Phase 3 (surfaces, UI, wire formats, scenarios: lqdParams
+     alphaL/alphaR sibling wire fields, prior transport, α-aware
+     remote-wing charts, hyper-parameters panel with per-underlier
+     scope, scenario-compare report). Phase 0 DONE 2026-08-12
+     (wrap 2026-08-12a below): the exact full-line calendar
+     certificate is live as the acceptance/publish authority
+     (calib/calendar_certificate.py; quality ledger* fields;
+     export minAdjacentLedgerGap + certificate blocker; cert case
+     full_line_calendar_certificate). Phase 1 DONE 2026-08-12
+     (wrap 2026-08-12b below): generalized tail core in the model
+     layer (alphas as LQDParams config, gauge-folded speed,
+     tails.py continuation machinery, wing_law; Gaussian golden
+     battery; α=0 byte-identical). Phase 2 DONE 2026-08-12 (wrap
+     2026-08-12c below): calibration & policy layer (FitSettings
+     tailAlpha±, args-tuple threading, rightchart degradation,
+     saddle-pointed barrier, α tail-derivative Jacobian branches,
+     stack λ± rows at common α, certificate power tails — the
+     Phase 1 rider; suite 1547 green, α=0 byte-identical)**:
      two-sided tail exponents α± ∈ [0, 1/2] (exponential → Gaussian-rate,
      asymmetric; per-underlier COMMON across expiries; FIXED outside the
      optimizer — scenario policy) + the exact full-line calendar
@@ -552,6 +559,61 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-12c) — TAILS+CALENDAR ARC PHASE 2: CALIBRATION & POLICY LAYER
+
+- **Policy plumbing**: `FitSettings.tailAlphaLeft/Right` (0 default,
+  [0, ½] validated; the settings version already keys the fit cache so a
+  tail-scenario change refits cleanly); packaged into every LQD fit at
+  `service._slice_task`; per-underlier presets recorded for Phase 3's
+  panel. Committed records carry the exponents (service-level lock).
+- **Threading**: the alphas ride the frozen residual args tuple as ONE
+  `(alpha_left, alpha_right)` element in the second-to-last slot —
+  `opt_n_points` stays last, which the joint stack indexes (`args[-1]`);
+  `calibrate_slice(alpha_left=, alpha_right=)` overrides any warm-start
+  seed's exponents (seeds only supply theta); `_params_from` constructs
+  every iterate's params with the FIXED exponents (no α columns — the
+  ratified policy). `LQDParams.from_vector` untouched.
+- **Chart & barrier semantics** (eq. rightchart): a "logistic" request
+  degrades exactly to the endpoint chart at α+ > 0 (the wall is gone; the
+  right coordinate is unconstrained log λ+); the A_R soft barrier is
+  re-pointed at the saddle guard by `_alpha_barrier` (center × f, scale
+  ÷ f with f = (1−ε)(Z+1)^{α+}; α = 0 returns inputs untouched); the
+  analytic Jacobian's infeasible pre-check mirrors the saddle guard for
+  α+ > 0 and keeps the wall check only in the exponential subclass.
+- **Analytic Jacobian**: the body pass was ALREADY α-correct — it reads
+  the slice's own dq_dz and g is affine in θ with θ-independent gauges;
+  only the tail-correction rows branch: (T, ∂T/∂λ) by the same log-domain
+  GL pass (`tails.tail_mass_and_dlam_right/left`, one extra dot product),
+  same structural form as the α = 0 closed forms (d_total += T·q̄θ(end) +
+  (∂T/∂λ)·dλθ; a_z addon via e^{μ}(T·d_qz(end) + ∂T/∂λ·dλθ)).
+- **Stack coupling**: with the ratified COMMON per-underlier α, the
+  existing seam-and-slope tail rows ARE the eq. tailscalecalendar λ±
+  monotonicity rows (the wing-law coefficient is monotone in λ at every
+  fixed α — documented at `SLOPE_TOL`); alphas thread through
+  `SliceSpec.fit_kwargs` → `_spec_params` in the joint stack, the repair
+  screen and `result_from_theta`.
+- **Certificate power tails (the Phase 1 rider, shipped)**: for equal-α
+  pairs the tail turning point is the closed-form crossing in the
+  (z+1)^{1−α} variable and the gap there is the difference of two
+  continuation masses (quadrature); for unequal-α pairs (outside policy)
+  the limiting order is decided by the exponents alone (lighter far tail
+  loses — book ch. 2). α = 0 pairs take the untouched exponential branch.
+- **Locks** (`tests/test_generalized_tails_calib.py`, 12): FD agreement
+  at α = (0.25, 0.40) for mid/band/calendar rows, FD beyond the old wall
+  (λ+ > 1 at α+ = ½), saddle-guard infeasible mirror, barrier remap into
+  the frozen tuple, chart degradation + α-optimum chart-independence
+  (lr vs logistic to 1e-5), α = 0 kwargs BYTE-identity, Gaussian-rate
+  scenario fit, common-α two-expiry stack certifying through the power
+  tails (+ reversed refuted), unequal-α order clause, FitSettings bounds
+  + AppState round-trip + calibrate_node carrying the exponents.
+- Suite: 1547 passed, 1 skipped (+12 = exactly the new locks; ONE test
+  updated — the /settings/fit defaults JSON snapshot gains the two new
+  zero-default fields; every golden fit byte-identical, perf rails green).
+- Deferred to Phase 3 (unchanged plan): wire/artifact alphaL/alphaR
+  sibling fields (prior transport / graph / workspace currently
+  reconstruct wire thetas at α = 0), α-aware remote-wing charts, panel
+  UI + per-underlier scope, the scenario-compare report.
 
 ### 🧭 SESSION WRAP (2026-08-12b) — TAILS+CALENDAR ARC PHASE 1: GENERALIZED TAIL CORE (MODEL LAYER)
 

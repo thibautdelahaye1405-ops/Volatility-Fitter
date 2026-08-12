@@ -52,6 +52,11 @@ import numpy as np
 
 from volfit.models.lqd.interp import hermite_eval
 from volfit.models.lqd.quadrature import LQDSlice
+from volfit.models.lqd.tails import (
+    continuation_speed,
+    tail_mass_left,
+    tail_mass_right,
+)
 
 #: Endpoint-scale tie band for the limiting-order clause. Slope differences
 #: inside this band are float noise (the turning point they would imply sits
@@ -159,52 +164,109 @@ def _tail_candidates(
 ) -> tuple[list[tuple[float, float, float]], bool, bool]:
     """Analytic tail turning points + limiting orders beyond the grid.
 
-    Right of the grid each ledger continues as
-    A(z) = A(Z) e^{(A_R - 1)(z - Z)} (the exponential tail ``call_price``
-    prices with; the stored boundary node A(Z) = e^{Q(Z)-Z}/(1-A_R) is used
-    verbatim so the seam is exact); left of the grid the correction
-    1 - A(z) decays as e^{(1 + A_L)(z + Z)}. Each side's two-exponential gap
-    can turn only where the linear quantile continuations cross — one
-    closed-form candidate per side, kept when it falls beyond the grid.
-    The limiting order compares decay rates (endpoint scales), then the
-    asymptotic constants on a tie (eq. tailscalecalendar).
+    Exponential subclass (alpha = 0 on that side, byte-identical path):
+    right of the grid each ledger continues as
+    A(z) = A(Z) e^{(A_R - 1)(z - Z)} (the tail ``call_price`` prices with;
+    the stored boundary node A(Z) = e^{Q(Z)-Z}/(1-A_R) is used verbatim so
+    the seam is exact); left of the grid the correction 1 - A(z) decays as
+    e^{(1 + A_L)(z + Z)}. Each side's two-exponential gap can turn only
+    where the linear quantile continuations cross — one closed-form
+    candidate per side, kept when it falls beyond the grid.
+
+    Generalized tails (arc Phase 2): with EQUAL positive exponents on a side
+    (the ratified common-alpha policy), the quantile continuations are the
+    (z+1)^{1-a} power laws (eq. rightcontinuation) — the crossing is still
+    closed-form in the power variable, and the ledger gap there is the
+    difference of two continuation masses (tails.tail_mass_right/left at the
+    crossing anchor). UNEQUAL exponents across a pair sit outside the
+    policy: the limiting order is then decided by the exponents alone (a
+    lighter — larger-alpha — far tail forces a reversal, book ch. 2
+    sec. globalcalendarfit) and no finite tail candidate exists in closed
+    form; the grid and boundary candidates still bound the realized gap.
+
+    The limiting order otherwise compares decay rates (tail scales), then
+    the asymptotic constants on a tie (eq. tailscalecalendar).
     Returns ([(gap, z, k) candidates], order_left, order_right).
     """
     z_max = float(far.z[-1])
     cands: list[tuple[float, float, float]] = []
+    al_n, al_f = near.params.alpha_left, far.params.alpha_left
+    ar_n, ar_f = near.params.alpha_right, far.params.alpha_right
 
-    # Right tail: gap(Z + t) = C_f e^{(A_Rf - 1) t} - C_n e^{(A_Rn - 1) t}.
+    # ------------------------------------------------------------ right tail
     c_n, c_f = float(near.a_z[-1]), float(far.a_z[-1])
     ds = far.a_right - near.a_right
-    if abs(ds) > SLOPE_TIE:
-        order_right = ds > 0.0  # the farther tail must not decay faster
-        t = -(float(far.q_z[-1]) - float(near.q_z[-1])) / ds
-        if t > 0.0:
-            g = c_f * float(np.exp((far.a_right - 1.0) * t)) - c_n * float(
-                np.exp((near.a_right - 1.0) * t)
-            )
-            k = float(near.q_z[-1]) + near.a_right * t  # quantiles cross here
-            cands.append((g, z_max + t, k))
+    if ar_n != ar_f:
+        order_right = ar_f < ar_n  # heavier-or-equal far tail required
+    elif ar_n == 0.0:
+        # gap(Z + t) = C_f e^{(A_Rf - 1) t} - C_n e^{(A_Rn - 1) t}.
+        if abs(ds) > SLOPE_TIE:
+            order_right = ds > 0.0  # the farther tail must not decay faster
+            t = -(float(far.q_z[-1]) - float(near.q_z[-1])) / ds
+            if t > 0.0:
+                g = c_f * float(np.exp((far.a_right - 1.0) * t)) - c_n * float(
+                    np.exp((near.a_right - 1.0) * t)
+                )
+                k = float(near.q_z[-1]) + near.a_right * t  # quantiles cross
+                cands.append((g, z_max + t, k))
+        else:
+            order_right = c_f >= c_n * (1.0 - CONST_RTOL)
     else:
-        order_right = c_f >= c_n * (1.0 - CONST_RTOL)
+        # Equal positive exponents: power continuations, crossing at
+        # (z*+1)^p = (Z+1)^p + p (q_n(Z) - q_f(Z)) / (lam_f - lam_n).
+        p = 1.0 - ar_n
+        if abs(ds) > SLOPE_TIE:
+            order_right = ds > 0.0
+            b = p * (float(near.q_z[-1]) - float(far.q_z[-1])) / ds
+            if b > 0.0:
+                z_star = ((z_max + 1.0) ** p + b) ** (1.0 / p) - 1.0
+                qc = float(near.q_z[-1]) + near.a_right * b / p
+                g = tail_mass_right(qc, far.a_right, ar_n, z_star) - \
+                    tail_mass_right(qc, near.a_right, ar_n, z_star)
+                cands.append((g, z_star, qc))
+        else:
+            order_right = c_f >= c_n * (1.0 - CONST_RTOL)
 
-    # Left tail: gap(-Z + t) = D_n e^{(1 + A_Ln) t} - D_f e^{(1 + A_Lf) t},
-    # t <= 0, with D = e^{Q(-Z) - Z}/(1 + A_L) the left tail dollar mass
-    # (build_slice's left endpoint correction).
-    d_n = float(np.exp(near.q_z[0] - z_max)) / (1.0 + near.a_left)
-    d_f = float(np.exp(far.q_z[0] - z_max)) / (1.0 + far.a_left)
+    # ------------------------------------------------------------- left tail
     dsl = far.a_left - near.a_left
-    if abs(dsl) > SLOPE_TIE:
-        order_left = dsl > 0.0  # the farther correction must not decay slower
-        t = -(float(far.q_z[0]) - float(near.q_z[0])) / dsl
-        if t < 0.0:
-            g = d_n * float(np.exp((1.0 + near.a_left) * t)) - d_f * float(
-                np.exp((1.0 + far.a_left) * t)
-            )
-            k = float(near.q_z[0]) + near.a_left * t
-            cands.append((g, float(far.z[0]) + t, k))
+    if al_n != al_f:
+        order_left = al_f < al_n  # heavier-or-equal far tail required
+    elif al_n == 0.0:
+        # gap(-Z + t) = D_n e^{(1 + A_Ln) t} - D_f e^{(1 + A_Lf) t}, t <= 0,
+        # with D = e^{Q(-Z) - Z}/(1 + A_L) the left tail dollar mass.
+        d_n = float(np.exp(near.q_z[0] - z_max)) / (1.0 + near.a_left)
+        d_f = float(np.exp(far.q_z[0] - z_max)) / (1.0 + far.a_left)
+        if abs(dsl) > SLOPE_TIE:
+            order_left = dsl > 0.0  # far correction must not decay slower
+            t = -(float(far.q_z[0]) - float(near.q_z[0])) / dsl
+            if t < 0.0:
+                g = d_n * float(np.exp((1.0 + near.a_left) * t)) - d_f * float(
+                    np.exp((1.0 + far.a_left) * t)
+                )
+                k = float(near.q_z[0]) + near.a_left * t
+                cands.append((g, float(far.z[0]) + t, k))
+        else:
+            order_left = d_f <= d_n * (1.0 + CONST_RTOL)
     else:
-        order_left = d_f <= d_n * (1.0 + CONST_RTOL)
+        # Equal positive exponents: mirrored power crossing at
+        # (1-z*)^p = (Z+1)^p + p (q_f(-Z) - q_n(-Z)) / (lam_f - lam_n).
+        p = 1.0 - al_n
+        d_n = float(np.exp(near.q_z[0] - z_max)) / (
+            1.0 + continuation_speed(near.a_left, al_n, z_max))
+        d_f = float(np.exp(far.q_z[0] - z_max)) / (
+            1.0 + continuation_speed(far.a_left, al_f, z_max))
+        if abs(dsl) > SLOPE_TIE:
+            order_left = dsl > 0.0
+            b = p * (float(far.q_z[0]) - float(near.q_z[0])) / dsl
+            if b > 0.0:
+                one_mz = ((z_max + 1.0) ** p + b) ** (1.0 / p)
+                z_star = 1.0 - one_mz  # < -Z
+                qc = float(near.q_z[0]) - near.a_left * b / p
+                g = tail_mass_left(qc, near.a_left, al_n, -z_star) - \
+                    tail_mass_left(qc, far.a_left, al_n, -z_star)
+                cands.append((g, z_star, qc))
+        else:
+            order_left = d_f <= d_n * (1.0 + CONST_RTOL)
 
     return cands, order_left, order_right
 

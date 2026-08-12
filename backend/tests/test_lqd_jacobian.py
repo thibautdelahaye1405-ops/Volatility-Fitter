@@ -35,11 +35,12 @@ def _theta():
 
 
 def _args(cal_z=None, cal_floor=None, cal_k=None, cal_pfloor=None, cal_taper=None,
-          plo=None, phi=None, vs=None, pvs=None):
-    # trailing slots = var_swap, prior_anchor, prior_var_swap, operator_prior
+          plo=None, phi=None, vs=None, pvs=None, alphas=(0.0, 0.0)):
+    # trailing slots = var_swap, prior_anchor, prior_var_swap, operator_prior,
+    # (alpha_left, alpha_right), opt_n_points
     return (K, TARGET, INV_VEGA, SW, REG, cal_z, cal_floor, 1e6,
             cal_k, cal_pfloor, cal_taper, plo, phi,
-            0.90, 50.0, 0.05, vs, None, pvs, None, 2001)
+            0.90, 50.0, 0.05, vs, None, pvs, None, alphas, 2001)
 
 
 def _max_rel(theta, args):

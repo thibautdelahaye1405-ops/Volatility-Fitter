@@ -612,6 +612,11 @@ def _slice_task(
             barrier_scale=settings.barrierScale,
             mid_anchor_weight=settings.midAnchorWeight, var_swap=vs,
             coords=settings.lqdCoords,
+            # Generalized tails (arc Phase 2): the fixed per-side exponents
+            # ride every LQD fit; the settings version already keys the fit
+            # cache, so changing a tail scenario refits cleanly everywhere.
+            alpha_left=settings.tailAlphaLeft,
+            alpha_right=settings.tailAlphaRight,
         )
         # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit
         # data-only first so the data-fitted level/shape is the seed, then refit

@@ -48,6 +48,7 @@ from volfit.calib.symmetric_stack import (  # noqa: F401 — public re-exports
     TAIL_ROW_FRAC,
     Interface,
     SliceSpec,
+    _spec_params,
     endpoint_rows,
     joint_refit,
     result_from_theta,
@@ -224,8 +225,12 @@ def repair_surface(
     ]
     thetas = [np.asarray(t, dtype=float).copy() for t in thetas0]
     # Independent fits are always tail-feasible (calibrate_slice enforces it),
-    # so the full-grid screening slices build unconditionally.
-    slices = [build_slice(LQDParams.from_vector(t)) for t in thetas]
+    # so the full-grid screening slices build unconditionally. Each slice
+    # carries its spec's fixed tail exponents (generalized-tails arc).
+    slices = [
+        build_slice(_spec_params(t, s.fit_kwargs))
+        for t, s in zip(thetas, specs)
+    ]
 
     def screen() -> list[float]:
         return [
@@ -253,7 +258,8 @@ def repair_surface(
                     )
                     success = success and ok
                     comp_slices = [
-                        build_slice(LQDParams.from_vector(t)) for t in comp_thetas
+                        build_slice(_spec_params(t, s.fit_kwargs))
+                        for t, s in zip(comp_thetas, comp_specs)
                     ]
                     worst = max(
                         (
