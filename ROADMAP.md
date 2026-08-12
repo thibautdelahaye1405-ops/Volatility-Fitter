@@ -516,6 +516,17 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   Options pins its explicit smooth_field until Options ▸ Graph re-save;
   the long-running :8000 needs a restart.
 - **Next up (priority order)**:
+  0. **Generalized LQD tails + full-line calendar arc — ADOPTED
+     2026-08-12 (ROADMAP ONLY; implementation not started, user-gated)**:
+     two-sided tail exponents α± ∈ [0, 1/2] (exponential → Gaussian-rate,
+     asymmetric; per-underlier COMMON across expiries; FIXED outside the
+     optimizer — scenario policy) + the exact full-line calendar
+     certificate (quantile-crossing roots; publish authority first,
+     in-solver active-set exchange later). Phased spec with file:line
+     touch points: **Docs/generalized_tails_calendar_roadmap.md**.
+     Source of truth for the math: book ch. 2 (REWRITTEN 2026-08-12 —
+     Papers/book/chapters/02_lqd; commit e4b0ee6). Compatibility bar:
+     α=0 default must be byte-identical, full suite green unmodified.
   1. Riders: eSSVI/constrained-spline comparator column, exact
      Martini–Mingone cross-check tier, Quality-view certificate chip,
      hedge-P&L campaign (shared w/ Note 01 arc), MCS belly repair;
