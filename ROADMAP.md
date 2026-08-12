@@ -517,7 +517,9 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   the long-running :8000 needs a restart.
 - **Next up (priority order)**:
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
-     2026-08-12 (ROADMAP ONLY; implementation not started, user-gated)**:
+     2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
+     implementation arc — "continue the roadmap" starts HERE, at
+     Phase 0 of the spec, phases in order**:
      two-sided tail exponents α± ∈ [0, 1/2] (exponential → Gaussian-rate,
      asymmetric; per-underlier COMMON across expiries; FIXED outside the
      optimizer — scenario policy) + the exact full-line calendar

@@ -4,7 +4,8 @@ Adopted 2026-08-12 (user-ratified decisions below). Source of truth for the
 mathematics: **book Chapter 2** (`Papers/book/chapters/02_lqd/`, the rewrite
 integrated 2026-08-12), which derives the generalized tail family and the
 full-line calendar certificate. Equation references below are to that chapter.
-Status: ROADMAP ONLY — no implementation yet (user, 2026-08-12).
+Status: GREEN-LIT (user, 2026-08-12) — the current implementation arc.
+Work the phases in order, starting at Phase 0; commit per green batch.
 
 ## The two features
 
