@@ -39,6 +39,18 @@ class QualityNode(BaseModel):
     calendarViolationCurrency: float | None = None  # per share, discounted
     calendarViolationTicks: float | None = None  # currency / option tick size
     calendarViolationSpreadFrac: float | None = None  # vs local bid-ask price width
+    # --- exact full-line calendar certificate (book ch. 2; generalized tails
+    # + calendar arc Phase 0), LQD backbone vs the previous FITTED expiry: the
+    # exact minimum of the ledger gap over the WHOLE line (grid nodes,
+    # interior turning points, analytic tail candidates) with its location.
+    # The ACCEPTANCE authority for readiness/publish — the sampled fields
+    # above remain the support-confined desk-unit diagnostics. All None when
+    # there is no previous slice (first expiry).
+    ledgerGapMin: float | None = None  # min gap (normalized price; < 0 = arb)
+    ledgerGapZ: float | None = None  # rank (logit) coordinate of the argmin
+    ledgerGapK: float | None = None  # log-moneyness of the argmin
+    ledgerTailOrderOk: bool = True  # limiting tail order (advisory in Phase 0)
+    ledgerCertified: bool = True  # min gap >= -tol on the whole line; gates ready
     # --- extrapolated-region arb (Notes 09/10 Phase 1): MEASURED, advisory only —
     # never gates ``ready``. Envelope = beyond the traded strikes, while the
     # model's own OTM value >= 1 bp of forward ("extrapolated but not worthless").

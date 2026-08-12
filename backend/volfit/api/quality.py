@@ -32,6 +32,7 @@ from volfit.api.schemas_quality import (
 )
 from volfit.api.state import AppState, FitRecord
 from volfit.calib.calendar import calendar_violation_argmax, common_support
+from volfit.calib.calendar_certificate import ledger_certificate
 from volfit.core.black import black_call
 from volfit.calib.rms import rms as rms_of_terms
 from volfit.models.diagnostics import belly_certificate, extrapolated_arb
@@ -172,6 +173,24 @@ def _node_row(
         except Exception:
             violation = 0.0
     cal_ok = violation <= _CAL_TOL
+    # Exact full-line calendar certificate (book ch. 2 "A complete calendar
+    # certificate"; tails+calendar arc Phase 0) on the LQD backbone pair:
+    # the ACCEPTANCE authority. The windowed screen above stays as the
+    # support-confined desk diagnostic; the certificate additionally proves
+    # (or refutes) ledger order between and beyond its samples, tails
+    # included. Its limiting-tail-order clause is advisory in Phase 0 —
+    # nothing in the solver imposes endpoint-scale monotonicity yet.
+    ledger_gap = ledger_z = ledger_k = None
+    ledger_tail_ok = True
+    ledger_certified = True
+    if prev_slice is not None:
+        try:
+            cert = ledger_certificate(prev_slice, record.result.slice)
+            ledger_gap, ledger_z, ledger_k = cert.min_gap, cert.z_star, cert.k_star
+            ledger_tail_ok = cert.tail_order_ok
+            ledger_certified = cert.certified(_CAL_TOL)
+        except Exception:  # the certificate must never break a status read
+            pass
     # R5 (committee point 8): the violation in the units a desk prices —
     # currency per share, option-price ticks, and fractions of the local
     # bid-ask spread at the worst strike — plus the strike itself, i.e. the
@@ -243,6 +262,14 @@ def _node_row(
         issues.append("Lee wing slope > 2")
     if not cal_ok:
         issues.append("calendar arb vs previous expiry")
+    elif not ledger_certified:
+        # The sampled screen passed but the exact certificate refutes full-
+        # line order (a between-node or out-of-support dip): one issue line,
+        # never two for the same defect.
+        issues.append(
+            f"calendar certificate: min ledger gap {ledger_gap * 1e4:.1f}bp"
+            f" at k {ledger_k:+.2f}"
+        )
     if not belly_certified:
         issues.append(
             f"belly butterfly arb (min g {belly.min_g:.4f} at k {belly.argmin_k:+.2f})"
@@ -273,6 +300,11 @@ def _node_row(
         calendarViolationCurrency=cal_currency,
         calendarViolationTicks=cal_ticks,
         calendarViolationSpreadFrac=cal_spread_frac,
+        ledgerGapMin=ledger_gap,
+        ledgerGapZ=ledger_z,
+        ledgerGapK=ledger_k,
+        ledgerTailOrderOk=ledger_tail_ok,
+        ledgerCertified=ledger_certified,
         extrapMinG=extrap_min_g,
         extrapOk=extrap_ok,
         extrapCalBp=extrap_cal,
@@ -373,7 +405,10 @@ def build_quality_report(
                 stale=sum(1 for r in fitted if r.stale),
                 surfaceRmsBp=rms_of_terms(num, den) * 1e4,
                 worstNodeRmsBp=max((r.rmsBp for r in fitted), default=0.0),
-                arbFlags=sum(1 for r in fitted if not (r.leeOk and r.calendarOk)),
+                arbFlags=sum(
+                    1 for r in fitted
+                    if not (r.leeOk and r.calendarOk and r.ledgerCertified)
+                ),
                 extrapFlags=sum(1 for r in fitted if not (r.extrapOk and r.extrapCalOk)),
                 dataAgeMin=age_min,
                 carryIdentified=carry_id,

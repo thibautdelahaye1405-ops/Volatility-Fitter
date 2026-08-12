@@ -140,6 +140,56 @@ def test_extrap_measurement_is_advisory_and_populated():
     assert report.summary.extrapFlags == sum(t.extrapFlags for t in report.tickers)
 
 
+def test_certificate_authority_flags_between_node_dip():
+    """Phase 0 (tails+calendar arc): a ledger dip strictly between grid nodes
+    and OUTSIDE the common quote support passes every sampled screen (the
+    support-confined windowed price check reads nothing there; nodal values
+    are byte-identical) — only the exact full-line certificate refutes it,
+    and the row fails readiness on the certificate issue alone."""
+    import dataclasses
+
+    import numpy as np
+
+    from volfit.calib.calendar import CAL_STRIDE
+
+    state = AppState(REF_DATE)
+    isos = _isos(state)
+    near = service.calibrate_node(state, TICKER, isos[0], "mid")
+    far = service.calibrate_node(state, TICKER, isos[1], "mid")
+
+    # The natural adjacent pair certifies (the wired acceptance authority).
+    clean, _ = quality._node_row(
+        state, TICKER, isos[1], "mid", far, near.result.slice, None,
+        near.prepared.k, None, 50.0, False,
+    )
+    assert clean.calendarOk and clean.ledgerCertified and clean.ready
+    assert clean.ledgerGapMin is not None and clean.ledgerGapZ is not None
+
+    # Rig the near slice's ledger DERIVATIVES on one segment beyond the
+    # quoted span: nodal values untouched, the Hermite gap dips in between.
+    sl = near.result.slice
+    k_hi = float(near.prepared.k.max())
+    j = int(np.searchsorted(sl.q_z, k_hi + 0.5))
+    while j % CAL_STRIDE in (0, CAL_STRIDE - 1):
+        j += 1
+    assert j < sl.z.size - 2
+    da = sl.da_dz.copy()
+    da[j] -= 0.05
+    da[j + 1] -= 0.05
+    rigged = dataclasses.replace(sl, da_dz=da)
+
+    node, _ = quality._node_row(
+        state, TICKER, isos[1], "mid", far, rigged, None,
+        near.prepared.k, None, 50.0, False,
+    )
+    assert node.calendarOk  # the support-confined sampled screen passes
+    assert not node.ledgerCertified
+    assert node.ledgerGapMin < -1e-6
+    assert node.ledgerGapK > k_hi  # the dip lives beyond the quoted span
+    assert not node.ready
+    assert any(s.startswith("calendar certificate") for s in node.issues)
+
+
 def test_rms_budget_drives_readiness():
     state = AppState(REF_DATE)
     iso = _isos(state)[1]

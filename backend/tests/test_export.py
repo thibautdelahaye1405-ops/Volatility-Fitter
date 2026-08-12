@@ -193,6 +193,50 @@ def test_publish_blocked_on_calendar_inconsistency(monkeypatch):
     assert len(draft.tickers[0].nodes) == 2  # the explicit draft escape hatch
 
 
+def test_publish_blocked_on_failed_calendar_certificate(monkeypatch):
+    """Phase 0 (tails+calendar arc): the exact full-line certificate is the
+    publish authority — a row it refutes blocks with the certificate message
+    even though every sampled screen (calendarOk) still passes."""
+    import pytest
+
+    state = AppState(REF_DATE)
+    isos = _isos(state)
+    for iso in isos[:2]:
+        service.calibrate_node(state, TICKER, iso, "mid")
+
+    real = export.build_quality_report
+
+    def poisoned(state_, mode):
+        report = real(state_, mode)
+        for row in report.nodes:
+            if row.hasFit and row.expiry == isos[1]:
+                row.ledgerCertified = False  # sampled calendarOk stays True
+                row.ledgerGapMin = -5e-4
+        return report
+
+    monkeypatch.setattr(export, "build_quality_report", poisoned)
+    with pytest.raises(export.PublishBlockedError, match="calendar certificate"):
+        export.build_surface_export(state, tickers=[TICKER])
+    draft = export.build_surface_export(state, tickers=[TICKER], require_clean=False)
+    assert len(draft.tickers[0].nodes) == 2
+
+
+def test_export_carries_min_adjacent_ledger_gap():
+    """The published artifact carries the certificate number per pair: None
+    on a ticker's first expiry, the exact min ledger gap (+ its strike
+    location) on every later one."""
+    state = AppState(REF_DATE)
+    isos = _isos(state)
+    for iso in isos[:2]:
+        service.calibrate_node(state, TICKER, iso, "mid")
+    out = export.build_surface_export(state, tickers=[TICKER])
+    first, second = out.tickers[0].nodes
+    assert first.minAdjacentLedgerGap is None
+    assert second.minAdjacentLedgerGap is not None
+    assert second.minAdjacentLedgerGap > -1e-6  # the published pair is ordered
+    assert second.minAdjacentLedgerGapK is not None
+
+
 def test_node_blockers_name_intrinsic_and_core_conflicts():
     """The other two blocker classes on a real exported node: an unpriceable
     curve region (w <= 0 = below intrinsic) and a core calendar conflict the

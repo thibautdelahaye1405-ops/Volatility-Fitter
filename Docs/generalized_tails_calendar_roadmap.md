@@ -72,6 +72,19 @@ Work the phases in order, starting at Phase 0; commit per green batch.
 
 ## Phase 0 — Exact full-line calendar certificate (α = 0), publish authority
 
+**Status: DONE 2026-08-12.** Shipped as specced with one recorded
+refinement: the certificate isolates the roots of the *gap derivative* — the
+closed-form per-segment quadratic that interpolates eq. calgapderivative's
+right-hand side at the nodes — rather than the cubic quantile-crossing
+roots. That set is EXACT for the stored Hermite ledger (the object
+`call_price` prices), strictly stronger than sampling and equivalent to the
+chapter's candidate set in the continuum limit; locked against a 16× dense
+scan. The limiting-tail-order clause (eq. tailscalecalendar) is reported but
+ADVISORY until Phase 2's endpoint-chart monotonicity rows exist — a publish
+gate a fit cannot yet be asked to satisfy would block with no repair path
+(recorded in the module docstring). Certification case:
+`full_line_calendar_certificate`.
+
 New module `volfit/calib/calendar_certificate.py` (small, standalone):
 
 - Both slices of an adjacent pair share the same cached z-grid, so

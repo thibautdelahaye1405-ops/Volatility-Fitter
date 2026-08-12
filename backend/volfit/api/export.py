@@ -99,6 +99,13 @@ class ExportNode(BaseModel):
     #: pinned traded edge — a core calendar conflict the wing projection must
     #: not repair (it belongs to the fit / quality gate).
     wingsClean: bool = True
+    #: Exact full-line calendar certificate vs the previous fitted expiry
+    #: (tails+calendar arc Phase 0): the exact minimum of the adjacent ledger
+    #: gap over the WHOLE line and the log-moneyness where it is attained
+    #: (< 0 beyond tolerance = calendar arbitrage in the published family —
+    #: publish blocks on it). None on a ticker's first expiry (no pair).
+    minAdjacentLedgerGap: float | None = None
+    minAdjacentLedgerGapK: float | None = None
     #: The calibration's inputs (prepared quotes, quarantine, forward
     #: provenance) — embedded by default on JSON exports so the artifact is
     #: self-contained; None on slim (inputs=false) exports.
@@ -270,6 +277,8 @@ def _export_node(
         curve=curve,
         curveProjected=projected.changed,
         wingsClean=projected.fully_clean,
+        minAdjacentLedgerGap=row.ledgerGapMin,
+        minAdjacentLedgerGapK=row.ledgerGapK,
         inputs=(
             export_node_inputs(state, ticker, row.expiry, prepared)
             if include_inputs else None
@@ -299,7 +308,15 @@ def _node_blockers(ticker: str, row: QualityNode, node: ExportNode) -> list[str]
     ``allow_dirty`` still exports a DRAFT artifact with the defect stamped."""
     where = f"{ticker} {row.expiry}"
     out: list[str] = []
-    if not row.calendarOk:
+    # The exact full-line certificate is the calendar authority (tails+
+    # calendar arc Phase 0); the sampled message backstops only the
+    # defensive path where the certificate could not run.
+    if not row.ledgerCertified and row.ledgerGapMin is not None:
+        out.append(
+            f"{where}: calendar certificate failed"
+            f" (min ledger gap {row.ledgerGapMin * 1e4:.1f}bp)"
+        )
+    elif not row.calendarOk:
         out.append(f"{where}: calendar inconsistency ({row.calendarViolation * 1e4:.0f}bp)")
     if not node.wingsClean:
         out.append(f"{where}: core calendar conflict at the traded edge")

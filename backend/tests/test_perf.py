@@ -35,7 +35,10 @@ from volfit.models.localvol import (
     calibrate_affine,
     solve_affine_dupire,
 )
+from volfit.calib.calendar_certificate import ledger_certificate
+from volfit.models.lqd.basis import LQDParams
 from volfit.models.lqd.calibrate import calibrate_slice
+from volfit.models.lqd.quadrature import build_slice
 
 pytestmark = pytest.mark.perf
 
@@ -52,6 +55,7 @@ BUDGET_MS = {
     "affine_localvol_default": 3000.0,  # ~1.0 s local; 143-vtx LV surface fit (Stage 0 rail)
     "affine_localvol_heavy": 6000.0,    # ~2.0 s local; 255-vtx LV fit, max_nfev capped
     "affine_localvol_gn_heavy": 4000.0,  # ~1.2 s local; 255-vtx Stage-5 matrix-free GN (full converge)
+    "calendar_certificate": 25.0,   # ~1 ms local; exact full-line pair certificate, 8001-node grid
 }
 
 
@@ -131,6 +135,20 @@ def test_perf_lqd_slice_fit_default_order(perf_report):
         "lqd_slice_fit_default",
         lambda: calibrate_slice(k, w_quotes, t=bm.SVI_T, n_order=n),
         repeat=15,
+    )
+
+
+def test_perf_calendar_certificate(perf_report):
+    """Exact full-line calendar certificate of one adjacent LQD pair (tails+
+    calendar arc Phase 0): the publish-authority check runs per pair on every
+    quality read, so it must stay negligible next to a slice fit."""
+    near = build_slice(LQDParams(L=np.log(0.12), R=np.log(0.10), a=np.array([0.02, -0.01])))
+    far = build_slice(LQDParams(L=np.log(0.20), R=np.log(0.17), a=np.array([0.015, -0.008])))
+    _check(
+        perf_report,
+        "calendar_certificate",
+        lambda: ledger_certificate(near, far),
+        repeat=30,
     )
 
 

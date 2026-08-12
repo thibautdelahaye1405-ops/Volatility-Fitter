@@ -458,7 +458,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-07-26 (resume here)
+## STATUS — updated 2026-08-12 (resume here)
 
 ### 📌 WHERE THINGS STAND (2026-07-26, consolidated)
 
@@ -518,8 +518,13 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 - **Next up (priority order)**:
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
-     implementation arc — "continue the roadmap" starts HERE, at
-     Phase 0 of the spec, phases in order**:
+     implementation arc — "continue the roadmap" resumes at
+     Phase 1 (generalized tail core, model layer). Phase 0 DONE
+     2026-08-12 (wrap 2026-08-12a below): the exact full-line
+     calendar certificate is live as the acceptance/publish
+     authority (calib/calendar_certificate.py; quality ledger*
+     fields; export minAdjacentLedgerGap + certificate blocker;
+     cert case full_line_calendar_certificate)**:
      two-sided tail exponents α± ∈ [0, 1/2] (exponential → Gaussian-rate,
      asymmetric; per-underlier COMMON across expiries; FIXED outside the
      optimizer — scenario policy) + the exact full-line calendar
@@ -542,6 +547,53 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-12a) — TAILS+CALENDAR ARC PHASE 0: EXACT FULL-LINE CALENDAR CERTIFICATE
+
+- **New module `volfit/calib/calendar_certificate.py`** (book ch. 2, "A
+  complete calendar certificate"): the exact minimum of the ledger gap
+  ΔG = G_far − G_near per adjacent LQD pair over the WHOLE line. Discrete
+  exactness: the stored ledgers are cubic Hermite interpolants with exact
+  nodal derivatives, so the gap is one cubic per segment and its derivative
+  is the closed-form quadratic that interpolates eq. calgapderivative at
+  the nodes — its roots (vectorized per segment, the discrete counterpart
+  of the chapter's cubic quantile-crossing problem) + every grid node +
+  the analytic two-exponential tail turning points (linear-continuation
+  crossings, stored boundary ledger values used verbatim so the seam is
+  exact) yield the EXACT min of the object `call_price` prices, not a
+  sample; the limiting tail order is decided by (a_left, a_right) with the
+  asymptotic-constant tie-break (eq. tailscalecalendar).
+- **Wiring — the certificate is the acceptance/publish authority**:
+  quality `_node_row` computes it per adjacent backbone pair
+  (`ledgerGapMin/Z/K`, `ledgerTailOrderOk`, `ledgerCertified`); readiness
+  consumes it (one issue line per defect — the certificate line appears
+  only when the support-confined sampled screen passed); ticker `arbFlags`
+  counts certificate failures; export publishes `minAdjacentLedgerGap`
+  (+ K location) per node and `_node_blockers` consumes the certificate
+  (the sampled message stays as the defensive backstop only). The stride/
+  window sampled diagnostics remain as cheap in-loop screens with desk
+  units.
+- **POLICY (recorded)**: the tail-order clause is ADVISORY in Phase 0 —
+  nothing in today's solver imposes endpoint-scale monotonicity (that is
+  Phase 2's endpoint-chart rows), and a publish gate a fit cannot yet be
+  asked to satisfy would block with no repair path. The gate is
+  min gap ≥ −1e-6 (same _CAL_TOL as the sampled screen — price and ledger
+  sup-norm violations coincide by the ledger–call conjugacy).
+- **Locks**: dense-scan agreement (16× refinement, ordered + reversed,
+  ≤ 1e-7) with the certificate never above the scan; the roadmap's rigged
+  pair — a derivative-only dip (−4mh/27) strictly between nodes — passes
+  EVERY nodal/stride ledger screen byte-exactly and is caught; analytic
+  tail candidate beyond the grid found (argmin outside the grid, order
+  flagged); tie fallback to constants; grid-mismatch refusal; quality
+  authority lock (dip planted beyond the quoted span: windowed screen
+  passes, row fails readiness on the certificate line alone); export
+  blocker + artifact field locks; perf rail 0.2 ms/pair (budget 25 ms,
+  ~0.5% of a slice fit). Certification case
+  `full_line_calendar_certificate` (4 lock targets, 11 tests) PASS. No
+  fit output changes anywhere; full suite green.
+- USER-side: re-run `-m backtest.certification run` +
+  `report` to refresh the client-facing pack with the new case; restart
+  the long-running :8000 to serve the new quality/export fields.
 
 ### 🧭 SESSION WRAP (2026-07-27c) — §22.4 TABLE FILLED + MESSAGE-MODE DEFAULT FLIP
 

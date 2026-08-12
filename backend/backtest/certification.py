@@ -176,6 +176,25 @@ CASES: tuple[CertCase, ...] = (
         ("tests/test_svi_lee_boundary.py",),
     ),
     CertCase(
+        "full_line_calendar_certificate", "Exact full-line calendar certificate",
+        "model_stress", "generalized tails + calendar arc Phase 0 (2026-08-12)",
+        "Every calendar screen before this arc SAMPLED the ledger (stride "
+        "grids, windowed price scans), so a violation strictly between "
+        "constraint nodes — or beyond the quoted span — passed unseen. The "
+        "exact certificate (book ch. 2: ledger-gap turning points isolated "
+        "per Hermite segment in closed form, grid nodes, analytic tail "
+        "candidates, limiting tail order from the endpoint scales) now "
+        "proves calendar order on the WHOLE strike line per adjacent pair "
+        "and is the acceptance/publish authority: the locked rigs plant "
+        "between-node and out-of-support dips that every sampled screen "
+        "misses, and the certificate fails readiness and blocks publish; "
+        "artifacts carry minAdjacentLedgerGap per pair.",
+        ("tests/test_calendar_certificate.py",
+         "tests/test_quality.py::test_certificate_authority_flags_between_node_dip",
+         "tests/test_export.py::test_publish_blocked_on_failed_calendar_certificate",
+         "tests/test_export.py::test_export_carries_min_adjacent_ledger_gap"),
+    ),
+    CertCase(
         "weekly_lv_resolution", "True-weekly local-vol resolution",
         "model_stress", "fixes #1-#3 (2026-06-25 … cac686c 2026-07-10)",
         "A 1-week SPY expiry fitted 108 bp RMS at default grids: per-expiry "
