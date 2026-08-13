@@ -28,6 +28,16 @@ def handles_vector(params: LQDParams, t: float) -> np.ndarray:
     return np.array([h.w0, h.skew, h.curvature])
 
 
+def _like(ref: LQDParams, vec: np.ndarray) -> LQDParams:
+    """Vector -> params carrying the REFERENCE slice's tail exponents: the
+    chart moves theta only; the tail class is fixed policy that rides along
+    (generalized-tails arc — from_vector would silently reset it to 0)."""
+    return LQDParams(
+        L=float(vec[0]), R=float(vec[1]), a=vec[2:].copy(),
+        alpha_left=ref.alpha_left, alpha_right=ref.alpha_right,
+    )
+
+
 def atm_jacobian(params: LQDParams, t: float, step: float = 1e-6) -> np.ndarray:
     """3 x d Jacobian dH/dtheta by central finite differences.
 
@@ -43,8 +53,8 @@ def atm_jacobian(params: LQDParams, t: float, step: float = 1e-6) -> np.ndarray:
         up[j] += h_j
         down[j] -= h_j
         jac[:, j] = (
-            handles_vector(LQDParams.from_vector(up), t)
-            - handles_vector(LQDParams.from_vector(down), t)
+            handles_vector(_like(params, up), t)
+            - handles_vector(_like(params, down), t)
         ) / (2.0 * h_j)
     return jac
 
@@ -74,11 +84,12 @@ class ATMCoordinates:
     condition: float = float("nan")
 
     def theta(self, alpha: np.ndarray, xi: np.ndarray | None = None) -> LQDParams:
-        """Map local coordinates (alpha, xi) to a parameter vector."""
+        """Map local coordinates (alpha, xi) to a parameter vector (carrying
+        the reference slice's tail exponents — the chart never moves them)."""
         vec = self.reference.to_vector() + self.primary @ np.asarray(alpha, dtype=float)
         if xi is not None:
             vec = vec + self.shape @ np.asarray(xi, dtype=float)
-        return LQDParams.from_vector(vec)
+        return _like(self.reference, vec)
 
     def decompose(self, params: LQDParams) -> tuple[np.ndarray, np.ndarray]:
         """First-order coordinates of ``params``: alpha = J dtheta, xi = V^T dtheta."""

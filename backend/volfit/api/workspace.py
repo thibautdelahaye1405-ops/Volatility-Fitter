@@ -361,13 +361,22 @@ def _asof_from(doc: dict, cls):
 def _prior_record_doc(rec) -> dict:
     return {
         "curve": [p.model_dump(mode="json") for p in rec.curve],
-        "params": {
-            "L": float(rec.params.L),
-            "R": float(rec.params.R),
-            "a": np.asarray(rec.params.a, dtype=float).tolist(),
-        },
+        "params": _lqd_params_doc(rec.params),
         "t": float(rec.t),
     }
+
+
+def _lqd_params_doc(params) -> dict:
+    """LQDParams -> the workspace params doc. The tail exponents ride as
+    OPTIONAL sibling keys (generalized-tails arc Phase 3), emitted only when
+    nonzero so every alpha = 0 workspace doc stays byte-identical; absent
+    keys read back as 0 (the exponential subclass)."""
+    doc = {"L": float(params.L), "R": float(params.R),
+           "a": np.asarray(params.a, dtype=float).tolist()}
+    if params.alpha_left != 0.0 or params.alpha_right != 0.0:
+        doc["alphaL"] = float(params.alpha_left)
+        doc["alphaR"] = float(params.alpha_right)
+    return doc
 
 
 def _prior_record_from(doc: dict):
@@ -380,6 +389,8 @@ def _prior_record_from(doc: dict):
             L=float(p.get("L", 0.0)),
             R=float(p.get("R", 0.0)),
             a=np.asarray(p.get("a", []), dtype=float),
+            alpha_left=float(p.get("alphaL", 0.0)),
+            alpha_right=float(p.get("alphaR", 0.0)),
         ),
         t=float(doc.get("t", 0.0)),
     )

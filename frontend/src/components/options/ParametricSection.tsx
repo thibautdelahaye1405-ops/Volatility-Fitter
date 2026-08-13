@@ -5,6 +5,7 @@ import HyperparamPanel from "../HyperparamPanel";
 import type { FitSettings } from "../HyperparamPanel";
 import { PenaltyTable } from "../OptionsControls";
 import type { OptionsSettings } from "../../state/useOptions";
+import { useSmileSession } from "../../state/smileSession";
 import { numInput, rowLabel, sectionTitle, subTitle } from "./shared";
 
 export default function ParametricSection({
@@ -20,10 +21,17 @@ export default function ParametricSection({
   patch: (p: Partial<OptionsSettings>) => void;
   live: boolean;
 }) {
+  const { ticker } = useSmileSession();
   return (
     <>
       <h3 className={sectionTitle}>Parametric model</h3>
-      <HyperparamPanel group="model" draft={fitDraft} patch={fitPatch} disabled={!live} />
+      <HyperparamPanel
+        group="model"
+        draft={fitDraft}
+        patch={fitPatch}
+        disabled={!live}
+        scopeTicker={ticker || undefined}
+      />
 
       {/* MCS put-wing regularizer (OptionsSettings) — an MCS-only penalty, so
           it lives with the model it applies to. */}

@@ -206,6 +206,39 @@ suite green with α = 0 byte-identical; Jacobian FD tests extended to α ≠ 0.
 
 ## Phase 3 — Surfaces, UI, wire formats, scenarios
 
+**Status: DONE 2026-08-13.** Shipped as specced:
+- Wire: `alphaL`/`alphaR` ride as OPTIONAL SIBLING fields (theta length
+  untouched) on export `lqdParams` + history params (emitted only when
+  nonzero — α = 0 artifacts byte-identical), workspace prior-record docs
+  (same only-when-nonzero rule; old docs' key set preserved), and
+  `PriorNode` (pydantic defaults 0 — old snapshots load unchanged);
+  `prior_transport`/`graph_reconstruct` rebuild the stored tail class; the
+  ATM chart/retarget machinery (`ortho._like`) and both observation-filter
+  covariance `handle_fn`s keep the reference/fit exponents (covariance-only
+  defect at α > 0 otherwise, means were already correct).
+- Wings: `service.alpha_law_wings` — the publication-chart rule: on an
+  α > 0 side the remote display wing comes from the wing law matched
+  additively at the last reliably priced strike (time-value floor 1e-14);
+  α = 0 display path untouched.
+- Panel: per-side α numeric inputs + Exp/Int/Gauss presets under the LQD
+  section (disabled unless model = LQD), with a Global/{ticker} scope
+  toggle writing `FitSettings.tailAlphaByTicker` (per-underlier overrides,
+  range-validated; resolved at `_slice_task` via `tail_alphas(ticker)`).
+- Scenarios: `backtest/tail_scenarios.py` (`-m backtest.tail_scenarios run
+  --artifact <surfaces export>`): the same stack refit under
+  exponential / light_right / intermediate / gaussian with the ledger floor
+  chained near→far; per node: strip RMS, var-swap vol, moment limits r±*
+  (eq. momentboundaries; None = unbounded), tail digitals, RR25/BF25, and
+  deltas vs the exponential baseline; JSON + HTML under
+  results/tail_scenarios/. Ran on the standing reference artifact
+  (SPY/NVDA/AAPL, 12 nodes): worst strip RMS 46 bp (sparse NVDA) with
+  var-swap moves ≤ 5 bp while r+* flips 5.77 → unbounded — the book's
+  indistinguishability-with-consequences point, measured.
+Locks: `tests/test_generalized_tails_wire.py` (8) +
+`tests/test_tail_scenarios.py` (3); frontend 129 vitest + build + 8-tab
+smoke green. Exit met: workspace round-trips alphas; UI smoke green;
+scenario report runs on the reference fixture.
+
 - Wire/artifacts: `lqdParams` gains optional `alphaL`/`alphaR` (absent ⇒ 0,
   old workspaces load unchanged) in export, history, workspace, prior
   records; prior transport carries them (`api/prior_transport.py`). The

@@ -28,6 +28,14 @@ export interface FitSettings {
   lqdCoords: "lr" | "endpoint" | "logistic";
   regLambda: number;
   regPower: number;
+  /** Generalized LQD tails (book ch. 2): fixed per-side tail exponents in
+   *  [0, 1/2] — 0 = exponential (the historical model), 1/2 = Gaussian rate.
+   *  Policy inputs (scenario instrument), never fitted. */
+  tailAlphaLeft: number;
+  tailAlphaRight: number;
+  /** Per-underlier overrides of the pair above (the ratified alpha scope:
+   *  one pair per underlier, common across its expiries). */
+  tailAlphaByTicker: Record<string, [number, number]>;
   nCores: number;
   haircut: number;
   weightScheme: WeightScheme;
@@ -55,6 +63,9 @@ export const FIT_DEFAULTS: FitSettings = {
   lqdCoords: "logistic",
   regLambda: 1e-6,
   regPower: 1.0,
+  tailAlphaLeft: 0,
+  tailAlphaRight: 0,
+  tailAlphaByTicker: {},
   nCores: 2,
   haircut: 0.005,
   weightScheme: "equal",
@@ -87,6 +98,16 @@ const POWERS = [0.5, 1.0, 1.5, 2.0];
 /** Haircut presets in absolute vol; labelled in vol points (0.5 = 0.005). */
 const HAIRCUTS = [0, 0.0025, 0.005, 0.0075, 0.01, 0.015, 0.02];
 
+/** Tail-class presets (applied to BOTH sides): exponential keeps the
+ *  historical model exactly; gaussian is the light-tail endpoint. */
+const TAIL_PRESETS: { label: string; value: number; title: string }[] = [
+  { label: "Exp", value: 0, title: "alpha = 0: exponential log-return tails (the historical model, exact)" },
+  { label: "Int", value: 0.25, title: "alpha = 0.25: intermediate tails — every moment finite, sublinear wing" },
+  { label: "Gauss", value: 0.5, title: "alpha = 0.5: Gaussian-rate tails — total variance tends to a constant" },
+];
+
+const clampAlpha = (v: number) => Math.min(0.5, Math.max(0, Number.isFinite(v) ? v : 0));
+
 /** Per-quote weighting schemes (room for a third later). */
 const WEIGHT_SCHEMES: { id: WeightScheme; label: string; title: string }[] = [
   { id: "equal", label: "Equal", title: "Unit weights — every quote's IV residual counts the same" },
@@ -108,6 +129,8 @@ interface HyperparamPanelProps {
   patch: (p: Partial<FitSettings>) => void;
   /** Greyed out in mock mode (settings live on the backend). */
   disabled: boolean;
+  /** Active smile ticker: enables the per-underlier tail-exponent scope. */
+  scopeTicker?: string;
 }
 
 const rowLabel = "text-xs text-slate-400";
@@ -116,7 +139,42 @@ const selectClass =
   "text-[11px] text-slate-200 outline-none hover:border-slate-600 " +
   "focus:border-accent-500 disabled:cursor-not-allowed";
 
-export default function HyperparamPanel({ group, draft, patch, disabled }: HyperparamPanelProps) {
+export default function HyperparamPanel({
+  group,
+  draft,
+  patch,
+  disabled,
+  scopeTicker,
+}: HyperparamPanelProps) {
+  // --- generalized tail exponents: read/write the ACTIVE scope ------------
+  const scoped =
+    scopeTicker !== undefined && draft.tailAlphaByTicker[scopeTicker] !== undefined;
+  const [alphaL, alphaR] = scoped
+    ? draft.tailAlphaByTicker[scopeTicker!]
+    : [draft.tailAlphaLeft, draft.tailAlphaRight];
+  const setAlphas = (l: number, r: number) => {
+    const pair: [number, number] = [clampAlpha(l), clampAlpha(r)];
+    if (scoped && scopeTicker !== undefined) {
+      patch({ tailAlphaByTicker: { ...draft.tailAlphaByTicker, [scopeTicker]: pair } });
+    } else {
+      patch({ tailAlphaLeft: pair[0], tailAlphaRight: pair[1] });
+    }
+  };
+  const setScope = (toTicker: boolean) => {
+    if (scopeTicker === undefined || toTicker === scoped) return;
+    if (toTicker) {
+      patch({
+        tailAlphaByTicker: {
+          ...draft.tailAlphaByTicker,
+          [scopeTicker]: [draft.tailAlphaLeft, draft.tailAlphaRight],
+        },
+      });
+    } else {
+      const { [scopeTicker]: _drop, ...rest } = draft.tailAlphaByTicker;
+      patch({ tailAlphaByTicker: rest });
+    }
+  };
+
   const wrap = (children: ReactNode) => (
     <section
       className={disabled ? "opacity-40" : ""}
@@ -224,6 +282,86 @@ export default function HyperparamPanel({ group, draft, patch, disabled }: Hyper
             className="mb-3 w-full cursor-pointer disabled:cursor-not-allowed"
             style={{ accentColor: "var(--color-accent-500)" }}
           />
+
+          {/* Generalized tail exponents (book ch. 2): fixed policy inputs,
+              per-underlier scope when a smile ticker is active. */}
+          <div className="mb-1 flex items-center justify-between">
+            <span
+              className={rowLabel}
+              title="Tail exponents alpha in [0, 1/2]: 0 = exponential (historical model, exact), 1/2 = Gaussian rate. Fixed policy — never fitted; compare scenarios instead."
+            >
+              Tail α− · α+
+            </span>
+            <span className="flex gap-1.5">
+              <input
+                type="number"
+                step={0.05}
+                min={0}
+                max={0.5}
+                value={alphaL}
+                disabled={disabled}
+                onChange={(e) => setAlphas(Number(e.target.value), alphaR)}
+                className={`${selectClass} w-14`}
+                aria-label="tail alpha left"
+              />
+              <input
+                type="number"
+                step={0.05}
+                min={0}
+                max={0.5}
+                value={alphaR}
+                disabled={disabled}
+                onChange={(e) => setAlphas(alphaL, Number(e.target.value))}
+                className={`${selectClass} w-14`}
+                aria-label="tail alpha right"
+              />
+            </span>
+          </div>
+          <div className="mb-3 flex items-center justify-between gap-1.5">
+            <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
+              {TAIL_PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  title={p.title}
+                  disabled={disabled}
+                  onClick={() => setAlphas(p.value, p.value)}
+                  className={[
+                    "px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
+                    alphaL === p.value && alphaR === p.value
+                      ? "bg-accent-600/25 text-accent-400"
+                      : "text-slate-400 enabled:hover:text-slate-200",
+                  ].join(" ")}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            {scopeTicker !== undefined && (
+              <div
+                className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800"
+                title="Scope: the global pair, or an override for the active underlier (the ratified per-underlier alpha scope)"
+              >
+                {[
+                  { id: false, label: "Global" },
+                  { id: true, label: scopeTicker },
+                ].map((s) => (
+                  <button
+                    key={s.label}
+                    disabled={disabled}
+                    onClick={() => setScope(s.id)}
+                    className={[
+                      "px-2 py-0.5 text-[11px] font-medium transition-colors disabled:cursor-not-allowed",
+                      s.id === scoped
+                        ? "bg-accent-600/25 text-accent-400"
+                        : "text-slate-400 enabled:hover:text-slate-200",
+                    ].join(" ")}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Damping lambda + power r */}
           <div className="mb-3 flex items-center justify-between">

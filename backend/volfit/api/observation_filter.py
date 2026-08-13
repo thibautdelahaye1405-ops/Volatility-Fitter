@@ -154,10 +154,21 @@ def _measurement(
     if use_jac:
         band = service.edited_band(state, ticker, iso, prepared, "bidask")
 
+        fit_params = record.result.params  # carries the fixed tail exponents
+
         def handle_fn(theta):
             # the coarse opt-grid slice: plenty for a covariance derivative,
             # ~4x cheaper than the full display quadrature (14 builds per node)
-            slice_ = build_slice(LQDParams.from_vector(theta), n_points=OPT_N_POINTS)
+            # — rebuilt in the SAME tail class as the committed fit, else the
+            # derivative would be of the wrong model at alpha > 0.
+            slice_ = build_slice(
+                LQDParams(
+                    L=float(theta[0]), R=float(theta[1]), a=theta[2:].copy(),
+                    alpha_left=fit_params.alpha_left,
+                    alpha_right=fit_params.alpha_right,
+                ),
+                n_points=OPT_N_POINTS,
+            )
             h = atm_handles(slice_, prepared.tau)
             return np.array([h.sigma0, h.skew, h.curvature])
 
@@ -532,9 +543,19 @@ def _map_bookkeeping(
     prepared = record.prepared
     noise = _typical_noise(state, ticker, iso, prepared)
 
+    fit_params = record.result.params  # carries the fixed tail exponents
+
     def handle_fn(theta):
-        # coarse opt-grid slice — a covariance derivative, not a display curve
-        slice_ = build_slice(LQDParams.from_vector(theta), n_points=OPT_N_POINTS)
+        # coarse opt-grid slice — a covariance derivative, not a display
+        # curve — rebuilt in the SAME tail class as the committed fit.
+        slice_ = build_slice(
+            LQDParams(
+                L=float(theta[0]), R=float(theta[1]), a=theta[2:].copy(),
+                alpha_left=fit_params.alpha_left,
+                alpha_right=fit_params.alpha_right,
+            ),
+            n_points=OPT_N_POINTS,
+        )
         h = atm_handles(slice_, prepared.tau)
         return np.array([h.sigma0, h.skew, h.curvature])
 

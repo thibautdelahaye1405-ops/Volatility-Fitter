@@ -84,10 +84,33 @@ class FitSettings(BaseModel):
     #: model, byte-identical default), 1/2 = Gaussian rate, asymmetric values
     #: allowed. POLICY inputs (the scenario instrument), never optimized: the
     #: alpha -> 0 limit is nonuniform, so per-slice estimation is
-    #: ill-conditioned by construction. LQD-only (overlays ignore them);
-    #: per-underlier presets ride the Phase 3 hyper-parameters panel.
+    #: ill-conditioned by construction. LQD-only (overlays ignore them).
     tailAlphaLeft: float = Field(0.0, ge=0.0, le=0.5)
     tailAlphaRight: float = Field(0.0, ge=0.0, le=0.5)
+    #: Per-underlier overrides of the pair above (arc Phase 3 — the ratified
+    #: alpha scope is per-underlier, common across that underlier's
+    #: expiries): ticker -> [alpha_left, alpha_right]. An absent ticker uses
+    #: the global pair; entries are validated to the same [0, 1/2] range.
+    tailAlphaByTicker: dict[str, tuple[float, float]] = {}
+
+    @field_validator("tailAlphaByTicker")
+    @classmethod
+    def _alpha_overrides_in_range(
+        cls, v: dict[str, tuple[float, float]]
+    ) -> dict[str, tuple[float, float]]:
+        for ticker, pair in v.items():
+            if not all(0.0 <= a <= 0.5 for a in pair):
+                raise ValueError(
+                    f"tailAlphaByTicker[{ticker!r}] = {pair} outside [0, 1/2]"
+                )
+        return v
+
+    def tail_alphas(self, ticker: str) -> tuple[float, float]:
+        """The (alpha_left, alpha_right) pair governing ``ticker``'s fits."""
+        pair = self.tailAlphaByTicker.get(ticker)
+        if pair is not None:
+            return float(pair[0]), float(pair[1])
+        return self.tailAlphaLeft, self.tailAlphaRight
     nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)
     haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
     weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights

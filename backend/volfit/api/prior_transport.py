@@ -34,8 +34,17 @@ def prior_node(snapshot: PriorSurfaceSnapshot | None, iso: str) -> PriorNode | N
 
 
 def prior_lqd_slice(node: PriorNode) -> LQDSlice:
-    """Rebuild the prior's LQD backbone slice from its stored parameter vector."""
-    return build_slice(LQDParams.from_vector(np.asarray(node.lqd, dtype=float)))
+    """Rebuild the prior's LQD backbone slice from its stored parameter vector.
+
+    The tail exponents ride the node as SIBLING fields (generalized-tails arc
+    Phase 3) — the theta vector's length is load-bearing, so they are never
+    part of it; absent fields default to 0 (old snapshots: the exponential
+    subclass, byte-identical)."""
+    vec = np.asarray(node.lqd, dtype=float)
+    return build_slice(LQDParams(
+        L=float(vec[0]), R=float(vec[1]), a=vec[2:].copy(),
+        alpha_left=node.alphaL, alpha_right=node.alphaR,
+    ))
 
 
 def transported_prior_slice(

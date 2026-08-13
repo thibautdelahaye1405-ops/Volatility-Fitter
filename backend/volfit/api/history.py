@@ -31,8 +31,14 @@ from volfit.models.lqd.atm import atm_handles
 
 
 def _params_dict(params) -> dict:
-    """LQDParams -> plain JSON-able dict (floats and lists only)."""
-    return {"L": float(params.L), "R": float(params.R), "a": [float(x) for x in params.a]}
+    """LQDParams -> plain JSON-able dict (floats and lists only). The tail
+    exponents ride as optional sibling keys, emitted only when nonzero
+    (generalized-tails arc Phase 3) — write-only fit lineage."""
+    doc = {"L": float(params.L), "R": float(params.R), "a": [float(x) for x in params.a]}
+    if params.alpha_left != 0.0 or params.alpha_right != 0.0:
+        doc["alphaL"] = float(params.alpha_left)
+        doc["alphaR"] = float(params.alpha_right)
+    return doc
 
 
 def persist_fit(

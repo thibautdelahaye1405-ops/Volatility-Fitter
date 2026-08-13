@@ -269,7 +269,18 @@ def _export_node(
         discount=float(prepared.discount),
         model=row.model,
         varSwapVol=float(np.sqrt(max(var_swap_w, 0.0) / tau)) if tau > 0.0 else 0.0,
-        lqdParams={"L": float(params.L), "R": float(params.R), "a": [float(v) for v in params.a]},
+        # Reproducibility params: the tail exponents ride as OPTIONAL sibling
+        # keys (generalized-tails arc Phase 3) — emitted only when nonzero so
+        # alpha = 0 artifacts stay byte-identical; absent means 0.
+        lqdParams={
+            "L": float(params.L), "R": float(params.R),
+            "a": [float(v) for v in params.a],
+            **(
+                {"alphaL": float(params.alpha_left), "alphaR": float(params.alpha_right)}
+                if (params.alpha_left != 0.0 or params.alpha_right != 0.0)
+                else {}
+            ),
+        },
         quality=ExportNodeQuality(
             rmsBp=row.rmsBp, maxIvBp=row.maxIvBp, stale=row.stale,
             ready=row.ready, issues=row.issues,

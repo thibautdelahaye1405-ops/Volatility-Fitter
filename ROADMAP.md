@@ -519,10 +519,13 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
      implementation arc — "continue the roadmap" resumes at
-     Phase 3 (surfaces, UI, wire formats, scenarios: lqdParams
-     alphaL/alphaR sibling wire fields, prior transport, α-aware
-     remote-wing charts, hyper-parameters panel with per-underlier
-     scope, scenario-compare report). Phase 0 DONE 2026-08-12
+     Phase 4, the LAST phase (in-solver active-set exchange: the
+     book's exchange loop on symmetric_stack.joint_refit — solve
+     with the active rank set → run the Phase 0 certificate → add
+     the worst violating rank per pair → repeat until it passes;
+     per-rank calendar-G rows + analytic Jacobian; exit gates: no
+     accepted surface fails the certificate, benchmark fit-quality
+     regression bounded, perf rail). Phase 0 DONE 2026-08-12
      (wrap 2026-08-12a below): the exact full-line calendar
      certificate is live as the acceptance/publish authority
      (calib/calendar_certificate.py; quality ledger* fields;
@@ -536,7 +539,13 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
      tailAlpha±, args-tuple threading, rightchart degradation,
      saddle-pointed barrier, α tail-derivative Jacobian branches,
      stack λ± rows at common α, certificate power tails — the
-     Phase 1 rider; suite 1547 green, α=0 byte-identical)**:
+     Phase 1 rider). Phase 3 DONE 2026-08-13 (wrap 2026-08-13a
+     below): wire sibling fields everywhere + prior transport,
+     α-aware remote wings (publication-chart rule), panel α
+     controls with per-underlier scope (tailAlphaByTicker), and
+     the tail-scenario report — ran on the standing reference
+     artifact (suite 1558 green; frontend vitest+build+smoke
+     green)**:
      two-sided tail exponents α± ∈ [0, 1/2] (exponential → Gaussian-rate,
      asymmetric; per-underlier COMMON across expiries; FIXED outside the
      optimizer — scenario policy) + the exact full-line calendar
@@ -559,6 +568,43 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-13a) — TAILS+CALENDAR ARC PHASE 3: SURFACES, UI, WIRE, SCENARIOS
+
+- **Wire (sibling fields, theta length untouched)**: export `lqdParams` +
+  history params emit `alphaL`/`alphaR` only when nonzero (α = 0 artifacts
+  byte-identical); workspace prior-record docs same rule (old key set
+  preserved — locked); `PriorNode` gains the fields with 0 defaults (old
+  snapshots load unchanged — locked byte-identical rebuild);
+  `prior_transport.prior_lqd_slice` and `graph_reconstruct._base_slice`
+  rebuild the stored tail class; `ortho._like` keeps the reference
+  exponents through the ATM chart/retarget (the graph transport path);
+  both observation-filter covariance `handle_fn`s rebuild in the
+  committed fit's tail class (was a covariance-only α > 0 defect; means
+  were already correct).
+- **Wings (publication-chart rule)**: `service.alpha_law_wings` — on an
+  α > 0 side, remote display variance comes from the wing law matched
+  additively at the last reliably priced strike (normalized time-value
+  floor 1e-14) instead of inverting underflowed prices; α = 0 display
+  path untouched; `model_curve` gates on the displayed slice's params.
+- **Panel**: per-side α numeric entries + Exp/Int/Gauss presets inside
+  the LQD section (hidden/disabled otherwise), Global/{activeTicker}
+  scope toggle writing `FitSettings.tailAlphaByTicker` (range-validated;
+  `tail_alphas(ticker)` resolves override-then-global at `_slice_task`).
+- **Scenario instrument** (`backtest/tail_scenarios.py`, the book's
+  preferred practice): same stack refit under exponential / light_right /
+  intermediate / gaussian with the ledger floor chained near→far; per
+  node strip RMS, var-swap vol, moment limits r±*, tail digitals,
+  RR25/BF25 + deltas vs baseline; JSON + HTML artifact. RAN on the
+  standing reference artifact (SPY/NVDA/AAPL, 12 nodes): strip fits
+  comparable (worst 46 bp, sparse NVDA pair), var-swap moves ≤ ~5 bp,
+  AAPL P(X>0.5) 1.0e-4 → 7.5e-5, r+* 5.77 → unbounded — the
+  indistinguishable-on-the-strip / different-in-the-tails story, measured.
+- Suite: 1558 passed, 1 skipped (+11 = the new wire + scenario locks;
+  settings snapshot extended for `tailAlphaByTicker`). Frontend: 129
+  vitest + build + 8-tab smoke green.
+- USER-side: restart the long-running :8000 to serve the new fields and
+  the Options ▸ Parametric α controls.
 
 ### 🧭 SESSION WRAP (2026-08-12c) — TAILS+CALENDAR ARC PHASE 2: CALIBRATION & POLICY LAYER
 

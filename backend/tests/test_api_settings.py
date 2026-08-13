@@ -51,10 +51,12 @@ def test_defaults(client):
         "lqdCoords": "logistic",
         "regLambda": 1e-6,
         "regPower": 1.0,
-        # Generalized tails (arc Phase 2): fixed per-side exponents, 0 = the
-        # historical exponential model (byte-identical default).
+        # Generalized tails (arc Phases 2-3): fixed per-side exponents, 0 =
+        # the historical exponential model (byte-identical default), with
+        # per-underlier overrides (the ratified alpha scope).
         "tailAlphaLeft": 0.0,
         "tailAlphaRight": 0.0,
+        "tailAlphaByTicker": {},
         "nCores": 2,
         "haircut": 0.005,
         "weightScheme": "equal",

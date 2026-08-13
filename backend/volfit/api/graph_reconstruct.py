@@ -97,7 +97,14 @@ def _base_slice(state: AppState, ticker: str, iso: str, fit_mode: str):
         if node is not None:
             from volfit.models.lqd.basis import LQDParams
 
-            return LQDParams.from_vector(np.asarray(node.lqd, dtype=float)), float(node.tau)
+            vec = np.asarray(node.lqd, dtype=float)
+            # Sibling tail exponents (generalized-tails arc Phase 3): keep
+            # the prior's tail class, matching the fitted branch above.
+            params = LQDParams(
+                L=float(vec[0]), R=float(vec[1]), a=vec[2:].copy(),
+                alpha_left=node.alphaL, alpha_right=node.alphaR,
+            )
+            return params, float(node.tau)
     return None, 0.0
 
 

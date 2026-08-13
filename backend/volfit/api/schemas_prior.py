@@ -31,6 +31,12 @@ class PriorNode(BaseModel):
     discount: float
     model: str  # displayed model id ("lqd" | "svi" | "sigmoid")
     lqd: list[float]  # LQD backbone parameter vector (LQDParams.to_vector)
+    #: Generalized-tails exponents (arc Phase 3): SIBLING fields — the theta
+    #: vector above is never extended (its length is load-bearing across
+    #: priors / observation filter / graph). Absent in old snapshots ⇒ 0,
+    #: the exponential subclass, so every stored prior loads unchanged.
+    alphaL: float = 0.0
+    alphaR: float = 0.0
     display: dict | None = None  # displayed-model params (None when model == "lqd")
     atmVol: float  # snapshot diagnostics (for the prior overlay / age display)
     skew: float

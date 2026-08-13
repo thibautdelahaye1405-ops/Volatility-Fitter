@@ -131,6 +131,8 @@ def capture_snapshot(
                 discount=float(prepared.discount),
                 model=record.display.model if record.display is not None else "lqd",
                 lqd=[float(v) for v in record.result.params.to_vector()],
+                alphaL=float(record.result.params.alpha_left),
+                alphaR=float(record.result.params.alpha_right),
                 display=_dump_display(record.display),
                 atmVol=float(displayed_atm_vol(record)),
                 skew=float(displayed_skew(record)),

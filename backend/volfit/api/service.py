@@ -612,11 +612,13 @@ def _slice_task(
             barrier_scale=settings.barrierScale,
             mid_anchor_weight=settings.midAnchorWeight, var_swap=vs,
             coords=settings.lqdCoords,
-            # Generalized tails (arc Phase 2): the fixed per-side exponents
-            # ride every LQD fit; the settings version already keys the fit
-            # cache, so changing a tail scenario refits cleanly everywhere.
-            alpha_left=settings.tailAlphaLeft,
-            alpha_right=settings.tailAlphaRight,
+            # Generalized tails (arc Phases 2-3): the fixed per-side
+            # exponents ride every LQD fit — per-underlier override first,
+            # global pair otherwise (the ratified per-underlier alpha scope);
+            # the settings version already keys the fit cache, so changing a
+            # tail scenario refits cleanly everywhere.
+            alpha_left=settings.tail_alphas(ticker)[0],
+            alpha_right=settings.tail_alphas(ticker)[1],
         )
         # Two-pass "don't damp the signal" (opt-in, design note §5.4): fit
         # data-only first so the data-fitted level/shape is the seed, then refit
@@ -970,18 +972,74 @@ def _display_grid(k_lo: float, k_hi: float, core_lo: float, core_hi: float) -> n
     ])
 
 
+#: Normalized time-value floor below which a Black inversion is numerically
+#: meaningless (the publication-chart rule of book ch. 2: remote wings are
+#: evaluated from the wing law, never from inverting prices this small).
+_WING_TV_FLOOR = 1e-14
+
+
+def alpha_law_wings(slice_, grid: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Publication-chart rule for light tails (arc Phase 3): on a side with
+    alpha > 0, replace the implied variance BEYOND the outermost reliably
+    priced strike with the alpha-aware wing law (eq. rightsublinearwing),
+    matched additively to the central inversion at that seam — the curve
+    stays continuous and shows the certified asymptote instead of the noise
+    of inverting underflowed prices. alpha = 0 sides are untouched (their
+    exponential tails invert cleanly — the historical, byte-identical path).
+    """
+    from volfit.models.lqd.basis import wing_law
+
+    params = slice_.params
+    law_l, law_r = wing_law(params)
+    w = np.asarray(w, dtype=float).copy()
+    c = np.asarray(slice_.call_price(grid), dtype=float)
+    tv = np.where(grid > 0.0, c, c - (1.0 - np.exp(grid)))  # OTM time value
+    unreliable = (tv < _WING_TV_FLOOR) | ~np.isfinite(w) | (w <= 0.0)
+
+    if params.alpha_right > 0.0:
+        bad_r = unreliable & (grid > 0.0)
+        if bad_r.any():
+            first_bad = int(np.argmax(bad_r))
+            if first_bad > 0:
+                seam_k, seam_w = float(grid[first_bad - 1]), float(w[first_bad - 1])
+                patch = grid >= grid[first_bad]
+                w[patch] = seam_w + law_r.coeff * (
+                    np.abs(grid[patch]) ** law_r.exponent - abs(seam_k) ** law_r.exponent
+                )
+    if params.alpha_left > 0.0:
+        bad_l = unreliable & (grid < 0.0)
+        if bad_l.any():
+            last_bad = int(len(grid) - 1 - np.argmax(bad_l[::-1]))
+            if last_bad < len(grid) - 1:
+                seam_k, seam_w = float(grid[last_bad + 1]), float(w[last_bad + 1])
+                patch = grid <= grid[last_bad]
+                w[patch] = seam_w + law_l.coeff * (
+                    np.abs(grid[patch]) ** law_l.exponent - abs(seam_k) ** law_l.exponent
+                )
+    return w
+
+
 def model_curve(record: FitRecord) -> list[SmilePoint]:
     """Sample the displayed slice's IV curve, extended to at least
     k ∈ [-1.4, 1] so the model wings are drawn well beyond the observed quotes
     (the put wing reaches further). The smile's brush still defaults to the
     observed range (SmileData.kMin/kMax); zooming or panning out reveals the
-    extension. The grid is denser inside the observed range (``_display_grid``)."""
+    extension. The grid is denser inside the observed range (``_display_grid``).
+    Slices with a positive tail exponent get their remote wings from the
+    alpha-aware wing law instead of underflowed-price inversion
+    (``alpha_law_wings`` — the book's publication-chart rule)."""
     k_obs_lo = float(record.prepared.k.min()) - K_PAD
     k_obs_hi = float(record.prepared.k.max()) + K_PAD
     k_lo = min(K_DISPLAY_LO, k_obs_lo)
     k_hi = max(K_DISPLAY_HI, k_obs_hi)
     grid = _display_grid(k_lo, k_hi, k_obs_lo, k_obs_hi)
-    w = np.maximum(displayed_slice(record).implied_w(grid), 0.0)
+    sl = displayed_slice(record)
+    w = np.maximum(sl.implied_w(grid), 0.0)
+    p = getattr(sl, "params", None)
+    if p is not None and (
+        getattr(p, "alpha_left", 0.0) > 0.0 or getattr(p, "alpha_right", 0.0) > 0.0
+    ):
+        w = alpha_law_wings(sl, grid, w)
     vols = fill_nonfinite(np.sqrt(w / record.prepared.tau))
     return [SmilePoint(k=float(k), vol=float(v)) for k, v in zip(grid, vols)]
 
