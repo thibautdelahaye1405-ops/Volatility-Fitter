@@ -156,6 +156,26 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
+## FORWARD ROADMAP v3 — adopted 2026-08-20 (workbench-evidence arc)
+
+Fifteen user-listed items detailed into precise proposals and ten phases
+V3.0–V3.9 in **Docs/forward_roadmap_v3.md** (read that doc first; it carries
+the item→phase map, per-item designs grounded in file:line touch points, exit
+gates, and the standing constraints). **V3.0 IS the tails+calendar arc
+Phase 4** (the in-solver active-set exchange) — the arcs join rather than
+compete. Order: V3.0 LQD hard calendar → V3.1 MCS evolution (belly repair,
+Lee/structural chart, calendar certificate, adjudication vs SVI) → V3.2
+model-comparison UI (LQD/SVI-JW/MCS) → V3.3 arb-evidence viz (LV untruncated
+stacked variance / calendar-cross marker / sub-zero density) → V3.4
+fit-target + weights visualization → V3.5 LV calibrate split + compute
+animation → V3.6 var-swap package → V3.7 unified fetch + auto-roll prior →
+V3.8 full-day 15-min replay campaign + scripted LOO scenarios → V3.9 Kalman +
+prior-persistence evidence. Terminology pinned in the doc: "MQS" = MCS
+(Multi-Core Sigmoid); graph option 1/2 = precision_messages /
+layered_dynamic_harmonic(H=0.1); item-6 basket = NVDA/AAPL/MSFT + SPY.
+
+---
+
 ## DYNAMIC DIRECTED-HARMONIC ARC — adopted 2026-07-20 (Phases 1–4 shipped 2026-07-21)
 
 User-authored `Docs/dynamic_directed_harmonic_graph_framework.md`: a layered
@@ -458,7 +478,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-08-12 (resume here)
+## STATUS — updated 2026-08-20 (resume here)
 
 ### 📌 WHERE THINGS STAND (2026-07-26, consolidated)
 
@@ -515,7 +535,9 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   rider is SUPERSEDED by the flip. CAVEAT: a store that ever saved
   Options pins its explicit smooth_field until Options ▸ Graph re-save;
   the long-running :8000 needs a restart.
-- **Next up (priority order)**:
+- **Next up (priority order)** — FORWARD ROADMAP v3 adopted 2026-08-20
+  (Docs/forward_roadmap_v3.md): item 0 below IS its phase V3.0; after it,
+  work down V3.1–V3.9 from that doc, then the riders below:
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
      implementation arc — "continue the roadmap" resumes at
