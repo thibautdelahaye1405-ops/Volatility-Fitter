@@ -24,16 +24,21 @@
 # Afterwards the artifact lives under backend\backtest\results\scenarios\
 # (scenario_report.html / scenario_report.json).
 
+# NB: no [Parameter()]/[CmdletBinding()] attributes here — they would make this
+# an advanced script, whose common -Debug parameter carries the alias "db" and
+# collides with -Db (the launcher-convention name, cf. run_dynamic_intraday.ps1).
 param(
-    [Parameter(Mandatory)][string]$Day,
+    [string]$Day,
     [string]$Db = 'backtest\results\replay_day.sqlite',
     [string]$Tickers = 'SPY,NVDA,AAPL,MSFT',
     [int]$Step = 15,
     [string]$Ladder = 'term',
-    [ValidateSet('rest', 'flat')][string]$Source = 'rest'
+    [string]$Source = 'rest'
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Day) { throw 'Missing -Day (session date, e.g. -Day 2026-08-19)' }
+if ($Source -notin @('rest', 'flat')) { throw "-Source must be 'rest' or 'flat' (got '$Source')" }
 $backend = Split-Path $PSScriptRoot
 $repo = Split-Path $backend
 $python = Join-Path $repo '.venv\Scripts\python.exe'
