@@ -31,6 +31,10 @@ export interface CalibrationStatus {
   cancelled: boolean;
   litNodes: number;
   staleNodes: number;
+  /** Lit tickers whose LV (affine) surface drifted since its last LV
+   *  calibration (V3.5 item 9 — the "Local-Vol only" badge). 0 while Local-Vol
+   *  is gated off. Optional for older payloads. */
+  lvStaleTickers?: number;
   spotVersion: number;
   /** Monotonic calibration epoch: advances whenever a re-calibration changes an
    *  already-calibrated node's displayed fit. The view layer refetches every
@@ -84,7 +88,14 @@ const POLL_HIDDEN_MS = 15000;
 const POLL_SSE_MS = 5000;
 
 /** Which manual action is currently in flight (drives the per-button gauge). */
-export type WorkflowAction = "spots" | "options" | "calibrate" | "savePriors" | "fetchPriors";
+export type WorkflowAction =
+  | "spots"
+  | "options"
+  | "calibrate"
+  | "calibrateParametric"
+  | "calibrateLv"
+  | "savePriors"
+  | "fetchPriors";
 
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
@@ -94,7 +105,15 @@ export interface UseWorkflowResult {
   busy: boolean;
   fetchSpots: () => Promise<void>;
   fetchOptions: () => Promise<void>;
+  /** POST /calibrate — the combined verb (parametric, then LV when the Options
+   *  toggle enables it); wire behavior unchanged (V3.5 item 9). */
   calibrate: () => Promise<void>;
+  /** POST /calibrate/parametric — parametric slices only (the fast loop);
+   *  LV surfaces go/stay stale (lvStaleTickers). */
+  calibrateParametric: () => Promise<void>;
+  /** POST /calibrate/lv — LV (affine) surfaces only, no parametric barrier;
+   *  runs regardless of the Options toggle. */
+  calibrateLv: () => Promise<void>;
   /** Saved-prior availability across the active universe (null until first poll). */
   priors: PriorStatus | null;
   /** Snapshot every ticker's current calibration as a prior (POST /priors/save-all).
@@ -318,6 +337,16 @@ export function useWorkflow(
   const fetchSpots = useCallback(() => action("spots", "/fetch/spots", true), [action]);
   const fetchOptions = useCallback(() => action("options", "/fetch/options", true, true), [action]);
   const calibrate = useCallback(() => action("calibrate", "/calibrate", false, true), [action]);
+  // Stage-split verbs (V3.5 item 9): same background-job semantics as /calibrate
+  // (one job at a time; a running job makes them a no-op server-side).
+  const calibrateParametric = useCallback(
+    () => action("calibrateParametric", "/calibrate/parametric", false, true),
+    [action],
+  );
+  const calibrateLv = useCallback(
+    () => action("calibrateLv", "/calibrate/lv", false, true),
+    [action],
+  );
 
   const savePriors = useCallback(async () => {
     setPending("savePriors");
@@ -344,6 +373,7 @@ export function useWorkflow(
 
   return {
     calib, sched, pending, busy: pending !== null,
-    fetchSpots, fetchOptions, calibrate, priors, savePriors, fetchPriors,
+    fetchSpots, fetchOptions, calibrate, calibrateParametric, calibrateLv,
+    priors, savePriors, fetchPriors,
   };
 }

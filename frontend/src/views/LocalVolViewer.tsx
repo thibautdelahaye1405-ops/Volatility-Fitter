@@ -16,8 +16,9 @@
 // per-expiry data; Term / Table fetch sibling endpoints that reuse the cached
 // affine fit (useAffineView). Live backend only (no mock fallback).
 import { useEffect, useMemo, useState } from "react";
-import { Waypoints } from "lucide-react";
+import { Play, Waypoints } from "lucide-react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
+import LvTracePlayer from "../components/LvTracePlayer";
 import LocalVolSmile from "../components/LocalVolSmile";
 import LocalVolTable from "../components/LocalVolTable";
 import type { AffineTableData } from "../components/LocalVolTable";
@@ -34,6 +35,7 @@ import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
 import { useEvents } from "../state/useTerm";
 import { useExpiryFormat } from "../state/expiryFormat";
+import { buildIvSurface, smileAxisContext } from "../lib/affineSurface";
 import { formatExpiry } from "../lib/expiryFormat";
 import { formatPct } from "../lib/chartScale";
 import {
@@ -41,7 +43,6 @@ import {
   axisModeLabel,
   axisTickLabel,
   axisTransform,
-  makeVolAt,
 } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 import type { ClockMode, TermResponse } from "../state/useTerm";
@@ -128,6 +129,13 @@ export default function LocalVolViewer() {
   useEffect(() => {
     if (data && expiryIdx >= data.smiles.length) setExpiryIdx(0);
   }, [data, expiryIdx]);
+  // Fit replay (V3.5 item 13): the ⏵ toggle + an epoch that advances whenever a
+  // fresh affine payload lands, so useLvTrace refetches and auto-replays once.
+  const [traceOpen, setTraceOpen] = useState(false);
+  const [traceEpoch, setTraceEpoch] = useState(0);
+  useEffect(() => {
+    if (data && data.hasFit !== false) setTraceEpoch((e) => e + 1);
+  }, [data]);
 
   const expiry = data?.smiles[expiryIdx]?.expiry ?? null;
 
@@ -614,69 +622,29 @@ export default function LocalVolViewer() {
           </div>
 
           {data && (
-            <p className="mt-auto shrink-0 text-[10px] text-slate-600">
-              {data.nEvals} PDE solves · price rms{" "}
-              {Number.isFinite(data.rmsPriceError) ? (data.rmsPriceError * 1e4).toFixed(1) : "—"} bp
-            </p>
+            <div className="mt-auto flex shrink-0 flex-col gap-2">
+              {traceOpen && <LvTracePlayer ticker={ticker} epoch={traceEpoch} />}
+              <p className="flex items-center gap-1.5 text-[10px] text-slate-600">
+                <button
+                  onClick={() => setTraceOpen((v) => !v)}
+                  title="Replay the LV calibration (accepted solver steps, post-hoc)"
+                  className={[
+                    "rounded border p-0.5 transition-colors",
+                    traceOpen
+                      ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
+                      : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
+                  ].join(" ")}
+                >
+                  <Play size={9} strokeWidth={1.75} />
+                </button>
+                {data.nEvals} PDE solves · price rms{" "}
+                {Number.isFinite(data.rmsPriceError) ? (data.rmsPriceError * 1e4).toFixed(1) : "—"} bp
+              </p>
+            </div>
           )}
         </aside>
       </div>
     </div>
   );
-}
-
-/** Linear interpolation of a sorted (k, vol) curve at log-moneyness k. */
-function interpVol(model: { k: number; vol: number }[], k: number): number {
-  if (model.length === 0) return NaN;
-  if (k <= model[0].k) return model[0].vol;
-  const last = model[model.length - 1];
-  if (k >= last.k) return last.vol;
-  for (let i = 1; i < model.length; i++) {
-    if (k <= model[i].k) {
-      const a = model[i - 1];
-      const b = model[i];
-      const f = (k - a.k) / (b.k - a.k);
-      return a.vol + f * (b.vol - a.vol);
-    }
-  }
-  return last.vol;
-}
-
-/** Reconstructed IV surface from the per-expiry affine smiles: resample each on
- *  a shared log-moneyness grid (the intersection range, so no curve is
- *  extrapolated) and return it as a (T × k → σ) mesh for the 3D SurfaceMesh. */
-function buildIvSurface(
-  smiles: { expiry: string; t: number; forward?: number; model: { k: number; vol: number }[] }[],
-): SurfaceMeshData | null {
-  const usable = smiles.filter((s) => s.model.length >= 2);
-  if (usable.length < 2) return null;
-  const kLo = Math.max(...usable.map((s) => s.model[0].k));
-  const kHi = Math.min(...usable.map((s) => s.model[s.model.length - 1].k));
-  if (!(kHi > kLo)) return null;
-  const N = 41;
-  const kGrid = Array.from({ length: N }, (_, j) => kLo + ((kHi - kLo) * j) / (N - 1));
-  return {
-    expiries: usable.map((s) => s.expiry),
-    t: usable.map((s) => s.t),
-    k: kGrid,
-    vol: usable.map((s) => kGrid.map((k) => interpVol(s.model, k))),
-    // Forward per expiry + ATM vol (vol at k=0) so SurfaceMesh can re-coordinate
-    // the x-axis to strike / %ATM / Δ / normalized per row.
-    forward: usable.map((s) => s.forward ?? 0),
-    atmVol: usable.map((s) => interpVol(s.model, 0)),
-  };
-}
-
-/** AxisContext for one reconstructed affine smile: forward + ATM vol from the
- *  model curve, with a vol lookup for the Δ axis. */
-function smileAxisContext(s: { t: number; forward?: number; model: { k: number; vol: number }[] }) {
-  const volAt = makeVolAt(s.model);
-  return {
-    forward: s.forward ?? 0,
-    t: s.t,
-    atmVol: volAt(0) ?? 0,
-    volAt,
-    kRange: [s.model[0]?.k ?? -1, s.model[s.model.length - 1]?.k ?? 1] as [number, number],
-  };
 }
 

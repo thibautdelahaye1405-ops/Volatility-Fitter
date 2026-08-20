@@ -1737,6 +1737,11 @@ class CalibrationStatus(BaseModel):
     cancelled: bool
     litNodes: int  # total lit (calibratable) nodes in the universe
     staleNodes: int  # lit nodes whose displayed fit has drifted from its last fit
+    #: Lit tickers whose LV (affine) surface has drifted since its last LV
+    #: calibration (V3.5 item 9 — the "Local-Vol only" badge). 0 while Local-Vol
+    #: is gated off; never-calibrated tickers are not counted (same "calibrated
+    #: before, inputs drifted" semantics as staleNodes).
+    lvStaleTickers: int = 0
     spotVersion: int  # global spot-move counter (bumps on any transported move)
     #: Monotonic calibration epoch (AppState.calib_epoch): advances whenever a
     #: re-calibration changes an already-calibrated node's displayed fit. The

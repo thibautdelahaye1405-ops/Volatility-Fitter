@@ -33,6 +33,7 @@ from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
 from volfit.models.localvol.affine_gn import LinearizedJacobian, gauss_newton
+from volfit.models.localvol.affine_trace import AffineTrace, TraceRecorder
 from volfit.models.localvol.affine import (
     AffinePDESolution,
     AffineVarianceSurface,
@@ -334,6 +335,10 @@ class AffineCalibration:
     message: str = ""
     left_extrap_a: float = 0.0  # fitted (or fixed) left-wing slope multiple
     diagnostics: AffineFitDiagnostics | None = None  # Stage-0 perf side metadata
+    #: V3.5 item 13 — accepted-step replay frames (affine_trace); None unless the
+    #: caller asked for tracing (``trace_every``). Pure observation, rides the
+    #: result out of the fit-pool worker as plain data.
+    trace: AffineTrace | None = None
     _extras: dict = field(default_factory=dict)
 
     @property
@@ -443,6 +448,8 @@ def calibrate_affine(
     stall_rtol: float = 1e-3,
     engine: str = "banded",
     gn_lsmr_tol: float = 1e-10,
+    trace_every: int | None = None,
+    trace_cap: int = 24,
 ) -> AffineCalibration:
     """Bound-constrained LSQ fit of nodal local variances (note's Algorithm).
 
@@ -544,6 +551,17 @@ def calibrate_affine(
     ``solve_affine_dupire``; it self-restricts to the implicit / no-left-slope path
     and falls back to banded otherwise (or when numba is unavailable), so it is a
     transparent accelerator (output matches banded to ~1e-15).
+
+    ``trace_every`` (V3.5 item 13): record replay CHECKPOINTS at accepted solver
+    steps — every ``trace_every``-th one, subsampled to ≤ ``trace_cap`` frames
+    with the converged final frame always kept — returned as ``result.trace``
+    (volfit.models.localvol.affine_trace). "Accepted step" = an objective
+    evaluation setting a NEW BEST total cost, hooked in the shared memoized
+    ``evaluate`` (scipy's trf exposes no iteration callback; TRF and the GN line
+    search only move on a strict cost decrease, so the improving-eval
+    subsequence IS the accepted-iterate sequence plus the seed — deterministic,
+    documented in affine_trace). Default None ⇒ no recorder, byte-identical fit
+    with zero overhead (the perf rails call the defaults).
     """
     varswaps = varswaps or []
     baskets = baskets or []
@@ -628,6 +646,19 @@ def calibrate_affine(
     p_lo = np.array([o.price_lo for o in options]) if band_mode else None
     p_hi = np.array([o.price_hi for o in options]) if band_mode else None
     sqrt_anchor = np.sqrt(mid_anchor_weight)
+    # V3.5 item 13 — accepted-step replay recorder. None (default) ⇒ no object,
+    # one predictable branch per eval: byte-identical, zero-overhead fit.
+    recorder = (
+        TraceRecorder(
+            trace_every,
+            trace_cap,
+            options,
+            (2 if band_mode else 1) * len(options),
+            (surface0.t_nodes.size, surface0.x_nodes.size),
+        )
+        if trace_every is not None and trace_every > 0
+        else None
+    )
     n_evals = 0
     pde_value_s = pde_sens_s = assembly_s = 0.0  # Stage-0 wall-time accumulators
     cache: dict[bytes, tuple] = {}
@@ -755,6 +786,8 @@ def calibrate_affine(
         if gn_op:
             j_reg = sparse.vstack(reg_blocks, format="csr") if len(reg_blocks) > 1 else reg_blocks[0]
             jac = LinearizedJacobian(jac_opt, j_reg)
+        if recorder is not None:  # V3.5 item 13: new-best evals = accepted steps
+            recorder.observe(theta, res, n_evals)
         cache.clear()  # keep only the latest params (fun + jac pairing)
         out = (res, jac, sol, p, z)
         cache[key] = out
@@ -848,7 +881,7 @@ def calibrate_affine(
             result = _run_trf()
     else:
         result = _run_trf()
-    _, _, sol, p, z = evaluate(result.x)
+    res_final, _, sol, p, z = evaluate(result.x)
     total_s = perf_counter() - total_t0
     theta_hat = result.x[:m] if fit_left_a else result.x
     a_hat = float(result.x[m]) if fit_left_a else surface0.left_extrap_a
@@ -900,4 +933,11 @@ def calibrate_affine(
         message=str(result.message),
         left_extrap_a=a_hat,
         diagnostics=diagnostics,
+        # Seal the replay at the CONVERGED iterate so frames[-1].theta always
+        # equals the returned surface (stall / best-cost returns included).
+        trace=(
+            recorder.finish(theta_hat, res_final, n_evals)
+            if recorder is not None
+            else None
+        ),
     )

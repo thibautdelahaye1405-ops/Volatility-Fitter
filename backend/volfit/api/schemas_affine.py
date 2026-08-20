@@ -150,3 +150,34 @@ class AffineFitResponse(BaseModel):
     #: False when the LV surface has never been calibrated (gated workflow, before
     #: the Calibrate button): all arrays empty, the UI shows a "Calibrate" cue.
     hasFit: bool = True
+
+
+class AffineTraceFrameOut(BaseModel):
+    """One accepted-step checkpoint of the LV calibration replay (V3.5 item 13)."""
+
+    nEvals: int  # objective evaluations spent when this iterate was accepted
+    cost: float  # total LSQ cost 0.5*||r||^2 at the iterate
+    #: sqrt(nodal variance) grid at the iterate — same shape/orientation as
+    #: AffineFitResponse.localVol (rows = tNodes, columns = xNodes), so the
+    #: heatmap can be driven frame by frame.
+    localVol: list[list[float]]
+    #: Per-expiry option-residual RMS (weighted price units, the LSQ's own
+    #: normalization) — one entry per ``expiries`` column, descending over the
+    #: replay as the prices converge.
+    expiryRms: list[float]
+
+
+class AffineTraceResponse(BaseModel):
+    """GET /fit/affine/{ticker}/trace — post-hoc replay of the last TRACED fit.
+
+    Honest numbers only: every frame is an iterate the solver actually accepted
+    (volfit.models.localvol.affine_trace); nothing is recomputed per frame.
+    Served read-only from a side channel (never triggers a fit); 404 until a
+    traced fit has completed this session.
+    """
+
+    ticker: str
+    tNodes: list[float]  # vertex times of every frame's grid (rows)
+    xNodes: list[float]  # vertex strikes x = K/F (columns)
+    expiries: list[float]  # tau per expiryRms column (real fitted expiries only)
+    frames: list[AffineTraceFrameOut]  # ascending nEvals; LAST = converged surface

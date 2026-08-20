@@ -36,19 +36,24 @@ export default function WorkflowControls({
   /** Worst live-chain age (useDataSources): red = warn on Calibrate. */
   dataAge?: DataAgeInfo | null;
 }) {
-  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate, priors, savePriors,
-    fetchPriors } = workflow;
+  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate,
+    calibrateParametric, calibrateLv, priors, savePriors, fetchPriors } = workflow;
   const redStale = dataAge !== null && dataAge.level === "red";
   const realtimeSpots = sched?.spotMode === "realtime";
   const autoOptions = sched?.optionsFetchMode === "auto";
+  const lvEnabled = sched?.localVolEnabled ?? true;
   const running = calib?.running ?? false;
   const stale = calib?.staleNodes ?? 0;
+  const lvStale = calib?.lvStaleTickers ?? 0;
   const savedTickers = priors?.tickers.filter((t) => t.nodeCount > 0).length ?? 0;
   const activePriors = priors?.tickers.filter((t) => t.activeSource).length ?? 0;
 
   const [fetchOpen, setFetchOpen] = useState(false);
+  const [calibOpen, setCalibOpen] = useState(false);
   const [priorsOpen, setPriorsOpen] = useState(false);
   const fetching = pending === "spots" || pending === "options";
+  const calibrating =
+    pending === "calibrate" || pending === "calibrateParametric" || pending === "calibrateLv";
   const priorsBusy = pending === "savePriors" || pending === "fetchPriors";
 
   // Transient "✓" acknowledgments on the Priors face (no toast system; mirrors
@@ -106,37 +111,79 @@ export default function WorkflowControls({
         </MenuPanel>
       </div>
 
-      {/* Calibrate — the primary verb keeps its own button (background job;
-          progress shows in the status bar). Stale count stays actionable.
-          Red-stale live data (the market pill's age) shows a warning cue:
+      {/* Calibrate — a split control (V3.5 item 9): the primary face runs the
+          fast PARAMETRIC-only verb with its stale count; the chevron opens the
+          menu with the combined "Parametric + LV" (the old verb, still gated
+          server-side by the Options toggle) and "Local-Vol only" (its own
+          lvStaleTickers badge). Background jobs; progress shows in the status
+          bar. Red-stale live data (the market pill's age) shows a warning cue:
           calibrating still works, but it is a fit of the previous session. */}
-      <button
-        onClick={() => void calibrate()}
-        disabled={running || busy}
-        title={
-          redStale
-            ? `Warning: live quotes are ${dataAge!.label} old (previous session) — calibrating fits stale data`
-            : "Calibrate all lit nodes"
-        }
-        className={[
-          BTN,
-          running
-            ? WORKING
-            : redStale
-              ? "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
-              : stale > 0
-                ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
-                : ACTIVE,
-        ].join(" ")}
-      >
-        {redStale && !running ? (
-          <TriangleAlert size={13} strokeWidth={1.75} className="opacity-90" />
-        ) : (
-          <Play size={13} strokeWidth={1.75} className="opacity-80" />
-        )}
-        {!running && stale > 0 ? `Calibrate (${stale})` : "Calibrate"}
-        {running && <WorkingBar />}
-      </button>
+      <div className="relative flex items-stretch">
+        <button
+          onClick={() => void calibrateParametric()}
+          disabled={running || busy}
+          title={
+            redStale
+              ? `Warning: live quotes are ${dataAge!.label} old (previous session) — calibrating fits stale data`
+              : "Calibrate all lit nodes (parametric only — ▾ for LV)"
+          }
+          className={[
+            BTN,
+            "rounded-r-none",
+            running || calibrating
+              ? WORKING
+              : redStale
+                ? "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
+                : stale > 0
+                  ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
+                  : ACTIVE,
+          ].join(" ")}
+        >
+          {redStale && !running ? (
+            <TriangleAlert size={13} strokeWidth={1.75} className="opacity-90" />
+          ) : (
+            <Play size={13} strokeWidth={1.75} className="opacity-80" />
+          )}
+          {!running && stale > 0 ? `Calibrate (${stale})` : "Calibrate"}
+          {(running || calibrating) && <WorkingBar />}
+        </button>
+        <button
+          onClick={() => setCalibOpen((v) => !v)}
+          disabled={running || busy}
+          title="Calibration scope (Parametric + LV / Local-Vol only)"
+          className={[
+            BTN,
+            "rounded-l-none border-l-0 px-1.5",
+            running || calibrating ? WORKING : ACTIVE,
+          ].join(" ")}
+        >
+          <ChevronDown size={11} className="text-slate-500" />
+        </button>
+        <MenuPanel open={calibOpen} onClose={() => setCalibOpen(false)} width="w-64">
+          <MenuItem
+            label="Parametric + LV"
+            detail={
+              lvEnabled
+                ? stale > 0
+                  ? `${stale} stale node(s), then LV surfaces`
+                  : "all lit nodes, then LV surfaces"
+                : "LV gated off in Options — runs parametric only"
+            }
+            disabled={running || busy}
+            onClick={() => { setCalibOpen(false); void calibrate(); }}
+          />
+          <MenuItem
+            label={lvStale > 0 ? `Local-Vol only (${lvStale})` : "Local-Vol only"}
+            detail={
+              lvStale > 0
+                ? `${lvStale} stale LV surface(s) — no parametric refit`
+                : "refit LV surfaces only (no parametric refit)"
+            }
+            disabled={running || busy}
+            onClick={() => { setCalibOpen(false); void calibrateLv(); }}
+          />
+        </MenuPanel>
+      </div>
 
       {/* Priors ▾ — surface snapshots (save all / fetch freshness ladder) */}
       <div className="relative">

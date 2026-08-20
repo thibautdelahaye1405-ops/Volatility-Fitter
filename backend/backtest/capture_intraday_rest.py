@@ -48,12 +48,14 @@ from volfit.data.types import OptionQuote
 from backtest.capture_intraday import (
     DEFAULT_TIMES,
     FIXTURE_DIR,
+    LADDERS,
     MAX_DAILY_DTE,
     TERM_ANCHOR_MAX_DTE,
+    TERM_MAX_DTE,
     UNIVERSE_0DTE,
-    _parse_times,
     _persist_db,
-    select_expiries,
+    add_grid_args,
+    resolve_times,
     session_instants,
 )
 from backtest.quotes_store import _parity_spot, _pos_or_none, _to_ns
@@ -122,18 +124,20 @@ def day_close(client: httpx.Client, ticker: str, day: date) -> float:
 def discover_contracts(
     client: httpx.Client, ticker: str, day: date, close: float,
     daily_window: float = DAILY_WINDOW, anchor_window: float = ANCHOR_WINDOW,
+    anchor_max_dte: int = TERM_ANCHOR_MAX_DTE,
 ) -> dict[str, tuple[date, float, str]]:
     """OCC ticker -> (expiry, strike, C/P) for the day's board, windowed.
 
     Two spans: the daily ladder (DTE <= MAX_DAILY_DTE, tight window) and the
-    term-anchor span (wider window). Both ``expired`` flags are queried — the
-    dailies have expired by capture time, the anchors may still be live —
-    and deduped by OCC ticker.
+    term span (wider window, out to ``anchor_max_dte`` — the default covers
+    the 0DTE anchors; ``--ladder term`` extends it to TERM_MAX_DTE). Both
+    ``expired`` flags are queried — the dailies have expired by capture time,
+    the anchors may still be live — and deduped by OCC ticker.
     """
     spans = (
         (day, day + timedelta(days=MAX_DAILY_DTE), daily_window),
         (day + timedelta(days=MAX_DAILY_DTE + 1),
-         day + timedelta(days=TERM_ANCHOR_MAX_DTE), anchor_window),
+         day + timedelta(days=anchor_max_dte), anchor_window),
     )
     out: dict[str, tuple[date, float, str]] = {}
     for lo, hi, window in spans:
@@ -200,6 +204,7 @@ def capture_day_rest(
     workers: int = DEFAULT_WORKERS,
     daily_window: float = DAILY_WINDOW,
     anchor_window: float = ANCHOR_WINDOW,
+    ladder: str = "0dte",
 ) -> dict | None:
     """One (asset, day)'s intraday snapshots via REST — the fixture document.
 
@@ -210,9 +215,11 @@ def capture_day_rest(
     if not instants:
         return None
     close = day_close(client, ticker, day)
-    contracts = discover_contracts(client, ticker, day, close,
-                                   daily_window, anchor_window)
-    keep = set(select_expiries({c[0] for c in contracts.values()}, day))
+    contracts = discover_contracts(
+        client, ticker, day, close, daily_window, anchor_window,
+        anchor_max_dte=TERM_MAX_DTE if ladder == "term" else TERM_ANCHOR_MAX_DTE,
+    )
+    keep = set(LADDERS[ladder]({c[0] for c in contracts.values()}, day))
     kept = sorted(
         (occ, exp, strike, cp)
         for occ, (exp, strike, cp) in contracts.items() if exp in keep
@@ -278,6 +285,7 @@ def run(
     client: httpx.Client | None = None,
     daily_window: float = DAILY_WINDOW,
     anchor_window: float = ANCHOR_WINDOW,
+    ladder: str = "0dte",
 ) -> list[str]:
     """Capture the window via REST; returns fixture paths written (resumable)."""
     if client is None:
@@ -307,7 +315,7 @@ def run(
             for attempt in (1, 2):
                 try:
                     doc = capture_day_rest(client, ticker, day, times, workers,
-                                           daily_window, anchor_window)
+                                           daily_window, anchor_window, ladder)
                     break
                 except Exception as exc:  # noqa: BLE001 — outages happen; checkpoint kept
                     print(f"{ticker} {day}: attempt {attempt} failed: {exc}")
@@ -334,8 +342,7 @@ def main() -> int:
     ap.add_argument("--start", required=True, type=date.fromisoformat)
     ap.add_argument("--end", required=True, type=date.fromisoformat)
     ap.add_argument("--tickers", default=",".join(UNIVERSE_0DTE))
-    ap.add_argument("--times", default=None,
-                    help="comma-separated ET wall times (default 10:00..15:45)")
+    add_grid_args(ap)
     ap.add_argument("--db", default=None,
                     help="also write snapshots into this VolStore (app replay)")
     ap.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
@@ -348,9 +355,10 @@ def main() -> int:
     written = run(
         args.start, args.end,
         tickers=tuple(t.strip().upper() for t in args.tickers.split(",")),
-        times=_parse_times(args.times),
+        times=resolve_times(args.times, args.step, args.grid_from, args.grid_to),
         db_path=args.db, force=args.force, workers=args.workers,
         daily_window=args.daily_window, anchor_window=args.anchor_window,
+        ladder=args.ladder,
     )
     print(f"wrote {len(written)} fixture file(s) under {FIXTURE_DIR}")
     return 0

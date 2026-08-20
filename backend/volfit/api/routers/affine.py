@@ -8,18 +8,27 @@ heavy lifting and the per-request cache live in volfit.api.affine_fit.
 The /density, /term and /table sub-routes derive the Local Vol workspace's
 Parametric-style views from the SAME cached fit (volfit.api.affine_views); they
 take the AffineFitRequest body so they hit the same cache key as the surface fit.
+
+GET /fit/affine/{ticker}/trace (V3.5 item 13) serves the accepted-step replay
+of the last TRACED fit — read-only, poll-safe, 404 before the first traced fit.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
 
-from volfit.api.affine_fit import affine_payload, grid_info, optimal_grid_size
+from volfit.api.affine_fit import (
+    affine_payload,
+    grid_info,
+    last_affine_trace,
+    optimal_grid_size,
+)
 from volfit.api.affine_views import affine_density, affine_table, affine_term
 from volfit.api.schemas import DensityResponse, TableResponse, TermStructureResponse
 from volfit.api.schemas_affine import (
     AffineFitRequest,
     AffineFitResponse,
+    AffineTraceResponse,
     GridInfo,
     OptimalGridSize,
 )
@@ -47,6 +56,19 @@ def affine_grid_info(ticker: str, request: Request) -> GridInfo:
         return grid_info(request.app.state.volfit, ticker)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
+
+
+@router.get("/fit/affine/{ticker}/trace", response_model=AffineTraceResponse)
+def affine_trace(ticker: str, request: Request) -> AffineTraceResponse:
+    """Post-hoc replay of the ticker's last TRACED LV fit (V3.5 item 13).
+
+    Read-only + poll-safe: serves the side channel the fit recorded, NEVER
+    triggers a calibration; 404 until one traced fit completed this session
+    (or when tracing is disabled via VOLFIT_LV_TRACE=0)."""
+    trace = last_affine_trace(request.app.state.volfit, ticker)
+    if trace is None:
+        raise HTTPException(status_code=404, detail="no traced LV fit yet for this ticker")
+    return trace
 
 
 @router.post("/fit/affine/{ticker}", response_model=AffineFitResponse)

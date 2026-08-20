@@ -62,6 +62,21 @@ DEFAULT_TIMES = tuple(
     time(h, m) for h in range(10, 16) for m in (0, 30) if not (h == 15 and m == 30)
 ) + (time(15, 30), time(15, 45))
 
+#: ``--step`` grid defaults (V3.8 replay campaign): 09:45 ET (past the opening
+#: auction) to 15:45 ET (the daily capture's before-close instant).
+GRID_FROM = time(9, 45)
+GRID_TO = time(15, 45)
+
+#: ``--ladder term`` shape: the DAILY capture's term-structure ladder
+#: (capture.py: MIN/MAX_DTE 7/400, 10 expiries, 3 front weeklies) adapted to
+#: the intraday horizon — front weeklies + third-Friday monthlies out to
+#: TERM_MAX_DTE, capped at the TERM_MAX_EXPIRIES nearest. Same-day expiries
+#: are excluded (the intraday replay drops 0DTE rungs anyway: calendar t = 0
+#: in the graph clock — see graph_intraday.instant_state).
+TERM_MAX_DTE = 120
+TERM_MAX_EXPIRIES = 6
+TERM_FRONT_WEEKLIES = 3
+
 
 def _is_monthly(e: date) -> bool:
     return e.weekday() == 4 and 15 <= e.day <= 21
@@ -75,6 +90,26 @@ def select_expiries(available: set[date], day: date) -> list[date]:
         if _is_monthly(e) and MAX_DAILY_DTE < (e - day).days <= TERM_ANCHOR_MAX_DTE
     )[:TERM_ANCHORS]
     return sorted(set(dailies) | set(monthlies))
+
+
+def select_expiries_term(available: set[date], day: date) -> list[date]:
+    """``--ladder term``: all in-range monthlies (1 <= DTE <= TERM_MAX_DTE)
+    plus the nearest TERM_FRONT_WEEKLIES non-monthly expiries, capped at the
+    TERM_MAX_EXPIRIES nearest overall — capture.py's daily selection shape on
+    the intraday ``select_expiries`` signature. 0DTE is deliberately excluded
+    (see the TERM_* constants note)."""
+    cand = sorted(e for e in available if 1 <= (e - day).days <= TERM_MAX_DTE)
+    monthlies = [e for e in cand if _is_monthly(e)]
+    chosen = set(monthlies)
+    for e in (e for e in cand if not _is_monthly(e)):
+        if len(chosen) >= len(monthlies) + TERM_FRONT_WEEKLIES:
+            break
+        chosen.add(e)
+    return sorted(chosen)[:TERM_MAX_EXPIRIES]
+
+
+#: --ladder name -> selector. "0dte" IS select_expiries (default, byte-identical).
+LADDERS = {"0dte": select_expiries, "term": select_expiries_term}
 
 
 def session_instants(day: date, times: tuple[time, ...] = DEFAULT_TIMES) -> list[datetime]:
@@ -106,12 +141,13 @@ def capture_day(
     ticker: str,
     day: date,
     times: tuple[time, ...] = DEFAULT_TIMES,
+    ladder: str = "0dte",
 ) -> dict | None:
     """All of one (asset, day)'s intraday snapshots as a fixture document.
 
-    One flat-file scan (``chains_at``); the expiry ladder is selected from the
-    board actually present in the file. None when the day yields no usable
-    snapshot (e.g. a file gap)."""
+    One flat-file scan (``chains_at``); the expiry ladder (``LADDERS[ladder]``)
+    is selected from the board actually present in the file. None when the day
+    yields no usable snapshot (e.g. a file gap)."""
     instants = session_instants(day, times)
     if not instants:
         return None
@@ -120,7 +156,7 @@ def capture_day(
     if not usable:
         return None
     board = {q.expiry for ch in usable.values() for q in ch.quotes}
-    keep = set(select_expiries(board, day))
+    keep = set(LADDERS[ladder](board, day))
     snapshots = []
     for ts in sorted(usable):
         ch = usable[ts]
@@ -185,6 +221,7 @@ def run(
     times: tuple[time, ...] = DEFAULT_TIMES,
     db_path: str | None = None, force: bool = False,
     store: QuotesFlatFileStore | None = None,
+    ladder: str = "0dte",
 ) -> list[str]:
     """Capture the window; returns the fixture paths written (resumable)."""
     if store is None:
@@ -212,7 +249,7 @@ def run(
             doc = None
             for attempt in (1, 2):
                 try:
-                    doc = capture_day(store, ticker, day, times)
+                    doc = capture_day(store, ticker, day, times, ladder)
                     break
                 except Exception as exc:  # noqa: BLE001 — network stalls happen
                     print(f"{ticker} {day}: attempt {attempt} failed: {exc}")
@@ -240,13 +277,59 @@ def _parse_times(raw: str | None) -> tuple[time, ...]:
     return tuple(time.fromisoformat(part.strip()) for part in raw.split(","))
 
 
+def grid_times(step_min: int, t_from: time = GRID_FROM, t_to: time = GRID_TO) -> tuple[time, ...]:
+    """Regular ET wall-time grid ``t_from..t_to`` INCLUSIVE every ``step_min``
+    minutes (the V3.8 15-minute campaign grid). ``session_instants`` still
+    clips at the session close, so half-days keep only surviving instants."""
+    if step_min <= 0:
+        raise ValueError("--step must be a positive number of minutes")
+    anchor = date(2000, 1, 3)  # any fixed day: only the wall times survive
+    cur, end = datetime.combine(anchor, t_from), datetime.combine(anchor, t_to)
+    out: list[time] = []
+    while cur <= end:
+        out.append(cur.time())
+        cur += timedelta(minutes=step_min)
+    return tuple(out)
+
+
+def resolve_times(times: str | None, step: int | None,
+                  t_from: str | None, t_to: str | None) -> tuple[time, ...]:
+    """Shared CLI grid resolution for BOTH capture twins: ``--times`` XOR
+    ``--step [--from --to]``; neither given = DEFAULT_TIMES (the legacy grid,
+    byte-identical)."""
+    if step is not None and times:
+        raise SystemExit("--times and --step are mutually exclusive")
+    if step is None:
+        if t_from or t_to:
+            raise SystemExit("--from/--to require --step")
+        return _parse_times(times)
+    return grid_times(step,
+                      time.fromisoformat(t_from) if t_from else GRID_FROM,
+                      time.fromisoformat(t_to) if t_to else GRID_TO)
+
+
+def add_grid_args(ap: argparse.ArgumentParser) -> None:
+    """The shared --times/--step/--from/--to/--ladder CLI block (both twins)."""
+    ap.add_argument("--times", default=None,
+                    help="comma-separated ET wall times (default 10:00..15:45)")
+    ap.add_argument("--step", type=int, default=None,
+                    help="regular grid in minutes (e.g. 15); excludes --times")
+    ap.add_argument("--from", dest="grid_from", default=None, metavar="HH:MM",
+                    help="grid start, ET wall time (default 09:45; needs --step)")
+    ap.add_argument("--to", dest="grid_to", default=None, metavar="HH:MM",
+                    help="grid end, ET wall time (default 15:45; needs --step)")
+    ap.add_argument("--ladder", choices=tuple(LADDERS), default="0dte",
+                    help="expiry ladder: 0dte (dailies + 2 monthly anchors, the"
+                         " default) or term (front weeklies + monthlies to"
+                         f" {TERM_MAX_DTE} DTE, capped at {TERM_MAX_EXPIRIES})")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Intraday 0DTE flat-file capture.")
     ap.add_argument("--start", required=True, type=date.fromisoformat)
     ap.add_argument("--end", required=True, type=date.fromisoformat)
     ap.add_argument("--tickers", default=",".join(UNIVERSE_0DTE))
-    ap.add_argument("--times", default=None,
-                    help="comma-separated ET wall times (default 10:00..15:45)")
+    add_grid_args(ap)
     ap.add_argument("--db", default=None,
                     help="also write snapshots into this VolStore (app replay)")
     ap.add_argument("--force", action="store_true")
@@ -254,8 +337,8 @@ def main() -> int:
     written = run(
         args.start, args.end,
         tickers=tuple(t.strip().upper() for t in args.tickers.split(",")),
-        times=_parse_times(args.times),
-        db_path=args.db, force=args.force,
+        times=resolve_times(args.times, args.step, args.grid_from, args.grid_to),
+        db_path=args.db, force=args.force, ladder=args.ladder,
     )
     print(f"wrote {len(written)} fixture file(s) under {FIXTURE_DIR}")
     return 0

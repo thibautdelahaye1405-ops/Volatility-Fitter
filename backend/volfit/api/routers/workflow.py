@@ -1,7 +1,9 @@
 """Calibration / data-fetch workflow endpoints (the trigger model).
 
 GET  /calibration/status            -> background-job + lit/stale node state
-POST /calibrate                     -> background-calibrate ALL lit nodes
+POST /calibrate                     -> background-calibrate ALL lit nodes (+ LV when enabled)
+POST /calibrate/parametric          -> background-calibrate the parametric stage only
+POST /calibrate/lv                  -> background-calibrate the LV (affine) surfaces only
 POST /calibrate/cancel              -> cancel the running background job
 POST /calibrate/{ticker}            -> (re)calibrate one ticker's lit expiries (sync)
 POST /calibrate/{ticker}/{expiry}   -> (re)calibrate one node (sync)
@@ -110,6 +112,33 @@ def calibrate_all(request: Request, fit_mode: FitMode | None = None) -> Calibrat
     state = request.app.state.volfit
     mode = _mode(state, fit_mode)
     workflow.calibrate_all(state, mode)  # False (already running) -> status reflects it
+    return workflow.status(state, mode)
+
+
+@router.post("/calibrate/parametric", response_model=CalibrationStatus)
+def calibrate_parametric(request: Request, fit_mode: FitMode | None = None) -> CalibrationStatus:
+    """Stage-split Calibrate (V3.5 item 9): the parametric slices only. Every LV
+    (affine) pointer is left untouched (the LV surface goes/stays STALE —
+    ``lvStaleTickers``). Same one-job-at-a-time contract as /calibrate: a
+    running job makes this a no-op and the returned status reflects it.
+
+    NB: registered BEFORE /calibrate/{ticker}, so the literal path wins."""
+    state = request.app.state.volfit
+    mode = _mode(state, fit_mode)
+    workflow.calibrate_parametric_all(state, mode)
+    return workflow.status(state, mode)
+
+
+@router.post("/calibrate/lv", response_model=CalibrationStatus)
+def calibrate_lv(request: Request, fit_mode: FitMode | None = None) -> CalibrationStatus:
+    """Stage-split Calibrate (V3.5 item 9): the LV (affine) surfaces only, with
+    no parametric barrier — the LV cold-start seed is best-effort (flat when
+    < 2 parametric slices are warm; converged optimum unchanged). Runs
+    regardless of the localVolEnabled toggle (that stays the workspace/tab
+    gate + the combined /calibrate gate). One job at a time, like /calibrate."""
+    state = request.app.state.volfit
+    mode = _mode(state, fit_mode)
+    workflow.calibrate_lv_all(state, mode)
     return workflow.status(state, mode)
 
 

@@ -8,7 +8,12 @@ Implements the explicit, mode-gated triggers (ROADMAP workflow):
     ``autoCalibrate`` is on, kick off a background calibration of the lit nodes;
   * ``calibrate``     — (re)calibrate a scope of lit nodes at the chain's own
     spot: a single node / one ticker synchronously, or ALL lit nodes in the
-    background via the job manager (``state.calibration_jobs``);
+    background via the job manager (``state.calibration_jobs``). V3.5 item 9
+    splits the background verb into stages: ``calibrate_all`` (parametric then
+    LV, the historical combined action), ``calibrate_parametric_all`` and
+    ``calibrate_lv_all`` — all composed from the SAME stage builders
+    (volfit.api.workflow_stages), so a fit is byte-identical whichever verb
+    produced it;
   * ``seed_priors``   — explicit prev-close prior seeding (built, calibrated and
     saved only on demand).
 
@@ -21,7 +26,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 
-from volfit.api import fit_pool, service
+from volfit.api import fit_pool, service, workflow_stages
 from volfit.api.schemas import (
     ActivityInfo,
     CalibrationStatus,
@@ -32,6 +37,11 @@ from volfit.api.schemas import (
 )
 from volfit.api.spot import set_shift as _set_spot_shift
 from volfit.api.state import AppState
+from volfit.api.workflow_stages import (  # noqa: F401  (re-exports: test seams + callers)
+    Group,
+    _parametric_items,
+    lit_nodes,
+)
 
 
 def _source_label(state: AppState) -> str:
@@ -42,30 +52,37 @@ def _source_label(state: AppState) -> str:
     return SOURCE_LABELS.get(sid, sid.title())
 
 
-# --------------------------------------------------------------- lit nodes
-def lit_nodes(state: AppState, tickers: list[str] | None = None) -> list[tuple[str, str]]:
-    """Every lit (ticker, expiry-ISO) node, the calibration set, nearest first."""
-    chosen = tickers if tickers is not None else state.active_tickers()
-    out: list[tuple[str, str]] = []
-    for ticker in chosen:
-        try:
-            # settlement-instant order (same-date AM before PM) — the coupled
-            # calibration items consume this list as their ascending-T chain
-            expiries = service.ordered_expiries(state, ticker, state.forwards(ticker))
-        except Exception:
-            continue  # a ticker unavailable on the active feed is skipped
-        for expiry in expiries:
-            iso = expiry.isoformat()
-            if state.node_lit(ticker, iso):
-                out.append((ticker, iso))
-    return out
-
-
+# ----------------------------------------------------------------- status
 def _stale_count(state: AppState, nodes: list[tuple[str, str]], fit_mode: str) -> int:
     return sum(1 for t, iso in nodes if service.node_dirty(state, t, iso, fit_mode))
 
 
-# ----------------------------------------------------------------- status
+def _lv_stale_tickers(state: AppState, nodes: list[tuple[str, str]], fit_mode: str) -> int:
+    """Lit tickers whose LV (affine) surface is STALE (calibrated before, inputs
+    drifted since) — the "Local-Vol only" badge count. 0 while Local-Vol is
+    gated off (``localVolEnabled``), mirroring how the toggle hides the LV
+    workspace; never-calibrated tickers are not counted (same semantics as the
+    per-node ``staleNodes``)."""
+    if not state.options().localVolEnabled:
+        return 0
+    from volfit.api.affine_fit import affine_dirty
+    from volfit.api.schemas_affine import AffineFitRequest
+
+    request = AffineFitRequest(fitMode=fit_mode)
+    seen: list[str] = []
+    for t, _iso in nodes:
+        if t not in seen:
+            seen.append(t)
+    count = 0
+    for ticker in seen:
+        try:
+            if affine_dirty(state, ticker, request):
+                count += 1
+        except Exception:
+            pass  # a ticker mid-refetch / unavailable: skip, never break status
+    return count
+
+
 def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
     """Background-job state plus lit / stale node accounting."""
     job = state.calibration_jobs.status()
@@ -81,6 +98,7 @@ def status(state: AppState, fit_mode: str = "mid") -> CalibrationStatus:
         cancelled=job.cancelled,
         litNodes=len(nodes),
         staleNodes=_stale_count(state, nodes, fit_mode),
+        lvStaleTickers=_lv_stale_tickers(state, nodes, fit_mode),
         spotVersion=state.spot_version,
         epoch=state.calib_epoch,
         activity=ActivityInfo(
@@ -111,180 +129,6 @@ def scheduler_status(state: AppState) -> SchedulerStatus:
 
 
 # -------------------------------------------------------------- calibrate
-def _affine_thunk(state: AppState, ticker: str, fit_mode: str):
-    """A work-item thunk that re-calibrates one ticker's LV (affine) surface,
-    re-anchored at the chain spot. Swallows the too-few-quotes case (a ticker
-    with < 2 fittable expiries simply has no LV surface)."""
-    from volfit.api.affine_fit import calibrate_affine_surface
-    from volfit.api.schemas_affine import AffineFitRequest
-
-    def thunk() -> None:
-        state.set_spot_shift(ticker, 0.0)  # re-anchor at the chain's own spot
-        try:
-            with state.activity.activity(
-                "localvol", f"Calibrating {ticker} local-vol surface", "Dupire fit"
-            ):
-                calibrate_affine_surface(state, ticker, AffineFitRequest(fitMode=fit_mode))
-        except ValueError:
-            pass  # < 2 expiries with quotes: no LV surface for this ticker
-
-    return thunk
-
-
-def _independent_ticker_items(
-    state: AppState, ticker: str, isos: list[str], fit_mode: str
-) -> list[tuple[str, str, object]]:
-    """INDEPENDENT (no calendar coupling) per-node items for one ticker that still
-    warm-start each expiry from the previous, shorter-T expiry's freshly-fit LQD
-    params.
-
-    Adjacent maturities have nearly the same smile, so the seed lands trf close to
-    the optimum and cuts its (P+1)-eval Jacobian iterations. The sweep stays
-    deterministic — fixed ascending-T order, every expiry recomputed from scratch
-    each pass — so a node's committed fit is identical regardless of edit history
-    (the single-node Calibrate / undo path is untouched and cold-starts). ``isos``
-    must be ascending-T (``lit_nodes`` is nearest-first)."""
-    ctx: dict = {"prev": None}
-
-    def make(iso: str):
-        def thunk() -> None:
-            record = service.calibrate_node(state, ticker, iso, fit_mode, init=ctx["prev"])
-            ctx["prev"] = record.result.params  # seed the next, longer expiry
-
-        return thunk
-
-    return [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
-
-
-def _symmetric_ticker_items(
-    state: AppState, ticker: str, isos: list[str], fit_mode: str
-) -> list[tuple[str, str, object]]:
-    """Symmetric-solver calibration items for one ticker (enforceCalendar ON,
-    surfaceSolver "symmetric"): one independent phase-A fit+commit item per
-    expiry (progress keeps node granularity) plus a single trailing screen +
-    component-repair item (volfit.api.surface_symmetric.phase_b_repair) that
-    re-commits only the repaired slices."""
-    from volfit.api import surface_symmetric
-
-    ctx = surface_symmetric.new_context()
-    box: dict = {"plan": None}
-
-    def ensure_plan() -> dict:
-        if box["plan"] is None:
-            state.set_spot_shift(ticker, 0.0)  # re-anchor at the chain's own spot
-            want = set(isos)
-            box["plan"] = {
-                iso: prepared
-                for iso, prepared in service.surface_inputs(state, ticker, fit_mode)
-                if iso in want
-            }
-        return box["plan"]
-
-    def make(iso: str):
-        def thunk() -> None:
-            prepared = ensure_plan().get(iso)
-            if prepared is None:
-                return  # expiry left the chain between build and run
-            surface_symmetric.phase_a_slice(
-                state, ticker, iso, prepared, fit_mode, ctx
-            )
-
-        return thunk
-
-    def repair() -> None:
-        surface_symmetric.phase_b_repair(state, ticker, fit_mode, ctx)
-
-    items = [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
-    items.append((f"{ticker} calendar repair", "Parametric", repair))
-    return items
-
-
-def _coupled_ticker_items(
-    state: AppState, ticker: str, isos: list[str], fit_mode: str
-) -> list[tuple[str, str, object]]:
-    """Per-expiry calibration items for one ticker that thread the previous
-    (shorter-T) expiry's slice as a calendar floor (enforceCalendar ON).
-
-    The items stay per-expiry so the progress display keeps node granularity, but
-    they share a context that — on first touch — re-anchors the ticker at its own
-    chain spot and builds the prepared-quote plan, then each item fits + commits
-    its slice (``service.fit_and_commit_slice``) and hands its result to the next,
-    longer expiry. ``isos`` must be ascending-T (``lit_nodes`` is nearest-first).
-
-    Caveat (documented follow-up): a later INDEPENDENT recompute of one node via
-    ``service._compute_fit`` (e.g. autoCalibrate ON + a single input change) has no
-    cross-expiry context, so the calendar coupling only holds until such a refit.
-    Under the default trigger-gated workflow the coupled fit stays frozen/displayed
-    until the next explicit Calibrate.
-    """
-    ctx: dict = {"plan": None, "prev": None, "prev_display": None, "prev_k": None}
-
-    def ensure_plan() -> dict:
-        if ctx["plan"] is None:
-            state.set_spot_shift(ticker, 0.0)  # re-anchor at the chain's own spot
-            want = set(isos)
-            ctx["plan"] = {
-                iso: prepared
-                for iso, prepared in service.surface_inputs(state, ticker, fit_mode)
-                if iso in want
-            }
-        return ctx["plan"]
-
-    def make(iso: str):
-        def thunk() -> None:
-            prepared = ensure_plan().get(iso)
-            if prepared is None:
-                return  # expiry left the chain between build and run
-            record = service.fit_and_commit_slice(
-                state, ticker, iso, prepared, ctx["prev"], True, fit_mode,
-                ctx["prev_display"], ctx["prev_k"],
-            )
-            ctx["prev"] = record.result
-            ctx["prev_display"] = record.display  # overlay calendar floor for next-T
-            ctx["prev_k"] = service.retained_k(state, ticker, iso, prepared)
-
-        return thunk
-
-    return [(f"{ticker} {iso}", "Parametric", make(iso)) for iso in isos]
-
-
-def _parametric_groups(
-    state: AppState, nodes: list[tuple[str, str]], fit_mode: str
-) -> list[tuple[str, list[tuple[str, str, object]]]]:
-    """Per-ticker parametric calibration groups for a set of lit nodes.
-
-    Each group is one ticker's ordered item chain — calendar-coupled when
-    ``enforceCalendar`` is on, else independent-but-warm-started — so groups
-    can run CONCURRENTLY (tickers are independent) while the chain inside a
-    group stays sequential (the warm-start / calendar threading needs the
-    previous, shorter expiry's fresh fit)."""
-    by_ticker: dict[str, list[str]] = {}
-    for t, iso in nodes:  # nodes are nearest-first, so each list is ascending-T
-        by_ticker.setdefault(t, []).append(iso)
-    coupled = state.options().enforceCalendar
-    symmetric = coupled and state.options().surfaceSolver == "symmetric"
-
-    def items(ticker: str, isos: list[str]):
-        if symmetric:
-            return _symmetric_ticker_items(state, ticker, isos, fit_mode)
-        if coupled:
-            return _coupled_ticker_items(state, ticker, isos, fit_mode)
-        return _independent_ticker_items(state, ticker, isos, fit_mode)
-
-    return [(ticker, items(ticker, isos)) for ticker, isos in by_ticker.items()]
-
-
-def _parametric_items(
-    state: AppState, nodes: list[tuple[str, str]], fit_mode: str
-) -> list[tuple[str, str, object]]:
-    """Parametric calibration items for a set of lit nodes, flattened in the
-    historical ticker-then-ascending-T order (the sync ``calibrate_ticker``
-    path and tests; the background job runs the grouped form)."""
-    return [
-        item for _t, items in _parametric_groups(state, nodes, fit_mode) for item in items
-    ]
-
-
 def _ensure_chains(state: AppState, tickers: list[str]) -> None:
     """Calibrate's auto-fetch: load each ticker's chain so its lit nodes resolve.
 
@@ -300,6 +144,32 @@ def _ensure_chains(state: AppState, tickers: list[str]) -> None:
             pass
 
 
+def _start_stages(state: AppState, stages: list[list[Group]]) -> bool:
+    """Pool-wrap and launch calibration stages on the ONE background job.
+
+    Shared launcher for every background Calibrate verb: each group's thunks
+    ship their CPU-heavy fits to the fit process pool (``fit_pool.pooled_thunk``)
+    while the chain inside a group stays sequential, so a multi-ticker Calibrate
+    scales with the configured workers (VOLFIT_CALIB_WORKERS; 1 = the historical
+    serial behaviour, byte-identical fits either way). Prewarm keeps the
+    historical gate: workers spin up only when the FIRST stage has groups.
+    Returns False (without starting) if a job is already running — the global
+    one-job-at-a-time contract holds across all three verbs."""
+    workers = fit_pool.configured_workers()
+
+    def pooled(items):  # background work: the heavy fits are pool-eligible
+        if workers <= 1:
+            return items
+        return [(label, phase, fit_pool.pooled_thunk(t)) for label, phase, t in items]
+
+    wrapped = [
+        [(ticker, pooled(items)) for ticker, items in groups] for groups in stages
+    ]
+    if workers > 1 and wrapped and wrapped[0]:
+        fit_pool.prewarm()  # workers import volfit while the de-Am prep runs
+    return state.calibration_jobs.start_stages(wrapped, workers=workers)
+
+
 def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     """Start a BACKGROUND calibration of every lit node, then (when Local-Vol is
     enabled) each lit ticker's LV (affine) surface. Items carry a coarse ``phase``
@@ -308,46 +178,46 @@ def calibrate_all(state: AppState, fit_mode: str = "mid") -> bool:
     calendar-coupled per ticker (``_coupled_ticker_items``); else they are
     independent per node. False if a job is already running.
 
-    Both stages run their per-ticker groups CONCURRENTLY: each group's thunks
-    ship their CPU-heavy fits — the parametric slice fits AND the ticker's LV
-    (affine) calibration — to the fit process pool (``fit_pool.pooled_thunk``)
-    while the warm-start chain stays sequential inside its group, so a
-    multi-ticker Calibrate scales with the configured workers
-    (VOLFIT_CALIB_WORKERS; 1 = the historical serial behaviour, byte-identical
-    fits either way). The stage barrier is kept: LV starts only after every
-    parametric group finished (its cold-start seed reads the LQD fits)."""
+    The stage barrier is kept: LV starts only after every parametric group
+    finished (its cold-start seed reads the LQD fits). Composes EXACTLY the
+    stage builders of volfit.api.workflow_stages — same order, same gating as
+    the historical single verb (semantics locked by test_api_workflow /
+    test_calibration_workflow / test_gated_workflow)."""
     _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
-    workers = fit_pool.configured_workers()
-
-    def pooled(items):  # background work: the heavy fits are pool-eligible
-        if workers <= 1:
-            return items
-        return [(label, phase, fit_pool.pooled_thunk(t)) for label, phase, t in items]
-
-    groups = [
-        (ticker, pooled(items))
-        for ticker, items in _parametric_groups(state, lit_nodes(state), fit_mode)
-    ]
-    stages: list[list[tuple[str, list]]] = [groups]
+    stages = [workflow_stages.parametric_stage(state, fit_mode)]
     if state.options().localVolEnabled:
-        lv_groups = [
-            (ticker, pooled([(f"{ticker} · LV surface", "LV", _affine_thunk(state, ticker, fit_mode))]))
-            for ticker in _lit_tickers(state)
-        ]
+        lv_groups = workflow_stages.lv_stage(state, fit_mode)
         if lv_groups:
             stages.append(lv_groups)
-    if workers > 1 and groups:
-        fit_pool.prewarm()  # workers import volfit while the de-Am prep runs
-    return state.calibration_jobs.start_stages(stages, workers=workers)
+    return _start_stages(state, stages)
 
 
-def _lit_tickers(state: AppState) -> list[str]:
-    """Active tickers that have at least one lit node (LV calibration targets)."""
-    seen: list[str] = []
-    for t, _ in lit_nodes(state):
-        if t not in seen:
-            seen.append(t)
-    return seen
+def calibrate_parametric_all(state: AppState, fit_mode: str = "mid") -> bool:
+    """Background-calibrate every lit node's PARAMETRIC slice only (V3.5 item 9).
+
+    The fast common loop: identical parametric stage (groups, item order,
+    warm-start / calendar chains) as ``calibrate_all``, with no LV stage — each
+    ticker's LV (affine) pointer is left untouched, so the LV surface goes /
+    stays STALE until an LV calibrate. False if a job is already running."""
+    _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
+    return _start_stages(state, [workflow_stages.parametric_stage(state, fit_mode)])
+
+
+def calibrate_lv_all(state: AppState, fit_mode: str = "mid") -> bool:
+    """Background-calibrate every lit ticker's LV (affine) surface ONLY.
+
+    No parametric stage and no parametric barrier: the LV cold-start
+    ``_parametric_seed`` is best-effort by construction (affine_fit) — with
+    fewer than two warm parametric slices it falls back to the flat seed. By
+    the theta0/theta_ref decoupling the seed changes only the starting point,
+    never the regularization or the converged optimum, so an LV-only fit lands
+    the same surface as a seeded one; ITERATE COUNTS MAY DIFFER vs a run seeded
+    by a just-finished parametric stage (recorded, accepted). Runs regardless
+    of ``localVolEnabled`` — the explicit verb needs no Options round-trip; the
+    toggle keeps gating only the combined ``calibrate_all`` (wire compat) and
+    the Local-Vol workspace tab. False if a job is already running."""
+    _ensure_chains(state, state.active_tickers())  # auto-fetch so lit nodes resolve
+    return _start_stages(state, [workflow_stages.lv_stage(state, fit_mode)])
 
 
 def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int:
@@ -360,7 +230,7 @@ def calibrate_ticker(state: AppState, ticker: str, fit_mode: str = "mid") -> int
     for _, _, thunk in _parametric_items(state, nodes, fit_mode):
         thunk()
     if nodes and state.options().localVolEnabled:
-        _affine_thunk(state, ticker, fit_mode)()  # also (re)build the LV surface
+        workflow_stages._affine_thunk(state, ticker, fit_mode)()  # also (re)build the LV surface
     return len(nodes)
 
 

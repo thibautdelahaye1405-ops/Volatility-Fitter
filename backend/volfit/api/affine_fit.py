@@ -25,6 +25,7 @@ on an actual fit request, never on the smile hot path.
 
 from __future__ import annotations
 
+import os
 import threading
 from dataclasses import replace as dc_replace
 
@@ -34,7 +35,13 @@ from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantil
 from volfit.api import affine_views_ext, fit_pool
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
-from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
+from volfit.api.schemas_affine import (
+    AffineFitRequest,
+    AffineFitResponse,
+    AffineSmile,
+    AffineTraceFrameOut,
+    AffineTraceResponse,
+)
 from volfit.api.state import AppState
 from volfit.calib.fit_task import AffineFitTask
 from volfit.calib.operators import hybrid_tail_deltas
@@ -376,6 +383,68 @@ def last_affine_expiry_diagnostics(state: AppState, ticker: str):
     """Phase-0 per-expiry diagnostics of the ticker's most recent affine fit, or
     None if never fit this session (volfit.api.affine_diag.expiry_diagnostics)."""
     return getattr(state, _EXP_DIAG_ATTR, {}).get(ticker)
+
+
+#: AppState side-dict (ticker -> AffineTraceResponse) — V3.5 item 13. The replay
+#: frames ride the AffineCalibration result out of the fit-pool worker and are
+#: stored here (the _record_expiry_diagnostics pattern): OFF the main response
+#: (payload stays lean) and served read-only by GET /fit/affine/{ticker}/trace.
+_TRACE_ATTR = "_affine_last_trace"
+
+#: Replay frame budget (accepted steps are uniformly subsampled beyond it).
+_TRACE_CAP = 24
+
+
+def _trace_every() -> int | None:
+    """Production trace cadence: every accepted step (V3.5 item 13).
+
+    Enabled ONLY on this API path — the perf rails call ``calibrate_affine``
+    directly with defaults, i.e. tracing OFF and byte-identical. Overhead of
+    ``trace_every=1`` on the default 143-vtx LV fit measured WITHIN TIMING
+    NOISE (interleaved best-of-8: -1.1%%..+1.6%%; structurally one theta copy +
+    one rms slice per accepted eval), i.e. <= 1%%, so it defaults ON here.
+    ``VOLFIT_LV_TRACE=0`` is the kill switch."""
+    return None if os.environ.get("VOLFIT_LV_TRACE") == "0" else 1
+
+
+def _record_trace(state: AppState, ticker: str, payload: AffineTraceResponse) -> None:
+    _side_dict(state, _TRACE_ATTR)[ticker] = payload
+
+
+def last_affine_trace(state: AppState, ticker: str) -> AffineTraceResponse | None:
+    """Replay payload of the ticker's most recent TRACED affine fit, or None if
+    no traced fit has completed this session (404 on the endpoint)."""
+    return getattr(state, _TRACE_ATTR, {}).get(ticker)
+
+
+def _trace_payload(
+    ticker: str, t_nodes: np.ndarray, x_nodes: np.ndarray, rows, trace
+) -> AffineTraceResponse:
+    """Wire form of a solver trace: sqrt(theta) grids + per-REAL-expiry rms.
+
+    The solver's ``expiry_rms`` covers every option-quote tau, including the
+    hidden virtual-front sibling (t1/2, objective-only); keep only the columns
+    matching the fitted rows' taus so the bars map 1:1 to displayed expiries."""
+    real = {round(float(t), 12) for _, t, _, _, _, _ in rows}
+    cols = [i for i, t in enumerate(trace.expiries) if round(float(t), 12) in real]
+    frames = [
+        AffineTraceFrameOut(
+            nEvals=f.n_evals,
+            cost=float(f.cost),
+            localVol=[
+                [float(v) for v in row] for row in np.sqrt(np.maximum(f.theta, 0.0))
+            ],
+            expiryRms=[float(f.expiry_rms[i]) for i in cols],
+        )
+        for f in trace.frames
+    ]
+    return AffineTraceResponse(
+        ticker=ticker,
+        tNodes=[float(v) for v in t_nodes],
+        xNodes=[float(v) for v in x_nodes],
+        expiries=[float(trace.expiries[i]) for i in cols],
+        frames=frames,
+    )
 
 
 def _pick_spread(values: np.ndarray, n: int) -> np.ndarray:
@@ -1244,8 +1313,14 @@ def _fit(
         engine=engine,  # Stage 6′: Numba vectorized-Thomas march when available
         gn=gn,  # Stage 5 (revisited): matrix-free GN (opt-in, default trf)
         gn_lsmr_tol=gn_lsmr_tol,
+        # V3.5 item 13: accepted-step replay tracing, PRODUCTION path only (the
+        # perf rails call calibrate_affine directly with defaults = trace OFF).
+        trace_every=_trace_every(),
+        trace_cap=_TRACE_CAP,
     )))
     _record_diagnostics(state, ticker, cal.diagnostics)
+    if cal.trace is not None:  # replay side channel (never on the wire response)
+        _record_trace(state, ticker, _trace_payload(ticker, t_nodes, x_nodes, rows, cal.trace))
 
     # R0.2 (roadmap v2): the HONEST fit metric — one value-only reprice of the
     # calibrated surface on a converged operator (dt/4, dx/2). Computed after

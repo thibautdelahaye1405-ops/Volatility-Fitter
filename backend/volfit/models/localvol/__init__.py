@@ -34,6 +34,7 @@ from volfit.models.localvol.affine_march import (
     numba_available,
     warmup,
 )
+from volfit.models.localvol.affine_trace import AffineTrace, AffineTraceFrame
 from volfit.models.localvol.dupire import (
     ExtractionResult,
     dupire_local_variance,
@@ -56,6 +57,8 @@ __all__ = [
     "AffineCalibration",
     "AffineFitDiagnostics",
     "AffinePDESolution",
+    "AffineTrace",
+    "AffineTraceFrame",
     "BasketQuote",
     "AffineVarianceSurface",
     "DupireSteps",

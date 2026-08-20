@@ -39,8 +39,8 @@ export default function LocalVolSection({
     <>
       <h3 className={sectionTitle}>Local-Vol surface</h3>
       <Toggle
-        label="Local-Vol calibration"
-        hint="On: Calibrate also fits each ticker's Local-Vol surface (slow); the Local Vol workspace is available. Off: skip LV for fast test cycles and grey out the workspace."
+        label="Local-Vol workspace"
+        hint="On: the Local Vol workspace (tab) is available. LV surfaces are fitted from the Calibrate ▾ menu ('Parametric + LV' / 'Local-Vol only'); the combined server action still honours this toggle for wire compatibility. Off: grey out the workspace."
         checked={draft.localVolEnabled} disabled={!live}
         onChange={(v) => patch({ localVolEnabled: v })}
       />

@@ -53,6 +53,8 @@ const PENDING_LABEL: Record<WorkflowAction, string> = {
   spots: "Fetching spots…",
   options: "Fetching option quotes…",
   calibrate: "Calibrating…",
+  calibrateParametric: "Calibrating parametric…",
+  calibrateLv: "Calibrating local-vol…",
   savePriors: "Saving priors…",
   fetchPriors: "Fetching priors…",
 };
@@ -118,7 +120,12 @@ export default function StatusBar() {
     gauge = (calib?.total ?? 0) > 0 ? "progress" : "indeterminate";
   } else if (pending) {
     message = PENDING_LABEL[pending];
-    stage = pending === "calibrate" ? "calibrate" : "fetch";
+    stage =
+      pending === "calibrateLv"
+        ? "localvol"
+        : pending === "calibrate" || pending === "calibrateParametric"
+          ? "calibrate"
+          : "fetch";
     gauge = "indeterminate";
   }
 
