@@ -1,0 +1,186 @@
+\section{Proofs and asymptotic calculations}
+\label{app:proofs}
+
+\subsection{The volatility-space density factor}
+\label{app:durrlemanproof}
+
+Let $c(k)=\Black(k,w(k))$.  The identity
+$e^k\phin(d_-)=\phin(d_+)$ gives
+\[
+\partial_k\Black=-e^k\PhiN(d_-),
+\qquad
+\partial_w\Black=\frac{\phin(d_+)}{2\sqrt w}.
+\]
+The required second partial derivatives are
+\begin{align*}
+\partial_{kk}\Black
+&=-e^k\PhiN(d_-)+\frac{\phin(d_+)}{\sqrt w},\\
+\partial_{kw}\Black
+&=\frac{d_+\phin(d_+)}{2w},\\
+\partial_{ww}\Black
+&=-\frac{d_+\phin(d_+)}{2\sqrt w}\,\partial_wd_+
+-\frac{\phin(d_+)}{4w^{3/2}},
+\qquad
+\partial_wd_+=\frac{k}{2w^{3/2}}+\frac1{4\sqrt w}.
+\end{align*}
+Twice differentiating $c(k)$ and subtracting the first derivative gives
+\[
+c''-c'=(\partial_{kk}\Black-\partial_k\Black)
++(2\partial_{kw}\Black-\partial_w\Black)w'
++\partial_{ww}\Black(w')^2+\partial_w\Black w''.
+\]
+Now
+\[
+2\partial_{kw}\Black-\partial_w\Black
+=-\frac{k\phin(d_+)}{w^{3/2}},
+\qquad
+d_+\partial_wd_+=-\frac{k^2}{2w^2}+\frac18.
+\]
+Factoring $\phin(d_+)/\sqrt w$ yields
+\[
+c''-c'=\frac{\phin(d_+)}{\sqrt w}
+\left[
+\left(1-\frac{kw'}{2w}\right)^2
+-\frac{(w')^2}{4}\left(\frac1w+\frac14\right)
++\frac{w''}{2}\right].
+\]
+Finally $f_X(k)=e^{-k}(c''-c')$ and
+$e^{-k}\phin(d_+)=\phin(d_-)$, which gives \eqref{eq:durrleman}.
+
+\subsection{The ATM identities}
+\label{app:atmproof}
+
+At $(k,w)=(0,w_0)$, with $d=\sqrt{w_0}/2$,
+\begin{equation}
+\begin{aligned}
+\partial_k\Black&=-(1-\PhiN(d)),
+&\partial_w\Black&=\frac{\phin(d)}{2\sqrt{w_0}},\\
+\partial_{kk}\Black&=-(1-\PhiN(d))
++\frac{\phin(d)}{\sqrt{w_0}},
+&\partial_{kw}\Black&=\frac{\phin(d)}{4\sqrt{w_0}},\\
+\partial_{ww}\Black&=-\frac{\phin(d)}{4w_0^{3/2}}
+-\frac{\phin(d)}{16\sqrt{w_0}}.
+\end{aligned}
+\label{eq:blackpartials}
+\end{equation}
+From \eqref{eq:cprime}--\eqref{eq:bl_division},
+\[
+c'(0)=-(1-u_*),\qquad c''(0)=f_*-(1-u_*).
+\]
+One derivative of $\Black(k,w(k))=c(k)$ gives
+\[
+w'(0)=
+\frac{-(1-u_*)+(1-\PhiN(d))}{\phin(d)/(2\sqrt{w_0})}
+=\frac{2\sqrt{w_0}}{\phin(d)}\Delta.
+\]
+Two derivatives give
+\[
+\partial_{kk}\Black+2\partial_{kw}\Black w'
++\partial_{ww}\Black(w')^2+\partial_w\Black w''=c''.
+\]
+Substitution of \eqref{eq:blackpartials} and the first-derivative formula
+reduces this to \eqref{eq:atm_wpp}.  Finally,
+\[
+\sigma'=\frac{w'}{2\sqrt{\tau w}},
+\qquad
+\sigma''=\frac{w''}{2\sqrt{\tau w}}
+-\frac{(w')^2}{4\sqrt\tau\,w^{3/2}},
+\]
+which gives \eqref{eq:atm_sigma1}--\eqref{eq:atm_sigma}.
+
+\subsection{Sublinear wing asymptotics}
+\label{app:sublinearproof}
+
+Consider the right wing with $0<\alpha_+\le1/2$ and set
+\[
+p=\frac1{1-\alpha_+},
+\qquad
+A=\left(\frac{1-\alpha_+}{\lambda_+}\right)^p.
+\]
+Proposition \ref{prop:tails} gives
+$-\log\Prob(X>x)\sim Ax^p$.  The call has the tail-integral form
+\[
+c(k)=\int_k^\infty e^x\Prob(X>x)\,\dd x.
+\]
+Since $p>1$, endpoint Laplace bounds give
+\begin{equation}
+-\log c(k)\sim Ak^p.
+\label{eq:calllogtail}
+\end{equation}
+For example, for every $\varepsilon>0$ and all large $x$,
+$e^{-(A+\varepsilon)x^p}\le\Prob(X>x)
+\le e^{-(A-\varepsilon)x^p}$; integrating the two bounds and then sending
+$\varepsilon$ to zero proves \eqref{eq:calllogtail}.
+
+All positive moments exist, so Lee's formula gives $w(k)/k\to0$.  Mills'
+ratio in the Black formula then gives
+\begin{equation}
+-\log\Black(k,w(k))
+\sim\frac{k^2}{2w(k)}.
+\label{eq:blacklogtail}
+\end{equation}
+Equating \eqref{eq:calllogtail} and \eqref{eq:blacklogtail} yields
+\[
+w(k)\sim\frac1{2A}k^{2-p},
+\]
+which is \eqref{eq:rightsublinearwing}.  The left proof uses the put and is
+identical.
+
+\subsection{Approximation at fixed tail class}
+\label{app:universalproof}
+
+Let $g^*$ satisfy \cref{prop:universal}.  By Weierstrass' theorem there are
+polynomials $g_N$ with
+$\varepsilon_N=\lVert g_N-g^*\rVert_\infty\to0$.  The endpoint chord and
+$P_2,\ldots,P_N$ span every polynomial of degree at most $N$.
+
+The speed ratio is bounded uniformly on the whole line:
+\[
+e^{-\varepsilon_N}
+\le\frac{x_N'(z)}{x^{*\prime}(z)}
+\le e^{\varepsilon_N}.
+\]
+Consequently $\bar x_N\to\bar x^*$ uniformly on every compact $z$ interval.
+It remains to control the tails and the martingale shifts.
+
+If $\alpha_+>0$, boundedness of the $g_N$ gives constants $C_1,C_2$ such that
+\[
+\bar x_N(z)\le C_1+C_2z^{1-\alpha_+},\qquad z\ge0.
+\]
+Hence $e^{\bar x_N(z)}\rho(z)$ is dominated by an integrable multiple of
+$\exp(C_2z^{1-\alpha_+}-z)$.  If $\alpha_+=0$, the strict endpoint margin
+$e^{g^*(1)}<1$ supplies $\bar\lambda<1$ and a common bound
+$e^{\bar x_N(z)}\rho(z)\le C e^{-(1-\bar\lambda)z}$ for large $z$.
+On the left, $\bar x_N(z)\le0$ and $\rho(z)\le e^z$.  Dominated convergence
+therefore gives convergence of the normalizers and shifts.
+
+The quantiles converge at every fixed rank.  The same envelopes provide a
+common moment of order strictly larger than one, so the gross returns are
+uniformly integrable.  Under the common uniform-rank coupling,
+\[
+\sup_k|c_N(k)-c^*(k)|
+\le\E|e^{Q_N(U)}-e^{Q^*(U)}|\longrightarrow0.
+\]
+This proves uniform convergence of call prices.
+
+\subsection{Tail restrictions imposed by calendar order}
+\label{app:calendartails}
+
+On the right, \eqref{eq:righttransporttail} and endpoint integration give
+\[
+\log G(z)=-z+
+\frac{\lambda_+}{1-\alpha_+}z^{1-\alpha_+}+o(z^{1-\alpha_+}).
+\]
+If a farther expiry has a larger $\alpha_+$, its positive correction has a
+smaller power and its ledger is eventually below the nearer ledger.  If the
+exponents are equal, the larger $\lambda_+$ gives the larger eventual ledger.
+The left lower-share ledger satisfies
+\[
+\log(1-G(z))=z-
+\frac{\lambda_-}{1-\alpha_-}|z|^{1-\alpha_-}
++o(|z|^{1-\alpha_-}),
+\qquad z\to-\infty.
+\]
+The same comparison gives the left conditions stated after
+\eqref{eq:tailscalecalendar}.  Equal exponents and equal endpoint coefficients
+leave the additive asymptotic constants to decide the order.

@@ -1,0 +1,142 @@
+\section{What the model reveals in practice}
+\label{sec:examples}
+
+The examples answer three practical questions: how local skew arises from the
+law, what an endpoint coefficient says about unquoted risk, and why a close
+vanilla fit does not identify a fine-grained density.  They use frozen SPY and
+NVDA option chains from the 2026-08-03 US session, with eight expiries per
+underlier.  The fits use the exponential-tail subclass
+$\alpha_-=\alpha_+=0$, order $N=16$ subject to
+\eqref{eq:orderguard}, haircut bands, and ridge
+$\omega_{\rm reg}=10^{-6}$ with $\nu=1$.  The examples therefore test the
+original LQD subclass; the generalized tail exponent is evaluated by separate
+scenario fits.
+
+\subsection{A liquid index: skew is a digital imbalance}
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.94\textwidth}{fig_spy_node.pdf}
+\caption{The SPY December 2026 slice.  Left: quoted volatilities and the
+fitted smile.  Center: signed residuals in volatility basis points.  Right:
+the fitted density and an ATM-matched normal density.  The left-shifted mass
+and richer model digital produce the negative equity skew.}
+\label{fig:spy_node}
+\end{figure}
+
+The slice contains \MacSpyDecNQuotes\ quotes and fits them to
+\MacSpyDecRmsBp\ volatility basis points rms.  The exact ATM formulas give
+volatility \MacSpyDecAtmVolPct\%, skew $\MacSpyDecSkew$, and curvature
+$\MacSpyDecCurv$.  The forward rank is \MacSpyDecForwardRankPct\%, below the
+matched Black rank, so $\Delta<0$ and \eqref{eq:atm_sigma1} gives a negative
+skew.  The log-contract variance corresponds to
+\MacSpyDecVarSwapPct\% annualized volatility.
+
+For the listed $\MacTicketStrike$ call, $k=\MacTicketK$ and the strike rank is
+\MacTicketRankPct\%.  The asset-share and cash entries are
+$\MacTicketShare$ and $\MacTicketCash$, hence
+\[
+c(\MacTicketK)=\MacTicketShare-\MacTicketCash=\MacTicketPrice.
+\]
+This is \MacTicketDollarPrice\ per share and corresponds to
+\MacTicketIvPct\% implied volatility.
+
+The endpoint coefficients of the exponential subclass are
+$\lambda_-=\MacSpyLamL$ and $\lambda_+=\MacSpyLamR$.  They imply Lee slopes
+$\beta_L=\MacSpyBetaL$ and $\beta_R=\MacSpyBetaR$.  These are asymptotic
+properties of the fitted continuation, not measurements at the outer quoted
+strikes.
+
+\subsection{A single name: vanilla fit does not settle tail policy}
+
+The long NVDA slice has endpoint coefficients
+$\lambda_-=\MacNvdaLamL$ and $\lambda_+=\MacNvdaLamR$.  Its left coefficient
+exceeds one.  This is admissible because negative log-returns do not threaten
+the forward; it implies that $\E[Y^{-1}]$ is infinite in the exponential-tail
+subclass.  A scenario with $\alpha_->0$ keeps the fitted central law but makes
+all inverse moments finite.  Prices of inverse-sensitive or crash-tail
+positions distinguish the two policies more directly than vanilla fit error.
+
+On the shortest NVDA expiry, \MacGuardQuoteCountZeroDte\ retained quotes give
+$N_{\rm eff}=\MacGuardEffOrderZeroDte$.  The order guard prevents a sparse
+strip from assigning an independent high-frequency shape mode to each quote.
+
+\subsection{Basis order: the smile may agree while the density differs}
+
+The synthetic benchmark is a martingale-normalized mixture of two lognormal
+components.  Its density is bimodal, while its implied-volatility curve has
+only a mild shoulder.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.9\textwidth}{fig_order_control.pdf}
+\caption{The same bimodal target fitted at orders 6 and 16.  Left: the two
+implied-volatility curves nearly coincide over the quoted range.  Right: the
+densities differ; the lower-order model shifts the modes and fills part of the
+trough.  Vanilla residuals alone do not identify fine density structure.}
+\label{fig:order_control}
+\end{figure}
+
+At order 16 the $L^1$ density error is \MacHumpLOneNSixteen; at order 6 it is
+\MacHumpLOneNSix.  Yet the implied-volatility curves differ by at most
+\MacHumpIvAgreeBp\ volatility basis points on the comparison grid.  Basis
+order should therefore be selected for the downstream use.  Broad vanilla
+prices tolerate a lower order; digitals and narrow butterflies require a
+finer rank representation and stronger identification checks.
+
+\subsection{Relation to other smile models}
+
+Breeden--Litzenberger identify the call curve with a density
+\citep{BreedenLitzenberger1978}.  Quantile modeling supplies the rank
+coordinate \citep{Parzen1979,Gilchrist2000}; Petersen--M\"uller use a
+log-quantile-density transform for density-valued data
+\citep{PetersenMuller2016}; the metalog family is a related direct quantile
+expansion \citep{Keelin2016}.  Lee and Benaim--Friz connect moments to
+implied-variance wings \citep{Lee2004,BenaimFriz2009}.
+
+SVI and SSVI specify total variance directly and characterize admissible
+parameter regions \citep{Gatheral2004,GatheralJacquier2014}.  Constrained
+price smoothers work directly with convex call curves \citep{Fengler2009}.
+LQD instead makes the law primary.  Its main computational object is the
+pair $(x,G)$: the transport supplies density and the ledger supplies prices
+and calendar order.
+
+\subsection{What follows, what is fitted, and what is chosen}
+\label{sec:limits}
+
+\begin{table}[htbp]
+\centering\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.30\textwidth}
+>{\raggedright\arraybackslash}p{0.31\textwidth}
+>{\raggedright\arraybackslash}p{0.31\textwidth}@{}}
+\toprule
+\textbf{Derived} & \textbf{Fitted and checked} & \textbf{Chosen}\\
+\midrule
+Positive density, unit mass, unit forward, decreasing convex calls, and
+butterfly-free prices & Quote residuals, interpolation monotonicity,
+Durrleman margin, and grid convergence & Basis order, ridge, vega floor,
+quote-band rule, and numerical tolerances\\[4pt]
+Tail rate \eqref{eq:righttailrate}, moment domain \eqref{eq:strip}, Lee slopes
+or sublinear wing law & Tail-quadrature accuracy, operational tail guard, and
+scenario sensitivity beyond quoted ranks & Tail exponents $\alpha_\pm$ and
+any additional endpoint-moment limits\\[4pt]
+Prices, digitals, density, ATM handles, log-contract variance, and analytic
+Jacobian from $(x,G)$ & Multi-start stability, active calendar constraints,
+and the full-line quantile-root certificate & Common or monotone tail policy
+across expiry and the permitted quote-band relaxation\\[4pt]
+Full-line call order, ledger order, and noncrossing total variance are
+equivalent & The accepted maturity stack satisfies the order to its stated
+normalized-price tolerance & Dynamics between the fitted marginal laws are
+not selected by the surface\\
+\bottomrule
+\end{tabular}
+\caption{The LQD operating contract.  The first column follows from the
+model; the second is measured on the implementation; the third is supplied
+before calibration.}
+\label{tab:contract}
+\end{table}
+
+A fitted surface is published with its quote residuals, effective orders,
+quoted-rank spans, tail exponents and coefficients, moment limits, numerical
+margins, and minimum adjacent ledger gap.  These quantities are sufficient to
+reconstruct how the surface is fitted, extrapolated, and certified.

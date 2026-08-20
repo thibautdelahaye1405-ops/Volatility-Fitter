@@ -1,0 +1,253 @@
+\section{Pricing from one cumulative ledger}
+\label{sec:ledger}
+
+Once the transport $x$ is known, pricing does not require a new integration
+for every strike.  One cumulative tail integral contains nearly every
+quantity required by a trader or a fitter.
+
+\subsection{The upper-share ledger}
+
+\begin{definition}[Upper-share ledger]
+\label{def:ledger}
+For an admissible slice define
+\begin{equation}
+G(z)=\int_z^\infty e^{x(t)}\rho(t)\,\dd t
+=\E[Y\1\{Z>z\}].
+\label{eq:ledger}
+\end{equation}
+\end{definition}
+
+The ordinary upper-tail probability is $1-\Lambda(z)$.  The ledger $G(z)$
+weights the same outcomes by the terminal gross return $Y=e^X$.  It is the
+fraction of the unit forward contributed by scenarios above rank
+$\Lambda(z)$.  It satisfies
+\begin{equation}
+G(-\infty)=1,\qquad G(+\infty)=0,
+\qquad G'(z)=-e^{x(z)}\rho(z)<0.
+\label{eq:ledgerprops}
+\end{equation}
+For a strike $k$, let $z_k$ be the unique point at which the transported
+log-return reaches the strike, $x(z_k)=k$, and set
+$u_k=\Lambda(z_k)=F_X(k)$.  Then $1-u_k$ is the exercise probability.
+
+\begin{proposition}[Call, put, digital, and density]
+\label{prop:pricing}
+For every admissible slice,
+\begin{align}
+c(k)&=G(z_k)-e^k(1-u_k),
+\label{eq:call}\\
+P(k)&=e^ku_k-(1-G(z_k)),
+\label{eq:put}\\
+c'(k)&=-e^k(1-u_k),
+\label{eq:cprime}\\
+c''(k)&=-e^k(1-u_k)+e^k\frac{\rho(z_k)}{x'(z_k)},
+\label{eq:csecond}\\
+f_X(k)&=e^{-k}\{c''(k)-c'(k)\}
+=\frac{\rho(z_k)}{x'(z_k)}.
+\label{eq:bl_division}
+\end{align}
+\end{proposition}
+
+\begin{proof}
+The call is exercised on $Z>z_k$.  Splitting its payoff into the received
+asset and the paid strike gives
+\[
+c(k)=\E[Y\1\{Z>z_k\}]-e^k\Prob(Z>z_k)
+=G(z_k)-e^k(1-u_k).
+\]
+The put follows on the complementary event.  When the call is differentiated,
+the moving-root term is
+\[
+\{G'(z_k)+e^k\rho(z_k)\}\frac{\dd z_k}{\dd k}=0
+\]
+because $G'(z_k)=-e^{x(z_k)}\rho(z_k)=-e^k\rho(z_k)$.  This gives
+\eqref{eq:cprime}.  Since $\dd z_k/\dd k=1/x'(z_k)$, one more derivative
+gives \eqref{eq:csecond} and \eqref{eq:bl_division}.
+\end{proof}
+
+The pricing rule is worth retaining in words:
+\begin{equation}
+\boxed{\quad\text{call value}=\text{upper asset share}
+-\text{strike}\times\text{exercise probability}.\quad}
+\label{eq:pricingwords}
+\end{equation}
+The digital is $1-u_k$.  The density is one division of two quantities
+already present in the transport.  Neither is obtained by differencing noisy
+option prices.
+
+More generally, any integrable terminal payoff is a rank integral:
+\begin{equation}
+\E[H(Y)]=\int_{-\infty}^{\infty}H(e^{x(z)})\rho(z)\,\dd z.
+\label{eq:generalpayoff}
+\end{equation}
+In particular, the log-contract variance is
+\begin{equation}
+w_{\rm vs}=-2\E[\log Y]
+=-2\int_{-\infty}^{\infty}x(z)\rho(z)\,\dd z.
+\label{eq:varswap}
+\end{equation}
+This is the distribution-side form of the usual option-strip replication
+\citep{Neuberger1994,DemeterfiDermanKamalZou1999}.  Under continuous paths and
+continuous monitoring it is the fair variance-swap strike.  Jumps and discrete
+sampling require their standard corrections.
+
+\subsection{A complete option calculation}
+
+In the constant-speed reference slice, choose $s=\MacToyScale$, which gives a
+six-month ATM volatility of twenty percent after exact repricing.  The shift
+is $m=\MacToyMu$.  For $k=0.10$, the strike rank is
+$u_k=\MacToyOtmPercentile\%$.  The ledger and cash legs are
+\[
+G(z_k)=\MacToyShareOtm,
+\qquad e^k(1-u_k)=\MacToyCashOtm.
+\]
+The normalized call is therefore
+\[
+c(0.10)=\MacToyShareOtm-\MacToyCashOtm=\MacToyCallOtm,
+\]
+which corresponds to \MacToyIvOtmPct\% implied volatility.  Every market
+option uses the same three operations: locate the strike rank, read the
+ledger, and subtract the strike cash leg.
+
+\subsection{Reading level, skew, and curvature at the forward}
+
+This subsection is not needed for pricing.  It explains exactly which local
+features of the fitted law generate the three familiar at-the-money (ATM)
+smile statistics.  Let $z_*$ solve $x(z_*)=0$ and define
+\begin{equation}
+c_0=G(z_*)-(1-u_*),\qquad
+u_*=\Lambda(z_*),\qquad
+f_*=\frac{\rho(z_*)}{x'(z_*)}.
+\label{eq:atm_inputs}
+\end{equation}
+The ATM Black variance and half-standard-deviation are
+\[
+w_0=4\left[\PhiN^{-1}\left(\frac{1+c_0}{2}\right)\right]^2,
+\qquad d=\frac{\sqrt{w_0}}2.
+\]
+Define the digital gap
+\begin{equation}
+\Delta=u_*-\PhiN(d).
+\label{eq:digitalgap}
+\end{equation}
+
+\begin{proposition}[Exact ATM handles]
+\label{prop:atm}
+The total-variance smile $\Black(k,w(k))=c(k)$ satisfies
+\begin{align}
+w(0)&=w_0,
+&w'(0)&=\frac{2\sqrt{w_0}}{\phin(d)}\Delta,
+\label{eq:atm_w}\\
+w''(0)&=\frac{2\sqrt{w_0}}{\phin(d)}f_*-2
++\left(\frac1{2w_0}+\frac18\right)w'(0)^2.
+\label{eq:atm_wpp}
+\end{align}
+In volatility units, $\sigma(k)=\sqrt{w(k)/\tau}$,
+\begin{align}
+\sigma(0)&=\sqrt{w_0/\tau},
+&\sigma'(0)&=\frac{\Delta}{\phin(d)\sqrt\tau},
+\label{eq:atm_sigma1}\\
+\sigma''(0)&=\frac1{\sqrt\tau}
+\left[\frac{f_*}{\phin(d)}-\frac1{\sqrt{w_0}}
++\frac{\sqrt{w_0}}4\left(\frac{\Delta}{\phin(d)}\right)^2\right].
+\label{eq:atm_sigma}
+\end{align}
+\end{proposition}
+
+The derivation is in \cref{app:atmproof}.  The interpretation is simpler than
+the formulas:
+\begin{itemize}
+\item ATM option value fixes the volatility level;
+\item the digital gap $\Delta$ fixes the skew;
+\item density at the forward supplies the additional information needed for
+curvature.
+\end{itemize}
+For a matched Black law, $u_*=\PhiN(d)$ and the skew is zero.  A negative
+equity skew means $u_*<\PhiN(d)$: the model assigns more probability above
+the forward than the flat-Black law with the same ATM call value.
+
+\subsection{The analytic calibration Jacobian}
+\label{sec:jacobian}
+
+The call depends on a parameter in two ways: the ledger changes, and the rank
+at which the strike is reached moves.  These effects appear to require a root
+sensitivity for every strike.  In fact the moving-root term cancels exactly.
+
+\begin{theorem}[Envelope cancellation]
+\label{thm:envelope}
+For every coordinate $\theta_j$,
+\begin{equation}
+\frac{\partial c(k;\theta)}{\partial\theta_j}
+=\left.\frac{\partial G(z;\theta)}{\partial\theta_j}
+\right|_{z=z_k(\theta)}.
+\label{eq:envelope}
+\end{equation}
+\end{theorem}
+
+\begin{proof}
+Differentiate \eqref{eq:call}.  The coefficient of
+$\partial z_k/\partial\theta_j$ is
+$G'(z_k)+e^k\rho(z_k)$, which is zero by \eqref{eq:ledgerprops} and
+$x(z_k)=k$.
+\end{proof}
+
+Let $b_j(u)=\partial g(u)/\partial\theta_j$ and
+$\bar x=x-m$.  For fixed tail exponents,
+\begin{align}
+\frac{\partial\bar x(z)}{\partial\theta_j}
+&=\int_0^z x'(t)b_j(\Lambda(t))\,\dd t,
+\label{eq:pass1}\\
+\frac{\partial m}{\partial\theta_j}
+&=-\int_{-\infty}^{\infty}e^{x(z)}
+\frac{\partial\bar x(z)}{\partial\theta_j}\rho(z)\,\dd z,
+\label{eq:pass2}\\
+\frac{\partial G(z)}{\partial\theta_j}
+&=\int_z^\infty e^{x(t)}
+\left(\frac{\partial m}{\partial\theta_j}
++\frac{\partial\bar x(t)}{\partial\theta_j}\right)
+\rho(t)\,\dd t.
+\label{eq:pass3}
+\end{align}
+These are three cumulative passes: differentiate transport, differentiate the
+normalizing shift, then integrate the ledger sensitivity backwards.  The
+denominator in the derivative of $m$ is one because the accepted slice is
+already martingale-normalized.  In raw coordinates,
+\[
+b_L(u)=1-u,\qquad b_R(u)=u,\qquad
+b_{a_n}(u)=P_n(1-2u).
+\]
+The same arrays supply the variance-swap sensitivity:
+\begin{equation}
+\frac{\partial w_{\rm vs}}{\partial\theta_j}
+=-2\int_{-\infty}^{\infty}
+\left(\frac{\partial m}{\partial\theta_j}
++\frac{\partial\bar x(z)}{\partial\theta_j}\right)
+\rho(z)\,\dd z.
+\label{eq:varswaprow}
+\end{equation}
+
+If a tail exponent is estimated, it adds the columns
+\begin{equation}
+b_{\alpha_-}(u)=-\log\ell_-(u),
+\qquad b_{\alpha_+}(u)=-\log\ell_+(u)
+\label{eq:alphacolumns}
+\end{equation}
+to the derivative of $\log x'$.  These columns grow in the remote ranks and
+are weakly identified by a finite strike strip.  The reference policy fixes
+$\alpha_\pm$ and reports scenario fits instead.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.92\textwidth}{fig_jacobian.pdf}
+\caption{Analytic price sensitivities for the fitted SPY December 2026 slice.
+Left: one normalized sensitivity curve per parameter.  Right: disagreement
+with an independent central difference.  The comparison includes transport,
+normalization, ledger integration, root finding, and interpolation.}
+\label{fig:jacobian}
+\end{figure}
+
+For $P=N+1$ body and endpoint parameters and $n_{\rm grid}$ nodes, the entire
+sensitivity pass costs $O(Pn_{\rm grid})$.  Its cost is essentially independent
+of the number of quoted strikes.  This is the practical value of the envelope
+cancellation: no slice rebuild and no repeated strike-root solve is needed
+for each finite-difference column.

@@ -1,0 +1,268 @@
+\section{What the construction guarantees, and what the tails choose}
+\label{sec:validity}
+
+The construction separates properties that are often mixed together in a
+smile fit.  Positive density is automatic for every finite coefficient
+vector.  A finite forward imposes one exact restriction on an exponential
+right tail.  The two tail exponents are modeling choices: they decide the
+moment domain and the continuation of the smile beyond observable strikes.
+
+\subsection{One-expiry no-arbitrage}
+
+\begin{proposition}[Validity of one slice]
+\label{prop:noarb}
+Let the parameters satisfy \eqref{eq:martcondition}, and choose the shift of
+\cref{prop:shift}.  Then:
+\begin{enumerate}[label=(\roman*)]
+\item $X$ has a strictly positive continuous density on $\R$;
+$Y=e^X$ has a strictly positive density on $(0,\infty)$ and mean one;
+\item the call is strictly decreasing and strictly convex in normalized
+strike $y$, obeys the bounds in \cref{def:slice}, and satisfies put--call
+parity;
+\item every nondegenerate finite-width butterfly has positive price;
+\item the implied-variance curve satisfies $g_{\rm D}(k)>0$ at every finite
+strike.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+Equation \eqref{eq:density} gives a positive continuous density and
+\cref{prop:shift} gives unit mean.  In rank coordinates,
+\[
+c(y)=\int_0^1(e^{Q(u)}-y)^+\,\dd u.
+\]
+Each integrand is decreasing and convex in $y$.  Differentiation gives
+$c'(y)=-\Prob(Y>y)$ and $c''(y)=f_Y(y)>0$.  Jensen's inequality and
+dominated convergence give the boundary conditions.  The butterfly and
+parity statements follow.  Finally, \eqref{eq:durrleman} expresses the
+positive density as a positive Black factor times $g_{\rm D}$.
+\end{proof}
+
+This is a statement about the entire continuum of strikes, not merely the
+calibration grid.  The numerical representation must preserve the same
+geometry; \cref{sec:certificates} gives the corresponding checks.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{0.92\textwidth}{fig_butterfly.pdf}
+\caption{One-slice validity on the fitted SPY December 2026 law.  Left: the
+call curve is convex in normalized strike.  Right: symmetric butterfly prices,
+divided by squared half-width, converge to the density.  The law supplies the
+convexity before calibration begins.}
+\label{fig:butterfly}
+\end{figure}
+
+\subsection{What the tail exponents mean}
+\label{sec:tails}
+
+The log-odds coordinate has a useful probabilistic meaning in the right tail:
+$\Prob(Z>z)\sim e^{-z}$.  Hence $z$ is asymptotically the negative logarithm
+of tail probability.  If log-return grows linearly with $z$, its tail is
+exponential.  If it grows like $\sqrt z$, its tail has Gaussian rate.  The
+exponent $\alpha$ moves continuously between these two growth laws.
+
+At the right endpoint, $1-\Lambda(z)\sim e^{-z}$,
+$\ell_+(\Lambda(z))=z+1+o(1)$, and $\ell_-(\Lambda(z))=1+o(1)$.
+The left endpoint is symmetric.  Integrating \eqref{eq:xspeed} gives
+\begin{align}
+x(z)&=m+b_+
++\frac{\lambda_+}{1-\alpha_+}(z+1)^{1-\alpha_+}+o(1),
+&&z\to+\infty,
+\label{eq:righttransporttail}\\
+x(z)&=m+b_-
+-\frac{\lambda_-}{1-\alpha_-}(1-z)^{1-\alpha_-}+o(1),
+&&z\to-\infty,
+\label{eq:lefttransporttail}
+\end{align}
+for finite constants $b_\pm$.  The additive constants do not affect the
+leading tail rates.
+
+\begin{proposition}[Log-return tail rates]
+\label{prop:tails}
+For a generalized LQD slice,
+\begin{align}
+-\log\Prob(X>x)
+&\sim
+\left(\frac{(1-\alpha_+)x}{\lambda_+}\right)^{1/(1-\alpha_+)},
+&&x\to+\infty,
+\label{eq:righttailrate}\\
+-\log\Prob(X<-x)
+&\sim
+\left(\frac{(1-\alpha_-)x}{\lambda_-}\right)^{1/(1-\alpha_-)},
+&&x\to+\infty.
+\label{eq:lefttailrate}
+\end{align}
+\end{proposition}
+
+\begin{proof}
+Invert \eqref{eq:righttransporttail} and use
+$\Prob(Z>z)=1-\Lambda(z)\sim e^{-z}$.  The left proof is identical.
+\end{proof}
+
+Write $p=1/(1-\alpha)$.  The three cases are:
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+Tail exponent & Log-return tail & Extreme smile wing \\
+\midrule
+$\alpha=0$ & $-\log\Prob(|X|>x)\asymp x$ & $w(k)\asymp |k|$ \\
+$0<\alpha<1/2$ & $-\log\Prob(|X|>x)\asymp x^p$, $1<p<2$
+& $w(k)$ grows sublinearly \\
+$\alpha=1/2$ & $-\log\Prob(|X|>x)\asymp x^2$ & $w(k)$ tends to a constant \\
+\bottomrule
+\end{tabular}
+\end{center}
+At $\alpha=0$, $Y=e^X$ has a power tail.  At $\alpha=1/2$, a normal tail
+with standard deviation $s$ corresponds to $\lambda=s/\sqrt2$.
+The two sides may use different exponents.  Equity smiles often retain
+$\alpha_-=0$ on the crash side and use either $0$ or a small positive value
+on the right.  The choice is a tail convention unless far-wing instruments
+identify it.
+
+\begin{figure}[htbp]
+\centering
+\paperfig{\textwidth}{fig_tail_family.pdf}
+\caption{The tail exponent.  Left: the leading negative log-tail grows like
+$x^{1/(1-\alpha)}$.  Center: the extreme quantile grows like
+$z^{1-\alpha}$ in log-odds.  Right: for $\alpha>0$, total implied variance
+grows like $|k|^{(1-2\alpha)/(1-\alpha)}$; at $\alpha=1/2$ it approaches a
+constant.  Curves are normalized at one to compare rates, not levels.}
+\label{fig:tailfamily}
+\end{figure}
+
+\subsection{Moments and the finite-forward wall}
+
+Define the two moment boundaries
+\begin{equation}
+\overline r_\pm=
+\begin{cases}
+1/\lambda_\pm,&\alpha_\pm=0,\\
++\infty,&\alpha_\pm>0.
+\end{cases}
+\label{eq:momentboundaries}
+\end{equation}
+
+\begin{proposition}[Moment domain]
+\label{prop:strip}
+For every generalized LQD slice,
+\begin{equation}
+\E[e^{rX}]<\infty
+\quad\Longleftrightarrow\quad
+-\overline r_-<r<\overline r_+.
+\label{eq:strip}
+\end{equation}
+Thus the last finite positive moment of $Y$ beyond its mean is
+$r_+^*=\overline r_+-1$, and the last finite inverse moment is
+$r_-^*=\overline r_-$, with $+\infty$ allowed.
+\end{proposition}
+
+\begin{proof}
+Write the moment as
+\[
+\E[e^{rX}]=\int_{-\infty}^{\infty}e^{rx(z)}\rho(z)\,\dd z.
+\]
+If $\alpha_+>0$, then $x(z)=o(z)$ and the factor $\rho(z)\sim e^{-z}$
+dominates every fixed positive $r$.  If $\alpha_+=0$, the right integrand is
+asymptotic to a constant times $e^{(r\lambda_+-1)z}$.  The left endpoint
+gives the other inequality in the same way.
+\end{proof}
+
+The martingale condition is the single point $r=1$ in this interval.  When
+$\alpha_+=0$, it is available exactly when $\lambda_+<1$.  A positive right
+tail exponent makes every positive moment finite; a positive left exponent
+makes every inverse moment finite.  This is why two fits that are virtually
+indistinguishable on listed options can behave very differently for power
+payoffs, inverse products, and tail-sensitive risk measures.
+
+\subsection{From tail rate to smile wing}
+
+For exponential tails, Lee's moment formula gives the limiting slopes of
+total implied variance \citep{Lee2004}:
+\begin{equation}
+\beta_R=\lim_{k\to+\infty}\frac{w(k)}k,
+\qquad
+\beta_L=\lim_{k\to-\infty}\frac{w(k)}{|k|}.
+\label{eq:lee}
+\end{equation}
+
+\begin{proposition}[Exponential-tail wing slopes]
+\label{prop:leeclosed}
+If $\alpha_+=0$ and $\lambda_+<1$, and if $\alpha_-=0$, then
+\begin{equation}
+\beta_R=\frac{2\lambda_+}{(1+\sqrt{1-\lambda_+})^2},
+\qquad
+\beta_L=\frac{2\lambda_-}{(1+\sqrt{1+\lambda_-})^2}.
+\label{eq:leeclosed}
+\end{equation}
+Both maps increase with the corresponding tail scale.  The scale $\lambda$
+is not itself the smile slope: \eqref{eq:leeclosed} is the exact conversion.
+For small $\lambda$, $\beta\sim\lambda/2$; as $\lambda_+\uparrow1$,
+$\beta_R\uparrow2$.
+\end{proposition}
+
+\begin{proof}
+Lee's function is
+$\Psi(r)=2-4(\sqrt{r^2+r}-r)$.  Substitute
+$r_+^*=1/\lambda_+-1$ and $r_-^*=1/\lambda_-$ from
+\cref{prop:strip}, then rationalize.  The regular variation in
+\cref{prop:tails} turns Lee's limsup into a limit
+\citep{BenaimFriz2009}.
+\end{proof}
+
+Positive tail exponents have zero Lee slope because all moments are finite.
+Their sublinear wing growth remains explicit.
+
+\begin{proposition}[Intermediate and Gaussian-rate wings]
+\label{prop:sublinearwings}
+If $0<\alpha_+\le1/2$, then, as $k\to+\infty$,
+\begin{equation}
+w(k)\sim
+\frac12\left(\frac{\lambda_+}{1-\alpha_+}
+\right)^{1/(1-\alpha_+)}
+k^{(1-2\alpha_+)/(1-\alpha_+)}.
+\label{eq:rightsublinearwing}
+\end{equation}
+If $0<\alpha_-\le1/2$, the same formula holds on the left after replacing
+$k$ by $|k|$ and the plus parameters by the minus parameters.
+\end{proposition}
+
+At $\alpha=1/2$, total variance tends to $2\lambda^2$, the variance of the
+matching Gaussian tail.  For $0<\alpha<1/2$, it diverges but does so
+sublinearly.  The limit $\alpha\downarrow0$ is nonuniform: every positive
+$\alpha$ gives zero Lee slope, while $\alpha=0$ gives the positive slope
+\eqref{eq:leeclosed}.  No finite strike strip can reliably distinguish zero
+from a sufficiently small positive exponent.  Tail-exponent scenarios are
+therefore more stable than an unconstrained estimate for every expiry.
+
+\subsection{Expressiveness at a fixed tail class}
+
+The remaining question is whether the polynomial body imposes a material
+restriction once the tail class has been chosen.  For fixed $\alpha_\pm$,
+define the residual log-speed of a differentiable target quantile $Q^*$ by
+rearranging \eqref{eq:skeleton}:
+\begin{equation}
+g^*(u)=\log Q^{*\prime}(u)+\log u+\log(1-u)
++\alpha_-\log\ell_-(u)+\alpha_+\log\ell_+(u).
+\label{eq:targetg}
+\end{equation}
+
+\begin{proposition}[Approximation at fixed tail class]
+\label{prop:universal}
+Suppose $g^*$ extends continuously to $[0,1]$ and the target law has mean one.
+If $\alpha_+=0$, also suppose $e^{g^*(1)}<1$.  Then polynomials of the form
+\eqref{eq:gpoly} can be chosen so that $g_N\to g^*$ uniformly.  The
+corresponding quantiles converge on compact rank intervals, and their call
+curves converge uniformly over all strikes.
+\end{proposition}
+
+The proof is in \cref{app:proofs}.  The result says that increasing polynomial
+order can approximate any smooth law with the selected endpoint behavior;
+the tail skeleton, not the polynomial basis, is the substantive asymptotic
+restriction.
+
+No finite-order slice has an atom, a zero-density interval, bounded support,
+or mass at zero.  Those features require a quantile jump, a flat part, or a
+finite endpoint, none of which is available to a positive smooth transport.
+Multimodality is allowed: the density rises where the transport slows and
+falls where it accelerates.  Increasing basis order permits more such
+changes in the body without altering the stated tail class.

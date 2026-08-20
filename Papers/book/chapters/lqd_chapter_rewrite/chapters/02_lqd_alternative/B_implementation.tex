@@ -1,0 +1,201 @@
+\section{Implementation blueprint}
+\label{app:implementation}
+
+The listings record the numerical core.  They omit only ordinary exception
+handling and the choice of quadrature library.
+
+\subsection{Stable grid quantities}
+
+The endpoint gauges should be evaluated from log-odds, not from rounded ranks:
+\begin{equation}
+\ell_-(\Lambda(z))=1+\log(1+e^{-z}),
+\qquad
+\ell_+(\Lambda(z))=1+\log(1+e^z).
+\label{eq:stablegauges}
+\end{equation}
+Both logarithms use a softplus routine.  This remains accurate when
+$\Lambda(z)$ has rounded to zero or one.
+
+\begin{lstlisting}[caption={Build one generalized LQD slice.}]
+def build(theta, alpha, grid):
+    # Endpoint chart: log lambda-, right-tail coordinate, body modes.
+    lam_m, lam_p, a = decode_endpoint_chart(theta, alpha)
+    L, R = raw_chord(lam_m, lam_p, a)
+
+    u = expit(grid.z)
+    ell_m = 1 + softplus(-grid.z)
+    ell_p = 1 + softplus( grid.z)
+    rho = expit(grid.z) * expit(-grid.z)
+
+    g = (1-u)*L + u*R + a @ grid.Pmat
+    log_dx = g - alpha.minus*log(ell_m) \
+               - alpha.plus *log(ell_p)
+    check_exponent_budget(log_dx)
+    dx = exp(log_dx)
+
+    if alpha.plus == 0 and lam_p >= 1 - wall_eps:
+        raise InadmissibleForward
+    if dx[-1] > 1 - tail_eps:
+        raise RemoteSaddleBeyondGrid
+
+    xbar = cumulative_simpson(dx, anchor=grid.mid)
+    check_exponent_budget(xbar)
+
+    I = integrate(exp(xbar)*rho)
+    I += left_tail_mass(xbar[0], theta, alpha, grid)
+    I += right_tail_mass(xbar[-1], theta, alpha, grid)
+    m = -log(I)
+    x = m + xbar
+
+    dG = -exp(x)*rho
+    G = reverse_integrate(-dG)
+    G += right_tail_mass(x[-1], theta, alpha, grid)
+    return Slice(x=x, dx=dx, G=G, dG=dG,
+                 m=m, lam=(lam_m, lam_p),
+                 alpha=alpha, theta=theta)
+\end{lstlisting}
+
+The two tail-mass functions use the continuation
+\eqref{eq:rightcontinuation} and its left counterpart.  For
+$\alpha=0$ they use \eqref{eq:tailcorr}.  For $\alpha>0$ they integrate in
+log space after the change $z=Z_{\max}+t$.  All tail corrections and their
+parameter derivatives enter both the primal build and the sensitivity pass.
+
+The median anchor fixes $\bar x(0)=0$.  Simpson quadrature is fourth order on
+the uniform grid.  Exact nodal derivatives make the cubic Hermite
+representation fourth order off grid without a global spline solve.
+
+\subsection{Call evaluation}
+
+\begin{lstlisting}[caption={Evaluate one normalized call.}]
+def call_price(slc, k, grid):
+    if k > slc.x[-1]:
+        z = right_tail_root(slc, k, grid)  # analytic tail continuation
+        share = right_ledger_tail(slc, z, grid)
+        cash = exp(k - softplus(z))
+        return share - cash
+
+    if k < slc.x[0]:
+        put = left_put_tail(slc, k, grid)
+        return 1 - exp(k) + put
+
+    z = bracketed_hermite_root(slc.x, slc.dx, k)
+    share = hermite_eval(slc.G, slc.dG, z)
+    cash = exp(k - softplus(z))
+    return share - cash
+\end{lstlisting}
+
+The right branch uses the same tail law as the martingale normalizer.  A
+separate volatility extrapolation would generally break the density and
+calendar identities.
+
+\subsection{Sensitivity pass}
+
+\begin{lstlisting}[caption={All fixed-tail parameter sensitivities.}]
+def sensitivities(slc, grid):
+    # Rows are derivatives of g in the chosen coefficient chart.
+    B = basis_columns_in_chart(slc.theta, grid.u)
+    dxbar = cumulative_simpson(slc.dx * B,
+                               anchor=grid.mid, axis=1)
+    weight = exp(slc.x) * grid.rho
+    dm = -integrate(weight * dxbar, axis=1)
+    add_tail_derivatives_to_shift(dm, slc, grid)
+    dx = dm[:, None] + dxbar
+
+    integrand = weight[None, :] * dx
+    dG = reverse_integrate(integrand, axis=1)
+    add_tail_derivatives_to_ledger(dG, slc, grid)
+    dG_slope = -integrand
+    dvs = -2 * integrate(dx * grid.rho, axis=1)
+    return Sensitivities(dG=dG, dG_slope=dG_slope, dvs=dvs)
+
+def price_jacobian_row(slc, sens, k):
+    z = strike_root(slc, k)
+    return hermite_eval(sens.dG, sens.dG_slope, z)
+\end{lstlisting}
+
+The martingale derivative is
+$\partial m=-\int e^x\partial\bar x\,\rho\,\dd z$, including both tail
+pieces.  Envelope cancellation then turns the ledger sensitivity at the
+strike root directly into the call sensitivity.
+
+\subsection{Full-line calendar constraints}
+
+During the joint maturity fit, maintain a small active set of ranks for every
+adjacent expiry pair.
+
+\begin{lstlisting}[caption={Exchange algorithm for global calendar order.}]
+def fit_surface(nodes):
+    active = initial_calendar_ranks(nodes)
+    while True:
+        surface = constrained_joint_solve(nodes, active)
+        worst = full_line_calendar_minima(surface)
+        if worst.value >= -calendar_tol:
+            return surface
+        active[worst.pair].add(worst.rank)
+
+def full_line_calendar_minima(surface):
+    out = []
+    for near, far in adjacent_pairs(surface):
+        roots = all_piecewise_cubic_roots(far.x - near.x)
+        roots += analytic_tail_roots(far, near)
+        points = [-inf] + roots + [inf]
+        gaps = [0.0] \
+             + [far.ledger(z) - near.ledger(z) for z in roots] \
+             + [0.0]
+        out.append(min_with_location(gaps, points))
+    return min(out)
+\end{lstlisting}
+
+If the difference of the two cubic transports vanishes on an entire segment,
+the ledger gap is constant there by \eqref{eq:calgapderivative}; either
+endpoint represents the segment.  Tail root isolation uses
+\eqref{eq:rightcontinuation}.  The final certificate is rerun on the
+publication grid and with tighter tail quadrature than the optimizer uses.
+
+\subsection{Failure tests}
+
+The implementation treats the following states separately.
+\begin{enumerate}
+\item \emph{Rank saturation:} use \eqref{eq:stablegauges}, two-sided logistic
+factors, and log-space cash legs.
+\item \emph{Interior overflow:} inspect the full arrays of $g$, $\log x'$,
+and $\bar x$ before exponentiation; admissible endpoints do not bound body
+modes.
+\item \emph{Exponential-tail wall:} for $\alpha_+=0$, keep
+$\lambda_+\le1-\varepsilon_{\rm wall}$ in a logistic chart.
+\item \emph{Remote light-tail saddle:} for $\alpha_+>0$, apply
+\eqref{eq:operationaltailguard} or use a saddle-centered quadrature.
+\item \emph{Near-zero option prices:} compare calls and calendars in log space
+and obtain plotted remote implied variance from the analytic wing law.
+\item \emph{Calendar gaps:} a finite penalty is not an acceptance test; the
+quantile-root certificate must pass for every adjacent expiry pair.
+\end{enumerate}
+
+\subsection{Reference defaults}
+
+\begin{center}
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Quantity & Default & Quantity & Default\\
+\midrule
+Basis order $N$ & 16 (cap 24) & Order guard & \eqref{eq:orderguard}\\
+Grid & $[-40,40]$ & Nodes & 8001 (fit: 2001)\\
+Tail exponents & stated scenarios & Exponential wall & $1-10^{-6}$\\
+Remote-saddle margin & $10^{-4}$ & Exponent budget & 700\\
+Ridge $(\omega_{\rm reg},\nu)$ & $(10^{-6},1)$ & Vega floor $\eta$ & $10^{-4}$\\
+Haircut $h$ & 0.005 volatility & Solver & constrained trust region\\
+Slice check & 801 strikes & Calendar check & all quantile crossings\\
+Optimization tolerance & $10^{-10}$ & Publication rebuild & fourfold check\\
+\bottomrule
+\end{tabular}
+\captionof{table}{Reference numerical defaults.  Tail exponents and their maturity
+policy are model inputs and are therefore reported with the fit.}
+\label{tab:defaults}
+\end{center}
+
+The shortest porting sequence is: reproduce the logistic reference law;
+reproduce a normal law with $\alpha_\pm=1/2$; implement the stable cash leg
+and both tail continuations; add the analytic sensitivity pass; then add the
+one-slice and full-line calendar certificates.

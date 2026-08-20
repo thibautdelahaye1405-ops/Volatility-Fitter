@@ -1,0 +1,19 @@
+\section{Data and reproducibility}
+\label{app:data}
+
+Every empirical number and inherited market figure in this alternative chapter
+comes from the frozen JSON snapshot used by the book.  It contains SPY and
+NVDA option chains for eight expiries each from the 2026-08-03 US session,
+together with forwards, discount factors, retained quotes, fitted coefficients,
+and display curves.  Reproduction requires no live market-data connection.
+
+The stored fits use $\alpha_-=\alpha_+=0$.  They are rebuilt from the frozen
+coefficients rather than refitted, so their prices and all macros remain those
+of the published snapshot.  The two new figures in this version are synthetic:
+\cref{fig:tailfamily} plots the derived asymptotic rates, and
+\cref{fig:calendarglobal} plots an exactly specified constant-speed LQD
+maturity stack.  Neither introduces market observations.
+
+Tail-policy comparisons recalibrate every exponent scenario under the same
+quotes and joint calendar constraints.  Changing $\alpha_\pm$ at fixed body
+coefficients is only a local sensitivity.

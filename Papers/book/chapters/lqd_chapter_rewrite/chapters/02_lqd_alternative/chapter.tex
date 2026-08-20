@@ -1,0 +1,42 @@
+% Alternative Chapter 2 -- complete rewrite.
+%
+% LESSON GOALS. After this chapter the reader can:
+%   1. Translate between a call curve, a probability law, and an implied-
+%      volatility smile, including every one-expiry no-arbitrage condition.
+%   2. Build an LQD law from unconstrained body coefficients and stated tail
+%      exponents, normalize it to the forward, and read its tail moments and
+%      smile-wing asymptotics.
+%   3. Obtain prices, digitals, densities, ATM handles, a variance-swap strike,
+%      and an analytic calibration Jacobian from one transport and one ledger.
+%   4. Implement, calibrate, and numerically certify a slice.
+%   5. Fit a maturity stack under full-line calendar order and certify that
+%      its total-variance curves do not cross.
+\renewcommand{\figdir}{figures/ch02}
+\chapter[The log-quantile-density model]{The Log-Quantile-Density Model of
+the Volatility Smile}
+\label{ch:lqd}
+
+\chaptersynopsis{A volatility smile is a probability law viewed through the
+Black formula.  The log-quantile-density model builds the law directly: start
+from percentile rank, move through log-return at a strictly positive speed,
+then shift the result to match the forward.  Two tail exponents span the range
+from exponential to Gaussian-rate log-return tails.  One cumulative
+upper-share function then supplies prices, digitals, density, local smile
+derivatives, moments, calibration sensitivities, and calendar constraints.
+Across expiries, ordering that function on the whole rank line is exactly
+equivalent to noncrossing total-variance curves on the whole strike line.}
+
+\input{chapters/02_lqd_alternative/01_smile_law}
+\input{chapters/02_lqd_alternative/02_coordinates}
+\input{chapters/02_lqd_alternative/03_validity_tails}
+\input{chapters/02_lqd_alternative/04_ledger}
+\input{chapters/02_lqd_alternative/05_calibration}
+\input{chapters/02_lqd_alternative/06_numerics}
+\input{chapters/02_lqd_alternative/07_calendar}
+\input{chapters/02_lqd_alternative/08_examples_contract}
+
+\begin{chapterappendices}
+\input{chapters/02_lqd_alternative/A_proofs}
+\input{chapters/02_lqd_alternative/B_implementation}
+\input{chapters/02_lqd_alternative/C_data}
+\end{chapterappendices}
