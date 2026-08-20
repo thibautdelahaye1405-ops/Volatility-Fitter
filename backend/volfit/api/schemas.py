@@ -700,6 +700,15 @@ class QuoteBand(BaseModel):
     index: int
     excluded: bool
     amended: bool
+    #: Fit-target band edges resolved by the fit's OWN band rule (V3.4 item 4;
+    #: volfit.calib.band.resolve_band via quotes.apply_band_edits, so
+    #: amended-mid recentering and the haircut collapse-to-mid clamp are
+    #: inherited): fit_mode "bidask" -> (bid, ask); "haircut" -> the
+    #: mid-clamped (bid+h, ask-h). None under fit_mode "mid" (the target is
+    #: the mid polyline). OPTIONAL additions to the frozen contract (the
+    #: SmileData.stale precedent); excluded quotes still carry values.
+    targetLo: float | None = None
+    targetHi: float | None = None
 
 
 class SmileDiagnostics(BaseModel):

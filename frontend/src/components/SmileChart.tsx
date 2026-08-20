@@ -7,12 +7,15 @@
 // strike window is owned by the parent via the RangeBrush; on top of that, the
 // chart supports wheel-zoom (x by default, +Shift = x only, +Alt = y only),
 // drag-to-pan and double-click / ⌂ reset — and zoom-out reveals beyond the data.
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import type { QuoteBand, SmilePoint } from "../lib/mockData";
+import type { FitMode } from "../state/useSmile";
 import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { axisDisplayTicks, axisInvert, axisTransform, formatHoverValue } from "../lib/axisModes";
 import type { AxisContext, AxisMode } from "../lib/axisModes";
+import { midLinePath, ribbonPath } from "../lib/smileTarget";
+import { useElementSize } from "../lib/useElementSize";
 import { useZoom } from "../lib/useZoom";
 import RangeBrush from "./RangeBrush";
 
@@ -68,6 +71,14 @@ interface SmileChartProps {
    *  cue explains the market — not "press Calibrate" — while the dotted
    *  transported prior keeps being served. */
   degraded?: string | null;
+  /** Live fit target (mid / bidask / haircut): picks which target band the
+   *  V3.4 overlay emphasizes (the haircut ribbon only draws in haircut mode). */
+  fitMode?: FitMode;
+  /** Draw the fit-target overlay (mid polyline + bid-ask/haircut ribbons). */
+  showTarget?: boolean;
+  /** Optional strip rendered between the plot and the RangeBrush (the V3.4
+   *  weight strip mounts here so it shares the x extent above the brush). */
+  footer?: ReactNode;
 }
 
 /** Human labels for the named degraded-market conditions. */
@@ -77,23 +88,6 @@ const DEGRADED_LABELS: Record<string, string> = {
 };
 
 const MARGIN = { top: 14, right: 14, bottom: 30, left: 52 } as const;
-
-/** Track the pixel size of a container element via ResizeObserver. */
-function useElementSize() {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setSize({ width: rect.width, height: rect.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return { ref, size };
-}
 
 /** Linear interpolation of a curve's vol at log-moneyness k. */
 function volAt(curve: SmilePoint[], k: number): number | null {
@@ -140,6 +134,9 @@ export default function SmileChart({
   filterPred = null,
   fitBandHalf = null,
   degraded = null,
+  fitMode = "mid",
+  showTarget = false,
+  footer = null,
 }: SmileChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -250,6 +247,26 @@ export default function SmileChart({
     const hi = model.map((p) => ({ k: p.k, vol: p.vol + fitBandHalf }));
     return bandPathOf(lo, hi);
   }, [model, fitBandHalf, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Fit-target overlay (V3.4 item 4): geometry lives in lib/smileTarget —
+  // translucent bid-ask ribbon, darker haircut ribbon (haircut mode only,
+  // from QuoteBand.targetLo/Hi) and a thin mid polyline, gapped at exclusions.
+  const toX = (k: number) => xScale.map(tx(k));
+  const toY = (v: number) => yScale.map(v);
+  const targetBidAskPath = useMemo(
+    () => (showTarget ? ribbonPath(quotes, (q) => q.bid, (q) => q.ask, toX, toY) : ""),
+    [showTarget, quotes, xScale, yScale, tx], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const targetHaircutPath = useMemo(
+    () =>
+      showTarget && fitMode === "haircut"
+        ? ribbonPath(quotes, (q) => q.targetLo, (q) => q.targetHi, toX, toY)
+        : "",
+    [showTarget, fitMode, quotes, xScale, yScale, tx], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const targetMidPath = useMemo(
+    () => (showTarget ? midLinePath(quotes, toX, toY) : ""),
+    [showTarget, quotes, xScale, yScale, tx], // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // X ticks: nice values in display units, placed directly on the display scale.
   const xTicks = useMemo(
@@ -338,6 +355,21 @@ export default function SmileChart({
         {fitBandPath !== "" && (
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-5 rounded bg-accent-400/15" /> ±1.96σ quotes
+          </span>
+        )}
+        {targetBidAskPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-5 rounded bg-red-400/15" /> Bid-ask band
+          </span>
+        )}
+        {targetHaircutPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-5 rounded bg-red-400/35" /> Haircut band
+          </span>
+        )}
+        {targetMidPath !== "" && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-px w-5 bg-red-400/60" /> Mid target
           </span>
         )}
         {prior.length > 0 && (
@@ -430,6 +462,17 @@ export default function SmileChart({
 
               {/* Clipped plot geometry */}
               <g clipPath={`url(#${clipId})`}>
+                {/* Fit-target overlay (V3.4): under every curve, above the grid */}
+                {targetBidAskPath !== "" && (
+                  <path d={targetBidAskPath} fill="rgb(248 113 113 / 0.07)" stroke="none" pointerEvents="none" />
+                )}
+                {targetHaircutPath !== "" && (
+                  <path d={targetHaircutPath} fill="rgb(248 113 113 / 0.15)" stroke="none" pointerEvents="none" />
+                )}
+                {targetMidPath !== "" && (
+                  <path d={targetMidPath} fill="none" stroke="rgb(248 113 113 / 0.55)" strokeWidth={1} pointerEvents="none" />
+                )}
+
                 {/* Variance-swap quote: horizontal teal line at the quoted vol */}
                 {varSwapLevel !== null &&
                   varSwapLevel >= yScale.domain[0] &&
@@ -616,6 +659,9 @@ export default function SmileChart({
           </button>
         )}
       </div>
+
+      {/* Optional footer strip (V3.4 weight strip) — above the brush */}
+      {footer !== null && <div className="mt-2 shrink-0 px-1">{footer}</div>}
 
       {/* Strike-window brush (coarse, in log-moneyness k) */}
       <div className="mt-2 shrink-0 px-1">

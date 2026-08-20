@@ -529,6 +529,22 @@ def edited_band(
     return apply_band_edits(prepared, edits, fit_mode, state.fit_settings().haircut)
 
 
+def edited_band_full(
+    state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, fit_mode: str
+):
+    """The per-quote fit-target band in FULL prepared index space (V3.4 item 4).
+
+    Exactly the ``apply_band_edits``/``resolve_band`` path the fit consumes
+    (amended-mid recentering + the haircut collapse clamp included), but with
+    excluded rows kept so every QuoteBand can carry its would-be target
+    (``targetLo``/``targetHi``; the UI dims excluded quotes). None for "mid"."""
+    session = state.session_if_exists((ticker, iso))
+    edits = {} if session is None else session.edits
+    return apply_band_edits(
+        prepared, edits, fit_mode, state.fit_settings().haircut, include_excluded=True
+    )
+
+
 def _overlay_settings(settings) -> OverlaySettings:
     """The picklable FitSettings subset the overlay fit reads (fit_task)."""
     return OverlaySettings(
@@ -1258,6 +1274,7 @@ def _no_fit_smile_payload(
     session = state.session_if_exists((ticker, iso))
     quotes: list[QuoteBand] = []
     if prepared is not None:
+        band = edited_band_full(state, ticker, iso, prepared, fit_mode)
         for i, (k, b, a, m) in enumerate(
             zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
         ):
@@ -1268,6 +1285,8 @@ def _no_fit_smile_payload(
                     k=float(k), bid=float(b), ask=float(a),
                     mid=edit.amended_iv if amended else float(m), index=i,
                     excluded=edit is not None and edit.excluded, amended=amended,
+                    targetLo=float(band.iv_lo[i]) if band is not None else None,
+                    targetHi=float(band.iv_hi[i]) if band is not None else None,
                 )
             )
     forward = float(prepared.forward) if prepared is not None else 0.0
@@ -1390,7 +1409,10 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
             curvStd=curv_std,
         )
     # Every prepared quote is listed (excluded dimmed by the UI); an amended
-    # quote shows its overridden mid, bid/ask stay the market band.
+    # quote shows its overridden mid, bid/ask stay the market band. The
+    # fit-target edges ride along (None in "mid" mode), resolved by the same
+    # band path the fit itself uses (edited_band_full).
+    band = edited_band_full(state, ticker, iso, prepared, fit_mode)
     quotes = []
     for i, (k, b, a, m) in enumerate(
         zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
@@ -1406,6 +1428,8 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
                 index=i,
                 excluded=edit is not None and edit.excluded,
                 amended=amended,
+                targetLo=float(band.iv_lo[i]) if band is not None else None,
+                targetHi=float(band.iv_hi[i]) if band is not None else None,
             )
         )
     return SmileData(

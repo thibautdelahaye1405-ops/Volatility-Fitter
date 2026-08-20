@@ -483,6 +483,8 @@ def apply_band_edits(
     edits: dict[int, QuoteEdit],
     fit_mode: str,
     haircut: float = DEFAULT_HAIRCUT,
+    *,
+    include_excluded: bool = False,
 ) -> BandTarget | None:
     """Band target aligned with ``apply_edits`` (same exclude/amend/keep mask).
 
@@ -490,6 +492,12 @@ def apply_band_edits(
     around mid); the bid/ask edges stay the original market band. The keep mask
     matches ``apply_edits`` exactly, so the band rows line up with (k, w).
     Returns None for the "mid" mode (no band objective).
+
+    ``include_excluded=True`` keeps every prepared row instead (the FULL
+    QuoteBand index space): the payload's fit-target overlay wants excluded
+    quotes to still carry their would-be band (the UI dims them). The band
+    rule is elementwise, so kept rows are identical either way; the default
+    (fit path) is untouched.
     """
     if fit_mode == "mid":
         return None
@@ -502,6 +510,6 @@ def apply_band_edits(
             continue
         if edit.amended_iv is not None:
             iv_mid[index] = edit.amended_iv
-        if edit.excluded:
+        if edit.excluded and not include_excluded:
             keep[index] = False
     return resolve_band(iv_bid[keep], iv_mid[keep], iv_ask[keep], fit_mode, haircut)

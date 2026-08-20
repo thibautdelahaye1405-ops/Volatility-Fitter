@@ -9,6 +9,8 @@ density and quantile function, and the saved prior's when one exists.
 GET  /smiles/{ticker}/{expiry}/table         -> quote/price/IV grid (JSON)
 GET  /smiles/{ticker}/{expiry}/table.csv     -> same table as a CSV download
 ([REQ 2026-06-12] table export; assembly in volfit.api.table).
+GET  /smiles/{ticker}/{expiry}/weights       -> per-quote calibration weights
+(V3.4 item 5; poll-safe, assembly in volfit.api.weights_view).
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from volfit.api import analytics, observation_filter, service, table
+from volfit.api import analytics, observation_filter, service, table, weights_view
 from volfit.api.schemas import (
     DensityResponse,
     FilterDiagnostics,
@@ -27,6 +29,7 @@ from volfit.api.schemas import (
     StackedDensityResponse,
     TableResponse,
 )
+from volfit.api.schemas_weights import WeightsData
 from volfit.api.state import PriorRecord, UnknownNodeError
 
 router = APIRouter()
@@ -99,6 +102,21 @@ def get_filter_diagnostics(
     return observation_filter.filter_diagnostics(
         request.app.state.volfit, ticker, expiry, fit_mode
     )
+
+
+@router.get("/smiles/{ticker}/{expiry}/weights", response_model=WeightsData)
+def get_weights(
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+) -> WeightsData:
+    """Per-quote calibration weights (V3.4 item 5). Read-only and POLL-SAFE:
+    prepared quotes + session edits only — never triggers a fit. ``fit_mode``
+    is accepted for URL symmetry with the sibling smile reads but is unused:
+    the weight scheme applies identically in every fit mode."""
+    _ = fit_mode  # mode-orthogonal (volfit.calib.weights module docstring)
+    try:
+        return weights_view.weights_payload(request.app.state.volfit, ticker, expiry)
+    except UnknownNodeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from None
 
 
 @router.get("/smiles/{ticker}/{expiry}/density", response_model=DensityResponse)

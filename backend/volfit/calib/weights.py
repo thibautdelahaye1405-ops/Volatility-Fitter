@@ -32,6 +32,8 @@ ridge, etc. are tuned against unit-mean weights).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
 from volfit.core.black import black_call
@@ -55,6 +57,26 @@ def otm_time_value(k: np.ndarray, w: np.ndarray) -> np.ndarray:
     return np.where(k >= 0.0, call, call - (1.0 - np.exp(k)))
 
 
+def _voronoi_spacing(k: np.ndarray, eps: float) -> tuple[np.ndarray, np.ndarray]:
+    """(spacing, order): 1-D Voronoi cell widths of ``k`` in ASCENDING order.
+
+    Half the gap to the neighbours on each side, one-sided at the ends, floored
+    at ``eps``. ``order = argsort(k)`` maps the sorted rows back to the input
+    order (``spacing_input[order] = spacing``). Requires k.size >= 2 (callers
+    guard the degenerate sizes). Extracted from ``tv_density_weights`` so the
+    weight-inspection endpoint reports the exact cell widths the scheme uses.
+    """
+    m = k.size
+    order = np.argsort(k)
+    xs = k[order]
+    s = np.empty(m)
+    s[0] = xs[1] - xs[0]
+    s[-1] = xs[-1] - xs[-2]
+    if m > 2:
+        s[1:-1] = 0.5 * (xs[2:] - xs[:-2])
+    return np.maximum(s, eps), order
+
+
 def tv_density_weights(
     k: np.ndarray, tv: np.ndarray, eps: float = _EPS, max_mult: float | None = DEFAULT_MAX_MULT
 ) -> np.ndarray:
@@ -72,14 +94,7 @@ def tv_density_weights(
     if m == 1:
         return np.array([tv[0]], dtype=float)
 
-    order = np.argsort(k)
-    xs = k[order]
-    s = np.empty(m)
-    s[0] = xs[1] - xs[0]
-    s[-1] = xs[-1] - xs[-2]
-    if m > 2:
-        s[1:-1] = 0.5 * (xs[2:] - xs[:-2])
-    s = np.maximum(s, eps)
+    s, order = _voronoi_spacing(k, eps)
 
     mult = s / s.mean()
     if max_mult is not None:
@@ -87,6 +102,55 @@ def tv_density_weights(
     weights = np.empty(m)
     weights[order] = tv[order] * mult
     return weights
+
+
+@dataclass(frozen=True)
+class WeightComponents:
+    """Decomposition of one slice's quote weights (V3.4 weight inspection).
+
+    All arrays are in the INPUT quote order, aligned with ``k``:
+
+      * ``spacing`` — the Voronoi cell width s_i actually used by tv_density
+        (0.0 with fewer than 2 quotes, where no cell exists);
+      * ``raw`` — the pre-normalization economic weight: max(TV_i, eps) for
+        tv_density, 1.0 for equal;
+      * ``weights`` — the final mean-1 weights the LSQ uses, byte-identical to
+        ``resolve_weights`` (ones materialized for "equal" / degenerate sizes).
+
+    Invariant (>= 2 quotes, tv_density): mean-normalizing
+    ``raw * min(spacing / spacing.mean(), max_mult)`` reproduces ``weights``.
+    """
+
+    scheme: str
+    max_mult: float
+    spacing: np.ndarray
+    raw: np.ndarray
+    weights: np.ndarray
+
+
+def weight_components(scheme: str, k: np.ndarray, w_mid: np.ndarray) -> WeightComponents:
+    """``resolve_weights`` plus its pre-normalization pieces (never re-derived).
+
+    The final ``weights`` come from ``resolve_weights`` itself (the single
+    implementation of the scheme); ``spacing`` reuses the same ``_voronoi_
+    spacing`` helper tv_density is built on, remapped to input order.
+    """
+    k = np.asarray(k, dtype=float)
+    m = int(k.size)
+    spacing = np.zeros(m, dtype=float)
+    if m >= 2:
+        s, order = _voronoi_spacing(k, _EPS)
+        spacing[order] = s
+    if scheme == "equal":
+        return WeightComponents(
+            "equal", DEFAULT_MAX_MULT, spacing, np.ones(m), np.ones(m)
+        )
+    if scheme != "tv_density":
+        raise ValueError(f"unknown weight scheme {scheme!r}")
+    raw = np.maximum(otm_time_value(k, np.asarray(w_mid, dtype=float)), _EPS)
+    resolved = resolve_weights(scheme, k, w_mid)
+    weights = np.ones(m, dtype=float) if resolved is None else resolved
+    return WeightComponents("tv_density", DEFAULT_MAX_MULT, spacing, raw, weights)
 
 
 def resolve_weights(scheme: str, k: np.ndarray, w_mid: np.ndarray) -> np.ndarray | None:

@@ -4,9 +4,10 @@
 // amended mids are amber. Footer actions copy the table as TSV to the
 // clipboard or download the backend-rendered CSV. Live backend only (the
 // parent gates mock mode).
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, API_BASE_URL } from "../state/api";
 import type { FitMode } from "../state/useSmile";
+import { useWeights } from "../state/useWeights";
 import type { SmileData } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
 import { toolbarButtonClass } from "./QuoteToolbar";
@@ -47,8 +48,10 @@ interface QuoteTableProps {
   smile: SmileData | null;
 }
 
-/** Column headers (numeric columns are right-aligned; C/P is centered). */
-const HEADERS = ["Strike", "C/P", "k", "Bid IV", "Mid IV", "Ask IV", "Model IV", "Bid", "Mid", "Ask"];
+/** Column headers (numeric columns are right-aligned; C/P is centered).
+ *  "Weight" is the mean-1 calibration weight (V3.4 item 5; em-dash when
+ *  excluded), served by GET /smiles/{t}/{e}/weights. */
+const HEADERS = ["Strike", "C/P", "k", "Bid IV", "Mid IV", "Ask IV", "Model IV", "Bid", "Mid", "Ask", "Weight"];
 
 /** Serialize the table as tab-separated values (header included). */
 function toTsv(rows: TableRow[]): string {
@@ -77,6 +80,14 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Per-quote calibration weights (poll-safe read; refetches with the smile).
+  const weights = useWeights(true, true, ticker, expiry, fitMode, smile);
+  const weightByIndex = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const e of weights?.entries ?? []) if (!e.excluded) m.set(e.index, e.weight);
+    return m;
+  }, [weights]);
 
   // Fetch on open; refetch when the node / fit mode changes or the smile is
   // refitted (edits, undo/redo, hyperparameter changes all swap `smile`).
@@ -182,6 +193,9 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
                 <td className={num}>{r.bidPrice.toFixed(2)}</td>
                 <td className={num}>{r.midPrice.toFixed(2)}</td>
                 <td className={num}>{r.askPrice.toFixed(2)}</td>
+                <td className={`${num} text-slate-400`}>
+                  {r.excluded ? "—" : (weightByIndex.get(r.index)?.toFixed(2) ?? "—")}
+                </td>
               </tr>
             ))}
           </tbody>

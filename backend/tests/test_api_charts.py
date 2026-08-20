@@ -191,3 +191,94 @@ def test_table_unknown_nodes_404(client, universe):
     assert client.get(f"/smiles/NOPE/{expiry}/table").status_code == 404
     assert client.get("/smiles/BETA/2030-01-01/table").status_code == 404
     assert client.get(f"/smiles/NOPE/{expiry}/table.csv").status_code == 404
+
+
+# -- fit-target band payload (V3.4 item 4) -------------------------------------
+# QuoteBand gains OPTIONAL targetLo/targetHi resolved by the fit's own
+# resolve_band path (amended-mid recentering + collapse clamp inherited).
+# GAMMA keeps these sessions clear of the ALPHA/BETA tests above.
+
+HAIRCUT = 0.005  # FitSettings.haircut default (absolute vol)
+
+QUOTE_FIELDS = ("k", "bid", "ask", "mid", "index", "excluded", "amended")
+
+
+def _quotes(client, ticker: str, expiry: str, fit_mode: str) -> list[dict]:
+    response = client.get(f"/smiles/{ticker}/{expiry}", params={"fit_mode": fit_mode})
+    assert response.status_code == 200
+    return response.json()["quotes"]
+
+
+def test_target_band_mid_mode_is_absent(client, universe):
+    expiry = universe["expiries"]["GAMMA"][1]["expiry"]
+    quotes = _quotes(client, "GAMMA", expiry, "mid")
+    assert len(quotes) >= 5
+    assert all(q["targetLo"] is None and q["targetHi"] is None for q in quotes)
+
+
+def test_target_band_bidask_and_haircut_lock(client, universe):
+    expiry = universe["expiries"]["GAMMA"][1]["expiry"]
+    base = _quotes(client, "GAMMA", expiry, "mid")
+
+    bidask = _quotes(client, "GAMMA", expiry, "bidask")
+    # Byte-identity of every pre-existing field across modes (pure addition).
+    strip = lambda qs: [{f: q[f] for f in QUOTE_FIELDS} for q in qs]  # noqa: E731
+    assert strip(bidask) == strip(base)
+    for q in bidask:  # bidask target IS the raw band
+        assert q["targetLo"] == q["bid"] and q["targetHi"] == q["ask"]
+
+    haircut = _quotes(client, "GAMMA", expiry, "haircut")
+    assert strip(haircut) == strip(base)
+    for q in haircut:  # eq of band.py: lo = min(bid+h, mid), hi = max(mid, ask-h)
+        assert q["targetLo"] == min(q["bid"] + HAIRCUT, q["mid"])
+        assert q["targetHi"] == max(q["mid"], q["ask"] - HAIRCUT)
+        assert q["targetLo"] <= q["mid"] <= q["targetHi"]  # never crosses mid
+
+
+def test_target_band_amend_recenters_and_excluded_quotes_keep_targets(client, universe):
+    expiry = universe["expiries"]["GAMMA"][2]["expiry"]  # its own edit session
+    base = _quotes(client, "GAMMA", expiry, "haircut")
+    atm = min(base, key=lambda q: abs(q["k"]))
+    new_mid = atm["mid"] + 0.02  # push the mid ABOVE the ask: band recenters
+
+    edited = client.post(
+        f"/smiles/GAMMA/{expiry}/edits",
+        json={"action": "amend", "index": atm["index"], "mid": new_mid},
+        params={"fit_mode": "haircut"},
+    )
+    assert edited.status_code == 200
+    quotes = edited.json()["quotes"]
+    q = quotes[atm["index"]]
+    assert q["amended"] is True and q["mid"] == pytest.approx(new_mid)
+    # The haircut band is built around the AMENDED mid (bid/ask stay market).
+    assert q["targetLo"] == pytest.approx(min(q["bid"] + HAIRCUT, new_mid))
+    assert q["targetHi"] == pytest.approx(max(new_mid, q["ask"] - HAIRCUT))
+
+    # Excluding a quote keeps its would-be target (the UI dims it).
+    wing = max(quotes, key=lambda qq: abs(qq["k"]))
+    excluded = client.post(
+        f"/smiles/GAMMA/{expiry}/edits",
+        json={"action": "exclude", "index": wing["index"]},
+        params={"fit_mode": "haircut"},
+    )
+    assert excluded.status_code == 200
+    ex = excluded.json()["quotes"][wing["index"]]
+    assert ex["excluded"] is True
+    assert ex["targetLo"] == min(ex["bid"] + HAIRCUT, ex["mid"])
+    assert ex["targetHi"] == max(ex["mid"], ex["ask"] - HAIRCUT)
+
+
+def test_target_band_tight_quote_collapses_to_mid(client, universe):
+    """Spread < 2h => the haircut band collapses to lo = hi = mid (the clamp)."""
+    expiry = universe["expiries"]["GAMMA"][3]["expiry"]
+    defaults = client.get("/settings/fit").json()
+    try:
+        big = dict(defaults, haircut=0.05)  # the settings cap; >> synthetic spreads
+        assert client.put("/settings/fit", json=big).status_code == 200
+        quotes = _quotes(client, "GAMMA", expiry, "haircut")
+        tight = [q for q in quotes if q["ask"] - q["bid"] < 2 * 0.05]
+        assert len(tight) > 0  # the synthetic chain has sub-10-vol-pt spreads
+        for q in tight:
+            assert q["targetLo"] == q["mid"] == q["targetHi"]
+    finally:
+        assert client.put("/settings/fit", json=defaults).status_code == 200

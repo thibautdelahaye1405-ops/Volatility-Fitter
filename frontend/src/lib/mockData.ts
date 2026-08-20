@@ -24,6 +24,13 @@ export interface QuoteBand {
   excluded: boolean;
   /** True when the mid has been manually amended by the user. */
   amended: boolean;
+  /** Fit-target band edges resolved by the backend's own band rule
+   *  (volfit.calib.band): fit_mode "bidask" → (bid, ask); "haircut" → the
+   *  mid-clamped (bid+h, ask−h) around the (possibly amended) mid. Absent /
+   *  null under fit_mode "mid" (the target is the mid polyline). Optional so
+   *  older payloads still type-check. */
+  targetLo?: number | null;
+  targetHi?: number | null;
 }
 
 /** Headline diagnostics displayed next to the chart. */
@@ -208,6 +215,9 @@ function generateQuotes(count: number, seed: number): QuoteBand[] {
 
     // Half-spread: ~0.3 vol pt at the money, widening quadratically in wings.
     const half = (0.0015 + 0.02 * k * k) * (0.85 + 0.3 * rand());
+    // Haircut fit-target band (backend default h = 0.5 vol pt), mid-clamped —
+    // narrow ATM quotes collapse to the mid, wing quotes keep a shrunk band.
+    const h = 0.005;
     quotes.push({
       k,
       bid: mid - half,
@@ -216,6 +226,8 @@ function generateQuotes(count: number, seed: number): QuoteBand[] {
       index: i,
       excluded: false,
       amended: false,
+      targetLo: Math.min(mid - half + h, mid),
+      targetHi: Math.max(mid, mid + half - h),
     });
   }
   return quotes;

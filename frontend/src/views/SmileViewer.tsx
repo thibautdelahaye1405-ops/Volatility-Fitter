@@ -18,6 +18,7 @@ import StackedVarianceChart from "../components/StackedVarianceChart";
 import TermPanel from "../components/TermPanel";
 import SurfaceChart from "../components/SurfaceChart";
 import QuoteTable from "../components/QuoteTable";
+import WeightStrip from "../components/WeightStrip";
 import UniverseHeader, { selectClass } from "../components/UniverseHeader";
 import SmileAside from "../components/SmileAside";
 import SegmentedControl from "../components/SegmentedControl";
@@ -109,6 +110,10 @@ export default function SmileViewer() {
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
   // Read-only Massive-IV comparison overlay toggle (Massive provider only).
   const [showMassiveIv, setShowMassiveIv] = useState(false);
+  // Fit-target overlay (V3.4 item 4): mid polyline + bid-ask/haircut ribbons.
+  const [showTarget, setShowTarget] = useState(true);
+  // Calibration weight strip under the chart (V3.4 item 5), default off.
+  const [showWeights, setShowWeights] = useState(false);
   // Transient "Saved ✓" confirmation on the Save-prior button.
   const [savedFlash, setSavedFlash] = useState(false);
   const flashTimer = useRef<number | null>(null);
@@ -288,6 +293,21 @@ export default function SmileViewer() {
               smile.diagnostics.atmVolStd != null ? 1.96 * smile.diagnostics.atmVolStd : null
             }
             degraded={smile.degraded ?? null}
+            fitMode={fitMode}
+            showTarget={showTarget}
+            footer={
+              showWeights ? (
+                <WeightStrip
+                  live={live}
+                  ticker={ticker}
+                  expiry={expiry}
+                  fitMode={fitMode}
+                  smile={smile}
+                  kWindow={kWindow}
+                  axisMode={axisMode}
+                />
+              ) : null
+            }
           />
         );
       case "stackeddensity":
@@ -368,6 +388,37 @@ export default function SmileViewer() {
               </option>
             ))}
           </select>
+        )}
+        {/* Fit-target overlay toggle: mid polyline + bid-ask/haircut ribbons
+            (which band is emphasized follows the live fit target). */}
+        {view === "smile" && (
+          <button
+            className={[
+              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              showTarget
+                ? "border-red-500/50 bg-red-500/10 text-red-300"
+                : "border-slate-700 text-slate-400 hover:text-slate-200",
+            ].join(" ")}
+            title="Overlay the fit target (mid line + bid-ask / haircut band)"
+            onClick={() => setShowTarget((v) => !v)}
+          >
+            Target
+          </button>
+        )}
+        {/* Calibration weight strip toggle (density vs effective weights). */}
+        {view === "smile" && (
+          <button
+            className={[
+              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              showWeights
+                ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                : "border-slate-700 text-slate-400 hover:text-slate-200",
+            ].join(" ")}
+            title="Show per-quote calibration weights under the chart (quote density vs the effective mean-1 weights)"
+            onClick={() => setShowWeights((v) => !v)}
+          >
+            Weights
+          </button>
         )}
         {/* Read-only Massive-IV overlay toggle (no-op unless the backend
             runs the Massive provider; the dots simply won't appear). */}
