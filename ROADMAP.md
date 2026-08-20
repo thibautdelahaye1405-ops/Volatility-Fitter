@@ -613,6 +613,52 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-20c) — BLOOMBERG PUSH FEED: //blp/mktdata SUBSCRIPTION BOOK (QUOTA-FREE)
+
+Market-data sourcing arc, step 1 (Bloomberg). The Bloomberg source now
+streams like Massive instead of polling metered `bdp`s:
+
+- **Design**: blpapi's `//blp/mktdata` *subscription* service is a genuine
+  push channel (not metered against the daily reference-data quota). New
+  `data/bloomberg_stream.py` (`BbgBook` — thread-safe delta-merging book +
+  `BloombergSubscription` daemon thread: start → open service → subscribe in
+  200-batches with `interval=1.0` conflation → `nextEvent` loop → reconnect
+  w/ capped backoff; injectable session for offline tests),
+  `data/bloomberg_decode.py` (pure blpapi message → record decode; per-side
+  `*_UPDATE_STAMP_RT` stamps → UTC-naive; NULL side = withdrawn),
+  `data/bloomberg_live.py` (`BloombergStreamingMixin`: the SAME duck-typed
+  contract AppState/scheduler already drive for Massive — `option_tickers /
+  start_streaming / stop_streaming / is_streaming / streaming_contracts`;
+  `_chain_from_book`, `_book_spot`, `_stream_status`). `bloomberg.py` hooks:
+  `spot()` and `fetch_chain(live)` serve from the book while streaming (the
+  metered path is the fallback: book not painted yet / selection not yet
+  resubscribed); `feed_status` reports stream states quota-free.
+- **Budget**: underlyings subscribed alongside contracts (spot off the
+  stream); strike-window centre held with 5 % hysteresis (no restart thrash);
+  `max_subscriptions` cap (default 3000, env `VOLFIT_BBG_MAX_SUBS`) nearest-
+  the-money first; `streaming_contracts` echoes the REQUESTED set so the
+  scheduler's universe diff is stable; "N over cap" in the status.
+- **Live smoke (Terminal open)**: SPY + SPX, 2 expiries each: 4 metered calls
+  up front (2 `bds` listings + 2 `PX_LAST` centres), then **0 metered calls**
+  while streaming — 626 + 2540 quotes and `spot()` served from the book; SPY
+  flagged `IS_DELAYED_STREAM` (15 min, non-entitled exchange), SPX real-time;
+  OPEN_INT not subscribable (carried from the last metered fetch).
+- **Honesty**: quotes/chain stamped with PROVIDER tick stamps; un-stamped
+  INITPAINT quotes take the chain's newest stamp (15 min behind on a delayed
+  feed — the data-age pill tells the truth).
+- **Tests**: `tests/test_bloomberg_stream.py` (17: book deltas/NULLs/status/
+  wait_for, decode, transport batching/open-failure/reconnect, provider
+  windowing/cap/book-served chain+spot with ZERO bdp/fallback coverage/OI
+  carry/status states/hysteresis, AppState sync_streaming drives Bloomberg).
+  Docs: `Docs/bloomberg_setup.md` streaming + status-light sections; Options
+  panel "Stream live book (Massive / Bloomberg)" wording; `serve.py` env knobs
+  (`VOLFIT_BBG_STREAM_INTERVAL/_MAX_SUBS/_HOST/_PORT`).
+- **Next (sourcing arc)**: incremental subscribe/unsubscribe on universe edits
+  (today: restart the session on a diff), a frontend push channel (SSE) so the
+  quote table ticks without polling, then the other sources.
+- Policy note: `bloomberg.py` was already over 400 lines (475) before this
+  session; +36 for the hooks — a split (search/dividends out) is due.
+
 ### 🧭 SESSION WRAP (2026-08-20b) — REPLAY-DAY CAMPAIGN RUN + TWO GRAPH-EDGE BUGS FOUND BY IT
 
 The V3.8 launcher ran end-to-end on 2026-08-19 (SPY/NVDA/AAPL/MSFT, 25

@@ -168,10 +168,12 @@ export interface OptionsSettings {
   spotPollSeconds: number;
   optionsFetchMode: OptionsFetchMode;
   optionsFetchMinutes: number;
-  /** Seconds between full refits while a live WS book streams (Massive realtime). */
+  /** Seconds between full refits while a live book streams (Massive WS / Bloomberg
+   *  //blp/mktdata, realtime spot mode). */
   streamRefitSeconds: number;
-  /** Auto-open the WS book on a streaming source (Massive) so Fetch/Calibrate serve
-   *  from the fast in-memory book instead of the slow REST snapshot. */
+  /** Auto-open the live book on a streaming source (Massive WebSocket, Bloomberg
+   *  subscriptions) so Fetch/Calibrate serve from the fast in-memory book instead
+   *  of the slow / metered snapshot pull. */
   autoStream: boolean;
   /** Data-age staleness thresholds (minutes) for the loaded LIVE quotes: past
    *  amber the market pill warns; past red the quality report fails readiness

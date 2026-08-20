@@ -26,6 +26,12 @@ Robustness / conventions:
   expiries' contracts (the universe layer passes them), keeping liquid names
   (thousands of contracts) fast.
 - Missing/zero price fields map to ``None`` (volfit.data.types convention).
+
+Real-time streaming (quota-free): ``BloombergStreamingMixin`` (volfit.data.
+bloomberg_live) adds the ``start_streaming``/``option_tickers``/... contract
+AppState drives; while a ``//blp/mktdata`` subscription book is live (volfit.
+data.bloomberg_stream), ``spot`` and ``fetch_chain(live)`` are served from it
+and issue NO ``bdp`` — the metered reference path is the fallback only.
 """
 
 from __future__ import annotations
@@ -49,6 +55,7 @@ from volfit.data.bloomberg_parse import (
 )
 from volfit.data.bloomberg_history import available_history as _available_history
 from volfit.data.bloomberg_history import fetch_eod as _fetch_eod
+from volfit.data.bloomberg_live import BloombergStreamingMixin
 from volfit.data.bloomberg_search import instrument_search
 from volfit.data.dividends import Dividend
 from volfit.data.fieldmap import int_or_none, price_or_none
@@ -82,8 +89,8 @@ def _default_blp():
     return blp
 
 
-class BloombergProvider(OptionChainProvider):
-    """Live option chains for a watchlist via Bloomberg (xbbg).
+class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
+    """Live option chains for a watchlist via Bloomberg (xbbg + blpapi streaming).
 
     Parameters
     ----------
@@ -95,6 +102,10 @@ class BloombergProvider(OptionChainProvider):
     blp_module   : an object exposing ``bds(security, field)`` and
                    ``bdp(securities, fields)`` like ``xbbg.blp``; defaults to the
                    lazily-imported real module, injectable for offline tests.
+    stream_interval / max_subscriptions / stream_session_factory / stream_host /
+    stream_port  : the ``//blp/mktdata`` streaming knobs (volfit.data.
+                   bloomberg_live): conflation seconds, concurrent-subscription
+                   budget, injectable session (tests), DAPI endpoint override.
     """
 
     def __init__(
@@ -104,11 +115,19 @@ class BloombergProvider(OptionChainProvider):
         max_days: int = 730,
         blp_module: object | None = None,
         strike_window: tuple[float, float] | None = (0.5, 1.5),
+        stream_interval: float | None = 1.0,
+        max_subscriptions: int = 3000,
+        stream_session_factory=None,
+        stream_host: str | None = None,
+        stream_port: int | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.yellow_key = yellow_key
         self.max_days = max_days
         self._blp = blp_module
+        self._init_streaming(
+            stream_interval, max_subscriptions, stream_session_factory, stream_host, stream_port
+        )
         #: Keep only strikes within ``[lo, hi] * spot`` when fetching a live chain
         #: (None = the whole listed ladder). A liquid index/ETF lists hundreds of
         #: strikes spanning a huge range — each is a separately-METERED Bloomberg
@@ -209,6 +228,9 @@ class BloombergProvider(OptionChainProvider):
             return ("red", "xbbg not installed")
         if not session_connected(blp):
             return ("red", "no Terminal")
+        streaming = self._stream_status()  # the live //blp/mktdata book, if any
+        if streaming is not None:
+            return streaming
         if self._last_error is not None:
             return ("red", self._last_error)
         return ("green", "real-time (Terminal)")
@@ -312,8 +334,10 @@ class BloombergProvider(OptionChainProvider):
         chain just to read its spot. Real-time spot polling (spotMode="realtime")
         probes this every few seconds, so the default would have re-``bdp``ed
         hundreds–thousands of option contracts per poll and torched the Bloomberg
-        daily reference-data quota. One underlying price per poll instead."""
-        return self._spot(ticker)
+        daily reference-data quota. One underlying price per poll instead — and
+        ZERO while the subscription book streams (the underlying is subscribed)."""
+        live = self._book_spot(ticker) if self.is_streaming() else None
+        return live if live is not None else self._spot(ticker)
 
     # -- chain ---------------------------------------------------------------
 
@@ -360,7 +384,12 @@ class BloombergProvider(OptionChainProvider):
                     self._blp_module(), ticker, self._security(ticker), contracts, on, style
                 )
             else:
-                snap = self._fetch_live(ticker, contracts)
+                # Streaming: serve the chain from the //blp/mktdata book (no bdp);
+                # the metered reference pull is the fallback (book not painted yet,
+                # selection not yet resubscribed).
+                snap = self._chain_from_book(ticker, expiries) if self.is_streaming() else None
+                if snap is None:
+                    snap = self._fetch_live(ticker, contracts)
         except Exception as exc:
             self._record(exc)
             raise
@@ -386,7 +415,7 @@ class BloombergProvider(OptionChainProvider):
 
     def _fetch_live(self, ticker: str, contracts: list[ParsedOption]) -> ChainSnapshot:
         """The current NBBO chain for the given contracts (one bulk bdp)."""
-        spot = self._spot(ticker)
+        spot = self.spot(ticker)  # off the stream book when streaming, else PX_LAST
         contracts = self._window_contracts(contracts, spot)  # quota: fittable band only
         blp = self._blp_module()
         pivot = pivot_bdp(blp.bdp([p.security for p in contracts], list(_QUOTE_FIELDS)))
@@ -415,12 +444,19 @@ class BloombergProvider(OptionChainProvider):
             )
         from volfit.data.expiry_time import settlement_map
 
+        style = _resolve_style(styles)
+        # Remember the reference-only facts the stream cannot carry (OI, exercise
+        # style) so a streamed chain still reports them (bloomberg_live).
+        self._style_cache[ticker.upper()] = style
+        self._oi_cache.update(
+            {q.security: oi for q, oi in zip(contracts, (q.open_interest for q in quotes)) if oi is not None}
+        )
         return ChainSnapshot(
             ticker=ticker,
             spot=spot,
             timestamp=timestamp,
             quotes=quotes,
-            exercise_style=_resolve_style(styles),
+            exercise_style=style,
             tick_size=US_OPTION_TICK,
             settlement=settlement_map({q.expiry for q in quotes}, root=ticker),
         )

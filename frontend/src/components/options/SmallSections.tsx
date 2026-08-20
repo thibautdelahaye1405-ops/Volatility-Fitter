@@ -128,8 +128,8 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           onChange={(v) => patch({ autoRollPriorOnFetch: v })}
         />
         <Toggle
-          label="Stream live book (Massive)"
-          hint="On: a streaming source (Massive) auto-opens its real-time WS book so Fetch / Calibrate / spot serve from the fast in-memory book instead of the slow REST snapshot. Off: force REST. No effect on Yahoo / Bloomberg / Synthetic."
+          label="Stream live book (Massive / Bloomberg)"
+          hint="On: a streaming source auto-opens its real-time push feed — Massive's WebSocket book, or Bloomberg's //blp/mktdata subscriptions (quota-free: no metered bdp while streaming) — so Fetch / Calibrate / spot serve from the fast in-memory book instead of a metered / slow snapshot pull. Off: force the request path. No effect on Yahoo / Synthetic."
           checked={draft.autoStream} disabled={!live}
           onChange={(v) => patch({ autoStream: v })}
         />

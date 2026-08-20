@@ -37,6 +37,14 @@ def _watchlist() -> list[str]:
     return [t.strip().upper() for t in raw.split(",") if t.strip()]
 
 
+def _env_float(name: str, default: float) -> float:
+    """A numeric env knob (``default`` when unset / not a number)."""
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
 def _build_providers() -> dict:
     """Register every configurable data source over the watchlist.
 
@@ -55,7 +63,15 @@ def _build_providers() -> dict:
     tickers = _watchlist()
     return {
         "yahoo": YahooProvider(tickers),
-        "bloomberg": BloombergProvider(tickers),
+        # //blp/mktdata streaming knobs (volfit.data.bloomberg_live): conflation
+        # seconds (0 = every tick), concurrent-subscription budget, DAPI endpoint.
+        "bloomberg": BloombergProvider(
+            tickers,
+            stream_interval=_env_float("VOLFIT_BBG_STREAM_INTERVAL", 1.0) or None,
+            max_subscriptions=int(_env_float("VOLFIT_BBG_MAX_SUBS", 3000)),
+            stream_host=os.environ.get("VOLFIT_BBG_HOST", "").strip() or None,
+            stream_port=int(_env_float("VOLFIT_BBG_PORT", 0)) or None,
+        ),
         "massive": MassiveProvider(
             tickers,
             api_key=os.environ.get("VOLFIT_MASSIVE_KEY", "").strip(),

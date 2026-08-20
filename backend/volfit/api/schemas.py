@@ -597,17 +597,19 @@ class OptionsSettings(BaseModel):
     #: ``optionsFetchMinutes``; "on_demand" = only the "Fetch Options Quotes" button.
     optionsFetchMode: Literal["auto", "on_demand"] = "on_demand"
     optionsFetchMinutes: float = Field(5.0, gt=0.0, le=1440.0)
-    #: While a real-time WS book is streaming (Massive realtime), the scheduler
+    #: While a real-time book is streaming (Massive WS / Bloomberg //blp/mktdata,
+    #: realtime spot mode), the scheduler
     #: refetches the chain from the book and recalibrates all lit nodes every
     #: ``streamRefitSeconds`` — a faster, book-driven loop distinct from the
     #: minutes-cadence ``optionsFetchMode == "auto"`` REST refetch.
     streamRefitSeconds: float = Field(5.0, gt=0.0, le=600.0)
-    #: Auto-open the real-time WS book on a streaming-capable active source (Massive)
-    #: so chain Fetch / Calibrate / spot serve from the fast in-memory book instead of
-    #: the slow paginated REST snapshot. Independent of ``spotMode`` — the book just
-    #: feeds fetches; live re-pricing / auto-refit stay gated on ``spotMode=="realtime"``.
-    #: ON by default; OFF forces REST even on Massive. No effect on sources without a
-    #: stream (Yahoo / Bloomberg / Synthetic).
+    #: Auto-open the real-time push feed on a streaming-capable active source (the
+    #: Massive WebSocket book, or Bloomberg's //blp/mktdata subscription book —
+    #: quota-free vs the metered bdp path) so chain Fetch / Calibrate / spot serve
+    #: from the fast in-memory book instead of the slow / metered snapshot pull.
+    #: Independent of ``spotMode`` — the book just feeds fetches; live re-pricing /
+    #: auto-refit stay gated on ``spotMode=="realtime"``. ON by default; OFF forces
+    #: the request path. No effect on sources without a stream (Yahoo / Synthetic).
     autoStream: bool = True
 
 

@@ -24,17 +24,60 @@ switches between them at runtime and shows a status light each. `restart.ps1`
 captures the backend to `backend/data/serve.{out,err}.log` and waits for `:8000`
 to bind, so a startup failure is visible rather than a vanishing window.
 
+## Real-time streaming (quota-free push feed)
+
+Every `bdp` / `bds` is a METERED reference-data request (the Terminal's daily
+quota); polling a chain of hundreds–thousands of contracts every few seconds
+is slow and self-limiting. The Desktop API also has a genuine PUSH channel —
+the `//blp/mktdata` **subscription** service — and the Bloomberg source uses it
+as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
+`bloomberg_decode.py` message decode, `bloomberg_live.py` provider mixin):
+
+- When Bloomberg is the **active** source and *Options ▸ Stream live book* is on
+  (default) — or spot mode is *Real-time* — `AppState.sync_streaming` subscribes
+  the universe's contracts **and their underlyings** (`BID,ASK,LAST_PRICE,VOLUME`,
+  conflated with `interval=1.0`); Bloomberg then pushes updates. While it streams,
+  **`fetch_chain(live)` and `spot()` issue no `bdp` at all** — every Fetch /
+  Calibrate / real-time spot poll / 5 s stream refit reads the in-memory book.
+  Metered calls left: one `OPT_CHAIN` listing (`bds`) and one `PX_LAST` to
+  centre the strike window, per ticker, per process.
+- Subscription budget: the Desktop API caps concurrent real-time subscriptions
+  per Terminal. Contracts are windowed to `strike_window` (default 0.5–1.5 ×
+  spot) around a centre held with 5 % hysteresis (no restart when spot wobbles
+  across a strike) and capped at `VOLFIT_BBG_MAX_SUBS` (default 3000),
+  nearest-the-money first. Over-cap contracts are carried unquoted and the
+  status light says "N over cap". Smoke 2026-08-20: SPY + SPX, 2 expiries each,
+  3166 wanted → 2998 subscribed, **0 metered calls** while streaming.
+- Universe edits (ticker / expiry selection) resubscribe on the next scheduler
+  tick (≤ 1 s); an explicit Fetch in that window falls back to the metered path
+  so it never silently misses contracts.
+- `OPEN_INT` is not subscribable (reference-only): a streamed chain carries the
+  OI remembered from the last metered fetch (None before one).
+- Quotes and the chain are stamped with the **provider** tick stamps
+  (`*_UPDATE_STAMP_RT`), not the wall clock; un-stamped INITPAINT quotes take the
+  chain's newest stamp. On a 15-min delayed exchange that reads 15 min behind —
+  the honest data age.
+- Env knobs (`serve.py`): `VOLFIT_BBG_STREAM_INTERVAL` (conflation s, 0 = every
+  tick), `VOLFIT_BBG_MAX_SUBS`, `VOLFIT_BBG_HOST` / `VOLFIT_BBG_PORT` (DAPI
+  endpoint, default `localhost:8194`).
+
 ## Reading the Data Source light
 
-`feed_status()` reports one of three states (`volfit/data/bloomberg.py`):
+`feed_status()` reports these states (`volfit/data/bloomberg.py`,
+`bloomberg_live.py`) — all quota-free (no billable probe on the 30 s poll):
 
 | Light | Meaning |
 |---|---|
-| **green** "real-time (Terminal)" | a `PX_LAST` came back — data is flowing |
+| **green** "real-time (Terminal)" | session up, last on-demand request succeeded (reference path) |
+| **green** "streaming N · real-time" | the subscription book is live with real-time ticks |
+| **amber** "stream connecting" / "stream warming · N subscribed" | subscriptions being acknowledged / no tick stamp yet |
+| **amber** "streaming N · delayed feed (SPY)" | the stream is live but the named underlyings' exchanges are delayed (non-entitled — US equities on this Terminal; SPX is real-time) |
+| **amber** "stream idle since HH:MM UTC" | newest tick > 20 min old (pre-market / closed) — the book keeps last ticks |
+| **red** "stream: &lt;reason&gt;" | an underlying's subscription was refused (`NOT_ENTITLED`, `BAD_SEC`…) or the session failed |
 | **red** "no Terminal" | no blpapi session (Terminal closed / not logged in / xbbg missing) |
 | **red** "&lt;reason&gt;" | session connected but Bloomberg **refused** the request — the real `responseError` reason, e.g. `workflow review needed`, `not entitled`, `daily request limit reached` |
 
-The third case is the important one: **the Terminal is fine; the account is
+The last case is the important one: **the Terminal is fine; the account is
 gated.** No code change clears it — it's resolved on the Bloomberg side.
 
 ## One-line probe (does the Terminal answer?)
