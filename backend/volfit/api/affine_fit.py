@@ -31,7 +31,7 @@ from dataclasses import replace as dc_replace
 import numpy as np
 from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantile)
 
-from volfit.api import fit_pool
+from volfit.api import affine_views_ext, fit_pool
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import AffineFitRequest, AffineFitResponse, AffineSmile
@@ -974,16 +974,32 @@ def _node_rms_terms(
     return node_error_terms(model_iv, mid_iv, weights, band, vs)
 
 
-def _diagnostics(solution, x_grid: np.ndarray) -> tuple[list[float], int, bool]:
-    """Butterfly (min 2nd diff in x) per expiry, calendar violations, arb flag."""
+def _diagnostics(
+    solution, x_grid: np.ndarray
+) -> tuple[list[float], int, bool, int | None, float | None]:
+    """Butterfly (min 2nd diff in x) per expiry, calendar violations, arb flag,
+    plus the worst crossing's LOCATION (V3.3 item 10): ``(pair index, k)`` of
+    the deepest adjacent-maturity price decrease on the PDE lattice — the
+    count alone said "N cal. viol." with nowhere to look. Both None when the
+    count is zero; the -1e-9 lattice tolerance is unchanged."""
     prices = solution.prices  # (n_exp, n_x)
     dx = float(x_grid[1] - x_grid[0])
     d2 = (prices[:, 2:] - 2.0 * prices[:, 1:-1] + prices[:, :-2]) / (dx * dx)
     min_density = [float(row.min()) for row in d2]
-    calendar = int(np.sum(np.diff(prices, axis=0) < -1e-9)) if prices.shape[0] > 1 else 0
+    calendar = 0
+    worst_pair: int | None = None
+    worst_k: float | None = None
+    if prices.shape[0] > 1:
+        gaps = np.diff(prices, axis=0)  # (n_exp - 1, n_x): far - near
+        calendar = int(np.sum(gaps < -1e-9))
+        if calendar > 0:
+            i, j = np.unravel_index(int(np.argmin(gaps)), gaps.shape)
+            x_star = float(x_grid[j])
+            if x_star > 1e-12:  # x = 0 is the C(., 0) = 1 boundary, never crosses
+                worst_pair, worst_k = int(i), float(np.log(x_star))
     bounded = bool(prices.min() >= -1e-9 and prices.max() <= 1.0 + 1e-9)
     arb_free = bounded and calendar == 0 and min(min_density, default=0.0) >= -1e-6
-    return min_density, calendar, arb_free
+    return min_density, calendar, arb_free, worst_pair, worst_k
 
 
 def _prior_anchor_quotes(
@@ -1274,6 +1290,11 @@ def _fit(
                 tau=t,
                 forward=float(prepared.forward),  # for the strike / %ATM axis modes
                 model=model,
+                # Untruncated twin on the shared display grid (V3.3 item 3):
+                # same inversion, wider truncation — `model` stays byte-equal.
+                modelExt=affine_views_ext.extended_model(
+                    cal.solution, i_exp, t, klo, khi, x_grid, _K_PAD, _N_SMILE
+                ),
                 quotes=_quote_bands(state, ticker, iso, prepared),
                 varSwap=_affine_varswap_info(
                     state, ticker, iso, model_vs_vol, k=k, w=w, tau=t, rms_num=num
@@ -1288,7 +1309,9 @@ def _fit(
             )
         )
 
-    min_density, calendar, arb_free = _diagnostics(cal.solution, x_grid)
+    min_density, calendar, arb_free, cal_worst_pair, cal_worst_k = _diagnostics(
+        cal.solution, x_grid
+    )
     # Phase 0: per-expiry diagnostics (vega-floor count, vertices-in-range, PDE
     # steps, prior-row count) — pure observation, computed AFTER the solve so it
     # cannot change any calibrated value; stored on the side-channel for the
@@ -1319,6 +1342,8 @@ def _fit(
         surfaceRmsError=rms_of_terms(rms_num, rms_den),
         minDensity=min_density,
         calendarViolations=calendar,
+        calendarWorstPair=cal_worst_pair,
+        calendarWorstK=cal_worst_k,
         arbitrageFree=arb_free,
         nEvals=cal.n_evals,
         message=cal.message,

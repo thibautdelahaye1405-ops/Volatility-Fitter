@@ -190,6 +190,28 @@ def test_certificate_authority_flags_between_node_dip():
     assert any(s.startswith("calendar certificate") for s in node.issues)
 
 
+def test_belly_neg_share_on_wire():
+    """V3.3 item 11: BellyCertificate.neg_share (dip WIDTH, computed since R2
+    but dropped at the wire) rides the quality row beside min g / argmin —
+    0.0 on a clean certified belly, in (0, 1] when a dip exists."""
+    state = AppState(REF_DATE)
+    iso = _isos(state)[1]
+    service.calibrate_node(state, TICKER, iso, "mid")
+    report = quality.build_quality_report(state)
+    row = next(n for n in report.nodes if n.hasFit)
+    assert row.butterflyCertified
+    assert row.bellyMinG is not None and row.bellyArgminK is not None
+    assert row.negShare == 0.0  # clean synthetic: no grid point below -tol
+    # Value identity with the certificate itself (never a re-derivation).
+    from volfit.models.diagnostics import belly_certificate
+
+    record = state.get_fit(state.get_calibrated_ptr(TICKER, iso, "mid")[0])
+    kq = record.prepared.k
+    cert = belly_certificate(record.result.slice, float(kq.min()), float(kq.max()))
+    assert row.negShare == cert.neg_share
+    assert row.bellyMinG == cert.min_g
+
+
 def test_rms_budget_drives_readiness():
     state = AppState(REF_DATE)
     iso = _isos(state)[1]

@@ -58,6 +58,15 @@ function seriesOf(curve: DistributionCurve, kind: DistKind): Series {
     : { xs: curve.u, ys: curve.density.map((d) => -Math.log(Math.max(d, PDF_FLOOR))) };
 }
 
+/** SIGNED un-clipped pdf (V3.3 item 11) when the payload carries the dip
+ *  evidence — density view only; null when absent (clean slice / LQD). */
+function rawSeriesOf(curve: DistributionCurve, kind: DistKind): Series | null {
+  if (kind !== "density") return null;
+  const raw = curve.densityRaw;
+  if (raw === undefined || raw.length === 0 || raw.length !== curve.x.length) return null;
+  return { xs: curve.x, ys: raw };
+}
+
 /** Linear interpolation of ys over an ascending xs grid at position x. */
 function interpAt(xs: number[], ys: number[], x: number): number | null {
   const n = Math.min(xs.length, ys.length);
@@ -94,14 +103,20 @@ export default function DistributionChart({
     () => (prior !== null ? seriesOf(prior, kind) : null),
     [prior, kind],
   );
+  // Signed un-clipped pdf when the payload carries the sub-zero evidence
+  // (V3.3 item 11): drawn solid where it dips, with the clipped curve dashed.
+  const rawCur = useMemo(() => rawSeriesOf(current, kind), [current, kind]);
 
   // Domains: density spans the union of the x grids with the pdf anchored at
-  // zero; the log quantile density spans u in [0, 1], anchored at its bowl
-  // bottom and CAPPED at LOGQD_YMAX (its tails diverge to +inf).
+  // zero — UNLESS the signed pdf dips below (then the floor follows the dip:
+  // yLo = min(0, dataMin), the clip is evidence, not an axis); the log
+  // quantile density spans u in [0, 1], anchored at its bowl bottom and
+  // CAPPED at LOGQD_YMAX (its tails diverge to +inf).
   const { xScale, yScale } = useMemo(() => {
     let xMin = Infinity, xMax = -Infinity;
     let yMin = Infinity, yMax = -Infinity;
-    for (const s of pri !== null ? [cur, pri] : [cur]) {
+    const all = [cur, ...(pri !== null ? [pri] : []), ...(rawCur !== null ? [rawCur] : [])];
+    for (const s of all) {
       for (const v of s.xs) { xMin = Math.min(xMin, v); xMax = Math.max(xMax, v); }
       for (const v of s.ys) { yMin = Math.min(yMin, v); yMax = Math.max(yMax, v); }
     }
@@ -109,7 +124,7 @@ export default function DistributionChart({
     let yLo: number, yHi: number;
     if (kind === "density") {
       const pad = Math.max(1e-9, (yMax - yMin) * 0.08);
-      yLo = 0; // pdf anchored at zero
+      yLo = yMin < 0 ? yMin - pad : 0; // Math.min(0, dataMin), padded when dipping
       yHi = yMax + pad;
     } else {
       xMin = 0; xMax = 1;
@@ -124,7 +139,7 @@ export default function DistributionChart({
       xScale: linearScale([vxLo, vxHi], [0, plotW]),
       yScale: linearScale([vyLo, vyHi], [plotH, 0]),
     };
-  }, [cur, pri, kind, plotW, plotH, zoom]);
+  }, [cur, pri, rawCur, kind, plotW, plotH, zoom]);
 
   /** Build an SVG polyline path for a series. */
   const pathOf = (s: Series): string => {
@@ -139,6 +154,7 @@ export default function DistributionChart({
   };
   const curPath = useMemo(() => pathOf(cur), [cur, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const priPath = useMemo(() => (pri !== null ? pathOf(pri) : ""), [pri, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const rawPath = useMemo(() => (rawCur !== null ? pathOf(rawCur) : ""), [rawCur, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Density only: soft area fill under the current pdf down to zero.
   const curArea = useMemo(() => {
@@ -148,6 +164,25 @@ export default function DistributionChart({
     const x1 = xScale.map(cur.xs[cur.xs.length - 1]).toFixed(2);
     return `${curPath}L${x1},${y0}L${x0},${y0}Z`;
   }, [kind, curPath, cur, xScale, yScale]);
+
+  // Sub-zero excursion of the SIGNED pdf, filled red: the polyline of
+  // min(y, 0) closed along y = 0 (non-negative stretches collapse onto the
+  // baseline and contribute no area).
+  const rawNegArea = useMemo(() => {
+    if (rawCur === null || rawCur.xs.length === 0) return "";
+    const y0 = yScale.map(0).toFixed(2);
+    let d = "";
+    const n = Math.min(rawCur.xs.length, rawCur.ys.length);
+    for (let i = 0; i < n; i++) {
+      const x = xScale.map(rawCur.xs[i]).toFixed(2);
+      const y = yScale.map(Math.min(rawCur.ys[i], 0)).toFixed(2);
+      d += d === "" ? `M${x},${y}` : `L${x},${y}`;
+    }
+    if (d === "") return "";
+    const x0 = xScale.map(rawCur.xs[0]).toFixed(2);
+    const x1 = xScale.map(rawCur.xs[n - 1]).toFixed(2);
+    return `${d}L${x1},${y0}L${x0},${y0}Z`;
+  }, [rawCur, xScale, yScale]);
 
   const xTicks = niceTicks(xScale.domain[0], xScale.domain[1], 8);
   const yTicks = niceTicks(yScale.domain[0], yScale.domain[1], 6);
@@ -195,7 +230,11 @@ export default function DistributionChart({
     drag.current = null;
   };
 
-  const hoverYv = hoverXv !== null ? interpAt(cur.xs, cur.ys, hoverXv) : null;
+  // Hover tracks the SOLID curve: the signed pdf when the dip evidence is
+  // shown, else the (clipped) current fit.
+  const hoverSeries = rawCur ?? cur;
+  const hoverYv =
+    hoverXv !== null ? interpAt(hoverSeries.xs, hoverSeries.ys, hoverXv) : null;
   const hoverPx = hoverXv !== null ? xScale.map(hoverXv) : 0;
   const hoverLabel =
     hoverXv !== null && hoverYv !== null
@@ -211,8 +250,18 @@ export default function DistributionChart({
       {/* Legend */}
       <div className="mb-1 flex shrink-0 items-center gap-5 px-1 text-[11px] text-slate-400">
         <span className="flex items-center gap-1.5">
-          <span className="h-0.5 w-5 rounded bg-accent-400" /> Current fit
+          <span className="h-0.5 w-5 rounded bg-accent-400" />
+          {rawCur !== null ? "Current fit (signed)" : "Current fit"}
         </span>
+        {rawCur !== null && (
+          <span
+            className="flex items-center gap-1.5 text-amber-300/90"
+            title="The served pdf is max(signed, 0) renormalized — the dashed curve is what the clip hides"
+          >
+            <span className="h-0 w-5 border-t-2 border-dashed border-amber-400/80" />
+            Clipped (renormalized)
+          </span>
+        )}
         {pri !== null && (
           <span className="flex items-center gap-1.5">
             <span className="h-0 w-5 border-t-2 border-dashed border-slate-500" /> Prior
@@ -285,15 +334,32 @@ export default function DistributionChart({
                   clipPath="url(#${clipId})" />
               )}
 
+              {/* Sub-zero excursion of the signed pdf: red evidence fill */}
+              {rawNegArea !== "" && (
+                <path d={rawNegArea} fill="rgb(244 63 94 / 0.25)" clipPath="url(#${clipId})" />
+              )}
+
               {/* Prior: dashed slate */}
               {priPath !== "" && (
                 <path d={priPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
                   strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#${clipId})" />
               )}
 
-              {/* Current fit: accent */}
-              <path d={curPath} fill="none" stroke="var(--color-accent-400)"
-                strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
+              {/* Divergence pair (V3.3 item 11): the signed pdf SOLID where it
+                  dips, the served clipped/renormalized curve DASHED — the
+                  contamination is explicit, never hidden. Clean payloads carry
+                  no raw channel and draw the single accent curve as before. */}
+              {rawPath !== "" ? (
+                <>
+                  <path d={curPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
+                    strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#${clipId})" />
+                  <path d={rawPath} fill="none" stroke="var(--color-accent-400)"
+                    strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
+                </>
+              ) : (
+                <path d={curPath} fill="none" stroke="var(--color-accent-400)"
+                  strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
+              )}
 
               {/* Crosshair: vertical guide + marker on the current curve */}
               {hoverXv !== null && hoverYv !== null && (

@@ -2,6 +2,7 @@
 
 from volfit.api.routers.affine import router as affine_router
 from volfit.api.routers.asof import router as asof_router
+from volfit.api.routers.compare import router as compare_router
 from volfit.api.routers.datasource import router as datasource_router
 from volfit.api.routers.edits import router as edits_router
 from volfit.api.routers.events import router as events_router
@@ -30,6 +31,7 @@ ALL_ROUTERS = (
     datasource_router,
     asof_router,
     smiles_router,
+    compare_router,
     edits_router,
     events_router,
     export_router,
@@ -55,6 +57,7 @@ __all__ = [
     "ALL_ROUTERS",
     "affine_router",
     "asof_router",
+    "compare_router",
     "datasource_router",
     "edits_router",
     "events_router",

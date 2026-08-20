@@ -65,6 +65,10 @@ class QualityNode(BaseModel):
     # hard-blocks publish — an uncertified slice cannot become a mark.
     bellyMinG: float | None = None  # worst g over the quoted range
     bellyArgminK: float | None = None  # where the worst dip sits
+    #: Fraction of certificate grid points with g strictly below -tol — the
+    #: dip's WIDTH, not just its depth (BellyCertificate.neg_share; V3.3
+    #: item 11 promoted it to the wire). None when there is no belly.
+    negShare: float | None = None
     butterflyCertified: bool = True  # min g >= -tol everywhere (or no belly)
     #: The displayed slice is the CERTIFIED REPAIR refit (the first fit
     #: failed the certificate; committee acceptance rule leg 2). Purely

@@ -292,3 +292,92 @@ export function getMockSmile(): SmileData {
     },
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* Model comparison (V3.2 item 12)                                     */
+/* ------------------------------------------------------------------ */
+
+/** Comparable smile families (the compare endpoint's model ids). */
+export type CompareModelId = "lqd" | "svi" | "sigmoid";
+
+/** Per-family analytic no-butterfly signal of one compared fit. */
+export interface CompareValidity {
+  /** "density" (LQD: density minimum, ≥ 0 by construction) | "g" (SVI / MCS:
+   *  exact Durrleman g minimum, < 0 ⇒ arb) | "recon" (no analytic form). */
+  kind: "density" | "g" | "recon";
+  minValue?: number | null;
+  /** minValue ≥ −tolerance for the kind; null when kind is "recon". */
+  certified?: boolean | null;
+}
+
+/** One model family's fit + uniform metrics on the compared node. */
+export interface CompareModelFit {
+  model: CompareModelId;
+  /** Display name ("LQD" | "SVI-JW" | "MCS"). */
+  label: string;
+  ok: boolean;
+  error?: string | null;
+  /** IV curve on the same display grid as the smile payload. */
+  curve: SmilePoint[];
+  rmsBp?: number | null;
+  maxIvBp?: number | null;
+  atmVol?: number | null;
+  skew?: number | null;
+  leeLeft?: number | null;
+  leeRight?: number | null;
+  varSwapVol?: number | null;
+  validity?: CompareValidity | null;
+  nParams?: number | null;
+  /** Ad-hoc fit wall time (ms); null when the committed record was reused. */
+  fitMs?: number | null;
+  reused?: boolean;
+}
+
+/** Response of GET /smiles/{ticker}/{expiry}/compare. */
+export interface CompareResponse {
+  ticker: string;
+  expiry: string;
+  fitMode: string;
+  activeModel: string;
+  models: CompareModelFit[];
+}
+
+/** Three plausible mock comparison fits so the Compare view works backendless:
+ *  LQD hugs the base smile, SVI heavies the wings a touch, MCS sits slightly
+ *  under with a mild |k| tilt — and the MCS row carries a small g-breach so
+ *  the validity chip's rose state is visible in mock mode. */
+export function getMockComparison(): CompareResponse {
+  const volOf = (k: number) => sviVol(SVI, k, T);
+  const fit = (
+    model: CompareModelId,
+    label: string,
+    vol: (k: number) => number,
+    metrics: Omit<CompareModelFit, "model" | "label" | "ok" | "curve">,
+  ): CompareModelFit => ({ model, label, ok: true, curve: sampleCurve(161, vol), ...metrics });
+  return {
+    ticker: "SPX",
+    expiry: "2026-12-18",
+    fitMode: "mid",
+    activeModel: "lqd",
+    models: [
+      fit("lqd", "LQD", volOf, {
+        rmsBp: 18.4, maxIvBp: 52.1, atmVol: 0.206, skew: -0.355,
+        leeLeft: 0.097, leeRight: 0.036, varSwapVol: 0.212,
+        validity: { kind: "density", minValue: 1.2e-6, certified: true },
+        nParams: 7, fitMs: null, reused: true,
+      }),
+      fit("svi", "SVI-JW", (k) => volOf(k) + 0.004 * k * k, {
+        rmsBp: 24.9, maxIvBp: 68.3, atmVol: 0.205, skew: -0.348,
+        leeLeft: 0.104, leeRight: 0.041, varSwapVol: 0.213,
+        validity: { kind: "g", minValue: 2.4e-4, certified: true },
+        nParams: 5, fitMs: 6.2, reused: false,
+      }),
+      fit("sigmoid", "MCS", (k) => volOf(k) - 0.002 + 0.006 * Math.abs(k), {
+        rmsBp: 22.7, maxIvBp: 61.5, atmVol: 0.204, skew: -0.36,
+        leeLeft: 0.093, leeRight: 0.034, varSwapVol: 0.211,
+        validity: { kind: "g", minValue: -3.1e-4, certified: false },
+        nParams: 12, fitMs: 41.8, reused: false,
+      }),
+    ],
+  };
+}

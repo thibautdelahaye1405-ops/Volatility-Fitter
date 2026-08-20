@@ -108,8 +108,11 @@ def weighted_rms_vol(
 
 
 def numeric_density(
-    slice_: SmileModel, half_floor: float = 0.0
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    slice_: SmileModel, half_floor: float = 0.0, return_raw: bool = False
+) -> (
+    tuple[np.ndarray, np.ndarray, np.ndarray]
+    | tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
+):
     """Risk-neutral log-return density and CDF of any slice from w(k) alone.
 
     Breeden-Litzenberger via the Durrleman/Gatheral functional: with total
@@ -128,7 +131,11 @@ def numeric_density(
     ``half_floor`` widens the (symmetric) grid so it reaches at least ±half_floor —
     used by the stacked-densities view to draw the left tail out to a fixed
     k_min (the density there is ~0 but the curve should reach the display range).
-    """
+
+    ``return_raw`` (V3.3 item 11 — sub-zero evidence) additionally returns the
+    SIGNED un-clipped pdf: ``(k, pdf, cdf, raw)``, raw scaled by the SAME
+    normalization as the clipped pdf (raw == pdf wherever g >= 0, raw < 0
+    exactly where g < 0). The default path stays byte-identical."""
     sd = float(np.sqrt(max(float(slice_.implied_w(0.0)), 1e-8)))
     half = max(_DENSITY_SD * sd, _DENSITY_MIN_HALF, half_floor)
     k = np.linspace(-half, half, _DENSITY_POINTS)
@@ -148,11 +155,17 @@ def numeric_density(
     g = (1.0 - k * wk / (2.0 * w)) ** 2 - 0.25 * wk**2 * (1.0 / w + 0.25) + 0.5 * wkk
     sqrt_w = np.sqrt(w)
     d_minus = -k / sqrt_w - 0.5 * sqrt_w
-    pdf = np.maximum(g, 0.0) / np.sqrt(2.0 * np.pi * w) * np.exp(-0.5 * d_minus**2)
+    # Signed pdf first, clip second: max(g,0)/s*e == max(g/s*e, 0) bit-for-bit
+    # (identical FP ops in order for g >= 0) — the clipped pdf is byte-identical.
+    raw = g / np.sqrt(2.0 * np.pi * w) * np.exp(-0.5 * d_minus**2)
+    pdf = np.maximum(raw, 0.0)
     area = float(np.trapezoid(pdf, k))
     if area > 0.0:
         pdf = pdf / area
+        raw = raw / area  # same divisor: raw == pdf wherever g >= 0
     cdf = np.concatenate([[0.0], np.cumsum(0.5 * (pdf[1:] + pdf[:-1]) * np.diff(k))])
+    if return_raw:
+        return k, pdf, np.clip(cdf, 0.0, 1.0), raw
     return k, pdf, np.clip(cdf, 0.0, 1.0)
 
 
@@ -336,3 +349,51 @@ def extrapolated_arb(
         min_g=min_g,
         cal_bp=cal_bp,
     )
+
+# --------------------------------------------------- analytic butterfly signal
+#: Traded-range scan density (the historical backtest.dispatch grid) + the
+#: genuine-arb thresholds for the ANALYTIC signal (no FD noise, so tight); the
+#: density bound is float noise (the LQD density is positive by construction).
+_AN_BFLY_POINTS = 201
+BUTTERFLY_G_TOL = 1e-6
+BUTTERFLY_DENSITY_TOL = 1e-9
+
+
+def butterfly_tolerance(kind: str) -> float:
+    """Certification tolerance matching an ``analytic_butterfly`` kind."""
+    return BUTTERFLY_DENSITY_TOL if kind == "density" else BUTTERFLY_G_TOL
+
+
+def analytic_butterfly(
+    family: str, slice_: SmileModel, k_lo: float, k_hi: float
+) -> tuple[str, float, float]:
+    """Static (butterfly) arb from the model's ANALYTIC form — no FD noise.
+
+    ONE protocol, three families (lifted from backtest.dispatch, V3.2 item 12
+    — the compare endpoint and the offline sweep read the SAME signal; FD
+    reconstruction misreports at range edges, FINDINGS R2). Returns ``(kind,
+    min, neg_frac)`` over [k_lo, k_hi]: ``"density"`` — the LQD risk-neutral
+    density minimum (f = u(1-u)e^{-g} >= 0 by construction, butterfly arb is
+    structurally impossible); ``"g"`` — SVI (closed-form w', w'') / Multi-Core
+    SIV (its own ``gatheral_g``) exact Durrleman g, g < 0 => arb; ``"recon"``
+    — no analytic form, the caller keeps its own reconstruction.
+    """
+    grid = np.linspace(float(k_lo), float(k_hi), _AN_BFLY_POINTS)
+    if family == "lqd" and hasattr(slice_, "density"):  # structural positivity
+        vals, kind = np.asarray(slice_.density()[1], float), "density"
+    elif family == "sigmoid" and hasattr(slice_, "gatheral_g"):  # analytic g
+        vals, kind = np.asarray(slice_.gatheral_g(grid), float), "g"
+    elif family == "svi" and hasattr(slice_, "sigma"):  # RawSVI closed form
+        km = grid - slice_.m
+        s = np.sqrt(km * km + slice_.sigma**2)
+        w = np.maximum(slice_.a + slice_.b * (slice_.rho * km + s), 1e-12)
+        wp = slice_.b * (slice_.rho + km / s)
+        wpp = slice_.b * slice_.sigma**2 / s**3
+        g = (1.0 - grid * wp / (2.0 * w)) ** 2 - 0.25 * wp**2 * (1.0 / w + 0.25) + 0.5 * wpp
+        vals, kind = g, "g"
+    else:
+        return "recon", 0.0, 0.0
+    vals = vals[np.isfinite(vals)]
+    if vals.size == 0:
+        return kind, 0.0, 0.0
+    return kind, float(vals.min()), float(np.mean(vals < 0.0))

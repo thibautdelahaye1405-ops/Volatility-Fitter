@@ -23,11 +23,37 @@ export interface QualityNode {
   leeOk: boolean;
   calendarViolation: number;
   calendarOk: boolean;
+  /** K* of the cheapest offending sell-near/buy-far calendar spread (desk
+   *  units; null when there is no positive sampled violation). */
+  calendarWorstStrike?: number | null;
+  /** Exact full-line calendar certificate (book ch. 2, LQD backbone vs the
+   *  previous fitted expiry) — the ACCEPTANCE authority. All null on the
+   *  first expiry (no previous slice). Flag iff ledgerGapMin < -1e-6 (the
+   *  certificate's own tolerance — lib/stackedVariance.CAL_TOL). */
+  ledgerGapMin?: number | null;
+  ledgerGapZ?: number | null;
+  ledgerGapK?: number | null;
+  ledgerTailOrderOk?: boolean;
+  ledgerCertified?: boolean;
   /** Extrapolated-region arb (advisory measurement, Notes 09/10 Phase 1). */
   extrapMinG: number | null;
   extrapOk: boolean;
   extrapCalBp: number | null;
   extrapCalOk: boolean;
+  /** Belly butterfly certificate over the traded range (committee R2): min
+   *  Durrleman g, its location, dip WIDTH (negShare = grid share below -tol)
+   *  and the certified/repaired verdicts. An uncertified belly blocks publish. */
+  bellyMinG?: number | null;
+  bellyArgminK?: number | null;
+  negShare?: number | null;
+  butterflyCertified?: boolean;
+  bellyRepaired?: boolean;
+  /** MCS overlay calendar certificate (V3.1 leg 4b, sigmoid-displayed pairs
+   *  only — polished-dense scan + analytic wing-order clause; advisory). */
+  overlayCalGapMin?: number | null;
+  overlayCalGapK?: number | null;
+  overlayCalWingOrderOk?: boolean | null;
+  overlayCalCertified?: boolean | null;
   wingOrderOk: boolean | null;
   varSwapQuoted: boolean;
   filterActive: boolean;
@@ -111,7 +137,7 @@ export interface UseQualityResult {
   reload: () => void;
 }
 
-export function useQuality(): UseQualityResult {
+export function useQuality(reloadKey = 0): UseQualityResult {
   const { spotVersion } = useSmileSession();
   const [report, setReport] = useState<QualityReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,7 +161,10 @@ export function useQuality(): UseQualityResult {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [spotVersion, attempt]);
+    // spotVersion = the shared view-version (bumped on calibration / spot /
+    // fetch); reloadKey lets a consumer fold an extra epoch in (Stacked IV
+    // passes its own chart reload key so markers refresh with the curves).
+  }, [spotVersion, attempt, reloadKey]);
 
   return {
     report,

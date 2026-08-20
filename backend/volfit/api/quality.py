@@ -326,6 +326,7 @@ def _node_row(
         extrapCalOk=extrap_cal_ok,
         bellyMinG=belly.min_g if belly is not None else None,
         bellyArgminK=belly.argmin_k if belly is not None else None,
+        negShare=belly.neg_share if belly is not None else None,
         butterflyCertified=belly_certified,
         bellyRepaired=bool(
             record.display is not None

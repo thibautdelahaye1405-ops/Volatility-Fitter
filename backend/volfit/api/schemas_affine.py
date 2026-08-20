@@ -69,6 +69,16 @@ class AffineSmile(BaseModel):
     tau: float = 0.0  # event-weighted variance years the smile is quoted in (= t with no events)
     forward: float = 0.0  # active forward (for the strike / %ATM axis transforms)
     model: list[SmilePoint]  # reconstructed IV curve (Dupire PDE -> Black inv)
+    #: The same reconstructed curve UNTRUNCATED to the shared display grid
+    #: (V3.3 item 3): [min(K_DISPLAY_LO, k_obs_lo - pad), min(max(K_DISPLAY_HI,
+    #: k_obs_hi + pad), ln(x_max) - eps)] — the right edge clamped inside the
+    #: PDE lattice so clamped prices are never inverted. Inversion is guarded
+    #: by a normalized time-value floor; below it the total variance extends
+    #: flat-in-k from the last reliable point (volfit.api.affine_views_ext).
+    #: Contains ``model``'s grid points bit-for-bit; ``model`` itself (five
+    #: consumers couple to its quoted-range x-domain) is UNTOUCHED. Empty on
+    #: older cached payloads / degenerate expiries.
+    modelExt: list[SmilePoint] = []
     #: The active fetched prior, transported to the current forward and sampled on
     #: this smile's k grid (dotted spot-updated overlay); empty when no active prior.
     prior: list[SmilePoint] = []
@@ -126,6 +136,13 @@ class AffineFitResponse(BaseModel):
     surfaceRmsError: float = 0.0
     minDensity: list[float]  # per-expiry butterfly proxy (min 2nd diff in x)
     calendarViolations: int  # adjacent-maturity price decreases on the PDE grid
+    # --- worst-crossing LOCATION (V3.3 item 10): where the deepest adjacent-
+    # maturity price decrease sits on the PDE lattice. Both None when
+    # calendarViolations == 0 (the count keeps its own -1e-9 lattice tolerance).
+    #: Index i of the violating pair: expiries[i] (near) -> expiries[i+1] (far).
+    calendarWorstPair: int | None = None
+    #: Log-moneyness k = ln(x) of the worst crossing on the PDE strike grid.
+    calendarWorstK: float | None = None
     arbitrageFree: bool
     nEvals: int  # calibration PDE solves
     message: str  # optimizer termination message

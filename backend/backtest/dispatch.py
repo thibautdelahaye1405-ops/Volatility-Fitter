@@ -27,6 +27,11 @@ from volfit.calib.calendar_certificate import ledger_certificate
 from volfit.calib.rms import node_error_terms, rms
 from volfit.calib.weights import resolve_weights
 from volfit.models.base import SmileModel
+from volfit.models.diagnostics import (
+    BUTTERFLY_DENSITY_TOL,
+    BUTTERFLY_G_TOL,
+    analytic_butterfly,
+)
 from volfit.models.lqd.calibrate import calibrate_slice
 from volfit.models.sigmoid import calibrate_sigmoid
 from volfit.models.sigmoid.calendar_certificate import mcs_calendar_certificate
@@ -160,47 +165,11 @@ def _butterfly(slice_: SmileModel, k_lo: float, k_hi: float) -> tuple[float, flo
     return float(finite.min()), float(np.mean(finite < 0.0))
 
 
-def _analytic_butterfly(slice_: SmileModel, grid: np.ndarray) -> tuple[float, float, str]:
-    """Static (butterfly) arb from the model's ANALYTIC form — no FD noise.
-
-    ``_butterfly`` reconstructs g(k) by ``np.gradient``-differencing ``implied_w``;
-    that is fragile at the traded-range edges and over-counts — most acutely for
-    LQD, whose ``implied_w`` itself Black-inverts the call curve (price→IV), so the
-    reconstruction flags arb the model cannot have. See FINDINGS_calibration_arb.md R2.
-
-    Returns ``(min, neg_frac, kind)``:
-      * ``"density"`` — LQD: the risk-neutral density f = u(1-u)e^{-g} is positive by
-        construction, so butterfly arb is structurally impossible. ``min`` is the
-        density minimum (≥0); the martingale-mass defect is reported separately as
-        ``lqd_martingale_dev``.
-      * ``"g"`` — SVI / Multi-Core SIV: the EXACT Durrleman g(k). SVI from closed-form
-        w', w''; SIV from its own ``gatheral_g`` (the identical functional). g<0 ⇒ arb.
-      * ``"recon"`` — no analytic form; caller keeps the reconstructed numbers.
-    """
-    if hasattr(slice_, "density"):  # LQD — structural positivity of the density
-        f = np.asarray(slice_.density()[1], float)
-        f = f[np.isfinite(f)]
-        return (float(f.min()), float(np.mean(f < 0.0)), "density") if f.size else (0.0, 0.0, "density")
-    if hasattr(slice_, "gatheral_g"):  # Multi-Core SIV — analytic Durrleman g
-        g = np.asarray(slice_.gatheral_g(grid), float)
-        g = g[np.isfinite(g)]
-        return (float(g.min()), float(np.mean(g < 0.0)), "g") if g.size else (0.0, 0.0, "g")
-    if isinstance(slice_, RawSVI):  # SVI — closed-form w, w', w'' (same g as _butterfly)
-        km = grid - slice_.m
-        s = np.sqrt(km * km + slice_.sigma**2)
-        w = np.maximum(slice_.a + slice_.b * (slice_.rho * km + s), 1e-12)
-        wp = slice_.b * (slice_.rho + km / s)
-        wpp = slice_.b * slice_.sigma**2 / s**3
-        g = (1.0 - grid * wp / (2.0 * w)) ** 2 - 0.25 * wp**2 * (1.0 / w + 0.25) + 0.5 * wpp
-        g = g[np.isfinite(g)]
-        return (float(g.min()), float(np.mean(g < 0.0)), "g") if g.size else (0.0, 0.0, "g")
-    return 0.0, 0.0, "recon"
-
-
-#: Genuine-arb thresholds for the analytic signal (no FD noise, so tight): a Durrleman
-#: g this far below 0 is a real butterfly violation; the density guard is just floating-point.
-_G_ARB_TOL = 1e-6
-_DENSITY_ARB_TOL = 1e-9
+#: Genuine-arb thresholds for the analytic signal — the LIFTED protocol constants
+#: (volfit.models.diagnostics.analytic_butterfly; V3.2: one protocol, three
+#: families, shared with the compare endpoint — never reimplemented here).
+_G_ARB_TOL = BUTTERFLY_G_TOL
+_DENSITY_ARB_TOL = BUTTERFLY_DENSITY_TOL
 #: Calendar-certificate tolerance (matches api.quality._CAL_TOL): the ledger gap is
 #: in normalized price, the polished gap in total variance — both ~float-noise there.
 _CAL_CERT_TOL = 1e-6
@@ -294,7 +263,7 @@ def fit_node(
             # Analytic, FD-free static-arb (the trustworthy signal — R2). ``arb_real``
             # is the model-aware genuine-butterfly flag analyze.py aggregates; the
             # reconstructed bfly_* are kept as a comparable cross-model diagnostic.
-            an_min, an_neg, an_kind = _analytic_butterfly(slice_, np.linspace(k_lo, k_hi, 201))
+            an_kind, an_min, an_neg = analytic_butterfly(spec.family, slice_, k_lo, k_hi)
             if an_kind == "g":
                 arb_real = an_min < -_G_ARB_TOL
             elif an_kind == "density":  # LQD: butterfly-free by construction

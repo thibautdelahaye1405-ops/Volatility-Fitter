@@ -15,6 +15,8 @@ import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
 import StackedDensityChart from "../components/StackedDensityChart";
 import StackedVarianceChart from "../components/StackedVarianceChart";
+import OverlayCurvesChart from "../components/OverlayCurvesChart";
+import ModelCompareTable from "../components/ModelCompareTable";
 import TermPanel from "../components/TermPanel";
 import SurfaceChart from "../components/SurfaceChart";
 import QuoteTable from "../components/QuoteTable";
@@ -30,6 +32,8 @@ import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
 import { useMassiveIv } from "../state/useMassiveIv";
+import { useModelComparison } from "../state/useModelComparison";
+import { compareSeries } from "../lib/modelCompare";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 
@@ -38,6 +42,7 @@ import type { AxisMode } from "../lib/axisModes";
  *  (no calendar arb ⇔ curves don't cross). ROADMAP Phase 10. */
 type ChartView =
   | "smile"
+  | "compare"
   | "stackeddensity"
   | "logqd"
   | "term"
@@ -47,6 +52,7 @@ type ChartView =
 
 const CHART_VIEWS: { id: ChartView; label: string }[] = [
   { id: "smile", label: "Smile" },
+  { id: "compare", label: "Compare" },
   { id: "stackeddensity", label: "Densities" },
   { id: "logqd", label: "Log Q-density" },
   { id: "term", label: "Term" },
@@ -63,7 +69,8 @@ const AXIS_MODE_VIEWS = new Set<ChartView>(["smile", "stackeddensity", "surface"
 /** Interaction hint shown under the chart card, per view. */
 const VIEW_HINTS: Record<ChartView, string> = {
   smile: "Click a quote · Del exclude · ↑↓ amend · Ctrl+Z undo",
-  stackeddensity: "All expiries' densities overlaid · staying ≥ 0 ⇒ no butterfly arbitrage",
+  compare: "LQD / SVI-JW / MCS fitted to the same quotes · validity = each family's analytic no-arb signal",
+  stackeddensity: "All expiries' densities overlaid · ≥ 0 is structural for LQD only — SVI/MCS dips draw signed in red (clipped otherwise)",
   logqd: "Log quantile density ℓ(u) = log q(u) of the current fit",
   term: "ATM term structure across the expiry ladder · real / event-dilated clock",
   surface: "Drag to rotate · σ(k, T) across the expiry ladder",
@@ -161,6 +168,17 @@ export default function SmileViewer() {
   const hasEdits =
     smile !== null && smile.quotes.some((q) => q.excluded || q.amended);
   const live = source === "live";
+
+  // Side-by-side model comparison (V3.2 item 12): fetched LAZILY — only while
+  // the Compare view is open (up to 2 extra fits per node, server-cached).
+  const comparison = useModelComparison(
+    view === "compare",
+    live,
+    ticker,
+    expiry,
+    fitMode,
+    spotVersion,
+  );
 
   // Read-only Massive-IV comparison overlay for the current node (null unless
   // the toggle is on, the smile view is active, and the provider is Massive).
@@ -310,6 +328,28 @@ export default function SmileViewer() {
             }
           />
         );
+      case "compare": {
+        if (comparison.data === null) {
+          return chartMessage(
+            comparison.loading
+              ? "Fitting LQD / SVI-JW / MCS…"
+              : `Couldn't load the comparison: ${comparison.error ?? "unavailable"}`,
+          );
+        }
+        return (
+          <div className="flex h-full min-h-0 flex-col gap-2">
+            <div className={["min-h-0 flex-1", comparison.loading ? "opacity-60" : ""].join(" ")}>
+              <OverlayCurvesChart
+                series={compareSeries(comparison.data)}
+                xLabel="log-moneyness k"
+                yLabel="implied vol"
+                zoomY
+              />
+            </div>
+            <ModelCompareTable data={comparison.data} />
+          </div>
+        );
+      }
       case "stackeddensity":
         return live
           ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode} />

@@ -277,6 +277,7 @@ export default function QualityViewer() {
                   <th className={th}>Lee L/R</th>
                   <th className={th}>Cal viol</th>
                   <th className={th} title="Extrapolated-region arb over the time-value envelope (advisory): worst Durrleman g · calendar crossing bp. '—' = worthless past the quoted range.">Extrap g·cal</th>
+                  <th className={th} title="Belly butterfly certificate over the traded range: min Durrleman g @ its strike (rose = uncertified, blocks publish). ·R = certified repair refit.">Belly g</th>
                   <th className={`${th} text-left`}>Status</th>
                 </tr>
               </thead>
@@ -316,6 +317,20 @@ export default function QualityViewer() {
                           }`
                         : "—"}
                     </td>
+                    <td
+                      className={`${td} ${n.butterflyCertified === false ? "text-rose-400" : ""}`}
+                      title={
+                        n.negShare != null && n.negShare > 0
+                          ? `dip width: ${(n.negShare * 100).toFixed(1)}% of the certificate grid below -tol`
+                          : "belly certified (no grid point below -tol)"
+                      }
+                    >
+                      {n.hasFit && n.bellyMinG != null
+                        ? `${n.bellyMinG.toFixed(3)}${
+                            n.bellyArgminK != null ? `@${n.bellyArgminK.toFixed(2)}` : ""
+                          }${n.bellyRepaired === true ? " ·R" : ""}`
+                        : "—"}
+                    </td>
                     <td className="px-2 py-1 text-left">
                       <StatusCell node={n} />
                     </td>
@@ -323,7 +338,7 @@ export default function QualityViewer() {
                 ))}
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-2 py-6 text-center text-slate-500">
+                    <td colSpan={11} className="px-2 py-6 text-center text-slate-500">
                       {onlyExceptions ? "No exceptions — every node is publish-ready." : "No lit nodes (fetch a universe first)."}
                     </td>
                   </tr>

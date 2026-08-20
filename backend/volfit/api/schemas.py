@@ -1913,6 +1913,12 @@ class DistributionArrays(BaseModel):
     density: list[float]
     u: list[float] = []
     quantile: list[float] = []
+    #: SIGNED, un-clipped pdf on the same grid (V3.3 item 11): equals ``density``
+    #: wherever Durrleman g >= 0 and dips below zero exactly where the model
+    #: carries butterfly arbitrage. ONLY attached when a negative region exists
+    #: in the displayed window — absent for clean overlays and always for LQD
+    #: (structurally positive), so the legacy payload is byte-identical.
+    densityRaw: list[float] = []
 
 
 class DensityResponse(BaseModel):
@@ -1936,6 +1942,17 @@ class StackedDensityItem(BaseModel):
     forward: float = 0.0
     atmVol: float = 0.0
     vol: list[float] = []  # displayed-model IV at each x (for the Δ axis)
+    # --- sub-zero density evidence (V3.3 item 11). All absent unless the
+    # displayed model's SIGNED pdf goes negative somewhere in the displayed
+    # window (butterfly arbitrage): LQD is structurally positive so the fields
+    # never appear for it; SVI / MCS overlays attach them only when dipping.
+    #: SIGNED, un-clipped pdf on the same x grid (== density where g >= 0).
+    densityRaw: list[float] = []
+    #: Minimum of the signed pdf over the displayed window, computed on the
+    #: FULL grid BEFORE chart striding (a narrow dip is still reported).
+    minDensity: float | None = None
+    #: Log-return x of that minimum (the circle-marker location).
+    minDensityX: float | None = None
 
 
 class StackedDensityResponse(BaseModel):

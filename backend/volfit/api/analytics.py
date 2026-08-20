@@ -49,7 +49,7 @@ from volfit.api.service import K_DISPLAY_LO, fill_nonfinite, fit_or_get
 from volfit.api.state import AppState
 from volfit.calib.weighted_time import interp_total_variance, weighted_variance_years
 from volfit.models.base import SmileModel
-from volfit.models.diagnostics import numeric_density
+from volfit.models.diagnostics import CERT_G_TOL, numeric_density
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
 
 #: Dense term-structure grid: 80 samples from 0.02y to 5% past the last expiry.
@@ -197,6 +197,37 @@ def term_structure(
 
 
 # ------------------------------------------------------------------- density
+def _honest_window(slice_: SmileModel, k: np.ndarray) -> np.ndarray:
+    """Mask of points whose density FD stencil rests on the MODEL's own finite
+    w (V3.3 item 11): numeric_density edge-fills non-finite wing w, and the
+    fill seam's kink under the second-difference stencil manufactures a
+    negative-g artifact that is the FILL's, not the model's. Excludes points
+    within the stencil radius (2: two nested np.gradient) of non-finite w."""
+    finite = np.isfinite(np.asarray(slice_.implied_w(k), dtype=float))
+    honest = finite.copy()
+    for s in (1, 2):
+        honest[s:] &= finite[:-s]
+        honest[:-s] &= finite[s:]
+    return honest
+
+
+def _dip_is_significant(slice_: SmileModel, min_d: float, min_x: float) -> bool:
+    """Attach-guard for the sub-zero evidence fields (V3.3 item 11): the raw
+    pdf is Durrleman g times a positive smooth factor s(k), so the dip maps
+    back to g-units at its argmin and is judged against the CERTIFICATE
+    tolerance (CERT_G_TOL — never a new threshold). Finite-difference noise
+    stays orders below it; a real butterfly dip clears it by orders. The pdf
+    normalization (area ~ 1) is immaterial at that separation. s underflowing
+    to zero (a dip with literally no probability weight) is never evidence."""
+    if min_d >= 0.0:
+        return False
+    w = max(float(slice_.implied_w(min_x)), 1e-12)
+    sqrt_w = float(np.sqrt(w))
+    d_minus = -min_x / sqrt_w - 0.5 * sqrt_w
+    s = float(np.exp(-0.5 * d_minus * d_minus) / np.sqrt(2.0 * np.pi * w))
+    return s > 0.0 and (min_d / s) < -CERT_G_TOL
+
+
 def _trim(idx_mask: np.ndarray) -> np.ndarray:
     """Central-mass indices strided down to at most MAX_CHART_POINTS."""
     keep = np.flatnonzero(idx_mask)
@@ -228,20 +259,36 @@ def _distribution_model(slice_: SmileModel) -> DistributionArrays:
     log-return k, u = CDF, so the chart matches the LQD layout (the quantile
     chart plots (u, k) = the inverse CDF). Trimmed to the central probability
     mass like the LQD path.
-    """
-    k, pdf, cdf = numeric_density(slice_)
-    idx = _trim((cdf >= U_TRIM) & (cdf <= 1.0 - U_TRIM))
+
+    V3.3 item 11: when the overlay's SIGNED pdf dips below zero in the
+    central-mass window (checked on the FULL grid, before striding), the
+    un-clipped ``densityRaw`` channel is attached on the same emitted grid so
+    the chart can show the clipped-vs-raw divergence. Clean slices (and LQD,
+    structurally positive) emit the legacy payload unchanged."""
+    k, pdf, cdf, raw = numeric_density(slice_, return_raw=True)
+    mask = (cdf >= U_TRIM) & (cdf <= 1.0 - U_TRIM)
+    idx = _trim(mask)
+    extra: dict = {}
+    window = np.flatnonzero(mask & _honest_window(slice_, k))
+    if window.size:
+        j = int(np.argmin(raw[window]))
+        if _dip_is_significant(slice_, float(raw[window[j]]), float(k[window[j]])):
+            extra["densityRaw"] = raw[idx].tolist()
     return DistributionArrays(
         x=k[idx].tolist(),
         density=pdf[idx].tolist(),
         u=cdf[idx].tolist(),
         quantile=k[idx].tolist(),
+        **extra,
     )
 
 
 def stacked_density_arrays(
-    slice_: SmileModel, k_min: float = K_DISPLAY_LO
-) -> tuple[np.ndarray, np.ndarray]:
+    slice_: SmileModel, k_min: float = K_DISPLAY_LO, with_raw: bool = False
+) -> (
+    tuple[np.ndarray, np.ndarray]
+    | tuple[np.ndarray, np.ndarray, np.ndarray, float, float]
+):
     """(x, density) for the stacked-densities overlay, left-extended to ``k_min``.
 
     Uses the Breeden-Litzenberger functional (numeric_density) on a grid widened
@@ -249,10 +296,33 @@ def stacked_density_arrays(
     bound, matching the smile/surface range) and trims the upper tail to the
     central probability mass (``cdf <= 1 - U_TRIM``). The deep-left pdf is ~0, so
     this draws the full left tail without distorting the central shape. Works for
-    any model (LQD slice or SVI / Multi-Core-SIV overlay)."""
-    k, pdf, cdf = numeric_density(slice_, half_floor=abs(k_min))
-    keep = _trim((k >= k_min) & (cdf <= 1.0 - U_TRIM))
-    return k[keep], pdf[keep]
+    any model (LQD slice or SVI / Multi-Core-SIV overlay).
+
+    ``with_raw`` (V3.3 item 11) returns ``(x, density, raw, min_density,
+    min_density_x)``: the SIGNED un-clipped pdf on the same emitted grid plus
+    its minimum over the evidence window, computed on the FULL grid BEFORE
+    striding (a dip narrower than the display stride is still reported). The
+    default 2-tuple path is byte-identical to the legacy contract."""
+    if not with_raw:
+        k, pdf, cdf = numeric_density(slice_, half_floor=abs(k_min))
+        keep = _trim((k >= k_min) & (cdf <= 1.0 - U_TRIM))
+        return k[keep], pdf[keep]
+    k, pdf, cdf, raw = numeric_density(slice_, half_floor=abs(k_min), return_raw=True)
+    mask = (k >= k_min) & (cdf <= 1.0 - U_TRIM)
+    keep = _trim(mask)
+    # Min/argmin on the FULL grid (pre-stride): the plotted curve may sample
+    # past a narrow dip, the reported minimum never does. The EVIDENCE window
+    # is narrower than the drawn one: (a) central probability mass only (the
+    # U_TRIM discipline — the drawn deep-left tail is display, not measurement:
+    # the LQD quadrature degenerates near its wing-breakdown boundary and reads
+    # g < 0 on ~1e-12 mass there); (b) stencil-honest (_honest_window).
+    window = np.flatnonzero(mask & (cdf >= U_TRIM) & _honest_window(slice_, k))
+    if window.size:
+        j = int(np.argmin(raw[window]))
+        min_d, min_x = float(raw[window[j]]), float(k[window[j]])
+    else:  # degenerate window (defensive): nothing displayed, nothing to report
+        min_d, min_x = 0.0, float(k_min)
+    return k[keep], pdf[keep], raw[keep], min_d, min_x
 
 
 def density_payload(state: AppState, ticker: str, expiry: str, fit_mode: str) -> DensityResponse:
@@ -279,8 +349,13 @@ def stacked_densities(state: AppState, ticker: str, fit_mode: str) -> StackedDen
 
     Each curve follows the chosen display model (LQD exact, else the SVI /
     Multi-Core-SIV overlay's Breeden-Litzenberger density), the same per-node
-    pipeline as density_payload — so overlaying them shows every density stays
-    non-negative (no butterfly arbitrage on any slice).
+    pipeline as density_payload. HONESTY (V3.3 item 11): non-negativity of the
+    ``density`` array is STRUCTURAL only for LQD — for SVI / MCS overlays the
+    clipped pdf cannot dip by construction, so a flat-at-zero region is not
+    evidence of no-arbitrage. When an overlay's signed pdf does go negative,
+    the un-clipped ``densityRaw`` channel plus ``minDensity``/``minDensityX``
+    (full-grid, pre-stride) carry the sub-zero evidence; the fields are absent
+    on clean slices (and always for LQD).
     """
     forwards = state.forwards(ticker)  # raises UnknownNodeError when unknown
     items: list[StackedDensityItem] = []
@@ -291,8 +366,18 @@ def stacked_densities(state: AppState, ticker: str, fit_mode: str) -> StackedDen
             continue  # uncalibrated node (gated, pre-Calibrate): no density curve
         slice_ = displayed_slice(record)
         # Density left-extended to the display lower bound (k_min = -1.4), so the
-        # overlay's x-axis spans the same range as the smile / surface.
-        x, density = stacked_density_arrays(slice_)
+        # overlay's x-axis spans the same range as the smile / surface. The raw
+        # channel rides along; x/density are byte-identical to the legacy call.
+        # Evidence attaches ONLY on a certificate-significant dip (item 11) —
+        # never for LQD (structurally positive).
+        x, density, raw, min_d, min_x = stacked_density_arrays(slice_, with_raw=True)
+        extra: dict = {}
+        if _dip_is_significant(slice_, min_d, min_x):
+            extra = {
+                "densityRaw": raw.tolist(),
+                "minDensity": min_d,
+                "minDensityX": min_x,
+            }
         # Per-expiry axis context: the displayed-model IV at each density x (= the
         # log-moneyness grid), so the overlay can re-coordinate to Δ / strike / etc.
         tau = record.prepared.tau
@@ -306,6 +391,7 @@ def stacked_densities(state: AppState, ticker: str, fit_mode: str) -> StackedDen
                 forward=float(record.prepared.forward),
                 atmVol=displayed_atm_vol(record),
                 vol=vol.tolist(),
+                **extra,
             )
         )
     return StackedDensityResponse(ticker=ticker, expiries=items)

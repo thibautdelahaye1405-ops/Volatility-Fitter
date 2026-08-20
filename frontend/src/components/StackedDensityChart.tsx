@@ -9,7 +9,7 @@ import { api } from "../state/api";
 import type { FitMode } from "../state/useSmile";
 import type { SmileData } from "../lib/mockData";
 import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
-import type { OverlaySeries } from "./OverlayCurvesChart";
+import type { OverlayMarker, OverlaySeries } from "./OverlayCurvesChart";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import {
@@ -28,6 +28,12 @@ interface StackedItem {
   forward: number;
   atmVol: number;
   vol: number[]; // displayed-model IV at each x (for the Δ axis)
+  /** Sub-zero evidence (V3.3 item 11), attached ONLY when the displayed
+   *  model's SIGNED pdf dips below zero (butterfly arb — never for LQD):
+   *  the un-clipped pdf plus its full-grid (pre-stride) min and location. */
+  densityRaw?: number[];
+  minDensity?: number | null;
+  minDensityX?: number | null;
 }
 interface StackedResponse {
   ticker: string;
@@ -94,25 +100,43 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
   const n = data.expiries.length;
   // x = log-return (= log-moneyness); each expiry re-coordinates by its own
   // forward / ATM vol / smile, so the overlay's axis switches just like the Smile.
+  const txOf = (e: StackedItem) => {
+    const ctx = {
+      forward: e.forward,
+      t: e.t,
+      atmVol: e.atmVol,
+      volAt: makeVolAt(e.x.map((k2, j) => ({ k: k2, vol: e.vol[j] ?? e.atmVol }))),
+      kRange: [e.x[0] ?? -1, e.x[e.x.length - 1] ?? 1] as [number, number],
+    };
+    return (k: number) => (axisMode === "logmoneyness" ? k : axisTransform(axisMode, k, ctx));
+  };
   const series: OverlaySeries[] = data.expiries.map((e, i) => {
-    const xs =
-      axisMode === "logmoneyness"
-        ? e.x
-        : e.x.map((k) =>
-            axisTransform(axisMode, k, {
-              forward: e.forward,
-              t: e.t,
-              atmVol: e.atmVol,
-              volAt: makeVolAt(e.x.map((k2, j) => ({ k: k2, vol: e.vol[j] ?? e.atmVol }))),
-              kRange: [e.x[0] ?? -1, e.x[e.x.length - 1] ?? 1],
-            }),
-          );
+    const tx = txOf(e);
+    // Sub-zero evidence (V3.3 item 11): when the backend attached the SIGNED
+    // pdf, plot IT (== the clipped curve wherever g >= 0) so the dip is
+    // visible below the zero baseline, and fill the excursion red.
+    const raw = e.densityRaw !== undefined && e.densityRaw.length === e.x.length;
     return {
       label: formatExpiry(e.expiry, e.t, format),
-      xs,
-      ys: e.density,
+      xs: e.x.map(tx),
+      ys: raw ? (e.densityRaw as number[]) : e.density,
       color: maturityColor(n > 1 ? i / (n - 1) : 0),
+      fillNegative: raw,
     };
+  });
+  // Dip circles at the pre-stride minimum (a dip narrower than the chart
+  // stride still gets its marker even when the plotted curve misses it).
+  const markers: OverlayMarker[] = data.expiries.flatMap((e) => {
+    if (e.minDensity == null || e.minDensityX == null) return [];
+    return [
+      {
+        x: txOf(e)(e.minDensityX),
+        y: e.minDensity,
+        label:
+          `min density ${e.minDensity.toExponential(2)} at k ${e.minDensityX.toFixed(3)} · ` +
+          `${formatExpiry(e.expiry, e.t, format)} (butterfly arb — full-grid minimum)`,
+      },
+    ];
   });
 
   return (
@@ -122,6 +146,7 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
       yLabel="density"
       zeroBaseline
       formatX={(v) => axisTickLabel(axisMode, v)}
+      markers={markers}
     />
   );
 }

@@ -79,6 +79,30 @@ describe("QualityViewer", () => {
     expect(screen.queryByText("2026-07-10")).toBeNull();
   });
 
+  it("renders the belly certificate chip (V3.3 item 11 wire fields)", () => {
+    const r = report();
+    r.nodes = [
+      node({ bellyMinG: 0.42, bellyArgminK: -0.15, negShare: 0, butterflyCertified: true }),
+      node({
+        expiry: "2026-09-09",
+        bellyMinG: -0.0485,
+        bellyArgminK: 0.3,
+        negShare: 0.2,
+        butterflyCertified: false,
+        bellyRepaired: false,
+        ready: false,
+        issues: ["belly butterfly arb (min g -0.0485 at k +0.30)"],
+      }),
+    ];
+    mockUse.mockReturnValue({ report: r, loading: false, error: null, reload: vi.fn() });
+    render(<QualityViewer />);
+    expect(screen.getByText("Belly g")).toBeTruthy(); // the new column
+    expect(screen.getByText("0.420@-0.15")).toBeTruthy(); // certified chip
+    const bad = screen.getByText("-0.049@0.30"); // uncertified chip, rose
+    expect(bad.className).toContain("text-rose-400");
+    expect(bad.getAttribute("title")).toContain("20.0% of the certificate grid");
+  });
+
   it("shows the live-only offline card with retry", () => {
     const reload = vi.fn();
     mockUse.mockReturnValue({ report: null, loading: false, error: "backend down", reload });

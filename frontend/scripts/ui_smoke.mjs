@@ -16,6 +16,9 @@ const PORT = 4188; // off the dev/preview defaults so a running app never collid
 // (menu: null = a direct tab; "VolFit" = the brand menu holding Options/View).
 const TABS = [
   { name: "Parametric", menu: "Surfaces", item: "Parametric" },
+  // Sub-tab of the Parametric chart card (V3.2 model comparison): clicked via
+  // its SegmentedControl button after the workspace mounts.
+  { name: "Compare", menu: "Surfaces", item: "Parametric", subview: "Compare" },
   { name: "Local Vol", menu: "Surfaces", item: "Local Vol" },
   { name: "Forwards", menu: "Surfaces", item: "Forwards" },
   { name: "Options", menu: "VolFit", item: "Options" },
@@ -93,6 +96,17 @@ try {
     }
     await button.click();
     await new Promise((r) => setTimeout(r, 700)); // let the view mount/fetch-fail
+    if (tab.subview) {
+      // In-workspace chart-card view (SegmentedControl button by label).
+      const [sub] = await page.$$(`xpath/.//main//button[normalize-space()="${tab.subview}"]`);
+      if (!sub) {
+        console.error(`FAIL ${tab.name}: subview button "${tab.subview}" not found`);
+        failures += 1;
+        continue;
+      }
+      await sub.click();
+      await new Promise((r) => setTimeout(r, 700));
+    }
     const crashed = await page.evaluate(() =>
       document.body.innerText.includes("hit an error"),
     );

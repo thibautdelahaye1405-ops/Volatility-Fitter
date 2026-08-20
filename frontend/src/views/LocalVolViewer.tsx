@@ -24,7 +24,8 @@ import type { AffineTableData } from "../components/LocalVolTable";
 import SurfaceMesh from "../components/SurfaceMesh";
 import type { SurfaceMeshData } from "../components/SurfaceMesh";
 import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesChart";
-import type { OverlaySeries } from "../components/OverlayCurvesChart";
+import type { OverlayMarker, OverlaySeries } from "../components/OverlayCurvesChart";
+import { lvCalendarMarker } from "../lib/stackedVariance";
 import TermChart from "../components/TermChart";
 import SegmentedControl from "../components/SegmentedControl";
 import VarSwapPanel from "../components/VarSwapPanel";
@@ -203,16 +204,33 @@ export default function LocalVolViewer() {
     return data.smiles.map((s, i) => {
       const tau = s.tau && s.tau > 0 ? s.tau : s.t;
       const ctx = smileAxisContext(s);
+      // Prefer the untruncated modelExt (shared display grid, V3.3 item 3) so
+      // short expiries are no longer stubs — same pattern as densityExt below.
+      const pts = s.modelExt && s.modelExt.length > 1 ? s.modelExt : s.model;
       return {
         label: formatExpiry(s.expiry, s.t, format),
-        xs: s.model.map((p) =>
+        xs: pts.map((p) =>
           axisMode === "logmoneyness" ? p.k : axisTransform(axisMode, p.k, ctx),
         ),
-        ys: s.model.map((p) => p.vol * p.vol * tau),
+        ys: pts.map((p) => p.vol * p.vol * tau),
         color: maturityColor(n > 1 ? i / (n - 1) : 0),
       };
     });
   }, [data, format, axisMode]);
+
+  // Worst calendar crossing on the PDE lattice (V3.3 item 10): a circle at
+  // (k*, curve midpoint) on the stacked-IV axes; empty when arb-free.
+  const lvCalMarkers = useMemo<OverlayMarker[]>(() => {
+    if (!data) return [];
+    const m = lvCalendarMarker(data.smiles, data.calendarWorstPair, data.calendarWorstK);
+    if (m === null) return [];
+    const far = data.smiles[(data.calendarWorstPair ?? 0) + 1];
+    const x =
+      axisMode === "logmoneyness" || !far
+        ? m.k
+        : axisTransform(axisMode, m.k, smileAxisContext(far));
+    return [{ x, y: m.y, label: m.label }];
+  }, [data, axisMode]);
 
   // Densities: every reconstructed expiry's risk-neutral pdf (Breeden-
   // Litzenberger, carried on each smile) overlaid on shared axes — mirrors the
@@ -294,6 +312,7 @@ export default function LocalVolViewer() {
               zeroBaseline
               zoomY
               formatX={(v) => axisTickLabel(axisMode, v)}
+              markers={lvCalMarkers}
             />
           )
           : chartMessage("Stacked IV needs at least one fitted expiry.");
@@ -466,6 +485,12 @@ export default function LocalVolViewer() {
                 data.arbitrageFree
                   ? "rounded bg-emerald-600/15 px-1.5 py-0.5 text-emerald-400"
                   : "rounded bg-amber-600/15 px-1.5 py-0.5 text-amber-400"
+              }
+              title={
+                data.arbitrageFree
+                  ? "No butterfly / calendar violation on the PDE lattice"
+                  : lvCalMarkers[0]?.label ??
+                    "Adjacent-maturity price decreases on the PDE lattice (see Stacked IV)"
               }
             >
               {data.arbitrageFree ? "arb-free" : `${data.calendarViolations} cal. viol.`}

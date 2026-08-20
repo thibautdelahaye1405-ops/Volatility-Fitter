@@ -17,6 +17,19 @@ export interface OverlaySeries {
   ys: number[];
   /** Stroke colour (the wrapper grades these by maturity). */
   color: string;
+  /** Fill sub-zero excursions of this series in red (arb evidence: Δ-mode
+   *  calendar crossings, signed density dips). Off by default. */
+  fillNegative?: boolean;
+}
+
+/** One circle marker on the shared axes with a native hover tooltip —
+ *  the arb-evidence pins (calendar-cross location, density-dip minimum). */
+export interface OverlayMarker {
+  x: number;
+  y: number;
+  label: string;
+  /** Stroke colour; defaults to the evidence rose. */
+  color?: string;
 }
 
 interface OverlayCurvesChartProps {
@@ -29,7 +42,12 @@ interface OverlayCurvesChartProps {
   zoomY?: boolean;
   /** X tick-label formatter (display units, e.g. "25Δ"/"120%"); default numeric. */
   formatX?: (v: number) => string;
+  /** Evidence circles (optional, additive — no behavior change when absent). */
+  markers?: OverlayMarker[];
 }
+
+/** Evidence-rose used for sub-zero fills and default marker strokes. */
+const EVIDENCE_ROSE = "rgb(244 63 94)";
 
 const MARGIN = { top: 14, right: 16, bottom: 34, left: 56 } as const;
 
@@ -71,6 +89,7 @@ export default function OverlayCurvesChart({
   zeroBaseline = false,
   zoomY = false,
   formatX = formatAxisNumber,
+  markers,
 }: OverlayCurvesChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -160,6 +179,28 @@ export default function OverlayCurvesChart({
     return d;
   };
 
+  /** Sub-zero fill of a series: the polyline of min(y, 0) closed along y = 0 —
+   *  regions with y >= 0 collapse onto the baseline (zero area), so only the
+   *  negative excursions read as red. */
+  const negativeFillPath = (s: OverlaySeries): string => {
+    const y0 = yScale.map(0);
+    let d = "";
+    let firstPx: number | null = null;
+    let lastPx: number | null = null;
+    for (let i = 0; i < s.xs.length; i++) {
+      const x = s.xs[i];
+      const y = s.ys[i];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      const px = xScale.map(x);
+      const py = yScale.map(Math.min(y, 0));
+      d += `${d === "" ? "M" : "L"}${px.toFixed(1)},${py.toFixed(1)}`;
+      if (firstPx === null) firstPx = px;
+      lastPx = px;
+    }
+    if (d === "" || firstPx === null || lastPx === null) return "";
+    return `${d}L${lastPx.toFixed(1)},${y0.toFixed(1)}L${firstPx.toFixed(1)},${y0.toFixed(1)}Z`;
+  };
+
   return (
     <div ref={ref} className="relative h-full w-full">
       {ready && (
@@ -210,10 +251,43 @@ export default function OverlayCurvesChart({
               {zeroBaseline && (
                 <line x1={0} x2={innerW} y1={yScale.map(0)} y2={yScale.map(0)} stroke="var(--color-slate-700)" strokeWidth={1} />
               )}
+              {/* Sub-zero excursion fills (arb evidence), UNDER the curves */}
+              {series
+                .filter((s) => s.fillNegative === true)
+                .map((s) => {
+                  const d = negativeFillPath(s);
+                  return d !== "" ? (
+                    <path key={`${s.label}·neg`} d={d} fill="rgb(244 63 94 / 0.22)" stroke="none" />
+                  ) : null;
+                })}
               {/* Curves, near→far */}
               {series.map((s) => (
                 <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color} strokeWidth={1.5} opacity={0.9} />
               ))}
+              {/* Evidence circles (calendar cross / density dip) + hover title */}
+              {(markers ?? [])
+                .filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y))
+                .map((m, i) => (
+                  <g key={`marker${i}`}>
+                    <circle
+                      cx={xScale.map(m.x)}
+                      cy={yScale.map(m.y)}
+                      r={4.5}
+                      fill="rgb(244 63 94 / 0.15)"
+                      stroke={m.color ?? EVIDENCE_ROSE}
+                      strokeWidth={1.75}
+                    >
+                      <title>{m.label}</title>
+                    </circle>
+                    <circle
+                      cx={xScale.map(m.x)}
+                      cy={yScale.map(m.y)}
+                      r={1.4}
+                      fill={m.color ?? EVIDENCE_ROSE}
+                      pointerEvents="none"
+                    />
+                  </g>
+                ))}
             </g>
 
             {/* Axis labels */}

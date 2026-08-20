@@ -44,6 +44,11 @@ export interface AffineSmile {
   /** Active forward (for the strike / %ATM x-axis modes). */
   forward?: number;
   model: SmilePoint[];
+  /** The same reconstructed curve UNTRUNCATED to the shared display grid
+   *  (V3.3 item 3): left edge at k = -1.4, right edge clamped inside the PDE
+   *  lattice; flat-w extension where the time value is too small to invert.
+   *  Contains `model`'s grid points verbatim. Absent on older payloads. */
+  modelExt?: SmilePoint[];
   /** Active fetched prior, transported to the current forward (dotted overlay). */
   prior?: SmilePoint[];
   priorTransported?: boolean;
@@ -89,6 +94,11 @@ export interface AffineFitResponse {
   surfaceRmsError?: number;
   minDensity: number[];
   calendarViolations: number;
+  /** Worst calendar crossing's LOCATION on the PDE lattice (V3.3 item 10):
+   *  pair index i (smiles[i] → smiles[i+1]) and log-moneyness k. Both null
+   *  when calendarViolations == 0; absent on older payloads. */
+  calendarWorstPair?: number | null;
+  calendarWorstK?: number | null;
   arbitrageFree: boolean;
   nEvals: number;
   message: string;

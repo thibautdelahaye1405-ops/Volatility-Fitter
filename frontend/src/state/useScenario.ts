@@ -124,6 +124,11 @@ export interface DistributionCurve {
   /** Probability grid in [0, 1] for the quantile function. */
   u: number[];
   quantile: number[];
+  /** SIGNED, un-clipped pdf on the same grid (V3.3 item 11): attached ONLY
+   *  when the displayed model's density dips below zero (butterfly arb) —
+   *  absent/empty for clean overlays and always for LQD. When present the
+   *  clipped `density` above is a renormalized clip of this curve. */
+  densityRaw?: number[];
 }
 
 /** Response of GET /smiles/{ticker}/{expiry}/density. */
