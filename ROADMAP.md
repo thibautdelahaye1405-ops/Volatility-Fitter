@@ -156,7 +156,7 @@ desktop-exe single-origin refactor is a head start); auth deferred to R4.
 
 ---
 
-## FORWARD ROADMAP v3 — adopted 2026-08-20 (workbench-evidence arc)
+## FORWARD ROADMAP v3 — adopted 2026-08-20 (workbench-evidence arc) — ✅ ALL TEN PHASES SHIPPED 2026-08-20 (wrap 2026-08-20a)
 
 Fifteen user-listed items detailed into precise proposals and ten phases
 V3.0–V3.9 in **Docs/forward_roadmap_v3.md** (read that doc first; it carries
@@ -535,9 +535,31 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   rider is SUPERSEDED by the flip. CAVEAT: a store that ever saved
   Options pins its explicit smooth_field until Options ▸ Graph re-save;
   the long-running :8000 needs a restart.
-- **Next up (priority order)** — FORWARD ROADMAP v3 adopted 2026-08-20
-  (Docs/forward_roadmap_v3.md): item 0 below IS its phase V3.0; after it,
-  work down V3.1–V3.9 from that doc, then the riders below:
+- **FORWARD ROADMAP v3 — ALL TEN PHASES V3.0–V3.9 SHIPPED 2026-08-20**
+  (adopted, implemented and committed the same day; wrap 2026-08-20a below;
+  per-item designs in Docs/forward_roadmap_v3.md). Item 0 below (the
+  tails+calendar arc Phase 4) shipped as V3.0 — **the tails+calendar arc is
+  COMPLETE**. Suite 1681 passed / 1 skipped; frontend 204 vitest + build +
+  9-tab smoke green.
+- **Next up (priority order)** — the v3 riders + standing user-side runs:
+  0. USER-WINDOW runs now unblocked: benchmark-pack fit-quality regression
+     (V3.0/V3.1 exit-gate rider; run_benchmark_pack.ps1), the MCS
+     adjudication sweep (FINDINGS_mcs.md pre-registered gates — dispatch.py
+     now emits certificate-gated calendar columns), certification refresh
+     (`-m backtest.certification run|report` — new case
+     calendar_active_set_exchange), and the V3.8 replay-day capture campaign
+     (backend\backtest\run_replay_day.ps1 — SPY/NVDA/AAPL/MSFT, 15-min grid,
+     term ladder) followed by `-m backtest.scenarios run|report` and
+     optionally `-m backtest.filter_replay` for the Kalman evidence artifact.
+  0bis. Riders recorded in the v3 doc: quote-band-relaxation infeasibility
+     diagnostic + tail-order gate promotion (V3.0); mcsChart UI dial + flip
+     decision after adjudication (V3.1); fit_key model dimension + eSSVI
+     column (V3.2); raising _X_MAX_MIN for the right LV wing (V3.3);
+     LV-chart target overlay (V3.4); hard var-swap pinning + strip/tail
+     decomposition (V3.6); scheduler consolidation onto /fetch/snapshot +
+     UI retirement of split fetch verbs (V3.7); SPX/SPXW multi-root intraday
+     discovery (V3.8); filter-history workspace persistence + linking the
+     prior panel to the latest replay artifact (V3.9).
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
      implementation arc — "continue the roadmap" resumes at
@@ -590,6 +612,72 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-20a) — FORWARD ROADMAP v3: ALL TEN PHASES V3.0–V3.9
+
+One session: 4 survey agents → Docs/forward_roadmap_v3.md (15 items detailed,
+phased, ambiguities pinned: "MQS"=MCS; graph opt 1/2 = precision_messages /
+layered H=0.1; basket = SPY+NVDA/AAPL/MSFT) → 9 implementation agents in 5
+waves, full suite + vitest + build verified per wave, committed per green
+batch (5eca852 docs → f5a8552 v3.0 → dcd6a53 v3.4 → 7072606 v3.1+v3.6 →
+65a67ea v3.2+v3.3 → 4e28b43 v3.5+v3.8 → fbacaff v3.7+v3.9).
+
+- **V3.0 (f5a8552)** — tails+calendar arc Phase 4 COMPLETE: per-rank
+  ledger-gap rows w/ analytic Jacobian (asset_share_rows exported),
+  calib/symmetric_exchange.py exchange driver certifying at the 8001
+  acceptance grid, phase_b wiring. Key finding: arming the λ± slope rows
+  inside exchange interfaces (eq. tailscalecalendar in the same constrained
+  solve) ⇒ 1-round convergence. Perf rail 425ms (43% used). Cert case
+  calendar_active_set_exchange. Clean ladders byte-identical.
+- **V3.1 (7072606)** — MCS: analytic k-space Lee slopes (eq mcsbetak,
+  =numeric to 1e-14), belly repair (hinge, kept only if re-certified),
+  structural chart behind mcsChart="raw" (default byte-identical; ~20×
+  slower at R=2 — adjudication datum), winged calendar floor grid +
+  polished-dense mcs_calendar_certificate → advisory overlayCal* quality
+  fields, kernel pruning, certificate-gated calendar columns in dispatch.py;
+  sigmoid module split ≤400.
+- **V3.2 (65a67ea)** — GET /smiles/{t}/{e}/compare (read-only, (fit_key,
+  model) FIFO cache, pointer-untouched LOCKED), analytic_butterfly lifted to
+  models.diagnostics, Compare tab (LQD green/SVI blue/MCS violet) + metrics
+  table + smoke coverage.
+- **V3.3 (65a67ea)** — AffineSmile.modelExt (LV stacked variance untruncated,
+  lattice untouched); calendar-cross circles from ledgerGapK (tol = the
+  certificate's own -1e-6) + levels/Δ toggle + LV argmin fields; densityRaw
+  signed channel (clip-second restructure byte-identical), minDensity/X
+  pre-stride, negShare, belly chip, honesty pass on ≥0 claims.
+- **V3.4 (dcd6a53)** — QuoteBand.targetLo/Hi via the fit's own resolve_band
+  (mid line / bid-ask ribbon / haircut ribbon on the smile); poll-safe
+  /weights endpoint via weight_components + WeightStrip + QuoteTable column.
+- **V3.5 (4e28b43)** — POST /calibrate/parametric + /calibrate/lv
+  (workflow_stages.py; /calibrate byte-identical; lvStaleTickers badge;
+  split-button UI); LV trace replay: new-best-cost accepted steps (GN+TRF),
+  ≤1% overhead ⇒ production-on w/ VOLFIT_LV_TRACE kill switch,
+  GET /fit/affine/{t}/trace + LvTracePlayer (reduced-motion honored).
+- **V3.6 (7072606)** — VarSwapInfo basisBp/weightPct/weightAbs/stale/
+  rmsShare; real term undo state (hardcoded-flags hack deleted); LV var-swap
+  priced against the LV surface (byte-inequality lock); data-derived slider
+  bounds; VarSwapTermRows + batch shift.
+- **V3.7 (fbacaff)** — POST /fetch/snapshot: chains → spot transport →
+  CHEAP-path prior auto-roll (autoRollPriorOnFetch=False default; never the
+  prev-close ladder; no-op detection kills event floods) → optional
+  autoCalibrate. Legacy fetch verbs verbatim; all gated-workflow locks
+  untouched.
+- **V3.9 (fbacaff)** — item 7: FilterDiagnostics.zeta/chi2 (pre-inflation),
+  64-step filter-history ring (advisory; chain-cache clear/restore
+  consistent), GET .../filter/history, backtest/filter_replay.py (PRODUCTION
+  commit path over _StoredChains), FilterTimeline (3-band + ζ strip + gain +
+  Q-stack + markers). Item 8: priorAgeDays + GraphNodeInfo provenance,
+  GET /priors/history/{t} (json1 metadata reads), GET /graph/innovations/{t}
+  (the persisted idio innovations surfaced at last), Prior Evidence tab
+  (filter-vs-residual doctrine explicit).
+- **V3.8 (4e28b43)** — capture --step/--from/--to + --ladder term (defaults
+  byte-identical), -m backtest.load_fixtures, backtest/scenarios.py
+  (declarative; loo_basket_1mat / dark_spot_only / dark_graph_msg /
+  dark_graph_layered / leave3out_5exp), scenario report (baseline as its own
+  arm-column), run_replay_day.ps1 (USER'S window).
+- USER-side: **restart the long-running :8000** (many new fields/endpoints);
+  run the user-window items in Next-up 0; new Options fields mcsChart="raw"
+  and autoRollPriorOnFetch=False default correctly for existing stores.
 
 ### 🧭 SESSION WRAP (2026-08-13a) — TAILS+CALENDAR ARC PHASE 3: SURFACES, UI, WIRE, SCENARIOS
 
