@@ -29,6 +29,7 @@ from volfit.models.lqd.calibrate import (
     prepare_residual_args,
 )
 from volfit.models.lqd.jacobian import (
+    asset_share_rows,
     call_price_rows,
     residual_jacobian,
     slice_sensitivities,
@@ -129,6 +130,8 @@ def stacked_functions(
     thetas0: list[np.ndarray],
     ifaces: list[Interface | None],
     iface_weight: float,
+    active_ranks: list[np.ndarray | None] | None = None,
+    rank_weight: float = 1.0,
 ):
     """Build (fun, jac, split) for one component's stacked joint problem.
 
@@ -136,8 +139,26 @@ def stacked_functions(
     slice's configuration allows, per-slice FD otherwise; interface rows are
     always analytic via the dC/dtheta identity. Exposed separately from
     ``joint_refit`` so tests can check jac against finite differences.
+
+    ``active_ranks`` (tails+calendar arc Phase 4 — the active-set exchange,
+    volfit.calib.symmetric_exchange): per adjacent pair j, the active ranks
+    z_r at which the FULL-LINE ledger order (book ch. 2,
+    eq. globalledgerconstraint) is enforced as hard rows
+    sqrt(rank_weight) * max(A_near(z_r) - A_far(z_r), 0) in LEDGER space —
+    the exact object the calendar certificate compares — with the analytic
+    ``asset_share_rows`` Jacobian. None / empty entries add nothing: the
+    default row layout is byte-identical to the pre-exchange stack.
     """
     m = len(specs)
+    ranks = [
+        None
+        if active_ranks is None
+        or active_ranks[j] is None
+        or np.asarray(active_ranks[j]).size == 0
+        else np.asarray(active_ranks[j], dtype=float)
+        for j in range(m - 1)
+    ]
+    rank_scale = float(np.sqrt(rank_weight))
     prepared = [
         prepare_residual_args(s.k, s.w, s.t, **s.fit_kwargs) for s in specs
     ]
@@ -174,7 +195,11 @@ def stacked_functions(
     def _iface_nrows(f: Interface | None) -> int:
         return 0 if f is None else f.grid.size + (0 if f.seam_k is None else 4)
 
-    total_rows = int(row_off[-1]) + sum(_iface_nrows(f) for f in ifaces)
+    total_rows = (
+        int(row_off[-1])
+        + sum(_iface_nrows(f) for f in ifaces)
+        + sum(r.size for r in ranks if r is not None)
+    )
     total_cols = int(col_off[-1])
 
     def _slope_gaps(th_n: np.ndarray, th_f: np.ndarray, j: int) -> np.ndarray:
@@ -193,29 +218,38 @@ def stacked_functions(
         parts = [_residuals(thetas[i], *args[i]) for i in range(m)]
         slices = [_try_build(thetas[i], opt_n[i], alphas[i]) for i in range(m)]
         for j, iface in enumerate(ifaces):
-            if iface is None:
-                continue
             s_n, s_f = slices[j], slices[j + 1]
-            if s_n is None or s_f is None:
-                parts.append(np.zeros(iface.grid.size))
-            else:
-                gap = np.asarray(s_n.call_price(iface.grid)) - np.asarray(
-                    s_f.call_price(iface.grid)
-                )
-                parts.append(iface_scales[j] * np.maximum(gap, 0.0))
-            if iface.seam_k is not None:
+            if iface is not None:
                 if s_n is None or s_f is None:
-                    parts.append(np.zeros(2))
+                    parts.append(np.zeros(iface.grid.size))
                 else:
-                    sgap = np.asarray(s_n.call_price(iface.seam_k)) - np.asarray(
-                        s_f.call_price(iface.seam_k)
+                    gap = np.asarray(s_n.call_price(iface.grid)) - np.asarray(
+                        s_f.call_price(iface.grid)
                     )
-                    parts.append(seam_scales[j] * np.maximum(sgap, 0.0))
-                # Slope rows are linear in theta — always computable.
-                parts.append(
-                    slope_scales[j]
-                    * np.maximum(_slope_gaps(thetas[j], thetas[j + 1], j), 0.0)
-                )
+                    parts.append(iface_scales[j] * np.maximum(gap, 0.0))
+                if iface.seam_k is not None:
+                    if s_n is None or s_f is None:
+                        parts.append(np.zeros(2))
+                    else:
+                        sgap = np.asarray(s_n.call_price(iface.seam_k)) - np.asarray(
+                            s_f.call_price(iface.seam_k)
+                        )
+                        parts.append(seam_scales[j] * np.maximum(sgap, 0.0))
+                    # Slope rows are linear in theta — always computable.
+                    parts.append(
+                        slope_scales[j]
+                        * np.maximum(_slope_gaps(thetas[j], thetas[j + 1], j), 0.0)
+                    )
+            # Per-rank ledger rows (the exchange's active set): hard hinge on
+            # the ledger gap at each active rank, eq. globalledgerconstraint.
+            if ranks[j] is not None:
+                if s_n is None or s_f is None:
+                    parts.append(np.zeros(ranks[j].size))
+                else:
+                    lgap = np.asarray(s_n.asset_share_at(ranks[j])) - np.asarray(
+                        s_f.asset_share_at(ranks[j])
+                    )
+                    parts.append(rank_scale * np.maximum(lgap, 0.0))
         return np.concatenate(parts)
 
     def jac(x: np.ndarray) -> np.ndarray:
@@ -242,33 +276,43 @@ def stacked_functions(
                 sens.append(None)
         r = int(row_off[-1])
         for j, iface in enumerate(ifaces):
-            if iface is None:
-                continue
-            n = iface.grid.size
             ok = sens[j] is not None and sens[j + 1] is not None
-            if ok:
-                c_n, d_n = call_price_rows(*sens[j], iface.grid)
-                c_f, d_f = call_price_rows(*sens[j + 1], iface.grid)
-                act = (iface_scales[j] * ((c_n - c_f) > 0.0))[:, None]
-                out[r: r + n, col_off[j]: col_off[j + 1]] = act * d_n
-                out[r: r + n, col_off[j + 1]: col_off[j + 2]] = -act * d_f
-            r += n
-            if iface.seam_k is not None:
+            if iface is not None:
+                n = iface.grid.size
                 if ok:
-                    cs_n, ds_n = call_price_rows(*sens[j], iface.seam_k)
-                    cs_f, ds_f = call_price_rows(*sens[j + 1], iface.seam_k)
-                    act = (seam_scales[j] * ((cs_n - cs_f) > 0.0))[:, None]
-                    out[r: r + 2, col_off[j]: col_off[j + 1]] = act * ds_n
-                    out[r: r + 2, col_off[j + 1]: col_off[j + 2]] = -act * ds_f
-                r += 2
-                (cl_n, cr_n), (cl_f, cr_f) = endpoint_c[j], endpoint_c[j + 1]
-                s_act = slope_scales[j] * (
-                    _slope_gaps(thetas[j], thetas[j + 1], j) > 0.0
-                )
-                for row, (v_n, v_f) in enumerate(((cl_n, cl_f), (cr_n, cr_f))):
-                    out[r + row, col_off[j]: col_off[j + 1]] = s_act[row] * v_n
-                    out[r + row, col_off[j + 1]: col_off[j + 2]] = -s_act[row] * v_f
-                r += 2
+                    c_n, d_n = call_price_rows(*sens[j], iface.grid)
+                    c_f, d_f = call_price_rows(*sens[j + 1], iface.grid)
+                    act = (iface_scales[j] * ((c_n - c_f) > 0.0))[:, None]
+                    out[r: r + n, col_off[j]: col_off[j + 1]] = act * d_n
+                    out[r: r + n, col_off[j + 1]: col_off[j + 2]] = -act * d_f
+                r += n
+                if iface.seam_k is not None:
+                    if ok:
+                        cs_n, ds_n = call_price_rows(*sens[j], iface.seam_k)
+                        cs_f, ds_f = call_price_rows(*sens[j + 1], iface.seam_k)
+                        act = (seam_scales[j] * ((cs_n - cs_f) > 0.0))[:, None]
+                        out[r: r + 2, col_off[j]: col_off[j + 1]] = act * ds_n
+                        out[r: r + 2, col_off[j + 1]: col_off[j + 2]] = -act * ds_f
+                    r += 2
+                    (cl_n, cr_n), (cl_f, cr_f) = endpoint_c[j], endpoint_c[j + 1]
+                    s_act = slope_scales[j] * (
+                        _slope_gaps(thetas[j], thetas[j + 1], j) > 0.0
+                    )
+                    for row, (v_n, v_f) in enumerate(((cl_n, cl_f), (cr_n, cr_f))):
+                        out[r + row, col_off[j]: col_off[j + 1]] = s_act[row] * v_n
+                        out[r + row, col_off[j + 1]: col_off[j + 2]] = -s_act[row] * v_f
+                    r += 2
+            # Per-rank ledger rows: +dA_near into the near block, -dA_far into
+            # the far block, masked by the active hinge (asset_share_rows).
+            if ranks[j] is not None:
+                nr = ranks[j].size
+                if ok:
+                    a_n, da_n = asset_share_rows(*sens[j], ranks[j])
+                    a_f, da_f = asset_share_rows(*sens[j + 1], ranks[j])
+                    act = (rank_scale * ((a_n - a_f) > 0.0))[:, None]
+                    out[r: r + nr, col_off[j]: col_off[j + 1]] = act * da_n
+                    out[r: r + nr, col_off[j + 1]: col_off[j + 2]] = -act * da_f
+                r += nr
         return out
 
     return fun, jac, split
@@ -279,14 +323,21 @@ def joint_refit(
     thetas0: list[np.ndarray],
     ifaces: list[Interface | None],
     iface_weight: float,
+    active_ranks: list[np.ndarray | None] | None = None,
+    rank_weight: float = 1.0,
 ) -> tuple[list[np.ndarray], bool]:
     """Solve one component's symmetric joint problem.
 
     ``specs``/``thetas0`` are the component's slices (warm starts = the
     independent fits); ``ifaces[j]`` couples local slices j and j+1. Returns
     the solved per-slice parameter vectors and the trf success flag.
+    ``active_ranks``/``rank_weight`` add the exchange's per-rank ledger rows
+    (see ``stacked_functions``); the defaults add nothing.
     """
-    fun, jac, split = stacked_functions(specs, thetas0, ifaces, iface_weight)
+    fun, jac, split = stacked_functions(
+        specs, thetas0, ifaces, iface_weight,
+        active_ranks=active_ranks, rank_weight=rank_weight,
+    )
     result = least_squares(
         fun,
         np.concatenate(thetas0),

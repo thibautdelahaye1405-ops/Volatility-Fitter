@@ -195,6 +195,24 @@ CASES: tuple[CertCase, ...] = (
          "tests/test_export.py::test_export_carries_min_adjacent_ledger_gap"),
     ),
     CertCase(
+        "calendar_active_set_exchange", "In-solver active-set exchange (hard calendar)",
+        "model_stress", "tails+calendar arc Phase 4 / roadmap V3.0 (2026-08-20)",
+        "The joint symmetric solve enforced calendar order through SAMPLED "
+        "penalty rows (33-node tapered strike grid + escalation), so a "
+        "ledger dip between constraint nodes or beyond the quoted span "
+        "survived repair and was caught only downstream by the publish "
+        "certificate — an accepted-but-unpublishable surface. The book's "
+        "active-set exchange now runs inside the solver: each failing "
+        "pair's exact certificate minimizer becomes a HARD per-rank ledger "
+        "row (analytic asset_share_rows Jacobian) plus the endpoint-chart "
+        "tail-order rows, and the loop repeats until the full-grid "
+        "certificate passes. The locked rig plants a wing violation every "
+        "sampled screen misses: repair alone leaves the certificate "
+        "failing, the exchange certifies it, clean ladders never enter and "
+        "stay byte-identical, and the exchange is idempotent.",
+        ("tests/test_symmetric_exchange.py",),
+    ),
+    CertCase(
         "weekly_lv_resolution", "True-weekly local-vol resolution",
         "model_stress", "fixes #1-#3 (2026-06-25 … cac686c 2026-07-10)",
         "A 1-week SPY expiry fitted 108 bp RMS at default grids: per-expiry "

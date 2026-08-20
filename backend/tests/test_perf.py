@@ -56,6 +56,7 @@ BUDGET_MS = {
     "affine_localvol_heavy": 6000.0,    # ~2.0 s local; 255-vtx LV fit, max_nfev capped
     "affine_localvol_gn_heavy": 4000.0,  # ~1.2 s local; 255-vtx Stage-5 matrix-free GN (full converge)
     "calendar_certificate": 25.0,   # ~1 ms local; exact full-line pair certificate, 8001-node grid
+    "symmetric_exchange_rigged": 425.0,  # ~170 ms local; rigged 2-slice active-set exchange (1 round)
 }
 
 
@@ -136,6 +137,36 @@ def test_perf_lqd_slice_fit_default_order(perf_report):
         lambda: calibrate_slice(k, w_quotes, t=bm.SVI_T, n_order=n),
         repeat=15,
     )
+
+
+def test_perf_symmetric_exchange_rigged(perf_report):
+    """Active-set exchange of the rigged 2-slice wing pair (tails+calendar
+    arc Phase 4): the certificate-gated hard-constraint driver that phase B
+    runs per failing component. The fixture is the test_symmetric_exchange
+    rig — sampled screens blind, one exchanged rank certifies the pair — so
+    each timed run performs the full loop: certify (8001-grid rebuild x 2),
+    one joint refit with the rank row, re-certify."""
+    from volfit.calib.symmetric import SliceSpec, build_interface
+    from volfit.calib.symmetric_exchange import IFACE_BASE_WEIGHT, exchange_refit
+
+    k_wide = np.linspace(-0.40, 0.40, 33)
+    w_wide = 0.020 + 0.50 * k_wide**2
+    k_narrow = np.linspace(-0.15, 0.15, 13)
+    w_narrow = 0.0245 + 0.55 * k_narrow**2
+    specs = [
+        SliceSpec(t=0.5, k=k_wide, w=w_wide, fit_kwargs=dict(n_order=6)),
+        SliceSpec(t=0.75, k=k_narrow, w=w_narrow, fit_kwargs=dict(n_order=6)),
+    ]
+    near = calibrate_slice(k_wide, w_wide, t=0.5, n_order=6)
+    far = calibrate_slice(k_narrow, w_narrow, t=0.75, n_order=6)
+    thetas0 = [near.params.to_vector(), far.params.to_vector()]
+    iface = build_interface(specs[0], specs[1], tail_contract=True)
+
+    def run():
+        result = exchange_refit(specs, thetas0, [iface], IFACE_BASE_WEIGHT)
+        assert result.converged
+
+    _check(perf_report, "symmetric_exchange_rigged", run, repeat=5)
 
 
 def test_perf_calendar_certificate(perf_report):

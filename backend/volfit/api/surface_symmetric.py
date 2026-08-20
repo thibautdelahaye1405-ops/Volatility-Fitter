@@ -24,6 +24,8 @@ phases as per-expiry items plus one repair item per ticker).
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 
 from volfit.api import fit_pool
@@ -37,6 +39,7 @@ from volfit.calib.symmetric import (
     result_from_theta,
     solver_diag_from_theta,
 )
+from volfit.calib.symmetric_exchange import exchange_ladder
 
 #: calibrate-dict keys that must NOT enter the joint per-slice objective
 #: (interface rows replace the one-sided floor; init is the warm start;
@@ -146,6 +149,20 @@ def phase_b_repair(
             [r.result.params.to_vector() for r in records],
             tail_contract=state.options().extrapEnforce,
         )
+        # Active-set exchange (tails+calendar arc Phase 4 / roadmap V3.0):
+        # the EXACT full-line certificate — the same acceptance authority
+        # quality/export consume — now gates the solver too. Pairs the
+        # penalty+escalation pass leaves (or never sees: dips between
+        # constraint nodes or beyond the sampled support) uncertified are
+        # re-solved with hard per-rank ledger rows; a certified ladder passes
+        # through untouched, keeping the fast path and every escalation lock.
+        ex_thetas, ex_touched, _certs = exchange_ladder(specs, repair.thetas)
+        if any(ex_touched):
+            repair = dataclasses.replace(
+                repair,
+                thetas=ex_thetas,
+                refit=[a or b for a, b in zip(repair.refit, ex_touched)],
+            )
         overlay_bad = _first_overlay_violation(records, ctx["retained"])
         if not any(repair.refit) and overlay_bad is None:
             return repair

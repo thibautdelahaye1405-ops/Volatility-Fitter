@@ -159,6 +159,29 @@ def call_price_rows(
     return np.asarray(slice_.call_price(k), dtype=float), dC
 
 
+def asset_share_rows(
+    slice_, d_az: np.ndarray, d_dadz: np.ndarray, z: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Ledger A(z) and its Jacobian dA/dtheta at arbitrary ranks z.
+
+    The ledger-space analogue of ``call_price_rows`` (tails+calendar arc
+    Phase 4): the per-theta nodal sensitivities from ``slice_sensitivities``
+    are Hermite-evaluated at FIXED z — the ranks are exogenous constraint
+    coordinates (the exchange's active set), so there is no implicit
+    dependence to cancel. These are the rows the per-rank calendar-G ledger
+    constraints (book ch. 2, eq. globalledgerconstraint) stack in the joint
+    symmetric solve. Returns ``(A, dA)`` with shapes (n,), (n, P) — the
+    call_price_rows convention.
+    """
+    p = d_az.shape[0]
+    z0, dz = float(slice_.z[0]), slice_._step
+    z_arr = np.asarray(z, dtype=float)
+    dA = np.array(
+        [hermite_eval(z_arr, z0, dz, d_az[j], d_dadz[j]) for j in range(p)]
+    ).T
+    return np.asarray(slice_.asset_share_at(z_arr), dtype=float), dA
+
+
 def residual_jacobian(
     theta: np.ndarray,
     k: np.ndarray,
@@ -241,7 +264,6 @@ def residual_jacobian(
         # branch as the residual side, so the analytic path never crashes on
         # a trial the value path merely rejects.
         return infeasible_jac()
-    z0, dz = float(slice_.z[0]), slice_._step
 
     # --- fit block: dC/dtheta_j = hermite_eval(z_k; d_az[j], d_dadz[j]) ----
     model_price, dC = call_price_rows(slice_, d_az, d_dadz, k)  # (n_k,), (n_k, P)
@@ -254,10 +276,8 @@ def residual_jacobian(
 
     # --- calendar block: sqrt(w) * relu(floor - A(cal_z)) -----------------
     if n_cal:
-        dA_cal = np.array(
-            [hermite_eval(cal_z, z0, dz, d_az[j], d_dadz[j]) for j in range(p)]
-        ).T  # (n_cal, P)
-        active = (cal_floor - slice_.asset_share_at(cal_z) > 0.0)[:, None]
+        a_cal, dA_cal = asset_share_rows(slice_, d_az, d_dadz, cal_z)  # (n_cal, P)
+        active = (cal_floor - a_cal > 0.0)[:, None]
         j_cal = np.sqrt(cal_weight) * (-dA_cal) * active
     else:
         j_cal = np.zeros((0, p))
