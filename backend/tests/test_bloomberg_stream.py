@@ -93,6 +93,7 @@ class FakeSession:
         self.delayed = delayed
         self.fail_open = fail_open
         self.subscribed: list[list[tuple[str, str, str]]] = []
+        self.unsubscribed: list[list[str]] = []
         self.queue: list[list[dict]] = []
         self.stopped = False
 
@@ -115,6 +116,9 @@ class FakeSession:
                 fields.setdefault("IS_DELAYED_STREAM", "true" if self.delayed else "false")
                 batch.append({"kind": "data", "sec": sec, "fields": fields, "ts": None})
         self.queue.append(batch)
+
+    def unsubscribe(self, subs):
+        self.unsubscribed.append([sec for sec, _f, _o in subs])
 
     def push(self, records):
         self.queue.append(list(records))
@@ -409,7 +413,7 @@ def test_feed_status_reflects_stream_states():
     try:
         assert _wait(lambda: prov._book is not None and prov._book.started() > 0)
         level, detail = prov.feed_status()
-        assert level == "amber" and "warming" in detail  # no provider stamp yet
+        assert level == "amber" and "no tick stamp yet" in detail  # painted, no provider stamp yet
         ts = datetime.utcnow().replace(microsecond=0)
         prov._book.apply([{"kind": "data", "sec": "SPY US Equity", "fields": {"LAST_PRICE": "100.5"}, "ts": ts}])
         level, detail = prov.feed_status()
@@ -460,6 +464,140 @@ def test_window_recentres_only_past_hysteresis():
         assert blp.bdp_calls == [["SPY US Equity"]]
     finally:
         prov.stop_streaming()
+
+
+def _subscribed_secs(session) -> list[str]:
+    return [s for batch in session.subscribed for s, _, _ in batch]
+
+
+def test_update_streaming_is_incremental_on_the_same_session():
+    """A universe edit subscribes only the new contracts and unsubscribes only the
+    gone ones on the LIVE session — no restart, the untouched book keeps ticking."""
+    paint = {"SPY US Equity": {"LAST_PRICE": "100"}}
+    for d in DESCRIPTORS:
+        paint[d] = {"BID": "1.0", "ASK": "1.2"}
+    session = FakeSession(paint=paint)
+    prov, blp = _make_provider(session)
+    near, far = _near_expiry(), TODAY + timedelta(days=120)
+    prov.start_streaming(prov.option_tickers("SPY", [near]))
+    try:
+        assert _wait(lambda: prov._book is not None and prov._book.started() == 11)
+        sub = prov._sub
+        book = prov._book
+        n_batches = len(session.subscribed)
+        # add the far expiry -> only its 2 contracts are subscribed, nothing restarts
+        added, removed = prov.update_streaming(prov.option_tickers("SPY", [near, far]))
+        assert prov._sub is sub and prov._book is book and not session.stopped
+        assert {s.split()[2] for s in added} == {FAR} and removed == []
+        assert _wait(lambda: len(session.subscribed) == n_batches + 1)
+        assert set(session.subscribed[-1][0][0].split()) >= {"SPY", "US"} and session.unsubscribed == []
+        assert _wait(lambda: book.started() == 13)
+        assert book.quote(f"SPY US {NEAR} C100 Equity").bid == 1.0  # near contracts untouched
+        assert prov.streaming_contracts() == set(prov.option_tickers("SPY", [near, far]))
+        # drop the near expiry -> its 10 contracts are unsubscribed + forgotten by the book
+        added, removed = prov.update_streaming(prov.option_tickers("SPY", [far]))
+        assert added == [] and len(removed) == 10 and prov._sub is sub
+        assert _wait(lambda: session.unsubscribed and len(session.unsubscribed[0]) == 10)
+        assert book.quote(f"SPY US {NEAR} C100 Equity") is None
+        assert "SPY US Equity" in sub.securities and len(sub.securities) == 3  # underlying stays
+        assert set(prov._sub.securities) == {"SPY US Equity"} | set(prov.option_tickers("SPY", [far]))
+        # the chain for the far expiry is still served from the book (coverage intact)
+        assert prov.fetch_chain("SPY", [far]).quotes and len(blp.bdp_calls) == 1
+        # an empty universe stops the stream; a new request restarts it
+        prov.update_streaming([])
+        assert not prov.is_streaming()
+        prov.update_streaming(prov.option_tickers("SPY", [near]))
+        assert prov.is_streaming()
+    finally:
+        prov.stop_streaming()
+
+
+def test_update_streaming_rebalances_the_cap():
+    """With a subscription budget, a universe edit that adds nearer strikes evicts
+    the farthest ones incrementally (unsubscribe the evicted, subscribe the new)."""
+    session = FakeSession(paint={"SPY US Equity": {"LAST_PRICE": "100"}})
+    prov, _ = _make_provider(session, max_subscriptions=4)  # underlying + 3 contracts
+    near, far = _near_expiry(), TODAY + timedelta(days=120)
+    prov.start_streaming(prov.option_tickers("SPY", [far]))  # far has C100/P100 only
+    try:
+        assert _wait(lambda: len(_subscribed_secs(session)) == 3)
+        assert len(prov._stream_dropped) == 0
+        added, removed = prov.update_streaming(prov.option_tickers("SPY", [near, far]))
+        # near-the-money first across both expiries: 3 slots, 12 candidates
+        assert len(prov._sub.securities) == 4 and len(added) + 3 - len(removed) == 4
+        assert len(prov._stream_dropped) == 12 - 3
+        assert all(s.split()[3] in ("C100", "P100") for s in prov._sub.securities[1:])
+    finally:
+        prov.stop_streaming()
+
+
+def test_subscription_reconnect_resubscribes_the_live_set():
+    """After incremental edits, a session drop resubscribes the CURRENT set (the
+    edits are already folded into the live list; stale queued ops are discarded)."""
+    sessions: list[FakeSession] = []
+
+    def factory():
+        s = FakeSession(paint={"A": {"LAST_PRICE": "1"}, "C": {"LAST_PRICE": "3"}})
+        sessions.append(s)
+        return s
+
+    book = BbgBook()
+    sub = BloombergSubscription(["A", "B"], book, session_factory=factory, max_backoff=0.05)
+    sub.start()
+    try:
+        assert _wait(lambda: len(sessions) == 1 and book.started() == 2)
+        assert sub.subscribe(["C"]) == ["C"] and sub.subscribe(["C"]) == []
+        assert sub.unsubscribe(["B", "Z"]) == ["B"]
+        assert _wait(lambda: sessions[0].unsubscribed == [["B"]] and book.started() == 2)
+        assert sub.securities == ["A", "C"]
+        sessions[0].push([{"kind": "session_down"}])
+        assert _wait(lambda: len(sessions) == 2 and book.started() == 2)
+        assert _subscribed_secs(sessions[1]) == ["A", "C"]  # the live set, whole
+    finally:
+        sub.stop()
+
+
+def test_app_state_prefers_incremental_update_streaming():
+    """AppState's universe diff calls ``update_streaming`` when the provider offers
+    it (no restart), and still falls back to ``start_streaming`` otherwise."""
+    from volfit.api.state import AppState
+    from volfit.data.provider import SyntheticProvider
+
+    class Incremental(SyntheticProvider):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.starts = 0
+            self.updates: list[set[str]] = []
+            self.subscribed: set[str] = set()
+
+        def option_tickers(self, ticker, expiries):
+            return [f"O:{ticker}1"]
+
+        def start_streaming(self, contracts):
+            self.starts += 1
+            self.subscribed = set(contracts)
+
+        def update_streaming(self, contracts):
+            self.updates.append(set(contracts))
+            self.subscribed = set(contracts)
+
+        def stop_streaming(self):
+            self.subscribed = set()
+
+        def is_streaming(self):
+            return bool(self.subscribed)
+
+        def streaming_contracts(self):
+            return set(self.subscribed)
+
+    ref = date(2026, 6, 15)
+    prov = Incremental(reference_date=ref, tickers=("ALPHA", "BETA"))
+    state = AppState(ref, providers={"bbg": prov}, active_source="bbg")
+    state.sync_streaming()
+    assert prov.starts == 1 and prov.updates == []
+    state.remove_ticker("BETA")
+    state.sync_streaming()
+    assert prov.starts == 1 and prov.updates == [{"O:ALPHA1"}]  # incremental, no restart
 
 
 def test_app_state_sync_streaming_drives_bloomberg():

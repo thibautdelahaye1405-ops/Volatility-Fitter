@@ -846,9 +846,14 @@ class AppState(UniverseMixin):
             else:
                 # Resubscribe only if the provider can report its current
                 # subscription (else we can't diff and must not thrash-restart).
+                # A provider that can edit its live subscription in place
+                # (``update_streaming`` — Bloomberg) gets the incremental path:
+                # only the new/gone contracts move, the rest keep ticking with no
+                # warming gap; otherwise the stream is restarted on the new set.
                 probe = getattr(prov, "streaming_contracts", None)
                 if probe is not None and set(desired) != set(probe()):
-                    prov.start_streaming(desired)  # universe changed -> resubscribe
+                    updater = getattr(prov, "update_streaming", None)
+                    (updater or prov.start_streaming)(desired)  # universe changed
 
     def _desired_stream_contracts(self, prov) -> list[str]:
         """The option tickers the active universe wants streamed (cheap once the

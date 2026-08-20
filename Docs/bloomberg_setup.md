@@ -48,9 +48,15 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   nearest-the-money first. Over-cap contracts are carried unquoted and the
   status light says "N over cap". Smoke 2026-08-20: SPY + SPX, 2 expiries each,
   3166 wanted → 2998 subscribed, **0 metered calls** while streaming.
-- Universe edits (ticker / expiry selection) resubscribe on the next scheduler
-  tick (≤ 1 s); an explicit Fetch in that window falls back to the metered path
-  so it never silently misses contracts.
+- Universe edits (ticker / expiry selection, a strike-window re-centre, cap
+  re-ranking) are applied **incrementally on the live session** on the next
+  scheduler tick (≤ 1 s): `update_streaming` subscribes only the new
+  securities and unsubscribes only the gone ones (blpapi matches them by
+  CorrelationId value) — no session restart, no repaint of the rest, no warming
+  gap; the book forgets the dropped contracts. Verified live 2026-08-20:
+  +expiry → 20 contracts painted within 2.5 s on the same session; −expiry →
+  92 unsubscribed, none re-appeared. An explicit Fetch inside that ≤ 1 s window
+  falls back to the metered path so it never silently misses contracts.
 - `OPEN_INT` is not subscribable (reference-only): a streamed chain carries the
   OI remembered from the last metered fetch (None before one).
 - Quotes and the chain are stamped with the **provider** tick stamps
@@ -85,7 +91,8 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
 |---|---|
 | **green** "real-time (Terminal)" | session up, last on-demand request succeeded (reference path) |
 | **green** "streaming N · real-time" | the subscription book is live with real-time ticks |
-| **amber** "stream connecting" / "stream warming · N subscribed" | subscriptions being acknowledged / no tick stamp yet |
+| **amber** "stream connecting" / "stream warming · N subscribed" | subscriptions being acknowledged / nothing painted yet |
+| **amber** "streaming N · no tick stamp yet" | painted (last-known INITPAINT values) but no stamped tick — a session opened outside trading hours: serving, not moving |
 | **amber** "streaming N · delayed feed (SPY)" | the stream is live but the named underlyings' exchanges are delayed (non-entitled — US equities on this Terminal; SPX is real-time) |
 | **amber** "stream idle since HH:MM UTC" | newest tick > 20 min old (pre-market / closed) — the book keeps last ticks |
 | **red** "stream: &lt;reason&gt;" | an underlying's subscription was refused (`NOT_ENTITLED`, `BAD_SEC`…) or the session failed |

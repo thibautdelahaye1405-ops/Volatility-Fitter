@@ -613,6 +613,38 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-20f) — INCREMENTAL (UN)SUBSCRIBE ON UNIVERSE EDITS (BLOOMBERG)
+
+Market-data sourcing arc, step 4: a universe edit no longer restarts the
+Bloomberg stream.
+
+- **Transport** (`bloomberg_stream.BloombergSubscription`): thread-safe
+  `subscribe(secs)` / `unsubscribe(secs)` enqueue ops that the worker (the
+  session owner) applies between `nextEvent` calls (≤ 0.5 s latency, batched
+  200); `securities` is the LIVE set (updated on enqueue) and is what a
+  reconnect resubscribes whole (stale queued ops discarded); `BbgBook.remove`
+  forgets dropped contracts (ticks + status) so a stale last tick can never be
+  served. `_BlpapiSession.unsubscribe` — blpapi matches by CorrelationId
+  VALUE, so a fresh `CorrelationId(sec)` identifies the original subscription
+  (verified live).
+- **Provider** (`bloomberg_live`): `update_streaming(contracts)` re-plans
+  (underlyings + nearest-the-money cap) and diffs against the live set —
+  subscribes only the new, unsubscribes only the gone, on the SAME session
+  and book; starts when not running, stops on an empty universe; returns
+  `(added, removed)`. Covers ticker/expiry edits, strike-window re-centres and
+  cap re-ranking alike.
+- **Seam** (`AppState.sync_streaming`): on a universe diff, prefers
+  `update_streaming` when the provider exposes it, else the old
+  `start_streaming` restart (Massive unchanged — its WS client still restarts
+  on a diff; an incremental path there is a follow-up).
+- **Live (Terminal, SPY)**: +expiry → 20 new contracts painted within 2.5 s on
+  the same session/book; −expiry → 92 unsubscribed, none re-appeared over 6 s;
+  2 metered calls total. Tests: `test_bloomberg_stream.py` 21 (+ incremental
+  add/remove/empty/restart, cap rebalance, reconnect resubscribes the live
+  set, AppState prefers the incremental hook). Suite green.
+- **Next (sourcing arc)**: the other sources (Massive incremental resubscribe
+  is the cheap first candidate; then Yahoo-side refresh cadence).
+
 ### 🧭 SESSION WRAP (2026-08-20e) — LIVE CHART QUOTE BANDS OFF THE SAME SSE + LIVE-FORWARD INVERSION
 
 Market-data sourcing arc, step 3: the Smile Chart's quote bands tick live,

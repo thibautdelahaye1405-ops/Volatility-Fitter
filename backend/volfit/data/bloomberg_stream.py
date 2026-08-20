@@ -33,6 +33,7 @@ security yields ``SubscriptionFailure``; OPEN_INT is not subscribable.
 
 from __future__ import annotations
 
+import queue
 import threading
 import time
 from dataclasses import dataclass, replace
@@ -166,6 +167,15 @@ class BbgBook:
                     return tick
                 self._ready.wait(remaining)
 
+    def remove(self, secs: list[str]) -> None:
+        """Forget securities that were unsubscribed (ticks, status) so a stale
+        last tick can never be served for a contract the universe dropped."""
+        with self._lock:
+            for s in secs:
+                self._ticks.pop(s, None)
+                self._started.discard(s)
+                self._failed.pop(s, None)
+
     def clear(self) -> None:
         with self._lock:
             self._ticks.clear()
@@ -216,6 +226,12 @@ class BloombergSubscription:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self.last_error: str | None = None
+        #: Incremental (un)subscribe ops from other threads, applied by the
+        #: worker (which owns the session) between ``nextEvent`` calls — a
+        #: universe edit never restarts the session. ``_securities`` is the
+        #: LIVE set (updated on enqueue) and is what a reconnect resubscribes.
+        self._ops: queue.Queue[tuple[str, list[str]]] = queue.Queue()
+        self._lock = threading.Lock()
 
     # ----------------------------------------------------------- lifecycle
     def start(self) -> None:
@@ -234,7 +250,33 @@ class BloombergSubscription:
 
     @property
     def securities(self) -> list[str]:
-        return list(self._securities)
+        """The LIVE subscribed set (pending ops included)."""
+        with self._lock:
+            return list(self._securities)
+
+    # ------------------------------------------------ incremental updates
+    def subscribe(self, securities: list[str]) -> list[str]:
+        """Add securities to the live stream without restarting the session
+        (applied by the worker within ~0.5 s). Returns the ones actually new."""
+        with self._lock:
+            have = set(self._securities)
+            new = [s for s in dict.fromkeys(securities) if s not in have]
+            self._securities.extend(new)
+        if new:
+            self._ops.put(("sub", new))
+        return new
+
+    def unsubscribe(self, securities: list[str]) -> list[str]:
+        """Drop securities from the live stream (and the book) without a restart.
+        Returns the ones actually removed."""
+        with self._lock:
+            drop = set(securities)
+            gone = [s for s in self._securities if s in drop]
+            self._securities = [s for s in self._securities if s not in drop]
+        if gone:
+            self._book.remove(gone)
+            self._ops.put(("unsub", gone))
+        return gone
 
     # ---------------------------------------------------------------- loop
     def _run(self) -> None:
@@ -261,9 +303,11 @@ class BloombergSubscription:
             if not session.openService(self.SERVICE):
                 raise RuntimeError(f"could not open {self.SERVICE}")
             self.last_error = None
+            self._discard_ops()  # the live set already reflects them: resubscribe it whole
             self._subscribe_all(session)
             while not self._stop.is_set():
                 event = session.nextEvent(500)
+                self._drain_ops(session)  # incremental (un)subscribes, ≤ 0.5 s latency
                 if event is None:
                     continue
                 records = decode_event(event)
@@ -280,14 +324,40 @@ class BloombergSubscription:
                 pass
         return got_data
 
-    def _subscribe_all(self, session) -> None:
+    def _items(self, securities: list[str]) -> list[tuple[str, str, str]]:
         options = f"interval={self._interval:g}" if self._interval else ""
         fields = ",".join(self._fields)
-        for start in range(0, len(self._securities), SUBSCRIBE_BATCH):
-            batch = self._securities[start : start + SUBSCRIBE_BATCH]
-            session.subscribe(session.subscription_list([(s, fields, options) for s in batch]))
+        return [(s, fields, options) for s in securities]
+
+    def _subscribe_all(self, session) -> None:
+        with self._lock:
+            securities = list(self._securities)
+        for start in range(0, len(securities), SUBSCRIBE_BATCH):
+            batch = securities[start : start + SUBSCRIBE_BATCH]
+            session.subscribe(session.subscription_list(self._items(batch)))
             if self._stop.is_set():
                 return
+
+    def _discard_ops(self) -> None:
+        while True:
+            try:
+                self._ops.get_nowait()
+            except queue.Empty:
+                return
+
+    def _drain_ops(self, session) -> None:
+        """Apply queued incremental ops on the worker's session (batched)."""
+        while True:
+            try:
+                kind, secs = self._ops.get_nowait()
+            except queue.Empty:
+                return
+            for start in range(0, len(secs), SUBSCRIBE_BATCH):
+                batch = session.subscription_list(self._items(secs[start : start + SUBSCRIBE_BATCH]))
+                if kind == "sub":
+                    session.subscribe(batch)
+                else:
+                    session.unsubscribe(batch)
 
     def _blpapi_session(self):
         """A started real blpapi session wrapped with the small interface the loop
@@ -322,6 +392,11 @@ class _BlpapiSession:
 
     def subscribe(self, subs) -> None:
         self._s.subscribe(subs)
+
+    def unsubscribe(self, subs) -> None:
+        # blpapi matches on CorrelationId VALUE, so a fresh CorrelationId(sec)
+        # identifies the original subscription of that security.
+        self._s.unsubscribe(subs)
 
     def nextEvent(self, timeout_ms: int):  # noqa: N802 — blpapi naming
         event = self._s.nextEvent(timeout_ms)

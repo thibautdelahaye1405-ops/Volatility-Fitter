@@ -7,6 +7,7 @@ changes (volfit/api/state.py, volfit/api/scheduler.py):
 
     option_tickers(ticker, expiries) -> [security, ...]   what to subscribe
     start_streaming(contracts) / stop_streaming()
+    update_streaming(contracts)   INCREMENTAL universe edit (same session)
     is_streaming() / streaming_contracts()
 
 While streaming, ``fetch_chain(live)`` and ``spot()`` are served from the
@@ -122,10 +123,10 @@ class BloombergStreamingMixin:
         return [c.security for c in plan]
 
     # ------------------------------------------------------------ lifecycle
-    def start_streaming(self, contracts: list[str]) -> None:
-        """Subscribe the underlyings + ``contracts`` (capped nearest-the-money) on a
-        fresh session and serve live reads from the book. Replaces any stream."""
-        self.stop_streaming()
+    def _plan_subscriptions(self, contracts: list[str]) -> list[str]:
+        """Record the requested set and return the securities to stream for it:
+        the underlyings first, then the contracts capped nearest-the-money
+        (``_stream_dropped`` holds the over-cap remainder)."""
         self._requested = list(dict.fromkeys(contracts))
         self._stream_tickers = {
             self._stream_index[s][0] for s in self._requested if s in self._stream_index
@@ -133,14 +134,40 @@ class BloombergStreamingMixin:
         underlyings = [self._security(t) for t in sorted(self._stream_tickers)]
         kept, dropped = self._cap(self._requested, self._max_subscriptions - len(underlyings))
         self._stream_dropped = set(dropped)
+        return underlyings + kept
+
+    def start_streaming(self, contracts: list[str]) -> None:
+        """Subscribe the underlyings + ``contracts`` (capped nearest-the-money) on a
+        fresh session and serve live reads from the book. Replaces any stream."""
+        self.stop_streaming()
+        securities = self._plan_subscriptions(contracts)
         self._book = BbgBook()
         kwargs = {"interval": self._stream_interval, "session_factory": self._stream_factory}
         if self._stream_host:
             kwargs["host"] = self._stream_host
         if self._stream_port:
             kwargs["port"] = int(self._stream_port)
-        self._sub = BloombergSubscription(underlyings + kept, self._book, **kwargs)
+        self._sub = BloombergSubscription(securities, self._book, **kwargs)
         self._sub.start()
+
+    def update_streaming(self, contracts: list[str]) -> tuple[list[str], list[str]]:
+        """INCREMENTAL universe edit: re-plan for ``contracts`` and diff against the
+        live subscription — subscribe only the new securities, unsubscribe only
+        the gone ones, on the SAME session (no restart, no repaint of the rest,
+        no warming gap). Covers ticker/expiry edits, a strike-window re-centre
+        and cap re-ranking alike. Starts a stream when none is running; stops it
+        when the universe empties. Returns ``(added, removed)``."""
+        if not self.is_streaming() or self._sub is None:
+            self.start_streaming(contracts)
+            return (list(self._sub.securities) if self._sub else [], [])
+        if not contracts:
+            self.stop_streaming()
+            return ([], [])
+        wanted = self._plan_subscriptions(contracts)
+        have = set(self._sub.securities)
+        added = self._sub.subscribe([s for s in wanted if s not in have])
+        removed = self._sub.unsubscribe([s for s in have if s not in set(wanted)])
+        return (added, removed)
 
     def _cap(self, contracts: list[str], budget: int) -> tuple[list[str], list[str]]:
         """Keep at most ``budget`` contracts, nearest-the-money first (by
@@ -293,7 +320,12 @@ class BloombergStreamingMixin:
         suffix = "".join(f" · {e}" for e in extras)
         newest = self._book.newest_ts()
         if newest is None:
-            return ("amber", f"stream warming · {started} subscribed{suffix}")
+            if self._book.size() == 0:
+                return ("amber", f"stream warming · {started} subscribed{suffix}")
+            # Painted (INITPAINT last-known values) but no stamped tick yet — the
+            # signature of a session opened outside trading hours: the book is
+            # serving, just not moving. Say so rather than "warming" forever.
+            return ("amber", f"streaming {started} · no tick stamp yet{suffix}")
         age = (datetime.now(timezone.utc).replace(tzinfo=None) - newest).total_seconds()
         if age > _IDLE_SECONDS:
             return ("amber", f"stream idle since {newest:%H:%M} UTC · {started} subscribed{suffix}")
