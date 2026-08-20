@@ -362,8 +362,10 @@ def test_mini_dark_run_hub_signal_reaches_dark_nodes(mini_run):
     campaign run measured res == base EXACTLY because no cross edge existed)."""
     out, _written = mini_run
     rows = _rows(out, "mini_dark")
-    moved = [r for r in rows if abs(r["res_atm"] - r["base_atm"]) > 1e-6]
-    assert moved, "the hub's innovation never reached the dark nodes"
+    for arm in ("smooth_field", "layered_hl0.1"):  # BOTH engines must move
+        moved = [r for r in rows if r["arm"] == arm
+                 and abs(r["res_atm"] - r["base_atm"]) > 1e-6]
+        assert moved, f"the hub's innovation never reached the dark nodes ({arm})"
 
 
 def test_mini_run_resume_skips_existing_parts(mini_run, mini_db):

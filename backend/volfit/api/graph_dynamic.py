@@ -74,12 +74,24 @@ SEMANTICS_BY_CLASS = {
 
 def row_semantics(row, defaults: dict | None = None) -> str:
     """A row's effective semantics: explicit > per-class policy override
-    (P6 V3, ``relationSemanticsDefaults``) > the §9.2 class default."""
-    return (
+    (P6 V3, ``relationSemanticsDefaults``) > the §9.2 class default.
+
+    Fails LOUD on an unknown value: model_copy bypasses the schema Literal,
+    and an invalid string used to make the row vanish from BOTH the directed
+    and reciprocal lists (the 2026-08-20 hub_directed finding — every
+    adjudicated layered arm had silently dropped its hub arcs)."""
+    sem = (
         row.relationSemantics
         or (defaults or {}).get(row.relationClass)
         or SEMANTICS_BY_CLASS[row.relationClass]
     )
+    if sem not in ("reciprocal_harmonic", "directed_state"):
+        raise ValueError(
+            f"unknown relationSemantics {sem!r} on "
+            f"{row.sourceTicker}:{row.sourceExpiry} -> "
+            f"{row.targetTicker}:{row.targetExpiry}"
+        )
+    return sem
 
 
 def resolve_dynamic_policy(request, policy):

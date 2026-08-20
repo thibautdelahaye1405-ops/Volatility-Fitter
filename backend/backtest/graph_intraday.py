@@ -150,8 +150,15 @@ def hub_directed(rows, hub: str):
     out = []
     for r in rows:
         if r.sourceTicker == hub and r.targetTicker != hub:
+            # NB "directed_state" is the schema Literal. This function shipped
+            # (2026-07-27 campaign) writing the INVALID "directed" — model_copy
+            # skips validation, and graph_dynamic silently dropped the rows, so
+            # every adjudicated layered arm ran with the hub arcs DISCONNECTED
+            # (found 2026-08-20 via the V3.8 scenario harness; row_semantics
+            # now fails loud on unknown values).
             r = r.model_copy(update={
-                "relationClass": "broad_index", "relationSemantics": "directed",
+                "relationClass": "broad_index",
+                "relationSemantics": "directed_state",
             })
         out.append(r)
     return out

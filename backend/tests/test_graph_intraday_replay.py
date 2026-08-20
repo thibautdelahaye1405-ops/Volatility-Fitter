@@ -80,7 +80,9 @@ def test_hub_rows_become_directed():
 
     rows = hub_directed([row("SPY", "IWM"), row("QQQ", "IWM"), row("SPY", "SPY")], "SPY")
     by = {(r.sourceTicker, r.targetTicker): r for r in rows}
-    assert by[("SPY", "IWM")].relationSemantics == "directed"
+    # "directed_state" is the schema Literal — the old lock pinned the invalid
+    # "directed", which graph_dynamic silently dropped (re-registered 2026-08-20).
+    assert by[("SPY", "IWM")].relationSemantics == "directed_state"
     assert by[("SPY", "IWM")].relationClass == "broad_index"
     assert by[("QQQ", "IWM")].relationSemantics is None  # peer stays class-default
     assert by[("QQQ", "IWM")].relationClass == "sector_peer"
