@@ -24,6 +24,11 @@ export interface LiveTickRow {
   bidPrice: number;
   midPrice: number;
   askPrice: number;
+  /** Fit-target band of the stream's fit mode (absent/null in "mid"), pure market. */
+  targetLo?: number | null;
+  targetHi?: number | null;
+  /** The calibration quote at the same strike (click-through), -1 when none. */
+  index?: number;
 }
 
 /** One SSE event of the tick stream (backend LiveTableFrame). */
@@ -38,6 +43,9 @@ export interface LiveTableFrame {
   rows?: LiveTickRow[];
   gone?: string[];
   nLive?: number;
+  /** The fit ROLLED to the live spot (k relative to `forward`); sent when the
+   *  forward moved / the calibration changed; absent = unchanged. */
+  model?: { k: number; vol: number }[] | null;
 }
 
 export interface LiveTicksState {
@@ -47,9 +55,13 @@ export interface LiveTicksState {
   streaming: boolean;
   /** The book served this node (false = "warming"). */
   ready: boolean;
-  /** Newest provider stamp of the live chain (ISO UTC) and its spot. */
+  /** Newest provider stamp of the live chain (ISO UTC), its spot and the live
+   *  forward (the k reference of `rows` and `model`). */
   ts: string | null;
   spot: number | null;
+  forward: number | null;
+  /** The fit rolled to the live spot (last received); null before the first. */
+  model: { k: number; vol: number }[] | null;
   /** Keys whose band moved in the LAST frame (cell flash); cleared shortly after. */
   flash: Set<string>;
   /** Frame counter — alternates the flash class so consecutive ticks re-animate. */
@@ -64,6 +76,8 @@ export const EMPTY_LIVE: LiveTicksState = {
   ready: false,
   ts: null,
   spot: null,
+  forward: null,
+  model: null,
   flash: new Set(),
   seq: 0,
   connected: false,
@@ -82,7 +96,10 @@ export const FLASH_EPS = 5e-5;
 export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTicksState {
   if (frame.type === "status") {
     if (!frame.streaming) {
-      return { ...prev, rows: new Map(), streaming: false, ready: false, flash: new Set(), ts: null, spot: null };
+      return {
+        ...prev, rows: new Map(), streaming: false, ready: false, flash: new Set(),
+        ts: null, spot: null, forward: null, model: null,
+      };
     }
     return { ...prev, streaming: true, ready: frame.ready, rows: frame.ready ? prev.rows : new Map() };
   }
@@ -107,6 +124,8 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
     ready: true,
     ts: frame.ts ?? prev.ts,
     spot: frame.spot ?? prev.spot,
+    forward: frame.forward ?? prev.forward,
+    model: frame.model ?? prev.model,
     flash,
     seq: prev.seq + 1,
   };
@@ -115,8 +134,9 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
 /** How long a ticked cell stays highlighted (matches the CSS animation). */
 const FLASH_MS = 900;
 
-/** Subscribe to the node's live ticks while `enabled` (live backend + a node). */
-export function useLiveTicks(ticker: string, expiry: string, enabled: boolean): LiveTicksState {
+/** Subscribe to the node's live ticks while `enabled` (live backend + a node).
+ *  `fitMode` selects the target band the rows carry (the stream reopens on change). */
+export function useLiveTicks(ticker: string, expiry: string, enabled: boolean, fitMode = "mid"): LiveTicksState {
   const [state, setState] = useState<LiveTicksState>(EMPTY_LIVE);
   const flashTimer = useRef<number>(0);
 
@@ -138,6 +158,7 @@ export function useLiveTicks(ticker: string, expiry: string, enabled: boolean): 
         `/smiles/${encodeURIComponent(ticker)}/${encodeURIComponent(expiry)}/table/stream`,
         API_BASE_URL,
       );
+      url.searchParams.set("fit_mode", fitMode);
       const src = new EventSource(url);
       src.onopen = () => setState((s) => ({ ...s, connected: true }));
       src.onmessage = (e) => {
@@ -175,7 +196,7 @@ export function useLiveTicks(ticker: string, expiry: string, enabled: boolean): 
       window.clearTimeout(flashTimer.current);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [ticker, expiry, enabled]);
+  }, [ticker, expiry, enabled, fitMode]);
 
   return state;
 }

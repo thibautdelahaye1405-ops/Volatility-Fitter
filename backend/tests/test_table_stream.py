@@ -204,7 +204,7 @@ def test_sse_without_a_stream_says_so_and_never_reads_the_book(rig):
     frame = json.loads(chunks[0][len("data:"):].strip())
     assert frame == {
         "type": "status", "streaming": False, "ready": False, "full": False, "ts": None,
-        "spot": None, "forward": None, "rows": [], "gone": [], "nLive": 0,
+        "spot": None, "forward": None, "rows": [], "gone": [], "nLive": 0, "model": None,
     }
     assert prov.live_reads == 0
 

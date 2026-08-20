@@ -7,27 +7,46 @@
 // strike window is owned by the parent via the RangeBrush; on top of that, the
 // chart supports wheel-zoom (x by default, +Shift = x only, +Alt = y only),
 // drag-to-pan and double-click / ⌂ reset — and zoom-out reveals beyond the data.
+//
+// Two comparable FRAMES are drawn (lib/smileLayers), each in its own moneyness:
+//   market  (primary)  the prevailing bid/ask quotes + fit target, and the fit
+//                      ROLLED to the prevailing spot — live when streaming;
+//   calib   (toggles)  the quotes + target the last calibration used, and the
+//                      fit on its CALIBRATION spot.
+// The x axis is referenced to the market forward; the calibration frame gets
+// its own axis transform (its forward), so strike mode places both by true
+// strike and k mode shows each in its own moneyness (a sticky-strike move reads
+// as the lateral shift it is).
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import type { QuoteBand, SmilePoint } from "../lib/mockData";
+import type { SmilePoint } from "../lib/mockData";
 import type { FitMode } from "../state/useSmile";
 import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { axisDisplayTicks, axisInvert, axisTransform, formatHoverValue } from "../lib/axisModes";
 import type { AxisContext, AxisMode } from "../lib/axisModes";
-import { midLinePath, ribbonPath } from "../lib/smileTarget";
+import type { MarketFrame, SmileFrame } from "../lib/smileLayers";
 import { useElementSize } from "../lib/useElementSize";
 import { useZoom } from "../lib/useZoom";
-import type { LiveTicksState } from "../state/useLiveTicks";
-import LiveQuoteBeams from "./LiveQuoteBeams";
+import QuoteLayer from "./QuoteLayer";
 import RangeBrush from "./RangeBrush";
 
 interface SmileChartProps {
-  model: SmilePoint[];
+  /** The PREVAILING market frame (layers 1 + 3): quotes + target and the fit
+   *  rolled to the prevailing spot, in the market forward's moneyness — the
+   *  chart's primary layer and its x reference. */
+  market: MarketFrame;
+  /** The calibration frame (layers 2 + 4): the quotes + target of the last
+   *  calibration and the fit on its calibration spot (its own forward). */
+  calib: SmileFrame | null;
+  /** Toggles for the calibration layers (2: quotes + target, 4: fit). */
+  showCalibQuotes?: boolean;
+  showCalibFit?: boolean;
+  /** Strike keys (4 dp) whose live band moved in the last frame (flash). */
+  liveFlash?: Set<string>;
   prior: SmilePoint[];
   /** True when `prior` is the active fetched prior (spot-updated): drawn as a
    *  distinct dotted teal "spot-updated prior" line rather than the saved dash. */
   priorTransported?: boolean;
-  quotes: QuoteBand[];
   /** Visible log-moneyness window [lo, hi] (controlled, the coarse brush). */
   kWindow: readonly [number, number];
   onKWindowChange: (next: [number, number]) => void;
@@ -35,8 +54,6 @@ interface SmileChartProps {
   fullRange: readonly [number, number];
   /** Strike-axis display coordinate (geometry plotted in these units). */
   axisMode?: AxisMode;
-  /** Forward level — strike / %ATM axis modes. */
-  forward?: number;
   /** Year-fraction to expiry — delta / normalized axis modes. */
   t?: number;
   /** ATM implied vol — normalized axis modes. */
@@ -47,8 +64,6 @@ interface SmileChartProps {
   onQuoteSelect?: (index: number | null) => void;
   /** SSR scenario overlay (shifted smile); drawn dotted amber when set. */
   scenario?: SmilePoint[] | null;
-  /** Pre-transport calibration (the anchor smile); drawn dimmed when set. */
-  anchorCurve?: SmilePoint[] | null;
   /** Massive provider's IV points (read-only comparison); cyan dots when set. */
   massiveIv?: SmilePoint[] | null;
   /** Active var-swap quote vol — drawn as a horizontal teal line when set. */
@@ -78,10 +93,6 @@ interface SmileChartProps {
   fitMode?: FitMode;
   /** Draw the fit-target overlay (mid polyline + bid-ask/haircut ribbons). */
   showTarget?: boolean;
-  /** The node's live ticks (SSE off the streaming book, hosted by SmileViewer):
-   *  drawn as thin teal live bid/ask beams over the red calibration quotes,
-   *  placed by strike against this chart's forward. Null/empty = no layer. */
-  liveTicks?: LiveTicksState | null;
   /** Optional strip rendered between the plot and the RangeBrush (the V3.4
    *  weight strip mounts here so it shares the x extent above the brush). */
   footer?: ReactNode;
@@ -114,21 +125,22 @@ function volAt(curve: SmilePoint[], k: number): number | null {
 }
 
 export default function SmileChart({
-  model,
+  market,
+  calib,
+  showCalibQuotes = false,
+  showCalibFit = true,
+  liveFlash,
   prior,
   priorTransported = false,
-  quotes,
   kWindow,
   onKWindowChange,
   fullRange,
   axisMode = "logmoneyness",
-  forward,
   t,
   atmVol,
   selectedIndex = null,
   onQuoteSelect,
   scenario = null,
-  anchorCurve = null,
   massiveIv = null,
   varSwapLevel = null,
   graphPost = null,
@@ -139,12 +151,16 @@ export default function SmileChart({
   filterBandHi = null,
   filterPred = null,
   fitBandHalf = null,
-  liveTicks = null,
   degraded = null,
   fitMode = "mid",
   showTarget = false,
   footer = null,
 }: SmileChartProps) {
+  // The market frame is the primary layer: its curve drives the hover readout,
+  // the confidence band and the y-domain; its forward is the axis reference.
+  const model = market.model;
+  const quotes = market.quotes;
+  const forward = market.forward;
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const clipId = useId();
@@ -173,8 +189,14 @@ export default function SmileChart({
     [forward, t, atmVol, model, fullRange],
   );
 
-  /** Map k -> the selected display coordinate. */
+  /** Map k -> the selected display coordinate (market frame / axis reference). */
   const tx = useMemo(() => (k: number) => axisTransform(axisMode, k, axisCtx), [axisMode, axisCtx]);
+  /** The calibration frame's own transform: same mode, ITS forward — so strike
+   *  mode places it by true strike while k mode keeps its own moneyness. */
+  const txCalib = useMemo(
+    () => (k: number) => axisTransform(axisMode, k, { ...axisCtx, forward: calib?.forward ?? axisCtx.forward }),
+    [axisMode, axisCtx, calib?.forward],
+  );
 
   // Scales: x in display units (base = brushed window mapped through tx, then
   // zoomed); y auto-fits the data visible inside the x view, then zoomed.
@@ -196,7 +218,9 @@ export default function SmileChart({
     scan(model);
     scan(prior);
     if (scenario) scan(scenario);
-    if (anchorCurve) scan(anchorCurve);
+    if (calib && showCalibFit) scan(calib.model);
+    if (calib && showCalibQuotes)
+      for (const q of calib.quotes) if (inView(q.k)) { yMin = Math.min(yMin, q.bid); yMax = Math.max(yMax, q.ask); }
     if (graphPost) scan(graphPost);
     if (graphBandLo) scan(graphBandLo);
     if (graphBandHi) scan(graphBandHi);
@@ -210,13 +234,13 @@ export default function SmileChart({
     const pad = Math.max(1e-4, (yMax - yMin) * 0.08);
     const yView = zoom.viewY([yMin - pad, yMax + pad]);
     return { xScale: xs, yScale: linearScale(yView, [plotH, 0]), xView: view };
-  }, [model, prior, scenario, anchorCurve, graphPost, graphBandLo, graphBandHi, filterPost, filterBandLo, filterBandHi, filterPred, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
+  }, [model, prior, scenario, calib, showCalibFit, showCalibQuotes, graphPost, graphBandLo, graphBandHi, filterPost, filterBandLo, filterBandHi, filterPred, quotes, varSwapLevel, kLo, kHi, plotW, plotH, tx, zoom]);
 
   /** Build an SVG path for a curve in display coordinates (clip handles overflow). */
-  const pathOf = (curve: SmilePoint[]): string => {
+  const pathOf = (curve: SmilePoint[], txf: (k: number) => number = tx): string => {
     let d = "";
     for (const p of curve) {
-      const x = xScale.map(tx(p.k));
+      const x = xScale.map(txf(p.k));
       const y = yScale.map(p.vol);
       d += d === "" ? `M${x.toFixed(2)},${y.toFixed(2)}` : `L${x.toFixed(2)},${y.toFixed(2)}`;
     }
@@ -225,7 +249,7 @@ export default function SmileChart({
   const modelPath = useMemo(() => pathOf(model), [model, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const priorPath = useMemo(() => pathOf(prior), [prior, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const scenarioPath = useMemo(() => (scenario ? pathOf(scenario) : ""), [scenario, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
-  const anchorPath = useMemo(() => (anchorCurve ? pathOf(anchorCurve) : ""), [anchorCurve, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
+  const calibFitPath = useMemo(() => (calib && showCalibFit ? pathOf(calib.model, txCalib) : ""), [calib, showCalibFit, xScale, yScale, txCalib]); // eslint-disable-line react-hooks/exhaustive-deps
   const graphPostPath = useMemo(() => (graphPost ? pathOf(graphPost) : ""), [graphPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const filterPostPath = useMemo(() => (filterPost ? pathOf(filterPost) : ""), [filterPost, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
   const filterPredPath = useMemo(() => (filterPred ? pathOf(filterPred) : ""), [filterPred, xScale, yScale]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -254,26 +278,13 @@ export default function SmileChart({
     const hi = model.map((p) => ({ k: p.k, vol: p.vol + fitBandHalf }));
     return bandPathOf(lo, hi);
   }, [model, fitBandHalf, xScale, yScale, tx]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Fit-target overlay (V3.4 item 4): geometry lives in lib/smileTarget —
-  // translucent bid-ask ribbon, darker haircut ribbon (haircut mode only,
-  // from QuoteBand.targetLo/Hi) and a thin mid polyline, gapped at exclusions.
+  // Pixel maps for the quote layers: the market frame on the axis reference,
+  // the calibration frame through its own forward (QuoteLayer draws the beams
+  // and the fit-target overlay — lib/smileTarget — per frame).
   const toX = (k: number) => xScale.map(tx(k));
+  const toXCalib = (k: number) => xScale.map(txCalib(k));
   const toY = (v: number) => yScale.map(v);
-  const targetBidAskPath = useMemo(
-    () => (showTarget ? ribbonPath(quotes, (q) => q.bid, (q) => q.ask, toX, toY) : ""),
-    [showTarget, quotes, xScale, yScale, tx], // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  const targetHaircutPath = useMemo(
-    () =>
-      showTarget && fitMode === "haircut"
-        ? ribbonPath(quotes, (q) => q.targetLo, (q) => q.targetHi, toX, toY)
-        : "",
-    [showTarget, fitMode, quotes, xScale, yScale, tx], // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  const targetMidPath = useMemo(
-    () => (showTarget ? midLinePath(quotes, toX, toY) : ""),
-    [showTarget, quotes, xScale, yScale, tx], // eslint-disable-line react-hooks/exhaustive-deps
-  );
+  const tickStamp = market.timestamp ? `${market.timestamp.slice(11, 19)} UTC` : "";
 
   // X ticks: nice values in display units, placed directly on the display scale.
   const xTicks = useMemo(
@@ -355,28 +366,45 @@ export default function SmileChart({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Legend */}
-      <div className="mb-1 flex shrink-0 items-center gap-5 px-1 text-[11px] text-slate-400">
-        <span className="flex items-center gap-1.5">
-          <span className="h-0.5 w-5 rounded bg-accent-400" /> Current fit
+      <div className="mb-1 flex shrink-0 items-center gap-4 px-1 text-[11px] text-slate-400">
+        {/* Market frame (primary): quotes + target, fit at the prevailing spot */}
+        <span className="flex items-center gap-1.5" title="The prevailing bid/ask quotes (the market as quoted; live when streaming)">
+          <span className="inline-block h-3 w-0.5 rounded bg-red-400" /> Market quotes
         </span>
-        {liveTicks?.streaming && (
+        {model.length > 0 && (
+          <span className="flex items-center gap-1.5" title={`The fit rolled to the prevailing spot${market.spot !== null ? ` (S ${market.spot.toFixed(2)})` : ""} under the dynamics regime`}>
+            <span className="h-0.5 w-5 rounded bg-accent-400" /> Fit @ market spot
+          </span>
+        )}
+        {market.live && (
           <span
             className="flex items-center gap-1.5"
             title={
-              liveTicks.ready
-                ? `Live bid/ask off the streaming book (${liveTicks.rows.size} quotes${liveTicks.ts ? `, ${liveTicks.ts.slice(11, 19)} UTC` : ""}) over the red calibration quotes`
-                : "The stream is up but the book has not served this node yet"
+              market.warming
+                ? "The stream is up but the book has not served this node yet"
+                : `Live market off the streaming book (${quotes.length} quotes${tickStamp ? `, ${tickStamp}` : ""})`
             }
           >
             <span
               className={[
                 "inline-block h-1.5 w-1.5 rounded-full",
-                liveTicks.ready ? "bg-emerald-400 volfit-live-dot" : "bg-amber-400",
+                market.warming ? "bg-amber-400" : "bg-emerald-400 volfit-live-dot",
               ].join(" ")}
             />
-            <span className={liveTicks.ready ? "text-teal-300" : "text-amber-400"}>
-              {liveTicks.ready ? "Live market" : "live feed warming"}
+            <span className={market.warming ? "text-amber-400" : "text-emerald-400"}>
+              {market.warming ? "live feed warming" : `LIVE ${tickStamp}`}
             </span>
+          </span>
+        )}
+        {/* Calibration frame (toggles): muted, dashed */}
+        {calib && showCalibQuotes && (
+          <span className="flex items-center gap-1.5" title="The quotes + target the last calibration used (with your exclusions / amended mids)">
+            <span className="inline-block h-3 w-0.5 rounded border-l border-dashed border-slate-400" /> Calibration quotes
+          </span>
+        )}
+        {calibFitPath !== "" && (
+          <span className="flex items-center gap-1.5" title="The fitted smile on its calibration spot">
+            <span className="h-0 w-5 border-t-2 border-dashed border-accent-400/50" /> Fit @ calibration spot
           </span>
         )}
         {fitBandPath !== "" && (
@@ -384,19 +412,9 @@ export default function SmileChart({
             <span className="h-2 w-5 rounded bg-accent-400/15" /> ±1.96σ quotes
           </span>
         )}
-        {targetBidAskPath !== "" && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-5 rounded bg-red-400/15" /> Bid-ask band
-          </span>
-        )}
-        {targetHaircutPath !== "" && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-5 rounded bg-red-400/35" /> Haircut band
-          </span>
-        )}
-        {targetMidPath !== "" && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-px w-5 bg-red-400/60" /> Mid target
+        {showTarget && quotes.length > 0 && (
+          <span className="flex items-center gap-1.5" title="Fit target of the viewed fit mode: bid-ask ribbon, haircut ribbon (haircut mode) and the mid polyline">
+            <span className="h-2 w-5 rounded bg-red-400/20" /> {fitMode === "haircut" ? "Haircut target" : fitMode === "bidask" ? "Bid-ask target" : "Mid target"}
           </span>
         )}
         {prior.length > 0 && (
@@ -489,17 +507,6 @@ export default function SmileChart({
 
               {/* Clipped plot geometry */}
               <g clipPath={`url(#${clipId})`}>
-                {/* Fit-target overlay (V3.4): under every curve, above the grid */}
-                {targetBidAskPath !== "" && (
-                  <path d={targetBidAskPath} fill="rgb(248 113 113 / 0.07)" stroke="none" pointerEvents="none" />
-                )}
-                {targetHaircutPath !== "" && (
-                  <path d={targetHaircutPath} fill="rgb(248 113 113 / 0.15)" stroke="none" pointerEvents="none" />
-                )}
-                {targetMidPath !== "" && (
-                  <path d={targetMidPath} fill="none" stroke="rgb(248 113 113 / 0.55)" strokeWidth={1} pointerEvents="none" />
-                )}
-
                 {/* Variance-swap quote: horizontal teal line at the quoted vol */}
                 {varSwapLevel !== null &&
                   varSwapLevel >= yScale.domain[0] &&
@@ -514,69 +521,37 @@ export default function SmileChart({
                     </g>
                   )}
 
-                {/* Quote bands: I-beam bid/ask bars with a mid tick. */}
-                {quotes.map((q) => {
-                  const x = xScale.map(tx(q.k));
-                  if (x < -20 || x > plotW + 20) return null;
-                  const yb = yScale.map(q.bid);
-                  const ya = yScale.map(q.ask);
-                  const ym = yScale.map(q.mid);
-                  const cap = 3.5;
-                  const selected = selectedIndex !== null && q.index === selectedIndex;
-                  // Observed quotes are drawn in bright red, bolder than the fitted
-                  // smile, so the market is unmistakable against the model curve.
-                  const beamStroke = selected ? "var(--color-accent-400)" : "rgb(248 113 113 / 0.95)";
-                  const midStroke = q.amended
-                    ? "rgb(251 191 36 / 0.95)"
-                    : selected
-                      ? "var(--color-accent-400)"
-                      : "rgb(248 113 113)";
-                  const midHalf = q.amended ? 4 : 2.5;
-                  return (
-                    <g key={q.index}>
-                      {selected && <circle cx={x} cy={ym} r={7} fill="var(--color-accent-400)" opacity={0.18} />}
-                      <g stroke={beamStroke} strokeWidth={1.4} opacity={q.excluded ? 0.25 : 1}>
-                        <line x1={x} x2={x} y1={yb} y2={ya} />
-                        <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
-                        <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
-                        <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym} stroke={midStroke} strokeWidth={2.2} />
-                      </g>
-                      {q.excluded && (
-                        <g stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}>
-                          <line x1={x - 3} x2={x + 3} y1={ym - 3} y2={ym + 3} />
-                          <line x1={x - 3} x2={x + 3} y1={ym + 3} y2={ym - 3} />
-                        </g>
-                      )}
-                      {onQuoteSelect && (
-                        <rect
-                          x={x - 6}
-                          y={Math.min(ya, yb) - 8}
-                          width={12}
-                          height={Math.abs(yb - ya) + 16}
-                          fill="transparent"
-                          className="cursor-pointer"
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onQuoteSelect(q.index);
-                          }}
-                        />
-                      )}
-                    </g>
-                  );
-                })}
-
-                {/* Live market (streaming source): thin teal bid/ask beams over the
-                    calibration quotes, placed by strike against this forward. */}
-                {liveTicks !== null && forward !== undefined && (
-                  <LiveQuoteBeams
-                    ticks={liveTicks}
-                    forward={forward}
-                    toX={(k) => xScale.map(tx(k))}
-                    toY={(iv) => yScale.map(iv)}
+                {/* Calibration frame (toggle): the quotes + target the last fit
+                    used, muted and dashed, in its own moneyness. Drawn under the
+                    market frame so the prevailing market stays on top. */}
+                {calib && showCalibQuotes && (
+                  <QuoteLayer
+                    quotes={calib.quotes}
+                    variant="calib"
+                    toX={toXCalib}
+                    toY={toY}
                     plotW={plotW}
+                    fitMode={fitMode}
+                    showTarget={showTarget}
+                    selectedIndex={selectedIndex}
+                    onQuoteSelect={onQuoteSelect}
                   />
                 )}
+
+                {/* Market frame (primary): the prevailing bid/ask quotes + their
+                    fit target, bright red; live-ticked strikes flash teal. */}
+                <QuoteLayer
+                  quotes={quotes}
+                  variant="market"
+                  toX={toX}
+                  toY={toY}
+                  plotW={plotW}
+                  fitMode={fitMode}
+                  showTarget={showTarget}
+                  selectedIndex={selectedIndex}
+                  onQuoteSelect={onQuoteSelect}
+                  flash={liveFlash}
+                />
 
                 {/* Prior: saved = dashed slate; active fetched (spot-updated) =
                     dotted teal so it reads as the live, transported prior. */}
@@ -594,10 +569,12 @@ export default function SmileChart({
                     strokeWidth={1.5} strokeDasharray="2 3" />
                 )}
 
-                {/* Pre-transport calibration (anchor smile): dimmed accent */}
-                {anchorPath !== "" && (
-                  <path d={anchorPath} fill="none" stroke="var(--color-accent-400)"
-                    strokeOpacity={0.32} strokeWidth={1.5} strokeLinejoin="round" />
+                {/* Calibration frame (toggle): the fit on its calibration spot —
+                    dimmed dashed accent, its own moneyness. */}
+                {calibFitPath !== "" && (
+                  <path d={calibFitPath} fill="none" stroke="var(--color-accent-400)"
+                    strokeOpacity={0.45} strokeWidth={1.5} strokeDasharray="6 4"
+                    strokeLinejoin="round" pointerEvents="none" />
                 )}
 
                 {/* Graph-extrapolated reconstruction: shaded credible band + a
@@ -643,7 +620,7 @@ export default function SmileChart({
                     stroke="none" pointerEvents="none" />
                 )}
 
-                {/* Current model fit: accent */}
+                {/* Market frame: the fit rolled to the prevailing spot (accent) */}
                 <path d={modelPath} fill="none" stroke="var(--color-accent-400)"
                   strokeWidth={2} strokeLinejoin="round" />
 

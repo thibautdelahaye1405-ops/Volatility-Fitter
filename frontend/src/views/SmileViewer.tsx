@@ -8,7 +8,7 @@
 // Density / Log-Q-density, the 3D vol Surface and the quote Table (the last four
 // require the live backend). Quote edits post to the backend fit session and
 // the returned refit replaces the smile; shortcuts live in useSmileShortcuts.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Bookmark } from "lucide-react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
@@ -33,6 +33,7 @@ import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
 import { useMassiveIv } from "../state/useMassiveIv";
 import { useLiveTicks } from "../state/useLiveTicks";
+import { composeFrames } from "../lib/smileLayers";
 import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
@@ -120,6 +121,11 @@ export default function SmileViewer() {
   const [showMassiveIv, setShowMassiveIv] = useState(false);
   // Fit-target overlay (V3.4 item 4): mid polyline + bid-ask/haircut ribbons.
   const [showTarget, setShowTarget] = useState(true);
+  // Calibration frame toggles: the quotes + target the last fit used (off by
+  // default — the prevailing market is the primary layer) and the fit on its
+  // calibration spot (on — the "how far has the market moved" reference).
+  const [showCalibQuotes, setShowCalibQuotes] = useState(false);
+  const [showCalibFit, setShowCalibFit] = useState(true);
   // Calibration weight strip under the chart (V3.4 item 5), default off.
   const [showWeights, setShowWeights] = useState(false);
   // Transient "Saved ✓" confirmation on the Save-prior button.
@@ -172,7 +178,9 @@ export default function SmileViewer() {
   // The node's live market ticks (ONE SSE connection per viewed node, off the
   // active source's streaming book): shared by the chart's live beams and the
   // quote table's overlay; empty when the source is not streaming.
-  const liveTicks = useLiveTicks(ticker, expiry, live);
+  const liveTicks = useLiveTicks(ticker, expiry, live, fitMode);
+  // The chart's two frames (market = prevailing/live, calib = last calibration).
+  const frames = useMemo(() => (smile ? composeFrames(smile, liveTicks) : null), [smile, liveTicks]);
 
   // Side-by-side model comparison (V3.2 item 12): fetched LAZILY — only while
   // the Compare view is open (up to 2 extra fits per node, server-cached).
@@ -286,18 +294,19 @@ export default function SmileViewer() {
       case "smile":
         return (
           <SmileChart
-            model={smile.model}
+            market={(frames ?? composeFrames(smile, liveTicks)).market}
+            calib={(frames ?? composeFrames(smile, liveTicks)).calib}
+            showCalibQuotes={showCalibQuotes}
+            showCalibFit={showCalibFit}
+            liveFlash={liveTicks.flash}
             prior={smile.prior}
             priorTransported={smile.priorTransported}
-            quotes={smile.quotes}
             scenario={scenarioCurve}
-            anchorCurve={smile.anchorModel ?? null}
             massiveIv={massiveIvCurve}
             kWindow={kWindow}
             onKWindowChange={setKWindow}
             fullRange={[smile.kMin, smile.kMax]}
             axisMode={axisMode}
-            forward={smile.forward}
             t={smile.T}
             atmVol={smile.diagnostics.atmVol}
             selectedIndex={selectedIndex}
@@ -318,7 +327,6 @@ export default function SmileViewer() {
             degraded={smile.degraded ?? null}
             fitMode={fitMode}
             showTarget={showTarget}
-            liveTicks={liveTicks}
             footer={
               showWeights ? (
                 <WeightStrip
@@ -449,6 +457,36 @@ export default function SmileViewer() {
             onClick={() => setShowTarget((v) => !v)}
           >
             Target
+          </button>
+        )}
+        {/* Calibration frame toggles: the quotes + target the last fit used
+            (muted, with your edits) and the fit on its calibration spot. */}
+        {view === "smile" && (
+          <button
+            className={[
+              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              showCalibQuotes
+                ? "border-slate-400/60 bg-slate-500/15 text-slate-200"
+                : "border-slate-700 text-slate-400 hover:text-slate-200",
+            ].join(" ")}
+            title="Show the quotes + target the last calibration used (with your exclusions / amended mids) under the prevailing market"
+            onClick={() => setShowCalibQuotes((v) => !v)}
+          >
+            Calib. quotes
+          </button>
+        )}
+        {view === "smile" && (
+          <button
+            className={[
+              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              showCalibFit
+                ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                : "border-slate-700 text-slate-400 hover:text-slate-200",
+            ].join(" ")}
+            title="Show the fitted smile on its calibration spot (dashed) next to the fit rolled to the prevailing spot"
+            onClick={() => setShowCalibFit((v) => !v)}
+          >
+            Calib. fit
           </button>
         )}
         {/* Calibration weight strip toggle (density vs effective weights). */}

@@ -41,9 +41,12 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from volfit.api.quotes import prepare_quotes
-from volfit.api.service import node_clock, spot_forward_shift, variance_time
+from volfit.api.schemas import SmilePoint
+from volfit.api.service import displayed_base, node_clock, spot_forward_shift, variance_time
+from volfit.api.smile_layers import rolled_model, strike_key
 from volfit.api.state import AppState
 from volfit.api.table import _price as band_price
+from volfit.calib.band import resolve_band
 from volfit.data.forwards import ResolvedForward
 from volfit.data.types import ChainSnapshot
 
@@ -61,6 +64,12 @@ class LiveTickRow(BaseModel):
     bidPrice: float
     midPrice: float
     askPrice: float
+    #: Fit-target band of the requested fit mode (None in "mid"), the market as
+    #: quoted (no edits) — the chart's live target ribbon.
+    targetLo: float | None = None
+    targetHi: float | None = None
+    #: The calibration quote at the same strike (click-through), -1 when none.
+    index: int = -1
 
 
 class LiveTableFrame(BaseModel):
@@ -76,6 +85,10 @@ class LiveTableFrame(BaseModel):
     rows: list[LiveTickRow] = Field(default_factory=list)
     gone: list[str] = Field(default_factory=list)  # keys no longer two-sided
     nLive: int = 0  # live two-sided rows in the slice after this frame
+    #: The displayed fit ROLLED to the live spot (k relative to ``forward``),
+    #: sent whenever the live forward moved / the calibration changed; None =
+    #: unchanged (or no fit).
+    model: list[SmilePoint] | None = None
 
 
 def row_key(strike: float) -> str:
@@ -110,6 +123,7 @@ class LiveSlice:
     spot: float
     forward: float
     fingerprint: str
+    shift: float = 0.0  # live spot return vs the calibration anchor (rolls the fit)
 
 
 def live_chain(state: AppState, ticker: str, expiry: date) -> ChainSnapshot | None:
@@ -136,10 +150,27 @@ def chain_fingerprint(chain: ChainSnapshot, expiry: date) -> str:
     return h.hexdigest()
 
 
-def live_slice(state: AppState, ticker: str, expiry_iso: str) -> LiveSlice | None:
+def live_shift(state: AppState, ticker: str, spot: float) -> float:
+    """The live spot's return vs the calibration anchor (0 when unknown)."""
+    try:
+        anchor = float(state.anchor_spot(ticker))
+    except Exception:  # noqa: BLE001
+        return 0.0
+    return spot / anchor - 1.0 if anchor > 0.0 and spot > 0.0 else 0.0
+
+
+def live_slice(
+    state: AppState,
+    ticker: str,
+    expiry_iso: str,
+    fit_mode: str = "mid",
+    calib_index: dict[str, int] | None = None,
+) -> LiveSlice | None:
     """Prepare the node's LIVE slice in the table's conventions, or None when the
     book has nothing for it yet (or the node has no stored chain to resolve a
-    forward against). Raises UnknownNodeError for an unknown node."""
+    forward against). Rows carry the fit-target band of ``fit_mode`` (pure
+    market, no edits) and the calibration quote index at the same strike.
+    Raises UnknownNodeError for an unknown node."""
     expiry = state.resolve_expiry(ticker, expiry_iso)
     chain = live_chain(state, ticker, expiry)
     if chain is None or not state.has_quotes(ticker):
@@ -154,13 +185,19 @@ def live_slice(state: AppState, ticker: str, expiry_iso: str) -> LiveSlice | Non
     except Exception:  # noqa: BLE001 — no forward yet: not ready
         return None
     fingerprint = chain_fingerprint(chain, expiry)
+    shift = live_shift(state, ticker, chain.spot)
     try:
         prepared = prepare_quotes(chain, expiry, forward, t_cal, cash, tau=tau)
     except ValueError:  # no two-sided OTM quotes right now: an empty live slice
-        return LiveSlice([], chain.timestamp, chain.spot, forward.forward, fingerprint)
+        return LiveSlice([], chain.timestamp, chain.spot, forward.forward, fingerprint, shift)
     f, d, tv = prepared.forward, prepared.discount, prepared.tau
+    band = resolve_band(
+        prepared.iv_bid, prepared.iv_mid, prepared.iv_ask, fit_mode, state.fit_settings().haircut
+    )
     rows: list[LiveTickRow] = []
-    for k, bid, mid, ask in zip(prepared.k, prepared.iv_bid, prepared.iv_mid, prepared.iv_ask):
+    for i, (k, bid, mid, ask) in enumerate(
+        zip(prepared.k, prepared.iv_bid, prepared.iv_mid, prepared.iv_ask)
+    ):
         k = float(k)
         strike = f * math.exp(k)
         side = "C" if k >= 0.0 else "P"
@@ -178,9 +215,12 @@ def live_slice(state: AppState, ticker: str, expiry_iso: str) -> LiveSlice | Non
                 bidPrice=round(band_price(k, float(bid), tv, f, d), 6),
                 midPrice=round(band_price(k, float(mid), tv, f, d), 6),
                 askPrice=round(band_price(k, float(ask), tv, f, d), 6),
+                targetLo=round(float(band.iv_lo[i]), 8) if band is not None else None,
+                targetHi=round(float(band.iv_hi[i]), 8) if band is not None else None,
+                index=(calib_index or {}).get(strike_key(strike), -1),
             )
         )
-    return LiveSlice(rows, chain.timestamp, chain.spot, f, fingerprint)
+    return LiveSlice(rows, chain.timestamp, chain.spot, f, fingerprint, shift)
 
 
 # ---------------------------------------------------------------- tracker
@@ -197,10 +237,13 @@ class LiveTableTracker:
     ready book is announced once (``ready=False``) so the UI can say "warming".
     """
 
-    def __init__(self) -> None:
+    def __init__(self, fit_mode: str = "mid") -> None:
+        self._fit_mode = fit_mode
         self._sent: dict[str, tuple[float, float, float]] = {}
         self._fingerprint: str | None = None
         self._announced: tuple[bool, bool] | None = None  # (streaming, ready)
+        self._model_shift: float | None = None  # shift the last sent rolled model was at
+        self._base_id: int | None = None  # identity of the calibration record last seen
 
     def _status(self, streaming: bool, ready: bool) -> LiveTableFrame | None:
         """A status frame if (streaming, ready) changed since the last push."""
@@ -214,21 +257,31 @@ class LiveTableTracker:
             self._sent.clear()
             self._fingerprint = None
             return self._status(False, False)
-        sl = live_slice(state, ticker, expiry_iso)
+        iso = state.resolve_expiry(ticker, expiry_iso).isoformat()
+        base = displayed_base(state, ticker, iso, self._fit_mode)  # the calibration (no transport)
+        sl = live_slice(state, ticker, expiry_iso, self._fit_mode, _calib_index(base))
         if sl is None:
             self._sent.clear()
             self._fingerprint = None
             return self._status(True, False)
         self._announced = (True, True)  # a ticks frame announces ready itself
-        if sl.fingerprint == self._fingerprint and self._sent:
+        base_changed = id(base) != self._base_id  # a refit: full repaint + new rolled fit
+        if sl.fingerprint == self._fingerprint and self._sent and not base_changed:
             return None
         self._fingerprint = sl.fingerprint
-        full = not self._sent
+        full = not self._sent or base_changed
         current = {r.key: r for r in sl.rows}
-        changed = [r for r in sl.rows if self._sent.get(r.key) != _signature(r)]
+        changed = [r for r in sl.rows if full or self._sent.get(r.key) != _signature(r)]
         gone = [k for k in self._sent if k not in current]
         self._sent = {k: _signature(r) for k, r in current.items()}
-        if not (changed or gone or full):
+        # The fit rolled to the live spot: recomputed only when the spot (hence the
+        # forward) moved or the calibration changed — a quote-only tick sends none.
+        model: list[SmilePoint] | None = None
+        if base is not None and (full or sl.shift != self._model_shift):
+            model = rolled_model(state, ticker, iso, base, sl.shift)
+            self._model_shift = sl.shift
+        self._base_id = id(base)
+        if not (changed or gone or full or model is not None):
             return None
         return LiveTableFrame(
             type="ticks",
@@ -241,7 +294,17 @@ class LiveTableTracker:
             rows=changed,
             gone=gone,
             nLive=len(current),
+            model=model,
         )
+
+
+def _calib_index(base) -> dict[str, int]:
+    """``{strike key -> prepared index}`` of the calibration quotes (click-through)."""
+    if base is None:
+        return {}
+    p = base.prepared
+    f = float(p.forward)
+    return {strike_key(f * math.exp(float(k))): i for i, k in enumerate(p.k)}
 
 
 # -------------------------------------------------------------- SSE loop
@@ -251,7 +314,14 @@ TICK_SECONDS = 1.0
 HEARTBEAT_SECONDS = 15.0
 
 
-async def table_events(state: AppState, ticker: str, expiry_iso: str, is_disconnected, tick: float = TICK_SECONDS):
+async def table_events(
+    state: AppState,
+    ticker: str,
+    expiry_iso: str,
+    is_disconnected,
+    tick: float = TICK_SECONDS,
+    fit_mode: str = "mid",
+):
     """Async generator of SSE chunks for one node's tick stream. The prepare
     (de-Am on American chains) runs in a worker thread so the event loop stays
     responsive; a bad node ends the stream with an ``error`` event."""
@@ -260,7 +330,7 @@ async def table_events(state: AppState, ticker: str, expiry_iso: str, is_disconn
 
     from volfit.api.state import UnknownNodeError
 
-    tracker = LiveTableTracker()
+    tracker = LiveTableTracker(fit_mode)
     last_beat = monotonic()
     while True:
         if await is_disconnected():

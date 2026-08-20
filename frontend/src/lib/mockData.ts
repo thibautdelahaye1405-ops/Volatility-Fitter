@@ -31,6 +31,11 @@ export interface QuoteBand {
   excluded: boolean;
   /** True when the mid has been manually amended by the user. */
   amended: boolean;
+  /** The quote's strike — the layer-independent identity the viewer joins on
+   *  (calibration quote / prevailing market quote / live tick at the same
+   *  strike are the same option) and places at log(strike / layer forward).
+   *  Optional for older payloads / mock. */
+  strike?: number | null;
   /** Fit-target band edges resolved by the backend's own band rule
    *  (volfit.calib.band): fit_mode "bidask" → (bid, ask); "haircut" → the
    *  mid-clamped (bid+h, ask−h) around the (possibly amended) mid. Absent /
@@ -38,6 +43,29 @@ export interface QuoteBand {
    *  older payloads still type-check. */
   targetLo?: number | null;
   targetHi?: number | null;
+}
+
+/** The PREVAILING market frame of a node (Smile Viewer layers 1 + 3): the
+ *  latest fetched chain's quotes as the market quotes them (no user edits, with
+ *  the viewed fit mode's target band and `index` = the calibration quote at the
+ *  same strike, -1 when none) and the fit ROLLED to the prevailing spot (k
+ *  relative to `forward`; empty when no fit). `live` flags a streaming source
+ *  whose SSE tick stream refines this layer at ~1 Hz (state/useLiveTicks). */
+export interface MarketLayer {
+  forward: number;
+  spot?: number | null;
+  timestamp?: string | null;
+  live?: boolean;
+  quotes: QuoteBand[];
+  model: SmilePoint[];
+}
+
+/** The CALIBRATION frame (layers 2 + 4): the fit on its own calibration spot
+ *  (k relative to `forward` = F0) — comparable with `SmileData.quotes`. */
+export interface CalibLayer {
+  forward: number;
+  spot?: number | null;
+  model: SmilePoint[];
 }
 
 /** Headline diagnostics displayed next to the chart. */
@@ -148,6 +176,11 @@ export interface SmileData {
    *  so the chart can overlay the original fit (dimmed) under the transported
    *  smile. None/undefined when no spot move. */
   anchorModel?: SmilePoint[] | null;
+  /** The two comparable frames of the Smile Viewer (optional additions): the
+   *  prevailing market (+ fit rolled to its spot) and the calibration frame
+   *  (fit on its calibration spot; pairs with `quotes`). */
+  market?: MarketLayer | null;
+  calib?: CalibLayer | null;
 }
 
 /* ------------------------------------------------------------------ */

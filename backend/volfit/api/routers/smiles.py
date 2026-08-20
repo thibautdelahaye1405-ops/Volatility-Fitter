@@ -184,7 +184,9 @@ def get_table_csv(
 
 
 @router.get("/smiles/{ticker}/{expiry}/table/stream")
-async def stream_table(ticker: str, expiry: str, request: Request) -> StreamingResponse:
+async def stream_table(
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+) -> StreamingResponse:
     """Server-Sent Events: the node's live market pushed into the quote table.
 
     While the active source streams (Massive WS / Bloomberg subscription book),
@@ -195,7 +197,7 @@ async def stream_table(ticker: str, expiry: str, request: Request) -> StreamingR
     """
     state = request.app.state.volfit
     return StreamingResponse(
-        table_stream.table_events(state, ticker, expiry, request.is_disconnected),
+        table_stream.table_events(state, ticker, expiry, request.is_disconnected, fit_mode=fit_mode),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

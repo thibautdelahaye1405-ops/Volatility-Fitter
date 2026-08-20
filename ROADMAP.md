@@ -613,6 +613,59 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21a) — SMILE VIEWER: TWO COMPARABLE FRAMES (MARKET vs CALIBRATION)
+
+User spec (2026-08-21): the chart shows (1) the PREVAILING bid-ask quotes with
+the fit target (mid / bid-ask / haircut), (2) [toggle] the quotes + target the
+last calibration used, (3) the fitted smile ROLLED to the prevailing spot,
+(4) [toggle] the fitted smile on its calibration spot — 1↔3 and 2↔4 are the
+comparable pairs. Decisions (asked): prevailing = the latest fetched chain on
+every source (the live stream when streaming); live quotes/target are PURE
+market (no edit carry-over — edits live on the calibration frame); defaults
+calib-quotes OFF / calib-fit ON; market beams clickable by strike (they carry
+the calibration index at the same strike).
+
+- **Backend** `api/smile_layers.py` + `SmileData.market` / `.calib`
+  (schemas `MarketLayer` {forward, spot, timestamp, live, quotes, model} and
+  `CalibLayer` {forward, model}); `QuoteBand.strike` everywhere (the layer-
+  independent identity). Prevailing-spot rule: the active spot shift when set
+  (the app already lives there), else the latest chain's spot; the market
+  forward follows `service.spot_forward_shift` (new `shift=` override, also on
+  `transport_record`) — `rolled_model` = the base fit transported by that
+  shift (reused from the active-shift curve when equal). Market quote bands =
+  the current chain's prepared slice, no edits, `resolve_band` target of the
+  viewed fit mode, k re-expressed on the market forward, index = calibration
+  quote at the same strike. `calib.model` = the un-transported base fit.
+  `_no_fit` payload: market frame (quotes only), no calib frame.
+- **SSE** (`table_stream`): `fit_mode` query param; rows carry `targetLo/Hi`
+  (pure market) + `index`; frame carries `model` = the fit rolled to the LIVE
+  spot (recomputed only when the spot / calibration changed: 61 ms on SPY;
+  full frame 40 ms). `displayed_base` per frame (gated: None until Calibrate).
+- **Frontend** `lib/smileLayers.ts` (`composeFrames(smile, ticks)` → market
+  frame = live rows/forward/rolled model when streaming & ready, else the
+  payload market layer, else the old displayed smile — fallback for old
+  payloads/mock; calib frame = payload calib + `smile.quotes` with edits),
+  `components/QuoteLayer.tsx` (beams + target ribbons per frame; variants
+  "market" bright red / "calib" muted slate dashed; excluded crossed, amended
+  amber; flash teal on live ticks; click-through by index), `SmileChart`
+  refactor (props `market`/`calib`/`showCalibQuotes`/`showCalibFit`/
+  `liveFlash`; each frame drawn through ITS OWN axis transform — strike mode
+  places both by true strike, k mode keeps each frame's own moneyness so a
+  sticky-strike move reads as the lateral shift it is; legend: Market quotes ·
+  Fit @ market spot · LIVE hh:mm:ss · Calibration quotes · Fit @ calibration
+  spot · target), `SmileViewer` toggles "Calib. quotes" (off) / "Calib. fit"
+  (on), `useLiveTicks(…, fitMode)`; `LiveQuoteBeams.tsx` retired.
+- Tests: backend `test_smile_layers.py` 6 (strikes, pure market + target
+  per mode, spot-move rolls market / keeps calib with sticky-strike identity,
+  edits stay on calib, no-fit frames, SSE frame rolled model + targets +
+  index); frontend `smileLayers.test.ts` 5 + reducer 6. Suite green, vitest
+  215, build + UI smoke (9 tabs) green; live Terminal smoke: payload frames +
+  SSE model/targets, 0 metered calls.
+- Not done / next: the Quote Table still overlays live rows onto the
+  calibrated table (Model IV = the fit); bringing it onto the same two-frame
+  grammar (market rows primary, calibration columns on toggle) is the natural
+  follow-up; Massive incremental resubscribe; other sources.
+
 ### 🧭 SESSION WRAP (2026-08-20f) — INCREMENTAL (UN)SUBSCRIBE ON UNIVERSE EDITS (BLOOMBERG)
 
 Market-data sourcing arc, step 4: a universe edit no longer restarts the

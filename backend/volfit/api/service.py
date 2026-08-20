@@ -55,6 +55,7 @@ from volfit.calib.calendar import (
     variance_floor_grid_winged,
     variance_floor_targets,
 )
+from volfit.api import smile_layers
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.calib.extrap import build_extrap_target
 from volfit.calib.factors import build_factor_prior
@@ -848,10 +849,13 @@ def spot_forward_shift(
     return f1, h
 
 
-def _spot_transport_forward(state: AppState, ticker: str, expiry: date, prepared) -> tuple[float, float]:
+def _spot_transport_forward(
+    state: AppState, ticker: str, expiry: date, prepared, shift: float | None = None
+) -> tuple[float, float]:
     """(F_T^1, h_T) for a prepared slice — thin wrapper over spot_forward_shift."""
     return spot_forward_shift(
-        state, ticker, expiry, float(prepared.forward), float(prepared.discount), float(prepared.t)
+        state, ticker, expiry, float(prepared.forward), float(prepared.discount), float(prepared.t),
+        shift=shift,
     )
 
 
@@ -871,7 +875,9 @@ def _transported_display(slice_: TransportedSlice, prepared) -> DisplayFit:
     )
 
 
-def transport_record(state: AppState, ticker: str, iso: str, record: FitRecord) -> FitRecord:
+def transport_record(
+    state: AppState, ticker: str, iso: str, record: FitRecord, shift: float | None = None
+) -> FitRecord:
     """Transport an anchor fit for the ticker's active spot shift (no refit).
 
     Returns ``record`` unchanged when no shift is active. Otherwise the displayed
@@ -880,13 +886,15 @@ def transport_record(state: AppState, ticker: str, iso: str, record: FitRecord) 
     k - h) go on the prepared inputs, and the transported slice is attached as a
     DisplayFit so the chart, diagnostics, surface, term, density, var-swap and the
     Dupire local-vol extraction all follow it. ``result`` (the LQD anchor) is kept
-    intact so the graph universe still reads exact LQD coordinates.
+    intact so the graph universe still reads exact LQD coordinates. ``shift``
+    overrides the ACTIVE shift (the Smile Viewer's prevailing-spot layer and the
+    live tick stream roll the fit to THEIR spot); None = the active one.
     """
-    shift = state.spot_shift(ticker)
+    shift = state.spot_shift(ticker) if shift is None else float(shift)
     if shift == 0.0:
         return record
     expiry = date.fromisoformat(iso)
-    f1, h = _spot_transport_forward(state, ticker, expiry, record.prepared)
+    f1, h = _spot_transport_forward(state, ticker, expiry, record.prepared, shift)
     if h == 0.0:
         return record
     regime = state.dynamics_regime()
@@ -1328,11 +1336,15 @@ def _no_fit_smile_payload(
                     k=float(k), bid=float(b), ask=float(a),
                     mid=edit.amended_iv if amended else float(m), index=i,
                     excluded=edit is not None and edit.excluded, amended=amended,
+                    strike=float(prepared.forward) * math.exp(float(k)),
                     targetLo=float(band.iv_lo[i]) if band is not None else None,
                     targetHi=float(band.iv_hi[i]) if band is not None else None,
                 )
             )
     forward = float(prepared.forward) if prepared is not None else 0.0
+    # No fit: the market frame still carries the prevailing quotes + target (no
+    # rolled curve); no calibration frame.
+    market = smile_layers.market_layer(state, ticker, iso, fit_mode, None, quotes, prepared)
     prior, prior_transported = _no_fit_prior(state, ticker, iso, forward)
     if prepared is not None:
         k_min = float(prepared.k.min()) - K_PAD
@@ -1371,6 +1383,8 @@ def _no_fit_smile_payload(
         anchorModel=None,
         surfaceRmsError=0.0,
         degraded=degraded,
+        market=market,
+        calib=None,
     )
 
 
@@ -1471,16 +1485,26 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
                 index=i,
                 excluded=edit is not None and edit.excluded,
                 amended=amended,
+                strike=float(prepared.forward) * math.exp(float(k)),
                 targetLo=float(band.iv_lo[i]) if band is not None else None,
                 targetHi=float(band.iv_hi[i]) if band is not None else None,
             )
         )
+    # The two comparable frames (api/smile_layers): the calibration frame is
+    # the UN-transported base (the fit on its own spot); the market frame is
+    # the latest fetched chain + the fit rolled to the prevailing spot.
+    base = displayed_base(state, ticker, iso, fit_mode)
+    market = smile_layers.market_layer(
+        state, ticker, iso, fit_mode, base, quotes, prepare_slice(state, ticker, iso), model
+    )
     return SmileData(
         ticker=ticker,
         expiry=expiry_iso,
         T=prepared.t,
         forward=prepared.forward,
         model=model,
+        market=market,
+        calib=smile_layers.calib_layer(base),
         prior=prior,
         priorTransported=prior_transported,
         quotes=quotes,

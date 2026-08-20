@@ -766,6 +766,11 @@ class QuoteBand(BaseModel):
     index: int
     excluded: bool
     amended: bool
+    #: The quote's strike — the layer-independent identity the Smile Viewer
+    #: joins on (a calibration quote, the prevailing market quote and a live
+    #: tick at the same strike are the same option) and places with
+    #: ``log(strike / layer forward)``. Optional for older payloads / mock.
+    strike: float | None = None
     #: Fit-target band edges resolved by the fit's OWN band rule (V3.4 item 4;
     #: volfit.calib.band.resolve_band via quotes.apply_band_edits, so
     #: amended-mid recentering and the haircut collapse-to-mid clamp are
@@ -860,6 +865,38 @@ class VarSwapInfo(BaseModel):
     rmsShare: float | None = None
 
 
+class MarketLayer(BaseModel):
+    """The PREVAILING market of a node — Smile Viewer layers 1 + 3.
+
+    ``quotes`` are the latest fetched chain's prepared quotes as the market
+    quotes them (NO user edits: excluded/amended always False), with the fit-
+    target band of the requested fit mode (``targetLo``/``targetHi``, None in
+    "mid" mode) and ``index`` = the calibration quote at the same strike (click-
+    through; -1 when none). ``model`` is the displayed fit ROLLED to the
+    prevailing spot under the dynamics regime (k relative to ``forward``; empty
+    when the node has no fit). ``live`` flags a streaming source, whose SSE
+    tick stream refines this layer at ~1 Hz (volfit.api.table_stream).
+    """
+
+    forward: float
+    spot: float | None = None
+    timestamp: str | None = None  # ISO UTC of the prevailing chain
+    live: bool = False
+    quotes: list[QuoteBand] = Field(default_factory=list)
+    model: list[SmilePoint] = Field(default_factory=list)
+
+
+class CalibLayer(BaseModel):
+    """The CALIBRATION frame of a node — Smile Viewer layers 2 + 4: the fit on
+    its own calibration spot (``model``, k relative to ``forward`` = F0) — the
+    curve the calibration quotes (``SmileData.quotes``, which carry their
+    strike) are directly comparable with. Empty model when no fit."""
+
+    forward: float
+    spot: float | None = None
+    model: list[SmilePoint] = Field(default_factory=list)
+
+
 class SmileData(BaseModel):
     """Everything the Smile Viewer needs for one (underlying, expiry) node."""
 
@@ -902,6 +939,12 @@ class SmileData(BaseModel):
     #: keeps serving the dotted transported prior and labels the condition
     #: instead of the misleading "no fit yet" cue. None = plain not-calibrated.
     degraded: str | None = None
+    #: The two comparable frames of the Smile Viewer (optional additions to the
+    #: frozen contract): ``market`` = prevailing quotes + target and the fit
+    #: rolled to the prevailing spot; ``calib`` = the fit on its calibration
+    #: spot (paired with ``quotes``, the calibration quotes + their target).
+    market: MarketLayer | None = None
+    calib: CalibLayer | None = None
 
 
 # ------------------------------------------------------------------ universe

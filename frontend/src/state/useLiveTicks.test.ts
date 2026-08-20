@@ -3,7 +3,7 @@
 // flash set is exactly the rows that moved in the last frame.
 import { describe, expect, it } from "vitest";
 import { EMPTY_LIVE, FLASH_EPS, applyFrame, liveKey, type LiveTickRow } from "./useLiveTicks";
-import { liveK } from "../components/LiveQuoteBeams";
+import { frameK as liveK } from "../lib/smileLayers";
 
 const row = (type: "C" | "P", strike: number, midIv: number): LiveTickRow => ({
   key: liveKey(strike),
