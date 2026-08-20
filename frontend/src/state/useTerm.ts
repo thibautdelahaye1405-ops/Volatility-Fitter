@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { useSmileSession } from "./smileSession";
+import { varswapShiftEdits } from "../lib/varswap";
 import type { VarSwapAction } from "./useSmile";
 
 /** One editable event marker: adds `weight` years of diffusion at `time`. */
@@ -48,6 +49,10 @@ export interface TermPoint {
   varSwapQuote?: number | null;
   /** Quote present but excluded from the fit penalty. */
   varSwapExcluded?: boolean;
+  /** Real per-node var-swap undo/redo state (the SEPARATE var-swap session);
+   *  absent on older payloads. Backs the Term editor's row buttons (V3.6). */
+  varSwapCanUndo?: boolean | null;
+  varSwapCanRedo?: boolean | null;
   /** Worst absolute IV fit error across the expiry's quotes, in bp. */
   maxIvErrorBp: number;
   /** Active fetched prior's ATM vol, transported to the current forward
@@ -161,6 +166,10 @@ export interface UseTermResult {
   applyVarSwap: (expiry: string, action: VarSwapAction, level?: number) => Promise<void>;
   undoVarSwap: (expiry: string) => Promise<void>;
   redoVarSwap: (expiry: string) => Promise<void>;
+  /** Shift every QUOTED rung's var-swap by `bp` vol basis points: sequential
+   *  per-node "set" edits (N independent sessions ⇒ N refits — acknowledged),
+   *  then ONE term + smile reload. Resolves to the number of edits issued. */
+  shiftVarSwaps: (bp: number) => Promise<number>;
 }
 
 /**
@@ -366,6 +375,29 @@ export function useTerm(): UseTermResult {
     [postVarSwap],
   );
 
+  // Batch "shift all by +x bp" (V3.6): one "set" edit per QUOTED rung — N
+  // independent node sessions, N refits (each edit is individually undoable
+  // on its own node) — followed by a single term + smile reload.
+  const shiftVarSwaps = useCallback(
+    async (bp: number): Promise<number> => {
+      const edits = varswapShiftEdits(data?.points ?? [], bp);
+      if (ticker === "" || edits.length === 0) return 0;
+      for (const e of edits) {
+        try {
+          await api.post(`/smiles/${ticker}/${e.expiry}/varswap`, {
+            body: { action: "set", level: e.level },
+          });
+        } catch {
+          /* keep shifting the rest; surfaced indirectly via the next load */
+        }
+      }
+      reload();
+      reloadSmile();
+      return edits.length;
+    },
+    [ticker, data, reload, reloadSmile],
+  );
+
   const autocalibrate = useCallback(
     async (maxExpiry: string): Promise<void> => {
       if (ticker === "" || maxExpiry === "") return;
@@ -430,5 +462,6 @@ export function useTerm(): UseTermResult {
     applyVarSwap,
     undoVarSwap,
     redoVarSwap,
+    shiftVarSwaps,
   };
 }

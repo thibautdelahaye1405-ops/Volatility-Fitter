@@ -23,11 +23,13 @@ import numpy as np
 from volfit.api.service import prepared_quotes
 from volfit.api.state import AppState
 from volfit.calib.band import BandTarget
+from volfit.calib.calendar_certificate import ledger_certificate
 from volfit.calib.rms import node_error_terms, rms
 from volfit.calib.weights import resolve_weights
 from volfit.models.base import SmileModel
 from volfit.models.lqd.calibrate import calibrate_slice
 from volfit.models.sigmoid import calibrate_sigmoid
+from volfit.models.sigmoid.calendar_certificate import mcs_calendar_certificate
 from volfit.models.svi_jw import calibrate_svi
 from volfit.models.svi_jw.svi import RawSVI
 
@@ -199,12 +201,57 @@ def _analytic_butterfly(slice_: SmileModel, grid: np.ndarray) -> tuple[float, fl
 #: g this far below 0 is a real butterfly violation; the density guard is just floating-point.
 _G_ARB_TOL = 1e-6
 _DENSITY_ARB_TOL = 1e-9
+#: Calendar-certificate tolerance (matches api.quality._CAL_TOL): the ledger gap is
+#: in normalized price, the polished gap in total variance — both ~float-noise there.
+_CAL_CERT_TOL = 1e-6
+
+
+def _lee_slopes_of(slice_: SmileModel) -> tuple[float, float] | None:
+    """Closed-form asymptotic (left, right) total-variance slopes when the family
+    has them: MCS via ``lee_slopes()`` (eq mcsbetak), SVI via b(1∓ρ). None lets
+    the certificate fall back to its numeric FD."""
+    fn = getattr(slice_, "lee_slopes", None)
+    if callable(fn):
+        return fn()
+    if isinstance(slice_, RawSVI):
+        return slice_.b * (1.0 - slice_.rho), slice_.b * (1.0 + slice_.rho)
+    return None
+
+
+def _calendar_columns(prev_slice: SmileModel, slice_: SmileModel) -> dict:
+    """Adjacent-pair calendar certification — ONE helper, per-family kind (V3.1 leg 6).
+
+    ``cal_kind = "ledger"`` — LQD pairs: the EXACT full-line ledger certificate
+    (volfit.calib.calendar_certificate; gap in normalized price).
+    ``cal_kind = "polished"`` — SVI / Multi-Core SIV (and mixed w-model) pairs:
+    the polished-dense certificate (models.sigmoid.calendar_certificate; dense
+    scan + Brent-polished minima of w_far − w_near, in total variance) with the
+    analytic wing-order clause fed the family's closed-form slopes.
+    """
+    if hasattr(prev_slice, "a_z") and hasattr(slice_, "a_z"):  # LQD pair
+        cert = ledger_certificate(prev_slice, slice_)
+        return dict(
+            cal_kind="ledger", cal_gap_min=round(cert.min_gap, 8),
+            cal_gap_k=round(cert.k_star, 4), cal_wing_order_ok=bool(cert.tail_order_ok),
+            cal_certified=bool(cert.certified(_CAL_CERT_TOL)),
+        )
+    cert = mcs_calendar_certificate(
+        prev_slice, slice_,
+        near_lee=_lee_slopes_of(prev_slice), far_lee=_lee_slopes_of(slice_),
+    )
+    return dict(
+        cal_kind="polished", cal_gap_min=round(cert.min_gap, 8),
+        cal_gap_k=round(cert.k_star, 4), cal_wing_order_ok=bool(cert.wing_order_ok),
+        cal_certified=bool(cert.certified(_CAL_CERT_TOL)),
+    )
 
 
 def fit_node(
     state: AppState, ticker: str, expiry: date, regime: str, sector: str,
     exercise_style: str, specs: tuple[ModelSpec, ...] = DEFAULT_SWEEP,
     fit_mode: str = "mid", weight_scheme: str = "equal", haircut_frac: float = 0.5,
+    prev_slices: dict[str, SmileModel] | None = None,
+    slices_out: dict[str, SmileModel] | None = None,
 ) -> list[dict]:
     """De-Am + prep the node once, then fit every model; one metric row per model.
 
@@ -212,7 +259,15 @@ def fit_node(
     ``resolve_weights``); ``fit_mode`` ("mid" | "haircut") sets the objective — mid
     fits to mid, haircut fits inside a band shrunk ``haircut_frac`` toward mid. RMS
     is reported consistently with the objective (model−mid for mid; band violation
-    for haircut), so each is the number the calibrator actually minimized."""
+    for haircut), so each is the number the calibrator actually minimized.
+
+    Calendar columns (V3.1 leg 6): ``prev_slices`` maps spec label -> the SAME
+    spec's fitted slice at the previous, shorter expiry; each row then carries
+    cal_kind / cal_gap_min / cal_gap_k / cal_wing_order_ok / cal_certified from
+    the per-family certificate (``_calendar_columns``) and the certificate-gated
+    verdict ``valid`` — butterfly-clean AND calendar-certified (butterfly-only
+    when no previous slice exists). ``slices_out`` (caller-owned dict) collects
+    this node's fitted slices per label so the caller can chain expiries."""
     t0 = time.perf_counter()
     prepared = prepared_quotes(state, ticker, expiry)
     prep_ms = (time.perf_counter() - t0) * 1e3
@@ -251,6 +306,17 @@ def fit_node(
             mart = None
             if hasattr(slice_, "martingale_check"):
                 mart = round(abs(float(slice_.martingale_check()) - 1.0), 6)
+            # Calendar certification vs the same spec's previous-expiry slice
+            # (V3.1 leg 6) + the certificate-gated verdict: an rms win means
+            # nothing if the fit fails its own no-arbitrage certificates.
+            cal = dict(cal_kind=None, cal_gap_min=None, cal_gap_k=None,
+                       cal_wing_order_ok=None, cal_certified=None)
+            prev = (prev_slices or {}).get(spec.label)
+            if prev is not None:
+                try:
+                    cal = _calendar_columns(prev, slice_)
+                except Exception:  # certification failure is a missing column, not a break
+                    pass
             base.update(
                 ok=True, fit_ms=round(fit_ms, 2), n_eval=n_eval,
                 in_rmse_bp=round(_rms_bp(slice_, k, w, tau, weights, band), 2),
@@ -259,7 +325,11 @@ def fit_node(
                 bfly_min_g_an=round(an_min, 6), bfly_neg_frac_an=round(an_neg, 4),
                 bfly_kind=an_kind, arb_real=bool(arb_real),
                 lqd_martingale_dev=mart,
+                **cal,
+                valid=bool(not arb_real and cal["cal_certified"] is not False),
             )
+            if slices_out is not None:
+                slices_out[spec.label] = slice_
         except Exception as exc:  # noqa: BLE001 - a fit break is a result we record
             base.update(ok=False, error=type(exc).__name__ + ": " + str(exc)[:120])
         rows.append(base)

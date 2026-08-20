@@ -81,6 +81,20 @@ export interface VarSwapInfo {
   /** Separate undo/redo history for var-swap edits (not the quote edits). */
   canUndo: boolean;
   canRedo: boolean;
+  // ---- V3.6 optional readouts (absent on older payloads / mock). ----
+  /** Quote-minus-model basis in vol basis points ((level − modelVol)·1e4);
+   *  positive ⇒ the quote sits above the model. Null without a quote. */
+  basisBp?: number | null;
+  /** OptionsSettings.varSwapWeightPct echoed at the point of use (null while
+   *  var-swap quoting is disabled). Set in Options ▸ Calibration. */
+  weightPct?: number | null;
+  /** Resolved absolute penalty weight: (weightPct/100) · Σ option-quote
+   *  weights of the node. Null when no ACTIVE target. */
+  weightAbs?: number | null;
+  /** Mirrors SmileData.stale for this node (frozen fit, inputs drifted). */
+  stale?: boolean | null;
+  /** Var-swap share of the node's weighted squared vol error, in [0, 1]. */
+  rmsShare?: number | null;
 }
 
 /** Everything the Smile Viewer needs for one (underlying, expiry) node. */
@@ -270,6 +284,11 @@ export function getMockSmile(): SmileData {
       enabled: true,
       canUndo: false,
       canRedo: false,
+      basisBp: null,
+      weightPct: 10,
+      weightAbs: null,
+      stale: false,
+      rmsShare: null,
     },
   };
 }

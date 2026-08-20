@@ -139,6 +139,14 @@ class FitSettings(BaseModel):
     #: certifies. Clean first fits never see a second solve.
     bellyRepair: bool = True
     sigmoidRidge: float = Field(1e-2, ge=0.0)  # Multi-Core SIV hat-amplitude ridge
+    #: V3.1 (roadmap item 2 leg 3): Multi-Core Sigmoid optimization chart.
+    #: "structural" = the (β_L, β_R, z*, v*, κ_p, κ_c) chart of
+    #: models/sigmoid/structural.py — the base's k-space Lee wing slopes
+    #: (eq mcsbetak) lifted logistically against the buffered leeSlopeMax cap,
+    #: so every finite iterate has strictly Lee-clean base wings. DEFAULT "raw"
+    #: (byte-identical historical vector) until the adjudication sweep ratifies
+    #: a flip — the sviChart precedent (pre-registered benchmark, then flip).
+    mcsChart: Literal["raw", "structural"] = "raw"
     midAnchorWeight: float = Field(0.05, ge=0.0)  # band-mode mid anchor (all models)
 
     @field_validator("nCores", mode="before")
@@ -770,6 +778,28 @@ class VarSwapInfo(BaseModel):
     enabled: bool
     canUndo: bool
     canRedo: bool
+    # ---- V3.6 optional readouts (item 14). All default-None so older cached
+    # payloads / mocks stay valid (frozen contract: additions are OPTIONAL). ----
+    #: Quote-minus-model basis in VOL BASIS POINTS: (level − modelVol) · 1e4.
+    #: Sign convention: positive ⇒ the quote sits ABOVE the model's own fair
+    #: var-swap. None when no quote exists.
+    basisBp: float | None = None
+    #: OptionsSettings.varSwapWeightPct echoed at the point of use (the panel
+    #: shows the penalty strength without a settings round-trip). None while
+    #: ``varSwapEnabled`` is off.
+    weightPct: float | None = None
+    #: The RESOLVED absolute weight of the node's single var-swap residual:
+    #: (varSwapWeightPct / 100) · Σ option-quote weights — exactly the value
+    #: volfit.api.service.varswap_target feeds the calibrator. None when no
+    #: ACTIVE target (feature off, no quote, or quote excluded).
+    weightAbs: float | None = None
+    #: Mirrors SmileData.stale for this node (inputs drifted since the last
+    #: calibration — needs Calibrate). None when unknown (mock payloads).
+    stale: bool | None = None
+    #: Fraction of the node's total weighted SQUARED vol error contributed by
+    #: the var-swap term (the volfit.calib.rms.node_error_terms decomposition),
+    #: in [0, 1]. None when no active target or the total error is zero.
+    rmsShare: float | None = None
 
 
 class SmileData(BaseModel):
@@ -1824,6 +1854,11 @@ class TermPoint(BaseModel):
     varSwapVol: float  # model fair var-swap vol = sqrt(var-swap strike / t)
     varSwapQuote: float | None = None  # user-quoted var-swap vol (None if unset)
     varSwapExcluded: bool = False  # quote present but excluded from the fit
+    #: Real per-node var-swap edit-history state (the SEPARATE var-swap session,
+    #: volfit.api.varswap_session) so the Term editor's undo/redo buttons reflect
+    #: each rung's own stack. Optional: None on older cached payloads. (V3.6)
+    varSwapCanUndo: bool | None = None
+    varSwapCanRedo: bool | None = None
     maxIvErrorBp: float
     #: Active fetched prior's ATM vol at this expiry, transported to the current
     #: forward (dotted spot-updated prior term line); None when no active prior.

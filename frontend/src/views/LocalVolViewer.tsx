@@ -532,14 +532,14 @@ export default function LocalVolViewer() {
             </div>
           )}
 
-          {/* Var-swap quote for the selected expiry (Options-gated, shared
-              with the Parametric workspace) */}
+          {/* Var-swap: quote/session shared with Parametric, but the info is the
+              AFFINE payload's own varSwap — model/basis/stale from the LV fit. */}
           {varSwapEnabled && smile && (
             <div className="border-t border-slate-800 pt-3">
               <VarSwapPanel
                 info={smile.varSwap}
                 live={live}
-                subtitle={`Editing ${formatExpiry(smile.expiry, smile.t, format)}`}
+                subtitle={`Editing ${formatExpiry(smile.expiry, smile.t, format)} · model = LV surface fit`}
                 onSet={(level) => void applyVarSwap(smile.expiry, "set", level)}
                 onExclude={() => void applyVarSwap(smile.expiry, "exclude")}
                 onInclude={() => void applyVarSwap(smile.expiry, "include")}

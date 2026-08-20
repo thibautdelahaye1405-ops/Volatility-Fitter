@@ -291,6 +291,51 @@ def variance_floor_grid_common(
     return np.linspace(window[0], window[1], n)
 
 
+#: Wing extension of the sigmoid-family floor grid past the common quote
+#: support, in z-units of the fitting slice — mirrors the sigmoid wing-penalty
+#: pad (models.sigmoid.penalties._WING_PAD): the same reach the R6 regularizer
+#: already disciplines for butterfly arb is where calendar wing crossings live.
+FLOOR_WING_PAD_Z = 2.0
+
+
+def variance_floor_grid_winged(
+    k_near: np.ndarray,
+    k_far: np.ndarray,
+    w_far: np.ndarray,
+    t_far: float,
+    n: int = VAR_FLOOR_N_DATA,
+) -> np.ndarray | None:
+    """Sigmoid-family floor grid: common support PLUS a wing extension (V3.1 4a).
+
+    ``variance_floor_grid_common`` confines the floor to the intersection of
+    the two quote spans — but wing calendar crossings are exactly what a
+    support-confined grid misses (the Multi-Core Sigmoid family's zero-wing
+    kernels leave its tails governed by the base alone, so unlike SVI's
+    steep linear wings the extension does not manufacture the phantom
+    violation of the NVDA/SPY case: the wing-penalty grid already reaches the
+    same pad without incident). The pad is ``FLOOR_WING_PAD_Z`` z-units of the
+    FITTING (far) slice, z = k / (sigma_ref sqrt(t)) with sigma_ref the quoted
+    far vol nearest the money (the calibrator's own z-scale rule,
+    models.sigmoid.seeding._reference_vol — duplicated here in four lines to
+    keep calib.calendar import-cycle-free of models.sigmoid).
+
+    SAME total node budget as the confined grid (``n`` rows, the extension
+    dilutes interior density rather than adding rows), so the residual vector
+    the optimizer sees keeps its historical size. None mirrors
+    ``variance_floor_grid_common``: no common support, no pointwise floor.
+    """
+    window = common_support(k_near, k_far)
+    if window is None:
+        return None
+    kf = np.asarray(k_far, dtype=float)
+    wf = np.asarray(w_far, dtype=float)
+    vol = np.sqrt(np.maximum(wf, 1e-12) / t_far)
+    atm = float(vol[np.argmin(np.abs(kf))])
+    sigma_ref = atm if atm > 1e-3 else float(np.median(vol))
+    pad = FLOOR_WING_PAD_Z * sigma_ref * float(np.sqrt(t_far))
+    return np.linspace(window[0] - pad, window[1] + pad, n)
+
+
 def variance_floor_targets(
     prev: SmileModel, k_grid: np.ndarray | None = None, tol: float = 0.0
 ) -> tuple[np.ndarray, np.ndarray]:

@@ -816,23 +816,47 @@ def _varswap_quotes(state: AppState, ticker: str, rows, weight_scheme: str) -> l
 
 
 def _affine_varswap_info(
-    state: AppState, ticker: str, iso: str, model_vol: float
+    state: AppState, ticker: str, iso: str, model_vol: float,
+    k: np.ndarray | None = None, w: np.ndarray | None = None,
+    tau: float | None = None, rms_num: float | None = None,
 ) -> VarSwapInfo:
-    """VarSwapInfo for one Local-Vol expiry: the shared quote + the model level."""
+    """VarSwapInfo for one Local-Vol expiry: the shared quote + the LV surface's
+    OWN model level (``model_vol`` from _model_varswap_vol — static replication
+    or source PDE, never the parametric node's), with the V3.6 readouts computed
+    against that LV level: ``basisBp`` (quote − LV model, vol bp), ``weightPct``
+    /``weightAbs`` (the same resolution as service.varswap_target), ``rmsShare``
+    (var-swap fraction of ``rms_num``, the expiry's total weighted squared vol
+    error). ``stale`` is attached at READ time (affine_payload) — the cached
+    response cannot know it. ``k``/``w``/``tau`` are the expiry's fit inputs;
+    None ⇒ the weight/share readouts are omitted."""
+    from volfit.api import service
+
     session = state.varswap_session_if_exists((ticker, iso))
-    enabled = state.options().varSwapEnabled
-    if session is None:
-        return VarSwapInfo(
-            level=None, excluded=False, modelVol=model_vol,
-            enabled=enabled, canUndo=False, canRedo=False,
-        )
+    options = state.options()
+    enabled = options.varSwapEnabled
+    level = session.state.level if session is not None else None
+    basis_bp = None if level is None else (float(level) - model_vol) * 1e4
+    weight_abs = rms_share = None
+    if k is not None and w is not None and tau is not None and tau > 0.0:
+        weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+        target = service.varswap_target(state, ticker, iso, k, weights, tau)
+        if target is not None:
+            weight_abs = float(target.weight)
+            quote_vol = float(np.sqrt(max(target.total_var, 0.0) / tau))
+            if rms_num is not None and rms_num > 0.0:
+                share = target.weight * (model_vol - quote_vol) ** 2 / rms_num
+                rms_share = float(min(1.0, max(0.0, share)))
     return VarSwapInfo(
-        level=session.state.level,
-        excluded=session.state.excluded,
+        level=level,
+        excluded=session.state.excluded if session is not None else False,
         modelVol=model_vol,
         enabled=enabled,
-        canUndo=session.can_undo,
-        canRedo=session.can_redo,
+        canUndo=session.can_undo if session is not None else False,
+        canRedo=session.can_redo if session is not None else False,
+        basisBp=basis_bp,
+        weightPct=options.varSwapWeightPct if enabled else None,
+        weightAbs=weight_abs,
+        rmsShare=rms_share,
     )
 
 
@@ -1251,7 +1275,9 @@ def _fit(
                 forward=float(prepared.forward),  # for the strike / %ATM axis modes
                 model=model,
                 quotes=_quote_bands(state, ticker, iso, prepared),
-                varSwap=_affine_varswap_info(state, ticker, iso, model_vs_vol),
+                varSwap=_affine_varswap_info(
+                    state, ticker, iso, model_vs_vol, k=k, w=w, tau=t, rms_num=num
+                ),
                 maxIvErrorBp=float(errs.max()) if errs.size else 0.0,
                 rmsError=rms_of_terms(num, den),
                 rmsConvergedBp=(
@@ -1463,4 +1489,10 @@ def affine_payload(state: AppState, ticker: str, request: AffineFitRequest) -> A
 
     moved = transport_affine_response(state, ticker, hit)
     with_prior = attach_affine_priors(state, ticker, moved)
-    return with_prior.model_copy(update={"stale": stale})
+    # Mirror the read-time staleness into each expiry's var-swap info (V3.6):
+    # the cached response was built at fit time, so it cannot carry it itself.
+    smiles = [
+        s.model_copy(update={"varSwap": s.varSwap.model_copy(update={"stale": stale})})
+        for s in with_prior.smiles
+    ]
+    return with_prior.model_copy(update={"stale": stale, "smiles": smiles})

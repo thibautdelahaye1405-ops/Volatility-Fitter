@@ -67,6 +67,7 @@ def test_defaults(client):
         "sviChart": "structural",  # ratified default (2026-07-26 benchmark)
         "bellyRepair": True,  # certified-or-repaired at the fit (R2 rider)
         "sigmoidRidge": 1e-2,
+        "mcsChart": "raw",  # V3.1 leg 3: byte-identical default until adjudicated
         "midAnchorWeight": 0.05,
     }
 

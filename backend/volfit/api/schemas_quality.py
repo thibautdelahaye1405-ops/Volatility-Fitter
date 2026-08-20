@@ -70,6 +70,19 @@ class QualityNode(BaseModel):
     #: failed the certificate; committee acceptance rule leg 2). Purely
     #: informational — a repaired slice is certified and publishes.
     bellyRepaired: bool = False
+    # --- MCS overlay calendar certificate (V3.1 leg 4b): the polished-dense
+    # certificate (models.sigmoid.calendar_certificate) on the DISPLAYED
+    # sigmoid pair — dense scan + Brent-polished interior minima of
+    # w_far − w_near, plus the analytic wing-order clause (eq mcsbetak)
+    # deciding the far field. ADVISORY in v1: reported, never gates ``ready``
+    # or publish — there is no MCS calendar repair path yet, and a gate a fit
+    # cannot be asked to satisfy would block publishes with no way out (the
+    # ledger certificate's Phase-0 precedent). All None unless BOTH adjacent
+    # displayed slices are Multi-Core Sigmoid.
+    overlayCalGapMin: float | None = None  # polished min of w_far − w_near (<0 = arb)
+    overlayCalGapK: float | None = None  # log-moneyness of the minimizing strike
+    overlayCalWingOrderOk: bool | None = None  # analytic far-field slope order
+    overlayCalCertified: bool | None = None  # min gap >= -tol AND wing order holds
     wingOrderOk: bool | None = None  # asymptotic Lee-slope order vs prev (far >= near)
     varSwapQuoted: bool  # an active var-swap quote participates in this node's fit
     filterActive: bool  # observation filter holds a committed state for this node

@@ -9,14 +9,13 @@
 // Live backend only (POST /term/{ticker}); offline shows a retry message.
 import { useState } from "react";
 import TermChart from "./TermChart";
-import VarSwapPanel from "./VarSwapPanel";
+import VarSwapTermRows from "./VarSwapTermRows";
 import { useTerm } from "../state/useTerm";
 import type { ClockMode } from "../state/useTerm";
 import { useSmileSession } from "../state/smileSession";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { formatPct } from "../lib/chartScale";
-import type { VarSwapInfo } from "../lib/mockData";
 
 const CLOCK_MODES: { id: ClockMode; label: string }[] = [
   { id: "real", label: "Real time" },
@@ -57,6 +56,7 @@ export default function TermPanel() {
     applyVarSwap,
     undoVarSwap,
     redoVarSwap,
+    shiftVarSwaps,
   } = useTerm();
   const { source } = useSmileSession();
   const { format } = useExpiryFormat();
@@ -78,20 +78,6 @@ export default function TermPanel() {
   };
   const selected =
     points.find((p) => p.expiry === selectedExpiry) ?? points[0] ?? null;
-
-  // Synthesize a VarSwapInfo for the selected rung from the term payload. Per-
-  // expiry undo/redo availability isn't in the term payload, so the buttons are
-  // always live (the backend no-ops on an empty stack).
-  const vsInfo: VarSwapInfo | null = selected
-    ? {
-        level: selected.varSwapQuote ?? null,
-        excluded: selected.varSwapExcluded ?? false,
-        modelVol: selected.varSwapVol,
-        enabled: varSwapEnabled,
-        canUndo: true,
-        canRedo: true,
-      }
-    : null;
   const selExpiry = selected?.expiry ?? "";
 
   // Backend offline (and nothing loaded): centered retry message.
@@ -284,20 +270,21 @@ export default function TermPanel() {
           )}
         </div>
 
-        {/* Var-swap quote for the selected expiry (Options-gated) */}
-        {varSwapEnabled && vsInfo && (
+        {/* Per-expiry var-swap rows (Options-gated): each row edits its own
+            node's session, with REAL per-rung undo/redo from the term payload
+            (V3.6 — replaces the synthesized always-enabled buttons). */}
+        {varSwapEnabled && points.length > 0 && (
           <div className="mt-4 border-t border-slate-800 pt-3">
-            <VarSwapPanel
-              info={vsInfo}
+            <VarSwapTermRows
+              points={points}
               live={live}
-              subtitle={`Editing ${formatExpiry(selExpiry, selected?.t ?? 0, format)} · click a point to switch`}
-              onSet={(level) => void applyVarSwap(selExpiry, "set", level)}
-              onExclude={() => void applyVarSwap(selExpiry, "exclude")}
-              onInclude={() => void applyVarSwap(selExpiry, "include")}
-              onRemove={() => void applyVarSwap(selExpiry, "remove")}
-              onUndo={() => void undoVarSwap(selExpiry)}
-              onRedo={() => void redoVarSwap(selExpiry)}
-              onReset={() => void applyVarSwap(selExpiry, "reset")}
+              format={format}
+              selectedExpiry={selExpiry}
+              onSelect={setSelectedExpiry}
+              applyVarSwap={applyVarSwap}
+              undoVarSwap={undoVarSwap}
+              redoVarSwap={redoVarSwap}
+              shiftAll={shiftVarSwaps}
             />
           </div>
         )}

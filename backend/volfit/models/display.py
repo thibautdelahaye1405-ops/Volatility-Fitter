@@ -175,8 +175,8 @@ def build_display_fit(
                     max_err = repaired.max_iv_error
                     belly_repaired = True
     else:  # sigmoid (Multi-Core SIV)
-        slice_ = calibrate_sigmoid(
-            k, w, t, weights=weights, n_cores=settings.nCores, band=band,
+        sig_kwargs = dict(
+            weights=weights, n_cores=settings.nCores, band=band,
             ridge=settings.sigmoidRidge,
             mid_anchor_weight=settings.midAnchorWeight,
             var_swap=var_swap,
@@ -186,9 +186,35 @@ def build_display_fit(
             prior_var_swap=prior_var_swap,
             wing_penalty=wing_penalty,
             extrap=extrap,
+            # V3.1 leg 3: MCS optimization chart (default "raw", byte-identical)
+            # against the same buffered Lee cap the SVI chart honours.
+            chart=getattr(settings, "mcsChart", "raw"),
+            lee_slope_max=settings.leeSlopeMax,
         )
+        slice_ = calibrate_sigmoid(k, w, t, **sig_kwargs)
         max_err = _max_iv_error(slice_, k, w, t)
-    lee_left, lee_right = numeric_lee_slopes(slice_)
+        # V3.1 leg 2 — the sigmoid mirror of the SVI R2 repair rider above:
+        # certified-or-repaired AT the fit. A clean first fit never sees a
+        # second solve (byte-identical path); a failed repair keeps the FIRST
+        # fit — quality reports it uncertified and the publish gate blocks it.
+        if getattr(settings, "bellyRepair", True) and k.size >= 2:
+            cert = belly_certificate(slice_, float(np.min(k)), float(np.max(k)))
+            if cert is not None and not cert.certified:
+                grid = np.linspace(float(np.min(k)), float(np.max(k)), _REPAIR_POINTS)
+                repaired = calibrate_sigmoid(k, w, t, belly_grid=grid, **sig_kwargs)
+                re_cert = belly_certificate(
+                    repaired, float(np.min(k)), float(np.max(k))
+                )
+                if re_cert is not None and re_cert.certified:
+                    slice_ = repaired
+                    max_err = _max_iv_error(slice_, k, w, t)
+                    belly_repaired = True
+    if model == "sigmoid":
+        # V3.1 leg 1: closed-form asymptotic slopes (eq mcsbetak; the kernels
+        # are zero-wing) replace the far-grid FD for the sigmoid family.
+        lee_left, lee_right = slice_.lee_slopes()
+    else:
+        lee_left, lee_right = numeric_lee_slopes(slice_)
     return DisplayFit(
         model=model,
         slice=slice_,

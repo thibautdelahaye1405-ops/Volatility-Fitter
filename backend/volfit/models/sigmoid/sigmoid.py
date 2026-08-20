@@ -39,6 +39,21 @@ from volfit.models.sigmoid.kernels import (
 )
 
 
+def analytic_lee_slopes(
+    wing_left: float, wing_right: float, sigma_ref: float, t: float
+) -> tuple[float, float]:
+    """k-space Lee slopes from the z-space variance wing slopes (eq mcsbetak).
+
+    ``wing_left``/``wing_right`` are the asymptotic z-space slopes of v(z)
+    (``MultiCoreSiv.wing_slopes``: S0 - 2K0/kappa_P and S0 + 2K0/kappa_C);
+    the k-space total-variance slopes follow from w(k) = t v(k/(sigma_ref
+    sqrt(t))): dw/dk = sqrt(t)/sigma_ref * v'(z). Returned as (left, right)
+    with the left slope taken along dw/d(-k) — positive when the put wing
+    rises — matching ``diagnostics.numeric_lee_slopes``."""
+    scale = float(np.sqrt(t)) / float(sigma_ref)
+    return float(-scale * wing_left), float(scale * wing_right)
+
+
 @dataclass(frozen=True)
 class HatCore:
     """One zero-wing hat B_{c,h,kappa} with signed amplitude (eq B-def).
@@ -148,6 +163,22 @@ class MultiCoreSiv:
         left = self.s0 - 2.0 * self.k0 / self.kappa_p
         right = self.s0 + 2.0 * self.k0 / self.kappa_c
         return float(left), float(right)
+
+    def lee_slopes(self) -> tuple[float, float]:
+        """Analytic k-space total-variance Lee wing slopes (eq mcsbetak).
+
+        With w(k) = t v(z) and z = k / (sigma_ref sqrt(t)), the chain rule gives
+        dw/dk = sqrt(t)/sigma_ref * v'(z); the kernels are silent in both tails
+        (lem zerowing), so v'(z) -> S0 -/+ 2 K0 / kappa_{P,C} and
+
+            beta_P = sqrt(t)/sigma_ref * (2 K0/kappa_P - S0)   (left,  dw/d(-k))
+            beta_C = sqrt(t)/sigma_ref * (S0 + 2 K0/kappa_C)   (right, dw/dk)
+
+        exactly the ``numeric_lee_slopes`` convention (left positive when the
+        left wing rises). Closed form — replaces the far-grid finite difference
+        for the sigmoid family (V3.1 leg 1)."""
+        wing_left, wing_right = self.wing_slopes()
+        return analytic_lee_slopes(wing_left, wing_right, self.sigma_ref, self.t)
 
     def to_vector(self) -> np.ndarray:
         """Flat parameter vector [base(6), then (alpha,c,h,kappa) per core]."""

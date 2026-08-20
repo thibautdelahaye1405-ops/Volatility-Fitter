@@ -38,6 +38,8 @@ from volfit.calib.rms import rms as rms_of_terms
 from volfit.models.diagnostics import belly_certificate, extrapolated_arb
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import lee_slopes
+from volfit.models.sigmoid.calendar_certificate import mcs_calendar_certificate
+from volfit.models.sigmoid.sigmoid import MultiCoreSiv
 
 #: Lee moment bound on the total-variance wing slopes (beta <= 2), with a hair
 #: of tolerance so a slope pinned AT the bound (SVI's clamp) is not flagged.
@@ -243,6 +245,19 @@ def _node_row(
         except Exception:  # the certificate must never break a status read
             pass
     belly_certified = belly is None or belly.certified
+    # MCS overlay calendar certificate (V3.1 leg 4b): polished-dense scan of
+    # the displayed sigmoid pair + analytic wing-order far-field clause.
+    # ADVISORY — never gates readiness/publish: there is no MCS calendar
+    # repair path yet (a gate a fit cannot satisfy blocks with no way out).
+    ov_gap = ov_gap_k = ov_wing = ov_cert = None
+    if isinstance(disp, MultiCoreSiv) and isinstance(prev_display, MultiCoreSiv):
+        try:
+            ov = mcs_calendar_certificate(prev_display, disp)
+            ov_gap, ov_gap_k = ov.min_gap, ov.k_star
+            ov_wing = ov.wing_order_ok
+            ov_cert = ov.certified(_CAL_TOL)
+        except Exception:  # the certificate must never break a status read
+            pass
     wing_order: bool | None = None
     if prev_lee is not None:
         wing_order = (
@@ -316,6 +331,10 @@ def _node_row(
             record.display is not None
             and getattr(record.display, "belly_repaired", False)
         ),
+        overlayCalGapMin=ov_gap,
+        overlayCalGapK=ov_gap_k,
+        overlayCalWingOrderOk=ov_wing,
+        overlayCalCertified=ov_cert,
         wingOrderOk=wing_order,
         varSwapQuoted=_varswap_quoted(state, ticker, iso),
         filterActive=f_active,

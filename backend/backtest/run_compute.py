@@ -32,19 +32,26 @@ def _parametric_rows(state, fixtures: list[Fixture], weight_scheme: str,
     memoized on ``state``, so reusing it across weight/fit-mode combos is cheap)."""
     rows: list[dict] = []
     for f in fixtures:
-        for expiry in f.expiries:
+        # Calendar chaining (V3.1 leg 6): each spec's fitted slice feeds the
+        # NEXT expiry's per-family calendar certificate + gated verdict.
+        prev_slices: dict = {}
+        for expiry in sorted(f.expiries):
+            slices: dict = {}
             try:
                 rows.extend(
                     fit_node(state, f.asset, expiry, f.regime, f.sector,
                              f.exercise_style, specs=specs, weight_scheme=weight_scheme,
-                             fit_mode=fit_mode)
+                             fit_mode=fit_mode, prev_slices=prev_slices or None,
+                             slices_out=slices)
                 )
+                prev_slices = slices
             except Exception as exc:  # noqa: BLE001 - a node break is a recorded result
                 rows.append(dict(
                     asset=f.asset, as_of=f.as_of.isoformat(), regime=f.regime,
                     expiry=expiry.isoformat(), model="*node*", ok=False,
                     error=type(exc).__name__ + ": " + str(exc)[:140],
                 ))
+                prev_slices = {}  # broken node: do not certify across the gap
     return rows
 
 

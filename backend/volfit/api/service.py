@@ -52,6 +52,7 @@ from volfit.calib.calendar import (
     common_support,
     confined_calendar_floor,
     variance_floor_grid_common,
+    variance_floor_grid_winged,
     variance_floor_targets,
 )
 from volfit.api.prior_mode import resolve_prior_mode
@@ -555,6 +556,7 @@ def _overlay_settings(settings) -> OverlaySettings:
         sigmoidRidge=settings.sigmoidRidge,
         sviChart=settings.sviChart,
         bellyRepair=settings.bellyRepair,
+        mcsChart=settings.mcsChart,
     )
 
 
@@ -662,19 +664,25 @@ def _slice_task(
     overlay = None
     if with_overlay and settings.model != "lqd":
         o_floor = o_ceil = None
+        # Confined to the COMMON quote support (empty intersection => no
+        # pointwise floor): the later expiry's own span alone still lets a
+        # wider far slice sample the near wing's extrapolation. The sigmoid
+        # family extends the confined grid by the wing pad (V3.1 leg 4a,
+        # calib.calendar.variance_floor_grid_winged): its zero-wing kernels
+        # make the extension safe, and wing crossings are exactly what the
+        # confined grid misses. Same node budget either way.
+        if settings.model == "sigmoid":
+            def _o_grid(k_other):
+                return variance_floor_grid_winged(k_other, k, w, prepared.tau)
+        else:
+            def _o_grid(k_other):
+                return variance_floor_grid_common(k_other, k)
         if enforce_calendar and prev_display is not None:
-            # Confined to the COMMON quote support (empty intersection => no
-            # pointwise floor): the later expiry's own span alone still lets a
-            # wider far slice sample the near wing's extrapolation.
-            o_grid = variance_floor_grid_common(
-                prev_k if prev_k is not None else k, k
-            )
+            o_grid = _o_grid(prev_k if prev_k is not None else k)
             if o_grid is not None:
                 o_floor = variance_floor_targets(prev_display.slice, o_grid)
         if enforce_calendar and next_display is not None:
-            c_grid = variance_floor_grid_common(
-                next_k if next_k is not None else k, k
-            )
+            c_grid = _o_grid(next_k if next_k is not None else k)
             if c_grid is not None:
                 o_ceil = variance_floor_targets(next_display.slice, c_grid)
         # Tapered extrapolated-region enforcement (Notes 09/10 Phase 2): the
@@ -1157,23 +1165,50 @@ def _prior_overlay(
     return (list(saved.curve) if saved is not None else list(model)), False
 
 
-def varswap_info(state: AppState, ticker: str, iso: str, record: FitRecord) -> VarSwapInfo:
-    """Var-swap quote state + the model's own fair var-swap vol for a node."""
+def varswap_info(
+    state: AppState, ticker: str, iso: str, record: FitRecord, fit_mode: str = "mid"
+) -> VarSwapInfo:
+    """Var-swap quote state + the model's own fair var-swap vol for a node.
+
+    V3.6 optional readouts ride along: ``basisBp`` = (quote − model) · 1e4 vol
+    bp (sign: positive ⇒ quote above model); ``weightPct`` echoes the Options
+    percentage while the feature is on; ``weightAbs`` is the RESOLVED absolute
+    penalty weight from ``varswap_target`` (pct/100 · Σ quote weights, None
+    when no active target); ``stale`` mirrors SmileData.stale for this node;
+    ``rmsShare`` is the var-swap term's fraction of the node's total weighted
+    squared vol error (the node_error_terms decomposition, in [0, 1])."""
     session = state.varswap_session_if_exists((ticker, iso))
     model_vol = float(np.sqrt(displayed_var_swap_w(record) / record.prepared.tau))
-    enabled = state.options().varSwapEnabled
-    if session is None:
-        return VarSwapInfo(
-            level=None, excluded=False, modelVol=model_vol,
-            enabled=enabled, canUndo=False, canRedo=False,
-        )
+    options = state.options()
+    enabled = options.varSwapEnabled
+    level = session.state.level if session is not None else None
+    basis_bp = None if level is None else (float(level) - model_vol) * 1e4
+    weight_abs = rms_share = None
+    prepared = record.prepared
+    k, w, _ = edited_fit_inputs(state, ticker, iso, prepared, None)
+    weights = resolve_weights(state.fit_settings().weightScheme, k, w)
+    target = varswap_target(state, ticker, iso, k, weights, prepared.tau)
+    if target is not None:
+        weight_abs = float(target.weight)
+        # Share of the node's total weighted squared error carried by the
+        # var-swap term — the same (model, quote, weight) triple the RMS uses.
+        vs = _varswap_rms_term(state, ticker, iso, record, k, weights, prepared.tau)
+        num, _den = _node_rms_terms(state, ticker, iso, record, fit_mode)
+        if vs is not None and num > 0.0:
+            m_vol, q_vol, wgt = vs
+            rms_share = float(min(1.0, max(0.0, wgt * (m_vol - q_vol) ** 2 / num)))
     return VarSwapInfo(
-        level=session.state.level,
-        excluded=session.state.excluded,
+        level=level,
+        excluded=session.state.excluded if session is not None else False,
         modelVol=model_vol,
         enabled=enabled,
-        canUndo=session.can_undo,
-        canRedo=session.can_redo,
+        canUndo=session.can_undo if session is not None else False,
+        canRedo=session.can_redo if session is not None else False,
+        basisBp=basis_bp,
+        weightPct=options.varSwapWeightPct if enabled else None,
+        weightAbs=weight_abs,
+        stale=node_dirty(state, ticker, iso, fit_mode),
+        rmsShare=rms_share,
     )
 
 
@@ -1447,7 +1482,7 @@ def smile_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         kMax=float(prepared.k.max()) + K_PAD,
         diagnostics=diagnostics,
         modelInfo=model_info(record),
-        varSwap=varswap_info(state, ticker, iso, record),
+        varSwap=varswap_info(state, ticker, iso, record, fit_mode),
         canUndo=session.can_undo if session is not None else False,
         canRedo=session.can_redo if session is not None else False,
         stale=node_dirty(state, ticker, iso, fit_mode),

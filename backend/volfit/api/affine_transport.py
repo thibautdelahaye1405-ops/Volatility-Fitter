@@ -78,13 +78,21 @@ def _transport_smile(
         for q in smile.quotes
     ]
     vs = smile.varSwap
+    moved_model_vol = float(np.sqrt(max(numeric_var_swap_w(moved), 0.0) / tau))
     moved_vs = VarSwapInfo(
         level=vs.level,
         excluded=vs.excluded,
-        modelVol=float(np.sqrt(max(numeric_var_swap_w(moved), 0.0) / tau)),
+        modelVol=moved_model_vol,
         enabled=vs.enabled,
         canUndo=vs.canUndo,
         canRedo=vs.canRedo,
+        # V3.6 readouts: the basis follows the TRANSPORTED model level; the
+        # penalty weight/share are quote-weight facts of the frozen fit — carried.
+        basisBp=None if vs.level is None else (float(vs.level) - moved_model_vol) * 1e4,
+        weightPct=vs.weightPct,
+        weightAbs=vs.weightAbs,
+        stale=vs.stale,
+        rmsShare=vs.rmsShare,
     )
     return (
         smile.model_copy(update={"model": model, "quotes": quotes, "varSwap": moved_vs}),

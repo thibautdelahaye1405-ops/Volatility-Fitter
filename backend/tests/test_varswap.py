@@ -200,3 +200,143 @@ def test_affine_fit_carries_and_honours_varswap(client):
     sm1 = next(s for s in pen["smiles"] if s["expiry"] == expiry)
     assert sm1["varSwap"]["level"] == pytest.approx(quote)
     assert sm1["varSwap"]["modelVol"] > sm0["varSwap"]["modelVol"]
+
+
+# -------------------------------------------------- V3.6 payload readouts
+def test_varswap_info_field_locks():
+    """V3.6 VarSwapInfo readouts: basisBp sign convention (quote − model, vol
+    bp), weightPct echo, weightAbs == the calibrator's own varswap_target
+    resolution (pct/100 · Σ quote weights), rmsShare bounded in (0, 1], and the
+    active-target gating (excluded ⇒ weightAbs/rmsShare None, basis stays)."""
+    app = create_app(reference_date=REF_DATE)
+    with TestClient(app) as client:
+        ticker, expiry = _first_node(client)
+        base = client.get(f"/smiles/{ticker}/{expiry}").json()
+        vs0 = base["varSwap"]
+        # No quote: basis / resolved weight / share are absent, the pct echoes.
+        assert vs0["basisBp"] is None and vs0["weightAbs"] is None
+        assert vs0["rmsShare"] is None
+        assert vs0["weightPct"] == pytest.approx(10.0)  # the Options default
+        assert vs0["stale"] is False and base["stale"] is False
+
+        quote = vs0["modelVol"] + 0.05
+        data = client.post(
+            f"/smiles/{ticker}/{expiry}/varswap", json={"action": "set", "level": quote}
+        ).json()
+        vs = data["varSwap"]
+        # Sign lock: quote ABOVE model ⇒ POSITIVE basis; exact definition.
+        assert vs["basisBp"] == pytest.approx((vs["level"] - vs["modelVol"]) * 1e4)
+        assert vs["basisBp"] > 0.0
+        # weightAbs formula lock against the calibrator's own target resolution.
+        from volfit.api import service
+
+        state = app.state.volfit
+        record = service.fit_or_get(state, ticker, expiry, "mid")
+        prepared = record.prepared
+        k, w, _ = service.edited_fit_inputs(state, ticker, expiry, prepared, None)
+        weights = service.resolve_weights(state.fit_settings().weightScheme, k, w)
+        target = service.varswap_target(state, ticker, expiry, k, weights, prepared.tau)
+        assert target is not None
+        assert vs["weightAbs"] == pytest.approx(target.weight)
+        # The documented formula: pct/100 · Σ quote weights (None ⇒ equal ⇒ n).
+        sum_w = float(np.sum(weights)) if weights is not None else float(k.size)
+        assert target.weight == pytest.approx(0.10 * sum_w)
+        # rmsShare: a live penalized quote contributes a positive bounded share.
+        assert vs["rmsShare"] is not None and 0.0 < vs["rmsShare"] <= 1.0
+        assert vs["stale"] is False and data["stale"] is False  # instant refit
+
+        # Excluding drops the TARGET (weight/share) but keeps the basis readout.
+        excl = client.post(
+            f"/smiles/{ticker}/{expiry}/varswap", json={"action": "exclude"}
+        ).json()["varSwap"]
+        assert excl["weightAbs"] is None and excl["rmsShare"] is None
+        assert excl["basisBp"] is not None
+
+
+def test_varswap_stale_propagation():
+    """varSwap.stale mirrors the node/response staleness on BOTH workspaces:
+    with autoCalibrate off, a var-swap edit leaves the displayed fits frozen —
+    SmileData.stale flips True (varSwap.stale with it) and the affine response's
+    read-time stale flag is mirrored into every smile's varSwap."""
+    app = create_app(reference_date=REF_DATE)
+    with TestClient(app) as client:
+        ticker, expiry = _first_node(client)
+        base = client.get(f"/smiles/{ticker}/{expiry}").json()  # bootstrap fit
+        assert base["stale"] is False and base["varSwap"]["stale"] is False
+        aff0 = client.post(f"/fit/affine/{ticker}", json={}).json()  # bootstrap LV
+        assert aff0["stale"] is False
+        assert all(s["varSwap"]["stale"] is False for s in aff0["smiles"])
+
+        options = client.get("/settings/options").json()
+        options["autoCalibrate"] = False
+        client.put("/settings/options", json=options)
+        client.post(
+            f"/smiles/{ticker}/{expiry}/varswap",
+            json={"action": "set", "level": base["varSwap"]["modelVol"] + 0.05},
+        )
+
+        frozen = client.get(f"/smiles/{ticker}/{expiry}").json()
+        assert frozen["stale"] is True
+        assert frozen["varSwap"]["stale"] is True  # the mirror lock
+        # Frozen means frozen: the displayed model var-swap did not move.
+        assert frozen["varSwap"]["modelVol"] == pytest.approx(
+            base["varSwap"]["modelVol"], abs=1e-12
+        )
+        aff1 = client.post(f"/fit/affine/{ticker}", json={}).json()
+        assert aff1["stale"] is True
+        assert all(s["varSwap"]["stale"] is True for s in aff1["smiles"])
+
+
+def test_term_payload_undo_state_lock(client):
+    """Real per-node varSwapCanUndo/CanRedo in the term payload: a set on ONE
+    node flips only that node's flags; undo flips them (canUndo False, canRedo
+    True) on that node alone — the TermPanel hardcoded-True hack is dead."""
+    ticker, expiry = _first_node(client)
+    base = client.post(f"/term/{ticker}", json={}).json()
+    assert all(
+        p["varSwapCanUndo"] is False and p["varSwapCanRedo"] is False
+        for p in base["points"]
+    )
+    client.post(f"/smiles/{ticker}/{expiry}/varswap", json={"action": "set", "level": 0.25})
+    term = client.post(f"/term/{ticker}", json={}).json()
+    for p in term["points"]:
+        if p["expiry"] == expiry:
+            assert p["varSwapCanUndo"] is True and p["varSwapCanRedo"] is False
+        else:
+            assert p["varSwapCanUndo"] is False and p["varSwapCanRedo"] is False
+    client.post(f"/smiles/{ticker}/{expiry}/varswap/undo")
+    term2 = client.post(f"/term/{ticker}", json={}).json()
+    p = next(q for q in term2["points"] if q["expiry"] == expiry)
+    assert p["varSwapCanUndo"] is False and p["varSwapCanRedo"] is True
+
+
+def test_affine_varswap_is_the_lv_value_not_parametric(client):
+    """LV wiring lock: the affine response's per-expiry varSwap.modelVol is the
+    LV surface's OWN pricing (_model_varswap_vol on the Dupire PDE prices), not
+    a copy of the parametric node's diagnostics value — and the V3.6 readouts
+    (basis, weight, share) are priced against that LV level."""
+    ticker = client.get("/universe").json()["tickers"][0]
+    aff = client.post(f"/fit/affine/{ticker}", json={}).json()
+    sm = aff["smiles"][1]
+    expiry = sm["expiry"]
+    lv_vol = sm["varSwap"]["modelVol"]
+    par = client.get(f"/smiles/{ticker}/{expiry}").json()["varSwap"]
+    assert lv_vol > 0.0
+    # Two DIFFERENT pricings (LQD replication vs Dupire-PDE replication): byte-
+    # equality would mean the parametric value was wired through by mistake...
+    assert lv_vol != par["modelVol"]
+    # ...while both price the same smile, so they agree to a few vol points.
+    assert abs(lv_vol - par["modelVol"]) < 0.05
+
+    quote = lv_vol + 0.04
+    client.post(f"/smiles/{ticker}/{expiry}/varswap", json={"action": "set", "level": quote})
+    client.post(f"/calibrate/{ticker}")  # LV is trigger-gated: rebuild
+    pen = client.post(f"/fit/affine/{ticker}", json={}).json()
+    sm1 = next(s for s in pen["smiles"] if s["expiry"] == expiry)
+    vs1 = sm1["varSwap"]
+    # Basis priced against the LV surface's own (post-penalty) level.
+    assert vs1["basisBp"] == pytest.approx((vs1["level"] - vs1["modelVol"]) * 1e4)
+    assert vs1["weightPct"] == pytest.approx(10.0)
+    assert vs1["weightAbs"] is not None and vs1["weightAbs"] > 0.0
+    assert vs1["rmsShare"] is not None and 0.0 < vs1["rmsShare"] <= 1.0
+    assert vs1["stale"] is False  # just calibrated, mirrored at read time

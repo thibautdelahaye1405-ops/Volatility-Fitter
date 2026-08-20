@@ -35,8 +35,11 @@ class OverlaySettings:
     #: Committee R3: SVI optimization chart ("raw" | "structural").
     sviChart: str = "raw"
     #: Committee R2 rider: refit with the belly hinge when the certificate
-    #: fails (clean first fits never see a second solve).
+    #: fails (clean first fits never see a second solve). SHARED flag — since
+    #: V3.1 leg 2 it gates the Multi-Core Sigmoid repair path too.
     bellyRepair: bool = True
+    #: V3.1 leg 3: Multi-Core Sigmoid optimization chart ("raw" | "structural").
+    mcsChart: str = "raw"
 
 
 @dataclass(frozen=True)

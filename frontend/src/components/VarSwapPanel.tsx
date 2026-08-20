@@ -8,9 +8,15 @@
 // Stateless w.r.t. the backend: the parent wires the callbacks to the shared
 // /smiles/{ticker}/{expiry}/varswap endpoints (volfit.api.varswap) and refits.
 // The slider commits on release (not every drag tick) so a refit fires once.
+//
+// V3.6 readouts: "model · quote · basis" line, penalty-weight readout (set in
+// Options ▸ Calibration), stale badge, and DATA-DERIVED slider bounds — the
+// quote∪model envelope padded by max(2 vol pts, 2·|basis|) (lib/varswap.ts),
+// replacing the old ×0.5 / ×1.5 heuristic. 0.05 step / 2-dp display everywhere.
 import { useEffect, useState } from "react";
 import type { VarSwapInfo } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
+import { formatBasisBp, varswapBasisBp, varswapSliderBounds } from "../lib/varswap";
 
 interface VarSwapPanelProps {
   info: VarSwapInfo | null | undefined;
@@ -60,10 +66,10 @@ export default function VarSwapPanel({
 
   const has = level !== null;
   const excluded = info.excluded;
-  // Slider range straddles the model var-swap; widened so a far quote still fits.
-  const center = (level ?? model) * 100;
-  const sliderMin = Math.max(1, Math.min(center, model * 100) * 0.5);
-  const sliderMax = Math.max(center, model * 100) * 1.5 + 1;
+  // Data-derived slider range: quote∪model envelope, basis-proportional pad.
+  const bounds = varswapSliderBounds(level, model);
+  // Basis in vol bp: prefer the wire value, derive it for older payloads/mock.
+  const basisBp = info.basisBp ?? varswapBasisBp(level, model);
 
   /** Commit a percent value (clamped > 0) as a decimal var-swap vol. */
   const commit = (pct: number) => {
@@ -73,14 +79,37 @@ export default function VarSwapPanel({
   return (
     <div className="rounded-lg border border-slate-800 bg-surface-950/40 p-3">
       <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-100">Variance swap</h3>
+        <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
+          Variance swap
+          {info.stale === true && (
+            <span
+              className="font-sans text-[10px] font-semibold uppercase text-amber-400"
+              title="Inputs drifted since the last calibration — press Calibrate"
+            >
+              stale
+            </span>
+          )}
+        </h3>
         <span className="font-mono text-[10px] text-slate-500">
-          model {formatPct(model)}
+          {has
+            ? `model ${formatPct(model, 2)} · quote ${formatPct(level, 2)} · basis ${formatBasisBp(basisBp)}`
+            : `model ${formatPct(model, 2)}`}
         </span>
       </div>
       <p className="mb-2 text-[11px] text-slate-500">
         {subtitle ?? "A penalty pulls the fitted var-swap toward the quote."}
       </p>
+      {info.weightPct != null && (
+        <p
+          className="mb-2 font-mono text-[10px] text-slate-500"
+          title="Penalty strength: varSwapWeightPct % of the node's summed option-quote weights — set in Options ▸ Calibration"
+        >
+          penalty {info.weightPct.toFixed(0)}% of quote weight
+          {info.weightAbs != null && ` ≈ ${info.weightAbs.toPrecision(3)} abs`}
+          {info.rmsShare != null && ` · ${(info.rmsShare * 100).toFixed(0)}% of node RMS²`}
+          <span className="font-sans text-slate-600"> · Options ▸ Calibration</span>
+        </p>
+      )}
 
       {!has ? (
         <button
@@ -89,14 +118,14 @@ export default function VarSwapPanel({
           title={live ? "Add a var-swap quote at the model level" : "requires live backend"}
           onClick={() => commit(model * 100)}
         >
-          + Add var-swap @ {formatPct(model)}
+          + Add var-swap @ {formatPct(model, 2)}
         </button>
       ) : (
         <>
           <div className="mb-2 flex items-center gap-2">
             <input
               type="number"
-              step={0.1}
+              step={0.05}
               min={0}
               value={draftPct}
               disabled={!live}
@@ -122,9 +151,9 @@ export default function VarSwapPanel({
           </div>
           <input
             type="range"
-            min={sliderMin}
-            max={sliderMax}
-            step={0.05}
+            min={bounds.min}
+            max={bounds.max}
+            step={bounds.step}
             value={Number(draftPct)}
             disabled={!live}
             onChange={(e) => setDraftPct(e.target.value)}

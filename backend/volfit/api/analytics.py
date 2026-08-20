@@ -154,6 +154,10 @@ def term_structure(
                 varSwapVol=float(np.sqrt(displayed_var_swap_w(record) / tau)),
                 varSwapQuote=None if vs_session is None else vs_session.state.level,
                 varSwapExcluded=bool(vs_session is not None and vs_session.state.excluded),
+                # Real per-node undo/redo of the SEPARATE var-swap session — the
+                # Term editor's row buttons reflect each rung's own stack (V3.6).
+                varSwapCanUndo=bool(vs_session is not None and vs_session.can_undo),
+                varSwapCanRedo=bool(vs_session is not None and vs_session.can_redo),
                 maxIvErrorBp=displayed_max_iv_error(record) * 1e4,
                 priorVol=prior_vol,
             )
