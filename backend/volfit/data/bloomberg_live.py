@@ -180,6 +180,13 @@ class BloombergStreamingMixin:
         universe to decide a resubscribe, so it must echo what it asked for."""
         return set(self._requested) if self._sub is not None else set()
 
+    def live_chain(self, ticker: str, expiries: list[date] | None) -> ChainSnapshot | None:
+        """BOOK-ONLY live chain (never a metered request): the streamed chain for
+        the selected expiries, or None when not streaming / not painted / not
+        covered. The live quote-table tick stream (volfit.api.table_stream) polls
+        this at 1 Hz — unlike ``fetch_chain`` it must never fall back to ``bdp``."""
+        return self._chain_from_book(ticker, expiries)
+
     # -------------------------------------------------------------- reads
     def _book_spot(self, ticker: str, wait: float = _WARMUP_WAIT) -> float | None:
         """Underlying spot off the stream (last, else NBBO mid); waits up to

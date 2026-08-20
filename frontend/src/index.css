@@ -158,3 +158,25 @@ body {
 .volfit-fade-in {
   animation: volfit-fade-in 0.18s ease-out;
 }
+
+/* Live quote-table tick: a cell whose band just moved flashes a soft highlight
+ * that fades out. Two identical keyframe names alternate per frame so a cell
+ * that ticks on consecutive frames re-triggers the animation (a class change
+ * restarts it; the same class would not). */
+@keyframes volfit-tick-a {
+  from { background-color: rgb(45 212 191 / 0.28); }
+  to { background-color: transparent; }
+}
+@keyframes volfit-tick-b {
+  from { background-color: rgb(45 212 191 / 0.28); }
+  to { background-color: transparent; }
+}
+.volfit-tick-a { animation: volfit-tick-a 0.9s ease-out; }
+.volfit-tick-b { animation: volfit-tick-b 0.9s ease-out; }
+
+/* LIVE badge dot: a calm 1.6 s pulse while the tick stream is flowing. */
+@keyframes volfit-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.volfit-live-dot { animation: volfit-live-pulse 1.6s ease-in-out infinite; }

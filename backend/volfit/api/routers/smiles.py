@@ -9,6 +9,8 @@ density and quantile function, and the saved prior's when one exists.
 GET  /smiles/{ticker}/{expiry}/table         -> quote/price/IV grid (JSON)
 GET  /smiles/{ticker}/{expiry}/table.csv     -> same table as a CSV download
 ([REQ 2026-06-12] table export; assembly in volfit.api.table).
+GET  /smiles/{ticker}/{expiry}/table/stream  -> SSE: the node's LIVE market
+ticks off the streaming book, keyed to the table rows (volfit.api.table_stream).
 GET  /smiles/{ticker}/{expiry}/weights       -> per-quote calibration weights
 (V3.4 item 5; poll-safe, assembly in volfit.api.weights_view).
 GET  /smiles/{ticker}/{expiry}/filter/history -> the node's committed filter
@@ -18,9 +20,17 @@ steps (V3.9 item 7; poll-safe, assembly in volfit.api.filter_history).
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
-from volfit.api import analytics, filter_history, observation_filter, service, table, weights_view
+from volfit.api import (
+    analytics,
+    filter_history,
+    observation_filter,
+    service,
+    table,
+    table_stream,
+    weights_view,
+)
 from volfit.api.schemas import (
     DensityResponse,
     FilterDiagnostics,
@@ -170,4 +180,22 @@ def get_table_csv(
         content=table.table_csv(payload),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/smiles/{ticker}/{expiry}/table/stream")
+async def stream_table(ticker: str, expiry: str, request: Request) -> StreamingResponse:
+    """Server-Sent Events: the node's live market pushed into the quote table.
+
+    While the active source streams (Massive WS / Bloomberg subscription book),
+    emits ``LiveTableFrame`` deltas at ~1 Hz — rows keyed ``type:strike`` that the
+    table overlays on its calibrated rows — plus status frames (streaming / ready)
+    and keep-alives. Never issues a request: a non-streaming source just yields
+    ``streaming=false`` once and holds the connection (volfit.api.table_stream).
+    """
+    state = request.app.state.volfit
+    return StreamingResponse(
+        table_stream.table_events(state, ticker, expiry, request.is_disconnected),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

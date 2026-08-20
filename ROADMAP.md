@@ -613,6 +613,43 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-20d) — LIVE QUOTE TABLE: PER-NODE SSE TICK STREAM OFF THE BOOK
+
+Market-data sourcing arc, step 2: the Quote Table ticks live between refits.
+
+- **Backend** `api/table_stream.py` + `GET /smiles/{t}/{e}/table/stream`
+  (routers/smiles.py): an SSE generator polls the provider's BOOK-ONLY reader
+  (`live_chain` — new on MassiveProvider + BloombergStreamingMixin; never a
+  request/bdp) at 1 Hz, runs the live chain through the SAME `prepare_quotes`
+  (OTM side, de-Am, tick floor, event clock) with the node's resolved
+  forward / cash divs / clocks, and reconstructs prices with the table's
+  Black map — so live IVs are on exactly the table's footing. Frames are
+  DELTAS keyed `"C:<strike .4f>"`/`"P:…"` (`LiveTableTracker`: raw (bid,ask)
+  fingerprint gates the re-prep; `full` on first/after reset; `gone` for
+  one-sided rows; status frames streaming/ready pushed once per transition;
+  unknown node → `event: error`). Wire rounding 8 dp vols / 6 dp prices.
+- **Frontend** `state/useLiveTicks.ts` (EventSource lifecycle: open when the
+  node is shown + tab visible, close hidden/unmount; pure `applyFrame`
+  reducer; `liveKey` mirrors the backend key) + `QuoteTable.tsx` overlay:
+  bid/mid/ask IV & prices tick (teal flash `volfit-tick-a/b` alternating so
+  consecutive ticks re-animate), Model IV stays the fit's, AMENDED rows are
+  pinned (never tick), footer `● LIVE n · HH:MM:SS UTC · S spot` badge
+  (amber "live feed warming" before the book serves the node), Copy TSV =
+  displayed (overlaid) rows. No stream → exactly the old calibrated table.
+- **Live smoke (Terminal, SPY Sep-26)**: base 168 rows, live slice 169;
+  **26 ms** per frame prep (de-Am SPY); 1 Hz frames with 19–119 ticked rows
+  each (1 s conflation); spot ticking; **0 metered calls** during the stream
+  (the base refresh itself was served from the warm book → 2 metered calls
+  in the whole session: OPT_CHAIN listing + window centre).
+- **Tests**: `tests/test_table_stream.py` (8: slice = table keys/IVs/prices
+  at zero perturbation and tracks a moved market; tracker full → delta →
+  gone → off → full; warming announced once; SSE first chunk is a full
+  ticks frame / status-off never reads the book / unknown node error; route
+  registered). Frontend `useLiveTicks.test.ts` (4, reducer).
+- **Next**: incremental subscribe/unsubscribe on universe edits (Bloomberg
+  restarts the session on a diff today); live ticks for the chart quote
+  bands (same SSE, SmileChart overlay); other sources.
+
 ### 🧭 SESSION WRAP (2026-08-20c) — BLOOMBERG PUSH FEED: //blp/mktdata SUBSCRIPTION BOOK (QUOTA-FREE)
 
 Market-data sourcing arc, step 1 (Bloomberg). The Bloomberg source now

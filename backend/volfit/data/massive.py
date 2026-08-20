@@ -467,6 +467,15 @@ class MassiveProvider(OptionChainProvider):
         — lets the scheduler detect a universe change and resubscribe."""
         return set(self._ws.contracts) if self._ws is not None else set()
 
+    def live_chain(self, ticker: str, expiries: list[date] | None) -> ChainSnapshot | None:
+        """BOOK-ONLY live chain (no REST, ever): the streamed NBBO for the selected
+        expiries, or None when not streaming / the book cannot imply a forward yet.
+        The live quote-table tick stream (volfit.api.table_stream) polls this at
+        1 Hz, so unlike ``fetch_chain`` it must never fall back to a request."""
+        if self._live_book is None:
+            return None
+        return self._chain_from_book(ticker, expiries)
+
     def _spot_from_quotes(self, quotes: list[OptionQuote]) -> float | None:
         """Parity forward (spot proxy) from already-built two-sided quotes."""
         by_exp: dict[date, dict[float, dict[str, float]]] = {}

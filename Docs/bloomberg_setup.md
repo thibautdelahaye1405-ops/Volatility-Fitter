@@ -60,6 +60,15 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
 - Env knobs (`serve.py`): `VOLFIT_BBG_STREAM_INTERVAL` (conflation s, 0 = every
   tick), `VOLFIT_BBG_MAX_SUBS`, `VOLFIT_BBG_HOST` / `VOLFIT_BBG_PORT` (DAPI
   endpoint, default `localhost:8194`).
+- **Live Quote Table**: while streaming, the Smile Viewer's Table tab opens a
+  per-node SSE stream (`GET /smiles/{t}/{e}/table/stream`,
+  `volfit/api/table_stream.py`) that reads the book (never a `bdp`) at 1 Hz,
+  runs the live chain through the table's own `prepare_quotes` pipeline and
+  pushes only the rows whose band moved — bid/mid/ask IV and prices tick with
+  a flash, the Model IV column stays the fit's, amended rows are pinned, and a
+  `● LIVE n · HH:MM:SS UTC · S spot` badge shows the newest provider stamp
+  (≈15 min behind on a delayed exchange). Measured: ~26 ms per frame on SPY
+  (de-Am included), 0 metered calls.
 
 ## Reading the Data Source light
 

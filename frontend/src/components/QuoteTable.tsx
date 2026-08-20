@@ -4,9 +4,18 @@
 // amended mids are amber. Footer actions copy the table as TSV to the
 // clipboard or download the backend-rendered CSV. Live backend only (the
 // parent gates mock mode).
+//
+// Live ticks: while the active source streams (Massive WS / Bloomberg
+// subscription book) the node's live market is pushed over SSE (useLiveTicks)
+// and overlaid on the calibrated rows by "type:strike" key — bid/mid/ask IV and
+// prices tick (flash on change), the Model IV column stays the fit's. Amended
+// rows are user-pinned calibration inputs and never tick. A LIVE badge with
+// the newest provider stamp sits in the footer; without a stream the table is
+// exactly the calibrated snapshot as before.
 import { useEffect, useMemo, useState } from "react";
 import { api, API_BASE_URL } from "../state/api";
 import type { FitMode } from "../state/useSmile";
+import { liveKey, useLiveTicks } from "../state/useLiveTicks";
 import { useWeights } from "../state/useWeights";
 import type { SmileData } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
@@ -39,6 +48,12 @@ interface TableResponse {
   rows: TableRow[];
 }
 
+/** A table row with the live market overlaid (when streaming and not pinned). */
+interface ShownRow extends TableRow {
+  key: string;
+  live: boolean;
+}
+
 interface QuoteTableProps {
   ticker: string;
   expiry: string;
@@ -47,6 +62,9 @@ interface QuoteTableProps {
    *  in the fetch deps refreshes the table after quote edits. */
   smile: SmileData | null;
 }
+
+/** "HH:MM:SS UTC" of a backend (UTC-naive ISO) stamp; "" when unknown. */
+const tickTime = (iso: string | null): string => (iso ? `${iso.slice(11, 19)} UTC` : "");
 
 /** Column headers (numeric columns are right-aligned; C/P is centered).
  *  "Weight" is the mean-1 calibration weight (V3.4 item 5; em-dash when
@@ -89,6 +107,23 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
     return m;
   }, [weights]);
 
+  // Live market overlay (SSE off the streaming book; empty when not streaming).
+  const ticks = useLiveTicks(ticker, expiry, ticker !== "" && expiry !== "");
+  const shown = useMemo<ShownRow[]>(() => {
+    if (data === null) return [];
+    return data.rows.map((r) => {
+      const key = liveKey(r.type, r.strike);
+      const live = r.amended ? undefined : ticks.rows.get(key); // pinned rows never tick
+      if (live === undefined) return { ...r, key, live: false };
+      const { bidIv, midIv, askIv, bidPrice, midPrice, askPrice } = live;
+      return { ...r, key, live: true, bidIv, midIv, askIv, bidPrice, midPrice, askPrice };
+    });
+  }, [data, ticks.rows]);
+  // Alternate the flash class per frame so a cell ticking on consecutive frames
+  // re-triggers its animation (same class = no restart).
+  const flashClass = ticks.seq % 2 ? "volfit-tick-a" : "volfit-tick-b";
+  const flash = (key: string) => (ticks.flash.has(key) ? flashClass : "");
+
   // Fetch on open; refetch when the node / fit mode changes or the smile is
   // refitted (edits, undo/redo, hyperparameter changes all swap `smile`).
   useEffect(() => {
@@ -114,11 +149,11 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
     return () => controller.abort();
   }, [ticker, expiry, fitMode, smile]);
 
-  /** Copy the whole table (TSV incl. header) to the clipboard. */
+  /** Copy the whole table as displayed (TSV incl. header, live overlay applied). */
   const onCopy = () => {
     if (data === null) return;
     void navigator.clipboard
-      .writeText(toTsv(data.rows))
+      .writeText(toTsv(shown))
       .then(() => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);
@@ -169,30 +204,30 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
-            {data.rows.map((r) => (
+            {shown.map((r) => (
               <tr
                 key={r.index}
                 className={[
                   "hover:bg-surface-800/60",
                   r.excluded ? "text-slate-600 opacity-50" : "text-slate-200",
                 ].join(" ")}
-                title={r.excluded ? "excluded from calibration" : undefined}
+                title={r.excluded ? "excluded from calibration" : r.live ? "live market (streaming)" : undefined}
               >
                 <td className={num}>{r.strike.toFixed(2)}</td>
                 <td className="px-2 py-1 text-center text-slate-400">{r.type}</td>
                 <td className={`${num} text-slate-400`}>{r.k.toFixed(3)}</td>
-                <td className={num}>{formatPct(r.bidIv, 2)}</td>
+                <td className={`${num} ${flash(r.key)}`}>{formatPct(r.bidIv, 2)}</td>
                 <td
-                  className={[num, r.amended ? "font-semibold text-amber-400" : ""].join(" ")}
-                  title={r.amended ? "mid manually amended" : undefined}
+                  className={[num, flash(r.key), r.amended ? "font-semibold text-amber-400" : ""].join(" ")}
+                  title={r.amended ? "mid manually amended (pinned — does not tick)" : undefined}
                 >
                   {formatPct(r.midIv, 2)}
                 </td>
-                <td className={num}>{formatPct(r.askIv, 2)}</td>
+                <td className={`${num} ${flash(r.key)}`}>{formatPct(r.askIv, 2)}</td>
                 <td className={`${num} text-accent-400`}>{formatPct(r.modelIv, 2)}</td>
-                <td className={num}>{r.bidPrice.toFixed(2)}</td>
-                <td className={num}>{r.midPrice.toFixed(2)}</td>
-                <td className={num}>{r.askPrice.toFixed(2)}</td>
+                <td className={`${num} ${flash(r.key)}`}>{r.bidPrice.toFixed(2)}</td>
+                <td className={`${num} ${flash(r.key)}`}>{r.midPrice.toFixed(2)}</td>
+                <td className={`${num} ${flash(r.key)}`}>{r.askPrice.toFixed(2)}</td>
                 <td className={`${num} text-slate-400`}>
                   {r.excluded ? "—" : (weightByIndex.get(r.index)?.toFixed(2) ?? "—")}
                 </td>
@@ -223,6 +258,29 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
           {data.rows.length} quotes · T {data.t.toFixed(3)}y · F {data.forward.toFixed(2)} · df{" "}
           {data.discount.toFixed(4)}
         </span>
+        {ticks.streaming && (
+          <span
+            className="flex items-center gap-1.5 font-mono text-[10px]"
+            title={
+              ticks.ready
+                ? "Live market off the streaming book, overlaid on the calibrated rows (Model IV stays the fit's; amended rows are pinned)"
+                : "The stream is up but the book has not served this node yet"
+            }
+          >
+            <span
+              className={[
+                "inline-block h-1.5 w-1.5 rounded-full",
+                ticks.ready ? "bg-emerald-400 volfit-live-dot" : "bg-amber-400",
+              ].join(" ")}
+            />
+            <span className={ticks.ready ? "text-emerald-400" : "text-amber-400"}>
+              {ticks.ready
+                ? `LIVE ${ticks.rows.size} · ${tickTime(ticks.ts)}` +
+                  (ticks.spot !== null ? ` · S ${ticks.spot.toFixed(2)}` : "")
+                : "live feed warming"}
+            </span>
+          </span>
+        )}
         <div className="ml-auto flex items-center gap-1.5">
           <button
             className={toolbarButtonClass}
