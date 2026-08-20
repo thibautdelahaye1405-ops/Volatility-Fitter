@@ -810,7 +810,13 @@ _CASH_DIV_MODES = ("discrete_absolute", "mixed")
 
 
 def spot_forward_shift(
-    state: AppState, ticker: str, expiry: date, f0: float, discount: float, t: float
+    state: AppState,
+    ticker: str,
+    expiry: date,
+    f0: float,
+    discount: float,
+    t: float,
+    shift: float | None = None,
 ) -> tuple[float, float]:
     """(F_T^1, h_T) for the active spot shift: the new forward and its log-ratio.
 
@@ -819,9 +825,11 @@ def spot_forward_shift(
     give the multiplicative ``F_T^1 = F_T^0 (1 + shift)``; discrete CASH dividends
     give the additive ``Delta F_T = Delta S e^{r t}`` (so ``h_T`` differs per
     expiry). Returns ``(f0, 0.0)`` when no shift is active. Shared by the
-    parametric slice transport and the affine LV-surface transport.
+    parametric slice transport and the affine LV-surface transport. ``shift``
+    overrides the ACTIVE shift (the live quote-table stream passes the streamed
+    spot's return so live IVs invert at the live forward); None = the active one.
     """
-    shift = state.spot_shift(ticker)
+    shift = state.spot_shift(ticker) if shift is None else shift
     if shift == 0.0 or f0 <= 0.0:
         return f0, 0.0
     spot0 = float(state.anchor_spot(ticker))  # the CALIBRATION spot, not live snapshot

@@ -613,6 +613,40 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-20e) — LIVE CHART QUOTE BANDS OFF THE SAME SSE + LIVE-FORWARD INVERSION
+
+Market-data sourcing arc, step 3: the Smile Chart's quote bands tick live,
+sharing the node's single SSE connection with the table.
+
+- **One connection per viewed node**: `useLiveTicks` is now hosted by
+  `SmileViewer` (`liveTicks = useLiveTicks(ticker, expiry, live)`) and passed
+  to `SmileChart` (`liveTicks` prop) and `QuoteTable` (`ticks` prop — it no
+  longer opens its own stream). New `components/LiveQuoteBeams.tsx`: thin
+  teal bid/ask I-beams + mid tick drawn OVER the red calibration quotes,
+  placed at `log(strike / the chart's forward)` (follows every axis mode and
+  a spot-move re-expression of moneyness), brighter when the row moved in the
+  last frame, no hit-testing (clicks still select the calibration quote), and
+  never widens the y-domain (no axis jitter). Legend: "● Live market" /
+  "live feed warming".
+- **Keys by STRIKE** (`row_key(strike)` / `liveKey(strike)`): one OTM row per
+  strike, so a side flip of the ATM-straddling strike under a spot move can't
+  orphan a row; the chart needs no matching at all.
+- **Live-forward inversion**: `table_stream.live_forward` transports the node's
+  resolved forward by the streamed spot's return under the app's own rule
+  (`service.spot_forward_shift(..., shift=)` — new optional override,
+  byte-identical default; proportional, additive under cash dividends), so
+  live IVs are the market's IVs at today's spot (frame `forward` carries it).
+  Smoke: F 765.097 → 765.177 as SPY ticked 763.47 → 763.55, 32 ms/frame,
+  0 metered calls. Consequence handled in the UI: a spot tick re-inverts every
+  strike (sub-bp drift), so the reducer flashes only MATERIAL moves
+  (`FLASH_EPS` = 0.5 bp vol; a full repaint never flashes) — values still
+  update every frame.
+- Tests: backend `test_table_stream.py` 9 (+ live-forward: F×1.01, k−log 1.01
+  at fixed strike, keys survive); frontend `useLiveTicks.test.ts` 6 (strike
+  keys, threshold flash, `liveK`). Suite + vitest + build green.
+- **Next**: incremental subscribe/unsubscribe on universe edits (Bloomberg
+  restarts the session on a diff today); other sources.
+
 ### 🧭 SESSION WRAP (2026-08-20d) — LIVE QUOTE TABLE: PER-NODE SSE TICK STREAM OFF THE BOOK
 
 Market-data sourcing arc, step 2: the Quote Table ticks live between refits.

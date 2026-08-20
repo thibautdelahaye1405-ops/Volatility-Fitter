@@ -68,7 +68,13 @@ as its live book (`volfit/data/bloomberg_stream.py` book + blpapi transport,
   a flash, the Model IV column stays the fit's, amended rows are pinned, and a
   `● LIVE n · HH:MM:SS UTC · S spot` badge shows the newest provider stamp
   (≈15 min behind on a delayed exchange). Measured: ~26 ms per frame on SPY
-  (de-Am included), 0 metered calls.
+  (de-Am included), 0 metered calls. The same connection (one per viewed
+  node, hosted by the Smile Viewer) feeds the **Smile Chart**: live bid/ask
+  beams in teal over the red calibration quotes, placed by strike. Live IVs
+  are inverted at the **live forward** (the node's forward moved by the
+  streamed spot under the app's forward-transport rule), so they are the
+  market's IVs at today's spot; the table/chart flash only material moves
+  (> 0.5 bp) since a spot tick re-expresses every strike.
 
 ## Reading the Data Source light
 

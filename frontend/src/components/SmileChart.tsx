@@ -17,6 +17,8 @@ import type { AxisContext, AxisMode } from "../lib/axisModes";
 import { midLinePath, ribbonPath } from "../lib/smileTarget";
 import { useElementSize } from "../lib/useElementSize";
 import { useZoom } from "../lib/useZoom";
+import type { LiveTicksState } from "../state/useLiveTicks";
+import LiveQuoteBeams from "./LiveQuoteBeams";
 import RangeBrush from "./RangeBrush";
 
 interface SmileChartProps {
@@ -76,6 +78,10 @@ interface SmileChartProps {
   fitMode?: FitMode;
   /** Draw the fit-target overlay (mid polyline + bid-ask/haircut ribbons). */
   showTarget?: boolean;
+  /** The node's live ticks (SSE off the streaming book, hosted by SmileViewer):
+   *  drawn as thin teal live bid/ask beams over the red calibration quotes,
+   *  placed by strike against this chart's forward. Null/empty = no layer. */
+  liveTicks?: LiveTicksState | null;
   /** Optional strip rendered between the plot and the RangeBrush (the V3.4
    *  weight strip mounts here so it shares the x extent above the brush). */
   footer?: ReactNode;
@@ -133,6 +139,7 @@ export default function SmileChart({
   filterBandHi = null,
   filterPred = null,
   fitBandHalf = null,
+  liveTicks = null,
   degraded = null,
   fitMode = "mid",
   showTarget = false,
@@ -352,6 +359,26 @@ export default function SmileChart({
         <span className="flex items-center gap-1.5">
           <span className="h-0.5 w-5 rounded bg-accent-400" /> Current fit
         </span>
+        {liveTicks?.streaming && (
+          <span
+            className="flex items-center gap-1.5"
+            title={
+              liveTicks.ready
+                ? `Live bid/ask off the streaming book (${liveTicks.rows.size} quotes${liveTicks.ts ? `, ${liveTicks.ts.slice(11, 19)} UTC` : ""}) over the red calibration quotes`
+                : "The stream is up but the book has not served this node yet"
+            }
+          >
+            <span
+              className={[
+                "inline-block h-1.5 w-1.5 rounded-full",
+                liveTicks.ready ? "bg-emerald-400 volfit-live-dot" : "bg-amber-400",
+              ].join(" ")}
+            />
+            <span className={liveTicks.ready ? "text-teal-300" : "text-amber-400"}>
+              {liveTicks.ready ? "Live market" : "live feed warming"}
+            </span>
+          </span>
+        )}
         {fitBandPath !== "" && (
           <span className="flex items-center gap-1.5">
             <span className="h-2 w-5 rounded bg-accent-400/15" /> ±1.96σ quotes
@@ -538,6 +565,18 @@ export default function SmileChart({
                     </g>
                   );
                 })}
+
+                {/* Live market (streaming source): thin teal bid/ask beams over the
+                    calibration quotes, placed by strike against this forward. */}
+                {liveTicks !== null && forward !== undefined && (
+                  <LiveQuoteBeams
+                    ticks={liveTicks}
+                    forward={forward}
+                    toX={(k) => xScale.map(tx(k))}
+                    toY={(iv) => yScale.map(iv)}
+                    plotW={plotW}
+                  />
+                )}
 
                 {/* Prior: saved = dashed slate; active fetched (spot-updated) =
                     dotted teal so it reads as the live, transported prior. */}

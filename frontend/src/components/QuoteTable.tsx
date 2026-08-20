@@ -6,8 +6,9 @@
 // parent gates mock mode).
 //
 // Live ticks: while the active source streams (Massive WS / Bloomberg
-// subscription book) the node's live market is pushed over SSE (useLiveTicks)
-// and overlaid on the calibrated rows by "type:strike" key — bid/mid/ask IV and
+// subscription book) the node's live market is pushed over SSE (useLiveTicks,
+// one connection hosted by SmileViewer and shared with the chart) and overlaid
+// on the calibrated rows by strike key — bid/mid/ask IV and
 // prices tick (flash on change), the Model IV column stays the fit's. Amended
 // rows are user-pinned calibration inputs and never tick. A LIVE badge with
 // the newest provider stamp sits in the footer; without a stream the table is
@@ -15,7 +16,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, API_BASE_URL } from "../state/api";
 import type { FitMode } from "../state/useSmile";
-import { liveKey, useLiveTicks } from "../state/useLiveTicks";
+import { liveKey } from "../state/useLiveTicks";
+import type { LiveTicksState } from "../state/useLiveTicks";
 import { useWeights } from "../state/useWeights";
 import type { SmileData } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
@@ -61,6 +63,9 @@ interface QuoteTableProps {
   /** Current smile: its identity changes on every refit/edit, so keeping it
    *  in the fetch deps refreshes the table after quote edits. */
   smile: SmileData | null;
+  /** The node's live ticks (one SSE connection hosted by SmileViewer, shared
+   *  with the chart); the overlay is empty when the source is not streaming. */
+  ticks: LiveTicksState;
 }
 
 /** "HH:MM:SS UTC" of a backend (UTC-naive ISO) stamp; "" when unknown. */
@@ -93,7 +98,7 @@ const message = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
 );
 
-export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTableProps) {
+export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: QuoteTableProps) {
   const [data, setData] = useState<TableResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -108,11 +113,10 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile }: QuoteTabl
   }, [weights]);
 
   // Live market overlay (SSE off the streaming book; empty when not streaming).
-  const ticks = useLiveTicks(ticker, expiry, ticker !== "" && expiry !== "");
   const shown = useMemo<ShownRow[]>(() => {
     if (data === null) return [];
     return data.rows.map((r) => {
-      const key = liveKey(r.type, r.strike);
+      const key = liveKey(r.strike);
       const live = r.amended ? undefined : ticks.rows.get(key); // pinned rows never tick
       if (live === undefined) return { ...r, key, live: false };
       const { bidIv, midIv, askIv, bidPrice, midPrice, askPrice } = live;

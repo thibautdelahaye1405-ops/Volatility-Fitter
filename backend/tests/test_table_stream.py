@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 from dataclasses import replace
 from datetime import date, timedelta
 
@@ -39,6 +40,7 @@ class StreamingSynthetic(SyntheticProvider):
         self.shift = 0.0
         self.bumps: dict[tuple[float, str], float] = {}
         self.drop: set[tuple[float, str]] = set()
+        self.spot_scale = 1.0  # live spot / snapshot spot (the forward moves with it)
         self.live_reads = 0
 
     def is_streaming(self):
@@ -58,7 +60,7 @@ class StreamingSynthetic(SyntheticProvider):
             f = (1.0 + self.shift) * self.bumps.get(ident, 1.0)
             quotes.append(replace(q, bid=q.bid * f, ask=q.ask * f))
         stamp = snap.timestamp + timedelta(seconds=len(self.bumps) + len(self.drop))
-        return replace(snap, quotes=quotes, timestamp=stamp)
+        return replace(snap, quotes=quotes, timestamp=stamp, spot=snap.spot * self.spot_scale)
 
 
 @pytest.fixture()
@@ -73,7 +75,7 @@ def rig():
 
 
 def _keys(table) -> set[str]:
-    return {row_key(r["type"], r["strike"]) for r in table["rows"]}
+    return {row_key(r["strike"]) for r in table["rows"]}
 
 
 # ------------------------------------------------------------------ slice
@@ -91,7 +93,7 @@ def test_live_slice_matches_table_keys_and_tracks_the_live_market(rig):
     assert sl is not None and {r.key for r in sl.rows} == _keys(table)
     by_key = {r.key: r for r in sl.rows}
     for r in table["rows"]:  # same chain, same pipeline -> same bands and prices
-        live = by_key[row_key(r["type"], r["strike"])]  # (wire rounding: 8 dp vols, 6 dp prices)
+        live = by_key[row_key(r["strike"])]  # (wire rounding: 8 dp vols, 6 dp prices)
         assert live.midIv == pytest.approx(r["midIv"], abs=1e-8)
         assert live.bidPrice == pytest.approx(r["bidPrice"], abs=1e-6)
         assert live.type == r["type"] and live.k == pytest.approx(r["k"], abs=1e-8)
@@ -100,7 +102,27 @@ def test_live_slice_matches_table_keys_and_tracks_the_live_market(rig):
     sl2 = live_slice(state, "ALPHA", expiry)
     assert sl2.fingerprint != fp0
     for r in table["rows"]:
-        assert {x.key: x for x in sl2.rows}[row_key(r["type"], r["strike"])].midIv > r["midIv"]
+        assert {x.key: x for x in sl2.rows}[row_key(r["strike"])].midIv > r["midIv"]
+
+
+def test_live_slice_inverts_at_the_live_forward(rig):
+    """A streamed spot move transports the node's forward (proportional here — the
+    synthetic chain has no cash dividends) and the live IVs are inverted at it;
+    rows stay keyed by strike so the table/chart join survives the move."""
+    state, prov, expiry, table = rig
+    prov.streaming = True
+    base = live_slice(state, "ALPHA", expiry)
+    prov.spot_scale = 1.01
+    moved = live_slice(state, "ALPHA", expiry)
+    assert moved.forward == pytest.approx(base.forward * 1.01, rel=1e-12)
+    assert moved.spot == pytest.approx(base.spot * 1.01, rel=1e-12)
+    assert {r.key for r in moved.rows} <= _keys(table) | {r.key for r in base.rows}
+    by_key = {r.key: r for r in moved.rows}
+    # same strikes, re-expressed moneyness: k shifts by -log(1.01) at fixed strike
+    for r in base.rows:
+        if r.key in by_key:
+            assert by_key[r.key].k == pytest.approx(r.k - math.log(1.01), abs=1e-6)
+            assert by_key[r.key].strike == pytest.approx(r.strike, abs=1e-6)
 
 
 # ---------------------------------------------------------------- tracker
@@ -119,14 +141,14 @@ def test_tracker_full_then_deltas_then_gone_then_off(rig):
     prov.bumps[(target["strike"], target["type"])] = 1.05
     delta = tracker.frame(state, "ALPHA", expiry)
     assert delta is not None and not delta.full
-    assert [r.key for r in delta.rows] == [row_key(target["type"], target["strike"])]
+    assert [r.key for r in delta.rows] == [row_key(target["strike"])]
     assert delta.rows[0].midIv > target["midIv"] and delta.gone == []
     assert prov.live_reads == reads + 1
     # a quote goes one-sided -> reported gone (the table falls back to its row)
     victim = table["rows"][0]
     prov.drop.add((victim["strike"], victim["type"]))
     gone = tracker.frame(state, "ALPHA", expiry)
-    assert gone is not None and gone.gone == [row_key(victim["type"], victim["strike"])]
+    assert gone is not None and gone.gone == [row_key(victim["strike"])]
     assert gone.rows == [] and gone.nLive == len(table["rows"]) - 1
     # the stream stops -> one status frame (overlay dropped), then silence
     prov.streaming = False

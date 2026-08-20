@@ -12,12 +12,17 @@ Contract (what keeps this honest and cheap):
   provider (``live_chain`` — never a metered / REST request; an absent reader or
   a non-streaming source means "no live ticks") and run through the SAME
   ``prepare_quotes`` (OTM side, de-Americanization, tick floor, event clock)
-  with the node's resolved forward / cash dividends / clocks, so live IVs are on
-  exactly the footing of the table's IVs and prices are reconstructed by the
-  same Black map (volfit.api.table). Rows are keyed ``"C:123.4500"`` /
-  ``"P:…"`` (OTM side + strike) — the frontend overlays them onto the
-  calibrated table rows by that key, so a refit / re-prepared base never
-  misaligns the overlay the way positional indices would.
+  with the node's cash dividends / clocks and the LIVE forward — the node's
+  resolved forward transported by the streamed spot's return under the app's
+  own forward-transport rule (service.spot_forward_shift: proportional, or
+  additive under discrete cash dividends) — so live IVs are on exactly the
+  footing of the table's IVs at today's spot, and prices are reconstructed by
+  the same Black map (volfit.api.table). Rows are keyed by STRIKE
+  (``"123.4500"``, the table's 4-dp precision): one OTM row per strike, so the
+  frontend overlays them onto the calibrated table rows (and draws them on the
+  smile chart at ``log(strike / chart forward)``) without positional coupling,
+  and a side flip of the ATM-straddling strike under a spot move cannot
+  orphan a row.
 * **Deltas, not snapshots.** ``LiveTableTracker`` fingerprints the raw live
   (bid, ask) set per poll and re-prepares only when it changed; a frame carries
   only rows whose band moved (``full`` on the first / after a reset) plus the
@@ -36,16 +41,17 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from volfit.api.quotes import prepare_quotes
-from volfit.api.service import node_clock, variance_time
+from volfit.api.service import node_clock, spot_forward_shift, variance_time
 from volfit.api.state import AppState
 from volfit.api.table import _price as band_price
+from volfit.data.forwards import ResolvedForward
 from volfit.data.types import ChainSnapshot
 
 
 class LiveTickRow(BaseModel):
     """One live OTM quote of the node's slice, in the table's conventions."""
 
-    key: str  # "C:<strike .4f>" / "P:<strike .4f>" — joins the table row
+    key: str  # "<strike .4f>" — joins the table row / chart quote by strike
     strike: float
     type: str
     k: float
@@ -72,9 +78,28 @@ class LiveTableFrame(BaseModel):
     nLive: int = 0  # live two-sided rows in the slice after this frame
 
 
-def row_key(call_put: str, strike: float) -> str:
-    """The overlay join key (OTM side + strike at 4 dp, the table's precision)."""
-    return f"{call_put}:{strike:.4f}"
+def row_key(strike: float) -> str:
+    """The overlay join key: the strike at 4 dp (the table's precision)."""
+    return f"{strike:.4f}"
+
+
+def live_forward(
+    state: AppState, ticker: str, expiry: date, base: ResolvedForward, t: float, spot: float
+) -> ResolvedForward:
+    """The node's forward moved to the streamed ``spot`` under the app's own
+    forward-transport rule (service.spot_forward_shift with the live spot's
+    return vs the calibration anchor). Falls back to ``base`` when no anchor /
+    spot is available, so the inversion never silently changes basis."""
+    try:
+        anchor = float(state.anchor_spot(ticker))
+    except Exception:  # noqa: BLE001 — no anchor: keep the node's forward
+        return base
+    if anchor <= 0.0 or spot <= 0.0:
+        return base
+    f1, _h = spot_forward_shift(
+        state, ticker, expiry, base.forward, base.discount, t, shift=spot / anchor - 1.0
+    )
+    return ResolvedForward(expiry, float(f1), base.discount, base.source)
 
 
 # ------------------------------------------------------------ live slice
@@ -120,9 +145,11 @@ def live_slice(state: AppState, ticker: str, expiry_iso: str) -> LiveSlice | Non
     if chain is None or not state.has_quotes(ticker):
         return None
     try:
-        forward = state.resolved_forward(ticker, expiry)
-        cash = state.cash_dividend_schedule(ticker, expiry, forward.forward)
         t_cal, base_days = node_clock(state, ticker, expiry)
+        forward = live_forward(
+            state, ticker, expiry, state.resolved_forward(ticker, expiry), t_cal, chain.spot
+        )
+        cash = state.cash_dividend_schedule(ticker, expiry, forward.forward)
         tau = variance_time(state, ticker, expiry, t_cal, base_days)
     except Exception:  # noqa: BLE001 — no forward yet: not ready
         return None
@@ -141,7 +168,7 @@ def live_slice(state: AppState, ticker: str, expiry_iso: str) -> LiveSlice | Non
         # precision, ~40% smaller frames at 1 Hz (~100 ticked rows/s on SPY).
         rows.append(
             LiveTickRow(
-                key=row_key(side, strike),
+                key=row_key(strike),
                 strike=round(strike, 6),
                 type=side,
                 k=round(k, 8),

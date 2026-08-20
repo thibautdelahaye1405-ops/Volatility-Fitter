@@ -1,12 +1,14 @@
-// Live quote-table ticks: one Server-Sent Events connection per viewed node
-// (GET /smiles/{t}/{e}/table/stream) pushing the node's LIVE market off the
-// backend's streaming book (Massive WS / Bloomberg //blp/mktdata) at ~1 Hz.
-// Frames are DELTAS keyed "type:strike" (the OTM side + strike at 4 dp, the
-// table's precision) so the Quote Table overlays them onto its calibrated rows
-// without positional coupling. The reducer (`applyFrame`) is pure and unit-
-// tested; the hook only owns the EventSource lifecycle (open when enabled and
-// the tab is visible, close when hidden / unmounted — EventSource reconnects by
-// itself) and the short-lived per-cell flash set.
+// Live node ticks: ONE Server-Sent Events connection per viewed node
+// (GET /smiles/{t}/{e}/table/stream, hosted by SmileViewer) pushing the node's
+// LIVE market off the backend's streaming book (Massive WS / Bloomberg
+// //blp/mktdata) at ~1 Hz. Frames are DELTAS keyed by STRIKE (4 dp, the
+// table's precision): the Quote Table overlays them onto its calibrated rows
+// and the Smile Chart draws them as live bid/ask beams at log(strike / its own
+// forward) — no positional coupling, and robust to a spot move re-expressing
+// moneyness. The reducer (`applyFrame`) is pure and unit-tested; the hook only
+// owns the EventSource lifecycle (open when enabled and the tab is visible,
+// close when hidden / unmounted — EventSource reconnects by itself) and the
+// short-lived per-row flash set.
 import { useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "./api";
 
@@ -67,8 +69,12 @@ export const EMPTY_LIVE: LiveTicksState = {
   connected: false,
 };
 
-/** The overlay join key of a table row (mirrors the backend ``row_key``). */
-export const liveKey = (type: string, strike: number): string => `${type}:${strike.toFixed(4)}`;
+/** The overlay join key of a quote: its strike at 4 dp (mirrors the backend
+ *  ``row_key``) — one OTM row per strike, so the side never has to match. */
+export const liveKey = (strike: number): string => strike.toFixed(4);
+
+/** Smallest band move (vol units, 0.5 bp) that counts as a visible tick. */
+export const FLASH_EPS = 5e-5;
 
 /** Fold one frame into the state (pure). A `status` frame with streaming=false
  *  drops the overlay (the table falls back to its calibrated rows); a `ticks`
@@ -83,8 +89,15 @@ export function applyFrame(prev: LiveTicksState, frame: LiveTableFrame): LiveTic
   const rows = frame.full ? new Map<string, LiveTickRow>() : new Map(prev.rows);
   const flash = new Set<string>();
   for (const r of frame.rows ?? []) {
+    // Flash only MATERIAL moves: a spot tick re-inverts every strike at the live
+    // forward (sub-bp drift on the whole smile), which would light the entire
+    // table each second and drown the real quote changes.
+    const before = prev.rows.get(r.key);
+    if (!frame.full && (before === undefined || Math.abs(r.midIv - before.midIv) > FLASH_EPS
+      || Math.abs(r.bidIv - before.bidIv) > FLASH_EPS || Math.abs(r.askIv - before.askIv) > FLASH_EPS)) {
+      flash.add(r.key);
+    }
     rows.set(r.key, r);
-    flash.add(r.key);
   }
   for (const key of frame.gone ?? []) rows.delete(key);
   return {

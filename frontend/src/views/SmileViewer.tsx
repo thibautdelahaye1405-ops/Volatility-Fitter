@@ -32,6 +32,7 @@ import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
 import { useMassiveIv } from "../state/useMassiveIv";
+import { useLiveTicks } from "../state/useLiveTicks";
 import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
@@ -168,6 +169,10 @@ export default function SmileViewer() {
   const hasEdits =
     smile !== null && smile.quotes.some((q) => q.excluded || q.amended);
   const live = source === "live";
+  // The node's live market ticks (ONE SSE connection per viewed node, off the
+  // active source's streaming book): shared by the chart's live beams and the
+  // quote table's overlay; empty when the source is not streaming.
+  const liveTicks = useLiveTicks(ticker, expiry, live);
 
   // Side-by-side model comparison (V3.2 item 12): fetched LAZILY — only while
   // the Compare view is open (up to 2 extra fits per node, server-cached).
@@ -313,6 +318,7 @@ export default function SmileViewer() {
             degraded={smile.degraded ?? null}
             fitMode={fitMode}
             showTarget={showTarget}
+            liveTicks={liveTicks}
             footer={
               showWeights ? (
                 <WeightStrip
@@ -370,7 +376,7 @@ export default function SmileViewer() {
           : chartMessage("Stacked IV requires the live backend.");
       case "table":
         return live
-          ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} />
+          ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} ticks={liveTicks} />
           : chartMessage("Table view requires the live backend.");
     }
   };
