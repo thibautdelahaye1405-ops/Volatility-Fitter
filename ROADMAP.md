@@ -613,6 +613,52 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-20b) — REPLAY-DAY CAMPAIGN RUN + TWO GRAPH-EDGE BUGS FOUND BY IT
+
+The V3.8 launcher ran end-to-end on 2026-08-19 (SPY/NVDA/AAPL/MSFT, 25
+instants, 6 term-ladder expiries; capture ~15 min REST) and the first
+report immediately exposed two real defects — exactly the job this
+instrument exists to do:
+
+- **Mixed-basket cross edges were absent entirely (7462fc4)**: SPY is
+  outside the FULL taxonomy (kind "name", sector "unknown"), so
+  SPY+names built NO cross edges and every all-day-dark cell measured
+  res == base EXACTLY (432/432 rows). The July 0DTE campaign never hit
+  it — SPY/QQQ/IWM are all unknown-sector and connected as PEERS. Fix:
+  explicit `EdgeConfig.hub_tickers` (default empty = byte-identical,
+  consumer locks green), threaded from the scenarios driver's hub arg;
+  unit + end-to-end cross-propagation locks on a repriced-hub fixture.
+- **hub_directed wrote an invalid semantics literal (51ac30a)**:
+  `"directed"` vs the schema's `"directed_state"`; model_copy skips
+  validation and graph_dynamic silently dropped such rows from BOTH the
+  directed and reciprocal lists. **Every layered arm since 2026-07-27 —
+  including the ADJUDICATED intraday campaign — ran with its hub arcs
+  disconnected.** The §16.1 verdict's memory findings (H*≈0.1d interior
+  optimum, OU persistence skill, calibrated bands) stand — the residual
+  layer is downstream of the spatial carrier — but the specific claim
+  "the layered SPATIAL carrier is the bottleneck" was measured hub-less
+  and is now UNRELIABLE. Fix: correct literal; row_semantics fails LOUD
+  on unknown values; lock re-registered (it had pinned the bad string);
+  the scenarios mini dark run asserts BOTH engines move dark nodes.
+  **USER-WINDOW rider: re-run the intraday layered arms**
+  (run_dynamic_intraday.ps1, arms intra_dyn_*) before citing the Gate-B
+  carrier comparison anywhere client-facing.
+- 2026-08-19 measured verdicts (FINAL report after both fixes; one calm
+  day, ATM RMS bp skill vs the transported prior):
+  * cross-asset LOO (1 shared maturity, n=96): smooth_field **+19.3**,
+    layered **+15.7**, precision_messages **−5.5**;
+  * term interp/extrap (rungs 2,4 lit, n=288): smooth_field **+25.4**,
+    layered +2.2, msg +1.9;
+  * all-day-dark names from SPY alone (n=432): msg **−37.5**, layered
+    **−38.3** (ζ std 0.86/0.87, cov95 0.91 — bands honest, the LEVEL of
+    the desk-amplitude cross transfer is what hurts on a calm day; the
+    same conclusion the daily msg_desk cell recorded), smooth_field
+    inert (+0.6).
+  One-day, one-regime numbers — direction, not adjudication. They
+  strengthen the standing amplitude question (desk 1.0 vs learned ~0.34/
+  0.55) rather than any mode flip. Full artifact:
+  backtest\results\scenarios\scenario_report.html.
+
 ### 🧭 SESSION WRAP (2026-08-20a) — FORWARD ROADMAP v3: ALL TEN PHASES V3.0–V3.9
 
 One session: 4 survey agents → Docs/forward_roadmap_v3.md (15 items detailed,
