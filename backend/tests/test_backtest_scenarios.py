@@ -124,9 +124,13 @@ T2 = datetime(2026, 6, 10, 15, 30)
 EXPIRIES = (REF + timedelta(days=30), REF + timedelta(days=91))
 
 
-def _mini_doc(ticker: str) -> dict:
+def _mini_doc(ticker: str, t2_scale: float = 1.0) -> dict:
     """A tiny synthetic intraday fixture: the deterministic synthetic chain
-    (belly only, |K/S - 1| <= 0.2) snapshotted at two instants."""
+    (belly only, |K/S - 1| <= 0.2) snapshotted at two instants. ``t2_scale``
+    multiplies the SECOND instant's prices (up only: raising prices raises
+    IVs and can never violate intrinsic floors) — a nonzero hub innovation
+    for the cross-propagation lock; the 1.0 default keeps both instants
+    byte-identical (the loader round-trip test depends on that)."""
     prov = SyntheticProvider(reference_date=REF, tickers=(ticker,))
     ch = prov.fetch_chain(ticker, expiries=list(EXPIRIES))
     quotes = [
@@ -134,12 +138,14 @@ def _mini_doc(ticker: str) -> dict:
          "bid": float(q.bid), "ask": float(q.ask), "size": int(q.open_interest)}
         for q in ch.quotes if 0.8 <= q.strike / ch.spot <= 1.2
     ]
+    quotes2 = [dict(q, bid=q["bid"] * t2_scale, ask=q["ask"] * t2_scale)
+               for q in quotes]
     return {
         "asset": ticker, "day": REF.isoformat(), "exercise_style": "american",
         "expiries": [e.isoformat() for e in EXPIRIES],
         "snapshots": [
             {"ts": T1.isoformat(), "spot": float(ch.spot), "quotes": quotes},
-            {"ts": T2.isoformat(), "spot": float(ch.spot), "quotes": quotes},
+            {"ts": T2.isoformat(), "spot": float(ch.spot), "quotes": quotes2},
         ],
     }
 
@@ -267,8 +273,10 @@ def mini_db(tmp_path_factory):
     """2 tickers x 2 instants x 2 expiries, persisted through _persist_db —
     the same synthetic-chain-into-VolStore shape the replay locks use."""
     db = str(tmp_path_factory.mktemp("scen_db") / "mini.sqlite")
+    # SPY's second instant is repriced +15% so the lit hub has a REAL intraday
+    # innovation vs the instant-0 prior — the cross-propagation locks need it.
     for tk in ("SPY", "NVDA"):
-        assert _persist_db(db, tk, _mini_doc(tk)) == 2
+        assert _persist_db(db, tk, _mini_doc(tk, t2_scale=1.15 if tk == "SPY" else 1.0)) == 2
     return db
 
 
@@ -316,6 +324,46 @@ def test_mini_loo_run_holds_out_the_single_maturity(mini_run):
         assert r["ticker"] == "NVDA" and r["design"] == "loo"
         assert r["expiry"] == single and r["arm"] == "smooth_field"
         assert isinstance(r["res_atm"], float) and isinstance(r["base_atm"], float)
+
+
+def test_hub_tickers_wire_cross_edges_for_unclassified_hub():
+    """The 2026-08-19 campaign root-cause lock: SPY is outside the FULL
+    taxonomy (kind "name", sector "unknown"), so the DEFAULT EdgeConfig
+    yields NO cross edges on a mixed basket — and hub_tickers=("SPY",)
+    restores the broad_index class (forward + recurrence-reverse directed
+    edges; one message factor)."""
+    from backtest.graph_edges import EdgeConfig, build_directed_edges, build_message_edges
+
+    iso = "2026-09-18"
+    nodes = [("SPY", iso), ("NVDA", iso)]
+    sigma = {("SPY", iso): 0.18, ("NVDA", iso): 0.35}
+    t = {n: 0.25 for n in nodes}
+    # the documented hole (default = byte-identical legacy behaviour)
+    assert build_directed_edges(nodes, sigma, t, EdgeConfig()) == []
+    assert build_message_edges(nodes, sigma, t, EdgeConfig()) == []
+    cfg = EdgeConfig(hub_tickers=("SPY",))
+    edges = build_directed_edges(nodes, sigma, t, cfg)
+    assert len(edges) == 2  # NVDA informed by SPY + the reverse recurrence edge
+    fwd = next(e for e in edges if e.fromTicker == "NVDA")
+    rev = next(e for e in edges if e.fromTicker == "SPY")
+    assert (fwd.toTicker, rev.toTicker) == ("SPY", "NVDA")
+    assert fwd.weight == pytest.approx(cfg.index_weight)
+    assert fwd.betaAtmVol == pytest.approx(min(cfg.beta_index * 0.35 / 0.18, cfg.beta_cap))
+    rows = build_message_edges(nodes, sigma, t, cfg)
+    assert len(rows) == 1 and rows[0].relationClass == "broad_index"
+    assert (rows[0].sourceTicker, rows[0].targetTicker) == ("SPY", "NVDA")
+    assert rows[0].betaAtmVol == pytest.approx(0.35 / 0.18)
+    assert rows[0].betaSkew == 1.0  # cross relations transfer shape at unit beta
+
+
+def test_mini_dark_run_hub_signal_reaches_dark_nodes(mini_run):
+    """End-to-end cross-propagation: SPY's +15% T2 repricing must move the
+    all-day-dark NVDA nodes away from their transported prior (the first
+    campaign run measured res == base EXACTLY because no cross edge existed)."""
+    out, _written = mini_run
+    rows = _rows(out, "mini_dark")
+    moved = [r for r in rows if abs(r["res_atm"] - r["base_atm"]) > 1e-6]
+    assert moved, "the hub's innovation never reached the dark nodes"
 
 
 def test_mini_run_resume_skips_existing_parts(mini_run, mini_db):

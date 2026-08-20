@@ -226,10 +226,15 @@ def _arm_request(sc_name: str, arm: Arm, sigma: dict, tmap: dict, hub: str) -> G
     ONCE per instant (shared across arms) and the residual store identity
     pinned per (scenario, arm) so it survives across instants unpurged."""
     knobs = MessageKnobs(mode=arm.mode, residual_half_life=arm.half_life)
-    edges = build_directed_edges(list(sigma), sigma, tmap, EdgeConfig())
+    # The explicit hub is load-bearing: SPY is outside the FULL taxonomy
+    # (kind "name", sector "unknown"), so without hub_tickers the mixed
+    # basket has NO cross-asset edges and every all-day-dark cell measures
+    # exactly zero graph skill (the 2026-08-19 campaign's first run did).
+    cfg = EdgeConfig(hub_tickers=(hub,))
+    edges = build_directed_edges(list(sigma), sigma, tmap, cfg)
     if knobs.mode == "smooth_field":
         return GraphExtrapolateRequest(edges=edges)
-    msg_rows = build_message_edges(list(sigma), sigma, tmap, EdgeConfig(),
+    msg_rows = build_message_edges(list(sigma), sigma, tmap, cfg,
                                    alpha_t=knobs.alpha_t)
     if knobs.mode == "layered_dynamic_harmonic":
         msg_rows = hub_directed(msg_rows, hub)

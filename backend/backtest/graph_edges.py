@@ -109,6 +109,14 @@ class EdgeConfig:
     #: Learned beta overrides (backtest.learn_betas). None = the analytic
     #: defaults above, byte-identical.
     overrides: BetaOverrides | None = None
+    #: Explicit broad-market hub tickers for universes the taxonomy cannot
+    #: classify (V3.8 campaign root-cause, 2026-08-20: SPY is absent from FULL
+    #: -> kind "name", sector "unknown", so a mixed basket like SPY+NVDA/AAPL/
+    #: MSFT had NO cross edges at all and the all-day-dark scenarios measured
+    #: exactly zero graph skill). A ticker listed here informs every single
+    #: name as the broad_index class regardless of its taxonomy kind. Default
+    #: EMPTY = byte-identical edge lists everywhere (locked).
+    hub_tickers: tuple[str, ...] = ()
 
 
 def _clip(beta: float, cfg: EdgeConfig) -> float:
@@ -208,7 +216,9 @@ def build_message_edges(
                 kind = asset_kind(informer[0])
                 sig_j = sigma.get(informer, 0.0)
                 ratio = sig_i / sig_j if sig_j > 0.0 else 1.0
-                if kind == "index" and informer[0] in cfg.market_indices:
+                is_hub = (informer[0] in cfg.hub_tickers
+                          and influenced[0] not in cfg.hub_tickers)
+                if is_hub or (kind == "index" and informer[0] in cfg.market_indices):
                     rows.append(_row(
                         influenced, informer,
                         MSG_INDEX_PRECISION * cross_precision_mult, ratio,
@@ -275,7 +285,9 @@ def build_directed_edges(
                 if informer == influenced:
                     continue
                 kind = asset_kind(informer[0])
-                if kind == "index" and informer[0] in cfg.market_indices:
+                is_hub = (informer[0] in cfg.hub_tickers
+                          and influenced[0] not in cfg.hub_tickers)
+                if is_hub or (kind == "index" and informer[0] in cfg.market_indices):
                     beta_vn, w = cfg.beta_index, cfg.index_weight
                     if ov is not None:  # learned per-name index beta
                         beta_vn = ov.index_by_name.get(influenced[0], beta_vn)
@@ -294,10 +306,13 @@ def build_directed_edges(
                 ratio = sig_from / sig_to if sig_to > 0.0 else 1.0
                 beta_fwd = _clip(beta_vn * ratio, cfg)
                 edges.append(_edge(influenced, informer, w, beta_fwd))
-                # Reverse edge for index/ETF informers only (name<->name pairs are
-                # already emitted in both directions by this loop): keeps single
+                # Reverse edge for index/ETF/hub informers only (name<->name pairs
+                # are already emitted in both directions by this loop): keeps single
                 # names recurrent so their conductance is nonzero (see EdgeConfig).
-                if kind != "name" and cfg.cross_reverse_frac > 0.0:
+                # A hub whose taxonomy kind is "name" (SPY) matched only the hub
+                # branch, never the both-directions peer emission, so it needs the
+                # reverse edge exactly like an index informer.
+                if (kind != "name" or is_hub) and cfg.cross_reverse_frac > 0.0:
                     edges.append(_edge(
                         informer, influenced, w * cfg.cross_reverse_frac,
                         _clip(1.0 / max(beta_fwd, 1e-6), cfg),
