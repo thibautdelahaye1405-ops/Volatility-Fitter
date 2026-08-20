@@ -258,6 +258,12 @@ class AppState(UniverseMixin):
         #: SURVIVES recalibrate (a refetch is a new observation, not a reset)
         #: and transient as-of round-trips (_CHAIN_CACHE_ATTRS).
         self._filter_states: dict[tuple, object] = {}
+        #: Per-node observation-filter HISTORY rings (V3.9 item 7), keyed like
+        #: ``_filter_states`` -> api.filter_history.FilterHistory. In-memory
+        #: only (NOT workspace-persisted — recorded rider); cleared / captured
+        #: / restored with the chain caches so it always travels with the
+        #: filter states themselves.
+        self._filter_history: dict[tuple, object] = {}
         #: Restore the user's saved Fit/Options defaults (the Options "Save as
         #: default" button) when a store is configured; code defaults otherwise.
         saved_fit, saved_options = load_defaults(self.store_path)
@@ -507,12 +513,14 @@ class AppState(UniverseMixin):
         self._sessions.clear()
         self._varswap_sessions.clear()
         self._filter_states.clear()  # source/as-of switch = the filter's strict reset
+        self._filter_history.clear()  # the history rings share the filter's reset
 
     #: Cache dicts that ``_clear_chain_caches`` wipes — the live surface state a
     #: transient as-of switch must NOT destroy (see capture/restore below).
     _CHAIN_CACHE_ATTRS = (
         "_snapshots", "_forwards", "_fits", "_calibrated", "_anchor_spot",
         "_affine_calibrated", "_sessions", "_varswap_sessions", "_filter_states",
+        "_filter_history",
     )
 
     # ------------------------------------------- observation filter (Note 15)
@@ -524,6 +532,15 @@ class AppState(UniverseMixin):
     def set_filter_node(self, key: tuple, holder) -> None:
         with self._lock:
             self._filter_states[key] = holder
+
+    def filter_history(self, key: tuple):
+        """The node's filter history ring, or None (V3.9 item 7)."""
+        with self._lock:
+            return self._filter_history.get(key)
+
+    def set_filter_history(self, key: tuple, ring) -> None:
+        with self._lock:
+            self._filter_history[key] = ring
 
     def capture_chain_state(self) -> dict:
         """Snapshot the live as-of + chain-derived caches so a TRANSIENT as-of
@@ -1472,6 +1489,36 @@ class AppState(UniverseMixin):
             self._prior_snapshots.setdefault(ticker, snap)
         return snap
 
+    def list_prior_snapshots(self, ticker: str) -> list[dict]:
+        """Metadata history of a ticker's SAVED prior snapshots, newest first:
+        ``[{dataTs, savedTs, nodeCount, asOfLabel}]`` (GET /priors/history).
+
+        Store-backed when configured (the full kept history, read via the
+        store's json1 metadata scan — full documents are never deserialized);
+        without a store the in-memory latest snapshot is the whole history.
+        Read-only and poll-safe; empty when nothing has been saved."""
+        if self.store_path is not None:
+            try:
+                from volfit.data.store import VolStore
+
+                with VolStore(self.store_path) as store:
+                    return store.list_prior_snapshot_meta(ticker)
+            except Exception as exc:  # noqa: BLE001 — history is best-effort
+                warnings.warn(f"prior-history load failed: {exc}")
+                return []
+        with self._lock:
+            cached = self._prior_snapshots.get(ticker)
+        if cached is None:
+            return []
+        return [
+            {
+                "dataTs": cached.dataTs,
+                "savedTs": cached.savedTs,
+                "nodeCount": len(cached.nodes),
+                "asOfLabel": cached.asOfLabel,
+            }
+        ]
+
     def set_active_prior(
         self, ticker: str, snapshot: "PriorSurfaceSnapshot | None", source: str
     ) -> None:
@@ -1765,6 +1812,15 @@ class AppState(UniverseMixin):
         before today (the reference date) — the idio band floor's causal input."""
         with self._lock:
             return self._graph_idio.sigma_map(self.reference_date.isoformat())
+
+    def graph_innovation_series(self, ticker: str) -> list[tuple[str, str, float]]:
+        """The ticker's recorded ATM innovations as ``(day, expiry, value)``
+        rows, ordered by (day, expiry) — STRICTLY the stored values written by
+        ``record_graph_innovations`` (no fit, no solve, no re-derivation).
+        Values are in vol units (calibrated − transported prior); the wire
+        converts to bp. Empty when nothing has been recorded."""
+        with self._lock:
+            return self._graph_idio.series(ticker)
 
     def persist_graph_dynamic_residuals(self) -> None:
         """Best-effort SQLite persistence of the dynamic-harmonic residual

@@ -574,6 +574,15 @@ class OptionsSettings(BaseModel):
     #: preference) so fitting happens only on the explicit Calibrate button; the
     #: code default stays ON for the ungated test/dev app.
     autoCalibrate: bool = True
+    #: Unified snapshot fetch (POST /fetch/snapshot, V3.7 item 15): ON = after the
+    #: chains are refreshed and the spot transported, roll each ticker's ACTIVE
+    #: prior to its latest SAVED snapshot — the O(1) saved branch of the freshness
+    #: ladder ONLY (never the prev-close recalibration, never an as-of flip) — so
+    #: the calibration that follows anchors on the freshest saved prior. OFF
+    #: (default) = the snapshot verb is byte-identical to the legacy
+    #: fetch_options + fetch_spots sequence. Pure workflow gate — never bumps the
+    #: options version (a roll bumps the per-ticker active-prior version instead).
+    autoRollPriorOnFetch: bool = False
     #: Local-Vol (affine) calibration master switch. OFF = the background Calibrate
     #: job skips every ticker's LV surface (only the parametric nodes fit, so test
     #: cycles are fast) AND the Local Vol workspace tab is disabled. Pure
@@ -686,10 +695,57 @@ class FilterDiagnostics(BaseModel):
     posteriorStd: list[float] = []
     measurementBreakdown: dict[str, float] = {}
     processBreakdown: dict[str, list[float]] = {}
+    #: Per-handle standardized innovation zeta = nu / sqrt(diag(P^- + R)),
+    #: PRE-adaptive-inflation (V3.9 item 7 — the tuning verdict statistic:
+    #: std(zeta) ~ 1 iff Q is scaled right). None when no update stored.
+    zeta: list[float] | None = None
+    #: Sum of zeta^2 over the handles — the STEP's whitened-innovation chi².
+    #: Distinct from ``measurementBreakdown["chi2"]`` (present on the Jacobian
+    #: route only): that one is the FIT's whitened residual chi², auditing how
+    #: R was built, not how surprising the step was.
+    chi2: float | None = None
     post: list[SmilePoint] = []  # smile retargeted to the posterior m+
     postBandLo: list[SmilePoint] = []  # m+ level - 1.96 sd(ATM)
     postBandHi: list[SmilePoint] = []  # m+ level + 1.96 sd(ATM)
     predCurve: list[SmilePoint] = []  # smile retargeted to the prediction m-
+
+
+class FilterStepOut(BaseModel):
+    """One committed observation-filter step from the in-memory history ring
+    (V3.9 item 7). Compact scalars only — the drawable overlay curves stay on
+    FilterDiagnostics (one retarget per committed state, never per history
+    read). Per-handle lists follow the FILTER_HANDLES order (ATM, skew,
+    curvature); ``dtDays`` is the process-noise time the ACTIVE clock actually
+    charged for the step (0 on a seed/reset)."""
+
+    ts: float  # snapshot epoch (seconds) the step committed at
+    dtDays: float
+    prediction: list[float] = []
+    predictionStd: list[float] = []
+    observation: list[float] = []
+    observationStd: list[float] = []
+    innovation: list[float] = []
+    zeta: list[float] | None = None  # pre-inflation nu / sqrt(diag(P^- + R))
+    gain: list[float] = []  # diagonal of K
+    posterior: list[float] = []
+    posteriorStd: list[float] = []
+    #: Per-component Q variance vectors (clock/spot/event/source/model, plus
+    #: "adaptive" when the innovation gate tripped).
+    processBreakdown: dict[str, list[float]] = {}
+    transportDistance: float | None = None
+    provenance: str  # "seed:<source>" | "update" | "map"
+    resetReason: str | None = None
+    contaminated: bool = False
+
+
+class FilterHistoryResponse(BaseModel):
+    """GET /smiles/{t}/{e}/filter/history: the node's last <= 64 committed
+    filter steps, oldest first. Read-only and poll-safe — never fits;
+    ``active=False`` (empty steps) when the filter is off or nothing has
+    committed yet. In-memory only (cleared with the filter states)."""
+
+    active: bool
+    steps: list[FilterStepOut] = []
 
 
 class QuoteBand(BaseModel):
@@ -1018,12 +1074,39 @@ class GraphNodeInfo(BaseModel):
     skew: float
     curvature: float
     lit: bool = True  # lit/dark designation (volfit.api.state); lit by default
+    # Prior provenance (V3.9 item 8 wire promotion): the resolved NodePrior the
+    # baseline came from — previously computed then dropped at the wire.
+    # priorAsOf/priorAgeDays are None when the hierarchy fell through to a
+    # bootstrap/flat baseline (no prior snapshot moment to age).
+    priorSource: str | None = None  # active_transported | nearest_expiry_... | ...
+    priorAsOf: str | None = None  # the prior snapshot's market moment (dataTs)
+    priorAgeDays: float | None = None  # _prior_age_days convention (day resolution)
+    transportDistance: float | None = None  # h = log(F_now / F_prior)
+    priorPrecision: list[float] | None = None  # per handle (atm_vol, skew, curv)
 
 
 class GraphNodesResponse(BaseModel):
     """The full smile universe with baseline handles (Graph Viewer lattice)."""
 
     nodes: list[GraphNodeInfo]
+
+
+class GraphInnovationPoint(BaseModel):
+    """One persisted ATM innovation: |calibrated − transported prior| is the
+    honest 'does the prior persist?' distance; the sign is kept on the wire."""
+
+    day: str  # the as-of ISO date the innovation was recorded on
+    expiry: str  # the node's expiry (the store's node key)
+    innovationBp: float  # (calibrated − transported prior) ATM vol, bp
+
+
+class GraphInnovationSeries(BaseModel):
+    """GET /graph/innovations/{ticker}: the per-(day, expiry) ATM innovation
+    series straight from the persisted idio-floor store (state
+    record_graph_innovations) — read-only, nothing fitted or solved."""
+
+    ticker: str
+    series: list[GraphInnovationPoint]
 
 
 # ----------------------------------------------- production graph extrapolation
@@ -1493,6 +1576,9 @@ class GraphExtrapolateNode(BaseModel):
     calibrated: bool  # lit AND has a calibration today (so it is an observation)
     priorSource: str  # active_transported | nearest_expiry_transported | ...
     priorAsOf: str | None = None
+    #: Day-resolution prior age (_prior_age_days of priorAsOf, V3.9 item 8);
+    #: None when the baseline has no snapshot moment (bootstrap / flat).
+    priorAgeDays: float | None = None
     transportDistance: float  # h = log(F_now / F_prior)
     validForValidation: bool
     # Baseline (transported prior) handles.

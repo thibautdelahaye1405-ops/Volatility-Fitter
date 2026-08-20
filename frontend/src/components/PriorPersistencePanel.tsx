@@ -6,10 +6,15 @@
 // their activation gap and final weight) — "the prior is not a hidden stabilizer".
 //
 // Lives outside OptionsViewer (file-size policy); driven by the same Options draft.
+//
+// V3.9 item 8: a two-tab header — Config (everything historical) | Evidence
+// (the prior-persistence evidence tab, body in PriorEvidenceTab.tsx).
 import { useEffect, useRef, useState } from "react";
 
 import { NumberRow, Toggle } from "./OptionsControls";
+import PriorEvidenceTab from "./PriorEvidenceTab";
 import { api } from "../state/api";
+import { formatAge, sourceLabel } from "../lib/priorEvidence";
 import type { OptionsSettings, PriorPersistenceMode } from "../state/useOptions";
 import type { FitMode } from "../state/useSmile";
 
@@ -93,6 +98,7 @@ export default function PriorPersistencePanel({
   fitMode: FitMode;
   refreshKey: unknown; // bump to refetch diagnostics (e.g. after Apply)
 }) {
+  const [tab, setTab] = useState<"config" | "evidence">("config");
   const mode = draft.priorPersistenceMode;
   const disabled = !live;
   const showStrike = mode === "strike_gap" || mode === "hybrid";
@@ -122,6 +128,35 @@ export default function PriorPersistencePanel({
 
   return (
     <div className="mt-4 border-t border-slate-800 pt-3">
+      {/* Config | Evidence tab header (V3.9 item 8) */}
+      <div className="mb-2 flex gap-1">
+        {(
+          [
+            { id: "config", label: "Config" },
+            { id: "evidence", label: "Evidence" },
+          ] as const
+        ).map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={[
+              "rounded px-2 py-0.5 text-[10px] font-medium border transition-colors",
+              tab === t.id
+                ? "border-accent-500/60 bg-accent-500/15 text-accent-300"
+                : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600",
+            ].join(" ")}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "evidence" && (
+        <PriorEvidenceTab live={live} ticker={ticker} refreshKey={refreshKey} />
+      )}
+
+      <div className={tab === "config" ? "" : "hidden"}>
       <div className="mb-2 flex items-center justify-between">
         <span className={rowLabel} title="How a fetched prior is persisted into the calibration (design note §10)">
           Prior persistence
@@ -225,15 +260,46 @@ export default function PriorPersistencePanel({
       )}
 
       <PriorDiagnosticsTable ticker={ticker} live={live} fitMode={fitMode} refreshKey={refreshKey} />
+      </div>
     </div>
   );
 }
 
-/** The §9.4 audit table: per-expiry active operators with their gap + weight. */
+/** Node-level prior provenance (the V3.9 item 8 GraphNodeInfo promotion). */
+interface NodeProvenance {
+  priorSource?: string | null;
+  priorAgeDays?: number | null;
+  transportDistance?: number | null;
+}
+
+/** The §9.4 audit table: per-expiry active operators with their gap + weight,
+ *  plus age / source / transport-distance provenance columns (V3.9 item 8). */
 function PriorDiagnosticsTable({
   ticker, live, fitMode, refreshKey,
 }: { ticker: string; live: boolean; fitMode: FitMode; refreshKey: unknown }) {
   const [rows, setRows] = useState<{ expiry: string; diag: PriorDiagnostics }[]>([]);
+  // CLIENT-SIDE JOIN (documented): the per-expiry prior-diagnostics payload
+  // carries no node-level provenance, so we fetch GET /graph/nodes ONCE — the
+  // selected-universe baseline lattice, which now carries the promoted
+  // NodePrior fields — and join on (ticker, expiry). Expiries outside the
+  // graph selection simply render "—" in the provenance cells.
+  const [prov, setProv] = useState<Record<string, NodeProvenance>>({});
+  useEffect(() => {
+    if (!live || !ticker) { setProv({}); return; }
+    let cancelled = false;
+    api
+      .get<{ nodes: ({ ticker: string; expiry: string } & NodeProvenance)[] }>("/graph/nodes")
+      .then((r) => {
+        if (cancelled) return;
+        setProv(
+          Object.fromEntries(
+            (r.nodes ?? []).filter((n) => n.ticker === ticker).map((n) => [n.expiry, n]),
+          ),
+        );
+      })
+      .catch(() => !cancelled && setProv({}));
+    return () => { cancelled = true; };
+  }, [live, ticker, refreshKey]);
   useEffect(() => {
     if (!live || !ticker) { setRows([]); return; }
     let cancelled = false;
@@ -276,17 +342,35 @@ function PriorDiagnosticsTable({
               <th className="text-left font-medium">Factor</th>
               <th className="text-right font-medium" title="Activation gap (1 = fully persisted, 0 = data wins)">gap</th>
               <th className="text-right font-medium" title="Final calibration weight λ">λ</th>
+              <th className="text-right font-medium" title="Prior age (days) — the same _prior_age_days the graph solve prices in">age</th>
+              <th className="text-right font-medium" title="Prior source tier (active / nearest / bootstrap / flat)">src</th>
+              <th className="text-right font-medium" title="Transport distance h = log(F_now / F_prior)">h</th>
             </tr>
           </thead>
           <tbody className="font-mono">
-            {rows.flatMap((r) =>
-              r.diag.operators.length
+            {rows.flatMap((r) => {
+              const p = prov[r.expiry];
+              const provCells = (show: boolean) => (
+                <>
+                  <td className="text-right text-slate-500">
+                    {show ? formatAge(p?.priorAgeDays) : ""}
+                  </td>
+                  <td className="text-right text-slate-500">
+                    {show ? sourceLabel(p?.priorSource) : ""}
+                  </td>
+                  <td className="text-right text-slate-500">
+                    {show ? (p?.transportDistance != null ? p.transportDistance.toFixed(3) : "—") : ""}
+                  </td>
+                </>
+              );
+              return r.diag.operators.length
                 ? r.diag.operators.map((op, j) => (
                     <tr key={`${r.expiry}-${op.operator}`}>
                       <td className="text-slate-500">{j === 0 ? r.expiry : ""}</td>
                       <td>{op.operator}</td>
                       <td className="text-right">{op.gap.toFixed(2)}</td>
                       <td className="text-right">{op.activeLambda.toFixed(2)}</td>
+                      {provCells(j === 0)}
                     </tr>
                   ))
                 : [
@@ -299,9 +383,10 @@ function PriorDiagnosticsTable({
                             ? `var-swap ${(r.diag.varSwapPriorVol * 100).toFixed(1)}%`
                             : "active"}
                       </td>
+                      {provCells(true)}
                     </tr>,
-                  ],
-            )}
+                  ];
+            })}
           </tbody>
         </table>
       )}

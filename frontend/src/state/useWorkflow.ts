@@ -91,6 +91,7 @@ const POLL_SSE_MS = 5000;
 export type WorkflowAction =
   | "spots"
   | "options"
+  | "fetchSnapshot"
   | "calibrate"
   | "calibrateParametric"
   | "calibrateLv"
@@ -105,6 +106,10 @@ export interface UseWorkflowResult {
   busy: boolean;
   fetchSpots: () => Promise<void>;
   fetchOptions: () => Promise<void>;
+  /** POST /fetch/snapshot — the unified verb (V3.7 item 15): chains + spot
+   *  transport + (when the Options toggle enables it) the cheap prior roll,
+   *  then auto-calibrate. May start a calibration, so it awaits the job. */
+  fetchSnapshot: () => Promise<void>;
   /** POST /calibrate — the combined verb (parametric, then LV when the Options
    *  toggle enables it); wire behavior unchanged (V3.5 item 9). */
   calibrate: () => Promise<void>;
@@ -336,6 +341,12 @@ export function useWorkflow(
   // completion before refreshing; fetchSpots is pure transport (nothing to await).
   const fetchSpots = useCallback(() => action("spots", "/fetch/spots", true), [action]);
   const fetchOptions = useCallback(() => action("options", "/fetch/options", true, true), [action]);
+  // Unified fetch (V3.7 item 15): quotes + spot in one pull; awaitJob because it
+  // may kick a background calibration (autoCalibrate), exactly like fetchOptions.
+  const fetchSnapshot = useCallback(
+    () => action("fetchSnapshot", "/fetch/snapshot", true, true),
+    [action],
+  );
   const calibrate = useCallback(() => action("calibrate", "/calibrate", false, true), [action]);
   // Stage-split verbs (V3.5 item 9): same background-job semantics as /calibrate
   // (one job at a time; a running job makes them a no-op server-side).
@@ -373,7 +384,7 @@ export function useWorkflow(
 
   return {
     calib, sched, pending, busy: pending !== null,
-    fetchSpots, fetchOptions, calibrate, calibrateParametric, calibrateLv,
+    fetchSpots, fetchOptions, fetchSnapshot, calibrate, calibrateParametric, calibrateLv,
     priors, savePriors, fetchPriors,
   };
 }

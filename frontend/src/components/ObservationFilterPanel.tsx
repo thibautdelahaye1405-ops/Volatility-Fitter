@@ -7,8 +7,11 @@
 // auditable per expiry — gains, innovation, covariance route, resets.
 //
 // Lives outside OptionsViewer (file-size policy); driven by the same Options draft.
+// The V3.9 FilterTimeline (per-node history charts) mounts below the table
+// behind a "Timeline" toggle; the charts live in FilterTimeline.tsx.
 import { useEffect, useState } from "react";
 
+import FilterTimelineSection from "./FilterTimeline";
 import { NumberRow, Toggle } from "./OptionsControls";
 import { api } from "../state/api";
 import type { OptionsSettings } from "../state/useOptions";
@@ -40,6 +43,7 @@ export default function ObservationFilterPanel({
 }) {
   const mode = draft.observationFilterMode;
   const disabled = !live;
+  const [showTimeline, setShowTimeline] = useState(false);
 
   return (
     <div className="mt-4 border-t border-slate-800 pt-3">
@@ -113,6 +117,30 @@ export default function ObservationFilterPanel({
 
       {mode !== "off" && (
         <FilterDiagnosticsTable ticker={ticker} live={live} fitMode={fitMode} refreshKey={refreshKey} />
+      )}
+
+      {/* Per-node history charts (V3.9 item 7), behind a toggle so the panel
+          fetches /filter/history only when the user opens the timeline. */}
+      {mode !== "off" && (
+        <div className="mt-2">
+          <button
+            className={[
+              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+              showTimeline
+                ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                : "border-slate-700 text-slate-400 hover:text-slate-200",
+            ].join(" ")}
+            title="Chart the node's committed filter steps over time: prediction/observation bands, posterior, ζ strip, gain, Q breakdown, reset markers"
+            onClick={() => setShowTimeline((v) => !v)}
+          >
+            Timeline
+          </button>
+          {showTimeline && (
+            <FilterTimelineSection
+              ticker={ticker} live={live} fitMode={fitMode} refreshKey={refreshKey}
+            />
+          )}
+        </div>
       )}
     </div>
   );

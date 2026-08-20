@@ -17,6 +17,10 @@ Implements the explicit, mode-gated triggers (ROADMAP workflow):
   * ``seed_priors``   — explicit prev-close prior seeding (built, calibrated and
     saved only on demand).
 
+The unified snapshot verb (``POST /fetch/snapshot``: chains -> spot transport ->
+optional cheap prior roll -> optional auto-calibrate, V3.7 item 15) lives in
+volfit.api.workflow_fetch and composes the blocks above.
+
 A "lit" node (volfit AppState lit/dark designation) is one the user marks as an
 observed source; those are the calibration targets. Dark nodes are graph
 extrapolation targets and are not calibrated here.
@@ -263,16 +267,13 @@ def fetch_spots(state: AppState, tickers: list[str] | None = None) -> dict[str, 
     return out
 
 
-def fetch_options(
-    state: AppState, tickers: list[str] | None = None, fit_mode: str = "mid"
-) -> FetchResult:
-    """Refetch option chains; auto-calibrate the lit nodes when enabled.
-
-    Each ticker's chain is refetched (marking its nodes stale); if
-    ``autoCalibrate`` is on, a background calibration of ALL lit nodes is then
-    started. Otherwise the nodes stay stale until the user presses Calibrate.
-    """
-    chosen = tickers if tickers is not None else state.active_tickers()
+def _refresh_chains(state: AppState, chosen: list[str]) -> tuple[list[str], dict[str, float]]:
+    """The chain-refresh block shared by ``fetch_options`` and the unified
+    ``fetch_snapshot`` (volfit.api.workflow_fetch): concurrently refetch each
+    chosen ticker's chain (≤8-wide pool) and return (fetched tickers in chosen
+    order, ticker -> chain spot). ``refresh_chain`` marks the nodes stale and
+    bumps the data version while PRESERVING the calibrated pointers + spot
+    shift (the frozen-until-Calibrate contract)."""
     source = _source_label(state)
 
     def _refresh_one(ticker: str) -> tuple[str, float | None]:
@@ -298,6 +299,20 @@ def fetch_options(
                 if spot is not None:
                     spots[ticker] = spot
                     fetched.append(ticker)
+    return fetched, spots
+
+
+def fetch_options(
+    state: AppState, tickers: list[str] | None = None, fit_mode: str = "mid"
+) -> FetchResult:
+    """Refetch option chains; auto-calibrate the lit nodes when enabled.
+
+    Each ticker's chain is refetched (marking its nodes stale); if
+    ``autoCalibrate`` is on, a background calibration of ALL lit nodes is then
+    started. Otherwise the nodes stay stale until the user presses Calibrate.
+    """
+    chosen = tickers if tickers is not None else state.active_tickers()
+    fetched, spots = _refresh_chains(state, chosen)
     started = False
     if state.options().autoCalibrate and fetched:
         started = calibrate_all(state, fit_mode)

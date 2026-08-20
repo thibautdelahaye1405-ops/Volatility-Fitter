@@ -52,6 +52,7 @@ function asofLabel(a: AsOfState): string {
 const PENDING_LABEL: Record<WorkflowAction, string> = {
   spots: "Fetching spots…",
   options: "Fetching option quotes…",
+  fetchSnapshot: "Fetching snapshot (quotes + spot)…",
   calibrate: "Calibrating…",
   calibrateParametric: "Calibrating parametric…",
   calibrateLv: "Calibrating local-vol…",

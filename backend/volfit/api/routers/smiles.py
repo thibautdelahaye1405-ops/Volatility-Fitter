@@ -11,6 +11,8 @@ GET  /smiles/{ticker}/{expiry}/table.csv     -> same table as a CSV download
 ([REQ 2026-06-12] table export; assembly in volfit.api.table).
 GET  /smiles/{ticker}/{expiry}/weights       -> per-quote calibration weights
 (V3.4 item 5; poll-safe, assembly in volfit.api.weights_view).
+GET  /smiles/{ticker}/{expiry}/filter/history -> the node's committed filter
+steps (V3.9 item 7; poll-safe, assembly in volfit.api.filter_history).
 """
 
 from __future__ import annotations
@@ -18,10 +20,11 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
-from volfit.api import analytics, observation_filter, service, table, weights_view
+from volfit.api import analytics, filter_history, observation_filter, service, table, weights_view
 from volfit.api.schemas import (
     DensityResponse,
     FilterDiagnostics,
+    FilterHistoryResponse,
     FitMode,
     PriorDiagnostics,
     PriorSavedResponse,
@@ -100,6 +103,21 @@ def get_filter_diagnostics(
     observation, innovation, gain, posterior + covariance audits. Advisory —
     never raises; ``active=False`` when the filter is off or unseeded."""
     return observation_filter.filter_diagnostics(
+        request.app.state.volfit, ticker, expiry, fit_mode
+    )
+
+
+@router.get(
+    "/smiles/{ticker}/{expiry}/filter/history", response_model=FilterHistoryResponse
+)
+def get_filter_history(
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+) -> FilterHistoryResponse:
+    """The node's last <= 64 committed observation-filter steps, oldest first
+    (V3.9 item 7 — the FilterTimeline's feed). Read-only and POLL-SAFE: never
+    fits; ``active=False`` with empty steps when the filter is off or the node
+    has no committed history yet. In-memory only."""
+    return filter_history.history_payload(
         request.app.state.volfit, ticker, expiry, fit_mode
     )
 

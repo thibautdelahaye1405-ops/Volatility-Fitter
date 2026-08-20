@@ -77,12 +77,35 @@ class PriorTickerStatus(BaseModel):
     #: branch it came from and the market moment it reflects.
     activeSource: str | None = None  # "saved" | "15min" | "close" | None
     activeDataTs: str | None = None
+    #: Explicit ages beside the timestamps (V3.9 item 8): day-resolution days
+    #: between the reference date and dataTs / activeDataTs — the same
+    #: convention as the graph solve's _prior_age_days (never negative).
+    ageDays: float | None = None
+    activeAgeDays: float | None = None
 
 
 class PriorStatus(BaseModel):
     """Saved-prior availability across the active universe (GET /priors)."""
 
     tickers: list[PriorTickerStatus]
+
+
+class PriorHistoryEntry(BaseModel):
+    """One saved snapshot's metadata (GET /priors/history/{ticker}) — the
+    store keeps every save; only the latest used to be readable."""
+
+    dataTs: str  # market moment the calibration reflected
+    savedTs: str  # wall-clock save time
+    nodeCount: int
+    asOfLabel: str
+
+
+class PriorHistoryResponse(BaseModel):
+    """A ticker's saved-snapshot history, newest save first; entries[0] is
+    always the same snapshot GET /priors reports as the latest."""
+
+    ticker: str
+    entries: list[PriorHistoryEntry]
 
 
 class PriorSaveResult(BaseModel):

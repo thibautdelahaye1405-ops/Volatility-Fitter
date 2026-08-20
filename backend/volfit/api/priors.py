@@ -184,6 +184,17 @@ def save_all(state: AppState, fit_mode: str = "mid") -> PriorSaveResult:
     return PriorSaveResult(tickers=saved, nodes=total, persisted=persisted and bool(saved))
 
 
+def _age_days(state: AppState, ts: str | None) -> float | None:
+    """Day-resolution age of an ISO data moment vs the reference date — the
+    graph solve's ``_prior_age_days`` convention (never negative), so the
+    /priors readout and the solve's precision ageing can never disagree."""
+    if not ts:
+        return None
+    from volfit.api.graph_extrapolation import _prior_age_days
+
+    return float(_prior_age_days(state, ts))
+
+
 def prior_status(state: AppState) -> PriorStatus:
     """Saved- and active-prior availability per active ticker (for the buttons)."""
     out: list[PriorTickerStatus] = []
@@ -194,6 +205,7 @@ def prior_status(state: AppState) -> PriorStatus:
             ticker=ticker,
             activeSource=state.active_prior_source(ticker),
             activeDataTs=active.dataTs if active is not None else None,
+            activeAgeDays=_age_days(state, active.dataTs if active is not None else None),
         )
         if snap is not None:
             status.dataTs = snap.dataTs
@@ -201,6 +213,7 @@ def prior_status(state: AppState) -> PriorStatus:
             status.asOfLabel = snap.asOfLabel
             status.nodeCount = len(snap.nodes)
             status.hasLvSurface = snap.lvSurface is not None
+            status.ageDays = _age_days(state, snap.dataTs)
         out.append(status)
     return PriorStatus(tickers=out)
 

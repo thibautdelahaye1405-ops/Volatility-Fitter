@@ -584,6 +584,14 @@ def extrapolate(
                 calibrated=sol.calibrated[i],
                 priorSource=meta.source,
                 priorAsOf=meta.as_of,
+                # V3.9 item 8 wire promotion: the same age the baseline
+                # precision was computed with; None when there is no prior
+                # snapshot moment to age (bootstrap / flat baselines).
+                priorAgeDays=(
+                    float(_prior_age_days(state, meta.as_of))
+                    if meta.as_of is not None
+                    else None
+                ),
                 transportDistance=meta.transport_distance,
                 validForValidation=meta.valid_for_validation,
                 priorAtmVol=float(prior_h[0]),

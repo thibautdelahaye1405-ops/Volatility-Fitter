@@ -285,6 +285,11 @@ def baseline_node_infos(state: AppState) -> list[GraphNodeInfo]:
     hierarchy (bootstrap fit, then flat) exactly like a solve would."""
     from volfit.api.graph_universe import build_selected_universe
 
+    # Lazy import: graph_extrapolation lazily imports us (resolve_priors), so a
+    # module-level import here would be a load-order trap. _prior_age_days is
+    # the single ageing convention every prior-age wire field must share.
+    from volfit.api.graph_extrapolation import _prior_age_days
+
     universe = build_selected_universe(state)
     priors = resolve_priors(state, universe)
     return [
@@ -296,6 +301,18 @@ def baseline_node_infos(state: AppState) -> list[GraphNodeInfo]:
             skew=float(prior.handles[1]),
             curvature=float(prior.handles[2]),
             lit=node.lit,
+            # V3.9 item 8: the resolved NodePrior's provenance, previously
+            # dropped at this wire. No prior moment ⇒ priorAsOf/priorAgeDays
+            # stay None (bootstrap / flat baselines have nothing to age).
+            priorSource=prior.source,
+            priorAsOf=prior.as_of,
+            priorAgeDays=(
+                float(_prior_age_days(state, prior.as_of))
+                if prior.as_of is not None
+                else None
+            ),
+            transportDistance=float(prior.transport_distance),
+            priorPrecision=[float(v) for v in prior.precision],
         )
         for node, prior in zip(universe.nodes, priors)
     ]

@@ -122,6 +122,12 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           onChange={(v) => patch({ autoCalibrate: v })}
         />
         <Toggle
+          label="Auto-roll prior on fetch"
+          hint="On: a Snapshot fetch (Fetch ▸ Snapshot: quotes + spot) rolls each ticker's active prior to its latest SAVED snapshot before any auto-calibration (cheap — never a prev-close recalibration). Off: the active prior changes only via Fetch priors."
+          checked={draft.autoRollPriorOnFetch} disabled={!live}
+          onChange={(v) => patch({ autoRollPriorOnFetch: v })}
+        />
+        <Toggle
           label="Stream live book (Massive)"
           hint="On: a streaming source (Massive) auto-opens its real-time WS book so Fetch / Calibrate / spot serve from the fast in-memory book instead of the slow REST snapshot. Off: force REST. No effect on Yahoo / Bloomberg / Synthetic."
           checked={draft.autoStream} disabled={!live}

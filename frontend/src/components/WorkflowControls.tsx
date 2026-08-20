@@ -1,5 +1,5 @@
-// TopBar workflow controls, consolidated: Fetch ▾ (spots / options quotes) ·
-// Calibrate · Priors ▾ (save / fetch).
+// TopBar workflow controls, consolidated: Fetch ▾ (snapshot / spots / options
+// quotes) · Calibrate · Priors ▾ (save / fetch).
 //
 // These are action triggers. The detailed progress narration (what the engine
 // is fetching / calibrating, with gauges and node counts) lives in the bottom
@@ -36,8 +36,8 @@ export default function WorkflowControls({
   /** Worst live-chain age (useDataSources): red = warn on Calibrate. */
   dataAge?: DataAgeInfo | null;
 }) {
-  const { calib, sched, pending, busy, fetchSpots, fetchOptions, calibrate,
-    calibrateParametric, calibrateLv, priors, savePriors, fetchPriors } = workflow;
+  const { calib, sched, pending, busy, fetchSpots, fetchOptions, fetchSnapshot,
+    calibrate, calibrateParametric, calibrateLv, priors, savePriors, fetchPriors } = workflow;
   const redStale = dataAge !== null && dataAge.level === "red";
   const realtimeSpots = sched?.spotMode === "realtime";
   const autoOptions = sched?.optionsFetchMode === "auto";
@@ -51,7 +51,8 @@ export default function WorkflowControls({
   const [fetchOpen, setFetchOpen] = useState(false);
   const [calibOpen, setCalibOpen] = useState(false);
   const [priorsOpen, setPriorsOpen] = useState(false);
-  const fetching = pending === "spots" || pending === "options";
+  const fetching =
+    pending === "spots" || pending === "options" || pending === "fetchSnapshot";
   const calibrating =
     pending === "calibrate" || pending === "calibrateParametric" || pending === "calibrateLv";
   const priorsBusy = pending === "savePriors" || pending === "fetchPriors";
@@ -96,6 +97,15 @@ export default function WorkflowControls({
           {fetching && <WorkingBar />}
         </button>
         <MenuPanel open={fetchOpen} onClose={() => setFetchOpen(false)} width="w-64">
+          {/* The unified verb (V3.7 item 15): quotes + spot in one pull; rolls
+              the active priors to their latest saved snapshots when the Options
+              toggle (Auto-roll prior on fetch) is on, then auto-calibrates. */}
+          <MenuItem
+            label="Snapshot (quotes + spot)"
+            detail="chains + live spots in one pull"
+            disabled={busy}
+            onClick={() => { setFetchOpen(false); void fetchSnapshot(); }}
+          />
           <MenuItem
             label={realtimeSpots ? "Spots · real-time" : "Spots"}
             detail={realtimeSpots ? "streaming (set in Options)" : "refresh live spots now"}

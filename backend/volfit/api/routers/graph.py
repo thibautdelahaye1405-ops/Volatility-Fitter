@@ -37,6 +37,8 @@ from volfit.api.schemas import (
     GraphEdgesResponse,
     GraphExtrapolateRequest,
     GraphExtrapolateResponse,
+    GraphInnovationPoint,
+    GraphInnovationSeries,
     GraphMessageConfigActivateRequest,
     GraphMessageConfigResponse,
     GraphMessageEdgesRequest,
@@ -58,6 +60,23 @@ def get_graph_nodes(request: Request) -> GraphNodesResponse:
     fresh per-request lit flags (the designation is never cached here)."""
     return GraphNodesResponse(
         nodes=graph_nodes.baseline_node_infos(request.app.state.volfit)
+    )
+
+
+@router.get("/graph/innovations/{ticker}", response_model=GraphInnovationSeries)
+def get_graph_innovations(ticker: str, request: Request) -> GraphInnovationSeries:
+    """The ticker's persisted per-(day, expiry) ATM innovation series —
+    'prior vs market distance over time' (V3.9 item 8 evidence), straight
+    from the idio-floor store record_graph_innovations writes on every
+    non-hypothetical solve. Read-only and poll-safe: strictly the stored
+    values converted to vol bp, no fit, no solve. Empty when none recorded."""
+    rows = request.app.state.volfit.graph_innovation_series(ticker.upper())
+    return GraphInnovationSeries(
+        ticker=ticker.upper(),
+        series=[
+            GraphInnovationPoint(day=d, expiry=e, innovationBp=v * 1e4)
+            for d, e, v in rows
+        ],
     )
 
 

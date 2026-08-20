@@ -463,6 +463,32 @@ class VolStore:
             for i, d, s in rows
         ]
 
+    def list_prior_snapshot_meta(self, ticker: str) -> list[dict]:
+        """History metadata of a ticker's snapshots, newest save first:
+        ``[{dataTs, savedTs, nodeCount, asOfLabel}]`` (GET /priors/history).
+
+        The label and node count live inside ``doc_json``; SQLite's json1
+        functions read them in-engine so the (large) documents are never
+        deserialized — a metadata scan stays poll-cheap however many full
+        surface snapshots history holds."""
+        rows = self.conn.execute(
+            "SELECT data_ts, saved_ts, "
+            "json_extract(doc_json, '$.asOfLabel'), "
+            "json_array_length(doc_json, '$.nodes') "
+            "FROM prior_snapshots WHERE ticker = ? "
+            "ORDER BY saved_ts DESC, id DESC",
+            [ticker],
+        ).fetchall()
+        return [
+            {
+                "dataTs": d,
+                "savedTs": s,
+                "asOfLabel": label if label is not None else "",
+                "nodeCount": int(n) if n is not None else 0,
+            }
+            for d, s, label, n in rows
+        ]
+
     def _save_record(
         self,
         table: str,

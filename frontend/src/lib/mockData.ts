@@ -4,6 +4,13 @@
 // return, so swapping this module for a real call is a one-liner in the view:
 //   const smile = await api.get<SmileData>("/smiles/SPX/2026-12-18");
 
+import type { FilterStepWire } from "./filterTimeline";
+import type {
+  InnovationPoint,
+  PriorEvidenceStatus,
+  PriorHistoryEntry,
+} from "./priorEvidence";
+
 /** A single point of a continuous model curve in (log-moneyness, vol) space. */
 export interface SmilePoint {
   /** Log-moneyness k = ln(K / F). */
@@ -342,6 +349,64 @@ export interface CompareResponse {
   models: CompareModelFit[];
 }
 
+/* ------------------------------------------------------------------ */
+/* Prior-persistence evidence (V3.9 item 8)                            */
+/* ------------------------------------------------------------------ */
+
+/** Everything the Prior Evidence tab fetches, in one mock bundle. */
+export interface MockPriorEvidence {
+  status: PriorEvidenceStatus;
+  history: PriorHistoryEntry[];
+  innovations: InnovationPoint[];
+  residualHalfLifeDays: number | null;
+}
+
+/** Deterministic backendless Prior Evidence payload: a 2-day-old saved prior
+ *  with a 3-deep history, and a 10-day × 3-expiry ATM innovation tape whose
+ *  |bp| drifts believably (seeded LCG — no Math.random). */
+export function getMockPriorEvidence(): MockPriorEvidence {
+  const rand = makeLcg(20260610);
+  const days = Array.from({ length: 10 }, (_, i) => {
+    const d = new Date(Date.UTC(2026, 5, 1 + i)); // 2026-06-01 … 2026-06-10
+    return d.toISOString().slice(0, 10);
+  });
+  const expiries = ["2026-09-18", "2026-12-18", "2027-03-19"];
+  const innovations: InnovationPoint[] = [];
+  for (const [j, expiry] of expiries.entries()) {
+    let level = 12 + 6 * j; // farther expiries drift wider in this mock
+    for (const day of days) {
+      level = Math.max(2, level + (rand() - 0.5) * 8);
+      innovations.push({
+        day,
+        expiry,
+        innovationBp: +( (rand() < 0.5 ? -1 : 1) * level ).toFixed(1),
+      });
+    }
+  }
+  const history: PriorHistoryEntry[] = [
+    { dataTs: "2026-06-08T19:45:00", savedTs: "2026-06-08T19:46:12", nodeCount: 8, asOfLabel: "live" },
+    { dataTs: "2026-06-05T19:45:00", savedTs: "2026-06-05T19:47:03", nodeCount: 8, asOfLabel: "live" },
+    { dataTs: "2026-06-01T19:45:00", savedTs: "2026-06-01T19:50:31", nodeCount: 7, asOfLabel: "prev_close 2026-05-29" },
+  ];
+  return {
+    status: {
+      ticker: "SPX",
+      dataTs: history[0].dataTs,
+      savedTs: history[0].savedTs,
+      asOfLabel: history[0].asOfLabel,
+      nodeCount: history[0].nodeCount,
+      hasLvSurface: true,
+      activeSource: "saved",
+      activeDataTs: history[0].dataTs,
+      ageDays: 2,
+      activeAgeDays: 2,
+    },
+    history,
+    innovations,
+    residualHalfLifeDays: 5,
+  };
+}
+
 /** Three plausible mock comparison fits so the Compare view works backendless:
  *  LQD hugs the base smile, SVI heavies the wings a touch, MCS sits slightly
  *  under with a mild |k| tilt — and the MCS row carries a small g-breach so
@@ -380,4 +445,49 @@ export function getMockComparison(): CompareResponse {
       }),
     ],
   };
+}
+
+/** Eight plausible observation-filter history steps (V3.9 item 7): a seed,
+ *  quiet 30-minute updates, one genuine surprise step (large ζ, the adaptive
+ *  Q component tripped, gain snaps toward the data) and one contaminated
+ *  measurement — so every FilterTimeline element is visible backendless. */
+export function getMockFilterHistory(): { active: boolean; steps: FilterStepWire[] } {
+  const t0 = Date.UTC(2026, 5, 10, 14, 0) / 1000;
+  const dt = 1800 / 86400; // the 30-minute calendar-clock charge
+  // ATM observations: quiet drift, then a 1.3-point jump at step 5.
+  const atm = [0.206, 0.205, 0.207, 0.204, 0.206, 0.219, 0.217, 0.216];
+  const steps: FilterStepWire[] = atm.map((z, i) => {
+    const seed = i === 0;
+    const surprise = i === 5;
+    const pred = seed ? z : atm[i - 1];
+    const predStd = seed ? 0.011 : surprise ? 0.013 : 0.006;
+    const obsStd = 0.004;
+    const nu = z - pred;
+    const zeta = nu / Math.sqrt(predStd * predStd + obsStd * obsStd);
+    const k = surprise ? 0.93 : 0.68;
+    const clock = seed ? 0 : 1e-3 * 1e-3 * dt; // (10 bp/√day)² · dt
+    return {
+      ts: t0 + i * 1800,
+      dtDays: seed ? 0 : dt,
+      prediction: [pred, -0.35, 0.1],
+      predictionStd: [predStd, 0.028, 0.31],
+      observation: [z, -0.35 + 0.01 * Math.sin(i), 0.1 + 0.01 * i],
+      observationStd: [obsStd, 0.018, 0.24],
+      innovation: [nu, 0.01 * Math.sin(i), 0.01 * i],
+      zeta: [zeta, 0.4 * Math.sin(i + 1), 0.3],
+      gain: [k, k - 0.12, k - 0.25],
+      posterior: [pred + k * nu, -0.349, 0.1 + 0.007 * i],
+      posteriorStd: [predStd * Math.sqrt(1 - k), 0.02, 0.22],
+      processBreakdown: {
+        clock: [clock, 8.3e-6, 5.2e-5],
+        spot: [2e-8, 5e-8, 1e-6],
+        ...(surprise ? { adaptive: [2.2e-5, 0, 0] } : {}),
+      },
+      transportDistance: seed ? 0 : 0.0012,
+      provenance: seed ? "seed:today_fit" : "update",
+      resetReason: seed ? "first" : null,
+      contaminated: i === 6,
+    };
+  });
+  return { active: true, steps };
 }

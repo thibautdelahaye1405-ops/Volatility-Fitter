@@ -158,6 +158,10 @@ export interface OptionsSettings {
   dynamicsRegime: DynamicsRegime;
   ssr: number;
   autoCalibrate: boolean;
+  /** Unified snapshot fetch (Fetch ▸ Snapshot): roll each ticker's active prior
+   *  to its latest SAVED snapshot before any auto-calibration (the cheap ladder
+   *  branch only — never a prev-close recalibration). Off = legacy sequence. */
+  autoRollPriorOnFetch: boolean;
   /** Master switch for Local-Vol (affine) calibration + the Local Vol tab. */
   localVolEnabled: boolean;
   spotMode: SpotMode;
@@ -242,6 +246,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   dynamicsRegime: "sticky_strike",
   ssr: 2.0,
   autoCalibrate: true,
+  autoRollPriorOnFetch: false,
   localVolEnabled: true,
   spotMode: "static",
   spotPollSeconds: 5.0,

@@ -35,6 +35,7 @@ from dataclasses import dataclass, replace
 
 import numpy as np
 
+from volfit.api import filter_history
 from volfit.api.filter_mode import FILTER_HANDLES, resolve_filter_mode
 from volfit.api.graph_nodes import resolve_node_prior
 from volfit.api.prior_mode import resolve_prior_mode
@@ -473,6 +474,7 @@ def on_fit_commit(
         if holder is None:
             return prev  # no solver Jacobian retained (cached path): keep state
         state.set_filter_node(key, holder)
+        filter_history.record_commit(state, key, holder, prev, ts_now)
         return holder
 
     measurement = _measurement(state, ticker, iso, record, solver_diag)
@@ -519,6 +521,7 @@ def on_fit_commit(
         forward=f_now,
     )
     state.set_filter_node(key, holder)
+    filter_history.record_commit(state, key, holder, prev, ts_now)
     return holder
 
 
@@ -636,6 +639,9 @@ def filter_diagnostics(state: AppState, ticker: str, expiry: str, fit_mode: str)
     if holder.curves is None:  # once per committed state, not per GET
         holder.curves = _overlay_curves(state, ticker, iso, fit_mode, holder)
     post, band_lo, band_hi, pred_curve = holder.curves
+    # Typed zeta/chi2 (V3.9 item 7): the PRE-inflation standardized innovation
+    # and its chi^2 (distinct from the breakdown's FIT-residual chi2).
+    zeta = filter_history.zeta_of(holder)
     return FilterDiagnostics(
         active=True,
         mode=plan.mode,
@@ -656,6 +662,8 @@ def filter_diagnostics(state: AppState, ticker: str, expiry: str, fit_mode: str)
         processBreakdown={
             k: [float(x) for x in v] for k, v in pred.q_breakdown.items()
         },
+        zeta=None if zeta is None else [float(v) for v in zeta],
+        chi2=None if zeta is None else float(np.dot(zeta, zeta)),
         post=post,
         postBandLo=band_lo,
         postBandHi=band_hi,

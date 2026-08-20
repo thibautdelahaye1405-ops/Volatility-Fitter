@@ -9,6 +9,8 @@ POST /calibrate/{ticker}            -> (re)calibrate one ticker's lit expiries (
 POST /calibrate/{ticker}/{expiry}   -> (re)calibrate one node (sync)
 POST /fetch/spots                   -> probe live spots -> transport (no refit)
 POST /fetch/options                 -> refetch chains (+ auto-calibrate if enabled)
+POST /fetch/snapshot                -> unified: chains -> spot transport -> cheap
+                                       prior roll (autoRollPriorOnFetch) -> auto-calibrate
 POST /priors/seed                   -> seed previous-close priors on demand
 """
 
@@ -20,7 +22,7 @@ from time import monotonic
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from volfit.api import workflow
+from volfit.api import workflow, workflow_fetch
 from volfit.api.schemas import (
     CalibrationStatus,
     FetchRequest,
@@ -173,6 +175,18 @@ def fetch_options(
 ) -> FetchResult:
     state = request.app.state.volfit
     return workflow.fetch_options(state, body.tickers, _mode(state, fit_mode))
+
+
+@router.post("/fetch/snapshot", response_model=FetchResult)
+def fetch_snapshot(
+    body: FetchRequest, request: Request, fit_mode: FitMode | None = None
+) -> FetchResult:
+    """Unified fetch (V3.7 item 15): refresh chains, transport the spot shift
+    (no refit), roll the active priors to their latest SAVED snapshots when
+    ``autoRollPriorOnFetch`` is on (the cheap ladder branch only), then
+    auto-calibrate when enabled. /fetch/spots + /fetch/options stay verbatim."""
+    state = request.app.state.volfit
+    return workflow_fetch.fetch_snapshot(state, body.tickers, _mode(state, fit_mode))
 
 
 @router.post("/priors/seed", response_model=dict[str, int])

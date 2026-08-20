@@ -149,6 +149,13 @@ class IdioHistory:
                 del days[stale]
         return True
 
+    def series(self, ticker: str) -> list[tuple[str, str, float]]:
+        """All recorded (day, node, value) rows for a ticker, (day, node)
+        ordered — the evidence read-out (GET /graph/innovations); strictly
+        the stored values, nothing recomputed."""
+        days = self._data.get(ticker, {})
+        return [(d, n, days[d][n]) for d in sorted(days) for n in sorted(days[d])]
+
     def entries_before(self, ticker: str, day_iso: str) -> list[tuple[str, float]]:
         """The ticker's (day, innovation) records strictly before ``day_iso``."""
         return [
