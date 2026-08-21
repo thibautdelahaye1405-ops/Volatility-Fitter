@@ -613,6 +613,37 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21c) — MASSIVE INCREMENTAL (UN)SUBSCRIBE
+
+Market-data sourcing arc: the Massive WebSocket client now edits its live
+subscription in place, like Bloomberg (wrap 2026-08-20f).
+
+- `data/massive_ws.py`: thread-safe `subscribe(contracts)` /
+  `unsubscribe(contracts)` update the LIVE contract set (under a lock; the
+  `contracts` property — what `streaming_contracts()` reports — reads it) and
+  post an op the session coroutine turns into a `{"action":"subscribe"|
+  "unsubscribe","params":"Q.O:…"}` frame on the OPEN connection. The consume
+  loop now `asyncio.wait`s over {next frame, next op} (the quote-grace timeout
+  still polices a silent cluster); the op queue is fresh per session and the
+  session (re)subscribes the whole live set on (re)connect, so an op lost to
+  a dropping connection is recovered; posting with no live session is a
+  harmless no-op (the set already carries it). `LiveBook.remove` forgets
+  dropped contracts at once.
+- `MassiveProvider.update_streaming(contracts)`: diff vs the live set →
+  subscribe new / unsubscribe gone; starts when not running; stops on an
+  empty universe; returns `(added, removed)`. `AppState.sync_streaming`
+  already prefers `update_streaming` → Massive universe edits no longer
+  restart the WS (the 2026-08-20f caveat is closed).
+- Tests: `tests/test_massive_ws_incremental.py` 4 (ops sent on the live conn
+  in order + book forgets at once; reconnect subscribes the live set incl.
+  ops posted between sessions; LiveBook.remove; provider diff/stop). Existing
+  WS/scheduler/Bloomberg suites unchanged (58 green together). Not smoke-
+  tested live here (no Massive key in this environment) — the wire shapes
+  are the documented Polygon subscribe/unsubscribe actions.
+- **Sourcing arc status**: Bloomberg push feed → live table → live chart →
+  incremental edits (both streaming sources) → two-frame viewer + table all
+  DONE. Remaining: the non-streaming sources' refresh cadence (Yahoo).
+
 ### 🧭 SESSION WRAP (2026-08-21b) — QUOTE TABLE ON THE TWO-FRAME GRAMMAR
 
 The Quote Table now mirrors the chart: one row per STRIKE joining the

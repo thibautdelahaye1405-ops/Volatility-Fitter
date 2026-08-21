@@ -12,6 +12,13 @@ The message parsing / book update is a pure, synchronous ``LiveBook`` (fully
 unit-testable); the transport is a thin asyncio loop with an injectable
 ``connect`` factory so tests drive it with a fake connection and never open a
 socket. Reconnects with capped backoff; a daemon thread so it never blocks exit.
+
+Universe edits are INCREMENTAL: ``subscribe`` / ``unsubscribe`` (thread-safe,
+callable from the scheduler) update the live contract set and post an op the
+session coroutine turns into a ``{"action": "subscribe"|"unsubscribe"}`` frame
+on the open connection — no reconnect, no repaint of the rest. The live set is
+what a reconnect (re)subscribes whole, so an op lost to a dropping connection
+is never lost for long; the book forgets unsubscribed contracts at once.
 """
 
 from __future__ import annotations
@@ -81,6 +88,13 @@ class LiveBook:
         with self._lock:
             return len(self._quotes)
 
+    def remove(self, contracts: list[str]) -> None:
+        """Forget unsubscribed contracts so a stale last tick can never be served
+        for an option the universe dropped."""
+        with self._lock:
+            for c in contracts:
+                self._quotes.pop(c, None)
+
     def clear(self) -> None:
         with self._lock:
             self._quotes.clear()
@@ -130,7 +144,8 @@ class MassiveWebSocket:
         quote_grace: float = 6.0,
     ) -> None:
         self._key = api_key
-        self._contracts = list(contracts)
+        self._contracts = list(dict.fromkeys(contracts))
+        self._lock = threading.Lock()
         self._book = book
         self._urls = list(urls) if urls else [url]
         self._idx = 0
@@ -139,6 +154,10 @@ class MassiveWebSocket:
         self._quote_grace = quote_grace
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        #: Published by the running session: its loop + op queue, so
+        #: ``subscribe``/``unsubscribe`` from other threads can hand it frames.
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._ops: asyncio.Queue | None = None
 
     # ----------------------------------------------------------- lifecycle
     def start(self) -> None:
@@ -157,8 +176,44 @@ class MassiveWebSocket:
 
     @property
     def contracts(self) -> list[str]:
-        """The contract set this client is subscribed to (for resubscribe diffing)."""
-        return list(self._contracts)
+        """The LIVE subscribed set (for resubscribe diffing; pending ops included)."""
+        with self._lock:
+            return list(self._contracts)
+
+    # ------------------------------------------------ incremental updates
+    def subscribe(self, contracts: list[str]) -> list[str]:
+        """Add contracts to the live stream without reconnecting (a subscribe
+        frame on the open connection). Returns the ones actually new."""
+        with self._lock:
+            have = set(self._contracts)
+            new = [c for c in dict.fromkeys(contracts) if c not in have]
+            self._contracts.extend(new)
+        if new:
+            self._post(("subscribe", new))
+        return new
+
+    def unsubscribe(self, contracts: list[str]) -> list[str]:
+        """Drop contracts from the live stream (and the book) without reconnecting.
+        Returns the ones actually removed."""
+        with self._lock:
+            drop = set(contracts)
+            gone = [c for c in self._contracts if c in drop]
+            self._contracts = [c for c in self._contracts if c not in drop]
+        if gone:
+            self._book.remove(gone)
+            self._post(("unsubscribe", gone))
+        return gone
+
+    def _post(self, op: tuple[str, list[str]]) -> None:
+        """Hand an op to the live session (no-op without one: the next session
+        subscribes the whole live set, which already reflects the op)."""
+        loop, queue = self._loop, self._ops
+        if loop is None or queue is None or loop.is_closed():
+            return
+        try:
+            loop.call_soon_threadsafe(queue.put_nowait, op)
+        except RuntimeError:  # loop shutting down between sessions
+            pass
 
     # --------------------------------------------------------------- loop
     def _run(self) -> None:
@@ -191,32 +246,61 @@ class MassiveWebSocket:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2.0, self._max_backoff)
 
+    @staticmethod
+    def _frame(action: str, contracts: list[str]) -> str:
+        return json.dumps({"action": action, "params": ",".join(f"Q.{c}" for c in contracts)})
+
     async def _session(self, url: str | None = None) -> bool:
         """One connect → auth → subscribe → consume pass against ``url``. Returns
         whether any quote arrived (so the loop can tell a serving cluster from a
-        silent one)."""
+        silent one). Incremental ops posted meanwhile are sent on this
+        connection as they arrive (``asyncio.wait`` over the next frame and the
+        next op), with the quote-grace timeout still policing a silent cluster."""
         url = url or self._urls[self._idx]
         connect = self._connect or (lambda: self._default_connect(url))
         got_data = False
-        async with connect() as conn:
-            await conn.send(json.dumps({"action": "auth", "params": self._key}))
-            if self._contracts:
-                params = ",".join(f"Q.{c}" for c in self._contracts)
-                await conn.send(json.dumps({"action": "subscribe", "params": params}))
-            aiter = conn.__aiter__()
-            while not self._stop.is_set():
+        ops: asyncio.Queue = asyncio.Queue()  # fresh per session: the live set carries history
+        self._loop, self._ops = asyncio.get_running_loop(), ops
+        try:
+            async with connect() as conn:
+                await conn.send(json.dumps({"action": "auth", "params": self._key}))
+                contracts = self.contracts
+                if contracts:
+                    await conn.send(self._frame("subscribe", contracts))
+                aiter = conn.__aiter__()
+                recv = asyncio.ensure_future(aiter.__anext__())
                 try:
-                    raw = await asyncio.wait_for(aiter.__anext__(), timeout=self._quote_grace)
-                except asyncio.TimeoutError:
-                    if got_data:
-                        continue  # a quiet moment on a working cluster — keep waiting
-                    break  # silent since connect → this cluster isn't serving us
-                except (StopAsyncIteration, RuntimeError):
-                    break  # connection closed / iterator exhausted → reconnect
-                events = _parse(raw)
-                self._book.apply(events)
-                if any(ev.get("ev") == "Q" for ev in events):
-                    got_data = True
+                    while not self._stop.is_set():
+                        op_task = asyncio.ensure_future(ops.get())
+                        done, _pending = await asyncio.wait(
+                            {recv, op_task},
+                            timeout=self._quote_grace,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if op_task in done:
+                            action, items = op_task.result()
+                            if items:
+                                await conn.send(self._frame(action, items))
+                        else:
+                            op_task.cancel()
+                        if recv in done:
+                            try:
+                                raw = recv.result()
+                            except (StopAsyncIteration, RuntimeError):
+                                break  # connection closed / iterator exhausted → reconnect
+                            events = _parse(raw)
+                            self._book.apply(events)
+                            if any(ev.get("ev") == "Q" for ev in events):
+                                got_data = True
+                            recv = asyncio.ensure_future(aiter.__anext__())
+                        elif not done:
+                            if got_data:
+                                continue  # a quiet moment on a working cluster — keep waiting
+                            break  # silent since connect → this cluster isn't serving us
+                finally:
+                    recv.cancel()
+        finally:
+            self._loop, self._ops = None, None
         return got_data
 
     def _default_connect(self, url: str):

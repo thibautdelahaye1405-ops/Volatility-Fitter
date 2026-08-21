@@ -452,6 +452,24 @@ class MassiveProvider(OptionChainProvider):
         )
         self._ws.start()
 
+    def update_streaming(self, contracts: list[str]) -> tuple[list[str], list[str]]:
+        """INCREMENTAL universe edit on the live WebSocket (volfit.data.massive_ws):
+        subscribe only the new contracts, unsubscribe only the gone ones — no
+        reconnect, the rest keeps ticking; the book forgets the dropped ones.
+        Starts a stream when none is running, stops on an empty universe.
+        Returns ``(added, removed)``."""
+        if not self.is_streaming() or self._ws is None:
+            self.start_streaming(contracts)
+            return (list(dict.fromkeys(contracts)), [])
+        if not contracts:
+            self.stop_streaming()
+            return ([], [])
+        wanted = list(dict.fromkeys(contracts))
+        have = set(self._ws.contracts)
+        added = self._ws.subscribe([c for c in wanted if c not in have])
+        removed = self._ws.unsubscribe([c for c in have if c not in set(wanted)])
+        return (added, removed)
+
     def stop_streaming(self) -> None:
         """Tear down the WebSocket and drop the live book (back to REST live)."""
         if self._ws is not None:
