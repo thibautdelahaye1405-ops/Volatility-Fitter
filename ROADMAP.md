@@ -613,6 +613,77 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21e) — SECOND EXCHANGE ADAPTER: NASDAQ
+
+- `data/nasdaq.py` on the exchange seam (no seam change except an optional
+  per-adapter `headers` dict merged into the pooled client): chain JSON
+  `api.nasdaq.com/api/quote/{SYM}/option-chain?assetclass=…&limit=0…`
+  (whole chain in one call; SPY 6.9k strike-rows / 2.7 MB / ~1.5 s), one row
+  per STRIKE carrying both sides (`c_*` / `p_*`: Bid/Ask/Last/Volume/OI as
+  strings with thousands separators, `"--"` = missing) + group-header rows;
+  the exact expiry is parsed from `drillDownURL` (`…/spy---260821c00360000`,
+  group header = fallback); asset class discovered `stocks → etf → index`
+  (wrong class = `status.rCode 400`, no rows) and cached per symbol;
+  `/info` `primaryData.lastSalePrice` = live spot, `data.lastTrade` fallback;
+  index → European; no publication stamp → chains stamped `now − 15 min`.
+  Coverage: every US class + Nasdaq indices (NDX/NDXP); SPX/VIX/RUT are
+  Cboe-only. Registered `nasdaq` (auto-pick Bloomberg → Cboe → Nasdaq →
+  Yahoo → Massive → Synthetic), label "Nasdaq (delayed)", `restart.ps1
+  -Nasdaq`, CLAUDE.md switches; catalog doc updated (Nasdaq = shipped).
+- Live 2026-08-21: status amber 0.5 s; SPY (etf) 31 expiries, 716 quotes /
+  624 two-sided, spot 765.98 live; NDX European 43 expiries; AAPL (stocks)
+  22; app fit SPY 26-Aug ATM 11.78 % / RMS 4.6 bp vs Cboe 11.73 % / 4.8 bp
+  (a second book agreeing within a bp); data-age pill 15 m.
+- Tests `tests/test_nasdaq.py` 5 (+1 live-gated): number/text parsers,
+  drilldown/group dates, side split + blanks, delay stamp + styles, asset-
+  class discovery/caching + lastTrade fallback, spot/status/unknown symbol.
+  Suite green.
+- Next candidates (doc): ASX (needs the expiry selector param), TMX HTML,
+  Eurex (EOD stats only publicly), NSE (cookie handshake).
+
+### 🧭 SESSION WRAP (2026-08-21d) — NEW SOURCE: EXCHANGE DELAYED CHAINS (CBOE FIRST)
+
+User ask: exchange-published DELAYED option chains with the real bid/ask
+(better than Yahoo's mid) — start with Cboe, then expand worldwide where
+quotes are ingestible. Catalog + how-to: **Docs/exchange_delayed_sources.md**.
+
+- **Seam** `data/exchange.py`: `ExchangeAdapter` protocol (`fetch_chain →
+  RawChain` in one round-trip, `fetch_spot`, `probe`) + generic
+  `ExchangeChainProvider` (OptionChainProvider): per-ticker raw-chain cache
+  (60 s; the venue files are MBs, refreshed ~1/min), expiry filtering, the
+  VENUE publication time as the chain stamp (honest data age), amber "~N-min
+  delayed" / red unreachable or last-symbol-refused status (60 s TTL), light
+  spot read for the real-time poll, injectable `fetch_json` (offline tests).
+- **Cboe** `data/cboe.py`: `cdn.cboe.com/api/global/delayed_quotes/options/
+  {SYM}.json` (indices `_SPX`…; SPXW lives in `_SPX`), OCC symbols parsed by
+  `data/occ.py`, bid/ask/sizes/OI/volume/last, `security_type` index →
+  European; top-level `timestamp` = publication time UTC (matches the CDN
+  Last-Modified); unknown symbol = 403/XML → ValueError. Symbol shapes
+  accepted: `SPY`, `SPX`/`^SPX`/`SPX Index`/`SPXW`.
+- **Registration**: `serve.py` id `cboe` (auto-pick order Bloomberg → Cboe →
+  Yahoo → Massive → Synthetic), `SOURCE_LABELS` "Cboe (delayed)",
+  `restart.ps1 -Cboe`.
+- **Live (2026-08-21)**: status amber 0.4 s; SPY 31 expiries / 716 quotes in
+  two expiries, 624 two-sided, publication stamp 11:45:27 UTC; SPX 51
+  expiries, European; through the app: SPY 26-Aug fit from 64 bid/ask quotes
+  (ATM 11.7 %, RMS 4.8 bp, 1.7 s), SPX fit (134 quotes), table market rows,
+  data-age pill 10 m at the Cboe stamp.
+- **Tests**: `tests/test_cboe.py` 10 (+1 live-gated): symbol mapping, UTC
+  stamp, parse conventions (0 bid → None, NaN volume → None, non-OCC rows
+  skipped, index → European), expiries/chain/cache (one download serves
+  everything), index file, light spot + fallback, unknown-symbol error +
+  status, unreachable, empty selection. Suite green.
+- **Probed for the expansion** (details in the doc): Nasdaq JSON chain with
+  c/p bid/ask ✅ (next, US second book); ASX Markit JSON with per-series
+  bid/ask ✅ but the expiry selector param is not the obvious one (nearest
+  expiry only until the XHR is captured); TMX Montréal HTML table ✅ (scrape);
+  Eurex public API = EOD statistics only (delayed quotes behind the web app);
+  NSE needs a cookie handshake; CME blocks scripts (403); HKEX/Euronext/JPX
+  not located/probed.
+- Note: `default_settlement(e, root="SPX")` tagged a Monday SPXW expiry "am"
+  in the smoke — pre-existing root/settlement rule worth a look when SPXW
+  dailies are in play (Yahoo ^SPX has the same path).
+
 ### 🧭 SESSION WRAP (2026-08-21c) — MASSIVE INCREMENTAL (UN)SUBSCRIBE
 
 Market-data sourcing arc: the Massive WebSocket client now edits its live

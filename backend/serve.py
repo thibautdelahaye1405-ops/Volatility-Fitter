@@ -3,13 +3,14 @@
 Run from the repo root (volfit is pip-installed editable in .venv):
     .venv\\Scripts\\python backend\\serve.py
 
-All four data sources are registered so the in-app Data Source selector can
+All data sources are registered so the in-app Data Source selector can
 switch between them at runtime; the *active* one on launch is chosen below.
 
 Environment variables:
     VOLFIT_PROVIDER  Force the active source on launch ("synthetic", "yahoo",
-                     "bloomberg", "massive"). Unset (default) = best-reachable
-                     auto-pick (bloomberg -> yahoo -> massive -> synthetic).
+                     "cboe", "nasdaq", "bloomberg", "massive"). Unset (default)
+                     = best-reachable auto-pick (bloomberg -> cboe -> nasdaq ->
+                     yahoo -> massive -> synthetic).
     VOLFIT_TICKERS   comma-separated watchlist (default SPY,QQQ,AAPL)
     VOLFIT_MASSIVE_KEY  Massive API key; without it Massive shows Red.
     VOLFIT_DB        SQLite path for fit-history persistence (every fit is
@@ -28,7 +29,9 @@ import uvicorn
 from volfit.api.app import create_app
 
 #: Preference order for the best-reachable auto-pick (richest feed first).
-_AUTO_ORDER = ("bloomberg", "yahoo", "massive", "synthetic")
+#: Cboe's delayed chains carry the real bid/ask (Yahoo only yields a usable
+#: mid), so the exchange source ranks above Yahoo.
+_AUTO_ORDER = ("bloomberg", "cboe", "nasdaq", "yahoo", "massive", "synthetic")
 
 
 def _watchlist() -> list[str]:
@@ -56,13 +59,23 @@ def _build_providers() -> dict:
     from datetime import date
 
     from volfit.data.bloomberg import BloombergProvider
+    from volfit.data.cboe import CboeAdapter
+    from volfit.data.exchange import ExchangeChainProvider
     from volfit.data.massive import MassiveProvider
+    from volfit.data.nasdaq import NasdaqAdapter
     from volfit.data.provider import SyntheticProvider
     from volfit.data.yahoo import YahooProvider
 
     tickers = _watchlist()
     return {
         "yahoo": YahooProvider(tickers),
+        # Exchange-published DELAYED chains with real bid/ask (volfit.data.exchange):
+        # Cboe first (every US-listed option class + the Cboe cash indices), free,
+        # unmetered, ~15-min delayed. Further venues plug in as adapters.
+        "cboe": ExchangeChainProvider(tickers, CboeAdapter()),
+        # Nasdaq: the same US universe off a second (OPRA-consolidated) book +
+        # the Nasdaq indices (NDX...); SPX/VIX/RUT are Cboe-only.
+        "nasdaq": ExchangeChainProvider(tickers, NasdaqAdapter()),
         # //blp/mktdata streaming knobs (volfit.data.bloomberg_live): conflation
         # seconds (0 = every tick), concurrent-subscription budget, DAPI endpoint.
         "bloomberg": BloombergProvider(

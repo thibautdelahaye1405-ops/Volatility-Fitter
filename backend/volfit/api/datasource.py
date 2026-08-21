@@ -20,6 +20,8 @@ SOURCE_LABELS = {
     "yahoo": "Yahoo Finance",
     "bloomberg": "Bloomberg",
     "massive": "Massive",
+    "cboe": "Cboe (delayed)",
+    "nasdaq": "Nasdaq (delayed)",
     "synthetic": "Synthetic",
 }
 
