@@ -31,7 +31,6 @@ import { useObservationFilter } from "../state/useObservationFilter";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
-import { useMassiveIv } from "../state/useMassiveIv";
 import { useLiveTicks } from "../state/useLiveTicks";
 import { composeFrames } from "../lib/smileLayers";
 import { useModelComparison } from "../state/useModelComparison";
@@ -117,8 +116,6 @@ export default function SmileViewer() {
   const [view, setView] = useState<ChartView>("smile");
   // Strike-axis display mode of the smile chart (labels only).
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
-  // Read-only Massive-IV comparison overlay toggle (Massive provider only).
-  const [showMassiveIv, setShowMassiveIv] = useState(false);
   // Fit-target overlay (V3.4 item 4): mid polyline + bid-ask/haircut ribbons.
   const [showTarget, setShowTarget] = useState(true);
   // Calibration frame toggles: the quotes + target the last fit used (off by
@@ -191,16 +188,6 @@ export default function SmileViewer() {
     expiry,
     fitMode,
     spotVersion,
-  );
-
-  // Read-only Massive-IV comparison overlay for the current node (null unless
-  // the toggle is on, the smile view is active, and the provider is Massive).
-  const massiveIvCurve = useMassiveIv(
-    live,
-    ticker,
-    expiry,
-    smile?.forward ?? 0,
-    showMassiveIv && view === "smile",
   );
 
   // Graph-extrapolation live overlay (plan Phase 5): when the user drilled into
@@ -302,7 +289,6 @@ export default function SmileViewer() {
             prior={smile.prior}
             priorTransported={smile.priorTransported}
             scenario={scenarioCurve}
-            massiveIv={massiveIvCurve}
             kWindow={kWindow}
             onKWindowChange={setKWindow}
             fullRange={[smile.kMin, smile.kMax]}
@@ -503,22 +489,6 @@ export default function SmileViewer() {
             onClick={() => setShowWeights((v) => !v)}
           >
             Weights
-          </button>
-        )}
-        {/* Read-only Massive-IV overlay toggle (no-op unless the backend
-            runs the Massive provider; the dots simply won't appear). */}
-        {view === "smile" && live && (
-          <button
-            className={[
-              "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
-              showMassiveIv
-                ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
-                : "border-slate-700 text-slate-400 hover:text-slate-200",
-            ].join(" ")}
-            title="Overlay Massive's own implied vols (read-only comparison)"
-            onClick={() => setShowMassiveIv((v) => !v)}
-          >
-            Massive IV
           </button>
         )}
       </UniverseHeader>

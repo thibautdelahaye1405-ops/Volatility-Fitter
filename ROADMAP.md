@@ -6062,8 +6062,9 @@ sits next to the model label.
     (live-verified: 32 expiries, spot 741.75, 291/366 usable mids).
   * **Massive IV overlay** (`api/routers/massive_iv.py`, GET
     /massive/iv/{ticker}): Massive's own American IV/greeks per contract as a
-    read-only comparison (entitled without quotes). Frontend toggle in the
-    Smile Viewer (`state/useMassiveIv.ts` + cyan OTM scatter on SmileChart).
+    read-only comparison (entitled without quotes). The Smile Viewer toggle
+    (`useMassiveIv.ts` + cyan scatter) was removed on 2026-08-21 as unused;
+    the endpoint remains as an API-only diagnostic.
   * Wiring: `serve.py`/`snapshot.py`/`restart.ps1` gain `bloomberg`/`massive`
     selection (`VOLFIT_PROVIDER`, `VOLFIT_MASSIVE_KEY`; `restart.ps1
     -Bloomberg`/`-Massive`). Shared `data/fieldmap.py` (price/int coercion,

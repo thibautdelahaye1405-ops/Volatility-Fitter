@@ -64,8 +64,6 @@ interface SmileChartProps {
   onQuoteSelect?: (index: number | null) => void;
   /** SSR scenario overlay (shifted smile); drawn dotted amber when set. */
   scenario?: SmilePoint[] | null;
-  /** Massive provider's IV points (read-only comparison); cyan dots when set. */
-  massiveIv?: SmilePoint[] | null;
   /** Active var-swap quote vol — drawn as a horizontal teal line when set. */
   varSwapLevel?: number | null;
   /** Graph-extrapolated reconstructed smile (plan Phase 5 overlay): solid violet
@@ -141,7 +139,6 @@ export default function SmileChart({
   selectedIndex = null,
   onQuoteSelect,
   scenario = null,
-  massiveIv = null,
   varSwapLevel = null,
   graphPost = null,
   graphBandLo = null,
@@ -427,11 +424,6 @@ export default function SmileChart({
             <span className="h-0 w-5 border-t-2 border-dotted border-amber-400" /> SSR scenario
           </span>
         )}
-        {massiveIv && massiveIv.length > 0 && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> Massive IV
-          </span>
-        )}
         {varSwapLevel !== null && (
           <span className="flex items-center gap-1.5">
             <span className="h-0 w-5 border-t-2 border-dashed border-teal-400" /> Var-swap
@@ -601,17 +593,6 @@ export default function SmileChart({
                   <path d={filterPostPath} fill="none" stroke="rgb(20 184 166 / 0.95)"
                     strokeWidth={2} strokeLinejoin="round" pointerEvents="none" />
                 )}
-
-                {/* Massive IV overlay: read-only cyan dots */}
-                {(massiveIv ?? []).map((p, i) => {
-                  if (p.vol < yScale.domain[0] || p.vol > yScale.domain[1]) return null;
-                  const x = xScale.map(tx(p.k));
-                  if (x < 0 || x > plotW) return null;
-                  return (
-                    <circle key={`miv${i}`} cx={x} cy={yScale.map(p.vol)}
-                      r={2} fill="rgb(34 211 238 / 0.85)" pointerEvents="none" />
-                  );
-                })}
 
                 {/* Quote-derived confidence band around the current fit
                     (±1.96·σ_atm from the fit's own Jacobian + bid-ask noise). */}
