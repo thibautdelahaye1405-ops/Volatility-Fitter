@@ -613,6 +613,55 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21j) — CALIBRATE: THREE FIRST-CLASS SCOPES (PARAM + LV / PARAM ONLY / LV ONLY)
+
+User: "Calibrate: allow 3 possibilities instead of just 2: Param+LV, Param
+only, LV only". The V3.5 split control ran the parametric-only verb on its
+face and hid the other two in the chevron menu (two rows). Now the menu
+lists the THREE scopes as peers — "Parametric + LV" (POST /calibrate; LV
+still gated server-side by the Options toggle), "Parametric only"
+(POST /calibrate/parametric; LV surfaces go/stay stale) and "Local-Vol
+only" (POST /calibrate/lv; no parametric refit) — ✓ on the current one; the
+face runs the LAST CHOSEN scope and names it ("Calibrate · Param only"),
+sticky across reloads (localStorage `volfit.calibScope`, default Param + LV).
+Badge: stale parametric nodes for the parametric scopes, stale LV surfaces
+for LV only; per-row detail mirrors the server semantics. Pure helpers in
+`frontend/src/lib/calibScope.ts` (labels, storage, badge, detail; 4 vitest),
+`WorkflowControls.tsx` is presentation only; no backend change (the three
+verbs existed). Frontend 223 vitest + tsc green.
+
+### 🧭 SESSION WRAP (2026-08-21i) — EVERY REPORTED RMS / MAX ERROR SCORES THE CHOSEN FIT TARGET
+
+User: "RMS: compute the RMS to target (mid or bid-ask or haircut, depending
+on the chosen target option), not to mid always". Audit: the Parametric
+smile / surface RMS (`service.weighted_rms_error` → `calib.rms.node_error_terms`)
+already scored the target (mid distance, or the band VIOLATION — zero inside
+the bid-ask / haircut band), but three families of numbers still measured
+|model − mid| whatever the mode: the Local-Vol surface headline
+`rms · conv · max bp` (`affine_fit._iv_error_bp` → `rmsIvErrorBp`,
+`rmsConvergedBp`, `maxIvErrorBp`, per-smile `maxIvErrorBp`, the Quality tab's
+LV column), the model-compare `Max bp` column, and the parametric
+`max_iv_error` (LQD `calibrate_slice`, SVI-JW, the joint symmetric stack,
+the overlay `_max_iv_error`) that feeds Term / history / quality `maxIvBp`.
+
+- `calib/rms.py`: ONE per-quote error vector `quote_errors(model, mid, band)`
+  (signed model − mid when band is None; `band_violation` otherwise) +
+  `max_quote_error`; `node_error_terms` now reads it. Every site above routes
+  through it (the band is already in scope at each: the LV rows carry it,
+  compare resolves it, the slice calibrators receive `band=`, the stack's
+  `spec.fit_kwargs["band"]`, the overlays' `build_display_fit(band=)`).
+  Mid mode is byte-identical (band None → the old expression).
+- Evidence (synthetic book): compare bidask → every family rms 0.0 / max 0.0
+  (was max 13.19 bp for LQD with rms 0.0 — the mid distance); LV bidask
+  conv 0.49 bp (was 46.57, mid-based), haircut 6.27 bp; smile mid 6.68 bp
+  vs bidask 0.00 bp unchanged (already target-based).
+- UI: hover help on the LV headline and the compare `RMS bp` / `Max bp`
+  headers naming the target. Tests: `test_rms.py` +1 (quote_errors/max),
+  `test_api_compare.py` +1 (band-mode rows: rms 0 ⇒ max 0),
+  `test_api_affine.py` band-mode invariants. Not touched: the transported
+  (spot-shift) overlay's max stays mid-based (no band in scope); LV
+  `rmsPriceError` is the solver's own price residual.
+
 ### 🧭 SESSION WRAP (2026-08-21h) — SIXTH EXCHANGE ADAPTER: EUREX (DELAYED QUOTES + THE EOD SETTLEMENT TIER)
 
 User: "Now the Eurex adapter via the headless capture". The OESX/ODAX

@@ -11,6 +11,16 @@ import { useRef, useState } from "react";
 import { Bookmark, ChevronDown, Download, Play, TriangleAlert } from "lucide-react";
 import type { DataAgeInfo } from "../state/useDataSources";
 import type { UseWorkflowResult } from "../state/useWorkflow";
+import {
+  CALIB_SCOPES,
+  SCOPE_LABEL,
+  SCOPE_SHORT,
+  readCalibScope,
+  scopeBadge,
+  scopeDetail,
+  writeCalibScope,
+  type CalibScope,
+} from "../lib/calibScope";
 import { MenuItem, MenuPanel } from "./topbar/Menu";
 
 const BTN =
@@ -51,6 +61,15 @@ export default function WorkflowControls({
   const [fetchOpen, setFetchOpen] = useState(false);
   const [calibOpen, setCalibOpen] = useState(false);
   const [priorsOpen, setPriorsOpen] = useState(false);
+  // Calibrate scope — three first-class choices (Param + LV / Param only /
+  // LV only); the face runs the LAST chosen one and names it; sticky.
+  const [calibScope, setCalibScope] = useState<CalibScope>(() => readCalibScope());
+  const runScope = (scope: CalibScope) => {
+    setCalibScope(scope);
+    writeCalibScope(scope);
+    return scope === "both" ? calibrate() : scope === "parametric" ? calibrateParametric() : calibrateLv();
+  };
+  const scopeCount = scopeBadge(calibScope, stale, lvStale);
   const fetching =
     pending === "spots" || pending === "options" || pending === "fetchSnapshot";
   const calibrating =
@@ -121,21 +140,25 @@ export default function WorkflowControls({
         </MenuPanel>
       </div>
 
-      {/* Calibrate — a split control (V3.5 item 9): the primary face runs the
-          fast PARAMETRIC-only verb with its stale count; the chevron opens the
-          menu with the combined "Parametric + LV" (the old verb, still gated
-          server-side by the Options toggle) and "Local-Vol only" (its own
-          lvStaleTickers badge). Background jobs; progress shows in the status
-          bar. Red-stale live data (the market pill's age) shows a warning cue:
-          calibrating still works, but it is a fit of the previous session. */}
+      {/* Calibrate — a split control with THREE first-class scopes (V3.5 item
+          9 verbs): "Parametric + LV" (POST /calibrate, LV still gated
+          server-side by the Options toggle), "Parametric only" (the fast loop;
+          LV surfaces go/stay stale) and "Local-Vol only" (no parametric
+          refit). The primary face runs the LAST CHOSEN scope and names it
+          ("Calibrate · Param only"); the chevron menu switches + runs (✓ marks
+          the current scope, sticky across reloads). Badge: stale parametric
+          nodes for the parametric scopes, stale LV surfaces for LV only.
+          Background jobs; progress shows in the status bar. Red-stale live
+          data (the market pill's age) shows a warning cue: calibrating still
+          works, but it is a fit of the previous session. */}
       <div className="relative flex items-stretch">
         <button
-          onClick={() => void calibrateParametric()}
+          onClick={() => void runScope(calibScope)}
           disabled={running || busy}
           title={
             redStale
               ? `Warning: live quotes are ${dataAge!.label} old (previous session) — calibrating fits stale data`
-              : "Calibrate all lit nodes (parametric only — ▾ for LV)"
+              : `Calibrate — ${SCOPE_LABEL[calibScope]} (▾ to change the scope)`
           }
           className={[
             BTN,
@@ -144,7 +167,7 @@ export default function WorkflowControls({
               ? WORKING
               : redStale
                 ? "border-rose-500/50 bg-rose-500/10 text-rose-300 hover:bg-rose-500/20"
-                : stale > 0
+                : scopeCount > 0
                   ? "border-accent-500/50 bg-accent-500/15 text-accent-300 hover:bg-accent-500/25"
                   : ACTIVE,
           ].join(" ")}
@@ -154,13 +177,15 @@ export default function WorkflowControls({
           ) : (
             <Play size={13} strokeWidth={1.75} className="opacity-80" />
           )}
-          {!running && stale > 0 ? `Calibrate (${stale})` : "Calibrate"}
+          <span>Calibrate</span>
+          <span className="text-[10px] font-normal text-slate-400">· {SCOPE_SHORT[calibScope]}</span>
+          {!running && scopeCount > 0 && <span>({scopeCount})</span>}
           {(running || calibrating) && <WorkingBar />}
         </button>
         <button
           onClick={() => setCalibOpen((v) => !v)}
           disabled={running || busy}
-          title="Calibration scope (Parametric + LV / Local-Vol only)"
+          title="Calibration scope: Parametric + LV / Parametric only / Local-Vol only"
           className={[
             BTN,
             "rounded-l-none border-l-0 px-1.5",
@@ -169,29 +194,20 @@ export default function WorkflowControls({
         >
           <ChevronDown size={11} className="text-slate-500" />
         </button>
-        <MenuPanel open={calibOpen} onClose={() => setCalibOpen(false)} width="w-64">
-          <MenuItem
-            label="Parametric + LV"
-            detail={
-              lvEnabled
-                ? stale > 0
-                  ? `${stale} stale node(s), then LV surfaces`
-                  : "all lit nodes, then LV surfaces"
-                : "LV gated off in Options — runs parametric only"
-            }
-            disabled={running || busy}
-            onClick={() => { setCalibOpen(false); void calibrate(); }}
-          />
-          <MenuItem
-            label={lvStale > 0 ? `Local-Vol only (${lvStale})` : "Local-Vol only"}
-            detail={
-              lvStale > 0
-                ? `${lvStale} stale LV surface(s) — no parametric refit`
-                : "refit LV surfaces only (no parametric refit)"
-            }
-            disabled={running || busy}
-            onClick={() => { setCalibOpen(false); void calibrateLv(); }}
-          />
+        <MenuPanel open={calibOpen} onClose={() => setCalibOpen(false)} width="w-[22rem]">
+          {CALIB_SCOPES.map((scope) => {
+            const n = scopeBadge(scope, stale, lvStale);
+            return (
+              <MenuItem
+                key={scope}
+                label={n > 0 ? `${SCOPE_LABEL[scope]} (${n})` : SCOPE_LABEL[scope]}
+                detail={scopeDetail(scope, stale, lvStale, lvEnabled)}
+                active={scope === calibScope}
+                disabled={running || busy}
+                onClick={() => { setCalibOpen(false); void runScope(scope); }}
+              />
+            );
+          })}
         </MenuPanel>
       </div>
 
