@@ -23,6 +23,8 @@ SOURCE_LABELS = {
     "cboe": "Cboe (delayed)",
     "nasdaq": "Nasdaq (delayed)",
     "asx": "ASX (delayed)",
+    "hkex": "HKEX (delayed)",
+    "sgx": "SGX (delayed)",
     "synthetic": "Synthetic",
 }
 

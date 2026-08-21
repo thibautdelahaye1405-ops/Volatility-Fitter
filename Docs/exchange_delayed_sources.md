@@ -18,11 +18,11 @@ The app ingests them through one seam (`backend/volfit/data/exchange.py`):
   venue does not answer / refused the last symbol. HTTP is injectable
   (`fetch_json`) → fully offline-testable.
 
-Registered in `serve.py` as source ids `cboe`, `nasdaq` and `asx` (auto-pick
-order: Bloomberg → **Cboe** → **Nasdaq** → **ASX** → Yahoo → Massive →
-Synthetic); launch `.\restart.ps1 -Cboe` / `-Nasdaq` / `-Asx` to force one;
-the in-app Data Source selector lists them as "Cboe (delayed)" / "Nasdaq
-(delayed)" / "ASX (delayed)".
+Registered in `serve.py` as source ids `cboe`, `nasdaq`, `asx`, `hkex` and
+`sgx` (auto-pick order: Bloomberg → **Cboe** → **Nasdaq** → **ASX** →
+**HKEX** → **SGX** → Yahoo → Massive → Synthetic); launch `.\restart.ps1
+-Cboe` / `-Nasdaq` / `-Asx` / `-Hkex` / `-Sgx` to force one; the in-app Data
+Source selector lists them as "<Venue> (delayed)".
 
 ## Shipped — Nasdaq (US) ✅ `volfit/data/nasdaq.py`
 
@@ -68,6 +68,43 @@ venue (Nasdaq, below).
 | Verified | 2026-08-21: status amber 0.9 s; XJO 590 quotes / 445 two-sided European, BHP 88 / 73 American; through the app XJO 3-Sep fit (36 quotes, ATM 10.05 %), BHP 3-Sep fit (28 quotes) — after-hours Sydney quotes, so wide |
 | Side effect | the universe's default expiry seed was US-calendar only (3rd-Friday monthlies, Mon/Wed/Fri weeklies) → empty for ASX's Thursday expiries; `expiry_select.default_selection` now falls back to a calendar-agnostic ladder (two near rungs + the first expiry of each further month, ≤ 10, ≤ 18 months) |
 | Caveats | the settlement clock (`expiry_time.default_settlement`) is US-centric — Sydney expiry instants are off by hours (fine-tuning item); tick size unknown per class → no tick floor |
+
+## Shipped — HKEX (Hong Kong) ✅ `volfit/data/hkex.py`
+
+| | |
+|---|---|
+| Coverage | the index classes HSI (+ MHI mini), HSCEI (`HHI`), Hang Seng TECH (`HTI`) — European — and every stock-option class (TCH = Tencent, ALB = Alibaba, MET, HEX, …) — American |
+| Endpoints | the exchange's own widget, JSONP only (`callback=` mandatory, plain JSON → 403): `www1.hkex.com.hk/hkexwidget/data/getoptioncontractlist?ats=HSI&type=0` (contract months `082026…`), `getderivativesoption?ats=HSI&con=082026&fr=null&to=null` (near-the-money + the month's `min`/`max`) then `fr=min&to=max` (the full ladder — a month's own window, another month's returns nothing), `getderivativesfutures` (stock-future last = stock spot proxy), `getmarketmarquee?sym=.HSI;.HSCE;.HSTECH` (index spot + HKT time), `getderivativesinfo` (`idx` flag) |
+| Token | embedded in the public product page (`LabCI.getToken = function () { … return "<token>"; }` — the LAST return; the first is a commented sample); scraped once, cached, re-scraped on a non-`000` response |
+| Fields | per strike `c{bd, as, ls, vo, oi, iv}` / `p{…}`, `""` = no quote, thousands separators; `lastupd` HKT → UTC stamp |
+| Expiry | the business day before the last business day of the contract month (HKEX rule; HK holidays not modelled) |
+| Delay | ~15 min; 2 small calls per month (13 months ≈ 4–8 s, threaded), cached by the provider |
+| Symbols | `HSI`/`^HSI`, `HSCEI`/`HHI`, `HSTECH`/`HTI`, `MHI`; stocks `700` / `0700.HK` / `TCH` (built-in map for the large caps, raw class codes pass through) |
+| Verified | 2026-08-21 (after the HK close): HSI 13 months listed (8 within 2 y), 126 quotes across two expiries (16 two-sided — evening), spot 26,009.46 European; TCH 83 quotes / 45 two-sided American, spot proxy 457.10; app fits TCH (29 quotes); HSI fit needs the intraday two-sided book |
+| Caveats | after-hours the index chains are mostly one-sided; token page is ~1 MB (scraped rarely); US-centric settlement clock (HK instants off by hours) |
+
+## Shipped — SGX (Singapore) ✅ `volfit/data/sgx.py`
+
+| | |
+|---|---|
+| Coverage | SGX Nikkei 225 Index Options (`NK`; weeklies NKWE/NKWC not handled — keyed by week), FTSE China A50 (`FCH`), FTSE Taiwan (`TWN`), MSCI Singapore (`SGP`) — European |
+| Endpoints | `api.sgx.com/derivatives/v1.0/metalist?category=options&derivatives-kind=equityindex` (contracts), `cc/{CODE}?category=options&params=delivery-month` (38 months for NK), `cc/{CODE}?category=options&delivery-month=YYYY-MM&session=0` (one row per strike: `call-/put- best-bid-price / best-ask-price / last-trade-price / open-interest / total-volume`, `updated-time` ms, `price-fractional-indicator`), `cc/{CODE}?category=futures&…` (front future `last-traded-price-adj` = spot proxy — the Nikkei index itself is not an SGX instrument — and `last-trading-date`) |
+| Expiry | the futures month's `last-trading-date` when listed, else the contract rule (NK: the day before the 2nd Friday = OSE SQ; others: second-last business day) |
+| Stamp | newest `updated-time` (UTC); ~10-min delayed; 18 nearest months fetched on a thread pool (~2 s) |
+| Prices | index points (real units on the option rows; the futures rows also carry ×100 "fractional" variants next to the `-adj` real ones); a guard de-scales any option quote above 1.5 × the underlying |
+| Symbols | `NK` / `NIKKEI` / `N225` / `^N225` / `NKY`, `FCH` / `A50`, `TWN`, `SGP` |
+| Verified | 2026-08-21 evening SGT: status amber, NK 2 nearest months with (stale) quotes, spot proxy 66,065 from NKU26; the T-session two-sided book and the price units must be re-checked during the SGT day (08:30–18:00 SGT) |
+
+## Not feasible now — Korea (KRX)
+
+KRX's data portal (`data.krx.co.kr`) answers scripted `getJsonData.cmd` calls with `LOGOUT`/400 without its session/OTP dance and the page itself times out in headless Edge (60 s); `global.krx.co.kr` derivatives pages 404; Naver Finance's option pages moved (404 at the known paths). KOSPI 200 option quotes therefore need either KRX's OTP session flow (EOD statistics) or a maintained Korean-portal scrape — parked.
+
+## Probed in depth 2026-08-21 (headless-Edge XHR capture, `frontend/scripts/capture_xhr.mjs`)
+
+| Venue | What the page really calls | Finding | Verdict |
+|---|---|---|---|
+| **Euronext** (AEX index options `index-options/AEX/DAMS`, CAC `PXA/DPAR`, weeklies `AX1…`, stocks) | `POST live.euronext.com/en/ajax/getPricesOptionsAjax/{type}/{class}/{exchange}` with `md[]=<DD-MM-YYYY first-of-month>&ps=11\|999`, `X-Requested-With`; `getPricesOptionsForm/{class}/{exchange}` lists the maturities; `getUnderlying/{class}/{exchange}/options` = spot. JSON `simple[i].data[]` rows `c_bid/c_ask/c_last/c_settl`, `strike`, `p_*`; `extended[i].rowc/rowp` add volume/OI/last time. | The origin IGNORES `md[]`/`ps` for anonymous callers — the page's OWN XHR (driven headlessly, CloudFront misses) still returns the nearest maturity with 11 ATM strikes: a teaser. The full chain needs a logged-in Euronext Live session (an adapter could take the session cookies from an account). | **Gated** — adapter ready to write once a session cookie is available; per-instrument pages exist but are one request per series. |
+| **ICE Futures Europe** (FTSE 100 options) | `www.ice.com/marketdata/api/productguide/charting/contract-data?productId=&hubId=` + `…/data/current-day?marketId=` (FUTURES only); the legacy `DelayedMarkets.shtml?get…AsJson` answer 403 for scripts; the option product page redirects to the future's data tab. | Options quotes moved behind ICE market-data subscriptions; only futures charts and the public EOD settlement reports (`/marketdata/reports/…`) remain. | **No delayed option quotes**; EOD settlements possible (no bid/ask). |
 
 ## Candidates — probed 2026-08-21
 

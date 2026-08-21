@@ -613,6 +613,61 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21g) — VENUE SWEEP: EURONEXT / ICE (verdicts), HKEX + SGX (adapters), KRX (parked)
+
+User order: Euronext → ICE → SGX → Hong Kong → Korea. Tooling:
+`frontend/scripts/capture_xhr.mjs` (headless-Edge network recorder; one
+`.jsonl` per page + saved bodies) and `euronext_probe.mjs` (drives a page's
+own refresh and records the XHR) — research-only, no runtime dependency.
+
+- **Euronext** — GATED. The page's API is `POST live.euronext.com/en/ajax/
+  getPricesOptionsAjax/{type}/{class}/{exchange}` with `md[]=<DD-MM-YYYY
+  first-of-month>&ps=11|999` (+ `getPricesOptionsForm` maturities,
+  `getUnderlying` spot; rows `c_bid/c_ask/c_last/c_settl`, `strike`,
+  `p_*`, extended rows with volume/OI/time), but the ORIGIN ignores
+  `md[]`/`ps` for anonymous callers — the page's own XHR driven headlessly
+  (CloudFront misses) still returns the nearest maturity × 11 ATM strikes.
+  Full chains need a logged-in Euronext Live session (an adapter could take
+  the cookies); parked.
+- **ICE Futures Europe** — NO public option quotes. `www.ice.com/marketdata/
+  api/productguide/charting/…` serves futures contract data/charts only; the
+  legacy `DelayedMarkets.shtml?get…AsJson` answer 403 to scripts; the option
+  product page redirects to the future's data tab. EOD settlement reports
+  remain public.
+- **HKEX** — SHIPPED `data/hkex.py` (`hkex`, `restart.ps1 -Hkex`): the
+  exchange widget `www1.hkex.com.hk/hkexwidget/data/{getoptioncontractlist,
+  getderivativesoption, getderivativesfutures, getmarketmarquee,
+  getderivativesinfo}` — JSONP ONLY (plain JSON → 403) with a token
+  embedded in the public product page (`LabCI.getToken` — the LAST return;
+  the first is a commented sample), scraped once/cached/re-scraped on a non-
+  000 code; per month a null-window call (→ `min/max`) then the full window
+  (another month's window returns nothing) = 2 small calls/month, threaded;
+  HSI/HHI/HTI European (spot = index marquee, HKT `lastupd` → UTC), stock
+  classes (TCH…) American (spot proxy = front stock future); expiry = the
+  business day before the last business day of the month. Seam extension:
+  the default fetcher now exposes `.text(url)` (`_HttpFetcher`) for HTML /
+  JSONP venues. Live: HSI 13 months, 126 quotes across 2 expiries (16 two-
+  sided after the HK close), TCH 83/45 American, app fits TCH. Tests
+  `test_hkex.py` 8 (+1 live-gated).
+- **SGX** — SHIPPED `data/sgx.py` (`sgx`, `-Sgx`): plain JSON
+  `api.sgx.com/derivatives/v1.0/{metalist, cc/{CODE}?category=options&
+  params=delivery-month, cc/{CODE}?category=options&delivery-month=…&
+  session=0, …category=futures…}`; NK (Nikkei 225), FCH, TWN, SGP European;
+  spot proxy = front future `last-traded-price-adj`; expiry = futures
+  `last-trading-date` else the contract rule (NK: day before the 2nd Friday);
+  stamp = `updated-time`; 18 nearest months threaded; a guard de-scales
+  option quotes > 1.5 × spot (the futures rows carry ×100 "fractional"
+  fields). Live (SGT evening): metadata + ladders, stale/empty books — the
+  day-session two-sided book and price units to re-check 08:30–18:00 SGT.
+  Tests `test_sgx.py` 4 (+1 live-gated).
+- **KRX** — PARKED: `data.krx.co.kr` answers `LOGOUT`/400 to scripted JSON
+  calls and times out headlessly; `global.krx.co.kr` derivatives 404; Naver
+  option pages moved. Needs KRX's OTP/session flow (EOD stats) or a
+  maintained Korean-portal scrape.
+- Registration / labels / switches / CLAUDE.md for hkex + sgx; catalog doc
+  updated (shipped venues now Cboe, Nasdaq, ASX, HKEX, SGX; Euronext/ICE
+  verdicts; Korea parked). Suite green.
+
 ### 🧭 SESSION WRAP (2026-08-21f) — THIRD EXCHANGE ADAPTER: ASX (FIRST NON-US VENUE)
 
 - **Selector found**: the Markit API ignores `expiryDate=`; the ASX site's F2

@@ -101,7 +101,9 @@ class ExchangeChainProvider(OptionChainProvider):
         self.adapter = adapter
         self.max_days = max_days
         self.cache_seconds = cache_seconds
-        self._fetch_json = fetch_json or self._default_fetch_json
+        #: ``fetch_json(url) -> dict``; the default also exposes ``.text(url)`` for
+        #: venues that speak HTML / JSONP (tests inject an object with the same shape).
+        self._fetch_json = fetch_json if fetch_json is not None else _HttpFetcher(self)
         self._client = None
         self._cache: dict[str, tuple[float, RawChain]] = {}
         self._lock = threading.Lock()
@@ -109,13 +111,16 @@ class ExchangeChainProvider(OptionChainProvider):
         self._last_error: str | None = None
 
     # ---------------------------------------------------------------- http
-    def _default_fetch_json(self, url: str) -> dict:
+    def _http(self):
         import httpx
 
         if self._client is None:
             headers = {**_HEADERS, **getattr(self.adapter, "headers", {})}  # venue extras
             self._client = httpx.Client(timeout=30.0, headers=headers, follow_redirects=True)
-        response = self._client.get(url)
+        return self._client
+
+    def _default_fetch_json(self, url: str) -> dict:
+        response = self._http().get(url)
         if response.status_code in (403, 404):  # the venue CDNs refuse unknown symbols this way
             raise ValueError(f"not found: {url}")
         response.raise_for_status()
@@ -123,6 +128,15 @@ class ExchangeChainProvider(OptionChainProvider):
             return response.json()
         except ValueError:
             raise ValueError(f"not JSON: {url}") from None
+
+    def _default_fetch_text(self, url: str) -> str:
+        """Raw body for venues that speak HTML / JSONP (HKEX) — exposed to the
+        adapter as ``fetch_json.text`` (see ``__init__``)."""
+        response = self._http().get(url)
+        if response.status_code in (403, 404):
+            raise ValueError(f"not found: {url}")
+        response.raise_for_status()
+        return response.text
 
     # --------------------------------------------------------------- chain
     def _raw(self, ticker: str, max_age: float | None = None) -> RawChain:
@@ -238,6 +252,20 @@ class ExchangeChainProvider(OptionChainProvider):
                 self._cache.clear()
             else:
                 self._cache.pop(ticker.upper(), None)
+
+
+class _HttpFetcher:
+    """The provider's default fetcher: ``fetcher(url) -> dict`` (JSON) plus
+    ``fetcher.text(url) -> str`` for HTML / JSONP venues."""
+
+    def __init__(self, provider: "ExchangeChainProvider") -> None:
+        self._provider = provider
+
+    def __call__(self, url: str) -> dict:
+        return self._provider._default_fetch_json(url)
+
+    def text(self, url: str) -> str:
+        return self._provider._default_fetch_text(url)
 
 
 def utc_naive(dt: datetime) -> datetime:

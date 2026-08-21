@@ -83,7 +83,7 @@ Key commands (Windows, repo root):
 - Run app:  .\restart.ps1   (kills :8000/:5173, starts backend + Vite, registers
             ALL data sources [Yahoo/Bloomberg/Massive/Synthetic] and auto-picks
             the best-reachable active one; switch live via the TopBar Data
-            Source selector. Force one active: -Live/-Bloomberg/-Cboe/-Nasdaq/-Asx/-Massive/
+            Source selector. Force one active: -Live/-Bloomberg/-Cboe/-Nasdaq/-Asx/-Hkex/-Sgx/-Massive/
             -Synthetic. Set $env:VOLFIT_MASSIVE_KEY to light up Massive. Sets
             VOLFIT_DB so named universes / fit history persist; -NoDb disables.
             Secrets/env persist via gitignored restart.local.ps1 [copy from
