@@ -218,6 +218,12 @@ def test_affine_fit_band_modes(client, mode):
     flat_mid = [v for row in mid.localVol for v in row]
     flat_band = [v for row in band.localVol for v in row]
     assert any(abs(a - b) > 1e-6 for a, b in zip(flat_mid, flat_band))
+    # The reported rms / max / conv bp score the BAND (violation, zero inside),
+    # not the mid: finite, ordered, and the per-smile maxima never exceed the
+    # surface max (one per-quote error vector feeds all of them).
+    assert band.maxIvErrorBp >= band.rmsIvErrorBp >= 0.0
+    assert band.maxConvergedBp >= band.rmsConvergedBp >= 0.0
+    assert all(0.0 <= s.maxIvErrorBp <= band.maxIvErrorBp + 1e-9 for s in band.smiles)
 
 
 def test_affine_density_is_clean_no_interior_zeros(client):

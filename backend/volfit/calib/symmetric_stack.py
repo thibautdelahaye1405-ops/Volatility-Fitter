@@ -20,6 +20,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+
+from volfit.calib.rms import max_quote_error
 from scipy.optimize import least_squares
 
 from volfit.models.lqd.basis import LQDParams
@@ -387,5 +389,6 @@ def result_from_theta(theta: np.ndarray, spec: SliceSpec) -> CalibrationResult:
         cost=float(0.5 * np.dot(res, res)),
         n_evaluations=0,
         success=True,
-        max_iv_error=float(np.nanmax(np.abs(iv_model - sigma))),
+        # vs the fit target (the slice's own band when it was a band fit)
+        max_iv_error=max_quote_error(iv_model, sigma, spec.fit_kwargs.get("band")),
     )

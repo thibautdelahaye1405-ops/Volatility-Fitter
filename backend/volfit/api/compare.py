@@ -45,7 +45,7 @@ from volfit.api.service import (
     prepare_slice,
 )
 from volfit.api.state import AppState
-from volfit.calib.rms import node_error_terms, rms
+from volfit.calib.rms import max_quote_error, node_error_terms, rms
 from volfit.calib.weights import resolve_weights
 from volfit.models.diagnostics import (
     analytic_butterfly,
@@ -198,7 +198,7 @@ def _model_row(
         mid_iv = np.sqrt(np.maximum(np.asarray(w, float), 1e-12) / tau)
         num, den = node_error_terms(model_iv, mid_iv, weights=weights, band=band)
         rms_bp = rms(num, den) * 1e4
-        max_bp = float(np.max(np.abs(model_iv - mid_iv))) * 1e4
+        max_bp = max_quote_error(model_iv, mid_iv, band) * 1e4  # same target as rms_bp
     if family == "lqd":  # exact closed forms (the analytic backbone)
         h = atm_handles(slice_, tau)
         atm, skew = h.sigma0, h.skew

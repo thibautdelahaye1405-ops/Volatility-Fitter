@@ -34,6 +34,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.rms import max_quote_error
 from volfit.calib.extrap import ExtrapTarget, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
@@ -361,7 +362,7 @@ def calibrate_svi(
     raw = unpack(result.x)
 
     model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)
-    max_iv_error = float(np.max(np.abs(model_vol - vol_quotes))) if k.size else 0.0
+    max_iv_error = max_quote_error(model_vol, vol_quotes, band)  # vs the fit target
     return SVICalibration(
         raw=raw,
         cost=float(result.cost),

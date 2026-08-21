@@ -45,7 +45,7 @@ from volfit.api.schemas_affine import (
 from volfit.api.state import AppState
 from volfit.calib.fit_task import AffineFitTask
 from volfit.calib.operators import hybrid_tail_deltas
-from volfit.calib.rms import node_error_terms, rms as rms_of_terms
+from volfit.calib.rms import node_error_terms, quote_errors, rms as rms_of_terms
 from volfit.calib.weights import resolve_weights
 from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
 from volfit.models.localvol import (
@@ -1016,11 +1016,16 @@ def _model_vol_at(solution, i_exp: int, t: float, k: np.ndarray) -> np.ndarray:
     return np.sqrt(np.maximum(model_w, 0.0) / t)
 
 
-def _iv_error_bp(solution, i_exp: int, t: float, k: np.ndarray, w: np.ndarray) -> np.ndarray:
-    """Per-quote |model - quote| implied vol at the calibrated surface, bp."""
+def _iv_error_bp(
+    solution, i_exp: int, t: float, k: np.ndarray, w: np.ndarray, band=None
+) -> np.ndarray:
+    """Per-quote implied-vol error of the calibrated surface against the FIT
+    TARGET, bp: |model - mid| in "mid" mode, the band violation (zero inside)
+    when ``band`` is the node's bid-ask / haircut band — the same vector the
+    Parametric workspace's RMS and the calibration objective use."""
     model_vol = _model_vol_at(solution, i_exp, t, k)
     quote_vol = np.sqrt(np.maximum(w, 0.0) / t)
-    return np.abs(model_vol - quote_vol) * 1e4
+    return np.abs(quote_errors(model_vol, quote_vol, band)) * 1e4
 
 
 def _node_rms_terms(
@@ -1342,9 +1347,9 @@ def _fit(
     for iso, t, k, w, prepared, band in rows:
         i_exp = exp_index[t]
         klo, khi = float(k.min()), float(k.max())
-        errs = _iv_error_bp(cal.solution, i_exp, t, k, w)
+        errs = _iv_error_bp(cal.solution, i_exp, t, k, w, band)
         iv_bp_all.extend(errs.tolist())
-        errs_conv = _iv_error_bp(conv_sol, conv_index[t], t, k, w)
+        errs_conv = _iv_error_bp(conv_sol, conv_index[t], t, k, w, band)
         conv_bp_all.extend(errs_conv.tolist())
         model_vs_vol = _model_varswap_vol(
             cal.solution, i_exp, t, x_grid,

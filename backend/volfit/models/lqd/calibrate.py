@@ -19,6 +19,7 @@ import numpy as np
 from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.rms import max_quote_error
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
 from volfit.calib.varswap import VarSwapTarget, varswap_residual_w
@@ -78,7 +79,7 @@ class CalibrationResult:
     cost: float
     n_evaluations: int
     success: bool
-    max_iv_error: float  # max |model - quote| implied vol over the quotes
+    max_iv_error: float  # worst per-quote vol error vs the fit target (|model - mid|, or the band violation)
 
 
 def logistic_init(w0_guess: float, n_order: int = 6) -> LQDParams:
@@ -477,7 +478,9 @@ def calibrate_slice(
     params = _params_from(theta_star, (alpha_left, alpha_right))
     slice_ = build_slice(params)
     iv_model = np.sqrt(slice_.implied_w(k) / t)
-    max_iv_error = float(np.nanmax(np.abs(iv_model - sigma)))
+    # Worst per-quote error against the FIT TARGET (mid, or the band violation
+    # when a bid-ask / haircut band was fitted) — volfit.calib.rms.quote_errors.
+    max_iv_error = max_quote_error(iv_model, sigma, band)
 
     return CalibrationResult(
         params=params,

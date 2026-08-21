@@ -15,6 +15,12 @@ meet its own objective":
 
 Everything is in decimal vol. A node contributes ``(sum_weighted_sq, sum_weight)``
 so the whole-surface number is just the pooled aggregate across its expiries.
+
+``quote_errors`` is the ONE per-quote error vector behind every reported
+goodness-of-fit number — the parametric ``max_iv_error`` (LQD / SVI / joint
+stack / overlays), the Local-Vol surface ``rms / max / conv`` bp and the
+model-compare columns all read it, so none of them silently scores the mid
+when the user fits a band.
 """
 
 from __future__ import annotations
@@ -22,6 +28,30 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.calib.band import BandTarget
+
+
+def quote_errors(
+    model_iv: np.ndarray, iv_mid: np.ndarray, band: BandTarget | None = None
+) -> np.ndarray:
+    """Per-quote vol error of a model against the FIT TARGET: the signed
+    ``model - mid`` when ``band`` is None ("mid" mode), else the nonnegative
+    band violation ``relu(model - hi) + relu(lo - model)`` (bid-ask / haircut
+    band — zero inside). Arrays aligned to the fit inputs (k)."""
+    model_iv = np.asarray(model_iv, dtype=float)
+    if band is None:
+        return model_iv - np.asarray(iv_mid, dtype=float)
+    from volfit.calib.band import band_violation
+
+    return band_violation(model_iv, band.iv_lo, band.iv_hi)
+
+
+def max_quote_error(
+    model_iv: np.ndarray, iv_mid: np.ndarray, band: BandTarget | None = None
+) -> float:
+    """``max |quote_errors|`` over the finite entries; 0 for no quotes."""
+    err = np.abs(quote_errors(model_iv, iv_mid, band))
+    err = err[np.isfinite(err)]
+    return float(err.max()) if err.size else 0.0
 
 
 def node_error_terms(
@@ -41,12 +71,7 @@ def node_error_terms(
     """
     model_iv = np.asarray(model_iv, dtype=float)
     if model_iv.size:
-        if band is None:
-            err = model_iv - np.asarray(iv_mid, dtype=float)
-        else:
-            from volfit.calib.band import band_violation
-
-            err = band_violation(model_iv, band.iv_lo, band.iv_hi)
+        err = quote_errors(model_iv, iv_mid, band)
         u = np.ones_like(model_iv) if weights is None else np.asarray(weights, dtype=float)
         num = float(np.sum(u * err * err))
         den = float(np.sum(u))

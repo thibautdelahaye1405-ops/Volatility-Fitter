@@ -27,6 +27,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from volfit.calib.band import BandTarget
+from volfit.calib.rms import max_quote_error
 from volfit.calib.operators import OperatorPriorTarget
 from volfit.calib.prior import PriorAnchorTarget
 from volfit.calib.varswap import VarSwapTarget
@@ -72,14 +73,17 @@ class DisplayFit:
     belly_repaired: bool = False
 
 
-def _max_iv_error(slice_: SmileModel, k: np.ndarray, w: np.ndarray, t: float) -> float:
-    """Worst per-quote implied-vol error of a fitted slice."""
+def _max_iv_error(
+    slice_: SmileModel, k: np.ndarray, w: np.ndarray, t: float, band: BandTarget | None = None
+) -> float:
+    """Worst per-quote implied-vol error of a fitted slice against the FIT
+    TARGET: |model - mid| (``band`` None) or the band violation (bid-ask /
+    haircut band, zero inside) — volfit.calib.rms.quote_errors."""
     if k.size == 0:
         return 0.0
     model_vol = np.sqrt(np.maximum(slice_.implied_w(k), 1e-12) / t)
     quote_vol = np.sqrt(np.asarray(w, float) / t)
-    err = float(np.max(np.abs(model_vol - quote_vol)))
-    return err if np.isfinite(err) else 0.0
+    return max_quote_error(model_vol, quote_vol, band)
 
 
 def build_display_fit(
@@ -192,7 +196,7 @@ def build_display_fit(
             lee_slope_max=settings.leeSlopeMax,
         )
         slice_ = calibrate_sigmoid(k, w, t, **sig_kwargs)
-        max_err = _max_iv_error(slice_, k, w, t)
+        max_err = _max_iv_error(slice_, k, w, t, band)
         # V3.1 leg 2 — the sigmoid mirror of the SVI R2 repair rider above:
         # certified-or-repaired AT the fit. A clean first fit never sees a
         # second solve (byte-identical path); a failed repair keeps the FIRST
@@ -207,7 +211,7 @@ def build_display_fit(
                 )
                 if re_cert is not None and re_cert.certified:
                     slice_ = repaired
-                    max_err = _max_iv_error(slice_, k, w, t)
+                    max_err = _max_iv_error(slice_, k, w, t, band)
                     belly_repaired = True
     if model == "sigmoid":
         # V3.1 leg 1: closed-form asymptotic slopes (eq mcsbetak; the kernels

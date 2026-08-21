@@ -103,6 +103,24 @@ def test_compare_reuses_fresh_committed_active_family(client, universe):
         assert by_model[family]["fitMs"] is not None and by_model[family]["fitMs"] >= 0.0
 
 
+def test_band_mode_columns_score_the_band_not_the_mid(client, universe):
+    """In a band fit mode the rms AND max columns are distances to the band
+    (zero inside): a family sitting inside its bid-ask band reports 0 / 0 — a
+    mid-based max would stay strictly positive."""
+    ticker, expiry = _node(universe)
+    rows = client.get(
+        f"/smiles/{ticker}/{expiry}/compare",
+        params={"models": "lqd,svi,sigmoid", "fit_mode": "bidask"},
+    ).json()["models"]
+    assert [r["model"] for r in rows] == ["lqd", "svi", "sigmoid"]
+    for row in rows:
+        assert row["ok"], row.get("error")
+        assert row["maxIvBp"] >= row["rmsBp"] >= 0.0
+        if row["rmsBp"] < 1e-9:
+            assert row["maxIvBp"] < 1e-9, (row["model"], row["maxIvBp"])
+    assert any(r["rmsBp"] < 1e-9 for r in rows)  # the synthetic book's bands are wide
+
+
 # -- (b) three-family metric rows ----------------------------------------------
 
 

@@ -25,6 +25,13 @@ const HEADERS = [
   "Fit",
 ] as const;
 
+/** Hover help for the precision columns — both score the CHOSEN fit target
+ *  (mid distance, or the bid-ask / haircut band violation, zero inside). */
+const HEADER_TITLES: Partial<Record<(typeof HEADERS)[number], string>> = {
+  "RMS bp": "Weighted RMS vol error vs the fit target (mid, or the bid-ask / haircut band — zero inside)",
+  "Max bp": "Worst per-quote vol error vs the same fit target",
+};
+
 /** Chip classes per validity state (certified / breach / no signal). */
 function chipClass(certified: boolean | null): string {
   const base = "inline-block rounded border px-1.5 py-px text-[10px] font-medium";
@@ -40,7 +47,7 @@ export default function ModelCompareTable({ data }: { data: CompareResponse }) {
         <thead>
           <tr className="border-b border-slate-800 text-left text-[10px] uppercase tracking-wider text-slate-500">
             {HEADERS.map((h) => (
-              <th key={h} className="px-2 py-1 font-medium">
+              <th key={h} className="px-2 py-1 font-medium" title={HEADER_TITLES[h]}>
                 {h}
               </th>
             ))}

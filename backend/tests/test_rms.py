@@ -41,6 +41,25 @@ def test_band_mode_zero_inside_band_distance_outside():
     assert rms(num, den) == pytest.approx(np.sqrt((0.0 + 0.01**2) / 2))
 
 
+def test_quote_errors_and_max_follow_the_fit_target():
+    """The one per-quote error vector behind every reported number: signed
+    model - mid in "mid" mode, the band violation (zero inside) in the band
+    modes — so a fit sitting inside its bid-ask band reports 0 rms AND 0 max
+    instead of the mid distance."""
+    from volfit.calib.rms import max_quote_error, quote_errors
+
+    model = np.array([0.20, 0.23, 0.17])
+    mid = np.array([0.20, 0.20, 0.20])
+    np.testing.assert_allclose(quote_errors(model, mid), [0.0, 0.03, -0.03])
+    assert max_quote_error(model, mid) == pytest.approx(0.03)
+    band = resolve_band(np.array([0.18] * 3), mid, np.array([0.22] * 3), "bidask")
+    np.testing.assert_allclose(quote_errors(model, mid, band), [0.0, 0.01, 0.01])
+    assert max_quote_error(model, mid, band) == pytest.approx(0.01)
+    inside = np.array([0.19, 0.21, 0.205])
+    assert max_quote_error(inside, mid, band) == 0.0 and max_quote_error(inside, mid) == pytest.approx(0.01)
+    assert max_quote_error(np.array([]), np.array([])) == 0.0
+
+
 def test_weights_bias_the_rms():
     model = np.array([0.22, 0.20])
     mid = np.array([0.20, 0.20])

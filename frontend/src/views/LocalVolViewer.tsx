@@ -503,11 +503,13 @@ export default function LocalVolViewer() {
             >
               {data.arbitrageFree ? "arb-free" : `${data.calendarViolations} cal. viol.`}
             </span>
-            rms {fmtBp0(data.rmsIvErrorBp)}
-            {typeof data.rmsConvergedBp === "number" && Number.isFinite(data.rmsConvergedBp)
-              ? ` · conv ${data.rmsConvergedBp.toFixed(0)}`
-              : ""}{" "}
-            · max {fmtBp0(data.maxIvErrorBp)} bp
+            <span title="Per-quote IV error of the LV surface vs the FIT TARGET (mid, or the bid-ask / haircut band — zero inside the band): rms · rms on the converged operator · worst quote">
+              rms {fmtBp0(data.rmsIvErrorBp)}
+              {typeof data.rmsConvergedBp === "number" && Number.isFinite(data.rmsConvergedBp)
+                ? ` · conv ${data.rmsConvergedBp.toFixed(0)}`
+                : ""}{" "}
+              · max {fmtBp0(data.maxIvErrorBp)} bp
+            </span>
           </span>
         )}
       </div>
