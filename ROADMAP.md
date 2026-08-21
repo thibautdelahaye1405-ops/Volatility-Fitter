@@ -613,6 +613,39 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21b) — QUOTE TABLE ON THE TWO-FRAME GRAMMAR
+
+The Quote Table now mirrors the chart: one row per STRIKE joining the
+MARKET frame (primary) and the CALIBRATION frame (the viewer's "Calib.
+quotes" toggle, now also shown in the Table view).
+
+- **Backend** (`api/table.py`): `TableResponse.rows` (calibration frame)
+  gains `targetLo/targetHi` (the fit's own edited band); new `marketForward /
+  marketSpot / marketTimestamp / marketLive / marketRows` = the prevailing
+  frame — the latest fetched chain as quoted (no edits), `resolve_band`
+  target of the fit mode, Model IV = the fit ROLLED to the prevailing spot
+  evaluated at each strike's market moneyness (`smile_layers.rolled_record` +
+  `model_iv_at`, ONE transport), prices at the market forward, `index` = the
+  calibration row at the same strike. `table.csv?frame=market|calib`. SSE
+  live rows carry `modelIv` (rolled record cached per shift in the tracker).
+- **Frontend** `lib/tableFrames.ts` (`composeTableRows(table, ticks)`:
+  market = live rows when the stream is ready > payload market rows > the
+  calibration rows on an old backend; union by strike, hot flags from the
+  flash set; `deltaBp`, `toTsv`), `QuoteTable.tsx` rewrite: two-row sticky
+  header ("Market · live HH:MM:SS UTC · F · S" / "Calibration · F"), market
+  columns Strike · C/P · k · Bid/Mid/Ask IV · Target (lo–hi, "mid" in mid
+  mode) · Model · Δ bp (model − mid) · Bid/Mid/Ask $; calibration columns on
+  the toggle: Bid/Mid/Ask IV (excluded dimmed, amended amber) · Target ·
+  Model (fit @ calibration spot) · Δ bp · Weight; live cells flash; footer
+  LIVE badge, Copy (TSV as shown), CSV market / CSV calib.
+- Tests: backend `test_table_frames.py` 6 (market == calibration rows at no
+  move, targets per mode on both frames, spot move rolls the market frame
+  only w/ sticky-strike Model IV identity, edits stay on calibration, CSV
+  frame, live rows carry modelIv); frontend `tableFrames.test.ts` 4. Suite
+  green, vitest 219, build green; live Terminal: market rows + SSE modelIv
+  consistent, 0 metered calls.
+- **Next (sourcing arc)**: Massive incremental resubscribe; other sources.
+
 ### 🧭 SESSION WRAP (2026-08-21a) — SMILE VIEWER: TWO COMPARABLE FRAMES (MARKET vs CALIBRATION)
 
 User spec (2026-08-21): the chart shows (1) the PREVAILING bid-ask quotes with

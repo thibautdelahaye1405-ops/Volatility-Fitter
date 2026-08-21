@@ -1,60 +1,25 @@
-// Quote table view of the current smile node: per-strike quotes (IV and
-// price space) side by side with the fitted model vol, in a dense monospace
-// grid. Mirrors the chart's visual language — excluded rows are dimmed,
-// amended mids are amber. Footer actions copy the table as TSV to the
-// clipboard or download the backend-rendered CSV. Live backend only (the
-// parent gates mock mode).
-//
-// Live ticks: while the active source streams (Massive WS / Bloomberg
-// subscription book) the node's live market is pushed over SSE (useLiveTicks,
-// one connection hosted by SmileViewer and shared with the chart) and overlaid
-// on the calibrated rows by strike key — bid/mid/ask IV and
-// prices tick (flash on change), the Model IV column stays the fit's. Amended
-// rows are user-pinned calibration inputs and never tick. A LIVE badge with
-// the newest provider stamp sits in the footer; without a stream the table is
-// exactly the calibrated snapshot as before.
+// Quote table of the current smile node on the two-frame grammar of the chart
+// (lib/tableFrames): one row per STRIKE joining
+//   MARKET (primary)  the prevailing bid/mid/ask IV with their fit target, the
+//                     fit ROLLED to the prevailing spot ("Model", Δ in vol bp vs
+//                     the market mid) and prices at the market forward — live
+//                     rows (flashing on ticks) when the node streams, else the
+//                     latest fetched chain;
+//   CALIB  (toggle)   the quotes + target the last calibration used (your
+//                     exclusions dimmed, amended mids amber), the fit on its
+//                     calibration spot, and the calibration weight.
+// Footer: both frames' forwards / stamps, a LIVE badge, Copy (TSV as shown)
+// and the backend CSVs (market / calibration). Live backend only.
 import { useEffect, useMemo, useState } from "react";
 import { api, API_BASE_URL } from "../state/api";
 import type { FitMode } from "../state/useSmile";
-import { liveKey } from "../state/useLiveTicks";
 import type { LiveTicksState } from "../state/useLiveTicks";
 import { useWeights } from "../state/useWeights";
 import type { SmileData } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
+import { composeTableRows, deltaBp, toTsv } from "../lib/tableFrames";
+import type { TableResponse, TableRow } from "../lib/tableFrames";
 import { toolbarButtonClass } from "./QuoteToolbar";
-
-/** One row of GET /smiles/{ticker}/{expiry}/table. */
-interface TableRow {
-  index: number;
-  strike: number;
-  type: "C" | "P";
-  k: number;
-  bidIv: number;
-  midIv: number;
-  askIv: number;
-  modelIv: number;
-  bidPrice: number;
-  midPrice: number;
-  askPrice: number;
-  excluded: boolean;
-  amended: boolean;
-}
-
-/** Response of GET /smiles/{ticker}/{expiry}/table. */
-interface TableResponse {
-  ticker: string;
-  expiry: string;
-  t: number;
-  forward: number;
-  discount: number;
-  rows: TableRow[];
-}
-
-/** A table row with the live market overlaid (when streaming and not pinned). */
-interface ShownRow extends TableRow {
-  key: string;
-  live: boolean;
-}
 
 interface QuoteTableProps {
   ticker: string;
@@ -64,41 +29,34 @@ interface QuoteTableProps {
    *  in the fetch deps refreshes the table after quote edits. */
   smile: SmileData | null;
   /** The node's live ticks (one SSE connection hosted by SmileViewer, shared
-   *  with the chart); the overlay is empty when the source is not streaming. */
+   *  with the chart); the market frame is live when the stream is ready. */
   ticks: LiveTicksState;
+  /** Show the calibration columns (the viewer's "Calib. quotes" toggle). */
+  showCalib: boolean;
 }
 
 /** "HH:MM:SS UTC" of a backend (UTC-naive ISO) stamp; "" when unknown. */
 const tickTime = (iso: string | null): string => (iso ? `${iso.slice(11, 19)} UTC` : "");
 
-/** Column headers (numeric columns are right-aligned; C/P is centered).
- *  "Weight" is the mean-1 calibration weight (V3.4 item 5; em-dash when
- *  excluded), served by GET /smiles/{t}/{e}/weights. */
-const HEADERS = ["Strike", "C/P", "k", "Bid IV", "Mid IV", "Ask IV", "Model IV", "Bid", "Mid", "Ask", "Weight"];
-
-/** Serialize the table as tab-separated values (header included). */
-function toTsv(rows: TableRow[]): string {
-  const header = [
-    "strike", "type", "k", "bid_iv", "mid_iv", "ask_iv", "model_iv",
-    "bid_price", "mid_price", "ask_price", "excluded", "amended",
-  ].join("\t");
-  const lines = rows.map((r) =>
-    [
-      r.strike.toFixed(2), r.type, r.k.toFixed(4),
-      r.bidIv.toFixed(4), r.midIv.toFixed(4), r.askIv.toFixed(4), r.modelIv.toFixed(4),
-      r.bidPrice.toFixed(2), r.midPrice.toFixed(2), r.askPrice.toFixed(2),
-      String(r.excluded), String(r.amended),
-    ].join("\t"),
-  );
-  return [header, ...lines].join("\n");
-}
+const MARKET_HEADERS = ["Strike", "C/P", "k", "Bid IV", "Mid IV", "Ask IV", "Target", "Model", "Δ bp", "Bid", "Mid", "Ask"];
+const CALIB_HEADERS = ["Bid IV", "Mid IV", "Ask IV", "Target", "Model", "Δ bp", "Weight"];
 
 /** Centered placeholder for loading / error states. */
 const message = (text: string) => (
   <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
 );
 
-export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: QuoteTableProps) {
+const pct = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : formatPct(v, 2));
+const px = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "—" : v.toFixed(2));
+const bp = (v: number | null) => (v === null ? "—" : `${v > 0 ? "+" : ""}${v}`);
+/** The fit target of a row for the viewed mode: the band (lo–hi, 1 dp %) or "mid". */
+function targetText(r: TableRow | null, fitMode: FitMode): string {
+  if (r === null) return "—";
+  if (fitMode === "mid" || r.targetLo == null || r.targetHi == null) return "mid";
+  return `${(r.targetLo * 100).toFixed(1)}–${(r.targetHi * 100).toFixed(1)}`;
+}
+
+export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks, showCalib }: QuoteTableProps) {
   const [data, setData] = useState<TableResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,22 +69,6 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: Qu
     for (const e of weights?.entries ?? []) if (!e.excluded) m.set(e.index, e.weight);
     return m;
   }, [weights]);
-
-  // Live market overlay (SSE off the streaming book; empty when not streaming).
-  const shown = useMemo<ShownRow[]>(() => {
-    if (data === null) return [];
-    return data.rows.map((r) => {
-      const key = liveKey(r.strike);
-      const live = r.amended ? undefined : ticks.rows.get(key); // pinned rows never tick
-      if (live === undefined) return { ...r, key, live: false };
-      const { bidIv, midIv, askIv, bidPrice, midPrice, askPrice } = live;
-      return { ...r, key, live: true, bidIv, midIv, askIv, bidPrice, midPrice, askPrice };
-    });
-  }, [data, ticks.rows]);
-  // Alternate the flash class per frame so a cell ticking on consecutive frames
-  // re-triggers its animation (same class = no restart).
-  const flashClass = ticks.seq % 2 ? "volfit-tick-a" : "volfit-tick-b";
-  const flash = (key: string) => (ticks.flash.has(key) ? flashClass : "");
 
   // Fetch on open; refetch when the node / fit mode changes or the smile is
   // refitted (edits, undo/redo, hyperparameter changes all swap `smile`).
@@ -153,11 +95,17 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: Qu
     return () => controller.abort();
   }, [ticker, expiry, fitMode, smile]);
 
-  /** Copy the whole table as displayed (TSV incl. header, live overlay applied). */
+  // The two frames joined by strike (live market rows when streaming & ready).
+  const frames = useMemo(() => (data ? composeTableRows(data, ticks) : null), [data, ticks]);
+  // Alternate the flash class per frame so a cell ticking on consecutive frames
+  // re-triggers its animation (same class = no restart).
+  const flashClass = ticks.seq % 2 ? "volfit-tick-a" : "volfit-tick-b";
+
+  /** Copy the joined table as displayed (TSV incl. header). */
   const onCopy = () => {
-    if (data === null) return;
+    if (frames === null) return;
     void navigator.clipboard
-      .writeText(toTsv(shown))
+      .writeText(toTsv(frames.rows, showCalib))
       .then(() => {
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1200);
@@ -167,21 +115,26 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: Qu
       });
   };
 
-  /** Open the backend CSV endpoint; the browser handles the download. */
-  const onCsv = () => {
+  /** Open a backend CSV (market or calibration frame); the browser downloads it. */
+  const onCsv = (frame: "market" | "calib") => {
     const url =
       `${API_BASE_URL}/smiles/${encodeURIComponent(ticker)}/` +
-      `${encodeURIComponent(expiry)}/table.csv?fit_mode=${fitMode}`;
+      `${encodeURIComponent(expiry)}/table.csv?fit_mode=${fitMode}&frame=${frame}`;
     window.open(url, "_blank");
   };
 
-  if (data === null) {
+  if (data === null || frames === null) {
     return loading
       ? message("Loading quote table…")
       : message(`Table unavailable${error !== null ? ` (${error})` : ""}.`);
   }
 
   const num = "px-2 py-1 text-right tabular-nums";
+  const th = "px-2 py-1 font-medium whitespace-nowrap text-right";
+  const group = "px-2 py-1 text-left font-semibold tracking-wide uppercase text-[10px]";
+  const marketLabel = frames.live
+    ? `Market · live ${tickTime(frames.marketTimestamp)}`
+    : `Market · latest chain${frames.marketTimestamp ? ` ${tickTime(frames.marketTimestamp)}` : ""}`;
   return (
     <div
       className={[
@@ -189,54 +142,75 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: Qu
         loading ? "opacity-60" : "opacity-100",
       ].join(" ")}
     >
-      {/* Scrollable grid with a sticky header */}
+      {/* Scrollable grid with a sticky two-row header (frame groups + columns) */}
       <div className="min-h-0 flex-1 overflow-auto rounded-md border border-slate-800">
         <table className="w-full border-collapse font-mono text-[11px] leading-tight">
           <thead className="sticky top-0 z-10 bg-surface-800 text-slate-400">
-            <tr>
-              {HEADERS.map((h) => (
-                <th
-                  key={h}
-                  className={[
-                    "px-2 py-1.5 font-medium whitespace-nowrap",
-                    h === "C/P" ? "text-center" : "text-right",
-                  ].join(" ")}
-                >
-                  {h}
+            <tr className="border-b border-slate-800/80">
+              <th className={`${group} text-red-300/90`} colSpan={MARKET_HEADERS.length}
+                title="The prevailing market (as quoted, no edits) with the fit target of the viewed mode and the fit rolled to the prevailing spot">
+                {marketLabel}
+                {frames.marketForward !== null ? ` · F ${frames.marketForward.toFixed(2)}` : ""}
+                {frames.marketSpot != null ? ` · S ${frames.marketSpot.toFixed(2)}` : ""}
+              </th>
+              {showCalib && (
+                <th className={`${group} border-l border-slate-700 text-slate-300/80`} colSpan={CALIB_HEADERS.length}
+                  title="The quotes + target the last calibration used (with your exclusions / amended mids), the fit on its calibration spot and the calibration weight">
+                  Calibration · F {frames.calibForward.toFixed(2)}
                 </th>
+              )}
+            </tr>
+            <tr>
+              {MARKET_HEADERS.map((h) => (
+                <th key={`m-${h}`} className={`${th} ${h === "C/P" ? "text-center" : ""}`}>{h}</th>
               ))}
+              {showCalib &&
+                CALIB_HEADERS.map((h, i) => (
+                  <th key={`c-${h}`} className={`${th} ${i === 0 ? "border-l border-slate-700" : ""}`}>{h}</th>
+                ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
-            {shown.map((r) => (
-              <tr
-                key={r.index}
-                className={[
-                  "hover:bg-surface-800/60",
-                  r.excluded ? "text-slate-600 opacity-50" : "text-slate-200",
-                ].join(" ")}
-                title={r.excluded ? "excluded from calibration" : r.live ? "live market (streaming)" : undefined}
-              >
-                <td className={num}>{r.strike.toFixed(2)}</td>
-                <td className="px-2 py-1 text-center text-slate-400">{r.type}</td>
-                <td className={`${num} text-slate-400`}>{r.k.toFixed(3)}</td>
-                <td className={`${num} ${flash(r.key)}`}>{formatPct(r.bidIv, 2)}</td>
-                <td
-                  className={[num, flash(r.key), r.amended ? "font-semibold text-amber-400" : ""].join(" ")}
-                  title={r.amended ? "mid manually amended (pinned — does not tick)" : undefined}
-                >
-                  {formatPct(r.midIv, 2)}
-                </td>
-                <td className={`${num} ${flash(r.key)}`}>{formatPct(r.askIv, 2)}</td>
-                <td className={`${num} text-accent-400`}>{formatPct(r.modelIv, 2)}</td>
-                <td className={`${num} ${flash(r.key)}`}>{r.bidPrice.toFixed(2)}</td>
-                <td className={`${num} ${flash(r.key)}`}>{r.midPrice.toFixed(2)}</td>
-                <td className={`${num} ${flash(r.key)}`}>{r.askPrice.toFixed(2)}</td>
-                <td className={`${num} text-slate-400`}>
-                  {r.excluded ? "—" : (weightByIndex.get(r.index)?.toFixed(2) ?? "—")}
-                </td>
-              </tr>
-            ))}
+            {frames.rows.map((row) => {
+              const m = row.market;
+              const c = row.calib;
+              const side = m?.type ?? c?.type ?? "";
+              const flash = row.hot ? flashClass : "";
+              const calibCls = c?.excluded ? "text-slate-600 opacity-50" : "text-slate-300";
+              return (
+                <tr key={row.key} className="text-slate-200 hover:bg-surface-800/60">
+                  <td className={num}>{row.strike.toFixed(2)}</td>
+                  <td className="px-2 py-1 text-center text-slate-400">{side}</td>
+                  <td className={`${num} text-slate-400`}>{m ? m.k.toFixed(3) : c ? c.k.toFixed(3) : "—"}</td>
+                  <td className={`${num} ${flash}`}>{pct(m?.bidIv)}</td>
+                  <td className={`${num} ${flash}`}>{pct(m?.midIv)}</td>
+                  <td className={`${num} ${flash}`}>{pct(m?.askIv)}</td>
+                  <td className={`${num} text-slate-400`}>{targetText(m, fitMode)}</td>
+                  <td className={`${num} text-accent-400`}>{pct(m?.modelIv)}</td>
+                  <td className={`${num} text-slate-400`}>{bp(deltaBp(m))}</td>
+                  <td className={`${num} ${flash}`}>{px(m?.bidPrice)}</td>
+                  <td className={`${num} ${flash}`}>{px(m?.midPrice)}</td>
+                  <td className={`${num} ${flash}`}>{px(m?.askPrice)}</td>
+                  {showCalib && (
+                    <>
+                      <td className={`${num} border-l border-slate-700 ${calibCls}`}
+                        title={c?.excluded ? "excluded from calibration" : undefined}>{pct(c?.bidIv)}</td>
+                      <td className={[num, calibCls, c?.amended ? "font-semibold text-amber-400" : ""].join(" ")}
+                        title={c?.amended ? "mid manually amended" : c?.excluded ? "excluded from calibration" : undefined}>
+                        {pct(c?.midIv)}
+                      </td>
+                      <td className={`${num} ${calibCls}`}>{pct(c?.askIv)}</td>
+                      <td className={`${num} text-slate-400 ${c?.excluded ? "opacity-50" : ""}`}>{targetText(c, fitMode)}</td>
+                      <td className={`${num} text-accent-400/80 ${c?.excluded ? "opacity-50" : ""}`}>{pct(c?.modelIv)}</td>
+                      <td className={`${num} text-slate-400 ${c?.excluded ? "opacity-50" : ""}`}>{bp(deltaBp(c))}</td>
+                      <td className={`${num} text-slate-400`}>
+                        {c === null || c.excluded ? "—" : (weightByIndex.get(c.index)?.toFixed(2) ?? "—")}
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -256,49 +230,41 @@ export default function QuoteTable({ ticker, expiry, fitMode, smile, ticks }: Qu
         </div>
       )}
 
-      {/* Footer: node metadata + export actions */}
+      {/* Footer: node metadata + LIVE badge + export actions */}
       <div className="mt-2 flex shrink-0 items-center gap-2">
         <span className="font-mono text-[10px] text-slate-500">
-          {data.rows.length} quotes · T {data.t.toFixed(3)}y · F {data.forward.toFixed(2)} · df{" "}
-          {data.discount.toFixed(4)}
+          {frames.rows.length} strikes · T {data.t.toFixed(3)}y · df {data.discount.toFixed(4)}
+          {!showCalib ? ` · calibration F ${frames.calibForward.toFixed(2)} (toggle “Calib. quotes”)` : ""}
         </span>
         {ticks.streaming && (
           <span
             className="flex items-center gap-1.5 font-mono text-[10px]"
             title={
-              ticks.ready
-                ? "Live market off the streaming book, overlaid on the calibrated rows (Model IV stays the fit's; amended rows are pinned)"
+              frames.live
+                ? "Market frame off the streaming book (Model = the fit rolled to the live spot)"
                 : "The stream is up but the book has not served this node yet"
             }
           >
             <span
               className={[
                 "inline-block h-1.5 w-1.5 rounded-full",
-                ticks.ready ? "bg-emerald-400 volfit-live-dot" : "bg-amber-400",
+                frames.live ? "bg-emerald-400 volfit-live-dot" : "bg-amber-400",
               ].join(" ")}
             />
-            <span className={ticks.ready ? "text-emerald-400" : "text-amber-400"}>
-              {ticks.ready
-                ? `LIVE ${ticks.rows.size} · ${tickTime(ticks.ts)}` +
-                  (ticks.spot !== null ? ` · S ${ticks.spot.toFixed(2)}` : "")
-                : "live feed warming"}
+            <span className={frames.live ? "text-emerald-400" : "text-amber-400"}>
+              {frames.live ? `LIVE ${tickTime(frames.marketTimestamp)}` : "live feed warming"}
             </span>
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
-          <button
-            className={toolbarButtonClass}
-            onClick={onCopy}
-            title="Copy the table to the clipboard (TSV, header included)"
-          >
+          <button className={toolbarButtonClass} onClick={onCopy} title="Copy the table as shown (TSV, header included)">
             {copied ? "Copied ✓" : "Copy"}
           </button>
-          <button
-            className={toolbarButtonClass}
-            onClick={onCsv}
-            title="Download as CSV (rendered by the backend)"
-          >
-            CSV
+          <button className={toolbarButtonClass} onClick={() => onCsv("market")} title="Download the market frame as CSV (rendered by the backend)">
+            CSV market
+          </button>
+          <button className={toolbarButtonClass} onClick={() => onCsv("calib")} title="Download the calibration frame as CSV (rendered by the backend)">
+            CSV calib
           </button>
         </div>
       </div>

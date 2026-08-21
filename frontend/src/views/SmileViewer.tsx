@@ -77,7 +77,7 @@ const VIEW_HINTS: Record<ChartView, string> = {
   term: "ATM term structure across the expiry ladder · real / event-dilated clock",
   surface: "Drag to rotate · σ(k, T) across the expiry ladder",
   stackedvar: "Total variance w=σ²·T per expiry · non-crossing ⇒ no calendar arbitrage",
-  table: "Per-strike quotes vs the current fit · Copy / CSV in the footer",
+  table: "Market frame (prevailing quotes, target, fit @ market spot) · Calib. quotes toggles the calibration columns · Copy / CSV in the footer",
 };
 
 /** Centered placeholder for the chart-card body states. */
@@ -384,7 +384,7 @@ export default function SmileViewer() {
           : chartMessage("Stacked IV requires the live backend.");
       case "table":
         return live
-          ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} ticks={liveTicks} />
+          ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} ticks={liveTicks} showCalib={showCalibQuotes} />
           : chartMessage("Table view requires the live backend.");
     }
   };
@@ -460,8 +460,9 @@ export default function SmileViewer() {
           </button>
         )}
         {/* Calibration frame toggles: the quotes + target the last fit used
-            (muted, with your edits) and the fit on its calibration spot. */}
-        {view === "smile" && (
+            (muted, with your edits; the table's calibration columns) and the
+            fit on its calibration spot. */}
+        {(view === "smile" || view === "table") && (
           <button
             className={[
               "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
@@ -469,7 +470,7 @@ export default function SmileViewer() {
                 ? "border-slate-400/60 bg-slate-500/15 text-slate-200"
                 : "border-slate-700 text-slate-400 hover:text-slate-200",
             ].join(" ")}
-            title="Show the quotes + target the last calibration used (with your exclusions / amended mids) under the prevailing market"
+            title="Show the quotes + target the last calibration used (with your exclusions / amended mids) next to the prevailing market — chart layer and table columns"
             onClick={() => setShowCalibQuotes((v) => !v)}
           >
             Calib. quotes

@@ -30,6 +30,8 @@ from __future__ import annotations
 import math
 from datetime import date
 
+import numpy as np
+
 from volfit.api.quotes import PreparedQuotes
 from volfit.api.schemas import CalibLayer, MarketLayer, QuoteBand, SmilePoint
 from volfit.api.state import AppState, FitRecord
@@ -61,14 +63,35 @@ def prevailing_shift(state: AppState, ticker: str) -> tuple[float, float | None]
     return spot / anchor - 1.0, spot
 
 
+def rolled_record(state: AppState, ticker: str, iso: str, base: FitRecord, shift: float) -> FitRecord:
+    """The calibrated fit ``base`` rolled by ``shift`` under the dynamics regime
+    (the displayed slice lives in the ROLLED forward's moneyness)."""
+    from volfit.api.service import transport_record
+
+    return transport_record(state, ticker, iso, base, shift=shift)
+
+
+def model_iv_at(record: FitRecord, k) -> np.ndarray:
+    """The record's displayed fit as implied vol (its prepared clock) at the
+    log-moneyness grid ``k`` (the record's own forward)."""
+    from volfit.api.displayed import displayed_slice
+    from volfit.api.service import fill_nonfinite
+
+    ks = np.asarray(k, dtype=float)
+    if ks.size == 0:
+        return ks
+    w = np.maximum(displayed_slice(record).implied_w(ks), 0.0)
+    return fill_nonfinite(np.sqrt(w / record.prepared.tau))
+
+
 def rolled_model(state: AppState, ticker: str, iso: str, base: FitRecord | None, shift: float) -> list[SmilePoint]:
     """The calibrated fit ``base`` rolled by ``shift`` (k relative to the rolled
     forward) under the dynamics regime; [] when there is no fit."""
-    from volfit.api.service import model_curve, transport_record
+    from volfit.api.service import model_curve
 
     if base is None:
         return []
-    return model_curve(transport_record(state, ticker, iso, base, shift=shift))
+    return model_curve(rolled_record(state, ticker, iso, base, shift))
 
 
 def rolled_forward(state: AppState, ticker: str, iso: str, base: FitRecord, shift: float) -> float:
@@ -139,6 +162,7 @@ def market_layer(
     calib_quotes: list[QuoteBand],
     prepared_market: PreparedQuotes | None,
     active_model: list[SmilePoint] | None = None,
+    calib_index: dict[str, int] | None = None,
 ) -> MarketLayer | None:
     """The market frame for a node, or None when no chain is loaded.
 
@@ -165,7 +189,7 @@ def market_layer(
         timestamp = None
     quotes = market_quote_bands(
         prepared_market, forward, fit_mode, state.fit_settings().haircut,
-        calib_index_by_strike(calib_quotes),
+        calib_index if calib_index is not None else calib_index_by_strike(calib_quotes),
     )
     return MarketLayer(
         forward=forward,

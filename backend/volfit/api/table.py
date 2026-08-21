@@ -25,9 +25,10 @@ import math
 
 import numpy as np
 
+from volfit.api import smile_layers
 from volfit.api.displayed import displayed_slice
 from volfit.api.schemas import TableResponse, TableRow
-from volfit.api.service import fit_or_get, prepare_slice
+from volfit.api.service import displayed_base, edited_band_full, fit_or_get, prepare_slice
 from volfit.api.state import AppState
 from volfit.core.black import black_call
 
@@ -47,7 +48,8 @@ def _price(k: float, iv: float, t: float, forward: float, discount: float) -> fl
 
 
 def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) -> TableResponse:
-    """Assemble the full quote table for one (ticker, expiry) node."""
+    """Assemble the full quote table for one (ticker, expiry) node: the
+    calibration rows (``rows``) + the prevailing market rows (``marketRows``)."""
     record = fit_or_get(state, ticker, expiry_iso, fit_mode)
     iso = state.resolve_expiry(ticker, expiry_iso).isoformat()  # session key
     session = state.session_if_exists((ticker, iso))
@@ -66,6 +68,7 @@ def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
         model_iv = np.sqrt(displayed_slice(record).implied_w(prepared.k) / prepared.tau)
     t, forward, discount = prepared.t, prepared.forward, prepared.discount
     tv = prepared.tau
+    band = edited_band_full(state, ticker, iso, prepared, fit_mode)  # the fit's own target
 
     rows: list[TableRow] = []
     for i, (k, bid, mid, ask) in enumerate(
@@ -90,19 +93,87 @@ def table_payload(state: AppState, ticker: str, expiry_iso: str, fit_mode: str) 
                 askPrice=_price(k, float(ask), tv, forward, discount),
                 excluded=edit is not None and edit.excluded,
                 amended=amended,
+                targetLo=float(band.iv_lo[i]) if band is not None else None,
+                targetHi=float(band.iv_hi[i]) if band is not None else None,
             )
         )
+    market = _market_rows(state, ticker, iso, fit_mode, rows)
     return TableResponse(
-        ticker=ticker, expiry=expiry_iso, t=t, forward=forward, discount=discount, rows=rows
+        ticker=ticker, expiry=expiry_iso, t=t, forward=forward, discount=discount, rows=rows,
+        **market,
     )
 
 
-def table_csv(payload: TableResponse) -> str:
-    """Render one TableResponse as CSV text (header + one line per row)."""
+def _market_rows(
+    state: AppState, ticker: str, iso: str, fit_mode: str, calib_rows: list[TableRow]
+) -> dict:
+    """The PREVAILING frame of the table (api/smile_layers semantics): the latest
+    fetched chain as quoted (no edits, target of ``fit_mode``), Model IV = the fit
+    ROLLED to the prevailing spot evaluated at each strike's market moneyness,
+    prices reconstructed at the market forward. Empty when no chain."""
+    base = displayed_base(state, ticker, iso, fit_mode)
+    prepared = prepare_slice(state, ticker, iso)
+    if prepared is None:
+        return {}
+    calib_index = {smile_layers.strike_key(r.strike): r.index for r in calib_rows}
+    shift, spot = smile_layers.prevailing_shift(state, ticker)
+    if base is not None:  # ONE transport: its forward is the market forward
+        rolled = smile_layers.rolled_record(state, ticker, iso, base, shift)
+        f = float(rolled.prepared.forward)
+        discount, tv = float(rolled.prepared.discount), float(rolled.prepared.tau)
+    else:
+        rolled, f = None, float(prepared.forward)
+        discount, tv = float(prepared.discount), float(prepared.tau)
+    quotes = smile_layers.market_quote_bands(
+        prepared, f, fit_mode, state.fit_settings().haircut, calib_index
+    )
+    ks = np.array([q.k for q in quotes])
+    if rolled is not None:
+        model_iv = smile_layers.model_iv_at(rolled, ks) if ks.size else ks
+    else:
+        model_iv = np.array([q.mid for q in quotes])  # no fit: the mid stands in
+    try:
+        stamp = state.snapshot(ticker).timestamp
+        timestamp = stamp.isoformat() if stamp is not None else None
+    except Exception:  # noqa: BLE001
+        timestamp = None
+    rows = [
+        TableRow(
+            index=q.index,
+            strike=float(q.strike),
+            type="C" if q.k >= 0.0 else "P",
+            k=q.k,
+            bidIv=q.bid,
+            midIv=q.mid,
+            askIv=q.ask,
+            modelIv=float(model_iv[i]),
+            bidPrice=_price(q.k, q.bid, tv, f, discount),
+            midPrice=_price(q.k, q.mid, tv, f, discount),
+            askPrice=_price(q.k, q.ask, tv, f, discount),
+            excluded=False,
+            amended=False,
+            targetLo=q.targetLo,
+            targetHi=q.targetHi,
+        )
+        for i, q in enumerate(quotes)
+    ]
+    return {
+        "marketForward": f,
+        "marketSpot": spot,
+        "marketTimestamp": timestamp,
+        "marketLive": bool(state.is_streaming()),
+        "marketRows": rows,
+    }
+
+
+def table_csv(payload: TableResponse, frame: str = "calib") -> str:
+    """Render one TableResponse as CSV text (header + one line per row):
+    ``frame="calib"`` (default, the frozen contract) = the calibration rows,
+    ``"market"`` = the prevailing market rows (same columns)."""
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(CSV_COLUMNS.split(","))
-    for r in payload.rows:
+    for r in payload.marketRows if frame == "market" else payload.rows:
         writer.writerow(
             [
                 r.strike,

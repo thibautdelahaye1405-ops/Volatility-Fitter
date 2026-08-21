@@ -29,6 +29,9 @@ export interface LiveTickRow {
   targetHi?: number | null;
   /** The calibration quote at the same strike (click-through), -1 when none. */
   index?: number;
+  /** The fit ROLLED to the live spot at this row's live moneyness (the table's
+   *  market "Model IV"); null/absent when the node has no fit. */
+  modelIv?: number | null;
 }
 
 /** One SSE event of the tick stream (backend LiveTableFrame). */

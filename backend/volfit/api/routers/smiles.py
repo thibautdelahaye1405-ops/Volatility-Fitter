@@ -169,15 +169,18 @@ def get_table(
 
 @router.get("/smiles/{ticker}/{expiry}/table.csv")
 def get_table_csv(
-    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid"
+    ticker: str, expiry: str, request: Request, fit_mode: FitMode = "mid", frame: str = "calib"
 ) -> Response:
+    """CSV of the table: ``frame=calib`` (default) the calibration rows, ``market``
+    the prevailing market rows."""
     try:
         payload = table.table_payload(request.app.state.volfit, ticker, expiry, fit_mode)
     except UnknownNodeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from None
-    filename = f"{ticker}_{expiry}_quotes.csv"
+    tag = "market" if frame == "market" else "quotes"
+    filename = f"{ticker}_{expiry}_{tag}.csv"
     return Response(
-        content=table.table_csv(payload),
+        content=table.table_csv(payload, frame),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

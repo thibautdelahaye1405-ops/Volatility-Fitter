@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field
 from volfit.api.quotes import prepare_quotes
 from volfit.api.schemas import SmilePoint
 from volfit.api.service import displayed_base, node_clock, spot_forward_shift, variance_time
-from volfit.api.smile_layers import rolled_model, strike_key
+from volfit.api.smile_layers import model_iv_at, rolled_record, strike_key
 from volfit.api.state import AppState
 from volfit.api.table import _price as band_price
 from volfit.calib.band import resolve_band
@@ -70,6 +70,9 @@ class LiveTickRow(BaseModel):
     targetHi: float | None = None
     #: The calibration quote at the same strike (click-through), -1 when none.
     index: int = -1
+    #: The fit ROLLED to the live spot, at this row's live moneyness (the table's
+    #: "Model IV" of the market frame); None when the node has no fit.
+    modelIv: float | None = None
 
 
 class LiveTableFrame(BaseModel):
@@ -244,6 +247,8 @@ class LiveTableTracker:
         self._announced: tuple[bool, bool] | None = None  # (streaming, ready)
         self._model_shift: float | None = None  # shift the last sent rolled model was at
         self._base_id: int | None = None  # identity of the calibration record last seen
+        self._rolled = None  # the rolled FitRecord at (_base_id, _rolled_shift)
+        self._rolled_shift: float | None = None
 
     def _status(self, streaming: bool, ready: bool) -> LiveTableFrame | None:
         """A status frame if (streaming, ready) changed since the last push."""
@@ -276,10 +281,23 @@ class LiveTableTracker:
         self._sent = {k: _signature(r) for k, r in current.items()}
         # The fit rolled to the live spot: recomputed only when the spot (hence the
         # forward) moved or the calibration changed — a quote-only tick sends none.
+        # The same rolled record prices each sent row's Model IV at its live k.
         model: list[SmilePoint] | None = None
-        if base is not None and (full or sl.shift != self._model_shift):
-            model = rolled_model(state, ticker, iso, base, sl.shift)
-            self._model_shift = sl.shift
+        if base is not None:
+            if self._rolled is None or base_changed or sl.shift != self._rolled_shift:
+                self._rolled = rolled_record(state, ticker, iso, base, sl.shift)
+                self._rolled_shift = sl.shift
+            if full or sl.shift != self._model_shift:
+                from volfit.api.service import model_curve
+
+                model = model_curve(self._rolled)
+                self._model_shift = sl.shift
+            if changed:
+                ivs = model_iv_at(self._rolled, [r.k for r in changed])
+                for r, iv in zip(changed, ivs):
+                    r.modelIv = round(float(iv), 8)
+        else:
+            self._rolled = None
         self._base_id = id(base)
         if not (changed or gone or full or model is not None):
             return None

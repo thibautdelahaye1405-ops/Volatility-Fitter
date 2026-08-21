@@ -1057,12 +1057,26 @@ class TableRow(BaseModel):
     bidPrice: float
     midPrice: float
     askPrice: float
+    #: Fit-target band of the requested fit mode (None in "mid"): the calibration
+    #: rows carry the edited band the fit used, the market rows the pure-market
+    #: band (optional additions to the frozen contract).
+    targetLo: float | None = None
+    targetHi: float | None = None
     excluded: bool
     amended: bool
 
 
 class TableResponse(BaseModel):
-    """The full quote/price/IV table of one fitted (ticker, expiry) node."""
+    """The full quote/price/IV table of one fitted (ticker, expiry) node.
+
+    ``rows`` is the CALIBRATION frame (the quotes + target the last fit used,
+    with edits, Model IV = the fit on its calibration spot); the ``market*``
+    fields are the PREVAILING frame (the latest fetched chain as quoted, no
+    edits, target of the fit mode, Model IV = the fit ROLLED to the prevailing
+    spot at each strike's market moneyness; ``index`` = the calibration row at
+    the same strike, -1 when none). The Quote Table joins the two by strike;
+    the live tick stream refines the market frame while streaming.
+    """
 
     ticker: str
     expiry: str
@@ -1070,6 +1084,11 @@ class TableResponse(BaseModel):
     forward: float
     discount: float
     rows: list[TableRow]
+    marketForward: float | None = None
+    marketSpot: float | None = None
+    marketTimestamp: str | None = None
+    marketLive: bool = False
+    marketRows: list[TableRow] = Field(default_factory=list)
 
 
 # --------------------------------------------------------------- graph solve
