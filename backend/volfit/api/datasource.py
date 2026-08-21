@@ -25,6 +25,7 @@ SOURCE_LABELS = {
     "asx": "ASX (delayed)",
     "hkex": "HKEX (delayed)",
     "sgx": "SGX (delayed)",
+    "eurex": "Eurex (delayed / EOD)",
     "synthetic": "Synthetic",
 }
 

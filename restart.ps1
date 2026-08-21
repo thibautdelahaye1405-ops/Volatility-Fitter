@@ -9,6 +9,7 @@
 #          .\restart.ps1 -Asx                   # force the ASX delayed (bid/ask) exchange source
 #          .\restart.ps1 -Hkex                  # force the HKEX delayed (bid/ask) exchange source
 #          .\restart.ps1 -Sgx                   # force the SGX delayed (bid/ask) exchange source
+#          .\restart.ps1 -Eurex                 # force the Eurex delayed / EOD-settlement exchange source
 #          .\restart.ps1 -Synthetic             # force the offline synthetic source
 #          .\restart.ps1 -Db my.sqlite          # custom persistence file
 #          .\restart.ps1 -NoDb                  # disable on-disk persistence
@@ -16,11 +17,11 @@
 # Kills whatever is listening on the two dev ports (clears stale uvicorn / Vite
 # servers), then relaunches the FastAPI backend and the Vite dev server.
 #
-# Data sources: serve.py registers ALL feeds (Yahoo, Bloomberg, Cboe/Nasdaq/ASX/HKEX/SGX delayed, Massive when
+# Data sources: serve.py registers ALL feeds (Yahoo, Bloomberg, Cboe/Nasdaq/ASX/HKEX/SGX/Eurex delayed, Massive when
 # $env:VOLFIT_MASSIVE_KEY is set, Synthetic), so the in-app Data Source selector
 # can switch between them at runtime with a status light each. The default run
 # (no flag) lets the backend auto-pick the best-reachable source as active
-# (Bloomberg -> Cboe -> Nasdaq -> ASX -> HKEX -> SGX -> Yahoo -> Massive -> Synthetic); the switches above just FORCE a
+# (Bloomberg -> Cboe -> Nasdaq -> ASX -> HKEX -> SGX -> Eurex -> Yahoo -> Massive -> Synthetic); the switches above just FORCE a
 # specific one active on launch. Set $env:VOLFIT_MASSIVE_KEY in your shell to
 # light up Massive (no key = Massive shows Red, the rest still work).
 #
@@ -38,6 +39,7 @@ param(
     [switch]$Asx,              # force the ASX delayed exchange source active on launch
     [switch]$Hkex,             # force the HKEX delayed exchange source active on launch
     [switch]$Sgx,              # force the SGX delayed exchange source active on launch
+    [switch]$Eurex,            # force the Eurex delayed / EOD-settlement exchange source active on launch
     [switch]$Synthetic,        # force the offline synthetic source active on launch
     [string]$Db = "backend\data\volfit.sqlite",  # SQLite persistence file
     [switch]$NoDb              # disable on-disk persistence (overrides -Db)
@@ -125,6 +127,7 @@ elseif ($Nasdaq)    { $env:VOLFIT_PROVIDER = 'nasdaq' }
 elseif ($Asx)       { $env:VOLFIT_PROVIDER = 'asx' }
 elseif ($Hkex)      { $env:VOLFIT_PROVIDER = 'hkex' }
 elseif ($Sgx)       { $env:VOLFIT_PROVIDER = 'sgx' }
+elseif ($Eurex)     { $env:VOLFIT_PROVIDER = 'eurex' }
 elseif ($Live)      { $env:VOLFIT_PROVIDER = 'yahoo' }
 elseif ($Synthetic) { $env:VOLFIT_PROVIDER = 'synthetic' }
 

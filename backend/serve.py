@@ -8,9 +8,9 @@ switch between them at runtime; the *active* one on launch is chosen below.
 
 Environment variables:
     VOLFIT_PROVIDER  Force the active source on launch ("synthetic", "yahoo",
-                     "cboe", "nasdaq", "asx", "hkex", "sgx", "bloomberg", "massive").
+                     "cboe", "nasdaq", "asx", "hkex", "sgx", "eurex", "bloomberg", "massive").
                      Unset (default) = best-reachable auto-pick (bloomberg -> cboe
-                     -> nasdaq -> asx -> hkex -> sgx -> yahoo -> massive -> synthetic).
+                     -> nasdaq -> asx -> hkex -> sgx -> eurex -> yahoo -> massive -> synthetic).
     VOLFIT_TICKERS   comma-separated watchlist (default SPY,QQQ,AAPL)
     VOLFIT_MASSIVE_KEY  Massive API key; without it Massive shows Red.
     VOLFIT_DB        SQLite path for fit-history persistence (every fit is
@@ -31,7 +31,7 @@ from volfit.api.app import create_app
 #: Preference order for the best-reachable auto-pick (richest feed first).
 #: Cboe's delayed chains carry the real bid/ask (Yahoo only yields a usable
 #: mid), so the exchange source ranks above Yahoo.
-_AUTO_ORDER = ("bloomberg", "cboe", "nasdaq", "asx", "hkex", "sgx", "yahoo", "massive", "synthetic")
+_AUTO_ORDER = ("bloomberg", "cboe", "nasdaq", "asx", "hkex", "sgx", "eurex", "yahoo", "massive", "synthetic")
 
 
 def _watchlist() -> list[str]:
@@ -64,6 +64,7 @@ def _build_providers() -> dict:
     from volfit.data.exchange import ExchangeChainProvider
     from volfit.data.hkex import HkexAdapter
     from volfit.data.sgx import SgxAdapter
+    from volfit.data.eurex import EurexAdapter
     from volfit.data.massive import MassiveProvider
     from volfit.data.nasdaq import NasdaqAdapter
     from volfit.data.provider import SyntheticProvider
@@ -88,6 +89,10 @@ def _build_providers() -> dict:
         # SGX: Nikkei 225 (NK) + FTSE China A50 / Taiwan / MSCI Singapore index
         # options (European) off SGX's delayed-prices API; ~10-min delayed.
         "sgx": ExchangeChainProvider(tickers, SgxAdapter()),
+        # Eurex: EURO STOXX 50 / DAX / STOXX 600 index options (European) off the
+        # product pages' statistics API — 15-min delayed bid/ask intraday, the EOD
+        # settlement surface (zero-width quotes) otherwise.
+        "eurex": ExchangeChainProvider(tickers, EurexAdapter()),
         # //blp/mktdata streaming knobs (volfit.data.bloomberg_live): conflation
         # seconds (0 = every tick), concurrent-subscription budget, DAPI endpoint.
         "bloomberg": BloombergProvider(

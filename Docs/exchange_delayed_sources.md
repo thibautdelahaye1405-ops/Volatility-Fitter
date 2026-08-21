@@ -18,11 +18,12 @@ The app ingests them through one seam (`backend/volfit/data/exchange.py`):
   venue does not answer / refused the last symbol. HTTP is injectable
   (`fetch_json`) → fully offline-testable.
 
-Registered in `serve.py` as source ids `cboe`, `nasdaq`, `asx`, `hkex` and
-`sgx` (auto-pick order: Bloomberg → **Cboe** → **Nasdaq** → **ASX** →
-**HKEX** → **SGX** → Yahoo → Massive → Synthetic); launch `.\restart.ps1
--Cboe` / `-Nasdaq` / `-Asx` / `-Hkex` / `-Sgx` to force one; the in-app Data
-Source selector lists them as "<Venue> (delayed)".
+Registered in `serve.py` as source ids `cboe`, `nasdaq`, `asx`, `hkex`,
+`sgx` and `eurex` (auto-pick order: Bloomberg → **Cboe** → **Nasdaq** →
+**ASX** → **HKEX** → **SGX** → **Eurex** → Yahoo → Massive → Synthetic);
+launch `.\restart.ps1 -Cboe` / `-Nasdaq` / `-Asx` / `-Hkex` / `-Sgx` /
+`-Eurex` to force one; the in-app Data Source selector lists them as
+"<Venue> (delayed)" (Eurex: "Eurex (delayed / EOD)").
 
 ## Shipped — Nasdaq (US) ✅ `volfit/data/nasdaq.py`
 
@@ -95,6 +96,19 @@ venue (Nasdaq, below).
 | Symbols | `NK` / `NIKKEI` / `N225` / `^N225` / `NKY`, `FCH` / `A50`, `TWN`, `SGP` |
 | Verified | 2026-08-21 evening SGT: status amber, NK 2 nearest months with (stale) quotes, spot proxy 66,065 from NKU26; the T-session two-sided book and the price units must be re-checked during the SGT day (08:30–18:00 SGT) |
 
+## Shipped — Eurex (Europe) ✅ `volfit/data/eurex.py` — two tiers: delayed quotes + the EOD settlement surface
+
+| | |
+|---|---|
+| Coverage | the Eurex index option classes, European: EURO STOXX 50 (`OESX` / `SX5E` / `^STOXX50E`, id 69660), DAX (`ODAX` / `DAX` / `^GDAXI`, 70044), STOXX Europe 600 (`OSTX` / `SXXP`, 70284); any other product by its **numeric** id (bare number as ticker; read `"productId": N` in the product page's JSON — the code itself is refused, "No product found for productId: OESX") |
+| Endpoint | ONE JSON API behind the product pages' Prices/Quotes + Statistics tabs (headless-Edge capture + the `prices-statistics` bundle's request builder): `https://www.eurex.com/api/v1/overallstatistics/{id}?filtertype=overview[&busdate=YYYYMMDD]` → `header {underlyingClosingPrice, tradingDates[newest first], volume, openInterest, putCallRatio}` + `dataRows[] {date "20260918", contractType M\|W\|E, call/put volume & OI}` (one row per EXPIRY — exact dates, no calendar rule); `…?filtertype=detail&productdate=YYYYMMDD&contracttype=M[&busdate=…]` → `dataRowsCall / dataRowsPut [] {strike, versionNumber, volume, openInterest, open, high, low, last, dSettle[, bid, bidVol, ask, askVol, lastTraded]}` |
+| busdate | omitted = the last COMPLETED business day (server default); today's date answers empty rows once the session is over |
+| Tiers | **intraday** (09:00–17:30 CET): rows carrying `bid`/`ask` (the bundle's quote columns, "Displayed data is 15 minutes delayed") → two-sided quotes stamped now − 15 min; **EOD** (anything without a book): Eurex's daily settlement `dSettle` — a model-smoothed fair value published for EVERY series — → zero-width quotes bid = ask = settle stamped at the busdate's 17:30 CET close, next to the underlying's own close (`underlyingClosingPrice`): a coherent end-of-day surface; `settlement_quotes=False` keeps them last-only. The selector status names the tier served: "Eurex ~15-min delayed" / "Eurex EOD settlement (2026-08-20)" (adapter hook `status_text()`, honoured by `ExchangeChainProvider.feed_status`) |
+| Fields | zeros mean "no value" (last/open/high/low 0.0 on untraded series); `versionNumber` ≠ 0 (corporate-action-adjusted series) skipped; prices EUR per unit (index points) |
+| Size / speed | 1 overview + 1 detail call per expiry (~10 kB each, threaded ×8, ≤ 40 nearest): OESX 26 expiries within 2 y in ~17 s cold (server-side pacing), ODAX 13 in 8 s, OSTX 16 in 11 s; cached 60 s by the provider |
+| Verified | 2026-08-21 (after the 17:30 CET close): status amber 0.4 s; OESX 396 settlement quotes across the first two expiries (all two-sided, zero-width), spot 6,422.06, stamp 2026-08-20 15:30 UTC; ODAX 534 quotes, spot 25,983.04; OSTX 254, spot 650.35; ATM OESX Sep-26 6425 C settle 51.3 vs last 46.4 — **the intraday bid/ask tier is inferred from the app bundle (same detail rows during the session) and still has to be eyeballed on a trading day** |
+| Caveats | intraday the spot stays the previous close (`underlyingClosingPrice`) until a live underlying read is found; stock-option classes need their numeric ids (not mapped yet); US-centric settlement clock |
+
 ## Not feasible now — Korea (KRX)
 
 KRX's data portal (`data.krx.co.kr`) answers scripted `getJsonData.cmd` calls with `LOGOUT`/400 without its session/OTP dance and the page itself times out in headless Edge (60 s); `global.krx.co.kr` derivatives pages 404; Naver Finance's option pages moved (404 at the known paths). KOSPI 200 option quotes therefore need either KRX's OTP session flow (EOD statistics) or a maintained Korean-portal scrape — parked.
@@ -111,7 +125,7 @@ KRX's data portal (`data.krx.co.kr`) answers scripted `getJsonData.cmd` calls wi
 | Venue | What is public | Bid/ask? | Verdict |
 |---|---|---|---|
 | **TMX Montréal (Canada)** `m-x.ca/en/trading/data/quotes?symbol=XIU*` | HTML table (bid/ask/last/volume/OI per series), ~2 MB page | ✅ (HTML) | feasible — an HTML-table scrape (lxml/regex); fragile to page redesigns |
-| **Eurex (Europe)** `eurex.com/api/v1/overallstatistics/{productId}` | JSON EOD statistics (volume/OI/settlement per series, `underlyingClosingPrice`, `tradingDates`) | ❌ (EOD only) | the delayed bid/ask tables live in the site's web app; the XHR behind them was not discoverable by guessing — capture from a browser session, or use the EOD settlement prices as an end-of-day source (a different, also useful, tier) |
+| **Eurex (Europe)** `eurex.com/api/v1/overallstatistics/{productId}` | JSON — the SAME endpoint feeds the Prices/Quotes tab (bid/ask columns intraday) and the Statistics tab (settlement / volume / OI per series) | ✅ intraday (15-min), settlement EOD | **SHIPPED** — see "Shipped — Eurex" above |
 | **NSE India** `nseindia.com/api/option-chain-indices?symbol=NIFTY` | JSON chain (near-real-time, bid/ask) — requires the site's cookies (visit the home page first) | ✅ | feasible with a cookie handshake; anti-bot measures change often |
 | **CME (US futures options)** `cmegroup.com/CmeWS/mvc/Quotes/Option/…` | JSON, 10-min delayed | ✅ | **blocked** — 403 "suspected web scraping" for scripted access; would also need the futures-forward model (options on futures) |
 | **HKEX (Hong Kong)** | delayed option quotes on hkex.com.hk behind a token API | ? | not located yet |

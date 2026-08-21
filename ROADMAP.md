@@ -613,6 +613,48 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21h) — SIXTH EXCHANGE ADAPTER: EUREX (DELAYED QUOTES + THE EOD SETTLEMENT TIER)
+
+User: "Now the Eurex adapter via the headless capture". The OESX/ODAX
+product pages were recorded with `frontend/scripts/capture_xhr.mjs`; the
+app's `prices-statistics` bundle (600 kB) was read for its request builder
+and column set — the Prices/Quotes tab and the Statistics tab are fed by
+ONE endpoint, not a hidden quote XHR.
+
+- **Eurex** — SHIPPED `data/eurex.py` (`eurex`, `restart.ps1 -Eurex`,
+  label "Eurex (delayed / EOD)"): `www.eurex.com/api/v1/overallstatistics/
+  {id}?filtertype=overview[&busdate=YYYYMMDD]` (header
+  `underlyingClosingPrice` + `tradingDates` newest-first; `dataRows` = one
+  row per EXPIRY with the exact date + contractType M/W/E) and
+  `…?filtertype=detail&productdate=YYYYMMDD&contracttype=M` (`dataRowsCall`
+  / `dataRowsPut`: strike, versionNumber, volume, OI, OHLC, last, dSettle
+  and — intraday, per the bundle's columns bid/bidVol/ask/askVol/lastTraded,
+  "15 minutes delayed" — the book). `busdate` omitted = the last completed
+  business day (today answers empty rows once the session is over). The id
+  is NUMERIC (OESX 69660, ODAX 70044, OSTX 70284 mapped; the code is refused
+  "No product found"; bare numeric tickers pass through). Two tiers: rows
+  with bid/ask → two-sided delayed quotes (stamp now − 15 min); everything
+  else → Eurex's settlement `dSettle` as a zero-width quote bid = ask =
+  settle stamped at the busdate's 17:30 CET close (CET/CEST rule), next to
+  the underlying close — a coherent EOD settlement surface (model-smoothed
+  fair values for EVERY series). Seam extension: an adapter may word its own
+  amber text (`status_text()` honoured by `ExchangeChainProvider.feed_status`)
+  → "Eurex EOD settlement (2026-08-20)" vs "Eurex ~15-min delayed".
+  Live (after the close): OESX 26 expiries ≤ 2 y, 396 settlement quotes on
+  the first two, spot 6,422.06, stamp 2026-08-20 15:30 UTC; ODAX 13 / 534,
+  spot 25,983.04; OSTX 16 / 254, spot 650.35. Through the app (TestClient):
+  universe OESX/ODAX, exact expiry ladder (weeklies/EOM/quarterlies),
+  OESX 18-Sep-2026 fit from 81 settlement quotes in 1.2 s — ATM 14.26 %,
+  forward 6,446.0, model vs quote at the 5525 P 29.53 % / 29.53 %. Tests
+  `test_eurex.py` 4 (+1 live-gated). Cold chain ~17 s for OESX (1 overview
+  + 26 detail calls, server-paced; cached 60 s).
+- OPEN: the intraday bid/ask tier is inferred from the bundle (same detail
+  rows during 09:00–17:30 CET) — eyeball it on a trading day; intraday the
+  spot stays the previous close until a live underlying read is found; stock
+  option classes need their numeric ids (not mapped).
+- Registration / labels / switches / CLAUDE.md for eurex; catalog doc: new
+  "Shipped — Eurex" section, candidates row flipped to SHIPPED. Suite green.
+
 ### 🧭 SESSION WRAP (2026-08-21g) — VENUE SWEEP: EURONEXT / ICE (verdicts), HKEX + SGX (adapters), KRX (parked)
 
 User order: Euronext → ICE → SGX → Hong Kong → Korea. Tooling:

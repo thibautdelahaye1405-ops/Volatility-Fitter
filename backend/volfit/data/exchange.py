@@ -225,8 +225,9 @@ class ExchangeChainProvider(OptionChainProvider):
             verdict = ("red", f"{self.adapter.label} unreachable")
         elif self._last_error:
             verdict = ("red", f"{self.adapter.label}: {self._last_error}")
-        else:
-            verdict = ("amber", f"{self.adapter.label} ~{self.adapter.delay_minutes}-min delayed")
+        else:  # an adapter may word its own amber text (Eurex: which tier it served)
+            text = getattr(self.adapter, "status_text", None)
+            verdict = ("amber", text() if callable(text) else f"{self.adapter.label} ~{self.adapter.delay_minutes}-min delayed")
         self._status = (now, verdict)
         return verdict
 
