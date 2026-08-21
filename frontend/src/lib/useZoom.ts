@@ -30,6 +30,9 @@ export interface ZoomController {
   panBy: (dfx: number, dfy: number, axis: "x" | "y" | "both") => void;
   reset: () => void;
   zoomed: boolean;
+  /** The raw base-relative fractions — a stable identity per zoom/pan step
+   *  (charts key remount-on-zoom layers on it). */
+  fractions: ZoomFractions;
 }
 
 function interp(base: readonly [number, number], lo: number, hi: number): [number, number] {
@@ -85,5 +88,5 @@ export function useZoom(): ZoomController {
   const reset = useCallback(() => setF(IDENTITY), []);
   const zoomed = f.xLo !== 0 || f.xHi !== 1 || f.yLo !== 0 || f.yHi !== 1;
 
-  return { viewX, viewY, zoomAt, panBy, reset, zoomed };
+  return { viewX, viewY, zoomAt, panBy, reset, zoomed, fractions: f };
 }

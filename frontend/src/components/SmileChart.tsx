@@ -281,6 +281,14 @@ export default function SmileChart({
   const toX = (k: number) => xScale.map(tx(k));
   const toXCalib = (k: number) => xScale.map(txCalib(k));
   const toY = (v: number) => yScale.map(v);
+  // Remount-on-zoom key for the quote layers: every zoom / pan / resize step
+  // REPLACES the beam elements instead of mutating their geometry in place —
+  // removal + insertion is invalidated reliably by every engine (Chrome left
+  // ghost beams at the old positions under live streaming until the next tick
+  // rebuilt them). Live ticks themselves do not change this key, so a beam's
+  // click target survives between pointer-down and click while streaming.
+  const zf = zoom.fractions;
+  const viewKey = `${zf.xLo},${zf.xHi},${zf.yLo},${zf.yHi},${plotW},${plotH},${axisMode}`;
   const tickStamp = market.timestamp ? `${market.timestamp.slice(11, 19)} UTC` : "";
 
   // X ticks: nice values in display units, placed directly on the display scale.
@@ -518,6 +526,7 @@ export default function SmileChart({
                     market frame so the prevailing market stays on top. */}
                 {calib && showCalibQuotes && (
                   <QuoteLayer
+                    key={`calib-${viewKey}`}
                     quotes={calib.quotes}
                     variant="calib"
                     toX={toXCalib}
@@ -533,6 +542,7 @@ export default function SmileChart({
                 {/* Market frame (primary): the prevailing bid/ask quotes + their
                     fit target, bright red; live-ticked strikes flash teal. */}
                 <QuoteLayer
+                  key={`market-${viewKey}`}
                   quotes={quotes}
                   variant="market"
                   toX={toX}

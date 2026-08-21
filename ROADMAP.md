@@ -613,6 +613,31 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21k) — SMILE CHART: GHOST QUOTE BEAMS ON ZOOM / PAN WHILE LIVE (CHROME)
+
+User: "since we allow quote live streaming: when zooming / moving in the
+smile chart, the quotes are not erased before redrawing at the right scale
+and position" — pinned down to ghost beams lingering at the OLD positions
+in Chrome, Parametric ▸ Smile with the LIVE badge on (until the next tick
+rebuilt them). Not reproducible in headless Edge (DOM re-laid in 9–13 ms,
+one market layer, no key warnings, pixel probes at DPR 1/1.25/1.5 with and
+without GPU raster clean) → a paint-invalidation miss on in-place x/y
+attribute mutation of many `<line>`s inside the clipped group, not a React
+state bug. Two robust changes, both verified headlessly (`staleElems 0`
+after zoom; positions consistent; console clean):
+- `QuoteLayer`: one `<path>` per beam (stem + caps) and one for the mid
+  tick (+ one for the excluded cross) instead of four `<line>`s — a path's
+  `d` change repaints reliably everywhere (the curves never ghosted), and
+  it halves the element count.
+- `SmileChart`: the quote layers REMOUNT on every zoom / pan / resize /
+  axis-mode step (`key` on `useZoom().fractions` + plot size + axis mode —
+  `ZoomController.fractions` exposed for that) so the old beam elements are
+  removed and new ones inserted; live ticks do NOT change the key, so a
+  beam's click target survives between pointer-down and click while
+  streaming.
+- `QuoteLayer.test.tsx` (3 tests: path markup contract, culling / excluded
+  cross / flash, click-through). Frontend 226 vitest + tsc green.
+
 ### 🧭 SESSION WRAP (2026-08-21j) — CALIBRATE: THREE FIRST-CLASS SCOPES (PARAM + LV / PARAM ONLY / LV ONLY)
 
 User: "Calibrate: allow 3 possibilities instead of just 2: Param+LV, Param

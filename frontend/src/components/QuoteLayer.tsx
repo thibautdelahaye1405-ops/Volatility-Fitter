@@ -56,6 +56,9 @@ const STYLE = {
   },
 };
 
+/** `M x,y` path head (2-dp pixels, like the curve paths). */
+const pathAt = (x: number, y: number): string => `M${x.toFixed(2)},${y.toFixed(2)}`;
+
 export default function QuoteLayer({
   quotes, variant, toX, toY, plotW, fitMode, showTarget, selectedIndex, onQuoteSelect, flash,
 }: QuoteLayerProps) {
@@ -97,22 +100,26 @@ export default function QuoteLayer({
               : st.mid;
         const midHalf = q.amended ? 4 : 2.5;
         const key = `${variant}-${q.strike ?? q.k}`;
+        // One PATH per beam (stem + two caps) and one for the mid tick, not four
+        // <line>s: a path's `d` change is repainted reliably by every engine
+        // (like the curves), whereas in-place x/y attribute mutation of many
+        // <line>s inside the clipped group left ghost beams at the old positions
+        // in Chrome while live ticks streamed (until the next tick rebuilt them).
+        const beamD = `${pathAt(x, yb)}V${ya.toFixed(2)}M${(x - cap).toFixed(2)},${ya.toFixed(2)}H${(x + cap).toFixed(2)}M${(x - cap).toFixed(2)},${yb.toFixed(2)}H${(x + cap).toFixed(2)}`;
+        const midD = `${pathAt(x - midHalf, ym)}H${(x + midHalf).toFixed(2)}`;
         return (
           <g key={key}>
             {selected && <circle cx={x} cy={ym} r={7} fill="var(--color-accent-400)" opacity={0.18} />}
-            <g stroke={beamStroke} strokeWidth={st.width} opacity={q.excluded ? 0.25 : 1}
-              strokeDasharray={variant === "calib" ? "2 2" : undefined}>
-              <line x1={x} x2={x} y1={yb} y2={ya} />
-              <line x1={x - cap} x2={x + cap} y1={ya} y2={ya} />
-              <line x1={x - cap} x2={x + cap} y1={yb} y2={yb} />
-              <line x1={x - midHalf} x2={x + midHalf} y1={ym} y2={ym}
-                stroke={midStroke} strokeWidth={2.2} strokeDasharray={undefined} />
+            <g opacity={q.excluded ? 0.25 : 1}>
+              <path d={beamD} fill="none" stroke={beamStroke} strokeWidth={st.width}
+                strokeDasharray={variant === "calib" ? "2 2" : undefined} />
+              <path d={midD} fill="none" stroke={midStroke} strokeWidth={2.2} />
             </g>
             {q.excluded && (
-              <g stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}>
-                <line x1={x - 3} x2={x + 3} y1={ym - 3} y2={ym + 3} />
-                <line x1={x - 3} x2={x + 3} y1={ym + 3} y2={ym - 3} />
-              </g>
+              <path
+                d={`${pathAt(x - 3, ym - 3)}L${(x + 3).toFixed(2)},${(ym + 3).toFixed(2)}${pathAt(x - 3, ym + 3)}L${(x + 3).toFixed(2)},${(ym - 3).toFixed(2)}`}
+                fill="none" stroke="rgb(148 163 184 / 0.8)" strokeWidth={1.2}
+              />
             )}
             {onQuoteSelect && q.index >= 0 && (
               <rect
