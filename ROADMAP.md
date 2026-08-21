@@ -613,6 +613,39 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
 
+### 🧭 SESSION WRAP (2026-08-21f) — THIRD EXCHANGE ADAPTER: ASX (FIRST NON-US VENUE)
+
+- **Selector found**: the Markit API ignores `expiryDate=`; the ASX site's F2
+  app bundle (`com_asx_derivatives_equity_indices.appclass.js`) showed the
+  real contract — `derivatives/equity/{CODE}/options` for dates/underlying,
+  `…/options/expiry-groups?expiryDates=D1&expiryDates=D2…` (REPEATED param)
+  for the chain. XJO: 13 expiries / 993 strikes in ONE 0.7 MB call (~1.8 s).
+- `data/asx.py` (AsxAdapter on the exchange seam): `asx_code` (`^XJO` /
+  `XJO.AX` → `XJO`), `available_dates` (weekly+monthly+quarterly),
+  `underlying` (priceLast, issueType "IN" = index), `parse_groups` (per-
+  series bid/ask/last/OI/volume; a class's style = MAJORITY of its series —
+  BHP mixes a few European series into an American class), `build_chain`
+  (stamp `now − 20 min`, ASX's stated delay), two requests per chain (dates
+  + groups, cached by the provider), Origin/Referer headers. Registered `asx`
+  (auto-pick … Nasdaq → ASX → Yahoo …), label "ASX (delayed)",
+  `restart.ps1 -Asx`, CLAUDE.md; catalog doc updated (ASX = shipped).
+- **Generic fix found by it**: `expiry_select.default_selection` was US-
+  calendar only (3rd-Friday monthlies, Mon/Wed/Fri weeklies) → an EMPTY seed
+  for ASX's Thursday expiries (the universe showed no rungs). New calendar-
+  agnostic fallback when the rule selects nothing: two near rungs (≥ 2 d) +
+  the first expiry of each further month, ≤ 10, ≤ 18 months; US ladders
+  untouched (locked by test).
+- Live 2026-08-21: status amber 0.9 s; XJO 590 quotes / 445 two-sided
+  European, BHP 88 / 73 American; app: XJO/BHP 10-rung seed, XJO 3-Sep fit
+  36 quotes ATM 10.05 %, BHP 3-Sep fit 28 quotes (Sydney closed → wide).
+- Tests: `tests/test_asx.py` 7 (+1 live-gated: code/urls, base readers,
+  groups parse + styles + majority, delay stamp + issue-type fallback,
+  provider two-requests/cache, spot/status/unknown), `test_expiry_select`
+  +1 (fallback). Suite green.
+- Caveats (doc): settlement clock is US-centric (Sydney instants off by
+  hours); tick size unknown per class (no tick floor). Remaining candidates:
+  TMX HTML, Eurex EOD-only, NSE cookies.
+
 ### 🧭 SESSION WRAP (2026-08-21e) — SECOND EXCHANGE ADAPTER: NASDAQ
 
 - `data/nasdaq.py` on the exchange seam (no seam change except an optional

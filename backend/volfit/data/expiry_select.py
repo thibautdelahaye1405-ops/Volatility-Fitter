@@ -17,7 +17,10 @@ Default rule (the seed when a ticker is added): the first 2 Mon/Wed/Fri
 weeklies at least 2 days out, the first 2 monthly expirations (3rd Friday,
 quarter months included), and every quarterly out to 18 months. Sparse ladders
 (<= TAKE_ALL_MAX listed expiries, e.g. the synthetic dev provider) just take
-everything, so thin chains keep all their rungs.
+everything, so thin chains keep all their rungs. Venues whose expiries never
+hit the US buckets (ASX: Thursdays) fall back to a calendar-agnostic ladder
+(``_calendar_agnostic_ladder``: two near rungs + the first expiry of each
+further month, capped at FALLBACK_MAX) instead of an empty seed.
 """
 
 from __future__ import annotations
@@ -68,7 +71,33 @@ def default_selection(available: list[date], reference_date: date) -> list[date]
         for e in avail
         if buckets[e] == "quarterly" and (e - reference_date).days <= QUARTERLY_MAX_DAYS
     )
+    if not selected:
+        return _calendar_agnostic_ladder(avail, reference_date)
     return sorted(selected)
+
+
+#: Size of the fallback ladder (≈ the US rule's typical seed).
+FALLBACK_MAX = 10
+
+
+def _calendar_agnostic_ladder(avail: list[date], reference_date: date) -> list[date]:
+    """Seed for a venue whose expiries never hit the US buckets (ASX monthlies
+    expire on Thursdays, Eurex on the 3rd Friday but weeklies mid-week, …): the
+    first two rungs at least 2 days out, then the FIRST expiry of each further
+    calendar month out to ~18 months, capped at ``FALLBACK_MAX`` — a near/term
+    ladder in the spirit of the default rule, with no weekday assumption."""
+    near = [e for e in avail if (e - reference_date).days >= 2]
+    chosen: list[date] = near[:2]
+    months_taken = {(e.year, e.month) for e in chosen}
+    for e in near[2:]:
+        if len(chosen) >= FALLBACK_MAX or (e - reference_date).days > QUARTERLY_MAX_DAYS:
+            break
+        ym = (e.year, e.month)
+        if ym in months_taken:
+            continue
+        months_taken.add(ym)
+        chosen.append(e)
+    return sorted(chosen) if chosen else avail[:FALLBACK_MAX]
 
 
 def matches_filter(expiry: date, reference_date: date, filter_id: str) -> bool:

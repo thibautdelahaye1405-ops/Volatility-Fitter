@@ -72,3 +72,27 @@ def test_bulk_filters():
     # 0DTE only matches same-day; none in a future-only ladder.
     assert filter_expiries(ladder, REF, "0dte") == []
     assert matches_filter(REF, REF, "0dte") is True
+
+
+def test_default_selection_falls_back_on_non_us_calendars():
+    """A venue whose expiries never hit the US buckets (ASX: Thursdays) still gets
+    a seed ladder: the first two rungs >= 2 days out, then the first expiry of
+    each further month, capped at 10 within ~18 months."""
+    from datetime import date, timedelta
+
+    from volfit.data.expiry_select import FALLBACK_MAX, default_selection
+
+    ref = date(2026, 8, 21)  # a Friday
+    thursdays = [date(2026, 8, 27) + timedelta(days=7 * i) for i in range(3)]  # weeklies (Thu)
+    # monthly Thursdays out to ~2 years
+    monthlies = [date(2026, 9, 17), date(2026, 10, 15), date(2026, 11, 19), date(2026, 12, 17), date(2027, 1, 21),
+                 date(2027, 2, 18), date(2027, 3, 18), date(2027, 6, 17), date(2027, 9, 16), date(2027, 12, 16),
+                 date(2028, 3, 16), date(2028, 6, 15)]
+    sel = default_selection(thursdays + monthlies, ref)
+    assert sel[:2] == thursdays[:2]  # near rungs
+    assert len(sel) == FALLBACK_MAX and len({(d.year, d.month) for d in sel[2:]}) == len(sel[2:])  # one per month
+    assert all((d - ref).days <= 548 for d in sel) and date(2026, 9, 10) not in sel  # Sep already covered
+    # a US ladder is untouched by the fallback
+    us = [date(2026, 8, 24), date(2026, 8, 26), date(2026, 8, 28), date(2026, 9, 18), date(2026, 10, 16),
+          date(2026, 12, 18), date(2027, 3, 19), date(2027, 6, 18), date(2027, 9, 17), date(2027, 12, 17)]
+    assert date(2026, 9, 18) in default_selection(us, ref)

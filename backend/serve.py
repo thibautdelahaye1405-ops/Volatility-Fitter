@@ -8,9 +8,9 @@ switch between them at runtime; the *active* one on launch is chosen below.
 
 Environment variables:
     VOLFIT_PROVIDER  Force the active source on launch ("synthetic", "yahoo",
-                     "cboe", "nasdaq", "bloomberg", "massive"). Unset (default)
-                     = best-reachable auto-pick (bloomberg -> cboe -> nasdaq ->
-                     yahoo -> massive -> synthetic).
+                     "cboe", "nasdaq", "asx", "bloomberg", "massive"). Unset
+                     (default) = best-reachable auto-pick (bloomberg -> cboe ->
+                     nasdaq -> asx -> yahoo -> massive -> synthetic).
     VOLFIT_TICKERS   comma-separated watchlist (default SPY,QQQ,AAPL)
     VOLFIT_MASSIVE_KEY  Massive API key; without it Massive shows Red.
     VOLFIT_DB        SQLite path for fit-history persistence (every fit is
@@ -31,7 +31,7 @@ from volfit.api.app import create_app
 #: Preference order for the best-reachable auto-pick (richest feed first).
 #: Cboe's delayed chains carry the real bid/ask (Yahoo only yields a usable
 #: mid), so the exchange source ranks above Yahoo.
-_AUTO_ORDER = ("bloomberg", "cboe", "nasdaq", "yahoo", "massive", "synthetic")
+_AUTO_ORDER = ("bloomberg", "cboe", "nasdaq", "asx", "yahoo", "massive", "synthetic")
 
 
 def _watchlist() -> list[str]:
@@ -58,6 +58,7 @@ def _build_providers() -> dict:
     """
     from datetime import date
 
+    from volfit.data.asx import AsxAdapter
     from volfit.data.bloomberg import BloombergProvider
     from volfit.data.cboe import CboeAdapter
     from volfit.data.exchange import ExchangeChainProvider
@@ -76,6 +77,9 @@ def _build_providers() -> dict:
         # Nasdaq: the same US universe off a second (OPRA-consolidated) book +
         # the Nasdaq indices (NDX...); SPX/VIX/RUT are Cboe-only.
         "nasdaq": ExchangeChainProvider(tickers, NasdaqAdapter()),
+        # ASX: the first non-US venue (XJO index options European, single-stock
+        # classes American; ~20-min delayed; AUD / index points).
+        "asx": ExchangeChainProvider(tickers, AsxAdapter()),
         # //blp/mktdata streaming knobs (volfit.data.bloomberg_live): conflation
         # seconds (0 = every tick), concurrent-subscription budget, DAPI endpoint.
         "bloomberg": BloombergProvider(

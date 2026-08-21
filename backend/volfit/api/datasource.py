@@ -22,6 +22,7 @@ SOURCE_LABELS = {
     "massive": "Massive",
     "cboe": "Cboe (delayed)",
     "nasdaq": "Nasdaq (delayed)",
+    "asx": "ASX (delayed)",
     "synthetic": "Synthetic",
 }
 

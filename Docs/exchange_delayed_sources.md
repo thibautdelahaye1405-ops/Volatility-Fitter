@@ -18,10 +18,11 @@ The app ingests them through one seam (`backend/volfit/data/exchange.py`):
   venue does not answer / refused the last symbol. HTTP is injectable
   (`fetch_json`) → fully offline-testable.
 
-Registered in `serve.py` as source ids `cboe` and `nasdaq` (auto-pick order:
-Bloomberg → **Cboe** → **Nasdaq** → Yahoo → Massive → Synthetic); launch
-`.\restart.ps1 -Cboe` / `-Nasdaq` to force one; the in-app Data Source
-selector lists them as "Cboe (delayed)" / "Nasdaq (delayed)".
+Registered in `serve.py` as source ids `cboe`, `nasdaq` and `asx` (auto-pick
+order: Bloomberg → **Cboe** → **Nasdaq** → **ASX** → Yahoo → Massive →
+Synthetic); launch `.\restart.ps1 -Cboe` / `-Nasdaq` / `-Asx` to force one;
+the in-app Data Source selector lists them as "Cboe (delayed)" / "Nasdaq
+(delayed)" / "ASX (delayed)".
 
 ## Shipped — Nasdaq (US) ✅ `volfit/data/nasdaq.py`
 
@@ -53,11 +54,25 @@ Caveat: this is **Cboe's own book**, not the NBBO — for liquid names it is
 within a tick of the NBBO; for thinly-listed names check against a second
 venue (Nasdaq, below).
 
+## Shipped — ASX (Australia) ✅ `volfit/data/asx.py` — the first non-US venue
+
+| | |
+|---|---|
+| Coverage | every ASX-listed option class: the S&P/ASX 200 index (XJO, European) and the single-stock classes (BHP, CBA, …, American) |
+| Endpoints | `https://asx.api.markitdigital.com/asx-research/1.0/derivatives/equity/{CODE}/options` (→ `datesAvailable` monthly/weekly/quarterly, `underlyingAsset{symbol, issueType "IN" = index, priceLast}`, nearest expiry's groups) and `…/options/expiry-groups?expiryDates=D1&expiryDates=D2…` (**repeated** param — the site's own selector, mined from the ASX F2 app bundle; plain `expiryDate=` is ignored) → `data.items[] {date, exerciseGroups[] {priceExercise, call{…}, put{…}}}` |
+| Fields | per series `priceBid / priceAsk / priceLast / openInterest / volume / style ("European"/"American") / dateExpiry / symbol / optionRoot / contractSize` (10 for XJO, 100 for stocks); prices per unit (index points / AUD); 0 = no quote; a class's style = the majority of its series |
+| Stamp | none served → chains stamped `now − 20 min` (ASX's stated delay) |
+| Delay | ~20 min |
+| Size / speed | XJO 13 expiries / 993 strikes in ONE 0.7 MB call (~1.8 s); two requests per chain (dates + groups), cached |
+| Symbols | `XJO`, `^XJO`, `XJO.AX`, `BHP`, `BHP.AX` |
+| Verified | 2026-08-21: status amber 0.9 s; XJO 590 quotes / 445 two-sided European, BHP 88 / 73 American; through the app XJO 3-Sep fit (36 quotes, ATM 10.05 %), BHP 3-Sep fit (28 quotes) — after-hours Sydney quotes, so wide |
+| Side effect | the universe's default expiry seed was US-calendar only (3rd-Friday monthlies, Mon/Wed/Fri weeklies) → empty for ASX's Thursday expiries; `expiry_select.default_selection` now falls back to a calendar-agnostic ladder (two near rungs + the first expiry of each further month, ≤ 10, ≤ 18 months) |
+| Caveats | the settlement clock (`expiry_time.default_settlement`) is US-centric — Sydney expiry instants are off by hours (fine-tuning item); tick size unknown per class → no tick floor |
+
 ## Candidates — probed 2026-08-21
 
 | Venue | What is public | Bid/ask? | Verdict |
 |---|---|---|---|
-| **ASX (Australia)** `asx.api.markitdigital.com/asx-research/1.0/derivatives/equity/{CODE}/options` | JSON `expiryGroups.items[].exerciseGroups[]` with `call/put{priceBid, priceAsk, priceLast, openInterest, volume, style, dateExpiry}`, `underlyingAsset.priceLast`, `datesAvailable` (monthly/weekly/quarterly) | ✅ | **near** — the expiry selector parameter is not the obvious `expiryDate=` (the default answer carries only the nearest expiry); capture the site's XHR to find it, then it is a ~100-line adapter (XJO index options European, equities American; prices in AUD / index points) |
 | **TMX Montréal (Canada)** `m-x.ca/en/trading/data/quotes?symbol=XIU*` | HTML table (bid/ask/last/volume/OI per series), ~2 MB page | ✅ (HTML) | feasible — an HTML-table scrape (lxml/regex); fragile to page redesigns |
 | **Eurex (Europe)** `eurex.com/api/v1/overallstatistics/{productId}` | JSON EOD statistics (volume/OI/settlement per series, `underlyingClosingPrice`, `tradingDates`) | ❌ (EOD only) | the delayed bid/ask tables live in the site's web app; the XHR behind them was not discoverable by guessing — capture from a browser session, or use the EOD settlement prices as an end-of-day source (a different, also useful, tier) |
 | **NSE India** `nseindia.com/api/option-chain-indices?symbol=NIFTY` | JSON chain (near-real-time, bid/ask) — requires the site's cookies (visit the home page first) | ✅ | feasible with a cookie handshake; anti-bot measures change often |
