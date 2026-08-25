@@ -1,7 +1,6 @@
 """Per-slice quote weighting schemes for calibration (a given maturity).
 
-Two schemes today, selectable by the FitSettings.weightScheme hyperparameter
-(a third may be added later):
+Four schemes, selectable by the FitSettings.weightScheme hyperparameter:
 
   * ``"equal"`` — unit weights, the historical scheme (the calibrators' default
     when ``weights is None``); every quote's IV residual counts the same.
@@ -17,6 +16,22 @@ Two schemes today, selectable by the FitSettings.weightScheme hyperparameter
     *aggregate* weight distribution over strike space follows TV(x) rather than
     the raw quote histogram. On a uniform x-grid all s_i are equal and the rule
     reduces to w_i = TV_i (the doc's benchmark property).
+  * ``"vega_density"`` — same density correction, economic shape = Black vega:
+    ``raw_i = phi(d_plus(k_i, w_i))``. The per-slice ``sqrt(t)`` factor of the
+    true vega is a constant and cancels under the mean-1 normalization. The
+    natural scheme when the target metric is vol error: each quote counts by
+    how much option value one vol point moves at its strike.
+  * ``"delta_density"`` — same density correction, economic shape = the OTM
+    option's forward |delta|: ``N(d_plus)`` for k >= 0 (OTM call),
+    ``1 - N(d_plus)`` for k < 0 (OTM put) — weight by the hedge size the
+    strike commands.
+
+    Wing behaviour orders the three shapes (large |d| asymptotics): vega
+    ~ phi(d) is the flattest, delta ~ phi(d)/d one power faster, time value
+    ~ phi(d)/d^2 fastest — so vega keeps the most relative wing weight and
+    tv_density the least, with delta in between. All three keep the note's
+    density correction ``s_i / s_bar`` — a pure delta or vega weight would
+    re-introduce exactly the strike-crowding bias the note argues against.
 
 This weighting is orthogonal to the mid / bid-ask / haircut fit mode: the mode
 chooses each quote's target, the scheme chooses how much each quote matters, and
@@ -36,7 +51,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from volfit.core.black import black_call
+from volfit.core.black import W_MIN, black_call, norm_cdf, norm_pdf
 
 #: Cap on the spacing multiplier s_i / s_bar (doc "Practical notes"): stops a
 #: single isolated far-wing quote from dominating the fit.
@@ -55,6 +70,50 @@ def otm_time_value(k: np.ndarray, w: np.ndarray) -> np.ndarray:
     k = np.asarray(k, dtype=float)
     call = black_call(k, np.maximum(np.asarray(w, dtype=float), _EPS))
     return np.where(k >= 0.0, call, call - (1.0 - np.exp(k)))
+
+
+def _d_plus(k: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Black d_plus from log-moneyness and total variance (w floored at W_MIN)."""
+    k = np.asarray(k, dtype=float)
+    sq = np.sqrt(np.maximum(np.asarray(w, dtype=float), W_MIN))
+    return -k / sq + 0.5 * sq
+
+
+def vega_profile(k: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """Black vega shape phi(d_plus): the true vega up to the per-slice sqrt(t).
+
+    The omitted sqrt(t) is constant across a slice, so under the mean-1
+    normalization the weights are exactly those of the true Black vega.
+    """
+    return norm_pdf(_d_plus(k, w))
+
+
+def otm_delta(k: np.ndarray, w: np.ndarray) -> np.ndarray:
+    """|forward delta| of each OTM quote: N(d+) for k >= 0, 1 - N(d+) for k < 0.
+
+    The OTM convention matches ``otm_time_value``: strikes above the forward are
+    calls (delta N(d+), ~0.5 at the money decaying to 0 in the right wing),
+    below are puts (|delta| = 1 - N(d+), symmetric story on the left).
+    """
+    d = _d_plus(k, w)
+    return np.where(np.asarray(k, dtype=float) >= 0.0, norm_cdf(d), 1.0 - norm_cdf(d))
+
+
+def scheme_raw(scheme: str, k: np.ndarray, w_mid: np.ndarray) -> np.ndarray:
+    """The pre-normalization economic weight of each density scheme (eps-floored).
+
+    Single source of truth for the scheme -> shape mapping, shared by
+    ``resolve_weights``, ``weight_components`` and the prior data-gap anchor's
+    desired-density shape (volfit.calib.prior), so they can never disagree.
+    Raises on an unknown or non-density scheme ("equal" has no raw shape).
+    """
+    if scheme == "tv_density":
+        return np.maximum(otm_time_value(k, w_mid), _EPS)
+    if scheme == "vega_density":
+        return np.maximum(vega_profile(k, w_mid), _EPS)
+    if scheme == "delta_density":
+        return np.maximum(otm_delta(k, w_mid), _EPS)
+    raise ValueError(f"unknown weight scheme {scheme!r}")
 
 
 def _voronoi_spacing(k: np.ndarray, eps: float) -> tuple[np.ndarray, np.ndarray]:
@@ -80,11 +139,14 @@ def _voronoi_spacing(k: np.ndarray, eps: float) -> tuple[np.ndarray, np.ndarray]
 def tv_density_weights(
     k: np.ndarray, tv: np.ndarray, eps: float = _EPS, max_mult: float | None = DEFAULT_MAX_MULT
 ) -> np.ndarray:
-    """Density-corrected time-value weights w_i = max(TV_i, eps) * s_i / s_bar.
+    """Density-corrected weights w_i = max(raw_i, eps) * s_i / s_bar.
 
-    ``s_i`` is the 1-D Voronoi cell width in normalized log-strike ``k`` (half
-    the gap to the neighbours on each side; one-sided at the ends). Returns
-    weights in the input order; ``max_mult`` caps the spacing multiplier.
+    The shared density-correction engine of every non-equal scheme: ``tv`` is
+    the scheme's economic raw shape (time value, vega profile or OTM delta —
+    the name predates the extra schemes). ``s_i`` is the 1-D Voronoi cell width
+    in normalized log-strike ``k`` (half the gap to the neighbours on each
+    side; one-sided at the ends). Returns weights in the input order;
+    ``max_mult`` caps the spacing multiplier.
     """
     k = np.asarray(k, dtype=float)
     tv = np.maximum(np.asarray(tv, dtype=float), eps)
@@ -145,25 +207,22 @@ def weight_components(scheme: str, k: np.ndarray, w_mid: np.ndarray) -> WeightCo
         return WeightComponents(
             "equal", DEFAULT_MAX_MULT, spacing, np.ones(m), np.ones(m)
         )
-    if scheme != "tv_density":
-        raise ValueError(f"unknown weight scheme {scheme!r}")
-    raw = np.maximum(otm_time_value(k, np.asarray(w_mid, dtype=float)), _EPS)
+    raw = scheme_raw(scheme, k, np.asarray(w_mid, dtype=float))  # raises if unknown
     resolved = resolve_weights(scheme, k, w_mid)
     weights = np.ones(m, dtype=float) if resolved is None else resolved
-    return WeightComponents("tv_density", DEFAULT_MAX_MULT, spacing, raw, weights)
+    return WeightComponents(scheme, DEFAULT_MAX_MULT, spacing, raw, weights)
 
 
 def resolve_weights(scheme: str, k: np.ndarray, w_mid: np.ndarray) -> np.ndarray | None:
     """Per-quote calibration weights for the chosen scheme (None = equal).
 
-    ``None`` means unit weights (the calibrators' default). For "tv_density" the
-    weights are mean-normalized so the data-vs-regularization balance matches the
+    ``None`` means unit weights (the calibrators' default). Every density
+    scheme is mean-normalized so the data-vs-regularization balance matches the
     equal scheme. ``k``/``w_mid`` are the edited slice quotes actually fitted.
+    Raises ValueError on an unknown scheme.
     """
     if scheme == "equal" or np.asarray(k).size == 0:
         return None
-    if scheme == "tv_density":
-        weights = tv_density_weights(k, otm_time_value(k, w_mid))
-        mean = float(weights.mean())
-        return weights / mean if mean > 0.0 else None
-    raise ValueError(f"unknown weight scheme {scheme!r}")
+    weights = tv_density_weights(k, scheme_raw(scheme, k, w_mid))
+    mean = float(weights.mean())
+    return weights / mean if mean > 0.0 else None

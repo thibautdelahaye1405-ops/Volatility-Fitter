@@ -112,7 +112,8 @@ def main() -> int:
     ap.add_argument("--asset", default=None, help="restrict to one asset")
     ap.add_argument("--lv", action="store_true", help="also fit the Local-Vol surface")
     ap.add_argument("--weights", default="equal,tv_density",
-                    help="comma-separated weighting schemes (equal|tv_density)")
+                    help="comma-separated weighting schemes "
+                         "(equal|tv_density|vega_density|delta_density)")
     ap.add_argument("--fit-modes", default="mid,haircut",
                     help="comma-separated fit targets (mid|haircut)")
     ap.add_argument("--models", default=None,

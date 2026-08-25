@@ -57,9 +57,12 @@ class FitSettings(BaseModel):
     band tightening of the "haircut" fit mode in absolute vol (0.005 = 0.5 vol
     points); it only affects fit_mode="haircut" (volfit.calib.band).
     ``weightScheme`` chooses the per-quote calibration weights (volfit.calib.
-    weights): "equal" (unit weights, the historical scheme) or "tv_density"
+    weights): "equal" (unit weights, the historical scheme), "tv_density"
     (time-value density weights — economic time-value shape with the strike
-    oversampling divided out); it applies in every fit mode and to every model.
+    oversampling divided out), "vega_density" (Black-vega shape, same density
+    correction — the flattest into the wings) or "delta_density" (OTM |forward
+    delta| shape, same density correction — between vega and time value in
+    wing decay); it applies in every fit mode and to every model.
     """
 
     model: Literal["lqd", "svi", "sigmoid"] = "lqd"
@@ -113,7 +116,9 @@ class FitSettings(BaseModel):
         return self.tailAlphaLeft, self.tailAlphaRight
     nCores: int = Field(2, ge=0, le=2)  # Multi-Core SIV hat count R (sigmoid only; capped at 2)
     haircut: float = Field(0.005, ge=0.0, le=0.05)  # haircut-mode band shrink (vol)
-    weightScheme: Literal["equal", "tv_density"] = "equal"  # per-quote weights
+    weightScheme: Literal["equal", "tv_density", "vega_density", "delta_density"] = (
+        "equal"
+    )  # per-quote weights
     # --- per-model optimization / penalty coefficients (Options exposes them
     # all explicitly; every default equals the historical hardcoded constant, so
     # a default fit is byte-identical to before they were tunable) ---
@@ -1111,6 +1116,15 @@ class GraphSolverParams(BaseModel):
     nu: float = Field(default=0.1, gt=0.0)
     calendarWeight: float | None = Field(default=None, gt=0.0)
     crossWeight: float | None = Field(default=None, gt=0.0)
+    #: Cross-venue asynchronous expiries: when > 0, a cross-ticker edge is also
+    #: generated between the NEAREST expiry pair (by calendar-day gap) whenever
+    #: a rung has no exact same-date partner on the other ticker, up to this
+    #: many days apart. The auto-lattice attenuates the edge weight by
+    #: tol/(tol + gap); the message operator decays the cross precision by the
+    #: same |dT| family as calendar factors and applies the maturity-shape
+    #: beta (T_informer/T_receiver)^alphaT. 0 (default) = exact-date matching
+    #: only — byte-identical to the historical topology.
+    crossExpiryToleranceDays: float = Field(default=0.0, ge=0.0)
 
 
 class AutotuneCandidate(BaseModel):

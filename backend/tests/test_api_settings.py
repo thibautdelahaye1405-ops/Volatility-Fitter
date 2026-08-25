@@ -167,6 +167,19 @@ def test_weight_scheme_changes_fit(client):
     client.put("/settings/fit", json={"weightScheme": "equal"})
 
 
+def test_vega_and_delta_schemes_accepted_and_move_the_fit(client):
+    """The vega/delta density schemes are valid settings and change the smile."""
+    expiry = _expiry(client, 3)
+    base_vols = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
+    for scheme in ("vega_density", "delta_density"):
+        assert (
+            client.put("/settings/fit", json={"weightScheme": scheme}).status_code == 200
+        )
+        vols = [p["vol"] for p in client.get(f"/smiles/ALPHA/{expiry}").json()["model"]]
+        assert any(abs(a - b) > 1e-6 for a, b in zip(base_vols, vols))
+    client.put("/settings/fit", json={"weightScheme": "equal"})
+
+
 def test_n_cores_changes_sigmoid_fit(client):
     """The Multi-Core SIV cores slider changes the displayed sigmoid smile."""
     expiry = _expiry(client, 3)

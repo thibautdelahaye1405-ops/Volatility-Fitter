@@ -224,7 +224,8 @@ def fit_node(
 ) -> list[dict]:
     """De-Am + prep the node once, then fit every model; one metric row per model.
 
-    ``weight_scheme`` ("equal" | "tv_density") sets the per-quote weights (production
+    ``weight_scheme`` ("equal" | "tv_density" | "vega_density" | "delta_density")
+    sets the per-quote weights (production
     ``resolve_weights``); ``fit_mode`` ("mid" | "haircut") sets the objective — mid
     fits to mid, haircut fits inside a band shrunk ``haircut_frac`` toward mid. RMS
     is reported consistently with the objective (model−mid for mid; band violation

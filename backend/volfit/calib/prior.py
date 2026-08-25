@@ -38,7 +38,7 @@ from typing import Callable
 import numpy as np
 from scipy.special import ndtri  # inverse standard-normal CDF (delta -> strike)
 
-from volfit.calib.weights import otm_time_value
+from volfit.calib.weights import scheme_raw
 from volfit.core.black import black_call, black_vega_sigma
 
 _VEGA_FLOOR = 1e-4
@@ -124,19 +124,22 @@ def _observed_density(k_quotes: np.ndarray, x: np.ndarray, bandwidth: float) -> 
 def _desired_density(
     x: np.ndarray, scheme: str, prior_w: Callable[[np.ndarray], np.ndarray], n: int
 ) -> np.ndarray:
-    """Target coverage density at ``x`` (total mass = ``n``), uniform or TV-shaped.
+    """Target coverage density at ``x`` (total mass = ``n``), uniform or shaped.
 
     Spread over the FULL anchor span (so it reaches the wings the quotes miss).
-    ``tv_density`` shapes it by the prior's time value (more pins where there is
-    more economic value); any other scheme is uniform."""
+    Each density scheme shapes it by its own economic raw profile evaluated on
+    the prior (time value / vega / OTM delta — more pins where the scheme puts
+    more weight); "equal" (or any degenerate case) is uniform."""
     x = np.asarray(x, dtype=float)
     span = max(float(x.max() - x.min()), _W_FLOOR) if x.size > 1 else 1.0
-    if scheme == "tv_density" and x.size > 1:
-        tv = np.maximum(otm_time_value(x, np.maximum(prior_w(x), _W_FLOOR)), _W_FLOOR)
+    if scheme != "equal" and x.size > 1:
+        raw = np.maximum(
+            scheme_raw(scheme, x, np.maximum(prior_w(x), _W_FLOOR)), _W_FLOOR
+        )
         widths = _cell_widths(x)
-        integral = float(np.sum(tv * widths))
+        integral = float(np.sum(raw * widths))
         if integral > 0.0:
-            return n * tv / integral  # mass n, shaped by time value
+            return n * raw / integral  # mass n, shaped by the scheme's profile
     return np.full_like(x, n / span)  # uniform: mass n over the span
 
 

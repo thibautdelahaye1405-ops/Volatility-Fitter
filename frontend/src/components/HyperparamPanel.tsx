@@ -13,8 +13,8 @@ import PenaltyCoefficients from "./PenaltyCoefficients";
 /** The smile families calibratable through PUT /settings/fit. */
 export type FitModel = "lqd" | "svi" | "sigmoid";
 
-/** Per-quote weighting scheme (a third may be added later). */
-export type WeightScheme = "equal" | "tv_density";
+/** Per-quote weighting scheme (mirror of the backend Literal). */
+export type WeightScheme = "equal" | "tv_density" | "vega_density" | "delta_density";
 
 /** Mirror of the backend FitSettings schema (volfit/api/schemas.py). */
 export interface FitSettings {
@@ -108,13 +108,24 @@ const TAIL_PRESETS: { label: string; value: number; title: string }[] = [
 
 const clampAlpha = (v: number) => Math.min(0.5, Math.max(0, Number.isFinite(v) ? v : 0));
 
-/** Per-quote weighting schemes (room for a third later). */
+/** Per-quote weighting schemes (all density schemes share the Voronoi
+ *  strike-crowding correction, so only the economic shape differs). */
 const WEIGHT_SCHEMES: { id: WeightScheme; label: string; title: string }[] = [
   { id: "equal", label: "Equal", title: "Unit weights — every quote's IV residual counts the same" },
   {
     id: "tv_density",
-    label: "TV density",
+    label: "TV",
     title: "Time-value density weights: economic time-value shape with strike oversampling divided out",
+  },
+  {
+    id: "vega_density",
+    label: "Vega",
+    title: "Black-vega density weights: vol-error economics, the flattest wing decay of the density schemes",
+  },
+  {
+    id: "delta_density",
+    label: "Delta",
+    title: "OTM |delta| density weights: hedge-size economics, wing decay between vega and time value",
   },
 ];
 
