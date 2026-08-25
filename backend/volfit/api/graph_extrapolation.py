@@ -297,7 +297,11 @@ def solve(
         else None
     )
     universe = build_selected_universe(
-        state, request.calendarWeight, request.crossWeight, edges=edge_tuples
+        state,
+        request.calendarWeight,
+        request.crossWeight,
+        edges=edge_tuples,
+        cross_expiry_tol_days=getattr(request, "crossExpiryToleranceDays", 0.0),
     )
     if universe.graph is None:
         return None

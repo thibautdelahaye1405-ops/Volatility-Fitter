@@ -33,6 +33,8 @@ export function buildExtrapolateBody(
   };
   if (params.calendarWeight !== null) body.calendarWeight = params.calendarWeight;
   if (params.crossWeight !== null) body.crossWeight = params.crossWeight;
+  if (params.crossExpiryToleranceDays > 0)
+    body.crossExpiryToleranceDays = params.crossExpiryToleranceDays;
   if (crossBeta !== null && crossBeta !== 1) body.crossBeta = crossBeta;
   // Message-mode knobs ride only when the operator is selected — an untouched
   // request stays byte-identical to the legacy smooth-field path.

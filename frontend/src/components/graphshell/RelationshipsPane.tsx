@@ -218,6 +218,24 @@ export default function RelationshipsPane({
               </label>
             </>
           )}
+          <label
+            className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400"
+            title="Cross-venue asynchronous expiries: pair a rung with the other ticker's NEAREST expiry up to this many days apart (weight/precision decay with the gap; the maturity-shape β applies). 0 = exact-date matching only (the historical topology)."
+          >
+            <span>Cross-expiry tol (d)</span>
+            <input
+              type="number"
+              step={1}
+              min={0}
+              value={graph.params.crossExpiryToleranceDays}
+              onChange={(e) => {
+                const v = e.target.valueAsNumber;
+                if (Number.isFinite(v) && v >= 0)
+                  graph.setParam("crossExpiryToleranceDays", v);
+              }}
+              className="w-16 rounded-md border border-slate-700 bg-surface-800 px-1.5 py-1 text-right font-mono text-xs text-slate-100 outline-none hover:border-slate-600 focus:border-accent-500"
+            />
+          </label>
         </Card>
 
         {/* Layered-mode policy dials (P6 V3) — staged to the draft config. */}

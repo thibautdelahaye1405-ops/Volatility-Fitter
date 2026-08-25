@@ -92,6 +92,9 @@ export interface SolverParams {
   calendarWeight: number | null;
   /** Cross-ticker equal-expiry edge weight, or null for the default (2). */
   crossWeight: number | null;
+  /** Cross-venue asynchronous expiries: pair a rung with the other ticker's
+   *  nearest expiry up to this many days apart (0 = exact-date only). */
+  crossExpiryToleranceDays: number;
   /** Propagation operator (smooth_field = the legacy path, byte-identical). */
   propagationMode: PropagationMode;
   /** §8.1 calendar amplitude SHAPE exponent alphaT (locked default 1.0). */
@@ -132,6 +135,7 @@ const DEFAULT_PARAMS: SolverParams = {
   nu: 0.1,
   calendarWeight: null,
   crossWeight: null,
+  crossExpiryToleranceDays: 0,
   propagationMode: "smooth_field",
   alphaT: 1,
   ampCal: 1,
@@ -188,6 +192,8 @@ function paramsBody(params: SolverParams): Record<string, number> {
   };
   if (params.calendarWeight !== null) body.calendarWeight = params.calendarWeight;
   if (params.crossWeight !== null) body.crossWeight = params.crossWeight;
+  if (params.crossExpiryToleranceDays > 0)
+    body.crossExpiryToleranceDays = params.crossExpiryToleranceDays;
   return body;
 }
 

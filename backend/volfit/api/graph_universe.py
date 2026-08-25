@@ -88,14 +88,18 @@ def lattice_weights_for(
     state: AppState,
     calendar_weight: float | None = None,
     cross_weight: float | None = None,
+    cross_expiry_tol_days: float = 0.0,
 ) -> dict[tuple[NodeId, NodeId], float]:
     """The auto-lattice directed weights over the selected universe (calendar
-    chains + cross-ticker same-expiry). Exposed so the edge editor can seed from
-    the lattice the solve would otherwise build."""
+    chains + cross-ticker same-expiry, plus nearest-expiry cross-venue pairs
+    when ``cross_expiry_tol_days`` > 0). Exposed so the edge editor can seed
+    from the lattice the solve would otherwise build."""
     ladders = _selected_ladders(state)
     calendar_w = SAME_TICKER_WEIGHT if calendar_weight is None else calendar_weight
     cross_w = CROSS_TICKER_WEIGHT if cross_weight is None else cross_weight
-    return _lattice_weights(list(ladders), ladders, calendar_w, cross_w)
+    return _lattice_weights(
+        list(ladders), ladders, calendar_w, cross_w, cross_expiry_tol_days
+    )
 
 
 def build_selected_universe(
@@ -103,6 +107,7 @@ def build_selected_universe(
     calendar_weight: float | None = None,
     cross_weight: float | None = None,
     edges: list[tuple[NodeId, NodeId, float]] | None = None,
+    cross_expiry_tol_days: float = 0.0,
 ) -> SelectedUniverse:
     """Build the production graph over the selected lit+dark universe.
 
@@ -131,6 +136,8 @@ def build_selected_universe(
     else:
         calendar_w = SAME_TICKER_WEIGHT if calendar_weight is None else calendar_weight
         cross_w = CROSS_TICKER_WEIGHT if cross_weight is None else cross_weight
-        weights = _lattice_weights(list(ladders), ladders, calendar_w, cross_w)
+        weights = _lattice_weights(
+            list(ladders), ladders, calendar_w, cross_w, cross_expiry_tol_days
+        )
     graph = build_graph([node.name for node in nodes], weights)
     return SelectedUniverse(nodes=tuple(nodes), graph=graph)

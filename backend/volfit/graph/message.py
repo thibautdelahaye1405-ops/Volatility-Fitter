@@ -122,6 +122,30 @@ def calendar_message_precision(
     raise ValueError(f"unknown calendar precision rule {rule!r}")
 
 
+def cross_expiry_precision(
+    t_a: float,
+    t_b: float,
+    *,
+    scale: float,
+    epsilon: float = CALENDAR_PRECISION_EPSILON,
+    rule: str = "inverse_sqrt_gap",
+) -> float:
+    """Precision of a cross-ticker factor between ASYNCHRONOUS expiries.
+
+    Same |dT| family as ``calendar_message_precision`` but NORMALIZED so the
+    zero-gap limit equals ``scale`` (the constant same-expiry cross precision)
+    — a cross-venue pair one day apart should sit continuously below its
+    synchronous twin, not jump to the calendar family's own level. For
+    ``inverse_sqrt_gap`` that is ``scale * eps / (eps + sqrt|dT|)``;
+    ``log_distance`` is already 1 at dT = 0; ``constant`` ignores the gap.
+    """
+    if rule == "inverse_sqrt_gap":
+        return calendar_message_precision(
+            t_a, t_b, scale=scale * epsilon, epsilon=epsilon, rule=rule
+        )
+    return calendar_message_precision(t_a, t_b, scale=scale, epsilon=epsilon, rule=rule)
+
+
 def expand_calendar_ladder(
     maturities: Mapping[str, float],
     *,

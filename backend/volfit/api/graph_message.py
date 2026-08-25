@@ -40,7 +40,9 @@ from volfit.graph.message import (
     MessageEdge,
     anchor_precisions,
     build_message_operator,
+    calendar_beta,
     calendar_message_precision,
+    cross_expiry_precision,
     cycle_beta_products,
     expand_calendar_ladder,
 )
@@ -99,7 +101,15 @@ def auto_message_edges(
     per-ticker overrides). Nodes with a non-positive year fraction get no
     calendar factor (an expired receiver has no maturity shape). Cross:
     same-expiry ticker pairs, one beta-one factor each (lexicographic
-    orientation, class ``custom``, constant ``crossPrecisionScale``)."""
+    orientation, class ``custom``, constant ``crossPrecisionScale``). With
+    ``crossExpiryToleranceDays`` > 0 an asynchronous cross-venue rung (no
+    same-date partner) is also paired with the other ticker's NEAREST expiry
+    within tolerance: canonical short-receiver orientation, precision =
+    ``crossPrecisionScale`` decayed by the |dT| family (normalized to the
+    synchronous value at zero gap), beta = the §8.1 maturity-shape amplitude
+    ``(T_informer / T_receiver)^alphaT`` on every handle — the composite a
+    cross-maturity relation needs, where the same-expiry pair could hardcode
+    beta one."""
     edges: list[MessageEdge] = []
     ladders: dict[str, dict[NodeId, float]] = {}
     by_iso: dict[str, list[NodeId]] = {}
@@ -131,6 +141,54 @@ def auto_message_edges(
                         (1.0, 1.0, 1.0), "custom",
                     )
                 )
+    edges.extend(_cross_expiry_message_edges(ladders, request))
+    return edges
+
+
+def _cross_expiry_message_edges(
+    ladders: dict[str, dict[NodeId, float]], request
+) -> list[MessageEdge]:
+    """Nearest-expiry cross factors for asynchronous cross-venue rungs.
+
+    Pairing mirrors ``graph_params.nearest_cross_expiry_pairs`` but runs on
+    the maturities the message operator already carries (year fractions, so
+    the tolerance converts at ACT/365). Empty at the default tolerance 0 —
+    the auto relation set is then byte-identical to the historical one.
+    ``getattr`` default keeps hand-built test requests (pre-field shape) valid.
+    """
+    tol_years = float(getattr(request, "crossExpiryToleranceDays", 0.0)) / 365.0
+    if tol_years <= 0.0:
+        return []
+    alpha = float(getattr(request, "calendarBetaExponent", 1.0))
+    tickers = sorted(ladders)
+    pairs: set[tuple[NodeId, NodeId]] = set()
+    for i, a in enumerate(tickers):
+        for b in tickers[i + 1 :]:
+            la, lb = ladders[a], ladders[b]
+            shared = {n[1] for n in la} & {n[1] for n in lb}
+            for lx, ly, flip in ((la, lb, False), (lb, la, True)):
+                for node, t in lx.items():
+                    if node[1] in shared:
+                        continue
+                    other, t_other = min(ly.items(), key=lambda kv: abs(kv[1] - t))
+                    if abs(t_other - t) <= tol_years:
+                        pairs.add((other, node) if flip else (node, other))
+    edges: list[MessageEdge] = []
+    for node_a, node_b in sorted(pairs):
+        t_a, t_b = ladders[node_a[0]][node_a], ladders[node_b[0]][node_b]
+        # Canonical receiver = the shorter maturity (§7.6), like calendar.
+        recv, t_r, inf, t_i = (
+            (node_a, t_a, node_b, t_b) if t_a <= t_b else (node_b, t_b, node_a, t_a)
+        )
+        p = cross_expiry_precision(
+            t_r,
+            t_i,
+            scale=request.crossPrecisionScale,
+            epsilon=request.calendarPrecisionEpsilon,
+            rule=request.calendarPrecisionDecay,
+        )
+        beta = calendar_beta(t_r, t_i, alpha)
+        edges.append(MessageEdge(recv, inf, p, (beta, beta, beta), "custom"))
     return edges
 
 
