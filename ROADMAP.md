@@ -478,7 +478,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-08-20 (resume here)
+## STATUS — updated 2026-08-25 (resume here)
 
 ### 📌 WHERE THINGS STAND (2026-07-26, consolidated)
 
@@ -612,6 +612,115 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-25a) — TEN-ITEM BATCH: GRAPH ASYNC EXPIRIES, WEIGHTS, TAILS, CHARTS, BBG/EUREX, CLOCK ANSWERS
+
+User listed ten items ("do everything, spawning several agents"). Ten
+parallel investigation agents mapped each; six commits shipped (suite
+1803 passed / 7 skipped — the 6 new skips are the pre-existing live-gated
+exchange tests now counted; frontend 245 vitest + tsc + build green).
+
+SHIPPED (one commit each, all defaults byte-identical):
+- **Graph cross-venue async expiries** (opt-in
+  `GraphSolverParams.crossExpiryToleranceDays`, default 0): nearest-expiry
+  pairing where exact-ISO intersection found nothing — lattice weight
+  `cross_w·tol/(tol+gap)`; message factor with canonical short receiver,
+  cross precision decayed by the |dT| family NORMALIZED to the synchronous
+  value (`graph/message.cross_expiry_precision`), maturity-shape beta
+  `(T_inf/T_recv)^alphaT`. UI: "Cross-expiry tol (d)" in the Cross-asset
+  card. NOTE the engine was already expiry-agnostic — hand-authored async
+  edges (EdgeExpiryMatrix / message rows) always worked; this is the
+  auto-generation. Riders: backtest/graph_edges.py taxonomy still
+  same-ISO; `GraphBlockPair` rule-level expiry policy unbuilt.
+- **Weighting schemes** `vega_density` (phi(d+), vol-error economics) and
+  `delta_density` (OTM |forward delta|, hedge-size economics), both with
+  the note's Voronoi crowding correction + mean-1; one `scheme_raw()`
+  choke point shared with the prior data-gap anchor. Wing-decay ordering
+  (test-locked): vega flattest > delta > time value. Rider: benchmark-pack
+  adjudication before recommending either as default.
+- **Bloomberg dailies/weeklies**: `bds(OPT_CHAIN)` now sends
+  `CHAIN_PERIODICITY_OVRD` ("" = ALL; pinnable), chain cache gained
+  600 s TTL + refresh. Live verify still blocked by the account-side
+  WORKFLOW_REVIEW gate; tests assert the override is sent. Watch on a
+  real terminal: default expiry seed changes (weekly branch lights up),
+  3000-sub cap pressure, the Monday-SPXW "am" mis-tag (ROADMAP:887).
+- **Eurex trading-hours bid-ask check** (the recorded rider): live tier
+  = two-sided uncrossed book only; one bad row no longer stamps the chain
+  live; `is_session_open()` (09:00–17:30 CET/CEST, no holiday calendar);
+  status text names "session open but live bid/ask missing" + two-sided
+  count; EOD stamp clamped to now; **data_age now ages tickless real
+  feeds** (Eurex/ASX/HKEX/SGX — the tick_size None hole). Still open:
+  intraday spot stays previous close; US-centric settlement clock.
+- **Smile chart auto-scale**: the y base already auto-fits the visible
+  x-range — the fractions rode on top. "Y center" / "Y fit" chips
+  (default ON, localStorage volfit.smileAutoScale) reset/recenter the y
+  fractions on any x change; both OFF = legacy byte-identical; alt+wheel
+  stays manual. Crosshair (both guides + badge) added to OverlayCurves /
+  LocalVolSmile / ForwardCurve; SmileChart gains the horizontal guide;
+  TermChart skipped (two panels, ambiguous pointer-y).
+- **Wing-law contract layer** (`volfit/models/wings.py`) + compare
+  "Tails L/R" column; stacked-IV/3D grid dense core over the narrowest
+  quoted span (the optical-crossing display component); `_tau_of` now
+  carries the intraday session profile into the dense term curve.
+
+ANSWERS recorded (investigation, no code needed):
+- **±1std band**: three independent σ sources — quote-derived fit
+  uncertainty (api/fit_uncertainty.py, works with the filter OFF), graph
+  posterior (precision → marginal sd, idio floor), Kalman state cov —
+  all pushed through the same delta-method band machine
+  (models/lqd/band.py). Every smile-chart band is ±1.96σ (95%); true 1σ
+  only in numeric readouts (SmileAside, InspectorPane) and the
+  FilterTimeline ribbons. σ never feeds weighting/quarantine/publish
+  gates; only the filter's own |ζ|>3 inflation gate is behavioral.
+- **Tail persistence**: the prior tail = raw LQD θ carry-over + α±
+  sibling fields (rebuilt per node), defended by two soft rows — the
+  2δ/5δ deep-strike anchor (hybrid, 20% budget) and an ABSOLUTE var-swap
+  row. No Lee-slope constraint, no ATM-relative var-swap, no
+  Wasserstein/JS anywhere; graph carrier + filter state are body-only
+  (3 handles) so the tail is never transported or filtered. Candidate
+  upgrades recorded: a wing-slope/tail-digital operator in
+  KNOWN_OPERATORS (design note :187 lists it), ATM-relative var-swap
+  mode, V3.6 hard pinning + strip/tail decomposition (still riders).
+- **Tail convexity LV/MCS vs LQD**: structurally impossible without
+  model surgery — MCS log-cosh base ⇒ exactly straight wings (LQD α=0
+  class; β=0 unreachable in the structural chart; two-sided Gaussian
+  degenerates to flat); LV bounded field ⇒ w ≤ v_max·τ ⇒ Lee 0 (α=1/2
+  class; the opposite corner — and "Lee for free" is its selling point,
+  book ch.4 rem lvlee). The intermediate |k|^p band exists in neither
+  family. Path if ever wanted: MCS needs a new base primitive with |u|^p
+  asymptote + new chart (breaks the analytic-Lee FD lock by
+  construction); LV needs local variance affine in log-strike + a wider
+  lattice (the _X_MAX_MIN rider). The shipped WingLaw layer makes the
+  contracts visible instead.
+- **Short-dated ruggedness, fundamentally**: NOT an absolute-vol wall —
+  three clock asymmetries: (1) data rows scale ~1/√τ (inv-vega) while
+  the shape ridge is τ-free, so at 1w the data wins the regularization
+  contest ×7, at 1d ×19; (2) in band mode the 5% mid anchor is the ONLY
+  active force once inside the tube — the fit reproduces the
+  tick-quantized mid staircase at 22% amplitude ("the band fit returns
+  to the noise it was meant to ignore", note 07 §6); (3) capacity is
+  quote-count-driven (nQuotes/2, floor 6) not τ-aware. High-vol names
+  hurt because the ±4σ wing filter is scale-free: it retains strikes
+  whose vega is under the 1e-4 floor but whose bid clears 3 ticks —
+  and SVI/MCS fit raw vol with NO vega normalization (the R1 deferral).
+  The calendar-crossing optics: stacked chart drew every expiry to
+  k=+1.0 with no core densification (FIXED this session); overlay
+  calendar floors stop at common support (+2σ pad MCS only); the
+  full-line exchange guards the LQD backbone only, and a later
+  single-node refit voids it. RECORDED candidate fixes (need
+  benchmark adjudication, not shipped): τ-aware mid-anchor attenuation,
+  an IV-space band half-width floor from the tick size, robust loss
+  (the LV fix-order #3), winged floor grids for the SVI overlay,
+  vega-normalizing SVI/MCS residuals.
+- **Intraday clock**: PRESENT but off by default
+  (`OptionsSettings.intradayClock=False`, `filterClock="calendar"`) —
+  seconds-granularity T to exact AM/PM settlement instants, session-
+  weighted tau, filter Δt, all live-wired and 0DTE-validated. T advances
+  per REFETCH only (valuation = snapshot timestamp, never wall clock —
+  even the 1 Hz live table prices against the cached T,
+  table_stream.py:182). Remaining gaps recorded: turn it on by default?,
+  per-tick T for the live table, day-granular display sites
+  (universe/market/carry), reference_date never rolls past midnight.
 
 ### 🧭 SESSION WRAP (2026-08-21k) — SMILE CHART: GHOST QUOTE BEAMS ON ZOOM / PAN WHILE LIVE (CHROME)
 
