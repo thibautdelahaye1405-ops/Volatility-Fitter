@@ -18,7 +18,7 @@ frame would).
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
@@ -57,18 +57,24 @@ def _bdp_long(values: dict[str, dict[str, object]]) -> pd.DataFrame:
 
 
 class FakeBlp:
-    """Minimal xbbg.blp stand-in: records calls, returns canned frames."""
+    """Minimal xbbg.blp stand-in: records calls, returns canned frames.
+
+    ``bds_calls`` records (security, field, kwargs) so tests can assert what
+    was actually SENT — in particular the OPT_CHAIN periodicity override,
+    which a bare ``**_`` sink used to swallow silently."""
 
     def __init__(self, chain, bdp_values, dvd=None):
         self._chain = chain
         self._bdp_values = bdp_values
         self._dvd = dvd
         self.bdp_securities: list = []
+        self.bds_calls: list[tuple[str, str, dict]] = []
 
     def is_connected(self) -> bool:
         return True  # a live Terminal session
 
-    def bds(self, security, field, **_):
+    def bds(self, security, field, **kwargs):
+        self.bds_calls.append((security, field, dict(kwargs)))
         if field == "OPT_CHAIN":
             return self._chain
         if field == "DVD_HIST_ALL":
@@ -147,6 +153,95 @@ def test_available_expiries_parses_and_filters():
 def test_available_expiries_respects_max_days():
     provider, _ = _make_provider(max_days=60)  # far (120d) excluded
     assert len(provider.available_expiries("SPY")) == 1
+
+
+# ---------------------------------------- weeklies/dailies + chain periodicity
+
+def _future_weekday(target_weekday: int, min_days: int = 7) -> date:
+    """The first date >= TODAY+min_days falling on ``target_weekday`` (0=Mon)."""
+    d = date.fromordinal(TODAY.toordinal() + min_days)
+    while d.weekday() != target_weekday:
+        d += timedelta(days=1)
+    return d
+
+
+def _desc(d: date, tail: str = "C500 Equity") -> str:
+    return f"SPY US {d.month:02d}/{d.day:02d}/{d.year % 100:02d} {tail}"
+
+
+def test_opt_chain_sends_all_series_periodicity_override():
+    """The OPT_CHAIN bds must actually SEND CHAIN_PERIODICITY_OVRD="" (ALL
+    series, xbbg's ChainPeriodicity vocabulary): without the override the
+    Terminal applies its monthly-biased chain default (live check recorded 13
+    SPY expiries vs 29 on Yahoo). FakeBlp records kwargs so a silently-dropped
+    override cannot pass."""
+    provider, blp = _make_provider()
+    provider.available_expiries("SPY")
+    security, field, kwargs = next(c for c in blp.bds_calls if c[1] == "OPT_CHAIN")
+    assert security == "SPY US Equity"
+    assert kwargs == {"overrides": {"CHAIN_PERIODICITY_OVRD": ""}}
+
+
+def test_chain_periodicity_pinnable_and_omittable():
+    """"M" pins monthlies (the escape hatch for a misbehaving terminal); None
+    sends no override at all (the pre-override behavior)."""
+    provider, blp = _make_provider(chain_periodicity="M")
+    provider.available_expiries("SPY")
+    assert blp.bds_calls[0][2] == {"overrides": {"CHAIN_PERIODICITY_OVRD": "M"}}
+    provider, blp = _make_provider(chain_periodicity=None)
+    provider.available_expiries("SPY")
+    assert blp.bds_calls[0][2] == {}
+
+
+def test_available_expiries_includes_weeklies_and_dailies():
+    """A Mon/Wed/Fri weekly ladder plus a Tuesday daily all survive: our code
+    applies NO periodicity filter of its own (the descriptor regex parses
+    weeklies/dailies fine) — the monthly bias was the Terminal's chain
+    default, now overridden upstream."""
+    ladder = [_future_weekday(w) for w in (0, 1, 2, 4)]  # Mon, Tue (daily), Wed, Fri
+    descriptors = [_desc(d) for d in ladder]
+    blp = FakeBlp(_opt_chain_frame(descriptors), {"SPY US Equity": {"PX_LAST": 741.75}})
+    provider = BloombergProvider(["SPY"], blp_module=blp)
+    assert provider.available_expiries("SPY") == sorted(ladder)
+
+
+class _FakeClock:
+    """Injectable monotonic clock for the chain-cache TTL tests."""
+
+    def __init__(self, start: float = 1000.0):
+        self.t = start
+
+    def __call__(self) -> float:
+        return self.t
+
+    def advance(self, seconds: float) -> None:
+        self.t += seconds
+
+
+def _chain_bds_count(blp: FakeBlp) -> int:
+    return sum(1 for c in blp.bds_calls if c[1] == "OPT_CHAIN")
+
+
+def test_chain_cache_ttl_and_explicit_refresh():
+    """The OPT_CHAIN cache must EXPIRE (chains list new dailies intraday — the
+    old cache lived forever): stable within the TTL, one fresh bds after it,
+    and refresh_chain_cache() invalidates without waiting the TTL out."""
+    clock = _FakeClock()
+    provider, blp = _make_provider(chain_ttl=600.0, clock=clock)
+    provider.available_expiries("SPY")
+    provider.available_expiries("SPY")  # same instant: served from cache
+    clock.advance(599.0)
+    provider.available_expiries("SPY")  # still inside the TTL
+    assert _chain_bds_count(blp) == 1
+    clock.advance(2.0)  # past the 600 s TTL
+    provider.available_expiries("SPY")
+    assert _chain_bds_count(blp) == 2
+    provider.refresh_chain_cache("SPY")  # explicit invalidation, no TTL wait
+    provider.available_expiries("SPY")
+    assert _chain_bds_count(blp) == 3
+    provider.refresh_chain_cache()  # no ticker = drop everything
+    provider.available_expiries("SPY")
+    assert _chain_bds_count(blp) == 4
 
 
 # --------------------------------------------------------------- chain

@@ -37,9 +37,10 @@ and issue NO ``bdp`` — the metered reference path is the fallback only.
 from __future__ import annotations
 
 import threading
+import time
 import warnings
 from datetime import date, datetime, timezone
-from typing import Sequence
+from typing import Callable, Sequence
 
 from volfit.data.bloomberg_parse import (
     ParsedOption,
@@ -75,6 +76,17 @@ _ASSET_CLASS_BY_UPPER = {c.upper(): c for c in _ASSET_CLASSES}
 #: descriptor, so only quote fields + the exercise flag are requested here).
 _QUOTE_FIELDS = ("BID", "ASK", "LAST_PRICE", "VOLUME", "OPEN_INT", "OPT_EXER_TYP")
 
+#: CHAIN_PERIODICITY_OVRD value requesting ALL listed series (dailies +
+#: weeklies + monthlies + quarterlies): the empty string, per the vocabulary
+#: the installed xbbg ships (xbbg.ext.options.ChainPeriodicity, ALL = "").
+CHAIN_ALL_SERIES = ""
+
+#: Seconds a parsed OPT_CHAIN is reused. Chains GROW intraday (new dailies
+#: list during the session) so the cache must expire — cf. the exchange
+#: provider's 60 s raw-chain TTL; longer here because each refresh is a
+#: metered ``bds`` and the ladder shifts far slower than quotes do.
+CHAIN_CACHE_TTL = 600.0
+
 
 def _default_blp():
     """Resolve ``xbbg.blp`` on first use; clear error if xbbg is not installed."""
@@ -106,6 +118,11 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     stream_port  : the ``//blp/mktdata`` streaming knobs (volfit.data.
                    bloomberg_live): conflation seconds, concurrent-subscription
                    budget, injectable session (tests), DAPI endpoint override.
+    chain_periodicity : CHAIN_PERIODICITY_OVRD value for the OPT_CHAIN ``bds``
+                   (see ``_chain``). Default "" = ALL series; pin to "M" if a
+                   terminal misbehaves on the override; None sends no override.
+    chain_ttl    : seconds a parsed OPT_CHAIN is reused (CHAIN_CACHE_TTL).
+    clock        : monotonic float clock for the chain TTL (tests inject a fake).
     """
 
     def __init__(
@@ -120,6 +137,9 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         stream_session_factory=None,
         stream_host: str | None = None,
         stream_port: int | None = None,
+        chain_periodicity: str | None = CHAIN_ALL_SERIES,
+        chain_ttl: float = CHAIN_CACHE_TTL,
+        clock: Callable[[], float] | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
         self.yellow_key = yellow_key
@@ -135,7 +155,12 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
         #: windowing to the fittable band cuts the per-fetch security count (and
         #: the daily-quota burn) by a large factor. Widen/disable per deployment.
         self.strike_window = strike_window
-        self._chain_cache: dict[str, list[ParsedOption]] = {}
+        self.chain_periodicity = chain_periodicity
+        self.chain_ttl = chain_ttl
+        self._clock = clock if clock is not None else time.monotonic
+        #: ticker -> (clock stamp, parsed contracts); entries older than
+        #: ``chain_ttl`` are re-requested (see ``_chain``).
+        self._chain_cache: dict[str, tuple[float, list[ParsedOption]]] = {}
         self._history_cache: dict[str, list[date]] = {}
         #: Lazily-opened blpapi session for the instrument-search service, reused
         #: across searches and guarded so concurrent searches serialize.
@@ -271,12 +296,28 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
     # -- chain enumeration (cheap, descriptor-only) --------------------------
 
     def _chain(self, ticker: str) -> list[ParsedOption]:
-        """Parsed OPT_CHAIN contracts for a ticker (cached; one ``bds`` call)."""
+        """Parsed OPT_CHAIN contracts for a ticker (one ``bds`` call, cached for
+        ``chain_ttl`` seconds — chains list new dailies intraday, so the cache
+        expires instead of living forever).
+
+        The request carries the ``CHAIN_PERIODICITY_OVRD`` override (value
+        ``chain_periodicity``, "" = ALL series) through xbbg's ``overrides=``
+        kwarg — the exact route xbbg's own ``option_chain`` helper uses
+        (xbbg.ext.options; blp routes UPPERCASE override keys to Bloomberg
+        field overrides). Without it the Terminal's monthly-biased chain
+        default hides most weeklies/dailies. Live verification of the override
+        is blocked by the account-side workflow gate
+        (Docs/bloomberg_workflow_review_account.md)."""
         key = ticker.upper()
-        if key in self._chain_cache:
-            return self._chain_cache[key]
+        now = self._clock()
+        hit = self._chain_cache.get(key)
+        if hit is not None and now - hit[0] <= self.chain_ttl:
+            return hit[1]
         blp = self._blp_module()
-        frame = blp.bds(self._security(ticker), "OPT_CHAIN")
+        kwargs: dict = {}
+        if self.chain_periodicity is not None:  # None = send no override at all
+            kwargs["overrides"] = {"CHAIN_PERIODICITY_OVRD": self.chain_periodicity}
+        frame = blp.bds(self._security(ticker), "OPT_CHAIN", **kwargs)
         cols = columns(frame)
         # The descriptor column is "Security Description"; fall back to the last
         # non-metadata column if a future xbbg names it differently.
@@ -286,8 +327,17 @@ class BloombergProvider(BloombergStreamingMixin, OptionChainProvider):
             desc_col = extras[-1] if extras else ""
         descriptors = cols.get(desc_col, [])
         parsed = [p for p in (parse_descriptor(str(d)) for d in descriptors) if p]
-        self._chain_cache[key] = parsed
+        self._chain_cache[key] = (now, parsed)
         return parsed
+
+    def refresh_chain_cache(self, ticker: str | None = None) -> None:
+        """Drop the cached OPT_CHAIN ladder(s) so the next call re-requests them
+        (explicit invalidation without waiting out the TTL — e.g. right after
+        the open when the day's new listings appear)."""
+        if ticker is None:
+            self._chain_cache.clear()
+        else:
+            self._chain_cache.pop(ticker.upper(), None)
 
     def available_expiries(self, ticker: str) -> list[date]:
         """All listed expiries inside (0, max_days], parsed from the descriptors."""
