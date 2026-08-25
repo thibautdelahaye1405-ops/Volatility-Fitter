@@ -37,6 +37,8 @@ import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
 import { AXIS_MODE_OPTIONS } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
+import { readSmileAutoScale, writeSmileAutoScale } from "../lib/autoScaleY";
+import type { AutoScaleToggles } from "../lib/autoScaleY";
 
 /** Chart-card content. "Stacked densities" overlays every expiry's density
  *  (no butterfly arb ⇔ all ≥ 0); "Stacked IV" overlays total variance w=σ²T
@@ -125,6 +127,17 @@ export default function SmileViewer() {
   const [showCalibFit, setShowCalibFit] = useState(true);
   // Calibration weight strip under the chart (V3.4 item 5), default off.
   const [showWeights, setShowWeights] = useState(false);
+  // Smile-chart y-axis auto-scale chips (lib/autoScaleY): after any x-view
+  // change, "Y fit" snaps the y window to the data in view and "Y center"
+  // recenters the user's y zoom on it. Default both ON; persisted like the
+  // Calibrate scope (localStorage — a UI preference).
+  const [autoScaleY, setAutoScaleY] = useState<AutoScaleToggles>(() => readSmileAutoScale());
+  const toggleAutoScale = (key: keyof AutoScaleToggles) =>
+    setAutoScaleY((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      writeSmileAutoScale(next);
+      return next;
+    });
   // Transient "Saved ✓" confirmation on the Save-prior button.
   const [savedFlash, setSavedFlash] = useState(false);
   const flashTimer = useRef<number | null>(null);
@@ -313,6 +326,7 @@ export default function SmileViewer() {
             degraded={smile.degraded ?? null}
             fitMode={fitMode}
             showTarget={showTarget}
+            autoScaleY={autoScaleY}
             footer={
               showWeights ? (
                 <WeightStrip
@@ -490,6 +504,38 @@ export default function SmileViewer() {
           >
             Weights
           </button>
+        )}
+        {/* Y-axis auto-scale chips: after any x zoom / pan / brush / axis-mode
+            change, "Y fit" snaps the y window to everything in the visible
+            x-range; "Y center" keeps the y zoom but recenters it on the data
+            (fit wins when both are lit). Alt+wheel still zooms y manually. */}
+        {view === "smile" && (
+          <>
+            <button
+              className={[
+                "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                autoScaleY.center
+                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                  : "border-slate-700 text-slate-400 hover:text-slate-200",
+              ].join(" ")}
+              title="After any x-view change, keep the y window centered on the data in view (preserves your y zoom; alt+wheel still zooms y)"
+              onClick={() => toggleAutoScale("center")}
+            >
+              Y center
+            </button>
+            <button
+              className={[
+                "rounded border px-2 py-0.5 text-[11px] font-medium transition-colors",
+                autoScaleY.fit
+                  ? "border-accent-500/50 bg-accent-500/10 text-accent-300"
+                  : "border-slate-700 text-slate-400 hover:text-slate-200",
+              ].join(" ")}
+              title="After any x-view change, auto-fit the y-axis to every curve and quote in the visible x-range"
+              onClick={() => toggleAutoScale("fit")}
+            >
+              Y fit
+            </button>
+          </>
         )}
       </UniverseHeader>
 

@@ -11,10 +11,14 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import type { AffineSmile } from "../state/useAffine";
 import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { useZoom } from "../lib/useZoom";
+import { crosshairLabel, crosshairPoint } from "../lib/crosshair";
+import type { CrosshairPoint } from "../lib/crosshair";
+import { CrosshairBadge, CrosshairGuides } from "./CrosshairOverlay";
 import {
   axisDisplayTicks,
   axisModeLabel,
   axisTransform,
+  formatHoverValue,
   makeVolAt,
 } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
@@ -48,7 +52,9 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
   const svgRef = useRef<SVGSVGElement | null>(null);
   const clipId = useId();
   const zoom = useZoom();
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  /** Crosshair position, or null when the pointer is outside / panning. */
+  const [cross, setCross] = useState<CrosshairPoint | null>(null);
 
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
@@ -105,20 +111,38 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
   }, [zoom, plotW, plotH]);
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    drag.current = { x: e.clientX, y: e.clientY };
+    drag.current = { x: e.clientX, y: e.clientY, moved: false };
   };
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const d = drag.current;
-    if (!d || plotW <= 0 || plotH <= 0) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    if (Math.abs(dx) + Math.abs(dy) > 2) {
-      zoom.panBy(dx / plotW, dy / plotH, "both");
-      drag.current = { x: e.clientX, y: e.clientY };
+    if (d && plotW > 0 && plotH > 0) {
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) {
+        zoom.panBy(dx / plotW, dy / plotH, "both");
+        drag.current = { x: e.clientX, y: e.clientY, moved: true };
+      }
     }
+    // Crosshair rides the same handler (hover-only, hidden while panning).
+    // This chart's scales run in full-SVG pixels, so the inverts add the
+    // margin back onto the plot-local coordinates the helper works in.
+    const svg = svgRef.current;
+    if (!svg) return;
+    if (drag.current?.moved) {
+      setCross(null);
+      return;
+    }
+    setCross(
+      crosshairPoint(e.clientX, e.clientY, svg.getBoundingClientRect(), MARGIN,
+        plotW, plotH, (p) => x.invert(p + MARGIN.left), (p) => y.invert(p + MARGIN.top)),
+    );
   };
   const onPointerUp = () => {
     drag.current = null;
+  };
+  const onPointerLeave = () => {
+    drag.current = null;
+    setCross(null);
   };
 
   const path = smile.model
@@ -143,7 +167,7 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
+          onPointerLeave={onPointerLeave}
           onDoubleClick={zoom.reset}
         >
           <defs>
@@ -233,7 +257,22 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
             {/* Reconstructed model curve */}
             <path d={path} fill="none" stroke="rgb(56 189 248)" strokeWidth={1.75} />
           </g>
+
+          {/* Crosshair guides (hover-only; the SVG has no translated plot
+              group, so wrap the plot-local guides in one). */}
+          {cross !== null && (
+            <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
+              <CrosshairGuides point={cross} plotW={plotW} plotH={plotH} />
+            </g>
+          )}
         </svg>
+      )}
+
+      {/* Crosshair readout badge (x in the display coordinate, y in vol) */}
+      {cross !== null && (
+        <CrosshairBadge
+          label={crosshairLabel(cross, (v) => formatHoverValue(axisMode, v), (v) => `σ ${formatPct(v, 2)}`)}
+        />
       )}
 
       {zoom.zoomed && (

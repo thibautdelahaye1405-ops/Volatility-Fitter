@@ -27,6 +27,8 @@ import type { AxisContext, AxisMode } from "../lib/axisModes";
 import type { MarketFrame, SmileFrame } from "../lib/smileLayers";
 import { useElementSize } from "../lib/useElementSize";
 import { useZoom } from "../lib/useZoom";
+import { autoScaleYWindow, DEFAULT_AUTOSCALE } from "../lib/autoScaleY";
+import type { AutoScaleToggles } from "../lib/autoScaleY";
 import QuoteLayer from "./QuoteLayer";
 import RangeBrush from "./RangeBrush";
 
@@ -72,7 +74,7 @@ interface SmileChartProps {
   graphBandLo?: SmilePoint[] | null;
   graphBandHi?: SmilePoint[] | null;
   /** Observation-filter overlay (Note 15 Phase 4): solid teal filtered
-   *  posterior with a shaded ±1σ band, plus a dashed one-step prediction. */
+   *  posterior with a shaded ±1.96σ (95%) band, plus a dashed prediction. */
   filterPost?: SmilePoint[] | null;
   filterBandLo?: SmilePoint[] | null;
   filterBandHi?: SmilePoint[] | null;
@@ -94,6 +96,11 @@ interface SmileChartProps {
   /** Optional strip rendered between the plot and the RangeBrush (the V3.4
    *  weight strip mounts here so it shares the x extent above the brush). */
   footer?: ReactNode;
+  /** Y-axis auto-scale policy applied after x-view changes (wheel/pan/brush/
+   *  axis mode — lib/autoScaleY): fit snaps the y window to the auto-fitted
+   *  base, center keeps the y zoom but recenters it on the data. Both off =
+   *  legacy free zoom; alt+wheel (manual y) always bypasses the policy. */
+  autoScaleY?: AutoScaleToggles;
 }
 
 /** Human labels for the named degraded-market conditions. */
@@ -152,6 +159,7 @@ export default function SmileChart({
   fitMode = "mid",
   showTarget = false,
   footer = null,
+  autoScaleY = DEFAULT_AUTOSCALE,
 }: SmileChartProps) {
   // The market frame is the primary layer: its curve drives the hover readout,
   // the confidence band and the y-domain; its forward is the axis reference.
@@ -162,8 +170,20 @@ export default function SmileChart({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const clipId = useId();
   const zoom = useZoom();
+  // Y auto-scale policy (lib/autoScaleY): the y BASE already fits the data in
+  // the x-window, so the policy only rewrites the y FRACTIONS — always through
+  // zoom.setYWindow, so the QuoteLayer remount viewKey still fires.
+  const autoCenter = autoScaleY.center;
+  const autoFit = autoScaleY.fit;
+  const autoActive = autoCenter || autoFit;
+  const applyAutoY = () => {
+    const w = autoScaleYWindow(zoom.fractions, { center: autoCenter, fit: autoFit });
+    if (w !== null) zoom.setYWindow(w.yLo, w.yHi);
+  };
   /** Hover position in k-space, or null when the pointer is outside. */
   const [hoverK, setHoverK] = useState<number | null>(null);
+  /** Hover y-position in vol units (pointer level), or null when outside. */
+  const [hoverV, setHoverV] = useState<number | null>(null);
   /** Active drag-pan: last pointer px and whether it has moved past a click. */
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
@@ -316,11 +336,28 @@ export default function SmileChart({
       const fx = clamp((e.clientX - rect.left - MARGIN.left) / plotW, 0, 1);
       const fy = clamp((e.clientY - rect.top - MARGIN.top) / plotH, 0, 1);
       const axis = e.shiftKey ? "x" : e.altKey ? "y" : "both";
-      zoom.zoomAt(fx, fy, e.deltaY, axis);
+      if (autoActive && axis !== "y") {
+        // The policy owns y: zoom x only, then re-apply it. Alt+wheel — the
+        // manual y-only zoom — falls through untouched (no policy).
+        zoom.zoomAt(fx, fy, e.deltaY, "x");
+        applyAutoY();
+      } else {
+        zoom.zoomAt(fx, fy, e.deltaY, axis);
+      }
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, [zoom, plotW, plotH]);
+  }, [zoom, plotW, plotH, autoActive]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-apply the policy when the x view changes OUTSIDE the zoom handlers —
+  // the coarse RangeBrush window or an axis-mode switch — and when the chips
+  // themselves flip on (so enabling one takes effect immediately). Reset is
+  // already the identity, so no trigger is needed there. No loop: the deps
+  // exclude the fractions, and a satisfied window is a state no-op.
+  useEffect(() => {
+    if (!autoActive) return;
+    applyAutoY();
+  }, [kLo, kHi, axisMode, autoCenter, autoFit]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------------- hover + drag-pan ---------------- */
 
@@ -332,12 +369,14 @@ export default function SmileChart({
     if (!svg) return;
     const rect = svg.getBoundingClientRect();
     const px = e.clientX - rect.left - MARGIN.left;
-    // Hover readout.
+    const py = e.clientY - rect.top - MARGIN.top;
+    // Hover readout (x tracks the model curve, y the pointer level).
     if (px < 0 || px > plotW) setHoverK(null);
     else {
       const k = axisInvert(axisMode, xScale.invert(px), axisCtx);
       setHoverK(k !== null && Number.isFinite(k) ? k : null);
     }
+    setHoverV(py >= 0 && py <= plotH ? yScale.invert(py) : null);
     // Drag-pan.
     const d = drag.current;
     if (d && plotW > 0 && plotH > 0) {
@@ -345,6 +384,7 @@ export default function SmileChart({
       const dy = e.clientY - d.y;
       if (Math.abs(dx) + Math.abs(dy) > 2) {
         zoom.panBy(dx / plotW, dy / plotH, "both");
+        if (autoActive && dx !== 0) applyAutoY(); // x moved: policy rules y
         drag.current = { x: e.clientX, y: e.clientY, moved: true };
       }
     }
@@ -356,6 +396,7 @@ export default function SmileChart({
   };
   const onPointerLeave = () => {
     setHoverK(null);
+    setHoverV(null);
     drag.current = null;
   };
 
@@ -363,7 +404,8 @@ export default function SmileChart({
   const hoverX = hoverK !== null ? xScale.map(tx(hoverK)) : 0;
   const hoverLabel =
     hoverK !== null && hoverVol !== null
-      ? `${formatHoverValue(axisMode, axisTransform(axisMode, hoverK, axisCtx))} · σ ${formatPct(hoverVol, 2)}`
+      ? `${formatHoverValue(axisMode, axisTransform(axisMode, hoverK, axisCtx))} · σ ${formatPct(hoverVol, 2)}` +
+        (hoverV !== null ? ` · y ${formatPct(hoverV, 2)}` : "")
       : null;
 
   /* ---------------- render ---------------- */
@@ -589,9 +631,9 @@ export default function SmileChart({
                     strokeWidth={2} strokeLinejoin="round" pointerEvents="none" />
                 )}
 
-                {/* Observation-filter overlay (Note 15): shaded ±1σ band, a
-                    dashed lighter one-step prediction and a solid teal
-                    filtered-posterior curve. */}
+                {/* Observation-filter overlay (Note 15): shaded ±1.96σ (95%)
+                    band, a dashed lighter one-step prediction and a solid
+                    teal filtered-posterior curve. */}
                 {filterBandPath !== "" && (
                   <path d={filterBandPath} fill="rgb(20 184 166 / 0.14)" stroke="none" pointerEvents="none" />
                 )}
@@ -634,11 +676,16 @@ export default function SmileChart({
                   </text>
                 )}
 
-                {/* Crosshair */}
+                {/* Crosshair: vertical guide + model dot, plus a horizontal
+                    guide at the pointer's vol level (the badge's y readout). */}
                 {hoverK !== null && hoverVol !== null && (
                   <g pointerEvents="none">
                     <line x1={hoverX} x2={hoverX} y1={0} y2={plotH}
                       stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                    {hoverV !== null && (
+                      <line x1={0} x2={plotW} y1={yScale.map(hoverV)} y2={yScale.map(hoverV)}
+                        stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                    )}
                     <circle cx={hoverX} cy={yScale.map(hoverVol)} r={3.5}
                       fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5} />
                   </g>

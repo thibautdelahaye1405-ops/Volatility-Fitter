@@ -9,6 +9,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { clamp, formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
 import { useZoom } from "../lib/useZoom";
+import { crosshairLabel, crosshairPoint } from "../lib/crosshair";
+import type { CrosshairPoint } from "../lib/crosshair";
+import { CrosshairBadge, CrosshairGuides } from "./CrosshairOverlay";
 
 /** One plottable curve. */
 export interface OverlaySeries {
@@ -93,9 +96,11 @@ export default function OverlayCurvesChart({
 }: OverlayCurvesChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const clipId = useId();
   const zoom = useZoom();
+  /** Crosshair position, or null when the pointer is outside / panning. */
+  const [cross, setCross] = useState<CrosshairPoint | null>(null);
 
   const innerW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const innerH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
@@ -118,20 +123,36 @@ export default function OverlayCurvesChart({
   }, [zoom, innerW, innerH, zoomY]);
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
-    drag.current = { x: e.clientX, y: e.clientY };
+    drag.current = { x: e.clientX, y: e.clientY, moved: false };
   };
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
     const d = drag.current;
-    if (!d || innerW <= 0 || innerH <= 0) return;
-    const dx = e.clientX - d.x;
-    const dy = e.clientY - d.y;
-    if (Math.abs(dx) + Math.abs(dy) > 2) {
-      zoom.panBy(dx / innerW, dy / innerH, zoomY ? "both" : "x");
-      drag.current = { x: e.clientX, y: e.clientY };
+    if (d && innerW > 0 && innerH > 0) {
+      const dx = e.clientX - d.x;
+      const dy = e.clientY - d.y;
+      if (Math.abs(dx) + Math.abs(dy) > 2) {
+        zoom.panBy(dx / innerW, dy / innerH, zoomY ? "both" : "x");
+        drag.current = { x: e.clientX, y: e.clientY, moved: true };
+      }
     }
+    // Crosshair rides the same handler (hover-only, hidden while panning).
+    const svg = svgRef.current;
+    if (!svg) return;
+    if (drag.current?.moved) {
+      setCross(null);
+      return;
+    }
+    setCross(
+      crosshairPoint(e.clientX, e.clientY, svg.getBoundingClientRect(), MARGIN,
+        innerW, innerH, xScale.invert, yScale.invert),
+    );
   };
   const onPointerUp = () => {
     drag.current = null;
+  };
+  const onPointerLeave = () => {
+    drag.current = null;
+    setCross(null);
   };
 
   if (series.length === 0) {
@@ -212,7 +233,7 @@ export default function OverlayCurvesChart({
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerLeave={onPointerUp}
+          onPointerLeave={onPointerLeave}
           onDoubleClick={zoom.reset}
         >
           <defs>
@@ -290,6 +311,9 @@ export default function OverlayCurvesChart({
                 ))}
             </g>
 
+            {/* Crosshair guides (hover-only) */}
+            {cross !== null && <CrosshairGuides point={cross} plotW={innerW} plotH={innerH} />}
+
             {/* Axis labels */}
             <text x={innerW} y={innerH + 30} textAnchor="end" className="fill-slate-600 text-[10px]">
               {xLabel}
@@ -311,6 +335,11 @@ export default function OverlayCurvesChart({
             </g>
           </g>
         </svg>
+      )}
+
+      {/* Crosshair readout badge (x in display units, y in axis units) */}
+      {cross !== null && (
+        <CrosshairBadge label={crosshairLabel(cross, formatX, formatAxisNumber)} />
       )}
 
       {zoom.zoomed && (

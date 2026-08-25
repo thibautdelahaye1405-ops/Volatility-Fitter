@@ -10,6 +10,9 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { api } from "../state/api";
 import { clamp, linearScale, niceTicks } from "../lib/chartScale";
+import { crosshairLabel, crosshairPoint } from "../lib/crosshair";
+import type { CrosshairPoint } from "../lib/crosshair";
+import { CrosshairBadge, CrosshairGuides } from "./CrosshairOverlay";
 import { formatYears, timeAxisValue } from "../lib/timeAxis";
 import type { TimeAxisMode } from "../lib/timeAxis";
 import type { DividendItem, ForwardEntry, MarketSettings } from "./ForwardPanel";
@@ -52,6 +55,8 @@ export default function ForwardCurveChart({ ticker, disabled, entries, spot, ref
   const [sel, setSel] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [flash, setFlash] = useState(false);
+  /** Crosshair position, or null when the pointer is outside the plot. */
+  const [cross, setCross] = useState<CrosshairPoint | null>(null);
 
   // (Re)load the schedule whenever the ticker or an external edit changes it.
   useEffect(() => {
@@ -128,6 +133,17 @@ export default function ForwardCurveChart({ ticker, disabled, entries, spot, ref
     setSel(next.findIndex((d) => d.exDate === dateOfT(t)));
   };
 
+  // Crosshair (hover-only): maturity in years through the time-axis inverse,
+  // forward level off the y scale. The click handler is untouched.
+  const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    setCross(
+      crosshairPoint(e.clientX, e.clientY, svg.getBoundingClientRect(), MARGIN,
+        innerW, innerH, (p) => xposInv(xScale.invert(p)), (p) => yScale.invert(p)),
+    );
+  };
+
   const setSelAmount = (amount: number) => {
     if (sel === null) return;
     setDivs((prev) => prev.map((d, i) => (i === sel ? { ...d, amount } : d)));
@@ -202,6 +218,8 @@ export default function ForwardCurveChart({ ticker, disabled, entries, spot, ref
             height={size.height}
             className={`absolute inset-0 ${disabled ? "" : "cursor-crosshair"}`}
             onClick={onClick}
+            onPointerMove={onPointerMove}
+            onPointerLeave={() => setCross(null)}
           >
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
               {yTicks.map((v) => (
@@ -251,12 +269,22 @@ export default function ForwardCurveChart({ ticker, disabled, entries, spot, ref
                   fill="var(--color-accent-400)" pointerEvents="none" />
               ))}
 
+              {/* Crosshair guides (hover-only) */}
+              {cross !== null && <CrosshairGuides point={cross} plotW={innerW} plotH={innerH} />}
+
               <text x={2} y={-5} className="fill-slate-600 font-mono text-[10px]">forward</text>
               <text x={innerW} y={innerH + 30} textAnchor="end" className="fill-slate-600 font-mono text-[10px]">
                 maturity{timeMode === "sqrt" ? " · √T" : ""} (years)
               </text>
             </g>
           </svg>
+        )}
+
+        {/* Crosshair readout badge (maturity in years, forward level) */}
+        {cross !== null && (
+          <CrosshairBadge
+            label={crosshairLabel(cross, (v) => `T ${formatYears(v)}`, (v) => `fwd ${v.toFixed(2)}`)}
+          />
         )}
       </div>
 

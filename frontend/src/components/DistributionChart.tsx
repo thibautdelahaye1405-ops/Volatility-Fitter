@@ -361,11 +361,17 @@ export default function DistributionChart({
                   strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
               )}
 
-              {/* Crosshair: vertical guide + marker on the current curve */}
+              {/* Crosshair: vertical + horizontal guides + marker, all through
+                  the tracked point on the current curve (the horizontal guide
+                  only when that point sits inside the capped y-axis). */}
               {hoverXv !== null && hoverYv !== null && (
                 <g pointerEvents="none">
                   <line x1={hoverPx} x2={hoverPx} y1={0} y2={plotH}
                     stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                  {yScale.map(hoverYv) >= 0 && yScale.map(hoverYv) <= plotH && (
+                    <line x1={0} x2={plotW} y1={yScale.map(hoverYv)} y2={yScale.map(hoverYv)}
+                      stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                  )}
                   <circle cx={hoverPx} cy={yScale.map(hoverYv)} r={3.5}
                     fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5}
                     clipPath="url(#${clipId})" />

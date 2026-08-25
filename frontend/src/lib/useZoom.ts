@@ -19,6 +19,26 @@ export interface ZoomFractions {
 const IDENTITY: ZoomFractions = { xLo: 0, xHi: 1, yLo: 0, yHi: 1 };
 /** Wheel step: one notch zooms to 85% (in) or ~118% (out) of the span. */
 const STEP = 0.85;
+/** Smallest fraction span an explicit window setter will accept. */
+const MIN_SPAN = 1e-3;
+
+/** Order + guard a fraction window: lo <= hi, span at least `minSpan` (grown
+ *  about the midpoint), null when either bound is non-finite. Pure. */
+export function clampWindow(
+  lo: number,
+  hi: number,
+  minSpan: number = MIN_SPAN,
+): [number, number] | null {
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  let a = Math.min(lo, hi);
+  let b = Math.max(lo, hi);
+  if (b - a < minSpan) {
+    const c = (a + b) / 2;
+    a = c - minSpan / 2;
+    b = c + minSpan / 2;
+  }
+  return [a, b];
+}
 
 export interface ZoomController {
   /** Map a base domain to the current view domain in data units. */
@@ -28,6 +48,11 @@ export interface ZoomController {
   zoomAt: (fx: number, fy: number, dir: number, axis: "x" | "y" | "both") => void;
   /** Pan by plot-fraction deltas (drag). */
   panBy: (dfx: number, dfy: number, axis: "x" | "y" | "both") => void;
+  /** Set the y fractions outright (the smile chart's auto-scale policy applies
+   *  its computed window through this). Clamped + min-span guarded; a call
+   *  landing on the current window keeps the SAME fractions object, so the
+   *  remount-on-zoom viewKey does not churn. */
+  setYWindow: (lo: number, hi: number) => void;
   reset: () => void;
   zoomed: boolean;
   /** The raw base-relative fractions — a stable identity per zoom/pan step
@@ -85,8 +110,14 @@ export function useZoom(): ZoomController {
     });
   }, []);
 
+  const setYWindow = useCallback((lo: number, hi: number) => {
+    const w = clampWindow(lo, hi);
+    if (w === null) return;
+    setF((p) => (p.yLo === w[0] && p.yHi === w[1] ? p : { ...p, yLo: w[0], yHi: w[1] }));
+  }, []);
+
   const reset = useCallback(() => setF(IDENTITY), []);
   const zoomed = f.xLo !== 0 || f.xHi !== 1 || f.yLo !== 0 || f.yHi !== 1;
 
-  return { viewX, viewY, zoomAt, panBy, reset, zoomed, fractions: f };
+  return { viewX, viewY, zoomAt, panBy, setYWindow, reset, zoomed, fractions: f };
 }

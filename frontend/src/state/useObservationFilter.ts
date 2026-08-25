@@ -28,7 +28,7 @@ export interface FilterDiagnostics {
   posteriorStd: number[];
   measurementBreakdown: Record<string, number>;
   processBreakdown: Record<string, number[]>;
-  /** Filtered-posterior smile + its ±1σ band + the pre-update prediction. */
+  /** Filtered-posterior smile + its ±1.96σ (95%) band + the pre-update prediction. */
   post: SmilePoint[];
   postBandLo: SmilePoint[];
   postBandHi: SmilePoint[];
