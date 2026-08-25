@@ -21,6 +21,7 @@ from volfit.api.data_age import (
 )
 from volfit.api.datasource import datasources_payload
 from volfit.api.state import AppState, AsOfSelection
+from volfit.data.provider import OptionChainProvider, SyntheticProvider
 
 REF_DATE = date(2026, 6, 10)
 TICKER = "ALPHA"
@@ -67,6 +68,58 @@ def test_chain_age_only_for_ticked_nonempty_chains():
     # A clock skew (data stamped ahead of the wall clock) clamps to 0, not negative.
     future = replace(snap, tick_size=0.01, timestamp=now + timedelta(minutes=5))
     assert chain_age_minutes(future, now) == 0.0
+
+
+def test_real_feed_chain_without_tick_size_reports_age():
+    """The Eurex fix: a real-feed chain with tick_size=None (the non-US exchange
+    adapters — per-class ticks unknown, NOT exact prices) must report age when
+    the caller vouches for the feed; the snapshot-only default stays quiet, and
+    zero-carry IV-synthesized chains stay quiet even on a real feed."""
+    state = AppState(REF_DATE)
+    state.ensure_chain(TICKER)
+    snap = state.loaded_snapshot(TICKER)
+    now = _now()
+    stale = replace(snap, timestamp=now - timedelta(minutes=45), tick_size=None)
+    assert chain_age_minutes(stale, now) is None  # default: tick_size gate holds
+    assert abs(chain_age_minutes(stale, now, real_feed=True) - 45.0) < 1e-9
+    zero_carry = replace(stale, zero_carry=True)  # Massive's IV-synthesized fallback
+    assert chain_age_minutes(zero_carry, now, real_feed=True) is None
+
+
+class _TicklessRealFeed(OptionChainProvider):
+    """Deterministic stand-in for an exchange-adapter provider (Eurex-like):
+    a REAL feed whose chains carry tick_size=None but a genuine market stamp.
+    Composition, not subclassing SyntheticProvider — the provider-kind
+    discriminator in ticker_ages is an isinstance check."""
+
+    def __init__(self, reference_date):
+        self._inner = SyntheticProvider(reference_date=reference_date)
+
+    def list_tickers(self):
+        return self._inner.list_tickers()
+
+    def available_expiries(self, ticker):
+        return self._inner.available_expiries(ticker)
+
+    def fetch_chain(self, ticker, expiries=None, as_of=None):
+        return replace(self._inner.fetch_chain(ticker, expiries, as_of), tick_size=None)
+
+
+def test_ticker_ages_admit_tickless_chains_on_a_real_feed_provider():
+    """State-level: under a non-synthetic ACTIVE provider a loaded tick_size=None
+    chain ages (a stale Eurex EOD chain finally shows a TopBar pill / quality
+    issue); under the synthetic provider the same shape stays quiet."""
+    quiet = AppState(REF_DATE)
+    quiet.ensure_chain(TICKER)
+    _age_chain(quiet, TICKER, hours=13.0, tick=None)
+    assert ticker_ages(quiet) == {} and universe_age(quiet) is None  # synthetic: quiet
+
+    state = AppState(REF_DATE, provider=_TicklessRealFeed(REF_DATE))
+    state.ensure_chain(TICKER)
+    _age_chain(state, TICKER, hours=13.0, tick=None)
+    info = universe_age(state)
+    assert info is not None and info["worstTicker"] == TICKER
+    assert info["level"] == "red" and abs(info["ageMin"] - 13.0 * 60) < 1.0
 
 
 def test_universe_age_gates_on_live_asof_and_reports_worst():

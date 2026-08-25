@@ -10,9 +10,14 @@ Semantics — deliberately narrow so it never cries wolf:
 
 - LIVE as-of only. Historical / prev-close / captured views are stale by
   CHOICE (the As-of selector already labels them); age is None there.
-- Real-feed chains only (``ChainSnapshot.tick_size`` set). Synthetic and
-  IV-synthesized chains carry no market clock — a fixed-reference synthetic
-  chain would otherwise read years old.
+- Real-feed chains only. A snapshot alone qualifies via ``tick_size`` (set by
+  every US real feed); chains from the non-US exchange adapters (Eurex / ASX /
+  HKEX / SGX) legitimately carry ``tick_size=None`` (per-class ticks unknown)
+  yet stamp a REAL market clock — e.g. a stale Eurex EOD settlement chain —
+  so the state-level reads also admit any chain served by a real (non-
+  synthetic) provider. Excluded either way: SyntheticProvider chains (their
+  fixed-reference stamp would read years old) and zero-carry IV-synthesized
+  chains (exact model prices, no market book).
 - Levels: ``fresh`` under ``OptionsSettings.dataAgeAmberMin`` minutes,
   ``amber`` under ``dataAgeRedMin``, else ``red``. Red fails the quality
   report's publish-readiness; amber is advisory (shown, never gating).
@@ -45,10 +50,24 @@ def format_age(minutes: float) -> str:
     return f"{hours / 24.0:.1f}d"
 
 
-def chain_age_minutes(snapshot: ChainSnapshot | None, now: datetime | None = None) -> float | None:
-    """Age of one chain in minutes, or None when age has no meaning:
-    nothing loaded, an empty chain, or an exact-price chain (no tick_size)."""
-    if snapshot is None or not snapshot.quotes or snapshot.tick_size is None:
+def chain_age_minutes(
+    snapshot: ChainSnapshot | None,
+    now: datetime | None = None,
+    real_feed: bool = False,
+) -> float | None:
+    """Age of one chain in minutes, or None when age has no meaning: nothing
+    loaded, an empty chain, or a chain with no market clock.
+
+    ``tick_size`` set = a real feed (the snapshot-only discriminator; default
+    behavior, unchanged). ``real_feed=True`` — asserted by the caller when the
+    serving PROVIDER is a real feed (see ``ticker_ages``) — additionally
+    admits tickless real chains (Eurex/ASX/HKEX/SGX set ``tick_size=None``:
+    unknown per-class ticks, not exact prices), EXCEPT zero-carry chains: those
+    are IV-synthesized exact model prices (Massive's gated-NBBO fallback) and
+    deliberately stay out of the age signal."""
+    if snapshot is None or not snapshot.quotes:
+        return None
+    if snapshot.tick_size is None and not (real_feed and not snapshot.zero_carry):
         return None
     age = ((now or _now_utc_naive()) - snapshot.timestamp).total_seconds() / 60.0
     return max(age, 0.0)
@@ -71,10 +90,17 @@ def ticker_ages(state, now: datetime | None = None) -> dict[str, float]:
     cache are aged, so this is as cheap as a status poll."""
     if state.as_of.mode != "live":
         return {}
+    # Cached snapshots always come from the ACTIVE provider (a source switch
+    # clears all chain caches — state.set_active_source), so provider kind is a
+    # sound per-state discriminator: any non-synthetic provider is a real feed
+    # whose chains carry a market clock even without a tick size (Eurex & co).
+    from volfit.data.provider import SyntheticProvider
+
+    real_feed = not isinstance(state.provider, SyntheticProvider)
     now = now or _now_utc_naive()
     ages: dict[str, float] = {}
     for ticker in state.active_tickers():
-        age = chain_age_minutes(state.loaded_snapshot(ticker), now)
+        age = chain_age_minutes(state.loaded_snapshot(ticker), now, real_feed=real_feed)
         if age is not None:
             ages[ticker] = age
     return ages

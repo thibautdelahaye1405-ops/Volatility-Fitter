@@ -25,10 +25,12 @@ code -> id map (``PRODUCTS``) and accepts a bare numeric id as the ticker.
 
 Two tiers in one adapter:
 
-* intraday (09:00-17:30 CET for the index classes): rows carrying ``bid``/``ask``
-  — the bundle's quote columns (bid, bidVol, ask, askVol, last, lastTraded,
-  dSettle), labelled "Displayed data is 15 minutes delayed" — become two-sided
-  quotes stamped now - 15 min;
+* intraday (09:00-17:30 CET for the index classes — ``is_session_open``): rows
+  carrying a TWO-SIDED uncrossed book (``bid`` and ``ask``, bid <= ask) — the
+  bundle's quote columns (bid, bidVol, ask, askVol, last, lastTraded, dSettle),
+  labelled "Displayed data is 15 minutes delayed" — become two-sided quotes
+  stamped now - 15 min; one-sided / crossed rows flow through EOD-classified
+  and never flip the chain tier;
 * otherwise (and for any series without a book) the EOD tier: Eurex's daily
   settlement price ``dSettle`` — a model-smoothed fair value Eurex publishes for
   EVERY listed series — becomes a zero-width quote bid = ask = settle, stamped
@@ -130,6 +132,20 @@ def cet_close_utc(d: date, hour: int = 17, minute: int = 30) -> datetime:
     return datetime(d.year, d.month, d.day, hour, minute) - timedelta(hours=2 if summer else 1)
 
 
+def is_session_open(now: datetime) -> bool:
+    """True inside Eurex index-option trading hours: 09:00-17:30 Frankfurt time
+    (CET/CEST via ``cet_close_utc``), Mon-Fri. ``now`` is UTC-naive (the
+    codebase clock convention); the session window never crosses midnight UTC,
+    so ``now.date()`` is also the Frankfurt trading date. Half-open interval —
+    open at 09:00:00 exactly, closed from 17:30:00 on. Known limitation: no
+    exchange-holiday calendar, so a Frankfurt holiday weekday still reads open
+    (the status text then flags "live bid/ask missing" — harmless amber)."""
+    d = now.date()
+    if d.weekday() >= 5:  # Saturday / Sunday
+        return False
+    return cet_close_utc(d, 9, 0) <= now < cet_close_utc(d, 17, 30)
+
+
 def _pos(v) -> float | None:
     p = price_or_none(v)
     return p if p is not None and p > 0 else None
@@ -138,10 +154,16 @@ def _pos(v) -> float | None:
 def parse_detail(ticker: str, expiry: date, payload: dict, eod_stamp: datetime, live_stamp: datetime,
                  settlement_quotes: bool = True) -> tuple[list[OptionQuote], int]:
     """Detail rows -> OptionQuotes; returns (quotes, number carrying a live book).
-    A row with ``bid``/``ask`` is a delayed two-sided quote (live stamp); any
-    other row becomes a zero-width settlement quote (bid = ask = dSettle, EOD
-    stamp) when ``settlement_quotes`` — else a last-only quote. Zeros mean "no
-    value" on this feed."""
+
+    LIVE tier means a genuine two-sided uncrossed book: ``bid`` AND ``ask``
+    present with bid <= ask (delayed quote, live stamp). A ONE-SIDED or
+    CROSSED row keeps flowing through with its partial/crossed book (the
+    downstream screens handle it — its mid is None) but stays EOD-classified:
+    it neither takes the live stamp nor counts toward ``live``, so a single
+    bad row can no longer flip the whole chain into the live tier. A row with
+    no book at all becomes a zero-width settlement quote (bid = ask = dSettle,
+    EOD stamp) when ``settlement_quotes`` — else a last-only quote. Zeros mean
+    "no value" on this feed."""
     key = ticker.strip().upper()
     out: list[OptionQuote] = []
     live = 0
@@ -155,13 +177,15 @@ def parse_detail(ticker: str, expiry: date, payload: dict, eod_stamp: datetime, 
                 continue
             bid, ask, last, settle = _pos(row.get("bid")), _pos(row.get("ask")), _pos(row.get("last")), _pos(row.get("dSettle"))
             stamp = eod_stamp
-            if bid is not None or ask is not None:
-                live += 1
+            if bid is not None and ask is not None and bid <= ask:
+                live += 1  # a real two-sided book — the only thing that counts as live
                 stamp = live_stamp
-            elif settlement_quotes and settle is not None:
-                bid = ask = settle
-            elif last is None and settle is None:
-                continue
+            elif bid is None and ask is None:
+                if settlement_quotes and settle is not None:
+                    bid = ask = settle
+                elif last is None and settle is None:
+                    continue  # nothing priceable on the row at all
+            # else: one-sided / crossed — keep the partial book, EOD stamp.
             out.append(OptionQuote(
                 ticker=key, expiry=expiry, strike=float(strike), call_put=side, bid=bid, ask=ask,
                 last=last if last is not None else settle, volume=int_or_none(row.get("volume")),
@@ -182,15 +206,33 @@ class EurexAdapter:
     max_expiries = 40  # nearest expiries fetched (OESX lists ~38 incl. weeklies / end-of-month)
     settlement_quotes = True  # EOD tier: settle -> zero-width quotes (False = last-only rows)
 
-    def __init__(self) -> None:
-        self._last: tuple[str, date | None] | None = None  # ("live" | "eod", busdate) of the last chain
+    def __init__(self, now: Callable[[], datetime] | None = None) -> None:
+        #: Injectable clock returning an AWARE UTC datetime (the asx/hkex
+        #: ``now=`` precedent, lifted to the adapter since the ExchangeAdapter
+        #: protocol fixes fetch_chain's signature). Tests pin it so the stamps,
+        #: the future-clamp and the session predicate are deterministic.
+        self._now = now if now is not None else (lambda: datetime.now(timezone.utc))
+        #: ("live" | "eod", busdate, live two-sided row count) of the last chain.
+        self._last: tuple[str, date | None, int] | None = None
+
+    def _now_naive(self) -> datetime:
+        return self._now().astimezone(timezone.utc).replace(tzinfo=None, microsecond=0)
 
     def status_text(self) -> str:
-        """Amber status text — names the tier the last fetch delivered."""
+        """Amber status text — names the tier the last fetch delivered, plus the
+        trading-day sanity check the tier inference still owes (it was derived
+        from the bundle AFTER the close — Docs/exchange_delayed_sources.md):
+        the live tier reports its two-sided row count so a trading-day eyeball
+        is trivial, and an EOD-tier chain DURING session hours is called out as
+        "live bid/ask missing" instead of reading like a normal closed-market
+        settlement surface."""
         if self._last and self._last[0] == "live":
-            return f"{self.label} ~{self.delay_minutes}-min delayed"
+            return f"{self.label} ~{self.delay_minutes}-min delayed (live {self._last[2]} two-sided rows)"
         if self._last and self._last[1] is not None:
-            return f"{self.label} EOD settlement ({self._last[1].isoformat()})"
+            busdate = self._last[1].isoformat()
+            if is_session_open(self._now_naive()):
+                return f"{self.label} session open but live bid/ask missing (settlement quotes, {busdate})"
+            return f"{self.label} EOD settlement ({busdate})"
         return f"{self.label} ~{self.delay_minutes}-min delayed / EOD settlement"
 
     def _overview(self, ticker: str, fetch_json) -> tuple[int, float | None, date | None, list[tuple[date, str]]]:
@@ -206,10 +248,14 @@ class EurexAdapter:
         pid, spot, busdate, expiries = self._overview(ticker, fetch_json)
         if spot is None:
             raise ValueError(f"Eurex serves no underlying close for {ticker!r} (id {pid})")
-        busdate = busdate or datetime.now(timezone.utc).date()
+        now = self._now_naive()
+        busdate = busdate or now.date()
         expiries = [(d, c) for d, c in expiries if d >= busdate][: self.max_expiries]
-        eod_stamp = cet_close_utc(busdate)
-        live_stamp = (datetime.now(timezone.utc) - timedelta(minutes=DELAY_MINUTES)).replace(tzinfo=None, microsecond=0)
+        # Stamp hygiene: when Eurex returns no tradingDates, busdate falls back
+        # to TODAY, whose 17:30 CET close may not have happened yet — never
+        # stamp settlement rows in the future; clamp them to the fetch instant.
+        eod_stamp = min(cet_close_utc(busdate), now)
+        live_stamp = now - timedelta(minutes=DELAY_MINUTES)
         key = CODES.get(pid, ticker.strip().upper())
 
         def one(item: tuple[date, str]):
@@ -227,7 +273,7 @@ class EurexAdapter:
             q, n = parse_detail(key, d, payload, eod_stamp, live_stamp, self.settlement_quotes)
             quotes.extend(q)
             live += n
-        self._last = ("live" if live else "eod", busdate)
+        self._last = ("live" if live else "eod", busdate, live)
         return RawChain(ticker=key, spot=float(spot), timestamp=live_stamp if live else eod_stamp,
                         quotes=quotes, exercise_style="european", security_type="index")
 
