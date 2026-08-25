@@ -28,6 +28,30 @@ from volfit.api.state import AppState
 #: Shared k-grid density for the 3D mesh / Stacked-IV overlay. Denser now that
 #: the grid is extended to ±1 (the surface's own coarse brush shrinks the view).
 N_SURFACE_POINTS = 81
+#: Extra points of the shared dense core over the NARROWEST quoted span. A
+#: 1-week smile quotes a few percent of the union range: the uniform base
+#: renders it with ~4 segments (kinked to the eye) and the Stacked-IV overlay
+#: then shows spurious corner crossings — the same motive as the single-smile
+#: chart's core densifier (service._display_grid).
+N_SURFACE_CORE_POINTS = 61
+
+
+def surface_grid(
+    k_lo: float, k_hi: float, spans: list[tuple[float, float]]
+) -> np.ndarray:
+    """ONE shared strictly-increasing k grid: uniform base + dense core.
+
+    The core covers the narrowest quoted span (always the shortest-dated
+    slice in practice — every longer expiry quotes at least that belly), so
+    the mesh stays rectangular while the short-dated smile gets the segment
+    density it needs. Duplicate points collapse via np.unique.
+    """
+    base = np.linspace(k_lo, k_hi, N_SURFACE_POINTS)
+    if not spans:
+        return base
+    core_lo, core_hi = min(spans, key=lambda s: s[1] - s[0])
+    core = np.linspace(core_lo, core_hi, N_SURFACE_CORE_POINTS)
+    return np.unique(np.concatenate([base, core]))
 
 
 def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceResponse:
@@ -53,7 +77,11 @@ def surface_payload(state: AppState, ticker: str, fit_mode: str) -> SurfaceRespo
     # and shrinks it).
     k_lo = min(K_DISPLAY_LO, min(float(r.prepared.k.min()) for r in records) - K_PAD)
     k_hi = max(K_DISPLAY_HI, max(float(r.prepared.k.max()) for r in records) + K_PAD)
-    grid = np.linspace(k_lo, k_hi, N_SURFACE_POINTS)
+    spans = [
+        (float(r.prepared.k.min()) - K_PAD, float(r.prepared.k.max()) + K_PAD)
+        for r in records
+    ]
+    grid = surface_grid(k_lo, k_hi, spans)
 
     vol: list[list[float]] = []
     atm: list[float] = []

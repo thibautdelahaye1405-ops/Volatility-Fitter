@@ -8,6 +8,7 @@ import { MODEL_COLORS } from "../lib/modelColor";
 import {
   formatFitMs,
   formatMetric,
+  formatTailPair,
   formatVolPct,
   validityChip,
 } from "../lib/modelCompare";
@@ -19,6 +20,7 @@ const HEADERS = [
   "ATM",
   "Skew",
   "Lee L/R",
+  "Tails L/R",
   "Var-swap",
   "Validity",
   "Params",
@@ -30,6 +32,8 @@ const HEADERS = [
 const HEADER_TITLES: Partial<Record<(typeof HEADERS)[number], string>> = {
   "RMS bp": "Weighted RMS vol error vs the fit target (mid, or the bid-ask / haircut band — zero inside)",
   "Max bp": "Worst per-quote vol error vs the same fit target",
+  "Tails L/R":
+    "Structural tail contract per side: exp = straight variance wing (SVI/MCS always; LQD α=0), int/gauss = LQD generalized tails",
 };
 
 /** Chip classes per validity state (certified / breach / no signal). */
@@ -76,10 +80,11 @@ export default function ModelCompareTable({ data }: { data: CompareResponse }) {
                     <td className="px-2 py-1 font-mono">
                       {formatMetric(m.leeLeft, 2)} / {formatMetric(m.leeRight, 2)}
                     </td>
+                    <td className="px-2 py-1 font-mono">{formatTailPair(m)}</td>
                     <td className="px-2 py-1 font-mono">{formatVolPct(m.varSwapVol)}</td>
                   </>
                 ) : (
-                  <td colSpan={6} className="truncate px-2 py-1 text-rose-400/90" title={m.error ?? undefined}>
+                  <td colSpan={7} className="truncate px-2 py-1 text-rose-400/90" title={m.error ?? undefined}>
                     {m.error ?? "fit failed"}
                   </td>
                 )}

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from datetime import date
+from datetime import date, timedelta
 
 from volfit.api.schemas import (
     DensityResponse,
@@ -47,7 +47,12 @@ from volfit.api.displayed import (
 )
 from volfit.api.service import K_DISPLAY_LO, fill_nonfinite, fit_or_get
 from volfit.api.state import AppState
-from volfit.calib.weighted_time import interp_total_variance, weighted_variance_years
+from volfit.calib.intraday_time import intraday_variance_days
+from volfit.calib.weighted_time import (
+    DAYS_PER_YEAR,
+    interp_total_variance,
+    weighted_variance_years,
+)
 from volfit.models.base import SmileModel
 from volfit.models.diagnostics import CERT_G_TOL, numeric_density
 from volfit.models.lqd.quadrature import LQDSlice, build_slice
@@ -71,16 +76,40 @@ def _tau_of(state: AppState, ticker: str):
     """A callable t_calendar -> tau (event-weighted variance years) for a ticker.
 
     Uses the SAME source as every fit (volfit.api.service.variance_time): the
-    shared event calendar + OptionsSettings.eventsEnabled / normalizeEvents, so
-    the term curve, the dividend markers and the per-expiry points share one
-    clock. Reduces to the identity when the event clock is off or eventless.
+    shared event calendar + OptionsSettings.eventsEnabled / normalizeEvents,
+    AND the intraday session profile when the 0DTE clock is on (the day base
+    substitution of variance_time — previously omitted here, so the dense
+    term curve ignored a non-uniform sessionVarShare while the per-expiry
+    points carried it). Reduces to the identity when both clocks are off.
     """
     options = state.options()
     events = state.events(ticker)
+    base_of = None
+    if options.intradayClock:
+        # Same valuation instant as node_clock: the SNAPSHOT timestamp; the
+        # curve's calendar t inverts exactly through ACT/365 (t * 365 days).
+        ts = state.snapshot(ticker).timestamp
+
+        def base_of(t: float) -> float:
+            return intraday_variance_days(
+                ts,
+                ts + timedelta(days=t * DAYS_PER_YEAR),
+                options.sessionVarShare,
+                options.nonTradingWeight,
+            )
+
     if not options.eventsEnabled or not events:
-        return lambda t: t
+        if base_of is None:
+            return lambda t: t
+        return lambda t: base_of(t) / DAYS_PER_YEAR
     pairs = [(e.time, e.weight) for e in events]
-    return lambda t: weighted_variance_years(t, pairs, normalize=options.normalizeEvents)
+    if base_of is None:
+        return lambda t: weighted_variance_years(
+            t, pairs, normalize=options.normalizeEvents
+        )
+    return lambda t: weighted_variance_years(
+        t, pairs, normalize=options.normalizeEvents, base_days=base_of(t)
+    )
 
 
 def _dividend_markers(

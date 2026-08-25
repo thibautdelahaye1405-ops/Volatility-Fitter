@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from volfit.api import create_app
-from volfit.api.surface import N_SURFACE_POINTS
+from volfit.api.surface import N_SURFACE_CORE_POINTS, N_SURFACE_POINTS, surface_grid
 from volfit.api.table import CSV_COLUMNS
 from volfit.data.expiries import classify_expiry, third_friday
 
@@ -97,7 +97,9 @@ def test_surface_mesh_shape_and_levels(client, universe):
     assert all(f > 0 for f in data["forward"])
 
     k = np.array(data["k"])
-    assert k.size == N_SURFACE_POINTS
+    # Uniform base + the dense core over the narrowest quoted span (the
+    # short-dated legibility fix) — never fewer points than the old grid.
+    assert k.size >= N_SURFACE_POINTS
     assert np.all(np.diff(k) > 0)
 
     vol = data["vol"]
@@ -117,6 +119,22 @@ def test_surface_mesh_shape_and_levels(client, universe):
 
 def test_surface_unknown_ticker_404(client):
     assert client.get("/surface/NOPE").status_code == 404
+
+
+def test_surface_grid_densifies_narrowest_span():
+    """The shared grid carries a dense core over the NARROWEST quoted span
+    (the short-dated smile): a 1-week ±5% span gets the full core density
+    instead of the ~4 uniform base points that rendered it kinked."""
+    spans = [(-0.05, 0.05), (-0.6, 0.5), (-1.2, 0.9)]
+    grid = surface_grid(-1.4, 1.0, spans)
+    assert np.all(np.diff(grid) > 0)  # strictly increasing, no duplicates
+    inside = grid[(grid >= -0.05) & (grid <= 0.05)]
+    assert inside.size >= N_SURFACE_CORE_POINTS
+    # Base behaviour preserved: endpoints exact, no fewer points than before.
+    assert grid[0] == -1.4 and grid[-1] == 1.0
+    assert grid.size >= N_SURFACE_POINTS
+    # No spans (defensive): the pure uniform base.
+    assert surface_grid(-1.4, 1.0, []).size == N_SURFACE_POINTS
 
 
 # -- table export -------------------------------------------------------------

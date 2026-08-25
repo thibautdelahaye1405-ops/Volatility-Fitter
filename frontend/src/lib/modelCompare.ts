@@ -67,3 +67,19 @@ export function formatFitMs(fit: CompareModelFit): string {
   if (fit.reused) return "cached";
   return fit.fitMs === null || fit.fitMs === undefined ? "—" : `${fit.fitMs.toFixed(0)} ms`;
 }
+
+const TAIL_ABBREV: Record<string, string> = {
+  exponential: "exp",
+  intermediate: "int",
+  gaussian: "gauss",
+};
+
+/** Structural tail contract pair ("exp/exp", "int/gauss"), em-dash when the
+ *  family claims no contract. Unknown class names pass through verbatim. */
+export function formatTailPair(fit: CompareModelFit): string {
+  const left = fit.tailLeft ?? null;
+  const right = fit.tailRight ?? null;
+  if (left === null && right === null) return "—";
+  const short = (c: string | null) => (c === null ? "—" : (TAIL_ABBREV[c] ?? c));
+  return `${short(left)}/${short(right)}`;
+}

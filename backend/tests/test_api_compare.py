@@ -157,6 +157,16 @@ def test_models_subset_returns_only_requested(client, universe):
     assert [r["model"] for r in rows] == ["svi"]
 
 
+def test_tail_contract_columns(client, universe):
+    """Every family declares its structural tail class (volfit.models.wings):
+    all three are exponential at the default alpha = 0 settings."""
+    ticker, expiry = _node(universe)
+    rows = _compare(client, ticker, expiry, models=ALL).json()["models"]
+    for row in rows:
+        assert row["tailLeft"] == "exponential", row["model"]
+        assert row["tailRight"] == "exponential", row["model"]
+
+
 # -- (c) the (fit_key, model) side cache ----------------------------------------
 
 

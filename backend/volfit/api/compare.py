@@ -58,6 +58,7 @@ from volfit.models.display import build_display_fit
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import lee_slopes
 from volfit.models.lqd.calibrate import calibrate_slice
+from volfit.models.wings import wing_laws_of
 
 #: The comparable families, in book order (palette: green / blue / violet).
 COMPARE_MODELS = ("lqd", "svi", "sigmoid")
@@ -211,12 +212,15 @@ def _model_row(
         lee_l, lee_r = slice_.lee_slopes() if family == "sigmoid" else numeric_lee_slopes(slice_)
         vs_w = numeric_var_swap_w(slice_)
     vs_vol = float(np.sqrt(max(float(vs_w), 0.0) / tau)) if tau > 0.0 else None
+    laws = wing_laws_of(family, slice_)
     return CompareModelFit(
         model=family, label=_LABELS[family],
         curve=_slice_curve(prepared, slice_),
         rmsBp=_finite_or_none(rms_bp), maxIvBp=_finite_or_none(max_bp),
         atmVol=_finite_or_none(atm), skew=_finite_or_none(skew),
         leeLeft=_finite_or_none(lee_l), leeRight=_finite_or_none(lee_r),
+        tailLeft=None if laws is None else laws[0].tail_class,
+        tailRight=None if laws is None else laws[1].tail_class,
         varSwapVol=_finite_or_none(vs_vol),
         validity=_validity(family, slice_, k),
         nParams=_n_params(family, slice_),

@@ -48,6 +48,12 @@ class CompareModelFit(BaseModel):
     skew: float | None = None
     leeLeft: float | None = None  # total-variance wing slopes
     leeRight: float | None = None
+    #: Structural tail contract per side (volfit.models.wings): "exponential"
+    #: (straight variance wing — SVI/MCS always; LQD at alpha = 0),
+    #: "intermediate" (LQD 0 < alpha < 1/2) or "gaussian" (LQD alpha = 1/2).
+    #: The wing coefficient of the exponential class is the Lee column above.
+    tailLeft: str | None = None
+    tailRight: str | None = None
     varSwapVol: float | None = None
     validity: CompareValidity | None = None
     nParams: int | None = None  # free parameters of the fitted slice

@@ -10,6 +10,7 @@ import {
   formatExp,
   formatFitMs,
   formatMetric,
+  formatTailPair,
   formatVolPct,
   validityChip,
 } from "./modelCompare";
@@ -100,5 +101,16 @@ describe("null-metric formatting", () => {
     expect(formatFitMs(baseFit({ reused: true, fitMs: null }))).toBe("cached");
     expect(formatFitMs(baseFit({ reused: false, fitMs: 41.8 }))).toBe("42 ms");
     expect(formatFitMs(baseFit({ reused: false, fitMs: null }))).toBe("—");
+  });
+
+  it("abbreviates the structural tail contract pair", () => {
+    expect(formatTailPair(baseFit({ tailLeft: "exponential", tailRight: "exponential" }))).toBe(
+      "exp/exp",
+    );
+    expect(formatTailPair(baseFit({ tailLeft: "intermediate", tailRight: "gaussian" }))).toBe(
+      "int/gauss",
+    );
+    expect(formatTailPair(baseFit({}))).toBe("—"); // pre-column payloads
+    expect(formatTailPair(baseFit({ tailLeft: "weird", tailRight: null }))).toBe("weird/—");
   });
 });

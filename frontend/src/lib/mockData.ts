@@ -365,6 +365,10 @@ export interface CompareModelFit {
   skew?: number | null;
   leeLeft?: number | null;
   leeRight?: number | null;
+  /** Structural tail contract per side (volfit.models.wings):
+   *  "exponential" | "intermediate" | "gaussian". */
+  tailLeft?: string | null;
+  tailRight?: string | null;
   varSwapVol?: number | null;
   validity?: CompareValidity | null;
   nParams?: number | null;
