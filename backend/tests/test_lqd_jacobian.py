@@ -135,6 +135,21 @@ def test_jacobian_matches_fd_varswap_rows():
     assert _max_rel(_theta(), _args(vs=vs)) < 1e-3  # market row alone too
 
 
+def test_jacobian_matches_fd_varswap_atm_spread():
+    """The atm_spread carrier (tail-persistence arc): the prior var-swap row
+    subtracts d(sigma_atm)/dtheta through the implicit k=0 price chain
+    (dC(0)/vega_sigma) — the analytic row must track the FD like the
+    absolute rows, alone and mixed with an absolute market row."""
+    from volfit.calib.varswap import VarSwapTarget
+
+    w_atm = float(np.interp(0.0, K, W))
+    pvs = VarSwapTarget(total_var=1.10 * w_atm, weight=0.7, t=T,
+                        mode="atm_spread", atm_total_var=0.98 * w_atm)
+    assert _max_rel(_theta(), _args(pvs=pvs)) < 1e-3
+    vs, _ = _vs_targets()
+    assert _max_rel(_theta(), _args(vs=vs, pvs=pvs)) < 1e-3
+
+
 def test_varswap_fit_ungated_and_agrees_with_fd():
     """The var-swap configuration now selects the analytic Jacobian
     (prepare_residual_args gate) and reaches the FD optimum."""

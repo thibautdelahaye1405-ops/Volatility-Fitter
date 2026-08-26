@@ -27,12 +27,19 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from volfit.core.black import black_vega_sigma
+
 #: Weight of the soft |mid - model| anchor relative to the band penalty (= 1).
 #: Small, so the band dominates but the curve still centres on mid in-band.
 MID_ANCHOR_WEIGHT = 0.05
 
 #: Default haircut in absolute vol (0.5 volatility points), tunable per fit.
 DEFAULT_HAIRCUT = 0.005
+
+#: Vega floor for the tick-floor IV conversion (mirror of the LQD price
+#: objective's ``models.lqd.calibrate._VEGA_FLOOR``): below it a deep-wing
+#: quote's IV-per-tick diverges, so the conversion saturates instead.
+TICK_VEGA_FLOOR = 1e-4
 
 
 @dataclass(frozen=True)
@@ -72,6 +79,38 @@ def resolve_band(
     else:  # "bidask"
         lo, hi = iv_bid, iv_ask
     return BandTarget(iv_lo=lo, iv_mid=iv_mid, iv_hi=hi)
+
+
+def apply_tick_floor(
+    band: BandTarget | None,
+    k: np.ndarray,
+    tau: float,
+    tick_norm: float | None,
+    ticks: float,
+) -> BandTarget | None:
+    """Floor each quote's band half-width about its MID at ``ticks`` price
+    ticks of IV (FitSettings.bandTickFloorTicks) — only ever WIDENING.
+
+    A short-dated wing quote whose bid-ask prints below the price tick grid
+    claims sub-tick IV certainty the market never quoted: one tick in
+    normalized price is ``tick_norm`` = tick_size / (discount * forward), and
+    its IV width at the quote's own (vega-floored) Black vega is
+    ``tick_norm / max(vega, TICK_VEGA_FLOOR)``. Each side is pushed to at
+    least half the ``ticks``-tick width from mid, AFTER the haircut so the
+    floor wins; a side already wider than the floor is untouched (the
+    original bid/ask asymmetry survives). ``ticks`` <= 0 or a tickless chain
+    (``tick_norm`` None — synthetic/IV-exact feeds) returns ``band``
+    unchanged, byte-identical.
+    """
+    if band is None or ticks <= 0.0 or not tick_norm or tick_norm <= 0.0 or tau <= 0.0:
+        return band
+    vega = np.maximum(black_vega_sigma(np.asarray(k, dtype=float), band.iv_mid, tau), TICK_VEGA_FLOOR)
+    h = ticks * (tick_norm / vega)  # the floored full band width, in vol
+    return BandTarget(
+        iv_lo=np.minimum(band.iv_lo, band.iv_mid - 0.5 * h),
+        iv_mid=band.iv_mid,
+        iv_hi=np.maximum(band.iv_hi, band.iv_mid + 0.5 * h),
+    )
 
 
 def band_violation(model: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:

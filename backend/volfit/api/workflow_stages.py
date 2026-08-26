@@ -157,11 +157,14 @@ def _coupled_ticker_items(
     its slice (``service.fit_and_commit_slice``) and hands its result to the next,
     longer expiry. ``isos`` must be ascending-T (``lit_nodes`` is nearest-first).
 
-    Caveat (documented follow-up): a later INDEPENDENT recompute of one node via
+    Caveat: a later INDEPENDENT recompute of one node via
     ``service._compute_fit`` (e.g. autoCalibrate ON + a single input change) has no
-    cross-expiry context, so the calendar coupling only holds until such a refit.
-    Under the default trigger-gated workflow the coupled fit stays frozen/displayed
-    until the next explicit Calibrate.
+    cross-expiry context by default, so the calendar coupling only holds until such
+    a refit; under the default trigger-gated workflow the coupled fit stays
+    frozen/displayed until the next explicit Calibrate. The opt-in
+    ``OptionsSettings.calendarOnRefit`` closes the gap: with it (and
+    ``enforceCalendar``) a single-node refit threads the adjacent FRESH committed
+    slices as its confined floor/ceiling and fingerprints them into its fit key.
     """
     ctx: dict = {"plan": None, "prev": None, "prev_display": None, "prev_k": None}
 

@@ -49,6 +49,14 @@ export interface OptionsSettings {
    *  Phase 2): SVI/MCS overlay fits lean on the time-value envelope. Off =
    *  byte-identical fits; the Quality tab's extrap measurement is always on. */
   extrapEnforce: boolean;
+  /** Overlay calendar-floor scope: null = historical per-family grids (SVI
+   *  common support, MCS winged 2σ); a value wings BOTH overlays' floor and
+   *  ceiling grids this many σ√T beyond common support (short-dated upside
+   *  crossing fix). */
+  calendarFloorPadZ: number | null;
+  /** Single-node refits thread the adjacent committed slices as calendar
+   *  floor/ceiling (with enforceCalendar) instead of refitting context-free. */
+  calendarOnRefit: boolean;
   eventsEnabled: boolean;
   normalizeEvents: boolean;
   /** 0DTE research clock: value maturities snapshot-timestamp -> exact
@@ -64,6 +72,8 @@ export interface OptionsSettings {
   nonTradingWeight: number;
   varSwapEnabled: boolean;
   varSwapWeightPct: number;
+  /** Hard-pin the MARKET var-swap quote (stiff-row equality; prior rows stay soft). */
+  varSwapHardPin: boolean;
   /** Local-Vol model var-swap pricing: static log-contract replication, or the
    *  grid-robust backward source PDE g(0,1) (volfit.models.localvol.varswap_pde). */
   varSwapMethod: 'static' | 'source_pde';
@@ -92,6 +102,11 @@ export interface OptionsSettings {
   priorFactorStrengthPct: number;
   /** Residual deep-tail strike-anchor budget in hybrid mode (% of quote weights). */
   priorTailAnchorStrengthPct: number;
+  /** Prior var-swap carrier: absolute level, or the var-swap − ATM SPREAD
+   *  (tail-mass-over-body — a body move carries the tail along). */
+  priorVarSwapMode: "absolute" | "atm_spread";
+  /** Budget scale of the WingL/WingR deep-wing slope operators vs body ops. */
+  priorWingSlopeScale: number;
   /** Observation Kalman filter (Note 15): off = absent; overlay = draw the
    *  filtered handles, calibration untouched; active = one-stage MAP prior. */
   observationFilterMode: "off" | "overlay" | "active";
@@ -187,6 +202,8 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   enforceCalendar: true,
   surfaceSolver: "symmetric",
   extrapEnforce: false,
+  calendarFloorPadZ: null,
+  calendarOnRefit: false,
   eventsEnabled: true,
   normalizeEvents: false,
   intradayClock: false,
@@ -194,6 +211,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   nonTradingWeight: 1.0,
   varSwapEnabled: true,
   varSwapWeightPct: 10.0,
+  varSwapHardPin: false,
   varSwapMethod: 'static',
   autoLoadPrior: false,
   priorAnchorWeightPct: 50.0,
@@ -210,6 +228,8 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   priorFactorSet: ["ATM", "skew", "curvature", "VarSwap"],
   priorFactorStrengthPct: 50.0,
   priorTailAnchorStrengthPct: 20.0,
+  priorVarSwapMode: "absolute",
+  priorWingSlopeScale: 1.0,
   observationFilterMode: "off",
   filterCovarianceMode: "jacobian",
   filterProcessVolBpSqrtDay: 30.0,

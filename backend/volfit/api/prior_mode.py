@@ -62,7 +62,12 @@ def resolve_prior_mode(options: OptionsSettings) -> PriorModePlan:
     previous state would count it twice (the note's invariant 3). What
     survives is exactly what the filter state does not carry: the DEEP-TAIL
     strike anchor (kept for any mode that had a calibration prior) and the
-    graph's dark-node baseline. There is deliberately no knob."""
+    graph's dark-node baseline. There is deliberately no knob.
+
+    The WingL/WingR deep-wing SLOPE operators (tail-persistence arc) ride the
+    same ``operators`` switch: under an active filter they are OFF along with
+    ATM/RR/BF — there is deliberately no separate wing path, so the surviving
+    tail persistence in filter mode is the deep-tail strike anchor alone."""
     mode = options.priorPersistenceMode
     filter_active = options.observationFilterMode == "active"
     had_calibration_prior = mode in (

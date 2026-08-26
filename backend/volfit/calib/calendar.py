@@ -304,6 +304,7 @@ def variance_floor_grid_winged(
     w_far: np.ndarray,
     t_far: float,
     n: int = VAR_FLOOR_N_DATA,
+    pad_z: float = FLOOR_WING_PAD_Z,
 ) -> np.ndarray | None:
     """Sigmoid-family floor grid: common support PLUS a wing extension (V3.1 4a).
 
@@ -323,6 +324,11 @@ def variance_floor_grid_winged(
     dilutes interior density rather than adding rows), so the residual vector
     the optimizer sees keeps its historical size. None mirrors
     ``variance_floor_grid_common``: no common support, no pointwise floor.
+
+    ``pad_z`` overrides the wing reach (OptionsSettings.calendarFloorPadZ,
+    the short-dated wing-crossing knob): when the user sets a pad, BOTH
+    overlay families build their floor/ceiling grids with it; the default
+    keeps the historical sigmoid-only ``FLOOR_WING_PAD_Z`` byte-identical.
     """
     window = common_support(k_near, k_far)
     if window is None:
@@ -332,7 +338,7 @@ def variance_floor_grid_winged(
     vol = np.sqrt(np.maximum(wf, 1e-12) / t_far)
     atm = float(vol[np.argmin(np.abs(kf))])
     sigma_ref = atm if atm > 1e-3 else float(np.median(vol))
-    pad = FLOOR_WING_PAD_Z * sigma_ref * float(np.sqrt(t_far))
+    pad = pad_z * sigma_ref * float(np.sqrt(t_far))
     return np.linspace(window[0] - pad, window[1] + pad, n)
 
 

@@ -864,9 +864,18 @@ def _varswap_quotes(state: AppState, ticker: str, rows, weight_scheme: str) -> l
     vega-scaled price ((P - y)/tol) ~ vol error in units of VOL_TOL; equating the
     two squared weightings gives zeta = 2 sigma_vs t VOL_TOL / sqrt(u_vs), with
     u_vs = pct% * sum_i w_i (the same w_i that scale the option tolerances).
+
+    ``varSwapHardPin`` escalates u_vs to VARSWAP_PIN_MULT * sum_w — the same
+    stiff-row weight the parametric ``service.varswap_target`` applies — so the
+    tol shrinks by the equivalent sqrt factor and the LV surface matches the
+    quote to solver tolerance. Market rows only; the PRIOR var-swap rows
+    (_prior_anchor_quotes / prior_lv) stay soft.
     """
+    from volfit.calib.varswap import VARSWAP_PIN_MULT
+
     options = state.options()
-    if not options.varSwapEnabled or options.varSwapWeightPct <= 0.0:
+    hard_pin = options.varSwapHardPin
+    if not options.varSwapEnabled or (options.varSwapWeightPct <= 0.0 and not hard_pin):
         return []
     quotes: list[VarSwapQuote] = []
     for iso, t, k, w, _, _ in rows:
@@ -876,6 +885,8 @@ def _varswap_quotes(state: AppState, ticker: str, rows, weight_scheme: str) -> l
         qw = resolve_weights(weight_scheme, k, w)
         sum_w = float(np.sum(qw)) if qw is not None else float(k.size)
         u_vs = (options.varSwapWeightPct / 100.0) * sum_w
+        if hard_pin:
+            u_vs = VARSWAP_PIN_MULT * sum_w  # equality-to-solver-tolerance idiom
         if u_vs <= 0.0:
             continue
         sigma_vs = float(session.state.level)
@@ -926,6 +937,9 @@ def _affine_varswap_info(
         weightPct=options.varSwapWeightPct if enabled else None,
         weightAbs=weight_abs,
         rmsShare=rms_share,
+        # Hard-pin echo (mirrors service.varswap_info): True only when the pin
+        # escalates an ACTIVE market row on this expiry.
+        pinned=(bool(options.varSwapHardPin) and weight_abs is not None) if enabled else None,
     )
 
 
@@ -1127,6 +1141,9 @@ def _prior_anchor_quotes(
                     OptionQuote(t=tau, x=float(np.exp(kj)), price=float(pj), tol=float(tj))
                 )
         if budget > 0.0 and unmet > 0.0:
+            # PRIOR var-swap: absolute carrier only, never pinned (see
+            # prior_lv.lv_targets_from_operator_prior for the atm_spread
+            # fallback rationale — the LV linear solve has no spread row form).
             w_vs = varswap_total_variance(moved.implied_w) * (tau / node.tau)
             u = budget * unmet
             sigma_vs = float(np.sqrt(max(w_vs, 1e-12) / tau))

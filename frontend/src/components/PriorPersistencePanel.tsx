@@ -28,8 +28,20 @@ const MODES: { id: PriorPersistenceMode; label: string; hint: string }[] = [
   { id: "graph_only", label: "Graph only", hint: "Lit calibration stays market-pure; the graph carries the prior for dark nodes." },
 ];
 
-const OPERATOR_OPTS = ["ATM", "RR25", "BF25", "RR10", "BF10", "VarSwap"];
+const OPERATOR_OPTS = ["ATM", "RR25", "BF25", "RR10", "BF10", "WingL", "WingR", "VarSwap"];
 const FACTOR_OPTS = ["ATM", "skew", "curvature", "leftWing", "rightWing", "VarSwap"];
+// Tooltips for the non-obvious operators (the wing-slope pair of the
+// tail-persistence arc; the others read from their names).
+const OPERATOR_HINTS: Record<string, string> = {
+  WingL:
+    "Left (put) deep-wing vol SLOPE between the two outermost anchor Δ strikes " +
+    "(default 2Δ–5Δ). Persists the tail SHAPE without pinning its level; " +
+    "gap-gated like every operator, and off under an active observation filter.",
+  WingR:
+    "Right (call) deep-wing vol SLOPE between the two outermost anchor Δ strikes " +
+    "(default 2Δ–5Δ). Persists the tail SHAPE without pinning its level; " +
+    "gap-gated like every operator, and off under an active observation filter.",
+};
 
 interface PriorOperatorDiag {
   operator: string;
@@ -55,8 +67,11 @@ const numInput =
 
 /** A canonical-order multi-select of operator / factor names. */
 function ChipSet({
-  all, value, onChange, disabled,
-}: { all: string[]; value: string[]; onChange: (v: string[]) => void; disabled?: boolean }) {
+  all, value, onChange, disabled, hints,
+}: {
+  all: string[]; value: string[]; onChange: (v: string[]) => void;
+  disabled?: boolean; hints?: Record<string, string>;
+}) {
   const toggle = (name: string) => {
     const set = new Set(value);
     set.has(name) ? set.delete(name) : set.add(name);
@@ -71,6 +86,7 @@ function ChipSet({
             key={name}
             type="button"
             disabled={disabled}
+            title={hints?.[name]}
             onClick={() => toggle(name)}
             className={[
               "rounded px-1.5 py-0.5 font-mono text-[10px] border transition-colors",
@@ -210,8 +226,15 @@ export default function PriorPersistencePanel({
           <div>
             <span className={`${rowLabel} mb-1 block`}>Operators</span>
             <ChipSet all={OPERATOR_OPTS} value={draft.priorOperatorSet} disabled={disabled}
-              onChange={(v) => patch({ priorOperatorSet: v })} />
+              hints={OPERATOR_HINTS} onChange={(v) => patch({ priorOperatorSet: v })} />
           </div>
+          {(draft.priorOperatorSet.includes("WingL") ||
+            draft.priorOperatorSet.includes("WingR")) && (
+            <div title="Budget share of the WingL/WingR slope rows relative to the body operators (λ ∝ scale·gap, total conserved); 0 drops them.">
+              <NumberRow label="Wing slope scale" value={draft.priorWingSlopeScale} step={0.5}
+                disabled={disabled} onChange={(v) => patch({ priorWingSlopeScale: v })} />
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span className={rowLabel} title="Risk-reversal sign: call-minus-put or put-minus-call">Collar sign</span>
             <select value={draft.collarSign} disabled={disabled}
@@ -250,6 +273,29 @@ export default function PriorPersistencePanel({
             hint="Fit data-only first, then refit anchoring only the under-observed factors — so a well-observed move (e.g. a tight ATM) is never pulled back. Slower (~2x per node)."
             checked={draft.priorDataOnlyPrepass} disabled={disabled}
             onChange={(v) => patch({ priorDataOnlyPrepass: v })} />
+        </div>
+      )}
+
+      {/* prior var-swap carrier — any mode with a var-swap companion row */}
+      {(showStrike || showOperators || showFactors) && (
+        <div className="mt-2 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="What the PRIOR var-swap companion row matches: the absolute var-swap vol level, or the var-swap − ATM vol SPREAD (tail-mass-over-body — an ATM move carries the tail along instead of fighting a stale level). Market var-swap quotes are always absolute; Local Vol falls back to absolute."
+          >
+            Var-swap carrier
+          </span>
+          <select
+            value={draft.priorVarSwapMode}
+            disabled={disabled}
+            onChange={(e) =>
+              patch({ priorVarSwapMode: e.target.value as "absolute" | "atm_spread" })
+            }
+            className={`${numInput} w-32`}
+          >
+            <option value="absolute">Absolute level</option>
+            <option value="atm_spread">ATM spread</option>
+          </select>
         </div>
       )}
 

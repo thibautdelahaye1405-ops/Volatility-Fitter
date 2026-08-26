@@ -13,10 +13,19 @@
 // Options ▸ Calibration), stale badge, and DATA-DERIVED slider bounds — the
 // quote∪model envelope padded by max(2 vol pts, 2·|basis|) (lib/varswap.ts),
 // replacing the old ×0.5 / ×1.5 heuristic. 0.05 step / 2-dp display everywhere.
+//
+// Tail-persistence arc: a "Hard pin" toggle (OptionsSettings.varSwapHardPin).
+// SELF-CONTAINED options round-trip: the parents deliberately do not thread the
+// Options draft into this panel, so it GETs /settings/options itself and PUTs
+// the full object back with the one bit flipped (fetch-then-flip, so no other
+// field is clobbered; last-writer-wins vs a concurrently open Options draft —
+// the app's standard PUT semantics). The options-version bump marks nodes
+// stale; the fit picks the pin up on the next refetch / Calibrate.
 import { useEffect, useState } from "react";
 import type { VarSwapInfo } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
 import { formatBasisBp, varswapBasisBp, varswapSliderBounds } from "../lib/varswap";
+import { api } from "../state/api";
 
 interface VarSwapPanelProps {
   info: VarSwapInfo | null | undefined;
@@ -61,6 +70,39 @@ export default function VarSwapPanel({
   useEffect(() => {
     setDraftPct(pctStr(level ?? model));
   }, [level, model]);
+
+  // Hard-pin state (null = not loaded / mock mode → the row is hidden).
+  const [pin, setPin] = useState<boolean | null>(null);
+  const [pinBusy, setPinBusy] = useState(false);
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    api
+      .get<{ varSwapHardPin: boolean }>("/settings/options")
+      .then((s) => !cancelled && setPin(s.varSwapHardPin))
+      .catch(() => {
+        /* keep the row hidden — the toggle needs a live backend anyway */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [live]);
+  const togglePin = () => {
+    if (pinBusy || pin === null) return;
+    setPinBusy(true);
+    api
+      .get<Record<string, unknown>>("/settings/options") // fetch-then-flip
+      .then((s) =>
+        api.put<{ varSwapHardPin: boolean }>("/settings/options", {
+          body: { ...s, varSwapHardPin: !pin },
+        }),
+      )
+      .then((s) => setPin(s.varSwapHardPin))
+      .catch(() => {
+        /* leave the previous state; the user can retry */
+      })
+      .finally(() => setPinBusy(false));
+  };
 
   if (!info || !info.enabled) return null;
 
@@ -109,6 +151,34 @@ export default function VarSwapPanel({
           {info.rmsShare != null && ` · ${(info.rmsShare * 100).toFixed(0)}% of node RMS²`}
           <span className="font-sans text-slate-600"> · Options ▸ Calibration</span>
         </p>
+      )}
+      {pin !== null && (
+        <label
+          className="mb-2 flex cursor-pointer items-center justify-between"
+          title={
+            "Stiff-row equality (varSwapHardPin): the MARKET var-swap row's weight " +
+            "is escalated to 10⁴× the node's summed quote weights — the calendar-row " +
+            "idiom — so the fitted var-swap matches the quote to solver tolerance " +
+            "(not a true constraint). Prior var-swap rows stay soft. Applies on the " +
+            "next refit — the stale badge shows until then."
+          }
+        >
+          <span className="text-[11px] text-slate-500">
+            Hard pin
+            {pin && (
+              <span className="ml-1.5 rounded bg-amber-500/15 px-1 py-0.5 font-mono text-[10px] text-amber-300">
+                pinned
+              </span>
+            )}
+          </span>
+          <input
+            type="checkbox"
+            checked={pin}
+            disabled={!live || pinBusy}
+            onChange={togglePin}
+            className="cursor-pointer accent-amber-400 disabled:cursor-not-allowed"
+          />
+        </label>
       )}
 
       {!has ? (

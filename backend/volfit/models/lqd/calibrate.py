@@ -188,8 +188,17 @@ def _residuals(
             pa = prior_anchor_residuals(slice_.call_price(prior_anchor.k), prior_anchor)
         if prior_var_swap is not None:
             # Prior's var-swap level as a model-free total-variance moment (cheap
-            # closed form), scaled by how unobserved the smile is.
-            pvs = np.array([varswap_residual_w(slice_.var_swap_strike(), prior_var_swap)])
+            # closed form), scaled by how unobserved the smile is. In the
+            # atm_spread carrier the row needs the model's own ATM total
+            # variance w(0) too (one implied_w root-solve per iterate; the
+            # absolute default skips it — byte-identical).
+            w_atm0 = (
+                float(slice_.implied_w(np.array([0.0]))[0])
+                if prior_var_swap.mode == "atm_spread" else None
+            )
+            pvs = np.array(
+                [varswap_residual_w(slice_.var_swap_strike(), prior_var_swap, w_atm0)]
+            )
         if operator_prior is not None:
             # Quote-operator prior (ATM/RR/BF): pull the model's operators toward
             # the prior's where the live quotes don't identify them (design note §5).
@@ -381,7 +390,8 @@ def calibrate_slice(
     ``prior_anchor`` (volfit.calib.prior) adds vega-normalized residuals pulling
     the fit toward a (transported) prior at delta-locations, weighted by the
     data-gap precision (the strike-gap prior mode); ``prior_var_swap`` adds the
-    prior's var-swap level as a companion total-variance moment. ``operator_prior``
+    prior's var-swap level as a companion total-variance moment (its ``mode``
+    may carry the atm_spread residual — volfit.calib.varswap). ``operator_prior``
     (volfit.calib.operators) adds the quote-operator prior block (ATM/RR/BF) for
     the operator / hybrid prior modes. All None (the default) leave the objective
     byte-identical.

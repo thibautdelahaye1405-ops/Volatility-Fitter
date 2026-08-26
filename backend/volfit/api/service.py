@@ -11,6 +11,7 @@ redo entry points live in volfit.api.edits.
 
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass, replace
 from datetime import date, datetime, time
@@ -67,7 +68,7 @@ from volfit.calib.operators import (
 from volfit.calib.prior import PriorAnchorTarget, build_prior_anchor
 from volfit.calib.rms import node_error_terms, rms as rms_of_terms
 from volfit.calib.intraday_time import intraday_variance_days
-from volfit.calib.varswap import VarSwapTarget, varswap_total_variance
+from volfit.calib.varswap import VARSWAP_PIN_MULT, VarSwapTarget, varswap_total_variance
 from volfit.calib.weighted_time import DAYS_PER_YEAR, weighted_variance_years
 from volfit.calib.weights import resolve_weights
 from volfit.data.expiry_time import default_settlement, exact_year_fraction
@@ -158,12 +159,16 @@ def varswap_version(state: AppState, ticker: str, iso: str) -> int:
     return 0 if session is None else session.version
 
 
-def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
-    """Fit-cache key: (ticker, canonical ISO, mode, session version, var-swap
-    version, events version, settings version, forwards version, options version)
-    — quote edits, var-swap edits, event-calendar edits, hyperparameter,
-    forward/market and calendar/var-swap-penalty/event-clock changes each bump a
-    version, so affected nodes refit without eviction."""
+def _base_fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
+    """The NODE-LOCAL fit-cache key: (ticker, canonical ISO, mode, session
+    version, var-swap version, events version, settings version, forwards
+    version, options version, data version, prior version) — quote edits,
+    var-swap edits, event-calendar edits, hyperparameter, forward/market and
+    calendar/var-swap-penalty/event-clock changes each bump a version, so
+    affected nodes refit without eviction. This is the whole ``fit_key``
+    except the calendar-on-refit neighbour fingerprint; it also freshness-
+    tests a NEIGHBOUR's committed fit without recursing through *its*
+    neighbours (A -> B -> A)."""
     return (
         ticker,
         iso,
@@ -177,6 +182,105 @@ def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
         state.data_version(ticker),  # fresh options fetch -> stale / refit
         state.active_prior_version(ticker),  # a fetched prior re-anchors the fit
     )
+
+
+def fit_key(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
+    """Fit-cache key of a node: ``_base_fit_key`` plus — under
+    ``calendarOnRefit`` (with ``enforceCalendar``) — a NEIGHBOUR FINGERPRINT.
+
+    With the toggle on, a single-node fit reads the adjacent committed slices
+    as its calendar floor/ceiling (``_compute_fit``), so those neighbours are
+    genuine fit inputs: the fingerprint (a content digest of each fresh
+    neighbour's committed fit, ``_neighbour_fingerprint``) folds them in, and
+    a neighbour's changed fit invalidates this node's cached fit for free.
+    Toggle off: the historical tuple, byte-identical."""
+    key = _base_fit_key(state, ticker, iso, fit_mode)
+    options = state.options()
+    if options.calendarOnRefit and options.enforceCalendar:
+        key = (*key, _neighbour_fingerprint(state, ticker, iso, fit_mode))
+    return key
+
+
+# ----------------------------------- calendar-on-refit neighbour context
+#: Fixed log-moneyness sampling of the displayed-overlay part of the
+#: neighbour fingerprint: overlay families share no single params-vector
+#: layout, so the digest reads the committed CURVE itself (total variance on
+#: this grid) — any change of the displayed slice moves it.
+_FP_K = np.linspace(-1.5, 1.5, 31)
+
+
+def _neighbour_isos(state: AppState, ticker: str, iso: str) -> tuple[str | None, str | None]:
+    """(previous shorter, next longer) expiry ISO around ``iso`` in the
+    ticker's SELECTED ladder; None at a ladder end (or off-ladder node)."""
+    try:
+        expiry = date.fromisoformat(iso)
+    except ValueError:
+        return None, None
+    ladder = sorted(state.selected_expiries(ticker))
+    prevs = [d for d in ladder if d < expiry]
+    nexts = [d for d in ladder if d > expiry]
+    return (
+        prevs[-1].isoformat() if prevs else None,
+        nexts[0].isoformat() if nexts else None,
+    )
+
+
+def _committed_fresh(state: AppState, ticker: str, iso: str | None, fit_mode: str):
+    """A neighbour's committed FitRecord when FRESH at the base-key level,
+    else None. Strictly read-only (compare._committed_slice pattern):
+    calibrated pointer + fit cache, NEVER a fit — a missing or stale
+    neighbour side is simply skipped. Freshness compares the stored key's
+    node-local prefix against the live ``_base_fit_key``, deliberately
+    ignoring any fingerprint element the stored key carries: a full-key
+    comparison would recurse through the neighbour's own neighbours."""
+    if iso is None:
+        return None
+    ptr = state.get_calibrated_ptr(ticker, iso, fit_mode)
+    if ptr is None:
+        return None
+    base = _base_fit_key(state, ticker, iso, fit_mode)
+    if tuple(ptr[0][: len(base)]) != base:
+        return None
+    return state.get_fit(ptr[0])
+
+
+def _record_digest(record) -> str:
+    """Content fingerprint of a committed fit: the LQD backbone params (+
+    tail exponents) and the displayed overlay's curve on ``_FP_K``. Hashing
+    VALUES rather than the neighbour's cache key means a re-commit that
+    reproduces the identical fit does NOT ripple a spurious invalidation
+    through its neighbours (the refit ping-pong terminates at a fixed
+    point)."""
+    h = hashlib.sha1()
+    p = record.result.params
+    h.update(np.asarray([p.L, p.R, p.alpha_left, p.alpha_right], dtype=float).tobytes())
+    h.update(np.asarray(p.a, dtype=float).tobytes())
+    if record.display is not None:
+        h.update(record.display.model.encode())
+        h.update(np.asarray(record.display.slice.implied_w(_FP_K), dtype=float).tobytes())
+    return h.hexdigest()[:16]
+
+
+def _neighbour_fingerprint(state: AppState, ticker: str, iso: str, fit_mode: str) -> tuple:
+    """((iso, digest) | None per side) for the two ladder neighbours — the
+    exact context ``_compute_fit`` would thread under ``calendarOnRefit``, so
+    the fit key changes exactly when that context changes (a neighbour's fit
+    moved, went stale, or appeared)."""
+    out = []
+    for n_iso in _neighbour_isos(state, ticker, iso):
+        record = _committed_fresh(state, ticker, n_iso, fit_mode)
+        out.append(None if record is None else (n_iso, _record_digest(record)))
+    return tuple(out)
+
+
+def _neighbour_context(state: AppState, ticker: str, n_iso: str | None, fit_mode: str):
+    """(FitRecord, retained k) of a fresh committed neighbour, else None —
+    the retained (post-edit) quote support confines the floor exactly as the
+    sequential surface pass confines it (calib.surface)."""
+    record = _committed_fresh(state, ticker, n_iso, fit_mode)
+    if record is None:
+        return None
+    return record, retained_k(state, ticker, n_iso, record.prepared)
 
 
 def node_clock(state: AppState, ticker: str, expiry) -> tuple[float, float | None]:
@@ -327,7 +431,13 @@ def varswap_target(
     the node has an active (non-excluded) var-swap quote. The penalty weight is
     ``varSwapWeightPct`` percent of the summed option-quote weights of the node,
     so the var-swap competes with the option quotes at the chosen relative
-    strength regardless of how many quotes the node has."""
+    strength regardless of how many quotes the node has.
+
+    ``varSwapHardPin`` escalates THIS row (the market quote — and only this
+    row) to the stiff-row weight VARSWAP_PIN_MULT × Σ quote weights, so the
+    fitted var-swap matches the quote to solver tolerance. Prior var-swap
+    companion rows are never pinned: pinning a stale prior would silently
+    overpower live quotes with yesterday's level."""
     options = state.options()
     if not options.varSwapEnabled:
         return None
@@ -336,6 +446,8 @@ def varswap_target(
         return None
     sum_w = float(np.sum(weights)) if weights is not None else float(k.size)
     weight = (options.varSwapWeightPct / 100.0) * sum_w
+    if options.varSwapHardPin:
+        weight = VARSWAP_PIN_MULT * sum_w  # equality-to-solver-tolerance idiom
     level = float(session.state.level)
     return VarSwapTarget(total_var=level * level * t, weight=weight, t=t)
 
@@ -386,6 +498,29 @@ def prior_targets(
     return targets
 
 
+def _prior_varswap(
+    options, moved_w, prior_tau: float, tau: float, total_var: float, weight: float
+) -> VarSwapTarget:
+    """The PRIOR var-swap companion row under the configured carrier.
+
+    ``priorVarSwapMode == "absolute"`` (default) keeps the historical level row
+    — same construction, byte-identical. ``"atm_spread"`` makes it a SPREAD row:
+    the prior's ATM total variance rides along (re-expressed at the node ``tau``
+    exactly like the var-swap level, ``w(0)·tau/prior_tau`` — the rescale
+    cancels in vol space) so each calibrator compares (σ_vs − σ_atm) model vs
+    prior. Market var-swap quote rows (``varswap_target``) are ALWAYS absolute:
+    a quote is the truth, not a shape."""
+    if options.priorVarSwapMode == "atm_spread":
+        w_atm = float(
+            np.maximum(np.asarray(moved_w(np.array([0.0])), dtype=float), 1e-12)[0]
+        ) * (tau / prior_tau)
+        return VarSwapTarget(
+            total_var=total_var, weight=weight, t=float(tau),
+            mode="atm_spread", atm_total_var=w_atm,
+        )
+    return VarSwapTarget(total_var=total_var, weight=weight, t=float(tau))
+
+
 def _persistence_targets(
     state: AppState, ticker: str, iso: str, k: np.ndarray, weights: np.ndarray | None, prepared
 ) -> PriorTargets:
@@ -429,8 +564,11 @@ def _persistence_targets(
         if budget > 0.0 and unmet > 0.0:
             # Prior's fair var-swap (model-free replication on the transported curve),
             # re-expressed at the current variance time; weight fades with coverage.
+            # Carrier (absolute level vs ATM spread) via priorVarSwapMode.
             w_vs = varswap_total_variance(moved.implied_w) * (prepared.tau / node.tau)
-            pvs = VarSwapTarget(total_var=float(w_vs), weight=budget * unmet, t=float(prepared.tau))
+            pvs = _prior_varswap(
+                options, moved.implied_w, node.tau, prepared.tau, float(w_vs), budget * unmet
+            )
         return PriorTargets(prior_anchor=anchor, prior_var_swap=pvs)
 
     if plan.factors:
@@ -446,10 +584,13 @@ def _persistence_targets(
         )
         pvs = None
         if vs.active and vs.weight > 0.0:
-            pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
+            pvs = _prior_varswap(
+                options, moved.implied_w, node.tau, prepared.tau, vs.prior_total_var, vs.weight
+            )
         return PriorTargets(operator_prior=target, prior_var_swap=pvs)
 
-    # operator / hybrid: the signed quote-operator prior (ATM/RR/BF; design note §5).
+    # operator / hybrid: the signed quote-operator prior (ATM/RR/BF, plus the
+    # WingL/WingR deep-wing slope rows when in the set; design note §5).
     # Guarded: under the active-filter auto-exclusion only the tail anchor survives.
     target = None
     pvs = None
@@ -462,9 +603,13 @@ def _persistence_targets(
             required_precision=options.priorOperatorRequiredPrecision,
             gap_exponent=options.priorOperatorGapExponent,
             bandwidth=options.priorOperatorBandwidth,
+            anchor_deltas=tuple(options.priorAnchorDeltas),
+            wing_scale=options.priorWingSlopeScale,
         )
         if vs.active and vs.weight > 0.0:
-            pvs = VarSwapTarget(total_var=vs.prior_total_var, weight=vs.weight, t=float(prepared.tau))
+            pvs = _prior_varswap(
+                options, moved.implied_w, node.tau, prepared.tau, vs.prior_total_var, vs.weight
+            )
     anchor = None
     if plan.tail_anchor:
         # hybrid (design note §7): a residual deep-tail strike anchor only where no
@@ -525,10 +670,15 @@ def edited_band(
     state: AppState, ticker: str, iso: str, prepared: PreparedQuotes, fit_mode: str
 ):
     """Band target after quote edits (None for "mid"); aligned with
-    edited_fit_inputs. Haircut comes from fit settings (refits via version)."""
+    edited_fit_inputs. Haircut and the tick-width floor come from fit
+    settings (refits via the settings version)."""
     session = state.session_if_exists((ticker, iso))
     edits = {} if session is None else session.edits
-    return apply_band_edits(prepared, edits, fit_mode, state.fit_settings().haircut)
+    settings = state.fit_settings()
+    return apply_band_edits(
+        prepared, edits, fit_mode, settings.haircut,
+        tick_floor_ticks=settings.bandTickFloorTicks,
+    )
 
 
 def edited_band_full(
@@ -542,8 +692,10 @@ def edited_band_full(
     (``targetLo``/``targetHi``; the UI dims excluded quotes). None for "mid"."""
     session = state.session_if_exists((ticker, iso))
     edits = {} if session is None else session.edits
+    settings = state.fit_settings()
     return apply_band_edits(
-        prepared, edits, fit_mode, state.fit_settings().haircut, include_excluded=True
+        prepared, edits, fit_mode, settings.haircut, include_excluded=True,
+        tick_floor_ticks=settings.bandTickFloorTicks,
     )
 
 
@@ -672,7 +824,15 @@ def _slice_task(
         # calib.calendar.variance_floor_grid_winged): its zero-wing kernels
         # make the extension safe, and wing crossings are exactly what the
         # confined grid misses. Same node budget either way.
-        if settings.model == "sigmoid":
+        # OptionsSettings.calendarFloorPadZ (the short-dated wing-crossing
+        # knob) overrides the scope for BOTH families: floor AND ceiling grids
+        # winged at the user's pad; None keeps the per-family branches below
+        # byte-identical.
+        pad_z = state.options().calendarFloorPadZ
+        if pad_z is not None:
+            def _o_grid(k_other):
+                return variance_floor_grid_winged(k_other, k, w, prepared.tau, pad_z=pad_z)
+        elif settings.model == "sigmoid":
             def _o_grid(k_other):
                 return variance_floor_grid_winged(k_other, k, w, prepared.tau)
         else:
@@ -766,6 +926,16 @@ def _compute_fit(
     path-INDEPENDENT (an undo back to a prior edit state reproduces the original fit
     bit-for-bit); the seed only enters the deterministic surface sweep.
 
+    Under ``OptionsSettings.calendarOnRefit`` (with ``enforceCalendar``) this
+    lone fit keeps the surface pass's cross-expiry coupling: the FRESH
+    committed neighbour slices in the selected ladder become its confined
+    calendar floor (previous expiry: LQD price floor from the committed
+    backbone + overlay variance floor from the displayed slice) and ceiling
+    (next expiry, overlay) — exactly the sequential-pass construction,
+    read-only (a stale/missing side is skipped, never refit). The neighbours
+    are then genuine fit inputs, fingerprinted into ``fit_key``. The warm
+    start stays None: the path remains cold-started and path-independent.
+
     The anchor a spot move is transported from. Cached in ``_fits`` by the full
     fit key; the calibrated pointer (``set_calibrated_ptr``) records that this key
     is the displayed one, so a later input change goes *stale* (frozen) under
@@ -789,12 +959,29 @@ def _compute_fit(
         if snapshot.exercise_style == "american" and state.year_fraction(expiry) > 0.0:
             act.detail("de-americanizing quotes")
         prepared = prepared_quotes(state, ticker, expiry)  # de-Am memoized per node
+        # Calendar-on-refit: thread the fresh committed neighbours (docstring).
+        # OFF (the default), or no usable neighbour: every extra argument below
+        # is None/False — the historical task, byte-identical.
+        prev_ctx = next_ctx = None
+        options = state.options()
+        if options.calendarOnRefit and options.enforceCalendar:
+            prev_iso, next_iso = _neighbour_isos(state, ticker, iso)
+            prev_ctx = _neighbour_context(state, ticker, prev_iso, fit_mode)
+            next_ctx = _neighbour_context(state, ticker, next_iso, fit_mode)
+            if prev_ctx is not None or next_ctx is not None:
+                act.detail("calendar context from committed neighbours")
         # The LQD backbone fit + the non-LQD display overlay (same edited quotes,
         # band and prior — Phase 3/5) as ONE pure task: a background Calibrate
         # thunk routes it to the fit process pool (volfit.api.fit_pool), an
         # interactive call runs it inline — byte-identical either way.
         task = _slice_task(
-            state, ticker, iso, prepared, fit_mode, init=init, allow_prepass=True
+            state, ticker, iso, prepared, fit_mode, init=init, allow_prepass=True,
+            prev=prev_ctx[0].result if prev_ctx is not None else None,
+            prev_display=prev_ctx[0].display if prev_ctx is not None else None,
+            prev_k=prev_ctx[1] if prev_ctx is not None else None,
+            next_display=next_ctx[0].display if next_ctx is not None else None,
+            next_k=next_ctx[1] if next_ctx is not None else None,
+            enforce_calendar=prev_ctx is not None or next_ctx is not None,
         )
         if task.prepass is not None:
             act.detail("data-only prepass")
@@ -1225,6 +1412,9 @@ def varswap_info(
         weightAbs=weight_abs,
         stale=node_dirty(state, ticker, iso, fit_mode),
         rmsShare=rms_share,
+        # Hard-pin echo: True only when the pin actually escalates an ACTIVE
+        # market row on this node (varswap_target applies it); None when off.
+        pinned=(bool(options.varSwapHardPin) and target is not None) if enabled else None,
     )
 
 

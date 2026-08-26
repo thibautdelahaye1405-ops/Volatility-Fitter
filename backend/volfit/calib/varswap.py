@@ -43,6 +43,16 @@ VS_POINTS = 801
 #: Floor on total variance / expiry so sqrt() and the integrand stay finite.
 _W_FLOOR = 1e-12
 
+#: Hard-pin escalation for the MARKET var-swap quote row (OptionsSettings.
+#: varSwapHardPin): the row weight becomes VARSWAP_PIN_MULT x the summed
+#: option-quote weights — the codebase's stiff-row idiom (cf. the 1e6 calendar
+#: rows). 1e4 makes the single row ~100x the whole data block in residual
+#: units, forcing the fitted var-swap onto the quote to SOLVER tolerance —
+#: this is equality-to-tolerance, NOT a true constraint (trf/lm still trade it
+#: off, the trade just never wins). Kept below the 1e6 calendar weight so a
+#: pinned quote cannot override the arbitrage rows.
+VARSWAP_PIN_MULT = 1e4
+
 
 @dataclass(frozen=True)
 class VarSwapTarget:
@@ -51,11 +61,24 @@ class VarSwapTarget:
     ``total_var`` is the quoted fair *total* variance (sigma_vs^2 * t);
     ``weight`` is the LSQ weight of the single var-swap residual, set by the
     caller to a fraction of the node's summed option-quote weights.
+
+    ``mode`` selects the residual carrier (tail-persistence arc). "absolute"
+    (the default — byte-identical) compares var-swap VOL levels. "atm_spread"
+    compares the var-swap-minus-ATM vol SPREAD instead:
+    ``(sigma_vs(model) - sigma_atm(model)) - (sigma_vs_ref - sigma_atm_ref)``
+    with ``sigma_atm_ref = sqrt(atm_total_var / t)`` — the tail-mass-over-body
+    carrier, so an ATM level move carries the tail along rather than fighting
+    a stale absolute level. Only PRIOR companion rows ever set it (see
+    volfit.api.service): market var-swap quotes are always absolute.
+    ``atm_total_var`` is the reference ATM total variance at ``t`` (read only
+    in atm_spread mode).
     """
 
     total_var: float
     weight: float
     t: float
+    mode: str = "absolute"  # "absolute" | "atm_spread"
+    atm_total_var: float = 0.0
 
 
 def varswap_total_variance(
@@ -77,7 +100,9 @@ def varswap_total_variance(
     return 2.0 * float(np.trapezoid(integrand, k))
 
 
-def varswap_residual_w(w_model: float, target: VarSwapTarget) -> float:
+def varswap_residual_w(
+    w_model: float, target: VarSwapTarget, w_atm_model: float | None = None
+) -> float:
     """The single vol-space var-swap penalty residual from a model var-swap w.
 
     sqrt(weight) * (sigma_vs_model - sigma_vs_quote), both var-swap vols. Take
@@ -87,12 +112,22 @@ def varswap_residual_w(w_model: float, target: VarSwapTarget) -> float:
     The caller appends this scalar to its residual vector (length is constant
     across iterations, so scipy's numerical Jacobian handles it).
 
+    In ``atm_spread`` mode the caller must also pass ``w_atm_model`` — the
+    model's ATM total variance ``w(0)`` — and the residual becomes the spread
+    difference (see VarSwapTarget). A missing ``w_atm_model`` silently falls
+    back to the absolute carrier (the LV path relies on this).
+
     Using the model's own cheap var-swap is essential for speed: evaluating the
     generic replication on an LQD curve (whose implied_w solves a per-point root)
     every Jacobian column makes a single fit take minutes.
     """
     vol_model = float(np.sqrt(max(w_model, _W_FLOOR) / target.t))
     vol_quote = float(np.sqrt(max(target.total_var, _W_FLOOR) / target.t))
+    if target.mode == "atm_spread" and w_atm_model is not None:
+        # Spread carrier: subtract each side's own ATM vol so the row compares
+        # (sigma_vs - sigma_atm) model-vs-reference instead of absolute levels.
+        vol_model -= float(np.sqrt(max(w_atm_model, _W_FLOOR) / target.t))
+        vol_quote -= float(np.sqrt(max(target.atm_total_var, _W_FLOOR) / target.t))
     return float(np.sqrt(max(target.weight, 0.0)) * (vol_model - vol_quote))
 
 
@@ -105,5 +140,10 @@ def varswap_residual(
     Computes the model var-swap by replication, then defers to
     ``varswap_residual_w``. Suitable for SVI / sigmoid (cheap closed-form total
     variance); LQD should pass its exact var-swap via ``varswap_residual_w``.
+    In ``atm_spread`` mode the model's ATM total variance ``w(0)`` is read off
+    the same curve (one extra evaluation; absolute mode stays byte-identical).
     """
-    return varswap_residual_w(varswap_total_variance(implied_w), target)
+    w_atm = None
+    if target.mode == "atm_spread":
+        w_atm = float(np.asarray(implied_w(np.array([0.0])), dtype=float)[0])
+    return varswap_residual_w(varswap_total_variance(implied_w), target, w_atm)

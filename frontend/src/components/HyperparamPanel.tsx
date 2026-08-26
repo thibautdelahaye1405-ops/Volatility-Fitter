@@ -53,6 +53,17 @@ export interface FitSettings {
   bellyRepair: boolean;
   sigmoidRidge: number;
   midAnchorWeight: number;
+  // Short-dated objective knobs (2026-08-26) — defaults byte-identical.
+  /** τ-aware mid-anchor attenuation: anchor × min(1, √(τ/ref)); null = off. */
+  midAnchorTauRef: number | null;
+  /** Band half-width floor in price ticks, translated to IV at the quote's vega. */
+  bandTickFloorTicks: number;
+  /** IRLS robust loss on the DATA rows only (penalty rows stay quadratic). */
+  robustLoss: "off" | "huber" | "cauchy";
+  /** Robust scale in the residual's own (≈vol) units. */
+  robustFScale: number;
+  /** SVI/MCS residuals in vega-normalized PRICE space (the LQD convention). */
+  overlayPriceResiduals: boolean;
 }
 
 export const FIT_DEFAULTS: FitSettings = {
@@ -80,6 +91,11 @@ export const FIT_DEFAULTS: FitSettings = {
   bellyRepair: true,
   sigmoidRidge: 1e-2,
   midAnchorWeight: 0.05,
+  midAnchorTauRef: null,
+  bandTickFloorTicks: 0,
+  robustLoss: "off",
+  robustFScale: 0.005,
+  overlayPriceResiduals: false,
 };
 
 /** Parametric model choices. LQD is the arbitrage-free default and the
@@ -218,6 +234,29 @@ export default function HyperparamPanel({
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Band tick floor: per-quote IV band half-width floor in price ticks. */}
+        <div className="mb-3 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="Band fit modes: widen each quote's target band about its mid to at least the IV width of this many price ticks at the quote's own vega — a short-dated wing quote whose spread prints below the tick grid can't claim sub-tick IV certainty. Applied after the haircut, so the floor wins. 0 = off; needs a feed with a known tick size (synthetic chains are unaffected)."
+          >
+            Band tick floor (ticks)
+          </span>
+          <input
+            type="number"
+            step={0.5}
+            min={0}
+            max={20}
+            value={draft.bandTickFloorTicks}
+            disabled={disabled}
+            onChange={(e) =>
+              patch({ bandTickFloorTicks: Math.max(0, Math.min(20, Number(e.target.value) || 0)) })
+            }
+            className={`${selectClass} w-16`}
+            aria-label="band tick floor in ticks"
+          />
         </div>
 
         {/* Quote weighting scheme (applies to every model and fit mode). */}

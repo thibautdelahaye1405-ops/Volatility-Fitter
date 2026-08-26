@@ -6,6 +6,11 @@ Instead of anchoring individual strike prices to a prior (the legacy data-gap
     ATM         = sigma(0)
     RR_d        = sigma(k_call_d) - sigma(k_put_d)            (risk reversal / skew)
     BF_d        = 0.5*(sigma(k_call_d) + sigma(k_put_d)) - sigma(0)   (butterfly)
+    WingL/WingR = (sigma(k_outer) - sigma(k_inner)) / (k_outer - k_inner)
+                  per-side DEEP-WING vol slope between the two outermost
+                  prior-anchor deltas (tail-persistence arc — the §5 optional
+                  extension; legs from ``priorAnchorDeltas``, dropped silently
+                  on degenerate geometry)
     VarSwapVol  = sqrt(K_var / tau)                           (handled by the caller
                   via the existing var-swap penalty; see VarSwapPriorRec)
 
@@ -51,12 +56,16 @@ _EPS = 1e-9
 #: threshold (Phase 8). The real multi-regime tuning is the backtest's to refine.
 _VARSWAP_PROBE_STD = 1.4
 
-#: Per-side forward delta implied by each named operator (ATM/VarSwap have none).
+#: Per-side forward delta implied by each named operator (ATM/VarSwap have none;
+#: WingL/WingR resolve their legs from the caller's anchor deltas instead and are
+#: DELIBERATELY absent here — see hybrid_tail_deltas).
 OPERATOR_DELTAS: dict[str, float] = {
     "RR25": 0.25, "BF25": 0.25, "RR10": 0.10, "BF10": 0.10,
 }
+#: Per-side deep-wing SLOPE operators (legs at the two outermost anchor deltas).
+WING_OPERATORS = ("WingL", "WingR")
 #: Operators known to the registry (mirrors OptionsSettings._clean_operators).
-KNOWN_OPERATORS = ("ATM", "RR25", "BF25", "RR10", "BF10", "VarSwap")
+KNOWN_OPERATORS = ("ATM", "RR25", "BF25", "RR10", "BF10", "WingL", "WingR", "VarSwap")
 
 
 def hybrid_tail_deltas(op_set: list[str], anchor_deltas) -> tuple[float, ...]:
@@ -65,7 +74,9 @@ def hybrid_tail_deltas(op_set: list[str], anchor_deltas) -> tuple[float, ...]:
     The ``anchor_deltas`` below the shallowest active RR/BF operator delta — i.e.
     where no quote operator reaches — so the tail anchor only persists the deep
     unquoted wing. Falls back to (0.02, 0.05) when the operator set has no wing
-    operator (only ATM / VarSwap)."""
+    operator (only ATM / VarSwap). WingL/WingR deliberately do NOT move this
+    floor: they persist the deep-wing SLOPE (a shape), not the level, so the
+    deep-tail LEVEL anchor may coexist with them."""
     op_deltas = [OPERATOR_DELTAS[op] for op in op_set if op in OPERATOR_DELTAS]
     floor = min(op_deltas) if op_deltas else 0.10
     tail = tuple(float(d) for d in anchor_deltas if d < floor)
@@ -122,14 +133,43 @@ def delta_strike(w_fn: Callable[[np.ndarray], np.ndarray], tau: float, call_delt
     return k
 
 
+def _wing_slope_legs(
+    w_fn: Callable[[np.ndarray], np.ndarray], tau: float, name: str, anchor_deltas
+) -> tuple[float, float] | None:
+    """(k_outer, k_inner) legs of a WingL/WingR slope operator, or None.
+
+    Legs sit at the strikes of the two OUTERMOST anchor deltas of that side
+    (smallest per-side forward deltas — e.g. the default [0.02, 0.05, ...] set
+    gives the 2-delta and 5-delta strikes). Degenerate geometry — fewer than 2
+    usable deltas, or coincident strikes (a guard wider than the 1e-6 leg-key
+    rounding in ``_resolve_legs``) — returns None: the operator is dropped
+    silently, per the arc's spec."""
+    ds = sorted({float(d) for d in anchor_deltas if 0.0 < float(d) < 0.5})
+    if len(ds) < 2:
+        return None
+    d_outer, d_inner = ds[0], ds[1]
+    if name == "WingR":  # OTM calls: outer = smallest call delta (deepest wing)
+        k_outer = delta_strike(w_fn, tau, d_outer)
+        k_inner = delta_strike(w_fn, tau, d_inner)
+    else:  # WingL — OTM puts: a put at delta d is the call-delta 1 - d
+        k_outer = delta_strike(w_fn, tau, 1.0 - d_outer)
+        k_inner = delta_strike(w_fn, tau, 1.0 - d_inner)
+    if abs(k_outer - k_inner) < 1e-6:
+        return None
+    return k_outer, k_inner
+
+
 def _resolve_legs(
-    w_fn: Callable[[np.ndarray], np.ndarray], tau: float, names: list[str], collar_sign: str
+    w_fn: Callable[[np.ndarray], np.ndarray], tau: float, names: list[str], collar_sign: str,
+    anchor_deltas=(),
 ) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """Locate every vol operator's legs on ``w_fn`` and build the coefficient rows.
 
     Returns ``(legs_k, coeff, op_names)`` where ``coeff`` is ``(n_op, n_legs)`` of
     signed basket weights. ATM sits at log-moneyness 0; RR/BF legs at the call /
-    put delta strikes. ``VarSwap`` is excluded here (handled separately)."""
+    put delta strikes; WingL/WingR legs at the two outermost ``anchor_deltas``
+    strikes of that side with coefficients ±1/(k_outer − k_inner) (the slope
+    basket). ``VarSwap`` is excluded here (handled separately)."""
     legs: dict[float, int] = {}
 
     def col(k: float) -> int:
@@ -146,6 +186,15 @@ def _resolve_legs(
             continue
         if name == "ATM":
             rows.append({col(0.0): 1.0})
+            op_names.append(name)
+            continue
+        if name in WING_OPERATORS:
+            wing = _wing_slope_legs(w_fn, tau, name, anchor_deltas)
+            if wing is None:
+                continue  # degenerate geometry -> operator silently dropped
+            k_outer, k_inner = wing
+            inv_dk = 1.0 / (k_outer - k_inner)
+            rows.append({col(k_outer): inv_dk, col(k_inner): -inv_dk})
             op_names.append(name)
             continue
         d = OPERATOR_DELTAS.get(name)
@@ -176,12 +225,14 @@ def _sigma_at(w_fn: Callable[[np.ndarray], np.ndarray], k: np.ndarray, tau: floa
 
 
 def evaluate_operators(
-    w_fn: Callable[[np.ndarray], np.ndarray], tau: float, names: list[str], collar_sign: str = "call_put"
+    w_fn: Callable[[np.ndarray], np.ndarray], tau: float, names: list[str],
+    collar_sign: str = "call_put", anchor_deltas=(),
 ) -> dict[str, float]:
     """Operator values on a smile (test/diagnostic convenience; legs located here).
 
-    Includes ``VarSwap`` (the fair var-swap vol by replication) when requested."""
-    legs_k, coeff, op_names = _resolve_legs(w_fn, tau, names, collar_sign)
+    Includes ``VarSwap`` (the fair var-swap vol by replication) when requested;
+    WingL/WingR need ``anchor_deltas`` (>= 2 per-side deltas) to resolve legs."""
+    legs_k, coeff, op_names = _resolve_legs(w_fn, tau, names, collar_sign, anchor_deltas)
     out: dict[str, float] = {}
     if op_names:
         vals = coeff @ _sigma_at(w_fn, legs_k, tau)
@@ -237,6 +288,8 @@ def assemble_target(
     required_precision: float,
     gap_exponent: float,
     bandwidth: float,
+    *,
+    budget_scale: np.ndarray | None = None,
 ) -> OperatorPriorTarget | None:
     """Gate a set of signed σ-baskets into an OperatorPriorTarget, or None.
 
@@ -246,7 +299,10 @@ def assemble_target(
     placement differs. Prior value is in VOL space (the variance-time rescale
     cancels: ``σ_prior(k) = sqrt(prior_w(k)/prior_tau)``). ``total_budget`` is split
     across the under-observed baskets in proportion to their activation gap; a
-    fully-observed set returns None."""
+    fully-observed set returns None. ``budget_scale`` (optional, per-basket)
+    scales each basket's SHARE of the split (``λ ∝ scale·gap``, total conserved)
+    — the wing-slope rows use it (priorWingSlopeScale); None keeps the
+    historical byte-identical split."""
     if not names:
         return None
     sigma_prior = _sigma_at(prior_w, legs_k, prior_tau)
@@ -257,7 +313,14 @@ def assemble_target(
     gsum = float(gap.sum())
     if gsum <= 0.0:
         return None
-    lam = total_budget * gap / gsum
+    if budget_scale is None:
+        lam = total_budget * gap / gsum
+    else:
+        scaled = np.asarray(budget_scale, dtype=float) * gap
+        ssum = float(scaled.sum())
+        if ssum <= 0.0:  # e.g. only wing rows gapped and wing scale 0
+            return None
+        lam = total_budget * scaled / ssum
     keep = lam > 0.0
     if not keep.any():
         return None
@@ -330,22 +393,35 @@ def build_operator_prior(
     required_precision: float = 1.0,
     gap_exponent: float = 1.0,
     bandwidth: float = 0.06,
+    anchor_deltas=(),
+    wing_scale: float = 1.0,
 ) -> tuple[OperatorPriorTarget | None, VarSwapPriorRec]:
-    """Resolve the active quote-operator prior (ATM/RR/BF) + var-swap rec.
+    """Resolve the active quote-operator prior (ATM/RR/BF/Wing) + var-swap rec.
 
     ``prior_w(k)`` is the (transported) prior total variance, ``prior_tau`` its
     variance time, ``tau`` the node's. ``k_quotes`` / ``weights`` are the live
     quotes (drive the §9.3 gate). ``total_budget`` is split across the
     under-observed operators by activation gap. Returns ``(target | None,
-    varswap_rec)`` — None when nothing is under-observed."""
+    varswap_rec)`` — None when nothing is under-observed.
+
+    ``anchor_deltas`` (OptionsSettings.priorAnchorDeltas) place the WingL/WingR
+    slope legs; ``wing_scale`` (priorWingSlopeScale) scales the wing rows'
+    budget share relative to the body operators. Both are inert unless a Wing
+    name is in ``op_set`` (byte-identity for the default set)."""
     no_vs = VarSwapPriorRec(active=False, prior_total_var=0.0, weight=0.0, gap=0.0)
     k_quotes = np.asarray(k_quotes, dtype=float)
     if total_budget <= 0.0 or tau <= 0.0 or prior_tau <= 0.0 or k_quotes.size == 0:
         return None, no_vs
-    legs_k, coeff, names = _resolve_legs(prior_w, prior_tau, op_set, collar_sign)
+    legs_k, coeff, names = _resolve_legs(prior_w, prior_tau, op_set, collar_sign, anchor_deltas)
+    budget_scale = None
+    if any(n in WING_OPERATORS for n in names):
+        budget_scale = np.array(
+            [wing_scale if n in WING_OPERATORS else 1.0 for n in names]
+        )
     target = assemble_target(
         names, legs_k, coeff, prior_w, prior_tau, tau, k_quotes, weights,
         total_budget, required_precision, gap_exponent, bandwidth,
+        budget_scale=budget_scale,
     )
     vs = (
         varswap_rec(prior_w, prior_tau, tau, k_quotes, weights, total_budget,

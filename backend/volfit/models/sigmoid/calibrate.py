@@ -151,7 +151,9 @@ def _fit(
                 res = np.concatenate([res, prior_anchor_residuals(cp, prior_anchor)])
             if operator_prior is not None:
                 res = np.concatenate([res, operator_residuals(implied_w, operator_prior)])
-            if prior_var_swap is not None:  # prior's var-swap level (operator companion)
+            if prior_var_swap is not None:
+                # Prior's var-swap companion; varswap_residual honors the
+                # carrier mode (absolute / atm_spread). FD Jacobian path.
                 res = np.concatenate([res, [varswap_residual(implied_w, prior_var_swap)]])
         if wing_sqrt_lambda is not None:
             # Put-wing no-butterfly regularizer (R6): zero on an arb-free slice.

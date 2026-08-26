@@ -153,6 +153,39 @@ class FitSettings(BaseModel):
     #: a flip — the sviChart precedent (pre-registered benchmark, then flip).
     mcsChart: Literal["raw", "structural"] = "raw"
     midAnchorWeight: float = Field(0.05, ge=0.0)  # band-mode mid anchor (all models)
+    # --- short-dated objective knobs (2026-08-25 ruggedness diagnosis; every
+    # default is byte-identical — flips ride benchmark adjudication) ---
+    #: Tau-aware mid-anchor attenuation: when set (years), the band-mode mid
+    #: anchor is scaled by min(1, sqrt(tau / midAnchorTauRef)). The data rows
+    #: blow up ~1/sqrt(tau) at short maturities while the shape ridge is
+    #: tau-free, so at 1 week the tick-quantized mid staircase outguns the
+    #: regularization ~7x — this restores a maturity-uniform anchor-vs-shape
+    #: contest. None = off (the historical constant anchor).
+    midAnchorTauRef: float | None = Field(None, gt=0.0, le=5.0)
+    #: IV-space band half-width floor in TICKS: in bid-ask / haircut mode each
+    #: quote's target band is widened about its mid to at least the IV width
+    #: of this many price ticks at the quote's vega, so a short-dated wing
+    #: quote whose spread prints below the tick grid cannot claim sub-tick IV
+    #: certainty. 0 = off (byte-identical); needs the chain's tick size
+    #: (real feeds — synthetic/tickless chains are unaffected).
+    bandTickFloorTicks: float = Field(0.0, ge=0.0, le=20.0)
+    #: Robust loss on the DATA rows only, via IRLS reweighting — scipy's
+    #: global loss would also soften the no-arb penalty/calendar rows, which
+    #: must stay quadratic. After the base fit, quote-row residuals beyond
+    #: ``robustFScale`` are down-weighted (huber: 1/|r| taper; cauchy:
+    #: 1/(1+r^2) — harder) and the slice refits warm-started (two passes).
+    #: "off" = single fit, byte-identical.
+    robustLoss: Literal["off", "huber", "cauchy"] = "off"
+    #: Robust scale in the residual's own units (vol for vol-space residuals;
+    #: vega-normalized price ~ vol for LQD). Residuals under it keep full
+    #: weight. Read only while ``robustLoss`` is on.
+    robustFScale: float = Field(0.005, gt=0.0, le=1.0)
+    #: R1 deferral closed, opt-in: SVI / MCS residuals switch from raw-vol
+    #: space to the LQD convention — vega-normalized PRICE residuals (vega
+    #: frozen at the mid, floored) — so a far-wing short-dated quote's
+    #: multi-vol-point IV quantum stops entering the objective at full
+    #: weight. OFF = the historical vol-space residuals, byte-identical.
+    overlayPriceResiduals: bool = False
 
     @field_validator("nCores", mode="before")
     @classmethod
@@ -232,6 +265,26 @@ class OptionsSettings(BaseModel):
     #: by default (byte-identical); affects calibration -> bumps the options
     #: version. Phase 1 (the Quality tab's advisory measurement) is always on.
     extrapEnforce: bool = False
+    #: Overlay calendar-floor scope (the short-dated upside-crossing fix):
+    #: None = the historical per-family grids (SVI floor/ceiling confined to
+    #: the COMMON quote support; MCS winged at 2 sigma). A value = BOTH
+    #: overlay families build their calendar floor/ceiling grids winged this
+    #: many sigma_ref*sqrt(T) beyond the common support
+    #: (volfit.calib.calendar.variance_floor_grid_winged), so the displayed
+    #: overlays keep calendar order out into the wing where the optical
+    #: stacked-IV crossings live. Calibration-affecting -> bumps the options
+    #: version.
+    calendarFloorPadZ: float | None = Field(None, gt=0.0, le=8.0)
+    #: Calendar context on SINGLE-NODE refits. The workflow caveat
+    #: (workflow_stages): an independent recompute of one node (autoCalibrate
+    #: tick, quote edit, undo) has no cross-expiry context, so it silently
+    #: voids the surface pass's coupling until the next full Calibrate. When
+    #: on (and ``enforceCalendar``), a single-node fit threads the ADJACENT
+    #: committed displayed slices as its confined floor (previous expiry) and
+    #: ceiling (next expiry) — the sequential-pass construction. OFF by
+    #: default (byte-identical). Calibration-affecting -> bumps the options
+    #: version.
+    calendarOnRefit: bool = False
     #: R2 item 11 (increment 2): route the JOINT borrow/de-Am fixed point's
     #: converged (forward, discount) into the resolved forwards the fits
     #: consume — American chains only, engaged PER EXPIRY and only when the
@@ -279,6 +332,14 @@ class OptionsSettings(BaseModel):
     #: Changes calibration output, so it bumps the options version (set_options),
     #: and only matters while ``varSwapEnabled`` is on.
     varSwapWeightPct: float = Field(10.0, ge=0.0, le=1000.0)
+    #: Hard var-swap pinning (forward-roadmap-v3 V3.6 rider): when on, the
+    #: MARKET var-swap quote row's weight is escalated by the stiff-row
+    #: multiplier (volfit.calib.varswap.VARSWAP_PIN_MULT) so the fitted
+    #: var-swap level matches the quote to solver tolerance — the codebase's
+    #: equality-constraint idiom (the 1e6 calendar rows). PRIOR var-swap rows
+    #: stay soft: pinning to a stale prior would be dangerous. OFF by default
+    #: (byte-identical); calibration-affecting -> bumps the options version.
+    varSwapHardPin: bool = False
     #: How the Local-Vol fit prices the model variance swap. "static" is the
     #: log-contract strike replication of the option surface (the k^-2-weighted
     #: integral); "source_pde" is the backward source PDE g(0,1)
@@ -361,16 +422,32 @@ class OptionsSettings(BaseModel):
     #: the summed quote weights — applied only where no operator/quote covers the
     #: tail (uses ``priorAnchorDeltas`` for the deep placements, §7).
     priorTailAnchorStrengthPct: float = Field(20.0, ge=0.0, le=1000.0)
+    #: Tail-persistence carrier of the PRIOR var-swap companion row:
+    #: "absolute" = match the prior's var-swap vol level (historical);
+    #: "atm_spread" = match the prior's var-swap MINUS ATM vol SPREAD — the
+    #: tail-mass-over-body carrier, so a level move (e.g. filter-driven ATM
+    #: update) carries the tail along instead of fighting a stale absolute
+    #: level. Market var-swap quotes are always absolute (they are the
+    #: truth). Calibration-affecting -> bumps the options version.
+    priorVarSwapMode: Literal["absolute", "atm_spread"] = "absolute"
+    #: Wing-slope operator scale: the WingL / WingR members of
+    #: ``priorOperatorSet`` persist each side's deep-wing vol SLOPE between
+    #: the two outermost prior-anchor deltas (volfit.calib.operators) — the
+    #: Lee-asymptote-adjacent tail-shape carrier the design note's §5 lists
+    #: as the optional extension. Gap-gated like every operator; this factor
+    #: scales the two wing rows' budget share relative to the body operators.
+    priorWingSlopeScale: float = Field(1.0, ge=0.0, le=10.0)
 
     @field_validator("priorOperatorSet")
     @classmethod
     def _clean_operators(cls, v: list[str]) -> list[str]:
         """Keep known operator names in declaration order (dedup); empty -> default.
 
-        Known: ATM, RR25/BF25 (25-delta), RR10/BF10 (10-delta), VarSwap. Mirrors
-        the registry in volfit.calib.operators so the UI cannot persist an op the
-        builder does not know."""
-        known = ["ATM", "RR25", "BF25", "RR10", "BF10", "VarSwap"]
+        Known: ATM, RR25/BF25 (25-delta), RR10/BF10 (10-delta), WingL/WingR
+        (per-side deep-wing slope), VarSwap. Mirrors the registry in
+        volfit.calib.operators so the UI cannot persist an op the builder
+        does not know."""
+        known = ["ATM", "RR25", "BF25", "RR10", "BF10", "WingL", "WingR", "VarSwap"]
         kept = [op for op in known if op in set(v)]
         return kept or ["ATM", "RR25", "BF25", "VarSwap"]
 
@@ -868,6 +945,12 @@ class VarSwapInfo(BaseModel):
     #: the var-swap term (the volfit.calib.rms.node_error_terms decomposition),
     #: in [0, 1]. None when no active target or the total error is zero.
     rmsShare: float | None = None
+    #: True when OptionsSettings.varSwapHardPin escalates THIS node's active
+    #: market var-swap row to the stiff-row weight (volfit.calib.varswap.
+    #: VARSWAP_PIN_MULT — equality to solver tolerance). False when the pin is
+    #: off or no active target; None while var-swap quoting is disabled (and on
+    #: older cached payloads / mocks — the frozen contract: additions optional).
+    pinned: bool | None = None
 
 
 class MarketLayer(BaseModel):

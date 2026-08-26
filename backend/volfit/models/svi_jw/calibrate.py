@@ -256,7 +256,10 @@ def calibrate_svi(
             )
         if var_swap is not None:
             res = np.concatenate((res, [varswap_residual(raw.total_variance, var_swap)]))
-        if prior_var_swap is not None:  # prior's var-swap level (operator/strike-gap companion)
+        if prior_var_swap is not None:
+            # Prior's var-swap companion (operator/strike-gap). varswap_residual
+            # honors the target's carrier mode (absolute level or ATM spread);
+            # this block rides the FD Jacobian path (use_analytic gates it off).
             res = np.concatenate((res, [varswap_residual(raw.total_variance, prior_var_swap)]))
         if cal_on:
             # No calendar arb: total variance must not drop below the nearer expiry.

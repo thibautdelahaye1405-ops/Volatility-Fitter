@@ -81,6 +81,13 @@ def lv_targets_from_operator_prior(
 
     vs_quotes: list[VarSwapQuote] = []
     if vs.active and vs.weight > 0.0:
+        # LV prior var-swap rows are ALWAYS the absolute carrier: the affine
+        # objective is a linear/vega-linearized functional of the nodal call
+        # prices (the nodal-variance linear solve), and a (sigma_vs - sigma_atm)
+        # SPREAD row couples two nonlinear vol transforms of the surface that
+        # the linearization has no row form for. priorVarSwapMode="atm_spread"
+        # therefore silently falls back to absolute here — a spread-carrier LV
+        # row is a recorded rider of the tail-persistence arc.
         sigma_vs = float(np.sqrt(max(vs.prior_total_var, _W_FLOOR) / tau))
         zeta = 2.0 * sigma_vs * tau * _VOL_TOL / np.sqrt(vs.weight)
         vs_quotes.append(VarSwapQuote(t=tau, total_var=float(vs.prior_total_var), tol=float(zeta)))
@@ -111,6 +118,11 @@ def build_operator_lv_targets(
         required_precision=options.priorOperatorRequiredPrecision,
         gap_exponent=options.priorOperatorGapExponent,
         bandwidth=options.priorOperatorBandwidth,
+        # WingL/WingR slope baskets reach the LV surface through the SAME
+        # frozen-vega price-basket conversion as RR/BF (any signed sigma-basket
+        # linearizes); inert unless a Wing op is in the set.
+        anchor_deltas=tuple(options.priorAnchorDeltas),
+        wing_scale=options.priorWingSlopeScale,
     )
     return lv_targets_from_operator_prior(target, vs, prior_w, prior_tau, tau)
 

@@ -69,6 +69,13 @@ def test_defaults(client):
         "sigmoidRidge": 1e-2,
         "mcsChart": "raw",  # V3.1 leg 3: byte-identical default until adjudicated
         "midAnchorWeight": 0.05,
+        # Short-dated objective knobs (2026-08-26): every default OFF /
+        # byte-identical — flips ride benchmark adjudication.
+        "midAnchorTauRef": None,
+        "bandTickFloorTicks": 0.0,
+        "robustLoss": "off",
+        "robustFScale": 0.005,
+        "overlayPriceResiduals": False,
     }
 
 

@@ -33,6 +33,7 @@ from scipy.special import expit
 
 from volfit.calib.band import band_violation_sign
 from volfit.calib.varswap import _W_FLOOR as _VS_W_FLOOR
+from volfit.core.black import black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, legendre_matrix
 from volfit.models.lqd.interp import hermite_eval
 from volfit.models.lqd.quadrature import _cumquad, build_slice
@@ -299,11 +300,28 @@ def residual_jacobian(
         u1mu = slice_.u * expit(-slice_.z)  # u(1-u), wing-stable
         w_vs = float(slice_.var_swap_strike())
         dw_vs = -2.0 * np.trapezoid(d_qz * u1mu[None, :], slice_.z, axis=1)
+        # ATM-spread carrier (tail-persistence arc): a spread row subtracts
+        # d(sigma_atm)/dtheta. sigma_atm is implicit through the k=0 price,
+        # B(0, sigma_atm^2 t) = C(0), so d(sigma_atm) = dC(0)/vega_sigma —
+        # the same call_price_rows pass as the fit block. Computed lazily,
+        # once, only when some row carries the spread (absolute rows keep the
+        # historical expression verbatim — byte-identical Jacobian).
+        d_sig_atm = None
         for tgt in (var_swap, prior_var_swap):
             if tgt is None:
                 continue
             if w_vs <= _VS_W_FLOOR or tgt.weight <= 0.0:
                 j_vs.append(np.zeros((1, p)))  # residual clamped/weightless
+            elif tgt.mode == "atm_spread":
+                if d_sig_atm is None:
+                    k0 = np.array([0.0])
+                    _, dC0 = call_price_rows(slice_, d_az, d_dadz, k0)
+                    w0 = float(slice_.implied_w(k0)[0])
+                    sig0 = float(np.sqrt(max(w0, _VS_W_FLOOR) / tgt.t))
+                    vega0 = max(float(black_vega_sigma(k0, np.array([sig0]), tgt.t)[0]), 1e-12)
+                    d_sig_atm = dC0[0] / vega0
+                j_vs.append((np.sqrt(tgt.weight)
+                             * (dw_vs / (2.0 * np.sqrt(w_vs * tgt.t)) - d_sig_atm))[None, :])
             else:
                 j_vs.append((np.sqrt(tgt.weight) * dw_vs
                              / (2.0 * np.sqrt(w_vs * tgt.t)))[None, :])

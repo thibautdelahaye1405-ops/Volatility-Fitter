@@ -87,6 +87,31 @@ export default function CalibrationSection({
           className={numInput}
         />
       </div>
+      <div className="mt-1 flex items-center justify-between">
+        <span
+          className={rowLabel}
+          title="Winged calendar floors: build BOTH overlay families' (SVI and MCS) calendar floor and ceiling grids this many sigma*sqrt(T) beyond the common quote support, so displayed smiles keep calendar order out into the wing where the stacked-IV crossings live. Empty = the historical per-family scopes (SVI confined to common support; MCS winged at 2 sigma)."
+        >
+          Winged floors (σ pad)
+        </span>
+        <input
+          type="number" step={0.5} min={0} max={8}
+          value={draft.calendarFloorPadZ ?? ""}
+          placeholder="off"
+          disabled={!live || !draft.enforceCalendar}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            patch({ calendarFloorPadZ: e.target.value === "" || !(v > 0) ? null : Math.min(v, 8) });
+          }}
+          className={numInput}
+        />
+      </div>
+      <Toggle
+        label="Calendar on refit"
+        hint="Single-node refits (quote edit, auto-calibrate tick, lone Calibrate) keep the surface pass's calendar coupling: the adjacent committed slices supply a confined floor (previous expiry) and ceiling (next expiry) instead of silently dropping cross-expiry context. A neighbour's changed fit marks this node stale for free."
+        checked={draft.calendarOnRefit} disabled={!live || !draft.enforceCalendar}
+        onChange={(v) => patch({ calendarOnRefit: v })}
+      />
       <Toggle
         label="Extrapolation guard"
         hint="Tapered no-arb enforcement beyond the quoted strikes (SVI/MCS): butterfly + calendar hinges over the time-value envelope, weighted like a handful of extra quotes - leans, never outvotes the data. The Quality tab measures this region either way."

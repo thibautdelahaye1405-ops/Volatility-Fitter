@@ -63,7 +63,7 @@ from datetime import date
 import numpy as np
 
 from volfit.api.session import QuoteEdit
-from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, resolve_band
+from volfit.calib.band import DEFAULT_HAIRCUT, BandTarget, apply_tick_floor, resolve_band
 from volfit.calib.convex_deam import convex_wing_repair
 from volfit.core.american import deamericanize_batch
 from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
@@ -485,6 +485,7 @@ def apply_band_edits(
     haircut: float = DEFAULT_HAIRCUT,
     *,
     include_excluded: bool = False,
+    tick_floor_ticks: float = 0.0,
 ) -> BandTarget | None:
     """Band target aligned with ``apply_edits`` (same exclude/amend/keep mask).
 
@@ -498,6 +499,11 @@ def apply_band_edits(
     quotes to still carry their would-be band (the UI dims them). The band
     rule is elementwise, so kept rows are identical either way; the default
     (fit path) is untouched.
+
+    ``tick_floor_ticks`` (FitSettings.bandTickFloorTicks) floors each band's
+    half-width about its mid at that many price ticks of IV, applied AFTER
+    the haircut so the floor wins (calib.band.apply_tick_floor). 0, or a
+    chain without a tick size, is byte-identical.
     """
     if fit_mode == "mid":
         return None
@@ -512,4 +518,10 @@ def apply_band_edits(
             iv_mid[index] = edit.amended_iv
         if edit.excluded and not include_excluded:
             keep[index] = False
-    return resolve_band(iv_bid[keep], iv_mid[keep], iv_ask[keep], fit_mode, haircut)
+    band = resolve_band(iv_bid[keep], iv_mid[keep], iv_ask[keep], fit_mode, haircut)
+    tick_norm = (  # one price tick in normalized (forward, undiscounted) units
+        prepared.tick_size / (prepared.discount * prepared.forward)
+        if prepared.tick_size and prepared.forward > 0.0 and prepared.discount > 0.0
+        else None
+    )
+    return apply_tick_floor(band, prepared.k[keep], prepared.tau, tick_norm, tick_floor_ticks)
