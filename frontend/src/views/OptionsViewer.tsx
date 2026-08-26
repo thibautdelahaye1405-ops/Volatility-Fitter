@@ -1,14 +1,15 @@
-// Options workspace (ROADMAP Phase 10; reorganized 2026-07): one thematic card
-// per concern, with feature-dependent knobs rendered only while their feature /
-// model is active:
+// Options (the Settings dialog since UI SHELL v2; ROADMAP Phase 10,
+// reorganized 2026-07): one thematic card per concern, with feature-dependent
+// knobs rendered only while their feature / model is active:
 //   Parametric model · Local-Vol surface · Calibration · Prior persistence ·
 //   Kalman filter · Events · Graph · Workflow & data · Spot-vol dynamics
-// A sticky chip row scrolls to each section. Purely cosmetic display
-// preferences live in the separate View tab.
+// A section rail on the left (VS Code settings grammar) scrolls to each card
+// and tracks the one in view. Purely cosmetic display preferences live in the
+// View ▾ popover.
 //
 // FitSettings (model/penalties/haircut/weighting) and OptionsSettings (the rest)
 // are two backend endpoints but share ONE sticky Apply bar here.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import CalibrationSection from "../components/options/CalibrationSection";
 import LocalVolSection from "../components/options/LocalVolSection";
@@ -30,9 +31,9 @@ import { useSettingsDefaults } from "../state/useSettingsDefaults";
 import { useSmileSession } from "../state/smileSession";
 
 const card =
-  "scroll-mt-12 rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30";
+  "scroll-mt-3 rounded-xl border border-slate-800 bg-surface-800/40 p-5";
 
-/** Section registry: card ids for the sticky quick-nav chips. */
+/** Section registry: card ids for the section rail. */
 const SECTIONS: { id: string; label: string }[] = [
   { id: "opt-parametric", label: "Parametric" },
   { id: "opt-localvol", label: "Local Vol" },
@@ -74,6 +75,38 @@ export default function OptionsViewer() {
     };
   }, [live, ticker, anyDirty]);
 
+  // Section rail: the card currently in view (IntersectionObserver over the
+  // scroll column), so the rail tracks scrolling as well as clicks.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [inView, setInView] = useState<string>(SECTIONS[0].id);
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const visible = new Map<string, number>();
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) visible.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0);
+        let best: string | null = null;
+        let bestRatio = 0;
+        for (const sec of SECTIONS) {
+          const r = visible.get(sec.id) ?? 0;
+          if (r > bestRatio) { best = sec.id; bestRatio = r; }
+        }
+        if (best !== null) setInView(best);
+      },
+      { root, threshold: [0.15, 0.5, 0.9] },
+    );
+    for (const sec of SECTIONS) {
+      const el = document.getElementById(sec.id);
+      if (el) obs.observe(el);
+    }
+    return () => obs.disconnect();
+  }, []);
+  const jump = (id: string) => {
+    setInView(id);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   // "Save as default" first commits any pending edits (so the persisted snapshot
   // matches what's on screen), then writes the live settings to the app store.
   const saveAsDefault = async () => {
@@ -93,22 +126,26 @@ export default function OptionsViewer() {
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-5xl flex-col overflow-y-auto p-4 pt-0">
-      {/* Sticky quick-nav: one chip per section. */}
-      <div className="sticky top-0 z-10 -mx-4 mb-4 flex flex-wrap items-center gap-1.5 border-b border-slate-800 bg-surface-950/85 px-4 py-2 backdrop-blur">
+    <div className="flex h-full min-h-0">
+      {/* Section rail (VS Code settings grammar). */}
+      <nav aria-label="Options sections" className="flex w-44 shrink-0 flex-col gap-0.5 border-r border-slate-800 p-2 pt-3">
         {SECTIONS.map((s) => (
           <button
             key={s.id}
-            onClick={() =>
-              document.getElementById(s.id)?.scrollIntoView({ behavior: "smooth", block: "start" })
-            }
-            className="rounded-full border border-slate-700 bg-surface-800 px-2.5 py-0.5 text-[11px] font-medium text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200"
+            onClick={() => jump(s.id)}
+            className={[
+              "rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors",
+              inView === s.id
+                ? "bg-accent-500/10 text-accent-300"
+                : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200",
+            ].join(" ")}
           >
             {s.label}
           </button>
         ))}
-      </div>
+      </nav>
 
+      <div ref={scrollRef} className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto p-4">
       <div className="flex flex-col gap-4">
         {!live && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-300">
@@ -182,7 +219,7 @@ export default function OptionsViewer() {
       {/* Sticky action bar — Apply commits the live settings; Save as default
           persists them to the store so they survive a backend restart; Reset
           reverts to the built-in defaults. */}
-      <div className="sticky bottom-0 mt-4 flex items-center gap-3 border-t border-slate-800 bg-surface-950/80 py-3 backdrop-blur">
+      <div className="sticky -bottom-4 -mx-4 mt-4 flex items-center gap-3 border-t border-slate-800 bg-surface-900/90 px-4 py-3 backdrop-blur">
         <span className="text-[11px] text-slate-500">
           {anyDirty
             ? "Unsaved Options changes"
@@ -244,6 +281,7 @@ export default function OptionsViewer() {
         >
           {anyFlash ? "Applied ✓" : anyBusy ? "Saving…" : "Apply Options"}
         </button>
+      </div>
       </div>
     </div>
   );

@@ -1,89 +1,79 @@
-// App shell: top bar with tab navigation, simple state-based routing.
-// The smile session is provided here so its data (and the backend fit
-// session it mirrors) survives switching between workspace tabs.
-import { useState } from "react";
-import TopBar from "./components/TopBar";
-import StatusBar from "./components/StatusBar";
-import ErrorBoundary from "./components/ErrorBoundary";
-import SmileViewer from "./views/SmileViewer";
-import LocalVolViewer from "./views/LocalVolViewer";
-import ForwardsViewer from "./views/ForwardsViewer";
-import OptionsViewer from "./views/OptionsViewer";
-import GraphViewer from "./views/GraphViewer";
-import QualityViewer from "./views/QualityViewer";
-import UniverseManager from "./views/UniverseManager";
-import ViewSettingsViewer from "./views/ViewSettingsViewer";
+// App shell (UI SHELL v2 — workbench, 2026-08-26): a fixed-viewport frame in
+// the VS Code × Affinity grammar.
+//
+//   TopBar        main menu (Universe ▾ · Options · Help ▾) · command center
+//                 (Fetch / Calibrate / Priors / market pill) · View ▾ · Layout ▾
+//   ActivityBar   the lens: Graph · Forwards · Parametric · Local Vol · Quality
+//   NodesPane     the universe tree (lit/dark, quality glyphs), 1/5 wide
+//   MainPane      one tab per node + the lens rendered for the active node
+//   StatusBar     engine narration, summary chips, last action, clock
+//   ShellDialogs  Universe manager · Options · Shortcuts · About
+//
+// Provider order matters: the smile session is the root of truth (universe +
+// selection), the workflow context polls the engine, the lit map and quality
+// contexts share one fetch each across the tree and the lenses, and the
+// workbench reconciles its tabs with the session selection.
+import TopBar from "./components/shell/TopBar";
+import ActivityBar from "./components/shell/ActivityBar";
+import NodesPane from "./components/shell/NodesPane";
+import MainPane from "./components/shell/MainPane";
+import StatusBar from "./components/shell/StatusBar";
+import Resizer from "./components/shell/Resizer";
+import ShellDialogs from "./components/shell/dialogs/ShellDialogs";
 import { SmileSessionProvider } from "./state/smileSession";
 import { GraphFocusProvider } from "./state/graphFocus";
 import { WorkflowProvider } from "./state/workflowContext";
 import { ExpiryFormatProvider } from "./state/expiryFormat";
 import { ViewSettingsProvider } from "./state/viewSettings";
+import { LitMapProvider } from "./state/litMap";
+import { QualityProvider } from "./state/qualityContext";
+import { NODES_WIDTH, WorkbenchProvider, useWorkbench } from "./state/workbench";
+import { useShellShortcuts } from "./state/useShellShortcuts";
 
-/** The top-level workspaces of the application (ROADMAP Phase 10).
- *  Parametric = the model-fit workspace (Smile / Density / Term / Surface /
- *  Table sub-tabs); Term-Structure is now a Parametric sub-tab, not a top tab. */
-export type TabId =
-  | "parametric"
-  | "localvol"
-  | "forwards"
-  | "options"
-  | "graph"
-  | "quality"
-  | "universe"
-  | "view";
+/** The frame itself (needs the workbench context, hence a child of the providers). */
+function Shell() {
+  const { layout, setLayout, resetLayout } = useWorkbench();
+  useShellShortcuts();
 
-export interface TabDef {
-  id: TabId;
-  label: string;
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <TopBar />
+      <div className="flex min-h-0 flex-1">
+        <ActivityBar />
+        {layout.nodesPane && (
+          <>
+            <NodesPane />
+            <Resizer
+              width={layout.nodesWidth}
+              min={NODES_WIDTH.min}
+              max={NODES_WIDTH.max}
+              onResize={(w) => setLayout({ nodesWidth: w })}
+              onReset={resetLayout}
+            />
+          </>
+        )}
+        <MainPane />
+      </div>
+      {layout.statusBar && <StatusBar />}
+      <ShellDialogs />
+    </div>
+  );
 }
 
-export const TABS: TabDef[] = [
-  { id: "parametric", label: "Parametric" },
-  { id: "localvol", label: "Local Vol" },
-  { id: "forwards", label: "Forwards" },
-  { id: "options", label: "Options" },
-  { id: "graph", label: "Graph" },
-  { id: "quality", label: "Quality" },
-  { id: "universe", label: "Universe" },
-  { id: "view", label: "View" },
-];
-
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabId>("parametric");
-
   return (
     <ViewSettingsProvider>
     <ExpiryFormatProvider>
     <SmileSessionProvider>
     <GraphFocusProvider>
     <WorkflowProvider>
-      <div className="flex h-full flex-col">
-        <TopBar tabs={TABS} activeTab={activeTab} onSelect={setActiveTab} />
-
-        {/* Main workspace area; each tab renders its dedicated view, wrapped in
-            an error boundary (keyed by tab) so a render crash in one view never
-            white-screens the whole app and the error stays visible. */}
-        <main className="flex-1 overflow-auto">
-          <ErrorBoundary key={activeTab} label={TABS.find((t) => t.id === activeTab)?.label}>
-            {activeTab === "parametric" && <SmileViewer />}
-            {activeTab === "localvol" && <LocalVolViewer />}
-            {activeTab === "quality" && <QualityViewer />}
-            {activeTab === "universe" && <UniverseManager />}
-            {activeTab === "forwards" && <ForwardsViewer />}
-            {activeTab === "options" && <OptionsViewer />}
-            {activeTab === "view" && <ViewSettingsViewer />}
-            {activeTab === "graph" && (
-              // Drill-in: GraphViewer points the shared smile session at a
-              // node, then asks the shell to switch to the Parametric workspace.
-              <GraphViewer onNavigateToSmile={() => setActiveTab("parametric")} />
-            )}
-          </ErrorBoundary>
-        </main>
-
-        {/* Bottom status bar: what the engine is doing (fetch / calibrate /
-            term / density / LV), with gauges; an idle "Ready" + summary. */}
-        <StatusBar />
-      </div>
+    <LitMapProvider>
+    <QualityProvider>
+    <WorkbenchProvider>
+      <Shell />
+    </WorkbenchProvider>
+    </QualityProvider>
+    </LitMapProvider>
     </WorkflowProvider>
     </GraphFocusProvider>
     </SmileSessionProvider>

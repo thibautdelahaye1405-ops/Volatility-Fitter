@@ -1,6 +1,9 @@
-// View tab: display / UX preferences that are purely client-side — colour
-// scheme, contrast, brightness and the expiry-label format. Kept separate from
-// the (quant-heavy) Options tab so the meta-parameters stay uncluttered.
+// View ▾ popover content (UI SHELL v2; formerly the View tab): display / UX
+// preferences that are purely client-side — colour scheme, contrast,
+// brightness and the expiry-label format. Kept separate from the (quant-heavy)
+// Options dialog so the meta-parameters stay uncluttered. The column scrolls
+// itself; the Save/Reset bar sticks to its bottom edge (no bottom padding on
+// the scroll container — a sticky child is confined to the content box).
 import { useState } from "react";
 import {
   BRIGHTNESS_RANGE,
@@ -119,7 +122,7 @@ export default function ViewSettingsViewer() {
   };
 
   return (
-    <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-y-auto p-4">
+    <div className="mx-auto flex h-full max-w-3xl flex-col gap-4 overflow-y-auto px-4 pt-4">
       {/* Colour scheme */}
       <div className={card}>
         <h3 className={sectionTitle}>Colour scheme</h3>
@@ -239,7 +242,7 @@ export default function ViewSettingsViewer() {
 
       {/* Sticky Save/Reset bar — mirrors the Options tab. Changes preview live;
           Save persists the whole View tab (look + expiry format) on this device. */}
-      <div className="sticky bottom-0 mt-auto flex items-center gap-3 border-t border-slate-800 bg-surface-950/80 py-3 backdrop-blur">
+      <div className="sticky bottom-0 -mx-4 mt-auto flex items-center gap-3 border-t border-slate-800 bg-surface-800 px-4 py-3">
         <span className="text-[11px] text-slate-500">
           {anyDirty ? "Unsaved view changes" : flash ? "Saved as default ✓" : "View saved"}
         </span>

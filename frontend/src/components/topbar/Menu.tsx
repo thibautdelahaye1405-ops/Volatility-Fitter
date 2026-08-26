@@ -12,12 +12,16 @@ export function MenuPanel({
   onClose,
   align = "left",
   width = "w-60",
+  scroll = true,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   align?: "left" | "right";
   width?: string;
+  /** false = the panel does NOT scroll itself (a child with its own scroll
+   *  column, e.g. the View popover, sizes the panel instead). */
+  scroll?: boolean;
   children: ReactNode;
 }) {
   if (!open) return null;
@@ -27,7 +31,8 @@ export function MenuPanel({
       <button className="fixed inset-0 z-10 cursor-default" aria-hidden onClick={onClose} />
       <div
         className={[
-          "absolute z-20 mt-1 max-h-[70vh] overflow-auto rounded-lg border border-slate-700",
+          "absolute z-20 mt-1 rounded-lg border border-slate-700",
+          scroll ? "max-h-[70vh] overflow-auto" : "overflow-hidden",
           "bg-surface-800 py-1 shadow-xl shadow-black/40",
           align === "right" ? "right-0" : "left-0",
           width,
@@ -45,6 +50,7 @@ export function MenuItem({
   icon: Icon,
   label,
   detail,
+  shortcut,
   active = false,
   disabled = false,
   title,
@@ -53,6 +59,8 @@ export function MenuItem({
   icon?: LucideIcon;
   label: string;
   detail?: string;
+  /** Keyboard chord, rendered as a right-aligned kbd (e.g. "Ctrl+B"). */
+  shortcut?: string;
   active?: boolean;
   disabled?: boolean;
   title?: string;
@@ -75,6 +83,11 @@ export function MenuItem({
       {Icon && <Icon size={14} strokeWidth={1.75} className="shrink-0 opacity-80" />}
       <span className="flex-1 font-medium">{label}</span>
       {detail && <span className="truncate text-[10px] text-slate-500">{detail}</span>}
+      {shortcut && (
+        <kbd className="rounded border border-slate-700 px-1 font-mono text-[9px] text-slate-500">
+          {shortcut}
+        </kbd>
+      )}
       {active && <span className="text-accent-400">✓</span>}
     </button>
   );

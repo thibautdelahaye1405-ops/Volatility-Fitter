@@ -1,9 +1,16 @@
 // Headless-Edge UI smoke (npm run smoke:ui): builds nothing, drives the
-// PREVIEW server through every workspace tab and fails on any uncaught page
-// error or ErrorBoundary fallback. Backend-optional by design: without
-// :8000 the Parametric tab falls back to the mock smile and the live-only
-// views show their offline cards — the smoke asserts the shell never
-// white-screens, not that data loaded. Screenshots land in .smoke/.
+// PREVIEW server through the WORKBENCH SHELL (UI SHELL v2) and fails on any
+// uncaught page error or ErrorBoundary fallback:
+//   1. every lens of the activity bar (Graph · Forwards · Parametric · Local
+//      Vol · Quality) on the auto-opened node tab, plus the Parametric
+//      "Compare" sub-view;
+//   2. the nodes pane → tab round trip (click a node row, a tab appears);
+//   3. every top-bar menu (Universe · Help · View · Layout) and every dialog
+//      (Options · Manage universe · Keyboard shortcuts · About).
+// Backend-optional by design: without :8000 the session falls back to the
+// mock smile and the live-only lenses show their offline cards — the smoke
+// asserts the shell never white-screens, not that data loaded. Screenshots
+// land in .smoke/.
 //
 // Prereqs: `npm run build` (vite preview serves dist/), Microsoft Edge.
 import { mkdirSync } from "node:fs";
@@ -12,22 +19,51 @@ import puppeteer from "puppeteer-core";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const PORT = 4188; // off the dev/preview defaults so a running app never collides
-// Workspaces behind the grouped top-bar menus: open `menu`, click `item`
-// (menu: null = a direct tab; "VolFit" = the brand menu holding Options/View).
-const TABS = [
-  { name: "Parametric", menu: "Surfaces", item: "Parametric" },
-  // Sub-tab of the Parametric chart card (V3.2 model comparison): clicked via
-  // its SegmentedControl button after the workspace mounts.
-  { name: "Compare", menu: "Surfaces", item: "Parametric", subview: "Compare" },
-  { name: "Local Vol", menu: "Surfaces", item: "Local Vol" },
-  { name: "Forwards", menu: "Surfaces", item: "Forwards" },
-  { name: "Options", menu: "VolFit", item: "Options" },
-  { name: "Graph", menu: "Universe", item: "Graph" },
-  { name: "Quality", menu: null, item: "Quality" },
-  { name: "Universe", menu: "Universe", item: "Selection" },
-  { name: "View", menu: "VolFit", item: "View" },
-];
 const OUT = new URL("../.smoke/", import.meta.url).pathname.replace(/^\/(\w:)/, "$1");
+
+const LENSES = [
+  { name: "Graph" },
+  { name: "Forwards" },
+  { name: "Parametric" },
+  // Sub-view of the Parametric chart card (V3.2 model comparison): clicked
+  // via its SegmentedControl button after the lens mounts.
+  { name: "Parametric", subview: "Compare", slug: "compare" },
+  { name: "Local Vol" },
+  { name: "Quality" },
+];
+const MENUS = ["Universe", "Help", "View", "Layout"];
+// Dialogs: opened from the top bar (Options) / activity bar (Manage universe) /
+// Help menu (shortcuts) / brand (About). Each must render role="dialog".
+const DIALOGS = [
+  { name: "Options", open: (p) => clickHeader(p, "Options") },
+  { name: "Manage universe", open: (p) => clickAria(p, "Manage universe") },
+  { name: "Keyboard shortcuts", open: async (p) => { await clickHeader(p, "Help"); await clickText(p, "Keyboard shortcuts"); } },
+  { name: "About VolFit", open: (p) => clickHeader(p, "About VolFit", "title") },
+];
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function clickHeader(page, label, attr = "text") {
+  const sel = attr === "title"
+    ? `xpath/.//header//button[@title="${label}"]`
+    : `xpath/.//header//button[.//span[normalize-space()="${label}"] or normalize-space()="${label}"]`;
+  const [btn] = await page.$$(sel);
+  if (!btn) throw new Error(`header button "${label}" not found`);
+  await btn.click();
+  await sleep(200);
+}
+async function clickAria(page, label) {
+  const btn = await page.$(`button[aria-label="${label}"]`);
+  if (!btn) throw new Error(`button[aria-label="${label}"] not found`);
+  await btn.click();
+  await sleep(200);
+}
+async function clickText(page, label) {
+  const [btn] = await page.$$(`xpath/.//span[normalize-space()="${label}"]/ancestor::button[1]`);
+  if (!btn) throw new Error(`row "${label}" not found`);
+  await btn.click();
+  await sleep(200);
+}
 
 function startPreview() {
   // Spawn the vite JS bin through THIS node: no .cmd shim (Node >= 20 EINVALs
@@ -42,7 +78,6 @@ function startPreview() {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error("vite preview did not start")), 20000);
     proc.stdout.on("data", (buf) => {
-      // Vite colors its banner; strip ANSI codes before matching "Local:".
       const plain = String(buf).replace(/\x1b\[[0-9;]*m/g, "");
       if (plain.includes("Local:")) {
         clearTimeout(timer);
@@ -56,70 +91,99 @@ function startPreview() {
 const preview = await startPreview();
 mkdirSync(OUT, { recursive: true });
 let failures = 0;
-
 const browser = await puppeteer.launch({
   executablePath: EDGE,
   headless: true,
   args: ["--no-first-run", "--disable-gpu"],
 });
+
+/** Assert the shell is healthy after a step; screenshot either way. */
+async function check(page, pageErrors, name) {
+  const crashed = await page.evaluate(() => document.body.innerText.includes("hit an error"));
+  const empty = await page.evaluate(() => document.querySelector("main")?.innerText.trim() === "");
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  await page.screenshot({ path: `${OUT}${slug}.png` });
+  if (crashed || empty || pageErrors.length > 0) {
+    console.error(`FAIL ${name}: crashed=${crashed} empty=${empty} pageErrors=${pageErrors.length}`);
+    pageErrors.forEach((e) => console.error(`  ${e}`));
+    pageErrors.length = 0;
+    failures += 1;
+    return false;
+  }
+  console.log(`ok   ${name}`);
+  return true;
+}
+
 try {
   const page = await browser.newPage();
   await page.setViewport({ width: 1400, height: 900 });
   const pageErrors = [];
   page.on("pageerror", (err) => pageErrors.push(String(err)));
-
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "networkidle2", timeout: 30000 });
+  await sleep(800);
 
-  for (const tab of TABS) {
-    let button;
-    if (tab.menu === null) {
-      // Direct tab (Quality): its header button carries the label.
-      [button] = await page.$$(`xpath/.//header//button[contains(normalize-space(), "${tab.name}")]`);
-    } else {
-      // Open the group / brand menu, then click the item row (its label lives
-      // in a dedicated <span> inside the MenuItem button).
-      const [trigger] = await page.$$(
-        `xpath/.//header//button[contains(normalize-space(), "${tab.menu}")]`,
-      );
-      if (trigger) {
-        await trigger.click();
-        await new Promise((r) => setTimeout(r, 150));
-        [button] = await page.$$(
-          `xpath/.//span[normalize-space()="${tab.item}"]/ancestor::button[1]`,
-        );
+  // 1. Lenses (the session auto-opens a preview tab for its default node).
+  for (const lens of LENSES) {
+    try {
+      await clickAria(page, lens.name);
+      await sleep(700);
+      if (lens.subview) {
+        const [sub] = await page.$$(`xpath/.//main//button[normalize-space()="${lens.subview}"]`);
+        if (!sub) throw new Error(`subview "${lens.subview}" not found`);
+        await sub.click();
+        await sleep(700);
       }
-    }
-    if (!button) {
-      console.error(`FAIL ${tab.name}: menu path ${tab.menu ?? "(direct)"} → ${tab.item} not found`);
+      await check(page, pageErrors, lens.slug ?? lens.name);
+    } catch (err) {
+      console.error(`FAIL ${lens.slug ?? lens.name}: ${err.message}`);
       failures += 1;
-      continue;
     }
-    await button.click();
-    await new Promise((r) => setTimeout(r, 700)); // let the view mount/fetch-fail
-    if (tab.subview) {
-      // In-workspace chart-card view (SegmentedControl button by label).
-      const [sub] = await page.$$(`xpath/.//main//button[normalize-space()="${tab.subview}"]`);
-      if (!sub) {
-        console.error(`FAIL ${tab.name}: subview button "${tab.subview}" not found`);
-        failures += 1;
-        continue;
-      }
-      await sub.click();
-      await new Promise((r) => setTimeout(r, 700));
-    }
-    const crashed = await page.evaluate(() =>
-      document.body.innerText.includes("hit an error"),
-    );
-    const empty = await page.evaluate(() => document.querySelector("main")?.innerText.trim() === "");
-    const slug = tab.name.toLowerCase().replace(/\s+/g, "-");
-    await page.screenshot({ path: `${OUT}${slug}.png` });
-    if (crashed || empty || pageErrors.length > 0) {
-      console.error(`FAIL ${tab.name}: crashed=${crashed} empty=${empty} pageErrors=${pageErrors.length}`);
-      pageErrors.forEach((e) => console.error(`  ${e}`));
-      pageErrors.length = 0;
+  }
+
+  // 2. Nodes pane → tab: click the first expiry row; the strip must show a tab.
+  try {
+    await clickAria(page, "Parametric");
+    const rows = await page.$$('[role="tree"] [role="treeitem"][aria-selected]');
+    if (rows.length === 0) throw new Error("no node rows in the Nodes pane");
+    await rows[0].click();
+    await sleep(500);
+    const tabs = await page.$$('[role="tablist"] [role="tab"]');
+    if (tabs.length === 0) throw new Error("no tab after clicking a node");
+    await check(page, pageErrors, "nodes-pane-tab");
+  } catch (err) {
+    console.error(`FAIL nodes-pane-tab: ${err.message}`);
+    failures += 1;
+  }
+
+  // 3. Menus open + close (Esc / backdrop).
+  for (const m of MENUS) {
+    try {
+      await clickHeader(page, m);
+      await check(page, pageErrors, `menu-${m}`);
+      await page.keyboard.press("Escape");
+      await page.mouse.click(700, 450); // click-away backdrop
+      await sleep(150);
+    } catch (err) {
+      console.error(`FAIL menu-${m}: ${err.message}`);
       failures += 1;
-    } else {
-      console.log(`ok   ${tab.name}`);
+    }
+  }
+
+  // 4. Dialogs render + Esc closes them.
+  for (const d of DIALOGS) {
+    try {
+      await d.open(page);
+      await sleep(400);
+      const dialog = await page.$('[role="dialog"]');
+      if (!dialog) throw new Error("no role=dialog rendered");
+      await check(page, pageErrors, `dialog-${d.name}`);
+      await page.keyboard.press("Escape");
+      await sleep(200);
+      if (await page.$('[role="dialog"]')) throw new Error("dialog did not close on Esc");
+    } catch (err) {
+      console.error(`FAIL dialog-${d.name}: ${err.message}`);
+      failures += 1;
+      await page.keyboard.press("Escape");
     }
   }
 } finally {
@@ -128,7 +192,7 @@ try {
 }
 
 if (failures > 0) {
-  console.error(`\nUI smoke: ${failures} tab(s) failed (screenshots in .smoke/)`);
+  console.error(`\nUI smoke: ${failures} step(s) failed (screenshots in .smoke/)`);
   process.exit(1);
 }
-console.log(`\nUI smoke: all ${TABS.length} tabs render (screenshots in .smoke/)`);
+console.log(`\nUI smoke: shell, ${LENSES.length} lens steps, ${MENUS.length} menus, ${DIALOGS.length} dialogs render (screenshots in .smoke/)`);

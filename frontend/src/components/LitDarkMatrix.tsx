@@ -1,27 +1,20 @@
-// Lit/dark node matrix for the Universe workspace (ROADMAP Phase 10 follow-up).
+// Lit/dark node matrix of the Universe dialog (ROADMAP Phase 10 follow-up;
+// UI SHELL v2 rewires it onto the shared lit map).
 //
-// Every selected (ticker × expiry) node carries a lit/dark designation (shared
-// with the Graph tab via GET/PUT /universe/lit): lit = an observed source for
-// the graph solver, dark = an extrapolation target (stale / filled in by the
-// solver). Rows are tickers, cells are their selected expiries; click a cell to
-// toggle it, or use the per-ticker bulk buttons. The optional row slots let the
-// Universe workspace fold ticker management into the SAME rows (▸ name expands
-// the expiry picker, `actions` renders e.g. a Remove chip). Live backend only.
-import { useEffect, useMemo, useState } from "react";
+// Every selected (ticker × expiry) node carries a lit/dark designation
+// (GET/PUT /universe/lit, state/litMap.tsx): lit = an observed source for the
+// graph solver, dark = an extrapolation target. Rows are tickers, cells are
+// their selected expiries; click a cell to toggle it, or use the per-ticker
+// bulk buttons — the nodes pane and the Graph canvas reflect the change
+// immediately because all three read the same context. The optional row
+// slots let the Universe dialog fold ticker management into the SAME rows
+// (▸ name expands the expiry picker, `actions` renders e.g. a Remove chip).
+import { useMemo } from "react";
 import type { ReactNode } from "react";
-import { api } from "../state/api";
+import { useLitMap } from "../state/litMap";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { formatExpiry } from "../lib/expiryFormat";
 import type { UniverseResponse } from "../state/useSmile";
-
-interface LitNode {
-  ticker: string;
-  expiry: string;
-  lit: boolean;
-}
-interface LitMapResponse {
-  nodes: LitNode[];
-}
 
 const bulkBtn =
   "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 text-[10px] font-medium " +
@@ -47,34 +40,7 @@ export default function LitDarkMatrix({
   renderExpanded,
 }: Props) {
   const { format } = useExpiryFormat();
-  const [nodes, setNodes] = useState<LitNode[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  // Refetch when the universe's ticker set or any ladder length changes.
-  const sig = useMemo(
-    () =>
-      universe
-        ? universe.tickers
-            .map((t) => `${t}:${(universe.expiries[t] ?? []).length}`)
-            .join(",")
-        : "",
-    [universe],
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    api
-      .get<LitMapResponse>("/universe/lit", { signal: controller.signal })
-      .then((d) => {
-        setNodes(d.nodes);
-        setError(null);
-      })
-      .catch((err: unknown) => {
-        if (controller.signal.aborted) return;
-        setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => controller.abort();
-  }, [sig]);
+  const { nodes, error, toggleNode, setTicker } = useLitMap();
 
   // Year-fraction lookup for cell labels (from the universe ladders).
   const tOf = useMemo(() => {
@@ -87,42 +53,18 @@ export default function LitDarkMatrix({
     return map;
   }, [universe]);
 
+  // Group by ticker, in universe order (tickers without a lit entry still
+  // get a row so Remove / the picker stay reachable).
   const byTicker = useMemo(() => {
-    const groups = new Map<string, LitNode[]>();
+    const groups = new Map<string, typeof nodes>();
+    for (const t of universe?.tickers ?? []) groups.set(t, []);
     for (const n of nodes) {
       const arr = groups.get(n.ticker) ?? [];
       arr.push(n);
       groups.set(n.ticker, arr);
     }
     return groups;
-  }, [nodes]);
-
-  const toggleNode = (n: LitNode) => {
-    const lit = !n.lit;
-    setNodes((prev) =>
-      prev.map((m) => (m.ticker === n.ticker && m.expiry === n.expiry ? { ...m, lit } : m)),
-    );
-    void api
-      .put(`/universe/lit/${n.ticker}/${encodeURIComponent(n.expiry)}`, { body: { lit } })
-      .catch(() => {
-        /* revert on failure */
-        setNodes((prev) =>
-          prev.map((m) =>
-            m.ticker === n.ticker && m.expiry === n.expiry ? { ...m, lit: n.lit } : m,
-          ),
-        );
-      });
-  };
-
-  const toggleTicker = (ticker: string, lit: boolean) => {
-    setNodes((prev) => prev.map((m) => (m.ticker === ticker ? { ...m, lit } : m)));
-    void api
-      .put<LitMapResponse>(`/universe/lit/${ticker}`, { body: { lit } })
-      .then((d) => setNodes(d.nodes))
-      .catch(() => {
-        /* leave the optimistic state; a reload will reconcile */
-      });
-  };
+  }, [nodes, universe]);
 
   if (error !== null) {
     return <p className="text-[11px] text-amber-400/80">Lit/dark unavailable ({error}).</p>;
@@ -153,27 +95,20 @@ export default function LitDarkMatrix({
                     {ticker}
                   </button>
                 ) : (
-                  <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-100">
-                    {ticker}
-                  </span>
+                  <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-100">{ticker}</span>
                 )}
                 <div className="flex shrink-0 gap-1">
-                  <button className={bulkBtn} onClick={() => toggleTicker(ticker, true)} title="Light all">
-                    lit
-                  </button>
-                  <button className={bulkBtn} onClick={() => toggleTicker(ticker, false)} title="Darken all">
-                    dark
-                  </button>
+                  <button className={bulkBtn} onClick={() => setTicker(ticker, true)} title="Light all">lit</button>
+                  <button className={bulkBtn} onClick={() => setTicker(ticker, false)} title="Darken all">dark</button>
                 </div>
                 <div className="flex min-w-0 flex-1 flex-wrap gap-1">
                   {rows.map((n) => {
                     const t = tOf.get(`${n.ticker}|${n.expiry}`);
-                    const label =
-                      t !== undefined ? formatExpiry(n.expiry, t, format) : n.expiry.slice(5);
+                    const label = t !== undefined ? formatExpiry(n.expiry, t, format) : n.expiry.slice(5);
                     return (
                       <button
                         key={n.expiry}
-                        onClick={() => toggleNode(n)}
+                        onClick={() => toggleNode(n.ticker, n.expiry)}
                         title={`${n.expiry} · ${n.lit ? "lit (observed)" : "dark (extrapolated)"}`}
                         className={[
                           "rounded border px-1.5 py-0.5 font-mono text-[10px] transition-colors",
@@ -193,9 +128,7 @@ export default function LitDarkMatrix({
             </div>
           );
         })}
-        {nodes.length === 0 && (
-          <p className="py-2 text-[11px] text-slate-500">No nodes yet.</p>
-        )}
+        {byTicker.size === 0 && <p className="py-2 text-[11px] text-slate-500">No nodes yet.</p>}
       </div>
     </div>
   );

@@ -1,67 +1,39 @@
-// Quality workspace: the universe fit-quality dashboard (commercial MVP).
-// Headline tiles (ready / stale / arb / RMS), a per-ticker rollup (incl. the
-// LV surface health) and the per-node exception table — all served from the
-// backend's cached calibrations (GET /quality never fits), refreshed on every
+// Quality lens: the universe fit-quality dashboard (commercial MVP, UI SHELL
+// v2 S3). Headline tiles + the active tab's node certificate on the top row,
+// then a per-ticker rollup (incl. the LV surface health) and the per-node
+// exception table — all served from the backend's cached calibrations (GET
+// /quality never fits) via the shared QualityProvider, refreshed on every
 // calibration epoch like the other views.
-import { useMemo, useState } from "react";
+//
+// Universe-level lens: it renders without a tab, HIGHLIGHTS the active tab's
+// node (ticker row + node row, kept in view) and lets a row click open that
+// node's tab (click = preview, double-click = pinned) through the workbench.
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, FileJson, FileSpreadsheet, RefreshCw } from "lucide-react";
+import QualityNodeCard, {
+  AGE_TIP,
+  BELLY_TIP,
+  EXTRAP_TIP,
+  StatusCell,
+  ageTone,
+  bellyText,
+  bellyTitle,
+  extrapText,
+  fmtAge,
+} from "../components/quality/QualityNodeCard";
+import QualityTiles from "../components/quality/QualityTiles";
 import { fmtBp, sortNodes } from "../lib/qualityFormat";
 import type { SortMode } from "../lib/qualityFormat";
+import { cardClass } from "../lib/ui";
 import { API_BASE_URL } from "../state/api";
-import { useQuality } from "../state/useQuality";
-import type { QualityNode, QualityTicker } from "../state/useQuality";
+import { useQualityReport } from "../state/qualityContext";
+import type { QualityTicker } from "../state/useQuality";
+import { useOptionalWorkbench } from "../state/workbench";
 
-const card =
-  "flex min-h-0 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30";
+const card = `flex min-h-0 flex-col p-4 ${cardClass}`;
 const th = "px-2 py-1.5 font-medium whitespace-nowrap text-right";
 const td = "px-2 py-1 text-right tabular-nums";
-
-/** Human age of the loaded live chain ("4m" / "13.5h"); "—" off-live. */
-function fmtAge(minutes: number | null): string {
-  if (minutes === null) return "—";
-  if (minutes < 90) return `${Math.round(minutes)}m`;
-  const hours = minutes / 60;
-  return hours < 48 ? `${hours.toFixed(1)}h` : `${(hours / 24).toFixed(1)}d`;
-}
-
-/** Display tone mirroring the backend's default 20/120-min thresholds (the
- *  authoritative gate is the backend-issued "stale data" issue). */
-function ageTone(minutes: number | null): string {
-  if (minutes === null) return "text-slate-600";
-  if (minutes >= 120) return "text-rose-400";
-  if (minutes >= 20) return "text-amber-300";
-  return "";
-}
-
-function Tile({ label, value, tone }: { label: string; value: string; tone?: string }) {
-  return (
-    <div className="flex flex-col rounded-lg border border-slate-800 bg-surface-800 px-3 py-2">
-      <span className="text-[10px] uppercase tracking-wider text-slate-500">{label}</span>
-      <span className={`font-mono text-lg leading-tight ${tone ?? "text-slate-200"}`}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function StatusCell({ node }: { node: QualityNode }) {
-  if (node.ready) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-emerald-400">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> ready
-      </span>
-    );
-  }
-  const arb = !node.leeOk || !node.calendarOk;
-  const tone = !node.hasFit ? "text-slate-500" : arb ? "text-rose-400" : "text-amber-300";
-  const dot = !node.hasFit ? "bg-slate-600" : arb ? "bg-rose-500" : "bg-amber-400";
-  return (
-    <span className={`inline-flex items-center gap-1.5 ${tone}`} title={node.issues.join("; ")}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {node.issues.join(" · ")}
-    </span>
-  );
-}
+const activeRow = "bg-accent-500/10 text-accent-200";
 
 function LvCell({ ticker }: { ticker: QualityTicker }) {
   const lv = ticker.lv;
@@ -89,7 +61,8 @@ function LvCell({ ticker }: { ticker: QualityTicker }) {
 }
 
 export default function QualityViewer() {
-  const { report, loading, error, reload } = useQuality();
+  const { report, loading, error, reload, nodeOf } = useQualityReport();
+  const wb = useOptionalWorkbench(); // null outside the shell (tests, legacy mounts)
   const [sortMode, setSortMode] = useState<SortMode>("exceptions");
   const [onlyExceptions, setOnlyExceptions] = useState(false);
 
@@ -98,6 +71,19 @@ export default function QualityViewer() {
     const nodes = onlyExceptions ? report.nodes.filter((n) => !n.ready) : report.nodes;
     return sortNodes(nodes, sortMode);
   }, [report, sortMode, onlyExceptions]);
+
+  // The active tab's node: undefined = no tab open; null = tab open but the
+  // report has no row for it (not lit / never fitted) — the card tells apart.
+  const active = wb?.activeTab ?? null;
+  const activeKey = active?.key ?? null;
+  const activeNode = active === null ? undefined : (nodeOf(active.ticker, active.expiry) ?? null);
+
+  // Keep the highlighted row in view when the tab changes ("nearest" never
+  // jumps a row that is already visible). jsdom lacks scrollIntoView — guard.
+  const activeRowRef = useRef<HTMLTableRowElement>(null);
+  useEffect(() => {
+    activeRowRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [activeKey, rows]);
 
   // Live-only view: without the backend there is nothing meaningful to show.
   if (error !== null && report === null) {
@@ -126,28 +112,17 @@ export default function QualityViewer() {
 
   const s = report.summary;
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 p-4">
-      {/* Headline tiles */}
-      <div className="grid grid-cols-4 gap-2 lg:grid-cols-8">
-        <Tile
-          label="Publish ready"
-          value={`${s.readyNodes}/${s.litNodes}`}
-          tone={s.readyNodes === s.litNodes && s.litNodes > 0 ? "text-emerald-400" : "text-slate-200"}
-        />
-        <Tile label="Fitted" value={`${s.fitted}`} />
-        <Tile label="Stale" value={`${s.stale}`} tone={s.stale > 0 ? "text-amber-300" : undefined} />
-        <Tile label="No fit" value={`${s.noFit}`} tone={s.noFit > 0 ? "text-slate-400" : undefined} />
-        <Tile label="Arb flags" value={`${s.arbFlags}`} tone={s.arbFlags > 0 ? "text-rose-400" : undefined} />
-        <Tile label="Median RMS" value={`${fmtBp(s.medianRmsBp)} bp`} />
-        <Tile
-          label="Worst RMS"
-          value={`${fmtBp(s.worstRmsBp)} bp`}
-          tone={s.worstRmsBp > report.rmsBudgetBp ? "text-amber-300" : undefined}
-        />
-        <Tile
-          label="LV surfaces"
-          value={s.lvTickers > 0 ? `${s.lvArbFree}/${s.lvTickers} arb-free` : "—"}
-          tone={s.lvTickers > 0 && s.lvArbFree < s.lvTickers ? "text-rose-400" : undefined}
+    <div className="flex h-full min-h-0 flex-col gap-3 p-3">
+      {/* Top row: headline tiles + the active tab's certificate card. */}
+      <div className="flex items-stretch gap-3">
+        <div className="min-w-0 flex-1">
+          <QualityTiles summary={s} rmsBudgetBp={report.rmsBudgetBp} />
+        </div>
+        <QualityNodeCard
+          node={activeNode}
+          rmsBudgetBp={report.rmsBudgetBp}
+          fitMode={report.fitMode}
+          label={active === null ? "Node certificate" : `${active.ticker} · ${active.expiry}`}
         />
       </div>
 
@@ -200,7 +175,7 @@ export default function QualityViewer() {
                   <th className={`${th} text-left`}>Ticker</th>
                   <th className={th}>Ready</th>
                   <th className={th}>Stale</th>
-                  <th className={th} title="Age of the loaded live quotes (— when not live)">
+                  <th className={th} title={AGE_TIP}>
                     Age
                   </th>
                   <th className={th}>RMS bp</th>
@@ -210,7 +185,10 @@ export default function QualityViewer() {
               </thead>
               <tbody className="text-slate-300">
                 {report.tickers.map((t) => (
-                  <tr key={t.ticker} className="border-t border-slate-800/60">
+                  <tr
+                    key={t.ticker}
+                    className={`border-t border-slate-800/60 ${active?.ticker === t.ticker ? "bg-accent-500/10" : ""}`}
+                  >
                     <td className="px-2 py-1 text-left font-semibold">{t.ticker}</td>
                     <td className={`${td} ${t.ready === t.nodes ? "text-emerald-400" : ""}`}>
                       {t.ready}/{t.nodes}
@@ -276,66 +254,65 @@ export default function QualityViewer() {
                   <th className={th}>ATM</th>
                   <th className={th}>Lee L/R</th>
                   <th className={th}>Cal viol</th>
-                  <th className={th} title="Extrapolated-region arb over the time-value envelope (advisory): worst Durrleman g · calendar crossing bp. '—' = worthless past the quoted range.">Extrap g·cal</th>
-                  <th className={th} title="Belly butterfly certificate over the traded range: min Durrleman g @ its strike (rose = uncertified, blocks publish). ·R = certified repair refit.">Belly g</th>
+                  <th className={th} title={EXTRAP_TIP}>Extrap g·cal</th>
+                  <th className={th} title={BELLY_TIP}>Belly g</th>
                   <th className={`${th} text-left`}>Status</th>
                 </tr>
               </thead>
               <tbody className="text-slate-300">
-                {rows.map((n) => (
-                  <tr key={`${n.ticker}|${n.expiry}`} className="border-t border-slate-800/60">
-                    <td className="px-2 py-1 text-left">
-                      <span className="font-semibold">{n.ticker}</span>{" "}
-                      <span className="text-slate-500">{n.expiry}</span>
-                      {n.varSwapQuoted ? <span className="ml-1 text-accent-400" title="var-swap quote active">VS</span> : null}
-                      {n.filterActive ? (
-                        <span
-                          className={`ml-1 ${n.filterContaminated ? "text-amber-300" : "text-slate-500"}`}
-                          title={n.filterContaminated ? "filter active (contaminated measurement)" : "filter active"}
-                        >
-                          F
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className={td}>{n.hasFit ? n.model : "—"}</td>
-                    <td className={td}>{n.hasFit ? n.nQuotes : "—"}</td>
-                    <td className={`${td} ${n.hasFit && n.rmsBp > report.rmsBudgetBp ? "text-amber-300" : ""}`}>
-                      {n.hasFit ? fmtBp(n.rmsBp) : "—"}
-                    </td>
-                    <td className={td}>{n.hasFit ? fmtBp(n.maxIvBp) : "—"}</td>
-                    <td className={td}>{n.hasFit ? `${(n.atmVol * 100).toFixed(1)}%` : "—"}</td>
-                    <td className={`${td} ${!n.leeOk ? "text-rose-400" : ""}`}>
-                      {n.hasFit ? `${n.leeLeft.toFixed(2)}/${n.leeRight.toFixed(2)}` : "—"}
-                    </td>
-                    <td className={`${td} ${!n.calendarOk ? "text-rose-400" : ""}`}>
-                      {n.hasFit ? (n.calendarViolation > 0 ? n.calendarViolation.toExponential(1) : "0") : "—"}
-                    </td>
-                    <td className={`${td} ${n.extrapOk === false || n.extrapCalOk === false ? "text-amber-300" : ""}`}>
-                      {n.hasFit
-                        ? `${n.extrapMinG == null ? "—" : n.extrapMinG.toFixed(2)} · ${
-                            n.extrapCalBp == null ? "—" : n.extrapCalBp.toFixed(0)
-                          }`
-                        : "—"}
-                    </td>
-                    <td
-                      className={`${td} ${n.butterflyCertified === false ? "text-rose-400" : ""}`}
-                      title={
-                        n.negShare != null && n.negShare > 0
-                          ? `dip width: ${(n.negShare * 100).toFixed(1)}% of the certificate grid below -tol`
-                          : "belly certified (no grid point below -tol)"
-                      }
+                {rows.map((n) => {
+                  const key = `${n.ticker}|${n.expiry}`;
+                  const isActive = key === activeKey;
+                  return (
+                    <tr
+                      key={key}
+                      ref={isActive ? activeRowRef : undefined}
+                      className={`cursor-pointer border-t border-slate-800/60 ${isActive ? activeRow : "hover:bg-surface-800/60"}`}
+                      title="Click: preview the node's tab · double-click: pin it"
+                      onClick={() => wb?.openNode({ ticker: n.ticker, expiry: n.expiry }, { preview: true })}
+                      onDoubleClick={() => wb?.openNode({ ticker: n.ticker, expiry: n.expiry })}
                     >
-                      {n.hasFit && n.bellyMinG != null
-                        ? `${n.bellyMinG.toFixed(3)}${
-                            n.bellyArgminK != null ? `@${n.bellyArgminK.toFixed(2)}` : ""
-                          }${n.bellyRepaired === true ? " ·R" : ""}`
-                        : "—"}
-                    </td>
-                    <td className="px-2 py-1 text-left">
-                      <StatusCell node={n} />
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-2 py-1 text-left">
+                        <span className="font-semibold">{n.ticker}</span>{" "}
+                        <span className={isActive ? "text-accent-300/80" : "text-slate-500"}>{n.expiry}</span>
+                        {n.varSwapQuoted ? <span className="ml-1 text-accent-400" title="var-swap quote active">VS</span> : null}
+                        {n.filterActive ? (
+                          <span
+                            className={`ml-1 ${n.filterContaminated ? "text-amber-300" : "text-slate-500"}`}
+                            title={n.filterContaminated ? "filter active (contaminated measurement)" : "filter active"}
+                          >
+                            F
+                          </span>
+                        ) : null}
+                      </td>
+                      <td className={td}>{n.hasFit ? n.model : "—"}</td>
+                      <td className={td}>{n.hasFit ? n.nQuotes : "—"}</td>
+                      <td className={`${td} ${n.hasFit && n.rmsBp > report.rmsBudgetBp ? "text-amber-300" : ""}`}>
+                        {n.hasFit ? fmtBp(n.rmsBp) : "—"}
+                      </td>
+                      <td className={td}>{n.hasFit ? fmtBp(n.maxIvBp) : "—"}</td>
+                      <td className={td}>{n.hasFit ? `${(n.atmVol * 100).toFixed(1)}%` : "—"}</td>
+                      <td className={`${td} ${!n.leeOk ? "text-rose-400" : ""}`}>
+                        {n.hasFit ? `${n.leeLeft.toFixed(2)}/${n.leeRight.toFixed(2)}` : "—"}
+                      </td>
+                      <td className={`${td} ${!n.calendarOk ? "text-rose-400" : ""}`}>
+                        {n.hasFit ? (n.calendarViolation > 0 ? n.calendarViolation.toExponential(1) : "0") : "—"}
+                      </td>
+                      <td className={`${td} ${n.extrapOk === false || n.extrapCalOk === false ? "text-amber-300" : ""}`}>
+                        {extrapText(n)}
+                      </td>
+                      <td
+                        className={`${td} ${n.butterflyCertified === false ? "text-rose-400" : ""}`}
+                        title={bellyTitle(n)}
+                      >
+                        {bellyText(n)}
+                      </td>
+                      <td className="px-2 py-1 text-left">
+                        <StatusCell node={n} />
+                      </td>
+                    </tr>
+                  );
+                })}
                 {rows.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="px-2 py-6 text-center text-slate-500">

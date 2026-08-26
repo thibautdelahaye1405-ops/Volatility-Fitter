@@ -478,7 +478,149 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
+## UI SHELL v2 — WORKBENCH ARC (adopted 2026-08-26; VS Code × Affinity Designer)
+
+User ask (2026-08-26): revamp the UI shell into a professional workbench —
+"VS Code or Affinity Designer like (best of both)". Every feature of the
+current UI must land somewhere in the new shell; nothing is dropped.
+
+### Refined ask (the contract)
+
+Fixed-viewport application frame (no page scroll), six regions:
+
+```
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ σ VolFit  Universe▾ Options Help▾ │ Fetch▾ · Calibrate·scope ▾ · Priors▾ · ●Source·As-of │ View▾ Layout▾ │  TOP BAR (h-10)
+├────┬───────────────┬──────────────────────────────────────────────────────────┤
+│ ▣  │ NODES  ⌕ ⚙    │ ▸ SPY 18-Dec-26 ×  NVDA 20-Mar-27 ×  AAPL 19-Jun-26 ×      │  TAB STRIP (one tab per node)
+│ ↗  │ ▾ SPY 5/7 lit │ ┌──────────────────────────────────────────────────────┐ │
+│ ∿  │   ● 18-Dec-26 │ │  ACTIVITY-SPECIFIC WORKSPACE for the active tab node   │ │
+│ ▦  │   ○ 20-Mar-27 │ │  Graph · Forwards · Parametric · Local-Vol · Quality   │ │
+│ ✓  │ ▸ NVDA 2/4    │ │  (charts + numbers; toolbar row; diagnostics aside)    │ │
+│    │               │ └──────────────────────────────────────────────────────┘ │
+├────┴───────────────┴──────────────────────────────────────────────────────────┤
+│ ● Ready · Parametric · SPY 18-Dec-26 │ Nodes 12 lit·3 stale │ As of Live │ ●Massive │ Last: Calibrated 12 nodes 14:32:05 │ 14:33 │  STATUS BAR
+└───────────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Top-left main menu**: `Universe ▾` (fetch verbs, calibrate scopes,
+   priors save/fetch, Manage universe…, saved universes, data source, as-of),
+   `Options` (opens the Settings dialog), `Help ▾` (keyboard shortcuts, API
+   docs, quality report, about).
+2. **Top-right**: `View ▾` (colour scheme, contrast/brightness, expiry-label
+   format, save/reset — the old View tab as a popover) and `Layout ▾` (nodes
+   pane, diagnostics aside, status bar, reset layout, zen).
+3. **Top-centre "command center"**: the workflow verbs stay one click away —
+   Fetch ▾ · Calibrate (scope split) · Priors ▾ · the market pill (source
+   light + as-of). Same components, relocated.
+4. **Activity bar (left, icons, VS Code)**: Graph · Forwards · Parametric ·
+   Local-Vol · Quality — the *lens* applied to every open tab. Ctrl+1…5.
+5. **Nodes pane (right of the activity bar, 1/5 of the screen, resizable,
+   Ctrl+B)**: the universe as a tree — ticker groups (collapsible, lit/dark
+   counts, hover bulk lit/dark) → expiry rows with the lit/dark designation
+   dot (click = toggle, shared with Graph + Universe manager via
+   /universe/lit), quality glyph (ready / stale / arb / no fit), RMS bp.
+   Filter box + "lit only". Single click = preview tab, double click = pin
+   (VS Code semantics). "Manage…" opens the Universe dialog.
+6. **Main pane**: one tab per selected node (preview tabs italic, pinned on
+   double-click/edit; middle-click / × / Alt+W close; Alt+←/→ cycle; persisted
+   across reloads). The tab node drives the shared smile session
+   (ticker, expiry) and vice-versa, so every in-workspace selector that used
+   to pick an expiry (forward ladder row, LV per-expiry table, term chart,
+   graph canvas / diagnostics row, quality node row) now opens/activates the
+   corresponding tab. Graph and Quality are universe-level lenses: they render
+   without a tab and *highlight/inspect* the active tab's node.
+7. **Status bar**: engine narration + gauge (unchanged), then the active
+   lens · node, nodes lit/stale, next fetch, as-of, source light, **last
+   action with timestamp** (fetched / calibrated / priors saved / failed …),
+   wall clock.
+
+### Feature-landing map (old → new; every feature lands)
+
+| Old surface | New home |
+|---|---|
+| Brand menu ▸ Options tab | `Options` (top-left) → Settings dialog with a section rail (Parametric · Local Vol · Calibration · Prior · Kalman · Events · Graph · Workflow · Dynamics) + Apply / Save default / Reset bar |
+| Brand menu ▸ View tab | `View ▾` popover (schemes, contrast, brightness, expiry format, preview, save/reset) |
+| Surfaces ▸ Parametric (smile / compare / densities / log-Q / term / surface / stacked IV / table; axis modes; Target / Calib quotes / Calib fit / Weights / Y-center / Y-fit; quote toolbar; Save prior; GRAPH + FILTER badges; diagnostics aside; var-swap; spot slider) | Parametric lens — toolbar row under the tab strip; node = tab |
+| Surfaces ▸ Local Vol (smile / densities / term / LV surface 3D+heatmap / IV surface / stacked IV / table; axis; clock; graph-extrapolated source; fit diagnostics; per-expiry table; var-swap; LV trace replay) | Local-Vol lens — ticker = tab's, per-expiry views follow the tab expiry |
+| Surfaces ▸ Forwards (ladder, curve chart w/ dividend markers, joint carry, ForwardPanel editor) | Forwards lens — ladder row click ⇒ tab |
+| Universe ▸ Graph (top bar, relationships pane, canvas, inspector, drawer: preview / diagnostics / validation / plan) | Graph lens — inspector follows the active tab; canvas click ⇒ preview tab; drill-in ⇒ pinned tab + Parametric lens + GRAPH overlay |
+| Universe ▸ Selection (search/add, expiry picker, lit/dark matrix, remove, saved universes) | Universe dialog (`Universe ▾ Manage universe…`, nodes-pane ⚙, Ctrl+Shift+U) + lit/dark directly in the nodes pane |
+| Quality dashboard (tiles, ticker rollup, exports, node table, filters) | Quality lens — active node highlighted + a node detail card; exports kept |
+| TopBar Fetch ▾ / Calibrate ▾ / Priors ▾ / market pill | Top-centre command center (same components) + mirrored as `Universe ▾` menu rows |
+| StatusBar narration / Ready summary | Status bar v2 (+ lens·node, last action, clock) |
+| Local-Vol master switch gating the LV tab | Gates the Local-Vol activity icon (tooltip) |
+| Mock fallback badge | Top bar + status bar keep "Mock data" cues; shell renders offline |
+
+### Build phases (S1–S6, one commit per green phase)
+
+- **S1 Shell state** — `lib/workbenchTabs.ts` (pure tab algebra: open
+  preview/pinned, replace preview, pin, close, next/prev, prune to universe;
+  vitest-locked) + `state/workbench.tsx` (activity, tabs, layout, dialogs;
+  localStorage persistence; two-way sync with the smile session).
+- **S2 Chrome** — `components/shell/`: ActivityBar, TopBar (+ menus),
+  NodesPane (tree, filter, lit/dark, resizer), TabStrip, MainPane, StatusBar
+  v2, Dialog primitive; `state/litMap.tsx` (shared lit designation) and
+  `state/qualityContext.tsx` (one /quality read shared by the tree and the
+  Quality lens).
+- **S3 Lenses** — adapt the five workspaces to be tab-driven (selectors
+  removed, selection round-trips into tabs), files kept ≤ 400 lines by
+  extracting the Parametric / Local-Vol toolbars.
+- **S4 Dialogs & popovers** — Universe dialog, Settings dialog (section rail),
+  View popover, Layout menu, Help (shortcuts dialog, about, links).
+- **S5 Shortcuts & polish** — keyboard map (`lib/shortcuts.ts`), aria roles,
+  density, empty states, offline/mock behaviour.
+- **S6 Verification** — tsc, vitest (existing 246 + new), `npm run build`,
+  `npm run smoke:ui` rewritten for the shell (activity bar + menus +
+  dialogs), screenshots; STATUS wrap.
+
 ## STATUS — updated 2026-08-26 (resume here)
+
+### 🖥️ UI SHELL v2 — WORKBENCH SHIPPED 2026-08-26 (wrap 2026-08-26b)
+
+The VS Code × Affinity workbench replaces the tabbed top-bar shell (roadmap
+section "UI SHELL v2 — WORKBENCH ARC" above; every S1–S6 phase landed):
+
+- **Frame** (`frontend/src/App.tsx` + `components/shell/`): TopBar (Universe ▾
+  · Options · Help ▾ | command center Fetch / Calibrate·scope / Priors /
+  market pill | View ▾ · Layout ▾), ActivityBar (Graph · Forwards ·
+  Parametric · Local Vol · Quality, Alt+1…5), NodesPane (universe tree,
+  1/5 wide, resizable, Ctrl+B; lit/dark dot toggles on the shared
+  `state/litMap.tsx`; quality glyph + RMS bp per node from
+  `state/qualityContext.tsx`; filter + lit-only), MainPane (TabStrip: one
+  tab per node, VS Code preview/pin semantics, drag reorder, context menu,
+  Alt+←/→, Alt+W) + the lens for the active tab, StatusBar v2 (narration ·
+  lens·node · nodes/next fetch/as-of/source/quote age · LAST ACTION with
+  timestamp · clock), ShellDialogs (Universe manager, Options with a
+  section rail, Keyboard shortcuts, About).
+- **State**: `lib/workbenchTabs.ts` (pure tab algebra, 13 vitest locks) +
+  `state/workbench.tsx` (activity / tabs / layout / dialog, localStorage
+  `volfit.workbench.v1`, two-way sync with the smile session guarded by a
+  push ref so restored tabs beat the session's mid-ladder default; tabs
+  pruned against the universe). `useWorkflow` gained `lastAction`; its wire
+  types/labels moved to `state/workflowTypes.ts`.
+- **Lenses** are tab-driven (no Underlying/Expiry selectors): Parametric
+  (toolbar + overlay badges extracted to `components/parametric/`), Local
+  Vol (`components/localvol/` toolbar + aside; expiry index derived from the
+  session), Forwards (ladder row ⇒ preview tab), Graph (inspector = active
+  tab; canvas/diagnostics click ⇒ preview tab; drill-in ⇒ pinned tab +
+  Parametric lens + GRAPH overlay; cinematics in `state/useGraphCinematics`),
+  Quality (`components/quality/` tiles + node certificate card; active row
+  highlighted, row click ⇒ tab).
+- **Verification**: tsc clean; vitest 39 files / 259 tests (was 246);
+  `npm run build`; `npm run smoke:ui` REWRITTEN for the shell (6 lens steps,
+  nodes-pane→tab, 4 menus, 4 dialogs — 15 steps green, screenshots in
+  frontend/.smoke/); live pass against a synthetic backend (fetch +
+  calibrate + graph Run + save priors): 0 page/console errors, quality
+  glyphs, tree RMS, node card and the status-bar last-action chip all
+  populated.
+- **Caveats / follow-ons**: Ctrl+digits, Ctrl+W and Ctrl+PgUp/PgDn are
+  browser-reserved (lens switch = Alt+digits; Firefox uses Alt+digits for
+  its own tabs). Lens view state (sub-view, axis mode) is per lens, not per
+  tab (deliberate — comparing nodes keeps the view). The status-bar "Nodes N
+  lit" still reports the backend's calibrated-lit count (unchanged
+  semantics). Ideas not built: per-tab view state, keyboard navigation
+  inside the nodes tree, a command palette (Ctrl+K).
 
 ### 📌 WHERE THINGS STAND (2026-07-26, consolidated)
 

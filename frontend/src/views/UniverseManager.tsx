@@ -1,13 +1,14 @@
-// Universe-management workspace: curate the tickers the app works on.
+// Universe manager (the "Manage universe" dialog since UI SHELL v2): curate
+// the tickers the app works on.
 //
 // One mental model, one card: every ticker row shows its expiry chips with the
-// lit/dark designation toggled directly on the chips (shared with the Graph
-// tab), ▸ expands the expiry-selection picker, Remove drops the ticker. The
-// header hosts the catalogue search (results in an anchored dropdown); a
-// narrow aside saves / loads named universes (when a store is configured).
-// Edits flow into the shared smile session, so every other workspace's
-// selectors update immediately. Live backend only (the universe lives on the
-// server).
+// lit/dark designation toggled directly on the chips (the shared lit map —
+// nodes pane + Graph canvas follow), ▸ expands the expiry-selection picker,
+// Remove drops the ticker. The header hosts the catalogue search (results in
+// an anchored dropdown); a narrow aside saves / loads named universes (when a
+// store is configured). Edits flow into the shared smile session, so the
+// nodes pane and every lens update immediately (tabs of removed nodes are
+// pruned). Live backend only (the universe lives on the server).
 import { useState } from "react";
 import { FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import { useUniverse } from "../state/useUniverse";
@@ -48,7 +49,7 @@ export default function UniverseManager() {
   if (source === "mock") {
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-900 p-8 text-center shadow-xl shadow-black/30">
+        <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-800/40 p-8 text-center">
           <h2 className="mb-2 text-sm font-semibold text-slate-100">
             Universe editing requires the live backend
           </h2>
@@ -69,7 +70,6 @@ export default function UniverseManager() {
     <div className="flex h-full flex-col gap-4 p-4">
       {/* Header: summary · catalogue search (anchored dropdown) · error */}
       <div className="flex shrink-0 flex-wrap items-center gap-3">
-        <h1 className="text-sm font-semibold text-slate-100">Universe</h1>
         <span className="text-[11px] text-slate-500">
           {tickers.length} underlying{tickers.length === 1 ? "" : "s"} · {nodeCount} expiries · as
           of {universe?.asOf}

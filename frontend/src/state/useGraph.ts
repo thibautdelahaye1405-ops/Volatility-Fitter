@@ -13,6 +13,7 @@
 // defaults).
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { announceLitChanged } from "./litMap";
 
 /** Baseline fitted handles of one smile node (GET /graph/nodes). */
 export interface GraphNodeBase {
@@ -218,6 +219,7 @@ function persistLit(key: string, lit: boolean): void {
   if (ticker === "" || expiry === "") return;
   void api
     .put(`/universe/lit/${ticker}/${encodeURIComponent(expiry)}`, { body: { lit } })
+    .then(() => announceLitChanged()) // nodes pane + Universe dialog refetch
     .catch(() => {
       /* designation is best-effort; the local lit set already updated */
     });

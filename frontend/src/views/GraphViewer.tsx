@@ -15,7 +15,14 @@
 // /graph/extrapolate — BOTH observation sources ride the production solve
 // since P5b U3; the what-if ships syntheticObservations, non-persisting) —
 // there is deliberately no mock fallback.
-import { useEffect, useMemo, useState } from "react";
+//
+// Workbench integration (UI SHELL v2): inside the shell the inspected node IS
+// the active tab — a canvas / diagnostics click opens that node's tab
+// (preview), the drill-in opens a pinned tab under the Parametric lens with
+// the GRAPH overlay focus, and the Relationships pane follows Layout ▸
+// Diagnostics aside. Without a provider (tests) the legacy local selection
+// state applies unchanged.
+import { useMemo, useState } from "react";
 import type { GraphEdgeSelection } from "../components/GraphNetworkChart";
 import CanvasCard from "../components/graphshell/CanvasCard";
 import GraphDrawer, { type DrawerTab } from "../components/graphshell/GraphDrawer";
@@ -33,15 +40,10 @@ import { useLooComparison } from "../state/useLooComparison";
 import { usePreflight } from "../state/usePreflight";
 import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
-import { useWaveTimeline } from "../state/useWaveTimeline";
-import { useAttributionParticles } from "../state/useAttributionParticles";
-import { waveHops } from "../lib/graphWave";
+import { useOptionalWorkbench } from "../state/workbench";
+import { useGraphCinematics } from "../state/useGraphCinematics";
+import OfflineCard from "../components/shell/OfflineCard";
 
-/** Small bordered button, matching the smile toolbar style. */
-const buttonClass =
-  "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
-  "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
-  "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
 
 interface GraphViewerProps {
   /** Switch the app to the Smile tab (after this view sets the node). */
@@ -66,8 +68,19 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     [graph.params, flatAtm, crossBeta, runDraft],
   );
 
-  // Shell state: the inspected node/edge and the bottom drawer.
-  const [selected, setSelected] = useState<{ ticker: string; expiry: string } | null>(null);
+  // Shell state: the inspected node/edge and the bottom drawer. Inside the
+  // workbench the inspected node is the active tab (closable via the
+  // inspector's × until the tab changes); standalone it is local state.
+  const wb = useOptionalWorkbench();
+  const [localSelected, setLocalSelected] = useState<{ ticker: string; expiry: string } | null>(null);
+  const [hiddenKey, setHiddenKey] = useState<string | null>(null);
+  const selected = useMemo<{ ticker: string; expiry: string } | null>(() => {
+    if (wb === null) return localSelected;
+    const t = wb.activeTab;
+    if (t === null || t.key === hiddenKey) return null;
+    return { ticker: t.ticker, expiry: t.expiry };
+  }, [wb, localSelected, hiddenKey]);
+  const showRelationships = wb === null || wb.layout.aside;
   const [selectedEdge, setSelectedEdge] = useState<GraphEdgeSelection | null>(null);
   // Bumped by the inspector's "Edit relations" — RelationshipsPane opens the
   // row editor on change.
@@ -126,65 +139,42 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const chartLit = manual ? graph.lit : extrapolating ? extraChartLit : {};
   const chartResults = extra.results;
 
-  // Solve cinematics: stage the posterior reveal by REAL BFS hop from the lit
-  // set over the real edge topology (honest distance, not decoration).
-  const litKeySet = useMemo(() => new Set(Object.keys(chartLit)), [chartLit]);
-  const hops = useMemo(
-    () =>
-      waveHops(
-        (chartNodes ?? []).map((n) => nodeKey(n.ticker, n.expiry)),
-        edges,
-        litKeySet,
-      ),
-    [chartNodes, edges, litKeySet],
-  );
-  // Wave epoch: bump when a NEW result set lands. Keyed off the underlying
-  // state identity (extra.nodes) — extra.results is rebuilt every render, so
-  // watching chartResults directly would loop.
-  const resultsIdentity = extra.nodes;
-  const [waveEpoch, setWaveEpoch] = useState(0);
-  useEffect(() => {
-    if (resultsIdentity !== null) setWaveEpoch((v) => v + 1);
-  }, [resultsIdentity]);
-  const timeline = useWaveTimeline(waveEpoch, hops.maxHop);
-
-  // Attribution particles (calibrations source only): fetch as soon as the
-  // results land — the overlay's own epoch timer drives when they display.
-  // Candidates = the dark nodes the propagation moved most.
-  const particleCandidates = useMemo(
-    () =>
-      manual || extra.nodes === null
-        ? []
-        : extra.nodes
-            .filter((n) => !n.lit)
-            .sort((a, b) => Math.abs(b.shiftBp) - Math.abs(a.shiftBp))
-            .slice(0, 5)
-            .map((n) => ({ ticker: n.ticker, expiry: n.expiry, shiftBp: n.shiftBp })),
-    [manual, extra.nodes],
-  );
-  const particles = useAttributionParticles(
-    !manual && extra.nodes !== null,
-    particleCandidates,
-    extrapolateBody,
-  );
+  // Solve cinematics (BFS-hop reveal, wave epoch, attribution particles).
+  const cine = useGraphCinematics(chartNodes, edges, chartLit, extra.nodes, manual, extrapolateBody);
+  const { waveEpoch, particles } = cine;
 
   /** Drill into a node's smile: point the shared session at it, then jump.
    *  With the calibrations source also set the graph-extrapolation focus so
    *  the Smile viewer overlays this node's reconstructed smile + band. */
   const openSmile = (ticker: string, expiry: string) => {
-    setTicker(ticker); // also picks a default expiry on the ladder…
-    setExpiry(expiry); // …which this immediately overrides with the node's
+    if (wb !== null) {
+      wb.openNode({ ticker, expiry }, { activity: "parametric" }); // pinned tab
+    } else {
+      setTicker(ticker); // also picks a default expiry on the ladder…
+      setExpiry(expiry); // …which this immediately overrides with the node's
+    }
     setFocus(manual ? null : { ticker, expiry, body: extrapolateBody });
     onNavigateToSmile();
   };
 
-  /** Row / canvas selection for the Inspector (re-click deselects). */
+  /** Row / canvas selection for the Inspector: opens the node's tab (preview)
+   *  in the workbench; standalone, a re-click deselects. */
   const selectNode = (ticker: string, expiry: string) => {
-    setSelected((prev) =>
+    if (wb !== null) {
+      setHiddenKey(null);
+      wb.openNode({ ticker, expiry }, { preview: true });
+      return;
+    }
+    setLocalSelected((prev) =>
       prev !== null && prev.ticker === ticker && prev.expiry === expiry
         ? null
         : { ticker, expiry },
     );
+  };
+  /** Inspector ×: hide the inspection (workbench: until the tab changes). */
+  const closeInspector = () => {
+    if (wb !== null) setHiddenKey(wb.activeTab?.key ?? null);
+    else setLocalSelected(null);
   };
   /** Canvas single-click: manual lights/dims; calibrations inspects. */
   const onChartToggle = (key: string) => {
@@ -270,24 +260,16 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     }
   };
 
-  // Inspector data for the selected node.
+  // Inspector data for the selected node (baseline facts + solved posterior).
+  const isSel = (n: { ticker: string; expiry: string }) =>
+    selected !== null && n.ticker === selected.ticker && n.expiry === selected.expiry;
   const inspectorBase = useMemo(
-    () =>
-      selected === null
-        ? null
-        : (chartNodes ?? []).find(
-            (n) => n.ticker === selected.ticker && n.expiry === selected.expiry,
-          ) ?? null,
-    [selected, chartNodes],
+    () => (chartNodes ?? []).find(isSel) ?? null,
+    [selected, chartNodes], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const inspectorPost = useMemo(
-    () =>
-      selected === null
-        ? null
-        : (extra.nodes ?? []).find(
-            (n) => n.ticker === selected.ticker && n.expiry === selected.expiry,
-          ) ?? null,
-    [selected, extra.nodes],
+    () => (extra.nodes ?? []).find(isSel) ?? null,
+    [selected, extra.nodes], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // Summary strip: observed / extrapolated counts + the solve's max |shift|.
@@ -302,22 +284,11 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   // Backend offline (and nothing loaded): centered empty-state card.
   if (graph.error !== null && graph.nodes === null) {
     return (
-      <div className="flex h-full items-center justify-center p-4">
-        <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-900 p-8 text-center shadow-xl shadow-black/30">
-          <h2 className="mb-2 text-sm font-semibold text-slate-100">
-            Graph solver requires the live backend
-          </h2>
-          <p className="mb-1 text-xs text-slate-500">
-            Start the FastAPI server on :8000 and retry.
-          </p>
-          <p className="mb-5 truncate text-[10px] text-amber-400/80" title={graph.error}>
-            {graph.error}
-          </p>
-          <button className={buttonClass} onClick={graph.reload}>
-            Retry
-          </button>
-        </div>
-      </div>
+      <OfflineCard
+        title="Graph solver requires the live backend"
+        error={graph.error}
+        onRetry={graph.reload}
+      />
     );
   }
 
@@ -329,7 +300,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
   const darkCount = Math.max(0, (chartNodes ?? []).length - litCount);
 
   return (
-    <div className="flex h-full flex-col gap-3 p-4">
+    <div className="flex h-full flex-col gap-3 p-3">
       <GraphTopBar
         source={source}
         setSource={setSource}
@@ -356,7 +327,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
       />
 
       <div className="flex min-h-0 flex-1 gap-3">
-        <RelationshipsPane
+        {showRelationships && <RelationshipsPane
           graph={graph}
           messages={messagesMode}
           layered={graph.params.propagationMode === "layered_dynamic_harmonic"}
@@ -366,7 +337,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           onEdgesSaved={onEdgesSaved}
           openEditorSignal={editorSignal}
           persistedRows={topology.persistedRows}
-        />
+        />}
 
         <CanvasCard
           loading={(graph.loading || graph.nodes === null) && !extrapolating}
@@ -376,12 +347,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           results={chartResults}
           onToggle={onChartToggle}
           onOpenSmile={openSmile}
-          wave={{
-            hopOf: hops.hopOf,
-            revealedHop: timeline.revealedHop,
-            animating: timeline.animating,
-            skip: timeline.skip,
-          }}
+          wave={cine.wave}
           particles={particles}
           waveEpoch={waveEpoch}
           manual={manual}
@@ -402,7 +368,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           selectedEdge={selectedEdge}
           onCloseEdge={() => setSelectedEdge(null)}
           onEditRelations={() => setEditorSignal((v) => v + 1)}
-          onClose={() => setSelected(null)}
+          onClose={closeInspector}
           onOpenSmile={openSmile}
         />
       </div>

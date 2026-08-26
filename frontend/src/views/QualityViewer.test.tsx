@@ -1,15 +1,26 @@
-// Quality workspace: tiles, exception filtering and the offline card, with
-// the data hook mocked (the /quality contract is locked by
-// backend/tests/test_quality.py).
+// Quality lens: tiles, exception filtering, the node card hint and the
+// offline card, with the data hook mocked (the /quality contract is locked
+// by backend/tests/test_quality.py). The viewer reads the shared
+// QualityProvider (which wraps the same mocked hook); no WorkbenchProvider
+// is mounted, so the node card shows its "open a node" hint.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import QualityViewer from "./QualityViewer";
+import { QualityProvider } from "../state/qualityContext";
 import type { QualityNode, QualityReport } from "../state/useQuality";
 
 const mockUse = vi.fn();
 vi.mock("../state/useQuality", () => ({
   useQuality: () => mockUse(),
 }));
+
+function renderViewer() {
+  return render(
+    <QualityProvider>
+      <QualityViewer />
+    </QualityProvider>,
+  );
+}
 
 function node(over: Partial<QualityNode>): QualityNode {
   return {
@@ -60,18 +71,20 @@ afterEach(() => {
 describe("QualityViewer", () => {
   it("renders the headline tiles and both tables", () => {
     mockUse.mockReturnValue({ report: report(), loading: false, error: null, reload: vi.fn() });
-    render(<QualityViewer />);
+    renderViewer();
     expect(screen.getByText("Publish ready")).toBeTruthy();
     expect(screen.getAllByText("1/2").length).toBe(2); // ready tile + ticker rollup
     expect(screen.getByText("5.6 bp")).toBeTruthy(); // median RMS tile
     // The sub-0.1bp LV RMS renders with sig figs, not a fake 0.0.
     expect(screen.getByText(/0\.0086 bp/)).toBeTruthy();
     expect(screen.getAllByText("stale").length).toBeGreaterThan(0); // exception status
+    // No workbench mounted -> no active tab -> the node card shows its hint.
+    expect(screen.getByText(/Open a node/)).toBeTruthy();
   });
 
   it("filters to exceptions only", () => {
     mockUse.mockReturnValue({ report: report(), loading: false, error: null, reload: vi.fn() });
-    render(<QualityViewer />);
+    renderViewer();
     expect(screen.getAllByText("ALPHA").length).toBeGreaterThan(2); // rollup + 2 rows
     fireEvent.click(screen.getByLabelText(/exceptions only/i));
     // Only the stale node's row remains in the node table.
@@ -95,7 +108,7 @@ describe("QualityViewer", () => {
       }),
     ];
     mockUse.mockReturnValue({ report: r, loading: false, error: null, reload: vi.fn() });
-    render(<QualityViewer />);
+    renderViewer();
     expect(screen.getByText("Belly g")).toBeTruthy(); // the new column
     expect(screen.getByText("0.420@-0.15")).toBeTruthy(); // certified chip
     const bad = screen.getByText("-0.049@0.30"); // uncertified chip, rose
@@ -106,7 +119,7 @@ describe("QualityViewer", () => {
   it("shows the live-only offline card with retry", () => {
     const reload = vi.fn();
     mockUse.mockReturnValue({ report: null, loading: false, error: "backend down", reload });
-    render(<QualityViewer />);
+    renderViewer();
     expect(screen.getByText(/requires the live backend/i)).toBeTruthy();
     fireEvent.click(screen.getByText("Retry"));
     expect(reload).toHaveBeenCalledOnce();

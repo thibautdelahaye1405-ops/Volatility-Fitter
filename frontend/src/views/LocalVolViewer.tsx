@@ -15,10 +15,17 @@
 // Densities / Stacked IV / IV surface are built client-side from the cached fit's
 // per-expiry data; Term / Table fetch sibling endpoints that reuse the cached
 // affine fit (useAffineView). Live backend only (no mock fallback).
-import { useEffect, useMemo, useState } from "react";
-import { Play, Waypoints } from "lucide-react";
+//
+// UI SHELL v2: the lens follows the workbench's active node tab — the ticker
+// comes from the shared smile session (via useAffine) and the per-expiry
+// views show the SESSION expiry (index derived, fallback 0 when the session
+// expiry is not in the LV ladder). Any expiry pick made here (Term chart
+// click, per-expiry table row) goes through selectExpiry(), which opens a
+// preview tab; outside the shell it falls back to a local override.
+// Header controls live in LocalVolToolbar; the diagnostics column in
+// LocalVolAside.
+import { useMemo, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
-import LvTracePlayer from "../components/LvTracePlayer";
 import LocalVolSmile from "../components/LocalVolSmile";
 import LocalVolTable from "../components/LocalVolTable";
 import type { AffineTableData } from "../components/LocalVolTable";
@@ -26,87 +33,38 @@ import SurfaceMesh from "../components/SurfaceMesh";
 import type { SurfaceMeshData } from "../components/SurfaceMesh";
 import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesChart";
 import type { OverlayMarker, OverlaySeries } from "../components/OverlayCurvesChart";
-import { lvCalendarMarker } from "../lib/stackedVariance";
 import TermChart from "../components/TermChart";
-import SegmentedControl from "../components/SegmentedControl";
-import VarSwapPanel from "../components/VarSwapPanel";
+import LocalVolToolbar, { PER_EXPIRY, fmtBp0 } from "../components/localvol/LocalVolToolbar";
+import type { LvAxis, LvRender, LvView } from "../components/localvol/LocalVolToolbar";
+import LocalVolAside from "../components/localvol/LocalVolAside";
+import { lvCalendarMarker } from "../lib/stackedVariance";
 import { useSmileSession } from "../state/smileSession";
+import { useOptionalWorkbench } from "../state/workbench";
 import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
 import { useEvents } from "../state/useTerm";
+import type { ClockMode, TermResponse } from "../state/useTerm";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { buildIvSurface, smileAxisContext } from "../lib/affineSurface";
 import { formatExpiry } from "../lib/expiryFormat";
-import { formatPct } from "../lib/chartScale";
-import {
-  AXIS_MODE_OPTIONS,
-  axisModeLabel,
-  axisTickLabel,
-  axisTransform,
-} from "../lib/axisModes";
+import { axisModeLabel, axisTickLabel, axisTransform } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
-import type { ClockMode, TermResponse } from "../state/useTerm";
-
-const selectClass =
-  "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
-  "font-medium text-slate-200 outline-none hover:border-slate-600 focus:border-accent-500";
-const buttonClass =
-  "rounded-md border border-slate-700 bg-surface-800 px-2.5 py-1.5 text-xs " +
-  "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
-  "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
-
-
-/** Chart-card sub-tabs, mirroring the Parametric workspace. "LV surface" is the
- *  nodal local-vol heatmap; "IV surface" is the reconstructed implied-vol
- *  surface (both heatmaps over t × strike). */
-type LvView =
-  | "smile" | "densities" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table";
-const LV_VIEWS: { id: LvView; label: string }[] = [
-  { id: "smile", label: "Smile" },
-  { id: "densities", label: "Densities" },
-  { id: "term", label: "Term" },
-  { id: "lvsurface", label: "LV surface" },
-  { id: "ivsurface", label: "IV surface" },
-  { id: "stackedvar", label: "Stacked IV" },
-  { id: "table", label: "Table" },
-];
-/** Which sub-tabs are per-expiry (need the expiry selector). */
-const PER_EXPIRY: Record<LvView, boolean> = {
-  smile: true, table: true,
-  densities: false, term: false, lvsurface: false, ivsurface: false, stackedvar: false,
-};
-/** Views whose x-axis can switch coordinate, exactly like the Parametric Smile:
- *  the reconstructed smile, the density overlay, the IV surface and stacked var. */
-const AXIS_MODE_VIEWS = new Set<LvView>(["smile", "densities", "ivsurface", "stackedvar"]);
-
-/** X-axis scales for the 3D LV mesh. The nodal grid lives in x = K/F, so only
- *  coordinates derivable from it are offered (Δ / normalized need an implied
- *  vol the LV grid does not carry). Strike uses the per-row forward F(t)
- *  interpolated from the expiry ladder, shearing the sheet like the IV view. */
-type LvAxis = "moneyness" | "logmoneyness" | "strike";
-const LV_AXIS_OPTIONS: { id: LvAxis; label: string }[] = [
-  { id: "moneyness", label: "x = K/F" },
-  { id: "logmoneyness", label: "k = ln(K/F)" },
-  { id: "strike", label: "Strike K" },
-];
+import { buttonClass, cardClass, chartMessageClass } from "../lib/ui";
 
 const chartMessage = (text: string) => (
-  <div className="flex h-full items-center justify-center text-xs text-slate-500">{text}</div>
+  <div className={chartMessageClass}>{text}</div>
 );
-
-/** Whole-bp figure that survives a null/NaN metric (a diverged fit's NaN
- *  serializes to null over JSON — degrade to "—", never crash the tab). */
-const fmtBp0 = (v: number | null | undefined): string =>
-  v == null || !Number.isFinite(v) ? "—" : v.toFixed(0);
 
 export default function LocalVolViewer() {
   const {
-    data, loading, refreshing, error, reload, ticker, setTicker, tickers,
+    data, loading, refreshing, error, reload, ticker,
     varSwapEnabled, varSwapNonce, graphSource, setGraphSource,
     applyVarSwap, undoVarSwap, redoVarSwap,
   } = useAffine();
 
-  const { source, spotVersion, fitMode } = useSmileSession();
+  const { source, spotVersion, fitMode, expiry: sessionExpiry } = useSmileSession();
+  // Null outside the shell (tests / legacy mounts): fall back to local state.
+  const wb = useOptionalWorkbench();
   const live = source === "live";
   // Spot moves transport the cached surface; fold into the derived-view key so
   // density / term / table refetch alongside the surface (which depends on it
@@ -117,25 +75,27 @@ export default function LocalVolViewer() {
   // Strike-axis display mode for the density / IV-surface / stacked-IV views.
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
   // LV-surface render mode: 3D local-variance mesh (default) or vertex heatmap.
-  const [lvRender, setLvRender] = useState<"mesh" | "heatmap">("mesh");
+  const [lvRender, setLvRender] = useState<LvRender>("mesh");
   // X-axis scale for the 3D LV mesh (the heatmap stays in x = K/F).
   const [lvAxis, setLvAxis] = useState<LvAxis>("moneyness");
   // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
   // + maturity-clock toggle, so event-time dilation is consistent in LV's Term.
   const events = useEvents(ticker);
   const [axisClock, setAxisClock] = useState<ClockMode>("real");
-  // Selected expiry for the per-expiry views, clamped to range.
-  const [expiryIdx, setExpiryIdx] = useState(0);
-  useEffect(() => {
-    if (data && expiryIdx >= data.smiles.length) setExpiryIdx(0);
-  }, [data, expiryIdx]);
-  // Fit replay (V3.5 item 13): the ⏵ toggle + an epoch that advances whenever a
-  // fresh affine payload lands, so useLvTrace refetches and auto-replays once.
-  const [traceOpen, setTraceOpen] = useState(false);
-  const [traceEpoch, setTraceEpoch] = useState(0);
-  useEffect(() => {
-    if (data && data.hasFit !== false) setTraceEpoch((e) => e + 1);
-  }, [data]);
+
+  // Selected expiry for the per-expiry views = the session's (the active tab
+  // drives it inside the shell). Without a workbench a local override stands
+  // in for the tab strip. Index falls back to 0 when the expiry is not in the
+  // LV ladder (findIndex → -1) or before the fit lands.
+  const [localExpiry, setLocalExpiry] = useState<string | null>(null);
+  const wantedExpiry = wb !== null ? sessionExpiry : (localExpiry ?? sessionExpiry);
+  const expiryIdx = Math.max(0, data?.smiles.findIndex((s) => s.expiry === wantedExpiry) ?? 0);
+  /** Select an expiry from inside the lens: open / focus its node's preview tab
+   *  (the tab pushes it into the session), or the local fallback off-shell. */
+  const selectExpiry = (e: string) => {
+    if (wb !== null) wb.openNode({ ticker, expiry: e }, { preview: true });
+    else setLocalExpiry(e);
+  };
 
   const expiry = data?.smiles[expiryIdx]?.expiry ?? null;
 
@@ -269,7 +229,7 @@ export default function LocalVolViewer() {
   if (error !== null && data === null) {
     return (
       <div className="flex h-full items-center justify-center p-4">
-        <div className="max-w-sm rounded-xl border border-slate-800 bg-surface-900 p-8 text-center shadow-xl shadow-black/30">
+        <div className={`${cardClass} max-w-sm p-8 text-center`}>
           <h2 className="mb-2 text-sm font-semibold text-slate-100">
             Local-vol fit requires the live backend
           </h2>
@@ -350,8 +310,8 @@ export default function LocalVolViewer() {
               dividends={term.data.dividends}
               selectedExpiry={smile?.expiry ?? null}
               onSelectExpiry={(e) => {
-                const idx = data?.smiles.findIndex((s) => s.expiry === e) ?? -1;
-                if (idx >= 0) setExpiryIdx(idx);
+                // Only ladder expiries the LV fit carries can be selected.
+                if (data.smiles.some((s) => s.expiry === e)) selectExpiry(e);
               }}
             />
           )
@@ -362,161 +322,29 @@ export default function LocalVolViewer() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      {/* Header: Underlying · Expiry · sub-tabs · view controls, status badges
-          right-aligned — the same grammar as the Parametric workspace. */}
-      <div className="flex shrink-0 flex-wrap items-center gap-3">
-        <label className="flex items-center gap-2 text-xs text-slate-500">
-          Underlying
-          <select
-            className={selectClass}
-            value={ticker}
-            onChange={(e) => setTicker(e.target.value)}
-            disabled={tickers.length === 0}
-          >
-            {tickers.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </label>
+    <div className="flex h-full flex-col gap-3 p-3">
+      {/* Header: sub-tabs · view controls · source toggle, status badges
+          right-aligned. The node identity is in the workbench tab strip. */}
+      <LocalVolToolbar
+        view={view}
+        onViewChange={setView}
+        axisMode={axisMode}
+        onAxisModeChange={setAxisMode}
+        lvRender={lvRender}
+        onLvRenderChange={setLvRender}
+        lvAxis={lvAxis}
+        onLvAxisChange={setLvAxis}
+        axisClock={axisClock}
+        onAxisClockChange={setAxisClock}
+        graphSource={graphSource}
+        onGraphSourceChange={setGraphSource}
+        data={data}
+        calendarWorstLabel={lvCalMarkers[0]?.label}
+      />
 
-        {/* Per-expiry selector (smile / table) — right after Underlying, matching
-            the Parametric header's Underlying · Expiry · sub-tabs order. */}
-        {PER_EXPIRY[view] && (
-          <label className="flex items-center gap-2 text-xs text-slate-500">
-            Expiry
-            <select
-              className={selectClass}
-              value={data?.smiles[expiryIdx]?.expiry ?? ""}
-              onChange={(e) => {
-                const i = (data?.smiles ?? []).findIndex((s) => s.expiry === e.target.value);
-                if (i >= 0) setExpiryIdx(i);
-              }}
-              disabled={(data?.smiles ?? []).length === 0}
-            >
-              {(data?.smiles ?? []).map((s) => (
-                <option key={s.expiry} value={s.expiry}>
-                  {formatExpiry(s.expiry, s.t, format)}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        <SegmentedControl options={LV_VIEWS} value={view} onChange={setView} size="xs" />
-
-        {/* Strike-axis display mode (densities / IV surface / stacked IV) */}
-        {AXIS_MODE_VIEWS.has(view) && (
-          <select
-            className={selectClass}
-            value={axisMode}
-            title="Strike-axis display mode"
-            onChange={(e) => setAxisMode(e.target.value as AxisMode)}
-          >
-            {AXIS_MODE_OPTIONS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {/* LV-surface render mode: 3D local-variance mesh vs vertex heatmap */}
-        {view === "lvsurface" && (
-          <SegmentedControl
-            options={[
-              { id: "mesh" as const, label: "3D σ²_loc" },
-              { id: "heatmap" as const, label: "Heat map" },
-            ]}
-            value={lvRender}
-            onChange={setLvRender}
-            size="xs"
-          />
-        )}
-
-        {/* X-axis scale for the 3D LV mesh (grid-native coordinates only) */}
-        {view === "lvsurface" && lvRender === "mesh" && (
-          <select
-            className={selectClass}
-            value={lvAxis}
-            title="Strike-axis display scale"
-            onChange={(e) => setLvAxis(e.target.value as LvAxis)}
-          >
-            {LV_AXIS_OPTIONS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        )}
-
-        {/* Maturity clock (Term sub-tab): real vs shared event-dilated time */}
-        {view === "term" && (
-          <SegmentedControl
-            options={[
-              { id: "real" as ClockMode, label: "Real time" },
-              { id: "dilated" as ClockMode, label: "Event-dilated" },
-            ]}
-            value={axisClock}
-            onChange={setAxisClock}
-            size="xs"
-          />
-        )}
-
-        {/* Source: live quotes vs the graph-extrapolated LV projection (Phase 9) */}
-        <button
-          onClick={() => setGraphSource(!graphSource)}
-          title="Calibrate the LV surface to the graph-extrapolated smiles instead of the live quotes"
-          className={[
-            "flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
-            graphSource
-              ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-              : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
-          ].join(" ")}
-        >
-          <Waypoints size={12} strokeWidth={1.75} className="opacity-80" />
-          Graph-extrapolated
-        </button>
-
-        {data && (
-          <span className="ml-auto flex items-center gap-3 font-mono text-[11px] text-slate-500">
-            {data.stale && (
-              <span
-                title="Inputs changed since the last LV calibration — press Calibrate (top bar)"
-                className="rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 font-semibold tracking-wider text-amber-400"
-              >
-                STALE
-              </span>
-            )}
-            <span
-              className={
-                data.arbitrageFree
-                  ? "rounded bg-emerald-600/15 px-1.5 py-0.5 text-emerald-400"
-                  : "rounded bg-amber-600/15 px-1.5 py-0.5 text-amber-400"
-              }
-              title={
-                data.arbitrageFree
-                  ? "No butterfly / calendar violation on the PDE lattice"
-                  : lvCalMarkers[0]?.label ??
-                    "Adjacent-maturity price decreases on the PDE lattice (see Stacked IV)"
-              }
-            >
-              {data.arbitrageFree ? "arb-free" : `${data.calendarViolations} cal. viol.`}
-            </span>
-            <span title="Per-quote IV error of the LV surface vs the FIT TARGET (mid, or the bid-ask / haircut band — zero inside the band): rms · rms on the converged operator · worst quote">
-              rms {fmtBp0(data.rmsIvErrorBp)}
-              {typeof data.rmsConvergedBp === "number" && Number.isFinite(data.rmsConvergedBp)
-                ? ` · conv ${data.rmsConvergedBp.toFixed(0)}`
-                : ""}{" "}
-              · max {fmtBp0(data.maxIvErrorBp)} bp
-            </span>
-          </span>
-        )}
-      </div>
-
-      {/* Body: chart card + controls aside */}
-      <div className="flex min-h-0 flex-1 gap-4">
-        <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+      {/* Body: chart card + diagnostics aside (aside follows the shell's layout toggle) */}
+      <div className="flex min-h-0 flex-1 gap-3">
+        <div className={`${cardClass} flex min-w-0 flex-1 flex-col p-4`}>
           <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
               {ticker !== "" ? `${ticker} local vol` : "Local vol"}
@@ -538,115 +366,21 @@ export default function LocalVolViewer() {
           </div>
         </div>
 
-        {/* Controls + diagnostics aside */}
-        <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
-          <div>
-            <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
-            <p
-              className="mt-1 text-[11px] text-slate-500"
-              title="Grid size, regularizers and solver are global hyperparameters — set them in Options ▸ Local-Vol surface"
-            >
-              {ticker !== "" ? `Local-vol surface · ${ticker}` : "Awaiting data…"}
-            </p>
-          </div>
-
-          {/* Fit RMS — same calibration-consistent basis + format as Parametric */}
-          {data && (
-            <div className="rounded-lg border border-slate-800 bg-surface-800/40 px-3 py-2">
-              <div className="mb-1 text-[11px] uppercase tracking-wide text-slate-500">
-                RMS vol error
-              </div>
-              <div className="flex justify-between font-mono text-[11px] text-slate-300">
-                <span className="text-slate-500">smile</span>
-                <span>{formatPct(smile?.rmsError, 2)}</span>
-              </div>
-              <div className="flex justify-between font-mono text-[11px] text-slate-300">
-                <span className="text-slate-500">surface</span>
-                <span>{formatPct(data.surfaceRmsError, 2)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Var-swap: quote/session shared with Parametric, but the info is the
-              AFFINE payload's own varSwap — model/basis/stale from the LV fit. */}
-          {varSwapEnabled && smile && (
-            <div className="border-t border-slate-800 pt-3">
-              <VarSwapPanel
-                info={smile.varSwap}
-                live={live}
-                subtitle={`Editing ${formatExpiry(smile.expiry, smile.t, format)} · model = LV surface fit`}
-                onSet={(level) => void applyVarSwap(smile.expiry, "set", level)}
-                onExclude={() => void applyVarSwap(smile.expiry, "exclude")}
-                onInclude={() => void applyVarSwap(smile.expiry, "include")}
-                onRemove={() => void applyVarSwap(smile.expiry, "remove")}
-                onUndo={() => void undoVarSwap(smile.expiry)}
-                onRedo={() => void redoVarSwap(smile.expiry)}
-                onReset={() => void applyVarSwap(smile.expiry, "reset")}
-              />
-            </div>
-          )}
-
-          {/* Per-expiry diagnostics */}
-          <div className="border-t border-slate-800 pt-3">
-            <h3 className="mb-2 text-sm font-semibold text-slate-100">Per-expiry fit</h3>
-            <table className="w-full text-right font-mono text-[10px]">
-              <thead>
-                <tr className="text-slate-600">
-                  <th className="pb-1 text-left font-normal">expiry</th>
-                  <th className="pb-1 font-normal">T</th>
-                  <th className="pb-1 font-normal">err bp</th>
-                  <th className="pb-1 font-normal">min φ</th>
-                </tr>
-              </thead>
-              <tbody className="text-slate-300">
-                {(data?.smiles ?? []).map((s, i) => (
-                  <tr
-                    key={s.expiry}
-                    onClick={() => setExpiryIdx(i)}
-                    className={[
-                      "cursor-pointer border-t border-slate-800/60",
-                      i === expiryIdx ? "text-accent-400" : "hover:text-slate-100",
-                    ].join(" ")}
-                  >
-                    <td className="py-1 text-left text-slate-400">
-                      {formatExpiry(s.expiry, s.t, format)}
-                    </td>
-                    <td>{s.t.toFixed(2)}</td>
-                    <td>{fmtBp0(s.maxIvErrorBp)}</td>
-                    <td>{(data?.minDensity[i] ?? 0).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <p className="mt-2 text-[10px] text-slate-600">
-              min φ &gt; 0 ⇒ no butterfly arbitrage (Breeden–Litzenberger density).
-            </p>
-          </div>
-
-          {data && (
-            <div className="mt-auto flex shrink-0 flex-col gap-2">
-              {traceOpen && <LvTracePlayer ticker={ticker} epoch={traceEpoch} />}
-              <p className="flex items-center gap-1.5 text-[10px] text-slate-600">
-                <button
-                  onClick={() => setTraceOpen((v) => !v)}
-                  title="Replay the LV calibration (accepted solver steps, post-hoc)"
-                  className={[
-                    "rounded border p-0.5 transition-colors",
-                    traceOpen
-                      ? "border-violet-500/50 bg-violet-500/10 text-violet-300"
-                      : "border-slate-700 bg-surface-800 text-slate-400 hover:border-slate-600 hover:text-slate-200",
-                  ].join(" ")}
-                >
-                  <Play size={9} strokeWidth={1.75} />
-                </button>
-                {data.nEvals} PDE solves · price rms{" "}
-                {Number.isFinite(data.rmsPriceError) ? (data.rmsPriceError * 1e4).toFixed(1) : "—"} bp
-              </p>
-            </div>
-          )}
-        </aside>
+        {(wb === null || wb.layout.aside) && (
+          <LocalVolAside
+            ticker={ticker}
+            data={data}
+            smile={smile}
+            expiryIdx={expiryIdx}
+            onSelectExpiry={selectExpiry}
+            live={live}
+            varSwapEnabled={varSwapEnabled}
+            applyVarSwap={applyVarSwap}
+            undoVarSwap={undoVarSwap}
+            redoVarSwap={redoVarSwap}
+          />
+        )}
       </div>
     </div>
   );
 }
-

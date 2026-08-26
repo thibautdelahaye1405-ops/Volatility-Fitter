@@ -8,70 +8,28 @@
 // so every workspace re-pulls the refreshed views. Live backend only.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, API_BASE_URL } from "./api";
+import { DONE_LABEL, FAIL_LABEL } from "./workflowTypes";
+import type {
+  CalibrationStatus,
+  LastAction,
+  PriorFetchResult,
+  PriorSaveResult,
+  PriorStatus,
+  SchedulerStatus,
+  WorkflowAction,
+} from "./workflowTypes";
 
-/** The fine-grained engine activity in flight (what the engine is doing now),
- *  narrated to the bottom status bar. `active` false => idle. */
-export interface ActivityInfo {
-  active: boolean;
-  stage: string; // fetch | calibrate | localvol | term | density | surface
-  message: string; // primary line, e.g. "Calibrating SPY 2026-07-17 (LQD)"
-  detail: string; // secondary line, e.g. "de-americanizing"
-  done: number; // progress numerator (0 with total 0 => indeterminate)
-  total: number; // progress denominator
-  seq: number; // monotonic; advances on every change
-}
-
-/** Response of GET /calibration/status. */
-export interface CalibrationStatus {
-  running: boolean;
-  total: number;
-  done: number;
-  current: string;
-  error: string;
-  cancelled: boolean;
-  litNodes: number;
-  staleNodes: number;
-  /** Lit tickers whose LV (affine) surface drifted since its last LV
-   *  calibration (V3.5 item 9 — the "Local-Vol only" badge). 0 while Local-Vol
-   *  is gated off. Optional for older payloads. */
-  lvStaleTickers?: number;
-  spotVersion: number;
-  /** Monotonic calibration epoch: advances whenever a re-calibration changes an
-   *  already-calibrated node's displayed fit. The view layer refetches every
-   *  mounted view the moment it advances (level-triggered, race-free). */
-  epoch: number;
-  /** Coarse phase of the in-flight item: "Parametric" | "Local Vol" | "". */
-  phase: string;
-  /** Fine-grained engine activity (the status-bar narration). */
-  activity: ActivityInfo;
-}
-
-/** Response of GET /scheduler. */
-export interface SchedulerStatus {
-  running: boolean;
-  spotMode: "realtime" | "static";
-  optionsFetchMode: "auto" | "on_demand";
-  autoCalibrate: boolean;
-  localVolEnabled: boolean; // gates the Local Vol tab + LV calibration
-  secondsToNextOptions: number; // -1 when on-demand
-  secondsToNextSpot: number; // -1 when static
-}
-
-/** Per-ticker saved-prior availability (GET /priors). */
-export interface PriorTickerStatus {
-  ticker: string;
-  dataTs: string | null;
-  savedTs: string | null;
-  asOfLabel: string | null;
-  nodeCount: number;
-  hasLvSurface: boolean;
-  /** The active fetched prior (after 'Fetch priors'): ladder source + its moment. */
-  activeSource: string | null; // "saved" | "15min" | "close" | null
-  activeDataTs: string | null;
-}
-export interface PriorStatus {
-  tickers: PriorTickerStatus[];
-}
+export type {
+  ActivityInfo,
+  CalibrationStatus,
+  LastAction,
+  PriorFetchResult,
+  PriorSaveResult,
+  PriorStatus,
+  PriorTickerStatus,
+  SchedulerStatus,
+  WorkflowAction,
+} from "./workflowTypes";
 
 /** Status poll cadence (ms): a brisk cadence while the engine is active (so the
  *  status-bar narration keeps up with what it's doing) and a relaxed one when
@@ -87,23 +45,14 @@ const POLL_HIDDEN_MS = 15000;
  *  scheduler countdowns and acts as a backstop. (ROADMAP perf #4.) */
 const POLL_SSE_MS = 5000;
 
-/** Which manual action is currently in flight (drives the per-button gauge). */
-export type WorkflowAction =
-  | "spots"
-  | "options"
-  | "fetchSnapshot"
-  | "calibrate"
-  | "calibrateParametric"
-  | "calibrateLv"
-  | "savePriors"
-  | "fetchPriors";
-
 export interface UseWorkflowResult {
   calib: CalibrationStatus | null;
   sched: SchedulerStatus | null;
   /** The in-flight manual action, or null. (`busy` = pending !== null.) */
   pending: WorkflowAction | null;
   busy: boolean;
+  /** Last completed action (explicit verb, or a background refit landing). */
+  lastAction: LastAction | null;
   fetchSpots: () => Promise<void>;
   fetchOptions: () => Promise<void>;
   /** POST /fetch/snapshot — the unified verb (V3.7 item 15): chains + spot
@@ -130,18 +79,6 @@ export interface UseWorkflowResult {
   fetchPriors: () => Promise<PriorFetchResult | undefined>;
 }
 
-/** POST /priors/save-all result. */
-export interface PriorSaveResult {
-  tickers: string[];
-  nodes: number;
-  persisted: boolean;
-}
-
-/** POST /priors/fetch result (per-ticker freshness-ladder outcome). */
-export interface PriorFetchResult {
-  tickers: { ticker: string; source: string; dataTs: string | null; nodeCount: number }[];
-}
-
 export function useWorkflow(
   live: boolean,
   refreshViews: () => void,
@@ -151,6 +88,12 @@ export function useWorkflow(
   const [sched, setSched] = useState<SchedulerStatus | null>(null);
   const [pending, setPending] = useState<WorkflowAction | null>(null);
   const [priors, setPriors] = useState<PriorStatus | null>(null);
+  const [lastAction, setLastAction] = useState<LastAction | null>(null);
+  // Mirror of `pending` readable inside the status callback (no re-subscribe).
+  const pendingRef = useRef<WorkflowAction | null>(null);
+  const noteAction = useCallback((label: string, ok = true) => {
+    setLastAction({ label, at: Date.now(), ok });
+  }, []);
   // Last-seen monotonic counters; a poll that observes either advance refetches
   // every mounted view. Level-triggered (compare-to-last), so it is immune to
   // missed running->idle edges, fast single-node jobs, background / scheduler
@@ -181,14 +124,21 @@ export function useWorkflow(
       // A (re)calibration changed a displayed fit somewhere — refetch all mounted
       // views (covers the explicit Calibrate button, auto-calibrate on fetch, the
       // streaming refit, and progressive per-node commits during a running job).
-      if (lastEpoch.current !== null && c.epoch !== lastEpoch.current) refreshViews();
+      if (lastEpoch.current !== null && c.epoch !== lastEpoch.current) {
+        refreshViews();
+        // A background / scheduler refit landed with no explicit verb in flight
+        // (auto-calibrate on fetch, streaming refit): still worth a timestamp.
+        if (pendingRef.current === null) {
+          noteAction(c.error ? `Calibration error: ${c.error}` : "Refit landed", !c.error);
+        }
+      }
       lastEpoch.current = c.epoch;
       // Pure spot transport (no recalibration) — the backend scheduler moved the
       // surface under real-time spot; refetch so the transported curves follow.
       if (lastSpotVer.current !== null && c.spotVersion !== lastSpotVer.current) refreshViews();
       lastSpotVer.current = c.spotVersion;
     },
-    [refreshViews],
+    [refreshViews, noteAction],
   );
 
   const pollScheduler = useCallback(async () => {
@@ -316,6 +266,7 @@ export function useWorkflow(
   const action = useCallback(
     async (key: WorkflowAction, path: string, withBody: boolean, awaitJob = false) => {
       setPending(key);
+      pendingRef.current = key;
       try {
         // fit_mode targets the mode the smile is VIEWED in, so Calibrate / the
         // auto-fetch re-point the same per-mode calibrated pointer (otherwise a
@@ -330,11 +281,16 @@ export function useWorkflow(
         if (awaitJob) await awaitCalibration(); // block until the fit completes
         await poll(); // resync status + advance the epoch/spot baselines
         refreshViews(); // refetch every view against the now-current fit
+        noteAction(DONE_LABEL[key]);
+      } catch (err: unknown) {
+        // Recorded (status bar) rather than thrown: callers fire-and-forget.
+        noteAction(`${FAIL_LABEL[key]}: ${messageOf(err)}`, false);
       } finally {
+        pendingRef.current = null;
         setPending(null);
       }
     },
-    [refreshViews, poll, awaitCalibration, fitMode],
+    [refreshViews, poll, awaitCalibration, fitMode, noteAction],
   );
 
   // calibrate + fetchOptions start a background calibration job, so they await its
@@ -361,30 +317,48 @@ export function useWorkflow(
 
   const savePriors = useCallback(async () => {
     setPending("savePriors");
+    pendingRef.current = "savePriors";
     try {
       const res = await api.post<PriorSaveResult>("/priors/save-all", { timeoutMs: 300_000 });
       await refreshPriors();
+      noteAction(`Saved priors (${res.nodes} node${res.nodes === 1 ? "" : "s"})`);
       return res;
+    } catch (err: unknown) {
+      noteAction(`Failed to save priors: ${messageOf(err)}`, false);
+      return undefined;
     } finally {
+      pendingRef.current = null;
       setPending(null);
     }
-  }, [refreshPriors]);
+  }, [refreshPriors, noteAction]);
 
   const fetchPriors = useCallback(async () => {
     setPending("fetchPriors");
+    pendingRef.current = "fetchPriors";
     try {
       const res = await api.post<PriorFetchResult>("/priors/fetch", { timeoutMs: 300_000 });
       await refreshPriors();
       refreshViews(); // the dotted, spot-updated prior overlays change on every view
+      const active = res.tickers.filter((t) => t.source !== "none").length;
+      noteAction(`Fetched priors (${active} active)`);
       return res;
+    } catch (err: unknown) {
+      noteAction(`Failed to fetch priors: ${messageOf(err)}`, false);
+      return undefined;
     } finally {
+      pendingRef.current = null;
       setPending(null);
     }
-  }, [refreshPriors, refreshViews]);
+  }, [refreshPriors, refreshViews, noteAction]);
 
   return {
-    calib, sched, pending, busy: pending !== null,
+    calib, sched, pending, busy: pending !== null, lastAction,
     fetchSpots, fetchOptions, fetchSnapshot, calibrate, calibrateParametric, calibrateLv,
     priors, savePriors, fetchPriors,
   };
+}
+
+/** Human-readable message from an unknown thrown value. */
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
