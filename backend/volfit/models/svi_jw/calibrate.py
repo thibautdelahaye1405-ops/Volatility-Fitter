@@ -33,7 +33,15 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
-from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.band import (
+    MID_ANCHOR_WEIGHT,
+    BandTarget,
+    band_residuals,
+    effective_mid_anchor,
+    price_targets,
+    quote_residual_magnitude,
+    robust_multipliers,
+)
 from volfit.calib.rms import max_quote_error
 from volfit.calib.extrap import ExtrapTarget, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
@@ -154,6 +162,10 @@ def calibrate_svi(
     solver_diag: dict | None = None,
     chart: str = "raw",
     belly_grid: np.ndarray | None = None,
+    mid_anchor_tau_ref: float | None = None,
+    robust_loss: str = "off",
+    robust_f_scale: float = 0.005,
+    price_residuals: bool = False,
 ) -> SVICalibration:
     """Least-squares fit of a raw-SVI slice to total-variance quotes.
 
@@ -214,11 +226,39 @@ def calibrate_svi(
     per point (closed-form g). Zero rows on a certified slice; the display
     path passes it only on a REPAIR refit after a failed certificate, so a
     clean first fit stays byte-identical.
+
+    Short-dated objective knobs (all defaults byte-identical):
+    ``mid_anchor_tau_ref`` attenuates the band's mid anchor by
+    min(1, sqrt(t / tau_ref)) (calib.band.effective_mid_anchor; None = the
+    constant anchor). ``robust_loss``/``robust_f_scale`` run two IRLS passes
+    over the QUOTE rows only — scipy's global ``loss=`` would also soften
+    the no-arb penalty / calendar / prior rows, which must stay quadratic —
+    re-solving warm-started with sqrt of the huber/cauchy multipliers folded
+    into the data weights (calib.band.robust_multipliers; the multipliers
+    are solver-internal — user-facing weights stay the scheme weights).
+    ``price_residuals`` (FitSettings.overlayPriceResiduals) switches the
+    data rows to the LQD convention: vega-normalized PRICE residuals with
+    1/vega frozen at the mid vol and the band edges converted to call
+    prices (calib.band.price_targets); the analytic Jacobian follows via
+    the row-wise chain factor dC/dw (black_vega_w). The IRLS residual
+    definition follows the active space, and the anchor attenuation applies
+    in either space.
     """
     k = np.asarray(k, dtype=float)
     w_quotes = np.asarray(w_quotes, dtype=float)
     vol_quotes = np.sqrt(w_quotes / t)
     sqrt_weights = np.ones_like(k) if weights is None else np.sqrt(np.asarray(weights, float))
+    # Effective (tau-attenuated) mid anchor; sq_w is the MUTABLE data-row
+    # weight the IRLS passes rescale (sqrt_weights itself stays the frozen
+    # scheme weight — the extrap block's mean-weight reads it).
+    maw_eff = effective_mid_anchor(mid_anchor_weight, t, mid_anchor_tau_ref)
+    sq_w = sqrt_weights
+    # Price-residual mode (the LQD convention): quote prices / vega
+    # normalizers / price band edges frozen at the mid vols.
+    pt = price_targets(k, w_quotes, t, band) if price_residuals else None
+    target_price = inv_vega = price_lo = price_hi = None
+    if pt is not None:
+        target_price, inv_vega, price_lo, price_hi = pt
     # Chart selection (R3): the structural chart honors the SAME configured
     # cap — its wings live strictly inside (0, lee_slope_max) by the lift.
     unpack = (
@@ -240,13 +280,25 @@ def calibrate_svi(
 
     def residuals(theta: np.ndarray) -> np.ndarray:
         raw = unpack(theta)
-        model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)
-        if band is None:
-            fit = sqrt_weights * (model_vol - vol_quotes)
+        if pt is not None:
+            # Price-residual mode: sqrt_w * inv_vega * (C(k, w_model) - C_mid),
+            # band hinge on the call-price band edges (same monotone space).
+            model_price = black_call(k, np.maximum(raw.total_variance(k), 1e-12))
+            if band is None:
+                fit = sq_w * inv_vega * (model_price - target_price)
+            else:
+                fit = band_residuals(
+                    model_price, price_lo, price_hi, target_price,
+                    sq_w * inv_vega, maw_eff,
+                )
         else:
-            fit = band_residuals(
-                model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sqrt_weights, mid_anchor_weight
-            )
+            model_vol = np.sqrt(np.maximum(raw.total_variance(k), 1e-12) / t)
+            if band is None:
+                fit = sq_w * (model_vol - vol_quotes)
+            else:
+                fit = band_residuals(
+                    model_vol, band.iv_lo, band.iv_hi, band.iv_mid, sq_w, maw_eff
+                )
         res = np.concatenate((fit, _penalties(raw, penalty_weight, lee_slope_max)))
         if belly_k is not None:
             # Belly-repair hinge (R2 rider): zero on a certified slice.
@@ -336,24 +388,50 @@ def calibrate_svi(
 
         def jac(theta: np.ndarray) -> np.ndarray:
             j = jac_fn(
-                theta, k, t, sqrt_weights, band, mid_anchor_weight,
+                theta, k, t, sq_w, band, maw_eff,
                 penalty_weight, lee_slope_max, cal_k, cal_floor, sqrt_cal,
-                ceil_k, ceil_w,
+                ceil_k, ceil_w, price_targets=pt,
             )
             if extrap is not None:  # hybrid: FD only the small extrap block
                 j = np.vstack([j, _extrap_fd_jac(theta)])
             return j
 
+    def _run(theta_start: np.ndarray):
         # Keep the SAME LM optimizer + tolerance — only swap the Jacobian from scipy's
         # 1+P finite differences to the closed form. LM (not trf) is deliberate: on
         # noisy real chains LM converges in far fewer iterations than trf through the
         # penalty kinks, so a same-convergence drop-in is ~2.6x with results unchanged
         # to fit precision (trf at 1e-10 was measured SLOWER on real nodes).
-        result = least_squares(
-            residuals, theta0, jac=jac, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15
-        )
-    else:
-        result = least_squares(residuals, theta0, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)
+        if use_analytic:
+            return least_squares(
+                residuals, theta_start, jac=jac, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15
+            )
+        return least_squares(residuals, theta_start, method="lm", xtol=1e-15, ftol=1e-15, gtol=1e-15)
+
+    result = _run(theta0)
+
+    # IRLS robust passes over the quote rows only (see the docstring): the
+    # multipliers follow the ACTIVE residual space; "off" never enters here.
+    if robust_loss != "off" and k.size:
+        for _ in range(2):
+            raw_i = unpack(result.x)
+            if pt is not None:
+                model = black_call(k, np.maximum(raw_i.total_variance(k), 1e-12))
+                r = quote_residual_magnitude(
+                    model, target_price, price_lo, price_hi, maw_eff, inv_vega
+                )
+            else:
+                model = np.sqrt(np.maximum(raw_i.total_variance(k), 1e-12) / t)
+                if band is None:
+                    r = quote_residual_magnitude(model, vol_quotes, None, None, maw_eff)
+                else:
+                    r = quote_residual_magnitude(
+                        model, band.iv_mid, band.iv_lo, band.iv_hi, maw_eff
+                    )
+            sq_w = sqrt_weights * np.sqrt(
+                robust_multipliers(r, robust_loss, robust_f_scale)
+            )
+            result = _run(result.x)
     if solver_diag is not None:
         solver_diag.update(
             jac=np.asarray(result.jac, dtype=float),

@@ -6,7 +6,8 @@
 // scheme and the per-model penalty coefficients. The draft + Apply live in
 // useFitSettings (lifted), so these controls render across two themed Options
 // cards sharing one draft: group="model" (model + hyperparameters + model
-// penalties) and group="calibration" (haircut, weighting, band mid anchor).
+// penalties) and group="calibration" (haircut, weighting, band mid anchor +
+// its τ-ref attenuation, the IRLS robust loss, price-space overlays).
 import type { ReactNode } from "react";
 import PenaltyCoefficients from "./PenaltyCoefficients";
 
@@ -284,6 +285,87 @@ export default function HyperparamPanel({
 
         {/* Band mid anchor (all models, band fit modes). */}
         <PenaltyCoefficients group="calibration" draft={draft} onChange={patch} disabled={disabled} />
+
+        {/* Mid anchor τ-ref: tau-aware attenuation of the anchor above. */}
+        <div className="mb-3 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="Tau-aware mid-anchor attenuation: in the band fit modes the anchor weight is scaled by min(1, sqrt(tau / ref)), so a 1-week smile's tick-quantized mid staircase stops outgunning the shape regularization while long maturities keep the full anchor. Empty = off (the constant anchor)."
+          >
+            Mid anchor τ-ref (yrs)
+          </span>
+          <input
+            type="number"
+            step={0.05}
+            min={0}
+            max={5}
+            value={draft.midAnchorTauRef ?? ""}
+            placeholder="off"
+            disabled={disabled}
+            onChange={(e) => {
+              const v = Number(e.target.value);
+              patch({ midAnchorTauRef: e.target.value === "" || !(v > 0) ? null : Math.min(v, 5) });
+            }}
+            className={`${selectClass} w-16`}
+            aria-label="mid anchor tau ref in years"
+          />
+        </div>
+
+        {/* Robust loss: IRLS over the quote rows only, + f-scale when on. */}
+        <div className="mb-3 flex items-center justify-between">
+          <span
+            className={rowLabel}
+            title="Robust loss on the QUOTE rows only (IRLS re-solves; no-arb / calendar / prior rows stay quadratic): residuals beyond the f-scale are down-weighted so one gross off-market print stops bending the whole smile. Huber tapers ~1/|r|; Cauchy cuts harder. The f-scale is in the residual's own (~vol) units."
+          >
+            Robust loss
+          </span>
+          <span className="flex gap-1.5">
+            <select
+              value={draft.robustLoss}
+              disabled={disabled}
+              onChange={(e) => patch({ robustLoss: e.target.value as FitSettings["robustLoss"] })}
+              className={selectClass}
+            >
+              <option value="off">Off</option>
+              <option value="huber">Huber</option>
+              <option value="cauchy">Cauchy</option>
+            </select>
+            {draft.robustLoss !== "off" && (
+              <input
+                type="number"
+                step={0.001}
+                min={0.001}
+                max={1}
+                value={draft.robustFScale}
+                disabled={disabled}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  if (v > 0) patch({ robustFScale: Math.min(v, 1) });
+                }}
+                className={`${selectClass} w-16`}
+                aria-label="robust loss f-scale"
+              />
+            )}
+          </span>
+        </div>
+
+        {/* Price-space overlays: SVI/MCS residuals in the LQD convention. */}
+        <label className="mb-1 flex cursor-pointer items-start gap-2">
+          <input
+            type="checkbox"
+            checked={draft.overlayPriceResiduals}
+            disabled={disabled}
+            onChange={(e) => patch({ overlayPriceResiduals: e.target.checked })}
+            className="mt-0.5 accent-accent-500"
+          />
+          <span>
+            <span className="text-xs font-medium text-slate-200">Price-space overlays</span>
+            <span className="block text-[10px] text-slate-500">
+              SVI / MCS fit vega-normalized price residuals (the LQD convention), so a deep-wing
+              short-dated quote&apos;s multi-vol-point tick quantum stops entering at full weight.
+            </span>
+          </span>
+        </label>
       </>,
     );
   }

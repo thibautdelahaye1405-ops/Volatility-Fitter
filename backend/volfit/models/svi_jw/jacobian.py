@@ -37,8 +37,43 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.calib.band import BandTarget, band_violation_sign
+from volfit.core.black import black_call, black_vega_w
 from volfit.models.svi_jw.structural import structural_chain
 from volfit.models.svi_jw.svi import RawSVI
+
+
+def _fit_row_pieces(
+    raw: RawSVI,
+    dw: np.ndarray,
+    k: np.ndarray,
+    t: float,
+    sqrt_weights: np.ndarray,
+    band: BandTarget | None,
+    price_targets: tuple | None,
+):
+    """(model, d model/d theta, row scale, band lo, band hi) for the fit block.
+
+    ``dw`` is d w(k)/d theta in the ACTIVE chart's coordinates (or raw space
+    for the structural path — the chain matrix multiplies afterwards).
+    Vol space (``price_targets`` None, the historical rows): model = sqrt(w/t),
+    d model = dw / (2 t model), scale = sqrt_weights, band edges in vol.
+    Price space (overlayPriceResiduals): model = C(k, w), the row-wise chain
+    factor is dC/dw = black_vega_w, scale = sqrt_weights * inv_vega and the
+    band edges are the frozen call-price edges — the LQD convention. The
+    variance clamp w <= 1e-12 flattens the gradient in either space.
+    """
+    w = np.maximum(raw.total_variance(k), 1e-12)
+    if price_targets is None:
+        model = np.sqrt(w / t)
+        dmodel = dw / (2.0 * t * model)[:, None]
+        dmodel[w <= 1e-12] = 0.0
+        lo, hi = (band.iv_lo, band.iv_hi) if band is not None else (None, None)
+        return model, dmodel, sqrt_weights, lo, hi
+    _target_price, inv_vega, price_lo, price_hi = price_targets
+    model = black_call(k, w)
+    dmodel = black_vega_w(k, w)[:, None] * dw
+    dmodel[w <= 1e-12] = 0.0
+    return model, dmodel, sqrt_weights * inv_vega, price_lo, price_hi
 
 
 def _dw_dtheta(raw: RawSVI, sig_b: float, one_minus_rho2: float, kk: np.ndarray) -> np.ndarray:
@@ -68,6 +103,7 @@ def svi_residual_jacobian(
     sqrt_cal: float,
     ceil_k: np.ndarray | None = None,
     ceil_w: np.ndarray | None = None,
+    price_targets: tuple | None = None,
 ) -> np.ndarray:
     """Analytic Jacobian (n_residuals x 5) of the gated SVI residual.
 
@@ -75,7 +111,10 @@ def svi_residual_jacobian(
     gate: the fit block (mid: N rows; band: 2N rows), the two penalty rows, the
     calendar floor rows, then the calendar CEILING rows (the symmetric overlay
     repair's two-sided target). The penalty / band / calendar hinges contribute
-    their subgradient (the active linear part, else zero)."""
+    their subgradient (the active linear part, else zero). ``price_targets``
+    (overlayPriceResiduals) switches the fit block to vega-normalized price
+    rows via the row-wise chain factor dC/dw (``_fit_row_pieces``); None is
+    the historical vol-space block."""
     raw = RawSVI(
         a=float(theta[0]), b=float(np.logaddexp(0.0, theta[1])),
         rho=float(np.tanh(theta[2])), m=float(theta[3]), sigma=float(np.exp(theta[4])),
@@ -84,19 +123,19 @@ def svi_residual_jacobian(
     om_rho2 = 1.0 - raw.rho * raw.rho  # drho/dtheta_rho
     q = float(np.sqrt(max(om_rho2, 0.0)))
 
-    # Fit block: d/dtheta of model_vol = sqrt(w / t).
-    w = np.maximum(raw.total_variance(k), 1e-12)
-    model_vol = np.sqrt(w / t)
-    dmv = _dw_dtheta(raw, sig_b, om_rho2, np.asarray(k, float)) / (2.0 * t * model_vol)[:, None]
-    dmv[w <= 1e-12] = 0.0  # the variance clamp flattens the gradient there
+    # Fit block: d/dtheta of the model in the active space (vol or price).
+    dw = _dw_dtheta(raw, sig_b, om_rho2, np.asarray(k, float))
+    model, dmv, scale, lo, hi = _fit_row_pieces(
+        raw, dw, np.asarray(k, float), t, sqrt_weights, band, price_targets
+    )
 
     blocks: list[np.ndarray] = []
     if band is None:
-        blocks.append(sqrt_weights[:, None] * dmv)
+        blocks.append(scale[:, None] * dmv)
     else:
-        sign = band_violation_sign(model_vol, band.iv_lo, band.iv_hi)
-        blocks.append((sqrt_weights * sign)[:, None] * dmv)  # band violation rows
-        blocks.append((np.sqrt(mid_anchor_weight) * sqrt_weights)[:, None] * dmv)  # mid anchor
+        sign = band_violation_sign(model, lo, hi)
+        blocks.append((scale * sign)[:, None] * dmv)  # band violation rows
+        blocks.append((np.sqrt(mid_anchor_weight) * scale)[:, None] * dmv)  # mid anchor
 
     # Penalties (2 rows): subgradient is the active linear part, else zero.
     min_var = raw.a + raw.b * raw.sigma * q
@@ -153,6 +192,7 @@ def svi_residual_jacobian_structural(
     sqrt_cal: float,
     ceil_k: np.ndarray | None = None,
     ceil_w: np.ndarray | None = None,
+    price_targets: tuple | None = None,
 ) -> np.ndarray:
     """Analytic Jacobian of the gated residual under the STRUCTURAL chart.
 
@@ -162,22 +202,24 @@ def svi_residual_jacobian_structural(
     are structurally inert (min variance = w* > 0 and both wings live strictly
     inside the cap at every finite iterate), so their subgradient test can
     never activate — the rows stay exactly zero, matching the residual.
+    ``price_targets`` switches the fit block to the price-space rows, exactly
+    as in the raw entry point (the chain matrix is space-agnostic).
     """
     raw, chain = structural_chain(theta, lee_slope_max)
     q = float(np.sqrt(max(1.0 - raw.rho * raw.rho, 0.0)))
 
-    w = np.maximum(raw.total_variance(k), 1e-12)
-    model_vol = np.sqrt(w / t)
-    dmv = _dw_draw(raw, np.asarray(k, float)) / (2.0 * t * model_vol)[:, None]
-    dmv[w <= 1e-12] = 0.0
+    dw = _dw_draw(raw, np.asarray(k, float))
+    model, dmv, scale, lo, hi = _fit_row_pieces(
+        raw, dw, np.asarray(k, float), t, sqrt_weights, band, price_targets
+    )
 
     blocks: list[np.ndarray] = []
     if band is None:
-        blocks.append(sqrt_weights[:, None] * dmv)
+        blocks.append(scale[:, None] * dmv)
     else:
-        sign = band_violation_sign(model_vol, band.iv_lo, band.iv_hi)
-        blocks.append((sqrt_weights * sign)[:, None] * dmv)
-        blocks.append((np.sqrt(mid_anchor_weight) * sqrt_weights)[:, None] * dmv)
+        sign = band_violation_sign(model, lo, hi)
+        blocks.append((scale * sign)[:, None] * dmv)
+        blocks.append((np.sqrt(mid_anchor_weight) * scale)[:, None] * dmv)
 
     # Penalty rows: kept for row-order fidelity; structurally inactive here
     # (min variance = w* > 0, wings strictly inside the cap), so the active

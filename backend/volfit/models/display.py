@@ -157,6 +157,12 @@ def build_display_fit(
             prior_var_swap=prior_var_swap,
             extrap=extrap,
             chart=getattr(settings, "sviChart", "raw"),
+            # Short-dated objective knobs (defaults byte-identical): tau-aware
+            # anchor attenuation, IRLS robust data loss, price-space residuals.
+            mid_anchor_tau_ref=getattr(settings, "midAnchorTauRef", None),
+            robust_loss=getattr(settings, "robustLoss", "off"),
+            robust_f_scale=getattr(settings, "robustFScale", 0.005),
+            price_residuals=getattr(settings, "overlayPriceResiduals", False),
         )
         cal = calibrate_svi(k, w, t, **svi_kwargs)
         slice_: SmileModel = cal.raw
@@ -194,6 +200,12 @@ def build_display_fit(
             # against the same buffered Lee cap the SVI chart honours.
             chart=getattr(settings, "mcsChart", "raw"),
             lee_slope_max=settings.leeSlopeMax,
+            # Short-dated objective knobs (defaults byte-identical) — the same
+            # trio the SVI overlay threads above.
+            mid_anchor_tau_ref=getattr(settings, "midAnchorTauRef", None),
+            robust_loss=getattr(settings, "robustLoss", "off"),
+            robust_f_scale=getattr(settings, "robustFScale", 0.005),
+            price_residuals=getattr(settings, "overlayPriceResiduals", False),
         )
         slice_ = calibrate_sigmoid(k, w, t, **sig_kwargs)
         max_err = _max_iv_error(slice_, k, w, t, band)

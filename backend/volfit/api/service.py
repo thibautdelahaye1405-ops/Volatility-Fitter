@@ -710,6 +710,10 @@ def _overlay_settings(settings) -> OverlaySettings:
         sviChart=settings.sviChart,
         bellyRepair=settings.bellyRepair,
         mcsChart=settings.mcsChart,
+        midAnchorTauRef=settings.midAnchorTauRef,
+        robustLoss=settings.robustLoss,
+        robustFScale=settings.robustFScale,
+        overlayPriceResiduals=settings.overlayPriceResiduals,
     )
 
 
@@ -782,6 +786,14 @@ def _slice_task(
             barrier_center=settings.barrierCenter,
             barrier_scale=settings.barrierScale,
             mid_anchor_weight=settings.midAnchorWeight, var_swap=vs,
+            # Short-dated objective knobs (defaults byte-identical): the tau
+            # anchor ref rides prepare_residual_args (so the joint symmetric
+            # stack sees the same attenuated anchor); the robust IRLS pair is
+            # solve orchestration in calibrate_slice (prepare accepts and
+            # ignores it when the joint stack forwards these kwargs).
+            mid_anchor_tau_ref=settings.midAnchorTauRef,
+            robust_loss=settings.robustLoss,
+            robust_f_scale=settings.robustFScale,
             coords=settings.lqdCoords,
             # Generalized tails (arc Phases 2-3): the fixed per-side
             # exponents ride every LQD fit — per-underlier override first,

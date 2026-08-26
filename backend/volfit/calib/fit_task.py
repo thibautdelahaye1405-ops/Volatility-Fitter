@@ -40,6 +40,13 @@ class OverlaySettings:
     bellyRepair: bool = True
     #: V3.1 leg 3: Multi-Core Sigmoid optimization chart ("raw" | "structural").
     mcsChart: str = "raw"
+    #: Short-dated objective knobs (2026-08-26, all defaults byte-identical):
+    #: tau-aware mid-anchor attenuation ref (None = constant anchor), the IRLS
+    #: robust data loss + scale, and the price-space overlay-residual toggle.
+    midAnchorTauRef: float | None = None
+    robustLoss: str = "off"
+    robustFScale: float = 0.005
+    overlayPriceResiduals: bool = False
 
 
 @dataclass(frozen=True)

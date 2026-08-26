@@ -160,6 +160,8 @@ def _fit_family(family: str, k, w, tau, weights, band, settings, ticker: str):
             reg_lambda=settings.regLambda, reg_power=settings.regPower,
             barrier_center=settings.barrierCenter, barrier_scale=settings.barrierScale,
             mid_anchor_weight=settings.midAnchorWeight, coords=settings.lqdCoords,
+            mid_anchor_tau_ref=settings.midAnchorTauRef,
+            robust_loss=settings.robustLoss, robust_f_scale=settings.robustFScale,
             alpha_left=alpha_left, alpha_right=alpha_right,
         )
         return result.slice

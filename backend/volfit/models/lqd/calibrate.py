@@ -18,7 +18,14 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import least_squares
 
-from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.band import (
+    MID_ANCHOR_WEIGHT,
+    BandTarget,
+    band_residuals,
+    effective_mid_anchor,
+    quote_residual_magnitude,
+    robust_multipliers,
+)
 from volfit.calib.rms import max_quote_error
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
@@ -237,6 +244,7 @@ def prepare_residual_args(
     barrier_center: float = _BARRIER_CENTER,
     barrier_scale: float = _BARRIER_SCALE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    mid_anchor_tau_ref: float | None = None,
     var_swap: VarSwapTarget | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
@@ -244,6 +252,8 @@ def prepare_residual_args(
     opt_n_points: int = OPT_N_POINTS,
     alpha_left: float = 0.0,
     alpha_right: float = 0.0,
+    robust_loss: str = "off",
+    robust_f_scale: float = 0.005,
 ) -> tuple[tuple, bool]:
     """Build the frozen ``_residuals``/``residual_jacobian`` argument tuple for
     one slice, plus the analytic-Jacobian eligibility flag.
@@ -258,7 +268,20 @@ def prepare_residual_args(
     element in the SECOND-TO-LAST position — ``opt_n_points`` stays last,
     which the joint stack indexes (``args[-1]``). For alpha_+ > 0 the A_R
     soft barrier is re-pointed at the saddle guard via ``_alpha_barrier``.
+
+    ``mid_anchor_tau_ref`` (short-dated arc) attenuates the band's mid
+    anchor by min(1, sqrt(t / tau_ref)) BEFORE freezing the tuple
+    (calib.band.effective_mid_anchor), so the joint symmetric stack — which
+    rebuilds this tuple from a task's fit kwargs — sees the same attenuated
+    anchor a standalone fit uses; None (the default) leaves the tuple
+    byte-identical. ``robust_loss``/``robust_f_scale`` are ACCEPTED AND
+    IGNORED here for the same forwarding reason: the IRLS reweighting is
+    solve orchestration in ``calibrate_slice``, never part of the frozen
+    residual args — a joint repair re-solve intentionally runs on the
+    scheme weights.
     """
+    _ = (robust_loss, robust_f_scale)  # solve-level knobs; see docstring
+    mid_anchor_weight = effective_mid_anchor(mid_anchor_weight, t, mid_anchor_tau_ref)
     barrier_center, barrier_scale = _alpha_barrier(
         barrier_center, barrier_scale, alpha_right
     )
@@ -332,6 +355,7 @@ def calibrate_slice(
     barrier_center: float = _BARRIER_CENTER,
     barrier_scale: float = _BARRIER_SCALE,
     mid_anchor_weight: float = MID_ANCHOR_WEIGHT,
+    mid_anchor_tau_ref: float | None = None,
     var_swap: VarSwapTarget | None = None,
     prior_anchor: PriorAnchorTarget | None = None,
     prior_var_swap: VarSwapTarget | None = None,
@@ -341,6 +365,8 @@ def calibrate_slice(
     coords: str = "lr",
     alpha_left: float = 0.0,
     alpha_right: float = 0.0,
+    robust_loss: str = "off",
+    robust_f_scale: float = 0.005,
 ) -> CalibrationResult:
     """Fit one LQD slice to total-variance quotes (k_i, w_i) at expiry ``t``.
 
@@ -382,6 +408,26 @@ def calibrate_slice(
     ``barrier_center``/``barrier_scale`` shape the A_R soft barrier (eq.
     right_admissible) and ``mid_anchor_weight`` the band's mid anchor — all
     FitSettings coefficients, defaulting to the historical constants.
+    ``mid_anchor_tau_ref`` (FitSettings.midAnchorTauRef) attenuates the
+    band's mid anchor by min(1, sqrt(t / tau_ref)); None (the default) is
+    the historical constant anchor, byte-identical.
+
+    ``robust_loss``/``robust_f_scale`` (FitSettings.robustLoss/robustFScale)
+    switch on the robust DATA objective, implemented as Iteratively
+    Reweighted Least Squares over the QUOTE block only: scipy's global
+    ``loss=`` would also soften the no-arb barrier / calendar / prior /
+    regularization rows, which must stay quadratic to keep their hard-
+    constraint semantics. After the base solve, each quote's UNWEIGHTED
+    data-residual magnitude (calib.band.quote_residual_magnitude — the
+    vega-normalized price residual, or the combined hinge+anchor magnitude
+    in band mode) sets a multiplier (huber: min(1, f/|r|); cauchy:
+    1/(1+(r/f)^2)); sqrt(m) is folded into the quote weights, the residual
+    args are REBUILT (same load-bearing tuple order) and the slice re-solves
+    WARM-STARTED — two IRLS passes. "off" (the default) is the historical
+    single solve, byte-identical. The multipliers are SOLVER-INTERNAL: the
+    user-facing weight inspection and reported weighted RMS keep the scheme
+    weights. (The LV affine analogue — the original fix-order #3 — is an
+    open rider, not implemented here.)
 
     ``var_swap`` (volfit.calib.varswap) adds a single soft penalty pulling the
     slice's fair var-swap toward a quoted level; None (the default) leaves the
@@ -422,18 +468,22 @@ def calibrate_slice(
     # + calendar + barrier + var-swap) — one quadrature pass instead of trf's
     # (P+1) finite-difference rebuilds; the frozen argument tuple is shared
     # with the joint symmetric solver.
-    args, use_analytic = prepare_residual_args(
-        k, w_quotes, t, n_order=n_order, weights=weights,
-        reg_lambda=reg_lambda, reg_power=reg_power,
-        calendar_z=calendar_z, calendar_floor=calendar_floor,
-        calendar_weight=calendar_weight, calendar_k=calendar_k,
-        calendar_price_floor=calendar_price_floor, calendar_taper=calendar_taper,
-        band=band, barrier_center=barrier_center, barrier_scale=barrier_scale,
-        mid_anchor_weight=mid_anchor_weight, var_swap=var_swap,
-        prior_anchor=prior_anchor, prior_var_swap=prior_var_swap,
-        operator_prior=operator_prior, opt_n_points=opt_n_points,
-        alpha_left=alpha_left, alpha_right=alpha_right,
-    )
+    def _prepare(weights_i):
+        return prepare_residual_args(
+            k, w_quotes, t, n_order=n_order, weights=weights_i,
+            reg_lambda=reg_lambda, reg_power=reg_power,
+            calendar_z=calendar_z, calendar_floor=calendar_floor,
+            calendar_weight=calendar_weight, calendar_k=calendar_k,
+            calendar_price_floor=calendar_price_floor, calendar_taper=calendar_taper,
+            band=band, barrier_center=barrier_center, barrier_scale=barrier_scale,
+            mid_anchor_weight=mid_anchor_weight,
+            mid_anchor_tau_ref=mid_anchor_tau_ref, var_swap=var_swap,
+            prior_anchor=prior_anchor, prior_var_swap=prior_var_swap,
+            operator_prior=operator_prior, opt_n_points=opt_n_points,
+            alpha_left=alpha_left, alpha_right=alpha_right,
+        )
+
+    args, use_analytic = _prepare(weights)
 
     if init is None:
         w0_guess = float(np.interp(0.0, k, w_quotes))
@@ -451,21 +501,54 @@ def calibrate_slice(
 
         x0 = chart.from_theta(init.to_vector())
 
-    result = least_squares(
-        fun,
-        x0,
-        jac=jac_fn if use_analytic else "2-point",
-        args=args,
-        method="trf",
-        # 1e-10 is still ~6 orders below the ~5 vol-bp fit budget (the note's own
-        # fit reaches ~1.2 bp), so the optimum is unchanged to display precision —
-        # but it stops trf from grinding extra (P+1)-eval Jacobian iterations
-        # chasing a 1e-15 reduction that is invisible in the priced surface.
-        xtol=1e-10,
-        ftol=1e-10,
-        gtol=1e-10,
-        max_nfev=4000,
-    )
+    def _solve(args_i, x0_i):
+        return least_squares(
+            fun,
+            x0_i,
+            jac=jac_fn if use_analytic else "2-point",
+            args=args_i,
+            method="trf",
+            # 1e-10 is still ~6 orders below the ~5 vol-bp fit budget (the note's own
+            # fit reaches ~1.2 bp), so the optimum is unchanged to display precision —
+            # but it stops trf from grinding extra (P+1)-eval Jacobian iterations
+            # chasing a 1e-15 reduction that is invisible in the priced surface.
+            xtol=1e-10,
+            ftol=1e-10,
+            gtol=1e-10,
+            max_nfev=4000,
+        )
+
+    result = _solve(args, x0)
+
+    # IRLS robust passes (FitSettings.robustLoss — see the docstring): re-derive
+    # the quote-block multipliers at each solution and re-solve warm-started.
+    # "off" (the default) never enters this block — the single historical solve.
+    if robust_loss != "off" and k.size:
+        maw_eff = effective_mid_anchor(mid_anchor_weight, t, mid_anchor_tau_ref)
+        base_weights = np.ones_like(k) if weights is None else np.asarray(weights, dtype=float)
+        target_price = black_call(k, w_quotes)
+        inv_vega = 1.0 / (black_vega_sigma(k, sigma, t) + _VEGA_FLOOR)
+        price_lo = price_hi = None
+        if band is not None:
+            price_lo = black_call(k, band.iv_lo**2 * t)
+            price_hi = black_call(k, band.iv_hi**2 * t)
+        for _ in range(2):
+            x_now = np.asarray(result.x, dtype=float)
+            theta_now = chart.to_theta(x_now) if chart is not None else x_now
+            try:
+                slice_now = build_slice(
+                    _params_from(theta_now, (alpha_left, alpha_right)),
+                    n_points=opt_n_points,
+                )
+            except ValueError:  # infeasible solution point: keep the last solve
+                break
+            r = quote_residual_magnitude(
+                slice_now.call_price(k), target_price, price_lo, price_hi,
+                maw_eff, inv_vega,
+            )
+            m = robust_multipliers(r, robust_loss, robust_f_scale)
+            args_r, _ = _prepare(base_weights * m)
+            result = _solve(args_r, result.x)
 
     # Chart solve: map the solution (and its Jacobian) back to the canonical
     # (L, R, a) coordinates every consumer speaks.

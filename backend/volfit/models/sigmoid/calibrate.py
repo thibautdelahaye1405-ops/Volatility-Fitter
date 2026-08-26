@@ -26,7 +26,15 @@ from __future__ import annotations
 import numpy as np
 from scipy.optimize import least_squares
 
-from volfit.calib.band import MID_ANCHOR_WEIGHT, BandTarget, band_residuals
+from volfit.calib.band import (
+    MID_ANCHOR_WEIGHT,
+    BandTarget,
+    band_residuals,
+    effective_mid_anchor,
+    price_targets,
+    quote_residual_magnitude,
+    robust_multipliers,
+)
 from volfit.calib.extrap import ExtrapTarget, extrap_residuals
 from volfit.calib.operators import OperatorPriorTarget, operator_residuals
 from volfit.calib.prior import PriorAnchorTarget, prior_anchor_residuals
@@ -83,6 +91,8 @@ def _fit(
     chart_cap: float | None = None,
     slope_scale: float = 1.0,
     solver_diag: dict | None = None,
+    price_rows: tuple | None = None,
+    scheme_mean_w: float | None = None,
 ) -> np.ndarray:
     """Bounded least-squares of the data term plus the amplitude ridge.
 
@@ -100,6 +110,17 @@ def _fit(
     with that Lee cap: ``theta0``/``lo``/``hi`` and the returned vector are
     then CHART-space in the first 6 coordinates (hats stay raw); None (the
     default) is the historical raw vector, byte-identical.
+
+    ``price_rows`` (overlayPriceResiduals) is the frozen ``(k, target_price,
+    inv_vega, price_lo, price_hi)`` tuple switching the data rows to the LQD
+    convention — vega-normalized price residuals / a price-space band hinge.
+    PERF NOTE: the price rows take the FD ("2-point") Jacobian path — the
+    analytic MCS Jacobian is not chained through dC/dw (the toggle is opt-in
+    and the extra evals only occur while it is on); None (the default) keeps
+    the vol-space rows and the analytic gate byte-identical.
+    ``scheme_mean_w`` freezes the extrap block's mean quote weight at the
+    SCHEME weights so the IRLS reweighting (calibrate_sigmoid) touches the
+    data rows only; None computes it from ``sqrt_w`` (the historical value).
     """
     cal_on = calendar_k is not None and calendar_floor is not None
     cal_z = np.asarray(calendar_k, float) / (sigma_ref * np.sqrt(t)) if cal_on else None
@@ -120,7 +141,19 @@ def _fit(
     def residuals(theta: np.ndarray) -> np.ndarray:
         theta_r = to_raw(theta)
         model_vol = np.sqrt(np.maximum(_eval_v(theta_r, z, n_cores), _V_FLOOR))
-        if band is None:
+        if price_rows is not None:
+            # Price-residual mode (the LQD convention): vega-normalized call
+            # prices, band hinge on the frozen price edges.
+            pk, target_price, inv_vega, price_lo, price_hi = price_rows
+            model_price = black_call(pk, model_vol**2 * t)
+            if band is None:
+                res = sqrt_w * inv_vega * (model_price - target_price)
+            else:
+                res = band_residuals(
+                    model_price, price_lo, price_hi, target_price,
+                    sqrt_w * inv_vega, mid_anchor_weight,
+                )
+        elif band is None:
             res = sqrt_w * (model_vol - vol_quotes)
         else:
             res = band_residuals(
@@ -177,7 +210,10 @@ def _fit(
         v0, s0, k0, z0, kp, kc = theta_r[:6]
         return extrap_residuals(
             w_of_k, extrap, t,
-            mean_weight=float(np.mean(sqrt_w**2)),
+            # Frozen at the scheme weights under IRLS (same float otherwise).
+            mean_weight=(
+                scheme_mean_w if scheme_mean_w is not None else float(np.mean(sqrt_w**2))
+            ),
             # Closed-form asymptotic slopes (V3.1 leg 1, eq mcsbetak): the
             # kernels are zero-wing, so the base decides both tails.
             lee_fn=lambda: analytic_lee_slopes(
@@ -203,6 +239,7 @@ def _fit(
         and prior_anchor is None
         and operator_prior is None
         and prior_var_swap is None
+        and price_rows is None  # price-space data rows ride the FD path (docstring)
     )
     jac = "2-point"
     if use_analytic:
@@ -266,6 +303,10 @@ def calibrate_sigmoid(
     chart: str = "raw",
     lee_slope_max: float = _LEE_SLOPE_MAX,
     solver_diag: dict | None = None,
+    mid_anchor_tau_ref: float | None = None,
+    robust_loss: str = "off",
+    robust_f_scale: float = 0.005,
+    price_residuals: bool = False,
 ) -> MultiCoreSiv:
     """Fit the Multi-Core SIV slice to total-variance quotes (eq mcsiv-slice).
 
@@ -304,11 +345,31 @@ def calibrate_sigmoid(
     quote-noise resolution floor (seeding.alpha_resolution_floor) are pruned
     and the slice refit ONCE without them; ``cores`` reports the EFFECTIVE
     count. Nothing pruned ⇒ byte-identical.
+
+    Short-dated objective knobs (all defaults byte-identical):
+    ``mid_anchor_tau_ref`` attenuates the band's mid anchor by
+    min(1, sqrt(t / tau_ref)) (calib.band.effective_mid_anchor).
+    ``robust_loss``/``robust_f_scale`` run two IRLS passes over the QUOTE
+    rows of the refine stage only, AFTER seeding/governance — scipy's global
+    ``loss=`` would also soften the ridge / calendar / prior / wing rows,
+    which must stay quadratic; the multipliers are solver-internal (the
+    user-facing weights stay the scheme weights) and the extrap block's mean
+    weight is frozen at the scheme value. ``price_residuals``
+    (overlayPriceResiduals) switches the refine-stage data rows to the LQD
+    convention — vega-normalized price residuals, band edges as call prices
+    (calib.band.price_targets) — on the FD Jacobian path (see ``_fit``); the
+    base-seeding stage always stays a scheme-weighted vol-space mid fit (its
+    role is placing the hats).
     """
     k = np.asarray(k, dtype=float)
-    vol_quotes = np.sqrt(np.asarray(w_quotes, dtype=float) / t)
-    v_quotes = np.asarray(w_quotes, dtype=float) / t
+    w_arr = np.asarray(w_quotes, dtype=float)
+    vol_quotes = np.sqrt(w_arr / t)
+    v_quotes = w_arr / t
     sqrt_w = np.ones_like(k) if weights is None else np.sqrt(np.asarray(weights, float))
+    # Short-dated knobs: tau-attenuated mid anchor (identity when the ref is
+    # None) and the frozen price-space targets (None keeps vol-space rows).
+    maw_eff = effective_mid_anchor(mid_anchor_weight, t, mid_anchor_tau_ref)
+    pt = (k, *price_targets(k, w_arr, t, band)) if price_residuals else None
 
     n_cores = max(0, min(int(n_cores), (k.size - 6) // 4))
     sigma_ref = _reference_vol(vol_quotes, k)
@@ -331,7 +392,8 @@ def calibrate_sigmoid(
     base = _fit(_base_init(z, v_quotes), base_lo, base_hi, z, vol_quotes, sqrt_w, 0)
 
     refine_kwargs = dict(
-        band=band, ridge=ridge, mid_anchor_weight=mid_anchor_weight,
+        band=band, ridge=ridge, mid_anchor_weight=maw_eff,
+        price_rows=pt, scheme_mean_w=float(np.mean(sqrt_w**2)),
         var_swap=var_swap, sigma_ref=sigma_ref, t=t,
         calendar_k=calendar_k, calendar_floor=calendar_floor,
         calendar_weight=calendar_weight,
@@ -359,6 +421,7 @@ def calibrate_sigmoid(
         hi = np.concatenate([ref_hi, *([chi] * n_cores)])
         theta = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, **refine_kwargs)
     else:
+        lo, hi = ref_lo, ref_hi
         theta = _fit(
             base_theta0, ref_lo, ref_hi, z, vol_quotes, sqrt_w, 0, **refine_kwargs
         )
@@ -385,6 +448,28 @@ def calibrate_sigmoid(
             hi = np.concatenate([ref_hi, *([chi] * n_keep)])
             n_cores = n_keep
             theta = _fit(theta0, lo, hi, z, vol_quotes, sqrt_w, n_cores, **refine_kwargs)
+            theta_raw = to_raw(theta)
+
+    # IRLS robust passes over the quote rows only (calibrate_sigmoid docstring):
+    # multipliers from the ACTIVE-space data residuals at the current solution,
+    # warm-started refits at the same bounds. "off" never enters this block.
+    if robust_loss != "off" and z.size:
+        for _ in range(2):
+            model_vol = np.sqrt(np.maximum(_eval_v(theta_raw, z, n_cores), _V_FLOOR))
+            if pt is not None:
+                _pk, target_price, inv_vega, price_lo, price_hi = pt
+                r = quote_residual_magnitude(
+                    black_call(k, model_vol**2 * t), target_price,
+                    price_lo, price_hi, maw_eff, inv_vega,
+                )
+            elif band is None:
+                r = quote_residual_magnitude(model_vol, vol_quotes, None, None, maw_eff)
+            else:
+                r = quote_residual_magnitude(
+                    model_vol, band.iv_mid, band.iv_lo, band.iv_hi, maw_eff
+                )
+            sq_w_r = sqrt_w * np.sqrt(robust_multipliers(r, robust_loss, robust_f_scale))
+            theta = _fit(theta, lo, hi, z, vol_quotes, sq_w_r, n_cores, **refine_kwargs)
             theta_raw = to_raw(theta)
 
     cores = tuple(

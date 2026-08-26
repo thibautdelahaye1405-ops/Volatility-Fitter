@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from volfit.core.black import black_vega_sigma
+from volfit.core.black import black_call, black_vega_sigma
 
 #: Weight of the soft |mid - model| anchor relative to the band penalty (= 1).
 #: Small, so the band dominates but the curve still centres on mid in-band.
@@ -111,6 +111,96 @@ def apply_tick_floor(
         iv_mid=band.iv_mid,
         iv_hi=np.maximum(band.iv_hi, band.iv_mid + 0.5 * h),
     )
+
+
+def effective_mid_anchor(weight: float, tau: float, tau_ref: float | None) -> float:
+    """Tau-aware mid-anchor attenuation (FitSettings.midAnchorTauRef).
+
+    The data rows of a slice objective blow up ~1/sqrt(tau) at short
+    maturities while the shape regularization is tau-free, so a 1-week
+    smile's tick-quantized mid staircase outguns the ridge many-fold. With a
+    reference maturity ``tau_ref`` (years) set, the anchor weight becomes
+    ``weight * min(1, sqrt(tau / tau_ref))`` — full strength at and beyond
+    the reference, fading like sqrt(tau) below it, restoring a
+    maturity-uniform anchor-vs-shape contest. ``tau_ref`` None returns
+    ``weight`` UNTOUCHED (the historical constant path: no float arithmetic
+    at all, byte-identity).
+    """
+    if tau_ref is None:
+        return weight
+    return float(weight) * min(1.0, float(np.sqrt(tau / tau_ref)))
+
+
+def robust_multipliers(r: np.ndarray, loss: str, f_scale: float) -> np.ndarray:
+    """IRLS weight multipliers m_i for the DATA rows (FitSettings.robustLoss).
+
+    ``r`` are the per-quote data-residual magnitudes in the residual's own
+    (~vol) units — see ``quote_residual_magnitude``; ``f_scale`` the robust
+    scale below which a residual keeps full weight. huber: min(1,
+    f/|r|) — the classical linear taper; cauchy: 1/(1 + (r/f)^2) — a harder
+    redescending cut. Any other ``loss`` (i.e. "off") returns unit
+    multipliers. Folding sqrt(m_i) into the data rows' sqrt-weights turns
+    one weighted-LSQ re-solve into one IRLS step of the robust M-estimate.
+    """
+    r = np.abs(np.asarray(r, dtype=float))
+    if loss == "huber":
+        return np.minimum(1.0, f_scale / np.maximum(r, 1e-16))
+    if loss == "cauchy":
+        return 1.0 / (1.0 + (r / f_scale) ** 2)
+    return np.ones_like(r)
+
+
+def quote_residual_magnitude(
+    model: np.ndarray,
+    mid: np.ndarray,
+    lo: np.ndarray | None,
+    hi: np.ndarray | None,
+    mid_anchor_weight: float,
+    scale: np.ndarray | float = 1.0,
+) -> np.ndarray:
+    """Per-quote UNWEIGHTED data-residual magnitude, for the IRLS reweighting.
+
+    Mid mode (``lo``/``hi`` None): ``scale * |model - mid|``. Band mode: the
+    combined hinge+anchor magnitude ``scale * sqrt(violation^2 +
+    mid_anchor_weight * (model - mid)^2)`` — the square root of the quote's
+    per-point band loss, so an in-band quote contributes only its (small)
+    anchor pull. All quantities live in the calibrator's ACTIVE residual
+    space (vol, or vega-normalized price with ``scale`` = 1/vega). The
+    SCHEME weights are deliberately excluded: FitSettings.robustFScale is
+    specified in the residual's own units, not in weighted units.
+    """
+    model = np.asarray(model, dtype=float)
+    mid = np.asarray(mid, dtype=float)
+    if lo is None:
+        return np.asarray(scale, dtype=float) * np.abs(model - mid)
+    viol = band_violation(model, lo, hi)
+    return np.asarray(scale, dtype=float) * np.sqrt(
+        viol**2 + mid_anchor_weight * (model - mid) ** 2
+    )
+
+
+def price_targets(
+    k: np.ndarray, w_quotes: np.ndarray, t: float, band: BandTarget | None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
+    """Vega-normalized price-space fit targets — the LQD convention — for the
+    SVI / MCS price-residual mode (FitSettings.overlayPriceResiduals).
+
+    Mirrors ``models.lqd.calibrate.prepare_residual_args``: the quote's call
+    price at its mid total variance, the 1/(vega + TICK_VEGA_FLOOR)
+    normalizer FROZEN at the mid vol, and (band modes) the call-price band
+    edges at the band-edge total variances. Returns ``(target_price,
+    inv_vega, price_lo, price_hi)`` with the last two None in mid mode.
+    """
+    k = np.asarray(k, dtype=float)
+    w_quotes = np.asarray(w_quotes, dtype=float)
+    target_price = black_call(k, w_quotes)
+    sigma = np.sqrt(w_quotes / t)
+    inv_vega = 1.0 / (black_vega_sigma(k, sigma, t) + TICK_VEGA_FLOOR)
+    price_lo = price_hi = None
+    if band is not None:
+        price_lo = black_call(k, band.iv_lo**2 * t)
+        price_hi = black_call(k, band.iv_hi**2 * t)
+    return target_price, inv_vega, price_lo, price_hi
 
 
 def band_violation(model: np.ndarray, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
