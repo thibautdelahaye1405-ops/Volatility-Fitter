@@ -478,7 +478,7 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
 
 ---
 
-## STATUS — updated 2026-08-25 (resume here)
+## STATUS — updated 2026-08-26 (resume here)
 
 ### 📌 WHERE THINGS STAND (2026-07-26, consolidated)
 
@@ -612,6 +612,92 @@ Key seams (from the 2026-07-18 survey): `HandleField(mean, sd, posteriors)`
   (everything since R1); certification pack now has 3 new cases
   (svi_lee_boundary / belly_certificate / svi_adversarial_inputs) —
   `-m backtest.certification run` refreshes the client-facing report.
+
+### 🧭 SESSION WRAP (2026-08-26a) — TAIL-PERSISTENCE FLEXIBILITY + SHORT-DATED OBJECTIVE ARC
+
+User follow-through on 2026-08-25 items 5 and 6: "maximum flexibility"
+for tail persistence, and the full recorded fix list for short-dated
+ruggedness. Three implementation agents (two parallel + one final wave);
+three commits; suite **1859 passed / 7 skipped** (+56 tests over the
+morning baseline); frontend 246 vitest + tsc + build green. EVERY new
+knob defaults byte-identical (exact-equality locks per model) — flipping
+any default is benchmark-pack adjudication material.
+
+**TAIL PERSISTENCE (item 5)** — the persisted tail is no longer only
+"raw θ + two soft rows"; three opt-in carriers:
+- **WingL / WingR operators** (calib/operators.py registry +
+  priorOperatorSet): per-side deep-wing vol SLOPE between the two
+  outermost prior-anchor deltas as a signed σ-basket, gap-gated like
+  ATM/RR/BF, budget share × `priorWingSlopeScale`; degenerate delta
+  geometry silently drops; coexists with the deep-tail LEVEL anchor
+  (hybrid_tail_deltas ignores them). Under an ACTIVE filter they ride
+  the operator switch (off) — the §6.3 split, documented not re-built.
+- **`priorVarSwapMode = "atm_spread"`**: the PRIOR var-swap companion
+  row becomes (σ_vs(θ) − σ_atm(θ)) − prior spread — the
+  tail-mass-over-body carrier (a body move carries the tail; no more
+  fighting a stale absolute level). LQD analytic Jacobian extended
+  (dC(0) chain at k=0, FD-locked); SVI/MCS ride their FD path; LV
+  falls back to absolute (nodal-variance linearization — rider).
+  Market var-swap quotes stay absolute always.
+- **`varSwapHardPin`** (the V3.6 rider, closed): VARSWAP_PIN_MULT=1e4
+  stiff-row escalation of the MARKET var-swap row only (prior rows
+  deliberately soft); LV = exact sqrt-equivalent tol shrink;
+  VarSwapInfo echoes `pinned`. Locked: pinned fit matches the quote to
+  <2e-5 vol where soft leaves >5e-4.
+- UI: Wing chips + wing scale + carrier select (PriorPersistencePanel);
+  Hard-pin toggle + pinned chip (VarSwapPanel — self-contained options
+  fetch/PUT).
+- FINDING (pre-existing, upstream): the LV affine solver's var-swap row
+  is nearly inert even soft (~2e-6 vol pull on a 5-pt basis) — an LV
+  convergence story worth a look.
+
+**SHORT-DATED (item 6)** — all six recorded fixes shipped, opt-in:
+- **`calendarFloorPadZ`**: BOTH overlay families (SVI included — was
+  common-support-only) build calendar floor AND ceiling grids winged
+  that many σ_ref√T beyond common support — covers the upside wing
+  where the optical stacked-IV crossings live.
+- **`calendarOnRefit`**: closes the "single-node refit voids the
+  coupling" caveat — a lone refit reads the ADJACENT committed slices
+  read-only (stale side skipped, never refit) and threads prev floor +
+  next ceiling (LQD price floor + overlay variance floor/ceiling).
+  Cache correctness: a neighbour CONTENT fingerprint (sha1 over LQD
+  params + overlay curve on a fixed grid — content, not keys, so
+  identical re-commits don't ripple) joins the fit key ONLY when on;
+  freshness compares node-local key prefixes (no A→B→A recursion).
+  Honest consequence documented: neighbours-as-inputs means a surface
+  sweep leaves earlier nodes stale-badged once later neighbours commit.
+  Locked end-to-end: toggle-off cache-hits keep a crossing with an
+  unchanged key; toggle-on crushes it ~2000×.
+- **`bandTickFloorTicks`**: band-mode IV half-width floored about MID at
+  ticks·tick_norm/max(vega,1e-4) per side, after the haircut, only ever
+  widening — sub-tick spreads can't claim sub-tick IV certainty.
+- **`midAnchorTauRef`**: mid anchor × min(1, √(τ/ref)) — neutralizes the
+  1/√τ data-row blowup so a 1-week slice stops chasing the tick
+  staircase. (Test-design finding, recorded: attenuation only moves a
+  band fit whose hinge rows are ACTIVE — all-in-band is a pure rescale
+  with the same argmin.)
+- **`robustLoss` huber|cauchy + `robustFScale`**: IRLS on the QUOTE
+  block only (a global scipy loss would soften the no-arb/calendar/
+  prior rows — they stay quadratic); two warm-started re-solves;
+  multipliers from the per-quote unweighted magnitude in the active
+  residual space (fScale reads in ~vol units); user-facing weights/RMS
+  untouched. LQD args-tuple order preserved (load-bearing).
+- **`overlayPriceResiduals`**: closes the R1 deferral — SVI/MCS data
+  rows in vega-normalized PRICE space (vega frozen at mid, floor 1e-4,
+  band edges in price space). SVI keeps its ANALYTIC Jacobian in price
+  mode (row-wise dC/dw chain, raw + structural, FD-locked); MCS rides
+  FD only while the toggle is on.
+- UI: winged-floors pad + refit toggle (CalibrationSection); band tick
+  floor, mid-anchor τ-ref, robust select + f-scale, price-space toggle
+  (HyperparamPanel calibration group).
+
+**Riders recorded**: LV-affine robust IRLS (the original LV fix-order
+#3); MCS analytic price-space Jacobian; LV atm_spread var-swap row; the
+LV var-swap-row inertness above; wing operators surviving an ACTIVE
+filter (separate path); benchmark-pack adjudication before flipping any
+of these defaults (run_benchmark_pack.ps1, user window). File-size
+notes: operators.py 445 / svi 412 / sigmoid 442 lines (solve-site code;
+natural cuts recorded in their docstrings).
 
 ### 🧭 SESSION WRAP (2026-08-25a) — TEN-ITEM BATCH: GRAPH ASYNC EXPIRIES, WEIGHTS, TAILS, CHARTS, BBG/EUREX, CLOCK ANSWERS
 
