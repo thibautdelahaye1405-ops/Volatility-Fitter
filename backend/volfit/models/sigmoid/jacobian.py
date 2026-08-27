@@ -7,9 +7,10 @@ the model variance ``v_R(z)`` in closed form so the bounded trust-region fit run
 evals/step regardless of R, removing the dominant factor.
 
 It covers the residual configuration the calibrator gates analytic-on — the mid OR
-band data term + the hat-amplitude ridge + the optional calendar floor. The var-swap /
-strike-gap / operator-prior blocks fall back to the finite-difference Jacobian
-(correct, just not accelerated), exactly as LQD and SVI do.
+band data term (vol space, or vega-normalized price space via ``price_rows.py``
+when overlayPriceResiduals is on) + the hat-amplitude ridge + the optional calendar
+floor. The var-swap / strike-gap / operator-prior blocks fall back to the
+finite-difference Jacobian (correct, just not accelerated), exactly as LQD and SVI do.
 
 The model variance is ``v_R(z) = v_base(z) + Σ_r alpha_r B(z; c_r, h_r, kappa_r)``.
 Building blocks (``u = z - z0`` / ``z - c``; ``Phi`` the log-cosh primitive):
@@ -29,6 +30,7 @@ import numpy as np
 
 from volfit.calib.band import BandTarget, band_violation_sign
 from volfit.models.sigmoid.kernels import _hat_norm, hat, hat_p, phi, phi_p
+from volfit.models.sigmoid.price_rows import price_row_blocks
 
 #: Mirrors ``calibrate._V_FLOOR`` (the variance floor under the sqrt); kept in sync.
 _V_FLOOR = 1e-8
@@ -100,24 +102,30 @@ def siv_residual_jacobian(
     sqrt_cal: float,
     ceil_z: np.ndarray | None = None,
     ceil_w: np.ndarray | None = None,
+    price_rows: tuple | None = None,
 ) -> np.ndarray:
     """Analytic Jacobian (n_residuals x (6+4R)) of the gated SIV residual.
 
     Rows match ``calibrate._fit.residuals`` under the analytic gate: the fit block
-    (mid: N rows; band: 2N rows), the ridge rows, the calendar floor rows, then
-    the calendar CEILING rows (the symmetric overlay repair's two-sided target)."""
+    (mid: N rows; band: 2N rows) — in vol space, or in vega-normalized price
+    space when ``price_rows`` (overlayPriceResiduals) is given (price_rows.py) —
+    the ridge rows, the calendar floor rows, then the calendar CEILING rows (the
+    symmetric overlay repair's two-sided target)."""
     v, dv = _model_v_grad(theta, np.asarray(z, float), n_cores)
-    model_vol = np.sqrt(np.maximum(v, _V_FLOOR))
-    dmv = dv / (2.0 * model_vol)[:, None]
-    dmv[v <= _V_FLOOR] = 0.0  # the variance floor flattens the gradient there
 
     blocks: list[np.ndarray] = []
-    if band is None:
-        blocks.append(sqrt_w[:, None] * dmv)
+    if price_rows is not None:
+        blocks.extend(price_row_blocks(v, dv, t, price_rows, sqrt_w, mid_anchor_weight))
     else:
-        sign = band_violation_sign(model_vol, band.iv_lo, band.iv_hi)
-        blocks.append((sqrt_w * sign)[:, None] * dmv)  # band violation rows
-        blocks.append((np.sqrt(mid_anchor_weight) * sqrt_w)[:, None] * dmv)  # mid anchor
+        model_vol = np.sqrt(np.maximum(v, _V_FLOOR))
+        dmv = dv / (2.0 * model_vol)[:, None]
+        dmv[v <= _V_FLOOR] = 0.0  # the variance floor flattens the gradient there
+        if band is None:
+            blocks.append(sqrt_w[:, None] * dmv)
+        else:
+            sign = band_violation_sign(model_vol, band.iv_lo, band.iv_hi)
+            blocks.append((sqrt_w * sign)[:, None] * dmv)  # band violation rows
+            blocks.append((np.sqrt(mid_anchor_weight) * sqrt_w)[:, None] * dmv)  # mid anchor
 
     # Ridge: sqrt(ridge) * alpha_r — one row per core, derivative only wrt its alpha.
     if n_cores:

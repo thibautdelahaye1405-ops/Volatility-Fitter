@@ -13,7 +13,8 @@ Covers the three opt-in objective fixes — every default byte-identical:
 3. ``overlayPriceResiduals`` — SVI / MCS data rows in vega-normalized price
    space (the LQD convention, calib.band.price_targets), with the SVI
    analytic Jacobian extended by the row-wise dC/dw chain factor (FD-locked
-   below); MCS takes the FD path while the toggle is on.
+   below); MCS gained the same analytic price rows on 2026-08-27
+   (models/sigmoid/price_rows.py, FD-locked in test_sigmoid_price_jacobian).
 """
 
 from datetime import date

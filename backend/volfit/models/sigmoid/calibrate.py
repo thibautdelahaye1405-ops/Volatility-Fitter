@@ -113,11 +113,9 @@ def _fit(
 
     ``price_rows`` (overlayPriceResiduals) is the frozen ``(k, target_price,
     inv_vega, price_lo, price_hi)`` tuple switching the data rows to the LQD
-    convention — vega-normalized price residuals / a price-space band hinge.
-    PERF NOTE: the price rows take the FD ("2-point") Jacobian path — the
-    analytic MCS Jacobian is not chained through dC/dw (the toggle is opt-in
-    and the extra evals only occur while it is on); None (the default) keeps
-    the vol-space rows and the analytic gate byte-identical.
+    convention — vega-normalized price residuals / a price-space band hinge —
+    on the SAME analytic gate (price_rows.py chains dC/dw row-wise, both
+    charts, FD-locked); None (the default) keeps the vol-space rows byte-identical.
     ``scheme_mean_w`` freezes the extrap block's mean quote weight at the
     SCHEME weights so the IRLS reweighting (calibrate_sigmoid) touches the
     data rows only; None computes it from ``sqrt_w`` (the historical value).
@@ -239,7 +237,6 @@ def _fit(
         and prior_anchor is None
         and operator_prior is None
         and prior_var_swap is None
-        and price_rows is None  # price-space data rows ride the FD path (docstring)
     )
     jac = "2-point"
     if use_analytic:
@@ -247,13 +244,13 @@ def _fit(
             if chart_cap is None:
                 j = siv_residual_jacobian(
                     theta, z, n_cores, t, sqrt_w, band, mid_anchor_weight, ridge,
-                    cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w,
+                    cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w, price_rows=price_rows,
                 )
             else:
                 j = siv_residual_jacobian_structural(
                     theta, z, n_cores, t, sqrt_w, band, mid_anchor_weight, ridge,
                     cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w,
-                    chart_cap, slope_scale,
+                    chart_cap, slope_scale, price_rows=price_rows,
                 )
             if wing_sqrt_lambda is not None:  # hybrid: FD only the cheap g-penalty rows
                 j = np.vstack([j, fd_rows(_wing_res, theta)])
@@ -357,9 +354,9 @@ def calibrate_sigmoid(
     weight is frozen at the scheme value. ``price_residuals``
     (overlayPriceResiduals) switches the refine-stage data rows to the LQD
     convention — vega-normalized price residuals, band edges as call prices
-    (calib.band.price_targets) — on the FD Jacobian path (see ``_fit``); the
-    base-seeding stage always stays a scheme-weighted vol-space mid fit (its
-    role is placing the hats).
+    (calib.band.price_targets) — on the analytic Jacobian, both charts (see
+    ``_fit`` / price_rows.py); the base-seeding stage always stays a
+    scheme-weighted vol-space mid fit (its role is placing the hats).
     """
     k = np.asarray(k, dtype=float)
     w_arr = np.asarray(w_quotes, dtype=float)

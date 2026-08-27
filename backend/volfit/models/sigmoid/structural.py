@@ -218,16 +218,18 @@ def siv_residual_jacobian_structural(
     ceil_w: np.ndarray | None,
     cap: float,
     slope_scale: float,
+    price_rows: tuple | None = None,
 ) -> np.ndarray:
     """Analytic Jacobian of the gated residual in CHART space: the raw-space
     Jacobian right-multiplied by blockdiag(chain₆, I₄ᵣ) — the hat block is a
-    raw pass-through, so only the 6 base columns transform."""
+    raw pass-through, so only the 6 base columns transform. ``price_rows``
+    (overlayPriceResiduals) passes through: the chain is space-agnostic."""
     theta = np.asarray(theta, dtype=float)
     raw6, chain = structural_chain_mcs(theta[:6], cap, slope_scale)
     theta_raw = np.concatenate([raw6, theta[6:]])
     j = siv_residual_jacobian(
         theta_raw, z, n_cores, t, sqrt_w, band, mid_anchor_weight, ridge,
-        cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w,
+        cal_z, cal_floor, sqrt_cal, ceil_z, ceil_w, price_rows=price_rows,
     )
     j[:, :6] = j[:, :6] @ chain
     return j
