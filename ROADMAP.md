@@ -781,15 +781,92 @@ C5. **Drag a node onto the Graph canvas** — HTML5 DnD from a nodes-pane row
 Suggested order: A1 → C2 → C1 → B1 → B2 → C4 → C5 → A2 → A3 → C3
 (C3 last: largest refactor; A2 needs the FileProvider on the backend).
 
-## STATUS — updated 2026-08-26 (resume here)
+## STATUS — updated 2026-08-27 (resume here)
 
-### ▶ NEXT SESSION: UI SHELL v2 WAVE 3 (planned 2026-08-27)
+### ▶ NEXT: the UI shell arc is COMPLETE — resume the "Next up (priority
+order)" list under WHERE THINGS STAND (v3 riders + the user-window runs).
+Workbench follow-ons recorded, none scheduled: backend per-node effective
+as-of (wave 2 proposal), a third editor group / vertical split, `fit_key`
+model dimension for loaded fits, index-root discovery for snapshot files.
 
-Implement the "WAVE 3" plan above (File menu with workspace + snapshot files
-and the File data source; 3D zoom / pan / crosshair; nodes-tree keyboard nav,
-per-tab view memory, split editors, command palette, drag-to-light). Start
-with A1 (workspace files) and follow the suggested order at the end of the
-plan; the app shell + lenses are described in the two wraps below.
+### 🖥️ UI SHELL v2 WAVE 3 SHIPPED 2026-08-27 (wrap 2026-08-27b)
+
+All ten items of the "WAVE 3" plan above landed, one commit per green item
+(fcc054b A1 → 0e0adb6 C2 → 32e1dc3 C1 → e1ae472 + 9c1b4df B1/B2 → 42c7e75
+C4 → 35296ea C5 → 73b19a0 A2 → 6679fc8 A3 → e652204 C3):
+
+- **A1 workspace files** — `File ▾` (before Options): New (two-step confirm)
+  · Open… (Ctrl+O, or drop a .json on the shell) · Save (Ctrl+S; Chromium
+  file handle re-saves in place, elsewhere re-downloads) · Save as…
+  (Ctrl+Shift+S) · Save to server… / Open from server ▸ / Recent ▸ (8; handles
+  in IndexedDB). Bundle `volfit-workspace/1` = backend `build_doc` + shell blob
+  (activity, editor groups, layout, view memory, view settings, expiry
+  format, node sources, 3D cameras). Backend: `GET /workspace/export`, `POST
+  /workspace/import` (422 with a schema / version diagnostic), `POST
+  /workspace/new`, `GET /workspace/status` (SHA-1 fingerprint = dirty
+  tracking), named store `GET/POST/GET/DELETE /workspaces[/{name}]` (store
+  schema v9 `workspaces` table). Status-bar chip "Workspace <name> ·
+  unsaved". Locks: `tests/test_workspace_files.py` (byte-identical round
+  trip, refusals, store), vitest on the validator, smoke round trip.
+- **C2 per-tab view memory** — `ViewMemory` in `lib/workbenchTabs` (a new
+  tab inherits the current tab's memory; pruned with the tab),
+  `useLensViewMemory(lens, defaults)` in both lenses, Layout ▸ "Remember
+  view per tab" (default ON).
+- **C1 tree keyboard navigation** — one tab stop, roving focused row
+  (`lib/treeNav`): ↑/↓, Home/End, ←/→ collapse/expand, type-ahead, Enter /
+  Shift+Enter / Space / Ctrl+Enter (other group), L lit/dark, Tab → filter;
+  Ctrl+B (show) focuses the tree; testing-library locks.
+- **B1/B2 3D charts** — `lib/surfaceCamera` (project ∘ unproject on the floor
+  round-trips; zoom-about-the-pointer invariance locked): zoom at cursor,
+  Shift/middle/two-finger pan, Ctrl-drag pitch 10–80°, ⌂ reset, camera
+  persisted per lens view (`state/surfaceCameras`, rides workspace files);
+  crosshair = pointer → floor → snapped vertex (hysteresis) → lifted SMILE at
+  T_i + TERM curve at k_j, floor projections, marker, badge `T 0.50y ·
+  25-Feb-27 · k −0.500 · 25.6%`; linked hover (`state/surfaceHover`) across
+  the IV surface, LV mesh, LV heatmap and the Stacked IV / Densities
+  overlays (bold curve + marker) of the same ticker.
+- **C4 command palette** — Ctrl+K / Ctrl+Shift+P (or `>` in quick open) over
+  `lib/commands.ts`; File · Universe · Help · Layout menus render their rows
+  FROM the registry (`CommandRow`), including the dynamic saved-universe /
+  server-workspace / recent rows; argument prompts (Save to server…, Save
+  universe as…); `commands.test.ts` locks unique ids + documented chords.
+- **C5 drag a node** — from the Nodes pane onto the Graph canvas (lights the
+  designation; manual what-if pulses +1 vol pt; drop halo) or the tab strip
+  (pinned tab) — `lib/nodeDnd` routing, `litMap.setNode`; smoke synthesizes
+  the DragEvents and checks `/universe/lit`.
+- **A2 snapshot files + File data source** — `volfit-snapshot/1` (every
+  fetched chain + committed fits: LQD params, overlay params, diagnostics),
+  `POST /snapshot/export` (cached only, 409 when nothing fetched) / `POST
+  /snapshot/import?name=` → `volfit/data/file.py` FileProvider registered as
+  source `file` (label `File · <names>`, several files union, last-loaded
+  wins per node), universe = the file's tickers with embedded expiries,
+  calibrations REINSTALLED byte-identically via `service.commit_record`
+  (`FitRecord.provenance = "loaded"` → Quality model column + fit chip); a
+  fetch under the file source re-serves the chains. Certification case
+  `snapshot_roundtrip`; File ▸ Save / Open snapshot… (Ctrl+Alt+S), the
+  Data-sources card opener, drop routing by schema; smoke round trip.
+- **A3 Export ▸** — surfaces JSON / CSV, quality report HTML, Chart as PNG
+  (active chart-card SVG with computed styles inlined, 2× canvas,
+  `<ticker>_<expiry>_<view>.png`); smoke exports one through Ctrl+K.
+- **C3 split editors** — one or two editor groups (`lib/editorGroups`:
+  split / unsplit / focus / move / close-unsplits / prune / legacy-blob
+  restore, vitest), per-group tab strips, Ctrl+\, tab context menu, drag a
+  tab or a node onto the right 20 % to split, Ctrl+Enter from the tree;
+  phase 3b lens override per side group (Parametric left, Local Vol right);
+  the prerequisite refactor: `useSmile` = universe level + `useNodeSmile` per
+  node, `state/nodeScope` makes `useSmileSession()` group-aware (the focused
+  group IS the root session, the other fetches its own node); asides yield
+  in split groups; smoke splits and verifies two different nodes.
+
+Verification at wrap: tsc clean · vitest 48 files / 326 tests (was 259) ·
+`npm run build` · `npm run smoke:ui` = 7 lens steps (incl. the 3D crosshair)
++ nodes-pane→tab + 5 menus + 6 dialogs + drag-to-light + split editors +
+chart PNG + snapshot round trip + workspace round trip, all LIVE on the new
+`backend/smoke_server.py` (synthetic single-origin server on :4188 with a
+throw-away DB — the smoke no longer depends on a mock shell). Backend:
+`tests/test_workspace_files.py` (10) + `tests/test_snapshot_files.py` (9)
++ the datasource / quality / export / workspace suites (335) green; FULL
+backend suite at wrap: 1879 passed, 7 skipped (12m47s).
 
 ### 🖥️ UI SHELL v2 WAVE 2 SHIPPED 2026-08-27 (wrap 2026-08-27a)
 
