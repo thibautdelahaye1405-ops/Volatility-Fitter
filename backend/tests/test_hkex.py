@@ -121,7 +121,18 @@ def test_parse_optionlist_splits_sides_and_blanks():
 
 
 # -------------------------------------------------------------- provider
-def test_index_chain_two_calls_per_month_own_window_and_spot():
+def test_index_chain_two_calls_per_month_own_window_and_spot(monkeypatch):
+    # Pin the provider's clock to the fixture's stamp day (2026-08-21): the
+    # ladder filter is 0 < (expiry - date.today()).days, so on the fixture's own
+    # front expiry (2026-08-28) the wall clock would drop it as 0-DTE.
+    from volfit.data import exchange as exchange_mod
+
+    class _Fixed(date):
+        @classmethod
+        def today(cls):
+            return date(2026, 8, 21)
+
+    monkeypatch.setattr(exchange_mod, "date", _Fixed)
     prov, fetch = _provider()
     exp = prov.available_expiries("HSI")
     assert exp == [date(2026, 8, 28), date(2026, 12, 30)]

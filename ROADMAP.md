@@ -793,17 +793,15 @@ below) — every recorded rider is closed except the ones listed here:
    then `-m backtest.filter_replay` — Prior Evidence and FilterTimeline link
    to / render from its artifact. Any default flip (robust loss, weighting
    schemes, price residuals, mcsChart) is benchmark-pack adjudication.
-2. Still-open riders: `fit_key` model dimension for loaded fits (V3.2 —
-   snapshot_files.py commit site; recorded invasive, no consumer needs it
-   yet); wing operators surviving an ACTIVE filter (separate path); a third
-   editor group / vertical split; the as-of proposal's publish gate + Fetch
-   coverage preview (the wire + pane column shipped in 2026-08-27d); the
-   same-date AM/PM expiry-key redesign (rides index-root onboarding — the
-   capture twins now keep the first-listed root per date).
-3. Open findings worth a look: Massive stamps prev-close chains at fetch
-   time, so a Previous-close selection on Massive reads `asOfExact=false`
-   (amber) for every node — fix belongs in the Massive stamp or a
-   mode-aware exemption in node_asof.requested_day.
+2. Still-open riders (all recorded as invasive / design-heavy — pick
+   deliberately): `fit_key` model dimension for loaded fits (V3.2 —
+   snapshot_files.py commit site; no consumer needs it yet); wing operators
+   surviving an ACTIVE filter (separate path); a third editor group /
+   vertical split; the same-date AM/PM expiry-key redesign (rides index-root
+   onboarding — the capture twins now keep the first-listed root per date).
+   The as-of proposal is COMPLETE (wire + pane column + mismatch gate +
+   Fetch coverage preview, 2026-08-27d) and the Massive prev-close stamp
+   finding is FIXED (9ef190d).
 USER-side: restart the long-running :8000 (new OptionsSettings fields,
 endpoints, the eSSVI compare family); existing stores default the new gates.
 
@@ -864,10 +862,31 @@ next:
   unresolved ladder yields an empty, uncached chain (three agent tests
   fixed that way).
 
-Verification at wrap: backend suite **1976 passed / 7 skipped** (11m33s;
-+49 locks over 2026-08-27c); frontend tsc clean · vitest 50 files / 346
-tests · `npm run build` · `npm run smoke:ui` all green LIVE (every lens
-incl. the four-family Compare tab and the Nodes pane column); LV perf rails 8–28 % of budget (no var-swap rows on the
+Third wave (same session, after the 1976-lock checkpoint):
+- **Massive prev-close stamp (9ef190d)** — a prev-close chain IS the latest
+  completed session's close, so it is stamped at that session's close
+  instant (`expiry_time.session_close_utc` / `latest_completed_session`,
+  rolling at the ET close, half-days honoured) instead of fetch time —
+  the "every prev-close node reads ≠ as-of" finding fixed at the source.
+- **As-of mismatch gate + Fetch coverage preview (cf6978e)** — the rest of
+  the "As-of → Fetch ▾" proposal: `asOfMismatchGate` (default off, never
+  bumps the version) turns an inexact node's `≠ as-of` into a Quality
+  readiness issue + publish blocker (advisory otherwise; arbFlags never
+  counts it; Quality card "As-of" row; Options toggle beside the data-age
+  thresholds); `GET /fetch/preview` (cached state only) reports per ticker
+  whether the active source honours the selected as-of (advertised mode
+  AND the loaded stamp agreeing), the fallback moment and the current
+  exactness, with totals and a one-line summary the Fetch menu shows under
+  the Snapshot verb. Test-side lesson repeated (three more agent tests):
+  resolve the ladder before the first fetch.
+
+Verification at wrap: backend suite **1988 passed / 7 skipped** (13m29s;
+checkpoint before the third wave 1976 / 7) — the one failure the full run
+surfaced was a WALL-CLOCK lock (test_hkex's fixture front expiry is
+2026-08-28 = the day the session rolled into; `exchange.available_expiries`
+drops 0-DTE via `date.today()`), fixed by pinning the provider's clock in
+the test; frontend tsc clean · vitest 50 files / 346 tests · `npm run
+build` · `npm run smoke:ui` all green LIVE; LV perf rails 8–28 % of budget (no var-swap rows on the
 rails ⇒ byte-identical).
 
 ### 🧭 SESSION WRAP (2026-08-27c) — V3 RIDER BATCH: SEVEN RIDERS CLOSED
