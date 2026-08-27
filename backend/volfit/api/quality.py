@@ -23,6 +23,7 @@ from volfit.api import service
 from volfit.api.carry import carry_counts
 from volfit.api.data_age import format_age, ticker_ages
 from volfit.api.filter_mode import resolve_filter_mode
+from volfit.api.quality_gates import TailClause, relaxation_hint, tail_clause, tail_issue
 from volfit.api.schemas_quality import (
     LvQuality,
     QualityNode,
@@ -180,19 +181,31 @@ def _node_row(
     # the ACCEPTANCE authority. The windowed screen above stays as the
     # support-confined desk diagnostic; the certificate additionally proves
     # (or refutes) ledger order between and beyond its samples, tails
-    # included. Its limiting-tail-order clause is advisory in Phase 0 —
-    # nothing in the solver imposes endpoint-scale monotonicity yet.
+    # included. Its limiting-tail-order clause is advisory by default; the
+    # V3.0 rider's ledgerTailOrderGate promotes the tolerance-aware reading
+    # (quality_gates.tail_clause) to an issue / readiness / publish gate.
     ledger_gap = ledger_z = ledger_k = None
     ledger_tail_ok = True
     ledger_certified = True
+    tail_gate = bool(state.options().ledgerTailOrderGate)
+    tail = TailClause(None, None, True, False, ())
     if prev_slice is not None:
         try:
             cert = ledger_certificate(prev_slice, record.result.slice)
             ledger_gap, ledger_z, ledger_k = cert.min_gap, cert.z_star, cert.k_star
             ledger_tail_ok = cert.tail_order_ok
             ledger_certified = cert.certified(_CAL_TOL)
+            tail = tail_clause(cert)
         except Exception:  # the certificate must never break a status read
             pass
+    # Quote-band relaxation diagnostic (V3.0 rider): recorded by the last
+    # surface pass for pairs the exchange could not certify; advisory.
+    relax = getattr(state, "_band_relaxation", {}).get((ticker, iso, fit_mode))
+    relax_vol = relax.delta_vol if relax is not None else None
+    relax_ok = relax.feasible if relax is not None else None
+    relax_hint = (
+        "" if relax is None else relaxation_hint(relax_vol, relax_ok, relax.delta_max)
+    )
     # R5 (committee point 8): the violation in the units a desk prices —
     # currency per share, option-price ticks, and fractions of the local
     # bid-ask spread at the worst strike — plus the strike itself, i.e. the
@@ -275,16 +288,22 @@ def _node_row(
         issues.append(f"RMS {rms_bp:.0f}bp > budget {rms_budget_bp:.0f}bp")
     if not lee_ok:
         issues.append("Lee wing slope > 2")
+    cal_issues: list[str] = []
     if not cal_ok:
-        issues.append("calendar arb vs previous expiry")
+        cal_issues.append("calendar arb vs previous expiry")
     elif not ledger_certified:
         # The sampled screen passed but the exact certificate refutes full-
         # line order (a between-node or out-of-support dip): one issue line,
         # never two for the same defect.
-        issues.append(
+        cal_issues.append(
             f"calendar certificate: min ledger gap {ledger_gap * 1e4:.1f}bp"
             f" at k {ledger_k:+.2f}"
         )
+    if tail_gate and not tail.certified:
+        cal_issues.append(tail_issue(tail))
+    if cal_issues and relax_hint:
+        cal_issues[0] += relax_hint  # the book's diagnostic rides the calendar issue
+    issues.extend(cal_issues)
     if not belly_certified:
         issues.append(
             f"belly butterfly arb (min g {belly.min_g:.4f} at k {belly.argmin_k:+.2f})"
@@ -321,6 +340,14 @@ def _node_row(
         ledgerGapK=ledger_k,
         ledgerTailOrderOk=ledger_tail_ok,
         ledgerCertified=ledger_certified,
+        ledgerTailGapLeft=tail.gap_left,
+        ledgerTailGapRight=tail.gap_right,
+        ledgerTailGapMin=tail.gap_min,
+        ledgerTailCertified=tail.certified,
+        ledgerTailIrreducible=tail.irreducible,
+        ledgerTailGated=tail_gate,
+        bandRelaxationVol=relax_vol,
+        bandRelaxationFeasible=relax_ok,
         extrapMinG=extrap_min_g,
         extrapOk=extrap_ok,
         extrapCalBp=extrap_cal,
@@ -428,7 +455,11 @@ def build_quality_report(
                 worstNodeRmsBp=max((r.rmsBp for r in fitted), default=0.0),
                 arbFlags=sum(
                     1 for r in fitted
-                    if not (r.leeOk and r.calendarOk and r.ledgerCertified)
+                    if not (
+                        r.leeOk and r.calendarOk and r.ledgerCertified
+                        # the gated tail clause counts; advisory it does not
+                        and (r.ledgerTailCertified or not r.ledgerTailGated)
+                    )
                 ),
                 extrapFlags=sum(1 for r in fitted if not (r.extrapOk and r.extrapCalOk)),
                 dataAgeMin=age_min,

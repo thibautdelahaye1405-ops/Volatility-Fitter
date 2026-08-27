@@ -37,6 +37,23 @@ export interface QualityNode {
   ledgerGapK?: number | null;
   ledgerTailOrderOk?: boolean;
   ledgerCertified?: boolean;
+  /** Tail-order gate (Options ▸ Tail-order gate): the certificate's signed
+   *  per-side tail gaps (eq. tailscalecalendar in the endpoint chart; null on
+   *  a side decided by unequal exponents — see ledgerTailIrreducible) and the
+   *  tolerance-aware clause. ledgerTailGated = the gate applied to this row
+   *  (a failing clause then fails readiness and blocks publish); otherwise
+   *  the clause stays advisory. */
+  ledgerTailGapLeft?: number | null;
+  ledgerTailGapRight?: number | null;
+  ledgerTailGapMin?: number | null;
+  ledgerTailCertified?: boolean;
+  ledgerTailIrreducible?: boolean;
+  ledgerTailGated?: boolean;
+  /** Quote-band relaxation diagnostic (Options ▸ Band relaxation diagnostic,
+   *  advisory): smallest symmetric band widening (vol) under which an
+   *  UNCERTIFIED adjacent pair certifies; feasible=false = not even ±5 vol pts. */
+  bandRelaxationVol?: number | null;
+  bandRelaxationFeasible?: boolean | null;
   /** Extrapolated-region arb (advisory measurement, Notes 09/10 Phase 1). */
   extrapMinG: number | null;
   extrapOk: boolean;

@@ -118,6 +118,18 @@ export default function CalibrationSection({
         checked={draft.extrapEnforce} disabled={!live}
         onChange={(v) => patch({ extrapEnforce: v })}
       />
+      <Toggle
+        label="Tail-order gate"
+        hint="Promote the full-line certificate's TAIL-ORDER clause (the limiting tail order of adjacent slices) from advisory to a gate: the active-set exchange treats a tail-order failure like a ledger-gap failure (the λ± seam rows at common α are its repair path — unequal α is irreducible by construction), the Quality readiness issue list names it and the publish export blocks on it. Off = byte-identical (the Phase-0 advisory policy); affects the surface repair."
+        checked={draft.ledgerTailOrderGate} disabled={!live}
+        onChange={(v) => patch({ ledgerTailOrderGate: v })}
+      />
+      <Toggle
+        label="Band relaxation diagnostic"
+        hint="After the surface pass, for every adjacent pair the exchange could NOT certify, bisect the smallest symmetric quote-band widening (vol) under which the pair certifies and report it on the Quality node and in export notes — the book's 'smallest quote-band relaxation needed for feasibility'. Advisory: the accepted surface is untouched; only runs in band fit modes (Bid-Ask / Haircut) on uncertified pairs."
+        checked={draft.bandRelaxationDiagnostic} disabled={!live}
+        onChange={(v) => patch({ bandRelaxationDiagnostic: v })}
+      />
 
       <h4 className={subTitle}>Variance swaps</h4>
       <Toggle

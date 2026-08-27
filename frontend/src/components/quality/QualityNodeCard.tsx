@@ -36,7 +36,7 @@ export function StatusCell({ node }: { node: QualityNode }) {
       </span>
     );
   }
-  const arb = !node.leeOk || !node.calendarOk;
+  const arb = !node.leeOk || !node.calendarOk || tailGateFailed(node);
   const tone = !node.hasFit ? "text-slate-500" : arb ? "text-rose-400" : "text-amber-300";
   const dot = !node.hasFit ? "bg-slate-600" : arb ? "bg-rose-500" : "bg-amber-400";
   return (
@@ -53,6 +53,45 @@ export const EXTRAP_TIP =
 export const BELLY_TIP =
   "Belly butterfly certificate over the traded range: min Durrleman g @ its strike (rose = uncertified, blocks publish). ·R = certified repair refit.";
 export const AGE_TIP = "Age of the loaded live quotes (— when not live)";
+export const TAIL_TIP =
+  "Limiting tail order of the adjacent LQD pair (book ch. 2, eq. tailscalecalendar): the far expiry's tail scales must not decay faster than the near one's. Gated (Options ▸ Tail-order gate) = rose, fails readiness and blocks publish; otherwise advisory (amber). L/R = failing side; α = unequal tail exponents (irreducible).";
+export const RELAX_TIP =
+  "Quote-band relaxation diagnostic (Options ▸ Band relaxation diagnostic, advisory): the smallest symmetric widening of BOTH slices' quote bands under which the uncertified pair certifies — the book's 'smallest quote-band relaxation needed for feasibility'.";
+
+/** The tail clause failed AND the gate applied (blocks publish). */
+export function tailGateFailed(node: QualityNode): boolean {
+  return node.ledgerTailGated === true && node.ledgerTailCertified === false;
+}
+
+/** Tail-order chip text: "ok" / "reversed R -1.2e-5 · gated"; "—" without a pair. */
+export function tailText(node: QualityNode): string {
+  if (!node.hasFit || node.ledgerGapMin == null) return "—";
+  // Tolerance-aware verdict when the payload carries it; raw clause otherwise.
+  const failing =
+    node.ledgerTailCertified != null ? !node.ledgerTailCertified : node.ledgerTailOrderOk === false;
+  if (!failing) return "ok";
+  const sides: string[] = [];
+  if (node.ledgerTailGapLeft != null && node.ledgerTailGapLeft < -1e-6) sides.push("L");
+  if (node.ledgerTailGapRight != null && node.ledgerTailGapRight < -1e-6) sides.push("R");
+  if (node.ledgerTailIrreducible) sides.push("α");
+  const gap = node.ledgerTailGapMin != null ? ` ${node.ledgerTailGapMin.toExponential(1)}` : "";
+  return `reversed${sides.length ? ` ${sides.join("/")}` : ""}${gap} · ${node.ledgerTailGated ? "gated" : "advisory"}`;
+}
+
+/** Tail-order chip tone: rose when gated and failing, amber when advisory and failing. */
+export function tailTone(node: QualityNode): string | undefined {
+  if (tailGateFailed(node)) return "text-rose-400";
+  const failing =
+    node.ledgerTailCertified != null ? !node.ledgerTailCertified : node.ledgerTailOrderOk === false;
+  return failing && node.ledgerGapMin != null ? "text-amber-300" : undefined;
+}
+
+/** Band-relaxation text ("±1.23 vp" / "infeasible ≤ ±5 vp"); null when not recorded. */
+export function relaxText(node: QualityNode): string | null {
+  if (node.bandRelaxationFeasible === false) return "infeasible ≤ ±5 vp";
+  if (node.bandRelaxationVol != null) return `±${(node.bandRelaxationVol * 100).toFixed(2)} vp`;
+  return null;
+}
 
 /** Belly cell tooltip: dip width when the certificate grid dips below -tol. */
 export function bellyTitle(node: QualityNode): string {
@@ -190,6 +229,18 @@ export default function QualityNodeCard({ node, rmsBudgetBp, fitMode, label }: Q
             {node.calendarViolation > 0 ? node.calendarViolation.toExponential(1) : "0"}
             {node.ledgerGapMin != null ? ` · ledger ${node.ledgerGapMin.toExponential(1)}` : ""}
           </Row>
+          <Row label="Tail order" tone={tailTone(node)} title={TAIL_TIP}>
+            {tailText(node)}
+          </Row>
+          {relaxText(node) !== null ? (
+            <Row
+              label="Band relax"
+              tone={node.bandRelaxationFeasible === false ? "text-rose-400" : "text-amber-300"}
+              title={RELAX_TIP}
+            >
+              {relaxText(node)}
+            </Row>
+          ) : null}
           <Row
             label="Extrap g · cal"
             tone={node.extrapOk === false || node.extrapCalOk === false ? "text-amber-300" : undefined}

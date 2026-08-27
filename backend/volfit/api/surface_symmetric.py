@@ -39,7 +39,8 @@ from volfit.calib.symmetric import (
     result_from_theta,
     solver_diag_from_theta,
 )
-from volfit.calib.symmetric_exchange import exchange_ladder
+from volfit.calib.band_relaxation import has_band, relax_pair
+from volfit.calib.symmetric_exchange import exchange_ladder, pair_ok
 
 #: calibrate-dict keys that must NOT enter the joint per-slice objective
 #: (interface rows replace the one-sided floor; init is the warm start;
@@ -156,13 +157,21 @@ def phase_b_repair(
         # constraint nodes or beyond the sampled support) uncertified are
         # re-solved with hard per-rank ledger rows; a certified ladder passes
         # through untouched, keeping the fast path and every escalation lock.
-        ex_thetas, ex_touched, _certs = exchange_ladder(specs, repair.thetas)
+        # The tail-order gate (V3.0 rider) widens the exchange's acceptance
+        # predicate to the certificate's tail clause; off = byte-identical.
+        tail_gate = bool(state.options().ledgerTailOrderGate)
+        ex_thetas, ex_touched, certs = exchange_ladder(
+            specs, repair.thetas, tail_gate=tail_gate
+        )
         if any(ex_touched):
             repair = dataclasses.replace(
                 repair,
                 thetas=ex_thetas,
                 refit=[a or b for a, b in zip(repair.refit, ex_touched)],
             )
+        _record_band_relaxation(
+            state, ticker, fit_mode, ctx, specs, ex_thetas, certs, tail_gate
+        )
         overlay_bad = _first_overlay_violation(records, ctx["retained"])
         if not any(repair.refit) and overlay_bad is None:
             return repair
@@ -204,6 +213,44 @@ def phase_b_repair(
             prev_display = records[i].display
             prev_k = ctx["retained"][i]
     return repair
+
+
+def _record_band_relaxation(
+    state: AppState,
+    ticker: str,
+    fit_mode: str,
+    ctx: dict,
+    specs: list[SliceSpec],
+    thetas: list[np.ndarray],
+    certs,
+    tail_gate: bool,
+) -> None:
+    """Quote-band relaxation diagnostic (V3.0 rider; book ch. 2 §calendar:
+    "the smallest quote-band relaxation needed for feasibility").
+
+    The ticker's previous entries for this fit mode are dropped every pass
+    (the dict always mirrors the LAST surface pass). Under the
+    bandRelaxationDiagnostic option, in a band fit mode, every adjacent pair
+    the exchange could NOT certify (gap clause, or the gated tail clause)
+    gets ``relax_pair`` run on its FINAL thetas and the result stored on
+    ``state._band_relaxation[(ticker, far_iso, fit_mode)]`` — read by
+    api.quality / api.export. ADVISORY: the accepted surface is never
+    changed here, and the option never bumps the options version.
+    """
+    store = getattr(state, "_band_relaxation", None)
+    if store is None:
+        return
+    for key in [k for k in store if k[0] == ticker and k[2] == fit_mode]:
+        del store[key]
+    if not state.options().bandRelaxationDiagnostic or not has_band(specs):
+        return
+    for j, cert in enumerate(certs):
+        if pair_ok(cert, tail_gate):
+            continue
+        far_iso = ctx["plan"][j + 1][0]
+        store[(ticker, far_iso, fit_mode)] = relax_pair(
+            specs[j], specs[j + 1], thetas[j], thetas[j + 1], tail_gate=tail_gate
+        )
 
 
 def _first_overlay_violation(records, retained) -> int | None:

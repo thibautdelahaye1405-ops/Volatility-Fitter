@@ -271,6 +271,13 @@ class AppState(UniverseMixin):
         #: chain-cache clear (it stays an AppState attribute, not a scoped
         #: workspace field).
         self._filter_history: dict[tuple, object] = {}
+        #: Quote-band relaxation diagnostic (V3.0 rider, ADVISORY), keyed
+        #: (ticker, far_iso, fit_mode) -> calib.band_relaxation.BandRelaxation
+        #: for the adjacent pairs the last surface pass could not certify
+        #: (surface_symmetric.phase_b_repair writes it under the
+        #: bandRelaxationDiagnostic option; quality/export read it). Never
+        #: changes a fit; cleared / captured / restored with the chain caches.
+        self._band_relaxation: dict[tuple, object] = {}
         #: Restore the user's saved Fit/Options defaults (the Options "Save as
         #: default" button) when a store is configured; code defaults otherwise.
         saved_fit, saved_options = load_defaults(self.store_path)
@@ -533,13 +540,14 @@ class AppState(UniverseMixin):
         self._varswap_sessions.clear()
         self._filter_states.clear()  # source/as-of switch = the filter's strict reset
         self._filter_history.clear()  # the history rings share the filter's reset
+        self._band_relaxation.clear()  # advisory pair diagnostics of the old chains
 
     #: Cache dicts that ``_clear_chain_caches`` wipes — the live surface state a
     #: transient as-of switch must NOT destroy (see capture/restore below).
     _CHAIN_CACHE_ATTRS = (
         "_snapshots", "_forwards", "_fits", "_calibrated", "_anchor_spot",
         "_affine_calibrated", "_sessions", "_varswap_sessions", "_filter_states",
-        "_filter_history",
+        "_filter_history", "_band_relaxation",
     )
 
     # ------------------------------------------- observation filter (Note 15)

@@ -209,8 +209,11 @@ CASES: tuple[CertCase, ...] = (
         "certificate passes. The locked rig plants a wing violation every "
         "sampled screen misses: repair alone leaves the certificate "
         "failing, the exchange certifies it, clean ladders never enter and "
-        "stay byte-identical, and the exchange is idempotent.",
-        ("tests/test_symmetric_exchange.py",),
+        "stay byte-identical, and the exchange is idempotent. The V3.0 "
+        "tail-order-gate rider (tests/test_tail_order_gate.py) promotes the "
+        "certificate's tail clause to an opt-in gate with the lambda rows as "
+        "its repair path; off = byte-identical.",
+        ("tests/test_symmetric_exchange.py", "tests/test_tail_order_gate.py"),
     ),
     CertCase(
         "weekly_lv_resolution", "True-weekly local-vol resolution",

@@ -43,6 +43,7 @@ from volfit.api.export_inputs import (
     export_node_inputs,
 )
 from volfit.api.quality import build_quality_report
+from volfit.api.quality_gates import relaxation_hint, tail_side_text
 from volfit.api.schemas_quality import QualityNode
 from volfit.api.state import AppState
 from volfit.models.projection import ProjectedWings, project_published_wings
@@ -106,6 +107,13 @@ class ExportNode(BaseModel):
     #: publish blocks on it). None on a ticker's first expiry (no pair).
     minAdjacentLedgerGap: float | None = None
     minAdjacentLedgerGapK: float | None = None
+    #: Quote-band relaxation diagnostic (V3.0 rider, advisory): the smallest
+    #: symmetric band widening (vol units) under which this node's pair with
+    #: the previous expiry certifies — recorded only for pairs the surface
+    #: pass could not certify under OptionsSettings.bandRelaxationDiagnostic;
+    #: None otherwise (and None when infeasible even at the search ceiling —
+    #: the blocker text then says so).
+    bandRelaxationVol: float | None = None
     #: The calibration's inputs (prepared quotes, quarantine, forward
     #: provenance) — embedded by default on JSON exports so the artifact is
     #: self-contained; None on slim (inputs=false) exports.
@@ -290,6 +298,7 @@ def _export_node(
         wingsClean=projected.fully_clean,
         minAdjacentLedgerGap=row.ledgerGapMin,
         minAdjacentLedgerGapK=row.ledgerGapK,
+        bandRelaxationVol=row.bandRelaxationVol,
         inputs=(
             export_node_inputs(state, ticker, row.expiry, prepared)
             if include_inputs else None
@@ -321,14 +330,30 @@ def _node_blockers(ticker: str, row: QualityNode, node: ExportNode) -> list[str]
     out: list[str] = []
     # The exact full-line certificate is the calendar authority (tails+
     # calendar arc Phase 0); the sampled message backstops only the
-    # defensive path where the certificate could not run.
+    # defensive path where the certificate could not run. The band
+    # relaxation hint (V3.0 rider) rides the first calendar blocker.
+    hint = relaxation_hint(row.bandRelaxationVol, row.bandRelaxationFeasible)
+    cal: list[str] = []
     if not row.ledgerCertified and row.ledgerGapMin is not None:
-        out.append(
+        cal.append(
             f"{where}: calendar certificate failed"
             f" (min ledger gap {row.ledgerGapMin * 1e4:.1f}bp)"
         )
     elif not row.calendarOk:
-        out.append(f"{where}: calendar inconsistency ({row.calendarViolation * 1e4:.0f}bp)")
+        cal.append(f"{where}: calendar inconsistency ({row.calendarViolation * 1e4:.0f}bp)")
+    # Tail-order gate (V3.0 rider): blocks only when the gate applied to the
+    # row (advisory otherwise — the Phase-0 policy).
+    if row.ledgerTailGated and not row.ledgerTailCertified:
+        cal.append(
+            f"{where}: tail order failed ("
+            + tail_side_text(
+                row.ledgerTailGapLeft, row.ledgerTailGapRight, row.ledgerTailIrreducible
+            )
+            + ")"
+        )
+    if cal and hint:
+        cal[0] += hint
+    out.extend(cal)
     if not node.wingsClean:
         out.append(f"{where}: core calendar conflict at the traded edge")
     if not row.butterflyCertified:

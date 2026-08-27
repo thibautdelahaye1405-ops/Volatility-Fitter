@@ -53,6 +53,29 @@ class QualityNode(BaseModel):
     ledgerGapK: float | None = None  # log-moneyness of the argmin
     ledgerTailOrderOk: bool = True  # limiting tail order (advisory in Phase 0)
     ledgerCertified: bool = True  # min gap >= -tol on the whole line; gates ready
+    # --- tail-order gate (V3.0 rider, OptionsSettings.ledgerTailOrderGate):
+    # the certificate's SIGNED per-side tail gaps (eq. tailscalecalendar in
+    # the endpoint chart: lambda_far - lambda_near on the decay-rate branches,
+    # a relative constant gap on slope ties; None when the side is decided by
+    # unequal exponents — see ``ledgerTailIrreducible``) and the
+    # tolerance-aware clause. ``ledgerTailGated`` says whether the gate
+    # applied to THIS row: when True a failing clause is an issue, fails
+    # ``ready`` and blocks publish; when False it stays advisory.
+    ledgerTailGapLeft: float | None = None
+    ledgerTailGapRight: float | None = None
+    ledgerTailGapMin: float | None = None  # min over the two sides
+    ledgerTailCertified: bool = True  # both gaps >= -TAIL_ORDER_TOL
+    ledgerTailIrreducible: bool = False  # reversed by unequal exponents
+    ledgerTailGated: bool = False
+    # --- quote-band relaxation diagnostic (V3.0 rider, book ch. 2 §calendar:
+    # "the smallest quote-band relaxation needed for feasibility"), recorded
+    # by the surface pass for pairs the exchange could NOT certify when
+    # OptionsSettings.bandRelaxationDiagnostic is on. ``bandRelaxationVol``
+    # is the smallest symmetric band widening (vol units) under which the
+    # pair certifies; feasible=False means not even the search ceiling
+    # (+-5 vol points) suffices. ADVISORY: never changes the surface.
+    bandRelaxationVol: float | None = None
+    bandRelaxationFeasible: bool | None = None
     # --- extrapolated-region arb (Notes 09/10 Phase 1): MEASURED, advisory only —
     # never gates ``ready``. Envelope = beyond the traded strikes, while the
     # model's own OTM value >= 1 bp of forward ("extrapolated but not worthless").
