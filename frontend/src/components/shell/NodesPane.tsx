@@ -6,7 +6,8 @@
 //                  Graph canvas + Universe dialog) · expiry · tenor · quality
 //                  glyph (ready / stale / arb / no fit) · RMS bp
 //
-// Single click = preview tab, double click = pinned tab (VS Code). The active
+// Single click = preview tab, double click / middle click = pinned tab (VS
+// Code). Ctrl+P opens the quick-open palette over the same list. The active
 // tab's row is highlighted. A filter box + "lit only" toggle narrow the tree;
 // ⚙ opens the Universe dialog (add / remove tickers, expiry selection).
 import { useMemo, useState } from "react";
@@ -183,6 +184,10 @@ export default function NodesPane() {
                       aria-selected={isActive}
                       onClick={() => wb.openNode({ ticker, expiry: r.expiry }, { preview: true })}
                       onDoubleClick={() => wb.openNode({ ticker, expiry: r.expiry })}
+                      onAuxClick={(e) => {
+                        // Middle-click = pinned tab (VS Code's open-in-background).
+                        if (e.button === 1) wb.openNode({ ticker, expiry: r.expiry });
+                      }}
                       className={[
                         "flex h-6 cursor-pointer items-center gap-1.5 pr-2 pl-5 text-[11px] transition-colors",
                         isActive

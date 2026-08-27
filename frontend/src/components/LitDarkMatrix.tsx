@@ -8,7 +8,8 @@
 // bulk buttons — the nodes pane and the Graph canvas reflect the change
 // immediately because all three read the same context. The optional row
 // slots let the Universe dialog fold ticker management into the SAME rows
-// (▸ name expands the expiry picker, `actions` renders e.g. a Remove chip).
+// (▸ name expands the expiry picker, `actions` renders e.g. a Remove chip,
+// `sourceColumn` shows the data source each ticker fetches from).
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import { useLitMap } from "../state/litMap";
@@ -19,11 +20,31 @@ import type { UniverseResponse } from "../state/useSmile";
 const bulkBtn =
   "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 text-[10px] font-medium " +
   "text-slate-400 transition-colors hover:border-slate-600 hover:text-slate-200";
+/** Tiny per-row source <select> (selectClass grammar at chip scale). */
+const sourceSelect =
+  "shrink-0 rounded border border-slate-700 bg-surface-800 px-1 py-0.5 font-mono text-[10px] " +
+  "text-slate-400 outline-none hover:border-slate-600 focus:border-accent-500 " +
+  "disabled:cursor-not-allowed disabled:opacity-60";
+
+/** Optional per-ticker data-source column (state/nodeSources.ts). Today the
+ *  select is rendered DISABLED and always shows the universe source; the
+ *  multi-source engine will enable it and route `onChange` into overrides. */
+export interface SourceColumn {
+  /** Source id (an `options[].id`) shown for this ticker's row. */
+  label: (ticker: string) => string;
+  options: { id: string; label: string }[];
+  disabled: boolean;
+  /** Tooltip explaining the disabled state. */
+  title: string;
+  onChange?: (ticker: string, sourceId: string) => void;
+}
 
 interface Props {
   universe: UniverseResponse | null;
   /** Trailing per-ticker actions (e.g. the Remove chip). */
   actions?: (ticker: string) => ReactNode;
+  /** Per-ticker data-source select after the ticker name. */
+  sourceColumn?: SourceColumn;
   /** Which ticker's expanded editor is open (controlled by the caller). */
   expanded?: string | null;
   /** Clicking the ▸ ticker name toggles its expanded editor. */
@@ -35,6 +56,7 @@ interface Props {
 export default function LitDarkMatrix({
   universe,
   actions,
+  sourceColumn,
   expanded = null,
   onToggleExpand,
   renderExpanded,
@@ -96,6 +118,22 @@ export default function LitDarkMatrix({
                   </button>
                 ) : (
                   <span className="w-16 shrink-0 font-mono text-xs font-medium text-slate-100">{ticker}</span>
+                )}
+                {sourceColumn && (
+                  <select
+                    className={sourceSelect}
+                    value={sourceColumn.label(ticker)}
+                    disabled={sourceColumn.disabled}
+                    title={sourceColumn.title}
+                    aria-label={`${ticker} data source`}
+                    onChange={(e) => sourceColumn.onChange?.(ticker, e.target.value)}
+                  >
+                    {sourceColumn.options.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 )}
                 <div className="flex shrink-0 gap-1">
                   <button className={bulkBtn} onClick={() => setTicker(ticker, true)} title="Light all">lit</button>

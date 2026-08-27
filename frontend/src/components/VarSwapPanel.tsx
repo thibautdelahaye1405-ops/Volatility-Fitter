@@ -119,7 +119,9 @@ export default function VarSwapPanel({
   };
 
   return (
-    <div className="rounded-lg border border-slate-800 bg-surface-950/40 p-3">
+    // Borderless: every caller (the Parametric / Local Vol asides) wraps the
+    // panel in its own stacked card since UI SHELL v2 wave 2.
+    <div>
       <div className="mb-1 flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-100">
           Variance swap

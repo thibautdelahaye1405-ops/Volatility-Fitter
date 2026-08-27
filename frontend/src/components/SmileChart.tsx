@@ -101,6 +101,9 @@ interface SmileChartProps {
    *  base, center keeps the y zoom but recenters it on the data. Both off =
    *  legacy free zoom; alt+wheel (manual y) always bypasses the policy. */
   autoScaleY?: AutoScaleToggles;
+  /** When given, the chart shows Y-center / Y-fit as small overlay buttons
+   *  (top-right of the plot) that flip the auto-scale toggles (wave 2). */
+  onToggleAutoScale?: (key: keyof AutoScaleToggles) => void;
 }
 
 /** Human labels for the named degraded-market conditions. */
@@ -160,6 +163,7 @@ export default function SmileChart({
   showTarget = false,
   footer = null,
   autoScaleY = DEFAULT_AUTOSCALE,
+  onToggleAutoScale,
 }: SmileChartProps) {
   // The market frame is the primary layer: its curve drives the hover readout,
   // the confidence band and the y-domain; its forward is the axis reference.
@@ -699,6 +703,34 @@ export default function SmileChart({
         {hoverLabel && (
           <div className="pointer-events-none absolute top-1 right-2 rounded-md border border-slate-700 bg-surface-800/95 px-2.5 py-1 font-mono text-[11px] text-slate-200 shadow-lg shadow-black/40">
             {hoverLabel}
+          </div>
+        )}
+
+        {/* Y auto-scale overlay buttons (wave 2): after any x-view change,
+            "Y fit" snaps the y window to the data in view; "Y center" keeps
+            the y zoom but recenters it (fit wins when both are lit). */}
+        {onToggleAutoScale && (
+          <div className="absolute top-1 left-14 flex gap-1">
+            {(["center", "fit"] as const).map((key) => (
+              <button
+                key={key}
+                aria-pressed={autoScaleY[key]}
+                onClick={() => onToggleAutoScale(key)}
+                title={
+                  key === "center"
+                    ? "Y center — after any x-view change, keep the y window centered on the data in view (preserves your y zoom; alt+wheel still zooms y)"
+                    : "Y fit — after any x-view change, auto-fit the y-axis to every curve and quote in the visible x-range"
+                }
+                className={[
+                  "rounded border px-1.5 py-px font-mono text-[9px] shadow transition-colors",
+                  autoScaleY[key]
+                    ? "border-accent-500/50 bg-accent-500/15 text-accent-300"
+                    : "border-slate-700 bg-surface-800/90 text-slate-500 hover:text-slate-200",
+                ].join(" ")}
+              >
+                {key === "center" ? "Y center" : "Y fit"}
+              </button>
+            ))}
           </div>
         )}
 

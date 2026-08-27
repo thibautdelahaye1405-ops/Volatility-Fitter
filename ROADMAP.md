@@ -574,7 +574,91 @@ Fixed-viewport application frame (no page scroll), six regions:
   `npm run smoke:ui` rewritten for the shell (activity bar + menus +
   dialogs), screenshots; STATUS wrap.
 
+### WAVE 2 — user follow-ups (2026-08-27) — refined plan
+
+Requests (verbatim intent) → design decisions:
+
+1. **Lens icons** — custom SVGs in `components/shell/LensIcons.tsx`: Graph = a
+   real graph (centre node with 4 edges + two outer edges), Parametric = a
+   smile-shaped curve with quote ticks, Local Vol = an isometric 3D surface
+   mesh, Universe (activity-bar bottom) = a list of items.
+2. **Top menu** — order `Options · Universe ▾ · Help ▾`; Universe ▾ holds ONLY
+   Manage universe…, Save universe as… (inline name), Load <saved>. Fetch /
+   calibrate / priors live in the command center only (no duplication).
+3. **Data source → Universe management** — the Manage-universe dialog gets a
+   "Data sources" card: the universe source (radio list with status lights,
+   drives the existing switchSource) and a per-node source policy
+   (`state/nodeSources.ts`: `{ mode: "universe" | "per-node", overrides }`).
+   The per-ticker/per-node selectors are rendered but INERT ("UI-ready, one
+   active source today") — multiple simultaneous sources are NOT activated.
+   The market pill becomes a passive status chip that opens that card.
+4. **As-of → Fetch ▾** — the as-of rows (Live / Previous close / day →
+   moment) move into the Fetch dropdown (`components/topbar/AsOfRows.tsx`).
+   **Open question (nodes whose source lacks the chosen as-of) — proposal:
+   per-node resolution with an explicit fallback ladder + visible mismatch.**
+   Each node resolves to the nearest available moment AT OR BEFORE the
+   requested as-of from its own source (intraday snapshot → official close →
+   previous close); the node carries its EFFECTIVE as-of; the nodes pane / tab
+   / status bar flag `≠ as-of` (amber, with the actual stamp); the Quality
+   report adds an "as-of mismatch" issue that blocks publish when the gap
+   exceeds an Options tolerance (default: same session); and the Fetch menu
+   previews coverage before pulling ("14:30 · 9/12 nodes exact · 3 fall back
+   to Close"). Rejected: silently skipping nodes (they'd go dark without a
+   trace) and hard-failing the whole fetch (one thin name would block the
+   desk). Backend work (per-node effective as-of on the wire) is a follow-on;
+   this wave ships the UI relocation only.
+5. **Tabs** — pinned tabs show a pin glyph; preview tabs stay italic + muted.
+6. **Compare** — the prevailing calibrated model is shown at once (read from
+   `smile.modelInfo.id`); the other families are CHIPS that fit lazily when
+   clicked (`useModelComparison` takes the model list; the endpoint already
+   accepts `models=`; server-side cache keeps re-toggles free).
+7. **Right-hand side** — three stacked cards: Spot move · Var-swap · Fit
+   diagnostics (Parametric and Local Vol alike; LV's diagnostics card also
+   carries the per-expiry table + trace player).
+8. **Toolbar grammar (both lenses)** — `LensViewSwitch`: NODE views (Smile ·
+   Density · Compare · Table | LV: Smile · Table) and TICKER views (Term ·
+   Densities · Stacked IV · Surface | LV: + LV surface · IV surface). Y-center
+   / Y-fit become small overlay buttons on the chart; Target / Calib. quotes /
+   Calib. fit / Weights become a vertical layer rail at the RIGHT of the
+   chart; the x-axis unit select sits in the chart footer next to the x-axis
+   (`components/charts/AxisModeSelect.tsx`); Save prior leaves the chart.
+9. **Priors ▾** — Save prior (visible tab) · Save priors (all open tabs) · Save
+   priors (all calibrated) · Fetch priors (`components/topbar/PriorsMenu.tsx`).
+10. **Density (single node)** — view renamed "Density" with a Density /
+    Log Q-density / CDF toggle (CDF = the quantile function transposed; no
+    backend change).
+11. **Ergonomics** shipped this wave: Ctrl+P quick-open (fuzzy node search →
+    tab), middle-click a node row = pinned tab, grouped toolbars with NODE /
+    TICKER labels, consistent card grammar. Proposed for later: keyboard
+    navigation in the nodes tree, per-tab view memory, split editors (two
+    tabs side by side), a Ctrl+K command palette over every menu action,
+    drag a node onto the Graph canvas to light it.
+
 ## STATUS — updated 2026-08-26 (resume here)
+
+### 🖥️ UI SHELL v2 WAVE 2 SHIPPED 2026-08-27 (wrap 2026-08-27a)
+
+All eleven follow-ups of the "WAVE 2" plan above landed (design decisions
+recorded there; the as-of fallback proposal stays a documented follow-on):
+custom lens icons (`components/shell/LensIcons.tsx`); menu order Options ·
+Universe ▾ (manage / save-as / load only) · Help ▾; Data-sources card + inert
+per-node source policy (`state/nodeSources.ts`) in the Manage-universe
+dialog, market pill now passive (opens that card); as-of rows inside Fetch ▾
+(`components/topbar/AsOfRows.tsx`); pin glyph on pinned tabs; Compare shows
+the prevailing family and fits the others lazily from chips
+(`components/parametric/CompareChips.tsx`, `useModelComparison(models)`);
+right-hand column = three stacked cards on both lenses (Spot move · Var-swap ·
+Fit diagnostics; `VarSwapPanel` is borderless now); grouped NODE / TICKER
+toolbars (`components/charts/LensViewSwitch.tsx`), layer rail at the right of
+the Parametric chart (`LayerRail.tsx`), Y-center / Y-fit as chart overlay
+buttons, x-axis unit select in the chart footer (`AxisModeSelect.tsx`);
+Priors ▾ = visible tab / all open tabs / all calibrated / fetch
+(`components/topbar/PriorsMenu.tsx`); Density view with Density / Log
+Q-density / CDF (`DistributionChart` kind "cdf"; drive-by: its clipPath
+attributes were literal strings and never clipped — fixed); Ctrl+P quick-open
+(`components/shell/QuickOpen.tsx`), middle-click node = pinned tab.
+Verification: tsc clean · vitest 259 · build · smoke 16 steps (adds Quick
+open) · live pass on :5173 with 0 page errors.
 
 ### 🖥️ UI SHELL v2 — WORKBENCH SHIPPED 2026-08-26 (wrap 2026-08-26b)
 

@@ -1,11 +1,12 @@
 // Node tab strip of the main pane (UI SHELL v2, S2): one tab per open node
 // (ticker · expiry), VS Code semantics — preview tabs italic, double-click
 // pins, middle-click / × closes, drag to reorder, right-click context menu
-// (close / close others / close all / pin). A quality glyph per tab shows
-// stale (amber) or arb-flagged (rose) fits at a glance.
+// (close / close others / close all / pin). Pinned tabs carry a pin glyph,
+// preview tabs are italic + muted. A quality glyph per tab shows stale
+// (amber) or arb-flagged (rose) fits at a glance.
 import { useState } from "react";
 import type { DragEvent, MouseEvent } from "react";
-import { X } from "lucide-react";
+import { Pin, X } from "lucide-react";
 import { useWorkbench } from "../../state/workbench";
 import { useExpiryFormat } from "../../state/expiryFormat";
 import { useQualityReport } from "../../state/qualityContext";
@@ -89,7 +90,11 @@ export default function TabStrip() {
           >
             {active && <span className="absolute inset-x-0 top-0 h-0.5 bg-accent-400" />}
             {glyph && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${glyph}`} />}
-            <span className={["truncate", t.preview ? "italic" : ""].join(" ")}>
+            {/* Pinned tabs carry a pin; preview tabs stay italic + muted. */}
+            {!t.preview && (
+              <Pin size={10} strokeWidth={2} className="shrink-0 text-slate-500" />
+            )}
+            <span className={["truncate", t.preview ? "italic opacity-80" : ""].join(" ")}>
               <span className="font-semibold">{t.ticker}</span>{" "}
               <span className="font-mono text-[11px] opacity-80">
                 {formatExpiry(t.expiry, tOf(t), format)}

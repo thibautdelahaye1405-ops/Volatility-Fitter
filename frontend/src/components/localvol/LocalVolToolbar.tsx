@@ -1,33 +1,41 @@
-// Local Vol toolbar (UI SHELL v2): the header row of the Local Vol lens —
-// sub-tab segmented control, the per-view axis / render / clock controls, the
-// graph-source toggle and the right-aligned fit-status badges. The (ticker,
-// expiry) identity now lives in the workbench tab strip, so this row is
-// controls only — no Underlying / Expiry selectors. Pure presentation: every
-// piece of state is owned by LocalVolViewer and passed down through
-// LocalVolToolbarProps; the sub-tab vocabulary (LvView & co.) lives here so
-// the view and the toolbar share one definition.
+// Local Vol toolbar (UI SHELL v2 wave 2): the header row of the Local Vol lens
+// — the grouped NODE / TICKER view switch (shared LensViewSwitch, so it reads
+// exactly like the Parametric lens), the per-view render / clock controls,
+// the graph-source toggle and the right-aligned fit-status badges. The
+// (ticker, expiry) identity lives in the workbench tab strip, so this row is
+// controls only — no Underlying / Expiry selectors. The strike-axis unit
+// selectors are NOT here either: they sit in the chart-card footer next to
+// the x-axis (LocalVolViewer, via AxisModeSelect / AxisUnitSelect). Pure
+// presentation: every piece of state is owned by LocalVolViewer and passed
+// down through LocalVolToolbarProps; the sub-tab vocabulary (LvView & co.)
+// lives here so the view and the toolbar share one definition.
 import { Waypoints } from "lucide-react";
 import SegmentedControl from "../SegmentedControl";
-import { AXIS_MODE_OPTIONS } from "../../lib/axisModes";
-import type { AxisMode } from "../../lib/axisModes";
-import { badgeClass, selectClass } from "../../lib/ui";
+import LensViewSwitch from "../charts/LensViewSwitch";
+import { badgeClass } from "../../lib/ui";
 import type { AffineFitResponse } from "../../state/useAffine";
 import type { ClockMode } from "../../state/useTerm";
 
 /** Chart-card sub-tabs, mirroring the Parametric workspace. "LV surface" is the
- *  nodal local-vol heatmap; "IV surface" is the reconstructed implied-vol
- *  surface (both heatmaps over t × strike). */
+ *  nodal local-vol grid (3D mesh or heatmap); "IV surface" is the reconstructed
+ *  implied-vol mesh (both over t × strike). */
 export type LvView =
   | "smile" | "densities" | "term" | "lvsurface" | "ivsurface" | "stackedvar" | "table";
-export const LV_VIEWS: { id: LvView; label: string }[] = [
+/** NODE views: about the active tab's expiry. */
+export const LV_NODE_VIEWS: { id: LvView; label: string }[] = [
   { id: "smile", label: "Smile" },
-  { id: "densities", label: "Densities" },
-  { id: "term", label: "Term" },
-  { id: "lvsurface", label: "LV surface" },
-  { id: "ivsurface", label: "IV surface" },
-  { id: "stackedvar", label: "Stacked IV" },
   { id: "table", label: "Table" },
 ];
+/** TICKER views: the whole expiry ladder of the active tab's underlying. */
+export const LV_TICKER_VIEWS: { id: LvView; label: string }[] = [
+  { id: "term", label: "Term" },
+  { id: "densities", label: "Densities" },
+  { id: "stackedvar", label: "Stacked IV" },
+  { id: "lvsurface", label: "LV surface" },
+  { id: "ivsurface", label: "IV surface" },
+];
+/** Flat list (node views first) for any consumer that wants one vocabulary. */
+export const LV_VIEWS: { id: LvView; label: string }[] = [...LV_NODE_VIEWS, ...LV_TICKER_VIEWS];
 /** Which sub-tabs are per-expiry (follow the active node's expiry). */
 export const PER_EXPIRY: Record<LvView, boolean> = {
   smile: true, table: true,
@@ -47,7 +55,8 @@ const LV_RENDER_OPTIONS: { id: LvRender; label: string }[] = [
 /** X-axis scales for the 3D LV mesh. The nodal grid lives in x = K/F, so only
  *  coordinates derivable from it are offered (Δ / normalized need an implied
  *  vol the LV grid does not carry). Strike uses the per-row forward F(t)
- *  interpolated from the expiry ladder, shearing the sheet like the IV view. */
+ *  interpolated from the expiry ladder, shearing the sheet like the IV view.
+ *  Rendered by the chart-card footer's AxisUnitSelect (LocalVolViewer). */
 export type LvAxis = "moneyness" | "logmoneyness" | "strike";
 export const LV_AXIS_OPTIONS: { id: LvAxis; label: string }[] = [
   { id: "moneyness", label: "x = K/F" },
@@ -70,15 +79,9 @@ export interface LocalVolToolbarProps {
   /** Active chart-card sub-tab. */
   view: LvView;
   onViewChange: (view: LvView) => void;
-  /** Strike-axis display mode (smile / densities / IV surface / stacked IV). */
-  axisMode: AxisMode;
-  onAxisModeChange: (mode: AxisMode) => void;
   /** LV-surface render mode (3D local-variance mesh vs vertex heatmap). */
   lvRender: LvRender;
   onLvRenderChange: (mode: LvRender) => void;
-  /** X-axis scale for the 3D LV mesh (grid-native coordinates only). */
-  lvAxis: LvAxis;
-  onLvAxisChange: (axis: LvAxis) => void;
   /** Maturity clock for the Term sub-tab. */
   axisClock: ClockMode;
   onAxisClockChange: (mode: ClockMode) => void;
@@ -94,32 +97,22 @@ export interface LocalVolToolbarProps {
 
 export default function LocalVolToolbar({
   view, onViewChange,
-  axisMode, onAxisModeChange,
   lvRender, onLvRenderChange,
-  lvAxis, onLvAxisChange,
   axisClock, onAxisClockChange,
   graphSource, onGraphSourceChange,
   data, calendarWorstLabel,
 }: LocalVolToolbarProps) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-3">
-      <SegmentedControl options={LV_VIEWS} value={view} onChange={onViewChange} size="xs" />
-
-      {/* Strike-axis display mode (densities / IV surface / stacked IV) */}
-      {AXIS_MODE_VIEWS.has(view) && (
-        <select
-          className={selectClass}
-          value={axisMode}
-          title="Strike-axis display mode"
-          onChange={(e) => onAxisModeChange(e.target.value as AxisMode)}
-        >
-          {AXIS_MODE_OPTIONS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      )}
+      {/* Grouped view switch: NODE (per-expiry) · TICKER (whole ladder) */}
+      <LensViewSwitch
+        groups={[
+          { label: "node", options: LV_NODE_VIEWS },
+          { label: "ticker", options: LV_TICKER_VIEWS },
+        ]}
+        value={view}
+        onChange={onViewChange}
+      />
 
       {/* LV-surface render mode: 3D local-variance mesh vs vertex heatmap */}
       {view === "lvsurface" && (
@@ -129,22 +122,6 @@ export default function LocalVolToolbar({
           onChange={onLvRenderChange}
           size="xs"
         />
-      )}
-
-      {/* X-axis scale for the 3D LV mesh (grid-native coordinates only) */}
-      {view === "lvsurface" && lvRender === "mesh" && (
-        <select
-          className={selectClass}
-          value={lvAxis}
-          title="Strike-axis display scale"
-          onChange={(e) => onLvAxisChange(e.target.value as LvAxis)}
-        >
-          {LV_AXIS_OPTIONS.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
       )}
 
       {/* Maturity clock (Term sub-tab): real vs shared event-dilated time */}

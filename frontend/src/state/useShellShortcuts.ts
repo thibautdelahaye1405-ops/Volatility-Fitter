@@ -52,6 +52,7 @@ export function useShellShortcuts(): void {
           return;
         }
         if (e.key === "," && !e.shiftKey) { wb.openDialog("options"); e.preventDefault(); return; }
+        if (e.code === "KeyP" && !e.shiftKey) { wb.openDialog("quickopen"); e.preventDefault(); return; }
         if (e.key === "/" && !e.shiftKey) { wb.openDialog("shortcuts"); e.preventDefault(); return; }
         if (e.code === "KeyU" && e.shiftKey) { wb.openDialog("universe"); e.preventDefault(); return; }
       }

@@ -20,11 +20,13 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: "Workbench",
     items: [
+      { keys: "Ctrl+P", label: "Quick open — fuzzy-find a node, Enter opens its tab (Shift+Enter pins)" },
       { keys: "Ctrl+B", label: "Show / hide the Nodes pane" },
       { keys: "Alt+1 … Alt+5", label: "Lens: Graph · Forwards · Parametric · Local Vol · Quality" },
       { keys: "Alt+← / Alt+→", label: "Previous / next node tab" },
       { keys: "Alt+W", label: "Close the active tab" },
       { keys: "Double-click a tab or node", label: "Pin a preview tab" },
+      { keys: "Middle-click a node", label: "Open it as a pinned tab" },
       { keys: "Middle-click a tab", label: "Close that tab" },
       { keys: "Ctrl+,", label: "Options (settings dialog)" },
       { keys: "Ctrl+Shift+U", label: "Manage universe" },

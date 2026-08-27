@@ -5,13 +5,18 @@
 // lit/dark designation toggled directly on the chips (the shared lit map —
 // nodes pane + Graph canvas follow), ▸ expands the expiry-selection picker,
 // Remove drops the ticker. The header hosts the catalogue search (results in
-// an anchored dropdown); a narrow aside saves / loads named universes (when a
-// store is configured). Edits flow into the shared smile session, so the
-// nodes pane and every lens update immediately (tabs of removed nodes are
+// an anchored dropdown); the right column stacks the Data-sources card (pick
+// the active feed; the per-node policy is UI-ready but disabled until the
+// multi-source engine — state/nodeSources.ts) over the saved-universes aside
+// (when a store is configured). Edits flow into the shared smile session, so
+// the nodes pane and every lens update immediately (tabs of removed nodes are
 // pruned). Live backend only (the universe lives on the server).
 import { useState } from "react";
 import { FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import { useUniverse } from "../state/useUniverse";
+import { useWorkflowContext } from "../state/workflowContext";
+import { PER_NODE_HINT, useNodeSources } from "../state/nodeSources";
+import type { SourceStatus } from "../state/useDataSources";
 import ExpiryPicker from "../components/ExpiryPicker";
 import LitDarkMatrix from "../components/LitDarkMatrix";
 
@@ -24,6 +29,13 @@ const smallBtn =
   "flex items-center gap-1 rounded border border-slate-700 bg-surface-800 px-2 py-0.5 text-[11px] " +
   "font-medium text-slate-300 transition-colors enabled:hover:border-slate-600 " +
   "enabled:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-40";
+const segBtn = "px-2 py-0.5 text-[10px] font-medium transition-colors";
+
+const STATUS_DOT: Record<SourceStatus, string> = {
+  green: "bg-emerald-500",
+  amber: "bg-amber-400",
+  red: "bg-rose-500",
+};
 
 export default function UniverseManager() {
   const {
@@ -43,6 +55,8 @@ export default function UniverseManager() {
     deleteUniverse,
     refreshUniverse,
   } = useUniverse();
+  const { dataSources } = useWorkflowContext();
+  const { policy, setMode, clearOverrides } = useNodeSources();
   const [newName, setNewName] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
 
@@ -65,6 +79,8 @@ export default function UniverseManager() {
   const inUniverse = new Set(tickers);
   const nodeCount = tickers.reduce((n, t) => n + (universe?.expiries[t] ?? []).length, 0);
   const showResults = query.trim() !== "";
+  const { sources, active, switching, switchSource } = dataSources;
+  const overrideCount = Object.keys(policy.overrides).length;
 
   return (
     <div className="flex h-full flex-col gap-4 p-4">
@@ -139,7 +155,7 @@ export default function UniverseManager() {
         )}
       </div>
 
-      {/* Body: one merged nodes card + the saved-universes aside */}
+      {/* Body: one merged nodes card + the right column (sources over saved) */}
       <div className="flex min-h-0 flex-1 gap-4">
         <div className={`${card} min-h-0 min-w-0 flex-1`}>
           <LitDarkMatrix
@@ -147,6 +163,13 @@ export default function UniverseManager() {
             expanded={expanded}
             onToggleExpand={(t) => setExpanded((cur) => (cur === t ? null : t))}
             renderExpanded={(t) => <ExpiryPicker ticker={t} onChanged={refreshUniverse} />}
+            sourceColumn={{
+              // One active feed today: every row shows the universe source.
+              label: () => active,
+              options: sources.map((s) => ({ id: s.id, label: s.label })),
+              disabled: true,
+              title: PER_NODE_HINT,
+            }}
             actions={(t) => (
               <button
                 className={smallBtn}
@@ -163,67 +186,154 @@ export default function UniverseManager() {
           />
         </div>
 
-        {/* Saved universes (narrow aside) */}
-        <aside className={`${card} w-72 shrink-0`}>
-          <h2 className="mb-1 text-sm font-semibold text-slate-100">Saved universes</h2>
-          {!saved.storeEnabled ? (
-            <p className="text-[11px] text-slate-500">
-              Set <span className="font-mono">VOLFIT_DB</span> on the server to save and load named
-              universes.
+        <div className="flex w-80 shrink-0 flex-col gap-4">
+          {/* Data sources: the active feed (radio list) + the per-node policy */}
+          <section className={`${card} shrink-0`}>
+            <h2 className="mb-1 text-sm font-semibold text-slate-100">Data sources</h2>
+            <p className="mb-2 text-[11px] text-slate-500">
+              One active feed for the whole universe; switching refetches the chains.
             </p>
-          ) : (
-            <>
-              <p className="mb-2 text-[11px] text-slate-500">
-                Save the active set, then reload it any time.
-              </p>
-              <div className="mb-3 flex gap-1.5">
-                <input
-                  className={inputClass}
-                  placeholder="name…"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                />
-                <button
-                  className={smallBtn}
-                  disabled={newName.trim() === "" || busy !== null}
-                  onClick={() => saveUniverse(newName.trim())}
-                >
-                  <Save size={11} strokeWidth={1.75} className="opacity-80" />
-                  Save
-                </button>
+            {sources.length === 0 ? (
+              <p className="text-[11px] text-slate-500">No data sources registered.</p>
+            ) : (
+              <div
+                role="radiogroup"
+                aria-label="Active data source"
+                className={`flex flex-col gap-0.5 ${switching ? "animate-pulse" : ""}`}
+              >
+                {sources.map((s) => {
+                  const unavailable = s.status === "red";
+                  const isActive = s.id === active;
+                  return (
+                    <button
+                      key={s.id}
+                      role="radio"
+                      aria-checked={isActive}
+                      disabled={unavailable || switching}
+                      title={unavailable ? s.detail : undefined}
+                      onClick={() => void switchSource(s.id)}
+                      className={[
+                        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                        unavailable
+                          ? "cursor-not-allowed text-slate-600"
+                          : isActive
+                            ? "bg-accent-500/10 text-accent-300"
+                            : "text-slate-300 hover:bg-slate-700/40 hover:text-slate-100",
+                      ].join(" ")}
+                    >
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${STATUS_DOT[s.status]}`} />
+                      <span className="min-w-0 flex-1 truncate font-medium">{s.label}</span>
+                      <span className="truncate text-[10px] text-slate-500" title={s.detail}>
+                        {s.detail}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                {saved.names.length === 0 ? (
-                  <p className="text-[11px] text-slate-500">No saved universes yet.</p>
-                ) : (
-                  <div className="divide-y divide-slate-800/60">
-                    {saved.names.map((name) => (
-                      <div key={name} className="flex items-center gap-1.5 py-1.5">
-                        <span className="min-w-0 flex-1 truncate text-xs text-slate-200">{name}</span>
-                        <button
-                          className={smallBtn}
-                          disabled={busy !== null}
-                          onClick={() => loadUniverse(name)}
-                        >
-                          <FolderOpen size={11} strokeWidth={1.75} className="opacity-80" />
-                          {busy === `load:${name}` ? "…" : "Load"}
-                        </button>
-                        <button
-                          className={smallBtn}
-                          disabled={busy !== null}
-                          onClick={() => deleteUniverse(name)}
-                          title="Delete this saved universe"
-                        >
-                          <Trash2 size={11} strokeWidth={1.75} className="opacity-80" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+            )}
+
+            {/* Per-node policy: UI-ready, disabled until the multi-source engine. */}
+            <div className="mt-3 border-t border-slate-800/60 pt-2">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-[11px] font-medium text-slate-300">Per-node sources</span>
+                <div className="flex overflow-hidden rounded-md border border-slate-700 bg-surface-800">
+                  <button
+                    className={`${segBtn} ${
+                      policy.mode === "universe"
+                        ? "bg-accent-600/25 text-accent-400"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                    onClick={() => setMode("universe")}
+                  >
+                    Universe source
+                  </button>
+                  <button
+                    className={`${segBtn} cursor-not-allowed text-slate-600`}
+                    disabled
+                    title={PER_NODE_HINT}
+                  >
+                    Per node
+                  </button>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500">
+                Every node fetches from the universe source today; per-node picks are recorded for
+                the multi-source engine.
+                {overrideCount > 0 && (
+                  <>
+                    {" "}
+                    {overrideCount} recorded ·{" "}
+                    <button className="text-slate-400 underline hover:text-slate-200" onClick={clearOverrides}>
+                      clear
+                    </button>
+                  </>
                 )}
-              </div>
-            </>
-          )}
-        </aside>
+              </p>
+            </div>
+          </section>
+
+          {/* Saved universes */}
+          <aside className={`${card} min-h-0 flex-1`}>
+            <h2 className="mb-1 text-sm font-semibold text-slate-100">Saved universes</h2>
+            {!saved.storeEnabled ? (
+              <p className="text-[11px] text-slate-500">
+                Set <span className="font-mono">VOLFIT_DB</span> on the server to save and load named
+                universes.
+              </p>
+            ) : (
+              <>
+                <p className="mb-2 text-[11px] text-slate-500">
+                  Save the active set, then reload it any time.
+                </p>
+                <div className="mb-3 flex gap-1.5">
+                  <input
+                    className={inputClass}
+                    placeholder="name…"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                  />
+                  <button
+                    className={smallBtn}
+                    disabled={newName.trim() === "" || busy !== null}
+                    onClick={() => saveUniverse(newName.trim())}
+                  >
+                    <Save size={11} strokeWidth={1.75} className="opacity-80" />
+                    Save
+                  </button>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {saved.names.length === 0 ? (
+                    <p className="text-[11px] text-slate-500">No saved universes yet.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-800/60">
+                      {saved.names.map((name) => (
+                        <div key={name} className="flex items-center gap-1.5 py-1.5">
+                          <span className="min-w-0 flex-1 truncate text-xs text-slate-200">{name}</span>
+                          <button
+                            className={smallBtn}
+                            disabled={busy !== null}
+                            onClick={() => loadUniverse(name)}
+                          >
+                            <FolderOpen size={11} strokeWidth={1.75} className="opacity-80" />
+                            {busy === `load:${name}` ? "…" : "Load"}
+                          </button>
+                          <button
+                            className={smallBtn}
+                            disabled={busy !== null}
+                            onClick={() => deleteUniverse(name)}
+                            title="Delete this saved universe"
+                          >
+                            <Trash2 size={11} strokeWidth={1.75} className="opacity-80" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </aside>
+        </div>
       </div>
     </div>
   );

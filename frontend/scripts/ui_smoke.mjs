@@ -6,7 +6,7 @@
 //      "Compare" sub-view;
 //   2. the nodes pane → tab round trip (click a node row, a tab appears);
 //   3. every top-bar menu (Universe · Help · View · Layout) and every dialog
-//      (Options · Manage universe · Keyboard shortcuts · About).
+//      (Options · Manage universe · Keyboard shortcuts · About · Quick open).
 // Backend-optional by design: without :8000 the session falls back to the
 // mock smile and the live-only lenses show their offline cards — the smoke
 // asserts the shell never white-screens, not that data loaded. Screenshots
@@ -39,6 +39,8 @@ const DIALOGS = [
   { name: "Manage universe", open: (p) => clickAria(p, "Manage universe") },
   { name: "Keyboard shortcuts", open: async (p) => { await clickHeader(p, "Help"); await clickText(p, "Keyboard shortcuts"); } },
   { name: "About VolFit", open: (p) => clickHeader(p, "About VolFit", "title") },
+  // Ctrl+P quick-open palette (role=dialog "Quick open").
+  { name: "Quick open", open: async (p) => { await p.keyboard.down("Control"); await p.keyboard.press("KeyP"); await p.keyboard.up("Control"); } },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

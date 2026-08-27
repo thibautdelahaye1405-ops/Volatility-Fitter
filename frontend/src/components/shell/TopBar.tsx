@@ -1,8 +1,9 @@
-// Top bar v2 (UI SHELL v2, S2) — three zones, VS Code title bar × Affinity:
-//   LEFT    σ VolFit brand · Universe ▾ · Options · Help ▾   (the main menu)
-//   CENTRE  command center: Fetch ▾ · Calibrate·scope ▾ · Priors ▾ · market
-//           pill (source light + as-of) — live backend; a Connecting / Mock
-//           badge otherwise
+// Top bar v2 (UI SHELL v2, wave 2) — three zones, VS Code title bar × Affinity:
+//   LEFT    σ VolFit brand · Options · Universe ▾ · Help ▾   (the main menu)
+//   CENTRE  command center: Fetch ▾ (pulls + as-of) · Calibrate·scope ▾ ·
+//           Priors ▾ (per-tab / all tabs / all calibrated / fetch) · the
+//           market pill (source light + as-of, click = Data sources) — live
+//           backend; a Connecting / Mock badge otherwise
 //   RIGHT   View ▾ (display preferences) · Layout ▾ (panes)
 import { SlidersHorizontal } from "lucide-react";
 import MenuButton from "./menus/MenuButton";
@@ -10,7 +11,7 @@ import UniverseMenu from "./menus/UniverseMenu";
 import HelpMenu from "./menus/HelpMenu";
 import ViewMenu from "./menus/ViewMenu";
 import LayoutMenu from "./menus/LayoutMenu";
-import MarketMenu from "../topbar/MarketMenu";
+import MarketPill from "../topbar/MarketPill";
 import WorkflowControls from "../WorkflowControls";
 import { useSmileSession } from "../../state/smileSession";
 import { useWorkflowContext } from "../../state/workflowContext";
@@ -35,8 +36,7 @@ export default function TopBar() {
         <span className="text-sm font-semibold tracking-wide">VolFit</span>
       </button>
 
-      {/* Main menu */}
-      <UniverseMenu />
+      {/* Main menu: Options · Universe ▾ · Help ▾ */}
       <MenuButton
         label="Options"
         active={wb.dialog === "options"}
@@ -45,6 +45,7 @@ export default function TopBar() {
       >
         <SlidersHorizontal size={13} strokeWidth={1.75} className="opacity-80" />
       </MenuButton>
+      <UniverseMenu />
       <HelpMenu />
 
       {/* Command center */}
@@ -61,8 +62,8 @@ export default function TopBar() {
           </span>
         ) : (
           <>
-            <WorkflowControls workflow={workflow} dataAge={dataSources.dataAge} />
-            <MarketMenu dataSources={dataSources} asofHook={asof} />
+            <WorkflowControls workflow={workflow} dataAge={dataSources.dataAge} asof={asof} live={live} />
+            <MarketPill dataSources={dataSources} asof={asof} onClick={() => wb.openDialog("universe")} />
           </>
         )}
       </div>

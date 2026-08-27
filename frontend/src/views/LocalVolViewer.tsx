@@ -22,8 +22,15 @@
 // expiry is not in the LV ladder). Any expiry pick made here (Term chart
 // click, per-expiry table row) goes through selectExpiry(), which opens a
 // preview tab; outside the shell it falls back to a local override.
-// Header controls live in LocalVolToolbar; the diagnostics column in
-// LocalVolAside.
+// UI SHELL v2 wave 2 — same grammar as the Parametric lens: the toolbar
+// (LocalVolToolbar) carries the grouped NODE / TICKER view switch, the render /
+// clock controls, the graph-source toggle and the status badges; the chart card
+// ends with a FOOTER row — interaction hint on the left, the strike-axis unit
+// selector right-aligned next to the x-axis it changes (AxisModeSelect for the
+// smile / densities / IV-surface / stacked-IV views, AxisUnitSelect over the
+// grid-native LV_AXIS_OPTIONS for the 3D LV mesh); the right-hand column
+// (LocalVolAside) is three stacked cards — Spot move · Variance swap · Fit
+// diagnostics.
 import { useMemo, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
@@ -34,9 +41,13 @@ import type { SurfaceMeshData } from "../components/SurfaceMesh";
 import OverlayCurvesChart, { maturityColor } from "../components/OverlayCurvesChart";
 import type { OverlayMarker, OverlaySeries } from "../components/OverlayCurvesChart";
 import TermChart from "../components/TermChart";
-import LocalVolToolbar, { PER_EXPIRY, fmtBp0 } from "../components/localvol/LocalVolToolbar";
+import LocalVolToolbar, {
+  AXIS_MODE_VIEWS, LV_AXIS_OPTIONS, PER_EXPIRY, fmtBp0,
+} from "../components/localvol/LocalVolToolbar";
 import type { LvAxis, LvRender, LvView } from "../components/localvol/LocalVolToolbar";
 import LocalVolAside from "../components/localvol/LocalVolAside";
+import { lvMeshFormatX, lvMeshXTransform } from "../components/localvol/lvMeshAxis";
+import AxisModeSelect, { AxisUnitSelect } from "../components/charts/AxisModeSelect";
 import { lvCalendarMarker } from "../lib/stackedVariance";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
@@ -125,41 +136,11 @@ export default function LocalVolViewer() {
     };
   }, [data]);
 
-  // Display-x transform for the 3D LV mesh (grid x = K/F, per t-row). Strike
-  // interpolates ln F(t) across the expiry ladder (flat-extrapolated); the
-  // brush and heatmap stay in x. Memoized so SurfaceMesh's mesh memo is stable.
-  const lvXTransform = useMemo<((x: number, row: number) => number) | undefined>(() => {
-    if (lvAxis === "moneyness" || !data) return undefined;
-    if (lvAxis === "logmoneyness") return (x) => Math.log(x);
-    const fwd = data.smiles
-      .filter((s) => (s.forward ?? 0) > 0)
-      .map((s) => ({ t: s.t, lf: Math.log(s.forward as number) }));
-    if (fwd.length === 0) return undefined; // no forwards: fall back to x
-    const { tNodes } = data;
-    const fAt = (t: number): number => {
-      if (t <= fwd[0].t) return Math.exp(fwd[0].lf);
-      const last = fwd[fwd.length - 1];
-      if (t >= last.t) return Math.exp(last.lf);
-      for (let i = 1; i < fwd.length; i++) {
-        if (t <= fwd[i].t) {
-          const a = fwd[i - 1];
-          const f = (t - a.t) / (fwd[i].t - a.t);
-          return Math.exp(a.lf + f * (fwd[i].lf - a.lf));
-        }
-      }
-      return Math.exp(last.lf);
-    };
-    const rowF = tNodes.map(fAt);
-    return (x, row) => x * (rowF[row] ?? 1);
-  }, [lvAxis, data]);
-
-  /** Corner-label formatter matching the chosen LV x-axis scale (falls back to
-   *  x when the strike transform is unavailable, mirroring lvXTransform). */
-  const lvFormatX = (v: number): string => {
-    if (lvXTransform === undefined) return `x ${v.toFixed(2)}`;
-    if (lvAxis === "strike") return `K ${v >= 100 ? v.toFixed(0) : v.toFixed(2)}`;
-    return `k ${v.toFixed(2)}`;
-  };
+  // Display-x transform + corner-label formatter for the 3D LV mesh (grid
+  // x = K/F, per t-row; helpers in localvol/lvMeshAxis). Memoized so
+  // SurfaceMesh's mesh memo is stable.
+  const lvXTransform = useMemo(() => lvMeshXTransform(lvAxis, data), [lvAxis, data]);
+  const lvFormatX = lvMeshFormatX(lvAxis, lvXTransform !== undefined);
 
   // Stacked IV: every reconstructed expiry's total variance w(k) = σ(k)²·τ on
   // shared axes (mirrors the Parametric workspace). σ is quoted in the event-
@@ -245,6 +226,17 @@ export default function LocalVolViewer() {
     );
   }
 
+  // Footer hint: the 2-D zoomable charts (smile / overlays) share one
+  // wheel-drag-double-click grammar; Term is click-to-select; the heatmap and
+  // the table are static; SurfaceMesh prints its own hint in its top bar, so
+  // the two mesh views get none here (no doubled hint).
+  const interactionHint =
+    view === "smile" || view === "densities" || view === "stackedvar"
+      ? "scroll: zoom · drag: pan · dbl-click: reset"
+      : view === "term"
+        ? "click a point: select that expiry"
+        : "";
+
   /** Chart-card body for the active sub-tab. */
   const chartBody = () => {
     if (loading || data === null) return chartMessage("Calibrating local-vol surface…");
@@ -328,12 +320,8 @@ export default function LocalVolViewer() {
       <LocalVolToolbar
         view={view}
         onViewChange={setView}
-        axisMode={axisMode}
-        onAxisModeChange={setAxisMode}
         lvRender={lvRender}
         onLvRenderChange={setLvRender}
-        lvAxis={lvAxis}
-        onLvAxisChange={setLvAxis}
         axisClock={axisClock}
         onAxisClockChange={setAxisClock}
         graphSource={graphSource}
@@ -363,6 +351,28 @@ export default function LocalVolViewer() {
             ].join(" ")}
           >
             {chartBody()}
+          </div>
+
+          {/* Footer: interaction hint · strike-axis unit selector next to the
+              x-axis it changes (AxisModeSelect for the smile-family views, the
+              grid-native AxisUnitSelect for the 3D LV mesh). */}
+          <div className="mt-1 flex shrink-0 items-center gap-3 text-[10px] text-slate-600">
+            <span>{interactionHint}</span>
+            {AXIS_MODE_VIEWS.has(view) && (
+              <span className="ml-auto">
+                <AxisModeSelect value={axisMode} onChange={setAxisMode} />
+              </span>
+            )}
+            {view === "lvsurface" && lvRender === "mesh" && (
+              <span className="ml-auto">
+                <AxisUnitSelect
+                  value={lvAxis}
+                  options={LV_AXIS_OPTIONS}
+                  onChange={setLvAxis}
+                  title="Strike-axis display scale"
+                />
+              </span>
+            )}
           </div>
         </div>
 

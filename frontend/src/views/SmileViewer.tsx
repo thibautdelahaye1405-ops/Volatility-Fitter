@@ -1,20 +1,26 @@
-// Parametric lens (UI SHELL v2): per-expiry implied-volatility smile fitting
-// and editing for the ACTIVE TAB's node. Data comes from the shared smile
-// session (the workbench points it at the tab; FastAPI backend with a
-// built-in mock fallback). The toolbar (ParametricToolbar) owns the sub-views,
-// axis mode and overlay toggles with status badges right-aligned; the aside
-// (SmileAside) hosts diagnostics plus the scenario panels and follows the
-// Layout ▸ "Diagnostics aside" toggle. The chart card offers eight views —
-// the editable Smile (with six strike-axis display modes), model Compare,
-// stacked Densities, Log-Q-density, Term, the 3D Surface, Stacked IV and the
-// quote Table (all but Smile/Compare need the live backend). Quote edits post
-// to the backend fit session and the returned refit replaces the smile;
-// shortcuts live in useSmileShortcuts.
+// Parametric lens (UI SHELL v2, wave 2): per-expiry implied-volatility smile
+// fitting and editing for the ACTIVE TAB's node. Data comes from the shared
+// smile session (the workbench points it at the tab; FastAPI backend with a
+// built-in mock fallback).
+//
+// Layout of the chart card:
+//   toolbar   NODE views (Smile · Density · Compare · Table) · TICKER views
+//             (Term · Densities · Stacked IV · Surface) · Density sub-toggle ·
+//             status badges (ParametricToolbar)
+//   header    node title · GRAPH / FILTER overlay badges · quote toolbar
+//   body      the chart, with the layer rail (Target · Calib. quotes · Calib.
+//             fit · Weights) at its RIGHT and Y-center / Y-fit as overlay
+//             buttons on the chart itself
+//   footer    interaction hint · the x-axis unit select next to the x-axis
+// The right-hand column (SmileAside) stacks Spot move · Var-swap · Fit
+// diagnostics and follows Layout ▸ "Diagnostics aside". Save prior lives in
+// the top bar's Priors ▾. Quote edits post to the backend fit session and the
+// returned refit replaces the smile; shortcuts live in useSmileShortcuts.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bookmark } from "lucide-react";
 import SmileChart from "../components/SmileChart";
-import QuoteToolbar, { toolbarButtonClass } from "../components/QuoteToolbar";
+import QuoteToolbar from "../components/QuoteToolbar";
 import DistributionChart from "../components/DistributionChart";
+import type { DistKind } from "../components/DistributionChart";
 import StackedDensityChart from "../components/StackedDensityChart";
 import StackedVarianceChart from "../components/StackedVarianceChart";
 import OverlayCurvesChart from "../components/OverlayCurvesChart";
@@ -24,8 +30,11 @@ import SurfaceChart from "../components/SurfaceChart";
 import QuoteTable from "../components/QuoteTable";
 import WeightStrip from "../components/WeightStrip";
 import SmileAside from "../components/SmileAside";
-import ParametricToolbar, { VIEW_HINTS } from "../components/parametric/ParametricToolbar";
+import AxisModeSelect from "../components/charts/AxisModeSelect";
+import ParametricToolbar, { AXIS_MODE_VIEWS, VIEW_HINTS } from "../components/parametric/ParametricToolbar";
 import type { ChartView } from "../components/parametric/ParametricToolbar";
+import LayerRail from "../components/parametric/LayerRail";
+import CompareChips, { prevailingModelId } from "../components/parametric/CompareChips";
 import { FilterBadge, GraphOverlayBadge } from "../components/parametric/SmileOverlayBadges";
 import { useSmileSession } from "../state/smileSession";
 import { useGraphFocus } from "../state/graphFocus";
@@ -39,6 +48,8 @@ import { useLiveTicks } from "../state/useLiveTicks";
 import { composeFrames } from "../lib/smileLayers";
 import { useModelComparison } from "../state/useModelComparison";
 import { compareSeries } from "../lib/modelCompare";
+import { MODEL_ORDER } from "../lib/modelColor";
+import type { CompareModelId } from "../lib/mockData";
 import type { AxisMode } from "../lib/axisModes";
 import { readSmileAutoScale, writeSmileAutoScale } from "../lib/autoScaleY";
 import type { AutoScaleToggles } from "../lib/autoScaleY";
@@ -50,7 +61,7 @@ const chartMessage = (text: string) => <div className={chartMessageClass}>{text}
 export default function SmileViewer() {
   const {
     smile, source, loading, refreshing, error, editError, ticker, expiry, fitMode,
-    applyEdit, undo, redo, savePrior, scenarioCurve,
+    applyEdit, undo, redo, scenarioCurve,
     distribution, distributionLoading, loadDistribution, spotVersion,
   } = useSmileSession();
   const { format } = useExpiryFormat();
@@ -63,17 +74,16 @@ export default function SmileViewer() {
   // position) so the selection keeps its identity across refits.
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [view, setView] = useState<ChartView>("smile");
+  const [densityKind, setDensityKind] = useState<DistKind>("density");
   const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
-  // Fit-target overlay (V3.4 item 4): mid polyline + bid-ask/haircut ribbons.
+  // Chart layers (the rail): fit-target overlay (V3.4 item 4), calibration
+  // frame (quotes off by default — the prevailing market is the primary
+  // layer; fit on its calibration spot on) and the weight strip.
   const [showTarget, setShowTarget] = useState(true);
-  // Calibration frame toggles: the quotes + target the last fit used (off by
-  // default — the prevailing market is the primary layer) and the fit on its
-  // calibration spot (on — the "how far has the market moved" reference).
   const [showCalibQuotes, setShowCalibQuotes] = useState(false);
   const [showCalibFit, setShowCalibFit] = useState(true);
   const [showWeights, setShowWeights] = useState(false);
-  // Smile-chart y-axis auto-scale chips (lib/autoScaleY), persisted like the
-  // Calibrate scope (localStorage — a UI preference).
+  // Y auto-scale chips (lib/autoScaleY), persisted (localStorage).
   const [autoScaleY, setAutoScaleY] = useState<AutoScaleToggles>(() => readSmileAutoScale());
   const toggleAutoScale = (key: keyof AutoScaleToggles) =>
     setAutoScaleY((prev) => {
@@ -81,20 +91,17 @@ export default function SmileViewer() {
       writeSmileAutoScale(next);
       return next;
     });
-  // Transient "Saved ✓" confirmation on the Save-prior button.
-  const [savedFlash, setSavedFlash] = useState(false);
-  const flashTimer = useRef<number | null>(null);
 
-  // Brief "UPDATED" flash when the viewed node transitions stale -> fresh, i.e. a
-  // calibration just brought it up to date. Keyed per node so switching
+  // Brief "UPDATED" flash when the viewed node transitions stale -> fresh, i.e.
+  // a calibration just brought it up to date. Keyed per node so switching
   // expiries never flashes.
   const [updatedFlash, setUpdatedFlash] = useState(false);
   const updatedTimer = useRef<number | null>(null);
   const staleRef = useRef<{ key: string; stale: boolean } | null>(null);
 
-  // Reset the brush and selection whenever a *different* node loads
-  // (ticker/expiry change). Refits of the same node keep both. State is
-  // adjusted during render so the chart never paints the previous window.
+  // Reset the brush and selection whenever a *different* node loads; refits of
+  // the same node keep both. State is adjusted during render so the chart
+  // never paints the previous window.
   const smileKey = smile ? `${smile.ticker}|${smile.expiry}` : "";
   const [prevSmileKey, setPrevSmileKey] = useState("");
   if (smile && smileKey !== prevSmileKey) {
@@ -102,7 +109,6 @@ export default function SmileViewer() {
     setKWindow([smile.kMin, smile.kMax]);
     setSelectedIndex(null);
   }
-
   const staleNow = smile?.stale ?? null;
   useEffect(() => {
     if (smile === null) return;
@@ -126,8 +132,26 @@ export default function SmileViewer() {
   const liveTicks = useLiveTicks(ticker, expiry, live, fitMode);
   const frames = useMemo(() => (smile ? composeFrames(smile, liveTicks) : null), [smile, liveTicks]);
 
-  // Side-by-side model comparison (V3.2 item 12): fetched lazily.
-  const comparison = useModelComparison(view === "compare", live, ticker, expiry, fitMode, spotVersion);
+  // Compare (wave 2): the prevailing calibrated family shows at once; the
+  // others are fitted lazily when their chip is clicked. Selection resets to
+  // {prevailing} whenever the node (or its model) changes.
+  const prevailing = prevailingModelId(smile?.modelInfo?.id, smile?.modelInfo?.label);
+  const [extraModels, setExtraModels] = useState<Set<CompareModelId>>(new Set());
+  useEffect(() => setExtraModels(new Set()), [smileKey, prevailing]);
+  const compareModels = useMemo(
+    () => MODEL_ORDER.filter((m) => m === prevailing || extraModels.has(m)),
+    [prevailing, extraModels],
+  );
+  const toggleModel = (id: CompareModelId) =>
+    setExtraModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const comparison = useModelComparison(
+    view === "compare", live, ticker, expiry, fitMode, spotVersion, compareModels,
+  );
 
   // Graph-extrapolation live overlay (plan Phase 5): when the user drilled into
   // THIS node from the Graph lens, overlay the posterior curve + credible band.
@@ -138,11 +162,8 @@ export default function SmileViewer() {
     graphActive && graphNode.node?.ticker === ticker && graphNode.node?.expiry === expiry
       ? graphNode.node
       : null;
-
   // Observation-filter overlay (Note 15 Phase 4): null while the filter is off.
-  const { data: filterDiag } = useObservationFilter(
-    live && view === "smile", ticker, expiry, fitMode, spotVersion,
-  );
+  const { data: filterDiag } = useObservationFilter(live && view === "smile", ticker, expiry, fitMode, spotVersion);
 
   useSmileShortcuts({ smile, source, selectedIndex, setSelectedIndex, applyEdit, undo, redo });
 
@@ -153,25 +174,7 @@ export default function SmileViewer() {
   /** Switch the chart-card view; arm the distribution fetcher lazily. */
   const switchView = (next: ChartView) => {
     setView(next);
-    if (next === "logqd") loadDistribution();
-  };
-  const onSavePrior = () => {
-    void savePrior()
-      .then(() => {
-        setSavedFlash(true);
-        if (flashTimer.current !== null) window.clearTimeout(flashTimer.current);
-        flashTimer.current = window.setTimeout(() => setSavedFlash(false), 1500);
-      })
-      .catch(() => { /* surfaced through editError */ });
-  };
-
-  const distributionBody = (kind: "density" | "logqd") => {
-    if (!live) return chartMessage("Distribution views require the live backend.");
-    if (distribution !== null) {
-      return <DistributionChart kind={kind} current={distribution.current} prior={distribution.prior} />;
-    }
-    if (distributionLoading) return chartMessage("Loading distribution…");
-    return chartMessage("Distribution unavailable for this node.");
+    if (next === "density") loadDistribution();
   };
 
   /** Chart-card body for the active view. */
@@ -185,22 +188,14 @@ export default function SmileViewer() {
       case "smile":
         return (
           <SmileChart
-            market={fr.market}
-            calib={fr.calib}
-            showCalibQuotes={showCalibQuotes}
-            showCalibFit={showCalibFit}
+            market={fr.market} calib={fr.calib}
+            showCalibQuotes={showCalibQuotes} showCalibFit={showCalibFit}
             liveFlash={liveTicks.flash}
-            prior={smile.prior}
-            priorTransported={smile.priorTransported}
+            prior={smile.prior} priorTransported={smile.priorTransported}
             scenario={scenarioCurve}
-            kWindow={kWindow}
-            onKWindowChange={setKWindow}
-            fullRange={[smile.kMin, smile.kMax]}
-            axisMode={axisMode}
-            t={smile.T}
-            atmVol={smile.diagnostics.atmVol}
-            selectedIndex={selectedIndex}
-            onQuoteSelect={setSelectedIndex}
+            kWindow={kWindow} onKWindowChange={setKWindow} fullRange={[smile.kMin, smile.kMax]}
+            axisMode={axisMode} t={smile.T} atmVol={smile.diagnostics.atmVol}
+            selectedIndex={selectedIndex} onQuoteSelect={setSelectedIndex}
             varSwapLevel={smile.varSwap.enabled && !smile.varSwap.excluded ? smile.varSwap.level : null}
             graphPost={graphOverlay?.post ?? null}
             graphBandLo={graphOverlay?.postBandLo ?? null}
@@ -211,9 +206,8 @@ export default function SmileViewer() {
             filterPred={filterDiag?.predCurve ?? null}
             fitBandHalf={smile.diagnostics.atmVolStd != null ? 1.96 * smile.diagnostics.atmVolStd : null}
             degraded={smile.degraded ?? null}
-            fitMode={fitMode}
-            showTarget={showTarget}
-            autoScaleY={autoScaleY}
+            fitMode={fitMode} showTarget={showTarget}
+            autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale}
             footer={
               showWeights ? (
                 <WeightStrip live={live} ticker={ticker} expiry={expiry} fitMode={fitMode}
@@ -222,59 +216,67 @@ export default function SmileViewer() {
             }
           />
         );
-      case "compare":
+      case "density":
+        if (!live) return chartMessage("Distribution views require the live backend.");
+        if (distribution !== null) {
+          return <DistributionChart kind={densityKind} current={distribution.current} prior={distribution.prior} />;
+        }
+        return chartMessage(distributionLoading ? "Loading distribution…" : "Distribution unavailable for this node.");
+      case "compare": {
+        const chips = (
+          <CompareChips prevailing={prevailing} selected={new Set(compareModels)} onToggle={toggleModel}
+            data={comparison.data} loading={comparison.loading} />
+        );
         if (comparison.data === null) {
-          return chartMessage(
-            comparison.loading
-              ? "Fitting LQD / SVI-JW / MCS…"
-              : `Couldn't load the comparison: ${comparison.error ?? "unavailable"}`,
+          return (
+            <div className="flex h-full min-h-0 flex-col gap-2">
+              {chips}
+              {chartMessage(comparison.loading ? "Fitting…" : `Couldn't load the comparison: ${comparison.error ?? "unavailable"}`)}
+            </div>
           );
         }
         return (
           <div className="flex h-full min-h-0 flex-col gap-2">
+            {chips}
             <div className={["min-h-0 flex-1", comparison.loading ? "opacity-60" : ""].join(" ")}>
               <OverlayCurvesChart series={compareSeries(comparison.data)} xLabel="log-moneyness k" yLabel="implied vol" zoomY />
             </div>
             <ModelCompareTable data={comparison.data} />
           </div>
         );
-      case "stackeddensity":
-        return live
-          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode} />
-          : chartMessage("Densities require the live backend.");
-      case "logqd":
-        return distributionBody("logqd");
-      case "term":
-        return live ? <TermPanel /> : chartMessage("Term-structure view requires the live backend.");
-      case "surface":
-        return live
-          ? <SurfaceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
-          : chartMessage("Surface view requires the live backend.");
-      case "stackedvar":
-        return live
-          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
-          : chartMessage("Stacked IV requires the live backend.");
+      }
       case "table":
         return live
           ? <QuoteTable ticker={ticker} expiry={expiry} fitMode={fitMode} smile={smile} ticks={liveTicks} showCalib={showCalibQuotes} />
           : chartMessage("Table view requires the live backend.");
+      case "term":
+        return live ? <TermPanel /> : chartMessage("Term-structure view requires the live backend.");
+      case "stackeddensity":
+        return live
+          ? <StackedDensityChart ticker={ticker} fitMode={fitMode} smile={smile} axisMode={axisMode} />
+          : chartMessage("Densities require the live backend.");
+      case "stackedvar":
+        return live
+          ? <StackedVarianceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
+          : chartMessage("Stacked IV requires the live backend.");
+      case "surface":
+        return live
+          ? <SurfaceChart ticker={ticker} fitMode={fitMode} reloadKey={spotVersion} axisMode={axisMode} />
+          : chartMessage("Surface view requires the live backend.");
     }
   };
+
+  const railView = view === "smile" || view === "table" ? view : null;
 
   return (
     <div className="flex h-full flex-col gap-3 p-3">
       <ParametricToolbar
         view={view} onView={switchView}
-        axisMode={axisMode} onAxisMode={setAxisMode}
-        showTarget={showTarget} onShowTarget={() => setShowTarget((v) => !v)}
-        showCalibQuotes={showCalibQuotes} onShowCalibQuotes={() => setShowCalibQuotes((v) => !v)}
-        showCalibFit={showCalibFit} onShowCalibFit={() => setShowCalibFit((v) => !v)}
-        showWeights={showWeights} onShowWeights={() => setShowWeights((v) => !v)}
-        autoScaleY={autoScaleY} onToggleAutoScale={toggleAutoScale}
+        densityKind={densityKind} onDensityKind={setDensityKind}
         live={live} error={error} stale={smile?.stale ?? false} updatedFlash={updatedFlash}
       />
 
-      {/* Body: chart card + diagnostics aside */}
+      {/* Body: chart card + the right-hand column */}
       <div className="flex min-h-0 flex-1 gap-3">
         <div
           className={[
@@ -283,6 +285,7 @@ export default function SmileViewer() {
             updatedFlash ? "border-accent-500/70" : "",
           ].join(" ")}
         >
+          {/* Header: node title · overlay badges · quote-editing toolbar */}
           <div className="mb-2 flex shrink-0 items-center gap-2">
             <h2 className="text-sm font-semibold text-slate-100">
               {smile ? `${smile.ticker} · ${formatExpiry(smile.expiry, smile.T, format)}` : "Smile"}
@@ -292,41 +295,50 @@ export default function SmileViewer() {
             {error !== null && source === "live" && (
               <span className="truncate text-[10px] text-amber-400/80">{error}</span>
             )}
-            {/* Quote-editing toolbar (+ last rejected-edit message) */}
             <div className="ml-auto flex items-center gap-2">
               {editError !== null && (
                 <span className="max-w-56 truncate text-[10px] text-amber-400">{editError}</span>
               )}
               <QuoteToolbar
                 selectedQuote={selectedQuote}
-                canUndo={smile?.canUndo ?? false}
-                canRedo={smile?.canRedo ?? false}
-                canReset={hasEdits}
+                canUndo={smile?.canUndo ?? false} canRedo={smile?.canRedo ?? false} canReset={hasEdits}
                 live={live}
                 onToggleExclude={toggleExclude}
-                onUndo={() => void undo()}
-                onRedo={() => void redo()}
+                onUndo={() => void undo()} onRedo={() => void redo()}
                 onReset={() => void applyEdit("reset")}
               />
-              <button
-                className={toolbarButtonClass}
-                disabled={!live}
-                title={live ? "Persist the current fit as the prior curve" : "requires live backend"}
-                onClick={onSavePrior}
-              >
-                <Bookmark size={12} strokeWidth={1.75} className="opacity-80" />
-                {savedFlash ? "Saved ✓" : "Save prior"}
-              </button>
             </div>
           </div>
-          <div className={["min-h-0 flex-1 transition-opacity duration-200", refreshing ? "opacity-60" : "opacity-100"].join(" ")}>
-            {chartBody()}
+
+          {/* Body: chart + layer rail at its right */}
+          <div className="flex min-h-0 flex-1 gap-2">
+            <div className={["min-h-0 min-w-0 flex-1 transition-opacity duration-200", refreshing ? "opacity-60" : "opacity-100"].join(" ")}>
+              {chartBody()}
+            </div>
+            {railView !== null && (
+              <LayerRail
+                view={railView}
+                showTarget={showTarget} onShowTarget={() => setShowTarget((v) => !v)}
+                showCalibQuotes={showCalibQuotes} onShowCalibQuotes={() => setShowCalibQuotes((v) => !v)}
+                showCalibFit={showCalibFit} onShowCalibFit={() => setShowCalibFit((v) => !v)}
+                showWeights={showWeights} onShowWeights={() => setShowWeights((v) => !v)}
+              />
+            )}
           </div>
-          <p className="mt-1 shrink-0 text-[10px] text-slate-600">{VIEW_HINTS[view]}</p>
+
+          {/* Footer: interaction hint · x-axis unit next to the x-axis */}
+          <div className="mt-1 flex shrink-0 items-center gap-3 text-[10px] text-slate-600">
+            <span className="truncate">{VIEW_HINTS[view]}</span>
+            {AXIS_MODE_VIEWS.has(view) && (
+              <span className="ml-auto shrink-0">
+                <AxisModeSelect value={axisMode} onChange={setAxisMode} />
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Diagnostics aside: hidden on the Term sub-tab (own controls column)
-            and by Layout ▸ Diagnostics aside. */}
+        {/* Right-hand column: Spot move · Var-swap · Fit diagnostics. Hidden on
+            the Term sub-tab (own controls column) and by Layout ▸ aside. */}
         {view !== "term" && showAside && <SmileAside />}
       </div>
     </div>

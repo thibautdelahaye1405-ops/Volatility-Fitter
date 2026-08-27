@@ -1,10 +1,10 @@
-// Fitted risk-neutral distribution chart for the Smile Viewer: either the
-// density pdf(x) over log-returns x = ln(S_T / F), or the log quantile density
-// l(u) = log q(u) = -log f_X(Q(u)) over probabilities u in [0, 1] — the LQD
-// model's own backbone (Docs/lqd_model_note.tex). The log quantile density is a
-// bowl that diverges at the tails, so its y-axis is capped at LOGQD_YMAX.
-// Hand-rolled SVG following the SmileChart conventions (grid, crosshair, hover
-// badge) minus the brush — the backend's full grid is always shown.
+// Fitted risk-neutral distribution chart for the Smile Viewer, three views:
+// the density pdf(x) over log-returns x = ln(S_T / F); the log quantile density
+// l(u) = log q(u) = -log f_X(Q(u)) over u in [0, 1] — the LQD model's own
+// backbone (Docs/lqd_model_note.tex), a bowl diverging at the tails so its
+// y-axis is capped at LOGQD_YMAX; and the CDF F(x) = P(ln(S_T/F) <= x), the
+// quantile function Q(u) transposed (x = Q(u), y = u). Hand-rolled SVG on the
+// SmileChart conventions (grid, crosshair, hover badge) minus the brush.
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { DistributionCurve } from "../state/useScenario";
@@ -16,7 +16,7 @@ const LOGQD_YMAX = 2.5;
 /** Density floor so log q(u) = -log(pdf) stays finite in the far tails. */
 const PDF_FLOOR = 1e-9;
 
-type DistKind = "density" | "logqd";
+export type DistKind = "density" | "logqd" | "cdf";
 
 interface DistributionChartProps {
   kind: DistKind;
@@ -51,11 +51,12 @@ function useElementSize() {
 }
 
 /** Pull the (xs, ys) series matching the requested view from a payload.
- *  Log quantile density l(u) = log q(u) = -log f_X(Q(u)) = -log(pdf). */
+ *  Log quantile density l(u) = log q(u) = -log f_X(Q(u)) = -log(pdf); the
+ *  CDF is the quantile function transposed: x = Q(u), y = u. */
 function seriesOf(curve: DistributionCurve, kind: DistKind): Series {
-  return kind === "density"
-    ? { xs: curve.x, ys: curve.density }
-    : { xs: curve.u, ys: curve.density.map((d) => -Math.log(Math.max(d, PDF_FLOOR))) };
+  if (kind === "density") return { xs: curve.x, ys: curve.density };
+  if (kind === "cdf") return { xs: curve.quantile, ys: curve.u };
+  return { xs: curve.u, ys: curve.density.map((d) => -Math.log(Math.max(d, PDF_FLOOR))) };
 }
 
 /** SIGNED un-clipped pdf (V3.3 item 11) when the payload carries the dip
@@ -109,9 +110,9 @@ export default function DistributionChart({
 
   // Domains: density spans the union of the x grids with the pdf anchored at
   // zero — UNLESS the signed pdf dips below (then the floor follows the dip:
-  // yLo = min(0, dataMin), the clip is evidence, not an axis); the log
-  // quantile density spans u in [0, 1], anchored at its bowl bottom and
-  // CAPPED at LOGQD_YMAX (its tails diverge to +inf).
+  // yLo = min(0, dataMin), the clip is evidence, not an axis); the CDF spans
+  // the x grid with y fixed to [0, 1] (padded); the log quantile density
+  // spans u in [0, 1], anchored at its bowl bottom and CAPPED at LOGQD_YMAX.
   const { xScale, yScale } = useMemo(() => {
     let xMin = Infinity, xMax = -Infinity;
     let yMin = Infinity, yMax = -Infinity;
@@ -126,6 +127,8 @@ export default function DistributionChart({
       const pad = Math.max(1e-9, (yMax - yMin) * 0.08);
       yLo = yMin < 0 ? yMin - pad : 0; // Math.min(0, dataMin), padded when dipping
       yHi = yMax + pad;
+    } else if (kind === "cdf") {
+      yLo = -0.03; yHi = 1.03;
     } else {
       xMin = 0; xMax = 1;
       const lo = Number.isFinite(yMin) ? yMin : 0;
@@ -165,9 +168,8 @@ export default function DistributionChart({
     return `${curPath}L${x1},${y0}L${x0},${y0}Z`;
   }, [kind, curPath, cur, xScale, yScale]);
 
-  // Sub-zero excursion of the SIGNED pdf, filled red: the polyline of
-  // min(y, 0) closed along y = 0 (non-negative stretches collapse onto the
-  // baseline and contribute no area).
+  // Sub-zero excursion of the SIGNED pdf, filled red: min(y, 0) closed along
+  // y = 0 (non-negative stretches collapse onto the baseline: no area).
   const rawNegArea = useMemo(() => {
     if (rawCur === null || rawCur.xs.length === 0) return "";
     const y0 = yScale.map(0).toFixed(2);
@@ -240,7 +242,9 @@ export default function DistributionChart({
     hoverXv !== null && hoverYv !== null
       ? kind === "density"
         ? `x ${hoverXv.toFixed(3)} · pdf ${formatAxisNumber(hoverYv)}`
-        : `u ${hoverXv.toFixed(2)} · ℓ ${hoverYv.toFixed(3)}`
+        : kind === "cdf"
+          ? `x ${hoverXv.toFixed(3)} · F ${hoverYv.toFixed(3)}`
+          : `u ${hoverXv.toFixed(2)} · ℓ ${hoverYv.toFixed(3)}`
       : null;
 
   /* ---------------- render ---------------- */
@@ -268,7 +272,11 @@ export default function DistributionChart({
           </span>
         )}
         <span className="ml-auto font-mono text-slate-500">
-          {kind === "density" ? "pdf of x = ln(S_T / F)" : "ℓ(u) = log quantile density"}
+          {kind === "density"
+            ? "pdf of x = ln(S_T / F)"
+            : kind === "cdf"
+              ? "F(x) = P(ln(S_T/F) ≤ x)"
+              : "ℓ(u) = log quantile density"}
         </span>
       </div>
 
@@ -304,9 +312,9 @@ export default function DistributionChart({
                   stroke="rgb(255 255 255 / 0.04)" />
               ))}
 
-              {/* Reference line: x = 0 (forward) / u = 0.5 (median) */}
+              {/* Reference line: x = 0 (forward; density + CDF) / u = 0.5 (median) */}
               {(() => {
-                const refX = kind === "density" ? 0 : 0.5;
+                const refX = kind === "logqd" ? 0.5 : 0;
                 if (refX < xScale.domain[0] || refX > xScale.domain[1]) return null;
                 return (
                   <line x1={xScale.map(refX)} x2={xScale.map(refX)} y1={0} y2={plotH}
@@ -331,39 +339,37 @@ export default function DistributionChart({
               {/* Density only: soft fill under the current pdf */}
               {curArea !== "" && (
                 <path d={curArea} fill="var(--color-accent-400)" opacity={0.07}
-                  clipPath="url(#${clipId})" />
+                  clipPath={`url(#${clipId})`} />
               )}
 
               {/* Sub-zero excursion of the signed pdf: red evidence fill */}
               {rawNegArea !== "" && (
-                <path d={rawNegArea} fill="rgb(244 63 94 / 0.25)" clipPath="url(#${clipId})" />
+                <path d={rawNegArea} fill="rgb(244 63 94 / 0.25)" clipPath={`url(#${clipId})`} />
               )}
 
               {/* Prior: dashed slate */}
               {priPath !== "" && (
                 <path d={priPath} fill="none" stroke="rgb(100 116 139 / 0.9)"
-                  strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#${clipId})" />
+                  strokeWidth={1.5} strokeDasharray="5 4" clipPath={`url(#${clipId})`} />
               )}
 
               {/* Divergence pair (V3.3 item 11): the signed pdf SOLID where it
                   dips, the served clipped/renormalized curve DASHED — the
-                  contamination is explicit, never hidden. Clean payloads carry
-                  no raw channel and draw the single accent curve as before. */}
+                  contamination is explicit. Clean payloads: one accent curve. */}
               {rawPath !== "" ? (
                 <>
                   <path d={curPath} fill="none" stroke="rgb(251 191 36 / 0.85)"
-                    strokeWidth={1.5} strokeDasharray="5 4" clipPath="url(#${clipId})" />
+                    strokeWidth={1.5} strokeDasharray="5 4" clipPath={`url(#${clipId})`} />
                   <path d={rawPath} fill="none" stroke="var(--color-accent-400)"
-                    strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
+                    strokeWidth={2} strokeLinejoin="round" clipPath={`url(#${clipId})`} />
                 </>
               ) : (
                 <path d={curPath} fill="none" stroke="var(--color-accent-400)"
-                  strokeWidth={2} strokeLinejoin="round" clipPath="url(#${clipId})" />
+                  strokeWidth={2} strokeLinejoin="round" clipPath={`url(#${clipId})`} />
               )}
 
-              {/* Crosshair: vertical + horizontal guides + marker, all through
-                  the tracked point on the current curve (the horizontal guide
-                  only when that point sits inside the capped y-axis). */}
+              {/* Crosshair through the tracked point on the current curve (the
+                  horizontal guide only while it sits inside the y-axis). */}
               {hoverXv !== null && hoverYv !== null && (
                 <g pointerEvents="none">
                   <line x1={hoverPx} x2={hoverPx} y1={0} y2={plotH}
@@ -374,7 +380,7 @@ export default function DistributionChart({
                   )}
                   <circle cx={hoverPx} cy={yScale.map(hoverYv)} r={3.5}
                     fill="var(--color-accent-400)" stroke="var(--color-surface-900)" strokeWidth={1.5}
-                    clipPath="url(#${clipId})" />
+                    clipPath={`url(#${clipId})`} />
                 </g>
               )}
             </g>

@@ -4,17 +4,21 @@
 // (Universe dialog, Settings dialog) exactly where VS Code keeps Accounts /
 // Manage. The Local-Vol icon is inert while the Options master switch is
 // off (tooltip explains).
-import { Box, Database, Gauge, Settings, Spline, TrendingUp, Waypoints } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Gauge, Settings, TrendingUp } from "lucide-react";
+import type { ComponentType } from "react";
+import { GraphIcon, LocalVolIcon, SmileIcon, UniverseIcon } from "./LensIcons";
 import { ACTIVITIES, useWorkbench } from "../../state/workbench";
 import type { Activity } from "../../state/workbench";
 import { useWorkflowContext } from "../../state/workflowContext";
 
-const ICONS: Record<Activity, LucideIcon> = {
-  graph: Waypoints,
+/** Icon component per lens: custom drawings (LensIcons) where a generic
+ *  glyph would not say what the lens is; lucide for Forwards and Quality. */
+type IconComponent = ComponentType<{ size?: number; strokeWidth?: number }>;
+const ICONS: Record<Activity, IconComponent> = {
+  graph: GraphIcon,
   forwards: TrendingUp,
-  parametric: Spline,
-  localvol: Box,
+  parametric: SmileIcon,
+  localvol: LocalVolIcon,
   quality: Gauge,
 };
 
@@ -26,7 +30,7 @@ function BarButton({
   disabled = false,
   onClick,
 }: {
-  icon: LucideIcon;
+  icon: IconComponent;
   label: string;
   title: string;
   active?: boolean;
@@ -85,7 +89,7 @@ export default function ActivityBar() {
       })}
       <div className="mt-auto flex flex-col border-t border-slate-800/60 pt-1">
         <BarButton
-          icon={Database}
+          icon={UniverseIcon}
           label="Manage universe"
           title="Manage universe — tickers, expiries, saved universes (Ctrl+Shift+U)"
           active={dialog === "universe"}

@@ -1,15 +1,21 @@
-// Diagnostics aside of the Parametric workspace: headline fit diagnostics
-// (ATM / skew / curvature / RMS) with the secondary readouts (wings, Lee
-// slopes, var-swap vol) behind a small expander, plus the variance-swap
-// editor and the SSR spot-scenario slider. The displayed model + its
-// hyperparameters render as a compact chip in the panel header (full values
-// in the tooltip); model selection itself lives in Options.
+// Right-hand column of the Parametric lens (UI SHELL v2 wave 2): three
+// stacked cards, top to bottom —
+//   Spot move        the SSR spot-scenario slider (transports every lens; the
+//                    Calibrate button re-anchors)
+//   Variance swap    the var-swap quote editor (adds a calibration penalty;
+//                    Options-gated)
+//   Fit diagnostics  headline handles (ATM / skew / curvature / RMS) with the
+//                    secondary readouts (wings, Lee slopes, var-swap vol)
+//                    behind an expander; the displayed model + hyperparameters
+//                    as a compact chip (full values in the tooltip)
+// Model selection itself lives in Options.
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import SpotPanel from "./SpotPanel";
 import VarSwapPanel from "./VarSwapPanel";
 import { useSmileSession } from "../state/smileSession";
 import { formatPct } from "../lib/chartScale";
+import { cardClass } from "../lib/ui";
 
 /** Fixed-decimal string, or "—" for a null/NaN diagnostic (a degenerate or
  *  transported fit can yield a non-finite value, which JSON-serializes to null —
@@ -34,18 +40,12 @@ const DiagList = ({ rows }: { rows: DiagRow[] }) => (
   </dl>
 );
 
+const card = `${cardClass} p-4`;
+
 export default function SmileAside() {
   const {
-    smile,
-    source,
-    spotReturn,
-    spotState,
-    spotMode,
-    setSpotReturn,
-    recalibrate,
-    applyVarSwap,
-    undoVarSwap,
-    redoVarSwap,
+    smile, source, spotReturn, spotState, spotMode, setSpotReturn, recalibrate,
+    applyVarSwap, undoVarSwap, redoVarSwap,
   } = useSmileSession();
   const live = source === "live";
   const [showMore, setShowMore] = useState(false);
@@ -58,10 +58,7 @@ export default function SmileAside() {
         {
           label: "ATM vol",
           // Quote-derived 1σ error bar (the fit's own Jacobian + bid-ask noise).
-          value:
-            d.atmVolStd != null
-              ? `${formatPct(d.atmVol)} ±${formatPct(d.atmVolStd, 2)}`
-              : formatPct(d.atmVol),
+          value: d.atmVolStd != null ? `${formatPct(d.atmVol)} ±${formatPct(d.atmVolStd, 2)}` : formatPct(d.atmVol),
         },
         { label: "Skew", value: fixed(d.skew, 3) },
         { label: "Curvature", value: fixed(d.curvature, 2) },
@@ -80,58 +77,24 @@ export default function SmileAside() {
     : [];
 
   return (
-    <aside className="w-72 shrink-0 overflow-y-auto rounded-xl border border-slate-800 bg-surface-900 p-5 shadow-xl shadow-black/30">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
-        {/* Displayed model + hyperparameters as one compact chip — names the
-            model the chart actually shows, even for a frozen/stale node. */}
-        {info && (
-          <span
-            title={info.params.map((p) => `${p.label}: ${p.value}`).join(" · ") || info.label}
-            className="flex items-center gap-1.5 rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-300"
-          >
-            {smile?.stale && (
-              <span className="font-sans font-semibold uppercase text-amber-400">stale</span>
-            )}
-            {info.label}
-            {info.params.length > 0 && (
-              <span className="font-medium text-slate-400">
-                {info.params.map((p) => `${p.label} ${p.value}`).join(" · ")}
-              </span>
-            )}
-          </span>
-        )}
-      </div>
-      <p className="mb-3 text-[11px] text-slate-500">
-        {smile
-          ? `Current calibration · ${smile.ticker} ${smile.expiry}`
-          : "Awaiting data…"}
-      </p>
+    <aside className="flex w-72 shrink-0 flex-col gap-3 overflow-y-auto">
+      {/* 1. Spot move: transports the live surface (no recalibration);
+          Calibrate re-anchors. Applies across every lens, not just Smile. */}
+      <section className={card}>
+        <SpotPanel
+          spotReturn={spotReturn}
+          spotState={spotState}
+          spotMode={spotMode}
+          onSpotReturn={setSpotReturn}
+          onCalibrate={() => void recalibrate()}
+          disabled={!live}
+          disabledReason={!live ? "requires live backend" : undefined}
+        />
+      </section>
 
-      <DiagList rows={headline} />
-
-      {/* Secondary diagnostics behind a slim expander. */}
-      {secondary.length > 0 && (
-        <>
-          <button
-            onClick={() => setShowMore((v) => !v)}
-            className="mt-1 flex w-full items-center gap-1 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-300"
-          >
-            {showMore ? (
-              <ChevronDown size={12} strokeWidth={1.75} />
-            ) : (
-              <ChevronRight size={12} strokeWidth={1.75} />
-            )}
-            More diagnostics
-            {!showMore && <span className="text-slate-600">· wings, Lee, var-swap</span>}
-          </button>
-          {showMore && <DiagList rows={secondary} />}
-        </>
-      )}
-
-      {/* Variance-swap quote: adds a calibration penalty (Options-gated) */}
+      {/* 2. Variance-swap quote: adds a calibration penalty (Options-gated). */}
       {smile?.varSwap.enabled && (
-        <div className="mt-4 border-t border-slate-800 pt-4">
+        <section className={card}>
           <VarSwapPanel
             info={smile.varSwap}
             live={live}
@@ -143,22 +106,46 @@ export default function SmileAside() {
             onRedo={() => void redoVarSwap()}
             onReset={() => void applyVarSwap("reset")}
           />
-        </div>
+        </section>
       )}
 
-      {/* Spot move: the slider transports the live surface (no recalibration);
-          Calibrate re-anchors. Applies across every workspace, not just Smile. */}
-      <div className="mt-4 border-t border-slate-800 pt-4">
-        <SpotPanel
-          spotReturn={spotReturn}
-          spotState={spotState}
-          spotMode={spotMode}
-          onSpotReturn={setSpotReturn}
-          onCalibrate={() => void recalibrate()}
-          disabled={!live}
-          disabledReason={!live ? "requires live backend" : undefined}
-        />
-      </div>
+      {/* 3. Fit diagnostics */}
+      <section className={card}>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-100">Fit diagnostics</h3>
+          {info && (
+            <span
+              title={info.params.map((p) => `${p.label}: ${p.value}`).join(" · ") || info.label}
+              className="flex items-center gap-1.5 rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-300"
+            >
+              {smile?.stale && <span className="font-sans font-semibold uppercase text-amber-400">stale</span>}
+              {info.label}
+              {info.params.length > 0 && (
+                <span className="font-medium text-slate-400">
+                  {info.params.map((p) => `${p.label} ${p.value}`).join(" · ")}
+                </span>
+              )}
+            </span>
+          )}
+        </div>
+        <p className="mb-3 text-[11px] text-slate-500">
+          {smile ? `Current calibration · ${smile.ticker} ${smile.expiry}` : "Awaiting data…"}
+        </p>
+        <DiagList rows={headline} />
+        {secondary.length > 0 && (
+          <>
+            <button
+              onClick={() => setShowMore((v) => !v)}
+              className="mt-1 flex w-full items-center gap-1 py-1 text-[11px] font-medium text-slate-500 transition-colors hover:text-slate-300"
+            >
+              {showMore ? <ChevronDown size={12} strokeWidth={1.75} /> : <ChevronRight size={12} strokeWidth={1.75} />}
+              More diagnostics
+              {!showMore && <span className="text-slate-600">· wings, Lee, var-swap</span>}
+            </button>
+            {showMore && <DiagList rows={secondary} />}
+          </>
+        )}
+      </section>
     </aside>
   );
 }
