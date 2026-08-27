@@ -1,12 +1,18 @@
 // Nodal local-volatility heatmap for the Local Vol workspace.
 //
 // Renders the calibrated piecewise-affine surface as a vertex matrix: one
-// cell per (t-node, x-node) vertex, coloured by local vol on a
-// blue→cyan→amber→red map (the same ramp as the 3D SurfaceChart). Rows are
-// vertex maturities (t = 0 at top), columns vertex strikes x = K/F. Hovering a
-// cell reveals its exact (t, x, σ). Pure SVG, no chart deps.
-import { useLayoutEffect, useRef, useState } from "react";
+// cell per (t-node, x-node) vertex, coloured by local vol on the shared vol
+// colormap (lib/volColormap — the same ramp as the 3D SurfaceMesh). Rows are
+// vertex maturities (t = 0 at top), columns vertex strikes x = K/F. Hovering
+// a cell reveals its exact (t, x, σ) and publishes the point on the linked
+// hover store (wave 3, B2: k = ln x), so the 3D meshes / overlays of the same
+// ticker show the matching crosshair — and a point published elsewhere
+// highlights the matching cell here. Pure SVG, no chart deps.
+import { useState } from "react";
 import { formatPct } from "../lib/chartScale";
+import { useElementSize } from "../lib/useElementSize";
+import { VOL_GRADIENT_CSS, volColor } from "../lib/volColormap";
+import { nearestGridPoint, useSurfaceHover } from "../state/surfaceHover";
 
 interface LocalVolHeatmapProps {
   tNodes: number[];
@@ -18,46 +24,9 @@ interface LocalVolHeatmapProps {
   legendLabel?: string;
   /** Hover/legend count caption suffix (e.g. "vertices" vs "cells"). */
   cellLabel?: string;
-}
-
-/** Colormap stops: blue → cyan → amber → red over the vol range. */
-const STOPS: { u: number; rgb: [number, number, number] }[] = [
-  { u: 0, rgb: [59, 130, 246] },
-  { u: 0.34, rgb: [34, 211, 238] },
-  { u: 0.67, rgb: [251, 191, 36] },
-  { u: 1, rgb: [239, 68, 68] },
-];
-
-/** Piecewise-linear colormap lookup, u in [0, 1]. */
-function volColor(u: number): string {
-  const x = Math.min(1, Math.max(0, u));
-  for (let i = 1; i < STOPS.length; i++) {
-    if (x <= STOPS[i].u) {
-      const a = STOPS[i - 1];
-      const b = STOPS[i];
-      const f = (x - a.u) / (b.u - a.u);
-      const c = a.rgb.map((v, j) => Math.round(v + f * (b.rgb[j] - v)));
-      return `rgb(${c[0]} ${c[1]} ${c[2]})`;
-    }
-  }
-  return "rgb(239 68 68)";
-}
-
-/** Track the pixel size of a container element. */
-function useElementSize() {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setSize({ width: rect.width, height: rect.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return { ref, size };
+  /** Linked hover: the ticker + this chart's id. */
+  ticker?: string;
+  chartId?: string;
 }
 
 const MARGIN = { top: 8, right: 10, bottom: 26, left: 38 };
@@ -68,9 +37,12 @@ export default function LocalVolHeatmap({
   localVol,
   legendLabel = "σ_loc(t, x)",
   cellLabel = "vertices",
+  ticker = "",
+  chartId = "lv-heatmap",
 }: LocalVolHeatmapProps) {
   const { ref, size } = useElementSize();
   const [hover, setHover] = useState<{ i: number; j: number } | null>(null);
+  const link = useSurfaceHover(chartId);
 
   const nT = tNodes.length;
   const nX = xNodes.length;
@@ -78,6 +50,22 @@ export default function LocalVolHeatmap({
   const vMin = flat.length ? Math.min(...flat) : 0;
   const vMax = flat.length ? Math.max(...flat) : 1;
   const vSpan = vMax - vMin || 1;
+
+  // A point published by another chart of this ticker → the matching cell.
+  const linked =
+    hover === null && link.hover !== null && link.hover.source !== chartId && link.hover.ticker === ticker
+      ? nearestGridPoint(xNodes.map((x) => Math.log(x)), tNodes, link.hover.k, link.hover.t)
+      : null;
+  const shown = hover ?? linked;
+
+  const enter = (i: number, j: number) => {
+    setHover({ i, j });
+    link.publish({ ticker, k: Math.log(xNodes[j]), t: tNodes[i] });
+  };
+  const leave = () => {
+    setHover(null);
+    link.publish(null);
+  };
 
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
@@ -95,23 +83,17 @@ export default function LocalVolHeatmap({
         <span className="font-mono text-slate-500">{legendLabel}</span>
         <span className="flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
           {formatPct(vMin)}
-          <span
-            className="h-2 w-24 rounded"
-            style={{
-              background:
-                "linear-gradient(90deg, rgb(59 130 246), rgb(34 211 238), rgb(251 191 36), rgb(239 68 68))",
-            }}
-          />
+          <span className="h-2 w-24 rounded" style={{ background: VOL_GRADIENT_CSS }} />
           {formatPct(vMax)}
         </span>
         <span className="text-[10px] text-slate-500">
           {nT}×{nX} {cellLabel}
         </span>
-        <span className="ml-auto font-mono text-[10px] text-slate-300">
-          {hover
-            ? `t ${tNodes[hover.i].toFixed(2)}y · x ${xNodes[hover.j].toFixed(2)} · ${formatPct(
-                localVol[hover.i][hover.j],
-              )}`
+        <span className={`ml-auto font-mono text-[10px] ${hover ? "text-slate-300" : "text-slate-500"}`}>
+          {shown
+            ? `t ${tNodes[shown.i].toFixed(2)}y · x ${xNodes[shown.j].toFixed(2)} · ${formatPct(
+                localVol[shown.i][shown.j],
+              )}${hover ? "" : " (linked)"}`
             : "hover a cell"}
         </span>
       </div>
@@ -119,10 +101,10 @@ export default function LocalVolHeatmap({
       {/* Matrix */}
       <div ref={ref} className="relative min-h-0 flex-1">
         {plotW > 0 && plotH > 0 && (
-          <svg width={size.width} height={size.height} className="absolute inset-0">
+          <svg width={size.width} height={size.height} className="absolute inset-0" onMouseLeave={leave}>
             {localVol.map((row, i) =>
               row.map((v, j) => {
-                const active = hover?.i === i && hover?.j === j;
+                const active = shown?.i === i && shown?.j === j;
                 return (
                   <rect
                     key={`${i}-${j}`}
@@ -131,10 +113,9 @@ export default function LocalVolHeatmap({
                     width={cw + 0.5}
                     height={ch + 0.5}
                     fill={volColor((v - vMin) / vSpan)}
-                    stroke={active ? "rgb(226 232 240)" : "rgb(15 23 42 / 0.35)"}
+                    stroke={active ? (hover ? "rgb(226 232 240)" : "rgb(56 189 248)") : "rgb(15 23 42 / 0.35)"}
                     strokeWidth={active ? 1.5 : 0.5}
-                    onMouseEnter={() => setHover({ i, j })}
-                    onMouseLeave={() => setHover(null)}
+                    onMouseEnter={() => enter(i, j)}
                   />
                 );
               }),

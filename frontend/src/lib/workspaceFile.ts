@@ -19,6 +19,8 @@ export interface ShellBlob {
   activity?: string;
   tabs?: unknown;
   viewMemory?: unknown;
+  /** 3D camera per lens view (state/surfaceCameras). */
+  cameras?: unknown;
   layout?: Partial<{ nodesPane: boolean; nodesWidth: number; statusBar: boolean; aside: boolean; rememberView: boolean }>;
   viewSettings?: { scheme?: string; contrast?: number; brightness?: number };
   expiryFormat?: string;

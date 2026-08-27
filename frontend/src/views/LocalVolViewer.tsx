@@ -4,32 +4,25 @@
 // (POST /fit/affine/{ticker}) and presents Parametric-style sub-tabs, every
 // view DERIVED from that calibrated surface (ROADMAP Phase 10):
 //   Smile      reconstructed arbitrage-free smile vs quotes (per expiry)
-//   Densities  every expiry's Breeden-Litzenberger density overlaid (≥ 0 ⇔ no
-//              butterfly arb), mirroring the Parametric "Densities" view
+//   Densities  every expiry's B-L density overlaid (≥ 0 ⇔ no butterfly arb)
 //   Term       ATM / var-swap term structure across the ladder
-//   LV surface the nodal local-vol grid — 3D local-variance mesh (default,
-//              same renderer as the IV surface) or the flat vertex heatmap
+//   LV surface the nodal local-vol grid — 3D local-variance mesh or heatmap
 //   IV surface reconstructed implied-vol mesh over t × strike
 //   Stacked IV total variance w=σ²·τ per expiry (non-crossing ⇔ no calendar arb)
 //   Table      per-strike reconstructed IVs + prices (per expiry)
-// Densities / Stacked IV / IV surface are built client-side from the cached fit's
-// per-expiry data; Term / Table fetch sibling endpoints that reuse the cached
-// affine fit (useAffineView). Live backend only (no mock fallback).
+// Densities / Stacked IV / IV surface are built client-side from the cached
+// fit; Term / Table reuse it through sibling endpoints (useAffineView). Live
+// backend only (no mock fallback).
 //
-// UI SHELL v2: the lens follows the workbench's active node tab — the ticker
-// comes from the shared smile session (via useAffine) and the per-expiry
-// views show the SESSION expiry (index derived, fallback 0 when the session
-// expiry is not in the LV ladder). Any expiry pick made here (Term chart
-// click, per-expiry table row) goes through selectExpiry(), which opens a
-// preview tab; outside the shell it falls back to a local override.
-// Wave 2 grammar (as the Parametric lens): LocalVolToolbar = grouped NODE /
-// TICKER view switch + render / clock / graph-source controls + badges; the
-// chart-card FOOTER = interaction hint + the strike-axis unit selector next to
-// the x-axis (AxisModeSelect for smile / densities / IV-surface / stacked-IV,
-// AxisUnitSelect over LV_AXIS_OPTIONS for the 3D LV mesh); LocalVolAside =
-// Spot move · Variance swap · Fit diagnostics. View state goes through
-// useLensViewMemory: per TAB with Layout ▸ "Remember view per tab" (wave 3,
-// C2), per lens otherwise.
+// UI SHELL v2: the lens follows the workbench's active node tab (ticker from
+// the shared session via useAffine; per-expiry views show the SESSION expiry,
+// index fallback 0); an expiry pick made here (Term click, table row) goes
+// through selectExpiry() → preview tab (local override off-shell). Wave 2
+// grammar: LocalVolToolbar (NODE / TICKER view switch, render / clock /
+// graph-source controls, badges); chart-card FOOTER (hint + the strike-axis
+// unit selector: AxisModeSelect, or AxisUnitSelect for the 3D LV mesh);
+// LocalVolAside (Spot move · Variance swap · Fit diagnostics). View state goes
+// through useLensViewMemory (per tab with Layout ▸ "Remember view per tab").
 import { useMemo, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
@@ -258,12 +251,21 @@ export default function LocalVolViewer() {
               rowXTransform={lvXTransform}
               triangulate
               cellDiagMain={data.cellDiagMain}
+              cameraKey="localvol:lv"
+              ticker={ticker}
+              chartId="localvol:lv"
+              linkK={Math.log}
+              formatExpiry={() => ""}
             />
           )
-          : <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} />;
+          : <LocalVolHeatmap tNodes={data.tNodes} xNodes={data.xNodes} localVol={data.localVol} ticker={ticker} />;
       case "ivsurface":
         return ivSurface
-          ? <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" axisMode={axisMode} />
+          ? (
+            <SurfaceMesh data={ivSurface} legendLabel="σ_IV(k, T)" axisMode={axisMode}
+              cameraKey="localvol:iv" ticker={ticker} chartId="localvol:iv"
+              formatExpiry={(iso, t) => formatExpiry(iso, t, format)} />
+          )
           : chartMessage("IV surface needs at least two overlapping expiries.");
       case "stackedvar":
         return stackedIv

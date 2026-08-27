@@ -19,6 +19,7 @@ import { useViewSettings } from "./viewSettings";
 import type { ColorScheme } from "./viewSettings";
 import { useExpiryFormat } from "./expiryFormat";
 import { useNodeSources } from "./nodeSources";
+import { getSurfaceCameras, setSurfaceCameras } from "./surfaceCameras";
 import { useSmileSession } from "./smileSession";
 import { useWorkflowContext } from "./workflowContext";
 import { EXPIRY_FORMATS } from "../lib/expiryFormat";
@@ -108,6 +109,7 @@ export function WorkspaceFileProvider({ children }: { children: ReactNode }) {
     viewSettings: { scheme: view.scheme, contrast: view.contrast, brightness: view.brightness },
     expiryFormat: expiry.format,
     nodeSources: nodeSources.policy,
+    cameras: getSurfaceCameras(),
   }), [wb, view.scheme, view.contrast, view.brightness, expiry.format, nodeSources.policy]);
   const shellHash = useMemo(() => hashShell(shellBlob), [shellBlob]);
   const shellRef = useRef(shellBlob);
@@ -123,6 +125,7 @@ export function WorkspaceFileProvider({ children }: { children: ReactNode }) {
       if (typeof vs.brightness === "number") view.setBrightness(vs.brightness);
     }
     if (EXPIRY_FORMATS.some((f) => f.id === blob.expiryFormat)) expiry.setFormat(blob.expiryFormat as ExpiryFormat);
+    if (blob.cameras !== undefined) setSurfaceCameras(blob.cameras);
     const ns = blob.nodeSources as { mode?: string; overrides?: Record<string, string> } | undefined;
     if (ns && (ns.mode === "universe" || ns.mode === "per-node")) {
       nodeSources.setMode(ns.mode);

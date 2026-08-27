@@ -1,9 +1,12 @@
 // 3D implied-volatility surface for the Parametric workspace: fetches
 // GET /surface/{ticker} lazily (mounted only while the Surface view is open)
-// and renders the (k, sqrt(T), σ) mesh via the shared SurfaceMesh renderer.
+// and renders the (k, sqrt(T), σ) mesh via the shared SurfaceMesh renderer
+// (camera persisted under "parametric:surface"; crosshair linked by ticker).
 // Live backend only (the parent gates mock mode).
 import type { FitMode } from "../state/useSmile";
 import { useSurface } from "../state/useSurface";
+import { useExpiryFormat } from "../state/expiryFormat";
+import { formatExpiry } from "../lib/expiryFormat";
 import SurfaceMesh from "./SurfaceMesh";
 import type { AxisMode } from "../lib/axisModes";
 
@@ -27,11 +30,21 @@ export default function SurfaceChart({
   axisMode = "logmoneyness",
 }: SurfaceChartProps) {
   const { data, loading, error } = useSurface(ticker, fitMode, reloadKey);
+  const { format } = useExpiryFormat();
 
   if (data === null) {
     return loading
       ? message("Loading surface…")
       : message(`Surface unavailable${error !== null ? ` (${error})` : ""}.`);
   }
-  return <SurfaceMesh data={data} axisMode={axisMode} />;
+  return (
+    <SurfaceMesh
+      data={data}
+      axisMode={axisMode}
+      cameraKey="parametric:surface"
+      ticker={ticker}
+      chartId="parametric:surface"
+      formatExpiry={(iso, t) => formatExpiry(iso, t, format)}
+    />
+  );
 }

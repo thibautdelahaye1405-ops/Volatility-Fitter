@@ -65,8 +65,9 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     items: [
       { keys: "Wheel", label: "Zoom x and y around the cursor" },
       { keys: "Shift+wheel / Alt+wheel", label: "Zoom x only / y only (Alt bypasses the y auto-scale)" },
-      { keys: "Drag", label: "Pan (3D surface: rotate)" },
-      { keys: "Double-click", label: "Reset the zoom" },
+      { keys: "Drag", label: "Pan (3D surface: rotate · Shift+drag or middle-drag: pan · Ctrl+drag: pitch)" },
+      { keys: "Hover a 3D surface", label: "Crosshair: the smile at T and the term curve at k, linked across the surface charts of the ticker" },
+      { keys: "Double-click", label: "Reset the zoom (3D: yaw · pitch · zoom · pan)" },
       { keys: "Range brush", label: "Drag the strike-window handles under the smile" },
     ],
   },

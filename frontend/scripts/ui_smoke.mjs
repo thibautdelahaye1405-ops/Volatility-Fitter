@@ -33,6 +33,9 @@ const LENSES = [
   // Sub-view of the Parametric chart card (V3.2 model comparison): clicked
   // via its SegmentedControl button after the lens mounts.
   { name: "Parametric", subview: "Compare", slug: "compare" },
+  // 3D IV surface with the pointer parked on it: the crosshair badge
+  // (`T … · expiry · k … · σ …`) must render (wave 3, B2; live only).
+  { name: "Parametric", subview: "Surface", slug: "surface-crosshair", hover: true },
   { name: "Local Vol" },
   { name: "Quality" },
 ];
@@ -182,6 +185,20 @@ try {
         if (!sub) throw new Error(`subview "${lens.subview}" not found`);
         await sub.click();
         await sleep(700);
+      }
+      if (lens.hover && LIVE) {
+        // Wait for the fetched surface, park the pointer on it, expect the badge.
+        let svg = null;
+        for (let i = 0; i < 40 && !svg; i++) { svg = await page.$("main svg.cursor-grab"); if (!svg) await sleep(250); }
+        if (!svg) throw new Error("3D surface svg not found");
+        const box = await svg.boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 6 });
+        await sleep(400);
+        const badge = await page.evaluate(() =>
+          Array.from(document.querySelectorAll("main div.pointer-events-none"))
+            .map((d) => d.textContent ?? "").find((t) => /^T /.test(t)) ?? null);
+        if (!badge) throw new Error("no crosshair badge after hovering the surface");
+        console.log(`     crosshair: ${badge}`);
       }
       await check(page, pageErrors, lens.slug ?? lens.name);
     } catch (err) {
