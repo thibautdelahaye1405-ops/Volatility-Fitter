@@ -104,6 +104,7 @@ export default function StackedVarianceChart({
     mode === "levels"
       ? data.t.map((ti, i) => ({
           label: formatExpiry(data.expiries[i], ti, format),
+          t: ti,
           xs: axisMode === "logmoneyness" ? data.k : data.k.map((k) => txAt(k, i)),
           ys: grid.w[i],
           color: maturityColor(n > 1 ? i / (n - 1) : 0),
@@ -149,6 +150,7 @@ export default function StackedVarianceChart({
           zoomY
           formatX={(v) => (deltaAxis ? axisTickLabel("logmoneyness", v) : axisTickLabel(axisMode, v))}
           markers={markers}
+          link={!deltaAxis && axisMode === "logmoneyness" ? { ticker, chartId: "parametric:stackedvar" } : undefined}
         />
       </div>
     </div>

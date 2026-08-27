@@ -5,12 +5,19 @@
 // maturity. Hand-rolled SVG following the SmileChart conventions; no chart deps.
 // Supports wheel-zoom (x by default; +Shift x-only / +Alt y-only when zoomY),
 // drag-pan and double-click / ⌂ reset — zoom-out reveals beyond the data.
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+// Linked hover (wave 3, B2): with `link` set and the x-axis in log-moneyness,
+// hovering publishes (ticker, k = x, T of the nearest curve) on the surface
+// hover store, and a point published by another chart of the ticker shows
+// here as a highlighted curve (nearest T) + a marker at k.
+import { useEffect, useId, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { clamp, formatAxisNumber, linearScale, niceTicks } from "../lib/chartScale";
+import { useElementSize } from "../lib/useElementSize";
 import { useZoom } from "../lib/useZoom";
 import { crosshairLabel, crosshairPoint } from "../lib/crosshair";
 import type { CrosshairPoint } from "../lib/crosshair";
+import { interpolateY, nearestByT, nearestCurveAt } from "../lib/overlayLink";
+import { useSurfaceHover } from "../state/surfaceHover";
 import { CrosshairBadge, CrosshairGuides } from "./CrosshairOverlay";
 
 /** One plottable curve. */
@@ -20,6 +27,8 @@ export interface OverlaySeries {
   ys: number[];
   /** Stroke colour (the wrapper grades these by maturity). */
   color: string;
+  /** Maturity (years) — enables the linked hover for this curve. */
+  t?: number;
   /** Fill sub-zero excursions of this series in red (arb evidence: Δ-mode
    *  calendar crossings, signed density dips). Off by default. */
   fillNegative?: boolean;
@@ -47,29 +56,14 @@ interface OverlayCurvesChartProps {
   formatX?: (v: number) => string;
   /** Evidence circles (optional, additive — no behavior change when absent). */
   markers?: OverlayMarker[];
+  /** Linked (k, T) hover: set only when the x-axis IS log-moneyness. */
+  link?: { ticker: string; chartId: string };
 }
 
 /** Evidence-rose used for sub-zero fills and default marker strokes. */
 const EVIDENCE_ROSE = "rgb(244 63 94)";
 
 const MARGIN = { top: 14, right: 16, bottom: 34, left: 56 } as const;
-
-/** Track the pixel size of a container element (same as the other charts). */
-function useElementSize() {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      const rect = entries[0]?.contentRect;
-      if (rect) setSize({ width: rect.width, height: rect.height });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  return { ref, size };
-}
 
 /** Min/max across all series for one accessor, or null when there's no data. */
 function domain(series: OverlaySeries[], pick: (s: OverlaySeries) => number[]) {
@@ -93,6 +87,7 @@ export default function OverlayCurvesChart({
   zoomY = false,
   formatX = formatAxisNumber,
   markers,
+  link,
 }: OverlayCurvesChartProps) {
   const { ref, size } = useElementSize();
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -101,6 +96,16 @@ export default function OverlayCurvesChart({
   const zoom = useZoom();
   /** Crosshair position, or null when the pointer is outside / panning. */
   const [cross, setCross] = useState<CrosshairPoint | null>(null);
+  const hoverLink = useSurfaceHover(link?.chartId ?? "overlay");
+  const setCrossLinked = (pt: CrosshairPoint | null) => {
+    setCross(pt);
+    if (!link) return;
+    if (pt === null) { hoverLink.publish(null); return; }
+    const idx = nearestCurveAt(series, pt.x, pt.y, (v) => yScale.map(v));
+    const t = idx === null ? undefined : series[idx].t;
+    if (t !== undefined) hoverLink.publish({ ticker: link.ticker, k: pt.x, t });
+  };
+  useEffect(() => () => hoverLink.publish(null), [hoverLink]);
 
   const innerW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const innerH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
@@ -139,10 +144,10 @@ export default function OverlayCurvesChart({
     const svg = svgRef.current;
     if (!svg) return;
     if (drag.current?.moved) {
-      setCross(null);
+      setCrossLinked(null);
       return;
     }
-    setCross(
+    setCrossLinked(
       crosshairPoint(e.clientX, e.clientY, svg.getBoundingClientRect(), MARGIN,
         innerW, innerH, xScale.invert, yScale.invert),
     );
@@ -152,8 +157,15 @@ export default function OverlayCurvesChart({
   };
   const onPointerLeave = () => {
     drag.current = null;
-    setCross(null);
+    setCrossLinked(null);
   };
+  // A point published by another chart of this ticker → curve + marker here.
+  const h = hoverLink.hover;
+  const linkedIdx =
+    link && cross === null && h !== null && h.source !== link.chartId && h.ticker === link.ticker
+      ? nearestByT(series.map((s) => s.t ?? NaN).map((t) => (Number.isFinite(t) ? t : Infinity)), h.t)
+      : null;
+  const linkedY = linkedIdx !== null && h !== null ? interpolateY(series[linkedIdx], h.k) : null;
 
   if (series.length === 0) {
     return (
@@ -281,10 +293,18 @@ export default function OverlayCurvesChart({
                     <path key={`${s.label}·neg`} d={d} fill="rgb(244 63 94 / 0.22)" stroke="none" />
                   ) : null;
                 })}
-              {/* Curves, near→far */}
-              {series.map((s) => (
-                <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color} strokeWidth={1.5} opacity={0.9} />
+              {/* Curves, near→far (the linked curve reads bolder) */}
+              {series.map((s, i) => (
+                <path key={s.label} d={pathOf(s)} fill="none" stroke={s.color}
+                  strokeWidth={i === linkedIdx ? 2.75 : 1.5} opacity={linkedIdx === null || i === linkedIdx ? 0.95 : 0.45} />
               ))}
+              {/* Linked hover marker (a point published by a surface chart) */}
+              {linkedIdx !== null && linkedY !== null && h !== null && (
+                <g pointerEvents="none">
+                  <line x1={xScale.map(h.k)} x2={xScale.map(h.k)} y1={0} y2={innerH} stroke="rgb(148 163 184 / 0.4)" strokeDasharray="3 3" />
+                  <circle cx={xScale.map(h.k)} cy={yScale.map(linkedY)} r={4.5} fill="rgb(15 23 42)" stroke={series[linkedIdx].color} strokeWidth={1.75} />
+                </g>
+              )}
               {/* Evidence circles (calendar cross / density dip) + hover title */}
               {(markers ?? [])
                 .filter((m) => Number.isFinite(m.x) && Number.isFinite(m.y))

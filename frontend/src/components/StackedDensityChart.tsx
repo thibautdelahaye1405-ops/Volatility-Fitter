@@ -118,6 +118,7 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
     const raw = e.densityRaw !== undefined && e.densityRaw.length === e.x.length;
     return {
       label: formatExpiry(e.expiry, e.t, format),
+      t: e.t,
       xs: e.x.map(tx),
       ys: raw ? (e.densityRaw as number[]) : e.density,
       color: maturityColor(n > 1 ? i / (n - 1) : 0),
@@ -147,6 +148,7 @@ export default function StackedDensityChart({ ticker, fitMode, smile, axisMode =
       zeroBaseline
       formatX={(v) => axisTickLabel(axisMode, v)}
       markers={markers}
+      link={axisMode === "logmoneyness" ? { ticker, chartId: "parametric:densities" } : undefined}
     />
   );
 }

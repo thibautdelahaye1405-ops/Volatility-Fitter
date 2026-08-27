@@ -73,10 +73,8 @@ export default function LocalVolViewer() {
   // via useAffine). Combined with varSwapNonce into one reloadKey.
   const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
-  // View state: sub-view · strike-axis mode (density / IV-surface / stacked-IV
-  // views) · LV-surface render (3D local-variance mesh or vertex heatmap) ·
-  // x-axis scale of the 3D LV mesh (the heatmap stays in x = K/F) · maturity
-  // clock of the Term sub-tab.
+  // View state: sub-view · strike-axis mode · LV-surface render (3D mesh or
+  // heatmap) · x-axis scale of the 3D LV mesh · maturity clock (Term sub-tab).
   const [vs, patchView] = useLensViewMemory<{
     view: LvView; axisMode: AxisMode; lvRender: LvRender; lvAxis: LvAxis; axisClock: ClockMode;
   }>("localvol", { view: "smile", axisMode: "logmoneyness", lvRender: "mesh", lvAxis: "moneyness", axisClock: "real" });
@@ -90,10 +88,9 @@ export default function LocalVolViewer() {
   // so event-time dilation is consistent in LV's Term.
   const events = useEvents(ticker);
 
-  // Selected expiry for the per-expiry views = the session's (the active tab
-  // drives it inside the shell). Without a workbench a local override stands
-  // in for the tab strip. Index falls back to 0 when the expiry is not in the
-  // LV ladder (findIndex → -1) or before the fit lands.
+  // Selected expiry for the per-expiry views = the session's (the active tab);
+  // a local override stands in off-shell. Index falls back to 0 (not in the
+  // LV ladder, or before the fit lands).
   const [localExpiry, setLocalExpiry] = useState<string | null>(null);
   const wantedExpiry = wb !== null ? sessionExpiry : (localExpiry ?? sessionExpiry);
   const expiryIdx = Math.max(0, data?.smiles.findIndex((s) => s.expiry === wantedExpiry) ?? 0);
@@ -114,14 +111,12 @@ export default function LocalVolViewer() {
 
   const smile = data?.smiles[expiryIdx];
 
-  // Reconstructed IV surface: resample every expiry's smile onto a shared
-  // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh
-  // (the chosen x-axis mode is applied per-row inside SurfaceMesh).
+  // Reconstructed IV surface: every expiry's smile resampled onto a shared
+  // log-moneyness grid (intersection range, no extrapolation) → 3D σ_IV mesh.
   const ivSurface = useMemo(() => (data ? buildIvSurface(data.smiles) : null), [data]);
 
-  // Nodal LV surface as a 3D mesh in LOCAL VARIANCE σ²_loc (the quantity the
-  // pricing PDE actually consumes): rows = vertex maturities t, columns =
-  // vertex strikes x = K/F. Same renderer as the IV surface.
+  // Nodal LV surface as a 3D mesh in LOCAL VARIANCE σ²_loc (what the pricing
+  // PDE consumes): rows = vertex maturities t, columns = vertex strikes x = K/F.
   const lvMesh = useMemo<SurfaceMeshData | null>(() => {
     if (!data || data.tNodes.length < 2 || data.xNodes.length < 2) return null;
     return {
@@ -133,8 +128,7 @@ export default function LocalVolViewer() {
   }, [data]);
 
   // Display-x transform + corner-label formatter for the 3D LV mesh (grid
-  // x = K/F, per t-row; helpers in localvol/lvMeshAxis). Memoized so
-  // SurfaceMesh's mesh memo is stable.
+  // x = K/F, per t-row; localvol/lvMeshAxis). Memoized for SurfaceMesh's memo.
   const lvXTransform = useMemo(() => lvMeshXTransform(lvAxis, data), [lvAxis, data]);
   const lvFormatX = lvMeshFormatX(lvAxis, lvXTransform !== undefined);
 
@@ -154,6 +148,7 @@ export default function LocalVolViewer() {
       const pts = s.modelExt && s.modelExt.length > 1 ? s.modelExt : s.model;
       return {
         label: formatExpiry(s.expiry, s.t, format),
+        t: s.t,
         xs: pts.map((p) =>
           axisMode === "logmoneyness" ? p.k : axisTransform(axisMode, p.k, ctx),
         ),
@@ -192,6 +187,7 @@ export default function LocalVolViewer() {
         const ctx = smileAxisContext(s);
         return {
           label: formatExpiry(s.expiry, s.t, format),
+          t: s.t,
           xs: d!.x.map((k) => (axisMode === "logmoneyness" ? k : axisTransform(axisMode, k, ctx))),
           ys: d!.density,
           color: maturityColor(n > 1 ? i / (n - 1) : 0),
@@ -278,6 +274,7 @@ export default function LocalVolViewer() {
               zoomY
               formatX={(v) => axisTickLabel(axisMode, v)}
               markers={lvCalMarkers}
+              link={axisMode === "logmoneyness" ? { ticker, chartId: "localvol:stackedvar" } : undefined}
             />
           )
           : chartMessage("Stacked IV needs at least one fitted expiry.");
@@ -292,6 +289,7 @@ export default function LocalVolViewer() {
               yLabel="density"
               zeroBaseline
               formatX={(v) => axisTickLabel(axisMode, v)}
+              link={axisMode === "logmoneyness" ? { ticker, chartId: "localvol:densities" } : undefined}
             />
           )
           : chartMessage("Densities need at least one fitted expiry.");
