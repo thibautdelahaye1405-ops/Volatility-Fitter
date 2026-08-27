@@ -57,6 +57,10 @@ export function useShellShortcuts(): void {
         }
         if (e.key === "," && !e.shiftKey) { wb.openDialog("options"); e.preventDefault(); return; }
         if (e.code === "KeyP" && !e.shiftKey) { wb.openDialog("quickopen"); e.preventDefault(); return; }
+        // Command palette (wave 3, C4): Ctrl+K, or VS Code's Ctrl+Shift+P.
+        if ((e.code === "KeyK" && !e.shiftKey) || (e.code === "KeyP" && e.shiftKey)) {
+          wb.openDialog("commands"); e.preventDefault(); return;
+        }
         if (e.key === "/" && !e.shiftKey) { wb.openDialog("shortcuts"); e.preventDefault(); return; }
         if (e.code === "KeyU" && e.shiftKey) { wb.openDialog("universe"); e.preventDefault(); return; }
         // Workspace files (wave 3, A1): Ctrl+O open · Ctrl+S save · Ctrl+Shift+S save as.

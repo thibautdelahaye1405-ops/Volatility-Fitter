@@ -7,7 +7,8 @@
 //   NodesPane     the universe tree (lit/dark, quality glyphs), 1/5 wide
 //   MainPane      one tab per node + the lens rendered for the active node
 //   StatusBar     engine narration, summary chips, last action, clock
-//   ShellDialogs  Universe manager · Options · Shortcuts · About
+//   ShellDialogs  Universe manager · Options · Shortcuts · About · Ctrl+P /
+//                 Ctrl+K palette (nodes / the command registry)
 //   (File ▾ in the top bar saves / opens the whole configuration as a
 //   workspace file; a .json dropped anywhere on the shell opens it.)
 //
@@ -31,6 +32,7 @@ import { LitMapProvider } from "./state/litMap";
 import { QualityProvider } from "./state/qualityContext";
 import { NODES_WIDTH, WorkbenchProvider, useWorkbench } from "./state/workbench";
 import { WorkspaceFileProvider, useWorkspaceFile } from "./state/workspaceFile";
+import { CommandsProvider } from "./state/commands";
 import { useShellShortcuts } from "./state/useShellShortcuts";
 
 /** The frame itself (needs the workbench context, hence a child of the providers). */
@@ -86,7 +88,9 @@ export default function App() {
     <QualityProvider>
     <WorkbenchProvider>
     <WorkspaceFileProvider>
+    <CommandsProvider>
       <Shell />
+    </CommandsProvider>
     </WorkspaceFileProvider>
     </WorkbenchProvider>
     </QualityProvider>

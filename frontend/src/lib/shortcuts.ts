@@ -21,6 +21,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     title: "Workbench",
     items: [
       { keys: "Ctrl+P", label: "Quick open — fuzzy-find a node, Enter opens its tab (Shift+Enter pins)" },
+      { keys: "Ctrl+K", label: "Command palette — every menu row and verb (also Ctrl+Shift+P, or type > in quick open)" },
       { keys: "Ctrl+B", label: "Show / hide the Nodes pane" },
       { keys: "Alt+1 … Alt+5", label: "Lens: Graph · Forwards · Parametric · Local Vol · Quality" },
       { keys: "Alt+← / Alt+→", label: "Previous / next node tab" },

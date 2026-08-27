@@ -1,18 +1,18 @@
 // Layout ▾ (UI SHELL v2, top-right): the shell's panes — Nodes pane
 // (Ctrl+B), the lenses' diagnostics / config asides, the status bar — plus
 // zen mode (all three off), the per-tab view memory switch (wave 3, C2),
-// close-all-tabs and a layout reset.
+// close-all-tabs and a layout reset. Every row is a registry command
+// (CommandRow; wave 3, C4) so the palette toggles the same state.
 import { useState } from "react";
 import { LayoutPanelLeft } from "lucide-react";
 import MenuButton from "./MenuButton";
-import { MenuDivider, MenuItem, MenuPanel, MenuSection } from "../../topbar/Menu";
+import CommandRow from "../CommandRow";
+import { MenuDivider, MenuPanel, MenuSection } from "../../topbar/Menu";
 import { useWorkbench } from "../../../state/workbench";
 
 export default function LayoutMenu() {
   const [open, setOpen] = useState(false);
-  const wb = useWorkbench();
-  const { layout, setLayout, resetLayout, closeAll } = wb;
-  const zen = !layout.nodesPane && !layout.aside && !layout.statusBar;
+  const { layout } = useWorkbench();
   const close = () => setOpen(false);
 
   return (
@@ -28,44 +28,15 @@ export default function LayoutMenu() {
       </MenuButton>
       <MenuPanel open={open} onClose={close} align="right" width="w-64">
         <MenuSection label="Panes" />
-        <MenuItem
-          label="Nodes pane"
-          shortcut="Ctrl+B"
-          active={layout.nodesPane}
-          onClick={() => setLayout({ nodesPane: !layout.nodesPane })}
-        />
-        <MenuItem
-          label="Diagnostics aside"
-          detail="fit / config side panels"
-          active={layout.aside}
-          onClick={() => setLayout({ aside: !layout.aside })}
-        />
-        <MenuItem
-          label="Status bar"
-          active={layout.statusBar}
-          onClick={() => setLayout({ statusBar: !layout.statusBar })}
-        />
-        <MenuItem
-          label="Zen mode"
-          detail="charts only"
-          active={zen}
-          onClick={() =>
-            setLayout(zen
-              ? { nodesPane: true, aside: true, statusBar: true }
-              : { nodesPane: false, aside: false, statusBar: false })
-          }
-        />
+        <CommandRow id="layout.nodesPane" />
+        <CommandRow id="layout.aside" />
+        <CommandRow id="layout.statusBar" />
+        <CommandRow id="layout.zen" />
         <MenuDivider />
         <MenuSection label="Tabs" />
-        <MenuItem
-          label="Remember view per tab"
-          detail={layout.rememberView ? "each tab keeps its view" : "one view per lens"}
-          title="ON: every tab remembers its sub-view, axis unit and layers (a new tab inherits the current one's). OFF: the view follows the lens, whatever the tab."
-          active={layout.rememberView}
-          onClick={() => setLayout({ rememberView: !layout.rememberView })}
-        />
-        <MenuItem label="Close all tabs" disabled={wb.tabs.length === 0} onClick={() => { close(); closeAll(); }} />
-        <MenuItem label="Reset layout" detail="panes + widths" onClick={() => { close(); resetLayout(); }} />
+        <CommandRow id="layout.rememberView" detail={layout.rememberView ? "each tab keeps its view" : "one view per lens"} />
+        <CommandRow id="tab.closeAll" after={close} />
+        <CommandRow id="layout.reset" after={close} />
       </MenuPanel>
     </div>
   );

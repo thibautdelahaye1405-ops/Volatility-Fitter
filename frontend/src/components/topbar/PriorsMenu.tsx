@@ -40,7 +40,7 @@ interface NodeRef {
 
 /** Save each node's current fit as its prior, one POST after another.
  *  Resolves to the (saved, failed) tally — a failure never aborts the run. */
-async function saveNodePriors(nodes: NodeRef[]): Promise<{ saved: number; failed: number }> {
+export async function saveNodePriors(nodes: NodeRef[]): Promise<{ saved: number; failed: number }> {
   let saved = 0;
   let failed = 0;
   for (const { ticker, expiry } of nodes) {

@@ -1,45 +1,26 @@
-// Help ▾ menu (UI SHELL v2): keyboard shortcuts, the backend's OpenAPI docs,
-// the client-facing quality report and the About box.
+// Help ▾ menu (UI SHELL v2): keyboard shortcuts, the command palette, the
+// backend's OpenAPI docs, the client-facing quality report and the About box
+// — every row a registry command (CommandRow; wave 3, C4).
 import { useState } from "react";
-import { BookOpen, ExternalLink, Info, Keyboard } from "lucide-react";
+import { BookOpen, ExternalLink, Info, Keyboard, Terminal } from "lucide-react";
 import MenuButton from "./MenuButton";
-import { MenuDivider, MenuItem, MenuPanel } from "../../topbar/Menu";
-import { useWorkbench } from "../../../state/workbench";
-import { API_BASE_URL } from "../../../state/api";
+import CommandRow from "../CommandRow";
+import { MenuDivider, MenuPanel } from "../../topbar/Menu";
 
 export default function HelpMenu() {
   const [open, setOpen] = useState(false);
-  const wb = useWorkbench();
   const close = () => setOpen(false);
-  const openUrl = (url: string) => {
-    close();
-    window.open(url, "_blank", "noopener");
-  };
 
   return (
     <div className="relative">
       <MenuButton label="Help" chevron active={open} onClick={() => setOpen((v) => !v)} />
       <MenuPanel open={open} onClose={close} width="w-64">
-        <MenuItem
-          icon={Keyboard}
-          label="Keyboard shortcuts"
-          shortcut="Ctrl+/"
-          onClick={() => { close(); wb.openDialog("shortcuts"); }}
-        />
-        <MenuItem
-          icon={BookOpen}
-          label="API reference"
-          detail="OpenAPI /docs"
-          onClick={() => openUrl(`${API_BASE_URL}/docs`)}
-        />
-        <MenuItem
-          icon={ExternalLink}
-          label="Quality report"
-          detail="HTML export"
-          onClick={() => openUrl(`${API_BASE_URL}/export/report`)}
-        />
+        <CommandRow id="help.shortcuts" icon={Keyboard} after={close} />
+        <CommandRow id="help.palette" icon={Terminal} after={close} />
+        <CommandRow id="help.api" icon={BookOpen} after={close} />
+        <CommandRow id="help.report" icon={ExternalLink} after={close} />
         <MenuDivider />
-        <MenuItem icon={Info} label="About VolFit" onClick={() => { close(); wb.openDialog("about"); }} />
+        <CommandRow id="help.about" icon={Info} after={close} />
       </MenuPanel>
     </div>
   );

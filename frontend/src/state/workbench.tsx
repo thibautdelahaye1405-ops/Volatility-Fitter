@@ -65,7 +65,7 @@ export const ACTIVITIES: { id: Activity; label: string; hint: string }[] = [
 export const UNIVERSE_ACTIVITIES: ReadonlySet<Activity> = new Set(["graph", "quality"]);
 
 /** Modal dialogs owned by the shell. */
-export type DialogId = "universe" | "options" | "shortcuts" | "about" | "quickopen";
+export type DialogId = "universe" | "options" | "shortcuts" | "about" | "quickopen" | "commands";
 
 export interface LayoutState {
   /** Nodes pane visible (Ctrl+B). */

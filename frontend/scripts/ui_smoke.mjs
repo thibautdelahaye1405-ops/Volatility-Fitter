@@ -49,6 +49,14 @@ const DIALOGS = [
   { name: "About VolFit", open: (p) => clickHeader(p, "About VolFit", "title") },
   // Ctrl+P quick-open palette (role=dialog "Quick open").
   { name: "Quick open", open: async (p) => { await p.keyboard.down("Control"); await p.keyboard.press("KeyP"); await p.keyboard.up("Control"); } },
+  // Ctrl+K command palette (role=dialog "Command palette", ">" pre-filled;
+  // wave 3, C4) — must list commands.
+  { name: "Command palette", open: async (p) => {
+    await p.keyboard.down("Control"); await p.keyboard.press("KeyK"); await p.keyboard.up("Control");
+    await sleep(300);
+    const n = await p.evaluate(() => document.querySelectorAll('[role="dialog"] [role="option"]').length);
+    if (n < 10) throw new Error(`command palette lists ${n} commands`);
+  } },
 ];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -258,7 +266,7 @@ try {
   if (LIVE) {
     try {
       await clickHeader(page, "File");
-      await clickText(page, "Save as…");
+      await clickText(page, "Save workspace as…");
       let dl = null;
       for (let i = 0; i < 40 && !dl; i++) {
         await sleep(250);
@@ -277,7 +285,7 @@ try {
       await check(page, pageErrors, "workspace-save-as");
       // Open it back through the <input type=file> fallback (file chooser).
       await clickHeader(page, "File");
-      const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5000 }), clickText(page, "Open…")]);
+      const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5000 }), clickText(page, "Open workspace…")]);
       await chooser.accept([`${DL}/${file}`]);
       await sleep(1500);
       const chip = await page.evaluate(() => document.querySelector("footer")?.innerText ?? "");
