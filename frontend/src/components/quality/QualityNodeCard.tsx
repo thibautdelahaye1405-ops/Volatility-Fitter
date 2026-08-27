@@ -166,7 +166,7 @@ export default function QualityNodeCard({ node, rmsBudgetBp, fitMode, label }: Q
         hint("No cached fit for this node")
       ) : (
         <>
-          <Row label="Model">{node.model} · {node.nQuotes} q · {fitMode}</Row>
+          <Row label="Model">{node.model}{node.provenance === "loaded" ? " · loaded" : ""} · {node.nQuotes} q · {fitMode}</Row>
           <Row
             label="RMS · max IV"
             title="Fit RMS vs the publish budget (amber above it) · worst single-quote IV error"

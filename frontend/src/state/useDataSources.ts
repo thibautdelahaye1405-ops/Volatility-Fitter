@@ -41,6 +41,8 @@ export interface UseDataSourcesResult {
   switching: boolean;
   dataAge: DataAgeInfo | null;
   switchSource: (id: string) => Promise<void>;
+  /** Re-read the registry now (a snapshot file just registered a source). */
+  refresh: () => void;
 }
 
 /** Re-probe interval so a source coming up/down updates its light. */
@@ -54,6 +56,8 @@ export function useDataSources(
   const [active, setActive] = useState("");
   const [switching, setSwitching] = useState(false);
   const [dataAge, setDataAge] = useState<DataAgeInfo | null>(null);
+  const [nonce, setNonce] = useState(0);
+  const refresh = useCallback(() => setNonce((n) => n + 1), []);
 
   const apply = (d: DataSourcesResponse) => {
     setSources(d.sources);
@@ -83,7 +87,7 @@ export function useDataSources(
       controller.abort();
       window.clearInterval(timer);
     };
-  }, [live]);
+  }, [live, nonce]);
 
   const switchSource = useCallback(
     async (id: string) => {
@@ -101,5 +105,5 @@ export function useDataSources(
     [active, switching, onSwitched],
   );
 
-  return { sources, active, switching, dataAge, switchSource };
+  return { sources, active, switching, dataAge, switchSource, refresh };
 }

@@ -34,6 +34,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Ctrl+O", label: "Open a workspace file (or drop a .json onto the shell)" },
       { keys: "Ctrl+S", label: "Save the workspace to its last target (file / server)" },
       { keys: "Ctrl+Shift+S", label: "Save the workspace as… (download / Chromium file picker)" },
+      { keys: "Ctrl+Alt+S", label: "Save a snapshot file (quotes + prevailing calibrations); File ▸ Open snapshot… loads one as the File data source" },
       { keys: "Ctrl+/", label: "This shortcut list" },
       { keys: "Esc", label: "Close the open dialog / menu" },
     ],

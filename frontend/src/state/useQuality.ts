@@ -13,6 +13,8 @@ export interface QualityNode {
   hasFit: boolean;
   stale: boolean;
   model: string;
+  /** "fit" (calibrated here) | "loaded" (reinstalled from a snapshot file). */
+  provenance?: string;
   nQuotes: number;
   rmsBp: number;
   maxIvBp: number;

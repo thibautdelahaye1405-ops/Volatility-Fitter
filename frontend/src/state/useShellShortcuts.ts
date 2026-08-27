@@ -5,6 +5,7 @@
 import { useEffect } from "react";
 import { ACTIVITIES, useWorkbench } from "./workbench";
 import { useWorkspaceFile } from "./workspaceFile";
+import { useSnapshotFile } from "./snapshotFile";
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -15,6 +16,7 @@ function isTyping(target: EventTarget | null): boolean {
 export function useShellShortcuts(): void {
   const wb = useWorkbench();
   const ws = useWorkspaceFile();
+  const snap = useSnapshotFile();
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Esc: close the open dialog (Dialog.tsx handles its own Esc too; this
@@ -47,6 +49,10 @@ export function useShellShortcuts(): void {
           return;
         }
       }
+      // Snapshot file (wave 3, A2): Ctrl+Alt+S.
+      if ((e.ctrlKey || e.metaKey) && e.altKey && !e.shiftKey && e.code === "KeyS") {
+        void snap.saveSnapshot(); e.preventDefault(); return;
+      }
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         if (e.code === "KeyB" && !e.shiftKey) {
           // Hide when shown; otherwise show AND focus the tree (keyboard nav).
@@ -70,5 +76,5 @@ export function useShellShortcuts(): void {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [wb, ws]);
+  }, [wb, ws, snap]);
 }

@@ -14,6 +14,7 @@ import { ACTIVITIES, useWorkbench } from "./workbench";
 import type { Activity } from "./workbench";
 import { useWorkflowContext } from "./workflowContext";
 import { useWorkspaceFile } from "./workspaceFile";
+import { useSnapshotFile } from "./snapshotFile";
 import { useUniverse } from "./useUniverse";
 import { useViewSettings } from "./viewSettings";
 import type { ColorScheme } from "./viewSettings";
@@ -42,6 +43,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const wb = useWorkbench();
   const { live, workflow } = useWorkflowContext();
   const ws = useWorkspaceFile();
+  const snap = useSnapshotFile();
   const uni = useUniverse();
   const view = useViewSettings();
   const expiry = useExpiryFormat();
@@ -66,6 +68,8 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("file.save", () => void ws.save(), live && !ws.busy),
       bind("file.saveAs", () => void ws.saveAs(), live && !ws.busy),
       bind("file.saveToServer", (arg) => { if (arg?.trim()) void ws.saveToServer(arg.trim()); }, live && ws.server.storeEnabled && !ws.busy),
+      bind("file.saveSnapshot", () => void snap.saveSnapshot(), live && !snap.busy),
+      bind("file.openSnapshot", () => void snap.openPicker(), live && !snap.busy),
       ...ws.server.entries.map((e) => ({
         id: `${DYNAMIC.workspaceServer}${e.name}`, label: `Open workspace from server: ${e.name}`,
         category: "File" as const, detail: e.savedTs, enabled: live && !ws.busy,
@@ -129,7 +133,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("help.palette", () => wb.openDialog("commands")),
     ];
     return list;
-  }, [wb, live, workflow, ws, uni, view, expiry, session, layout, zen, busy]);
+  }, [wb, live, workflow, ws, snap, uni, view, expiry, session, layout, zen, busy]);
 
   const byId = useCallback((id: string) => commands.find((c) => c.id === id), [commands]);
   const run = useCallback((id: string, arg?: string) => { const c = byId(id); if (c && c.enabled) c.run(arg); }, [byId]);

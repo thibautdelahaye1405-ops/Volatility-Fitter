@@ -101,6 +101,8 @@ export interface ModelInfo {
   /** Human family name ("LQD", "SVI-JW", "Multi-Core Sigmoid"). */
   label: string;
   params: ModelParam[];
+  /** "fit" (calibrated here) | "loaded" (a snapshot file's calibration). */
+  provenance?: "fit" | "loaded";
 }
 
 /** Variance-swap quote state of a node (shared by Parametric & Local Vol). */

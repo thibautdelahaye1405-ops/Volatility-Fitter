@@ -32,21 +32,32 @@ import { LitMapProvider } from "./state/litMap";
 import { QualityProvider } from "./state/qualityContext";
 import { NODES_WIDTH, WorkbenchProvider, useWorkbench } from "./state/workbench";
 import { WorkspaceFileProvider, useWorkspaceFile } from "./state/workspaceFile";
+import { SnapshotFileProvider, useSnapshotFile } from "./state/snapshotFile";
 import { CommandsProvider } from "./state/commands";
+import { classifyBundle } from "./lib/snapshotFile";
+import { snapshotNameOf } from "./lib/snapshotFile";
+import { workspaceNameOf } from "./lib/workspaceFile";
 import { useShellShortcuts } from "./state/useShellShortcuts";
 
 /** The frame itself (needs the workbench context, hence a child of the providers). */
 function Shell() {
   const { layout, setLayout, resetLayout } = useWorkbench();
   const ws = useWorkspaceFile();
+  const snap = useSnapshotFile();
   useShellShortcuts();
 
-  // Drop a workspace .json anywhere on the shell to open it (wave 3, A1).
+  // Drop a .json anywhere on the shell: a workspace file (A1) or a snapshot
+  // file (A2), routed by its schema family.
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     const file = Array.from(e.dataTransfer.files).find((f) => /\.json$/i.test(f.name));
     if (!file) return;
     e.preventDefault();
-    void ws.openFile(file);
+    void file.text().then((text) => {
+      let raw: unknown = null;
+      try { raw = JSON.parse(text); } catch { /* the workspace opener reports it */ }
+      if (classifyBundle(raw) === "snapshot") void snap.openText(text, snapshotNameOf(file.name));
+      else void ws.openFile(new File([text], `${workspaceNameOf(file.name)}.volfit.json`, { type: "application/json" }));
+    });
   };
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
@@ -88,9 +99,11 @@ export default function App() {
     <QualityProvider>
     <WorkbenchProvider>
     <WorkspaceFileProvider>
+    <SnapshotFileProvider>
     <CommandsProvider>
       <Shell />
     </CommandsProvider>
+    </SnapshotFileProvider>
     </WorkspaceFileProvider>
     </WorkbenchProvider>
     </QualityProvider>

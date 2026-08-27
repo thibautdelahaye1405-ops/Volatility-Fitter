@@ -301,6 +301,7 @@ def _node_row(
         hasFit=True,
         stale=stale,
         model=record.display.model if record.display is not None else "lqd",
+        provenance=getattr(record, "provenance", "fit"),
         nQuotes=int(record.prepared.k.size),
         rmsBp=rms_bp,
         maxIvBp=max_iv * 1e4,

@@ -119,6 +119,9 @@ export default function SmileAside() {
               className="flex items-center gap-1.5 rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-sky-300"
             >
               {smile?.stale && <span className="font-sans font-semibold uppercase text-amber-400">stale</span>}
+              {info.provenance === "loaded" && (
+                <span className="font-sans font-semibold uppercase text-emerald-400" title="Reinstalled from a snapshot file">loaded</span>
+              )}
               {info.label}
               {info.params.length > 0 && (
                 <span className="font-medium text-slate-400">

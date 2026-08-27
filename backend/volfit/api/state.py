@@ -83,7 +83,7 @@ DAYS_PER_YEAR = 365.0
 #: Bloomberg have their own history channels (flat files / Terminal), so saving a
 #: snapshot per fetch just bloats the store; intraday replay for them comes from
 #: those channels, not the auto-capture. Yahoo (no history feed) still captures.
-NO_AUTO_CAPTURE_SOURCES = frozenset({"massive", "bloomberg"})
+NO_AUTO_CAPTURE_SOURCES = frozenset({"massive", "bloomberg", "file"})
 
 
 @dataclass(frozen=True)
@@ -98,6 +98,10 @@ class FitRecord:
     prepared: PreparedQuotes
     result: CalibrationResult
     display: DisplayFit | None = None
+    #: How the record came to be: "fit" (calibrated here) or "loaded" (a
+    #: snapshot FILE's embedded calibration reinstalled as the committed fit —
+    #: wave 3 A2). Surfaced in Quality's model column and the fit chip.
+    provenance: str = "fit"
 
 
 @dataclass(frozen=True)
@@ -473,6 +477,18 @@ class AppState(UniverseMixin):
         if refresh:
             self._status_cache.clear()
         return probe_statuses(self._providers, self._status_cache)
+
+    def file_provider(self):
+        """The ``file`` data source (snapshot files, wave 3 A2), registered on
+        first use so it only shows in the selector once a file was loaded."""
+        from volfit.data.file import SOURCE_ID, FileProvider
+
+        with self._lock:
+            prov = self._providers.get(SOURCE_ID)
+            if prov is None:
+                prov = FileProvider()
+                self._providers[SOURCE_ID] = prov
+        return prov
 
     def set_active_source(self, source_id: str) -> str:
         """Switch the active source: keep the watchlist + custom expiry picks,

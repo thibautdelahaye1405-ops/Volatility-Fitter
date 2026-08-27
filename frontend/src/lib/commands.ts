@@ -38,6 +38,8 @@ export const COMMANDS = [
   { id: "file.save", label: "Save workspace", category: "File", shortcut: "Ctrl+S" },
   { id: "file.saveAs", label: "Save workspace as…", category: "File", shortcut: "Ctrl+Shift+S" },
   { id: "file.saveToServer", label: "Save workspace to server…", category: "File", arg: { placeholder: "workspace name" } },
+  { id: "file.saveSnapshot", label: "Save snapshot…", category: "File", shortcut: "Ctrl+Alt+S", detail: "quotes + calibrations" },
+  { id: "file.openSnapshot", label: "Open snapshot…", category: "File", detail: "becomes the File data source" },
   // Universe
   { id: "universe.manage", label: "Manage universe…", category: "Universe", shortcut: "Ctrl+Shift+U", detail: "tickers · expiries · sources" },
   { id: "universe.saveAs", label: "Save universe as…", category: "Universe", arg: { placeholder: "universe name" } },

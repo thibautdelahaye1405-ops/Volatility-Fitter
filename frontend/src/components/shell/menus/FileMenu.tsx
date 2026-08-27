@@ -4,10 +4,11 @@
 // (two-step confirm) · Open… (Ctrl+O; drag-and-drop a .json works too) ·
 // Save (Ctrl+S, last target) · Save as… (Ctrl+Shift+S; Chromium file picker,
 // else a download) · Save to server… (inline name, VOLFIT_DB) · Open from
-// server ▸ (dynamic commands) · Recent ▸ (last 8). State + verbs:
-// state/workspaceFile.
+// server ▸ (dynamic commands) · Recent ▸ (last 8) · Snapshots: Save snapshot…
+// (Ctrl+Alt+S; quotes + prevailing calibrations) / Open snapshot… (becomes the
+// File data source; A2). State + verbs: state/workspaceFile, state/snapshotFile.
 import { useState } from "react";
-import { Clock, Download, FilePlus, FolderOpen, Save, Server, Trash2 } from "lucide-react";
+import { Camera, Clock, Download, FilePlus, FolderOpen, Save, Server, Trash2 } from "lucide-react";
 import MenuButton from "./MenuButton";
 import CommandRow from "../CommandRow";
 import { MenuDivider, MenuPanel, MenuSection } from "../../topbar/Menu";
@@ -77,6 +78,11 @@ export default function FileMenu() {
         <CommandRow id="file.save" icon={Save} after={close}
           detail={ws.target ? `${ws.target.name}${ws.dirty ? " · unsaved" : ""}` : "untitled"} />
         <CommandRow id="file.saveAs" icon={Download} after={close} detail={ws.canPickFiles ? "file picker" : "download"} />
+
+        <MenuDivider />
+        <MenuSection label="Snapshots — quotes + calibrations" />
+        <CommandRow id="file.saveSnapshot" icon={Camera} after={close} />
+        <CommandRow id="file.openSnapshot" icon={FolderOpen} after={close} />
 
         <MenuDivider />
         <MenuSection label="Save to server…" />

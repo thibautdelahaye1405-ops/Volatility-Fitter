@@ -18,6 +18,7 @@ from volfit.api.routers.quality import router as quality_router
 from volfit.api.routers.scenario import router as scenario_router
 from volfit.api.routers.settings import router as settings_router
 from volfit.api.routers.smiles import router as smiles_router
+from volfit.api.routers.snapshot import router as snapshot_router
 from volfit.api.routers.spot import router as spot_router
 from volfit.api.routers.surface import router as surface_router
 from volfit.api.routers.term import router as term_router
@@ -47,6 +48,7 @@ ALL_ROUTERS = (
     quality_router,
     scenario_router,
     settings_router,
+    snapshot_router,
     spot_router,
     surface_router,
     term_router,
@@ -75,6 +77,7 @@ __all__ = [
     "scenario_router",
     "settings_router",
     "smiles_router",
+    "snapshot_router",
     "spot_router",
     "surface_router",
     "term_router",

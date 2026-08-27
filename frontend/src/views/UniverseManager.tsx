@@ -16,6 +16,7 @@ import { FolderOpen, Plus, Save, Trash2 } from "lucide-react";
 import { useUniverse } from "../state/useUniverse";
 import { useWorkflowContext } from "../state/workflowContext";
 import { PER_NODE_HINT, useNodeSources } from "../state/nodeSources";
+import { useOptionalSnapshotFile } from "../state/snapshotFile";
 import type { SourceStatus } from "../state/useDataSources";
 import ExpiryPicker from "../components/ExpiryPicker";
 import LitDarkMatrix from "../components/LitDarkMatrix";
@@ -80,6 +81,7 @@ export default function UniverseManager() {
   const nodeCount = tickers.reduce((n, t) => n + (universe?.expiries[t] ?? []).length, 0);
   const showResults = query.trim() !== "";
   const { sources, active, switching, switchSource } = dataSources;
+  const snapshot = useOptionalSnapshotFile();
   const overrideCount = Object.keys(policy.overrides).length;
 
   return (
@@ -230,6 +232,17 @@ export default function UniverseManager() {
                   );
                 })}
               </div>
+            )}
+
+            {snapshot !== null && (
+              <button
+                className="mt-2 w-full rounded-md border border-dashed border-slate-700 px-2 py-1.5 text-left text-[11px] text-slate-400 transition-colors hover:border-slate-500 hover:text-slate-200"
+                title="Open a snapshot file (quotes + calibrations): it becomes the File data source"
+                disabled={snapshot.busy}
+                onClick={() => void snapshot.openPicker()}
+              >
+                + Open snapshot file… <span className="text-slate-600">(File source)</span>
+              </button>
             )}
 
             {/* Per-node policy: UI-ready, disabled until the multi-source engine. */}

@@ -27,7 +27,15 @@ SOURCE_LABELS = {
     "sgx": "SGX (delayed)",
     "eurex": "Eurex (delayed / EOD)",
     "synthetic": "Synthetic",
+    "file": "File",
 }
+
+
+def source_label(sid: str, provider: object | None = None) -> str:
+    """Selector label: a provider's own ``label`` (the file source names its
+    loaded files) wins over the static table."""
+    own = getattr(provider, "label", None) if provider is not None else None
+    return own if isinstance(own, str) and own else SOURCE_LABELS.get(sid, sid.title())
 
 #: Seconds a probed status is reused before re-probing.
 STATUS_TTL = 30.0
@@ -67,10 +75,11 @@ def datasources_payload(state, refresh: bool = False) -> dict:
 
     statuses = state.source_statuses(refresh=refresh)
     active = state.active_source
+    providers = {sid: state._providers.get(sid) for sid in statuses}
     sources = [
         {
             "id": sid,
-            "label": SOURCE_LABELS.get(sid, sid.title()),
+            "label": source_label(sid, providers.get(sid)),
             "status": level,
             "detail": detail,
             "active": sid == active,

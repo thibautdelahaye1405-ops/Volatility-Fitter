@@ -285,7 +285,7 @@ export default function QualityViewer() {
                           </span>
                         ) : null}
                       </td>
-                      <td className={td}>{n.hasFit ? n.model : "—"}</td>
+                      <td className={td}>{n.hasFit ? (n.provenance === "loaded" ? `${n.model} · loaded` : n.model) : "—"}</td>
                       <td className={td}>{n.hasFit ? n.nQuotes : "—"}</td>
                       <td className={`${td} ${n.hasFit && n.rmsBp > report.rmsBudgetBp ? "text-amber-300" : ""}`}>
                         {n.hasFit ? fmtBp(n.rmsBp) : "—"}

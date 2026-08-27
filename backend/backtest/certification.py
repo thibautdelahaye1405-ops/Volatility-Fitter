@@ -314,6 +314,18 @@ CASES: tuple[CertCase, ...] = (
          "tests/test_export.py::test_node_blockers_name_intrinsic_and_core_conflicts",
          "tests/test_perf.py::test_perf_warm_slice_0dte"),
     ),
+    CertCase(
+        "snapshot_roundtrip", "Snapshot file round trip (quotes + calibrations)",
+        "data_failure", "UI shell v2 wave 3 A2 (2026-08-27)",
+        "A desk's quotes and prevailing calibrations travel as ONE file: the "
+        "export embeds every fetched chain and the committed fits; opening it "
+        "in a FRESH backend registers the file data source, re-serves the "
+        "embedded chains and reinstalls the calibrations byte-identically "
+        "(Quality's per-node numbers match; provenance 'loaded'); a fetch "
+        "under the file source re-serves the same chains; foreign / broken "
+        "files are refused with a diagnostic and leave the state untouched.",
+        ("tests/test_snapshot_files.py",),
+    ),
 )
 
 

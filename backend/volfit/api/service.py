@@ -1439,19 +1439,22 @@ def model_info(record: FitRecord) -> ModelInfo:
     what is drawn even for a frozen/stale node, so the diagnostics panel always
     names the model the chart actually shows, not the (possibly newer) settings."""
     display = record.display
+    provenance = getattr(record, "provenance", "fit")
     if display is None:  # the analytic LQD backbone is displayed
         return ModelInfo(
             id="lqd",
             label="LQD",
             params=[ModelParam(label="Degree N", value=str(record.result.params.order))],
+            provenance=provenance,
         )
     if display.model == "sigmoid":
         return ModelInfo(
             id="sigmoid",
             label="Multi-Core Sigmoid",
             params=[ModelParam(label="Cores R", value=str(len(display.slice.cores)))],
+            provenance=provenance,
         )
-    return ModelInfo(id="svi", label="SVI-JW")  # 5 raw params, no hyperparameter
+    return ModelInfo(id="svi", label="SVI-JW", provenance=provenance)  # 5 raw params, no hyperparameter
 
 
 def prepare_slice(state: AppState, ticker: str, expiry_iso: str):

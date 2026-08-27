@@ -301,7 +301,42 @@ try {
     }
   }
 
-  // 6. Workspace file round trip (live only): Save as… → download; Open… via
+  // 6. Snapshot file round trip (live only; wave 3 A2): File ▸ Save snapshot…
+  //    (captured download) → File ▸ Open snapshot… via the file chooser → the
+  //    File data source is active and the status bar names it.
+  if (LIVE) {
+    try {
+      await clickHeader(page, "File");
+      await clickText(page, "Save snapshot…");
+      let dl = null;
+      for (let i = 0; i < 60 && !dl; i++) {
+        await sleep(250);
+        dl = await page.evaluate(() => window.__smokeDownloads.find((d) => d.name.endsWith(".volfit-snapshot.json")) ?? null);
+      }
+      if (!dl) {
+        const footer = await page.evaluate(() => document.querySelector("footer")?.innerText ?? "");
+        throw new Error(`no snapshot download (status bar: ${footer})`);
+      }
+      const bundle = JSON.parse(dl.text);
+      if (bundle.schema !== "volfit-snapshot/1" || !bundle.tickers?.length) throw new Error("snapshot bundle malformed");
+      writeFileSync(`${DL}/${dl.name}`, dl.text);
+      await clickHeader(page, "File");
+      const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5000 }), clickText(page, "Open snapshot…")]);
+      await chooser.accept([`${DL}/${dl.name}`]);
+      await sleep(2500);
+      const ds = await page.evaluate(async () => (await (await fetch("/datasources")).json()));
+      if (ds.active !== "file") throw new Error(`active source is ${ds.active}, not file`);
+      const footer = await page.evaluate(() => document.querySelector("footer")?.innerText ?? "");
+      if (!footer.includes("File ·")) throw new Error(`status bar does not name the file source: ${footer}`);
+      await check(page, pageErrors, "snapshot-roundtrip");
+    } catch (err) {
+      console.error(`FAIL snapshot-roundtrip: ${err.message}`);
+      failures += 1;
+      await page.keyboard.press("Escape");
+    }
+  }
+
+  // 7. Workspace file round trip (live only): Save as… → download; Open… via
   //    the file chooser; the status bar names the workspace.
   if (LIVE) {
     try {

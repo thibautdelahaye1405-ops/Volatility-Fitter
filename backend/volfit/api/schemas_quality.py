@@ -22,6 +22,8 @@ class QualityNode(BaseModel):
     hasFit: bool  # calibrated at least once (gated nodes start False)
     stale: bool  # inputs drifted since the last calibration
     model: str  # displayed model id ("lqd" | "svi" | "sigmoid")
+    #: "fit" (calibrated here) | "loaded" (reinstalled from a snapshot file).
+    provenance: str = "fit"
     nQuotes: int
     rmsBp: float  # weighted RMS vol error vs the fit target, in vol bp
     maxIvBp: float  # worst per-quote IV error of the displayed fit, in vol bp
