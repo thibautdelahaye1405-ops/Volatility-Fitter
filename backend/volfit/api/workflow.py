@@ -129,6 +129,7 @@ def scheduler_status(state: AppState) -> SchedulerStatus:
         localVolEnabled=opts.localVolEnabled,
         secondsToNextOptions=sched.seconds_to_next_options() if sched is not None else -1.0,
         secondsToNextSpot=sched.seconds_to_next_spot() if sched is not None else -1.0,
+        unifiedFetch=bool(opts.schedulerUnifiedFetch),
     )
 
 

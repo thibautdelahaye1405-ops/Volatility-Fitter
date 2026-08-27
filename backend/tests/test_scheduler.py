@@ -204,6 +204,12 @@ def test_scheduler_endpoint_reports_modes():
         assert st["optionsFetchMode"] == "on_demand"
         assert st["running"] is False  # test app does not start the thread
         assert st["secondsToNextOptions"] == -1.0
+        # The unified-fetch gate is echoed so the status bar can label the
+        # countdown honestly (default off; flips with the Options PUT).
+        assert st["unifiedFetch"] is False
+        r = client.put("/settings/options", json={"schedulerUnifiedFetch": True})
+        assert r.status_code == 200
+        assert client.get("/scheduler").json()["unifiedFetch"] is True
 
 
 def test_scheduler_thread_runs_when_enabled():

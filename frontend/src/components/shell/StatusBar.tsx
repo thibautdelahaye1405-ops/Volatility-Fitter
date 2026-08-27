@@ -220,7 +220,13 @@ export default function StatusBar() {
               tone={stale > 0 ? "text-amber-300" : "text-slate-300"}
             />
             {autoOptions && (
-              <Chip label="Next fetch" value={fmtCountdown(sched?.secondsToNextOptions ?? 0)} />
+              <Chip
+                label={sched?.unifiedFetch ? "Next snapshot" : "Next fetch"}
+                value={fmtCountdown(sched?.secondsToNextOptions ?? 0)}
+                title={sched?.unifiedFetch
+                  ? "Scheduler runs the unified snapshot (quotes + spot, optional prior roll / auto-calibrate) on this timer; the spot poll is absorbed"
+                  : "Scheduler refetches the option chains on this timer"}
+              />
             )}
             {asof.asof && (
               <Chip

@@ -111,7 +111,9 @@ export default function WorkflowControls({
               auto options) are set in Options and narrated by the status bar. */}
           <MenuItem
             label="Snapshot (quotes + spot)"
-            detail="chains + live spots in one pull"
+            detail={sched?.unifiedFetch && sched.optionsFetchMode === "auto"
+              ? "chains + live spots in one pull · also on the auto timer"
+              : "chains + live spots in one pull"}
             disabled={busy}
             onClick={() => { setFetchOpen(false); void fetchSnapshot(); }}
           />

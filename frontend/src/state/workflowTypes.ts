@@ -49,6 +49,9 @@ export interface SchedulerStatus {
   localVolEnabled: boolean; // gates the Local Vol tab + LV calibration
   secondsToNextOptions: number; // -1 when on-demand
   secondsToNextSpot: number; // -1 when static
+  /** The auto chain timer runs the unified snapshot sequence and absorbs the
+   *  spot poll (OptionsSettings.schedulerUnifiedFetch echoed). */
+  unifiedFetch?: boolean;
 }
 
 /** Per-ticker saved-prior availability (GET /priors). */

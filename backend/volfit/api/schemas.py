@@ -2084,6 +2084,12 @@ class SchedulerStatus(BaseModel):
     #: is on-demand/static (so the UI shows a button instead of a countdown).
     secondsToNextOptions: float
     secondsToNextSpot: float
+    #: ``OptionsSettings.schedulerUnifiedFetch`` echoed: the auto chain timer runs
+    #: the unified snapshot sequence (chains -> spot -> optional prior roll ->
+    #: optional auto-calibrate) and absorbs the spot poll — so the status bar can
+    #: label the countdown "Next snapshot" and the Snapshot verb can say it also
+    #: rides the timer. False = the legacy split timers.
+    unifiedFetch: bool = False
 
 
 # ------------------------------------------------------------------ local vol
