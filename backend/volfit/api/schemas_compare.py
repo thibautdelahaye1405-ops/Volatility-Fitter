@@ -1,12 +1,13 @@
 """Response models for GET /smiles/{ticker}/{expiry}/compare (V3.2 item 12).
 
-Side-by-side model comparison LQD / SVI-JW / Multi-Core Sigmoid: one
+Side-by-side model comparison LQD / SVI-JW / Multi-Core Sigmoid / eSSVI
+(the compare-only Gatheral-Jacquier SSVI slice, volfit.models.essvi): one
 ``CompareModelFit`` per requested family, each carrying the fitted curve on
 the smile display grid plus the uniform metric set the offline adjudication
 instrument reports (backtest.dispatch.fit_node) — precision, ATM handles,
 Lee wing slopes, var-swap and the per-family ANALYTIC butterfly validity
 (volfit.models.diagnostics.analytic_butterfly: density positivity for LQD,
-exact Durrleman g for SVI / MCS). Reading is STRICTLY fit-pointer-neutral
+exact Durrleman g for SVI / MCS / eSSVI). Reading is STRICTLY fit-pointer-neutral
 (the quality.py doctrine); results live in the endpoint's own side cache.
 Mirrors the schemas_quality / schemas_weights small-module split
 (file-size policy). All metric fields are optional-friendly: ``None`` means
@@ -24,7 +25,7 @@ class CompareValidity(BaseModel):
     """Per-family analytic no-butterfly signal of one compared fit."""
 
     #: "density" (LQD: risk-neutral density minimum, >= 0 by construction) |
-    #: "g" (SVI / MCS: exact Durrleman g minimum, < 0 => arb) | "recon"
+    #: "g" (SVI / MCS / eSSVI: exact Durrleman g minimum, < 0 => arb) | "recon"
     #: (no analytic form — no verdict).
     kind: str
     #: The minimum of the family's analytic quantity over the traded range.
@@ -36,8 +37,8 @@ class CompareValidity(BaseModel):
 class CompareModelFit(BaseModel):
     """One model family's fit + uniform metrics on the compared node."""
 
-    model: str  # family id: "lqd" | "svi" | "sigmoid"
-    label: str  # display name ("LQD" | "SVI-JW" | "MCS")
+    model: str  # family id: "lqd" | "svi" | "sigmoid" | "essvi"
+    label: str  # display name ("LQD" | "SVI-JW" | "MCS" | "eSSVI")
     ok: bool = True
     error: str | None = None  # fit failure (recorded, never a 500)
     #: IV curve on the SAME display grid the smile payload uses.
@@ -49,7 +50,7 @@ class CompareModelFit(BaseModel):
     leeLeft: float | None = None  # total-variance wing slopes
     leeRight: float | None = None
     #: Structural tail contract per side (volfit.models.wings): "exponential"
-    #: (straight variance wing — SVI/MCS always; LQD at alpha = 0),
+    #: (straight variance wing — SVI/MCS/eSSVI always; LQD at alpha = 0),
     #: "intermediate" (LQD 0 < alpha < 1/2) or "gaussian" (LQD alpha = 1/2).
     #: The wing coefficient of the exponential class is the Lee column above.
     tailLeft: str | None = None

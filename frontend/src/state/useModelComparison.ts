@@ -26,7 +26,7 @@ export function useModelComparison(
   expiry: string,
   fitMode: FitMode,
   reloadKey = 0,
-  models: readonly string[] = ["lqd", "svi", "sigmoid"],
+  models: readonly string[] = ["lqd", "svi", "sigmoid", "essvi"],
 ): UseModelComparisonResult {
   const modelsKey = models.join(",");
   const [data, setData] = useState<CompareResponse | null>(null);

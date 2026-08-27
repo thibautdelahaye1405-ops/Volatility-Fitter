@@ -369,19 +369,19 @@ def analytic_butterfly(
 ) -> tuple[str, float, float]:
     """Static (butterfly) arb from the model's ANALYTIC form — no FD noise.
 
-    ONE protocol, three families (lifted from backtest.dispatch, V3.2 item 12
+    ONE protocol, four families (lifted from backtest.dispatch, V3.2 item 12
     — the compare endpoint and the offline sweep read the SAME signal; FD
     reconstruction misreports at range edges, FINDINGS R2). Returns ``(kind,
     min, neg_frac)`` over [k_lo, k_hi]: ``"density"`` — the LQD risk-neutral
     density minimum (f = u(1-u)e^{-g} >= 0 by construction, butterfly arb is
     structurally impossible); ``"g"`` — SVI (closed-form w', w'') / Multi-Core
-    SIV (its own ``gatheral_g``) exact Durrleman g, g < 0 => arb; ``"recon"``
-    — no analytic form, the caller keeps its own reconstruction.
+    SIV and eSSVI (their own ``gatheral_g``) exact Durrleman g, g < 0 => arb;
+    ``"recon"`` — no analytic form, the caller keeps its own reconstruction.
     """
     grid = np.linspace(float(k_lo), float(k_hi), _AN_BFLY_POINTS)
     if family == "lqd" and hasattr(slice_, "density"):  # structural positivity
         vals, kind = np.asarray(slice_.density()[1], float), "density"
-    elif family == "sigmoid" and hasattr(slice_, "gatheral_g"):  # analytic g
+    elif family in ("sigmoid", "essvi") and hasattr(slice_, "gatheral_g"):  # analytic g
         vals, kind = np.asarray(slice_.gatheral_g(grid), float), "g"
     elif family == "svi" and hasattr(slice_, "sigma"):  # RawSVI closed form
         km = grid - slice_.m

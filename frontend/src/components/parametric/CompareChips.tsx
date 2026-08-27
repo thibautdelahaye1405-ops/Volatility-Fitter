@@ -18,6 +18,9 @@ export interface CompareChipsProps {
 /** Map a modelInfo id / label onto a comparable family (default LQD). */
 export function prevailingModelId(id: string | undefined, label: string | undefined): CompareModelId {
   const key = `${id ?? ""} ${label ?? ""}`.toLowerCase();
+  // "essvi" contains "svi": sniff the compare-only comparator FIRST so it is
+  // never misrouted to SVI-JW (it cannot prevail today — defensive only).
+  if (key.includes("essvi")) return "essvi";
   if (key.includes("svi")) return "svi";
   if (key.includes("sigmoid") || key.includes("mcs")) return "sigmoid";
   return "lqd";

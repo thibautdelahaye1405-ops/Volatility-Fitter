@@ -33,7 +33,7 @@ const HEADER_TITLES: Partial<Record<(typeof HEADERS)[number], string>> = {
   "RMS bp": "Weighted RMS vol error vs the fit target (mid, or the bid-ask / haircut band — zero inside)",
   "Max bp": "Worst per-quote vol error vs the same fit target",
   "Tails L/R":
-    "Structural tail contract per side: exp = straight variance wing (SVI/MCS always; LQD α=0), int/gauss = LQD generalized tails",
+    "Structural tail contract per side: exp = straight variance wing (SVI/MCS/eSSVI always; LQD α=0), int/gauss = LQD generalized tails",
 };
 
 /** Chip classes per validity state (certified / breach / no signal). */

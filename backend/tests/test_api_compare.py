@@ -3,9 +3,10 @@
 THE deliverable under test is the read-only guarantee: a compare call moves
 NO calibrated pointer, creates NO fit-cache entry, and the committed smile
 payload is byte-identical across it (the quality.py no-fit-on-read doctrine).
-Plus: the three-family metric rows (finite metrics, per-family validity kind
-— LQD density positivity vs SVI/MCS Durrleman g), the (fit_key, model) side
-cache (second call = pure cache hits), and the 422/404 error paths.
+Plus: the four-family metric rows (finite metrics, per-family validity kind
+— LQD density positivity vs SVI/MCS/eSSVI Durrleman g), the (fit_key, model)
+side cache (second call = pure cache hits), the compare-only eSSVI row
+(three handles, closed-form Lee wings), and the 422/404 error paths.
 
 In-process over fastapi.testclient on the synthetic universe, one app per
 module (the test_api.py style).
@@ -20,7 +21,8 @@ from fastapi.testclient import TestClient
 from volfit.api import create_app
 
 REF_DATE = date(2026, 6, 10)
-ALL = "lqd,svi,sigmoid"
+ALL = "lqd,svi,sigmoid,essvi"
+FAMILIES = ["lqd", "svi", "sigmoid", "essvi"]  # book order
 
 
 @pytest.fixture(scope="module")
@@ -60,7 +62,7 @@ def test_compare_on_uncalibrated_node_creates_no_fit_state(client, universe):
     response = _compare(client, ticker, expiry, models=ALL)
     assert response.status_code == 200
     rows = response.json()["models"]
-    assert [r["model"] for r in rows] == ["lqd", "svi", "sigmoid"]
+    assert [r["model"] for r in rows] == FAMILIES
     assert all(r["ok"] for r in rows), [r.get("error") for r in rows]
     assert all(not r["reused"] for r in rows)  # no committed record to reuse
 
@@ -98,7 +100,7 @@ def test_compare_reuses_fresh_committed_active_family(client, universe):
     by_model = {r["model"]: r for r in rows}
     assert by_model["lqd"]["reused"] is True
     assert by_model["lqd"]["fitMs"] is None
-    for family in ("svi", "sigmoid"):
+    for family in ("svi", "sigmoid", "essvi"):
         assert by_model[family]["reused"] is False
         assert by_model[family]["fitMs"] is not None and by_model[family]["fitMs"] >= 0.0
 
@@ -110,9 +112,9 @@ def test_band_mode_columns_score_the_band_not_the_mid(client, universe):
     ticker, expiry = _node(universe)
     rows = client.get(
         f"/smiles/{ticker}/{expiry}/compare",
-        params={"models": "lqd,svi,sigmoid", "fit_mode": "bidask"},
+        params={"models": ALL, "fit_mode": "bidask"},
     ).json()["models"]
-    assert [r["model"] for r in rows] == ["lqd", "svi", "sigmoid"]
+    assert [r["model"] for r in rows] == FAMILIES
     for row in rows:
         assert row["ok"], row.get("error")
         assert row["maxIvBp"] >= row["rmsBp"] >= 0.0
@@ -121,31 +123,32 @@ def test_band_mode_columns_score_the_band_not_the_mid(client, universe):
     assert any(r["rmsBp"] < 1e-9 for r in rows)  # the synthetic book's bands are wide
 
 
-# -- (b) three-family metric rows ----------------------------------------------
+# -- (b) four-family metric rows -----------------------------------------------
 
 
-def test_three_family_metrics_finite_and_validity_kinds(client, universe):
+def test_four_family_metrics_finite_and_validity_kinds(client, universe):
     ticker, expiry = _node(universe)
     data = _compare(client, ticker, expiry, models=ALL).json()
     assert data["ticker"] == ticker and data["expiry"] == expiry
     assert data["fitMode"] == "mid" and data["activeModel"] == "lqd"
     rows = data["models"]
-    assert [r["model"] for r in rows] == ["lqd", "svi", "sigmoid"]
+    assert [r["model"] for r in rows] == FAMILIES
     for row in rows:
         assert row["ok"], row.get("error")
-        assert row["label"] in ("LQD", "SVI-JW", "MCS")
+        assert row["label"] in ("LQD", "SVI-JW", "MCS", "eSSVI")
         for metric in ("rmsBp", "maxIvBp", "atmVol", "skew",
                        "leeLeft", "leeRight", "varSwapVol"):
             assert row[metric] is not None and isfinite(row[metric]), (row["model"], metric)
         assert row["rmsBp"] >= 0.0 and row["maxIvBp"] >= row["rmsBp"] * 0.0
         assert 0.01 < row["atmVol"] < 2.0
-        assert row["nParams"] is not None and row["nParams"] >= 5
+        assert row["nParams"] is not None
+        assert row["nParams"] >= (3 if row["model"] == "essvi" else 5)
         # The display-grid curve: non-empty, finite, positive vols.
         assert len(row["curve"]) > 100
         assert all(p["vol"] > 0.0 and isfinite(p["vol"]) for p in row["curve"])
         assert row["validity"] is not None
     kinds = {r["model"]: r["validity"]["kind"] for r in rows}
-    assert kinds == {"lqd": "density", "svi": "g", "sigmoid": "g"}
+    assert kinds == {"lqd": "density", "svi": "g", "sigmoid": "g", "essvi": "g"}
     for row in rows:  # the synthetic fixture is clean: everything certifies
         assert row["validity"]["certified"] is True, (row["model"], row["validity"])
         assert row["validity"]["minValue"] is not None
@@ -159,12 +162,40 @@ def test_models_subset_returns_only_requested(client, universe):
 
 def test_tail_contract_columns(client, universe):
     """Every family declares its structural tail class (volfit.models.wings):
-    all three are exponential at the default alpha = 0 settings."""
+    all four are exponential at the default alpha = 0 settings."""
     ticker, expiry = _node(universe)
     rows = _compare(client, ticker, expiry, models=ALL).json()["models"]
+    assert len(rows) == 4
     for row in rows:
         assert row["tailLeft"] == "exponential", row["model"]
         assert row["tailRight"] == "exponential", row["model"]
+
+
+def test_essvi_row_has_three_params_and_closed_form_lee(client, universe):
+    """The compare-only eSSVI family (the Gatheral-Jacquier SSVI slice with a
+    per-expiry rho): three free handles, never reused from a committed record,
+    exact k-space Lee wings theta phi (1 -/+ rho)/2 that respect the buffered
+    Lee cap (GJ Theorem 4.2 (i)), and an exact ATM level w(0) = theta that the
+    display-grid curve reproduces at k = 0."""
+    ticker, expiry = _node(universe)
+    rows = _compare(client, ticker, expiry, models=ALL).json()["models"]
+    row = next(r for r in rows if r["model"] == "essvi")
+    assert row["ok"], row.get("error")
+    assert row["label"] == "eSSVI"
+    assert row["nParams"] == 3
+    assert row["reused"] is False and row["fitMs"] is not None
+    assert row["validity"]["kind"] == "g" and row["validity"]["certified"] is True
+    assert (row["tailLeft"], row["tailRight"]) == ("exponential", "exponential")
+    lee_l, lee_r = row["leeLeft"], row["leeRight"]
+    assert lee_l > 0.0 and lee_r > 0.0
+    assert max(lee_l, lee_r) <= 1.95 + 1e-9  # theta phi (1 + |rho|) / 2 <= the SVI cap
+    ks = [p["k"] for p in row["curve"]]
+    vols = [p["vol"] for p in row["curve"]]
+    assert ks == sorted(ks)
+    i = max(j for j, kk in enumerate(ks) if kk <= 0.0)
+    frac = (0.0 - ks[i]) / (ks[i + 1] - ks[i])
+    atm_curve = vols[i] + frac * (vols[i + 1] - vols[i])
+    assert abs(atm_curve - row["atmVol"]) < 5e-4
 
 
 # -- (c) the (fit_key, model) side cache ----------------------------------------
@@ -176,7 +207,7 @@ def test_second_compare_call_hits_cache(client, universe):
     first = _compare(client, ticker, expiry, models=ALL).json()
     hits_before = state._compare_cache.hits
     second = _compare(client, ticker, expiry, models=ALL).json()
-    assert state._compare_cache.hits == hits_before + 3  # one hit per family
+    assert state._compare_cache.hits == hits_before + 4  # one hit per family
     assert second == first  # identical rows (fitMs included: no refit happened)
 
 
@@ -196,7 +227,7 @@ def test_cache_is_bounded_fifo(client):
 
 def test_unknown_model_csv_is_422(client, universe):
     ticker, expiry = _node(universe)
-    assert _compare(client, ticker, expiry, models="lqd,essvi").status_code == 422
+    assert _compare(client, ticker, expiry, models="lqd,bogus").status_code == 422
     assert _compare(client, ticker, expiry, models="").status_code == 422
 
 

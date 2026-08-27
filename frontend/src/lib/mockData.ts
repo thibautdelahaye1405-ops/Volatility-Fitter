@@ -358,8 +358,9 @@ export function getMockSmile(): SmileData {
 /* Model comparison (V3.2 item 12)                                     */
 /* ------------------------------------------------------------------ */
 
-/** Comparable smile families (the compare endpoint's model ids). */
-export type CompareModelId = "lqd" | "svi" | "sigmoid";
+/** Comparable smile families (the compare endpoint's model ids). "essvi" is
+ *  the compare-only Gatheral–Jacquier SSVI slice — never a displayed model. */
+export type CompareModelId = "lqd" | "svi" | "sigmoid" | "essvi";
 
 /** Per-family analytic no-butterfly signal of one compared fit. */
 export interface CompareValidity {
@@ -374,7 +375,7 @@ export interface CompareValidity {
 /** One model family's fit + uniform metrics on the compared node. */
 export interface CompareModelFit {
   model: CompareModelId;
-  /** Display name ("LQD" | "SVI-JW" | "MCS"). */
+  /** Display name ("LQD" | "SVI-JW" | "MCS" | "eSSVI"). */
   label: string;
   ok: boolean;
   error?: string | null;
@@ -465,10 +466,11 @@ export function getMockPriorEvidence(): MockPriorEvidence {
   };
 }
 
-/** Three plausible mock comparison fits so the Compare view works backendless:
+/** Four plausible mock comparison fits so the Compare view works backendless:
  *  LQD hugs the base smile, SVI heavies the wings a touch, MCS sits slightly
  *  under with a mild |k| tilt — and the MCS row carries a small g-breach so
- *  the validity chip's rose state is visible in mock mode. */
+ *  the validity chip's rose state is visible in mock mode — while eSSVI
+ *  (three handles, the belly tied to the wings) tilts the skew a touch. */
 export function getMockComparison(): CompareResponse {
   const volOf = (k: number) => sviVol(SVI, k, T);
   const fit = (
@@ -500,6 +502,12 @@ export function getMockComparison(): CompareResponse {
         leeLeft: 0.093, leeRight: 0.034, varSwapVol: 0.211,
         validity: { kind: "g", minValue: -3.1e-4, certified: false },
         nParams: 12, fitMs: 41.8, reused: false,
+      }),
+      fit("essvi", "eSSVI", (k) => volOf(k) + 0.003 * k, {
+        rmsBp: 31.6, maxIvBp: 84.0, atmVol: 0.206, skew: -0.341,
+        leeLeft: 0.112, leeRight: 0.029, varSwapVol: 0.214,
+        validity: { kind: "g", minValue: 5.7e-4, certified: true },
+        nParams: 3, fitMs: 2.9, reused: false,
       }),
     ],
   };

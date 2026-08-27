@@ -30,24 +30,26 @@ const baseFit = (over: Partial<CompareModelFit>): CompareModelFit => ({
 describe("compareSeries", () => {
   it("builds one series per model in book order with the family colours", () => {
     const series = compareSeries(getMockComparison());
-    expect(series.map((s) => s.label)).toEqual(["LQD", "SVI-JW", "MCS"]);
+    expect(series.map((s) => s.label)).toEqual(["LQD", "SVI-JW", "MCS", "eSSVI"]);
     expect(series.map((s) => s.color)).toEqual([
       MODEL_COLORS.lqd,
       MODEL_COLORS.svi,
       MODEL_COLORS.sigmoid,
+      MODEL_COLORS.essvi,
     ]);
     for (const s of series) {
       expect(s.xs.length).toBe(s.ys.length);
       expect(s.xs.length).toBeGreaterThan(1);
     }
     expect(MODEL_LABELS.sigmoid).toBe("MCS"); // the book naming, not "Sigmoid"
+    expect(MODEL_LABELS.essvi).toBe("eSSVI"); // the compare-only comparator, last
   });
 
   it("skips failed rows and degenerate curves (table still lists them)", () => {
     const data = getMockComparison();
     data.models[1] = baseFit({ ok: false, error: "boom", curve: [] });
     data.models[2] = baseFit({ model: "sigmoid", label: "MCS", curve: [{ k: 0, vol: 0.2 }] });
-    expect(compareSeries(data).map((s) => s.label)).toEqual(["LQD"]);
+    expect(compareSeries(data).map((s) => s.label)).toEqual(["LQD", "eSSVI"]);
   });
 });
 

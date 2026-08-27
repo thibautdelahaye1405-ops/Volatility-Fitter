@@ -3,7 +3,7 @@
 Backs GET /smiles/{ticker}/{expiry}/compare: the node's quotes are prepared
 ONCE through the exact edited-inputs path the production fit consumes
 (prepare_slice + edited_fit_inputs + resolve_weights + edited_band), then
-every requested family (LQD / SVI-JW / Multi-Core Sigmoid) is fitted to those
+every requested family (LQD / SVI-JW / Multi-Core Sigmoid / eSSVI) is fitted to those
 same inputs at the LIVE hyperparameters and reported with the uniform metric
 set of the offline adjudication instrument (backtest.dispatch.fit_node) —
 including the per-family ANALYTIC butterfly validity signal
@@ -55,16 +55,19 @@ from volfit.models.diagnostics import (
     numeric_var_swap_w,
 )
 from volfit.models.display import build_display_fit
+from volfit.models.essvi import calibrate_essvi
 from volfit.models.lqd.atm import atm_handles
 from volfit.models.lqd.basis import lee_slopes
 from volfit.models.lqd.calibrate import calibrate_slice
 from volfit.models.wings import wing_laws_of
 
-#: The comparable families, in book order (palette: green / blue / violet).
-COMPARE_MODELS = ("lqd", "svi", "sigmoid")
-_LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "MCS"}
-#: FIFO bound on the side cache (a handful of nodes x 3 families in practice).
-_CACHE_MAX = 64
+#: The comparable families, in book order (palette: green / blue / violet /
+#: amber). "essvi" is the COMPARE-ONLY Gatheral-Jacquier SSVI slice
+#: (volfit.models.essvi) — a yardstick, never a selectable displayed model.
+COMPARE_MODELS = ("lqd", "svi", "sigmoid", "essvi")
+_LABELS = {"lqd": "LQD", "svi": "SVI-JW", "sigmoid": "MCS", "essvi": "eSSVI"}
+#: FIFO bound on the side cache (a handful of nodes x 4 families in practice).
+_CACHE_MAX = 96
 
 
 class CompareCache:
@@ -134,6 +137,8 @@ def _n_params(family: str, slice_) -> int | None:
         return int(slice_.params.to_vector().size)
     if family == "sigmoid":
         return int(slice_.to_vector().size)
+    if family == "essvi":
+        return 3  # ESSVISlice: (theta, rho, phi)
     return 5  # RawSVI: (a, b, rho, m, sigma)
 
 
@@ -163,6 +168,17 @@ def _fit_family(family: str, k, w, tau, weights, band, settings, ticker: str):
             mid_anchor_tau_ref=settings.midAnchorTauRef,
             robust_loss=settings.robustLoss, robust_f_scale=settings.robustFScale,
             alpha_left=alpha_left, alpha_right=alpha_right,
+        )
+        return result.slice
+    if family == "essvi":
+        # Comparator-only SSVI slice (models/essvi): the SVI overlay's data term
+        # (vol-space residuals, band hinge + mid anchor) plus the GJ no-butterfly
+        # hinges at the same buffered Lee cap; no overlay extras (its docstring).
+        result = calibrate_essvi(
+            k, w, tau, weights=weights, band=band,
+            lee_slope_max=settings.leeSlopeMax,
+            mid_anchor_weight=settings.midAnchorWeight,
+            mid_anchor_tau_ref=settings.midAnchorTauRef,
         )
         return result.slice
     display = build_display_fit(family, k, w, tau, weights, _overlay_settings(settings), band=band)
@@ -207,6 +223,11 @@ def _model_row(
         atm, skew = h.sigma0, h.skew
         lee_l, lee_r = lee_slopes(slice_.params)
         vs_w = slice_.var_swap_strike()
+    elif family == "essvi":  # SSVI closed forms (GJ 2014 eq. 4.1; models/essvi)
+        h = slice_.atm_handles()
+        atm, skew = h.atm_vol, h.skew
+        lee_l, lee_r = slice_.wing_slopes()  # theta phi (1 -/+ rho) / 2
+        vs_w = numeric_var_swap_w(slice_)
     else:
         h = numeric_handles(slice_, tau)
         atm, skew = h.atm_vol, h.skew
