@@ -60,7 +60,9 @@ function BarButton({
 }
 
 export default function ActivityBar() {
-  const { activity, setActivity, openDialog, dialog } = useWorkbench();
+  const { activityOf, focusedGroup, setActivity, openDialog, dialog } = useWorkbench();
+  // The lens shown for the FOCUSED editor group (a side group may override).
+  const activity = activityOf(focusedGroup);
   const { workflow } = useWorkflowContext();
   const localVolEnabled = workflow.sched?.localVolEnabled ?? true;
 

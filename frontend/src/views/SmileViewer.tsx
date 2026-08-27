@@ -45,6 +45,7 @@ import { useGraphNodeSmile } from "../state/useGraphNodeSmile";
 import { useObservationFilter } from "../state/useObservationFilter";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { useOptionalWorkbench } from "../state/workbench";
+import { useNodeScope } from "../state/nodeScope";
 import { useLensViewMemory } from "../state/useLensViewMemory";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
@@ -85,7 +86,9 @@ export default function SmileViewer() {
   const { format } = useExpiryFormat();
   const { focus, setFocus } = useGraphFocus();
   const wb = useOptionalWorkbench();
-  const showAside = wb === null || wb.layout.aside;
+  const scope = useNodeScope();
+  // Split editors (wave 3, C3): the right-hand column yields to the charts.
+  const showAside = (wb === null || wb.layout.aside) && !(scope?.split ?? false);
 
   const [kWindow, setKWindow] = useState<[number, number]>([0, 1]);
   // Selected quote, referenced by its stable `index` field (not array

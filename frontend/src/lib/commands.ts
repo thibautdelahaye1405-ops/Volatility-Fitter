@@ -80,6 +80,9 @@ export const COMMANDS = [
   { id: "tab.next", label: "Next tab", category: "Tabs", shortcut: "Alt+→" },
   { id: "tab.prev", label: "Previous tab", category: "Tabs", shortcut: "Alt+←" },
   { id: "tab.quickOpen", label: "Quick open a node…", category: "Tabs", shortcut: "Ctrl+P" },
+  { id: "tab.split", label: "Split editor / unsplit", category: "Tabs", shortcut: "Ctrl+\\", detail: "two groups side by side" },
+  { id: "tab.moveToOther", label: "Move the active tab to the other group", category: "Tabs" },
+  { id: "tab.focusOther", label: "Focus the other editor group", category: "Tabs" },
   // View
   { id: "view.scheme:dark", label: "Colour scheme: Dark", category: "View" },
   { id: "view.scheme:light", label: "Colour scheme: Light", category: "View" },

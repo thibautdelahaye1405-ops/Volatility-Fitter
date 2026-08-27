@@ -69,6 +69,8 @@ export function useShellShortcuts(): void {
         }
         if (e.key === "/" && !e.shiftKey) { wb.openDialog("shortcuts"); e.preventDefault(); return; }
         if (e.code === "KeyU" && e.shiftKey) { wb.openDialog("universe"); e.preventDefault(); return; }
+        // Split editors (wave 3, C3): Ctrl+\ toggles the second group.
+        if (e.code === "Backslash" && !e.shiftKey) { wb.toggleSplit(); e.preventDefault(); return; }
         // Workspace files (wave 3, A1): Ctrl+O open · Ctrl+S save · Ctrl+Shift+S save as.
         if (e.code === "KeyO" && !e.shiftKey) { void ws.openPicker(); e.preventDefault(); return; }
         if (e.code === "KeyS") { void (e.shiftKey ? ws.saveAs() : ws.save()); e.preventDefault(); return; }

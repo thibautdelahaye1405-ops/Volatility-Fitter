@@ -137,6 +137,9 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("tab.next", () => wb.cycleTab(1), tabs.length > 1),
       bind("tab.prev", () => wb.cycleTab(-1), tabs.length > 1),
       bind("tab.quickOpen", () => wb.openDialog("quickopen")),
+      bind("tab.split", () => wb.toggleSplit(), true, wb.groups.length > 1),
+      bind("tab.moveToOther", () => { if (wb.activeTab) { if (wb.groups.length < 2) wb.split(); wb.moveTabToGroup(wb.activeTab.key, wb.groups.length < 2 ? 1 : (wb.focusedGroup === 0 ? 1 : 0)); } }, wb.activeTab !== null),
+      bind("tab.focusOther", () => wb.focusGroup(wb.focusedGroup === 0 ? 1 : 0), wb.groups.length > 1),
       // View
       ...(["dark", "light", "contrast", "warm"] as ColorScheme[]).map((s) =>
         bind(`view.scheme:${s}`, () => view.setScheme(s), true, view.scheme === s)),

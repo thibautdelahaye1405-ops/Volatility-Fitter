@@ -43,6 +43,7 @@ import AxisModeSelect, { AxisUnitSelect } from "../components/charts/AxisModeSel
 import { lvCalendarMarker } from "../lib/stackedVariance";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
+import { useNodeScope } from "../state/nodeScope";
 import { useLensViewMemory } from "../state/useLensViewMemory";
 import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
@@ -67,10 +68,10 @@ export default function LocalVolViewer() {
   const { source, spotVersion, fitMode, expiry: sessionExpiry } = useSmileSession();
   // Null outside the shell (tests / legacy mounts): fall back to local state.
   const wb = useOptionalWorkbench();
+  const scope = useNodeScope(); // split editors hide the aside (wave 3, C3)
   const live = source === "live";
-  // Spot moves transport the cached surface; fold into the derived-view key so
-  // density / term / table refetch alongside the surface (which depends on it
-  // via useAffine). Combined with varSwapNonce into one reloadKey.
+  // Spot moves transport the cached surface: fold them (+ varSwapNonce) into
+  // one reloadKey so density / term / table refetch alongside the surface.
   const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
   // View state: sub-view · strike-axis mode · LV-surface render (3D mesh or
@@ -84,8 +85,7 @@ export default function LocalVolViewer() {
   const setLvRender = (lvRender: LvRender) => patchView({ lvRender });
   const setLvAxis = (lvAxis: LvAxis) => patchView({ lvAxis });
   const setAxisClock = (axisClock: ClockMode) => patchView({ axisClock });
-  // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
-  // so event-time dilation is consistent in LV's Term.
+  // Shared per-ticker event calendar (edited in Parametric Term) for LV's Term.
   const events = useEvents(ticker);
 
   // Selected expiry for the per-expiry views = the session's (the active tab);
@@ -380,7 +380,7 @@ export default function LocalVolViewer() {
           </div>
         </div>
 
-        {(wb === null || wb.layout.aside) && (
+        {(wb === null || wb.layout.aside) && !(scope?.split ?? false) && (
           <LocalVolAside
             ticker={ticker}
             data={data}

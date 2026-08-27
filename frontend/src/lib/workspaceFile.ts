@@ -17,7 +17,10 @@ const SCHEMA_MAJOR = "1";
  *  is optional; the consumers apply what they recognise). */
 export interface ShellBlob {
   activity?: string;
+  /** Legacy (pre-C3) single tab strip — migrates to one editor group. */
   tabs?: unknown;
+  /** Editor groups (wave 3, C3). */
+  groups?: unknown;
   viewMemory?: unknown;
   /** 3D camera per lens view (state/surfaceCameras). */
   cameras?: unknown;

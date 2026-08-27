@@ -9,14 +9,16 @@
 // useState with a patch setter.
 import { useCallback, useState } from "react";
 import { useOptionalWorkbench } from "./workbench";
+import { useNodeScope } from "./nodeScope";
 
 export function useLensViewMemory<T extends object>(
   lens: "parametric" | "localvol",
   defaults: T | (() => T),
 ): [T, (patch: Partial<T>) => void] {
   const wb = useOptionalWorkbench();
+  const scope = useNodeScope(); // the enclosing editor group's tab (wave 3, C3)
   const [local, setLocal] = useState<T>(defaults);
-  const key = wb?.activeTab?.key ?? null;
+  const key = scope !== null ? scope.key : (wb?.activeTab?.key ?? null);
   const remember = wb !== null && wb.layout.rememberView && key !== null;
   const stored = remember ? (wb.viewMemory[key]?.[lens] as Partial<T> | undefined) : undefined;
   const value: T = stored !== undefined ? { ...local, ...stored } : local;

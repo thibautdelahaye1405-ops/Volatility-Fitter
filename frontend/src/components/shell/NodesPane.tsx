@@ -15,7 +15,7 @@
 // focused row (aria-activedescendant, outlined): ↑/↓ move, ←/→ collapse /
 // expand a ticker (→ enters it, ← climbs back), Home/End, letters type-ahead
 // to the next ticker, Enter = preview tab, Shift+Enter / Space = pinned tab,
-// Ctrl+Enter = open in the other split (C3; pinned until then), L = toggle
+// Ctrl+Enter = open in the other editor group (split; C3), L = toggle
 // lit/dark, Tab = the filter box. Ctrl+B (show) focuses the tree.
 // Drag (wave 3, C5 — lib/nodeDnd): a row can be dragged onto the Graph
 // canvas (lights it / pulses it) or onto the tab strip (pinned tab).
@@ -132,7 +132,8 @@ export default function NodesPane() {
         case "expand": setGroup(a.ticker, a.expanded); setFocusedId(groupId(a.ticker)); break;
         case "open":
           setFocusedId(tabKey(a.ticker, a.expiry));
-          wb.openNode({ ticker: a.ticker, expiry: a.expiry }, { preview: a.mode === "preview" });
+          if (a.mode === "split") wb.openBeside({ ticker: a.ticker, expiry: a.expiry });
+          else wb.openNode({ ticker: a.ticker, expiry: a.expiry }, { preview: a.mode === "preview" });
           break;
         case "lit": if (live) lit.toggleNode(a.ticker, a.expiry); break;
         case "filter": filterRef.current?.focus(); break;

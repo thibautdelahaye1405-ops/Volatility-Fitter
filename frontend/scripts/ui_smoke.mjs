@@ -304,6 +304,36 @@ try {
     }
   }
 
+  // 5a. Split editors (wave 3 C3): Ctrl+\ splits, Ctrl+Enter on a tree row
+  //     opens a second node in the other group; two tab lists must exist and
+  //     the two groups must show DIFFERENT nodes (their chart titles differ).
+  try {
+    await clickAria(page, "Parametric");
+    await sleep(600);
+    await page.keyboard.down("Control"); await page.keyboard.press("Backslash"); await page.keyboard.up("Control");
+    await sleep(600);
+    let lists = await page.$$('[role="tablist"]');
+    if (lists.length !== 2) throw new Error(`expected 2 tab lists after Ctrl+\\, got ${lists.length}`);
+    // Focus the tree, move to the second expiry row of the first ticker, Ctrl+Enter.
+    await page.focus('[role="tree"]');
+    await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown");
+    await page.keyboard.down("Control"); await page.keyboard.press("Enter"); await page.keyboard.up("Control");
+    await sleep(2500);
+    const titles = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("[data-editor-group] main h2")).map((h) => h.textContent?.trim() ?? ""));
+    if (titles.length < 2 || titles[0] === titles[1]) throw new Error(`groups do not show two nodes: ${JSON.stringify(titles)}`);
+    console.log(`     groups: ${titles.join(" | ")}`);
+    await check(page, pageErrors, "split-editors");
+    await page.keyboard.down("Control"); await page.keyboard.press("Backslash"); await page.keyboard.up("Control");
+    await sleep(400);
+    lists = await page.$$('[role="tablist"]');
+    if (lists.length !== 1) throw new Error(`expected 1 tab list after unsplit, got ${lists.length}`);
+  } catch (err) {
+    console.error(`FAIL split-editors: ${err.message}`);
+    failures += 1;
+    await page.keyboard.press("Escape");
+  }
+
   // 5b. Export chart as PNG (wave 3 A3) through the command palette: the
   //     active Parametric chart rasterizes to a captured .png download.
   try {

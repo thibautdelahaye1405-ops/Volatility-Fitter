@@ -25,6 +25,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Ctrl+B", label: "Show / hide the Nodes pane" },
       { keys: "Alt+1 … Alt+5", label: "Lens: Graph · Forwards · Parametric · Local Vol · Quality" },
       { keys: "Alt+← / Alt+→", label: "Previous / next node tab" },
+      { keys: "Ctrl+\\", label: "Split the editor into two groups / unsplit (drag a tab or a node onto the right 20 % of the pane also splits)" },
       { keys: "Alt+W", label: "Close the active tab" },
       { keys: "Double-click a tab or node", label: "Pin a preview tab" },
       { keys: "Middle-click a node", label: "Open it as a pinned tab" },
