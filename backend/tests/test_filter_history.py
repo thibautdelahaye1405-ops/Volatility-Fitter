@@ -146,6 +146,40 @@ def test_diagnostics_payload_emits_zeta_and_chi2():
     assert list(step.zeta) == pytest.approx(list(expected))
 
 
+# ------------------------------------------------------------ doc round trip
+def test_step_doc_and_step_from_doc_are_exact_inverses():
+    """The workspace rider's contract: step_from_doc(step_doc(s)) == s for a
+    plain step, a seed step (zeta None, reset reason, Q breakdown) and one
+    with an empty observation; the re-emitted doc is identical either way."""
+    seed = FilterStep(
+        ts=1.5, dt_days=0.0, prediction=(0.2, -0.3, 0.1),
+        prediction_std=(0.01, 0.02, 0.05), observation=(), observation_std=(),
+        innovation=(0.0, 0.0, 0.0), zeta=None, gain=(1.0, 1.0, 1.0),
+        posterior=(0.2, -0.3, 0.1), posterior_std=(0.01, 0.02, 0.05),
+        process_breakdown={"clock": (1e-6, 2e-6, 3e-6), "adaptive": (4e-6, 0.0, 0.0)},
+        transport_distance=None, provenance="seed:today_fit",
+        reset_reason="first", contaminated=True,
+    )
+    for step in (_dummy_step(3), seed):
+        doc = filter_history.step_doc(step)
+        back = filter_history.step_from_doc(doc)
+        assert back == step
+        assert filter_history.step_doc(back) == doc
+    # ring-level helpers: non-empty rings only, sorted keys, maxlen kept
+    ring = FilterHistory()
+    ring.append(seed)
+    ring.append(_dummy_step(1))
+    docs = filter_history.history_docs(
+        {("B", "2026-07-17", "mid"): ring, ("A", "2026-07-17", "mid"): FilterHistory()}
+    )
+    assert [d["ticker"] for d in docs] == ["B"] and len(docs[0]["steps"]) == 2
+    rings = filter_history.history_from_docs(docs)
+    (restored,) = rings.values()
+    assert restored.steps() == ring.steps()
+    assert restored._steps.maxlen == filter_history.RING_MAXLEN
+    assert filter_history.history_from_docs([]) == {}
+
+
 # ------------------------------------------------------------- clear/preserve
 def test_history_wiped_on_clear_and_restored_on_roundtrip():
     state = _overlay_state()

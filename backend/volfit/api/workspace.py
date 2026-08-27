@@ -32,12 +32,15 @@ overrides + block rule, spot shifts, the viewed fit mode and the as-of
 selection. NOT in it: provider handles, chain snapshots, fit/prepared
 caches, calibrated pointers, the graph universe and all version counters —
 process-local derived state that rebuilds from workspace + market data.
+
+Filter states + history rings (``filterHistory``, V3.9 rider): ``workspace_filter_doc``.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
+from volfit.api import workspace_filter_doc as wfd
 from volfit.api.schemas import (
     EventSpec,
     FitSettings,
@@ -143,6 +146,7 @@ def build_doc(state) -> dict:
         active_prior = dict(ws.active_prior)
         active_src = dict(ws.active_prior_source)
         filter_states = dict(ws.filter_states)
+        filter_history = dict(state._filter_history)  # chain-cache attr, not scoped
         fit_settings, options = ws.fit_settings, ws.options
         market = dict(ws.market_settings)
         events = {t: list(v) for t, v in ws.events.items() if v}
@@ -193,9 +197,8 @@ def build_doc(state) -> dict:
         "graphMessageEdges": [e.model_dump(mode="json") for e in msg_edges],
         "spotShifts": {t: float(v) for t, v in sorted(shifts.items())},
         "lastFitMode": last_mode,
-        "filterStates": [
-            _filter_doc(k, h) for k, h in sorted(filter_states.items())
-        ],
+        "filterStates": wfd.filter_states_docs(filter_states),
+        "filterHistory": wfd.history_docs(filter_history),  # non-empty rings only
     }
 
 
@@ -242,9 +245,8 @@ def restore_doc(state, doc: dict) -> None:
     ws.spot_shift = {t: float(v) for t, v in doc.get("spotShifts", {}).items()}
     ws.last_fit_mode = str(doc.get("lastFitMode", "mid"))
     ws.asof = _asof_from(doc.get("asOf") or {}, AsOfSelection)
-    for item in doc.get("filterStates", []):
-        key = (item["ticker"], item["expiry"], item["mode"])
-        ws.filter_states[key] = _filter_from(key, item)
+    ws.filter_states = wfd.filter_states_from(doc.get("filterStates", []))
+    rings = wfd.history_from_docs(doc.get("filterHistory", []))  # installed below
 
     with state._lock:
         old = state._ws
@@ -276,6 +278,8 @@ def restore_doc(state, doc: dict) -> None:
         state._selected.clear()
         state._selection_mode.clear()
         state._ws = ws
+        # Rings live on AppState (_CHAIN_CACHE_ATTRS, wiped above): reinstall.
+        state._filter_history.update(rings)
         # U6: the config envelope's ACTIVE rows mirror the restored workspace
         # field (a restore replays state — lifecycle metadata carries on, no
         # version bump).
@@ -393,105 +397,4 @@ def _prior_record_from(doc: dict):
             alpha_right=float(p.get("alphaR", 0.0)),
         ),
         t=float(doc.get("t", 0.0)),
-    )
-
-
-# ------------------------------------------- observation-filter node states
-def _filter_doc(key: tuple, holder) -> dict:
-    """One NodeFilter holder as JSON (numpy -> lists; the ``curves`` overlay
-    memo is dropped — it is rebuilt lazily by the diagnostics endpoint)."""
-    ticker, iso, mode = key
-    s = holder.state
-    p, m, u = holder.prediction, holder.measurement, holder.update
-    return {
-        "ticker": ticker,
-        "expiry": iso,
-        "mode": mode,
-        "dataVersion": int(holder.data_version),
-        "sessionVersion": int(holder.session_version),
-        "forward": float(holder.forward),
-        "state": {
-            "handleNames": list(s.handle_names),
-            "mean": np.asarray(s.mean, dtype=float).tolist(),
-            "cov": np.asarray(s.cov, dtype=float).tolist(),
-            "timestamp": float(s.timestamp),
-            "provenance": s.provenance,
-            "resetReason": s.reset_reason,
-        },
-        "prediction": None if p is None else {
-            "mean": np.asarray(p.mean, dtype=float).tolist(),
-            "cov": np.asarray(p.cov, dtype=float).tolist(),
-            "transportDistance": float(p.transport_distance),
-            "qBreakdown": {
-                k: np.asarray(v, dtype=float).tolist()
-                for k, v in p.q_breakdown.items()
-            },
-        },
-        "measurement": None if m is None else {
-            "handles": np.asarray(m.handles, dtype=float).tolist(),
-            "cov": np.asarray(m.cov, dtype=float).tolist(),
-            "breakdown": {k: float(v) for k, v in m.breakdown.items()},
-            "contaminated": bool(m.contaminated),
-        },
-        "update": None if u is None else {
-            "innovation": np.asarray(u.innovation, dtype=float).tolist(),
-            "innovationCov": np.asarray(u.innovation_cov, dtype=float).tolist(),
-            "gain": np.asarray(u.gain, dtype=float).tolist(),
-            "mean": np.asarray(u.mean, dtype=float).tolist(),
-            "cov": np.asarray(u.cov, dtype=float).tolist(),
-        },
-    }
-
-
-def _filter_from(key: tuple, doc: dict):
-    from volfit.api.observation_filter import NodeFilter  # runtime (no cycle)
-    from volfit.calib.observation_filter import (
-        FilterMeasurement,
-        FilterPrediction,
-        FilterState,
-        FilterUpdate,
-    )
-
-    s = doc["state"]
-    state = FilterState(
-        node_key=key,
-        handle_names=tuple(s["handleNames"]),
-        mean=np.asarray(s["mean"], dtype=float),
-        cov=np.asarray(s["cov"], dtype=float),
-        timestamp=float(s["timestamp"]),
-        provenance=str(s["provenance"]),
-        reset_reason=s.get("resetReason"),
-    )
-    p = doc.get("prediction")
-    prediction = None if p is None else FilterPrediction(
-        mean=np.asarray(p["mean"], dtype=float),
-        cov=np.asarray(p["cov"], dtype=float),
-        transport_distance=float(p["transportDistance"]),
-        q_breakdown={
-            k: np.asarray(v, dtype=float) for k, v in p.get("qBreakdown", {}).items()
-        },
-    )
-    m = doc.get("measurement")
-    measurement = None if m is None else FilterMeasurement(
-        handles=np.asarray(m["handles"], dtype=float),
-        cov=np.asarray(m["cov"], dtype=float),
-        breakdown={k: float(v) for k, v in m.get("breakdown", {}).items()},
-        contaminated=bool(m.get("contaminated", False)),
-    )
-    u = doc.get("update")
-    update = None if u is None else FilterUpdate(
-        innovation=np.asarray(u["innovation"], dtype=float),
-        innovation_cov=np.asarray(u["innovationCov"], dtype=float),
-        gain=np.asarray(u["gain"], dtype=float),
-        mean=np.asarray(u["mean"], dtype=float),
-        cov=np.asarray(u["cov"], dtype=float),
-    )
-    return NodeFilter(
-        state=state,
-        prediction=prediction,
-        measurement=measurement,
-        update=update,
-        data_version=int(doc.get("dataVersion", 0)),
-        session_version=int(doc.get("sessionVersion", 0)),
-        forward=float(doc.get("forward", 0.0)),
     )

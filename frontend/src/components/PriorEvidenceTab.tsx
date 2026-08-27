@@ -7,7 +7,9 @@
 //      (day, expiry): the honest "does the prior persist?" tape, straight
 //      from the persisted graph innovation store;
 //   3. residual decay curve — φ(dt) = 2^(−dt/H) for the ACTIVE layered
-//      policy's residualHalfLifeDays, labeled as the GRAPH residual memory.
+//      policy's residualHalfLifeDays, labeled as the GRAPH residual memory;
+//   4. replay evidence (V3.9 rider, ReplayEvidenceBlock) — the latest offline
+//      filter-replay part for the ticker + the served HTML artifact link.
 //
 // THE DOCTRINE (backend filter_mode.py §6.3): the Kalman filter (temporal
 // prior on the OBSERVED latent state) and the graph residual store (memory of
@@ -17,6 +19,7 @@
 // curve renders unmarked there).
 import OverlayCurvesChart, { maturityColor } from "./OverlayCurvesChart";
 import type { OverlaySeries } from "./OverlayCurvesChart";
+import ReplayEvidenceBlock from "./ReplayEvidenceBlock";
 import { usePriorEvidence } from "../state/usePriorEvidence";
 import {
   ageDaysFromTs,
@@ -229,6 +232,9 @@ export default function PriorEvidenceTab({
           residualAgeDays={residualAgeDays}
         />
       </div>
+
+      {/* 4 — the latest offline filter-replay artifact (served, never computed here) */}
+      <ReplayEvidenceBlock live={live} ticker={ticker} refreshKey={refreshKey} />
     </div>
   );
 }

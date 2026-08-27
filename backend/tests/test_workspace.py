@@ -20,7 +20,7 @@ from datetime import date
 
 import numpy as np
 
-from volfit.api import edits, priors, service
+from volfit.api import edits, filter_history, observation_filter, priors, service
 from volfit.api.export import build_surface_export
 from volfit.api.schemas import (
     EventSpec,
@@ -189,6 +189,104 @@ def test_filter_states_round_trip():
     if holder.update is not None:
         assert np.array_equal(holder.update.innovation, restored.update.innovation)
     assert fresh.workspace_doc()["filterStates"] == doc["filterStates"]
+
+
+def _history_state(n_steps: int = 2) -> tuple[AppState, list[str]]:
+    """Filter ON with ``n_steps`` committed ring steps on each of two nodes:
+    the seed, then genuinely NEW observations (data-version bumps) through the
+    real commit hook — the test_filter_history idempotence-lock recipe."""
+    state = AppState(REF_DATE)
+    state.set_options(
+        state.options().model_copy(update={"observationFilterMode": "overlay"})
+    )
+    isos = [e.isoformat() for e in sorted(state.forwards(TICKER))][:2]
+    records = {iso: service.displayed_base(state, TICKER, iso, "mid") for iso in isos}
+    for _ in range(n_steps - 1):
+        state.bump_data_version(TICKER)
+        for iso in isos:
+            observation_filter.on_fit_commit(
+                state, TICKER, iso, "mid", records[iso], None
+            )
+    for iso in isos:
+        assert len(state.filter_history((TICKER, iso, "mid"))) == n_steps
+    return state, isos
+
+
+def test_filter_history_round_trips():
+    """V3.9 rider: the per-node history rings persist under the additive
+    ``filterHistory`` key — build_doc -> restore into a FRESH state gives the
+    identical /filter/history payload per node and an identical doc."""
+    from fastapi.testclient import TestClient
+
+    from volfit.api import create_app
+
+    state, isos = _history_state(n_steps=3)
+    doc = state.workspace_doc()
+    json.dumps(doc)  # JSON-safe by construction
+    assert [d["expiry"] for d in doc["filterHistory"]] == sorted(isos)
+    assert all(len(d["steps"]) == 3 for d in doc["filterHistory"])
+    assert all(d["mode"] == "mid" and d["ticker"] == TICKER for d in doc["filterHistory"])
+    # the step docs ARE the wire dicts, and step_from_doc is their exact inverse
+    for d in doc["filterHistory"]:
+        for s in d["steps"]:
+            assert filter_history.step_doc(filter_history.step_from_doc(s)) == s
+    expected = {
+        iso: filter_history.history_payload(state, TICKER, iso, "mid").model_dump()
+        for iso in isos
+    }
+    assert all(p["active"] and len(p["steps"]) == 3 for p in expected.values())
+
+    fresh = AppState(REF_DATE)
+    fresh.restore_workspace(doc)
+    for iso in isos:
+        got = filter_history.history_payload(fresh, TICKER, iso, "mid").model_dump()
+        assert got == expected[iso]
+    assert fresh.workspace_doc() == doc
+    assert fresh.workspace_doc()["filterHistory"] == doc["filterHistory"]
+
+    # ... and through the endpoint of a restored app (the FilterTimeline feed)
+    with TestClient(create_app(reference_date=REF_DATE)) as c:
+        c.app.state.volfit.restore_workspace(doc)
+        for iso in isos:
+            r = c.get(f"/smiles/{TICKER}/{iso}/filter/history")
+            assert r.status_code == 200
+            assert r.json() == expected[iso]
+
+
+def test_workspace_without_filter_history_key_restores_empty_rings():
+    """An older doc (no ``filterHistory`` key) restores cleanly: the filter
+    STATES still restore, the rings are empty and the endpoint answers
+    0 steps without error."""
+    from fastapi.testclient import TestClient
+
+    from volfit.api import create_app
+
+    state, isos = _history_state()
+    doc = state.workspace_doc()
+    del doc["filterHistory"]
+    with TestClient(create_app(reference_date=REF_DATE)) as c:
+        app_state = c.app.state.volfit
+        app_state.restore_workspace(doc)
+        assert app_state.filter_node((TICKER, isos[0], "mid")) is not None
+        for iso in isos:
+            assert app_state.filter_history((TICKER, iso, "mid")) is None
+            r = c.get(f"/smiles/{TICKER}/{iso}/filter/history")
+            assert r.status_code == 200
+            assert r.json() == {"active": False, "steps": []}
+        # re-serializing emits the key (empty), never a missing key
+        assert app_state.workspace_doc()["filterHistory"] == []
+
+
+def test_restore_replaces_stale_rings_and_builds_doc_without_rings():
+    """Restore is a reset for the rings too: a state's own rings are replaced
+    by the doc's (here: none), and a filter-off worked state emits an empty
+    ``filterHistory`` list (its doc stays otherwise unchanged)."""
+    state, _ = _worked_state()
+    assert state.workspace_doc()["filterHistory"] == []
+    hist_state, isos = _history_state()
+    hist_state.restore_workspace(state.workspace_doc())
+    for iso in isos:
+        assert hist_state.filter_history((TICKER, iso, "mid")) is None
 
 
 # --------------------------------------------------- replay fidelity (gaps)

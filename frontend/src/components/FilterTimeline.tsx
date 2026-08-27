@@ -9,8 +9,11 @@
 // convention). Colors are the CVD-validated series set (see the dataviz
 // palette run in the V3.9 session); stacked layers carry a surface-colored
 // separator (the spacer rule) so the one 6.9-ΔE pair stays legal.
-import { useEffect, useState } from "react";
-
+//
+// This file is the PURE chart (steps in, SVG out). The panel section around
+// it — expiry/handle selectors, the Live | Replay source chip and the data
+// hooks — lives in FilterTimelineSection.tsx (split out in the V3.9 replay
+// rider to keep both files small).
 import { formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import {
   bandPath,
@@ -29,11 +32,6 @@ import {
   type StepMarker,
 } from "../lib/filterTimeline";
 import { useElementSize } from "../lib/useElementSize";
-import { api } from "../state/api";
-import { useFilterHistory } from "../state/useFilterHistory";
-import type { FitMode } from "../state/useSmile";
-
-const HANDLES = ["ATM", "skew", "curv"] as const;
 
 // Series colors (validated on surface-800 with the dataviz six-checks script).
 const C = {
@@ -62,10 +60,6 @@ const MARKER_COLORS: Record<StepMarker["kind"], string> = {
 
 const ML = 46; // left margin (y labels)
 const MR = 6;
-
-const selectCls =
-  "rounded border border-slate-700 bg-surface-800 px-1.5 py-0.5 text-right " +
-  "font-mono text-[11px] text-slate-200 outline-none hover:border-slate-600 focus:border-accent-500";
 
 /** Per-step hover summary (native <title> tooltip). */
 function stepTitle(s: FilterStepWire, h: number, multiDay: boolean): string {
@@ -240,81 +234,6 @@ export function FilterTimeline({ steps, handle }: { steps: FilterStepWire[]; han
         <span style={{ color: MARKER_COLORS.seed }}>┆ seed</span>
         <span style={{ color: MARKER_COLORS.contaminated }}>┊ cont.</span>
       </div>
-    </div>
-  );
-}
-
-/** Self-contained panel section: expiry + handle selectors around the charts.
- *  Mounted by ObservationFilterPanel behind its "Timeline" toggle; serves the
- *  mock ring when the backend is unreachable (`live` false). */
-export default function FilterTimelineSection({
-  ticker, live, fitMode, refreshKey,
-}: { ticker: string; live: boolean; fitMode: FitMode; refreshKey: unknown }) {
-  const [expiries, setExpiries] = useState<string[]>([]);
-  const [expiry, setExpiry] = useState("");
-  const [handle, setHandle] = useState(0);
-
-  useEffect(() => {
-    if (!live || !ticker) { setExpiries([]); setExpiry(""); return; }
-    let cancelled = false;
-    api
-      .get<{ entries: { expiry: string }[] }>(`/forwards/${ticker}`)
-      .then((f) => {
-        if (cancelled) return;
-        const exps = (f.entries ?? []).map((e) => e.expiry);
-        setExpiries(exps);
-        setExpiry((cur) => (cur !== "" && exps.includes(cur) ? cur : exps[0] ?? ""));
-      })
-      .catch(() => !cancelled && setExpiries([]));
-    return () => { cancelled = true; };
-  }, [live, ticker]);
-
-  const { steps, source } = useFilterHistory(live, ticker, expiry, fitMode, refreshKey);
-
-  return (
-    <div className="mt-2 rounded-md border border-slate-800 bg-surface-800/40 p-2">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          Filter timeline
-          {source === "mock" && (
-            <span className="ml-2 rounded bg-amber-500/15 px-1 py-px text-[9px] font-medium normal-case tracking-normal text-amber-400">
-              MOCK
-            </span>
-          )}
-        </span>
-        <span className="flex items-center gap-1.5">
-          <select
-            value={handle}
-            onChange={(e) => setHandle(Number(e.target.value))}
-            className={`${selectCls} w-20`}
-            title="Which filtered handle to chart"
-          >
-            {HANDLES.map((h, i) => (
-              <option key={h} value={i}>{h}</option>
-            ))}
-          </select>
-          {live && (
-            <select
-              value={expiry}
-              onChange={(e) => setExpiry(e.target.value)}
-              className={`${selectCls} w-28`}
-              title="Node expiry"
-            >
-              {expiries.map((e) => (
-                <option key={e} value={e}>{e}</option>
-              ))}
-            </select>
-          )}
-        </span>
-      </div>
-      {steps.length === 0 ? (
-        <p className="text-[10px] text-slate-600">
-          No committed filter steps yet — calibrate with the filter on; the ring
-          keeps the last 64 committed updates per node.
-        </p>
-      ) : (
-        <FilterTimeline steps={steps} handle={handle} />
-      )}
     </div>
   );
 }

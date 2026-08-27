@@ -17,9 +17,13 @@ Semantics (all inherited from the app layer, nothing re-decided here):
 * storage is ``AppState._filter_history``, a plain dict BESIDE
   ``_filter_states`` keyed the same (ticker, iso, fit_mode) way: cleared by
   ``_clear_chain_caches`` (source/as-of switch = the strict reset) and listed
-  in ``_CHAIN_CACHE_ATTRS`` so transient as-of round-trips restore it. NOT
-  workspace-persisted (recorded rider — avoids new workspace round-trip
-  locks).
+  in ``_CHAIN_CACHE_ATTRS`` so transient as-of round-trips restore it;
+* WORKSPACE-PERSISTED (V3.9 rider): ``workspace.build_doc`` writes every
+  non-empty ring under the additive ``filterHistory`` key as the exact wire
+  dicts of :func:`step_doc`, and ``restore_doc`` rebuilds the rings through
+  :func:`step_from_doc` (its exact inverse) AFTER the restore's chain-cache
+  clear, so a workspace file carries the timeline with its filter states.
+  Docs without the key restore to empty rings (older workspaces).
 
 ζ here is the PRE-inflation standardized innovation ν/√(diag(P⁻ + R)) — the
 tuning verdict statistic (std(ζ) ≈ 1 iff Q is scaled right, the intraday-sweep
@@ -198,8 +202,77 @@ def _step_out(step: FilterStep):
 
 def step_doc(step: FilterStep) -> dict:
     """JSON-safe dict of one step in the exact wire shape (used by the offline
-    replay artifact so its JSON matches the live endpoint byte-for-byte)."""
+    replay artifact and the workspace doc so their JSON matches the live
+    endpoint byte-for-byte)."""
     return _step_out(step).model_dump()
+
+
+def _tup(v) -> tuple[float, ...]:
+    return tuple(float(x) for x in (v or ()))
+
+
+def step_from_doc(doc: dict) -> FilterStep:
+    """Exact inverse of :func:`step_doc`: the wire dict back to a
+    :class:`FilterStep` (JSON lists -> float tuples, so
+    ``step_from_doc(step_doc(s)) == s`` and the re-emitted doc is identical).
+    Lenient on absent optional keys (zeta / transportDistance / resetReason
+    read as None, contaminated as False) — the FilterStepOut defaults."""
+    zeta = doc.get("zeta")
+    td = doc.get("transportDistance")
+    return FilterStep(
+        ts=float(doc["ts"]),
+        dt_days=float(doc["dtDays"]),
+        prediction=_tup(doc.get("prediction")),
+        prediction_std=_tup(doc.get("predictionStd")),
+        observation=_tup(doc.get("observation")),
+        observation_std=_tup(doc.get("observationStd")),
+        innovation=_tup(doc.get("innovation")),
+        zeta=None if zeta is None else _tup(zeta),
+        gain=_tup(doc.get("gain")),
+        posterior=_tup(doc.get("posterior")),
+        posterior_std=_tup(doc.get("posteriorStd")),
+        process_breakdown={
+            k: _tup(v) for k, v in (doc.get("processBreakdown") or {}).items()
+        },
+        transport_distance=None if td is None else float(td),
+        provenance=str(doc["provenance"]),
+        reset_reason=doc.get("resetReason"),
+        contaminated=bool(doc.get("contaminated", False)),
+    )
+
+
+# ------------------------------------------------------------- workspace doc
+def history_docs(rings: dict) -> list[dict]:
+    """The workspace ``filterHistory`` entries: one ``{ticker, expiry, mode,
+    steps}`` per NON-EMPTY ring (the filterStates key encoding), sorted by
+    key for a deterministic doc; steps oldest -> newest as ``step_doc``."""
+    out = []
+    for (ticker, iso, mode), ring in sorted(rings.items()):
+        if ring is None or len(ring) == 0:
+            continue
+        out.append({
+            "ticker": ticker,
+            "expiry": iso,
+            "mode": mode,
+            "steps": [step_doc(s) for s in ring.steps()],
+        })
+    return out
+
+
+def history_from_docs(items: list) -> dict:
+    """Inverse of :func:`history_docs`: ``{(ticker, iso, mode): FilterHistory}``
+    with each ring at the standard :data:`RING_MAXLEN` capacity. Entries with
+    no steps are skipped (a ring never persists empty)."""
+    rings: dict[tuple, FilterHistory] = {}
+    for item in items or []:
+        steps = item.get("steps") or []
+        if not steps:
+            continue
+        ring = FilterHistory()
+        for s in steps:
+            ring.append(step_from_doc(s))
+        rings[(item["ticker"], item["expiry"], item["mode"])] = ring
+    return rings
 
 
 def history_payload(state, ticker: str, expiry: str, fit_mode: str):

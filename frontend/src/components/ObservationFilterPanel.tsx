@@ -8,10 +8,11 @@
 //
 // Lives outside OptionsViewer (file-size policy); driven by the same Options draft.
 // The V3.9 FilterTimeline (per-node history charts) mounts below the table
-// behind a "Timeline" toggle; the charts live in FilterTimeline.tsx.
+// behind a "Timeline" toggle; the section (selectors + Live | Replay source
+// chip) lives in FilterTimelineSection.tsx, the pure charts in FilterTimeline.tsx.
 import { useEffect, useState } from "react";
 
-import FilterTimelineSection from "./FilterTimeline";
+import FilterTimelineSection from "./FilterTimelineSection";
 import { NumberRow, Toggle } from "./OptionsControls";
 import { api } from "../state/api";
 import type { OptionsSettings } from "../state/useOptions";

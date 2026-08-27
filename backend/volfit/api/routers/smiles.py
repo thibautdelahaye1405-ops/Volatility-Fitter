@@ -126,7 +126,7 @@ def get_filter_history(
     """The node's last <= 64 committed observation-filter steps, oldest first
     (V3.9 item 7 — the FilterTimeline's feed). Read-only and POLL-SAFE: never
     fits; ``active=False`` with empty steps when the filter is off or the node
-    has no committed history yet. In-memory only."""
+    has no committed history yet. Workspace-persisted (``filterHistory``)."""
     return filter_history.history_payload(
         request.app.state.volfit, ticker, expiry, fit_mode
     )
