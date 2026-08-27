@@ -24,6 +24,7 @@ from volfit.api.routers.term import router as term_router
 from volfit.api.routers.universe import router as universe_router
 from volfit.api.routers.varswap import router as varswap_router
 from volfit.api.routers.workflow import router as workflow_router
+from volfit.api.routers.workspace import router as workspace_router
 
 #: Routers in include order for create_app.
 ALL_ROUTERS = (
@@ -51,6 +52,7 @@ ALL_ROUTERS = (
     term_router,
     varswap_router,
     workflow_router,
+    workspace_router,
 )
 
 __all__ = [
@@ -79,4 +81,5 @@ __all__ = [
     "universe_router",
     "varswap_router",
     "workflow_router",
+    "workspace_router",
 ]

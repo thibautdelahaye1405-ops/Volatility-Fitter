@@ -53,6 +53,9 @@ export interface UseWorkflowResult {
   busy: boolean;
   /** Last completed action (explicit verb, or a background refit landing). */
   lastAction: LastAction | null;
+  /** Record an action outside this hook (File menu: saved / opened / failed)
+   *  so the status bar's "Last" chip narrates it too. */
+  noteAction: (label: string, ok?: boolean) => void;
   fetchSpots: () => Promise<void>;
   fetchOptions: () => Promise<void>;
   /** POST /fetch/snapshot — the unified verb (V3.7 item 15): chains + spot
@@ -352,7 +355,7 @@ export function useWorkflow(
   }, [refreshPriors, refreshViews, noteAction]);
 
   return {
-    calib, sched, pending, busy: pending !== null, lastAction,
+    calib, sched, pending, busy: pending !== null, lastAction, noteAction,
     fetchSpots, fetchOptions, fetchSnapshot, calibrate, calibrateParametric, calibrateLv,
     priors, savePriors, fetchPriors,
   };

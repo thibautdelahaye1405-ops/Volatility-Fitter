@@ -147,6 +147,18 @@ export interface WorkbenchValue {
   dialog: DialogId | null;
   openDialog: (id: DialogId) => void;
   closeDialog: () => void;
+  /** The shell's share of a workspace FILE (wave 3, A1): activity + tabs +
+   *  layout as a plain blob, and its inverse (lenient — unknown values keep
+   *  the current state; tabs are validated by restoreTabs). */
+  exportShell: () => ShellShellBlob;
+  importShell: (blob: Partial<ShellShellBlob> | null | undefined) => void;
+}
+
+/** Workbench part of the workspace-file shell blob. */
+export interface ShellShellBlob {
+  activity: Activity;
+  tabs: TabsState;
+  layout: LayoutState;
 }
 
 const Ctx = createContext<WorkbenchValue | null>(null);
@@ -232,6 +244,32 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const openDialog = useCallback((id: DialogId) => setDialog(id), []);
   const closeDialog = useCallback(() => setDialog(null), []);
 
+  // Workspace-file shell blob (A1): the persisted triple, in and out.
+  const exportShell = useCallback(
+    (): ShellShellBlob => ({ activity, tabs, layout }),
+    [activity, tabs, layout],
+  );
+  const importShell = useCallback((blob: Partial<ShellShellBlob> | null | undefined) => {
+    if (!blob) return;
+    if (ACTIVITY_IDS.includes(blob.activity as Activity)) setActivity(blob.activity as Activity);
+    if (blob.tabs !== undefined) {
+      const next = restoreTabs(blob.tabs);
+      pushRef.current = next.activeKey; // restored tabs beat the session (see module doc)
+      setTabs(next);
+    }
+    if (blob.layout) {
+      const l = blob.layout as Partial<LayoutState>;
+      setLayoutState((cur) => ({
+        nodesPane: typeof l.nodesPane === "boolean" ? l.nodesPane : cur.nodesPane,
+        nodesWidth: Number.isFinite(l.nodesWidth)
+          ? Math.max(NODES_WIDTH.min, Math.min(NODES_WIDTH.max, Number(l.nodesWidth)))
+          : cur.nodesWidth,
+        statusBar: typeof l.statusBar === "boolean" ? l.statusBar : cur.statusBar,
+        aside: typeof l.aside === "boolean" ? l.aside : cur.aside,
+      }));
+    }
+  }, []);
+
   const value = useMemo<WorkbenchValue>(
     () => ({
       activity, setActivity,
@@ -239,11 +277,12 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       openNode, pinTab, closeTab, closeOthers, closeAll, activateTab, cycleTab, moveTab,
       layout, setLayout, resetLayout,
       dialog, openDialog, closeDialog,
+      exportShell, importShell,
     }),
     [
       activity, tabs, active, openNode, pinTab, closeTab, closeOthers, closeAll,
       activateTab, cycleTab, moveTab, layout, setLayout, resetLayout, dialog,
-      openDialog, closeDialog,
+      openDialog, closeDialog, exportShell, importShell,
     ],
   );
 

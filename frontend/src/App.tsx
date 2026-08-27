@@ -8,6 +8,8 @@
 //   MainPane      one tab per node + the lens rendered for the active node
 //   StatusBar     engine narration, summary chips, last action, clock
 //   ShellDialogs  Universe manager · Options · Shortcuts · About
+//   (File ▾ in the top bar saves / opens the whole configuration as a
+//   workspace file; a .json dropped anywhere on the shell opens it.)
 //
 // Provider order matters: the smile session is the root of truth (universe +
 // selection), the workflow context polls the engine, the lit map and quality
@@ -28,15 +30,28 @@ import { ViewSettingsProvider } from "./state/viewSettings";
 import { LitMapProvider } from "./state/litMap";
 import { QualityProvider } from "./state/qualityContext";
 import { NODES_WIDTH, WorkbenchProvider, useWorkbench } from "./state/workbench";
+import { WorkspaceFileProvider, useWorkspaceFile } from "./state/workspaceFile";
 import { useShellShortcuts } from "./state/useShellShortcuts";
 
 /** The frame itself (needs the workbench context, hence a child of the providers). */
 function Shell() {
   const { layout, setLayout, resetLayout } = useWorkbench();
+  const ws = useWorkspaceFile();
   useShellShortcuts();
 
+  // Drop a workspace .json anywhere on the shell to open it (wave 3, A1).
+  const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    const file = Array.from(e.dataTransfer.files).find((f) => /\.json$/i.test(f.name));
+    if (!file) return;
+    e.preventDefault();
+    void ws.openFile(file);
+  };
+  const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+  };
+
   return (
-    <div className="flex h-full flex-col overflow-hidden">
+    <div className="flex h-full flex-col overflow-hidden" onDrop={onDrop} onDragOver={onDragOver}>
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <ActivityBar />
@@ -70,7 +85,9 @@ export default function App() {
     <LitMapProvider>
     <QualityProvider>
     <WorkbenchProvider>
+    <WorkspaceFileProvider>
       <Shell />
+    </WorkspaceFileProvider>
     </WorkbenchProvider>
     </QualityProvider>
     </LitMapProvider>

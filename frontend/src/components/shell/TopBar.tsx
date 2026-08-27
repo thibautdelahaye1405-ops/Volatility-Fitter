@@ -1,5 +1,5 @@
 // Top bar v2 (UI SHELL v2, wave 2) — three zones, VS Code title bar × Affinity:
-//   LEFT    σ VolFit brand · Options · Universe ▾ · Help ▾   (the main menu)
+//   LEFT    σ VolFit brand · File ▾ · Options · Universe ▾ · Help ▾   (the main menu)
 //   CENTRE  command center: Fetch ▾ (pulls + as-of) · Calibrate·scope ▾ ·
 //           Priors ▾ (per-tab / all tabs / all calibrated / fetch) · the
 //           market pill (source light + as-of, click = Data sources) — live
@@ -7,6 +7,7 @@
 //   RIGHT   View ▾ (display preferences) · Layout ▾ (panes)
 import { SlidersHorizontal } from "lucide-react";
 import MenuButton from "./menus/MenuButton";
+import FileMenu from "./menus/FileMenu";
 import UniverseMenu from "./menus/UniverseMenu";
 import HelpMenu from "./menus/HelpMenu";
 import ViewMenu from "./menus/ViewMenu";
@@ -36,7 +37,8 @@ export default function TopBar() {
         <span className="text-sm font-semibold tracking-wide">VolFit</span>
       </button>
 
-      {/* Main menu: Options · Universe ▾ · Help ▾ */}
+      {/* Main menu: File ▾ · Options · Universe ▾ · Help ▾ */}
+      <FileMenu />
       <MenuButton
         label="Options"
         active={wb.dialog === "options"}

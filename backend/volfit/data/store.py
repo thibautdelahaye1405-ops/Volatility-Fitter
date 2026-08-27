@@ -43,7 +43,11 @@ from volfit.data.types import ChainSnapshot, ExpirySettlement, Instrument, Optio
 #: hash-chained `manifests` table (one row per published surface, with the
 #: stored inputs + artifact a replay reproduces it from). New tables only,
 #: so the CREATE IF NOT EXISTS in _SCHEMA is the whole migration.
-SCHEMA_VERSION = 8
+#: v9 (UI shell v2 wave 3, 2026-08-27): a `workspaces` table — named workspace
+#: FILES (the File ▸ Save-to-server bundle: backend workspace doc + shell
+#: state) next to the named universes. New table only; CREATE IF NOT EXISTS
+#: is the whole migration.
+SCHEMA_VERSION = 9
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS instruments (
@@ -101,6 +105,11 @@ CREATE TABLE IF NOT EXISTS prior_snapshots (
 CREATE TABLE IF NOT EXISTS universes (
     name        TEXT PRIMARY KEY,
     config_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS workspaces (
+    name      TEXT PRIMARY KEY,
+    saved_ts  TEXT NOT NULL,
+    doc_json  TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS events (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,

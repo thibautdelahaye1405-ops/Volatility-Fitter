@@ -4,6 +4,7 @@
 // Esc; the smile-editing keys stay in useSmileShortcuts (Parametric lens).
 import { useEffect } from "react";
 import { ACTIVITIES, useWorkbench } from "./workbench";
+import { useWorkspaceFile } from "./workspaceFile";
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -13,6 +14,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 export function useShellShortcuts(): void {
   const wb = useWorkbench();
+  const ws = useWorkspaceFile();
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Esc: close the open dialog (Dialog.tsx handles its own Esc too; this
@@ -55,9 +57,12 @@ export function useShellShortcuts(): void {
         if (e.code === "KeyP" && !e.shiftKey) { wb.openDialog("quickopen"); e.preventDefault(); return; }
         if (e.key === "/" && !e.shiftKey) { wb.openDialog("shortcuts"); e.preventDefault(); return; }
         if (e.code === "KeyU" && e.shiftKey) { wb.openDialog("universe"); e.preventDefault(); return; }
+        // Workspace files (wave 3, A1): Ctrl+O open · Ctrl+S save · Ctrl+Shift+S save as.
+        if (e.code === "KeyO" && !e.shiftKey) { void ws.openPicker(); e.preventDefault(); return; }
+        if (e.code === "KeyS") { void (e.shiftKey ? ws.saveAs() : ws.save()); e.preventDefault(); return; }
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [wb]);
+  }, [wb, ws]);
 }

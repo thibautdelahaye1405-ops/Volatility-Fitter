@@ -1,19 +1,24 @@
-// Headless-Edge UI smoke (npm run smoke:ui): builds nothing, drives the
-// PREVIEW server through the WORKBENCH SHELL (UI SHELL v2) and fails on any
-// uncaught page error or ErrorBoundary fallback:
+// Headless-Edge UI smoke (npm run smoke:ui): builds nothing, drives the built
+// bundle through the WORKBENCH SHELL (UI SHELL v2) and fails on any uncaught
+// page error or ErrorBoundary fallback:
 //   1. every lens of the activity bar (Graph · Forwards · Parametric · Local
 //      Vol · Quality) on the auto-opened node tab, plus the Parametric
 //      "Compare" sub-view;
 //   2. the nodes pane → tab round trip (click a node row, a tab appears);
-//   3. every top-bar menu (Universe · Help · View · Layout) and every dialog
-//      (Options · Manage universe · Keyboard shortcuts · About · Quick open).
-// Backend-optional by design: without :8000 the session falls back to the
-// mock smile and the live-only lenses show their offline cards — the smoke
-// asserts the shell never white-screens, not that data loaded. Screenshots
-// land in .smoke/.
+//   3. every top-bar menu (File · Universe · Help · View · Layout) and every
+//      dialog (Options · Manage universe · Keyboard shortcuts · About · Quick open);
+//   4. LIVE only — the workspace FILE round trip (wave 3, A1): File ▸ Save as…
+//      downloads a volfit-workspace/1 bundle, File ▸ Open… reopens it through
+//      the file chooser and the status bar names the workspace.
+// Server: when the backend venv + a built bundle exist, a single-origin
+// SYNTHETIC server (backend/smoke_server.py: dist + API on one port, throw-away
+// DB) drives a LIVE shell; otherwise vite preview serves dist/ alone and the
+// session falls back to the mock smile (live-only lenses show their offline
+// cards; step 4 is skipped). Either way the smoke asserts the shell never
+// white-screens. Screenshots land in .smoke/.
 //
-// Prereqs: `npm run build` (vite preview serves dist/), Microsoft Edge.
-import { mkdirSync } from "node:fs";
+// Prereqs: `npm run build`, Microsoft Edge (+ ../.venv for the live server).
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
 
@@ -31,7 +36,7 @@ const LENSES = [
   { name: "Local Vol" },
   { name: "Quality" },
 ];
-const MENUS = ["Universe", "Help", "View", "Layout"];
+const MENUS = ["File", "Universe", "Help", "View", "Layout"];
 // Dialogs: opened from the top bar (Options) / activity bar (Manage universe) /
 // Help menu (shortcuts) / brand (About). Each must render role="dialog".
 const DIALOGS = [
@@ -67,11 +72,14 @@ async function clickText(page, label) {
   await sleep(200);
 }
 
+const winPath = (u) => u.pathname.replace(/^\/(\w:)/, "$1");
+const PY = winPath(new URL("../../.venv/Scripts/python.exe", import.meta.url));
+const SMOKE_SERVER = winPath(new URL("../../backend/smoke_server.py", import.meta.url));
+
 function startPreview() {
   // Spawn the vite JS bin through THIS node: no .cmd shim (Node >= 20 EINVALs
   // on .cmd spawns without a shell) and no PATH dependence.
-  const viteBin = new URL("../node_modules/vite/bin/vite.js", import.meta.url)
-    .pathname.replace(/^\/(\w:)/, "$1");
+  const viteBin = winPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url));
   const proc = spawn(
     process.execPath,
     [viteBin, "preview", "--port", String(PORT), "--strictPort"],
@@ -90,7 +98,28 @@ function startPreview() {
   });
 }
 
-const preview = await startPreview();
+/** The single-origin synthetic backend (dist + API); resolves once /universe answers. */
+function startLiveServer() {
+  const proc = spawn(PY, [SMOKE_SERVER, "--port", String(PORT)], { stdio: ["ignore", "pipe", "pipe"] });
+  proc.stderr.on("data", (b) => { const t = String(b); if (/Error|Traceback/.test(t)) console.error(t); });
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + 60000;
+    proc.on("exit", (code) => reject(new Error(`smoke server exited (${code})`)));
+    const probe = async () => {
+      try {
+        const r = await fetch(`http://localhost:${PORT}/universe`);
+        if (r.ok) return resolve(proc);
+      } catch { /* not up yet */ }
+      if (Date.now() > deadline) return reject(new Error("smoke server did not start"));
+      setTimeout(probe, 500);
+    };
+    probe();
+  });
+}
+
+const LIVE = existsSync(PY) && existsSync(SMOKE_SERVER);
+const preview = LIVE ? await startLiveServer() : await startPreview();
+console.log(LIVE ? "server: synthetic single-origin backend (live shell)" : "server: vite preview (mock shell)");
 mkdirSync(OUT, { recursive: true });
 let failures = 0;
 const browser = await puppeteer.launch({
@@ -121,8 +150,27 @@ try {
   await page.setViewport({ width: 1400, height: 900 });
   const pageErrors = [];
   page.on("pageerror", (err) => pageErrors.push(String(err)));
+  // File ▸ Save as… must take the DOWNLOAD path (no native picker headless);
+  // the <a download> click is captured in-page (blob text + filename) so the
+  // round trip never depends on Chrome's headless download plumbing.
+  const DL = `${OUT}downloads`;
+  rmSync(DL, { recursive: true, force: true });
+  mkdirSync(DL, { recursive: true });
+  await page.evaluateOnNewDocument(() => {
+    // The pickers live on Window.prototype — shadow them on the instance.
+    for (const k of ["showSaveFilePicker", "showOpenFilePicker"]) {
+      Object.defineProperty(window, k, { value: undefined, configurable: true, writable: true });
+    }
+    window.__smokeDownloads = [];
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (!this.download) return click.call(this);
+      const name = this.download;
+      fetch(this.href).then((r) => r.text()).then((text) => window.__smokeDownloads.push({ name, text }));
+    };
+  });
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "networkidle2", timeout: 30000 });
-  await sleep(800);
+  await sleep(LIVE ? 2500 : 800);
 
   // 1. Lenses (the session auto-opens a preview tab for its default node).
   for (const lens of LENSES) {
@@ -188,6 +236,43 @@ try {
       await page.keyboard.press("Escape");
     }
   }
+  // 5. Workspace file round trip (live only): Save as… → download; Open… via
+  //    the file chooser; the status bar names the workspace.
+  if (LIVE) {
+    try {
+      await clickHeader(page, "File");
+      await clickText(page, "Save as…");
+      let dl = null;
+      for (let i = 0; i < 40 && !dl; i++) {
+        await sleep(250);
+        dl = await page.evaluate(() => window.__smokeDownloads.find((d) => d.name.endsWith(".volfit.json")) ?? null);
+      }
+      if (!dl) {
+        const footer = await page.evaluate(() => document.querySelector("footer")?.innerText ?? "");
+        throw new Error(`no .volfit.json download after Save as… (status bar: ${footer})`);
+      }
+      const file = dl.name;
+      writeFileSync(`${DL}/${file}`, dl.text);
+      const bundle = JSON.parse(readFileSync(`${DL}/${file}`, "utf8"));
+      if (bundle.schema !== "volfit-workspace/1" || !bundle.backend || !bundle.shell) {
+        throw new Error(`downloaded bundle malformed: ${Object.keys(bundle)}`);
+      }
+      await check(page, pageErrors, "workspace-save-as");
+      // Open it back through the <input type=file> fallback (file chooser).
+      await clickHeader(page, "File");
+      const [chooser] = await Promise.all([page.waitForFileChooser({ timeout: 5000 }), clickText(page, "Open…")]);
+      await chooser.accept([`${DL}/${file}`]);
+      await sleep(1500);
+      const chip = await page.evaluate(() => document.querySelector("footer")?.innerText ?? "");
+      const name = file.replace(/\.volfit\.json$/, "");
+      if (!chip.includes(name)) throw new Error(`status bar does not name the opened workspace (${name}): ${chip}`);
+      await check(page, pageErrors, "workspace-open");
+    } catch (err) {
+      console.error(`FAIL workspace-roundtrip: ${err.message}`);
+      failures += 1;
+      await page.keyboard.press("Escape");
+    }
+  }
 } finally {
   await browser.close();
   preview.kill();
@@ -197,4 +282,4 @@ if (failures > 0) {
   console.error(`\nUI smoke: ${failures} step(s) failed (screenshots in .smoke/)`);
   process.exit(1);
 }
-console.log(`\nUI smoke: shell, ${LENSES.length} lens steps, ${MENUS.length} menus, ${DIALOGS.length} dialogs render (screenshots in .smoke/)`);
+console.log(`\nUI smoke: shell, ${LENSES.length} lens steps, ${MENUS.length} menus, ${DIALOGS.length} dialogs${LIVE ? ", workspace file round trip" : ""} render (screenshots in .smoke/)`);

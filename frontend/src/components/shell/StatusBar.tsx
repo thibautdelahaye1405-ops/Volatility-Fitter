@@ -4,13 +4,15 @@
 //   LEFT   engine narration (fetch / calibrate / LV / term / density …) with a
 //          gauge — determinate for a calibration job's node count — or
 //          "Ready" · last error; then the active LENS · NODE.
-//   RIGHT  nodes lit/stale · next auto-fetch · as-of · source light · quote
-//          age (when not fresh) · LAST ACTION with its timestamp · wall clock.
+//   RIGHT  workspace file name (+ unsaved) · nodes lit/stale · next auto-fetch ·
+//          as-of · source light · quote age (when not fresh) · LAST ACTION with
+//          its timestamp · wall clock.
 // Offline (mock) keeps the lens/node + clock so the bar never goes blank.
 import { useEffect, useState } from "react";
 import { useWorkflowContext } from "../../state/workflowContext";
 import { ACTIVITIES, useWorkbench } from "../../state/workbench";
 import { useExpiryFormat } from "../../state/expiryFormat";
+import { useOptionalWorkspaceFile } from "../../state/workspaceFile";
 import { useSmileSession } from "../../state/smileSession";
 import { formatExpiry } from "../../lib/expiryFormat";
 import type { SourceStatus } from "../../state/useDataSources";
@@ -110,6 +112,7 @@ export default function StatusBar() {
   const { activity, activeTab } = useWorkbench();
   const { universe } = useSmileSession();
   const { format } = useExpiryFormat();
+  const ws = useOptionalWorkspaceFile();
   const now = useClock();
   const { calib, sched, pending, lastAction } = workflow;
   const act = calib?.activity;
@@ -203,6 +206,14 @@ export default function StatusBar() {
       <div className="flex shrink-0 items-center gap-4">
         {live && (
           <>
+            {ws !== null && (
+              <Chip
+                label="Workspace"
+                value={ws.dirty ? `${ws.name} · unsaved` : ws.name}
+                tone={ws.dirty ? "text-amber-300" : "text-slate-300"}
+                title={ws.target ? `Saved to ${ws.target.kind === "server" ? "the server" : "a file"} as "${ws.name}" (Ctrl+S saves)` : "No workspace file yet (Ctrl+Shift+S saves as…)"}
+              />
+            )}
             <Chip
               label="Nodes"
               value={stale > 0 ? `${lit} lit · ${stale} stale` : `${lit} lit`}
