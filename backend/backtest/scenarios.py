@@ -120,9 +120,13 @@ def validate_scenario(sc: Scenario) -> None:
 
 # ---------------------------------------------------- the five shipped cells
 _NAMES = ("NVDA", "AAPL", "MSFT")
-#: The item-6 basket: 3 names + SPY (the index stand-in — the intraday REST
-#: path lacks SPX/SPXW multi-root discovery; recorded as a roadmap rider).
+#: The item-6 basket: 3 names + SPY as the index stand-in. SPX IS discoverable
+#: intraday now (both capture twins resolve SPX + SPXW through backtest.roots),
+#: but the ratified cells keep SPY by default — an SPX capture is a user-window
+#: run (index-feed spend). INDEX_BASKET is the drop-in for such a campaign
+#: (a dark cell on it needs its own lit_map: _DARK_NAMES lights SPY).
 BASKET = ("SPY",) + _NAMES
+INDEX_BASKET = ("SPX",) + _NAMES
 ARM_CONTROL = Arm("smooth_field")  # the control column
 ARM_MSG = Arm("precision_messages")  # graph option 1 (production default)
 ARM_LAYERED = Arm("layered_dynamic_harmonic", half_life=0.1)  # graph option 2

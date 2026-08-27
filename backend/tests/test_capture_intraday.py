@@ -43,22 +43,27 @@ def _row(sym: str, bid: float, ask: float, ns: int) -> str:
     return f"{sym},1,{ask},10,1,{bid},10,0,{ns}"
 
 
-def _sym(expiry: date, cp: str, strike: float) -> str:
-    return f"O:SPY{expiry:%y%m%d}{cp}{int(strike * 1000):08d}"
+def _sym(expiry: date, cp: str, strike: float, root: str = "SPY") -> str:
+    return f"O:{root}{expiry:%y%m%d}{cp}{int(strike * 1000):08d}"
 
 
-def _write_fixture(path) -> None:
-    """Two expiries (0DTE + monthly), paired strikes, DIFFERENT books at the
-    two instants: mid drops 0.50 between T1 and T2 for every contract."""
+#: Paired strikes with parity-consistent mids (spot ~ 545 at every expiry).
+_BOOK = [(540, 8.0, 3.0), (545, 5.0, 5.0), (550, 3.0, 8.0)]
+
+
+def _write_fixture(path, boards: dict[str, tuple[date, ...]] | None = None) -> None:
+    """Per root, its expiries (default SPY: 0DTE + monthly), paired strikes,
+    DIFFERENT books at the two instants: mid drops 0.50 between T1 and T2
+    for every contract."""
     rows = [HEADER]
-    book = [(540, 8.0, 3.0), (545, 5.0, 5.0), (550, 3.0, 8.0)]
-    for expiry in (DAILY, MONTHLY):
-        for strike, cmid, pmid in book:
-            for cp, mid in (("C", cmid), ("P", pmid)):
-                sym = _sym(expiry, cp, strike)
-                rows.append(_row(sym, mid - 0.1, mid + 0.1, _to_ns(T1) - 1_000_000))
-                lo = max(mid - 0.5, 0.2)
-                rows.append(_row(sym, lo - 0.1, lo + 0.1, _to_ns(T2) - 1_000_000))
+    for root, expiries in (boards or {"SPY": (DAILY, MONTHLY)}).items():
+        for expiry in expiries:
+            for strike, cmid, pmid in _BOOK:
+                for cp, mid in (("C", cmid), ("P", pmid)):
+                    sym = _sym(expiry, cp, strike, root)
+                    rows.append(_row(sym, mid - 0.1, mid + 0.1, _to_ns(T1) - 1_000_000))
+                    lo = max(mid - 0.5, 0.2)
+                    rows.append(_row(sym, lo - 0.1, lo + 0.1, _to_ns(T2) - 1_000_000))
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 
@@ -153,3 +158,64 @@ def test_run_is_resumable_and_persists_settlement(store, tmp_path, monkeypatch):
     assert snap.settlement is not None and DAILY in snap.settlement
     assert snap.settlement[DAILY].style == "pm"
     assert snap.timestamp == T2
+
+
+def test_capture_day_forwards_roots_and_style_to_the_store():
+    """SPY (outside the registry) keeps the single ``chains_at`` call with its
+    own root and American style; SPX resolves (SPX, SPXW) + european from the
+    registry and is reconstructed once PER ROOT with ``cache_roots`` = all
+    roots (one shared cached scan); an override re-routes the roots only."""
+    calls: list[tuple] = []
+
+    class _Store:
+        def chains_at(self, ticker, expiries, instants, option_roots=None,
+                      cache_roots=None, exercise_style="american"):
+            calls.append((ticker, option_roots, cache_roots, exercise_style))
+            return {ts: None for ts in instants}
+
+    times = (time(10, 0),)
+    assert capture_day(_Store(), "SPY", DAY, times=times) is None
+    assert capture_day(_Store(), "SPX", DAY, times=times) is None
+    assert capture_day(_Store(), "SPY", DAY, times=times,
+                       roots_override={"SPY": ("SPY", "SPYW")}) is None
+    assert calls == [
+        ("SPY", ["SPY"], None, "american"),
+        ("SPX", ["SPX"], ["SPX", "SPXW"], "european"),
+        ("SPX", ["SPXW"], ["SPX", "SPXW"], "european"),
+        ("SPY", ["SPY"], ["SPY", "SPYW"], "american"),
+        ("SPY", ["SPYW"], ["SPY", "SPYW"], "american"),
+    ]
+
+
+def test_capture_day_multi_root_merge_tags_settlement_per_root(tmp_path):
+    """A two-root SPX day from ONE quotes file: SPX lists the AM third-Friday
+    monthlies (DAY itself is one), SPXW the PM Monday plus a same-date
+    third-Friday weekly. The merge keeps SPX's contracts on the collision
+    date, records the drop, and _persist_db stamps settlement per root."""
+    csv = tmp_path / "quotes.csv"
+    monday = date(2024, 8, 19)
+    _write_fixture(csv, {"SPX": (DAY, MONTHLY), "SPXW": (DAY, monday)})
+    store = QuotesFlatFileStore(source_uri=lambda _day: str(csv))
+    doc = capture_day(store, "SPX", DAY, times=(time(10, 0), time(15, 45)))
+    assert doc is not None and doc["exercise_style"] == "european"
+    assert doc["expiries"] == [DAY.isoformat(), monday.isoformat(), MONTHLY.isoformat()]
+    assert doc["meta"] == {
+        "roots": ["SPX", "SPXW"],
+        "expiryRoots": {DAY.isoformat(): "SPX", monday.isoformat(): "SPXW",
+                        MONTHLY.isoformat(): "SPX"},
+        "rootCollisions": [{"expiry": DAY.isoformat(), "kept": "SPX", "dropped": ["SPXW"]}],
+    }
+    for snap in doc["snapshots"]:
+        assert snap["spot"] == pytest.approx(545.0, abs=1.0)
+        assert len(snap["quotes"]) == 18  # 3 expiries x 3 strikes x {C, P}, no doubling
+    from backtest.capture_intraday import _persist_db
+    from volfit.data.store import VolStore
+
+    db = tmp_path / "intraday.sqlite"
+    assert _persist_db(str(db), "SPX", doc) == 2
+    with VolStore(db) as vs:
+        stored = vs.snapshot_at("SPX", T2)
+    assert stored.exercise_style == "european"
+    assert stored.settlement[DAY].style == "am"  # SPX monthly kept on the collision date
+    assert stored.settlement[monday].style == "pm"  # SPXW Monday: the known mis-tag, fixed
+    assert stored.settlement[MONTHLY].style == "am"

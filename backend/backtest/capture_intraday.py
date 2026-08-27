@@ -15,12 +15,26 @@ however many instants — and writes:
     settlement map, so the app replays them via the As-of selector
     ("captured") and the intraday variance clock prices real 0DTE chains.
 
+Multi-root indices (V3.8 rider): ``backtest.roots`` resolves each ticker's
+OCC roots (``--roots`` override, else the universe registry: SPX = SPX + SPXW,
+else the ticker itself — the SPY/QQQ/IWM path is byte-identical). A
+multi-root day is reconstructed ONCE PER ROOT (``chains_at`` with
+``option_roots=[root]``; all calls share one cached scan through
+``cache_roots``) and merged per instant, because the store's OptionQuote
+keeps only the display ticker — the per-root split is what lets the
+settlement stamp follow the CONTRACT root (SPXW Monday = "pm", SPX monthly =
+"am"). Same-date collisions use the first-listed-root policy; multi-root
+fixtures carry a ``meta`` block (``roots``, ``expiryRoots``, and
+``rootCollisions`` only when some were dropped). Cross-ticker co-caching is
+deliberately NOT enabled (it would change the pilot path's cache keys).
+
 Run (flat-file creds in env — dot-source restart.local.ps1 first; the scan is
 quota-bound and takes minutes per day, so full campaigns belong in the USER'S
 window):
 
     python -m backtest.capture_intraday --start 2026-07-06 --end 2026-07-10
     python -m backtest.capture_intraday --start ... --db backtest/results/intraday.sqlite
+    python -m backtest.capture_intraday --start ... --tickers SPX --roots 'SPX=SPX,SPXW'
 """
 
 from __future__ import annotations
@@ -32,9 +46,38 @@ import time as _time
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from volfit.data.expiry_time import is_trading_day, session_close, settlement_map
+from volfit.data.expiry_time import (
+    default_settlement,
+    is_trading_day,
+    session_close,
+    settlement_map,
+)
+from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
-from backtest.quotes_store import QuotesFlatFileStore
+from backtest.intraday_cli import (  # noqa: F401 — re-exported (both twins + tests)
+    DEFAULT_TIMES,
+    GRID_FROM,
+    GRID_TO,
+    add_grid_args,
+    add_roots_arg,
+    grid_times,
+    resolve_times,
+    roots_override_from_args,
+)
+from backtest.intraday_ladder import (  # noqa: F401 — re-exported (both twins + tests)
+    LADDERS,
+    MAX_DAILY_DTE,
+    TERM_ANCHOR_MAX_DTE,
+    TERM_ANCHORS,
+    TERM_FRONT_WEEKLIES,
+    TERM_MAX_DTE,
+    TERM_MAX_EXPIRIES,
+    _is_monthly,
+    select_expiries,
+    select_expiries_term,
+)
+from backtest.quotes_store import QuotesFlatFileStore, _parity_spot
+from backtest.roots import exercise_style_for, resolve_expiry_roots, root_meta, roots_for
 
 ET = ZoneInfo("America/New_York")
 UTC = ZoneInfo("UTC")
@@ -44,72 +87,10 @@ FIXTURE_DIR = os.path.join(ROOT, "fixtures", "intraday")
 CACHE_DIR = os.path.join(ROOT, "_cache")
 
 #: The 0DTE pilot universe (roadmap: research grade, no index-feed spend).
-#: ETF options: root == ticker, American exercise.
+#: ETF options: root == ticker, American exercise. Indices (SPX/NDX/RUT) are
+#: capturable too — ``--tickers SPX`` resolves its roots from the registry —
+#: but stay out of the default basket (a user-window run).
 UNIVERSE_0DTE = ("SPY", "QQQ", "IWM")
-
-#: Expiry ladder kept per day: every expiry within MAX_DAILY_DTE calendar days
-#: (the 0DTE/daily structure under study) plus up to TERM_ANCHORS third-Friday
-#: monthlies within TERM_ANCHOR_MAX_DTE (the term/calendar anchor the fits and
-#: the graph need). Everything else on the OPRA board is dropped.
-MAX_DAILY_DTE = 7
-TERM_ANCHORS = 2
-TERM_ANCHOR_MAX_DTE = 90
-
-#: Default intraday sampling: every 30 minutes from 10:00 ET (past the opening
-#: auction noise) to 15:30, plus the 15:45 before-close instant the daily
-#: capture uses (so the two campaigns share a comparable end-of-day point).
-DEFAULT_TIMES = tuple(
-    time(h, m) for h in range(10, 16) for m in (0, 30) if not (h == 15 and m == 30)
-) + (time(15, 30), time(15, 45))
-
-#: ``--step`` grid defaults (V3.8 replay campaign): 09:45 ET (past the opening
-#: auction) to 15:45 ET (the daily capture's before-close instant).
-GRID_FROM = time(9, 45)
-GRID_TO = time(15, 45)
-
-#: ``--ladder term`` shape: the DAILY capture's term-structure ladder
-#: (capture.py: MIN/MAX_DTE 7/400, 10 expiries, 3 front weeklies) adapted to
-#: the intraday horizon — front weeklies + third-Friday monthlies out to
-#: TERM_MAX_DTE, capped at the TERM_MAX_EXPIRIES nearest. Same-day expiries
-#: are excluded (the intraday replay drops 0DTE rungs anyway: calendar t = 0
-#: in the graph clock — see graph_intraday.instant_state).
-TERM_MAX_DTE = 120
-TERM_MAX_EXPIRIES = 6
-TERM_FRONT_WEEKLIES = 3
-
-
-def _is_monthly(e: date) -> bool:
-    return e.weekday() == 4 and 15 <= e.day <= 21
-
-
-def select_expiries(available: set[date], day: date) -> list[date]:
-    """The kept ladder: dailies (DTE <= MAX_DAILY_DTE) + nearby monthlies."""
-    dailies = [e for e in available if 0 <= (e - day).days <= MAX_DAILY_DTE]
-    monthlies = sorted(
-        e for e in available
-        if _is_monthly(e) and MAX_DAILY_DTE < (e - day).days <= TERM_ANCHOR_MAX_DTE
-    )[:TERM_ANCHORS]
-    return sorted(set(dailies) | set(monthlies))
-
-
-def select_expiries_term(available: set[date], day: date) -> list[date]:
-    """``--ladder term``: all in-range monthlies (1 <= DTE <= TERM_MAX_DTE)
-    plus the nearest TERM_FRONT_WEEKLIES non-monthly expiries, capped at the
-    TERM_MAX_EXPIRIES nearest overall — capture.py's daily selection shape on
-    the intraday ``select_expiries`` signature. 0DTE is deliberately excluded
-    (see the TERM_* constants note)."""
-    cand = sorted(e for e in available if 1 <= (e - day).days <= TERM_MAX_DTE)
-    monthlies = [e for e in cand if _is_monthly(e)]
-    chosen = set(monthlies)
-    for e in (e for e in cand if not _is_monthly(e)):
-        if len(chosen) >= len(monthlies) + TERM_FRONT_WEEKLIES:
-            break
-        chosen.add(e)
-    return sorted(chosen)[:TERM_MAX_EXPIRIES]
-
-
-#: --ladder name -> selector. "0dte" IS select_expiries (default, byte-identical).
-LADDERS = {"0dte": select_expiries, "term": select_expiries_term}
 
 
 def session_instants(day: date, times: tuple[time, ...] = DEFAULT_TIMES) -> list[datetime]:
@@ -136,27 +117,71 @@ def _quote_dict(q) -> dict:
     }
 
 
+def _merge_root_chains(
+    store: QuotesFlatFileStore, ticker: str, roots: tuple[str, ...],
+    instants: list[datetime], style: str,
+) -> tuple[dict[datetime, ChainSnapshot], dict[date, str], list[dict]]:
+    """Multi-root reconstruction: ``chains_at`` once PER ROOT (one shared cached
+    scan via ``cache_roots``), merged per instant under the same-date collision
+    policy so every quote's root is known. Returns the usable snapshots, the
+    expiry -> root map and the collisions."""
+    per_root = {
+        r: store.chains_at(ticker, None, instants, option_roots=[r],
+                           cache_roots=list(roots), exercise_style=style)
+        for r in roots
+    }
+    boards = {
+        r: {q.expiry for ch in chains.values() if ch is not None for q in ch.quotes}
+        for r, chains in per_root.items()
+    }
+    expiry_root, collisions = resolve_expiry_roots(boards, roots)
+    usable: dict[datetime, ChainSnapshot] = {}
+    for ts in instants:
+        quotes: list[OptionQuote] = []
+        for r in roots:
+            ch = per_root[r].get(ts)
+            if ch is not None:
+                quotes += [q for q in ch.quotes if expiry_root[q.expiry] == r]
+        spot = _parity_spot(quotes) if quotes else None
+        if spot is not None:
+            usable[ts] = ChainSnapshot(
+                ticker=ticker.upper(), spot=spot, timestamp=ts, quotes=quotes,
+                exercise_style=style, tick_size=US_OPTION_TICK,
+            )
+    return usable, expiry_root, collisions
+
+
 def capture_day(
     store: QuotesFlatFileStore,
     ticker: str,
     day: date,
     times: tuple[time, ...] = DEFAULT_TIMES,
     ladder: str = "0dte",
+    roots_override: dict[str, tuple[str, ...]] | None = None,
 ) -> dict | None:
     """All of one (asset, day)'s intraday snapshots as a fixture document.
 
     One flat-file scan (``chains_at``); the expiry ladder (``LADDERS[ladder]``)
     is selected from the board actually present in the file. None when the day
-    yields no usable snapshot (e.g. a file gap)."""
+    yields no usable snapshot (e.g. a file gap). ``roots_override`` is the
+    parsed ``--roots`` map (see backtest.roots)."""
     instants = session_instants(day, times)
     if not instants:
         return None
-    chains = store.chains_at(ticker, None, instants)
-    usable = {ts: ch for ts, ch in chains.items() if ch is not None}
+    roots = roots_for(ticker, roots_override)
+    style = exercise_style_for(ticker, roots_override)
+    if len(roots) == 1:  # the pilot path: one call, byte-identical
+        chains = store.chains_at(ticker, None, instants, option_roots=list(roots),
+                                 exercise_style=style)
+        usable = {ts: ch for ts, ch in chains.items() if ch is not None}
+        board = {q.expiry for ch in usable.values() for q in ch.quotes}
+        expiry_root, collisions = {e: roots[0] for e in board}, []
+    else:
+        usable, expiry_root, collisions = _merge_root_chains(
+            store, ticker, roots, instants, style)
     if not usable:
         return None
-    board = {q.expiry for ch in usable.values() for q in ch.quotes}
-    keep = set(LADDERS[ladder](board, day))
+    keep = set(LADDERS[ladder](set(expiry_root), day))
     snapshots = []
     for ts in sorted(usable):
         ch = usable[ts]
@@ -170,13 +195,31 @@ def capture_day(
         })
     if not snapshots:
         return None
-    return {
+    doc = {
         "asset": ticker,
         "day": day.isoformat(),
-        "exercise_style": "american",
+        "exercise_style": style,
         "expiries": sorted(e.isoformat() for e in keep),
         "snapshots": snapshots,
     }
+    meta = root_meta(
+        ticker, roots, {e: r for e, r in expiry_root.items() if e in keep},
+        [c for c in collisions if date.fromisoformat(c["expiry"]) in keep],
+    )
+    if meta:  # multi-root captures only: single-root fixtures keep their key set
+        doc["meta"] = meta
+    return doc
+
+
+def _doc_settlement(doc: dict, ticker: str, expiries: set[date]) -> dict:
+    """The snapshot's settlement map: per CONTRACT root when the fixture's
+    ``meta.expiryRoots`` says which root listed each expiry (an SPXW Monday is
+    "pm", the SPX monthly "am"), else the legacy per-ticker rule."""
+    expiry_roots = (doc.get("meta") or {}).get("expiryRoots") or {}
+    if not expiry_roots:
+        return settlement_map(expiries, root=ticker)
+    return {e: default_settlement(e, expiry_roots.get(e.isoformat(), ticker))
+            for e in sorted(expiries)}
 
 
 def _persist_db(db_path: str, ticker: str, doc: dict) -> int:
@@ -185,8 +228,8 @@ def _persist_db(db_path: str, ticker: str, doc: dict) -> int:
     Each snapshot carries the per-expiry settlement map, so the intraday
     variance clock prices these chains exactly on replay."""
     from volfit.data.store import VolStore
-    from volfit.data.types import US_OPTION_TICK, ChainSnapshot, OptionQuote
 
+    style = doc.get("exercise_style", "american")
     n = 0
     with VolStore(db_path) as vs:
         for snap in doc["snapshots"]:
@@ -203,14 +246,14 @@ def _persist_db(db_path: str, ticker: str, doc: dict) -> int:
             expiries = {q.expiry for q in quotes}
             vs.save_snapshot(ChainSnapshot(
                 ticker=ticker, spot=snap["spot"], timestamp=ts, quotes=quotes,
-                exercise_style="american",
+                exercise_style=style,
                 # Captured chains are REAL NBBO (flat files or REST), so stamp
                 # the tick like every live provider does — without it the
                 # 3-tick OTM band floor is disabled and cent-level lottery
                 # quotes masquerade as tight IV bands (seen on QQQ 9-DTE
                 # +16% calls quoted 0.01/0.03 in the 2026-07 campaign).
                 tick_size=US_OPTION_TICK,
-                settlement=settlement_map(expiries, root=ticker),
+                settlement=_doc_settlement(doc, ticker, expiries),
             ))
             n += 1
     return n
@@ -222,8 +265,10 @@ def run(
     db_path: str | None = None, force: bool = False,
     store: QuotesFlatFileStore | None = None,
     ladder: str = "0dte",
+    roots_override: dict[str, tuple[str, ...]] | None = None,
 ) -> list[str]:
-    """Capture the window; returns the fixture paths written (resumable)."""
+    """Capture the window; returns the fixture paths written (resumable).
+    ``roots_override`` (ticker -> OCC roots) bypasses the universe registry."""
     if store is None:
         store = QuotesFlatFileStore(
             access_key=os.environ.get("VOLFIT_FLATFILES_KEY", ""),
@@ -249,7 +294,8 @@ def run(
             doc = None
             for attempt in (1, 2):
                 try:
-                    doc = capture_day(store, ticker, day, times, ladder)
+                    doc = capture_day(store, ticker, day, times, ladder,
+                                      roots_override=roots_override)
                     break
                 except Exception as exc:  # noqa: BLE001 — network stalls happen
                     print(f"{ticker} {day}: attempt {attempt} failed: {exc}")
@@ -271,65 +317,13 @@ def run(
     return written
 
 
-def _parse_times(raw: str | None) -> tuple[time, ...]:
-    if not raw:
-        return DEFAULT_TIMES
-    return tuple(time.fromisoformat(part.strip()) for part in raw.split(","))
-
-
-def grid_times(step_min: int, t_from: time = GRID_FROM, t_to: time = GRID_TO) -> tuple[time, ...]:
-    """Regular ET wall-time grid ``t_from..t_to`` INCLUSIVE every ``step_min``
-    minutes (the V3.8 15-minute campaign grid). ``session_instants`` still
-    clips at the session close, so half-days keep only surviving instants."""
-    if step_min <= 0:
-        raise ValueError("--step must be a positive number of minutes")
-    anchor = date(2000, 1, 3)  # any fixed day: only the wall times survive
-    cur, end = datetime.combine(anchor, t_from), datetime.combine(anchor, t_to)
-    out: list[time] = []
-    while cur <= end:
-        out.append(cur.time())
-        cur += timedelta(minutes=step_min)
-    return tuple(out)
-
-
-def resolve_times(times: str | None, step: int | None,
-                  t_from: str | None, t_to: str | None) -> tuple[time, ...]:
-    """Shared CLI grid resolution for BOTH capture twins: ``--times`` XOR
-    ``--step [--from --to]``; neither given = DEFAULT_TIMES (the legacy grid,
-    byte-identical)."""
-    if step is not None and times:
-        raise SystemExit("--times and --step are mutually exclusive")
-    if step is None:
-        if t_from or t_to:
-            raise SystemExit("--from/--to require --step")
-        return _parse_times(times)
-    return grid_times(step,
-                      time.fromisoformat(t_from) if t_from else GRID_FROM,
-                      time.fromisoformat(t_to) if t_to else GRID_TO)
-
-
-def add_grid_args(ap: argparse.ArgumentParser) -> None:
-    """The shared --times/--step/--from/--to/--ladder CLI block (both twins)."""
-    ap.add_argument("--times", default=None,
-                    help="comma-separated ET wall times (default 10:00..15:45)")
-    ap.add_argument("--step", type=int, default=None,
-                    help="regular grid in minutes (e.g. 15); excludes --times")
-    ap.add_argument("--from", dest="grid_from", default=None, metavar="HH:MM",
-                    help="grid start, ET wall time (default 09:45; needs --step)")
-    ap.add_argument("--to", dest="grid_to", default=None, metavar="HH:MM",
-                    help="grid end, ET wall time (default 15:45; needs --step)")
-    ap.add_argument("--ladder", choices=tuple(LADDERS), default="0dte",
-                    help="expiry ladder: 0dte (dailies + 2 monthly anchors, the"
-                         " default) or term (front weeklies + monthlies to"
-                         f" {TERM_MAX_DTE} DTE, capped at {TERM_MAX_EXPIRIES})")
-
-
 def main() -> int:
     ap = argparse.ArgumentParser(description="Intraday 0DTE flat-file capture.")
     ap.add_argument("--start", required=True, type=date.fromisoformat)
     ap.add_argument("--end", required=True, type=date.fromisoformat)
     ap.add_argument("--tickers", default=",".join(UNIVERSE_0DTE))
     add_grid_args(ap)
+    add_roots_arg(ap)
     ap.add_argument("--db", default=None,
                     help="also write snapshots into this VolStore (app replay)")
     ap.add_argument("--force", action="store_true")
@@ -339,6 +333,7 @@ def main() -> int:
         tickers=tuple(t.strip().upper() for t in args.tickers.split(",")),
         times=resolve_times(args.times, args.step, args.grid_from, args.grid_to),
         db_path=args.db, force=args.force, ladder=args.ladder,
+        roots_override=roots_override_from_args(args),
     )
     print(f"wrote {len(written)} fixture file(s) under {FIXTURE_DIR}")
     return 0

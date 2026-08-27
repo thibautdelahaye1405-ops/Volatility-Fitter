@@ -37,7 +37,11 @@ engine but changes none of it.
 | `analyze.py` | model Pareto vs SVI-JW, time attribution, break inventory → markdown. |
 | `ablation_arb.py` | R3 (convex de-Am) × R6 (put-wing penalty) ablation on SIV wing arb. |
 | `capture_intraday.py` | R2-item-10 0DTE capture, flat-file source: N instants/day from ONE `quotes_v1` scan (`chains_at`) — but one day file is ~111 GB, hours of fragile streaming. |
-| `capture_intraday_rest.py` | R2-item-10 0DTE capture, REST source (the light default): same fixture schema/ladder/instants, NBBO per (contract, instant) via `/v3/quotes` with a day-bounded `gte`; ~30 s/instant, per-instant checkpoint. |
+| `capture_intraday_rest.py` | R2-item-10 0DTE capture, REST source (the light default): same fixture schema/ladder/instants, NBBO per (contract, instant) via `/v3/quotes` with a day-bounded `gte`; ~30 s/instant, per-instant checkpoint. Multi-root indices (SPX = SPX + SPXW) discovered per root, settlement stamped per CONTRACT root (V3.8 rider). |
+| `roots.py` | OCC roots per ticker for both intraday twins: `--roots` override → universe registry → the ticker itself (SPY/QQQ/IWM byte-identical); the same-date collision policy (first-listed root wins) and the fixture `meta` block. |
+| `intraday_ladder.py` | the intraday expiry ladders (`0dte` / `term` selectors + DTE constants), shared by both twins. |
+| `intraday_cli.py` | the twins' shared CLI: `--times`/`--step` grid, `--ladder`, `--roots`. |
+| `intraday_rest_http.py` | the REST twin's HTTP primitives: backoff GET, cursor paging, day close (`I:` index aggregates), per-contract NBBO. |
 | `run_capture_intraday.ps1` | stall supervisor for the flat-file intraday scan (kills+relaunches a frozen stream). |
 | `validate_intraday_clock.py` | acceptance CLI: replay a captured VolStore snapshot, calibrate every expiry with `intradayClock` ON, require sub-day t + sane fits. |
 | `observation_filter_intraday.py` | filter-clock tuning on the 0DTE campaign: `--build` a per-instant measurement table (~940 data-only LQD fits, resumable), `--sweep` the pure Kalman core over (clock, process-bp) configs — zeta per step type is the verdict (found: session share 0.60, non-trading 0.0). |
