@@ -8,8 +8,8 @@ Covers the three opt-in objective fixes — every default byte-identical:
 2. ``robustLoss`` / ``robustFScale`` — IRLS robust reweighting of the QUOTE
    rows only (calib.band.robust_multipliers): scipy's global ``loss=`` would
    also soften the no-arb / calendar / prior rows, which must stay quadratic.
-   NOTE: the LV affine analogue (the original fix-order #3) is an open RIDER —
-   the Local-Vol grid is deliberately out of scope in this wave;
+   The LV affine analogue (the original fix-order #3) shipped 2026-08-27 as
+   models/localvol/affine_robust.py (locked in test_lv_affine_robust);
 3. ``overlayPriceResiduals`` — SVI / MCS data rows in vega-normalized price
    space (the LQD convention, calib.band.price_targets), with the SVI
    analytic Jacobian extended by the row-wise dC/dw chain factor (FD-locked

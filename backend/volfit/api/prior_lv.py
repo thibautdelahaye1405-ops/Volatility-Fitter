@@ -18,7 +18,10 @@ so a signed basket O = Σ_a c_a sigma(x_a) becomes a linear functional of the le
 call prices with weights ``w_a = c_a / vega_a`` (vega frozen at the prior) and
 target ``Σ_a w_a P_prior(x_a)``. The residual ``(Σ_a w_a P_model − target)/tol``
 with ``tol = 1/√λ`` equals ``√λ (O_model − O_prior)`` to first order. The var-swap
-operator is already a coupled basket (replication), so it stays a ``VarSwapQuote``.
+operator is already a coupled basket (replication), so it stays a ``VarSwapQuote``
+— under either carrier: the absolute level, or since 2026-08-27 the prior's
+(σ_vs − σ_atm) SPREAD when ``priorVarSwapMode="atm_spread"`` (the row form lives
+in volfit.models.localvol.varswap_rows; the weights in volfit.api.affine_varswap).
 
 Both builders share the conversion (``lv_targets_from_operator_prior``) since the
 operator and factor builders return the same ``OperatorPriorTarget``.
@@ -30,6 +33,7 @@ from typing import Callable
 
 import numpy as np
 
+from volfit.api.affine_varswap import prior_varswap_quote
 from volfit.api.schemas import OptionsSettings
 from volfit.calib.factors import build_factor_prior
 from volfit.calib.operators import (
@@ -40,8 +44,6 @@ from volfit.calib.operators import (
 from volfit.core.black import black_call, black_vega_sigma
 from volfit.models.localvol import BasketQuote, VarSwapQuote
 
-#: Vol tolerance unit (1 vol point), matching affine_fit._VOL_TOL.
-_VOL_TOL = 0.01
 _VEGA_FLOOR = 1e-4
 _W_FLOOR = 1e-12
 
@@ -52,12 +54,16 @@ def lv_targets_from_operator_prior(
     prior_w: Callable[[np.ndarray], np.ndarray],
     prior_tau: float,
     tau: float,
+    varswap_mode: str = "absolute",
 ) -> tuple[list[BasketQuote], list[VarSwapQuote]]:
     """Convert a resolved operator/factor prior into LV baskets + a var-swap quote.
 
     Each active basket's legs become a signed price-functional ``BasketQuote`` with
     frozen-vega weights ``c_a / vega_a`` and ``tol = 1/√λ``; the var-swap rec becomes
-    one ``VarSwapQuote`` (tol mirrors ``affine_fit._varswap_quotes``)."""
+    one ``VarSwapQuote`` (``affine_varswap.prior_varswap_quote``: the absolute
+    carrier, byte-identical, or under ``varswap_mode == "atm_spread"`` the
+    (σ_vs − σ_atm) spread carrier with the prior's ATM total variance re-expressed
+    at ``tau`` exactly like the var-swap level — service._prior_varswap's rescale)."""
     baskets: list[BasketQuote] = []
     if target is not None:
         legs_k = target.legs_k
@@ -81,16 +87,16 @@ def lv_targets_from_operator_prior(
 
     vs_quotes: list[VarSwapQuote] = []
     if vs.active and vs.weight > 0.0:
-        # LV prior var-swap rows are ALWAYS the absolute carrier: the affine
-        # objective is a linear/vega-linearized functional of the nodal call
-        # prices (the nodal-variance linear solve), and a (sigma_vs - sigma_atm)
-        # SPREAD row couples two nonlinear vol transforms of the surface that
-        # the linearization has no row form for. priorVarSwapMode="atm_spread"
-        # therefore silently falls back to absolute here — a spread-carrier LV
-        # row is a recorded rider of the tail-persistence arc.
-        sigma_vs = float(np.sqrt(max(vs.prior_total_var, _W_FLOOR) / tau))
-        zeta = 2.0 * sigma_vs * tau * _VOL_TOL / np.sqrt(vs.weight)
-        vs_quotes.append(VarSwapQuote(t=tau, total_var=float(vs.prior_total_var), tol=float(zeta)))
+        # The spread carrier needs the prior's ATM total variance at the node
+        # tau (w(0) · tau/prior_tau — the same rescale as the var-swap level, it
+        # cancels in vol space); the LV row then compares (σ_vs − σ_atm) model vs
+        # prior through the closed-form ATM inversion (varswap_rows).
+        w_atm = None
+        if varswap_mode == "atm_spread":
+            w_atm = float(
+                np.maximum(np.asarray(prior_w(np.array([0.0])), dtype=float), _W_FLOOR)[0]
+            ) * (tau / prior_tau)
+        vs_quotes.append(prior_varswap_quote(vs.prior_total_var, tau, vs.weight, w_atm))
     return baskets, vs_quotes
 
 
@@ -124,7 +130,9 @@ def build_operator_lv_targets(
         anchor_deltas=tuple(options.priorAnchorDeltas),
         wing_scale=options.priorWingSlopeScale,
     )
-    return lv_targets_from_operator_prior(target, vs, prior_w, prior_tau, tau)
+    return lv_targets_from_operator_prior(
+        target, vs, prior_w, prior_tau, tau, varswap_mode=options.priorVarSwapMode
+    )
 
 
 def build_factor_lv_targets(
@@ -148,4 +156,6 @@ def build_factor_lv_targets(
         gap_exponent=options.priorOperatorGapExponent,
         bandwidth=options.priorOperatorBandwidth,
     )
-    return lv_targets_from_operator_prior(target, vs, prior_w, prior_tau, tau)
+    return lv_targets_from_operator_prior(
+        target, vs, prior_w, prior_tau, tau, varswap_mode=options.priorVarSwapMode
+    )

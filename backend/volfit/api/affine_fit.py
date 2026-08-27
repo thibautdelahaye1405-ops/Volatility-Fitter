@@ -33,6 +33,7 @@ import numpy as np
 from scipy.special import ndtri  # inverse standard-normal CDF (delta -> quantile)
 
 from volfit.api import affine_views_ext, fit_pool
+from volfit.api.affine_varswap import market_varswap_quotes, prior_varswap_quote_from_smile
 from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.schemas import DistributionArrays, QuoteBand, SmilePoint, VarSwapInfo
 from volfit.api.schemas_affine import (
@@ -883,47 +884,6 @@ def _virtual_front_rows(rows) -> list:
     )]
 
 
-def _varswap_quotes(state: AppState, ticker: str, rows, weight_scheme: str) -> list[VarSwapQuote]:
-    """Active var-swap quotes per expiry as affine VarSwapQuote targets.
-
-    Mirrors the parametric weighting (volfit.api.service.varswap_target): the
-    var-swap competes with the expiry's option quotes at ``varSwapWeightPct`` of
-    their summed weight. The affine objective measures the var-swap residual in
-    TOTAL variance ((z - z_mkt)/zeta), while the option residuals are in
-    vega-scaled price ((P - y)/tol) ~ vol error in units of VOL_TOL; equating the
-    two squared weightings gives zeta = 2 sigma_vs t VOL_TOL / sqrt(u_vs), with
-    u_vs = pct% * sum_i w_i (the same w_i that scale the option tolerances).
-
-    ``varSwapHardPin`` escalates u_vs to VARSWAP_PIN_MULT * sum_w — the same
-    stiff-row weight the parametric ``service.varswap_target`` applies — so the
-    tol shrinks by the equivalent sqrt factor and the LV surface matches the
-    quote to solver tolerance. Market rows only; the PRIOR var-swap rows
-    (_prior_anchor_quotes / prior_lv) stay soft.
-    """
-    from volfit.calib.varswap import VARSWAP_PIN_MULT
-
-    options = state.options()
-    hard_pin = options.varSwapHardPin
-    if not options.varSwapEnabled or (options.varSwapWeightPct <= 0.0 and not hard_pin):
-        return []
-    quotes: list[VarSwapQuote] = []
-    for iso, t, k, w, _, _ in rows:
-        session = state.varswap_session_if_exists((ticker, iso))
-        if session is None or not session.state.is_active:
-            continue
-        qw = resolve_weights(weight_scheme, k, w)
-        sum_w = float(np.sum(qw)) if qw is not None else float(k.size)
-        u_vs = (options.varSwapWeightPct / 100.0) * sum_w
-        if hard_pin:
-            u_vs = VARSWAP_PIN_MULT * sum_w  # equality-to-solver-tolerance idiom
-        if u_vs <= 0.0:
-            continue
-        sigma_vs = float(session.state.level)
-        zeta = 2.0 * sigma_vs * t * _VOL_TOL / np.sqrt(u_vs)
-        quotes.append(VarSwapQuote(t=t, total_var=sigma_vs * sigma_vs * t, tol=float(zeta)))
-    return quotes
-
-
 def _affine_varswap_info(
     state: AppState, ticker: str, iso: str, model_vol: float,
     k: np.ndarray | None = None, w: np.ndarray | None = None,
@@ -1157,7 +1117,6 @@ def _prior_anchor_quotes(
         return [], []
     from volfit.api import prior_transport
     from volfit.calib.prior import build_prior_anchor
-    from volfit.calib.varswap import varswap_total_variance
 
     regime = state.dynamics_regime()
     scheme = state.fit_settings().weightScheme
@@ -1181,14 +1140,13 @@ def _prior_anchor_quotes(
                     OptionQuote(t=tau, x=float(np.exp(kj)), price=float(pj), tol=float(tj))
                 )
         if budget > 0.0 and unmet > 0.0:
-            # PRIOR var-swap: absolute carrier only, never pinned (see
-            # prior_lv.lv_targets_from_operator_prior for the atm_spread
-            # fallback rationale — the LV linear solve has no spread row form).
-            w_vs = varswap_total_variance(moved.implied_w) * (tau / node.tau)
-            u = budget * unmet
-            sigma_vs = float(np.sqrt(max(w_vs, 1e-12) / tau))
-            zeta = 2.0 * sigma_vs * tau * _VOL_TOL / np.sqrt(u)
-            extra_vs.append(VarSwapQuote(t=tau, total_var=float(w_vs), tol=float(zeta)))
+            # PRIOR var-swap companion row, never pinned: the absolute carrier, or
+            # under priorVarSwapMode="atm_spread" the (σ_vs − σ_atm) SPREAD row
+            # (models.localvol.varswap_rows, since 2026-08-27) — same as the
+            # parametric service._prior_varswap. Absolute is byte-identical.
+            extra_vs.append(prior_varswap_quote_from_smile(
+                moved.implied_w, node.tau, tau, budget * unmet, opts.priorVarSwapMode,
+            ))
     return extra_opts, extra_vs
 
 
@@ -1277,7 +1235,7 @@ def _fit(
     # Adaptive local-vol box bounds: the cap scales with the name's observed IV
     # (the fixed 60% cap starved high-vol put wings); floor stays at the request.
     var_lo, var_hi = _lv_bounds(rows, opts, request.varLo, request.varHi)
-    varswaps = _varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme) + prior_vs
+    varswaps = market_varswap_quotes(state, ticker, rows, state.fit_settings().weightScheme) + prior_vs
     # Left-wing (x < x_min) linear extrapolation slope multiple ``a``:
     #  - var-swap present  -> ``a`` is a FREE calibration variable (the deep-put
     #    tail steepness is set to hit the var-swap), init = leftWingSlopeMult;
@@ -1315,11 +1273,18 @@ def _fit(
     # win depends on the cheap eval). The bid-ask / haircut band objective is
     # non-smooth (zero gradient inside the band) — fragile for GN's smooth LM — so those
     # keep trf's robust trust region, as do var-swap fits and the banded-march fallback.
+    # The robust IRLS re-solves (FitSettings.robustLoss, affine_robust) keep trf too.
+    robust_loss = state.fit_settings().robustLoss
     gn = (
         opts.lvSolver == "gn"
         and not fit_left_a
         and engine == "numba"
         and request.fitMode == "mid"
+        and robust_loss == "off"
+    )
+    robust = (
+        dict(robust_loss=robust_loss, robust_f_scale=state.fit_settings().robustFScale)
+        if robust_loss != "off" else None
     )
     if gn:
         stall_window = _GN_STALL_WINDOW if opts.lvEarlyStop else 0
@@ -1382,7 +1347,7 @@ def _fit(
         # perf rails call calibrate_affine directly with defaults = trace OFF).
         trace_every=_trace_every(),
         trace_cap=_TRACE_CAP,
-    )))
+    ), robust=robust))  # robust: the IRLS driver's kwargs (None = plain solve)
     _record_diagnostics(state, ticker, cal.diagnostics)
     if cal.trace is not None:  # replay side channel (never on the wire response)
         _record_trace(state, ticker, _trace_payload(ticker, t_nodes, x_nodes, rows, cal.trace))

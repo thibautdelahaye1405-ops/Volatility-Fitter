@@ -102,9 +102,16 @@ class AffineFitTask:
     numpy grids/arrays and the frozen quote dataclasses (OptionQuote /
     VarSwapQuote / BasketQuote / AffineVarianceSurface). Everything before the
     call (gather, grid resolution, warm-start seed) and after it (smile
-    reconstruction, diagnostics, response assembly) stays main-side."""
+    reconstruction, diagnostics, response assembly) stays main-side.
+
+    ``robust`` (FitSettings.robustLoss != "off") carries the IRLS driver's
+    kwargs (``robust_loss`` / ``robust_f_scale``); the task then runs
+    models.localvol.affine_robust.calibrate_affine_robust — the base solve plus
+    the warm-started re-solves, all inside the worker. None ⇒ the plain
+    ``calibrate_affine`` call, byte-identical."""
 
     calibrate: dict
+    robust: dict | None = None
 
 
 def run_affine_fit(task: AffineFitTask):
@@ -113,6 +120,10 @@ def run_affine_fit(task: AffineFitTask):
     The Numba march kernel is disk-cached JIT, so a worker pays one cache load
     on its first LV fit; the returned solution/sensitivity arrays are plain
     numpy (a few MB) and pickle back cleanly."""
+    if task.robust:
+        from volfit.models.localvol.affine_robust import calibrate_affine_robust
+
+        return calibrate_affine_robust(**task.calibrate, **task.robust)
     from volfit.models.localvol import calibrate_affine
 
     return calibrate_affine(**task.calibrate)

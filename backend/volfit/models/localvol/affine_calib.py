@@ -19,6 +19,10 @@ evaluated by trapezoid on the PDE strike grid restricted to [k_lo, x_max]
 Sensitivities reuse dC/dtheta from the forward-sensitivity PDE sweep
 (eq. (discrete_sensitivity)), so the optimizer gets an analytic Jacobian:
 one sensitivity-carrying PDE solve per trial theta serves every residual.
+The replication weights and the two var-swap row carriers (absolute total
+variance, or the prior's ATM-SPREAD (sigma_vs - sigma_atm) since 2026-08-27)
+live in volfit.models.localvol.varswap_rows; the Stage-8 stall block in
+affine_stall.
 """
 
 from __future__ import annotations
@@ -33,6 +37,7 @@ from scipy.optimize import least_squares
 
 from volfit.calib.band import MID_ANCHOR_WEIGHT, band_violation, band_violation_sign
 from volfit.models.localvol.affine_gn import LinearizedJacobian, gauss_newton
+from volfit.models.localvol.affine_stall import stall_block_size, stall_metric
 from volfit.models.localvol.affine_trace import AffineTrace, TraceRecorder
 from volfit.models.localvol.affine import (
     AffinePDESolution,
@@ -44,6 +49,12 @@ from volfit.models.localvol.varswap_pde import (
     VarSwapSteps,
     precompute_varswap_steps,
     solve_varswap_source,
+)
+from volfit.models.localvol.varswap_rows import (  # noqa: F401 (re-exported names)
+    atm_index,
+    varswap_const,
+    varswap_residual_rows,
+    varswap_weights,
 )
 
 
@@ -84,11 +95,21 @@ class OptionQuote:
 
 @dataclass(frozen=True)
 class VarSwapQuote:
-    """One variance-swap quote: TOTAL variance z = T * fair rate, tolerance zeta."""
+    """One variance-swap quote: TOTAL variance z = T * fair rate, tolerance zeta.
+
+    ``atm_spread`` None (market quotes, the historical row): the residual is the
+    ABSOLUTE ``(z − total_var) / tol`` with ``tol`` in total-variance units. Set
+    (PRIOR companion rows under ``priorVarSwapMode="atm_spread"``): the residual
+    is the SPREAD carrier ``((σ_vs(θ) − σ_atm(θ)) − atm_spread) / tol`` with
+    ``atm_spread`` the prior's σ_vs − σ_atm and ``tol`` both in VOL units
+    (volfit.models.localvol.varswap_rows); ``total_var`` is then informational
+    (it still feeds the reported ``varswap_errors``).
+    """
 
     t: float
     total_var: float
     tol: float = 2e-4
+    atm_spread: float | None = None
 
 
 @dataclass(frozen=True)
@@ -116,45 +137,6 @@ class BasketQuote:
     weights: np.ndarray
     target: float
     tol: float = 1.0
-
-
-def varswap_weights(x_grid: np.ndarray, k_lo: float = 0.0) -> np.ndarray:
-    """Trapezoid weights q with I(T) = q @ C(T, .) + const(parity).
-
-    Splits eq. (variance_swap_static_replication) at the anchor k = 1 (which
-    must be a grid point): below it the integrand is P/k^2 = (C + k - 1)/k^2,
-    above it C/k^2 -- the affine parity part contributes a theta-independent
-    constant, returned separately by ``varswap_const``.  Grid points with
-    x <= k_lo (and x = 0, where 1/k^2 blows up) get zero weight.
-    """
-    x = np.asarray(x_grid, dtype=float)
-    i1 = int(np.searchsorted(x, 1.0))
-    if x[i1] != 1.0:
-        raise ValueError("the var-swap anchor x = 1 must be a grid point")
-    mask = x >= max(k_lo, 1e-12)
-    q = np.zeros_like(x)
-    # trapezoid over the put leg [k_lo, 1] and the call leg [1, x_max]
-    put_idx = np.nonzero(mask & (x <= 1.0))[0]
-    call_idx = np.nonzero(x >= 1.0)[0]
-    for idx in (put_idx, call_idx):
-        xs = x[idx]
-        w = np.zeros(xs.size)
-        dx = np.diff(xs)
-        w[:-1] += 0.5 * dx
-        w[1:] += 0.5 * dx
-        q[idx] += 2.0 * w / (xs * xs)
-    return q
-
-
-def varswap_const(x_grid: np.ndarray, k_lo: float = 0.0) -> float:
-    """Theta-independent parity part of the replication: 2 int (k-1)/k^2 over the put leg."""
-    x = np.asarray(x_grid, dtype=float)
-    idx = np.nonzero((x >= max(k_lo, 1e-12)) & (x <= 1.0))[0]
-    xs = x[idx]
-    f = (xs - 1.0) / (xs * xs)
-    return float(2.0 * np.trapezoid(f, xs))
-
-
 
 
 def second_difference_rows(n_t: int, n_x: int, rho: float = 1.0) -> np.ndarray:
@@ -528,15 +510,21 @@ def calibrate_affine(
     (test_affine_gn); the win is purely the per-iteration linear algebra.
 
     ``stall_window`` (Stage 8 — the one lever that scales the WHOLE fit): early-stop
-    the cold trf solve when the best (minimum) cost seen has not improved by a
-    relative ``stall_rtol`` over the last ``stall_window`` objective evaluations. The
-    cold fit otherwise runs to ``max_nfev`` (200) even though its last ~80-120 evals
-    move the surface < 0.1 vol-bp; stopping at the stall point cuts march + assembly +
-    optimizer together (a ~1.5-2x cold-fit win). ``stall_window = 0`` (default)
-    disables it ⇒ byte-identical. The best-cost iterate is returned (not the last
-    trial), so the result is never worse than the stall point. Warm-started
-    recalibrations converge in ~1 eval and never reach the window, so they are
-    unaffected.
+    the cold trf solve when the best (minimum) DATA-block misfit seen — the RMS of
+    the option + var-swap + basket rows (affine_stall.stall_block_size; the
+    penalty rows are excluded) — has not improved by a relative ``stall_rtol``
+    over the last ``stall_window`` objective evaluations. The cold fit otherwise
+    runs to ``max_nfev`` (200) even though its last ~80-120 evals move the surface
+    < 0.1 vol-bp; stopping at the stall point cuts march + assembly + optimizer
+    together (a ~1.5-2x cold-fit win). ``stall_window = 0`` (default) disables it
+    ⇒ byte-identical. The best-misfit iterate is returned (not the last trial), so
+    the result is never worse than the stall point. Warm-started recalibrations
+    whose data rows already fit converge in ~1 eval and never reach the window.
+    2026-08-27 fix: the block used to be the OPTION rows only, so a warm start
+    whose options already fit stalled without ever moving toward a var-swap /
+    basket target and returned its START point (the LV var-swap row was inert
+    under early stop). Fits with no var-swap / basket rows keep the same block ⇒
+    byte-identical; early-stopped fits that carry such rows now honour them.
 
     ``time_scheme`` (Stage 7): "implicit" (default, byte-identical golden) or
     "rannacher" (Crank-Nicolson after ``rannacher_steps`` implicit start-up steps),
@@ -568,6 +556,7 @@ def calibrate_affine(
     expiries = sorted({o.t for o in options} | {v.t for v in varswaps} | {b.t for b in baskets})
     q_w = varswap_weights(x_grid, varswap_k_lo) if varswaps else np.zeros_like(x_grid)
     q_c = varswap_const(x_grid, varswap_k_lo) if varswaps else 0.0
+    i_atm = atm_index(x_grid) if varswaps else 0  # x = 1 lattice row (spread rows)
     # Source-PDE var-swap (Stage 4'): per-expiry backward-march steps, precomputed
     # once (the basis is theta/a-independent) and sliced to each var-swap's t-prefix.
     vs_specs = None
@@ -737,12 +726,15 @@ def calibrate_affine(
                     left_a=a, fit_left_a=fit_left_a,
                 )
         res_opt, jac_opt = _option_block(p, jp)
+        # Var-swap block: absolute rows (z − z_mkt)/ζ (byte-identical) or, per quote
+        # carrying ``atm_spread``, the (σ_vs − σ_atm) spread row (varswap_rows).
+        res_vs, jac_vs = varswap_residual_rows(varswaps, z, jz, z_mkt, zeta, sol, i_atm)
         # Operator-prior basket block (dense linear functional of the leg prices,
         # like the var-swap row); empty arrays when no baskets ⇒ byte-identical.
         bvals, bjac = _basket_values(sol, baskets, True)
         res_bask = (bvals - b_target) / b_tol
         res = np.concatenate(
-            [res_opt, (z - z_mkt) / zeta, res_bask, sqrt_lam * (l_rows @ (theta - ref))]
+            [res_opt, res_vs, res_bask, sqrt_lam * (l_rows @ (theta - ref))]
         )
         # GN-eligible case keeps the reg rows SPARSE; everything else builds the dense
         # Jacobian exactly as before (byte-identical golden / TRF path). bjac carries
@@ -751,7 +743,7 @@ def calibrate_affine(
             reg_blocks: list = [l_csr]
         else:
             jac = np.vstack(
-                [jac_opt, jz / zeta[:, None], bjac / b_tol[:, None], _pad_a(sqrt_lam * l_rows)]
+                [jac_opt, jac_vs, bjac / b_tol[:, None], _pad_a(sqrt_lam * l_rows)]
             )
         if cvx_on:
             # Soft convexity of the VOL row sigma = sqrt(theta) in x at the wing
@@ -805,17 +797,20 @@ def calibrate_affine(
         ub = np.full(p0.size, bounds[1])
         opt_bounds = bounds
 
-    # Stage 8 early-stop: track the best OPTION-BLOCK misfit (the actual quote-fit
-    # quality, excluding the always-changing roughness penalty) and raise once it has
-    # not improved by ``stall_rtol`` (relative) for ``stall_window`` evals. Using the
-    # option block, not the total cost, makes the criterion track vol-fit RMS directly.
+    # Stage 8 early-stop: track the best DATA-BLOCK misfit — options + var-swap +
+    # basket rows, i.e. the residual prefix before the always-changing roughness
+    # penalty (affine_stall) — and raise once it has not improved by ``stall_rtol``
+    # (relative) for ``stall_window`` evals. Tracking the data block, not the total
+    # cost, keeps the criterion on quote-fit quality; tracking ALL data rows (not
+    # the option block alone, the pre-2026-08-27 form) is what lets a warm start
+    # whose options already fit keep moving toward a var-swap / basket target.
     _n_opt_rows = (2 if band_mode else 1) * len(options)
+    _n_data_rows = stall_block_size(_n_opt_rows, len(varswaps), len(baskets))
     stall = {"best": np.inf, "since": 0, "x": p0.copy()}
 
     def _fun(p):
         r = evaluate(p)[0]
-        block = r[:_n_opt_rows] if _n_opt_rows else r
-        q = float(np.sqrt(np.mean(block * block)))  # option-block RMS (~ weighted vol error)
+        q = stall_metric(r, _n_data_rows)  # data-block RMS (~ weighted vol error)
         if q < stall["best"] * (1.0 - stall_rtol):
             stall["best"] = q
             stall["since"] = 0
@@ -873,7 +868,7 @@ def calibrate_affine(
             result = gauss_newton(
                 evaluate, p0, lb, ub,
                 max_nfev=max_nfev, gtol=gtol, xtol=xtol, ftol=ftol, lsmr_tol=gn_lsmr_tol,
-                stall_window=stall_window, stall_rtol=stall_rtol, n_opt_rows=_n_opt_rows,
+                stall_window=stall_window, stall_rtol=stall_rtol, n_opt_rows=_n_data_rows,
             )
             if not result.converged:
                 result = _run_trf()

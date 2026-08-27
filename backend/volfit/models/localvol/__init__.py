@@ -21,9 +21,8 @@ from volfit.models.localvol.affine_calib import (
     OptionQuote,
     VarSwapQuote,
     calibrate_affine,
-    varswap_const,
-    varswap_weights,
 )
+from volfit.models.localvol.varswap_rows import varswap_const, varswap_weights
 from volfit.models.localvol.affine_gn import (
     GNResult,
     LinearizedJacobian,

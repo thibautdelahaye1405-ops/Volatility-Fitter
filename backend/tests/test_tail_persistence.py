@@ -298,44 +298,65 @@ def test_hard_pin_api_flips_fit_and_echoes_pinned(client):
 
 
 def test_hard_pin_reaches_the_lv_surface():
-    """The LV (affine) path honours the pin at the row level: the resolved
-    market VarSwapQuote tol shrinks by exactly sqrt(PIN_MULT / (pct/100)) —
-    the same weight escalation as the parametric row — and the affine payload
-    echoes ``pinned``. (How far the LV SOLVER then closes the gap is the
-    solver's own convergence story, deliberately not locked here.)"""
+    """The LV (affine) path honours the pin at the row level AND in the solver.
+
+    Row level: the resolved market VarSwapQuote tol shrinks by exactly
+    sqrt(PIN_MULT / (pct/100)) — the same weight escalation as the parametric
+    row — and the affine payload echoes ``pinned``. Solver level, with the
+    DEFAULT options (``lvEarlyStop`` on, warm-started from the cached base
+    fit): the soft 10 % row pulls the LV basis (quote − LV model, vol bp) by
+    more than 50 bp off its 500 bp start, and the hard pin closes it below
+    2 bp. Before the 2026-08-27 affine_stall fix the early-stopped fit
+    returned the model UNCHANGED (500 bp) for soft and pinned alike — the
+    stall criterion watched the option rows only, so the var-swap row was
+    inert (lead's probe: 400.7 bp / 0.026 bp with early stop off)."""
     app = create_app(reference_date=REF_DATE)
     with TestClient(app) as client:
         ticker = client.get("/universe").json()["tickers"][0]
         base = client.post(f"/fit/affine/{ticker}", json={}).json()
         sm0 = base["smiles"][1]
         expiry = sm0["expiry"]
-        quote = sm0["varSwap"]["modelVol"] + 0.05
+        quote = sm0["varSwap"]["modelVol"] + 0.05  # a 500 bp basis at the base surface
         client.post(
             f"/smiles/{ticker}/{expiry}/varswap", json={"action": "set", "level": quote}
         )
 
         from volfit.api import affine_fit
+        from volfit.api.affine_varswap import market_varswap_quotes
 
         state = app.state.volfit
         rows = affine_fit._gather(state, ticker, "mid")
         scheme = state.fit_settings().weightScheme
-        soft_q = affine_fit._varswap_quotes(state, ticker, rows, scheme)
+        soft_q = market_varswap_quotes(state, ticker, rows, scheme)
         assert len(soft_q) == 1
+        assert soft_q[0].atm_spread is None  # market rows: always the absolute carrier
+
+        def lv_varswap():
+            # The affine read serves the frozen fit — calibrate first so the
+            # surface sees the (new / re-weighted) var-swap row.
+            assert client.post(f"/calibrate/{ticker}").status_code == 200
+            return next(
+                s for s in client.post(f"/fit/affine/{ticker}", json={}).json()["smiles"]
+                if s["expiry"] == expiry
+            )["varSwap"]
+
+        soft = lv_varswap()
+        assert soft["pinned"] is False
+        soft_basis = abs(soft["basisBp"])
+        assert soft_basis < 500.0 - 50.0  # the soft row moved the LV surface by > 50 bp
 
         _put_options(client, varSwapHardPin=True)
-        hard_q = affine_fit._varswap_quotes(state, ticker, rows, scheme)
+        hard_q = market_varswap_quotes(state, ticker, rows, scheme)
         assert len(hard_q) == 1
         assert hard_q[0].total_var == soft_q[0].total_var  # same quote, same carrier
         # tol ~ 1/sqrt(u): u goes pct/100 -> PIN_MULT, so the shrink is exact.
         expected = math.sqrt(VARSWAP_PIN_MULT / 0.10)  # varSwapWeightPct default 10%
         assert soft_q[0].tol / hard_q[0].tol == pytest.approx(expected, rel=1e-9)
 
-        client.post(f"/calibrate/{ticker}")
-        pinned = next(
-            s for s in client.post(f"/fit/affine/{ticker}", json={}).json()["smiles"]
-            if s["expiry"] == expiry
-        )["varSwap"]
+        pinned = lv_varswap()
         assert pinned["pinned"] is True
+        assert abs(pinned["basisBp"]) < 2.0  # the pin closes the LV basis to ~solver tol
+        assert abs(pinned["basisBp"]) < soft_basis / 25.0
 
 
 def test_wing_ops_and_spread_carrier_api(client):

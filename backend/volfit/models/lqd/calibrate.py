@@ -426,8 +426,8 @@ def calibrate_slice(
     WARM-STARTED — two IRLS passes. "off" (the default) is the historical
     single solve, byte-identical. The multipliers are SOLVER-INTERNAL: the
     user-facing weight inspection and reported weighted RMS keep the scheme
-    weights. (The LV affine analogue — the original fix-order #3 — is an
-    open rider, not implemented here.)
+    weights. (The LV affine analogue — the original fix-order #3 — is
+    models/localvol/affine_robust.calibrate_affine_robust, same helpers.)
 
     ``var_swap`` (volfit.calib.varswap) adds a single soft penalty pulling the
     slice's fair var-swap toward a quoted level; None (the default) leaves the
