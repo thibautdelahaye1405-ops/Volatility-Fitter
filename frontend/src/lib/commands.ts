@@ -50,8 +50,10 @@ export const COMMANDS = [
   { id: "universe.saveAs", label: "Save universe as…", category: "Universe", arg: { placeholder: "universe name" } },
   // Fetch
   { id: "fetch.snapshot", label: "Fetch snapshot (quotes + spot)", category: "Fetch" },
-  { id: "fetch.spots", label: "Fetch spots", category: "Fetch" },
-  { id: "fetch.options", label: "Fetch option quotes", category: "Fetch" },
+  // The split verbs are retired from the Fetch ▾ menu (V3.7 rider); the
+  // endpoints stay reachable here for power users.
+  { id: "fetch.spots", label: "Fetch spots only (legacy)", category: "Fetch", detail: "POST /fetch/spots — transport, no refit" },
+  { id: "fetch.options", label: "Fetch option quotes only (legacy)", category: "Fetch", detail: "POST /fetch/options — chains only" },
   // Calibrate
   { id: "calibrate.both", label: "Calibrate — Parametric + LV", category: "Calibrate" },
   { id: "calibrate.parametric", label: "Calibrate — Parametric only", category: "Calibrate" },

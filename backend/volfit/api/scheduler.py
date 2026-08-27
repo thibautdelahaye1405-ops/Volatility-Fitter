@@ -7,7 +7,13 @@ config each time:
     provider spot and transport the surface (``workflow.fetch_spots``, no refit);
   * when ``optionsFetchMode == "auto"`` — every ``optionsFetchMinutes``, refetch
     the option chains (``workflow.fetch_options``), which auto-calibrates the lit
-    nodes in the background when ``autoCalibrate`` is on.
+    nodes in the background when ``autoCalibrate`` is on;
+  * V3.7 rider — when ``schedulerUnifiedFetch`` is ALSO on, that options timer
+    runs the unified snapshot verb (``workflow_fetch.fetch_snapshot``: chains →
+    spot transport → optional prior roll → optional auto-calibrate, exactly
+    ``POST /fetch/snapshot``) instead of the bare chain refetch, and re-arms the
+    spot timer (the double-fire guard, see ``Scheduler``). Off (default) = the
+    legacy split timers, byte-identical.
 
 Every tick is wrapped in try/except so a transient provider error never kills the
 loop. The thread is opt-in (``create_app(enable_scheduler=True)``; serve.py turns
@@ -25,7 +31,15 @@ TICK_SECONDS = 1.0
 
 
 class Scheduler:
-    """One daemon thread driving the timed spot / options fetches."""
+    """One daemon thread driving the timed spot / options fetches.
+
+    Double-fire guard (``schedulerUnifiedFetch`` on): a unified snapshot tick
+    already transports the live spot, so it stamps ``_last_spot`` as well as
+    ``_last_options`` and is evaluated BEFORE the realtime spot branch — a spot
+    poll due on the same tick is absorbed (never fired twice) and the spot
+    countdown restarts from the full ``spotPollSeconds``. Between snapshot
+    ticks the spot poll keeps its own cadence untouched.
+    """
 
     def __init__(self, state) -> None:
         self._state = state
@@ -69,6 +83,22 @@ class Scheduler:
         self._state.sync_streaming()
 
         opts = self._state.options()
+        # The options timer is read once up front: the branches below never
+        # touch ``_last_options``, so this equals the legacy tail-position test.
+        options_due = (
+            opts.optionsFetchMode == "auto"
+            and now - self._last_options >= opts.optionsFetchMinutes * 60.0
+        )
+        # V3.7 rider — the unified branch goes FIRST so a realtime spot poll due
+        # on this same tick is absorbed (the snapshot transports the spot itself;
+        # ``_last_spot = now`` is the double-fire guard of the class docstring).
+        if options_due and opts.schedulerUnifiedFetch:
+            from volfit.api import workflow_fetch  # lazy: workflow_fetch -> workflow
+
+            self._last_options = now
+            self._last_spot = now
+            workflow_fetch.fetch_snapshot(self._state, fit_mode=self._state.last_fit_mode)
+            options_due = False
         if opts.spotMode == "realtime" and now - self._last_spot >= opts.spotPollSeconds:
             self._last_spot = now
             workflow.fetch_spots(self._state)
@@ -85,10 +115,7 @@ class Scheduler:
         ):
             self._last_refit = now
             workflow.stream_refit(self._state, self._state.last_fit_mode)
-        if (
-            opts.optionsFetchMode == "auto"
-            and now - self._last_options >= opts.optionsFetchMinutes * 60.0
-        ):
+        if options_due:  # legacy split path (gate off): the bare chain refetch
             self._last_options = now
             workflow.fetch_options(self._state, fit_mode=self._state.last_fit_mode)
 

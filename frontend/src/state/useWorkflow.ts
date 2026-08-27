@@ -2,7 +2,8 @@
 //
 // Polls the backend trigger model (GET /calibration/status + /scheduler) for the
 // background-calibration progress, the lit/stale node counts and the auto-fetch
-// countdowns, and exposes the manual actions (Fetch spots / Fetch Options /
+// countdowns, and exposes the manual actions (Fetch snapshot — the menu verb —
+// plus the legacy split fetch spots / fetch options kept for the palette — and
 // Calibrate). When a background calibration finishes, or the backend scheduler
 // transports the surface (real-time spot), it bumps the session's view version
 // so every workspace re-pulls the refreshed views. Live backend only.

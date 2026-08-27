@@ -1,12 +1,16 @@
-// TopBar workflow controls, consolidated: Fetch ▾ (snapshot / spots / options
-// quotes + the As-of picker) · Calibrate·scope ▾ · Priors ▾ (PriorsMenu).
+// TopBar workflow controls, consolidated: Fetch ▾ (the unified Snapshot verb +
+// the As-of picker) · Calibrate·scope ▾ · Priors ▾ (PriorsMenu).
 //
 // These are action triggers. The detailed progress narration (what the engine
 // is fetching / calibrating, with gauges and node counts) lives in the bottom
 // StatusBar; the buttons keep only a MINIMAL CUE — a subtle indeterminate bar
 // + disabled state on the action that is currently in flight — so the click
-// target still shows it is working. Mode-dependent disabled states (Real-time
-// spots, auto options) are kept because they explain why an item is inert.
+// target still shows it is working.
+//
+// V3.7 rider: the split fetch verbs (Spots / Options quotes) are retired from
+// the menu — Snapshot (quotes + spot) is the only fetch verb here. The legacy
+// endpoints survive as palette commands (Ctrl+K: "Fetch spots only (legacy)" /
+// "Fetch option quotes only (legacy)", lib/commands.ts) for power users.
 //
 // Fetch ▾ also hosts the As-of rows (topbar/AsOfRows): Live / Previous Close /
 // historical day → moment — "what timestamp am I pulling" sits next to the
@@ -60,11 +64,9 @@ export default function WorkflowControls({
   /** Live backend (per-node prior saves need a fit session). */
   live?: boolean;
 }) {
-  const { calib, sched, pending, busy, fetchSpots, fetchOptions, fetchSnapshot,
+  const { calib, sched, pending, busy, fetchSnapshot,
     calibrate, calibrateParametric, calibrateLv } = workflow;
   const redStale = dataAge !== null && dataAge.level === "red";
-  const realtimeSpots = sched?.spotMode === "realtime";
-  const autoOptions = sched?.optionsFetchMode === "auto";
   const lvEnabled = sched?.localVolEnabled ?? true;
   const running = calib?.running ?? false;
   const stale = calib?.staleNodes ?? 0;
@@ -102,26 +104,16 @@ export default function WorkflowControls({
           {fetching && <WorkingBar />}
         </button>
         <MenuPanel open={fetchOpen} onClose={() => setFetchOpen(false)} width="w-72">
-          {/* The unified verb (V3.7 item 15): quotes + spot in one pull; rolls
-              the active priors to their latest saved snapshots when the Options
-              toggle (Auto-roll prior on fetch) is on, then auto-calibrates. */}
+          {/* The unified verb (V3.7 item 15) — the ONLY fetch verb here:
+              quotes + spot in one pull; rolls the active priors to their latest
+              saved snapshots when the Options toggle (Auto-roll prior on fetch)
+              is on, then auto-calibrates. The timed variants (real-time spots,
+              auto options) are set in Options and narrated by the status bar. */}
           <MenuItem
             label="Snapshot (quotes + spot)"
             detail="chains + live spots in one pull"
             disabled={busy}
             onClick={() => { setFetchOpen(false); void fetchSnapshot(); }}
-          />
-          <MenuItem
-            label={realtimeSpots ? "Spots · real-time" : "Spots"}
-            detail={realtimeSpots ? "streaming (set in Options)" : "refresh live spots now"}
-            disabled={realtimeSpots || busy}
-            onClick={() => { setFetchOpen(false); void fetchSpots(); }}
-          />
-          <MenuItem
-            label={autoOptions ? "Options quotes · auto" : "Options quotes"}
-            detail={autoOptions ? "on a timer (status bar)" : "fetch fresh quotes now"}
-            disabled={autoOptions || busy}
-            onClick={() => { setFetchOpen(false); void fetchOptions(); }}
           />
           {/* As-of: Live / Previous Close / historical day → moment. Rows
               render only once GET /asof has answered (AsOfRows guards). */}

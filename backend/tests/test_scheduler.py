@@ -92,6 +92,104 @@ def test_tick_does_nothing_on_demand():
     assert state.data_version(TICKER) == v0
 
 
+# ---------------------------------------------------------------------------
+# V3.7 rider: scheduler consolidation onto the unified snapshot verb. The gate
+# (OptionsSettings.schedulerUnifiedFetch) is OFF by default -> legacy path.
+# ---------------------------------------------------------------------------
+
+
+def _counting(calls: dict, key: str, seen: list | None = None):
+    """Monkeypatch stub: counts calls under ``key`` and records the kwargs."""
+
+    def _stub(state, *a, **k):
+        calls[key] = calls.get(key, 0) + 1
+        if seen is not None:
+            seen.append(k)
+
+    return _stub
+
+
+def test_tick_unified_fetch_runs_snapshot_instead_of_options(monkeypatch):
+    """Gate ON + auto mode: after the interval the options timer fires ONE
+    unified snapshot (with the session's fit mode); the bare chain refetch
+    never runs; the next tick inside the interval fires nothing."""
+    from volfit.api import workflow, workflow_fetch
+
+    state = _state(
+        optionsFetchMode="auto",
+        optionsFetchMinutes=1.0,
+        autoCalibrate=False,
+        schedulerUnifiedFetch=True,
+    )
+    calls: dict = {}
+    seen: list = []
+    monkeypatch.setattr(workflow_fetch, "fetch_snapshot", _counting(calls, "snapshot", seen))
+    monkeypatch.setattr(workflow, "fetch_options", _counting(calls, "options"))
+
+    sched = Scheduler(state)
+    sched.tick(now=0.0)  # first fetch waits one interval
+    assert calls == {}
+    sched.tick(now=120.0)  # > 60s elapsed -> the unified verb, not fetch_options
+    assert calls == {"snapshot": 1}
+    assert seen[0]["fit_mode"] == state.last_fit_mode
+    sched.tick(now=121.0)  # inside the interval -> nothing
+    assert calls == {"snapshot": 1}
+    assert sched.seconds_to_next_options(now=121.0) == 59.0
+
+
+def test_tick_unified_fetch_absorbs_spot_poll_due_on_same_tick(monkeypatch):
+    """Gate ON + realtime spots, both timers due on the same tick: the snapshot
+    already transported the spot, so fetch_spots is NOT fired separately and
+    the spot countdown re-arms to the full spotPollSeconds (the double-fire
+    guard). Between snapshot ticks the spot poll keeps its own cadence."""
+    from volfit.api import workflow, workflow_fetch
+
+    state = _state(
+        optionsFetchMode="auto",
+        optionsFetchMinutes=1.0,
+        spotMode="realtime",
+        spotPollSeconds=5.0,
+        autoCalibrate=False,
+        schedulerUnifiedFetch=True,
+    )
+    calls: dict = {}
+    monkeypatch.setattr(workflow_fetch, "fetch_snapshot", _counting(calls, "snapshot"))
+    monkeypatch.setattr(workflow, "fetch_spots", _counting(calls, "spots"))
+
+    sched = Scheduler(state)
+    sched.tick(now=120.0)  # both due: one snapshot, no separate spot poll
+    assert calls == {"snapshot": 1}
+    assert sched.seconds_to_next_spot(now=120.0) == 5.0  # re-armed in full
+    sched.tick(now=123.0)  # spot not yet due again (3s < 5s)
+    assert calls == {"snapshot": 1}
+    sched.tick(now=126.0)  # the spot poll resumes on its own cadence
+    assert calls == {"snapshot": 1, "spots": 1}
+
+
+def test_tick_legacy_path_never_calls_snapshot(monkeypatch):
+    """Gate OFF (the default): the split timers each fire on their own — the
+    unified verb is never reached, even with both timers due on one tick."""
+    from volfit.api import workflow, workflow_fetch
+
+    state = _state(
+        optionsFetchMode="auto",
+        optionsFetchMinutes=1.0,
+        spotMode="realtime",
+        spotPollSeconds=5.0,
+        autoCalibrate=False,
+    )
+    assert state.options().schedulerUnifiedFetch is False  # byte-identical default
+    calls: dict = {}
+    monkeypatch.setattr(workflow_fetch, "fetch_snapshot", _counting(calls, "snapshot"))
+    monkeypatch.setattr(workflow, "fetch_options", _counting(calls, "options"))
+    monkeypatch.setattr(workflow, "fetch_spots", _counting(calls, "spots"))
+
+    sched = Scheduler(state)
+    sched.tick(now=120.0)
+    assert calls == {"spots": 1, "options": 1}
+    assert "snapshot" not in calls
+
+
 def test_seconds_to_next_minus_one_when_off():
     state = _state(optionsFetchMode="on_demand", spotMode="static")
     sched = Scheduler(state)

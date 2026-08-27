@@ -101,6 +101,25 @@ export default function PenaltyCoefficients({ group, draft, onChange, disabled }
       Row("SVI Lee slope max", "Lee wing-slope cap b(1+|ρ|) ≤ this — buffered strictly under 2 (the boundary itself admits negative tail density)", "leeSlopeMax", 0.1),
     ],
     sigmoid: [
+      (
+        <div className="mb-1.5 flex items-center justify-between" key="mcsChart">
+          <span
+            className={rowLabel}
+            title="MCS optimization chart (V3.1 rider): Raw is the historical base + kernels vector with soft feasibility penalties; Structural solves in the wing-admissible chart (the base's Lee wing slopes lifted against the slope cap — Lee-clean wings by construction, the SVI committee-arc precedent) but is ~20× slower at R=2. Default Raw until the benchmark adjudication flips it."
+          >
+            MCS solve chart
+          </span>
+          <select
+            value={draft.mcsChart}
+            disabled={disabled}
+            onChange={(e) => onChange({ mcsChart: e.target.value as "raw" | "structural" })}
+            className={numInput + " w-28"}
+          >
+            <option value="raw">Raw (base + kernels)</option>
+            <option value="structural">Structural</option>
+          </select>
+        </div>
+      ),
       Row("MCS hat ridge", "Multi-Core Sigmoid hat-amplitude ridge penalty", "sigmoidRidge", 0.01),
     ],
   };

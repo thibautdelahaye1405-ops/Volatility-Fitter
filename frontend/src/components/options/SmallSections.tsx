@@ -137,7 +137,7 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           <span className={`${rowLabel} mb-1 block`}>Spot prices</span>
           <Segmented
             options={[
-              { id: "static", label: "On-demand", title: "Fetch spots only via the 'Fetch spots' button" },
+              { id: "static", label: "On-demand", title: "Spots refresh only with Fetch ▸ Snapshot (or the legacy palette command)" },
               { id: "realtime", label: "Real-time", title: "The scheduler polls live spots and transports the surface" },
             ]}
             value={draft.spotMode} disabled={!live}
@@ -156,17 +156,25 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           <span className={`${rowLabel} mb-1 block`}>Options quotes</span>
           <Segmented
             options={[
-              { id: "on_demand", label: "On-demand", title: "Fetch chains only via the 'Fetch Options Quotes' button" },
+              { id: "on_demand", label: "On-demand", title: "Chains refresh only with Fetch ▸ Snapshot (or the legacy palette command)" },
               { id: "auto", label: "Auto", title: "The scheduler refetches chains on a timer (then auto-calibrates if enabled)" },
             ]}
             value={draft.optionsFetchMode} disabled={!live}
             onChange={(v) => patch({ optionsFetchMode: v })}
           />
           {draft.optionsFetchMode === "auto" && (
-            <div className="mt-2">
+            <div className="mt-2 space-y-2">
               <NumberRow
                 label="Fetch every (min)" value={draft.optionsFetchMinutes} step={1}
                 disabled={!live} onChange={(v) => patch({ optionsFetchMinutes: v })}
+              />
+              {/* V3.7 rider: the timer runs the unified Snapshot sequence
+                  instead of the bare chain refetch. Off = legacy split timers. */}
+              <Toggle
+                label="Scheduler uses unified snapshot fetch"
+                hint="On: each auto tick runs the same sequence as Fetch ▸ Snapshot (chains → spot transport → optional prior roll → auto-calibrate) instead of the bare chain refetch. Double-fire guard: a snapshot tick re-arms the real-time spot timer, so a spot poll due on the same tick is absorbed, never fired twice. Off: the legacy split timers (byte-identical)."
+                checked={draft.schedulerUnifiedFetch} disabled={!live}
+                onChange={(v) => patch({ schedulerUnifiedFetch: v })}
               />
             </div>
           )}

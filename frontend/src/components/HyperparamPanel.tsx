@@ -53,6 +53,12 @@ export interface FitSettings {
    *  certificate fails (clean fits never see a second solve). */
   bellyRepair: boolean;
   sigmoidRidge: number;
+  /** V3.1 rider: Multi-Core Sigmoid optimization chart. "raw" = the historical
+   *  base + kernels vector (default, byte-identical); "structural" = the
+   *  wing-admissible chart (Lee-clean base wings by construction, the SVI
+   *  committee-arc precedent) but ~20× slower at R=2 — the flip waits on the
+   *  benchmark adjudication sweep. */
+  mcsChart: "raw" | "structural";
   midAnchorWeight: number;
   // Short-dated objective knobs (2026-08-26) — defaults byte-identical.
   /** τ-aware mid-anchor attenuation: anchor × min(1, √(τ/ref)); null = off. */
@@ -91,6 +97,8 @@ export const FIT_DEFAULTS: FitSettings = {
   sviChart: "structural",
   bellyRepair: true,
   sigmoidRidge: 1e-2,
+  // Raw until the MCS adjudication sweep ratifies a flip (backend default).
+  mcsChart: "raw",
   midAnchorWeight: 0.05,
   midAnchorTauRef: null,
   bandTickFloorTicks: 0,

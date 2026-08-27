@@ -25,7 +25,7 @@ spec, "State and invalidation").
 
 ---
 
-## 1. Fit settings (16 fields)
+## 1. Fit settings (17 fields)
 
 | Field | Type / range | Default | Role |
 |---|---|---|---|
@@ -44,6 +44,7 @@ spec, "State and invalidation").
 | `sviChart` | `raw` \| `structural` | `structural` | SVI optimization chart. `structural` = (β_L, β_R, k*, w*, κ*) with lifts: every finite iterate is strictly positive-floor and strictly Lee-clean, so the penalties are inert. Default since a two-round pre-registered benchmark: equal/better precision on all 12 regime medians, zero breaks, ~3× faster, and the raw chart's lower headline arb rate was proven a survivorship artifact of its non-converged third. `raw` = rollback. |
 | `bellyRepair` | bool | true | When a displayed fit fails the dense-grid belly butterfly certificate, refit ONCE with a belly hinge and keep the repair only if it certifies. Clean first fits never see a second solve. |
 | `sigmoidRidge` | float ≥0 | 1e-2 | Multi-Core SIV hat-amplitude ridge. |
+| `mcsChart` | `raw` \| `structural` | `raw` | Multi-Core SIV optimization chart (V3.1 rider). `raw` = the historical base + kernels vector with soft feasibility penalties (byte-identical default). `structural` = the wing-admissible chart (the base's Lee wing slopes lifted logistically against the buffered slope cap, so every iterate has Lee-clean base wings by construction — the `sviChart` committee-arc precedent) but ~20× slower at R=2. The flip waits on the MCS benchmark adjudication sweep. |
 | `midAnchorWeight` | float ≥0 | 0.05 | Band-mode mid anchor (all models). |
 
 ---
@@ -66,6 +67,8 @@ spec, "State and invalidation").
 | `surfaceSolver` | `symmetric` \| `sequential` | `symmetric` | `symmetric` (production): fit every expiry independently, screen each adjacent interface for an **identified** violation (normalized-call order on common quote support), then jointly Gauss–Newton-repair only the violation-connected components — no traversal-order bias; corrections allocated by data information. `sequential` = historical near-to-far pass threading the previous slice as a one-sided floor. Calibration-affecting. |
 | `calendarWeight` | float ≥0 | 1e6 | Quadratic calendar-slack penalty weight folded into surface slice fits. Calibration-affecting. |
 | `extrapEnforce` | bool | **false** | Tapered no-arb enforcement in the *extrapolated* strike region: SVI/MCS overlays gain a butterfly hinge on the time-value envelope, a tapered calendar hinge vs the previous displayed slice, and a wing-slope-order hinge; with the symmetric solver it also arms the LQD **tail contract** (per-interface seam price ordering + linear wing-slope ordering rows in the joint repair). Off = byte-identical. The advisory *measurement* of extrapolated-region arb is always on in Quality. |
+| `ledgerTailOrderGate` | bool | **false** | Promote the full-line calendar certificate's **tail-order clause** (`ledgerTailOrderOk`, the limiting tail order of adjacent slices) from advisory to a gate: the active-set exchange repairs tail-order failures (λ± seam rows at common α; unequal α is irreducible), Quality lists the issue, the publish export blocks on it. Off = the Phase-0 advisory policy, byte-identical. Bumps the options version. |
+| `bandRelaxationDiagnostic` | bool | **false** | After a surface pass, for each adjacent pair the exchange could NOT certify, bisect the smallest symmetric quote-band widening (vol) under which the pair certifies → `QualityNode.bandRelaxationVol` + export notes. Advisory (the accepted surface is untouched); band fit modes only. |
 
 ### 2.3 Carry / borrow
 
@@ -152,6 +155,7 @@ These fold into the LV *affine key* only — they never invalidate parametric fi
 | `lvEarlyStop` | bool | true | Early-stop the COLD fit when quote-fit improvement stalls (otherwise it runs to the 200-eval cap with tail evals barely moving the surface). Measured ~1.45× (slow-converging, +0.10 bp) to ~3.3× (fast-converging, +0.25 bp); warm restarts converge before the stall window. |
 | `lvFastKernel` | bool | true | Compiled vectorized-Thomas Dupire march for the hot path: ~6× the LAPACK banded march (no-pivot Thomas, SIMD across sensitivity columns, fused source), matching banded to ~1e-15; automatic fallback when the compiler is unavailable or for var-swap/Rannacher paths. |
 | `lvSolver` | `trf` \| `gn` | `gn` | Matrix-free Gauss–Newton avoids the trust-region solver's dense SVD (~52% of an eval): ~1.3–1.65× faster. Engages ONLY for the smooth MID target with the fast kernel active; falls back to trust-region for band objectives, var-swap fits, or the banded march. Accepted trade-off: GN can land a slightly different local optimum (≤~0.25 vol bp, often better). |
+| `lvXMaxMin` | float [2.5, 10] | 2.5 | FLOOR on the LV PDE lattice's right edge in x = K/F (x_max = max(1.4 × highest quoted x, floor)); every LV view's right wing is capped at k = ln(x_max). 2.5 (k ≈ +0.92) = the historical constant, byte-identical; 2.72 reaches k = +1.0. O(n_x) march cost. LV-only (affine key). |
 | `leftWingSlopeMult` | float 0–20 | 1.5 | Left-wing (x < x_min) LINEAR extrapolation slope as a multiple of the first cell's slope — deep-put local variance keeps rising instead of clamping flat. Fixed multiple when convex wing is on (else flat); becomes a FREE calibration variable when a var-swap quote is set (this is its init). |
 
 ### 2.9 Model penalties (cross-model)
@@ -183,10 +187,11 @@ These fold into the LV *affine key* only — they never invalidate parametric fi
 |---|---|---|---|
 | `autoCalibrate` | bool | true (code) / **false when the gated live server boots with no saved preference** | ON: calibrate all lit nodes in the background after an options fetch, and refit on quote edits/parameter changes. OFF: mark stale and wait for the explicit Calibrate trigger. The live server deliberately defaults OFF so expensive fitting happens only on the button; the code default stays ON for the ungated test/dev app. |
 | `localVolEnabled` | bool | true | LV master switch: OFF = background Calibrate skips every ticker's LV surface and the Local Vol workspace tab is disabled. Pure workflow/UI gate — never busts caches. |
-| `spotMode` | `realtime` \| `static` | `static` | Realtime = scheduler polls provider spot every `spotPollSeconds` and transports the surface; static = the "Fetch spots" button only. |
+| `spotMode` | `realtime` \| `static` | `static` | Realtime = scheduler polls provider spot every `spotPollSeconds` and transports the surface; static = on demand only — Fetch ▸ Snapshot (quotes + spot), or the legacy palette command "Fetch spots only (legacy)" (`POST /fetch/spots`). |
 | `spotPollSeconds` | float (0,3600] | 5.0 | Spot poll cadence. |
-| `optionsFetchMode` | `auto` \| `on_demand` | `on_demand` | Auto = scheduler refetches chains every `optionsFetchMinutes`. |
+| `optionsFetchMode` | `auto` \| `on_demand` | `on_demand` | Auto = scheduler refetches chains every `optionsFetchMinutes` (the bare chain refetch, or the unified snapshot when `schedulerUnifiedFetch` is on). On-demand = Fetch ▸ Snapshot, or the legacy palette command "Fetch option quotes only (legacy)" (`POST /fetch/options`). |
 | `optionsFetchMinutes` | float (0,1440] | 5.0 | Chain refetch cadence. |
+| `schedulerUnifiedFetch` | bool | **false** | Scheduler consolidation (V3.7 rider): the auto chain-refetch timer runs the unified snapshot sequence (chains → spot transport → optional prior roll → optional auto-calibrate, exactly `POST /fetch/snapshot`) and re-arms the spot timer on every snapshot tick (double-fire guard). Off = the legacy split timers. Pure workflow gate. |
 | `streamRefitSeconds` | float (0,600] | 5.0 | While a realtime WebSocket book is streaming, refetch the chain from the in-memory book and recalibrate lit nodes at this faster cadence (distinct from the minutes-cadence REST refetch). |
 | `autoStream` | bool | true | Auto-open the realtime WS book on a streaming-capable source so fetch/calibrate/spot serve from the fast in-memory book instead of the slow paginated REST snapshot. Independent of `spotMode` (the book feeds fetches; live re-pricing stays gated on realtime spot mode). No effect on non-streaming sources. |
 

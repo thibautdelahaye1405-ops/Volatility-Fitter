@@ -157,7 +157,9 @@ by tab) so a render crash in one view never takes down the shell. Workspace
 session state survives tab switches.
 
 **Top bar:** data source selector with health lights, as-of selector, data-age
-pill (green/amber/red), Fetch Spots, Fetch Options Quotes, Calibrate/Cancel
+pill (green/amber/red), Fetch ▾ (one verb: Snapshot — quotes + spot; the split
+Fetch Spots / Fetch Options Quotes survive only as "(legacy)" command-palette
+entries over `POST /fetch/spots` / `POST /fetch/options`), Calibrate/Cancel
 with SSE-driven progress, stale count, prior actions, tab navigation.
 
 | Workspace | Content |

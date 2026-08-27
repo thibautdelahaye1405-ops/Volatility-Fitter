@@ -263,10 +263,13 @@ class AppState(UniverseMixin):
         #: and transient as-of round-trips (_CHAIN_CACHE_ATTRS).
         self._filter_states: dict[tuple, object] = {}
         #: Per-node observation-filter HISTORY rings (V3.9 item 7), keyed like
-        #: ``_filter_states`` -> api.filter_history.FilterHistory. In-memory
-        #: only (NOT workspace-persisted — recorded rider); cleared / captured
-        #: / restored with the chain caches so it always travels with the
-        #: filter states themselves.
+        #: ``_filter_states`` -> api.filter_history.FilterHistory. Cleared /
+        #: captured / restored with the chain caches so it always travels with
+        #: the filter states themselves, and WORKSPACE-PERSISTED (V3.9 rider):
+        #: ``workspace.build_doc`` emits the non-empty rings under
+        #: ``filterHistory`` and ``restore_doc`` reinstalls them after its
+        #: chain-cache clear (it stays an AppState attribute, not a scoped
+        #: workspace field).
         self._filter_history: dict[tuple, object] = {}
         #: Restore the user's saved Fit/Options defaults (the Options "Save as
         #: default" button) when a store is configured; code defaults otherwise.
@@ -1005,6 +1008,9 @@ class AppState(UniverseMixin):
                     # Extrapolated-region tapered enforcement (Notes 09/10
                     # Phase 2) — changes the overlay calibration when on.
                     or options.extrapEnforce != self._options.extrapEnforce
+                    # Tail-order gate (V3.0 rider) — changes which adjacent
+                    # pairs the active-set exchange repairs.
+                    or options.ledgerTailOrderGate != self._options.ledgerTailOrderGate
                     # Joint borrow/de-Am carry (R2 item 11 increment 2) —
                     # changes the resolved forwards every fit consumes.
                     or options.jointCarry != self._options.jointCarry

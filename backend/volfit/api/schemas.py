@@ -265,6 +265,23 @@ class OptionsSettings(BaseModel):
     #: by default (byte-identical); affects calibration -> bumps the options
     #: version. Phase 1 (the Quality tab's advisory measurement) is always on.
     extrapEnforce: bool = False
+    #: Promote the full-line certificate's TAIL-ORDER clause (the limiting
+    #: tail order of adjacent slices, ``ledgerTailOrderOk``) from advisory to
+    #: a gate (V3.0 rider): the active-set exchange treats a tail-order
+    #: failure like a ledger-gap failure (the λ± seam rows at common α are its
+    #: repair path — unequal α is irreducible by construction), the Quality
+    #: readiness issue list names it and the publish export blocks on it.
+    #: OFF by default (byte-identical, Phase-0 advisory policy); affects the
+    #: surface repair -> bumps the options version.
+    ledgerTailOrderGate: bool = False
+    #: Quote-band relaxation infeasibility diagnostic (V3.0 rider, book ch. 2
+    #: §calendar): after the surface pass, for every adjacent pair the
+    #: exchange could NOT certify, bisect the smallest symmetric quote-band
+    #: widening (vol units) under which the pair certifies, and report it on
+    #: the Quality node (``bandRelaxationVol``) + export notes. Advisory —
+    #: the accepted surface is untouched (never bumps the options version);
+    #: only runs in band fit modes on uncertified pairs. OFF by default.
+    bandRelaxationDiagnostic: bool = False
     #: Overlay calendar-floor scope (the short-dated upside-crossing fix):
     #: None = the historical per-family grids (SVI floor/ceiling confined to
     #: the COMMON quote support; MCS winged at 2 sigma). A value = BOTH
@@ -610,6 +627,15 @@ class OptionsSettings(BaseModel):
     #: slope becomes a FREE calibration variable (this is its init). The cap does
     #: not apply in the extrapolation region. (volfit.models.localvol.affine)
     leftWingSlopeMult: float = Field(1.5, ge=0.0, le=20.0)
+    #: LV PDE lattice right edge FLOOR in moneyness x = K/F (V3.3 rider): the
+    #: lattice runs to x_max = max(1.4 × the highest quoted x, lvXMaxMin), and
+    #: the right wing of every LV view is capped at k = ln(x_max) because
+    #: prices beyond the lattice would be clamped garbage. 2.5 (the default,
+    #: k ≈ +0.92) is byte-identical to the historical constant; raising it
+    #: (e.g. 2.72 → k = +1.0, 4.0 → k ≈ +1.39) extends the untruncated right
+    #: wing of the stacked-variance / display grids at O(n_x) march cost.
+    #: LV-only: folded into affine_key, does not bump the options version.
+    lvXMaxMin: float = Field(2.5, ge=2.5, le=10.0)
     # editable penalty strength (changes calibration output)
     calendarWeight: float = Field(1e6, ge=0.0)
     #: Multi-Core SIV put-wing no-butterfly regularizer strength, as a percentage of
@@ -679,6 +705,15 @@ class OptionsSettings(BaseModel):
     #: ``optionsFetchMinutes``; "on_demand" = only the "Fetch Options Quotes" button.
     optionsFetchMode: Literal["auto", "on_demand"] = "on_demand"
     optionsFetchMinutes: float = Field(5.0, gt=0.0, le=1440.0)
+    #: Scheduler consolidation onto the unified snapshot verb (V3.7 rider):
+    #: ON = the ``optionsFetchMode == "auto"`` timer runs the SAME sequence as
+    #: POST /fetch/snapshot (chains → spot transport → optional prior roll →
+    #: optional autoCalibrate) instead of the bare chain refetch, and the
+    #: double-fire guard re-arms the spot timer on every snapshot tick (a
+    #: realtime spot poll due on the same tick is absorbed, never fired twice).
+    #: OFF (default) = the legacy split timers, byte-identical. Pure workflow
+    #: gate — never bumps the options version.
+    schedulerUnifiedFetch: bool = False
     #: While a real-time book is streaming (Massive WS / Bloomberg //blp/mktdata,
     #: realtime spot mode), the scheduler
     #: refetches the chain from the book and recalibrates all lit nodes every
@@ -826,7 +861,9 @@ class FilterHistoryResponse(BaseModel):
     """GET /smiles/{t}/{e}/filter/history: the node's last <= 64 committed
     filter steps, oldest first. Read-only and poll-safe — never fits;
     ``active=False`` (empty steps) when the filter is off or nothing has
-    committed yet. In-memory only (cleared with the filter states)."""
+    committed yet. The ring clears with the filter states (source/as-of
+    switch) and is workspace-persisted (the doc's ``filterHistory`` key
+    carries these same step dicts), so it survives a workspace round-trip."""
 
     active: bool
     steps: list[FilterStepOut] = []

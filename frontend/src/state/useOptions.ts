@@ -49,6 +49,12 @@ export interface OptionsSettings {
    *  Phase 2): SVI/MCS overlay fits lean on the time-value envelope. Off =
    *  byte-identical fits; the Quality tab's extrap measurement is always on. */
   extrapEnforce: boolean;
+  /** Promote the full-line certificate's tail-order clause from advisory to a
+   *  gate (exchange repairs it, Quality issue, publish blocker). Off = advisory. */
+  ledgerTailOrderGate: boolean;
+  /** After a surface pass, bisect the smallest symmetric quote-band widening
+   *  (vol) under which each UNCERTIFIED adjacent pair certifies — advisory only. */
+  bandRelaxationDiagnostic: boolean;
   /** Overlay calendar-floor scope: null = historical per-family grids (SVI
    *  common support, MCS winged 2σ); a value wings BOTH overlays' floor and
    *  ceiling grids this many σ√T beyond common support (short-dated upside
@@ -160,6 +166,10 @@ export interface OptionsSettings {
   lvSolver: 'trf' | 'gn';
   /** Left-wing (x<x_min) linear-extrap slope × first-cell slope (free if var-swap set). */
   leftWingSlopeMult: number;
+  /** LV PDE lattice right-edge FLOOR in x = K/F: the right wing of every LV view
+   *  is capped at k = ln(x_max). 2.5 (k ≈ +0.92) = the historical constant,
+   *  byte-identical; 2.72 reaches k = +1.0. LV-only (no parametric refit). */
+  lvXMaxMin: number;
   calendarWeight: number;
   /** Multi-Core SIV put-wing no-butterfly regularizer strength (% of base; 0 = off). */
   sivWingPenaltyPct: number;
@@ -183,6 +193,10 @@ export interface OptionsSettings {
   spotPollSeconds: number;
   optionsFetchMode: OptionsFetchMode;
   optionsFetchMinutes: number;
+  /** Scheduler consolidation: the auto chain-refetch timer runs the unified
+   *  snapshot sequence (chains → spot → optional prior roll → auto-calibrate)
+   *  and absorbs a spot poll due on the same tick. Off = legacy split timers. */
+  schedulerUnifiedFetch: boolean;
   /** Seconds between full refits while a live book streams (Massive WS / Bloomberg
    *  //blp/mktdata, realtime spot mode). */
   streamRefitSeconds: number;
@@ -202,6 +216,8 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   enforceCalendar: true,
   surfaceSolver: "symmetric",
   extrapEnforce: false,
+  ledgerTailOrderGate: false,
+  bandRelaxationDiagnostic: false,
   calendarFloorPadZ: null,
   calendarOnRefit: false,
   eventsEnabled: true,
@@ -256,6 +272,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   lvFastKernel: true,
   lvSolver: 'gn',
   leftWingSlopeMult: 1.5,
+  lvXMaxMin: 2.5,
   calendarWeight: 1e6,
   sivWingPenaltyPct: 100,
   graphKappaScale: 1.0,
@@ -274,6 +291,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   spotPollSeconds: 5.0,
   optionsFetchMode: "on_demand",
   optionsFetchMinutes: 5.0,
+  schedulerUnifiedFetch: false,
   streamRefitSeconds: 5.0,
   autoStream: true,
   dataAgeAmberMin: 20.0,
