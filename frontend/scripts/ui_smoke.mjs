@@ -177,7 +177,10 @@ try {
     HTMLAnchorElement.prototype.click = function () {
       if (!this.download) return click.call(this);
       const name = this.download;
-      fetch(this.href).then((r) => r.text()).then((text) => window.__smokeDownloads.push({ name, text }));
+      fetch(this.href).then((r) => r.blob()).then(async (b) => {
+        const head = Array.from(new Uint8Array(await b.slice(0, 8).arrayBuffer()));
+        window.__smokeDownloads.push({ name, text: await b.text(), head, size: b.size });
+      });
     };
   });
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "networkidle2", timeout: 30000 });
@@ -322,7 +325,7 @@ try {
     }
     // <ticker>_<expiry>_<view>.png — the view is whatever the tab remembers (C2).
     if (!/^[A-Z]+_\d{4}-\d{2}-\d{2}_[a-z-]+\.png$/.test(png.name)) throw new Error(`unexpected png name ${png.name}`);
-    if (!png.text.startsWith("\u0089PNG")) throw new Error("download is not a PNG");
+    if (png.head.slice(0, 4).join(",") !== "137,80,78,71") throw new Error(`download is not a PNG (head ${png.head.join(",")}, ${png.size} bytes)`);
     await check(page, pageErrors, "export-chart-png");
   } catch (err) {
     console.error(`FAIL export-chart-png: ${err.message}`);
