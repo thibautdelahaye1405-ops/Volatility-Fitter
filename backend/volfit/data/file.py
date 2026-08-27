@@ -8,13 +8,21 @@ then serves the embedded chains at the embedded as-of, no network. Several
 files can be loaded — their tickers UNION, and for a (ticker, expiry) both
 carry, the LAST loaded file wins. The provider is live-only (the embedded
 stamp is the only moment it can serve) and always reports green.
+
+Index-root discovery (volfit.data.roots): a bundle files an index under the
+root its exporting universe used (``SPXW``). ``resolve_alias`` / ``search_
+symbols`` map a typed parent or sibling root (``SPX``) onto that bundle
+ticker, and ``roots`` reports each bundle ticker's parent root (the file's
+optional per-ticker ``root``, else the registry) — so "SPX" finds the file's
+SPXW node instead of nothing.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime
 
-from volfit.data.provider import AsOf, OptionChainProvider
+from volfit.data.provider import AsOf, OptionChainProvider, SymbolMatch
+from volfit.data.roots import aliases, is_index_root, normalize_root, parent_root
 from volfit.data.types import ChainSnapshot, ExpirySettlement, OptionQuote
 
 SOURCE_ID = "file"
@@ -83,13 +91,22 @@ class FileProvider(OptionChainProvider):
         self._chains: dict[str, ChainSnapshot] = {}
         self._names: list[str] = []
         self._as_of: datetime | None = None
+        self._roots: dict[str, str] = {}  # bundle ticker -> parent index root
 
     # ----------------------------------------------------------- loading
-    def load(self, name: str, chains: dict[str, ChainSnapshot], as_of: datetime | None) -> None:
+    def load(
+        self,
+        name: str,
+        chains: dict[str, ChainSnapshot],
+        as_of: datetime | None,
+        roots: dict[str, str] | None = None,
+    ) -> None:
         """Merge a file's chains in: per ticker, quotes of expiries this file
         carries REPLACE the previously loaded ones (last-loaded wins per node);
-        expiries only the older file had are kept."""
+        expiries only the older file had are kept. ``roots`` = the bundle's
+        per-ticker parent root where it stamped one (else the registry's)."""
         for ticker, snap in chains.items():
+            self._roots[ticker] = normalize_root((roots or {}).get(ticker) or parent_root(ticker))
             prev = self._chains.get(ticker)
             if prev is None:
                 self._chains[ticker] = snap
@@ -120,6 +137,54 @@ class FileProvider(OptionChainProvider):
     def label(self) -> str:
         """Selector label: ``File · <name>`` (several: ``File · a + b``)."""
         return "File · " + (" + ".join(self._names) if self._names else "none")
+
+    # -------------------------------------------------------- index roots
+    def roots(self) -> dict[str, str]:
+        """Bundle ticker → parent index root (a non-index ticker maps to itself)."""
+        return dict(self._roots)
+
+    def _alias_set(self, ticker: str) -> set[str]:
+        """Every symbol that should find ``ticker``: itself, its index family
+        (volfit.data.roots) and the family of the root the file stamped."""
+        names = set(aliases(ticker))
+        root = self._roots.get(ticker)
+        if root:
+            names.update(aliases(root))
+        return names
+
+    def resolve_alias(self, symbol: str) -> str | None:
+        """The bundle ticker ``symbol`` names — directly, or through the index-
+        root registry (``"SPX"`` → a stored ``"SPXW"``). None when no bundle
+        ticker matches; an exact bundle ticker always wins over an alias."""
+        s = normalize_root(symbol)
+        if not s:
+            return None
+        if s in self._chains:
+            return s
+        for ticker in self._chains:
+            if s in self._alias_set(ticker):
+                return ticker
+        return None
+
+    def search_symbols(self, query: str, limit: int = 10) -> list[SymbolMatch]:
+        """Bundle tickers whose alias set matches the query prefix (or whose
+        own symbol contains it), labelled ``SPXW · file (SPX weeklies)``. No
+        free-text echo: the file cannot serve a symbol it does not carry."""
+        q = normalize_root(query)
+        if not q:
+            return []
+        out: list[SymbolMatch] = []
+        for ticker in self._chains:
+            hit = q in ticker or any(a.startswith(q) for a in self._alias_set(ticker))
+            if not hit:
+                continue
+            root = self._roots.get(ticker, ticker)
+            family = f" ({root} weeklies)" if root != ticker else ""
+            out.append(SymbolMatch(
+                symbol=ticker, name=f"{ticker} · file{family}",
+                type="INDEX" if is_index_root(ticker) else "", exchange=SOURCE_ID,
+            ))
+        return out[:limit]
 
     # ---------------------------------------------------------- provider
     def list_tickers(self) -> list[str]:

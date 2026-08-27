@@ -31,18 +31,17 @@ from typing import Callable, Sequence
 from volfit.data.exchange import RawChain, utc_naive
 from volfit.data.fieldmap import int_or_none, price_or_none
 from volfit.data.occ import parse_option_symbol
+from volfit.data.roots import INDEX_ROOTS, PARENT_OF
 from volfit.data.types import US_OPTION_TICK, OptionQuote
 
 OPTIONS_URL = "https://cdn.cboe.com/api/global/delayed_quotes/options/{sym}.json"
 QUOTE_URL = "https://cdn.cboe.com/api/global/delayed_quotes/quotes/{sym}.json"
 
-#: Cboe cash-index roots (addressed ``_ROOT`` on the CDN; European exercise).
-#: Weekly/flex roots map to their parent file (SPXW lives in ``_SPX``).
-INDEX_ROOTS = {
-    "SPX", "SPXW", "XSP", "XSPW", "VIX", "VIXW", "RUT", "RUTW", "MRUT", "NDX", "NDXP",
-    "DJX", "OEX", "XEO", "BXM", "BXD", "BXR", "PUT", "RXM", "VXX", "NANOS",
-}
-_PARENT_FILE = {"SPXW": "SPX", "XSPW": "XSP", "VIXW": "VIX", "RUTW": "RUT", "NDXP": "NDX"}
+#: Cboe cash-index roots (addressed ``_ROOT`` on the CDN; European exercise)
+#: and the weekly/flex root → parent-file map (SPXW lives in ``_SPX``) both
+#: come from the shared registry volfit.data.roots — ONE table for the CDN
+#: symbol, the snapshot-file alias search and the export's ``root`` stamp.
+_PARENT_FILE = PARENT_OF
 
 
 def cdn_symbol(ticker: str) -> str:

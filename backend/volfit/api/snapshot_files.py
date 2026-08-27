@@ -4,7 +4,7 @@ Bundle ``volfit-snapshot/1``::
 
     { "schema", "savedAt", "asOf", "source": {id, label}, "app": {version},
       "manifest": {referenceDate, fitMode, tickers},
-      "tickers": [ { "ticker", "spot", "timestamp", "exerciseStyle",
+      "tickers": [ { "ticker", "root"?, "spot", "timestamp", "exerciseStyle",
                      "chain": <export_inputs.ExportChain>,          # every fetched quote
                      "forwards": [{expiry, forward, discount, source}],
                      "calibrations": [ { "expiry", "fitMode", "model",
@@ -28,6 +28,10 @@ Bundle ``volfit-snapshot/1``::
   rebuilt from its params, all committed through ``service.commit_record``
   with provenance ``"loaded"`` (Quality's model column + the fit chip show
   it). Calibrate then refits from the embedded quotes under the live Options.
+* ``root`` (optional, per ticker) — the parent index root of a known index
+  ticker (``SPXW`` → ``"SPX"``, volfit.data.roots); omitted for everything
+  else so non-index exports are byte-identical. The import hands it to the
+  file provider so ``SPX`` finds the file's ``SPXW`` node (alias search).
 """
 
 from __future__ import annotations
@@ -42,6 +46,7 @@ from volfit.api import service
 from volfit.api.export_inputs import export_chain
 from volfit.api.state import FitRecord
 from volfit.data.file import SOURCE_ID, FileProvider, chain_from_doc
+from volfit.data.roots import is_index_root, parent_root
 from volfit.models.diagnostics import SliceHandles
 from volfit.models.display import DisplayFit
 from volfit.models.lqd.basis import LQDParams
@@ -70,6 +75,8 @@ def export_snapshot(state, tickers: list[str] | None = None, fit_mode: str | Non
             continue
         out_tickers.append({
             "ticker": ticker,
+            # Index tickers only: the parent root for alias discovery on import.
+            **({"root": parent_root(ticker)} if is_index_root(ticker) else {}),
             "spot": float(snap.spot),
             "timestamp": snap.timestamp.isoformat(),
             "exerciseStyle": snap.exercise_style,
@@ -184,6 +191,8 @@ def validate_bundle(body) -> dict:
     for t in tickers:
         if not isinstance(t, dict) or not t.get("ticker") or not isinstance(t.get("chain"), dict):
             raise SnapshotFormatError("malformed ticker entry (needs 'ticker' + 'chain')")
+        if t.get("root") is not None and not isinstance(t["root"], str):  # optional
+            raise SnapshotFormatError(f"malformed 'root' of {t['ticker']!r} (expected a string)")
     return body
 
 
@@ -201,8 +210,9 @@ def import_snapshot(state, body, name: str) -> dict:
         except (KeyError, TypeError, ValueError) as exc:
             raise SnapshotFormatError(f"chain of {t.get('ticker')!r} could not be read: {exc}") from exc
     as_of = max(c.timestamp for c in chains.values())
+    roots = {str(t["ticker"]).upper(): str(t["root"]) for t in bundle["tickers"] if t.get("root")}
     provider = state.file_provider()
-    provider.load(name, chains, as_of)
+    provider.load(name, chains, as_of, roots)
     state.set_active_source(SOURCE_ID)
     state.set_active_tickers(provider.list_tickers())
     installed, failed = 0, []

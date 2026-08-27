@@ -26,6 +26,12 @@ export interface GraphNodeBase {
   curvature: number;
   /** Lit/dark designation (shared with the Universe tab); lit = observed. */
   lit: boolean;
+  /** Per-node effective as-of (mirrors UniverseExpiry): the serving chain's
+   *  UTC-naive stamp, the source id serving it, and whether that stamp is the
+   *  requested as-of moment. Null / absent before any fetch. */
+  effectiveAsOf?: string | null;
+  dataSource?: string | null;
+  asOfExact?: boolean | null;
 }
 
 /** Response of GET /graph/nodes. */

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from volfit.api.node_asof import node_effective_asof
 from volfit.api.schemas import ExpiryInfo, UniverseResponse
 from volfit.api.schemas_universe import (
     ExpiryOption,
@@ -44,22 +45,34 @@ def universe_payload(state: AppState) -> UniverseResponse:
     chain for every ticker, so opening the app / editing the universe would pull
     quotes behind the user's back. In the trigger-gated workflow quotes load only
     on the explicit Fetch, so this stays network-light (just the cheap expiry
-    listing). Expiries with no fetched quotes simply have no fit until Calibrate."""
+    listing). Expiries with no fetched quotes simply have no fit until Calibrate.
+
+    Each rung also carries its EFFECTIVE as-of (volfit.api.node_asof: the
+    loaded chain's stamp, the source serving it, and whether that stamp sits in
+    the requested as-of session) — read from the chain CACHE only, so this
+    addition fetches nothing either (three Nones before the first Fetch)."""
     tickers = state.active_tickers()
-    expiries = {
-        ticker: [
-            ExpiryInfo(
-                expiry=expiry.isoformat(),
-                t=state.year_fraction(expiry),
-                expiryType=classify_expiry(expiry, state.reference_date),
-            )
-            for expiry in sorted(state.selected_expiries(ticker))
-        ]
-        for ticker in tickers
-    }
+    expiries = {ticker: _ladder(state, ticker) for ticker in tickers}
     return UniverseResponse(
         asOf=state.reference_date.isoformat(), tickers=tickers, expiries=expiries
     )
+
+
+def _ladder(state: AppState, ticker: str) -> list[ExpiryInfo]:
+    """One ticker's selected rungs (+ the per-node effective as-of triple)."""
+    selected = sorted(state.selected_expiries(ticker))
+    stamp, source, exact = node_effective_asof(state, ticker)
+    return [
+        ExpiryInfo(
+            expiry=expiry.isoformat(),
+            t=state.year_fraction(expiry),
+            expiryType=classify_expiry(expiry, state.reference_date),
+            effectiveAsOf=stamp,
+            dataSource=source,
+            asOfExact=exact,
+        )
+        for expiry in selected
+    ]
 
 
 def search(state: AppState, query: str, limit: int) -> SymbolSearchResponse:

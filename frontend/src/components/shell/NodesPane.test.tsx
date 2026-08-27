@@ -2,26 +2,39 @@
 // roving focused row driven by lib/treeNav — ↑/↓/←/→, Enter / Shift+Enter,
 // type-ahead, L, Tab → filter box. The session / workbench / lit / quality
 // hooks are mocked; the pure key algebra is locked in treeNav.test.ts.
+// Also the per-node effective as-of column (NodeAsOfCell): exact rows plain,
+// an inexact row amber with a "≠ as-of" pill on its ticker group.
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import NodesPane from "./NodesPane";
+import { asOfAge, asOfClock, asOfTitle } from "./NodeAsOfCell";
 
 const openNode = vi.fn();
 const toggleNode = vi.fn();
 const openDialog = vi.fn();
 
+interface Rung {
+  expiry: string;
+  t: number;
+  effectiveAsOf?: string | null;
+  dataSource?: string | null;
+  asOfExact?: boolean | null;
+}
+interface Universe { asOf: string; tickers: string[]; expiries: Record<string, Rung[]> }
+
+const baseUniverse: Universe = {
+  asOf: "x",
+  tickers: ["AAPL", "SPY"],
+  expiries: {
+    AAPL: [{ expiry: "2026-12-18", t: 0.31 }, { expiry: "2027-03-19", t: 0.56 }],
+    SPY: [{ expiry: "2026-12-18", t: 0.31 }],
+  },
+};
+// Swapped per test (read lazily at render time by the mocked hook).
+let universeFixture: Universe = baseUniverse;
+
 vi.mock("../../state/smileSession", () => ({
-  useSmileSession: () => ({
-    source: "live",
-    universe: {
-      asOf: "x",
-      tickers: ["AAPL", "SPY"],
-      expiries: {
-        AAPL: [{ expiry: "2026-12-18", t: 0.31 }, { expiry: "2027-03-19", t: 0.56 }],
-        SPY: [{ expiry: "2026-12-18", t: 0.31 }],
-      },
-    },
-  }),
+  useSmileSession: () => ({ source: "live", universe: universeFixture }),
 }));
 vi.mock("../../state/workbench", () => ({
   useWorkbench: () => ({
@@ -47,7 +60,10 @@ beforeEach(() => {
   openNode.mockClear();
   toggleNode.mockClear();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  universeFixture = baseUniverse;
+});
 
 describe("NodesPane keyboard navigation", () => {
   it("is one tab stop whose focus row defaults to the first group and moves with the arrows", () => {
@@ -109,5 +125,54 @@ describe("NodesPane keyboard navigation", () => {
     expect(row.className).toContain("ring-1");
     fireEvent.blur(tree());
     expect(row.className).not.toContain("ring-1");
+  });
+});
+
+describe("NodesPane per-node effective as-of", () => {
+  it("shows HH:MM (UTC) of the chain serving each node; exact rows stay plain, unfetched rows show —", () => {
+    universeFixture = {
+      ...baseUniverse,
+      expiries: {
+        AAPL: [{ expiry: "2026-12-18", t: 0.31, effectiveAsOf: "2026-06-10T14:30:00", dataSource: "yahoo", asOfExact: true }],
+        SPY: [{ expiry: "2026-12-18", t: 0.31 }],
+      },
+    };
+    render(<NodesPane />);
+    const cell = screen.getByText("14:30");
+    expect(cell.className).not.toContain("amber");
+    expect(cell.getAttribute("title")).toContain("2026-06-10T14:30:00 UTC · yahoo");
+    expect(screen.getByText("—").getAttribute("title")).toContain("press Fetch");
+    expect(screen.queryByText("≠ as-of")).toBeNull();
+  });
+
+  it("flags an inexact node amber and pins a ≠ as-of pill on its ticker group only", () => {
+    universeFixture = {
+      ...baseUniverse,
+      expiries: {
+        AAPL: [{ expiry: "2026-12-18", t: 0.31, effectiveAsOf: "2026-06-10T14:30:00", dataSource: "yahoo", asOfExact: true }],
+        SPY: [{ expiry: "2026-12-18", t: 0.31, effectiveAsOf: "2026-06-09T20:00:00", dataSource: "file", asOfExact: false }],
+      },
+    };
+    render(<NodesPane />);
+    const inexact = screen.getByText("20:00");
+    expect(inexact.className).toContain("text-amber-400");
+    expect(inexact.getAttribute("title")).toContain("≠ as-of");
+    expect(screen.getByText("14:30").className).not.toContain("amber");
+    expect(screen.getAllByText("≠ as-of")).toHaveLength(1);
+    expect(document.getElementById("nodes-row-g_SPY")!.textContent).toContain("≠ as-of");
+    expect(document.getElementById("nodes-row-g_AAPL")!.textContent).not.toContain("≠ as-of");
+  });
+
+  it("formats the clock, the age and the tooltip from a UTC-naive stamp", () => {
+    expect(asOfClock("2026-06-10T14:30:00")).toBe("14:30");
+    expect(asOfClock(null)).toBe("—");
+    const now = Date.UTC(2026, 5, 10, 16, 30);
+    expect(asOfAge("2026-06-10T16:26:00", now)).toBe("4m");
+    expect(asOfAge("2026-06-10T03:00:00", now)).toBe("13.5h");
+    expect(asOfAge("2026-06-07T11:42:00", now)).toBe("3.2d"); // 76.8 h
+    expect(asOfAge("garbage", now)).toBe("");
+    expect(asOfTitle({ effectiveAsOf: "2026-06-10T16:26:00", dataSource: "massive", asOfExact: true }, now))
+      .toBe("effective as-of · 2026-06-10T16:26:00 UTC · massive · 4m");
+    expect(asOfTitle({ effectiveAsOf: null, dataSource: null, asOfExact: null }, now)).toContain("press Fetch");
   });
 });

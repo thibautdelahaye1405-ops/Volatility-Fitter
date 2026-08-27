@@ -10,6 +10,12 @@ with provenance ``loaded``; (3) a fetch under the file source re-serves the
 same chain (a no-op for the data); (4) a second file unions its tickers,
 last-loaded-wins per node; (5) foreign / broken files are 422 and leave the
 state untouched; (6) nothing fetched → 409 on export.
+
+Index-root discovery (workbench follow-on, 2026-08-27): (7) a bundle keyed
+under a weekly root (SPXW) is found by its parent root — /universe/search
+lists it for "SPX" and adding "SPX" under the file source resolves to SPXW;
+(8) the export stamps ``root`` ONLY for known index tickers, so the ALPHA /
+BETA bundles are byte-identical to before.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from fastapi.testclient import TestClient
 
 from volfit.api import create_app
 from volfit.api.snapshot_files import SNAPSHOT_SCHEMA
+from volfit.data.provider import SyntheticProvider
 
 REF = date(2026, 6, 10)
 
@@ -151,3 +158,77 @@ def test_bad_files_are_422_and_leave_state_untouched(source, body, needle):
     assert needle in res.json()["detail"]
     assert source.get("/datasources").json()["active"] == before["active"]
     assert all(s["id"] != "file" for s in source.get("/datasources").json()["sources"])
+
+
+# ------------------------------------------------------------- index roots
+TICKER_KEYS = ["ticker", "spot", "timestamp", "exerciseStyle", "chain", "forwards", "calibrations"]
+
+
+def _renamed(bundle: dict, old: str, new: str) -> dict:
+    """The bundle with one ticker entry re-keyed (a file exported from a
+    universe that filed the index under its weekly root)."""
+    out = dict(bundle)
+    out["manifest"] = dict(
+        bundle["manifest"], tickers=[new if t == old else t for t in bundle["manifest"]["tickers"]]
+    )
+    out["tickers"] = [dict(t, ticker=new) if t["ticker"] == old else t for t in bundle["tickers"]]
+    return out
+
+
+def test_non_index_exports_carry_no_root_key(source):
+    """Lock: ``root`` appears only for known index roots (volfit.data.roots) —
+    the ALPHA / BETA entries keep exactly their historical keys, in order."""
+    _calibrated(source, "ALPHA", 1)
+    _calibrated(source, "BETA", 1)
+    b = source.post("/snapshot/export", json={"tickers": ["ALPHA", "BETA"]}).json()
+    assert [t["ticker"] for t in b["tickers"]] == ["ALPHA", "BETA"]
+    for t in b["tickers"]:
+        assert list(t) == TICKER_KEYS
+
+
+def test_index_ticker_export_stamps_its_parent_root():
+    prov = SyntheticProvider(reference_date=REF, tickers=("SPXW", "BETA"))
+    app = create_app(reference_date=REF, gated=True, providers={"synthetic": prov}, active_source="synthetic")
+    with TestClient(app) as c:
+        # Resolve the expiry ladder first (the UI always loads /universe before
+        # a fetch; an unresolved ladder yields an empty, uncached chain).
+        assert c.get("/universe").status_code == 200
+        assert c.post("/fetch/options", json={}).status_code == 200
+        b = c.post("/snapshot/export").json()
+        spxw, beta = b["tickers"]
+        assert list(spxw) == ["ticker", "root", *TICKER_KEYS[1:]] and spxw["root"] == "SPX"
+        assert list(beta) == TICKER_KEYS  # non-index: untouched
+        # A malformed root is refused like any other malformed entry.
+        bad = dict(b, tickers=[dict(spxw, root=7)])
+        assert c.post("/snapshot/import", json=bad).status_code == 422
+
+
+def test_index_root_alias_finds_the_files_node(source):
+    """A file keyed SPXW: searching / adding the parent root SPX lands on it."""
+    _calibrated(source, "ALPHA", 1)
+    _calibrated(source, "BETA", 1)
+    bundle = _renamed(source.post("/snapshot/export", json={"tickers": ["ALPHA", "BETA"]}).json(), "ALPHA", "SPXW")
+    with TestClient(create_app(reference_date=REF, gated=True)) as fresh:
+        res = fresh.post("/snapshot/import", params={"name": "spx"}, json=bundle)
+        assert res.status_code == 200, res.text
+        assert fresh.get("/universe").json()["tickers"] == ["SPXW", "BETA"]
+        # No 'root' in the doc -> the registry supplies the parent.
+        assert fresh.app.state.volfit.provider.roots() == {"SPXW": "SPX", "BETA": "BETA"}
+        # The parent root, the sibling itself (any case / spelling) and a prefix all find it.
+        for q in ("SPX", "spxw", "^SPX", "SP"):
+            hits = fresh.get("/universe/search", params={"q": q}).json()["matches"]
+            assert [m["symbol"] for m in hits] == ["SPXW"], q
+        hit = fresh.get("/universe/search", params={"q": "SPX"}).json()["matches"][0]
+        assert hit["name"] == "SPXW · file (SPX weeklies)" and hit["type"] == "INDEX" and hit["exchange"] == "file"
+        beta = fresh.get("/universe/search", params={"q": "bet"}).json()["matches"]
+        assert [m["symbol"] for m in beta] == ["BETA"] and beta[0]["name"] == "BETA · file"
+        # No free-text echo: a symbol the file lacks is not offered.
+        assert fresh.get("/universe/search", params={"q": "NVDA"}).json()["matches"] == []
+        # Adding "SPX" resolves to the bundle ticker: idempotent while active ...
+        assert fresh.post("/universe/tickers", json={"symbol": "SPX"}).json()["tickers"] == ["SPXW", "BETA"]
+        # ... and re-adds the file's node after a removal.
+        assert fresh.delete("/universe/tickers/SPXW").json()["tickers"] == ["BETA"]
+        assert fresh.post("/universe/tickers", json={"symbol": "SPX"}).json()["tickers"] == ["BETA", "SPXW"]
+        assert fresh.get(f"/smiles/SPXW/{bundle['tickers'][0]['calibrations'][0]['expiry']}").status_code == 200
+        # A root the file does not carry still 404s.
+        assert fresh.post("/universe/tickers", json={"symbol": "NDX"}).status_code == 404

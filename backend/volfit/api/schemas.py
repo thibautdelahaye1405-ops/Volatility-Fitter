@@ -1102,6 +1102,15 @@ class ExpiryInfo(BaseModel):
     expiry: str
     t: float
     expiryType: str
+    # Per-node EFFECTIVE as-of (workbench follow-on, 2026-08-27; built by
+    # volfit.api.node_asof from the chain CACHE only — three Nones before the
+    # first Fetch): the stamp of the chain serving the node, the active source
+    # id serving it ("file" for a snapshot file) and whether that stamp sits in
+    # the requested as-of session (live IS the moment ⇒ True once fetched;
+    # False = the source served another moment — the nodes pane shows amber).
+    effectiveAsOf: str | None = None  # = the loaded ChainSnapshot.timestamp (UTC-naive ISO)
+    dataSource: str | None = None  # state.active_source
+    asOfExact: bool | None = None
 
 
 class UniverseResponse(BaseModel):
@@ -1302,6 +1311,11 @@ class GraphNodeInfo(BaseModel):
     priorAgeDays: float | None = None  # _prior_age_days convention (day resolution)
     transportDistance: float | None = None  # h = log(F_now / F_prior)
     priorPrecision: list[float] | None = None  # per handle (atm_vol, skew, curv)
+    # Per-node effective as-of (mirrors ExpiryInfo; volfit.api.node_asof):
+    # the serving chain's stamp, the source serving it, exact-moment flag.
+    effectiveAsOf: str | None = None
+    dataSource: str | None = None
+    asOfExact: bool | None = None
 
 
 class GraphNodesResponse(BaseModel):

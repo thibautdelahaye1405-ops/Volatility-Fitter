@@ -29,6 +29,14 @@ export interface UniverseExpiry {
   t: number;
   /** Listing class; optional so an older backend payload still type-checks. */
   expiryType?: ExpiryClass;
+  /** Per-node EFFECTIVE as-of (backend follow-on 2026-08-27): the stamp of
+   *  the chain serving this node (UTC-naive ISO); null before any fetch. */
+  effectiveAsOf?: string | null;
+  /** Active data-source id serving the node ("file" for a snapshot file). */
+  dataSource?: string | null;
+  /** True when the stamp sits in the requested as-of session; false = the
+   *  source served another moment (the nodes pane shows amber "≠ as-of"). */
+  asOfExact?: boolean | null;
 }
 
 /** Response of GET /universe. */

@@ -15,6 +15,7 @@ from __future__ import annotations
 from datetime import date
 
 from volfit.data.expiry_select import default_selection
+from volfit.data.file import SOURCE_ID as FILE_SOURCE_ID
 from volfit.data.forwards import implied_forwards
 from volfit.data.symbols import portable_ticker
 from volfit.data.types import ChainSnapshot
@@ -54,6 +55,7 @@ class UniverseMixin:
         sym = portable_ticker(symbol.strip().upper())  # portable across sources
         if not sym:
             raise UnknownNodeError("empty ticker symbol")
+        sym = self._resolve_file_alias(sym)
         with self._lock:
             if sym in self._active_tickers:
                 return sym
@@ -76,6 +78,19 @@ class UniverseMixin:
                 self._active_tickers.append(sym)
                 self._universe = None
         return sym
+
+    def _resolve_file_alias(self, sym: str) -> str:
+        """Index-root discovery for snapshot files (volfit.data.roots): under
+        the FILE source a typed parent / sibling root that is not itself a
+        bundle ticker (``SPX`` for a file keyed ``SPXW``) resolves to the
+        bundle ticker it aliases, so the add lands on the node the file
+        carries. Every other source returns the symbol unchanged."""
+        if self.active_source != FILE_SOURCE_ID:
+            return sym
+        resolve = getattr(self.provider, "resolve_alias", None)
+        if resolve is None:
+            return sym
+        return resolve(sym) or sym
 
     def _drop_ticker_caches(self, sym: str) -> None:
         """Forget every cache entry of a ticker (call under the lock)."""

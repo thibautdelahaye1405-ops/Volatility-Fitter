@@ -1,10 +1,14 @@
 // Nodes pane (UI SHELL v2, S2): the universe as a tree, right of the
 // activity bar, 1/5 of the screen by default (resizable, Ctrl+B).
 //
-//   TICKER group   chevron · ticker · "lit/total" · hover: lit-all / dark-all
+//   TICKER group   chevron · ticker · "lit/total" · amber "≠ as-of" pill when
+//                  any expiry is served off the selected as-of · hover:
+//                  lit-all / dark-all
 //   expiry row     lit/dark dot (click = toggle designation, shared with the
-//                  Graph canvas + Universe dialog) · expiry · tenor · quality
-//                  glyph (ready / stale / arb / no fit) · RMS bp
+//                  Graph canvas + Universe dialog) · expiry · tenor · HH:MM of
+//                  the chain serving the node (NodeAsOfCell; amber when
+//                  inexact) · RMS bp · quality glyph (ready / stale / arb /
+//                  no fit)
 //
 // Single click = preview tab, double click / middle click = pinned tab (VS
 // Code). Ctrl+P opens the quick-open palette over the same list. The active
@@ -33,6 +37,7 @@ import { EMPTY_TYPEAHEAD, groupId, treeKeyAction } from "../../lib/treeNav";
 import { NODE_MIME, encodeNodeDrag } from "../../lib/nodeDnd";
 import type { TreeRow, TypeAhead } from "../../lib/treeNav";
 import type { QualityNode } from "../../state/useQuality";
+import { AsOfMismatchPill, NodeAsOfCell } from "./NodeAsOfCell";
 
 /** Quality glyph colour + tooltip for a node row. */
 function glyphOf(q: QualityNode | undefined): { dot: string; title: string } {
@@ -233,6 +238,7 @@ export default function NodesPane() {
                       {litN}/{ladder.length}
                     </span>
                   )}
+                  {ladder.some((r) => r.asOfExact === false) && <AsOfMismatchPill />}
                 </button>
                 {live && (
                   <span className="hidden shrink-0 gap-0.5 group-hover:flex">
@@ -321,6 +327,7 @@ export default function NodesPane() {
                       <span className="ml-auto shrink-0 font-mono text-[10px] text-slate-600">
                         {r.t < 0.1 ? `${Math.round(r.t * 365)}d` : `${r.t.toFixed(2)}y`}
                       </span>
+                      <NodeAsOfCell row={r} />
                       {qn?.hasFit && (
                         <span className="w-8 shrink-0 text-right font-mono text-[10px] text-slate-500" title="RMS fit error (bp)">
                           {qn.rmsBp.toFixed(0)}

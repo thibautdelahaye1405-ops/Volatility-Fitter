@@ -38,6 +38,7 @@ import numpy as np
 
 from volfit.api import prior_transport
 from volfit.api.graph_params import GRAPH_PRECISION
+from volfit.api.node_asof import ticker_asof_map
 from volfit.api.schemas import GraphNodeInfo
 from volfit.api.schemas_prior import PriorNode, PriorSurfaceSnapshot
 from volfit.api.service import fit_or_get
@@ -292,6 +293,9 @@ def baseline_node_infos(state: AppState) -> list[GraphNodeInfo]:
 
     universe = build_selected_universe(state)
     priors = resolve_priors(state, universe)
+    # Per-node effective as-of (volfit.api.node_asof) — one cached-chain read
+    # per ticker; the same triple the universe payload's ExpiryInfo carries.
+    asof = ticker_asof_map(state, (node.ticker for node in universe.nodes))
     return [
         GraphNodeInfo(
             ticker=node.ticker,
@@ -301,6 +305,9 @@ def baseline_node_infos(state: AppState) -> list[GraphNodeInfo]:
             skew=float(prior.handles[1]),
             curvature=float(prior.handles[2]),
             lit=node.lit,
+            effectiveAsOf=asof[node.ticker][0],
+            dataSource=asof[node.ticker][1],
+            asOfExact=asof[node.ticker][2],
             # V3.9 item 8: the resolved NodePrior's provenance, previously
             # dropped at this wire. No prior moment ⇒ priorAsOf/priorAgeDays
             # stay None (bootstrap / flat baselines have nothing to age).
