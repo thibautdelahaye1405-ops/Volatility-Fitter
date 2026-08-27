@@ -783,11 +783,130 @@ Suggested order: A1 → C2 → C1 → B1 → B2 → C4 → C5 → A2 → A3 → 
 
 ## STATUS — updated 2026-08-27 (resume here)
 
-### ▶ NEXT: the UI shell arc is COMPLETE — resume the "Next up (priority
-order)" list under WHERE THINGS STAND (v3 riders + the user-window runs).
-Workbench follow-ons recorded, none scheduled: backend per-node effective
-as-of (wave 2 proposal), a third editor group / vertical split, `fit_key`
-model dimension for loaded fits, index-root discovery for snapshot files.
+### ▶ NEXT: the v3 RIDER BATCH is SHIPPED (wrap 2026-08-27c below) — seven
+of the nine "0bis" riders are closed. What remains, in priority order:
+1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack
+   regression, MCS adjudication (decides the `mcsChart` flip — the dial is
+   now in the UI), certification refresh (`calendar_active_set_exchange`
+   now also runs test_tail_order_gate.py), the V3.8 replay-day campaign
+   (SPX is now discoverable intraday: `--roots 'SPX=SPX,SPXW'` /
+   `scenarios.INDEX_BASKET`), then `-m backtest.filter_replay` — the Prior
+   Evidence tab and FilterTimeline now link to / render from its artifact.
+2. Remaining v3 riders: `fit_key` model dimension for loaded fits (V3.2 /
+   workbench — the snapshot-file collision site is snapshot_files.py:248),
+   the eSSVI comparator column (V3.2, new model), `SchedulerStatus.unified`
+   (so the status bar can say the auto timer is unified).
+3. 2026-08-26a riders: LV-affine robust IRLS, MCS analytic price-space
+   Jacobian, LV atm_spread var-swap row, the LV var-swap-row inertness, wing
+   operators under an ACTIVE filter; benchmark-pack adjudication before any
+   default flips.
+4. Workbench follow-ons (recorded, none scheduled): backend per-node
+   effective as-of, a third editor group / vertical split, index-root
+   discovery for snapshot files.
+USER-side: restart the long-running :8000 (new OptionsSettings fields +
+endpoints); existing stores default the four new gates correctly.
+
+### 🧭 SESSION WRAP (2026-08-27c) — V3 RIDER BATCH: SEVEN RIDERS CLOSED
+
+"Continue implementing the roadmap" → worked the "Next up 0bis" rider list
+in order. Four scout agents mapped file:line touch points; the lead
+pre-added the settings contract (four `OptionsSettings` fields, every
+default byte-identical); six implementation agents in one parallel wave
+(+ two pure-move follow-ups for the 400-line policy); the lead ran every
+lock, committed per green slice: 913f3ed (contract + V3.7 + V3.1) →
+f85d294 (V3.3 + V3.4 + V3.6) → 9d5d147 (V3.9) → 170bf64 (V3.8) →
+421a1d9 (V3.0) → the two policy moves.
+
+- **V3.0 tail-order gate + band relaxation (421a1d9)** — `LedgerCertificate`
+  now carries the SIGNED per-side tail gaps its order decision is made on
+  (endpoint-scale slope gap on the decay-rate branches, relative
+  next-constant gap at slope ties, ±inf = `tail_irreducible` at unequal
+  α) and `tail_certified(tol=1e-6)`; raw `tail_order_ok` untouched.
+  `ledgerTailOrderGate` (bumps the options version): the exchange treats a
+  tail-only failure like a gap failure — common α escalates that pair's
+  interface weight ×10/round (the armed λ± seam rows tighten), unequal α
+  is irreducible at once; Quality names the side, arbFlags counts it, the
+  publish export blocks on it. `bandRelaxationDiagnostic` (advisory):
+  `calib/band_relaxation.relax_pair` bisects the smallest symmetric
+  quote-band widening (vol) under which the 2-slice exchange certifies
+  (δ=0 certificate → δ=0 solve → δ_max=0.05 → bisection), recorded per
+  uncertified pair on the chain-cache attr `state._band_relaxation` in
+  band modes only → `QualityNode.bandRelaxationVol/Feasible`,
+  `ExportNode.bandRelaxationVol`, hint on the certificate issue/blocker.
+  Gate-off byte-identity locked; exchange perf rail 217/425 ms.
+- **V3.1 mcsChart dial (913f3ed)** — "MCS solve chart" select in the
+  Multi-Core SIV penalty group (default Raw; Structural = wing-admissible
+  chart, ~20× slower at R=2); the flip waits on the adjudication sweep.
+- **V3.3 `lvXMaxMin` (f85d294)** — the LV PDE lattice right-edge floor is a
+  setting (default 2.5 = the historical constant; lattice byte-identical,
+  locked over five k_hi); raising it widens `modelExt` to ln(x_max)−ε;
+  folded into `affine_key` with NO options-version bump (locked); Options
+  ▸ Local Vol row with the `k = ln(x)` readout.
+- **V3.4 LV-chart fit-target overlay (f85d294)** — the affine payload's
+  `QuoteBand` carries targetLo/Hi from the same `edited_band_full` the
+  parametric smile uses (equal per index in bidask/haircut, None in mid,
+  excluded quotes keep theirs — locked); `LocalVolTarget` layer (bid-ask
+  ribbon / haircut ribbon / mid polyline) under the LV quotes with a
+  persisted "Target" chip; LocalVolViewer untouched at exactly 400 lines.
+- **V3.6 strip/tail decomposition (f85d294)** — `varswap_decomposition`
+  partitions the ±6 log-contract replication by trapezoid-cell midpoint
+  into left tail / quoted strip / right tail (strip + tails == total to
+  1e-12; total == `varswap_total_variance` bit-for-bit through one shared
+  integrand); `VarSwapInfo.stripVarShare / tailVarShareLeft / Right /
+  stripKLo / stripKHi` on the parametric node (displayed slice on the ±6
+  grid) and the LV node (its own static replication on the PDE lattice,
+  truncated at the lattice — the affine_views_ext doctrine); VarSwapPanel
+  readout "replication strip 92% · tails L 5% / R 3%". FINDING: the
+  put-parity mass is applied pointwise per cell (there is no lump
+  constant to attribute) — documented in the module.
+- **V3.7 scheduler consolidation + split-verb retirement (913f3ed)** —
+  `schedulerUnifiedFetch`: the auto chain timer runs
+  `workflow_fetch.fetch_snapshot` (chains → spot → optional prior roll →
+  optional autoCalibrate) and re-arms the spot timer on the same tick
+  (double-fire guard; unified branch evaluated before the realtime spot
+  branch). The Fetch menu now carries the single Snapshot verb + as-of
+  rows; the split verbs survive as palette commands labelled "(legacy)";
+  Options ▸ Workflow toggle. Three scheduler locks; legacy path untouched.
+- **V3.8 SPX/SPXW multi-root intraday discovery (170bf64)** —
+  `backtest/roots.py` (registry lookup, `--roots 'SPX=SPX,SPXW;…'`,
+  same-date collision policy: the FIRST listed root keeps the date — SPX AM
+  monthly over SPXW — with `rootCollisions` recorded); the REST twin
+  queries `underlying_ticker` per root, unions by OCC symbol and stamps
+  settlement PER CONTRACT ROOT (the ROADMAP:1540 Monday-SPXW "am" mis-tag
+  fixed at the source); the flat-file twin merges one `chains_at` per root
+  sharing a cached scan; multi-root fixtures gain a top-level `meta`
+  {roots, expiryRoots, rootCollisions} ONLY when roots ≠ (ticker,) —
+  single-root key set byte-identical (locked); `scenarios.INDEX_BASKET`.
+  Ladder / CLI / REST-http helpers moved verbatim into intraday_ladder /
+  intraday_cli / intraday_rest_http (400-line policy).
+- **V3.9 filter-history persistence + replay artifact link (9d5d147)** —
+  workspace docs carry the non-empty 64-step rings under `filterHistory`
+  (sibling of filterStates; `step_from_doc` = exact inverse of `step_doc`,
+  locked; reinstalled AFTER the chain-cache clear; doc version stays 1 —
+  old docs restore to empty rings, locked); `workspace.py` back at exactly
+  400 via `workspace_filter_doc.py`. Read-only router `/filter/replay/
+  {artifact, parts?ticker=, parts/{ticker}/{day}}` over
+  backtest/results/filter_replay (module-level dir, 404 + run hint);
+  Prior Evidence "Replay evidence" block (no mock replay by design) and
+  FilterTimeline split into chart + section with a "Live | Replay <day>"
+  source chip when a part lists the current expiry.
+- Settings contract (913f3ed): `ledgerTailOrderGate`,
+  `bandRelaxationDiagnostic`, `lvXMaxMin`, `schedulerUnifiedFetch` —
+  schemas + affects-fit rule + frontend mirror + both options snapshots +
+  SETTINGS_REFERENCE rows in one commit (the settings-snapshot rule).
+
+Verification at wrap: backend suite **1927 passed / 7 skipped** (12m51s;
+was 1879 — +48 locks); frontend tsc clean · vitest 50 files / 343 tests
+(was 326) · `npm run build` · `npm run smoke:ui` all green LIVE on the
+synthetic :4188 server (7 lens steps incl. the 3D crosshair, nodes-pane
+→ tab, 5 menus, 6 dialogs, drag-to-light, split editors, chart PNG,
+snapshot + workspace round trips); exchange perf rail 217/425 ms. Riders recorded this session: `SchedulerStatus.
+unified`; a unified snapshot tick does not re-arm the stream-refit timer
+(one-liner if wanted); `HyperparamPanel.tsx` 568 / `quality.py` /
+`export.py` remain over 400 (pre-existing; natural cuts noted in their
+docstrings); the LV var-swap split truncates the right tail at the
+lattice (raise `lvXMaxMin` to see more of it); index-close aggregates
+(`I:SPX`) on the REST capture are unverified against the live tier.
 
 ### 🖥️ UI SHELL v2 WAVE 3 SHIPPED 2026-08-27 (wrap 2026-08-27b)
 
@@ -1009,15 +1128,17 @@ section "UI SHELL v2 — WORKBENCH ARC" above; every S1–S6 phase landed):
      (backend\backtest\run_replay_day.ps1 — SPY/NVDA/AAPL/MSFT, 15-min grid,
      term ladder) followed by `-m backtest.scenarios run|report` and
      optionally `-m backtest.filter_replay` for the Kalman evidence artifact.
-  0bis. Riders recorded in the v3 doc: quote-band-relaxation infeasibility
-     diagnostic + tail-order gate promotion (V3.0); mcsChart UI dial + flip
-     decision after adjudication (V3.1); fit_key model dimension + eSSVI
-     column (V3.2); raising _X_MAX_MIN for the right LV wing (V3.3);
-     LV-chart target overlay (V3.4); hard var-swap pinning + strip/tail
-     decomposition (V3.6); scheduler consolidation onto /fetch/snapshot +
-     UI retirement of split fetch verbs (V3.7); SPX/SPXW multi-root intraday
-     discovery (V3.8); filter-history workspace persistence + linking the
-     prior panel to the latest replay artifact (V3.9).
+  0bis. Riders recorded in the v3 doc — **SEVEN CLOSED 2026-08-27 (wrap
+     2026-08-27c)**: ~~quote-band-relaxation infeasibility diagnostic +
+     tail-order gate promotion (V3.0)~~; mcsChart UI dial DONE, the flip
+     decision waits on the adjudication (V3.1); fit_key model dimension +
+     eSSVI column (V3.2) — STILL OPEN; ~~raising _X_MAX_MIN for the right
+     LV wing (V3.3)~~ = `lvXMaxMin`; ~~LV-chart target overlay (V3.4)~~;
+     ~~hard var-swap pinning (2026-08-26a) + strip/tail decomposition
+     (V3.6)~~; ~~scheduler consolidation onto /fetch/snapshot + UI
+     retirement of split fetch verbs (V3.7)~~; ~~SPX/SPXW multi-root
+     intraday discovery (V3.8)~~; ~~filter-history workspace persistence +
+     linking the prior panel to the latest replay artifact (V3.9)~~.
   0. **Generalized LQD tails + full-line calendar arc — ADOPTED
      2026-08-12, GREEN-LIT (user, 2026-08-12): this is the CURRENT
      implementation arc — "continue the roadmap" resumes at
