@@ -3,19 +3,26 @@
 // ribbons. Kept out of SmileChart.tsx (file-size policy) and free of React
 // so the geometry is unit-testable: the builders take the chart's display
 // transforms as plain functions and return `d` attribute strings.
-import type { QuoteBand } from "./mockData";
+/** The quote fields the builders read. Both the Parametric QuoteBand
+ *  (lib/mockData) and the Local-Vol QuoteBand (state/useAffine) satisfy it,
+ *  so one set of builders draws the target overlay on both charts. */
+export interface TargetQuote {
+  k: number;
+  mid: number;
+  excluded: boolean;
+}
 
 /** Map a quote's k to a pixel x (the chart's axis transform + x scale). */
 export type ToX = (k: number) => number;
 /** Map a vol to a pixel y (the chart's y scale). */
 export type ToY = (vol: number) => number;
 /** Read one band edge off a quote; null/undefined ⇒ no value (path gap). */
-export type EdgeOf = (q: QuoteBand) => number | null | undefined;
+export type EdgeOf<Q extends TargetQuote = TargetQuote> = (q: Q) => number | null | undefined;
 
 const fmt = (v: number): string => v.toFixed(2);
 
 /** Ascending-k copy (payloads arrive sorted; defensive for mock callers). */
-function sortedByK(quotes: readonly QuoteBand[]): QuoteBand[] {
+function sortedByK<Q extends TargetQuote>(quotes: readonly Q[]): Q[] {
   return [...quotes].sort((a, b) => a.k - b.k);
 }
 
@@ -26,7 +33,7 @@ function sortedByK(quotes: readonly QuoteBand[]): QuoteBand[] {
  * than 2 drawable points yield "" (nothing to draw).
  */
 export function midLinePath(
-  quotes: readonly QuoteBand[],
+  quotes: readonly TargetQuote[],
   toX: ToX,
   toY: ToY,
 ): string {
@@ -45,10 +52,10 @@ export function midLinePath(
  * fields) also breaks the run; a run of a single quote has no drawable area
  * and is skipped. Returns "" when nothing is drawable.
  */
-export function ribbonPath(
-  quotes: readonly QuoteBand[],
-  lo: EdgeOf,
-  hi: EdgeOf,
+export function ribbonPath<Q extends TargetQuote>(
+  quotes: readonly Q[],
+  lo: EdgeOf<Q>,
+  hi: EdgeOf<Q>,
   toX: ToX,
   toY: ToY,
 ): string {

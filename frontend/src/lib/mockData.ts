@@ -132,6 +132,20 @@ export interface VarSwapInfo {
   stale?: boolean | null;
   /** Var-swap share of the node's weighted squared vol error, in [0, 1]. */
   rmsShare?: number | null;
+  /** Hard-pin echo (OptionsSettings.varSwapHardPin escalating this node's
+   *  active market row); null while var-swap quoting is disabled. */
+  pinned?: boolean | null;
+  // ---- V3.6 rider: strip-vs-tails split of the var-swap replication. ----
+  /** Share of the model's replicated variance from the quoted strike span
+   *  [stripKLo, stripKHi] (included quotes), in [0, 1]. */
+  stripVarShare?: number | null;
+  /** Share from the extrapolated left (put) wing below stripKLo. */
+  tailVarShareLeft?: number | null;
+  /** Share from the extrapolated right (call) wing above stripKHi. */
+  tailVarShareRight?: number | null;
+  /** Log-moneyness span of the included quotes the split is measured on. */
+  stripKLo?: number | null;
+  stripKHi?: number | null;
 }
 
 /** Everything the Smile Viewer needs for one (underlying, expiry) node. */
@@ -331,6 +345,11 @@ export function getMockSmile(): SmileData {
       weightAbs: null,
       stale: false,
       rmsShare: null,
+      stripVarShare: 0.92,
+      tailVarShareLeft: 0.05,
+      tailVarShareRight: 0.03,
+      stripKLo: -0.31,
+      stripKHi: 0.22,
     },
   };
 }

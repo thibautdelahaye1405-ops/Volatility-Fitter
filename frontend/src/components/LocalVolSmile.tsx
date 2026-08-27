@@ -2,13 +2,18 @@
 //
 // Plots one expiry's arbitrage-free implied-vol curve (recovered by inverting
 // the calibrated Dupire PDE call prices through Black) against its market
-// quote band: bid/ask I-beams with a mid dot, excluded quotes dimmed. Pure
-// SVG, reusing the shared linear-scale / tick helpers. Wheel-zoom (x; +Shift
-// x-only, +Alt y-only — default both), drag-pan and double-click / ⌂ reset,
-// matching the Parametric smile.
+// quote band: bid/ask I-beams with a mid dot, excluded quotes dimmed, and the
+// fit-target overlay UNDER them (mid polyline / bid-ask / haircut ribbon —
+// LocalVolTarget, toggled by the "Target" chip; the mode comes from the smile
+// session, like the Parametric chart). Pure SVG, reusing the shared
+// linear-scale / tick helpers. Wheel-zoom (x; +Shift x-only, +Alt y-only —
+// default both), drag-pan and double-click / ⌂ reset, matching the Parametric
+// smile.
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { AffineSmile } from "../state/useAffine";
+import { useSmileSession } from "../state/smileSession";
+import { LocalVolTargetChip, LocalVolTargetLayer, useLvShowTarget } from "./LocalVolTarget";
 import { clamp, formatPct, linearScale, niceTicks } from "../lib/chartScale";
 import { useZoom } from "../lib/useZoom";
 import { crosshairLabel, crosshairPoint } from "../lib/crosshair";
@@ -55,6 +60,10 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   /** Crosshair position, or null when the pointer is outside / panning. */
   const [cross, setCross] = useState<CrosshairPoint | null>(null);
+  // The viewed fit target (mid / bid-ask / haircut) is the session's, exactly
+  // the mode the LV surface was read in (useAffine posts the same fitMode).
+  const { fitMode } = useSmileSession();
+  const [showTarget, setShowTarget] = useLvShowTarget();
 
   const plotW = Math.max(0, size.width - MARGIN.left - MARGIN.right);
   const plotH = Math.max(0, size.height - MARGIN.top - MARGIN.bottom);
@@ -218,6 +227,11 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
           </text>
 
           <g clipPath={`url(#${clipId})`}>
+            {/* Fit-target overlay, under the quotes (same axis mapping). */}
+            <LocalVolTargetLayer
+              quotes={smile.quotes} fitMode={fitMode} show={showTarget}
+              toX={(k) => x.map(tx(k))} toY={(v) => y.map(v)}
+            />
             {/* Quote I-beams (bid/ask) with mid dot. Observed quotes are bright
                 red and bolder than the fitted smile so the market stands out. */}
             {smile.quotes.map((q) => {
@@ -266,6 +280,10 @@ export default function LocalVolSmile({ smile, axisMode = "logmoneyness" }: Loca
             </g>
           )}
         </svg>
+      )}
+
+      {ready && (
+        <LocalVolTargetChip on={showTarget} fitMode={fitMode} onToggle={setShowTarget} />
       )}
 
       {/* Crosshair readout badge (x in the display coordinate, y in vol) */}

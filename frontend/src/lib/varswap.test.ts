@@ -5,6 +5,7 @@ import {
   VS_MIN_LEVEL,
   VS_SLIDER_STEP,
   formatBasisBp,
+  formatReplicationSplit,
   varswapBasisBp,
   varswapShiftEdits,
   varswapSliderBounds,
@@ -55,6 +56,31 @@ describe("varswapBasisBp / formatBasisBp", () => {
     expect(formatBasisBp(0)).toBe("0 bp");
     expect(formatBasisBp(null)).toBe("—");
     expect(formatBasisBp(Number.NaN)).toBe("—");
+  });
+});
+
+describe("formatReplicationSplit", () => {
+  it("renders whole-percent strip / tail shares", () => {
+    expect(
+      formatReplicationSplit({
+        stripVarShare: 0.921,
+        tailVarShareLeft: 0.049,
+        tailVarShareRight: 0.03,
+      }),
+    ).toBe("strip 92% · tails L 5% / R 3%");
+  });
+
+  it("is null when any share is absent or non-finite (older payloads / mock)", () => {
+    expect(formatReplicationSplit(null)).toBeNull();
+    expect(formatReplicationSplit({})).toBeNull();
+    expect(formatReplicationSplit({ stripVarShare: 0.9, tailVarShareLeft: 0.1 })).toBeNull();
+    expect(
+      formatReplicationSplit({
+        stripVarShare: Number.NaN,
+        tailVarShareLeft: 0.1,
+        tailVarShareRight: 0.0,
+      }),
+    ).toBeNull();
   });
 });
 

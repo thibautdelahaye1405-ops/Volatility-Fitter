@@ -99,7 +99,10 @@ def extended_model(
 
     # core_hi < ln(x_max) always (x_max pads the GLOBAL quote max by 1.4x while
     # the core pads this expiry's by +0.02), so the core is never clipped and
-    # stays the exact _reconstruct_smile linspace.
+    # stays the exact _reconstruct_smile linspace. x_max is floored by the
+    # Options setting lvXMaxMin (default 2.5 -> k_right_cap ≈ +0.92, the
+    # historical constant); raising it (2.72 -> +1.0) is what extends this
+    # right edge when the quoted range does not reach K_DISPLAY_HI.
     grid = _display_grid(k_lo, k_hi, core_lo, core_hi, n_core)
     price = np.asarray(solution.price_at(i_exp, np.exp(grid)), dtype=float)
     # Normalized OTM time value: the call price for k >= 0, price - intrinsic

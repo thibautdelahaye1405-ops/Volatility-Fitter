@@ -32,6 +32,12 @@ export interface QuoteBand {
   index: number;
   excluded: boolean;
   amended: boolean;
+  /** Fit-target band edges resolved by the backend's own band rule (the same
+   *  values the Parametric smile payload carries): fit mode "bidask" → (bid,
+   *  ask); "haircut" → the mid-clamped (bid+h, ask−h). Absent / null under
+   *  "mid" (the target is the mid polyline). Optional: older cached payloads. */
+  targetLo?: number | null;
+  targetHi?: number | null;
 }
 
 /** One expiry's reconstructed arbitrage-free smile plus its quotes. */

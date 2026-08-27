@@ -43,6 +43,7 @@ from volfit.api.schemas_affine import (
     AffineTraceResponse,
 )
 from volfit.api.state import AppState
+from volfit.api.varswap_split import lattice_varswap_split, split_fields
 from volfit.calib.fit_task import AffineFitTask
 from volfit.calib.operators import hybrid_tail_deltas
 from volfit.calib.rms import node_error_terms, quote_errors, rms as rms_of_terms
@@ -700,7 +701,11 @@ def _pde_dx(rows) -> float:
 
 
 def _pde_grids(
-    expiries: np.ndarray, k_hi: float, dt_max: float = _DT_MAX, dx: float = _X_DX
+    expiries: np.ndarray,
+    k_hi: float,
+    dt_max: float = _DT_MAX,
+    dx: float = _X_DX,
+    x_max_min: float = _X_MAX_MIN,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Fine PDE strike grid (from 0) and time grid hitting every expiry.
 
@@ -712,6 +717,14 @@ def _pde_grids(
     arbitrary ``x_max`` (e.g. a real ticker's wide strike range, > the 2.5 floor and
     off the lattice) would land x = 1 between nodes and 422 every fit; the synthetic
     range floors at 2.5 which aligns, which is why this only bit live data.
+
+    The right edge is ``x_max = max(exp(k_hi) * _X_HI_PAD, x_max_min)``:
+    ``x_max_min`` is the lattice right-edge FLOOR, the Options setting
+    ``lvXMaxMin`` (V3.3 rider; default ``_X_MAX_MIN`` = 2.5 = byte-identical to
+    the historical constant). Every LV view's right wing is capped at
+    ``k = ln(x_max)`` (affine_views_ext), so raising the floor extends the
+    untruncated right wing at O(n_x) march cost; the lattice stays ``dx *
+    arange`` so x = 1 remains a node for ANY floor.
 
     Short intervals (fix #3, extended per-interval 2026-07-11): with the flat
     ``dt_max`` ceiling a TRUE weekly got as few as 2 implicit-Euler steps, and
@@ -730,7 +743,7 @@ def _pde_grids(
     >= 8 x dt_max ≈ 29 days) keep byte-identical grids; the cost is linear in
     the added steps and only touches ladders with sub-month gaps.
     """
-    x_max = max(float(np.exp(k_hi)) * _X_HI_PAD, _X_MAX_MIN)
+    x_max = max(float(np.exp(k_hi)) * _X_HI_PAD, float(x_max_min))
     n = int(np.ceil(round(x_max / dx, 6)))  # steps to cover x_max
     x_grid = dx * np.arange(n + 1)  # 0, dx, 2dx, ... ; 1.0 = node 1/dx
     t_pts = [0.0]
@@ -744,9 +757,23 @@ def _pde_grids(
     return x_grid, np.array(t_pts)
 
 
-def _quote_bands(state: AppState, ticker: str, iso: str, prepared) -> list[QuoteBand]:
-    """All prepared quotes as display bands (excluded dimmed, amended amber)."""
+def _quote_bands(
+    state: AppState, ticker: str, iso: str, prepared, fit_mode: str = "mid"
+) -> list[QuoteBand]:
+    """All prepared quotes as display bands (excluded dimmed, amended amber).
+
+    The fit-target edges ``targetLo``/``targetHi`` (V3.4 rider — the LV chart's
+    target overlay) ride along exactly as on the Parametric smile payload
+    (service.smile_payload): resolved by ``edited_band_full`` — the fit's own
+    band rule in the FULL prepared index space, so an excluded quote keeps its
+    would-be band (the UI dims it) and an amended quote's haircut band is built
+    around its amended mid. None in "mid" mode (the default keeps every other
+    caller byte-identical: the fields are already-optional Nones).
+    """
+    from volfit.api.service import edited_band_full  # local import: service is heavy
+
     session = state.session_if_exists((ticker, iso))
+    band = edited_band_full(state, ticker, iso, prepared, fit_mode)
     bands = []
     for i, (k, b, a, m) in enumerate(
         zip(prepared.k, prepared.iv_bid, prepared.iv_ask, prepared.iv_mid)
@@ -762,6 +789,8 @@ def _quote_bands(state: AppState, ticker: str, iso: str, prepared) -> list[Quote
                 index=i,
                 excluded=edit is not None and edit.excluded,
                 amended=amended,
+                targetLo=float(band.iv_lo[i]) if band is not None else None,
+                targetHi=float(band.iv_hi[i]) if band is not None else None,
             )
         )
     return bands
@@ -899,6 +928,7 @@ def _affine_varswap_info(
     state: AppState, ticker: str, iso: str, model_vol: float,
     k: np.ndarray | None = None, w: np.ndarray | None = None,
     tau: float | None = None, rms_num: float | None = None,
+    split=None,
 ) -> VarSwapInfo:
     """VarSwapInfo for one Local-Vol expiry: the shared quote + the LV surface's
     OWN model level (``model_vol`` from _model_varswap_vol — static replication
@@ -908,7 +938,16 @@ def _affine_varswap_info(
     (var-swap fraction of ``rms_num``, the expiry's total weighted squared vol
     error). ``stale`` is attached at READ time (affine_payload) — the cached
     response cannot know it. ``k``/``w``/``tau`` are the expiry's fit inputs;
-    None ⇒ the weight/share readouts are omitted."""
+    None ⇒ the weight/share readouts are omitted.
+
+    ``split`` is the strip-vs-tails VarSwapDecomposition of the expiry's OWN
+    static replication on the PDE lattice (varswap_split.lattice_varswap_split,
+    built by the caller from the Dupire prices; the lattice is the LV model's
+    whole strike domain, so the right tail is truncated at x_max and the left
+    at _VARSWAP_K_LO — exactly the static level's own truncation). Under the
+    "source_pde" var-swap method ``model_vol`` comes from the source PDE while
+    the shares still describe the static replication. None ⇒ the five split
+    fields stay None."""
     from volfit.api import service
 
     session = state.varswap_session_if_exists((ticker, iso))
@@ -940,6 +979,7 @@ def _affine_varswap_info(
         # Hard-pin echo (mirrors service.varswap_info): True only when the pin
         # escalates an ACTIVE market row on this expiry.
         pinned=(bool(options.varSwapHardPin) and weight_abs is not None) if enabled else None,
+        **split_fields(split),
     )
 
 
@@ -1257,7 +1297,10 @@ def _fit(
     march_expiries = expiries
     if virtual_rows:
         march_expiries = np.sort(np.append(expiries, [r[1] for r in virtual_rows]))
-    x_grid, t_grid = _pde_grids(march_expiries, k_hi, dt_max, _pde_dx(rows))
+    # Right-edge floor: the Options setting lvXMaxMin (2.5 = byte-identical).
+    x_grid, t_grid = _pde_grids(
+        march_expiries, k_hi, dt_max, _pde_dx(rows), x_max_min=opts.lvXMaxMin
+    )
     # Stage 6′: the Numba vectorized-Thomas march (~6× the banded path) drives the
     # hot path when enabled + importable; it self-restricts to the implicit /
     # no-left-slope case inside solve_affine_dupire and falls back to banded.
@@ -1392,9 +1435,14 @@ def _fit(
                 modelExt=affine_views_ext.extended_model(
                     cal.solution, i_exp, t, klo, khi, x_grid, _K_PAD, _N_SMILE
                 ),
-                quotes=_quote_bands(state, ticker, iso, prepared),
+                quotes=_quote_bands(state, ticker, iso, prepared, request.fitMode),
                 varSwap=_affine_varswap_info(
-                    state, ticker, iso, model_vs_vol, k=k, w=w, tau=t, rms_num=num
+                    state, ticker, iso, model_vs_vol, k=k, w=w, tau=t, rms_num=num,
+                    # Strip-vs-tails split of THIS expiry's static replication
+                    # on the lattice, over the included quotes' span [klo, khi].
+                    split=lattice_varswap_split(
+                        x_grid, cal.solution.prices[i_exp], klo, khi, _VARSWAP_K_LO
+                    ),
                 ),
                 maxIvErrorBp=float(errs.max()) if errs.size else 0.0,
                 rmsError=rms_of_terms(num, den),
@@ -1538,6 +1586,7 @@ def affine_key(state: AppState, ticker: str, request: AffineFitRequest) -> tuple
         opts.frontTie, opts.frontTieWeight, opts.lvVolCapMult, opts.leftWingSlopeMult,
         opts.varSwapMethod, opts.timeScheme, opts.lvEarlyStop, opts.lvFastKernel,
         opts.lvSolver,
+        opts.lvXMaxMin,  # LV-only lattice right-edge floor (no options_version bump)
         request.model_dump_json(),
     )
 

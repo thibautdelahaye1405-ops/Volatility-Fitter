@@ -58,6 +58,29 @@ export function varswapSliderBounds(
   };
 }
 
+/** The strip-vs-tails readout inputs (VarSwapInfo's optional split fields). */
+export interface ReplicationSplit {
+  stripVarShare?: number | null;
+  tailVarShareLeft?: number | null;
+  tailVarShareRight?: number | null;
+}
+
+/**
+ * "strip 92% · tails L 5% / R 3%" — the share of the model's replicated
+ * variance from the quoted strike span vs the extrapolated wings (V3.6
+ * rider: strip vs tail decomposition of the ±6 log-contract replication).
+ * Whole percents; null when any share is absent or non-finite (older
+ * payloads / mock), so the panel simply omits the line.
+ */
+export function formatReplicationSplit(info: ReplicationSplit | null | undefined): string | null {
+  if (!info) return null;
+  const { stripVarShare: s, tailVarShareLeft: l, tailVarShareRight: r } = info;
+  if (s == null || l == null || r == null) return null;
+  if (![s, l, r].every((v) => Number.isFinite(v))) return null;
+  const pct = (v: number) => `${Math.round(v * 100)}%`;
+  return `strip ${pct(s)} · tails L ${pct(l)} / R ${pct(r)}`;
+}
+
 /** One per-node "set" edit of a batch shift (decimal vol level). */
 export interface VarSwapSetEdit {
   expiry: string;

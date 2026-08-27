@@ -93,6 +93,16 @@ def _transport_smile(
         weightAbs=vs.weightAbs,
         stale=vs.stale,
         rmsShare=vs.rmsShare,
+        pinned=vs.pinned,
+        # Strip-vs-tails split: a fixed-strike fact of the frozen fit (model and
+        # quotes move together under the transport), so the SHARES are carried;
+        # the strip span is re-indexed to the new moneyness like the quotes
+        # (fixed strikes: k -> k - h).
+        stripVarShare=vs.stripVarShare,
+        tailVarShareLeft=vs.tailVarShareLeft,
+        tailVarShareRight=vs.tailVarShareRight,
+        stripKLo=None if vs.stripKLo is None else float(vs.stripKLo) - h,
+        stripKHi=None if vs.stripKHi is None else float(vs.stripKHi) - h,
     )
     return (
         smile.model_copy(update={"model": model, "quotes": quotes, "varSwap": moved_vs}),

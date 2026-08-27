@@ -58,6 +58,7 @@ from volfit.calib.calendar import (
 )
 from volfit.api import smile_layers
 from volfit.api.prior_mode import resolve_prior_mode
+from volfit.api.varswap_split import parametric_varswap_split, split_fields
 from volfit.calib.extrap import build_extrap_target
 from volfit.calib.factors import build_factor_prior
 from volfit.calib.operators import (
@@ -1391,7 +1392,12 @@ def varswap_info(
     penalty weight from ``varswap_target`` (pct/100 · Σ quote weights, None
     when no active target); ``stale`` mirrors SmileData.stale for this node;
     ``rmsShare`` is the var-swap term's fraction of the node's total weighted
-    squared vol error (the node_error_terms decomposition, in [0, 1])."""
+    squared vol error (the node_error_terms decomposition, in [0, 1]).
+
+    Strip-vs-tails split (V3.6 rider, volfit.api.varswap_split): the displayed
+    slice's replication on the standard ±6 grid, partitioned over the INCLUDED
+    quotes' k span — ``stripVarShare`` / ``tailVarShareLeft`` /
+    ``tailVarShareRight`` / ``stripKLo`` / ``stripKHi``. Read-only display."""
     session = state.varswap_session_if_exists((ticker, iso))
     model_vol = float(np.sqrt(displayed_var_swap_w(record) / record.prepared.tau))
     options = state.options()
@@ -1427,6 +1433,9 @@ def varswap_info(
         # Hard-pin echo: True only when the pin actually escalates an ACTIVE
         # market row on this node (varswap_target applies it); None when off.
         pinned=(bool(options.varSwapHardPin) and target is not None) if enabled else None,
+        # Strip-vs-tails split of the displayed model's replication over the
+        # included quotes' k span (all None when there is nothing to split).
+        **split_fields(parametric_varswap_split(record, k)),
     )
 
 

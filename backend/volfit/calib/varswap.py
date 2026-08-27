@@ -81,6 +81,32 @@ class VarSwapTarget:
     atm_total_var: float = 0.0
 
 
+def _replication_integrand(
+    implied_w: Callable[[np.ndarray], np.ndarray], half_width: float, points: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """The log-contract replication grid ``k`` and its OTM integrand.
+
+    Shared by ``varswap_total_variance`` (one trapezoid over the whole grid)
+    and ``varswap_decomposition`` (the same trapezoid cells, partitioned by
+    strike region) so both read the SAME numbers: this is exactly the body
+    the total-variance function always had, moved verbatim — same operations
+    in the same order, so its float is bit-identical to before.
+
+    On the call side (k >= 0) the integrand is B(k, w) e^{-k}; on the put side
+    the parity term (e^k - 1) e^{-k} is added POINTWISE, which turns the ITM
+    call into the OTM put: (B - (1 - e^k)) e^{-k} = P(k, w) e^{-k}. The parity
+    term is therefore not a lump constant but part of every put-side cell's
+    integrand (see ``varswap_decomposition`` for what that means for the split).
+    """
+    k = np.linspace(-half_width, half_width, points)
+    w = np.maximum(np.asarray(implied_w(k), dtype=float), _W_FLOOR)
+    call = black_call(k, w)  # normalized OTM call price B(k, w)
+    integrand = call * np.exp(-k)
+    put_side = k < 0.0
+    integrand[put_side] += 1.0 - np.exp(-k[put_side])  # (e^k - 1) e^{-k}
+    return k, integrand
+
+
 def varswap_total_variance(
     implied_w: Callable[[np.ndarray], np.ndarray],
     half_width: float = VS_HALF_WIDTH,
@@ -91,13 +117,92 @@ def varswap_total_variance(
     ``implied_w(k)`` returns total implied variance on a log-moneyness array;
     that is the only thing the integral needs, so this works for any model.
     """
-    k = np.linspace(-half_width, half_width, points)
-    w = np.maximum(np.asarray(implied_w(k), dtype=float), _W_FLOOR)
-    call = black_call(k, w)  # normalized OTM call price B(k, w)
-    integrand = call * np.exp(-k)
-    put_side = k < 0.0
-    integrand[put_side] += 1.0 - np.exp(-k[put_side])  # (e^k - 1) e^{-k}
+    k, integrand = _replication_integrand(implied_w, half_width, points)
     return 2.0 * float(np.trapezoid(integrand, k))
+
+
+@dataclass(frozen=True)
+class VarSwapDecomposition:
+    """Strip-vs-tails split of the replicated var-swap total variance.
+
+    ``strip_w`` is the mass replicated from the quoted strike span
+    [``k_lo``, ``k_hi``], ``tail_left_w`` / ``tail_right_w`` the mass from the
+    extrapolated wings below / above it, and ``total_w`` the whole replication
+    (== ``varswap_total_variance`` bit-for-bit). By construction
+    ``strip_w + tail_left_w + tail_right_w == total_w`` to rounding.
+    READ-ONLY diagnostic (roadmap V3.6 rider): nothing here enters an objective.
+    """
+
+    strip_w: float
+    tail_left_w: float
+    tail_right_w: float
+    total_w: float
+    k_lo: float
+    k_hi: float
+
+    def shares(self) -> tuple[float, float, float] | None:
+        """(strip, left, right) fractions of ``total_w``; None when it is <= 0."""
+        if not (self.total_w > 0.0) or not np.isfinite(self.total_w):
+            return None
+        return (
+            self.strip_w / self.total_w,
+            self.tail_left_w / self.total_w,
+            self.tail_right_w / self.total_w,
+        )
+
+
+def varswap_decomposition(
+    implied_w: Callable[[np.ndarray], np.ndarray],
+    k_lo: float,
+    k_hi: float,
+    half_width: float = VS_HALF_WIDTH,
+    points: int = VS_POINTS,
+) -> VarSwapDecomposition:
+    """Partition the log-contract replication into left tail / strip / right tail.
+
+    The SAME integrand on the SAME grid as ``varswap_total_variance`` (one
+    shared helper), so ``total_w`` is that function's value bit-for-bit. Each
+    trapezoid cell [k_i, k_{i+1}] is assigned WHOLE to one region by its
+    midpoint m_i = (k_i + k_{i+1}) / 2:
+
+        left tail   m_i <  k_lo
+        strip       k_lo <= m_i <= k_hi     (the quoted strike span)
+        right tail  m_i >  k_hi
+
+    so the three parts sum to the total exactly (up to summation rounding);
+    no cell is split or counted twice. ``k_lo``/``k_hi`` are the log-moneyness
+    span of the INCLUDED quotes; a degenerate span (k_lo == k_hi, or k_lo >
+    k_hi) yields an empty strip and every cell falls in a tail.
+
+    Attribution of the put-parity term: in this formulation the parity term
+    (e^k - 1) e^{-k} is applied pointwise on k < 0 (it converts the ITM call
+    into the OTM put — see ``_replication_integrand``), so it is NOT a lump
+    constant that could be handed to one region; every cell carries the OTM
+    option integrand 2 P e^{-k} (puts) or 2 C e^{-k} (calls) and the parity
+    part is attributed cell-by-cell with the strike it belongs to. Concretely,
+    the strip receives the parity mass on [k_lo, 0] whenever it contains k = 0
+    and the left tail receives the rest on [-half_width, k_lo]; when the strip
+    sits entirely on one side of k = 0, the tail containing k = 0 takes all of
+    the parity mass on its side. (Assigning the raw lump 2 * int_{-6}^0 (1 -
+    e^{-k}) dk ~ -793 to a single region would put the shares far outside
+    [0, 1] — the pointwise form is the only meaningful attribution.)
+    """
+    k, integrand = _replication_integrand(implied_w, half_width, points)
+    # np.trapezoid's own cells: d * (y[1:] + y[:-1]) / 2 — the same arithmetic,
+    # so summing every cell reproduces the total to rounding.
+    cells = 2.0 * (np.diff(k) * (integrand[1:] + integrand[:-1]) / 2.0)
+    mid = 0.5 * (k[1:] + k[:-1])
+    left = mid < k_lo
+    right = (mid > k_hi) & ~left  # mutually exclusive even for an inverted span
+    strip = ~left & ~right
+    return VarSwapDecomposition(
+        strip_w=float(cells[strip].sum()),
+        tail_left_w=float(cells[left].sum()),
+        tail_right_w=float(cells[right].sum()),
+        total_w=2.0 * float(np.trapezoid(integrand, k)),
+        k_lo=float(k_lo),
+        k_hi=float(k_hi),
+    )
 
 
 def varswap_residual_w(

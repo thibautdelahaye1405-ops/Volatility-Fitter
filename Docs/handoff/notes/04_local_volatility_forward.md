@@ -414,7 +414,7 @@ Where the guarantees stop. A pure diffusion cannot make a true short-dated event
 |---|---|---|
 | `varLo` / `varHi` | $0.0025$ / $0.36$ | Request-level nodal variance box (vol $5\%$/$60\%$) before the adaptive cap and floor. |
 | `_LV_VOL_FLOOR_FRAC` | $0.5$ | Adaptive floor: $\nu_{\mathrm{lo}}=\min(\text{request},\,(0.5\min\sigma_{\mathrm{ATM}})^{2})$ ("What the grids must resolve"). |
-| `_X_DX` / `_X_MAX_MIN` | $0.01$ / $2.5$ | PDE strike step and minimum $x_{\max}$. |
+| `_X_DX` / `_X_MAX_MIN` | $0.01$ / $2.5$ | PDE strike step and minimum $x_{\max}$. The floor is now the Options setting `lvXMaxMin` (default $2.5$, byte-identical; range $[2.5, 10]$, LV-only, folded into the affine cache key): $x_{\max}=\max(1.4\,e^{k_{\mathrm{hi}}},\ \texttt{lvXMaxMin})$, and every LV view's right wing is capped at $k=\ln x_{\max}$ ($2.72$ reaches $k=+1$). |
 | `_DT_MAX` | $0.01$ | Implicit-Euler maturity step ($0.03$ under Rannacher). |
 | `rannacher_steps` | $2$ | Implicit start-up steps before CN (opt-in scheme). |
 | `_PDE_DX_SHORT_FRAC` / `_PDE_N_MAX` | $0.15$ / $800$ | Short-dated step: $0.15\,\sigma\sqrt\tau$, capped at $800$ nodes (was $0.3$/$400$ before the daily-ladder pass). |

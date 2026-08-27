@@ -149,6 +149,29 @@ export default function LocalVolSection({
               cap to high-vol names so deep-put local vol isn't clamped.
             </p>
           </div>
+          <div className="mt-2">
+            <div className="flex items-center justify-between">
+              <span
+                className={rowLabel}
+                title="Floor of the LV PDE lattice's right edge in moneyness x = K/F (the lattice runs to max(1.4 × the highest quoted x, this)). Every LV view's right wing is capped at k = ln(x), so raising it extends the untruncated right wing of the stacked-variance / display grids, at O(n_x) march cost. 2.5 (k ≈ +0.92) is the historical default; 2.72 reaches k = +1.0. LV-only: no parametric refit."
+              >
+                Lattice right edge floor (x)
+              </span>
+              <input
+                type="number" min={2.5} max={10} step={0.05} value={draft.lvXMaxMin}
+                disabled={!live}
+                onChange={(e) => patch({ lvXMaxMin: Number(e.target.value) })}
+                className={numInput}
+              />
+            </div>
+            <p className="mt-1 text-[10px] text-slate-500">
+              k = ln(x) ≈{" "}
+              <span className="font-mono text-slate-300">
+                {draft.lvXMaxMin > 0 ? `+${Math.log(draft.lvXMaxMin).toFixed(2)}` : "—"}
+              </span>
+              {" "}— the right wing of every LV view is capped there; 2.72 reaches k = +1.0.
+            </p>
+          </div>
 
           <h4 className={subTitle}>Solver</h4>
           <div className="flex items-center justify-between">

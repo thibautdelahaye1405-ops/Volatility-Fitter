@@ -24,7 +24,12 @@
 import { useEffect, useState } from "react";
 import type { VarSwapInfo } from "../lib/mockData";
 import { formatPct } from "../lib/chartScale";
-import { formatBasisBp, varswapBasisBp, varswapSliderBounds } from "../lib/varswap";
+import {
+  formatBasisBp,
+  formatReplicationSplit,
+  varswapBasisBp,
+  varswapSliderBounds,
+} from "../lib/varswap";
 import { api } from "../state/api";
 
 interface VarSwapPanelProps {
@@ -112,6 +117,12 @@ export default function VarSwapPanel({
   const bounds = varswapSliderBounds(level, model);
   // Basis in vol bp: prefer the wire value, derive it for older payloads/mock.
   const basisBp = info.basisBp ?? varswapBasisBp(level, model);
+  // Strip-vs-tails split of the replication (null ⇒ the line is omitted).
+  const split = formatReplicationSplit(info);
+  const span =
+    info.stripKLo != null && info.stripKHi != null
+      ? `[${info.stripKLo.toFixed(2)}, ${info.stripKHi.toFixed(2)}]`
+      : "[k_lo, k_hi]";
 
   /** Commit a percent value (clamped > 0) as a decimal var-swap vol. */
   const commit = (pct: number) => {
@@ -152,6 +163,17 @@ export default function VarSwapPanel({
           {info.weightAbs != null && ` ≈ ${info.weightAbs.toPrecision(3)} abs`}
           {info.rmsShare != null && ` · ${(info.rmsShare * 100).toFixed(0)}% of node RMS²`}
           <span className="font-sans text-slate-600"> · Options ▸ Calibration</span>
+        </p>
+      )}
+      {split && (
+        <p
+          className="mb-2 font-mono text-[10px] text-slate-500"
+          title={
+            "share of the model's replicated variance from the quoted strike span " +
+            `${span} vs the extrapolated wings (log-contract replication truncated at ±6)`
+          }
+        >
+          replication {split}
         </p>
       )}
       {pin !== null && (

@@ -990,6 +990,25 @@ class VarSwapInfo(BaseModel):
     #: off or no active target; None while var-swap quoting is disabled (and on
     #: older cached payloads / mocks — the frozen contract: additions optional).
     pinned: bool | None = None
+    # ---- V3.6 rider: strip-vs-tails split of the var-swap replication
+    # (volfit.calib.varswap.varswap_decomposition / volfit.api.varswap_split).
+    # The model's replicated variance partitioned by strike region — the
+    # quoted strip [stripKLo, stripKHi] (the INCLUDED quotes' log-moneyness
+    # span) vs the extrapolated wings; every trapezoid cell of the replication
+    # is assigned whole to one region by its midpoint, so the three shares sum
+    # to one. Parametric nodes: the ±6 / 801-point replication of the displayed
+    # slice; Local-Vol expiries: the static replication on the PDE lattice
+    # (truncated at the lattice, right edge = x_max). READ-ONLY display —
+    # nothing enters an objective. All None when nothing can be split. ----
+    #: Fraction of the replicated total variance from the quoted strip, [0, 1].
+    stripVarShare: float | None = None
+    #: Fraction from the left (put) wing below stripKLo, [0, 1].
+    tailVarShareLeft: float | None = None
+    #: Fraction from the right (call) wing above stripKHi, [0, 1].
+    tailVarShareRight: float | None = None
+    #: Log-moneyness span of the INCLUDED quotes used for the split.
+    stripKLo: float | None = None
+    stripKHi: float | None = None
 
 
 class MarketLayer(BaseModel):
