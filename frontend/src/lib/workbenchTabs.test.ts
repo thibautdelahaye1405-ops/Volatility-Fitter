@@ -11,10 +11,14 @@ import {
   cycleTab,
   moveTab,
   openTab,
+  openTabWithMemory,
   parseTabKey,
   pinTab,
   pruneTabs,
+  pruneViewMemory,
   restoreTabs,
+  restoreViewMemory,
+  setViewMemory,
   tabKey,
 } from "./workbenchTabs";
 
@@ -157,5 +161,55 @@ describe("pruneTabs / restoreTabs", () => {
     expect(r.activeKey).toBe("SPY|2026-12-18");
     expect(restoreTabs(null)).toEqual(EMPTY_TABS);
     expect(restoreTabs({ tabs: "x" })).toEqual(EMPTY_TABS);
+  });
+});
+
+// ---- per-tab view memory (wave 3, C2) --------------------------------------
+describe("view memory", () => {
+  const A = { ticker: "SPY", expiry: "2026-12-18" };
+  const B = { ticker: "NVDA", expiry: "2027-03-19" };
+
+  it("writes per tab and lens without clobbering the other lens", () => {
+    let m = setViewMemory({}, "SPY|2026-12-18", "parametric", { view: "term" });
+    m = setViewMemory(m, "SPY|2026-12-18", "localvol", { view: "table" });
+    expect(m["SPY|2026-12-18"]).toEqual({ parametric: { view: "term" }, localvol: { view: "table" } });
+    m = setViewMemory(m, "SPY|2026-12-18", "parametric", { view: "smile" });
+    expect(m["SPY|2026-12-18"].parametric).toEqual({ view: "smile" });
+  });
+
+  it("prunes memory of closed tabs and keeps the object when nothing changed", () => {
+    const tabs = openTab(EMPTY_TABS, A);
+    const m = { "SPY|2026-12-18": { parametric: 1 }, "GONE|2026-01-01": { parametric: 2 } };
+    expect(pruneViewMemory(m, tabs)).toEqual({ "SPY|2026-12-18": { parametric: 1 } });
+    const kept = { "SPY|2026-12-18": { parametric: 1 } };
+    expect(pruneViewMemory(kept, tabs)).toBe(kept);
+  });
+
+  it("a new tab inherits the active tab's memory; an existing tab keeps its own", () => {
+    const tabsA = openTab(EMPTY_TABS, A);
+    const memA = setViewMemory({}, "SPY|2026-12-18", "parametric", { view: "density" });
+    const r1 = openTabWithMemory(tabsA, memA, B);
+    expect(r1.tabs.activeKey).toBe("NVDA|2027-03-19");
+    expect(r1.memory["NVDA|2027-03-19"]).toEqual({ parametric: { view: "density" } });
+    const memB = setViewMemory(r1.memory, "NVDA|2027-03-19", "parametric", { view: "table" });
+    const r2 = openTabWithMemory(r1.tabs, memB, A);
+    expect(r2.memory["SPY|2026-12-18"]).toEqual({ parametric: { view: "density" } });
+    expect(r2.memory["NVDA|2027-03-19"]).toEqual({ parametric: { view: "table" } });
+  });
+
+  it("a replaced preview tab loses its memory (the new one inherits it first)", () => {
+    const tabs = openTab(EMPTY_TABS, A, { preview: true });
+    const mem = setViewMemory({}, "SPY|2026-12-18", "parametric", { view: "term" });
+    const r = openTabWithMemory(tabs, mem, B, { preview: true });
+    expect(r.tabs.tabs.map((t) => t.key)).toEqual(["NVDA|2027-03-19"]);
+    expect(Object.keys(r.memory)).toEqual(["NVDA|2027-03-19"]);
+    expect(r.memory["NVDA|2027-03-19"]).toEqual({ parametric: { view: "term" } });
+  });
+
+  it("restores only object-of-object blobs", () => {
+    expect(restoreViewMemory({ a: { parametric: { view: "x" } }, b: 3, c: [1] })).toEqual({
+      a: { parametric: { view: "x" } },
+    });
+    expect(restoreViewMemory("nope")).toEqual({});
   });
 });

@@ -16,6 +16,9 @@
 // diagnostics and follows Layout ▸ "Diagnostics aside". Save prior lives in
 // the top bar's Priors ▾. Quote edits post to the backend fit session and the
 // returned refit replaces the smile; shortcuts live in useSmileShortcuts.
+// View state (sub-view, density kind, axis unit, layers, Y auto-scale, extra
+// Compare families) goes through useLensViewMemory: per TAB when Layout ▸
+// "Remember view per tab" is on (wave 3, C2), per lens otherwise.
 import { useEffect, useMemo, useRef, useState } from "react";
 import SmileChart from "../components/SmileChart";
 import QuoteToolbar from "../components/QuoteToolbar";
@@ -42,6 +45,7 @@ import { useGraphNodeSmile } from "../state/useGraphNodeSmile";
 import { useObservationFilter } from "../state/useObservationFilter";
 import { useExpiryFormat } from "../state/expiryFormat";
 import { useOptionalWorkbench } from "../state/workbench";
+import { useLensViewMemory } from "../state/useLensViewMemory";
 import { formatExpiry } from "../lib/expiryFormat";
 import { useSmileShortcuts } from "../state/useSmileShortcuts";
 import { useLiveTicks } from "../state/useLiveTicks";
@@ -58,6 +62,20 @@ import { cardClass, chartMessageClass } from "../lib/ui";
 /** Centered placeholder for the chart-card body states. */
 const chartMessage = (text: string) => <div className={chartMessageClass}>{text}</div>;
 
+/** The lens's remembered view state (per tab or per lens — see the header). */
+interface ParametricView {
+  view: ChartView;
+  densityKind: DistKind;
+  axisMode: AxisMode;
+  showTarget: boolean;
+  showCalibQuotes: boolean;
+  showCalibFit: boolean;
+  showWeights: boolean;
+  autoScaleY: AutoScaleToggles;
+  /** Extra Compare families beyond the prevailing one (chips clicked). */
+  compareExtra: CompareModelId[];
+}
+
 export default function SmileViewer() {
   const {
     smile, source, loading, refreshing, error, editError, ticker, expiry, fitMode,
@@ -73,24 +91,23 @@ export default function SmileViewer() {
   // Selected quote, referenced by its stable `index` field (not array
   // position) so the selection keeps its identity across refits.
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [view, setView] = useState<ChartView>("smile");
-  const [densityKind, setDensityKind] = useState<DistKind>("density");
-  const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
-  // Chart layers (the rail): fit-target overlay (V3.4 item 4), calibration
-  // frame (quotes off by default — the prevailing market is the primary
-  // layer; fit on its calibration spot on) and the weight strip.
-  const [showTarget, setShowTarget] = useState(true);
-  const [showCalibQuotes, setShowCalibQuotes] = useState(false);
-  const [showCalibFit, setShowCalibFit] = useState(true);
-  const [showWeights, setShowWeights] = useState(false);
-  // Y auto-scale chips (lib/autoScaleY), persisted (localStorage).
-  const [autoScaleY, setAutoScaleY] = useState<AutoScaleToggles>(() => readSmileAutoScale());
-  const toggleAutoScale = (key: keyof AutoScaleToggles) =>
-    setAutoScaleY((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      writeSmileAutoScale(next);
-      return next;
-    });
+  // View state — chart layers (the rail): fit-target overlay (V3.4 item 4),
+  // calibration frame (quotes off by default — the prevailing market is the
+  // primary layer; fit on its calibration spot on) and the weight strip; Y
+  // auto-scale chips (lib/autoScaleY) seed from their persisted default.
+  const [vs, patchView] = useLensViewMemory<ParametricView>("parametric", () => ({
+    view: "smile", densityKind: "density", axisMode: "logmoneyness",
+    showTarget: true, showCalibQuotes: false, showCalibFit: true, showWeights: false,
+    autoScaleY: readSmileAutoScale(), compareExtra: [],
+  }));
+  const { view, densityKind, axisMode, showTarget, showCalibQuotes, showCalibFit, showWeights, autoScaleY } = vs;
+  const setDensityKind = (densityKind: DistKind) => patchView({ densityKind });
+  const setAxisMode = (axisMode: AxisMode) => patchView({ axisMode });
+  const toggleAutoScale = (key: keyof AutoScaleToggles) => {
+    const next = { ...autoScaleY, [key]: !autoScaleY[key] };
+    writeSmileAutoScale(next);
+    patchView({ autoScaleY: next });
+  };
 
   // Brief "UPDATED" flash when the viewed node transitions stale -> fresh, i.e.
   // a calibration just brought it up to date. Keyed per node so switching
@@ -133,21 +150,27 @@ export default function SmileViewer() {
   const frames = useMemo(() => (smile ? composeFrames(smile, liveTicks) : null), [smile, liveTicks]);
 
   // Compare (wave 2): the prevailing calibrated family shows at once; the
-  // others are fitted lazily when their chip is clicked. Selection resets to
-  // {prevailing} whenever the node (or its model) changes.
+  // others are fitted lazily when their chip is clicked. The extra selection
+  // lives in the view state (remembered per tab) and resets when the SAME
+  // node's prevailing model changes (a recalibration under another family).
   const prevailing = prevailingModelId(smile?.modelInfo?.id, smile?.modelInfo?.label);
-  const [extraModels, setExtraModels] = useState<Set<CompareModelId>>(new Set());
-  useEffect(() => setExtraModels(new Set()), [smileKey, prevailing]);
+  const prevailingRef = useRef<{ key: string; model: CompareModelId | null }>({ key: "", model: null });
+  useEffect(() => {
+    const prev = prevailingRef.current;
+    prevailingRef.current = { key: smileKey, model: prevailing };
+    if (prev.key === smileKey && prev.model !== prevailing && vs.compareExtra.length > 0) {
+      patchView({ compareExtra: [] });
+    }
+  }, [smileKey, prevailing]); // eslint-disable-line react-hooks/exhaustive-deps
   const compareModels = useMemo(
-    () => MODEL_ORDER.filter((m) => m === prevailing || extraModels.has(m)),
-    [prevailing, extraModels],
+    () => MODEL_ORDER.filter((m) => m === prevailing || vs.compareExtra.includes(m)),
+    [prevailing, vs.compareExtra],
   );
   const toggleModel = (id: CompareModelId) =>
-    setExtraModels((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
+    patchView({
+      compareExtra: vs.compareExtra.includes(id)
+        ? vs.compareExtra.filter((m) => m !== id)
+        : [...vs.compareExtra, id],
     });
   const comparison = useModelComparison(
     view === "compare", live, ticker, expiry, fitMode, spotVersion, compareModels,
@@ -173,9 +196,11 @@ export default function SmileViewer() {
   };
   /** Switch the chart-card view; arm the distribution fetcher lazily. */
   const switchView = (next: ChartView) => {
-    setView(next);
+    patchView({ view: next });
     if (next === "density") loadDistribution();
   };
+  // A remembered tab may land straight on Density: arm the fetcher then too.
+  useEffect(() => { if (view === "density") loadDistribution(); }, [view, loadDistribution]);
 
   /** Chart-card body for the active view. */
   const chartBody = () => {
@@ -318,10 +343,10 @@ export default function SmileViewer() {
             {railView !== null && (
               <LayerRail
                 view={railView}
-                showTarget={showTarget} onShowTarget={() => setShowTarget((v) => !v)}
-                showCalibQuotes={showCalibQuotes} onShowCalibQuotes={() => setShowCalibQuotes((v) => !v)}
-                showCalibFit={showCalibFit} onShowCalibFit={() => setShowCalibFit((v) => !v)}
-                showWeights={showWeights} onShowWeights={() => setShowWeights((v) => !v)}
+                showTarget={showTarget} onShowTarget={() => patchView({ showTarget: !showTarget })}
+                showCalibQuotes={showCalibQuotes} onShowCalibQuotes={() => patchView({ showCalibQuotes: !showCalibQuotes })}
+                showCalibFit={showCalibFit} onShowCalibFit={() => patchView({ showCalibFit: !showCalibFit })}
+                showWeights={showWeights} onShowWeights={() => patchView({ showWeights: !showWeights })}
               />
             )}
           </div>

@@ -11,9 +11,13 @@
 // where the universe first loads (restored tabs win over the session's
 // mid-ladder default).
 //
-// Persistence: activity + tabs + layout in localStorage ("volfit.workbench")
-// so a reload restores the workbench exactly (tabs are pruned against the
-// universe once it loads).
+// Persistence: activity + tabs + layout + per-tab view memory in localStorage
+// ("volfit.workbench") so a reload restores the workbench exactly (tabs and
+// their memory are pruned against the universe once it loads).
+//
+// View memory (wave 3, C2): each lens stores what it showed per tab
+// (lib/workbenchTabs ViewMemory; read + written through useLensViewMemory);
+// Layout ▸ "Remember view per tab" switches it (OFF = per-lens view state).
 import {
   createContext,
   useCallback,
@@ -27,6 +31,7 @@ import type { ReactNode } from "react";
 import { useSmileSession } from "./smileSession";
 import {
   EMPTY_TABS,
+  EMPTY_VIEW_MEMORY,
   activateTab as activateTabPure,
   activeTab as activeTabOf,
   closeAllTabs,
@@ -34,13 +39,16 @@ import {
   closeTab as closeTabPure,
   cycleTab as cycleTabPure,
   moveTab as moveTabPure,
-  openTab as openTabPure,
+  openTabWithMemory,
   pinTab as pinTabPure,
   pruneTabs,
+  pruneViewMemory,
   restoreTabs,
+  restoreViewMemory,
+  setViewMemory as setViewMemoryPure,
   tabKey,
 } from "../lib/workbenchTabs";
-import type { NodeRef, TabsState, WorkbenchTab } from "../lib/workbenchTabs";
+import type { NodeRef, TabsState, ViewMemory, WorkbenchTab } from "../lib/workbenchTabs";
 
 /** The five activity-bar lenses, in bar order (user spec 2026-08-26). */
 export type Activity = "graph" | "forwards" | "parametric" | "localvol" | "quality";
@@ -68,6 +76,8 @@ export interface LayoutState {
   statusBar: boolean;
   /** Diagnostics / config asides inside the lenses. */
   aside: boolean;
+  /** Per-tab view memory (wave 3, C2); false = one view state per lens. */
+  rememberView: boolean;
 }
 
 export const NODES_WIDTH = { min: 200, max: 640 } as const;
@@ -83,6 +93,7 @@ const DEFAULT_LAYOUT: LayoutState = {
   nodesWidth: defaultNodesWidth(),
   statusBar: true,
   aside: true,
+  rememberView: true,
 };
 
 const STORAGE_KEY = "volfit.workbench.v1";
@@ -92,27 +103,37 @@ interface Persisted {
   activity: Activity;
   tabs: TabsState;
   layout: LayoutState;
+  viewMemory: ViewMemory;
+}
+
+/** Lenient layout restore: unknown / malformed fields keep `base`. */
+function restoreLayout(raw: unknown, base: LayoutState): LayoutState {
+  const l = (raw ?? {}) as Partial<LayoutState>;
+  return {
+    nodesPane: typeof l.nodesPane === "boolean" ? l.nodesPane : base.nodesPane,
+    nodesWidth: Number.isFinite(l.nodesWidth)
+      ? Math.max(NODES_WIDTH.min, Math.min(NODES_WIDTH.max, Number(l.nodesWidth)))
+      : base.nodesWidth,
+    statusBar: typeof l.statusBar === "boolean" ? l.statusBar : base.statusBar,
+    aside: typeof l.aside === "boolean" ? l.aside : base.aside,
+    rememberView: typeof l.rememberView === "boolean" ? l.rememberView : base.rememberView,
+  };
 }
 
 function loadPersisted(): Persisted {
-  const fallback: Persisted = { activity: "parametric", tabs: EMPTY_TABS, layout: DEFAULT_LAYOUT };
+  const fallback: Persisted = {
+    activity: "parametric", tabs: EMPTY_TABS, layout: DEFAULT_LAYOUT, viewMemory: EMPTY_VIEW_MEMORY,
+  };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return fallback;
     const p = JSON.parse(raw) as Partial<Persisted>;
-    const l = (p.layout ?? {}) as Partial<LayoutState>;
+    const tabs = restoreTabs(p.tabs);
     return {
       activity: ACTIVITY_IDS.includes(p.activity as Activity) ? (p.activity as Activity) : "parametric",
-      tabs: restoreTabs(p.tabs),
-      layout: {
-        nodesPane: l.nodesPane !== false,
-        nodesWidth: Math.max(
-          NODES_WIDTH.min,
-          Math.min(NODES_WIDTH.max, Number(l.nodesWidth) || DEFAULT_LAYOUT.nodesWidth),
-        ),
-        statusBar: l.statusBar !== false,
-        aside: l.aside !== false,
-      },
+      tabs,
+      layout: restoreLayout(p.layout, DEFAULT_LAYOUT),
+      viewMemory: pruneViewMemory(restoreViewMemory(p.viewMemory), tabs),
     };
   } catch {
     return fallback;
@@ -147,9 +168,12 @@ export interface WorkbenchValue {
   dialog: DialogId | null;
   openDialog: (id: DialogId) => void;
   closeDialog: () => void;
+  /** Per-tab view memory (wave 3, C2) — read + written via useLensViewMemory. */
+  viewMemory: ViewMemory;
+  setViewMemory: (key: string, lens: string, value: unknown) => void;
   /** The shell's share of a workspace FILE (wave 3, A1): activity + tabs +
-   *  layout as a plain blob, and its inverse (lenient — unknown values keep
-   *  the current state; tabs are validated by restoreTabs). */
+   *  layout + view memory as a plain blob, and its inverse (lenient —
+   *  unknown values keep the current state; tabs are validated by restoreTabs). */
   exportShell: () => ShellShellBlob;
   importShell: (blob: Partial<ShellShellBlob> | null | undefined) => void;
 }
@@ -159,6 +183,7 @@ export interface ShellShellBlob {
   activity: Activity;
   tabs: TabsState;
   layout: LayoutState;
+  viewMemory: ViewMemory;
 }
 
 const Ctx = createContext<WorkbenchValue | null>(null);
@@ -171,9 +196,15 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const [tabs, setTabs] = useState<TabsState>(initial.tabs);
   const [layout, setLayoutState] = useState<LayoutState>(initial.layout);
   const [dialog, setDialog] = useState<DialogId | null>(null);
+  const [viewMemory, setViewMemoryState] = useState<ViewMemory>(initial.viewMemory);
 
   // Persist on every change (small JSON; no debounce needed).
-  useEffect(() => persist({ activity, tabs, layout }), [activity, tabs, layout]);
+  useEffect(
+    () => persist({ activity, tabs, layout, viewMemory }),
+    [activity, tabs, layout, viewMemory],
+  );
+  // Memory follows the tabs: whatever closed / got pruned loses its entry.
+  useEffect(() => setViewMemoryState((m) => pruneViewMemory(m, tabs)), [tabs]);
 
   const active = activeTabOf(tabs);
   const activeKey = tabs.activeKey;
@@ -212,14 +243,35 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     }
     if (pushRef.current !== null && pushRef.current !== key) return; // push in flight
     pushRef.current = null;
-    setTabs((prev) => openTabPure(prev, { ticker, expiry }, { preview: true }));
+    openWithMemory({ ticker, expiry }, true);
   }, [universeLoaded, ticker, expiry]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Open a tab AND let a brand-new tab inherit the active tab's view memory
+  // (lib/workbenchTabs.openTabWithMemory). Reads the memory ref so the two
+  // state updates stay consistent without a combined reducer.
+  const memoryRef = useRef(viewMemory);
+  memoryRef.current = viewMemory;
+  const openWithMemory = useCallback((node: NodeRef, preview: boolean) => {
+    setTabs((prev) => {
+      const r = openTabWithMemory(prev, memoryRef.current, node, { preview });
+      if (r.memory !== memoryRef.current) {
+        memoryRef.current = r.memory;
+        setViewMemoryState(r.memory);
+      }
+      return r.tabs;
+    });
+  }, []);
 
   const openNode = useCallback(
     (node: NodeRef, opts: { preview?: boolean; activity?: Activity } = {}) => {
-      setTabs((prev) => openTabPure(prev, node, { preview: opts.preview ?? false }));
+      openWithMemory(node, opts.preview ?? false);
       if (opts.activity) setActivity(opts.activity);
     },
+    [openWithMemory],
+  );
+  const setViewMemory = useCallback(
+    (key: string, lens: string, value: unknown) =>
+      setViewMemoryState((m) => setViewMemoryPure(m, key, lens, value)),
     [],
   );
   const pinTab = useCallback((key: string) => setTabs((p) => pinTabPure(p, key)), []);
@@ -244,10 +296,10 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const openDialog = useCallback((id: DialogId) => setDialog(id), []);
   const closeDialog = useCallback(() => setDialog(null), []);
 
-  // Workspace-file shell blob (A1): the persisted triple, in and out.
+  // Workspace-file shell blob (A1): the persisted state, in and out.
   const exportShell = useCallback(
-    (): ShellShellBlob => ({ activity, tabs, layout }),
-    [activity, tabs, layout],
+    (): ShellShellBlob => ({ activity, tabs, layout, viewMemory }),
+    [activity, tabs, layout, viewMemory],
   );
   const importShell = useCallback((blob: Partial<ShellShellBlob> | null | undefined) => {
     if (!blob) return;
@@ -256,18 +308,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       const next = restoreTabs(blob.tabs);
       pushRef.current = next.activeKey; // restored tabs beat the session (see module doc)
       setTabs(next);
+      setViewMemoryState(pruneViewMemory(restoreViewMemory(blob.viewMemory), next));
     }
-    if (blob.layout) {
-      const l = blob.layout as Partial<LayoutState>;
-      setLayoutState((cur) => ({
-        nodesPane: typeof l.nodesPane === "boolean" ? l.nodesPane : cur.nodesPane,
-        nodesWidth: Number.isFinite(l.nodesWidth)
-          ? Math.max(NODES_WIDTH.min, Math.min(NODES_WIDTH.max, Number(l.nodesWidth)))
-          : cur.nodesWidth,
-        statusBar: typeof l.statusBar === "boolean" ? l.statusBar : cur.statusBar,
-        aside: typeof l.aside === "boolean" ? l.aside : cur.aside,
-      }));
-    }
+    if (blob.layout) setLayoutState((cur) => restoreLayout(blob.layout, cur));
   }, []);
 
   const value = useMemo<WorkbenchValue>(
@@ -277,12 +320,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       openNode, pinTab, closeTab, closeOthers, closeAll, activateTab, cycleTab, moveTab,
       layout, setLayout, resetLayout,
       dialog, openDialog, closeDialog,
+      viewMemory, setViewMemory,
       exportShell, importShell,
     }),
     [
       activity, tabs, active, openNode, pinTab, closeTab, closeOthers, closeAll,
       activateTab, cycleTab, moveTab, layout, setLayout, resetLayout, dialog,
-      openDialog, closeDialog, exportShell, importShell,
+      openDialog, closeDialog, viewMemory, setViewMemory, exportShell, importShell,
     ],
   );
 

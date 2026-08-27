@@ -1,6 +1,7 @@
 // Layout ▾ (UI SHELL v2, top-right): the shell's panes — Nodes pane
 // (Ctrl+B), the lenses' diagnostics / config asides, the status bar — plus
-// zen mode (all three off), close-all-tabs and a layout reset.
+// zen mode (all three off), the per-tab view memory switch (wave 3, C2),
+// close-all-tabs and a layout reset.
 import { useState } from "react";
 import { LayoutPanelLeft } from "lucide-react";
 import MenuButton from "./MenuButton";
@@ -55,6 +56,14 @@ export default function LayoutMenu() {
           }
         />
         <MenuDivider />
+        <MenuSection label="Tabs" />
+        <MenuItem
+          label="Remember view per tab"
+          detail={layout.rememberView ? "each tab keeps its view" : "one view per lens"}
+          title="ON: every tab remembers its sub-view, axis unit and layers (a new tab inherits the current one's). OFF: the view follows the lens, whatever the tab."
+          active={layout.rememberView}
+          onClick={() => setLayout({ rememberView: !layout.rememberView })}
+        />
         <MenuItem label="Close all tabs" disabled={wb.tabs.length === 0} onClick={() => { close(); closeAll(); }} />
         <MenuItem label="Reset layout" detail="panes + widths" onClick={() => { close(); resetLayout(); }} />
       </MenuPanel>

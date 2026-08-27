@@ -22,15 +22,14 @@
 // expiry is not in the LV ladder). Any expiry pick made here (Term chart
 // click, per-expiry table row) goes through selectExpiry(), which opens a
 // preview tab; outside the shell it falls back to a local override.
-// UI SHELL v2 wave 2 — same grammar as the Parametric lens: the toolbar
-// (LocalVolToolbar) carries the grouped NODE / TICKER view switch, the render /
-// clock controls, the graph-source toggle and the status badges; the chart card
-// ends with a FOOTER row — interaction hint on the left, the strike-axis unit
-// selector right-aligned next to the x-axis it changes (AxisModeSelect for the
-// smile / densities / IV-surface / stacked-IV views, AxisUnitSelect over the
-// grid-native LV_AXIS_OPTIONS for the 3D LV mesh); the right-hand column
-// (LocalVolAside) is three stacked cards — Spot move · Variance swap · Fit
-// diagnostics.
+// Wave 2 grammar (as the Parametric lens): LocalVolToolbar = grouped NODE /
+// TICKER view switch + render / clock / graph-source controls + badges; the
+// chart-card FOOTER = interaction hint + the strike-axis unit selector next to
+// the x-axis (AxisModeSelect for smile / densities / IV-surface / stacked-IV,
+// AxisUnitSelect over LV_AXIS_OPTIONS for the 3D LV mesh); LocalVolAside =
+// Spot move · Variance swap · Fit diagnostics. View state goes through
+// useLensViewMemory: per TAB with Layout ▸ "Remember view per tab" (wave 3,
+// C2), per lens otherwise.
 import { useMemo, useState } from "react";
 import LocalVolHeatmap from "../components/LocalVolHeatmap";
 import LocalVolSmile from "../components/LocalVolSmile";
@@ -51,6 +50,7 @@ import AxisModeSelect, { AxisUnitSelect } from "../components/charts/AxisModeSel
 import { lvCalendarMarker } from "../lib/stackedVariance";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
+import { useLensViewMemory } from "../state/useLensViewMemory";
 import { useAffine } from "../state/useAffine";
 import { useAffineView } from "../state/useAffineView";
 import { useEvents } from "../state/useTerm";
@@ -62,9 +62,7 @@ import { axisModeLabel, axisTickLabel, axisTransform } from "../lib/axisModes";
 import type { AxisMode } from "../lib/axisModes";
 import { buttonClass, cardClass, chartMessageClass } from "../lib/ui";
 
-const chartMessage = (text: string) => (
-  <div className={chartMessageClass}>{text}</div>
-);
+const chartMessage = (text: string) => <div className={chartMessageClass}>{text}</div>;
 
 export default function LocalVolViewer() {
   const {
@@ -82,17 +80,22 @@ export default function LocalVolViewer() {
   // via useAffine). Combined with varSwapNonce into one reloadKey.
   const lvReloadKey = varSwapNonce + spotVersion;
   const { format } = useExpiryFormat();
-  const [view, setView] = useState<LvView>("smile");
-  // Strike-axis display mode for the density / IV-surface / stacked-IV views.
-  const [axisMode, setAxisMode] = useState<AxisMode>("logmoneyness");
-  // LV-surface render mode: 3D local-variance mesh (default) or vertex heatmap.
-  const [lvRender, setLvRender] = useState<LvRender>("mesh");
-  // X-axis scale for the 3D LV mesh (the heatmap stays in x = K/F).
-  const [lvAxis, setLvAxis] = useState<LvAxis>("moneyness");
+  // View state: sub-view · strike-axis mode (density / IV-surface / stacked-IV
+  // views) · LV-surface render (3D local-variance mesh or vertex heatmap) ·
+  // x-axis scale of the 3D LV mesh (the heatmap stays in x = K/F) · maturity
+  // clock of the Term sub-tab.
+  const [vs, patchView] = useLensViewMemory<{
+    view: LvView; axisMode: AxisMode; lvRender: LvRender; lvAxis: LvAxis; axisClock: ClockMode;
+  }>("localvol", { view: "smile", axisMode: "logmoneyness", lvRender: "mesh", lvAxis: "moneyness", axisClock: "real" });
+  const { view, axisMode, lvRender, lvAxis, axisClock } = vs;
+  const setView = (view: LvView) => patchView({ view });
+  const setAxisMode = (axisMode: AxisMode) => patchView({ axisMode });
+  const setLvRender = (lvRender: LvRender) => patchView({ lvRender });
+  const setLvAxis = (lvAxis: LvAxis) => patchView({ lvAxis });
+  const setAxisClock = (axisClock: ClockMode) => patchView({ axisClock });
   // Shared per-ticker event calendar (read-only here; edited in Parametric Term)
-  // + maturity-clock toggle, so event-time dilation is consistent in LV's Term.
+  // so event-time dilation is consistent in LV's Term.
   const events = useEvents(ticker);
-  const [axisClock, setAxisClock] = useState<ClockMode>("real");
 
   // Selected expiry for the per-expiry views = the session's (the active tab
   // drives it inside the shell). Without a workbench a local override stands

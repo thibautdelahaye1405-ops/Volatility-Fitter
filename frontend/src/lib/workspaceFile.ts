@@ -18,7 +18,8 @@ const SCHEMA_MAJOR = "1";
 export interface ShellBlob {
   activity?: string;
   tabs?: unknown;
-  layout?: Partial<{ nodesPane: boolean; nodesWidth: number; statusBar: boolean; aside: boolean }>;
+  viewMemory?: unknown;
+  layout?: Partial<{ nodesPane: boolean; nodesWidth: number; statusBar: boolean; aside: boolean; rememberView: boolean }>;
   viewSettings?: { scheme?: string; contrast?: number; brightness?: number };
   expiryFormat?: string;
   nodeSources?: unknown;

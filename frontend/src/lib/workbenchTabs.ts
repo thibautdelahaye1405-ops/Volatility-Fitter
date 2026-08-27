@@ -175,3 +175,67 @@ export function restoreTabs(raw: unknown): TabsState {
       : (tabs[0]?.key ?? null);
   return { tabs, activeKey };
 }
+
+// ---------------------------------------------------------------------------
+// Per-tab VIEW MEMORY (UI SHELL v2 wave 3, C2): what each lens showed for a
+// given tab (sub-view, axis mode, layers, …), keyed by tab key then lens id.
+// Values are opaque here (each lens owns its shape); the algebra only
+// inherits, writes and prunes. Restored on tab activation, written on every
+// change, pruned with the tab; a NEW tab inherits the current tab's memory so
+// a comparison opens in the same view.
+
+export type ViewMemory = Record<string, Record<string, unknown>>;
+
+export const EMPTY_VIEW_MEMORY: ViewMemory = {};
+
+/** Write one lens's view state for a tab (replaces that lens's entry). */
+export function setViewMemory(
+  memory: ViewMemory,
+  key: string,
+  lens: string,
+  value: unknown,
+): ViewMemory {
+  return { ...memory, [key]: { ...(memory[key] ?? {}), [lens]: value } };
+}
+
+/** Drop memory of tabs that are no longer open (call after prune / close). */
+export function pruneViewMemory(memory: ViewMemory, state: TabsState): ViewMemory {
+  const keep = new Set(state.tabs.map((t) => t.key));
+  const keys = Object.keys(memory);
+  if (keys.every((k) => keep.has(k))) return memory;
+  const out: ViewMemory = {};
+  for (const k of keys) if (keep.has(k)) out[k] = memory[k];
+  return out;
+}
+
+/**
+ * Open a node AND carry the view memory along: a tab that did not exist yet
+ * inherits the memory of the tab that was active before the open (VS Code's
+ * "open beside" feel — a comparison opens in the same view); a replaced
+ * preview tab's memory is pruned. Memory of an already-open tab is untouched.
+ */
+export function openTabWithMemory(
+  state: TabsState,
+  memory: ViewMemory,
+  node: NodeRef,
+  opts: { preview?: boolean } = {},
+): { tabs: TabsState; memory: ViewMemory } {
+  const prevActive = state.activeKey;
+  const key = tabKey(node.ticker, node.expiry);
+  const existed = state.tabs.some((t) => t.key === key);
+  const tabs = openTab(state, node, opts);
+  const inherited = !existed && prevActive !== null && prevActive !== key ? memory[prevActive] : undefined;
+  let next = pruneViewMemory(memory, tabs);
+  if (inherited && !next[key]) next = { ...next, [key]: { ...inherited } };
+  return { tabs, memory: next };
+}
+
+/** Validate a persisted memory blob (object of objects; anything else dropped). */
+export function restoreViewMemory(raw: unknown): ViewMemory {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return EMPTY_VIEW_MEMORY;
+  const out: ViewMemory = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === "object" && v !== null && !Array.isArray(v)) out[k] = v as Record<string, unknown>;
+  }
+  return out;
+}
