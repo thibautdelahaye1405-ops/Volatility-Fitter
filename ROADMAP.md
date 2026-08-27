@@ -634,7 +634,162 @@ Requests (verbatim intent) → design decisions:
     tabs side by side), a Ctrl+K command palette over every menu action,
     drag a node onto the Graph canvas to light it.
 
+### WAVE 3 — planned 2026-08-27, IMPLEMENT IN A FRESH SESSION
+
+Scope ratified by the user: (A) a **File** menu (save / load the whole
+configuration, and quotes + prevailing calibrations as a "file" data source),
+(B) **3D chart interaction** (zoom / pan / crosshair on the (k, T) plane), and
+(C) the five **ergonomy ideas** proposed at the end of wave 2. Build order
+below is by value / risk; each item has its own exit criteria; every file
+≤ 400 lines; commit per green item; `npm run smoke:ui` extended per item.
+
+#### A. File menu (top-left, BEFORE Options)
+
+Anchors that already exist: `volfit/api/workspace.py` (`build_doc` /
+`restore_doc` — the user-authored state: fit + options settings, universe
+picks, lit/dark, forward policies, quote/var-swap edit sessions, priors,
+filter states, graph overrides, spot shifts, fit mode, as-of; restore = state
+RESET with lazy universe re-resolution) and `volfit/api/export.py` +
+`export_inputs.py` (surfaces + embedded inputs + reproducibility manifest;
+the standing fixture `tmp\volfit_surfaces_*.json` is that shape).
+
+A1. **Workspace files** (config: options + universe + tabs + layout + view).
+    Bundle `volfit-workspace/1`:
+    `{ schema, savedAt, app: {version}, backend: <workspace doc>, shell:
+    { activity, tabs, layout, viewSettings, expiryFormat, nodeSources } }`.
+    Backend: `GET /workspace/export` (build_doc) and `POST /workspace/import`
+    (restore_doc + `restore_universe`), 422 with a schema/version diagnostic
+    on mismatch; a named-workspace store next to named universes
+    (`GET/POST/DELETE /workspaces/{name}`, VOLFIT_DB) for "Save to server".
+    Frontend: `File ▾` rows — New workspace (confirm; resets tabs + Options
+    defaults), Open… (Ctrl+O; `<input type=file>` + drag-and-drop a `.json`
+    onto the shell), Save (Ctrl+S — intercepted; re-saves to the last target),
+    Save as… (Ctrl+Shift+S; browser download of the bundle; Chromium
+    `showSaveFilePicker` when available so Save can overwrite in place),
+    Save to server… / Open from server ▸ (named list), Recent ▸ (last 8
+    names; File-System-Access handles persisted in IndexedDB so Chromium can
+    reopen with a permission re-prompt; other browsers show the name only).
+    The status bar gains a "workspace: <name> · unsaved" chip (dirty = any
+    workspace-scoped change since the last save, tracked by the backend's
+    workspace version counter + the shell's persisted blob hash).
+    Exit: round-trip test (save → new workspace → open → byte-identical
+    `build_doc` and identical tabs/layout); vitest on the bundle
+    validator; smoke step File ▸ Save as… produces a download.
+
+A2. **Snapshot files** (quotes + prevailing calibrations) and the **File
+    data source**. Bundle `volfit-snapshot/1`: `{ schema, savedAt, asOf,
+    source: {id, label}, manifest, tickers: [{ ticker, spot, exerciseStyle,
+    forwards: [...], chains: [{ expiry, t, quotes: [strike, bid, ask, mid,
+    iv…, flags] }], calibrations: [{ expiry, model, params, fitKey,
+    diagnostics, fitMode }] }] }` — built server-side from the existing
+    export path (`POST /snapshot/export`, cached fits only, never refits).
+    Loading: `POST /snapshot/import` registers a **FileProvider**
+    (`volfit/data/file.py`, an `OptionChainProvider` serving the embedded
+    chains as `ChainSnapshot`s at the embedded as-of; id `file`, label
+    `File · <name>`, status green, as-of modes = the embedded stamp only,
+    several loaded files union their tickers with last-loaded-wins per node),
+    switches the active source to it (market pill: `● File · spy_0827.json ·
+    14:30`), and installs the embedded calibrations as the COMMITTED fits
+    (provenance `loaded`, shown in Quality's model column and the fit chip;
+    Calibrate refits from the embedded quotes under the live Options). File
+    rows: Save snapshot… (Ctrl+Alt+S), Open snapshot… — appears in Universe ▸
+    Data sources as a source like any other, so it plugs straight into the
+    per-node source policy (A2 is the first real second source).
+    Exit: save → open in a fresh backend → nodes pane / Quality show the
+    same calibrations byte-identical (fixture-locked), Fetch under the file
+    source is a no-op with an explanatory status line; certification case
+    `snapshot_roundtrip` added.
+
+A3. **Export ▸** submenu regrouping the existing exports (Surfaces JSON /
+    CSV, Quality report HTML) + "Chart as PNG" (the active chart-card SVG
+    rasterized via canvas; filename `<ticker>_<expiry>_<view>.png`).
+
+#### B. 3D charts: zoom · pan · crosshair (SurfaceMesh — IV surface, LV mesh)
+
+Today: yaw drag, wheel scene-zoom, √T/T toggle, dbl-click reset.
+B1. **Camera**: zoom at the cursor (scale about the pointer, not the
+    centre); pan with Shift+drag / middle-drag / two-finger touch
+    (translate the projection origin); pitch with Ctrl+drag vertical
+    (clamped 10–80°); dbl-click resets all four; a ⌂ reset chip when moved;
+    camera state persisted per lens (workspace shell blob) so the view
+    survives tab switches.
+B2. **Crosshair on the (k, T) plane**: inverse-project the pointer through
+    the orthographic camera onto the z=0 floor → (x, y) scene → (k, T);
+    snap to the nearest grid vertex (i, j); draw (a) the two iso-curves
+    lifted onto the surface — the SMILE at T_i and the TERM curve at k_j —
+    (b) their dashed floor projections, (c) a marker at the surface point,
+    (d) a readout badge `T 0.50y · 24-Feb-27 · k −0.12 · σ 21.3%` (units
+    follow the axis mode). Drawn last (above the painter-sorted cells);
+    snapping hysteresis so the badge doesn't flicker between cells. Same
+    crosshair on the LV heatmap (already has hover) and, via a
+    `SurfaceHoverContext`, LINKED across the Parametric surface, the LV
+    surfaces and the Stacked IV / Densities overlays (hovering one
+    highlights the same (k, T) in the others when both are visible — the
+    split-editor case in C3).
+    Exit: unit tests on the inverse projection (round-trip project ∘ unproject
+    on the floor plane) and the snapping; smoke screenshot with the
+    crosshair visible; interaction hint updated ("drag: rotate · shift+drag:
+    pan · ctrl+drag: pitch · scroll: zoom · dbl-click: reset").
+
+#### C. Ergonomy
+
+C1. **Keyboard navigation in the nodes tree** — roving tabindex on the
+    tree; ↑/↓ move, ←/→ collapse/expand a ticker, Home/End, type-ahead
+    (letters jump to the next matching ticker), Enter = preview tab,
+    Shift+Enter or Space = pinned tab, Ctrl+Enter = open in the other split
+    (C3), L = toggle lit/dark; the focused row is outlined; Ctrl+B then Tab
+    lands on the filter box. Exit: vitest with @testing-library keyboard
+    events; documented in Help ▸ Shortcuts.
+C2. **Per-tab view memory** — `viewMemory: Record<tabKey, Partial<{
+    parametric: { view, densityKind, axisMode, layers, autoScaleY,
+    compareModels }, localvol: { view, axisMode, lvRender, lvAxis,
+    axisClock } }>>` in the workbench (persisted with the tabs); restored on
+    tab activation, written on every change; a new tab inherits the current
+    tab's view (so a comparison opens in the same view). Layout ▾ toggle
+    "Remember view per tab" (default ON; OFF = today's per-lens behaviour).
+    Exit: reducer tests in lib/workbenchTabs (memory pruned with the tab).
+C3. **Split editors** — the main pane holds ONE or TWO editor groups
+    (side by side; Ctrl+\ splits, drag a tab to the right 20% of the pane
+    to split, close the last tab of a group to unsplit); each group has its
+    own tab strip + active tab; the smile session's selection follows the
+    FOCUSED group. Prerequisite refactor: lenses read their node from a
+    `NodeScope` context (the group's active tab) instead of the global
+    session — `useSmile` splits into the universe-level session (universe,
+    fit mode, spot, versions) and a per-node `useNodeSmile(ticker, expiry)`
+    (fetch + edit session + distribution), so two groups can show two nodes
+    at once. Phase 3a: two groups, SAME lens; phase 3b: a lens per group
+    (Parametric left, Local Vol right — the Graph and Quality universe lenses
+    stay single-group). Exit: the existing lens tests pass under the scoped
+    node; new tests for group algebra (split / focus / move tab between
+    groups / unsplit); smoke: split, open two nodes, screenshot.
+C4. **Command palette** — Ctrl+K (and Ctrl+Shift+P) opens the same palette
+    as Ctrl+P with a `>` prefix: a command registry (`lib/commands.ts`) over
+    every menu row (fetch verbs, calibrate scopes, priors, file, universe,
+    layout toggles, lens switch, dialogs, "close all tabs", "reset layout"),
+    each with label, category, shortcut hint and `enabled()`; menus are
+    rebuilt FROM the registry so the palette can never drift from the menus.
+    Exit: registry test (every menu row has a command; every command with a
+    chord is in lib/shortcuts.ts).
+C5. **Drag a node onto the Graph canvas** — HTML5 DnD from a nodes-pane row
+    (dataTransfer `application/x-volfit-node`): drop on the Graph canvas
+    lights the node (calibrations mode: sets the designation lit; manual
+    what-if: adds a pulse at the default +1 vol pt); drop on a tab strip
+    opens the tab there (pinned); drop on the split zone opens it in the
+    other group (C3); the canvas shows a drop halo while dragging. Exit:
+    vitest on the drop handler routing; smoke: drag-and-drop via CDP.
+
+Suggested order: A1 → C2 → C1 → B1 → B2 → C4 → C5 → A2 → A3 → C3
+(C3 last: largest refactor; A2 needs the FileProvider on the backend).
+
 ## STATUS — updated 2026-08-26 (resume here)
+
+### ▶ NEXT SESSION: UI SHELL v2 WAVE 3 (planned 2026-08-27)
+
+Implement the "WAVE 3" plan above (File menu with workspace + snapshot files
+and the File data source; 3D zoom / pan / crosshair; nodes-tree keyboard nav,
+per-tab view memory, split editors, command palette, drag-to-light). Start
+with A1 (workspace files) and follow the suggested order at the end of the
+plan; the app shell + lenses are described in the two wraps below.
 
 ### 🖥️ UI SHELL v2 WAVE 2 SHIPPED 2026-08-27 (wrap 2026-08-27a)
 
