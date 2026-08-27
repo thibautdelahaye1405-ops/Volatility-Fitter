@@ -35,6 +35,8 @@ export interface LitMapValue {
   error: string | null;
   /** Optimistic single-node toggle (PUT; reverts on failure). */
   toggleNode: (ticker: string, expiry: string) => void;
+  /** Optimistic single-node SET (drag-to-light, wave 3 C5); no-op when equal. */
+  setNode: (ticker: string, expiry: string, lit: boolean) => void;
   /** Light / darken every node of a ticker (PUT; server list adopted). */
   setTicker: (ticker: string, lit: boolean) => void;
   refresh: () => void;
@@ -108,6 +110,21 @@ export function LitMapProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setNode = useCallback((ticker: string, expiry: string, lit: boolean) => {
+    setNodes((prev) => {
+      const cur = prev.find((m) => m.ticker === ticker && m.expiry === expiry);
+      if (!cur || cur.lit === lit) return prev;
+      void api
+        .put(`/universe/lit/${ticker}/${encodeURIComponent(expiry)}`, { body: { lit } })
+        .catch(() => {
+          setNodes((p) =>
+            p.map((m) => (m.ticker === ticker && m.expiry === expiry ? { ...m, lit: cur.lit } : m)),
+          );
+        });
+      return prev.map((m) => (m.ticker === ticker && m.expiry === expiry ? { ...m, lit } : m));
+    });
+  }, []);
+
   const setTicker = useCallback((ticker: string, lit: boolean) => {
     setNodes((prev) => prev.map((m) => (m.ticker === ticker ? { ...m, lit } : m)));
     void api
@@ -119,8 +136,8 @@ export function LitMapProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<LitMapValue>(
-    () => ({ nodes, litOf, error, toggleNode, setTicker, refresh }),
-    [nodes, litOf, error, toggleNode, setTicker, refresh],
+    () => ({ nodes, litOf, error, toggleNode, setNode, setTicker, refresh }),
+    [nodes, litOf, error, toggleNode, setNode, setTicker, refresh],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
@@ -129,4 +146,9 @@ export function useLitMap(): LitMapValue {
   const ctx = useContext(Ctx);
   if (ctx === null) throw new Error("useLitMap must be used within LitMapProvider");
   return ctx;
+}
+
+/** Null outside the provider (tests / legacy mounts). */
+export function useOptionalLitMap(): LitMapValue | null {
+  return useContext(Ctx);
 }

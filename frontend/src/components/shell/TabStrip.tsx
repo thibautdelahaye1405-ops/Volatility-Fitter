@@ -3,7 +3,8 @@
 // pins, middle-click / × closes, drag to reorder, right-click context menu
 // (close / close others / close all / pin). Pinned tabs carry a pin glyph,
 // preview tabs are italic + muted. A quality glyph per tab shows stale
-// (amber) or arb-flagged (rose) fits at a glance.
+// (amber) or arb-flagged (rose) fits at a glance. A node dragged from the
+// Nodes pane and dropped on the strip opens as a PINNED tab (wave 3, C5).
 import { useState } from "react";
 import type { DragEvent, MouseEvent } from "react";
 import { Pin, X } from "lucide-react";
@@ -13,6 +14,7 @@ import { useQualityReport } from "../../state/qualityContext";
 import { useSmileSession } from "../../state/smileSession";
 import { formatExpiry } from "../../lib/expiryFormat";
 import type { WorkbenchTab } from "../../lib/workbenchTabs";
+import { NODE_MIME, decodeNodeDrag, isNodeDrag, routeNodeDrop } from "../../lib/nodeDnd";
 import { MenuDivider, MenuItem } from "../topbar/Menu";
 
 interface Ctx {
@@ -33,7 +35,17 @@ export default function TabStrip() {
   const tOf = (t: WorkbenchTab): number =>
     universe?.expiries[t.ticker]?.find((r) => r.expiry === t.expiry)?.t ?? 0;
 
+  /** A node from the Nodes pane dropped anywhere on the strip → pinned tab. */
+  const dropNode = (e: DragEvent<HTMLElement>): boolean => {
+    const node = decodeNodeDrag(e.dataTransfer.getData(NODE_MIME));
+    if (!node) return false;
+    e.preventDefault();
+    const a = routeNodeDrop("tabstrip", node, { manual: false });
+    if (a.type === "openTab") wb.openNode({ ticker: a.ticker, expiry: a.expiry });
+    return true;
+  };
   const onDrop = (e: DragEvent<HTMLElement>, targetKey: string) => {
+    if (dropNode(e)) return;
     e.preventDefault();
     if (dragKey === null || dragKey === targetKey) return;
     const idx = wb.tabs.findIndex((t) => t.key === targetKey);
@@ -50,6 +62,9 @@ export default function TabStrip() {
     <div
       role="tablist"
       aria-label="Open nodes"
+      data-drop-zone="tabstrip"
+      onDragOver={(e) => { if (isNodeDrag(e.dataTransfer.types)) e.preventDefault(); }}
+      onDrop={(e) => { dropNode(e); }}
       className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-slate-800 bg-surface-950"
     >
       {wb.tabs.length === 0 && (

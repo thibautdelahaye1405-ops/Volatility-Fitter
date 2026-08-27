@@ -10,7 +10,6 @@
 //            cinematics by real BFS hop + attribution particles). Unchanged.
 //   RIGHT  — Inspector: the selected node (facts + exact attribution).
 //   BOTTOM — drawer: Preview | Diagnostics | Validation | Observation plan.
-//
 // This view requires the live backend (GET /graph/nodes, POST
 // /graph/extrapolate — BOTH observation sources ride the production solve
 // since P5b U3; the what-if ships syntheticObservations, non-persisting) —
@@ -42,6 +41,7 @@ import { useGraphFocus } from "../state/graphFocus";
 import { useSmileSession } from "../state/smileSession";
 import { useOptionalWorkbench } from "../state/workbench";
 import { useGraphCinematics } from "../state/useGraphCinematics";
+import { useNodeDrop } from "../state/useNodeDrop";
 import OfflineCard from "../components/shell/OfflineCard";
 
 
@@ -176,6 +176,8 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
     if (wb !== null) setHiddenKey(wb.activeTab?.key ?? null);
     else setLocalSelected(null);
   };
+  // Drop from the Nodes pane (wave 3, C5): light / pulse (state/useNodeDrop).
+  const onNodeDrop = useNodeDrop(graph, manual);
   /** Canvas single-click: manual lights/dims; calibrations inspects. */
   const onChartToggle = (key: string) => {
     if (manual) {
@@ -352,6 +354,7 @@ export default function GraphViewer({ onNavigateToSmile }: GraphViewerProps) {
           waveEpoch={waveEpoch}
           manual={manual}
           onEdgeClick={setSelectedEdge}
+          onNodeDrop={onNodeDrop}
         />
 
         <InspectorPane

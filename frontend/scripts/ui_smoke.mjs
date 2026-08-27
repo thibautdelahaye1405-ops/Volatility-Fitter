@@ -261,7 +261,47 @@ try {
       await page.keyboard.press("Escape");
     }
   }
-  // 5. Workspace file round trip (live only): Save as… → download; Open… via
+  // 5. Drag a node onto the Graph canvas (live only; wave 3 C5): darken the
+  //    first node via its dot, drag its row onto the canvas (synthesized
+  //    DragEvents with a real DataTransfer), expect it lit again on the wire.
+  if (LIVE) {
+    try {
+      await clickAria(page, "Graph");
+      await sleep(1500);
+      const lit0 = await page.evaluate(async () => (await (await fetch("/universe/lit")).json()).nodes);
+      const first = lit0[0];
+      if (!first) throw new Error("no lit-map nodes");
+      const rowSel = `#nodes-row-${`${first.ticker}|${first.expiry}`.replace(/[^a-zA-Z0-9]/g, "_")}`;
+      await page.click(`${rowSel} button[aria-label^="lit"]`); // darken
+      await sleep(600);
+      const dark = (await page.evaluate(async () => (await (await fetch("/universe/lit")).json()).nodes))
+        .find((n) => n.ticker === first.ticker && n.expiry === first.expiry);
+      if (!dark || dark.lit) throw new Error("node did not darken before the drag");
+      const dropped = await page.evaluate(async (sel) => {
+        const row = document.querySelector(sel);
+        const zone = document.querySelector('[data-drop-zone="graph-canvas"]');
+        if (!row || !zone) return "missing row/zone";
+        const dt = new DataTransfer();
+        row.dispatchEvent(new DragEvent("dragstart", { bubbles: true, dataTransfer: dt }));
+        zone.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        await new Promise((r) => setTimeout(r, 120)); // React commits the halo
+        const halo = zone.className.includes("ring-2");
+        zone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
+        return halo ? "ok" : `no halo on dragover (types: ${Array.from(dt.types).join(",")})`;
+      }, rowSel);
+      if (dropped !== "ok") throw new Error(dropped);
+      await sleep(800);
+      const relit = (await page.evaluate(async () => (await (await fetch("/universe/lit")).json()).nodes))
+        .find((n) => n.ticker === first.ticker && n.expiry === first.expiry);
+      if (!relit || !relit.lit) throw new Error("dropped node is not lit on the wire");
+      await check(page, pageErrors, "drag-to-light");
+    } catch (err) {
+      console.error(`FAIL drag-to-light: ${err.message}`);
+      failures += 1;
+    }
+  }
+
+  // 6. Workspace file round trip (live only): Save as… → download; Open… via
   //    the file chooser; the status bar names the workspace.
   if (LIVE) {
     try {

@@ -78,6 +78,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Click a node / edge", label: "Inspect it (manual what-if: pulse / unpulse)" },
       { keys: "Double-click a node", label: "Open its smile (Parametric lens, GRAPH overlay)" },
       { keys: "Drag / wheel", label: "Pan / zoom the universe" },
+      { keys: "Drop a node (from the Nodes pane)", label: "Light it (calibrations) / pulse it +1 vol pt (manual what-if); dropped on the tab strip = pinned tab" },
     ],
   },
 ];

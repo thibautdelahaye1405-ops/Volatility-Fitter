@@ -17,6 +17,8 @@
 // to the next ticker, Enter = preview tab, Shift+Enter / Space = pinned tab,
 // Ctrl+Enter = open in the other split (C3; pinned until then), L = toggle
 // lit/dark, Tab = the filter box. Ctrl+B (show) focuses the tree.
+// Drag (wave 3, C5 — lib/nodeDnd): a row can be dragged onto the Graph
+// canvas (lights it / pulses it) or onto the tab strip (pinned tab).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent } from "react";
 import { ChevronDown, ChevronRight, Filter, Settings2 } from "lucide-react";
@@ -28,6 +30,7 @@ import { useExpiryFormat } from "../../state/expiryFormat";
 import { formatExpiry } from "../../lib/expiryFormat";
 import { tabKey } from "../../lib/workbenchTabs";
 import { EMPTY_TYPEAHEAD, groupId, treeKeyAction } from "../../lib/treeNav";
+import { NODE_MIME, encodeNodeDrag } from "../../lib/nodeDnd";
 import type { TreeRow, TypeAhead } from "../../lib/treeNav";
 import type { QualityNode } from "../../state/useQuality";
 
@@ -265,6 +268,12 @@ export default function NodesPane() {
                       id={rowDomId(key)}
                       role="treeitem"
                       aria-selected={isActive}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData(NODE_MIME, encodeNodeDrag({ ticker, expiry: r.expiry }));
+                        e.dataTransfer.setData("text/plain", `${ticker} ${r.expiry}`);
+                        e.dataTransfer.effectAllowed = "copyLink";
+                      }}
                       onClick={() => { setFocusedId(key); wb.openNode({ ticker, expiry: r.expiry }, { preview: true }); }}
                       onDoubleClick={() => wb.openNode({ ticker, expiry: r.expiry })}
                       onAuxClick={(e) => {

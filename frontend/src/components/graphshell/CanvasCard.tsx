@@ -2,7 +2,14 @@
 // spines, solve cinematics) plus its loading/empty states and the
 // interaction-hint + legend strip. Pure presentation — extracted from
 // GraphViewer to keep the shell orchestrator under the file-size policy.
+// Drop target (wave 3, C5): a node dragged from the Nodes pane shows a halo
+// while over the card and hands the node to `onNodeDrop` (the viewer lights
+// it, or pulses it in manual what-if).
+import { useState } from "react";
+import type { DragEvent } from "react";
 import GraphNetworkChart, { type GraphEdgeSelection } from "../GraphNetworkChart";
+import { decodeNodeDrag, isNodeDrag, NODE_MIME } from "../../lib/nodeDnd";
+import type { DragNode } from "../../lib/nodeDnd";
 import type { WaveState } from "../GraphNetworkChart.helpers";
 import type { GraphNodeBase, GraphSolveNode } from "../../state/useGraph";
 import type { ParticleSpec } from "../../state/useAttributionParticles";
@@ -23,6 +30,8 @@ interface CanvasCardProps {
   manual: boolean;
   /** Edge click (U4): select a relation for the inspector. */
   onEdgeClick?: (sel: GraphEdgeSelection) => void;
+  /** A node dropped onto the canvas (wave 3, C5). */
+  onNodeDrop?: (node: DragNode) => void;
 }
 
 export default function CanvasCard({
@@ -38,9 +47,38 @@ export default function CanvasCard({
   waveEpoch,
   manual,
   onEdgeClick,
+  onNodeDrop,
 }: CanvasCardProps) {
+  const [dropHalo, setDropHalo] = useState(false);
+  const onDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!onNodeDrop || !isNodeDrag(e.dataTransfer.types)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "link";
+    if (!dropHalo) setDropHalo(true);
+  };
+  const onDrop = (e: DragEvent<HTMLDivElement>) => {
+    setDropHalo(false);
+    const node = decodeNodeDrag(e.dataTransfer.getData(NODE_MIME));
+    if (!node || !onNodeDrop) return;
+    e.preventDefault();
+    onNodeDrop(node);
+  };
   return (
-    <div className="flex min-w-0 flex-1 flex-col rounded-xl border border-slate-800 bg-surface-900 p-4 shadow-xl shadow-black/30">
+    <div
+      data-drop-zone="graph-canvas"
+      onDragOver={onDragOver}
+      onDragLeave={() => setDropHalo(false)}
+      onDrop={onDrop}
+      className={[
+        "relative flex min-w-0 flex-1 flex-col rounded-xl border bg-surface-900 p-4 shadow-xl shadow-black/30 transition-colors",
+        dropHalo ? "border-accent-400 ring-2 ring-accent-400/40" : "border-slate-800",
+      ].join(" ")}
+    >
+      {dropHalo && (
+        <span className="pointer-events-none absolute top-3 right-4 z-10 rounded-md border border-accent-500/50 bg-accent-500/15 px-2 py-0.5 text-[10px] font-medium text-accent-300">
+          {manual ? "Drop to pulse (+1 vol pt)" : "Drop to light the node"}
+        </span>
+      )}
       <div className="mb-2 flex shrink-0 items-center gap-2">
         <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
       </div>
@@ -76,8 +114,8 @@ export default function CanvasCard({
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 text-[10px] text-slate-600">
         <span>
           {manual
-            ? "Click to pulse/unpulse · click an edge to inspect the relation · double-click to open smile"
-            : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom"}
+            ? "Click to pulse/unpulse · click an edge to inspect the relation · double-click to open smile · drop a node from the Nodes pane to pulse it"
+            : "Click a node or edge to inspect · double-click to open smile · drag to pan, wheel to zoom · drop a node from the Nodes pane to light it"}
         </span>
         {/* The post-Run reveal is an INFLUENCE visualization (real BFS hops
             from the observations) — never solver chronology. */}
