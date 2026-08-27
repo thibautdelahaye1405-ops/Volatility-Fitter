@@ -209,6 +209,10 @@ export interface OptionsSettings {
    *  and Calibrate shows a stale-data warning. Display/report policy only. */
   dataAgeAmberMin: number;
   dataAgeRedMin: number;
+  /** As-of mismatch gate: a node whose served chain is not in the requested
+   *  as-of session (the Nodes pane's "≠ as-of") gets a Quality readiness
+   *  issue and blocks publish. Off = advisory only. Display/report policy. */
+  asOfMismatchGate: boolean;
 }
 
 export const OPTIONS_DEFAULTS: OptionsSettings = {
@@ -296,6 +300,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   autoStream: true,
   dataAgeAmberMin: 20.0,
   dataAgeRedMin: 120.0,
+  asOfMismatchGate: false,
 };
 
 export interface UseOptionsResult {

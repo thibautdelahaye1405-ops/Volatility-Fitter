@@ -58,6 +58,7 @@ spec, "State and invalidation").
 | `fitMode` | `mid` \| `bidask` \| `haircut` | `mid` | Persisted *default* fit target the frontend seeds the session from; the live target is a per-request parameter, so this never bumps the options version. |
 | `dataAgeAmberMin` | float 1–1440 | 20.0 | Live-chain age (minutes) past which the market pill turns amber (advisory; e.g. a delayed feed's 15-min lag). Display/report policy only. |
 | `dataAgeRedMin` | float 5–10080 | 120.0 | Age past which the pill turns red and the quality report **fails the node's publish-readiness** — a premarket fetch of yesterday's book must not read "13/13 ready". Never touches a fit. |
+| `asOfMismatchGate` | bool | **false** | As-of mismatch gate (per-node effective as-of, `node_asof`): a node whose served chain is NOT in the requested as-of session (`asOfExact == false` — a live-only source ignoring a close request, a feed stamping another session) gets the Quality readiness issue "as-of mismatch: chain stamped <ISO> vs the requested <day>" and the publish export blocks on it. Off = advisory only (the Nodes pane still flags "≠ as-of"). A data issue, never an arb flag. Display/report policy — never bumps the options version. |
 
 ### 2.2 Calendar and surface solver
 

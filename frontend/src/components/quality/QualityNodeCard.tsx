@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 import { fmtBp } from "../../lib/qualityFormat";
 import { cardClass } from "../../lib/ui";
 import type { QualityNode } from "../../state/useQuality";
+import { asOfClock } from "../shell/NodeAsOfCell";
 
 /** Human age of the loaded live chain ("4m" / "13.5h"); "—" off-live. */
 export function fmtAge(minutes: number | null): string {
@@ -57,6 +58,26 @@ export const TAIL_TIP =
   "Limiting tail order of the adjacent LQD pair (book ch. 2, eq. tailscalecalendar): the far expiry's tail scales must not decay faster than the near one's. Gated (Options ▸ Tail-order gate) = rose, fails readiness and blocks publish; otherwise advisory (amber). L/R = failing side; α = unequal tail exponents (irreducible).";
 export const RELAX_TIP =
   "Quote-band relaxation diagnostic (Options ▸ Band relaxation diagnostic, advisory): the smallest symmetric widening of BOTH slices' quote bands under which the uncertified pair certifies — the book's 'smallest quote-band relaxation needed for feasibility'.";
+export const ASOF_TIP =
+  "Effective as-of of the chain serving this node (HH:MM UTC of its stamp) vs the selected as-of. '≠ as-of' = the source served another moment (a live-only source ignoring a close request, a feed stamping another session). Gated (Options ▸ As-of mismatch gate) = rose, fails readiness and blocks publish; otherwise advisory (amber). A data issue, never an arb flag.";
+
+/** The as-of mismatch AND the gate applied (blocks publish). */
+export function asOfGateFailed(node: QualityNode): boolean {
+  return node.asOfGated === true && node.asOfExact === false;
+}
+
+/** As-of row text: "exact" / "≠ as-of 16:00 · gated|advisory"; "—" without a chain. */
+export function asOfText(node: QualityNode): string {
+  if (node.asOfExact == null) return "—";
+  if (node.asOfExact) return "exact";
+  return `≠ as-of ${asOfClock(node.effectiveAsOf)} · ${node.asOfGated ? "gated" : "advisory"}`;
+}
+
+/** As-of row tone: rose when gated and inexact, amber when advisory and inexact. */
+export function asOfTone(node: QualityNode): string | undefined {
+  if (asOfGateFailed(node)) return "text-rose-400";
+  return node.asOfExact === false ? "text-amber-300" : undefined;
+}
 
 /** The tail clause failed AND the gate applied (blocks publish). */
 export function tailGateFailed(node: QualityNode): boolean {
@@ -260,6 +281,9 @@ export default function QualityNodeCard({ node, rmsBudgetBp, fitMode, label }: Q
           </Row>
           <Row label="Data age" tone={ageTone(node.dataAgeMin)} title={AGE_TIP}>
             {fmtAge(node.dataAgeMin)}
+          </Row>
+          <Row label="As-of" tone={asOfTone(node)} title={ASOF_TIP}>
+            {asOfText(node)}
           </Row>
         </>
       )}

@@ -120,6 +120,16 @@ class QualityNode(BaseModel):
     #: None when not applicable (historical as-of, synthetic, nothing fetched).
     #: Red-stale data (past OptionsSettings.dataAgeRedMin) fails readiness.
     dataAgeMin: float | None = None
+    # --- per-node EFFECTIVE as-of (volfit.api.node_asof, mirrored from the
+    # universe rung / graph node): the stamp of the chain serving this node
+    # and whether it sits in the requested as-of session (None before any
+    # fetch). ``asOfGated`` says whether OptionsSettings.asOfMismatchGate
+    # applied to THIS row: when True an inexact chain is the "as-of mismatch"
+    # issue, fails ``ready`` and blocks publish; when False it stays advisory
+    # (the Nodes pane still flags it). A DATA issue — never counts in arbFlags.
+    effectiveAsOf: str | None = None  # the serving ChainSnapshot.timestamp (UTC-naive ISO)
+    asOfExact: bool | None = None
+    asOfGated: bool = False
     #: Quarantined-quote counts by reason (quote prep, R1 item 6): tick_floor,
     #: below_intrinsic, missing_or_crossed, wing, ... ADVISORY — the screens
     #: predate this record; naming the drops never changes readiness.
@@ -199,9 +209,12 @@ class QualityReport(BaseModel):
 
     Publish-readiness rule (per node): hasFit AND NOT stale AND leeOk AND
     calendarOk AND rmsBp <= rmsBudgetBp AND the ticker's live data is not
-    red-stale (dataAgeMin < OptionsSettings.dataAgeRedMin, when applicable).
-    ``issues`` lists every failed check per node; ``filterContaminated`` and
-    amber data age are advisory and never block readiness.
+    red-stale (dataAgeMin < OptionsSettings.dataAgeRedMin, when applicable)
+    AND, under OptionsSettings.asOfMismatchGate, the serving chain sits in
+    the requested as-of session (``asOfExact`` is not False).
+    ``issues`` lists every failed check per node; ``filterContaminated``,
+    amber data age and an ungated as-of mismatch are advisory and never
+    block readiness.
     """
 
     fitMode: str

@@ -80,6 +80,14 @@ export interface QualityNode {
   /** Loaded live-chain age, minutes (null: historical / synthetic / unfetched).
    *  Red-stale data (past the Options threshold) fails readiness. */
   dataAgeMin: number | null;
+  /** Per-node EFFECTIVE as-of (mirrors the universe rung / graph node): the
+   *  serving chain's stamp and whether it sits in the requested as-of session
+   *  (null before any fetch). asOfGated = Options ▸ As-of mismatch gate
+   *  applied to this row (an inexact chain then fails readiness and blocks
+   *  publish); otherwise advisory — a data issue, never an arb flag. */
+  effectiveAsOf?: string | null;
+  asOfExact?: boolean | null;
+  asOfGated?: boolean;
   /** Quarantined-quote counts by reason (advisory; optional for older payloads). */
   screened?: Record<string, number>;
   /** Kept quotes with Black vega below the diagnostic floor (IVs unreliable). */

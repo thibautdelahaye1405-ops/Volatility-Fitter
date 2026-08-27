@@ -44,9 +44,11 @@ def _node_blockers(ticker: str, row: QualityNode, node: ExportNode) -> list[str]
     wing projection must not repair, an unpriceable curve region (w <= 0 or
     non-finite = below intrinsic), and — committee R2, the acceptance rule —
     an UNCERTIFIED belly (negative Durrleman g inside the traded range, which
-    no wing projection can repair). An uncertified slice cannot become a
-    mark: repair it at the fit (enforcement / refit) or it is rejected here;
-    ``allow_dirty`` still exports a DRAFT artifact with the defect stamped."""
+    no wing projection can repair), plus — under the as-of mismatch gate — a
+    chain served off the requested as-of session. An uncertified slice cannot
+    become a mark: repair it at the fit (enforcement / refit) or it is
+    rejected here; ``allow_dirty`` still exports a DRAFT artifact with the
+    defect stamped."""
     where = f"{ticker} {row.expiry}"
     out: list[str] = []
     # The exact full-line certificate is the calendar authority (tails+
@@ -80,6 +82,11 @@ def _node_blockers(ticker: str, row: QualityNode, node: ExportNode) -> list[str]
     if not row.butterflyCertified:
         min_g = row.bellyMinG if row.bellyMinG is not None else float("nan")
         out.append(f"{where}: uncertified belly butterfly (min g {min_g:.4f})")
+    # As-of mismatch gate (OptionsSettings.asOfMismatchGate): the serving
+    # chain is not in the requested as-of session — a DATA blocker, only when
+    # the gate applied to the row (advisory otherwise; the Nodes pane flags it).
+    if row.asOfGated and row.asOfExact is False:
+        out.append(f"{where}: as-of mismatch (chain stamped {row.effectiveAsOf})")
     w = np.array([p.w for p in node.curve])
     iv = np.array([p.iv for p in node.curve])
     if w.size and (not np.all(np.isfinite(w)) or not np.all(np.isfinite(iv)) or np.any(w <= 0.0)):

@@ -243,6 +243,16 @@ class OptionsSettings(BaseModel):
     #: version, never touches a fit.
     dataAgeAmberMin: float = Field(20.0, ge=1.0, le=1440.0)
     dataAgeRedMin: float = Field(120.0, ge=5.0, le=10080.0)
+    #: As-of mismatch gate (ROADMAP "As-of → Fetch ▾" proposal; the per-node
+    #: effective as-of of volfit.api.node_asof). When on, a node whose served
+    #: chain is NOT in the requested as-of session (``asOfExact == False`` —
+    #: a live-only source ignoring a close request, a feed stamping another
+    #: session) gets the Quality readiness issue "as-of mismatch: chain
+    #: stamped <ISO> vs the requested <day>" (not ready) and the publish
+    #: export blocks on it. OFF = advisory only: the Nodes pane still flags
+    #: ``≠ as-of``, readiness and publish ignore it. Display/report policy —
+    #: never bumps the options version, never touches a fit.
+    asOfMismatchGate: bool = False
     # arbitrage / events / var-swap (wired as global defaults)
     enforceCalendar: bool = True
     #: Calendar-coupled surface solver (with ``enforceCalendar`` on).

@@ -190,12 +190,22 @@ export function WorkflowSection({ draft, patch, live }: SectionProps) {
           disabled={!live} onChange={(v) => patch({ dataAgeRedMin: v })}
         />
       </div>
+      {/* Data-freshness policy beside the age thresholds: the per-node
+          effective as-of (Nodes pane "≠ as-of") promoted to a readiness /
+          publish gate. Off = advisory; never touches a fit. */}
+      <Toggle
+        label="As-of mismatch gate"
+        hint="On: a node whose served chain is NOT in the requested as-of session (the Nodes pane's ≠ as-of — a live-only source ignoring a close request, a feed stamping another session) gets the Quality issue 'as-of mismatch' (not ready) and the publish export blocks on it. Off: advisory only — the Nodes pane and the Quality card still flag it. A data issue, never an arb flag; display/report policy only."
+        checked={draft.asOfMismatchGate} disabled={!live}
+        onChange={(v) => patch({ asOfMismatchGate: v })}
+      />
       <p className="mt-3 text-[11px] text-slate-500">
         A spot move transports the surface (no recalibration); fetching fresh option
         quotes (or any change with Auto-calibrate off) marks lit nodes STALE until Calibrate.
         Data-age alerts watch how old the loaded LIVE quotes are (a stale delayed-feed
         book, a premarket fetch): past amber the market pill warns; past red the quality
-        report fails publish-readiness and Calibrate shows a stale-data warning.
+        report fails publish-readiness and Calibrate shows a stale-data warning. The
+        as-of mismatch gate does the same for a chain served off the selected as-of.
       </p>
     </>
   );

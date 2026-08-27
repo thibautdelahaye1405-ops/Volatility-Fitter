@@ -20,6 +20,7 @@ import { useState } from "react";
 import { ChevronDown, Download, Play, TriangleAlert } from "lucide-react";
 import type { DataAgeInfo } from "../state/useDataSources";
 import type { UseAsOfResult } from "../state/useAsOf";
+import { useFetchPreview } from "../state/useFetchPreview";
 import type { UseWorkflowResult } from "../state/useWorkflow";
 import {
   CALIB_SCOPES,
@@ -74,6 +75,9 @@ export default function WorkflowControls({
 
   const [fetchOpen, setFetchOpen] = useState(false);
   const [calibOpen, setCalibOpen] = useState(false);
+  // Coverage preview of the next fetch (GET /fetch/preview), read when the
+  // Fetch menu opens; null off-live (mock) hides the row.
+  const preview = useFetchPreview(fetchOpen, live);
   // Calibrate scope — three first-class choices (Param + LV / Param only /
   // LV only); the face runs the LAST chosen one and names it; sticky.
   const [calibScope, setCalibScope] = useState<CalibScope>(() => readCalibScope());
@@ -117,6 +121,22 @@ export default function WorkflowControls({
             disabled={busy}
             onClick={() => { setFetchOpen(false); void fetchSnapshot(); }}
           />
+          {/* Coverage preview (ROADMAP "As-of → Fetch ▾"): what this pull
+              would serve under the selected as-of — amber when some nodes
+              fall back to another moment than the one selected. */}
+          {preview !== null && (
+            <div
+              data-testid="fetch-preview"
+              className={`-mt-1 px-3 pb-1.5 text-[10px] ${preview.totals.fallback > 0 ? "text-amber-400" : "text-slate-500"}`}
+              title={
+                preview.totals.fallback > 0
+                  ? "Some tickers' sources do not serve the selected as-of: their nodes will be served from another moment and flagged ≠ as-of"
+                  : "Every node of the next fetch is served at the selected as-of"
+              }
+            >
+              {preview.summary}
+            </div>
+          )}
           {/* As-of: Live / Previous Close / historical day → moment. Rows
               render only once GET /asof has answered (AsOfRows guards). */}
           {asof.asof !== null && (

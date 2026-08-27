@@ -23,6 +23,7 @@ from volfit.api import service
 from volfit.api.carry import carry_counts
 from volfit.api.data_age import format_age, ticker_ages
 from volfit.api.filter_mode import resolve_filter_mode
+from volfit.api.quality_asof import asof_fields
 from volfit.api.quality_gates import calendar_issues, certificate_fields
 from volfit.api.schemas_quality import (
     LvQuality,
@@ -271,6 +272,11 @@ def _node_row(
     age_min = data_age[0] if data_age is not None else None
     if data_age is not None and data_age[1]:
         issues.append(f"stale data ({format_age(data_age[0])} old)")
+    # Per-node effective as-of (volfit.api.quality_asof): the gated mismatch
+    # issue fails readiness; advisory (gate off) it only rides the row.
+    asof = asof_fields(state, ticker)
+    if asof.issue is not None:
+        issues.append(asof.issue)
     node = QualityNode(
         ticker=ticker,
         expiry=iso,
@@ -327,6 +333,9 @@ def _node_row(
         filterActive=f_active,
         filterContaminated=f_contaminated,  # advisory — never blocks readiness
         dataAgeMin=age_min,
+        effectiveAsOf=asof.effective,
+        asOfExact=asof.exact,
+        asOfGated=asof.gated,
         screened=_screened_counts(record.prepared),
         vegaFloored=int(getattr(record.prepared, "vega_floored", 0)),
         ready=not issues,

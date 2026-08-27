@@ -11,6 +11,7 @@ POST /fetch/spots                   -> probe live spots -> transport (no refit)
 POST /fetch/options                 -> refetch chains (+ auto-calibrate if enabled)
 POST /fetch/snapshot                -> unified: chains -> spot transport -> cheap
                                        prior roll (autoRollPriorOnFetch) -> auto-calibrate
+GET  /fetch/preview                 -> coverage preview of the next fetch (read-only)
 POST /priors/seed                   -> seed previous-close priors on demand
 """
 
@@ -22,7 +23,7 @@ from time import monotonic
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from volfit.api import workflow, workflow_fetch
+from volfit.api import fetch_preview, workflow, workflow_fetch
 from volfit.api.schemas import (
     CalibrationStatus,
     FetchRequest,
@@ -31,6 +32,7 @@ from volfit.api.schemas import (
     LiveSpot,
     SchedulerStatus,
 )
+from volfit.api.schemas_fetch_preview import FetchPreview
 from volfit.api.state import AppState
 
 router = APIRouter()
@@ -187,6 +189,15 @@ def fetch_snapshot(
     auto-calibrate when enabled. /fetch/spots + /fetch/options stay verbatim."""
     state = request.app.state.volfit
     return workflow_fetch.fetch_snapshot(state, body.tickers, _mode(state, fit_mode))
+
+
+@router.get("/fetch/preview", response_model=FetchPreview)
+def preview_fetch(request: Request) -> FetchPreview:
+    """Coverage preview of the NEXT fetch under the current as-of selection
+    and the active source (the Fetch menu's "9/12 nodes exact · 3 fall back
+    to close" line). Read-only: cached state + the provider's advertised
+    capabilities — never touches the feed."""
+    return fetch_preview.fetch_preview(request.app.state.volfit)
 
 
 @router.post("/priors/seed", response_model=dict[str, int])
