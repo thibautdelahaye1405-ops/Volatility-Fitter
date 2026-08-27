@@ -783,28 +783,92 @@ Suggested order: A1 → C2 → C1 → B1 → B2 → C4 → C5 → A2 → A3 → 
 
 ## STATUS — updated 2026-08-27 (resume here)
 
-### ▶ NEXT: the v3 RIDER BATCH is SHIPPED (wrap 2026-08-27c below) — seven
-of the nine "0bis" riders are closed. What remains, in priority order:
+### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
+below) — every recorded rider is closed except the ones listed here:
 1. USER-WINDOW runs (Next-up item 0 under WHERE THINGS STAND): benchmark-pack
    regression, MCS adjudication (decides the `mcsChart` flip — the dial is
-   now in the UI), certification refresh (`calendar_active_set_exchange`
-   now also runs test_tail_order_gate.py), the V3.8 replay-day campaign
-   (SPX is now discoverable intraday: `--roots 'SPX=SPX,SPXW'` /
-   `scenarios.INDEX_BASKET`), then `-m backtest.filter_replay` — the Prior
-   Evidence tab and FilterTimeline now link to / render from its artifact.
-2. Remaining v3 riders: `fit_key` model dimension for loaded fits (V3.2 /
-   workbench — the snapshot-file collision site is snapshot_files.py:248),
-   the eSSVI comparator column (V3.2, new model), `SchedulerStatus.unified`
-   (so the status bar can say the auto timer is unified).
-3. 2026-08-26a riders: LV-affine robust IRLS, MCS analytic price-space
-   Jacobian, LV atm_spread var-swap row, the LV var-swap-row inertness, wing
-   operators under an ACTIVE filter; benchmark-pack adjudication before any
-   default flips.
-4. Workbench follow-ons (recorded, none scheduled): backend per-node
-   effective as-of, a third editor group / vertical split, index-root
-   discovery for snapshot files.
-USER-side: restart the long-running :8000 (new OptionsSettings fields +
-endpoints); existing stores default the four new gates correctly.
+   in the UI), certification refresh (`calendar_active_set_exchange` now
+   also runs test_tail_order_gate.py), the V3.8 replay-day campaign (SPX is
+   discoverable intraday: `--roots 'SPX=SPX,SPXW'` / `scenarios.INDEX_BASKET`),
+   then `-m backtest.filter_replay` — Prior Evidence and FilterTimeline link
+   to / render from its artifact. Any default flip (robust loss, weighting
+   schemes, price residuals, mcsChart) is benchmark-pack adjudication.
+2. Still-open riders: `fit_key` model dimension for loaded fits (V3.2 —
+   snapshot_files.py commit site; recorded invasive, no consumer needs it
+   yet); wing operators surviving an ACTIVE filter (separate path); a third
+   editor group / vertical split; the as-of proposal's publish gate + Fetch
+   coverage preview (the wire + pane column shipped in 2026-08-27d); the
+   same-date AM/PM expiry-key redesign (rides index-root onboarding — the
+   capture twins now keep the first-listed root per date).
+3. Open findings worth a look: Massive stamps prev-close chains at fetch
+   time, so a Previous-close selection on Massive reads `asOfExact=false`
+   (amber) for every node — fix belongs in the Massive stamp or a
+   mode-aware exemption in node_asof.requested_day.
+USER-side: restart the long-running :8000 (new OptionsSettings fields,
+endpoints, the eSSVI compare family); existing stores default the new gates.
+
+### 🧭 SESSION WRAP (2026-08-27d) — SECOND RIDER BATCH: MCS/LV/eSSVI/WORKBENCH
+
+"Keep going" after 2026-08-27c → worked the remaining rider list: four
+scouts → four implementation agents (MCS, LV, eSSVI, workbench) + one
+lead-side item; six commits, each verified against its locks before the
+next:
+
+- **`SchedulerStatus.unifiedFetch` (78c1301)** — the status bar labels the
+  countdown "Next snapshot" (guard narrated in the tooltip) and the Snapshot
+  menu row says when it also rides the auto timer; endpoint lock.
+- **MCS analytic price-space Jacobian (d3c028b)** — `models/sigmoid/
+  price_rows.py` = the MCS analogue of SVI's `_fit_row_pieces` (dC/dw chain
+  on t·dv/dθ, floor/intrinsic clamp, hinge + anchor rows in the residual's
+  order); both charts take it; the gate no longer falls back to FD for
+  price rows (calibrate.py 483 → 480). Locks: FD vs the REAL gated closure
+  (raw/structural × mid/band), price-mode fit vs a forced-FD fit to 1e-6
+  vol, vol rows bit-identical.
+- **LV var-swap row inertness — ROOT CAUSE + fix (6dfb3dc)** — the lead's
+  probe: with `lvEarlyStop` on, soft 10 %, soft 50 % AND the hard pin all
+  returned the model UNCHANGED (500 bp basis) — the Stage-8 stall metric
+  watched the option rows only, so a warm start already optimal on the
+  option block stalled without ever moving toward the quote; early stop
+  off closed the pin to 0.03 bp. `affine_stall.py`: the stall block is
+  every DATA row (option + var-swap + basket); no extra rows = the old
+  block bit-for-bit (locked); regression lock (legacy block returns the
+  start point). The LV pin test now asserts the solver (soft > 50 bp pull,
+  pin < 2 bp under defaults). Same commit: **LV `atm_spread` var-swap row**
+  (`varswap_rows.py`: σ_atm Black-inverted at the x=1 node, Jacobian via
+  the march sensitivities / vega, FD-locked at ε=1e-4 — the FD error is
+  round-off dominated below 1e-5, identical on the raw march sensitivity)
+  and **LV-affine robust IRLS** (`affine_robust.py` reusing
+  `band.robust_multipliers`; |ΔP|/vega magnitudes in vol units; behind
+  `robustLoss`; off byte-identical; outlier lock). affine_fit.py 1669 →
+  1634 (`api/affine_varswap.py`), affine_calib.py 943 → 938.
+- **eSSVI comparator column (0ad4139)** — `models/essvi`: the SSVI slice
+  (Gatheral–Jacquier 2014 eq. 4.1 / Hendriks–Martini 2019) with closed-form
+  w′/w″/g, ATM handles, wing slopes θφ(1∓ρ)/2, the exact raw-SVI embedding;
+  `calibrate_essvi` in the SVI comparator's vol-space residual convention
+  with the GJ Theorem 4.2 no-butterfly hinges (condition (ii) held at
+  4 − 0.02 so the row always certifies). Fourth compare family (3 params,
+  amber), default CSV `lqd,svi,sigmoid,essvi`, the three existing rows
+  untouched. Test-design findings: the tail-study strip perturbs σ√t, so the
+  golden bound is 3.5e-4 vol at t=0.25; quotes from an INADMISSIBLE slice
+  cannot be reproduced by any admissible fit (the hinge lock now seeds at
+  the violating slice with admissible quotes and asserts convergence).
+- **Workbench follow-ons (cd9d000)** — `api/node_asof.py`: per-node
+  `effectiveAsOf / dataSource / asOfExact` on ExpiryInfo (GET /universe)
+  and GraphNodeInfo, cached-chain reads only; Nodes pane HH:MM column
+  (amber when inexact) + per-ticker "≠ as-of" pill. `data/roots.py`: ONE
+  index-root registry (cboe imports it); the File source resolves aliases
+  (typing SPX finds a bundle filed as SPXW — universe search + add_ticker
+  under the file source only), bundles stamp an optional per-ticker `root`
+  for index tickers (ALPHA/BETA exports byte-identical). Test-side lesson:
+  resolve the ladder (GET /universe) before the first fetch — an
+  unresolved ladder yields an empty, uncached chain (three agent tests
+  fixed that way).
+
+Verification at wrap: backend suite **1976 passed / 7 skipped** (11m33s;
++49 locks over 2026-08-27c); frontend tsc clean · vitest 50 files / 346
+tests · `npm run build` · `npm run smoke:ui` all green LIVE (every lens
+incl. the four-family Compare tab and the Nodes pane column); LV perf rails 8–28 % of budget (no var-swap rows on the
+rails ⇒ byte-identical).
 
 ### 🧭 SESSION WRAP (2026-08-27c) — V3 RIDER BATCH: SEVEN RIDERS CLOSED
 
