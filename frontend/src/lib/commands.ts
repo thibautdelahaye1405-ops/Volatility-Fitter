@@ -9,7 +9,7 @@
 // chord documented in lib/shortcuts.ts.
 
 export type CommandCategory =
-  | "File" | "Universe" | "Fetch" | "Calibrate" | "Priors" | "Lens" | "Layout" | "View" | "Tabs" | "Help";
+  | "File" | "Export" | "Universe" | "Fetch" | "Calibrate" | "Priors" | "Lens" | "Layout" | "View" | "Tabs" | "Help";
 
 export interface CommandDef {
   id: string;
@@ -40,6 +40,11 @@ export const COMMANDS = [
   { id: "file.saveToServer", label: "Save workspace to server…", category: "File", arg: { placeholder: "workspace name" } },
   { id: "file.saveSnapshot", label: "Save snapshot…", category: "File", shortcut: "Ctrl+Alt+S", detail: "quotes + calibrations" },
   { id: "file.openSnapshot", label: "Open snapshot…", category: "File", detail: "becomes the File data source" },
+  // Export (A3)
+  { id: "export.surfacesJson", label: "Export surfaces (JSON)", category: "Export", detail: "fitted nodes + inputs + manifest" },
+  { id: "export.surfacesCsv", label: "Export surfaces (CSV)", category: "Export", detail: "one row per curve point" },
+  { id: "export.report", label: "Export quality report (HTML)", category: "Export", detail: "opens in a tab" },
+  { id: "export.chartPng", label: "Export chart as PNG", category: "Export", detail: "the active chart card" },
   // Universe
   { id: "universe.manage", label: "Manage universe…", category: "Universe", shortcut: "Ctrl+Shift+U", detail: "tickers · expiries · sources" },
   { id: "universe.saveAs", label: "Save universe as…", category: "Universe", arg: { placeholder: "universe name" } },

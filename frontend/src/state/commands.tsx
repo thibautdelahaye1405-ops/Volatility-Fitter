@@ -22,6 +22,8 @@ import { useExpiryFormat } from "./expiryFormat";
 import { useSmileSession } from "./smileSession";
 import { API_BASE_URL } from "./api";
 import { saveNodePriors } from "../components/topbar/PriorsMenu";
+import { chartBackground, chartPngFilename, findActiveChartSvg, svgToPngBlob } from "../lib/chartPng";
+import { downloadBlob } from "../lib/fileHandles";
 
 export interface Command extends CommandDef {
   enabled: boolean;
@@ -52,6 +54,18 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const zen = !layout.nodesPane && !layout.aside && !layout.statusBar;
   const busy = workflow.busy;
   const openUrl = (url: string) => window.open(url, "_blank", "noopener");
+  /** Chart as PNG (A3): the active chart card's SVG → canvas → download,
+   *  named after the active node and the lens's current sub-view. */
+  const exportChartPng = () => {
+    const svg = findActiveChartSvg();
+    if (svg === null) { workflow.noteAction("Export chart: no chart on the active lens", false); return; }
+    const tab = wb.activeTab;
+    const lensView = wb.viewMemory[tab?.key ?? ""]?.[wb.activity] as { view?: string } | undefined;
+    const name = chartPngFilename(tab?.ticker ?? wb.activity, tab?.expiry ?? "", lensView?.view ?? wb.activity);
+    void svgToPngBlob(svg, chartBackground(svg))
+      .then((blob) => { downloadBlob(name, blob); workflow.noteAction(`Exported ${name}`); })
+      .catch((err: unknown) => workflow.noteAction(`Export chart failed: ${err instanceof Error ? err.message : String(err)}`, false));
+  };
 
   const commands = useMemo<Command[]>(() => {
     const bind = (id: string, run: (arg?: string) => void, enabled = true, active?: boolean): Command => {
@@ -70,6 +84,11 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("file.saveToServer", (arg) => { if (arg?.trim()) void ws.saveToServer(arg.trim()); }, live && ws.server.storeEnabled && !ws.busy),
       bind("file.saveSnapshot", () => void snap.saveSnapshot(), live && !snap.busy),
       bind("file.openSnapshot", () => void snap.openPicker(), live && !snap.busy),
+      // Export (A3): the publish artifacts + the active chart
+      bind("export.surfacesJson", () => openUrl(`${API_BASE_URL}/export/surfaces`), live),
+      bind("export.surfacesCsv", () => openUrl(`${API_BASE_URL}/export/surfaces?format=csv`), live),
+      bind("export.report", () => openUrl(`${API_BASE_URL}/export/report`), live),
+      bind("export.chartPng", exportChartPng),
       ...ws.server.entries.map((e) => ({
         id: `${DYNAMIC.workspaceServer}${e.name}`, label: `Open workspace from server: ${e.name}`,
         category: "File" as const, detail: e.savedTs, enabled: live && !ws.busy,

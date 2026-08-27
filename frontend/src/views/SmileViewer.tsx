@@ -337,7 +337,7 @@ export default function SmileViewer() {
 
           {/* Body: chart + layer rail at its right */}
           <div className="flex min-h-0 flex-1 gap-2">
-            <div className={["min-h-0 min-w-0 flex-1 transition-opacity duration-200", refreshing ? "opacity-60" : "opacity-100"].join(" ")}>
+            <div data-chart-card="" className={["min-h-0 min-w-0 flex-1 transition-opacity duration-200", refreshing ? "opacity-60" : "opacity-100"].join(" ")}>
               {chartBody()}
             </div>
             {railView !== null && (

@@ -348,6 +348,7 @@ export default function LocalVolViewer() {
             )}
           </div>
           <div
+            data-chart-card=""
             className={[
               "min-h-0 flex-1 transition-opacity duration-200",
               refreshing ? "opacity-60" : "opacity-100",

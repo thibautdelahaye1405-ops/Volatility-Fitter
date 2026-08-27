@@ -301,6 +301,35 @@ try {
     }
   }
 
+  // 5b. Export chart as PNG (wave 3 A3) through the command palette: the
+  //     active Parametric chart rasterizes to a captured .png download.
+  try {
+    await clickAria(page, "Parametric");
+    await sleep(800);
+    await page.keyboard.down("Control"); await page.keyboard.press("KeyK"); await page.keyboard.up("Control");
+    await sleep(300);
+    await page.keyboard.type("chart as png");
+    await sleep(200);
+    await page.keyboard.press("Enter");
+    let png = null;
+    for (let i = 0; i < 40 && !png; i++) {
+      await sleep(250);
+      png = await page.evaluate(() => window.__smokeDownloads.find((d) => d.name.endsWith(".png")) ?? null);
+    }
+    if (!png) {
+      const footer = await page.evaluate(() => document.querySelector("footer")?.innerText ?? "");
+      throw new Error(`no .png download (status bar: ${footer})`);
+    }
+    // <ticker>_<expiry>_<view>.png — the view is whatever the tab remembers (C2).
+    if (!/^[A-Z]+_\d{4}-\d{2}-\d{2}_[a-z-]+\.png$/.test(png.name)) throw new Error(`unexpected png name ${png.name}`);
+    if (!png.text.startsWith("\u0089PNG")) throw new Error("download is not a PNG");
+    await check(page, pageErrors, "export-chart-png");
+  } catch (err) {
+    console.error(`FAIL export-chart-png: ${err.message}`);
+    failures += 1;
+    await page.keyboard.press("Escape");
+  }
+
   // 6. Snapshot file round trip (live only; wave 3 A2): File ▸ Save snapshot…
   //    (captured download) → File ▸ Open snapshot… via the file chooser → the
   //    File data source is active and the status bar names it.

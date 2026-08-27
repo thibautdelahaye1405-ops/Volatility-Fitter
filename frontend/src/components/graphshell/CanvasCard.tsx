@@ -83,7 +83,7 @@ export default function CanvasCard({
         <h2 className="text-sm font-semibold text-slate-100">Smile universe</h2>
       </div>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1" data-chart-card="">
         {loading ? (
           <div className="flex h-full items-center justify-center text-xs text-slate-500">
             Fitting baseline nodes… (first load can take a second)

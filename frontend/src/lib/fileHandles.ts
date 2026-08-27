@@ -83,7 +83,12 @@ async function ensurePermission(handle: FileSystemFileHandle, mode: "read" | "re
 
 /** Browser download of a text blob (the non-Chromium Save-as path). */
 export function downloadText(filename: string, text: string, type = "application/json"): void {
-  const url = URL.createObjectURL(new Blob([text], { type }));
+  downloadBlob(filename, new Blob([text], { type }));
+}
+
+/** Browser download of any blob (PNG exports, …). */
+export function downloadBlob(filename: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = filename;

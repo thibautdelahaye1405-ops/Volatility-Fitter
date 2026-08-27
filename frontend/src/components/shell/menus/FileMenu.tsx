@@ -6,9 +6,11 @@
 // else a download) · Save to server… (inline name, VOLFIT_DB) · Open from
 // server ▸ (dynamic commands) · Recent ▸ (last 8) · Snapshots: Save snapshot…
 // (Ctrl+Alt+S; quotes + prevailing calibrations) / Open snapshot… (becomes the
-// File data source; A2). State + verbs: state/workspaceFile, state/snapshotFile.
+// File data source; A2) · Export: surfaces JSON / CSV, quality report HTML,
+// the active chart as PNG (A3). State + verbs: state/workspaceFile,
+// state/snapshotFile, state/commands.
 import { useState } from "react";
-import { Camera, Clock, Download, FilePlus, FolderOpen, Save, Server, Trash2 } from "lucide-react";
+import { Camera, Clock, Download, FileImage, FilePlus, FileSpreadsheet, FileText, FolderOpen, Save, Server, Trash2 } from "lucide-react";
 import MenuButton from "./MenuButton";
 import CommandRow from "../CommandRow";
 import { MenuDivider, MenuPanel, MenuSection } from "../../topbar/Menu";
@@ -83,6 +85,13 @@ export default function FileMenu() {
         <MenuSection label="Snapshots — quotes + calibrations" />
         <CommandRow id="file.saveSnapshot" icon={Camera} after={close} />
         <CommandRow id="file.openSnapshot" icon={FolderOpen} after={close} />
+
+        <MenuDivider />
+        <MenuSection label="Export" />
+        <CommandRow id="export.surfacesJson" icon={FileText} after={close} />
+        <CommandRow id="export.surfacesCsv" icon={FileSpreadsheet} after={close} />
+        <CommandRow id="export.report" icon={FileText} after={close} />
+        <CommandRow id="export.chartPng" icon={FileImage} after={close} />
 
         <MenuDivider />
         <MenuSection label="Save to server…" />
