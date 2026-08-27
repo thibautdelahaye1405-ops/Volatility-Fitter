@@ -163,6 +163,50 @@ def test_fetch_chain_full_entitlement():
     assert call.last == 12.5 and call.volume == 66 and call.open_interest == 8
 
 
+def test_prev_close_chain_is_stamped_at_the_session_close():
+    """A prev-close chain IS the latest completed session's close, so its stamp
+    is that session's close instant — not the fetch time (which made every
+    prev-close node read "≠ as-of" in the nodes pane, 2026-08-27d finding).
+    Live chains keep the fetch-time stamp."""
+    from datetime import datetime, timezone
+
+    from volfit.data.expiry_time import latest_completed_session, session_close_utc
+    from volfit.data.provider import AsOf
+
+    pages = {
+        "/v3/snapshot/options/SPY": {
+            "results": [_snap_result(500, 30, "call"), _snap_result(500, 30, "put")],
+            "status": "OK",
+        }
+    }
+    provider = MassiveProvider(["SPY"], api_key="k", http_get=FakeHttp(pages))
+    exp = [date.fromisoformat(_exp(30))]
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    prev = provider.fetch_chain("SPY", exp, as_of=AsOf(mode="prev_close"))
+    expected = session_close_utc(latest_completed_session(now))
+    assert prev.timestamp == expected
+    assert all(q.timestamp == expected for q in prev.quotes)
+    assert prev.timestamp <= now  # a completed session, never the future
+    live = provider.fetch_chain("SPY", exp)
+    assert abs((live.timestamp - now).total_seconds()) < 60  # fetch-time stamp
+
+
+def test_latest_completed_session_rolls_at_the_close():
+    from datetime import datetime
+
+    from volfit.data.expiry_time import latest_completed_session, session_close_utc
+
+    wed = date(2026, 6, 10)  # a regular Wednesday
+    close = session_close_utc(wed)  # 20:00 UTC (EDT)
+    assert close.hour == 20 and close.date() == wed
+    assert latest_completed_session(close) == wed  # at the close: today counts
+    assert latest_completed_session(close.replace(hour=15)) == date(2026, 6, 9)  # mid-session: yesterday
+    # Saturday 12:00 UTC -> Friday's session.
+    assert latest_completed_session(datetime(2026, 6, 13, 12, 0)) == date(2026, 6, 12)
+    # Monday pre-market (08:00 UTC = 04:00 ET) -> the previous Friday.
+    assert latest_completed_session(datetime(2026, 6, 15, 8, 0)) == date(2026, 6, 12)
+
+
 def test_spot_reads_underlying_without_full_chain():
     """spot() must not pull the whole chain (the base default does, ~20-30 s on a big
     name): with expiries given it hits ONLY the nearest expiry's snapshot, reads

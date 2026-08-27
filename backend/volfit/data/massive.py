@@ -601,6 +601,14 @@ class MassiveProvider(OptionChainProvider):
         prev_close = as_of is not None and as_of.mode == "prev_close"
         results = self._snapshot_results(ticker, expiries)
         timestamp = datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+        if prev_close:
+            # The chain IS the latest completed session's close (``day.close``),
+            # so stamp it at that session's close instant — not at fetch time,
+            # which made every prev-close node read "≠ as-of" in the nodes
+            # pane (per-node effective as-of, 2026-08-27d).
+            from volfit.data.expiry_time import latest_completed_session, session_close_utc
+
+            timestamp = session_close_utc(latest_completed_session(timestamp))
         quotes: list[OptionQuote] = []
         styles: list[str] = []
         spot: float | None = None

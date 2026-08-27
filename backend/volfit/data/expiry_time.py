@@ -146,6 +146,26 @@ def _to_utc_naive(d: date, t: time) -> datetime:
     return datetime.combine(d, t, tzinfo=ET).astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
 
 
+def session_close_utc(d: date) -> datetime:
+    """The session close of ``d`` (16:00 ET, 13:00 on half-days) as UTC-naive."""
+    return _to_utc_naive(d, session_close(d))
+
+
+def latest_completed_session(now_utc: datetime) -> date:
+    """The most recent trading day whose session has CLOSED at ``now_utc``
+    (UTC-naive): today (ET) once past its close, else the previous trading day.
+
+    The stamp a provider's "previous close" chain deserves — Massive's ``day``
+    bar reports the latest completed session's close after hours, so a
+    prev-close chain fetched in the evening is that day's close, and one
+    fetched pre-market is yesterday's (the as-of layer's prev-close session
+    is resolved the same way, volfit.api.asof)."""
+    today_et = now_utc.replace(tzinfo=ZoneInfo("UTC")).astimezone(ET).date()
+    if is_trading_day(today_et) and now_utc >= session_close_utc(today_et):
+        return today_et
+    return prev_trading_day(today_et)
+
+
 def default_settlement(expiry: date, root: str | None = None) -> ExpirySettlement:
     """The US listed-option settlement convention for one expiry.
 
