@@ -168,6 +168,10 @@ export interface WorkbenchValue {
   dialog: DialogId | null;
   openDialog: (id: DialogId) => void;
   closeDialog: () => void;
+  /** Show the Nodes pane and hand it the keyboard focus (Ctrl+B; wave 3, C1).
+   *  `nodesFocusSeq` advances on every request — the pane focuses its tree. */
+  focusNodesPane: () => void;
+  nodesFocusSeq: number;
   /** Per-tab view memory (wave 3, C2) — read + written via useLensViewMemory. */
   viewMemory: ViewMemory;
   setViewMemory: (key: string, lens: string, value: unknown) => void;
@@ -295,6 +299,11 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   );
   const openDialog = useCallback((id: DialogId) => setDialog(id), []);
   const closeDialog = useCallback(() => setDialog(null), []);
+  const [nodesFocusSeq, setNodesFocusSeq] = useState(0);
+  const focusNodesPane = useCallback(() => {
+    setLayoutState((l) => (l.nodesPane ? l : { ...l, nodesPane: true }));
+    setNodesFocusSeq((n) => n + 1);
+  }, []);
 
   // Workspace-file shell blob (A1): the persisted state, in and out.
   const exportShell = useCallback(
@@ -320,13 +329,15 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
       openNode, pinTab, closeTab, closeOthers, closeAll, activateTab, cycleTab, moveTab,
       layout, setLayout, resetLayout,
       dialog, openDialog, closeDialog,
+      focusNodesPane, nodesFocusSeq,
       viewMemory, setViewMemory,
       exportShell, importShell,
     }),
     [
       activity, tabs, active, openNode, pinTab, closeTab, closeOthers, closeAll,
       activateTab, cycleTab, moveTab, layout, setLayout, resetLayout, dialog,
-      openDialog, closeDialog, viewMemory, setViewMemory, exportShell, importShell,
+      openDialog, closeDialog, focusNodesPane, nodesFocusSeq, viewMemory, setViewMemory,
+      exportShell, importShell,
     ],
   );
 

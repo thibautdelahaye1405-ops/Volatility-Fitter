@@ -38,6 +38,19 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
     ],
   },
   {
+    title: "Nodes tree (focus it with Ctrl+B or a click)",
+    items: [
+      { keys: "↑ / ↓ · Home / End", label: "Move the focused row" },
+      { keys: "← / →", label: "Collapse / expand a ticker (→ enters it, ← climbs back to it)" },
+      { keys: "Letters", label: "Type-ahead — jump to the next ticker starting with them" },
+      { keys: "Enter", label: "Open the node as a preview tab" },
+      { keys: "Shift+Enter / Space", label: "Open it as a pinned tab" },
+      { keys: "Ctrl+Enter", label: "Open it in the other editor group (split)" },
+      { keys: "L", label: "Toggle the node lit / dark" },
+      { keys: "Tab", label: "Jump to the filter box" },
+    ],
+  },
+  {
     title: "Smile editing (Parametric lens, Smile view)",
     items: [
       { keys: "Click a quote", label: "Select it" },

@@ -49,7 +49,9 @@ export function useShellShortcuts(): void {
       }
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         if (e.code === "KeyB" && !e.shiftKey) {
-          wb.setLayout({ nodesPane: !wb.layout.nodesPane });
+          // Hide when shown; otherwise show AND focus the tree (keyboard nav).
+          if (wb.layout.nodesPane) wb.setLayout({ nodesPane: false });
+          else wb.focusNodesPane();
           e.preventDefault();
           return;
         }
