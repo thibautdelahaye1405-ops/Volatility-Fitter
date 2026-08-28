@@ -193,8 +193,13 @@ class AppState(UniverseMixin):
         providers: dict[str, OptionChainProvider] | None = None,
         active_source: str | None = None,
         gated: bool = False,
+        follow_wall_clock: bool = False,
     ) -> None:
         self.reference_date = reference_date
+        #: Whether ``roll_reference_date`` may advance ``reference_date`` when the
+        #: exchange-time calendar day moves on (the long-running live server,
+        #: serve.py). Pinned test/dev states keep their date forever (default).
+        self.follow_wall_clock = follow_wall_clock
         #: The serializable user-authored WORKSPACE (R1 item 9). Created FIRST:
         #: every ScopedField assignment below lands on it.
         self._ws = Workspace()
@@ -549,6 +554,66 @@ class AppState(UniverseMixin):
         "_affine_calibrated", "_sessions", "_varswap_sessions", "_filter_states",
         "_filter_history", "_band_relaxation",
     )
+
+    def roll_reference_date(self, today: date) -> bool:
+        """Advance ``reference_date`` to ``today`` on a long-running server.
+
+        The 2026-08-25 finding: a live server built at startup with
+        ``date.today()`` kept that date forever, so after midnight every
+        day-granular T = (expiry − reference_date)/365 was a day too long,
+        yesterday's 0-DTE stayed selected at T = 0, dividends never went ex and
+        the graph idio day key would overwrite the previous day's row. A roll is
+        "the same workspace on a new day" (the shape of workspace.restore_doc's
+        version-advance block): the chain-derived caches are dropped, the AUTO
+        expiry selections are cleared so the ladder re-resolves on the new
+        date (MANUAL selections keep their unexpired dates), the LV caches and
+        joint carry go, and every fit-key version advances so nothing stale is
+        served. The as-of selection is left alone; a pinned historical view
+        (``as_of.mode != "live"``) is NOT rolled — it refers to a fixed day.
+
+        Inert unless ``follow_wall_clock`` (serve.py) and ``today`` is later
+        than the current date; returns whether the date moved. Any provider
+        exposing a ``reference_date`` (the offline SyntheticProvider) rolls
+        with it so its ladder/stamp agree with the app.
+        """
+        if not self.follow_wall_clock or today <= self.reference_date:
+            return False
+        if self.as_of.mode != "live":
+            return False
+        with self._lock:
+            previous = self.reference_date
+            self.reference_date = today
+            self._clear_chain_caches()
+            self._joint_carry.clear()
+            for attr in ("_localvol_cache", "_affine_cache"):
+                cache = getattr(self, attr, None)
+                if cache is not None and hasattr(cache, "clear"):
+                    cache.clear()
+            for sym in list(self._selected):
+                if self._selection_mode.get(sym) == "custom":  # user-pinned rungs
+                    kept = [e for e in self._selected[sym] if e > today]
+                    self._selected[sym] = kept
+                    self._available[sym] = [e for e in self._available.get(sym, []) if e > today]
+                else:
+                    self._selected.pop(sym, None)
+                    self._available.pop(sym, None)
+                    self._selection_mode.pop(sym, None)
+            for ticker in list(self._data_version):
+                self._data_version[ticker] += 1
+            self._settings_version += 1
+            self._options_version += 1
+            self._filter_version += 1
+            for prov in self._providers.values():
+                if hasattr(prov, "reference_date"):
+                    try:
+                        prov.reference_date = today
+                    except Exception:  # noqa: BLE001 — a read-only provider attr
+                        pass
+        self.log_event(
+            "reference_date_roll",
+            payload={"from": previous.isoformat(), "to": today.isoformat()},
+        )
+        return True
 
     # ------------------------------------------- observation filter (Note 15)
     def filter_node(self, key: tuple):

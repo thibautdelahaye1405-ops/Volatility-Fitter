@@ -226,6 +226,7 @@ def build_app():
         providers=providers, active_source=active, store_path=store_path,
         enable_scheduler=True,  # the live server runs the timed spot/options fetcher
         gated=True,  # trigger-gated: fetch only on the Fetch button, fit only on Calibrate
+        follow_wall_clock=True,  # the scheduler rolls reference_date past midnight ET
     )
     if active == "bloomberg":
         _seed_bloomberg_dividends(app.state.volfit, providers["bloomberg"])

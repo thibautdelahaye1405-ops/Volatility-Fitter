@@ -30,6 +30,17 @@ import time
 TICK_SECONDS = 1.0
 
 
+def exchange_today() -> "date":
+    """The current calendar day in exchange time (America/New_York) — the day
+    the reference date follows on a live server (``AppState.roll_reference_date``).
+    A function (not a constant) so tests can monkeypatch the clock."""
+    from datetime import datetime
+
+    from volfit.data.expiry_time import ET
+
+    return datetime.now(ET).date()
+
+
 class Scheduler:
     """One daemon thread driving the timed spot / options fetches.
 
@@ -77,6 +88,16 @@ class Scheduler:
     def tick(self, now: float) -> None:
         """One scheduler step (pure of the timer, so it is unit-testable)."""
         from volfit.api import workflow
+
+        # Calendar-day roll (the 2026-08-25 "reference_date never rolls past
+        # midnight" gap): once per exchange-time day, ask the state to advance
+        # its reference date — inert unless the app was built with
+        # follow_wall_clock (serve.py) and the day really moved. Exchange time
+        # (ET), not UTC/local: expiry and session semantics live there.
+        today = exchange_today()
+        if today != getattr(self, "_last_day", None):
+            self._last_day = today
+            self._state.roll_reference_date(today)
 
         # Keep the real-time WS stream (Massive) in sync with the active source +
         # spot mode; cheap no-op when already correct.
