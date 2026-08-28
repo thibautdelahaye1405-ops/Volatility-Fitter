@@ -326,10 +326,12 @@ try {
     if (titles.length < 2 || titles[0] === titles[1]) throw new Error(`groups do not show two nodes: ${JSON.stringify(titles)}`);
     console.log(`     groups: ${titles.join(" | ")}`);
     await check(page, pageErrors, "split-editors");
-    // Third group (N ≤ 3): Ctrl+\ from two groups ADDS one after the focused
-    // group. Focus the MIDDLE group (a click) so Ctrl+Enter's "beside" target
-    // — the next group — is the fresh third one, then open the next tree row
-    // there: three DISTINCT chart titles.
+    // Third group (N ≤ 3): Ctrl+\ from two groups ADDS an EMPTY group right
+    // after the focused one (it shows the root node until it gets a tab).
+    // Focus that middle group (a click on its tab strip), then open the THIRD
+    // expiry row of the tree into it with plain Enter (Enter opens in the
+    // focused group; Home first so the roving row is deterministic): three
+    // DISTINCT chart titles.
     await page.keyboard.down("Control"); await page.keyboard.press("Backslash"); await page.keyboard.up("Control");
     await sleep(600);
     lists = await page.$$('[role="tablist"]');
@@ -338,8 +340,9 @@ try {
     if (panes.length !== 3) throw new Error(`expected 3 editor groups, got ${panes.length}`);
     await page.click('[data-editor-group="1"] [role="tablist"]');
     await page.focus('[role="tree"]');
-    await page.keyboard.press("ArrowDown");
-    await page.keyboard.down("Control"); await page.keyboard.press("Enter"); await page.keyboard.up("Control");
+    await page.keyboard.press("Home");
+    await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("Enter");
     await sleep(2500);
     const titles3 = await page.evaluate(() =>
       Array.from(document.querySelectorAll("[data-editor-group] main h2")).map((h) => h.textContent?.trim() ?? ""));
