@@ -13,11 +13,14 @@ import type {
   GraphBlockRule,
 } from "../state/useGraphBlocks";
 
-/** One matrix cell: weight (trust) + β (amplitude) + both-directions flag. */
+/** One matrix cell: weight (trust) + β (amplitude) + both-directions flag,
+ *  plus the optional per-pair cross-expiry tolerance (days; off-diagonal
+ *  only, present only when the user set it — see GraphBlockPair). */
 export interface MatrixCell {
   weight: number;
   beta: number;
   symmetric: boolean;
+  crossExpiryToleranceDays?: number;
 }
 
 /** Grid key for a (source, destination) ticker pair. */
@@ -49,11 +52,11 @@ export function ruleToGrid(rule: GraphBlockRule): Map<string, MatrixCell> {
     });
   }
   for (const p of rule.pairs) {
-    grid.set(cellKey(p.a, p.b), {
-      weight: p.weight,
-      beta: p.beta,
-      symmetric: p.symmetric,
-    });
+    const cell: MatrixCell = { weight: p.weight, beta: p.beta, symmetric: p.symmetric };
+    // Carried only when written (null/absent = inherit), so a rule without
+    // the field round-trips to an identical object.
+    if (p.crossExpiryToleranceDays != null) cell.crossExpiryToleranceDays = p.crossExpiryToleranceDays;
+    grid.set(cellKey(p.a, p.b), cell);
   }
   return grid;
 }
@@ -71,14 +74,20 @@ export function gridToRule(
     if (cell.weight === 0) continue;
     const [a = "", b = ""] = key.split("|");
     if (a === b) calendar.push({ ticker: a, weight: cell.weight, beta: cell.beta });
-    else pairs.push({ a, b, weight: cell.weight, beta: cell.beta, symmetric: cell.symmetric });
+    else {
+      const pair: GraphBlockPair = { a, b, weight: cell.weight, beta: cell.beta, symmetric: cell.symmetric };
+      // Emitted only when set — the backend treats an absent field as "inherit".
+      if (cell.crossExpiryToleranceDays !== undefined)
+        pair.crossExpiryToleranceDays = cell.crossExpiryToleranceDays;
+      pairs.push(pair);
+    }
   }
   return { pairs, calendar, overrides };
 }
 
-/** Fold equal mirrored cells (same weight AND β both ways) into one symmetric
- *  cell, kept under the lexicographically-first key so the result is
- *  deterministic. Pure — returns a new Map. */
+/** Fold equal mirrored cells (same weight, β AND cross-expiry tolerance both
+ *  ways) into one symmetric cell, kept under the lexicographically-first key
+ *  so the result is deterministic. Pure — returns a new Map. */
 export function collapseSymmetric(grid: Map<string, MatrixCell>): Map<string, MatrixCell> {
   const out = new Map<string, MatrixCell>();
   const consumed = new Set<string>();
@@ -89,7 +98,12 @@ export function collapseSymmetric(grid: Map<string, MatrixCell>): Map<string, Ma
     const [a = "", b = ""] = key.split("|");
     const mirrorKey = cellKey(b, a);
     const mirror = a !== b ? grid.get(mirrorKey) : undefined;
-    if (mirror !== undefined && mirror.weight === cell.weight && mirror.beta === cell.beta) {
+    if (
+      mirror !== undefined &&
+      mirror.weight === cell.weight &&
+      mirror.beta === cell.beta &&
+      mirror.crossExpiryToleranceDays === cell.crossExpiryToleranceDays
+    ) {
       out.set(key, { ...cell, symmetric: true });
       consumed.add(mirrorKey);
     } else {

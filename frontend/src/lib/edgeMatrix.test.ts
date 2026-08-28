@@ -75,6 +75,32 @@ describe("ruleToGrid / gridToRule", () => {
     const grid = new Map([[cellKey("AAPL", "SPY"), cell({ weight: 0 })]]);
     expect(gridToRule(grid, [])).toEqual({ pairs: [], calendar: [], overrides: [] });
   });
+
+  it("round-trips a per-pair cross-expiry tolerance and emits it only when set", () => {
+    const withTol: GraphBlockRule = {
+      pairs: [
+        { a: "AAPL", b: "QQQ", weight: 2, beta: 1, symmetric: true, crossExpiryToleranceDays: 3 },
+        { a: "QQQ", b: "SPY", weight: 3, beta: 1, symmetric: true },
+      ],
+      calendar: [],
+      overrides: [],
+    };
+    const grid = ruleToGrid(withTol);
+    expect(grid.get(cellKey("AAPL", "QQQ"))).toStrictEqual(
+      cell({ weight: 2, symmetric: true, crossExpiryToleranceDays: 3 }),
+    );
+    // Absent on the wire stays absent on the cell (no undefined key).
+    expect(grid.get(cellKey("QQQ", "SPY"))).toStrictEqual(cell({ weight: 3, symmetric: true }));
+    const back = gridToRule(grid, []);
+    expect(back).toStrictEqual(withTol);
+    expect("crossExpiryToleranceDays" in back.pairs[1]!).toBe(false);
+    // null from the backend (never written) is treated like absent.
+    const nulled = ruleToGrid({
+      ...withTol,
+      pairs: [{ a: "QQQ", b: "SPY", weight: 3, beta: 1, symmetric: true, crossExpiryToleranceDays: null }],
+    });
+    expect(gridToRule(nulled, []).pairs[0]).toStrictEqual(withTol.pairs[1]);
+  });
 });
 
 describe("cellAt", () => {
@@ -143,6 +169,21 @@ describe("collapseSymmetric", () => {
       [cellKey("SPY", "SPY"), cell({ weight: 5, symmetric: true })],
     ]);
     expect(collapseSymmetric(grid).size).toBe(3);
+  });
+
+  it("compares the cross-expiry tolerance too", () => {
+    const differ = new Map([
+      [cellKey("SPY", "QQQ"), cell({ weight: 2, crossExpiryToleranceDays: 2 })],
+      [cellKey("QQQ", "SPY"), cell({ weight: 2 })],
+    ]);
+    expect(collapseSymmetric(differ).size).toBe(2);
+    const same = new Map([
+      [cellKey("SPY", "QQQ"), cell({ weight: 2, crossExpiryToleranceDays: 2 })],
+      [cellKey("QQQ", "SPY"), cell({ weight: 2, crossExpiryToleranceDays: 2 })],
+    ]);
+    expect([...collapseSymmetric(same).entries()]).toEqual([
+      [cellKey("QQQ", "SPY"), cell({ weight: 2, symmetric: true, crossExpiryToleranceDays: 2 })],
+    ]);
   });
 });
 

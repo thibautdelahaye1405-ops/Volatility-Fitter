@@ -182,3 +182,87 @@ def test_rule_persists_across_restart():
         assert restored is not None
         assert restored.model_dump() == rule.model_dump()
         assert len(s2.graph_edges()) == len(s1.graph_edges())
+
+
+# ------------------------------------------------ cross-venue async expiries
+def _async_rung(state, a, b):
+    """After _two_tickers_sharing_two: the one rung ``a`` keeps that ``b`` does
+    not, ``b``'s nearest expiry to it, and their calendar-day gap."""
+    isos_a = sorted(state.selected_expiries(a))
+    isos_b = sorted(state.selected_expiries(b))
+    (lone,) = [d for d in isos_a if d not in isos_b]
+    nearest = min(isos_b, key=lambda d: abs((d - lone).days))
+    return lone.isoformat(), nearest.isoformat(), abs((lone - nearest).days)
+
+
+def test_pair_tolerance_absent_is_exact_iso_only(state):
+    """Rider B lock: a pair without crossExpiryToleranceDays expands
+    bit-identically to today (exact-ISO links only) under the routes' default
+    tolerance 0; an explicit 0.0 pins the pair to exact-ISO links even when
+    the caller passes a solver-level tolerance wide enough to pair the lone rung."""
+    a, b, shared = _two_tickers_sharing_two(state)
+    _, _, gap = _async_rung(state, a, b)
+    plain = GraphBlockRule(pairs=[GraphBlockPair(a=a, b=b, weight=2.5, beta=1.3)])
+    edges = expand_block_rule(state, plain)
+    assert len(edges) == 4 and all(e.fromExpiry == e.toExpiry for e in edges)
+    assert expand_block_rule(state, plain, default_tol=0.0) == edges
+    pinned = GraphBlockRule(
+        pairs=[GraphBlockPair(a=a, b=b, weight=2.5, beta=1.3, crossExpiryToleranceDays=0.0)]
+    )
+    assert expand_block_rule(state, pinned) == edges
+    assert expand_block_rule(state, pinned, default_tol=float(gap)) == edges
+    assert GraphBlockPair(a=a, b=b, weight=1.0).crossExpiryToleranceDays is None
+    with pytest.raises(ValueError):
+        GraphBlockPair(a=a, b=b, weight=1.0, crossExpiryToleranceDays=-1.0)
+
+
+def test_pair_tolerance_pairs_nearest_expiries(state):
+    """A per-pair tolerance links the lone rung to the other ticker's nearest
+    expiry at weight * tol/(tol+gap) (mirrored when symmetric); exact rungs
+    keep the full weight; None inherits the caller's tolerance."""
+    a, b, shared = _two_tickers_sharing_two(state)
+    lone, nearest, gap = _async_rung(state, a, b)
+    tol = float(gap)  # right at the cut: the rung pairs
+    rule = GraphBlockRule(
+        pairs=[GraphBlockPair(a=a, b=b, weight=2.5, beta=1.3, crossExpiryToleranceDays=tol)]
+    )
+    edges = expand_block_rule(state, rule)
+    assert len(edges) == 6  # 4 exact-ISO links + the lone rung, both directions
+    by = {(e.fromTicker, e.fromExpiry, e.toTicker, e.toExpiry): e for e in edges}
+    w = 2.5 * tol / (tol + gap)
+    for key in ((a, lone, b, nearest), (b, nearest, a, lone)):
+        assert by[key].weight == pytest.approx(w) and by[key].betaAtmVol == 1.3
+    for iso in shared:
+        assert by[(a, iso, b, iso)].weight == 2.5
+    inherit = GraphBlockRule(pairs=[GraphBlockPair(a=a, b=b, weight=2.5, beta=1.3)])
+    assert expand_block_rule(state, inherit, default_tol=tol) == edges
+    assert len(expand_block_rule(state, inherit, default_tol=tol / 2)) == 4  # below the gap
+    one_way = GraphBlockRule(pairs=[GraphBlockPair(
+        a=a, b=b, weight=1.0, symmetric=False, crossExpiryToleranceDays=tol,
+    )])
+    got = expand_block_rule(state, one_way)
+    assert len(got) == 3 and all(e.fromTicker == a for e in got)
+
+
+def test_pair_tolerance_round_trips_verbatim():
+    """The field round-trips through the routes and the store when written
+    (and stays absent from the response when it was not — see the round-trip
+    test above, whose rule carries no such key)."""
+    with TestClient(create_app(reference_date=REF_DATE, gated=True)) as client:
+        seed = client.get("/graph/edges/lattice").json()["edges"]
+        t0, t1 = sorted({e["fromTicker"] for e in seed})[:2]
+        pair = {"a": t0, "b": t1, "weight": 2.0, "beta": 1.0, "symmetric": True,
+                "crossExpiryToleranceDays": 2.0}
+        rule = {"pairs": [pair], "calendar": [], "overrides": []}
+        assert client.put("/graph/edges/blocks", json=rule).json()["rule"] == rule
+        assert client.get("/graph/edges/blocks").json()["rule"] == rule
+    with tempfile.TemporaryDirectory() as d:
+        path = f"{d}/store.sqlite"
+        s1 = AppState(REF_DATE, store_path=path)
+        a, b = s1.active_tickers()[:2]
+        rule_m = GraphBlockRule(
+            pairs=[GraphBlockPair(a=a, b=b, weight=4.0, crossExpiryToleranceDays=3.0)]
+        )
+        s1.set_graph_block_rule(rule_m, expand_block_rule(s1, rule_m))
+        restored = AppState(REF_DATE, store_path=path).graph_block_rule()
+        assert restored is not None and restored.pairs[0].crossExpiryToleranceDays == 3.0

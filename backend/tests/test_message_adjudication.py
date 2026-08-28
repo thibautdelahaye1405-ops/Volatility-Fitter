@@ -7,6 +7,8 @@ be right BEFORE the user burns hours on the sweep."""
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from backtest.benchmark_pack import summarize_by
@@ -18,8 +20,10 @@ from backtest.graph_edges import (
 )
 from backtest.graph_loo import COVERAGE_Z, MessageKnobs, _adjacency, _hops_from_lit
 
+from volfit.api.graph_params import nearest_cross_expiry_pairs
 from volfit.api.graph_universe import SelectedNode, SelectedUniverse
 from volfit.api.schemas import GraphExtrapolateRequest
+from volfit.graph.message import CALENDAR_PRECISION_EPSILON, cross_expiry_precision
 
 
 # --------------------------------------------------------- topology builder
@@ -132,3 +136,88 @@ def test_message_knobs_defaults_are_inert():
     learned = MessageKnobs(mode="precision_messages", amp_cal=0.23, amp_cross=0.39)
     assert learned.cal_decay == "inverse_sqrt_gap"
     assert learned.cal_precision == 1.7e3 and learned.cal_epsilon == 0.97
+
+
+# ------------------------------------------------ cross-venue async expiries
+#: Deliberately asynchronous ladders (mirrors test_graph_loo_backtest): each
+#: AAPL rung sits one day BEFORE its SPX rung; MSFT shares one ISO with each.
+ASYNC_LADDERS = {
+    "SPX": ["2024-08-16", "2024-09-20"],
+    "AAPL": ["2024-08-15", "2024-09-19"],
+    "MSFT": ["2024-08-16", "2024-09-19"],
+}
+
+
+def _async_universe():
+    nodes = [(tk, iso) for tk, isos in ASYNC_LADDERS.items() for iso in isos]
+    sigma = {n: {"SPX": 0.15, "AAPL": 0.25, "MSFT": 0.30}[n[0]] for n in nodes}
+    t_iso = {"2024-08-15": 0.049, "2024-08-16": 0.052, "2024-09-19": 0.145, "2024-09-20": 0.148}
+    return nodes, sigma, {n: t_iso[n[1]] for n in nodes}
+
+
+def test_cross_expiry_default_is_exact_iso_only():
+    """Rider lock: the default message topology is exact-ISO only — bit-
+    identical to an explicit tol 0.0, and no cross-asset factor joins two
+    different expiries (only calendar factors change maturity)."""
+    nodes, sigma, t = _async_universe()
+    base = build_message_edges(nodes, sigma, t, EdgeConfig())
+    assert base == build_message_edges(nodes, sigma, t, EdgeConfig(cross_expiry_tol_days=0.0))
+    cross = [r for r in base if r.relationClass != "calendar"]
+    assert all(r.sourceExpiry == r.targetExpiry for r in cross)
+    assert {(r.targetTicker, r.sourceTicker, r.targetExpiry) for r in cross} == {
+        ("MSFT", "SPX", "2024-08-16"), ("AAPL", "MSFT", "2024-09-19"),
+    }
+    assert base == build_message_edges(nodes, sigma, t, EdgeConfig(cross_expiry_tol_days=0.5))
+
+
+def test_cross_expiry_pairs_reuse_production_helper():
+    """tol 3: one factor per asynchronous nearest pair (the production
+    helper's pairing), |dT|-decayed precision normalized to the class seed,
+    maturity-shape beta composed onto the sigma ratio (shape handles carry
+    the maturity beta alone); the same-ISO rows are a strict prefix."""
+    nodes, sigma, t = _async_universe()
+    cfg = EdgeConfig(cross_expiry_tol_days=3.0)
+    base = build_message_edges(nodes, sigma, t, EdgeConfig(), alpha_t=0.5)
+    rows = build_message_edges(nodes, sigma, t, cfg, alpha_t=0.5)
+    assert rows[: len(base)] == base
+    new = rows[len(base):]
+    assert len(new) == 4
+    got = {frozenset({(r.sourceTicker, r.sourceExpiry), (r.targetTicker, r.targetExpiry)}) for r in new}
+    want = set()
+    for a, b in (("AAPL", "MSFT"), ("AAPL", "SPX"), ("MSFT", "SPX")):
+        for iso_a, iso_b, _gap in nearest_cross_expiry_pairs(ASYNC_LADDERS[a], ASYNC_LADDERS[b], 3.0):
+            want.add(frozenset({(a, iso_a), (b, iso_b)}))
+    assert got == want
+    by = {(r.targetTicker, r.targetExpiry, r.sourceTicker, r.sourceExpiry): r for r in new}
+
+    # Hub class keeps the taxonomy orientation: SPX (source) informs AAPL.
+    r = by[("AAPL", "2024-08-15", "SPX", "2024-08-16")]
+    assert r.relationClass == "broad_index" and r.precisionRule == "explicit"
+    t_r, t_i = t[("AAPL", "2024-08-15")], t[("SPX", "2024-08-16")]
+    shape = (t_i / t_r) ** 0.5
+    np.testing.assert_allclose(r.betaAtmVol, (0.25 / 0.15) * shape)
+    np.testing.assert_allclose((r.betaSkew, r.betaCurv), (shape, shape))
+    eps = CALENDAR_PRECISION_EPSILON
+    np.testing.assert_allclose(
+        r.messagePrecision, MSG_INDEX_PRECISION * eps / (eps + math.sqrt(abs(t_i - t_r)))
+    )
+    np.testing.assert_allclose(
+        r.messagePrecision, cross_expiry_precision(t_r, t_i, scale=MSG_INDEX_PRECISION)
+    )
+    assert r.messagePrecision < MSG_INDEX_PRECISION  # decayed, never above the seed
+
+    # Peer class: canonical SHORT receiver (AAPL Aug-15 before MSFT Aug-16).
+    p = by[("AAPL", "2024-08-15", "MSFT", "2024-08-16")]
+    assert p.relationClass == "sector_peer"
+    t_m = t[("MSFT", "2024-08-16")]
+    np.testing.assert_allclose(p.betaAtmVol, (0.25 / 0.30) * (t_m / t_r) ** 0.5)
+    np.testing.assert_allclose(
+        p.messagePrecision, cross_expiry_precision(t_r, t_m, scale=MSG_PEER_PRECISION)
+    )
+
+    # The cross precision multiplier scales the asynchronous seeds too.
+    doubled = build_message_edges(nodes, sigma, t, cfg, alpha_t=0.5, cross_precision_mult=2.0)
+    np.testing.assert_allclose(
+        [x.messagePrecision for x in doubled[len(base):]],
+        [2.0 * x.messagePrecision for x in new],
+    )

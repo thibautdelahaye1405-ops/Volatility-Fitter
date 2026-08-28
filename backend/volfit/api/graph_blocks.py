@@ -16,10 +16,19 @@ an override REPLACES any expanded edge with the same directed (from, to) node
 pair. Rules naming tickers not currently active (or with an unresolved ladder)
 expand to nothing, silently: the rule may legitimately reference a universe
 wider than today's, and it must survive intact until those tickers return.
+
+Cross-venue asynchronous expiries (rider 2026-08-25a): a pair rule may carry
+``crossExpiryToleranceDays`` — None inherits the caller's ``default_tol`` (0
+unless a solver passes its own), 0 pins the pair to exact-ISO links, > 0 also
+links each unmatched rung to the other ticker's NEAREST expiry within that
+many days at ``weight * tol / (tol + gap)`` (graph_params.nearest_cross_expiry_pairs
+and the lattice's attenuation). The routes pass nothing, so a persisted rule
+expands byte-identically to before unless a pair opts in.
 """
 
 from __future__ import annotations
 
+from volfit.api.graph_params import nearest_cross_expiry_pairs
 from volfit.api.graph_universe import _selected_ladders
 from volfit.api.schemas import GraphBlockRule, GraphEdgeInput
 from volfit.api.state import AppState
@@ -28,13 +37,18 @@ from volfit.api.state import AppState
 _EdgeKey = tuple[tuple[str, str], tuple[str, str]]
 
 
-def expand_block_rule(state: AppState, rule: GraphBlockRule) -> list[GraphEdgeInput]:
+def expand_block_rule(
+    state: AppState, rule: GraphBlockRule, default_tol: float = 0.0
+) -> list[GraphEdgeInput]:
     """Expand a block rule into directed per-edge rows over the selected universe.
 
     Deterministic: the result is sorted by (fromTicker, fromExpiry, toTicker,
     toExpiry). Calendar and pair rules cannot collide (same-ticker vs cross-ticker
     edges); only ``rule.overrides`` can shadow an expanded edge, and they always
     win. Unknown tickers / unresolved ladders are skipped silently.
+    ``default_tol`` is the solver-level cross-expiry tolerance (calendar days)
+    a pair without its own ``crossExpiryToleranceDays`` inherits; 0 = exact-ISO
+    links only (the historical expansion, byte-identical).
     """
     ladders = _selected_ladders(state)
     # Tolerate case drift in hand-typed rules (active tickers are upper-case).
@@ -70,6 +84,15 @@ def expand_block_rule(state: AppState, rule: GraphBlockRule) -> list[GraphEdgeIn
             put((a, iso), (b, iso), pair.weight, pair.beta)
             if pair.symmetric:
                 put((b, iso), (a, iso), pair.weight, pair.beta)
+        # Asynchronous rungs: the pair's own tolerance wins over the caller's
+        # default; the helper excludes shared ISOs (already linked above) and
+        # returns nothing at tolerance 0, so the loop is inert by default.
+        tol = default_tol if pair.crossExpiryToleranceDays is None else pair.crossExpiryToleranceDays
+        for iso_a, iso_b, gap in nearest_cross_expiry_pairs(ladders[a], ladders[b], tol):
+            weight = pair.weight * tol / (tol + gap)
+            put((a, iso_a), (b, iso_b), weight, pair.beta)
+            if pair.symmetric:
+                put((b, iso_b), (a, iso_a), weight, pair.beta)
 
     # Explicit per-edge overrides layered LAST: the same directed (from, to)
     # REPLACES the expanded edge rather than duplicating it. Overrides naming

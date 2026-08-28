@@ -15,6 +15,10 @@ Builds the user-specified directed graph topology over a captured universe:
     ``beta = 0.6``, moderate conductance;
   * every other edge: absent (``beta = 0``).
 
+The cross-asset classes pair nodes on the SAME expiry ISO by default; the
+``EdgeConfig.cross_expiry_tol_days`` rider (backtest.graph_edges_async) adds
+nearest-expiry pairs for asynchronous cross-venue ladders — opt-in, 0 by default.
+
 DIRECTION CONVENTION (critical — see volfit.graph.build): the raw weight ``w_ij``
 means "j is relevant when predicting i", and a ``GraphEdgeInput`` writes
 ``w[from, to]``. So **information flows from ``toTicker`` to ``fromTicker``** — the
@@ -36,7 +40,7 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from volfit.api.schemas import GraphEdgeInput
+from volfit.api.schemas import GraphEdgeInput, GraphMessageEdge
 
 from backtest.universe import FULL
 
@@ -117,10 +121,59 @@ class EdgeConfig:
     #: name as the broad_index class regardless of its taxonomy kind. Default
     #: EMPTY = byte-identical edge lists everywhere (locked).
     hub_tickers: tuple[str, ...] = ()
+    #: Cross-venue ASYNCHRONOUS expiries (ROADMAP rider 2026-08-25a "taxonomy
+    #: still same-ISO"): with a tolerance > 0 (calendar days) a rung with NO
+    #: exact-ISO partner on another ticker is also related to that ticker's
+    #: NEAREST expiry within the tolerance — the production pairing
+    #: (volfit.api.graph_params.nearest_cross_expiry_pairs), attenuated as in
+    #: backtest.graph_edges_async. Default 0.0 = the same-ISO taxonomy only:
+    #: both builders' edge lists stay byte-identical (locked).
+    cross_expiry_tol_days: float = 0.0
 
 
 def _clip(beta: float, cfg: EdgeConfig) -> float:
     return float(min(max(beta, 0.0), cfg.beta_cap))
+
+
+def _class_of(
+    informer: NodeKey, influenced: NodeKey, cfg: EdgeConfig
+) -> tuple[str, float, float] | None:
+    """The cross-asset relation class of ``informer -> influenced``, or None.
+
+    ONE decision shared by both builders (and by the asynchronous-expiry pass
+    in ``graph_edges_async``), so the taxonomy cannot drift between the
+    smooth-field edge list and the message factors. Returns ``(class,
+    beta_vn, weight)`` — the legacy vol-normalized beta (learned overrides
+    applied) and conductance of the class; the message builder uses only the
+    class. Only single names are influenced cross-asset: ``broad_index`` = a
+    market hub (``market_indices`` by taxonomy, or an explicit ``hub_tickers``
+    entry) informing a non-hub name, ``sector_etf`` = a same-sector ETF,
+    ``sector_peer`` = a same-sector single name (orientation and the
+    one-factor-per-pair rule are the caller's). Expiries are NOT inspected
+    here — the caller pairs the nodes (same ISO, or nearest within tolerance).
+    """
+    if informer[0] == influenced[0] or asset_kind(influenced[0]) != "name":
+        return None
+    ov = cfg.overrides
+    kind = asset_kind(informer[0])
+    sec = asset_sector(influenced[0])
+    is_hub = informer[0] in cfg.hub_tickers and influenced[0] not in cfg.hub_tickers
+    if is_hub or (kind == "index" and informer[0] in cfg.market_indices):
+        beta_vn, w = cfg.beta_index, cfg.index_weight
+        if ov is not None:  # learned per-name index beta
+            beta_vn = ov.index_by_name.get(influenced[0], beta_vn)
+        return "broad_index", beta_vn, w
+    if kind == "etf" and asset_sector(informer[0]) == sec:
+        beta_vn, w = cfg.beta_etf, cfg.etf_weight
+        if ov is not None and ov.etf_beta is not None:
+            beta_vn = ov.etf_beta
+        return "sector_etf", beta_vn, w
+    if kind == "name" and asset_sector(informer[0]) == sec:
+        beta_vn, w = cfg.beta_name, cfg.name_weight
+        if ov is not None and ov.name_beta is not None:
+            beta_vn = ov.name_beta
+        return "sector_peer", beta_vn, w
+    return None  # every other pair: beta 0 (omitted)
 
 
 def _edge(frm: NodeKey, to: NodeKey, weight: float, beta: float) -> GraphEdgeInput:
@@ -132,6 +185,32 @@ def _edge(frm: NodeKey, to: NodeKey, weight: float, beta: float) -> GraphEdgeInp
     )
 
 
+def cross_pair_edges(
+    influenced: NodeKey, informer: NodeKey, w: float, beta_vn: float, cls: str,
+    sigma: dict[NodeKey, float], cfg: EdgeConfig,
+) -> list[GraphEdgeInput]:
+    """The legacy directed edge(s) of ONE classified cross-asset relation.
+
+    ``informer`` informs ``influenced`` at conductance ``w`` and absolute beta
+    ``beta_vn * sigma_from / sigma_to`` (clipped). Index/ETF/hub informers
+    also get the recurrence REVERSE edge at ``w * cross_reverse_frac`` with
+    the inverse beta (see ``EdgeConfig.cross_reverse_frac``); name<->name
+    pairs get none here because the callers visit both orderings. A hub whose
+    taxonomy kind is "name" (SPY) classifies as ``broad_index`` and therefore
+    gets the reverse edge exactly like an index informer."""
+    sig_from = sigma.get(influenced, 0.0)
+    sig_to = sigma.get(informer, 0.0)
+    ratio = sig_from / sig_to if sig_to > 0.0 else 1.0
+    beta_fwd = _clip(beta_vn * ratio, cfg)
+    out = [_edge(influenced, informer, w, beta_fwd)]
+    if cls != "sector_peer" and cfg.cross_reverse_frac > 0.0:
+        out.append(_edge(
+            informer, influenced, w * cfg.cross_reverse_frac,
+            _clip(1.0 / max(beta_fwd, 1e-6), cfg),
+        ))
+    return out
+
+
 #: Phase-0 empirical cross-class message precision seeds (1/vol^2, ATM-vol
 #: units; backtest/results/message_phase0.json): residual message noise of
 #: 0.87 / 1.05 vol points for index->name / sector-peer relations. The ETF
@@ -139,6 +218,36 @@ def _edge(frm: NodeKey, to: NodeKey, weight: float, beta: float) -> GraphEdgeInp
 MSG_INDEX_PRECISION = 1.3e4
 MSG_PEER_PRECISION = 0.9e4
 MSG_ETF_PRECISION = 1.1e4
+#: Seed by relation class (the ``_class_of`` labels).
+MSG_CLASS_PRECISION = {
+    "broad_index": MSG_INDEX_PRECISION,
+    "sector_etf": MSG_ETF_PRECISION,
+    "sector_peer": MSG_PEER_PRECISION,
+}
+
+
+def message_row(
+    recv: NodeKey, inf: NodeKey, p: float, beta: float, cls: str, cfg: EdgeConfig,
+    rule: str = "explicit", shape_beta: float | None = None,
+) -> GraphMessageEdge:
+    """One relation factor: ``inf`` (source) predicts ``recv`` (target) with
+    precision ``p`` and ATM beta ``beta`` clipped to ``cfg.beta_cap``.
+
+    ``shape_beta`` overrides the skew/curvature betas (Phase-5 wing fix,
+    2026-07-23): a vol-normalized ATM ratio is the WRONG scale for shape
+    innovations — cross relations transfer skew/curv at unit beta (framework
+    §14.2 "separate ATM, skew, and curvature beta"), while calendar keeps the
+    maturity-ratio on all handles (§8.5 defaults). Broadcasting the ATM ratio
+    caused the campaign-2 liquid_split wing regression (193 vs 121 bp;
+    FINDINGS_dynamic_phase5.md follow-up 1)."""
+    b = _clip(beta, cfg)
+    s = b if shape_beta is None else shape_beta
+    return GraphMessageEdge(
+        sourceTicker=inf[0], sourceExpiry=inf[1],
+        targetTicker=recv[0], targetExpiry=recv[1],
+        messagePrecision=p, betaAtmVol=b, betaSkew=s, betaCurv=s,
+        relationClass=cls, precisionRule=rule,
+    )
 
 
 def build_message_edges(
@@ -168,29 +277,13 @@ def build_message_edges(
     * sector_peer: one factor per unordered same-sector name pair,
       lexicographic receiver, ``beta = sigma_receiver/sigma_informer``.
 
-    Betas are clipped to ``cfg.beta_cap`` like the legacy builder."""
-    from volfit.api.schemas import GraphMessageEdge
-
+    Betas are clipped to ``cfg.beta_cap`` like the legacy builder. With
+    ``cfg.cross_expiry_tol_days`` > 0 the asynchronous-expiry factors of
+    ``graph_edges_async.cross_expiry_message_rows`` are APPENDED after the
+    same-ISO rows (the rows above are untouched, so the default list is a
+    strict prefix)."""
     cfg = cfg or EdgeConfig()
     rows: list[GraphMessageEdge] = []
-
-    def _row(recv: NodeKey, inf: NodeKey, p: float, beta: float, cls: str,
-             rule: str = "explicit", shape_beta: float | None = None) -> GraphMessageEdge:
-        """``shape_beta`` overrides the skew/curvature betas (Phase-5 wing
-        fix, 2026-07-23): a vol-normalized ATM ratio is the WRONG scale for
-        shape innovations — cross relations transfer skew/curv at unit beta
-        (framework §14.2 "separate ATM, skew, and curvature beta"), while
-        calendar keeps the maturity-ratio on all handles (§8.5 defaults).
-        Broadcasting the ATM ratio caused the campaign-2 liquid_split wing
-        regression (193 vs 121 bp; FINDINGS_dynamic_phase5.md follow-up 1)."""
-        b = _clip(beta, cfg)
-        s = b if shape_beta is None else shape_beta
-        return GraphMessageEdge(
-            sourceTicker=inf[0], sourceExpiry=inf[1],
-            targetTicker=recv[0], targetExpiry=recv[1],
-            messagePrecision=p, betaAtmVol=b, betaSkew=s, betaCurv=s,
-            relationClass=cls, precisionRule=rule,
-        )
 
     by_ticker: dict[str, list[NodeKey]] = defaultdict(list)
     for n in nodes:
@@ -199,8 +292,8 @@ def build_message_edges(
         ns.sort(key=lambda n: t.get(n, 0.0))
         for short, long_ in zip(ns[:-1], ns[1:]):  # t[short] <= t[long_]
             ts, tl = max(t.get(short, 0.0), 1e-9), max(t.get(long_, 0.0), 1e-9)
-            rows.append(_row(short, long_, 1.0, (tl / ts) ** alpha_t,
-                             "calendar", rule="calendar_distance"))
+            rows.append(message_row(short, long_, 1.0, (tl / ts) ** alpha_t,
+                                    "calendar", cfg, rule="calendar_distance"))
 
     by_iso: dict[str, list[NodeKey]] = defaultdict(list)
     for n in nodes:
@@ -208,38 +301,26 @@ def build_message_edges(
     for ns in by_iso.values():
         names = sorted(n for n in ns if asset_kind(n[0]) == "name")
         for influenced in names:
-            sec = asset_sector(influenced[0])
             sig_i = sigma.get(influenced, 0.0)
             for informer in ns:
                 if informer == influenced:
                     continue
-                kind = asset_kind(informer[0])
+                hit = _class_of(informer, influenced, cfg)
+                if hit is None or (hit[0] == "sector_peer" and not informer > influenced):
+                    continue  # unrelated, or the peer pair's second ordering
+                cls = hit[0]  # one factor per unordered peer pair, lexicographic receiver
                 sig_j = sigma.get(informer, 0.0)
                 ratio = sig_i / sig_j if sig_j > 0.0 else 1.0
-                is_hub = (informer[0] in cfg.hub_tickers
-                          and influenced[0] not in cfg.hub_tickers)
-                if is_hub or (kind == "index" and informer[0] in cfg.market_indices):
-                    rows.append(_row(
-                        influenced, informer,
-                        MSG_INDEX_PRECISION * cross_precision_mult, ratio,
-                        "broad_index", shape_beta=1.0,
-                    ))
-                elif kind == "etf" and asset_sector(informer[0]) == sec:
-                    rows.append(_row(
-                        influenced, informer,
-                        MSG_ETF_PRECISION * cross_precision_mult, ratio,
-                        "sector_etf", shape_beta=1.0,
-                    ))
-                elif (
-                    kind == "name"
-                    and asset_sector(informer[0]) == sec
-                    and informer > influenced  # one factor per unordered pair
-                ):
-                    rows.append(_row(
-                        influenced, informer,
-                        MSG_PEER_PRECISION * cross_precision_mult, ratio,
-                        "sector_peer", shape_beta=1.0,
-                    ))
+                rows.append(message_row(
+                    influenced, informer, MSG_CLASS_PRECISION[cls] * cross_precision_mult,
+                    ratio, cls, cfg, shape_beta=1.0,
+                ))
+    if cfg.cross_expiry_tol_days > 0.0:
+        from backtest.graph_edges_async import cross_expiry_message_rows
+
+        rows.extend(cross_expiry_message_rows(
+            nodes, sigma, t, cfg, alpha_t=alpha_t, cross_precision_mult=cross_precision_mult,
+        ))
     return rows
 
 
@@ -253,7 +334,10 @@ def build_directed_edges(
 
     ``sigma`` / ``t`` are each node's baseline ATM vol and calendar year-fraction.
     Cross-asset edges connect same-expiry nodes; only single names are *influenced*
-    cross-asset (indices / ETFs receive calendar edges only)."""
+    cross-asset (indices / ETFs receive calendar edges only). With
+    ``cfg.cross_expiry_tol_days`` > 0 the nearest-expiry edges of
+    ``graph_edges_async.cross_expiry_directed_edges`` are APPENDED (the
+    default list is a strict prefix)."""
     cfg = cfg or EdgeConfig()
     ov = cfg.overrides
     cal_mult = 1.0 if ov is None or ov.calendar_mult is None else ov.calendar_mult
@@ -280,41 +364,19 @@ def build_directed_edges(
         for influenced in ns:
             if asset_kind(influenced[0]) != "name":
                 continue  # only single names are influenced cross-asset
-            sec = asset_sector(influenced[0])
             for informer in ns:
                 if informer == influenced:
                     continue
-                kind = asset_kind(informer[0])
-                is_hub = (informer[0] in cfg.hub_tickers
-                          and influenced[0] not in cfg.hub_tickers)
-                if is_hub or (kind == "index" and informer[0] in cfg.market_indices):
-                    beta_vn, w = cfg.beta_index, cfg.index_weight
-                    if ov is not None:  # learned per-name index beta
-                        beta_vn = ov.index_by_name.get(influenced[0], beta_vn)
-                elif kind == "etf" and asset_sector(informer[0]) == sec:
-                    beta_vn, w = cfg.beta_etf, cfg.etf_weight
-                    if ov is not None and ov.etf_beta is not None:
-                        beta_vn = ov.etf_beta
-                elif kind == "name" and asset_sector(informer[0]) == sec:
-                    beta_vn, w = cfg.beta_name, cfg.name_weight
-                    if ov is not None and ov.name_beta is not None:
-                        beta_vn = ov.name_beta
-                else:
+                hit = _class_of(informer, influenced, cfg)
+                if hit is None:
                     continue  # every other edge: beta 0 (omitted)
-                sig_from = sigma.get(influenced, 0.0)
-                sig_to = sigma.get(informer, 0.0)
-                ratio = sig_from / sig_to if sig_to > 0.0 else 1.0
-                beta_fwd = _clip(beta_vn * ratio, cfg)
-                edges.append(_edge(influenced, informer, w, beta_fwd))
-                # Reverse edge for index/ETF/hub informers only (name<->name pairs
-                # are already emitted in both directions by this loop): keeps single
-                # names recurrent so their conductance is nonzero (see EdgeConfig).
-                # A hub whose taxonomy kind is "name" (SPY) matched only the hub
-                # branch, never the both-directions peer emission, so it needs the
-                # reverse edge exactly like an index informer.
-                if (kind != "name" or is_hub) and cfg.cross_reverse_frac > 0.0:
-                    edges.append(_edge(
-                        informer, influenced, w * cfg.cross_reverse_frac,
-                        _clip(1.0 / max(beta_fwd, 1e-6), cfg),
-                    ))
+                cls, beta_vn, w = hit
+                # Forward edge + (index/ETF/hub informers only) the recurrence
+                # reverse edge; name<->name pairs are emitted in both directions
+                # by this loop itself (see cross_pair_edges / EdgeConfig).
+                edges.extend(cross_pair_edges(influenced, informer, w, beta_vn, cls, sigma, cfg))
+    if cfg.cross_expiry_tol_days > 0.0:
+        from backtest.graph_edges_async import cross_expiry_directed_edges
+
+        edges.extend(cross_expiry_directed_edges(nodes, sigma, cfg))
     return edges

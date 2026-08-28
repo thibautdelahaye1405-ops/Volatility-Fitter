@@ -318,6 +318,12 @@ export default function EdgeMatrixEditor({
                                 {cell.beta !== 1 && (
                                   <span className="text-[9px] text-slate-400">β {cell.beta}</span>
                                 )}
+                                {cell.crossExpiryToleranceDays !== undefined && !diagonal && (
+                                  /* Per-pair cross-expiry tolerance (days). */
+                                  <span className="text-[9px] text-slate-400">
+                                    ±{cell.crossExpiryToleranceDays}d
+                                  </span>
+                                )}
                               </>
                             ) : (
                               /* Faint dot invites a click on empty cells. */
@@ -343,6 +349,7 @@ export default function EdgeMatrixEditor({
                                 setEditing(null);
                                 setDrill({ src, dst });
                               }}
+                              withTolerance
                             />
                           )}
                         </td>

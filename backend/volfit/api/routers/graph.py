@@ -280,7 +280,11 @@ def benchmark_artifact() -> FileResponse:
     return FileResponse(candidates[-1], media_type="text/html")
 
 
-@router.get("/graph/edges/blocks", response_model=GraphBlockRuleResponse)
+@router.get(
+    "/graph/edges/blocks",
+    response_model=GraphBlockRuleResponse,
+    response_model_exclude_none=True,  # optional pair fields never written stay absent
+)
 def get_graph_blocks(request: Request) -> GraphBlockRuleResponse:
     """The persisted ticker-block rule VERBATIM (an empty rule when none is
     stored) plus the size of its expansion over the current selected universe."""
@@ -291,7 +295,11 @@ def get_graph_blocks(request: Request) -> GraphBlockRuleResponse:
     )
 
 
-@router.put("/graph/edges/blocks", response_model=GraphBlockRuleResponse)
+@router.put(
+    "/graph/edges/blocks",
+    response_model=GraphBlockRuleResponse,
+    response_model_exclude_none=True,
+)
 def put_graph_blocks(body: GraphBlockRule, request: Request) -> GraphBlockRuleResponse:
     """Persist the block rule AND install its expansion as the per-edge overrides
     in one step, so /graph/edges immediately serves the expanded list. An

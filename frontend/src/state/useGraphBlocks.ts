@@ -16,6 +16,12 @@ export interface GraphBlockPair {
   weight: number;
   beta: number;
   symmetric: boolean;
+  /** Cross-venue asynchronous ladders: also link each rung without an exact
+   *  partner to the other ticker's NEAREST expiry within this many calendar
+   *  days, at weight × tol/(tol+gap). Absent/null = inherit the solver-level
+   *  tolerance (0 by default); 0 = exact-ISO links only for this pair. Only
+   *  sent when set, so an untouched rule round-trips exactly as written. */
+  crossExpiryToleranceDays?: number | null;
 }
 
 /** A ticker's own consecutive-expiry chain weight (the matrix diagonal). */

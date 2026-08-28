@@ -49,12 +49,33 @@ interface CellPopoverProps {
   onClose: () => void;
   /** Open the expiry×expiry drill-in for this ticker pair (ticker matrix only). */
   onDrill?: () => void;
+  /** Show the per-pair cross-expiry tolerance input (ticker-pair cells only —
+   *  a per-expiry override has no ladder to pair). */
+  withTolerance?: boolean;
 }
 
 /** Small inline editor anchored under the clicked cell. A fixed transparent
  *  scrim behind it (TopBar dropdown pattern) closes on click-away; Escape and
  *  focus leaving the popover close it too. */
-export function CellPopover({ cell, diagonal, onChange, onClear, onClose, onDrill }: CellPopoverProps) {
+export function CellPopover({
+  cell,
+  diagonal,
+  onChange,
+  onClear,
+  onClose,
+  onDrill,
+  withTolerance = false,
+}: CellPopoverProps) {
+  // Blank = inherit the solver-level tolerance (the field is dropped from the
+  // cell); 0 = exact-ISO only; > 0 = nearest expiry within that many days.
+  const setTolerance = (raw: string) => {
+    if (raw === "") {
+      onChange({ weight: cell.weight, beta: cell.beta, symmetric: cell.symmetric });
+      return;
+    }
+    const v = Number(raw);
+    if (Number.isFinite(v) && v >= 0) onChange({ ...cell, crossExpiryToleranceDays: v });
+  };
   return (
     <>
       <button
@@ -113,6 +134,23 @@ export function CellPopover({ cell, diagonal, onChange, onClear, onClose, onDril
               className="accent-accent-500"
             />
             symmetric ⇄
+          </label>
+        )}
+        {withTolerance && !diagonal && (
+          <label
+            className="flex items-center justify-between gap-2 text-[10px] text-slate-400"
+            title="Cross-venue ladders: also pair each rung with the other ticker's nearest expiry within ± this many days (blank = inherit, 0 = exact dates only)"
+          >
+            ± days
+            <input
+              type="number"
+              min={0}
+              step={1}
+              placeholder="inherit"
+              value={cell.crossExpiryToleranceDays ?? ""}
+              className={numCls}
+              onChange={(e) => setTolerance(e.target.value)}
+            />
           </label>
         )}
         <div className="flex items-center justify-between gap-2 pt-0.5">
