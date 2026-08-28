@@ -307,6 +307,8 @@ try {
   // 5a. Split editors (wave 3 C3): Ctrl+\ splits, Ctrl+Enter on a tree row
   //     opens a second node in the other group; two tab lists must exist and
   //     the two groups must show DIFFERENT nodes (their chart titles differ).
+  //     Then the third group (follow-on): a second Ctrl+\ adds a group, a
+  //     third node opens there, and Ctrl+\ at the cap folds back to ONE.
   try {
     await clickAria(page, "Parametric");
     await sleep(600);
@@ -324,6 +326,27 @@ try {
     if (titles.length < 2 || titles[0] === titles[1]) throw new Error(`groups do not show two nodes: ${JSON.stringify(titles)}`);
     console.log(`     groups: ${titles.join(" | ")}`);
     await check(page, pageErrors, "split-editors");
+    // Third group (N ≤ 3): Ctrl+\ from two groups ADDS one after the focused
+    // group. Focus the MIDDLE group (a click) so Ctrl+Enter's "beside" target
+    // — the next group — is the fresh third one, then open the next tree row
+    // there: three DISTINCT chart titles.
+    await page.keyboard.down("Control"); await page.keyboard.press("Backslash"); await page.keyboard.up("Control");
+    await sleep(600);
+    lists = await page.$$('[role="tablist"]');
+    if (lists.length !== 3) throw new Error(`expected 3 tab lists after a second Ctrl+\\, got ${lists.length}`);
+    const panes = await page.$$("[data-editor-group]");
+    if (panes.length !== 3) throw new Error(`expected 3 editor groups, got ${panes.length}`);
+    await page.click('[data-editor-group="1"] [role="tablist"]');
+    await page.focus('[role="tree"]');
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.down("Control"); await page.keyboard.press("Enter"); await page.keyboard.up("Control");
+    await sleep(2500);
+    const titles3 = await page.evaluate(() =>
+      Array.from(document.querySelectorAll("[data-editor-group] main h2")).map((h) => h.textContent?.trim() ?? ""));
+    if (new Set(titles3).size < 3) throw new Error(`groups do not show three nodes: ${JSON.stringify(titles3)}`);
+    console.log(`     groups: ${titles3.join(" | ")}`);
+    await check(page, pageErrors, "split-editors-3");
+    // At the cap, Ctrl+\ folds every group back into one (toggleSplit).
     await page.keyboard.down("Control"); await page.keyboard.press("Backslash"); await page.keyboard.up("Control");
     await sleep(400);
     lists = await page.$$('[role="tablist"]');

@@ -1,14 +1,17 @@
-// Main pane (UI SHELL v2, S2 / wave 3 C3): ONE or TWO editor groups side by
-// side, each with its own tab strip + the lens for ITS active tab, rendered
-// inside a node scope (state/nodeScope) so the two groups can show two
-// nodes at once — the focused group is the session selection, the other
-// fetches its own node. Universe-level lenses (Graph · Quality) render single-
-// group and highlight the focused tab. Ctrl+\ splits / unsplits; dragging a
-// tab (or a Nodes-pane row) onto the right 20 % of the pane opens it in a
-// new right-hand group; the last tab closed in a group unsplits. A click
-// anywhere in a group focuses it. Each lens sits in an error boundary keyed
-// by the lens (NOT the tab) so switching tabs keeps the lens's view state
-// and a crash in one lens never takes the shell down.
+// Main pane (UI SHELL v2, S2 / wave 3 C3 + the third-group follow-on): ONE
+// to THREE editor groups along one axis (side by side, or stacked after a
+// split DOWN), each with its own tab strip + the lens for ITS active tab,
+// rendered inside a node scope (state/nodeScope) so the groups can show
+// different nodes at once — the focused group is the session selection, the
+// others fetch their own node. Universe-level lenses (Graph · Quality) render
+// single-group and highlight the focused tab. Ctrl+\ adds a group (at three,
+// folds back to one); Ctrl+Shift+\ splits down; dragging a tab (or a Nodes-
+// pane row) onto the right 20 % of the pane opens it in a new group after
+// the focused one, onto the bottom 20 % (single group) in a new lower group;
+// the last tab closed in a group drops that group. A click anywhere in a
+// group focuses it. Each lens sits in an error boundary keyed by the lens
+// (NOT the tab) so switching tabs keeps the lens's view state and a crash in
+// one lens never takes the shell down.
 import { useState } from "react";
 import type { DragEvent } from "react";
 import ErrorBoundary from "../ErrorBoundary";
@@ -22,9 +25,13 @@ import { ACTIVITIES, UNIVERSE_ACTIVITIES, useWorkbench } from "../../state/workb
 import type { Activity } from "../../state/workbench";
 import { useSmileSession } from "../../state/smileSession";
 import { NodeScopeProvider } from "../../state/nodeScope";
-import { NODE_MIME, decodeNodeDrag, isNodeDrag } from "../../lib/nodeDnd";
+import { NODE_MIME, decodeNodeDrag, isNodeDrag, routeNodeDrop } from "../../lib/nodeDnd";
+import { MAX_GROUPS } from "../../lib/editorGroups";
 import { activeTab } from "../../lib/workbenchTabs";
 import { primaryButtonClass } from "../../lib/ui";
+
+/** Badge inside a drop halo (positioned by the caller). */
+const haloLabel = "absolute rounded-md border border-accent-500/50 bg-surface-900/90 px-2 py-0.5 text-[10px] font-medium text-accent-300";
 
 function EmptyState({ group }: { group: number }) {
   const wb = useWorkbench();
@@ -72,8 +79,9 @@ function EditorGroupPane({ index }: { index: number }) {
       aria-label={`Editor group ${index + 1}`}
       onPointerDownCapture={() => { if (!focused) wb.focusGroup(index); }}
       className={[
-        "flex min-w-0 flex-1 flex-col bg-surface-900",
-        split ? (index === 0 ? "border-r border-slate-800" : "") : "",
+        "flex min-h-0 min-w-0 flex-1 flex-col bg-surface-900",
+        // A divider on every group but the last, along the layout axis.
+        split && index < wb.groups.length - 1 ? `${wb.direction === "column" ? "border-b" : "border-r"} border-slate-800` : "",
         split && focused ? "ring-1 ring-inset ring-accent-500/25" : "",
       ].join(" ")}
     >
@@ -92,45 +100,65 @@ function EditorGroupPane({ index }: { index: number }) {
 
 export default function MainPane() {
   const wb = useWorkbench();
-  const [splitHalo, setSplitHalo] = useState(false);
+  const [halo, setHalo] = useState<"split" | "splitDown" | null>(null);
   const universeLens = UNIVERSE_ACTIVITIES.has(wb.activity);
-  const canSplit = wb.groups.length < 2 && !universeLens;
-  // The right 20 % of the pane accepts a dragged tab / node while unsplit.
-  const dragOn = canSplit && (wb.draggingTab !== null || splitHalo);
+  const canSplit = wb.groups.length < MAX_GROUPS && !universeLens;
+  const single = wb.groups.length === 1;
+  // The right 20 % of the pane accepts a dragged tab / node (a new group
+  // after the focused one); the bottom 20 % splits DOWN while single-group.
+  const dragOn = canSplit && (wb.draggingTab !== null || halo !== null);
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
     if (!canSplit || (wb.draggingTab === null && !isNodeDrag(e.dataTransfer.types))) return;
     const r = e.currentTarget.getBoundingClientRect();
-    const inZone = e.clientX > r.left + r.width * 0.8;
-    if (inZone) e.preventDefault();
-    if (inZone !== splitHalo) setSplitHalo(inZone);
+    const zone = e.clientX > r.left + r.width * 0.8 ? "split"
+      : single && e.clientY > r.top + r.height * 0.8 ? "splitDown" : null;
+    if (zone !== null) e.preventDefault();
+    if (zone !== halo) setHalo(zone);
   };
   const onDrop = (e: DragEvent<HTMLDivElement>) => {
-    if (!splitHalo) return;
-    setSplitHalo(false);
+    if (halo === null) return;
+    const zone = halo;
+    setHalo(null);
     e.preventDefault();
     const node = decodeNodeDrag(e.dataTransfer.getData(NODE_MIME));
-    if (node) { wb.openBeside(node); return; }
+    if (node) {
+      const a = routeNodeDrop(zone, node, { manual: false });
+      if (a.type === "openSplit") wb.openBeside(node, { direction: a.direction });
+      return;
+    }
     const key = wb.draggingTab;
     if (key === null) return;
-    wb.split();
-    wb.moveTabToGroup(key, 1);
+    if (zone === "splitDown") wb.splitDown(); else wb.split();
+    wb.moveTabToGroup(key, wb.focusedGroup + 1); // the new group sits right after the focused one
     wb.setDraggingTab(null);
   };
 
   return (
-    <div className="relative flex min-w-0 flex-1" onDragOver={onDragOver} onDragLeave={() => setSplitHalo(false)} onDrop={onDrop}>
+    <div
+      className={["relative flex min-w-0 flex-1", wb.direction === "column" ? "flex-col" : "flex-row"].join(" ")}
+      onDragOver={onDragOver} onDragLeave={() => setHalo(null)} onDrop={onDrop}
+    >
       {universeLens ? <EditorGroupPane index={0} /> : wb.groups.map((_, i) => <EditorGroupPane key={i} index={i} />)}
       {dragOn && (
         <div
           data-drop-zone="split"
           className={[
             "pointer-events-none absolute inset-y-0 right-0 w-1/5 border-l-2 transition-colors",
-            splitHalo ? "border-accent-400 bg-accent-500/15" : "border-dashed border-slate-600/60 bg-slate-500/5",
+            halo === "split" ? "border-accent-400 bg-accent-500/15" : "border-dashed border-slate-600/60 bg-slate-500/5",
           ].join(" ")}
         >
-          <span className="absolute top-3 right-3 rounded-md border border-accent-500/50 bg-surface-900/90 px-2 py-0.5 text-[10px] font-medium text-accent-300">
-            Drop to split (Ctrl+\)
-          </span>
+          <span className={`${haloLabel} top-3 right-3`}>Drop to split (Ctrl+\)</span>
+        </div>
+      )}
+      {dragOn && single && (
+        <div
+          data-drop-zone="splitDown"
+          className={[
+            "pointer-events-none absolute inset-x-0 bottom-0 h-1/5 border-t-2 transition-colors",
+            halo === "splitDown" ? "border-accent-400 bg-accent-500/15" : "border-dashed border-slate-600/60 bg-slate-500/5",
+          ].join(" ")}
+        >
+          <span className={`${haloLabel} bottom-3 left-3`}>Drop to split down (Ctrl+Shift+\)</span>
         </div>
       )}
     </div>

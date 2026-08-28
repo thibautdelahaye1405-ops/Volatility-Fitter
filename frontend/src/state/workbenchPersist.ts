@@ -1,8 +1,9 @@
 // Persistence of the workbench shell state (UI SHELL v2, S1 / wave 3 C3):
 // activity, editor groups (tabs), layout and per-tab view memory in
 // localStorage ("volfit.workbench.v1"), validated on load — a legacy blob
-// with a single `tabs` field migrates to one editor group. Split out of
-// state/workbench.tsx for the file-size policy.
+// with a single `tabs` field migrates to one editor group; `groups` is the
+// GroupsState itself (its `direction` axis included since the third-group
+// follow-on). Split out of state/workbench.tsx for the file-size policy.
 import { EMPTY_VIEW_MEMORY, pruneViewMemory, restoreViewMemory } from "../lib/workbenchTabs";
 import type { ViewMemory } from "../lib/workbenchTabs";
 import { EMPTY_GROUPS, allTabs, restoreGroups } from "../lib/editorGroups";
@@ -77,12 +78,20 @@ export function restoreLayout(raw: unknown, base: LayoutState): LayoutState {
   };
 }
 
+/** The GroupsState blob of a shell: `groups` IS the GroupsState
+ *  ({groups, focused, direction} — what exportShell / persist write), or a
+ *  flattened {groups: EditorGroup[], focused, direction} (lenient), or a
+ *  legacy pre-C3 {tabs} strip. A missing `direction` restores as "row". */
+function groupsBlob(p: { groups?: unknown; tabs?: unknown; focused?: unknown; direction?: unknown }): unknown {
+  if (Array.isArray(p.groups)) return { groups: p.groups, focused: p.focused, direction: p.direction };
+  if (typeof p.groups === "object" && p.groups !== null) return { direction: p.direction, ...(p.groups as object) };
+  return { tabs: p.tabs };
+}
+
 /** Validate any blob (localStorage or a workspace file's shell part). */
 export function restorePersisted(raw: unknown, base: Persisted): Persisted {
-  const p = (typeof raw === "object" && raw !== null ? raw : {}) as Partial<Persisted> & { tabs?: unknown };
-  const groups = p.groups !== undefined || p.tabs !== undefined
-    ? restoreGroups(p.groups !== undefined ? { groups: p.groups, focused: (p as { focused?: unknown }).focused } : { tabs: p.tabs }, isActivity)
-    : base.groups;
+  const p = (typeof raw === "object" && raw !== null ? raw : {}) as Partial<Persisted> & { tabs?: unknown; focused?: unknown; direction?: unknown };
+  const groups = p.groups !== undefined || p.tabs !== undefined ? restoreGroups(groupsBlob(p), isActivity) : base.groups;
   return {
     activity: isActivity(p.activity) ? p.activity : base.activity,
     groups,

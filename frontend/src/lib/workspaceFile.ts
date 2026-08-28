@@ -19,8 +19,12 @@ export interface ShellBlob {
   activity?: string;
   /** Legacy (pre-C3) single tab strip — migrates to one editor group. */
   tabs?: unknown;
-  /** Editor groups (wave 3, C3). */
+  /** Editor groups (wave 3, C3): the GroupsState itself — since the
+   *  third-group follow-on it also carries `direction` ("row" | "column"). */
   groups?: unknown;
+  /** Layout axis of the groups; accepted at this level too (lenient — the
+   *  app writes it inside `groups`; absent = "row"). */
+  direction?: string;
   viewMemory?: unknown;
   /** 3D camera per lens view (state/surfaceCameras). */
   cameras?: unknown;

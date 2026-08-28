@@ -1,6 +1,7 @@
 // Workbench shell state (UI SHELL v2, S1): the activity lens, the editor
-// GROUPS of node tabs (wave 3, C3: one or two, side by side), the layout
-// toggles, the open dialog, the per-tab view memory and the file blob.
+// GROUPS of node tabs (wave 3, C3 + follow-on: one to three along one axis,
+// side by side or stacked), the layout toggles, the open dialog, the per-tab
+// view memory and the file blob.
 //
 // The FOCUSED group's active tab IS the shared smile-session selection:
 // activating it pushes (ticker, expiry) into the root session (so the focused
@@ -10,8 +11,8 @@
 // the session directly, is picked up by the session→tab reconciliation and
 // opens a PREVIEW tab in the focused group. A push guard (pushRef) keeps the
 // two directions from fighting on the commit where the universe first loads
-// (restored tabs win over the session's mid-ladder default). The OTHER group
-// renders its own node through a node scope (state/nodeScope).
+// (restored tabs win over the session's mid-ladder default). The OTHER groups
+// render their own node through a node scope (state/nodeScope).
 //
 // Persistence + the pure algebra live in state/workbenchPersist,
 // lib/editorGroups and lib/workbenchTabs so this provider stays a thin shell.
@@ -25,11 +26,11 @@ import {
 } from "../lib/workbenchTabs";
 import type { NodeRef, TabsState, ViewMemory, WorkbenchTab } from "../lib/workbenchTabs";
 import {
-  EMPTY_GROUPS, allTabs, closeIn, focusGroup as focusGroupPure, focusedGroup, groupOf, moveToGroup,
-  openIn, otherGroup, pruneGroups, setGroupActivity as setGroupActivityPure, split as splitPure,
+  EMPTY_GROUPS, MAX_GROUPS, allTabs, closeIn, focusGroup as focusGroupPure, focusedGroup, groupOf, moveToGroup,
+  nextGroup, openIn, pruneGroups, setGroupActivity as setGroupActivityPure, split as splitPure,
   unsplit as unsplitPure, updateFocused, updateGroupOf,
 } from "../lib/editorGroups";
-import type { EditorGroup, GroupsState } from "../lib/editorGroups";
+import type { EditorGroup, GroupsState, SplitDirection } from "../lib/editorGroups";
 import {
   DEFAULT_LAYOUT, UNIVERSE_ACTIVITIES, defaultNodesWidth, isActivity, loadPersisted, persist,
   restoreLayout, restorePersisted,
@@ -45,7 +46,11 @@ export type DialogId = "universe" | "options" | "shortcuts" | "about" | "quickop
 /** Workbench part of the workspace-file shell blob. */
 export interface ShellShellBlob {
   activity: Activity;
+  /** The GroupsState (tabs per group, focus, and the `direction` axis). */
   groups: GroupsState;
+  /** Axis accepted at this level too on import (lenient; the app writes it
+   *  inside `groups`). */
+  direction?: SplitDirection;
   layout: LayoutState;
   viewMemory: ViewMemory;
 }
@@ -56,19 +61,28 @@ export interface WorkbenchValue {
   /** The FOCUSED group's tabs / active tab (the session selection). */
   tabs: WorkbenchTab[];
   activeTab: WorkbenchTab | null;
-  /** Editor groups (wave 3, C3). */
+  /** Editor groups (wave 3, C3; up to MAX_GROUPS along one axis). */
   groups: EditorGroup[];
   focusedGroup: number;
   focusGroup: (i: number) => void;
-  /** The lens a group shows (its override, else the global lens). */
+  /** Layout axis of the groups ("row" side by side · "column" stacked). */
+  direction: SplitDirection;
+  /** Cyclic neighbour of the focused group (`delta` steps; -1 when single). */
+  nextGroup: (delta?: number) => number;
+  /** The lens a group shows (its override while split, else the global lens). */
   activityOf: (i: number) => Activity;
+  /** Add a group after the focused one (side by side; no-op at the cap). */
   split: () => void;
+  /** Split DOWN (stacked) from a single group; otherwise like split(). */
+  splitDown: () => void;
   unsplit: () => void;
+  /** Ctrl+\: split until MAX_GROUPS, then fold back to one (see below). */
   toggleSplit: () => void;
   /** Open a node in a given group (pinned unless preview). */
   openNodeIn: (group: number, node: NodeRef, opts?: { preview?: boolean }) => void;
-  /** Open in the group beside the focused one (splitting first if needed). */
-  openBeside: (node: NodeRef) => void;
+  /** Open in the group after the focused one (splitting first from a single
+   *  group — along `direction` when given). */
+  openBeside: (node: NodeRef, opts?: { direction?: SplitDirection }) => void;
   moveTabToGroup: (key: string, to: number) => void;
   /** Tab being dragged from a strip (the split drop zone reads it). */
   draggingTab: string | null;
@@ -159,16 +173,23 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     openWithMemory(groupsRef.current.focused, { ticker, expiry }, true);
   }, [universeLoaded, ticker, expiry]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // A universe lens is single-group (global); a focused side group keeps its
-  // own per-node lens override (phase 3b: Parametric left, Local Vol right).
+  // A universe lens (Graph · Quality) is single-group and global. While
+  // split, EVERY group keeps its own per-node lens override (the focused one
+  // takes the switch); leaving a universe lens sets the global so the split
+  // comes back with the chosen lens wherever no override exists. A single
+  // group always follows the global lens (the algebra's invariant).
+  const activityRef = useRef(activity);
+  activityRef.current = activity;
   const setActivity = useCallback((a: Activity) => {
     const g = groupsRef.current;
-    if (g.focused > 0 && !UNIVERSE_ACTIVITIES.has(a)) setGroups((s) => setGroupActivityPure(s, s.focused, a));
+    const universe = UNIVERSE_ACTIVITIES.has(a) || UNIVERSE_ACTIVITIES.has(activityRef.current);
+    if (g.groups.length > 1 && !universe) setGroups((s) => setGroupActivityPure(s, s.focused, a));
     else setActivityState(a);
   }, []);
   const activityOf = useCallback((i: number): Activity => {
     const own = groups.groups[i]?.activity;
-    return i > 0 && isActivity(own) && !UNIVERSE_ACTIVITIES.has(own) ? own : activity;
+    if (UNIVERSE_ACTIVITIES.has(activity) || groups.groups.length < 2) return activity;
+    return isActivity(own) && !UNIVERSE_ACTIVITIES.has(own) ? own : activity;
   }, [groups, activity]);
 
   const openNode = useCallback((node: NodeRef, opts: { preview?: boolean; activity?: Activity } = {}) => {
@@ -178,13 +199,32 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   const openNodeIn = useCallback((group: number, node: NodeRef, opts: { preview?: boolean } = {}) =>
     openWithMemory(group, node, opts.preview ?? false), [openWithMemory]);
   const split = useCallback(() => setGroups((g) => splitPure(g)), []);
-  const unsplit = useCallback(() => setGroups((g) => unsplitPure(g)), []);
-  const toggleSplit = useCallback(() => setGroups((g) => (g.groups.length > 1 ? unsplitPure(g) : splitPure(g))), []);
-  const openBeside = useCallback((node: NodeRef) => {
+  // Split DOWN: the column axis is honoured only from a single group (the
+  // algebra); from two groups this adds a third along the existing axis.
+  const splitDown = useCallback(() => setGroups((g) => splitPure(g, { direction: "column" })), []);
+  // Fold every group into one. The focused group's own lens becomes the
+  // global one first, so the survivor keeps showing what the user looked at.
+  const unsplit = useCallback(() => {
     const g = groupsRef.current;
-    if (g.groups.length < 2) { setGroups((s) => openIn(splitPure(s), 1, node)); return; }
-    openWithMemory(otherGroup(g, g.focused), node, false);
+    const own = g.groups[g.focused]?.activity;
+    if (g.groups.length > 1 && isActivity(own) && !UNIVERSE_ACTIVITIES.has(own) && !UNIVERSE_ACTIVITIES.has(activityRef.current)) setActivityState(own);
+    setGroups((s) => unsplitPure(s));
+  }, []);
+  // Ctrl+\ semantics: ADD a group after the focused one until MAX_GROUPS; at
+  // the cap, fold everything back into one — so the chord always acts, and
+  // one · two · three · one is the cycle.
+  const toggleSplit = useCallback(() => {
+    if (groupsRef.current.groups.length >= MAX_GROUPS) unsplit();
+    else setGroups((g) => splitPure(g));
+  }, [unsplit]);
+  // Open in the group after the focused one; from a single group, split
+  // first (side by side, or stacked when asked) and open in the new group.
+  const openBeside = useCallback((node: NodeRef, opts: { direction?: SplitDirection } = {}) => {
+    const g = groupsRef.current;
+    if (g.groups.length < 2) { setGroups((s) => { const sp = splitPure(s, opts); return openIn(sp, sp.focused, node); }); return; }
+    openWithMemory(nextGroup(g, g.focused), node, false);
   }, [openWithMemory]);
+  const nextGroupIdx = useCallback((delta = 1) => { const g = groupsRef.current; return nextGroup(g, g.focused, delta); }, []);
   const focusGroup = useCallback((i: number) => setGroups((g) => focusGroupPure(g, i)), []);
   const moveTabToGroup = useCallback((key: string, to: number) => setGroups((g) => moveToGroup(g, key, to)), []);
   const pinTab = useCallback((key: string) => setGroups((g) => updateGroupOf(g, key, (t) => pinTabPure(t, key))), []);
@@ -225,14 +265,15 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<WorkbenchValue>(() => ({
     activity, setActivity, tabs: focusedTabs.tabs, activeTab: active,
-    groups: groups.groups, focusedGroup: groups.focused, focusGroup, activityOf, split, unsplit, toggleSplit,
+    groups: groups.groups, focusedGroup: groups.focused, focusGroup, direction: groups.direction, nextGroup: nextGroupIdx,
+    activityOf, split, splitDown, unsplit, toggleSplit,
     openNodeIn, openBeside, moveTabToGroup, draggingTab, setDraggingTab,
     openNode, pinTab, closeTab, closeOthers, closeAll, activateTab, cycleTab, moveTab,
     layout, setLayout, resetLayout, dialog, openDialog, closeDialog, focusNodesPane, nodesFocusSeq,
     viewMemory, setViewMemory, exportShell, importShell,
   }), [
-    activity, setActivity, focusedTabs, active, groups, focusGroup, activityOf, split, unsplit, toggleSplit,
-    openNodeIn, openBeside, moveTabToGroup, draggingTab, openNode, pinTab, closeTab, closeOthers, closeAll,
+    activity, setActivity, focusedTabs, active, groups, focusGroup, nextGroupIdx, activityOf, split, splitDown, unsplit,
+    toggleSplit, openNodeIn, openBeside, moveTabToGroup, draggingTab, openNode, pinTab, closeTab, closeOthers, closeAll,
     activateTab, cycleTab, moveTab, layout, setLayout, resetLayout, dialog, openDialog, closeDialog,
     focusNodesPane, nodesFocusSeq, viewMemory, setViewMemory, exportShell, importShell,
   ]);

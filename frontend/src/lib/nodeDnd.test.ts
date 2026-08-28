@@ -28,8 +28,9 @@ describe("routeNodeDrop", () => {
     expect(DEFAULT_PULSE).toBe(0.01);
   });
 
-  it("tab strip: opens a pinned tab; split zone: opens in the other group", () => {
+  it("tab strip: opens a pinned tab; split zones: open in the next group (row) / a new lower group (column)", () => {
     expect(routeNodeDrop("tabstrip", node, { manual: true })).toEqual({ type: "openTab", ...node, pinned: true });
-    expect(routeNodeDrop("split", node, { manual: false })).toEqual({ type: "openSplit", ...node });
+    expect(routeNodeDrop("split", node, { manual: false })).toEqual({ type: "openSplit", ...node, direction: "row" });
+    expect(routeNodeDrop("splitDown", node, { manual: false })).toEqual({ type: "openSplit", ...node, direction: "column" });
   });
 });

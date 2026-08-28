@@ -137,9 +137,17 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("tab.next", () => wb.cycleTab(1), tabs.length > 1),
       bind("tab.prev", () => wb.cycleTab(-1), tabs.length > 1),
       bind("tab.quickOpen", () => wb.openDialog("quickopen")),
+      // Groups: Ctrl+\ adds one (up to MAX_GROUPS) then folds; "down" only
+      // means something from a single group; next/move are cyclic.
       bind("tab.split", () => wb.toggleSplit(), true, wb.groups.length > 1),
-      bind("tab.moveToOther", () => { if (wb.activeTab) { if (wb.groups.length < 2) wb.split(); wb.moveTabToGroup(wb.activeTab.key, wb.groups.length < 2 ? 1 : (wb.focusedGroup === 0 ? 1 : 0)); } }, wb.activeTab !== null),
-      bind("tab.focusOther", () => wb.focusGroup(wb.focusedGroup === 0 ? 1 : 0), wb.groups.length > 1),
+      bind("tab.splitDown", () => wb.splitDown(), wb.groups.length === 1),
+      bind("tab.moveToOther", () => {
+        const t = wb.activeTab;
+        if (!t) return;
+        if (wb.groups.length < 2) { wb.split(); wb.moveTabToGroup(t.key, wb.focusedGroup + 1); }
+        else wb.moveTabToGroup(t.key, wb.nextGroup(1));
+      }, wb.activeTab !== null),
+      bind("tab.focusOther", () => wb.focusGroup(wb.nextGroup(1)), wb.groups.length > 1),
       // View
       ...(["dark", "light", "contrast", "warm"] as ColorScheme[]).map((s) =>
         bind(`view.scheme:${s}`, () => view.setScheme(s), true, view.scheme === s)),

@@ -1,13 +1,14 @@
 // Node tab strip of ONE editor group (UI SHELL v2, S2 / wave 3 C3): one tab
 // per open node (ticker · expiry), VS Code semantics — preview tabs italic,
 // double-click pins, middle-click / × closes, drag to reorder, right-click
-// context menu (close / close others / close all / pin / move to the other
-// group). Pinned tabs carry a pin glyph, preview tabs are italic + muted; a
-// quality glyph per tab shows stale (amber) or arb-flagged (rose) fits. A
-// node dragged from the Nodes pane and dropped on the strip opens as a
-// PINNED tab in this group; dragging a tab onto the main pane's right 20 %
-// splits (the workbench's draggingTab feeds that zone). The unfocused
-// group's strip reads dimmer.
+// context menu (close / close others / close all / pin / move to another
+// group — one row per other group when three are open). Pinned tabs carry a
+// pin glyph, preview tabs are italic + muted; a quality glyph per tab shows
+// stale (amber) or arb-flagged (rose) fits. A node dragged from the Nodes
+// pane and dropped on the strip opens as a PINNED tab in this group; dragging
+// a tab onto the main pane's right 20 % splits, onto its bottom 20 % splits
+// down (the workbench's draggingTab feeds those zones). The unfocused groups'
+// strips read dimmer.
 import { useState } from "react";
 import type { DragEvent, MouseEvent } from "react";
 import { Pin, X } from "lucide-react";
@@ -37,7 +38,7 @@ export default function TabStrip({ group = 0 }: { group?: number }) {
   const activeKey = g?.tabs.activeKey ?? null;
   const focused = wb.focusedGroup === group;
   const split = wb.groups.length > 1;
-  const other = split ? (group === 0 ? 1 : 0) : -1;
+  const other = split ? (group + 1) % wb.groups.length : -1; // the next group along the axis (the other one while two)
 
   /** Year-fraction of a node from the universe ladders (label formatting). */
   const tOf = (t: WorkbenchTab): number =>
@@ -139,12 +140,22 @@ export default function TabStrip({ group = 0 }: { group?: number }) {
             {tabs.find((t) => t.key === ctx.key)?.preview && (
               <MenuItem label="Keep open (pin)" onClick={() => { wb.pinTab(ctx.key); setCtx(null); }} />
             )}
-            <MenuItem label={split ? "Move to the other group" : "Open to the side (split)"} detail="Ctrl+\\"
-              onClick={() => {
-                if (split) wb.moveTabToGroup(ctx.key, other);
-                else { wb.split(); wb.moveTabToGroup(ctx.key, 1); }
-                setCtx(null);
-              }} />
+            {wb.groups.length > 2 ? (
+              wb.groups.map((_, i) => i !== group && (
+                <MenuItem key={i} label={`Move to group ${i + 1}`} onClick={() => { wb.moveTabToGroup(ctx.key, i); setCtx(null); }} />
+              ))
+            ) : (
+              <MenuItem label={split ? "Move to the other group" : "Open to the side (split)"} detail="Ctrl+\\"
+                onClick={() => {
+                  if (split) wb.moveTabToGroup(ctx.key, other);
+                  else { wb.split(); wb.moveTabToGroup(ctx.key, group + 1); }
+                  setCtx(null);
+                }} />
+            )}
+            {!split && (
+              <MenuItem label="Open below (split down)" detail="Ctrl+Shift+\\"
+                onClick={() => { wb.splitDown(); wb.moveTabToGroup(ctx.key, group + 1); setCtx(null); }} />
+            )}
             <MenuItem label="Close" detail="Alt+W" onClick={() => { wb.closeTab(ctx.key); setCtx(null); }} />
             <MenuItem label="Close others" onClick={() => { wb.closeOthers(ctx.key); setCtx(null); }} />
             <MenuDivider />
