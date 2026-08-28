@@ -464,6 +464,16 @@ class OptionsSettings(BaseModel):
     #: as the optional extension. Gap-gated like every operator; this factor
     #: scales the two wing rows' budget share relative to the body operators.
     priorWingSlopeScale: float = Field(1.0, ge=0.0, le=10.0)
+    #: Note 15 §6.3 carve-out (Docs/handoff/notes/15_kalman_computed_trust.md
+    #: :268-278, "Persistence auto-exclusion is hard-coded"): the WingL/WingR
+    #: deep-wing SLOPE rows measure a quantity DISJOINT from the three filtered
+    #: handles (ATM / skew / curvature at the ±0.06 stencil), so under an
+    #: ACTIVE observation filter they may persist ALONGSIDE the Kalman MAP rows
+    #: without counting the previous state twice. OFF (default) = the
+    #: historical switch: the wings drop with ATM/RR/BF. Inert unless a Wing op
+    #: is in ``priorOperatorSet``. Calibration-affecting -> bumps the options
+    #: version.
+    wingOperatorsUnderActiveFilter: bool = False
 
     @field_validator("priorOperatorSet")
     @classmethod
@@ -1403,13 +1413,22 @@ class GraphBlockPair(BaseModel):
     """One cross-ticker block rule: same-expiry links between ``a`` and ``b`` on
     every expiry present in BOTH tickers' selected ladders (the exact pairing the
     auto-lattice uses for its cross edges). ``symmetric`` emits both directions,
-    otherwise a→b only; ``beta`` broadcasts to all three handle betas."""
+    otherwise a→b only; ``beta`` broadcasts to all three handle betas.
+
+    ``crossExpiryToleranceDays`` (rider 2026-08-25a, cross-venue asynchronous
+    ladders): None = inherit the solver-level tolerance passed by the caller of
+    ``graph_blocks.expand_block_rule`` (0 by default — the routes pass nothing),
+    0 = exact-ISO links only for this pair, > 0 = per-pair override: each rung
+    without an exact partner also links to the other ticker's NEAREST expiry
+    within that many calendar days at ``weight * tol / (tol + gap)``. Optional
+    fields never written stay absent from the round-tripped rule."""
 
     a: str
     b: str
     weight: float = Field(gt=0.0)  # directed conductance / trust (required)
     beta: float = 1.0  # broadcast to betaAtmVol/betaSkew/betaCurv
     symmetric: bool = True
+    crossExpiryToleranceDays: float | None = Field(default=None, ge=0.0)
 
 
 class GraphBlockCalendar(BaseModel):

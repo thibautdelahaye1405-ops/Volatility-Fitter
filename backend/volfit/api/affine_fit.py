@@ -46,7 +46,7 @@ from volfit.api.schemas_affine import (
 from volfit.api.state import AppState
 from volfit.api.varswap_split import lattice_varswap_split, split_fields
 from volfit.calib.fit_task import AffineFitTask
-from volfit.calib.operators import hybrid_tail_deltas
+from volfit.calib.operators import WING_OPERATORS, hybrid_tail_deltas
 from volfit.calib.rms import node_error_terms, quote_errors, rms as rms_of_terms
 from volfit.calib.weights import resolve_weights
 from volfit.core.black import black_call, black_vega_sigma, implied_total_variance
@@ -1168,7 +1168,7 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
     if plan.strike_anchor:
         prior_opts, prior_vs = _prior_anchor_quotes(state, ticker, rows)
         return prior_opts, [], prior_vs
-    if plan.operators or plan.factors:
+    if plan.operators or plan.factors or plan.wing_operators:
         active = state.active_prior(ticker)
         if active is None:
             return [], [], []
@@ -1176,6 +1176,14 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
         from volfit.api.prior_lv import build_factor_lv_targets, build_operator_lv_targets
 
         build = build_factor_lv_targets if plan.factors else build_operator_lv_targets
+        op_opts = opts
+        if plan.wing_operators and not plan.operators:
+            # Note 15 §6.3 carve-out (wingOperatorsUnderActiveFilter): only the
+            # WingL/WingR slope baskets persist beside the active filter — the
+            # tail-anchor placement below still reads the FULL operator set.
+            op_opts = opts.model_copy(update={
+                "priorOperatorSet": [n for n in opts.priorOperatorSet if n in WING_OPERATORS],
+            })
         regime = state.dynamics_regime()
         scheme = state.fit_settings().weightScheme
         baskets: list = []
@@ -1186,7 +1194,7 @@ def _prior_lv_targets(state: AppState, ticker: str, rows):
                 continue
             moved = prior_transport.transported_prior_slice(node, float(prepared.forward), regime)
             qw = resolve_weights(scheme, k, w)
-            b, v = build(moved.implied_w, node.tau, tau, k, qw, opts)
+            b, v = build(moved.implied_w, node.tau, tau, k, qw, op_opts)
             baskets.extend(b)
             vs_quotes.extend(v)
         # hybrid: add the residual deep-tail strike anchor (operators carry the rest).

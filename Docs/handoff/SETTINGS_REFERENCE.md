@@ -115,6 +115,7 @@ spec, "State and invalidation").
 | `priorFactorSet` | subset of ATM, skew, curvature, leftWing, rightWing, VarSwap | [ATM, skew, curvature, VarSwap] | Smile factors persisted in `smile_factor` mode. |
 | `priorFactorStrengthPct` | float 0–1000 | 50.0 | Factor-prior budget. |
 | `priorTailAnchorStrengthPct` | float 0–1000 | 20.0 | Hybrid-mode residual deep-tail strike-anchor budget — only where no operator/quote covers the tail (uses `priorAnchorDeltas` deep placements). |
+| `wingOperatorsUnderActiveFilter` | bool | false | Note 15 §6.3 carve-out: under an ACTIVE observation filter the WingL/WingR deep-wing slope rows of `priorOperatorSet` persist *alongside* the Kalman MAP rows — they measure a quantity disjoint from the filtered ATM/skew/curvature handles, so nothing is counted twice. Off = the historical switch (wings drop with ATM/RR/BF). Inert without a Wing op in the set; calibration-affecting. |
 
 ### 2.7 Observation filter (Note 15)
 

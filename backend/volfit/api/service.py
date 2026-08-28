@@ -61,7 +61,9 @@ from volfit.api.prior_mode import resolve_prior_mode
 from volfit.api.varswap_split import parametric_varswap_split, split_fields
 from volfit.calib.extrap import build_extrap_target
 from volfit.calib.factors import build_factor_prior
+from volfit.calib.operator_merge import merge_operator_targets
 from volfit.calib.operators import (
+    WING_OPERATORS,
     OperatorPriorTarget,
     build_operator_prior,
     hybrid_tail_deltas,
@@ -484,7 +486,10 @@ def prior_targets(
     prior is injected as the operator block (an ungated OperatorPriorTarget,
     eq. active-map) — it is independent of any SAVED persistence prior, so it
     applies even when no prior snapshot is fetched; the surviving deep-tail
-    anchor rides alongside it."""
+    anchor rides alongside it. Under ``wingOperatorsUnderActiveFilter`` (Note
+    15 §6.3 carve-out) the persistence block is the WingL/WingR rows alone and
+    is MERGED beside the MAP rows (volfit.calib.operator_merge); the default
+    leaves it None, so the block is the filter target itself."""
     targets = _persistence_targets(state, ticker, iso, k, weights, prepared)
     if state.options().observationFilterMode == "active":
         from volfit.api import observation_filter as ofilt
@@ -493,7 +498,9 @@ def prior_targets(
         if ft is not None:
             targets = PriorTargets(
                 prior_anchor=targets.prior_anchor,
-                operator_prior=ft,  # persistence operators are excluded in active
+                # body persistence operators are excluded in active; only the
+                # wing rows (flag ON) can sit in targets.operator_prior here
+                operator_prior=merge_operator_targets(ft, targets.operator_prior),
                 prior_var_swap=targets.prior_var_swap,
             )
     return targets
@@ -592,14 +599,21 @@ def _persistence_targets(
 
     # operator / hybrid: the signed quote-operator prior (ATM/RR/BF, plus the
     # WingL/WingR deep-wing slope rows when in the set; design note §5).
-    # Guarded: under the active-filter auto-exclusion only the tail anchor survives.
+    # Guarded: under the active-filter auto-exclusion only the tail anchor
+    # survives — unless wingOperatorsUnderActiveFilter (Note 15 §6.3 carve-out):
+    # then the WingL/WingR rows ALONE persist (disjoint from the filtered
+    # handles; VarSwap stays with the body switch) and ``prior_targets`` merges
+    # them beside the MAP rows.
     target = None
     pvs = None
-    if plan.operators:
+    if plan.operators or plan.wing_operators:
+        op_set = list(options.priorOperatorSet)
+        if not plan.operators:
+            op_set = [n for n in op_set if n in WING_OPERATORS]
         budget = (options.priorOperatorStrengthPct / 100.0) * sum_w
         target, vs = build_operator_prior(
             moved.implied_w, node.tau, prepared.tau, k, weights, budget,
-            op_set=list(options.priorOperatorSet),
+            op_set=op_set,
             collar_sign=options.collarSign,
             required_precision=options.priorOperatorRequiredPrecision,
             gap_exponent=options.priorOperatorGapExponent,

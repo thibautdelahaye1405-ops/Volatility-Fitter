@@ -136,6 +136,7 @@ def test_auto_exclusion_truth_table():
             priorPersistenceMode=mode, observationFilterMode="active",
         ))
         assert plan.operators is False and plan.factors is False
+        assert plan.wing_operators is False  # default: the wings ride the body switch
         assert plan.strike_anchor is False
         assert plan.tail_anchor is tail, mode
     # overlay/off filter modes change NOTHING (byte-identical persistence)
@@ -144,6 +145,22 @@ def test_auto_exclusion_truth_table():
             priorPersistenceMode="hybrid", observationFilterMode=fmode,
         ))
         assert plan.operators is True and plan.tail_anchor is True
+        assert plan.wing_operators is True
+    # the Note 15 §6.3 carve-out (wingOperatorsUnderActiveFilter): the wing rows
+    # alone may survive an active filter — body operators stay OFF, factors /
+    # strike anchor / tail anchor exactly as above.
+    for mode, tail in [
+        ("off", False), ("strike_gap", True), ("quote_operator", True),
+        ("smile_factor", True), ("hybrid", True),
+    ]:
+        plan = resolve_prior_mode(OptionsSettings(
+            priorPersistenceMode=mode, observationFilterMode="active",
+            wingOperatorsUnderActiveFilter=True,
+        ))
+        assert plan.operators is False and plan.factors is False
+        assert plan.strike_anchor is False
+        assert plan.wing_operators is (mode in ("quote_operator", "hybrid")), mode
+        assert plan.tail_anchor is tail, mode
 
 
 # ------------------------------------------------------------------ end-to-end

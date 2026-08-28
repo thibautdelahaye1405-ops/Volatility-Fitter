@@ -233,6 +233,10 @@ export default function PriorPersistencePanel({
             <div title="Budget share of the WingL/WingR slope rows relative to the body operators (λ ∝ scale·gap, total conserved); 0 drops them.">
               <NumberRow label="Wing slope scale" value={draft.priorWingSlopeScale} step={0.5}
                 disabled={disabled} onChange={(v) => patch({ priorWingSlopeScale: v })} />
+              <Toggle label="Wings survive an active filter"
+                hint="Keep the WingL/WingR slope rows beside the Kalman MAP rows when the observation filter is active — they measure the deep wings, disjoint from the filtered ATM / skew / curvature. Off = wings drop with ATM/RR/BF (historical)."
+                checked={draft.wingOperatorsUnderActiveFilter} disabled={disabled}
+                onChange={(v) => patch({ wingOperatorsUnderActiveFilter: v })} />
             </div>
           )}
           <div className="flex items-center justify-between">

@@ -113,6 +113,10 @@ export interface OptionsSettings {
   priorVarSwapMode: "absolute" | "atm_spread";
   /** Budget scale of the WingL/WingR deep-wing slope operators vs body ops. */
   priorWingSlopeScale: number;
+  /** Note 15 §6.3 carve-out: keep the WingL/WingR slope rows beside the Kalman
+   *  MAP rows under an ACTIVE observation filter (they measure the deep wings,
+   *  disjoint from the filtered handles). Off = wings drop with ATM/RR/BF. */
+  wingOperatorsUnderActiveFilter: boolean;
   /** Observation Kalman filter (Note 15): off = absent; overlay = draw the
    *  filtered handles, calibration untouched; active = one-stage MAP prior. */
   observationFilterMode: "off" | "overlay" | "active";
@@ -250,6 +254,7 @@ export const OPTIONS_DEFAULTS: OptionsSettings = {
   priorTailAnchorStrengthPct: 20.0,
   priorVarSwapMode: "absolute",
   priorWingSlopeScale: 1.0,
+  wingOperatorsUnderActiveFilter: false,
   observationFilterMode: "off",
   filterCovarianceMode: "jacobian",
   filterProcessVolBpSqrtDay: 30.0,

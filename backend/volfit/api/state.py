@@ -1070,6 +1070,7 @@ class AppState(UniverseMixin):
                     # hard var-swap pinning all change calibration output.
                     or options.priorVarSwapMode != self._options.priorVarSwapMode
                     or options.priorWingSlopeScale != self._options.priorWingSlopeScale
+                    or options.wingOperatorsUnderActiveFilter != self._options.wingOperatorsUnderActiveFilter
                     or options.varSwapHardPin != self._options.varSwapHardPin
                     # Short-dated calendar scope (2026-08-26): winged overlay
                     # floors and single-node-refit calendar context.

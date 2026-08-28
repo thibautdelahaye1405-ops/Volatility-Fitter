@@ -36,6 +36,7 @@ def test_resolver_flags_per_mode():
         assert plan.draw_overlay is want["draw_overlay"]
         assert plan.strike_anchor is want["strike"]
         assert plan.operators is want["ops"]
+        assert plan.wing_operators is want["ops"]  # filter off: the wings ride the ops switch
         assert plan.factors is want["fac"]
         assert plan.tail_anchor is want["tail"]
         assert plan.graph_only is want["graph"]
@@ -108,6 +109,7 @@ def test_prior_knobs_bump_options_version():
         {"priorFactorSet": ["ATM"]},
         {"priorFactorStrengthPct": 40.0},
         {"priorTailAnchorStrengthPct": 10.0},
+        {"wingOperatorsUnderActiveFilter": True},
     ]
     for upd in changes:
         v0 = state.options_version

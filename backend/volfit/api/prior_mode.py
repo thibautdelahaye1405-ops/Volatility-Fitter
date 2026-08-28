@@ -40,6 +40,7 @@ class PriorModePlan:
     draw_overlay: bool  # draw the dotted transported prior in the viewers
     strike_anchor: bool  # the legacy data-gap strike anchor (calib/prior.py)
     operators: bool  # quote-operator priors (ATM/RR/BF/var-swap)
+    wing_operators: bool  # the WingL/WingR deep-wing slope rows (Note 15 §6.3 carve-out)
     factors: bool  # smile-factor priors (level/skew/curvature/var-swap)
     tail_anchor: bool  # hybrid residual deep-tail strike anchor
     graph_only: bool  # no calibration anchors; graph carries the dark-node prior
@@ -48,7 +49,10 @@ class PriorModePlan:
     def any_calibration_prior(self) -> bool:
         """True when SOME prior penalty enters the calibration (drives caching /
         the data-only prepass eligibility)."""
-        return self.strike_anchor or self.operators or self.factors or self.tail_anchor
+        return (
+            self.strike_anchor or self.operators or self.wing_operators
+            or self.factors or self.tail_anchor
+        )
 
 
 def resolve_prior_mode(options: OptionsSettings) -> PriorModePlan:
@@ -64,20 +68,29 @@ def resolve_prior_mode(options: OptionsSettings) -> PriorModePlan:
     strike anchor (kept for any mode that had a calibration prior) and the
     graph's dark-node baseline. There is deliberately no knob.
 
-    The WingL/WingR deep-wing SLOPE operators (tail-persistence arc) ride the
-    same ``operators`` switch: under an active filter they are OFF along with
-    ATM/RR/BF — there is deliberately no separate wing path, so the surviving
-    tail persistence in filter mode is the deep-tail strike anchor alone."""
+    The WingL/WingR deep-wing SLOPE operators (tail-persistence arc) have
+    their own switch, ``wing_operators``: with the filter off it equals
+    ``operators``; under an active filter it stays ON only when
+    ``wingOperatorsUnderActiveFilter`` is set — the §6.3 carve-out (Docs/
+    handoff/notes/15_kalman_computed_trust.md:268-278). The wing rows measure
+    the deep-wing slope between the two outermost anchor-delta strikes, a
+    quantity DISJOINT from the three filtered handles, so persisting them
+    beside the MAP rows counts nothing twice. Default OFF = the historical
+    switch (wings drop with ATM/RR/BF; the surviving tail persistence in
+    filter mode is the deep-tail strike anchor alone)."""
     mode = options.priorPersistenceMode
     filter_active = options.observationFilterMode == "active"
     had_calibration_prior = mode in (
         "strike_gap", "quote_operator", "smile_factor", "hybrid"
     )
+    operator_mode = mode in ("quote_operator", "hybrid")
     return PriorModePlan(
         mode=mode,
         draw_overlay=mode != "off",
         strike_anchor=mode == "strike_gap" and not filter_active,
-        operators=mode in ("quote_operator", "hybrid") and not filter_active,
+        operators=operator_mode and not filter_active,
+        wing_operators=operator_mode
+        and (not filter_active or options.wingOperatorsUnderActiveFilter),
         factors=mode == "smile_factor" and not filter_active,
         tail_anchor=mode == "hybrid" or (filter_active and had_calibration_prior),
         graph_only=mode == "graph_only",
