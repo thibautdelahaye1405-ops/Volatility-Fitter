@@ -793,17 +793,75 @@ below) — every recorded rider is closed except the ones listed here:
    then `-m backtest.filter_replay` — Prior Evidence and FilterTimeline link
    to / render from its artifact. Any default flip (robust loss, weighting
    schemes, price residuals, mcsChart) is benchmark-pack adjudication.
-2. Still-open riders (all recorded as invasive / design-heavy — pick
-   deliberately): `fit_key` model dimension for loaded fits (V3.2 —
-   snapshot_files.py commit site; no consumer needs it yet); wing operators
-   surviving an ACTIVE filter (separate path); a third editor group /
-   vertical split; the same-date AM/PM expiry-key redesign (rides index-root
-   onboarding — the capture twins now keep the first-listed root per date).
-   The as-of proposal is COMPLETE (wire + pane column + mismatch gate +
-   Fetch coverage preview, 2026-08-27d) and the Massive prev-close stamp
-   finding is FIXED (9ef190d).
+2. Still-open riders (each recorded as invasive — pick deliberately):
+   `fit_key` model dimension for loaded fits (V3.2 — snapshot_files.py
+   commit site; no consumer needs it yet); the same-date AM/PM expiry-key
+   redesign (rides index-root onboarding — the capture twins keep the
+   first-listed root per date). Everything else recorded before 2026-08-28
+   is SHIPPED (wraps 2026-08-27c/d + 2026-08-28a below).
+3. Findings recorded 2026-08-28a for a decision: under an ACTIVE filter the
+   LV prior path nests the hybrid tail anchor inside the operators branch
+   (LV gets no tail anchor unless `wingOperatorsUnderActiveFilter` is on —
+   left byte-identical); `restorePersisted` never restored tabs since C3
+   (FIXED in 3086d3a — tabs now reload after a refresh, worth a manual look).
 USER-side: restart the long-running :8000 (new OptionsSettings fields,
-endpoints, the eSSVI compare family); existing stores default the new gates.
+endpoints, the eSSVI compare family, the midnight roll); existing stores
+default the new gates.
+
+### 🧭 SESSION WRAP (2026-08-28a) — THIRD RIDER BATCH: THE "DESIGN-HEAVY" TAIL + THE MIDNIGHT ROLL
+
+"Keep going" again → four scouts → three implementation agents (two of
+which stalled on over-large single edits and were resumed to completion)
++ two lead-side items; the runnable user-window item `filter_replay` was
+executed on the stored 0DTE campaign (9 SPY parts + filter_replay.html
+under backtest/results/filter_replay — the Prior Evidence / FilterTimeline
+links now have real data) and the certification pack refreshed.
+
+- **`reference_date` midnight roll (ec8f91e)** — the 2026-08-25 gap: the
+  live server kept its startup date forever (every day-granular T a day
+  too long after midnight, yesterday's 0-DTE selected at T = 0, dividends
+  never going ex, the graph idio day key overwriting the previous row).
+  `AppState(follow_wall_clock=False)` + `roll_reference_date(today)`:
+  inert on every pinned test/dev state; serve.py opts in and the scheduler
+  tick asks once per exchange-time day (`scheduler.exchange_today`, ET).
+  A roll = the same workspace on a new day (chain/LV/joint-carry caches
+  dropped, AUTO ladders re-resolved, CUSTOM rungs kept minus the expired,
+  every fit-key version advanced, the offline provider's own date rolled,
+  audit event); a pinned historical as-of view is never rolled. Six locks.
+- **Wing operators survive an ACTIVE filter (2cfc347)** — the Note 15 §6.3
+  carve-out: `wingOperatorsUnderActiveFilter` keeps the WingL/WingR
+  deep-wing slope rows (disjoint from the ATM/skew/curvature stencil)
+  beside the MAP rows via `calib/operator_merge.merge_operator_targets`
+  (block-diagonal coeff; identity when a side is None — the flag-off path
+  passes the SAME filter target through). Locks incl. an end-to-end
+  active+hybrid fit with the merged block and a 1-ulp row-reproduction
+  lock (the padded dgemv is a BLAS kernel property, not a language one).
+- **Graph async riders (003ed83)** — the backtest edge taxonomy reuses the
+  PRODUCTION `nearest_cross_expiry_pairs` behind
+  `EdgeConfig.cross_expiry_tol_days=0.0` (default lists bit-identical;
+  legacy weight × tol/(tol+gap); message rows via `cross_expiry_precision`
+  + the maturity-shape β; hub classes keep their directed_state
+  orientation), and `GraphBlockPair.crossExpiryToleranceDays` gives block
+  rules a per-pair expiry policy (None inherits, 0 exact, >0 override;
+  routes exclude None so rules round-trip verbatim; matrix cell "± days").
+  §21 goldens + replay seams untouched (102 graph tests).
+- **Third editor group + vertical split (3086d3a)** — `GroupsState.
+  direction`, MAX_GROUPS 3, split-after-focused, N-ary fold, cyclic
+  nextGroup; Ctrl+\ cycles 1 · 2 · 3 · 1, Ctrl+Shift+\ splits DOWN from a
+  single group; per-group lens override on every index; right/bottom
+  drop halos; "Move to group 1/2/3". FOUND + FIXED on the way: tabs never
+  restored from localStorage / workspace files since C3 (`restorePersisted`
+  re-wrapped an already-shaped GroupsState). Smoke drives three distinct
+  nodes in three groups then folds back.
+
+Verification at wrap: backend suite **2006 passed / 7 skipped** (run in
+two halves, test_[a-k]* 1215/4 in 10m16s + test_[l-z]* 791/3 in 5m00s —
+the whole suite now exceeds a 10-minute tool cap; +18 locks over
+2026-08-27d's 1988); certification pack
+refreshed in-session — **25/25 cases PASS** (`-m backtest.certification
+run|report`; client-facing report regenerated under
+backtest/results/certification, untracked); frontend tsc clean · vitest 50 files / 354 tests · build ·
+`npm run smoke:ui` all green LIVE (incl. the three-group step).
 
 ### 🧭 SESSION WRAP (2026-08-27d) — SECOND RIDER BATCH: MCS/LV/eSSVI/WORKBENCH
 
