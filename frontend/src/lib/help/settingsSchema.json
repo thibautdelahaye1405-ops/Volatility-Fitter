@@ -1,0 +1,874 @@
+{
+  "generatedAt": "2026-08-31",
+  "models": {
+    "fit": {
+      "title": "FitSettings",
+      "fields": [
+        {
+          "name": "model",
+          "type": "enum",
+          "enum": [
+            "lqd",
+            "svi",
+            "sigmoid"
+          ],
+          "default": "lqd"
+        },
+        {
+          "name": "nOrder",
+          "type": "int",
+          "default": 16,
+          "min": 4,
+          "max": 24
+        },
+        {
+          "name": "lqdCoords",
+          "type": "enum",
+          "enum": [
+            "lr",
+            "endpoint",
+            "logistic"
+          ],
+          "default": "logistic"
+        },
+        {
+          "name": "regLambda",
+          "type": "float",
+          "default": 1e-06,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "regPower",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 4.0
+        },
+        {
+          "name": "tailAlphaLeft",
+          "type": "float",
+          "default": 0.0,
+          "min": 0.0,
+          "max": 0.5
+        },
+        {
+          "name": "tailAlphaRight",
+          "type": "float",
+          "default": 0.0,
+          "min": 0.0,
+          "max": 0.5
+        },
+        {
+          "name": "tailAlphaByTicker",
+          "type": "dict",
+          "default": {}
+        },
+        {
+          "name": "nCores",
+          "type": "int",
+          "default": 2,
+          "min": 0,
+          "max": 2
+        },
+        {
+          "name": "haircut",
+          "type": "float",
+          "default": 0.005,
+          "min": 0.0,
+          "max": 0.05
+        },
+        {
+          "name": "weightScheme",
+          "type": "enum",
+          "enum": [
+            "equal",
+            "tv_density",
+            "vega_density",
+            "delta_density"
+          ],
+          "default": "equal"
+        },
+        {
+          "name": "barrierCenter",
+          "type": "float",
+          "default": 0.9,
+          "min": 0.0,
+          "exclusiveMin": true,
+          "max": 1.0,
+          "exclusiveMax": true
+        },
+        {
+          "name": "barrierScale",
+          "type": "float",
+          "default": 50.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "sviPenaltyWeight",
+          "type": "float",
+          "default": 1000.0,
+          "min": 0.0
+        },
+        {
+          "name": "leeSlopeMax",
+          "type": "float",
+          "default": 1.95,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "sviChart",
+          "type": "enum",
+          "enum": [
+            "raw",
+            "structural"
+          ],
+          "default": "structural"
+        },
+        {
+          "name": "bellyRepair",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "sigmoidRidge",
+          "type": "float",
+          "default": 0.01,
+          "min": 0.0
+        },
+        {
+          "name": "mcsChart",
+          "type": "enum",
+          "enum": [
+            "raw",
+            "structural"
+          ],
+          "default": "raw"
+        },
+        {
+          "name": "midAnchorWeight",
+          "type": "float",
+          "default": 0.05,
+          "min": 0.0
+        },
+        {
+          "name": "midAnchorTauRef",
+          "type": "float",
+          "default": null,
+          "max": 5.0,
+          "min": 0.0,
+          "exclusiveMin": true,
+          "optional": true
+        },
+        {
+          "name": "bandTickFloorTicks",
+          "type": "float",
+          "default": 0.0,
+          "min": 0.0,
+          "max": 20.0
+        },
+        {
+          "name": "robustLoss",
+          "type": "enum",
+          "enum": [
+            "off",
+            "huber",
+            "cauchy"
+          ],
+          "default": "off"
+        },
+        {
+          "name": "robustFScale",
+          "type": "float",
+          "default": 0.005,
+          "max": 1.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "overlayPriceResiduals",
+          "type": "bool",
+          "default": false
+        }
+      ]
+    },
+    "options": {
+      "title": "OptionsSettings",
+      "fields": [
+        {
+          "name": "fitMode",
+          "type": "enum",
+          "enum": [
+            "mid",
+            "bidask",
+            "haircut"
+          ],
+          "default": "mid"
+        },
+        {
+          "name": "dataAgeAmberMin",
+          "type": "float",
+          "default": 20.0,
+          "min": 1.0,
+          "max": 1440.0
+        },
+        {
+          "name": "dataAgeRedMin",
+          "type": "float",
+          "default": 120.0,
+          "min": 5.0,
+          "max": 10080.0
+        },
+        {
+          "name": "asOfMismatchGate",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "enforceCalendar",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "surfaceSolver",
+          "type": "enum",
+          "enum": [
+            "symmetric",
+            "sequential"
+          ],
+          "default": "symmetric"
+        },
+        {
+          "name": "extrapEnforce",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "ledgerTailOrderGate",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "bandRelaxationDiagnostic",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "calendarFloorPadZ",
+          "type": "float",
+          "default": null,
+          "max": 8.0,
+          "min": 0.0,
+          "exclusiveMin": true,
+          "optional": true
+        },
+        {
+          "name": "calendarOnRefit",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "jointCarry",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "jointCarryEngageBp",
+          "type": "float",
+          "default": 25.0,
+          "min": 0.0,
+          "max": 10000.0
+        },
+        {
+          "name": "eventsEnabled",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "normalizeEvents",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "intradayClock",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "sessionVarShare",
+          "type": "float",
+          "default": 0.2708333333333333,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "nonTradingWeight",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "varSwapEnabled",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "varSwapWeightPct",
+          "type": "float",
+          "default": 10.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "varSwapHardPin",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "varSwapMethod",
+          "type": "enum",
+          "enum": [
+            "static",
+            "source_pde"
+          ],
+          "default": "static"
+        },
+        {
+          "name": "autoLoadPrior",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "priorAnchorWeightPct",
+          "type": "float",
+          "default": 50.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "priorAnchorDeltas",
+          "type": "list",
+          "default": [
+            0.02,
+            0.05,
+            0.1,
+            0.25,
+            0.4
+          ]
+        },
+        {
+          "name": "priorPersistenceMode",
+          "type": "enum",
+          "enum": [
+            "off",
+            "overlay",
+            "strike_gap",
+            "quote_operator",
+            "smile_factor",
+            "hybrid",
+            "graph_only"
+          ],
+          "default": "hybrid"
+        },
+        {
+          "name": "priorOperatorSet",
+          "type": "list",
+          "default": [
+            "ATM",
+            "RR25",
+            "BF25",
+            "VarSwap"
+          ]
+        },
+        {
+          "name": "priorOperatorStrengthPct",
+          "type": "float",
+          "default": 50.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "priorOperatorRequiredPrecision",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0
+        },
+        {
+          "name": "priorOperatorGapExponent",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 10.0
+        },
+        {
+          "name": "priorOperatorBandwidth",
+          "type": "float",
+          "default": 0.06,
+          "max": 2.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "priorOperatorCovarianceMode",
+          "type": "enum",
+          "enum": [
+            "diagonal",
+            "full"
+          ],
+          "default": "diagonal"
+        },
+        {
+          "name": "priorDataOnlyPrepass",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "collarSign",
+          "type": "enum",
+          "enum": [
+            "call_put",
+            "put_call"
+          ],
+          "default": "call_put"
+        },
+        {
+          "name": "priorFactorSet",
+          "type": "list",
+          "default": [
+            "ATM",
+            "skew",
+            "curvature",
+            "VarSwap"
+          ]
+        },
+        {
+          "name": "priorFactorStrengthPct",
+          "type": "float",
+          "default": 50.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "priorTailAnchorStrengthPct",
+          "type": "float",
+          "default": 20.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "priorVarSwapMode",
+          "type": "enum",
+          "enum": [
+            "absolute",
+            "atm_spread"
+          ],
+          "default": "absolute"
+        },
+        {
+          "name": "priorWingSlopeScale",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 10.0
+        },
+        {
+          "name": "wingOperatorsUnderActiveFilter",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "observationFilterMode",
+          "type": "enum",
+          "enum": [
+            "off",
+            "overlay",
+            "active"
+          ],
+          "default": "off"
+        },
+        {
+          "name": "filterCovarianceMode",
+          "type": "enum",
+          "enum": [
+            "jacobian",
+            "factors"
+          ],
+          "default": "jacobian"
+        },
+        {
+          "name": "filterProcessVolBpSqrtDay",
+          "type": "float",
+          "default": 30.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "filterProcessSkewSqrtDay",
+          "type": "float",
+          "default": 0.02,
+          "min": 0.0,
+          "max": 10.0
+        },
+        {
+          "name": "filterProcessCurvSqrtDay",
+          "type": "float",
+          "default": 0.05,
+          "min": 0.0,
+          "max": 10.0
+        },
+        {
+          "name": "filterTransportNoiseScale",
+          "type": "float",
+          "default": 0.1,
+          "min": 0.0,
+          "max": 10.0
+        },
+        {
+          "name": "filterResidualInflation",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "filterAdaptiveSigma",
+          "type": "float",
+          "default": 3.0,
+          "min": 0.0,
+          "max": 20.0
+        },
+        {
+          "name": "filterMaxGain",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "filterResetHours",
+          "type": "float",
+          "default": 96.0,
+          "max": 720.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "filterClock",
+          "type": "enum",
+          "enum": [
+            "calendar",
+            "session"
+          ],
+          "default": "calendar"
+        },
+        {
+          "name": "filterSessionShare",
+          "type": "float",
+          "default": 0.6,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "filterNonTradingWeight",
+          "type": "float",
+          "default": 0.0,
+          "min": 0.0,
+          "max": 1.0
+        },
+        {
+          "name": "filterDataOnlyPrepass",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "gridStrikeMode",
+          "type": "enum",
+          "enum": [
+            "delta",
+            "linear"
+          ],
+          "default": "delta"
+        },
+        {
+          "name": "gridXNodes",
+          "type": "int",
+          "default": 12,
+          "min": 3,
+          "max": 200
+        },
+        {
+          "name": "gridXMinPerExpiry",
+          "type": "int",
+          "default": 8,
+          "min": 0,
+          "max": 60
+        },
+        {
+          "name": "gridTNodes",
+          "type": "int",
+          "default": 10,
+          "min": 0,
+          "max": 120
+        },
+        {
+          "name": "gridRegLambda",
+          "type": "float",
+          "default": 0.01,
+          "min": 0.0,
+          "max": 10000.0
+        },
+        {
+          "name": "gridRegRho",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "max": 10.0
+        },
+        {
+          "name": "convexWing",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "convexWingWeight",
+          "type": "float",
+          "default": 1000.0,
+          "min": 0.0
+        },
+        {
+          "name": "frontTie",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "frontTieWeight",
+          "type": "float",
+          "default": 0.01,
+          "min": 0.0
+        },
+        {
+          "name": "lvVolCapMult",
+          "type": "float",
+          "default": 3.0,
+          "min": 1.0,
+          "max": 20.0
+        },
+        {
+          "name": "timeScheme",
+          "type": "enum",
+          "enum": [
+            "implicit",
+            "rannacher"
+          ],
+          "default": "implicit"
+        },
+        {
+          "name": "lvEarlyStop",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "lvFastKernel",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "lvSolver",
+          "type": "enum",
+          "enum": [
+            "trf",
+            "gn"
+          ],
+          "default": "gn"
+        },
+        {
+          "name": "leftWingSlopeMult",
+          "type": "float",
+          "default": 1.5,
+          "min": 0.0,
+          "max": 20.0
+        },
+        {
+          "name": "lvXMaxMin",
+          "type": "float",
+          "default": 2.5,
+          "min": 2.5,
+          "max": 10.0
+        },
+        {
+          "name": "calendarWeight",
+          "type": "float",
+          "default": 1000000.0,
+          "min": 0.0
+        },
+        {
+          "name": "sivWingPenaltyPct",
+          "type": "float",
+          "default": 100.0,
+          "min": 0.0,
+          "max": 1000.0
+        },
+        {
+          "name": "graphKappaScale",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "graphEtaScale",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0
+        },
+        {
+          "name": "graphLambdaScale",
+          "type": "float",
+          "default": 0.0,
+          "min": 0.0
+        },
+        {
+          "name": "graphNu",
+          "type": "float",
+          "default": 0.1,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "graphPropagationMode",
+          "type": "enum",
+          "enum": [
+            "smooth_field",
+            "precision_messages",
+            "hybrid"
+          ],
+          "default": "precision_messages"
+        },
+        {
+          "name": "dynamicsRegime",
+          "type": "enum",
+          "enum": [
+            "sticky_moneyness",
+            "sticky_strike",
+            "sticky_local_vol",
+            "sticky_local_vol_grid",
+            "custom"
+          ],
+          "default": "sticky_strike"
+        },
+        {
+          "name": "ssr",
+          "type": "float",
+          "default": 2.0,
+          "min": 0.0
+        },
+        {
+          "name": "autoCalibrate",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "autoRollPriorOnFetch",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "localVolEnabled",
+          "type": "bool",
+          "default": true
+        },
+        {
+          "name": "spotMode",
+          "type": "enum",
+          "enum": [
+            "realtime",
+            "static"
+          ],
+          "default": "static"
+        },
+        {
+          "name": "spotPollSeconds",
+          "type": "float",
+          "default": 5.0,
+          "max": 3600.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "optionsFetchMode",
+          "type": "enum",
+          "enum": [
+            "auto",
+            "on_demand"
+          ],
+          "default": "on_demand"
+        },
+        {
+          "name": "optionsFetchMinutes",
+          "type": "float",
+          "default": 5.0,
+          "max": 1440.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "schedulerUnifiedFetch",
+          "type": "bool",
+          "default": false
+        },
+        {
+          "name": "streamRefitSeconds",
+          "type": "float",
+          "default": 5.0,
+          "max": 600.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        },
+        {
+          "name": "autoStream",
+          "type": "bool",
+          "default": true
+        }
+      ]
+    },
+    "market": {
+      "title": "MarketSettings",
+      "fields": [
+        {
+          "name": "rate",
+          "type": "float",
+          "default": 0.0
+        },
+        {
+          "name": "dividendMode",
+          "type": "enum",
+          "enum": [
+            "continuous",
+            "discrete_absolute",
+            "discrete_proportional",
+            "mixed"
+          ],
+          "default": "continuous"
+        },
+        {
+          "name": "dividendYield",
+          "type": "float",
+          "default": 0.0
+        },
+        {
+          "name": "dividends",
+          "type": "list",
+          "default": []
+        },
+        {
+          "name": "switchYears",
+          "type": "float",
+          "default": 1.0,
+          "min": 0.0,
+          "exclusiveMin": true
+        }
+      ]
+    }
+  }
+}

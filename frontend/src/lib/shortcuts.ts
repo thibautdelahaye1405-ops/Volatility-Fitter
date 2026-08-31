@@ -37,8 +37,10 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
       { keys: "Ctrl+S", label: "Save the workspace to its last target (file / server)" },
       { keys: "Ctrl+Shift+S", label: "Save the workspace as… (download / Chromium file picker)" },
       { keys: "Ctrl+Alt+S", label: "Save a snapshot file (quotes + prevailing calibrations); File ▸ Open snapshot… loads one as the File data source" },
-      { keys: "Ctrl+/", label: "This shortcut list" },
-      { keys: "Esc", label: "Close the open dialog / menu" },
+      { keys: "Ctrl+/", label: "This shortcut list (Help Center ▸ Keyboard shortcuts)" },
+      { keys: "F1", label: "Help for this view — the guide of the active lens or open dialog (Help Center)" },
+      { keys: "Ctrl+Shift+/", label: "Ask @Vol-Fitter — a question box over the help corpus (Claude-backed when the server has a key)" },
+      { keys: "Esc", label: "Close the open dialog / menu (also ends the Walkthrough)" },
     ],
   },
   {

@@ -7,8 +7,9 @@
 //   NodesPane     the universe tree (lit/dark, quality glyphs), 1/5 wide
 //   MainPane      one tab per node + the lens rendered for the active node
 //   StatusBar     engine narration, summary chips, last action, clock
-//   ShellDialogs  Universe manager · Options · Shortcuts · About · Ctrl+P /
+//   ShellDialogs  Universe manager · Options · Help Center · About · Ctrl+P /
 //                 Ctrl+K palette (nodes / the command registry)
+//   Walkthrough   the Help ▸ Walkthrough spotlight tour (overlay, HELP CENTER ARC)
 //   (File ▾ in the top bar saves / opens the whole configuration as a
 //   workspace file; a .json dropped anywhere on the shell opens it.)
 //
@@ -34,6 +35,8 @@ import { NODES_WIDTH, WorkbenchProvider, useWorkbench } from "./state/workbench"
 import { WorkspaceFileProvider, useWorkspaceFile } from "./state/workspaceFile";
 import { SnapshotFileProvider, useSnapshotFile } from "./state/snapshotFile";
 import { CommandsProvider } from "./state/commands";
+import { HelpProvider } from "./state/help";
+import Walkthrough from "./components/help/Walkthrough";
 import { classifyBundle } from "./lib/snapshotFile";
 import { snapshotNameOf } from "./lib/snapshotFile";
 import { workspaceNameOf } from "./lib/workspaceFile";
@@ -84,6 +87,7 @@ function Shell() {
       </div>
       {layout.statusBar && <StatusBar />}
       <ShellDialogs />
+      <Walkthrough />
     </div>
   );
 }
@@ -98,6 +102,7 @@ export default function App() {
     <LitMapProvider>
     <QualityProvider>
     <WorkbenchProvider>
+    <HelpProvider>
     <WorkspaceFileProvider>
     <SnapshotFileProvider>
     <CommandsProvider>
@@ -105,6 +110,7 @@ export default function App() {
     </CommandsProvider>
     </SnapshotFileProvider>
     </WorkspaceFileProvider>
+    </HelpProvider>
     </WorkbenchProvider>
     </QualityProvider>
     </LitMapProvider>

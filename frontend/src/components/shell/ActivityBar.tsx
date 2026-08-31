@@ -69,6 +69,7 @@ export default function ActivityBar() {
   return (
     <nav
       aria-label="Lenses"
+      data-tour="activity"
       className="flex w-12 shrink-0 flex-col border-r border-slate-800 bg-surface-950"
     >
       {ACTIVITIES.map((a, i) => {

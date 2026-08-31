@@ -781,7 +781,177 @@ C5. **Drag a node onto the Graph canvas** — HTML5 DnD from a nodes-pane row
 Suggested order: A1 → C2 → C1 → B1 → B2 → C4 → C5 → A2 → A3 → C3
 (C3 last: largest refactor; A2 needs the FileProvider on the backend).
 
-## STATUS — updated 2026-08-31 (resume here)
+## HELP CENTER ARC — adopted 2026-08-31 (Help ▾ as a first-class product surface)
+
+User ask (2026-08-31): "Let's work on the Help menu. I want it fully featured:
+welcome, walkthrough, link to full documentation, Ask @Vol-Fitter, Show all
+commands, keyboard shortcuts, tips and tricks… like a fully featured
+professional app. Every single command or parameter should be referenced and
+fully explained, with example."
+
+### Refined ask (the contract)
+
+Help ▾ becomes a **Help Center**: one dialog (`DialogId "help"`) with a left
+nav in the Options-dialog grammar, every page deep-linkable through ONE
+registry command with an argument (`help.open <page>[:<anchor>]`, so the
+Ctrl+K palette reaches every page and every settings field), plus two
+non-dialog surfaces — the **Walkthrough** (a spotlight tour drawn over the live
+shell) and **F1 contextual help** (opens the guide of the active lens /
+dialog). Nothing in the existing Help ▾ is dropped: Keyboard shortcuts, the
+command palette, the OpenAPI reference, the quality report and About all stay
+(About gains build info + a "Copy diagnostics" button).
+
+```
+Help ▾
+  Welcome                         help.welcome        the landing page (first run auto-opens it once)
+  Walkthrough…                    help.walkthrough    spotlight tour of the shell (12 steps, resumable)
+  Help for this view              help.context   F1   the active lens / dialog guide
+  ─────
+  Documentation                   help.docs           in-app docs browser: notes (MD), PDFs, handoff pack, book, paper
+  Command reference               help.commands       EVERY registry command: what / when enabled / example / run
+  Settings reference              help.settings       EVERY Fit / Options / Market field: type · default · range ·
+                                                      unit · activation · cache effect · explanation · example · "Open in Options"
+  Keyboard shortcuts       Ctrl+/ help.shortcuts      (existing; searchable inside the center)
+  Glossary                        help.glossary       the vocabulary (smile, slice, node, lit/dark, handle, ζ, …) cross-linked
+  Tips & tricks                   help.tips           curated tips with "Try it" actions; tip of the day on Welcome
+  ─────
+  Ask @Vol-Fitter…      Ctrl+Shift+/ help.ask         the help assistant (local retrieval tier always; Claude tier when the
+                                                      server has a key)
+  Show all commands         Ctrl+K help.palette       (existing)
+  ─────
+  What's new                      help.whatsNew       release notes in user language (from the session wraps)
+  API reference (OpenAPI)         help.api            (existing)
+  Quality report                  help.report         (existing)
+  About VolFit                    help.about          (existing + build info + Copy diagnostics)
+```
+
+**Every command or parameter referenced and explained, with an example** is
+enforced by locks, not by diligence:
+
+- `lib/help/commandDocs.ts` — one `CommandDoc` per static registry id
+  (`summary`, `details`, `example`, `enabledWhen`, `related`). vitest lock:
+  every `COMMANDS` id has a doc; every doc names a registry id; every dynamic
+  prefix (`DYNAMIC.*`) has a doc.
+- `lib/help/settingsDocs/*.ts` — one `SettingDoc` per pydantic field of
+  `FitSettings` (25), `OptionsSettings` (90) and `MarketSettings` (5), keyed
+  by the wire name, grouped by the Options-dialog section it lives in
+  (`opt-parametric` … `opt-dynamics`, plus `market` and `fit`). The
+  machine truth (type, default, range, enum) is NOT hand-copied: 
+  `backend/gen_help_schema.py` emits `frontend/src/lib/help/settingsSchema.json`
+  from the pydantic models; `tests/test_help_schema.py` fails when the
+  committed JSON drifts from the live schema (regenerate = one command);
+  vitest locks that every schema field has a doc and every doc a field. The
+  page also fetches `GET /help/settings-schema` live and shows the running
+  server's defaults when they differ from the bundled JSON (a persisted desk
+  default), so the reference is never stale about what the box actually runs.
+- Prose sources for the sub-agents writing the docs: the field comments in
+  `volfit/api/schemas.py` / `schemas_market.py` (authoritative), the Options
+  dialog labels/tooltips (`components/options/*.tsx`, `ObservationFilterPanel`,
+  `PriorPersistencePanel`), `Docs/handoff/SETTINGS_REFERENCE.md` (2026-07-29
+  snapshot — 12 fields newer than it), `Docs/handoff/notes/00_system_overview.md`
+  (hyperparameter atlas) and the Notes 01–15 MD editions.
+
+### Design decisions (settled 2026-08-31)
+
+1. **One dialog, many pages** — the Help Center is a single `Dialog` with a
+   nav rail (Options grammar) rather than eleven dialogs: pages share search,
+   history (back/forward), deep links and the same chrome; the walkthrough is
+   the one non-dialog surface because it must show the live UI.
+2. **Docs render in-app, dependency-free** — a small Markdown renderer
+   (`lib/help/markdown.tsx`: headings, paragraphs, lists, tables, code,
+   blockquotes, links, emphasis; `$…$` left verbatim in mono) renders the
+   Markdown notes and every built-in guide; no new npm dependency (the bundle
+   stays lean, offline mode keeps the guides). PDFs (Notes, book, LQD paper)
+   open in a new tab from `GET /help/files/{root}/{name}` (allow-listed roots,
+   no traversal); an install without `Docs/` (the .exe) lists what it has.
+3. **Ask @Vol-Fitter is two-tier, BYO key** — tier 0 = a deterministic local
+   retrieval assistant over the whole help corpus (commands, settings,
+   glossary, tips, guides, docs abstracts) with a BM25-style ranker in
+   `lib/help/search.ts`: instant, offline, answers as ranked cards with
+   actions (run the command, open the setting, open the doc). Tier 1 =
+   `POST /help/ask` on the backend calls Claude through the official
+   `anthropic` Python SDK (model `claude-opus-5`, adaptive thinking,
+   streaming over SSE), grounded on the same retrieved cards, ONLY when the
+   server has `VOLFIT_ANTHROPIC_KEY` / `ANTHROPIC_API_KEY` (the client's
+   key — mirrors the BYO data entitlement; the browser never sees a key). The
+   panel says which tier answered. No key = tier 0, no error.
+4. **The tour anchors are data attributes** — `data-tour="topbar.file"` etc.
+   on the real controls; `lib/help/walkthrough.ts` steps reference anchor ids
+   from ONE `TOUR_ANCHORS` const (vitest: every step's anchor is declared;
+   the smoke asserts every anchor is in the DOM). Missing anchor at runtime
+   (pane hidden) → the step shows centred with a "show the pane" action.
+5. **F1 = contextual** — `help.context` maps the active lens / open dialog to
+   its guide page (`graph` → Guides ▸ Graph lens …). Browser F1 is
+   intercepted (preventDefault works in Chromium).
+6. **Content voice** — plain, desk-facing, imperative ("Fetch pulls…"), one
+   example per entry, no audit/defensive rhetoric; math stays in the notes.
+
+### Architecture (files ≤ 400 lines; every file commented)
+
+```
+frontend/src/lib/help/
+  types.ts            CommandDoc · SettingDoc · GlossaryEntry · Tip · GuidePage · TourStep · HelpPageId
+  commandDocs.ts      docs for every registry command (+ dynamic prefixes)
+  settingsSchema.json GENERATED (backend/gen_help_schema.py) — name/type/default/range/enum per model
+  settingsDocs/       index.ts (merge + lookups) · fit.ts · calibration.ts · localvol.ts · priors.ts ·
+                      filter.ts · events_graph_dynamics.ts · workflow.ts · market.ts
+  glossary.ts         vocabulary entries (term, short, long, related, docs links)
+  tips.ts             tips (title, body, command action, lens)
+  guides/             index.ts · workbench.ts · graph.ts · forwards.ts · parametric.ts · localvol.ts ·
+                      quality.ts · universe.ts · files.ts · options.ts · workflow.ts   (Markdown strings)
+  walkthrough.ts      TOUR_ANCHORS + TOUR_STEPS
+  whatsNew.ts         release notes (user language)
+  docsCatalog.ts      static catalog of the documentation set (ids, titles, abstracts, kind, backend path)
+  markdown.tsx        the tiny renderer
+  search.ts           corpus build + BM25-style ranking + snippet
+  pages.ts            HelpPageId registry (nav order, labels, icons, deep-link parsing)
+frontend/src/state/help.tsx          HelpProvider: page, anchor, history, tour state, first-run flag,
+                                     tip-of-day, persisted (volfit.help.v1); useHelp()
+frontend/src/components/help/        HelpCenter.tsx (dialog shell + nav + search) · WelcomePage.tsx ·
+                                     GuidePage.tsx · CommandReference.tsx · SettingsReference.tsx ·
+                                     ShortcutsPage.tsx · GlossaryPage.tsx · TipsPage.tsx · DocsBrowser.tsx ·
+                                     AskPanel.tsx · WhatsNewPage.tsx · Walkthrough.tsx (spotlight overlay) ·
+                                     HelpSearchBox.tsx · DocCard.tsx (shared card grammar)
+frontend/src/components/shell/menus/HelpMenu.tsx    the new menu (rows above)
+frontend/src/components/shell/dialogs/AboutDialog.tsx  + build info + Copy diagnostics
+backend/volfit/api/help_docs.py      catalog + safe file resolution (allow-listed roots)
+backend/volfit/api/help_ask.py       tier-1 assistant (anthropic SDK; graceful when missing)
+backend/volfit/api/routers/help.py   GET /help/docs · GET /help/docs/{id} · GET /help/files/{root}/{name} ·
+                                     GET /help/settings-schema · GET /help/ask/status · POST /help/ask (SSE)
+backend/gen_help_schema.py           regenerates settingsSchema.json
+backend/tests/test_api_help.py       router locks · test_help_schema.py (drift lock)
+```
+
+### Build phases (H1–H7; commit per green phase)
+
+- **H1 Contracts + schema** — `lib/help/types.ts`, `pages.ts`, the generator
+  + committed `settingsSchema.json` + drift lock, `DialogId` gains `"help"`,
+  registry commands `help.*` (+ `help.open` with arg), shortcuts table rows
+  (F1, Ctrl+Shift+/), HelpProvider skeleton.
+- **H2 Content (sub-agents, parallel)** — settings docs (120 fields) ·
+  command docs + tips + what's new · glossary + lens guides + tour steps.
+- **H3 Backend** — help router (docs catalog, MD/PDF serving, settings
+  schema, ask status/ask) + tests; `anthropic` added to the venv (optional
+  import, `pip install anthropic`).
+- **H4 Help Center UI** — dialog shell, nav, search, pages, docs browser,
+  markdown renderer, Ask panel (tier 0 + tier 1 stream), About additions.
+- **H5 Walkthrough + F1** — tour anchors on the shell, spotlight overlay,
+  first-run Welcome, contextual help.
+- **H6 Locks** — vitest: command docs complete, settings docs complete vs
+  schema, glossary/tips ids unique, tour anchors declared, search ranks the
+  obvious queries first, deep-link parser; pytest: help router, schema drift.
+- **H7 Verification** — tsc · vitest · `npm run build` · `npm run smoke:ui`
+  extended (Help ▾ rows, every Help Center page renders, Ask returns cards
+  for "calibrate", tour starts/advances/ends, F1) · backend suite half ·
+  ROADMAP wrap + CLAUDE.md counts.
+
+Exit criteria: every static command id and every settings field is documented
+(locked); Help ▾ shows the rows above; the smoke walks every page; the app
+works with no `Docs/` folder and no Claude key (tier 0 answers).
+
+---
+
+## STATUS — updated 2026-08-31c (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -804,9 +974,119 @@ below) — every recorded rider is closed except the ones listed here:
    (LV gets no tail anchor unless `wingOperatorsUnderActiveFilter` is on —
    left byte-identical); `restorePersisted` never restored tabs since C3
    (FIXED in 3086d3a — tabs now reload after a refresh, worth a manual look).
+4. HELP CENTER riders (wrap 2026-08-31c below; none are gates): surface the
+   API-only Options fields in the dialog (gridXMinPerExpiry,
+   streamRefitSeconds, filterAdaptiveSigma, filterClock, filterSessionShare,
+   filterNonTradingWeight) and align the useOptions.ts mirror; lazy-load the
+   help corpus if the 1.30 MB bundle matters; try Ask's Claude tier against a
+   real key once ($env:VOLFIT_ANTHROPIC_KEY on the server); fix the stale
+   `mixed` dividend sentence in Docs/handoff/SETTINGS_REFERENCE.md §3.
 USER-side: restart the long-running :8000 (new OptionsSettings fields,
-endpoints, the eSSVI compare family, the midnight roll); existing stores
-default the new gates.
+endpoints, the eSSVI compare family, the midnight roll, the /help router);
+existing stores default the new gates. First launch after this commit opens
+the Help Center's Welcome page once (Esc closes it; Help ▾ Welcome brings it
+back).
+
+### 🧭 SESSION WRAP (2026-08-31c) — HELP CENTER ARC SHIPPED (H1–H7)
+
+User ask: a fully featured, professional Help menu — welcome, walkthrough,
+full documentation, Ask @Vol-Fitter, show all commands, keyboard shortcuts,
+tips & tricks — with EVERY command and parameter referenced and explained
+with an example. Roadmap drafted (the "HELP CENTER ARC" section above), then
+built in one session with six write-only sub-agents (three settings-doc
+writers by section, one command/tips/what's-new/tour writer, one
+glossary/guides/catalog writer, one backend router writer); the lead wired
+the state, UI, search, renderer, tour and locks.
+
+What shipped:
+- **Help ▾ = 16 rows, every one a registry command** (HelpMenu.tsx): Welcome ·
+  Walkthrough… · Help for this view (F1) │ Documentation · Command reference ·
+  Settings reference · Keyboard shortcuts (Ctrl+/) · Glossary · Tips & tricks
+  │ Ask @Vol-Fitter… (Ctrl+Shift+/) · Show all commands (Ctrl+K) │ What's new ·
+  API reference · Quality report · About. Registry gains 12 `help.*` ids incl.
+  `help.open <page[:anchor]>` (the palette reaches every page / entry) and
+  `help.copyDiagnostics`.
+- **Help Center dialog** (`DialogId "help"`, components/help/HelpCenter.tsx):
+  nav rail with search, back/forward history, ten pages — Welcome (product
+  statement, four-step workflow, "help fast" cards, tip of the day, page
+  directory), Guides (14 — one per lens + universe / data sources / workflow /
+  options / priors / filter / files / getting started), Command reference (72
+  entries = 68 static ids + 4 dynamic prefixes; live enabled state, Run
+  buttons, examples), Settings reference (120 fields = Fit 25 + Options 90 +
+  Market 5; type · default · range · choices from the GENERATED schema, live
+  defaults from GET /help/settings-schema, cache-effect badge, activation,
+  "Open in Options", related + docs), Keyboard shortcuts (searchable),
+  Glossary (69 terms, letter rail, cross-links), Tips (36, Try-it actions,
+  scope/level filters), Documentation (51-entry catalog — 16 primary notes,
+  19 lecture editions rendered IN-APP from their Markdown editions, book, LQD
+  paper, handoff pack, Docs/ guides; PDFs open in a tab; availability checked
+  against the install), Ask, What's new (12 entries).
+- **Ask @Vol-Fitter, two tiers**: tier 0 = local BM25 over the whole help
+  corpus (lib/help/search.ts — camelCase-aware tokenizer, light stemmer,
+  field boosts, snippets) answering as ranked cards with Open / Run actions,
+  instant and offline; tier 1 = POST /help/ask (volfit/api/help_ask.py) →
+  Claude through the official `anthropic` SDK (1.2.0 now in the venv; model
+  `claude-opus-5` by default, `VOLFIT_ASSISTANT_MODEL` override; adaptive
+  thinking, effort low, streaming SSE, server-side refusal fallback
+  `fallbacks="default"`), grounded on the top cards the client retrieved,
+  ONLY when the server has `VOLFIT_ANTHROPIC_KEY` / `ANTHROPIC_API_KEY` (BYO
+  key, browser never sees it). The panel names the tier that answered.
+- **Walkthrough** (components/help/Walkthrough.tsx): 12 steps over the live
+  shell via `data-tour` anchors on the real chrome (brand, the five menus,
+  the command center, activity bar, nodes pane, tab strip, main pane, status
+  bar), spotlight cut-out + card with Try-it actions, ArrowRight/Left/Enter/
+  Esc, resumable, hidden-pane fallback ("show it").
+- **F1 = Help for this view** (guide of the active lens / open dialog);
+  first run auto-opens Welcome once (localStorage volfit.help.v1).
+- **Markdown renderer** (lib/help/markdown.tsx, dependency-free, no innerHTML)
+  with two link schemes: `help:page[:anchor]` deep links and `cmd:id[?arg]`
+  action buttons — used by every guide, doc, tip and reference entry.
+- **Backend** router volfit/api/routers/help.py + help_docs.py (allow-listed
+  roots with per-root suffixes, traversal-safe FileResponse, catalog with
+  titles) + help_schema.py (pydantic → schema JSON, also served live) +
+  help_ask.py; `backend/gen_help_schema.py` regenerates the bundled
+  frontend/src/lib/help/settingsSchema.json.
+- **About** gains build info + Copy diagnostics (lib/help/diagnostics.ts —
+  a plain-text bundle: version, backend, source, as-of, lens, node, tabs,
+  workflow, last action / error, browser).
+- **Locks**: vitest — commandDocs (every registry id + dynamic prefix has a
+  doc; related/guide links resolve; house style), settingsDocs (every schema
+  field has exactly one doc and vice-versa; sections; formatters), content
+  (glossary/tips/guides/catalog/what's-new integrity + every help:/cmd: link
+  resolves), walkthrough (order, anchors, actions), search (rankings),
+  markdown, pages; pytest — test_help_schema.py (drift lock: committed JSON ≡
+  live pydantic; default_factory defaults included) + test_api_help.py (24:
+  catalog, markdown by stem, traversal cases, docs-unavailable, schema, ask
+  status / 503 / stubbed SSE / error events / request clamps).
+- **Smoke** (scripts/smoke_help.mjs, split out for the file-size policy):
+  first-run Welcome renders + Esc, Help ▾ rows, all ten pages render with
+  entry counts (72 / 120 / 69 / 36 / 51 / 14), Ask returns cards, nav search
+  returns results, F1 opens the lens guide, Ctrl+/ opens Shortcuts, the
+  Walkthrough starts with all 13 anchors present, advances to step 4 on
+  ArrowRight ×3 and ends on Esc.
+
+Recorded facts / follow-ons (not gates):
+- Six Options fields are edited outside the Options dialog or nowhere
+  (`surfaced: false` in the reference): gridXMinPerExpiry, streamRefitSeconds,
+  filterAdaptiveSigma, filterClock, filterSessionShare, filterNonTradingWeight
+  (+ API-only fit fields bellyRepair, jointCarry, jointCarryEngageBp,
+  priorOperatorCovarianceMode, autoLoadPrior legacy). Surfacing them is a
+  small Options-dialog rider.
+- `Docs/handoff/SETTINGS_REFERENCE.md` §3 still says `mixed` dividends are
+  "discrete then continuous" — the code (and now the reference) says cash →
+  proportional after `switchYears`; the handoff table is stale.
+- Bundle 1.30 MB (help corpus is static TS, +~200 KB): lazy-load the help
+  content (dynamic import behind the Help dialog) if it ever matters.
+- The frontend `OptionsSettings` mirror (useOptions.ts) lacks six backend
+  fields (filterClock, filterNonTradingWeight, filterSessionShare,
+  gridXMinPerExpiry, jointCarry, jointCarryEngageBp) — harmless (sub-panels
+  patch them) but worth aligning when the rider above lands.
+- Tier-1 Ask is untested against the live API (no key on this box); the SDK
+  call shape is locked by a stubbed stream in test_api_help.py.
+
+Verification at wrap: frontend **tsc clean · vitest 397 passed / 57 files ·
+npm run build · npm run smoke:ui all green (LIVE synthetic shell)**; backend
+**2058 passed / 7 skipped in two halves (test_[a-k]* 1252/4 + test_[l-z]* 806/3; +37 locks over 31b's 2021: test_api_help 24 + test_help_schema 3 … the rest are parametrised traversal cases)**.
 
 ### 🧭 SESSION WRAP (2026-08-31b) — LV DISPLAY WINGS: THE PUT-MARCH MIRROR
 

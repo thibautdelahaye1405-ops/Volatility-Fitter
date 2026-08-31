@@ -29,6 +29,7 @@ export default function TopBar() {
       <button
         onClick={() => wb.openDialog("about")}
         title="About VolFit"
+        data-tour="brand"
         className="mr-1 flex items-center gap-2 rounded-md px-1.5 py-1 text-slate-100 transition-colors hover:bg-slate-800/60"
       >
         <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent-600/20 font-mono text-sm font-bold text-accent-400">
@@ -39,6 +40,7 @@ export default function TopBar() {
 
       {/* Main menu: File ▾ · Options · Universe ▾ · Help ▾ */}
       <FileMenu />
+      <div data-tour="menu.options">
       <MenuButton
         label="Options"
         active={wb.dialog === "options"}
@@ -47,11 +49,12 @@ export default function TopBar() {
       >
         <SlidersHorizontal size={13} strokeWidth={1.75} className="opacity-80" />
       </MenuButton>
+      </div>
       <UniverseMenu />
       <HelpMenu />
 
       {/* Command center */}
-      <div className="mx-auto flex items-center gap-3 text-xs">
+      <div className="mx-auto flex items-center gap-3 text-xs" data-tour="center">
         {loading ? (
           <span className="flex items-center gap-2 text-slate-400">
             <span className="h-1.5 w-1.5 rounded-full bg-slate-500 animate-pulse" />

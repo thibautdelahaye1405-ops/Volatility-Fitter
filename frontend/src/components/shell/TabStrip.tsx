@@ -70,6 +70,7 @@ export default function TabStrip({ group = 0 }: { group?: number }) {
   return (
     <div
       role="tablist"
+      data-tour={group === 0 ? "tabs" : undefined}
       aria-label={split ? `Open nodes (group ${group + 1})` : "Open nodes"}
       data-drop-zone="tabstrip"
       onDragOver={(e) => { if (isNodeDrag(e.dataTransfer.types) || wb.draggingTab !== null) e.preventDefault(); }}

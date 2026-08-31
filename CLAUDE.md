@@ -68,7 +68,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2021 passed / 7 skipped as of 2026-08-31, ~15 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2058 passed / 7 skipped as of 2026-08-31c, ~16 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Benchmark pack: `-m backtest.benchmark_pack run|report` (chunked/resumable
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1
@@ -109,14 +109,27 @@ Key commands (Windows, repo root):
             --regime spike_aug2024 --lv` then `-m backtest.analyze --results ...json`.
             Plan/params: backend\backtest\SPEC.md; module map: backend\backtest\README.md.
 - Frontend: cd frontend ; npm run dev   (talks to :8000 if up, else mock fallback + MOCK badge)
-- Frontend tests: cd frontend ; npm test   (vitest, 354 tests) ; npm run smoke:ui
+- Frontend tests: cd frontend ; npm test   (vitest, 397 tests) ; npm run smoke:ui
             (headless-Edge WORKBENCH smoke; LIVE on a synthetic single-origin
             server — backend\smoke_server.py on :4188, throw-away DB — when
-            ..\.venv exists, else vite preview + mock: lenses, 3D crosshair,
-            nodes-pane→tab, menus, dialogs, Ctrl+K palette, drag-to-light,
-            split editors, chart PNG / workspace / snapshot file round trips;
-            screenshots .smoke\; needs npm run build first). UI shell = VS
-            Code-like workbench since 2026-08-26 (App.tsx + src/components/
+            ..\.venv exists, else vite preview + mock: first-run Welcome, lenses,
+            3D crosshair, nodes-pane→tab, menus, dialogs, Ctrl+K palette,
+            drag-to-light, split editors, chart PNG / workspace / snapshot file
+            round trips, Help Center [10 pages · Ask · search · F1 · Ctrl+/ ·
+            Walkthrough — scripts\smoke_help.mjs]; screenshots .smoke\; needs
+            npm run build first).
+- Help Center: Help ▾ (HELP CENTER ARC 2026-08-31) — corpora in frontend\src\lib\help\*
+            (commandDocs · settingsDocs · glossary · tips · guides · docsCatalog ·
+            whatsNew · walkthrough), vitest-locked complete vs the command
+            registry and the settings schema. After ANY pydantic settings-field
+            change: cd backend ; ..\.venv\Scripts\python gen_help_schema.py
+            (rewrites frontend\src\lib\help\settingsSchema.json;
+            tests\test_help_schema.py fails on drift) and add the SettingDoc.
+            Backend router volfit\api\routers\help.py serves the docs catalog
+            (Docs\ + Papers\), the live schema and Ask's Claude tier
+            ($env:VOLFIT_ANTHROPIC_KEY on the server; no key = local retrieval
+            tier).
+- UI shell = VS Code-like workbench since 2026-08-26 (App.tsx + src/components/
             shell/; state/workbench.tsx owns the editor groups + tabs; menu
             rows come from the command registry lib/commands.ts).
 - volfit is pip-installed editable in .venv; fastapi/uvicorn/httpx/yfinance/numba installed

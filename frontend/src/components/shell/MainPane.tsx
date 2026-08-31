@@ -135,6 +135,7 @@ export default function MainPane() {
 
   return (
     <div
+      data-tour="main"
       className={["relative flex min-w-0 flex-1", wb.direction === "column" ? "flex-col" : "flex-row"].join(" ")}
       onDragOver={onDragOver} onDragLeave={() => setHalo(null)} onDrop={onDrop}
     >

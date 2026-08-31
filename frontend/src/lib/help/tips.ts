@@ -1,0 +1,268 @@
+// Tips & tricks (HELP CENTER ARC, H2): curated tips for the shell and each
+// lens, mined from the real behaviour (lib/shortcuts.ts, the lens toolbars and
+// rails, the Graph drop handler, the Quality filters, the file and prior
+// verbs). Most tips carry a Try-it action that runs a registry command — only
+// safe, reversible ones. The Welcome page draws its tip of the day from this
+// list; ids are unique kebab-case (locked by tips.test.ts).
+import type { Tip } from "./types";
+
+export const TIPS: Tip[] = [
+  // --------------------------------------------------------------- Shell
+  {
+    id: "palette-everything",
+    title: "Every menu row is one Ctrl+K away",
+    body: "The command palette lists every File, Universe, Fetch, Calibrate, Priors, lens, layout and view action — fuzzy search, Enter runs. Typing `>` in the Ctrl+P box switches to the same list.",
+    scope: "shell", level: "basic",
+    action: { command: "help.palette", label: "Try it: open the palette" },
+  },
+  {
+    id: "quick-open-fuzzy",
+    title: "Quick open a node by typing part of it",
+    body: "Ctrl+P, then `spy dec` or `nvda 27`: Enter opens the node as a preview tab, Shift+Enter pins it. The rows carry the lit / dark dot and the quality glyph.",
+    scope: "shell", level: "basic",
+    action: { command: "tab.quickOpen", label: "Try it: quick open" },
+  },
+  {
+    id: "preview-vs-pinned",
+    title: "Preview tabs are italic; pin with a double-click",
+    body: "A single click on a node opens a preview tab that the next click replaces. Double-click the node or the tab to pin it. Middle-click a node opens it pinned; middle-click a tab closes it.",
+    scope: "shell", level: "basic",
+    action: { command: "help.open", arg: "shortcuts", label: "See the shortcut table" },
+  },
+  {
+    id: "tree-keyboard",
+    title: "Drive the Nodes pane from the keyboard",
+    body: "Ctrl+B shows the pane and focuses the tree. Letters jump to the next ticker, → expands it, Enter previews, Shift+Enter pins, Ctrl+Enter opens in the next editor group, L toggles lit / dark, Tab lands on the filter box.",
+    scope: "shell", level: "pro",
+    action: { command: "layout.nodesPane", label: "Try it: toggle the Nodes pane" },
+  },
+  {
+    id: "split-editors",
+    title: "Split the editor up to three groups",
+    body: "Ctrl+\\ adds a group after the focused one; at three it folds back to one. Ctrl+Shift+\\ splits down from a single group. Dragging a tab or a node onto the right or bottom 20 % of the pane splits too, and each side group can run its own lens.",
+    scope: "shell", level: "pro",
+    action: { command: "tab.split", label: "Try it: split the editor" },
+  },
+  {
+    id: "per-tab-view-memory",
+    title: "Each tab remembers its own view",
+    body: "Layout ▸ Remember view per tab (on by default) keeps sub-view, axis unit, layers and compare chips per tab. Turn it off to share one view across tabs when comparing nodes.",
+    scope: "shell", level: "basic",
+    action: { command: "layout.rememberView", label: "Toggle it" },
+  },
+  {
+    id: "zen-mode",
+    title: "Zen mode leaves only the charts",
+    body: "One command hides the Nodes pane, the diagnostics aside and the status bar; run it again to bring all three back.",
+    scope: "shell", level: "basic",
+    action: { command: "layout.zen", label: "Try it: zen mode" },
+  },
+  {
+    id: "drop-a-json",
+    title: "Drop a .json anywhere on the shell",
+    body: "A workspace file restores the configuration and tabs; a snapshot file becomes the File data source with its quotes and fits. The drop is routed by the file's schema, so no menu is needed.",
+    scope: "shell", level: "basic",
+    action: { command: "help.open", arg: "guides:files", label: "Read the Files guide" },
+  },
+  {
+    id: "workspace-vs-snapshot",
+    title: "Workspace files hold configuration, snapshots hold quotes",
+    body: "Save workspace (Ctrl+S) keeps Options, universe picks, edits, priors, tabs and layout. Save snapshot (Ctrl+Alt+S) keeps the fetched chains and the committed fits. Reopen a snapshot tomorrow and the fits come back without a fetch.",
+    scope: "shell", level: "basic",
+    action: { command: "help.open", arg: "commands:file.saveSnapshot", label: "About Save snapshot" },
+  },
+  {
+    id: "named-workspaces-on-server",
+    title: "Named workspaces travel between machines",
+    body: "With a server store (VOLFIT_DB), File ▸ Save to server… stores the configuration under a name that every browser on that backend can open from File ▸ Open from server or Ctrl+K.",
+    scope: "shell", level: "pro",
+    action: { command: "help.open", arg: "commands:file.saveToServer", label: "About Save to server" },
+  },
+  {
+    id: "saved-universes",
+    title: "Save the universe under a name",
+    body: "Universe ▾ Save universe as… keeps the ticker set and each ticker's expiries. Loading one refetches its chains, so expect minutes on a large set — the status bar narrates.",
+    scope: "shell", level: "basic",
+    action: { command: "universe.manage", label: "Open Manage universe" },
+  },
+  {
+    id: "asof-in-fetch-menu",
+    title: "Pick the as-of inside Fetch ▾",
+    body: "Live, Previous close, or a day and a moment (close, latest, minus N minutes). A coverage line under Snapshot says how many nodes the source serves at that moment; nodes served off it show an amber ≠ as-of pill in the Nodes pane.",
+    scope: "shell", level: "basic",
+    action: { command: "help.open", arg: "settings:asOfMismatchGate", label: "The as-of mismatch gate" },
+  },
+  {
+    id: "calibrate-face-remembers-scope",
+    title: "The Calibrate button runs the last scope you chose",
+    body: "Parametric + LV, Parametric only, or Local-Vol only: pick one from the chevron and the face names it (\"Calibrate · Param only\") and keeps it across reloads. The badge counts stale nodes for the parametric scopes and stale LV surfaces for LV only.",
+    scope: "shell", level: "basic",
+    action: { command: "help.open", arg: "commands:calibrate.parametric", label: "About Parametric only" },
+  },
+  {
+    id: "prior-save-scopes",
+    title: "Save priors at three widths",
+    body: "Priors ▾ saves the visible tab, every open tab, or every calibrated node. Save the narrow set when only a few smiles are clean; save all at the end of the day so tomorrow's fetch can roll them forward.",
+    scope: "shell", level: "basic",
+    action: { command: "help.open", arg: "guides:priors", label: "Read the Priors guide" },
+  },
+  {
+    id: "colour-schemes",
+    title: "Four colour schemes, plus contrast and brightness",
+    body: "View ▾ previews Dark, Light, High contrast and Warm live, with contrast and brightness sliders. Nothing is kept until Save the look as default; Reset the look returns to Dark.",
+    scope: "shell", level: "basic",
+    action: { command: "view.scheme:contrast", label: "Try it: High contrast" },
+  },
+  {
+    id: "expiry-format-cycle",
+    title: "Expiries as dates, years or months",
+    body: "Cycle the expiry format to read tabs and tables as dd-mmm-yy, (dd)mmmyy, x.xxY, xx.xM or yyM zD — everywhere at once.",
+    scope: "shell", level: "basic",
+    action: { command: "view.expiryFormat:cycle", label: "Try it: cycle the format" },
+  },
+  {
+    id: "f1-for-this-view",
+    title: "F1 opens the guide of what you see",
+    body: "On a lens, F1 opens that lens's guide; in the Options or Manage-universe dialog, the matching guide. Ctrl+Shift+/ asks @Vol-Fitter a question instead.",
+    scope: "shell", level: "basic",
+    action: { command: "help.context", label: "Try it: F1" },
+  },
+  {
+    id: "deep-link-any-setting",
+    title: "Jump to any setting's documentation",
+    body: "The palette command `help.open` takes `settings:<field>`, `guides:<lens>`, `commands:<id>` or `glossary:<term>`; the same links work inside help text and in Ask answers.",
+    scope: "shell", level: "pro",
+    action: { command: "help.open", arg: "settings:haircut", label: "Open the haircut setting" },
+  },
+  {
+    id: "copy-diagnostics",
+    title: "One click gathers what support needs",
+    body: "Help ▸ About ▸ Copy diagnostics (or the palette command) copies version, backend state, source, as-of, settings versions, lens, node and the last error — no quotes, no keys.",
+    scope: "shell", level: "basic",
+    action: { command: "help.copyDiagnostics", label: "Copy diagnostics" },
+  },
+  // --------------------------------------------------------------- Graph
+  {
+    id: "graph-drag-to-light",
+    title: "Drag a node onto the Graph canvas to light it",
+    body: "From the Nodes pane, drop a row on the canvas: in calibrations mode it becomes lit (observed) for the whole app; in manual what-if it gets a +1 vol pt pulse. Drop it on the tab strip instead to open it pinned.",
+    scope: "graph", level: "basic",
+    action: { command: "lens.graph", label: "Go to the Graph lens" },
+  },
+  {
+    id: "graph-drill-in",
+    title: "Double-click a graph node to see its smile",
+    body: "A single click inspects the node (handles, incoming messages); a double-click opens its tab on the Parametric lens with the GRAPH overlay — the extrapolated smile drawn over the quotes.",
+    scope: "graph", level: "basic",
+    action: { command: "lens.graph", label: "Go to the Graph lens" },
+  },
+  {
+    id: "graph-whatif-pulse",
+    title: "Preview a what-if before running it",
+    body: "In manual what-if, click a node to pulse or unpulse it, then open the drawer's Preview: it shows what the next Run will propagate, on the same request body as Run itself.",
+    scope: "graph", level: "pro",
+    action: { command: "help.open", arg: "guides:graph", label: "Read the Graph guide" },
+  },
+  // ------------------------------------------------------------ Forwards
+  {
+    id: "forwards-ladder-click",
+    title: "Click a ladder row to move the editor",
+    body: "The Forwards lens shows the active ticker's whole ladder; clicking a row opens that expiry's tab and moves the per-expiry editor (mode, manual override, carry, dividends) to it. An edit refits every lens of that ticker.",
+    scope: "forwards", level: "basic",
+    action: { command: "lens.forwards", label: "Go to the Forwards lens" },
+  },
+  {
+    id: "forwards-joint-carry",
+    title: "Read the borrow with its noise floor",
+    body: "Turn on the joint borrow / de-Am columns to see the fixed-point borrow per expiry and its ±σ noise floor from the parity residuals — a read is only as good as that floor, whatever solver produced it.",
+    scope: "forwards", level: "pro",
+    action: { command: "help.open", arg: "settings:jointCarry", label: "The joint-carry setting" },
+  },
+  // ---------------------------------------------------------- Parametric
+  {
+    id: "layer-rail",
+    title: "The layer rail sits at the right of the chart",
+    body: "Target (mid line + bid-ask / haircut band), Calib. quotes (the quotes and target the last calibration used, with your exclusions), Calib. fit (the smile on its calibration spot, dashed) and Weights (per-quote weights under the chart). Hover the rail for labels.",
+    scope: "parametric", level: "basic",
+    action: { command: "lens.parametric", label: "Go to the Parametric lens" },
+  },
+  {
+    id: "y-center-y-fit",
+    title: "Y center / Y fit follow your x-range; Alt+wheel overrides",
+    body: "The two chips on the chart recenter and refit the y-axis whenever the x-range changes. Alt+wheel zooms y only and bypasses the auto-scale; Shift+wheel zooms x only; double-click resets.",
+    scope: "parametric", level: "basic",
+    action: { command: "help.open", arg: "shortcuts", label: "Chart shortcuts" },
+  },
+  {
+    id: "compare-chips-lazy",
+    title: "Compare fits the other families only when you ask",
+    body: "The Compare view shows the prevailing model at once; LQD, SVI-JW, MCS and eSSVI chips fit lazily when clicked (server-cached, so toggling back is free). The Tails column shows each family's wing law.",
+    scope: "parametric", level: "basic",
+    action: { command: "lens.parametric", label: "Go to the Parametric lens" },
+  },
+  {
+    id: "quote-editing-keys",
+    title: "Edit quotes with the keyboard",
+    body: "Click a quote to select it; Delete excludes or restores it; ↑ / ↓ amend the mid by 0.1 vol pt (Shift = 0.5); Ctrl+Z / Ctrl+Y undo and redo. The node turns stale until you calibrate.",
+    scope: "parametric", level: "basic",
+    action: { command: "help.open", arg: "shortcuts", label: "Smile-editing shortcuts" },
+  },
+  {
+    id: "density-cdf-toggle",
+    title: "Density, log Q-density or CDF",
+    body: "The Density view has a three-way toggle: the risk-neutral density, its log quantile density (the LQD chart), or the CDF — the quantile function transposed.",
+    scope: "parametric", level: "pro",
+    action: { command: "lens.parametric", label: "Go to the Parametric lens" },
+  },
+  {
+    id: "two-frames",
+    title: "Market frame vs calibration frame",
+    body: "The chart always shows the prevailing quotes with the fit rolled to the prevailing spot. Calib. quotes and Calib. fit add the frame the last calibration saw — compare them pairwise to separate a market move from a fit change. The Table view has the same two frames.",
+    scope: "parametric", level: "pro",
+    action: { command: "help.open", arg: "guides:parametric", label: "Read the Parametric guide" },
+  },
+  // ----------------------------------------------------------- Local Vol
+  {
+    id: "lv-replay",
+    title: "Replay the Local-Vol solver",
+    body: "The ⏵ button in the fit-diagnostics card replays the accepted solver steps of the last calibration — the surface and the per-expiry RMS as they converged. A fresh calibration replays once by itself.",
+    scope: "localvol", level: "basic",
+    action: { command: "lens.localvol", label: "Go to the Local Vol lens" },
+  },
+  {
+    id: "lv-3d-camera",
+    title: "Zoom at the cursor, pan, pitch — and it sticks",
+    body: "On the 3D surfaces the wheel zooms around the pointer, Shift+drag or middle-drag pans, Ctrl+drag pitches, drag rotates, double-click resets. The camera is kept per view and rides workspace files.",
+    scope: "localvol", level: "basic",
+    action: { command: "lens.localvol", label: "Go to the Local Vol lens" },
+  },
+  {
+    id: "lv-linked-crosshair",
+    title: "Hover one surface, read them all",
+    body: "Hovering the 3D mesh lifts the smile at T and the term curve at k with a readout badge. The same (k, T) highlights in the ticker's other surface charts — split the editor with the IV surface on one side and the LV heat map on the other.",
+    scope: "localvol", level: "pro",
+    action: { command: "tab.split", label: "Try it: split the editor" },
+  },
+  {
+    id: "lv-graph-source",
+    title: "Fit the LV surface to the graph instead of the quotes",
+    body: "The graph-source toggle in the Local Vol toolbar calibrates the surface to the graph-extrapolated smiles — a way to see a dark ticker's local-vol surface, with a badge saying where it came from.",
+    scope: "localvol", level: "pro",
+    action: { command: "help.open", arg: "guides:localvol", label: "Read the Local Vol guide" },
+  },
+  // ------------------------------------------------------------- Quality
+  {
+    id: "quality-exceptions-only",
+    title: "Show only what blocks publishing",
+    body: "Tick \"exceptions only\" above the node table and sort by exceptions: the list shrinks to the nodes that are not publish-ready, worst first. Click a row to preview the node, double-click to pin it.",
+    scope: "quality", level: "basic",
+    action: { command: "lens.quality", label: "Go to the Quality lens" },
+  },
+  {
+    id: "quality-rms-scores-target",
+    title: "Every RMS scores the fit target you chose",
+    body: "With a bid-ask or haircut target the error is the band violation — zero inside the band — not the distance to mid. The tiles, the node card, the LV column and the report all use the same rule.",
+    scope: "quality", level: "pro",
+    action: { command: "help.open", arg: "settings:fitMode", label: "The fit-target setting" },
+  },
+];

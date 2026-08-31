@@ -47,6 +47,9 @@ describe("command registry", () => {
       "file.new", "file.open", "file.save", "file.saveAs", "universe.manage", "help.shortcuts",
       "help.api", "help.report", "help.about", "layout.nodesPane", "layout.aside", "layout.statusBar",
       "layout.zen", "layout.rememberView", "layout.reset", "tab.closeAll", "options.open",
+      // Help ▾ (HELP CENTER ARC)
+      "help.welcome", "help.walkthrough", "help.context", "help.docs", "help.commands", "help.settings",
+      "help.glossary", "help.tips", "help.ask", "help.palette", "help.whatsNew", "help.open", "help.copyDiagnostics",
     ] as const) {
       expect(commandDef(id).id).toBe(id);
     }

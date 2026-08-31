@@ -41,7 +41,7 @@ export { ACTIVITIES, NODES_WIDTH, UNIVERSE_ACTIVITIES, defaultNodesWidth } from 
 export type { Activity, LayoutState } from "./workbenchPersist";
 
 /** Modal dialogs owned by the shell. */
-export type DialogId = "universe" | "options" | "shortcuts" | "about" | "quickopen" | "commands";
+export type DialogId = "universe" | "options" | "shortcuts" | "about" | "quickopen" | "commands" | "help";
 
 /** Workbench part of the workspace-file shell blob. */
 export interface ShellShellBlob {

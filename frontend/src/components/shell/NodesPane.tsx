@@ -153,6 +153,7 @@ export default function NodesPane() {
   return (
     <aside
       aria-label="Nodes"
+      data-tour="nodes"
       className="flex min-w-0 shrink-0 flex-col border-r border-slate-800 bg-surface-950"
       style={{ width: wb.layout.nodesWidth }}
     >

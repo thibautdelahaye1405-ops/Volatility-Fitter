@@ -53,7 +53,7 @@ export default function FileMenu() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="menu.file">
       <MenuButton label="File" chevron active={open} onClick={() => setOpen((v) => !v)} />
       <MenuPanel open={open} onClose={close} width="w-72">
         {confirmNew ? (

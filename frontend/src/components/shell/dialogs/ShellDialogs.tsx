@@ -1,10 +1,11 @@
 // The shell's modal dialogs (UI SHELL v2, S4), switched on the workbench's
-// `dialog` slot: Universe manager, Options (settings), keyboard shortcuts,
-// About, and the Ctrl+P quick-open / Ctrl+K command palette (one component,
-// ">" pre-filled for commands).
+// `dialog` slot: Universe manager, Options (settings), the Help Center (with
+// its Shortcuts page behind the legacy "shortcuts" id), About, and the Ctrl+P
+// quick-open / Ctrl+K command palette (one component, ">" pre-filled for
+// commands).
 import Dialog from "../Dialog";
 import AboutDialog from "./AboutDialog";
-import ShortcutsDialog from "./ShortcutsDialog";
+import HelpCenter from "../../help/HelpCenter";
 import QuickOpen from "../QuickOpen";
 import UniverseManager from "../../../views/UniverseManager";
 import OptionsViewer from "../../../views/OptionsViewer";
@@ -30,7 +31,8 @@ export default function ShellDialogs() {
       >
         {dialog === "options" && <OptionsViewer />}
       </Dialog>
-      <ShortcutsDialog open={dialog === "shortcuts"} onClose={closeDialog} />
+      {/* Help Center (HELP CENTER ARC) — "shortcuts" is the legacy id of its Shortcuts page. */}
+      <HelpCenter open={dialog === "help" || dialog === "shortcuts"} onClose={closeDialog} />
       <AboutDialog open={dialog === "about"} onClose={closeDialog} />
       <QuickOpen
         open={dialog === "quickopen" || dialog === "commands"}

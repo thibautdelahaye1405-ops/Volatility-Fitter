@@ -1,0 +1,180 @@
+// Settings documentation — merge + lookups (HELP CENTER ARC, H1). Concatenates
+// the per-section SettingDoc modules into SETTING_DOCS, defines the section
+// rail (Options-dialog order, then Market), and exposes the GENERATED machine
+// facts of settingsSchema.json (type / default / range / enum) with the two
+// formatters the Settings page renders beside each entry. PURE DATA: no React,
+// so settingsDocs.test.ts can lock completeness without a DOM.
+//
+// Content contract: every field of every model in settingsSchema.json has
+// exactly one SettingDoc, and every doc key exists in the schema for its model
+// (both locked by ../settingsDocs.test.ts). Defaults / ranges are NEVER
+// hand-copied into the prose — they come from the JSON, regenerated with it.
+import type {
+  SchemaField,
+  SettingDoc,
+  SettingsModel,
+  SettingsSchema,
+  SettingsSectionId,
+} from "../types";
+import schemaJson from "../settingsSchema.json";
+import { FIT_DOCS } from "./fit";
+import { CALIBRATION_DOCS } from "./calibration";
+import { LOCALVOL_DOCS } from "./localvol";
+import { PRIOR_DOCS } from "./priors";
+import { FILTER_DOCS } from "./filter";
+import { DYNAMICS_DOCS, EVENTS_DOCS, GRAPH_DOCS } from "./events_graph_dynamics";
+import { WORKFLOW_DOCS } from "./workflow";
+import { MARKET_DOCS } from "./market";
+
+// ---------------------------------------------------------------------------
+// The corpus
+// ---------------------------------------------------------------------------
+
+/** Every documented setting, in section order. */
+export const SETTING_DOCS: SettingDoc[] = [
+  ...FIT_DOCS,
+  ...LOCALVOL_DOCS,
+  ...CALIBRATION_DOCS,
+  ...PRIOR_DOCS,
+  ...FILTER_DOCS,
+  ...EVENTS_DOCS,
+  ...GRAPH_DOCS,
+  ...WORKFLOW_DOCS,
+  ...DYNAMICS_DOCS,
+  ...MARKET_DOCS,
+];
+
+const DOC_BY_KEY: ReadonlyMap<string, SettingDoc> = new Map(
+  SETTING_DOCS.map((d) => [d.key, d] as const),
+);
+
+/** Look a setting up by its wire name (keys are unique across the three
+ *  models). Undefined for an unknown key — callers render a fallback. */
+export function settingDoc(key: string): SettingDoc | undefined {
+  return DOC_BY_KEY.get(key);
+}
+
+// ---------------------------------------------------------------------------
+// Sections — the Options-dialog rail order (views/OptionsViewer.tsx), then the
+// per-ticker Market group edited in the Forwards lens.
+// ---------------------------------------------------------------------------
+
+export interface SettingsSectionDef {
+  id: SettingsSectionId;
+  label: string;
+  /** One line under the label on the Settings page. */
+  blurb: string;
+}
+
+export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
+  {
+    id: "opt-parametric",
+    label: "Parametric",
+    blurb: "Per-fit hyperparameters (FitSettings) — model choice, LQD order and coordinates, SVI-JW and Multi-Core penalties, weights, band handling.",
+  },
+  {
+    id: "opt-localvol",
+    label: "Local Vol",
+    blurb: "The affine local-volatility grid and its solver — strike and time nodes, roughness, wing convexity, PDE scheme, early stop.",
+  },
+  {
+    id: "opt-calibration",
+    label: "Calibration",
+    blurb: "Surface-level calibration policy — fit target, calendar enforcement and solver, var-swap anchors, carry, cross-model penalties.",
+  },
+  {
+    id: "opt-prior",
+    label: "Prior persistence",
+    blurb: "How a saved prior anchors today's fit — the seven-mode menu, operator and factor strengths, tail anchors, var-swap carrier.",
+  },
+  {
+    id: "opt-filter",
+    label: "Observation filter (Kalman)",
+    blurb: "The observation-filter overlay — process noise per handle, adaptive gain, residual inflation, session clock, reset horizon.",
+  },
+  {
+    id: "opt-events",
+    label: "Events",
+    blurb: "The event-weighted variance clock and the intraday (0DTE) session clock.",
+  },
+  {
+    id: "opt-graph",
+    label: "Graph",
+    blurb: "Graph-solver defaults the Graph lens seeds from — the propagation operator and the κ / η / λ / ν dials.",
+  },
+  {
+    id: "opt-workflow",
+    label: "Workflow & data",
+    blurb: "Calibration and fetch triggers, streaming, scheduler cadences, and the data-freshness policy (age thresholds, as-of gate).",
+  },
+  {
+    id: "opt-dynamics",
+    label: "Dynamics",
+    blurb: "Spot-vol dynamics — the stickiness regime and SSR that every transported view and the spot scenario apply.",
+  },
+  {
+    id: "market",
+    label: "Market (per ticker)",
+    blurb: "Per-ticker carry inputs edited in the Forwards lens — rate, dividend model, discrete schedule, mixed-mode switch horizon.",
+  },
+];
+
+/** The docs of one section, in corpus order. */
+export function docsBySection(section: SettingsSectionId): SettingDoc[] {
+  return SETTING_DOCS.filter((d) => d.section === section);
+}
+
+// ---------------------------------------------------------------------------
+// Generated machine facts (settingsSchema.json)
+// ---------------------------------------------------------------------------
+
+/** The generated schema, typed. Regenerated by the backend exporter — never
+ *  edited by hand. */
+export const SETTINGS_SCHEMA: SettingsSchema = schemaJson as SettingsSchema;
+
+/** The three models, in the order the Settings page groups them. */
+export const SETTINGS_MODELS: readonly SettingsModel[] = ["fit", "options", "market"];
+
+/** One field's machine facts, or undefined when the schema lacks it. */
+export function schemaField(model: SettingsModel, key: string): SchemaField | undefined {
+  return SETTINGS_SCHEMA.models[model]?.fields.find((f) => f.name === key);
+}
+
+/** A number as the schema wrote it — no rounding, no thousands separators. */
+function fmtNum(n: number): string {
+  return String(n);
+}
+
+/** One JSON value for display inside a default / list cell. */
+function fmtValue(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "boolean") return v ? "on" : "off";
+  if (typeof v === "number") return fmtNum(v);
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return v.map(fmtValue).join(", ");
+  return JSON.stringify(v);
+}
+
+/** The field's default for display: bool → "on" / "off", null → "—",
+ *  numbers as-is, lists joined with ", ", enum / string as the value,
+ *  dicts as compact JSON. */
+export function formatDefault(field: SchemaField): string {
+  return fmtValue(field.default);
+}
+
+/** The field's valid range for display, or null when unbounded:
+ *  "4 – 24" (both inclusive), "(0, 3600]" (an exclusive end), "> 0" / "≥ 0"
+ *  (lower bound only), "< 5" / "≤ 5" (upper bound only). */
+export function formatRange(field: SchemaField): string | null {
+  const hasMin = typeof field.min === "number";
+  const hasMax = typeof field.max === "number";
+  if (!hasMin && !hasMax) return null;
+  const lo = hasMin ? fmtNum(field.min as number) : "";
+  const hi = hasMax ? fmtNum(field.max as number) : "";
+  if (hasMin && hasMax) {
+    if (!field.exclusiveMin && !field.exclusiveMax) return `${lo} – ${hi}`;
+    return `${field.exclusiveMin ? "(" : "["}${lo}, ${hi}${field.exclusiveMax ? ")" : "]"}`;
+  }
+  if (hasMin) return `${field.exclusiveMin ? ">" : "≥"} ${lo}`;
+  return `${field.exclusiveMax ? "<" : "≤"} ${hi}`;
+}

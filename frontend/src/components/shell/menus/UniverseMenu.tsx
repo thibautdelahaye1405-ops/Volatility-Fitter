@@ -42,7 +42,7 @@ export default function UniverseMenu() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="menu.universe">
       <MenuButton label="Universe" chevron active={open} onClick={() => setOpen((v) => !v)} />
       <MenuPanel open={open} onClose={close} width="w-72">
         <CommandRow id="universe.manage" icon={Database} after={close} />

@@ -161,7 +161,7 @@ export default function StatusBar() {
     : "no node";
 
   return (
-    <footer className="flex h-7 shrink-0 items-center gap-4 border-t border-slate-800 bg-surface-950 px-3 text-xs">
+    <footer data-tour="status" className="flex h-7 shrink-0 items-center gap-4 border-t border-slate-800 bg-surface-950 px-3 text-xs">
       {/* Left: narration / Ready, then lens · node */}
       <div className="flex min-w-0 flex-1 items-center gap-2.5">
         {!live ? (

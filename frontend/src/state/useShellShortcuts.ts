@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { ACTIVITIES, useWorkbench } from "./workbench";
 import { useWorkspaceFile } from "./workspaceFile";
 import { useSnapshotFile } from "./snapshotFile";
+import { useHelp } from "./help";
 
 function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -17,18 +18,38 @@ export function useShellShortcuts(): void {
   const wb = useWorkbench();
   const ws = useWorkspaceFile();
   const snap = useSnapshotFile();
+  const help = useHelp();
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Esc: close the open dialog (Dialog.tsx handles its own Esc too; this
-      // covers the dialog-less popovers via their own backdrops).
+      // covers the dialog-less popovers via their own backdrops) — or end the
+      // Walkthrough when it is running.
       if (e.key === "Escape") {
+        if (help.tour.active) {
+          help.endTour();
+          e.preventDefault();
+          return;
+        }
         if (wb.dialog !== null) {
           wb.closeDialog();
           e.preventDefault();
         }
         return;
       }
+      // F1 — Help for this view (HELP CENTER ARC); the browser's own F1 help
+      // is suppressed by preventDefault in Chromium. Works while typing too.
+      if (e.key === "F1" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        help.openContextHelp();
+        e.preventDefault();
+        return;
+      }
       if (isTyping(e.target)) return;
+      // Ctrl+Shift+/ (Ctrl+?) — Ask @Vol-Fitter.
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.key === "?" || e.code === "Slash")) {
+        help.openHelp({ page: "ask" });
+        e.preventDefault();
+        return;
+      }
 
       // Alt+1…5 — lens switch (Ctrl+digits are browser-reserved).
       if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-5]$/.test(e.code)) {
@@ -67,7 +88,7 @@ export function useShellShortcuts(): void {
         if ((e.code === "KeyK" && !e.shiftKey) || (e.code === "KeyP" && e.shiftKey)) {
           wb.openDialog("commands"); e.preventDefault(); return;
         }
-        if (e.key === "/" && !e.shiftKey) { wb.openDialog("shortcuts"); e.preventDefault(); return; }
+        if (e.key === "/" && !e.shiftKey) { help.openHelp({ page: "shortcuts" }); e.preventDefault(); return; }
         if (e.code === "KeyU" && e.shiftKey) { wb.openDialog("universe"); e.preventDefault(); return; }
         // Split editors (wave 3, C3 + third group): Ctrl+\ adds a group (at
         // three, folds back to one); Ctrl+Shift+\ splits DOWN from one group.
@@ -79,5 +100,5 @@ export function useShellShortcuts(): void {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [wb, ws, snap]);
+  }, [wb, ws, snap, help]);
 }

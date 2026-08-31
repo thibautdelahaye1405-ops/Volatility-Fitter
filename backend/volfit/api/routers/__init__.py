@@ -11,6 +11,7 @@ from volfit.api.routers.filter_replay import router as filter_replay_router
 from volfit.api.routers.fit import router as fit_router
 from volfit.api.routers.forwards import router as forwards_router
 from volfit.api.routers.graph import router as graph_router
+from volfit.api.routers.help import router as help_router
 from volfit.api.routers.history import router as history_router
 from volfit.api.routers.localvol import router as localvol_router
 from volfit.api.routers.massive_iv import router as massive_iv_router
@@ -43,6 +44,7 @@ ALL_ROUTERS = (
     affine_router,
     forwards_router,
     graph_router,
+    help_router,
     history_router,
     localvol_router,
     massive_iv_router,
@@ -72,6 +74,7 @@ __all__ = [
     "fit_router",
     "forwards_router",
     "graph_router",
+    "help_router",
     "history_router",
     "localvol_router",
     "massive_iv_router",

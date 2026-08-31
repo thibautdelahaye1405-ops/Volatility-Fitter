@@ -24,6 +24,9 @@ import { API_BASE_URL } from "./api";
 import { saveNodePriors } from "../components/topbar/PriorsMenu";
 import { chartBackground, chartPngFilename, findActiveChartSvg, svgToPngBlob } from "../lib/chartPng";
 import { downloadBlob } from "../lib/fileHandles";
+import { useHelp } from "./help";
+import { useDiagnosticsSnapshot } from "./useDiagnostics";
+import { copyText, formatDiagnostics } from "../lib/help/diagnostics";
 
 export interface Command extends CommandDef {
   enabled: boolean;
@@ -40,7 +43,7 @@ interface CommandsValue {
 
 const Ctx = createContext<CommandsValue | null>(null);
 
-/** Mount inside WorkspaceFileProvider (needs every shell context). */
+/** Mount inside WorkspaceFileProvider + HelpProvider (needs every shell context). */
 export function CommandsProvider({ children }: { children: ReactNode }) {
   const wb = useWorkbench();
   const { live, workflow } = useWorkflowContext();
@@ -50,6 +53,8 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const view = useViewSettings();
   const expiry = useExpiryFormat();
   const session = useSmileSession();
+  const help = useHelp();
+  const diagnostics = useDiagnosticsSnapshot();
   const { layout } = wb;
   const zen = !layout.nodesPane && !layout.aside && !layout.statusBar;
   const busy = workflow.busy;
@@ -154,16 +159,32 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       bind("view.expiryFormat:cycle", () => expiry.cycle()),
       bind("view.saveDefault", () => { view.saveDefault(); expiry.saveDefault(); }, view.dirty || expiry.dirty),
       bind("view.reset", () => view.reset()),
-      // Help / dialogs
+      // Help / dialogs (HELP CENTER ARC): the center's pages, the tour, F1,
+      // the assistant, diagnostics — every Help ▾ row is one of these.
       bind("options.open", () => wb.openDialog("options"), true, wb.dialog === "options"),
-      bind("help.shortcuts", () => wb.openDialog("shortcuts")),
+      bind("help.welcome", () => help.openHelp({ page: "welcome" })),
+      bind("help.walkthrough", () => help.startTour(), true, help.tour.active),
+      bind("help.context", () => help.openContextHelp()),
+      bind("help.docs", () => help.openHelp({ page: "docs" })),
+      bind("help.commands", () => help.openHelp({ page: "commands" })),
+      bind("help.settings", () => help.openHelp({ page: "settings" })),
+      bind("help.shortcuts", () => help.openHelp({ page: "shortcuts" })),
+      bind("help.glossary", () => help.openHelp({ page: "glossary" })),
+      bind("help.tips", () => help.openHelp({ page: "tips" })),
+      bind("help.ask", () => help.openHelp({ page: "ask" })),
+      bind("help.palette", () => wb.openDialog("commands")),
+      bind("help.whatsNew", () => help.openHelp({ page: "whatsnew" })),
+      bind("help.open", (arg) => { if (arg?.trim()) help.openHelp(arg.trim()); }),
+      bind("help.copyDiagnostics", () => {
+        void copyText(formatDiagnostics(diagnostics())).then((ok) =>
+          workflow.noteAction(ok ? "Diagnostics copied to the clipboard" : "Could not copy diagnostics", ok));
+      }),
       bind("help.api", () => openUrl(`${API_BASE_URL}/docs`)),
       bind("help.report", () => openUrl(`${API_BASE_URL}/export/report`), live),
       bind("help.about", () => wb.openDialog("about")),
-      bind("help.palette", () => wb.openDialog("commands")),
     ];
     return list;
-  }, [wb, live, workflow, ws, snap, uni, view, expiry, session, layout, zen, busy]);
+  }, [wb, live, workflow, ws, snap, uni, view, expiry, session, layout, zen, busy, help, diagnostics]);
 
   const byId = useCallback((id: string) => commands.find((c) => c.id === id), [commands]);
   const run = useCallback((id: string, arg?: string) => { const c = byId(id); if (c && c.enabled) c.run(arg); }, [byId]);

@@ -180,3 +180,13 @@ body {
   50% { opacity: 0.35; }
 }
 .volfit-live-dot { animation: volfit-live-pulse 1.6s ease-in-out infinite; }
+
+/* ---------------------------------------------------------------------------
+ * Help Center (HELP CENTER ARC): a deep-linked entry flashes once when the
+ * page scrolls to it (components/help/HelpCards useAnchorFlash).
+ * ------------------------------------------------------------------------- */
+@keyframes volfit-help-flash {
+  0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent-400) 70%, transparent); }
+  100% { box-shadow: 0 0 0 10px transparent; }
+}
+.help-flash { animation: volfit-help-flash 1.4s ease-out 1; }

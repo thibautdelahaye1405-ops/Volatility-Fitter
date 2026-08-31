@@ -94,13 +94,26 @@ export const COMMANDS = [
   { id: "view.expiryFormat:cycle", label: "Cycle the expiry format", category: "View" },
   { id: "view.saveDefault", label: "Save the look as default", category: "View" },
   { id: "view.reset", label: "Reset the look", category: "View" },
-  // Help / dialogs
+  // Help / dialogs (HELP CENTER ARC: every row of Help ▾ is a command; the
+  // center's pages are reachable with `help.open <page[:anchor]>`).
   { id: "options.open", label: "Options…", category: "Help", shortcut: "Ctrl+,", detail: "settings dialog" },
+  { id: "help.welcome", label: "Welcome", category: "Help", detail: "start here" },
+  { id: "help.walkthrough", label: "Walkthrough…", category: "Help", detail: "12-step tour of the shell" },
+  { id: "help.context", label: "Help for this view", category: "Help", shortcut: "F1", detail: "guide of the active lens / dialog" },
+  { id: "help.docs", label: "Documentation", category: "Help", detail: "notes · book · paper, in-app" },
+  { id: "help.commands", label: "Command reference", category: "Help", detail: "every command, explained" },
+  { id: "help.settings", label: "Settings reference", category: "Help", detail: "every Fit / Options / Market field" },
   { id: "help.shortcuts", label: "Keyboard shortcuts", category: "Help", shortcut: "Ctrl+/" },
+  { id: "help.glossary", label: "Glossary", category: "Help" },
+  { id: "help.tips", label: "Tips & tricks", category: "Help" },
+  { id: "help.ask", label: "Ask @Vol-Fitter…", category: "Help", shortcut: "Ctrl+Shift+/", detail: "help assistant" },
+  { id: "help.palette", label: "Show all commands", category: "Help", shortcut: "Ctrl+K", detail: "command palette" },
+  { id: "help.whatsNew", label: "What's new", category: "Help", detail: "release notes" },
+  { id: "help.open", label: "Open a help page…", category: "Help", arg: { placeholder: "page[:anchor] — e.g. settings:haircut, guides:graph" } },
+  { id: "help.copyDiagnostics", label: "Copy diagnostics", category: "Help", detail: "for a support request" },
   { id: "help.api", label: "API reference", category: "Help", detail: "OpenAPI /docs" },
   { id: "help.report", label: "Quality report", category: "Help", detail: "HTML export" },
   { id: "help.about", label: "About VolFit", category: "Help" },
-  { id: "help.palette", label: "Command palette", category: "Help", shortcut: "Ctrl+K" },
 ] as const satisfies readonly CommandDef[];
 
 export type CommandId = (typeof COMMANDS)[number]["id"];

@@ -8,6 +8,8 @@
 //   3. every top-bar menu (File · Universe · Help · View · Layout) and every
 //      dialog (Options · Manage universe · Keyboard shortcuts · About · Quick open);
 //   4. LIVE only — the workspace FILE round trip (wave 3, A1): File ▸ Save as…
+//      … and (HELP CENTER ARC) the first-run Welcome, every Help Center page,
+//      Ask's local tier, help search, F1, Ctrl+/ and the Walkthrough overlay;
 //      downloads a volfit-workspace/1 bundle, File ▸ Open… reopens it through
 //      the file chooser and the status bar names the workspace.
 // Server: when the backend venv + a built bundle exist, a single-origin
@@ -21,6 +23,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import puppeteer from "puppeteer-core";
+import { smokeHelpCenter } from "./smoke_help.mjs";
 
 const EDGE = "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
 const PORT = 4188; // off the dev/preview defaults so a running app never collides
@@ -185,6 +188,21 @@ try {
   });
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: "networkidle2", timeout: 30000 });
   await sleep(LIVE ? 2500 : 800);
+
+  // 0. First run (HELP CENTER ARC): a fresh profile auto-opens the Help Center
+  //    on Welcome once; it must render and Esc must dismiss it before the rest.
+  try {
+    const welcome = await page.$('[role="dialog"][aria-label="Help Center"] [data-help-page="welcome"]');
+    if (!welcome) throw new Error("the first-run Welcome page did not open");
+    await check(page, pageErrors, "first-run-welcome");
+    await page.keyboard.press("Escape");
+    await sleep(300);
+    if (await page.$('[role="dialog"]')) throw new Error("Welcome did not close on Esc");
+  } catch (err) {
+    console.error(`FAIL first-run-welcome: ${err.message}`);
+    failures += 1;
+    await page.keyboard.press("Escape");
+  }
 
   // 1. Lenses (the session auto-opens a preview tab for its default node).
   for (const lens of LENSES) {
@@ -461,6 +479,8 @@ try {
       await page.keyboard.press("Escape");
     }
   }
+  // 8. Help Center (HELP CENTER ARC) — scripts/smoke_help.mjs (file-size policy).
+  failures += await smokeHelpCenter(page, pageErrors, { clickHeader, clickText, check, sleep });
 } finally {
   await browser.close();
   preview.kill();
@@ -470,4 +490,4 @@ if (failures > 0) {
   console.error(`\nUI smoke: ${failures} step(s) failed (screenshots in .smoke/)`);
   process.exit(1);
 }
-console.log(`\nUI smoke: shell, ${LENSES.length} lens steps, ${MENUS.length} menus, ${DIALOGS.length} dialogs${LIVE ? ", workspace file round trip" : ""} render (screenshots in .smoke/)`);
+console.log(`\nUI smoke: shell, ${LENSES.length} lens steps, ${MENUS.length} menus, ${DIALOGS.length} dialogs${LIVE ? ", workspace file round trip" : ""}, Help Center (10 pages · ask · F1 · walkthrough) render (screenshots in .smoke/)`);

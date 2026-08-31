@@ -11,7 +11,7 @@ import ViewSettingsViewer from "../../../views/ViewSettingsViewer";
 export default function ViewMenu() {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
+    <div className="relative" data-tour="menu.view">
       <MenuButton
         label="View"
         chevron

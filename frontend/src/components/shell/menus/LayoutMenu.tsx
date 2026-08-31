@@ -16,7 +16,7 @@ export default function LayoutMenu() {
   const close = () => setOpen(false);
 
   return (
-    <div className="relative">
+    <div className="relative" data-tour="menu.layout">
       <MenuButton
         label="Layout"
         chevron
