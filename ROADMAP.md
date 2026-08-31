@@ -808,6 +808,53 @@ USER-side: restart the long-running :8000 (new OptionsSettings fields,
 endpoints, the eSSVI compare family, the midnight roll); existing stores
 default the new gates.
 
+### 🧭 SESSION WRAP (2026-08-31b) — LV DISPLAY WINGS: THE PUT-MARCH MIRROR
+
+The 2026-08-31a rider, closed same-day on the user's ask: both LV engines
+only marched CALLS, so their left display wings formed the time value as
+C - (1 - e^k) — the same intrinsic-leg cancellation the LQD fix removed.
+Post-31a that read ±1e-17 round-off noise (nan where the noise landed
+negative, phantom vols where positive); the GRID engine was worse — its
+k-space stencil is O(h^2) on e^k, so the call row's deep-left "time value"
+IS the accumulated parity drift, which inverted to a smooth phantom wing at
+~4x the model level (locked in the new tests).
+
+Fix — march a PUT TWIN through the same operator, invert the OTM side:
+- **reprice_affine_dupire** gains ``payoff="put"`` + ``time_scheme``/
+  ``rannacher_steps`` mirroring solve_affine_dupire (defaults reproduce the
+  historical implicit call march bit-for-bit, re-locked): in x-space 1 - x
+  lies in the EXACT kernel of the nonuniform central stencil, so discrete
+  parity C - P = 1 - x holds to round-off at every step and the k = 0 seam
+  between call-side and put-side inversions is exact.
+- **affine_payload** runs the put twin post-solve (same grids, same time
+  scheme, same fitted left slope — the conv_sol precedent; calibration
+  byte-identical) and threads it through the NEW
+  ``affine_views_ext.otm_implied_w`` into BOTH ``_reconstruct_smile``
+  (model) and ``extended_model`` (modelExt) — one inversion, the
+  modelExt ≡ model lock intact; the ``_EXT_TV_FLOOR`` reliability currency
+  is now the put march's HONEST time value on the left instead of the
+  cancelled intrinsic remainder.
+- **models/localvol/pde.py** marches the put beside the call on the shared
+  banded factor per step (the call is solved first without overwriting it —
+  same floats as the historical single-solve path);
+  ``PDESolution.put_prices``, ``LocalVolSlice.put_price`` + OTM
+  ``implied_w`` (parity fallback when the row is absent).
+- Recorded honestly (the fix-#3 lesson generalized to wings): beyond ~8 sd
+  ANY implicit march's wing is the SCHEME's exponential tail, not the
+  model's — the crossover scales with sqrt(T/dt), the affine display's tv
+  floor + flat extension already guards that region, and floor-band wing
+  fidelity on short-dated slices needs the production short-front dx cap /
+  front-refined t-grid (the new tests document the requirement on toy
+  grids: dt = T/512, ~28 mesh points per terminal sd).
+- Locks: tests/test_lv_wing_inversion.py (7) — discrete parity under
+  implicit AND rannacher, reprice default-path byte-identity, call rows
+  unperturbed + diagnostics gate, floor-band level recovery on both
+  engines, deep-wing smooth/monotone vs the old routes' nan / phantom-drift
+  wings, k = 0 seam continuity.
+
+Verification at wrap: backend suite **2021 passed / 7 skipped** in two
+halves (test_[a-k]* 1215/4 + test_[l-z]* 806/3; +7 locks over 31a's 2014).
+
 ### 🧭 SESSION WRAP (2026-08-31a) — SHORT-DATED WING IV: OTM-SIDE, TAIL-ACCURATE INVERSION
 
 User report: 2-4 day SPY smiles drew a RAGGED far upside (k in [0.2, 1.0])

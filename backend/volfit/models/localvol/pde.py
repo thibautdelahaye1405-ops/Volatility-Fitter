@@ -52,6 +52,13 @@ class PDESolution:
     k_mesh: np.ndarray  # uniform log-strike mesh, shape (n_k,)
     expiries: np.ndarray  # sorted unique expiries, shape (n_exp,)
     prices: np.ndarray  # normalized call prices, shape (n_exp, n_k)
+    #: Normalized PUT prices marched through the same operator (P(k, 0) =
+    #: (e^k - 1)^+, Dirichlet 0 / e^{k_max} - 1). The put row carries the
+    #: left wing's time value at full relative accuracy — forming it as
+    #: C - (1 - e^k) floors it at the intrinsic leg's ~1e-16 round-off (the
+    #: short-dated flat-left display bug). None on solutions built by older
+    #: callers; LocalVolSlice then falls back to the parity conversion.
+    put_prices: np.ndarray | None = None
 
     def density(self, i: int) -> np.ndarray:
         """Log-strike density d2C/dk2 - dC/dk at expiry i (central FD).
@@ -109,12 +116,24 @@ def solve_dupire(
     inv_h2 = 1.0 / (h * h)
     inv_2h = 1.0 / (2.0 * h)
     bc_lo = 1.0 - np.exp(k_lo)  # Dirichlet boundary values (time-independent)
+    bc_hi_put = np.exp(k_hi) - 1.0  # put right boundary: deep ITM, C -> 0
 
     c = np.maximum(1.0 - np.exp(k_mesh), 0.0)  # payoff at T = 0
     c[-1] = 0.0
+    # Put twin, marched through the same operator: the left wing's time value
+    # at full relative accuracy (see PDESolution.put_prices).
+    p = np.maximum(np.exp(k_mesh) - 1.0, 0.0)
+    p[0] = 0.0
 
-    def step(c_old: np.ndarray, t0: float, dt: float, theta: float) -> np.ndarray:
-        """One theta-scheme step from t0 to t0 + dt; sigma at midpoint time."""
+    def step(
+        c_old: np.ndarray, p_old: np.ndarray, t0: float, dt: float, theta: float
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """One theta-scheme step from t0 to t0 + dt; sigma at midpoint time.
+
+        The call and the put share the step's banded matrix; the call is
+        solved first without overwriting it (same factorization, same floats
+        as the historical single-solve path), the put reuses it.
+        """
         sig = grid.vol(k_int, t0 + 0.5 * dt)
         s = 0.5 * sig * sig
         # Spatial operator L: lower / diag / upper coefficients on interior nodes.
@@ -125,26 +144,36 @@ def solve_dupire(
         if theta < 1.0:
             w = (1.0 - theta) * dt
             rhs = c_old[1:-1] + w * (lo * c_old[:-2] + di * c_old[1:-1] + up * c_old[2:])
+            rhs_p = p_old[1:-1] + w * (lo * p_old[:-2] + di * p_old[1:-1] + up * p_old[2:])
         else:
             rhs = c_old[1:-1].copy()
-        # Implicit boundary contribution (right boundary value is 0).
+            rhs_p = p_old[1:-1].copy()
+        # Implicit boundary contributions (call: right boundary is 0; put:
+        # left boundary is 0).
         rhs[0] += theta * dt * lo[0] * bc_lo
+        rhs_p[-1] += theta * dt * up[-1] * bc_hi_put
 
         # Banded form of I - theta*dt*L for solve_banded((1, 1), ...).
         ab = np.zeros((3, n_k - 2))
         ab[0, 1:] = -theta * dt * up[:-1]
         ab[1, :] = 1.0 - theta * dt * di
         ab[2, :-1] = -theta * dt * lo[1:]
-        sol = solve_banded(
-            (1, 1), ab, rhs, overwrite_ab=True, overwrite_b=True, check_finite=False
+        sol = solve_banded((1, 1), ab, rhs, overwrite_b=True, check_finite=False)
+        sol_p = solve_banded(
+            (1, 1), ab, rhs_p, overwrite_ab=True, overwrite_b=True, check_finite=False
         )
         c_new = np.empty_like(c_old)
         c_new[0] = bc_lo
         c_new[-1] = 0.0
         c_new[1:-1] = sol
-        return c_new
+        p_new = np.empty_like(p_old)
+        p_new[0] = 0.0
+        p_new[-1] = bc_hi_put
+        p_new[1:-1] = sol_p
+        return c_new, p_new
 
     prices = np.empty((exps.size, n_k))
+    puts = np.empty((exps.size, n_k))
     t_start = 0.0
     first = True
     for i_exp, t_exp in enumerate(exps):
@@ -156,11 +185,12 @@ def solve_dupire(
                 # Rannacher startup: damp the payoff-kink oscillation.
                 dq = dt / N_RANNACHER
                 for m in range(N_RANNACHER):
-                    c = step(c, t0 + m * dq, dq, theta=1.0)
+                    c, p = step(c, p, t0 + m * dq, dq, theta=1.0)
                 first = False
             else:
-                c = step(c, t0, dt, theta=0.5)
+                c, p = step(c, p, t0, dt, theta=0.5)
         prices[i_exp] = c
+        puts[i_exp] = p
         t_start = t_exp
 
-    return PDESolution(k_mesh=k_mesh, expiries=exps, prices=prices)
+    return PDESolution(k_mesh=k_mesh, expiries=exps, prices=prices, put_prices=puts)

@@ -1009,11 +1009,15 @@ def _price_density(solution, i_exp: int) -> DistributionArrays:
     )
 
 
-def _reconstruct_smile(solution, i_exp: int, t: float, k_lo: float, k_hi: float):
-    """Reconstructed IV curve: Dupire PDE call prices inverted through Black."""
+def _reconstruct_smile(
+    solution, i_exp: int, t: float, k_lo: float, k_hi: float, put_solution=None
+):
+    """Reconstructed IV curve: Dupire PDE prices inverted through Black,
+    OTM side per side — calls above the forward, the put march below
+    (affine_views_ext.otm_implied_w; the modelExt ≡ model lock rides on both
+    curves sharing this one inversion)."""
     grid = np.linspace(k_lo - _K_PAD, k_hi + _K_PAD, _N_SMILE)
-    price = solution.price_at(i_exp, np.exp(grid))
-    w = implied_total_variance(grid, price)
+    w, _ = affine_views_ext.otm_implied_w(solution, put_solution, i_exp, grid)
     vol = np.sqrt(np.maximum(w, 0.0) / t)
     pts = [
         SmilePoint(k=float(k), vol=float(v))
@@ -1372,6 +1376,21 @@ def _fit(
     )
     conv_index = {float(e): i for i, e in enumerate(conv_sol.expiries)}
 
+    # Display-side PUT march (the 2026-08-31 short-dated wing fix, LV mirror):
+    # the value-only put twin of the calibrated march — same grids, same time
+    # scheme, same fitted left slope — so the left display wing inverts its
+    # OWN OTM instrument instead of the call's cancelled time value. Discrete
+    # parity C - P = 1 - x keeps the k = 0 seam exact; computed after the
+    # solve, so calibration stays byte-identical (the conv_sol precedent).
+    put_sol = reprice_affine_dupire(
+        cal.surface.with_left_extrap_a(cal.left_extrap_a),
+        x_grid,
+        t_grid,
+        expiries=expiries,
+        payoff="put",
+        time_scheme=time_scheme,
+    )
+
     exp_index = {float(t): i for i, t in enumerate(cal.solution.expiries)}
     smiles: list[AffineSmile] = []
     iv_bp_all: list[float] = []
@@ -1388,7 +1407,7 @@ def _fit(
             cal.solution, i_exp, t, x_grid,
             surface=cal.surface, t_grid=t_grid, method=opts.varSwapMethod,
         )
-        model = _reconstruct_smile(cal.solution, i_exp, t, klo, khi)
+        model = _reconstruct_smile(cal.solution, i_exp, t, klo, khi, put_sol)
         # Calibration-consistent RMS (distance to the chosen fit target band, the
         # active weighting scheme, the var-swap quote) — identical basis to the
         # Parametric workspace's RMS, on the reconstructed surface's own IVs.
@@ -1406,7 +1425,8 @@ def _fit(
                 # Untruncated twin on the shared display grid (V3.3 item 3):
                 # same inversion, wider truncation — `model` stays byte-equal.
                 modelExt=affine_views_ext.extended_model(
-                    cal.solution, i_exp, t, klo, khi, x_grid, _K_PAD, _N_SMILE
+                    cal.solution, i_exp, t, klo, khi, x_grid, _K_PAD, _N_SMILE,
+                    put_solution=put_sol,
                 ),
                 quotes=_quote_bands(state, ticker, iso, prepared, request.fitMode),
                 varSwap=_affine_varswap_info(

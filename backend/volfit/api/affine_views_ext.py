@@ -35,7 +35,7 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.api.schemas import SmilePoint
-from volfit.core.black import implied_total_variance
+from volfit.core.black import implied_total_variance_otm
 
 #: Normalized time-value floor below which a Black inversion is numerically
 #: meaningless — mirrors volfit.api.service._WING_TV_FLOOR (kept private
@@ -68,6 +68,34 @@ def _display_grid(
     return np.concatenate(parts) if len(parts) > 1 else core
 
 
+def otm_implied_w(
+    solution, put_solution, i_exp: int, grid: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """``(w, otm_price)`` on ``grid`` by OTM-side Black inversion: the call
+    march above the forward (k >= 0), the put march below.
+
+    ``put_solution`` is the value-only put twin of the calibrated march
+    (reprice_affine_dupire(payoff="put"), same grids and time scheme): 1 - x
+    lies in the exact kernel of the central stencil, so discrete parity
+    C - P = 1 - x holds to round-off, the k = 0 seam is exact, and the left
+    wing's time value keeps full relative accuracy instead of dying at the
+    ~1e-16 absolute floor of ``price - intrinsic`` (the short-dated flat-left
+    LV display bug — the LQD fix's mirror, see models.lqd.putside). None
+    falls back to that parity conversion (the historical floor).
+    """
+    price = np.asarray(solution.price_at(i_exp, np.exp(grid)), dtype=float)
+    otm = price
+    neg = grid < 0.0
+    if np.any(neg):
+        if put_solution is not None:
+            put = np.asarray(put_solution.price_at(i_exp, np.exp(grid)), dtype=float)
+        else:
+            put = price - (1.0 - np.exp(grid))
+        otm = np.where(neg, put, price)
+    w = np.asarray(implied_total_variance_otm(grid, otm), dtype=float)
+    return w, otm
+
+
 def extended_model(
     solution,
     i_exp: int,
@@ -77,6 +105,7 @@ def extended_model(
     x_grid: np.ndarray,
     k_pad: float,
     n_core: int,
+    put_solution=None,
 ) -> list[SmilePoint]:
     """One expiry's reconstructed IV curve on the shared display grid.
 
@@ -104,13 +133,12 @@ def extended_model(
     # historical constant); raising it (2.72 -> +1.0) is what extends this
     # right edge when the quoted range does not reach K_DISPLAY_HI.
     grid = _display_grid(k_lo, k_hi, core_lo, core_hi, n_core)
-    price = np.asarray(solution.price_at(i_exp, np.exp(grid)), dtype=float)
-    # Normalized OTM time value: the call price for k >= 0, price - intrinsic
-    # below the forward — the reliability currency of the inversion guard.
-    time_value = price - np.maximum(1.0 - np.exp(grid), 0.0)
-    w = np.asarray(implied_total_variance(grid, price), dtype=float)
+    # OTM-side inversion; the OTM price IS the time value (intrinsic 0) — the
+    # reliability currency of the inversion guard, now measured honestly on
+    # the left from the put march instead of the cancelled call intrinsic.
+    w, time_value = otm_implied_w(solution, put_solution, i_exp, grid)
     reliable = (
-        np.isfinite(price)
+        np.isfinite(time_value)
         & (time_value >= _EXT_TV_FLOOR)
         & np.isfinite(w)
         & (w > 0.0)

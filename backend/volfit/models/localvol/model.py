@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from volfit.core.black import implied_total_variance
+from volfit.core.black import implied_total_variance_otm
 from volfit.models.localvol.grid import LocalVolGrid
 from volfit.models.localvol.pde import (
     DEFAULT_DT_MAX,
@@ -47,14 +47,32 @@ class LocalVolSlice:
     t: float
     k_mesh: np.ndarray
     prices: np.ndarray
+    #: The put row of the same solve (PDESolution.put_prices); None on slices
+    #: built by older callers — put_price then falls back to parity, which
+    #: floors the left time value at ~1e-16 absolute.
+    put_prices: np.ndarray | None = None
 
     def call_price(self, k: np.ndarray | float) -> np.ndarray:
         """Normalized call price by linear interpolation of the PDE row."""
         return np.interp(np.asarray(k, dtype=float), self.k_mesh, self.prices)
 
+    def put_price(self, k: np.ndarray | float) -> np.ndarray:
+        """Normalized put price from the put row (parity fallback if absent)."""
+        k_arr = np.asarray(k, dtype=float)
+        if self.put_prices is None:
+            return self.call_price(k_arr) - (1.0 - np.exp(k_arr))
+        return np.interp(k_arr, self.k_mesh, self.put_prices)
+
     def implied_w(self, k: np.ndarray | float) -> np.ndarray:
-        """Total implied variance w(k) by Black inversion of the call curve."""
-        return implied_total_variance(k, self.call_price(k))
+        """Total implied variance w(k) by Black inversion of the OTM side:
+        the call above the forward, the put row below — the left wing's time
+        value stays relatively accurate instead of dying in the intrinsic
+        leg's round-off (the short-dated flat-left display bug)."""
+        k_arr = np.asarray(k, dtype=float)
+        price = np.asarray(self.call_price(k_arr), dtype=float)
+        if np.any(k_arr < 0.0):
+            price = np.where(k_arr < 0.0, self.put_price(k_arr), price)
+        return implied_total_variance_otm(k_arr, price)
 
     def implied_vol(self, k: np.ndarray | float, t: float) -> np.ndarray:
         """Implied Black volatility at expiry ``t`` (the slice's own maturity)."""
@@ -114,9 +132,15 @@ class LocalVolModel:
         for sol in self._cache.values():
             (idx,) = np.nonzero(sol.expiries == t)
             if idx.size:
-                return LocalVolSlice(t=t, k_mesh=sol.k_mesh, prices=sol.prices[idx[0]])
+                return LocalVolSlice(
+                    t=t, k_mesh=sol.k_mesh, prices=sol.prices[idx[0]],
+                    put_prices=None if sol.put_prices is None else sol.put_prices[idx[0]],
+                )
         sol = self.solve((t,))
-        return LocalVolSlice(t=t, k_mesh=sol.k_mesh, prices=sol.prices[0])
+        return LocalVolSlice(
+            t=t, k_mesh=sol.k_mesh, prices=sol.prices[0],
+            put_prices=None if sol.put_prices is None else sol.put_prices[0],
+        )
 
     def diagnostics(self, expiries) -> LocalVolDiagnostics:
         """Butterfly / calendar residuals of the discrete solution.
