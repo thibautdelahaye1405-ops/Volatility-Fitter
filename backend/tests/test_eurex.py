@@ -67,7 +67,10 @@ class FakeFetch:
 def _provider(tickers=("OESX",), now=NOW_CLOSED):
     fetch = FakeFetch(FILES)
     ad = EurexAdapter(now=lambda: now); ad.workers = 2
-    return ExchangeChainProvider(list(tickers), ad, fetch_json=fetch), fetch, ad
+    # Pin the provider's expiry-filter day to the same clock as the adapter —
+    # the canned 2026-08 chain must not rot as the wall clock passes it.
+    prov = ExchangeChainProvider(list(tickers), ad, fetch_json=fetch, today=lambda: now.date())
+    return prov, fetch, ad
 
 
 def test_product_ids_urls_and_date_helpers():

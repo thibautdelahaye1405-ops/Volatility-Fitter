@@ -87,6 +87,9 @@ class ExchangeChainProvider(OptionChainProvider):
     cache_seconds : raw-chain reuse window (see module doc).
     fetch_json    : ``url -> dict`` (injected by tests); defaults to a pooled
                     httpx client with browser-like headers.
+    today         : ``() -> date`` used by the expiry filter (injected by tests
+                    so canned chains stay deterministic; production keeps the
+                    wall clock).
     """
 
     def __init__(
@@ -96,8 +99,10 @@ class ExchangeChainProvider(OptionChainProvider):
         max_days: int = 730,
         cache_seconds: float = DEFAULT_CACHE_SECONDS,
         fetch_json: Callable[[str], dict] | None = None,
+        today: Callable[[], date] | None = None,
     ) -> None:
         self._tickers = [t.strip().upper() for t in tickers]
+        self._today = today if today is not None else date.today
         self.adapter = adapter
         self.max_days = max_days
         self.cache_seconds = cache_seconds
@@ -164,7 +169,7 @@ class ExchangeChainProvider(OptionChainProvider):
 
     def available_expiries(self, ticker: str) -> list[date]:
         """All listed expiries inside (0, max_days] (one cached download)."""
-        today = date.today()
+        today = self._today()
         raw = self._raw(ticker)
         return sorted({q.expiry for q in raw.quotes if 0 < (q.expiry - today).days <= self.max_days})
 
@@ -186,7 +191,7 @@ class ExchangeChainProvider(OptionChainProvider):
         or the whole listed ladder within ``max_days``. Live-only (``as_of`` is
         ignored); stamped with the venue's publication time."""
         raw = self._raw(ticker)
-        today = date.today()
+        today = self._today()
         if expiries is None:
             wanted = {q.expiry for q in raw.quotes if 0 < (q.expiry - today).days <= self.max_days}
         else:
