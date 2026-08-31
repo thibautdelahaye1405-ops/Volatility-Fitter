@@ -127,11 +127,14 @@ def test_retarget_preserves_reference_alphas():
 
 # ------------------------------------------------------------------ 2. wings
 def test_alpha_law_wings_patch_remote_wings():
-    """A low-vol Gaussian-rate slice underflows its display wings well inside
-    the k in [-1.4, 1] window: the patched curve is finite, continuous at
-    the seam, flat-to-the-law beyond it (alpha = 1/2), and untouched where
-    the inversion is healthy."""
-    s = 0.08
+    """A short-dated Gaussian-rate slice underflows its display wings well
+    inside the k in [-1.4, 1] window: the patched curve is finite, continuous
+    at the seam, flat-to-the-law beyond it (alpha = 1/2), and untouched where
+    the inversion is healthy. (s = 0.02, a 2-day ~24%-vol scale: since the
+    OTM-side inversion became tail-accurate, prices must genuinely underflow
+    double precision — |d| ~ 38 — before the raw curve dies, not merely fall
+    below black_call's old erf saturation at |d| ~ 8.3.)"""
+    s = 0.02
     lam = s / np.sqrt(2.0)
     sl = build_slice(LQDParams(L=np.log(lam), R=np.log(lam), a=np.zeros(0),
                                alpha_left=0.5, alpha_right=0.5))

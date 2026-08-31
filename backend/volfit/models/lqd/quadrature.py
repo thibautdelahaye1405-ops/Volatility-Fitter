@@ -32,12 +32,12 @@ saddle guard x'(Z) <= 1 - eps (eq. operationaltailguard), and the lambda_+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cached_property, lru_cache
 
 import numpy as np
 from scipy.special import expit
 
-from volfit.core.black import implied_total_variance
+from volfit.core.black import implied_total_variance_otm
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, g_eval, legendre_matrix
 from volfit.models.lqd.interp import hermite_eval, hermite_invert
 from volfit.models.lqd.tails import (
@@ -227,14 +227,33 @@ class LQDSlice:
             c = np.where(k_arr < self.q_z[0], tail_l, c)
         return c
 
+    @cached_property
+    def _lower_share(self) -> np.ndarray:
+        """Lower asset-share integral Lo(z) — the left mirror of ``a_z``
+        (volfit.models.lqd.putside). Lazy: only display / inversion paths
+        price puts, so build_slice (the calibration hot path) never pays."""
+        from volfit.models.lqd.putside import lower_share
+        return lower_share(self)
+
     def put_price(self, k: np.ndarray | float) -> np.ndarray:
-        """Normalized put via parity C - P = 1 - e^k."""
-        k_arr = np.asarray(k, dtype=float)
-        return self.call_price(k_arr) - (1.0 - np.exp(k_arr))
+        """Normalized put P(k) = e^k u_k - Lo(z_k), priced on the LEFT side
+        (volfit.models.lqd.putside): full relative accuracy into the deep
+        lower wing, where the parity route C - (1 - e^k) rounds the time
+        value away entirely on short-dated slices."""
+        from volfit.models.lqd.putside import put_price
+        return put_price(self, np.asarray(k, dtype=float))
 
     def implied_w(self, k: np.ndarray | float) -> np.ndarray:
-        """Implied total variance w(k) by Black inversion of the call curve."""
-        return implied_total_variance(k, self.call_price(k))
+        """Implied total variance w(k) by tail-accurate Black inversion of
+        the OTM instrument — call at k >= 0, put below, each priced on its
+        own clean side (core.black.implied_total_variance_otm). Inverting
+        calls everywhere floored the left time value at ~1e-16 absolute —
+        the short-dated flat-left / ragged-right smile display bug."""
+        k_arr = np.asarray(k, dtype=float)
+        price = np.asarray(self.call_price(k_arr), dtype=float)
+        if np.any(k_arr < 0.0):
+            price = np.where(k_arr < 0.0, self.put_price(k_arr), price)
+        return implied_total_variance_otm(k_arr, price)
 
     def implied_vol(self, k: np.ndarray | float, t: float) -> np.ndarray:
         """Implied Black volatility at expiry ``t``."""

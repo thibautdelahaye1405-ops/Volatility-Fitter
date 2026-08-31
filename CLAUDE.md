@@ -68,7 +68,7 @@ golden tests against the Docs/ notes, module docstrings citing equation
 numbers, files <= 400 lines, commit after each green test batch.
 
 Key commands (Windows, repo root):
-- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2006 passed / 7 skipped as of 2026-08-29, ~15 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
+- Tests:    cd backend ; ..\.venv\Scripts\python -m pytest tests -q   (2014 passed / 7 skipped as of 2026-08-31, ~15 min — split it in two halves [tests/test_[a-k]*.py | test_[l-z]*.py] when a tool caps runs at 10 min, incl. the perf rails — NB the graph perf rail needs a quiet box [dense BLAS]; +1 live test via $env:VOLFIT_LIVE="1"; perf-only: -m perf -s)
 - Benchmark pack: `-m backtest.benchmark_pack run|report` (chunked/resumable
             graph-LOO parts under backtest\results\benchmark\ + HTML/JSON
             artifact); full sweep via backend\backtest\run_benchmark_pack.ps1

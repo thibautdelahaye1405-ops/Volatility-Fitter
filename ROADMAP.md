@@ -781,7 +781,7 @@ C5. **Drag a node onto the Graph canvas** — HTML5 DnD from a nodes-pane row
 Suggested order: A1 → C2 → C1 → B1 → B2 → C4 → C5 → A2 → A3 → C3
 (C3 last: largest refactor; A2 needs the FileProvider on the backend).
 
-## STATUS — updated 2026-08-27 (resume here)
+## STATUS — updated 2026-08-31 (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -807,6 +807,70 @@ below) — every recorded rider is closed except the ones listed here:
 USER-side: restart the long-running :8000 (new OptionsSettings fields,
 endpoints, the eSSVI compare family, the midnight roll); existing stores
 default the new gates.
+
+### 🧭 SESSION WRAP (2026-08-31a) — SHORT-DATED WING IV: OTM-SIDE, TAIL-ACCURATE INVERSION
+
+User report: 2-4 day SPY smiles drew a RAGGED far upside (k in [0.2, 1.0])
+and a FLAT far downside (k in [-1.0, -0.45]); 18-day fine, SVI/MCS fine,
+density fine. Root cause was the display's price -> IV pipeline (exactly the
+user's guess — the LQD prices/density were right), three stacked defects:
+`implied_w` inverted CALL prices everywhere, so the left wing's time value
+drowned in the intrinsic leg's ~1e-16 round-off -> nan -> `fill_nonfinite`
+drew the last invertible vol flat; `black_call`'s erf-based CDF quantizes at
+~1e-16 ABSOLUTE and saturates at d ~ -8.3, so representable 1e-20..1e-60
+upside prices inverted to saturation noise; and the safeguarded Newton
+CRAWLED on deep-OTM quotes (raw-price Newton gains ~one e-fold per step
+while staying in-bracket, so the bisection safeguard never rescues it).
+
+Fix (display/inversion only — calibration untouched: `black_call`/`norm_cdf`
+byte-identical, fits are price-space):
+- **core/black.py** — `black_otm` (the OTM instrument's price via the parity
+  symmetry P(k, w) = e^k B(-k, w), erfc-accurate Phi carrying relative
+  precision to ~1e-308), Newton on LOG price, `implied_total_variance_otm`;
+  `implied_total_variance` parity-converts ITM calls and delegates (same nan
+  contract; body roots match the old solver to ~1e-13).
+- **models/lqd/putside.py (NEW)** — lower asset-share Lo(z), the left mirror
+  of `a_z`, prices the put directly: P(k) = e^k u_k - Lo(z_k) (the parity
+  mirror of eq. call_logit), same tail-continuation seams as call_price.
+  `LQDSlice._lower_share` is a LAZY cached_property (build_slice, the
+  calibration hot path, never pays); `put_price` goes direct; `implied_w`
+  inverts the OTM side per side.
+- **service.alpha_law_wings** — left tv measured from the direct put (the
+  parity subtraction had marked the whole short-dated lower wing unreliable
+  regardless of its true, representable time value).
+- **graph_reconstruct._native_slice** — the native SVI/MCS fit grid keeps
+  only strikes with OTM tv >= `_WING_TV_FLOOR`: the pre-fix mask was the
+  same region, enforced ACCIDENTALLY by erf saturation; without it the newly
+  invertible 15+-sd tail points drag the family's ATM off the propagated
+  handle (test_graph_reconstruct_models caught it).
+- Stale locks recalibrated against the old artifacts:
+  test_generalized_tails_wire's patch fixture now uses s = 0.02 (prices must
+  genuinely underflow doubles, |d| ~ 38, before the raw curve dies);
+  test_functional_band_api asserts the HONEST band profile (widest near the
+  body where skew/curv move at full vega, deep wings NARROWER than ATM — the
+  old width[0]/width[-1] exceed-assertions rode the nan edge-extension seams).
+- NEW locks: tests/test_shortdated_wing_inversion.py (8) — both reported
+  ranges smooth + strictly monotone on a 2-day slice, put-side positivity /
+  monotonicity / body parity / left-seam continuity, extreme round trips
+  (price ~1e-200), body agreement with the historical path, static bounds
+  (underflowed 0.0 refused, never a fabricated vol), ATM closed form
+  bit-unchanged.
+
+Unrelated DATE-ROT fixed in-session (first red 2026-08-31, the day the
+canned Eurex fixture's 08-31 E-expiry hit the wall clock):
+`ExchangeChainProvider` gains an injectable `today` for its expiry filter
+(production default unchanged, `date.today`); test_eurex pins it to the
+fixture clock so the offline chain never rots again.
+
+Riders recorded (small, non-urgent): LocalVol displays
+(models/localvol/model.py, api/affine_views_ext.py) still invert CALL prices
+— their left wings keep the caller-side parity floor; a direct LV put path
+would mirror putside.py. Docs/lqd_model_note.tex's numerical-realization
+section doesn't yet describe the OTM-side inversion (a note rider, not code).
+
+Verification at wrap: backend suite **2014 passed / 7 skipped** in two
+halves (test_[a-k]* 1215/4 + test_[l-z]* 799/3; +8 locks over 2026-08-28a's
+2006).
 
 ### 🧭 SESSION WRAP (2026-08-28a) — THIRD RIDER BATCH: THE "DESIGN-HEAVY" TAIL + THE MIDNIGHT ROLL
 

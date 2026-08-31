@@ -36,6 +36,7 @@ from volfit.api.service import (
     K_DISPLAY_HI,
     K_DISPLAY_LO,
     N_MODEL_POINTS,
+    _WING_TV_FLOOR,
     fit_or_get,
     weighted_rms_error,
 )
@@ -67,11 +68,19 @@ def _native_slice(model: str, settings, lqd_slice, tau: float, grid: np.ndarray)
 
     The graph propagates the model-agnostic ATM handles; the LQD reconstruction is
     the exact target smile, and the native fit lands on it (its ATM handles match the
-    propagated handles within fit tolerance)."""
+    propagated handles within fit tolerance). The fit grid keeps only strikes whose
+    OTM time value clears the publication floor (service._WING_TV_FLOOR): with the
+    tail-accurate OTM inversion the display grid's remote wings now invert on
+    short-dated slices, and letting those 15+-sd tail points into an equal-weight
+    body fit drags the family's ATM off the propagated handle (the pre-fix mask was
+    the same region, enforced accidentally by erf saturation)."""
     if model not in ("svi", "sigmoid"):
         return None
     w = np.maximum(np.asarray(lqd_slice.implied_w(grid), dtype=float), 1e-10)
-    finite = np.isfinite(w)
+    c = np.asarray(lqd_slice.call_price(grid), dtype=float)
+    p = np.asarray(lqd_slice.put_price(grid), dtype=float)
+    tv = np.where(grid > 0.0, c, p)
+    finite = np.isfinite(w) & (tv >= _WING_TV_FLOOR)
     if finite.sum() < 5:
         return None
     fit = build_display_fit(model, grid[finite], w[finite], tau, None, settings)

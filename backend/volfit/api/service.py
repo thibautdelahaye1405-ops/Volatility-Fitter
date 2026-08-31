@@ -1247,7 +1247,11 @@ def alpha_law_wings(slice_, grid: np.ndarray, w: np.ndarray) -> np.ndarray:
     law_l, law_r = wing_law(params)
     w = np.asarray(w, dtype=float).copy()
     c = np.asarray(slice_.call_price(grid), dtype=float)
-    tv = np.where(grid > 0.0, c, c - (1.0 - np.exp(grid)))  # OTM time value
+    # OTM time value, the put side priced directly (models.lqd.putside): the
+    # parity subtraction c - (1 - e^k) floors the left tv at ~1e-16 absolute,
+    # which marked the whole short-dated lower wing unreliable regardless of
+    # its true (representable) time value.
+    tv = np.where(grid > 0.0, c, np.asarray(slice_.put_price(grid), dtype=float))
     unreliable = (tv < _WING_TV_FLOOR) | ~np.isfinite(w) | (w <= 0.0)
 
     if params.alpha_right > 0.0:
