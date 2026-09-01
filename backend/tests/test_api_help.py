@@ -328,6 +328,7 @@ def test_ask_model_env_override_and_leading_assistant_turn_dropped(client, stub_
         "configured": True,
         "sdkInstalled": True,
         "model": "claude-sonnet-5",
+        "workspaceConfigured": False,
     }
     r = client.post("/help/ask", json=body)
     assert r.status_code == 200
@@ -387,3 +388,36 @@ def test_request_clamps_truncate_instead_of_reject():
     assert all(len(c.text) == 4000 for c in req.cards)
     assert len(req.history) == 8
     assert all(len(t.text) == 4000 for t in req.history)
+
+
+# -- workspace id (identity-linked keys) -------------------------------------
+
+
+def test_workspace_id_reaches_the_client_as_a_default_header(monkeypatch):
+    """Identity-linked keys need ``anthropic-workspace-id`` on every request: the
+    env var lands in the client's default headers; without it none is sent."""
+    from volfit.api import help_ask
+
+    for var in help_ask.WORKSPACE_ENV_VARS:
+        monkeypatch.delenv(var, raising=False)
+    assert help_ask.client_headers() == {}
+    assert help_ask.ask_status().workspaceConfigured is False
+    monkeypatch.setenv("VOLFIT_ANTHROPIC_WORKSPACE_ID", "wrkspc_test_01")
+    assert help_ask.client_headers() == {"anthropic-workspace-id": "wrkspc_test_01"}
+    assert help_ask.ask_status().workspaceConfigured is True
+
+    captured = {}
+
+    class _StubModule:
+        class Anthropic:  # noqa: D106 - records the constructor kwargs
+            def __init__(self, **kw):
+                captured.update(kw)
+
+    monkeypatch.setattr(help_ask, "anthropic", _StubModule)
+    help_ask._default_client_factory("sk-test")
+    assert captured["api_key"] == "sk-test"
+    assert captured["default_headers"] == {"anthropic-workspace-id": "wrkspc_test_01"}
+    # The generic ANTHROPIC_WORKSPACE_ID spelling works too (lower priority).
+    monkeypatch.delenv("VOLFIT_ANTHROPIC_WORKSPACE_ID")
+    monkeypatch.setenv("ANTHROPIC_WORKSPACE_ID", "wrkspc_generic")
+    assert help_ask.workspace_id() == "wrkspc_generic"

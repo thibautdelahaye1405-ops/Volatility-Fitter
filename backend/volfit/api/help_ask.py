@@ -49,6 +49,12 @@ except ImportError:  # pragma: no cover - exercised only where the SDK is absent
 #: Env vars consulted for the API key, first non-empty wins.
 KEY_ENV_VARS: tuple[str, ...] = ("VOLFIT_ANTHROPIC_KEY", "ANTHROPIC_API_KEY")
 MODEL_ENV_VAR = "VOLFIT_ASSISTANT_MODEL"
+#: Workspace the requests act in. Identity-linked API keys REQUIRE it (the API
+#: answers 400 "anthropic-workspace-id is required" otherwise); org-scoped keys
+#: ignore it. Sent as the ``anthropic-workspace-id`` default header — the
+#: SDK's own ANTHROPIC_WORKSPACE_ID plumbing only covers federation tokens.
+WORKSPACE_ENV_VARS = ("VOLFIT_ANTHROPIC_WORKSPACE_ID", "ANTHROPIC_WORKSPACE_ID")
+WORKSPACE_HEADER = "anthropic-workspace-id"
 DEFAULT_MODEL = "claude-opus-5"
 MAX_TOKENS = 2048
 #: Beta header gating the ``fallbacks="default"`` scalar form (model-migration.md).
@@ -145,6 +151,8 @@ class HelpAskStatus(BaseModel):
     configured: bool
     sdkInstalled: bool
     model: str | None = None
+    #: A workspace id is configured (needed by identity-linked keys).
+    workspaceConfigured: bool = False
 
 
 # -- configuration -----------------------------------------------------------
@@ -162,6 +170,15 @@ def model_name() -> str:
     return os.environ.get(MODEL_ENV_VAR, "").strip() or DEFAULT_MODEL
 
 
+def workspace_id() -> str | None:
+    """``wrkspc_…`` from the first non-empty WORKSPACE_ENV_VARS entry, else None."""
+    for var in WORKSPACE_ENV_VARS:
+        value = os.environ.get(var, "").strip()
+        if value:
+            return value
+    return None
+
+
 def ask_status() -> HelpAskStatus:
     """Tier ``"claude"`` only when a key is set AND the SDK imports."""
     configured = _api_key() is not None
@@ -172,12 +189,20 @@ def ask_status() -> HelpAskStatus:
         configured=configured,
         sdkInstalled=sdk_installed,
         model=model_name() if claude else None,
+        workspaceConfigured=workspace_id() is not None,
     )
 
 
 def _default_client_factory(api_key: str) -> Any:
-    """Build the official client with an injected key (README, Client Initialization)."""
-    return anthropic.Anthropic(api_key=api_key)
+    """Build the official client with an injected key (README, Client Initialization);
+    ``default_headers`` carries the workspace when one is configured."""
+    return anthropic.Anthropic(api_key=api_key, default_headers=client_headers())
+
+
+def client_headers() -> dict[str, str]:
+    """Extra default headers for the client: the workspace id when configured."""
+    wid = workspace_id()
+    return {WORKSPACE_HEADER: wid} if wid else {}
 
 
 #: Injectable for tests: a callable ``(api_key) -> client`` whose
@@ -236,7 +261,11 @@ def _error_message(exc: BaseException) -> str:
     if isinstance(exc, anthropic.APIStatusError):
         if exc.status_code >= 500:
             return f"Assistant service error ({exc.status_code}) — retry later."
-        return f"Assistant API error ({exc.status_code}): {exc.message}"
+        msg = f"Assistant API error ({exc.status_code}): {exc.message}"
+        if WORKSPACE_HEADER in str(exc.message) and workspace_id() is None:
+            msg += (" - this key is identity-linked: set VOLFIT_ANTHROPIC_WORKSPACE_ID (Console > Settings > "
+                    "Workspaces, wrkspc_...) on the server and restart it.")
+        return msg
     if isinstance(exc, anthropic.APIConnectionError):
         return "Could not connect to the assistant service (network error)."
     return f"Assistant failed: {type(exc).__name__}."

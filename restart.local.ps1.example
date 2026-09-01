@@ -26,3 +26,8 @@ if (-not $env:VOLFIT_FLATFILES_ENDPOINT) { $env:VOLFIT_FLATFILES_ENDPOINT = 'fil
 if (-not $env:VOLFIT_ANTHROPIC_KEY)      { $env:VOLFIT_ANTHROPIC_KEY      = 'YOUR_ANTHROPIC_API_KEY' }
 # Model for that tier (default claude-opus-5; e.g. claude-sonnet-5 to spend less).
 # if (-not $env:VOLFIT_ASSISTANT_MODEL)  { $env:VOLFIT_ASSISTANT_MODEL    = 'claude-opus-5' }
+# Identity-linked Anthropic keys (the Console's newer key type) must name the
+# workspace every request acts in - otherwise the API answers 400
+# "anthropic-workspace-id is required". Console > Settings > Workspaces (wrkspc_...).
+# Org-scoped keys can leave this unset. ANTHROPIC_WORKSPACE_ID also works.
+if (-not $env:VOLFIT_ANTHROPIC_WORKSPACE_ID) { $env:VOLFIT_ANTHROPIC_WORKSPACE_ID = 'wrkspc_YOUR_WORKSPACE_ID' }
