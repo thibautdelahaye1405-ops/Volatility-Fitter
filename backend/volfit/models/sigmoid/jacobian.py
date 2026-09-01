@@ -29,16 +29,11 @@ from __future__ import annotations
 import numpy as np
 
 from volfit.calib.band import BandTarget, band_violation_sign
-from volfit.models.sigmoid.kernels import _hat_norm, hat, hat_p, phi, phi_p
+from volfit.models.sigmoid.kernels import phi, phi_p
 from volfit.models.sigmoid.price_rows import price_row_blocks
 
 #: Mirrors ``calibrate._V_FLOOR`` (the variance floor under the sqrt); kept in sync.
 _V_FLOOR = 1e-8
-
-
-def _dphi_dkappa(x: np.ndarray, kappa: np.ndarray | float) -> np.ndarray:
-    """``dPhi_kappa(x)/dkappa = (-2 Phi(x) + x Phi'(x)) / kappa`` (from eq Phi)."""
-    return (-2.0 * phi(x, kappa) + np.asarray(x, float) * phi_p(x, kappa)) / kappa
 
 
 def _base_grad(z: np.ndarray, v0, s0, k0, z0, kp, kc) -> tuple[np.ndarray, np.ndarray]:
@@ -61,14 +56,29 @@ def _base_grad(z: np.ndarray, v0, s0, k0, z0, kp, kc) -> tuple[np.ndarray, np.nd
 
 
 def _hat_grad(z: np.ndarray, c, h, kappa) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """``(B, dB/dc, dB/dh, dB/dkappa)`` for one hat core."""
+    """``(B, dB/dc, dB/dh, dB/dkappa)`` for one hat core.
+
+    One stacked ``phi`` call and one stacked ``phi'`` call cover the whole
+    stencil {u-h, u, u+h, h}; the primitives are elementwise, so every value
+    below is bit-identical to the historical per-point calls (which made ~18
+    small-array dispatches per core per iterate — the profiled MCS hot spot).
+    """
     u = np.asarray(z, float) - c
-    norm = _hat_norm(h, kappa)
-    b = hat(z, c, h, kappa)
-    db_dc = -hat_p(z, c, h, kappa)
-    db_dh = (-phi_p(u - h, kappa) + phi_p(u + h, kappa)) / norm - b * (2.0 * phi_p(h, kappa)) / norm
-    draw_dk = _dphi_dkappa(u - h, kappa) - 2.0 * _dphi_dkappa(u, kappa) + _dphi_dkappa(u + h, kappa)
-    db_dk = draw_dk / norm - b * (2.0 * _dphi_dkappa(h, kappa)) / norm
+    pts = np.concatenate([u - h, u, u + h, (h,)])
+    ph, php = phi(pts, kappa), phi_p(pts, kappa)
+    n = u.size
+    ph_m, ph_0, ph_p, ph_h = ph[:n], ph[n : 2 * n], ph[2 * n : 3 * n], ph[3 * n]
+    pp_m, pp_0, pp_p, pp_h = php[:n], php[n : 2 * n], php[2 * n : 3 * n], php[3 * n]
+    norm = float(2.0 * ph_h)
+    b = (ph_m - 2.0 * ph_0 + ph_p) / norm
+    db_dc = -((pp_m - 2.0 * pp_0 + pp_p) / norm)
+    db_dh = (-pp_m + pp_p) / norm - b * (2.0 * pp_h) / norm
+    # dPhi/dkappa at each stencil point from the cached (phi, phi') values.
+    dpk_m = (-2.0 * ph_m + (u - h) * pp_m) / kappa
+    dpk_0 = (-2.0 * ph_0 + u * pp_0) / kappa
+    dpk_p = (-2.0 * ph_p + (u + h) * pp_p) / kappa
+    dpk_h = (-2.0 * ph_h + h * pp_h) / kappa
+    db_dk = (dpk_m - 2.0 * dpk_0 + dpk_p) / norm - b * (2.0 * dpk_h) / norm
     return b, db_dc, db_dh, db_dk
 
 

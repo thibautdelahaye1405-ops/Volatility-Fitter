@@ -45,6 +45,43 @@ def hermite_eval(
     )
 
 
+def hermite_eval_rows(
+    x: np.ndarray,
+    x0: float,
+    step: float,
+    values: np.ndarray,
+    derivs: np.ndarray,
+) -> np.ndarray:
+    """``hermite_eval`` for a STACK of curves sharing one grid and one query set.
+
+    ``values``/``derivs`` are (P, M) rows of nodal values / exact nodal
+    derivatives; returns the (P, len(x)) evaluations. The cell index and the
+    cubic weights depend only on ``x``, so they are computed once and applied
+    to every row by fancy indexing — the same elementwise operations as P
+    separate ``hermite_eval`` calls, hence bit-identical to a per-row loop
+    (the analytic-Jacobian hot path pays the dispatch overhead once, not P
+    times per iterate)."""
+    x = np.asarray(x, dtype=float)
+    n_seg = values.shape[-1] - 1
+    pos = np.clip((x - x0) / step, 0.0, n_seg)
+    idx = np.minimum(pos.astype(int), n_seg - 1)
+    t = pos - idx
+
+    t2 = t * t
+    t3 = t2 * t
+    h00 = 2.0 * t3 - 3.0 * t2 + 1.0
+    h10 = t3 - 2.0 * t2 + t
+    h01 = -2.0 * t3 + 3.0 * t2
+    h11 = t3 - t2
+
+    return (
+        h00 * values[:, idx]
+        + h10 * step * derivs[:, idx]
+        + h01 * values[:, idx + 1]
+        + h11 * step * derivs[:, idx + 1]
+    )
+
+
 def hermite_monotone_margin(
     values: np.ndarray,
     derivs: np.ndarray,

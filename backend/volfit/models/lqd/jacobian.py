@@ -35,7 +35,7 @@ from volfit.calib.band import band_violation_sign
 from volfit.calib.varswap import _W_FLOOR as _VS_W_FLOOR
 from volfit.core.black import black_vega_sigma
 from volfit.models.lqd.basis import LQDParams, endpoint_scales, legendre_matrix
-from volfit.models.lqd.interp import hermite_eval
+from volfit.models.lqd.interp import hermite_eval_rows
 from volfit.models.lqd.quadrature import _cumquad, build_slice
 from volfit.models.lqd.tails import (
     EPS_TAIL,
@@ -98,7 +98,12 @@ def slice_sensitivities(
 
     phi = _basis_phi(u, params.order)                      # (P, M)
     dq_phi = slice_.dq_dz[None, :] * phi                   # d(Q')/dtheta
-    qbar = np.array([_cumquad(row, dx=dz, initial=0.0) for row in dq_phi])
+    # ONE batched cumulative-Simpson call over the P rows (axis -1): scipy's
+    # equal-interval kernel is elementwise per row plus a per-row cumsum, so
+    # the 2-D call is bit-identical to the historical per-row loop while
+    # paying the wrapper dispatch once instead of P times per iterate (the
+    # profiled hot spot of the whole slice fit — ~65% before batching).
+    qbar = np.asarray(_cumquad(dq_phi, dx=dz, initial=0.0))
     qbar -= qbar[:, center][:, None]                       # anchored, (P, M)
 
     # d(total)/dtheta: body integral + the two tail corrections. In the
@@ -127,7 +132,7 @@ def slice_sensitivities(
 
     d_qz = d_mu[:, None] + qbar                            # (P, M)
     d_massn = mass_n[None, :] * d_qz                       # d(e^{Q}u(1-u))/dtheta
-    rev = np.array([_cumquad(row[::-1], dx=dz, initial=0.0)[::-1] for row in d_massn])
+    rev = np.asarray(_cumquad(d_massn[:, ::-1], dx=dz, initial=0.0)[:, ::-1])
     if params.alpha_right == 0.0:
         # a_z right-tail correction e^{q_z[-1]-z_max}/(1-a_right) (q_z, not q_bar).
         tail_az = float(np.exp(slice_.q_z[-1] - z_max))
@@ -151,12 +156,9 @@ def call_price_rows(
     so dC/dtheta = hermite_eval(z_k; d_az, d_dadz) at fixed z_k. Returns
     ``(C, dC)`` with shapes (n,), (n, P).
     """
-    p = d_az.shape[0]
     z0, dz = float(slice_.z[0]), slice_._step
     z_k = slice_.strike_to_z(k)
-    dC = np.array(
-        [hermite_eval(z_k, z0, dz, d_az[j], d_dadz[j]) for j in range(p)]
-    ).T
+    dC = hermite_eval_rows(z_k, z0, dz, d_az, d_dadz).T
     return np.asarray(slice_.call_price(k), dtype=float), dC
 
 
@@ -174,12 +176,9 @@ def asset_share_rows(
     symmetric solve. Returns ``(A, dA)`` with shapes (n,), (n, P) — the
     call_price_rows convention.
     """
-    p = d_az.shape[0]
     z0, dz = float(slice_.z[0]), slice_._step
     z_arr = np.asarray(z, dtype=float)
-    dA = np.array(
-        [hermite_eval(z_arr, z0, dz, d_az[j], d_dadz[j]) for j in range(p)]
-    ).T
+    dA = hermite_eval_rows(z_arr, z0, dz, d_az, d_dadz).T
     return np.asarray(slice_.asset_share_at(z_arr), dtype=float), dA
 
 

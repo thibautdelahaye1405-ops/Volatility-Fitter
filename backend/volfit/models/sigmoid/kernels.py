@@ -95,25 +95,41 @@ def _hat_norm(h: float, kappa: float) -> float:
     return float(2.0 * phi(h, kappa))
 
 
+def _hat_stencil(z: np.ndarray | float, c: float, h: float, fn, kappa: float):
+    """``fn`` (phi / phi' / phi'') at the hat stencil {u-h, u, u+h, h} in ONE
+    stacked ufunc call. The primitives are elementwise, so the four slices are
+    bit-identical to four separate calls — the hats' hot paths (calibration
+    residual + Jacobian iterates) pay one small-array numpy dispatch instead
+    of four. Returns ``(f(u-h), f(u), f(u+h), norm = float(2 f(h)))``."""
+    u = np.asarray(z, dtype=float) - c
+    scalar = u.ndim == 0
+    if scalar:  # diagnostics paths pass scalar z; promote, then squeeze back
+        u = u[None]
+    pts = np.concatenate([u - h, u, u + h, (h,)])
+    out = fn(pts, kappa)
+    n = u.size
+    f_m, f_0, f_p = out[:n], out[n : 2 * n], out[2 * n : 3 * n]
+    if scalar:
+        f_m, f_0, f_p = f_m[0], f_0[0], f_p[0]
+    return f_m, f_0, f_p, float(2.0 * out[3 * n])
+
+
 def hat(z: np.ndarray | float, c: float, h: float, kappa: float) -> np.ndarray:
     """Normalized zero-wing hat B_{c,h,kappa}(z) with B(c) = 1 (eqs H-def, B-def)."""
-    u = np.asarray(z, dtype=float) - c
-    raw = phi(u - h, kappa) - 2.0 * phi(u, kappa) + phi(u + h, kappa)
-    return raw / _hat_norm(h, kappa)
+    f_m, f_0, f_p, norm = _hat_stencil(z, c, h, phi, kappa)
+    return (f_m - 2.0 * f_0 + f_p) / norm
 
 
 def hat_p(z: np.ndarray | float, c: float, h: float, kappa: float) -> np.ndarray:
     """B'_{c,h,kappa}(z), eq (H-prime); B'(c) = 0."""
-    u = np.asarray(z, dtype=float) - c
-    raw = phi_p(u - h, kappa) - 2.0 * phi_p(u, kappa) + phi_p(u + h, kappa)
-    return raw / _hat_norm(h, kappa)
+    f_m, f_0, f_p, _ = _hat_stencil(z, c, h, phi_p, kappa)
+    return (f_m - 2.0 * f_0 + f_p) / _hat_norm(h, kappa)
 
 
 def hat_pp(z: np.ndarray | float, c: float, h: float, kappa: float) -> np.ndarray:
     """B''_{c,h,kappa}(z), eq (H-second); B''(c) = 2(sech^2(kappa h/2) - 1)/norm < 0."""
-    u = np.asarray(z, dtype=float) - c
-    raw = phi_pp(u - h, kappa) - 2.0 * phi_pp(u, kappa) + phi_pp(u + h, kappa)
-    return raw / _hat_norm(h, kappa)
+    f_m, f_0, f_p, _ = _hat_stencil(z, c, h, phi_pp, kappa)
+    return (f_m - 2.0 * f_0 + f_p) / _hat_norm(h, kappa)
 
 
 # ------------------------------------------------------ butterfly-arb diagnostic

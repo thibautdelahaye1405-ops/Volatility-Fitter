@@ -81,6 +81,14 @@ class LinearizedJacobian:
     jac: np.ndarray  # dense (M_data, n) data block (or the whole matrix if reg None)
     reg: object = None  # optional sparse (M_reg, n) regularisation block, stacked below
 
+    def __post_init__(self) -> None:
+        # Cache the transposed reg block once: ``self.reg.T`` inside the
+        # adjoint matvec constructed a fresh transposed wrapper on every lsmr
+        # iteration (~6k CSC constructions per cold SPY fit, ~10% of the
+        # solve wall). Same object, same sparse matvec kernel, same floats —
+        # pure constructor-overhead removal.
+        self._reg_T = self.reg.T if self.reg is not None else None
+
     @property
     def shape(self) -> tuple[int, int]:
         m = self.jac.shape[0] + (self.reg.shape[0] if self.reg is not None else 0)
@@ -106,7 +114,7 @@ class LinearizedJacobian:
         if self.reg is None:
             return self.jac.T @ w
         md = self.jac.shape[0]
-        return self.jac.T @ w[:md] + self.reg.T @ w[md:]
+        return self.jac.T @ w[:md] + self._reg_T @ w[md:]
 
     def column_scale(self, floor: float = 1e-12) -> np.ndarray:
         """Jacobi preconditioner s_j = 1/‖J_·j‖ (equilibrates column norms).

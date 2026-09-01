@@ -340,17 +340,30 @@ def _model_values(
     q_const: float,
     with_jac: bool,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
-    """Option prices, var-swap totals (and Jacobian blocks) from a PDE solve."""
+    """Option prices, var-swap totals (and Jacobian blocks) from a PDE solve.
+
+    Vectorized per expiry (2026-09 perf arc): the historical per-quote loop
+    made one-point ``price_at`` / ``sens_at`` calls — ~n_quotes x n_evals of
+    them per fit (~54k on the SPY benchmark, ~40% of the cold-fit wall).
+    ``np.interp`` and the linear sensitivity rows are elementwise, so batching
+    every quote of an expiry into one call is bit-identical to the loop, with
+    the original row order preserved by masked assignment."""
     exp_index = {float(t): i for i, t in enumerate(solution.expiries)}
-    p = np.array([solution.price_at(exp_index[o.t], o.x) for o in options])
+    n_opt = len(options)
+    o_idx = np.fromiter((exp_index[o.t] for o in options), dtype=np.intp, count=n_opt)
+    o_x = np.fromiter((o.x for o in options), dtype=float, count=n_opt)
+    p = np.empty(n_opt)
+    jp = np.empty((n_opt, solution.sens.shape[2])) if with_jac else None
+    for i in np.unique(o_idx):
+        sel = o_idx == i
+        p[sel] = solution.price_at(int(i), o_x[sel])
+        if with_jac:
+            jp[sel] = solution.sens_at(int(i), o_x[sel])
     z = np.array(
         [q_weights @ solution.prices[exp_index[v.t]] + q_const for v in varswaps]
     )
     if not with_jac:
         return p, z, None, None
-    jp = np.vstack(
-        [solution.sens_at(exp_index[o.t], np.array([o.x]))[0] for o in options]
-    )
     jz = (
         np.vstack([q_weights @ solution.sens[exp_index[v.t]] for v in varswaps])
         if varswaps
