@@ -49,13 +49,12 @@ from volfit.models.lqd.tails import (
     tail_mass_right,
 )
 
-try:  # 4th-order cumulative quadrature (scipy >= 1.12); trapezoid fallback.
-    from scipy.integrate import cumulative_simpson as _cumquad
-except ImportError:  # pragma: no cover
-    from scipy.integrate import cumulative_trapezoid as _ct
-
-    def _cumquad(y: np.ndarray, dx: float, initial: float = 0.0) -> np.ndarray:
-        return _ct(y, dx=dx, initial=initial)
+# 4th-order cumulative quadrature on the uniform grid: the compiled
+# scipy-replica kernel (volfit.core.cumsimp) — bit-identical to
+# scipy.integrate.cumulative_simpson by construction (basic IEEE arithmetic
+# only, same operation order; test_batched_kernels locks the equality), with
+# scipy itself as the automatic fallback when numba is unavailable.
+from volfit.core.cumsimp import cumulative_simpson_uniform as _cumquad
 
 
 # Default grid: uniform in z, symmetric, odd-sized so z = 0 is a node.

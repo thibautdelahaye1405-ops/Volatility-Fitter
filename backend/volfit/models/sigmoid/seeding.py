@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from volfit.models.sigmoid.kernels import hat, siv_base
+from volfit.models.sigmoid.kernels import phi, siv_base
 
 #: Per-hat starting half-width / steepness (note's WW example, eq ww-fit-model).
 _H_INIT = 0.40
@@ -37,12 +37,33 @@ def _reference_vol(vol_quotes: np.ndarray, k: np.ndarray) -> float:
 
 
 def _eval_v(theta: np.ndarray, z: np.ndarray, n_cores: int) -> np.ndarray:
-    """Model variance v_R(z) for a flat parameter vector (base + n_cores hats)."""
+    """Model variance v_R(z) for a flat parameter vector (base + n_cores hats).
+
+    All cores' hat stencils {u_r-h_r, u_r, u_r+h_r, h_r} ride ONE stacked
+    ``phi`` call (2026-09 perf arc): the primitive is elementwise and kappa
+    broadcasts per row, so the values are bit-identical to the historical
+    per-core ``hat()`` calls (locked by test_batched_kernels) — and the
+    residual path invokes this several times per optimizer iterate, so the
+    dispatch count matters. Accumulation stays sequential per core.
+    """
     v0, s0, k0, z0, kp, kc = theta[:6]
     v, _, _ = siv_base(z, v0, s0, k0, z0, kp, kc)
+    if not n_cores:
+        return v
+    cores = np.asarray(theta[6 : 6 + 4 * n_cores], float).reshape(n_cores, 4)
+    alpha, c, h, kappa = cores[:, 0], cores[:, 1], cores[:, 2], cores[:, 3]
+    zz = np.asarray(z, dtype=float)
+    scalar = zz.ndim == 0
+    if scalar:
+        zz = zz[None]
+    n = zz.size
+    u = zz[None, :] - c[:, None]
+    hc = h[:, None]
+    pts = np.concatenate([u - hc, u, u + hc, hc], axis=1)
+    ph = phi(pts, kappa[:, None])
+    b = (ph[:, :n] - 2.0 * ph[:, n : 2 * n] + ph[:, 2 * n : 3 * n]) / (2.0 * ph[:, -1:])
     for r in range(n_cores):
-        alpha, c, h, kappa = theta[6 + 4 * r : 10 + 4 * r]
-        v = v + alpha * hat(z, c, h, kappa)
+        v = v + alpha[r] * (b[r][0] if scalar else b[r])
     return v
 
 

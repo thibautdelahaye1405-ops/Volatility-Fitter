@@ -55,46 +55,51 @@ def _base_grad(z: np.ndarray, v0, s0, k0, z0, kp, kc) -> tuple[np.ndarray, np.nd
     return v, dv
 
 
-def _hat_grad(z: np.ndarray, c, h, kappa) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """``(B, dB/dc, dB/dh, dB/dkappa)`` for one hat core.
+def _model_v_grad(theta: np.ndarray, z: np.ndarray, n_cores: int) -> tuple[np.ndarray, np.ndarray]:
+    """``(v_R(z), dv_R/dtheta)`` — variance and its (N, 6+4R) gradient.
 
-    One stacked ``phi`` call and one stacked ``phi'`` call cover the whole
-    stencil {u-h, u, u+h, h}; the primitives are elementwise, so every value
-    below is bit-identical to the historical per-point calls (which made ~18
-    small-array dispatches per core per iterate — the profiled MCS hot spot).
+    The hat block evaluates ALL cores' stencils {u_r-h_r, u_r, u_r+h_r, h_r}
+    with ONE stacked ``phi`` call and ONE stacked ``phi'`` call (2026-09 perf
+    arc): the primitives are elementwise and kappa broadcasts per row, so
+    every value is bit-identical to the historical per-core/per-point calls
+    (which made ~18 small-array dispatches per core per iterate — the
+    profiled MCS hot spot; locked by test_batched_kernels), while the
+    dispatch count no longer scales with R. The v-accumulation stays a
+    sequential per-core loop to preserve the historical summation order.
     """
-    u = np.asarray(z, float) - c
-    pts = np.concatenate([u - h, u, u + h, (h,)])
-    ph, php = phi(pts, kappa), phi_p(pts, kappa)
-    n = u.size
-    ph_m, ph_0, ph_p, ph_h = ph[:n], ph[n : 2 * n], ph[2 * n : 3 * n], ph[3 * n]
-    pp_m, pp_0, pp_p, pp_h = php[:n], php[n : 2 * n], php[2 * n : 3 * n], php[3 * n]
-    norm = float(2.0 * ph_h)
+    z = np.asarray(z, float)
+    v, dv_base = _base_grad(z, *theta[:6])
+    dv = np.zeros((z.size, 6 + 4 * n_cores))
+    dv[:, :6] = dv_base
+    if not n_cores:
+        return v, dv
+    cores = np.asarray(theta[6 : 6 + 4 * n_cores], float).reshape(n_cores, 4)
+    alpha, c, h, kappa = cores[:, 0], cores[:, 1], cores[:, 2], cores[:, 3]
+    n = z.size
+    u = z[None, :] - c[:, None]  # (R, N)
+    hc = h[:, None]
+    pts = np.concatenate([u - hc, u, u + hc, hc], axis=1)  # (R, 3N+1)
+    ph, php = phi(pts, kappa[:, None]), phi_p(pts, kappa[:, None])
+    ph_m, ph_0, ph_p = ph[:, :n], ph[:, n : 2 * n], ph[:, 2 * n : 3 * n]
+    pp_m, pp_0, pp_p = php[:, :n], php[:, n : 2 * n], php[:, 2 * n : 3 * n]
+    ph_h, pp_h = ph[:, -1:], php[:, -1:]  # (R, 1)
+    norm = 2.0 * ph_h
     b = (ph_m - 2.0 * ph_0 + ph_p) / norm
     db_dc = -((pp_m - 2.0 * pp_0 + pp_p) / norm)
     db_dh = (-pp_m + pp_p) / norm - b * (2.0 * pp_h) / norm
     # dPhi/dkappa at each stencil point from the cached (phi, phi') values.
-    dpk_m = (-2.0 * ph_m + (u - h) * pp_m) / kappa
-    dpk_0 = (-2.0 * ph_0 + u * pp_0) / kappa
-    dpk_p = (-2.0 * ph_p + (u + h) * pp_p) / kappa
-    dpk_h = (-2.0 * ph_h + h * pp_h) / kappa
+    kcol = kappa[:, None]
+    dpk_m = (-2.0 * ph_m + (u - hc) * pp_m) / kcol
+    dpk_0 = (-2.0 * ph_0 + u * pp_0) / kcol
+    dpk_p = (-2.0 * ph_p + (u + hc) * pp_p) / kcol
+    dpk_h = (-2.0 * ph_h + hc * pp_h) / kcol
     db_dk = (dpk_m - 2.0 * dpk_0 + dpk_p) / norm - b * (2.0 * dpk_h) / norm
-    return b, db_dc, db_dh, db_dk
-
-
-def _model_v_grad(theta: np.ndarray, z: np.ndarray, n_cores: int) -> tuple[np.ndarray, np.ndarray]:
-    """``(v_R(z), dv_R/dtheta)`` — variance and its (N, 6+4R) gradient."""
-    v, dv_base = _base_grad(z, *theta[:6])
-    dv = np.zeros((np.asarray(z).size, 6 + 4 * n_cores))
-    dv[:, :6] = dv_base
     for r in range(n_cores):
-        alpha, c, h, kappa = theta[6 + 4 * r : 10 + 4 * r]
-        b, db_dc, db_dh, db_dk = _hat_grad(z, c, h, kappa)
-        v = v + alpha * b
-        dv[:, 6 + 4 * r] = b  # alpha
-        dv[:, 7 + 4 * r] = alpha * db_dc  # c
-        dv[:, 8 + 4 * r] = alpha * db_dh  # h
-        dv[:, 9 + 4 * r] = alpha * db_dk  # kappa
+        v = v + alpha[r] * b[r]
+        dv[:, 6 + 4 * r] = b[r]  # alpha
+        dv[:, 7 + 4 * r] = alpha[r] * db_dc[r]  # c
+        dv[:, 8 + 4 * r] = alpha[r] * db_dh[r]  # h
+        dv[:, 9 + 4 * r] = alpha[r] * db_dk[r]  # kappa
     return v, dv
 
 
