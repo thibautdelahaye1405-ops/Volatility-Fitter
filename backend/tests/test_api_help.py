@@ -310,7 +310,7 @@ def test_ask_streams_deltas_with_stub(client, stub_env):
     assert kw["output_config"] == {"effort": "low"}
     assert kw["fallbacks"] == "default"
     assert kw["betas"] == ["server-side-fallback-2026-07-01"]
-    assert "— see:" in kw["system"]
+    assert "- see: <card title>" in kw["system"]  # citations as one bullet per card
     messages = kw["messages"]
     assert [m["role"] for m in messages] == ["user", "assistant", "user"]
     last = messages[-1]["content"]

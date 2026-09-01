@@ -1081,8 +1081,13 @@ Recorded facts / follow-ons (not gates):
   fields (filterClock, filterNonTradingWeight, filterSessionShare,
   gridXMinPerExpiry, jointCarry, jointCarryEngageBp) — harmless (sub-panels
   patch them) but worth aligning when the rider above lands.
-- Tier-1 Ask is untested against the live API (no key on this box); the SDK
-  call shape is locked by a stubbed stream in test_api_help.py.
+- Tier-1 Ask TESTED LIVE 2026-09-01 (raw SSE + the real Ask panel headless,
+  claude-opus-5, ~8 s, grounded answer citing the cards, `refused: False`).
+  Finding: the user's key is IDENTITY-LINKED, so the API answers 400
+  "anthropic-workspace-id is required" unless the workspace is named — fixed in
+  68e4c60 (VOLFIT_ANTHROPIC_WORKSPACE_ID / ANTHROPIC_WORKSPACE_ID → default
+  header; `workspaceConfigured` on /help/ask/status; template line). The SDK's
+  own ANTHROPIC_WORKSPACE_ID plumbing covers federation tokens only.
 
 Verification at wrap: frontend **tsc clean · vitest 397 passed / 57 files ·
 npm run build · npm run smoke:ui all green (LIVE synthetic shell)**; backend
