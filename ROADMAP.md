@@ -951,7 +951,7 @@ works with no `Docs/` folder and no Claude key (tier 0 answers).
 
 ---
 
-## STATUS — updated 2026-08-31c (resume here)
+## STATUS — updated 2026-09-02 (resume here)
 
 ### ▶ NEXT: two rider batches SHIPPED 2026-08-27 (wraps 2026-08-27c + d
 below) — every recorded rider is closed except the ones listed here:
@@ -986,6 +986,53 @@ endpoints, the eSSVI compare family, the midnight roll, the /help router);
 existing stores default the new gates. First launch after this commit opens
 the Help Center's Welcome page once (Esc closes it; Help ▾ Welcome brings it
 back).
+
+### 🧭 SESSION WRAP (2026-09-02) — CALIBRATION PERF ARC: BIT-IDENTICAL INNER-LOOP BATCHING (branch perf/param-inner-loop-lv-assembly)
+
+Profiled the three calibration families on real data (perf rails + the
+Bloomberg lv_benchmark fixture) and removed the dominant per-call dispatch
+overheads. Every change is **gate-free because it is bit-identical**: the
+same elementwise IEEE operations in the same order, batched — no toggle, no
+new settings field, no fit-key change. Locks: `tests/test_batched_kernels.py`
+(exact `array_equal` vs scipy / per-row / per-core references reproduced
+verbatim) + every golden suite; lv_benchmark reproduces nfev/bounds/RMS
+exactly (SPY 62 evals / 2.2 bp, NVDA 37 / 11.9 bp). Two commits:
+
+- **b5cb2a6 (Phase A — numpy batching):** LQD analytic Jacobian's per-column
+  `cumulative_simpson` loops (269 scipy calls/fit, ~65% of a slice fit) →
+  ONE 2-D call each; per-column `hermite_eval` loops → `hermite_eval_rows`
+  (interp.py); MCS `hat`/`hat_p`/`hat_pp` + `_hat_grad` → single stacked-phi
+  stencil calls; LV `_model_values` per-quote one-point `price_at`/`sens_at`
+  (~54k calls per SPY cold fit) → one batched call per expiry; GN operator
+  caches `reg.T` (lsmr's rmatvec built ~6k CSC wrappers per fit).
+- **cfb153a (Phase B — the compiled inner loop):** `volfit/core/cumsimp.py`,
+  a Numba kernel reimplementing EXACTLY scipy's equal-interval cumulative-
+  Simpson arithmetic (h1/h2 interleave + sequential prefix sum; `+ - * /`
+  only ⇒ compiled == scipy to the bit; scipy stays the fallback), wired as
+  the LQD quadrature's `_cumquad`; MCS `_model_v_grad`/`_eval_v` batch ALL
+  cores' stencils into one stacked phi + one phi' call (kappa per-row).
+
+Measured on the dev box (XPS 15 9520, sustained ~3.9 GHz):
+| path | before | after |
+| LQD slice fit (order 16, mid, 40 q) | 41 ms | **13.5 ms** (rail 36.5 → 9.4) |
+| warm 0DTE slice rail | 24 ms | 9 ms |
+| MCS n_cores=3 | 69 ms | 33 ms |
+| symmetric exchange rail | 213 ms | 74 ms |
+| graph_update_1k rail | 1010 ms | ~450 ms |
+| LV SPY cold solve (176 vtx, 863 q) | 2.51 s | **1.18 s** (assembly 1080 → 108 ms) |
+| whole Calibrate SPY+NVDA (8 nodes + 2 LV) | 6.8 s | ~4 s |
+
+Where the remaining time is (post-arc profiles): LQD ≈ scipy-trf machinery +
+build_slice's exp/interp chains; **MCS is now scipy trf-BOUNDS-machinery
+bound** (~184 evals/fit — svd + solve_lsq_trust_region + differentiable-
+functions wrappers ≈ half the fit); LV ≈ numba march 40% + lsmr matvecs +
+evaluate. Further parametric gains need a compiled/looser LM driver — a
+NON-bit-identical, gated change, deliberately left out of this arc. Also
+already present (checked, not new work): `_parametric_seed` LV cold-start
+(Stage 2b) and the `_GN_SPARSE_REG` sparse reg block.
+
+USER-side: restart :8000 to pick the faster fits up; first fit after the
+restart JIT-compiles the cumsimp kernel once (~0.5 s, disk-cached after).
 
 ### 🧭 SESSION WRAP (2026-08-31c) — HELP CENTER ARC SHIPPED (H1–H7)
 
